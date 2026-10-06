@@ -1,0 +1,80 @@
+{
+  "scope": "Native V8 v24.19.0, asset raster @napi-rs/canvas0.1.100, mock DOM and no-op WebGL command sink; CPU submission only, not browser/GPU/phone FPS",
+  "fixture": "seed12345, level15,155 locked grade2 allies,390x780 DPR1; same actual game engine,30 ticks x6 render frames, first6 frames omitted",
+  "baseline": {
+    "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+    "sha256": "c31b02b717ea74f23378ed598a54cfd8102af1074ab1a3e49461d90893366751",
+    "samples": 174,
+    "median": 27.076446000000033,
+    "p95": 54.036763000000064,
+    "mean": 31.782916500000002,
+    "stats": {
+      "backend": "webgl",
+      "mandatory": true,
+      "canvasFallback": false,
+      "available": true,
+      "contextLost": false,
+      "failure": null,
+      "frame": 181,
+      "textureCount": 18,
+      "stagingBytes": 2883584,
+      "drawCalls": 5,
+      "vertices": 17376,
+      "triangles": 5366,
+      "images": 213,
+      "paths": 218,
+      "textureUploads": 0,
+      "textureBytes": 0,
+      "vertexBytes": 764544,
+      "clipDraws": 1,
+      "flushMs": 0.14815100000032544,
+      "totals": {
+        "frames": 181,
+        "drawCalls": 905,
+        "vertices": 2965497,
+        "textureUploads": 42
+      }
+    },
+    "units": 267,
+    "friendly": 155,
+    "authorityUnchanged": true
+  },
+  "migrated": {
+    "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+    "sha256": "bd230db0efad4606b946d9b01b1c95d944e68311ae0f2df14b1c701997e29121",
+    "samples": 174,
+    "median": 7.993412999999691,
+    "p95": 25.36084699999992,
+    "mean": 10.236142632183928,
+    "stats": {
+      "backend": "webgl",
+      "mandatory": true,
+      "canvasFallback": false,
+      "available": true,
+      "contextLost": false,
+      "failure": null,
+      "frame": 181,
+      "textureCount": 18,
+      "stagingBytes": 2883584,
+      "drawCalls": 5,
+      "vertices": 17376,
+      "triangles": 5366,
+      "images": 213,
+      "paths": 218,
+      "textureUploads": 0,
+      "textureBytes": 0,
+      "vertexBytes": 764544,
+      "clipDraws": 1,
+      "flushMs": 0.1346230000003743,
+      "totals": {
+        "frames": 181,
+        "drawCalls": 905,
+        "vertices": 2965497,
+        "textureUploads": 60
+      }
+    },
+    "units": 267,
+    "friendly": 155,
+    "authorityUnchanged": true
+  }
+}
