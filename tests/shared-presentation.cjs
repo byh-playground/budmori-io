@@ -48,3 +48,7 @@ e.run(`globalThis.qaUI=[];bloomPresentationFunctions.qaEvent=value=>qaUI.push(va
 assert.deepEqual(e.json('qaUI'),['local','world']);
 assert(before.equals(bytes()),'Presentation event filtering must not mutate authority');
 console.log('PASS participant-local stats, inventory, weapon offers, interpolation, HUD selection, hit ownership, event scope, and canonical read-only presentation');
+assert.equal(e.run("patternDisplayColor(state.units.find(u=>u.playerId==='peer'))"),e.run('CONFIG.attackPatterns.friendlyVisual.color'));
+assert.equal(e.run("patternDisplayColor(state.units.find(u=>u.playerId==='owner'))"),e.run('CONFIG.eliteEncounter.color'));
+assert(before.equals(bytes()),'PVP telegraph color selection is presentation-only');
+console.log('PASS another human army has hostile telegraphs without changing canonical effect colors');
