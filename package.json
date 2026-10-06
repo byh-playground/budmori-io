@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs",
+    "test": "node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs",
     "test:browser": "node tests/browser.e2e.mjs"
   },
   "devDependencies": {
