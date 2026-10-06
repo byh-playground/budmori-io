@@ -1,6 +1,7 @@
 'use strict';
 // Actual main-thread authority, stopped fixtures, then production SDK combat.
-// Same IDs across recovery/load/reset must not retain stale presentation refs.
+// Shared-world recovery preserves other actors. Load/reset replace authority
+// and must not retain stale presentation refs for the same entity IDs.
 const fs=require('fs'),assert=require('assert');
 const file=process.argv[2]||`${__dirname}/../index.html`,html=fs.readFileSync(file,'utf8');
 const {session}=require('./main-harness.cjs');
@@ -14,7 +15,7 @@ const {session}=require('./main-harness.cjs');
   a.control();await a.tick(cycle?80:20);assert(await a.read('state.dead'),'production combat must kill Moa');
   previous=a.mirror.state.units.find(u=>u.id===id);assert(previous.rival?.abilities);
   a.control({paused:true,modalKind:'defeat'});await a.command({type:'recover'});await a.tick();
-  const current=a.mirror.state.units.find(u=>u.id===id);assert(current.rival?.abilities);assert.notStrictEqual(current,previous);assert(!await a.read('state.dead'));
+  const current=a.mirror.state.units.find(u=>u.id===id);assert(current.rival?.abilities);assert.strictEqual(current,previous,'Recovering one player preserves the unrelated rival authority');assert(!await a.read('state.dead'));
   a.e.run('view.w=view.h=2000;view.x=state.mother.x;view.y=state.mother.y;BLOOM_HEADLESS=false;resetPresentation();presentation.active=true;presentation.frameNow=performance.now();presentation.frameSerial++;');
   assert(a.e.run(`Number.isFinite(presentationPose(idMap.get(${id})).x)&&presentationPose(idMap.get(${id})).rival.abilities.level>=0`));a.e.run('BLOOM_HEADLESS=true');
  }

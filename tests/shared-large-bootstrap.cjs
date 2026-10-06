@@ -1,0 +1,19 @@
+'use strict';
+// Actual SDK confirmed checkpoint and bootstrap codec under the consumer's
+// declared budgets. No sockets/browser/device-FPS claim; timings include CPU.
+const assert=require('node:assert/strict'),{candidate}=require('./shared-harness.cjs'),{engine}=require('./native-engine.cjs');
+const source=candidate(),a=engine(source.file,source.html),b=engine(source.file,source.html);
+const setup=`CONFIG.session.mode='online';bloomApplyTickRate(10);BloomSimulation.initialize(12345);WorldMembership.apply({epoch:0,tick:0,players:['a','b','c','d','e']});`;
+a.run(setup);a.run(`for(const p of WorldPlayers.all()){const d=WorldPlayers.data(p);let level=1;while(rarityCapacityAtLevel(level)<1000)level++;d.campaign.abilities.level=level;d.campaign.abilities.xp=abilityThreshold(level);moaSyncLevelHP(p.leader);p.leader.hp=p.leader.maxHp;for(const type of ['swordsman','shellbug','dandelion','archer'])rarityAcquire(p.accountOwner,type,2,250);for(const r of rarityAccount(p.accountOwner).active)rarityLock(r.uid,true);rarityRecall(p.accountOwner)}rebuildGrid();spatialBoundary();`);
+let start=performance.now();a.run(`BloomSimulation.createSession({players:['a','b','c','d','e'],ownerId:'a',localPlayerId:'a',sessionConfig:{mode:'online',persistence:'none'}})`);const constructorMs=performance.now()-start;
+start=performance.now();const bootstrap=a.run('bloomSession.exportConfirmedBootstrap()'),exportMs=performance.now()-start;
+assert.equal(bootstrap.players.length,5);assert(bootstrap.checkpoint.bytes.length>4*1024*1024);assert(bootstrap.checkpoint.bytes.length<8*1024*1024);
+a.c.qaBootstrap=bootstrap;start=performance.now();const wire=a.run('BloomOwnedSDK.createValueCodec({maxBytes:8388608,maxEntries:1000000,maxDepth:32}).encode({bootstrap:qaBootstrap})'),encodeMs=performance.now()-start;
+assert(wire.length<8388608,'bootstrap including codec envelope fits transfer budget');b.run(setup);b.c.qaWire=wire;start=performance.now();b.run(`globalThis.replay=BloomOwnedSDK.createBootstrapReplay({adapter:bloomAdapter,bootstrap:BloomOwnedSDK.createValueCodec({maxBytes:8388608,maxEntries:1000000,maxDepth:32}).decode(qaWire).bootstrap,maxSnapshotBytes:8388608,maxReplayBytes:8388608,maxCatchupSteps:4});replay.pulse()`);const bootstrapMs=performance.now()-start;
+assert(b.run('replay.done'));assert.deepEqual(Buffer.from(a.run('bloomAdapter.save()')),Buffer.from(b.run('bloomAdapter.save()')));assert(b.run('bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:0})'));
+// Reproduce the synchronous incumbent save/apply/save/restore and commit load
+// operations for an ordinary fifth admission after four max-size armies remain.
+a.run("bloomSession.close();WorldMembership.apply({epoch:1,tick:0,players:['a','b','c','d'],left:['e'],joined:[],coordinatorId:'a'})");
+start=performance.now();a.run("globalThis.beforeJoin=bloomAdapter.save();WorldMembership.apply({epoch:2,tick:0,players:['a','b','c','d','f'],left:[],joined:['f'],coordinatorId:'a'});globalThis.afterJoin=bloomAdapter.save();bloomAdapter.load(beforeJoin)");const incumbentStageMs=performance.now()-start;
+start=performance.now();a.run('bloomAdapter.load(afterJoin)');const incumbentCommitLoadMs=performance.now()-start;assert(a.run('bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:0})'));
+console.log(JSON.stringify({pass:true,kind:'Native actual SDK/engine five×1000 checkpoint bootstrap; not network/GPU',sourceSHA256:source.sha256,sdk:source.sdk,snapshotBytes:bootstrap.checkpoint.bytes.length,wireBytes:wire.length,constructorMs,exportMs,encodeMs,bootstrapMs,incumbentStageMs,incumbentCommitLoadMs,incumbentSnapshotBytes:a.run('afterJoin.length'),profile:a.json('({maxSnapshotBytes:bloomSession.profile.maxSnapshotBytes,maxHistoryBytes:bloomSession.profile.maxHistoryBytes,stateHistorySize:bloomSession.profile.stateHistorySize,checksumInterval:bloomSession.profile.checksumInterval})')}));a.run('bloomSession.close()');

@@ -125,7 +125,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `e93bfa2888cf0a84d48507bf283d3b5bb823a6df`; dist: `9c28208fb689bed60ee877d511338ba4d6a0a1b0`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
+현재 고정 SDK source: `33d8cd6edfe3790ff00c3d9912976fda24919c01`; dist: `39956bc30c6e6a29fc6e2f4e7bde810d04221011`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
@@ -172,3 +172,36 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 - 검증용 네트워크 피어도 모드·TPS·입력 지연·체크섬 주기가 맞아야 연결됩니다. 버전/설정 불일치 시 양쪽 새로고침과 동일 설정 안내를 진단창에 표시합니다. 사용자 온라인 멀티플레이를 추가한 것은 아닙니다.
 - 연속 캠페인은 기존 롤백 지연 패킷 구간을 명시적 rollback 설정으로 유지하고, 같은 캠페인 저장에서 락스텝 대기·확정 명령·예측 0·주기 사이의 hash/replay/복구·반복 모드 전환을 이어 검사합니다. 실제 Chromium E2E도 저장/전투/회복 흐름 속에서 두 모드의 반복 전환과 락스텝 매 틱 직렬화 제거를 확인합니다.
 - `npm run test:benchmark:modes`는 같은 seed·객체 수·TPS·입력으로 두 모드를 비교합니다. Native 실행은 한 프로세스에서 틱마다 순서를 번갈아 측정하며 10/155/1000 동료를 포함합니다. Chromium 실행은 155 동료에서 실제 WebGL을 사용하되 비용 분리를 위해 수동 SDK 경계의 동일 입력을 사용합니다. 둘 다 advance·simulation step·snapshot을 분리하고, 브라우저는 render CPU 제출 비용도 따로 기록합니다. 디스크 cache 복사 횟수/bytes만 측정하며 SDK 내부 복사나 전체 JS 할당량으로 해석하지 않습니다. 생성자·워밍업·최종 hash 검증 캡처와 런타임 디스크 자동 저장은 측정 구간에서 제외합니다. 실제 기기 FPS·GPU 완료시간·1000 동료 30TPS 보장은 하지 않습니다.
+
+## 공유 세계 · 공개 PvP 세션
+
+싱글과 공개 플레이는 같은 `WorldSimulation`, `PlayerController`, `PlayerCombat`, `PlayerCommands`, snapshot adapter와 SDK loop를 사용합니다. 사람을 AI 라이벌로 바꾸거나 `state.mother`를 참가자마다 교체하지 않습니다. 세계 시간·병력·투사체·재생은 한 번만 진행하고, 각 참가자는 리더·진행·인벤토리·이동/AUTO·사냥 화면 범위를 소유합니다. 명령 소유자는 SDK 입력 프레임에서 정하며 명령 payload로 지정할 수 없습니다. `localPlayerId`는 입력 장치와 `WorldView` 표시 선택에만 사용합니다.
+
+- `CONFIG.session.mode`: `local` / `online`. `persistence`는 각각 `solo` / `none`입니다. 동기화 방식은 별도 `CONFIG.netcode` 설정이며 공개 세계는 lockstep을 사용합니다.
+- 게임 시작은 빈 공개 세계에 자동 합류하거나 새 세계를 만듭니다. 한 명으로 즉시 시작하고 최대 5명까지 이후 합류합니다. 싱글은 시작 화면의 별도 버튼으로 선택합니다.
+- 공개 세계의 새 참가자는 새 모아로 시작합니다. 기존 싱글 저장을 가져오거나 덮어쓰지 않습니다. 잠깐 끊긴 뒤 같은 세계에 복귀하면 그 세계의 기존 모아·군단·진행을 복원합니다.
+- 공개 방 검색/좌석 예약은 기존 공개 Nostr relay, 시뮬레이션 입력·bootstrap은 WebRTC P2P입니다. 별도 운영 서버·DB는 없습니다. 마지막 참가자가 떠난 세계는 종료되며 재접속 식별자만으로 세계를 재생성하지 않습니다.
+- 새로고침 복귀를 위해 SDK가 이 탭의 `sessionStorage`에 제한된 방 복귀 정보를 보관합니다. 수명은 기본 30분이며 새 판/명시적인 나가기는 이를 폐기합니다. 서명된 동일 세션의 자격 증명을 검증하고, 복귀 비밀은 게임 snapshot/replay/진단에 포함하지 않습니다.
+- 온라인 입력 버퍼는 `onlineInputBufferMs: 100`을 현재 TPS의 정수 틱으로 올림합니다. 실제 값은 화면에 표시합니다. 싱글은 0틱을 유지합니다. 지연·합류·복구 중 기다림은 정상 상태이며 추측 입력으로 세계를 진행하지 않습니다.
+- 메뉴와 사망은 공개 세계를 정지하지 않습니다. 해당 참가자의 입력만 중립이 됩니다. 사망은 그 참가자의 공격/예약을 정리하고, 회복은 다른 참가자·야생의 체력·투사체를 초기화하지 않습니다.
+- 참가자 변경은 확정된 SDK epoch 경계에 한 번 적용합니다. 세계와 전체 tick은 유지합니다. 정상 코디네이터 퇴장은 합의된 후임에게 인계하며, 분할/갑작스러운 단절은 유예 뒤 안전하게 중단합니다.
+
+### 맵과 관심 영역
+
+하나의 정의에서 싱글 3600×3600, 공개 7200×7200을 선택합니다. 지형·미니맵·캠프·우두머리 서식지도 같은 배율에서 파생됩니다. 공개 시작 구역 다섯 곳은 분리되어 있고, 가까운 시작 구역으로부터의 거리로 초반 야생 등급을 정합니다. 입장 위치는 seed와 참가자 ID에 따라 결정하며 다른 리더/지형/우두머리와의 안전 거리를 확인합니다.
+
+야생 재생은 살아 있는 참가자 관심 영역의 합집합을 사용합니다. 중복 셀은 한 번만 세고, 어느 참가자의 화면에서든 보이는 곳에는 생성하지 않습니다. 모든 참가자에게서 멀어진 일반 야생만 회수합니다. 소유 군단·라이벌·우두머리에는 이 회수 규칙을 적용하지 않으며, 군단 재미를 제한하는 새 인구 상한은 추가하지 않습니다. 배경 texture는 작은 타일로 유지하여 커진 맵이 기기 texture 한도를 넘지 않게 합니다.
+
+### 저장 호환성과 검증 범위
+
+공유 정규 상태는 `bloom-webgl-shared-ms-v3`, 싱글 디스크 envelope는 `bloom-snapshot-disk-v4`입니다. 기존 v2 정규 상태/v3 저장은 검증 후 참가자 소유권으로 이동합니다. 원본 싱글의 `-1` 리더 매핑은 호환 경계에서 유지하며, 새 참가자는 충돌하지 않는 별도 entity/account ID를 받습니다. 형식이 바뀐 뒤 예전 전체 bytes와 같다고 주장하지 않습니다. 새 형식끼리의 복원·다음 입력·멤버십 재생은 완전한 정규 bytes로 비교합니다.
+
+개발 검증은 기존 싱글의 연속 저장/전투/회복 경로와 `tests/shared-world.cjs`, `tests/shared-validation.cjs`, `tests/shared-presentation.cjs`를 사용합니다. 실제 게임/SDK와 메모리 패킷 연결을 쓰는 native 검사는 실제 브라우저·WebGL·공개 relay·WebRTC 검사를 대신하지 않습니다. 개발 SDK bundle을 시험할 때는 `--sdk=/absolute/dist/rollback-netcode.js`를 줄 수 있으며, 시험 realm에서만 교체합니다. 최종 배포는 승인된 exact SDK source/dist pin과 실제 브라우저 CI를 별도로 확인해야 합니다.
+
+### 고부하 측정 한계
+
+Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 실행물 약19.0ms, 공유 실행물 약18.6ms였습니다. 별도 순차 표본이므로 속도 개선을 보장하지 않습니다. 공개 5명×155 병력은 약17ms, 5명×1000은 약127ms로 후자는10TPS의100ms 예산도 넘었습니다. 군단 상한을 낮춰 숨기지 않습니다. 주된 비용은 근접 충돌 탐색·이동·공간 동기화였습니다.
+
+큰 상태의 직렬화와 설치는 아직 동기 작업입니다. 게시된 SDK에서 5명×1000 초기 checkpoint/전송은 약5MB로 허용되었으나, 받는 클라이언트의 검증·설치·재확인은 약2.4초였습니다. 4명×1000 뒤 새 다섯 번째 참가자의 입장에서는 기존 참가자의 약4MB 상태 staging(save/apply/save/restore)이 약677ms, commit load가 약570ms였습니다. 이는 실제 인터넷 방의 총 입장 시간이나 휴대폰 측정이 아니며, 기존 참가자에게도 큰 입장 정지가 생길 수 있음을 보여 줍니다. `maxCatchupSteps`는 이 직렬화/설치 시간을 분할하지 않습니다.
+
+공개 세션은 snapshot8MiB, sparse snapshot-history64MiB, bootstrap transfer8MiB의 byte budget을 사용합니다.64MiB는 미리 할당한 입력 버퍼가 아닌 보관 이력의 상한입니다. 기존 싱글 rollback 이력 설정은 유지합니다. `tests/shared-large-bootstrap.cjs`가 큰 실제 상태로 SDK budget과 완전한 bytes 복원을 검사하고, `test:benchmark:shared`가 5명 부하를 별도로 표시합니다.

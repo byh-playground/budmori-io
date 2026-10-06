@@ -1,11 +1,13 @@
 'use strict';
 // Read-only comparison of two shipped-script realms. Fixtures are installed only
 // between stopped SDK sessions; every subsequent step is a real SDK tick.
+// campaign.cjs uses the same candidate twice after the intentional shared-world
+// migration. Historical direct combat probes live in combat-observations.cjs.
 const assert=require('assert'),fs=require('fs');
 const {engine}=require('./native-engine.cjs');
 async function run({baseline=`${__dirname}/../composition-baseline.html`,target=`${__dirname}/../index.html`,disk=null,reportPath=null}={}){
 const engines=[engine(baseline),engine(target)];
-const report={baseline,target,baselineSHA:engines[0].sha256,targetSHA:engines[1].sha256,resumedFromCheckpoint:disk!==null,checks:0,effectChecks:0,chapters:[]};
+const report={baseline,target,baselineSHA:engines[0].sha256,targetSHA:engines[1].sha256,resumedFromCheckpoint:disk!==null,comparison:engines[0].sha256===engines[1].sha256?'same-artifact deterministic continuation':'cross-artifact canonical parity',checks:0,effectChecks:0,chapters:[]};
 let failure=null;
 function same(label){
  const bytes=engines.map(e=>Buffer.from(e.run('BloomSimulation.adapter.save()')));
@@ -51,7 +53,7 @@ function advance(count,label,input){
 try{
  initialize(12345);
  if(disk!==null)transaction('Continue existing campaign checkpoint',`
-  const recovered=state.dead;if(recovered)check(recover(),'Checkpoint recovery');
+  const recovered=state.dead;if(recovered)check(typeof PlayerLifecycle==='undefined'?recover():PlayerLifecycle.recover(WorldPlayers.byAccount(-1)),'Checkpoint recovery');
   globalThis.qaTransactionCoverage={recovered,time:state.time};
  `);
  advance(180,'Natural movement and wild activation',i=>({x:i%60<30?.7:-.4,y:i%90<45?.25:-.25,manual:true}));
@@ -94,7 +96,7 @@ try{
  advance(240,'Ordinary, rarity special, rival leader and rival recruit');
  Object.assign(report.chapters[report.chapters.length-1],{rivalFixture:engines[0].json('qaRivalFixture')});
  transaction('Legacy definition capabilities, shields, gates, healing and rarity capture',`
-  const recovered=state.dead;if(recovered)check(recover(),'Continuing story recovers through the current recovery path');const m=state.mother;m.hp=m.maxHp;
+  const recovered=state.dead;if(recovered)check(typeof PlayerLifecycle==='undefined'?recover():PlayerLifecycle.recover(WorldPlayers.byAccount(-1)),'Continuing story recovers through the current recovery path');const m=state.mother;m.hp=m.maxHp;
   for(const u of state.units)if(!residentIs(u)){u.stun=1e6;u.cooldown=1e6;u.target=0}
   state.upgrades.ability=1;
   const t=spawn('shellbug','enemy',m.x+50,m.y,{camp:0,rarityGrade:1});t.hp=t.maxHp=10000000;t.stun=1e6;t.aggroAt=0;t.wanderAt=state.time+1000;
@@ -176,7 +178,7 @@ try{
  `);
  advance(180,'Resident engagement and committed seed lifecycle');
  transaction('Resident return cancels owned seeds and clears targets',`
-  if(state.dead)check(recover(),'Recover before resident return chapter');
+  if(state.dead)check(typeof PlayerLifecycle==='undefined'?recover():PlayerLifecycle.recover(WorldPlayers.byAccount(-1)),'Recover before resident return chapter');
   const m=state.mother,h=residentHabitat(),r=residentState(),u=residentUnit();check(!!u,'Resident survives story');
   // The imported campaign may retain AUTO or an owner-bound stun/knockback
   // weapon. Put the owner back beside the living boss and release the boss's

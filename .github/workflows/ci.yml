@@ -22,8 +22,20 @@ jobs:
       - run: npm run verify:upstream
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      - name: Verify five-player public world in real browsers
+        run: npm run test:browser:multiplayer
       - name: Compare rollback and lockstep with identical inputs
         run: npm run test:benchmark:modes
       - name: Verify exact Pages bytes after main deployment
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node scripts/verify-pages.mjs
+      - name: Upload browser reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: budmori-browser-verification
+          path: |
+            tests/*report.json
+            tests/*.png
+          if-no-files-found: ignore
+          retention-days: 14

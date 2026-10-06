@@ -4,14 +4,17 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import runtimeHook from './main-runtime-hook.cjs';
-const html=await readFile(process.argv[2]||new URL('../index.html',import.meta.url),'utf8');
+import sharedHarness from './shared-harness.cjs';
+// Optional --sdk is bundled in this test response only, never into index.html.
+const source=sharedHarness.candidate();
+const html=source.html;
 // Test-only stopped-session fixtures. This route is never shipped as index.html.
 let instrumented=html.replace('/* MAIN_RUNTIME_TEST_HOOK */',runtimeHook+';globalThis.__qaGestures=[];')
  .replace('onGesture(event){bloomInputPoints.push(event)}','onGesture(event){globalThis.__qaGestures?.push({...event,wall:performance.now()});bloomInputPoints.push(event)}');
 assert.notEqual(instrumented,html);
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html;charset=utf-8');res.end(req.url==='/raw'?html:instrumented)});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser,page;
-const report={sourceSHA256:createHash('sha256').update(html).digest('hex'),environment:'Chromium + SwiftShader WebGL1, main-thread SDK authority, local offline HTML; no phone FPS claim',checks:[]};
+const report={sourceSHA256:createHash('sha256').update(html).digest('hex'),sdk:source.sdk,environment:'Chromium + SwiftShader WebGL1, main-thread SDK authority, explicit solo mode; no phone FPS claim',checks:[]};
 try{
  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  page=await browser.newPage({viewport:{width:1000,height:800},hasTouch:true,deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGEERROR',e.stack)});page.on('console',m=>{if(m.type()==='error')console.error('PAGECONSOLE',m.text())});
@@ -33,8 +36,11 @@ try{
  const fixture=async source=>{await page.evaluate(source=>__budmoriTest.request('__fixture',{source}),source);await page.waitForTimeout(150)};
  const tick=async count=>{await page.evaluate(count=>__budmoriTest.request('testTicks',{count}),count);await page.waitForTimeout(120)};
  const read=expression=>page.evaluate(expression=>__budmoriTest.request('__read',{expression}),expression);
+ // Start now selects public matchmaking. This campaign explicitly selects solo
+ // before stopped-session fixtures, and never contacts a public relay.
+ await page.locator('[data-public="solo"]').click();
+ await page.waitForFunction(()=>BloomSimulation.sessionConfig.mode==='local'&&!__army.paused&&PublicSession.phase==='idle');
  await fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}clearPointNav();autoHunt.enabled=false;autoHunt.idleMs=0;`);
- await page.locator('[data-action="start"]').click();
  const start=await page.evaluate(()=>({x:__army.state.mother.x,y:__army.state.mother.y}));
  await page.keyboard.down('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));
  const moved=await page.evaluate(()=>({x:__army.state.mother.x,y:__army.state.mother.y}));assert(moved.x>start.x+15);report.checks.push('Shared keyboard input moves authoritative world');
@@ -53,7 +59,7 @@ try{
  await page.evaluate(()=>new Promise(resolve=>{let remaining=12;function next(){if(--remaining===0)resolve();else requestAnimationFrame(next)}requestAnimationFrame(next)}));
  assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),activeRenderHash);assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);report.checks.push('Positive-dt render frames with live beam/breath, rival and partial HP leave fresh canonical authority unchanged');
  await page.evaluate(()=>__army.setPaused(true));
- const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'bloom-snapshot-disk-v3');
+ const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'bloom-snapshot-disk-v4');assert.equal(saveObject.formatVersion,4);assert.equal(saveObject.simulationVersion,'bloom-webgl-shared-ms-v3');assert.equal(saveObject.codec,'bloom-live-graph-v3');assert.equal(await read('BloomLiveCodec.decode(bloomAdapter.save()).schema'),'bloom-webgl-shared-ms-v3');
  assert.equal(await read('bloomSession.profile.mode'),'lockstep');
  const normalizedHash='(()=>{const c=BloomLiveCodec.decode(bloomAdapter.save());c.tick=0;return BloomOwnedSDK.hashBytes(BloomLiveCodec.encode(c))})()';
  const savedHash=await read(normalizedHash);
@@ -95,13 +101,14 @@ try{
  await mobile.locator('select[aria-label="시뮬레이션 초당 계산 횟수"]').selectOption('20');await mobile.waitForFunction(()=>__army.CONFIG.sim.tickRate===20);
  const mobileRequest=(type,data={})=>mobile.evaluate(({type,data})=>__budmoriTest.request(type,data),{type,data});
  const mobileFixture=source=>mobileRequest('__fixture',{source}),mobileTick=async count=>{await mobileRequest('testTicks',{count});await mobile.waitForTimeout(150)};
+ await mobile.locator('[data-public="solo"]').click();await mobile.waitForFunction(()=>BloomSimulation.sessionConfig.mode==='local'&&!__army.paused&&PublicSession.phase==='idle');
  await mobileFixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
   const m=state.mother,r=spawn('swordsman','enemy',m.x+250,m.y,{camp:0,variant:'rival'});if(!r)throw Error('Rival fixture spawn failed');
   r.x=r.worldX=r.hx=r.homeX=m.x+45;r.y=r.worldY=r.hy=r.homeY=m.y+55;r.z=r.worldZ=r.groundZ=r.hz=r.homeZ=spatialGround(r.x,r.y);r.stun=100000;
   r.rival.room=r.rival.targetRoom=regionAt(r.x,r.y);if(r.rival.ai?.home)Object.assign(r.rival.ai.home,{x:r.x,y:r.y,z:r.z});globalThis.qaRecoveryRivalId=r.id;
   rarityAcquire(-1,'swordsman',0,1);m.hp=1;m.stun=10;const killer=spawn('swordsman','enemy',m.x+20,m.y,{camp:0,rarityGrade:5});killer.aggroAt=0;killer.cooldown=0;`);
  const rivalId=await mobileRequest('__read',{expression:'qaRecoveryRivalId'});
- await mobile.locator('[data-action="start"]').click();await mobile.evaluate(()=>advanceSimulationClock(.016));
+ await mobile.evaluate(()=>advanceSimulationClock(.016));
  const cycles=[];
  for(let cycle=0;cycle<2;cycle++){
   await mobile.evaluate(()=>__army.setPaused(false));

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "e93bfa2888cf0a84d48507bf283d3b5bb823a6df",
-  "distCommit": "9c28208fb689bed60ee877d511338ba4d6a0a1b0",
+  "sourceCommit": "33d8cd6edfe3790ff00c3d9912976fda24919c01",
+  "distCommit": "39956bc30c6e6a29fc6e2f4e7bde810d04221011",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -18,8 +18,8 @@
     },
     {
       "name": "rollback-netcode",
-      "bundleSHA256": "e54edcf8c6310bbda6e35e99f7697691834b7699e1bc33e9041ee0773411e0a3",
-      "inlineSHA256": "c6b6ca47d3dfde0ac51e29cca01c50741c7364c491aeee9aa55c661305c370c0"
+      "bundleSHA256": "80673a5c80ccab485551eacb841e2e3b2f2c616648421f4b966c738b105ad841",
+      "inlineSHA256": "d932a409abb247867ae29d732eeea3eba15bd61159c97852ea0e6b9adb2bcfaf"
     },
     {
       "name": "interpolation",
@@ -47,5 +47,5 @@
       "inlineSHA256": "741c1aa3dd8a891fc358d972330a84afc90337f5de14b577aabacde299b5a0b0"
     }
   ],
-  "manifestSHA256": "b7f9c7f85c9cf368bbfececbf5791927e26db151981a2c8ad37c0024cf0fa5d9"
+  "manifestSHA256": "3aacb7946a7076bf96434861a54923f1bfc05c66835115b925cd33578b4ce2de"
 }
