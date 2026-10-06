@@ -108,9 +108,9 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
 
-## 현재 전환 검증 결과
+## v64/v65 전환 당시 검증 결과
 
-- 고정 gamekit source: `9be41746b488d8d51699b6aad023370d9f5389e3`; 배포: `a3e4bd670361b6af653d8ec5686ecb564d428398`
+- 당시 gamekit source: `5c70abf56c092c00926b1614c599a70968eca3d6`; 배포: `444f51c4cb293268dc6e20ffbc40a9afe963a069`
 - 실제 Chromium/SwiftShader + Blob Worker의 시작·WASD·Space·클릭/터치 구르기·메뉴 재개·전투·죽음/회복·저장/불러오기·오류 중단을 CI에서 검사합니다. 입력/복구 fixture는 수동 clock, 별도 전투 단계는 변경하지 않은 production setTimeout scheduler + RAF를 사용합니다.
 - Native 연속 캠페인 96개 확인: 원본 v63 저장 bytes/향후 동일 입력 결과, 대기 명령, 손상 저장 거부, 실제 SDK 지연 패킷 rollback 정확 수렴을 포함합니다.
 - 보간은 수신 당시 곡선에서 다시 연결합니다. 늦게 도착하는 미래 표본을 예측하지 않으며, 목표에 먼저 도달하면 다음 표본까지 대기합니다. 불규칙 수신의 속도 변화/대기는 남습니다. 공격/flash 새 단계는 XYZ와 별도로 즉시 반영하며 hitstop이 XYZ를 권위 위치로 튀게 하지 않습니다.
@@ -124,6 +124,8 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 `tests/recovery-mirror.cjs`는 실제20TPS Worker 전투 사망/회복 두 번, 저장 복원, 새 게임 및 내용이 동일한 객체/배열 교체를 연속 검사합니다. 실제 브라우저 검증에는720×1282 backing store/DPR3 모바일 크기와20TPS, 라이벌이 화면에 보이는 회복/불러오기/동일 ID의 다른 역할 재사용을 추가했습니다. 사용자 원본 저장을 받은 것은 아니므로 같은 오류 경계를 재구성한 검증이며, 실제 Android 기기 검증을 의미하지 않습니다. 저장 schema·진행·게임 규칙은 변경하지 않습니다.
 
 ## v66 · 단일 스레드 시뮬레이션
+
+현재 고정 SDK source: `9be41746b488d8d51699b6aad023370d9f5389e3`; dist: `a3e4bd670361b6af653d8ec5686ecb564d428398`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
