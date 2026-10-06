@@ -39,7 +39,7 @@
 - 시뮬레이션은 설정 가능한 고정 TPS를 사용합니다. 현재 기본은 **10 TPS**, 선택지는 **10 / 20 / 30 TPS**입니다. `CONFIG.sim.tickRate`와 `fixedStep`은 `bloomApplyTickRate()`를 통해 함께 맞춥니다. 세션 중 임의 가변 dt로 규칙을 진행하지 않습니다.
 - `CONFIG.sim.renderTargetFPS = 60`은 보간 렌더링의 **목표**이며 실제 기기의 60 FPS 보장이 아닙니다. TPS와 FPS를 혼동하지 않습니다.
 - 지속시간·쿨다운 등 게임 시간은 **밀리초 기준**으로 정의·저장합니다. SDK의 틱 번호와 입력 순서 카운터는 별도 개념이며, TPS 변경이 게임 내 지속시간을 바꾸지 않아야 합니다.
-- 입력 → 결정론적 시뮬레이션 → 표현을 분리합니다. 실제 Worker가 권위 상태를 소유하고, 메인 스레드는 입력·UI·저장 매체·렌더를 담당합니다. 렌더 미러로 권위 상태를 재구성하지 않습니다.
+- 입력 → 결정론적 시뮬레이션 → 표현을 분리합니다. 메인 스레드의 SDK 세션이 권위 상태를 소유하며 입력·고정 틱·표현 경계를 분리합니다. Worker·메시지·delta 미러를 사용하지 않습니다. 렌더는 읽기 전용 descriptor와 별도 scalar pose를 사용하며 권위 상태를 수정하지 않습니다.
 - 난수 상태, 타이머, 투사체·공격·군단·진행 상태처럼 미래 결과에 영향을 주는 값은 같은 저장·복원 계약에 포함합니다. 렌더 캐시·오디오·진단은 표현 영역입니다.
 - 공간 질의와 이동은 **Spatial Grid 및 국소 회피**를 사용합니다. **NavMesh·A*를 도입하지 않습니다.** 다른 프로젝트의 전역 경로 탐색·캠페인·경제 규칙을 그대로 이식하지 않습니다.
 
@@ -97,20 +97,20 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 - rendering: 공통 WebGLDevice만 shader/resource/upload/draw/stencil을 소유합니다. 게임의 곡선/지형/아트/텍스트 atlas와 material은 게임에 남습니다. Canvas2D 전장 fallback은 없습니다.
 - camera/hud: 동일한 40도 XYZ 투영과 카메라/앵커; 성장 줌·지형 역투영·체력 표현 정책은 게임 소유
 - presentation-events: SDK 확정 이벤트만 한 번 전달합니다. speculative 사운드를 재생하지 않습니다.
-- debug-tools: 유한 오류 ring·redaction·clipboard 공통 기능, 게임의 중단/진단 UI와 Worker 전달은 유지
+- debug-tools: 유한 오류 ring·redaction·clipboard 공통 기능, 게임의 중단/진단 UI를 유지하며 같은 스레드에서 직접 보고
 - rollback-netcode: 기존 완전한 snapshot bytes 및 replay/rollback/session/loop 계약 유지
 
 저장 schema와 저장 키는 변경하지 않습니다. 기존 v63 정규 저장을 동일 bytes로 복원하고 이후 동일 입력의 결과가 그대로인지 원본 고정 fixture로 검사합니다. 손상/미지원 저장은 기존 저장을 보존하며 거부합니다.
 
 ## 개발 검증
 
-`npm ci && npm test`는 실제 Worker/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·Blob Worker·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
+`npm ci && npm test`는 실제 메인 스레드 런타임/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·메인 스레드 SDK·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
 
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
 
-## 현재 전환 검증 결과
+## v64/v65 전환 당시 검증 결과
 
-- 고정 gamekit source: `5c70abf56c092c00926b1614c599a70968eca3d6`; 배포: `444f51c4cb293268dc6e20ffbc40a9afe963a069`
+- 당시 gamekit source: `5c70abf56c092c00926b1614c599a70968eca3d6`; 배포: `444f51c4cb293268dc6e20ffbc40a9afe963a069`
 - 실제 Chromium/SwiftShader + Blob Worker의 시작·WASD·Space·클릭/터치 구르기·메뉴 재개·전투·죽음/회복·저장/불러오기·오류 중단을 CI에서 검사합니다. 입력/복구 fixture는 수동 clock, 별도 전투 단계는 변경하지 않은 production setTimeout scheduler + RAF를 사용합니다.
 - Native 연속 캠페인 96개 확인: 원본 v63 저장 bytes/향후 동일 입력 결과, 대기 명령, 손상 저장 거부, 실제 SDK 지연 패킷 rollback 정확 수렴을 포함합니다.
 - 보간은 수신 당시 곡선에서 다시 연결합니다. 늦게 도착하는 미래 표본을 예측하지 않으며, 목표에 먼저 도달하면 다음 표본까지 대기합니다. 불규칙 수신의 속도 변화/대기는 남습니다. 공격/flash 새 단계는 XYZ와 별도로 즉시 반영하며 hitstop이 XYZ를 권위 위치로 튀게 하지 않습니다.
@@ -122,3 +122,18 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 회복 시 권위 세계를 복제하면서 내용이 같은 중첩 객체도 새 identity를 갖습니다. 이전 Worker delta가 새 identity 표시는 보내면서 값은 생략하여, 화면 쪽에서 라이벌의 능력 데이터 등 일부 필드를 지우는 문제가 있었습니다. 이제 교체 identity와 전체 값을 함께 보내고 함께 적용합니다. 라이벌을 숨기거나 누락된 능력을 임의 값으로 대체하지 않습니다.
 
 `tests/recovery-mirror.cjs`는 실제20TPS Worker 전투 사망/회복 두 번, 저장 복원, 새 게임 및 내용이 동일한 객체/배열 교체를 연속 검사합니다. 실제 브라우저 검증에는720×1282 backing store/DPR3 모바일 크기와20TPS, 라이벌이 화면에 보이는 회복/불러오기/동일 ID의 다른 역할 재사용을 추가했습니다. 사용자 원본 저장을 받은 것은 아니므로 같은 오류 경계를 재구성한 검증이며, 실제 Android 기기 검증을 의미하지 않습니다. 저장 schema·진행·게임 규칙은 변경하지 않습니다.
+
+## v66 · 단일 스레드 시뮬레이션
+
+현재 고정 SDK source: `9be41746b488d8d51699b6aad023370d9f5389e3`; dist: `a3e4bd670361b6af653d8ec5686ecb564d428398`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
+
+- Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
+- 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
+- 실행 중 저장 요청은 다음 예정 SDK 경계를 기다립니다. 일시정지 중 대기 명령은 게임 시간을 진행하지 않는 suspended SDK 경계에서 확정합니다. 저장은 이미 완료된 snapshot bytes를 재사용합니다.
+- 시뮬레이션과 렌더가 CPU를 공유하므로 Worker 제거가 모든 기기에서 더 빠르다는 보장은 없습니다. 실제 Chromium/SwiftShader 전후 벤치마크는 같은 seed·군단·TPS를 사용하고 tick, snapshot, RAF, 입력 지연을 별도 기록합니다. Native V8 결과는 기기 FPS 측정이 아닙니다.
+
+### SDK 원본 검증과 오프라인 실행
+
+게임 실행에는 네트워크와 npm이 필요하지 않습니다. 개발·SDK 갱신 단계에서만 고정 버전 esbuild와 공식 upstream 저장소를 사용합니다. `vendor/upstream`은 정확한 dist/source Git 객체와 manifest/ESM 캐시입니다. `npm test`는 Git 객체 ID, manifest·각 bundle SHA-256과 ESM→IIFE 재생성 bytes를 검증합니다. 변경된 bundle·manifest·source pin을 거부하는 손상 fixture도 검사합니다.
+
+SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신하고 `npm run verify:upstream`으로 공식 저장소에서 해당 불변 객체를 받아 검증합니다. CI에서도 이 검증을 수행합니다. `index.html`은 외부 CDN이나 이 개발용 캐시에 실행 의존성을 갖지 않습니다.

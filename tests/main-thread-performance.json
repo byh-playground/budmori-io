@@ -1,0 +1,864 @@
+{
+  "status": "Native complementary measurements complete; real browser/Worker-vs-main-thread comparison pending CI",
+  "limitations": [
+    "Actual game/SDK in V8 with mock DOM; simulation benchmark bypasses Worker transport in both builds.",
+    "Renderer includes actual art raster and CPU command submission to a mock GPU sink, not GPU completion or device FPS.",
+    "Host load and process startup/JIT introduce noise. Three serial alternating-order repetitions are reported without hiding regressions.",
+    "Before/after browser long tasks, input latency and real render-frame distributions must come from performance-browser.mjs; no speedup is inferred from these native numbers."
+  ],
+  "sourceSHA256": {
+    "before": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+    "after": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464"
+  },
+  "native": [
+    {
+      "repeat": 1,
+      "scenario": "sparse",
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "sparse",
+        "initial": {
+          "seed": 12345,
+          "tps": 10,
+          "units": 11,
+          "friendly": 10,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 0.9716449999999668,
+          "p95": 1.510755999999958,
+          "p99": 1.8124589999999898
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 0.3543559999999957,
+          "p95": 0.6999400000000264,
+          "p99": 0.8653099999999654
+        },
+        "final": {
+          "tick": 120,
+          "time": 11.999999999999973,
+          "units": 11,
+          "hash": 2678700490
+        }
+      },
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "sparse",
+        "initial": {
+          "seed": 12345,
+          "tps": 10,
+          "units": 11,
+          "friendly": 10,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 0.9689640000000281,
+          "p95": 1.5423840000000268,
+          "p99": 1.762818999999979
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 0.3598969999999895,
+          "p95": 0.8649299999999585,
+          "p99": 1.1984770000000253
+        },
+        "final": {
+          "tick": 120,
+          "time": 11.999999999999973,
+          "units": 11,
+          "hash": 2678700490
+        }
+      }
+    },
+    {
+      "repeat": 1,
+      "scenario": "dense",
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "dense",
+        "initial": {
+          "seed": 12345,
+          "tps": 20,
+          "units": 156,
+          "friendly": 155,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 5.20174099999997,
+          "p95": 6.737604000000033,
+          "p99": 7.73890700000004
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 2.563666000000012,
+          "p95": 3.461180000000013,
+          "p99": 3.831877000000077
+        },
+        "final": {
+          "tick": 120,
+          "time": 5.999999999999987,
+          "units": 156,
+          "hash": 3564769327
+        }
+      },
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "dense",
+        "initial": {
+          "seed": 12345,
+          "tps": 20,
+          "units": 156,
+          "friendly": 155,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 5.580271999999923,
+          "p95": 10.396950999999945,
+          "p99": 13.028210999999828
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 2.739691999999991,
+          "p95": 5.902508000000125,
+          "p99": 7.190552999999909
+        },
+        "final": {
+          "tick": 120,
+          "time": 5.999999999999987,
+          "units": 156,
+          "hash": 3564769327
+        }
+      }
+    },
+    {
+      "repeat": 1,
+      "scenario": "maximum",
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "maximum",
+        "initial": {
+          "seed": 12345,
+          "tps": 30,
+          "units": 1001,
+          "friendly": 1000,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 38.66779099999985,
+          "p95": 52.84456599999976,
+          "p99": 68.24197700000059
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 19.08856300000025,
+          "p95": 27.255239000000074,
+          "p99": 38.66936999999962
+        },
+        "final": {
+          "tick": 120,
+          "time": 3.9999999999999956,
+          "units": 1001,
+          "hash": 2006673840
+        }
+      },
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "maximum",
+        "initial": {
+          "seed": 12345,
+          "tps": 30,
+          "units": 1001,
+          "friendly": 1000,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 38.55604100000073,
+          "p95": 51.92272299999968,
+          "p99": 65.07241599999998
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 18.4644330000001,
+          "p95": 24.451669000000038,
+          "p99": 28.41810499999974
+        },
+        "final": {
+          "tick": 120,
+          "time": 3.9999999999999956,
+          "units": 1001,
+          "hash": 2006673840
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "scenario": "sparse",
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "sparse",
+        "initial": {
+          "seed": 12345,
+          "tps": 10,
+          "units": 11,
+          "friendly": 10,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 0.9019910000000095,
+          "p95": 1.4005329999999958,
+          "p99": 1.8937609999999836
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 0.343936000000042,
+          "p95": 0.6956360000000359,
+          "p99": 1.430041000000017
+        },
+        "final": {
+          "tick": 120,
+          "time": 11.999999999999973,
+          "units": 11,
+          "hash": 2678700490
+        }
+      },
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "sparse",
+        "initial": {
+          "seed": 12345,
+          "tps": 10,
+          "units": 11,
+          "friendly": 10,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 0.9480470000000025,
+          "p95": 1.7275439999999662,
+          "p99": 2.316947999999968
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 0.34871899999996003,
+          "p95": 0.893701999999962,
+          "p99": 2.0182640000000163
+        },
+        "final": {
+          "tick": 120,
+          "time": 11.999999999999973,
+          "units": 11,
+          "hash": 2678700490
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "scenario": "dense",
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "dense",
+        "initial": {
+          "seed": 12345,
+          "tps": 20,
+          "units": 156,
+          "friendly": 155,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 5.287197000000106,
+          "p95": 7.412384000000088,
+          "p99": 9.230687999999986
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 2.4936590000000933,
+          "p95": 3.114310000000046,
+          "p99": 3.8819999999998345
+        },
+        "final": {
+          "tick": 120,
+          "time": 5.999999999999987,
+          "units": 156,
+          "hash": 3564769327
+        }
+      },
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "dense",
+        "initial": {
+          "seed": 12345,
+          "tps": 20,
+          "units": 156,
+          "friendly": 155,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 5.213796000000002,
+          "p95": 6.522972000000095,
+          "p99": 8.263955000000124
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 2.5914549999999963,
+          "p95": 3.4489509999999655,
+          "p99": 3.891079999999988
+        },
+        "final": {
+          "tick": 120,
+          "time": 5.999999999999987,
+          "units": 156,
+          "hash": 3564769327
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "scenario": "maximum",
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "maximum",
+        "initial": {
+          "seed": 12345,
+          "tps": 30,
+          "units": 1001,
+          "friendly": 1000,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 40.91399799999999,
+          "p95": 123.50647900000058,
+          "p99": 303.5314209999997
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 21.951601000000664,
+          "p95": 45.63900999999987,
+          "p99": 80.54062799999974
+        },
+        "final": {
+          "tick": 120,
+          "time": 3.9999999999999956,
+          "units": 1001,
+          "hash": 2006673840
+        }
+      },
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "maximum",
+        "initial": {
+          "seed": 12345,
+          "tps": 30,
+          "units": 1001,
+          "friendly": 1000,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 42.18899599999986,
+          "p95": 71.06587300000001,
+          "p99": 103.30508499999996
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 20.812830999999278,
+          "p95": 33.20968000000039,
+          "p99": 40.695246999999654
+        },
+        "final": {
+          "tick": 120,
+          "time": 3.9999999999999956,
+          "units": 1001,
+          "hash": 2006673840
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "scenario": "sparse",
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "sparse",
+        "initial": {
+          "seed": 12345,
+          "tps": 10,
+          "units": 11,
+          "friendly": 10,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 1.0476020000000403,
+          "p95": 2.365243000000021,
+          "p99": 3.1487789999999904
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 0.3877949999999828,
+          "p95": 1.5718589999999608,
+          "p99": 2.4752679999999714
+        },
+        "final": {
+          "tick": 120,
+          "time": 11.999999999999973,
+          "units": 11,
+          "hash": 2678700490
+        }
+      },
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "sparse",
+        "initial": {
+          "seed": 12345,
+          "tps": 10,
+          "units": 11,
+          "friendly": 10,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 0.9801319999999691,
+          "p95": 2.0039580000000115,
+          "p99": 2.896049000000005
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 0.3634440000000154,
+          "p95": 0.8685380000000009,
+          "p99": 3.22862200000003
+        },
+        "final": {
+          "tick": 120,
+          "time": 11.999999999999973,
+          "units": 11,
+          "hash": 2678700490
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "scenario": "dense",
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "dense",
+        "initial": {
+          "seed": 12345,
+          "tps": 20,
+          "units": 156,
+          "friendly": 155,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 5.559231999999952,
+          "p95": 9.414031000000023,
+          "p99": 20.11538500000006
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 2.5774659999999585,
+          "p95": 5.133585000000039,
+          "p99": 8.710427999999979
+        },
+        "final": {
+          "tick": 120,
+          "time": 5.999999999999987,
+          "units": 156,
+          "hash": 3564769327
+        }
+      },
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "dense",
+        "initial": {
+          "seed": 12345,
+          "tps": 20,
+          "units": 156,
+          "friendly": 155,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 5.977481000000012,
+          "p95": 19.428183000000217,
+          "p99": 52.89699899999994
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 2.92765600000007,
+          "p95": 5.154121000000032,
+          "p99": 7.959100000000035
+        },
+        "final": {
+          "tick": 120,
+          "time": 5.999999999999987,
+          "units": 156,
+          "hash": 3564769327
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "scenario": "maximum",
+      "before": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+        "scenario": "maximum",
+        "initial": {
+          "seed": 12345,
+          "tps": 30,
+          "units": 1001,
+          "friendly": 1000,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 46.52742400000034,
+          "p95": 72.35354300000017,
+          "p99": 97.28431799999998
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 22.699431000000914,
+          "p95": 38.3492839999999,
+          "p99": 49.61098800000036
+        },
+        "final": {
+          "tick": 120,
+          "time": 3.9999999999999956,
+          "units": 1001,
+          "hash": 2006673840
+        }
+      },
+      "after": {
+        "kind": "Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance",
+        "sourceSHA256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+        "scenario": "maximum",
+        "initial": {
+          "seed": 12345,
+          "tps": 30,
+          "units": 1001,
+          "friendly": 1000,
+          "tick": 0
+        },
+        "sessionAdvanceMs": {
+          "samples": 100,
+          "p50": 40.119770000000244,
+          "p95": 65.11956299999929,
+          "p99": 87.157107
+        },
+        "snapshotReadMs": {
+          "samples": 100,
+          "p50": 19.380456000000777,
+          "p95": 33.01918800000021,
+          "p99": 55.314260000000104
+        },
+        "final": {
+          "tick": 120,
+          "time": 3.9999999999999956,
+          "units": 1001,
+          "hash": 2006673840
+        }
+      }
+    }
+  ],
+  "render": [
+    {
+      "repeat": 1,
+      "label": "before",
+      "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+      "unsafeReadonlyAblation": false,
+      "sha256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+      "samples": 120,
+      "median": 7.815640999999914,
+      "p95": 25.806552999999894,
+      "p99": 27.734302999999727,
+      "seed": 12345,
+      "tps": 10,
+      "mean": 10.983921641666655,
+      "stats": {
+        "backend": "webgl",
+        "mandatory": true,
+        "canvasFallback": false,
+        "available": true,
+        "contextLost": false,
+        "failure": null,
+        "frame": 127,
+        "textureCount": 18,
+        "stagingBytes": 2883584,
+        "drawCalls": 5,
+        "vertices": 17016,
+        "triangles": 5272,
+        "images": 200,
+        "paths": 209,
+        "textureUploads": 0,
+        "textureBytes": 0,
+        "vertexBytes": 748704,
+        "clipDraws": 1,
+        "flushMs": 0.1365549999995892,
+        "totals": {
+          "frames": 127,
+          "drawCalls": 635,
+          "vertices": 2039793,
+          "textureUploads": 60
+        }
+      },
+      "units": 228,
+      "friendly": 155,
+      "authorityUnchanged": true
+    },
+    {
+      "repeat": 1,
+      "label": "after",
+      "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+      "unsafeReadonlyAblation": false,
+      "sha256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+      "samples": 120,
+      "median": 8.039790000000039,
+      "p95": 26.068479000000025,
+      "p99": 29.72524599999997,
+      "seed": 12345,
+      "tps": 10,
+      "mean": 11.024411591666633,
+      "stats": {
+        "backend": "webgl",
+        "mandatory": true,
+        "canvasFallback": false,
+        "available": true,
+        "contextLost": false,
+        "failure": null,
+        "frame": 127,
+        "textureCount": 18,
+        "stagingBytes": 2883584,
+        "drawCalls": 5,
+        "vertices": 17016,
+        "triangles": 5272,
+        "images": 200,
+        "paths": 209,
+        "textureUploads": 0,
+        "textureBytes": 0,
+        "vertexBytes": 748704,
+        "clipDraws": 1,
+        "flushMs": 0.13955500000020038,
+        "totals": {
+          "frames": 127,
+          "drawCalls": 635,
+          "vertices": 2039793,
+          "textureUploads": 60
+        }
+      },
+      "units": 228,
+      "friendly": 155,
+      "authorityUnchanged": true
+    },
+    {
+      "repeat": 2,
+      "label": "after",
+      "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+      "unsafeReadonlyAblation": false,
+      "sha256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+      "samples": 120,
+      "median": 8.301594000000023,
+      "p95": 30.649746999999934,
+      "p99": 64.56836300000009,
+      "seed": 12345,
+      "tps": 10,
+      "mean": 12.779477541666663,
+      "stats": {
+        "backend": "webgl",
+        "mandatory": true,
+        "canvasFallback": false,
+        "available": true,
+        "contextLost": false,
+        "failure": null,
+        "frame": 127,
+        "textureCount": 18,
+        "stagingBytes": 2883584,
+        "drawCalls": 5,
+        "vertices": 17016,
+        "triangles": 5272,
+        "images": 200,
+        "paths": 209,
+        "textureUploads": 0,
+        "textureBytes": 0,
+        "vertexBytes": 748704,
+        "clipDraws": 1,
+        "flushMs": 0.2771819999998115,
+        "totals": {
+          "frames": 127,
+          "drawCalls": 635,
+          "vertices": 2039793,
+          "textureUploads": 60
+        }
+      },
+      "units": 228,
+      "friendly": 155,
+      "authorityUnchanged": true
+    },
+    {
+      "repeat": 2,
+      "label": "before",
+      "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+      "unsafeReadonlyAblation": false,
+      "sha256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+      "samples": 120,
+      "median": 7.864829999999984,
+      "p95": 25.812028000000282,
+      "p99": 36.37991399999987,
+      "seed": 12345,
+      "tps": 10,
+      "mean": 11.122138591666662,
+      "stats": {
+        "backend": "webgl",
+        "mandatory": true,
+        "canvasFallback": false,
+        "available": true,
+        "contextLost": false,
+        "failure": null,
+        "frame": 127,
+        "textureCount": 18,
+        "stagingBytes": 2883584,
+        "drawCalls": 5,
+        "vertices": 17016,
+        "triangles": 5272,
+        "images": 200,
+        "paths": 209,
+        "textureUploads": 0,
+        "textureBytes": 0,
+        "vertexBytes": 748704,
+        "clipDraws": 1,
+        "flushMs": 0.14188199999989592,
+        "totals": {
+          "frames": 127,
+          "drawCalls": 635,
+          "vertices": 2039793,
+          "textureUploads": 60
+        }
+      },
+      "units": 228,
+      "friendly": 155,
+      "authorityUnchanged": true
+    },
+    {
+      "repeat": 3,
+      "label": "before",
+      "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+      "unsafeReadonlyAblation": false,
+      "sha256": "50650d009c0356e79750f1dbfacd5fcf344927d0939f3972c2d564e717c57a5d",
+      "samples": 120,
+      "median": 8.193912000000182,
+      "p95": 28.33599299999969,
+      "p99": 35.391999999999825,
+      "seed": 12345,
+      "tps": 10,
+      "mean": 11.853937191666663,
+      "stats": {
+        "backend": "webgl",
+        "mandatory": true,
+        "canvasFallback": false,
+        "available": true,
+        "contextLost": false,
+        "failure": null,
+        "frame": 127,
+        "textureCount": 18,
+        "stagingBytes": 2883584,
+        "drawCalls": 5,
+        "vertices": 17016,
+        "triangles": 5272,
+        "images": 200,
+        "paths": 209,
+        "textureUploads": 0,
+        "textureBytes": 0,
+        "vertexBytes": 748704,
+        "clipDraws": 1,
+        "flushMs": 0.4273720000001049,
+        "totals": {
+          "frames": 127,
+          "drawCalls": 635,
+          "vertices": 2039793,
+          "textureUploads": 60
+        }
+      },
+      "units": 228,
+      "friendly": 155,
+      "authorityUnchanged": true
+    },
+    {
+      "repeat": 3,
+      "label": "after",
+      "kind": "Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS",
+      "unsafeReadonlyAblation": false,
+      "sha256": "8cd0737c148bddfca0d7ffc7fee7400c39cf309b2604e71f9a56887794895464",
+      "samples": 120,
+      "median": 8.092053999999735,
+      "p95": 26.354305000000068,
+      "p99": 29.845008000000234,
+      "seed": 12345,
+      "tps": 10,
+      "mean": 11.284204758333328,
+      "stats": {
+        "backend": "webgl",
+        "mandatory": true,
+        "canvasFallback": false,
+        "available": true,
+        "contextLost": false,
+        "failure": null,
+        "frame": 127,
+        "textureCount": 18,
+        "stagingBytes": 2883584,
+        "drawCalls": 5,
+        "vertices": 17016,
+        "triangles": 5272,
+        "images": 200,
+        "paths": 209,
+        "textureUploads": 0,
+        "textureBytes": 0,
+        "vertexBytes": 748704,
+        "clipDraws": 1,
+        "flushMs": 0.14591100000006918,
+        "totals": {
+          "frames": 127,
+          "drawCalls": 635,
+          "vertices": 2039793,
+          "textureUploads": 60
+        }
+      },
+      "units": 228,
+      "friendly": 155,
+      "authorityUnchanged": true
+    }
+  ],
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "canvas": "0.1.100"
+  },
+  "reproduce": "node tests/performance-native-suite.cjs BEFORE.html AFTER.html"
+}

@@ -1,0 +1,28 @@
+tree bb15952a139daafe42921b4c94d878aa71e0c751
+parent b822ec6463ab7c018d440ba87c16c0d87fccecb2
+author byh020907 <byh020907@naver.com> 1791291077 +0900
+committer GitHub <noreply@github.com> 1791291077 +0900
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJqxO7FCRC1aQ7uu5UhlAAA4FMQAAkoPVqiiMN07kFwoJIqLWam
+ 4NpD09UXpza58GNz68utnFsTtSQdFv4JiNeclRqtnbBzGfhvHWnL5lD0LgIF7Isa
+ hd02xzF5A4M4lfm3oMv5hAidlf/qPTjxkKLMlSe3u5TCieVUa2FzLNRitkePHREH
+ gHD0Y+Oks8W3x0zS8dqf7t7u4VZeMxZfrXWE81sg+4eg09HZzgO/qsLUvvFMnGJ2
+ 9Kgi6nLEepm3OwzaMr/xpNmnASaZ7zGU+PhRFw96CTMVnXL51u8dUqfqS+rJVz23
+ jjePQ1ZxuKEohqESdoNOIvk+PUg9vCBDzQZF/FQu3Peaa2KXpMWM9zghpfR/26d2
+ kZGGou+/8p1sStZdnISaLitR+GjnIjILR65YAVcIIoCK974OaV22e1ZWax1GLVVh
+ zrDBH60MIkggNl73QQqGT0MbwFT9FQelM5D5TJMTUW2p65JRSMpAIxzCni3c6WvI
+ fv+Lxlt7bn89webg6qgZPkJDK7RRGrpGVninTDQpyuOyMVzmpZOhC+yOLaluCnHx
+ wl9RmGxdV7Gw+LXsA3W1WfpsLx/0I+Oyc4edI40bSWgWB2m4QOy5Er21YkEuhkTy
+ f74XOL9Yd/0p+cqYZRJW7itj9qoUii+SMkvXqUYYSyRWX6TUZT2sxnMt8M0Cx1xa
+ EphRGaOXMNqWzTTqwbu6
+ =f9iS
+ -----END PGP SIGNATURE-----
+ 
+
+[bug-fix] 공통 실행·연출·재연결 리뷰 수정과 전후 측정
+
+- 표현 tombstone 반복 재할당 제거, 실패한 시작 재시도 보존
+- loop 세대 취소·완료 tick 정산·scalar pace와 명시적 retain backlog
+- stale transport detach 방지 및 원본/수정 provenance 구분
+- Node 177건, 실제 Chromium WebGL·RTC CI 및 독립 리뷰 통과

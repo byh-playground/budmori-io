@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs",
-    "test:browser": "node tests/browser.e2e.mjs"
+    "test": "node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs && node tests/main-boundaries.cjs",
+    "test:browser": "node tests/browser.e2e.mjs",
+    "test:benchmark": "node tests/performance-browser.mjs tests/fixtures/v65-worker.html index.html",
+    "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git"
   },
   "devDependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.63.0",
+    "esbuild": "0.28.2"
   }
 }

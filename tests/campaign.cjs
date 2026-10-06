@@ -7,39 +7,11 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert'),crypto=require(
 const file=process.argv[2]||`${__dirname}/../index.html`;
 const output=process.env.BLOOM_SAVE_REPORT||`${__dirname}/v63-save-e2e-results.json`;
 const html=fs.readFileSync(file,'utf8');
-const scripts=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
-const bridges=scripts.filter(s=>s.includes('function bloomWorkerDOMBootstrap()'));
-assert.equal(bridges.length,1,'Exactly one shipped Worker bridge');
-const bridge=bridges[0],bridgeIndex=scripts.indexOf(bridge),ctx=vm.createContext({BLOOM_HEADLESS:true,console});
-vm.runInContext(bridge,ctx);ctx.sources=scripts.slice(0,bridgeIndex);
-const get=name=>vm.runInContext(name+'.toString()',ctx);
-const source=`const{parentPort}=require('worker_threads');globalThis.postMessage=m=>parentPort.postMessage(m);globalThis.BLOOM_WORKER_TEST_MODE=true;\n(${get('bloomWorkerDOMBootstrap')})();\n`+vm.runInContext('bloomWorkerEngineSource(sources)',ctx)+`\n(${get('bloomWorkerRuntime')})();
-parentPort.on('message',data=>{
- try{
-  if(data.type==='__read'){parentPort.postMessage({type:'reply',id:data.id,value:eval(data.expression)});return}
-  if(data.type==='__fixture'){
-   if(bloomInTick)throw Error('Fixture may not run inside a tick');bloomSession.close();
-   eval('(()=>{'+data.source+'})()');rebuildGrid();spatialBoundary();bloomStartDriver();playing=true;paused=true;modalKind='pause';
-   if(!bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:bloomTick}))throw Error('Invalid production checkpoint');
-   parentPort.postMessage({type:'reply',id:data.id,value:true});return;
-  }
-  if(data.type==='__breakSession'){bloomStartDriver=()=>{bloomSession.close();throw Error('Controlled session recreation failure')};parentPort.postMessage({type:'reply',id:data.id,value:true});return}
-  globalThis.onmessage({data});
- }catch(error){parentPort.postMessage({type:'reply',id:data.id,error:error.stack})}
-});`;
-const allWorkers=[];
-function session(){
- const worker=new Worker(source,{eval:true}),pending=new Map(),messages=[];let id=0,mirror=null,readyResolve,readyReject;
- const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject});
- worker.on('error',error=>{readyReject(error);for(const p of pending.values()){clearTimeout(p.timer);p.reject(error)}pending.clear()});
- worker.on('message',m=>{messages.push(m);if(m.type==='worker-ready')readyResolve();if(m.type==='reply'){const p=pending.get(m.id);if(p){clearTimeout(p.timer);pending.delete(m.id);m.error?p.reject(new Error(m.error)):p.resolve(m.value)}}if(m.type==='view'){ctx.packet=m;ctx.mirror=mirror;mirror=vm.runInContext('bloomApplyViewPacket(packet,mirror)',ctx);worker.postMessage({type:'ack',epoch:m.epoch,sequence:m.sequence,tick:m.tick})}});
- const request=(type,data={})=>new Promise((resolve,reject)=>{const n=++id,timer=setTimeout(()=>{pending.delete(n);reject(new Error('Worker timed out: '+type))},30000);pending.set(n,{resolve,reject,timer});worker.postMessage({type,...data,id:n})});
- const s={worker,messages,request,get mirror(){return mirror},async init(disk){await ready;return request('init',{tickRate:10,manualClock:true,seed:12345,disk})},control(p={}){worker.postMessage({type:'control',playing:true,paused:false,modalKind:'',input:{x:0,y:0,manual:true},...p})},read(expression){return request('__read',{expression})},fixture(source){return request('__fixture',{source})},tick(count=1){return request('testTicks',{count})},command(command){return request('command',{command})},close(){for(const p of pending.values())clearTimeout(p.timer);return worker.terminate()}};
- allWorkers.push(s);return s;
-}
+const makeSession=require('./main-harness.cjs').session;
+const allWorkers=[];function session(){const s=makeSession(file,html);allWorkers.push(s);return s}
 const exact='BloomOwnedSDK.hashBytes(bloomAdapter.save())';
 const normalizedBytes='(()=>{const c=BloomLiveCodec.decode(bloomAdapter.save());c.tick=0;return BloomLiveCodec.encode(c)})()';
-const report={status:'RUNNING',file,sha256:crypto.createHash('sha256').update(html).digest('hex'),bridgeSha256:crypto.createHash('sha256').update(bridge).digest('hex'),scope:'One continuing campaign; actual independent worker_threads, engine and pinned embedded SDK extracted from target HTML. Declared stopped-session earned inventory/XP, durable encounter and damage fixtures. Disk-loaded branch equivalence normalizes only the SDK tick. No browser/GPU/storage-quota/device-performance claim.',checks:[],chapters:[]};
+const report={status:'RUNNING',file,sha256:crypto.createHash('sha256').update(html).digest('hex'),scope:'One continuing campaign; isolated native V8 realms running the actual main-thread runtime, engine and pinned embedded SDK extracted from target HTML. Declared stopped-session earned inventory/XP, durable encounter and damage fixtures. Disk-loaded branch equivalence normalizes only the SDK tick. No browser/GPU/storage-quota/device-performance claim.',checks:[],chapters:[]};
 function check(name,ok,data){if(!ok&&data!==undefined)console.error('FAILED DATA',JSON.stringify(data));assert(ok,name);report.checks.push(name);if(data)report.chapters.push({name,...data});console.log('PASS',name)}
 async function same(a,b,label){const [aa,bb]=await Promise.all([a.read(normalizedBytes),b.read(normalizedBytes)]),x=Buffer.from(aa),y=Buffer.from(bb),equal=x.equals(y);if(!equal){fs.writeFileSync('/tmp/v63-save-continuous.bin',x);fs.writeFileSync('/tmp/v63-save-loaded.bin',y)}check(label,equal,{normalizedSha256:crypto.createHash('sha256').update(x).digest('hex'),comparedBytes:x.length});}
 function diskLive(disk){const d=typeof disk==='string'?JSON.parse(disk):disk;if(Array.isArray(d.live))return Uint8Array.from(d.live);assert.equal(d.schema,'bloom-snapshot-disk-v3');const value=typeof d.live==='string'?d.live:d.live?.data??d.payload??d.data;assert.equal(typeof value,'string','v3 embeds base64 live payload');return Uint8Array.from(Buffer.from(value,'base64'));}
@@ -52,7 +24,7 @@ async function continueTogether(a,b,count,label){a.control();b.control();for(let
  check('Original v63 save restores byte-identical canonical authority',await canonicalSHA()===compatibility.initialSHA256);
  old.control({input:{x:.35,y:.25,manual:true}});await old.tick(6);
  check('Gamekit SDK preserves exact future evolution of original v63 save',await canonicalSHA()===compatibility.futureSHA256);await old.close();
- const a=session();await a.init();a.control({input:{x:.5,y:0,manual:true}});const startX=await a.read('state.mother.x');await a.tick(3);check('Worker SDK advances real movement before checkpoint',(await a.read('state.mother.x'))>startX);
+ const a=session();await a.init();a.control({input:{x:.5,y:0,manual:true}});const startX=await a.read('state.mother.x');await a.tick(3);check('Main-thread SDK advances real movement before checkpoint',(await a.read('state.mother.x'))>startX);
  await a.fixture(`
   for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
   for(const u of state.units)if(u.team==='enemy'){u.stun=1e6;u.aggroAt=u.wanderAt=state.time+1e6}
@@ -125,11 +97,11 @@ async function continueTogether(a,b,count,label){a.control();b.control();for(let
  for(const [i,bad]of invalids.entries()){await a.read('globalThis.qaIdentity=state;globalThis.qaSession=bloomSession;true');const hash=await a.read(exact),status=await a.request('inspect'),disks=a.messages.filter(m=>m.type==='disk').length;check(`Invalid import ${i+1} is rejected`,await a.request('load',{disk:bad})===false);const after=await a.request('inspect');check(`Invalid import ${i+1} is nonmutating and does not overwrite persistence`,await a.read(exact)===hash&&await a.read('state===qaIdentity&&bloomSession===qaSession')&&status.tick===after.tick&&status.epoch===after.epoch&&a.messages.filter(m=>m.type==='disk').length===disks)}
  const queuedBefore=await a.read('({enabled:autoHunt.enabled,tick:bloomTick,time:state.time})');await a.command({type:'auto',enabled:!queuedBefore.enabled});const pendingBefore=await a.read('bloomInputPending'),pendingHash=await a.read(exact);check('Malformed import with queued command is rejected',await a.request('load',{disk:JSON.stringify(wrongTick)})===false);check('Rejected import preserves pending command and live tick',await a.read('bloomInputPending')===pendingBefore&&await a.read(exact)===pendingHash);await a.request('snapshot');check('Preserved pending command executes exactly once on next save',await a.read('bloomInputPending')===0&&await a.read('autoHunt.enabled')===!queuedBefore.enabled&&await a.read('bloomTick')===queuedBefore.tick+1&&await a.read('state.time')===queuedBefore.time);
  // Continue the same world in two native-realm engines exchanging real SDK wire packets.
- const {engine,pair}=require('./native-engine.cjs'),e=engine(file,html);e.run('BloomSimulation.initialize(12345);BloomSimulation.createSession();playing=true;paused=false;modalKind=""');e.c.disk=await a.request('snapshot');check('Final Worker world enters same shipped native SDK branch',e.run('BloomSimulation.disk.load(disk)'));
+ const {engine,pair}=require('./native-engine.cjs'),e=engine(file,html);e.run('BloomSimulation.initialize(12345);BloomSimulation.createSession();playing=true;paused=false;modalKind=""');e.c.disk=await a.request('snapshot');check('Final main-thread world enters same shipped native SDK branch',e.run('BloomSimulation.disk.load(disk)'));
  const sdkNames=e.run('Object.keys(BloomOwnedSDK).sort().join(",")');
  check('Gamekit compatibility SDK exposes complete session/codec/loop/replay API', ['createSession','createLoop','playReplay','binaryCodec','SeededPRNG','hashBytes'].every(name=>sdkNames.split(',').includes(name)));
  const pure=Buffer.from(e.run('BloomSimulation.adapter.save()'));e.c.pure=Uint8Array.from(pure);e.run('BloomSimulation.adapter.load(pure)');check('Pure rollback adapter restores byte-identical live snapshot',pure.equals(Buffer.from(e.run('BloomSimulation.adapter.save()'))));
  const net=pair(e);for(let i=0;i<6;i++)net.advance();net.delay();e.run('setAutoHunt(!autoHunt.enabled)');for(let i=0;i<6;i++)net.advance({x:0,y:.6,manual:true});check('Delayed real SDK input produces prediction divergence',!net.same());net.release();for(let i=0;i<6;i++)net.advance();const metrics=net.peer.json('BloomSimulation.session.metrics');check('Real SDK late-packet rollback still converges exactly',net.same()&&metrics.rollbacks>=1&&metrics.resimulatedTicks>=6&&metrics.rejectedPackets===0&&metrics.hashMismatches===0,{metrics});e.run('BloomSimulation.session.close()');net.peer.run('BloomSimulation.session.close()');
- const rejected=session(),startup=await rejected.init('{invalid saved file}');check('Invalid startup disk remains persistence-protected',startup.persistenceProtected&&await rejected.request('save')===false);await rejected.request('reset');check('Explicit reset clears startup persistence protection',await rejected.request('save')===true);const fatalDisk=await rejected.request('snapshot');await rejected.request('__breakSession');const diskCount=rejected.messages.filter(m=>m.type==='disk').length;await assert.rejects(rejected.request('load',{disk:fatalDisk}),/Controlled session/);await assert.rejects(rejected.request('save'),/not available/);check('Unexpected post-validation session failure is fatal and cannot overwrite save',rejected.messages.some(m=>m.type==='diagnostic'&&m.record.kind==='worker.load'&&m.record.severity==='fatal')&&rejected.messages.filter(m=>m.type==='disk').length===diskCount);
+ const rejected=session(),startup=await rejected.init('{invalid saved file}');check('Invalid startup disk remains persistence-protected',startup.persistenceProtected&&await rejected.request('save')===false);await rejected.request('reset');check('Explicit reset clears startup persistence protection',await rejected.request('save')===true);const fatalDisk=await rejected.request('snapshot');await rejected.request('__breakSession');const diskCount=rejected.messages.filter(m=>m.type==='disk').length;await assert.rejects(rejected.request('load',{disk:fatalDisk}),/Controlled session/);await assert.rejects(rejected.request('save'),/not available/);check('Unexpected post-validation session failure is fatal and cannot overwrite save',await rejected.read('BloomDiagnostics.fatal')&&rejected.messages.filter(m=>m.type==='disk').length===diskCount);
  report.status='PASS';
 })().catch(error=>{report.status='FAIL';report.error=error.stack;console.error(error.stack);process.exitCode=1}).finally(async()=>{for(const w of allWorkers)await w.close();fs.writeFileSync(output,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({status:report.status,checks:report.checks.length,report:output},null,2))});
