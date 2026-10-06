@@ -6285,6 +6285,38 @@ function effectiveRange(u){return unitDef(u.type).range}
 function effectiveSpeed(u){return unitDef(u.type).speed}
 function hasUnitAbility(u){return u.team==='enemy'||state.upgrades.ability>0}
 function unitDef(type){return CONFIG.units[type]}
+// Is-a is the stable species/leader identity. Has-a is this immutable set of
+// combat capabilities; can-be state stays in each unit's saved pending attack,
+// attackController, deployment, and status fields. No functions enter snapshots.
+const EMPTY_COMBAT_DEFINITION=Object.freeze({});
+const UnitCombatTraits=Object.freeze({
+ rootstalker:{execute:basicLineAttack},
+ pillbug:{afterDeath:explosiveDeathImpact},
+ medic:{projectileModifiers:shockProjectileModifiers},
+ siege:{projectileModifiers:deployedProjectileModifiers,afterProjectile:countDeployedShot},
+ skirmisher:{projectileModifiers:knockbackProjectileModifiers},
+ sporemoth:{afterProjectile:scheduleBurstProjectile},
+ pikeman:{afterMelee:thrustMeleeImpact},
+ shellbug:{mitigate:crouchedDamageMitigation},
+ tank:{mitigate:upgradedRangedMitigation},
+ archer:{committedEnemyAim:true},mage:{radialFalloff:true}
+});
+const UnitCombatDefinition=Object.freeze(Object.fromEntries(Object.entries(CONFIG.units).map(([type,d])=>{
+ const traits=UnitCombatTraits[type]||EMPTY_COMBAT_DEFINITION;
+ const execute=d.selfDestruct?basicSelfDestruct:traits.execute|| (d.chainBounces?basicChainAttack:d.projectilePattern?basicVolleyAttack:d.projectile||d.layer==='AIR'?basicRangedAttack:basicMeleeAttack);
+ return [type,Object.freeze({...traits,execute})];
+})));
+function combatDefinition(u){return UnitCombatDefinition[u.type]||EMPTY_COMBAT_DEFINITION}
+function shockProjectileModifiers(u,d){const shock=u.team==='friendly'&&state.upgrades.ability>0&&random()<d.basicAttack.variants[0].trigger.chance;return{arc:shock?d.basicAttack.variants[0].attack.arcHeight:0,knock:shock?d.basicAttack.variants[0].attack.knockbackDistance:0}}
+function deployedProjectileModifiers(u,d){return{arc:0,knock:state.upgrades.ability>0?d.impactKnockbackDistance:0}}
+function knockbackProjectileModifiers(){return{arc:0,knock:state.upgrades.ability>0?CONFIG.combat.meleeKnockback:0}}
+function explosiveDeathImpact(t,killer){const d=unitDef(t.type);area(t,t.x,t.y,d.deathSplash,d.atk*d.deathDamageScale,'melee')}
+function countDeployedShot(){state.stats.deployShots++}
+function scheduleBurstProjectile(u,t,d,amp){events.push({time:state.time+d.burstIntervalMs/1000,kind:'volley',unit:u.id,target:t.id,amount:amp*d.burstSecondScale,splash:d.splash,spread:0})}
+function thrustMeleeImpact(u,t,d,ability){push(t,u.x,u.y,CONFIG.combat.meleeKnockback*ability)}
+function crouchedDamageMitigation(value,u,t,d,ranged){return hasUnitAbility(t)&&t.still>=d.crouchPrepMs/1000?value-d.abilityFlatArmor:value}
+function upgradedRangedMitigation(value,u,t,d,ranged){return ranged&&t.team==='friendly'&&state.upgrades.ability>0?value*(d.abilityRangedReduction/d.rangedReduction):value}
+
 function pop(){return state.units.reduce((n,u)=>n+(u.team==='friendly'&&u.hp>0&&!u.permanentRank?unitDef(u.type).supply:0),0)}
 function effectiveCapacity(s=state){return Math.max(CONFIG.progression.caps[s.capTier],(s.campaign?.abilities?.level||1)>=(CONFIG.permanent?.capacityLevel||5)?(CONFIG.permanent?.capacityFloor||100):0)}
 function cap(){return effectiveCapacity(state)}
@@ -6309,31 +6341,157 @@ function unitVisualRadius(u){return radius(u)}
 function unitVisualExtent(u){return unitVisualRadius(u)*CONFIG.render.spriteScale}
 function radius(u){return u.type==='objective'?u.size||CONFIG.mother.size:u.type==='mother'?(u.size||CONFIG.mother.size):unitDef(u.type).size*(u.elite?CONFIG.combat.eliteSize:1)}
 function extraArmor(u,t,kind){return 0}
-function damageValue(u,t,amount,kind='melee'){const d=unitDef(t.type)||{};let value=amount*(CONFIG.combat.damageMatrix[unitDef(u.type)?.damageClass||'normal']?.[d.sizeClass||'medium']||1);if(kind==='ranged'&&(unitDef(u.type)?.projectile||u.type==='mother')&&d.rangedReduction)value*=1-d.rangedReduction/100;if(d.flatArmor)value-=d.flatArmor;if(t.type==='shellbug'&&hasUnitAbility(t)&&t.still>=d.crouchPrepMs/1000)value-=d.abilityFlatArmor;if(t.type==='tank'&&kind==='ranged'&&(unitDef(u.type)?.projectile||u.type==='mother')&&t.team==='friendly'&&state.upgrades.ability>0)value*=d.abilityRangedReduction/d.rangedReduction;value-=extraArmor(u,t,kind);value=Math.max(CONFIG.combat.minDamage,value);return value}
-function damage(u,t,amount,kind='melee'){if(!t||t.hp<=0)return;const d=unitDef(t.type)||{};if(t.shield>0&&t.shieldUntil>state.time){t.shield=0;state.stats.shieldsBlocked++;addFx('ring',t.x,t.y,0,0,'#b7e6f8',radius(t)+12,.3);return}const value=Math.min(Number.MAX_VALUE,damageValue(u,t,amount,kind));if(value>0)moaMarkHit(u,t);t.hp-=value;t.flash=CONFIG.render.damageFlash;if(t.type==='mother'){t.lastHit=state.time;if(t.hp<=0)defeat()}else if(t.hp<=0)die(t,u);if(unitDef(u.type)?.layer!=='AIR'&&d.layer==='AIR')state.stats.airHits++;}
-function die(t,killer){if(t.deadEffect)return;t.deadEffect=true;addFx('burst',t.x,t.y,0,0,t.team==='friendly'?'#b9daf0':'#f7cb84',radius(t),CONFIG.combat.corpseLife);if(t.team==='friendly'){state.stats.losses++;return}const z=t.zone,bonus=(1+state.upgrades.bounty*CONFIG.economy.bountyPerLevel)*(t.elite?CONFIG.economy.eliteRewardMultiplier:1);let [m,g]=killReward(t,bonus);const mineralBeforeCredit=state.minerals;state.minerals=Math.min(CONFIG.economy.maxResource,state.minerals+m);mineralGainCredit(t,state.minerals-mineralBeforeCredit);state.gas=Math.min(CONFIG.economy.maxResource,state.gas+g);state.stats.rewardM+=m;state.stats.rewardG+=g;state.kills[z]++;if(!state.campaign&&z===0&&state.kills[0]>=CONFIG.progression.archerKills&&!unlocked('archer')){state.unlocked.push('archer');if(!state.cards[CONFIG.progression.archerAutoSlot].type)state.cards[CONFIG.progression.archerAutoSlot].type='archer';toast('씨앗궁수 해금 · 세 번째 생산 카드가 깨어났어요');uiClock=CONFIG.render.uiInterval}if(t.camp>=0&&!t.rivalRecruit){let c=state.camps[t.camp];c.remaining=Math.max(0,c.remaining-1);if(c.remaining===0)c.respawn=CONFIG.world.respawn}if(t.elite&&!state.campaign&&!state.bosses[z]){state.bosses[z]=true;toast(`${CONFIG.zones[z].name} 정복! ${z<CONFIG.zones.length-1?'다음 구역으로 길이 열렸어요':'생장핵이 깨어났어요'}`);if(z===CONFIG.zones.length-1){state.won=true;save();showVictory()}else{state.maxZone=Math.max(state.maxZone,z+1);unlockZone(z+1)} }if(unitDef(t.type).selfDestruct&&killer&&t.type==='pillbug'){area(t,t.x,t.y,unitDef(t.type).deathSplash,unitDef(t.type).atk*unitDef(t.type).deathDamageScale,'melee')}}
+function damageValue(u,t,amount,kind='melee'){
+ // Leaders share the mother damage identity; no temporary proxy is serialized.
+ const source=u?.rivalLeader?{...u,type:'mother'}:u,target=t?.rivalLeader?{...t,type:'mother'}:t;
+ const a=unitDef(source.type)||{},d=unitDef(target.type)||{},cap= combatDefinition(target);
+ const ranged=kind==='ranged'&&(a.projectile||source.type==='mother');
+ let value=amount*(CONFIG.combat.damageMatrix[a.damageClass||'normal']?.[d.sizeClass||'medium']||1);
+ if(ranged&&d.rangedReduction)value*=1-d.rangedReduction/100;
+ if(d.flatArmor)value-=d.flatArmor;
+ if(cap.mitigate)value=cap.mitigate(value,source,target,d,ranged);
+ value-=extraArmor(source,target,kind);value=Math.max(CONFIG.combat.minDamage,value);
+ const g=combatGrowthFor(t);if(g)value*=moaArmorMultiplier(g);
+ // Keep the original multiply/divide order, including its floating-point rounding.
+ return value*100/(100+(armyFor(t)?.armor||0));
+}
+function applyDamageHealth(u,t,amount,kind='melee'){if(!t||t.hp<=0)return;const d=unitDef(t.type)||{};if(t.shield>0&&t.shieldUntil>state.time){t.shield=0;state.stats.shieldsBlocked++;addFx('ring',t.x,t.y,0,0,'#b7e6f8',radius(t)+12,.3);return}const value=Math.min(Number.MAX_VALUE,damageValue(u,t,amount,kind));if(value>0)moaMarkHit(u,t);t.hp-=value;t.flash=CONFIG.render.damageFlash;if(t.type==='mother'){t.lastHit=state.time;if(t.hp<=0)defeat()}else if(t.hp<=0)die(t,u);if(unitDef(u.type)?.layer!=='AIR'&&d.layer==='AIR')state.stats.airHits++;}
+// Ordered damage stages: encounter/faction gates -> scoped spatial transaction ->
+// HP + death -> health feedback -> retaliation -> hit feedback -> rarity -> SDK.
+// Local observations make nested damage safe; no global mutable transaction object.
+function damage(u,t,amount,kind='melee'){
+ const before=t?.hp,shield=t?.shield;let result;
+ if((residentIs(u)||residentIs(t))&&!residentCanFight(u,t))result=0;
+ else{
+  if(factionsHostile(u,t)){
+   if(moaRollInvulnerable(t))result=0;
+   else{
+    spatialUnit(u,true);spatialUnit(t,true);
+    const previous=spatialContext;spatialContext=[t,u].concat(previous);
+    try{result=resolveDamageTransaction(u,t,amount,kind)}finally{spatialContext=previous}
+   }
+  }
+  finishDamageAccent(u,t,before);
+ }
+ if(bloomInTick&&t&&before>0&&(t.hp<before||shield>0&&!t.shield))bloomEmit('healthDamage',[t,before,Math.max(0,before-t.hp),u?.type==='mother'&&u?.team==='friendly',!!u?.hitCritical,{attacker:u?.id,kind:combatEventKind||kind||'melee',angle:u?Math.atan2(t.y-u.y,t.x-u.x):0}]);
+ return result;
+}
+function resolveDamageTransaction(u,t,amount,kind){
+ const immediate=!bloomInTick;
+ if(immediate)hitfeelEnsureState();
+ const before=t?.hp,shielded=!!(t&&t.shield>0&&t.shieldUntil>state.time);
+ const outgoing=!!(u&&u.type==='mother'&&u.team==='friendly'),received=t===state.mother,critical=outgoing&&u.hitCritical===true;
+ if(u&&t&&factionsHostile(u,t)&&t.hp>0&&wallClear(retaliationImpact||u,t)){
+  let bar=null;
+  if(immediate){healthEnsureState();if(before>0&&(t===state.mother||healthVisible(t))){bar=t===state.mother?healthJuice.hud:healthJuice.bars.get(t);if(!bar)bar=healthCreate(t)}}
+  applyDamageHealth(u,t,amount,kind);
+  if(immediate)finishDamageHealthBar(t,before,bar);
+  if(t.hp<before||shielded&&t.shield===0)finishDamageRetaliation(u,t);
+ }
+ if(immediate)finishDamageHitfeel(t,before,shielded,outgoing,received,critical);
+}
+function finishDamageHealthBar(t,before,bar){
+ if(!bar||!(t.hp<before))return;
+ healthHit(bar,t,before);
+ if(t!==state.mother){
+  if(t.hp<=0){healthJuice.bars.delete(t);const death=deathSources.get(t);if(death&&!t.moaConverted)death.bar={fill:bar.fillFrom,ghost:Math.max(bar.ghostFrom,bar.fillFrom)};deathSources.delete(t)}
+  else if(t.team==='enemy'&&(healthJuice.bars.size<CONFIG.render.healthJuice.maxWorldBars||healthJuice.bars.has(t)))healthJuice.bars.set(t,bar);
+ }
+}
+function finishDamageRetaliation(u,t){
+ if(t.team==='enemy'&&t.hp>0){let attacker=retaliationImpact?idMap.get(retaliationImpact.u):u;if(!combatIdentity(attacker)){const m=state.mother;attacker=retaliationTarget(t,m)?m:null}t.lastDamageAt=state.time;if(attacker)engageEnemy(t,attacker);if(t.aggro)t.aggro.lastDamage=state.time}
+ if(u.team==='enemy'&&combatIdentity(u)&&u.aggro&&!u.returning)u.aggro.until=state.time+CONFIG.retaliation.memory;
+}
+function finishDamageHitfeel(t,before,shielded,outgoing,received,critical){
+ if(!t||!Number.isFinite(before)||before<=0||!Number.isFinite(t.hp))return;
+ const lost=Math.max(0,before)-Math.max(0,t.hp),blocked=lost<=0&&shielded&&t.shield===0;
+ if(lost<=0&&!blocked)return;
+ const lane=received?'moa-hurt':outgoing?(critical?'moa-critical':'moa-hit'):t.team==='enemy'?'army-hit':'army-hurt';
+ hitfeelEmit(t,Math.max(0,lost),lane,blocked);
+ if(lost>0&&(received||outgoing)&&hitfeelOnscreen(t.x,t.y))hitfeelImpulse(received,critical);
+}
+function finishDamageAccent(u,t,before){
+ const grade=rarityGrade(u);
+ if(grade>=4&&Number.isFinite(before)&&t?.hp<before&&raritySpendAccent()){const color=CONFIG.rarity.gradeColors[grade];addFx('burst',t.x,t.y,0,0,color,grade===5?10:6,.16);if(grade===5)addFx('line',t.x-6,t.y-6,t.x+6,t.y+6,color,0,.12)}
+}
+
+function die(t,killer){if(t.deadEffect)return;t.deadEffect=true;addFx('burst',t.x,t.y,0,0,t.team==='friendly'?'#b9daf0':'#f7cb84',radius(t),CONFIG.combat.corpseLife);if(t.team==='friendly'){state.stats.losses++;return}const z=t.zone,bonus=(1+state.upgrades.bounty*CONFIG.economy.bountyPerLevel)*(t.elite?CONFIG.economy.eliteRewardMultiplier:1);let [m,g]=killReward(t,bonus);const mineralBeforeCredit=state.minerals;state.minerals=Math.min(CONFIG.economy.maxResource,state.minerals+m);mineralGainCredit(t,state.minerals-mineralBeforeCredit);state.gas=Math.min(CONFIG.economy.maxResource,state.gas+g);state.stats.rewardM+=m;state.stats.rewardG+=g;state.kills[z]++;if(!state.campaign&&z===0&&state.kills[0]>=CONFIG.progression.archerKills&&!unlocked('archer')){state.unlocked.push('archer');if(!state.cards[CONFIG.progression.archerAutoSlot].type)state.cards[CONFIG.progression.archerAutoSlot].type='archer';toast('씨앗궁수 해금 · 세 번째 생산 카드가 깨어났어요');uiClock=CONFIG.render.uiInterval}if(t.camp>=0&&!t.rivalRecruit){let c=state.camps[t.camp];c.remaining=Math.max(0,c.remaining-1);if(c.remaining===0)c.respawn=CONFIG.world.respawn}if(t.elite&&!state.campaign&&!state.bosses[z]){state.bosses[z]=true;toast(`${CONFIG.zones[z].name} 정복! ${z<CONFIG.zones.length-1?'다음 구역으로 길이 열렸어요':'생장핵이 깨어났어요'}`);if(z===CONFIG.zones.length-1){state.won=true;save();showVictory()}else{state.maxZone=Math.max(state.maxZone,z+1);unlockZone(z+1)} }if(unitDef(t.type).selfDestruct&&killer)combatDefinition(t).afterDeath?.(t,killer)}
 function killReward(t,bonus){const z=t.zone;return[Math.round(CONFIG.economy.rewardMineral[z]*bonus),Math.round((CONFIG.economy.rewardGas[z]+(z===0&&CONFIG.economy.gasSpecies.includes(t.type)?CONFIG.economy.firstGas:0))*bonus)]}
 function attackPower(u){const d=unitDef(u.type);return d.atk*(u.team==='friendly'?1+state.upgrades.attack*CONFIG.economy.attackPerLevel:CONFIG.combat.enemyAttackFactors[u.zone])*(u.elite?CONFIG.combat.eliteAttack:1)}
-function area(u,x,y,r,amount,kind,knock=0,stun=0,excludeId=0){let hits=0;near(x,y,r,null,t=>{if(hits>=CONFIG.combat.splashVictims)return false;if(t.id===excludeId||!canTarget(u,t)||moaRollInvulnerable(t))return;let dealt=amount;if(u.type==='mage'&&(u.team==='enemy'||state.upgrades.ability>0)){const f=dist(t,{x,y})/r;dealt*=CONFIG.combat.mageFalloffScale[f<CONFIG.combat.mageFalloffBands[0]?0:f<CONFIG.combat.mageFalloffBands[1]?1:2]}if(dealt>0)damage(u,t,dealt,kind);if(knock)push(t,x,y,knock);if(stun)t.stun=Math.max(t.stun,stun);hits++});if(u.team==='enemy'&&state.mother.id!==excludeId&&dist({x,y},state.mother)<=r&&amount>0)damage(u,state.mother,amount,kind);return hits}
+function area(u,x,y,r,amount,kind,knock=0,stun=0,excludeId=0){let hits=0;near(x,y,r,null,t=>{if(hits>=CONFIG.combat.splashVictims)return false;if(t.id===excludeId||!canTarget(u,t)||moaRollInvulnerable(t))return;let dealt=amount;if(combatDefinition(u).radialFalloff&&(u.team==='enemy'||state.upgrades.ability>0)){const f=dist(t,{x,y})/r;dealt*=CONFIG.combat.mageFalloffScale[f<CONFIG.combat.mageFalloffBands[0]?0:f<CONFIG.combat.mageFalloffBands[1]?1:2]}if(dealt>0)damage(u,t,dealt,kind);if(knock)push(t,x,y,knock);if(stun)t.stun=Math.max(t.stun,stun);hits++});if(u.team==='enemy'&&state.mother.id!==excludeId&&dist({x,y},state.mother)<=r&&amount>0)damage(u,state.mother,amount,kind);return hits}
 function push(t,x,y,amount){let a=Math.atan2(t.y-y,t.x-x);t.x=clamp(t.x+Math.cos(a)*amount,CONFIG.world.margin,worldLimit()-CONFIG.world.margin);t.y=clamp(t.y+Math.sin(a)*amount,CONFIG.world.margin,CONFIG.world.height-CONFIG.world.margin)}
 function segmentCircle(ax,ay,bx,by,cx,cy,r){const dx=bx-ax,dy=by-ay,n=dx*dx+dy*dy,t=n?clamp(((cx-ax)*dx+(cy-ay)*dy)/n,0,1):0;return (ax+dx*t-cx)**2+(ay+dy*t-cy)**2<=r*r}
-function projectile(u,t,amount,splash=0,extra={}){if(u.team==='enemy'&&u.type==='archer')extra={point:true,dodgeable:true,...extra};if(projectiles.length>=CONFIG.sim.maxProjectiles){if(extra.dodgeable||extra.moaSeed)return;impact({...extra,u:u.id,target:t.id,x:t.x,y:t.y,amount,splash,team:u.team,type:u.type});return}let d=unitDef(u.type)||{};projectiles.push({u:u.id,target:t.id,x:u.x,y:u.y,startX:u.x,startY:u.y,aimX:t.x,aimY:t.y,amount,splash,speed:(d.projectile||CONFIG.units.archer.projectile)*CONFIG.motion.speedScale,team:u.team,type:u.type,progress:0,total:dist(u,t),...extra})}
+function projectile(u,t,amount,splash=0,extra={}){if(u.team==='enemy'&&combatDefinition(u).committedEnemyAim)extra={point:true,dodgeable:true,...extra};if(projectiles.length>=CONFIG.sim.maxProjectiles){if(extra.dodgeable||extra.moaSeed)return;impact({...extra,u:u.id,target:t.id,x:t.x,y:t.y,amount,splash,team:u.team,type:u.type});return}let d=unitDef(u.type)||{};projectiles.push({u:u.id,target:t.id,x:u.x,y:u.y,startX:u.x,startY:u.y,aimX:t.x,aimY:t.y,amount,splash,speed:(d.projectile||CONFIG.units.archer.projectile)*CONFIG.motion.speedScale,team:u.team,type:u.type,progress:0,total:dist(u,t),...extra})}
 function discardProjectile(i){if(typeof onProjectileDisposed==='function')onProjectileDisposed(projectiles[i]);projectiles.splice(i,1)}
 function impact(p){const u=idMap.get(p.u)||{type:p.type,team:p.team,rivalOwner:p.rivalOwner,x:p.startX,y:p.startY,zone:zoneAt(p.x)},t=idMap.get(p.target);if(p.splash){area(u,p.x,p.y,p.splash,p.amount,'ranged',p.knock||0);addFx('ring',p.x,p.y,0,0,p.team==='friendly'?'#e2e8a3':'#ffb098',p.splash,.35)}else if(t&&t.hp>0){const rollEvaded=moaRollInvulnerable(t);damage(u,t,p.amount,'ranged');if(!rollEvaded){if(p.knock)push(t,u.x,u.y,p.knock);addFx('hit',t.x,t.y,0,0,p.team==='friendly'?'#d8e9ab':'#ffb399',radius(t))}}}
-function attack(u,t,contact=false,committed=null){const d=unitDef(u.type),amp=attackPower(u),ability=u.team==='friendly'?1+state.upgrades.ability*CONFIG.economy.abilityPerLevel:1;if(!contact){u.cooldown=armyAttackInterval(u,d.cooldownMs/1000*(u.elite?CONFIG.combat.eliteCooldown:1));u.combat=state.time;u.reveal=state.time+CONFIG.combat.revealDuration;state.stats.attacks++;u.attackPose=CONFIG.combat.attackPoseTime;if(CONFIG.combat.poseTypes.includes(u.type)){const windup=u.team==='enemy'?(d.projectile?CONFIG.control.rangedWindup:CONFIG.control.meleeWindup):(d.projectile?CONFIG.combat.rangedWindup:CONFIG.combat.meleeWindup);const armyWindup=armyAttackWindup(u,windup);u.pendingMelee={target:t.id,left:armyWindup,total:armyWindup,aimX:t.x,aimY:t.y};return}}if(contact)u.attackPose=CONFIG.combat.attackPoseTime;if(d.selfDestruct){area(u,u.x,u.y,d.attackSplash,amp,'melee');addFx('ring',u.x,u.y,0,0,'#ecb789',d.attackSplash,.5);u.hp=0;die(u,null);return}
- if(u.type==='rootstalker'){let dx=t.x-u.x,dy=t.y-u.y,l=Math.hypot(dx,dy),nx=dx/l,ny=dy/l,n=0;near(u.x,u.y,effectiveRange(u),null,v=>{let along=(v.x-u.x)*nx+(v.y-u.y)*ny,across=Math.abs((v.x-u.x)*ny-(v.y-u.y)*nx);if(along>0&&along<=effectiveRange(u)&&across<=d.lineWidth&&canTarget(u,v)&&n++<CONFIG.combat.rootLineVictims){damage(u,v,amp,'melee');v.stun=CONFIG.combat.rootStun}});if(u.team==='enemy'){const v=state.mother,along=(v.x-u.x)*nx+(v.y-u.y)*ny,across=Math.abs((v.x-u.x)*ny-(v.y-u.y)*nx);if(along>0&&along<=effectiveRange(u)&&across<=d.lineWidth)damage(u,v,amp,'melee')}addFx('line',u.x,u.y,u.x+nx*effectiveRange(u),u.y+ny*effectiveRange(u),'#dccb8b',d.lineWidth,.3);return}
- if(d.chainBounces){let current=t,used=new Set();for(let n=0;n<=d.chainBounces;n++){used.add(current.id);const rollEvaded=moaRollInvulnerable(current);damage(u,current,amp*Math.pow(CONFIG.combat.chainFalloff,n),'ranged');if(!rollEvaded)state.stats.chainHits++;addFx('line',n===0?u.x:last.x,n===0?u.y:last.y,current.x,current.y,'#e6c5fa',0,.25);var last=current;let next=null;near(current.x,current.y,d.chainRange,null,v=>{if(!used.has(v.id)&&canTarget(u,v)&&(!next||dist(v,current)<dist(next,current)))next=v});if(!next)break;current=next}return}
- if(d.projectilePattern){const p=d.projectilePattern;for(let n=0;n<p.count;n++)events.push({time:state.time+n*p.intervalMs/1000,kind:'volley',unit:u.id,target:t.id,amount:amp*p.damagePerShot/d.atk,splash:p.impactRadius,spread:p.spreadRadius});return}
- if(d.projectile||d.layer==='AIR'){const shock=u.type==='medic'&&u.team==='friendly'&&state.upgrades.ability>0&&random()<d.basicAttack.variants[0].trigger.chance;projectile(u,t,amp,d.splash||0,{...(u.team==='enemy'&&committed?{point:true,dodgeable:true,aimX:committed.aimX,aimY:committed.aimY}:{}),arc:shock?d.basicAttack.variants[0].attack.arcHeight:0,knock:shock?d.basicAttack.variants[0].attack.knockbackDistance:u.type==='siege'&&state.upgrades.ability>0?d.impactKnockbackDistance:u.type==='skirmisher'&&state.upgrades.ability>0?CONFIG.combat.meleeKnockback:0});if(u.type==='siege')state.stats.deployShots++;if(u.type==='sporemoth')events.push({time:state.time+d.burstIntervalMs/1000,kind:'volley',unit:u.id,target:t.id,amount:amp*d.burstSecondScale,splash:d.splash,spread:0});return}
- u.attackPose=CONFIG.combat.attackPoseTime;const rollEvaded=moaRollInvulnerable(t);damage(u,t,amp*(d.stealth&&u.ambushReady?d.ambushDamage:1),'melee');u.ambushReady=false;if(!rollEvaded&&t.hp>0&&CONFIG.combat.meleeContactTypes.includes(u.type))push(t,u.x,u.y,CONFIG.combat.meleeRecoil);if(!rollEvaded&&u.type==='pikeman')push(t,u.x,u.y,CONFIG.combat.meleeKnockback*ability);if(!rollEvaded&&d.airborneMs)t.stun=d.airborneMs/1000;if(d.slamRadius){area(u,t.x,t.y,d.slamRadius,amp*d.slamScale,'melee',u.team==='enemy'||state.upgrades.ability>0?d.slamKnockbackDistance:0,u.team==='enemy'||state.upgrades.ability>0?d.slamAirborneMs/1000:0,t.id);addFx('ring',t.x,t.y,0,0,'#e6dcac',d.slamRadius,.4)}addFx(d.attackVisual?.sourceMotion||'slash',u.x,u.y,t.x,t.y,u.team==='friendly'?'#cce5f0':'#ffba9c',radius(u),.2)
+// Basic attack lifecycle owns bookkeeping, one capability execution, and presentation.
+function attack(u,t,contact=false,committed=null){
+ spatialUnit(u,true);spatialUnit(t,true);
+ const previous=spatialContext;spatialContext=[u,t].concat(previous);
+ try{resolveBasicAttack(u,t,contact,committed)}finally{spatialContext=previous}
+ spatialUnitAnchors(u,true);
+ if(rarityGrade(u)>=3&&(contact||!u.pendingMelee)&&raritySpendAccent()){const a=u.angle||0;addFx('line',u.x-Math.cos(a)*12,u.y-Math.sin(a)*12,u.x+Math.cos(a)*10,u.y+Math.sin(a)*10,CONFIG.rarity.gradeColors[rarityGrade(u)],0,CONFIG.rarity.effects.trailSeconds)}
+ if(contact||!u.pendingMelee)soundCue('launch',u,{family:CombatAudio.family(unitDef(u.type).projectile?'ranged':'melee',u.type)});
 }
+function resolveBasicAttack(u,t,contact,committed){
+ const d=unitDef(u.type),amp=attackPower(u),ability=u.team==='friendly'?1+state.upgrades.ability*CONFIG.economy.abilityPerLevel:1;
+ if(!contact){
+  u.cooldown=armyAttackInterval(u,d.cooldownMs/1000*(u.elite?CONFIG.combat.eliteCooldown:1));u.combat=state.time;u.reveal=state.time+CONFIG.combat.revealDuration;state.stats.attacks++;u.attackPose=CONFIG.combat.attackPoseTime;
+  if(CONFIG.combat.poseTypes.includes(u.type)){const windup=u.team==='enemy'?(d.projectile?CONFIG.control.rangedWindup:CONFIG.control.meleeWindup):(d.projectile?CONFIG.combat.rangedWindup:CONFIG.combat.meleeWindup);const armyWindup=armyAttackWindup(u,windup);u.pendingMelee={target:t.id,left:armyWindup,total:armyWindup,aimX:t.x,aimY:t.y};return}
+ }
+ if(contact)u.attackPose=CONFIG.combat.attackPoseTime;
+ combatDefinition(u).execute(u,t,d,amp,ability,committed);
+}
+function basicSelfDestruct(u,t,d,amp,ability,committed){area(u,u.x,u.y,d.attackSplash,amp,'melee');addFx('ring',u.x,u.y,0,0,'#ecb789',d.attackSplash,.5);u.hp=0;die(u,null);}
+function basicLineAttack(u,t,d,amp,ability,committed){let dx=t.x-u.x,dy=t.y-u.y,l=Math.hypot(dx,dy),nx=dx/l,ny=dy/l,n=0;near(u.x,u.y,effectiveRange(u),null,v=>{let along=(v.x-u.x)*nx+(v.y-u.y)*ny,across=Math.abs((v.x-u.x)*ny-(v.y-u.y)*nx);if(along>0&&along<=effectiveRange(u)&&across<=d.lineWidth&&canTarget(u,v)&&n++<CONFIG.combat.rootLineVictims){damage(u,v,amp,'melee');v.stun=CONFIG.combat.rootStun}});if(u.team==='enemy'){const v=state.mother,along=(v.x-u.x)*nx+(v.y-u.y)*ny,across=Math.abs((v.x-u.x)*ny-(v.y-u.y)*nx);if(along>0&&along<=effectiveRange(u)&&across<=d.lineWidth)damage(u,v,amp,'melee')}addFx('line',u.x,u.y,u.x+nx*effectiveRange(u),u.y+ny*effectiveRange(u),'#dccb8b',d.lineWidth,.3);}
+function basicChainAttack(u,t,d,amp,ability,committed){let current=t,used=new Set();for(let n=0;n<=d.chainBounces;n++){used.add(current.id);const rollEvaded=moaRollInvulnerable(current);damage(u,current,amp*Math.pow(CONFIG.combat.chainFalloff,n),'ranged');if(!rollEvaded)state.stats.chainHits++;addFx('line',n===0?u.x:last.x,n===0?u.y:last.y,current.x,current.y,'#e6c5fa',0,.25);var last=current;let next=null;near(current.x,current.y,d.chainRange,null,v=>{if(!used.has(v.id)&&canTarget(u,v)&&(!next||dist(v,current)<dist(next,current)))next=v});if(!next)break;current=next}}
+function basicVolleyAttack(u,t,d,amp,ability,committed){const p=d.projectilePattern;for(let n=0;n<p.count;n++)events.push({time:state.time+n*p.intervalMs/1000,kind:'volley',unit:u.id,target:t.id,amount:amp*p.damagePerShot/d.atk,splash:p.impactRadius,spread:p.spreadRadius});}
+function basicRangedAttack(u,t,d,amp,ability,committed){
+ const cap=combatDefinition(u),modifiers=cap.projectileModifiers?cap.projectileModifiers(u,d):{arc:0,knock:0};
+ projectile(u,t,amp,d.splash||0,{...(u.team==='enemy'&&committed?{point:true,dodgeable:true,aimX:committed.aimX,aimY:committed.aimY}:{}),arc:modifiers.arc,knock:modifiers.knock});
+ cap.afterProjectile?.(u,t,d,amp);
+}
+function basicMeleeAttack(u,t,d,amp,ability){ u.attackPose=CONFIG.combat.attackPoseTime;const rollEvaded=moaRollInvulnerable(t);damage(u,t,amp*(d.stealth&&u.ambushReady?d.ambushDamage:1),'melee');u.ambushReady=false;if(!rollEvaded&&t.hp>0&&CONFIG.combat.meleeContactTypes.includes(u.type))push(t,u.x,u.y,CONFIG.combat.meleeRecoil);if(!rollEvaded)combatDefinition(u).afterMelee?.(u,t,d,ability);if(!rollEvaded&&d.airborneMs)t.stun=d.airborneMs/1000;if(d.slamRadius){area(u,t.x,t.y,d.slamRadius,amp*d.slamScale,'melee',u.team==='enemy'||state.upgrades.ability>0?d.slamKnockbackDistance:0,u.team==='enemy'||state.upgrades.ability>0?d.slamAirborneMs/1000:0,t.id);addFx('ring',t.x,t.y,0,0,'#e6dcac',d.slamRadius,.4)}addFx(d.attackVisual?.sourceMotion||'slash',u.x,u.y,t.x,t.y,u.team==='friendly'?'#cce5f0':'#ffba9c',radius(u),.2)
+}
+
 function support(u,dt){const d=unitDef(u.type),team=u.team;u.mana=Math.min(d.manaMax||0,u.mana+(d.manaRegenPerSecond||0)*dt);u.heal-=dt;u.special-=dt;const ability=team==='friendly'?1+state.upgrades.ability*CONFIG.economy.abilityPerLevel:1;
  if(d.healRange&&u.heal<=0&&u.mana>=d.healManaPerPacket){u.heal=d.healCooldownMs/1000;let target=null;near(u.x,u.y,d.healRange,team,t=>{if(!sameFaction(u,t))return;if(t.hp<t.maxHp&&(!target||t.hp/t.maxHp<target.hp/target.maxHp))target=t});if(team==='friendly'&&state.mother.hp<maxMotherHP()&&dist(u,state.mother)<d.healRange&&(!target||state.mother.hp/maxMotherHP()<target.hp/target.maxHp))target=state.mother;if(target){let amount=Math.min(target.maxHp-target.hp,d.healAmount*ability);applyHealing(target,target.hp+amount);u.mana-=d.healManaPerPacket;u.heal=d.healCooldownMs/1000;state.stats.healing+=amount;addFx('line',u.x,u.y,target.x,target.y,'#a1e8c0',0,.18)}}
  if(d.guardChargeRadius&&u.heal<=0&&u.mana>=d.guardManaCost){let n=0;near(u.x,u.y,d.guardChargeRadius,team,t=>{if(!sameFaction(u,t))return;if((!t.shield||t.shieldUntil<state.time)&&u.mana>=d.guardManaCost&&n<d.guardTargetsPerPulse){t.shield=CONFIG.combat.shieldBlocks;t.shieldUntil=state.time+CONFIG.combat.shieldDuration;t.shieldFrom=u.id;u.mana-=d.guardManaCost;n++}});u.heal=d.guardPulseIntervalMs/1000/(team==='friendly'&&state.upgrades.ability>0?1/(d.abilityGuardPulseIntervalPct/100):1)}
 }
 function moveToward(u,x,y,speed,dt){let dx=x-u.x,dy=y-u.y,len=Math.hypot(dx,dy);if(len<CONFIG.motion.stopDistance)return false;const d=unitDef(u.type);if(d?.deployment&&u.deployed>0){u.undeploy=d.deployment.undeployMs/1000;u.deployed=0;return false}if(u.undeploy>0)return false;const n=Math.min(len,speed*dt);u.x+=dx/len*n;u.y+=dy/len*n;u.angle=Math.atan2(dy,dx);u.still=0;return true}
 function tickUnitStatus(u,dt){u.moveSpeed=0;u.cooldown-=dt;u.query-=dt;u.attackPose=Math.max(0,u.attackPose-dt);u.flash=Math.max(0,u.flash-dt);u.still+=dt;u.stun=Math.max(0,u.stun-dt);support(u,dt);}
-function updateUnit(u,dt,index){if(u.hp<=0)return;const oldX=u.x,oldY=u.y;u.moveSpeed=0;const d=unitDef(u.type);tickUnitStatus(u,dt);if(u.stun>0)return;if(u.undeploy>0){u.undeploy=Math.max(0,u.undeploy-dt);return}let t=idMap.get(u.target);const allied=u.team==='friendly',far=allied&&companionMovementPolicy(u).returning;
+// Unit turn contract: one behavior owner; no captured update continuations.
+// The viewport leash brackets the chosen behavior. Status, impulses, movement
+// and spatial rebasing belong to that behavior: sleeping wild units do not tick
+// status, while committed specials, rivals and the resident boss each tick it
+// exactly once at their existing phase boundary. All controller state is data.
+function updateUnit(u,dt,index){
+ const owner=u.hp>0?visibleHuntOwner(u):null;
+ if(owner)visibleHuntUpdateLeash(u,owner);
+ let result;
+ if(residentIs(u))result=residentUpdate(u,dt);
+ else if(u.rivalOwner)result=updateRivalUnitBehavior(u,dt);
+ else{
+  prepareCompanionUnitOrders(u);
+  spatialUnit(u,true);
+  result=updatePatternUnitTurn(u,dt,index);
+  spatialUnit(u,true);
+ }
+ if(owner&&u.hp>0&&!visibleHuntCommitted(u)&&visibleHuntNeedsReturn(u,owner))visibleHuntMarkReturn(u);
+ return result;
+}
+// Companion policy changes precede ordinary or special behavior.
+function prepareCompanionUnitOrders(u){
+ if(u.rarityUID&&u.team==='friendly'&&u.hp>0&&!['windup','execute'].includes(u.attackController?.phase)){const p=companionMovementPolicy(u);if(p.hunting){u.order='follow';u.returning=false;u.retreatIntent=0}else if(p.returning){u.order='return';u.target=0;u.pendingMelee=null}}
+
+ if(u.team==='friendly'&&u.permanentRank&&u.hp>0&&permanentHuntMode()==='hunt'&&!['windup','execute'].includes(u.attackController?.phase)){
+  const policy=companionMovementPolicy(u);
+  if(policy.hunting){if(u.order==='return'){u.order='follow';u.query=0}u.retreatIntent=0;u.returning=false;}
+  else{u.order='return';u.target=0;u.pendingMelee=null;}
+ }
+
+}
+function updateOrdinaryUnitMovement(u,dt,index){if(u.hp<=0)return;const oldX=u.x,oldY=u.y;u.moveSpeed=0;const d=unitDef(u.type);tickUnitStatus(u,dt);if(u.stun>0)return;if(u.undeploy>0){u.undeploy=Math.max(0,u.undeploy-dt);return}let t=idMap.get(u.target);const allied=u.team==='friendly',far=allied&&companionMovementPolicy(u).returning;
  u.retreatIntent=allied&&t&&motherRetreatsFrom(t)?(u.retreatIntent||0)+dt:0;
  if(allied&&(far||!companionMovementPolicy(u).hunting&&t&&(sqdist(t,state.mother)>CONFIG.motion.recallRadius**2&&!(u.permanentRank&&dist(u,t)<=effectiveRange(u)+radius(t))||u.retreatIntent>=CONFIG.motion.retreatIntentTime))){u.order='return';u.returnThreat=t?.id||0;u.target=0;t=null;u.pendingMelee=null}
  let speed=effectiveSpeed(u)*CONFIG.motion.speedScale;
@@ -7781,7 +7939,7 @@ CONFIG.production.defaultCards=['swordsman',null,null,null,null,null];CONFIG.pro
 CONFIG.progression.capTierByZone[0]=CONFIG.campaign.population.maxTier;CONFIG.progression.levelsPerZone=CONFIG.campaign.growth.armyMaxRank;
 CONFIG.progression.unitUnlocks=[['swordsman'],[],[],[],[],[]];friendlyTypes.splice(0,friendlyTypes.length,...CONFIG.campaign.productionCards);
 CONFIG.zones[0].bossName='황금 껍질 군락장';CONFIG.zones[0].tip='이끼밭을 반복 사냥해 충원비와 성장 자원을 모으세요. 지도에서 위험도와 수입을 확인할 수 있어요.';shortNames.shellbug='껍질딱정벌레';
-const core={reset,spawn,spawnCamp,step,save,load,damage,die,defeat,recover,findTarget,canTarget,updateUnit,attackPower,produce,buy,boot};
+const core={reset,spawn,spawnCamp,step,save,load,die,defeat,recover,findTarget,canTarget,attackPower,produce,buy,boot};
 const campaignDefs=[];CONFIG.campaign.grounds.forEach((g,gi)=>g.camps.forEach((c,ci)=>campaignDefs.push({id:campaignDefs.length,zone:0,stage:0,ground:gi,x:c.x,y:c.y,kind:gi,boss:false,sourceId:g.id+'-'+ci,members:c.units.map(u=>({...u}))})));
 function makeLedger(){return{rewardM:0,rewardG:0,productionM:0,productionG:0,investmentM:0,investmentG:0,lostM:0,lostG:0,losses:0}}
 function newFarm(){return{mode:'farming',stage:0,parcels:[true,false,false,false,false],research:Object.fromEntries(friendlyTypes.map(t=>[t,{branch:null,rank:0}])),investments:{mineral:0,gas:0,nursery:0},bank:{minerals:0,gas:0},lifetimeBank:{minerals:0,gas:0},offline:{minerals:0,gas:0},savedAt:0,ledger:makeLedger(),groundStats:CONFIG.campaign.grounds.map(()=>({clears:0,kills:0,rewardM:0,rewardG:0,lostM:0,lostG:0,losses:0})),migration:null}}
@@ -7798,7 +7956,7 @@ function regrowSpot(c,q){const h=CONFIG.campaign.hunting,d=unitDef(q.type),size=
 function regrowCamps(dt){for(const c of state.camps){if(!c.enabled||!c.regrowth?.length)continue;const g=CONFIG.campaign.grounds[c.ground];for(let i=c.regrowth.length-1;i>=0;i--){const q=c.regrowth[i];q.left-=dt;if(q.left>0)continue;const p=regrowSpot(c,q);if(!p)continue;if(!q.cued){q.cued=true;q.left=CONFIG.campaign.hunting.spawnCue;addFx('ring',p.x,p.y,0,0,'#e6dcac',unitDef(q.type).size+CONFIG.campaign.hunting.spawnSpacing,CONFIG.campaign.hunting.spawnCue);continue}spawn(q.type,'enemy',p.x,p.y,{zone:0,camp:c.id,boss:q.boss,elite:q.boss,hpScale:g.hp*(q.boss?g.bossHp/CONFIG.combat.eliteHp[0]:1),attackScale:g.attack*(q.boss?g.bossAttack/CONFIG.combat.eliteAttack:1)});c.remaining++;c.spawnSerial=(c.spawnSerial||0)+1;c.regrowth.splice(i,1);rebuildGrid()}c.respawn=c.regrowth.length?Math.max(0,Math.min(...c.regrowth.map(q=>q.left))):0}}
 canTarget=function(u,t){if(!core.canTarget(u,t)||u.order==='return'||u.returning||t.returning||lockedParcelAt(t.x,t.y)!==-1)return false;if(u.team==='enemy'&&u.camp>=0){const c=state.camps[u.camp];if(c&&sqdist(t,c)>(u.target?CONFIG.campaign.hunting.leashRadius:CONFIG.campaign.hunting.aggroRadius)**2)return false}return true};
 findTarget=function(u){if(u.returning||u.order==='return')return null;if(u.team==='enemy'&&u.camp>=0){const c=state.camps[u.camp];if(c&&sqdist(u,c)>CONFIG.campaign.hunting.leashRadius**2)return null}return core.findTarget(u)};
-updateUnit=function(u,dt,index){if(u.team==='enemy'&&u.camp>=0){const c=state.camps[u.camp],h=CONFIG.campaign.hunting;if(c){const target=idMap.get(u.target);if(sqdist(u,c)>h.leashRadius**2||target&&sqdist(target,c)>h.leashRadius**2){u.returning=true;u.target=0;u.query=CONFIG.sim.targetInterval}if(u.returning){applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*h.returnHeal*dt));u.target=0;if(sqdist(u,{x:u.hx,y:u.hy})<=h.homeRadius**2){u.returning=false;applyHealing(u,u.maxHp);u.query=CONFIG.sim.targetInterval}}else if(!target&&state.time-u.combat>h.idleHealDelay)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*h.idleHealPercent*dt))}}core.updateUnit(u,dt,index);keepOutsideLocked(u)};
+
 effectiveRange=function(u){return unitDef(u.type).range+researchEffect(u,'range')};effectiveSpeed=function(u){return unitDef(u.type).speed*(1+researchEffect(u,'speed'))*(u.returning?CONFIG.campaign.hunting.returnSpeed:1)};
 hasUnitAbility=function(u){if(u.team==='enemy')return true;const r=researchFor(u.type);return r.rank>0&&(r.branch==='wind'||r.branch==='crouch')};extraArmor=function(u,t,kind){return t.type==='shellbug'&&t.team==='friendly'&&hasUnitAbility(t)&&t.still>=unitDef(t.type).crouchPrepMs/1000?researchEffect(t,'armor'):0};
 attackPower=function(u){return core.attackPower(u)*(u.team==='friendly'?1+researchEffect(u,'attack'):(u.encounterAttackScale||1))};
@@ -7946,7 +8104,7 @@ CONFIG.moa={rangedReach:235,rangedWindup:.18,seedSpeed:410,seedRadius:5,attack:2
 CONFIG.control={inputThreshold:.35,frontDot:Math.cos(50*Math.PI/180),reserveReach:24,reserveCooldown:.2,reserveDuration:.4,reserveRearm:.72,rangedWindup:.4,meleeWindup:.35,meleeSlack:3,shotRadius:3,returnJoinRadius:80};
 CONFIG.motion.retreatIntentTime=.15;
 const moaLegacyCosts={upgrades:JSON.parse(JSON.stringify(CONFIG.upgrades)),research:JSON.parse(JSON.stringify(CONFIG.campaign.research.choices)),production:{...CONFIG.upgrades.production},investments:JSON.parse(JSON.stringify(CONFIG.campaign.investments)),unlocks:JSON.parse(JSON.stringify(CONFIG.campaign.unlocks))};
-const moaPrevious={reset,load,boot,buy,purchaseCost,recover,damage,die,killReward,save};
+const moaPrevious={reset,load,boot,buy,purchaseCost,recover,die,killReward,save};
 CONFIG.version=4;CONFIG.saveKey='bloom-army-moa-v4';CONFIG.saveExportName='bloom-moa-save-v4.json';
 CONFIG.mother.starterCount=0;CONFIG.production.slotZones=[0,0,0,0];CONFIG.production.defaultCards=[...friendlyTypes];
 for(const c of CONFIG.campaign.parcels)c.cost=[c.cost[0]+c.cost[1],0];
@@ -7982,8 +8140,7 @@ function updateMoa(dt){const m=state.mother;m.moaCooldown=Math.max(0,(m.moaCoold
  if(best){m.moaTarget=best.id;m.moaCooldown=CONFIG.moa.cooldown;const windup=typeof growthInterval==='function'?Math.max(bloomSeconds(BLOOM_TIME.weapons.cardMinimumMs),CONFIG.moa.rangedWindup*growthInterval()/CONFIG.moa.cooldown):CONFIG.moa.rangedWindup;m.pendingMoa={target:best.id,ranged:true,left:windup,total:windup,angle:Math.atan2(best.y-m.y,best.x-m.x)};if(!moaMovingInput())m.angle=m.pendingMoa.angle}}
 function moaSeedTarget(t){return !!(t&&t.hp>0&&t.team==='enemy'&&!t.returning&&lockedParcelAt(t.x,t.y)===-1&&dist(state.mother,t)<=CONFIG.moa.rangedReach)}
 function moaReserved(t){const m=state.mother,p=m.finisher;return !!(p&&p.target===t.id&&p.left>0&&m.hp>0&&!state.dead&&moaContact(t,CONFIG.control.reserveReach)&&!moaWithdrawing(t)&&conversionEligible(t))}
-damage=function(u,t,amount,kind='melee'){if(!u||!t||!factionsHostile(u,t)||t.hp<=0)return;const before=t.hp;if(u.type!=='mother'&&u.team==='friendly'&&moaReserved(t)){// A short committed Moa contact owns this one finish, including arrows already in flight.
- const originalDie=die;let intercepted=false;die=function(v,k){if(v===t&&v.hp<=0){v.hp=1;intercepted=true;return}return originalDie(v,k)};try{moaPrevious.damage(u,t,amount,kind)}finally{die=originalDie}if(intercepted)t.flash=CONFIG.render.damageFlash;return}return moaPrevious.damage(u,t,amount,kind)};
+
 killReward=function(t){return moaPrevious.killReward(t)};
 die=function(t,killer){if(t.deadEffect)return;const converted=!!moaMarkOwner(-1)&&conversionEligible(t)&&(killer?.id===-1&&killer.type==='mother'&&killer.team==='friendly'||moaMarkedKill(t,killer,state.mother));if(converted)t.moaConverted=true;moaPrevious.die(t,killer);if(!converted)return;const ally=spawn(t.type,'friendly',t.x,t.y,{zone:0,recruitHpScale:t.maxHp/(unitDef(t.type).hp*CONFIG.challenge.enemyHp),recruitAttackScale:attackPower(t)/(unitDef(t.type).atk*CONFIG.challenge.enemyAttack)});ally.capturedOriginalHP=t.maxHp;ally.capturedOriginalAttack=attackPower(t);ally.capturedGround=state.camps[t.camp]?.ground??0;ally.captureWeight=CONFIG.regionProgression.factor**ally.capturedGround;ally.cooldown=CONFIG.moa.cooldown;ally.order='follow';ally.moaBorn=true;ally.flash=CONFIG.render.damageFlash;state.stats.converted=(state.stats.converted||0)+1;const first=!state.campaign.collection[t.type];state.campaign.collection[t.type]=(state.campaign.collection[t.type]||0)+1;state.mother.convertGlow=CONFIG.moa.conversionGlow;addFx('line',state.mother.x,state.mother.y,t.x,t.y,'#d8f2a0',0,.28);addFx('burst',t.x,t.y,0,0,'#d8f2a0',radius(t)*2,.6);if(first)toast(unitDef(t.type).name+' 첫 친구! 수집 '+friendlyTypes.filter(k=>state.campaign.collection[k]>0).length+' / 4');uiClock=CONFIG.render.uiInterval};
 recover=function(){const cards=state.cards.map(c=>({...c})),ok=moaPrevious.recover();if(ok){state.cards=cards;initializeMoa();save()}return ok};
@@ -8085,9 +8242,9 @@ function solveMoaContacts(){
  }
  boundMoaBody(m);
 }
-const moaPhysicsCore={initializeMoa,updateUnit,step,push,boot};
+const moaPhysicsCore={initializeMoa,step,push,boot};
 initializeMoa=function(){moaPhysicsCore.initializeMoa();resetMoaBody(state.mother);state.mother.stun=0;for(const u of state.units)resetMoaBody(u)};
-updateUnit=function(u,dt,index){moaPhysicsCore.updateUnit(u,dt,index);if(u.hp>0)integrateMoaImpulse(u,dt)};
+
 // Existing enemy melee/shove paths already call push once. Route just their Moa
 // target through mass-scaled impulse; do not add a second kick in damage().
 push=function(t,x,y,amount){if(t.type!=='mother')return moaPhysicsCore.push(t,x,y,amount);if(t.hp<=0)return;const a=Math.atan2(t.y-y,t.x-x),p=CONFIG.moaPhysics,J=amount*p.enemyPushScale*p.motherMass/moaBodyMass(t);addMoaImpulse(t,Math.cos(a)*J,Math.sin(a)*J);noteMoaContact(-Math.cos(a),-Math.sin(a),Math.abs(amount))};
@@ -8272,7 +8429,7 @@ boot=function(){growthCore.boot();try{if(!localStorage.getItem(CONFIG.saveKey)){
  */
 CONFIG.render.healthJuice={drain:.75,ghostDelay:.4,ghostDrain:1,flashIn:.03,flashOut:.14,shoveIn:.05,shoveOut:.14,hudShove:9,worldShove:2.5,amberAt:.5,redAt:.25,healthy:'#d4f58b',amber:'#f4bb60',red:'#f27968',ghost:'#fff9e9',maxWorldBars:128,maxDeathBars:64,deathLife:.5,worldHeight:4};
 const healthJuice={state:null,time:0,epoch:0,bars:new Map(),dead:[],hud:null};
-const healthCore={damage,die,defeat,drawMother,render,refreshUI,recover,reset,load,showIntro,boot};
+const healthCore={die,defeat,drawMother,render,refreshUI,recover,reset,load,showIntro,boot};
 // Shared procedural death: frozen scalar appearance, never a retained gameplay entity.
 // Inspired by Nathan Lovato's procedural juice and short death holds; tuning is ours.
 CONFIG.render.death={life:.5,impact:.07,barLife:.18,fadeStart:.28,recoil:4,drift:8,tilt:.26,endScale:.15,maxBodies:64};
@@ -8315,7 +8472,7 @@ function healthHit(b,t,before){const c=CONFIG.render.healthJuice;if(b.max!==t.ma
  // An ongoing burst keeps its original deadline while aiming at the newest HP.
  else if(now>=b.ghostAt){b.ghostFrom=b.ghost;b.ghostAt=now}
 }
-damage=function(u,t,amount,kind='melee'){if(bloomInTick)return healthCore.damage(u,t,amount,kind);healthEnsureState();const before=t?.hp;let b=null;if(t&&before>0&&(t===state.mother||healthVisible(t))){b=t===state.mother?healthJuice.hud:healthJuice.bars.get(t);if(!b)b=healthCreate(t)}const result=healthCore.damage(u,t,amount,kind);if(b&&t.hp<before){healthHit(b,t,before);if(t!==state.mother){if(t.hp<=0){healthJuice.bars.delete(t);const d=deathSources.get(t);if(d&&!t.moaConverted)d.bar={fill:b.fillFrom,ghost:Math.max(b.ghostFrom,b.fillFrom)};deathSources.delete(t)}else if(t.team==='enemy'&&(healthJuice.bars.size<CONFIG.render.healthJuice.maxWorldBars||healthJuice.bars.has(t)))healthJuice.bars.set(t,b)}}return result};
+
 function healthColor(b){const c=CONFIG.render.healthJuice;return b.target<=c.redAt?c.red:b.target<=c.amberAt?c.amber:c.healthy}
 function healthFlash(b){const c=CONFIG.render.healthJuice,t=healthJuice.time-b.hitAt;return t<c.flashIn?clamp(t/c.flashIn,0,1):1-clamp((t-c.flashIn)/c.flashOut,0,1)}
 function healthShove(b,amount){const c=CONFIG.render.healthJuice,t=healthJuice.time-b.hitAt;return -amount*(t<c.shoveIn?healthEase(t/c.shoveIn):1-healthEase((t-c.shoveIn)/c.shoveOut))}
@@ -8359,7 +8516,7 @@ CONFIG.rectWorld={schema:2,minSpawnDistance:380,attempts:16,cue:.8,grace:1.2,wal
 const rectLegacyMembers=campaignDefs.map(d=>d.members.map(m=>({...m})));
 for(let gi=0;gi<CONFIG.campaign.grounds.length;gi++){let n=0;for(const camp of CONFIG.campaign.grounds[gi].camps)for(const member of camp.units)member.count=CONFIG.rectWorld.population[gi][n++];}
 for(const d of campaignDefs){const ci=Number(d.sourceId.split('-').pop());d.members=CONFIG.campaign.grounds[d.ground].camps[ci].units.map(m=>({...m}));}
-const rectCore={reset,load,boot,spawn,moveToward,push,damage,projectile,moaContact,moaSeedTarget,drawCampaignWorld,drawMini,refreshUI,showMap,showIntro,lockedParcelAt};
+const rectCore={reset,load,boot,spawn,moveToward,push,projectile,moaContact,moaSeedTarget,drawCampaignWorld,drawMini,refreshUI,showMap,showIntro,lockedParcelAt};
 let rectLegacyValidation=false,rectWalls=[],rectWallKey='',rectLoading=false;
 let rectFriendState=null,rectFriendTime=-1,rectFriendMask=0;
 // Per-tick broad phase: empty remote rooms need no per-enemy grid query.
@@ -8393,10 +8550,10 @@ regrowSpot=function(c,q){const r=CONFIG.rectWorld.rooms[c.ground],pad=unitDef(q.
 regrowCamps=function(dt){const activeRooms=rivalActiveRooms();let searches=CONFIG.rectWorld.spawnSearchBudget,commits=CONFIG.rectWorld.spawnCommitBudget;for(const c of state.camps){if(!c.enabled||!c.spawned)continue;const g=CONFIG.campaign.grounds[c.ground];for(let i=(c.regrowth?.length||0)-1;i>=0;i--){const q=c.regrowth[i];if(q.variant!=='rival'&&!(activeRooms&(1<<c.ground))){if(q.cued){q.cued=false;delete q.point;q.left=0}continue}q.left=Math.max(0,q.left-dt);if(q.left>0)continue;if(q.cued){if(commits<=0)continue;commits--;if(!validRegrowSpot(c,q,q.point)){q.cued=false;delete q.point;q.left=.3;continue}const p=q.point;spawn(q.type,'enemy',p.x,p.y,{zone:0,camp:c.id,boss:q.boss,elite:q.boss,hpScale:g.hp*(q.boss?g.bossHp/CONFIG.combat.eliteHp[0]:1),attackScale:g.attack*(q.boss?g.bossAttack/CONFIG.combat.eliteAttack:1)});c.remaining++;c.spawnSerial=(c.spawnSerial||0)+1;c.regrowth.splice(i,1);rebuildGrid();continue}if(searches<=0)continue;searches--;const p=regrowSpot(c,q);if(p){q.cued=true;q.point=p;q.left=CONFIG.rectWorld.cue}else q.left=.5}c.respawn=c.regrowth?.length?Math.min(...c.regrowth.map(q=>q.left)):0}};
 canTarget=function(u,t){if(!core.canTarget(u,t)||u.order==='return'||u.returning||t.returning||lockedParcelAt(t.x,t.y)>=0||!wallClear(u,t))return false;if(u.team==='enemy'){if(state.time<(u.aggroAt||0)||regionAt(t.x,t.y)!==(state.camps[u.camp]?.ground??regionAt(u.homeX,u.homeY)))return false;const room=state.camps[u.camp]?.ground??0;if(!u.target&&state.time-u.combat>3&&dist(u,t)>CONFIG.rectWorld.localAggro[room])return false;const home={x:u.homeX??u.hx,y:u.homeY??u.hy};if(sqdist(t,home)>CONFIG.campaign.hunting.leashRadius**2)return false}return true};
 findTarget=function(u){return u.returning||u.order==='return'?null:core.findTarget(u)};
-updateUnit=function(u,dt,index){if(u.hp<=0)return;if(u.team==='enemy'){const region=state.camps[u.camp]?.ground??regionAt(u.homeX,u.homeY);if(region!==regionAt(state.mother.x,state.mother.y)){let interacting=false;if(rectFriendlyRoomMask()&(1<<region))near(u.x,u.y,CONFIG.campaign.hunting.leashRadius,'friendly',a=>{if(regionAt(a.x,a.y)===region&&wallClear(u,a)){interacting=true;return false}});if(!interacting){u.target=0;u.pendingMelee=null;u.moveSpeed=0;return}}const home={x:u.homeX??u.hx,y:u.homeY??u.hy};let target=idMap.get(u.target);if(sqdist(u,home)>CONFIG.campaign.hunting.leashRadius**2||target&&sqdist(target,home)>CONFIG.campaign.hunting.leashRadius**2)u.returning=true;if(u.returning&&sqdist(u,home)<=CONFIG.campaign.hunting.homeRadius**2){u.returning=false;u.query=CONFIG.sim.targetInterval}if(u.returning){u.target=0;u.pendingMelee=null;u.hx=home.x;u.hy=home.y;applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*CONFIG.campaign.hunting.returnHeal*dt))}else if(!target&&state.time>=(u.wanderAt||0)){u.wanderAt=state.time+3+random()*3;const a=random()*Math.PI*2,r=Math.sqrt(random())*CONFIG.rectWorld.wanderRadius,p=safeRoomPoint(region,home.x+Math.cos(a)*r,home.y+Math.sin(a)*r,moaBodyRadius(u));if(wallClear(u,p,moaBodyRadius(u))){u.hx=p.x;u.hy=p.y}}u.rectIdle=!target&&!u.returning;if(!target&&state.time-u.combat>CONFIG.campaign.hunting.idleHealDelay)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*CONFIG.campaign.hunting.idleHealPercent*dt))}core.updateUnit(u,dt,index);constrainWorld(u);integrateMoaImpulse(u,dt);if(u.team==='enemy'){const i=state.camps[u.camp]?.ground??regionAt(u.homeX,u.homeY);if(regionAt(u.x,u.y)!==i){const p=safeRoomPoint(i,u.x,u.y,moaBodyRadius(u));u.x=u.worldX=p.x;u.y=u.worldY=p.y;u.target=0}}};
+
 const rectSpeed=effectiveSpeed;effectiveSpeed=function(u){return rectSpeed(u)*(u.team==='enemy'&&u.rectIdle?CONFIG.rectWorld.wanderSpeed:1)};
 moaContact=function(t,extra=0){return rectCore.moaContact(t,extra)&&wallClear(state.mother,t)};moaSeedTarget=function(t){return rectCore.moaSeedTarget(t)&&wallClear(state.mother,t)};
-damage=function(u,t,amount,kind){if(!u||!t||!wallClear(u,t))return;return rectCore.damage(u,t,amount,kind)};
+
 projectile=function(u,t,...args){if(!wallClear(u,t))return;return rectCore.projectile(u,t,...args)};
 function projectileWallBlocked(p,nx,ny){return !!wallHit(p.x,p.y,nx,ny,p.shotRadius||CONFIG.render.projectileRadius)}
 reset=function(){const s=rectCore.reset();s.campaign.rectWorld={schema:2};rectWallKey='';constrainWorld(s.mother);return s};
@@ -8459,17 +8616,8 @@ canTarget=function(u,t){if(!core.canTarget(u,t)||u.order==='return'||u.returning
 findTarget=function(u){return u.returning||u.order==='return'||u.aggro?.search?null:core.findTarget(u)};
 // The impact point governs hit LOS; the living projectile owner governs retaliation.
 impact=function(p){const old=retaliationImpact;retaliationImpact=p;try{return retaliationCore.impact(p)}finally{retaliationImpact=old}};
-damage=function(u,t,amount,kind='melee'){if(!u||!t||!factionsHostile(u,t)||t.hp<=0)return;const origin=retaliationImpact||u;if(!wallClear(origin,t))return;const before=t.hp,shielded=t.shield>0&&t.shieldUntil>state.time;const result=rectCore.damage(u,t,amount,kind);if(t.hp<before||shielded&&t.shield===0){if(t.team==='enemy'&&t.hp>0){let attacker=retaliationImpact?idMap.get(retaliationImpact.u):u;if(!combatIdentity(attacker)){const m=state.mother;attacker=retaliationTarget(t,m)?m:null}t.lastDamageAt=state.time;if(attacker)engageEnemy(t,attacker);if(t.aggro)t.aggro.lastDamage=state.time}if(u.team==='enemy'&&combatIdentity(u)&&u.aggro&&!u.returning)u.aggro.until=state.time+CONFIG.retaliation.memory}return result};
-updateUnit=function(u,dt,index){if(u.hp<=0)return;if(u.team==='enemy'){const C=CONFIG.retaliation,H=CONFIG.campaign.hunting,room=enemyRoom(u),home=enemyHome(u);let a=u.aggro,t=idMap.get(u.target);if(sqdist(u,home)>H.leashRadius**2||t&&sqdist(t,home)>H.leashRadius**2){enemyReturn(u,true);a=u.aggro;t=null}if(!u.returning&&a){if(state.time>=a.until||!retaliationTarget(u,t,false)){enemyReturn(u);t=null}else if(wallClear(u,t)){a.seen=state.time;a.x=t.x;a.y=t.y;a.search=false}else if(state.time-a.seen<=C.lostSight){a.search=true;u.pendingMelee=null;u.hx=a.x;u.hy=a.y}else{enemyReturn(u);t=null}}
- if(u.returning&&sqdist(u,home)<=H.homeRadius**2){clearRetaliation(u);a=null;t=null;u.aggroAt=state.time+CONFIG.sim.targetInterval}
- if(u.returning){u.target=0;u.pendingMelee=null;u.hx=home.x;u.hy=home.y;if(state.time-(u.lastDamageAt??a?.lastDamage??-99)>=C.healDelay)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*H.returnHeal*dt))}else if(!a&&!t&&state.time>=(u.wanderAt||0)){u.wanderAt=state.time+CONFIG.rectWorld.wanderMin+random()*(CONFIG.rectWorld.wanderMax-CONFIG.rectWorld.wanderMin);const angle=random()*Math.PI*2,r=Math.sqrt(random())*CONFIG.rectWorld.wanderRadius,p=safeRoomPoint(room,home.x+Math.cos(angle)*r,home.y+Math.sin(angle)*r,moaBodyRadius(u));if(wallClear(u,p,moaBodyRadius(u))){u.hx=p.x;u.hy=p.y}}
- u.rectIdle=!t&&!a&&!u.returning;if(!u.returning&&!t&&!a&&state.time-u.combat>H.idleHealDelay&&state.time-(u.lastDamageAt??-99)>=C.healDelay)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*H.idleHealPercent*dt));
- // Room sleeping never cancels an active chase or a latched return.
- if(!a&&!t&&!u.returning&&room!==regionAt(state.mother.x,state.mother.y)){let nearby=false;near(u.x,u.y,H.leashRadius,null,f=>{if(factionsHostile(u,f)&&regionAt(f.x,f.y)===room&&wallClear(u,f)){nearby=true;return false}});if(!nearby){u.moveSpeed=0;return}}
- const searching=a?.search,savedTarget=u.target;if(searching)u.target=0;core.updateUnit(u,dt,index);if(searching&&!u.returning)u.target=savedTarget;
- // Proximity starts one engagement too, so it cannot become an unlimited assist source.
- if(!u.aggro&&u.target){const target=idMap.get(u.target);if(retaliationTarget(u,target))engageEnemy(u,target,0,false,false)}
- }else core.updateUnit(u,dt,index);constrainWorld(u);integrateMoaImpulse(u,dt);if(u.team==='enemy'&&regionAt(u.x,u.y)!==enemyRoom(u)){const p=safeRoomPoint(enemyRoom(u),u.x,u.y,moaBodyRadius(u));u.x=u.worldX=p.x;u.y=u.worldY=p.y;enemyReturn(u,true)}};
+
+
 moaContact=function(t,extra=0){return !!(t&&t.hp>0&&t.team==='enemy'&&lockedParcelAt(t.x,t.y)<0&&dist(state.mother,t)<=radius(state.mother)+radius(t)+CONFIG.moa.reach+extra&&wallClear(state.mother,t))};
 moaSeedTarget=function(t,ignoreRange=false){return !!(t&&t.hp>0&&t.team==='enemy'&&lockedParcelAt(t.x,t.y)<0&&(ignoreRange||dist(state.mother,t)<=CONFIG.moa.rangedReach)&&wallClear(state.mother,t))};
 die=function(t,killer){clearRetaliation(t);return retaliationCore.die(t,killer)};
@@ -8569,7 +8717,7 @@ CONFIG.statTiers={
  criticalPower:{prismatic:.15},
  combatSeed:0x91e10da5
 };
-const statTierCore={newGrowth,validGrowth,load,initializeMoa,updateMoa,chooseGrowth,growthCardEffect,impact,damage,boot};
+const statTierCore={newGrowth,validGrowth,load,initializeMoa,updateMoa,chooseGrowth,growthCardEffect,impact,boot};
 const statLegacyIds=new Set(GROWTH_CARDS.map(c=>c.id));
 const statBaseIds=['bash','vital','renew','rhythm','reach'];
 const statTierNames={bash:'단단한 씨앗탄',vital:'깊은 생명뿌리',renew:'다시 돋는 새싹',rhythm:'빠른 생장박동',reach:'멀리 나는 씨앗'};
@@ -8743,15 +8891,7 @@ impact=function(p){
  if(p?.u===state.mother.id&&p.type==='mother'&&p.team==='friendly')return withMoaAttack(p,()=>statTierCore.impact(p));
  return statTierCore.impact(p);
 };
-damage=function(u,t,amount,kind='melee'){
- const m=state.mother,eligible=u===m&&m.hp>0&&t?.team==='enemy',before=eligible?Math.max(0,t.hp):0;
- const result=statTierCore.damage(u,t,amount,kind);
- if(eligible&&!state.dead&&m.hp>0){
-  const hpLoss=Math.max(0,before-Math.max(0,t.hp));
-  if(hpLoss>0){const healed=Math.min(Math.max(0,maxMotherHP()-m.hp),hpLoss*moaLifesteal());applyHealing(m,m.hp+healed);state.stats.healing+=healed;}
- }
- return result;
-};
+
 const statTierStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));
 if (!globalThis.BLOOM_HEADLESS) { statTierStyle.textContent=`.growthCard.tier-silver{border-color:#becfd48c;background:linear-gradient(145deg,#34494c,#253737)}.growthCard.tier-gold{border:2px solid #e6bd6fa8;background:linear-gradient(145deg,#655633,#343c2d)}.growthCard.tier-prismatic{border:2px solid #d3adf2c7;background:linear-gradient(135deg,#464b65,#514362 50%,#2a514d);box-shadow:inset 0 0 18px #dab6ff16}.growthCard.tier-silver .statTierBadge,.statOfferTier.tier-silver{color:#d5e3e9}.growthCard.tier-gold .statTierBadge,.statOfferTier.tier-gold{color:#ffe09b}.growthCard.tier-prismatic .statTierBadge,.statOfferTier.tier-prismatic{color:#e7ccff}.statTierBadge{font-weight:800;letter-spacing:.03em}.statOfferTier{text-align:center;font-weight:700;font-size:12px}.statTierOdds{line-height:1.8}.growthCard{min-width:0}.growthCard strong,.growthCard p{overflow-wrap:anywhere}.growthCard:focus-visible{outline:3px solid #f7ffe6;outline-offset:3px}.growthCard:disabled{opacity:.58}@media(max-width:520px){.growthCard{grid-template-columns:44px minmax(0,1fr);grid-template-rows:auto auto auto auto;min-height:126px}.growthCard img,.growthCard .growthIcon{grid-column:1;grid-row:1/5;align-self:center}.growthCard strong{grid-column:2;grid-row:1}.growthCard .statTierBadge{grid-column:2;grid-row:2;margin:3px 0 2px}.growthCard p{grid-column:2;grid-row:3}.growthCard b{grid-column:2;grid-row:4}.statOfferTier{font-size:11px}}`; }
 if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(statTierStyle); }
@@ -8774,7 +8914,7 @@ const HITFEEL = Object.freeze({
   shakeCooldown:.12, hitShake:2.2, criticalShake:2.8, hurtShake:3.8,
   hitLife:.16, hurtLife:.20, preferenceKey:'bloom-presentation-shake-v1'
 });
-const hitfeelCore={damage,render,showPause,reset,load,recover,boot};
+const hitfeelCore={render,showPause,reset,load,recover,boot};
 const hitfeelNumberFormatter=new Intl.NumberFormat('en-US',{maximumFractionDigits:1});
 const hitfeel={state:null,time:0,numbers:[],numberPool:[],targetSequences:new Map(),highWater:0,targets:new WeakMap(),targetSerial:0,serial:0,
   shake:null,nextShakeAt:0,shakeSerial:0,mode:'normal',offset:{x:0,y:0},drawn:0};
@@ -8838,25 +8978,7 @@ function hitfeelImpulse(received,critical=false){
   hitfeel.shake={at:hitfeel.time,until:hitfeel.time+life,amplitude,phase:++hitfeel.shakeSerial*2.399963};
   hitfeel.nextShakeAt=hitfeel.time+Math.max(life,HITFEEL.shakeCooldown);
 }
-damage=function(u,t,amount,kind='melee'){
-  if(bloomInTick)return hitfeelCore.damage(u,t,amount,kind);
-  hitfeelEnsureState();
-  const before=t?.hp,shielded=!!(t&&t.shield>0&&t.shieldUntil>state.time);
-  const outgoing=!!(u&&u.type==='mother'&&u.team==='friendly');
-  const received=t===state.mother,critical=outgoing&&u.hitCritical===true;
-  const result=hitfeelCore.damage(u,t,amount,kind);
-  if(!t||!Number.isFinite(before)||before<=0||!Number.isFinite(t.hp))return result;
-  // Remaining HP lost, not nominal attack power or excess overkill. Reserved kills
-  // report the actual clamp-to-one loss. Heals/unattributed writes never emit a hit.
-  const lost=Math.max(0,before)-Math.max(0,t.hp);
-  const blocked=lost<=0&&shielded&&t.shield===0;
-  if(lost<=0&&!blocked)return result;
-  const lane=received?'moa-hurt':outgoing?(critical?'moa-critical':'moa-hit'):
-    t.team==='enemy'?'army-hit':'army-hurt';
-  hitfeelEmit(t,Math.max(0,lost),lane,blocked);
-  if(lost>0&&(received||outgoing)&&hitfeelOnscreen(t.x,t.y))hitfeelImpulse(received,critical);
-  return result;
-};
+
 function hitfeelSampleShake(){
   const s=hitfeel.shake;
   if(!s||hitfeel.mode==='off'||paused||hitfeel.time>=s.until)return{x:0,y:0};
@@ -9533,8 +9655,8 @@ function chooseAttackPattern(u,t){const c=u.attackController,ids=patternLoadout(
 function beginAttackPattern(u,t,id=chooseAttackPattern(u,t)){if(!id||!patternCanStart(u,t,id))return false;const c=u.attackController,C=patternConfig(id,u);c.pattern=id;c.targetId=t.id;c.fromX=u.x;c.fromY=u.y;c.fromZ=spatialGround(u.x,u.y);c.x=t.x;c.y=t.y;c.angle=Math.atan2(t.y-u.y,t.x-u.x);c.hit.length=0;c.amount=attackPower(u)/(isEncounterElite(u)?CONFIG.eliteEncounter.basicDamage:1)*C.damageScale;c.room=u.team==='enemy'?enemyRoom(u):regionAt(u.x,u.y);c.baseAir=spatialAir(u);c.landed=false;
  AttackPatternRegistry[id].begin?.(u,c,C);c.z=spatialGround(c.x,c.y);patternPhase(c,'windup',C.windupMs);u.pendingMelee=null;u.angle=c.angle;u.moveSpeed=0;return true;
 }
-function settlePatternBody(u,c){if(c.pattern!=='jumpSlam')return;u.groundZ=spatialGround(u.x,u.y);u.airHeight=c.baseAir;u.z=u.groundZ+u.airHeight}
-function recoverAttackPattern(u){const c=u.attackController;if(!c)return;settlePatternBody(u,c);patternPhase(c,'recovery',patternConfig(c.pattern).recoveryMs);u.pendingMelee=null;u.moveSpeed=0}
+function settlePatternBody(u,c){u.groundZ=spatialGround(u.x,u.y);u.airHeight=c.baseAir;u.z=u.groundZ+u.airHeight}
+function recoverAttackPattern(u){const c=u.attackController;if(!c)return;AttackPatternRegistry[c.pattern]?.finish?.(u,c);patternPhase(c,'recovery',patternConfig(c.pattern).recoveryMs);u.pendingMelee=null;u.moveSpeed=0}
 function cancelAttackPattern(u,reason='interrupted'){const c=u.attackController;if(!c)return;AttackPatternRegistry[c.pattern]?.cancel?.(u,c,reason);recoverAttackPattern(u)}
 function tickAttackCooldowns(c){for(const id of Object.keys(c.cooldownsMs))c.cooldownsMs[id]=bloomRemainingMs(c.cooldownsMs[id],bloomStepMs())}
 function tickAttackPattern(u){const c=u.attackController,C=patternConfig(c.pattern,u),d=AttackPatternRegistry[c.pattern];if(!d){cancelAttackPattern(u);return}c.previousRemainingMs=c.remainingMs;c.remainingMs=bloomRemainingMs(c.remainingMs,bloomStepMs());c.left=bloomSeconds(c.remainingMs);
@@ -9573,7 +9695,7 @@ const AttackPatternRegistry={
  arcing:{execute:(u,c,C)=>launchGroundArc(u,c,c.amount,C.arc,{radius:C.radius,room:c.room,patternOwned:true}),drawTelegraph:drawPatternCircle},
  coneSweep:{begin:patternOriginBegin,tick:patternConeTick,drawTelegraph:drawPatternCone},
  ringShockwave:{begin:patternOriginBegin,tick:patternRingTick,drawTelegraph:drawPatternRing},
- jumpSlam:{canStart:patternJumpCanStart,begin:patternJumpBegin,execute:patternJumpExecute,tick:patternJumpTick,drawTelegraph:drawPatternCircle}
+ jumpSlam:{canStart:patternJumpCanStart,begin:patternJumpBegin,execute:patternJumpExecute,tick:patternJumpTick,finish:settlePatternBody,drawTelegraph:drawPatternCircle}
 };
 function migrateAttackController(c,u){if(!c||typeof c!=='object')return null;const next=JSON.parse(JSON.stringify(c));if(next.schema===2)return next;if(next.schema!==1)return null;return bloomMigrateAttackTimer(next,30)}
 function validAttackController(c){const ids=Object.keys(AttackPatternRegistry),limit=CONFIG.sim.integerLimit;if(!c||c.schema!==2||!['standard','windup','execute','recovery'].includes(c.phase)||!['',...ids].includes(c.pattern)||c.phase!=='standard'&&!c.pattern)return false;
@@ -9589,7 +9711,7 @@ const AttackPatterns={registry:AttackPatternRegistry,create:createAttackControll
 // A variant on an ordinary reserved room slot, never the legacy boss/elite flag.
 CONFIG.eliteEncounter={schema:1,chance:1/20,hp:4,basicDamage:1.5,reward:5,visualScale:1.12,
  initialDelayMs:BLOOM_TIME.initialSpecialDelayMs,color:'#ffb867'};
-const eliteCore={spawn,spawnCamp,regrowCamps,die,attackPower,killReward,regionExperience,conversionEligible,permanentMaterials,moaReserved,defeat,updateUnit,drawCampaignWorld,drawUnit,unitVisualRadius,load,boot,showPause};
+const eliteCore={spawn,spawnCamp,regrowCamps,die,attackPower,killReward,regionExperience,conversionEligible,permanentMaterials,moaReserved,defeat,drawCampaignWorld,drawUnit,unitVisualRadius,load,boot,showPause};
 function isEncounterElite(u){return !!(u&&u.team==='enemy'&&!u.boss&&u.variant==='elite')}
 function isPermanentPatternUser(u){return !!(u&&u.team==='friendly'&&u.permanentRank>0&&!u.boss&&!u.elite)}
 function usesAttackPatterns(u){return isEncounterElite(u)||isPermanentPatternUser(u)}
@@ -9622,15 +9744,18 @@ function patternInterrupted(u,c){
 }
 function eliteRecoverPattern(u){return recoverAttackPattern(u)}
 function eliteBegin(u,t){return beginAttackPattern(u,t)}
-updateUnit=function(u,dt,index){if(!usesAttackPatterns(u)||u.hp<=0)return eliteCore.updateUnit(u,dt,index);const c=u.attackController||(u.attackController=eliteController());tickAttackCooldowns(c);
- if(c.phase==='standard'){c.previousRemainingMs=c.remainingMs;c.remainingMs=bloomRemainingMs(c.remainingMs,bloomStepMs());c.left=bloomSeconds(c.remainingMs);const t=idMap.get(u.target);if(c.remainingMs===0&&t&&eliteBegin(u,t)){tickUnitStatus(u,dt);integrateMoaImpulse(u,dt);constrainWorld(u);return}return eliteCore.updateUnit(u,dt,index)}
- if(isPermanentPatternUser(u)&&c.phase==='recovery'){tickAttackPattern(u);const cooldown=u.cooldown;u.cooldown=Math.max(u.cooldown,dt*2);const result=eliteCore.updateUnit(u,dt,index);u.cooldown=Math.max(cooldown-dt,u.cooldown);return result}
+// Special lifecycle: standard may delegate locomotion, a new cast ticks
+// status once, committed phases own movement, and recovery can move
+// normally while suppressing basic attacks. No branch ticks twice.
+function updatePatternUnitTurn(u,dt,index){if(!usesAttackPatterns(u)||u.hp<=0)return updateOrdinaryUnitBehavior(u,dt,index);const c=u.attackController||(u.attackController=eliteController());tickAttackCooldowns(c);
+ if(c.phase==='standard'){c.previousRemainingMs=c.remainingMs;c.remainingMs=bloomRemainingMs(c.remainingMs,bloomStepMs());c.left=bloomSeconds(c.remainingMs);const t=idMap.get(u.target);if(c.remainingMs===0&&t&&eliteBegin(u,t)){tickUnitStatus(u,dt);integrateMoaImpulse(u,dt);constrainWorld(u);return}return updateOrdinaryUnitBehavior(u,dt,index)}
+ if(isPermanentPatternUser(u)&&c.phase==='recovery'){tickAttackPattern(u);const cooldown=u.cooldown;u.cooldown=Math.max(u.cooldown,dt*2);const result=updateOrdinaryUnitBehavior(u,dt,index);u.cooldown=Math.max(cooldown-dt,u.cooldown);return result}
  // The controller owns attack and locomotion, but continuous status and physics
  // are the same functions as ordinary units, exactly once per active tick.
  u.pendingMelee=null;const oldX=u.x,oldY=u.y;tickUnitStatus(u,dt);integrateMoaImpulse(u,dt);
  if(patternInterrupted(u,c)){if(c.phase!=='recovery')cancelAttackPattern(u);else tickAttackPattern(u)}else tickAttackPattern(u);
  constrainWorld(u);const moved=Math.hypot(u.x-oldX,u.y-oldY);u.moveSpeed=moved/Math.max(dt,Number.EPSILON);u.movePhase=(u.movePhase||0)+moved/CONFIG.combat.walkStride*Math.PI*2;
-};
+}
 unitVisualRadius=function(u){return eliteCore.unitVisualRadius(u)*(isEncounterElite(u)?CONFIG.eliteEncounter.visualScale:1)};
 // Telegraph geometry lives in each controller and is reused. No render-time RNG,
 // global effect allocation or map-wide pass beyond the existing unit population.
@@ -9657,8 +9782,7 @@ permanentRecallNearMoa=function(){for(const r of Object.values(permanentState()?
  * Old saves gain missing heights; this layer never scales or rewrites saved X/Y.
  * Recursive migration runs only at lifecycle/save boundaries, never during RAF.
  */
-const spatialCore={spawn,projectile,launchAbilityShot,abilityDescendants,impact,addFx,
- damage,attack,die,updateUnit,updateMoa,constrainWorld,moveMoaBody,step,capturePresentation,
+const spatialCore={spawn,projectile,launchAbilityShot,abilityDescendants,impact,addFx,die,updateMoa,constrainWorld,moveMoaBody,step,capturePresentation,
  reset,load,recover,snapshot,save,exportSave,boot,basePoint,enemyHome,safeRoomPoint,
  regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,
  permanentRecallNearMoa};
@@ -9800,13 +9924,13 @@ addFx=function(kind,x,y,x2,y2,color,r=0,life=CONFIG.combat.pointHitLife,position
  if(!spatialFinite(z)||!spatialFinite(z2))throw new TypeError('Effect heights must be finite');
  const result=spatialCore.addFx(kind,x,y,x2,y2,color,r,life),f=effects.at(-1);if(f){f.z=z;f.z2=z2;f.groundAnchor=position.ground===true}return result;
 };
-damage=function(u,t,...args){spatialUnit(u,true);spatialUnit(t,true);return spatialWith([t,u],()=>spatialCore.damage(u,t,...args))};
-attack=function(u,t,...args){spatialUnit(u,true);spatialUnit(t,true);const result=spatialWith([u,t],()=>spatialCore.attack(u,t,...args));spatialUnitAnchors(u,true);return result};
+
+
 die=function(u,killer){spatialUnit(u,true);return spatialWith([u,killer],()=>spatialCore.die(u,killer))};
 constrainWorld=function(u){const result=spatialCore.constrainWorld(u);if(!spatialLoading)spatialUnit(u,true);return result};
 moveMoaBody=function(...args){const result=spatialCore.moveMoaBody(...args);spatialUnit(state.mother,true);return result};
 updateMoa=function(...args){spatialUnit(state.mother,true);const result=spatialCore.updateMoa(...args);spatialUnitAnchors(state.mother,true);return result};
-updateUnit=function(u,...args){spatialUnit(u,true);const result=spatialCore.updateUnit(u,...args);spatialUnit(u,true);return result};
+
 
 // Existing layers capture partway through step(). Defer those captures until the
 // outermost tick has completed, so interpolated Z and XY describe the same tick.
@@ -10225,7 +10349,7 @@ boot=function(){
 'use strict';
 // Shared fixed-tick movement policy. Hunting only changes owned permanent allies.
 CONFIG.permanentHunt={queryInterval:.3,claimedDistancePenalty:130,reservedDistancePenalty:100000};
-const permanentHuntCore={findTarget,canTarget,updateUnit,reset,load,boot,showMap,showCards};
+const permanentHuntCore={findTarget,canTarget,reset,load,boot,showMap,showCards};
 const companionPolicies={hunt:{hunting:true,returning:false},follow:{hunting:false,returning:false},return:{hunting:false,returning:true}};
 const permanentHuntIndex={state:null,room:-1,next:0,candidates:[],claims:new Map(),owners:new Map(),rebuilds:0};
 function permanentHuntMode(){return permanentState()?.mode||'hunt'}
@@ -10254,14 +10378,7 @@ findTarget=function(u){
  for(const t of I.candidates){if(!canTarget(u,t))continue;const n=(I.claims.get(t.id)||0)-(I.owners.get(u.id)===t.id?1:0),s=dist(u,t)+Math.max(0,n)*C.claimedDistancePenalty+(moaReserved(t)?C.reservedDistancePenalty:0);if(s<score||s===score&&t.id<(best?.id??Infinity)){score=s;best=t}}
  return claimPermanentTarget(u,best,I);
 };
-updateUnit=function(u,dt,index){
- if(u.team==='friendly'&&u.permanentRank&&u.hp>0&&permanentHuntMode()==='hunt'&&!['windup','execute'].includes(u.attackController?.phase)){
-  const policy=companionMovementPolicy(u);
-  if(policy.hunting){if(u.order==='return'){u.order='follow';u.query=0}u.retreatIntent=0;u.returning=false;}
-  else{u.order='return';u.target=0;u.pendingMelee=null;}
- }
- return permanentHuntCore.updateUnit(u,dt,index);
-};
+
 function setPermanentHuntMode(mode){
  if(!['hunt','follow'].includes(mode))return false;
  const p=permanentState(),before=p.mode;p.mode=mode;
@@ -10399,7 +10516,7 @@ boot=function(){
 // Manual dodge: fixed-tick gameplay. Pausing never advances the cooldown clock.
 CONFIG.moaRoll={schema:1,baseHP:100,previousBaseHP:260,durationMs:BLOOM_TIME.roll.durationMs,invulnerableMs:BLOOM_TIME.roll.invulnerableMs,cooldownMs:BLOOM_TIME.roll.cooldownMs,distance:128,tapMaxMs:160,tapSlop:12,trailLife:.16,trailCount:4};
 CONFIG.challenge.motherHp=CONFIG.mother.hp=CONFIG.moaRoll.baseHP;
-const moaRollCore={boot,step,moveMoaBody,damage,push,load,reset,recover,defeat,refreshUI,drawMother,drawCampaignWorld,openModal,render,sampleSimulationInput};
+const moaRollCore={boot,step,moveMoaBody,push,load,reset,recover,defeat,refreshUI,drawMother,drawCampaignWorld,openModal,render,sampleSimulationInput};
 Object.assign(RENDER_TRACKS.unit,{rollPose:'linear'});
 
 function moaRollInvulnerable(t){return !!(state&&t&&t===state.mother&&!state.dead&&t.hp>0&&(t.rollInvulnerableMs||0)>0)}
@@ -10454,7 +10571,7 @@ step=function(dt=CONFIG.sim.fixedStep,input=stick){
 };
 // This outer guard returns before damage, shield consumption, lifesteal, hit
 // flashes, hitstop, floating damage numbers, or retaliation hooks can run.
-damage=function(u,t,...args){if(moaRollInvulnerable(t))return 0;return moaRollCore.damage(u,t,...args)};
+
 push=function(t,...args){if(moaRollInvulnerable(t))return;return moaRollCore.push(t,...args)};
 reset=function(...args){clearMoaRollGesture();const s=moaRollCore.reset(...args);s.campaign.moaRollSchema=CONFIG.moaRoll.schema;s.mother.rollCooldownMs=0;clearMoaRoll(s.mother);return s};
 load=function(raw){
@@ -10522,7 +10639,7 @@ const moaRollStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('
 'use strict';
 // Rivals keep the enemy art channel but have independent combat identities.
 CONFIG.rivalMoa={schema:2,chance:.005,baseHP:180,baseAttack:28,reward:8,query:.35,huntRadius:720,windup:.3,travelQuery:2,minFarmTime:20,minFarmKills:8,readyHealth:.75,retreatHealth:.35,color:'#df9fe8'};
-const rivalCore={spawn,canTarget,findTarget,updateUnit,attackPower,radius,unitVisualRadius,drawUnit,die,conversionEligible,killReward,regionExperience,load,reset,boot,projectile,damage,damageValue,showPause,enemyRoom,regrowSpot};
+const rivalCore={spawn,canTarget,findTarget,attackPower,radius,unitVisualRadius,drawUnit,die,conversionEligible,killReward,regionExperience,load,reset,boot,projectile,showPause,enemyRoom,regrowSpot};
 // Cosmetic identity is chosen once from a stable ID hash, never render-time RNG.
 // Warm/high-chroma colors stay distinct from player mint and the grass floor.
 const RIVAL_PALETTES=['#ee9870','#bb91f2','#e6bd57','#ef87bc','#809ef0','#dd737d','#d4a47b','#bd84bf'].map((hex,index)=>{
@@ -10607,17 +10724,10 @@ function rivalMove(u,t,dt){const oldX=u.x,oldY=u.y,room=enemyRoom(u),leader=riva
  constrainWorld(u);integrateMoaImpulse(u,dt);const arrived=regionAt(u.x,u.y);if(arrived!==room){u.target=0;u.rivalWaypoint=null;u.homeX=u.hx=u.x;u.homeY=u.hy=u.y;u.homeZ=u.hz=spatialGround(u.x,u.y);if(u.rivalLeader){const r=u.rival;r.previousRoom=room;r.room=arrived;r.targetRoom=arrived;r.enteredAt=state.time;r.entryKills=r.kills;r.nextQuery=state.time+CONFIG.rivalMoa.travelQuery}}
  u.moveSpeed=Math.hypot(u.x-oldX,u.y-oldY)/dt;u.movePhase=(u.movePhase||0)+u.moveSpeed*dt/CONFIG.combat.walkStride*Math.PI*2;spatialUnit(u,true);
 }
-updateUnit=function(u,dt,index){if(!u.rivalOwner)return rivalCore.updateUnit(u,dt,index);if(u.hp<=0||state.dead)return;spatialUnit(u,true);tickUnitStatus(u,dt);if(u.rivalLeader)growthRegenerate(u,rivalGrowth(u),dt,u.maxHp);if(u.stun>0||state.time<(u.aggroAt||0))return;u.returning=false;u.order='follow';let t=idMap.get(u.rivalWindup?.target||u.target);if(!canTarget(u,t)||dist(u,t)>CONFIG.rivalMoa.huntRadius){t=rivalTarget(u);u.query=CONFIG.rivalMoa.query}else if(u.query<=0)u.query=CONFIG.rivalMoa.query;u.target=t?.id||0;if(t)u.angle=Math.atan2(t.y-u.y,t.x-u.x);
- if(u.rivalLeader){const g=rivalGrowth(u);u.sproutKick=Math.max(0,(u.sproutKick||0)-dt);
-  if(u.rivalWindup){u.rivalWindup.left-=dt;u.sproutCharge=1-u.rivalWindup.left/CONFIG.rivalMoa.windup;const target=idMap.get(u.rivalWindup.target);if(!canTarget(u,target)){u.rivalWindup=null;u.sproutCharge=0}else if(u.rivalWindup.left<=0){rivalFire(u,target);u.rivalWindup=null;u.sproutCharge=0;u.cooldown=growthInterval(statRankSum('rhythm',g))}}
-  else if(t&&u.cooldown<=0&&dist(u,t)<=rivalRange(u)){u.rivalWindup={target:t.id,left:CONFIG.rivalMoa.windup,x:t.x,y:t.y};}
-  weaponUpdateAux(u,dt,t);
- }else{if(u.pendingMelee){const p=u.pendingMelee,v=idMap.get(p.target);p.left-=dt;if(!canTarget(u,v))u.pendingMelee=null;else if(p.left<=0){u.pendingMelee=null;if(unitDef(u.type).projectile||dist(u,v)<=effectiveRange(u)+radius(v)+CONFIG.control.meleeSlack)attack(u,v,true,p)}}else if(t&&u.cooldown<=0&&dist(u,t)<=effectiveRange(u)+radius(t))attack(u,t);}
- rivalMove(u,t,dt);
-};
+
 projectile=function(u,t,...args){const before=projectiles.length,result=rivalCore.projectile(u,t,...args);for(let i=before;i<projectiles.length;i++)if(u?.rivalOwner)projectiles[i].rivalOwner=u.rivalOwner;return result};
-damageValue=function(u,t,amount,kind='melee'){return rivalCore.damageValue(u?.rivalLeader?{...u,type:'mother'}:u,t?.rivalLeader?{...t,type:'mother'}:t,amount,kind)};
-damage=function(u,t,amount,kind='melee'){if(!factionsHostile(u,t))return;const before=t?.hp,result=rivalCore.damage(u,t,amount,kind);if(u?.rivalLeader&&u.hp>0&&Number.isFinite(before)&&t.hp<before)applyHealing(u,Math.min(u.maxHp,u.hp+Math.max(0,before-Math.max(0,t.hp))*moaLifesteal(rivalGrowth(u))));return result};
+
+
 conversionEligible=function(u){return !u?.rivalOwner&&!u?.rivalLeader&&rivalCore.conversionEligible(u)};
 killReward=function(u,...args){const r=rivalCore.killReward(u,...args);return u.rivalLeader?r.map(n=>Math.round(n*CONFIG.rivalMoa.reward)):r};
 regionExperience=function(u){return rivalCore.regionExperience(u)*(u.rivalLeader?CONFIG.rivalMoa.reward:1)};
@@ -10735,10 +10845,10 @@ function moaAbilityCooldown(base,g=growthState()){return base/(1+combatStat('has
 function moaRollRechargeMs(g=growthState()){return Math.max(0,moaAbilityCooldown(CONFIG.moaRoll.cooldownMs,g))}
 function moaArmorMultiplier(g=growthState()){return 100/(100+combatStat('armor',g))}
 function combatGrowthFor(u){return u?.rivalLeader?u.rival.growth:u===state.mother?growthState():null}
-const combatStatsCore={damageValue,economyAward,growthCardEffect,showPause,openModal,closeModal,boot};
+const combatStatsCore={economyAward,growthCardEffect,showPause,openModal,closeModal,boot};
 // Target mitigation is read at impact. Legacy typing/ranged reduction/flat armor
 // and its minimum run first; this new layer is multiplicative, with 0 = identity.
-damageValue=function(u,t,amount,kind='melee'){const value=combatStatsCore.damageValue(u,t,amount,kind),g=combatGrowthFor(t);return g?value*moaArmorMultiplier(g):value};
+
 // Preview growth is a detached clone: never rescale a live actor from a preview.
 // Award executes inside the existing purchase transaction, before its save.
 economyAward=function(g,id,scale){const oldHaste=combatStat('haste',g),oldRoll=moaRollRechargeMs(g);combatStatsCore.economyAward(g,id,scale);const nextHaste=combatStat('haste',g);if(oldHaste===nextHaste)return;
@@ -10889,7 +10999,7 @@ CONFIG.combatStats={movePercent:{silver:3,gold:5,prismatic:8},haste:{silver:5,go
 CONFIG.statTiers.critical={gold:.03,prismatic:.05};CONFIG.statTiers.lifesteal={gold:.01,prismatic:.02};CONFIG.statTiers.criticalPower={prismatic:.1};
 const armyGrowthCache=new WeakMap();
 function armyCardSum(stat,table,g){let n=0;for(const c of statCardsByStat[stat]||statNoCards)n+=economyPoint(g,c.id)*(table[c.tier]||0);return n}
-const armyGrowthCore={spawn,attackPower,effectiveRange,effectiveSpeed,permanentMaxHP,tickUnitStatus,die,damage,damageValue,economyAward:combatStatsCore.economyAward,load,boot,currentMoaStats};
+const armyGrowthCore={spawn,attackPower,effectiveRange,effectiveSpeed,permanentMaxHP,tickUnitStatus,die,economyAward:combatStatsCore.economyAward,load,boot,currentMoaStats};
 const armyCurve={critical:moaCriticalChance,lifesteal:moaLifesteal,criticalDamage:moaCriticalMultiplier,regen:growthRecovery};
 function armyBonuses(g=growthState()){
  if(!g)return null;let b=armyGrowthCache.get(g);if(b)return b;
@@ -10914,13 +11024,8 @@ function armyAttackInterval(u,base=unitDef(u.type).cooldownMs/1000){const b=army
 function armyAttackWindup(u,base){const b=armyFor(u);return b?Math.max(bloomSeconds(BLOOM_TIME.weapons.cardMinimumMs),base/(1+b.speed)):base}
 function armySpecialCooldown(u,base){return base/(1+(armyFor(u)?.haste||0)/100)}
 tickUnitStatus=function(u,dt){armyGrowthCore.tickUnitStatus(u,dt);const b=armyFor(u);if(!state.dead&&u.hp>0&&b?.regen)applyHealing(u,Math.min(u.maxHp,u.hp+armyBaseHP(u)*b.regen*dt))};
-damageValue=function(u,t,amount,kind='melee'){return armyGrowthCore.damageValue(u,t,amount,kind)*100/(100+(armyFor(t)?.armor||0))};
-damage=function(u,t,amount,kind='melee'){
- const owner=idMap.get(u?.id)||u,g=armyGrowthFor(owner),b=armyBonuses(g),before=t?.hp;
- if(b&&t?.hp>0&&factionsHostile(owner,t)&&!(t.shield>0&&t.shieldUntil>state.time)&&b.critical>0){const meta=g.tiers;meta.combatRng=(Math.imul(meta.combatRng,1664525)+1013904223)>>>0;if(meta.combatRng/4294967296<b.critical)amount*=b.criticalDamage}
- const result=armyGrowthCore.damage(u,t,amount,kind);
- if(b&&owner.hp>0&&Number.isFinite(before)&&t.hp<before){const healing=Math.min(owner.maxHp-owner.hp,Math.max(0,before-Math.max(0,t.hp))*b.lifesteal);applyHealing(owner,owner.hp+healing);if(owner.team==='friendly')state.stats.healing+=healing}return result;
-};
+
+
 die=function(u,killer){if(u?.rivalLeader)for(const a of state.units)if(a.rivalRecruit&&a.rivalOwner===u.id)a.armyGrowth=u.rival.growth;return armyGrowthCore.die(u,killer)};
 // No mineral card is consulted by either leader's combat stats or morphology.
 growthVitalBonus=()=>0;growthBashBonus=()=>0;growthRecovery=()=>0;
@@ -14881,7 +14986,7 @@ CONFIG.mother.starterCount=0;CONFIG.regionProgression.factor=1;CONFIG.challenge.
 for(const g of CONFIG.campaign.grounds){g.hp=1;g.attack=1;g.rewardM=g.rewardG=0;}
 for(const p of CONFIG.campaign.parcels)p.cost=[0,0];
 CONFIG.economy.startMinerals=CONFIG.economy.startGas=0;
-const rarityLegacy={spawn,reset,step,defeat,recover,attackPower,updateUnit,beginAttackPattern,patternLoadout,patternCanStart,patternInterrupted,companionMovementPolicy};
+const rarityLegacy={spawn,reset,step,defeat,recover,attackPower,beginAttackPattern,patternLoadout,patternCanStart,patternInterrupted,companionMovementPolicy};
 const raritySpawnRaw=rarityLegacy.spawn;
 function rarityGrade(u){return Number.isInteger(u?.rarityGrade)?u.rarityGrade:0}
 function rarityScale(u){return u&&!u.rivalLeader&&u.type!=='mother'&&u.type!=='objective'?CONFIG.rarity.visualScale[rarityGrade(u)]:1}
@@ -14913,7 +15018,7 @@ for(const type of friendlyTypes)if(CONFIG.units[type].leapAutoPolicy)CONFIG.unit
 companionMovementPolicy=function(u){if(u?.team==='friendly'&&u.rarityUID&&permanentHuntMode()==='hunt')return regionAt(u.x,u.y)===regionAt(state.mother.x,state.mother.y)?companionPolicies.hunt:companionPolicies.return;return rarityLegacy.companionMovementPolicy(u)};
 const rarityOldSetMode=setPermanentHuntMode;
 setPermanentHuntMode=function(mode){const ok=rarityOldSetMode(mode);if(ok)for(const u of state.units)if(u.rarityUID&&u.team==='friendly'){u.query=0;u.target=0;u.order='follow'}return ok};
-updateUnit=function(u,dt,index){if(u.rarityUID&&u.team==='friendly'&&u.hp>0&&!['windup','execute'].includes(u.attackController?.phase)){const p=companionMovementPolicy(u);if(p.hunting){u.order='follow';u.returning=false;u.retreatIntent=0}else if(p.returning){u.order='return';u.target=0;u.pendingMelee=null}}return rarityLegacy.updateUnit(u,dt,index)};
+
 function rarityOwnerOf(u){return u?.rivalOwner|| (u?.team==='friendly'?-1:null)}
 function rarityCreditKill(owner,t){if(owner===-1){const a=abilityState();a.xp=Math.min(CONFIG.sim.integerLimit,a.xp+regionExperience(t));a.level=abilityLevelFor(a.xp);moaSyncLevelHP(state.mother);state.kills[t.zone]++;}else{const r=idMap.get(owner);if(r?.rivalLeader)rivalCredit(r,t)}}
 die=function(t,killer){if(!t||t.deadEffect)return;if(t.rarityUID){rarityKillOwned(t,killer);return}t.hp=0;t.deadEffect=true;t.pendingMelee=null;if(t.attackController&&t.attackController.phase!=='standard')cancelAttackPattern(t,'death');clearRetaliation(t);if(state.mother.captureAssist?.target===t.id)clearFinisherAssist();deathCapture(t,killer);const owner=rarityOwnerOf(killer);if(owner!==null&&owner!==rarityOwnerOf(t))rarityCreditKill(owner,t);
@@ -15521,7 +15626,7 @@ CONFIG.rarity.rival={
 };
 // Legacy spawn/shot/visual functions read this same configuration object.
 CONFIG.rivalMoa=CONFIG.rarity.rival;
-const rarityRivalCore={spawn,updateUnit,regrowCamps,reset,boot,moaBodyRadius,moaBodyMass};
+const rarityRivalCore={spawn,regrowCamps,reset,boot,moaBodyRadius,moaBodyMass};
 moaBodyRadius=function(u){return u?.rivalLeader?radius(u)*CONFIG.moaPhysics.motherBodyScale:rarityRivalCore.moaBodyRadius(u)};
 moaBodyMass=function(u){return u?.rivalLeader?CONFIG.moaPhysics.motherMass*(radius(u)/CONFIG.mother.size)**2:rarityRivalCore.moaBodyMass(u)};
 function rarityRivalConfig(){return CONFIG.rarity.rival}
@@ -15760,8 +15865,7 @@ rivalMove=function(u,t,dt){
  }
  u.moveSpeed=Math.hypot(u.x-oldX,u.y-oldY)/Math.max(dt,Number.EPSILON);u.movePhase=(u.movePhase||0)+u.moveSpeed*dt/CONFIG.combat.walkStride*Math.PI*2;spatialUnit(u,true);
 };
-updateUnit=function(u,dt,index){
- if(!u.rivalOwner)return rarityRivalCore.updateUnit(u,dt,index);
+function updateRivalUnitBehavior(u,dt){
  if(u.hp<=0||state.dead)return;spatialUnit(u,true);tickUnitStatus(u,dt);
  if(u.rivalLeader){moaSyncLevelHP(u);growthRegenerate(u,rivalGrowth(u),dt,u.maxHp)}
  if(u.stun>0||state.time<(u.aggroAt||0))return;
@@ -15792,7 +15896,7 @@ updateUnit=function(u,dt,index){
   else if(t&&u.cooldown<=0&&dist(u,t)<=effectiveRange(u)+radius(t))attack(u,t);
  }
  rivalMove(u,t,dt);
-};
+}
 /* Dead leaders retain their original ID, free level choices, and inventory. A
  * marked camp reservation prevents either duplication or a free wild reroll. */
 function rarityRivalDeath(u){
@@ -16119,9 +16223,9 @@ function rarityDrawFusion(){
  }
 }
 const rarityEffectsRender=render;render=function(...args){rarityEffectsRender(...args);if(!globalThis.BLOOM_HEADLESS&&rarityFusionVisuals.length)rarityDrawFusion()};
-const rarityEffectsAttack=attack;attack=function(u,t,contact=false,committed=null){const result=rarityEffectsAttack(u,t,contact,committed);if(rarityGrade(u)>=3&&(contact||!u.pendingMelee)&&raritySpendAccent()){const a=u.angle||0;addFx('line',u.x-Math.cos(a)*12,u.y-Math.sin(a)*12,u.x+Math.cos(a)*10,u.y+Math.sin(a)*10,CONFIG.rarity.gradeColors[rarityGrade(u)],0,CONFIG.rarity.effects.trailSeconds)}return result};
 
-const rarityImpactDamage=damage;damage=function(u,t,...args){const before=t?.hp,result=rarityImpactDamage(u,t,...args),grade=rarityGrade(u);if(grade>=4&&Number.isFinite(before)&&t?.hp<before&&raritySpendAccent()){const color=CONFIG.rarity.gradeColors[grade];addFx('burst',t.x,t.y,0,0,color,grade===5?10:6,.16);if(grade===5)addFx('line',t.x-6,t.y-6,t.x+6,t.y+6,color,0,.12)}return result};
+
+
 
 /* Automatic fusion uses the SAME transaction as manual fusion. This scheduler
  * owns no units, RNG, material selection, odds, failure loss, or resurrection.
@@ -16521,7 +16625,7 @@ showPause=function(){CombatAudio.clear();const result=combatBasePause(),button=d
 function soundCue(kind,u,extra={}){if(!bloomInTick||!u)return; // Bounded emission, independent of authority and visual visibility.
  const keys=bloomCurrentEffects.soundKeys||(bloomCurrentEffects.soundKeys=new Map()),key=kind+':'+(extra.family||'')+':'+(u.id===-1?'moa':u.team),distance=Math.hypot(u.x-state.mother.x,u.y-state.mother.y),old=keys.get(key),cue={kind,id:u.id,x:u.x,y:u.y,z:u.z||0,...extra};if(old){if(distance<old.distance){old.distance=distance;bloomCurrentEffects[old.index].args[0]=cue}return}keys.set(key,{distance,index:bloomCurrentEffects.length});bloomEmit('soundCue',[cue])}
 const soundLaunch=launchAbilityShot;launchAbilityShot=function(t,amount,opts={}){const result=soundLaunch(t,amount,opts);if(result&&!opts.secondary)soundCue('launch',opts.owner||state.mother,{family:CombatAudio.family(opts.weapon||'', '')});else if(result&&opts.auxiliary)soundCue('launch',opts.owner||state.mother,{family:CombatAudio.family(opts.weapon||'', '')});return result};
-const soundAttack=attack;attack=function(u,t,contact=false,committed=null){const r=soundAttack(u,t,contact,committed);if(contact||!u.pendingMelee)soundCue('launch',u,{family:CombatAudio.family(unitDef(u.type).projectile?'ranged':'melee',u.type)});return r};
+
 const soundBeginPattern=beginAttackPattern;beginAttackPattern=function(u,...args){const r=soundBeginPattern(u,...args);if(r)soundCue('warn',u);return r};
 const soundTickPattern=tickAttackPattern;tickAttackPattern=function(u){const before=u.attackController?.phase,r=soundTickPattern(u);if(before==='windup'&&u.attackController?.phase==='execute')soundCue('release',u);return r};
 const soundRoll=beginMoaRoll;beginMoaRoll=function(...args){const r=soundRoll(...args);if(r)soundCue('roll',state.mother);return r};
@@ -16613,8 +16717,7 @@ canTarget=function(u,t){if(!u||!t||!factionsHostile(u,t)||t.hp<=0||t.rivalLeader
 callNearbyAssist=function(v,t){const C=CONFIG.retaliation,a=v.aggro;a.called=true;if(v.boss)return;const room=enemyRoom(v),candidates=[];near(v.x,v.y,C.assistRadius[room],'enemy',h=>{if(!sameFaction(h,v)||h===v||h.boss||h.returning||h.target||h.aggro||!retaliationTarget(h,t))return;candidates.push(h)});candidates.sort((a,b)=>sqdist(v,a)-sqdist(v,b)||a.id-b.id);for(const h of candidates.slice(0,C.helpers[room]))engageEnemy(h,t,a.token,true)};
 // Replace precisely the retired rectangular retaliation layer. Its caller still
 // performs v51 special controllers, spatial rebasing, status and rarity updates.
-eliteCore.updateUnit=function(u,dt,index){
- if(u.hp<=0)return;if(u.team==='enemy'){
+function prepareWildUnitTurn(u,dt){
   const C=CONFIG.retaliation,H=CONFIG.campaign.hunting,room=enemyRoom(u),home=enemyHome(u);let a=u.aggro,t=idMap.get(u.target);
   if(sqdist(u,home)>H.leashRadius**2||t&&sqdist(t,home)>H.leashRadius**2){enemyReturn(u,true);a=u.aggro;t=null}
   if(!u.returning&&a){if(state.time>=a.until||!retaliationTarget(u,t,false)){enemyReturn(u);t=null}else{a.seen=state.time;a.x=t.x;a.y=t.y;a.search=false}}
@@ -16622,18 +16725,30 @@ eliteCore.updateUnit=function(u,dt,index){
   if(u.returning){u.target=0;u.pendingMelee=null;u.hx=home.x;u.hy=home.y;if(state.time-(u.lastDamageAt??a?.lastDamage??-99)>=C.healDelay)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*H.returnHeal*dt))}
   else if(!a&&!t&&state.time>=(u.wanderAt||0)){u.wanderAt=state.time+CONFIG.rectWorld.wanderMin+random()*(CONFIG.rectWorld.wanderMax-CONFIG.rectWorld.wanderMin);const angle=random()*Math.PI*2,r=Math.sqrt(random())*CONFIG.rectWorld.wanderRadius,p=openWorldPoint(home.x+Math.cos(angle)*r,home.y+Math.sin(angle)*r,moaBodyRadius(u));u.hx=p.x;u.hy=p.y}
   u.rectIdle=!t&&!a&&!u.returning;if(!u.returning&&!t&&!a&&state.time-u.combat>H.idleHealDelay&&state.time-(u.lastDamageAt??-99)>=C.healDelay)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*H.idleHealPercent*dt));
-  if(!a&&!t&&!u.returning&&room!==regionAt(state.mother.x,state.mother.y)&&dist(u,state.mother)>H.leashRadius){let nearby=false;near(u.x,u.y,H.leashRadius,null,f=>{if(factionsHostile(u,f)){nearby=true;return false}});if(!nearby){u.moveSpeed=0;return}}
-  core.updateUnit(u,dt,index);if(!u.aggro&&u.target){const target=idMap.get(u.target);if(retaliationTarget(u,target))engageEnemy(u,target,0,false,false)}
- }else core.updateUnit(u,dt,index);
- constrainWorld(u);integrateMoaImpulse(u,dt);
-};
+  if(!a&&!t&&!u.returning&&room!==regionAt(state.mother.x,state.mother.y)&&dist(u,state.mother)>H.leashRadius){let nearby=false;near(u.x,u.y,H.leashRadius,null,f=>{if(factionsHostile(u,f)){nearby=true;return false}});if(!nearby){u.moveSpeed=0;return false}}
+ return true;
+}
+// Wild preparation may sleep before status ticking. Normal locomotion owns
+// status/support and basic contacts; retaliation settles before the post-move
+// constraint and impulse. Its movement metrics intentionally exclude that
+// final impulse, preserving the ordinary-unit presentation contract.
+function updateOrdinaryUnitBehavior(u,dt,index){
+ if(u.hp<=0)return;
+ const wild=u.team==='enemy';
+ if(wild&&!prepareWildUnitTurn(u,dt))return;
+ updateOrdinaryUnitMovement(u,dt,index);
+ if(wild&&!u.aggro&&u.target){const target=idMap.get(u.target);if(retaliationTarget(u,target))engageEnemy(u,target,0,false,false)}
+ constrainWorld(u);
+ integrateMoaImpulse(u,dt);
+}
+
 patternCanStart=function(u,t,id){const d=AttackPatternRegistry[id],C=patternConfig(id,u);return rarityHasSpecial(u)&&!!d&&!!t&&t.hp>0&&u.hp>0&&canTarget(u,t)&&!u.returning&&u.order!=='return'&&u.stun<=0&&u.undeploy<=0&&dist(u,t)<=C.triggerRange&&(!d.canStart||d.canStart(u,t,C))};
 patternInterrupted=function(u,c){return state.dead||u.hp<=0||u.returning||u.stun>0||u.undeploy>0||u.order==='return'||!pointClear(c.x,c.y,0)||u.team==='enemy'&&!u.rivalOwner&&sqdist(u,enemyHome(u))>CONFIG.campaign.hunting.leashRadius**2};
 attackShapeTargets=function(source,origin,reach,_room,hitIDs,test,apply){const visit=t=>{if(!t||t.hp<=0||!factionsHostile(source,t)||hitIDs?.includes(t.id)||!test(t))return;if(hitIDs)hitIDs.push(t.id);apply(t)};visit(state.mother);near(origin.x,origin.y,reach+Math.max(maxTargetRadius,CONFIG.mother.size*4),null,visit)};
 patternMove=function(u,c,x,y){if(!pointClear(x,y,moaBodyRadius(u))){cancelAttackPattern(u,'blocked');return false}u.x=x;u.y=y;return true};
 patternJumpCanStart=function(u,t,C){if(spatialAir(u)!==0)return false;const n=Math.min(1,C.distance/Math.max(1,dist(u,t)));return pointClear(u.x+(t.x-u.x)*n,u.y+(t.y-u.y)*n,moaBodyRadius(u))};
 // Pattern registry stores function references for jump eligibility.
-for(const d of Object.values(AttackPatternRegistry))if(d.canStart&&/patternJumpCanStart/.test(String(d.canStart)))d.canStart=patternJumpCanStart;
+AttackPatternRegistry.jumpSlam.canStart=patternJumpCanStart;
 companionMovementPolicy=function(u){if(u?.team!=='friendly')return companionPolicies.follow;const far=dist(u,state.mother)>Math.max(CONFIG.motion.recallRadius,900);if(far)return companionPolicies.return;return u.rarityUID&&permanentHuntMode()==='hunt'?companionPolicies.hunt:companionPolicies.follow};
 refreshPermanentHuntIndex=function(){const I=permanentHuntIndex,room=regionAt(state.mother.x,state.mother.y);if(I.state===state&&I.room===room&&state.time<I.next)return I;I.state=state;I.room=room;I.next=state.time+CONFIG.permanentHunt.queryInterval;I.candidates.length=0;I.claims.clear();I.owners.clear();I.rebuilds++;for(const v of state.units){if(v.hp<=0)continue;if(v.team==='enemy'&&(regionAt(v.x,v.y)===room||dist(v,state.mother)<=900))I.candidates.push(v);else if(v.team==='friendly'&&v.rarityUID&&v.target){I.owners.set(v.id,v.target);I.claims.set(v.target,(I.claims.get(v.target)||0)+1)}}return I};
 autoHuntValid=function(t){return !!(t&&(regionAt(t.x,t.y)===autoHunt.room||dist(t,state.mother)<=900)&&moaSeedTarget(t,true))};
@@ -16722,8 +16837,8 @@ CONFIG.residentBoss={schema:1,id:'meadow-seedkeeper',name:'씨앗지기',species
  recallWarningMs:BLOOM_TIME.boss.recallWarningMs,returnSpeed:295,returnDamageMultiplier:1.15,recoveryMs:BLOOM_TIME.boss.recoveryMs,
  cooldownMs:BLOOM_TIME.boss.cooldownMs,damageScale:1}}
 ;
-const residentCore={reset,step,boot,load,recover,defeat,updateMoa,updateUnit,canTarget,moaSeedTarget,moaContact,
- autoHuntValid,attackPower,damage,die,conversionEligible,rarityOwnUnit,rarityHasSpecial,applyPointMove,
+const residentCore={reset,step,boot,load,recover,defeat,updateMoa,canTarget,moaSeedTarget,moaContact,
+ autoHuntValid,attackPower,die,conversionEligible,rarityOwnUnit,rarityHasSpecial,applyPointMove,
  setAutoHunt,engageEnemy,enemyReturn,retaliationTarget,radius,applyHealing,drawUnit,drawCampaignWorld,
  stepGroundArc,spatialProjectileTick,drawProjectedProjectile,patternCanStart,patternLoadout,patternConfig,
  rarityValidateState,drawAttackTelegraph,beginAttackPattern,armySpecialCooldown};
@@ -16867,14 +16982,14 @@ step=function(dt=CONFIG.sim.fixedStep,input=stick){const r=residentState();if(r&
  if(r.status==='dead'&&(r.respawnRemainingMs=bloomRemainingMs(r.respawnRemainingMs,bloomMs(dt)))===0)residentSpawn();
  }const result=residentCore.step(dt,input);if(r&&state.dead&&r.status==='engaged')residentReturn('owner-dead');return result};
 updateMoa=function(...args){residentTryEntry();return residentCore.updateMoa(...args)};
-updateUnit=function(u,dt,index){return residentIs(u)?residentUpdate(u,dt):residentCore.updateUnit(u,dt,index)};
+
 applyPointMove=function(...args){const result=residentCore.applyPointMove(...args),r=residentState();if(r&&bloomInTick&&pointNav.goal){r.manualPoint=true;r.manualRoll=!!args[2]&&(state.mother.rollRemainingMs||0)>0;r.manualIntent={kind:'point',tick:r.tick,x:pointNav.goal.x,y:pointNav.goal.y}}return result};
 setAutoHunt=function(enabled){if(enabled&&residentState()){residentState().manualPoint=false;residentState().manualRoll=false;}return residentCore.setAutoHunt(enabled)};
 canTarget=function(u,t){if(residentIs(u)||residentIs(t))return residentCanFight(u,t)&&u?.hp>0&&t?.hp>0&&wallClear(u,t);return residentCore.canTarget(u,t)};
 moaSeedTarget=function(t,...args){return (!residentIs(t)||residentCanFight(state.mother,t))&&residentCore.moaSeedTarget(t,...args)};
 moaContact=function(t,...args){return (!residentIs(t)||residentCanFight(state.mother,t))&&residentCore.moaContact(t,...args)};
 autoHuntValid=function(t){return !residentIs(t)&&residentCore.autoHuntValid(t)};
-damage=function(u,t,...args){if((residentIs(u)||residentIs(t))&&!residentCanFight(u,t))return 0;return residentCore.damage(u,t,...args)};
+
 attackPower=function(u){return residentIs(u)?rarityStats(u.type,rarityGrade(u)).attack*CONFIG.residentBoss.attackMultiplier:residentCore.attackPower(u)};
 applyHealing=function(u,nextHP){if(residentIs(u))return 0;return residentCore.applyHealing(u,nextHP)};
 die=function(u,killer){return residentIs(u)?residentDie(u,killer):residentCore.die(u,killer)};
@@ -16948,7 +17063,7 @@ CONFIG.visibleHunt={schema:1,quantum:8,maxExtent:8192,defaultWidth:360,defaultHe
  rivalWidth:960,rivalHeight:720,edgePixelsX:46,edgePixelsY:90,huntPixels:28,
  maxElevation:320,returnJoinRadius:80};
 const visibleHuntFields=['halfWidth','halfHeight','insetX','insetY','huntInset'];
-const visibleHuntCore={reset,boot,rarityValidateState,canTarget,findTarget,updateUnit,companionMovementPolicy,patternCanStart,rivalTarget};
+const visibleHuntCore={reset,boot,rarityValidateState,canTarget,findTarget,companionMovementPolicy,patternCanStart,rivalTarget};
 function visibleHuntQuantize(n,up=false){const q=CONFIG.visibleHunt.quantum;return Math.max(q,(up?Math.ceil(n/q):Math.floor(n/q))*q)}
 function visibleHuntFromViewport(width,height,owner=state.mother){
  const C=CONFIG.visibleHunt,w=clamp(Number.isFinite(width)?width:C.defaultWidth,160,16384),h=clamp(Number.isFinite(height)?height:C.defaultHeight,160,16384),zoom=moaCameraZoom(owner,w);
@@ -17041,13 +17156,7 @@ rivalTarget=function(u,reach){
  const t=visibleHuntCore.rivalTarget(u,reach);return t&&visibleHuntInside(t,owner,true)?t:null;
 };
 patternCanStart=function(u,t,id){const owner=visibleHuntOwner(u);return (!owner||!u.visibleHuntReturn&&visibleHuntInside(u,owner,false)&&visibleHuntInside(t,owner,true))&&visibleHuntCore.patternCanStart(u,t,id)};
-updateUnit=function(u,dt,index){
- const owner=u.hp>0?visibleHuntOwner(u):null;
- if(owner)visibleHuntUpdateLeash(u,owner);
- const result=visibleHuntCore.updateUnit(u,dt,index);
- if(owner&&u.hp>0&&!visibleHuntCommitted(u)&&visibleHuntNeedsReturn(u,owner))visibleHuntMarkReturn(u);
- return result;
-};
+
 reset=function(...args){const result=visibleHuntCore.reset(...args);visibleHuntApply(visibleHuntFromViewport(CONFIG.visibleHunt.defaultWidth,CONFIG.visibleHunt.defaultHeight,result.mother));return result};
 rarityValidateState=function(v,...args){
  const h=v?.campaign?.huntView;
@@ -17289,7 +17398,13 @@ moveToward=function(u,x,y,speed,dt){const p=ThemedTerrain.safePoint(x,y,moaBodyR
 integrateMoaImpulse=function(u,dt){if(!dt||!u.impactVX&&!u.impactVY)return;const p=CONFIG.moaPhysics,decay=Math.exp(-p.impulseDrag*dt),travel=(1-decay)/p.impulseDrag;ThemedTerrain.move(u,(u.impactVX||0)*travel,(u.impactVY||0)*travel,moaBodyRadius(u));u.impactVX*=decay;u.impactVY*=decay;if(Math.hypot(u.impactVX,u.impactVY)<p.impulseStopSpeed)u.impactVX=u.impactVY=0};
 moveMoaBody=function(dt,ix,iy){const m=state.mother,C=CONFIG.moaRoll,rolling=m.rollRemainingMs>0;if(rolling){const speed=C.distance/bloomSeconds(C.durationMs);ix=m.rollX;iy=m.rollY;m.moveX=ix;m.moveY=iy;if(!(m.stun>0))ThemedTerrain.move(m,ix*speed*dt,iy*speed*dt,moaBodyRadius(m));m.rollPose=1-bloomRemainingMs(m.rollRemainingMs,bloomStepMs())/C.durationMs}else{if(ix||iy)m.angle=Math.atan2(iy,ix);if(!(m.stun>0))bloomMoaSweptMove(m,ix*moaWalkSpeed()*dt,iy*moaWalkSpeed()*dt,moaBodyRadius(m),!!pointNav.goal||autoHunt.enabled)}m.stun=Math.max(0,(m.stun||0)-dt);integrateMoaImpulse(m,dt);constrainWorld(m)};
 pointRoute=function(goal){if(!Number.isFinite(goal?.x)||!Number.isFinite(goal?.y))return null;return[openWorldPoint(goal.x,goal.y,moaBodyRadius(state.mother))]};
-patternMove=function(u,c,x,y){let blocked;if(c.pattern==='jumpSlam'&&c.phase==='execute'){const C=patternConfig('jumpSlam',u),q=1-c.remainingMs/c.durationMs,z=Math.max(spatialGround(x,y),c.fromZ+(c.z-c.fromZ)*q+Math.sin(Math.PI*q)*C.height)+c.baseAir;blocked=ThemedTerrain.projectileHit({x:u.x,y:u.y,z:u.z},{x,y,z},moaBodyRadius(u))||c.remainingMs===0&&!pointClear(x,y,moaBodyRadius(u))}else blocked=ThemedTerrain.sweep(u.x,u.y,x,y,moaBodyRadius(u))||!pointClear(x,y,moaBodyRadius(u));if(blocked){cancelAttackPattern(u,'blocked');return false}u.x=u.worldX=x;u.y=u.worldY=y;spatialUnit(u,true);return true};
+function patternJumpMotionBlocked(u,c,x,y){const C=patternConfig(c.pattern,u),q=1-c.remainingMs/c.durationMs,z=Math.max(spatialGround(x,y),c.fromZ+(c.z-c.fromZ)*q+Math.sin(Math.PI*q)*C.height)+c.baseAir;return ThemedTerrain.projectileHit({x:u.x,y:u.y,z:u.z},{x,y,z},moaBodyRadius(u))||c.remainingMs===0&&!pointClear(x,y,moaBodyRadius(u))}
+AttackPatternRegistry.jumpSlam.motionBlocked=patternJumpMotionBlocked;
+patternMove=function(u,c,x,y){
+ const motionBlocked=AttackPatternRegistry[c.pattern]?.motionBlocked;
+ const blocked=c.phase==='execute'&&motionBlocked?motionBlocked(u,c,x,y):ThemedTerrain.sweep(u.x,u.y,x,y,moaBodyRadius(u))||!pointClear(x,y,moaBodyRadius(u));
+ if(blocked){cancelAttackPattern(u,'blocked');return false}u.x=u.worldX=x;u.y=u.worldY=y;spatialUnit(u,true);return true;
+};
 spawn=function(type,team,x,y,opts={}){const pad=type==='mother'?CONFIG.mother.size:(CONFIG.units[type]?.size||20)*(opts.boss?CONFIG.combat.eliteSize:1),p=ThemedTerrain.safePoint(x,y,pad+4),u=themedCore.spawn(type,team,p.x,p.y,opts);if(u)constrainWorld(u);return u};
 // Traversal and line-of-fire are separate: water blocks feet but no flying seed.
 let themedProjectileContext=null;
@@ -17895,7 +18010,7 @@ function bloomPresentationCandidate(u){
  return Math.abs(u.x-view.x)<=view.w/2+extent&&Math.abs(py-view.y*WorldProjection.K)<=view.h*WorldProjection.K/2+extent;
 }
 
-const bloomCore={step,reset,load,save,boot,damage,performRoll,ensureGrowthDraft,ensureAbilityDraft,chooseGrowth,chooseAbility,unlockParcel,setAutoHunt,setPermanentHuntMode,recover,compressPermanent,showUpgrades,showAbilityChoices};
+const bloomCore={step,reset,load,save,boot,performRoll,ensureGrowthDraft,ensureAbilityDraft,chooseGrowth,chooseAbility,unlockParcel,setAutoHunt,setPermanentHuntMode,recover,compressPermanent,showUpgrades,showAbilityChoices};
 function bloomEmit(type,args){
  if(type==='addFx'){const p=args[8]||{};args[8]={...p,z:p.z??spatialAt(args[1],args[2]),z2:p.z2??spatialAt(args[3],args[4])};}
  const entity=args.find(v=>v&&typeof v==='object'&&Number.isSafeInteger(v.id))?.id??0;
@@ -18029,7 +18144,7 @@ showUpgrades=function(){if(bloomInTick){bloomEmit('showCards',[]);return}return 
 showAbilityChoices=function(){if(bloomInTick){bloomEmit('showAbilityChoices',[]);return}if(pendingAbility()&&!abilityState()?.draft)return bloomQueue('abilityDraft');return bloomCore.showAbilityChoices()};
 // Timestamp is disk metadata; changing storage availability cannot change a tick.
 save=function(){if(bloomInTick||bloomInitializing){bloomPersistenceRequested=true;return true}if(globalThis.BLOOM_HEADLESS)return true;try{const disk=bloomSnapshotStore.disk();localStorage.setItem(CONFIG.saveKey,disk);bloomPersistenceRequested=false;return true}catch{return false}};
-damage=function(u,t,...args){if(!bloomInTick)return bloomCore.damage(u,t,...args);const before=t?.hp,shield=t?.shield,result=bloomCore.damage(u,t,...args);if(t&&before>0&&(t.hp<before||shield>0&&!t.shield))bloomEmit('healthDamage',[t,before,Math.max(0,before-t.hp),u?.type==='mother'&&u?.team==='friendly',!!u?.hitCritical,{attacker:u?.id,kind:combatEventKind||args[1]||'melee',angle:u?Math.atan2(t.y-u.y,t.x-u.x):0}]);return result};
+
 function bloomPresentDamage(p,before,lost,outgoing,critical,meta){CombatFeedback.hit(p,lost,outgoing,critical,meta);const t=idMap.get(p.id)||p;healthEnsureState();const b=t.id===-1?healthJuice.hud:healthJuice.bars.get(t)||healthCreate(t,before);healthHit(b,t,before);if(t.id!==-1&&t.hp>0)healthJuice.bars.set(t,b);const received=t.id===-1;hitfeelEmit(t,lost,received?'moa-hurt':outgoing?(critical?'moa-critical':'moa-hit'):t.team==='enemy'?'army-hit':'army-hurt',!lost,p);if(lost&&(received||outgoing)&&hitfeelOnscreen(t.x,t.y))hitfeelImpulse(received,critical);}
 // Only committed SDK effects enter the shared journal. Provisional tick effects
 // stay in the existing rollback transaction staging map until confirmed.
