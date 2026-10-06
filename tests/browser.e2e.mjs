@@ -8,7 +8,7 @@ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const fixtureBranch=`if (m.type === '__fixture') {
  clearTimeout(timer);bloomSession.close();manualClock=true;
  (0,eval)(m.source);rebuildGrid();spatialBoundary();boundary();playing=true;paused=false;modalKind='';publish(true);reply(m.id,true);return;
-} else if(m.type==='__read'){reply(m.id,(0,eval)(m.expression));return;}
+} else if(m.type==='__read'){reply(m.id,(0,eval)(m.expression));return;} else if(m.type==='__clock'){manualClock=!!m.manual;deadline=performance.now()+1000/CONFIG.sim.tickRate;schedule();reply(m.id,true);return;}
 `;
 let instrumented=html.replace("      if (!initialized || fatal) throw new Error('Worker is not available');", "      if (!initialized || fatal) throw new Error('Worker is not available');\n"+fixtureBranch)
  .replace('  function controls(force = false) {','  globalThis.__budmoriTest={request};globalThis.__qaGestures=[];\n  function controls(force = false) {')
@@ -36,12 +36,19 @@ try{
  await page.keyboard.press('Escape');await page.waitForFunction(()=>__army.paused);await page.keyboard.press('Escape');await page.waitForFunction(()=>!__army.paused);report.checks.push('Escape closes paused modal despite focused UI button');
  await page.mouse.dblclick(750,500,{delay:50});await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);await page.waitForFunction(()=>__army.state.mother.rollCooldownMs>0,null,{timeout:10000});
  assert(await page.evaluate(()=>__army.state.mother.rollCooldownMs>0));report.checks.push('Double-click moves and rolls through Worker command queue');
- await page.locator('#pause').click();await page.waitForFunction(()=>__army.paused);await page.keyboard.press('Escape');await page.waitForFunction(()=>!__army.paused);const focusX=await page.evaluate(()=>__army.state.mother.x);await page.keyboard.down('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));assert(await page.evaluate(x=>__army.state.mother.x>x+10,focusX));report.checks.push('Persistent pause-button focus cannot swallow WASD after Escape resume');
+ await fixture(`clearMoaRoll(state.mother);clearPointNav();setAutoHunt(false);`);
+ await page.locator('#pause').click();await page.waitForFunction(()=>__army.paused);await page.keyboard.press('Escape');await page.waitForFunction(()=>!__army.paused);const focusX=await page.evaluate(()=>__army.state.mother.x);await page.keyboard.down('KeyD');assert(await page.evaluate(()=>keys.has('KeyD')),'Focused-button regression must observe the real held action');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));assert(await page.evaluate(x=>__army.state.mother.x>x+10,focusX));report.checks.push('Persistent pause-button focus cannot swallow WASD after Escape resume');
  await fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}for(const u of state.units)if(u.team==='enemy'){u.stun=100000;u.aggroAt=u.wanderAt=state.time+100000}globalThis.qaEnemy=spawn('swordsman','enemy',state.mother.x+65,state.mother.y,{camp:0,rarityGrade:1});qaEnemy.stun=100000;`);
  const enemyId=await read('qaEnemy.id');const hp=await read('qaEnemy.hp');await tick(12);assert((await read(`idMap.get(${enemyId})?.hp??0`))<hp);report.checks.push('Actual combat advances and damage presentation renders');
  await page.evaluate(()=>__army.setPaused(true));
  const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'bloom-snapshot-disk-v3');
  const bad={...saveObject,byteLength:saveObject.byteLength+1};assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),JSON.stringify(bad)),false);assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),save),true);report.checks.push('Canonical save/load succeeds; corrupt metadata rejected');await page.evaluate(()=>__army.setPaused(false));
+ await fixture(`globalThis.qaRealtime=spawn('swordsman','enemy',state.mother.x+65,state.mother.y,{camp:0,rarityGrade:3});qaRealtime.stun=100000;`);
+ const realBefore=await read('({tick:bloomTick,time:state.time,hp:qaRealtime.hp})');
+ await page.evaluate(()=>__budmoriTest.request('__clock',{manual:false}));
+ await page.waitForFunction(t=>__army.state.time>t+.6,realBefore.time,{timeout:15000});
+ await page.evaluate(()=>__budmoriTest.request('__clock',{manual:true}));
+ const realAfter=await read('({tick:bloomTick,time:state.time,hp:qaRealtime.hp})');assert(realAfter.tick>realBefore.tick&&realAfter.hp<realBefore.hp);report.normalClockCombat={before:realBefore,after:realAfter};report.checks.push('Normal production setTimeout scheduler advances combat while actual WebGL/RAF renders');
  await fixture(`state.mother.hp=1;state.mother.stun=10;globalThis.qaKiller=spawn('swordsman','enemy',state.mother.x+20,state.mother.y,{camp:0,rarityGrade:5});qaKiller.aggroAt=0;qaKiller.cooldown=0;`);await tick(20);await page.waitForFunction(()=>__army.state.dead);await page.locator('[data-action="recover"]').click();await tick(1);await page.waitForFunction(()=>!__army.state.dead);report.checks.push('Death and requested revival complete through UI/Worker');
  const dense=await readFile(new URL('./dense-fixture.js',import.meta.url),'utf8');await fixture(dense);await tick(5);
  const count=await page.evaluate(()=>__army.state.units.filter(u=>u.team==='friendly'&&u.hp>0).length);assert.equal(count,155);
