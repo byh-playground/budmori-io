@@ -96,7 +96,10 @@ try{
   // Opposing real keyboard inputs produce neutral manual intent, preventing
   // auto-hunt steering from evading this deliberately lethal test encounter.
   await mobile.keyboard.down('KeyW');await mobile.keyboard.down('KeyS');await mobile.evaluate(()=>advanceSimulationClock(.016));
-  await mobileTick(cycle?80:20);await mobile.keyboard.up('KeyW');await mobile.keyboard.up('KeyS');
+  // Attack selection and windups vary by the game's seed. Observe actual death
+  // in bounded combat batches instead of assuming the native seed's first1s hit.
+  for(let batch=0;batch<8&&!await mobile.evaluate(()=>__army.state.dead);batch++)await mobileTick(20);
+  await mobile.keyboard.up('KeyW');await mobile.keyboard.up('KeyS');
   console.log('MOBILE_RECOVERY_CYCLE',JSON.stringify({cycle,main:await mobile.evaluate(()=>({hp:__army.state.mother.hp,dead:__army.state.dead,paused:__army.paused,modal:modalKind,frame:__army.performance.frames})),worker:await mobileRequest('inspect')}));
   await mobile.waitForFunction(()=>__army.state.dead);
   const frames=await mobile.evaluate(()=>__army.performance.frames);await mobile.locator('[data-action="recover"]').click();
