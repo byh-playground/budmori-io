@@ -60,3 +60,9 @@ assert.equal(e.run("qaDeviceOptions.excludeTarget(null,{})"),false,'Another play
 e.run("WorldPlayers.data(WorldPlayers.get('peer')).dead=true");
 assert.equal(e.run("qaDeviceOptions.excludeTarget(null,{code:'KeyD'})"),true,'Local death excludes device input');
 console.log('PASS actual device policy remains local when the primary participant dies');
+
+e.run("WorldPlayers.data(WorldPlayers.get('peer')).dead=false;WorldView.auto().enabled=true;document.visibilityState='visible'");
+assert.equal(e.run('screenAwakeEligible()'),true,'Living local auto hunt retains wake eligibility after another player dies');
+e.run("WorldPlayers.data(WorldPlayers.get('peer')).dead=true");
+assert.equal(e.run('screenAwakeEligible()'),false,'Local death releases wake eligibility');
+console.log('PASS screen wake eligibility follows the local participant');

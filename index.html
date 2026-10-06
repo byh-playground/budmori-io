@@ -9520,7 +9520,7 @@ boot=function(){
 // A single async pump serializes request/release, including stale request results.
 const screenAwake={wanted:false,revision:0,attempt:-1,held:null,busy:false,status:'off',pageHidden:false};
 const screenAwakeCore={boot,refreshAutoHunt,closeModal};
-function screenAwakeEligible(){return !!(autoHunt.enabled&&playing&&!state.dead&&state.mother.hp>0&&(!paused||['growth','ability'].includes(modalKind))&&!screenAwake.pageHidden&&document.visibilityState==='visible')}
+function screenAwakeEligible(){return !!(WorldView.auto().enabled&&playing&&!WorldView.dead()&&WorldView.leader().hp>0&&(!paused||['growth','ability'].includes(modalKind))&&!screenAwake.pageHidden&&document.visibilityState==='visible')}
 function renderScreenAwake(){}
 function syncScreenAwake(retry=false){
  const wanted=screenAwakeEligible();
@@ -19275,8 +19275,29 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){CombatAudi
 const soundOpenModal=openModal;openModal=function(...args){if(!bloomInTick){for(const [k,q]of CombatAudio.queue)if(q.priority<70)CombatAudio.queue.delete(k);for(const s of CombatAudio.slots)if(s.active&&s.priority<70)CombatAudio.stopSlot(s)}return soundOpenModal(...args)};
 const combatBasePause=showPause;
 showPause=function(){CombatAudio.clear();const result=combatBasePause(),button=document.createElement('button');button.type='button';button.className='small';const label=()=>{button.textContent=CombatAudio.enabled?'효과음 · 켜짐':'효과음 · 꺼짐';button.setAttribute('aria-pressed',String(CombatAudio.enabled))};label();button.addEventListener('click',e=>{CombatAudio.set(!CombatAudio.enabled);CombatAudio.unlock(e);label()});$('sheet').appendChild(button);const labelVolume=document.createElement('label');labelVolume.textContent='효과음 크기 ';const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.value=String(Math.round(CombatAudio.volume*100));slider.setAttribute('aria-label','효과음 크기');slider.addEventListener('input',()=>CombatAudio.setVolume(+slider.value/100));labelVolume.appendChild(slider);$('sheet').appendChild(labelVolume);return result};
-function soundCue(kind,u,extra={}){if(!bloomInTick||!u)return; // Bounded emission, independent of authority and visual visibility.
- const keys=bloomCurrentEffects.soundKeys||(bloomCurrentEffects.soundKeys=new Map()),key=kind+':'+(extra.family||'')+':'+(u.id===-1?'moa':u.team),distance=Math.hypot(u.x-state.mother.x,u.y-state.mother.y),old=keys.get(key),cue={kind,id:u.id,x:u.x,y:u.y,z:u.z||0,...extra};if(old){if(distance<old.distance){old.distance=distance;bloomCurrentEffects[old.index].args[0]=cue}return}keys.set(key,{distance,index:bloomCurrentEffects.length});bloomEmit('soundCue',[cue])}
+function soundCue(kind,u,extra={}) {
+ if(!bloomInTick||!u)return;
+ const keys=bloomCurrentEffects.soundKeys||(bloomCurrentEffects.soundKeys=new Map());
+ const personal=['fusion','fusionFail','level','death','revive','roll','land'].includes(kind);
+ const sourcePlayer=WorldPlayers.forEntity(u),cue={kind,id:u.id,x:u.x,y:u.y,z:u.z||0,...extra};
+ for(const listener of WorldPlayers.all()) {
+  if(listener.lifecycle!=='active')continue;
+  const self=u.id===listener.leader.id;
+  if(personal&&!self)continue;
+  const lane=self?'self':sourcePlayer?.playerId===listener.playerId?'allied':'hostile';
+  const key=JSON.stringify([listener.playerId,kind,extra.family||'',lane]);
+  const distance=(u.x-listener.leader.x)**2+(u.y-listener.leader.y)**2;
+  const old=keys.get(key);
+  if(old) {
+   if(distance<old.distance||distance===old.distance&&u.id<old.entityId) {
+    old.distance=distance;old.entityId=u.id;bloomCurrentEffects[old.index].args[0]=cue;
+   }
+   continue;
+  }
+  keys.set(key,{distance,entityId:u.id,index:bloomCurrentEffects.length});
+  bloomEmitTo(listener.playerId,'soundCue',[cue]);
+ }
+}
 const soundLaunch=launchAbilityShot;launchAbilityShot=function(t,amount,opts={}){const result=soundLaunch(t,amount,opts);if(result&&!opts.secondary)soundCue('launch',opts.owner||state.mother,{family:CombatAudio.family(opts.weapon||'', '')});else if(result&&opts.auxiliary)soundCue('launch',opts.owner||state.mother,{family:CombatAudio.family(opts.weapon||'', '')});return result};
 
 const soundBeginPattern=beginAttackPattern;beginAttackPattern=function(u,...args){const r=soundBeginPattern(u,...args);if(r)soundCue('warn',u);return r};
@@ -19284,8 +19305,16 @@ const soundTickPattern=tickAttackPattern;tickAttackPattern=function(u){const bef
 const soundRoll=beginMoaRoll;beginMoaRoll=function(...args){const r=soundRoll(...args);if(r)soundCue('roll',state.mother);return r};
 const soundStep=step;step=function(...args){const roll=state.mother.rollRemainingMs,level=abilityState()?.level,dead=state.dead;const r=soundStep(...args);if(roll>0&&!state.mother.rollRemainingMs&&!state.dead)soundCue('land',state.mother);if(abilityState()?.level>level)soundCue('level',state.mother);if(!dead&&state.dead)soundCue('death',state.mother);return r};
 const soundRecover=recover;recover=function(...args){const dead=state.dead,r=soundRecover(...args);if(dead&&!state.dead)soundCue('revive',state.mother);return r};
-const soundAcquire=rarityAcquire;rarityAcquire=function(owner,type,grade,...args){const r=soundAcquire(owner,type,grade,...args);if(r&&owner===-1)soundCue('recruit',state.mother,{grade});return r};
-const soundRespawn=rarityRespawn;rarityRespawn=function(account,record){const body=record.body,r=soundRespawn(account,record);if(r&&account.owner===-1)soundCue('unitRevive',body);return r};
+const soundAcquire=rarityAcquire;rarityAcquire=function(owner,type,grade,...args) {
+ const result=soundAcquire(owner,type,grade,...args),player=WorldPlayers.byAccount(owner);
+ if(result&&player)soundCue('recruit',player.leader,{grade});
+ return result;
+};
+const soundRespawn=rarityRespawn;rarityRespawn=function(account,record) {
+ const body=record.body,result=soundRespawn(account,record);
+ if(result&&WorldPlayers.byAccount(account.owner))soundCue('unitRevive',body);
+ return result;
+};
 
 'use strict';
 /* BLOOM open landscape. Rectangles below are population accounting only.

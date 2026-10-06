@@ -11,10 +11,11 @@ import sharedHarness from './shared-harness.cjs';
 // and verifies real Nostr events, and native Chromium RTCPeerConnections carry all
 // game inputs, admission snapshots, and catch-up. No mock peer/byte transport,
 // public relay, STUN service, user identity, or real account credential is used.
+const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID();
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
  environment:'Chromium / SwiftShader WebGL; five independent tabs; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production SDK timer + RAF',
- limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter.'],checks:[],checkpoints:[],screenshots:[]};
+ limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
@@ -63,7 +64,7 @@ const fixture=String.raw`
  qa.inspect=()=>{
   const session=BloomSimulation.session,local=WorldPlayers.local(),stats=local?currentMoaStats():null;
   return{phase:PublicSession.phase,tick:BloomSimulation.tick,time:state.time,sessionId:session.sessionId,localId:session.localPlayerId,coordinator:session.coordinatorId,epoch:session.epoch,roster:[...session.players],ready:session.ready,closed:session.closed,status:session.status,failure:session.failure??null,
-   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,
+   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,input:qa.lastInputs,events:qa.events.slice(-20)};
@@ -80,64 +81,76 @@ const server=createServer((req,res)=>{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`,pages=[],errors=[],unexpectedNetwork=[];
 let browser,context;
-const read=page=>page.evaluate(()=>__sharedBrowser.inspect());
+const lastKnownStates=new Map();
+function timing(stage,status,data={}){const row={at:new Date().toISOString(),elapsedMs:Math.round(performance.now()-runStarted),stage,status,...data};report.timings.push(row);console.log('BROWSER_STAGE '+JSON.stringify(row));return row}
+async function bounded(promise,timeoutMs,label){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label+' exceeded '+timeoutMs+'ms observation deadline')),timeoutMs)})])}finally{clearTimeout(timer)}}
+const evaluate=(page,fn,arg,label='evaluate',timeoutMs=10000)=>bounded(page.evaluate(fn,arg),timeoutMs,'page '+(pages.indexOf(page)+1)+' '+label);
+const read=async page=>{const state=await evaluate(page,()=>__sharedBrowser.inspect(),undefined,'read state');lastKnownStates.set(page,state);return state};
+const phaseSummary=state=>({phase:state.phase,mode:state.mode,tick:state.tick,ready:state.ready,roster:state.roster.length,performance:state.performance});
+async function phase(label,operation){const start=performance.now();timing(label,'begin');try{const result=await operation();timing(label,'complete',{durationMs:Math.round(performance.now()-start)});return result}catch(error){timing(label,'failed',{durationMs:Math.round(performance.now()-start),error:error.message});throw error}}
+async function samplePhase(label,active){const states=await Promise.all(active.map(read));timing(label,'state',{pages:states.map((state,index)=>({page:pages.indexOf(active[index])+1,...phaseSummary(state)}))});return states}
 const player=(state,id)=>{const found=state.players.find(p=>p.id===id);assert(found,'Missing participant '+id);return found};
-const record=(label,data)=>{report.checks.push(label);console.log('PASS '+label+(data?' '+JSON.stringify(data):''))};
+const record=(label,data)=>{report.checks.push(label);console.log('PASS '+label+' '+JSON.stringify({at:new Date().toISOString(),elapsedMs:Math.round(performance.now()-runStarted),...(data?{details:data}:{})}))};
 async function until(predicate,label,timeoutMs=60000){
  const end=Date.now()+timeoutMs;
- while(!await predicate()){
+ for(;;){
+  const remaining=end-Date.now();if(remaining<=0)throw Error(label+' timed out');
+  const matches=await bounded(Promise.resolve().then(predicate),remaining,label);
   assert.deepEqual(errors,[],'Browser page/console errors');assert.deepEqual(unexpectedNetwork,[],'Fixture attempted external networking');
-  if(Date.now()>end)throw Error(label+' timed out');
-  await new Promise(resolve=>setTimeout(resolve,100));
+  if(matches)return;
+  await new Promise(resolve=>setTimeout(resolve,Math.min(100,Math.max(0,end-Date.now()))));
  }
 }
 async function addPage(){
- const page=await context.newPage(),number=pages.length+1;pages.push(page);
+ const number=pages.length+1,page=await phase('page '+number+' create',()=>context.newPage());pages.push(page);
  page.on('pageerror',error=>errors.push({page:number,type:'pageerror',message:error.message}));
  page.on('console',message=>{if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
- await page.goto(base+'/public',{waitUntil:'load'});
- await page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});
- assert.equal(await page.evaluate(()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Embedded SDK must include public-room API; --sdk is only a development override');
- assert.equal((await read(page)).backend,'WebGL');return page;
+ await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'load'}));
+ await phase('page '+number+' boot/first WebGL frames',()=>page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000}));
+ assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Embedded SDK must include public-room API; --sdk is only a development override');
+ assert.equal((await read(page)).backend,'WebGL');await samplePhase('page '+number+' booted',[page]);return page;
 }
 async function ready(active,count=active.length){
- await until(async()=>{
+ await phase('ready '+count+' participants',()=>until(async()=>{
   const states=await Promise.all(active.map(read));
   for(const state of states){assert(!state.fatal&&!state.failure,JSON.stringify(state));assert.notEqual(state.phase,'failed',JSON.stringify(state))}
   return states.every(state=>state.phase==='playing'&&state.ready&&state.roster.length===count)&&new Set(states.map(state=>state.sessionId)).size===1;
- },count+' participants commit the same room');
+ },count+' participants commit the same room'));
+ await samplePhase('ready '+count+' participants',active);
 }
-async function ticks(active,count){const target=Math.max(...(await Promise.all(active.map(read))).map(s=>s.tick))+count;await until(async()=>(await Promise.all(active.map(read))).every(s=>s.tick>=target&&!s.failure),'production ticks reach '+target);return target}
+async function ticks(active,count){const target=Math.max(...(await Promise.all(active.map(read))).map(s=>s.tick))+count;await phase('production ticks reach '+target,()=>until(async()=>(await Promise.all(active.map(read))).every(s=>s.tick>=target&&!s.failure),'production ticks reach '+target));return target}
 async function checkpoint(active,label){
  await ready(active);
  // Observe future completed boundaries. The test never pauses, advances, edits,
  // or replaces a running session to make peer states appear equal.
  const target=Math.max(...(await Promise.all(active.map(read))).map(s=>s.tick))+20;
- await Promise.all(active.map(page=>page.evaluate(t=>{if(BloomSimulation.tick>=t)throw Error('Capture target was missed');__sharedBrowser.wanted.add(t)},target)));
- await until(async()=>(await Promise.all(active.map(page=>page.evaluate(t=>__sharedBrowser.checkpoints.has(t),target)))).every(Boolean),'capture '+label);
- const captured=await Promise.all(active.map(page=>page.evaluate(t=>__sharedBrowser.checkpoints.get(t),target)));
+ await Promise.all(active.map(page=>evaluate(page,t=>{if(BloomSimulation.tick>=t)throw Error('Capture target was missed');__sharedBrowser.wanted.add(t)},target)));
+ await until(async()=>(await Promise.all(active.map(page=>evaluate(page,t=>__sharedBrowser.checkpoints.has(t),target)))).every(Boolean),'capture '+label);
+ const captured=await Promise.all(active.map(page=>evaluate(page,t=>__sharedBrowser.checkpoints.get(t),target)));
  assert.equal(new Set(captured.map(s=>s.epoch)).size,1,'Checkpoint membership epochs');
  for(const state of captured){assert.equal(state.schema,'bloom-webgl-shared-ms-v3');assert.deepEqual(Buffer.from(state.bytes),Buffer.from(captured[0].bytes),'Full canonical bytes differ at '+label)}
  report.checkpoints.push({label,tick:target,epoch:captured[0].epoch,players:active.length,hash:captured[0].hash,bytes:captured[0].bytes.length});
 }
-async function screenshot(page,name){const path=new URL('./'+name,import.meta.url).pathname;await page.screenshot({path});report.screenshots.push(name)}
+async function screenshot(page,name,timeout){const path=new URL('./'+name,import.meta.url).pathname;await phase('screenshot '+name,()=>page.screenshot({path,...(timeout?{timeout}:{})}));report.screenshots.push(name)}
+async function startPublic(page){const number=pages.indexOf(page)+1;await phase('page '+number+' Public Start click',()=>page.locator('[data-action="start"]').click());}
 try{
- browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
- context=await browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1});
+ browser=await phase('Chromium launch',()=>chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
+ context=await phase('browser context',()=>browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1}));
+ await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
  await context.routeWebSocket('**/*',socket=>{unexpectedNetwork.push(socket.url());return socket.close()});
  const host=await addPage();
- const soloBefore=await host.evaluate(()=>localStorage.getItem(CONFIG.saveKey));
- await host.locator('[data-action="start"]').click();await ready([host]);await ticks([host],4);
+ const soloBefore=await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey));
+ await startPublic(host);await ready([host]);await ticks([host],4);
  const initial=await read(host),hostId=initial.localId;
  assert.equal(initial.mode,'online');assert.equal(initial.persistence,false);assert.equal(initial.roster.length,1);assert(initial.time>0);
- assert.equal(await host.evaluate(()=>localStorage.getItem(CONFIG.saveKey)),soloBefore,'Public Start must not overwrite the solo save');
- assert.equal(await host.evaluate(()=>PublicSession.inspect().inputBufferMs),100);
+ assert.equal(await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey)),soloBefore,'Public Start must not overwrite the solo save');
+ assert.equal(await evaluate(host,()=>PublicSession.inspect().inputBufferMs),100);
  assert(initial.durable.length===1&&initial.durable[0].hp<initial.durable[0].maxHp&&initial.projectiles>0);
  record('Public Start creates a ticking one-player world with fresh public identity and 100ms input buffer');
  await host.keyboard.down('KeyD');await ticks([host],4);
  const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement');
- const guest=await addPage();await guest.locator('[data-action="start"]').click();
+ const guest=await addPage();await startPublic(guest);
  // Opening a tab can release held actions on blur. Reapply genuine keyboard
  // input during the asynchronous public discovery/admission window.
  await host.bringToFront();await host.keyboard.down('KeyD');await ready([host,guest]);
@@ -165,12 +178,12 @@ try{
  assert(menuAfter.projectiles>0);assert.equal(menuAfter.modal,'moaStats');
  await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');await host.keyboard.press('Escape');
  record('Host menu neutralizes only its own input; other movement and shared combat continue');
- for(let count=3;count<=5;count++){const page=await addPage();await page.locator('[data-action="start"]').click();await ready(pages,count);await ticks(pages,3)}
+ for(let count=3;count<=5;count++){const page=await addPage();await startPublic(page);await ready(pages,count);await ticks(pages,3)}
  await checkpoint(pages,'five-players');
  const five=await Promise.all(pages.map(read));assert.equal(new Set(five.map(s=>s.localId)).size,5);assert.equal(new Set(five[0].players.filter(p=>p.lifecycle==='active').map(p=>p.owner)).size,5);
  for(const state of five){assert.equal(state.backend,'WebGL');assert(state.frames>10);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.hudLeader,state.localView.leader)}
  await screenshot(host,'multiplayer-five-player-world.png');
- const transport=await Promise.all(pages.map(page=>page.evaluate(async()=>{
+ const transport=await Promise.all(pages.map(page=>evaluate(page,async()=>{
   const room=__sharedBrowser.rooms.at(-1),connections=[];
   for(const [id,pc]of room.peerConnections){const rows=[];(await pc.getStats()).forEach(row=>{if(row.type==='data-channel')rows.push({label:row.label,state:row.state,bytesSent:row.bytesSent,bytesReceived:row.bytesReceived})});connections.push({id,native:pc instanceof RTCPeerConnection,state:pc.connectionState,channels:rows})}
   return{connections,relay:__sharedBrowser.relay,verification:__sharedBrowser.signalers.map(s=>s.metrics)};
@@ -179,15 +192,15 @@ try{
  for(const page of transport){assert(page.relay.published>0&&page.relay.delivered>0);assert(page.verification.some(v=>v.verified>0),'SDK must verify signed Nostr events');for(const pc of page.connections){assert(pc.native&&pc.state==='connected');assert(pc.channels.some(channel=>channel.bytesSent>0&&channel.bytesReceived>0),'Real RTC data must flow both ways')}}
  report.transport=transport;record('Five WebGL tabs share exact canonical bytes over ten real RTC mesh links with verified Nostr signatures');
  const beforeRefresh=await read(guest),identity=player(beforeRefresh,guestId);
- assert.equal(await guest.evaluate(()=>sessionStorage.getItem('budmori-public-active-v1')),'1');
- await guest.reload({waitUntil:'load'});await ready(pages);await ticks(pages,4);
+ assert.equal(await evaluate(guest,()=>sessionStorage.getItem('budmori-public-active-v1')),'1');
+ await phase('guest reload/load',()=>guest.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
  const resumed=await read(guest),resumedPlayer=player(resumed,guestId);
  assert.equal(resumed.localId,guestId);assert.equal(resumed.sessionId,beforeRefresh.sessionId);assert(resumed.tick>=beforeRefresh.tick);assert.equal(resumed.roster.length,5);
  for(const key of ['owner','level','chosen','minerals','army'])assert.equal(resumedPlayer[key],identity[key],'Refresh preserved '+key);
  await checkpoint(pages,'same-tab-refresh');await screenshot(guest,'multiplayer-refreshed-guest.png');
  record('Actual guest page reload resumes the same room-scoped identity, actor, and five-player world');
  const hostBeforeRefresh=await read(host),hostProgress=player(hostBeforeRefresh,hostId);
- await host.reload({waitUntil:'load'});await ready(pages);await ticks(pages,4);
+ await phase('coordinator reload/load',()=>host.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
  const hostResumed=await read(host),retainedProgress=player(hostResumed,hostId);
  assert.equal(hostResumed.localId,hostId);assert.equal(hostResumed.coordinator,hostId);assert.equal(hostResumed.sessionId,hostBeforeRefresh.sessionId);assert(hostResumed.tick>=hostBeforeRefresh.tick);
  for(const key of ['owner','level','chosen','minerals','army'])assert.equal(retainedProgress[key],hostProgress[key],'Coordinator refresh preserved '+key);
@@ -199,17 +212,21 @@ try{
  const remaining=pages.slice(1);
  await until(async()=>{const states=await Promise.all(remaining.map(read));return states.every(s=>s.ready&&s.roster.length===4&&!s.roster.includes(hostId)&&s.coordinator!==hostId)},'Graceful coordinator succession');
  await host.waitForFunction(()=>PublicSession.phase==='idle'&&BloomSimulation.sessionConfig.mode==='local'&&!__army.paused);
- assert.equal(await host.evaluate(()=>PublicSession.phase),'idle');
- assert.equal(await host.evaluate(()=>sessionStorage.getItem('budmori-public-active-v1')),null);
- assert.equal(await host.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.startsWith('budmori-public-resume-v1')).length),0,'Explicit leave must forget room credentials');
+ assert.equal(await evaluate(host,()=>PublicSession.phase),'idle');
+ assert.equal(await evaluate(host,()=>sessionStorage.getItem('budmori-public-active-v1')),null);
+ assert.equal(await evaluate(host,()=>Object.keys(sessionStorage).filter(key=>key.startsWith('budmori-public-resume-v1')).length),0,'Explicit leave must forget room credentials');
  await ticks(remaining,10);await checkpoint(remaining,'coordinator-left');
  const successor=await read(guest);assert.equal(player(successor,hostId).lifecycle,'left');
  await screenshot(guest,'multiplayer-successor-world.png');record('Graceful coordinator leave forgets resume data and remaining players keep the same ticking world');
  assert.deepEqual(errors,[]);assert.deepEqual(unexpectedNetwork,[]);report.status='PASS';
 }catch(error){
- report.status='FAIL';report.failure=error.stack||String(error);process.exitCode=1;
- report.lastStates=await Promise.all(pages.map(async(page,index)=>{try{await screenshot(page,`multiplayer-failure-${index+1}.png`);return await read(page)}catch(error){return{unavailable:error.message}}}));
- console.error(error);
+ report.status='FAIL';report.failure=error.stack||String(error);process.exitCode=1;console.error(error);
+ // State observations are independent of GPU/compositor screenshots. Preserve
+ // the last successful sample even when the renderer cannot answer JavaScript.
+ report.lastStates=await Promise.all(pages.map(async(page,index)=>{try{return{page:index+1,current:await read(page)}}catch(error){return{page:index+1,unavailable:error.message,lastKnown:lastKnownStates.get(page)??null}}}));
+ console.error('BROWSER_FAILURE_STATES '+JSON.stringify(report.lastStates));
+ await writeFile(new URL('./multiplayer-browser-report.json',import.meta.url),JSON.stringify(report,null,2));
+ report.failedScreenshots=await Promise.all(pages.map(async(page,index)=>{try{await screenshot(page,`multiplayer-failure-${index+1}.png`,5000);return null}catch(error){return{page:index+1,error:error.message}}}));
 }finally{
  report.browserErrors=errors;report.unexpectedNetwork=unexpectedNetwork;
  await writeFile(new URL('./multiplayer-browser-report.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
