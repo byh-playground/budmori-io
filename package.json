@@ -1,0 +1,12 @@
+{
+  "name": "budmori-gamekit-checks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs",
+    "test:browser": "node tests/browser.e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

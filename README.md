@@ -1,3 +1,5 @@
+> 작업 브랜치: 공통 모듈 전환 후보입니다. 실제 Chromium CI와 독립 리뷰, 최종 dist 커밋 고정 전에는 완료·안정 버전으로 표시하지 않습니다.
+
 # Budmori.io · 버드모리
 
 블룸 세계관에서 모아와 동료들을 키우며 탐험하고 싸우는 브라우저 게임입니다. 현재 실행물은 **오프라인 싱글 플레이**를 대상으로 합니다.
@@ -10,7 +12,7 @@
 2. 브라우저의 로컬 파일 정책으로 실행·저장이 제한되면 폴더를 정적 HTTP 서버로 제공해 엽니다.
 3. 다른 기기나 브라우저로 옮기기 전에는 메뉴의 **진행 백업**으로 JSON을 저장합니다.
 
-이 저장소 등록과 웹사이트 공개 배포는 별개입니다. 현재 README에는 플레이 가능한 공개 배포 주소를 안내하지 않습니다.
+공개 플레이: [Budmori.io](https://byh-playground.github.io/budmori-io/). PR의 후보 변경은 머지 전에는 공개 게임에 반영되지 않습니다.
 
 ## 플레이와 조작
 
@@ -48,8 +50,8 @@
 - **Is-a:** 각 객체가 무엇인지와 자신의 책임을 명확히 합니다.
 - **Has-a:** 세션·시뮬레이션·코덱·전송·표현 capability를 구성으로 소유합니다. 상속이나 조건문으로 여러 실행 경로를 늘리지 않습니다.
 - **Can-be:** 실행·대기·예측·롤백·복구는 같은 구성의 상태로 다룹니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
-- 자체 공통 [rollback-netcode](https://github.com/byh-playground/rollback-netcode) SDK의 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
-- 이 HTML은 SDK를 오프라인 실행용으로 포함합니다. 현재 포함 기준 커밋은 [c3173914519a78834360430071e7a125736d86d5](https://github.com/byh-playground/rollback-netcode/tree/c3173914519a78834360430071e7a125736d86d5)입니다. SDK 업데이트 시 원본과 포함 코드를 함께 확인합니다.
+- [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
+- HTML에는 필요한 공통 모듈과 SDK를 오프라인 실행용으로 포함합니다. 원본 SDK 동작은 c3173914519a78834360430071e7a125736d86d5와 호환됩니다. 배포 기준·각 ESM 원본과 포함 IIFE의 SHA-256은 `gamekit-lock.json`에서 검증합니다. 가변 main CDN import는 사용하지 않습니다.
 - SDK에 전송 기능이 있다는 사실은 이 게임의 온라인 멀티플레이가 완성되었다는 뜻이 아닙니다. 현재 사용자용 온라인 플레이는 제공하지 않습니다.
 
 ### 저장과 검증
@@ -89,3 +91,21 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 - 생물·전투 데이터 출처: [RALLY FRONTIER · f9d4c28289d7b452a51b70d818fcb657eb4f4d47](https://github.com/byh-playground/rally-frontier/tree/f9d4c28289d7b452a51b70d818fcb657eb4f4d47)
 - 공통 SDK: [rollback-netcode](https://github.com/byh-playground/rollback-netcode)
 - 개발·리뷰·한글 커밋의 공통 운영은 [RALLY FRONTIER README](https://github.com/byh-playground/rally-frontier/blob/main/README.md)와 [rollback-netcode 작업 지침](https://github.com/byh-playground/rollback-netcode/blob/main/AGENTS.md)을 참고했습니다. 프로젝트별 구현·검증 방식은 위 버드모리 기준을 우선합니다.
+
+## 공통 모듈 전환 범위
+
+- input: ActionState와 DOM 입력 소유권, 클릭/더블탭/키보드 → 기존 SDK 명령 경계
+- interpolation: 동일한 단조 receipt/frame 시계, 도착 시점 곡선 retarget, XYZ와 별개인 공격 타이머 reset, 재사용 pose
+- rendering: 공통 WebGLDevice만 shader/resource/upload/draw/stencil을 소유합니다. 게임의 곡선/지형/아트/텍스트 atlas와 material은 게임에 남습니다. Canvas2D 전장 fallback은 없습니다.
+- camera/hud: 동일한 40도 XYZ 투영과 카메라/앵커; 성장 줌·지형 역투영·체력 표현 정책은 게임 소유
+- presentation-events: SDK 확정 이벤트만 한 번 전달합니다. speculative 사운드를 재생하지 않습니다.
+- debug-tools: 유한 오류 ring·redaction·clipboard 공통 기능, 게임의 중단/진단 UI와 Worker 전달은 유지
+- rollback-netcode: 기존 완전한 snapshot bytes 및 replay/rollback/session/loop 계약 유지
+
+저장 schema와 저장 키는 변경하지 않습니다. 기존 v63 정규 저장을 동일 bytes로 복원하고 이후 동일 입력의 결과가 그대로인지 원본 고정 fixture로 검사합니다. 손상/미지원 저장은 기존 저장을 보존하며 거부합니다.
+
+## 개발 검증
+
+`npm ci && npm test`는 실제 Worker/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·Blob Worker·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
+
+Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
