@@ -1,5 +1,3 @@
-> 작업 브랜치: 공통 모듈 전환 후보입니다. 실제 Chromium CI와 독립 리뷰, 최종 dist 커밋 고정 전에는 완료·안정 버전으로 표시하지 않습니다.
-
 # Budmori.io · 버드모리
 
 블룸 세계관에서 모아와 동료들을 키우며 탐험하고 싸우는 브라우저 게임입니다. 현재 실행물은 **오프라인 싱글 플레이**를 대상으로 합니다.
@@ -78,7 +76,7 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 
 기본 타입: `[feature]`, `[bug-fix]`, `[refactor]`, `[performance]`, `[ui]`, `[balance]`, `[network]`, `[docs]`, `[test]`, `[chore]`. 최초 등록은 `[init]`을 사용합니다.
 
-## 최초 등록본과 확인 범위
+## 최초 등록 시점의 원본과 확인 범위
 
 - 실행물: 기존 v63 HTML 원본, **1,268,858 bytes**
 - SHA-256: `c31b02b717ea74f23378ed598a54cfd8102af1074ab1a3e49461d90893366751`
@@ -109,3 +107,12 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 `npm ci && npm test`는 실제 Worker/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·Blob Worker·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
 
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
+
+## 현재 전환 검증 결과
+
+- 고정 gamekit source: `5c70abf56c092c00926b1614c599a70968eca3d6`; 배포: `444f51c4cb293268dc6e20ffbc40a9afe963a069`
+- 실제 Chromium/SwiftShader + Blob Worker의 시작·WASD·Space·클릭/터치 구르기·메뉴 재개·전투·죽음/회복·저장/불러오기·오류 중단을 CI에서 검사합니다. 입력/복구 fixture는 수동 clock, 별도 전투 단계는 변경하지 않은 production setTimeout scheduler + RAF를 사용합니다.
+- Native 연속 캠페인 96개 확인: 원본 v63 저장 bytes/향후 동일 입력 결과, 대기 명령, 손상 저장 거부, 실제 SDK 지연 패킷 rollback 정확 수렴을 포함합니다.
+- 보간은 수신 당시 곡선에서 다시 연결합니다. 늦게 도착하는 미래 표본을 예측하지 않으며, 목표에 먼저 도달하면 다음 표본까지 대기합니다. 불규칙 수신의 속도 변화/대기는 남습니다. 공격/flash 새 단계는 XYZ와 별도로 즉시 반영하며 hitstop이 XYZ를 권위 위치로 튀게 하지 않습니다.
+- 155 동료 native CPU 제출 비교는 `tests/performance-summary.json`에 기록합니다. 참고 runner `tests/native-render.cjs`는 추가로 `@napi-rs/canvas@0.1.100`이 필요합니다. 같은 원본 HTML을 인수로 실행해 비교하며, no-op GPU sink이므로 GPU 완료시간·실제 브라우저·휴대폰 FPS 측정이 아닙니다.
+- main CI는 Pages 응답 전체 bytes의 SHA-256이 검사한 `index.html`과 같은지 배포 후 확인합니다. 실제 휴대폰/기기 GPU 검증은 별도입니다.

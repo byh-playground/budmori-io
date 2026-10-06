@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "3fe272d599e0daf326bae79f6ba96d22b18aa8a8",
-  "distCommit": "492ff6da1ff631b93fc2b313d55fe7bb71b1db56",
+  "sourceCommit": "5c70abf56c092c00926b1614c599a70968eca3d6",
+  "distCommit": "444f51c4cb293268dc6e20ffbc40a9afe963a069",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -33,8 +33,8 @@
     },
     {
       "name": "rendering",
-      "bundleSHA256": "a55fd8fff217de5021bcf6baecfbf1f9847bb41947697f9c744b561bc59fa4de",
-      "inlineSHA256": "dfa715be3346f6ec80e782b7ab1e0c3b0ab201471496143709ab7ba164e34da3"
+      "bundleSHA256": "44221c42e2cabd2c551d231191dd153fa12ac2f41e79e596e9503a5cb0ea1289",
+      "inlineSHA256": "b6ef6f5d28af9ce5f58fea6c0b5881a204bd20f8d602b96baf9ac02083228cc1"
     },
     {
       "name": "input",
@@ -47,5 +47,5 @@
       "inlineSHA256": "741c1aa3dd8a891fc358d972330a84afc90337f5de14b577aabacde299b5a0b0"
     }
   ],
-  "manifestSHA256": "7cc76c442a695d9884ff02329ab340f2579399e9c72d432451162f0ee664fe7c"
+  "manifestSHA256": "ca3df3c2eaa87e75623eafcd35476eb41f72791f681c826351c6fa379f093fc9"
 }

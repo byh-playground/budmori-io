@@ -9,4 +9,5 @@ tests/*report.json
 tests/*.render.json
 tests/*.png
 tests/native-save-report.json
-tests/native-render.cjs
+tests/*.jpg
+tests/*-results.json

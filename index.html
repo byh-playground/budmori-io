@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 3fe272d599e0daf326bae79f6ba96d22b18aa8a8; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 492ff6da1ff631b93fc2b313d55fe7bb71b1db56. */
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 5c70abf56c092c00926b1614c599a70968eca3d6; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 444f51c4cb293268dc6e20ffbc40a9afe963a069. */
 /* BEGIN GAMEKIT input */
 var BloomGamekitInput = (() => {
   var __defProp = Object.defineProperty;
@@ -1469,15 +1469,19 @@ var BloomGamekitRendering = (() => {
       depth = true,
       stencil = true,
       preserveDrawingBuffer = false,
+      powerPreference = "default",
+      failIfMajorPerformanceCaveat = false,
       maxTextures = 8,
       maxBufferBytes = 128 * 1024 * 1024
     } = {}) {
       if (!canvas?.getContext || !canvas?.addEventListener) throw new TypeError("canvas required");
+      if (!["default", "low-power", "high-performance"].includes(powerPreference)) throw new TypeError("Invalid WebGL powerPreference");
+      if (typeof failIfMajorPerformanceCaveat !== "boolean") throw new TypeError("failIfMajorPerformanceCaveat must be boolean");
       integer(maxTextures, "maxTextures", 1, 32);
       integer(maxBufferBytes, "maxBufferBytes", 4);
       this.canvas = canvas;
       this.maxBufferBytes = maxBufferBytes;
-      this.gl = canvas.getContext("webgl", { alpha, antialias, depth, stencil, premultipliedAlpha: true, preserveDrawingBuffer });
+      this.gl = canvas.getContext("webgl", { alpha, antialias, depth, stencil, premultipliedAlpha: true, preserveDrawingBuffer, powerPreference, failIfMajorPerformanceCaveat });
       if (!this.gl) throw new Error("WebGL 1 required");
       this.maxTextures = Math.min(maxTextures, this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS));
       this.maxTextureSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
@@ -2458,7 +2462,7 @@ function report(error,context={}){
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v64 · gamekit migration',base:'v60 · 06a4d9e2521b',sdk:'bloom-gamekit@3fe272d599e0daf326bae79f6ba96d22b18aa8a8',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v64 · gamekit migration',base:'v60 · 06a4d9e2521b',sdk:'bloom-gamekit@5c70abf56c092c00926b1614c599a70968eca3d6',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
 }
@@ -2670,7 +2674,7 @@ class Gradient{
 }
 class Renderer{
  constructor(canvas,options={}){
-  const device=this.device=new BloomGamekitRendering.WebGLDevice(canvas,{alpha:false,depth:false,stencil:true,maxTextures:options.maxTextures||8,...options.contextAttributes});const gl=device.gl,is2=false;
+  const device=this.device=new BloomGamekitRendering.WebGLDevice(canvas,{alpha:false,depth:false,stencil:true,powerPreference:"high-performance",maxTextures:options.maxTextures||8,...options.contextAttributes});const gl=device.gl,is2=false;
   this.canvas=canvas;if(canvas.dataset)canvas.dataset.rendererBackend=is2?'WebGL2':'WebGL';this.gl=gl;this.isWebGL2=is2;this.isBloomWebGL=true;this.options=options;this.maxTextures=device.maxTextures;this.maxTextureSize=device.maxTextureSize;
   this.vertices=new Float32Array((options.initialVertices||65536)*FPV);this.vertexCount=0;this.gpuBytes=0;this.batches=[];this.batchCount=0;this.currentBatch=null;this.textures=new Map();this.textureBySource=new WeakMap();this.atlasBySource=new WeakMap();this.textCache=new Map();this.textPages=[];this.stack=[];this.matrix=IDENTITY.slice();this.paths=[];this.path=null;this.clipChain=null;this.frame=0;this.active=false;this.lost=false;this.failure=null;this.forceColor=null;
   this.fillStyle=this.strokeStyle='#000';this.globalAlpha=1;this.lineWidth=1;this.lineCap='butt';this.lineJoin='miter';this.miterLimit=10;this.lineDashOffset=0;this.dash=[];this.font='10px sans-serif';this.textAlign='start';this.textBaseline='alphabetic';this.direction='ltr';this.filter='none';this.globalCompositeOperation='source-over';this.imageSmoothingEnabled=true;
