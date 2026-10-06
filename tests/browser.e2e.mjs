@@ -4,7 +4,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import runtimeHook from './main-runtime-hook.cjs';
-const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+const html=await readFile(process.argv[2]||new URL('../index.html',import.meta.url),'utf8');
 // Test-only stopped-session fixtures. This route is never shipped as index.html.
 let instrumented=html.replace('/* MAIN_RUNTIME_TEST_HOOK */',runtimeHook+';globalThis.__qaGestures=[];')
  .replace('onGesture(event){bloomInputPoints.push(event)}','onGesture(event){globalThis.__qaGestures?.push({...event,wall:performance.now()});bloomInputPoints.push(event)}');
@@ -54,6 +54,19 @@ try{
  assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),activeRenderHash);assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);report.checks.push('Positive-dt render frames with live beam/breath, rival and partial HP leave fresh canonical authority unchanged');
  await page.evaluate(()=>__army.setPaused(true));
  const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'bloom-snapshot-disk-v3');
+ assert.equal(await read('bloomSession.profile.mode'),'lockstep');
+ const normalizedHash='(()=>{const c=BloomLiveCodec.decode(bloomAdapter.save());c.tick=0;return BloomOwnedSDK.hashBytes(BloomLiveCodec.encode(c))})()';
+ const savedHash=await read(normalizedHash);
+ for(const mode of ['rollback','lockstep','rollback','lockstep']){
+  const previous=await read('bloomSession.profile.mode');await read(`CONFIG.netcode.mode=${JSON.stringify(mode)}`);
+  assert.equal(await read('bloomSession.profile.mode'),previous,'Config only affects a new session');
+  assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),save),true);
+  assert.equal(await read('bloomSession.profile.mode'),mode);assert.equal(await read(normalizedHash),savedHash);
+  const before=await read('bloomSnapshotStore.metrics().captures');await tick(2);
+  if(mode==='lockstep')assert.equal(await read('bloomSnapshotStore.metrics().captures'),before,'Settled lockstep ticks do not serialize every tick');
+  assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);
+ }
+ report.checks.push('Real browser repeated rollback/lockstep next-session switches retain canonical save; lockstep skips per-tick serialization');
  const bad={...saveObject,byteLength:saveObject.byteLength+1};assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),save),true);report.checks.push('Canonical save/load succeeds');await page.evaluate(()=>__army.setPaused(false));
  await fixture(`globalThis.qaRealtime=spawn('swordsman','enemy',state.mother.x+65,state.mother.y,{camp:0,rarityGrade:3});qaRealtime.stun=100000;`);
  const realBefore=await read('({tick:bloomTick,time:state.time,hp:state.units.filter(u=>u.team==="enemy").reduce((sum,u)=>sum+u.hp,0)})');

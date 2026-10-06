@@ -33,9 +33,9 @@ function engine(file=`${__dirname}/BLOOM_LIVING_FRONTIER.html`,sourceHTML,native
  const fixture=source=>{run('BloomSimulation.session?.close()');run(`(()=>{${source}})()`);run('rebuildGrid();spatialBoundary();BloomSimulation.createSession();playing=true;paused=false;modalKind="";');assert(run('BloomSimulation.adapter.validateSnapshot(BloomSimulation.adapter.save(),{tick:0})'),'fixture must be a valid production snapshot')};
  return{c,doc,canvas,run,json,click,tick,until,fixture,scripts,file,sha256,html};
 }
-function pair(e){
+function pair(e,{mode=e.run('CONFIG.netcode.mode'),peerMode=mode,ready=true}={}){
  const peer=engine(e.file,e.html),wire=[],held=[];assert.equal(peer.sha256,e.sha256,'artifact changed while scenario was running');let now=0,delayOwner=false;
- for(const x of [e,peer])x.c.testClock=()=>now;
+ for(const x of [e,peer]){x.c.testClock=()=>now;x.c.testNetcodeMode=x===e?mode:peerMode;x.run('CONFIG.netcode.mode=testNetcodeMode')}
  e.run('BloomSimulation.session?.close();BloomSimulation.createSession({players:["owner","peer"],localPlayerId:"owner",ownerId:"owner",clock:testClock})');
  peer.run('BloomSimulation.initialize(12345)');peer.c.initialBytes=e.run('BloomSimulation.adapter.save()');peer.run('BloomSimulation.adapter.load(initialBytes);BloomSimulation.createSession({players:["owner","peer"],localPlayerId:"peer",ownerId:"owner",clock:testClock});playing=true;paused=false;');
  let receiveOwner,receivePeer;
@@ -44,9 +44,9 @@ function pair(e){
  e.c.testTransport=ownerTransport;peer.c.testTransport=peerTransport;
  e.run('BloomSimulation.session.attachTransport("peer",testTransport)');peer.run('BloomSimulation.session.attachTransport("owner",testTransport)');
  function flush(){let budget=1000;while(wire.length){assert(budget-->0,'transport queue must settle');const p=wire.shift();(p.to==='owner'?receiveOwner:receivePeer)(p.bytes)}}
- flush();assert(e.run('BloomSimulation.session.ready'));assert(peer.run('BloomSimulation.session.ready'));
+ flush();assert.equal(e.run('BloomSimulation.session.ready'),ready);assert.equal(peer.run('BloomSimulation.session.ready'),ready);
  function advance(input={x:0,y:0,manual:true}){now+=1000/30;e.tick(1,input);flush();peer.tick();flush();e.run('BloomSimulation.session.poll()');peer.run('BloomSimulation.session.poll()');flush()}
- return{peer,advance,delay(){delayOwner=true},release(){delayOwner=false;wire.push(...held.splice(0));flush();e.run('BloomSimulation.session.poll()');peer.run('BloomSimulation.session.poll()');flush()},same(){return Buffer.from(e.run('BloomSimulation.adapter.save()')).equals(Buffer.from(peer.run('BloomSimulation.adapter.save()')))}};
+ return{peer,advance,flush,poll(){e.run('BloomSimulation.session.poll()');peer.run('BloomSimulation.session.poll()');flush()},attempt(x,input={x:0,y:0,manual:true}){now+=1000/e.run('CONFIG.sim.tickRate');x.c.testInput=input;const result=x.run('BloomSimulation.session.advance(BloomSimulation.encodeInput(testInput))');flush();return result},delay(){delayOwner=true},release(){delayOwner=false;wire.push(...held.splice(0));flush();e.run('BloomSimulation.session.poll()');peer.run('BloomSimulation.session.poll()');flush()},same(){return Buffer.from(e.run('BloomSimulation.adapter.save()')).equals(Buffer.from(peer.run('BloomSimulation.adapter.save()')))}};
 }
 
 module.exports={engine,pair};
