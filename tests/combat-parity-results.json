@@ -1,0 +1,268 @@
+{
+  "baseline": "/workspace/scratch/fcfc32acd753/budmori-composition/runtime-baseline.html",
+  "target": "/workspace/scratch/fcfc32acd753/budmori-composition/tests/../index.html",
+  "baselineSHA": "d0218169813c6ec591750065f3abf005230fb6db975a5aa5091bc9cabb3c2d1a",
+  "targetSHA": "517dab4424f4bb08d9108f2d11da68952373db012183784a1a2fcbfc9a26e098",
+  "resumedFromCheckpoint": true,
+  "checks": 638,
+  "effectChecks": 642,
+  "chapters": [
+    {
+      "label": "Continue existing campaign checkpoint",
+      "transaction": true,
+      "events": 0,
+      "recovered": false,
+      "time": 10.799999999999978
+    },
+    {
+      "label": "Natural movement and wild activation",
+      "ticks": 180,
+      "phases": [
+        "standard"
+      ],
+      "rivalTicks": 0,
+      "residentTicks": 0
+    },
+    {
+      "label": "Ordinary, rarity special, rival leader and rival recruit",
+      "ticks": 240,
+      "phases": [
+        "standard",
+        "windup",
+        "execute",
+        "recovery"
+      ],
+      "rivalTicks": 240,
+      "residentTicks": 0,
+      "rivalFixture": {
+        "path": "spawned",
+        "id": 25,
+        "camp": 1
+      }
+    },
+    {
+      "label": "Legacy definition capabilities, shields, gates, healing and rarity capture",
+      "transaction": true,
+      "events": 43,
+      "recovered": true,
+      "types": [
+        {
+          "type": "rootstalker",
+          "pending": false,
+          "hpLoss": 10.875,
+          "shots": 0,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "medic",
+          "pending": false,
+          "hpLoss": 0,
+          "shots": 7,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "siege",
+          "pending": false,
+          "hpLoss": 0,
+          "shots": 1,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "skirmisher",
+          "pending": false,
+          "hpLoss": 0,
+          "shots": 1,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "sporemoth",
+          "pending": false,
+          "hpLoss": 0,
+          "shots": 1,
+          "scheduled": 1,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "pikeman",
+          "pending": false,
+          "hpLoss": 9.666666666045785,
+          "shots": 0,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "shellbug",
+          "pending": true,
+          "hpLoss": 7.25,
+          "shots": 0,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "tank",
+          "pending": false,
+          "hpLoss": 14.5,
+          "shots": 0,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "chainflower",
+          "pending": false,
+          "hpLoss": 9.0625,
+          "shots": 0,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "rocket",
+          "pending": false,
+          "hpLoss": 0,
+          "shots": 0,
+          "scheduled": 4,
+          "attackCount": 1,
+          "selfDestroyed": false
+        },
+        {
+          "type": "pillbug",
+          "pending": false,
+          "hpLoss": 18.125,
+          "shots": 0,
+          "scheduled": 0,
+          "attackCount": 1,
+          "selfDestroyed": true
+        }
+      ],
+      "armors": [
+        {
+          "type": "shellbug",
+          "loss": 45
+        },
+        {
+          "type": "tank",
+          "loss": 80
+        }
+      ],
+      "shieldBlocks": 1,
+      "healing": 13,
+      "captured": 1,
+      "converted": 1,
+      "postmortemDamage": 24.375
+    },
+    {
+      "label": "Non-tick headless-safe health/hit feedback",
+      "hpLoss": 37,
+      "numbers": 1,
+      "last": [
+        {
+          "lane": "moa-hit",
+          "amount": 37,
+          "blocked": false,
+          "text": "−37"
+        }
+      ],
+      "bars": [
+        {
+          "id": 28,
+          "hp": 9999893.520833334,
+          "target": 0.9999893520833334
+        }
+      ]
+    },
+    {
+      "label": "Special completion, interruption, and grounded jump landing",
+      "transaction": true,
+      "events": 27,
+      "patterns": [
+        {
+          "id": "dash",
+          "ticks": 22,
+          "landed": false,
+          "phase": "standard"
+        },
+        {
+          "id": "groundBlast",
+          "ticks": 20,
+          "landed": true,
+          "phase": "standard"
+        },
+        {
+          "id": "arcing",
+          "ticks": 20,
+          "landed": false,
+          "phase": "standard"
+        },
+        {
+          "id": "coneSweep",
+          "ticks": 23,
+          "landed": false,
+          "phase": "standard"
+        },
+        {
+          "id": "ringShockwave",
+          "ticks": 25,
+          "landed": false,
+          "phase": "standard"
+        },
+        {
+          "id": "jumpSlam",
+          "ticks": 28,
+          "landed": true,
+          "phase": "standard"
+        }
+      ],
+      "cancelledJump": {
+        "phase": "recovery",
+        "airHeight": 0,
+        "baseAir": 0,
+        "grounded": true
+      },
+      "terrainRejected": true,
+      "terrainCancelledPhase": "recovery"
+    },
+    {
+      "label": "Resident engagement and committed seed lifecycle",
+      "ticks": 180,
+      "phases": [
+        "standard",
+        "recovery"
+      ],
+      "rivalTicks": 180,
+      "residentTicks": 180
+    },
+    {
+      "label": "Resident return cancels owned seeds and clears targets",
+      "transaction": true,
+      "events": 3,
+      "activeSeedsBefore": 3,
+      "activeSeedsAfter": 0,
+      "status": "returning",
+      "reason": "parity-owner-outside"
+    },
+    {
+      "label": "Resident return settles and removes finished seeds",
+      "ticks": 30,
+      "phases": [
+        "standard",
+        "recovery"
+      ],
+      "rivalTicks": 30,
+      "residentTicks": 0
+    }
+  ],
+  "initialWorldTime": 10.799999999999978,
+  "status": "PASS"
+}

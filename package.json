@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs && node tests/main-boundaries.cjs",
+    "test": "node scripts/prepare-combat-baseline.cjs && node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs && node tests/main-boundaries.cjs && node tests/combat-structure.cjs",
     "test:browser": "node tests/browser.e2e.mjs",
     "test:benchmark": "node tests/performance-browser.mjs tests/fixtures/v65-worker.html index.html",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git"

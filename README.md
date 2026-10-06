@@ -137,3 +137,27 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 게임 실행에는 네트워크와 npm이 필요하지 않습니다. 개발·SDK 갱신 단계에서만 고정 버전 esbuild와 공식 upstream 저장소를 사용합니다. `vendor/upstream`은 정확한 dist/source Git 객체와 manifest/ESM 캐시입니다. `npm test`는 Git 객체 ID, manifest·각 bundle SHA-256과 ESM→IIFE 재생성 bytes를 검증합니다. 변경된 bundle·manifest·source pin을 거부하는 손상 fixture도 검사합니다.
 
 SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신하고 `npm run verify:upstream`으로 공식 저장소에서 해당 불변 객체를 받아 검증합니다. CI에서도 이 검증을 수행합니다. `index.html`은 외부 CDN이나 이 개발용 캐시에 실행 의존성을 갖지 않습니다.
+
+
+## 전투 책임과 상태 구성
+
+- Is-a는 종·진영·리더의 본질적인 정체성입니다. `UnitCombatDefinition`은 각 종이 소유하는 기본 공격, 투사체 수정, 발사 후 동작, 근접 충격, 피격 감소 capability를 한 번 구성합니다. 중앙 공격·피격 함수에 종 이름 조건문을 누적하지 않습니다.
+- Has-a는 그 capability와 객체가 소유하는 데이터입니다. 함수는 불변 정의에만 두고, 유닛의 `pendingMelee`, `attackController`, 배치·상태 데이터는 기존 snapshot 계약으로 저장·복원합니다. 전투 개편은 저장 키·schema·엔티티 ID·속성 순서를 바꾸지 않습니다.
+- Can-be는 같은 유닛의 준비·실행·회복·취소 단계입니다. 공격 패턴은 `begin`·`execute`·`tick`·`finish`·`cancel` 계약을 사용하며 도약 정리는 해당 패턴이 소유합니다.
+- `attack`, `damage`, `damageValue`, `updateUnit`은 재할당하지 않는 진입점입니다. 피해는 공간 문맥 → 방어/HP/죽음 → 체력 표현 → 반격 → 피격 표현 → 희귀도 표현 → 확정 이벤트 순서로 처리합니다. 중첩 피해의 공간 문맥은 `try/finally`로 복구합니다.
+- 유닛 틱은 화면 사냥 경계를 앞뒤에 적용하고 상주 보스·경쟁 리더/군단·일반/특수기 중 한 행동 소유자만 실행합니다. 잠든 야생, 특수기 시작·실행·회복의 상태/외력 호출 순서는 유지합니다. 과거 직사각형 지역·영입 예약·성장 흡혈의 더 이상 실행되지 않는 전투 wrapper는 제거했습니다.
+- 수치·공격 순서·난수 소비·투사체 발사 시점의 값·피격 귀속·정규 snapshot bytes는 기존 실행물과 직접 비교합니다. 구조 검사는 전역 전투 함수 덮어쓰기와 중앙 종 분기의 재도입을 막습니다. Native 결과는 실제 브라우저·모바일 성능 검증을 대신하지 않습니다.
+
+
+전투 비교 기준은 `combat-baseline.json`의 고정 런타임 커밋입니다. 전체 Git 이력을 받은 뒤 `npm test`를 실행하면 해당 HTML을 로컬에서 추출하고 SHA-256을 검사합니다. 이력이 없는 작업 환경에서는 같은 bytes의 HTML 경로를 `BLOOM_COMBAT_BASELINE`에 지정할 수 있습니다. 기존 연속 캠페인의 최종 백업을 두 실행물에 읽어 들여 같은 세계를 이어 진행하고 매 틱 정규 저장 bytes와 전체 표현 이벤트를 비교합니다. 별도 유닛 조합 행렬을 만들지 않습니다.
+
+### 전투 구성 변경의 검증 범위
+
+- 고정 런타임 기준: `bf764fa8249751e28195be9d814334567fe3020c`, HTML SHA-256 `d0218169813c6ec591750065f3abf005230fb6db975a5aa5091bc9cabb3c2d1a`.
+- 후보 HTML SHA-256: `517dab4424f4bb08d9108f2d11da68952373db012183784a1a2fcbfc9a26e098`.
+- 연속 캠페인 97개 확인. 실제 캠페인 백업의 세계 시간 10.8초부터 이어서 630 SDK 틱과 명시한 전투 fixture를 실행하여 정규 bytes 638회·전체 표현 이벤트 642회 일치를 검사했습니다. 과거 병종 capability, 방패/구르기/진영 경계, 치유·영입, 특수기 6종 완료·취소, 사망 폭발, 경쟁 군단, 상주 보스 씨앗 정리를 포함합니다.
+- Native 실제 엔진/SDK, 동일 seed·객체 수에서 3회 번갈아 실행한 틱 p50 중앙값(ms): 10명/10TPS `0.960 → 1.046`, 155명/20TPS `5.649 → 5.740`, 1000명/30TPS `42.786 → 43.671`. 1000명 p95는 `64.960 → 103.788`로 악화된 표본을 그대로 남겼습니다.
+- 호스트 부하 영향을 줄이기 위해 같은 프로세스의 두 세계를 매 틱 교대로 실행한 1000명 추가 표본(각 200틱)은 p50 `46.583 → 48.085`, p95 `102.161 → 98.161`, p99 `215.443 → 234.343`ms였습니다. 모든 비교의 최종 권위 hash가 같았습니다. 일관된 속도 향상이나 성능 무회귀를 단정하지 않습니다. 1000명/30TPS는 양쪽 모두 틱 예산을 넘습니다.
+- Native 아트 raster/CPU draw 제출 p50 중앙값은 `9.265 → 8.940`ms, p95 `29.778 → 30.247`ms입니다. GPU 완료시간이나 실제 기기 FPS가 아닙니다.
+- V8 16KiB heap sampling(수거된 객체 포함)으로 측정한 155명/20TPS 할당 추정 중앙값은 틱당 `1,744,251 → 1,739,501`bytes입니다. 정확한 할당 카운터가 아니며 profiler 자체 비용을 포함합니다.
+- 원본 표본은 `tests/combat-performance.json`, `tests/combat-paired-timing.json`, `tests/combat-allocation-results.json`에 보관합니다. 이 구성 변경은 공격·피해·유닛 턴의 책임 분리에 한정하며 게임 전체의 모든 전역 시스템을 개편했다는 뜻은 아닙니다. 정확한 공개 후보의 Chromium/WebGL CI는 별도 최종 gate입니다.

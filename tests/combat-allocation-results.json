@@ -1,0 +1,87 @@
+{
+  "method": "V8 HeapProfiler sampling at16KiB, including collected objects;100 actual SDK ticks at20TPS with155 owned units; three alternating serial pairs. Native/mock DOM, no rendering. Retained heap also includes profiler report objects.",
+  "node": "v24.19.0",
+  "pairs": [
+    {
+      "repeat": 1,
+      "before": {
+        "sourceSHA256": "d0218169813c6ec591750065f3abf005230fb6db975a5aa5091bc9cabb3c2d1a",
+        "ticks": 100,
+        "estimatedAllocatedBytes": 178119824,
+        "estimatedAllocatedBytesPerTick": 1781198.24,
+        "retainedHeapDeltaBytes": 986312,
+        "final": {
+          "hash": 3564769327,
+          "tick": 120,
+          "units": 156
+        }
+      },
+      "after": {
+        "sourceSHA256": "517dab4424f4bb08d9108f2d11da68952373db012183784a1a2fcbfc9a26e098",
+        "ticks": 100,
+        "estimatedAllocatedBytes": 175406968,
+        "estimatedAllocatedBytesPerTick": 1754069.68,
+        "retainedHeapDeltaBytes": 916896,
+        "final": {
+          "hash": 3564769327,
+          "tick": 120,
+          "units": 156
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "after": {
+        "sourceSHA256": "517dab4424f4bb08d9108f2d11da68952373db012183784a1a2fcbfc9a26e098",
+        "ticks": 100,
+        "estimatedAllocatedBytes": 173950056,
+        "estimatedAllocatedBytesPerTick": 1739500.56,
+        "retainedHeapDeltaBytes": 714632,
+        "final": {
+          "hash": 3564769327,
+          "tick": 120,
+          "units": 156
+        }
+      },
+      "before": {
+        "sourceSHA256": "d0218169813c6ec591750065f3abf005230fb6db975a5aa5091bc9cabb3c2d1a",
+        "ticks": 100,
+        "estimatedAllocatedBytes": 173337328,
+        "estimatedAllocatedBytesPerTick": 1733373.28,
+        "retainedHeapDeltaBytes": 715544,
+        "final": {
+          "hash": 3564769327,
+          "tick": 120,
+          "units": 156
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "before": {
+        "sourceSHA256": "d0218169813c6ec591750065f3abf005230fb6db975a5aa5091bc9cabb3c2d1a",
+        "ticks": 100,
+        "estimatedAllocatedBytes": 174425072,
+        "estimatedAllocatedBytesPerTick": 1744250.72,
+        "retainedHeapDeltaBytes": -648032,
+        "final": {
+          "hash": 3564769327,
+          "tick": 120,
+          "units": 156
+        }
+      },
+      "after": {
+        "sourceSHA256": "517dab4424f4bb08d9108f2d11da68952373db012183784a1a2fcbfc9a26e098",
+        "ticks": 100,
+        "estimatedAllocatedBytes": 173771392,
+        "estimatedAllocatedBytesPerTick": 1737713.92,
+        "retainedHeapDeltaBytes": 704192,
+        "final": {
+          "hash": 3564769327,
+          "tick": 120,
+          "units": 156
+        }
+      }
+    }
+  ]
+}
