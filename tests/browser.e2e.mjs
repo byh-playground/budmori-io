@@ -21,6 +21,17 @@ const report={sourceSHA256:createHash('sha256').update(html).digest('hex'),envir
 try{
  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  page=await browser.newPage({viewport:{width:1000,height:800},hasTouch:true,deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGEERROR',e.stack)});page.on('console',m=>{if(m.type()==='error')console.error('PAGECONSOLE',m.text())});
+ const cdp=await page.context().newCDPSession(page);
+ async function replayTouchDoubleTap(x,y){
+  // Real Chromium touch -> PointerEvents with authored input times. Software GPU
+  // stalls may delay delivery; they must not rewrite the 80ms fixture cadence.
+  const at=await page.evaluate(()=>Date.now()/1000);
+  for(const [type,offset]of [['touchStart',0],['touchEnd',.02],['touchStart',.08],['touchEnd',.10]])await cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchStart'?[{id:1,x,y}]:[],timestamp:at+offset});
+  const pair=await page.evaluate(()=>__qaGestures.filter(e=>e.pointerType==='touch').slice(-2));
+  assert.equal(pair.length,2);assert.equal(pair[0].type,'tap');assert.equal(pair[1].type,'doubleTap');
+  const observed=pair[1].timeMs-pair[0].timeMs;assert(Math.abs(observed-80)<2,'DOM PointerEvent timestamps must preserve authored touch cadence');
+  report.touchReplay={expectedUpGapMs:80,observedUpGapMs:observed,deliveryGapMs:pair[1].wall-pair[0].wall};
+ }
  const base=`http://127.0.0.1:${server.address().port}`;
  await page.goto(base+'/raw');await page.waitForFunction(()=>globalThis.BloomSimulation?.worker?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});
  assert.equal(await page.evaluate(()=>document.querySelector('#view').dataset.rendererBackend),'WebGL');assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);report.checks.push('Uninstrumented single HTML boots real Worker and WebGL');
@@ -39,7 +50,7 @@ try{
  await fixture(`clearMoaRoll(state.mother);clearPointNav();autoHunt.enabled=false;autoHunt.idleMs=0;`);
  await page.locator('#pause').click();await page.waitForFunction(()=>__army.paused);await page.keyboard.press('Escape');await page.waitForFunction(()=>!__army.paused);const focusX=await page.evaluate(()=>__army.state.mother.x);await page.keyboard.down('KeyD');assert(await page.evaluate(()=>keys.has('KeyD')),'Focused-button regression must observe the real held action');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));assert(await page.evaluate(x=>__army.state.mother.x>x+10,focusX));report.checks.push('Persistent pause-button focus cannot swallow WASD after Escape resume');
  await fixture(`clearMoaRoll(state.mother);state.mother.rollCooldownMs=0;clearPointNav();autoHunt.enabled=false;`);await page.keyboard.press('Space');await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);assert(await page.evaluate(()=>__army.state.mother.rollCooldownMs>0));report.checks.push('Space submits roll with persistent UI focus');
- await fixture(`clearMoaRoll(state.mother);state.mother.rollCooldownMs=0;clearPointNav();autoHunt.enabled=false;`);await page.touchscreen.tap(700,500);await page.waitForTimeout(30);await page.touchscreen.tap(700,500);await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);assert(await page.evaluate(()=>__army.state.mother.rollCooldownMs>0));report.checks.push('Actual touchscreen double-tap moves and rolls through shared input');
+ await fixture(`clearMoaRoll(state.mother);state.mother.rollCooldownMs=0;clearPointNav();autoHunt.enabled=false;`);await replayTouchDoubleTap(700,500);await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);assert(await page.evaluate(()=>__army.state.mother.rollCooldownMs>0));report.checks.push('Chromium touch event replay preserves 80ms cadence and rolls through shared input');
  await fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}for(const u of state.units)if(u.team==='enemy'){u.stun=100000;u.aggroAt=u.wanderAt=state.time+100000}globalThis.qaEnemy=spawn('swordsman','enemy',state.mother.x+65,state.mother.y,{camp:0,rarityGrade:1});qaEnemy.stun=100000;`);
  const enemyId=await read('qaEnemy.id');const hp=await read('qaEnemy.hp');await tick(12);assert((await read(`idMap.get(${enemyId})?.hp??0`))<hp);report.checks.push('Actual combat advances and damage presentation renders');
  await page.evaluate(()=>__army.setPaused(true));
