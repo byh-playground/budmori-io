@@ -54,7 +54,7 @@
 
 ### 저장과 검증
 
-- 디스크 저장은 완료된 시뮬레이션 경계의 정규 snapshot bytes를 사용합니다. 자동 저장을 위해 세계를 다시 수집·직렬화하거나 렌더 상태를 저장 원본으로 삼지 않습니다.
+- 디스크 저장은 완료된 시뮬레이션 경계에서 SDK와 같은 정규 snapshot 코덱을 필요할 때 호출합니다. 같은 경계의 반복 저장은 private bytes와 JSON 캐시를 재사용하며, 렌더 상태를 저장 원본으로 삼지 않습니다. SDK adapter.save()의 반환 bytes와 디스크 캐시는 서로 별칭을 공유하지 않습니다.
 - 현재 백업은 `bloom-snapshot-disk-v3` JSON envelope와 base64 payload입니다. 길이·버전·메타데이터·체크섬을 검사하고 손상된 입력은 기존 상태와 저장을 보존하며 거부합니다. FNV 체크섬은 손상 감지용이며 보안 서명이 아닙니다.
 - 단위 테스트 조합을 늘리는 것보다 **실제 게임 엔진을 사용하는 하나의 연속 E2E 흐름**을 중심으로 검증합니다. 이동·전투·성장·저장/복원·실패/회복·롤백 등 변경에 관련된 실제 경로를 이어 확인합니다.
 - 게임/UI 변경의 실제 플레이와 시각 확인을 정적 검사로 대체하지 않습니다. 시험용 상태 주입, 모의 DOM, native Worker 검사와 실제 브라우저·기기 검사를 분명히 구별합니다.
@@ -125,11 +125,11 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `9be41746b488d8d51699b6aad023370d9f5389e3`; dist: `a3e4bd670361b6af653d8ec5686ecb564d428398`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
+현재 고정 SDK source: `e93bfa2888cf0a84d48507bf283d3b5bb823a6df`; dist: `9c28208fb689bed60ee877d511338ba4d6a0a1b0`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
-- 실행 중 저장 요청은 다음 예정 SDK 경계를 기다립니다. 일시정지 중 대기 명령은 게임 시간을 진행하지 않는 suspended SDK 경계에서 확정합니다. 저장은 이미 완료된 snapshot bytes를 재사용합니다.
+- 실행 중 대기 명령이 있는 저장 요청은 다음 예정 SDK 경계를 기다립니다. 일시정지 중 대기 명령은 게임 시간을 진행하지 않는 suspended SDK 경계에서 확정합니다. 현재는 아래 락스텝 구성처럼 완료 경계에서 필요할 때 snapshot을 캡처합니다.
 - 시뮬레이션과 렌더가 CPU를 공유하므로 Worker 제거가 모든 기기에서 더 빠르다는 보장은 없습니다. 실제 Chromium/SwiftShader 전후 벤치마크는 같은 seed·군단·TPS를 사용하고 tick, snapshot, RAF, 입력 지연을 별도 기록합니다. Native V8 결과는 기기 FPS 측정이 아닙니다.
 
 ### SDK 원본 검증과 오프라인 실행
@@ -161,3 +161,14 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 - Native 아트 raster/CPU draw 제출 p50 중앙값은 `9.265 → 8.940`ms, p95 `29.778 → 30.247`ms입니다. GPU 완료시간이나 실제 기기 FPS가 아닙니다.
 - V8 16KiB heap sampling(수거된 객체 포함)으로 측정한 155명/20TPS 할당 추정 중앙값은 틱당 `1,744,251 → 1,739,501`bytes입니다. 정확한 할당 카운터가 아니며 profiler 자체 비용을 포함합니다.
 - 원본 표본은 `tests/combat-performance.json`, `tests/combat-paired-timing.json`, `tests/combat-allocation-results.json`에 보관합니다. 이 구성 변경은 공격·피해·유닛 턴의 책임 분리에 한정하며 게임 전체의 모든 전역 시스템을 개편했다는 뜻은 아닙니다. 정확한 공개 후보의 Chromium/WebGL CI는 별도 최종 gate입니다.
+
+
+## 락스텝 기본값과 롤백 선택
+
+- `CONFIG.netcode`가 다음 세션의 설정 원본입니다. 기본은 `{mode:'lockstep',checksumInterval:30}`이며, `mode:'rollback'`으로 바꾸면 기존 예측·롤백 경로를 사용합니다. 설정 변경은 새 세션을 만드는 초기화·새 게임·정상 불러오기·TPS 변경 경계에서 적용됩니다. 실행 중인 세션의 mode나 profile을 수정하지 않습니다. 별도 게임 엔진·Worker·설정 저장 schema는 추가하지 않습니다.
+- 락스텝은 모든 피어의 해당 틱 입력이 도착해야 실행합니다. 예측 입력·오입력 롤백 재실행·매 틱 롤백 snapshot은 없습니다. 현재 사용자 실행은 오프라인 싱글 플레이이며 입력 지연 0을 유지합니다. 선택 TPS와 별도 RAF/WebGL 보간도 그대로입니다.
+- 완전한 정규 상태는 초기 세션, 30틱마다의 체크섬 checkpoint, 명시적인 hash/replay/디스크 저장 요청에서 직렬화합니다. 복구는 보관된 checkpoint와 이후 확정 입력으로 현재 상태를 재구성합니다. `checksumInterval`은 양수이며 현재 락스텝 입력 이력 32틱 이내여야 합니다. 주기적인 큰 snapshot 비용까지 없어지는 것은 아닙니다.
+- 디스크 캐시는 실제 저장/백업을 요청한 경계에만 생깁니다. SDK의 adapter.save() 호출마다 디스크용 bytes를 따로 복사하지 않습니다. 미래 결과에 영향을 주는 전투 구성·진행·공간 캐시·RNG·타이머는 기존 코덱으로 그대로 보존하며 저장 키·schema·정규 bytes를 바꾸지 않습니다.
+- 검증용 네트워크 피어도 모드·TPS·입력 지연·체크섬 주기가 맞아야 연결됩니다. 버전/설정 불일치 시 양쪽 새로고침과 동일 설정 안내를 진단창에 표시합니다. 사용자 온라인 멀티플레이를 추가한 것은 아닙니다.
+- 연속 캠페인은 기존 롤백 지연 패킷 구간을 명시적 rollback 설정으로 유지하고, 같은 캠페인 저장에서 락스텝 대기·확정 명령·예측 0·주기 사이의 hash/replay/복구·반복 모드 전환을 이어 검사합니다. 실제 Chromium E2E도 저장/전투/회복 흐름 속에서 두 모드의 반복 전환과 락스텝 매 틱 직렬화 제거를 확인합니다.
+- `npm run test:benchmark:modes`는 같은 seed·객체 수·TPS·입력으로 두 모드를 비교합니다. Native 실행은 한 프로세스에서 틱마다 순서를 번갈아 측정하며 10/155/1000 동료를 포함합니다. Chromium 실행은 155 동료에서 실제 WebGL을 사용하되 비용 분리를 위해 수동 SDK 경계의 동일 입력을 사용합니다. 둘 다 advance·simulation step·snapshot을 분리하고, 브라우저는 render CPU 제출 비용도 따로 기록합니다. 디스크 cache 복사 횟수/bytes만 측정하며 SDK 내부 복사나 전체 JS 할당량으로 해석하지 않습니다. 생성자·워밍업·최종 hash 검증 캡처와 런타임 디스크 자동 저장은 측정 구간에서 제외합니다. 실제 기기 FPS·GPU 완료시간·1000 동료 30TPS 보장은 하지 않습니다.

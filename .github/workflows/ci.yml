@@ -22,10 +22,8 @@ jobs:
       - run: npm run verify:upstream
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
-      - name: Compare exact v65 Worker baseline against this main-thread build
-        run: |
-          git show b545953af9c76facf6896726740ec8fa8253a6ca:index.html > tests/fixtures/v65-worker.html
-          xvfb-run -a npm run test:benchmark
+      - name: Compare rollback and lockstep with identical inputs
+        run: npm run test:benchmark:modes
       - name: Verify exact Pages bytes after main deployment
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: node scripts/verify-pages.mjs

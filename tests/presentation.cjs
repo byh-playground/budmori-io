@@ -1,6 +1,6 @@
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const {engine}=require('./native-engine.cjs');
-const file=path.resolve(__dirname,'../index.html'),e=engine(file);
+const file=path.resolve(process.argv[2]||path.join(__dirname,'../index.html')),e=engine(file);
 e.run('BloomSimulation.initialize(12345);playing=true;paused=false;modalKind="";view.x=state.mother.x;view.y=state.mother.y;view.w=2000;view.h=2000;');
 let now=100;e.c.performance={now:()=>now};
 e.run('BLOOM_HEADLESS=false;resetPresentation();');
