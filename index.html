@@ -2462,7 +2462,7 @@ function report(error,context={}){
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v64 · gamekit migration',base:'v60 · 06a4d9e2521b',sdk:'bloom-gamekit@5c70abf56c092c00926b1614c599a70968eca3d6',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v65 · recovery mirror fix',base:'v64 · bd230db0efad',sdk:'bloom-gamekit@5c70abf56c092c00926b1614c599a70968eca3d6',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
 }
@@ -18005,7 +18005,7 @@ BloomDiagnostics.provide('engine',()=>{
  const units=state?.units||[],own=state?.rarityAccounts?.['-1'];let reserve=0,active=0,enemies=0;
  for(const slots of Object.values(own?.reserve||{}))for(const slot of slots||[])reserve+=Number(slot?.count)||0;
  for(const u of units)if(u.hp>0){if(u.team==='friendly')active++;else enemies++}
- return {tick:bloomTick,confirmedTick:bloomSession?.confirmedTick??null,chosenTPS:CONFIG.sim.tickRate,interpolation:'published-pose interpolation',playing,paused,modal:String(modalKind||''),simTime:state?.time??null,counts:{active,enemies,projectiles:projectiles.length,fx:effects.length,reserve},moaHP:state?.mother?.hp??null,saveSchema:'bloom-webgl-disk-ms-v2',simulationVersion:'bloom-webgl-ms-v2',sdkFailed:bloomSession&&Object.hasOwn(bloomSession,'failure')?!!bloomSession.failure:null};
+ return {tick:bloomTick,confirmedTick:bloomSession?.confirmedTick??null,chosenTPS:CONFIG.sim.tickRate,interpolation:'published-pose interpolation',playing,paused,modal:String(modalKind||''),simTime:state?.time??null,counts:{active,enemies,projectiles:projectiles.length,fx:effects.length,reserve},moaHP:state?.mother?.hp??null,saveSchema:'bloom-snapshot-disk-v3',simulationVersion:'bloom-webgl-ms-v2',sdkFailed:bloomSession&&Object.hasOwn(bloomSession,'failure')?!!bloomSession.failure:null};
 });
 if(!globalThis.BLOOM_HEADLESS)BloomDiagnostics.provide('render',()=>({backend:canvas?.dataset?.rendererBackend||'unavailable',contextLost:!!ctx?.lost,frames:frameStats.frames,renderMs:frameStats.renderMs,simMs:frameStats.simMs,canvas:{width:canvas?.width,height:canvas?.height,dpr:globalThis.devicePixelRatio||1},drawCalls:ctx?.frameStats?.drawCalls??null,vertices:ctx?.frameStats?.vertices??null,textureUploads:ctx?.frameStats?.textureUploads??null}));
 
@@ -18089,8 +18089,12 @@ function bloomWorkerRuntime() {
       // The authoritative graph contains plain data. Structural signatures are
       // computed only in the worker; the main thread performs no serialization.
       const signature = value && typeof value === 'object' ? JSON.stringify(value) : value;
-      if (value && typeof value === 'object') { if (refs.has(key) && refs.get(key) !== value) replaced.push(key); refs.set(key, value); } else refs.delete(key);
-      if (fresh || !previous.has(key) || previous.get(key) !== signature) { changes[key] = value; previous.set(key, signature); }
+      const referenceChanged = !!value && typeof value === 'object' && refs.has(key) && refs.get(key) !== value;
+      if (value && typeof value === 'object') { if (referenceChanged) replaced.push(key); refs.set(key, value); } else refs.delete(key);
+      // Recovery/restore may replace an object with byte-equivalent contents.
+      // Its new identity and full value form one publication operation; never
+      // emit a replacement tombstone without the value needed by the mirror.
+      if (fresh || referenceChanged || !previous.has(key) || previous.get(key) !== signature) { changes[key] = value; previous.set(key, signature); }
     }
     for (const key of previous.keys()) if (!Object.hasOwn(object, key)) { removed.push(key); previous.delete(key); refs.delete(key); }
     return fresh || removed.length || Object.keys(changes).length ? { key: cacheKey, fresh, changes, removed, replaced } : null;
@@ -18236,8 +18240,13 @@ function bloomApplyViewPacket(packet, mirror) {
   for (const delta of packet.updates) {
     let object = mirror.objects.get(delta.key);
     if (!object || delta.fresh) { object = {}; mirror.objects.set(delta.key, object); }
-    for (const key of [...delta.removed, ...(delta.replaced || [])]) delete object[key];
-    for (const key of Object.keys(delta.changes)) object[key] = bloomMergeViewValue(object[key], delta.changes[key]);
+    for (const key of delta.removed) delete object[key];
+    // Replacement changes merge identity, not field existence. Apply it only
+    // together with its payload; an incomplete marker cannot erase live data.
+    for (const key of Object.keys(delta.changes)) {
+      const previous = delta.replaced?.includes(key) ? undefined : object[key];
+      object[key] = bloomMergeViewValue(previous, delta.changes[key]);
+    }
   }
   for (const key of packet.meta.removed) delete mirror.state[key];
   for (const key of Object.keys(packet.meta.patch)) mirror.state[key] = bloomMergeViewValue(mirror.state[key], packet.meta.patch[key]);

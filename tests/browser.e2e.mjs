@@ -7,7 +7,7 @@ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 // Test-only stopped-session fixtures. This route is never shipped as index.html.
 const fixtureBranch=`if (m.type === '__fixture') {
  clearTimeout(timer);bloomSession.close();manualClock=true;
- (0,eval)(m.source);rebuildGrid();spatialBoundary();boundary();playing=true;paused=false;modalKind='';publish(true);reply(m.id,true);return;
+ (0,eval)(m.source);rebuildGrid();spatialBoundary();boundary();playing=true;paused=false;modalKind='';if(!bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:bloomTick}))throw new Error('Invalid stopped-session fixture');publish(true);reply(m.id,true);return;
 } else if(m.type==='__read'){reply(m.id,(0,eval)(m.expression));return;} else if(m.type==='__clock'){manualClock=!!m.manual;deadline=performance.now()+1000/CONFIG.sim.tickRate;schedule();reply(m.id,true);return;}
 `;
 let instrumented=html.replace("      if (!initialized || fatal) throw new Error('Worker is not available');", "      if (!initialized || fatal) throw new Error('Worker is not available');\n"+fixtureBranch)
@@ -73,5 +73,50 @@ try{
  // Last chapter intentionally stops the real Worker via a test-only thrown error.
  await page.evaluate(()=>__budmoriTest.request('__read',{expression:'(()=>{throw new Error("Controlled browser Worker failure")})()'}).catch(()=>{}));await page.waitForFunction(()=>BloomDiagnostics.fatal);
  assert.equal(await page.locator('#bloom-diagnostic-panel').isVisible(),true);assert.equal(await page.evaluate(()=>BloomSimulation.worker.ready),false);report.checks.push('Worker system error stops simulation and opens selectable diagnostics');
- assert.deepEqual(errors,[]);report.status='PASS';console.log(JSON.stringify(report,null,2));await writeFile(new URL('./browser-report.json',import.meta.url),JSON.stringify(report,null,2));
+ assert.deepEqual(errors,[]);
+ // Reconstructed Android report boundary: 20 TPS, CSS360x641 at device DPR3
+ // (game capped backing store720x1282), real combat deaths and UI recovery twice.
+ // This is Chromium mobile emulation, not the user's exact save or Android GPU.
+ const mobileContext=await browser.newContext({viewport:{width:360,height:641},deviceScaleFactor:3,hasTouch:true,isMobile:true});
+ const mobile=await mobileContext.newPage();page=mobile;mobile.on('pageerror',e=>{errors.push(e.message);console.error('MOBILE_PAGEERROR',e.stack)});
+ await mobile.goto(base+'/qa');await mobile.waitForFunction(()=>globalThis.BloomSimulation?.worker?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});
+ await mobile.locator('select[aria-label="시뮬레이션 초당 계산 횟수"]').selectOption('20');await mobile.waitForFunction(()=>__army.CONFIG.sim.tickRate===20);
+ const mobileRequest=(type,data={})=>mobile.evaluate(({type,data})=>__budmoriTest.request(type,data),{type,data});
+ const mobileFixture=source=>mobileRequest('__fixture',{source}),mobileTick=async count=>{await mobileRequest('testTicks',{count});await mobile.waitForTimeout(150)};
+ await mobileFixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
+  const m=state.mother,r=spawn('swordsman','enemy',m.x+250,m.y,{camp:0,variant:'rival'});if(!r)throw Error('Rival fixture spawn failed');
+  r.x=r.worldX=r.hx=r.homeX=m.x+45;r.y=r.worldY=r.hy=r.homeY=m.y+55;r.z=r.worldZ=r.groundZ=r.hz=r.homeZ=spatialGround(r.x,r.y);r.stun=100000;
+  r.rival.room=r.rival.targetRoom=regionAt(r.x,r.y);if(r.rival.ai?.home)Object.assign(r.rival.ai.home,{x:r.x,y:r.y,z:r.z});globalThis.qaRecoveryRivalId=r.id;
+  rarityAcquire(-1,'swordsman',0,1);m.hp=1;m.stun=10;const killer=spawn('swordsman','enemy',m.x+20,m.y,{camp:0,rarityGrade:5});killer.aggroAt=0;killer.cooldown=0;`);
+ const rivalId=await mobileRequest('__read',{expression:'qaRecoveryRivalId'});
+ await mobile.locator('[data-action="start"]').click();await mobile.evaluate(()=>advanceSimulationClock(.016));
+ const cycles=[];
+ for(let cycle=0;cycle<2;cycle++){
+  await mobile.evaluate(()=>__army.setPaused(false));
+  // Opposing real keyboard inputs produce neutral manual intent, preventing
+  // auto-hunt steering from evading this deliberately lethal test encounter.
+  await mobile.keyboard.down('KeyW');await mobile.keyboard.down('KeyS');await mobile.evaluate(()=>advanceSimulationClock(.016));
+  // Attack selection and windups vary by the game's seed. Observe actual death
+  // in bounded combat batches instead of assuming the native seed's first1s hit.
+  for(let batch=0;batch<8&&!await mobile.evaluate(()=>__army.state.dead);batch++)await mobileTick(20);
+  await mobile.keyboard.up('KeyW');await mobile.keyboard.up('KeyS');
+  console.log('MOBILE_RECOVERY_CYCLE',JSON.stringify({cycle,main:await mobile.evaluate(()=>({hp:__army.state.mother.hp,dead:__army.state.dead,paused:__army.paused,modal:modalKind,frame:__army.performance.frames})),worker:await mobileRequest('inspect')}));
+  await mobile.waitForFunction(()=>__army.state.dead);
+  const frames=await mobile.evaluate(()=>__army.performance.frames);await mobile.locator('[data-action="recover"]').click();
+  if(cycle===0)await mobile.evaluate(()=>__army.setPaused(true)); // queue during paused UI transition, same SDK recovery command
+  await mobileTick(1);await mobile.waitForFunction(({id,frames})=>!__army.state.dead&&!BloomDiagnostics.fatal&&__army.performance.frames>frames+2&&projectionQueue.some(q=>q.source.id===id),{id:rivalId,frames},{timeout:30000});
+  const actor=await mobile.evaluate(id=>{const r=__army.state.units.find(u=>u.id===id);return{leader:r.rivalLeader,level:r.rival.abilities.level,owned:!!r.rival,frame:__army.performance.frames}},rivalId);
+  assert.equal(actor.leader,true);assert.equal(actor.owned,true);assert.equal(actor.level,await mobileRequest('__read',{expression:`idMap.get(${rivalId}).rival.abilities.level`}));cycles.push(actor);
+ }
+ await mobile.evaluate(()=>__army.setPaused(true));const recoveredDisk=await mobile.evaluate(()=>BloomSimulation.disk.snapshot());
+ await mobile.evaluate(id=>{globalThis.__oldRecoveryActor=__army.state.units.find(u=>u.id===id)},rivalId);
+ assert.equal(await mobile.evaluate(disk=>BloomSimulation.disk.load(disk),recoveredDisk),true);
+ assert(await mobile.evaluate(id=>{const r=__army.state.units.find(u=>u.id===id);return r!==__oldRecoveryActor&&!!r.rival.abilities},rivalId));
+ await mobile.screenshot({path:new URL('./mobile-recovery.png',import.meta.url).pathname});console.log('TEST_RECOVERY_SCREENSHOT_JPEG '+(await mobile.screenshot({type:'jpeg',quality:65})).toString('base64'));
+ await mobileRequest('reset');assert(await mobile.evaluate(id=>!__army.state.units.some(u=>u.id===id&&u.rivalLeader),rivalId));
+ await mobileFixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}const m=state.mother,u=spawn('swordsman','enemy',m.x+45,m.y+55,{camp:0,rarityGrade:1});u.stun=100000;globalThis.qaReusedId=u.id;`);
+ await mobileTick(1);assert.equal(await mobileRequest('__read',{expression:'qaReusedId'}),rivalId);assert(await mobile.evaluate(id=>{const u=__army.state.units.find(u=>u.id===id);return !u.rivalLeader&&!u.rival&&!BloomDiagnostics.fatal},rivalId));
+ const dimensions=await mobile.evaluate(()=>({width:document.querySelector('#view').width,height:document.querySelector('#view').height,dpr:devicePixelRatio,tps:__army.CONFIG.sim.tickRate}));assert.deepEqual(dimensions,{width:720,height:1282,dpr:3,tps:20});
+ report.recoveryMirror={reconstructed:true,exactUserSave:false,dimensions,cycles,loadFreshIdentity:true,resetIdReuseSafe:true};report.checks.push('20TPS mobile-sized real combat/recover twice preserves rival metadata; load/reset/same-ID role reuse remain safe');
+ assert.deepEqual(errors,[]);await mobileContext.close();report.status='PASS';console.log(JSON.stringify(report,null,2));await writeFile(new URL('./browser-report.json',import.meta.url),JSON.stringify(report,null,2));
 }catch(error){try{console.error('BROWSER_DIAGNOSTICS',JSON.stringify(await page?.evaluate(()=>({ready:globalThis.BloomSimulation?.worker?.ready,game:!!globalThis.__army,gestures:globalThis.__qaGestures,focus:document.activeElement?.id,diagnostics:globalThis.BloomDiagnostics?.snapshot()}))));console.log('TEST_SCREENSHOT_JPEG '+(await page.screenshot({type:'jpeg',quality:55})).toString('base64'))}catch{}throw error}finally{await browser?.close();server.close()}

@@ -116,3 +116,9 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 - 보간은 수신 당시 곡선에서 다시 연결합니다. 늦게 도착하는 미래 표본을 예측하지 않으며, 목표에 먼저 도달하면 다음 표본까지 대기합니다. 불규칙 수신의 속도 변화/대기는 남습니다. 공격/flash 새 단계는 XYZ와 별도로 즉시 반영하며 hitstop이 XYZ를 권위 위치로 튀게 하지 않습니다.
 - 155 동료 native CPU 제출 비교는 `tests/performance-summary.json`에 기록합니다. 참고 runner `tests/native-render.cjs`는 추가로 `@napi-rs/canvas@0.1.100`이 필요합니다. 같은 원본 HTML을 인수로 실행해 비교하며, no-op GPU sink이므로 GPU 완료시간·실제 브라우저·휴대폰 FPS 측정이 아닙니다.
 - main CI는 Pages 응답 전체 bytes의 SHA-256이 검사한 `index.html`과 같은지 배포 후 확인합니다. 실제 휴대폰/기기 GPU 검증은 별도입니다.
+
+## v65 · 회복 후 화면 동기화 수정
+
+회복 시 권위 세계를 복제하면서 내용이 같은 중첩 객체도 새 identity를 갖습니다. 이전 Worker delta가 새 identity 표시는 보내면서 값은 생략하여, 화면 쪽에서 라이벌의 능력 데이터 등 일부 필드를 지우는 문제가 있었습니다. 이제 교체 identity와 전체 값을 함께 보내고 함께 적용합니다. 라이벌을 숨기거나 누락된 능력을 임의 값으로 대체하지 않습니다.
+
+`tests/recovery-mirror.cjs`는 실제20TPS Worker 전투 사망/회복 두 번, 저장 복원, 새 게임 및 내용이 동일한 객체/배열 교체를 연속 검사합니다. 실제 브라우저 검증에는720×1282 backing store/DPR3 모바일 크기와20TPS, 라이벌이 화면에 보이는 회복/불러오기/동일 ID의 다른 역할 재사용을 추가했습니다. 사용자 원본 저장을 받은 것은 아니므로 같은 오류 경계를 재구성한 검증이며, 실제 Android 기기 검증을 의미하지 않습니다. 저장 schema·진행·게임 규칙은 변경하지 않습니다.
