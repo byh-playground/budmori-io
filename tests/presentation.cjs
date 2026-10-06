@@ -28,3 +28,8 @@ assert.throws(()=>e.run('presentationPose(state.mother).qaVisual.list.push(3)'),
 assert.equal(e.run('state.mother.qaVisual.nested.value'),7);
 e.run('presentationPose(state.mother).x=123');assert.notEqual(e.run('state.mother.x'),123);
 console.log('PASS readonly nested visual descriptors and separately writable scalar pose');
+// WorldUI.anchor receives an already sampled actor pose while hitstop is active.
+e.run('delete state.mother.qaVisual;presentation.active=true;capturePresentation();presentation.frameSerial++;globalThis.qaSampled=presentationPose(state.mother);CombatFeedback.records.set(state.mother.id,{holdUntil:100,pose:{movePhase:2}});CombatFeedback.time=1;');
+assert(e.run('presentationPose(qaSampled)===qaSampled'));
+assert(e.run('Number.isFinite(WorldUI.anchor(qaSampled).x)'));
+console.log('PASS recursive world-UI pose lookup retains presentation-owned identity during hitstop');

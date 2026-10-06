@@ -18,8 +18,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm run verify:upstream
       - run: npm test
+      - run: npm run verify:upstream
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - name: Compare exact v65 Worker baseline against this main-thread build

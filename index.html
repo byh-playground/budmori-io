@@ -8179,6 +8179,9 @@ function capturePresentation(initial=false){
  presentation.clockTimeline.accept({...base,entities:[{id:'time',generation:0,values:{time:state.time}}]},now);
 }
 function bloomVisualPose(source,kind='unit',now=presentation.frameNow){
+ // World-space UI adapters may ask for the pose of an already sampled pose.
+ // Preserve that presentation-owned identity instead of wrapping it as authority.
+ if(source?._combatRender)return source;
  const e=presentation.maps[kind].get(kind==='unit'?source.id:source);if(!e||e.source!==source)return bloomVisualReadonly(source);
  if(e.sampledFrame===presentation.frameSerial&&e.sampledAt===now)return e.pose;
  const p=e.pose;if(!presentation.timelines[kind].sampleInto(e.id,e.generation,now,p))return bloomVisualReadonly(source);
