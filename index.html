@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source candidate 0a9e2d31fb869055bcf6fcb1aeda3f5a6d9713c0; exact bundled SHA-256 values in gamekit-lock.json. Final dist pin pending verified publication. */
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 3fe272d599e0daf326bae79f6ba96d22b18aa8a8; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 492ff6da1ff631b93fc2b313d55fe7bb71b1db56. */
 /* BEGIN GAMEKIT input */
 var BloomGamekitInput = (() => {
   var __defProp = Object.defineProperty;
@@ -2458,7 +2458,7 @@ function report(error,context={}){
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v64 · gamekit candidate',base:'v60 · 06a4d9e2521b',sdk:'bloom-gamekit@0a9e2d31fb869055bcf6fcb1aeda3f5a6d9713c0',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v64 · gamekit migration',base:'v60 · 06a4d9e2521b',sdk:'bloom-gamekit@3fe272d599e0daf326bae79f6ba96d22b18aa8a8',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
 }
@@ -11078,7 +11078,7 @@ function bindPointMove(){
  const C=CONFIG.pointMove;
  bloomDeviceInput=BloomGamekitInput.createDOMInput({target:canvas,state:bloomActions,keys:bloomKeyBindings,touchAction:'none',
   gestures:{tap:'point',doubleTap:'pointRoll',tapMs:C.tapMs,doubleTapMs:C.doubleMs,dragSlop:C.dragSlop,doubleTapSlop:C.doubleSlop},
-  excludeTarget(target,event){if(event.code==='Escape')return !!target?.closest?.('#bloom-diagnostic-panel');return !!target?.closest?.('input,textarea,select,button,a,[contenteditable="true"],[data-gamekit-ui],#bloom-diagnostic-panel')||!playing||paused||state.dead||!!modalKind},
+  excludeTarget(target,event){if(event.code==='Escape')return !!target?.closest?.('#bloom-diagnostic-panel');const selector=event.code?'input,textarea,select,[contenteditable="true"],#bloom-diagnostic-panel':'input,textarea,select,button,a,[contenteditable="true"],[data-gamekit-ui],#bloom-diagnostic-panel';return !!target?.closest?.(selector)||!playing||paused||state.dead||!!modalKind},
   onGesture(event){bloomInputPoints.push(event)}
  });
  canvas.addEventListener('dblclick',e=>e.preventDefault());
