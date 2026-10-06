@@ -14,15 +14,19 @@ const doc={createElement:tag=>tag==='canvas'?createCanvas(1,1):{style:{}}},world
 const realm=vm.createContext(vm.constants.DONT_CONTEXTIFY);Object.assign(realm,{console,performance,document:doc,Uint8Array,Uint8ClampedArray});realm.window=realm;
 const modules=scripts.find(s=>s.includes('var BloomGamekitInput'));if(modules)vm.runInContext(modules,realm);
 vm.runInContext(scripts.find(s=>s.includes('global.BloomWebGL=')),realm);const ctx=realm.BloomWebGL.create(world,{forceWebGL1:true});
-const adapted=html.replace('ctx=(globalThis.BLOOM_HEADLESS ? null : (BloomWebGL.create(canvas)))','ctx=globalThis.testContext');
+const unsafeAblation=process.env.BENCH_NO_READONLY==='1';
+const benchmarkSource=unsafeAblation?html.replace('function bloomVisualReadonly(source){','function bloomVisualReadonly(source){return source;'):html;
+const adapted=benchmarkSource.replace('ctx=(globalThis.BLOOM_HEADLESS ? null : (BloomWebGL.create(canvas)))','ctx=globalThis.testContext');
 const e=engine(file,adapted,ctx);const old=e.doc.createElement;e.doc.createElement=tag=>tag==='canvas'?createCanvas(1,1):old(tag);realm.RallyArt=e.c.RallyArt;
 let clock=1000;e.c.performance={now:()=>clock};
 e.run(fs.readFileSync(path.join(__dirname,'dense-fixture.js'),'utf8'));
 e.run('healthEnsureState();healthDOM={root:$("health"),fill:{style:{}},ghost:{style:{}},flash:{style:{}},label:$("motherHealth")};for(const k of ["showDefeat","refreshUI","toast","closeModal","refreshAutoHunt","refreshPermanentHuntControl","showAbilityChoices"])bloomPresentationFunctions[k]=()=>{};buildTerrain();BloomSimulation.createSession();view.x=state.mother.x;view.y=state.mother.y;BLOOM_HEADLESS=false;resetPresentation();BLOOM_HEADLESS=true;');
 const rows=[];for(let i=0;i<Number(process.env.RENDER_TICKS||5);i++){
  e.tick();e.run('BLOOM_HEADLESS=false;BloomSimulation.present(BloomSimulation.session.confirmedTick);capturePresentation();BLOOM_HEADLESS=true;');
- for(let j=0;j<6;j++){clock+=100/6;e.c.alpha=(j+1)/6;const start=performance.now();e.run('BLOOM_HEADLESS=false;render(alpha,1/60);BLOOM_HEADLESS=true;');rows.push(performance.now()-start);assert(ctx.stats().available,ctx.stats().failure)}
+ const authorityBefore=Buffer.from(e.run('BloomSimulation.adapter.save()'));
+ for(let j=0;j<6;j++){clock+=100/6;e.c.alpha=(j+1)/6;const start=performance.now();e.run('BLOOM_HEADLESS=false;render(alpha,1/60);BLOOM_HEADLESS=true;');rows.push(performance.now()-start);assert(!e.run('BloomDiagnostics.fatal'),JSON.stringify(e.json('BloomDiagnostics.snapshot()')));assert(ctx.stats().frame>i*6+j,'Each measured render must submit a frame');assert(ctx.stats().available,ctx.stats().failure)}
+ assert(authorityBefore.equals(Buffer.from(e.run('BloomSimulation.adapter.save()'))),'Positive-dt render-only frames must preserve fresh canonical authority bytes');
 }
 const before=Buffer.from(e.run('BloomSimulation.adapter.save()'));e.run('BLOOM_HEADLESS=false;render(1,0);BLOOM_HEADLESS=true;');assert(before.equals(Buffer.from(e.run('BloomSimulation.adapter.save()'))));
-const sorted=rows.slice(6).sort((a,b)=>a-b),report={kind:'Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS',sha256:crypto.createHash('sha256').update(html).digest('hex'),samples:sorted.length,median:sorted[Math.floor(sorted.length/2)],p95:sorted[Math.ceil(sorted.length*.95)-1],mean:sorted.reduce((a,b)=>a+b,0)/sorted.length,stats:ctx.stats(),units:e.run('state.units.length'),friendly:e.run('state.units.filter(u=>u.team==="friendly"&&u.hp>0).length'),authorityUnchanged:true};
+const sorted=rows.slice(6).sort((a,b)=>a-b),report={kind:'Native V8 CPU submission, mock DOM/GPU sink, actual game and asset raster; not browser/GPU/device FPS',unsafeReadonlyAblation:unsafeAblation,sha256:crypto.createHash('sha256').update(html).digest('hex'),samples:sorted.length,median:sorted[Math.floor(sorted.length/2)],p95:sorted[Math.ceil(sorted.length*.95)-1],p99:sorted[Math.ceil(sorted.length*.99)-1],seed:e.run('bloomSeed'),tps:e.run('CONFIG.sim.tickRate'),mean:sorted.reduce((a,b)=>a+b,0)/sorted.length,stats:ctx.stats(),units:e.run('state.units.length'),friendly:e.run('state.units.filter(u=>u.team==="friendly"&&u.hp>0).length'),authorityUnchanged:true};
 console.log(JSON.stringify(report,null,2));fs.writeFileSync(path.join(__dirname,path.basename(file)+'.render.json'),JSON.stringify(report,null,2));e.run('BloomSimulation.session.close()');

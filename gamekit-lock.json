@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "5c70abf56c092c00926b1614c599a70968eca3d6",
-  "distCommit": "444f51c4cb293268dc6e20ffbc40a9afe963a069",
+  "sourceCommit": "9be41746b488d8d51699b6aad023370d9f5389e3",
+  "distCommit": "a3e4bd670361b6af653d8ec5686ecb564d428398",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
     {
       "name": "presentation-events",
-      "bundleSHA256": "c0785f505a1d0ccb169074f513eca6a43e33b2f7dad1354b138ce81ee32ecec0",
-      "inlineSHA256": "cc4ae1d31386b387cc79c16f61bd2168f6166ff7c1db8585c904e941511750a0"
+      "bundleSHA256": "61d11a42d7edc72d8b9219902ed7e9d0025f05b77a9d681d21582767117af0e6",
+      "inlineSHA256": "56f959814e88e9b52e1a5452e2d026575f031e75d9f4a2138adf6255b22c480d"
     },
     {
       "name": "camera",
@@ -18,8 +18,8 @@
     },
     {
       "name": "rollback-netcode",
-      "bundleSHA256": "6fee0a08c86942c6e65196b0dd7e29fb88b7694e78f3a404b0646a3eec2af22a",
-      "inlineSHA256": "ded819c6807eb1738753163df560ecec093e0bff0003eb44125dae7ca3a23dc4"
+      "bundleSHA256": "16ce5b8e7f534885c8c5a541cb4dfe953783752d9c87e6e17934fe160abc7e78",
+      "inlineSHA256": "d43815e8dcfe38ad5414e6af0de868d309658197b6786ee2789910e05b6ff665"
     },
     {
       "name": "interpolation",
@@ -33,8 +33,8 @@
     },
     {
       "name": "rendering",
-      "bundleSHA256": "44221c42e2cabd2c551d231191dd153fa12ac2f41e79e596e9503a5cb0ea1289",
-      "inlineSHA256": "b6ef6f5d28af9ce5f58fea6c0b5881a204bd20f8d602b96baf9ac02083228cc1"
+      "bundleSHA256": "6a8ca01bca9db3282ba3a66a9881ebcd4719df798f9ff0d471e5df23f471ccb1",
+      "inlineSHA256": "1193aa97ead254e1c67479ec00f4d6875b720c73d1c9e0ce04969dc67f8a3b6c"
     },
     {
       "name": "input",
@@ -47,5 +47,5 @@
       "inlineSHA256": "741c1aa3dd8a891fc358d972330a84afc90337f5de14b577aabacde299b5a0b0"
     }
   ],
-  "manifestSHA256": "ca3df3c2eaa87e75623eafcd35476eb41f72791f681c826351c6fa379f093fc9"
+  "manifestSHA256": "47137d8df08c9ea7199d4029da29af417cd17f5315262821055164511f427ca6"
 }

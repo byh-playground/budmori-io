@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 5c70abf56c092c00926b1614c599a70968eca3d6; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 444f51c4cb293268dc6e20ffbc40a9afe963a069. */
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 9be41746b488d8d51699b6aad023370d9f5389e3; exact bundled SHA-256 values in gamekit-lock.json. Verified dist a3e4bd670361b6af653d8ec5686ecb564d428398. */
 /* BEGIN GAMEKIT input */
 var BloomGamekitInput = (() => {
   var __defProp = Object.defineProperty;
@@ -1022,13 +1022,19 @@ var BloomGamekitPresentationEvents = (() => {
       this.active = /* @__PURE__ */ new Set();
       this.rollbackFrom = null;
       this.disposed = false;
+      this.confirmationDirty = false;
       this.stats = { started: 0, duplicates: 0, cancelled: 0, expired: 0, collected: 0, rejectedOld: 0 };
     }
     _ready() {
       if (this.disposed) throw new Error("event queue disposed");
     }
     _start(record) {
-      record.handle = record.adapter.start(record.event, this.nowMs);
+      try {
+        record.handle = record.adapter.start(record.event, this.nowMs);
+      } catch (error) {
+        if (record.confirmed) this.confirmationDirty = true;
+        throw error;
+      }
       record.startedMs = this.nowMs;
       record.state = "active";
       this.active.add(record);
@@ -1040,9 +1046,13 @@ var BloomGamekitPresentationEvents = (() => {
     }
     _release(record) {
       if (!record.confirmed || record.state === "active" || record.state === "pending") return;
-      const { tick, sequence, entityId, generation, kind, policy } = record.event;
-      record.event = { tick, sequence, entityId, generation, kind, policy };
-      record.handle = void 0;
+      const { tick } = record.event;
+      if (!record.compacted) {
+        const { sequence, entityId, generation, kind, policy } = record.event;
+        record.event = { tick, sequence, entityId, generation, kind, policy };
+        record.handle = void 0;
+        record.compacted = true;
+      }
       if (tick <= this.confirmedTick - this.retentionTicks && this.records.delete(record.key)) this.stats.collected++;
     }
     _stop(record, reason) {
@@ -1102,7 +1112,8 @@ var BloomGamekitPresentationEvents = (() => {
         state: "pending",
         handle: void 0,
         startedMs: 0,
-        seen: true
+        seen: true,
+        compacted: false
       };
       this.records.set(key, record);
       if (policy === "speculative" || record.confirmed) this._start(record);
@@ -1136,7 +1147,9 @@ var BloomGamekitPresentationEvents = (() => {
       integer(tick, "tick");
       if (this.rollbackFrom !== null) throw new Error("finish rollback before confirmation");
       if (tick < this.confirmedTick) throw new RangeError("confirmed tick cannot regress");
+      if (tick === this.confirmedTick && !this.confirmationDirty) return;
       this.confirmedTick = tick;
+      this.confirmationDirty = true;
       for (const record of this.records.values()) if (record.event.tick <= tick) {
         const wasConfirmed = record.confirmed;
         record.confirmed = true;
@@ -1145,6 +1158,7 @@ var BloomGamekitPresentationEvents = (() => {
         this._release(record);
       }
       this.collect();
+      this.confirmationDirty = false;
     }
     update(nowMs) {
       this._ready();
@@ -1171,7 +1185,7 @@ var BloomGamekitPresentationEvents = (() => {
     collect() {
       this._ready();
       const cutoff = this.confirmedTick - this.retentionTicks;
-      for (const [key, record] of this.records) if (record.confirmed && record.event.tick <= cutoff && record.state !== "active") {
+      for (const [key, record] of this.records) if (record.confirmed && record.event.tick <= cutoff && record.state !== "active" && record.state !== "pending") {
         this.records.delete(key);
         this.stats.collected++;
       }
@@ -1471,12 +1485,15 @@ var BloomGamekitRendering = (() => {
       preserveDrawingBuffer = false,
       powerPreference = "default",
       failIfMajorPerformanceCaveat = false,
+      checkGLErrors = false,
       maxTextures = 8,
       maxBufferBytes = 128 * 1024 * 1024
     } = {}) {
       if (!canvas?.getContext || !canvas?.addEventListener) throw new TypeError("canvas required");
       if (!["default", "low-power", "high-performance"].includes(powerPreference)) throw new TypeError("Invalid WebGL powerPreference");
       if (typeof failIfMajorPerformanceCaveat !== "boolean") throw new TypeError("failIfMajorPerformanceCaveat must be boolean");
+      if (typeof checkGLErrors !== "boolean") throw new TypeError("checkGLErrors must be boolean");
+      this.checkGLErrors = checkGLErrors;
       integer(maxTextures, "maxTextures", 1, 32);
       integer(maxBufferBytes, "maxBufferBytes", 4);
       this.canvas = canvas;
@@ -1782,8 +1799,10 @@ var BloomGamekitRendering = (() => {
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       if (pixels instanceof Uint8Array) gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, width, height, format, gl.UNSIGNED_BYTE, pixels);
       else gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, format, gl.UNSIGNED_BYTE, pixels);
-      const error = gl.getError();
-      if (error !== gl.NO_ERROR) throw new Error(`Texture update error ${error}`);
+      if (this.checkGLErrors) {
+        const error = gl.getError();
+        if (error !== gl.NO_ERROR) throw new Error(`Texture update error ${error}`);
+      }
       r.source = next.source;
       this.stats.textureUploads++;
       this.stats.textureBytes += width * height * (r.format === "rgba" ? 4 : 1);
@@ -1799,15 +1818,19 @@ var BloomGamekitRendering = (() => {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, r.gpu);
       this.boundTextureCount = Math.max(1, this.boundTextureCount);
+      let allocated = false;
       if (!gl.getContextAttributes().alpha && r.copyFormat !== "rgb") {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, r.width, r.height, 0, gl.RGB, gl.UNSIGNED_BYTE, null);
         r.copyFormat = "rgb";
+        allocated = true;
         this.stats.textureUploads++;
         this.stats.textureBytes += r.width * r.height * 3;
       }
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, x, y, r.width, r.height);
-      const error = gl.getError();
-      if (error !== gl.NO_ERROR) throw new Error(`Framebuffer copy error ${error}`);
+      if (allocated || this.checkGLErrors) {
+        const error = gl.getError();
+        if (error !== gl.NO_ERROR) throw new Error(`Framebuffer copy error ${error}`);
+      }
       r.source = null;
       this.stats.frameCopies++;
     }
@@ -2437,13 +2460,12 @@ void main() {
 })();
 /* END GAMEKIT rendering */
 </script><script id="bloom-diagnostic-bootstrap">/* BLOOM local diagnostics. One reporter, one presentation owner, no telemetry.
- * Loaded before application scripts, also included in the inline Worker.
+ * Loaded before application scripts on the main thread.
  * Never reads storage, serializes the world, or participates in SDK authority. */
 (function installBloomDiagnostics(g) {
 'use strict';
 if(g.BloomDiagnostics)return;
-const worker=!!g.BLOOM_HEADLESS&&typeof g.postMessage==='function';
-const origin=worker?'worker':'main', commands=[], providers=new Map();
+const origin='main', commands=[], providers=new Map();
 let fatal=false,busy=false,stop=null,pauseForInspect=null,dropped=0,total=0,panel=null,badge=null,summary=null,copyButton=null,notice=null,closeButton=null,lastMono=0,copyAttempt=0;
 const mono=()=>{try{lastMono=Math.max(lastMono,Number(g.performance?.now())||0)}catch{}return Math.round(lastMono*100)/100};
 const ring=new BloomGamekitDebugTools.DiagnosticRing({capacity:20,now:mono,release:'Budmori gamekit migration'});
@@ -2454,22 +2476,22 @@ function halt(){if(stop)try{stop()}catch{dropped++}}
 function report(error,context={}){
  if(busy){dropped++;return null}busy=true;
  try{
-  const result=ring.report({message:detail(error),stack:field(error,'stack')||context.stack||'',cause:field(error,'cause')||context.cause},{...context,origin:context.origin==='worker'?'worker':origin});
+  const result=ring.report({message:detail(error),stack:field(error,'stack')||context.stack||'',cause:field(error,'cause')||context.cause},{...context,origin});
   if(!result)return null;const record={...result,severity:result.fatal?'fatal':'recoverable'};total=ring.total;
   if(context.fatal&&!fatal){fatal=true;halt()}
-  if(worker){try{g.postMessage({type:'diagnostic',record})}catch{dropped++}}else try{present()}catch{dropped++}
+  try{present()}catch{dropped++}
   return record;
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v65 · recovery mirror fix',base:'v64 · bd230db0efad',sdk:'bloom-gamekit@5c70abf56c092c00926b1614c599a70968eca3d6',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v66 · main-thread authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@9be41746b488d8d51699b6aad023370d9f5389e3',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
 }
 function format(){try{const data=snapshot();let text=JSON.stringify(data,null,2);while(text.length>60000&&data.errors.length>1){const i=data.errors.findIndex((e,i)=>i<data.errors.length-1&&e.severity!=='fatal');data.errors.splice(i<0?0:i,1);data.dropped++;text=JSON.stringify(data,null,2)}return text}catch{return 'BLOOM v62 diagnostic unavailable. Reload only after reviewing the last saved progress.'}}
 function make(tag,text){const n=g.document.createElement(tag);if(text)n.textContent=text;return n}
 function ensureUI(){
- if(worker||panel||!g.document?.createElement)return;
+ if(g.BLOOM_HEADLESS||panel||!g.document?.createElement)return;
  const host=g.document.body||g.document.documentElement;if(!host)return;
  badge=make('button','오류 기록 · 진단');badge.id='bloom-diagnostic-indicator';badge.type='button';badge.hidden=true;badge.setAttribute('aria-label','오류 기록과 진단 정보 열기');Object.assign(badge.style,{position:'fixed',right:'12px',top:'76px',zIndex:'2147483645',padding:'10px',background:'#623b27',color:'#fff',borderRadius:'8px'});badge.onclick=()=>open();host.appendChild(badge);
  panel=make('section');panel.id='bloom-diagnostic-panel';panel.hidden=true;panel.setAttribute('aria-label','BLOOM 진단 정보');Object.assign(panel.style,{position:'fixed',inset:'12px',zIndex:'2147483646',background:'#172c24',color:'#f5efd7',padding:'18px',border:'1px solid #e4c383',borderRadius:'16px',overflow:'auto',touchAction:'pan-y',font:'14px system-ui'});
@@ -2493,7 +2515,7 @@ function manualCopy(){
  if(notice)notice.textContent='자동 복사를 확인할 수 없어요. 텍스트 전체 선택 후 길게 눌러 복사하거나 진단 파일 저장을 이용하세요.';
 }
 async function copy(){
- // Use the visible cached report. Never await a Worker or refresh selection
+ // Use the visible cached report. Never await simulation or refresh selection
  // before requesting a clipboard write from the explicit user click.
  if(!panel||panel.hidden)open();const value=summary?.value||format(),attempt=++copyAttempt;
  selectText();manualCopy();
@@ -2523,13 +2545,13 @@ function downloadText(){
  }catch{if(url)g.URL.revokeObjectURL(url);manualCopy()}
 }
 
-const api=g.BloomDiagnostics={report,clean,snapshot,format,open,copy,get fatal(){return fatal},setStop(fn){stop=fn;if(fatal)halt()},setPauseForInspect(fn){pauseForInspect=fn},provide(name,fn){providers.set(name,fn)},command(type){if(typeof type!=='string')return;commands.push({type:clean(type,48),atMs:mono()});if(commands.length>16)commands.shift()},receive(record){if(!record||typeof record!=='object')return;report({message:record.message,stack:record.stack,cause:record.cause},{origin:'worker',kind:record.kind||'worker.exception',fatal:record.severity==='fatal',source:record.source,workerTimeMs:record.firstMs,line:record.line,column:record.column})}};
-g.addEventListener?.('error',e=>api.report(e.error||e.message||'Resource failed',{kind:worker?'worker.global.error':'window.error',fatal:true,source:e.filename,line:e.lineno,column:e.colno}),true);
-g.addEventListener?.('unhandledrejection',e=>api.report(e.reason,{kind:worker?'worker.unhandledrejection':'window.unhandledrejection',fatal:true}));
-if(!worker)g.document?.addEventListener?.('DOMContentLoaded',()=>{try{if(total)present()}catch{}},{once:true});
+const api=g.BloomDiagnostics={report,clean,snapshot,format,open,copy,get fatal(){return fatal},setStop(fn){stop=fn;if(fatal)halt()},setPauseForInspect(fn){pauseForInspect=fn},provide(name,fn){providers.set(name,fn)},command(type){if(typeof type!=='string')return;commands.push({type:clean(type,48),atMs:mono()});if(commands.length>16)commands.shift()}};
+g.addEventListener?.('error',e=>api.report(e.error||e.message||'Resource failed',{kind:'window.error',fatal:true,source:e.filename,line:e.lineno,column:e.colno}),true);
+g.addEventListener?.('unhandledrejection',e=>api.report(e.reason,{kind:'window.unhandledrejection',fatal:true}));
+if(!g.BLOOM_HEADLESS)g.document?.addEventListener?.('DOMContentLoaded',()=>{try{if(total)present()}catch{}},{once:true});
 // Diagnostic keyboard defaults (select/copy/arrows/Space) must not reach game controls.
-if(!worker)g.document?.addEventListener?.('keydown',e=>{if(e.target?.closest?.('#bloom-diagnostic-panel'))e.stopImmediatePropagation()},true);
-if(!worker)g.document?.addEventListener?.('click',e=>{if(e.target?.closest?.('[data-bloom-diagnostics]')){e.preventDefault();e.stopImmediatePropagation();open()}},true);
+if(!g.BLOOM_HEADLESS)g.document?.addEventListener?.('keydown',e=>{if(e.target?.closest?.('#bloom-diagnostic-panel'))e.stopImmediatePropagation()},true);
+if(!g.BLOOM_HEADLESS)g.document?.addEventListener?.('click',e=>{if(e.target?.closest?.('[data-bloom-diagnostics]')){e.preventDefault();e.stopImmediatePropagation();open()}},true);
 })(globalThis);
 </script><title>BLOOM · 군락의 행군</title><style>
 :root{color-scheme:dark;--ink:#eff5dc;--muted:#a4b7a3;--panel:#182b25;--line:#ffffff18;--green:#d4f58b;--teal:#9edbd3;--gold:#f3d89a}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#14291f;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Noto Sans KR",sans-serif;color:var(--ink);touch-action:none;user-select:none}button{font:inherit;color:inherit;border:0;cursor:pointer}button:focus-visible{outline:2px solid var(--green);outline-offset:3px}button:disabled{cursor:default;opacity:.42}#view{position:fixed;inset:0;width:100%;height:100%;display:block}#hud{position:fixed;top:0;left:50%;transform:translateX(-50%);width:min(100%,720px);padding:max(16px,env(safe-area-inset-top)) 18px 0;pointer-events:none}#top{display:flex;align-items:center;gap:8px}#brand{font-size:13px;font-weight:850;letter-spacing:3px;margin-right:auto;text-shadow:0 2px 8px #000}.stat{background:#14231edc;border:1px solid #fff2;border-radius:14px;padding:8px 10px;font-size:13px;white-space:nowrap;backdrop-filter:blur(10px)}.stat b{font-variant-numeric:tabular-nums}#pause{pointer-events:auto;width:35px;height:35px;border-radius:50%;background:#e7efd515;color:var(--ink)}#objective{margin:11px 0 0;padding:10px 13px;background:linear-gradient(90deg,#172c23f2,#172c23b0);border:1px solid var(--line);border-radius:14px;display:flex;gap:12px;align-items:center}#zoneLabel{font-size:11px;color:var(--green);font-weight:750;letter-spacing:.08em}#goal{font-size:12px;line-height:1.6;margin-top:2px}#progressTrack{display:flex;gap:4px;margin-top:8px}#progressTrack i{height:3px;border-radius:4px;flex:1;background:#fff2}#progressTrack i.open{background:var(--green)}#health{height:4px;border-radius:4px;overflow:hidden;margin-top:9px;background:#ffffff20}#health i{height:100%;display:block;background:var(--green);transition:width .15s}#popBar{font-size:10px;color:var(--muted);margin-top:5px;display:flex;justify-content:space-between}#bottom{position:fixed;bottom:max(16px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(100%,720px);padding:0 18px;pointer-events:none}#controls{display:flex;justify-content:space-between;align-items:flex-end;min-height:140px;gap:12px}#joystick{width:118px;height:118px;border-radius:50%;border:1px solid #e2f0bd45;background:#e2f0bd0c;position:relative;pointer-events:auto;touch-action:none;margin-left:7px;margin-bottom:3px;box-shadow:inset 0 0 30px #fff04}#joystick::before{content:"";position:absolute;inset:14px;border:1px solid #e2f0bd10;border-radius:50%}#knob{position:absolute;width:46px;height:46px;left:35px;top:35px;background:#dcecbdad;border:1px solid #f3f8d680;border-radius:50%;box-shadow:0 6px 18px #0002;pointer-events:none}#actions{display:flex;flex-direction:column;gap:8px;pointer-events:auto;align-items:flex-end;padding-bottom:6px}.menuBtn{background:#e8efd7;color:#23392b;border:1px solid #ecf1dc55;border-radius:14px;padding:11px 16px;font-weight:800;font-size:12px;box-shadow:0 6px 20px #0001}.menuBtn.secondary{background:#14291de8;color:var(--ink);font-weight:600}#status{position:fixed;bottom:190px;left:50%;transform:translateX(-50%);text-align:center;padding:8px 14px;border-radius:20px;background:#14291fe8;font-size:11px;color:var(--green);max-width:86%;pointer-events:none;opacity:0;transition:opacity .3s}#modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0c1718a8;backdrop-filter:blur(8px);z-index:10;padding:20px}#modal.show{display:flex}.sheet{width:min(100%,620px);max-height:86dvh;overflow:auto;background:#182e26;border:1px solid #deedc82b;border-radius:24px;box-shadow:0 30px 90px #0005;padding:22px;touch-action:pan-y}.sheet h1{font-size:37px;letter-spacing:-1px;margin:0 0 4px}.eyebrow{color:var(--green);font-size:10px;font-weight:750;letter-spacing:2px}.sheet h2{font-size:22px;margin:8px 0 10px}.sheet p{font-size:12px;color:#bed1bd;line-height:1.85;margin:8px 0}.sheetHead{display:flex;justify-content:space-between;align-items:center;gap:12px}.close{border-radius:50%;background:#ffffff10;width:32px;height:32px;font-size:20px;flex-shrink:0}.primary{background:var(--green);color:#243726;border-radius:13px;padding:14px 18px;font-size:13px;font-weight:800;display:block;width:100%;margin-top:16px}.tabs{display:flex;gap:7px;margin:17px 0}.tab{border-radius:9px;background:#ffffff0b;padding:9px 12px;font-size:12px}.tab.active{background:var(--green);color:#213729}.buy{background:#d4f58b15;border:1px solid #d4f58b35;color:var(--green);font-size:11px;min-width:84px;border-radius:11px;padding:11px 8px}.unitCard{text-align:left;padding:12px;background:#ffffff06;border:1px solid #ffffff15;border-radius:14px;min-width:0}.unitCard.selected{border-color:var(--green)}.unitCard img{width:55px;height:45px;float:right;object-fit:contain}.unitCard strong{font-size:12px}.unitCard p{font-size:10px;line-height:1.6;clear:both}.unitCard small{color:var(--gold);font-size:10px;display:block;margin-top:8px}.unitCard .tag{font-size:9px;color:var(--teal);display:block;margin-top:5px}.notice{padding:11px;border-radius:11px;background:#ffffff07;font-size:11px;color:#bdd0b8;line-height:1.7;margin:12px 0}.zoneRow{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line);font-size:12px}.zoneRow b{color:var(--green)}.zoneRow small{display:block;margin-top:4px;font-size:10px;color:var(--muted)}.badge{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#ffffff0c;color:var(--green)}.introArt{height:155px;position:relative;border-radius:17px;overflow:hidden;background:radial-gradient(ellipse,#b5cf8330,transparent 65%),#10221b;margin:18px 0}.introArt canvas{width:100%;height:100%}.introList{display:flex;gap:8px}.introList div{flex:1;padding:10px;border-top:1px solid #ffffff18;font-size:10px;color:var(--muted)}.introList b{display:block;color:var(--ink);font-size:11px;margin-bottom:5px}.fine{font-size:9px!important;color:#819980!important}.danger{color:#e4b19d!important}.credit a{color:var(--green)}#mini{width:90px;height:52px;flex-shrink:0}body.intro #hud,body.intro #bottom{opacity:.4}.key{font-size:9px;color:#8fa38d;letter-spacing:.06em;text-align:center;margin-top:12px}@media(min-width:800px){#hud{width:calc(100% - 40px);max-width:none;display:grid;grid-template-columns:1fr 330px;gap:16px;padding-top:24px}#top{align-self:start}#brand{font-size:17px}#objective{margin:0}#health,#popBar{grid-column:1;width:260px;margin-top:-12px}#popBar{margin-top:-8px}#controls{min-height:140px}#bottom{max-width:620px}#status{bottom:190px}}@media(max-width:370px){#hud,#bottom{padding-left:10px;padding-right:10px}.stat{font-size:11px;padding:7px}#brand{font-size:11px;letter-spacing:2px}.sheet{padding:17px}}
@@ -6248,7 +6270,7 @@ function bloomCollectDeviceInput(){
  bloomActions.consume();
  if(pause&&playing){paused?closeModal():showPause()}
  if(!playing||paused||state.dead||modalKind){bloomInputPoints.length=0;return}
- // Collect at the command-submission boundary. The Worker SDK chooses execution ticks.
+ // Collect at the command-submission boundary. The SDK chooses execution ticks.
  for(const event of bloomInputPoints){const p=projectionFromScreen(event.x,event.y);bloomQueue('point',{x:Math.round(p.x*CONFIG.pointMove.quantum),y:Math.round(p.y*CONFIG.pointMove.quantum),roll:event.type==='doubleTap'})}
  bloomInputPoints.length=0;if(roll)performRoll();
 }
@@ -8086,8 +8108,18 @@ CONFIG.sim.maxBacklog=2;
 const RENDER_TRACKS={unit:{x:'linear',y:'linear',z:'linear',angle:'angle',movePhase:'linear',moveSpeed:'linear',attackPose:'decay',flash:'decay',convertGlow:'decay',bodyContact:'decay',bodyLeanX:'linear',bodyLeanY:'linear'},projectile:{x:'linear',y:'linear',z:'linear',progress:'linear'},effect:{life:'linear'}};
 const presentation={state:null,time:0,alpha:1,epoch:0,maps:{unit:new Map(),projectile:new Map(),effect:new Map()},ticks:0,clock:{accepted:0,suspended:0,backlog:0,overloads:0},identity:0,frameSerial:0,frameNow:0,active:false};
 // Game fields and stages adapt to the shared scalar timeline. Authority remains
-// Worker-owned. A pose inherits untouched visual descriptors instead of copying
+// Simulation-owned. A pose inherits untouched visual descriptors instead of copying
 // each actor's complete simulation graph on every camera/shadow/body/HUD access.
+// Lazy read-only descriptors share immutable reads without cloning the world.
+// Scalar poses own every interpolated write; nested renderer access cannot mutate
+// the simulation graph. New authority objects receive new proxy identities.
+const bloomVisualReadonlyCache=new WeakMap();
+function bloomVisualReadonly(source){
+ if(!source||typeof source!=='object')return source;
+ let proxy=bloomVisualReadonlyCache.get(source);if(proxy)return proxy;
+ proxy=new Proxy(source,{get(target,key){return bloomVisualReadonly(Reflect.get(target,key))},set(target,key,value,receiver){if(receiver!==proxy){Object.defineProperty(receiver,key,{value,writable:true,enumerable:true,configurable:true});return true}throw new TypeError('Presentation cannot mutate authoritative '+String(key))},deleteProperty(){throw new TypeError('Presentation cannot delete authoritative data')},defineProperty(){throw new TypeError('Presentation cannot redefine authoritative data')},setPrototypeOf(){throw new TypeError('Presentation cannot change authoritative identity')}});
+ bloomVisualReadonlyCache.set(source,proxy);return proxy;
+}
 function bloomPresentationSchemas(){
  const result={};
  for(const kind of Object.keys(RENDER_TRACKS)){
@@ -8107,7 +8139,7 @@ function bloomResetTimelines(){
 }
 function renderTrack(kind,key,source,initial=false){
  const map=presentation.maps[kind];let e=map.get(key),fresh=!e||e.source!==source;
- if(fresh){e={source,id:kind+':'+(++presentation.identity),generation:0,pose:Object.create(source),values:{},epoch:0,components:{},sampledFrame:-1};map.set(key,e)}
+ if(fresh){e={source,id:kind+':'+(++presentation.identity),generation:0,pose:Object.create(bloomVisualReadonly(source)),values:{},epoch:0,components:{},sampledFrame:-1};map.set(key,e)}
  const values={},resetFields=[],previous=e.values;
  for(const [name,type]of Object.entries(RENDER_TRACKS[kind])){const value=Number(source[name])||0;values[name]=value;if(type==='decay'&&value>(previous[name]||0))resetFields.push(name)}
  const teleport=initial||(!fresh&&Math.hypot((source.x||0)-(previous.x||0),(source.y||0)-(previous.y||0))>CONFIG.render.presentation.snapDistance);
@@ -8115,12 +8147,12 @@ function renderTrack(kind,key,source,initial=false){
   for(const name of ['pendingMelee','pendingMoa']){
    const live=source[name],old=e.components[name],field=name+'$left';values[field]=Number(live?.left)||0;
    if(!old||old.source!==live)resetFields.push(field);
-   if(live&&(!old||old.source!==live))e.components[name]={source:live,pose:Object.create(live)};else if(!live)e.components[name]=null;
+   if(live&&(!old||old.source!==live))e.components[name]={source:live,pose:Object.create(bloomVisualReadonly(live))};else if(!live)e.components[name]=null;
   }
   for(const [name,def]of Object.entries(RENDER_COMPONENTS)){
    const live=source[name],old=e.components[name],same=old?.source===live&&old?.phase===live?.[def.phase];
    for(const field of Object.keys(def.fields)){const key=name+'$'+field;values[key]=Number(live?.[field])||0;if(!same)resetFields.push(key)}
-   if(live&&!same)e.components[name]={source:live,phase:live[def.phase],pose:Object.create(live)};else if(!live)e.components[name]=null;
+   if(live&&!same)e.components[name]={source:live,phase:live[def.phase],pose:Object.create(bloomVisualReadonly(live))};else if(!live)e.components[name]=null;
   }
  }
  e.values=values;e.epoch=presentation.epoch;e.sampledFrame=-1;
@@ -8147,12 +8179,12 @@ function capturePresentation(initial=false){
  presentation.clockTimeline.accept({...base,entities:[{id:'time',generation:0,values:{time:state.time}}]},now);
 }
 function bloomVisualPose(source,kind='unit',now=presentation.frameNow){
- const e=presentation.maps[kind].get(kind==='unit'?source.id:source);if(!e||e.source!==source)return source;
+ const e=presentation.maps[kind].get(kind==='unit'?source.id:source);if(!e||e.source!==source)return bloomVisualReadonly(source);
  if(e.sampledFrame===presentation.frameSerial&&e.sampledAt===now)return e.pose;
- const p=e.pose;if(!presentation.timelines[kind].sampleInto(e.id,e.generation,now,p))return source;
+ const p=e.pose;if(!presentation.timelines[kind].sampleInto(e.id,e.generation,now,p))return bloomVisualReadonly(source);
  if(kind==='unit'){
-  for(const name of ['pendingMelee','pendingMoa']){const c=e.components[name];if(c&&c.source===source[name]){c.pose.left=p[name+'$left'];p[name]=c.pose}else p[name]=source[name]}
-  for(const [name,def]of Object.entries(RENDER_COMPONENTS)){const c=e.components[name];if(c&&c.source===source[name]){for(const key of Object.keys(def.fields))c.pose[key]=p[name+'$'+key];p[name]=c.pose}else p[name]=source[name]}
+  for(const name of ['pendingMelee','pendingMoa']){const c=e.components[name];if(c&&c.source===source[name]){c.pose.left=p[name+'$left'];p[name]=c.pose}else p[name]=bloomVisualReadonly(source[name])}
+  for(const [name,def]of Object.entries(RENDER_COMPONENTS)){const c=e.components[name];if(c&&c.source===source[name]){for(const key of Object.keys(def.fields))c.pose[key]=p[name+'$'+key];p[name]=c.pose}else p[name]=bloomVisualReadonly(source[name])}
   p._combatRender=true;
  }
  e.sampledFrame=presentation.frameSerial;e.sampledAt=now;return p;
@@ -11602,6 +11634,10 @@ var BloomOwnedSDK = (() => {
         jitter: peer.jitter
       });
     }
+    /** Current scheduling multiplier without allocating a diagnostic metrics snapshot. */
+    get pace() {
+      return this._pace;
+    }
     get metrics() {
       return {
         ...this._metrics,
@@ -11714,15 +11750,29 @@ var BloomOwnedSDK = (() => {
         lastReceivedSequence: null
       };
       this._peers.set(peerId, peer);
-      peer.unsubscribe = transport.subscribe((data) => this.receive(peerId, data));
-      peer.unsubscribeStatus = transport.subscribeStatus?.((state) => this._transportStatus(peer, state));
+      let detached = false;
+      const current = () => !this.closed && !detached && this._peers.get(peerId) === peer;
+      peer.detach = () => {
+        if (detached) return;
+        detached = true;
+        if (this._peers.get(peerId) === peer) this._peers.delete(peerId);
+        const unsubscribe = peer.unsubscribe, unsubscribeStatus = peer.unsubscribeStatus;
+        peer.unsubscribe = peer.unsubscribeStatus = null;
+        try {
+          unsubscribe?.();
+        } finally {
+          unsubscribeStatus?.();
+        }
+      };
+      peer.unsubscribe = transport.subscribe((data) => {
+        if (current()) this.receive(peerId, data);
+      });
+      peer.unsubscribeStatus = transport.subscribeStatus?.((state) => {
+        if (current()) this._transportStatus(peer, state);
+      });
       if (transport.state) this._transportStatus(peer, transport.state);
       this._sendHello(peer, this._clock());
-      return () => {
-        peer.unsubscribe?.();
-        peer.unsubscribeStatus?.();
-        this._peers.delete(peerId);
-      };
+      return peer.detach;
     }
     _send(peer, data) {
       try {
@@ -12438,9 +12488,11 @@ var BloomOwnedSDK = (() => {
       if (this.closed) return;
       this.closed = true;
       for (const peer of this._peers.values()) {
-        peer.unsubscribe?.();
-        peer.unsubscribeStatus?.();
-        peer.transport.close?.();
+        try {
+          peer.detach();
+        } finally {
+          peer.transport.close?.();
+        }
       }
       this._peers.clear();
       this._incomingSnapshot = null;
@@ -12930,6 +12982,7 @@ var BloomOwnedSDK = (() => {
     getInput = () => new Uint8Array(session.inputSize),
     render = () => {
     },
+    backlogPolicy = "drop",
     beforeFrame = () => {
     },
     canAdvance = () => true,
@@ -12947,9 +13000,11 @@ var BloomOwnedSDK = (() => {
     for (const callback of [getInput, render, beforeFrame, canAdvance, onAdvance, onError, onInputRelease]) {
       if (typeof callback !== "function") throw new TypeError("loop callback");
     }
+    if (backlogPolicy !== "drop" && backlogPolicy !== "retain") throw new RangeError("backlogPolicy");
     const quantum = 1e3 / session.profile.tickRate;
-    let running = false, handle, last, accumulator = 0;
+    let running = false, handle, last, accumulator = 0, generation = 0, timingGeneration = 0;
     const resetTiming = () => {
+      timingGeneration++;
       last = void 0;
       accumulator = 0;
     };
@@ -12969,6 +13024,7 @@ var BloomOwnedSDK = (() => {
       }
     };
     const stop = () => {
+      generation++;
       running = false;
       if (handle !== void 0) cancelFrame?.(handle);
       handle = void 0;
@@ -12976,46 +13032,59 @@ var BloomOwnedSDK = (() => {
       globalThis.document?.removeEventListener("visibilitychange", hidden);
     };
     const pulse = (timestamp) => {
+      const current = generation;
       try {
         if (!Number.isFinite(timestamp)) throw new TypeError("frame timestamp");
+        if (backlogPolicy === "retain" && last !== void 0 && timestamp < last) throw new RangeError("retained loop timestamp cannot regress");
         beforeFrame(timestamp);
+        if (current !== generation) return;
+        const timing = timingGeneration;
         if (last === void 0) last = timestamp;
-        accumulator = Math.min(accumulator + Math.max(0, Math.min(250, timestamp - last)), quantum * session.profile.maxCatchupSteps);
+        const elapsed = Math.max(0, timestamp - last);
+        accumulator = backlogPolicy === "retain" ? accumulator + elapsed : Math.min(accumulator + Math.min(250, elapsed), quantum * session.profile.maxCatchupSteps);
+        if (!Number.isFinite(accumulator) || accumulator > Number.MAX_SAFE_INTEGER) throw new RangeError("loop backlog exceeds safe milliseconds");
         last = timestamp;
         session.poll();
+        if (current !== generation || timing !== timingGeneration) return;
         let work = 0;
-        while (!session.closed && !session.resimulating && accumulator >= quantum * session.metrics.pace && work < session.profile.maxCatchupSteps) {
-          if (!canAdvance()) {
-            accumulator = Math.min(accumulator, quantum);
+        while (!session.closed && !session.resimulating && work < session.profile.maxCatchupSteps) {
+          const pace = session.pace ?? session.metrics.pace;
+          if (accumulator < quantum * pace) break;
+          const allowed = canAdvance();
+          if (current !== generation || timing !== timingGeneration) return;
+          if (!allowed) {
+            if (backlogPolicy === "drop") accumulator = Math.min(accumulator, quantum);
             break;
           }
-          const pace = session.metrics.pace;
-          const result = session.advance(getInput());
+          const input = getInput();
+          if (current !== generation || timing !== timingGeneration) return;
+          const result = session.advance(input);
           work++;
+          if (timing !== timingGeneration) return;
           if (result.status === "advanced") accumulator = Math.max(0, accumulator - quantum * pace);
-          else accumulator = Math.min(accumulator, quantum);
+          else if (backlogPolicy === "drop") accumulator = Math.min(accumulator, quantum);
+          if (current !== generation) return;
           onAdvance(result);
-          if (result.status !== "advanced") {
-            accumulator = Math.min(accumulator, quantum);
-            break;
-          }
+          if (current !== generation || timing !== timingGeneration) return;
+          if (result.status !== "advanced") break;
         }
         render({ session, alpha: Math.min(1, accumulator / quantum), resimulating: session.resimulating });
       } catch (error) {
-        stop();
+        if (current === generation) stop();
         onError(error);
       }
-    };
-    const frame = (timestamp) => {
-      if (!running) return;
-      pulse(timestamp);
-      if (running) handle = requestFrame(frame);
     };
     const start = () => {
       if (running) return;
       if (typeof requestFrame !== "function" || typeof cancelFrame !== "function") throw new TypeError("frame scheduler");
       running = true;
       resetTiming();
+      const current = ++generation;
+      const frame = (timestamp) => {
+        if (!running || current !== generation) return;
+        pulse(timestamp);
+        if (running && current === generation) handle = requestFrame(frame);
+      };
       globalThis.addEventListener?.("blur", release);
       globalThis.document?.addEventListener("visibilitychange", hidden);
       handle = requestFrame(frame);
@@ -16356,7 +16425,7 @@ const combatBaseGearDamage=gearDamage;
 gearDamage=function(p,...args){const old=combatEventKind;combatEventKind=p.weapon;try{return combatBaseGearDamage(p,...args)}finally{combatEventKind=old}};
 const combatBasePose=presentationPose;
 presentationPose=function(source,kind='unit'){
- const p=combatBasePose(source,kind);if(bloomInTick||kind!=='unit'||!source||!presentation.active||p===source)return p;
+ const p=combatBasePose(source,kind);if(bloomInTick||kind!=='unit'||!source||!presentation.active||p===source||!p._combatRender)return p;
  const r=CombatFeedback.records.get(source.id),held=r&&CombatFeedback.time<r.holdUntil&&source.hp>0;
  // Animation-only hitstop: the single shared XYZ curve always keeps advancing.
  if(held&&r.pose)for(const [key,value]of Object.entries(r.pose)){
@@ -17910,7 +17979,7 @@ function bloomRunTick(context){
  }finally{bloomInTick=false;effects=presentEffects;permanentTraces=presentTraces;sproutImpacts=presentImpacts;}
 }
 // Disk is an adapter over immutable rollback bytes, never a second world model.
-// The Worker is the sole writer. The cache is private and owns a copy, so neither
+// The SDK tick boundary is the sole writer. The cache is private and owns a copy, so neither
 // codec scratch reuse nor a caller editing adapter.save() can change its bytes.
 const bloomSnapshotStore=(()=>{
  let latest=null,revision=0,encoded=null;
@@ -17919,10 +17988,10 @@ const bloomSnapshotStore=(()=>{
  function base64(bytes){if(typeof globalThis.btoa==='function'){const parts=[];for(let i=0;i<bytes.length;i+=24576)parts.push(globalThis.btoa(String.fromCharCode.apply(null,bytes.subarray(i,i+24576))));return parts.join('')}let parts=[];for(let start=0;start<bytes.length;start+=24576){const end=Math.min(bytes.length,start+24576);let part='';for(let i=start;i<end;i+=3){const a=bytes[i],b=bytes[i+1],c=bytes[i+2],n=(a<<16)|((b||0)<<8)|(c||0);part+=alphabet[n>>>18]+alphabet[n>>>12&63]+(i+1<bytes.length?alphabet[n>>>6&63]:'=')+(i+2<bytes.length?alphabet[n&63]:'=')}parts.push(part)}return parts.join('')}
  function unbase64(s,n){if(typeof s!=='string'||!Number.isSafeInteger(n)||n<1||n>8388608||s.length!==4*Math.ceil(n/3)||!/^[A-Za-z0-9+/]*={0,2}$/.test(s))throw new TypeError('Invalid snapshot encoding');const out=new Uint8Array(n);let at=0;for(let i=0;i<s.length;i+=4){const v=(alphabet.indexOf(s[i])<<18)|(alphabet.indexOf(s[i+1])<<12)|((s[i+2]==='='?0:alphabet.indexOf(s[i+2]))<<6)|(s[i+3]==='='?0:alphabet.indexOf(s[i+3]));if(at<n)out[at++]=v>>>16;if(at<n)out[at++]=v>>>8;if(at<n)out[at++]=v}if(base64(out)!==s)throw new TypeError('Noncanonical snapshot encoding');return out}
  function invalidate(){revision++;latest=null;encoded=null}
- function capture(){encoded=null;const bytes=BloomLiveCodec.encode(bloomCapture(true),{units:spatialUnits,anchors:spatialAnchors});metrics.captures++;metrics.captureBytes+=bytes.length;if(globalThis.BLOOM_WORKER_AUTHORITY){latest={bytes:bytes.slice(),revision,tick:bloomTick,tickRate:CONFIG.sim.tickRate,time:state.time,state};encoded=null}return bytes}
+ function capture(){encoded=null;const bytes=BloomLiveCodec.encode(bloomCapture(true),{units:spatialUnits,anchors:spatialAnchors});metrics.captures++;metrics.captureBytes+=bytes.length;if(globalThis.BLOOM_MAIN_AUTHORITY){latest={bytes:bytes.slice(),revision,tick:bloomTick,tickRate:CONFIG.sim.tickRate,time:state.time,state};encoded=null}return bytes}
  function disk(){
   if(bloomInTick||bloomInitializing||bloomInputPending||bloomSession?.failure||bloomSession?.resimulating||BloomSimulation.multiplayer)throw new Error('Save requires a settled single-player snapshot boundary');
-  if(!globalThis.BLOOM_WORKER_AUTHORITY||!latest||latest.revision!==revision||latest.tick!==bloomTick||latest.tickRate!==CONFIG.sim.tickRate||latest.state!==state){const bytes=capture();if(!globalThis.BLOOM_WORKER_AUTHORITY||!latest){latest={bytes,revision,tick:bloomTick,tickRate:CONFIG.sim.tickRate,time:state.time,state}}}else metrics.cacheHits++;
+  if(!globalThis.BLOOM_MAIN_AUTHORITY||!latest||latest.revision!==revision||latest.tick!==bloomTick||latest.tickRate!==CONFIG.sim.tickRate||latest.state!==state){const bytes=capture();if(!globalThis.BLOOM_MAIN_AUTHORITY||!latest){latest={bytes,revision,tick:bloomTick,tickRate:CONFIG.sim.tickRate,time:state.time,state}}}else metrics.cacheHits++;
   if(encoded)return encoded;
   const start=performance.now(),bytes=latest.bytes;
   encoded=JSON.stringify({schema:'bloom-snapshot-disk-v3',formatVersion:3,simulationVersion:'bloom-webgl-live-ms-v2',codec:'bloom-live-graph-v3',encoding:'base64',savedAt:Date.now(),tickRate:latest.tickRate,tick:latest.tick,worldTime:latest.time,byteLength:bytes.length,checksum:{algorithm:'fnv1a32',value:BloomOwnedSDK.hashBytes(bytes)},live:base64(bytes)});
@@ -17982,7 +18051,7 @@ function bloomPresent(confirmedTick){
 const bloomPresentationFunctions={rarityFusion:rarityPresentFusion,toast,refreshUI,showCards,showUpgrades,showAbilityChoices,showDefeat,showVictory,closeModal,refreshAutoHunt,refreshPermanentHuntControl,addFx,deathCapture,mineralGainCredit,emitMoaRollTrail,mineralGainClear,updateJuicedHUD,healingClear,healingCredit};
 function bloomNewSession({players=['solo'],localPlayerId='solo',ownerId='solo',clock}={}){
  bloomSnapshotStore.invalidate();bloomSession?.close();CombatAudio.clear();CombatFeedback.clear();bloomTick=0;bloomPendingEffects.clear();bloomResetEventJournal();bloomInputPending=0;bloomPresentationThrough=-1;bloomEffectDelivered=0;bloomLastPersist=0;BloomSimulation.ownerId=ownerId;BloomSimulation.multiplayer=players.length>1;
- const options={players,localPlayerId,sessionId:'bloom-webgl-v58',simulationVersion:'bloom-webgl-ms-v2',seed:bloomSeed,inputSize:5,adapter:bloomAdapter,profile:{...BloomOwnedSDK.profiles.action,tickRate:CONFIG.sim.tickRate,baseInputDelayTicks:0,minInputDelayTicks:0,maxInputDelayTicks:0,adaptiveInputDelay:false,pacingPolicy:'none',stateHistorySize:32,rollbackWindowTicks:24,maxHistoryBytes:268435456,maxSnapshotBytes:8388608}};
+ const options={players,localPlayerId,sessionId:'bloom-webgl-v58',simulationVersion:'bloom-webgl-ms-v2',seed:bloomSeed,inputSize:5,adapter:bloomAdapter,profile:{...BloomOwnedSDK.profiles.action,...(globalThis.BLOOM_MAIN_AUTHORITY?{maxCatchupSteps:1}:{}),tickRate:CONFIG.sim.tickRate,baseInputDelayTicks:0,minInputDelayTicks:0,maxInputDelayTicks:0,adaptiveInputDelay:false,pacingPolicy:'none',stateHistorySize:32,rollbackWindowTicks:24,maxHistoryBytes:268435456,maxSnapshotBytes:8388608}};
  if(clock)options.clock=clock;bloomSession=BloomOwnedSDK.createSession(options);return bloomSession;
 }
 function bloomInitialize(seed=0x6d2b79f5){bloomSnapshotStore.invalidate();if(!Number.isInteger(seed)||seed<0||seed>0xffffffff)throw new TypeError('Explicit uint32 seed');bloomSeed=seed;CONFIG.sim.seed=seed;bloomInitializing=true;try{bloomCore.reset();state.campaign.savedAt=0;abilityShotSerial=0;finisherSerial=0;finisherShot=null;Object.assign(permanentHuntIndex,{state:null,room:-1,next:0,candidates:[],rebuilds:0});permanentHuntIndex.claims.clear();permanentHuntIndex.owners.clear();rectFriendState=null;rectFriendTime=-1;rectFriendMask=0;spatialBoundary();}finally{bloomInitializing=false}bloomTick=0;return state}
@@ -18009,425 +18078,110 @@ BloomDiagnostics.provide('engine',()=>{
 });
 if(!globalThis.BLOOM_HEADLESS)BloomDiagnostics.provide('render',()=>({backend:canvas?.dataset?.rendererBackend||'unavailable',contextLost:!!ctx?.lost,frames:frameStats.frames,renderMs:frameStats.renderMs,simMs:frameStats.simMs,canvas:{width:canvas?.width,height:canvas?.height,dpr:globalThis.devicePixelRatio||1},drawCalls:ctx?.frameStats?.drawCalls??null,vertices:ctx?.frameStats?.vertices??null,textureUploads:ctx?.frameStats?.textureUploads??null}));
 
-</script><script id="bloom-worker-bridge">'use strict';
-/* BLOOM v58 portable worker boundary. Insert as its own inline classic script
- * immediately before the final boot script. No external URL, eval, or fallback.
- * The preceding inline engine (including the byte-identical owned SDK) is the
- * worker source; only its two headless DOM placeholders are substituted. */
-function bloomWorkerDOMBootstrap() {
-  globalThis.BLOOM_HEADLESS = true;
-  globalThis.window = globalThis;
-  const noop = () => {};
-  function surface(id = '') {
-    const classes = new globalThis.Set();
-    return { id, dataset: {}, style: { setProperty: noop }, children: [], innerHTML: '', textContent: '',
-      classList: { add(...v) { v.forEach(x => classes.add(x)); }, remove(...v) { v.forEach(x => classes.delete(x)); }, contains: x => classes.has(x), toggle: noop },
-      addEventListener: noop, removeEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 780 }),
-      setAttribute(k, v) { this[k] = v; }, getAttribute(k) { return this[k]; },
-      appendChild(x) { this.children.push(x); x.parentElement = this; return x; }, prepend: noop, insertBefore: noop,
-      remove: noop, focus: noop, querySelectorAll: () => [], querySelector: () => null, closest: () => null };
-  }
-  const elements = new globalThis.Map(), doc = surface('document');
-  doc.getElementById = id => { if (!elements.has(id)) { const e = surface(id); e.parentElement = surface(); elements.set(id, e); } return elements.get(id); };
-  doc.createElement = tag => globalThis.Object.assign(surface(), { tagName: tag.toUpperCase() });
-  doc.body = surface('body'); doc.head = surface('head'); doc.documentElement = surface('html');
-  globalThis.document = doc; globalThis.testCanvas = doc.getElementById('view');
-  globalThis.innerWidth = 390; globalThis.innerHeight = 780;
-  globalThis.localStorage = { getItem: () => null, setItem: noop };
-  globalThis.requestAnimationFrame = noop; globalThis.cancelAnimationFrame = noop;
-  globalThis.matchMedia = () => ({ matches: false, addEventListener: noop });
-  if (!globalThis.addEventListener) globalThis.addEventListener = noop;
-  if (!globalThis.removeEventListener) globalThis.removeEventListener = noop;
-}
-function bloomWorkerEngineSource(sources) {
-  // The renderer precedes the engine's intrinsic-alias script in the HTML.
-  // Separate classic scripts have no forward lexical TDZ; one Blob script does.
-  // Move only those identity aliases before any module initializers.
-  const alias = sources.findIndex(source => source.startsWith('const Math=globalThis.Math,'));
-  if (alias > 0) sources = [sources[alias], ...sources.slice(0, alias), ...sources.slice(alias + 1)];
-  return sources.map(source => source
-    .replace("const canvas=(globalThis.BLOOM_HEADLESS ? null : ($('view')))", "const canvas=(globalThis.BLOOM_HEADLESS ? globalThis.testCanvas : ($('view')))")
-    .replace('return globalThis.BLOOM_HEADLESS?null:document.getElementById(id)', 'return document.getElementById(id)')).join('\n;\n');
-}
-function bloomWorkerRuntime() {
-  globalThis.BLOOM_WORKER_AUTHORITY = true;
-  let persistenceProtected = false;
-  let initialized = false, fatal = false, manualClock = false, timer = null, deadline = 0, epoch = 0, publication = 0;
-  let inflight = 0, lastPublicationAt = -Infinity, input = { x: 0, y: 0, manual: false }, awaitingEvents = [];
-  let entityCache = new Map(), nestedRefs = new Map(), metaCache = new Map(), projectileIds = new WeakMap(), nextProjectileId = 1;
-  let lastAckTick = null, lastAckSequence = 0;
-  let pendingSaves = [];
-  let lastDiskTick = 0, generationDirty = true, viewDirty = true, tickCosts = [], publications = 0, publishedBytes = 0;
-  const send = message => globalThis.postMessage(message);
-  BloomDiagnostics.setStop(() => { fatal = true; paused = true; clearTimeout(timer); timer = null; });
-  const fail = (error, kind='worker.simulation') => BloomDiagnostics.report(error,{kind,fatal:true});
-  BloomDiagnostics.provide('worker',()=>({initialized,fatal,persistenceProtected,publication,inflight,tick:bloomTick,tickRate:CONFIG.sim.tickRate,pendingCommands:bloomInputPending}));
-  const canAdvance = () => initialized && !fatal && playing && ((!paused && !modalKind && !state.dead) || bloomInputPending > 0);
-  const reply = (id, value) => { if (id !== undefined) send({ type: 'reply', id, value }); };
-  function boundary() {
-    for(const m of pendingSaves){if(m.type==='save')reply(m.id,false);else send({type:'reply',id:m.id,error:'Save superseded by session boundary'})}pendingSaves=[];
-    bloomNewSession(); epoch++; generationDirty = true; viewDirty = true; inflight = 0; lastAckTick = null; lastAckSequence = 0; entityCache.clear(); nestedRefs.clear(); metaCache.clear();
-    projectileIds = new WeakMap(); nextProjectileId = 1; awaitingEvents = []; lastDiskTick = 0;
-    deadline = performance.now() + 1000 / CONFIG.sim.tickRate;
-  }
-  // Existing reset/load/TPS entrypoints call this name. They may never start an
-  // RAF-driven loop in this worker, or create a second scheduler.
-  bloomStartDriver = boundary;
-  function encodeDisk() { return bloomSnapshotStore.disk(); }
-  function persist(id) {
-    if(persistenceProtected){reply(id,false);return null}
-    const disk = encodeDisk(); bloomPersistenceRequested = false; lastDiskTick = bloomTick;
-    send({ type: 'disk', epoch, tick: bloomTick, disk }); reply(id, true); return disk;
-  }
-  function fieldDelta(cacheKey, object) {
-    let previous = entityCache.get(cacheKey); const fresh = !previous;
-    if (!previous) { previous = new Map(); entityCache.set(cacheKey, previous); }
-    let refs = nestedRefs.get(cacheKey); if (!refs) { refs = new Map(); nestedRefs.set(cacheKey, refs); }
-    const changes = {}, removed = [], replaced = [];
-    for (const key of Object.keys(object)) {
-      const value = object[key];
-      // The authoritative graph contains plain data. Structural signatures are
-      // computed only in the worker; the main thread performs no serialization.
-      const signature = value && typeof value === 'object' ? JSON.stringify(value) : value;
-      const referenceChanged = !!value && typeof value === 'object' && refs.has(key) && refs.get(key) !== value;
-      if (value && typeof value === 'object') { if (referenceChanged) replaced.push(key); refs.set(key, value); } else refs.delete(key);
-      // Recovery/restore may replace an object with byte-equivalent contents.
-      // Its new identity and full value form one publication operation; never
-      // emit a replacement tombstone without the value needed by the mirror.
-      if (fresh || referenceChanged || !previous.has(key) || previous.get(key) !== signature) { changes[key] = value; previous.set(key, signature); }
-    }
-    for (const key of previous.keys()) if (!Object.hasOwn(object, key)) { removed.push(key); previous.delete(key); refs.delete(key); }
-    return fresh || removed.length || Object.keys(changes).length ? { key: cacheKey, fresh, changes, removed, replaced } : null;
-  }
-  function metadataDelta() {
-    const patch = {}, removed = [];
-    for (const key of Object.keys(state)) {
-      if (key === 'units' || key === 'mother') continue;
-      const value = state[key], signature = value && typeof value === 'object' ? JSON.stringify(value) : value;
-      if (!metaCache.has(key) || metaCache.get(key) !== signature) { patch[key] = value; metaCache.set(key, signature); }
-    }
-    for (const key of metaCache.keys()) if (!Object.hasOwn(state, key)) { removed.push(key); metaCache.delete(key); }
-    return { patch, removed };
-  }
-  function collectConfirmed() {
-    const confirmed=Math.min(bloomSession.confirmedTick,bloomTick-1);
-    bloomEventSink=event=>awaitingEvents.push(event);bloomCommitEffects(confirmed);return confirmed;
-  }
-  function publish(force = false) {
-    const now = performance.now(), quantum = 1000 / CONFIG.sim.tickRate;
-    if (!initialized || fatal || !force && (!viewDirty || inflight || now + .1 < lastPublicationAt + quantum)) return false;
-    const reset = generationDirty, seen = new Set(), updates = [], unitOrder = [], shotOrder = [];
-    for (const u of [state.mother, ...state.units]) {
-      const key = 'u:' + u.id; seen.add(key); if (u !== state.mother) unitOrder.push(key);
-      const delta = fieldDelta(key, u); if (delta) updates.push(delta);
-    }
-    for (const p of projectiles) {
-      let id = projectileIds.get(p); if (!id) { id = nextProjectileId++; projectileIds.set(p, id); }
-      const key = 'p:' + id; seen.add(key); shotOrder.push(key);
-      const delta = fieldDelta(key, p); if (delta) updates.push(delta);
-    }
-    const removed = [];
-    for (const key of entityCache.keys()) if (!seen.has(key)) { removed.push(key); entityCache.delete(key); nestedRefs.delete(key); }
-    const message = { type: 'view', epoch, sequence: ++publication, reset, tickRate: CONFIG.sim.tickRate,
-      tick: bloomTick, confirmedTick: collectConfirmed(), meta: metadataDelta(), updates, removed, unitOrder, shotOrder,
-      auto: { ...autoHunt }, navigation: pointNav, rangedReach: CONFIG.moa.rangedReach, events: awaitingEvents,
-      metrics: { persistenceProtected, lastAckTick, lastAckSequence, pendingCommands: bloomInputPending, workerPaused: paused, tickMs: tickCosts.at(-1) || 0, maxTickMs: tickCosts.length ? Math.max(...tickCosts) : 0, publications: ++publications } };
-    awaitingEvents = []; inflight = message.sequence; generationDirty = false; viewDirty = false; lastPublicationAt = now;
-    send(message); return true;
-  }
-  function advanceOne() {
-    const start = performance.now();
-    const result = bloomSession.advance(bloomEncodeInput({ ...input, suspended: paused || !playing || !!modalKind }));
-    if (result.status !== 'advanced') throw new Error('Worker SDK failed to advance: ' + result.status);
-    bloomInputPending = 0; viewDirty = true; tickCosts.push(performance.now() - start); if (tickCosts.length > 120) tickCosts.shift();
-    collectConfirmed();
-    if (bloomPersistenceRequested || bloomTick - lastDiskTick >= 5 * CONFIG.sim.tickRate) persist();
-    const requests=pendingSaves;pendingSaves=[];for(const m of requests){if(m.type==='save')persist(m.id);else reply(m.id,encodeDisk())}
-    return result;
-  }
-  function schedule() {
-    clearTimeout(timer); timer = null;
-    if (manualClock || !initialized || fatal) return;
-    if (!canAdvance() && (!viewDirty || inflight)) return;
-    const publicationDue = lastPublicationAt + 1000 / CONFIG.sim.tickRate;
-    const due = canAdvance() ? viewDirty && !inflight ? Math.min(deadline, publicationDue) : deadline : publicationDue;
-    timer = setTimeout(pump, Math.max(0, due - performance.now()));
-  }
-  function pump() {
-    timer = null;
-    try {
-      if (!canAdvance()) { if (viewDirty) publish(); schedule(); return; }
-      const quantum = 1000 / CONFIG.sim.tickRate;
-      // Retain all active wall-time debt. Never clamp elapsed time, skip a tick,
-      // or secretly run at another TPS. Yield between bounded catch-up batches.
-      let work = 0;
-      while (canAdvance() && performance.now() + .05 >= deadline && work < 4) {
-        advanceOne(); deadline += quantum; work++;
-      }
-      publish(); schedule();
-    } catch (error) { fail(error); }
-  }
-  globalThis.onmessage = event => {
-    const m = event.data || {};
-    try {
-      if (m.type === 'init') {
-        if (initialized) throw new Error('Worker already initialized');
-        manualClock = !!globalThis.BLOOM_WORKER_TEST_MODE && !!m.manualClock;
-        bloomApplyTickRate(m.tickRate); bloomInitialize(m.seed ?? 0x6d2b79f5);
-        let loaded = false; if (m.disk) { loaded = load(m.disk); if(!loaded){persistenceProtected=true;BloomDiagnostics.report(new Error('Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'});} }
-        playing = false; paused = true; modalKind = 'intro'; initialized = true; boundary();
-        publish(true); reply(m.id, { loaded, persistenceProtected, tickRate: CONFIG.sim.tickRate }); return;
-      }
-      if (!initialized || fatal) throw new Error('Worker is not available');
-      if (m.type === 'ack') {
-        if (m.epoch === epoch && m.sequence === inflight) { inflight = 0; lastAckTick = m.tick; lastAckSequence = m.sequence; }
-        // A paused command may complete while the previous view is in flight.
-        if (viewDirty) schedule();
-      } else if (m.type === 'control') {
-        const wasRunning = canAdvance(); playing = !!m.playing; paused = !!m.paused; modalKind = String(m.modalKind || '');
-        input = { x: Number(m.input?.x) || 0, y: Number(m.input?.y) || 0, manual: !!m.input?.manual };
-        if (!wasRunning && canAdvance()) deadline = performance.now() + 1000 / CONFIG.sim.tickRate;
-        schedule();
-      } else if (m.type === 'command') {
-        bloomQueue(m.command.type, Object.fromEntries(Object.entries(m.command).filter(([k]) => k !== 'type' && k !== 'version')));
-        if (paused || modalKind || state.dead) deadline = performance.now();
-        schedule(); reply(m.id, true);
-      } else if (m.type === 'save' || m.type === 'snapshot') {
-        if(bloomInputPending&&playing&&!paused&&!modalKind&&!state.dead){pendingSaves.push(m);schedule();return}
-        if(bloomInputPending){advanceOne();deadline=performance.now()+1000/CONFIG.sim.tickRate;publish();schedule()}
-        if(m.type==='save')persist(m.id);else reply(m.id,encodeDisk());
-      }
-      else if (m.type === 'reset') { reset(); persistenceProtected=false; publish(true); persist(); reply(m.id, true); schedule(); }
-      else if (m.type === 'load') {
-        const ok = load(m.disk); if(!ok)BloomDiagnostics.report(new Error('Imported save rejected by compatibility/validation checks'),{kind:'save.import'}); if (ok) { persistenceProtected=false; publish(true); persist(); } reply(m.id, ok); schedule();
-      } else if (m.type === 'rate') {
-        if (playing && !paused || BloomSimulation.multiplayer) throw Object.assign(new Error('TPS changes require a paused single-player boundary'),{bloomRecoverable:true});
-        if(!BLOOM_TPS_OPTIONS.includes(Number(m.tickRate)))throw Object.assign(new RangeError('Unsupported simulation budget'),{bloomRecoverable:true});
-        const rate = bloomSetTickRate(m.tickRate); publish(true); persist(); reply(m.id, rate); schedule();
-      } else if (m.type === 'inspect') {
-        const bytes = bloomAdapter.save();
-        reply(m.id, { tick: bloomTick, time: state.time, tickRate: CONFIG.sim.tickRate, epoch, persistenceProtected, snapshotBytes: bytes.length,
-          validSnapshot: bloomAdapter.validateSnapshot(bytes, { tick: bloomTick }), hash: BloomOwnedSDK.hashBytes(bytes),
-          sdkFailure: bloomSession.failure, worker: true, publications, unitCount: state.units.length, persistence: bloomSnapshotStore.metrics() });
-      } else if (m.type === 'testTicks' && globalThis.BLOOM_WORKER_TEST_MODE && manualClock) {
-        for (let i = 0; i < m.count; i++) advanceOne(); publish(true); reply(m.id, { tick: bloomTick, time: state.time });
-      } else if (m.type === 'close') { clearTimeout(timer); bloomSession.close(); initialized = false; reply(m.id, true); }
-      else throw new Error('Unknown worker request: ' + m.type);
-    } catch (error) {
-      const fatalRequest = !error?.bloomRecoverable && !['snapshot','save','inspect'].includes(m.type);
-      if (fatalRequest) fail(error,'worker.'+String(m.type||'message'));
-      else BloomDiagnostics.report(error,{kind:'worker.'+String(m.type||'message'),fatal:false});
-      if (m.id !== undefined) send({ type: 'reply', id: m.id, error: BloomDiagnostics.clean(error?.message||'Worker request failed',500) });
-    }
-  };
-  send({ type: 'worker-ready' });
-}
-/* Stable in-place patching is shared with the test harness. Every render source
- * keeps its identity until removed or a genuine reset/load/rate boundary occurs.
- * A controller keeps its identity while its stage survives, allowing nested
- * interpolation rather than a fresh object and snapped timer each publication. */
-function bloomMergeViewValue(old, next) {
-  if (!next || typeof next !== 'object') return next;
-  if (Array.isArray(next)) return next;
-  if (!old || typeof old !== 'object' || Array.isArray(old)) old = {};
-  for (const key of Object.keys(old)) if (!Object.hasOwn(next, key)) delete old[key];
-  for (const key of Object.keys(next)) old[key] = bloomMergeViewValue(old[key], next[key]);
-  return old;
-}
-function bloomApplyViewPacket(packet, mirror) {
-  if (!mirror || packet.reset || mirror.epoch !== packet.epoch) mirror = { epoch: packet.epoch, state: { units: [], mother: null }, objects: new Map(), projectiles: [] };
-  for (const key of packet.removed) mirror.objects.delete(key);
-  for (const delta of packet.updates) {
-    let object = mirror.objects.get(delta.key);
-    if (!object || delta.fresh) { object = {}; mirror.objects.set(delta.key, object); }
-    for (const key of delta.removed) delete object[key];
-    // Replacement changes merge identity, not field existence. Apply it only
-    // together with its payload; an incomplete marker cannot erase live data.
-    for (const key of Object.keys(delta.changes)) {
-      const previous = delta.replaced?.includes(key) ? undefined : object[key];
-      object[key] = bloomMergeViewValue(previous, delta.changes[key]);
-    }
-  }
-  for (const key of packet.meta.removed) delete mirror.state[key];
-  for (const key of Object.keys(packet.meta.patch)) mirror.state[key] = bloomMergeViewValue(mirror.state[key], packet.meta.patch[key]);
-  mirror.state.mother = mirror.objects.get('u:-1');
-  mirror.state.units = packet.unitOrder.map(key => mirror.objects.get(key));
-  mirror.projectiles = packet.shotOrder.map(key => mirror.objects.get(key));
-  return mirror;
-}
-if (!globalThis.BLOOM_HEADLESS) {
-  const workerScript = document.currentScript;
-  const engineScripts = Array.from(document.scripts).slice(0, Array.from(document.scripts).indexOf(workerScript)).map(script => script.textContent);
-  const workerSource = '(' + bloomWorkerDOMBootstrap.toString() + ')();\n' + bloomWorkerEngineSource(engineScripts) + '\n(' + bloomWorkerRuntime.toString() + ')();';
-  let worker = null, workerURL = null, mirror = null, booting = false, booted = false, ready = false, broken = false;
-  let generation = -1, lastSequence = 0, lastPublishedAt = 0, requestId = 0, inputSignature = '', viewSignature = '', latestDisk = '', storageError = null;
-  const pending = new Map(), workerMetrics = { mode: 'Blob Worker', tickMs: 0, maxTickMs: 0, publications: 0, mainSimulationTicks: 0 };
-  const workerOnly = () => { throw new Error('Authoritative simulation and snapshots are available only inside the BLOOM Worker'); };
-  function request(type, data = {}) {
-    if (!worker || broken) return Promise.reject(new Error('Simulation worker is unavailable'));
-    BloomDiagnostics.command(type);
-    return new Promise((resolve,reject)=>{const id=++requestId,timer=setTimeout(()=>{if(!pending.delete(id))return;const error=new Error('Worker request timed out: '+type);reject(error);stopWithError(error,'worker.timeout')},15000);pending.set(id,{resolve,reject,timer});try{worker.postMessage({type,...data,id})}catch(error){clearTimeout(timer);pending.delete(id);reject(error);stopWithError(error,'worker.postMessage')}});
-  }
-  function controls(force = false) {
-    if (!worker || !ready || broken || !state) return;
-    const p = moaRollCore.sampleSimulationInput(), message = { type: 'control', playing, paused, modalKind, input: p };
-    const signature = JSON.stringify(message);
-    if (force || signature !== inputSignature) { inputSignature = signature; worker.postMessage(message); }
-    const command = visibleHuntFromViewport(globalThis.innerWidth, globalThis.innerHeight), nextView = JSON.stringify(command);
-    if (nextView !== viewSignature) { viewSignature = nextView; bloomQueue('huntView', Object.fromEntries(visibleHuntFields.map(k => [k, command[k]]))); }
-  }
-  function stopWithError(error, kind='worker.bridge') {
-    BloomDiagnostics.report(error,{kind,fatal:true});
-  }
-  BloomDiagnostics.setStop(() => {
-    broken = true; paused = true; ready = false;
-    try{worker?.terminate()}catch{}
-    for(const entry of pending.values()){clearTimeout(entry.timer);entry.reject(new Error('Simulation stopped; inspect diagnostics'))}pending.clear();
+</script><script id="bloom-main-runtime">'use strict';
+/* One authority on the main thread. The SDK alone advances fixed ticks; RAF
+ * samples scalar presentation tracks. No Worker, messages, graph mirrors, or
+ * serialization is involved in publishing a completed tick to presentation. */
+function bloomMainRuntime() {
+ globalThis.BLOOM_MAIN_AUTHORITY=true;
+ let initialized=false,booting=false,booted=false,fatal=false,persistenceProtected=false;
+ let timer=null,wasActive=false,nextPulseAt=0,latestDisk='',storageError=null,lastDiskTick=0,epoch=0;
+ let pendingSaves=[],viewSignature='',inputOverride=null;
+ const metrics={mode:'main-thread SDK loop',tickMs:0,maxTickMs:0,ticks:0,presentationMs:0,maxPresentationMs:0};
+ const oldQueue=bloomQueue,oldLoad=load,oldReset=reset,oldRate=bloomSetTickRate;
+ const active=()=>initialized&&!fatal&&playing&&!paused&&!modalKind&&!state.dead;
+ const fail=(error,kind='simulation.main')=>BloomDiagnostics.report(error,{kind,fatal:true});
+ function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,epoch,persistenceProtected,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
+ function rejectSaves(error){const requests=pendingSaves;pendingSaves=[];for(const p of requests)p.reject(error)}
+ function persist(){
+  if(fatal||BloomDiagnostics.fatal||persistenceProtected)return false;
+  const disk=bloomSnapshotStore.disk();
+  if(disk!==latestDisk||storageError){try{localStorage.setItem(CONFIG.saveKey,disk);storageError=null;latestDisk=disk;startUXHasSave=true}catch(error){storageError=error;BloomDiagnostics.report(error,{kind:'save.storage'});return false}}
+  bloomPersistenceRequested=false;lastDiskTick=bloomTick;return true;
+ }
+ function afterAdvance(result,start){
+  if(result.status!=='advanced')throw new Error('SDK failed to advance: '+result.status);
+  metrics.tickMs=performance.now()-start;metrics.maxTickMs=Math.max(metrics.maxTickMs,metrics.tickMs);metrics.ticks++;
+  bloomInputPending=0;
+  const presentAt=performance.now();bloomPresent(Math.min(bloomSession.confirmedTick,bloomTick-1));
+  if(booted&&!globalThis.BLOOM_HEADLESS){capturePresentation();maybeAbilityPrompt()}
+  metrics.presentationMs=performance.now()-presentAt;metrics.maxPresentationMs=Math.max(metrics.maxPresentationMs,metrics.presentationMs);
+  // Confirmed UI effects can enqueue a follow-up command (for example an
+  // ability draft). Persist only after that command reaches its SDK boundary.
+  if(bloomInputPending)return;
+  if(bloomPersistenceRequested||bloomTick-lastDiskTick>=5*CONFIG.sim.tickRate)persist();
+  const requests=pendingSaves;pendingSaves=[];for(const p of requests){try{p.resolve(p.kind==='save'?persist():bloomSnapshotStore.disk())}catch(error){p.reject(error)}}
+ }
+ function advanceSuspended(){const start=performance.now();afterAdvance(bloomSession.advance(bloomEncodeInput({x:0,y:0,manual:false,suspended:true})),start)}
+ function schedule(){
+  if(!initialized||fatal||globalThis.BLOOM_MAIN_TEST_MANUAL)return;
+  if(!active()&&!bloomInputPending){clearTimeout(timer);timer=null;return}
+  if(timer===null)timer=setTimeout(pump,bloomInputPending&&!active()?0:Math.max(0,nextPulseAt-performance.now()));
+ }
+ function pump(){
+  timer=null;if(fatal||!initialized)return;nextPulseAt+=1000/CONFIG.sim.tickRate;
+  try{const running=active(),now=performance.now();
+   if(running!==wasActive){bloomLoop.resetTiming();bloomLoop.pulse(now);wasActive=running;nextPulseAt=now+1000/CONFIG.sim.tickRate}
+   if(!running){if(bloomInputPending)advanceSuspended();bloomLoop.resetTiming()}
+   else bloomLoop.pulse(now);
+   schedule();
+  }catch(error){fail(error)}
+ }
+ function boundary(){
+  clearTimeout(timer);timer=null;bloomLoop?.stop();const superseded=pendingSaves;pendingSaves=[];for(const p of superseded){if(p.kind==='save')p.resolve(false);else p.reject(new Error('Save superseded by session boundary'))}
+  bloomNewSession();epoch++;lastDiskTick=0;viewSignature='';wasActive=false;nextPulseAt=performance.now()+1000/CONFIG.sim.tickRate;
+  let tickStart=0;
+  bloomLoop=BloomOwnedSDK.createLoop({session:bloomSession,backlogPolicy:'retain',
+   getInput(){tickStart=performance.now();return bloomEncodeInput({...inputOverride||moaRollCore.sampleSimulationInput(),suspended:!active()})},
+   canAdvance:active,onAdvance(result){afterAdvance(result,tickStart)},onError(error){fail(error,'sdk.loop')}
   });
-  BloomDiagnostics.setPauseForInspect(()=>{if(booted&&!broken&&!paused){paused=true;showPause();controls(true)}});
-  BloomDiagnostics.provide('bridge',()=>({ready,broken,booted,pendingRequests:pending.size,lastAcknowledgedTick:workerMetrics.lastAckTick??null,lastViewTick:bloomTick,epoch:generation,sequence:lastSequence,lastViewAgeMs:lastPublishedAt?Math.max(0,performance.now()-lastPublishedAt):null,saveAvailable:!!latestDisk,storageFailed:!!storageError,...workerMetrics}));
-  function installView(packet) {
-    const applyStart = performance.now();
-    if (packet.epoch < generation || packet.epoch === generation && packet.sequence <= lastSequence) return;
-    const resetView = !mirror || generation !== packet.epoch || packet.reset;
-    generation = packet.epoch; lastSequence = packet.sequence;
-    mirror = bloomApplyViewPacket(packet, mirror); state = mirror.state; projectiles = mirror.projectiles;
-    const mergedAt = performance.now();
-    bloomApplyTickRate(packet.tickRate); bloomTick = packet.tick;
-    for (const key of Object.keys(autoHunt)) delete autoHunt[key]; Object.assign(autoHunt, packet.auto);
-    pointNav = bloomMergeViewValue(pointNav, packet.navigation); CONFIG.moa.rangedReach = packet.rangedReach;
-    idMap = new Map([[state.mother.id, state.mother], ...state.units.map(u => [u.id, u])]);
-    // Presentation-only derived proximity index: stealth detection and health
-    // visibility use near(). No collision solve, AI, or gameplay runs here.
-    grid = new Map(); gridColumns = Math.ceil(CONFIG.world.zoneWidth * CONFIG.zones.length / CONFIG.sim.gridCell); gridRows = Math.ceil(CONFIG.world.height / CONFIG.sim.gridCell);
-    gridState = state; gridUnits = state.units;
-    for (const u of state.units) if (u.hp > 0) { const key = Math.floor(u.x / CONFIG.sim.gridCell) + Math.floor(u.y / CONFIG.sim.gridCell) * gridColumns; let bucket = grid.get(key); if (!bucket) grid.set(key, bucket = []); bucket.push(u); }
-    // Renderer spatial lookups use the published XYZ. No terrain resimulation or
-    // live graph restore/validation occurs on this side of the boundary.
-    spatialUnits = new WeakMap(); for (const u of [state.mother, ...state.units]) spatialUnits.set(u, { x: u.x, y: u.y, z: u.z });
-    spatialAnchors = new WeakMap();
-    const indexedAt = performance.now();
-    bloomSession = { localPlayerId: 'solo', confirmedTick: packet.confirmedTick, resimulating: false, closed: false };
-    if (resetView) { bloomPendingEffects.clear(); bloomResetEventJournal(); bloomPresentationThrough = -1; effects = []; permanentTraces = []; sproutImpacts = []; rarityFusionVisuals.length = 0; }
-    for (const e of packet.events) { if (!bloomPendingEffects.has(e.tick)) bloomPendingEffects.set(e.tick, []); bloomPendingEffects.get(e.tick).push(e); }
-    if (booted) { bloomPresent(packet.confirmedTick); capturePresentation(resetView); maybeAbilityPrompt(); }
-    lastPublishedAt = performance.now(); accumulator = 0; Object.assign(workerMetrics, packet.metrics); workerMetrics.viewMergeMs = mergedAt - applyStart; workerMetrics.viewIndexMs = indexedAt - mergedAt; workerMetrics.viewPresentMs = performance.now() - indexedAt; workerMetrics.viewApplyMs = performance.now() - applyStart; workerMetrics.maxViewApplyMs = Math.max(workerMetrics.maxViewApplyMs || 0, workerMetrics.viewApplyMs);
-    worker.postMessage({ type: 'ack', epoch: packet.epoch, sequence: packet.sequence, tick: packet.tick });
-  }
-  bloomQueue = function(type, args = {}) {
-    if (!worker || !ready || broken) return false;
-    BloomDiagnostics.command(type);
-    const command = bloomValidateCommand({ version: 1, type, ...args });
-    // Command ordering and world simulation remain exclusively SDK-owned.
-    const p = moaRollCore.sampleSimulationInput(); worker.postMessage({ type: 'control', playing, paused, modalKind, input: p });
-    worker.postMessage({ type: 'command', command }); return true;
-  };
-  publishVisibleHuntView = function() { controls(); return true; };
-  advanceSimulationClock = function(elapsed) {
-    bloomCollectDeviceInput(); controls(); uiClock += Math.max(0, elapsed || 0);
-    accumulator = Math.min(CONFIG.sim.fixedStep, Math.max(0, performance.now() - lastPublishedAt) / 1000); return 0;
-  };
-  bloomStartDriver = workerOnly;
-  // A lost graphics context must not leave an invisible authoritative battle
-  // running. Restoration retains the pause until the player explicitly resumes.
-  canvas.addEventListener('webglcontextlost', () => {
-    paused = true; BloomDiagnostics.report(new Error('WebGL context lost; reload required'),{kind:'webgl.context',fatal:true});
-  });
-  canvas.addEventListener('webglcontextrestored', () => {
-    paused = true; // Fatal graphics recovery always requires explicit page reload.
-  });
-  save = function() {
-    if (booting) return true;
-    if (!ready || broken) return false;
-    controls(true); // Blur/visibility handlers save after pausing, even when RAF stops.
-    request('save').catch(stopWithError); return true;
-  };
-  reset = function() {
-    if (booting) return state;
-    controls(true); request('reset').catch(stopWithError); return state;
-  };
-  load = function(raw) {
-    if (booting) return !!startUXHasSave;
-    controls(true); return request('load', { disk: raw });
-  };
-  bloomSetTickRate = function(rate) {
-    rate = Number(rate); if (!BLOOM_TPS_OPTIONS.includes(rate)) throw new RangeError('Unsupported simulation budget');
-    if (playing && !paused) throw new Error('Change TPS only at a paused session boundary');
-    controls(true); request('rate', { tickRate: rate }).then(value => { try { localStorage.setItem('bloom-simulation-tps', String(value)); } catch {} }).catch(stopWithError); return rate;
-  };
-  exportSave = async function() {
-    try { const data = await request('snapshot'), url = URL.createObjectURL(new Blob([data], { type: 'application/json' })), a = document.createElement('a'); a.href = url; a.download = CONFIG.saveExportName; a.click(); setTimeout(() => URL.revokeObjectURL(url), CONFIG.render.toastTime * 1000); toast('진행 백업 파일을 내려받았어요'); } catch (error) { toast('백업을 만들지 못했어요. 다시 시도해 주세요.'); BloomDiagnostics.report(error,{kind:'save.export'}); }
-  };
-  importSave = function() {
-    const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json';
-    input.onchange = async () => { const file = input.files?.[0]; if (!file) return; if (file.size > CONFIG.maxSaveBytes) { toast('백업 파일이 너무 커요'); return; }
-      try { if (await load(await file.text())) { startUXHasSave = true; showPause(); toast('백업한 군락을 불러왔어요'); } else toast('유효한 Bloom 진행 파일이 아니에요'); } catch (error) { toast('백업을 불러오지 못했어요'); BloomDiagnostics.report(error,{kind:'save.import'}); } };
-    input.click();
-  };
-  // The const facade is shared with gameplay wrappers; replace its mutating
-  // diagnostic entrypoints so main-thread callers cannot accidentally simulate.
-  const scenarioView = Object.defineProperties({}, Object.getOwnPropertyDescriptors(BloomSimulation.scenario));
-  for (const name of ['spawn', 'damage', 'beginPattern', 'launch', 'rebuild']) scenarioView[name] = workerOnly;
-  Object.assign(BloomSimulation, { scenario: scenarioView, adapter: { save: workerOnly, load: workerOnly, step: workerOnly, validateSnapshot: workerOnly },
-    initialize: workerOnly, createSession: workerOnly, capture: workerOnly, setTickRate: bloomSetTickRate,
-    disk: { snapshot: () => request('snapshot'), load }, worker: { get ready() { return ready && !broken; }, inspect: () => request('inspect'), get metrics() { return { ...workerMetrics }; } } });
-  boot = async function() {
-    try {
-      if(BloomDiagnostics.fatal)return;
-      if (typeof Worker !== 'function' || typeof Blob !== 'function') throw new Error('Blob Worker support is required');
-      workerURL = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' })); worker = new Worker(workerURL);
-      worker.onerror = event => {BloomDiagnostics.report(event.error||new Error(event.message||'Simulation worker failed'),{origin:'worker',kind:'worker.onerror',fatal:true,source:event.filename,line:event.lineno,column:event.colno})};
-      worker.onmessageerror = () => stopWithError(new Error('Worker publication could not be read'),'worker.messageerror');
-      worker.onmessage = event => {
-        const m = event.data;
-        if(m?.type==='diagnostic'){BloomDiagnostics.receive(m.record);return}
-        if(broken||BloomDiagnostics.fatal)return;
-        try{if (m.type === 'view') installView(m);
-        else if (m.type === 'disk') { if(m.epoch<generation||m.disk===latestDisk&&!storageError)return; latestDisk = m.disk; try { localStorage.setItem(CONFIG.saveKey, latestDisk); storageError = null; startUXHasSave = true; } catch (error) { storageError = error; BloomDiagnostics.report(error,{kind:'save.storage'}); } }
-        else if (m.type === 'reply') { const task = pending.get(m.id); if (task) { clearTimeout(task.timer); pending.delete(m.id); m.error ? task.reject(new Error(m.error)) : task.resolve(m.value); } }
-        else if (m.type === 'error') stopWithError(new Error(m.error));
-        }catch(error){stopWithError(error,'worker.publication')}
-      };
-      let disk = null; try { disk = localStorage.getItem(CONFIG.saveKey); } catch {}
-      const result = await request('init', { tickRate: CONFIG.sim.tickRate, disk }); ready = true; startUXHasSave = result.loaded;
-      // Run the existing DOM/art/audio boot chain against the already-published
-      // mirror. Its reset/load hooks are inert only during this initialization.
-      booting = true; try { bloomCore.boot(); } finally { booting = false; }
-      booted = true; resetPresentation(); controls(true);
-      document.addEventListener('click',event=>{if(event.target.closest('button')?.dataset.action!=='start'||!workerMetrics.persistenceProtected)return;event.preventDefault();event.stopImmediatePropagation();openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요. 초기화하면 기존 저장이 교체됩니다.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button><button class="tab" data-action="pause">취소</button>')},true);
-      Object.assign(window.__army, { BloomSimulation, step: workerOnly, advanceClock: advanceSimulationClock, reset, load, save, exportSave, importSave,
-        performRoll, setAutoHunt, setPermanentHuntMode, chooseGrowth, chooseAbility, unlockParcel, recover, compressPermanent,
-        getWorkerMetrics: () => ({ ...workerMetrics }), inspectWorker: () => request('inspect'),
-        setPaused(value) { paused = !!value; controls(true); }, setPlaying(value) { playing = !!value; controls(true); } });
-      // The historical QA surface contains direct gameplay entrypoints. Fence
-      // them on the presentation side; retain read access, drawing and explicit
-      // UI-to-command functions. This never changes the Worker's actual engine.
-      const safePublicFunctions = new Set([
-        'load', 'save', 'reset', 'exportSave', 'importSave', 'advanceClock', 'inspectWorker', 'setPaused', 'setPlaying',
-        'performRoll', 'setAutoHunt', 'setPermanentHuntMode', 'chooseGrowth', 'chooseAbility', 'unlockParcel', 'recover', 'compressPermanent',
-        'render', 'refreshUI', 'showUpgrades', 'showCards', 'closeModal', 'showMap', 'showPause', 'showIntro', 'showGameHelp', 'showGameSettings',
-        'showDefeat', 'showVictory', 'showAbilityChoices', 'showMoaStats', 'resetPresentation', 'presentationPose', 'renderPose', 'configureProjection',
-        'syncScreenAwake', 'bindRarityUIControls', 'translatePointGesture', 'sampleSimulationInput', 'publishVisibleHuntView',
-        'unitDef', 'pop', 'cap', 'purchaseCost', 'productionTime', 'productionSpeed', 'attackPower', 'effectiveRange', 'effectiveSpeed',
-        'radius', 'moaBodyRadius', 'moaBodyMass', 'unitVisualRadius', 'unitVisualExtent', 'maxMotherHP', 'canTarget', 'detected',
-        'researchCost', 'researchLimit', 'investmentLimit', 'researchFor', 'researchTotal', 'investmentCost', 'investmentTotal',
-        'hasUnitAbility', 'nurseryRate', 'worldLimit', 'nearestGround', 'objectiveStatus', 'unlockCost', 'parcelCost', 'lockedParcelAt', 'parcelRequirement',
-        'moaPower', 'damageValue', 'segmentCircle', 'growthCost', 'growthCostAt', 'growthCardEffect', 'growthVitalBonus', 'growthRecovery', 'growthInterval',
-        'growthRank', 'ensureGrowthDraft', 'ensureAbilityDraft', 'researchEffect', 'regionAt', 'worldWalls', 'wallHit', 'wallClear', 'pointClear',
-        'nearClosedGate', 'canUnlockParcelHere', 'regionMultiplier', 'regionExperience', 'moaLevelScale', 'moaTargetSize', 'moaCameraZoom',
-        'projectionToScreen', 'projectionFromScreen', 'projectionBodyPose', 'projectionUnitHeight', 'permanentHuntMode',
-        'currentMoaStats', 'currentMoaStatsHTML', 'currentArmyStatsHTML', 'combatStat', 'moaWalkSpeed', 'moaAbilityCooldown', 'moaRollRechargeMs', 'moaArmorMultiplier',
-        'abilityState', 'abilityThreshold', 'abilityLevelFor', 'abilityRank', 'pendingAbility', 'primaryAbility', 'abilityCardDescription',
-        'weaponStats', 'weaponProperty', 'weaponCanChoose', 'weaponOwnerState', 'weaponCadence', 'rarityCollectionHTML', 'ruiSummary', 'ruiGradeCounts'
-      ]);
-      for (const [name, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(window.__army))) {
-        if (typeof descriptor.value === 'function' && !safePublicFunctions.has(name) && !/^get[A-Z]/.test(name)) window.__army[name] = workerOnly;
-      }
-      // Ordinary save UI waits for the worker's acknowledged disk generation.
-      document.addEventListener('click', async event => { if (event.target.closest('button')?.dataset.action !== 'save') return; event.preventDefault(); event.stopImmediatePropagation(); try { if(!await request('save'))throw new Error('Original rejected save protected; reset or import first'); if (storageError) throw storageError; toast('이 기기에 진행을 저장했어요'); } catch(error) { BloomDiagnostics.report(error,{kind:'save.manual'}); toast('진행을 저장하지 못했어요'); } }, true);
-      window.addEventListener('pagehide', () => { if (!broken && !BloomDiagnostics.fatal && latestDisk) try { localStorage.setItem(CONFIG.saveKey, latestDisk); } catch(error) {BloomDiagnostics.report(error,{kind:'save.pagehide'})} });
-      URL.revokeObjectURL(workerURL); workerURL = null;
-    } catch (error) { stopWithError(error); }
-  };
+  if(booted){effects=[];permanentTraces=[];sproutImpacts=[];rarityFusionVisuals.length=0;resetPresentation()}
+  schedule();
+ }
+ bloomStartDriver=boundary;
+ function controls(){
+  if(!initialized||fatal||!state)return;
+  if(!globalThis.BLOOM_HEADLESS){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight),signature=JSON.stringify(command);if(signature!==viewSignature){viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
+  const running=active();if(running!==wasActive){const now=performance.now();bloomLoop.resetTiming();bloomLoop.pulse(now);wasActive=running;nextPulseAt=now+1000/CONFIG.sim.tickRate}
+  schedule();
+ }
+ bloomQueue=function(type,args={}){if(!initialized||fatal)return false;BloomDiagnostics.command(type);const result=oldQueue(type,args);schedule();return result};
+ publishVisibleHuntView=function(){controls();return true};
+ advanceSimulationClock=function(elapsed){bloomCollectDeviceInput();controls();uiClock+=Math.max(0,elapsed||0);return 0};
+ function snapshot(kind='snapshot'){
+  if(!initialized||fatal||BloomDiagnostics.fatal)return Promise.reject(new Error('Simulation is not available'));
+  if(persistenceProtected)return kind==='save'?Promise.resolve(false):Promise.reject(new Error('Original rejected save protected; reset or import first'));
+  if(bloomInputPending){const promise=new Promise((resolve,reject)=>pendingSaves.push({kind,resolve,reject}));if(!active()){try{advanceSuspended()}catch(error){rejectSaves(error);fail(error)}}else schedule();return promise}
+  try{return Promise.resolve(kind==='save'?persist():bloomSnapshotStore.disk())}catch(error){return Promise.reject(error)}
+ }
+ save=function(){if(booting)return true;if(bloomInTick||bloomInitializing){bloomPersistenceRequested=true;return true}if(!initialized||fatal||persistenceProtected)return false;snapshot('save').catch(error=>BloomDiagnostics.report(error,{kind:'save.main'}));return true};
+ reset=function(){if(booting)return state;try{const result=oldReset();persistenceProtected=false;persist();controls();return result}catch(error){fail(error,'simulation.reset');throw error}};
+ load=function(raw){if(booting)return !!startUXHasSave;if(fatal)return false;try{const ok=oldLoad(raw);if(ok){persistenceProtected=false;persist();controls()}else BloomDiagnostics.report(new Error('Imported save rejected by compatibility/validation checks'),{kind:'save.import'});return ok}catch(error){fail(error,'simulation.load');throw error}};
+ bloomSetTickRate=function(rate){const result=oldRate(rate);if(initialized){persist();controls()}return result};
+ exportSave=async function(){try{const data=await snapshot(),url=URL.createObjectURL(new Blob([data],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=CONFIG.saveExportName;a.click();setTimeout(()=>URL.revokeObjectURL(url),CONFIG.render.toastTime*1000);toast('진행 백업 파일을 내려받았어요')}catch(error){toast('백업을 만들지 못했어요. 다시 시도해 주세요.');BloomDiagnostics.report(error,{kind:'save.export'})}};
+ importSave=function(){const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{const file=input.files?.[0];if(!file)return;if(file.size>CONFIG.maxSaveBytes){toast('백업 파일이 너무 커요');return}try{if(load(await file.text())){startUXHasSave=true;showPause();toast('백업한 군락을 불러왔어요')}else toast('유효한 Bloom 진행 파일이 아니에요')}catch(error){BloomDiagnostics.report(error,{kind:'save.import'})}};input.click()};
+ BloomDiagnostics.setStop(()=>{fatal=true;paused=true;clearTimeout(timer);timer=null;bloomLoop?.stop();rejectSaves(new Error('Simulation stopped; inspect diagnostics'))});
+ BloomDiagnostics.setPauseForInspect(()=>{if(booted&&!fatal&&!paused){paused=true;showPause();controls()}});
+ BloomDiagnostics.provide('mainLoop',()=>({initialized,fatal,persistenceProtected,epoch,pendingCommands:bloomInputPending,pendingSaves:pendingSaves.length,saveAvailable:!!latestDisk,storageFailed:!!storageError,...metrics}));
+ const runtime={get ready(){return initialized&&!fatal},get metrics(){return{...metrics,persistenceProtected}},inspect,controls,snapshot,
+  initialize({tickRate=CONFIG.sim.tickRate,seed=0x6d2b79f5,disk=null}={}){bloomApplyTickRate(tickRate);bloomInitialize(seed);let loaded=false;if(disk){loaded=oldLoad(disk);if(!loaded){persistenceProtected=true;BloomDiagnostics.report(new Error('Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'})}}playing=false;paused=true;modalKind='intro';initialized=true;boundary();return{loaded,persistenceProtected,tickRate:CONFIG.sim.tickRate}},
+  close(){clearTimeout(timer);timer=null;bloomLoop?.stop();bloomSession?.close();initialized=false;rejectSaves(new Error('Simulation closed'))}
+ };
+ Object.assign(BloomSimulation,{setTickRate:bloomSetTickRate,disk:{snapshot,load,metrics:()=>bloomSnapshotStore.metrics()},runtime});
+ /* MAIN_RUNTIME_TEST_HOOK */
+ boot=function(){try{
+  if(BloomDiagnostics.fatal)return;
+  let disk=null;try{disk=localStorage.getItem(CONFIG.saveKey)}catch{}
+  const result=runtime.initialize({disk});startUXHasSave=result.loaded;
+  booting=true;try{bloomCore.boot()}finally{booting=false}booted=true;resetPresentation();controls();
+  canvas.addEventListener('webglcontextlost',()=>fail(new Error('WebGL context lost; reload required'),'webgl.context'));
+  canvas.addEventListener('webglcontextrestored',()=>{paused=true});
+  Object.assign(window.__army,{BloomSimulation,advanceClock:advanceSimulationClock,reset,load,save,exportSave,importSave,getSimulationMetrics:()=>runtime.metrics,inspectSimulation:inspect,setPaused(value){paused=!!value;controls()},setPlaying(value){playing=!!value;controls()}});
+  document.addEventListener('click',event=>{if(event.target.closest('button')?.dataset.action!=='start'||!persistenceProtected)return;event.preventDefault();event.stopImmediatePropagation();openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요. 초기화하면 기존 저장이 교체됩니다.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button><button class="tab" data-action="pause">취소</button>')},true);
+  document.addEventListener('click',async event=>{if(event.target.closest('button')?.dataset.action!=='save')return;event.preventDefault();event.stopImmediatePropagation();try{if(!await snapshot('save'))throw new Error('Save unavailable');toast('이 기기에 진행을 저장했어요')}catch(error){BloomDiagnostics.report(error,{kind:'save.manual'});toast('진행을 저장하지 못했어요')}},true);
+  window.addEventListener('pagehide',()=>{if(!fatal&&!BloomDiagnostics.fatal&&latestDisk)try{localStorage.setItem(CONFIG.saveKey,latestDisk)}catch(error){BloomDiagnostics.report(error,{kind:'save.pagehide'})}});
+ }catch(error){fail(error,'simulation.boot')}};
+ return runtime;
 }
+if(!globalThis.BLOOM_HEADLESS)bloomMainRuntime();
 </script><script>if (!globalThis.BLOOM_HEADLESS) { boot(); }</script></body></html>
