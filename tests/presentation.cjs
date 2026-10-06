@@ -17,3 +17,7 @@ assert(pose(320).x>hit.x,'hitstop continues spatial interpolation');
 now=330;e.run('state.mother.attackPose=.3;state.mother.pendingMoa={left:.5,total:.5};state.time+=.1;capturePresentation()');
 const attack=pose(330);e.run('CombatFeedback.clear()');const clear=pose(330);assert.equal(clear.attackPose,.3,'new attack decay snaps independently');assert.equal(clear.pendingMoa.left,.5);
 console.log('PASS receipt continuity, animation-only hitstop, scalar stage reset');
+
+e.run("presentation.active=false;healingCredit({id:999999,type:'swordsman',team:'friendly',x:state.mother.x,y:state.mother.y,z:state.mother.z,size:18},5)");
+assert(e.run("Number.isFinite(projectionBodyPose({type:'swordsman',x:10,y:20,z:0}).x)"));
+console.log('PASS delayed healing for a removed actor has a finite frozen XYZ anchor');
