@@ -52,3 +52,11 @@ assert.equal(e.run("patternDisplayColor(state.units.find(u=>u.playerId==='peer')
 assert.equal(e.run("patternDisplayColor(state.units.find(u=>u.playerId==='owner'))"),e.run('CONFIG.eliteEncounter.color'));
 assert(before.equals(bytes()),'PVP telegraph color selection is presentation-only');
 console.log('PASS another human army has hostile telegraphs without changing canonical effect colors');
+// Capture the real production device registration; exercise its exclusion policy.
+e.run(`BloomGamekitInput={...BloomGamekitInput,createDOMInput(options){globalThis.qaDeviceOptions=options;return {releaseAll(){}}}};bindPointMove();
+ WorldPlayers.data(WorldPlayers.get('owner')).dead=true;WorldPlayers.get('owner').leader.hp=0;`);
+assert.equal(e.run("qaDeviceOptions.excludeTarget(null,{code:'KeyD'})"),false,'Another player death cannot block local keyboard input');
+assert.equal(e.run("qaDeviceOptions.excludeTarget(null,{})"),false,'Another player death cannot block local pointer input');
+e.run("WorldPlayers.data(WorldPlayers.get('peer')).dead=true");
+assert.equal(e.run("qaDeviceOptions.excludeTarget(null,{code:'KeyD'})"),true,'Local death excludes device input');
+console.log('PASS actual device policy remains local when the primary participant dies');

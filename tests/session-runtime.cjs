@@ -6,7 +6,7 @@ const {session}=require('./main-harness.cjs');
 const {candidate,network}=require('./shared-harness.cjs');
 const hook=`globalThis.__sessionRuntimeTest={
  drive(count=1){bloomLoop.resetTiming();bloomLoop.pulse(0);for(let i=1;i<=count;i++)bloomLoop.pulse(i*1000/CONFIG.sim.tickRate);return {tick:bloomTick,time:state.time,active:active(),status:metrics.advanceStatus}},
- sample:()=>bloomDecodeInput(sampleInput()),pagehide,
+ sample:()=>bloomDecodeInput(sampleInput()),pagehide,controls,
  waiting(status){return afterAdvance({status},performance.now())},
  get pending(){return bloomInputPending}
 };/* MAIN_RUNTIME_TEST_HOOK */`;
@@ -69,6 +69,12 @@ async function main(){
   await assert.rejects(rejected.request('snapshot'),/Original rejected save protected/);
   assert.equal(await rejected.request('load',{disk:soloDisk}),true);assert.equal(await rejected.request('save'),true);
   pass('Failed solo import protection survives autosave/pagehide until explicit valid restore');
+  const viewport=make();await viewport.init();fresh(viewport,online);
+  viewport.e.run(`WorldMembership.apply({epoch:1,tick:bloomTick,players:['solo','peer']});WorldPlayers.setLocalPlayerId('peer');
+   globalThis.qaViewportOwner=null;const originalViewport=visibleHuntFromViewport;visibleHuntFromViewport=(w,h,owner)=>{qaViewportOwner=owner;return originalViewport(w,h,owner)};
+   BLOOM_HEADLESS=false;__sessionRuntimeTest.controls();BLOOM_HEADLESS=true;`);
+  assert.equal(viewport.e.run('qaViewportOwner.id'),-2);
+  pass('Final runtime publishes viewport bounds using the local participant camera scale');
   console.log('PASS continuous actual-engine session runtime campaign '+JSON.stringify({sha256:source.sha256,sdk:source.sdk}));
  }finally{for(const a of open)await a.close()}
 }

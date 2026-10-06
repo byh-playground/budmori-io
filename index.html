@@ -11231,7 +11231,7 @@ function bindPointMove(){
  const C=CONFIG.pointMove;
  bloomDeviceInput=BloomGamekitInput.createDOMInput({target:canvas,state:bloomActions,keys:bloomKeyBindings,touchAction:'none',
   gestures:{tap:'point',doubleTap:'pointRoll',tapMs:C.tapMs,doubleTapMs:C.doubleMs,dragSlop:C.dragSlop,doubleTapSlop:C.doubleSlop},
-  excludeTarget(target,event){if(event.code==='Escape')return !!target?.closest?.('#bloom-diagnostic-panel');const selector=event.code?'input,textarea,select,[contenteditable="true"],#bloom-diagnostic-panel':'input,textarea,select,button,a,[contenteditable="true"],[data-gamekit-ui],#bloom-diagnostic-panel';return !!target?.closest?.(selector)||!playing||paused||state.dead||!!modalKind},
+  excludeTarget(target,event){if(event.code==='Escape')return !!target?.closest?.('#bloom-diagnostic-panel');const selector=event.code?'input,textarea,select,[contenteditable="true"],#bloom-diagnostic-panel':'input,textarea,select,button,a,[contenteditable="true"],[data-gamekit-ui],#bloom-diagnostic-panel';return !!target?.closest?.(selector)||!playing||paused||WorldView.dead()||!!modalKind},
   onGesture(event){bloomInputPoints.push(event)}
  });
  canvas.addEventListener('dblclick',e=>e.preventDefault());
@@ -21381,7 +21381,7 @@ function bloomMainRuntime() {
  bloomStartDriver=boundary;
  function controls(){
   if(!initialized||fatal||!state)return;
-  if(!globalThis.BLOOM_HEADLESS){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight),signature=JSON.stringify(command);if(signature!==viewSignature){viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
+  if(!globalThis.BLOOM_HEADLESS){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==viewSignature){viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
   const running=active();if(running!==wasActive){const now=performance.now();bloomLoop.resetTiming();bloomLoop.pulse(now);wasActive=running;nextPulseAt=now+1000/CONFIG.sim.tickRate}
   schedule();
  }
