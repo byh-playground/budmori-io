@@ -64,7 +64,7 @@ const fixture=String.raw`
  qa.inspect=()=>{
   const session=BloomSimulation.session,local=WorldPlayers.local(),stats=local?currentMoaStats():null;
   return{phase:PublicSession.phase,tick:BloomSimulation.tick,time:state.time,sessionId:session.sessionId,localId:session.localPlayerId,coordinator:session.coordinatorId,epoch:session.epoch,roster:[...session.players],ready:session.ready,closed:session.closed,status:session.status,failure:session.failure??null,
-   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,
+   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,input:qa.lastInputs,events:qa.events.slice(-20)};
@@ -167,7 +167,7 @@ try{
  assert(initial.durable.length===1&&initial.durable[0].hp<initial.durable[0].maxHp&&initial.projectiles>0);
  record('Public Start creates a ticking one-player world with fresh public identity and 100ms input buffer');
  await host.keyboard.down('KeyD');await ticks([host],4);
- const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement');
+ const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement');await host.keyboard.up('KeyD');
  const guest=await addPage();await startPublic(guest);
  // Opening a tab can release held actions on blur. Reapply genuine keyboard
  // input during the asynchronous public discovery/admission window.

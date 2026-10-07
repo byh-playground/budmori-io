@@ -61,8 +61,9 @@ async function main(){
   // A second actual runtime joins through PublicSession and waits in the SDK's
   // membership lifecycle; manual pulses and byte links drive both endpoints.
   const owner=make(),peer=make(),net=network();await owner.init();await peer.init();const ownerRoom=await begin(owner,room(net,'a'));owner.drive(5);const originalPeer=bytes(peer);
-  await begin(peer,room(net,'b'));assert.equal(peer.phase(),'joining');assert.equal(peer.e.run('bloomSession.ready'),false);peer.drive(3);assert.equal(peer.e.run('bloomTick'),0);assertHealthy(peer);assert.equal(peer.e.run('BloomSimulation.runtime.metrics.advanceStatus'),'joining');
-  pass('Admitted-room bootstrap remains a nonfatal SDK waiting state in the final runtime');
+  await begin(peer,room(net,'b'));assert.equal(peer.phase(),'joining');assert.equal(peer.e.run('bloomSession.ready'),false);peer.e.run('BLOOM_HEADLESS=false;try{__sessionRuntimeTest.controls()}finally{BLOOM_HEADLESS=true}');peer.drive(3);assert.equal(peer.e.run('bloomTick'),0);assertHealthy(peer);assert.equal(peer.e.run('BloomSimulation.runtime.metrics.advanceStatus'),'joining');
+  assert.equal(peer.e.run("bloomQueue('roll',{x:1,y:0})"),false);
+  pass('Pre-admission viewport/input waits without queuing commands or making the SDK waiting state fatal');
   const cancelledJoin=make();await cancelledJoin.init();const beforeJoin=bytes(cancelledJoin),cancelledJoinRoom=room(net,'cancel-joining');
   await begin(cancelledJoin,cancelledJoinRoom);assert.equal(cancelledJoin.phase(),'joining');await cancelledJoin.e.run('PublicSession.cancel()');
   assert(cancelledJoinRoom.closed);assert.equal(cancelledJoinRoom.forgetCount,1);assert.equal(cancelledJoin.phase(),'idle');assert.deepEqual(bytes(cancelledJoin),beforeJoin);assertHealthy(cancelledJoin);

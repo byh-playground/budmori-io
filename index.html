@@ -21414,11 +21414,11 @@ function bloomMainRuntime() {
  bloomStartDriver=boundary;
  function controls(){
   if(!initialized||fatal||!state)return;
-  if(!globalThis.BLOOM_HEADLESS){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==viewSignature){viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
+  if(!globalThis.BLOOM_HEADLESS&&(!online()||bloomSession?.ready)){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==viewSignature){viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
   const running=active();if(running!==wasActive){const now=performance.now();bloomLoop.resetTiming();bloomLoop.pulse(now);wasActive=running;nextPulseAt=now+1000/CONFIG.sim.tickRate}
   schedule();
  }
- bloomQueue=function(type,args={}){if(!initialized||fatal)return false;BloomDiagnostics.command(type);const result=oldQueue(type,args);schedule();return result};
+ bloomQueue=function(type,args={}){if(!initialized||fatal||online()&&!WorldPlayers.get(bloomSession?.localPlayerId))return false;BloomDiagnostics.command(type);const result=oldQueue(type,args);schedule();return result};
  publishVisibleHuntView=function(){controls();return true};
  advanceSimulationClock=function(elapsed){bloomCollectDeviceInput();controls();uiClock+=Math.max(0,elapsed||0);return 0};
  function snapshot(kind='snapshot'){
