@@ -2566,7 +2566,7 @@ html.bloom-diagnostics-open,html.bloom-diagnostics-open body{touch-action:auto!i
 // minor = incompatible change, patch = compatible change. One compatibility family
 // governs saved worlds, disk envelopes, replay and public-session negotiation.
 const BUDMORI_VERSION=(()=>{
- const major=0,minor=1,patch=0,version=`${major}.${minor}.${patch}`,compatibility=`${major}.${minor}`;
+ const major=0,minor=2,patch=0,version=`${major}.${minor}.${patch}`,compatibility=`${major}.${minor}`;
  function accepts(value){if(typeof value!=='string'||!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value))return false;const [a,b,c]=value.split('.').map(Number);return [a,b,c].every(Number.isSafeInteger)&&a===major&&b===minor}
  return Object.freeze({major,minor,patch,version,compatibility,simulation:`budmori-${compatibility}`,accepts});
 })();
@@ -2577,7 +2577,7 @@ const BLOOM_TIME=Object.freeze({
  unit:'ms',schema:1,
  specialWindupMs:500,initialSpecialDelayMs:2200,afterAttackDelayMs:250,
  roll:Object.freeze({durationMs:800/3,invulnerableMs:500/3,cooldownMs:1800,settleMs:400/3}),
- troopReviveMs:5000,bossRespawnMs:90000,
+ playerReviveMs:3000,troopReviveMs:5000,bossRespawnMs:90000,
  autoHunt:Object.freeze({idleMs:700,queryMs:200}),pointMove:Object.freeze({blockedMs:2500}),
  wildRing:Object.freeze({quotaMs:1000,searchesPerSecond:120,commitsPerSecond:60}),
  fusion:Object.freeze({attemptsPerSecond:60,checksPerSecond:1200}),
@@ -6610,7 +6610,7 @@ function purchaseCost(kind){if(kind==='cap'){let next=state.capTier+1;if(next>CO
 function buy(kind){const c=purchaseCost(kind);if(!c||state.minerals<c[0]||state.gas<c[1])return false;state.minerals-=c[0];state.gas-=c[1];state.stats.spentM+=c[0];state.stats.spentG+=c[1];if(kind==='cap')state.capTier++;else{state.upgrades[kind]++;if(kind==='health'){const old=1+(state.upgrades.health-1)*CONFIG.economy.healthPerLevel,newScale=1+state.upgrades.health*CONFIG.economy.healthPerLevel;for(const u of state.units)if(u.team==='friendly'){const ratio=u.hp/u.maxHp;u.maxHp*=newScale/old;u.hp=u.maxHp*ratio}state.mother.hp+=CONFIG.mother.hpPerLevel;state.mother.maxHp=maxMotherHP()}}save();uiClock=CONFIG.render.uiInterval;return true}
 function setCard(slot,type){if(!Number.isInteger(slot)||slot<0||slot>=state.cards.length||!slotOpen(slot)||type!==null&&(!friendlyTypes.includes(type)||!unlocked(type)))return false;if(state.cards[slot].type===type)return true;if(type!==null&&state.cards.filter((c,i)=>i!==slot&&c.type===type).length>=CONFIG.production.maxCopies)return false;state.cards[slot]={type,progress:0,blocked:''};save();uiClock=CONFIG.render.uiInterval;return true}
 function defeat(player=WorldPlayers.byAccount(-1)){return PlayerLifecycle.defeat(player,null)}
-function recover(player=WorldPlayers.byAccount(-1)){return bloomInTick?PlayerLifecycle.recover(player):bloomQueue('recover')}
+function recover(player=WorldPlayers.byAccount(-1)){return bloomInTick?PlayerLifecycle.recover(player):false}
 function snapshot(){return JSON.parse(JSON.stringify(state))}
 function save(){if(bloomInTick||bloomInitializing){bloomPersistenceRequested=true;return true;}try{localStorage.setItem(CONFIG.saveKey,JSON.stringify({...state,units:state.units.filter(u=>u.hp>0)}));return true}catch{return false}}
 let load;
@@ -6636,7 +6636,7 @@ function fmt(n){return n>=10000?(n/1000).toFixed(1)+'k':Math.floor(n).toLocaleSt
 function portrait(type){return window.RallyArt?RallyArt.thumbnail(type,'friendly',{size:96}):''}
 function toast(text){if(bloomInTick){bloomEmit("toast",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;$('status').textContent=text;$('status').style.opacity='1';toastClock=CONFIG.render.toastTime}
 function openModal(kind,html){const same=modalKind===kind;paused=true;modalKind=kind;keys.clear();stick.x=stick.y=0;resetKnob();$('sheet').innerHTML=html;$('modal').classList.add('show');if(!same)$('sheet').scrollTop=0;refreshUI()}
-function closeModal(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;if(WorldView.dead())return showDefeat();$('modal').classList.remove('show');modalKind='';paused=false;lastFrame=performance.now()}
+function closeModal(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;$('modal').classList.remove('show');modalKind='';paused=false;lastFrame=performance.now()}
 function sheetHead(title){return`<div class="sheetHead"><div><div class="eyebrow">BLOOM · LIVING FRONTIER</div><h2>${title}</h2></div><button class="close" data-action="close" aria-label="닫기">×</button></div>`}
 function showIntro(hasSave){openModal('intro',`<div class="eyebrow">A LIVING WORLD. YOUR GROWING ARMY.</div><h1>BLOOM</h1><p style="font-size:15px;color:#dce9c3;margin:0">군락의 행군</p><div class="introArt"><canvas id="introCanvas" width="540" height="160"></canvas></div><p>작은 모체 하나에서 시작해, 천 인구의 생명 군단으로.<br>이동으로 전선을 이끌고, 부화 카드를 골라 군락을 키우세요.</p><div class="introList"><div><b>01 · 이끈다</b>클릭·탭 / WASD<br>공격은 부대가 자동으로</div><div><b>02 · 키운다</b>6개의 생산 카드<br>자원과 인구를 투자</div><div><b>03 · 뻗는다</b>6개의 연결 구역<br>우두머리와 새 생장점</div></div><button class="primary" data-action="start">${hasSave?'군락 이어하기':'첫 군락 깨우기'} →</button><p class="fine">자동 저장 · 단일 파일 · 네트워크 연결 불필요<br>Rally Frontier의 원본 생물 외형과 공격 규칙을 바탕으로 만든 새로운 싱글플레이 게임.</p>`);let c=$('introCanvas').getContext('2d');drawNest(c,270,95,3,1);['swordsman','tank','archer','medic','flowerbee','shelltitan'].forEach((type,i)=>{let x=75+i*77,y=85+Math.sin(i)*27;if(window.RallyArt)RallyArt.draw(c,type,'friendly',x,y,unitDef(type).size*1.1,0,0,{})})}
 function upgradeDescription(kind){if(kind==='attack')return`모든 부대 공격력 +${Math.round(CONFIG.economy.attackPerLevel*100)}%`;if(kind==='health')return`부대 체력 +${Math.round(CONFIG.economy.healthPerLevel*100)}% · 모체 체력 +${CONFIG.mother.hpPerLevel}`;if(kind==='bounty')return`교전 보상 +${Math.round(CONFIG.economy.bountyPerLevel*100)}%`;if(kind==='production')return`부화 리듬 강화 · 속도 보너스 최대 +${Math.round(CONFIG.production.speedMaxBonus*100)}%`;return CONFIG.upgrades[kind].description}
@@ -6647,7 +6647,7 @@ function showPause(){openModal('pause',sheetHead('잠시 쉬어 가기')+`<p>군
 function showDefeat(){if(bloomInTick){bloomEmit("showDefeat",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;openModal('defeat',`<div class="eyebrow">A NEW SHOOT WILL RISE</div><h2>다시 뿌리내릴 시간</h2><p>모체가 쓰러져 출정 부대를 잃었습니다.<br>해금 · 연구 · 자원 · 정복한 구역은 그대로 남습니다.</p><div class="notice">생장 둥지에서 무료 칼잎 전사 ${CONFIG.mother.starterCount}마리와 다시 시작합니다. 첫 카드는 무료 기본병으로 돌아가요.<br>유료 병종은 자원을 지불해 새로 생산해야 합니다.</div><button class="primary" data-action="recover">생장 둥지에서 다시 시작 →</button>`)}
 function showVictory(){if(bloomInTick){bloomEmit("showVictory",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;if(!playing)return;openModal('victory',`<div class="eyebrow">THE FRONTIER IS IN BLOOM</div><h2>군락이 하나로 이어졌어요</h2><p>여섯 생장점이 뿌리를 맞대고, 중심 군락이 깨어났습니다.<br>작은 모체가 시작한 행군은 이제 하나의 생태계가 되었어요.</p><div class="notice">정복 6 / 6 · 현재 인구 ${pop()} / ${cap()}<br>태어난 병력 ${state.stats.produced} · 전투 손실 ${state.stats.losses}<br>최종 인구 한도 1,000까지 성장하고 조합을 더 시험할 수 있습니다.</div><button class="primary" data-action="close">군락 계속 돌보기 →</button>`)}
 function resetKnob(){$('knob').style.transform='translate(0px,0px)'}
-function bindUI(){GameUI.listen(document,'click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.action;if(a==='collection')showCards();if(a==='close')closeModal();if(a==='start'){playing=true;document.body.classList.remove('intro');WorldView.dead()?showDefeat():closeModal();toast(CONFIG.zones[state.zone].tip)}if(a==='recover'&&recover()){closeModal();toast('모아가 다시 일어났어요 · 영구 동료도 주변에서 함께해요')}if(a==='save'){save();toast('이 기기에 진행을 저장했어요')}if(a==='export')exportSave();if(a==='import')importSave();if(a==='reset-confirm')openModal('reset',sheetHead('새 군락을 시작할까요?')+'<p>저장된 광물 · 도감 · 모아 성장 · 성장 카드 · 구역 진행이 초기화됩니다.</p><button class="primary danger" data-action="reset">진행 초기화</button><button class="primary" style="background:#ffffff10;color:var(--ink)" data-action="pause">취소</button>');if(a==='pause')showPause();if(a==='reset'){reset();save();closeModal();toast('새 군락이 발아했어요')}});GameUI.handler($('evolveButton'),'onclick',()=>showUpgrades());GameUI.handler($('mapButton'),'onclick',showMap);GameUI.handler($('pause'),'onclick',showPause);
+function bindUI(){GameUI.listen(document,'click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.action;if(a==='collection')showCards();if(a==='close')closeModal();if(a==='start'){playing=true;document.body.classList.remove('intro');WorldView.dead()?showDefeat():closeModal();toast(CONFIG.zones[state.zone].tip)}if(a==='save'){save();toast('이 기기에 진행을 저장했어요')}if(a==='export')exportSave();if(a==='import')importSave();if(a==='reset-confirm')openModal('reset',sheetHead('새 군락을 시작할까요?')+'<p>저장된 광물 · 도감 · 모아 성장 · 성장 카드 · 구역 진행이 초기화됩니다.</p><button class="primary danger" data-action="reset">진행 초기화</button><button class="primary" style="background:#ffffff10;color:var(--ink)" data-action="pause">취소</button>');if(a==='pause')showPause();if(a==='reset'){reset();save();closeModal();toast('새 군락이 발아했어요')}});GameUI.handler($('evolveButton'),'onclick',()=>showUpgrades());GameUI.handler($('mapButton'),'onclick',showMap);GameUI.handler($('pause'),'onclick',showPause);
  GameUI.listen(window,'blur',()=>{keys.clear();stick.x=stick.y=0;resetKnob();if(playing&&!paused)showPause();save()});GameUI.listen(document,'visibilitychange',()=>{if(document.hidden){keys.clear();stick.x=stick.y=0;resetKnob();if(playing&&!paused)showPause();save()}});GameUI.listen(window,'pagehide',save);
 
 }
@@ -8562,7 +8562,7 @@ function healthShove(b,amount){const c=CONFIG.render.healthJuice,t=healthJuice.t
 function healthPaint(b,x,y,w,h,opacity=1){healthSample(b);ctx.save();ctx.globalAlpha=opacity;x+=healthShove(b,CONFIG.render.healthJuice.worldShove);ctx.fillStyle='#15291feb';ctx.fillRect(x-1,y-1,w+2,h+2);ctx.fillStyle=CONFIG.render.healthJuice.ghost;ctx.fillRect(x,y,w*b.ghost,h);ctx.fillStyle=healthColor(b);ctx.fillRect(x,y,w*b.fill,h);const f=healthFlash(b);if(f>0){ctx.globalAlpha=opacity*f;ctx.fillStyle='#ffffff';ctx.fillRect(x,y,w*Math.max(b.fill,.08),h)}ctx.restore()}
 function drawJuicedHealthBar(source,pose,w){if(source.hp<=0||!healthVisible(source))return;healthEnsureState();let b=healthJuice.bars.get(source);if(!b){if(healthJuice.bars.size>=CONFIG.render.healthJuice.maxWorldBars)return;b=healthCreate(source);healthJuice.bars.set(source,b)}healthSync(b,source);b.epoch=healthJuice.epoch;healthPaint(b,pose.x-w/2,pose.y,w,CONFIG.render.healthJuice.worldHeight)}
 let healthDOM=null;
-function updateJuicedHUD(){if(bloomInTick){bloomEmit("updateJuicedHUD",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;healthEnsureState();if(!healthDOM){const root=$('health');root.innerHTML='<i class="hpFill"></i><i class="hpGhost"></i><i class="hpFlash"></i>';root.setAttribute('role','progressbar');root.setAttribute('aria-label','모아 체력');healthDOM={root,fill:root.children[0],ghost:root.children[1],flash:root.children[2],label:$('motherHealth')}}const b=WorldView.dead()?healthCreate(WorldView.leader()):healthSync(healthJuice.hud,WorldView.leader()),d=healthDOM;d.fill.style.width=b.fill*100+'%';d.fill.style.background=healthColor(b);d.ghost.style.width=b.ghost*100+'%';d.flash.style.width=Math.max(b.fill,.025)*100+'%';d.flash.style.opacity=healthFlash(b);d.root.style.transform=`translateX(${healthShove(b,CONFIG.render.healthJuice.hudShove)}px)`;const hp=Math.ceil(Math.max(0,WorldView.leader().hp)),max=WorldView.leader().maxHp,label=`HP ${hp} / ${max}`;if(d.label.textContent!==label)d.label.textContent=label;d.root.setAttribute('aria-valuemin','0');d.root.setAttribute('aria-valuemax',max);d.root.setAttribute('aria-valuenow',hp)}
+function updateJuicedHUD(){if(bloomInTick){bloomEmit("updateJuicedHUD",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;healthEnsureState();if(!healthDOM){const root=$('health');root.innerHTML='<i class="hpFill"></i><i class="hpGhost"></i><i class="hpFlash"></i>';root.setAttribute('role','progressbar');root.setAttribute('aria-label','모아 체력');healthDOM={root,fill:root.children[0],ghost:root.children[1],flash:root.children[2],label:$('motherHealth')}}const b=WorldView.dead()?healthCreate(WorldView.leader()):healthSync(healthJuice.hud,WorldView.leader()),d=healthDOM;d.fill.style.width=b.fill*100+'%';d.fill.style.background=healthColor(b);d.ghost.style.width=b.ghost*100+'%';d.flash.style.width=Math.max(b.fill,.025)*100+'%';d.flash.style.opacity=healthFlash(b);d.root.style.transform=`translateX(${healthShove(b,CONFIG.render.healthJuice.hudShove)}px)`;const hp=Math.ceil(Math.max(0,WorldView.leader().hp)),max=WorldView.leader().maxHp,label=WorldView.dead()?`${Math.ceil(Math.max(0,PlayerLifecycle.remainingMs(WorldView.player())-1e-7)/1000)}초 후 부활`:`HP ${hp} / ${max}`;if(d.label.textContent!==label)d.label.textContent=label;d.root.setAttribute('aria-valuemin','0');d.root.setAttribute('aria-valuemax',max);d.root.setAttribute('aria-valuenow',hp)}
 const healthStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { healthStyle.textContent='#health{position:relative;height:7px;overflow:hidden;isolation:isolate;will-change:transform}#health i{position:absolute;left:0;top:0;height:100%;transition:none;pointer-events:none}#health .hpGhost{z-index:0;background:#fff9e9}#health .hpFill{z-index:1}#health .hpFlash{z-index:2;background:#fff}'; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(healthStyle); }
 refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;healthCore.refreshUI();updateJuicedHUD()};
 
@@ -19900,7 +19900,8 @@ permanentCore.drawCampaignWorld=drawOpenWorldGround;
 function drawOpenWorldOverview(c,width,height){const size=Math.min(width,height),ox=(width-size)/2,oy=(height-size)/2,scale=size/CONFIG.openWorld.width;c.clearRect(0,0,width,height);c.fillStyle='#15271e';c.fillRect(0,0,width,height);c.save();c.translate(ox,oy);c.scale(scale,scale);c.fillStyle='#637f4c';c.fillRect(0,0,CONFIG.openWorld.width,CONFIG.openWorld.height);for(const g of CONFIG.campaign.grounds){const gradient=c.createRadialGradient(g.x,g.y,80,g.x,g.y,1450);gradient.addColorStop(0,g.color+'b0');gradient.addColorStop(1,g.color+'00');c.fillStyle=gradient;c.fillRect(0,0,CONFIG.openWorld.width,CONFIG.openWorld.height)}for(const h of TerrainHills.features()){c.fillStyle='#e2e6b323';c.beginPath();c.ellipse(h.x,h.y,h.rx,h.ry,0,0,Math.PI*2);c.fill()}const boss=CONFIG.openWorld.bossHabitat;c.strokeStyle='#f3ad73';c.lineWidth=1/scale;c.beginPath();c.arc(boss.x,boss.y,boss.radius,0,Math.PI*2);c.stroke();c.fillStyle='#fff3cc';c.font=`${Math.max(10,Math.min(width,height)/34)/scale}px system-ui`;c.textAlign='center';for(let i=0;i<5;i++){const p=openWorldRegionSpawn(i);c.fillText(CONFIG.openWorld.directions[i],p.x,p.y-70)}c.fillStyle='#fffbe0';c.beginPath();c.arc(WorldView.leader().x,WorldView.leader().y,3/scale,0,Math.PI*2);c.fill();c.restore()}
 drawMini=function(){drawOpenWorldOverview(mini,180,104)};
 showMap=function(){if(globalThis.BLOOM_HEADLESS)return;const room=regionAt(WorldView.leader().x,WorldView.leader().y);openModal('map',sheetHead('사방으로 열린 생명의 들판')+`<div class="hudMapSummary"><canvas id="openWorldMapPreview" width="360" height="360" aria-label="중앙 초원과 북쪽·서쪽·동쪽·남쪽 생태 지형의 실제 위치"></canvas><div><strong>${ruiEscape(CONFIG.campaign.grounds[room]?.name||'열린 들판')}</strong><p>중앙에서 사방으로 자유롭게 이동해요.</p><p>중앙은 낮은 등급, 외곽은 높은 등급이에요. 지도 오른쪽 아래 원은 상주 우두머리의 서식지예요.</p></div></div>`+CONFIG.campaign.grounds.map((g,i)=>`<div class="zoneRow"><div class="badge" style="color:${g.color}">${CONFIG.openWorld.directions[i]}</div><div><b>${ruiEscape(g.name)}${room===i?' · 현재 위치':''}</b><small>${ruiEscape(g.habitat)}</small><small>영구 개방 · 개체군 ${CONFIG.openWorld.density[i].population} · 처치 후 다시 자라요</small></div></div>`).join('')+`<div class="notice">${BloomSimulation.multiplayer?'모아가 쓰러지면 공유 월드의 안전한 위치에서 다시 일어나요.':'모아가 쓰러지면 쓰러진 지역의 고정된 시작 위치에서 다시 일어나요.'} 살아 있는 군단은 모아 곁으로 돌아오고, 부활 대기 병력은 남은 시간이 끝나면 합류해요.</div><button class="primary" data-action="collection">영구 군단 · 합성</button>`);const p=$('openWorldMapPreview');if(p)drawOpenWorldOverview(p.getContext('2d'),360,360)};
-showDefeat=function(){if(bloomInTick){bloomEmit('showDefeat',[]);return}if(globalThis.BLOOM_HEADLESS)return;const room=WorldView.data().campaign.openWorld.deathRegion;openModal('defeat',`<div class="eyebrow">MOA WILL GROW AGAIN</div><h2>모아, 다시 한 걸음</h2><p>군단과 모아의 성장은 그대로 남아요.<br>${BloomSimulation.multiplayer?'공유 월드의 안전한 위치에서 다시 일어나요.':ruiEscape(CONFIG.campaign.grounds[room].name)+'의 고정된 시작 위치에서 다시 일어나요.'}</p>${ruiSummaryHTML()}<p>살아 있는 군단은 모아 곁으로 돌아와요. 부활 대기 병력은 남은 시간이 끝나면 합류해요.</p><button class="primary" data-action="recover">${BloomSimulation.multiplayer?'월드에서':'이 지역에서'} 다시 출발 →</button>`)};
+showDefeat=function(){if(bloomInTick){bloomEmit('showDefeat',[]);return}if(globalThis.BLOOM_HEADLESS)return;if(modalKind==='intro'||modalKind==='defeat')closeModal();refreshUI()};
+
 refreshUI=function(...args){if(bloomInTick){bloomEmit('refreshUI',[]);return}const result=openWorldCore.refreshUI(...args);if(globalThis.BLOOM_HEADLESS)return result;const track=$('progressTrack');if(track)track.innerHTML=CONFIG.campaign.grounds.map((g,i)=>`<i class="open" title="${ruiEscape(CONFIG.openWorld.directions[i]+' · '+g.name+' · 자유 이동')}"></i>`).join('');return result};
 showGameHelp=function(){if(globalThis.BLOOM_HEADLESS)return;openModal('help',sheetHead('열린 들판을 탐험하기')+`<div class="helpSteps"><div><b>1 · 사방으로 자유롭게</b><p>땅을 클릭·탭하거나 WASD / 방향키로 움직여요. 두 번 클릭·탭하거나 Space로 굴러요. 중앙 초원에서 북쪽 꽃언덕, 서쪽 수림, 동쪽 습지, 남쪽 들판으로 바로 갈 수 있어요. 멀리 나갈수록 높은 등급의 생물이 살아요.</p></div><div><b>2 · 싸우며 친구 모으기</b><p>이동 중에도 자동으로 공격해요. 잠시 멈추면 주변 지역을 자동 사냥해요. 야생 생물을 처치하면 같은 병종의 한 등급 아래 친구가 영구 합류해요. 빈자리가 없으면 예비로 보관해요.</p></div><div><b>3 · 함께 성장하기</b><p>잠기지 않은 같은 병종·등급 5마리는 자동 합성해요. 레벨업마다 무료 능력 3장 중 하나를 골라요.</p></div><div><b>4 · 다시 일어나기</b><p>모아가 쓰러지면 쓰러진 지역의 고정된 시작 위치에서 부활해요. 살아 있는 군단이 모아 곁으로 돌아오고 부활 대기 친구는 남은 시간이 끝나면 합류해요. 오른쪽 아래에는 큰 우두머리가 원래 서식지를 지키고 있어요.</p></div></div>${ruiRulesHTML()}<button class="primary" data-action="close">돌아가기</button>`)};
 showIntro=function(...args){const result=openWorldCore.showIntro(...args);if(!globalThis.BLOOM_HEADLESS){const subtitle=$('sheet')?.querySelector('.homeSubtitle');if(subtitle)subtitle.textContent='사방으로 열린 들판에서, 모든 친구를 오래 간직하며.'}return result};
@@ -21334,12 +21335,16 @@ const PlayerLifecycle=(()=>{
  onRecovered(fn){recovered.push(fn);return()=>{const i=recovered.indexOf(fn);if(i>=0)recovered.splice(i,1)}},
  defeat(player,killer){
   if(!player)return false;const data=WorldPlayers.data(player),m=player.leader;if(data.dead)return false;
-  data.dead=true;data.deaths++;data.campaign.openWorld.deathRegion=Math.max(0,regionAt(m.x,m.y));CombatHealth.defeat(m);m.cancelPrimaryAttack();m.clearPrimaryTarget();clearMoaRoll(m);m.gearChannels={};
+  data.dead=true;m.lastHit=state.time;data.deaths++;data.campaign.openWorld.deathRegion=Math.max(0,regionAt(m.x,m.y));CombatHealth.defeat(m);m.cancelPrimaryAttack();m.clearPrimaryTarget();clearMoaRoll(m);m.gearChannels={};
   player.navigation={goal:null,waypoints:[],index:0,stuckMs:0,best:1e9};player.auto.enabled=false;
   data.minerals=Math.floor(data.minerals*CONFIG.mother.defeatResourceKeep);data.gas=Math.floor(data.gas*CONFIG.mother.defeatResourceKeep);
   UnitLifecycle.ownerDefeated(player);ProjectileLifecycle.ownerDefeated(player);
   for(const fn of defeated)fn(player,killer);bloomPersistenceRequested=true;return true;
  },
+ // A defeated actor cannot be hit again, so its existing persisted lastHit is
+ // also the lethal boundary. No second clock or save-format field is needed.
+ remainingMs(player){return player&&WorldPlayers.data(player).dead?Math.max(0,BLOOM_TIME.playerReviveMs-bloomMs(state.time-player.leader.lastHit)):0},
+ tick(player){if(WorldPlayers.data(player).dead&&this.remainingMs(player)<=1e-7)this.recover(player)},
  recover(player){
   if(!player)return false;const data=WorldPlayers.data(player),m=player.leader;if(!data.dead)return false;
   const p=CONFIG.session.mode==='online'?WorldSpawn.choose(player.playerId,WorldPlayers.interests().filter(x=>x.playerId!==player.playerId)):openWorldRegionSpawn(data.campaign?.openWorld?.deathRegion||0);
@@ -21352,7 +21357,7 @@ const PlayerLifecycle=(()=>{
 })();
 PlayerLifecycle.onDefeated((player,killer)=>deathCapture(player.leader,killer));
 PlayerLifecycle.onDefeated(player=>bloomEmitTo(player.playerId,'showDefeat',[]));
-PlayerLifecycle.onRecovered(player=>bloomEmitTo(player.playerId,'closeModal',[]));
+PlayerLifecycle.onRecovered(player=>bloomEmitTo(player.playerId,'refreshUI',[]));
 // Synchronous domain consequences preserve the original deterministic order.
 // Only the presentation adapters enqueue confirmed-tick effects.
 CombatHealth.onBlocked(t=>addFx('ring',t.x,t.y,0,0,'#b7e6f8',radius(t)+12,.3));
@@ -21411,6 +21416,7 @@ const WorldSimulation=globalThis.WorldSimulation=Object.freeze({
  step(dt,inputs){
   dt=Math.min(CONFIG.qa.maxStep,Math.max(0,dt));if(!dt)return;
   const players=WorldPlayers.all().filter(p=>p.lifecycle==='active');state.time+=dt;
+  for(const p of players)PlayerLifecycle.tick(p);
   wildRingCull();
   for(const p of players)PlayerController.move(p,inputs.get(p.playerId)||{x:0,y:0},dt);
   for(const c of state.camps)if(c.enabled&&!c.spawned)spawnCamp(c);
@@ -21452,7 +21458,6 @@ const PlayerCommands=Object.freeze({
   case'rarityFuse':rarityFuse(owner,a.unitType,a.grade,a.max);bloomEmitTo(player.playerId,'collectionRefresh',[]);break;
   case'rarityLock':if(rarityLock(a.uid,a.locked,owner))bloomEmitTo(player.playerId,'collectionRefresh',[]);break;
   case'rarityReserveLock':rarityLockReserve(owner,a.unitType,a.grade,a.count);bloomEmitTo(player.playerId,'collectionRefresh',[]);break;
-  case'recover':PlayerLifecycle.recover(player);break;
  }}
 });
 const WorldMembership=(()=>{
@@ -21796,7 +21801,7 @@ function bloomRestore(c){if(!bloomValidate(c,undefined))throw new TypeError('Inv
 function bloomQuantize(x){return Math.round(clamp(Number.isFinite(x)?x:0,-1,1)*32767)}
 function bloomEncodeInput(p={}){const b=new Uint8Array(5),v=new DataView(b.buffer);b[4]=(p.manual?1:0)|(p.suspended?2:0);v.setInt16(0,bloomQuantize(p.x),true);v.setInt16(2,bloomQuantize(p.y),true);return b}
 function bloomDecodeInput(b){if(!(b instanceof Uint8Array)||b.length!==5||b[4]>3)throw new TypeError('Input size');const v=new DataView(b.buffer,b.byteOffset,4),x=v.getInt16(0,true),y=v.getInt16(2,true);if(x===-32768||y===-32768)throw new TypeError('Input axis');return{x:x/32767,y:y/32767,manual:!!(b[4]&1),suspended:!!(b[4]&2)}}
-const bloomCommandFields={huntView:['halfWidth','halfHeight','insetX','insetY','huntInset'],point:['x','y','roll'],roll:['x','y'],tutorialAck:[],abilityDraft:[],abilityChoice:['cardId','offer'],auto:['enabled'],permanentMode:['mode'],recover:[],rarityFuse:['unitType','grade','max'],rarityLock:['uid','locked'],rarityReserveLock:['unitType','grade','count']};
+const bloomCommandFields={huntView:['halfWidth','halfHeight','insetX','insetY','huntInset'],point:['x','y','roll'],roll:['x','y'],tutorialAck:[],abilityDraft:[],abilityChoice:['cardId','offer'],auto:['enabled'],permanentMode:['mode'],rarityFuse:['unitType','grade','max'],rarityLock:['uid','locked'],rarityReserveLock:['unitType','grade','count']};
 function bloomValidateCommand(a){if(!a||a.version!==1||!Object.hasOwn(bloomCommandFields,a.type))throw new TypeError('Command kind');const fields=['version','type',...bloomCommandFields[a.type]];if(Object.keys(a).length!==fields.length||fields.some(k=>!Object.hasOwn(a,k)))throw new TypeError('Command fields');
  if(a.type==='huntView')VisibleHunt.validateCommand(a);
  if(a.type==='point'){
@@ -21824,7 +21829,7 @@ function bloomRunTick(context){
  bloomCurrentEffects=[];bloomEventSequence=0;bloomInTick=true;
  const presentEffects=effects,presentTraces=permanentTraces,presentImpacts=sproutImpacts;effects=[];permanentTraces=[];sproutImpacts=[];
  try{for(const c of validated)PlayerCommands.apply(c.player,c.command,c.input);
-  const solo=WorldPlayers.all()[0],run=BloomSimulation.sessionConfig.mode==='online'||solo&&!WorldPlayers.data(solo).dead&&!inputs.get(solo.playerId)?.suspended;
+  const solo=WorldPlayers.all()[0],run=BloomSimulation.sessionConfig.mode==='online'||solo&&!inputs.get(solo.playerId)?.suspended;
   if(run)WorldSimulation.step(CONFIG.sim.fixedStep,inputs);
   for(const f of permanentTraces)bloomEmit('permanentTrace',[f]);for(const f of sproutImpacts)bloomEmit('sproutImpact',[f]);bloomPendingEffects.set(bloomTick,bloomCurrentEffects);bloomTick++;
  }finally{bloomInTick=false;effects=presentEffects;permanentTraces=presentTraces;sproutImpacts=presentImpacts}
@@ -22159,14 +22164,15 @@ function bloomMainRuntime() {
  const online=()=>BloomSimulation.sessionConfig?.mode==='online';
  const localReady=()=>{const player=typeof WorldPlayers==='undefined'?null:WorldPlayers.local();return playing&&!paused&&!modalKind&&!(player?player.dead||player.leader?.hp<=0:state.dead)};
  const discovering=()=>online()&&PublicSession.phase==='discovering';
- const active=()=>phase===runtimePhase.ready&&!discovering()&&(online()?!bloomSession?.failure&&!bloomSession?.closed:localReady());
+ const soloRunning=()=>playing&&!paused&&!modalKind;
+ const active=()=>phase===runtimePhase.ready&&!discovering()&&(online()?!bloomSession?.failure&&!bloomSession?.closed:soloRunning());
  const persistence={
   protected:false,failure:null,soloWorld:true,latestDisk:'',error:null,lastTick:0,pending:[],
   get enabled(){return !online()&&BloomSimulation.sessionConfig?.persistence==='solo'&&persistence.soloWorld},
   get reason(){return online()?'Local saves are unavailable during a public session':'Restore or reset solo progress before saving'},
   disk(){if(!this.enabled)throw new Error(this.reason);return bloomSnapshotStore.disk()}
  };
- function sampleInput(){const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status));return bloomEncodeInput(localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:true})}
+ function sampleInput(){const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status));return bloomEncodeInput(localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:!soloRunning()||reconnecting})}
  const fail=(error,kind='simulation.main')=>BloomDiagnostics.report(error,{kind,fatal:true});
  function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld:persistence.soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
  function rejectSaves(error){const requests=persistence.pending;persistence.pending=[];for(const p of requests)p.reject(error)}

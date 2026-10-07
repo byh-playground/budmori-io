@@ -44,9 +44,9 @@ async function main(){
   assert.equal(a.e.run('BloomDiagnostics.fatal'),false);pass('Fresh one-person public world advances through a local menu');
   await a.control({input:{x:.5,y:0,manual:true}});assert.equal(a.e.run('__sessionRuntimeTest.sample().suspended'),false);
   // A stopped-boundary death fixture checks scheduling, not combat resolution.
-  a.e.run('WorldPlayers.data(WorldPlayers.local()).dead=true;WorldPlayers.local().leader.hp=0');
+  a.e.run('bloomInTick=true;bloomCurrentEffects=[];PlayerLifecycle.defeat(WorldPlayers.local());bloomInTick=false');
   const deathTime=a.e.run('state.time');a.drive(3);assert(a.e.run('state.time')>deathTime);
-  assert.deepEqual(a.value('__sessionRuntimeTest.sample()'),{x:0,y:0,manual:false,suspended:true});
+  assert.deepEqual(a.value('__sessionRuntimeTest.sample()'),{x:0,y:0,manual:false,suspended:false});
   pass('Local death supplies neutral input without freezing the public world');
   a.drive(55);assert.equal(await a.request('save'),false);assert.equal(a.e.run('save()'),false);
   await assert.rejects(a.request('snapshot'),/Local saves are unavailable/);a.e.run('__sessionRuntimeTest.pagehide()');
