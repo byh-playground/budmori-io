@@ -122,7 +122,7 @@ try{
   await mobile.keyboard.up('KeyW');await mobile.keyboard.up('KeyS');
   console.log('MOBILE_RECOVERY_CYCLE',JSON.stringify({cycle,main:await mobile.evaluate(()=>({hp:__army.state.mother.hp,dead:__army.state.dead,paused:__army.paused,modal:modalKind,frame:__army.performance.frames})),worker:await mobileRequest('inspect')}));
   await mobile.waitForFunction(()=>__army.state.dead);
-  const frames=await mobile.evaluate(()=>__army.performance.frames);assert.equal(await mobile.locator('#modal.show').count(),0);await mobileTick(60);await mobile.waitForFunction(({id,frames})=>!__army.state.dead&&!BloomDiagnostics.fatal&&__army.performance.frames>frames+2&&projectionQueue.some(q=>q.source.id===id),{id:rivalId,frames},{timeout:30000});
+  const frames=await mobile.evaluate(()=>__army.performance.frames);assert.equal(await mobile.locator('#modal.show').count(),0);for(let tick=0;tick<60&&await mobile.evaluate(()=>__army.state.dead);tick++)await mobileTick(1);await mobile.waitForFunction(({id,frames})=>!__army.state.dead&&!BloomDiagnostics.fatal&&__army.performance.frames>frames+2&&projectionQueue.some(q=>q.source.id===id),{id:rivalId,frames},{timeout:30000});
   const actor=await mobile.evaluate(id=>{const r=__army.state.units.find(u=>u.id===id);return{leader:r.rivalLeader,level:r.rival.abilities.level,owned:!!r.rival,frame:__army.performance.frames}},rivalId);
   assert.equal(actor.leader,true);assert.equal(actor.owned,true);assert.equal(actor.level,await mobileRequest('__read',{expression:`idMap.get(${rivalId}).rival.abilities.level`}));cycles.push(actor);
  }
