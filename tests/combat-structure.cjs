@@ -21,7 +21,8 @@ for(const name of ['visibleHuntUpdateLeash','residentUpdate','updateRivalUnitBeh
 assert(update.indexOf('visibleHuntUpdateLeash')<update.indexOf('residentUpdate')&&update.indexOf('visibleHuntMarkReturn')>update.indexOf('updatePatternUnitTurn'),'Viewport lifecycle brackets one behavior owner');
 assert(body('damage').includes('finally{spatialContext=previous}'),'Nested damage restores scoped spatial context');
 assert(body('attack').includes('finally{spatialContext=previous}'),'Nested attack restores scoped spatial context');
-assert(body('die').includes('combatDefinition(t).afterDeath?.(')&&!body('die').includes("t.type==='pillbug'"),'Postmortem behavior belongs to definition');
+assert(body('die').includes('UnitLifecycle.defeat('),'Death entry delegates to the real lifecycle owner');
+assert(!source.includes('explosiveDeathImpact'),'Removed unreachable historical postmortem behavior');
 assert(!source.includes("if(c.pattern==='jumpSlam'"),'Pattern motion dispatches its capability');
 // The SDK tick adapter is the only gameplay clock. Feature-local projectile
 // steps are capabilities; historical global step continuations are not.

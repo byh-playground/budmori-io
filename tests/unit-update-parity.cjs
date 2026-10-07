@@ -58,9 +58,10 @@ try{
  `);
  advance(180,'Natural movement and wild activation',i=>({x:i%60<30?.7:-.4,y:i%90<45?.25:-.25,manual:true}));
  fixture(`
+  if(state.dead)PlayerLifecycle.recover(WorldPlayers.byAccount(-1));
   for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=(c.regrowth||[]).filter(q=>q.rarityReviveOwner)}
   for(const u of state.units)if(!residentIs(u)){u.stun=1e6;u.cooldown=1e6;u.target=0}
-  const m=state.mother,p=ThemedTerrain.safePoint(1800,1800,moaBodyRadius(m));m.x=m.worldX=p.x;m.y=m.worldY=p.y;resetMoaBody(m);spatialUnit(m,true);
+  const m=state.mother,p=ThemedTerrain.safePoint(1800,1800,moaBodyRadius(m));SpatialPosition.constrain(m,p.x,p.y);resetMoaBody(m);spatialUnit(m,true);
   m.hp=m.maxHp;
   for(const type of friendlyTypes)rarityAcquire(-1,type,3,1);
   const t=spawn('shellbug','enemy',m.x+150,m.y,{camp:0,rarityGrade:3});t.hp=t.maxHp=1000000;t.aggroAt=0;t.wanderAt=state.time+1000;t.target=-1;state.camps[0].remaining++;
@@ -119,7 +120,7 @@ try{
   t.shield=1;t.shieldUntil=state.time+10;damage(m,t,100,'ranged');
   check(t.hp===hp&&t.shield===0,'Active shield consumes exactly one block without HP loss');
   check(state.stats.shieldsBlocked===blockedBefore+expectedShieldCredit,'NPC shield attribution follows the explicit counter policy');
-  const mBefore=m.hp;m.rollInvulnerableMs=100;damage(t,m,100,'melee');check(m.hp===mBefore,'Roll immunity gate');m.rollInvulnerableMs=0;
+  const mBefore=m.hp;if(m.roll)m.roll.invulnerability.leftMs=100;else m.rollInvulnerableMs=100;damage(t,m,100,'melee');check(m.hp===mBefore,'Roll immunity gate');if(m.roll)m.roll.invulnerability.leftMs=0;else m.rollInvulnerableMs=0;
   const friendly=state.units.find(u=>u.hp>0&&u.team==='friendly');const sameHP=friendly.hp;damage(m,friendly,100,'melee');check(friendly.hp===sameHP,'Faction damage gate');
   const boss=residentUnit(),bossHP=boss.hp;damage(m,boss,100,'ranged');check(boss.hp===bossHP,'Dormant resident gate');
   const armors=[];for(const type of ['shellbug','tank']){
@@ -129,12 +130,11 @@ try{
   const beforeOwned=rarityOwnedCount(-1,'archer',1),beforeConverted=state.stats.converted||0;
   const capture=spawn('archer','enemy',m.x+30,m.y,{camp:0,rarityGrade:2});capture.hp=1;state.camps[0].remaining++;rebuildGrid();damage(m,capture,1000000,'ranged');
   check(capture.hp===0&&capture.deadEffect&&rarityOwnedCount(-1,'archer',1)===beforeOwned+1,'Current death path credits captured rarity');
-  // Current rarity death and the retained legacy death adapter are distinct
-  // supported entry points. The compatibility adapter owns pillbug's postmortem
-  // explosion; the current rarity path owns recruitment/reward accounting.
-  m.shield=0;m.rollInvulnerableMs=0;m.hp=m.maxHp;
-  const bomb=spawn('pillbug','enemy',m.x+15,m.y,{camp:-1,rarityGrade:0});bomb.hp=0;const beforeExplosion=m.hp;rebuildGrid();core.die(bomb,m);
-  check(bomb.deadEffect&&m.hp<beforeExplosion,'Legacy postmortem splash reaches Moa');
+  // Exercise the current lifecycle entry. The retired captured pre-rarity
+  // adapter is not gameplay and must not resurrect an extra death explosion.
+  m.shield=0;if(m.roll)m.roll.invulnerability.leftMs=0;else m.rollInvulnerableMs=0;m.hp=m.maxHp;
+  const bomb=spawn('pillbug','enemy',m.x+15,m.y,{camp:-1,rarityGrade:0});bomb.hp=0;const beforeExplosion=m.hp;rebuildGrid();die(bomb,m);
+  check(bomb.deadEffect&&m.hp===beforeExplosion,'Current death does not add a retired postmortem blast');
   globalThis.qaTransactionCoverage={recovered,types:attacks,armors,shieldBlocks:state.stats.shieldsBlocked-blockedBefore,expectedShieldCredit,healing,captured:rarityOwnedCount(-1,'archer',1)-beforeOwned,converted:(state.stats.converted||0)-beforeConverted,postmortemDamage:beforeExplosion-m.hp};
   globalThis.qaFeedbackTarget=t.id;
  `);
@@ -153,24 +153,24 @@ try{
  report.chapters.push({label:'Non-tick headless-safe health/hit feedback',...engines[0].json('qaImmediateFeedback')});
  transaction('Special completion, interruption, and grounded jump landing',`
   const m=state.mother,t=idMap.get(qaFeedbackTarget),p=ThemedTerrain.safePoint(m.x+15,m.y,25);
-  const u=spawn('dandelion','friendly',p.x,p.y,{rarityGrade:3});u.stun=0;u.target=t.id;u.query=0;u.returning=false;u.order='follow';rebuildGrid();
+  const u=spawn('dandelion','friendly',p.x,p.y,{rarityGrade:3});u.stun=0;u.target=t.id;u.query=0;if(typeof UnitMovement==='undefined'){u.returning=false;u.order='follow'}else{UnitMovement.returnHome(u,false);UnitMovement.command(u,'follow')};rebuildGrid();
   const patterns=[];
   for(const id of ['dash','groundBlast','arcing','coneSweep','ringShockwave','jumpSlam']){
-   u.x=u.worldX=p.x;u.y=u.worldY=p.y;resetMoaBody(u);spatialUnit(u,true);u.attackController=createAttackController();u.target=t.id;u.order='follow';u.returning=false;
+   SpatialPosition.constrain(u,p.x,p.y);resetMoaBody(u);spatialUnit(u,true);u.attackController=createAttackController();u.target=t.id;if(typeof UnitMovement==='undefined'){u.order='follow';u.returning=false}else{UnitMovement.command(u,'follow');UnitMovement.returnHome(u,false)};
    check(beginAttackPattern(u,t,id),'Pattern begins: '+id);
    let ticks=0;while(u.attackController.phase!=='standard'&&ticks++<300)tickAttackPattern(u);
    check(u.attackController.phase==='standard','Pattern completes: '+id);
    if(id==='jumpSlam')check(u.airHeight===u.attackController.baseAir&&u.z===u.groundZ+u.airHeight&&u.attackController.landed,'Completed jump grounded and hit once');
    patterns.push({id,ticks,landed:u.attackController.landed,phase:u.attackController.phase});
   }
-  u.x=u.worldX=p.x;u.y=u.worldY=p.y;resetMoaBody(u);spatialUnit(u,true);u.attackController=createAttackController();u.target=t.id;
+  SpatialPosition.constrain(u,p.x,p.y);resetMoaBody(u);spatialUnit(u,true);u.attackController=createAttackController();u.target=t.id;
   check(beginAttackPattern(u,t,'jumpSlam'),'Interrupted jump begins');let ticks=0;while(u.attackController.phase==='windup'&&ticks++<100)tickAttackPattern(u);tickAttackPattern(u);
   check(u.airHeight>u.attackController.baseAir,'Interrupted jump reached airborne phase');cancelAttackPattern(u,'parity-interruption');
   check(u.attackController.phase==='recovery'&&u.airHeight===u.attackController.baseAir&&u.z===u.groundZ+u.airHeight,'Cancelled jump settles to ground');
   const cancelledJump={phase:u.attackController.phase,airHeight:u.airHeight,baseAir:u.attackController.baseAir,grounded:u.z===u.groundZ+u.airHeight};
-  u.x=u.worldX=p.x;u.y=u.worldY=p.y;resetMoaBody(u);spatialUnit(u,true);u.attackController=createAttackController();u.target=t.id;
+  SpatialPosition.constrain(u,p.x,p.y);resetMoaBody(u);spatialUnit(u,true);u.attackController=createAttackController();u.target=t.id;
   check(beginAttackPattern(u,t,'jumpSlam'),'Terrain-blocked jump begins');ticks=0;while(u.attackController.phase==='windup'&&ticks++<100)tickAttackPattern(u);tickAttackPattern(u);
-  const c=u.attackController;c.previousRemainingMs=c.remainingMs;c.remainingMs=0;c.left=0;
+  const c=u.attackController;if(typeof AttackPatternController==='undefined'){c.previousRemainingMs=c.remainingMs;c.remainingMs=0;c.left=0}else AttackPatternController.advance(c,c.remainingMs);
   const terrainRejected=patternMove(u,c,-100,-100)===false;
   check(terrainRejected&&c.phase==='recovery'&&u.airHeight===c.baseAir&&u.z===u.groundZ+u.airHeight,'Blocked landing cancels and grounds jump');
   globalThis.qaTransactionCoverage={patterns,cancelledJump,terrainRejected,terrainCancelledPhase:c.phase};
@@ -179,7 +179,7 @@ try{
  fixture(`
   for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
   for(const u of state.units)if(!residentIs(u)){u.stun=1e6;u.cooldown=1e6;u.target=0}
-  const m=state.mother,h=residentHabitat(),p=ThemedTerrain.safePoint(h.x-100,h.y,moaBodyRadius(m));m.x=m.worldX=p.x;m.y=m.worldY=p.y;resetMoaBody(m);spatialUnit(m,true);
+  const m=state.mother,h=residentHabitat(),p=ThemedTerrain.safePoint(h.x-100,h.y,moaBodyRadius(m));SpatialPosition.constrain(m,p.x,p.y);resetMoaBody(m);spatialUnit(m,true);
   m.hp=m.maxHp;
   const r=residentState();r.manualThisTick=true;r.stepStart={x:m.x-1,y:m.y};if(!residentTryEntry())throw Error('Resident fixture failed to engage');
  `);
@@ -190,12 +190,12 @@ try{
   // The imported campaign may retain AUTO or an owner-bound stun/knockback
   // weapon. Put the owner back beside the living boss and release the boss's
   // stun before deliberately starting this stopped-session cleanup fixture.
-  const nearBoss=ThemedTerrain.safePoint(u.x-45,u.y,moaBodyRadius(m));m.x=m.worldX=nearBoss.x;m.y=m.worldY=nearBoss.y;m.hp=m.maxHp;resetMoaBody(m);spatialUnit(m,true);u.stun=0;
+  const nearBoss=ThemedTerrain.safePoint(u.x-45,u.y,moaBodyRadius(m));SpatialPosition.constrain(m,nearBoss.x,nearBoss.y);m.hp=m.maxHp;resetMoaBody(m);spatialUnit(m,true);u.stun=0;
   if(r.status!=='engaged'){r.status='dormant';r.manualThisTick=true;r.stepStart={x:m.x-1,y:m.y};check(residentTryEntry(),'Resident re-engages')}
   u.attackController=createAttackController();check(beginAttackPattern(u,m,residentPatternID),'Resident seed cast begins: '+JSON.stringify({status:r.status,stun:u.stun,inside:residentInside(m),canFight:residentCanFight(u,m),wall:wallClear(u,m)}));let ticks=0;while(u.attackController.phase==='windup'&&ticks++<100)tickAttackPattern(u);
   const active=projectiles.filter(p=>p.residentSeed&&!p.finished).length;check(active>0,'Resident seeds active before return');
-  m.moaTarget=u.id;m.pendingMoa={target:u.id,left:.1,total:.1,ranged:true,angle:0};residentReturn('parity-owner-outside');
-  check(r.status==='returning'&&projectiles.filter(p=>p.residentSeed&&!p.finished).length===0&&!m.moaTarget&&!m.pendingMoa,'Resident return cancels seeds and targets');
+  m.primaryAttack.targetId=u.id;m.primaryAttack.pending={target:u.id,left:.1,total:.1,ranged:true,angle:0};residentReturn('parity-owner-outside');
+  check(r.status==='returning'&&projectiles.filter(p=>p.residentSeed&&!p.finished).length===0&&!m.primaryAttack.targetId&&!m.primaryAttack.pending,'Resident return cancels seeds and targets');
   globalThis.qaTransactionCoverage={activeSeedsBefore:active,activeSeedsAfter:projectiles.filter(p=>p.residentSeed&&!p.finished).length,status:r.status,reason:r.reason};
  `);
  advance(30,'Resident return settles and removes finished seeds');

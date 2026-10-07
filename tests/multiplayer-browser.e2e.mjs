@@ -141,7 +141,7 @@ async function checkpoint(active,label){
  await until(async()=>(await Promise.all(active.map(page=>evaluate(page,t=>__sharedBrowser.checkpoints.has(t),target)))).every(Boolean),'capture '+label);
  const captured=await Promise.all(active.map(page=>evaluate(page,t=>__sharedBrowser.checkpoints.get(t),target)));
  assert.equal(new Set(captured.map(s=>s.epoch)).size,1,'Checkpoint membership epochs');
- for(const state of captured){assert.equal(state.schema,'bloom-webgl-shared-ms-v3');assert.deepEqual(Buffer.from(state.bytes),Buffer.from(captured[0].bytes),'Full canonical bytes differ at '+label)}
+ for(const state of captured){assert.equal(state.schema,'budmori-world');assert.deepEqual(Buffer.from(state.bytes),Buffer.from(captured[0].bytes),'Full canonical bytes differ at '+label)}
  report.checkpoints.push({label,tick:target,epoch:captured[0].epoch,players:active.length,hash:captured[0].hash,bytes:captured[0].bytes.length});
 }
 async function transitionCheckpoint(label,active){

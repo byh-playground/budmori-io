@@ -8,7 +8,7 @@ const files=process.argv.slice(2).map(p=>path.resolve(p));assert.equal(files.len
 const profiler=new inspector.Session();profiler.connect();
 const post=(name,args={})=>new Promise((resolve,reject)=>profiler.post(name,args,(error,result)=>error?reject(error):resolve(result)));
 async function measure(file){
- const e=engine(file);e.fixture(`BloomSimulation.initialize(12345);let level=1;while(rarityCapacityAtLevel(level)<155)level++;abilityState().level=level;abilityState().xp=abilityThreshold(level);moaSyncLevelHP(state.mother);state.mother.hp=state.mother.maxHp;for(const [i,type]of ['swordsman','shellbug','dandelion','archer'].entries())rarityAcquire(-1,type,2,38+(i<3?1:0));for(const r of rarityAccount(-1).active)rarityLock(r.uid,true);rarityRecall(-1);bloomApplyTickRate(20);for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}`);
+ const e=engine(file);e.fixture(`BloomSimulation.initialize(12345);let level=1;while(rarityCapacityAtLevel(level)<155)level++;abilityState().level=level;abilityState().xp=abilityThreshold(level);moaSyncLevelHP(state.mother);state.mother.hp=state.mother.maxHp;for(const [i,type]of ['swordsman','shellbug','dandelion','archer'].entries())rarityAcquire(-1,type,2,38+(i<3?1:0));for(const r of (globalThis.rarityGetAccount||rarityAccount)(-1).active)rarityLock(r.uid,true);rarityRecall(-1);bloomApplyTickRate(20);for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}`);
  e.tick(20);global.gc();
  const retainedBefore=process.memoryUsage().heapUsed;
  await post('HeapProfiler.startSampling',{samplingInterval:16384,includeObjectsCollectedByMajorGC:true,includeObjectsCollectedByMinorGC:true});

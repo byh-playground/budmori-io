@@ -5,7 +5,7 @@ const assert=require('node:assert/strict'),path=require('node:path');
 const {engine}=require('./native-engine.cjs');
 const files=process.argv.slice(2).map(p=>path.resolve(p));assert.equal(files.length,2);
 const worlds=files.map(file=>engine(file));
-for(const e of worlds)e.fixture(`BloomSimulation.initialize(12345);const count=CONFIG.rarity.capacityMax;let level=1;while(rarityCapacityAtLevel(level)<count)level++;abilityState().level=level;abilityState().xp=abilityThreshold(level);moaSyncLevelHP(state.mother);state.mother.hp=state.mother.maxHp;for(const [i,type]of ['swordsman','shellbug','dandelion','archer'].entries())rarityAcquire(-1,type,2,Math.floor(count/4)+(i<count%4?1:0));for(const r of rarityAccount(-1).active)rarityLock(r.uid,true);rarityRecall(-1);bloomApplyTickRate(30);for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}`);
+for(const e of worlds)e.fixture(`BloomSimulation.initialize(12345);const count=CONFIG.rarity.capacityMax;let level=1;while(rarityCapacityAtLevel(level)<count)level++;abilityState().level=level;abilityState().xp=abilityThreshold(level);moaSyncLevelHP(state.mother);state.mother.hp=state.mother.maxHp;for(const [i,type]of ['swordsman','shellbug','dandelion','archer'].entries())rarityAcquire(-1,type,2,Math.floor(count/4)+(i<count%4?1:0));for(const r of (globalThis.rarityGetAccount||rarityAccount)(-1).active)rarityLock(r.uid,true);rarityRecall(-1);bloomApplyTickRate(30);for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}`);
 const samples=[[],[]];
 for(let tick=0;tick<230;tick++){
  for(const index of tick%2?[1,0]:[0,1]){const start=performance.now();worlds[index].tick();const elapsed=performance.now()-start;if(tick>=30)samples[index].push(elapsed)}

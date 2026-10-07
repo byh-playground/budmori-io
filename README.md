@@ -33,6 +33,13 @@
 3. 밸런스·타이밍·규모·표현 한도는 해당 `CONFIG`·Definition·정책 설정에서 관리합니다. 같은 규칙을 여러 위치에 하드코딩하거나 서로 다른 구현으로 복제하지 않습니다.
 4. 공통 세계관은 [bloom-world](https://github.com/byh-playground/bloom-world)를 참고하고, 게임 고유 규칙은 이 게임에서 관리합니다.
 
+### 유닛 생성 수명주기
+
+- 공개 `spawn()`은 `UnitSpawn.create()` 한 진입점을 사용합니다. 지형의 안전 위치 → 야생 등급 난수 → 라이벌 예약/위치 탐색 → 높이 검증 → 정예 예약 조회 → 기본 몸체 등록 → 조우/영입/귀환 기준점/정예/높이/진영/성장 초기화 → 등급/라이벌 계정 → 최종 위치 제한을 명시적으로 실행합니다. 이전 생성 함수 12개를 이어 부르던 캡처 체인은 남기지 않습니다.
+- 인벤토리의 `rarityDeploy()`는 `UnitSpawn.createBody()`에서 몸체를 만든 뒤 인벤토리 레코드·등급·잠금·배치를 설치합니다. 이 경로는 야생 등급 추첨과 외부 지형 배치 단계를 거치지 않던 기존 계약을 유지합니다. 부활은 저장된 몸체·ID를 재사용하며 생성 난수를 새로 쓰지 않습니다.
+- 체력의 생성 단계 변경은 `CombatHealth.initializeSpawn()`, 이동·높이·공격 시계는 기존 소유자의 실제 API를 사용합니다. 최종 등급이 덮어쓰는 중간 체력/성장 필드도 직렬화 키 순서와 참조 계약 때문에 원래 순서로 만듭니다. 새 capability, 밸런스, 저장 schema 또는 SDK 변경은 없습니다.
+- `tests/spawn-pipeline.cjs`는 실제 HTML/내장 SDK에서 51종 × 6등급 × 4역할, 사람/NPC 인벤토리, 예약·밀집 배치 실패, 잠든 몸체·라이벌·상주 우두머리의 부활을 검사합니다. 240개 연속 공유 세계 틱에서 자연 재생, live/disk/prepared 복원, 패배/회복과 참가/재참가를 이어 검사합니다. 두 HTML 경로를 인자로 주면 전체 snapshot bytes·키 순서·참조 그래프·난수·효과 payload/ID/순서를 이전 실행물과 직접 비교합니다. Native 엔진 검사이며 브라우저/GPU 검증을 대신하지 않습니다.
+
 ### 시뮬레이션·렌더링·이동
 
 - **WebGL은 필수입니다.** GPU 렌더링과 보간을 유지하고 성능 문제를 Canvas 2D 게임 렌더러로 대체해 해결하지 않습니다.
@@ -47,6 +54,7 @@
 
 - 관계의 기준은 [공통 개발 규칙](https://github.com/byh-playground/bloom-reference/blob/main/rules/development.html)입니다. **IS-A**는 본질적인 타입 관계, **HAS-A**는 독립 부품의 소유권, **CAN-BE**는 선택적으로 가질 수 있는 능력입니다.
 - 단순 capability는 상태와 로직을 함께 가진 Subclass Factory Mixin/Trait을 우선 검토합니다. 기존 객체를 중계하기만 하는 Mixin, 불필요한 MixinBase, component 배열과 깊은 wrapper 계층은 만들지 않습니다. 실제 독립 소비자가 없는 capability는 미리 쪼개지 않습니다.
+- 모아의 `Rollable`은 방향·쿨다운·무적·진행률과 시작·이동·틱·초기화를 직접 소유합니다. 수동 입력과 자동 사냥은 같은 actor를 사용하고, 저장 경계에서만 기존 flat 필드·키 순서로 투영합니다. 복원·재접속은 검증 뒤 같은 객체 identity에 capability를 복구합니다.
 - 실행·대기·예측·롤백·복구는 세션의 상태이며 CAN-BE의 뜻이 아닙니다. 배타적인 상태는 하나의 phase로, 독립적인 상태는 별도 flag로 표현합니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
 - [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
 - HTML에는 필요한 공통 모듈과 SDK를 오프라인 실행용으로 포함합니다. 원본 SDK 동작은 c3173914519a78834360430071e7a125736d86d5와 호환됩니다. 배포 기준·각 ESM 원본과 포함 IIFE의 SHA-256은 `gamekit-lock.json`에서 검증합니다. 가변 main CDN import는 사용하지 않습니다.
@@ -55,10 +63,19 @@
 ### 저장과 검증
 
 - 디스크 저장은 완료된 시뮬레이션 경계에서 SDK와 같은 정규 snapshot 코덱을 필요할 때 호출합니다. 같은 경계의 반복 저장은 private bytes와 JSON 캐시를 재사용하며, 렌더 상태를 저장 원본으로 삼지 않습니다. SDK adapter.save()의 반환 bytes와 디스크 캐시는 서로 별칭을 공유하지 않습니다.
-- 현재 백업은 `bloom-snapshot-disk-v3` JSON envelope와 base64 payload입니다. 길이·버전·메타데이터·체크섬을 검사하고 손상된 입력은 기존 상태와 저장을 보존하며 거부합니다. FNV 체크섬은 손상 감지용이며 보안 서명이 아닙니다.
+- 현재 백업은 `budmori-snapshot` JSON envelope와 base64 payload입니다. `BUDMORI_VERSION`의 `0.1.0`을 `productVersion`으로 기록하고 같은 `0.1` 호환군만 읽습니다. 길이·버전·메타데이터·체크섬을 검사하고 손상된 입력은 기존 상태와 저장을 보존하며 거부합니다. FNV 체크섬은 손상 감지용이며 보안 서명이 아닙니다.
 - 단위 테스트 조합을 늘리는 것보다 **실제 게임 엔진을 사용하는 하나의 연속 E2E 흐름**을 중심으로 검증합니다. 이동·전투·성장·저장/복원·실패/회복·롤백 등 변경에 관련된 실제 경로를 이어 확인합니다.
 - 게임/UI 변경의 실제 플레이와 시각 확인을 정적 검사로 대체하지 않습니다. 시험용 상태 주입, 모의 DOM, native Worker 검사와 실제 브라우저·기기 검사를 분명히 구별합니다.
 - 통과·실패·미실행 범위를 기록하며, 미검증 결과를 Stable 또는 VALIDATED로 부르지 않습니다.
+
+## 제품 버전과 저장 호환 정책
+
+- 제품 버전의 단일 원본은 `BUDMORI_VERSION`이며 현재 **0.1.0**입니다. SemVer가 아닙니다. MAJOR는 제품 세대(0=베타, 1=정식), MINOR는 비호환 변경, PATCH는 호환 변경입니다.
+- 디스크 envelope는 전체 `productVersion`을 기록합니다. 정규 capsule의 `compatibility`, `CONFIG.version`과 SDK simulationVersion의 호환군은 같은 원본에서 `0.1`로 파생합니다. 호환 PATCH끼리는 같은 정규 bytes와 체크섬을 만들어야 합니다. 별도 디스크 vN/게임 vN 카운터를 두지 않습니다. BLG3 코덱 표식과 외부 SDK 버전은 실제 독립 프로토콜이므로 그대로 둡니다.
+- v63, 이전 disk v3/v4, 숫자 배열 payload, 틱 타이머/인구 변환은 지원하지 않습니다. 오래된 저장을 발견하면 “지원하지 않는 저장 버전”과 새 게임·다른 백업 경로를 보여 줍니다. 자동 저장·수동 저장·TPS 변경·페이지 종료는 읽지 못한 원본을 덮어쓰지 않습니다. 확인한 새 게임 또는 정상 백업 불러오기가 현재 저장을 교체합니다.
+- 디스크 입력도 정규 코덱·메타데이터·체크섬·전체 그래프 검증과 detached 준비를 통과한 뒤에만 설치합니다. 준비/취소 중 기존 authority·세션·원본 bytes는 변경하지 않습니다.
+- 군단 잠금은 inventory record의 `locked`만 소유합니다. 몸체의 `rarityLocked` 필드·getter·복원 binder는 없습니다.
+- `tests/save-version-policy.cjs`는 실제 엔진/SDK로 과거 형식 거부, compatible patch 수용, 비호환 minor/major 거부, 저장 보호와 명시적 새 게임을 검사합니다. `npm run test:browser:save`는 실제 Chromium에서 안내·반복 취소·TPS·새로고침·새 게임·파일 import를 검사합니다.
 
 ## 작업과 리뷰
 
@@ -100,7 +117,7 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 - debug-tools: 유한 오류 ring·redaction·clipboard 공통 기능, 게임의 중단/진단 UI를 유지하며 같은 스레드에서 직접 보고
 - rollback-netcode: 기존 완전한 snapshot bytes 및 replay/rollback/session/loop 계약 유지
 
-저장 schema와 저장 키는 변경하지 않습니다. 기존 v63 정규 저장을 동일 bytes로 복원하고 이후 동일 입력의 결과가 그대로인지 원본 고정 fixture로 검사합니다. 손상/미지원 저장은 기존 저장을 보존하며 거부합니다.
+현재 제품은 0.1.0에서 저장 호환성을 명시적으로 끊었습니다. 구버전 importer·migration·fallback은 없으며 원본 v63 fixture는 거부와 원본 보존을 검사합니다. 기존 저장 키는 미지원 저장을 감지하고 보호하기 위해 유지합니다.
 
 ## 개발 검증
 
@@ -195,7 +212,7 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 
 ### 저장 호환성과 검증 범위
 
-공유 정규 상태는 `bloom-webgl-shared-ms-v3`, 싱글 디스크 envelope는 `bloom-snapshot-disk-v4`입니다. 기존 v2 정규 상태/v3 저장은 검증 후 참가자 소유권으로 이동합니다. 원본 싱글의 `-1` 리더 매핑은 호환 경계에서 유지하며, 새 참가자는 충돌하지 않는 별도 entity/account ID를 받습니다. 형식이 바뀐 뒤 예전 전체 bytes와 같다고 주장하지 않습니다. 새 형식끼리의 복원·다음 입력·멤버십 재생은 완전한 정규 bytes로 비교합니다.
+공유 정규 상태 kind는 `budmori-world`, 싱글 디스크 envelope kind는 `budmori-snapshot`입니다. 두 경계는 같은 제품 버전 원본에서 호환군을 파생하며 major/minor가 같을 때만 호환됩니다. 구버전 저장은 변환하지 않고 거부합니다. 새 참가자는 충돌하지 않는 별도 entity/account ID를 받습니다. 형식이 바뀐 뒤 예전 전체 bytes와 같다고 주장하지 않습니다. 새 형식끼리의 복원·다음 입력·멤버십 재생은 완전한 정규 bytes로 비교합니다.
 
 개발 검증은 기존 싱글의 연속 저장/전투/회복 경로와 `tests/shared-world.cjs`, `tests/shared-validation.cjs`, `tests/shared-presentation.cjs`를 사용합니다. 실제 게임/SDK와 메모리 패킷 연결을 쓰는 native 검사는 실제 브라우저·WebGL·공개 relay·WebRTC 검사를 대신하지 않습니다. 개발 SDK bundle을 시험할 때는 `--sdk=/absolute/dist/rollback-netcode.js`를 줄 수 있으며, 시험 realm에서만 교체합니다. 최종 배포는 승인된 exact SDK source/dist pin과 실제 브라우저 CI를 별도로 확인해야 합니다.
 
@@ -229,23 +246,19 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 
 ## 공통 개발 규칙 리팩터링 · 실행 소유권과 종료 경계
 
-이번 변경은 `c0093a2`를 기준으로 P0 소유권, 상태 머신과 P1 생명주기 비용을 먼저 줄입니다. 구조 변경은 같은 결과를 보존하고, 별도 bug-fix에서 잘못된 참가자 통계/능력 귀속만 바로잡습니다. 전체 코드의 규칙 준수를 완료했다고 주장하지 않습니다.
+현재 0.1.0은 실행 소유권 정리에 이어 실제 능력·도메인 상태와 생성·복원 경계를 정리합니다. 1~5인 모두 같은 시뮬레이션을 사용하며, 게임 수치와 전투 결과는 유지합니다. 저장 형식은 의도적으로 비호환이며 이전 저장 이관 경로를 남기지 않습니다.
 
 - **단일 시뮬레이션:** 전역 `step` 본체와 재정의 총 16개, 과거 feature 객체의 `step` 캡처 14곳을 제거했습니다. SDK adapter → `bloomRunTick` → `WorldSimulation.step`만 게임 틱을 진행합니다. 1인/최대 5인 모두 같은 경로입니다. 과거 projectile loop와 RAF 기반 SDK driver를 fallback으로 보존하지 않습니다.
 - **런타임 소유권:** `bloomMainRuntime()`은 같은 owner를 반환합니다. 실행 phase와 UI phase는 서로 다른 실제 생명주기이며 각각 배타적인 값입니다. 타이머는 `driver`, 디스크 보호·캐시·대기 요청은 `persistence`, UI 구독은 `ui`가 소유합니다. 시간 값 `driver.nextPulseAtMs`의 단위를 명시합니다.
 - **공개 세션 소유권:** `lifecycle`, `connection`, `reconnect`, `soloReturn`, `presentation`이 각자의 상태를 소유합니다. 비동기 발견/탈퇴는 generation으로 폐기된 작업을 구분하며, 이전 세션의 늦은 이벤트는 새 세션을 바꾸지 않습니다. 바인딩은 멱등적이며 listener와 label을 함께 해제합니다.
-- **명시적 UI 초기화:** 실제로 실행되던 46개 boot wrapper를 `GameUI.mount()`의 순서가 보이는 호출로 교체했습니다. 기능별 초기화·debug API 공개 함수는 해당 기능 곁에 두고, 예전 boot를 캡처하거나 중계하지 않습니다. 기존 세 저장 이관 분기는 보존합니다.
+- **명시적 UI 초기화:** 실제로 실행되던 46개 boot wrapper를 `GameUI.mount()`의 순서가 보이는 호출로 교체했습니다. 기능별 초기화·debug API 공개 함수는 해당 기능 곁에 두고, 예전 boot를 캡처하거나 중계하지 않습니다. 과거 저장 이관 분기는 제거했습니다.
 - **발신자 소유 신호:** `PublicSession.onChanged`는 세션이 소유하는 읽기 전용 구독 API입니다. phase·참가자·재연결 상태의 불변 snapshot을 발행하고 UI는 구독을 해제합니다. subscriber는 phase를 emit하거나 내부 연결 상태를 직접 변경할 수 없습니다. 권위 SIM의 확정 효과 journal은 별개로 유지합니다.
 - **종료:** 사용자의 정상 나가기는 SDK 합의를 기다립니다. 최종 runtime 종료는 발견 작업·room·RAF·DOM/입력 구독·observer·WebGL·audio·journal·대기 저장을 정리합니다. reload용 SDK resume 정보는 보존합니다. 종료한 owner의 reset/load/새 세션 설치가 다시 자원을 만들거나 저장을 덮어쓰지 못하게 하며 `boot()`로 UI를 중복 등록하지 않습니다.
 - **참가자 소유권 수정:** 기본/보조 공격·회복·방어·연쇄·공성·공중 적중 등의 개인 통계와 능력 modifier가 실제 행동 주체/방어자의 값을 사용합니다. NPC 행동은 첫 참가자의 통계로 더해지지 않습니다. 이 수정은 기존 결과와 달라지는 범위를 명시한 별도 commit입니다.
-- **저장·SDK:** 저장 graph/schema/key, 수치, 공간 grid, SDK pin과 포함 bundle은 그대로입니다. 기존 저장은 읽되 이후 행동은 올바른 소유자에게 귀속합니다. 구버전 피어와 섞이지 않도록 네트워크 호환 계약은 `BloomSimulation.simulationVersion`의 `budmori-shared-ms-v4` 하나로 통일했습니다. 이름 정리를 위해 저장 필드만 부분적으로 바꾸지 않습니다.
-
-### 아직 별도 이관이 필요한 부분
-
-- `reset/load`의 실제 feature wrapper는 아직 남습니다. UI boot와 달리 저장/복원과 엔티티 생성 순서에 연결되어 있어 소비자·migration을 확인하며 별도로 이관해야 합니다.
-- 저장된 `roll*`, `sproutAim_*` 등의 flat 필드는 실제 schema와 rendering/validation의 소비자를 함께 이관해야 합니다. 기존 백업 reader와 명시적인 버전/변환 계약 없이 namespace만 바꾸지 않습니다.
-- roll, 공격 패턴 등 저장 actor의 능력은 아직 handler/definition 방식입니다. 실제 독립 capability를 Mixin/Trait으로 옮기려면 초기화·복원 hydration·정규 codec 표현과 모든 소비자를 함께 바꿔야 합니다. 상태를 복제하는 accessor wrapper나 1회용 상속 계층만 만들어 완료로 표시하지 않습니다.
-- 개별 전투 유닛의 도메인 신호는 아직 이관하지 않았습니다. 이번 신호 적용은 공개 세션 사건에 한정됩니다. replay 중 외부 효과가 중복되지 않는 확정 journal 계약을 보존해야 합니다.
+- **저장·SDK:** 실제 런타임의 계층형 상태를 그대로 저장합니다. 옛 flat 필드, getter 별칭, 속성 순서 호환표와 controller graph 치환은 제거했습니다. SDK pin과 공개 재접속 핫픽스는 유지합니다. 제품 버전/호환 정책은 위 0.1.0 항목을 따릅니다.
+- **실제 능력:** `MoaActor`는 `Rollable`을 실제로 합성합니다. 구르기 상태와 시작·이동·종료 로직은 능력이 소유하며, 기본 공격은 `primaryAttack`이 소유합니다. 각 상태는 저장 가능한 plain record이며 동작만 공유합니다.
+- **컴포넌트:** 이동/전개, 공격 타이머/원점, AI 기억, 충격/접촉/새싹/공간 체크포인트를 각 소유 상태로 묶었습니다. 초기화와 복원에서 같은 형식을 사용하며 옛 이름으로 변환하지 않습니다.
+- **생성·도메인:** `WorldInitialization`과 `UnitSpawn`이 생성 순서를 명시합니다. 전투·보상·사망·퇴장 사건은 발신 주체가 소유하고 표현은 확정 journal을 구독합니다. 덮어쓰여 실행되지 않던 reset/load/spawn/death 체인과 유료 성장 호환 명령은 제거합니다.
 
 ### 이번 변경의 검증
 
@@ -253,10 +266,26 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 
 Native 전후 보조 측정은 `tests/refactor-performance.json`에 기록합니다. 동일 seed·155 동료·20 TPS에서 30 warmup 뒤 200틱을 번갈아 실행했고, 표본 정규 bytes는 일치했습니다. p50 1.501→1.514ms, p95 2.638→2.557ms로 이번 표본에는 뚜렷한 비용 증가가 없었습니다. 이는 공유 heap/JIT의 Native CPU 표본이며 브라우저·네트워크·GPU·기기 FPS 보장이 아닙니다.
 
+### Health, primary attacks, and lifecycle ownership
+
+`CombatHealth` owns distinct damage, healing, ratio-preserving maximum-health growth, grade rebuilding, defeat, revival, and resident regeneration operations. Ratio growth does not count as healing, and resident regeneration keeps its existing silent behavior. Synchronous owner-local occurrence subscriptions run deterministic death/reward/camp consequences in their original order; presentation subscribers enqueue the existing confirmed-tick journal payloads.
+
+Human leaders are real `MoaActor` instances. Their intrinsic primary attack owns pending windup, cooldown, target, pose, attack progression, and firing. `primaryAttack` is an enumerable plain record with nested cooldown and pose clocks. The retired `pendingMoa`, `moaCooldown`, `moaTarget`, and leader `attackPose` fields are not retained. NPC rival attacks retain their distinct existing rules. The input controller does not write primary attack internals.
+
+`PlayerLifecycle`, `UnitLifecycle`, and `ProjectileLifecycle` distinguish defeat, inventory detach, recovery, and membership leave. They deliberately retain the existing different cancellation and disposal policies. Membership delegates leave to the lifecycle owner. Unreachable historical `die`, `defeat`, `recover`, and `updateMoa` implementations and captured continuations are removed; public lifecycle adapters remain; obsolete compatibility command shapes are rejected.
+
+`node tests/health-lifecycle-ownership.cjs` checks independent human attacks, native owned state, health/revival policy, lifecycle cleanup, subscription disposal, confirmed-once replay, and reserved method/state collisions through synchronous and cooperative snapshot preparation. Use the test-only semantic oracle across incompatible artifacts; exact canonical bytes remain required for current-format restore and replay. `tests/unit-update-parity.cjs` likewise uses the actual final death path; its retired `core.die` test hook is not retained as gameplay. The historical direct dead-attacker damage probe uses the still-active area-damage capability.
+
 ### 공개 세션 회귀 검증
 
 - 투사체는 지면이 아닌 발사 주체의 몸체 높이에서 출발하며 조준·장애물 검사도 같은 높이 규칙을 사용합니다. 기존 명시적 시작 높이와 곡사 궤적은 유지합니다.
-- 공개 통신 버전 `budmori-shared-ms-v5`는 이전 투사체 규칙과 혼합되지 않습니다. 이전 공개 세션은 새 판 선택이 필요할 수 있으며 싱글 저장 형식은 그대로 읽습니다.
+- 공개 통신 호환 식별자는 제품 호환 계열에서 파생됩니다. 이전 공개 세션과 저장 형식은 지원하지 않으며, 이전 저장을 자동 삭제하지 않고 새 게임 선택을 안내합니다.
 - 실패 화면의 진단 정보에는 최근 연결 단계와 구체적인 실패 이유가 포함됩니다. 신호 payload·방 식별자·접속 credential은 수집하지 않습니다. 실패했다고 진행 정보를 자동 삭제하거나 다른 세계로 바꾸지 않습니다.
 
 - 공개 transport 연결 예산은 20초, 전체 membership 전환 예산은 30초입니다. 기존 15초 총 전환 제한은 transport 예산보다 짧았으므로 이를 정렬하고 상태 복구 여유 10초를 둡니다. 기한을 넘기면 SDK가 여전히 실패 종료하며 무한 연장은 하지 않습니다.
+
+### Auxiliary timing and pre-admission bootstrap
+
+Auxiliary weapons store one deadline per weapon (`auxScheduleMs`). `sampledAtMs` marks the completed update observed by sprout presentation before the next combat tick. `weaponCooldownSeconds` derives its display without mutation; no `auxCooldowns`, rival `aux`, or `displaySeconds` mirror is saved or imported. Current cadence cards change future launch intervals through `weaponStats`; they do not rescale an already scheduled deadline. The overwritten paid-haste wrapper is removed rather than replaced with an unused rescale API.
+
+Before membership admission, `WorldPlayers` explicitly queries the freshly initialized bootstrap actor. This supports current initialization and is not an old-save importer. The 0.1.0 save-break policy is unchanged. `tests/auxiliary-authority.cjs` compares real engine continuation, seven weapon families, cadence upgrades, sprout values, and same-build snapshot restore at 10/20/30 TPS. An optional second HTML argument is a test-only semantic oracle.
