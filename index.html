@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 9be41746b488d8d51699b6aad023370d9f5389e3; exact bundled SHA-256 values in gamekit-lock.json. Verified dist a3e4bd670361b6af653d8ec5686ecb564d428398. */
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 7f2441775c659a190d58d46b679f823e3af1cec6; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 99bc18bb62789742aa070cabfd69fc84bbed0049. */
 /* BEGIN GAMEKIT input */
 var BloomGamekitInput = (() => {
   var __defProp = Object.defineProperty;
@@ -1235,6 +1235,7 @@ var BloomGamekitDebugTools = (() => {
   var debug_tools_exports = {};
   __export(debug_tools_exports, {
     DiagnosticRing: () => DiagnosticRing,
+    PerformanceProfiler: () => PerformanceProfiler,
     ReplayTimeline: () => ReplayTimeline,
     compareStateFields: () => compareStateFields,
     copyDiagnostic: () => copyDiagnostic,
@@ -1360,6 +1361,128 @@ var BloomGamekitDebugTools = (() => {
     }
     dispose() {
       for (const dispose of this._listeners) dispose();
+      this.clear();
+    }
+  };
+  var profileName = (value) => {
+    if (typeof value !== "string" || !value || value.length > 96) throw new TypeError("profile stage name must be a non-empty string up to 96 characters");
+    return redactDiagnostic(value, 96);
+  };
+  var profileMeta = (value) => {
+    if (value === void 0) return {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("profile metadata must be an object");
+    const entries = Object.entries(value);
+    if (entries.length > 8) throw new RangeError("profile metadata supports up to 8 fields");
+    const result = {};
+    for (const [key, item] of entries) {
+      if (typeof key !== "string" || !key || key.length > 48) throw new TypeError("profile metadata key is invalid");
+      if (typeof item === "string") result[redactDiagnostic(key, 48)] = redactDiagnostic(item, 160);
+      else if (typeof item === "boolean" || item === null) result[redactDiagnostic(key, 48)] = item;
+      else if (typeof item === "number" && Number.isFinite(item)) result[redactDiagnostic(key, 48)] = item;
+      else throw new TypeError("profile metadata values must be primitive");
+    }
+    return result;
+  };
+  var percentile = (values, fraction) => {
+    if (!values.length) return 0;
+    const sorted = values.slice().sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction))];
+  };
+  var profileSummary = (values) => {
+    if (!values.length) return { count: 0, totalMs: 0, minMs: 0, maxMs: 0, p50Ms: 0, p95Ms: 0 };
+    return { count: values.length, totalMs: values.reduce((sum, value) => sum + value, 0), minMs: Math.min(...values), maxMs: Math.max(...values), p50Ms: percentile(values, 0.5), p95Ms: percentile(values, 0.95) };
+  };
+  var PerformanceProfiler = class {
+    constructor({ capacity = 120, now = () => performance.now(), maxStages = 64 } = {}) {
+      bound(capacity, "capacity", 1, 1e3);
+      bound(maxStages, "maxStages", 1, 256);
+      if (typeof now !== "function") throw new TypeError("now must be function");
+      this.capacity = capacity;
+      this.maxStages = maxStages;
+      this.now = now;
+      this.enabled = false;
+      this.frames = [];
+      this.current = null;
+      this.sequence = 0;
+    }
+    setEnabled(enabled) {
+      if (typeof enabled !== "boolean") throw new TypeError("enabled must be boolean");
+      this.enabled = enabled;
+      if (!enabled) this.current = null;
+      return enabled;
+    }
+    beginFrame(meta = {}) {
+      if (!this.enabled) return false;
+      if (this.current) throw new Error("profile frame already active");
+      const atMs = this.now();
+      if (!Number.isFinite(atMs)) throw new TypeError("profile clock must be finite");
+      this.current = { sequence: ++this.sequence, startedAtMs: atMs, meta: profileMeta(meta), stages: /* @__PURE__ */ new Map(), counts: /* @__PURE__ */ new Map() };
+      return true;
+    }
+    stage(name, durationMs, metadata = {}) {
+      if (!this.enabled || !this.current) return false;
+      const key = profileName(name), value = Number(durationMs);
+      if (!Number.isFinite(value) || value < 0) throw new RangeError("profile duration must be finite and non-negative");
+      let stage = this.current.stages.get(key);
+      if (!stage) {
+        if (this.current.stages.size >= this.maxStages) return false;
+        stage = { ms: 0, calls: 0, maxMs: 0, metadata: {} };
+        this.current.stages.set(key, stage);
+      }
+      stage.ms += value;
+      stage.calls++;
+      stage.maxMs = Math.max(stage.maxMs, value);
+      Object.assign(stage.metadata, profileMeta(metadata));
+      return true;
+    }
+    count(name, value = 1) {
+      if (!this.enabled || !this.current) return false;
+      const key = profileName(name), amount = Number(value);
+      if (!Number.isFinite(amount) || amount < 0) throw new RangeError("profile count must be finite and non-negative");
+      this.current.counts.set(key, (this.current.counts.get(key) || 0) + amount);
+      return true;
+    }
+    measure(name, operation, metadata = {}) {
+      if (typeof operation !== "function") throw new TypeError("profile operation must be function");
+      if (!this.enabled || !this.current) return operation();
+      const startedAtMs = this.now();
+      try {
+        return operation();
+      } finally {
+        const endedAtMs = this.now();
+        this.stage(name, Math.max(0, endedAtMs - startedAtMs), metadata);
+      }
+    }
+    endFrame(meta = {}) {
+      if (!this.enabled || !this.current) return null;
+      const current = this.current;
+      this.current = null;
+      const endedAtMs = this.now();
+      if (!Number.isFinite(endedAtMs)) throw new TypeError("profile clock must be finite");
+      const frame = { sequence: current.sequence, durationMs: Math.max(0, endedAtMs - current.startedAtMs), meta: { ...current.meta, ...profileMeta(meta) }, stages: Object.fromEntries([...current.stages].map(([name, value]) => [name, { ms: value.ms, calls: value.calls, maxMs: value.maxMs, metadata: { ...value.metadata } }])), counts: Object.fromEntries(current.counts) };
+      this.frames.push(frame);
+      if (this.frames.length > this.capacity) this.frames.splice(0, this.frames.length - this.capacity);
+      return frame;
+    }
+    clear() {
+      this.frames.length = 0;
+      this.current = null;
+    }
+    snapshot({ limit = Math.min(30, this.capacity) } = {}) {
+      bound(limit, "limit", 0, this.capacity);
+      const frames = this.frames.slice(-limit).map((frame) => ({ sequence: frame.sequence, durationMs: frame.durationMs, meta: { ...frame.meta }, stages: Object.fromEntries(Object.entries(frame.stages).map(([name, value]) => [name, { ms: value.ms, calls: value.calls, maxMs: value.maxMs, metadata: { ...value.metadata } }])), counts: { ...frame.counts } }));
+      const stageValues = /* @__PURE__ */ new Map();
+      for (const frame of this.frames) {
+        for (const [name, stage] of Object.entries(frame.stages)) {
+          const values = stageValues.get(name) || [];
+          values.push(stage.ms);
+          stageValues.set(name, values);
+        }
+      }
+      return { enabled: this.enabled, capacity: this.capacity, retainedFrames: this.frames.length, frames, summary: { frames: profileSummary(this.frames.map((frame) => frame.durationMs)), stages: Object.fromEntries([...stageValues].map(([name, values]) => [name, profileSummary(values)])) } };
+    }
+    dispose() {
+      this.enabled = false;
       this.clear();
     }
   };
@@ -2466,10 +2589,18 @@ void main() {
 'use strict';
 if(g.BloomDiagnostics)return;
 const origin='main', commands=[], providers=new Map();
-let fatal=false,busy=false,stop=null,pauseForInspect=null,dropped=0,total=0,panel=null,badge=null,summary=null,copyButton=null,notice=null,closeButton=null,lastMono=0,copyAttempt=0;
+let fatal=false,busy=false,stop=null,pauseForInspect=null,dropped=0,total=0,panel=null,badge=null,summary=null,copyButton=null,profileButton=null,notice=null,closeButton=null,lastMono=0,copyAttempt=0;
 const mono=()=>{try{lastMono=Math.max(lastMono,Number(g.performance?.now())||0)}catch{}return Math.round(lastMono*100)/100};
 const ring=new BloomGamekitDebugTools.DiagnosticRing({capacity:20,now:mono,release:'Budmori'});
 const clean=(value,limit=1600)=>BloomGamekitDebugTools.redactDiagnostic(value,limit);
+const profiler=new BloomGamekitDebugTools.PerformanceProfiler({capacity:90,now:mono});
+const profileEnabled=()=>profiler.enabled;
+const profileStart=meta=>profiler.beginFrame(meta);
+const profileStage=(name,durationMs,metadata)=>profiler.stage(name,durationMs,metadata);
+const profileCount=(name,value)=>profiler.count(name,value);
+const profileMeasure=(name,operation,metadata)=>profiler.measure(name,operation,metadata);
+const profileEnd=meta=>profiler.endFrame(meta);
+function setProfiler(value){profiler.setEnabled(!!value);if(profiler.enabled)profiler.clear();updateProfileButton();return profiler.enabled}
 function field(error,key){try{return error?.[key]}catch{return undefined}}
 function detail(error){return typeof error==='string'?error:field(error,'message')||'Unspecified error (non-text reason omitted)'}
 function halt(){if(stop)try{stop()}catch{dropped++}}
@@ -2484,7 +2615,8 @@ function report(error,context={}){
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@0cec86a64df1cb495750d1d8faebd304be85ed83',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@7f2441775c659a190d58d46b679f823e3af1cec6',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
 }
@@ -2497,14 +2629,16 @@ function ensureUI(){
  panel=make('section');panel.id='bloom-diagnostic-panel';panel.hidden=true;panel.setAttribute('aria-label','BLOOM 진단 정보');Object.assign(panel.style,{position:'fixed',inset:'12px',zIndex:'2147483646',background:'#172c24',color:'#f5efd7',padding:'18px',border:'1px solid #e4c383',borderRadius:'16px',overflow:'auto',touchAction:'pan-y',font:'14px system-ui'});
  const title=make('h2','BLOOM · 진단 정보');panel.appendChild(title);notice=make('p');panel.appendChild(notice);
  copyButton=make('button','진단 정보 복사');copyButton.type='button';copyButton.onclick=()=>copy();panel.appendChild(copyButton);
+ profileButton=make('button','성능 프로파일링 시작');profileButton.type='button';profileButton.onclick=()=>{const enabled=setProfiler(!profiler.enabled);notice.textContent=enabled?'프로파일링 중이에요. 패널을 닫고 끊김을 재현한 뒤 다시 열어 진단 내용을 확인하세요.':'프로파일링을 멈췄어요. 수집한 프레임 표본을 진단 정보에 포함합니다.'};panel.appendChild(profileButton);
  const select=make('button','텍스트 전체 선택');select.type='button';select.onclick=()=>{copyAttempt++;selectText();notice.textContent='선택된 텍스트를 길게 눌러 복사하거나 Ctrl/Cmd+C를 누르세요. 선택 메뉴가 안 뜨면 진단 파일 저장을 이용하세요.'};panel.appendChild(select);
  const download=make('button','진단 파일 저장 (.txt)');download.type='button';download.onclick=()=>downloadText();panel.appendChild(download);
  closeButton=make('button','닫기');closeButton.type='button';closeButton.onclick=()=>{if(!fatal){copyAttempt++;panel.hidden=true;g.document.documentElement.classList?.remove('bloom-diagnostics-open')}};panel.appendChild(closeButton);
  const reload=make('button','다시 열기 (마지막 저장부터)');reload.type='button';reload.onclick=()=>{if(g.confirm?.('마지막 저장 이후 진행은 잃을 수 있어요. 페이지를 다시 열까요?'))g.location?.reload()};panel.appendChild(reload);
  summary=make('textarea');summary.readOnly=true;summary.setAttribute('aria-label','복사할 진단 정보');Object.assign(summary.style,{display:'block',width:'100%',height:'58vh',marginTop:'14px',background:'#0e1c18',color:'#e7f2df',font:'12px monospace',userSelect:'text',webkitUserSelect:'text',webkitTouchCallout:'default',touchAction:'auto',whiteSpace:'pre'});panel.appendChild(summary);
- for(const b of [copyButton,select,download,closeButton,reload])Object.assign(b.style,{padding:'11px',margin:'4px',borderRadius:'8px',background:'#d7edb9',color:'#172c24'});
+ for(const b of [copyButton,profileButton,select,download,closeButton,reload])Object.assign(b.style,{padding:'11px',margin:'4px',borderRadius:'8px',background:'#d7edb9',color:'#172c24'});
  host.appendChild(panel);
 }
+function updateProfileButton(){if(profileButton)profileButton.textContent=profiler.enabled?'성능 프로파일링 중지':'성능 프로파일링 시작'}
 function present(){ensureUI();if(!panel)return;badge.hidden=!total;badge.textContent='오류 '+total+' · 진단';if(fatal){copyAttempt++;copyButton.textContent='진단 정보 복사';g.document.documentElement.classList?.add('bloom-diagnostics-open');panel.hidden=false;closeButton.hidden=true;notice.textContent='오류로 게임과 자동 저장을 멈췄어요. 진단을 복사한 뒤 페이지를 다시 열어 주세요. 마지막 정상 저장부터 시작하며 저장 이후 진행은 잃을 수 있어요.';summary.value=format()}}
 function open(){try{if(pauseForInspect)pauseForInspect();ensureUI();if(!panel)return;copyAttempt++;g.document.documentElement.classList?.add('bloom-diagnostics-open');panel.hidden=false;notice.textContent=fatal?'오류로 게임과 자동 저장을 멈췄어요. 진단을 복사한 뒤 마지막 정상 저장에서 다시 시작해 주세요.':'버전·성능·최근 오류만 담습니다. 저장 파일은 수집하지 않고 오류 텍스트는 가립니다. 내용을 검토한 뒤 직접 공유해 주세요.';closeButton.hidden=fatal;summary.value=format();copyButton.textContent='진단 정보 복사'}catch{dropped++}}
 function selectText(){
@@ -2545,7 +2679,7 @@ function downloadText(){
  }catch{if(url)g.URL.revokeObjectURL(url);manualCopy()}
 }
 
-const api=g.BloomDiagnostics={report,clean,snapshot,format,open,copy,get fatal(){return fatal},setStop(fn){stop=fn;if(fatal)halt()},setPauseForInspect(fn){pauseForInspect=fn},provide(name,fn){providers.set(name,fn)},command(type){if(typeof type!=='string')return;commands.push({type:clean(type,48),atMs:mono()});if(commands.length>16)commands.shift()}};
+const api=g.BloomDiagnostics={report,clean,snapshot,format,open,copy,profileEnabled,profileStart,profileStage,profileCount,profileMeasure,profileEnd,setProfiler,get fatal(){return fatal},setStop(fn){stop=fn;if(fatal)halt()},setPauseForInspect(fn){pauseForInspect=fn},provide(name,fn){providers.set(name,fn)},command(type){if(typeof type!=='string')return;commands.push({type:clean(type,48),atMs:mono()});if(commands.length>16)commands.shift()}};
 g.addEventListener?.('error',e=>api.report(e.error||e.message||'Resource failed',{kind:'window.error',fatal:true,source:e.filename,line:e.lineno,column:e.colno}),true);
 g.addEventListener?.('unhandledrejection',e=>api.report(e.reason,{kind:'window.unhandledrejection',fatal:true}));
 if(!g.BLOOM_HEADLESS)g.document?.addEventListener?.('DOMContentLoaded',()=>{try{if(total)present()}catch{}},{once:true});
@@ -6626,7 +6760,7 @@ function drawUnit(source){if(source.hp<=0)return;const u=presentationPose(source
 function render(alpha=1,renderDelta=1/60){const started=performance.now();if(presentation.state!==state||presentation.currentTime!==state.time)capturePresentation(true);presentation.alpha=clamp(alpha,0,1);presentation.frameNow=performance.now();presentation.frameSerial++;presentation.clockTimeline.sampleInto('time',0,presentation.frameNow,presentation);presentation.active=true;const renderMother=combatBasePose(WorldView.leader());const dpr=Math.min(CONFIG.render.dprMax,devicePixelRatio||1),ww=innerWidth,hh=innerHeight;if(canvas.width!==Math.round(ww*dpr)||canvas.height!==Math.round(hh*dpr)){canvas.width=Math.round(ww*dpr);canvas.height=Math.round(hh*dpr)}view.zoom=moaCameraZoom(renderMother,ww);view.w=ww/view.zoom;view.h=hh/(view.zoom*WorldProjection.K);const worldWidth=worldLimit();const tx=view.w>=worldWidth?worldWidth/2:clamp(renderMother.x,view.w/2,worldWidth-view.w/2),ty=view.h>=CONFIG.world.height?CONFIG.world.height/2:clamp(renderMother.y,view.h/2,CONFIG.world.height-view.h/2);bloomCamera.setCamera({x:view.x,y:view.y*WorldProjection.K,zoom:view.zoom});bloomCamera.follow(tx,ty*WorldProjection.K,Math.max(0,renderDelta)*1000,Math.LN2*1000/CONFIG.render.presentation.cameraResponse);view.x=bloomCamera.camera.x;view.y=bloomCamera.camera.y/WorldProjection.K;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#3a593e';ctx.fillRect(0,0,ww,hh);if(typeof hitfeelApplyWorldShake==='function')hitfeelApplyWorldShake();ctx.scale(view.zoom,view.zoom);ctx.scale(1,WorldProjection.K);ctx.translate(view.w/2-view.x,view.h/2-view.y);
  ctx.save();ctx.beginPath();ctx.rect(0,0,worldWidth,CONFIG.world.height);ctx.clip();for(let z=0;z<CONFIG.zones.length;z++){let x=z*CONFIG.world.zoneWidth;if(x>=worldWidth)break;if(x>view.x+view.w/2||x+CONFIG.world.zoneWidth<view.x-view.w/2)continue;for(let tile=0;tile<Math.ceil(CONFIG.world.zoneWidth/terrain[z].width);tile++){const tx=x+tile*terrain[z].width;if(tx<view.x+view.w/2&&tx+terrain[z].width>view.x-view.w/2){const tileH=terrain[z].height;for(let ty=Math.max(0,Math.floor((view.y-view.h/2)/tileH)*tileH);ty<Math.min(CONFIG.world.height,view.y+view.h/2);ty+=tileH)ctx.drawImage(terrain[z],tx,ty)}}if(z>state.maxZone){ctx.fillStyle='#142825d9';ctx.fillRect(x,0,CONFIG.world.zoneWidth,CONFIG.world.height)}ctx.textAlign='center';ctx.font='bold 20px system-ui';ctx.fillStyle=CONFIG.zones[z].accent+'99';if(!state.campaign)ctx.fillText(CONFIG.zones[z].name,x+600,135);ctx.font='11px system-ui';if(!state.campaign)ctx.fillText(CONFIG.zones[z].subtitle,x+600,157);if(z<=state.maxZone&&!state.campaign){const base=basePoint(z);ctx.strokeStyle='#edf4c130';ctx.lineWidth=1;ctx.beginPath();ctx.arc(base.x,base.y,CONFIG.world.baseRadius,0,Math.PI*2);ctx.stroke();drawNest(ctx,base.x,base.y,Math.min(state.maxZone-z+1,4),1.2);ctx.font='10px system-ui';ctx.fillStyle='#f0f5d1bb';ctx.fillText(z===state.zone?'생장 둥지 · 빠른 회복':'연결된 생장 둥지',base.x,base.y+90)}if(z>0){ctx.setLineDash([10,8]);ctx.strokeStyle=z>state.maxZone?'#e9bc8055':'#e4edb233';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,CONFIG.world.height);ctx.stroke();ctx.setLineDash([]);if(z>state.maxZone){ctx.font='bold 14px system-ui';ctx.fillStyle='#f1d6a0';ctx.fillText(state.campaign?'다음 구역 · 미구현':'이전 구역 우두머리를 쓰러뜨리세요',x,CONFIG.world.gatewayY)}}}
  ctx.restore();for(const c of state.camps){if(c.zone>state.maxZone||state.campaign&&(!c.enabled||c.stage>state.campaign.stage)||c.x<view.x-view.w/2-200||c.x>view.x+view.w/2+200)continue;ctx.strokeStyle=c.boss?'#f3d79444':'#29493630';ctx.lineWidth=c.boss?2:1;ctx.beginPath();ctx.ellipse(c.x,c.y,CONFIG.world.campRadius*(c.boss?1.25:1),CONFIG.world.campRadius*.7,0,0,Math.PI*2);ctx.stroke();if(c.boss&&state.bosses[c.zone]){drawNest(ctx,c.x,c.y,3,.7);ctx.font='11px system-ui';ctx.textAlign='center';ctx.fillStyle='#e2efc1';ctx.fillText('정복한 군락',c.x,c.y+65)}}
- if(state.campaign)drawCampaignWorld();drawProjectedActors();
+ if(state.campaign)BloomDiagnostics.profileMeasure('render.terrain',drawCampaignWorld);BloomDiagnostics.profileMeasure('render.actors',drawProjectedActors);
  for(const source of effects){const original=presentationPose(source,'effect'),f=Object.assign(Object.create(original),{y:original.y-(original.z||0)*WorldProjection.H/WorldProjection.K,y2:original.y2-(original.z2||0)*WorldProjection.H/WorldProjection.K});let a=f.life/f.maxLife;ctx.globalAlpha=a;ctx.strokeStyle=f.color;ctx.fillStyle=f.color;ctx.lineWidth=CONFIG.render.effectStroke;ctx.beginPath();if(f.kind==='ring'||f.kind==='burst'){const r=Math.max(1,f.r*(1-a));if(f.groundAnchor)terrainCirclePath(original.x,original.y,r);else ctx.arc(f.x,f.y,r,0,Math.PI*2)}else if(f.kind==='hit')ctx.arc(f.x,f.y,Math.max(1,f.r*.25),0,Math.PI*2);else{ctx.moveTo(f.x,f.y);ctx.lineTo(f.x2,f.y2)}ctx.stroke();ctx.globalAlpha=1}
  presentation.active=false;frameStats.frames++;frameStats.renderMs+=performance.now()-started;
 }
@@ -20628,7 +20762,7 @@ function themedDrawStatic(c,box,projected=true){
  const boss=CONFIG.residentBoss.habitat;if(boss.x>x-210&&boss.x<x+w+210&&boss.y>y-220&&boss.y<y+h+220){const by=boss.y-(projected?ThemedTerrain.height(boss.x,boss.y)*k:0);c.fillStyle='#999160';c.strokeStyle='#7f8550';c.lineWidth=5;c.beginPath();c.ellipse(boss.x,by,170,145,.4,0,Math.PI*2);c.fill();c.stroke();for(let i=0;i<8;i++){const a=i*Math.PI/4;c.fillStyle='#b7b487';c.strokeStyle='#788051';c.lineWidth=3;c.beginPath();c.ellipse(boss.x+Math.cos(a)*108,by+Math.sin(a)*85,20,14,0,0,Math.PI*2);c.fill();c.stroke()}}
  c.restore();themedPath(c,ThemedTerrain.outer,0,projected);c.strokeStyle='#3d5940';c.lineWidth=11;c.stroke();c.strokeStyle='#a9b47b';c.lineWidth=3;c.stroke();
 }
-function themedTile(tx,ty){const key=tx+','+ty+','+WorldProjection.H+'/'+WorldProjection.K;if(themedTileCache.has(key))return themedTileCache.get(key);const c=document.createElement('canvas'),S=512,P=150;c.width=S+4;c.height=S+P+4;const q=c.getContext('2d',{willReadFrequently:true});q.translate(-tx*S+2,-ty*S+P+2);themedDrawStatic(q,{x:tx*S-2,y:ty*S-P-2,w:S+4,h:S+P+4});const tile={canvas:c,x:tx*S-2,y:ty*S-P-2};themedTileCache.set(key,tile);ThemedTerrain.stats.tiles++;if(themedTileCache.size>24)themedTileCache.delete(themedTileCache.keys().next().value);return tile}
+function themedTile(tx,ty){const key=tx+','+ty+','+WorldProjection.H+'/'+WorldProjection.K;if(themedTileCache.has(key)){BloomDiagnostics.profileCount('render.terrainTileCacheHit');return themedTileCache.get(key)}const started=BloomDiagnostics.profileEnabled()?performance.now():0,c=document.createElement('canvas'),S=512,P=150;c.width=S+4;c.height=S+P+4;const q=c.getContext('2d',{willReadFrequently:true});q.translate(-tx*S+2,-ty*S+P+2);themedDrawStatic(q,{x:tx*S-2,y:ty*S-P-2,w:S+4,h:S+P+4});const tile={canvas:c,x:tx*S-2,y:ty*S-P-2};themedTileCache.set(key,tile);ThemedTerrain.stats.tiles++;BloomDiagnostics.profileCount('render.terrainTileCacheMiss');if(started)BloomDiagnostics.profileStage('render.terrainTileBuild',performance.now()-started,{width:c.width,height:c.height,bytes:c.width*c.height*4});if(themedTileCache.size>24)themedTileCache.delete(themedTileCache.keys().next().value);return tile}
 buildTerrain=function(){const cv=document.createElement('canvas');cv.width=CONFIG.world.terrainTileWidth=1024;cv.height=Math.min(CONFIG.world.height,CONFIG.world.terrainTileHeight=1024);const c=cv.getContext('2d');c.fillStyle='#172a22';c.fillRect(0,0,cv.width,cv.height);terrain=CONFIG.zones.map(()=>cv);themedTileCache.clear()};
 drawOpenWorldGround=function(){
  ctx.save();ctx.fillStyle='#14271f';ctx.fillRect(0,0,CONFIG.openWorld.width,CONFIG.openWorld.height);
@@ -22010,7 +22144,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'0cec86a64df1cb495750d1d8faebd304be85ed83',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'7f2441775c659a190d58d46b679f823e3af1cec6',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -22127,7 +22261,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
 })();
 
 
-const webglWorldRender=render;render=function(...args){if(globalThis.BLOOM_HEADLESS||BloomDiagnostics.fatal)return;try{ctx.beginFrame();try{return webglWorldRender(...args)}finally{ctx.endFrame()}}catch(error){BloomDiagnostics.report(error,{kind:'webgl.render',fatal:true})}};
+const webglWorldRender=render;render=function(...args){if(globalThis.BLOOM_HEADLESS||BloomDiagnostics.fatal)return;try{const begun=ctx.beginFrame();if(begun)BloomDiagnostics.profileStart({frame:ctx.frame,tick:bloomTick});try{return webglWorldRender(...args)}finally{const ended=ctx.endFrame();if(begun){const stats=ctx.frameStats||{},loop=BloomSimulation.runtime?.metrics||{};BloomDiagnostics.profileStage('webgl.endFrame',Number(stats.flushMs)||0,{textureUploads:stats.textureUploads||0,textureBytes:stats.textureBytes||0,drawCalls:stats.drawCalls||0,vertices:stats.vertices||0});BloomDiagnostics.profileEnd({frame:ctx.frame,tick:bloomTick,renderer:ctx.isWebGL2?'webgl2':'webgl',tickMs:Number(loop.tickMs)||0,presentationMs:Number(loop.presentationMs)||0});}}}catch(error){BloomDiagnostics.report(error,{kind:'webgl.render',fatal:true})}};
 
 /* Read-only snapshot adapter; no mutating gameplay helpers are called. */
 BloomDiagnostics.provide('engine',()=>{

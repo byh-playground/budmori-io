@@ -1,26 +1,25 @@
-tree 2dc40fdbb4844cc50d0706936914046e5f27c8c2
-parent 421e04145c89b827d280f5774e8d502486cc3074
-parent bfb6c0605a03c09ec9a387b30d254f61bcf35dda
-author byh020907 <byh020907@naver.com> 1791364829 +0900
-committer GitHub <noreply@github.com> 1791364829 +0900
+tree 25ed8e667e8798bb0a86dbef1122f6c0111d73c4
+parent 0cec86a64df1cb495750d1d8faebd304be85ed83
+author byh020907 <byh020907@naver.com> 1791380136 +0900
+committer GitHub <noreply@github.com> 1791380136 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqxg7dCRC1aQ7uu5UhlAAAD8wQAHsS7Cy95zfmXOt+uRs3I9hW
- NSWhHga4c+MYttQKp4aG7yHK3dKIjYo+dLIkPKue+xzjFGTiu3I4qHI9cLnfuhe6
- lAVySTI/ycJUk1nPwfLzYYR8RNEVJTt0dhaoTL0phbsEJWOd4x6nqn4KUp5d2j7b
- bnAh5/MmwiLx7VZNBF0+JYCk620GX+CKCXyeM1nCj0ZzVecorewRuuLk5nLMtIHD
- LirU8GwppOuV6ro04KKQ8EukfqxIywJT+DEaFK+/jbpjSNvtNY0LiCwJGYJ26UuG
- rF5oFm25Mi660cTsPTMSCyC1ksVxbm3qQmFv7HdxdP5djfVsPRfdbRz4amb5wz3m
- Kns+v1vDwoArAdtnunawSUGEElodknaxOHB3xR96wloDSvql7uSgspqDeXtxIfY2
- YD8SiECTtYQj0QkPDHiWp/G9WXx+DzbbAwGNXKxUkNuhvDbIQ6pdBuvQp17+LJn0
- H4IQB+3qU525VBZxgwiNYu5ua4X+z9UoKAIayNVF8k6PRP5VsY+jZsRP8PsNrabp
- z1HSJzS30Z9OrNUvQynqiMuXc8rrgrZD9icnPnOdtribJVqJ/20Y1icJPD/gFgXD
- 7Wa7NmI3grMyF6T9BSIVjr1ZwhMf5vDZhNSCdHdTvkNHALG/vKR/AFcyZf9EtFR0
- DaK6+jm/Pc0cswTk7D2r
- =qaaF
+ wsFcBAABCAAQBQJqxkqoCRC1aQ7uu5UhlAAAQMQQAGcnQJMWNIGnsX4lWT4Oa4Va
+ gDDBG8M/1CDzIsSDgdNwWyKATt+5xGEXsfQykDiPVRsSHT6jUn5IC4G3LMMY2I4j
+ mQcC4JoBPpZtofVlOHpIUySgfVgdZse4Uu58x3V7DhmVlu6amok+tBO4kEGmo54k
+ O8la9VCYbveBfRl3jG29haEo3tZzhM6Mm4sxqGAUIUNukmGpqqnj8i0FNvjxk6a2
+ EYocshz+oroOAGLqcMkfbPD3lEi1UhqlaR/sy4fZMg4C+iYdZE+aUTr5YhzwS/1w
+ BeKjUq0jyPGvsfmSgYbTzgtr25V9JjMTi2FQSd9dfrOxxAwOXuz5TwmDr+jDGQK+
+ OFe06otaiMeUIGPyJkzEJ9UIGv3ZfhRDmNv3Fgt92J5mhiYyNMEK9BvAcLDGXdKs
+ 4nL/GrDXGX2PeTxphqR+aoJKrJntIcULKhmjKcTmUN/gJwxZEMM854IT/BDxYDh5
+ yKLRRZQOFpXCd/YkyaPYAunSLYJwDF3ESu7P//ZcObOCcOGwfT+Bw1TwV5cA3lUo
+ HG/ooRFMx/kY8M367FTqUVEow3sCk2AD82beUYfz5ncAiTj3wff2IEtwYFMfmm+8
+ ZYx9JtJLA599y60BtIY4H/fVEJHrhlcidnd7ZDo1nqpnfSRVekbNpYh5naRM/wdk
+ /ySfGqlBmsLvDVzXevMv
+ =eaRb
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #11 from byh-playground/codex/preserve-resume-mesh-waiters
+[feature] 공통 선택형 성능 프로파일러 추가
 
-[fix] 새로고침 복구 중 mesh 대기와 incarnation 승인 보존
+공통 debug-tools에 선택형 bounded 성능 프로파일러와 단위 검사를 추가합니다.

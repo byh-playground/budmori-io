@@ -41,6 +41,10 @@ try{
  await page.locator('[data-public="solo"]').click();
  await page.waitForFunction(()=>BloomSimulation.sessionConfig.mode==='local'&&!__army.paused&&PublicSession.phase==='idle');
  await page.locator('#pause').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>document.body.classList.contains('intro')),false,'solo entry leaves the intro HUD state');
+ await page.evaluate(()=>BloomDiagnostics.setProfiler(true));
+ await page.evaluate(()=>new Promise(resolve=>{let remaining=8;function next(){if(--remaining===0)resolve();else requestAnimationFrame(next)}requestAnimationFrame(next)}));
+ const profiler=await page.evaluate(()=>{BloomDiagnostics.setProfiler(false);return BloomDiagnostics.snapshot().runtime.profiler});
+ assert(profiler.frames.length>0,'Opt-in profiler records real WebGL frames');assert(profiler.frames.some(frame=>frame.stages['render.actors']),'Profiler records actor render stage');assert(profiler.frames.some(frame=>frame.stages['webgl.endFrame']),'Profiler records WebGL endFrame stage');report.profiler={frames:profiler.frames.length,summary:profiler.summary};report.checks.push('Opt-in common performance profiler records bounded real-browser render stages and summaries');
  await fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}clearPointNav();autoHunt.enabled=false;autoHunt.idleMs=0;`);
  const start=await page.evaluate(()=>({x:__army.state.mother.x,y:__army.state.mother.y}));
  await page.keyboard.down('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));
