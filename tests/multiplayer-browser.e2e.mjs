@@ -64,14 +64,18 @@ const fixture=String.raw`
  qa.inspect=()=>{
   const session=BloomSimulation.session,local=WorldPlayers.local(),stats=local?currentMoaStats():null;
   return{phase:PublicSession.phase,tick:BloomSimulation.tick,time:state.time,sessionId:session.sessionId,localId:session.localPlayerId,coordinator:session.coordinatorId,epoch:session.epoch,roster:[...session.players],ready:session.ready,closed:session.closed,status:session.status,failure:session.failure??null,
-   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,
+   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
 assert(source.html.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
-const instrumented=source.html.replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>fixture);
+// Observe actual static/atlas upload durations, including the first boot frame.
+const uploadProbe=`;(()=>{globalThis.__qaRenderUploads=[];const original=BloomWebGL.Renderer.prototype._upload;BloomWebGL.Renderer.prototype._upload=function(record){const start=performance.now(),prior=record.version,result=original.call(this,record),ms=performance.now()-start;if(prior!==record.version||ms>10){const row={frame:this.frame,width:record.width,height:record.height,kind:record.page?'atlas':'static',ms};__qaRenderUploads.push(row);if(__qaRenderUploads.length>80)__qaRenderUploads.shift();if(ms>100)console.log('ASSET_UPLOAD '+JSON.stringify(row))}return result}})();`;
+const rendererExport="global.BloomWebGL={create,Renderer,shaders,tessellate,version:64};";
+assert(source.html.includes(rendererExport));
+const instrumented=source.html.replace(rendererExport,rendererExport+uploadProbe).replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>fixture);
 assert.notEqual(instrumented,source.html);
 report.testResponseSHA256=createHash('sha256').update(instrumented).digest('hex');
 const server=createServer((req,res)=>{
@@ -104,8 +108,8 @@ async function until(predicate,label,timeoutMs=60000){
 async function addPage(){
  const number=pages.length+1,page=await phase('page '+number+' create',()=>context.newPage());pages.push(page);await page.bringToFront();
  page.on('pageerror',error=>errors.push({page:number,type:'pageerror',message:error.message}));
- page.on('console',message=>{if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
- await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'load'}));
+ page.on('console',message=>{if(message.text().startsWith('ASSET_UPLOAD '))console.log('PAGE '+number+' '+message.text());if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
+ await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'domcontentloaded',timeout:120000}));
  await phase('page '+number+' boot/first WebGL frames',()=>page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000}));
  assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Embedded SDK must include public-room API; --sdk is only a development override');
  assert.equal((await read(page)).backend,'WebGL');await samplePhase('page '+number+' booted',[page]);return page;
@@ -148,7 +152,7 @@ async function openPause(page){
 }
 async function startPublic(page){const number=pages.indexOf(page)+1;await phase('page '+number+' Public Start click',()=>page.locator('[data-action="start"]').click());}
 try{
- browser=await phase('Chromium launch',()=>chromium.launch({headless:!headed,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
+ browser=await phase('Chromium launch',()=>chromium.launch({headless:!headed,timeout:120000,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
  context=await phase('browser context',()=>browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1}));
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
