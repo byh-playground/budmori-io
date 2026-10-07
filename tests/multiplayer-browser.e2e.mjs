@@ -15,7 +15,7 @@ const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
  environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
- limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter plus an elevated slow physical projectile.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
+ limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
@@ -54,14 +54,18 @@ const fixture=String.raw`
    const point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
    if(!target)throw Error('Initial durable encounter has no safe position');
    target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;target.qaRegion=player.startRegion;state.camps[0].remaining++;
-   for(const region of WorldSpawn.layout().startRegions){if(region.startRegion===player.startRegion)continue;const spawnPoint=ThemedTerrain.safePoint(region.x,region.y,55),point=ThemedTerrain.safePoint(spawnPoint.x-160,spawnPoint.y,20),enemy=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});enemy.hp=enemy.maxHp=1e7;enemy.stun=1e6;enemy.aggroAt=enemy.wanderAt=state.time+1e6;enemy.qaRegion=region.startRegion;state.camps[0].remaining++;}
    damage(m,target,17,'ranged');const flight=launchAbilityShot(target,11,{owner:m,start:{x:m.x-200,y:m.y-200,z:spatialHeight(m)+160},speed:1,range:1800,homing:true});flight.qaAdmissionFlight=true;
    rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();
   }return result;
  };
  qa.combat=new Map();
  const observeImpact=impact;impact=function(shot){const target=idMap.get(shot.target),before=target?.hp,owner=WorldPlayers.all().find(p=>p.leader.id===shot.u),result=observeImpact(shot);if(owner&&shot.abilityShot&&!shot.weapon&&!shot.secondary&&!shot.qaAdmissionFlight&&Number.isFinite(before)){const stats=qa.combat.get(owner.playerId)||{samples:0,maxDistance:0,primaryDamage:0};stats.primaryDamage+=(before-(target?.hp??before));qa.combat.set(owner.playerId,stats)}return result};
- bloomAdapter.step=function(frame){const result=step(frame);
+ bloomAdapter.step=function(frame){
+  // Declare each encounter at the first ordinary simulation step after its
+  // participant arrives. Preplacing far-away ordinary enemies is invalid:
+  // production WildSpawnRing correctly culls them before a late join occurs.
+  let added=false;for(const player of WorldPlayers.all()){if(state.units.some(u=>u.qaRegion===player.startRegion))continue;const m=player.leader,point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaRegion=player.startRegion;state.camps[0].remaining++;added=true;}if(added){rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();}
+  const result=step(frame);
   for(const player of WorldPlayers.all()){const stats=qa.combat.get(player.playerId)||{samples:0,maxDistance:0,primaryDamage:0};for(const shot of projectiles){if(shot.u!==player.leader.id||shot.qaAdmissionFlight||!shot.abilityShot||shot.weapon||shot.secondary)continue;stats.samples++;stats.maxDistance=Math.max(stats.maxDistance,Math.hypot(shot.x-shot.startX,shot.y-shot.startY));}qa.combat.set(player.playerId,stats);}qa.lastInputs=frame.inputs.map(input=>({playerId:input.playerId,...bloomDecodeInput(input.input)}));
   if(qa.wanted.delete(bloomTick)){const bytes=bloomAdapter.save();qa.checkpoints.set(bloomTick,{tick:bloomTick,epoch:state.membershipEpoch,bytes:Array.from(bytes),hash:sdk.hashBytes(bytes),schema:BloomLiveCodec.decode(bytes).schema});while(qa.checkpoints.size>4)qa.checkpoints.delete(qa.checkpoints.keys().next().value)}return result;
  };
