@@ -80,6 +80,20 @@ async function main(){
   assert.deepEqual(viewport.value('__sessionRuntimeTest.sample()'),{x:0,y:0,manual:false,suspended:true});
   viewport.e.run("delete bloomSession.status");
   pass('Reconnect waiting supplies neutral input even with a held device direction');
+  // Repeated access cannot add another runtime wrapper/driver owner.
+  const lifecycle=make();await lifecycle.init();await lifecycle.control();
+  assert.equal(lifecycle.e.run('bloomMainRuntime()'),lifecycle.e.run('BloomSimulation.runtime'));
+  await lifecycle.command({type:'tutorialAck'});
+  const waiting=lifecycle.request('snapshot');
+  const rejectedOnClose=assert.rejects(waiting,/Simulation closed/);
+  const beforeClose=lifecycle.e.run('bloomTick');await lifecycle.close();await rejectedOnClose;
+  assert.equal(lifecycle.e.run('BloomSimulation.runtime.ready'),false);
+  assert.equal(lifecycle.e.run('bloomSession.closed'),true);
+  assert.equal(lifecycle.e.run("bloomQueue('tutorialAck')"),false);
+  lifecycle.drive(2);assert.equal(lifecycle.e.run('bloomTick'),beforeClose);
+  await assert.rejects(lifecycle.request('snapshot'),/not available/);
+  await lifecycle.close();
+  pass('One runtime owner closes idempotently and rejects queued saves without another tick');
   console.log('PASS continuous actual-engine session runtime campaign '+JSON.stringify({sha256:source.sha256,sdk:source.sdk}));
  }finally{for(const a of open)await a.close()}
 }

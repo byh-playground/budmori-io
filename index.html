@@ -6538,11 +6538,6 @@ function productionTime(type){return Math.max(CONFIG.production.minTime,unitDef(
 function produce(dt){if(state.productionPaused)return;state.productionCredit=Math.min(CONFIG.production.capacityMaxByZone[state.maxZone],state.productionCredit+dt*nurseryRate());let population=pop(),start=state.productionCursor;for(let offset=0;offset<state.cards.length;offset++){const i=(start+offset)%state.cards.length,c=state.cards[i];if(!slotOpen(i)||!c.type)continue;const d=unitDef(c.type),cost=CONFIG.production.costs[c.type],duration=productionTime(c.type);c.blocked='';c.progress=Math.min(CONFIG.production.progressAtBlocked,c.progress+dt/duration);if(c.progress>=1){if(population+d.supply>cap()){c.blocked='인구 한도';continue}if(state.minerals<cost[0]||state.gas<cost[1]){c.blocked='자원 부족';continue}if(state.productionCredit<1){c.blocked='부화 순서';continue}const count=productionBatch(c.type);for(let n=0;n<count;n++){if(population+d.supply>cap()||state.minerals<cost[0]||state.gas<cost[1]||state.productionCredit<1)break;state.minerals-=cost[0];state.gas-=cost[1];state.productionCredit--;state.stats.spentM+=cost[0];state.stats.spentG+=cost[1];let a=random()*Math.PI*2,r=CONFIG.motion.followBaseRadius;spawn(c.type,'friendly',state.mother.x+Math.cos(a)*r,state.mother.y+Math.sin(a)*r);population+=d.supply;state.stats.produced++}c.progress=0;state.productionCursor=(i+1)%state.cards.length}}}
 function unlockZone(z){for(const type of CONFIG.progression.unitUnlocks[z])if(!unlocked(type))state.unlocked.push(type);uiClock=CONFIG.render.uiInterval}
 function enterZone(z){if(z>state.maxZone||z<0)return false;state.zone=z;unlockZone(z);return true}
-function step(dt=CONFIG.sim.fixedStep,input=stick){if(state.dead)return;dt=Math.min(CONFIG.qa.maxStep,Math.max(0,dt));state.time+=dt;moaSyncLevelHP(state.mother);const oldMotherX=state.mother.x,oldMotherY=state.mother.y;let ix=input.x||0,iy=input.y||0,len=Math.hypot(ix,iy);if(len>1){ix/=len;iy/=len}state.mother.moveX=ix;state.mother.moveY=iy;if(typeof moveMoaBody==='function')moveMoaBody(dt,ix,iy);else if(ix||iy){state.mother.angle=Math.atan2(iy,ix);state.mother.x=clamp(state.mother.x+ix*CONFIG.motion.motherSpeed*dt,CONFIG.world.margin,worldLimit()-CONFIG.world.margin);state.mother.y=clamp(state.mother.y+iy*CONFIG.motion.motherSpeed*dt,CONFIG.world.margin,CONFIG.world.height-CONFIG.world.margin)}const motherTravel=Math.hypot(state.mother.x-oldMotherX,state.mother.y-oldMotherY);state.mother.moveSpeed=motherTravel/dt;state.mother.movePhase=(state.mother.movePhase||0)+motherTravel/CONFIG.combat.motherWalkStride*Math.PI*2;let z=zoneAt(state.mother.x);if(z!==state.zone)enterZone(z);state.mother.flash=Math.max(0,state.mother.flash-dt);
- for(const c of state.camps){if(c.zone>state.maxZone||state.campaign&&(!c.enabled||c.stage>state.campaign.stage)||c.boss&&state.bosses[c.zone])continue;if(!c.spawned)spawnCamp(c);else if(!state.campaign&&c.remaining===0&&!c.boss){c.respawn-=dt;if(c.respawn<=0&&dist(c,state.mother)>CONFIG.world.respawnDistance)spawnCamp(c)}}
- produce(dt);rebuildGrid();if(typeof updateMoa==='function')updateMoa(dt);let fi=0;for(const u of state.units){updateUnit(u,dt,u.team==='friendly'?fi++:0);if(state.dead)break}for(let i=events.length-1;i>=0;i--){const e=events[i];if(e.time>state.time)continue;events.splice(i,1);const u=idMap.get(e.unit),t=idMap.get(e.target);if(u?.hp>0&&t?.hp>0){let a=random()*Math.PI*2,r=e.spread*Math.sqrt(random());projectile(u,t,e.amount,e.splash,{aimX:t.x+Math.cos(a)*r,aimY:t.y+Math.sin(a)*r,point:!!e.spread})}}
- for(let i=projectiles.length-1;i>=0&&!state.dead;i--){const p=projectiles[i];if(!p)break;const t=idMap.get(p.target);if(p.arcFlight){stepGroundArc(p,dt);if(p.finished)discardProjectile(i);continue}if(p.abilityShot){stepAbilityProjectile(p,dt);if(p.finished)discardProjectile(i);continue}if(p.moaSeed){if(!t||t.hp<=0||!factionsHostile(projectileOwner(p),t)||lockedParcelAt(t.x,t.y)!==-1||state.dead){discardProjectile(i);continue}p.aimX=t.x;p.aimY=t.y;const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=Math.min(d,p.speed*dt),nx=p.x+(d?dx/d*travel:0),ny=p.y+(d?dy/d*travel:0),hit=segmentCircle(p.x,p.y,nx,ny,t.x,t.y,radius(t)+p.shotRadius);if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,nx,ny)){discardProjectile(i);continue}p.x=nx;p.y=ny;p.progress+=travel;if(hit){impact(p);discardProjectile(i)}else if(p.progress>CONFIG.moa.rangedReach*2){discardProjectile(i)}continue}if(p.dodgeable){const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=Math.min(d,p.speed*dt),nx=p.x+(d?dx/d*travel:0),ny=p.y+(d?dy/d*travel:0);const hit=t?.hp>0&&segmentCircle(p.x,p.y,nx,ny,t.x,t.y,radius(t)+CONFIG.control.shotRadius);if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,nx,ny)){discardProjectile(i);continue}p.x=nx;p.y=ny;p.progress+=travel;if(hit||d<=travel){if(hit)impact(p);discardProjectile(i)}continue}if(!p.point&&t?.hp>0){p.aimX=t.x;p.aimY=t.y}const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=p.speed*dt;if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,p.x+(d?dx/d*Math.min(d,travel):0),p.y+(d?dy/d*Math.min(d,travel):0))){discardProjectile(i);continue}p.progress+=travel;if(d<=travel+CONFIG.combat.projectileHitRadius){p.x=p.aimX;p.y=p.aimY;impact(p);discardProjectile(i)}else{p.x+=dx/d*travel;p.y+=dy/d*travel}}
- for(let i=effects.length-1;i>=0;i--){effects[i].life-=dt;if(effects[i].life<=0)effects.splice(i,1)}let liveCount=0;for(let i=0;i<state.units.length;i++){const u=state.units[i];if(u.hp>0)state.units[liveCount++]=u;else idMap.delete(u.id)}state.units.length=liveCount;if(state.dead)return;uiClock+=dt;saveClock+=dt;if(saveClock>=CONFIG.render.saveInterval){saveClock=0;save()}}
 function purchaseCost(kind){if(kind==='cap'){let next=state.capTier+1;if(next>CONFIG.progression.capTierByZone[state.maxZone])return null;return[CONFIG.progression.capCosts[next],CONFIG.progression.capGas[next]]}const d=CONFIG.upgrades[kind];if(!d||state.upgrades[kind]>=CONFIG.progression.levelsPerZone*(state.maxZone+1))return null;const l=state.upgrades[kind];return[Math.ceil(d.baseM*Math.pow(d.growth,l)/CONFIG.economy.costStep)*CONFIG.economy.costStep,Math.ceil(d.baseG*Math.pow(d.growth,l)/CONFIG.economy.costStep)*CONFIG.economy.costStep]}
 function buy(kind){const c=purchaseCost(kind);if(!c||state.minerals<c[0]||state.gas<c[1])return false;state.minerals-=c[0];state.gas-=c[1];state.stats.spentM+=c[0];state.stats.spentG+=c[1];if(kind==='cap')state.capTier++;else{state.upgrades[kind]++;if(kind==='health'){const old=1+(state.upgrades.health-1)*CONFIG.economy.healthPerLevel,newScale=1+state.upgrades.health*CONFIG.economy.healthPerLevel;for(const u of state.units)if(u.team==='friendly'){const ratio=u.hp/u.maxHp;u.maxHp*=newScale/old;u.hp=u.maxHp*ratio}state.mother.hp+=CONFIG.mother.hpPerLevel;state.mother.maxHp=maxMotherHP()}}save();uiClock=CONFIG.render.uiInterval;return true}
 function setCard(slot,type){if(!Number.isInteger(slot)||slot<0||slot>=state.cards.length||!slotOpen(slot)||type!==null&&(!friendlyTypes.includes(type)||!unlocked(type)))return false;if(state.cards[slot].type===type)return true;if(type!==null&&state.cards.filter((c,i)=>i!==slot&&c.type===type).length>=CONFIG.production.maxCopies)return false;state.cards[slot]={type,progress:0,blocked:''};save();uiClock=CONFIG.render.uiInterval;return true}
@@ -6589,7 +6584,7 @@ function bindUI(){document.addEventListener('click',e=>{const b=e.target.closest
 
 }
 function frame(time){if(globalThis.BloomDiagnostics?.fatal)return;try{const elapsed=Math.max(0,(time-lastFrame)/1000||0);lastFrame=time;advanceSimulationClock(elapsed);render(playing&&!paused&&!WorldView.dead()?Math.min(1,accumulator/CONFIG.sim.fixedStep):1,Math.min(elapsed,.1));if(uiClock>=CONFIG.render.uiInterval)refreshUI();if(toastClock>0){toastClock-=Math.min(elapsed,.1);if(toastClock<=0)$('status').style.opacity='0'}if(!globalThis.BloomDiagnostics?.fatal)requestAnimationFrame(frame)}catch(error){globalThis.BloomDiagnostics?.report(error,{kind:'render.frame',fatal:true})}}
-function boot(){if(window.RALLY_ART_CONFIG)CONFIG.art=window.RALLY_ART_CONFIG;reset();let hasSave=false;try{const raw=localStorage.getItem(CONFIG.saveKey);if(raw)hasSave=load(raw)}catch{}buildTerrain();bindUI();refreshUI();showIntro(hasSave);window.__army={CONFIG,get state(){return state},get grid(){return grid},get effects(){return effects},get projectiles(){return projectiles},get events(){return events},get paused(){return paused},get playing(){return playing},get input(){return{x:stick.x,y:stick.y,keys:[...keys]}},get performance(){return frameStats},step,spawn,snapshot,load,save,reset,setCard,buy,purchaseCost,pop,cap,enterZone,recover,defeat,rebuildGrid,findTarget,canTarget,detected,attack,attackPower,damage,area,produce,productionTime,productionSpeed,support,render,refreshUI,showUpgrades,showCards,closeModal,unlockZone,spawnCamp,unitDef,clearEffects(){effects=[];projectiles=[];events=[]},setPaused(v){paused=!!v},setPlaying(v){playing=!!v},get entityCount(){return state.units.length}};requestAnimationFrame(frame)}
+function boot(){if(window.RALLY_ART_CONFIG)CONFIG.art=window.RALLY_ART_CONFIG;reset();let hasSave=false;try{const raw=localStorage.getItem(CONFIG.saveKey);if(raw)hasSave=load(raw)}catch{}buildTerrain();bindUI();refreshUI();showIntro(hasSave);window.__army={CONFIG,get state(){return state},get grid(){return grid},get effects(){return effects},get projectiles(){return projectiles},get events(){return events},get paused(){return paused},get playing(){return playing},get input(){return{x:stick.x,y:stick.y,keys:[...keys]}},get performance(){return frameStats},spawn,snapshot,load,save,reset,setCard,buy,purchaseCost,pop,cap,enterZone,recover,defeat,rebuildGrid,findTarget,canTarget,detected,attack,attackPower,damage,area,produce,productionTime,productionSpeed,support,render,refreshUI,showUpgrades,showCards,closeModal,unlockZone,spawnCamp,unitDef,clearEffects(){effects=[];projectiles=[];events=[]},setPaused(v){paused=!!v},setPlaying(v){playing=!!v},get entityCount(){return state.units.length}};requestAnimationFrame(frame)}
 
 
 function drawProjectedProjectile(source){const p=presentationPose(source,'projectile');const d=unitDef(p.type)||{};if(p.abilityShot){drawAbilitySeed(p);return}if(p.moaSeed){projectionBillboard(ctx,p.x,p.y,p.z||0);const a=WorldProjection.angle(Math.atan2(p.aimY-p.y,p.aimX-p.x));ellipse(ctx,p.x,p.y,8,4,a,'#d6ff96');ellipse(ctx,p.x-Math.cos(a)*7,p.y-Math.sin(a)*7,5,2,a,'#96dbad88');ellipse(ctx,p.x+Math.cos(a)*2,p.y+Math.sin(a)*2,3,2,a,'#fff8d0');ctx.restore();return}projectionBillboard(ctx,p.x,p.y,p.z||0);ellipse(ctx,p.x,p.y,CONFIG.render.projectileRadius*(p.splash?1.6:1),CONFIG.render.projectileRadius,WorldProjection.angle(Math.atan2(p.aimY-p.y,p.aimX-p.x)),p.team==='friendly'?'#e6f4b0':'#ffc391');ctx.restore()}
@@ -7961,7 +7956,7 @@ CONFIG.production.defaultCards=['swordsman',null,null,null,null,null];CONFIG.pro
 CONFIG.progression.capTierByZone[0]=CONFIG.campaign.population.maxTier;CONFIG.progression.levelsPerZone=CONFIG.campaign.growth.armyMaxRank;
 CONFIG.progression.unitUnlocks=[['swordsman'],[],[],[],[],[]];friendlyTypes.splice(0,friendlyTypes.length,...CONFIG.campaign.productionCards);
 CONFIG.zones[0].bossName='황금 껍질 군락장';CONFIG.zones[0].tip='이끼밭을 반복 사냥해 충원비와 성장 자원을 모으세요. 지도에서 위험도와 수입을 확인할 수 있어요.';shortNames.shellbug='껍질딱정벌레';
-const core={reset,spawn,spawnCamp,step,save,load,die,defeat,recover,findTarget,canTarget,attackPower,produce,buy,boot};
+const core={reset,spawn,spawnCamp,save,load,die,defeat,recover,findTarget,canTarget,attackPower,produce,buy,boot};
 const campaignDefs=[];CONFIG.campaign.grounds.forEach((g,gi)=>g.camps.forEach((c,ci)=>campaignDefs.push({id:campaignDefs.length,zone:0,stage:0,ground:gi,x:c.x,y:c.y,kind:gi,boss:false,sourceId:g.id+'-'+ci,members:c.units.map(u=>({...u}))})));
 function makeLedger(){return{rewardM:0,rewardG:0,productionM:0,productionG:0,investmentM:0,investmentG:0,lostM:0,lostG:0,losses:0}}
 function newFarm(){return{mode:'farming',stage:0,parcels:[true,false,false,false,false],research:Object.fromEntries(friendlyTypes.map(t=>[t,{branch:null,rank:0}])),investments:{mineral:0,gas:0,nursery:0},bank:{minerals:0,gas:0},lifetimeBank:{minerals:0,gas:0},offline:{minerals:0,gas:0},savedAt:0,ledger:makeLedger(),groundStats:CONFIG.campaign.grounds.map(()=>({clears:0,kills:0,rewardM:0,rewardG:0,lostM:0,lostG:0,losses:0})),migration:null}}
@@ -7992,7 +7987,6 @@ produce=function(dt){const m=state.stats.spentM,g=state.stats.spentG;core.produc
 function addBank(seconds){const c=state.campaign;for(const [key,res]of [['mineral','minerals'],['gas','gas']]){const d=CONFIG.campaign.investments[key],l=c.investments[key],gain=Math.max(0,Math.min(d.capacity*l-c.bank[res],d.rate*l*seconds));c.bank[res]+=gain;c.lifetimeBank[res]+=gain}}
 function collectBank(){const c=state.campaign;if(dist(state.mother,basePoint())>CONFIG.campaign.base.collectRadius)return;for(const res of ['minerals','gas']){const gain=Math.floor(c.bank[res]);state[res]=Math.min(CONFIG.economy.maxResource,state[res]+gain);c.bank[res]-=gain}}
 function updateCampaign(dt){regrowCamps(dt);addBank(dt);collectBank();const b=basePoint(),r=CONFIG.campaign.base.healRadius;let safe=true;near(b.x,b.y,r,'enemy',()=>{safe=false;return false});if(safe)for(const u of state.units)if(u.team==='friendly'&&sqdist(u,b)<=r*r)applyHealing(u,Math.min(u.maxHp,u.hp+u.maxHp*CONFIG.campaign.base.healPercent*dt))}
-step=function(dt=CONFIG.sim.fixedStep,input=stick){const x=state.mother.x,y=state.mother.y;core.step(dt,input);if(lockedParcelAt(state.mother.x,state.mother.y)!==-1){state.mother.x=x;state.mother.y=y}if(!state.dead)updateCampaign(Math.min(CONFIG.qa.maxStep,Math.max(0,dt)))};
 purchaseCost=function(kind){if(kind==='cap'){const n=state.capTier+1;return n>CONFIG.campaign.population.maxTier?null:[CONFIG.campaign.population.costs[n],CONFIG.campaign.population.gas[n]]}if(kind==='ability')return null;const d=CONFIG.upgrades[kind],l=state.upgrades[kind],step=CONFIG.economy.costStep;if(!d||l>=CONFIG.campaign.growth.armyMaxRank)return null;return[Math.ceil(d.baseM*d.growth**l/step)*step,Math.ceil(d.baseG*d.growth**l/step)*step]};
 buy=function(kind){const m=state.stats.spentM,g=state.stats.spentG,result=core.buy(kind);if(result){state.campaign.ledger.investmentM+=state.stats.spentM-m;state.campaign.ledger.investmentG+=state.stats.spentG-g;save()}return result};
 function researchLimit(){return Math.min(CONFIG.campaign.research.maxRank,CONFIG.campaign.growth.initialResearchLimit+state.campaign.investments.nursery)}
@@ -8264,16 +8258,12 @@ function solveMoaContacts(owner=state.mother,prepared=false){
  }
  boundMoaBody(m);
 }
-const moaPhysicsCore={initializeMoa,step,push,boot};
+const moaPhysicsCore={initializeMoa,push,boot};
 initializeMoa=function(){moaPhysicsCore.initializeMoa();resetMoaBody(state.mother);state.mother.stun=0;for(const u of state.units)resetMoaBody(u)};
 
 // Existing enemy melee/shove paths already call push once. Route just their Moa
 // target through mass-scaled impulse; do not add a second kick in damage().
 push=function(t,x,y,amount){if(t.type!=='mother')return moaPhysicsCore.push(t,x,y,amount);if(t.hp<=0)return;const a=Math.atan2(t.y-y,t.x-x),p=CONFIG.moaPhysics,J=amount*p.enemyPushScale*p.motherMass/moaBodyMass(t);addMoaImpulse(t,Math.cos(a)*J,Math.sin(a)*J);noteMoaContact(-Math.cos(a),-Math.sin(a),Math.abs(amount))};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){
- if(state.dead)return;dt=Math.min(CONFIG.qa.maxStep,Math.max(0,dt));if(!dt)return;const m=state.mother,x=m.x,y=m.y,phase=m.movePhase||0,decay=Math.exp(-CONFIG.moaPhysics.contactDecay*dt);m.bodyContact=(m.bodyContact||0)*decay;m.bodyLeanX=(m.bodyLeanX||0)*decay;m.bodyLeanY=(m.bodyLeanY||0)*decay;
- moaPhysicsCore.step(dt,input);if(!state.dead)solveMoaContacts();const travel=Math.hypot(m.x-x,m.y-y);m.moveSpeed=travel/dt;m.movePhase=phase+travel/CONFIG.combat.motherWalkStride*Math.PI*2;
-};
 boot=function(){moaPhysicsCore.boot();Object.assign(window.__army,{moaBodyRadius,moaBodyMass,solveMoaContacts,addMoaImpulse,boundMoaBody,moaBashImpulse,push})};
 
 </script><script>
@@ -8373,8 +8363,7 @@ function bloomVisualPose(source,kind='unit',now=presentation.frameNow){
 }
 function presentationPose(source,kind='unit'){return presentation.active?bloomVisualPose(source,kind):source}
 function presentationTime(){return presentation.active?presentation.time:state.time}
-const presentationCore={step,reset,load,recover,closeModal};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){presentationCore.step(dt,input);if(!bloomInTick){capturePresentation();presentation.ticks++}};
+const presentationCore={reset,load,recover,closeModal};
 function resetPresentation(){if(bloomInTick||globalThis.BLOOM_HEADLESS)return;if(globalThis.CombatFeedback)CombatFeedback.clear();capturePresentation(true);accumulator=0;presentation.alpha=1}
 reset=function(){const result=presentationCore.reset();resetPresentation();return result};
 load=function(raw){const result=presentationCore.load(raw);if(result)resetPresentation();return result};
@@ -8678,7 +8667,7 @@ boot=function(){finisherCore.boot();Object.assign(window.__army,{initializeMoa,u
 CONFIG.levelAbilities={schema:2,firstXP:12,xpStep:18,xpPerEnemy:1,shotGrace:.5,
  cards:{pierce:{name:'꿰뚫는 줄기',icon:'➜',kind:'trait'},fan:{name:'갈래 씨앗',icon:'⋔',kind:'trait'},bounce:{name:'도탄 씨앗',icon:'↝',kind:'trait'},pod:{name:'추적 씨앗집',icon:'◉',kind:'weapon',color:'#fff2a6'},lob:{name:'포자 폭탄',icon:'✺',kind:'weapon',color:'#ffc29e'},thorn:{name:'가시 발사대',icon:'⇢',kind:'weapon',color:'#9df2dc'}},
  fanAngle:14*Math.PI/180,fanDamage:.65,rankDamage:.18,bounceDamage:.6,bounceRange:135,bounceRankDamage:.15};
-const levelCore={reset,load,die,step,projectile,moaPower,updateMoa,impact,boot,refreshUI,showIntro,closeModal,showUpgrades};
+const levelCore={reset,load,die,projectile,moaPower,updateMoa,impact,boot,refreshUI,showIntro,closeModal,showUpgrades};
 function newAbilityState(){return weaponNewState()}
 function abilityState(){return state.campaign.abilities}
 function abilityThreshold(level){const n=level-1,C=CONFIG.levelAbilities;return n*C.firstXP+C.xpStep*n*(n-1)/2}
@@ -8698,7 +8687,6 @@ let choosingAbility=false;
 function chooseAbility(id,chosen){return weaponChoose(id,chosen)}
 let abilityPromptedState=null,abilityPromptedLevel=0;
 function maybeAbilityPrompt(){if(bloomInTick||globalThis.BLOOM_HEADLESS)return;const a=WorldView.ability();if(abilityPromptedState!==WorldView.leader()){abilityPromptedState=WorldView.leader();abilityPromptedLevel=0}if(!playing||paused||WorldView.dead()||!WorldView.pendingAbility()||abilityPromptedLevel>=a.level)return;abilityPromptedLevel=a.level;showAbilityChoices()}
-step=function(dt=CONFIG.sim.fixedStep,input=stick){levelCore.step(dt,input);maybeAbilityPrompt()};
 closeModal=function(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;levelCore.closeModal();maybeAbilityPrompt()};
 function refreshAbilityHUD(){}
 refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;levelCore.refreshUI();refreshAbilityHUD()};
@@ -8717,7 +8705,7 @@ function stepAbilityProjectile(p,dt){p.life-=dt;if(p.life<=0){finishAbilityShot(
 impact=function(p){const result=levelCore.impact(p);if(p.auxBlast){const owner=idMap.get(p.u);if(owner?.hp>0)near(p.x,p.y,p.auxBlast,null,t=>{if(!factionsHostile(owner,t)||t.id===p.target||!wallClear(p,t))return;const old=retaliationImpact;retaliationImpact=p;try{damage(owner,t,p.amount,'ranged')}finally{retaliationImpact=old}});addFx('ring',p.x,p.y,0,0,'#ffcf9c',p.auxBlast,.32)}return result};
 updateMoa=function(dt){levelCore.updateMoa(dt);weaponUpdateAux(state.mother,dt)};
 function drawAbilitySeed(p){const a=p.angle??Math.atan2(p.aimY-p.y,p.aimX-p.x),size=p.weapon==='lob'?10:p.weapon==='thorn'?13:p.secondary?5:p.remaining>1?11:8;ellipse(ctx,p.x,p.y,size,p.weapon==='lob'?8:p.weapon==='thorn'?2:p.secondary?2.5:4,a,p.color||'#d6ff96');ellipse(ctx,p.x-Math.cos(a)*7,p.y-Math.sin(a)*7,5,2,a,(p.color||'#d6ff96')+'77');ellipse(ctx,p.x+Math.cos(a)*2,p.y+Math.sin(a)*2,3,2,a,p.crit?'#fff1a3':'#fff8d0');}
-boot=function(){levelCore.boot();Object.assign(window.__army,{levelAbilities:CONFIG.levelAbilities,abilityState,abilityThreshold,abilityLevelFor,abilityRank,ensureAbilityDraft,pendingAbility,showAbilityChoices,chooseAbility,primaryAbility,abilityCardDescription,stepAbilityProjectile,launchAbilityShot,moaPower,projectile,impact,updateMoa,load,reset,step,die,refreshUI,closeModal});document.addEventListener('click',e=>{const b=e.target.closest('[data-ability]');if(b)chooseAbility(b.dataset.ability,Number(b.dataset.abilityStep))})};
+boot=function(){levelCore.boot();Object.assign(window.__army,{levelAbilities:CONFIG.levelAbilities,abilityState,abilityThreshold,abilityLevelFor,abilityRank,ensureAbilityDraft,pendingAbility,showAbilityChoices,chooseAbility,primaryAbility,abilityCardDescription,stepAbilityProjectile,launchAbilityShot,moaPower,projectile,impact,updateMoa,load,reset,die,refreshUI,closeModal});document.addEventListener('click',e=>{const b=e.target.closest('[data-ability]');if(b)chooseAbility(b.dataset.ability,Number(b.dataset.abilityStep))})};
 
 </script><script>
 'use strict';
@@ -9199,7 +9187,7 @@ function permanentMigratePower(u){
  permanentStorePower(u,power);
 }
 
-const permanentCore={snapshot,reset,load,boot,die,defeat,recover,step,drawUnit,drawCampaignWorld,attackPower,showCards,refreshUI,showIntro};
+const permanentCore={snapshot,reset,load,boot,die,defeat,recover,drawUnit,drawCampaignWorld,attackPower,showCards,refreshUI,showIntro};
 let permanentBusy=false,permanentTraces=[],permanentRetryAt=0;
 const permanentCounts=Object.fromEntries(friendlyTypes.map(type=>[type,0]));
 snapshot=function(){const s=permanentCore.snapshot();s.units=s.units.filter(u=>!u.permanentRank||u.hp>0);return s};
@@ -9314,18 +9302,6 @@ function compressPermanent(type,expectedRank=permanentRecord(type)?.rank||0,auto
 function permanentSleep(u,killer){const r=permanentRecord(u.type);if(!r||r.id!==u.id||r.body)return;u.hp=0;u.permanentDiedAt=state.time;u.deadEffect=true;u.target=0;u.pendingMelee=null;u.shield=0;u.shieldUntil=0;resetMoaBody(u);r.remaining=permanentReviveSeconds(u.type);r.body=JSON.parse(JSON.stringify(u));healthEnsureState();deathCapture(u,killer);}
 die=function(u,killer){if(u?.permanentRank&&u.team==='friendly'){if(!u.deadEffect)permanentSleep(u,killer);return}return permanentCore.die(u,killer)};
 defeat=function(){if(state.dead)return;for(const u of state.units)if(u.permanentRank&&u.hp>0)permanentSleep(u,null);state.units=state.units.filter(u=>!u.permanentRank);return permanentCore.defeat()};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){
- for(const u of state.units)permanentUpdateVisual(u);const before=state.time;permanentCore.step(dt,input);const elapsed=state.time-before;if(elapsed<=0)return;
- for(const r of Object.values(permanentState()?.records||{})){if(!r.body)continue;r.remaining=Math.max(0,r.remaining-Math.min(elapsed,Math.max(0,state.time-(r.body.permanentDiedAt??before))));if(r.remaining<=1e-9)r.remaining=0;if(r.remaining>0||state.dead)continue;const u=r.body;permanentApplyStats(u,r.rank);u.deadEffect=false;u.cooldown=CONFIG.moa.cooldown;u.target=0;u.pendingMelee=null;u.order='follow';u.returning=false;permanentPlace(u);state.units.push(u);idMap.set(u.id,u);r.body=null;addFx('ring',u.x,u.y,0,0,CONFIG.permanent.color,radius(u)+18,.55);rebuildGrid();}
- permanentTraces=permanentTraces.filter(t=>state.time-t.at<CONFIG.permanent.traceSeconds);
- // Only commit after a real, unpaused gameplay update. A menu, load, render or
- // recovery cannot consume material. One batch per tick preserves atomic saves.
- if(!state.dead&&state.time>=permanentRetryAt){
-  for(const type of friendlyTypes)permanentCounts[type]=0;
-  for(const u of state.units)if(u.team==='friendly'&&u.hp>0&&!u.deadEffect&&!u.permanentRank&&!u.elite&&!u.boss&&permanentCounts[u.type]!==undefined)permanentCounts[u.type]+=permanentCaptureWeight(u);
-  for(const type of friendlyTypes)if(permanentCounts[type]>=CONFIG.permanent.batch){compressPermanent(type,permanentRecord(type)?.rank||0,true);break}
- }
-};
 // Validate ownership against the one living entity or one sleeping body. Dead bodies
 // pass through the same core unit validator, then leave the active simulation again.
 load=function(raw){const before=state;try{
@@ -9368,7 +9344,7 @@ drawCampaignWorld=function(){permanentCore.drawCampaignWorld();for(const r of Ob
 function permanentCollectionHTML(){const batch=CONFIG.permanent.batch;return `<section class="permanentCollection"><h3>같은 친구 ${batch}마리 → 영구 동료 +1</h3><p>살아 있는 일반 동료가 ${batch}마리 모일 때마다 자동으로 합쳐져요. 합칠 때마다 몸집과 사거리도 함께 커져요. 전투력은 최대 체력 × 단일 대상 초당 피해량(DPS)입니다. 재료 ${batch}마리 전투력의 합을 ${batch}로 나눈, 평균 1마리분만 누적돼요. 누적 전투력에 맞춰 체력·DPS가 같은 비율로 커집니다. 강한 사냥터에서 영입한 친구일수록 더 크게 성장합니다.</p>${friendlyTypes.map(type=>{const r=permanentRecord(type),n=permanentMaterials(type).length,rank=r?.rank||0;return `<div class="permanentRow"><img alt="" src="${portrait(type)}"><div><strong>${unitDef(type).name}${rank?' · 영구 +'+rank:''}</strong><small>현재 살아 있는 일반 동료 <b>${n} / ${batch}</b></small><div class="compressionProgress"><i style="width:${Math.min(100,n*100/batch)}%"></i></div><small>${n>=batch?'게임으로 돌아가면 자동 압축':`${batch-n}마리 더 모으면 자동 압축`} · 일반 동료 ${batch}마리 소모</small><small>${rank?`+${rank} → +${rank+1} · ${permanentPowerDescription(r)} + 이번 재료 1마리 평균 전투력`:`첫 영구 동료 · 재료 1마리 평균 전투력`}${r?.body?`<br>부활까지 ${Math.ceil(r.remaining)}초`:rank?' · 생존 중':''}</small></div></div>`}).join('')}<details class="compressionDetails"><summary>압축과 인구 규칙</summary><p>영구 동료는 인구를 쓰지 않아요. 쓰러지면 그 자리에서 부활해요. 모아가 부활하면 영구 동료의 자리도 모아 주변으로 옮겨지며, 남은 부활 대기시간은 유지돼요. 대기시간은 병종의 기본 체력 × 단일 DPS에 비례한 고정값입니다. ${friendlyTypes.map(type=>unitDef(type).name+" "+permanentReviveSeconds(type)+"초").join(" · ")}. 강화 단계나 영입 지역 때문에 늘어나지 않아요. 쉬거나 접속을 끈 시간에는 진행되지 않습니다.<br>몸집·사거리 배율은 1 + 0.25 × √강화 단계로 함께 늘어나며 상한이 없어요. 큰 몸집의 통로 이동용 충돌 범위만 문 너비에 맞춰 완만해집니다.<br>강화 시 현재 체력 비율과 부활 대기시간은 유지됩니다. 재료는 영입 후 적 능력치 50%가 적용된 지역·개별 기본값입니다. 각 재료의 체력 × DPS를 먼저 계산한 뒤 평균냅니다. 같은 품질을 1·2·4번 합치면 첫 압축 대비 체력·DPS는 1·√2·2배입니다. 영구 동료 DPS에는 기존 특수기의 단일 피해와 공격·회복 시간을 포함하며, 여러 적을 맞히는 이득은 계산하지 않습니다. 표시는 방어·빗나감·이동이 없는 기준 DPS입니다. 부상은 재료 가치를 줄이지 않으며 군단 성장 효과는 한 번만 별도로 적용됩니다. 같은 강화 단계여도 재료에 따라 체력·공격력이 다를 수 있어요.<br>Lv.${CONFIG.permanent.capacityLevel}부터 인구 최소 ${CONFIG.permanent.capacityFloor} · 현재 ${cap()}. 인구 2 병종 ${batch}마리에는 인구 ${batch*2}가 필요합니다.<br>죽은 동료와 영구 동료, 도감의 누적 수집 수는 압축 재료에 포함되지 않아요.</p></details></section>`}
 showCards=function(){if(bloomInTick){bloomEmit("showCards",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;openModal('collection',sheetHead('동료 압축·도감')+permanentCollectionHTML()+'<h3>수집 도감 · 누적 기록</h3>'+moaCollectionHTML())};
 const permanentCSS=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { permanentCSS.textContent='.permanentCollection{margin:12px 0 22px}.permanentCollection h3{font-size:16px}.permanentRow{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #ffffff20;align-items:center}.permanentRow>img{width:54px;height:54px;object-fit:contain;flex-shrink:0}.permanentRow>div{min-width:0;flex:1}.permanentRow strong,.permanentRow small{display:block}.permanentRow small{font-size:12px;margin:4px 0;line-height:1.45}.permanentRow button{background:#b5d69c;color:#173021;border:1px solid #cbe8b0;border-radius:9px;padding:9px 11px;font:600 12px system-ui;cursor:pointer;margin-top:5px;min-height:40px;max-width:100%;white-space:normal}.permanentRow button:disabled{background:#344a38;color:#bdcbb1;border-color:#49614a;opacity:.5;cursor:default}@media(max-width:380px){.permanentRow{gap:8px}.permanentRow>img{width:40px;height:40px}.permanentRow strong{font-size:14px}}'; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(permanentCSS); }
-boot=function(){permanentCore.boot();Object.assign(window.__army,{permanentSingleTargetDPS,permanentDPSPerAttack,permanentReference,permanentStatsFromPower,permanentStorePower,permanentBatchPower,permanentGrowthScale,permanentApplyStats,unitVisualRadius,unitVisualExtent,effectiveRange,radius,moaBodyRadius,compressPermanent,permanentRecord,permanentMaterials,permanentState,permanentMaxHP,permanentReviveSeconds,effectiveCapacity,snapshot,pop,cap,attackPower,reset,load,step,die,defeat,recover,showCards,drawUnit,drawCampaignWorld});};
+boot=function(){permanentCore.boot();Object.assign(window.__army,{permanentSingleTargetDPS,permanentDPSPerAttack,permanentReference,permanentStatsFromPower,permanentStorePower,permanentBatchPower,permanentGrowthScale,permanentApplyStats,unitVisualRadius,unitVisualExtent,effectiveRange,radius,moaBodyRadius,compressPermanent,permanentRecord,permanentMaterials,permanentState,permanentMaxHP,permanentReviveSeconds,effectiveCapacity,snapshot,pop,cap,attackPower,reset,load,die,defeat,recover,showCards,drawUnit,drawCampaignWorld});};
 
 </script><script>
 'use strict';
@@ -9394,7 +9370,7 @@ boot=function(){regionCore.boot();Object.assign(window.__army,{regionMultiplier,
 // Level growth is derived from progression, never from a saved/tweened size.
 // Art and camera sample the same interpolated radius without canceling growth.
 CONFIG.moaContinuousGrowth={coefficient:.12,response:6,collisionGateLanes:2,cameraGrowthExponent:.3,cameraDesktopReferenceWidth:900};
-const moaContinuousCore={initializeMoa,reset,load,step,boot,moaBodyRadius};
+const moaContinuousCore={initializeMoa,reset,load,boot,moaBodyRadius};
 function moaLevelScale(level=state?.campaign?.abilities?.level||1){return 1+CONFIG.moaContinuousGrowth.coefficient*(Math.sqrt(Math.max(1,level))-1)}
 function moaTargetSize(){return CONFIG.mother.size*(state.campaign.moaGrowth?CONFIG.moa.growthSize:1)*moaLevelScale()}
 function moaCameraZoom(mother,width){const base=width<800?CONFIG.render.zoomMobile:CONFIG.render.zoomDesktop*Math.max(1,width/CONFIG.moaContinuousGrowth.cameraDesktopReferenceWidth);return base/Math.pow(Math.max(1,mother.size/CONFIG.mother.size),CONFIG.moaContinuousGrowth.cameraGrowthExponent)}
@@ -9402,7 +9378,6 @@ function syncMoaGrowth(immediate=false,dt=0){const m=state.mother,target=moaTarg
 initializeMoa=function(){const m=state.mother,prior=m.size,keep=Number.isFinite(prior)&&prior>0;const result=moaContinuousCore.initializeMoa();if(keep)m.size=prior;syncMoaGrowth(!keep);return result};
 // Preserve existing gameplay and ability dispatch. This module never shoots,
 // changes movement input, rescales world coordinates, or changes ability ranks.
-step=function(dt=CONFIG.sim.fixedStep,input=stick){if(!state.dead)syncMoaGrowth(false,Math.min(CONFIG.qa.maxStep,Math.max(0,dt)));return moaContinuousCore.step(dt,input)};
 reset=function(){const result=moaContinuousCore.reset();syncMoaGrowth(true);resetPresentation();return result};
 load=function(raw){const result=moaContinuousCore.load(raw);if(result){syncMoaGrowth(true);constrainWorld(state.mother);resetPresentation()}return result};
 // Moa's soft locomotion proxy shares the same two-lane gate budget as companions.
@@ -9411,7 +9386,7 @@ moaBodyRadius=function(u){if(u.type!=='mother')return moaContinuousCore.moaBodyR
 // Capture size with continuous fields instead of snapping it as a discrete field.
 
 RENDER_TRACKS.unit.size='linear';
-boot=function(){moaContinuousCore.boot();Object.assign(window.__army,{moaLevelScale,moaTargetSize,moaCameraZoom,syncMoaGrowth,moaBodyRadius,initializeMoa,reset,load,step})};
+boot=function(){moaContinuousCore.boot();Object.assign(window.__army,{moaLevelScale,moaTargetSize,moaCameraZoom,syncMoaGrowth,moaBodyRadius,initializeMoa,reset,load})};
 
 </script><script>
 'use strict';
@@ -9454,7 +9429,7 @@ boot=function(){
 'use strict';
 // Session-only steering. Uses ordinary fixed-tick motion, attacks and rewards.
 CONFIG.autoHunt={queryIntervalMs:BLOOM_TIME.autoHunt.queryMs,rangeInset:18,stopBand:8,idleMs:BLOOM_TIME.autoHunt.idleMs};
-const autoHuntCore={step,boot,refreshUI,reset,load,recover,defeat,boundMoaBody};
+const autoHuntCore={boot,refreshUI,reset,load,recover,defeat,boundMoaBody};
 const autoHunt={enabled:false,room:-1,target:0,query:0,status:'off',moving:false,idleMs:BLOOM_TIME.autoHunt.idleMs};
 function refreshAutoHunt(){if(bloomInTick){bloomEmit("refreshAutoHunt",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;
  const b=$('autoHuntButton');if(!b)return;
@@ -9505,16 +9480,6 @@ boundMoaBody=function(u){
  if(x!==u.x){removeInwardImpulse(u,x>u.x?1:-1,0);u.x=u.worldX=x}
  if(y!==u.y){removeInwardImpulse(u,0,y>u.y?1:-1);u.y=u.worldY=y}
 };
-step=function(dt=CONFIG.sim.fixedStep,input=stick){
- if(state.dead||state.mother.hp<=0){if(autoHunt.enabled)setAutoHunt(false);return}
- const manual=!!(input.manual||input.roll||state.mother.rollRemainingMs>0||Math.hypot(input.x||0,input.y||0)>=CONFIG.input.deadzone);
- if(manual){autoHunt.idleMs=0;if(autoHunt.enabled)setAutoHunt(false)}
- else if(!autoHunt.enabled){autoHunt.idleMs=Math.min(CONFIG.autoHunt.idleMs,autoHunt.idleMs+bloomMs(dt));if(autoHunt.idleMs+1e-7>=CONFIG.autoHunt.idleMs)setAutoHunt(true)}
- if(autoHunt.enabled)input={...input,...autoHuntInput(Math.min(CONFIG.qa.maxStep,Math.max(0,dt)))};
- const result=autoHuntCore.step(dt,input);
- if(autoHunt.enabled&&regionAt(state.mother.x,state.mother.y)!==autoHunt.room)setAutoHunt(false);
- return result;
-};
 function resetIdleAuto(){autoHunt.idleMs=CONFIG.autoHunt.idleMs;setAutoHunt(!state.dead&&state.mother.hp>0)}
 reset=function(){const result=autoHuntCore.reset();resetIdleAuto();return result};
 load=function(raw){const ok=autoHuntCore.load(raw);if(ok)resetIdleAuto();return ok};
@@ -9527,7 +9492,7 @@ boot=function(){
 
  const style=document.createElement('style');style.textContent='#autoHuntButton{display:inline-flex;align-items:center;justify-content:center;cursor:default;min-height:44px;padding:9px 13px;font-size:11px;letter-spacing:.02em;background:#183327e8;border-color:#a8c39370;color:#bcd0b3}#autoHuntButton[data-active="true"]{background:#c9efa0;color:#233b28;border-color:#e6facb;box-shadow:0 0 0 2px #d4f58b20}';document.head.appendChild(style);
  Object.defineProperty(window.__army,'autoHunt',{get:()=>({...autoHunt})});
- Object.assign(window.__army,{setAutoHunt,autoHuntValid,autoHuntSelect,autoHuntPrimaryTarget,step,reset,load,recover,defeat,refreshUI,boundMoaBody});refreshAutoHunt();
+ Object.assign(window.__army,{setAutoHunt,autoHuntValid,autoHuntSelect,autoHuntPrimaryTarget,reset,load,recover,defeat,refreshUI,boundMoaBody});refreshAutoHunt();
 };
 
 </script><script>
@@ -9806,15 +9771,15 @@ permanentRecallNearMoa=function(){for(const r of Object.values(permanentState()?
  * Old saves gain missing heights; this layer never scales or rewrites saved X/Y.
  * Recursive migration runs only at lifecycle/save boundaries, never during RAF.
  */
-const spatialCore={spawn,projectile,launchAbilityShot,abilityDescendants,impact,addFx,die,updateMoa,constrainWorld,moveMoaBody,step,capturePresentation,
+const spatialCore={spawn,projectile,launchAbilityShot,abilityDescendants,impact,addFx,die,updateMoa,constrainWorld,moveMoaBody,capturePresentation,
  reset,load,recover,snapshot,save,exportSave,boot,basePoint,enemyHome,safeRoomPoint,
  regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,
  permanentRecallNearMoa};
 const spatialPairs=[['x','y','z'],['hx','hy','hz'],['homeX','homeY','homeZ'],
  ['worldX','worldY','worldZ'],['startX','startY','startZ'],['aimX','aimY','aimZ'],
  ['originX','originY','originZ'],['fromX','fromY','fromZ'],['x2','y2','z2']];
-let spatialUnits=new WeakMap(),spatialAnchors=new WeakMap(),spatialStepDepth=0,
- spatialLoading=0,spatialCaptureInitial=false,spatialContext=[],spatialParentShot=null;
+let spatialUnits=new WeakMap(),spatialAnchors=new WeakMap(),
+ spatialLoading=0,spatialContext=[],spatialParentShot=null;
 const spatialFinite=n=>typeof n==='number'&&Number.isFinite(n);
 function spatialGround(x,y){const z=WorldProjection.groundHeight(x,y);if(!spatialFinite(z))throw new TypeError('groundHeight must return a finite height');return z}
 function spatialAir(u){const d=unitDef(u.type);return d?.layer==='AIR'?(d.airHeight||0)*.3:0}
@@ -9976,15 +9941,9 @@ moveMoaBody=function(...args){const result=spatialCore.moveMoaBody(...args);spat
 updateMoa=function(...args){spatialUnit(state.mother,true);const result=spatialCore.updateMoa(...args);spatialUnitAnchors(state.mother,true);return result};
 
 
-// Existing layers capture partway through step(). Defer those captures until the
-// outermost tick has completed, so interpolated Z and XY describe the same tick.
-capturePresentation=function(initial=false){if(bloomInTick||globalThis.BLOOM_HEADLESS)return;if(spatialStepDepth){spatialCaptureInitial=spatialCaptureInitial||initial;return}return spatialCore.capturePresentation(initial)};
-step=function(...args){
- if(!bloomInTick&&(presentation.state!==state||presentation.currentTime!==state.time)){spatialBoundary();spatialCore.capturePresentation(true)}
- spatialStepDepth++;try{return spatialCore.step(...args)}finally{
-  spatialStepDepth--;if(!spatialStepDepth){spatialTick();const initial=spatialCaptureInitial;spatialCaptureInitial=false;if(!bloomInTick)spatialCore.capturePresentation(initial)}
- }
-};
+// Presentation reads only settled SDK boundaries; simulation never publishes
+// an intermediate pose or owns a second fixed-step capture schedule.
+capturePresentation=function(initial=false){if(bloomInTick||globalThis.BLOOM_HEADLESS)return;return spatialCore.capturePresentation(initial)};
 
 
 reset=function(...args){const result=spatialCore.reset(...args);spatialRebaseTerrain(state);spatialUnits=new WeakMap();spatialAnchors=new WeakMap();spatialBoundary();resetPresentation();return result};
@@ -10022,7 +9981,7 @@ const WorldSpatial={groundHeight:spatialGround,point:spatialPoint,height:spatial
  normalizeState:spatialState,syncUnit:spatialUnit,syncProjectile:spatialProjectileTick,
  validHeights:value=>spatialTree(value)};
 globalThis.WorldSpatial=WorldSpatial;
-boot=function(){spatialCore.boot();Object.assign(window.__army,{WorldSpatial,spawn,projectile,launchAbilityShot,impact,addFx,damage,attack,die,updateUnit,updateMoa,constrainWorld,moveMoaBody,step,reset,load,recover,snapshot,save,exportSave,basePoint,enemyHome,safeRoomPoint,regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,permanentRecallNearMoa})};
+boot=function(){spatialCore.boot();Object.assign(window.__army,{WorldSpatial,spawn,projectile,launchAbilityShot,impact,addFx,damage,attack,die,updateUnit,updateMoa,constrainWorld,moveMoaBody,reset,load,recover,snapshot,save,exportSave,basePoint,enemyHome,safeRoomPoint,regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,permanentRecallNearMoa})};
 
 </script><script>
 'use strict';
@@ -10560,7 +10519,7 @@ boot=function(){
 // Manual dodge: fixed-tick gameplay. Pausing never advances the cooldown clock.
 CONFIG.moaRoll={schema:1,baseHP:100,previousBaseHP:260,durationMs:BLOOM_TIME.roll.durationMs,invulnerableMs:BLOOM_TIME.roll.invulnerableMs,cooldownMs:BLOOM_TIME.roll.cooldownMs,distance:128,tapMaxMs:160,tapSlop:12,trailLife:.16,trailCount:4};
 CONFIG.challenge.motherHp=CONFIG.mother.hp=CONFIG.moaRoll.baseHP;
-const moaRollCore={boot,step,moveMoaBody,push,load,reset,recover,defeat,refreshUI,drawMother,drawCampaignWorld,openModal,render,sampleSimulationInput};
+const moaRollCore={boot,moveMoaBody,push,load,reset,recover,defeat,refreshUI,drawMother,drawCampaignWorld,openModal,render,sampleSimulationInput};
 Object.assign(RENDER_TRACKS.unit,{rollPose:'linear'});
 
 function moaRollInvulnerable(t){return !!(t?.type==='mother'&&t.hp>0&&(t.rollInvulnerableMs||0)>0)}
@@ -10604,14 +10563,6 @@ moveMoaBody=function(dt,ix,iy){
  m.rollPose=1-bloomRemainingMs(m.rollRemainingMs,bloomStepMs())/C.durationMs;return;
  }
  return moaRollCore.moveMoaBody(dt,ix,iy);
-};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){
- if(state.dead)return;dt=Math.min(CONFIG.qa.maxStep,Math.max(0,dt));if(!dt)return;
- const m=state.mother,l=Math.hypot(input.x||0,input.y||0);
- if(l>=CONFIG.input.deadzone){m.rollLastX=input.x/l;m.rollLastY=input.y/l}
- beginMoaRoll(input.roll);const before=state.time,result=moaRollCore.step(dt,input);
- if(state.time>before){m.rollCooldownMs=bloomRemainingMs(m.rollCooldownMs||0,bloomMs(dt));m.rollInvulnerableMs=bloomRemainingMs(m.rollInvulnerableMs||0,bloomMs(dt));m.rollRemainingMs=bloomRemainingMs(m.rollRemainingMs||0,bloomMs(dt));if(!m.rollRemainingMs)m.rollPose=0}
- return result;
 };
 // This outer guard returns before damage, shield consumption, lifesteal, hit
 // flashes, hitstop, floating damage numbers, or retaliation hooks can run.
@@ -10675,7 +10626,7 @@ refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments)
 boot=function(){
  moaRollCore.boot();try{moaRollHintShown=localStorage.getItem(CONFIG.saveKey+'-roll-hint')==='1'}catch{}const label=document.createElement('span');label.id='rollStatus';label.setAttribute('aria-label','구르기 준비 상태');$('joystick').appendChild(label);
 
- bindMoaRollGesture();refreshMoaRollHUD();resetPresentation();Object.assign(window.__army,{performRoll,beginMoaRoll,sampleSimulationInput,moaRollInvulnerable,load,reset,recover,defeat,step,damage,push,moveMoaBody,render});
+ bindMoaRollGesture();refreshMoaRollHUD();resetPresentation();Object.assign(window.__army,{performRoll,beginMoaRoll,sampleSimulationInput,moaRollInvulnerable,load,reset,recover,defeat,damage,push,moveMoaBody,render});
 };
 const moaRollStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { moaRollStyle.textContent=`#rollStatus{position:absolute;left:50%;bottom:-4px;transform:translate(-50%,100%);font-size:10px;line-height:14px;white-space:nowrap;color:#b6c3af;text-shadow:0 1px 3px #14291f;pointer-events:none}#joystick::after{content:"";position:absolute;inset:-3px;border-radius:50%;pointer-events:none;background:conic-gradient(#deefb3 calc(var(--roll-ready,1)*1turn),#d7e4bd18 0);mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 0)}#joystick[data-roll="invulnerable"]::after{background:#efffc8;filter:drop-shadow(0 0 3px #dbff9980)}#joystick[data-roll="ready"] #rollStatus{color:#e2f4bc}@media(max-width:799px){#rollStatus{bottom:8px;transform:translateX(-50%);font-size:9px}}`; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(moaRollStyle); }
 
@@ -11224,7 +11175,7 @@ recover=function(){const result=healingCore.recover();if(result)healingClear();r
 'use strict';
 CONFIG.pointMove={quantum:16,doubleMs:300,doubleSlop:32,dragSlop:12,tapMs:400,arrival:8,blockedMs:BLOOM_TIME.pointMove.blockedMs};
 let pointNav={goal:null,waypoints:[],index:0,stuckMs:0,best:1000000000};
-const pointCore={step,reset,load,recover,defeat,boot,openModal,drawCampaignWorld};
+const pointCore={reset,load,recover,defeat,boot,openModal,drawCampaignWorld};
 function clearPointNav(){pointNav={goal:null,waypoints:[],index:0,stuckMs:0,best:1000000000}}
 // Shared inverse solves projected screen Y against the actual terrain surface.
 // Hills have bounded positive height and a non-folding projection in this world.
@@ -11245,19 +11196,6 @@ function applyPointMove(x,y,roll){
  pointNav={goal:route[route.length-1],waypoints:route,index:0,stuckMs:0,best:1000000000};autoHunt.idleMs=0;setAutoHunt(false);
  if(roll)beginMoaRoll({x:goal.x-state.mother.x,y:goal.y-state.mother.y});
 }
-step=function(dt=CONFIG.sim.fixedStep,input=stick){
- const manual=!!input.manual||Math.hypot(input.x||0,input.y||0)>=CONFIG.input.deadzone;
- if(state.dead||state.mother.hp<=0)clearPointNav();else if(manual)clearPointNav();
- if(pointNav.goal){
-  const n=pointNav,m=state.mother;let p=n.waypoints[n.index],d=Math.hypot(p.x-m.x,p.y-m.y);
-  while(d<=CONFIG.pointMove.arrival){n.index++;if(n.index>=n.waypoints.length){clearPointNav();autoHunt.idleMs=0;break}p=n.waypoints[n.index];d=Math.hypot(p.x-m.x,p.y-m.y);n.best=1000000000;n.stuckMs=0}
-  if(pointNav.goal){if(d<n.best-.35){n.best=d;n.stuckMs=0}else n.stuckMs+=bloomMs(dt);
-   if(n.stuckMs+1e-7>=CONFIG.pointMove.blockedMs){clearPointNav();autoHunt.idleMs=0;toast('길이 막혀 이동을 멈췄어요. 다른 곳을 찍어 주세요.')}
-   else{const speed=Math.min(1,d/(CONFIG.motion.motherSpeed*dt));input={...input,x:(p.x-m.x)/d*speed,y:(p.y-m.y)/d*speed,manual:true}}
-  }
- }
- return pointCore.step(dt,input);
-};
 reset=function(...a){clearPointNav();clearPointGesture();return pointCore.reset(...a)};
 load=function(...a){const ok=pointCore.load(...a);if(ok){clearPointNav();clearPointGesture()}return ok};
 recover=function(...a){const ok=pointCore.recover(...a);if(ok){clearPointNav();clearPointGesture()}return ok};
@@ -18065,7 +18003,7 @@ globalThis.BloomLiveCodec={encode:encodeGraph,decode:decodeGraph,encodeJob:encod
 /* One authority, one ordered tick stream. Rendering/persistence never decide combat. */
 let bloomTick=0,bloomSession=null,bloomLoop=null,bloomEventSequence=0,bloomInputPending=0;
 const bloomPendingEffects=new Map();
-let bloomCurrentEffects=[],bloomLastPersist=0,bloomEffectDelivered=0,bloomPresentationThrough=-1;
+let bloomCurrentEffects=[],bloomEffectDelivered=0,bloomPresentationThrough=-1;
 'use strict';
 // Rarity is the sole ordinary-unit stat authority. Region selects a grade pool.
 CONFIG.rarity={schema:1,grades:['Common','Uncommon','Rare','Epic','Legendary','Mythic'],
@@ -18085,7 +18023,7 @@ CONFIG.mother.starterCount=0;CONFIG.regionProgression.factor=1;CONFIG.challenge.
 for(const g of CONFIG.campaign.grounds){g.hp=1;g.attack=1;g.rewardM=g.rewardG=0;}
 for(const p of CONFIG.campaign.parcels)p.cost=[0,0];
 CONFIG.economy.startMinerals=CONFIG.economy.startGas=0;
-const rarityLegacy={spawn,reset,step,defeat,recover,attackPower,beginAttackPattern,patternLoadout,patternCanStart,patternInterrupted,companionMovementPolicy};
+const rarityLegacy={spawn,reset,defeat,recover,attackPower,beginAttackPattern,patternLoadout,patternCanStart,patternInterrupted,companionMovementPolicy};
 const raritySpawnRaw=rarityLegacy.spawn;
 function rarityGrade(u){return Number.isInteger(u?.rarityGrade)?u.rarityGrade:0}
 function rarityScale(u){return u&&!u.rivalLeader&&u.type!=='mother'&&u.type!=='objective'?CONFIG.rarity.visualScale[rarityGrade(u)]:1}
@@ -18126,7 +18064,6 @@ die=function(t,killer){if(!t||t.deadEffect)return;if(t.rarityUID){rarityKillOwne
  if(owner!==null&&!t.rivalOwner&&!t.boss&&friendlyTypes.includes(t.type)&&rarityGrade(t)>0){const count=isEncounterElite(t)?CONFIG.rarity.eliteRewardCount:1;rarityAcquire(owner,t.type,rarityGrade(t)-1,count,t.x,t.y);if(WorldPlayers.byAccount(owner)){const p=WorldPlayers.byAccount(owner),d=WorldPlayers.data(p);d.stats.converted=(d.stats.converted||0)+count;d.campaign.collection[t.type]=(d.campaign.collection[t.type]||0)+count;p.leader.convertGlow=CONFIG.moa.conversionGlow}addFx('ring',t.x,t.y,0,0,CONFIG.rarity.gradeColors[rarityGrade(t)-1],radius(t)+8,.35)}uiClock=CONFIG.render.uiInterval;
 };
 reset=function(){const s=rarityLegacy.reset();s.version=CONFIG.version;s.raritySchema=CONFIG.rarity.schema;s.rarityAccounts={};s.rarityRivals={};s.minerals=s.gas=0;s.campaign.growthCards.draft=null;s.campaign.permanents.records={};rarityAccount(-1);for(const u of s.units){if(u.rivalLeader)rarityAccount(u.id);else if(u.team==='friendly')rarityOwnUnit(u)}return s};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){const before=state.time,result=rarityLegacy.step(dt,input),elapsed=state.time-before;if(elapsed>0){rarityRivalTick(elapsed);rarityMaintain(elapsed);}return result};
 defeat=function(){if(state.dead)return;const owned=state.units.filter(u=>u.rarityUID&&u.team==='friendly');const result=rarityLegacy.defeat();for(const u of owned)if(!state.units.some(v=>v.id===u.id))state.units.push(u);return result};
 recover=function(){if(!state.dead)return false;const owned=state.units.filter(u=>u.rarityUID&&u.team==='friendly');const result=rarityLegacy.recover();if(result){for(const u of owned)if(!state.units.some(v=>v.id===u.id))state.units.push(u);rarityRecall(-1);rarityMaintain(0);rebuildGrid();save()}return result};
 parcelCost=i=>Number.isInteger(i)&&i>0&&i<CONFIG.campaign.parcels.length&&!state.campaign.parcels[i]?[0,0]:null;
@@ -19775,7 +19712,6 @@ const soundLaunch=launchAbilityShot;launchAbilityShot=function(t,amount,opts={})
 const soundBeginPattern=beginAttackPattern;beginAttackPattern=function(u,...args){const r=soundBeginPattern(u,...args);if(r)soundCue('warn',u);return r};
 const soundTickPattern=tickAttackPattern;tickAttackPattern=function(u){const before=u.attackController?.phase,r=soundTickPattern(u);if(before==='windup'&&u.attackController?.phase==='execute')soundCue('release',u);return r};
 const soundRoll=beginMoaRoll;beginMoaRoll=function(...args){const r=soundRoll(...args);if(r)soundCue('roll',state.mother);return r};
-const soundStep=step;step=function(...args){const roll=state.mother.rollRemainingMs,level=abilityState()?.level,dead=state.dead;const r=soundStep(...args);if(roll>0&&!state.mother.rollRemainingMs&&!state.dead)soundCue('land',state.mother);if(abilityState()?.level>level)soundCue('level',state.mother);if(!dead&&state.dead)soundCue('death',state.mother);return r};
 const soundRecover=recover;recover=function(...args){const dead=state.dead,r=soundRecover(...args);if(dead&&!state.dead)soundCue('revive',state.mother);return r};
 const soundAcquire=rarityAcquire;rarityAcquire=function(owner,type,grade,...args) {
  const result=soundAcquire(owner,type,grade,...args),player=WorldPlayers.byAccount(owner);
@@ -19793,7 +19729,7 @@ const soundRespawn=rarityRespawn;rarityRespawn=function(account,record) {
  * There are no interior walls, gate paths, level locks or refuge mechanics.
  * The canonical combat, rarity, inventory, fusion and rival growth layers stay
  * authoritative. Only their old room-boundary predicates are retired here. */
-const openWorldCore={reset,spawn,step,defeat,recover,boot,refreshUI,showIntro,showGameHelp,rarityRivalDeath,rarityValidateState};
+const openWorldCore={reset,spawn,defeat,recover,boot,refreshUI,showIntro,showGameHelp,rarityRivalDeath,rarityValidateState};
 const openWorldOldRooms=CONFIG.rectWorld.rooms.map(r=>({...r}));
 const OpenWorldDefinition=Object.freeze({schema:1,width:4800,height:4800,bounds:{x:48,y:48,w:4704,h:4704},
  initialSpawn:{x:2400,y:2400},gradeDistances:[720,1250,1650,2050,2550],
@@ -19921,7 +19857,6 @@ companionMovementPolicy=function(u){if(u?.team!=='friendly')return companionPoli
 refreshPermanentHuntIndex=function(){const I=permanentHuntIndex,room=regionAt(state.mother.x,state.mother.y);if(I.state===state&&I.room===room&&state.time<I.next)return I;I.state=state;I.room=room;I.next=state.time+CONFIG.permanentHunt.queryInterval;I.candidates.length=0;I.claims.clear();I.owners.clear();I.rebuilds++;for(const v of state.units){if(v.hp<=0)continue;if(v.team==='enemy'&&(regionAt(v.x,v.y)===room||dist(v,state.mother)<=900))I.candidates.push(v);else if(v.team==='friendly'&&v.rarityUID&&v.target){I.owners.set(v.id,v.target);I.claims.set(v.target,(I.claims.get(v.target)||0)+1)}}return I};
 autoHuntValid=function(t){return !!(t&&(regionAt(t.x,t.y)===autoHunt.room||dist(t,state.mother)<=900)&&moaSeedTarget(t,true))};
 autoHuntInput=function(dt){const m=state.mother;autoHunt.room=regionAt(m.x,m.y);autoHunt.query-=dt;let t=idMap.get(autoHunt.target);if(autoHunt.query<=0||autoHunt.target&&!autoHuntValid(t))t=autoHuntSelect();if(!t){autoHunt.moving=false;autoHunt.status='waiting';return{x:0,y:0}}const distance=dist(m,t),stop=Math.max(1,CONFIG.moa.rangedReach-CONFIG.autoHunt.rangeInset);if(distance<=stop||!autoHunt.moving&&distance<=stop+CONFIG.autoHunt.stopBand){autoHunt.moving=false;autoHunt.status='attacking';return{x:0,y:0}}const dx=t.x-m.x,dy=t.y-m.y,length=Math.hypot(dx,dy),travel=Math.min(length,Math.max(0,distance-stop)),speed=CONFIG.motion.motherSpeed*Math.max(dt,CONFIG.sim.fixedStep);autoHunt.moving=travel>0;autoHunt.status=travel>0?'moving':'attacking';return length?{x:dx/length*Math.min(1,travel/speed),y:dy/length*Math.min(1,travel/speed)}:{x:0,y:0}};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){const was=autoHunt.enabled,manual=input.manual||input.roll||Math.hypot(input.x||0,input.y||0)>=CONFIG.input.deadzone,result=openWorldCore.step(dt,input);if(was&&!manual&&!pointNav.goal&&!state.dead&&!autoHunt.enabled)setAutoHunt(true);return result};
 
 // Rival choices, levels, XP, fusion and combat assessment are unchanged.
 // Their travel destinations are open points, never gates or level checks.
@@ -20005,7 +19940,7 @@ CONFIG.residentBoss={schema:1,id:'meadow-seedkeeper',name:'씨앗지기',species
  recallWarningMs:BLOOM_TIME.boss.recallWarningMs,returnSpeed:295,returnDamageMultiplier:1.15,recoveryMs:BLOOM_TIME.boss.recoveryMs,
  cooldownMs:BLOOM_TIME.boss.cooldownMs,damageScale:1}}
 ;
-const residentCore={reset,step,boot,load,recover,defeat,updateMoa,canTarget,moaSeedTarget,moaContact,
+const residentCore={reset,boot,load,recover,defeat,updateMoa,canTarget,moaSeedTarget,moaContact,
  autoHuntValid,attackPower,die,conversionEligible,rarityOwnUnit,rarityHasSpecial,applyPointMove,
  setAutoHunt,engageEnemy,enemyReturn,retaliationTarget,radius,applyHealing,drawUnit,drawCampaignWorld,
  stepGroundArc,spatialProjectileTick,drawProjectedProjectile,patternCanStart,patternLoadout,patternConfig,
@@ -20140,12 +20075,6 @@ function residentDie(u,killer){const r=residentState();if(!r||u.deadEffect||r.st
 }
 
 reset=function(...args){const result=residentCore.reset(...args);residentInitialize();return result};
-step=function(dt=CONFIG.sim.fixedStep,input=stick){const r=residentState();if(r&&!state.dead){r.tick++;r.stepStart={x:state.mother.x,y:state.mother.y};const axis=!!input.manual&&Math.hypot(input.x||0,input.y||0)>=CONFIG.input.deadzone,roll=!!input.roll,rollTravel=r.manualRoll&&(state.mother.rollRemainingMs||0)>0;
- r.manualRoll=roll||rollTravel;r.manualThisTick=axis||roll||rollTravel||r.manualPoint&&!!pointNav.goal&&!autoHunt.enabled;if(axis||roll){r.manualPoint=false;r.manualIntent={kind:roll?'roll':'axes',tick:r.tick,x:input.roll?.x??input.x,y:input.roll?.y??input.y}}
- if(!pointNav.goal)r.manualPoint=false;
- for(const entry of Object.values(r.rewardLedger))if(!entry.awarded)residentAward(entry);
- if(r.status==='dead'&&(r.respawnRemainingMs=bloomRemainingMs(r.respawnRemainingMs,bloomMs(dt)))===0)residentSpawn();
- }const result=residentCore.step(dt,input);if(r&&state.dead&&r.status==='engaged')residentReturn('owner-dead');return result};
 updateMoa=function(...args){residentTryEntry();return residentCore.updateMoa(...args)};
 
 applyPointMove=function(...args){const result=residentCore.applyPointMove(...args),r=residentState();if(r&&bloomInTick&&pointNav.goal){r.manualPoint=true;r.manualRoll=!!args[2]&&(state.mother.rollRemainingMs||0)>0;r.manualIntent={kind:'point',tick:r.tick,x:pointNav.goal.x,y:pointNav.goal.y}}return result};
@@ -20380,7 +20309,7 @@ CONFIG.saveExportName='bloom-open-world-save-v53.json';
  * or NPC armies. Existing ownership and resident boss lifecycles are untouched. */
 CONFIG.wildRing={schema:1,innerRadius:380,spawnRadius:1000,despawnRadius:1200,
  quotaCell:120,quotaMs:BLOOM_TIME.wildRing.quotaMs,searchesPerSecond:BLOOM_TIME.wildRing.searchesPerSecond,commitsPerSecond:BLOOM_TIME.wildRing.commitsPerSecond,attempts:16,maxParticipants:OpenWorldDefinition.layouts.online.maxHumans};
-const wildRingCore={step,spawnCamp,rarityValidateState};
+const wildRingCore={spawnCamp,rarityValidateState};
 // Each original source slot gets one chance to introduce a persistent leader.
 // Recycling ordinary wildlife must not mint an unlimited permanent NPC army.
 // Existing leaders and their dedicated rarityReviveOwner reservations survive.
@@ -20477,7 +20406,6 @@ regrowCamps=function(dt){
  if(state.camps.length)s.cursor=(s.cursor+1)%state.camps.length;
 };
 // Cull before any AI/combat runs, including the first tick of a legacy disk load.
-step=function(dt,input){wildRingCull();const result=wildRingCore.step(dt,input);wildRingCull();return result};
 rarityValidateState=bloomValidationFromSteps(function*(v,...args){const s=v?.wildRing;if(s&&(!s||s.schema!==2||!['elapsedMs','nextQuotaMs'].every(k=>bloomPositiveMs(s[k]))||!['cursor','culled','spawned'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||!Array.isArray(s.quotas)||!(yield*bloomValidationEvery(s.quotas,n=>Number.isSafeInteger(n)&&n>=0))))return false;return yield*wildRingCore.rarityValidateState.steps(v,...args)});
 const WildSpawnRing=Object.freeze({inspect:()=>({config:{...CONFIG.wildRing},scheduler:{...wildRingState()},wild:state.units.filter(wildRingOrdinary).length,reservations:state.camps.reduce((n,c)=>n+(c.regrowth?.length||0),0)}),ordinary:wildRingOrdinary});
 CONFIG.saveExportName='bloom-open-world-save-v54.json';
@@ -21104,12 +21032,11 @@ moaRollRechargeMs=function(g=growthState()){return Math.max(0,moaAbilityCooldown
 // Changing the budget is a paused session boundary, never a live speed switch.
 // All peers negotiate the same SDK tickRate and simulationVersion.
 // Changing TPS cannot change ms timers or event identity. SDK indices are not durations.
-function bloomRescaleTimers(oldRate,newRate){}
 function bloomSetTickRate(rate){
  rate=Number(rate);if(!BLOOM_TPS_OPTIONS.includes(rate))throw new RangeError('Unsupported simulation budget');
  if(bloomInTick||typeof BloomSimulation!=='undefined'&&BloomSimulation.multiplayer||playing&&!paused)throw new Error('Change TPS only at a paused single-player session boundary');
  const old=CONFIG.sim.tickRate;if(old===rate)return rate;
- bloomApplyTickRate(rate);if(state)bloomRescaleTimers(old,rate);
+ bloomApplyTickRate(rate);
  if(!globalThis.BLOOM_HEADLESS)try{localStorage.setItem('bloom-simulation-tps',String(rate))}catch{}
  if(typeof bloomSession!=='undefined'&&bloomSession)bloomStartDriver();resetPresentation();return rate;
 }
@@ -21135,7 +21062,7 @@ load=function(raw){const desired=CONFIG.sim.tickRate;let previous=null;try{
  // Validation may inspect another TPS, but no live graph is installed yet.
  bloomApplyTickRate(oldRate);let valid;try{valid=bloomValidate(c,undefined,true)}finally{bloomApplyTickRate(desired)}if(!valid)throw new TypeError('Invalid saved authority');
  previous=bloomCapture();bloomApplyTickRate(oldRate);
- bloomRestore(c,true);rarityMigrateCapacity();bloomApplyTickRate(desired);bloomRescaleTimers(oldRate,desired);
+ bloomRestore(c,true);rarityMigrateCapacity();bloomApplyTickRate(desired);
  if(!bloomValidate(bloomCapture()))throw new TypeError('Invalid migrated authority');resetPresentation();return true;
  }catch(error){bloomApplyTickRate(desired);if(previous)bloomRestore(previous);return false}
 };
@@ -21559,7 +21486,7 @@ function *worldPlayersValidateSteps(source) {
  } catch { return false; }
 }
 
-const bloomCore={step,reset,load,save,boot,performRoll,ensureGrowthDraft,ensureAbilityDraft,chooseGrowth,chooseAbility,unlockParcel,setAutoHunt,setPermanentHuntMode,recover,compressPermanent,showUpgrades,showAbilityChoices};
+const bloomCore={reset,load,save,boot,performRoll,ensureGrowthDraft,ensureAbilityDraft,chooseGrowth,chooseAbility,unlockParcel,setAutoHunt,setPermanentHuntMode,recover,compressPermanent,showUpgrades,showAbilityChoices};
 function bloomEmit(type,args){
  if(type==='addFx'){const p=args[8]||{};args[8]={...p,z:p.z??spatialAt(args[1],args[2]),z2:p.z2??spatialAt(args[3],args[4])};}
  const entity=args.find(v=>v&&typeof v==='object'&&Number.isSafeInteger(v.id))?.id??0;
@@ -21620,7 +21547,7 @@ function bloomInstallAuthority(authority,commit=true){
  Object.assign(permanentHuntIndex,h,{claims:maps.claims,owners:maps.owners});
  grid=maps.grid;collisionGrid=maps.collision;idMap=maps.ids;gridColumns=g.gridColumns;gridRows=g.gridRows;collisionColumns=g.collisionColumns;collisionRows=g.collisionRows;gridState=g.gridState;gridUnits=g.gridUnits;maxTargetRadius=g.maxTargetRadius;maxCollisionGround=g.maxCollisionGround;maxCollisionAir=g.maxCollisionAir;
  rectFriendState=rect.state;rectFriendTime=rect.time;rectFriendMask=rect.mask;CONFIG.moa.rangedReach=w.rangedReach;
- spatialUnits=spU;spatialAnchors=spA;spatialContext=[];spatialParentShot=null;spatialStepDepth=0;spatialCaptureInitial=false;
+ spatialUnits=spU;spatialAnchors=spA;spatialContext=[];spatialParentShot=null;
  bloomSeed=c.seed;bloomTick=c.tick;permanentBusy=false;growthChoosing=false;choosingAbility=false;
  if(commit)for(const t of bloomPendingEffects.keys())if(t>=bloomTick)bloomPendingEffects.delete(t);
  // Pure restore does not invoke disk load, UI, terrain rebasing, RNG or presentation.
@@ -21742,9 +21669,9 @@ const BloomPreparedSnapshots=(()=>{
   return {c,w,g,h,rect:w.rect,spU:spatialUnits,spA:spatialAnchors,maps:{grid,collision:collisionGrid,ids:idMap,claims:permanentHuntIndex.claims,owners:permanentHuntIndex.owners}};
  }
  function membershipBranch(branch,change){
-  const live=captureLive(),transient={spatialContext,spatialParentShot,spatialStepDepth,spatialCaptureInitial,permanentBusy,growthChoosing,choosingAbility};
+  const live=captureLive(),transient={spatialContext,spatialParentShot,permanentBusy,growthChoosing,choosingAbility};
   try{const authority=bloomPrepareAuthority(branch.c);authority.spU=branch.units;authority.spA=branch.anchors;bloomInstallAuthority(authority,false);WorldMembership.apply(change,false);return {c:bloomCapture(true),units:spatialUnits,anchors:spatialAnchors}}
-  finally{bloomInstallAuthority(live,false);({spatialContext,spatialParentShot,spatialStepDepth,spatialCaptureInitial,permanentBusy,growthChoosing,choosingAbility}=transient)}
+  finally{bloomInstallAuthority(live,false);({spatialContext,spatialParentShot,permanentBusy,growthChoosing,choosingAbility}=transient)}
  }
  function managedJob(step,release){let done=false,canceled=false,result;return {get done(){return done},get result(){return done?result:undefined},cancel(){if(!done&&!canceled){canceled=true;release()}},pulse(options={}){if(canceled)throw new Error('Canceled snapshot job');if(done)return {done,result};try{const next=step(options);if(next){result=next.value;done=true;release()}return {done,result}}catch(error){canceled=true;release();throw error}}}}
  function prepareJob(bytes,expected={}){
@@ -21828,7 +21755,7 @@ function bloomNewSession({players=['solo'],localPlayerId='solo',ownerId='solo',c
  if(preserveWorld&&bloomTick!==0)throw new Error('Adopt the active room session to preserve its global tick');
  if(!['lockstep','rollback'].includes(mode))throw new TypeError('Netcode mode must be lockstep or rollback');
  if(!Number.isInteger(checksumInterval)||checksumInterval<1||checksumInterval>0x7fffffff||mode==='lockstep'&&checksumInterval>stateHistorySize)throw new RangeError('Checksum interval must be positive and fit lockstep input history');
- bloomSnapshotStore.invalidate();bloomSession?.close();CombatAudio.clear();CombatFeedback.clear();if(!preserveWorld)bloomTick=0;bloomPendingEffects.clear();bloomResetEventJournal();bloomInputPending=0;bloomPresentationThrough=-1;bloomEffectDelivered=0;bloomLastPersist=0;BloomSimulation.ownerId=ownerId;BloomSimulation.sessionConfig=nextConfig;BloomSimulation.multiplayer=nextConfig.mode==='online';WorldPlayers.setLocalPlayerId(localPlayerId);
+ bloomSnapshotStore.invalidate();bloomSession?.close();CombatAudio.clear();CombatFeedback.clear();if(!preserveWorld)bloomTick=0;bloomPendingEffects.clear();bloomResetEventJournal();bloomInputPending=0;bloomPresentationThrough=-1;bloomEffectDelivered=0;BloomSimulation.ownerId=ownerId;BloomSimulation.sessionConfig=nextConfig;BloomSimulation.multiplayer=nextConfig.mode==='online';WorldPlayers.setLocalPlayerId(localPlayerId);
  const options={players,localPlayerId,sessionId:'bloom-webgl-v58',simulationVersion:'budmori-shared-ms-v3',seed:bloomSeed,inputSize:5,adapter:bloomAdapter,onEvent(event){if(onEvent)onEvent(event);if(event.type==='version-mismatch'||event.type==='handshake-mismatch')BloomDiagnostics.report(new Error('게임 버전 또는 동기화 설정이 달라 연결할 수 없어요. 양쪽 게임을 새로고침하고 같은 모드·TPS·입력 지연·체크섬 주기를 선택해 주세요.'),{kind:'sdk.compatibility',fatal:true})},profile:{...BloomOwnedSDK.profiles.action,mode,checksumInterval,...(globalThis.BLOOM_MAIN_AUTHORITY?{maxCatchupSteps:1}:{}),tickRate:CONFIG.sim.tickRate,baseInputDelayTicks:inputDelayTicks,minInputDelayTicks:inputDelayTicks,maxInputDelayTicks:inputDelayTicks,adaptiveInputDelay:false,pacingPolicy:'none',stateHistorySize,rollbackWindowTicks:24,maxHistoryBytes:nextConfig.mode==='online'?67108864:268435456,maxSnapshotBytes:8388608}};
  if(clock)options.clock=clock;
  if(BloomOwnedSDK.createRoomSession&&mode==='lockstep'&&(room||players.length===1)){bloomSession=BloomOwnedSDK.createRoomSession({...options,mode:nextConfig.mode,room:room||undefined,sessionId:room?.sessionId||options.sessionId,membership:{maxPlayers:CONFIG.session.maxPlayers,transitionTimeoutMs:15000,reconnectGraceMs:CONFIG.session.reconnectGraceMs,maxCatchupSteps:4}})}else{if(nextConfig.mode==='online'&&room)throw new Error('Dynamic room SDK unavailable');if(!state.participants)WorldPlayers.bindInitial(ownerId);if(players.length===1)bloomAdapter.applyMembership({epoch:0,tick:bloomTick,players:[ownerId],joined:[ownerId],left:[],coordinatorId:ownerId,reason:'initial'});bloomSession=BloomOwnedSDK.createSession(options)}return bloomSession;
@@ -21836,11 +21763,9 @@ function bloomNewSession({players=['solo'],localPlayerId='solo',ownerId='solo',c
 function bloomInitialize(seed=0x6d2b79f5){bloomSnapshotStore.invalidate();if(!Number.isInteger(seed)||seed<0||seed>0xffffffff)throw new TypeError('Explicit uint32 seed');bloomSeed=seed;CONFIG.sim.seed=seed;WorldSpawn.configure(CONFIG.session.mode);bloomInitializing=true;try{bloomCore.reset();state.campaign.savedAt=0;abilityShotSerial=0;finisherSerial=0;finisherShot=null;Object.assign(permanentHuntIndex,{state:null,room:-1,next:0,candidates:[],rebuilds:0});permanentHuntIndex.claims.clear();permanentHuntIndex.owners.clear();rectFriendState=null;rectFriendTime=-1;rectFriendMask=0;spatialBoundary();}finally{bloomInitializing=false}bloomTick=0;WorldMembership.captureTemplate();return state}
 reset=function(){const s=bloomInitialize(bloomSeed);if(bloomSession)bloomStartDriver();return s};
 load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollback restore');bloomInitializing=true;let ok;try{ok=bloomCore.load(raw)}finally{bloomInitializing=false}if(ok){rarityFusionVisuals.length=0;startUXHasSave=true;if(bloomSession)bloomStartDriver();}return ok};
-// Existing RAF remains the renderer; the SDK loop owns all fixed tick scheduling.
-advanceSimulationClock=function(elapsed){if(!bloomLoop)return 0;const before=bloomTick;bloomWallTime+=Math.max(0,elapsed)*1000;bloomLoop.pulse(bloomWallTime);return bloomTick-before};
-let bloomWallTime=0;
-function bloomStartDriver(){bloomNewSession();bloomWallTime=0;bloomLoop=BloomOwnedSDK.createLoop({session:bloomSession,onError(error){paused=true;if(!globalThis.BLOOM_HEADLESS){BloomDiagnostics.report(error,{kind:'sdk.loop',fatal:true});}},getInput:()=>{publishVisibleHuntView();return bloomEncodeInput({...moaRollCore.sampleSimulationInput(),suspended:!BloomSimulation.multiplayer&&(paused||!playing||!!modalKind)})},canAdvance:()=>playing&&(((!paused||BloomSimulation.multiplayer)&&!state.dead)||bloomInputPending>0),onAdvance(result){if(result.status!=='advanced')return;bloomInputPending=0;bloomPresent(Math.min(bloomSession.confirmedTick,bloomTick-1));if(!globalThis.BLOOM_HEADLESS){capturePresentation();maybeAbilityPrompt();}if(bloomPersistenceRequested||bloomTick-bloomLastPersist>=5*CONFIG.sim.tickRate){bloomLastPersist=bloomTick;save();}},render({alpha}){accumulator=alpha*CONFIG.sim.fixedStep;}});}
-boot=function(){bloomInitializing=true;try{bloomCore.boot()}finally{bloomInitializing=false}bloomStartDriver();Object.assign(window.__army,{BloomSimulation,step:bloomRunTick,performRoll,setAutoHunt,setPermanentHuntMode,chooseGrowth,chooseAbility,unlockParcel,recover,compressPermanent,reset,load,save})};
+// Non-running engine fixtures may replace the session directly. The browser
+// runtime installs its single driver boundary before boot; RAF never steps SIM.
+let bloomStartDriver=bloomNewSession;
 const BloomSimulation=globalThis.BloomSimulation={version:'budmori-shared-v3',sdkCommit:'c3173914519a78834360430071e7a125736d86d5',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
@@ -21850,53 +21775,91 @@ const BloomSimulation=globalThis.BloomSimulation={version:'budmori-shared-v3',sd
 const PublicSession=globalThis.PublicSession=(()=>{
  const storageFlag='budmori-public-active-v1',resumeKey='budmori-public-resume-v1';
  const config={namespace:'budmori-public-v1',maxPlayers:5,discoveryMs:1500,totalTimeoutMs:60000,leaseMs:15000,reservationMs:30000,resumeLifetimeMs:30*60*1000};
- let room=null,attempt=0,controller=null,pending=null,phase='idle',soloDisk=null,priorRate=null,priorNetcode=null,reconnectSince=null,reconnectSeconds=null;
+ const sessionPhase=Object.freeze({idle:'idle',discovering:'discovering',joining:'joining',playing:'playing',failed:'failed',leaving:'leaving'});
+ const lifecycle={phase:sessionPhase.idle,generation:0};
+ const connection={room:null,controller:null,attempt:null};
+ const reconnect={sinceMs:null,seconds:null};
+ const soloReturn={disk:null,tickRate:null,netcode:null};
+ const presentation={label:null,unsubscribe:null};
  const storage=()=>{try{return globalThis.sessionStorage}catch{return null}};
  function remember(active){try{if(active)storage()?.setItem(storageFlag,'1');else storage()?.removeItem(storageFlag)}catch{}}
- function notify(){if(globalThis.BLOOM_HEADLESS)return;const e=$('publicStatus');if(e)e.textContent=phase==='playing'&&reconnectSeconds!==null?`세계 일시 정지 · 연결 복귀 대기 약 ${reconnectSeconds}초`:phase==='playing'&&bloomSession?.resimulating?'세계 일시 정지 · 복귀 상태를 맞추는 중…':phase==='playing'?`공개 세계 · ${bloomSession?.players?.length||1}/${config.maxPlayers} · 입력 ${Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate)}ms`:phase==='joining'?'세계에 합류하는 중…':phase==='discovering'?'함께할 세계를 찾는 중…':phase==='failed'?'연결 중단':phase==='leaving'?'세계에서 나오는 중…':''}
+ function notify(){
+  if(globalThis.BLOOM_HEADLESS||!presentation.label)return;
+  const phase=lifecycle.phase;
+  presentation.label.textContent=phase===sessionPhase.playing&&reconnect.seconds!==null?`세계 일시 정지 · 연결 복귀 대기 약 ${reconnect.seconds}초`:phase===sessionPhase.playing&&bloomSession?.resimulating?'세계 일시 정지 · 복귀 상태를 맞추는 중…':phase===sessionPhase.playing?`공개 세계 · ${bloomSession?.players?.length||1}/${config.maxPlayers} · 입력 ${Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate)}ms`:phase===sessionPhase.joining?'세계에 합류하는 중…':phase===sessionPhase.discovering?'함께할 세계를 찾는 중…':phase===sessionPhase.failed?'연결 중단':phase===sessionPhase.leaving?'세계에서 나오는 중…':'';
+ }
+ function setPhase(phase){lifecycle.phase=phase;if(phase!==sessionPhase.playing)reconnect.sinceMs=reconnect.seconds=null;notify()}
+ function isCurrent(attempt){return attempt.generation===lifecycle.generation&&!attempt.controller.signal.aborted}
+ function releaseRoom({forget=false}={}){
+  const {room,controller}=connection;connection.room=connection.controller=null;
+  if(forget)room?.forgetResume?.();room?.close();controller?.abort();
+ }
  function observeStatus(status,now=performance.now()){
-  const interrupted=phase==='playing'&&['interrupted','disconnected'].includes(status);
-  if(interrupted){if(reconnectSince===null)reconnectSince=now}else reconnectSince=null;
-  const seconds=reconnectSince===null?null:Math.max(0,Math.ceil((CONFIG.session.reconnectGraceMs-(now-reconnectSince))/1000));
-  if(seconds!==reconnectSeconds){reconnectSeconds=seconds;notify()}
+  const interrupted=lifecycle.phase===sessionPhase.playing&&['interrupted','disconnected'].includes(status);
+  if(interrupted){if(reconnect.sinceMs===null)reconnect.sinceMs=now}else reconnect.sinceMs=null;
+  const seconds=reconnect.sinceMs===null?null:Math.max(0,Math.ceil((CONFIG.session.reconnectGraceMs-(now-reconnect.sinceMs))/1000));
+  if(seconds!==reconnect.seconds){reconnect.seconds=seconds;notify()}
   return seconds;
  }
- function ready(){if(phase!=='joining'||!bloomSession?.ready||!WorldPlayers.get(bloomSession.localPlayerId))return false;phase='playing';playing=true;paused=false;remember(true);const leader=WorldView.leader();view.x=leader.x;view.y=leader.y;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');modalKind='';$('modal').classList.remove('show');resetPresentation();refreshUI()}notify();return true}
- function failed(error){if(phase==='leaving'||phase==='idle')return;phase='failed';playing=false;paused=true;bloomLoop?.stop();notify();if(!globalThis.BLOOM_HEADLESS){openModal('online-failed',sheetHead('공개 세계 연결이 끊겼어요')+'<p>다른 참가자가 남아 있으면 같은 모아로 다시 연결할 수 있어요. 모두 나간 세계는 종료됩니다.</p><button class="primary" data-public="resume">같은 세계 다시 연결</button><button class="primary" data-public="fresh">새 판 시작</button><button class="tab" data-public="solo">혼자 플레이</button>');BloomDiagnostics.report(new Error(String(error?.message||error||'Public room disconnected')),{kind:'public.connection'})}}
+ function ready(){if(lifecycle.phase!==sessionPhase.joining||!bloomSession?.ready||!WorldPlayers.get(bloomSession.localPlayerId))return false;setPhase(sessionPhase.playing);playing=true;paused=false;remember(true);const leader=WorldView.leader();view.x=leader.x;view.y=leader.y;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');modalKind='';$('modal').classList.remove('show');resetPresentation();refreshUI()}notify();return true}
+ function failed(error){if(lifecycle.phase===sessionPhase.leaving||lifecycle.phase===sessionPhase.idle)return;setPhase(sessionPhase.failed);playing=false;paused=true;bloomLoop?.stop();if(!globalThis.BLOOM_HEADLESS){openModal('online-failed',sheetHead('공개 세계 연결이 끊겼어요')+'<p>다른 참가자가 남아 있으면 같은 모아로 다시 연결할 수 있어요. 모두 나간 세계는 종료됩니다.</p><button class="primary" data-public="resume">같은 세계 다시 연결</button><button class="primary" data-public="fresh">새 판 시작</button><button class="tab" data-public="solo">혼자 플레이</button>');BloomDiagnostics.report(new Error(String(error?.message||error||'Public room disconnected')),{kind:'public.connection'})}}
  function event(e){if(e.type==='membership-committed'){ready();notify()}else if(['partition-failed','transport-failed','transition-timeout','fatal'].includes(e.type))failed(new Error(e.type));}
  async function start({fresh=false}={}){
-  if(pending)return pending;if(phase==='playing'&&!fresh){playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS)closeModal();return true}if(!BloomOwnedSDK.createNostrPublicRoom||!BloomOwnedSDK.createRoomSession){const error=new Error('Public-room SDK is unavailable');phase='discovering';failed(error);return false}
-  const token=++attempt;controller=new AbortController();phase='discovering';reconnectSince=reconnectSeconds=null;playing=false;paused=true;notify();
+  if(connection.attempt)return connection.attempt.pending;
+  if(lifecycle.phase===sessionPhase.playing&&!fresh){playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS)closeModal();return true}
+  if(!BloomOwnedSDK.createNostrPublicRoom||!BloomOwnedSDK.createRoomSession){const error=new Error('Public-room SDK is unavailable');setPhase(sessionPhase.discovering);failed(error);return false}
+  const attempt={generation:++lifecycle.generation,controller:new AbortController(),pending:null};connection.attempt=attempt;playing=false;paused=true;setPhase(sessionPhase.discovering);
   if(!globalThis.BLOOM_HEADLESS)openModal('online-joining',sheetHead('공개 세계를 찾고 있어요')+'<p>빈자리가 있는 세계에 자동으로 합류해요. 새 세계는 혼자서도 바로 시작됩니다.</p><button class="tab" data-public="cancel">취소</button>');
-  pending=(async()=>{
-   if(BloomSimulation.sessionConfig.mode==='local'){priorRate=CONFIG.sim.tickRate;priorNetcode={...CONFIG.netcode};try{soloDisk=await BloomSimulation.disk.snapshot()}catch{soloDisk=null}}
-   if(fresh&&BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure){phase='leaving';notify();try{await bloomSession?.leave?.()}catch{}if(token!==attempt||controller.signal.aborted)return false;phase='discovering';notify()}
-   if(fresh){room?.forgetResume?.();remember(false)}
-   room?.close();room=null;
-   const store=storage(),next=await BloomOwnedSDK.createNostrPublicRoom({namespace:config.namespace,simulationVersion:`budmori-shared-v3-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`,maxPlayers:config.maxPlayers,discoveryMs:config.discoveryMs,totalTimeoutMs:config.totalTimeoutMs,leaseMs:config.leaseMs,reservationMs:config.reservationMs,signal:controller.signal,...(store?{resume:{storage:store,key:resumeKey,lifetimeMs:config.resumeLifetimeMs,reset:fresh}}:{}),onStatus(){notify()}});
-   if(token!==attempt||controller.signal.aborted){next.close();return false}room=next;phase='joining';CONFIG.session.mode='online';CONFIG.session.persistence='none';CONFIG.session.progressionPolicy='fresh';CONFIG.netcode.mode='lockstep';
-   const seed=BloomOwnedSDK.hashBytes(new TextEncoder().encode(room.sessionId));bloomInitialize(seed);
-   const session=bloomNewSession({room,players:[...room.players],ownerId:room.coordinatorId,localPlayerId:room.localPlayerId,sessionConfig:{mode:'online',persistence:'none',progressionPolicy:'fresh'},onEvent:event});
+  attempt.pending=(async()=>{
+   if(BloomSimulation.sessionConfig.mode==='local'){
+    const tickRate=CONFIG.sim.tickRate,netcode={...CONFIG.netcode};let disk=null;
+    try{disk=await BloomSimulation.disk.snapshot()}catch{}
+    if(!isCurrent(attempt))return false;
+    Object.assign(soloReturn,{disk,tickRate,netcode});
+   }
+   if(fresh&&BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure){setPhase(sessionPhase.leaving);try{await bloomSession?.leave?.()}catch{}if(!isCurrent(attempt))return false;setPhase(sessionPhase.discovering)}
+   if(!isCurrent(attempt))return false;
+   releaseRoom({forget:fresh});if(fresh)remember(false);
+   const store=storage(),next=await BloomOwnedSDK.createNostrPublicRoom({namespace:config.namespace,simulationVersion:`budmori-shared-v3-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`,maxPlayers:config.maxPlayers,discoveryMs:config.discoveryMs,totalTimeoutMs:config.totalTimeoutMs,leaseMs:config.leaseMs,reservationMs:config.reservationMs,signal:attempt.controller.signal,...(store?{resume:{storage:store,key:resumeKey,lifetimeMs:config.resumeLifetimeMs,reset:fresh}}:{}),onStatus(){if(isCurrent(attempt))notify()}});
+   if(!isCurrent(attempt)){next.close();return false}
+   connection.room=next;connection.controller=attempt.controller;setPhase(sessionPhase.joining);CONFIG.session.mode='online';CONFIG.session.persistence='none';CONFIG.session.progressionPolicy='fresh';CONFIG.netcode.mode='lockstep';
+   const seed=BloomOwnedSDK.hashBytes(new TextEncoder().encode(next.sessionId));bloomInitialize(seed);
+   const session=bloomNewSession({room:next,players:[...next.players],ownerId:next.coordinatorId,localPlayerId:next.localPlayerId,sessionConfig:{mode:'online',persistence:'none',progressionPolicy:'fresh'},onEvent(e){if(isCurrent(attempt))event(e)}});
    BloomSimulation.runtime?.installSession(session);playing=true;paused=true;remember(true);notify();ready();return true;
-  })().catch(error=>{if(token===attempt&&!controller.signal.aborted)failed(error);return false}).finally(()=>{if(token===attempt)pending=null});return pending;
+  })().catch(error=>{if(isCurrent(attempt)){failed(error);if(connection.controller!==attempt.controller)attempt.controller.abort()}return false}).finally(()=>{if(connection.attempt===attempt)connection.attempt=null});return attempt.pending;
  }
  async function leave(){
-  const token=++attempt,departingController=controller;
-  // The discovery signal also owns the resolved RTC room. Aborting it before
-  // leave consensus turns a graceful handover into an abrupt partition.
-  if(pending||!room)departingController?.abort();pending=null;phase='leaving';notify();
-  try{if(BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure)await bloomSession?.leave?.()}catch{}finally{if(token!==attempt)return;room?.forgetResume?.();room?.close();room=null;departingController?.abort();if(controller===departingController)controller=null;remember(false);phase='idle';notify()}
+  const generation=++lifecycle.generation;
+  // Discovery owns an unfinished attempt; the resolved connection owns its
+  // signal until graceful SDK handover finishes, so RTC is not cut off early.
+  if(connection.attempt?.controller!==connection.controller)connection.attempt?.controller.abort();connection.attempt=null;setPhase(sessionPhase.leaving);
+  try{if(BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure)await bloomSession?.leave?.()}catch{}finally{
+   if(generation!==lifecycle.generation)return;
+   releaseRoom({forget:true});remember(false);setPhase(sessionPhase.idle);
+  }
  }
- async function solo(){if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button>');return false}const leaving=leave(),token=attempt;await leaving;if(token!==attempt)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(priorRate)bloomApplyTickRate(priorRate);if(priorNetcode)Object.assign(CONFIG.netcode,priorNetcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloDisk)restored=load(soloDisk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
- function cancel(){if(BloomSimulation.sessionConfig.mode==='online')return solo();++attempt;controller?.abort();pending=null;phase='idle';notify();if(!globalThis.BLOOM_HEADLESS)showIntro(startUXHasSave)}
+ async function solo(){if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button>');return false}const leaving=leave(),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
+ function cancel(){if(BloomSimulation.sessionConfig.mode==='online')return solo();++lifecycle.generation;connection.attempt?.controller.abort();connection.attempt=null;setPhase(sessionPhase.idle);if(!globalThis.BLOOM_HEADLESS)showIntro(startUXHasSave)}
  function bind(){
   if(globalThis.BLOOM_HEADLESS)return;
+  if(presentation.unsubscribe)return presentation.unsubscribe;
   const label=document.createElement('span');label.id='publicStatus';label.className='menuBtn secondary';label.setAttribute('role','status');$('actions').prepend(label);
-  document.addEventListener('click',e=>{const b=e.target.closest('button'),action=b?.dataset.public;if(b?.dataset.action==='start'){e.preventDefault();e.stopImmediatePropagation();start();return}if(!action)return;e.preventDefault();e.stopImmediatePropagation();if(action==='cancel')cancel();else if(action==='solo')solo();else start({fresh:action==='fresh'})},true);
+  const onClick=e=>{const b=e.target.closest('button'),action=b?.dataset.public;if(b?.dataset.action==='start'){e.preventDefault();e.stopImmediatePropagation();start();return}if(!action)return;e.preventDefault();e.stopImmediatePropagation();if(action==='cancel')cancel();else if(action==='solo')solo();else start({fresh:action==='fresh'})};
+  document.addEventListener('click',onClick,true);
+  const unsubscribe=()=>{document.removeEventListener('click',onClick,true);label.remove();if(presentation.unsubscribe===unsubscribe){presentation.label=null;presentation.unsubscribe=null}};
+  presentation.label=label;presentation.unsubscribe=unsubscribe;notify();
   // The marker is non-secret. Only the SDK reads its bounded room credential.
   let resume=false;try{resume=storage()?.getItem(storageFlag)==='1'}catch{}if(resume)start();
+  return unsubscribe;
  }
- return Object.freeze({config,start,leave,solo,cancel,bind,ready,failed,notify,observeStatus,get phase(){return phase},inspect:()=>({phase,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,reconnectSeconds})});
+ function unbind(){presentation.unsubscribe?.()}
+ function dispose(){
+  ++lifecycle.generation;connection.attempt?.controller.abort();connection.attempt=null;
+  // Final runtime shutdown cannot await membership consensus. Keep the SDK's
+  // bounded resume credential and marker for a reload; explicit leave forgets.
+  unbind();releaseRoom();setPhase(sessionPhase.idle);
+ }
+ return Object.freeze({config,start,leave,solo,cancel,bind,unbind,dispose,ready,failed,notify,observeStatus,get phase(){return lifecycle.phase},inspect:()=>({phase:lifecycle.phase,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,reconnectSeconds:reconnect.seconds})});
 })();
 
 
@@ -21916,10 +21879,19 @@ if(!globalThis.BLOOM_HEADLESS)BloomDiagnostics.provide('render',()=>({backend:ca
  * samples scalar presentation tracks. No Worker, messages, graph mirrors, or
  * serialization is involved in publishing a completed tick to presentation. */
 function bloomMainRuntime() {
+ // One runtime owns the SDK driver, disk requests and DOM subscriptions. A second
+ // caller receives the same owner rather than installing another wrapper chain.
+ if(BloomSimulation.runtime)return BloomSimulation.runtime;
  globalThis.BLOOM_MAIN_AUTHORITY=true;
- let initialized=false,booting=false,booted=false,fatal=false,persistenceProtected=false,soloWorld=true;
- let timer=null,wasActive=false,nextPulseAt=0,latestDisk='',storageError=null,lastDiskTick=0,epoch=0;
- let pendingSaves=[],viewSignature='',inputOverride=null;
+ const runtimePhase=Object.freeze({idle:'idle',ready:'ready',closed:'closed',failed:'failed'});
+ const uiPhase=Object.freeze({idle:'idle',mounting:'mounting',ready:'ready',closed:'closed'});
+ let phase=runtimePhase.idle,epoch=0;
+ const driver={timer:null,wasActive:false,nextPulseAtMs:0};
+ const ui={phase:uiPhase.idle,viewSignature:'',subscriptions:[]};
+ let inputOverride=null;
+ function listen(target,type,listener,options){target.addEventListener(type,listener,options);ui.subscriptions.push(()=>target.removeEventListener(type,listener,options))}
+ function unbind(){for(const off of ui.subscriptions.splice(0))off();PublicSession.unbind();ui.phase=uiPhase.closed}
+ function stopDriver(){clearTimeout(driver.timer);driver.timer=null;bloomLoop?.stop()}
  const metrics={mode:'main-thread SDK loop',advanceStatus:'ready',tickMs:0,maxTickMs:0,ticks:0,presentationMs:0,maxPresentationMs:0};
  const oldQueue=bloomQueue,oldLoad=load,oldReset=reset,oldRate=bloomSetTickRate;
  // Session capabilities, never participant count or local presentation identity,
@@ -21927,21 +21899,22 @@ function bloomMainRuntime() {
  // just because the last peer leaves or the transport is replaced.
  const online=()=>BloomSimulation.sessionConfig?.mode==='online';
  const localReady=()=>{const player=typeof WorldPlayers==='undefined'?null:WorldPlayers.local();return playing&&!paused&&!modalKind&&!(player?player.dead||player.leader?.hp<=0:state.dead)};
- const active=()=>initialized&&!fatal&&(online()?!bloomSession?.failure&&!bloomSession?.closed:localReady());
- const persistence=Object.freeze({
-  get enabled(){return !online()&&BloomSimulation.sessionConfig?.persistence==='solo'&&soloWorld},
+ const active=()=>phase===runtimePhase.ready&&(online()?!bloomSession?.failure&&!bloomSession?.closed:localReady());
+ const persistence={
+  protected:false,soloWorld:true,latestDisk:'',error:null,lastTick:0,pending:[],
+  get enabled(){return !online()&&BloomSimulation.sessionConfig?.persistence==='solo'&&persistence.soloWorld},
   get reason(){return online()?'Local saves are unavailable during a public session':'Restore or reset solo progress before saving'},
   disk(){if(!this.enabled)throw new Error(this.reason);return bloomSnapshotStore.disk()}
- });
+ };
  function sampleInput(){const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status));return bloomEncodeInput(localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:true})}
  const fail=(error,kind='simulation.main')=>BloomDiagnostics.report(error,{kind,fatal:true});
- function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
- function rejectSaves(error){const requests=pendingSaves;pendingSaves=[];for(const p of requests)p.reject(error)}
+ function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected:persistence.protected,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld:persistence.soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
+ function rejectSaves(error){const requests=persistence.pending;persistence.pending=[];for(const p of requests)p.reject(error)}
  function persist(){
-  if(fatal||BloomDiagnostics.fatal||persistenceProtected||!persistence.enabled)return false;
+  if(phase===runtimePhase.failed||BloomDiagnostics.fatal||persistence.protected||!persistence.enabled)return false;
   const disk=persistence.disk();
-  if(disk!==latestDisk||storageError){try{localStorage.setItem(CONFIG.saveKey,disk);storageError=null;latestDisk=disk;startUXHasSave=true}catch(error){storageError=error;BloomDiagnostics.report(error,{kind:'save.storage'});return false}}
-  bloomPersistenceRequested=false;lastDiskTick=bloomTick;return true;
+  if(disk!==persistence.latestDisk||persistence.error){try{localStorage.setItem(CONFIG.saveKey,disk);persistence.error=null;persistence.latestDisk=disk;startUXHasSave=true}catch(error){persistence.error=error;BloomDiagnostics.report(error,{kind:'save.storage'});return false}}
+  bloomPersistenceRequested=false;persistence.lastTick=bloomTick;return true;
  }
  function afterAdvance(result,start){
   if(online()&&(result.status==='failed'||result.status==='closed')){PublicSession.failed(new Error('Public room '+result.status));return false}
@@ -21956,25 +21929,25 @@ function bloomMainRuntime() {
   metrics.tickMs=performance.now()-start;metrics.maxTickMs=Math.max(metrics.maxTickMs,metrics.tickMs);metrics.ticks++;
   bloomInputPending=0;
   const presentAt=performance.now();bloomPresent(Math.min(bloomSession.confirmedTick,bloomTick-1));
-  if(booted&&!globalThis.BLOOM_HEADLESS){capturePresentation();maybeAbilityPrompt()}
+  if(ui.phase===uiPhase.ready&&!globalThis.BLOOM_HEADLESS){capturePresentation();maybeAbilityPrompt()}
   metrics.presentationMs=performance.now()-presentAt;metrics.maxPresentationMs=Math.max(metrics.maxPresentationMs,metrics.presentationMs);
   // Confirmed UI effects can enqueue a follow-up command (for example an
   // ability draft). Persist only after that command reaches its SDK boundary.
   if(bloomInputPending)return;
-  if(persistence.enabled&&(bloomPersistenceRequested||bloomTick-lastDiskTick>=5*CONFIG.sim.tickRate))persist();
+  if(persistence.enabled&&(bloomPersistenceRequested||bloomTick-persistence.lastTick>=5*CONFIG.sim.tickRate))persist();
   else if(!persistence.enabled)bloomPersistenceRequested=false;
-  const requests=pendingSaves;pendingSaves=[];for(const p of requests){try{p.resolve(p.kind==='save'?persist():persistence.disk())}catch(error){p.reject(error)}}
+  const requests=persistence.pending;persistence.pending=[];for(const p of requests){try{p.resolve(p.kind==='save'?persist():persistence.disk())}catch(error){p.reject(error)}}
  }
  function advanceSuspended(){const start=performance.now();afterAdvance(bloomSession.advance(bloomEncodeInput({x:0,y:0,manual:false,suspended:true})),start)}
  function schedule(){
-  if(!initialized||fatal||globalThis.BLOOM_MAIN_TEST_MANUAL)return;
-  if(!active()&&!bloomInputPending){clearTimeout(timer);timer=null;return}
-  if(timer===null)timer=setTimeout(pump,bloomInputPending&&!active()?0:Math.max(0,nextPulseAt-performance.now()));
+  if(phase!==runtimePhase.ready||globalThis.BLOOM_MAIN_TEST_MANUAL)return;
+  if(!active()&&!bloomInputPending){clearTimeout(driver.timer);driver.timer=null;return}
+  if(driver.timer===null)driver.timer=setTimeout(pump,bloomInputPending&&!active()?0:Math.max(0,driver.nextPulseAtMs-performance.now()));
  }
  function pump(){
-  timer=null;if(fatal||!initialized)return;nextPulseAt+=1000/CONFIG.sim.tickRate;
+  driver.timer=null;if(phase!==runtimePhase.ready)return;driver.nextPulseAtMs+=1000/CONFIG.sim.tickRate;
   try{const running=active(),now=performance.now();
-   if(running!==wasActive){bloomLoop.resetTiming();bloomLoop.pulse(now);wasActive=running;nextPulseAt=now+1000/CONFIG.sim.tickRate}
+   if(running!==driver.wasActive){bloomLoop.resetTiming();bloomLoop.pulse(now);driver.wasActive=running;driver.nextPulseAtMs=now+1000/CONFIG.sim.tickRate}
    if(!running){if(bloomInputPending)advanceSuspended();bloomLoop.resetTiming()}
    else bloomLoop.pulse(now);
    schedule();
@@ -21984,65 +21957,71 @@ function bloomMainRuntime() {
   // Selection validation happens before retiring the current loop or waiters.
   const next=options?.adoptSession||bloomNewSession(options);
   if(options?.adoptSession){if(next!==bloomSession||next.tick!==bloomTick)throw new Error('Room authority boundary mismatch')}
-  clearTimeout(timer);timer=null;bloomLoop?.stop();const superseded=pendingSaves;pendingSaves=[];for(const p of superseded){if(p.kind==='save')p.resolve(false);else p.reject(new Error('Save superseded by session boundary'))}
-  if(online())soloWorld=false;epoch++;lastDiskTick=bloomTick;viewSignature='';wasActive=false;metrics.advanceStatus='ready';nextPulseAt=performance.now()+1000/CONFIG.sim.tickRate;
+  stopDriver();const superseded=persistence.pending;persistence.pending=[];for(const p of superseded){if(p.kind==='save')p.resolve(false);else p.reject(new Error('Save superseded by session boundary'))}
+  if(online())persistence.soloWorld=false;epoch++;persistence.lastTick=bloomTick;ui.viewSignature='';driver.wasActive=false;metrics.advanceStatus='ready';driver.nextPulseAtMs=performance.now()+1000/CONFIG.sim.tickRate;
   let tickStart=0;
   bloomLoop=BloomOwnedSDK.createLoop({session:next,backlogPolicy:'retain',
    getInput(){tickStart=performance.now();return sampleInput()},
    canAdvance:active,onAdvance(result){afterAdvance(result,tickStart)},onError(error){fail(error,'sdk.loop')}
   });
-  if(booted){effects=[];permanentTraces=[];sproutImpacts=[];rarityFusionVisuals.length=0;resetPresentation()}
+  if(ui.phase===uiPhase.ready){effects=[];permanentTraces=[];sproutImpacts=[];rarityFusionVisuals.length=0;resetPresentation()}
   schedule();return next;
  }
  function replaceSession(options={}){
-  if(!initialized||fatal||BloomDiagnostics.fatal)throw new Error('Simulation is not available');
+  if(phase!==runtimePhase.ready||BloomDiagnostics.fatal)throw new Error('Simulation is not available');
   if(bloomInTick||bloomInitializing||bloomInputPending||bloomSession?.resimulating)throw new Error('Session switch requires a settled SDK boundary');
   return boundary({...options,preserveWorld:true});
  }
  bloomStartDriver=boundary;
  function controls(){
-  if(!initialized||fatal||!state)return;
-  if(!globalThis.BLOOM_HEADLESS&&(!online()||bloomSession?.ready)){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==viewSignature){viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
-  const running=active();if(running!==wasActive){const now=performance.now();bloomLoop.resetTiming();bloomLoop.pulse(now);wasActive=running;nextPulseAt=now+1000/CONFIG.sim.tickRate}
+  if(phase!==runtimePhase.ready||!state)return;
+  if(!globalThis.BLOOM_HEADLESS&&(!online()||bloomSession?.ready)){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==ui.viewSignature){ui.viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
+  const running=active();if(running!==driver.wasActive){const now=performance.now();bloomLoop.resetTiming();bloomLoop.pulse(now);driver.wasActive=running;driver.nextPulseAtMs=now+1000/CONFIG.sim.tickRate}
   schedule();
  }
- bloomQueue=function(type,args={}){if(!initialized||fatal||online()&&!WorldPlayers.get(bloomSession?.localPlayerId))return false;BloomDiagnostics.command(type);const result=oldQueue(type,args);schedule();return result};
+ bloomQueue=function(type,args={}){if(phase!==runtimePhase.ready||online()&&!WorldPlayers.get(bloomSession?.localPlayerId))return false;BloomDiagnostics.command(type);const result=oldQueue(type,args);schedule();return result};
  publishVisibleHuntView=function(){controls();return true};
  advanceSimulationClock=function(elapsed){bloomCollectDeviceInput();controls();uiClock+=Math.max(0,elapsed||0);return 0};
  function snapshot(kind='snapshot'){
-  if(!initialized||fatal||BloomDiagnostics.fatal)return Promise.reject(new Error('Simulation is not available'));
+  if(phase!==runtimePhase.ready||BloomDiagnostics.fatal)return Promise.reject(new Error('Simulation is not available'));
   if(!persistence.enabled)return kind==='save'?Promise.resolve(false):Promise.reject(new Error(persistence.reason));
-  if(persistenceProtected)return kind==='save'?Promise.resolve(false):Promise.reject(new Error('Original rejected save protected; reset or import first'));
-  if(bloomInputPending){const promise=new Promise((resolve,reject)=>pendingSaves.push({kind,resolve,reject}));if(!active()){try{advanceSuspended()}catch(error){rejectSaves(error);fail(error)}}else schedule();return promise}
+  if(persistence.protected)return kind==='save'?Promise.resolve(false):Promise.reject(new Error('Original rejected save protected; reset or import first'));
+  if(bloomInputPending){const promise=new Promise((resolve,reject)=>persistence.pending.push({kind,resolve,reject}));if(!active()){try{advanceSuspended()}catch(error){rejectSaves(error);fail(error)}}else schedule();return promise}
   try{return Promise.resolve(kind==='save'?persist():persistence.disk())}catch(error){return Promise.reject(error)}
  }
- save=function(){if(!persistence.enabled)return false;if(booting)return true;if(bloomInTick||bloomInitializing){bloomPersistenceRequested=true;return true}if(!initialized||fatal||persistenceProtected)return false;snapshot('save').catch(error=>BloomDiagnostics.report(error,{kind:'save.main'}));return true};
- reset=function(){if(booting)return state;if(online())return false;try{const result=oldReset();soloWorld=true;persistenceProtected=false;persist();controls();return result}catch(error){fail(error,'simulation.reset');throw error}};
- load=function(raw){if(booting)return !!startUXHasSave;if(fatal||online())return false;try{const ok=oldLoad(raw);if(ok){soloWorld=true;persistenceProtected=false;persist();controls()}else BloomDiagnostics.report(new Error('Imported save rejected by compatibility/validation checks'),{kind:'save.import'});return ok}catch(error){fail(error,'simulation.load');throw error}};
- bloomSetTickRate=function(rate){if(online())throw new Error('Change TPS only at a paused single-player session boundary');const result=oldRate(rate);if(initialized){persist();controls()}return result};
+ save=function(){if(!persistence.enabled)return false;if(ui.phase===uiPhase.mounting)return true;if(bloomInTick||bloomInitializing){bloomPersistenceRequested=true;return true}if(phase!==runtimePhase.ready||persistence.protected)return false;snapshot('save').catch(error=>BloomDiagnostics.report(error,{kind:'save.main'}));return true};
+ reset=function(){if(ui.phase===uiPhase.mounting)return state;if(online())return false;try{const result=oldReset();persistence.soloWorld=true;persistence.protected=false;persist();controls();return result}catch(error){fail(error,'simulation.reset');throw error}};
+ load=function(raw){if(ui.phase===uiPhase.mounting)return !!startUXHasSave;if(phase===runtimePhase.failed||online())return false;try{const ok=oldLoad(raw);if(ok){persistence.soloWorld=true;persistence.protected=false;persist();controls()}else BloomDiagnostics.report(new Error('Imported save rejected by compatibility/validation checks'),{kind:'save.import'});return ok}catch(error){fail(error,'simulation.load');throw error}};
+ bloomSetTickRate=function(rate){if(online())throw new Error('Change TPS only at a paused single-player session boundary');const result=oldRate(rate);if(phase===runtimePhase.ready){persist();controls()}return result};
  exportSave=async function(){try{const data=await snapshot(),url=URL.createObjectURL(new Blob([data],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=CONFIG.saveExportName;a.click();setTimeout(()=>URL.revokeObjectURL(url),CONFIG.render.toastTime*1000);toast('진행 백업 파일을 내려받았어요')}catch(error){toast('백업을 만들지 못했어요. 다시 시도해 주세요.');BloomDiagnostics.report(error,{kind:'save.export'})}};
  importSave=function(){if(online()){toast('공개 세계에서는 개인 백업을 불러올 수 없어요');return false}const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{const file=input.files?.[0];if(!file)return;if(file.size>CONFIG.maxSaveBytes){toast('백업 파일이 너무 커요');return}try{if(load(await file.text())){startUXHasSave=true;showPause();toast('백업한 군락을 불러왔어요')}else toast('유효한 Bloom 진행 파일이 아니에요')}catch(error){BloomDiagnostics.report(error,{kind:'save.import'})}};input.click()};
- BloomDiagnostics.setStop(()=>{fatal=true;paused=true;clearTimeout(timer);timer=null;bloomLoop?.stop();rejectSaves(new Error('Simulation stopped; inspect diagnostics'))});
- BloomDiagnostics.setPauseForInspect(()=>{if(booted&&!fatal&&!paused){paused=true;showPause();controls()}});
- BloomDiagnostics.provide('mainLoop',()=>({initialized,fatal,persistenceProtected,epoch,pendingCommands:bloomInputPending,pendingSaves:pendingSaves.length,saveAvailable:persistence.enabled&&!persistenceProtected&&!!latestDisk,sessionConfig:{...BloomSimulation.sessionConfig},storageFailed:!!storageError,...metrics}));
- function pagehide(){if(!fatal&&!BloomDiagnostics.fatal&&!persistenceProtected&&persistence.enabled&&latestDisk)try{localStorage.setItem(CONFIG.saveKey,latestDisk)}catch(error){BloomDiagnostics.report(error,{kind:'save.pagehide'})}}
- const runtime={get ready(){return initialized&&!fatal},get metrics(){return{...metrics,persistenceProtected,sessionConfig:{...BloomSimulation.sessionConfig},persistenceAvailable:persistence.enabled}},inspect,controls,snapshot,replaceSession,installSession(session){return boundary({adoptSession:session})},
-  initialize({tickRate=CONFIG.sim.tickRate,seed=0x6d2b79f5,disk=null}={}){if(initialized&&online())throw new Error('Leave the public session before initializing solo progress');soloWorld=true;persistenceProtected=false;latestDisk='';storageError=null;bloomApplyTickRate(tickRate);bloomInitialize(seed);let loaded=false;if(disk){loaded=oldLoad(disk);if(!loaded){persistenceProtected=true;BloomDiagnostics.report(new Error('Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'})}}playing=false;paused=true;modalKind='intro';initialized=true;boundary();return{loaded,persistenceProtected,tickRate:CONFIG.sim.tickRate}},
-  close(){clearTimeout(timer);timer=null;bloomLoop?.stop();bloomSession?.close();initialized=false;rejectSaves(new Error('Simulation closed'))}
+ BloomDiagnostics.setStop(()=>{phase=runtimePhase.failed;paused=true;stopDriver();rejectSaves(new Error('Simulation stopped; inspect diagnostics'))});
+ BloomDiagnostics.setPauseForInspect(()=>{if(ui.phase===uiPhase.ready&&phase!==runtimePhase.failed&&!paused){paused=true;showPause();controls()}});
+ BloomDiagnostics.provide('mainLoop',()=>({initialized:phase===runtimePhase.ready,fatal:phase===runtimePhase.failed,persistenceProtected:persistence.protected,epoch,pendingCommands:bloomInputPending,pendingSaves:persistence.pending.length,saveAvailable:persistence.enabled&&!persistence.protected&&!!persistence.latestDisk,sessionConfig:{...BloomSimulation.sessionConfig},storageFailed:!!persistence.error,...metrics}));
+ function pagehide(){if(phase!==runtimePhase.failed&&!BloomDiagnostics.fatal&&!persistence.protected&&persistence.enabled&&persistence.latestDisk)try{localStorage.setItem(CONFIG.saveKey,persistence.latestDisk)}catch(error){BloomDiagnostics.report(error,{kind:'save.pagehide'})}}
+ const runtime={get ready(){return phase===runtimePhase.ready},get metrics(){return{...metrics,persistenceProtected:persistence.protected,sessionConfig:{...BloomSimulation.sessionConfig},persistenceAvailable:persistence.enabled}},inspect,controls,snapshot,replaceSession,installSession(session){return boundary({adoptSession:session})},
+  initialize({tickRate=CONFIG.sim.tickRate,seed=0x6d2b79f5,disk=null}={}){if(phase===runtimePhase.ready&&online())throw new Error('Leave the public session before initializing solo progress');persistence.soloWorld=true;persistence.protected=false;persistence.latestDisk='';persistence.error=null;bloomApplyTickRate(tickRate);bloomInitialize(seed);let loaded=false;if(disk){loaded=oldLoad(disk);if(!loaded){persistence.protected=true;BloomDiagnostics.report(new Error('Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'})}}playing=false;paused=true;modalKind='intro';phase=runtimePhase.ready;boundary();return{loaded,persistenceProtected:persistence.protected,tickRate:CONFIG.sim.tickRate}},
+  close(){
+   if(phase===runtimePhase.closed)return;
+   phase=runtimePhase.closed;stopDriver();unbind();
+   rejectSaves(new Error('Simulation closed'));
+   PublicSession.dispose();bloomSession?.close();bloomResetEventJournal();
+   CombatAudio.clear();CombatFeedback.clear();
+  }
  };
  Object.assign(BloomSimulation,{setTickRate:bloomSetTickRate,disk:{snapshot,load,metrics:()=>bloomSnapshotStore.metrics()},runtime});
  /* MAIN_RUNTIME_TEST_HOOK */
  boot=function(){try{
-  if(BloomDiagnostics.fatal)return;
+  if(BloomDiagnostics.fatal||ui.phase!==uiPhase.idle)return;
   let disk=null;try{disk=localStorage.getItem(CONFIG.saveKey)}catch{}
   const result=runtime.initialize({disk});startUXHasSave=result.loaded;
-  booting=true;try{bloomCore.boot()}finally{booting=false}booted=true;resetPresentation();controls();PublicSession.bind();
-  canvas.addEventListener('webglcontextlost',()=>fail(new Error('WebGL context lost; reload required'),'webgl.context'));
-  canvas.addEventListener('webglcontextrestored',()=>{paused=true});
+  ui.phase=uiPhase.mounting;try{bloomCore.boot()}finally{ui.phase=uiPhase.idle}ui.phase=uiPhase.ready;resetPresentation();controls();PublicSession.bind();
+  listen(canvas,'webglcontextlost',()=>fail(new Error('WebGL context lost; reload required'),'webgl.context'));
+  listen(canvas,'webglcontextrestored',()=>{paused=true});
   Object.assign(window.__army,{BloomSimulation,WorldSimulation,WorldPlayers,PublicSession,step:bloomRunTick,advanceClock:advanceSimulationClock,reset,load,save,exportSave,importSave,getSimulationMetrics:()=>runtime.metrics,inspectSimulation:inspect,setPaused(value){paused=!!value;controls()},setPlaying(value){playing=!!value;controls()}});
-  document.addEventListener('click',event=>{if(event.target.closest('button')?.dataset.action!=='start'||!persistenceProtected)return;event.preventDefault();event.stopImmediatePropagation();openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요. 초기화하면 기존 저장이 교체됩니다.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button><button class="tab" data-action="pause">취소</button>')},true);
-  document.addEventListener('click',async event=>{if(event.target.closest('button')?.dataset.action!=='save')return;event.preventDefault();event.stopImmediatePropagation();try{if(!await snapshot('save'))throw new Error('Save unavailable');toast('이 기기에 진행을 저장했어요')}catch(error){BloomDiagnostics.report(error,{kind:'save.manual'});toast('진행을 저장하지 못했어요')}},true);
-  window.addEventListener('pagehide',pagehide);
+  listen(document,'click',event=>{if(event.target.closest('button')?.dataset.action!=='start'||!persistence.protected)return;event.preventDefault();event.stopImmediatePropagation();openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요. 초기화하면 기존 저장이 교체됩니다.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button><button class="tab" data-action="pause">취소</button>')},true);
+  listen(document,'click',async event=>{if(event.target.closest('button')?.dataset.action!=='save')return;event.preventDefault();event.stopImmediatePropagation();try{if(!await snapshot('save'))throw new Error('Save unavailable');toast('이 기기에 진행을 저장했어요')}catch(error){BloomDiagnostics.report(error,{kind:'save.manual'});toast('진행을 저장하지 못했어요')}},true);
+  listen(window,'pagehide',pagehide);
  }catch(error){fail(error,'simulation.boot')}};
  return runtime;
 }
