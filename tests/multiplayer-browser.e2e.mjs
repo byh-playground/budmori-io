@@ -12,9 +12,9 @@ import sharedHarness from './shared-harness.cjs';
 // game inputs, admission snapshots, and catch-up. No mock peer/byte transport,
 // public relay, STUN service, user identity, or real account credential is used.
 const runStarted=performance.now();
-const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID();
+const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
- environment:'Chromium / SwiftShader WebGL; five independent tabs; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production SDK timer + RAF',
+ environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production SDK timer + RAF`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
@@ -102,7 +102,7 @@ async function until(predicate,label,timeoutMs=60000){
  }
 }
 async function addPage(){
- const number=pages.length+1,page=await phase('page '+number+' create',()=>context.newPage());pages.push(page);
+ const number=pages.length+1,page=await phase('page '+number+' create',()=>context.newPage());pages.push(page);await page.bringToFront();
  page.on('pageerror',error=>errors.push({page:number,type:'pageerror',message:error.message}));
  page.on('console',message=>{if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
  await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'load'}));
@@ -132,9 +132,23 @@ async function checkpoint(active,label){
  report.checkpoints.push({label,tick:target,epoch:captured[0].epoch,players:active.length,hash:captured[0].hash,bytes:captured[0].bytes.length});
 }
 async function screenshot(page,name,timeout){const path=new URL('./'+name,import.meta.url).pathname;await phase('screenshot '+name,()=>page.screenshot({path,...(timeout?{timeout}:{})}));report.screenshots.push(name)}
+// Real tab focus can invoke the game's ordinary blur-to-pause behavior.
+// Resume through visible UI rather than changing simulation/presentation flags.
+async function focusAndResume(page){
+ await page.bringToFront();const state=await read(page);
+ if(state.modal==='pause')await page.locator('#sheet [data-action="close"]').click();
+ else assert.equal(state.modal,'','Unexpected dialog while resuming a player');
+ await until(async()=>{const s=await read(page);return !s.paused&&!s.modal},'focused player resumes through UI');
+}
+async function openPause(page){
+ await page.bringToFront();const state=await read(page);
+ if(!state.modal)await page.locator('#pause').click();
+ else assert.equal(state.modal,'pause','Unexpected dialog before pause menu');
+ await until(async()=>(await read(page)).modal==='pause','visible pause menu');
+}
 async function startPublic(page){const number=pages.indexOf(page)+1;await phase('page '+number+' Public Start click',()=>page.locator('[data-action="start"]').click());}
 try{
- browser=await phase('Chromium launch',()=>chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
+ browser=await phase('Chromium launch',()=>chromium.launch({headless:!headed,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
  context=await phase('browser context',()=>browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1}));
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
@@ -153,7 +167,7 @@ try{
  const guest=await addPage();await startPublic(guest);
  // Opening a tab can release held actions on blur. Reapply genuine keyboard
  // input during the asynchronous public discovery/admission window.
- await host.bringToFront();await host.keyboard.down('KeyD');await ready([host,guest]);
+ await focusAndResume(host);await host.keyboard.down('KeyD');await ready([host,guest]);
  await ticks([host,guest],3);await host.keyboard.up('KeyD');
  const pair=await Promise.all([host,guest].map(read)),guestId=pair[1].localId;
  assert.notEqual(hostId,guestId);assert.equal(pair[0].sessionId,initial.sessionId);assert(pair[0].tick>moving.tick&&pair[0].time>moving.time);assert(player(pair[0],hostId).x>player(moving,hostId).x+1,'Host keeps moving across late admission');
@@ -165,8 +179,8 @@ try{
  await checkpoint([host,guest],'late-join-two');
  for(const state of pair){assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,player(state,state.localId).owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,player(state,state.localId).level)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);
- await host.locator('#pause').click();await host.locator('[data-moa-stats]').click();
- await guest.locator('#pause').click();await guest.locator('[data-moa-stats]').click();
+ await openPause(host);await host.locator('[data-moa-stats]').click();
+ await openPause(guest);await guest.locator('[data-moa-stats]').click();
  assert.match(await host.locator('#sheet').innerText(),/레벨\s*3/);assert.match(await guest.locator('#sheet').innerText(),/레벨\s*1/);
  await screenshot(host,'multiplayer-host-hud.png');await screenshot(guest,'multiplayer-guest-hud.png');
  record('Each real DOM stats panel and WebGL HUD selects its own leader, HP, progression, and army');
@@ -207,7 +221,7 @@ try{
  assert.equal(retainedProgress.level,3);assert.equal(retainedProgress.chosen,2);assert(retainedProgress.army>0);
  await checkpoint(pages,'coordinator-refresh');record('Actual coordinator reload preserves its existing level, selected abilities, resources, and army');
  // The actual public-menu button owns graceful departure and solo restoration.
- await host.locator('#pause').click();
+ await openPause(host);
  await host.locator('[data-public="solo"]').click();
  const remaining=pages.slice(1);
  await until(async()=>{const states=await Promise.all(remaining.map(read));return states.every(s=>s.ready&&s.roster.length===4&&!s.roster.includes(hostId)&&s.coordinator!==hostId)},'Graceful coordinator succession');

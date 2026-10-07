@@ -44,6 +44,7 @@ async function main(){
   const older=a.start();await turns();const oldCall=a.calls.at(-1);a.e.run('PublicSession.cancel()');const newer=a.start();await turns();const newCall=a.calls.at(-1),world=network(),activeRoom=room(world,'owner');
   newCall.resolve(activeRoom);assert.equal(await newer,true);assert.equal(a.phase(),'playing');const publicAuthority=a.e.run('bloomSession');const lateRoom=room(network(),'late');oldCall.resolve(lateRoom);assert.equal(await older,false);assert(lateRoom.closed);assert.equal(a.e.run('bloomSession'),publicAuthority);assert.equal(activeRoom.closed,false);
   assert.equal(a.e.run('bloomTick'),0);assert.equal(a.e.run('state.time'),0);assert.notEqual(a.e.run('WorldPlayers.data(WorldPlayers.local()).minerals'),731);assert.equal(a.e.run('WorldPlayers.data(WorldPlayers.local()).campaign.permanents.instructionSeen'),false);assert.equal(a.e.run('WorldSpawn.layout().width'),7200);
+  assert(a.e.run('view.x===WorldView.leader().x&&view.y===WorldView.leader().y'),'New public view begins at its own spawn without a cross-map camera flight');
   assert.equal(a.tab.getItem('budmori-public-active-v1'),'1');assert.equal(a.messages.length,savedWrites);assertHealthy(a);
   pass('Out-of-order results cannot replace the current room; public entry starts fresh rather than importing solo progression');
   const liveCalls=a.calls.length;a.e.click({action:'start'});a.e.click({action:'start'});await turns();

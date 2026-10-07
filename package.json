@@ -8,7 +8,7 @@
     "test:benchmark": "node tests/performance-browser.mjs tests/fixtures/v65-worker.html index.html",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
     "test:benchmark:modes": "node tests/performance-modes.cjs && node tests/performance-modes-browser.mjs",
-    "test:shared": "node tests/shared-validation.cjs && node tests/shared-presentation.cjs && node tests/shared-audio.cjs && node tests/shared-world.cjs && node tests/session-runtime.cjs && node tests/public-session.cjs && node tests/shared-large-bootstrap.cjs",
+    "test:shared": "node tests/shared-validation.cjs && node tests/shared-presentation.cjs && node tests/shared-audio.cjs && node tests/render-upload.cjs && node tests/shared-world.cjs && node tests/session-runtime.cjs && node tests/public-session.cjs && node tests/shared-large-bootstrap.cjs",
     "test:browser:multiplayer": "node tests/multiplayer-browser.e2e.mjs",
     "test:benchmark:shared": "node tests/shared-performance.cjs"
   },

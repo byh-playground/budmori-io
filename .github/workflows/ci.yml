@@ -23,7 +23,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - name: Verify five-player public world in real browsers
-        run: npm run test:browser:multiplayer
+        run: xvfb-run -a npm run test:browser:multiplayer
+        env:
+          BUDMORI_HEADED: "1"
       - name: Compare rollback and lockstep with identical inputs
         run: npm run test:benchmark:modes
       - name: Verify exact Pages bytes after main deployment
