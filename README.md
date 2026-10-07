@@ -16,6 +16,7 @@
 
 - 모아를 이동시키며 자동 공격하고, 야생 동료 영입·영구 군단 수집·합성·성장 카드로 전력을 키웁니다.
 - 지역 탐험, 지형 이동, 자동 사냥, 정예·보스의 공격 예고와 회피, 패배 후 회복을 제공합니다.
+- **모아 부활:** 쓰러지면 화면을 가리는 팝업 없이 체력 HUD에 남은 시간이 표시되고, 3초 뒤 자동으로 부활합니다. 싱글의 명시적인 메뉴 일시정지는 부활 시간도 멈춥니다. 영구 군단의 기존 부활 대기시간은 유지됩니다.
 - **이동:** 목적지를 클릭/탭하거나 WASD·방향키를 사용합니다.
 - **구르기:** 목적지를 두 번 클릭/탭하거나 Space를 누릅니다.
 - **메뉴:** 화면 메뉴 또는 Esc. 싱글은 세계가 멈추고, 공개 세계는 내 이동 입력만 멈춘 채 다른 참가자와 전투가 계속됩니다. 도감·군단 관리·성장·지도는 화면의 해당 버튼에서 엽니다.
@@ -63,15 +64,16 @@
 ### 저장과 검증
 
 - 디스크 저장은 완료된 시뮬레이션 경계에서 SDK와 같은 정규 snapshot 코덱을 필요할 때 호출합니다. 같은 경계의 반복 저장은 private bytes와 JSON 캐시를 재사용하며, 렌더 상태를 저장 원본으로 삼지 않습니다. SDK adapter.save()의 반환 bytes와 디스크 캐시는 서로 별칭을 공유하지 않습니다.
-- 현재 백업은 `budmori-snapshot` JSON envelope와 base64 payload입니다. `BUDMORI_VERSION`의 `0.1.0`을 `productVersion`으로 기록하고 같은 `0.1` 호환군만 읽습니다. 길이·버전·메타데이터·체크섬을 검사하고 손상된 입력은 기존 상태와 저장을 보존하며 거부합니다. FNV 체크섬은 손상 감지용이며 보안 서명이 아닙니다.
+- 현재 백업은 `budmori-snapshot` JSON envelope와 base64 payload입니다. `BUDMORI_VERSION`의 `0.2.0`을 `productVersion`으로 기록하고 같은 `0.2` 호환군만 읽습니다. 길이·버전·메타데이터·체크섬을 검사하고 손상된 입력은 기존 상태와 저장을 보존하며 거부합니다. FNV 체크섬은 손상 감지용이며 보안 서명이 아닙니다.
 - 단위 테스트 조합을 늘리는 것보다 **실제 게임 엔진을 사용하는 하나의 연속 E2E 흐름**을 중심으로 검증합니다. 이동·전투·성장·저장/복원·실패/회복·롤백 등 변경에 관련된 실제 경로를 이어 확인합니다.
 - 게임/UI 변경의 실제 플레이와 시각 확인을 정적 검사로 대체하지 않습니다. 시험용 상태 주입, 모의 DOM, native Worker 검사와 실제 브라우저·기기 검사를 분명히 구별합니다.
 - 통과·실패·미실행 범위를 기록하며, 미검증 결과를 Stable 또는 VALIDATED로 부르지 않습니다.
 
 ## 제품 버전과 저장 호환 정책
 
-- 제품 버전의 단일 원본은 `BUDMORI_VERSION`이며 현재 **0.1.0**입니다. SemVer가 아닙니다. MAJOR는 제품 세대(0=베타, 1=정식), MINOR는 비호환 변경, PATCH는 호환 변경입니다.
-- 디스크 envelope는 전체 `productVersion`을 기록합니다. 정규 capsule의 `compatibility`, `CONFIG.version`과 SDK simulationVersion의 호환군은 같은 원본에서 `0.1`로 파생합니다. 호환 PATCH끼리는 같은 정규 bytes와 체크섬을 만들어야 합니다. 별도 디스크 vN/게임 vN 카운터를 두지 않습니다. BLG3 코덱 표식과 외부 SDK 버전은 실제 독립 프로토콜이므로 그대로 둡니다.
+- 자동 부활은 이전 수동 부활 클라이언트와 결정론적 실행 결과가 달라집니다. 공개 방 혼합을 막기 위해 0.2 호환군을 사용하며, 기존 0.1 저장은 변경하지 않고 지원하지 않는 버전으로 안내합니다.
+- 제품 버전의 단일 원본은 `BUDMORI_VERSION`이며 현재 **0.2.0**입니다. SemVer가 아닙니다. MAJOR는 제품 세대(0=베타, 1=정식), MINOR는 비호환 변경, PATCH는 호환 변경입니다.
+- 디스크 envelope는 전체 `productVersion`을 기록합니다. 정규 capsule의 `compatibility`, `CONFIG.version`과 SDK simulationVersion의 호환군은 같은 원본에서 `0.2`로 파생합니다. 호환 PATCH끼리는 같은 정규 bytes와 체크섬을 만들어야 합니다. 별도 디스크 vN/게임 vN 카운터를 두지 않습니다. BLG3 코덱 표식과 외부 SDK 버전은 실제 독립 프로토콜이므로 그대로 둡니다.
 - v63, 이전 disk v3/v4, 숫자 배열 payload, 틱 타이머/인구 변환은 지원하지 않습니다. 오래된 저장을 발견하면 “지원하지 않는 저장 버전”과 새 게임·다른 백업 경로를 보여 줍니다. 자동 저장·수동 저장·TPS 변경·페이지 종료는 읽지 못한 원본을 덮어쓰지 않습니다. 확인한 새 게임 또는 정상 백업 불러오기가 현재 저장을 교체합니다.
 - 디스크 입력도 정규 코덱·메타데이터·체크섬·전체 그래프 검증과 detached 준비를 통과한 뒤에만 설치합니다. 준비/취소 중 기존 authority·세션·원본 bytes는 변경하지 않습니다.
 - 군단 잠금은 inventory record의 `locked`만 소유합니다. 몸체의 `rarityLocked` 필드·getter·복원 binder는 없습니다.
@@ -131,7 +133,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 - 실제 Chromium/SwiftShader + Blob Worker의 시작·WASD·Space·클릭/터치 구르기·메뉴 재개·전투·죽음/회복·저장/불러오기·오류 중단을 CI에서 검사합니다. 입력/복구 fixture는 수동 clock, 별도 전투 단계는 변경하지 않은 production setTimeout scheduler + RAF를 사용합니다.
 - Native 연속 캠페인 96개 확인: 원본 v63 저장 bytes/향후 동일 입력 결과, 대기 명령, 손상 저장 거부, 실제 SDK 지연 패킷 rollback 정확 수렴을 포함합니다.
 - 보간은 수신 당시 곡선에서 다시 연결합니다. 늦게 도착하는 미래 표본을 예측하지 않으며, 목표에 먼저 도달하면 다음 표본까지 대기합니다. 불규칙 수신의 속도 변화/대기는 남습니다. 공격/flash 새 단계는 XYZ와 별도로 즉시 반영하며 hitstop이 XYZ를 권위 위치로 튀게 하지 않습니다.
-- 155 동료 native CPU 제출 비교는 `tests/performance-summary.json`에 기록합니다. 참고 runner `tests/native-render.cjs`는 추가로 `@napi-rs/canvas@0.1.100`이 필요합니다. 같은 원본 HTML을 인수로 실행해 비교하며, no-op GPU sink이므로 GPU 완료시간·실제 브라우저·휴대폰 FPS 측정이 아닙니다.
+- 155 동료 native CPU 제출 비교는 `tests/performance-summary.json`에 기록합니다. 참고 runner `tests/native-render.cjs`는 추가로 `@napi-rs/canvas@0.2.000`이 필요합니다. 같은 원본 HTML을 인수로 실행해 비교하며, no-op GPU sink이므로 GPU 완료시간·실제 브라우저·휴대폰 FPS 측정이 아닙니다.
 - main CI는 Pages 응답 전체 bytes의 SHA-256이 검사한 `index.html`과 같은지 배포 후 확인합니다. 실제 휴대폰/기기 GPU 검증은 별도입니다.
 
 ## v65 · 회복 후 화면 동기화 수정

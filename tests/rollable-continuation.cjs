@@ -25,6 +25,6 @@ try{
  ticks(32,'edge cooldown expiry');roll(32767,0);
  fixture(`const p=WorldPlayers.byAccount(-1);bloomInTick=true;bloomCurrentEffects=[];try{PlayerLifecycle.defeat(p,null)}finally{bloomInTick=false}`);
  assert(es[0].run('state.dead&&state.mother.roll.leftMs===0&&state.mother.roll.cooldown.leftMs>0'));restore('dead actor checkpoint');
- both("bloomSession.queueCommand(BloomSimulation.encodeCommand({version:1,type:'recover'}))");ticks(1,'recovery queued');assert(es[0].run('!state.dead'));assert(es[1].run('typeof state.mother.startRoll==="function"'));ticks(35,'recovered continuation');
+ ticks(30,'automatic recovery boundary');assert(es[0].run('!state.dead'));assert(es[1].run('typeof state.mother.startRoll==="function"'));ticks(35,'recovered continuation');
  const final=same('final');report.finalSHA256=crypto.createHash('sha256').update(final).digest('hex');report.status='PASS';
 }catch(error){report.status='FAIL';report.error=error.stack;process.exitCode=1}finally{both('bloomSession?.close()');fs.writeFileSync(root+'/tests/rollable-continuation-results.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2))}

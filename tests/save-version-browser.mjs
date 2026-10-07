@@ -27,7 +27,7 @@ try{
  if(process.env.BLOOM_SAVE_UI_SCREENSHOT)await page.screenshot({path:process.env.BLOOM_SAVE_UI_SCREENSHOT});
  await page.locator('[data-action="reset"]').click();
  await page.waitForFunction(()=>!BloomSimulation.runtime.metrics.persistenceProtected&&!__army.paused);
- const fresh=await stored();assert.equal(JSON.parse(fresh).productVersion,'0.1.0');
+ const fresh=await stored();assert.equal(JSON.parse(fresh).productVersion,'0.2.0');
  await page.locator('#pause').click();await page.locator('[data-ux="settings"]').click();
  const before=await page.evaluate(()=>({storage:localStorage.getItem('bloom-weapon-cards-v3'),state:JSON.stringify(__army.state)}));
  const chooser=page.waitForEvent('filechooser');await page.locator('[data-action="import"]').click();

@@ -12,9 +12,9 @@ const {session}=require('./main-harness.cjs');
   globalThis.qaKiller=spawn('swordsman','enemy',state.mother.x+20,state.mother.y,{camp:0,rarityGrade:5});qaKiller.aggroAt=0;qaKiller.cooldown=0;`);
  const id=await a.read('qaRival.id');let previous;
  for(let cycle=0;cycle<2;cycle++){
-  a.control();await a.tick(cycle?80:20);assert(await a.read('state.dead'),'production combat must kill Moa');
+  a.control();for(let i=0;i<160&&!await a.read('state.dead');i++)await a.tick();assert(await a.read('state.dead'),'production combat must kill Moa');
   previous=a.mirror.state.units.find(u=>u.id===id);assert(previous.rival?.abilities);
-  a.control({paused:true,modalKind:'defeat'});await a.command({type:'recover'});await a.tick();
+  a.control();await a.tick(60);
   const current=a.mirror.state.units.find(u=>u.id===id);assert(current.rival?.abilities);assert.strictEqual(current,previous,'Recovering one player preserves the unrelated rival authority');assert(!await a.read('state.dead'));
   a.e.run('view.w=view.h=2000;view.x=state.mother.x;view.y=state.mother.y;BLOOM_HEADLESS=false;resetPresentation();presentation.active=true;presentation.frameNow=performance.now();presentation.frameSerial++;');
   assert(a.e.run(`Number.isFinite(presentationPose(idMap.get(${id})).x)&&presentationPose(idMap.get(${id})).rival.abilities.level>=0`));a.e.run('BLOOM_HEADLESS=true');

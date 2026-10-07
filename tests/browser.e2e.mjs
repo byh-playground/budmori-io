@@ -60,7 +60,7 @@ try{
  await page.evaluate(()=>new Promise(resolve=>{let remaining=12;function next(){if(--remaining===0)resolve();else requestAnimationFrame(next)}requestAnimationFrame(next)}));
  assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),activeRenderHash);assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);report.checks.push('Positive-dt render frames with live beam/breath, rival and partial HP leave fresh canonical authority unchanged');
  await page.evaluate(()=>__army.setPaused(true));
- const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'budmori-snapshot');assert.equal(saveObject.productVersion,'0.1.0');assert.equal(saveObject.codec,'bloom-live-graph-v3');assert.equal(await read('BloomLiveCodec.decode(bloomAdapter.save()).schema'),'budmori-world');
+ const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'budmori-snapshot');assert.equal(saveObject.productVersion,'0.2.0');assert.equal(saveObject.codec,'bloom-live-graph-v3');assert.equal(await read('BloomLiveCodec.decode(bloomAdapter.save()).schema'),'budmori-world');
  assert.equal(await read('bloomSession.profile.mode'),'lockstep');
  const normalizedHash='(()=>{const c=BloomLiveCodec.decode(bloomAdapter.save());c.tick=0;return BloomOwnedSDK.hashBytes(BloomLiveCodec.encode(c))})()';
  const savedHash=await read(normalizedHash);
@@ -81,7 +81,7 @@ try{
  await page.waitForFunction(t=>__army.state.time>t+2,realBefore.time,{timeout:15000});
  await page.evaluate(()=>__budmoriTest.request('__clock',{manual:true}));
  const realAfter=await read('({tick:bloomTick,time:state.time,hp:state.units.filter(u=>u.team==="enemy").reduce((sum,u)=>sum+u.hp,0)})');assert(realAfter.tick>realBefore.tick&&realAfter.hp<realBefore.hp);report.normalClockCombat={before:realBefore,after:realAfter};report.checks.push('Normal production setTimeout scheduler advances combat while actual WebGL/RAF renders');
- await fixture(`state.mother.hp=1;state.mother.stun=10;globalThis.qaKiller=spawn('swordsman','enemy',state.mother.x+20,state.mother.y,{camp:0,rarityGrade:5});qaKiller.aggroAt=0;qaKiller.cooldown=0;`);await tick(20);await page.waitForFunction(()=>__army.state.dead);await page.locator('[data-action="recover"]').click();await tick(1);await page.waitForFunction(()=>!__army.state.dead);report.checks.push('Death and requested revival complete through UI/SDK');
+ await fixture(`state.mother.hp=1;state.mother.stun=10;globalThis.qaKiller=spawn('swordsman','enemy',state.mother.x+20,state.mother.y,{camp:0,rarityGrade:5});qaKiller.aggroAt=0;qaKiller.cooldown=0;`);await tick(20);await page.waitForFunction(()=>__army.state.dead);assert.equal(await page.locator('#modal.show').count(),0,'death must not obscure the battlefield');assert.match(await page.locator('#motherHealth').textContent(),/초 후 부활/);await page.screenshot({path:new URL('./auto-revive-countdown.png',import.meta.url).pathname});await page.evaluate(()=>__budmoriTest.request('__clock',{manual:false}));await page.waitForFunction(()=>!__army.state.dead);report.checks.push('Death has no overlay and revives automatically on the live SDK clock');
  const dense=await readFile(new URL('./dense-fixture.js',import.meta.url),'utf8');await fixture(dense);await tick(5);
  const count=await page.evaluate(()=>__army.state.units.filter(u=>u.team==='friendly'&&u.hp>0).length);assert.equal(count,155);
  const snapshot=await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())');await page.waitForTimeout(1000);assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),snapshot);report.checks.push('155-ally rendering keeps authority immutable while paused manual clock');
@@ -122,9 +122,7 @@ try{
   await mobile.keyboard.up('KeyW');await mobile.keyboard.up('KeyS');
   console.log('MOBILE_RECOVERY_CYCLE',JSON.stringify({cycle,main:await mobile.evaluate(()=>({hp:__army.state.mother.hp,dead:__army.state.dead,paused:__army.paused,modal:modalKind,frame:__army.performance.frames})),worker:await mobileRequest('inspect')}));
   await mobile.waitForFunction(()=>__army.state.dead);
-  const frames=await mobile.evaluate(()=>__army.performance.frames);await mobile.locator('[data-action="recover"]').click();
-  if(cycle===0)await mobile.evaluate(()=>__army.setPaused(true)); // queue during paused UI transition, same SDK recovery command
-  await mobileTick(1);await mobile.waitForFunction(({id,frames})=>!__army.state.dead&&!BloomDiagnostics.fatal&&__army.performance.frames>frames+2&&projectionQueue.some(q=>q.source.id===id),{id:rivalId,frames},{timeout:30000});
+  const frames=await mobile.evaluate(()=>__army.performance.frames);assert.equal(await mobile.locator('#modal.show').count(),0);await mobileTick(60);await mobile.waitForFunction(({id,frames})=>!__army.state.dead&&!BloomDiagnostics.fatal&&__army.performance.frames>frames+2&&projectionQueue.some(q=>q.source.id===id),{id:rivalId,frames},{timeout:30000});
   const actor=await mobile.evaluate(id=>{const r=__army.state.units.find(u=>u.id===id);return{leader:r.rivalLeader,level:r.rival.abilities.level,owned:!!r.rival,frame:__army.performance.frames}},rivalId);
   assert.equal(actor.leader,true);assert.equal(actor.owned,true);assert.equal(actor.level,await mobileRequest('__read',{expression:`idMap.get(${rivalId}).rival.abilities.level`}));cycles.push(actor);
  }
