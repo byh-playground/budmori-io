@@ -22,6 +22,7 @@
 - **메뉴:** 화면 메뉴 또는 Esc. 싱글은 세계가 멈추고, 공개 세계는 내 이동 입력만 멈춘 채 다른 참가자와 전투가 계속됩니다. 도감·군단 관리·성장·지도는 화면의 해당 버튼에서 엽니다.
 - **싱글 저장:** 자동 저장과 수동 저장, JSON 백업 내보내기·불러오기를 제공합니다. 갑작스러운 브라우저·OS 종료 시 마지막 완료 저장 이후의 진행은 잃을 수 있습니다. 공개 플레이는 싱글 저장을 덮어쓰지 않으며 새 판은 새 모아로 시작합니다. 같은 공개 세계의 새로고침 복귀 조건은 아래 공개 세션 안내를 참고하세요.
 - 오류가 발생하면 로컬 진단 창에서 내용을 복사하거나 TXT로 저장할 수 있습니다. 공유 전 내용을 확인하세요.
+- 멀티플레이 끊김을 조사할 때는 메뉴의 **진단 정보 → 성능 프로파일링 시작**을 누르고 재현한 뒤 다시 진단 정보를 엽니다. 최근 프레임의 지형 타일 생성/cache hit·miss, terrain/actor 표현, WebGL endFrame·texture upload/flush, 최신 tick/presentation 시간을 로컬 bounded sample과 p50·p95·max 요약으로 확인할 수 있습니다. 프로파일링은 기본적으로 꺼져 있습니다.
 
 현재 HTML의 화면 제목·저장 키·진단 표기에는 기존 **BLOOM** 명칭이 남아 있습니다. 최초 등록은 기존 실행물을 바이트 변경 없이 보존했습니다.
 
@@ -144,7 +145,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `0cec86a64df1cb495750d1d8faebd304be85ed83`; dist: `d49138e9c8146e59d73ec16b23cd545d9ddc8745`. `BloomSimulation.sdkCommit`과 진단 화면도 같은 source commit을 표시하며 실제 포함 번들은 `gamekit-lock.json`으로 검증합니다.
+현재 고정 SDK source: `7f2441775c659a190d58d46b679f823e3af1cec6`; dist: `99bc18bb62789742aa070cabfd69fc84bbed0049`. `BloomSimulation.sdkCommit`과 진단 화면도 같은 source commit을 표시하며 실제 포함 번들은 `gamekit-lock.json`으로 검증합니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.

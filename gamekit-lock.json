@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "0cec86a64df1cb495750d1d8faebd304be85ed83",
-  "distCommit": "d49138e9c8146e59d73ec16b23cd545d9ddc8745",
+  "sourceCommit": "7f2441775c659a190d58d46b679f823e3af1cec6",
+  "distCommit": "99bc18bb62789742aa070cabfd69fc84bbed0049",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -43,9 +43,9 @@
     },
     {
       "name": "debug-tools",
-      "bundleSHA256": "b59fbea3f67144d8a58a73737984905e3f1003a54c26beb00ae4661f22e5fd29",
-      "inlineSHA256": "741c1aa3dd8a891fc358d972330a84afc90337f5de14b577aabacde299b5a0b0"
+      "bundleSHA256": "2081257b357e16442d245ea7242a188a24235864a7991e2164376a7d8eee4b1d",
+      "inlineSHA256": "5de6c8410d182273b7bc7c9e127aa2fb95884c42097a9c0f6ee10874159206c9"
     }
   ],
-  "manifestSHA256": "02569d54e137d870f7434ab9002407fd3f7fe1cdaa55fbffcff475e6eaa6b04e"
+  "manifestSHA256": "d41f1ab5324e58f458776085ba7f3ef5a0e532cee1b727f4bee01611db680b0d"
 }
