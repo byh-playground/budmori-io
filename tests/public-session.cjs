@@ -7,7 +7,7 @@ const {candidate,network}=require('./shared-harness.cjs');
 const {harness}=require('./session-runtime.cjs');
 const source=candidate();
 const sdkExportEnd='/* END GAMEKIT rollback-netcode */';
-source.html=source.html.replace(sdkExportEnd,`${sdkExportEnd}\nBloomOwnedSDK={...BloomOwnedSDK,createNostrPublicRoom:options=>globalThis.qaPublicProvider(options)};`);
+source.html=source.html.replace(sdkExportEnd,`${sdkExportEnd}\nglobalThis.qaActualPublicProvider=BloomOwnedSDK.createNostrPublicRoom;BloomOwnedSDK={...BloomOwnedSDK,createNostrPublicRoom:options=>globalThis.qaPublicProvider(options)};`);
 const open=[];
 function storage(){const data=new Map();return{data,getItem:k=>data.get(k)??null,setItem(k,v){data.set(k,String(v))},removeItem:k=>data.delete(k)}}
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return{promise,resolve,reject}}
@@ -30,6 +30,12 @@ async function begin(a,r,options){const p=a.start(options);await turns();a.calls
 function assertHealthy(a){assert.equal(a.e.run('BloomDiagnostics.fatal'),false);assert(!a.e.run('bloomSession.failure'))}
 async function main(){
  try{
+  const versioned=make();await versioned.init();versioned.e.c.crypto=require('node:crypto').webcrypto;
+  const oldPointer=JSON.stringify({version:1,namespace:'budmori-public-v1',simulationVersion:'budmori-shared-ms-v4-10-30',room:'1234',sessionId:'versioned-world',expiresAt:Date.now()+60000});
+  versioned.tab.setItem('budmori-public-resume-v1:pointer',oldPointer);const versionedBytes=bytes(versioned);let openedRelay=false;
+  await assert.rejects(versioned.e.c.qaActualPublicProvider({namespace:'budmori-public-v1',simulationVersion:versioned.e.run('`${BloomSimulation.simulationVersion}-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`'),resume:{storage:versioned.tab,key:'budmori-public-resume-v1'},signalerFactory:async()=>{openedRelay=true;throw Error('Unexpected relay connection')}}),error=>error.code==='PUBLIC_RESUME_INVALID');
+  assert.equal(openedRelay,false);assert.equal(versioned.tab.getItem('budmori-public-resume-v1:pointer'),oldPointer);assert.deepEqual(bytes(versioned),versionedBytes);
+  pass('Actual embedded SDK rejects older public simulation pointers before networking while preserving record and solo bytes');
   const a=make();await a.init();await a.fixture("WorldPlayers.data(WorldPlayers.local()).minerals=731;WorldPlayers.data(WorldPlayers.local()).campaign.permanents.instructionSeen=true");a.drive(4);await a.control({paused:true,modalKind:'pause'});await a.request('save');
   const soloBytes=bytes(a),soloDisk=a.disk.getItem(a.e.run('CONFIG.saveKey')),savedWrites=a.messages.length;
   // Disk import begins a new SDK timeline. Compare every canonical byte with
@@ -44,7 +50,7 @@ async function main(){
   const first=a.start();a.e.click({action:'start'});a.e.click({action:'start'});await turns();
   assert.equal(await abandoned,false,'Cancellation during the solo snapshot must not start a stale discovery');
   assert.equal(a.calls.length,1);assert.equal(a.phase(),'discovering');assert.deepEqual(bytes(a),soloBytes);
-  const options=a.calls[0].options;assert.equal(options.maxPlayers,5);assert.equal(options.resume.storage,a.tab);assert.equal(options.resume.key,'budmori-public-resume-v1');assert.equal(options.resume.lifetimeMs,30*60*1000);assert.equal(options.resume.reset,false);
+  const options=a.calls[0].options;assert.equal(options.maxPlayers,5);assert.equal(options.peerTimeoutMs,20000);assert.equal(options.resume.storage,a.tab);assert.equal(options.resume.key,'budmori-public-resume-v1');assert.equal(options.resume.lifetimeMs,30*60*1000);assert.equal(options.resume.reset,false);
   a.e.run('PublicSession.unbind();PublicSession.unbind()');assert.equal(listeners(),initialListeners);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,0);
   a.e.click({public:'cancel'});assert.equal(a.phase(),'discovering');assert.equal(options.signal.aborted,false);
   const rebound=bind();assert.notEqual(rebound,unsubscribe);unsubscribe();assert.equal(bind(),rebound);assert.equal(listeners(),initialListeners+1);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,1);
@@ -53,6 +59,13 @@ async function main(){
   pass('Repeated bind/unbind owns one label and listener; Start deduplicates and cancellation closes stale rooms without changing solo bytes');
   const failed=a.start();await turns();a.calls.at(-1).reject(new Error('synthetic discovery failure'));assert.equal(await failed,false);assert.equal(a.calls.at(-1).options.signal.aborted,true);assert.equal(a.phase(),'failed');assert.deepEqual(bytes(a),soloBytes);assert.equal(a.disk.getItem(a.e.run('CONFIG.saveKey')),soloDisk);assertHealthy(a);
   pass('Failed public discovery preserves the entire solo world and original disk');
+  const diagnosticAttempt=a.start();await turns();const diagnosticCall=a.calls.at(-1);
+  for(let i=0;i<25;i++)diagnosticCall.options.onStatus({type:i%2?'peer-resuming':'public-resuming',secret:'never copy this',peerId:'f'.repeat(64)});
+  diagnosticCall.reject(Object.assign(new Error('x'.repeat(220)+' '+ 'a'.repeat(64)),{code:'membership-connect-failed'}));assert.equal(await diagnosticAttempt,false);
+  const diagnostic=a.e.run('PublicSession.inspect()');assert.equal(diagnostic.connectionEvents.length,16);assert.equal(diagnostic.lastFailure.code,'membership-connect-failed');assert.match(diagnostic.lastFailure.reason,/\[peer\]/);assert(!JSON.stringify(diagnostic).includes('never copy this'));assert(!JSON.stringify(diagnostic).includes('a'.repeat(10)));assert(diagnostic.lastFailure.reason.length<=240);
+  assert(Object.isFrozen(diagnostic.connectionEvents)&&Object.isFrozen(diagnostic.lastFailure));
+  pass('Connection diagnostics retain bounded stages and specific failure without peer identities or signaling payloads');
+
   // Resolve a newer attempt before an earlier cancelled one.
   const older=a.start();await turns();const oldCall=a.calls.at(-1);a.e.run('PublicSession.cancel()');const newer=a.start();await turns();const newCall=a.calls.at(-1),world=network(),activeRoom=room(world,'owner');
   newCall.resolve(activeRoom);assert.equal(await newer,true);assert.equal(a.phase(),'playing');const publicAuthority=a.e.run('bloomSession');const lateRoom=room(network(),'late');oldCall.resolve(lateRoom);assert.equal(await older,false);assert(lateRoom.closed);assert.equal(a.e.run('bloomSession'),publicAuthority);assert.equal(activeRoom.closed,false);
@@ -60,7 +73,7 @@ async function main(){
   assert(a.e.run('view.x===WorldView.leader().x&&view.y===WorldView.leader().y'),'New public view begins at its own spawn without a cross-map camera flight');
   assert.equal(a.tab.getItem('budmori-public-active-v1'),'1');assert.equal(a.messages.length,savedWrites);assertHealthy(a);
   pass('Out-of-order results cannot replace the current room; public entry starts fresh rather than importing solo progression');
-  assert.equal(a.e.run('bloomSession.membership.reconnectGraceMs'),30000);
+  assert.equal(a.e.run('bloomSession.membership.reconnectGraceMs'),30000);assert.equal(a.e.run('bloomSession.membership.transitionTimeoutMs'),30000);assert.equal(a.e.run('PublicSession.inspect().transitionTimeoutMs'),30000);assert(a.e.run('CONFIG.session.transitionTimeoutMs>=PublicSession.config.peerTimeoutMs+10000'));
   const countdownBytes=bytes(a);
   assert.equal(a.e.run("PublicSession.observeStatus('interrupted',0)"),30);
   assert.equal(a.e.run("BLOOM_HEADLESS=false;PublicSession.observeStatus('interrupted',15000)"),15);
@@ -142,6 +155,11 @@ async function main(){
   assert.equal(race.e.run('BloomSimulation.sessionConfig.mode'),'online','A superseded multi-peer leave must not replace the newer public session');
   assert.equal(race.e.run('bloomSession.localPlayerId'),'race-newest');assert.equal(newRoom.closed,false);
   pass('New public entry wins over a superseded multi-peer graceful leave');
+  const retry=race.start({fresh:true});await turns();assert.equal(race.phase(),'discovering');
+  const beforeRetry=bytes(race),retryTick=race.e.run('bloomTick');race.drive(4);assert.equal(race.e.run('__sessionRuntimeTest.waiting("failed")'),false);assert.equal(race.phase(),'discovering');assert.equal(race.e.run('bloomTick'),retryTick);assert.deepEqual(bytes(race),beforeRetry);
+  const retryRoom=room(network(),'retry-after-stale');race.calls.at(-1).resolve(retryRoom);assert.equal(await retry,true);assert.equal(race.phase(),'playing');race.drive(2);assert(race.e.run('bloomTick')>0);assertHealthy(race);
+  pass('Discovery pauses the retired public authority and ignores its late terminal result without replacing the retry UI');
+
   const changes=[],stopObserving=race.e.run('PublicSession.onChanged.on')(change=>changes.push(change));
   race.e.run("PublicSession.observeStatus('interrupted',1000)");
   assert.equal(changes.at(-1).reconnectSeconds,30);assert.equal(changes.at(-1).phase,'playing');assert(Object.isFrozen(changes.at(-1)));
@@ -150,7 +168,7 @@ async function main(){
   pass('Session-owned readonly signals publish immutable status and unsubscribe without authority writes');
   const activeMarker=race.tab.getItem('budmori-public-active-v1');
   race.e.run('PublicSession.dispose();PublicSession.dispose()');
-  assert(newRoom.closed);assert.equal(newRoom.forgetCount,0);assert.equal(race.phase(),'idle');assert.equal(race.tab.getItem('budmori-public-active-v1'),activeMarker);
+  assert(retryRoom.closed);assert.equal(retryRoom.forgetCount,0);assert.equal(race.phase(),'idle');assert.equal(race.tab.getItem('budmori-public-active-v1'),activeMarker);
   assert.equal(race.e.doc.getElementById('actions').children.filter(e=>e.id==='publicStatus').length,0);
   const disposal=make();await disposal.init();const disposedBytes=bytes(disposal),disposedStart=disposal.start();await turns();const disposedCall=disposal.calls.at(-1);
   disposal.e.run('PublicSession.dispose();PublicSession.dispose()');assert.equal(disposedCall.options.signal.aborted,true);const disposedRoom=room(network(),'disposed-late');disposedCall.resolve(disposedRoom);

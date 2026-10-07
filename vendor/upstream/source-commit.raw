@@ -1,27 +1,26 @@
-tree 34296ed9545a819982f7ebef787d91ca62840989
-parent 33d8cd6edfe3790ff00c3d9912976fda24919c01
-author byh020907 <byh020907@naver.com> 1791342163 +0900
-committer GitHub <noreply@github.com> 1791342163 +0900
+tree 2dc40fdbb4844cc50d0706936914046e5f27c8c2
+parent 421e04145c89b827d280f5774e8d502486cc3074
+parent bfb6c0605a03c09ec9a387b30d254f61bcf35dda
+author byh020907 <byh020907@naver.com> 1791364829 +0900
+committer GitHub <noreply@github.com> 1791364829 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqxbZTCRC1aQ7uu5UhlAAAzeYQAGgWTsk2dM1v2O6x5f5hc/wd
- I2nPnoFWwjT8D5ebJOORiOowEHEU/IbHv53zmwFY2R7D/a3Yi7A54hidfarWkb1a
- JaAb6d2lzl+Sl4WLiqzRU6Yp87W+tN4sTF5tOjx46hqS1ZBUtfnLMQjm8C3r0Df5
- I8EqrF+zrQN71XNmISxG4MprtzVyRqJd+o3v6YcaasTacpFyBuWuGfVG1BrVMuPP
- L8KdqSoDy9G9Eu2FGBTWuVKCtq1N7OL1Ynb7Qyha16V8cXE7MGPZYn7P08SUiU2D
- SxdRiYd4DIS99xrMKYGSuspomwoIv3Zg4U4s30hHvXKBmRka4Zv3n90gpmOqQo/v
- 5P/5k/M5w/PD6XnT8dFmUvBX+O/eZdTSHiW0rEiHyESil35A4joROeYacFSRAp9Y
- jKoU4IudlbdqHIDjzqVjiiMSeWS9Kgrdyy9hr9lL2LMFn/oJcd3RE/7/0V1nW29A
- gD5EqEz0wutEFlb0Ty94dvaHNwWYoDWV/6bUbtrhtALW3ZS3u7adHzMlu0gK3Tfg
- ER0TXGsIOes88EvyJXLh/Jaorbc44Wjsw9bQ/WUtAgrQ+yWCMQ9ceEhR4fmN+0Hq
- fxpsy0w6PXGLZ12ikggcF43p5Sgo0xe6Gb6TziNd63hOJyPgwQupO1fRjc6hG69Q
- dwexr9E9YOzvSy9wSfS/
- =fgQo
+ wsFcBAABCAAQBQJqxg7dCRC1aQ7uu5UhlAAAD8wQAHsS7Cy95zfmXOt+uRs3I9hW
+ NSWhHga4c+MYttQKp4aG7yHK3dKIjYo+dLIkPKue+xzjFGTiu3I4qHI9cLnfuhe6
+ lAVySTI/ycJUk1nPwfLzYYR8RNEVJTt0dhaoTL0phbsEJWOd4x6nqn4KUp5d2j7b
+ bnAh5/MmwiLx7VZNBF0+JYCk620GX+CKCXyeM1nCj0ZzVecorewRuuLk5nLMtIHD
+ LirU8GwppOuV6ro04KKQ8EukfqxIywJT+DEaFK+/jbpjSNvtNY0LiCwJGYJ26UuG
+ rF5oFm25Mi660cTsPTMSCyC1ksVxbm3qQmFv7HdxdP5djfVsPRfdbRz4amb5wz3m
+ Kns+v1vDwoArAdtnunawSUGEElodknaxOHB3xR96wloDSvql7uSgspqDeXtxIfY2
+ YD8SiECTtYQj0QkPDHiWp/G9WXx+DzbbAwGNXKxUkNuhvDbIQ6pdBuvQp17+LJn0
+ H4IQB+3qU525VBZxgwiNYu5ua4X+z9UoKAIayNVF8k6PRP5VsY+jZsRP8PsNrabp
+ z1HSJzS30Z9OrNUvQynqiMuXc8rrgrZD9icnPnOdtribJVqJ/20Y1icJPD/gFgXD
+ 7Wa7NmI3grMyF6T9BSIVjr1ZwhMf5vDZhNSCdHdTvkNHALG/vKR/AFcyZf9EtFR0
+ DaK6+jm/Pc0cswTk7D2r
+ =qaaF
  -----END PGP SIGNATURE-----
  
 
-[performance] 준비된 snapshot과 cooperative 경계 작업 (#9)
+Merge pull request #11 from byh-playground/codex/preserve-resume-mesh-waiters
 
-동일 canonical snapshot의 중복 decode/restore 및 초기 Core save/hash 제거. 선택적 준비 token과 협력형 capture/prepare/hash 작업, freeze된 membership 경계, legacy adapter 호환 유지.
-
-285 Node 검사, 실제 Chromium WebGL·fixed RTC·dynamic legacy/cooperative 합류/refresh/coordinator 퇴장 검증, deterministic build 및 독립 correctness review 통과. source-only; dist는 main CI가 생성.
+[fix] 새로고침 복구 중 mesh 대기와 incarnation 승인 보존

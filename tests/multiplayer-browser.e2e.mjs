@@ -14,8 +14,8 @@ import sharedHarness from './shared-harness.cjs';
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
- environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production SDK timer + RAF`,
- limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter plus an elevated slow physical projectile.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
+ environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
+ limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
@@ -37,10 +37,10 @@ const fixture=String.raw`
  }
  BloomOwnedSDK={...sdk,async createNostrPublicRoom(options){
   const room=await sdk.createNostrPublicRoom({...options,namespace:${JSON.stringify(namespace)},rtcConfig:{iceServers:[]},
-   signalerFactory:async opts=>{const signaler=await sdk.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay,publishIntervalMs:0});qa.signalers.push(signaler);return signaler},
+   signalerFactory:async opts=>{const signaler=await sdk.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay});qa.signalers.push(signaler);return signaler},
    peerFactory:opts=>sdk.createWebRTCPeer({...opts,rtcConfig:{iceServers:[]}})});
   qa.rooms.push(room);return room;
- },createRoomSession(options){return sdk.createRoomSession({...options,onEvent:event=>{if(['membership-committed','membership-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event});options.onEvent?.(event)}})}};
+ },createRoomSession(options){const session=sdk.createRoomSession({...options,onEvent:event=>{if(['membership-preparing','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event,atMs:Math.round(performance.now())});options.onEvent?.(event)}}),poll=session.poll.bind(session);qa.transitions=[];let previous='',lastAt=0;session.poll=function(...args){const result=poll(...args),tr=session._transition;if(tr||session.failure){const metrics=session.metrics,row={atMs:Math.round(performance.now()),stage:!tr?session.status:tr.replay?'replay':tr.stageJob?'prepare':tr.applied?'commit':tr.preparedState?'hash':tr.installSent?'install':tr.target!==null?'barrier':'mesh-prepare',epoch:session.epoch,elapsedMs:tr?Math.round(session.clock()-tr.startedAt):null,mesh:session.room.transports.size,expected:session.players.length-1,prepared:tr?.prepared.size,reached:tr?.reached.size,installed:tr?.installed.size,committed:tr?.committed.size,target:tr?.target,postBytes:tr?.postState?.length||0,replayTicks:metrics.bootstrapTicks,receivedBytes:metrics.receivedControlBytes,queuedBytes:metrics.controlQueuedBytes,maxBoundaryTaskMs:metrics.maxBoundaryTaskMs,failure:session.failure?.type||null},signature=JSON.stringify({...row,atMs:0,elapsedMs:0});if(signature!==previous||row.atMs-lastAt>=1000){qa.transitions.push(row);if(qa.transitions.length>48)qa.transitions.shift();previous=signature;lastAt=row.atMs}}return result};return session}};
  const apply=bloomAdapter.applyMembership,step=bloomAdapter.step;
  bloomAdapter.applyMembership=function(change){const result=apply(change);
   // This executes before the first SDK core captures its initial checkpoint.
@@ -51,22 +51,31 @@ const fixture=String.raw`
    const player=WorldPlayers.get(change.players[0]),data=WorldPlayers.data(player),m=player.leader;
    data.minerals=1234;Object.assign(data.campaign.abilities,{level:3,xp:abilityThreshold(3),chosen:2,ranks:{pod:1,lob:1},mods:{},draft:null});moaSyncLevelHP(m);m.hp=m.maxHp*.6;player.auto.enabled=false;
    rarityAcquire(player.accountOwner,'archer',1,2,m.x,m.y);
-   const point=ThemedTerrain.safePoint(m.x+160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
+   const point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
    if(!target)throw Error('Initial durable encounter has no safe position');
-   target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;state.camps[0].remaining++;
+   target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;target.qaRegion=player.startRegion;state.camps[0].remaining++;
    damage(m,target,17,'ranged');const flight=launchAbilityShot(target,11,{owner:m,start:{x:m.x-200,y:m.y-200,z:spatialHeight(m)+160},speed:1,range:1800,homing:true});flight.qaAdmissionFlight=true;
    rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();
   }return result;
  };
- bloomAdapter.step=function(frame){const result=step(frame);qa.lastInputs=frame.inputs.map(input=>({playerId:input.playerId,...bloomDecodeInput(input.input)}));
+ qa.combat=new Map();
+ const observeImpact=impact;impact=function(shot){const target=idMap.get(shot.target),before=target?.hp,owner=WorldPlayers.all().find(p=>p.leader.id===shot.u),result=observeImpact(shot);if(owner&&shot.abilityShot&&!shot.weapon&&!shot.secondary&&!shot.qaAdmissionFlight&&Number.isFinite(before)){const stats=qa.combat.get(owner.playerId)||{samples:0,maxDistance:0,primaryDamage:0};stats.primaryDamage+=(before-(target?.hp??before));qa.combat.set(owner.playerId,stats)}return result};
+ bloomAdapter.step=function(frame){
+  // Declare each encounter at the first ordinary simulation step after its
+  // participant arrives. Preplacing far-away ordinary enemies is invalid:
+  // production WildSpawnRing correctly culls them before a late join occurs.
+  let added=false;for(const player of WorldPlayers.all()){if(state.units.some(u=>u.qaRegion===player.startRegion))continue;const m=player.leader,point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaRegion=player.startRegion;state.camps[0].remaining++;added=true;}if(added){rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();}
+  const result=step(frame);
+  for(const player of WorldPlayers.all()){const stats=qa.combat.get(player.playerId)||{samples:0,maxDistance:0,primaryDamage:0};for(const shot of projectiles){if(shot.u!==player.leader.id||shot.qaAdmissionFlight||!shot.abilityShot||shot.weapon||shot.secondary)continue;stats.samples++;stats.maxDistance=Math.max(stats.maxDistance,Math.hypot(shot.x-shot.startX,shot.y-shot.startY));}qa.combat.set(player.playerId,stats);}qa.lastInputs=frame.inputs.map(input=>({playerId:input.playerId,...bloomDecodeInput(input.input)}));
   if(qa.wanted.delete(bloomTick)){const bytes=bloomAdapter.save();qa.checkpoints.set(bloomTick,{tick:bloomTick,epoch:state.membershipEpoch,bytes:Array.from(bytes),hash:sdk.hashBytes(bytes),schema:BloomLiveCodec.decode(bytes).schema});while(qa.checkpoints.size>4)qa.checkpoints.delete(qa.checkpoints.keys().next().value)}return result;
  };
  qa.inspect=()=>{
   const session=BloomSimulation.session,local=WorldPlayers.local(),stats=local?currentMoaStats():null;
   return{phase:PublicSession.phase,tick:BloomSimulation.tick,time:state.time,sessionId:session.sessionId,localId:session.localPlayerId,coordinator:session.coordinatorId,epoch:session.epoch,roster:[...session.players],ready:session.ready,closed:session.closed,status:session.status,failure:session.failure??null,
-   mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
+   transitionHistory:qa.transitions,connection:PublicSession.inspect(),metrics:session.metrics,mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
+   combat:WorldPlayers.all().map(p=>({id:p.playerId,region:p.startRegion,...qa.combat.get(p.playerId),damage:state.units.filter(u=>u.qaRegion===p.startRegion).reduce((sum,u)=>sum+u.maxHp-u.hp,0)})),
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,admissionFlights:projectiles.filter(p=>p.qaAdmissionFlight).map(p=>p.shotId),input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
@@ -135,6 +144,11 @@ async function checkpoint(active,label){
  for(const state of captured){assert.equal(state.schema,'bloom-webgl-shared-ms-v3');assert.deepEqual(Buffer.from(state.bytes),Buffer.from(captured[0].bytes),'Full canonical bytes differ at '+label)}
  report.checkpoints.push({label,tick:target,epoch:captured[0].epoch,players:active.length,hash:captured[0].hash,bytes:captured[0].bytes.length});
 }
+async function transitionCheckpoint(label,active){
+ const states=await Promise.all(active.map(read));report.transitionCheckpoints??=[];
+ for(const state of states){assert.equal(state.connection.transitionTimeoutMs,30000);for(const sample of state.transitionHistory||[])assert(sample.elapsedMs===null||sample.elapsedMs<30000,'Successful transition stays inside configured total deadline');}
+ report.transitionCheckpoints.push({label,pages:states.map((state,index)=>({page:pages.indexOf(active[index])+1,budgetMs:state.connection.transitionTimeoutMs,history:state.transitionHistory,events:state.events,metrics:state.metrics}))});
+}
 async function screenshot(page,name,timeout){const path=new URL('./'+name,import.meta.url).pathname;await phase('screenshot '+name,()=>page.screenshot({path,...(timeout?{timeout}:{})}));report.screenshots.push(name)}
 // Real tab focus can invoke the game's ordinary blur-to-pause behavior.
 // Resume through visible UI rather than changing simulation/presentation flags.
@@ -170,6 +184,8 @@ try{
  await host.keyboard.down('KeyD');await ticks([host],4);
  const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement');await host.keyboard.up('KeyD');
  const guest=await addPage();await startPublic(guest);
+ await guest.locator('[data-public="cancel"]').click();await guest.locator('[data-action="start"]').waitFor({state:'visible'});await startPublic(guest);
+ record('Actual Cancel followed by Start abandons the previous discovery and can join normally');
  // Opening a tab can release held actions on blur. Reapply genuine keyboard
  // input during the asynchronous public discovery/admission window.
  await focusAndResume(host);await host.keyboard.down('KeyD');await ready([host,guest]);
@@ -182,6 +198,8 @@ try{
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
+ for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
+ record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of pair){assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,player(state,state.localId).owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,player(state,state.localId).level)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);
  await openPause(host);await host.locator('[data-moa-stats]').click();
@@ -198,6 +216,16 @@ try{
  await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');await host.keyboard.press('Escape');
  record('Host menu neutralizes only its own input; other movement and shared combat continue');
  for(let count=3;count<=5;count++){const page=await addPage();await startPublic(page);await ready(pages,count);await ticks(pages,3)}
+ // Earlier movement intentionally took the host away from its encounter.
+ // Return with genuine held keyboard input; do not teleport the authority or
+ // carry per-tab observer counters across reloads to manufacture flight proof.
+ await focusAndResume(host);
+ const encounter=await evaluate(host,()=>{const player=WorldPlayers.local(),target=state.units.find(u=>u.qaRegion===player.startRegion);return{x:target.x,y:target.y,playerX:player.leader.x,playerY:player.leader.y}});
+ const heldReturnKeys=new Set();
+ try{await until(async()=>{const current=player(await read(host),hostId),dx=encounter.x-current.x,dy=encounter.y-current.y;if(Math.hypot(dx,dy)<180)return true;const wanted=new Set([...(Math.abs(dx)>80?[dx>0?'KeyD':'KeyA']:[]),...(Math.abs(dy)>80?[dy>0?'KeyS':'KeyW']:[])]);for(const key of [...heldReturnKeys])if(!wanted.has(key)){await host.keyboard.up(key);heldReturnKeys.delete(key)}for(const key of wanted)if(!heldReturnKeys.has(key)){await host.keyboard.down(key);heldReturnKeys.add(key)}return false},'Host returns to its combat encounter through real two-axis keyboard input',30000)}finally{for(const key of heldReturnKeys)await host.keyboard.up(key)}
+ await until(async()=>(await Promise.all(pages.map(read))).every(s=>s.combat.length===5&&s.combat.every(c=>c.samples>0&&c.maxDistance>50&&c.primaryDamage>0&&c.damage>0)),'Natural primary shots travel and damage at all five start regions',30000);
+ report.combat=await Promise.all(pages.map(async page=>(await read(page)).combat));
+ record('Real timer-driven combat in all five spawn regions creates visible physical flights beyond 50 units and damages targets on every peer');
  await checkpoint(pages,'five-players');
  const five=await Promise.all(pages.map(read));assert.equal(new Set(five.map(s=>s.localId)).size,5);assert.equal(new Set(five[0].players.filter(p=>p.lifecycle==='active').map(p=>p.owner)).size,5);
  for(const state of five){assert.equal(state.backend,'WebGL');assert(state.frames>10);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.hudLeader,state.localView.leader)}
@@ -216,7 +244,7 @@ try{
  const resumed=await read(guest),resumedPlayer=player(resumed,guestId);
  assert.equal(resumed.localId,guestId);assert.equal(resumed.sessionId,beforeRefresh.sessionId);assert(resumed.tick>=beforeRefresh.tick);assert.equal(resumed.roster.length,5);
  for(const key of ['owner','level','chosen','minerals','army'])assert.equal(resumedPlayer[key],identity[key],'Refresh preserved '+key);
- await checkpoint(pages,'same-tab-refresh');await screenshot(guest,'multiplayer-refreshed-guest.png');
+ await checkpoint(pages,'same-tab-refresh');await transitionCheckpoint('five-player-guest',pages);await screenshot(guest,'multiplayer-refreshed-guest.png');
  record('Actual guest page reload resumes the same room-scoped identity, actor, and five-player world');
  const hostBeforeRefresh=await read(host),hostProgress=player(hostBeforeRefresh,hostId);
  await phase('coordinator reload/load',()=>host.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
@@ -224,7 +252,7 @@ try{
  assert.equal(hostResumed.localId,hostId);assert.equal(hostResumed.coordinator,hostId);assert.equal(hostResumed.sessionId,hostBeforeRefresh.sessionId);assert(hostResumed.tick>=hostBeforeRefresh.tick);
  for(const key of ['owner','level','chosen','minerals','army'])assert.equal(retainedProgress[key],hostProgress[key],'Coordinator refresh preserved '+key);
  assert.equal(retainedProgress.level,3);assert.equal(retainedProgress.chosen,2);assert(retainedProgress.army>0);
- await checkpoint(pages,'coordinator-refresh');record('Actual coordinator reload preserves its existing level, selected abilities, resources, and army');
+ await checkpoint(pages,'coordinator-refresh');await transitionCheckpoint('five-player-coordinator',pages);record('Actual coordinator reload preserves its existing level, selected abilities, resources, and army');
  // The actual public-menu button owns graceful departure and solo restoration.
  await openPause(host);
  await host.locator('[data-public="solo"]').click();

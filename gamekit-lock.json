@@ -1,51 +1,51 @@
 {
   "schemaVersion": 1,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "ab71756ad3657cb0572d44c276c18f9b74187317",
-  "distCommit": "910c24b4963afd4083f39f4d79eae0ce8fae7e92",
+  "sourceCommit": "0cec86a64df1cb495750d1d8faebd304be85ed83",
+  "distCommit": "d49138e9c8146e59d73ec16b23cd545d9ddc8745",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
     {
       "name": "presentation-events",
-      "bundleSHA256": "61d11a42d7edc72d8b9219902ed7e9d0025f05b77a9d681d21582767117af0e6",
+      "bundleSHA256": "30a1c9fd62f223998bba34e299b6f6baf0a789a4f09d468b62df87c8193930c5",
       "inlineSHA256": "56f959814e88e9b52e1a5452e2d026575f031e75d9f4a2138adf6255b22c480d"
     },
     {
       "name": "camera",
-      "bundleSHA256": "790fb684d67f73e7ab1636caa4afbf8ed0d0d54af9ac7c56a0d3f9fdba53dbcd",
+      "bundleSHA256": "972268ad14de778f1dca437913cff576155754adf1195948897c0df3ff8f66de",
       "inlineSHA256": "c40c3bcf34e5bbc08b986200328663c24fd97b6fb9ae8cd23fb3948ae3c285ca"
     },
     {
       "name": "rollback-netcode",
-      "bundleSHA256": "f1155fc0a88b4055f04515f0e8c00c430d5c4ba365c87cda5ebccf9dea731ef9",
-      "inlineSHA256": "0d30360638daadec4d3256afb247523d07337f17a3e69a6eb5a3a78e8d77e595"
+      "bundleSHA256": "12230e5e08ecdfefb0fd19203f52bcdd5249143dbccb5e8c5bdd7b2d30af3ce4",
+      "inlineSHA256": "2505fc76cb49807c3fa96eaed7f76238270fe36e02d7f2f1939e5a7e884f10e2"
     },
     {
       "name": "interpolation",
-      "bundleSHA256": "f0affef627f5a6195892b80480ae2ffb28676f2526840f5a5c11e49b7ac08b1a",
+      "bundleSHA256": "23c90f377beb1fd2389023f42d11137c3c6e63ea148e07eb938882aeb9e9c45f",
       "inlineSHA256": "6f9e0c0ff4c215b59cbacb1310547bf4f074a809983c77b4b211e7b9105d7af4"
     },
     {
       "name": "hud",
-      "bundleSHA256": "2b0e09f4af78a0779308a5c50e7a2cf72264567e26a27bfc011cbb62ca83bb0b",
+      "bundleSHA256": "acec30fdab522ef151ab582113f26058aabb48a1d8d11cfe0ea640e1b61c86df",
       "inlineSHA256": "a6586ffb20e910d4c1bc4d1c80f6cedc06a8b9f46ef11c53318df61b65f81448"
     },
     {
       "name": "rendering",
-      "bundleSHA256": "6a8ca01bca9db3282ba3a66a9881ebcd4719df798f9ff0d471e5df23f471ccb1",
+      "bundleSHA256": "b6030b90345a31f7aad9cb832d3c47f775fff43f0990c7b925768a55a1a0017e",
       "inlineSHA256": "1193aa97ead254e1c67479ec00f4d6875b720c73d1c9e0ce04969dc67f8a3b6c"
     },
     {
       "name": "input",
-      "bundleSHA256": "6cca8d6d870df9baed3b51c5cff2090746953a54f4cd1dc4a466475ec07e5c85",
+      "bundleSHA256": "ae84399953c7e54c8d96408c97208f42b2246a8ac27ef5265053cb0beb306168",
       "inlineSHA256": "c5ed38c6e24bbfb0f96cb268f8473957f9af58674e4fb4cc552f03cae37e45d9"
     },
     {
       "name": "debug-tools",
-      "bundleSHA256": "50194cd84d8bdec147928afb429fe0aa0660bd68994a0120c9db7d1ce430d4e6",
+      "bundleSHA256": "b59fbea3f67144d8a58a73737984905e3f1003a54c26beb00ae4661f22e5fd29",
       "inlineSHA256": "741c1aa3dd8a891fc358d972330a84afc90337f5de14b577aabacde299b5a0b0"
     }
   ],
-  "manifestSHA256": "1dfc6618751d9db6d988e2369ef8a806142dc679314a5b0618af337b13ab4188"
+  "manifestSHA256": "02569d54e137d870f7434ab9002407fd3f7fe1cdaa55fbffcff475e6eaa6b04e"
 }
