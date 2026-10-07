@@ -110,8 +110,15 @@ try{
    attacks.push({type,pending,hpLoss:before.hp-t.hp,shots:projectiles.length-before.shots,scheduled:events.length-before.events,attackCount:state.stats.attacks-before.attacks,selfDestroyed:u.hp===0});
    if(u.hp>0){u.stun=1e6;u.cooldown=1e6;u.target=0}
   }
-  const blockedBefore=state.stats.shieldsBlocked,hp=t.hp;t.shield=1;t.shieldUntil=state.time+10;damage(m,t,100,'ranged');
-  check(t.hp===hp&&t.shield===0&&state.stats.shieldsBlocked===blockedBefore+1,'Active shield consumes one block');
+  const blockedBefore=state.stats.shieldsBlocked,hp=t.hp;
+  // The shield belongs to this NPC. Current participant-owned statistics must
+  // leave the primary player's counter unchanged; historical world counters
+  // credited it once. This is the only permitted local expectation difference.
+  const participantStats=typeof recordCombatStat==='function',expectedShieldCredit=participantStats?0:1;
+  if(participantStats)check(WorldPlayers.forEntity(t)===null,'Shield fixture has no participant owner');
+  t.shield=1;t.shieldUntil=state.time+10;damage(m,t,100,'ranged');
+  check(t.hp===hp&&t.shield===0,'Active shield consumes exactly one block without HP loss');
+  check(state.stats.shieldsBlocked===blockedBefore+expectedShieldCredit,'NPC shield attribution follows the explicit counter policy');
   const mBefore=m.hp;m.rollInvulnerableMs=100;damage(t,m,100,'melee');check(m.hp===mBefore,'Roll immunity gate');m.rollInvulnerableMs=0;
   const friendly=state.units.find(u=>u.hp>0&&u.team==='friendly');const sameHP=friendly.hp;damage(m,friendly,100,'melee');check(friendly.hp===sameHP,'Faction damage gate');
   const boss=residentUnit(),bossHP=boss.hp;damage(m,boss,100,'ranged');check(boss.hp===bossHP,'Dormant resident gate');
@@ -128,7 +135,7 @@ try{
   m.shield=0;m.rollInvulnerableMs=0;m.hp=m.maxHp;
   const bomb=spawn('pillbug','enemy',m.x+15,m.y,{camp:-1,rarityGrade:0});bomb.hp=0;const beforeExplosion=m.hp;rebuildGrid();core.die(bomb,m);
   check(bomb.deadEffect&&m.hp<beforeExplosion,'Legacy postmortem splash reaches Moa');
-  globalThis.qaTransactionCoverage={recovered,types:attacks,armors,shieldBlocks:state.stats.shieldsBlocked-blockedBefore,healing,captured:rarityOwnedCount(-1,'archer',1)-beforeOwned,converted:(state.stats.converted||0)-beforeConverted,postmortemDamage:beforeExplosion-m.hp};
+  globalThis.qaTransactionCoverage={recovered,types:attacks,armors,shieldBlocks:state.stats.shieldsBlocked-blockedBefore,expectedShieldCredit,healing,captured:rarityOwnedCount(-1,'archer',1)-beforeOwned,converted:(state.stats.converted||0)-beforeConverted,postmortemDamage:beforeExplosion-m.hp};
   globalThis.qaFeedbackTarget=t.id;
  `);
  // Exercise immediate health/hitfeel without enabling rendering or touching a GPU.
