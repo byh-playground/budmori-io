@@ -14,7 +14,11 @@ import stats from './netcode-benchmark.cjs';
 const baseline=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const configs=[{name:'baseline'}, {name:'batched-grid-32',mode:'query',cell:32}, {name:'global-sap',mode:'global',cell:128}, ...[32,64,128,256].map(cell=>({name:'coarse-sap-'+cell,mode:'coarse',cell}))];
 const variants=new Map(configs.map(c=>[c.name,c.name==='baseline'?baseline:c.mode==='query'?batched.batchedGridCandidate(baseline,c.cell):coarse.candidate(baseline,{...c,exact:false,instrument:false})]));
-const server=createServer((req,res)=>{const html=variants.get(req.url.slice(1));if(!html){res.writeHead(404);return res.end()}res.setHeader('Content-Type','text/html;charset=utf-8');res.end(html.replace('/* MAIN_RUNTIME_TEST_HOOK */',runtimeHook))});
+// This manual five-human fixture uses the SDK's fixed-roster Core, not an
+// invented dynamic room capability. Real room/RTC behavior has separate E2E.
+const benchmarkHook=runtimeHook.replace('boundary();playing=true;',"boundary({players:['a','b','c','d','e'],localPlayerId:'a',ownerId:'a',sessionConfig:{mode:'online',persistence:'none'}});playing=true;");
+assert.notEqual(benchmarkHook,runtimeHook);
+const server=createServer((req,res)=>{const html=variants.get(req.url.slice(1));if(!html){res.writeHead(404);return res.end()}res.setHeader('Content-Type','text/html;charset=utf-8');res.end(html.replace('/* MAIN_RUNTIME_TEST_HOOK */',benchmarkHook))});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
 const report={kind:'Real Chromium/SwiftShader full adapter tick + renderer CPU, five human factions, serial isolated pages',limitations:['Manual fixed-input tick boundaries, not a normal gameplay RAF/FPS measure.','Render measures CPU command submission, not GPU completion.','New solver trajectories intentionally differ. Live counts are retained to avoid mistaking deaths for speedup.','All seven variants use the actual game and SDK; only candidate HTML generated in this test server changes solver. Production index.html remains unchanged.'],results:[]};
 const counts=(process.env.COARSE_COUNTS||'10,155,1000').split(',').map(Number),repeats=+(process.env.COARSE_REPEATS||2),ticks=+(process.env.COARSE_TICKS||65),warm=+(process.env.COARSE_WARM||15);
@@ -34,7 +38,7 @@ try{
   }
   const final=await read('({tick:bloomTick,units:state.units.length,valid:bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bloomAdapter.save())})');assert(final.valid);assert.equal(final.units,count*5+1);assert.deepEqual(errors,[]);assert.equal(await read('BloomDiagnostics.fatal'),false);
   const result={repeat:repeat+1,...config,count,sourceSHA256:createHash('sha256').update(variants.get(config.name)).digest('hex'),initial,final,stepMs:stats.summary(tickMs),renderMs:stats.summary(renderMs),combinedMs:stats.summary(combinedMs),population,raw:{tickMs,renderMs,combinedMs}};
-  report.results.push(result);console.log(JSON.stringify({...result,raw:undefined,population:undefined}));await context.close();assert.equal(browser.contexts().length,0);
+  report.results.push(result);await mkdir(new URL('./collision-artifacts/',import.meta.url),{recursive:true});await writeFile(new URL('./collision-artifacts/browser-performance-report.json',import.meta.url),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({...result,raw:undefined,population:undefined}));await context.close();assert.equal(browser.contexts().length,0);
  }
  // All unique-pair algorithms differ only in broadphase strategy, not physics.
  for(const count of counts)for(let repeat=1;repeat<=repeats;repeat++){const pair=report.results.filter(r=>r.count===count&&r.repeat===repeat&&['global','coarse'].includes(r.mode));assert(pair.every(r=>r.final.hash===pair[0].final.hash),'Broadphase changes final authority')}
