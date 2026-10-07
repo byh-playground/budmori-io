@@ -6304,9 +6304,9 @@ function effectiveRange(u){return unitDef(u.type).range}
 function effectiveSpeed(u){return unitDef(u.type).speed}
 function hasUnitAbility(u){return u.team==='enemy'||state.upgrades.ability>0}
 function unitDef(type){return CONFIG.units[type]}
-// Is-a is the stable species/leader identity. Has-a is this immutable set of
-// combat capabilities; can-be state stays in each unit's saved pending attack,
-// attackController, deployment, and status fields. No functions enter snapshots.
+// Species/leader identity is separate from optional combat behavior. These
+// immutable definitions select capabilities; pending attacks, attackController
+// phases and deployment are execution state, not CAN-BE. No functions enter snapshots.
 const EMPTY_COMBAT_DEFINITION=Object.freeze({});
 const UnitCombatTraits=Object.freeze({
  rootstalker:{execute:basicLineAttack},
@@ -6583,12 +6583,12 @@ function showPause(){openModal('pause',sheetHead('잠시 쉬어 가기')+`<p>군
 function showDefeat(){if(bloomInTick){bloomEmit("showDefeat",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;openModal('defeat',`<div class="eyebrow">A NEW SHOOT WILL RISE</div><h2>다시 뿌리내릴 시간</h2><p>모체가 쓰러져 출정 부대를 잃었습니다.<br>해금 · 연구 · 자원 · 정복한 구역은 그대로 남습니다.</p><div class="notice">생장 둥지에서 무료 칼잎 전사 ${CONFIG.mother.starterCount}마리와 다시 시작합니다. 첫 카드는 무료 기본병으로 돌아가요.<br>유료 병종은 자원을 지불해 새로 생산해야 합니다.</div><button class="primary" data-action="recover">생장 둥지에서 다시 시작 →</button>`)}
 function showVictory(){if(bloomInTick){bloomEmit("showVictory",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;if(!playing)return;openModal('victory',`<div class="eyebrow">THE FRONTIER IS IN BLOOM</div><h2>군락이 하나로 이어졌어요</h2><p>여섯 생장점이 뿌리를 맞대고, 중심 군락이 깨어났습니다.<br>작은 모체가 시작한 행군은 이제 하나의 생태계가 되었어요.</p><div class="notice">정복 6 / 6 · 현재 인구 ${pop()} / ${cap()}<br>태어난 병력 ${state.stats.produced} · 전투 손실 ${state.stats.losses}<br>최종 인구 한도 1,000까지 성장하고 조합을 더 시험할 수 있습니다.</div><button class="primary" data-action="close">군락 계속 돌보기 →</button>`)}
 function resetKnob(){$('knob').style.transform='translate(0px,0px)'}
-function bindUI(){document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.action;if(a==='collection')showCards();if(a==='close')closeModal();if(a==='start'){playing=true;document.body.classList.remove('intro');WorldView.dead()?showDefeat():closeModal();toast(CONFIG.zones[state.zone].tip)}if(a==='recover'&&recover()){closeModal();toast('모아가 다시 일어났어요 · 영구 동료도 주변에서 함께해요')}if(a==='save'){save();toast('이 기기에 진행을 저장했어요')}if(a==='export')exportSave();if(a==='import')importSave();if(a==='reset-confirm')openModal('reset',sheetHead('새 군락을 시작할까요?')+'<p>저장된 광물 · 도감 · 모아 성장 · 성장 카드 · 구역 진행이 초기화됩니다.</p><button class="primary danger" data-action="reset">진행 초기화</button><button class="primary" style="background:#ffffff10;color:var(--ink)" data-action="pause">취소</button>');if(a==='pause')showPause();if(a==='reset'){reset();save();closeModal();toast('새 군락이 발아했어요')}});$('evolveButton').onclick=()=>showUpgrades();$('mapButton').onclick=showMap;$('pause').onclick=showPause;
- window.addEventListener('blur',()=>{keys.clear();stick.x=stick.y=0;resetKnob();if(playing&&!paused)showPause();save()});document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();stick.x=stick.y=0;resetKnob();if(playing&&!paused)showPause();save()}});window.addEventListener('pagehide',save);
+function bindUI(){GameUI.listen(document,'click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.action;if(a==='collection')showCards();if(a==='close')closeModal();if(a==='start'){playing=true;document.body.classList.remove('intro');WorldView.dead()?showDefeat():closeModal();toast(CONFIG.zones[state.zone].tip)}if(a==='recover'&&recover()){closeModal();toast('모아가 다시 일어났어요 · 영구 동료도 주변에서 함께해요')}if(a==='save'){save();toast('이 기기에 진행을 저장했어요')}if(a==='export')exportSave();if(a==='import')importSave();if(a==='reset-confirm')openModal('reset',sheetHead('새 군락을 시작할까요?')+'<p>저장된 광물 · 도감 · 모아 성장 · 성장 카드 · 구역 진행이 초기화됩니다.</p><button class="primary danger" data-action="reset">진행 초기화</button><button class="primary" style="background:#ffffff10;color:var(--ink)" data-action="pause">취소</button>');if(a==='pause')showPause();if(a==='reset'){reset();save();closeModal();toast('새 군락이 발아했어요')}});GameUI.handler($('evolveButton'),'onclick',()=>showUpgrades());GameUI.handler($('mapButton'),'onclick',showMap);GameUI.handler($('pause'),'onclick',showPause);
+ GameUI.listen(window,'blur',()=>{keys.clear();stick.x=stick.y=0;resetKnob();if(playing&&!paused)showPause();save()});GameUI.listen(document,'visibilitychange',()=>{if(document.hidden){keys.clear();stick.x=stick.y=0;resetKnob();if(playing&&!paused)showPause();save()}});GameUI.listen(window,'pagehide',save);
 
 }
-function frame(time){if(globalThis.BloomDiagnostics?.fatal)return;try{const elapsed=Math.max(0,(time-lastFrame)/1000||0);lastFrame=time;advanceSimulationClock(elapsed);render(playing&&!paused&&!WorldView.dead()?Math.min(1,accumulator/CONFIG.sim.fixedStep):1,Math.min(elapsed,.1));if(uiClock>=CONFIG.render.uiInterval)refreshUI();if(toastClock>0){toastClock-=Math.min(elapsed,.1);if(toastClock<=0)$('status').style.opacity='0'}if(!globalThis.BloomDiagnostics?.fatal)requestAnimationFrame(frame)}catch(error){globalThis.BloomDiagnostics?.report(error,{kind:'render.frame',fatal:true})}}
-function boot(){if(window.RALLY_ART_CONFIG)CONFIG.art=window.RALLY_ART_CONFIG;reset();let hasSave=false;try{const raw=localStorage.getItem(CONFIG.saveKey);if(raw)hasSave=load(raw)}catch{}buildTerrain();bindUI();refreshUI();showIntro(hasSave);window.__army={CONFIG,get state(){return state},get grid(){return grid},get effects(){return effects},get projectiles(){return projectiles},get events(){return events},get paused(){return paused},get playing(){return playing},get input(){return{x:stick.x,y:stick.y,keys:[...keys]}},get performance(){return frameStats},spawn,snapshot,load,save,reset,setCard,buy,purchaseCost,pop,cap,enterZone,recover,defeat,rebuildGrid,findTarget,canTarget,detected,attack,attackPower,damage,area,produce,productionTime,productionSpeed,support,render,refreshUI,showUpgrades,showCards,closeModal,unlockZone,spawnCamp,unitDef,clearEffects(){effects=[];projectiles=[];events=[]},setPaused(v){paused=!!v},setPlaying(v){playing=!!v},get entityCount(){return state.units.length}};requestAnimationFrame(frame)}
+function frame(time){if(!GameUI.active||globalThis.BloomDiagnostics?.fatal)return;try{const elapsed=Math.max(0,(time-lastFrame)/1000||0);lastFrame=time;advanceSimulationClock(elapsed);render(playing&&!paused&&!WorldView.dead()?Math.min(1,accumulator/CONFIG.sim.fixedStep):1,Math.min(elapsed,.1));if(uiClock>=CONFIG.render.uiInterval)refreshUI();if(toastClock>0){toastClock-=Math.min(elapsed,.1);if(toastClock<=0)$('status').style.opacity='0'}if(!globalThis.BloomDiagnostics?.fatal)GameUI.requestFrame()}catch(error){globalThis.BloomDiagnostics?.report(error,{kind:'render.frame',fatal:true})}}
+function initializeGameSurface(){if(window.RALLY_ART_CONFIG)CONFIG.art=window.RALLY_ART_CONFIG;reset();let hasSave=false;try{const raw=localStorage.getItem(CONFIG.saveKey);if(raw)hasSave=load(raw)}catch{}buildTerrain();bindUI();refreshUI();showIntro(hasSave);window.__army={CONFIG,get state(){return state},get grid(){return grid},get effects(){return effects},get projectiles(){return projectiles},get events(){return events},get paused(){return paused},get playing(){return playing},get input(){return{x:stick.x,y:stick.y,keys:[...keys]}},get performance(){return frameStats},spawn,snapshot,load,save,reset,setCard,buy,purchaseCost,pop,cap,enterZone,recover,defeat,rebuildGrid,findTarget,canTarget,detected,attack,attackPower,damage,area,produce,productionTime,productionSpeed,support,render,refreshUI,showUpgrades,showCards,closeModal,unlockZone,spawnCamp,unitDef,clearEffects(){effects=[];projectiles=[];events=[]},setPaused(v){paused=!!v},setPlaying(v){playing=!!v},get entityCount(){return state.units.length}};GameUI.requestFrame()}
 
 
 function drawProjectedProjectile(source){const p=presentationPose(source,'projectile');const d=unitDef(p.type)||{};if(p.abilityShot){drawAbilitySeed(p);return}if(p.moaSeed){projectionBillboard(ctx,p.x,p.y,p.z||0);const a=WorldProjection.angle(Math.atan2(p.aimY-p.y,p.aimX-p.x));ellipse(ctx,p.x,p.y,8,4,a,'#d6ff96');ellipse(ctx,p.x-Math.cos(a)*7,p.y-Math.sin(a)*7,5,2,a,'#96dbad88');ellipse(ctx,p.x+Math.cos(a)*2,p.y+Math.sin(a)*2,3,2,a,'#fff8d0');ctx.restore();return}projectionBillboard(ctx,p.x,p.y,p.z||0);ellipse(ctx,p.x,p.y,CONFIG.render.projectileRadius*(p.splash?1.6:1),CONFIG.render.projectileRadius,WorldProjection.angle(Math.atan2(p.aimY-p.y,p.aimX-p.x)),p.team==='friendly'?'#e6f4b0':'#ffc391');ctx.restore()}
@@ -7960,7 +7960,7 @@ CONFIG.production.defaultCards=['swordsman',null,null,null,null,null];CONFIG.pro
 CONFIG.progression.capTierByZone[0]=CONFIG.campaign.population.maxTier;CONFIG.progression.levelsPerZone=CONFIG.campaign.growth.armyMaxRank;
 CONFIG.progression.unitUnlocks=[['swordsman'],[],[],[],[],[]];friendlyTypes.splice(0,friendlyTypes.length,...CONFIG.campaign.productionCards);
 CONFIG.zones[0].bossName='황금 껍질 군락장';CONFIG.zones[0].tip='이끼밭을 반복 사냥해 충원비와 성장 자원을 모으세요. 지도에서 위험도와 수입을 확인할 수 있어요.';shortNames.shellbug='껍질딱정벌레';
-const core={reset,spawn,spawnCamp,save,load,die,defeat,recover,findTarget,canTarget,attackPower,produce,buy,boot};
+const core={reset,spawn,spawnCamp,save,load,die,defeat,recover,findTarget,canTarget,attackPower,produce,buy};
 const campaignDefs=[];CONFIG.campaign.grounds.forEach((g,gi)=>g.camps.forEach((c,ci)=>campaignDefs.push({id:campaignDefs.length,zone:0,stage:0,ground:gi,x:c.x,y:c.y,kind:gi,boss:false,sourceId:g.id+'-'+ci,members:c.units.map(u=>({...u}))})));
 function makeLedger(){return{rewardM:0,rewardG:0,productionM:0,productionG:0,investmentM:0,investmentG:0,lostM:0,lostG:0,losses:0}}
 function newFarm(){return{mode:'farming',stage:0,parcels:[true,false,false,false,false],research:Object.fromEntries(friendlyTypes.map(t=>[t,{branch:null,rank:0}])),investments:{mineral:0,gas:0,nursery:0},bank:{minerals:0,gas:0},lifetimeBank:{minerals:0,gas:0},offline:{minerals:0,gas:0},savedAt:0,ledger:makeLedger(),groundStats:CONFIG.campaign.grounds.map(()=>({clears:0,kills:0,rewardM:0,rewardG:0,lostM:0,lostG:0,losses:0})),migration:null}}
@@ -8017,7 +8017,7 @@ save=function(){if(bloomInTick||bloomInitializing){bloomPersistenceRequested=tru
 function validFarm(c){const C=CONFIG.campaign,finite=(v,max=CONFIG.sim.integerLimit)=>Number.isFinite(v)&&v>=0&&v<=max,rank=v=>Number.isInteger(v)&&v>=0&&v<=C.growth.maxInvestmentRank;if(!c||c.mode!=='farming'||c.stage!==0||!Array.isArray(c.parcels)||c.parcels.length!==C.grounds.length||c.parcels[0]!==true||c.parcels.some(v=>typeof v!=='boolean')||!finite(c.savedAt,C.save.maxTimestamp)||!c.research||!c.investments||!c.bank||!c.lifetimeBank||!c.offline||!c.ledger||!Array.isArray(c.groundStats)||c.groundStats.length!==C.grounds.length)return false;for(let i=1;i<c.parcels.length;i++)if(c.parcels[i]&&!C.parcels[i].from.some(n=>c.parcels[n]))return false;for(const t of friendlyTypes){const r=c.research[t];if(!r||!rank(r.rank)||r.rank===0&&r.branch!==null||r.rank>0&&!C.research.choices[t].some(b=>b.id===r.branch))return false}for(const k of ['mineral','gas','nursery'])if(!rank(c.investments[k]))return false;for(const k of ['minerals','gas'])if(!finite(c.bank[k],c.investments[k==='minerals'?'mineral':'gas']*C.investments[k==='minerals'?'mineral':'gas'].capacity)||!finite(c.lifetimeBank[k])||!finite(c.offline[k]))return false;for(const k of Object.keys(makeLedger()))if(!finite(c.ledger[k]))return false;for(const s of c.groundStats)for(const k of ['clears','kills','rewardM','rewardG','lostM','lostG','losses'])if(!finite(s[k])||!Number.isInteger(s[k]))return false;return c.migration===null||c.migration===2}
 function migrateLegacy(v){if(!v.campaign||v.maxZone!==0||v.zone!==0||!Array.isArray(v.units)||!Array.isArray(v.cards))return null;const old=v.campaign,c=newFarm();c.research=old.research;c.investments=old.investments;c.bank=old.bank;c.lifetimeBank=old.lifetimeBank;c.savedAt=old.savedAt;c.migration=2;c.parcels=[true,old.stage>=1,old.stage>=2,old.stage>=4,old.stage>=7];if(!validFarm(c))return null;v.version=CONFIG.version;v.campaign=c;v.camps=freshCamps(c.parcels);v.bosses=CONFIG.zones.map(()=>false);v.won=false;if(v.unlocked?.some(t=>!friendlyTypes.includes(t)))return null;v.units=v.units.filter(u=>u.team==='friendly');const b=basePoint();v.mother.x=b.x;v.mother.y=b.y;v.units.forEach((u,i)=>{const a=i*CONFIG.sim.goldenAngle,r=CONFIG.motion.followBaseRadius+Math.sqrt(i)*CONFIG.motion.followSpacing;u.x=u.hx=b.x+Math.cos(a)*r;u.y=u.hy=b.y+Math.sin(a)*r;u.camp=-1;u.stage=u.zone=0;u.boss=false;u.returning=false;u.target=0;u.query=CONFIG.sim.targetInterval});return v}
 load=function(raw){try{if(typeof raw==='string'&&raw.length>CONFIG.maxSaveBytes)return false;let v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw));if(v?.version===2)v=migrateLegacy(v);if(!v||v.version!==CONFIG.version||v.maxZone!==0||v.zone!==0||!validFarm(v.campaign)||!Array.isArray(v.units)||!Array.isArray(v.camps)||v.camps.length!==campaignDefs.length||v.capTier>CONFIG.campaign.population.maxTier||v.won||v.bosses?.some(Boolean)||!v.mother||lockedParcelAt(v.mother.x,v.mother.y,v.campaign.parcels)!==-1)return false;for(const u of v.units){if(u.stage!==0||u.zone!==0||typeof u.boss!=='boolean'||typeof u.returning!=='boolean'||!Number.isFinite(u.encounterHpScale)||u.encounterHpScale<=0||!Number.isFinite(u.encounterAttackScale)||u.encounterAttackScale<=0||u.x>CONFIG.campaign.width||u.hx<0||u.hx>CONFIG.campaign.width||u.hy<0||u.hy>CONFIG.campaign.height)return false;if(u.team==='enemy'&&(u.camp<0||!campaignDefs[u.camp]))return false}for(let i=0;i<v.camps.length;i++){const c=v.camps[i],d=campaignDefs[i],g=CONFIG.campaign.grounds[d.ground],count=d.members.reduce((n,u)=>n+u.count,0);if(c.ground!==d.ground||c.stage!==0||c.zone!==0||c.x!==d.x||c.y!==d.y||c.enabled!==v.campaign.parcels[d.ground]||!c.enabled&&(c.spawned||c.remaining!==0||c.cycles!==0||c.clears!==0)||c.repeatable!==true||c.boss!==false||JSON.stringify(c.members)!==JSON.stringify(d.members)||!Number.isInteger(c.remaining)||c.remaining<0||c.remaining>count||!Number.isInteger(c.clears)||c.clears<0||!Number.isInteger(c.cycles)||c.cycles<c.clears||c.cycles>CONFIG.sim.integerLimit||!Number.isFinite(c.respawn)||c.respawn>CONFIG.campaign.hunting.legacyRespawnMax||c.remaining!==v.units.filter(u=>u.team==='enemy'&&!u.rivalRecruit&&u.hp>0&&u.camp===i).length)return false}for(const c of v.camps){const counts={};for(const m of c.members)counts[m.type+':'+!!m.boss]=(counts[m.type+':'+!!m.boss]||0)+m.count;for(const u of v.units)if(u.team==='enemy'&&!u.rivalRecruit&&u.hp>0&&u.camp===c.id){const k=u.type+':'+!!u.boss;if(!counts[k])return false;counts[k]--;}if(c.regrowth!==undefined){if(!Array.isArray(c.regrowth)||c.regrowth.length>CONFIG.sim.campEntityLimit||!c.spawned&&c.regrowth.length)return false;for(const q of c.regrowth){const k=q.type+':'+q.boss;if(typeof q.boss!=='boolean'||typeof q.cued!=='boolean'||!Number.isFinite(q.left)||q.left>CONFIG.campaign.hunting.legacyRespawnMax||!counts[k])return false;counts[k]--}}else{c.regrowth=[];if(c.spawned)for(const [key,n] of Object.entries(counts)){const [type,boss]=key.split(':');for(let i=0;i<n;i++)c.regrowth.push({type,boss:boss==='true',left:boss==='true'?CONFIG.campaign.hunting.bossRespawn:Math.min(CONFIG.campaign.grounds[c.ground].respawn,Math.max(0,c.respawn)),cued:false})}}if(c.spawnSerial!==undefined&&(!Number.isInteger(c.spawnSerial)||c.spawnSerial<0))return false}for(const u of v.units){if(u.order!==undefined&&!['return','follow'].includes(u.order))return false;u.pendingMelee=null}if(!core.load(v))return false;const c=state.campaign,before={...c.bank},elapsed=clamp((Date.now()-c.savedAt)/1000,0,CONFIG.campaign.save.maxOfflineSeconds);addBank(elapsed);c.offline={minerals:Math.floor(c.bank.minerals-before.minerals),gas:Math.floor(c.bank.gas-before.gas)};c.savedAt=Date.now();return true}catch{return false}};
-boot=function(){core.boot();try{if(!localStorage.getItem(CONFIG.saveKey)){const old=localStorage.getItem(CONFIG.campaign.save.legacyKey);if(old&&load(old)){save();showIntro(true)}}}catch{}Object.assign(window.__army,{researchCost,researchLimit,investmentLimit,buyResearch,researchFor,researchTotal,investmentCost,buyInvestment,investmentTotal,addBank,collectBank,effectiveRange,effectiveSpeed,hasUnitAbility,nurseryRate,worldLimit,updateCampaign,nearestGround,objectiveStatus,unlockSpecies,unlockCost,parcelCost,unlockParcel,lockedParcelAt,parcelRequirement,getCampaignDefs:()=>campaignDefs});/* Parcel payment is available only at the physical world gate. */};
+function initializeCampaignUI(){try{if(!localStorage.getItem(CONFIG.saveKey)){const old=localStorage.getItem(CONFIG.campaign.save.legacyKey);if(old&&load(old)){save();showIntro(true)}}}catch{}Object.assign(window.__army,{researchCost,researchLimit,investmentLimit,buyResearch,researchFor,researchTotal,investmentCost,buyInvestment,investmentTotal,addBank,collectBank,effectiveRange,effectiveSpeed,hasUnitAbility,nurseryRate,worldLimit,updateCampaign,nearestGround,objectiveStatus,unlockSpecies,unlockCost,parcelCost,unlockParcel,lockedParcelAt,parcelRequirement,getCampaignDefs:()=>campaignDefs});/* Parcel payment is available only at the physical world gate. */};
 
 function unlockCost(type){const d=CONFIG.campaign.unlocks[type];return !d||unlocked(type)||state.campaign.investments.nursery<d.nursery?null:[d.minerals,d.gas]}
 function unlockSpecies(type){if(!spend(unlockCost(type)))return false;state.unlocked.push(type);save();refreshUI();toast(unitDef(type).name+' 생산 해금 · 병력은 시간과 비용을 들여 부화합니다');return true}
@@ -8094,7 +8094,7 @@ WorldUI.define('permanent',{anchor:(s,d)=>({at:d.remaining===null?'body':'ground
 WorldUI.define('deathHealth',{anchor:(s,d)=>({at:'head',extent:d.death.r,gap:9}),paint(c,a,s,d){const record=d.death,f=d.sample,b=record.bar,q=1-healthEase(f.age/CONFIG.render.death.barLife);c.globalAlpha=Math.min(f.alpha,f.barAlpha);const x=a.x-record.width/2;c.fillStyle='#15291feb';c.fillRect(x-1,a.y-1,record.width+2,CONFIG.render.healthJuice.worldHeight+2);c.fillStyle=CONFIG.render.healthJuice.ghost;c.fillRect(x,a.y,record.width*b.ghost*q,CONFIG.render.healthJuice.worldHeight);c.fillStyle=CONFIG.render.healthJuice.red;c.fillRect(x,a.y,record.width*b.fill*q,CONFIG.render.healthJuice.worldHeight)}});
 // Compatibility name for the drawing geometry; all world UI resolves in WorldUI.
 const WorldIndicators={body:(p)=>WorldUI.anchor(p,{at:'body'}),ground:indicatorGroundPoint,point:indicatorPoint,groundLine:indicatorGroundLine,groundArc:indicatorGroundArc,death:indicatorDeathPose};
-const worldUIBoot=boot;boot=function(){worldUIBoot();Object.assign(window.__army,{WorldUI,WorldIndicators})};
+function publishWorldIndicators(){Object.assign(window.__army,{WorldUI,WorldIndicators})};
 
 </script><script>
 /** Approved B character study geometry. Flat ivory body, outlined sprout, emoticon.
@@ -8124,7 +8124,7 @@ CONFIG.moa={rangedReach:235,rangedWindup:.18,seedSpeed:410,seedRadius:5,attack:2
 CONFIG.control={inputThreshold:.35,frontDot:Math.cos(50*Math.PI/180),reserveReach:24,reserveCooldown:.2,reserveDuration:.4,reserveRearm:.72,rangedWindup:.4,meleeWindup:.35,meleeSlack:3,shotRadius:3,returnJoinRadius:80};
 CONFIG.motion.retreatIntentTime=.15;
 const moaLegacyCosts={upgrades:JSON.parse(JSON.stringify(CONFIG.upgrades)),research:JSON.parse(JSON.stringify(CONFIG.campaign.research.choices)),production:{...CONFIG.upgrades.production},investments:JSON.parse(JSON.stringify(CONFIG.campaign.investments)),unlocks:JSON.parse(JSON.stringify(CONFIG.campaign.unlocks))};
-const moaPrevious={reset,load,boot,buy,purchaseCost,recover,die,killReward,save};
+const moaPrevious={reset,load,buy,purchaseCost,recover,die,killReward,save};
 CONFIG.version=4;CONFIG.saveKey='bloom-army-moa-v4';CONFIG.saveExportName='bloom-moa-save-v4.json';
 CONFIG.mother.starterCount=0;CONFIG.production.slotZones=[0,0,0,0];CONFIG.production.defaultCards=[...friendlyTypes];
 for(const c of CONFIG.campaign.parcels)c.cost=[c.cost[0]+c.cost[1],0];
@@ -8166,7 +8166,7 @@ die=function(t,killer){if(t.deadEffect)return;const converted=!!moaMarkOwner(-1)
 recover=function(){const cards=state.cards.map(c=>({...c})),ok=moaPrevious.recover();if(ok){state.cards=cards;initializeMoa();save()}return ok};
 function obsoleteRefund(v){let sum=0;const d=moaLegacyCosts.production;for(let n=0;n<v.upgrades.production;n++)sum+=Math.ceil(d.baseM*d.growth**n/25)*25+Math.ceil(d.baseG*d.growth**n/25)*25;for(const [k,d]of Object.entries(moaLegacyCosts.investments))for(let n=0;n<v.campaign.investments[k];n++)sum+=Math.ceil(d.baseM*d.growth**n/25)*25+Math.ceil(d.baseG*d.growth**n/5)*5;for(const t of v.unlocked)if(moaLegacyCosts.unlocks[t])sum+=moaLegacyCosts.unlocks[t].minerals+moaLegacyCosts.unlocks[t].gas;return sum}
 load=function(raw){try{if(typeof raw==='string'&&raw.length>CONFIG.maxSaveBytes)return false;const v=typeof raw==='string'?JSON.parse(raw):JSON.parse(JSON.stringify(raw));const legacy=v?.version===3||v?.version===2;if(!legacy&&v?.version!==4)return false;if(!legacy){const c=v.campaign;if(!c||![0,1].includes(c.moaGrowth)||!c.collection||friendlyTypes.some(t=>!Number.isInteger(c.collection[t])||c.collection[t]<0||c.collection[t]>CONFIG.sim.integerLimit)||!Number.isFinite(v.mother?.moaCooldown)||v.mother.moaCooldown<0||v.mother.moaCooldown>CONFIG.moa.cooldown||!Number.isInteger(v.stats?.converted)||v.stats.converted<0||v.stats.converted>CONFIG.sim.integerLimit)return false;if(v.gas!==0)return false;v.mother.pendingMoa=null;v.mother.moaTarget=0;for(const u of v.units||[])delete u.moaConverted;}const previousVersion=CONFIG.version,slots=CONFIG.production.slotZones;let accepted=false;try{if(legacy){CONFIG.version=v.version===2?3:v.version;CONFIG.production.slotZones=[0,0,0,0,2,4]}accepted=moaPrevious.load(v)}finally{CONFIG.version=previousVersion;CONFIG.production.slotZones=slots}if(!accepted)return false;if(legacy){const c=state.campaign,exchange=(state.gas+c.bank.gas)*CONFIG.moa.gasExchange,refund=obsoleteRefund(state),bank=c.bank.minerals;state.minerals=Math.min(CONFIG.economy.maxResource,state.minerals+exchange+refund+bank);state.gas=0;c.bank={minerals:0,gas:0};c.offline={minerals:0,gas:0};c.investments={mineral:0,gas:0,nursery:0};state.upgrades.production=0;c.collection=Object.fromEntries(friendlyTypes.map(t=>[t,0]));c.moaGrowth=0;c.moaMigration={from:legacy?3:4,gas:exchange,refund,bank};state.stats.converted=0;state.cards=state.cards.slice(0,4);state.productionCursor=0;state.productionCredit=0;state.version=4;state.unlocked=[...friendlyTypes]}state.cards.forEach(c=>{c.progress=0;c.blocked=''});initializeMoa();rebuildGrid();view.x=state.mother.x;view.y=state.mother.y;toastClock=0;if($('status'))$('status').style.opacity='0';return true}catch{return false}};
-boot=function(){moaPrevious.boot();try{if(!localStorage.getItem(CONFIG.saveKey)){const old=localStorage.getItem(CONFIG.moa.legacyKey)||localStorage.getItem(CONFIG.campaign.save.legacyKey);if(old&&load(old)){save();refreshUI();showIntro(true)}}}catch{}Object.assign(window.__army,{updateMoa,moaMovingInput,moaPower,moaContact,moaReserved,moaFront,moaFinisherTarget,damageValue,segmentCircle,attack,updateUnit,motherRetreatsFrom,conversionEligible,die,killReward,maxMotherHP,radius,impact,projectile});};
+function initializeMoaUI(){try{if(!localStorage.getItem(CONFIG.saveKey)){const old=localStorage.getItem(CONFIG.moa.legacyKey)||localStorage.getItem(CONFIG.campaign.save.legacyKey);if(old&&load(old)){save();refreshUI();showIntro(true)}}}catch{}Object.assign(window.__army,{updateMoa,moaMovingInput,moaPower,moaContact,moaReserved,moaFront,moaFinisherTarget,damageValue,segmentCircle,attack,updateUnit,motherRetreatsFrom,conversionEligible,die,killReward,maxMotherHP,radius,impact,projectile});};
 drawMother=function(source=WorldView.leader()){const m=presentationPose(source);drawMoa(ctx,m,presentationTime());const ready=1-clamp((source.moaCooldown||0)/CONFIG.moa.cooldown,0,1);ctx.strokeStyle='#eff8c17a';ctx.lineWidth=2;ctx.beginPath();indicatorGroundArc(ctx,m.x,m.y,m.size+8,m.size+8,-Math.PI/2,-Math.PI/2+Math.PI*2*ready,true,false);ctx.stroke();const id=source.finisher?.target||source.pendingMoa?.target,t=id&&idMap.get(id);if(t?.hp>0){const p=presentationPose(t);ctx.strokeStyle=source.finisher?'#e4ff9e':'#eff8c17a';ctx.lineWidth=source.finisher?2:1;ctx.beginPath();terrainCirclePath(p.x,p.y,radius(p)+7);ctx.stroke();if(source.finisher){ctx.font='bold 10px system-ui';ctx.textAlign='center';ctx.fillStyle='#e4ff9e';indicatorBodyLabel(p,'영입',unitVisualExtent(p))}}};
 
 </script><script>
@@ -8262,13 +8262,13 @@ function solveMoaContacts(owner=state.mother,prepared=false){
  }
  boundMoaBody(m);
 }
-const moaPhysicsCore={initializeMoa,push,boot};
+const moaPhysicsCore={initializeMoa,push};
 initializeMoa=function(){moaPhysicsCore.initializeMoa();resetMoaBody(state.mother);state.mother.stun=0;for(const u of state.units)resetMoaBody(u)};
 
 // Existing enemy melee/shove paths already call push once. Route just their Moa
 // target through mass-scaled impulse; do not add a second kick in damage().
 push=function(t,x,y,amount){if(t.type!=='mother')return moaPhysicsCore.push(t,x,y,amount);if(t.hp<=0)return;const a=Math.atan2(t.y-y,t.x-x),p=CONFIG.moaPhysics,J=amount*p.enemyPushScale*p.motherMass/moaBodyMass(t);addMoaImpulse(t,Math.cos(a)*J,Math.sin(a)*J);noteMoaContact(-Math.cos(a),-Math.sin(a),Math.abs(amount))};
-boot=function(){moaPhysicsCore.boot();Object.assign(window.__army,{moaBodyRadius,moaBodyMass,solveMoaContacts,addMoaImpulse,boundMoaBody,moaBashImpulse,push})};
+function publishMoaPhysics(){Object.assign(window.__army,{moaBodyRadius,moaBodyMass,solveMoaContacts,addMoaImpulse,boundMoaBody,moaBashImpulse,push})};
 
 </script><script>
 /** Bloom presentation contract, adapted from Rally RenderStateStore f9d4c282:
@@ -8376,8 +8376,8 @@ closeModal=function(){if(bloomInTick){bloomEmit("closeModal",Array.from(argument
 function sampleSimulationInput(){return{x:stick.x+(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0),y:stick.y+(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)}}
 let advanceSimulationClock;
 // Public test surface is read-only for presentation; authoritative QA hooks stay intact.
-const presentationBoot=boot;
-boot=function(){presentationBoot();Object.assign(window.__army,{advanceClock:advanceSimulationClock,presentationPose,resetPresentation,getPresentation(){return{ticks:presentation.ticks,alpha:presentation.alpha,time:presentation.time,clock:{...presentation.clock},units:presentation.maps.unit.size}},renderPose(source,alpha=1,kind='unit'){const old=presentation.active;presentation.active=true;presentation.alpha=clamp(alpha,0,1);const p=presentationPose(source,kind),out={};for(const k in RENDER_TRACKS[kind])out[k]=p[k];presentation.active=old;return out}})};
+
+function publishPresentationUI(){Object.assign(window.__army,{advanceClock:advanceSimulationClock,presentationPose,resetPresentation,getPresentation(){return{ticks:presentation.ticks,alpha:presentation.alpha,time:presentation.time,clock:{...presentation.clock},units:presentation.maps.unit.size}},renderPose(source,alpha=1,kind='unit'){const old=presentation.active;presentation.active=true;presentation.alpha=clamp(alpha,0,1);const p=presentationPose(source,kind),out={};for(const k in RENDER_TRACKS[kind])out[k]=p[k];presentation.active=old;return out}})};
 
 </script><script>
 'use strict';
@@ -8396,7 +8396,7 @@ const GROWTH_CARDS=[
  {id:'edge',name:'겹칼잎',type:'swordsman',max:3,desc:'칼잎 전사의 공격력 +18%',effect:'attack',per:.18}
 ];
 GROWTH_CARDS.push({id:'vital',name:'깊은 생명뿌리',icon:'♥',max:CONFIG.sim.integerLimit,kind:'mother'}, {id:'renew',name:'다시 돋는 새싹',icon:'✚',max:CONFIG.sim.integerLimit,kind:'mother'}, {id:'reach',name:'멀리 나는 씨앗',icon:'◎',max:8,kind:'mother'});
-const growthCore={initializeMoa,maxMotherHP,reset,load,boot,save,refreshUI,showIntro,showMap,showDefeat,researchEffect,hasUnitAbility,moaPower,updateMoa};
+const growthCore={initializeMoa,maxMotherHP,reset,load,save,refreshUI,showIntro,showMap,showDefeat,researchEffect,hasUnitAbility,moaPower,updateMoa};
 CONFIG.version=38;CONFIG.saveKey='bloom-army-moa-v38';CONFIG.saveExportName='bloom-moa-save-v38.json';
 function newGrowth(){return{schema:GROWTH.schema,choices:0,rng:(bloomSeed ^ 0x9e3779b9) >>> 0,ranks:{},draft:null,serial:0,migration:null}}
 function growthState(){return state.campaign.growthCards}
@@ -8435,7 +8435,7 @@ refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments)
 showIntro=function(hasSave){growthCore.showIntro(hasSave); const m=growthState().migration;if(m)$('sheet').insertAdjacentHTML('beforeend',`<div class="notice">기존 강화와 연구 비용 ◆ ${fmt(m.refund)}을 한 번 환급했어요. 군단 · 도감 · 연결 구획 · 인구 한도 · 모아 성장 단계는 그대로입니다.</div>`)};
 ledgerHTML=function(){const l=state.campaign.ledger;return`<div class="notice">사냥 광물 ◆ ${fmt(l.rewardM)} · 누적 전환 ${fmt(state.stats.converted)}마리<br>누가 처치해도 광물 획득 · 모아 직접 처치는 인구 한도 안에서 아군 전환도 함께</div>`};
 CONFIG.zones[0].tip='모아로 직접 처치해 친구를 모으세요. 광물 50이면 카드 3장 중 하나를 고릅니다.';
-boot=function(){growthCore.boot();try{if(!localStorage.getItem(CONFIG.saveKey)){const raw=localStorage.getItem('bloom-army-moa-v4');if(raw&&load(raw)){refreshUI();showIntro(true)}}}catch{}Object.assign(window.__army,{GROWTH,GROWTH_CARDS,growthCost,growthCostAt,growthCardEffect,growthVitalBonus,growthRecovery,growthInterval,maxMotherHP,growthRank,ensureGrowthDraft,chooseGrowth,conversionEligible,moaPower,researchEffect,hasUnitAbility,updateMoa,setCard,buy,buyResearch,purchaseCost,researchCost,showUpgrades,showCards,load,reset,refreshUI});document.addEventListener('click',e=>{const b=e.target.closest('[data-growth]');if(b)chooseGrowth(b.dataset.growth,Number(b.dataset.draft))});const joy=$('joystick');joy.addEventListener('pointermove',e=>{if(paused){keys.clear();stick.x=stick.y=0;resetKnob();e.stopImmediatePropagation()}},true)};
+function initializeGrowthUI(){try{if(!localStorage.getItem(CONFIG.saveKey)){const raw=localStorage.getItem('bloom-army-moa-v4');if(raw&&load(raw)){refreshUI();showIntro(true)}}}catch{}Object.assign(window.__army,{GROWTH,GROWTH_CARDS,growthCost,growthCostAt,growthCardEffect,growthVitalBonus,growthRecovery,growthInterval,maxMotherHP,growthRank,ensureGrowthDraft,chooseGrowth,conversionEligible,moaPower,researchEffect,hasUnitAbility,updateMoa,setCard,buy,buyResearch,purchaseCost,researchCost,showUpgrades,showCards,load,reset,refreshUI});GameUI.listen(document,'click',e=>{const b=e.target.closest('[data-growth]');if(b)chooseGrowth(b.dataset.growth,Number(b.dataset.draft))});const joy=$('joystick');GameUI.listen(joy,'pointermove',e=>{if(paused){keys.clear();stick.x=stick.y=0;resetKnob();e.stopImmediatePropagation()}},true)};
 
 </script><script>
 /** HEALTHBAR JUICE — presentation only. No HP, RNG, combat or save writes.
@@ -8444,7 +8444,7 @@ boot=function(){growthCore.boot();try{if(!localStorage.getItem(CONFIG.saveKey)){
  */
 CONFIG.render.healthJuice={drain:.75,ghostDelay:.4,ghostDrain:1,flashIn:.03,flashOut:.14,shoveIn:.05,shoveOut:.14,hudShove:9,worldShove:2.5,amberAt:.5,redAt:.25,healthy:'#d4f58b',amber:'#f4bb60',red:'#f27968',ghost:'#fff9e9',maxWorldBars:128,maxDeathBars:64,deathLife:.5,worldHeight:4};
 const healthJuice={state:null,time:0,epoch:0,bars:new Map(),dead:[],hud:null};
-const healthCore={die,defeat,drawMother,render,refreshUI,recover,reset,load,showIntro,boot};
+const healthCore={die,defeat,drawMother,render,refreshUI,recover,reset,load,showIntro};
 // Shared procedural death: frozen scalar appearance, never a retained gameplay entity.
 // Inspired by Nathan Lovato's procedural juice and short death holds; tuning is ours.
 CONFIG.render.death={life:.5,impact:.07,barLife:.18,fadeStart:.28,recoil:4,drift:8,tilt:.26,endScale:.15,maxBodies:64};
@@ -8502,7 +8502,7 @@ load=function(raw){const result=healthCore.load(raw);if(result){healthJuice.stat
 showIntro=function(hasSave){healthJuice.state=null;healthEnsureState();return healthCore.showIntro(hasSave)};
 recover=function(){const result=healthCore.recover();if(result){healthJuice.state=null;healthEnsureState();updateJuicedHUD()}return result};
 render=function(alpha=1,dt=1/60){healthEnsureState();if(WorldView.animating())healthJuice.time+=clamp(Number(dt)||0,0,.1);healthJuice.epoch++;for(let i=healthJuice.dead.length-1;i>=0;i--)if(healthJuice.dead[i].until<=healthJuice.time)healthJuice.dead.splice(i,1);healthCore.render(alpha,dt);for(const [source,b] of healthJuice.bars)if(b.epoch!==healthJuice.epoch||source.hp<=0||source.team!=='enemy'&&!WorldPlayers.forEntity(source))healthJuice.bars.delete(source);updateJuicedHUD()};
-boot=function(){healthCore.boot();Object.assign(window.__army,{damage,die,defeat,render,refreshUI,recover,reset,load,getHealthJuice(){const copy=b=>b?{hp:b.hp,target:b.target,fill:b.fill,ghost:b.ghost,hitAt:b.hitAt,ghostAt:b.ghostAt,ghostEnd:b.ghostEnd,flash:healthFlash(b),color:healthColor(b)}:null;return{time:healthJuice.time,hud:copy(healthJuice.hud),bars:[...healthJuice.bars.values()].map(b=>({id:b.source.id,...copy(b)})),dead:healthJuice.dead.map(d=>({until:d.until,type:d.pose.type,team:d.pose.team,x:d.pose.x,y:d.pose.y,bar:!!d.bar,...deathSample(d)}))}}})};
+function publishHealthUI(){Object.assign(window.__army,{damage,die,defeat,render,refreshUI,recover,reset,load,getHealthJuice(){const copy=b=>b?{hp:b.hp,target:b.target,fill:b.fill,ghost:b.ghost,hitAt:b.hitAt,ghostAt:b.ghostAt,ghostEnd:b.ghostEnd,flash:healthFlash(b),color:healthColor(b)}:null;return{time:healthJuice.time,hud:copy(healthJuice.hud),bars:[...healthJuice.bars.values()].map(b=>({id:b.source.id,...copy(b)})),dead:healthJuice.dead.map(d=>({until:d.until,type:d.pose.type,team:d.pose.team,x:d.pose.x,y:d.pose.y,bar:!!d.bar,...deathSample(d)}))}}})};
 
 </script><script>
 'use strict';
@@ -8510,14 +8510,14 @@ boot=function(){healthCore.boot();Object.assign(window.__army,{damage,die,defeat
 CONFIG.challenge={schema:1,enemyHp:1.35,enemyAttack:1.45,recruitFraction:.5,motherHp:260,motherHealthPerCard:60,motherGrowthHp:80};
 CONFIG.mother.hp=CONFIG.challenge.motherHp;CONFIG.mother.hpPerLevel=CONFIG.challenge.motherHealthPerCard;CONFIG.moa.growthHp=CONFIG.challenge.motherGrowthHp;
 GROWTH_CARDS.find(c=>c.id==='health').desc=`아군 체력 +14% · 모아 최대 체력 +${CONFIG.mother.hpPerLevel}`;
-const challengeCore={spawn,attackPower,load,reset,boot,drawMother};
+const challengeCore={spawn,attackPower,load,reset,drawMother};
 function recruitScale(u,kind){return (kind==='hp'?u.recruitHpScale:u.recruitAttackScale)||1}
 spawn=function(type,team,x,y,opts={}){const u=challengeCore.spawn(type,team,x,y,opts);if(!u)return u;const C=CONFIG.challenge;if(team==='enemy'){u.hp*=C.enemyHp;u.maxHp*=C.enemyHp}else{u.recruitHpScale=opts.recruitHpScale||1;u.recruitAttackScale=opts.recruitAttackScale||1;u.maxHp*=C.enemyHp*C.recruitFraction*u.recruitHpScale;u.hp=u.maxHp}return u};
 attackPower=function(u){return challengeCore.attackPower(u)*(u.team==='enemy'?CONFIG.challenge.enemyAttack:CONFIG.challenge.enemyAttack*CONFIG.challenge.recruitFraction*recruitScale(u,'attack'))};
 reset=function(){const s=challengeCore.reset();s.campaign.combatBalance=CONFIG.challenge.schema;return s};
 load=function(raw){try{const v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw));const current=v.campaign?.combatBalance===CONFIG.challenge.schema;if(v.campaign?.combatBalance!==undefined&&!current)return false;if(current)for(const u of v.units||[])if(u.team==='friendly'&&(!Number.isFinite(u.recruitHpScale)||u.recruitHpScale<=0||u.recruitHpScale>100||!Number.isFinite(u.recruitAttackScale)||u.recruitAttackScale<=0||u.recruitAttackScale>100))return false;if(!current&&v.mother&&Number.isFinite(v.mother.hp)&&Number.isFinite(v.upgrades?.health)){const oldMax=900+v.upgrades.health*180+(v.campaign?.moaGrowth||0)*180,newMax=CONFIG.mother.hp+v.upgrades.health*CONFIG.mother.hpPerLevel+(v.campaign?.moaGrowth||0)*CONFIG.moa.growthHp;if(v.mother.hp<0||v.mother.hp>oldMax)return false;v.mother.hp=v.mother.hp/oldMax*newMax;v.mother.maxHp=newMax}if(!challengeCore.load(v))return false;if(!current){for(const u of state.units){const ratio=u.hp/u.maxHp;if(u.team==='enemy'){u.maxHp*=CONFIG.challenge.enemyHp}else{u.recruitHpScale=1;u.recruitAttackScale=1;u.maxHp*=CONFIG.challenge.enemyHp*CONFIG.challenge.recruitFraction}u.hp=u.maxHp*ratio}state.campaign.combatBalance=CONFIG.challenge.schema}rebuildGrid();resetPresentation();return true}catch{return false}};
 drawMother=function(source=WorldView.leader()){challengeCore.drawMother(source);const m=source,p=m.pendingMoa;if((source.hp<=0)||!p?.ranged)return;const pose=presentationPose(m),a=p.angle,k=1-clamp(p.left/p.total,0,1),x=pose.x+Math.cos(a)*(m.size+4),y=pose.y+Math.sin(a)*(m.size+4);ellipse(ctx,x,y,4+k*6,3+k*3,a,'#eaffad');ctx.strokeStyle='#d9ffa888';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,12-k*5,0,Math.PI*2);ctx.stroke()};
-boot=function(){challengeCore.boot();Object.assign(window.__army,{spawn,attackPower,load,reset,moaSeedTarget,recruitScale})};
+function publishChallengeUI(){Object.assign(window.__army,{spawn,attackPower,load,reset,moaSeedTarget,recruitScale})};
 
 </script><script>
 'use strict';
@@ -8531,7 +8531,7 @@ CONFIG.rectWorld={schema:2,minSpawnDistance:380,attempts:16,cue:.8,grace:1.2,wal
 const rectLegacyMembers=campaignDefs.map(d=>d.members.map(m=>({...m})));
 for(let gi=0;gi<CONFIG.campaign.grounds.length;gi++){let n=0;for(const camp of CONFIG.campaign.grounds[gi].camps)for(const member of camp.units)member.count=CONFIG.rectWorld.population[gi][n++];}
 for(const d of campaignDefs){const ci=Number(d.sourceId.split('-').pop());d.members=CONFIG.campaign.grounds[d.ground].camps[ci].units.map(m=>({...m}));}
-const rectCore={reset,load,boot,spawn,moveToward,push,projectile,moaContact,moaSeedTarget,drawCampaignWorld,drawMini,refreshUI,showMap,showIntro,lockedParcelAt};
+const rectCore={reset,load,spawn,moveToward,push,projectile,moaContact,moaSeedTarget,drawCampaignWorld,drawMini,refreshUI,showMap,showIntro,lockedParcelAt};
 let rectLegacyValidation=false,rectWalls=[],rectWallKey='',rectLoading=false;
 let rectFriendState=null,rectFriendTime=-1,rectFriendMask=0;
 // Per-tick broad phase: empty remote rooms need no per-enemy grid query.
@@ -8611,13 +8611,13 @@ drawCampaignWorld=function(){ctx.textAlign='center';CONFIG.rectWorld.rooms.forEa
 // Rooms, walls and the player therefore keep their shared overview coordinates.
 drawMini=function(){mini.clearRect(0,0,180,104);const sx=180/CONFIG.campaign.width,sy=104/CONFIG.campaign.height;CONFIG.rectWorld.rooms.forEach((r,i)=>{mini.fillStyle=state.campaign.parcels[i]?CONFIG.campaign.grounds[i].color+'66':'#13251b';mini.fillRect(r.x*sx,r.y*sy,r.w*sx,r.h*sy)});mini.fillStyle='#dbe4b1';for(const w of worldWalls())mini.fillRect(w.x*sx,w.y*sy,Math.max(1,w.w*sx),Math.max(1,w.h*sy));mini.fillStyle='#fffbe0';mini.beginPath();mini.arc(WorldView.leader().x*sx,WorldView.leader().y*sy,3,0,Math.PI*2);mini.fill()};
 showMap=function(){rectCore.showMap();const p=$('sheet').querySelector('p');if(p)p.textContent='다섯 직사각형 구획은 관문으로만 연결됩니다. 모아가 관문에 직접 도착한 뒤 필요한 자원을 내면 영구 개방됩니다. 지도에서는 연결할 수 없습니다. 새 적은 모아가 있는 구획의 먼 빈자리에서만 자랍니다. 멀어진 적도 사라지지 않습니다.'};
-boot=function(){rectCore.boot();Object.assign(window.__army,{regionAt,worldWalls,wallHit,wallClear,constrainWorld,nextRoomGate,regrowSpot,regrowCamps,validRegrowSpot,projectileWallBlocked,nearClosedGate,canUnlockParcelHere,spawnCamp,spawn,canTarget,findTarget,updateUnit,moveToward,load,reset,moaContact,moaSeedTarget,damage,projectile,boundMoaBody,showMap,drawCampaignWorld,drawMini})};
+function publishRegionGeometry(){Object.assign(window.__army,{regionAt,worldWalls,wallHit,wallClear,constrainWorld,nextRoomGate,regrowSpot,regrowCamps,validRegrowSpot,projectileWallBlocked,nearClosedGate,canUnlockParcelHere,spawnCamp,spawn,canTarget,findTarget,updateUnit,moveToward,load,reset,moaContact,moaSeedTarget,damage,projectile,boundMoaBody,showMap,drawCampaignWorld,drawMini})};
 
 </script><script>
 'use strict';
 // Local, event-driven retaliation. No threat tables or broadcast chain.
 CONFIG.retaliation={memory:6,targetLock:1,assistRadius:[180,220,240,260,260],helpers:[1,2,2,3,3],lostSight:2,healDelay:2,reengageRadius:280,reengageDelay:3};
-const retaliationCore={impact,die,recover,load,boot};
+const retaliationCore={impact,die,recover,load};
 let retaliationImpact=null;
 function enemyRoom(u){return state.camps[u.camp]?.ground??regionAt(u.homeX??u.hx,u.homeY??u.hy)}
 function enemyHome(u){return{x:u.homeX??u.hx,y:u.homeY??u.hy}}
@@ -8638,13 +8638,13 @@ moaSeedTarget=function(t,ignoreRange=false){return !!(t&&t.hp>0&&t.team==='enemy
 die=function(t,killer){clearRetaliation(t);return retaliationCore.die(t,killer)};
 recover=function(){const ok=retaliationCore.recover();if(ok){for(const u of state.units){clearRetaliation(u);delete u.lastDamageAt}for(const u of [state.mother,...state.units]){delete u.worldX;delete u.worldY;resetMoaBody(u);u.moveSpeed=0;constrainWorld(u)}state.mother.moveX=state.mother.moveY=0;rebuildGrid();resetPresentation();save()}return ok};
 load=function(raw){const ok=retaliationCore.load(raw);if(ok)for(const u of state.units){const wasReturning=u.returning;clearRetaliation(u);u.lastDamageAt=Number.isFinite(u.lastDamageAt)?Math.min(state.time,u.lastDamageAt):state.time;if(u.team==='enemy'&&wasReturning)enemyReturn(u,true)}return ok};
-boot=function(){retaliationCore.boot();Object.assign(window.__army,{canTarget,findTarget,damage,impact,updateUnit,moaContact,moaSeedTarget,die,recover,load,retaliationTarget,engageEnemy,enemyReturn,clearRetaliation})};
+function publishRetaliationUI(){Object.assign(window.__army,{canTarget,findTarget,damage,impact,updateUnit,moaContact,moaSeedTarget,die,recover,load,retaliationTarget,engageEnemy,enemyReturn,clearRetaliation})};
 
 </script><script>
 'use strict';
 // One bounded courtesy window for one already-committed Moa finishing attack.
 CONFIG.moa.finisherAssistMax=.95;
-const finisherCore={initializeMoa,updateMoa,projectile,impact,boot,load,recover,reset,die,defeat,drawMother};
+const finisherCore={initializeMoa,updateMoa,projectile,impact,load,recover,reset,die,defeat,drawMother};
 let finisherSerial=0,finisherShot=null;
 // Evaluate only at the next attack commitment; never retarget a windup or flying seed.
 function moaLethalTarget(){const m=state.mother;let best=null,bestDistance=Infinity;near(m.x,m.y,CONFIG.moa.rangedReach,'enemy',t=>{if(!moaSeedTarget(t)||t.shield>0&&t.shieldUntil>state.time||t.hp>damageValue(m,t,moaPower(),'ranged'))return;const d=sqdist(m,t);if(d<bestDistance||d===bestDistance&&(!best||t.hp<best.hp||t.hp===best.hp&&t.id<best.id)){best=t;bestDistance=d}});return best}
@@ -8662,7 +8662,7 @@ drawMother=function(source=WorldView.leader()){finisherCore.drawMother(source);c
 reset=function(){clearFinisherAssist();finisherSerial=0;return finisherCore.reset()};
 recover=function(){clearFinisherAssist();return finisherCore.recover()};
 load=function(raw){const ok=finisherCore.load(raw);if(ok){clearFinisherAssist();for(const u of state.units)u.captureAssistSpent=u.captureAssistSpent===true}return ok};
-boot=function(){finisherCore.boot();Object.assign(window.__army,{initializeMoa,updateMoa,moaReserved,projectile,impact,load,reset,recover,die,defeat,validFinisherAssist,clearFinisherAssist,moaLethalTarget})};
+function publishFinisherUI(){Object.assign(window.__army,{initializeMoa,updateMoa,moaReserved,projectile,impact,load,reset,recover,die,defeat,validFinisherAssist,clearFinisherAssist,moaLethalTarget})};
 
 </script><script>
 'use strict';
@@ -8671,7 +8671,7 @@ boot=function(){finisherCore.boot();Object.assign(window.__army,{initializeMoa,u
 CONFIG.levelAbilities={schema:2,firstXP:12,xpStep:18,xpPerEnemy:1,shotGrace:.5,
  cards:{pierce:{name:'꿰뚫는 줄기',icon:'➜',kind:'trait'},fan:{name:'갈래 씨앗',icon:'⋔',kind:'trait'},bounce:{name:'도탄 씨앗',icon:'↝',kind:'trait'},pod:{name:'추적 씨앗집',icon:'◉',kind:'weapon',color:'#fff2a6'},lob:{name:'포자 폭탄',icon:'✺',kind:'weapon',color:'#ffc29e'},thorn:{name:'가시 발사대',icon:'⇢',kind:'weapon',color:'#9df2dc'}},
  fanAngle:14*Math.PI/180,fanDamage:.65,rankDamage:.18,bounceDamage:.6,bounceRange:135,bounceRankDamage:.15};
-const levelCore={reset,load,die,projectile,moaPower,updateMoa,impact,boot,refreshUI,showIntro,closeModal,showUpgrades};
+const levelCore={reset,load,die,projectile,moaPower,updateMoa,impact,refreshUI,showIntro,closeModal,showUpgrades};
 function newAbilityState(){return weaponNewState()}
 function abilityState(){return state.campaign.abilities}
 function abilityThreshold(level){const n=level-1,C=CONFIG.levelAbilities;return n*C.firstXP+C.xpStep*n*(n-1)/2}
@@ -8709,7 +8709,7 @@ function stepAbilityProjectile(p,dt){p.life-=dt;if(p.life<=0){finishAbilityShot(
 impact=function(p){const result=levelCore.impact(p);if(p.auxBlast){const owner=idMap.get(p.u);if(owner?.hp>0)near(p.x,p.y,p.auxBlast,null,t=>{if(!factionsHostile(owner,t)||t.id===p.target||!wallClear(p,t))return;const old=retaliationImpact;retaliationImpact=p;try{damage(owner,t,p.amount,'ranged')}finally{retaliationImpact=old}});addFx('ring',p.x,p.y,0,0,'#ffcf9c',p.auxBlast,.32)}return result};
 updateMoa=function(dt){levelCore.updateMoa(dt);weaponUpdateAux(state.mother,dt)};
 function drawAbilitySeed(p){const a=p.angle??Math.atan2(p.aimY-p.y,p.aimX-p.x),size=p.weapon==='lob'?10:p.weapon==='thorn'?13:p.secondary?5:p.remaining>1?11:8;ellipse(ctx,p.x,p.y,size,p.weapon==='lob'?8:p.weapon==='thorn'?2:p.secondary?2.5:4,a,p.color||'#d6ff96');ellipse(ctx,p.x-Math.cos(a)*7,p.y-Math.sin(a)*7,5,2,a,(p.color||'#d6ff96')+'77');ellipse(ctx,p.x+Math.cos(a)*2,p.y+Math.sin(a)*2,3,2,a,p.crit?'#fff1a3':'#fff8d0');}
-boot=function(){levelCore.boot();Object.assign(window.__army,{levelAbilities:CONFIG.levelAbilities,abilityState,abilityThreshold,abilityLevelFor,abilityRank,ensureAbilityDraft,pendingAbility,showAbilityChoices,chooseAbility,primaryAbility,abilityCardDescription,stepAbilityProjectile,launchAbilityShot,moaPower,projectile,impact,updateMoa,load,reset,die,refreshUI,closeModal});document.addEventListener('click',e=>{const b=e.target.closest('[data-ability]');if(b)chooseAbility(b.dataset.ability,Number(b.dataset.abilityStep))})};
+function initializeAbilityUI(){Object.assign(window.__army,{levelAbilities:CONFIG.levelAbilities,abilityState,abilityThreshold,abilityLevelFor,abilityRank,ensureAbilityDraft,pendingAbility,showAbilityChoices,chooseAbility,primaryAbility,abilityCardDescription,stepAbilityProjectile,launchAbilityShot,moaPower,projectile,impact,updateMoa,load,reset,die,refreshUI,closeModal});GameUI.listen(document,'click',e=>{const b=e.target.closest('[data-ability]');if(b)chooseAbility(b.dataset.ability,Number(b.dataset.abilityStep))})};
 
 </script><script>
 'use strict';
@@ -8731,7 +8731,7 @@ CONFIG.statTiers={
  criticalPower:{prismatic:.15},
  combatSeed:0x91e10da5
 };
-const statTierCore={newGrowth,validGrowth,load,initializeMoa,updateMoa,chooseGrowth,growthCardEffect,impact,boot};
+const statTierCore={newGrowth,validGrowth,load,initializeMoa,updateMoa,chooseGrowth,growthCardEffect,impact};
 const statLegacyIds=new Set(GROWTH_CARDS.map(c=>c.id));
 const statBaseIds=['bash','vital','renew','rhythm','reach'];
 const statTierNames={bash:'단단한 씨앗탄',vital:'깊은 생명뿌리',renew:'다시 돋는 새싹',rhythm:'빠른 생장박동',reach:'멀리 나는 씨앗'};
@@ -8909,8 +8909,8 @@ impact=function(p){
 const statTierStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));
 if (!globalThis.BLOOM_HEADLESS) { statTierStyle.textContent=`.growthCard.tier-silver{border-color:#becfd48c;background:linear-gradient(145deg,#34494c,#253737)}.growthCard.tier-gold{border:2px solid #e6bd6fa8;background:linear-gradient(145deg,#655633,#343c2d)}.growthCard.tier-prismatic{border:2px solid #d3adf2c7;background:linear-gradient(135deg,#464b65,#514362 50%,#2a514d);box-shadow:inset 0 0 18px #dab6ff16}.growthCard.tier-silver .statTierBadge,.statOfferTier.tier-silver{color:#d5e3e9}.growthCard.tier-gold .statTierBadge,.statOfferTier.tier-gold{color:#ffe09b}.growthCard.tier-prismatic .statTierBadge,.statOfferTier.tier-prismatic{color:#e7ccff}.statTierBadge{font-weight:800;letter-spacing:.03em}.statOfferTier{text-align:center;font-weight:700;font-size:12px}.statTierOdds{line-height:1.8}.growthCard{min-width:0}.growthCard strong,.growthCard p{overflow-wrap:anywhere}.growthCard:focus-visible{outline:3px solid #f7ffe6;outline-offset:3px}.growthCard:disabled{opacity:.58}@media(max-width:520px){.growthCard{grid-template-columns:44px minmax(0,1fr);grid-template-rows:auto auto auto auto;min-height:126px}.growthCard img,.growthCard .growthIcon{grid-column:1;grid-row:1/5;align-self:center}.growthCard strong{grid-column:2;grid-row:1}.growthCard .statTierBadge{grid-column:2;grid-row:2;margin:3px 0 2px}.growthCard p{grid-column:2;grid-row:3}.growthCard b{grid-column:2;grid-row:4}.statOfferTier{font-size:11px}}`; }
 if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(statTierStyle); }
-boot=function(){
- statTierCore.boot();
+function publishStatTierUI(){
+
  Object.assign(window.__army,{statTierFor,statCardEligible,statRankSum,statNextText,statBaseMoaPower,moaCriticalChance,moaLifesteal,moaCriticalMultiplier,growthReach,prepareMoaAttack,withMoaAttack,validGrowth,migrateStatGrowth,ensureGrowthDraft,chooseGrowth,growthCardEffect,growthVitalBonus,growthBashBonus,growthRecovery,growthInterval,showUpgrades,load,initializeMoa,updateMoa,impact,damage});
 };
 
@@ -8928,7 +8928,7 @@ const HITFEEL = Object.freeze({
   shakeCooldown:.12, hitShake:2.2, criticalShake:2.8, hurtShake:3.8,
   hitLife:.16, hurtLife:.20, preferenceKey:'bloom-presentation-shake-v1'
 });
-const hitfeelCore={render,showPause,reset,load,recover,boot};
+const hitfeelCore={render,showPause,reset,load,recover};
 const hitfeelNumberFormatter=new Intl.NumberFormat('en-US',{maximumFractionDigits:1});
 const hitfeel={state:null,time:0,numbers:[],numberPool:[],targetSequences:new Map(),highWater:0,targets:new WeakMap(),targetSerial:0,serial:0,
   shake:null,nextShakeAt:0,shakeSerial:0,mode:'normal',offset:{x:0,y:0},drawn:0};
@@ -9127,9 +9127,9 @@ recover=function(){const result=hitfeelCore.recover();if(result)hitfeelClear();r
 const hitfeelStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));
 if (!globalThis.BLOOM_HEADLESS) { hitfeelStyle.textContent='.hitfeel-preference{margin:14px 0 18px;padding:12px;border:1px solid #ffffff20;border-radius:12px;background:#10282060}.hitfeel-setting-label{font-size:12px;font-weight:750;margin-bottom:9px}.hitfeel-setting-options{display:flex;gap:6px}.hitfeel-setting-options button{flex:1;min-height:34px;border:1px solid #ffffff20;border-radius:8px;background:#ffffff0a;font-size:12px}.hitfeel-setting-options button.chosen{border-color:#d4f58b;background:#d4f58b1a;color:#eaffb7}.hitfeel-setting-help{margin-top:8px;font-size:10px;line-height:1.5;color:#a4b7a3}'; }
 if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(hitfeelStyle); }
-boot=function(){
-  hitfeelCore.boot();
-  document.addEventListener('click',event=>{
+function initializeHitfeelUI(){
+
+  GameUI.listen(document,'click',event=>{
     const button=event.target.closest('[data-hitfeel-shake]');
     if(button)hitfeelSetShake(button.dataset.hitfeelShake);
   });
@@ -9191,7 +9191,7 @@ function permanentMigratePower(u){
  permanentStorePower(u,power);
 }
 
-const permanentCore={snapshot,reset,load,boot,die,defeat,recover,drawUnit,drawCampaignWorld,attackPower,showCards,refreshUI,showIntro};
+const permanentCore={snapshot,reset,load,die,defeat,recover,drawUnit,drawCampaignWorld,attackPower,showCards,refreshUI,showIntro};
 let permanentBusy=false,permanentTraces=[],permanentRetryAt=0;
 const permanentCounts=Object.fromEntries(friendlyTypes.map(type=>[type,0]));
 snapshot=function(){const s=permanentCore.snapshot();s.units=s.units.filter(u=>!u.permanentRank||u.hp>0);return s};
@@ -9348,7 +9348,7 @@ drawCampaignWorld=function(){permanentCore.drawCampaignWorld();for(const r of Ob
 function permanentCollectionHTML(){const batch=CONFIG.permanent.batch;return `<section class="permanentCollection"><h3>같은 친구 ${batch}마리 → 영구 동료 +1</h3><p>살아 있는 일반 동료가 ${batch}마리 모일 때마다 자동으로 합쳐져요. 합칠 때마다 몸집과 사거리도 함께 커져요. 전투력은 최대 체력 × 단일 대상 초당 피해량(DPS)입니다. 재료 ${batch}마리 전투력의 합을 ${batch}로 나눈, 평균 1마리분만 누적돼요. 누적 전투력에 맞춰 체력·DPS가 같은 비율로 커집니다. 강한 사냥터에서 영입한 친구일수록 더 크게 성장합니다.</p>${friendlyTypes.map(type=>{const r=permanentRecord(type),n=permanentMaterials(type).length,rank=r?.rank||0;return `<div class="permanentRow"><img alt="" src="${portrait(type)}"><div><strong>${unitDef(type).name}${rank?' · 영구 +'+rank:''}</strong><small>현재 살아 있는 일반 동료 <b>${n} / ${batch}</b></small><div class="compressionProgress"><i style="width:${Math.min(100,n*100/batch)}%"></i></div><small>${n>=batch?'게임으로 돌아가면 자동 압축':`${batch-n}마리 더 모으면 자동 압축`} · 일반 동료 ${batch}마리 소모</small><small>${rank?`+${rank} → +${rank+1} · ${permanentPowerDescription(r)} + 이번 재료 1마리 평균 전투력`:`첫 영구 동료 · 재료 1마리 평균 전투력`}${r?.body?`<br>부활까지 ${Math.ceil(r.remaining)}초`:rank?' · 생존 중':''}</small></div></div>`}).join('')}<details class="compressionDetails"><summary>압축과 인구 규칙</summary><p>영구 동료는 인구를 쓰지 않아요. 쓰러지면 그 자리에서 부활해요. 모아가 부활하면 영구 동료의 자리도 모아 주변으로 옮겨지며, 남은 부활 대기시간은 유지돼요. 대기시간은 병종의 기본 체력 × 단일 DPS에 비례한 고정값입니다. ${friendlyTypes.map(type=>unitDef(type).name+" "+permanentReviveSeconds(type)+"초").join(" · ")}. 강화 단계나 영입 지역 때문에 늘어나지 않아요. 쉬거나 접속을 끈 시간에는 진행되지 않습니다.<br>몸집·사거리 배율은 1 + 0.25 × √강화 단계로 함께 늘어나며 상한이 없어요. 큰 몸집의 통로 이동용 충돌 범위만 문 너비에 맞춰 완만해집니다.<br>강화 시 현재 체력 비율과 부활 대기시간은 유지됩니다. 재료는 영입 후 적 능력치 50%가 적용된 지역·개별 기본값입니다. 각 재료의 체력 × DPS를 먼저 계산한 뒤 평균냅니다. 같은 품질을 1·2·4번 합치면 첫 압축 대비 체력·DPS는 1·√2·2배입니다. 영구 동료 DPS에는 기존 특수기의 단일 피해와 공격·회복 시간을 포함하며, 여러 적을 맞히는 이득은 계산하지 않습니다. 표시는 방어·빗나감·이동이 없는 기준 DPS입니다. 부상은 재료 가치를 줄이지 않으며 군단 성장 효과는 한 번만 별도로 적용됩니다. 같은 강화 단계여도 재료에 따라 체력·공격력이 다를 수 있어요.<br>Lv.${CONFIG.permanent.capacityLevel}부터 인구 최소 ${CONFIG.permanent.capacityFloor} · 현재 ${cap()}. 인구 2 병종 ${batch}마리에는 인구 ${batch*2}가 필요합니다.<br>죽은 동료와 영구 동료, 도감의 누적 수집 수는 압축 재료에 포함되지 않아요.</p></details></section>`}
 showCards=function(){if(bloomInTick){bloomEmit("showCards",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;openModal('collection',sheetHead('동료 압축·도감')+permanentCollectionHTML()+'<h3>수집 도감 · 누적 기록</h3>'+moaCollectionHTML())};
 const permanentCSS=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { permanentCSS.textContent='.permanentCollection{margin:12px 0 22px}.permanentCollection h3{font-size:16px}.permanentRow{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #ffffff20;align-items:center}.permanentRow>img{width:54px;height:54px;object-fit:contain;flex-shrink:0}.permanentRow>div{min-width:0;flex:1}.permanentRow strong,.permanentRow small{display:block}.permanentRow small{font-size:12px;margin:4px 0;line-height:1.45}.permanentRow button{background:#b5d69c;color:#173021;border:1px solid #cbe8b0;border-radius:9px;padding:9px 11px;font:600 12px system-ui;cursor:pointer;margin-top:5px;min-height:40px;max-width:100%;white-space:normal}.permanentRow button:disabled{background:#344a38;color:#bdcbb1;border-color:#49614a;opacity:.5;cursor:default}@media(max-width:380px){.permanentRow{gap:8px}.permanentRow>img{width:40px;height:40px}.permanentRow strong{font-size:14px}}'; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(permanentCSS); }
-boot=function(){permanentCore.boot();Object.assign(window.__army,{permanentSingleTargetDPS,permanentDPSPerAttack,permanentReference,permanentStatsFromPower,permanentStorePower,permanentBatchPower,permanentGrowthScale,permanentApplyStats,unitVisualRadius,unitVisualExtent,effectiveRange,radius,moaBodyRadius,compressPermanent,permanentRecord,permanentMaterials,permanentState,permanentMaxHP,permanentReviveSeconds,effectiveCapacity,snapshot,pop,cap,attackPower,reset,load,die,defeat,recover,showCards,drawUnit,drawCampaignWorld});};
+function publishPermanentUI(){Object.assign(window.__army,{permanentSingleTargetDPS,permanentDPSPerAttack,permanentReference,permanentStatsFromPower,permanentStorePower,permanentBatchPower,permanentGrowthScale,permanentApplyStats,unitVisualRadius,unitVisualExtent,effectiveRange,radius,moaBodyRadius,compressPermanent,permanentRecord,permanentMaterials,permanentState,permanentMaxHP,permanentReviveSeconds,effectiveCapacity,snapshot,pop,cap,attackPower,reset,load,die,defeat,recover,showCards,drawUnit,drawCampaignWorld});};
 
 </script><script>
 'use strict';
@@ -9359,7 +9359,7 @@ const regionLegacyStats=CONFIG.campaign.grounds.map(g=>({hp:g.hp,attack:g.attack
 function regionMultiplier(tier){return CONFIG.regionProgression.factor**tier}
 for(const [i,g]of CONFIG.campaign.grounds.entries()){const k=regionMultiplier(i),C=CONFIG.regionProgression;g.hp=C.baseHP*k;g.attack=C.baseAttack*k;const rewardScale=C.rewardFactor**i;g.rewardM=Math.round(C.baseMinerals*rewardScale);g.rewardG=0;g.xp=Math.max(1,Math.round(C.baseXP*rewardScale));}
 function regionExperience(t){const g=CONFIG.campaign.grounds[state.camps[t.camp]?.ground];return (g?.xp||CONFIG.levelAbilities.xpPerEnemy)*(t.boss?(g?.bossReward||1):1)}
-const regionCore={reset,load,boot};
+const regionCore={reset,load};
 reset=function(){const s=regionCore.reset();s.campaign.regionProgression={schema:CONFIG.regionProgression.schema,factor:CONFIG.regionProgression.factor};return s};
 load=function(raw){try{const v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw));if(!v?.campaign||!Array.isArray(v.units))return false;const prior=v.campaign.regionProgression,C=CONFIG.regionProgression;if(prior&&(prior.schema!==C.schema||!Number.isFinite(prior.factor)||prior.factor<1))return false;
  // Only enemies change with the new regional curve. Captured allies retain their
@@ -9367,14 +9367,14 @@ load=function(raw){try{const v=JSON.parse(typeof raw==='string'?raw:JSON.stringi
  if(!prior||prior.factor!==C.factor)for(const u of v.units){if(u.team!=='enemy')continue;const i=v.camps?.[u.camp]?.ground,g=CONFIG.campaign.grounds[i];if(!g)return false;const old=prior?{hp:C.baseHP*prior.factor**i,attack:C.baseAttack*prior.factor**i}:regionLegacyStats[i],hpRatio=g.hp/old.hp,attackRatio=g.attack/old.attack;u.hp*=hpRatio;u.maxHp*=hpRatio;u.encounterHpScale*=hpRatio;u.encounterAttackScale*=attackRatio;}
  v.campaign.regionProgression={schema:C.schema,factor:C.factor};return regionCore.load(v);
  }catch{return false}};
-boot=function(){regionCore.boot();Object.assign(window.__army,{regionMultiplier,regionExperience,reset,load})};
+function publishRegionUI(){Object.assign(window.__army,{regionMultiplier,regionExperience,reset,load})};
 
 </script><script>
 'use strict';
 // Level growth is derived from progression, never from a saved/tweened size.
 // Art and camera sample the same interpolated radius without canceling growth.
 CONFIG.moaContinuousGrowth={coefficient:.12,response:6,collisionGateLanes:2,cameraGrowthExponent:.3,cameraDesktopReferenceWidth:900};
-const moaContinuousCore={initializeMoa,reset,load,boot,moaBodyRadius};
+const moaContinuousCore={initializeMoa,reset,load,moaBodyRadius};
 function moaLevelScale(level=state?.campaign?.abilities?.level||1){return 1+CONFIG.moaContinuousGrowth.coefficient*(Math.sqrt(Math.max(1,level))-1)}
 function moaTargetSize(){return CONFIG.mother.size*(state.campaign.moaGrowth?CONFIG.moa.growthSize:1)*moaLevelScale()}
 function moaCameraZoom(mother,width){const base=width<800?CONFIG.render.zoomMobile:CONFIG.render.zoomDesktop*Math.max(1,width/CONFIG.moaContinuousGrowth.cameraDesktopReferenceWidth);return base/Math.pow(Math.max(1,mother.size/CONFIG.mother.size),CONFIG.moaContinuousGrowth.cameraGrowthExponent)}
@@ -9390,13 +9390,13 @@ moaBodyRadius=function(u){if(u.type!=='mother')return moaContinuousCore.moaBodyR
 // Capture size with continuous fields instead of snapping it as a discrete field.
 
 RENDER_TRACKS.unit.size='linear';
-boot=function(){moaContinuousCore.boot();Object.assign(window.__army,{moaLevelScale,moaTargetSize,moaCameraZoom,syncMoaGrowth,moaBodyRadius,initializeMoa,reset,load})};
+function publishMoaGrowthUI(){Object.assign(window.__army,{moaLevelScale,moaTargetSize,moaCameraZoom,syncMoaGrowth,moaBodyRadius,initializeMoa,reset,load})};
 
 </script><script>
 'use strict';
 // Final presentation layer: a clear start screen, optional help, and automatic
 // compression explained in play. No balance, movement or simulation changes.
-const startUXCore={boot,closeModal,refreshUI,load};
+const startUXCore={closeModal,refreshUI,load};
 let startUXHasSave=false;
 load=function(raw){const ok=startUXCore.load(raw);if(ok)startUXHasSave=true;return ok};
 function startUXHead(title){return sheetHead(title)}
@@ -9420,12 +9420,12 @@ refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments)
 const startUXStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { startUXStyle.textContent=`
 .startHome{text-align:center;padding:9px 0 2px}.startHome h1{font-size:43px;letter-spacing:3px;margin:5px 0}.sheet .homeSubtitle{font-size:13px;margin:0}.startHome .introArt{height:152px;margin:18px 0 22px;background:radial-gradient(ellipse,#b5cf832b,transparent 70%)}.homeStart{font-size:17px;min-height:56px;text-align:left;padding:16px 20px;margin-top:0}.homeStart span{float:right}.sheet .homeSave{font-size:11px;color:#a4b7a3;margin:10px 0 20px}.homeLinks{display:flex;justify-content:center;gap:4px;border-top:1px solid #ffffff15;padding-top:12px}.homeLinks button{background:none;color:#b9cdb7;font-size:11px;min-height:42px;padding:8px 9px;border-radius:8px}.homeLinks button:hover{background:#ffffff0a}.pauseLinks,.settingsButtons{display:grid;gap:8px;margin:16px 0}.pauseLinks .tab,.settingsButtons .tab{min-height:44px}.helpSteps>div{border-top:1px solid #ffffff15;padding:13px 0 3px}.helpSteps b{font-size:13px;color:#d4f58b}.compressionProgress{height:4px;background:#ffffff18;border-radius:4px;margin:8px 0;overflow:hidden}.compressionProgress i{display:block;background:#c6eea3;height:100%;border-radius:4px}.compressionDetails{margin:15px 0;font-size:12px;color:#bad0b5}.compressionDetails summary{cursor:pointer;min-height:36px;padding-top:8px}.permanentCollection>h3{line-height:1.5}.permanentRow small{color:#b6cdb7}.permanentRow small b{color:#edfacb}.sheet h3{font-size:15px}.sheet:has(.startHome){max-width:440px}.sheet:has(.startHome) .eyebrow{letter-spacing:1px}body.intro #hud,body.intro #bottom{visibility:hidden}@media(max-width:370px){.startHome{padding:3px 0}.startHome h1{font-size:36px}.startHome .introArt{height:130px;margin:14px 0 16px}.homeLinks button{font-size:10px;padding:8px 5px}.sheet .homeSave{margin-bottom:14px}}@media(max-height:600px){.startHome .introArt{height:95px;margin:8px 0 12px}.startHome h1{font-size:30px}.sheet .homeSave{margin:7px 0}.homeLinks{padding-top:5px}}
 `; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(startUXStyle); }
-boot=function(){
- startUXCore.boot();$('pause').onclick=showPause;
+function initializeStartUI(){
+ GameUI.handler($('pause'),'onclick',showPause);
  // These state changes precede the existing action handler. A confirmed reset
  // from the home settings must actually start play, not leave a closed menu.
- document.addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.action==='reset'){playing=true;document.body.classList.remove('intro')}},true);
- document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.ux==='help')showGameHelp();if(b.dataset.ux==='settings')showGameSettings();if(['start','reset'].includes(b.dataset.action)&&!WorldView.data().campaign.permanents.instructionSeen){bloomQueue('tutorialAck');toast('클릭·탭으로 이동 · 두 번 누르면 구르기 · 공격은 자동이에요');toastClock=3}if(b.dataset.action==='save')startUXHasSave=true;});
+ GameUI.listen(document,'click',e=>{const b=e.target.closest('button');if(b?.dataset.action==='reset'){playing=true;document.body.classList.remove('intro')}},true);
+ GameUI.listen(document,'click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.ux==='help')showGameHelp();if(b.dataset.ux==='settings')showGameSettings();if(['start','reset'].includes(b.dataset.action)&&!WorldView.data().campaign.permanents.instructionSeen){bloomQueue('tutorialAck');toast('클릭·탭으로 이동 · 두 번 누르면 구르기 · 공격은 자동이에요');toastClock=3}if(b.dataset.action==='save')startUXHasSave=true;});
  Object.assign(window.__army,{showIntro,showPause,showGameHelp,showGameSettings,closeModal,refreshUI,load});
 };
 
@@ -9433,7 +9433,7 @@ boot=function(){
 'use strict';
 // Session-only steering. Uses ordinary fixed-tick motion, attacks and rewards.
 CONFIG.autoHunt={queryIntervalMs:BLOOM_TIME.autoHunt.queryMs,rangeInset:18,stopBand:8,idleMs:BLOOM_TIME.autoHunt.idleMs};
-const autoHuntCore={boot,refreshUI,reset,load,recover,defeat,boundMoaBody};
+const autoHuntCore={refreshUI,reset,load,recover,defeat,boundMoaBody};
 const autoHunt={enabled:false,room:-1,target:0,query:0,status:'off',moving:false,idleMs:BLOOM_TIME.autoHunt.idleMs};
 function refreshAutoHunt(){if(bloomInTick){bloomEmit("refreshAutoHunt",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;
  const b=$('autoHuntButton');if(!b)return;
@@ -9490,11 +9490,12 @@ load=function(raw){const ok=autoHuntCore.load(raw);if(ok)resetIdleAuto();return 
 recover=function(){const ok=autoHuntCore.recover();if(ok)resetIdleAuto();return ok};
 defeat=function(){setAutoHunt(false);autoHunt.idleMs=0;return autoHuntCore.defeat()};
 refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;autoHuntCore.refreshUI();refreshAutoHunt()};
-boot=function(){
- autoHuntCore.boot();
- const b=document.createElement('span');b.id='autoHuntButton';b.className='menuBtn secondary';b.setAttribute('role','status');$('actions').prepend(b);
+function initializeAutoHuntUI(){
+
+ const b=document.createElement('span');b.id='autoHuntButton';b.className='menuBtn secondary';b.setAttribute('role','status');$('actions').prepend(b);GameUI.cleanup(()=>b.remove());
 
  const style=document.createElement('style');style.textContent='#autoHuntButton{display:inline-flex;align-items:center;justify-content:center;cursor:default;min-height:44px;padding:9px 13px;font-size:11px;letter-spacing:.02em;background:#183327e8;border-color:#a8c39370;color:#bcd0b3}#autoHuntButton[data-active="true"]{background:#c9efa0;color:#233b28;border-color:#e6facb;box-shadow:0 0 0 2px #d4f58b20}';document.head.appendChild(style);
+ GameUI.cleanup(()=>style.remove());
  Object.defineProperty(window.__army,'autoHunt',{get:()=>({...autoHunt})});
  Object.assign(window.__army,{setAutoHunt,autoHuntValid,autoHuntSelect,autoHuntPrimaryTarget,reset,load,recover,defeat,refreshUI,boundMoaBody});refreshAutoHunt();
 };
@@ -9504,7 +9505,7 @@ boot=function(){
 // Real Screen Wake Lock only. No synthetic input/media or device setting changes.
 // A single async pump serializes request/release, including stale request results.
 const screenAwake={wanted:false,revision:0,attempt:-1,held:null,busy:false,status:'off',pageHidden:false};
-const screenAwakeCore={boot,refreshAutoHunt,closeModal};
+const screenAwakeCore={refreshAutoHunt,closeModal};
 function screenAwakeEligible(){return !!(WorldView.auto().enabled&&playing&&!WorldView.dead()&&WorldView.leader().hp>0&&(!paused||['growth','ability'].includes(modalKind))&&!screenAwake.pageHidden&&document.visibilityState==='visible')}
 function renderScreenAwake(){}
 function syncScreenAwake(retry=false){
@@ -9536,11 +9537,11 @@ async function pumpScreenAwake(){
 }
 refreshAutoHunt=function(){if(bloomInTick){bloomEmit("refreshAutoHunt",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;screenAwakeCore.refreshAutoHunt();syncScreenAwake()};
 closeModal=function(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;const result=screenAwakeCore.closeModal();syncScreenAwake();return result};
-boot=function(){
- screenAwakeCore.boot();
- document.addEventListener('visibilitychange',()=>syncScreenAwake());
- window.addEventListener('pagehide',()=>{screenAwake.pageHidden=true;syncScreenAwake()});
- window.addEventListener('pageshow',()=>{screenAwake.pageHidden=false;syncScreenAwake(true)});
+function initializeScreenAwakeUI(){
+ GameUI.cleanup(()=>{screenAwake.pageHidden=true;syncScreenAwake()});
+ GameUI.listen(document,'visibilitychange',()=>syncScreenAwake());
+ GameUI.listen(window,'pagehide',()=>{screenAwake.pageHidden=true;syncScreenAwake()});
+ GameUI.listen(window,'pageshow',()=>{screenAwake.pageHidden=false;syncScreenAwake(true)});
  Object.defineProperty(window.__army,'screenAwake',{get:()=>({wanted:screenAwake.wanted,status:screenAwake.status,held:!!screenAwake.held,busy:screenAwake.busy})});
  Object.assign(window.__army,{syncScreenAwake,closeModal});syncScreenAwake();
 };
@@ -9564,7 +9565,7 @@ applyHuntingGeometry(true);
 // of a uniformly thinned field. Local spacing is unchanged. The first meadow
 // retains its more forgiving spacing; all searches keep the existing budgets.
 const huntingPatches=CONFIG.huntingSpace.rooms.map(r=>{const C=CONFIG.huntingSpace,nx=Math.max(1,Math.floor(r.w/C.packPitch)),ny=Math.max(1,Math.floor(r.h/C.packPitch)),out=[];for(let y=0;y<ny;y++)for(let x=0;x<nx;x++)out.push({x:r.x+(x+.5)*r.w/nx,y:r.y+(y+.5)*r.h/ny});return out});
-const huntingCore={regrowSpot,reset,load,boot};
+const huntingCore={regrowSpot,reset,load};
 regrowSpot=function(c,q){const C=CONFIG.huntingSpace;if(c.ground<C.clusterFromRoom)return huntingCore.regrowSpot(c,q);const patches=huntingPatches[c.ground];for(let n=0;n<CONFIG.rectWorld.attempts;n++){const a=patches[Math.floor(random()*patches.length)],angle=random()*Math.PI*2,r=Math.sqrt(random())*C.packRadius,p={x:a.x+Math.cos(angle)*r,y:a.y+Math.sin(angle)*r};if(validRegrowSpot(c,q,p))return p}return null};
 reset=function(){const s=huntingCore.reset();s.campaign.huntingSpace={schema:CONFIG.huntingSpace.schema};return s};
 load=function(raw){const before=state;let modern=false;try{if(typeof raw==='string'&&raw.length>CONFIG.maxSaveBytes)return false;const v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw));modern=v.campaign?.huntingSpace!==undefined;if(modern&&v.campaign.huntingSpace.schema!==CONFIG.huntingSpace.schema)return false;
@@ -9575,14 +9576,14 @@ load=function(raw){const before=state;let modern=false;try{if(typeof raw==='stri
  for(let i=0;i<state.camps.length;i++){const c=state.camps[i],old=c.members,next=huntingNewDefs[i];c.x=next.x;c.y=next.y;c.members=next.members.map(m=>({...m}));for(const q of c.regrowth||[])if(q.point)q.point=huntingMapPoint(q.point,c.ground);if(c.spawned){let added=0;for(let j=0;j<c.members.length;j++)for(let n=old[j].count;n<c.members[j].count;n++)c.regrowth.push({type:c.members[j].type,boss:!!c.members[j].boss,left:CONFIG.rectWorld.cue+added++*CONFIG.rectWorld.fillInterval,cued:false})}}
  state.campaign.huntingSpace={schema:CONFIG.huntingSpace.schema};rebuildGrid();resetPresentation();}return true;
  }catch{applyHuntingGeometry(true);state=before;rebuildGrid();return false}};
-boot=function(){huntingCore.boot();Object.assign(window.__army,{regrowSpot,reset,load,huntingPatches,huntingMapPoint})};
+function publishHuntingUI(){Object.assign(window.__army,{regrowSpot,reset,load,huntingPatches,huntingMapPoint})};
 
 </script><script>
 'use strict';
 // Presentation-only attack grammar. Gameplay trajectories, hit sweeps, reach, shot
 // commitment, RNG, damage and cooldowns are exactly the pre-existing ones.
 CONFIG.moaSprout={tip:1.2,loadedSeed:.13,recoil:.07,recoilTime:.20,walkBob:.018,podBarrel:.25,podRecoilTime:.18,aimResponse:24,muzzleBlendTime:.16,trailLength:15,trailWidth:2.2,seedRadius:5.2,pointedRadius:6.5,lobRadius:7.2,secondaryRadius:4,impactTime:.24,impactRadius:13,fragmentCount:4,fragmentTravel:15,fragmentSize:2.7,maxImpacts:96,podChargeTime:.2,mounts:{pod:{x:-.87,y:.12},lob:{x:.82,y:.33},thorn:{x:-.62,y:.65}}};
-const sproutCore={updateMoa,launchAbilityShot,impact,drawMother,boot,reset,load,recover};
+const sproutCore={updateMoa,launchAbilityShot,impact,drawMother,reset,load,recover};
 let sproutImpacts=[];
 function sproutAngle(a,b,mix){return a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*mix}
 Object.assign(RENDER_TRACKS.unit,{sproutAim:'angle',sproutRecoil:'decay'});
@@ -9609,7 +9610,7 @@ function resetSproutPresentation(){sproutImpacts=[];const m=state.mother;for(con
 reset=function(){const r=sproutCore.reset();resetSproutPresentation();return r};
 load=function(raw){const r=sproutCore.load(raw);if(r)resetSproutPresentation();return r};
 recover=function(){const r=sproutCore.recover();if(r)resetSproutPresentation();return r};
-boot=function(){sproutCore.boot();sproutSync(state.mother,0);resetPresentation();Object.assign(window.__army,{updateMoa,launchAbilityShot,impact,reset,load,recover,sproutVisualPoint,drawAbilitySeed,getSproutImpacts(){return sproutImpacts.map(f=>({...f}))},getSproutPose(){const m=presentationPose(state.mother);return{...MoaArt.pose(m),tip:MoaArt.muzzle(m),physicsOrigin:{x:state.mother.x,y:state.mother.y}}}})};
+function initializeSproutUI(){sproutSync(state.mother,0);resetPresentation();Object.assign(window.__army,{updateMoa,launchAbilityShot,impact,reset,load,recover,sproutVisualPoint,drawAbilitySeed,getSproutImpacts(){return sproutImpacts.map(f=>({...f}))},getSproutPose(){const m=presentationPose(state.mother);return{...MoaArt.pose(m),tip:MoaArt.muzzle(m),physicsOrigin:{x:state.mother.x,y:state.mother.y}}}})};
 
 </script><script>
 'use strict';
@@ -9704,7 +9705,7 @@ const AttackPatterns={registry:AttackPatternRegistry,create:createAttackControll
 // A variant on an ordinary reserved room slot, never the legacy boss/elite flag.
 CONFIG.eliteEncounter={schema:1,chance:1/20,hp:4,basicDamage:1.5,reward:5,visualScale:1.12,
  initialDelayMs:BLOOM_TIME.initialSpecialDelayMs,color:'#ffb867'};
-const eliteCore={spawn,spawnCamp,regrowCamps,die,attackPower,killReward,regionExperience,conversionEligible,permanentMaterials,moaReserved,defeat,drawCampaignWorld,drawUnit,unitVisualRadius,load,boot,showPause};
+const eliteCore={spawn,spawnCamp,regrowCamps,die,attackPower,killReward,regionExperience,conversionEligible,permanentMaterials,moaReserved,defeat,drawCampaignWorld,drawUnit,unitVisualRadius,load,showPause};
 function isEncounterElite(u){return !!(u&&u.team==='enemy'&&!u.boss&&u.variant==='elite')}
 function isPermanentPatternUser(u){return !!(u&&u.team==='friendly'&&u.permanentRank>0&&!u.boss&&!u.elite)}
 function usesAttackPatterns(u){return isEncounterElite(u)||isPermanentPatternUser(u)}
@@ -9759,7 +9760,7 @@ function validEliteController(c){return validAttackController(c)}
 load=function(raw){let v;try{v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw))}catch{return false}for(const u of [...(v.units||[]),...Object.values(v.campaign?.permanents?.records||{}).map(r=>r.body).filter(Boolean)]){if(isPermanentPatternUser(u)){u.attackController=u.attackController?migrateAttackController(u.attackController,u):eliteController();if(!validEliteController(u.attackController))return false}if(u.variant!==undefined&&!['elite','ordinary','rival'].includes(u.variant))return false;if(u.variant==='elite'){u.attackController=migrateAttackController(u.attackController||u.eliteController,u);delete u.eliteController}if(u.variant==='elite'&&(u.team!=='enemy'||u.boss||u.elite||!validEliteController(u.attackController)))return false}for(const c of v.camps||[])for(const q of c.regrowth||[])if(q.variant!==undefined&&(!['elite','ordinary','rival'].includes(q.variant)||q.boss&&q.variant==='elite'))return false;
  const ok=eliteCore.load(v);if(ok){for(const u of state.units)if(u.variant===undefined)u.variant='ordinary';for(const c of state.camps)eliteReserve(c)}return ok};
 showPause=function(){eliteCore.showPause();$('sheet').insertAdjacentHTML('beforeend',`<div class="notice">◆ 정예: 모든 사냥터의 일반 재생 자리마다 약 1/20 확률. 영입·압축 불가, 누가 처치해도 광물·경험치 ${CONFIG.eliteEncounter.reward}배.<br>영구 동료도 자기 공격력으로 같은 병종의 특수기를 사용합니다. 아군 예고는 민트색, 적 정예 예고는 주황색입니다.<br>칼잎 정예는 돌진·부채 휩쓸기, 민들레 정예는 도약 강타·돌진, 갑각 정예는 원형 충격파·지면 폭발, 궁수 정예는 곡사탄·지면 폭발을 번갈아 씁니다. 주황 예고 밖으로 피하세요. 도약의 착지점도 고정되며, 공격마다 예고와 회복 빈틈이 있습니다. AUTO는 정예 예고를 회피하지 않아요. 충분히 성장하면 같은 지역 정예를 더 쉽게 사냥할 수 있습니다.</div>`)};
-boot=function(){eliteCore.boot();Object.assign(window.__army,{AttackPatterns,isPermanentPatternUser,usesAttackPatterns,tickUnitStatus,isEncounterElite,eliteReserve,eliteBegin,eliteRecoverPattern,validEliteController,spawn,spawnCamp,regrowCamps,die,attackPower,killReward,regionExperience,conversionEligible,permanentMaterials,moaReserved,defeat,updateUnit,load,showPause,drawEliteWarning,drawCampaignWorld,drawUnit})};
+function publishEliteUI(){Object.assign(window.__army,{AttackPatterns,isPermanentPatternUser,usesAttackPatterns,tickUnitStatus,isEncounterElite,eliteReserve,eliteBegin,eliteRecoverPattern,validEliteController,spawn,spawnCamp,regrowCamps,die,attackPower,killReward,regionExperience,conversionEligible,permanentMaterials,moaReserved,defeat,updateUnit,load,showPause,drawEliteWarning,drawCampaignWorld,drawUnit})};
 
 const permanentPatternCore={apply:permanentApplyStats,sleep:permanentSleep,recall:permanentRecallNearMoa};
 permanentApplyStats=function(u,...args){const result=permanentPatternCore.apply(u,...args);if(isPermanentPatternUser(u)&&!u.attackController)u.attackController=eliteController();return result};
@@ -9776,7 +9777,7 @@ permanentRecallNearMoa=function(){for(const r of Object.values(permanentState()?
  * Recursive migration runs only at lifecycle/save boundaries, never during RAF.
  */
 const spatialCore={spawn,projectile,launchAbilityShot,abilityDescendants,impact,addFx,die,updateMoa,constrainWorld,moveMoaBody,capturePresentation,
- reset,load,recover,snapshot,save,exportSave,boot,basePoint,enemyHome,safeRoomPoint,
+ reset,load,recover,snapshot,save,exportSave,basePoint,enemyHome,safeRoomPoint,
  regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,
  permanentRecallNearMoa};
 const spatialPairs=[['x','y','z'],['hx','hy','hz'],['homeX','homeY','homeZ'],
@@ -9985,7 +9986,7 @@ const WorldSpatial={groundHeight:spatialGround,point:spatialPoint,height:spatial
  normalizeState:spatialState,syncUnit:spatialUnit,syncProjectile:spatialProjectileTick,
  validHeights:value=>spatialTree(value)};
 globalThis.WorldSpatial=WorldSpatial;
-boot=function(){spatialCore.boot();Object.assign(window.__army,{WorldSpatial,spawn,projectile,launchAbilityShot,impact,addFx,damage,attack,die,updateUnit,updateMoa,constrainWorld,moveMoaBody,reset,load,recover,snapshot,save,exportSave,basePoint,enemyHome,safeRoomPoint,regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,permanentRecallNearMoa})};
+function publishSpatialUI(){Object.assign(window.__army,{WorldSpatial,spawn,projectile,launchAbilityShot,impact,addFx,damage,attack,die,updateUnit,updateMoa,constrainWorld,moveMoaBody,reset,load,recover,snapshot,save,exportSave,basePoint,enemyHome,safeRoomPoint,regrowSpot,freshCamps,eliteBegin,engageEnemy,enemyReturn,compressPermanent,permanentPlace,permanentRecallNearMoa})};
 
 </script><script>
 'use strict';
@@ -10016,7 +10017,7 @@ CONFIG.terrainHills={
  ]
 };
 
-const terrainHillCore={boot};
+
 let terrainHillRooms=null,terrainHillDefinitions=null,terrainHillRevision=-1;
 let terrainHillFeatures=[],terrainHillRoomFeatures=[],terrainHillFrame=0;
 const terrainHillRasterCache=new Map();
@@ -10195,7 +10196,7 @@ const TerrainHills={
   renderLayer:'after room floors, before cues and projected actors'}}
 };
 globalThis.TerrainHills=TerrainHills;
-boot=function(){terrainHillCore.boot();Object.assign(window.__army,{TerrainHills,drawTerrainHills})};
+function publishTerrainUI(){Object.assign(window.__army,{TerrainHills,drawTerrainHills})};
 
 </script><script>
 'use strict';
@@ -10207,7 +10208,7 @@ CONFIG.ballistics={schema:1,minFlight:.46,maxFlight:1.25,launchLift:24,shadowRad
  definitions:{lob:{height:86,speed:290,color:'#efc18a'},eliteMark:{height:118,speed:260,minFlight:.72,maxFlight:1.15,color:'#ffab73'}}};
 Object.assign(RENDER_TRACKS.unit,{groundZ:'linear',airHeight:'linear'});
 Object.assign(RENDER_TRACKS.projectile,{groundZ:'linear',airHeight:'linear',age:'linear'});
-const ballisticCore={impact,launchAbilityShot,spatialProjectileTick,drawProjectedProjectile,drawCampaignWorld,load,boot};
+const ballisticCore={impact,launchAbilityShot,spatialProjectileTick,drawProjectedProjectile,drawCampaignWorld,load};
 function launchGroundArc(source,target,amount,definition,options={},existing=null){
  const C=CONFIG.ballistics,d=C.definitions[definition];if(!d||!source||!target||!Number.isFinite(amount)||amount<0)return null;
  if(!existing&&projectiles.length>=CONFIG.sim.maxProjectiles)return null;
@@ -10250,7 +10251,7 @@ drawProjectedProjectile=function(source){if(!source.arcFlight)return ballisticCo
 // discarded by the existing save policy; never replay an impact or finish timer.
 load=function(raw){const ok=ballisticCore.load(raw);if(ok)for(const u of state.units){const c=u.attackController;if(['mark','arcing'].includes(c?.pattern)&&c.phase==='execute')eliteRecoverPattern(u)}return ok};
 const GroundArc={launch:launchGroundArc,step:stepGroundArc,impact:impactGroundArc,pose:ballisticPose};
-boot=function(){ballisticCore.boot();Object.assign(window.__army,{GroundArc,launchGroundArc,launchEliteMark,launchAbilityShot,impact,load,terrainCirclePath})};
+function publishBallisticUI(){Object.assign(window.__army,{GroundArc,launchGroundArc,launchEliteMark,launchAbilityShot,impact,load,terrainCirclePath})};
 
 </script><script>
 'use strict';
@@ -10263,7 +10264,7 @@ function projectionBodyPose(u){if(u.type==='mother'){const p=MoaArt.pose(u);retu
 function projectionVisible(u,extent=120){const p=WorldProjection.project(u.x,u.y,projectionUnitHeight(u));return Math.abs(p.x-view.x)<=view.w/2+extent&&Math.abs(p.y-view.y*WorldProjection.K)<=view.h*WorldProjection.K/2+extent}
 function projectionToScreen(x,y,z=0){const p=bloomSyncCamera().worldToScreenInto(x,y,z,{});p.depth=WorldProjection.depth(y,z);return p}
 function projectionFromScreen(x,y){const p={};bloomSyncCamera().screenToGroundInto(x,y,p,{intersect(px,py,projection,out){Object.assign(out,WorldProjection.ground(px,py));return true}});return p}
-const projectionCore={boot,sampleSimulationInput,drawNest,drawMother,cshadow};
+const projectionCore={sampleSimulationInput,drawNest,drawMother,cshadow};
 sampleSimulationInput=function(){const p=projectionCore.sampleSimulationInput();return {...WorldProjection.intent(p.x,p.y),manual:Math.hypot(stick.x,stick.y)>=CONFIG.input.deadzone||['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].some(k=>keys.has(k))}};
 drawNest=function(c,x,y,level,scale=1){if(c!==ctx)return projectionCore.drawNest(c,x,y,level,scale);projectionBillboard(c,x,y,WorldProjection.groundHeight(x,y));projectionCore.drawNest(c,x,y,level,scale);c.restore()};
 // One reusable queue: ground decorations first, then actors by exact pitch depth.
@@ -10281,13 +10282,13 @@ function drawProjectedActors(){projectionQueue.length=0;let order=0;
  projectionQueue.sort((a,b)=>a.depth-b.depth||a.order-b.order);
  projectionDrawingActors=true;try{for(const q of projectionQueue){if(q.kind==='unit')drawUnit(q.source);else if(q.kind==='mother'){drawMother(q.source);if(!WorldView.isLocal(q.source))drawParticipantLabel(q.source);}else if(q.kind==='projectile')drawProjectedProjectile(q.source);else drawDeathBodies(q.source.air,q.source.pose.type==='mother',q.source)}}finally{projectionDrawingActors=false}
 }
-boot=function(){projectionCore.boot();Object.assign(window.__army,{projection:WorldProjection,projectionToScreen,projectionFromScreen,projectionBodyPose,projectionUnitHeight,sampleSimulationInput,getProjectionView(){return{...view,K:WorldProjection.K,H:WorldProjection.H}},getProjectionOrder(){return projectionQueue.map(q=>({kind:q.kind,id:q.source.id??q.source.pose?.id,depth:q.depth,order:q.order}))},configureProjection(options){Object.assign(CONFIG.render.projection,options);WorldProjection.configure(CONFIG.render.projection)}})};
+function publishProjectionUI(){Object.assign(window.__army,{projection:WorldProjection,projectionToScreen,projectionFromScreen,projectionBodyPose,projectionUnitHeight,sampleSimulationInput,getProjectionView(){return{...view,K:WorldProjection.K,H:WorldProjection.H}},getProjectionOrder(){return projectionQueue.map(q=>({kind:q.kind,id:q.source.id??q.source.pose?.id,depth:q.depth,order:q.order}))},configureProjection(options){Object.assign(CONFIG.render.projection,options);WorldProjection.configure(CONFIG.render.projection)}})};
 
 </script><script>
 'use strict';
 // Presentation-only mobile HUD. Keep the battlefield and its warning geometry untouched.
 const compactHUDMedia=(globalThis.BLOOM_HEADLESS ? null : (matchMedia('(max-width:799px)')));
-const compactHUDCore={boot,refreshUI,showMap,openModal,closeModal};
+const compactHUDCore={refreshUI,showMap,openModal,closeModal};
 let compactHUDReturnFocus=null;
 function compactHUDPlaceMap(){
  const b=$('mapButton');
@@ -10344,11 +10345,12 @@ const compactHUDStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElemen
 }
 @media(max-width:350px){#actions{gap:5px}#actions .menuBtn{padding:8px;font-size:11px}#actions #autoHuntButton{min-width:74px;font-size:10px}#motherHealth{font-size:11px;padding-left:8px}.hudMapSummary{align-items:flex-start}}
 `; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(compactHUDStyle); }
-boot=function(){
- compactHUDCore.boot();document.head.appendChild(compactHUDStyle);compactHUDPlaceMap();compactHUDMedia.addEventListener('change',compactHUDPlaceMap);
- new MutationObserver(()=>{if(!$('modal').classList.contains('show')){$('hud').inert=false;$('bottom').inert=false;if(compactHUDReturnFocus?.isConnected)compactHUDReturnFocus.focus({preventScroll:true});compactHUDReturnFocus=null;}}).observe($('modal'),{attributes:true,attributeFilter:['class']});
- $('mapButton').onclick=showMap;$('status').setAttribute('role','status');$('status').setAttribute('aria-live','polite');
- $('modal').addEventListener('keydown',e=>{if(e.key!=='Tab')return;const buttons=[...$('sheet').querySelectorAll('button:not(:disabled),a[href],input,summary,[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!buttons.length){e.preventDefault();return}const first=buttons[0],last=buttons.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===$('sheet'))){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});
+function initializeCompactHUD(){
+ document.head.appendChild(compactHUDStyle);compactHUDPlaceMap();GameUI.listen(compactHUDMedia,'change',compactHUDPlaceMap);
+ const observer=new MutationObserver(()=>{if(!$('modal').classList.contains('show')){$('hud').inert=false;$('bottom').inert=false;if(compactHUDReturnFocus?.isConnected)compactHUDReturnFocus.focus({preventScroll:true});compactHUDReturnFocus=null;}});
+ observer.observe($('modal'),{attributes:true,attributeFilter:['class']});GameUI.cleanup(()=>{observer.disconnect();compactHUDReturnFocus=null;compactHUDStyle.remove()});
+ GameUI.handler($('mapButton'),'onclick',showMap);$('status').setAttribute('role','status');$('status').setAttribute('aria-live','polite');
+ GameUI.listen($('modal'),'keydown',e=>{if(e.key!=='Tab')return;const buttons=[...$('sheet').querySelectorAll('button:not(:disabled),a[href],input,summary,[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!buttons.length){e.preventDefault();return}const first=buttons[0],last=buttons.at(-1);if(e.shiftKey&&(document.activeElement===first||document.activeElement===$('sheet'))){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});
  Object.assign(window.__army,{refreshUI,showMap,closeModal});refreshUI();
 };
 
@@ -10356,7 +10358,7 @@ boot=function(){
 'use strict';
 // Shared fixed-tick movement policy. Hunting only changes owned permanent allies.
 CONFIG.permanentHunt={queryInterval:.3,claimedDistancePenalty:130,reservedDistancePenalty:100000};
-const permanentHuntCore={findTarget,canTarget,reset,load,boot,showMap,showCards};
+const permanentHuntCore={findTarget,canTarget,reset,load,showMap,showCards};
 const companionPolicies={hunt:{hunting:true,returning:false},follow:{hunting:false,returning:false},return:{hunting:false,returning:true}};
 const permanentHuntIndex={state:null,room:-1,next:0,candidates:[],claims:new Map(),owners:new Map(),rebuilds:0};
 function permanentHuntMode(){return permanentState()?.mode||'hunt'}
@@ -10404,7 +10406,7 @@ showCards=function(){if(bloomInTick){bloomEmit("showCards",Array.from(arguments)
 reset=function(){const s=permanentHuntCore.reset();s.campaign.permanents.mode='hunt';resetPermanentHuntIndex();return s};
 load=function(raw){let v;try{v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw))}catch{return false}const mode=v?.campaign?.permanents?.mode;if(mode!==undefined&&!['hunt','follow'].includes(mode))return false;const ok=permanentHuntCore.load(v);if(ok){permanentState().mode=mode||'hunt';resetPermanentHuntIndex()}return ok};
 const permanentHuntStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { permanentHuntStyle.textContent='.permanentHuntControl{padding:10px 0;border-bottom:1px solid #ffffff18;margin-bottom:12px}.permanentHuntControl button{min-height:44px;padding:10px 14px;background:#244b3e;color:#dcfff0;border:1px solid #75efca66;border-radius:10px;font-weight:700}.permanentHuntControl small{display:block;font-size:11px;line-height:1.6;color:#b6cdb7;margin-top:7px}'; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(permanentHuntStyle); }
-boot=function(){permanentHuntCore.boot();$('mapButton').onclick=showMap;document.addEventListener('click',e=>{if(e.target.closest('[data-permanent-hunt]'))setPermanentHuntMode(permanentHuntMode()==='hunt'?'follow':'hunt')});Object.assign(window.__army,{companionMovementPolicy,permanentHuntMode,setPermanentHuntMode,findTarget,canTarget,updateUnit,showMap,showCards,load,reset,permanentHuntIndex,beginAttackPattern,patternInterrupted})};
+function initializePermanentHuntUI(){GameUI.handler($('mapButton'),'onclick',showMap);GameUI.listen(document,'click',e=>{if(e.target.closest('[data-permanent-hunt]'))setPermanentHuntMode(permanentHuntMode()==='hunt'?'follow':'hunt')});Object.assign(window.__army,{companionMovementPolicy,permanentHuntMode,setPermanentHuntMode,findTarget,canTarget,updateUnit,showMap,showCards,load,reset,permanentHuntIndex,beginAttackPattern,patternInterrupted})};
 
 </script><script>
 'use strict';
@@ -10413,7 +10415,7 @@ boot=function(){permanentHuntCore.boot();$('mapButton').onclick=showMap;document
 CONFIG.resourceGain={maxLabels:10,mergeGap:.25,mergeSpan:.48,clusterRadius:72,
  life:.98,rise:18,font:11,walletSpan:.6,walletLife:.95,pulseLife:.3,
  color:'#ffdc78',edge:10,collisionGap:3};
-const mineralGainCore={render,reset,load,recover,boot};
+const mineralGainCore={render,reset,load,recover};
 const mineralGainFormatter=new Intl.NumberFormat('en-US',{maximumFractionDigits:0});
 const mineralGain={state:null,time:0,labels:[],wallet:null,badge:null,walletAt:-Infinity,
  walletUntil:0,walletSum:0,walletDirty:false,pulse:false,reduced:false,drawn:0,viewportW:0,viewportH:0,blockers:[]};
@@ -10510,11 +10512,11 @@ recover=function(){const result=mineralGainCore.recover();if(result)mineralGainC
 const mineralGainStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));
 if (!globalThis.BLOOM_HEADLESS) { mineralGainStyle.textContent=`.mineralWallet{position:relative}.mineralWallet.mineralCredited{animation:mineral-credit .3s ease-out}.mineralGainBadge{position:absolute;right:2px;top:calc(100% + 1px);font-size:10px;line-height:13px;font-weight:750;color:#ffdc78;background:#302813ed;border-radius:5px;padding:0 4px;pointer-events:none;white-space:nowrap;font-variant-numeric:tabular-nums}.mineralGainBadge[hidden]{display:none}@keyframes mineral-credit{0%{border-color:#ffe4a1;box-shadow:0 0 0 2px #ffdc783b;background:#514225}100%{border-color:#fff2;box-shadow:0 0 0 0 #ffdc7800}}@media(prefers-reduced-motion:reduce){.mineralWallet.mineralCredited{animation:none;border-color:#ffdc78}}`; }
 if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(mineralGainStyle); }
-boot=function(){
- mineralGainCore.boot();const G=mineralGain;G.wallet=$('minerals').parentElement;G.wallet.classList.add('mineralWallet');
- G.badge=document.createElement('span');G.badge.className='mineralGainBadge';G.badge.hidden=true;G.badge.setAttribute('aria-hidden','true');G.wallet.appendChild(G.badge);
+function initializeMineralGainUI(){
+ const G=mineralGain;G.wallet=$('minerals').parentElement;G.wallet.classList.add('mineralWallet');
+ G.badge=document.createElement('span');G.badge.className='mineralGainBadge';G.badge.hidden=true;G.badge.setAttribute('aria-hidden','true');G.wallet.appendChild(G.badge);GameUI.cleanup(()=>{G.badge.remove();G.badge=null;G.wallet=null});
  G.wallet.setAttribute('aria-label','보유 광물');mineralGainClear();
- if(typeof ResizeObserver==='function'){G.layoutObserver=new ResizeObserver(()=>{G.viewportW=0});for(const id of ['hud','actions','joystick']){const e=$(id);if(e)G.layoutObserver.observe(e)}}
+ if(typeof ResizeObserver==='function'){G.layoutObserver=new ResizeObserver(()=>{G.viewportW=0});GameUI.cleanup(()=>{G.layoutObserver.disconnect();G.layoutObserver=null});for(const id of ['hud','actions','joystick']){const e=$(id);if(e)G.layoutObserver.observe(e)}}
  Object.assign(window.__army,{render,reset,load,recover,getResourceGain(){return{drawn:G.drawn,walletSum:G.walletSum,labels:G.labels.filter(n=>n.active).map(n=>({amount:n.amount,text:n.text,x:n.x,y:n.y,z:n.z,visible:n.visible}))}}});
 };
 
@@ -10523,7 +10525,7 @@ boot=function(){
 // Manual dodge: fixed-tick gameplay. Pausing never advances the cooldown clock.
 CONFIG.moaRoll={schema:1,baseHP:100,previousBaseHP:260,durationMs:BLOOM_TIME.roll.durationMs,invulnerableMs:BLOOM_TIME.roll.invulnerableMs,cooldownMs:BLOOM_TIME.roll.cooldownMs,distance:128,tapMaxMs:160,tapSlop:12,trailLife:.16,trailCount:4};
 CONFIG.challenge.motherHp=CONFIG.mother.hp=CONFIG.moaRoll.baseHP;
-const moaRollCore={boot,moveMoaBody,push,load,reset,recover,defeat,refreshUI,drawMother,drawCampaignWorld,openModal,render,sampleSimulationInput};
+const moaRollCore={moveMoaBody,push,load,reset,recover,defeat,refreshUI,drawMother,drawCampaignWorld,openModal,render,sampleSimulationInput};
 Object.assign(RENDER_TRACKS.unit,{rollPose:'linear'});
 
 function moaRollInvulnerable(t){return !!(t?.type==='mother'&&t.hp>0&&(t.rollInvulnerableMs||0)>0)}
@@ -10627,8 +10629,9 @@ render=function(...args){
  return moaRollCore.render(...args);
 };
 refreshUI=function(){if(bloomInTick){bloomEmit("refreshUI",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;moaRollCore.refreshUI();refreshMoaRollHUD()};
-boot=function(){
- moaRollCore.boot();try{moaRollHintShown=localStorage.getItem(CONFIG.saveKey+'-roll-hint')==='1'}catch{}const label=document.createElement('span');label.id='rollStatus';label.setAttribute('aria-label','구르기 준비 상태');$('joystick').appendChild(label);
+function initializeRollUI(){
+ try{moaRollHintShown=localStorage.getItem(CONFIG.saveKey+'-roll-hint')==='1'}catch{}const label=document.createElement('span');label.id='rollStatus';label.setAttribute('aria-label','구르기 준비 상태');$('joystick').appendChild(label);
+ GameUI.cleanup(()=>label.remove());
 
  bindMoaRollGesture();refreshMoaRollHUD();resetPresentation();Object.assign(window.__army,{performRoll,beginMoaRoll,sampleSimulationInput,moaRollInvulnerable,load,reset,recover,defeat,damage,push,moveMoaBody,render});
 };
@@ -10638,7 +10641,7 @@ const moaRollStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('
 'use strict';
 // Rivals keep the enemy art channel but have independent combat identities.
 CONFIG.rivalMoa={schema:2,chance:.005,baseHP:180,baseAttack:28,reward:8,query:.35,huntRadius:720,windup:.3,travelQuery:2,minFarmTime:20,minFarmKills:8,readyHealth:.75,retreatHealth:.35,color:'#df9fe8'};
-const rivalCore={spawn,canTarget,findTarget,attackPower,radius,unitVisualRadius,drawUnit,die,conversionEligible,killReward,regionExperience,load,reset,boot,projectile,showPause,enemyRoom,regrowSpot};
+const rivalCore={spawn,canTarget,findTarget,attackPower,radius,unitVisualRadius,drawUnit,die,conversionEligible,killReward,regionExperience,load,reset,projectile,showPause,enemyRoom,regrowSpot};
 // Cosmetic identity is chosen once from a stable ID hash, never render-time RNG.
 // Warm/high-chroma colors stay distinct from player mint and the grass floor.
 const RIVAL_PALETTES=['#ee9870','#bb91f2','#e6bd57','#ef87bc','#809ef0','#dd737d','#d4a47b','#bd84bf'].map((hex,index)=>{
@@ -10745,7 +10748,7 @@ function validRival(u,v){const r=u.rival;if(!r||![1,2].includes(r.schema)||u.riv
 
 load=function(raw){let v;try{v=JSON.parse(typeof raw==='string'?raw:JSON.stringify(raw));const colors=new Map();for(const u of v.units||[])if(u.rivalOwner&&u.rivalColor!==undefined){if(!Number.isInteger(u.rivalColor)||!RIVAL_PALETTES[u.rivalColor]||colors.has(u.rivalOwner)&&colors.get(u.rivalOwner)!==u.rivalColor)return false;colors.set(u.rivalOwner,u.rivalColor)}for(const u of v.units||[]){if(u.rivalOwner)u.rivalColor=colors.get(u.rivalOwner)??rivalColorIndex(u.rivalOwner);if(u.rivalLeader&&!validRival(u,v))return false;if(u.variant==='rival'&&!u.rivalLeader)return false;if(u.rivalOwner){if(!Number.isSafeInteger(u.target)||u.target< -1||u.target>v.nextId||!rivalFinite(u.query,-CONFIG.sim.integerLimit))return false;const p=u.pendingMelee;if(p&&(!Number.isSafeInteger(p.target)||p.target< -1||p.target>v.nextId||!rivalFinite(p.left,0,10)||!rivalFinite(p.total,0,10)||!rivalValidPoint({x:p.aimX,y:p.aimY})))return false}if(u.rivalWaypoint&&!rivalValidPoint(u.rivalWaypoint))return false;if(u.rivalRoamAt!==undefined&&!rivalFinite(u.rivalRoamAt))return false;if(u.rivalOwner!==undefined&&(!Number.isSafeInteger(u.rivalOwner)||u.rivalOwner<1||u.rivalOwner>v.nextId||u.team!=='enemy'))return false;if(u.rivalRecruit&&(!u.rivalOwner||u.rivalLeader||u.variant!=='ordinary'||!Number.isFinite(u.rivalAttack)||u.rivalAttack<=0))return false}for(const c of v.camps||[]){for(const q of c.regrowth||[])if(q.variant==='rival'&&q.cued&&regionAt(q.point?.x,q.point?.y)!==0){q.cued=false;delete q.point;q.left=Math.max(0,q.left)}const ids=new Set();for(const q of c.regrowth||[]){if(q.variant==='rival'&&q.boss)return false;if(q.reservationId!==undefined&&(!Number.isSafeInteger(q.reservationId)||q.reservationId<1||ids.has(q.reservationId)))return false;ids.add(q.reservationId)}if(c.rivalReservationSerial!==undefined&&(!Number.isSafeInteger(c.rivalReservationSerial)||c.rivalReservationSerial<0))return false;if(c.rivalDefeated&&(!Array.isArray(c.rivalDefeated)||c.rivalDefeated.some(d=>!Number.isSafeInteger(d.id)||d.id<1||d.id>v.nextId||!Number.isSafeInteger(d.reservation)||d.reservation<0||!unitDef(d.type))))return false}const saved=new Map((v.units||[]).filter(u=>u.rivalOwner).map(u=>[u.id,{target:u.target,pendingMelee:u.pendingMelee,rivalWindup:u.rivalWindup,query:u.query}]));if(!rivalCore.load(v))return false;for(const u of state.units){if(u.rivalOwner){Object.assign(u,saved.get(u.id));u.returning=false}if(u.rivalLeader){if(u.rival.schema===1)Object.assign(u.rival,{schema:2,sourceCamp:u.camp,sourceRoom:state.camps[u.camp].ground,targetRoom:u.rival.room,previousRoom:-1,enteredAt:state.time,entryKills:u.rival.kills,nextQuery:state.time});u.rival.armyCount=0;u.rival.armySupply=0}}for(const u of state.units)if(u.rivalRecruit&&u.hp>0){const r=rivalLeaderFor(u);if(r){r.rival.armyCount++;r.rival.armySupply+=unitDef(u.type).supply}}rebuildGrid();return true}catch{return false}};
 showPause=function(){rivalCore.showPause();$('sheet').insertAdjacentHTML('beforeend','<div class="notice">◆ 라이벌 모아: 일반 94.5% · 정예 5% · 라이벌 0.5%. 첫 구역에서 시작해 실제로 사냥하며, 충분히 성장하면 이미 열린 관문을 걸어서 이동합니다. 모아 또는 라이벌이 있는 방만 기존 정원 안에서 재생됩니다.  직접 처치하거나 자신의 7초 표식 적을 자기 군단이 처치하면 일반 생물을 절반 능력치로 영입합니다. 군단의 처치도 자기 광물·경험치가 됩니다. 레벨업 능력 3장 중 1장, 모은 광물로 성장 3장 중 1장을 고릅니다. 처치 보상은 같은 방 일반 적의 8배. 영입·압축 불가. 쓰러진 라이벌의 자리는 일반 재생 시간 뒤 새 개체로 다시 추첨됩니다. 남은 군단은 계속 적대합니다.</div>')};
-boot=function(){rivalCore.boot();Object.assign(window.__army,{factionId,sameFaction,factionsHostile,rivalLeaderFor,rivalPower,rivalProgress,rivalArmySize,rivalCapacity,rivalTarget,rivalReady,rivalPlan,rivalActiveRooms,rivalGatePoint,spawn,damage,die,canTarget,findTarget,updateUnit,attackPower,killReward,regionExperience,load,showPause,drawUnit,projectile})};
+function publishRivalUI(){Object.assign(window.__army,{factionId,sameFaction,factionsHostile,rivalLeaderFor,rivalPower,rivalProgress,rivalArmySize,rivalCapacity,rivalTarget,rivalReady,rivalPlan,rivalActiveRooms,rivalGatePoint,spawn,damage,die,canTarget,findTarget,updateUnit,attackPower,killReward,regionExperience,load,showPause,drawUnit,projectile})};
 
 </script><script>
 'use strict';
@@ -10844,7 +10847,7 @@ function moaAbilityCooldown(base,g=growthState()){return base/(1+combatStat('has
 function moaRollRechargeMs(g=growthState()){return Math.max(0,moaAbilityCooldown(CONFIG.moaRoll.cooldownMs,g))}
 function moaArmorMultiplier(g=growthState()){return 100/(100+combatStat('armor',g))}
 function combatGrowthFor(u){return u?.rivalLeader?u.rival.growth:u?.type==='mother'?WorldPlayers.dataFor(u)?.campaign?.growthCards||null:null}
-const combatStatsCore={economyAward,growthCardEffect,showPause,openModal,closeModal,boot};
+const combatStatsCore={economyAward,growthCardEffect,showPause,openModal,closeModal};
 // Target mitigation is read at impact. Legacy typing/ranged reduction/flat armor
 // and its minimum run first; this new layer is multiplicative, with 0 = identity.
 
@@ -10873,7 +10876,7 @@ function clearMoaStatsDialog(){const sheet=$('sheet');for(const key of ['role','
 openModal=function(...args){if(modalKind==='moaStats')clearMoaStatsDialog();return combatStatsCore.openModal(...args)};
 closeModal=function(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;const stats=modalKind==='moaStats';if(stats)clearMoaStatsDialog();const result=combatStatsCore.closeModal();if(stats)$('pause').focus();return result};
 showPause=function(){const result=combatStatsCore.showPause();if(playing)$('sheet').querySelector('.pauseLinks')?.insertAdjacentHTML('afterbegin','<button class="tab" data-moa-stats>모아·병력 능력치</button>');return result};
-boot=function(){combatStatsCore.boot();$('pause').onclick=showPause;$('pause').setAttribute('aria-label','일시 정지 · 모아·병력 능력치');document.addEventListener('click',e=>{if(e.target.closest('[data-moa-stats]'))showMoaStats()});document.addEventListener('keydown',e=>{if(modalKind!=='moaStats'||e.key!=='Tab')return;const buttons=[...$('sheet').querySelectorAll('button:not([disabled]),a[href]')],first=buttons[0],last=buttons[buttons.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});Object.assign(window.__army,{currentMoaStats,showMoaStats,combatStat,moaWalkSpeed,moaAbilityCooldown,moaRollRechargeMs,moaArmorMultiplier})};
+function initializeCombatStatsUI(){GameUI.handler($('pause'),'onclick',showPause);$('pause').setAttribute('aria-label','일시 정지 · 모아·병력 능력치');GameUI.listen(document,'click',e=>{if(e.target.closest('[data-moa-stats]'))showMoaStats()});GameUI.listen(document,'keydown',e=>{if(modalKind!=='moaStats'||e.key!=='Tab')return;const buttons=[...$('sheet').querySelectorAll('button:not([disabled]),a[href]')],first=buttons[0],last=buttons[buttons.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}});Object.assign(window.__army,{currentMoaStats,showMoaStats,combatStat,moaWalkSpeed,moaAbilityCooldown,moaRollRechargeMs,moaArmorMultiplier})};
 const combatStatsStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { combatStatsStyle.textContent=`.sheet:has(.moaStatsRows){max-width:480px}.moaStatsRows{display:grid;gap:0;margin:12px 0;font-size:12px}.moaStatsRows>div{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #ffffff12}.moaStatsRows span{color:#b8cbb1}.moaStatsRows b{text-align:right;overflow-wrap:anywhere;max-width:65%}.sheet button:focus-visible{outline:2px solid #e5f7b9;outline-offset:2px}`; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(combatStatsStyle); }
 
 </script><script>
@@ -10895,7 +10898,7 @@ CONFIG.levelAbilities.cards.thorn.name='대지 가시 장치';
 Object.assign(CONFIG.moaSprout.mounts,{pod:{x:-.96,y:-.03},lob:{x:.92,y:.06},thorn:{x:-.57,y:.78},spore:{x:.54,y:.78},beam:{x:-.72,y:-.68},chain:{x:.75,y:-.65},breath:{x:0,y:.99}});
 for(const id of ['spore','beam','chain','breath']){RENDER_TRACKS.unit['sproutAim_'+id]='angle';RENDER_TRACKS.unit['sproutKick_'+id]='decay';RENDER_TRACKS.unit['sproutCharge_'+id]='linear';}
 
-const equippedCore={launchAbilityShot,stepAbilityProjectile,spatialProjectileTick,drawProjectedProjectile,abilityCardDescription,load,boot};
+const equippedCore={launchAbilityShot,stepAbilityProjectile,spatialProjectileTick,drawProjectedProjectile,abilityCardDescription,load};
 function gearChannelActive(owner,id){return !!owner.gearChannels?.[id]}
 function gearOwner(p){return p.u===state.mother.id?state.mother:idMap.get(p.u)}
 function gearGroundTarget(t){return unitDef(t.type)?.layer!=='AIR'}
@@ -10987,7 +10990,7 @@ function drawGearBreath(p,time){
 
 function drawEquippedAttack(p){return weaponDrawAdapter(p)}
 drawProjectedProjectile=function(source){if(!source.equippedAttack)return equippedCore.drawProjectedProjectile(source);if(projectionVisible(source,Math.max(source.range||0,source.fieldRadius||0)+80))drawEquippedAttack(presentationPose(source,'projectile'))};
-boot=function(){equippedCore.boot();Object.assign(window.__army,{BloomGear,gearChannelActive,gearNearest,gearDamage,drawEquippedAttack,launchAbilityShot,stepAbilityProjectile,abilityCardDescription,load})};
+function publishEquippedUI(){Object.assign(window.__army,{BloomGear,gearChannelActive,gearNearest,gearDamage,drawEquippedAttack,launchAbilityShot,stepAbilityProjectile,abilityCardDescription,load})};
 
 </script><script>
 'use strict';
@@ -10998,7 +11001,7 @@ CONFIG.combatStats={movePercent:{silver:3,gold:5,prismatic:8},haste:{silver:5,go
 CONFIG.statTiers.critical={gold:.03,prismatic:.05};CONFIG.statTiers.lifesteal={gold:.01,prismatic:.02};CONFIG.statTiers.criticalPower={prismatic:.1};
 const armyGrowthCache=new WeakMap();
 function armyCardSum(stat,table,g){let n=0;for(const c of statCardsByStat[stat]||statNoCards)n+=economyPoint(g,c.id)*(table[c.tier]||0);return n}
-const armyGrowthCore={spawn,attackPower,effectiveRange,effectiveSpeed,permanentMaxHP,tickUnitStatus,die,economyAward:combatStatsCore.economyAward,load,boot,currentMoaStats};
+const armyGrowthCore={spawn,attackPower,effectiveRange,effectiveSpeed,permanentMaxHP,tickUnitStatus,die,economyAward:combatStatsCore.economyAward,load,currentMoaStats};
 const armyCurve={critical:moaCriticalChance,lifesteal:moaLifesteal,criticalDamage:moaCriticalMultiplier,regen:growthRecovery};
 function armyBonuses(g=growthState()){
  if(!g)return null;let b=armyGrowthCache.get(g);if(b)return b;
@@ -11045,7 +11048,7 @@ currentMoaStats=function(){const s=armyGrowthCore.currentMoaStats();s.moveBonus=
 function currentArmyStatsHTML(){const b=armyBonuses(),rows=[['원본 공격력 대비','+'+fmt(b.attack*100)+'%'],['원본 최대 체력 대비','+'+fmt(b.hp*100)+'%'],['원본 사거리 대비','+'+fmt(b.range*100)+'%'],['기본 공격 가속',fmt(b.speed*100)+'%'],['이동 속도 추가',fmt(b.move)+'%'],['체력 재생','원본 체력의 '+fmt(b.regen*100)+'% / 초'],['치명타 확률',fmt(b.critical*100)+'%'],['치명타 피해',fmt(b.criticalDamage)+'배'],['흡혈',fmt(b.lifesteal*100)+'%'],['방어력',fmt(b.armor)],['영구병 특수기 가속',fmt(b.haste)]];return '<h3>병력 전체 · 광물 성장</h3><div class="moaStatsRows">'+rows.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('')+'</div><p class="fine">일반병과 영구병에 적용되며 새로 영입한 병력도 이어받아요. 체력·공격력·사거리의 기본값은 병종·영입 지역·압축 전투력에 따라 달라요. 공격력·체력·사거리·재생 비율은 각 원본에 한 번 적용하고, 기존 강화된 수치를 재곱하지 않습니다. 스킬 가속은 영구병 특수기의 재사용 대기에만 적용됩니다.</p>'}
 currentMoaStatsHTML=function(){const s=currentMoaStats(),rows=[['레벨',s.level],['체력',fmt(s.hp)+' / '+fmt(s.maxHP)],['공격력',fmt(s.attack)],['주 공격 피해',fmt(s.primaryDamage)],['이동 속도',fmt(s.speed)+' / 초'],['주 공격 사거리',fmt(s.range)],['공격 간격',fmt(s.attackInterval)+'초'],['치명타 확률',fmt(s.critical*100)+'%'],['치명타 피해',fmt(s.criticalDamage)+'배'],['체력 재생',fmt(s.regenTotal)+' / 초'],['흡혈',fmt(s.lifesteal*100)+'%'],['방어력',s.armor],['구르기 재사용',fmt(s.rollSeconds)+'초'],...s.aux.map(a=>[a.name,fmt(a.seconds)+'초'])];return '<h3>모아 · 레벨업 성장</h3><div class="moaStatsRows">'+rows.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('')+'</div><p class="fine">광물 카드는 모아에게 적용되지 않아요. 레벨마다 기본 공격력이 자라며 10레벨마다 2배가 됩니다. 모든 보조 무기도 이 기본 위력을 사용해요. 최대 체력은 레벨마다 50씩 늘고 남은 체력 비율을 유지해요. 방어력은 늘지 않으며 기본 재생은 최대 체력의 0.5%입니다. 모아가 실제로 맞힌 일반 적은 7초간 ✦ 표식이 남고, 그동안 내 일반병·영구병이 처치해도 인구 한도 안에서 영입됩니다. 기본 체력 재생은 최대 체력의 0.5% / 초입니다.</p>'+currentArmyStatsHTML()};
 load=function(raw){let v;try{v=typeof raw==='string'?JSON.parse(raw):raw;for(const u of v.units||[]){if(u.team==='friendly'&&!u.permanentRank&&(!Number.isFinite(u.armyBaseHP)||u.armyBaseHP<=0||u.armyBaseHP>CONFIG.sim.unitHpLimit||!Number.isSafeInteger(u.captureWeight)||u.captureWeight<1||u.captureWeight>CONFIG.regionProgression.factor**(CONFIG.campaign.grounds.length-1)||u.capturedGround!==undefined&&u.captureWeight!==CONFIG.regionProgression.factor**u.capturedGround))return false;if(u.rivalRecruit&&(!Number.isFinite(u.armyBaseHP)||u.armyBaseHP<=0||u.armyBaseHP>CONFIG.sim.unitHpLimit||!validGrowth(u.armyGrowth)))return false}}catch{return false}const ok=armyGrowthCore.load(raw);if(!ok)return false;for(const u of state.units)if(u.rivalRecruit){const g=idMap.get(u.rivalOwner)?.rival?.growth;if(g)u.armyGrowth=g}return true};
-boot=function(){armyGrowthCore.boot();Object.assign(window.__army,{armyBonuses,armyGrowthFor,armyAttackInterval,armySpecialCooldown,currentMoaStats,currentMoaStatsHTML,currentArmyStatsHTML,attackPower,effectiveRange,effectiveSpeed,damage,growthCardEffect})};
+function publishArmyGrowthUI(){Object.assign(window.__army,{armyBonuses,armyGrowthFor,armyAttackInterval,armySpecialCooldown,currentMoaStats,currentMoaStatsHTML,currentArmyStatsHTML,attackPower,effectiveRange,effectiveSpeed,damage,growthCardEffect})};
 
 'use strict';
 // Region weight is captured once. Paid cards, wounds, and current combat stats
@@ -11072,7 +11075,7 @@ maxMotherHP=()=>moaLevelHP(CONFIG.mother.hp,state?.campaign?.abilities?.level||1
 rivalMaxHP=u=>moaLevelHP(u.rival.baseHP,u.rival.abilities.level);
 function moaSyncLevelHP(u){if(!u)return;const next=u.rivalLeader?rivalMaxHP(u):PlayerActor.maxHP(WorldPlayers.forEntity(u));if(u.maxHp===next)return;const fraction=u.maxHp>0?clamp(u.hp/u.maxHp,0,1):0;u.maxHp=next;u.hp=next*fraction}
 
-const moaMarkCore={launchAbilityShot,rivalPower,moaReserved,drawUnit,tickUnitStatus,load,boot};
+const moaMarkCore={launchAbilityShot,rivalPower,moaReserved,drawUnit,tickUnitStatus,load};
 rivalPower=function(u){return Math.min(Number.MAX_VALUE,moaMarkCore.rivalPower(u)*moaLevelMultiplier(u.rival.abilities.level))};
 // Machine representability guard only, at ~1.8e308; no gameplay/level cap.
 // Descendants and ranked auxiliary products may exceed a finite base.
@@ -11097,7 +11100,7 @@ drawUnit=function(u){moaMarkCore.drawUnit(u);if(u.hp<=0||!projectionVisible(u,un
 function validMoaRecruitMarks(u,v){if(u.moaRecruitMarks===undefined)return true;const marks=u.moaRecruitMarks;if(!Array.isArray(marks)||new Set(marks.map(q=>q?.ownerId)).size!==marks.length)return false;return marks.every(q=>{if(!q||!Number.isSafeInteger(q.ownerId)||!Number.isFinite(q.until)||q.until<0||q.until>v.time+CONFIG.moaRecruitMark.seconds+1e-7)return false;const player=WorldPlayers.byAccount(q.ownerId,v);return player?q.faction==='player:'+player.playerId:q.ownerId===-1?q.faction==='player':q.ownerId>0&&q.ownerId<=v.nextId&&q.faction==='rival:'+q.ownerId})}
 
 load=function(raw){let v,ratios;try{v=typeof raw==='string'?JSON.parse(raw):raw;if(!Array.isArray(v?.units)||!v.units.every(u=>validMoaRecruitMarks(u,v)))return false;const leaders=[v.mother,...v.units.filter(u=>u.rivalLeader)];if(leaders.some(u=>!Number.isFinite(u?.maxHp)||u.maxHp<=0||!Number.isFinite(u.hp)||u.hp<0||u.hp>u.maxHp))return false;ratios=new Map(leaders.map(u=>[u.id,u.hp/u.maxHp]))}catch{return false}if(!moaMarkCore.load(raw))return false;for(const u of [state.mother,...state.units.filter(u=>u.rivalLeader)]){u.maxHp=u.rivalLeader?rivalMaxHP(u):maxMotherHP();u.hp=u.maxHp*ratios.get(u.id)}return true};
-boot=function(){moaMarkCore.boot();Object.assign(window.__army,{moaLevelHP,moaSyncLevelHP,maxMotherHP,rivalMaxHP,moaLevelMultiplier,moaLevelBasePower,moaHasRecruitMark,moaMarkHit,moaMarkedKill,validMoaRecruitMarks,moaPower,statBaseMoaPower,rivalPower,moaReserved,drawUnit,load})};
+function publishMoaMarkUI(){Object.assign(window.__army,{moaLevelHP,moaSyncLevelHP,maxMotherHP,rivalMaxHP,moaLevelMultiplier,moaLevelBasePower,moaHasRecruitMark,moaMarkHit,moaMarkedKill,validMoaRecruitMarks,moaPower,statBaseMoaPower,rivalPower,moaReserved,drawUnit,load})};
 
 </script><script>
 'use strict';
@@ -11179,7 +11182,7 @@ recover=function(){const result=healingCore.recover();if(result)healingClear();r
 'use strict';
 CONFIG.pointMove={quantum:16,doubleMs:300,doubleSlop:32,dragSlop:12,tapMs:400,arrival:8,blockedMs:BLOOM_TIME.pointMove.blockedMs};
 let pointNav={goal:null,waypoints:[],index:0,stuckMs:0,best:1000000000};
-const pointCore={reset,load,recover,defeat,boot,openModal,drawCampaignWorld};
+const pointCore={reset,load,recover,defeat,openModal,drawCampaignWorld};
 function clearPointNav(){pointNav={goal:null,waypoints:[],index:0,stuckMs:0,best:1000000000}}
 // Shared inverse solves projected screen Y against the actual terrain surface.
 // Hills have bounded positive height and a non-folding projection in this world.
@@ -11212,12 +11215,13 @@ function bindPointMove(){
   excludeTarget(target,event){if(event.code==='Escape')return !!target?.closest?.('#bloom-diagnostic-panel');const selector=event.code?'input,textarea,select,[contenteditable="true"],#bloom-diagnostic-panel':'input,textarea,select,button,a,[contenteditable="true"],[data-gamekit-ui],#bloom-diagnostic-panel';return !!target?.closest?.(selector)||!playing||paused||WorldView.dead()||!!modalKind},
   onGesture(event){bloomInputPoints.push(event)}
  });
- canvas.addEventListener('dblclick',e=>e.preventDefault());
+ const device=bloomDeviceInput;GameUI.cleanup(()=>{device.dispose();if(bloomDeviceInput===device)bloomDeviceInput=null});
+ GameUI.listen(canvas,'dblclick',e=>e.preventDefault());
 }
 openModal=function(...a){clearPointGesture();return pointCore.openModal(...a)};
 refreshMoaRollHUD=function(){const e=$('rollStatus');if(!e||!state)return;const m=WorldView.leader(),left=bloomSeconds(m.rollCooldownMs||0);e.textContent=m.rollRemainingMs>0?'구르기':left>0?'구르기 '+left.toFixed(1)+'초':'더블탭 · 구르기 준비';e.dataset.ready=String(!left);e.title='원하는 곳을 클릭/탭하면 이동 · 두 번 누르면 그 방향으로 구르기 · Space 가능'};
 drawCampaignWorld=function(){pointCore.drawCampaignWorld();const g=WorldView.navigation().goal;if(!g)return;const t=presentationTime(),r=8+Math.sin(t*6)*1.3;ctx.save();ctx.strokeStyle='#daf3bd';ctx.lineWidth=1.6;ctx.globalAlpha=.8;indicatorGroundArc(ctx,g.x,g.y,r,r,0,Math.PI*2,true,false);ctx.stroke();projectionBillboard(ctx,g.x,g.y,WorldProjection.groundHeight(g.x,g.y));ctx.beginPath();ctx.moveTo(g.x,g.y-3);ctx.lineTo(g.x,g.y-19);ctx.lineTo(g.x+9,g.y-16);ctx.lineTo(g.x,g.y-12);ctx.stroke();ctx.restore();ctx.restore()};
-boot=function(){pointCore.boot();bindPointMove();const e=$('rollStatus');$('controls').prepend(e);Object.assign(window.__army,{projectionFromScreen,applyPointMove,get pointNav(){return pointNav}})};
+function initializePointMoveUI(){bindPointMove();const e=$('rollStatus');$('controls').prepend(e);Object.assign(window.__army,{projectionFromScreen,applyPointMove,get pointNav(){return pointNav}})};
 const pointStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('style')));if (!globalThis.BLOOM_HEADLESS) { pointStyle.textContent='#joystick{display:none!important;pointer-events:none!important}#rollStatus{position:static;transform:none!important;align-self:flex-end;margin-bottom:10px;padding:7px 10px;border-radius:12px;background:#14291fb0;color:#acbba3;font-size:10px;line-height:16px}#rollStatus[data-ready="true"]{color:#dff1b9}#controls{min-height:48px!important}'; }if (!globalThis.BLOOM_HEADLESS) { document.head.appendChild(pointStyle); }
 
 </script><script>
@@ -18673,7 +18677,7 @@ CONFIG.rarity.rival={
 };
 // Legacy spawn/shot/visual functions read this same configuration object.
 CONFIG.rivalMoa=CONFIG.rarity.rival;
-const rarityRivalCore={spawn,regrowCamps,reset,boot,moaBodyRadius,moaBodyMass};
+const rarityRivalCore={spawn,regrowCamps,reset,moaBodyRadius,moaBodyMass};
 moaBodyRadius=function(u){return u?.rivalLeader?radius(u)*CONFIG.moaPhysics.motherBodyScale:rarityRivalCore.moaBodyRadius(u)};
 moaBodyMass=function(u){return u?.rivalLeader?CONFIG.moaPhysics.motherMass*(radius(u)/CONFIG.mother.size)**2:rarityRivalCore.moaBodyMass(u)};
 function rarityRivalConfig(){return CONFIG.rarity.rival}
@@ -19003,13 +19007,13 @@ function rarityValidateRivals(v){
  return true;
 }
 reset=function(...args){const result=rarityRivalCore.reset(...args);result.rarityRivals={};return result};
-boot=function(){rarityRivalCore.boot();Object.assign(window.__army,{rivalPower,rivalMaxHP,rivalProgress,rivalCredit,rivalCapacity,rivalArmySize,rivalTarget,rivalPlan,rivalReady,rarityRivalAI,rarityRivalDeath,rarityRivalTick,rarityRivalAssessment,rarityRivalExpectedEnemies,rarityValidateRivals,spawn,updateUnit,regrowCamps})};
+function publishRarityRivals(){Object.assign(window.__army,{rivalPower,rivalMaxHP,rivalProgress,rivalCredit,rivalCapacity,rivalArmySize,rivalTarget,rivalPlan,rivalReady,rarityRivalAI,rarityRivalDeath,rarityRivalTick,rarityRivalAssessment,rarityRivalExpectedEnemies,rarityValidateRivals,spawn,updateUnit,regrowCamps})};
 
 'use strict';
 /* Rarity collection presentation. All ownership writes go through tick commands.
  * This module is inserted after the inventory/gameplay modules and before the
  * live SDK captures its core functions. Rendering reads canonical state only. */
-const rarityUICore={boot,drawUnit,showIntro,showGameSettings};
+const rarityUICore={drawUnit,showIntro,showGameSettings};
 const rarityUI={type:null,grade:0,page:0,notice:'',pageSize:20};
 // The legacy Start handler still reads zone tips; keep its reachable hint current.
 CONFIG.zones[0].tip='모아와 군단이 처치하면 영구 동료를 얻어요. 잠기지 않은 같은 병종·등급 5마리는 자동 합성돼요.';
@@ -19083,8 +19087,8 @@ refreshPermanentHuntControl=function(){};
 function ruiAbilityInfo(){return weaponAbilityInfo()}
 refreshAbilityHUD=function(){
  if(globalThis.BLOOM_HEADLESS)return;let b=$('abilityLevel');
- if(!b){b=document.createElement('button');b.id='abilityLevel';b.type='button';$('motherHealth').parentElement.appendChild(b)}
- if(!b.dataset.rarityBound){b.dataset.rarityBound='true';b.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();ruiAbilityInfo()},true)}
+ if(!b){b=document.createElement('button');b.id='abilityLevel';b.type='button';$('motherHealth').parentElement.appendChild(b);GameUI.cleanup(()=>b.remove())}
+ if(!b.dataset.rarityBound){b.dataset.rarityBound='true';GameUI.listen(b,'click',e=>{e.preventDefault();e.stopImmediatePropagation();ruiAbilityInfo()},true);GameUI.cleanup(()=>{delete b.dataset.rarityBound})}
  const a=WorldView.ability();if(!a)return;const next=abilityThreshold(a.level+1),prev=abilityThreshold(a.level),pending=WorldView.pendingAbility(),pct=clamp((a.xp-prev)/Math.max(1,next-prev)*100,0,100);
  b.innerHTML=`<span>Lv.${a.level}${pending?' · 무료 능력 '+pending+'장':` · ${fmt(a.xp-prev)}/${fmt(next-prev)} XP`}</span><i><b style="width:${pct}%"></b></i>`;
  b.classList.toggle('pending',pending>0);b.setAttribute('aria-label',`모아 레벨 ${a.level}, ${pending?'무료 능력 '+pending+'장 선택 가능':'다음 레벨까지 경험치 '+(next-a.xp)}`);
@@ -19156,8 +19160,8 @@ function ruiQueueReserve(count){
  rarityRequestReserveLock(rarityUI.type,rarityUI.grade,next);
 }
 function bindRarityUIControls(root=document){
- root.addEventListener('click',ruiHandleClick,true);
- root.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.id==='rarityReserveLocked'){event.preventDefault();ruiQueueReserve(event.target.value);ruiRefreshCollection()}});
+ GameUI.listen(root,'click',ruiHandleClick,true);
+ GameUI.listen(root,'keydown',event=>{if(event.key==='Enter'&&event.target.id==='rarityReserveLocked'){event.preventDefault();ruiQueueReserve(event.target.value);ruiRefreshCollection()}});
 }
 function ruiHandleClick(event){
  const button=event.target.closest('button');if(!button||button.disabled)return;const d=button.dataset;
@@ -19186,10 +19190,10 @@ if(rarityUIStyle){rarityUIStyle.textContent=`
 @media(max-width:520px){.rarityGradeRow{grid-template-columns:112px minmax(0,1fr);gap:7px;padding:9px}.rarityFusionActions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.rarityFusionActions button{font-size:12px}.rarityFinal{grid-column:1/-1;padding:1px 0 4px}.rarityGradeDetail{font-size:11px}.rarityGradeDetail small{font-size:9px}.raritySummary{gap:5px}.raritySummary b{font-size:18px}.raritySpecies{gap:5px}.raritySpecies strong{font-size:10px}.raritySpecies small{font-size:9px}.raritySpecies button{min-height:104px}.rarityReserveLock{align-items:flex-start;flex-direction:column}.rarityLockStepper{width:100%;justify-content:flex-end}.rarityActiveLocks{grid-template-columns:1fr}.rarityRules p{font-size:11px}.rarityGradeSelect>strong{font-size:12px}.rarityBadge{font-size:10px}.raritySummary span{font-size:9px}.rarityCapacity{line-height:1.8}}
 @media(max-width:360px){#rarityArmyHUD{width:112px;max-width:112px;font-size:9px}#motherHealth{width:calc(100% - 178px - env(safe-area-inset-left,0px));font-size:10px}#health{width:calc(100% - 198px - env(safe-area-inset-left,0px))}.raritySpecies{grid-template-columns:repeat(2,minmax(0,1fr))}.raritySpecies button{min-height:98px}.raritySpecies strong{font-size:12px}.rarityGradeRow{grid-template-columns:105px minmax(0,1fr)}}
 `;document.head.appendChild(rarityUIStyle)}
-boot=function(){
- rarityUICore.boot();if(globalThis.BLOOM_HEADLESS)return;
- if(!document.getElementById('rarityArmyHUD')){const button=document.createElement('button');button.type='button';button.id='rarityArmyHUD';button.addEventListener('click',showCards);$('top').insertBefore(button,$('pause'))}
- $('evolveButton').onclick=showCards;$('mapButton').onclick=showMap;$('pause').onclick=showPause;
+function initializeRarityUI(){
+ if(globalThis.BLOOM_HEADLESS)return;
+ if(!document.getElementById('rarityArmyHUD')){const button=document.createElement('button');button.type='button';button.id='rarityArmyHUD';GameUI.listen(button,'click',showCards);$('top').insertBefore(button,$('pause'));GameUI.cleanup(()=>button.remove())}
+ GameUI.handler($('evolveButton'),'onclick',showCards);GameUI.handler($('mapButton'),'onclick',showMap);GameUI.handler($('pause'),'onclick',showPause);
  bindRarityUIControls(document);
  Object.assign(window.__army,{bindRarityUIControls,rarityUI,rarityCollectionHTML,ruiSummary,ruiGradeCounts,showCards,showMap,showPause,showGameHelp,showAbilityChoices,refreshUI,updateGateButton});refreshUI();
 };
@@ -19620,11 +19624,24 @@ hitfeelSampleShake=function(){const s=hitfeel.shake;if(!s||hitfeel.mode==='off'|
 // v51: all sounds are local presentation of SDK-confirmed events. No game RNG.
 const CombatAudio=globalThis.CombatAudio={
  context:null,enabled:true,volume:.65,master:null,bus:null,noise:null,serial:0,lastPitch:1,
+ subscriptions:[],disposed:false,
+ bind(){
+  if(this.disposed||this.subscriptions.length)return;
+  const listen=(type,listener,options)=>{document.addEventListener(type,listener,options);this.subscriptions.push(()=>document.removeEventListener(type,listener,options))};
+  for(const type of ['pointerdown','keydown'])listen(type,e=>this.unlock(e),{passive:true});
+  listen('visibilitychange',()=>{if(document.hidden){this.clear();try{this.context?.suspend().catch(()=>{})}catch{}}});
+ },
+ dispose(){
+  if(this.disposed)return;this.disposed=true;this.clear();
+  for(const off of this.subscriptions.splice(0))off();
+  const context=this.context;this.context=null;this.master=this.bus=this.noise=null;
+  try{context?.close().catch(()=>{})}catch{}
+ },
  slots:Array.from({length:6},()=>({active:false,nodes:[],priority:0,end:0})),queue:new Map(),cooldowns:new Map(),duckUntil:0,nextField:0,
  get voices(){return this.slots.filter(s=>s.active).length},
  set(on){this.enabled=!!on;if(!on)this.clear();try{localStorage.setItem('bloom-impact-sound-v1',on?'on':'off')}catch{}},
  setVolume(v){this.volume=clamp(Number(v)||0,0,1);if(this.master)this.master.gain.setValueAtTime(this.volume,this.context.currentTime);if(!this.volume)this.clear();try{localStorage.setItem('bloom-sound-volume-v1',String(this.volume))}catch{}},
- unlock(e){if(!e?.isTrusted||!this.enabled||document.hidden)return;try{const C=globalThis.AudioContext||globalThis.webkitAudioContext;if(!C)return;if(!this.context){this.context=new C();this.setup()}if(this.context.state==='suspended')this.context.resume().catch(()=>{})}catch{}},
+ unlock(e){if(this.disposed||!e?.isTrusted||!this.enabled||document.hidden)return;try{const C=globalThis.AudioContext||globalThis.webkitAudioContext;if(!C)return;if(!this.context){this.context=new C();this.setup()}if(this.context.state==='suspended')this.context.resume().catch(()=>{})}catch{}},
  setup(){const c=this.context;this.master=c.createGain();this.master.gain.value=this.volume;this.bus=c.createDynamicsCompressor();this.bus.threshold.value=-19;this.bus.knee.value=12;this.bus.ratio.value=5;this.bus.attack.value=.003;this.bus.release.value=.12;this.master.connect(this.bus);this.bus.connect(c.destination);this.noise=c.createBuffer(1,Math.ceil(c.sampleRate*.6),c.sampleRate);const data=this.noise.getChannelData(0);let seed=0x78ab31;for(let i=0;i<data.length;i++){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;data[i]=((seed>>>0)/4294967296)*2-1}},
  stopSlot(s){if(!s.active)return;s.active=false;for(const n of s.nodes){try{n.stop?.()}catch{}try{n.disconnect()}catch{}}s.nodes=[]},
  clear(){this.queue.clear();this.cooldowns.clear();this.nextField=0;this.duckUntil=0;for(const s of this.slots)this.stopSlot(s)},
@@ -19683,8 +19700,7 @@ const CombatAudio=globalThis.CombatAudio={
  }
 };
 try{CombatAudio.enabled=localStorage.getItem('bloom-impact-sound-v1')!=='off';const v=localStorage.getItem('bloom-sound-volume-v1');if(v!==null&&Number.isFinite(+v))CombatAudio.volume=clamp(+v,0,1)}catch{}
-for(const name of ['pointerdown','keydown'])document.addEventListener(name,e=>CombatAudio.unlock(e),{passive:true});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){CombatAudio.clear();try{CombatAudio.context?.suspend().catch(()=>{})}catch{}}});
+// GameUI mounts input listeners once; final runtime disposal retires this audio owner.
 const soundOpenModal=openModal;openModal=function(...args){if(!bloomInTick){for(const [k,q]of CombatAudio.queue)if(q.priority<70)CombatAudio.queue.delete(k);for(const s of CombatAudio.slots)if(s.active&&s.priority<70)CombatAudio.stopSlot(s)}return soundOpenModal(...args)};
 const combatBasePause=showPause;
 showPause=function(){CombatAudio.clear();const result=combatBasePause(),button=document.createElement('button');button.type='button';button.className='small';const label=()=>{button.textContent=CombatAudio.enabled?'효과음 · 켜짐':'효과음 · 꺼짐';button.setAttribute('aria-pressed',String(CombatAudio.enabled))};label();button.addEventListener('click',e=>{CombatAudio.set(!CombatAudio.enabled);CombatAudio.unlock(e);label()});$('sheet').appendChild(button);const labelVolume=document.createElement('label');labelVolume.textContent='효과음 크기 ';const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.value=String(Math.round(CombatAudio.volume*100));slider.setAttribute('aria-label','효과음 크기');slider.addEventListener('input',()=>CombatAudio.setVolume(+slider.value/100));labelVolume.appendChild(slider);$('sheet').appendChild(labelVolume);return result};
@@ -19733,7 +19749,7 @@ const soundRespawn=rarityRespawn;rarityRespawn=function(account,record) {
  * There are no interior walls, gate paths, level locks or refuge mechanics.
  * The canonical combat, rarity, inventory, fusion and rival growth layers stay
  * authoritative. Only their old room-boundary predicates are retired here. */
-const openWorldCore={reset,spawn,defeat,recover,boot,refreshUI,showIntro,showGameHelp,rarityRivalDeath,rarityValidateState};
+const openWorldCore={reset,spawn,defeat,recover,refreshUI,showIntro,showGameHelp,rarityRivalDeath,rarityValidateState};
 const openWorldOldRooms=CONFIG.rectWorld.rooms.map(r=>({...r}));
 const OpenWorldDefinition=Object.freeze({schema:1,width:4800,height:4800,bounds:{x:48,y:48,w:4704,h:4704},
  initialSpawn:{x:2400,y:2400},gradeDistances:[720,1250,1650,2050,2550],
@@ -19927,7 +19943,7 @@ showDefeat=function(){if(bloomInTick){bloomEmit('showDefeat',[]);return}if(globa
 refreshUI=function(...args){if(bloomInTick){bloomEmit('refreshUI',[]);return}const result=openWorldCore.refreshUI(...args);if(globalThis.BLOOM_HEADLESS)return result;const track=$('progressTrack');if(track)track.innerHTML=CONFIG.campaign.grounds.map((g,i)=>`<i class="open" title="${ruiEscape(CONFIG.openWorld.directions[i]+' · '+g.name+' · 자유 이동')}"></i>`).join('');return result};
 showGameHelp=function(){if(globalThis.BLOOM_HEADLESS)return;openModal('help',sheetHead('열린 들판을 탐험하기')+`<div class="helpSteps"><div><b>1 · 사방으로 자유롭게</b><p>땅을 클릭·탭하거나 WASD / 방향키로 움직여요. 두 번 클릭·탭하거나 Space로 굴러요. 중앙 초원에서 북쪽 꽃언덕, 서쪽 수림, 동쪽 습지, 남쪽 들판으로 바로 갈 수 있어요. 멀리 나갈수록 높은 등급의 생물이 살아요.</p></div><div><b>2 · 싸우며 친구 모으기</b><p>이동 중에도 자동으로 공격해요. 잠시 멈추면 주변 지역을 자동 사냥해요. 야생 생물을 처치하면 같은 병종의 한 등급 아래 친구가 영구 합류해요. 빈자리가 없으면 예비로 보관해요.</p></div><div><b>3 · 함께 성장하기</b><p>잠기지 않은 같은 병종·등급 5마리는 자동 합성해요. 레벨업마다 무료 능력 3장 중 하나를 골라요.</p></div><div><b>4 · 다시 일어나기</b><p>모아가 쓰러지면 쓰러진 지역의 고정된 시작 위치에서 부활해요. 살아 있는 군단이 모아 곁으로 돌아오고 부활 대기 친구는 남은 시간이 끝나면 합류해요. 오른쪽 아래에는 큰 우두머리가 원래 서식지를 지키고 있어요.</p></div></div>${ruiRulesHTML()}<button class="primary" data-action="close">돌아가기</button>`)};
 showIntro=function(...args){const result=openWorldCore.showIntro(...args);if(!globalThis.BLOOM_HEADLESS){const subtitle=$('sheet')?.querySelector('.homeSubtitle');if(subtitle)subtitle.textContent='사방으로 열린 들판에서, 모든 친구를 오래 간직하며.'}return result};
-boot=function(){openWorldCore.boot();Object.assign(window.__army,{openWorld:CONFIG.openWorld,openWorldRegionSpawn,openWorldGradeBand,openWorldSpawnGrade,drawOpenWorldOverview,drawOpenWorldGround,regionAt,worldWalls,wallHit,wallClear,pointClear,safeRoomPoint,constrainWorld,boundMoaBody,moveToward,pointRoute,rivalActiveRooms,rivalGatePoint,rivalPlan,canTarget,retaliationTarget,attackShapeTargets,patternCanStart,patternInterrupted,patternMove,patternJumpCanStart,stepGroundArc,regrowSpot,validRegrowSpot,spawn,reset,defeat,recover,showMap,showGameHelp,drawMini,drawCampaignWorld});Object.assign(AttackPatterns,{canStart:patternCanStart,targets:attackShapeTargets});};
+function publishOpenWorldUI(){Object.assign(window.__army,{openWorld:CONFIG.openWorld,openWorldRegionSpawn,openWorldGradeBand,openWorldSpawnGrade,drawOpenWorldOverview,drawOpenWorldGround,regionAt,worldWalls,wallHit,wallClear,pointClear,safeRoomPoint,constrainWorld,boundMoaBody,moveToward,pointRoute,rivalActiveRooms,rivalGatePoint,rivalPlan,canTarget,retaliationTarget,attackShapeTargets,patternCanStart,patternInterrupted,patternMove,patternJumpCanStart,stepGroundArc,regrowSpot,validRegrowSpot,spawn,reset,defeat,recover,showMap,showGameHelp,drawMini,drawCampaignWorld});Object.assign(AttackPatterns,{canStart:patternCanStart,targets:attackShapeTargets});};
 
 'use strict';
 /* Resident encounters compose the existing fixed-tick AttackPatterns, ballistic
@@ -19944,7 +19960,7 @@ CONFIG.residentBoss={schema:1,id:'meadow-seedkeeper',name:'씨앗지기',species
  recallWarningMs:BLOOM_TIME.boss.recallWarningMs,returnSpeed:295,returnDamageMultiplier:1.15,recoveryMs:BLOOM_TIME.boss.recoveryMs,
  cooldownMs:BLOOM_TIME.boss.cooldownMs,damageScale:1}}
 ;
-const residentCore={reset,boot,load,recover,defeat,updateMoa,canTarget,moaSeedTarget,moaContact,
+const residentCore={reset,load,recover,defeat,updateMoa,canTarget,moaSeedTarget,moaContact,
  autoHuntValid,attackPower,die,conversionEligible,rarityOwnUnit,rarityHasSpecial,applyPointMove,
  setAutoHunt,engageEnemy,enemyReturn,retaliationTarget,radius,applyHealing,drawUnit,drawCampaignWorld,
  stepGroundArc,spatialProjectileTick,drawProjectedProjectile,patternCanStart,patternLoadout,patternConfig,
@@ -20153,7 +20169,7 @@ rarityValidateState=bloomValidationFromSteps(function*(v,...args){return (yield*
 Object.assign(AttackPatterns,{begin:beginAttackPattern,canStart:patternCanStart});
 const ResidentBoss=globalThis.ResidentBoss={config:CONFIG.residentBoss,state:residentState,unit:residentUnit,habitat:residentHabitat,inside:residentInside,is:residentIs,validate:residentBossValidate,canFight:residentCanFight,draw:residentDrawWorld,
  inspect(){const r=residentState(),u=residentUnit();return{state:structuredClone(r),unit:u?{id:u.id,type:u.type,hp:u.hp,maxHp:u.maxHp,x:u.x,y:u.y,z:u.z,grade:rarityGrade(u),controller:structuredClone(u.attackController)}:null,shots:projectiles.filter(p=>p.residentSeed).map(p=>structuredClone(p))}}};
-boot=function(...args){const result=residentCore.boot(...args);Object.assign(window.__army,{ResidentBoss,CommittedProjectiles,residentBossValidate,canTarget,damage,die,attackPower,drawUnit,drawCampaignWorld,applyPointMove,stepGroundArc});return result};
+function publishResidentUI(){Object.assign(window.__army,{ResidentBoss,CommittedProjectiles,residentBossValidate,canTarget,damage,die,attackPower,drawUnit,drawCampaignWorld,applyPointMove,stepGroundArc});};
 
 'use strict';
 /* View-limited army hunting. The owner supplies a quantized projection envelope
@@ -20163,7 +20179,7 @@ CONFIG.visibleHunt={schema:1,quantum:8,maxExtent:8192,defaultWidth:360,defaultHe
  rivalWidth:960,rivalHeight:720,edgePixelsX:46,edgePixelsY:90,huntPixels:28,
  maxElevation:320,returnJoinRadius:80};
 const visibleHuntFields=['halfWidth','halfHeight','insetX','insetY','huntInset'];
-const visibleHuntCore={reset,boot,rarityValidateState,canTarget,findTarget,companionMovementPolicy,patternCanStart,rivalTarget};
+const visibleHuntCore={reset,rarityValidateState,canTarget,findTarget,companionMovementPolicy,patternCanStart,rivalTarget};
 function visibleHuntQuantize(n,up=false){const q=CONFIG.visibleHunt.quantum;return Math.max(q,(up?Math.ceil(n/q):Math.floor(n/q))*q)}
 function visibleHuntFromViewport(width,height,owner=state.mother){
  const C=CONFIG.visibleHunt,w=clamp(Number.isFinite(width)?width:C.defaultWidth,160,16384),h=clamp(Number.isFinite(height)?height:C.defaultHeight,160,16384),zoom=moaCameraZoom(owner,w);
@@ -20268,7 +20284,7 @@ function publishVisibleHuntView(){
 }
 const VisibleHunt=globalThis.VisibleHunt={config:CONFIG.visibleHunt,fields:visibleHuntFields,fromViewport:visibleHuntFromViewport,validateCommand:visibleHuntValidateCommand,apply:visibleHuntApply,owner:visibleHuntOwner,bounds:visibleHuntBounds,inside:visibleHuntInside,committed:visibleHuntCommitted,publish:publishVisibleHuntView};
 Object.assign(AttackPatterns,{canStart:patternCanStart});
-boot=function(...args){const result=visibleHuntCore.boot(...args);Object.assign(window.__army,{VisibleHunt,publishVisibleHuntView,companionMovementPolicy,canTarget,findTarget,rivalTarget,updateUnit,patternCanStart});return result};
+function publishVisibleHuntUI(){Object.assign(window.__army,{VisibleHunt,publishVisibleHuntView,companionMovementPolicy,canTarget,findTarget,rivalTarget,updateUnit,patternCanStart});};
 
 'use strict';
 // A topology generation is never migrated by guessing old region coordinates.
@@ -20480,7 +20496,7 @@ const ThemedTerrain=(()=>{
  return{rebuild,bodyBlocks,bodyClear,map,smooth,outer,shapes,ridges,stats,walkable,safePoint,sweep,move,height,onLand,projectileHit,inside,nearest};
 })();
 // One authoritative surface supports bodies, shadows, hitboxes and WorldUI.
-const themedCore={spawn,reset,load,boot,stepAbilityProjectile,projectileWallBlocked,launchGroundArc,committedLaunch:CommittedProjectiles.launch,committedStep:CommittedProjectiles.step,regionAt,drawOpenWorldGround};
+const themedCore={spawn,reset,load,stepAbilityProjectile,projectileWallBlocked,launchGroundArc,committedLaunch:CommittedProjectiles.launch,committedStep:CommittedProjectiles.step,regionAt,drawOpenWorldGround};
 CONFIG.themedTerrain={schema:1,source:'BLOOM_THEMED_WORLD_SHAPE',localAvoidance:true,gridCell:128};
 WorldProjection.groundHeight=ThemedTerrain.height;
 TerrainHills.height=TerrainHills.groundHeight=ThemedTerrain.height;
@@ -20589,7 +20605,7 @@ drawOpenWorldOverview=function(c,width,height,player=true){const W=CONFIG.openWo
 // Cache the static mini-map too; only the player indicator is live.
 let themedMini=null;
 drawMini=function(){if(!themedMini){themedMini=document.createElement('canvas');themedMini.width=180;themedMini.height=104;drawOpenWorldOverview(themedMini.getContext('2d'),180,104,false)}mini.clearRect(0,0,180,104);mini.drawImage(themedMini,0,0);mini.fillStyle='#fff6ba';mini.beginPath();mini.arc((180-CONFIG.openWorld.width*Math.min(180/CONFIG.openWorld.width,104/CONFIG.openWorld.height))/2+WorldView.leader().x*Math.min(180/CONFIG.openWorld.width,104/CONFIG.openWorld.height),(104-CONFIG.openWorld.height*Math.min(180/CONFIG.openWorld.width,104/CONFIG.openWorld.height))/2+WorldView.leader().y*Math.min(180/CONFIG.openWorld.width,104/CONFIG.openWorld.height),2,0,Math.PI*2);mini.fill()};
-boot=function(){themedCore.boot();Object.assign(window.__army,{WorldSpawn,WildSpawnRing,ThemedTerrain,pointClear,constrainWorld,moveToward,moveMoaBody,openWorldPoint,openWorldRegionSpawn,wallHit,wallClear,stepGroundArc,drawOpenWorldOverview,drawOpenWorldGround})};
+function publishThemedWorldUI(){Object.assign(window.__army,{WorldSpawn,WildSpawnRing,ThemedTerrain,pointClear,constrainWorld,moveToward,moveMoaBody,openWorldPoint,openWorldRegionSpawn,wallHit,wallClear,stepGroundArc,drawOpenWorldOverview,drawOpenWorldGround})};
 CONFIG.saveExportName='bloom-themed-world-save-v55.json';
 
 patternJumpCanStart=function(u,t,C){if(spatialAir(u)!==0)return false;const n=Math.min(1,C.distance/Math.max(1,dist(u,t))),x=u.x+(t.x-u.x)*n,y=u.y+(t.y-u.y)*n;return pointClear(x,y,moaBodyRadius(u))};
@@ -20775,8 +20791,8 @@ function weaponProgressRival(u){if(!u?.rivalLeader)return;const r=u.rival,a=r.ab
  while(a.chosen<a.level-1){a.draft=a.draft||weaponCreateDraft(a,u);const ids=[...a.draft.ids],choice=ids[0];weaponApplyCard(a,choice);r.lastAbility={ids,choice};}
  u.size=CONFIG.mother.size*moaLevelScale(a.level);moaSyncLevelHP(u);for(const id of Object.keys(CONFIG.moaSprout.mounts))u['sproutOwn_'+id]=a.ranks[id]||0;rarityRivalFusion(u);
 }
-const weaponCardsCore={boot};
-boot=function(){weaponCardsCore.boot();Object.assign(window.__army,{weaponStats,weaponProperty,weaponCreateDraft,weaponMakeOffer,weaponCanChoose,weaponOwnerState,weaponBuildRegistry,WeaponCardRegistry});};
+
+function publishWeaponCards(){Object.assign(window.__army,{weaponStats,weaponProperty,weaponCreateDraft,weaponMakeOffer,weaponCanChoose,weaponOwnerState,weaponBuildRegistry,WeaponCardRegistry});};
 // A semantic version change intentionally uses a new slot. No old save is erased.
 CONFIG.saveKey='bloom-weapon-cards-v3';
 CONFIG.saveExportName='bloom-webgl-worker-v58-save.json';
@@ -21005,8 +21021,82 @@ Object.assign(WEAPON_FAMILIES.homing,{draw:weaponDrawSeed});Object.assign(WEAPON
 function weaponDrawAdapter(p){if(p.weaponSpec?.channel&&!(gearOwner(p)?.hp>0))return;const family=WEAPON_FAMILIES[p.weaponSpec?.family];if(!family)return;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';try{family.draw(p)}finally{ctx.restore()}}
 const weaponMechanicDrawSeed=drawAbilitySeed;
 drawAbilitySeed=function(p){return p.weaponSpec?weaponDrawAdapter(p):weaponMechanicDrawSeed(p)};
-const weaponMechanicBoot=boot;
-boot=function(){weaponMechanicBoot();Object.assign(window.__army,{weaponUpdateAux,weaponFire,weaponCadence,weaponLaunchAdapter,weaponStepAdapter,weaponDrawAdapter,WEAPON_FAMILIES})};
+
+function publishWeaponMechanics(){Object.assign(window.__army,{weaponUpdateAux,weaponFire,weaponCadence,weaponLaunchAdapter,weaponStepAdapter,weaponDrawAdapter,WEAPON_FAMILIES})}
+// One concrete owner for the mounted game's DOM resources and render frame.
+// Feature initialization stays local; ordering is explicit rather than a chain
+// of captured boot wrappers or a registry of interchangeable capabilities.
+const GameUI=(()=>{
+ let phase='idle',frameId=null;
+ const subscriptions=[];
+ function cleanup(dispose){subscriptions.push(dispose)}
+ function listen(target,type,listener,options){target.addEventListener(type,listener,options);cleanup(()=>target.removeEventListener(type,listener,options))}
+ function handler(target,property,listener){const previous=target[property];target[property]=listener;cleanup(()=>{if(target[property]===listener)target[property]=previous})}
+ function requestFrame(){if((phase==='mounting'||phase==='mounted')&&frameId===null)frameId=requestAnimationFrame(time=>{frameId=null;if(phase==='mounting'||phase==='mounted')frame(time)})}
+ function dispose(){
+  if(phase==='disposed')return;phase='disposed';
+  if(frameId!==null){cancelAnimationFrame(frameId);frameId=null}
+  for(const off of subscriptions.splice(0).reverse())try{off()}catch(error){BloomDiagnostics.report(error,{kind:'ui.dispose'})}
+  // Modal controls own their short-lived child listeners. Removing the view
+  // releases them without retaining every recreated pause/intro control.
+  $('sheet').innerHTML='';$('modal').classList.remove('show');$('hud').inert=false;$('bottom').inert=false;
+ }
+ function mount(){
+  if(phase!=='idle')return false;phase='mounting';
+  try{
+   CombatAudio.bind();
+   initializeGameSurface();
+   initializeCampaignUI();
+   publishWorldIndicators();
+   initializeMoaUI();
+   publishMoaPhysics();
+   publishPresentationUI();
+   initializeGrowthUI();
+   publishHealthUI();
+   publishChallengeUI();
+   publishRegionGeometry();
+   publishRetaliationUI();
+   publishFinisherUI();
+   initializeAbilityUI();
+   publishStatTierUI();
+   initializeHitfeelUI();
+   publishPermanentUI();
+   publishRegionUI();
+   publishMoaGrowthUI();
+   initializeStartUI();
+   initializeAutoHuntUI();
+   initializeScreenAwakeUI();
+   publishHuntingUI();
+   initializeSproutUI();
+   publishEliteUI();
+   publishSpatialUI();
+   publishTerrainUI();
+   publishBallisticUI();
+   publishProjectionUI();
+   initializeCompactHUD();
+   initializePermanentHuntUI();
+   initializeMineralGainUI();
+   initializeRollUI();
+   publishRivalUI();
+   initializeCombatStatsUI();
+   publishEquippedUI();
+   publishArmyGrowthUI();
+   publishMoaMarkUI();
+   initializePointMoveUI();
+   publishRarityRivals();
+   initializeRarityUI();
+   publishOpenWorldUI();
+   publishResidentUI();
+   publishVisibleHuntUI();
+   publishThemedWorldUI();
+   publishWeaponCards();
+   publishWeaponMechanics();
+   phase='mounted';return true;
+  }catch(error){dispose();throw error}
+ }
+ return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
+})();
+function boot(){return GameUI.mount()}
 
 'use strict';
 /* v58 session contract. Gameplay duration definitions are milliseconds; one SDK tick is one
@@ -21785,13 +21875,21 @@ const PublicSession=globalThis.PublicSession=(()=>{
  const reconnect={sinceMs:null,seconds:null};
  const soloReturn={disk:null,tickRate:null,netcode:null};
  const presentation={label:null,unsubscribe:null};
+ // This session is the event source. Consumers only get subscription access;
+ // they cannot publish a phase or mutate the connection's private state.
+ const observers=new Set();
+ const onChanged=Object.freeze({on(listener){if(typeof listener!=='function')throw new TypeError('Session observer');const subscription={listener};observers.add(subscription);return()=>observers.delete(subscription)}});
+ function status(){return Object.freeze({phase:lifecycle.phase,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,reconnectSeconds:reconnect.seconds,resimulating:!!bloomSession?.resimulating})}
+ function notify(){const change=status();for(const {listener} of [...observers]){try{listener(change)}catch(error){BloomDiagnostics.report(error,{kind:'public.observer'})}}}
+
  const storage=()=>{try{return globalThis.sessionStorage}catch{return null}};
  function remember(active){try{if(active)storage()?.setItem(storageFlag,'1');else storage()?.removeItem(storageFlag)}catch{}}
- function notify(){
+ function renderStatus(change){
   if(globalThis.BLOOM_HEADLESS||!presentation.label)return;
-  const phase=lifecycle.phase;
-  presentation.label.textContent=phase===sessionPhase.playing&&reconnect.seconds!==null?`세계 일시 정지 · 연결 복귀 대기 약 ${reconnect.seconds}초`:phase===sessionPhase.playing&&bloomSession?.resimulating?'세계 일시 정지 · 복귀 상태를 맞추는 중…':phase===sessionPhase.playing?`공개 세계 · ${bloomSession?.players?.length||1}/${config.maxPlayers} · 입력 ${Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate)}ms`:phase===sessionPhase.joining?'세계에 합류하는 중…':phase===sessionPhase.discovering?'함께할 세계를 찾는 중…':phase===sessionPhase.failed?'연결 중단':phase===sessionPhase.leaving?'세계에서 나오는 중…':'';
+  const phase=change.phase;
+  presentation.label.textContent=phase===sessionPhase.playing&&change.reconnectSeconds!==null?`세계 일시 정지 · 연결 복귀 대기 약 ${change.reconnectSeconds}초`:phase===sessionPhase.playing&&change.resimulating?'세계 일시 정지 · 복귀 상태를 맞추는 중…':phase===sessionPhase.playing?`공개 세계 · ${change.players||1}/${config.maxPlayers} · 입력 ${change.inputBufferMs}ms`:phase===sessionPhase.joining?'세계에 합류하는 중…':phase===sessionPhase.discovering?'함께할 세계를 찾는 중…':phase===sessionPhase.failed?'연결 중단':phase===sessionPhase.leaving?'세계에서 나오는 중…':'';
  }
+
  function setPhase(phase){lifecycle.phase=phase;if(phase!==sessionPhase.playing)reconnect.sinceMs=reconnect.seconds=null;notify()}
  function isCurrent(attempt){return attempt.generation===lifecycle.generation&&!attempt.controller.signal.aborted}
  function releaseRoom({forget=false}={}){
@@ -21809,6 +21907,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
  function failed(error){if(lifecycle.phase===sessionPhase.leaving||lifecycle.phase===sessionPhase.idle)return;setPhase(sessionPhase.failed);playing=false;paused=true;bloomLoop?.stop();if(!globalThis.BLOOM_HEADLESS){openModal('online-failed',sheetHead('공개 세계 연결이 끊겼어요')+'<p>다른 참가자가 남아 있으면 같은 모아로 다시 연결할 수 있어요. 모두 나간 세계는 종료됩니다.</p><button class="primary" data-public="resume">같은 세계 다시 연결</button><button class="primary" data-public="fresh">새 판 시작</button><button class="tab" data-public="solo">혼자 플레이</button>');BloomDiagnostics.report(new Error(String(error?.message||error||'Public room disconnected')),{kind:'public.connection'})}}
  function event(e){if(e.type==='membership-committed'){ready();notify()}else if(['partition-failed','transport-failed','transition-timeout','fatal'].includes(e.type))failed(new Error(e.type));}
  async function start({fresh=false}={}){
+  if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;
   if(connection.attempt)return connection.attempt.pending;
   if(lifecycle.phase===sessionPhase.playing&&!fresh){playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS)closeModal();return true}
   if(!BloomOwnedSDK.createNostrPublicRoom||!BloomOwnedSDK.createRoomSession){const error=new Error('Public-room SDK is unavailable');setPhase(sessionPhase.discovering);failed(error);return false}
@@ -21842,7 +21941,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
    releaseRoom({forget:true});remember(false);setPhase(sessionPhase.idle);
   }
  }
- async function solo(){if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button>');return false}const leaving=leave(),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
+ async function solo(){if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button>');return false}const leaving=leave(),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
  function cancel(){if(BloomSimulation.sessionConfig.mode==='online')return solo();++lifecycle.generation;connection.attempt?.controller.abort();connection.attempt=null;setPhase(sessionPhase.idle);if(!globalThis.BLOOM_HEADLESS)showIntro(startUXHasSave)}
  function bind(){
   if(globalThis.BLOOM_HEADLESS)return;
@@ -21850,8 +21949,9 @@ const PublicSession=globalThis.PublicSession=(()=>{
   const label=document.createElement('span');label.id='publicStatus';label.className='menuBtn secondary';label.setAttribute('role','status');$('actions').prepend(label);
   const onClick=e=>{const b=e.target.closest('button'),action=b?.dataset.public;if(b?.dataset.action==='start'){e.preventDefault();e.stopImmediatePropagation();start();return}if(!action)return;e.preventDefault();e.stopImmediatePropagation();if(action==='cancel')cancel();else if(action==='solo')solo();else start({fresh:action==='fresh'})};
   document.addEventListener('click',onClick,true);
-  const unsubscribe=()=>{document.removeEventListener('click',onClick,true);label.remove();if(presentation.unsubscribe===unsubscribe){presentation.label=null;presentation.unsubscribe=null}};
-  presentation.label=label;presentation.unsubscribe=unsubscribe;notify();
+  const stopObserving=onChanged.on(renderStatus);
+  const unsubscribe=()=>{stopObserving();document.removeEventListener('click',onClick,true);label.remove();if(presentation.unsubscribe===unsubscribe){presentation.label=null;presentation.unsubscribe=null}};
+  presentation.label=label;presentation.unsubscribe=unsubscribe;renderStatus(status());
   // The marker is non-secret. Only the SDK reads its bounded room credential.
   let resume=false;try{resume=storage()?.getItem(storageFlag)==='1'}catch{}if(resume)start();
   return unsubscribe;
@@ -21861,9 +21961,9 @@ const PublicSession=globalThis.PublicSession=(()=>{
   ++lifecycle.generation;connection.attempt?.controller.abort();connection.attempt=null;
   // Final runtime shutdown cannot await membership consensus. Keep the SDK's
   // bounded resume credential and marker for a reload; explicit leave forgets.
-  unbind();releaseRoom();setPhase(sessionPhase.idle);
+  unbind();releaseRoom();setPhase(sessionPhase.idle);observers.clear();
  }
- return Object.freeze({config,start,leave,solo,cancel,bind,unbind,dispose,ready,failed,notify,observeStatus,get phase(){return lifecycle.phase},inspect:()=>({phase:lifecycle.phase,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,reconnectSeconds:reconnect.seconds})});
+ return Object.freeze({config,start,leave,solo,cancel,bind,unbind,dispose,ready,failed,notify,observeStatus,get phase(){return lifecycle.phase},onChanged,inspect:status});
 })();
 
 
@@ -21887,7 +21987,7 @@ function bloomMainRuntime() {
  // caller receives the same owner rather than installing another wrapper chain.
  if(BloomSimulation.runtime)return BloomSimulation.runtime;
  globalThis.BLOOM_MAIN_AUTHORITY=true;
- const runtimePhase=Object.freeze({idle:'idle',ready:'ready',closed:'closed',failed:'failed'});
+ const runtimePhase=Object.freeze({idle:'idle',initializing:'initializing',ready:'ready',closed:'closed',failed:'failed'});
  const uiPhase=Object.freeze({idle:'idle',mounting:'mounting',ready:'ready',closed:'closed'});
  let phase=runtimePhase.idle,epoch=0;
  const driver={timer:null,wasActive:false,nextPulseAtMs:0};
@@ -21915,7 +22015,7 @@ function bloomMainRuntime() {
  function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected:persistence.protected,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld:persistence.soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
  function rejectSaves(error){const requests=persistence.pending;persistence.pending=[];for(const p of requests)p.reject(error)}
  function persist(){
-  if(phase===runtimePhase.failed||BloomDiagnostics.fatal||persistence.protected||!persistence.enabled)return false;
+  if(phase!==runtimePhase.ready||BloomDiagnostics.fatal||persistence.protected||!persistence.enabled)return false;
   const disk=persistence.disk();
   if(disk!==persistence.latestDisk||persistence.error){try{localStorage.setItem(CONFIG.saveKey,disk);persistence.error=null;persistence.latestDisk=disk;startUXHasSave=true}catch(error){persistence.error=error;BloomDiagnostics.report(error,{kind:'save.storage'});return false}}
   bloomPersistenceRequested=false;persistence.lastTick=bloomTick;return true;
@@ -21958,6 +22058,7 @@ function bloomMainRuntime() {
   }catch(error){fail(error)}
  }
  function boundary(options){
+  if(![runtimePhase.ready,runtimePhase.initializing].includes(phase))throw new Error('Simulation is not available');
   // Selection validation happens before retiring the current loop or waiters.
   const next=options?.adoptSession||bloomNewSession(options);
   if(options?.adoptSession){if(next!==bloomSession||next.tick!==bloomTick)throw new Error('Room authority boundary mismatch')}
@@ -21985,7 +22086,7 @@ function bloomMainRuntime() {
  }
  bloomQueue=function(type,args={}){if(phase!==runtimePhase.ready||online()&&!WorldPlayers.get(bloomSession?.localPlayerId))return false;BloomDiagnostics.command(type);const result=oldQueue(type,args);schedule();return result};
  publishVisibleHuntView=function(){controls();return true};
- advanceSimulationClock=function(elapsed){bloomCollectDeviceInput();controls();uiClock+=Math.max(0,elapsed||0);return 0};
+ advanceSimulationClock=function(elapsed){if(phase!==runtimePhase.ready)return 0;bloomCollectDeviceInput();controls();uiClock+=Math.max(0,elapsed||0);return 0};
  function snapshot(kind='snapshot'){
   if(phase!==runtimePhase.ready||BloomDiagnostics.fatal)return Promise.reject(new Error('Simulation is not available'));
   if(!persistence.enabled)return kind==='save'?Promise.resolve(false):Promise.reject(new Error(persistence.reason));
@@ -21994,23 +22095,23 @@ function bloomMainRuntime() {
   try{return Promise.resolve(kind==='save'?persist():persistence.disk())}catch(error){return Promise.reject(error)}
  }
  save=function(){if(!persistence.enabled)return false;if(ui.phase===uiPhase.mounting)return true;if(bloomInTick||bloomInitializing){bloomPersistenceRequested=true;return true}if(phase!==runtimePhase.ready||persistence.protected)return false;snapshot('save').catch(error=>BloomDiagnostics.report(error,{kind:'save.main'}));return true};
- reset=function(){if(ui.phase===uiPhase.mounting)return state;if(online())return false;try{const result=oldReset();persistence.soloWorld=true;persistence.protected=false;persist();controls();return result}catch(error){fail(error,'simulation.reset');throw error}};
- load=function(raw){if(ui.phase===uiPhase.mounting)return !!startUXHasSave;if(phase===runtimePhase.failed||online())return false;try{const ok=oldLoad(raw);if(ok){persistence.soloWorld=true;persistence.protected=false;persist();controls()}else BloomDiagnostics.report(new Error('Imported save rejected by compatibility/validation checks'),{kind:'save.import'});return ok}catch(error){fail(error,'simulation.load');throw error}};
- bloomSetTickRate=function(rate){if(online())throw new Error('Change TPS only at a paused single-player session boundary');const result=oldRate(rate);if(phase===runtimePhase.ready){persist();controls()}return result};
+ reset=function(){if(ui.phase===uiPhase.mounting)return state;if(phase!==runtimePhase.ready||online())return false;try{const result=oldReset();persistence.soloWorld=true;persistence.protected=false;persist();controls();return result}catch(error){fail(error,'simulation.reset');throw error}};
+ load=function(raw){if(ui.phase===uiPhase.mounting)return !!startUXHasSave;if(phase!==runtimePhase.ready||online())return false;try{const ok=oldLoad(raw);if(ok){persistence.soloWorld=true;persistence.protected=false;persist();controls()}else BloomDiagnostics.report(new Error('Imported save rejected by compatibility/validation checks'),{kind:'save.import'});return ok}catch(error){fail(error,'simulation.load');throw error}};
+ bloomSetTickRate=function(rate){if(phase!==runtimePhase.ready)throw new Error('Simulation is not available');if(online())throw new Error('Change TPS only at a paused single-player session boundary');const result=oldRate(rate);if(phase===runtimePhase.ready){persist();controls()}return result};
  exportSave=async function(){try{const data=await snapshot(),url=URL.createObjectURL(new Blob([data],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=CONFIG.saveExportName;a.click();setTimeout(()=>URL.revokeObjectURL(url),CONFIG.render.toastTime*1000);toast('진행 백업 파일을 내려받았어요')}catch(error){toast('백업을 만들지 못했어요. 다시 시도해 주세요.');BloomDiagnostics.report(error,{kind:'save.export'})}};
  importSave=function(){if(online()){toast('공개 세계에서는 개인 백업을 불러올 수 없어요');return false}const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{const file=input.files?.[0];if(!file)return;if(file.size>CONFIG.maxSaveBytes){toast('백업 파일이 너무 커요');return}try{if(load(await file.text())){startUXHasSave=true;showPause();toast('백업한 군락을 불러왔어요')}else toast('유효한 Bloom 진행 파일이 아니에요')}catch(error){BloomDiagnostics.report(error,{kind:'save.import'})}};input.click()};
  BloomDiagnostics.setStop(()=>{phase=runtimePhase.failed;paused=true;stopDriver();rejectSaves(new Error('Simulation stopped; inspect diagnostics'))});
  BloomDiagnostics.setPauseForInspect(()=>{if(ui.phase===uiPhase.ready&&phase!==runtimePhase.failed&&!paused){paused=true;showPause();controls()}});
  BloomDiagnostics.provide('mainLoop',()=>({initialized:phase===runtimePhase.ready,fatal:phase===runtimePhase.failed,persistenceProtected:persistence.protected,epoch,pendingCommands:bloomInputPending,pendingSaves:persistence.pending.length,saveAvailable:persistence.enabled&&!persistence.protected&&!!persistence.latestDisk,sessionConfig:{...BloomSimulation.sessionConfig},storageFailed:!!persistence.error,...metrics}));
- function pagehide(){if(phase!==runtimePhase.failed&&!BloomDiagnostics.fatal&&!persistence.protected&&persistence.enabled&&persistence.latestDisk)try{localStorage.setItem(CONFIG.saveKey,persistence.latestDisk)}catch(error){BloomDiagnostics.report(error,{kind:'save.pagehide'})}}
+ function pagehide(){if(phase===runtimePhase.ready&&!BloomDiagnostics.fatal&&!persistence.protected&&persistence.enabled&&persistence.latestDisk)try{localStorage.setItem(CONFIG.saveKey,persistence.latestDisk)}catch(error){BloomDiagnostics.report(error,{kind:'save.pagehide'})}}
  const runtime={get ready(){return phase===runtimePhase.ready},get metrics(){return{...metrics,persistenceProtected:persistence.protected,sessionConfig:{...BloomSimulation.sessionConfig},persistenceAvailable:persistence.enabled}},inspect,controls,snapshot,replaceSession,installSession(session){return boundary({adoptSession:session})},
-  initialize({tickRate=CONFIG.sim.tickRate,seed=0x6d2b79f5,disk=null}={}){if(phase===runtimePhase.ready&&online())throw new Error('Leave the public session before initializing solo progress');persistence.soloWorld=true;persistence.protected=false;persistence.latestDisk='';persistence.error=null;bloomApplyTickRate(tickRate);bloomInitialize(seed);let loaded=false;if(disk){loaded=oldLoad(disk);if(!loaded){persistence.protected=true;BloomDiagnostics.report(new Error('Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'})}}playing=false;paused=true;modalKind='intro';phase=runtimePhase.ready;boundary();return{loaded,persistenceProtected:persistence.protected,tickRate:CONFIG.sim.tickRate}},
+  initialize({tickRate=CONFIG.sim.tickRate,seed=0x6d2b79f5,disk=null}={}){if(phase===runtimePhase.closed||phase===runtimePhase.failed)throw new Error('Simulation is not available');if(phase===runtimePhase.ready&&online())throw new Error('Leave the public session before initializing solo progress');phase=runtimePhase.initializing;persistence.soloWorld=true;persistence.protected=false;persistence.latestDisk='';persistence.error=null;bloomApplyTickRate(tickRate);bloomInitialize(seed);let loaded=false;if(disk){loaded=oldLoad(disk);if(!loaded){persistence.protected=true;BloomDiagnostics.report(new Error('Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'})}}playing=false;paused=true;modalKind='intro';phase=runtimePhase.ready;boundary();return{loaded,persistenceProtected:persistence.protected,tickRate:CONFIG.sim.tickRate}},
   close(){
    if(phase===runtimePhase.closed)return;
-   phase=runtimePhase.closed;stopDriver();unbind();
+   phase=runtimePhase.closed;stopDriver();unbind();GameUI.dispose();
    rejectSaves(new Error('Simulation closed'));
    PublicSession.dispose();bloomSession?.close();bloomResetEventJournal();
-   CombatAudio.clear();CombatFeedback.clear();
+   CombatAudio.dispose();CombatFeedback.clear();ctx?.destroy?.();
   }
  };
  Object.assign(BloomSimulation,{setTickRate:bloomSetTickRate,disk:{snapshot,load,metrics:()=>bloomSnapshotStore.metrics()},runtime});

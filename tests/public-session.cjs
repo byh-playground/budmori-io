@@ -142,6 +142,12 @@ async function main(){
   assert.equal(race.e.run('BloomSimulation.sessionConfig.mode'),'online','A superseded multi-peer leave must not replace the newer public session');
   assert.equal(race.e.run('bloomSession.localPlayerId'),'race-newest');assert.equal(newRoom.closed,false);
   pass('New public entry wins over a superseded multi-peer graceful leave');
+  const changes=[],stopObserving=race.e.run('PublicSession.onChanged.on')(change=>changes.push(change));
+  race.e.run("PublicSession.observeStatus('interrupted',1000)");
+  assert.equal(changes.at(-1).reconnectSeconds,30);assert.equal(changes.at(-1).phase,'playing');assert(Object.isFrozen(changes.at(-1)));
+  assert.equal(race.e.run('PublicSession.onChanged.emit'),undefined);
+  stopObserving();const observed=changes.length;race.e.run("PublicSession.observeStatus('running',1001)");assert.equal(changes.length,observed);
+  pass('Session-owned readonly signals publish immutable status and unsubscribe without authority writes');
   const activeMarker=race.tab.getItem('budmori-public-active-v1');
   race.e.run('PublicSession.dispose();PublicSession.dispose()');
   assert(newRoom.closed);assert.equal(newRoom.forgetCount,0);assert.equal(race.phase(),'idle');assert.equal(race.tab.getItem('budmori-public-active-v1'),activeMarker);

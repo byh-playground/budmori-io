@@ -1,0 +1,27 @@
+{
+  "kind": "Matched 155-troop 20TPS native V8 actual SDK; no rendering/network/device FPS",
+  "method": "30 warmup + 200 measured ticks per artifact; alternating per-tick order, same seed/entities/commands. Same process shares JIT/heap; sampled canonical bytes equal every 20 ticks.",
+  "baselineCommit": "c0093a22dd891835a9858fe864eb10c46fd19248",
+  "before": {
+    "sha256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+    "advanceMs": {
+      "samples": 200,
+      "total": 331.54225999999915,
+      "p50": 1.5011860000000752,
+      "p95": 2.637540999999942,
+      "p99": 3.9128619999999046
+    }
+  },
+  "after": {
+    "sha256": "233e59804acc2d330500f62ee1f1faca2803f0077303c01ba7eb56cfbb30c86b",
+    "advanceMs": {
+      "samples": 200,
+      "total": 330.9400699999999,
+      "p50": 1.5141150000001744,
+      "p95": 2.5570209999999634,
+      "p99": 3.574859999999944
+    }
+  },
+  "canonicalEqual": true,
+  "finalHash": 3911700402
+}

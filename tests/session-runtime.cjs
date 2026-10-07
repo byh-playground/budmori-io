@@ -92,6 +92,15 @@ async function main(){
   assert.equal(lifecycle.e.run("bloomQueue('tutorialAck')"),false);
   lifecycle.drive(2);assert.equal(lifecycle.e.run('bloomTick'),beforeClose);
   await assert.rejects(lifecycle.request('snapshot'),/not available/);
+  const closedWrites=lifecycle.messages.length;
+  assert.equal(lifecycle.e.run('reset()'),false);assert.equal(lifecycle.e.run('load("{}")'),false);
+  lifecycle.e.run('__sessionRuntimeTest.pagehide()');
+  assert.throws(()=>lifecycle.e.run('BloomSimulation.setTickRate(20)'),/not available/);
+  assert.throws(()=>lifecycle.e.run('BloomSimulation.runtime.initialize()'),/not available/);
+  assert.throws(()=>lifecycle.e.run('BloomSimulation.runtime.installSession(bloomSession)'),/not available/);
+  assert.equal(await lifecycle.e.run('PublicSession.start()'),false);
+  assert.equal(await lifecycle.e.run('PublicSession.solo()'),false);
+  assert.equal(lifecycle.messages.length,closedWrites);assert.equal(lifecycle.e.run('bloomSession.closed'),true);
   await lifecycle.close();
   pass('One runtime owner closes idempotently and rejects queued saves without another tick');
   console.log('PASS continuous actual-engine session runtime campaign '+JSON.stringify({sha256:source.sha256,sdk:source.sdk}));

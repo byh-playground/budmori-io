@@ -229,21 +229,26 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 
 ## 공통 개발 규칙 리팩터링 · 실행 소유권과 종료 경계
 
-이번 변경은 `c0093a2`의 게임 동작을 유지하면서 P0 소유권, 상태 머신과 P1 생명주기 비용을 먼저 줄입니다. 전체 코드의 규칙 준수를 완료했다고 주장하지 않습니다.
+이번 변경은 `c0093a2`를 기준으로 P0 소유권, 상태 머신과 P1 생명주기 비용을 먼저 줄입니다. 구조 변경은 같은 결과를 보존하고, 별도 bug-fix에서 잘못된 참가자 통계/능력 귀속만 바로잡습니다. 전체 코드의 규칙 준수를 완료했다고 주장하지 않습니다.
 
 - **단일 시뮬레이션:** 전역 `step` 본체와 재정의 총 16개, 과거 feature 객체의 `step` 캡처 14곳을 제거했습니다. SDK adapter → `bloomRunTick` → `WorldSimulation.step`만 게임 틱을 진행합니다. 1인/최대 5인 모두 같은 경로입니다. 과거 projectile loop와 RAF 기반 SDK driver를 fallback으로 보존하지 않습니다.
 - **런타임 소유권:** `bloomMainRuntime()`은 같은 owner를 반환합니다. 실행 phase와 UI phase는 서로 다른 실제 생명주기이며 각각 배타적인 값입니다. 타이머는 `driver`, 디스크 보호·캐시·대기 요청은 `persistence`, UI 구독은 `ui`가 소유합니다. 시간 값 `driver.nextPulseAtMs`의 단위를 명시합니다.
 - **공개 세션 소유권:** `lifecycle`, `connection`, `reconnect`, `soloReturn`, `presentation`이 각자의 상태를 소유합니다. 비동기 발견/탈퇴는 generation으로 폐기된 작업을 구분하며, 이전 세션의 늦은 이벤트는 새 세션을 바꾸지 않습니다. 바인딩은 멱등적이며 listener와 label을 함께 해제합니다.
-- **종료:** 사용자의 정상 나가기는 SDK 합의를 기다립니다. 최종 runtime 종료는 중단된 driver에서 합의를 기다리지 않고 발견 작업·room·구독·journal·대기 저장을 정리합니다. reload용 SDK resume 정보는 보존합니다. 종료한 UI를 `boot()`로 다시 중복 등록하지 않습니다.
-- **저장·SDK:** snapshot graph, 저장 schema/key, RNG 순서, 수치, 공간 grid, SDK pin과 포함 bundle을 변경하지 않았습니다. 이름 정리를 위해 저장 필드만 부분적으로 바꾸지 않습니다.
+- **명시적 UI 초기화:** 실제로 실행되던 46개 boot wrapper를 `GameUI.mount()`의 순서가 보이는 호출로 교체했습니다. 기능별 초기화·debug API 공개 함수는 해당 기능 곁에 두고, 예전 boot를 캡처하거나 중계하지 않습니다. 기존 세 저장 이관 분기는 보존합니다.
+- **발신자 소유 신호:** `PublicSession.onChanged`는 세션이 소유하는 읽기 전용 구독 API입니다. phase·참가자·재연결 상태의 불변 snapshot을 발행하고 UI는 구독을 해제합니다. subscriber는 phase를 emit하거나 내부 연결 상태를 직접 변경할 수 없습니다. 권위 SIM의 확정 효과 journal은 별개로 유지합니다.
+- **종료:** 사용자의 정상 나가기는 SDK 합의를 기다립니다. 최종 runtime 종료는 발견 작업·room·RAF·DOM/입력 구독·observer·WebGL·audio·journal·대기 저장을 정리합니다. reload용 SDK resume 정보는 보존합니다. 종료한 owner의 reset/load/새 세션 설치가 다시 자원을 만들거나 저장을 덮어쓰지 못하게 하며 `boot()`로 UI를 중복 등록하지 않습니다.
+- **참가자 소유권 수정:** 기본/보조 공격·회복·방어·연쇄·공성·공중 적중 등의 개인 통계와 능력 modifier가 실제 행동 주체/방어자의 값을 사용합니다. NPC 행동은 첫 참가자의 통계로 더해지지 않습니다. 이 수정은 기존 결과와 달라지는 범위를 명시한 별도 commit입니다.
+- **저장·SDK:** 저장 graph/schema/key, 수치, 공간 grid, SDK pin과 포함 bundle은 그대로입니다. 기존 저장은 읽되 이후 행동은 올바른 소유자에게 귀속합니다. 구버전 피어와 섞이지 않도록 네트워크 호환 계약은 `BloomSimulation.simulationVersion`의 `budmori-shared-ms-v4` 하나로 통일했습니다. 이름 정리를 위해 저장 필드만 부분적으로 바꾸지 않습니다.
 
 ### 아직 별도 이관이 필요한 부분
 
-- `reset/load/boot`의 feature wrapper 중 실제 실행되는 부분은 남습니다. 과거 `step`과 달리 소비자가 있어 일괄 삭제할 수 없습니다. 다음 단계는 초기화/복원/화면 바인딩 책임을 분리하고 호출 순서를 검증하는 것입니다.
+- `reset/load`의 실제 feature wrapper는 아직 남습니다. UI boot와 달리 저장/복원과 엔티티 생성 순서에 연결되어 있어 소비자·migration을 확인하며 별도로 이관해야 합니다.
 - 저장된 `roll*`, `sproutAim_*` 등의 flat 필드는 실제 schema와 rendering/validation의 소비자를 함께 이관해야 합니다. 기존 백업 reader와 명시적인 버전/변환 계약 없이 namespace만 바꾸지 않습니다.
-- 일부 기본 전투·support·보조 무기의 통계/upgrade 조회는 아직 root player 값을 사용합니다. 참가자별 귀속 수정은 결과를 바꾸므로 동일행동 리팩터링 검증과 구분하고 별도 다인 attribution 검증이 필요합니다.
-- 효과 staging/journal은 SIM 확정 경계에 있고 replay 중 외부 효과를 전달하지 않습니다. 개별 발신 객체가 소유하는 signal로의 API 이관은 아직 하지 않았습니다.
+- roll, 공격 패턴 등 저장 actor의 능력은 아직 handler/definition 방식입니다. 실제 독립 capability를 Mixin/Trait으로 옮기려면 초기화·복원 hydration·정규 codec 표현과 모든 소비자를 함께 바꿔야 합니다. 상태를 복제하는 accessor wrapper나 1회용 상속 계층만 만들어 완료로 표시하지 않습니다.
+- 개별 전투 유닛의 도메인 신호는 아직 이관하지 않았습니다. 이번 신호 적용은 공개 세션 사건에 한정됩니다. replay 중 외부 효과가 중복되지 않는 확정 journal 계약을 보존해야 합니다.
 
 ### 이번 변경의 검증
 
 기존 캠페인에 종료·재바인딩 회귀만 추가하며 별도 게임 구현이나 테스트별 규칙을 만들지 않습니다. 단일 브라우저 검사는 중복 boot/owner 접근, 최종 close 후 UI와 WebGL 구독 해제를 포함합니다. PR의 exact head에서 전체 Node 캠페인, 단일 WebGL/모바일 크기, 5탭 WebRTC 합류·재연결, 준비 snapshot 브라우저 측정, 기존 mode 비교를 통과해야 머지합니다. 로컬 Native 검사와 실제 브라우저 CI 결과는 구분합니다.
+
+Native 전후 보조 측정은 `tests/refactor-performance.json`에 기록합니다. 동일 seed·155 동료·20 TPS에서 30 warmup 뒤 200틱을 번갈아 실행했고, 표본 정규 bytes는 일치했습니다. p50 1.501→1.514ms, p95 2.638→2.557ms로 이번 표본에는 뚜렷한 비용 증가가 없었습니다. 이는 공유 heap/JIT의 Native CPU 표본이며 브라우저·네트워크·GPU·기기 FPS 보장이 아닙니다.
