@@ -5,17 +5,23 @@
 const assert=require('node:assert/strict');
 const {engine}=require('./native-engine.cjs');
 function run({baseline,target}={}){
- const engines=[engine(baseline),engine(target)],report={status:'RUNNING',baseline,target,baselineSHA:engines[0].sha256,targetSHA:engines[1].sha256,scope:'Direct combat observations only; no historical world-byte or scheduler parity claim.',checks:[],ownershipMetadata:0};
+ const engines=[engine(baseline),engine(target)],report={status:'RUNNING',baseline,target,baselineSHA:engines[0].sha256,targetSHA:engines[1].sha256,scope:'Direct combat observations with explicit participant-stat attribution correction; no historical world-byte or scheduler parity claim.',checks:[],ownershipMetadata:0,statisticsCorrections:[]};
  // The new explicit ownership fields are intentionally absent from historical
  // payloads. Check their actual values before removing only those new fields.
  function observation(e){const o=e.json('qaCombatObservation');function visit(p){if(!p||typeof p!=='object')return;for(const [key,value]of Object.entries(p)){if(key==='playerId'||key==='factionId'){assert.equal(value,key==='playerId'?'solo':'player:solo');delete p[key];report.ownershipMetadata++}else visit(value)}}visit(o);return o}
- function transaction(label,source){
+ const participantStatistics=engines.map(e=>e.run('typeof recordCombatStat==="function"'));let npcShieldBlocks=0;
+ function transaction(label,source,{npcShields=0}={}){
   for(const e of engines)e.fixture(`
    const oldTick=bloomInTick;bloomInTick=true;bloomCurrentEffects=[];bloomEventSequence=0;
+   const participantStatistics=typeof recordCombatStat==='function';
    const check=(value,message)=>{if(!value)throw Error(message)};
    try{${source};globalThis.qaCombatObservation={coverage:globalThis.qaCoverage,rng:state.rng,stats:structuredClone(state.stats),shots:structuredClone(projectiles),events:structuredClone(events),effects:structuredClone(bloomCurrentEffects)}}finally{bloomInTick=oldTick}
   `);
-  assert.deepEqual(observation(engines[1]),observation(engines[0]),label);report.checks.push(label);
+  npcShieldBlocks+=npcShields;const historical=observation(engines[0]),current=observation(engines[1]);
+  const shieldDelta=(Number(participantStatistics[0])-Number(participantStatistics[1]))*npcShieldBlocks;
+  assert.equal(current.stats.shieldsBlocked,historical.stats.shieldsBlocked+shieldDelta,'NPC shield blocks do not belong to the primary participant');
+  if(shieldDelta){report.statisticsCorrections.push({label,key:'shieldsBlocked',expectedDifference:shieldDelta});historical.stats.shieldsBlocked+=shieldDelta}
+  assert.deepEqual(current,historical,label);report.checks.push(label);
  }
  try{
   for(const e of engines){e.run('BloomSimulation.initialize(12345);BloomSimulation.createSession();playing=true;paused=false;modalKind=""');e.fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}const m=state.mother;state.rng=100000;globalThis.qaCombatTarget=spawn('shellbug','enemy',m.x+50,m.y,{camp:0,rarityGrade:1});qaCombatTarget.hp=qaCombatTarget.maxHp=10000000;qaCombatTarget.stun=1e6;qaCombatTarget.aggroAt=0;`)}
@@ -30,12 +36,12 @@ function run({baseline,target}={}){
    qaCoverage={attacks};
   `);
   transaction('Shield, roll immunity, friendly-fire gate, mitigation and healing',`
-   const m=state.mother,t=qaCombatTarget,hp=t.hp,blocked=state.stats.shieldsBlocked;t.shield=1;t.shieldUntil=state.time+10;damage(m,t,100,'ranged');check(t.hp===hp&&t.shield===0&&state.stats.shieldsBlocked===blocked+1,'Shield consumes one block');
+   const m=state.mother,t=qaCombatTarget,hp=t.hp,blocked=state.stats.shieldsBlocked;t.shield=1;t.shieldUntil=state.time+10;damage(m,t,100,'ranged');check(t.hp===hp&&t.shield===0&&state.stats.shieldsBlocked===blocked+(participantStatistics?0:1),'Shield consumption and NPC statistic ownership');
    const mHP=m.hp;m.rollInvulnerableMs=100;damage(t,m,100,'melee');check(m.hp===mHP,'Roll immunity');m.rollInvulnerableMs=0;
    const friendly=state.units.find(u=>u.hp>0&&u.team==='friendly'),friendHP=friendly.hp;damage(m,friendly,100,'melee');check(friendly.hp===friendHP,'Friendly-fire gate');
    const armors=[];for(const type of ['shellbug','tank']){const a=spawn(type,'friendly',m.x+20,m.y,{rarityGrade:0});a.still=10;a.stun=1e6;const before=a.hp;damage(t,a,80,'ranged');armors.push({type,loss:before-a.hp})}
-   m.hp=Math.max(1,m.hp-25);const healing=applyHealing(m,Math.min(m.maxHp,m.hp+13));check(healing>0,'Healing applied');qaCoverage={armors,healing,shieldBlocks:state.stats.shieldsBlocked-blocked};
-  `);
+   m.hp=Math.max(1,m.hp-25);const healing=applyHealing(m,Math.min(m.maxHp,m.hp+13));check(healing>0,'Healing applied');qaCoverage={armors,healing,shieldConsumed:t.shield===0};
+  `,{npcShields:1});
   transaction('Six special lifecycles, completed and cancelled grounded jump',`
    const m=state.mother,t=qaCombatTarget,p=ThemedTerrain.safePoint(m.x+15,m.y,25),u=spawn('dandelion','friendly',p.x,p.y,{rarityGrade:3});u.stun=0;u.target=t.id;u.query=0;u.returning=false;u.order='follow';rebuildGrid();const patterns=[];
    for(const id of ['dash','groundBlast','arcing','coneSweep','ringShockwave','jumpSlam']){
