@@ -27,10 +27,11 @@ function network(){
 }
 function recording(e){
  const timeline=[{kind:'load',bytes:e.run('bloomAdapter.save()').slice()}];e.c.qaRecord=(kind,value)=>timeline.push(kind==='load'?{kind,bytes:value.slice()}:{kind,value:structuredClone(value)});
- e.run(`(()=>{const step=bloomAdapter.step,member=bloomAdapter.applyMembership,load=bloomAdapter.load;
+ e.run(`(()=>{const step=bloomAdapter.step,member=bloomAdapter.applyMembership,load=bloomAdapter.load,prepared=bloomAdapter.loadPreparedSnapshot;
  bloomAdapter.step=context=>{qaRecord('step',context);return step(context)};
  bloomAdapter.applyMembership=change=>{qaRecord('membership',change);return member(change)};
- bloomAdapter.load=bytes=>{qaRecord('load',bytes);return load(bytes)};})()`);return timeline;
+ bloomAdapter.load=bytes=>{qaRecord('load',bytes);return load(bytes)};
+ if(prepared)bloomAdapter.loadPreparedSnapshot=(token,context)=>{const result=prepared(token,context);qaRecord('load',bloomAdapter.save());return result};})()`);return timeline;
 }
 function campaign(source){const net=network(),engines=[],controls=new Map();let now=0;
  function live(){return engines.filter(e=>!e.run('bloomSession.closed'))}

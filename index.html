@@ -6281,7 +6281,19 @@ function bloomCollectDeviceInput(){
  for(const event of bloomInputPoints){const p=projectionFromScreen(event.x,event.y);bloomQueue('point',{x:Math.round(p.x*CONFIG.pointMove.quantum),y:Math.round(p.y*CONFIG.pointMove.quantum),roll:event.type==='doubleTap'})}
  bloomInputPoints.length=0;if(roll)performRoll();
 }
-const friendlyTypes=Object.keys(CONFIG.production.costs);let maxTargetRadius=0,maxCollisionGround=0,maxCollisionAir=0,collisionGrid=new Map(),collisionColumns=0,collisionRows=0,state,grid=new Map(),gridColumns=0,gridRows=0,gridState=null,gridUnits=null,idMap=new Map(),effects=[],projectiles=[],events=[],keys=bloomKeys,stick={x:0,y:0},view={x:0,y:0,w:0,h:0,zoom:1},frameStats={frames:0,simMs:0,renderMs:0};
+// Runtime-only numeric lookup, adapted from Rally Frontier's deterministic
+// fixed-cell broadphase (e9a30813bf0d1b1abfac2b524a49568205cdbd85).
+// Map remains the ordered snapshot interface:
+// neither bucket insertion order nor entity order changes, including empty cells.
+// Lazy numeric slots avoid allocating a bucket for every cell of the open world.
+class OrderedSpatialGrid extends Map{
+ constructor(entries){super();this.buckets=[];if(entries)for(const [key,list]of entries)this.set(key,list)}
+ get(key){return this.buckets[key]}
+ set(key,list){this.buckets[key]=list;return super.set(key,list)}
+ clear(){super.clear();this.buckets=[]}
+ delete(key){delete this.buckets[key];return super.delete(key)}
+}
+const friendlyTypes=Object.keys(CONFIG.production.costs);let maxTargetRadius=0,maxCollisionGround=0,maxCollisionAir=0,collisionGrid=new OrderedSpatialGrid(),collisionColumns=0,collisionRows=0,state,grid=new OrderedSpatialGrid(),gridColumns=0,gridRows=0,gridState=null,gridUnits=null,idMap=new Map(),effects=[],projectiles=[],events=[],keys=bloomKeys,stick={x:0,y:0},view={x:0,y:0,w:0,h:0,zoom:1},frameStats={frames:0,simMs:0,renderMs:0};
 let playing=false,paused=true,modalKind='',selectedSlot=0,uiClock=0,saveClock=0,toastClock=0,accumulator=0,lastFrame=0;
 function random(){state.rng=(Math.imul(state.rng,1664525)+1013904223)>>>0;return state.rng/4294967296}
 function worldLimit(){return(state.maxZone+1)*CONFIG.world.zoneWidth}
@@ -9846,7 +9858,27 @@ function spatialUnit(u,followTerrain=false){
  }
  spatialUnitAnchors(u,followTerrain);return u;
 }
+// Synchronous entry points and cooperative jobs drain the same validation code.
+// The latter yields between records/properties without installing or normalizing.
+function bloomDrainValidation(steps){let part;do{part=steps.next()}while(!part.done);return part.value}
+function bloomValidationFromSteps(steps){const validate=(...args)=>bloomDrainValidation(steps(...args));validate.steps=steps;return validate}
+function *bloomValidationEvery(values,predicate){const length=values.length;for(let i=0;i<length;i++){if(i in values&&!predicate(values[i],i,values))return false;yield}return true}
+function *bloomValidationUnique(values){const seen=new Set();for(const value of values){if(seen.has(value))return false;seen.add(value);yield}return true}
+function *spatialTreeSteps(root){
+ if(!root||typeof root!=='object')return true;
+ const pending=[root],seen=new WeakSet();let work=0;
+ while(pending.length){const o=pending.pop();if((++work&15)===0)yield;if(!o||typeof o!=='object'||seen.has(o))continue;seen.add(o);
+  for(const key of Object.keys(o)){const value=o[key];
+   if((key==='airHeight'||key==='groundZ'||key==='z'||key==='hz'||key==='z2'||key.endsWith('Z'))&&!spatialFinite(value))return false;
+   if(value&&typeof value==='object')pending.push(value);if((++work&15)===0)yield;
+  }
+  if(spatialFinite(o.z)&&spatialFinite(o.groundZ)&&spatialFinite(o.airHeight)&&Math.abs(o.z-o.groundZ-o.airHeight)>1e-9*Math.max(1,Math.abs(o.z)))return false;
+  yield;
+ }
+ return true;
+}
 function spatialTree(root,normalize=false){
+ if(!normalize)return bloomDrainValidation(spatialTreeSteps(root));
  if(!root||typeof root!=='object')return true;
  const pending=[root],seen=new WeakSet();
  while(pending.length){const o=pending.pop();if(!o||typeof o!=='object'||seen.has(o))continue;seen.add(o);
@@ -11674,6 +11706,12 @@ var BloomOwnedSDK = (() => {
   function createSession(options) {
     return new RollbackSession(options);
   }
+  var boundaries = /* @__PURE__ */ new WeakMap();
+  function createSessionFromBoundary(options, state, hash) {
+    const token = {};
+    boundaries.set(token, { adapter: options.adapter, state, hash });
+    return new RollbackSession(options, token);
+  }
   var RollbackSession = class {
     constructor({
       players,
@@ -11691,7 +11729,7 @@ var BloomOwnedSDK = (() => {
       clock = nowMs,
       localCommandState,
       initialCommandSequences
-    } = {}) {
+    } = {}, boundaryToken) {
       if (!Array.isArray(players) || players.length < 1 || players.length > 8 || players.some((p) => typeof p !== "string" || !p.length || p.length > 128) || new Set(players).size !== players.length) throw new TypeError("fixed player roster (1..8 unique IDs)");
       this.players = Object.freeze([...players].sort(compareIds));
       if (!this.players.includes(localPlayerId)) throw new TypeError("localPlayerId");
@@ -11773,12 +11811,16 @@ var BloomOwnedSDK = (() => {
       this._replayFrames = [];
       this._replayBytes = 0;
       this._replayFinalHash = void 0;
-      const initial = this._save();
+      const boundary = boundaries.get(boundaryToken);
+      if (boundary) boundaries.delete(boundaryToken);
+      if (boundary && boundary.adapter !== adapter) throw new Error("initial boundary adapter");
+      const initial = boundary ? boundary.state : this._save();
+      if (!initial.length || initial.length > this.profile.maxSnapshotBytes) throw new RangeError("snapshot size");
       const retainedCount = this.profile.mode === "lockstep" ? Math.ceil(this.profile.stateHistorySize / this.profile.checksumInterval) + 2 : this.profile.stateHistorySize;
       const requiredBytes = initial.length * retainedCount;
       if (requiredBytes > this.profile.maxHistoryBytes) throw Object.assign(new RangeError("initial snapshot cannot fill retained history byte budget"), { code: "history-capacity", snapshotBytes: initial.length, requiredBytes, maxHistoryBytes: this.profile.maxHistoryBytes });
-      this._initialState = initial.slice();
-      const initialRecord = { tick: 0, bytes: initial, inputHash: this._inputHash };
+      this._initialState = boundary ? initial : initial.slice();
+      const initialRecord = { tick: 0, bytes: initial, inputHash: this._inputHash, ...boundary ? { hash: boundary.hash } : {} };
       this._history.put(initialRecord);
       this._currentState = initialRecord;
       this._hello = encoder.encode(JSON.stringify({
@@ -12869,7 +12911,7 @@ var BloomOwnedSDK = (() => {
     if (!Array.isArray(value) || value.length < 1 || value.length > 8 || Array.from(value).some((id) => typeof id !== "string" || !id.length || id.length > 128) || new Set(value).size !== value.length) throw new TypeError(name);
     return value.slice();
   }
-  function validateBootstrap(bootstrap, limits, expected) {
+  function validateBootstrap(bootstrap, limits, expected, deferCheckpointHash = false) {
     if (!bootstrap || bootstrap.version !== 1) throw new Error("bootstrap version");
     const tick = integer(bootstrap.tick, "bootstrap tick", 0, MAX_TICK + 1);
     const inputSize = integer(bootstrap.inputSize, "bootstrap inputSize", 1, 1024);
@@ -12895,7 +12937,7 @@ var BloomOwnedSDK = (() => {
     if (!data.length || data.length > limits.maxSnapshotBytes) throw new RangeError("bootstrap snapshot size");
     const checkpointBytes = data.slice();
     const checkpointHash = integer(checkpoint.hash, "bootstrap checkpoint hash");
-    if (hashBytes(checkpointBytes) !== checkpointHash) throw new Error("bootstrap checkpoint hash mismatch");
+    if (!deferCheckpointHash && hashBytes(checkpointBytes) !== checkpointHash) throw new Error("bootstrap checkpoint hash mismatch");
     const hash = integer(bootstrap.hash, "bootstrap final hash");
     if (!Array.isArray(bootstrap.frames) || bootstrap.frames.length !== tick - start || tick - start > limits.maxSuffixTicks) throw new RangeError("bootstrap suffix length");
     if (start === tick && checkpointHash !== hash) throw new Error("bootstrap final hash mismatch");
@@ -12949,6 +12991,8 @@ var BloomOwnedSDK = (() => {
     adapter,
     bootstrap,
     maxCatchupSteps = 8,
+    maxCatchupMs = 8,
+    clock = nowMs,
     maxSnapshotBytes = defaults.maxSnapshotBytes,
     maxSuffixTicks = MAX_SUFFIX_TICKS,
     maxCommandBytes = defaults.maxCommandBytes,
@@ -12962,15 +13006,18 @@ var BloomOwnedSDK = (() => {
   } = {}) {
     if (!adapter || ["save", "load", "step", "validateSnapshot"].some((name) => typeof adapter[name] !== "function")) throw new TypeError("Simulation Adapter must save, load, step, validateSnapshot");
     integer(maxCatchupSteps, "maxCatchupSteps", 1, MAX_SUFFIX_TICKS);
+    if (!Number.isFinite(maxCatchupMs) || maxCatchupMs <= 0 || typeof clock !== "function") throw new TypeError("bootstrap time budget");
     integer(maxSnapshotBytes, "maxSnapshotBytes", 1, MAX_SNAPSHOT_BYTES);
     integer(maxSuffixTicks, "maxSuffixTicks", 0, MAX_SUFFIX_TICKS);
     integer(maxCommandBytes, "maxCommandBytes", 1, CHUNK_SIZE - 1024);
     integer(maxPendingCommands, "maxPendingCommands", 1, 2147483647);
     integer(maxReplayBytes, "maxReplayBytes", 1, 2147483647);
+    const cooperative = typeof adapter.saveJob === "function" && typeof adapter.prepareSnapshotJob === "function" && typeof adapter.loadPreparedSnapshot === "function";
     const candidate = validateBootstrap(
       bootstrap,
       { maxSnapshotBytes, maxSuffixTicks, maxCommandBytes, maxPendingCommands, maxReplayBytes },
-      { simulationVersion, inputSize, tickRate, players, seed }
+      { simulationVersion, inputSize, tickRate, players, seed },
+      cooperative
     );
     const save = () => {
       const data = bytes(adapter.save(), "bootstrap adapter snapshot");
@@ -12984,6 +13031,9 @@ var BloomOwnedSDK = (() => {
       simulationVersion: candidate.simulationVersion,
       seed: candidate.seed
     });
+    if (cooperative) {
+      return createCooperativeReplay({ adapter, candidate, context, maxSnapshotBytes, maxCatchupSteps, maxCatchupMs, clock });
+    }
     const original = save();
     let tick = candidate.checkpoint.tick, status = "catching-up", result = null, failure = null;
     const restore = (error2) => {
@@ -12996,10 +13046,15 @@ var BloomOwnedSDK = (() => {
       }
       throw failure;
     };
-    if (adapter.validateSnapshot(candidate.checkpoint.bytes.slice(), context(tick)) !== true) throw new Error("adapter rejected bootstrap checkpoint");
+    const preparedPath = typeof adapter.prepareSnapshot === "function" && typeof adapter.loadPreparedSnapshot === "function";
+    const prepared = preparedPath ? adapter.prepareSnapshot(candidate.checkpoint.bytes.slice(), context(tick)) : null;
+    if (preparedPath ? !prepared : adapter.validateSnapshot(candidate.checkpoint.bytes.slice(), context(tick)) !== true) throw new Error("adapter rejected bootstrap checkpoint");
     try {
-      adapter.load(candidate.checkpoint.bytes.slice());
-      if (!equalBytes(save(), candidate.checkpoint.bytes)) throw new Error("bootstrap checkpoint round-trip mismatch");
+      if (preparedPath) adapter.loadPreparedSnapshot(prepared, context(tick));
+      else {
+        adapter.load(candidate.checkpoint.bytes.slice());
+        if (!equalBytes(save(), candidate.checkpoint.bytes)) throw new Error("bootstrap checkpoint round-trip mismatch");
+      }
     } catch (error2) {
       restore(error2);
     }
@@ -13026,8 +13081,9 @@ var BloomOwnedSDK = (() => {
         if (failure) throw failure;
         if (status !== "catching-up") return Object.freeze({ status, tick, targetTick: candidate.tick, steps: 0, ...result ?? {} });
         let steps = 0;
+        const started = clock();
         try {
-          while (tick < candidate.tick && steps < maxCatchupSteps) {
+          while (tick < candidate.tick && steps < maxCatchupSteps && (steps === 0 || clock() - started < maxCatchupMs)) {
             const frame = candidate.frames[tick - candidate.checkpoint.tick];
             runSimulationFrame(adapter, {
               tick,
@@ -13041,9 +13097,10 @@ var BloomOwnedSDK = (() => {
             steps++;
           }
           if (tick === candidate.tick) {
-            const final = save();
-            if (hashBytes(final) !== candidate.hash) throw new Error("bootstrap final hash mismatch");
-            if (adapter.validateSnapshot(final.slice(), context(tick)) !== true) throw new Error("adapter rejected bootstrap final state");
+            const unchanged = preparedPath && candidate.tick === candidate.checkpoint.tick;
+            const final = unchanged ? candidate.checkpoint.bytes : save();
+            if (!unchanged && hashBytes(final) !== candidate.hash) throw new Error("bootstrap final hash mismatch");
+            if (!unchanged && adapter.validateSnapshot(final.slice(), context(tick)) !== true) throw new Error("adapter rejected bootstrap final state");
             status = "done";
             result = Object.freeze({ tick, hash: candidate.hash });
           }
@@ -13063,6 +13120,161 @@ var BloomOwnedSDK = (() => {
           }
         }
         return Object.freeze({ status, tick, targetTick: candidate.tick, steps: 0, ...result ?? {} });
+      }
+    });
+  }
+  function createCooperativeReplay({ adapter, candidate, context, maxSnapshotBytes, maxCatchupSteps, maxCatchupMs, clock }) {
+    let tick = candidate.checkpoint.tick, status = "catching-up", phase = "checkpoint-hash", result = null, failure = null;
+    let original, final, loaded = false, job, hash = 2166136261, hashOffset = 0;
+    const own = (value) => {
+      const data = bytes(value, "bootstrap job snapshot");
+      if (!data.length || data.length > maxSnapshotBytes) throw new RangeError("bootstrap adapter snapshot size");
+      return data.slice();
+    };
+    const checkJob = (value) => {
+      if (!value || typeof value.pulse !== "function" || typeof value.cancel !== "function") throw new TypeError("snapshot preparation job");
+      return value;
+    };
+    const fail = (error2) => {
+      failure = error2 instanceof Error ? error2 : new Error(String(error2));
+      status = "failed";
+      try {
+        job?.cancel();
+      } catch {
+      }
+      job = null;
+      if (loaded && original) {
+        try {
+          adapter.load(original.slice());
+        } catch (restoreError) {
+          failure = new AggregateError([failure, restoreError], "bootstrap replay failed and original snapshot restoration failed");
+        }
+      }
+      original = final = null;
+      throw failure;
+    };
+    const finish = () => {
+      status = "done";
+      phase = "done";
+      result = Object.freeze({ tick, hash: candidate.hash });
+      original = final = null;
+    };
+    const response = (steps) => Object.freeze({ status, tick, targetTick: candidate.tick, steps, ...result ?? {} });
+    return Object.freeze({
+      get tick() {
+        return tick;
+      },
+      get targetTick() {
+        return candidate.tick;
+      },
+      get status() {
+        return status;
+      },
+      get done() {
+        return status === "done";
+      },
+      get result() {
+        return result;
+      },
+      get failure() {
+        return failure;
+      },
+      pulse() {
+        if (failure) throw failure;
+        if (status !== "catching-up") return response(0);
+        let steps = 0;
+        const started = clock();
+        try {
+          if (phase === "checkpoint-hash") {
+            do {
+              const end = Math.min(candidate.checkpoint.bytes.length, hashOffset + 65536);
+              hash = hashBytes(candidate.checkpoint.bytes.subarray(hashOffset, end), hash);
+              hashOffset = end;
+            } while (hashOffset < candidate.checkpoint.bytes.length && clock() - started < maxCatchupMs);
+            if (hashOffset === candidate.checkpoint.bytes.length) {
+              if (hash !== candidate.checkpoint.hash) throw new Error("bootstrap checkpoint hash mismatch");
+              hash = 2166136261;
+              hashOffset = 0;
+              phase = "original";
+            }
+          } else if (phase === "original" || phase === "final") {
+            job ??= checkJob(adapter.saveJob());
+            job.pulse({ budgetMs: maxCatchupMs });
+            if (job.done) {
+              const data = own(job.result);
+              job = null;
+              if (phase === "original") {
+                original = data;
+                phase = "prepare";
+              } else {
+                final = data;
+                phase = "hash";
+              }
+            }
+          } else if (phase === "prepare" || phase === "validate") {
+            job ??= checkJob(adapter.prepareSnapshotJob((phase === "prepare" ? candidate.checkpoint.bytes : final).slice(), context(tick)));
+            job.pulse({ budgetMs: maxCatchupMs });
+            if (job.done) {
+              const token = job.result;
+              job = null;
+              if (!token) throw new Error("adapter rejected bootstrap snapshot");
+              if (phase === "validate") finish();
+              else {
+                final = token;
+                phase = "install";
+              }
+            }
+          } else if (phase === "install") {
+            const token = final;
+            final = null;
+            loaded = true;
+            adapter.loadPreparedSnapshot(token, context(tick));
+            if (tick === candidate.tick) finish();
+            else phase = "replay";
+          } else if (phase === "replay") {
+            while (tick < candidate.tick && steps < maxCatchupSteps && (steps === 0 || clock() - started < maxCatchupMs)) {
+              runSimulationFrame(adapter, {
+                tick,
+                tickRate: candidate.tickRate,
+                inputs: candidate.frames[tick - candidate.checkpoint.tick].inputs,
+                resimulating: true,
+                recovering: true,
+                replaying: true
+              });
+              tick++;
+              steps++;
+            }
+            if (tick === candidate.tick) phase = "final";
+          } else if (phase === "hash") {
+            do {
+              const end = Math.min(final.length, hashOffset + 65536);
+              hash = hashBytes(final.subarray(hashOffset, end), hash);
+              hashOffset = end;
+            } while (hashOffset < final.length && clock() - started < maxCatchupMs);
+            if (hashOffset === final.length) {
+              if (hash !== candidate.hash) throw new Error("bootstrap final hash mismatch");
+              phase = "validate";
+            }
+          }
+          return response(steps);
+        } catch (error2) {
+          return fail(error2);
+        }
+      },
+      cancel() {
+        if (failure) throw failure;
+        if (status === "catching-up") {
+          try {
+            job?.cancel();
+            job = null;
+            if (loaded) adapter.load(original.slice());
+          } catch (error2) {
+            return fail(error2);
+          }
+          status = "cancelled";
+          original = final = null;
+        }
+        return response(0);
       }
     });
   }
@@ -13364,6 +13576,7 @@ var BloomOwnedSDK = (() => {
         maxCatchupSteps: 4,
         maxTransferBytes: 8 * 1024 * 1024,
         maxControlMessagesPerPulse: 32,
+        snapshotBudgetMs: 8,
         ...membership
       });
       for (const [k, v] of Object.entries(this.membership)) integer(v, k, 1, 2147483647);
@@ -13404,7 +13617,7 @@ var BloomOwnedSDK = (() => {
       this._leavePromise = null;
       this._leaveResolve = null;
       this._leaveReject = null;
-      this._stats = { transitions: 0, bootstrapBytes: 0, bootstrapTicks: 0, rejectedMessages: 0, sentControlBytes: 0, receivedControlBytes: 0 };
+      this._stats = { transitions: 0, bootstrapBytes: 0, bootstrapTicks: 0, rejectedMessages: 0, sentControlBytes: 0, receivedControlBytes: 0, membershipPrepareMs: 0, membershipCommitMs: 0, bootstrapPrepareMs: 0, bootstrapPulseMs: 0, maxBoundaryTaskMs: 0, boundaryLongTasks: 0 };
       this._totals = { snapshotSaves: 0, serializedSnapshotBytes: 0, stateHashComputations: 0, hashedStateBytes: 0 };
       if (mode === "local" || this.players.includes(localPlayerId) && !room?.resumed) {
         this.adapter.applyMembership({ epoch: this.epoch, tick: 0, players: [...this.players], joined: [...this.players], left: [], coordinatorId: this.coordinatorId, reason: "initial" });
@@ -13491,6 +13704,14 @@ var BloomOwnedSDK = (() => {
         this._transition?.replay?.cancel();
       } catch {
       }
+      try {
+        this._transition?.stageJob?.cancel();
+      } catch {
+      }
+      if (this._transition) {
+        this._transition.preparedState = null;
+        this._transition.stageJob = null;
+      }
       this._leaveReject?.(new Error(type));
       this._leaveResolve = this._leaveReject = null;
       this._unsubscribeRoom?.();
@@ -13506,9 +13727,19 @@ var BloomOwnedSDK = (() => {
     }
     _adapter(baseTick = this.baseTick, epoch = this.epoch) {
       const a = this.adapter;
+      const contextAt = (context = {}) => ({ ...context, tick: (context.tick ?? 0) + baseTick, membershipEpoch: epoch });
       return {
         save: () => a.save(),
         load: (data) => a.load(data),
+        ...typeof a.saveJob === "function" ? { saveJob: () => a.saveJob() } : {},
+        ...typeof a.prepareSnapshotJob === "function" && typeof a.loadPreparedSnapshot === "function" ? {
+          prepareSnapshotJob: (data, context) => a.prepareSnapshotJob(data, contextAt(context)),
+          loadPreparedSnapshot: (prepared, context) => a.loadPreparedSnapshot(prepared, contextAt(context))
+        } : {},
+        ...typeof a.prepareSnapshot === "function" && typeof a.loadPreparedSnapshot === "function" ? {
+          prepareSnapshot: (data, context) => a.prepareSnapshot(data, contextAt(context)),
+          loadPreparedSnapshot: (prepared, context) => a.loadPreparedSnapshot(prepared, contextAt(context))
+        } : {},
         validateSnapshot: (data, context = {}) => a.validateSnapshot(data, { ...context, tick: (context.tick ?? 0) + baseTick, membershipEpoch: epoch }),
         step: (context) => {
           context.tick += baseTick;
@@ -13518,8 +13749,8 @@ var BloomOwnedSDK = (() => {
         }
       };
     }
-    _startCore(commandState, commandSequences) {
-      this._core = createSession({
+    _startCore(commandState, commandSequences, boundary) {
+      const options = {
         players: [...this.players],
         localPlayerId: this.localPlayerId,
         authorityPlayerId: this.coordinatorId,
@@ -13536,7 +13767,8 @@ var BloomOwnedSDK = (() => {
         onEvent: (event) => {
           if (event.type !== "closed") this._event(event.type, { ...event, tick: event.tick + this.baseTick });
         }
-      });
+      };
+      this._core = boundary ? createSessionFromBoundary(options, boundary.bytes, boundary.hash) : createSession(options);
       this.profile = this._core.profile;
       for (const [id, link] of this._links) this._attachCore(id, link);
       for (const payload of this._pendingBeforeJoin.splice(0)) this._core.queueCommand(payload);
@@ -13583,6 +13815,10 @@ var BloomOwnedSDK = (() => {
       this._attachCore(id, link);
       if (!this._core && id === this.coordinatorId) this._joinSent = false;
     }
+    _boundaryFrozen() {
+      const tr = this._transition;
+      return !!tr && (tr.proposal.reason === "reconnect" || !!tr.stageJob || !!tr.preparedState || tr.applied || !!tr.replay);
+    }
     _receiveWire(id, link, raw) {
       try {
         const data = bytes(raw);
@@ -13590,7 +13826,7 @@ var BloomOwnedSDK = (() => {
         const view = new DataView(data.buffer, data.byteOffset, data.length), magic = view.getUint32(0, true);
         if (magic === MAGIC) {
           const epoch = view.getUint16(6, true) - 1;
-          if (epoch === this.epoch && link.coreReceive && !(this._transition?.proposal.reason === "reconnect")) {
+          if (epoch === this.epoch && link.coreReceive && !this._boundaryFrozen()) {
             const copy = data.slice();
             new DataView(copy.buffer).setUint16(6, 0, true);
             link.coreReceive(copy);
@@ -13820,9 +14056,9 @@ var BloomOwnedSDK = (() => {
         if (m.bootstrap.tick + m.baseTick !== tr.target) throw new Error("resume donor boundary");
         tr.installSent = true;
         this._broadcast(tr.participants, "resume-install", { epoch: m.epoch, baseTick: m.baseTick, bootstrap: m.bootstrap, target: tr.target });
-      } else if (m.op === "resume-install" && from === this.coordinatorId && tr.proposal.reason === "reconnect" && !tr.replay && !tr.applied) {
+      } else if (m.op === "resume-install" && from === this.coordinatorId && tr.proposal.reason === "reconnect" && !tr.replay && !tr.stageJob && !tr.preparedState && !tr.applied) {
         this._beginBootstrap(tr, m);
-      } else if (m.op === "bootstrap" && from === this.coordinatorId && !this._core && !tr.replay && !tr.applied) {
+      } else if (m.op === "bootstrap" && from === this.coordinatorId && !this._core && !tr.replay && !tr.stageJob && !tr.preparedState && !tr.applied) {
         this._beginBootstrap(tr, m);
       } else if (m.op === "install" && from === this.coordinatorId && this._core && !tr.applied) {
         if (m.tick !== tr.target || this.tick !== tr.target) throw new Error("membership installation boundary");
@@ -13844,6 +14080,9 @@ var BloomOwnedSDK = (() => {
       }
     }
     _beginBootstrap(tr, m) {
+      return this._boundaryWork("bootstrapPrepareMs", () => this._prepareBootstrap(tr, m));
+    }
+    _prepareBootstrap(tr, m) {
       if (m.target !== tr.target || m.bootstrap.tick + m.baseTick !== tr.target || !Number.isSafeInteger(m.baseTick) || m.baseTick < 0 || this._core && m.baseTick !== this.baseTick) throw new Error("bootstrap epoch boundary");
       if (!this._core) this.baseTick = m.baseTick;
       if (this._core && tr.proposal.reason === "reconnect") this._core.verifyConfirmedBootstrap(m.bootstrap);
@@ -13852,6 +14091,7 @@ var BloomOwnedSDK = (() => {
         adapter: this._adapter(m.baseTick, this.epoch),
         bootstrap: m.bootstrap,
         maxCatchupSteps: this.membership.maxCatchupSteps,
+        maxCatchupMs: this.membership.snapshotBudgetMs,
         maxSnapshotBytes: this.profile.maxSnapshotBytes,
         maxSuffixTicks: tr.proposal.reason === "reconnect" ? this.profile.stateHistorySize : this.profile.checksumInterval,
         maxCommandBytes: this.profile.maxCommandBytes,
@@ -13865,7 +14105,43 @@ var BloomOwnedSDK = (() => {
       });
       this._stats.bootstrapBytes += m.bootstrap.checkpoint.bytes.length;
     }
+    _membershipContext(tr) {
+      return {
+        tick: tr.target,
+        membershipEpoch: tr.proposal.epoch,
+        simulationVersion: this.simulationVersion,
+        tickRate: this.profile.tickRate,
+        seed: this.seed,
+        players: [...tr.proposal.players]
+      };
+    }
+    _boundaryWork(name, work) {
+      const started = nowMs();
+      try {
+        return work();
+      } finally {
+        const elapsed = Math.max(0, nowMs() - started);
+        this._stats[name] = elapsed;
+        this._stats.maxBoundaryTaskMs = Math.max(this._stats.maxBoundaryTaskMs, elapsed);
+        if (elapsed > 50) this._stats.boundaryLongTasks++;
+      }
+    }
     _applyMembership(tr) {
+      return this._boundaryWork("membershipPrepareMs", () => this._prepareMembership(tr));
+    }
+    _prepareMembership(tr) {
+      if (tr.stageJob || tr.preparedState || tr.applied) return;
+      if (typeof this.adapter.prepareMembershipJob === "function" && typeof this.adapter.loadPreparedSnapshot === "function") {
+        tr.stageJob = this.adapter.prepareMembershipJob({ ...tr.proposal, tick: tr.target }, this._membershipContext(tr));
+        if (!tr.stageJob || typeof tr.stageJob.pulse !== "function" || typeof tr.stageJob.cancel !== "function") throw new TypeError("membership preparation job");
+        return;
+      }
+      if (typeof this.adapter.prepareMembership === "function" && typeof this.adapter.loadPreparedSnapshot === "function") {
+        const context = this._membershipContext(tr);
+        const staged = this.adapter.prepareMembership({ ...tr.proposal, tick: tr.target }, context);
+        this._acceptPreparedMembership(tr, staged);
+        return;
+      }
       const rollback = bytes(this.adapter.save()).slice();
       try {
         this.adapter.applyMembership({ ...tr.proposal, tick: tr.target });
@@ -13881,7 +14157,24 @@ var BloomOwnedSDK = (() => {
         throw error2;
       }
     }
+    _acceptPreparedMembership(tr, staged, deferHash = false) {
+      const state = bytes(staged?.bytes, "prepared membership snapshot").slice();
+      if (!state.length || state.length > this.profile.maxSnapshotBytes || !staged.prepared) throw new Error("invalid prepared membership snapshot");
+      tr.postState = state;
+      tr.preparedState = staged.prepared;
+      if (deferHash) {
+        tr.postHash = 2166136261;
+        tr.hashOffset = 0;
+        return;
+      }
+      tr.postHash = hashBytes(state);
+      tr.applied = true;
+      this._send(this.coordinatorId, "installed", { epoch: tr.proposal.epoch, hash: tr.postHash });
+    }
     _commit(tr) {
+      return this._boundaryWork("membershipCommitMs", () => this._commitMembership(tr));
+    }
+    _commitMembership(tr) {
       const previousCoordinator = this.coordinatorId;
       const commandSequences = tr.commandSequences ?? this._core?.getCommandSequences?.();
       let commandState = this._core?.exportLocalCommandState() ?? (commandSequences ? { sequence: commandSequences[this.localPlayerId] ?? 0, lastInput: this._lastInput, commands: [] } : void 0);
@@ -13889,7 +14182,11 @@ var BloomOwnedSDK = (() => {
         const baseline = commandSequences[this.localPlayerId] ?? 0;
         commandState = { ...commandState, sequence: Math.max(commandState.sequence, baseline), commands: commandState.commands.filter((command) => command.sequence > baseline) };
       }
-      this.adapter.load(tr.postState);
+      if (tr.preparedState) {
+        const prepared = tr.preparedState;
+        tr.preparedState = null;
+        this.adapter.loadPreparedSnapshot(prepared, this._membershipContext(tr));
+      } else this.adapter.load(tr.postState.slice());
       if (this._core) {
         const metrics = this._core.metrics;
         for (const k of Object.keys(this._totals)) this._totals[k] += metrics[k] ?? 0;
@@ -13913,7 +14210,7 @@ var BloomOwnedSDK = (() => {
         this._retireApproved = previousCoordinator === this.localPlayerId;
         return;
       }
-      this._startCore(commandState, commandSequences);
+      this._startCore(commandState, commandSequences, { bytes: tr.postState, hash: tr.postHash });
     }
     poll(now = this.clock()) {
       if (this.closed || this.failure) return;
@@ -13968,8 +14265,32 @@ var BloomOwnedSDK = (() => {
         const tr = this._transition;
         if (tr) {
           if (now - tr.startedAt >= this.membership.transitionTimeoutMs) throw new Error("membership deadline exceeded");
+          if (tr.preparedState && !tr.applied) {
+            this._boundaryWork("membershipPrepareMs", () => {
+              const started = nowMs();
+              do {
+                const end = Math.min(tr.postState.length, tr.hashOffset + 65536);
+                tr.postHash = hashBytes(tr.postState.subarray(tr.hashOffset, end), tr.postHash);
+                tr.hashOffset = end;
+              } while (tr.hashOffset < tr.postState.length && nowMs() - started < this.membership.snapshotBudgetMs);
+              if (tr.hashOffset === tr.postState.length) {
+                tr.applied = true;
+                this._send(this.coordinatorId, "installed", { epoch: tr.proposal.epoch, hash: tr.postHash });
+              }
+            });
+          }
+          if (tr.stageJob) {
+            this._boundaryWork("membershipPrepareMs", () => {
+              tr.stageJob.pulse({ budgetMs: this.membership.snapshotBudgetMs });
+              if (tr.stageJob.done) {
+                const staged = tr.stageJob.result;
+                tr.stageJob = null;
+                this._acceptPreparedMembership(tr, staged, true);
+              }
+            });
+          }
           if (tr.replay) {
-            const result = tr.replay.pulse();
+            const result = this._boundaryWork("bootstrapPulseMs", () => tr.replay.pulse());
             this._stats.bootstrapTicks += result.steps ?? 0;
             if (tr.replay.done) {
               tr.replay = null;
@@ -13982,7 +14303,7 @@ var BloomOwnedSDK = (() => {
           }
         } else if (!this._core && now - this._startedAt >= this.membership.transitionTimeoutMs) throw new Error("join deadline exceeded");
         for (const [id, link] of this._links) if (link.incoming && now - link.incoming.startedAt >= this.membership.transitionTimeoutMs) throw new Error("room transfer timeout: " + id);
-        if (this._transition?.proposal.reason !== "reconnect") this._core?.poll(now);
+        if (!this._boundaryFrozen()) this._core?.poll(now);
         if (this._core && !tr) {
           if (["interrupted", "disconnected"].includes(this._core.status)) {
             this._interruptedAt ??= now;
@@ -14054,6 +14375,14 @@ var BloomOwnedSDK = (() => {
       try {
         this._transition?.replay?.cancel();
       } catch {
+      }
+      try {
+        this._transition?.stageJob?.cancel();
+      } catch {
+      }
+      if (this._transition) {
+        this._transition.preparedState = null;
+        this._transition.stageJob = null;
       }
       this._unsubscribeRoom?.();
       for (const link of this._links.values()) {
@@ -17599,24 +17928,139 @@ function encodeGraph(root,spatial=null){
  u32(0x33474c42);write(root);graphScratch=buffer;graphScratchView=view;return buffer.slice(0,at);
 }
 function decodeGraph(bytes){
- check(bytes instanceof Uint8Array&&bytes.length<=8388608,'capsule bytes');let at=0;const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),ids=[],strings=[];
+ check(bytes instanceof Uint8Array&&bytes.length<=8388608,'capsule bytes');let at=0;const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),ids=[],strings=[],stringIds=new Set();
  function room(n){check(n>=0&&at+n<=bytes.length,'truncated capsule')}
  function u8(){room(1);return bytes[at++]}function u32(){room(4);const n=view.getUint32(at,true);at+=4;return n}
- function string(){const id=u32();if(id<strings.length)return strings[id];check(id===strings.length,'string reference');const n=u32();room(n);const s=graphTextDecoder.decode(bytes.subarray(at,at+n));at+=n;strings.push(s);return s}
+ function string(){const id=u32();if(id<strings.length)return strings[id];check(id===strings.length,'string reference');const n=u32();room(n);const s=graphTextDecoder.decode(bytes.subarray(at,at+n));at+=n;check(!stringIds.has(s),'canonical string reference');const canonical=graphText(s);check(canonical.length===n&&canonical.every((v,i)=>v===bytes[at-n+i]),'canonical UTF-8');stringIds.add(s);strings.push(s);return s}
  function read(depth=0){check(depth<256,'capsule depth');const tag=u8();if(tag===0)return undefined;if(tag===1)return null;if(tag===2)return false;if(tag===3)return true;
-  if(tag===4){room(8);const n=view.getFloat64(at,true);at+=8;check(graphFinite(n),'finite capsule number');return n}
-  if(tag===11)return 0;if(tag===12){room(2);const n=view.getInt16(at,true);at+=2;return n}if(tag===5)return string();if(tag===6){const id=u32();check(id<ids.length,'reference ID');return ids[id]}
+  if(tag===4){room(8);const n=view.getFloat64(at,true);at+=8;check(graphFinite(n),'finite capsule number');check(!(n===0&&1/n>0)&&!(n!==0&&n===(n|0)&&n>=-32768&&n<=32767),'canonical number');return n}
+  if(tag===11)return 0;if(tag===12){room(2);const n=view.getInt16(at,true);at+=2;check(n!==0,'canonical zero');return n}if(tag===5)return string();if(tag===6){const id=u32();check(id<ids.length,'reference ID');return ids[id]}
   check(ids.length<100000&&tag>=7&&tag<=10,'capsule node');
   if(tag===7){const n=u32();room(n);const b=bytes.slice(at,at+n);at+=n;ids.push(b);return b}
   const length=tag===8?u32():0;check(length<=1000000,'array length');const result=tag===8?new Array(length):tag===9?Object.create(null):{};ids.push(result);
   const count=u32();check(count<=1000000,'property count');const keys=new Set();
-  for(let i=0;i<count;i++){const k=string();check(!keys.has(k)&&!(tag===8&&k==='length'),'unique state key');keys.add(k);Object.defineProperty(result,k,{value:read(depth+1),enumerable:true,writable:true,configurable:true})}
-  if(tag===8)check(result.length===length,'array bounds');return result;
+  for(let i=0;i<count;i++){const k=string();check(!keys.has(k)&&!(tag===8&&k==='length'),'unique state key');keys.add(k);const value=read(depth+1);if(k==='__proto__')Object.defineProperty(result,k,{value,enumerable:true,writable:true,configurable:true});else result[k]=value}
+  if(tag===8)check(result.length===length,'array bounds');const ordered=graphKeys(result);let keyIndex=0;for(const key of keys)check(ordered[keyIndex++]===key,'canonical property order');return result;
  }
  check(u32()===0x33474c42,'graph version');const root=read();check(at===bytes.length,'trailing capsule bytes');return root;
 }
 
-globalThis.BloomLiveCodec={encode:encodeGraph,decode:decodeGraph};})();
+// Jobs own their output and never borrow the synchronous scratch buffer. The caller
+// freezes the source boundary (or owns the input bytes) until completion/cancel.
+// Each property, string chunk and byte chunk is a separate resumable work unit.
+const graphJobByteLimit=8388608,graphJobChunk=16384;
+function graphJob(iterator){
+ let done=false,cancelled=false,result,error;
+ return{get done(){return done},get result(){return result},get cancelled(){return cancelled},
+  pulse({budgetMs=8}={}){
+   check(graphFinite(budgetMs)&&budgetMs>=0,'job budget');if(error)throw error;if(done)return{done,result};
+   const deadline=performance.now()+budgetMs;let units=0;
+   try{do{const step=iterator.next();if(step.done){result=step.value;done=true;iterator=null;break}units++}while((units&15)!==0||performance.now()<deadline)}
+   catch(cause){error=cause;done=true;iterator?.return();iterator=null;throw cause}
+   return{done,result};
+  },
+  cancel(){if(done)return;cancelled=true;done=true;iterator.return();iterator=null}
+ };
+}
+function *encodeGraphSteps(root,spatial){
+ let collecting=!!spatial,buffer=new Uint8Array(65536),view=new DataView(buffer.buffer),at=0,total=0;
+ const blocks=[],ids=new Map(),strings=new Map(),stack=[];
+ function room(n){check(total+n<=graphJobByteLimit,'capsule bytes');if(at+n>buffer.length){blocks.push([buffer,at]);buffer=new Uint8Array(65536);view=new DataView(buffer.buffer);at=0}total+=n}
+ function u8(n){room(1);buffer[at++]=n}function u32(n){room(4);view.setUint32(at,n,true);at+=4}
+ function *copy(bytes){for(let i=0;i<bytes.length;){const n=Math.min(graphJobChunk,bytes.length-i,buffer.length-at);if(!n){room(1);total--;continue}room(n);buffer.set(bytes.subarray(i,i+n),at);at+=n;i+=n;yield}}
+ function *string(s){
+  const old=strings.get(s);if(old!==undefined){u32(old);return}u32(strings.size);strings.set(s,strings.size);
+  if(s.length<=4096){const bytes=graphText(s);u32(bytes.length);yield*copy(bytes);return}
+  // Do not split surrogate pairs: TextEncoder replaces lone surrogates exactly
+  // as the synchronous path does. Large strings never monopolize one pulse.
+  const chunks=[];let length=0;
+  for(let i=0;i<s.length;){let end=Math.min(i+4096,s.length);const last=s.charCodeAt(end-1);if(end<s.length&&last>=0xd800&&last<=0xdbff)end--;const bytes=graphTextEncoder.encode(s.slice(i,end));length+=bytes.length;check(total+4+length<=graphJobByteLimit,'capsule bytes');chunks.push(bytes);i=end;yield}
+  u32(length);for(const bytes of chunks)yield*copy(bytes);
+ }
+ u32(0x33474c42);let value=root,depth=0;
+ while(true){
+  check(depth<256,'capsule depth');
+  if(value===undefined)u8(0);else if(value===null)u8(1);else if(value===false||value===true)u8(value?3:2);
+  else if(typeof value==='number'){
+   if(value===0&&1/value>0)u8(11);
+   else if(value!==0&&value===(value|0)&&value>=-32768&&value<=32767){u8(12);room(2);view.setInt16(at,value,true);at+=2}
+   else{check(graphFinite(value),'finite capsule number');u8(4);room(8);view.setFloat64(at,value,true);at+=8}
+  }else if(typeof value==='string'){u8(5);yield*string(value)}
+  else{
+   check(value&&typeof value==='object','unsupported capsule value');const old=ids.get(value);
+   if(old!==undefined){u8(6);u32(old)}
+   else{
+    check(ids.size<100000,'capsule node budget');ids.set(value,ids.size);
+    if(collecting){const unit=spatial.units.get(value),anchor=spatial.anchors.get(value);if(unit||anchor)root.spatial.push(bloomCompactSpatial(value,unit,anchor))}
+    if(value instanceof Uint8Array){u8(7);u32(value.length);yield*copy(value)}
+    else{
+     const array=graphArray(value),proto=graphPrototype(value);check(array||proto===Object.prototype||proto===null,'plain capsule records only');
+     const keys=graphKeys(value);check(keys.length<=1000000,'property count');if(array)check(value.length<=1000000,'array length');
+     u8(array?8:proto===null?9:10);if(array)u32(value.length);u32(keys.length);stack.push({value,keys,index:0,depth});
+    }
+   }
+  }
+  yield;
+  while(stack.length&&stack[stack.length-1].index===stack[stack.length-1].keys.length)stack.pop();
+  if(!stack.length)break;
+  const frame=stack[stack.length-1],key=frame.keys[frame.index++];if(collecting&&frame.value===root&&key==='spatial')collecting=false;
+  // Capture the property's value at the same point as encodeGraph, before its key.
+  value=frame.value[key];depth=frame.depth+1;const keyId=strings.get(key);if(keyId===undefined)yield*string(key);else u32(keyId);
+ }
+ blocks.push([buffer,at]);const result=new Uint8Array(total);let offset=0;
+ for(const [bytes,length]of blocks)for(let i=0;i<length;i+=graphJobChunk){const end=Math.min(i+graphJobChunk,length);result.set(bytes.subarray(i,end),offset);offset+=end-i;yield}
+ return result;
+}
+function *decodeGraphSteps(bytes){
+ check(bytes instanceof Uint8Array&&bytes.length<=graphJobByteLimit,'capsule bytes');let at=0;
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),ids=[],strings=[],stringIds=new Set(),stack=[],root={value:undefined};
+ function room(n){check(n>=0&&at+n<=bytes.length,'truncated capsule')}
+ function u8(){room(1);return bytes[at++]}function u32(){room(4);const n=view.getUint32(at,true);at+=4;return n}
+ function *string(id=u32()){
+  if(id<strings.length)return strings[id];check(id===strings.length,'string reference');const length=u32();room(length);let s;
+  if(length<=graphJobChunk){const start=at;s=graphTextDecoder.decode(bytes.subarray(at,at+length));at+=length;const canonical=graphText(s);check(canonical.length===length&&canonical.every((v,i)=>v===bytes[start+i]),'canonical UTF-8')}
+  else{
+   // Fatal UTF-8 decoding already rejects overlong encodings, surrogates and
+   // invalid scalars. The only additional normalization is a leading BOM.
+   check(!(bytes[at]===239&&bytes[at+1]===187&&bytes[at+2]===191),'canonical UTF-8');
+   const decoder=new TextDecoder('utf-8',{fatal:true}),parts=[],end=at+length;
+   while(at<end){const next=Math.min(at+graphJobChunk,end);parts.push(decoder.decode(bytes.subarray(at,next),{stream:next<end}));at=next;yield}s=parts.join('');yield;
+  }
+  check(!stringIds.has(s),'canonical string reference');stringIds.add(s);strings.push(s);return s;
+ }
+ check(u32()===0x33474c42,'graph version');let target=root,key='value',depth=0;
+ while(true){
+  check(depth<256,'capsule depth');const tag=u8();let value;
+  if(tag===0)value=undefined;else if(tag===1)value=null;else if(tag===2)value=false;else if(tag===3)value=true;
+  else if(tag===4){room(8);value=view.getFloat64(at,true);at+=8;check(graphFinite(value),'finite capsule number');check(!(value===0&&1/value>0)&&!(value!==0&&value===(value|0)&&value>=-32768&&value<=32767),'canonical number')}
+  else if(tag===11)value=0;
+  else if(tag===12){room(2);value=view.getInt16(at,true);at+=2;check(value!==0,'canonical zero')}
+  else if(tag===5){const id=u32();value=id<strings.length?strings[id]:yield*string(id)}
+  else if(tag===6){const id=u32();check(id<ids.length,'reference ID');value=ids[id]}
+  else{
+   check(ids.length<100000&&tag>=7&&tag<=10,'capsule node');
+   if(tag===7){const length=u32();room(length);value=new Uint8Array(length);ids.push(value);for(let i=0;i<length;i+=graphJobChunk){const n=Math.min(graphJobChunk,length-i);value.set(bytes.subarray(at,at+n),i);at+=n;yield}}
+   else{
+    const length=tag===8?u32():0;check(length<=1000000,'array length');value=tag===8?new Array(length):tag===9?Object.create(null):{};ids.push(value);
+    const count=u32();check(count<=1000000,'property count');stack.push({value,count,index:0,depth,tag,length,keys:new Set(),lastIndex:-1,textKey:false});
+   }
+  }
+  if(key==='__proto__')Object.defineProperty(target,key,{value,enumerable:true,writable:true,configurable:true});else target[key]=value;
+  yield;
+  while(stack.length&&stack[stack.length-1].index===stack[stack.length-1].count){const frame=stack.pop();if(frame.tag===8)check(frame.value.length===frame.length,'array bounds')}
+  if(!stack.length)break;
+  const frame=stack[stack.length-1],keyId=u32();key=keyId<strings.length?strings[keyId]:yield*string(keyId);check(!frame.keys.has(key)&&!(frame.tag===8&&key==='length'),'unique state key');frame.keys.add(key);
+  // Object.keys orders array-index keys numerically, then other keys in insertion
+  // order. Check that order incrementally instead of rescanning a large record.
+  const first=key.charCodeAt(0),index=first>=48&&first<=57?key>>>0:0xffffffff;if(index!==0xffffffff&&String(index)===key){check(!frame.textKey&&index>frame.lastIndex,'canonical property order');frame.lastIndex=index}else frame.textKey=true;
+  frame.index++;target=frame.value;depth=frame.depth+1;
+ }
+ check(at===bytes.length,'trailing capsule bytes');return root.value;
+}
+function encodeGraphJob(root,spatial=null){return graphJob(encodeGraphSteps(root,spatial))}
+function decodeGraphJob(ownedBytes){return graphJob(decodeGraphSteps(ownedBytes))}
+
+globalThis.BloomLiveCodec={encode:encodeGraph,decode:decodeGraph,encodeJob:encodeGraphJob,decodeJob:decodeGraphJob};})();
 'use strict';
 /* One authority, one ordered tick stream. Rendering/persistence never decide combat. */
 let bloomTick=0,bloomSession=null,bloomLoop=null,bloomEventSequence=0,bloomInputPending=0;
@@ -17689,7 +18133,9 @@ parcelCost=i=>Number.isInteger(i)&&i>0&&i<CONFIG.campaign.parcels.length&&!state
 parcelRequirement=i=>'모아 Lv.'+(CONFIG.rarity.gateLevels[i]||1)+' · 관문에 직접 도착';
 unlockParcel=function(i){if(!canUnlockParcelHere(i)||state.campaign.parcels[i]||(abilityState()?.level||1)<(CONFIG.rarity.gateLevels[i]||1))return false;state.campaign.parcels[i]=true;for(const c of state.camps)if(c.ground===i)c.enabled=true;save();refreshUI();toast(CONFIG.campaign.grounds[i].name+' 연결');return true};
 function rarityCastEffect(u,t,kind){const g=rarityGrade(u);if(g<3||!raritySpendAccent())return;const color=CONFIG.rarity.gradeColors[g];addFx('line',u.x,u.y,t.x,t.y,color,0,.09);if(g>=4)addFx('ring',u.x,u.y,0,0,color,radius(u)+4,.12);if(g>=5)addFx('burst',u.x,u.y,0,0,color,8,.18)}
-function rarityValidateState(v,allowLegacyCapacity=false){if(!v||v.version!==CONFIG.version||v.raritySchema!==CONFIG.rarity.schema||!Array.isArray(v.units)||!Array.isArray(v.camps)||!v.mother||!validAbilityState(v.campaign?.abilities)||!rarityValidateAccounts(v,allowLegacyCapacity))return false;const ids=new Set();for(const u of v.units){if(!unitDef(u.type)||!Number.isSafeInteger(u.id)||ids.has(u.id)||!Number.isFinite(u.hp)||!Number.isFinite(u.maxHp)||u.hp<0||u.hp>u.maxHp||u.maxHp<=0)return false;ids.add(u.id);if(!u.rivalLeader&&(!Number.isInteger(u.rarityGrade)||u.rarityGrade<0||u.rarityGrade>5))return false;if(u.attackController&&!validAttackController(u.attackController))return false;}return typeof rarityValidateRivals!=='function'||rarityValidateRivals(v)}
+function *rarityValidateStateSteps(v,allowLegacyCapacity=false){if(!v||v.version!==CONFIG.version||v.raritySchema!==CONFIG.rarity.schema||!Array.isArray(v.units)||!Array.isArray(v.camps)||!v.mother||!validAbilityState(v.campaign?.abilities)||!(yield*rarityValidateAccountsSteps(v,allowLegacyCapacity)))return false;const ids=new Set();for(const u of v.units){yield;if(!unitDef(u.type)||!Number.isSafeInteger(u.id)||ids.has(u.id)||!Number.isFinite(u.hp)||!Number.isFinite(u.maxHp)||u.hp<0||u.hp>u.maxHp||u.maxHp<=0)return false;ids.add(u.id);if(!u.rivalLeader&&(!Number.isInteger(u.rarityGrade)||u.rarityGrade<0||u.rarityGrade>5))return false;if(u.attackController&&!validAttackController(u.attackController))return false;}return typeof rarityValidateRivals!=='function'||rarityValidateRivals(v)}
+function rarityValidateState(...args){return bloomDrainValidation(rarityValidateStateSteps(...args))}
+rarityValidateState.steps=rarityValidateStateSteps;
 // Current rarity disk saves retain their authority graph. Legacy capacity is accepted only by disk load, then demobilized without advancing simulation time.
 load=function(raw){try{if(typeof raw==='string'&&raw.length>CONFIG.maxSaveBytes)return false;const d=typeof raw==='string'?JSON.parse(raw):raw;if(d?.schema!=='bloom-webgl-disk-v1'||!Array.isArray(d.live)){bloomDiskLoadError='저장 버전이 호환되지 않아요. 기존 저장은 보관하고 새 게임을 시작해 주세요.';return false;}const c=bloomDecode(Uint8Array.from(d.live),undefined,true),previous=bloomCapture();try{bloomRestore(c,true);rarityMigrateCapacity();if(!bloomValidate(bloomCapture()))throw new TypeError('Invalid migrated population');}catch(error){bloomRestore(previous);throw error;}resetPresentation();return true}catch{return false}};
 function rarityRequestFuse(type,grade,max=false){return bloomInTick?rarityFuse(-1,type,grade,max):bloomQueue('rarityFuse',{unitType:type,grade,max:!!max})}
@@ -18194,14 +18640,17 @@ function rarityMaintain(dt = 0) {
   if (changed && typeof rebuildGrid === 'function') rebuildGrid();
   rarityAutoFusionTick(dt);
 }
-function rarityValidateAccounts(source = state, allowLegacyCapacity = false) {
+function rarityValidateAccounts(source = state, allowLegacyCapacity = false){return bloomDrainValidation(rarityValidateAccountsSteps(source,allowLegacyCapacity))}
+function *rarityValidateAccountsSteps(source = state, allowLegacyCapacity = false) {
   if (!rarityValidateAutoFusion(source)) return false;
   const accounts = source.rarityAccounts;
   if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts) || !Number.isSafeInteger(source.rarityNextUID) || source.rarityNextUID < 0) return false;
-  const max = CONFIG.rarity.maxCount, allUIDs = new Set(), allEntities = new Set(), units = new Map((source.units || []).map(u => [u.id, u]));
+  const max = CONFIG.rarity.maxCount, allUIDs = new Set(), allEntities = new Set(), units = new Map();
+  for(const u of source.units||[]){units.set(u.id,u);yield}
   const number = (n, lo = 0, hi = max) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
   const integer = (n, lo = 0, hi = max) => Number.isSafeInteger(n) && number(n, lo, hi);
   for (const [key, account] of Object.entries(accounts)) {
+    yield;
     if (rarityOwnerKey(key) !== key || !account || account.schema !== 1 || account.owner !== Number(key) || !Array.isArray(account.active) || !account.reserve || typeof account.reserve !== 'object' || Array.isArray(account.reserve)) return false;
     if (account.active.length > (allowLegacyCapacity ? rarityLegacyCapacity(account.owner, source) : rarityCapacity(account.owner, source)) || !Array.isArray(account.cursor) || account.cursor.length !== 6 || account.cursor.some(n => !integer(n, 0, Math.max(0, raritySpecies().length - 1)))) return false;
     if (account.level !== undefined && !integer(account.level, 1)) return false;
@@ -18219,7 +18668,7 @@ function rarityValidateAccounts(source = state, allowLegacyCapacity = false) {
       for (let i = 0; i < f.points.length; i++) {
         const p = f.points[i];
         if (!p || !integer(p.uid, 1, source.rarityNextUID) || !integer(p.id, 1, source.nextId) || p.uid !== f.consumedUIDs[i] || p.id !== f.consumedIds[i] || fuids.has(p.uid) || fids.has(p.id) || !number(p.x) || !number(p.y) || typeof p.dead !== 'boolean' || p.z !== undefined && !Number.isFinite(p.z) || p.success !== undefined && typeof p.success !== 'boolean') return false;
-        fids.add(p.id); fuids.add(p.uid);
+        fids.add(p.id); fuids.add(p.uid);yield;
       }
     }
     for (const [type, grades] of Object.entries(account.reserve)) {
@@ -18231,22 +18680,23 @@ function rarityValidateAccounts(source = state, allowLegacyCapacity = false) {
         let pending = 0, locked = 0, previous = -1;
         for (const bucket of stack.ready) {
           if (!bucket || Object.keys(bucket).some(k => !['at', 'count', 'locked'].includes(k)) || !number(bucket.at) || bucket.at <= previous || !integer(bucket.count, 1) || !integer(bucket.locked, 0, bucket.count)) return false;
-          previous = bucket.at; pending += bucket.count; locked += bucket.locked;
+          previous = bucket.at; pending += bucket.count; locked += bucket.locked;yield;
         }
         if (pending > stack.count || locked > stack.locked || stack.locked - locked > stack.count - pending) return false;
       }
     }
-    const ownershipCounts = {};
+    const ownershipCounts = {},playerOwner=WorldPlayers.byAccount(account.owner,source);
     for (const record of account.active) {
+      yield;
       if (!record || !integer(record.uid, 1, source.rarityNextUID) || allUIDs.has(record.uid) || !integer(record.entityId, 1, source.nextId) || allEntities.has(record.entityId) || !rarityValidSpecies(record.type) || !rarityValidGrade(record.grade) || typeof record.locked !== 'boolean' || !number(record.respawnAt) || !number(record.x) || !number(record.y)) return false;
       allUIDs.add(record.uid); allEntities.add(record.entityId);
       const u = record.body || units.get(record.entityId);
-      if (!u || u.id !== record.entityId || u.type !== record.type || u.rarityUID !== record.uid || u.rarityOwner !== account.owner || u.rarityGrade !== record.grade || u.rarityLocked !== record.locked || u.rarityOwned !== true || u.team !== (WorldPlayers.byAccount(account.owner,source)||account.owner === -1 ? 'friendly' : 'enemy') || u.rivalLeader || u.permanentRank) return false;
+      if (!u || u.id !== record.entityId || u.type !== record.type || u.rarityUID !== record.uid || u.rarityOwner !== account.owner || u.rarityGrade !== record.grade || u.rarityLocked !== record.locked || u.rarityOwned !== true || u.team !== (playerOwner||account.owner === -1 ? 'friendly' : 'enemy') || u.rivalLeader || u.permanentRank) return false;
       if (!number(u.hp) || !number(u.maxHp, Number.EPSILON) || u.hp > u.maxHp || !number(u.x) || !number(u.y)) return false;
       const expected = rarityStats(record.type, record.grade);
       if (Math.abs(u.maxHp - expected.hp) > Math.max(1e-7, expected.hp * 1e-9)) return false;
       if (u.attackController && typeof validAttackController === 'function' && !validAttackController(u.attackController)) return false;
-      if (!WorldPlayers.byAccount(account.owner,source) && account.owner !== -1 && (u.rivalOwner !== account.owner || !u.rivalRecruit)) return false;
+      if (!playerOwner && account.owner !== -1 && (u.rivalOwner !== account.owner || !u.rivalRecruit)) return false;
       if (record.deathPosition !== undefined && (!record.body || !record.deathPosition || !number(record.deathPosition.x) || !number(record.deathPosition.y) || !Number.isFinite(record.deathPosition.z))) return false;
       if (record.body) {
         if (u.hp !== 0 || !u.deadEffect || record.respawnAt <= 0 || record.respawnAt > source.time + bloomSeconds(CONFIG.rarity.respawnMs) + 1e-6) return false;
@@ -18258,7 +18708,7 @@ function rarityValidateAccounts(source = state, allowLegacyCapacity = false) {
     }
     for (const [type, grades] of Object.entries(account.reserve)) for (let grade = 0; grade < 6; grade++) if ((ownershipCounts[type + ':' + grade] || 0) + grades[grade].count > max) return false;
   }
-  for (const u of source.units || []) if (u.rarityOwned && (!allUIDs.has(u.rarityUID) || !allEntities.has(u.id))) return false;
+  for (const u of source.units || []){if (u.rarityOwned && (!allUIDs.has(u.rarityUID) || !allEntities.has(u.id))) return false;yield}
   return true;
 }
 
@@ -18981,13 +19431,14 @@ function rarityAutoFusionTick(dt = 0) {
 const rarityPerformanceLegacy={radius,moaBodyRadius,worldWalls,bloomSpatialRecords};
 radius=function(u){
  if(u?.rivalLeader)return u.size||CONFIG.mother.size;
- const base=u.type==='objective'||u.type==='mother'?(u.size||CONFIG.mother.size):CONFIG.units[u.type].size*(u.elite?CONFIG.combat.eliteSize:1);
- return u.permanentRank?base*permanentGrowthScale(u.permanentRank):base*rarityScale(u);
+ const type=u.type,base=type==='objective'||type==='mother'?(u.size||CONFIG.mother.size):CONFIG.units[type].size*(u.elite?CONFIG.combat.eliteSize:1);
+ if(u.permanentRank)return base*permanentGrowthScale(u.permanentRank);
+ const grade=u.rarityGrade;return base*(type==='mother'||type==='objective'?1:CONFIG.rarity.visualScale[Number.isInteger(grade)?grade:0]);
 };
 moaBodyRadius=function(u){
  if(u?.rivalLeader)return (u.size||CONFIG.mother.size)*CONFIG.moaPhysics.motherBodyScale;
- if(u.type==='mother'||u.type==='objective'||u.permanentRank)return rarityPerformanceLegacy.moaBodyRadius(u);
- return CONFIG.units[u.type].size*(u.elite?CONFIG.combat.eliteSize:1)*CONFIG.moaPhysics.unitBodyScale*rarityScale(u);
+ const type=u.type;if(type==='mother'||type==='objective'||u.permanentRank)return rarityPerformanceLegacy.moaBodyRadius(u);
+ const grade=u.rarityGrade;return CONFIG.units[type].size*(u.elite?CONFIG.combat.eliteSize:1)*CONFIG.moaPhysics.unitBodyScale*CONFIG.rarity.visualScale[Number.isInteger(grade)?grade:0];
 };
 bloomSpatialRecords=function(root){
  const out=[],seen=new Set(),stack=[root];
@@ -19016,11 +19467,11 @@ pointClear=function(x,y,pad){
 };
 // Same finite-number predicate, with local intrinsic access in a hot helper.
 spatialAnchor=function(o,x,y,z,refresh=false,fallback){
- if(!o||!Number.isFinite(o[x])||!Number.isFinite(o[y]))return;
+ if(!o)return;const px=o[x],py=o[y];if(!Number.isFinite(px)||!Number.isFinite(py))return;
  let fields=spatialAnchors.get(o);if(!fields){fields={};spatialAnchors.set(o,fields)}
- const old=fields[z],moved=old&&(old.x!==o[x]||old.y!==o[y]);
- if(o[z]===undefined||refresh&&moved)o[z]=fallback===undefined?spatialGround(o[x],o[y]):fallback;
- if(old){old.x=o[x];old.y=o[y]}else fields[z]={x:o[x],y:o[y]};
+ const old=fields[z],moved=old&&(old.x!==px||old.y!==py);
+ if(o[z]===undefined||refresh&&moved)o[z]=fallback===undefined?spatialGround(px,py):fallback;
+ if(old){old.x=px;old.y=py}else fields[z]={x:px,y:py};
 };
 const rarityFinite=Number.isFinite;
 spatialUnitAnchors=function(u,refresh=false){
@@ -19047,26 +19498,43 @@ spatialUnitAnchors=function(u,refresh=false){
  const a=u.aggro;
  if(a){const target=idMap.get(u.target);spatialAnchor(a,'x','y','z',refresh,target&&a.x===target.x&&a.y===target.y?spatialHeight(target):undefined)}
  const c=u.attackController;
- if(c){spatialAnchor(c,'x','y','z',refresh);spatialAnchor(c,'fromX','fromY','fromZ',refresh)}
+ if(c){
+  // Attack controllers always use these two anchors. Static property reads and
+  // one shared WeakMap lookup preserve the generic helper's exact field order.
+  let anchors=spatialAnchors.get(c);const x=c.x,y=c.y;
+  if(rarityFinite(x)&&rarityFinite(y)){
+   if(!anchors){anchors={};spatialAnchors.set(c,anchors)}
+   const old=anchors.z,moved=old&&(old.x!==x||old.y!==y);
+   if(c.z===undefined||refresh&&moved)c.z=spatialGround(x,y);
+   if(old){old.x=x;old.y=y}else anchors.z={x,y};
+  }
+  const fromX=c.fromX,fromY=c.fromY;
+  if(rarityFinite(fromX)&&rarityFinite(fromY)){
+   if(!anchors){anchors={};spatialAnchors.set(c,anchors)}
+   const old=anchors.fromZ,moved=old&&(old.x!==fromX||old.y!==fromY);
+   if(c.fromZ===undefined||refresh&&moved)c.fromZ=spatialGround(fromX,fromY);
+   if(old){old.x=fromX;old.y=fromY}else anchors.fromZ={x:fromX,y:fromY};
+  }
+ }
 };
 spatialUnit=function(u,followTerrain=false){
- if(!u||!rarityFinite(u.x)||!rarityFinite(u.y))return u;
- let old=spatialUnits.get(u);
- if(u.z!==undefined&&!rarityFinite(u.z))throw new TypeError('z must be finite');
- if(u.groundZ!==undefined&&!rarityFinite(u.groundZ))throw new TypeError('groundZ must be finite');
- if(u.airHeight!==undefined&&!rarityFinite(u.airHeight))throw new TypeError('airHeight must be finite');
+ if(!u)return u;const x=u.x,y=u.y;if(!rarityFinite(x)||!rarityFinite(y))return u;
+ let old=spatialUnits.get(u),z=u.z,groundZ=u.groundZ,airHeight=u.airHeight;
+ if(z!==undefined&&!rarityFinite(z))throw new TypeError('z must be finite');
+ if(groundZ!==undefined&&!rarityFinite(groundZ))throw new TypeError('groundZ must be finite');
+ if(airHeight!==undefined&&!rarityFinite(airHeight))throw new TypeError('airHeight must be finite');
  if(!old){
-  if(u.groundZ===undefined)u.groundZ=u.z!==undefined&&u.airHeight!==undefined?u.z-u.airHeight:spatialGround(u.x,u.y);
-  if(u.airHeight===undefined)u.airHeight=u.z===undefined?spatialAir(u):u.z-u.groundZ;
-  if(u.z===undefined)u.z=u.groundZ+u.airHeight;
-  if(Math.abs(u.z-u.groundZ-u.airHeight)>1e-9*Math.max(1,Math.abs(u.z)))throw new TypeError('Contradictory actor heights');
-  if(followTerrain){u.groundZ=spatialGround(u.x,u.y);u.z=u.groundZ+u.airHeight}
-  old={x:u.x,y:u.y,z:u.z};spatialUnits.set(u,old);
+  if(groundZ===undefined)u.groundZ=groundZ=z!==undefined&&airHeight!==undefined?z-airHeight:spatialGround(x,y);
+  if(airHeight===undefined)u.airHeight=airHeight=z===undefined?spatialAir(u):z-groundZ;
+  if(z===undefined)u.z=z=groundZ+airHeight;
+  if(Math.abs(z-groundZ-airHeight)>1e-9*Math.max(1,Math.abs(z)))throw new TypeError('Contradictory actor heights');
+  if(followTerrain){u.groundZ=groundZ=spatialGround(x,y);u.z=z=groundZ+airHeight}
+  old={x,y,z};spatialUnits.set(u,old);
  }else{
-  const changedZ=u.z!==old.z;
-  if(followTerrain&&(old.x!==u.x||old.y!==u.y))u.groundZ=spatialGround(u.x,u.y);
-  if(changedZ)u.airHeight=u.z-u.groundZ;
-  u.z=u.groundZ+u.airHeight;old.x=u.x;old.y=u.y;old.z=u.z;
+  const changedZ=z!==old.z;
+  if(followTerrain&&(old.x!==x||old.y!==y))u.groundZ=groundZ=spatialGround(x,y);
+  if(changedZ)u.airHeight=airHeight=z-groundZ;
+  u.z=groundZ+airHeight;old.x=x;old.y=y;old.z=u.z;
  }
  spatialUnitAnchors(u,followTerrain);return u;
 };
@@ -19471,7 +19939,7 @@ stepGroundArc=function(p,dt){if(p.finished)return;const owner=p.patternOwned?idM
 reset=function(...args){const s=openWorldCore.reset(...args);s.campaign.openWorld={schema:CONFIG.openWorld.schema,deathRegion:0};s.campaign.parcels=CONFIG.rectWorld.rooms.map(()=>true);for(const c of s.camps)c.enabled=true;const p=openWorldRegionSpawn(0);s.mother.x=s.mother.worldX=p.x;s.mother.y=s.mother.worldY=p.y;spatialUnit(s.mother,true);rarityRecall(-1);rebuildGrid();resetIdleAuto();return s};
 defeat=function(...args){if(!state.dead){state.campaign.openWorld=state.campaign.openWorld||{schema:1};state.campaign.openWorld.deathRegion=Math.max(0,regionAt(state.mother.x,state.mother.y))}return openWorldCore.defeat(...args)};
 recover=function(...args){const result=openWorldCore.recover(...args);if(result){rarityRecall(-1);rebuildGrid();resetPresentation();save()}return result};
-rarityValidateState=function(v,...args){const o=v?.campaign?.openWorld;if(!o||o.schema!==CONFIG.openWorld.schema||!Number.isInteger(o.deathRegion)||o.deathRegion<0||o.deathRegion>=CONFIG.rectWorld.rooms.length||v.campaign.parcels?.length!==5||v.campaign.parcels.some(x=>x!==true))return false;return openWorldCore.rarityValidateState(v,...args)};
+rarityValidateState=bloomValidationFromSteps(function*(v,...args){const o=v?.campaign?.openWorld;if(!o||o.schema!==CONFIG.openWorld.schema||!Number.isInteger(o.deathRegion)||o.deathRegion<0||o.deathRegion>=CONFIG.rectWorld.rooms.length||v.campaign.parcels?.length!==5||v.campaign.parcels.some(x=>x!==true))return false;return yield*openWorldCore.rarityValidateState.steps(v,...args)});
 
 // Soft overlapping elevations cross population ownership lines. Their compact
 // C1 profiles retain one continuous support surface for movement and aiming.
@@ -19728,13 +20196,14 @@ drawUnit=function(u){if(!residentIs(u))return residentCore.drawUnit(u);if(u.hp<=
 };
 drawProjectedProjectile=function(source){if(!source.residentSeed)return residentCore.drawProjectedProjectile(source);const p=presentationPose(source,'projectile');projectionBillboard(ctx,p.x,p.y,p.z);const a=WorldProjection.angle(source.angle),r=source.shotRadius;ellipse(ctx,p.x,p.y,r,r*.7,a,source.stage==='return'?'#f6a282':'#e9cf87');ellipse(ctx,p.x-2,p.y-2,r*.37,r*.25,a,'#fff4cd');ctx.restore()};
 
-function residentBossValidate(v,shots=null){
+function residentBossValidate(v,shots=null){return bloomDrainValidation(residentBossValidateSteps(v,shots))}
+function *residentBossValidateSteps(v,shots=null){
  const r=v?.residentBoss,finite=n=>typeof n==='number'&&Number.isFinite(n),nat=n=>Number.isSafeInteger(n)&&n>=0,point=p=>p&&finite(p.x)&&finite(p.y),xyz=p=>point(p)&&finite(p.z);
  if(!r||r.schema!==1||r.id!==CONFIG.residentBoss.id||!['dormant','engaged','returning','dead'].includes(r.status)||!point(r.habitat)||!finite(r.habitat.radius)||r.habitat.radius<=0||!nat(r.habitat.region)||r.habitat.region>=CONFIG.rectWorld.rooms.length)return false;
  if(!['respawnRemainingMs','outOfCombatMs','ownerOutsideMs'].every(k=>bloomPositiveMs(r[k]))||!['unitId','generation','tick','recallCount','engagedAtTick','engagementCount'].every(k=>nat(r[k]))||!['armySuppressed','manualPoint','manualRoll','manualThisTick'].every(k=>typeof r[k]==='boolean')||!point(r.stepStart)||!point(r.manualIntent)||!['none','point','axes','roll'].includes(r.manualIntent.kind)||!nat(r.manualIntent.tick)||typeof r.reason!=='string')return false;
- if(!Array.isArray(r.combatants)||new Set(r.combatants).size!==r.combatants.length||r.combatants.some(id=>!Number.isSafeInteger(id)||id<0&&!WorldPlayers.byAccount(id,v)))return false;
- const units=v.units.filter(residentIs);if(units.filter(u=>u.hp>0).length!==(r.status==='dead'?0:1))return false;
- for(const u of units){if(u.id!==r.unitId||u.residentBoss!==r.id||u.rarityGrade!==CONFIG.residentBoss.grade||u.residentGeneration!==r.generation||u.type!==CONFIG.residentBoss.species||u.rarityUID||u.rivalLeader||u.rivalOwner||u.variant!=='ordinary'||!u.boss||u.elite||u.team!=='enemy'||u.camp!==-1||!u.attackController||!validAttackController(u.attackController))return false;const c=u.attackController;
+ if(!Array.isArray(r.combatants)||!(yield*bloomValidationUnique(r.combatants))||!(yield*bloomValidationEvery(r.combatants,id=>Number.isSafeInteger(id)&&!(id<0&&!WorldPlayers.byAccount(id,v)))))return false;
+ const units=[];let alive=0;for(const u of v.units){if(residentIs(u)){units.push(u);if(u.hp>0)alive++}yield}if(alive!==(r.status==='dead'?0:1))return false;
+ for(const u of units){yield;if(u.id!==r.unitId||u.residentBoss!==r.id||u.rarityGrade!==CONFIG.residentBoss.grade||u.residentGeneration!==r.generation||u.type!==CONFIG.residentBoss.species||u.rarityUID||u.rivalLeader||u.rivalOwner||u.variant!=='ordinary'||!u.boss||u.elite||u.team!=='enemy'||u.camp!==-1||!u.attackController||!validAttackController(u.attackController))return false;const c=u.attackController;
   if(c.seedStage!==undefined&&!['startup','outbound','linger','recallWarning','return','recovery'].includes(c.seedStage))return false;
   if(c.seedSequence!==undefined&&!nat(c.seedSequence))return false;
   if(c.seedEndpoints!==undefined&&(!Array.isArray(c.seedEndpoints)||c.seedEndpoints.length!==CONFIG.residentBoss.pattern.seedOffsets.length||c.seedEndpoints.some(p=>!xyz(p)||!finite(p.angle))))return false;
@@ -19742,11 +20211,12 @@ function residentBossValidate(v,shots=null){
   if(c.returnTargets!==undefined&&(!Array.isArray(c.returnTargets)||c.returnTargets.some(p=>!xyz(p)||!nat(p.index))))return false;
  }
  if(!r.rewardLedger||typeof r.rewardLedger!=='object'||Array.isArray(r.rewardLedger))return false;
- for(const [key,e] of Object.entries(r.rewardLedger))if(!e||e.key!==key||key!==r.id+':'+e.generation||!nat(e.generation)||e.generation<1||e.generation>r.generation||!WorldPlayers.byAccount(e.owner,v)&&e.owner!==-1||e.type!==CONFIG.residentBoss.species||!nat(e.grade)||e.grade!==CONFIG.residentBoss.grade-1||!nat(e.count)||e.count<2||!xyz(e)||!nat(e.defeatedTick)||e.defeatedTick>r.tick||!nat(e.awardedTick)||e.awardedTick>r.tick||typeof e.awarded!=='boolean'||e.awarded&&e.awardedTick<e.defeatedTick)return false;
- if(shots)for(const p of shots)if(p.residentSeed){if(p.residentSeed!==true||p.committedFlight!==true||p.arcFlight!==true||p.u!==r.unitId||p.type!==CONFIG.residentBoss.species||p.team!=='enemy'||!['outbound','linger','recallWarning','return'].includes(p.stage)||!['stageElapsedMs','flightDurationMs','lingerMs','warningMs'].every(k=>bloomPositiveMs(p[k]))||!['sequence','seedIndex'].every(k=>nat(p[k]))||p.flightDurationMs<1||p.seedIndex>=CONFIG.residentBoss.pattern.seedOffsets.length||p.stageElapsedMs>(p.stage==='linger'?p.lingerMs:p.stage==='recallWarning'?p.warningMs:p.flightDurationMs)||!['x','y','z','startX','startY','startZ','aimX','aimY','aimZ','outboundX','outboundY','outboundZ','returnX','returnY','returnZ','duration','age','amount','baseAmount','returnSpeed','returnDamageMultiplier','shotRadius','arcHeight'].every(k=>finite(p[k]))||p.duration<=0||p.amount<0||p.returnSpeed<=0||p.shotRadius<=0||!['hitIds','outboundHitIds','returnHitIds'].every(k=>Array.isArray(p[k])&&p[k].every(Number.isSafeInteger)&&new Set(p[k]).size===p[k].length))return false;}
+ for(const [key,e] of Object.entries(r.rewardLedger)){yield;if(!e||e.key!==key||key!==r.id+':'+e.generation||!nat(e.generation)||e.generation<1||e.generation>r.generation||!WorldPlayers.byAccount(e.owner,v)&&e.owner!==-1||e.type!==CONFIG.residentBoss.species||!nat(e.grade)||e.grade!==CONFIG.residentBoss.grade-1||!nat(e.count)||e.count<2||!xyz(e)||!nat(e.defeatedTick)||e.defeatedTick>r.tick||!nat(e.awardedTick)||e.awardedTick>r.tick||typeof e.awarded!=='boolean'||e.awarded&&e.awardedTick<e.defeatedTick)return false;}
+ if(shots)for(const p of shots){yield;if(p.residentSeed){if(p.residentSeed!==true||p.committedFlight!==true||p.arcFlight!==true||p.u!==r.unitId||p.type!==CONFIG.residentBoss.species||p.team!=='enemy'||!['outbound','linger','recallWarning','return'].includes(p.stage)||!['stageElapsedMs','flightDurationMs','lingerMs','warningMs'].every(k=>bloomPositiveMs(p[k]))||!['sequence','seedIndex'].every(k=>nat(p[k]))||p.flightDurationMs<1||p.seedIndex>=CONFIG.residentBoss.pattern.seedOffsets.length||p.stageElapsedMs>(p.stage==='linger'?p.lingerMs:p.stage==='recallWarning'?p.warningMs:p.flightDurationMs)||!['x','y','z','startX','startY','startZ','aimX','aimY','aimZ','outboundX','outboundY','outboundZ','returnX','returnY','returnZ','duration','age','amount','baseAmount','returnSpeed','returnDamageMultiplier','shotRadius','arcHeight'].every(k=>finite(p[k]))||p.duration<=0||p.amount<0||p.returnSpeed<=0||p.shotRadius<=0||!['hitIds','outboundHitIds','returnHitIds'].every(k=>Array.isArray(p[k])&&p[k].every(Number.isSafeInteger)&&new Set(p[k]).size===p[k].length))return false;}
+ }
  return true;
 }
-rarityValidateState=function(v,...args){return residentCore.rarityValidateState(v,...args)&&residentBossValidate(v)};
+rarityValidateState=bloomValidationFromSteps(function*(v,...args){return (yield*residentCore.rarityValidateState.steps(v,...args))&&(yield*residentBossValidateSteps(v))});
 Object.assign(AttackPatterns,{begin:beginAttackPattern,canStart:patternCanStart});
 const ResidentBoss=globalThis.ResidentBoss={config:CONFIG.residentBoss,state:residentState,unit:residentUnit,habitat:residentHabitat,inside:residentInside,is:residentIs,validate:residentBossValidate,canFight:residentCanFight,draw:residentDrawWorld,
  inspect(){const r=residentState(),u=residentUnit();return{state:structuredClone(r),unit:u?{id:u.id,type:u.type,hp:u.hp,maxHp:u.maxHp,x:u.x,y:u.y,z:u.z,grade:rarityGrade(u),controller:structuredClone(u.attackController)}:null,shots:projectiles.filter(p=>p.residentSeed).map(p=>structuredClone(p))}}};
@@ -19784,18 +20254,25 @@ function visibleHuntSpec(owner=state.mother){
  if(WorldPlayers.forEntity(owner))return WorldPlayers.dataFor(owner).campaign.huntView||visibleHuntFromViewport(CONFIG.visibleHunt.defaultWidth,CONFIG.visibleHunt.defaultHeight,owner);
  return visibleHuntFromViewport(CONFIG.visibleHunt.rivalWidth,CONFIG.visibleHunt.rivalHeight,owner);
 }
-function visibleHuntBounds(owner=state.mother,inner=false){
- const a=visibleHuntSpec(owner),K=WorldProjection.K,width=worldLimit(),height=CONFIG.world.height,worldHalfHeight=a.halfHeight/K;
- // Same canonical camera destination as render(), without render interpolation.
- // Rival pseudo cameras remain centered on their own leader, not the player.
- const x=!!WorldPlayers.forEntity(owner)?(a.halfWidth*2>=width?width/2:clamp(owner.x,a.halfWidth,width-a.halfWidth)):owner.x;
- const y=!!WorldPlayers.forEntity(owner)?(worldHalfHeight*2>=height?height/2:clamp(owner.y,worldHalfHeight,height-worldHalfHeight)):owner.y;
- const inset=inner?a.huntInset:0,hx=a.halfWidth-a.insetX-inset,hy=a.halfHeight-a.insetY-inset;
- return{left:x-hx,right:x+hx,top:y*K-hy,bottom:y*K+hy,x,y,halfWidth:hx,halfHeight:hy};
+// Derived bounds are shared only by internal read-only checks. Every scalar that
+// affects the camera rectangle is compared, so movement, viewport changes,
+// membership/authority swaps and runtime configuration invalidate immediately.
+const visibleHuntBoundsCache=new WeakMap();
+function visibleHuntMeasuredBounds(owner=state.mother,inner=false){
+ const player=WorldPlayers.forEntity(owner),a=player?(WorldPlayers.data(player).campaign.huntView||visibleHuntFromViewport(CONFIG.visibleHunt.defaultWidth,CONFIG.visibleHunt.defaultHeight,owner)):visibleHuntFromViewport(CONFIG.visibleHunt.rivalWidth,CONFIG.visibleHunt.rivalHeight,owner);
+ const K=WorldProjection.K,width=worldLimit(),height=CONFIG.world.height,ox=owner.x,oy=owner.y,aw=a.halfWidth,ah=a.halfHeight,ix=a.insetX,iy=a.insetY,hi=a.huntInset,human=!!player;
+ let memo=visibleHuntBoundsCache.get(owner);
+ if(!memo||memo.state!==state||memo.x!==ox||memo.y!==oy||memo.width!==width||memo.height!==height||memo.K!==K||memo.aw!==aw||memo.ah!==ah||memo.ix!==ix||memo.iy!==iy||memo.hi!==hi||memo.human!==human){
+  const worldHalfHeight=ah/K,x=human?(aw*2>=width?width/2:clamp(ox,aw,width-aw)):ox,y=human?(worldHalfHeight*2>=height?height/2:clamp(oy,worldHalfHeight,height-worldHalfHeight)):oy;
+  const make=inset=>{const hx=aw-ix-inset,hy=ah-iy-inset;return{left:x-hx,right:x+hx,top:y*K-hy,bottom:y*K+hy,x,y,halfWidth:hx,halfHeight:hy}};
+  memo={state,x:ox,y:oy,width,height,K,aw,ah,ix,iy,hi,human,outer:make(0),inner:make(hi)};visibleHuntBoundsCache.set(owner,memo);
+ }
+ return inner?memo.inner:memo.outer;
 }
+function visibleHuntBounds(owner=state.mother,inner=false){return{...visibleHuntMeasuredBounds(owner,inner)}}
 function visibleHuntInside(u,owner=state.mother,inner=true){
  if(!u||!owner)return false;
- const b=visibleHuntBounds(owner,inner),p=WorldProjection.project(u.x,u.y,spatialHeight(u)),r=Math.max(4,radius(u)*CONFIG.render.spriteScale);
+ const b=visibleHuntMeasuredBounds(owner,inner),p=WorldProjection.project(u.x,u.y,spatialHeight(u)),r=Math.max(4,radius(u)*CONFIG.render.spriteScale);
  // Conservative sprite/body extents also cover projected air and hill height.
  return p.x-r>=b.left&&p.x+r<=b.right&&p.y-r>=b.top&&p.y+r<=b.bottom;
 }
@@ -19810,7 +20287,7 @@ function visibleHuntUpdateLeash(u,owner){
  }
  if(u.visibleHuntReturn)visibleHuntMarkReturn(u);
 }
-companionMovementPolicy=function(u){return WorldPlayers.forEntity(u)?PlayerArmy.policy(u):visibleHuntCore.companionMovementPolicy(u)};
+companionMovementPolicy=function(u){const p=WorldPlayers.forEntity(u);return p?PlayerArmy.policy(u,p):visibleHuntCore.companionMovementPolicy(u)};
 canTarget=function(u,t){
  if(!visibleHuntCore.canTarget(u,t))return false;
  const owner=visibleHuntOwner(u);if(!owner)return true;
@@ -19842,12 +20319,12 @@ rivalTarget=function(u,reach){
 patternCanStart=function(u,t,id){const owner=visibleHuntOwner(u);return (!owner||!u.visibleHuntReturn&&visibleHuntInside(u,owner,false)&&visibleHuntInside(t,owner,true))&&visibleHuntCore.patternCanStart(u,t,id)};
 
 reset=function(...args){const result=visibleHuntCore.reset(...args);visibleHuntApply(visibleHuntFromViewport(CONFIG.visibleHunt.defaultWidth,CONFIG.visibleHunt.defaultHeight,result.mother));return result};
-rarityValidateState=function(v,...args){
+rarityValidateState=bloomValidationFromSteps(function*(v,...args){
  const h=v?.campaign?.huntView;
  if(h!==undefined){try{if(h.schema!==CONFIG.visibleHunt.schema||Object.keys(h).length!==visibleHuntFields.length+1)return false;visibleHuntValidateCommand(h)}catch{return false}}
- if(v?.units?.some(u=>u.visibleHuntReturn!==undefined&&typeof u.visibleHuntReturn!=='boolean'))return false;
- return visibleHuntCore.rarityValidateState(v,...args);
-};
+ if(v?.units&&!(yield*bloomValidationEvery(v.units,u=>u.visibleHuntReturn===undefined||typeof u.visibleHuntReturn==='boolean')))return false;
+ return yield*visibleHuntCore.rarityValidateState.steps(v,...args);
+});
 function publishVisibleHuntView(){
  // DOM boundary only. Other transport peers consume the owner's command and
  // must never contribute their own local viewport to this owner's simulation.
@@ -20001,7 +20478,7 @@ regrowCamps=function(dt){
 };
 // Cull before any AI/combat runs, including the first tick of a legacy disk load.
 step=function(dt,input){wildRingCull();const result=wildRingCore.step(dt,input);wildRingCull();return result};
-rarityValidateState=function(v,...args){const s=v?.wildRing;if(s&&(!s||s.schema!==2||!['elapsedMs','nextQuotaMs'].every(k=>bloomPositiveMs(s[k]))||!['cursor','culled','spawned'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||!Array.isArray(s.quotas)||s.quotas.some(n=>!Number.isSafeInteger(n)||n<0)))return false;return wildRingCore.rarityValidateState(v,...args)};
+rarityValidateState=bloomValidationFromSteps(function*(v,...args){const s=v?.wildRing;if(s&&(!s||s.schema!==2||!['elapsedMs','nextQuotaMs'].every(k=>bloomPositiveMs(s[k]))||!['cursor','culled','spawned'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||!Array.isArray(s.quotas)||!(yield*bloomValidationEvery(s.quotas,n=>Number.isSafeInteger(n)&&n>=0))))return false;return yield*wildRingCore.rarityValidateState.steps(v,...args)});
 const WildSpawnRing=Object.freeze({inspect:()=>({config:{...CONFIG.wildRing},scheduler:{...wildRingState()},wild:state.units.filter(wildRingOrdinary).length,reservations:state.camps.reduce((n,c)=>n+(c.regrowth?.length||0),0)}),ordinary:wildRingOrdinary});
 CONFIG.saveExportName='bloom-open-world-save-v54.json';
 
@@ -20913,7 +21390,7 @@ const WorldMembership=(()=>{
  let freshTemplate=null;
  const actorFields=['minerals','gas','zone','maxZone','capTier','upgrades','unlocked','cards','bosses','kills','deaths','dead','won','productionPaused','productionCredit','productionCursor','stats','campaign'];
  function captureTemplate(){freshTemplate={mother:JSON.parse(JSON.stringify(state.mother)),...Object.fromEntries(actorFields.map(k=>[k,JSON.parse(JSON.stringify(state[k]))]))}}
- function apply(change){
+ function apply(change,invalidate=true){
   if(!change||!Number.isSafeInteger(change.epoch)||!Number.isSafeInteger(change.tick)||change.tick!==bloomTick||!Array.isArray(change.players)||change.players.length>CONFIG.session.maxPlayers||new Set(change.players).size!==change.players.length||change.players.some(id=>typeof id!=='string'||!id||id.length>128||['__proto__','constructor','prototype'].includes(id)))throw new TypeError('Membership boundary');
   if(state.membershipEpoch===change.epoch){const active=WorldPlayers.all().filter(p=>p.lifecycle==='active').map(p=>p.playerId);if(JSON.stringify(active)!==JSON.stringify([...change.players].sort()))throw new TypeError('Conflicting membership retry');return false;}if((state.membershipEpoch??-1)+1!==change.epoch)throw new TypeError('Membership epoch gap');
   if(!state.participants)WorldPlayers.bindInitial(change.players[0]);
@@ -20929,14 +21406,14 @@ const WorldMembership=(()=>{
    p.lifecycle='left';p.leader.hp=0;WorldPlayers.data(p).dead=true;p.leader.pendingMoa=null;
    const owned=new Set(state.units.filter(u=>u.playerId===p.playerId).map(u=>u.id));state.units=state.units.filter(u=>!owned.has(u.id));for(const id of owned)idMap.delete(id);delete state.rarityAccounts[p.accountOwner];for(const shot of projectiles)if(shot.playerId===p.playerId)shot.finished=true;
   }
-  state.membershipEpoch=change.epoch;state.membershipCoordinator=change.coordinatorId||[...change.players].sort()[0];rebuildGrid();bloomSnapshotStore.invalidate();return true;
+  state.membershipEpoch=change.epoch;state.membershipCoordinator=change.coordinatorId||[...change.players].sort()[0];rebuildGrid();if(invalidate)bloomSnapshotStore.invalidate();return true;
  }
  return Object.freeze({captureTemplate,apply});
 })();
 
 const PlayerArmy=Object.freeze({
  mode(player){return WorldPlayers.data(player).campaign.permanents.mode||'hunt'},
- policy(u){const p=WorldPlayers.forEntity(u);if(!p)return companionPolicies.follow;const far=dist(u,p.leader)>Math.max(CONFIG.motion.recallRadius,900);if(far||u.visibleHuntReturn||!visibleHuntCommitted(u)&&visibleHuntNeedsReturn(u,p.leader))return companionPolicies.return;return u.rarityUID&&this.mode(p)==='hunt'?companionPolicies.hunt:companionPolicies.follow},
+ policy(u,p=WorldPlayers.forEntity(u)){if(!p)return companionPolicies.follow;const far=dist(u,p.leader)>Math.max(CONFIG.motion.recallRadius,900);if(far||u.visibleHuntReturn||!visibleHuntCommitted(u)&&visibleHuntNeedsReturn(u,p.leader))return companionPolicies.return;return u.rarityUID&&this.mode(p)==='hunt'?companionPolicies.hunt:companionPolicies.follow},
  index(player){
   let h=player.hunt;if(!h)h=player.hunt={next:0,candidates:[],claims:{},owners:{}};if(state.time<h.next)return h;
   h.next=state.time+CONFIG.permanentHunt.queryInterval;h.candidates=[];h.claims={};h.owners={};const m=player.leader,b=visibleHuntBounds(m,true),reach=Math.hypot(b.halfWidth,(b.halfHeight+CONFIG.visibleHunt.maxElevation*WorldProjection.H)/WorldProjection.K)+maxTargetRadius;
@@ -20969,7 +21446,8 @@ const WorldBoss=Object.freeze({
  * frozen export), then call before any other validator that reads participants.
  * This is read-only. It never resolves against the current global state.
  */
-function worldPlayersValidate(source) {
+function worldPlayersValidate(source){return bloomDrainValidation(worldPlayersValidateSteps(source))}
+function *worldPlayersValidateSteps(source) {
  try {
   const rec = x => x !== null && typeof x === 'object' && !Array.isArray(x);
   const finite = n => typeof n === 'number' && Number.isFinite(n);
@@ -20982,10 +21460,11 @@ function worldPlayersValidate(source) {
   // separately in bloomValidate, so an empty/null v3 table cannot pass as legacy.
   if (!own(source, 'participants')) return true;
   if (!rec(source.participants) || !integer(source.membershipEpoch, -1) || !integer(source.nextPlayerEntity, Number.MIN_SAFE_INTEGER, -2)) return false;
-  const entries = Object.entries(source.participants), owners = new Map(), players = new Map();
+  const entries = Object.entries(source.participants), owners = new Map(), players = new Map(), participantRecords=new Set();
   if (!entries.length || !Array.isArray(source.units) || !integer(source.nextId)) return false;
   let primary = 0, active = 0, smallestOwner = -1;
   for (const [id,p] of entries) {
+   yield;
    if (!id || id.length > 128 || !rec(p) || p.playerId !== id || !integer(p.accountOwner, Number.MIN_SAFE_INTEGER, -1) || owners.has(p.accountOwner)) return false;
    if (!['active','left'].includes(p.lifecycle) || !integer(p.admission, 0, Math.max(0,source.membershipEpoch))) return false;
    if (p.lifecycle === 'active') active++;
@@ -20996,48 +21475,49 @@ function worldPlayersValidate(source) {
    else if (!rec(p.data) || p.data === source || p.data.mother !== p.leader) return false;
    if (p.startRegion !== undefined && !integer(p.startRegion,0,CONFIG.openWorld.regionSpawns.length-1)) return false;
    if (p.spawn !== undefined && (!point(p.spawn) || !integer(p.spawn.startRegion,0,CONFIG.openWorld.regionSpawns.length-1) || typeof p.spawn.layout !== 'string' || p.startRegion !== p.spawn.startRegion)) return false;
-   owners.set(p.accountOwner,p); players.set(id,p); smallestOwner = Math.min(smallestOwner,p.accountOwner);
+   owners.set(p.accountOwner,p); players.set(id,p);participantRecords.add(p); smallestOwner = Math.min(smallestOwner,p.accountOwner);
   }
   if (primary !== 1 || active > CONFIG.session.maxPlayers || source.nextPlayerEntity >= smallestOwner) return false;
   // Historical leavers may remain, so cap active participants, not table length.
   // Targets may outlive removed entities or a re-admitted player's old ID.
   // Validate the allocated ID range, not current liveness.
   const ref = id => integer(id, Number.MIN_SAFE_INTEGER) && (id >= 0 ? id <= source.nextId : id > source.nextPlayerEntity);
-  const table = (x, key, value) => rec(x) && Object.entries(x).every(([k,v]) => key(k) && value(v));
+  function *table(x,key,value){if(!rec(x))return false;for(const k of Object.keys(x)){if(!key(k)||!value(x[k]))return false;yield}return true}
   const numericKey = (k, min = Number.MIN_SAFE_INTEGER) => String(Number(k)) === k && integer(Number(k), min) && ref(Number(k));
-  const navigation = n => rec(n) && (n.goal === null || point(n.goal)) && Array.isArray(n.waypoints) && n.waypoints.every(point) && integer(n.index) && number(n.stuckMs) && number(n.best) &&
-   (n.goal === null ? n.waypoints.length === 0 && n.index === 0 : n.waypoints.length > 0 && n.index < n.waypoints.length);
+  function *navigation(n){return rec(n) && (n.goal === null || point(n.goal)) && Array.isArray(n.waypoints) && (yield*bloomValidationEvery(n.waypoints,point)) && integer(n.index) && number(n.stuckMs) && number(n.best) &&
+   (n.goal === null ? n.waypoints.length === 0 && n.index === 0 : n.waypoints.length > 0 && n.index < n.waypoints.length)}
   const controller = a => rec(a) && typeof a.enabled === 'boolean' && number(a.idleMs,0,CONFIG.autoHunt.idleMs) && integer(a.room,-1,CONFIG.rectWorld.rooms.length-1) && ref(a.target) && finite(a.query) && typeof a.moving === 'boolean' && typeof a.status === 'string';
-  const hunt = h => h === undefined || rec(h) && number(h.next) && Array.isArray(h.candidates) && h.candidates.every(id=>id!==0&&ref(id)) && new Set(h.candidates).size===h.candidates.length &&
-   table(h.claims,k=>numericKey(k)&&Number(k)!==0,v=>integer(v)) && table(h.owners,k=>numericKey(k,1),v=>v!==0&&ref(v));
+  function *hunt(h){return h === undefined || rec(h) && number(h.next) && Array.isArray(h.candidates) && (yield*bloomValidationEvery(h.candidates,id=>id!==0&&ref(id))) && (yield*bloomValidationUnique(h.candidates)) &&
+   (yield*table(h.claims,k=>numericKey(k)&&Number(k)!==0,v=>integer(v))) && (yield*table(h.owners,k=>numericKey(k,1),v=>v!==0&&ref(v)))}
   const actorFields = ['minerals','gas','zone','maxZone','capTier','upgrades','unlocked','cards','bosses','kills','deaths','dead','won','productionPaused','productionCredit','productionCursor','stats','campaign'];
   const requiredStats = ['produced','spentM','spentG','rewardM','rewardG','losses','attacks','healing','shieldsBlocked','leaps','deployShots','chainHits','hookPulls','airHits','detected'];
   const sharedObjects = new Map();
-  function privateGraph(root, playerId) {
-   const seen = new Set(), stack = [root];
+  function *privateGraph(root, playerId) {
+   const seen = new Set(), stack = [root];let work=0;
    while (stack.length) {
-    const x = stack.pop();
+    const x = stack.pop();if((++work&15)===0)yield;
     if (typeof x === 'number' && !finite(x)) return false;
     if (!x || typeof x !== 'object') continue;
     if (seen.has(x)) continue; seen.add(x);
     const prior = sharedObjects.get(x); if (prior !== undefined && prior !== playerId) return false;
     sharedObjects.set(x,playerId);
     // Reject world roots or participant records inside personal/controller data.
-    if (x === source || x === source.participants || x === source.units || entries.some(([,p])=>x===p)) return false;
-    for (const value of Object.values(x)) stack.push(value);
+    if (x === source || x === source.participants || x === source.units || participantRecords.has(x)) return false;
+    for(const key of Object.keys(x)){stack.push(x[key]);if((++work&15)===0)yield}yield;
    }
    return true;
   }
   for (const [id,p] of entries) {
+   yield;
    const d = p.data === null ? source : p.data, m = p.leader, c = d.campaign;
    if (!actorFields.every(k=>own(d,k)) || p.data !== null && Object.keys(d).some(k=>!actorFields.includes(k)&&k!=='mother')) return false;
    if (!number(d.minerals,0,CONFIG.economy.maxResource) || !number(d.gas,0,CONFIG.economy.maxResource) || !integer(d.zone,0,CONFIG.zones.length-1) || !integer(d.maxZone,0,CONFIG.zones.length-1) || !integer(d.capTier,0,CONFIG.progression.caps.length-1)) return false;
    if (!integer(d.deaths) || !['dead','won','productionPaused'].every(k=>typeof d[k]==='boolean') || !number(d.productionCredit) || !integer(d.productionCursor,0,Math.max(0,d.cards?.length-1))) return false;
    if (!rec(d.upgrades) || !['attack','health','bounty','production','ability'].every(k=>integer(d.upgrades[k]))) return false;
-   if (!Array.isArray(d.unlocked) || new Set(d.unlocked).size!==d.unlocked.length || d.unlocked.some(t=>!friendlyTypes.includes(t))) return false;
-   if (!Array.isArray(d.cards) || d.cards.some(q=>!rec(q)||(q.type!==null&&!friendlyTypes.includes(q.type))||!number(q.progress)||typeof q.blocked!=='string')) return false;
+   if (!Array.isArray(d.unlocked) || !(yield*bloomValidationUnique(d.unlocked)) || d.unlocked.some(t=>!friendlyTypes.includes(t))) return false;
+   if (!Array.isArray(d.cards) || !(yield*bloomValidationEvery(d.cards,q=>rec(q)&&(q.type===null||friendlyTypes.includes(q.type))&&number(q.progress)&&typeof q.blocked==='string'))) return false;
    if (!Array.isArray(d.bosses) || d.bosses.length!==CONFIG.zones.length || d.bosses.some(v=>typeof v!=='boolean') || !Array.isArray(d.kills) || d.kills.length!==CONFIG.zones.length || d.kills.some(v=>!integer(v))) return false;
-   if (!rec(d.stats) || !requiredStats.every(k=>number(d.stats[k])) || !Object.values(d.stats).every(v=>number(v))) return false;
+   if (!rec(d.stats) || !requiredStats.every(k=>number(d.stats[k])) || !(yield*bloomValidationEvery(Object.values(d.stats),v=>number(v)))) return false;
    if (!rec(c) || !validAbilityState(c.abilities) || !validGrowth(c.growthCards) || !rec(c.permanents) || !['hunt','follow'].includes(c.permanents.mode) || !rec(c.permanents.records)) return false;
    if (!rec(c.collection) || !friendlyTypes.every(t=>integer(c.collection[t])) || Object.entries(c.collection).some(([t,n])=>!friendlyTypes.includes(t)||!integer(n))) return false;
    if (!rec(c.openWorld) || c.openWorld.schema!==1 || !integer(c.openWorld.deathRegion,0,CONFIG.campaign.grounds.length-1)) return false;
@@ -21045,17 +21525,17 @@ function worldPlayersValidate(source) {
    visibleHuntValidateCommand(c.huntView);
    if (!point(m) || !number(m.maxHp,Number.MIN_VALUE) || !number(m.hp,0,m.maxHp) || m.maxHp!==moaLevelHP(CONFIG.mother.hp,c.abilities.level) || !number(m.size,Number.MIN_VALUE) || !finite(m.angle)) return false;
    if (d.dead !== (m.hp===0) || p.lifecycle==='left' && !d.dead) return false;
-   if (!navigation(p.navigation) || !controller(p.auto) || !hunt(p.hunt) || p.stepStart!==undefined&&!point(p.stepStart) || p.manualThisTick!==undefined&&typeof p.manualThisTick!=='boolean') return false;
+   if (!(yield*navigation(p.navigation)) || !controller(p.auto) || !(yield*hunt(p.hunt)) || p.stepStart!==undefined&&!point(p.stepStart) || p.manualThisTick!==undefined&&typeof p.manualThisTick!=='boolean') return false;
    for (const k of ['moaCooldown','attackPose','convertGlow','stun','rollCooldownMs','rollRemainingMs','rollInvulnerableMs']) if (!number(m[k])) return false;
    if (m.rollRemainingMs>CONFIG.moaRoll.durationMs+1e-7 || m.rollInvulnerableMs>CONFIG.moaRoll.invulnerableMs+1e-7) return false;
    for (const k of ['rollX','rollY','rollLastX','rollLastY']) if (m[k]!==undefined&&!number(m[k],-1-1e-7,1+1e-7)) return false;
    if (!ref(m.moaTarget) || m.target!==undefined&&!ref(m.target)) return false;
    if (m.pendingMoa!==null&&m.pendingMoa!==undefined) { const q=m.pendingMoa;if(!rec(q)||!ref(q.target)||q.target===0||q.ranged!==true||!number(q.left)||!number(q.total,Number.MIN_VALUE)||q.left>q.total+1e-7||!finite(q.angle))return false; }
-   if (m.auxCooldowns!==undefined&&!table(m.auxCooldowns,k=>own(CONFIG.weaponCards.weapons,k),v=>number(v))) return false;
-   if (m.gearChannels!==undefined&&!table(m.gearChannels,k=>own(CONFIG.weaponCards.weapons,k),v=>integer(v,1))) return false;
-   if (m.auxScheduleMs!==undefined&&!table(m.auxScheduleMs,k=>own(CONFIG.weaponCards.weapons,k),q=>rec(q)&&number(q.nextFireMs)&&number(q.displaySeconds)&&typeof q.readyIdle==='boolean'&&(q.lastLaunchMs===undefined||number(q.lastLaunchMs)))) return false;
-   if (!privateGraph(m,id) || !privateGraph(p.auto,id) || !privateGraph(p.navigation,id) || !privateGraph(p.hunt,id)) return false;
-   for (const key of actorFields) if (!privateGraph(d[key],id)) return false;
+   if (m.auxCooldowns!==undefined&&!(yield*table(m.auxCooldowns,k=>own(CONFIG.weaponCards.weapons,k),v=>number(v)))) return false;
+   if (m.gearChannels!==undefined&&!(yield*table(m.gearChannels,k=>own(CONFIG.weaponCards.weapons,k),v=>integer(v,1)))) return false;
+   if (m.auxScheduleMs!==undefined&&!(yield*table(m.auxScheduleMs,k=>own(CONFIG.weaponCards.weapons,k),q=>rec(q)&&number(q.nextFireMs)&&number(q.displaySeconds)&&typeof q.readyIdle==='boolean'&&(q.lastLaunchMs===undefined||number(q.lastLaunchMs))))) return false;
+   if (!(yield*privateGraph(m,id)) || !(yield*privateGraph(p.auto,id)) || !(yield*privateGraph(p.navigation,id)) || !(yield*privateGraph(p.hunt,id))) return false;
+   for (const key of actorFields) if (!(yield*privateGraph(d[key],id))) return false;
   }
   function unitOwner(u) {
    if (!rec(u) || !integer(u.id,1,source.nextId)) return false;
@@ -21066,13 +21546,13 @@ function worldPlayersValidate(source) {
    } else if (u.playerId!==undefined || u.rarityOwner<0) return false;
    return true;
   }
-  if (!source.units.every(unitOwner)) return false;
+  if (!(yield*bloomValidationEvery(source.units,unitOwner))) return false;
   if (!rec(source.rarityAccounts)) return false;
-  for (const [key,a] of Object.entries(source.rarityAccounts)) {
+  for (const [key,a] of Object.entries(source.rarityAccounts)) {yield;
    if (!rec(a) || String(a.owner)!==key || !Array.isArray(a.active)) return false;
    const p=owners.get(a.owner);
    if (a.owner<0&&!p || p&&a.owner!==p.accountOwner) return false;
-   for (const r of a.active) if (!rec(r) || r.body && (!unitOwner(r.body) || p&&r.body.playerId!==p.playerId)) return false;
+   for (const r of a.active){if (!rec(r) || r.body && (!unitOwner(r.body) || p&&r.body.playerId!==p.playerId)) return false;yield}
   }
   for (const p of owners.values()) if (p.lifecycle==='active' && !own(source.rarityAccounts,String(p.accountOwner))) return false;
   return true;
@@ -21093,36 +21573,48 @@ function bloomCapture(skipSpatial=false){
  rect:{state:rectFriendState,time:rectFriendTime,mask:rectFriendMask},rangedReach:CONFIG.moa.rangedReach};
  return {schema:state.participants?'bloom-webgl-shared-ms-v3':'bloom-webgl-live-ms-v2',timeUnit:'ms',tickRate:CONFIG.sim.tickRate,tick:bloomTick,seed:bloomSeed,world,spatial:skipSpatial?[]:bloomSpatialRecords(world)};
 }
-function bloomValidate(c,tick,allowLegacyCapacity=false){
+function bloomValidate(c,tick,allowLegacyCapacity=false){return bloomDrainValidation(bloomValidateSteps(c,tick,allowLegacyCapacity))}
+function *bloomValidateSteps(c,tick,allowLegacyCapacity=false){
  const record=x=>x!==null&&typeof x==='object'&&!Array.isArray(x),finite=x=>typeof x==='number'&&Number.isFinite(x),integer=x=>Number.isSafeInteger(x),nonnegative=x=>integer(x)&&x>=0;
- const pairs=(xs,key,value)=>Array.isArray(xs)&&xs.every(p=>Array.isArray(p)&&p.length===2&&key(p[0])&&value(p[1]))&&new Set(xs.map(p=>p[0])).size===xs.length;
+ function *pairs(xs,key,value){if(!Array.isArray(xs))return false;const seen=new Set();for(let i=0;i<xs.length;i++){const p=xs[i];if(i in xs&&(!Array.isArray(p)||p.length!==2||!key(p[0])||!value(p[1])))return false;const k=i in xs?p[0]:undefined;if(seen.has(k))return false;seen.add(k);yield}return true}
  if(!record(c)||!['bloom-webgl-live-ms-v2','bloom-webgl-shared-ms-v3'].includes(c.schema)||c.timeUnit!=='ms'||c.tickRate!==CONFIG.sim.tickRate||!nonnegative(c.tick)||(tick!==undefined&&c.tick!==tick)||!nonnegative(c.seed)||c.seed>0xffffffff||!record(c.world)||!Array.isArray(c.spatial))return false;
  const w=c.world,h=w.hunt,g=w.grids,r=w.rect;
- if(!record(w.state)||(c.schema==='bloom-webgl-shared-ms-v3')!==Object.hasOwn(w.state,'participants')||!WorldPlayers.validate(w.state))return false;
+ if(!record(w.state)||(c.schema==='bloom-webgl-shared-ms-v3')!==Object.hasOwn(w.state,'participants')||!(yield*worldPlayersValidateSteps(w.state)))return false;
  if(!record(w.state)||w.state.version!==CONFIG.version||!Array.isArray(w.state.units)||!record(w.state.mother)||w.state.mother.id!==-1||!finite(w.state.time)||w.state.time<0||!nonnegative(w.state.rng)||w.state.rng>0xffffffff||!nonnegative(w.state.nextId)||!Array.isArray(w.projectiles)||!Array.isArray(w.events)||!record(w.auto)||typeof w.auto.enabled!=='boolean'||!bloomPositiveMs(w.auto.idleMs)||w.auto.idleMs>CONFIG.autoHunt.idleMs||!integer(w.auto.room)||w.auto.room< -1||w.auto.room>=CONFIG.rectWorld.rooms.length||!nonnegative(w.abilityShotSerial)||!nonnegative(w.finisherSerial)||!(w.finisherShot===null||record(w.finisherShot))||!finite(w.permanentRetryAt)||!finite(w.rangedReach)||w.rangedReach<=0)return false;
- if(!record(w.pointNav)||!(w.pointNav.goal===null||record(w.pointNav.goal)&&finite(w.pointNav.goal.x)&&finite(w.pointNav.goal.y))||!Array.isArray(w.pointNav.waypoints)||w.pointNav.waypoints.some(p=>!record(p)||!finite(p.x)||!finite(p.y))||!nonnegative(w.pointNav.index)||(w.pointNav.goal===null?w.pointNav.waypoints.length!==0||w.pointNav.index!==0:w.pointNav.index>=w.pointNav.waypoints.length)||!bloomPositiveMs(w.pointNav.stuckMs)||!finite(w.pointNav.best))return false;
- if(!record(h)||!(h.state===null||record(h.state))||!integer(h.room)||!finite(h.next)||!Array.isArray(h.candidates)||h.candidates.some(x=>!record(x)||!integer(x.id))||!pairs(h.claims,integer,nonnegative)||!pairs(h.owners,integer,integer)||!nonnegative(h.rebuilds))return false;
- if(!record(g)||!pairs(g.grid,integer,Array.isArray)||!pairs(g.collisionGrid,integer,Array.isArray)||!pairs(g.idMap,integer,record)||!['gridColumns','gridRows','collisionColumns','collisionRows'].every(k=>nonnegative(g[k]))||!['maxTargetRadius','maxCollisionGround','maxCollisionAir'].every(k=>finite(g[k])&&g[k]>=0)||!(g.gridState===null||record(g.gridState))||!(g.gridUnits===null||Array.isArray(g.gridUnits)))return false;
+ if(!record(w.pointNav)||!(w.pointNav.goal===null||record(w.pointNav.goal)&&finite(w.pointNav.goal.x)&&finite(w.pointNav.goal.y))||!Array.isArray(w.pointNav.waypoints)||!(yield*bloomValidationEvery(w.pointNav.waypoints,p=>record(p)&&finite(p.x)&&finite(p.y)))||!nonnegative(w.pointNav.index)||(w.pointNav.goal===null?w.pointNav.waypoints.length!==0||w.pointNav.index!==0:w.pointNav.index>=w.pointNav.waypoints.length)||!bloomPositiveMs(w.pointNav.stuckMs)||!finite(w.pointNav.best))return false;
+ if(!record(h)||!(h.state===null||record(h.state))||!integer(h.room)||!finite(h.next)||!Array.isArray(h.candidates)||!(yield*bloomValidationEvery(h.candidates,x=>record(x)&&integer(x.id)))||!(yield*pairs(h.claims,integer,nonnegative))||!(yield*pairs(h.owners,integer,integer))||!nonnegative(h.rebuilds))return false;
+ if(!record(g)||!(yield*pairs(g.grid,integer,Array.isArray))||!(yield*pairs(g.collisionGrid,integer,Array.isArray))||!(yield*pairs(g.idMap,integer,record))||!['gridColumns','gridRows','collisionColumns','collisionRows'].every(k=>nonnegative(g[k]))||!['maxTargetRadius','maxCollisionGround','maxCollisionAir'].every(k=>finite(g[k])&&g[k]>=0)||!(g.gridState===null||record(g.gridState))||!(g.gridUnits===null||Array.isArray(g.gridUnits)))return false;
  if(!record(r)||!(r.state===null||record(r.state))||!finite(r.time)||!integer(r.mask))return false;
- const entities=new Map(w.state.units.map(u=>[u.id,u]));for(const p of WorldPlayers.all(w.state))entities.set(p.leader.id,p.leader);
- const bodies=[...w.state.units,...WorldPlayers.all(w.state).map(p=>p.leader),...Object.values(w.state.rarityAccounts||{}).flatMap(a=>a.active.filter(r=>r.body).map(r=>r.body)),...Object.values(w.state.rarityRivals||{}).map(r=>r.body)];
- for(const body of bodies)for(const id of [body.target,body.moaTarget,body.pendingMelee?.target,body.pendingMoa?.target,body.attackController?.targetId,body.rivalWindup?.target])if(id!==undefined&&!worldEntityReferenceValid(id,w.state))return false;
+ const entities=new Map();for(const u of w.state.units){entities.set(u.id,u);yield}const players=WorldPlayers.all(w.state);for(const p of players){entities.set(p.leader.id,p.leader);yield}
+ const bodies=[];for(const u of w.state.units){bodies.push(u);yield}for(const p of players){bodies.push(p.leader);yield}for(const a of Object.values(w.state.rarityAccounts||{}))for(const r of a.active){if(r.body)bodies.push(r.body);yield}for(const r of Object.values(w.state.rarityRivals||{})){bodies.push(r.body);yield}
+ for(const body of bodies){yield;for(const id of [body.target,body.moaTarget,body.pendingMelee?.target,body.pendingMoa?.target,body.attackController?.targetId,body.rivalWindup?.target])if(id!==undefined&&!worldEntityReferenceValid(id,w.state))return false;}
 
  if(g.gridState!==null&&g.gridState!==w.state||g.gridUnits!==null&&g.gridUnits!==w.state.units)return false;
  const canonicalEntity=u=>record(u)&&integer(u.id)&&(entities.has(u.id)?entities.get(u.id)===u:u.id>0&&u.id<=w.state.nextId&&u.hp<=0);
- if(!g.idMap.every(([id,u])=>id===u.id&&canonicalEntity(u)))return false;
- for(const lists of [g.grid,g.collisionGrid]){const seen=new Set();for(const [,list]of lists)for(const u of list){if(!canonicalEntity(u)||seen.has(u))return false;seen.add(u)}}
+ if(!(yield*bloomValidationEvery(g.idMap,([id,u])=>id===u.id&&canonicalEntity(u))))return false;
+ for(const lists of [g.grid,g.collisionGrid]){const seen=new Set();for(const [,list]of lists)for(const u of list){if(!canonicalEntity(u)||seen.has(u))return false;seen.add(u);yield}}
 
- if(!c.spatial.every(r=>record(r)&&record(r.object)&&(r.unit===undefined||r.unit===1&&['x','y','z'].every(k=>finite(r.object[k]))||record(r.unit)&&['x','y','z'].every(k=>finite(r.unit[k])))&&(r.anchor===undefined||integer(r.anchor)&&r.anchor>0&&r.anchor<(1<<spatialPairs.length)&&spatialPairs.every((p,i)=>!(r.anchor&(1<<i))||finite(r.object[p[0]])&&finite(r.object[p[1]]))||record(r.anchor)&&Object.values(r.anchor).every(v=>record(v)&&finite(v.x)&&finite(v.y)))))return false;
- return residentBossValidate(w.state,w.projectiles)&&rarityValidateState(w.state,allowLegacyCapacity)&&w.state.units.every(u=>validMoaRecruitMarks(u,w.state))&&spatialTree(w.state)&&spatialTree(w.projectiles);
+ if(!(yield*bloomValidationEvery(c.spatial,r=>record(r)&&record(r.object)&&(r.unit===undefined||r.unit===1&&['x','y','z'].every(k=>finite(r.object[k]))||record(r.unit)&&['x','y','z'].every(k=>finite(r.unit[k])))&&(r.anchor===undefined||integer(r.anchor)&&r.anchor>0&&r.anchor<(1<<spatialPairs.length)&&spatialPairs.every((p,i)=>!(r.anchor&(1<<i))||finite(r.object[p[0]])&&finite(r.object[p[1]]))||record(r.anchor)&&Object.values(r.anchor).every(v=>record(v)&&finite(v.x)&&finite(v.y))))))return false;
+ return (yield*residentBossValidateSteps(w.state,w.projectiles))&&(yield*rarityValidateState.steps(w.state,allowLegacyCapacity))&&(yield*bloomValidationEvery(w.state.units,u=>validMoaRecruitMarks(u,w.state)))&&(yield*spatialTreeSteps(w.state))&&(yield*spatialTreeSteps(w.projectiles));
 }
-function bloomDecode(bytes,tick,allowLegacyCapacity=false){const c=BloomLiveCodec.decode(bytes);if(!bloomValidate(c,tick,allowLegacyCapacity))throw new TypeError('Invalid BLOOM live snapshot');const round=BloomLiveCodec.encode(c);if(round.length!==bytes.length||round.some((v,i)=>v!==bytes[i]))throw new TypeError('Noncanonical BLOOM live snapshot');return c}
-function bloomRestore(c,allowLegacyCapacity=false){
- // Decode/validation already completed, and all collections are prepared before installation.
- if(!bloomValidate(c,undefined,allowLegacyCapacity))throw new TypeError('Invalid live authority');
- bloomSnapshotStore.invalidate();
+function bloomValidateJob(c,tick,allowLegacyCapacity=false){
+ let steps=bloomValidateSteps(c,tick,allowLegacyCapacity),done=false,result,cancelled=false;
+ return {get done(){return done},get result(){return result},get cancelled(){return cancelled},pulse({budgetMs=8}={}){
+  if(!Number.isFinite(budgetMs)||budgetMs<0)throw new TypeError('Validation job budget');if(done)return{done,result};
+  const deadline=performance.now()+budgetMs;let units=0;
+  try{do{const part=steps.next();if(part.done){done=true;result=part.value===true;steps=null;break}units++}while((units&15)!==0||performance.now()<deadline)}catch{done=true;result=false;steps.return();steps=null}
+  return{done,result};
+ },cancel(){if(done)return;done=true;cancelled=true;steps.return();steps=null}};
+}
+function bloomDecode(bytes,tick,allowLegacyCapacity=false){const c=BloomLiveCodec.decode(bytes);if(!bloomValidate(c,tick,allowLegacyCapacity))throw new TypeError('Invalid BLOOM live snapshot');return c}
+function bloomPrepareAuthority(c){
  const w=c.world,g=w.grids,h=w.hunt,rect=w.rect,spU=new WeakMap(),spA=new WeakMap();for(const r of c.spatial){if(r.unit)spU.set(r.object,r.unit===1?{x:r.object.x,y:r.object.y,z:r.object.z}:r.unit);if(r.anchor)spA.set(r.object,Number.isInteger(r.anchor)?bloomExpandSpatialAnchor(r.object,r.anchor):r.anchor)}
- const maps={grid:new Map(g.grid),collision:new Map(g.collisionGrid),ids:new Map(g.idMap),claims:new Map(h.claims),owners:new Map(h.owners)};
+ const maps={grid:new OrderedSpatialGrid(g.grid),collision:new OrderedSpatialGrid(g.collisionGrid),ids:new Map(g.idMap),claims:new Map(h.claims),owners:new Map(h.owners)};
+ return {c,w,g,h,rect,spU,spA,maps};
+}
+function bloomInstallAuthority(authority,commit=true){
+ const {c,w,g,h,rect,spU,spA,maps}=authority;
+ if(commit)bloomSnapshotStore.invalidate();
  state=w.state;projectiles=w.projectiles;events=w.events;for(const k of Object.keys(autoHunt))delete autoHunt[k];Object.assign(autoHunt,w.auto);pointNav=w.pointNav;
  abilityShotSerial=w.abilityShotSerial;finisherSerial=w.finisherSerial;finisherShot=w.finisherShot;permanentRetryAt=w.permanentRetryAt;
  Object.assign(permanentHuntIndex,h,{claims:maps.claims,owners:maps.owners});
@@ -21130,9 +21622,10 @@ function bloomRestore(c,allowLegacyCapacity=false){
  rectFriendState=rect.state;rectFriendTime=rect.time;rectFriendMask=rect.mask;CONFIG.moa.rangedReach=w.rangedReach;
  spatialUnits=spU;spatialAnchors=spA;spatialContext=[];spatialParentShot=null;spatialStepDepth=0;spatialCaptureInitial=false;
  bloomSeed=c.seed;bloomTick=c.tick;permanentBusy=false;growthChoosing=false;choosingAbility=false;
- for(const t of bloomPendingEffects.keys())if(t>=bloomTick)bloomPendingEffects.delete(t);
+ if(commit)for(const t of bloomPendingEffects.keys())if(t>=bloomTick)bloomPendingEffects.delete(t);
  // Pure restore does not invoke disk load, UI, terrain rebasing, RNG or presentation.
 }
+function bloomRestore(c,allowLegacyCapacity=false){if(!bloomValidate(c,undefined,allowLegacyCapacity))throw new TypeError('Invalid live authority');bloomInstallAuthority(bloomPrepareAuthority(c))}
 function bloomQuantize(x){return Math.round(clamp(Number.isFinite(x)?x:0,-1,1)*32767)}
 function bloomEncodeInput(p={}){const b=new Uint8Array(5),v=new DataView(b.buffer);b[4]=(p.manual?1:0)|(p.suspended?2:0);v.setInt16(0,bloomQuantize(p.x),true);v.setInt16(2,bloomQuantize(p.y),true);return b}
 function bloomDecodeInput(b){if(!(b instanceof Uint8Array)||b.length!==5||b[4]>3)throw new TypeError('Input size');const v=new DataView(b.buffer,b.byteOffset,4),x=v.getInt16(0,true),y=v.getInt16(2,true);if(x===-32768||y===-32768)throw new TypeError('Input axis');return{x:x/32767,y:y/32767,manual:!!(b[4]&1),suspended:!!(b[4]&2)}}
@@ -21202,7 +21695,87 @@ const bloomSnapshotStore=(()=>{
  return Object.freeze({capture,invalidate,disk,read,metadata,metrics:()=>({...metrics,revision,cachedTick:latest?.tick??null})});
 })();
 
-const bloomAdapter={applyMembership:change=>WorldMembership.apply(change),save:()=>bloomSnapshotStore.capture(),load:bytes=>bloomRestore(bloomDecode(bytes)),validateSnapshot(bytes,{tick,membershipEpoch}={}){try{const c=bloomDecode(bytes,tick);return bloomValidate(c,tick)&&(membershipEpoch===undefined||c.world.state.membershipEpoch===membershipEpoch)}catch{return false}},step:bloomRunTick};
+// Prepared snapshots are opaque, single-use capabilities. Network bytes are
+// decoded canonically and validated once before any live reference is changed.
+const BloomPreparedSnapshots=(()=>{
+ const owned=new WeakMap();
+ function context(c,expected={}){
+  const roster=WorldPlayers.all(c.world.state).filter(p=>p.lifecycle==='active').map(p=>p.playerId);
+  if(expected.tick!==undefined&&expected.tick!==c.tick||expected.membershipEpoch!==undefined&&expected.membershipEpoch!==c.world.state.membershipEpoch||expected.tickRate!==undefined&&expected.tickRate!==c.tickRate||expected.seed!==undefined&&expected.seed!==c.seed||expected.simulationVersion!==undefined&&expected.simulationVersion!=='budmori-shared-ms-v3'||expected.players!==undefined&&JSON.stringify([...expected.players].sort())!==JSON.stringify(roster))throw new TypeError('Prepared snapshot boundary');
+ }
+ function canonicalCapture(authority){
+  const {c,w,g,h,rect,maps}=authority;
+  return {schema:w.state.participants?'bloom-webgl-shared-ms-v3':'bloom-webgl-live-ms-v2',timeUnit:'ms',tickRate:c.tickRate,tick:c.tick,seed:c.seed,world:{state:w.state,projectiles:w.projectiles,events:w.events,auto:{...w.auto},pointNav:w.pointNav,abilityShotSerial:w.abilityShotSerial,finisherSerial:w.finisherSerial,finisherShot:w.finisherShot,permanentRetryAt:w.permanentRetryAt,hunt:{state:h.state,room:h.room,next:h.next,candidates:h.candidates,claims:[...maps.claims],owners:[...maps.owners],rebuilds:h.rebuilds},grids:{grid:[...maps.grid],collisionGrid:[...maps.collision],gridColumns:g.gridColumns,gridRows:g.gridRows,collisionColumns:g.collisionColumns,collisionRows:g.collisionRows,gridState:g.gridState,gridUnits:g.gridUnits,idMap:[...maps.ids],maxTargetRadius:g.maxTargetRadius,maxCollisionGround:g.maxCollisionGround,maxCollisionAir:g.maxCollisionAir},rect:{state:rect.state,time:rect.time,mask:rect.mask},rangedReach:w.rangedReach},spatial:[]};
+ }
+ function authorityFor(bytes,expected){
+  const c=bloomDecode(bytes,expected.tick);context(c,expected);const authority=bloomPrepareAuthority(c),canonical=BloomLiveCodec.encode(canonicalCapture(authority),{units:authority.spU,anchors:authority.spA});
+  if(canonical.length!==bytes.length||canonical.some((value,i)=>value!==bytes[i]))throw new TypeError('Noncanonical installed authority');return authority;
+ }
+ function binding(expected={}){return JSON.stringify(['tick','membershipEpoch','simulationVersion','tickRate','seed','players'].filter(key=>expected[key]!==undefined).map(key=>[key,key==='players'?[...expected[key]].sort():expected[key]]))}
+ function tokenFor(authority,expected={}){const token=Object.freeze({});owned.set(token,{authority,binding:binding(expected)});return token}
+ function own(c,expected){context(c,expected);return tokenFor(bloomPrepareAuthority(c),expected)}
+ function prepare(bytes,expected={}){return tokenFor(authorityFor(bytes,expected),expected)}
+ function install(token,expected={}){const entry=owned.get(token);if(!entry)throw new TypeError('Unknown or consumed prepared snapshot');if(entry.binding!==binding(expected))throw new TypeError('Prepared snapshot boundary context');context(entry.authority.c,expected);owned.delete(token);bloomInstallAuthority(entry.authority)}
+ function frozenBoundary(){
+  if(bloomInTick||bloomInitializing)throw new Error('Snapshot needs a settled boundary');
+  const source=state,tick=bloomTick,rate=CONFIG.sim.tickRate,revision=bloomSnapshotStore.metrics().revision;
+  return()=>{if(state!==source||bloomTick!==tick||CONFIG.sim.tickRate!==rate||bloomSnapshotStore.metrics().revision!==revision)throw new Error('Snapshot boundary changed during preparation')};
+ }
+ function cloneJob(root,sourceUnits,sourceAnchors){
+  let seen=new Map(),pending=[],cursor=0,result,done=false,canceled=false;
+  const units=new WeakMap(),anchors=new WeakMap();
+  function copy(value){
+   if(!value||typeof value!=='object')return value;let next=seen.get(value);if(next)return next;
+   if(value instanceof Uint8Array){next=value.slice();seen.set(value,next);return next}
+   next=Array.isArray(value)?new Array(value.length):Object.create(Object.getPrototypeOf(value));seen.set(value,next);pending.push({source:value,target:next,keys:null,index:0});
+   const unit=sourceUnits.get(value),anchor=sourceAnchors.get(value);if(unit)units.set(next,copy(unit));if(anchor)anchors.set(next,copy(anchor));return next;
+  }
+  result=copy(root);
+  return {get done(){return done},get result(){return done?{c:result,units,anchors}:undefined},cancel(){canceled=true;seen=null;pending=null;result=null},pulse({budgetMs=8}={}){
+   if(canceled)throw new Error('Canceled snapshot clone');if(done)return;const end=performance.now()+Math.max(.1,budgetMs);let checks=0;
+   while(cursor<pending.length){const frame=pending[cursor];if(!frame.keys)frame.keys=Object.keys(frame.source);while(frame.index<frame.keys.length){const key=frame.keys[frame.index++],value=copy(frame.source[key]);if(key==='__proto__')Object.defineProperty(frame.target,key,{value,enumerable:true,writable:true,configurable:true});else frame.target[key]=value;if((++checks&63)===0&&performance.now()>=end)return}pending[cursor++]=null;if(performance.now()>=end)return}
+   done=true;seen=null;pending=null;
+  }};
+ }
+ function captureLive(){
+  const c=bloomCapture(true),w=c.world,g=w.grids,h=w.hunt;
+  return {c,w,g,h,rect:w.rect,spU:spatialUnits,spA:spatialAnchors,maps:{grid,collision:collisionGrid,ids:idMap,claims:permanentHuntIndex.claims,owners:permanentHuntIndex.owners}};
+ }
+ function membershipBranch(branch,change){
+  const live=captureLive(),transient={spatialContext,spatialParentShot,spatialStepDepth,spatialCaptureInitial,permanentBusy,growthChoosing,choosingAbility};
+  try{const authority=bloomPrepareAuthority(branch.c);authority.spU=branch.units;authority.spA=branch.anchors;bloomInstallAuthority(authority,false);WorldMembership.apply(change,false);return {c:bloomCapture(true),units:spatialUnits,anchors:spatialAnchors}}
+  finally{bloomInstallAuthority(live,false);({spatialContext,spatialParentShot,spatialStepDepth,spatialCaptureInitial,permanentBusy,growthChoosing,choosingAbility}=transient)}
+ }
+ function managedJob(step,release){let done=false,canceled=false,result;return {get done(){return done},get result(){return done?result:undefined},cancel(){if(!done&&!canceled){canceled=true;release()}},pulse(options={}){if(canceled)throw new Error('Canceled snapshot job');if(done)return {done,result};try{const next=step(options);if(next){result=next.value;done=true;release()}return {done,result}}catch(error){canceled=true;release();throw error}}}}
+ function prepareJob(bytes,expected={}){
+  if(!(bytes instanceof Uint8Array)||bytes.length>8388608)throw new TypeError('Snapshot bytes');
+  expected={...expected,...(expected.players?{players:[...expected.players]}:{})};
+  let input=bytes.slice(),codec=BloomLiveCodec.decodeJob(input),authority,normalized,decoded,validation,compareAt=0,phase='decode';
+  return managedJob(options=>{
+   if(phase==='decode'){codec.pulse(options);if(codec.done){decoded=codec.result;codec=null;phase='validate'}return}
+   if(phase==='validate'){validation??=bloomValidateJob(decoded,expected.tick);validation.pulse(options);if(validation.done){if(!validation.result)throw new TypeError('Invalid BLOOM live snapshot');validation=null;context(decoded,expected);authority=bloomPrepareAuthority(decoded);decoded=null;phase='canonical'}return}
+   if(phase==='canonical'){codec=BloomLiveCodec.encodeJob(canonicalCapture(authority),{units:authority.spU,anchors:authority.spA});phase='encode';return}
+   if(phase==='encode'){codec.pulse(options);if(codec.done){normalized=codec.result;codec=null;phase='compare'}return}
+   if(normalized.length!==input.length)throw new TypeError('Noncanonical installed authority');const until=performance.now()+Math.max(.1,options.budgetMs??8);while(compareAt<input.length){const stop=Math.min(input.length,compareAt+65536);for(;compareAt<stop;compareAt++)if(normalized[compareAt]!==input[compareAt])throw new TypeError('Noncanonical installed authority');if(performance.now()>=until)return}return {value:tokenFor(authority,expected)};
+  },()=>{codec?.cancel();validation?.cancel();codec=null;validation=null;input=null;normalized=null;decoded=null;authority=null});
+ }
+ function membershipJob(change,expected={}){
+  change={...change,players:[...change.players]};expected={...expected,...(expected.players?{players:[...expected.players]}:{})};
+  const assertFrozen=frozenBoundary();let root=bloomCapture(true),clone=cloneJob(root,spatialUnits,spatialAnchors),branch,codec,bytes,validation,phase='clone';root=null;
+  return managedJob(options=>{
+   assertFrozen();if(phase==='clone'){clone.pulse(options);if(clone.done){branch=clone.result;clone=null;phase='apply'}return}
+   if(phase==='apply'){branch=membershipBranch(branch,change);phase='encode';codec=BloomLiveCodec.encodeJob(branch.c,{units:branch.units,anchors:branch.anchors});return}
+   if(phase==='encode'){codec.pulse(options);if(codec.done){bytes=codec.result;codec=null;phase='validate'}return}
+   validation??=bloomValidateJob(branch.c,change.tick);validation.pulse(options);if(validation.done){if(!validation.result)throw new TypeError('Invalid prepared membership');return {value:{bytes,prepared:own(branch.c,expected)}}}
+  },()=>{clone?.cancel();codec?.cancel();validation?.cancel();clone=null;codec=null;validation=null;branch=null;bytes=null});
+ }
+ function saveJob(){const assertFrozen=frozenBoundary();let codec=BloomLiveCodec.encodeJob(bloomCapture(true),{units:spatialUnits,anchors:spatialAnchors});return managedJob(options=>{assertFrozen();codec.pulse(options);if(codec.done)return {value:codec.result}},()=>{codec?.cancel();codec=null})}
+ function membership(change,expected={}){
+  const assertFrozen=frozenBoundary(),clone=cloneJob(bloomCapture(true),spatialUnits,spatialAnchors);while(!clone.done)clone.pulse({budgetMs:1000});assertFrozen();const branch=membershipBranch(clone.result,change),bytes=BloomLiveCodec.encode(branch.c,{units:branch.units,anchors:branch.anchors});if(!bloomValidate(branch.c,change.tick))throw new TypeError('Invalid prepared membership');return {bytes,prepared:own(branch.c,expected)};
+ }
+ return Object.freeze({prepare,install,membership,prepareJob,membershipJob,saveJob,validate(bytes,expected={}){authorityFor(bytes,expected);return true}});
+})();
+const bloomAdapter={saveJob:()=>BloomPreparedSnapshots.saveJob(),prepareSnapshotJob:(bytes,context)=>BloomPreparedSnapshots.prepareJob(bytes,context),prepareMembershipJob:(change,context)=>BloomPreparedSnapshots.membershipJob(change,context),applyMembership:change=>WorldMembership.apply(change),prepareMembership:(change,context)=>BloomPreparedSnapshots.membership(change,context),prepareSnapshot:(bytes,context)=>BloomPreparedSnapshots.prepare(bytes,context),loadPreparedSnapshot:(token,context)=>BloomPreparedSnapshots.install(token,context),save:()=>bloomSnapshotStore.capture(),load:bytes=>BloomPreparedSnapshots.install(BloomPreparedSnapshots.prepare(bytes)),validateSnapshot(bytes,context={}){try{return BloomPreparedSnapshots.validate(bytes,context)}catch{return false}},step:bloomRunTick};
 // Public functions form the DOM-to-intent boundary. Internal calls during a tick
 // go straight to validated gameplay functions; UI calls only queue SDK commands.
 function bloomQueue(type,args={}){if(!bloomSession)return false;const a=bloomValidateCommand({version:1,type,...args});bloomSession.queueCommand(BloomOwnedSDK.binaryCodec.encode(a));bloomInputPending++;return true}

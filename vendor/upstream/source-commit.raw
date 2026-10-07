@@ -1,27 +1,27 @@
-tree c7b70ee7e1d072338774a379bb7cc9467c34cd1a
-parent e93bfa2888cf0a84d48507bf283d3b5bb823a6df
-author byh020907 <byh020907@naver.com> 1791328237 +0900
-committer GitHub <noreply@github.com> 1791328237 +0900
+tree 34296ed9545a819982f7ebef787d91ca62840989
+parent 33d8cd6edfe3790ff00c3d9912976fda24919c01
+author byh020907 <byh020907@naver.com> 1791342163 +0900
+committer GitHub <noreply@github.com> 1791342163 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqxX/tCRC1aQ7uu5UhlAAAefcQAEOGpoFQ2FHyLHYjH55G847b
- zvysUwG8raIvkj1pxZBKYFwRM6gb98+oQamR94BZvlR9ny5BT62Ca2AJCsL9Luuc
- WoXtiYCoVPuAIF6bQz8cgu/E8dnHUNBK6RvDG5jA7Eo79Uf3/IYwt9LKFB8FMdbG
- 9VmNQDglfv2Z1UoCOnZKXu3wNqlva/lo6mb7xkvl2aC2ev0c3fS2LWX16p9etM/O
- wuIOMH47p+2h3XCMdWj2r72lu7qYf6SABPlzGO3CVQ30cFVsw1PS3W4jsYN3QW8r
- t6BKrHB39m64arBpqL1s0uKXbnhiOxR5JriGTjVuHWB4RxTNYH+SCdUCfvIX4Qsx
- sEUaGlg/mCo+L2Ei3Iuah5xqGUSyC4zLkWTV4gWWC/62ejBmlO54Bj4FoyHpIiZU
- KgZcJmJeSJm3glld5INhNMW1OnQmqaFfAX09sUZVlTljz1FL+EGRoFysp5X4D+dV
- TZGmeewXCMgDad24sRdzijaqjHXT6RZxq8z1fleg625NF5zoOkn5tzZfLqq9jrF+
- ecBQ9l8i/nRBslZDCy4J3+8xCbs1AhxBJZ2Ep/tn6vWGgwZL0IFT38LDzxnTS4ws
- 8cNeAN0WbhjOXIVNUFDKahUwvKNTVGT7M5uEeAuA1qy1gGWo2qxlIfqeGCEBeP+V
- GLvazvd0Dp/YBhpJjCpl
- =9hu6
+ wsFcBAABCAAQBQJqxbZTCRC1aQ7uu5UhlAAAzeYQAGgWTsk2dM1v2O6x5f5hc/wd
+ I2nPnoFWwjT8D5ebJOORiOowEHEU/IbHv53zmwFY2R7D/a3Yi7A54hidfarWkb1a
+ JaAb6d2lzl+Sl4WLiqzRU6Yp87W+tN4sTF5tOjx46hqS1ZBUtfnLMQjm8C3r0Df5
+ I8EqrF+zrQN71XNmISxG4MprtzVyRqJd+o3v6YcaasTacpFyBuWuGfVG1BrVMuPP
+ L8KdqSoDy9G9Eu2FGBTWuVKCtq1N7OL1Ynb7Qyha16V8cXE7MGPZYn7P08SUiU2D
+ SxdRiYd4DIS99xrMKYGSuspomwoIv3Zg4U4s30hHvXKBmRka4Zv3n90gpmOqQo/v
+ 5P/5k/M5w/PD6XnT8dFmUvBX+O/eZdTSHiW0rEiHyESil35A4joROeYacFSRAp9Y
+ jKoU4IudlbdqHIDjzqVjiiMSeWS9Kgrdyy9hr9lL2LMFn/oJcd3RE/7/0V1nW29A
+ gD5EqEz0wutEFlb0Ty94dvaHNwWYoDWV/6bUbtrhtALW3ZS3u7adHzMlu0gK3Tfg
+ ER0TXGsIOes88EvyJXLh/Jaorbc44Wjsw9bQ/WUtAgrQ+yWCMQ9ceEhR4fmN+0Hq
+ fxpsy0w6PXGLZ12ikggcF43p5Sgo0xe6Gb6TziNd63hOJyPgwQupO1fRjc6hG69Q
+ dwexr9E9YOzvSy9wSfS/
+ =fgQo
  -----END PGP SIGNATURE-----
  
 
-[feature] 동적 방 합류·퇴장과 공개 입장·재접속 구현
+[performance] 준비된 snapshot과 cooperative 경계 작업 (#9)
 
-같은 lockstep Core의 membership epoch, sparse bootstrap, 공개 directory와 자리 예약, room-scoped refresh identity, 정상 coordinator 승계와 partition fail-closed.
+동일 canonical snapshot의 중복 decode/restore 및 초기 Core save/hash 제거. 선택적 준비 token과 협력형 capture/prepare/hash 작업, freeze된 membership 경계, legacy adapter 호환 유지.
 
-278 Node tests, 실제 Chromium WebGL 및 fixed/dynamic RTC 통과. 동적1→5/재접속/guest·coordinator refresh/정상퇴장 hash 일치. source-only, 기존 main→dist 배포 유지.
+285 Node 검사, 실제 Chromium WebGL·fixed RTC·dynamic legacy/cooperative 합류/refresh/coordinator 퇴장 검증, deterministic build 및 독립 correctness review 통과. source-only; dist는 main CI가 생성.

@@ -1,0 +1,392 @@
+{
+  "scope": "Budmori simulation spatial hotpaths; actual native V8 HTML/SDK, no renderer/transport/device-FPS claim",
+  "baselineCommit": "a12b6fa005a06fb3f9b718c71c34a6e465a4f04c",
+  "reference": {
+    "project": "Rally Frontier",
+    "commit": "e9a30813bf0d1b1abfac2b524a49568205cdbd85",
+    "implementation": "Hybrid: DeterministicCollisionGrid / DeterministicUnitSpatialGrid serve queries and allied contacts; enforceNonAlliedNoOverlap uses active adaptive-axis sweep-and-prune with 25% hysteresis, reused insertion order, active intervals and packed-pair sorting.",
+    "indexGitBlob": "258c43dda704f9b8d89f24de50e505066f28498e",
+    "classesAtLines": [
+      16127,
+      16156
+    ],
+    "adaptiveSAPLines": [
+      22036,
+      22113
+    ],
+    "adaptiveSAPCallLines": [
+      22224,
+      22231
+    ]
+  },
+  "changes": [
+    "Map-compatible numeric bucket lookup preserving map insertion order and each bucket sequence",
+    "Static field reads for radius and XYZ/attack-anchor synchronization, identical arithmetic and WeakMap values",
+    "Derived visible-hunt bounds memo keyed by state, owner coordinates, viewport fields and world/projection dimensions; public results remain fresh objects",
+    "Pass already-resolved participant into movement policy"
+  ],
+  "limitations": [
+    "Simulation p95 target below80ms not achieved",
+    "Native measurements vary with machine/GC load; absolute timings are not browser/device FPS",
+    "Dense preallocated slot experiment was reverted because it did not show an additional whole-step improvement",
+    "One-axis SAP candidate counts are an analytical comparison, not a benchmark of an implemented SAP",
+    "The earlier one-axis count excludes adaptive axis selection, orthogonal rejection, temporal sorting reuse and packed-pair ordering; it cannot justify a general grid-versus-Rally-SAP conclusion."
+  ],
+  "isolatedBaseline": {
+    "kind": "Native V8 actual shared adapter, five human factions, no renderer/transport",
+    "results": [
+      {
+        "players": 5,
+        "armyPerPlayer": 10,
+        "totalArmy": 50,
+        "tps": 10,
+        "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 108.03463900000003,
+          "p50": 1.9612109999999916,
+          "p95": 3.109260000000006,
+          "p99": 6.383556999999996
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 22.564608999999905,
+          "p50": 3.5710379999999873,
+          "p95": 6.563352000000009,
+          "p99": 6.563352000000009
+        },
+        "snapshotBytes": 84012,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 155,
+        "totalArmy": 775,
+        "tps": 10,
+        "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 822.7330519999992,
+          "p50": 15.310432999999989,
+          "p95": 22.283851000000027,
+          "p99": 47.86096799999996
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 118.98422299999982,
+          "p50": 17.746588999999858,
+          "p95": 27.253657999999973,
+          "p99": 27.253657999999973
+        },
+        "snapshotBytes": 879331,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 1000,
+        "totalArmy": 5000,
+        "tps": 10,
+        "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 5826.541332,
+          "p50": 112.52462400000059,
+          "p95": 147.6774320000004,
+          "p99": 173.69053299999996
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 796.2670959999982,
+          "p50": 117.5978839999998,
+          "p95": 166.81169299999965,
+          "p99": 166.81169299999965
+        },
+        "snapshotBytes": 5538143,
+        "valid": true
+      }
+    ]
+  },
+  "isolatedCandidate": {
+    "kind": "Native V8 actual shared adapter, five human factions, no renderer/transport",
+    "results": [
+      {
+        "players": 5,
+        "armyPerPlayer": 10,
+        "totalArmy": 50,
+        "tps": 10,
+        "sourceSHA256": "3610b71573c6a6be0bdd5e04eb9ee52b7ba1a0e21a9e11798e3edc4cb3b75943",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 95.61771399999981,
+          "p50": 1.7796050000000037,
+          "p95": 3.022323999999969,
+          "p99": 4.197904999999992
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 25.67865199999997,
+          "p50": 3.71351599999997,
+          "p95": 7.344732999999991,
+          "p99": 7.344732999999991
+        },
+        "snapshotBytes": 84012,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 155,
+        "totalArmy": 775,
+        "tps": 10,
+        "sourceSHA256": "3610b71573c6a6be0bdd5e04eb9ee52b7ba1a0e21a9e11798e3edc4cb3b75943",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 619.20594,
+          "p50": 11.830915000000005,
+          "p95": 15.450837999999976,
+          "p99": 21.34506199999987
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 147.2425830000003,
+          "p50": 26.27874399999996,
+          "p95": 31.44213200000013,
+          "p99": 31.44213200000013
+        },
+        "snapshotBytes": 879331,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 1000,
+        "totalArmy": 5000,
+        "tps": 10,
+        "sourceSHA256": "3610b71573c6a6be0bdd5e04eb9ee52b7ba1a0e21a9e11798e3edc4cb3b75943",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 4622.877728999997,
+          "p50": 90.92505100000017,
+          "p95": 104.94844899999953,
+          "p99": 111.06357199999911
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 819.6051399999992,
+          "p50": 133.6519189999999,
+          "p95": 165.83971599999995,
+          "p99": 165.83971599999995
+        },
+        "snapshotBytes": 5538143,
+        "valid": true
+      }
+    ]
+  },
+  "pairedStandard": {
+    "kind": "Paired actual native V8 five-human simulation, alternate order per tick",
+    "players": 5,
+    "armyPerPlayer": 1000,
+    "tps": 10,
+    "ticks": 80,
+    "warmup": 20,
+    "sourceSHA256": [
+      "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+      "a8b4c8c42b5bc3db15426cce985b493a227f4770cc27ba777575d313e3b6253d"
+    ],
+    "simulationStepMs": {
+      "baseline": {
+        "samples": 60,
+        "total": 10472.763939999992,
+        "p50": 139.03536999999778,
+        "p95": 257.99472499999683,
+        "p99": 667.4549230000011
+      },
+      "candidate": {
+        "samples": 60,
+        "total": 7952.879575000001,
+        "p50": 108.78233999999975,
+        "p95": 199.31977800000095,
+        "p99": 277.1161439999996
+      }
+    },
+    "p95TargetMs": 80,
+    "p95TargetMet": false,
+    "boundaries": [
+      {
+        "tick": 0,
+        "bytes": 4997659,
+        "hash": "1a34d1d6ae0c43f2df4bc2a29140939d15becfdd984d67d56265bd5139f4c3cf"
+      },
+      {
+        "tick": 20,
+        "bytes": 5570436,
+        "hash": "d343258057a02a8ae59bfcb2f201a7b5a8fa570f86b2b4a13296bb2d0d65d1c8"
+      },
+      {
+        "tick": 40,
+        "bytes": 5529297,
+        "hash": "fc9be03a55ce836a1a8c5152f2d01e292459a5c66617eb5e95c791b861da68df"
+      },
+      {
+        "tick": 60,
+        "bytes": 5545286,
+        "hash": "daa48e5d3f14fcdec5152484e638babaeced7bac08f0c4e82d5968e73cac4ad5"
+      },
+      {
+        "tick": 80,
+        "bytes": 5560302,
+        "hash": "001fe9403b7d98f0124a6ae79a82f362e1abec0ad5f66265a2e77a3ef5c29cf7"
+      }
+    ],
+    "effectsCompared": 80,
+    "density": {
+      "liveUnits": 5001,
+      "occupiedCells": 810,
+      "cellSize": 32,
+      "bucketP50": 3,
+      "bucketP95": 23,
+      "bucketMax": 53,
+      "uncappedConservativeGridCandidates": 364650,
+      "oneAxisSAPCandidates": 2019326,
+      "note": "Count comparison at final boundary; real separation retains its existing early-exit and historical cell order. No SAP runtime speed claim."
+    },
+    "timingCaveat": "Two large realms plus varying machine/GC load produced substantially higher absolute baseline timings than isolated runs. Use canonical comparisons and relative evidence; do not present these absolute values as the isolated target measurement."
+  },
+  "parity": {
+    "kind": "Actual native engine cross-artifact canonical and ordered-query parity",
+    "baselineSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+    "targetSHA256": "3610b71573c6a6be0bdd5e04eb9ee52b7ba1a0e21a9e11798e3edc4cb3b75943",
+    "queries": 132,
+    "boundaries": 126,
+    "effects": 120,
+    "chapters": [
+      "Query boundaries, center-first order, exact cutoff, early exit, live mutations, stale buckets, contact reindex",
+      {
+        "players": 5,
+        "armyPerPlayer": 10,
+        "ticks": 60,
+        "restore": true,
+        "recall": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 155,
+        "ticks": 60,
+        "restore": true,
+        "recall": true
+      }
+    ]
+  },
+  "clusteredSmall": {
+    "kind": "Paired actual native V8 five-human simulation, alternate order per tick",
+    "players": 5,
+    "armyPerPlayer": 155,
+    "clustered": true,
+    "tps": 10,
+    "ticks": 15,
+    "warmup": 5,
+    "sourceSHA256": [
+      "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+      "38035223573388c7c8c8d99b94f7184657b590c9fb736a1c42980235af68ac00"
+    ],
+    "simulationStepMs": {
+      "baseline": {
+        "samples": 10,
+        "total": 418.3332340000002,
+        "p50": 34.42491800000016,
+        "p95": 57.687347000000045,
+        "p99": 57.687347000000045
+      },
+      "candidate": {
+        "samples": 10,
+        "total": 347.91337499999963,
+        "p50": 29.262543999999707,
+        "p95": 57.59528399999999,
+        "p99": 57.59528399999999
+      }
+    },
+    "p95TargetMs": 80,
+    "p95TargetMet": true,
+    "boundaries": [
+      {
+        "tick": 0,
+        "bytes": 787439,
+        "hash": "fdf1fa14170406d2280debc238b6688c76e781f1e96468047d2618de96b3b83f"
+      },
+      {
+        "tick": 15,
+        "bytes": 933472,
+        "hash": "4890725d500543e4bcca6f3ccadcdd95b1cf48e552667ef7859798b149aca80a"
+      }
+    ],
+    "effectsCompared": 15,
+    "density": {
+      "liveUnits": 765,
+      "occupiedCells": 141,
+      "cellSize": 32,
+      "bucketP50": 4,
+      "bucketP95": 14,
+      "bucketMax": 50,
+      "uncappedConservativeGridCandidates": 34803,
+      "oneAxisSAPCandidates": 71270,
+      "note": "Count comparison at final boundary; real separation retains its existing early-exit and historical cell order. No SAP runtime speed claim."
+    },
+    "initialValid": [
+      true,
+      true
+    ],
+    "valid": [
+      true,
+      true
+    ],
+    "validation": [
+      {
+        "players": true,
+        "rarity": true,
+        "resident": true,
+        "spatialState": true,
+        "spatialShots": true,
+        "marks": true,
+        "units": 765,
+        "shots": 3
+      },
+      {
+        "players": true,
+        "rarity": true,
+        "resident": true,
+        "spatialState": true,
+        "spatialShots": true,
+        "marks": true,
+        "units": 765,
+        "shots": 3
+      }
+    ]
+  },
+  "clusteredLarge": {
+    "players": 5,
+    "armyPerPlayer": 1000,
+    "ticks": 30,
+    "canonicalBoundaryEquality": [
+      0,
+      20,
+      30
+    ],
+    "effectsCompared": 30,
+    "finalSnapshotValidation": false,
+    "status": "Pre-existing owner-defeat controller bug. Initial fixture is valid; baseline itself produces invalid recovery controller after leader death. Not successful validation coverage or performance-target evidence.",
+    "initialSnapshotValidation": true,
+    "firstInvalidBaselineTick": 28,
+    "validBaselineThroughTick": 27,
+    "cause": {
+      "function": "PlayerLifecycle.defeat",
+      "action": "cancelAttackPattern(u,'owner-dead') is called on a standard controller whose pattern is empty",
+      "invalidResult": {
+        "phase": "recovery",
+        "pattern": "",
+        "remainingMs": 1250
+      },
+      "validator": "validAttackController rejects nonstandard phase with empty pattern; rarityValidateAccounts rejects its owned body",
+      "minimalReproduction": "Initialize baseline online, admit a/b, acquire and recall one grade-2 swordsman for b; snapshot validates. Call PlayerLifecycle.defeat(b), then spatialBoundary; snapshot fails with recovery/empty-pattern controller.",
+      "scope": "Pre-existing in a12b6fa; preserved by same-input parity, not changed in this performance patch."
+    }
+  },
+  "auditCorrection": "The original audit inspected query grids but missed the active non-allied hard-fix SAP path. The original one-axis candidate counts do not benchmark or establish suitability of Rally adaptive SAP. A separate adaptive SAP comparison is required."
+}
