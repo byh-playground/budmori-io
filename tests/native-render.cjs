@@ -20,7 +20,7 @@ const adapted=benchmarkSource.replace('ctx=(globalThis.BLOOM_HEADLESS ? null : (
 const e=engine(file,adapted,ctx);const old=e.doc.createElement;e.doc.createElement=tag=>tag==='canvas'?createCanvas(1,1):old(tag);realm.RallyArt=e.c.RallyArt;
 let clock=1000;e.c.performance={now:()=>clock};
 e.run(fs.readFileSync(path.join(__dirname,'dense-fixture.js'),'utf8'));
-e.run('healthEnsureState();healthDOM={root:$("health"),fill:{style:{}},ghost:{style:{}},flash:{style:{}},label:$("motherHealth")};for(const k of ["showDefeat","refreshUI","toast","closeModal","refreshAutoHunt","refreshPermanentHuntControl","showAbilityChoices"])bloomPresentationFunctions[k]=()=>{};buildTerrain();BloomSimulation.createSession();view.x=state.mother.x;view.y=state.mother.y;BLOOM_HEADLESS=false;resetPresentation();BLOOM_HEADLESS=true;');
+e.run('healthEnsureState();healthDOM={root:$("health"),fill:{style:{}},ghost:{style:{}},flash:{style:{}},label:$("motherHealth")};for(const k of ["showDefeat","refreshUI","toast","closeModal","refreshAutoHunt","refreshPermanentHuntControl","showAbilityChoices"])bloomPresentationFunctions[k]=()=>{};BloomSimulation.createSession();view.x=state.mother.x;view.y=state.mother.y;BLOOM_HEADLESS=false;resetPresentation();BLOOM_HEADLESS=true;');
 const rows=[];for(let i=0;i<Number(process.env.RENDER_TICKS||5);i++){
  e.tick();e.run('BLOOM_HEADLESS=false;BloomSimulation.present(BloomSimulation.session.confirmedTick);capturePresentation();BLOOM_HEADLESS=true;');
  const authorityBefore=Buffer.from(e.run('BloomSimulation.adapter.save()'));

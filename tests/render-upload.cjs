@@ -16,4 +16,4 @@ const dynamic={source:atlas,page,texture:null,version:-1,used:0};renderer._uploa
 assert.deepEqual(calls.map(c=>c[0]),['create','update']);assert.equal(calls[0][1].data,null);
 assert.deepEqual({...calls[1][3]},{x:0,y:0,width:128,height:64},'atlas initialization still uploads its used region only');
 page.version++;page.used++;renderer._upload(dynamic);assert.deepEqual({...calls.at(-1)[3]},{x:128,y:0,width:64,height:64});
-console.log('PASS static terrain textures upload once; invalidation/resize and sparse atlas updates remain correct');
+console.log('PASS WebGL asset upload lifecycle; invalidation/resize and sparse atlas updates remain correct');
