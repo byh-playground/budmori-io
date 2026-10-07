@@ -1,0 +1,1586 @@
+{
+  "kind": "Actual extracted adaptive SAP core versus current grid; frozen valid native engine snapshots",
+  "budmoriSHA256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+  "rallyGitBlob": "258c43dda704f9b8d89f24de50e505066f28498e",
+  "rallyBroadphaseSHA256": "48d1559dbd73faf4a5ab2c0cfaff17d365b44cdfd6d7b5fcc617ba404bc655be",
+  "node": "v24.19.0",
+  "adapters": {
+    "coordinates": "Budmori x/y world-coordinate floats copied to fx/fy with no fixed-point quantization; current moaBodyRadius values copied into Float64Array.",
+    "entities": "Live state.units only (troops plus resident entity), preserving array index and entity ID; human leaders excluded.",
+    "eligibility": "Projected alive=true; capability lookup returns null, so no burrow/leap/objective flags. Rally lane preserves AIR exclusion and excludes equal Budmori factionId; Budmori lane removes AIR exclusion and includes allied pairs. Both preserve same-layer matching.",
+    "owner": "Verbatim Rally nonAlliedPenetrationOwner executes. side is Budmori factionId; NEUTRAL_SIDE maps to wild; start positions equal current snapshot positions so non-neutral pairs select by string-ID tie; fallbackNormal returns [1,0].",
+    "pairOrdering": "Original owner*(n+1)+other numeric packing and numeric sort execute. This is adapted broadphase pair ordering, not Budmori visit order or the full Rally solver.",
+    "stopping": "Exactly one broadphase pass returns after pair sort; no penetration resolution or sequential live movement."
+  },
+  "limitations": [
+    "All four measured fixtures contain ground bodies; the explicit AIR adapter branch is not separately validated by these samples.",
+    "Frozen broadphase only, no actual browser, device GPU, full-tick or FPS claim. Every live state.units entry is queried; actual AI may skip separation for some entries. Human leaders are excluded from this troop broadphase comparison.",
+    "Original Rally domain excludes allied and AIR; Budmori lane explicitly includes allies and AIR but keeps same-layer filtering.",
+    "Rally original semantic owner/pair ordering is retained with zero snapshot movement; it is not Budmori visit order.",
+    "Warm timing reuses identical stationary order, an optimistic temporal-coherence bound; cold timing clears order.",
+    "Grid queries keep actual center-first order, self visits, exact radius and optional existing cutoff. SAP emits unique unordered AABB pairs. Both exact overlap sets are compared after normalizing directed/unique differences.",
+    "All timings include current fine-grid refresh, or SAP projection/radii update and actual build/sweep/packed pair sorting. General targeting grid is excluded."
+  ],
+  "fixtures": [
+    {
+      "players": 5,
+      "armyPerPlayer": 155,
+      "clustered": false,
+      "validSnapshot": true,
+      "units": 776,
+      "domains": {
+        "budmori": {
+          "counts": {
+            "grid": {
+              "totalMs": 4.793231999999989,
+              "buildMs": 0.6919879999999807,
+              "queryMs": 4.101244000000008,
+              "rawDirected": 15378,
+              "callbacksDirected": 6661,
+              "exactDirected": 5630,
+              "uniqueExact": 2815
+            },
+            "sap": {
+              "pruneChecks": 22962,
+              "activePairChecks": 22211,
+              "orthogonalTests": 22211,
+              "axis": "x",
+              "eligible": 776,
+              "pairs": 3204,
+              "buildMs": 1.979263000000003,
+              "sweepMs": 5.786651000000006,
+              "pairSortMs": 0.6887219999999843,
+              "coreMs": 8.454635999999994,
+              "exactUnique": 2815,
+              "projectionMs": 0.35321399999997993,
+              "totalMs": 8.851546999999982
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 3.0211649999999963,
+            "buildMs": 0.4219439999999963,
+            "queryMs": 2.599221,
+            "rawDirected": 14085,
+            "callbacksDirected": 6521,
+            "exactDirected": 5180,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 26.08088500000008,
+                "p50": 1.8632840000000215,
+                "p95": 4.158755000000042,
+                "p99": 4.158755000000042
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 2.040920999999912,
+                "p50": 0.1493990000000167,
+                "p95": 0.37264299999992545,
+                "p99": 0.37264299999992545
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 24.039964000000168,
+                "p50": 1.7178670000000693,
+                "p95": 3.96688800000004,
+                "p99": 3.96688800000004
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 23.170940000000087,
+                "p50": 1.8079820000000382,
+                "p95": 2.497092000000066,
+                "p99": 2.497092000000066
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 2.344430999999986,
+                "p50": 0.15970100000004095,
+                "p95": 0.4196829999999636,
+                "p99": 0.4196829999999636
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 20.8265090000001,
+                "p50": 1.6545409999999947,
+                "p95": 2.2456379999999854,
+                "p99": 2.2456379999999854
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 0.8635440000000472,
+                "p50": 0.0379369999999426,
+                "p95": 0.38197700000000623,
+                "p99": 0.38197700000000623
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 22.080150999999773,
+                "p50": 1.7456280000000106,
+                "p95": 2.4703799999999774,
+                "p99": 2.4703799999999774
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 6.575423000000228,
+                "p50": 0.49867699999992965,
+                "p95": 0.8223070000000234,
+                "p99": 0.8223070000000234
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 29.51911800000005,
+                "p50": 2.2758179999999584,
+                "p95": 3.4526799999999866,
+                "p99": 3.4526799999999866
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 2.7656409999999596,
+                "p50": 0.10816999999997279,
+                "p95": 0.9144119999999702,
+                "p99": 0.9144119999999702
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 32.29695000000015,
+                "p50": 2.451567000000068,
+                "p95": 4.035547999999949,
+                "p99": 4.035547999999949
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 3.2674570000001495,
+                "p50": 0.22210900000004585,
+                "p95": 0.4848610000000235,
+                "p99": 0.4848610000000235
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 24.852302999999893,
+                "p50": 1.8631059999999025,
+                "p95": 3.7108540000000403,
+                "p99": 3.7108540000000403
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 6.660249000000022,
+                "p50": 0.5093590000000177,
+                "p95": 0.9483200000000807,
+                "p99": 0.9483200000000807
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 34.780009000000064,
+                "p50": 2.645189000000073,
+                "p95": 4.649060000000077,
+                "p99": 4.649060000000077
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.4788919999999735,
+                "p50": 0.10702500000002146,
+                "p95": 0.21408000000008087,
+                "p99": 0.21408000000008087
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 36.27046299999995,
+                "p50": 2.753146000000015,
+                "p95": 4.800821000000042,
+                "p99": 4.800821000000042
+              }
+            }
+          }
+        },
+        "rally": {
+          "counts": {
+            "grid": {
+              "totalMs": 2.645204999999919,
+              "buildMs": 0.28389900000001944,
+              "queryMs": 2.3613059999998995,
+              "rawDirected": 15378,
+              "callbacksDirected": 6661,
+              "exactDirected": 0,
+              "uniqueExact": 0
+            },
+            "sap": {
+              "pruneChecks": 22962,
+              "activePairChecks": 22211,
+              "orthogonalTests": 11025,
+              "axis": "x",
+              "eligible": 776,
+              "pairs": 0,
+              "buildMs": 3.7662149999999883,
+              "sweepMs": 4.818545999999969,
+              "pairSortMs": 0.007000000000061846,
+              "coreMs": 8.59176100000002,
+              "exactUnique": 0,
+              "projectionMs": 0.24336700000003475,
+              "totalMs": 8.859604999999988
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 2.5980600000000322,
+            "buildMs": 0.16659600000002683,
+            "queryMs": 2.4314640000000054,
+            "rawDirected": 15378,
+            "callbacksDirected": 6661,
+            "exactDirected": 0,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 20.93221700000015,
+                "p50": 1.6352779999999711,
+                "p95": 2.375446000000011,
+                "p99": 2.375446000000011
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 1.8298990000001822,
+                "p50": 0.1399579999999787,
+                "p95": 0.2121429999999691,
+                "p99": 0.2121429999999691
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 19.10231799999997,
+                "p50": 1.4753519999999298,
+                "p95": 2.205818000000022,
+                "p99": 2.205818000000022
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 22.523583000000144,
+                "p50": 1.656060000000025,
+                "p95": 2.588518000000022,
+                "p99": 2.588518000000022
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 2.085728000000131,
+                "p50": 0.15996700000005148,
+                "p95": 0.25452500000005784,
+                "p99": 0.25452500000005784
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 20.437855000000013,
+                "p50": 1.514022999999952,
+                "p95": 2.4285509999999704,
+                "p99": 2.4285509999999704
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 0.8335580000001528,
+                "p50": 0.05005400000004556,
+                "p95": 0.1131670000000895,
+                "p99": 0.1131670000000895
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 13.706609999999841,
+                "p50": 1.125742999999943,
+                "p95": 1.3406819999999016,
+                "p99": 1.3406819999999016
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 0.004782999999974891,
+                "p50": 0.0003629999999930078,
+                "p95": 0.0007809999999608408,
+                "p99": 0.0007809999999608408
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 14.544950999999969,
+                "p50": 1.1728400000000647,
+                "p95": 1.4383769999999458,
+                "p99": 1.4383769999999458
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.1647700000000896,
+                "p50": 0.09711600000002818,
+                "p95": 0.11113599999998769,
+                "p99": 0.11113599999998769
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 15.763552000000004,
+                "p50": 1.2703960000000052,
+                "p95": 1.5323470000000725,
+                "p99": 1.5323470000000725
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 3.392789999999877,
+                "p50": 0.25053700000000845,
+                "p95": 0.5632689999999911,
+                "p99": 0.5632689999999911
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 14.909731000000193,
+                "p50": 1.1347079999999323,
+                "p95": 2.248854000000051,
+                "p99": 2.248854000000051
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 0.004407999999898493,
+                "p50": 0.00026300000001810986,
+                "p95": 0.0011589999999159772,
+                "p99": 0.0011589999999159772
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 18.30692899999997,
+                "p50": 1.421570000000088,
+                "p95": 2.478390999999988,
+                "p99": 2.478390999999988
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.2403229999999894,
+                "p50": 0.0950950000000148,
+                "p95": 0.18531799999993837,
+                "p99": 0.18531799999993837
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 19.557140000000004,
+                "p50": 1.5171770000000606,
+                "p95": 2.576018999999974,
+                "p99": 2.576018999999974
+              }
+            }
+          }
+        }
+      },
+      "orderEvidence": {
+        "entityId": 21,
+        "original": [
+          55,
+          76,
+          144,
+          42,
+          131
+        ],
+        "sapPackedOrderFirstNeighbors": [
+          42,
+          55,
+          76,
+          131,
+          144
+        ],
+        "sameNeighborSet": true,
+        "actualSeparationBlock": {
+          "grid": {
+            "x": 3554.8778916671386,
+            "y": 3546.490433118733
+          },
+          "sapPackedOrder": {
+            "x": 3554.8778916671386,
+            "y": 3546.490433118733
+          },
+          "positionDelta": 0
+        }
+      }
+    },
+    {
+      "players": 5,
+      "armyPerPlayer": 155,
+      "clustered": true,
+      "validSnapshot": true,
+      "units": 776,
+      "domains": {
+        "budmori": {
+          "counts": {
+            "grid": {
+              "totalMs": 16.719961000000012,
+              "buildMs": 0.6124339999998938,
+              "queryMs": 16.10752700000012,
+              "rawDirected": 53973,
+              "callbacksDirected": 16632,
+              "exactDirected": 14410,
+              "uniqueExact": 7205
+            },
+            "sap": {
+              "pruneChecks": 47151,
+              "activePairChecks": 46376,
+              "orthogonalTests": 46376,
+              "axis": "x",
+              "eligible": 776,
+              "pairs": 8710,
+              "buildMs": 1.7100080000000162,
+              "sweepMs": 6.914035999999896,
+              "pairSortMs": 1.7150839999999334,
+              "coreMs": 10.339127999999846,
+              "exactUnique": 7205,
+              "projectionMs": 0.2985799999999017,
+              "totalMs": 10.686200999999983
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 3.23016900000016,
+            "buildMs": 0.48544200000014825,
+            "queryMs": 2.7447270000000117,
+            "rawDirected": 14236,
+            "callbacksDirected": 7789,
+            "exactDirected": 6108,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 65.36279500000046,
+                "p50": 4.940487999999959,
+                "p95": 10.61561299999994,
+                "p99": 10.61561299999994
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 1.6456720000003315,
+                "p50": 0.13396800000009534,
+                "p95": 0.15473399999996218,
+                "p99": 0.15473399999996218
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 63.71712300000013,
+                "p50": 4.7963119999999435,
+                "p95": 10.478440000000091,
+                "p99": 10.478440000000091
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 24.948849000000337,
+                "p50": 1.8858490000000074,
+                "p95": 2.935069999999996,
+                "p99": 2.935069999999996
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 2.0172469999999976,
+                "p50": 0.1425059999999121,
+                "p95": 0.40266300000007504,
+                "p99": 0.40266300000007504
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 22.93160200000034,
+                "p50": 1.7355230000000574,
+                "p95": 2.532406999999921,
+                "p99": 2.532406999999921
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 0.6185810000001766,
+                "p50": 0.03726800000004005,
+                "p95": 0.2031369999999697,
+                "p99": 0.2031369999999697
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 59.35927899999979,
+                "p50": 3.8570250000000215,
+                "p95": 10.145620000000008,
+                "p99": 10.145620000000008
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 21.5170099999998,
+                "p50": 1.6135089999997945,
+                "p95": 2.5718850000000657,
+                "p99": 2.5718850000000657
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 81.49486999999976,
+                "p50": 5.6199880000001485,
+                "p95": 11.72894499999984,
+                "p99": 11.72894499999984
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.2909619999998085,
+                "p50": 0.10771999999997206,
+                "p95": 0.13810400000011214,
+                "p99": 0.13810400000011214
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 82.81773199999975,
+                "p50": 5.7017309999998815,
+                "p95": 11.868637000000035,
+                "p99": 11.868637000000035
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 3.4454119999995783,
+                "p50": 0.2485309999999572,
+                "p95": 0.4692619999998442,
+                "p99": 0.4692619999998442
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 52.88374899999985,
+                "p50": 3.9948159999999007,
+                "p95": 8.121425000000045,
+                "p99": 8.121425000000045
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 24.191782000000103,
+                "p50": 1.5916319999998905,
+                "p95": 4.771285999999918,
+                "p99": 4.771285999999918
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 80.52094299999953,
+                "p50": 5.9882370000000265,
+                "p95": 13.13869499999987,
+                "p99": 13.13869499999987
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.8332969999999023,
+                "p50": 0.12105099999985214,
+                "p95": 0.4583070000001044,
+                "p99": 0.4583070000001044
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 82.370138,
+                "p50": 6.133064999999988,
+                "p95": 13.262459000000035,
+                "p99": 13.262459000000035
+              }
+            }
+          }
+        },
+        "rally": {
+          "counts": {
+            "grid": {
+              "totalMs": 8.210522999999966,
+              "buildMs": 0.1616109999999935,
+              "queryMs": 8.048911999999973,
+              "rawDirected": 53973,
+              "callbacksDirected": 16632,
+              "exactDirected": 8780,
+              "uniqueExact": 4390
+            },
+            "sap": {
+              "pruneChecks": 47151,
+              "activePairChecks": 46376,
+              "orthogonalTests": 35190,
+              "axis": "x",
+              "eligible": 776,
+              "pairs": 5506,
+              "buildMs": 1.0960809999999128,
+              "sweepMs": 7.587582000000111,
+              "pairSortMs": 1.1609349999998813,
+              "coreMs": 9.844597999999905,
+              "exactUnique": 4390,
+              "projectionMs": 0.24752600000010716,
+              "totalMs": 10.122260000000097
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 3.4569349999999304,
+            "buildMs": 0.2618609999999535,
+            "queryMs": 3.195073999999977,
+            "rawDirected": 26502,
+            "callbacksDirected": 10897,
+            "exactDirected": 5154,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 64.5805319999995,
+                "p50": 5.181654999999864,
+                "p95": 5.96841900000004,
+                "p99": 5.96841900000004
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 1.6009379999995872,
+                "p50": 0.1322020000000066,
+                "p95": 0.15209999999979118,
+                "p99": 0.15209999999979118
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 62.979593999999906,
+                "p50": 5.052928999999949,
+                "p95": 5.834581000000071,
+                "p99": 5.834581000000071
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 38.424204999999574,
+                "p50": 2.9956050000000687,
+                "p95": 3.9705059999998866,
+                "p99": 3.9705059999998866
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 1.7935909999998785,
+                "p50": 0.14830700000015895,
+                "p95": 0.17245699999989483,
+                "p99": 0.17245699999989483
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 36.630613999999696,
+                "p50": 2.8472979999999097,
+                "p95": 3.8363299999998617,
+                "p99": 3.8363299999998617
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 0.6694939999995313,
+                "p50": 0.0505439999999453,
+                "p95": 0.10476100000005317,
+                "p99": 0.10476100000005317
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 44.09134100000051,
+                "p50": 3.3471779999999853,
+                "p95": 4.8913870000001225,
+                "p99": 4.8913870000001225
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 15.238030000000208,
+                "p50": 1.0144510000000082,
+                "p95": 3.180090000000064,
+                "p99": 3.180090000000064
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 59.99886500000025,
+                "p50": 4.574391000000105,
+                "p95": 6.577698000000055,
+                "p99": 6.577698000000055
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.1509989999997288,
+                "p50": 0.09593099999983679,
+                "p95": 0.11250599999993938,
+                "p99": 0.11250599999993938
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 61.16305999999963,
+                "p50": 4.677236999999877,
+                "p95": 6.664473000000044,
+                "p99": 6.664473000000044
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 3.665837999999667,
+                "p50": 0.2573579999998401,
+                "p95": 0.6592229999998835,
+                "p99": 0.6592229999998835
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 42.2853290000005,
+                "p50": 3.435564999999997,
+                "p95": 3.98651800000016,
+                "p99": 3.98651800000016
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 11.886187000000291,
+                "p50": 0.9418580000001384,
+                "p95": 1.1646359999999731,
+                "p99": 1.1646359999999731
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 57.83735400000046,
+                "p50": 4.747874000000138,
+                "p95": 5.4741039999998975,
+                "p99": 5.4741039999998975
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 1.3074819999999363,
+                "p50": 0.10377400000015768,
+                "p95": 0.12873599999988983,
+                "p99": 0.12873599999988983
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 59.15517699999987,
+                "p50": 4.851042000000007,
+                "p95": 5.604002999999921,
+                "p99": 5.604002999999921
+              }
+            }
+          }
+        }
+      },
+      "orderEvidence": {
+        "entityId": 2,
+        "original": [
+          175,
+          374,
+          408,
+          463,
+          636,
+          395,
+          429,
+          450
+        ],
+        "sapPackedOrderFirstNeighbors": [
+          340,
+          353,
+          374,
+          387,
+          395,
+          408,
+          429,
+          442
+        ],
+        "sameNeighborSet": false,
+        "actualSeparationBlock": {
+          "grid": {
+            "x": 3576.864437128189,
+            "y": 3628.6757214217937
+          },
+          "sapPackedOrder": {
+            "x": 3565.277888268635,
+            "y": 3618.9394283501297
+          },
+          "positionDelta": 15.134183732602414
+        }
+      }
+    },
+    {
+      "players": 5,
+      "armyPerPlayer": 1000,
+      "clustered": false,
+      "validSnapshot": true,
+      "units": 5001,
+      "domains": {
+        "budmori": {
+          "counts": {
+            "grid": {
+              "totalMs": 58.75851499999999,
+              "buildMs": 3.621487999999772,
+              "queryMs": 55.13702700000022,
+              "rawDirected": 187135,
+              "callbacksDirected": 87403,
+              "exactDirected": 74142,
+              "uniqueExact": 37071
+            },
+            "sap": {
+              "pruneChecks": 448254,
+              "activePairChecks": 443342,
+              "orthogonalTests": 443342,
+              "axis": "x",
+              "eligible": 5001,
+              "pairs": 43099,
+              "buildMs": 4.3160039999997935,
+              "sweepMs": 35.78093200000012,
+              "pairSortMs": 9.345164999999724,
+              "coreMs": 49.44210099999964,
+              "exactUnique": 37071,
+              "projectionMs": 3.2051729999998315,
+              "totalMs": 52.73808599999984
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 17.42822500000011,
+            "buildMs": 2.6709789999999884,
+            "queryMs": 14.757246000000123,
+            "rawDirected": 69490,
+            "callbacksDirected": 42321,
+            "exactDirected": 31986,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 320.4357659999996,
+                "p50": 26.232680000000073,
+                "p95": 30.775399000000107,
+                "p99": 30.775399000000107
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 26.09276299999965,
+                "p50": 2.1551650000001246,
+                "p95": 3.098471000000245,
+                "p99": 3.098471000000245
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 294.34300299999995,
+                "p50": 24.38620400000036,
+                "p95": 28.620233999999982,
+                "p99": 28.620233999999982
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 190.8942600000005,
+                "p50": 14.869470999999976,
+                "p95": 31.96851599999991,
+                "p99": 31.96851599999991
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 44.57966200000101,
+                "p50": 2.5839600000003884,
+                "p95": 17.644784000000072,
+                "p99": 17.644784000000072
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 146.31459799999948,
+                "p50": 12.322519999999713,
+                "p95": 15.508818999999676,
+                "p99": 15.508818999999676
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 5.965313000000151,
+                "p50": 0.2884429999994609,
+                "p95": 1.6900800000003073,
+                "p99": 1.6900800000003073
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 425.96973899999875,
+                "p50": 33.33972100000028,
+                "p95": 49.50733700000001,
+                "p99": 49.50733700000001
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 115.09425899999997,
+                "p50": 8.9940059999999,
+                "p95": 12.880427000000054,
+                "p99": 12.880427000000054
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 547.0293109999989,
+                "p50": 43.51201899999978,
+                "p95": 60.624573999999484,
+                "p99": 60.624573999999484
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 20.524364000000332,
+                "p50": 1.8309410000001662,
+                "p95": 2.3499720000008892,
+                "p99": 2.3499720000008892
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 568.8838859999996,
+                "p50": 44.80309500000021,
+                "p95": 63.01088199999958,
+                "p99": 63.01088199999958
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 30.889364999999543,
+                "p50": 2.18224999999984,
+                "p95": 4.847292999999809,
+                "p99": 4.847292999999809
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 469.6742769999987,
+                "p50": 33.86351500000001,
+                "p95": 87.59747699999934,
+                "p99": 87.59747699999934
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 112.55844399999978,
+                "p50": 9.185516000000462,
+                "p95": 10.50002399999994,
+                "p99": 10.50002399999994
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 613.122085999998,
+                "p50": 46.20397400000002,
+                "p95": 101.63028599999961,
+                "p99": 101.63028599999961
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 25.121914000001198,
+                "p50": 1.9547720000000481,
+                "p95": 2.645006000000649,
+                "p99": 2.645006000000649
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 638.4522890000012,
+                "p50": 48.01262599999973,
+                "p95": 104.28859900000043,
+                "p99": 104.28859900000043
+              }
+            }
+          }
+        },
+        "rally": {
+          "counts": {
+            "grid": {
+              "totalMs": 28.849772999999914,
+              "buildMs": 5.455095999999685,
+              "queryMs": 23.39467700000023,
+              "rawDirected": 187135,
+              "callbacksDirected": 87403,
+              "exactDirected": 0,
+              "uniqueExact": 0
+            },
+            "sap": {
+              "pruneChecks": 448254,
+              "activePairChecks": 443342,
+              "orthogonalTests": 229939,
+              "axis": "x",
+              "eligible": 5001,
+              "pairs": 0,
+              "buildMs": 3.7818770000003497,
+              "sweepMs": 28.90456400000039,
+              "pairSortMs": 0.012519999999312859,
+              "coreMs": 32.698961000000054,
+              "exactUnique": 0,
+              "projectionMs": 1.5190670000001774,
+              "totalMs": 34.275612999999794
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 23.523607000000084,
+            "buildMs": 2.0497910000003685,
+            "queryMs": 21.473815999999715,
+            "rawDirected": 187135,
+            "callbacksDirected": 87403,
+            "exactDirected": 0,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 279.01886699999704,
+                "p50": 20.691044000000147,
+                "p95": 37.06298700000025,
+                "p99": 37.06298700000025
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 22.913190999996914,
+                "p50": 1.8445819999997184,
+                "p95": 2.9326320000000123,
+                "p99": 2.9326320000000123
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 256.10567600000013,
+                "p50": 19.048674000000574,
+                "p95": 34.130355000000236,
+                "p99": 34.130355000000236
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 321.34326099999817,
+                "p50": 21.85961700000007,
+                "p95": 64.0109309999998,
+                "p99": 64.0109309999998
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 23.946544999998878,
+                "p50": 1.866852000000108,
+                "p95": 3.2141579999997703,
+                "p99": 3.2141579999997703
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 297.3967159999993,
+                "p50": 19.896185999999943,
+                "p95": 60.79677300000003,
+                "p99": 60.79677300000003
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 4.866417999999612,
+                "p50": 0.35102699999970355,
+                "p95": 0.8262350000004517,
+                "p99": 0.8262350000004517
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 289.73726700000043,
+                "p50": 22.83758200000011,
+                "p95": 31.25687300000027,
+                "p99": 31.25687300000027
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 0.01943200000005163,
+                "p50": 0.0015610000000378932,
+                "p95": 0.0022049999997761915,
+                "p99": 0.0022049999997761915
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 294.6231170000001,
+                "p50": 23.190460000000712,
+                "p95": 31.738280000000486,
+                "p99": 31.738280000000486
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 18.688029000000824,
+                "p50": 1.478678999999829,
+                "p95": 2.036927000000105,
+                "p99": 2.036927000000105
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 314.2566459999989,
+                "p50": 24.724484000000302,
+                "p95": 33.27852900000016,
+                "p99": 33.27852900000016
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 26.142997000001742,
+                "p50": 2.0720009999995455,
+                "p95": 2.675571000000673,
+                "p99": 2.675571000000673
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 289.5000159999963,
+                "p50": 23.96266899999955,
+                "p95": 27.311564999999973,
+                "p99": 27.311564999999973
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 0.01765500000146858,
+                "p50": 0.001382000000376138,
+                "p95": 0.0020759999997608247,
+                "p99": 0.0020759999997608247
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 315.66066799999953,
+                "p50": 26.004613999999492,
+                "p95": 29.566375999999764,
+                "p99": 29.566375999999764
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 19.06460799999877,
+                "p50": 1.5434130000003279,
+                "p95": 2.509465000000091,
+                "p99": 2.509465000000091
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 334.8963680000006,
+                "p50": 27.29522900000029,
+                "p95": 31.191663000000517,
+                "p99": 31.191663000000517
+              }
+            }
+          }
+        }
+      },
+      "orderEvidence": {
+        "entityId": 66,
+        "original": [
+          87,
+          45
+        ],
+        "sapPackedOrderFirstNeighbors": [
+          45,
+          87
+        ],
+        "sameNeighborSet": true,
+        "actualSeparationBlock": {
+          "grid": {
+            "x": 3657.84220630886,
+            "y": 3490.571694669582
+          },
+          "sapPackedOrder": {
+            "x": 3657.84220630886,
+            "y": 3490.571694669582
+          },
+          "positionDelta": 0
+        }
+      }
+    },
+    {
+      "players": 5,
+      "armyPerPlayer": 1000,
+      "clustered": true,
+      "validSnapshot": true,
+      "units": 5001,
+      "domains": {
+        "budmori": {
+          "counts": {
+            "grid": {
+              "totalMs": 150.40565100000094,
+              "buildMs": 3.8683579999997164,
+              "queryMs": 146.53729300000123,
+              "rawDirected": 670315,
+              "callbacksDirected": 210245,
+              "exactDirected": 181292,
+              "uniqueExact": 90646
+            },
+            "sap": {
+              "pruneChecks": 959974,
+              "activePairChecks": 954974,
+              "orthogonalTests": 954974,
+              "axis": "x",
+              "eligible": 5001,
+              "pairs": 111291,
+              "buildMs": 4.3421460000008665,
+              "sweepMs": 86.41935000000012,
+              "pairSortMs": 27.936093000000255,
+              "coreMs": 118.69758900000124,
+              "exactUnique": 90646,
+              "projectionMs": 2.120273000000452,
+              "totalMs": 120.92072799999914
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 23.314872000000832,
+            "buildMs": 2.7092179999999644,
+            "queryMs": 20.605654000000868,
+            "rawDirected": 83688,
+            "callbacksDirected": 50691,
+            "exactDirected": 39862,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 1530.0112870000012,
+                "p50": 111.06939800000146,
+                "p95": 284.95684300000175,
+                "p99": 284.95684300000175
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 20.958629999999175,
+                "p50": 1.614690000000337,
+                "p95": 2.7774389999995037,
+                "p99": 2.7774389999995037
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 1509.052657000002,
+                "p50": 108.94108700000106,
+                "p95": 283.3421530000014,
+                "p99": 283.3421530000014
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 256.85057400000005,
+                "p50": 20.894105999999738,
+                "p95": 25.15451199999916,
+                "p99": 25.15451199999916
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 36.46825700000045,
+                "p50": 2.978355000001102,
+                "p95": 5.248399000000063,
+                "p99": 5.248399000000063
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 220.3823169999996,
+                "p50": 17.806651999999303,
+                "p95": 22.093493000000308,
+                "p99": 22.093493000000308
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 10.226237000000765,
+                "p50": 0.36245899999994435,
+                "p95": 4.216580000000249,
+                "p99": 4.216580000000249
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 1077.8082159999976,
+                "p50": 83.83394799999951,
+                "p95": 119.88012600000002,
+                "p99": 119.88012600000002
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 348.6209740000013,
+                "p50": 26.313873000000967,
+                "p95": 38.19338699999935,
+                "p99": 38.19338699999935
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 1436.6554269999997,
+                "p50": 111.91757300000063,
+                "p95": 153.615683,
+                "p99": 153.615683
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 26.585048000000825,
+                "p50": 2.084842000000208,
+                "p95": 4.793303000000378,
+                "p99": 4.793303000000378
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 1463.3623169999973,
+                "p50": 114.06204099999923,
+                "p95": 157.76379499999894,
+                "p99": 157.76379499999894
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 41.01304500000151,
+                "p50": 2.731190999998944,
+                "p95": 9.460462000000916,
+                "p99": 9.460462000000916
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 988.3469489999989,
+                "p50": 81.56214099999852,
+                "p95": 100.51036000000022,
+                "p99": 100.51036000000022
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 350.74902199999815,
+                "p50": 26.49638800000139,
+                "p95": 50.048297999999704,
+                "p99": 50.048297999999704
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 1380.1090159999985,
+                "p50": 111.8549550000007,
+                "p95": 137.73994499999935,
+                "p99": 137.73994499999935
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 47.865679000002274,
+                "p50": 2.313449999999648,
+                "p95": 19.97904700000072,
+                "p99": 19.97904700000072
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 1428.068782000002,
+                "p50": 114.20629499999995,
+                "p95": 139.94635899999957,
+                "p99": 139.94635899999957
+              }
+            }
+          }
+        },
+        "rally": {
+          "counts": {
+            "grid": {
+              "totalMs": 136.1382050000011,
+              "buildMs": 1.2869810000011057,
+              "queryMs": 134.851224,
+              "rawDirected": 670315,
+              "callbacksDirected": 210245,
+              "exactDirected": 107150,
+              "uniqueExact": 53575
+            },
+            "sap": {
+              "pruneChecks": 959974,
+              "activePairChecks": 954974,
+              "orthogonalTests": 741571,
+              "axis": "x",
+              "eligible": 5001,
+              "pairs": 68192,
+              "buildMs": 5.243886000000202,
+              "sweepMs": 82.31857800000034,
+              "pairSortMs": 16.243368999999802,
+              "coreMs": 103.80583300000035,
+              "exactUnique": 53575,
+              "projectionMs": 1.793083000000479,
+              "totalMs": 105.6787089999998
+            }
+          },
+          "cappedGridCounts": {
+            "totalMs": 34.53686799999923,
+            "buildMs": 3.036356999999043,
+            "queryMs": 31.500511000000188,
+            "rawDirected": 200226,
+            "callbacksDirected": 88038,
+            "exactDirected": 36666,
+            "pairs": null
+          },
+          "timing": {
+            "gridUncapped": {
+              "totalMs": {
+                "samples": 12,
+                "total": 1489.9634669999978,
+                "p50": 104.83686699999816,
+                "p95": 188.529813000001,
+                "p99": 188.529813000001
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 25.60447600000407,
+                "p50": 1.60598299999765,
+                "p95": 4.94463800000085,
+                "p99": 4.94463800000085
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 1464.3589909999937,
+                "p50": 102.45303599999897,
+                "p95": 183.58517500000016,
+                "p99": 183.58517500000016
+              }
+            },
+            "gridExistingCutoff": {
+              "totalMs": {
+                "samples": 12,
+                "total": 527.2298689999952,
+                "p50": 33.52122600000075,
+                "p95": 81.79578500000207,
+                "p99": 81.79578500000207
+              },
+              "buildMs": {
+                "samples": 12,
+                "total": 40.22253499999715,
+                "p50": 2.5517069999987143,
+                "p95": 9.330962,
+                "p99": 9.330962
+              },
+              "queryMs": {
+                "samples": 12,
+                "total": 487.0073339999981,
+                "p50": 32.119291999999405,
+                "p95": 75.66247099999964,
+                "p99": 75.66247099999964
+              }
+            },
+            "sapWarm": {
+              "buildMs": {
+                "samples": 12,
+                "total": 5.448523000002751,
+                "p50": 0.4297970000006899,
+                "p95": 0.595166999999492,
+                "p99": 0.595166999999492
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 1027.5608530000063,
+                "p50": 75.8096919999989,
+                "p95": 116.53611100000126,
+                "p99": 116.53611100000126
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 218.8742909999928,
+                "p50": 16.05421899999783,
+                "p95": 27.35122599999886,
+                "p99": 27.35122599999886
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 1251.8836670000019,
+                "p50": 92.87166100000104,
+                "p95": 134.85560199999964,
+                "p99": 134.85560199999964
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 21.618176000003587,
+                "p50": 1.6307420000011916,
+                "p95": 2.457092000000557,
+                "p99": 2.457092000000557
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 1273.5598230000032,
+                "p50": 94.48834200000056,
+                "p95": 137.04508899999928,
+                "p99": 137.04508899999928
+              }
+            },
+            "sapCold": {
+              "buildMs": {
+                "samples": 12,
+                "total": 30.64610900000116,
+                "p50": 2.5073430000011285,
+                "p95": 3.242344000002049,
+                "p99": 3.242344000002049
+              },
+              "sweepMs": {
+                "samples": 12,
+                "total": 1018.453332000001,
+                "p50": 76.45426900000166,
+                "p95": 166.11188400000174,
+                "p99": 166.11188400000174
+              },
+              "pairSortMs": {
+                "samples": 12,
+                "total": 193.73469799999657,
+                "p50": 15.468892000000778,
+                "p95": 24.473675999997795,
+                "p99": 24.473675999997795
+              },
+              "coreMs": {
+                "samples": 12,
+                "total": 1242.8341389999987,
+                "p50": 94.06650000000081,
+                "p95": 193.20463000000018,
+                "p99": 193.20463000000018
+              },
+              "projectionMs": {
+                "samples": 12,
+                "total": 30.40870399999767,
+                "p50": 2.4359549999971932,
+                "p95": 3.647499999999127,
+                "p99": 3.647499999999127
+              },
+              "totalMs": {
+                "samples": 12,
+                "total": 1273.299208000004,
+                "p50": 96.51625499999864,
+                "p95": 196.002797000001,
+                "p99": 196.002797000001
+              }
+            }
+          }
+        }
+      },
+      "orderEvidence": {
+        "entityId": 2,
+        "original": [
+          1018,
+          2060,
+          2047,
+          3003,
+          4016,
+          1005,
+          2026,
+          1010
+        ],
+        "sapPackedOrderFirstNeighbors": [
+          2026,
+          2039,
+          2047,
+          2060,
+          3003,
+          4008,
+          4016,
+          1005
+        ],
+        "sameNeighborSet": false,
+        "actualSeparationBlock": {
+          "grid": {
+            "x": 3580.675156873332,
+            "y": 3627.8916309980445
+          },
+          "sapPackedOrder": {
+            "x": 3575.1761085656144,
+            "y": 3624.287426820138
+          },
+          "positionDelta": 6.574938786532607
+        }
+      }
+    }
+  ],
+  "axisHysteresisCheck": [
+    {
+      "varianceYOverX": 1.2,
+      "axis": "x"
+    },
+    {
+      "varianceYOverX": 1.3,
+      "axis": "y"
+    },
+    {
+      "varianceYOverX": 1,
+      "axis": "y"
+    },
+    {
+      "varianceYOverX": 0.7,
+      "axis": "x"
+    }
+  ]
+}

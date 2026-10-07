@@ -1,0 +1,224 @@
+{
+  "kind": "Sequential isolated native V8, actual single-file engine and embedded SDK; no renderer, transport or device FPS claim",
+  "baselineCommit": "a12b6fa005a06fb3f9b718c71c34a6e465a4f04c",
+  "candidateSourceSHA256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+  "sdkSource": "ab71756ad3657cb0572d44c276c18f9b74187317",
+  "sdkDist": "910c24b4963afd4083f39f4d79eae0ce8fae7e92",
+  "baselineSimulation": {
+    "kind": "Native V8 actual shared adapter, five human factions, no renderer/transport",
+    "results": [
+      {
+        "players": 5,
+        "armyPerPlayer": 10,
+        "totalArmy": 50,
+        "tps": 10,
+        "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 112.78885800000006,
+          "p50": 2.0057140000000118,
+          "p95": 3.2539919999999825,
+          "p99": 7.708095000000014
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 21.74397300000001,
+          "p50": 2.2686480000000415,
+          "p95": 9.373663999999991,
+          "p99": 9.373663999999991
+        },
+        "snapshotBytes": 84012,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 155,
+        "totalArmy": 775,
+        "tps": 10,
+        "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 885.611767,
+          "p50": 16.412473999999975,
+          "p95": 25.387118999999984,
+          "p99": 26.455809000000045
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 158.43564300000025,
+          "p50": 22.056591000000026,
+          "p95": 36.20437300000003,
+          "p99": 36.20437300000003
+        },
+        "snapshotBytes": 879331,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 1000,
+        "totalArmy": 5000,
+        "tps": 10,
+        "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 6440.7026280000055,
+          "p50": 126.21627900000021,
+          "p95": 164.07648400000107,
+          "p99": 174.7349119999999
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 887.84717,
+          "p50": 138.52408699999978,
+          "p95": 199.88671299999987,
+          "p99": 199.88671299999987
+        },
+        "snapshotBytes": 5538143,
+        "valid": true
+      }
+    ]
+  },
+  "candidateSimulation": {
+    "kind": "Native V8 actual shared adapter, five human factions, no renderer/transport",
+    "results": [
+      {
+        "players": 5,
+        "armyPerPlayer": 10,
+        "totalArmy": 50,
+        "tps": 10,
+        "sourceSHA256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 81.44865799999991,
+          "p50": 1.4875559999999837,
+          "p95": 3.1234019999999987,
+          "p99": 4.24323099999998
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 18.695997999999975,
+          "p50": 1.9085830000000215,
+          "p95": 6.967647999999997,
+          "p99": 6.967647999999997
+        },
+        "snapshotBytes": 84012,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 155,
+        "totalArmy": 775,
+        "tps": 10,
+        "sourceSHA256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 603.8162749999999,
+          "p50": 11.96843100000001,
+          "p95": 16.695445999999947,
+          "p99": 17.410924000000023
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 120.29012599999976,
+          "p50": 16.218734999999924,
+          "p95": 31.496616000000017,
+          "p99": 31.496616000000017
+        },
+        "snapshotBytes": 879331,
+        "valid": true
+      },
+      {
+        "players": 5,
+        "armyPerPlayer": 1000,
+        "totalArmy": 5000,
+        "tps": 10,
+        "sourceSHA256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+        "simulationStepMs": {
+          "samples": 50,
+          "total": 4523.437306000001,
+          "p50": 90.12906000000021,
+          "p95": 102.42346799999996,
+          "p99": 106.63637800000015
+        },
+        "snapshotMs": {
+          "samples": 6,
+          "total": 757.337364999999,
+          "p50": 120.9151809999994,
+          "p95": 158.385851,
+          "p99": 158.385851
+        },
+        "snapshotBytes": 5538143,
+        "valid": true
+      }
+    ]
+  },
+  "baselineBootstrap": {
+    "pass": true,
+    "kind": "Native actual SDK/engine five×1000 checkpoint bootstrap; not network/GPU",
+    "sourceSHA256": "1d3be9850d3ef0d4a44cd293322e7c71b7802ec0475ca9c3877e05d4ae88187b",
+    "sdk": "embedded",
+    "snapshotBytes": 4997530,
+    "wireBytes": 4997850,
+    "constructorMs": 268.8850960000001,
+    "exportMs": 3.7031979999999294,
+    "encodeMs": 13.156196000000136,
+    "bootstrapMs": 2353.4159230000005,
+    "bootstrapPulseCount": 1,
+    "bootstrapPulseMaxMs": 787.3397869999999,
+    "incumbentStageMs": 698.2192509999995,
+    "incumbentCommitLoadMs": 456.440877,
+    "preparedStageMs": null,
+    "preparedCommitMs": null,
+    "cooperativeStageMs": null,
+    "membershipPulseCount": 0,
+    "membershipPulseMaxMs": null,
+    "incumbentSnapshotBytes": 3986022,
+    "profile": {
+      "maxSnapshotBytes": 8388608,
+      "maxHistoryBytes": 67108864,
+      "stateHistorySize": 32,
+      "checksumInterval": 30
+    }
+  },
+  "candidateBootstrap": {
+    "pass": true,
+    "kind": "Native actual SDK/engine five×1000 checkpoint bootstrap; not network/GPU",
+    "sourceSHA256": "21602a56ab94c8bd2f4140a1843ef8fec2e4609fe128c7bf56d86d371cb786b3",
+    "sdk": "embedded",
+    "snapshotBytes": 4997530,
+    "wireBytes": 4997850,
+    "constructorMs": 275.2690470000001,
+    "exportMs": 6.497673000000077,
+    "encodeMs": 11.821870000000217,
+    "bootstrapMs": 876.9443699999999,
+    "bootstrapPulseCount": 102,
+    "bootstrapPulseMaxMs": 31.99988099999996,
+    "incumbentStageMs": 624.7998279999997,
+    "incumbentCommitLoadMs": 466.3198910000001,
+    "preparedStageMs": 401.07771499999944,
+    "preparedCommitMs": 0.5056350000004386,
+    "cooperativeStageMs": 396.35507899999993,
+    "membershipPulseCount": 47,
+    "membershipPulseMaxMs": 21.520102999999835,
+    "incumbentSnapshotBytes": 3986022,
+    "profile": {
+      "maxSnapshotBytes": 8388608,
+      "maxHistoryBytes": 67108864,
+      "stateHistorySize": 32,
+      "checksumInterval": 30
+    }
+  },
+  "targetAssessment": {
+    "fiveBy1000TickP95Under80Ms": false,
+    "observedCooperativeSlicesUnder50Ms": true,
+    "hardRealtimeGuarantee": false,
+    "membershipStagePlusCommitHalved": true,
+    "standaloneMembershipStageHalved": false
+  },
+  "correctnessFix": {
+    "scope": "PlayerLifecycle.defeat cancels only non-standard attack controllers; existing owner death changed standard/empty-pattern to invalid recovery/empty-pattern. No validator weakening.",
+    "baselineEvidence": "Unmodified baseline a12b6fa: forced overlapping five×1000 state valid through tick27, first invalid at tick28 when d/e die; minimized to one grade2 owned swordsman and owner defeat.",
+    "test": "tests/player-defeat-pattern.cjs",
+    "comparisonRule": "Clustered spatial performance uses the identical one-line defeat guard in baseline only when BLOOM_SPATIAL_BASELINE_DEFEAT_FIX=1."
+  }
+}

@@ -50,7 +50,7 @@
 - **Can-be:** 실행·대기·예측·롤백·복구는 같은 구성의 상태로 다룹니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
 - [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
 - HTML에는 필요한 공통 모듈과 SDK를 오프라인 실행용으로 포함합니다. 원본 SDK 동작은 c3173914519a78834360430071e7a125736d86d5와 호환됩니다. 배포 기준·각 ESM 원본과 포함 IIFE의 SHA-256은 `gamekit-lock.json`에서 검증합니다. 가변 main CDN import는 사용하지 않습니다.
-- SDK에 전송 기능이 있다는 사실은 이 게임의 온라인 멀티플레이가 완성되었다는 뜻이 아닙니다. 현재 사용자용 온라인 플레이는 제공하지 않습니다.
+- 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다.
 
 ### 저장과 검증
 
@@ -125,7 +125,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `33d8cd6edfe3790ff00c3d9912976fda24919c01`; dist: `39956bc30c6e6a29fc6e2f4e7bde810d04221011`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
+현재 고정 SDK source: `ab71756ad3657cb0572d44c276c18f9b74187317`; dist: `910c24b4963afd4083f39f4d79eae0ce8fae7e92`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
@@ -134,7 +134,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ### SDK 원본 검증과 오프라인 실행
 
-게임 실행에는 네트워크와 npm이 필요하지 않습니다. 개발·SDK 갱신 단계에서만 고정 버전 esbuild와 공식 upstream 저장소를 사용합니다. `vendor/upstream`은 정확한 dist/source Git 객체와 manifest/ESM 캐시입니다. `npm test`는 Git 객체 ID, manifest·각 bundle SHA-256과 ESM→IIFE 재생성 bytes를 검증합니다. 변경된 bundle·manifest·source pin을 거부하는 손상 fixture도 검사합니다.
+싱글 게임 실행에는 네트워크와 npm이 필요하지 않습니다. 공개 P2P 플레이에는 네트워크가 필요합니다. 개발·SDK 갱신 단계에서만 고정 버전 esbuild와 공식 upstream 저장소를 사용합니다. `vendor/upstream`은 정확한 dist/source Git 객체와 manifest/ESM 캐시입니다. `npm test`는 Git 객체 ID, manifest·각 bundle SHA-256과 ESM→IIFE 재생성 bytes를 검증합니다. 변경된 bundle·manifest·source pin을 거부하는 손상 fixture도 검사합니다.
 
 SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신하고 `npm run verify:upstream`으로 공식 저장소에서 해당 불변 객체를 받아 검증합니다. CI에서도 이 검증을 수행합니다. `index.html`은 외부 CDN이나 이 개발용 캐시에 실행 의존성을 갖지 않습니다.
 
@@ -166,10 +166,10 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 ## 락스텝 기본값과 롤백 선택
 
 - `CONFIG.netcode`가 다음 세션의 설정 원본입니다. 기본은 `{mode:'lockstep',checksumInterval:30}`이며, `mode:'rollback'`으로 바꾸면 기존 예측·롤백 경로를 사용합니다. 설정 변경은 새 세션을 만드는 초기화·새 게임·정상 불러오기·TPS 변경 경계에서 적용됩니다. 실행 중인 세션의 mode나 profile을 수정하지 않습니다. 별도 게임 엔진·Worker·설정 저장 schema는 추가하지 않습니다.
-- 락스텝은 모든 피어의 해당 틱 입력이 도착해야 실행합니다. 예측 입력·오입력 롤백 재실행·매 틱 롤백 snapshot은 없습니다. 현재 사용자 실행은 오프라인 싱글 플레이이며 입력 지연 0을 유지합니다. 선택 TPS와 별도 RAF/WebGL 보간도 그대로입니다.
+- 락스텝은 모든 피어의 해당 틱 입력이 도착해야 실행합니다. 예측 입력·오입력 롤백 재실행·매 틱 롤백 snapshot은 없습니다. 싱글 플레이는 입력 지연 0을 유지하고 공개 세계는 공통 세션 설정을 사용합니다. 선택 TPS와 별도 RAF/WebGL 보간도 그대로입니다.
 - 완전한 정규 상태는 초기 세션, 30틱마다의 체크섬 checkpoint, 명시적인 hash/replay/디스크 저장 요청에서 직렬화합니다. 복구는 보관된 checkpoint와 이후 확정 입력으로 현재 상태를 재구성합니다. `checksumInterval`은 양수이며 현재 락스텝 입력 이력 32틱 이내여야 합니다. 주기적인 큰 snapshot 비용까지 없어지는 것은 아닙니다.
 - 디스크 캐시는 실제 저장/백업을 요청한 경계에만 생깁니다. SDK의 adapter.save() 호출마다 디스크용 bytes를 따로 복사하지 않습니다. 미래 결과에 영향을 주는 전투 구성·진행·공간 캐시·RNG·타이머는 기존 코덱으로 그대로 보존하며 저장 키·schema·정규 bytes를 바꾸지 않습니다.
-- 검증용 네트워크 피어도 모드·TPS·입력 지연·체크섬 주기가 맞아야 연결됩니다. 버전/설정 불일치 시 양쪽 새로고침과 동일 설정 안내를 진단창에 표시합니다. 사용자 온라인 멀티플레이를 추가한 것은 아닙니다.
+- 검증용 네트워크 피어도 모드·TPS·입력 지연·체크섬 주기가 맞아야 연결됩니다. 버전/설정 불일치 시 양쪽 새로고침과 동일 설정 안내를 진단창에 표시합니다. 이 설정 자체와 공개 참가자 admission/bootstrap 구성은 별도 책임입니다.
 - 연속 캠페인은 기존 롤백 지연 패킷 구간을 명시적 rollback 설정으로 유지하고, 같은 캠페인 저장에서 락스텝 대기·확정 명령·예측 0·주기 사이의 hash/replay/복구·반복 모드 전환을 이어 검사합니다. 실제 Chromium E2E도 저장/전투/회복 흐름 속에서 두 모드의 반복 전환과 락스텝 매 틱 직렬화 제거를 확인합니다.
 - `npm run test:benchmark:modes`는 같은 seed·객체 수·TPS·입력으로 두 모드를 비교합니다. Native 실행은 한 프로세스에서 틱마다 순서를 번갈아 측정하며 10/155/1000 동료를 포함합니다. Chromium 실행은 155 동료에서 실제 WebGL을 사용하되 비용 분리를 위해 수동 SDK 경계의 동일 입력을 사용합니다. 둘 다 advance·simulation step·snapshot을 분리하고, 브라우저는 render CPU 제출 비용도 따로 기록합니다. 디스크 cache 복사 횟수/bytes만 측정하며 SDK 내부 복사나 전체 JS 할당량으로 해석하지 않습니다. 생성자·워밍업·최종 hash 검증 캡처와 런타임 디스크 자동 저장은 측정 구간에서 제외합니다. 실제 기기 FPS·GPU 완료시간·1000 동료 30TPS 보장은 하지 않습니다.
 
@@ -206,3 +206,22 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 큰 상태의 직렬화와 설치는 아직 동기 작업입니다. 게시된 SDK에서 5명×1000 초기 checkpoint/전송은 약5MB로 허용되었으나, 받는 클라이언트의 검증·설치·재확인은 약2.4초였습니다. 4명×1000 뒤 새 다섯 번째 참가자의 입장에서는 기존 참가자의 약4MB 상태 staging(save/apply/save/restore)이 약677ms, commit load가 약570ms였습니다. 이는 실제 인터넷 방의 총 입장 시간이나 휴대폰 측정이 아니며, 기존 참가자에게도 큰 입장 정지가 생길 수 있음을 보여 줍니다. `maxCatchupSteps`는 이 직렬화/설치 시간을 분할하지 않습니다.
 
 공개 세션은 snapshot8MiB, sparse snapshot-history64MiB, bootstrap transfer8MiB의 byte budget을 사용합니다.64MiB는 미리 할당한 입력 버퍼가 아닌 보관 이력의 상한입니다. 기존 싱글 rollback 이력 설정은 유지합니다. `tests/shared-large-bootstrap.cjs`가 큰 실제 상태로 SDK budget과 완전한 bytes 복원을 검사하고, `test:benchmark:shared`가 5명 부하를 별도로 표시합니다.
+
+## 대규모 snapshot 준비와 결정론적 공간 질의
+
+- 게임 adapter는 `prepareSnapshot`/`loadPreparedSnapshot`으로 외부 snapshot을 한 번 준비한 뒤 단일 사용 토큰으로 설치합니다. 토큰은 bytes와 별도로 보관되고 틱·epoch·버전·TPS·seed·참가자 context에 묶입니다. bytes 변경, 토큰 재사용, context 누락이나 변경은 허용하지 않습니다.
+- 정규 graph 형식뿐 아니라 **실제 설치 후 다시 저장되는 authority 형식**까지 확인합니다. 공간 캐시 압축·순서·중복, wrapper 필드와 참조 별칭이 달라지는 입력은 기존 세계를 보존하며 거부합니다. 솔로 이전 저장의 마이그레이션 경로는 유지합니다.
+- `saveJob`/`prepareSnapshotJob`/`prepareMembershipJob`은 8 ms 목표의 협력형 pulse를 제공합니다. 캡처·복사 동안 SDK가 하나의 확정 경계를 동결하며, 중간 틱을 섞지 않습니다. 참가자 추가는 별도 소유 그래프에서 준비하고 commit에서 설치합니다. 취소나 실패는 살아 있는 세계를 변경하지 않습니다. Worker는 사용하지 않습니다.
+- pulse 예산은 협력형 목표입니다. GC·브라우저 스케줄링·네이티브 메모리 할당까지 강제 선점하는 하드 실시간 보장은 아닙니다. 기존 동기 API와 초기 체크포인트처럼 아직 동기 경로가 필요한 작업도 별도로 측정합니다.
+- RALLY FRONTIER는 근방/동맹 질의 grid와 비동맹 최종 겹침 해소용 adaptive SAP를 함께 사용합니다. 이번 숫자 셀 조회·공간/뷰포트 파생 계산 수정은 Budmori의 기존 grid 경로를 최적화한 것이며, Rally adaptive SAP 자체를 측정하거나 대체한 결과가 아닙니다. Map의 snapshot 삽입 순서, center-first 셀 방문 순서, 같은 셀의 객체 순서와 기존 이웃 cutoff를 보존합니다. 군단 상한·AI 빈도·충돌·그래픽 표현은 줄이지 않습니다. SAP로 일괄 교체하지 않습니다.
+- `npm test`는 토큰·취소·악성 정규화·동기/협력형 codec·공간 질의 순서와 동일 입력의 canonical bytes를 검사합니다. `npm run test:browser:multiplayer`는 실제 다섯 탭 WebRTC/WebGL E2E, `npm run test:browser:snapshots`는 렌더/전송을 제외한 실제 Chromium snapshot pulse와 event-loop 양보를 측정합니다. native CPU 결과를 기기 FPS로 해석하지 않습니다.
+
+### 이번 변경의 native 측정
+
+같은 seed·입력·5명×군단1000명 fixture를 기준 원본과 최종 후보에서 순차 실행했습니다. 실제 게임 엔진의 CPU 측정이며 기기 FPS가 아닙니다. 원본과 후보 SHA·세부 표본은 `tests/performance-prepared-native.json`에 있습니다.
+
+- 시뮬레이션 틱 p50: 126.2 → 90.1 ms; p95: 164.1 → 102.4 ms. p95 80 ms 목표에는 아직 미달입니다.
+- 처음 checkpoint를 받아 설치하는 CPU 비용: 2353 → 877 ms. 후보는 102 pulse로 나뉘었고 가장 긴 pulse는 32.0 ms였습니다.
+- 기존4명×군단1000명 세계의 다음 참가자 준비: 698 → 396 ms; commit 설치: 456 → 0.51 ms. 준비+설치 합계는 약 1154 → 396.5 ms로 약 66% 줄어 절반 목표를 충족했습니다. 준비만 따로 보면 약 43% 감소입니다. 협력형 준비의 가장 긴 pulse는 21.5 ms였습니다.
+- 일반 동기 snapshot 캡처는 여전히 별도 비용이 있습니다. 5×1000 표본 p50은 138.5 → 120.9 ms입니다. 8 ms pulse 목표나 모든 작업의 50 ms 상한을 보장하지 않습니다.
+- 별도 정확성 수정: 소유자가 죽을 때 일반 공격 controller를 빈 패턴의 recovery 상태로 바꾸지 않습니다. 활성 특수기는 계속 정상 취소합니다. 원본의 밀집 전투 snapshot 실패를 최소 재현하고, 사망 저장/복원·회복 회귀를 추가했습니다. 공간 최적화와 이 수정의 효과를 섞지 않도록 밀집 비교에는 동일 guard를 기준 원본에도 적용할 수 있습니다.

@@ -26,6 +26,8 @@ jobs:
         run: xvfb-run -a npm run test:browser:multiplayer
         env:
           BUDMORI_HEADED: "1"
+      - name: Measure cooperative snapshot jobs in Chromium
+        run: npm run test:browser:snapshots
       - name: Compare rollback and lockstep with identical inputs
         run: npm run test:benchmark:modes
       - name: Verify exact Pages bytes after main deployment
