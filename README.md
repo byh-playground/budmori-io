@@ -50,7 +50,7 @@
 - 실행·대기·예측·롤백·복구는 세션의 상태이며 CAN-BE의 뜻이 아닙니다. 배타적인 상태는 하나의 phase로, 독립적인 상태는 별도 flag로 표현합니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
 - [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
 - HTML에는 필요한 공통 모듈과 SDK를 오프라인 실행용으로 포함합니다. 원본 SDK 동작은 c3173914519a78834360430071e7a125736d86d5와 호환됩니다. 배포 기준·각 ESM 원본과 포함 IIFE의 SHA-256은 `gamekit-lock.json`에서 검증합니다. 가변 main CDN import는 사용하지 않습니다.
-- 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다.
+- 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다. 로컬 5탭 검증에서도 운영과 같은 500ms 신호 발행 간격을 유지하며 일반 게임 타이머로 새로고침·투사체 이동·피해를 확인합니다.
 
 ### 저장과 검증
 
@@ -125,7 +125,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `ab71756ad3657cb0572d44c276c18f9b74187317`; dist: `910c24b4963afd4083f39f4d79eae0ce8fae7e92`. `BloomSimulation.sdkCommit`의 기존 c3173914 표기는 저장/rollback 호환 원본 계보이며 실제 포함 번들의 버전은 `gamekit-lock.json`이 기준입니다.
+현재 고정 SDK source: `0cec86a64df1cb495750d1d8faebd304be85ed83`; dist: `d49138e9c8146e59d73ec16b23cd545d9ddc8745`. `BloomSimulation.sdkCommit`과 진단 화면도 같은 source commit을 표시하며 실제 포함 번들은 `gamekit-lock.json`으로 검증합니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
@@ -252,3 +252,9 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 기존 캠페인에 종료·재바인딩 회귀만 추가하며 별도 게임 구현이나 테스트별 규칙을 만들지 않습니다. 단일 브라우저 검사는 중복 boot/owner 접근, 최종 close 후 UI와 WebGL 구독 해제를 포함합니다. PR의 exact head에서 전체 Node 캠페인, 단일 WebGL/모바일 크기, 5탭 WebRTC 합류·재연결, 준비 snapshot 브라우저 측정, 기존 mode 비교를 통과해야 머지합니다. 로컬 Native 검사와 실제 브라우저 CI 결과는 구분합니다.
 
 Native 전후 보조 측정은 `tests/refactor-performance.json`에 기록합니다. 동일 seed·155 동료·20 TPS에서 30 warmup 뒤 200틱을 번갈아 실행했고, 표본 정규 bytes는 일치했습니다. p50 1.501→1.514ms, p95 2.638→2.557ms로 이번 표본에는 뚜렷한 비용 증가가 없었습니다. 이는 공유 heap/JIT의 Native CPU 표본이며 브라우저·네트워크·GPU·기기 FPS 보장이 아닙니다.
+
+### 공개 세션 회귀 검증
+
+- 투사체는 지면이 아닌 발사 주체의 몸체 높이에서 출발하며 조준·장애물 검사도 같은 높이 규칙을 사용합니다. 기존 명시적 시작 높이와 곡사 궤적은 유지합니다.
+- 공개 통신 버전 `budmori-shared-ms-v5`는 이전 투사체 규칙과 혼합되지 않습니다. 이전 공개 세션은 새 판 선택이 필요할 수 있으며 싱글 저장 형식은 그대로 읽습니다.
+- 실패 화면의 진단 정보에는 최근 연결 단계와 구체적인 실패 이유가 포함됩니다. 신호 payload·방 식별자·접속 credential은 수집하지 않습니다. 실패했다고 진행 정보를 자동 삭제하거나 다른 세계로 바꾸지 않습니다.

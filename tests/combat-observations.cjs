@@ -5,7 +5,7 @@
 const assert=require('node:assert/strict');
 const {engine}=require('./native-engine.cjs');
 function run({baseline,target}={}){
- const engines=[engine(baseline),engine(target)],report={status:'RUNNING',baseline,target,baselineSHA:engines[0].sha256,targetSHA:engines[1].sha256,scope:'Direct combat observations with explicit participant-stat attribution correction; no historical world-byte or scheduler parity claim.',checks:[],ownershipMetadata:0,statisticsCorrections:[]};
+ const engines=[engine(baseline),engine(target)],report={status:'RUNNING',baseline,target,baselineSHA:engines[0].sha256,targetSHA:engines[1].sha256,scope:'Direct combat observations with explicit participant-stat attribution correction; no historical world-byte or scheduler parity claim.',checks:[],ownershipMetadata:0,statisticsCorrections:[],projectileHeightCorrections:[]};
  // The new explicit ownership fields are intentionally absent from historical
  // payloads. Check their actual values before removing only those new fields.
  function observation(e){const o=e.json('qaCombatObservation');function visit(p){if(!p||typeof p!=='object')return;for(const [key,value]of Object.entries(p)){if(key==='playerId'||key==='factionId'){assert.equal(value,key==='playerId'?'solo':'player:solo');delete p[key];report.ownershipMetadata++}else visit(value)}}visit(o);return o}
@@ -21,6 +21,17 @@ function run({baseline,target}={}){
   const shieldDelta=(Number(participantStatistics[0])-Number(participantStatistics[1]))*npcShieldBlocks;
   assert.equal(current.stats.shieldsBlocked,historical.stats.shieldsBlocked+shieldDelta,'NPC shield blocks do not belong to the primary participant');
   if(shieldDelta){report.statisticsCorrections.push({label,key:'shieldsBlocked',expectedDifference:shieldDelta});historical.stats.shieldsBlocked+=shieldDelta}
+  // The reviewed height correction raises legacy feet-level shots to the
+  // same body height already used by line-of-sight. Verify that exact delta;
+  // do not drop projectile payloads or weaken unrelated combat comparisons.
+  const offsets=engines[1].json(`projectiles.map(p=>{const owner=idMap.get(p.u),target=idMap.get(p.target);return{owner:owner?.type?Math.max(15,radius(owner)):0,target:target?.type?Math.max(15,radius(target)):0}})`);
+  assert.equal(current.shots.length,historical.shots.length,'Historical shot count');
+  for(let i=0;i<current.shots.length;i++)for(const key of ['startZ','z','originZ','aimZ']){
+   if(current.shots[i][key]===historical.shots[i][key])continue;
+   const delta=key==='aimZ'?offsets[i].target:offsets[i].owner;
+   assert.equal(current.shots[i][key],historical.shots[i][key]+delta,`Reviewed body-height correction ${label}/${i}/${key}`);
+   report.projectileHeightCorrections.push({label,shot:i,key,expectedDifference:delta});historical.shots[i][key]+=delta;
+  }
   assert.deepEqual(current,historical,label);report.checks.push(label);
  }
  try{

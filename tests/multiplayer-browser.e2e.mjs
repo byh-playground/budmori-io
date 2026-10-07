@@ -14,7 +14,7 @@ import sharedHarness from './shared-harness.cjs';
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
- environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production SDK timer + RAF`,
+ environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter plus an elevated slow physical projectile.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
@@ -37,7 +37,7 @@ const fixture=String.raw`
  }
  BloomOwnedSDK={...sdk,async createNostrPublicRoom(options){
   const room=await sdk.createNostrPublicRoom({...options,namespace:${JSON.stringify(namespace)},rtcConfig:{iceServers:[]},
-   signalerFactory:async opts=>{const signaler=await sdk.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay,publishIntervalMs:0});qa.signalers.push(signaler);return signaler},
+   signalerFactory:async opts=>{const signaler=await sdk.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay});qa.signalers.push(signaler);return signaler},
    peerFactory:opts=>sdk.createWebRTCPeer({...opts,rtcConfig:{iceServers:[]}})});
   qa.rooms.push(room);return room;
  },createRoomSession(options){return sdk.createRoomSession({...options,onEvent:event=>{if(['membership-committed','membership-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event});options.onEvent?.(event)}})}};
@@ -51,14 +51,18 @@ const fixture=String.raw`
    const player=WorldPlayers.get(change.players[0]),data=WorldPlayers.data(player),m=player.leader;
    data.minerals=1234;Object.assign(data.campaign.abilities,{level:3,xp:abilityThreshold(3),chosen:2,ranks:{pod:1,lob:1},mods:{},draft:null});moaSyncLevelHP(m);m.hp=m.maxHp*.6;player.auto.enabled=false;
    rarityAcquire(player.accountOwner,'archer',1,2,m.x,m.y);
-   const point=ThemedTerrain.safePoint(m.x+160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
+   const point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
    if(!target)throw Error('Initial durable encounter has no safe position');
-   target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;state.camps[0].remaining++;
+   target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;target.qaRegion=player.startRegion;state.camps[0].remaining++;
+   for(const region of WorldSpawn.layout().startRegions){if(region.startRegion===player.startRegion)continue;const spawnPoint=ThemedTerrain.safePoint(region.x,region.y,55),point=ThemedTerrain.safePoint(spawnPoint.x-160,spawnPoint.y,20),enemy=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});enemy.hp=enemy.maxHp=1e7;enemy.stun=1e6;enemy.aggroAt=enemy.wanderAt=state.time+1e6;enemy.qaRegion=region.startRegion;state.camps[0].remaining++;}
    damage(m,target,17,'ranged');const flight=launchAbilityShot(target,11,{owner:m,start:{x:m.x-200,y:m.y-200,z:spatialHeight(m)+160},speed:1,range:1800,homing:true});flight.qaAdmissionFlight=true;
    rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();
   }return result;
  };
- bloomAdapter.step=function(frame){const result=step(frame);qa.lastInputs=frame.inputs.map(input=>({playerId:input.playerId,...bloomDecodeInput(input.input)}));
+ qa.combat=new Map();
+ const observeImpact=impact;impact=function(shot){const target=idMap.get(shot.target),before=target?.hp,owner=WorldPlayers.all().find(p=>p.leader.id===shot.u),result=observeImpact(shot);if(owner&&shot.abilityShot&&!shot.weapon&&!shot.secondary&&!shot.qaAdmissionFlight&&Number.isFinite(before)){const stats=qa.combat.get(owner.playerId)||{samples:0,maxDistance:0,primaryDamage:0};stats.primaryDamage+=(before-(target?.hp??before));qa.combat.set(owner.playerId,stats)}return result};
+ bloomAdapter.step=function(frame){const result=step(frame);
+  for(const player of WorldPlayers.all()){const stats=qa.combat.get(player.playerId)||{samples:0,maxDistance:0,primaryDamage:0};for(const shot of projectiles){if(shot.u!==player.leader.id||shot.qaAdmissionFlight||!shot.abilityShot||shot.weapon||shot.secondary)continue;stats.samples++;stats.maxDistance=Math.max(stats.maxDistance,Math.hypot(shot.x-shot.startX,shot.y-shot.startY));}qa.combat.set(player.playerId,stats);}qa.lastInputs=frame.inputs.map(input=>({playerId:input.playerId,...bloomDecodeInput(input.input)}));
   if(qa.wanted.delete(bloomTick)){const bytes=bloomAdapter.save();qa.checkpoints.set(bloomTick,{tick:bloomTick,epoch:state.membershipEpoch,bytes:Array.from(bytes),hash:sdk.hashBytes(bytes),schema:BloomLiveCodec.decode(bytes).schema});while(qa.checkpoints.size>4)qa.checkpoints.delete(qa.checkpoints.keys().next().value)}return result;
  };
  qa.inspect=()=>{
@@ -67,6 +71,7 @@ const fixture=String.raw`
    mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
+   combat:WorldPlayers.all().map(p=>({id:p.playerId,region:p.startRegion,...qa.combat.get(p.playerId),damage:state.units.filter(u=>u.qaRegion===p.startRegion).reduce((sum,u)=>sum+u.maxHp-u.hp,0)})),
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,admissionFlights:projectiles.filter(p=>p.qaAdmissionFlight).map(p=>p.shotId),input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
@@ -170,6 +175,8 @@ try{
  await host.keyboard.down('KeyD');await ticks([host],4);
  const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement');await host.keyboard.up('KeyD');
  const guest=await addPage();await startPublic(guest);
+ await guest.locator('[data-public="cancel"]').click();await guest.locator('[data-action="start"]').waitFor({state:'visible'});await startPublic(guest);
+ record('Actual Cancel followed by Start abandons the previous discovery and can join normally');
  // Opening a tab can release held actions on blur. Reapply genuine keyboard
  // input during the asynchronous public discovery/admission window.
  await focusAndResume(host);await host.keyboard.down('KeyD');await ready([host,guest]);
@@ -182,6 +189,8 @@ try{
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
+ for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');}
+ record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of pair){assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,player(state,state.localId).owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,player(state,state.localId).level)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);
  await openPause(host);await host.locator('[data-moa-stats]').click();
@@ -198,6 +207,16 @@ try{
  await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');await host.keyboard.press('Escape');
  record('Host menu neutralizes only its own input; other movement and shared combat continue');
  for(let count=3;count<=5;count++){const page=await addPage();await startPublic(page);await ready(pages,count);await ticks(pages,3)}
+ // Earlier movement intentionally took the host away from its encounter.
+ // Return with genuine held keyboard input; do not teleport the authority or
+ // carry per-tab observer counters across reloads to manufacture flight proof.
+ await focusAndResume(host);
+ const encounter=await evaluate(host,()=>{const player=WorldPlayers.local(),target=state.units.find(u=>u.qaRegion===player.startRegion);return{x:target.x,y:target.y,playerX:player.leader.x,playerY:player.leader.y}});
+ assert(Math.abs(encounter.playerY-encounter.y)<120,'Host encounter remains reachable along its keyboard path');
+ if(Math.abs(encounter.playerX-encounter.x)>180){const key=encounter.playerX>encounter.x?'KeyA':'KeyD';await host.keyboard.down(key);try{await until(async()=>Math.abs(player(await read(host),hostId).x-encounter.x)<170,'Host returns to its combat encounter through keyboard',30000)}finally{await host.keyboard.up(key)}}
+ await until(async()=>(await Promise.all(pages.map(read))).every(s=>s.combat.length===5&&s.combat.every(c=>c.samples>0&&c.maxDistance>50&&c.primaryDamage>0&&c.damage>0)),'Natural primary shots travel and damage at all five start regions',30000);
+ report.combat=await Promise.all(pages.map(async page=>(await read(page)).combat));
+ record('Real timer-driven combat in all five spawn regions creates visible physical flights beyond 50 units and damages targets on every peer');
  await checkpoint(pages,'five-players');
  const five=await Promise.all(pages.map(read));assert.equal(new Set(five.map(s=>s.localId)).size,5);assert.equal(new Set(five[0].players.filter(p=>p.lifecycle==='active').map(p=>p.owner)).size,5);
  for(const state of five){assert.equal(state.backend,'WebGL');assert(state.frames>10);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.hudLeader,state.localView.leader)}

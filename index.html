@@ -2484,7 +2484,7 @@ function report(error,context={}){
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@33d8cd6edfe3790ff00c3d9912976fda24919c01',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@0cec86a64df1cb495750d1d8faebd304be85ed83',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
 }
@@ -8902,7 +8902,7 @@ function withMoaAttack(attack,callback,owner=state.mother){
  try{return callback()}finally{m.hitCritical=old===true}
 }
 impact=function(p){
- if(p?.u===state.mother.id&&p.type==='mother'&&p.team==='friendly')return withMoaAttack(p,()=>statTierCore.impact(p));
+ const owner=idMap.get(p?.u);if(owner&&p.type==='mother'&&p.team==='friendly')return withMoaAttack(p,()=>statTierCore.impact(p),owner);
  return statTierCore.impact(p);
 };
 
@@ -9591,9 +9591,9 @@ Object.assign(RENDER_TRACKS.unit,{sproutAim:'angle',sproutRecoil:'decay'});
 for(const id of Object.keys(CONFIG.moaSprout.mounts)){RENDER_TRACKS.unit['sproutAim_'+id]='angle';RENDER_TRACKS.unit['sproutKick_'+id]='decay';RENDER_TRACKS.unit['sproutCharge_'+id]='linear';}
 RENDER_TRACKS.projectile.angle='angle';
 function sproutSeedKind(p){return p.weapon||p.sproutKind||'normal'}
-function sproutSync(m,dt){const C=CONFIG.moaSprout;let a=m.pendingMoa?.angle;if(!Number.isFinite(a)){const t=idMap.get(m.moaTarget);if(t?.hp>0)a=Math.atan2(t.y-m.y,t.x-m.x)}if(!Number.isFinite(m.sproutAim))m.sproutAim=-Math.PI/2;if(Number.isFinite(a))m.sproutAim=sproutAngle(m.sproutAim,a,1-Math.exp(-C.aimResponse*dt));m.sproutRecoil=Math.max(0,(m.sproutRecoil||0)-dt);m.sproutSeedKind=abilityRank('pierce')?'pierce':abilityRank('bounce')?'bounce':'normal';for(const id of Object.keys(C.mounts)){m['sproutOwn_'+id]=abilityRank(id);m['sproutKick_'+id]=Math.max(0,(m['sproutKick_'+id]||0)-dt);m['sproutCharge_'+id]=abilityRank(id)?clamp(1-(m.auxCooldowns?.[id]||0)/C.podChargeTime,0,1):0;if(!Number.isFinite(m['sproutAim_'+id]))m['sproutAim_'+id]=m.sproutAim}}
+function sproutSync(m,dt){const C=CONFIG.moaSprout,ranks=weaponOwnerState(m)?.ranks||{},rank=id=>ranks[id]||0;let a=m.pendingMoa?.angle;if(!Number.isFinite(a)){const t=idMap.get(m.moaTarget);if(t?.hp>0)a=Math.atan2(t.y-m.y,t.x-m.x)}if(!Number.isFinite(m.sproutAim))m.sproutAim=-Math.PI/2;if(Number.isFinite(a))m.sproutAim=sproutAngle(m.sproutAim,a,1-Math.exp(-C.aimResponse*dt));m.sproutRecoil=Math.max(0,(m.sproutRecoil||0)-dt);m.sproutSeedKind=rank('pierce')?'pierce':rank('bounce')?'bounce':'normal';for(const id of Object.keys(C.mounts)){m['sproutOwn_'+id]=rank(id);m['sproutKick_'+id]=Math.max(0,(m['sproutKick_'+id]||0)-dt);m['sproutCharge_'+id]=rank(id)?clamp(1-(m.auxCooldowns?.[id]||0)/C.podChargeTime,0,1):0;if(!Number.isFinite(m['sproutAim_'+id]))m['sproutAim_'+id]=m.sproutAim}}
 updateMoa=function(dt){const m=state.mother;sproutSync(m,dt);sproutCore.updateMoa(dt);if(m.pendingMoa)m.sproutAim=sproutAngle(m.sproutAim,m.pendingMoa.angle,1-Math.exp(-CONFIG.moaSprout.aimResponse*dt));sproutImpacts=sproutImpacts.filter(f=>state.time-f.at<CONFIG.moaSprout.impactTime)};
-launchAbilityShot=function(t,amount,opts={}){const p=sproutCore.launchAbilityShot(t,amount,opts);if(!p)return p;p.sproutKind=opts.weapon||(opts.start&&opts.secondary?'bounce':!opts.secondary&&(opts.owner?.rival?.abilities.ranks.pierce??abilityRank('pierce'))?'pierce':!opts.secondary&&(opts.owner?.rival?.abilities.ranks.bounce??abilityRank('bounce'))?'bounce':'normal');if(!opts.start){const m=opts.owner||state.mother,a=Math.atan2(t.y-m.y,t.x-m.x);p.sproutLaunch=true;p.sproutBorn=state.time-CONFIG.sim.fixedStep;p.sproutBearing=a;p.sproutTip=MoaArt.muzzle(m,opts.weapon||null,a);p.sproutFlight=Math.max(0,Math.hypot(t.x-m.x,t.y-m.y)-radius(t)-p.shotRadius);if(opts.weapon){m['sproutAim_'+opts.weapon]=a;m['sproutKick_'+opts.weapon]=CONFIG.moaSprout.podRecoilTime;m['sproutCharge_'+opts.weapon]=0}else{m.sproutAim=a;m.sproutRecoil=CONFIG.moaSprout.recoilTime}}return p};
+launchAbilityShot=function(t,amount,opts={}){const p=sproutCore.launchAbilityShot(t,amount,opts);if(!p)return p;p.sproutKind=opts.weapon||(opts.start&&opts.secondary?'bounce':!opts.secondary&&(weaponOwnerState(opts.owner||state.mother)?.ranks?.pierce||0)?'pierce':!opts.secondary&&(weaponOwnerState(opts.owner||state.mother)?.ranks?.bounce||0)?'bounce':'normal');if(!opts.start){const m=opts.owner||state.mother,a=Math.atan2(t.y-m.y,t.x-m.x);p.sproutLaunch=true;p.sproutBorn=state.time-CONFIG.sim.fixedStep;p.sproutBearing=a;p.sproutTip=MoaArt.muzzle(m,opts.weapon||null,a);p.sproutFlight=Math.max(0,Math.hypot(t.x-m.x,t.y-m.y)-radius(t)-p.shotRadius);if(opts.weapon){m['sproutAim_'+opts.weapon]=a;m['sproutKick_'+opts.weapon]=CONFIG.moaSprout.podRecoilTime;m['sproutCharge_'+opts.weapon]=0}else{m.sproutAim=a;m.sproutRecoil=CONFIG.moaSprout.recoilTime}}return p};
 // New shots otherwise first appear one full 30TPS travel step downstream.
 
 function sproutVisualPoint(p){let x=p.x,y=p.y,hidden=false;if(p.sproutLaunch){const owner=p.u===state.mother.id?state.mother:idMap.get(p.u),m=presentationPose(owner||{x:p.startX,y:p.startY,z:p.z,hp:0}),a=p.weapon?m['sproutAim_'+p.weapon]:m.sproutAim,liveTip=owner?.hp>0?MoaArt.muzzle(m,p.weapon,a):(p.sproutTip||{x:p.startX,y:p.startY,z:p.z}),age=Math.max(0,presentationTime()-p.sproutBorn),attach=m.hp>0?clamp(1-age/CONFIG.moaSprout.muzzleBlendTime,0,1):0,launchTip=p.sproutTip||liveTip,tip={x:launchTip.x+(liveTip.x-launchTip.x)*attach,y:launchTip.y+(liveTip.y-launchTip.y)*attach},target=idMap.get(p.target),remaining=p.homing&&target?Math.max(0,Math.hypot(target.x-p.x,target.y-p.y)-radius(target)-p.shotRadius):Math.max(0,p.sproutFlight-p.progress),distance=p.homing?p.progress+remaining:p.sproutFlight,offsetX=tip.x-p.startX,offsetY=tip.y-p.startY,along=offsetX*Math.cos(p.angle)+offsetY*Math.sin(p.angle),fade=distance>0?remaining/distance:0;
@@ -9868,18 +9868,19 @@ function spatialState(s=state){
 }
 function spatialWith(points,fn){const before=spatialContext;spatialContext=points.concat(before);try{return fn()}finally{spatialContext=before}}
 function spatialAt(x,y){for(const p of spatialContext)if(p&&p.x===x&&p.y===y)return spatialHeight(p);return spatialGround(x,y)}
+function spatialShotHeight(actor){return spatialHeight(actor)+(actor?.type?Math.max(15,radius(actor)):0)}
 function spatialProjectile(p,owner,target){
  if(!p)return p;
  const start=owner||idMap.get(p.u),end=target||idMap.get(p.target);
- if(p.startZ===undefined)p.startZ=p.z===undefined?spatialHeight(start):p.z;
+ if(p.startZ===undefined)p.startZ=p.z===undefined?spatialShotHeight(start):p.z;
  if(p.originZ===undefined&&spatialFinite(p.originX)&&spatialFinite(p.originY))p.originZ=p.startZ;
- if(p.aimZ===undefined)p.aimZ=end?spatialHeight(end):spatialGround(p.aimX,p.aimY);
+ if(p.aimZ===undefined)p.aimZ=end?spatialShotHeight(end):spatialGround(p.aimX,p.aimY);
  if(p.z===undefined)p.z=p.startZ;
  return p;
 }
 function spatialProjectileTick(p,contact=false){
  spatialProjectile(p);const target=idMap.get(p.target);
- if((p.abilityShot?p.homing:!p.point)&&target?.hp>0)p.aimZ=spatialHeight(target);
+ if((p.abilityShot?p.homing:!p.point)&&target?.hp>0)p.aimZ=spatialShotHeight(target);
  if(contact){p.z=target?spatialHeight(target):p.aimZ;if(p.lastVictim)p.lastVictim.z=p.z;return p}
  const t=clamp((p.progress||0)/Math.max(1,p.total||p.range||1),0,1),d=unitDef(p.type)||{};
  // The complete arc is simulation Z. Rendering must not add this arc again.
@@ -9917,15 +9918,15 @@ spawn=function(type,team,x,y,opts={}){
 projectile=function(u,t,amount,splash=0,extra={}){
  for(const key of ['z','startZ','aimZ','originZ','arc'])if(Object.hasOwn(extra,key)&&!spatialFinite(extra[key]))throw new TypeError(key+' must be finite');
  spatialUnit(u,true);spatialUnit(t,true);
- const before=projectiles.length,result=spatialCore.projectile(u,t,amount,splash,{startZ:spatialHeight(u),aimZ:spatialHeight(t),...extra});
+ const before=projectiles.length,result=spatialCore.projectile(u,t,amount,splash,{startZ:spatialShotHeight(u),aimZ:spatialShotHeight(t),...extra});
  for(let i=before;i<projectiles.length;i++)spatialProjectile(projectiles[i],u,t);return result;
 };
 launchAbilityShot=function(t,amount,opts={}){
  const start=opts.start||opts.owner||state.mother;
  if(Object.hasOwn(start,'z')&&!spatialFinite(start.z))throw new TypeError('start.z must be finite');
  const p=spatialCore.launchAbilityShot(t,amount,opts);if(!p)return p;
- const z=spatialFinite(start.z)?start.z:spatialParentShot?spatialParentShot.lastVictim?.z??spatialParentShot.z:spatialHeight(start);
- p.z=p.startZ=z;p.originZ=z;p.aimZ=spatialHeight(t);return spatialProjectile(p,start,t);
+ const z=!opts.start?spatialShotHeight(start):spatialFinite(start.z)?start.z:spatialParentShot?spatialParentShot.lastVictim?.z??spatialParentShot.z:spatialHeight(start);
+ p.z=p.startZ=z;p.originZ=z;p.aimZ=spatialShotHeight(t);return spatialProjectile(p,start,t);
 };
 abilityDescendants=function(p,t){const old=spatialParentShot;spatialParentShot=p;try{return spatialCore.abilityDescendants(p,t)}finally{spatialParentShot=old}};
 impact=function(p){
@@ -10232,7 +10233,7 @@ function impactGroundArc(p){if(p.impacted||p.finished)return;p.impacted=true;p.f
  const live=idMap.get(p.u),owner=live&&live.type===p.type&&live.team===p.team?live:p.sourceSnapshot,enemyTeam=p.team==='friendly'?'enemy':'friendly';
  const old=retaliationImpact;retaliationImpact=p;
  try{const resolve=()=>attackShapeTargets(owner,p,p.blastRadius,p.sourceRoom,null,t=>dist(p,t)<=p.blastRadius+radius(t),t=>damage(owner,t,p.amount,'ranged'));
-  if(owner===state.mother)withMoaAttack(p,resolve);else resolve();
+  if(owner?.type==='mother'&&owner.team==='friendly')withMoaAttack(p,resolve,owner);else resolve();
  }finally{retaliationImpact=old}
  addFx('ring',p.x,p.y,0,0,p.color,p.blastRadius,CONFIG.ballistics.impactLife,{z:p.aimZ,z2:0,ground:true});
  if(p.team==='friendly'){if(sproutImpacts.length>=CONFIG.moaSprout.maxImpacts)sproutImpacts.shift();sproutImpacts.push({x:p.x,y:p.y,z:p.z,at:state.time-CONFIG.sim.fixedStep,angle:p.angle,kind:'lob'})}
@@ -16768,7 +16769,7 @@ var BloomOwnedSDK = (() => {
     function acceptIncarnations(value, next) {
       if (!value || typeof value !== "object") return;
       for (const id of next) if (id !== self && validId(value[id])) {
-        if (!links.get(id)?.peer || !incarnations.has(id)) incarnations.set(id, value[id]);
+        if (!links.has(id) || !incarnations.has(id)) incarnations.set(id, value[id]);
       }
     }
     function wrapTransport(link, raw) {
@@ -16835,12 +16836,12 @@ var BloomOwnedSDK = (() => {
       if (resumeChecks.has(id)) return;
       const existing = links.get(id);
       const check = probePeer(existing).then((alive) => {
-        if (disposed) return;
+        if (disposed || links.get(id) !== existing) return;
         if (alive) {
           send(id, "resume-reject", { targetIncarnation: requestedIncarnation });
           return;
         }
-        if (existing && links.get(id) === existing) destroyLink(existing, "peer resuming");
+        if (existing?.peer && links.get(id) === existing) destroyLink(existing, "peer resuming");
         incarnations.set(id, requestedIncarnation);
         const generation = (generations.get(id) ?? 0) + 1;
         send(id, "resume-accept", { generation, targetIncarnation: requestedIncarnation });
@@ -16848,6 +16849,11 @@ var BloomOwnedSDK = (() => {
         if (leader(id)) {
           try {
             startGeneration(id, generation);
+          } catch {
+          }
+        } else if (existing && links.get(id) === existing) {
+          try {
+            newLink(id, 0, null, existing);
           } catch {
           }
         }
@@ -20559,7 +20565,7 @@ patternMove=function(u,c,x,y){
 spawn=function(type,team,x,y,opts={}){const pad=type==='mother'?CONFIG.mother.size:(CONFIG.units[type]?.size||20)*(opts.boss?CONFIG.combat.eliteSize:1),p=ThemedTerrain.safePoint(x,y,pad+4),u=themedCore.spawn(type,team,p.x,p.y,opts);if(u)constrainWorld(u);return u};
 // Traversal and line-of-fire are separate: water blocks feet but no flying seed.
 let themedProjectileContext=null;
-function themedNextShotZ(p,x,y){if(p.committedFlight)return p.z;if(p.weapon==='thorn')return spatialGround(x,y);if(p.weapon==='spore'){const q=clamp(p.flightProgress??p.ageMs/p.flightDurationMs,0,1);return p.startZ+(p.aimZ-p.startZ)*q+Math.sin(q*Math.PI)*p.arcHeight}const target=idMap.get(p.target),aimZ=(p.abilityShot?p.homing:!p.point)&&target?.hp>0?spatialHeight(target):p.aimZ,t=clamp(((p.progress||0)+Math.hypot(x-p.x,y-p.y))/Math.max(1,p.total||p.range||1),0,1),d=unitDef(p.type)||{},arc=(p.arc||d.projectileArc||0)*CONFIG.combat.projectileArcScale;return p.startZ+((aimZ??p.z)-p.startZ)*t+Math.sin(t*Math.PI)*arc}
+function themedNextShotZ(p,x,y){if(p.committedFlight)return p.z;if(p.weapon==='thorn')return spatialGround(x,y);if(p.weapon==='spore'){const q=clamp(p.flightProgress??p.ageMs/p.flightDurationMs,0,1);return p.startZ+(p.aimZ-p.startZ)*q+Math.sin(q*Math.PI)*p.arcHeight}const target=idMap.get(p.target),aimZ=(p.abilityShot?p.homing:!p.point)&&target?.hp>0?spatialShotHeight(target):p.aimZ,t=clamp(((p.progress||0)+Math.hypot(x-p.x,y-p.y))/Math.max(1,p.total||p.range||1),0,1),d=unitDef(p.type)||{},arc=(p.arc||d.projectileArc||0)*CONFIG.combat.projectileArcScale;return p.startZ+((aimZ??p.z)-p.startZ)*t+Math.sin(t*Math.PI)*arc}
 wallHit=function(ax,ay,bx,by,pad=0){if(themedProjectileContext){const context=themedProjectileContext,p=context.projectile||context,old=context.old,z1=old?.z??p.z??spatialGround(ax,ay)+18,z2=themedNextShotZ(p,bx,by);if(p.weapon==='thorn')return ThemedTerrain.sweep(ax,ay,bx,by,pad);return ThemedTerrain.projectileHit({x:ax,y:ay,z:z1},{x:bx,y:by,z:z2},pad)}return ThemedTerrain.sweep(ax,ay,bx,by,pad,h=>h.shape.kind!=='water')};
 wallClear=function(a,b,pad=0){return !ThemedTerrain.projectileHit({x:a.x,y:a.y,z:spatialHeight(a)+Math.max(15,a.type?radius(a):15)},{x:b.x,y:b.y,z:spatialHeight(b)+Math.max(15,b.type?radius(b):15)},pad)};
 projectileWallBlocked=function(p,x,y){return !!ThemedTerrain.projectileHit(p,{x,y,z:themedNextShotZ(p,x,y)},p.shotRadius||CONFIG.render.projectileRadius)};
@@ -20911,7 +20917,7 @@ function weaponPulse(p,elapsedMs,apply){
  while(p.nextPulseMs<=elapsedMs+1e-7&&p.nextPulseMs<p.durationMs-1e-7){apply();p.nextPulseMs+=p.intervalMs}
 }
 WEAPON_FAMILIES.homing={clustered:true,launch(owner,target,amount,opts,spec){
- const p=equippedCore.launchAbilityShot(target,amount,{...opts,range:spec.range,speed:spec.speed,homing:true,victims:1,splash:0,color:spec.color});
+ const p=equippedCore.launchAbilityShot(target,amount,{...opts,start:{...opts.start,z:spatialShotHeight(owner)},range:spec.range,speed:spec.speed,homing:true,victims:1,splash:0,color:spec.color});
  Object.assign(p,{weaponSpec:spec,shotRadius:spec.radius,range:spec.range,total:spec.range,speed:spec.speed,life:spec.range/spec.speed+CONFIG.levelAbilities.shotGrace,sproutLaunch:false});return p;
 }};
 WEAPON_FAMILIES.ballistic={dispersed:true,launch(owner,target,amount,opts,spec){
@@ -21860,7 +21866,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:'budmori-shared-v4',simulationVersion:'budmori-shared-ms-v4',sdkCommit:'c3173914519a78834360430071e7a125736d86d5',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:'budmori-shared-v5',simulationVersion:'budmori-shared-ms-v5',sdkCommit:'0cec86a64df1cb495750d1d8faebd304be85ed83',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -21872,6 +21878,9 @@ const PublicSession=globalThis.PublicSession=(()=>{
  const sessionPhase=Object.freeze({idle:'idle',discovering:'discovering',joining:'joining',playing:'playing',failed:'failed',leaving:'leaving'});
  const lifecycle={phase:sessionPhase.idle,generation:0};
  const connection={room:null,controller:null,attempt:null};
+ const diagnosis={startedAt:0,stage:'idle',events:[],failure:null};
+ const connectionStages=new Set(['public-discovering','public-hosting','public-joining','public-resuming','public-attempt-failed','public-room-ready','peer-resuming','peer-connected','peer-failed','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed','transition-timeout','join-rejected']);
+ function recordStage(stage){if(!connectionStages.has(stage))return;diagnosis.stage=stage;const entry=Object.freeze({stage,elapsedMs:Math.max(0,Math.round(performance.now()-diagnosis.startedAt))});if(diagnosis.events.at(-1)?.stage!==stage){diagnosis.events.push(entry);if(diagnosis.events.length>16)diagnosis.events.shift()}}
  const reconnect={sinceMs:null,seconds:null};
  const soloReturn={disk:null,tickRate:null,netcode:null};
  const presentation={label:null,unsubscribe:null};
@@ -21879,7 +21888,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
  // they cannot publish a phase or mutate the connection's private state.
  const observers=new Set();
  const onChanged=Object.freeze({on(listener){if(typeof listener!=='function')throw new TypeError('Session observer');const subscription={listener};observers.add(subscription);return()=>observers.delete(subscription)}});
- function status(){return Object.freeze({phase:lifecycle.phase,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,reconnectSeconds:reconnect.seconds,resimulating:!!bloomSession?.resimulating})}
+ function status(){return Object.freeze({phase:lifecycle.phase,connectionStage:diagnosis.stage,connectionEvents:Object.freeze([...diagnosis.events]),lastFailure:diagnosis.failure,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,reconnectSeconds:reconnect.seconds,resimulating:!!bloomSession?.resimulating})}
  function notify(){const change=status();for(const {listener} of [...observers]){try{listener(change)}catch(error){BloomDiagnostics.report(error,{kind:'public.observer'})}}}
 
  const storage=()=>{try{return globalThis.sessionStorage}catch{return null}};
@@ -21904,14 +21913,21 @@ const PublicSession=globalThis.PublicSession=(()=>{
   return seconds;
  }
  function ready(){if(lifecycle.phase!==sessionPhase.joining||!bloomSession?.ready||!WorldPlayers.get(bloomSession.localPlayerId))return false;setPhase(sessionPhase.playing);playing=true;paused=false;remember(true);const leader=WorldView.leader();view.x=leader.x;view.y=leader.y;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');modalKind='';$('modal').classList.remove('show');resetPresentation();refreshUI()}notify();return true}
- function failed(error){if(lifecycle.phase===sessionPhase.leaving||lifecycle.phase===sessionPhase.idle)return;setPhase(sessionPhase.failed);playing=false;paused=true;bloomLoop?.stop();if(!globalThis.BLOOM_HEADLESS){openModal('online-failed',sheetHead('공개 세계 연결이 끊겼어요')+'<p>다른 참가자가 남아 있으면 같은 모아로 다시 연결할 수 있어요. 모두 나간 세계는 종료됩니다.</p><button class="primary" data-public="resume">같은 세계 다시 연결</button><button class="primary" data-public="fresh">새 판 시작</button><button class="tab" data-public="solo">혼자 플레이</button>');BloomDiagnostics.report(new Error(String(error?.message||error||'Public room disconnected')),{kind:'public.connection'})}}
- function event(e){if(e.type==='membership-committed'){ready();notify()}else if(['partition-failed','transport-failed','transition-timeout','fatal'].includes(e.type))failed(new Error(e.type));}
+ function failed(error){
+  if([sessionPhase.leaving,sessionPhase.idle,sessionPhase.failed].includes(lifecycle.phase))return;
+  const code=typeof error?.code==='string'&&/^[A-Z_a-z-]{1,64}$/.test(error.code)?error.code:'PUBLIC_CONNECTION_FAILED';
+  const reason=BloomDiagnostics.clean(String(error?.message||error||'Public room disconnected').replace(/\b[0-9a-f]{64}\b/gi,'[peer]').replace(/wss?:[^\s]+/g,'[relay]'),240);
+  diagnosis.failure=Object.freeze({code,reason,stage:diagnosis.stage});setPhase(sessionPhase.failed);playing=false;paused=true;bloomLoop?.stop();
+  BloomDiagnostics.report(new Error(reason),{kind:'public.connection'});
+  if(!globalThis.BLOOM_HEADLESS){const invalid=code==='PUBLIC_RESUME_INVALID';openModal('online-failed',sheetHead('공개 세계 연결이 끊겼어요')+'<p>'+(invalid?'이전 접속 정보가 만료되었거나 게임 버전이 바뀌었어요. 새 판으로 시작해 주세요.':'다른 참가자가 남아 있으면 같은 모아로 다시 연결할 수 있어요. 모두 나간 세계는 종료됩니다.')+'</p>'+(invalid?'':'<button class="primary" data-public="resume">같은 세계 다시 연결</button>')+'<button class="primary" data-public="fresh">새 판 시작</button><button class="tab" data-public="solo">혼자 플레이</button><button class="tab" data-bloom-diagnostics>진단 정보 보기</button>')}
+ }
+ function event(e){recordStage(e.type);if(e.type==='membership-committed'){ready();notify()}else if(['membership-failed','membership-connect-failed','partition-failed','transport-failed','transition-timeout','join-rejected','fatal'].includes(e.type))failed(Object.assign(new Error(e.reason||e.type),{code:e.type}));}
  async function start({fresh=false}={}){
   if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;
   if(connection.attempt)return connection.attempt.pending;
   if(lifecycle.phase===sessionPhase.playing&&!fresh){playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS)closeModal();return true}
   if(!BloomOwnedSDK.createNostrPublicRoom||!BloomOwnedSDK.createRoomSession){const error=new Error('Public-room SDK is unavailable');setPhase(sessionPhase.discovering);failed(error);return false}
-  const attempt={generation:++lifecycle.generation,controller:new AbortController(),pending:null};connection.attempt=attempt;playing=false;paused=true;setPhase(sessionPhase.discovering);
+  const attempt={generation:++lifecycle.generation,controller:new AbortController(),pending:null};connection.attempt=attempt;Object.assign(diagnosis,{startedAt:performance.now(),stage:'public-discovering',events:[],failure:null});recordStage('public-discovering');playing=false;paused=true;setPhase(sessionPhase.discovering);
   if(!globalThis.BLOOM_HEADLESS)openModal('online-joining',sheetHead('공개 세계를 찾고 있어요')+'<p>빈자리가 있는 세계에 자동으로 합류해요. 새 세계는 혼자서도 바로 시작됩니다.</p><button class="tab" data-public="cancel">취소</button>');
   attempt.pending=(async()=>{
    if(BloomSimulation.sessionConfig.mode==='local'){
@@ -21923,7 +21939,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
    if(fresh&&BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure){setPhase(sessionPhase.leaving);try{await bloomSession?.leave?.()}catch{}if(!isCurrent(attempt))return false;setPhase(sessionPhase.discovering)}
    if(!isCurrent(attempt))return false;
    releaseRoom({forget:fresh});if(fresh)remember(false);
-   const store=storage(),next=await BloomOwnedSDK.createNostrPublicRoom({namespace:config.namespace,simulationVersion:`${BloomSimulation.simulationVersion}-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`,maxPlayers:config.maxPlayers,discoveryMs:config.discoveryMs,totalTimeoutMs:config.totalTimeoutMs,leaseMs:config.leaseMs,reservationMs:config.reservationMs,signal:attempt.controller.signal,...(store?{resume:{storage:store,key:resumeKey,lifetimeMs:config.resumeLifetimeMs,reset:fresh}}:{}),onStatus(){if(isCurrent(attempt))notify()}});
+   const store=storage(),next=await BloomOwnedSDK.createNostrPublicRoom({namespace:config.namespace,simulationVersion:`${BloomSimulation.simulationVersion}-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`,maxPlayers:config.maxPlayers,discoveryMs:config.discoveryMs,totalTimeoutMs:config.totalTimeoutMs,leaseMs:config.leaseMs,reservationMs:config.reservationMs,signal:attempt.controller.signal,...(store?{resume:{storage:store,key:resumeKey,lifetimeMs:config.resumeLifetimeMs,reset:fresh}}:{}),onStatus(e){if(isCurrent(attempt)){recordStage(e.type);notify()}}});
    if(!isCurrent(attempt)){next.close();return false}
    connection.room=next;connection.controller=attempt.controller;setPhase(sessionPhase.joining);CONFIG.session.mode='online';CONFIG.session.persistence='none';CONFIG.session.progressionPolicy='fresh';CONFIG.netcode.mode='lockstep';
    const seed=BloomOwnedSDK.hashBytes(new TextEncoder().encode(next.sessionId));bloomInitialize(seed);
@@ -22003,7 +22019,8 @@ function bloomMainRuntime() {
  // just because the last peer leaves or the transport is replaced.
  const online=()=>BloomSimulation.sessionConfig?.mode==='online';
  const localReady=()=>{const player=typeof WorldPlayers==='undefined'?null:WorldPlayers.local();return playing&&!paused&&!modalKind&&!(player?player.dead||player.leader?.hp<=0:state.dead)};
- const active=()=>phase===runtimePhase.ready&&(online()?!bloomSession?.failure&&!bloomSession?.closed:localReady());
+ const discovering=()=>online()&&PublicSession.phase==='discovering';
+ const active=()=>phase===runtimePhase.ready&&!discovering()&&(online()?!bloomSession?.failure&&!bloomSession?.closed:localReady());
  const persistence={
   protected:false,soloWorld:true,latestDisk:'',error:null,lastTick:0,pending:[],
   get enabled(){return !online()&&BloomSimulation.sessionConfig?.persistence==='solo'&&persistence.soloWorld},
@@ -22020,8 +22037,9 @@ function bloomMainRuntime() {
   if(disk!==persistence.latestDisk||persistence.error){try{localStorage.setItem(CONFIG.saveKey,disk);persistence.error=null;persistence.latestDisk=disk;startUXHasSave=true}catch(error){persistence.error=error;BloomDiagnostics.report(error,{kind:'save.storage'});return false}}
   bloomPersistenceRequested=false;persistence.lastTick=bloomTick;return true;
  }
- function afterAdvance(result,start){
-  if(online()&&(result.status==='failed'||result.status==='closed')){PublicSession.failed(new Error('Public room '+result.status));return false}
+ function afterAdvance(result,start,source=bloomSession){
+  if(source!==bloomSession||discovering())return false;
+  if(online()&&(result.status==='failed'||result.status==='closed')){const failure=result.failure||bloomSession?.failure;PublicSession.failed(Object.assign(new Error(failure?.reason||failure?.type||'Public room '+result.status),{code:failure?.type}));return false}
   if(online()){PublicSession.ready();PublicSession.observeStatus(result.status)}
   metrics.advanceStatus=result.status;
   if(result.status!=='advanced'){
@@ -22045,6 +22063,7 @@ function bloomMainRuntime() {
  function advanceSuspended(){const start=performance.now();afterAdvance(bloomSession.advance(bloomEncodeInput({x:0,y:0,manual:false,suspended:true})),start)}
  function schedule(){
   if(phase!==runtimePhase.ready||globalThis.BLOOM_MAIN_TEST_MANUAL)return;
+  if(discovering()){clearTimeout(driver.timer);driver.timer=null;return}
   if(!active()&&!bloomInputPending){clearTimeout(driver.timer);driver.timer=null;return}
   if(driver.timer===null)driver.timer=setTimeout(pump,bloomInputPending&&!active()?0:Math.max(0,driver.nextPulseAtMs-performance.now()));
  }
@@ -22052,7 +22071,7 @@ function bloomMainRuntime() {
   driver.timer=null;if(phase!==runtimePhase.ready)return;driver.nextPulseAtMs+=1000/CONFIG.sim.tickRate;
   try{const running=active(),now=performance.now();
    if(running!==driver.wasActive){bloomLoop.resetTiming();bloomLoop.pulse(now);driver.wasActive=running;driver.nextPulseAtMs=now+1000/CONFIG.sim.tickRate}
-   if(!running){if(bloomInputPending)advanceSuspended();bloomLoop.resetTiming()}
+   if(!running){if(bloomInputPending&&!discovering())advanceSuspended();bloomLoop.resetTiming()}
    else bloomLoop.pulse(now);
    schedule();
   }catch(error){fail(error)}
@@ -22067,7 +22086,7 @@ function bloomMainRuntime() {
   let tickStart=0;
   bloomLoop=BloomOwnedSDK.createLoop({session:next,backlogPolicy:'retain',
    getInput(){tickStart=performance.now();return sampleInput()},
-   canAdvance:active,onAdvance(result){afterAdvance(result,tickStart)},onError(error){fail(error,'sdk.loop')}
+   canAdvance:active,onAdvance(result){afterAdvance(result,tickStart,next)},onError(error){fail(error,'sdk.loop')}
   });
   if(ui.phase===uiPhase.ready){effects=[];permanentTraces=[];sproutImpacts=[];rarityFusionVisuals.length=0;resetPresentation()}
   schedule();return next;
@@ -22080,7 +22099,7 @@ function bloomMainRuntime() {
  bloomStartDriver=boundary;
  function controls(){
   if(phase!==runtimePhase.ready||!state)return;
-  if(!globalThis.BLOOM_HEADLESS&&(!online()||bloomSession?.ready)){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==ui.viewSignature){ui.viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
+  if(!discovering()&&!globalThis.BLOOM_HEADLESS&&(!online()||bloomSession?.ready)){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==ui.viewSignature){ui.viewSignature=signature;oldQueue('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
   const running=active();if(running!==driver.wasActive){const now=performance.now();bloomLoop.resetTiming();bloomLoop.pulse(now);driver.wasActive=running;driver.nextPulseAtMs=now+1000/CONFIG.sim.tickRate}
   schedule();
  }
