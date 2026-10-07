@@ -45,6 +45,7 @@
 ### 시뮬레이션·렌더링·이동
 
 - **WebGL은 필수입니다.** GPU 렌더링과 보간을 유지하고 성능 문제를 Canvas 2D 게임 렌더러로 대체해 해결하지 않습니다.
+- 공개 월드 지형은 정적 WebGL vertex mesh cache를 사용합니다. 지형 도형을 Canvas2D 타일로 rasterize한 뒤 WebGL texture로 재업로드하는 전장 경로는 사용하지 않으며, Canvas2D는 미니맵·UI 같은 보조 표현에만 남깁니다.
 - 시뮬레이션은 설정 가능한 고정 TPS를 사용합니다. 현재 기본은 **10 TPS**, 선택지는 **10 / 20 / 30 TPS**입니다. `CONFIG.sim.tickRate`와 `fixedStep`은 `bloomApplyTickRate()`를 통해 함께 맞춥니다. 세션 중 임의 가변 dt로 규칙을 진행하지 않습니다.
 - `CONFIG.sim.renderTargetFPS = 60`은 보간 렌더링의 **목표**이며 실제 기기의 60 FPS 보장이 아닙니다. TPS와 FPS를 혼동하지 않습니다.
 - 지속시간·쿨다운 등 게임 시간은 **밀리초 기준**으로 정의·저장합니다. SDK의 틱 번호와 입력 순서 카운터는 별도 개념이며, TPS 변경이 게임 내 지속시간을 바꾸지 않아야 합니다.
@@ -125,6 +126,8 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 ## 개발 검증
 
 `npm ci && npm test`는 실제 메인 스레드 런타임/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·메인 스레드 SDK·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
+
+PR과 main push의 GitHub Actions는 비용을 제한하기 위해 `npm ci`, 검증기 구문 검사, 고정 gamekit·inline bundle 무결성 검사만 필수로 실행합니다. 실제 브라우저·5인 WebRTC·snapshot·benchmark 검증은 자동 PR 게이트가 아니며, 필요한 경우 Actions의 `workflow_dispatch`로 `Full game verification (manual)`을 실행합니다. 머지 전에는 변경 범위에 맞는 전체 검증을 로컬에서 실행하고 PR에 통과·실패·미실행 범위를 기록합니다. CI가 비싸다는 이유로 이 로컬 검증을 생략하거나 결과를 Stable/VALIDATED로 표시하지 않습니다.
 
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
 
