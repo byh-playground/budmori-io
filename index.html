@@ -20790,7 +20790,7 @@ const PlayerLifecycle=Object.freeze({
   data.dead=true;data.deaths++;data.campaign.openWorld.deathRegion=Math.max(0,regionAt(m.x,m.y));m.hp=0;m.pendingMoa=null;m.moaTarget=0;clearMoaRoll(m);m.gearChannels={};
   player.navigation={goal:null,waypoints:[],index:0,stuckMs:0,best:1e9};player.auto.enabled=false;
   data.minerals=Math.floor(data.minerals*CONFIG.mother.defeatResourceKeep);data.gas=Math.floor(data.gas*CONFIG.mother.defeatResourceKeep);
-  for(const u of state.units)if(WorldPlayers.forEntity(u)?.playerId===player.playerId){u.target=0;u.pendingMelee=null;if(u.attackController)cancelAttackPattern(u,'owner-dead')}
+  for(const u of state.units)if(WorldPlayers.forEntity(u)?.playerId===player.playerId){u.target=0;u.pendingMelee=null;if(u.attackController&&u.attackController.phase!=='standard')cancelAttackPattern(u,'owner-dead')}
   const owned=new Set([m.id,...state.units.filter(u=>u.playerId===player.playerId).map(u=>u.id)]);for(let i=projectiles.length-1;i>=0;i--)if(projectiles[i].playerId===player.playerId||owned.has(projectiles[i].u))discardProjectile(i);events=events.filter(e=>!owned.has(e.unit));
   deathCapture(m,killer);bloomEmitTo(player.playerId,'showDefeat',[]);bloomPersistenceRequested=true;return true;
  },

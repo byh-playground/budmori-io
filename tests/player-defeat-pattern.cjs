@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict'),path=require('node:path'),{engine}=require('./native-engine.cjs');
+const e=engine(path.resolve(process.argv[2]||path.join(__dirname,'../index.html')));
+e.run(`CONFIG.session.mode='online';BloomSimulation.initialize(12345);WorldMembership.apply({epoch:0,tick:0,players:['a','b']});
+const a=WorldPlayers.get('a'),b=WorldPlayers.get('b');Object.assign(b.leader,{x:a.leader.x+120,y:a.leader.y});constrainWorld(b.leader);rarityAcquire(a.accountOwner,'swordsman',3,2);rarityRecall(a.accountOwner);
+globalThis.qaTroops=state.units.filter(u=>u.playerId==='a');for(const u of qaTroops){u.x=a.leader.x+40;u.y=a.leader.y;u.query=0;u.target=b.leader.id}rebuildGrid();spatialBoundary();
+globalThis.qaStarted=beginAttackPattern(qaTroops[1],b.leader,'dash');spatialBoundary();`);
+assert(e.run('qaStarted'),'fixture starts an actual special attack');assert.equal(e.run('qaTroops[0].attackController.phase'),'standard');assert(e.run('bloomValidate(bloomCapture())'));
+e.run(`PlayerLifecycle.defeat(WorldPlayers.get('a'));spatialBoundary()`);
+assert.equal(e.run('qaTroops[0].attackController.phase'),'standard','ordinary empty-pattern controller must remain standard');assert.equal(e.run('qaTroops[0].attackController.pattern'),'');assert.equal(e.run('qaTroops[1].attackController.phase'),'recovery','active special still cancels normally');
+assert(e.run('bloomValidate(bloomCapture())'),'defeated owned bodies remain valid');
+e.run('globalThis.qaDead=bloomAdapter.save();bloomAdapter.load(qaDead)');assert(Buffer.from(e.run('bloomAdapter.save()')).equals(Buffer.from(e.run('qaDead'))),'death checkpoint roundtrip');
+e.run(`PlayerLifecycle.recover(WorldPlayers.get('a'));rebuildGrid();spatialBoundary()`);assert(e.run('bloomValidate(bloomCapture())'),'recovered armies remain valid');
+console.log('PASS owner death keeps empty standard controller valid, cancels active special, checkpoints and recovers');
