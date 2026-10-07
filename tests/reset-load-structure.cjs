@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('assert'),fs=require('fs');
+const html=fs.readFileSync(process.argv[2]||`${__dirname}/../index.html`,'utf8');
+assert.equal([...html.matchAll(/^reset=function\(/gm)].length,1,'one public reset boundary');
+assert.equal([...html.matchAll(/^load=function\(/gm)].length,1,'one public disk-load boundary');
+assert.equal([...html.matchAll(/^function restoreDiskWorld\(/gm)].length,1,'one canonical disk import implementation');
+for(const name of ['bloomCore.reset','bloomCore.load','rectLegacyValidation','rectLoading','spatialLoading','moaLegacyCosts','rectLegacyMembers','bloomDiskCore','openWorldDiskLoad','huntingLegacy','expectedCampCount','migrateLegacy','obsoleteRefund','growthRefund','migrateAttackController'])assert(!html.includes(name),`unreachable initialization/import dependency ${name} must stay removed`);
+assert(html.includes('WorldInitialization.create();MoaActor.hydrate(state.mother)'),'actor hydration follows world construction');
+for(const name of ['bloomMigrateTimerGraph','bloomMigrateAttackTimer','rarityMigrateCapacity','rarityLegacyCapacity','allowLegacyCapacity','rarityBindLock','rarityHydrateLockSteps','migrateStatGrowth','legacyKey'])assert(!html.includes(name),name+' removed');
+assert(html.includes('BloomPreparedSnapshots.prepare(bytes)'),'disk uses detached complete preparation');
+assert(html.includes("if(bloomInTick)throw new Error('Persistence load is not rollback restore')"),'disk/rollback guard preserved');
+assert(html.includes('WorldMembership.captureTemplate();return state'),'membership template follows complete initialization');
+console.log('PASS single world-initialization owner, canonical disk boundary, hydration, strict product version and public guards');

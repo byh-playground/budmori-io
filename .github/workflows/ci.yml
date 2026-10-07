@@ -22,6 +22,8 @@ jobs:
       - run: npm run verify:upstream
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      - name: Verify unsupported-save protection and explicit new-game UI
+        run: npm run test:browser:save
       - name: Verify five-player public world in real browsers
         run: xvfb-run -a npm run test:browser:multiplayer
         env:
