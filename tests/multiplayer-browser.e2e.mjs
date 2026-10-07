@@ -40,7 +40,7 @@ const fixture=String.raw`
    signalerFactory:async opts=>{const signaler=await sdk.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay});qa.signalers.push(signaler);return signaler},
    peerFactory:opts=>sdk.createWebRTCPeer({...opts,rtcConfig:{iceServers:[]}})});
   qa.rooms.push(room);return room;
- },createRoomSession(options){const session=sdk.createRoomSession({...options,onEvent:event=>{if(['membership-preparing','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event,atMs:Math.round(performance.now())});options.onEvent?.(event)}}),poll=session.poll.bind(session);qa.transitions=[];let previous='',lastAt=0;session.poll=function(...args){const result=poll(...args),tr=session._transition;if(tr||session.failure){const metrics=session.metrics,row={atMs:Math.round(performance.now()),stage:!tr?session.status:tr.replay?'replay':tr.stageJob?'prepare':tr.preparedState?'hash':tr.applied?'commit':tr.installSent?'install':tr.target!==null?'barrier':'mesh-prepare',epoch:session.epoch,elapsedMs:tr?Math.round(session.clock()-tr.startedAt):null,mesh:session.room.transports.size,expected:session.players.length-1,prepared:tr?.prepared.size,reached:tr?.reached.size,installed:tr?.installed.size,committed:tr?.committed.size,target:tr?.target,postBytes:tr?.postState?.length||0,replayTicks:metrics.bootstrapTicks,receivedBytes:metrics.receivedControlBytes,queuedBytes:metrics.controlQueuedBytes,maxBoundaryTaskMs:metrics.maxBoundaryTaskMs,failure:session.failure?.type||null},signature=JSON.stringify({...row,atMs:0,elapsedMs:0});if(signature!==previous||row.atMs-lastAt>=1000){qa.transitions.push(row);if(qa.transitions.length>48)qa.transitions.shift();previous=signature;lastAt=row.atMs}}return result};return session}};
+ },createRoomSession(options){const session=sdk.createRoomSession({...options,onEvent:event=>{if(['membership-preparing','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event,atMs:Math.round(performance.now())});options.onEvent?.(event)}}),poll=session.poll.bind(session);qa.transitions=[];let previous='',lastAt=0;session.poll=function(...args){const result=poll(...args),tr=session._transition;if(tr||session.failure){const metrics=session.metrics,row={atMs:Math.round(performance.now()),stage:!tr?session.status:tr.replay?'replay':tr.stageJob?'prepare':tr.applied?'commit':tr.preparedState?'hash':tr.installSent?'install':tr.target!==null?'barrier':'mesh-prepare',epoch:session.epoch,elapsedMs:tr?Math.round(session.clock()-tr.startedAt):null,mesh:session.room.transports.size,expected:session.players.length-1,prepared:tr?.prepared.size,reached:tr?.reached.size,installed:tr?.installed.size,committed:tr?.committed.size,target:tr?.target,postBytes:tr?.postState?.length||0,replayTicks:metrics.bootstrapTicks,receivedBytes:metrics.receivedControlBytes,queuedBytes:metrics.controlQueuedBytes,maxBoundaryTaskMs:metrics.maxBoundaryTaskMs,failure:session.failure?.type||null},signature=JSON.stringify({...row,atMs:0,elapsedMs:0});if(signature!==previous||row.atMs-lastAt>=1000){qa.transitions.push(row);if(qa.transitions.length>48)qa.transitions.shift();previous=signature;lastAt=row.atMs}}return result};return session}};
  const apply=bloomAdapter.applyMembership,step=bloomAdapter.step;
  bloomAdapter.applyMembership=function(change){const result=apply(change);
   // This executes before the first SDK core captures its initial checkpoint.
@@ -144,6 +144,11 @@ async function checkpoint(active,label){
  for(const state of captured){assert.equal(state.schema,'bloom-webgl-shared-ms-v3');assert.deepEqual(Buffer.from(state.bytes),Buffer.from(captured[0].bytes),'Full canonical bytes differ at '+label)}
  report.checkpoints.push({label,tick:target,epoch:captured[0].epoch,players:active.length,hash:captured[0].hash,bytes:captured[0].bytes.length});
 }
+async function transitionCheckpoint(label,active){
+ const states=await Promise.all(active.map(read));report.transitionCheckpoints??=[];
+ for(const state of states){assert.equal(state.connection.transitionTimeoutMs,30000);for(const sample of state.transitionHistory||[])assert(sample.elapsedMs===null||sample.elapsedMs<30000,'Successful transition stays inside configured total deadline');}
+ report.transitionCheckpoints.push({label,pages:states.map((state,index)=>({page:pages.indexOf(active[index])+1,budgetMs:state.connection.transitionTimeoutMs,history:state.transitionHistory,events:state.events,metrics:state.metrics}))});
+}
 async function screenshot(page,name,timeout){const path=new URL('./'+name,import.meta.url).pathname;await phase('screenshot '+name,()=>page.screenshot({path,...(timeout?{timeout}:{})}));report.screenshots.push(name)}
 // Real tab focus can invoke the game's ordinary blur-to-pause behavior.
 // Resume through visible UI rather than changing simulation/presentation flags.
@@ -193,7 +198,7 @@ try{
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
- for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');}
+ for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
  record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of pair){assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,player(state,state.localId).owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,player(state,state.localId).level)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);
@@ -239,7 +244,7 @@ try{
  const resumed=await read(guest),resumedPlayer=player(resumed,guestId);
  assert.equal(resumed.localId,guestId);assert.equal(resumed.sessionId,beforeRefresh.sessionId);assert(resumed.tick>=beforeRefresh.tick);assert.equal(resumed.roster.length,5);
  for(const key of ['owner','level','chosen','minerals','army'])assert.equal(resumedPlayer[key],identity[key],'Refresh preserved '+key);
- await checkpoint(pages,'same-tab-refresh');await screenshot(guest,'multiplayer-refreshed-guest.png');
+ await checkpoint(pages,'same-tab-refresh');await transitionCheckpoint('five-player-guest',pages);await screenshot(guest,'multiplayer-refreshed-guest.png');
  record('Actual guest page reload resumes the same room-scoped identity, actor, and five-player world');
  const hostBeforeRefresh=await read(host),hostProgress=player(hostBeforeRefresh,hostId);
  await phase('coordinator reload/load',()=>host.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
@@ -247,7 +252,7 @@ try{
  assert.equal(hostResumed.localId,hostId);assert.equal(hostResumed.coordinator,hostId);assert.equal(hostResumed.sessionId,hostBeforeRefresh.sessionId);assert(hostResumed.tick>=hostBeforeRefresh.tick);
  for(const key of ['owner','level','chosen','minerals','army'])assert.equal(retainedProgress[key],hostProgress[key],'Coordinator refresh preserved '+key);
  assert.equal(retainedProgress.level,3);assert.equal(retainedProgress.chosen,2);assert(retainedProgress.army>0);
- await checkpoint(pages,'coordinator-refresh');record('Actual coordinator reload preserves its existing level, selected abilities, resources, and army');
+ await checkpoint(pages,'coordinator-refresh');await transitionCheckpoint('five-player-coordinator',pages);record('Actual coordinator reload preserves its existing level, selected abilities, resources, and army');
  // The actual public-menu button owns graceful departure and solo restoration.
  await openPause(host);
  await host.locator('[data-public="solo"]').click();

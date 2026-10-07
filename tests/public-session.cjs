@@ -50,7 +50,7 @@ async function main(){
   const first=a.start();a.e.click({action:'start'});a.e.click({action:'start'});await turns();
   assert.equal(await abandoned,false,'Cancellation during the solo snapshot must not start a stale discovery');
   assert.equal(a.calls.length,1);assert.equal(a.phase(),'discovering');assert.deepEqual(bytes(a),soloBytes);
-  const options=a.calls[0].options;assert.equal(options.maxPlayers,5);assert.equal(options.resume.storage,a.tab);assert.equal(options.resume.key,'budmori-public-resume-v1');assert.equal(options.resume.lifetimeMs,30*60*1000);assert.equal(options.resume.reset,false);
+  const options=a.calls[0].options;assert.equal(options.maxPlayers,5);assert.equal(options.peerTimeoutMs,20000);assert.equal(options.resume.storage,a.tab);assert.equal(options.resume.key,'budmori-public-resume-v1');assert.equal(options.resume.lifetimeMs,30*60*1000);assert.equal(options.resume.reset,false);
   a.e.run('PublicSession.unbind();PublicSession.unbind()');assert.equal(listeners(),initialListeners);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,0);
   a.e.click({public:'cancel'});assert.equal(a.phase(),'discovering');assert.equal(options.signal.aborted,false);
   const rebound=bind();assert.notEqual(rebound,unsubscribe);unsubscribe();assert.equal(bind(),rebound);assert.equal(listeners(),initialListeners+1);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,1);
@@ -73,7 +73,7 @@ async function main(){
   assert(a.e.run('view.x===WorldView.leader().x&&view.y===WorldView.leader().y'),'New public view begins at its own spawn without a cross-map camera flight');
   assert.equal(a.tab.getItem('budmori-public-active-v1'),'1');assert.equal(a.messages.length,savedWrites);assertHealthy(a);
   pass('Out-of-order results cannot replace the current room; public entry starts fresh rather than importing solo progression');
-  assert.equal(a.e.run('bloomSession.membership.reconnectGraceMs'),30000);
+  assert.equal(a.e.run('bloomSession.membership.reconnectGraceMs'),30000);assert.equal(a.e.run('bloomSession.membership.transitionTimeoutMs'),30000);assert.equal(a.e.run('PublicSession.inspect().transitionTimeoutMs'),30000);assert(a.e.run('CONFIG.session.transitionTimeoutMs>=PublicSession.config.peerTimeoutMs+10000'));
   const countdownBytes=bytes(a);
   assert.equal(a.e.run("PublicSession.observeStatus('interrupted',0)"),30);
   assert.equal(a.e.run("BLOOM_HEADLESS=false;PublicSession.observeStatus('interrupted',15000)"),15);
