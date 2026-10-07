@@ -45,6 +45,7 @@
 ### 시뮬레이션·렌더링·이동
 
 - **WebGL은 필수입니다.** GPU 렌더링과 보간을 유지하고 성능 문제를 Canvas 2D 게임 렌더러로 대체해 해결하지 않습니다.
+- 공개 월드 지형은 정적 WebGL vertex mesh cache를 사용합니다. 지형 도형을 Canvas2D 타일로 rasterize한 뒤 WebGL texture로 재업로드하는 전장 경로는 사용하지 않으며, Canvas2D는 미니맵·UI 같은 보조 표현에만 남깁니다.
 - 시뮬레이션은 설정 가능한 고정 TPS를 사용합니다. 현재 기본은 **10 TPS**, 선택지는 **10 / 20 / 30 TPS**입니다. `CONFIG.sim.tickRate`와 `fixedStep`은 `bloomApplyTickRate()`를 통해 함께 맞춥니다. 세션 중 임의 가변 dt로 규칙을 진행하지 않습니다.
 - `CONFIG.sim.renderTargetFPS = 60`은 보간 렌더링의 **목표**이며 실제 기기의 60 FPS 보장이 아닙니다. TPS와 FPS를 혼동하지 않습니다.
 - 지속시간·쿨다운 등 게임 시간은 **밀리초 기준**으로 정의·저장합니다. SDK의 틱 번호와 입력 순서 카운터는 별도 개념이며, TPS 변경이 게임 내 지속시간을 바꾸지 않아야 합니다.
