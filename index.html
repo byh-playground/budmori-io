@@ -21139,7 +21139,12 @@ function bloomDecodeInput(b){if(!(b instanceof Uint8Array)||b.length!==5||b[4]>3
 const bloomCommandFields={huntView:['halfWidth','halfHeight','insetX','insetY','huntInset'],point:['x','y','roll'],roll:['x','y'],tutorialAck:[],growthDraft:[],abilityDraft:[],growthChoice:['cardId','offer'],abilityChoice:['cardId','offer'],gate:['gate'],auto:['enabled'],permanentMode:['mode'],recover:[],compress:['unitType','rank'],rarityFuse:['unitType','grade','max'],rarityLock:['uid','locked'],rarityReserveLock:['unitType','grade','count']};
 function bloomValidateCommand(a){if(!a||a.version!==1||!Object.hasOwn(bloomCommandFields,a.type))throw new TypeError('Command kind');const fields=['version','type',...bloomCommandFields[a.type]];if(Object.keys(a).length!==fields.length||fields.some(k=>!Object.hasOwn(a,k)))throw new TypeError('Command fields');
  if(a.type==='huntView')VisibleHunt.validateCommand(a);
- if(a.type==='point'&&(!Number.isSafeInteger(a.x)||Math.abs(a.x)>100000||!Number.isSafeInteger(a.y)||Math.abs(a.y)>100000||typeof a.roll!=='boolean'))throw new TypeError('Point destination');
+ if(a.type==='point'){
+  const maxX=CONFIG.openWorld.width*CONFIG.pointMove.quantum,maxY=CONFIG.openWorld.height*CONFIG.pointMove.quantum;
+  // Retain signed off-map intent; the shared controller projects it onto land.
+  // Bounds follow the selected world in the same quantized units as the command.
+  if(!Number.isSafeInteger(maxX)||maxX<=0||!Number.isSafeInteger(maxY)||maxY<=0||!Number.isSafeInteger(a.x)||Math.abs(a.x)>maxX||!Number.isSafeInteger(a.y)||Math.abs(a.y)>maxY||typeof a.roll!=='boolean')throw new TypeError('Point destination');
+ }
  if(a.type==='roll'&&(!Number.isInteger(a.x)||Math.abs(a.x)>32767||!Number.isInteger(a.y)||Math.abs(a.y)>32767))throw new TypeError('Roll axes');
  if(a.type.endsWith('Choice')&&(!Number.isInteger(a.offer)||a.offer<0||typeof a.cardId!=='string'||a.cardId.length>96))throw new TypeError('Offer ID');
  if(a.type==='gate'&&(!Number.isInteger(a.gate)||a.gate<0||a.gate>=CONFIG.campaign.parcels.length))throw new TypeError('Gate');
