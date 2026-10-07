@@ -116,3 +116,46 @@ const goodTarget=Buffer.from(targeted.run('bloomAdapter.save()'));targeted.c.tar
 for(const field of ['special','npc']){targeted.c.targetBytes=new Uint8Array(goodTarget);const invalid=targeted.run(`(()=>{const c=BloomLiveCodec.decode(targetBytes),s=c.world.state;if(${JSON.stringify(field)}==='special')s.units.find(u=>u.playerId==='a').attackController.targetId=s.nextPlayerEntity-1;else s.units.find(u=>u.rivalLeader).rival.ai.targetId=s.nextPlayerEntity-1;return BloomLiveCodec.encode(c)})()`);targeted.c.badTarget=invalid;assert.equal(targeted.run('bloomAdapter.validateSnapshot(badTarget,{tick:bloomTick})'),false,'unallocated negative '+field+' target rejected');}
 for(let i=0;i<20;i++){targeted.run(`bloomAdapter.step({tick:bloomTick,tickRate:CONFIG.sim.tickRate,inputs:WorldPlayers.all().map(p=>({playerId:p.playerId,input:bloomEncodeInput({x:0,y:0,manual:true}),commands:[]}))})`);assert(targeted.run('bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:bloomTick})'));}
 console.log('PASS actual special and NPC targeting secondary humans survive checkpoints and future ticks; unallocated targets rejected');
+// Actor-owned combat counters and upgrade reads. The fixture uses real combat,
+// support and auxiliary entrypoints, then validates and replays the saved graph.
+const ownership=engine(source.file,source.html);
+ownership.run(`CONFIG.session.mode='online';BloomSimulation.initialize(31415);WorldMembership.apply({epoch:0,tick:0,players:['owner','peer']});BloomSimulation.sessionConfig={mode:'online',persistence:'none'};bloomInTick=true;bloomCurrentEffects=[];
+ const owner=WorldPlayers.get('owner'),peer=WorldPlayers.get('peer');
+ for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
+ const peerData=WorldPlayers.data(peer),ownerData=WorldPlayers.data(owner);
+ ownerData.upgrades.ability=0;peerData.upgrades.ability=2;
+ const center=ThemedTerrain.safePoint(peer.leader.x+40,peer.leader.y,20);
+ function actor(type,playerId,offset=0){const u=spawn(type,playerId?'friendly':'enemy',center.x+offset,center.y,{...(playerId?{playerId}:{}),rarityGrade:0});u.stun=0;u.cooldown=0;u.aggroAt=u.wanderAt=state.time+1e6;return u}
+ const archer=actor('archer','peer'),target=actor('shellbug',null,40);target.hp=target.maxHp=1e6;
+ const counter=()=>WorldPlayers.all().map(p=>({...WorldPlayers.data(p).stats}));
+ globalThis.combatOwnership={};let before=counter();rebuildGrid();attack(archer,target);combatOwnership.basic={before,after:counter()};
+ archer.pendingMelee=null;before=counter();attack(target,archer);combatOwnership.npc={before,after:counter()};target.pendingMelee=null;
+ before=counter();peer.leader.shield=1;peer.leader.shieldUntil=state.time+1;damage(target,peer.leader,10);combatOwnership.shield={before,after:counter(),left:peer.leader.shield};
+ before=counter();target.shield=1;target.shieldUntil=state.time+1;damage(archer,target,10,'ranged');combatOwnership.npcShield={before,after:counter(),left:target.shield};
+ const air=actor('flowerbee',null,45);air.hp=air.maxHp=1e6;before=counter();damage(archer,air,10,'ranged');combatOwnership.air={before,after:counter()};
+ const medic=actor('medic','peer',-10);peer.leader.hp-=20;before=counter();support(medic,CONFIG.sim.fixedStep);combatOwnership.heal={before,after:counter(),amount:unitDef('medic').healAmount*(1+peerData.upgrades.ability*CONFIG.economy.abilityPerLevel)};
+ const siege=actor('siege','peer');before=counter();basicRangedAttack(siege,target,unitDef('siege'),5,1,null);combatOwnership.siege={before,after:counter(),knock:projectiles.at(-1).knock,expectedKnock:unitDef('siege').impactKnockbackDistance};
+ const chain=actor('chainflower','peer');before=counter();basicChainAttack(chain,target,{...unitDef('chainflower'),chainBounces:0},5,1,null);combatOwnership.chain={before,after:counter()};
+ const a=peerData.campaign.abilities;a.xp=abilityThreshold(2);a.level=2;a.chosen=1;a.ranks.pod=1;moaSyncLevelHP(peer.leader);peer.leader.auxCooldowns={pod:0};peer.leader.auxScheduleMs={};before=counter();weaponUpdateAux(peer.leader,CONFIG.sim.fixedStep,target);combatOwnership.aux={before,after:counter()};
+ const ownerSkirmisher=actor('skirmisher','owner'),peerSkirmisher=actor('skirmisher','peer'),wildSiege=actor('siege',null);
+ combatOwnership.upgrade={owner:knockbackProjectileModifiers(ownerSkirmisher).knock,peer:knockbackProjectileModifiers(peerSkirmisher).knock,wild:deployedProjectileModifiers(wildSiege,unitDef('siege')).knock,expected:CONFIG.combat.meleeKnockback};
+ state.rng=1;const ownerShock=shockProjectileModifiers(ownerSkirmisher,unitDef('medic'));state.rng=1;const peerShock=shockProjectileModifiers(medic,unitDef('medic'));combatOwnership.shock={owner:ownerShock,peer:peerShock,expected:unitDef('medic').basicAttack.variants[0].attack};
+ ownerData.upgrades.ability=7;peerData.upgrades.ability=0;
+ combatOwnership.upgradeAfterSwap={owner:knockbackProjectileModifiers(ownerSkirmisher).knock,peer:knockbackProjectileModifiers(peerSkirmisher).knock,wild:deployedProjectileModifiers(wildSiege,unitDef('siege')).knock};
+ // Explicit defender attribution: the attacker's/root upgrade cannot protect a peer tank.
+ const tank=actor('tank','peer'),d=unitDef('tank');combatOwnership.mitigation={without:upgradedRangedMitigation(100,ownerSkirmisher,tank,d,true)};peerData.upgrades.ability=1;combatOwnership.mitigation.with=upgradedRangedMitigation(100,ownerSkirmisher,tank,d,true);combatOwnership.mitigation.expected=100*d.abilityRangedReduction/d.rangedReduction;
+ for(const u of state.units){u.stun=1e6;u.pendingMelee=null;u.cooldown=1e6}rebuildGrid();spatialBoundary();bloomInTick=false;`);
+const attribution=ownership.json('combatOwnership');
+function onlyPeer(label,key,amount){const x=attribution[label];assert.deepEqual(x.after[0],x.before[0],label+' cannot write the primary participant');const expected={...x.before[1],[key]:x.before[1][key]+amount};assert.deepEqual(x.after[1],expected,label+' accrues only to its owning participant')}
+onlyPeer('basic','attacks',1);onlyPeer('shield','shieldsBlocked',1);onlyPeer('air','airHits',1);onlyPeer('heal','healing',attribution.heal.amount);onlyPeer('siege','deployShots',1);onlyPeer('chain','chainHits',1);onlyPeer('aux','attacks',1);
+for(const label of ['npc','npcShield'])assert.deepEqual(attribution[label].after,attribution[label].before,label+' has no participant statistics owner');
+assert.equal(attribution.shield.left,0);assert.equal(attribution.npcShield.left,0);assert.equal(attribution.siege.knock,attribution.siege.expectedKnock);
+assert.deepEqual(attribution.shock.owner,{arc:0,knock:0});assert.deepEqual(attribution.shock.peer,{arc:attribution.shock.expected.arcHeight,knock:attribution.shock.expected.knockbackDistance});
+assert.deepEqual(attribution.upgrade,{owner:0,peer:attribution.upgrade.expected,wild:0,expected:attribution.upgrade.expected});
+assert.deepEqual(attribution.upgradeAfterSwap,{owner:attribution.upgrade.expected,peer:0,wild:0});
+assert.equal(attribution.mitigation.without,100);assert.equal(attribution.mitigation.with,attribution.mitigation.expected);
+assert(ownership.run('bloomAdapter.validateSnapshot(bloomAdapter.save(),{tick:bloomTick})'),'correctly attributed counters preserve the snapshot contract');
+const ownershipRestore=engine(source.file,source.html),checkpoint=ownership.run('bloomAdapter.save()');ownershipRestore.c.checkpoint=checkpoint;ownershipRestore.run("CONFIG.session.mode='online';BloomSimulation.initialize(31415);BloomSimulation.sessionConfig={mode:'online',persistence:'none'};bloomAdapter.load(checkpoint)");
+for(let i=0;i<5;i++)for(const x of [ownership,ownershipRestore])x.run("bloomAdapter.step({tick:bloomTick,tickRate:CONFIG.sim.tickRate,inputs:WorldPlayers.all().map(p=>({playerId:p.playerId,input:bloomEncodeInput({x:0,y:0,manual:true}),commands:[]}))})");
+assert.deepEqual(Buffer.from(ownership.run('bloomAdapter.save()')),Buffer.from(ownershipRestore.run('bloomAdapter.save()')),'owner-attributed stats and upgrades survive restore and future input');
+console.log('PASS basic/support/shield/air/chain/siege/auxiliary ownership, NPC isolation, asymmetric upgrade reads, and restored continuation');

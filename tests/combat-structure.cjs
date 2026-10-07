@@ -23,4 +23,19 @@ assert(body('damage').includes('finally{spatialContext=previous}'),'Nested damag
 assert(body('attack').includes('finally{spatialContext=previous}'),'Nested attack restores scoped spatial context');
 assert(body('die').includes('combatDefinition(t).afterDeath?.(')&&!body('die').includes("t.type==='pillbug'"),'Postmortem behavior belongs to definition');
 assert(!source.includes("if(c.pattern==='jumpSlam'"),'Pattern motion dispatches its capability');
-console.log('PASS stable combat entries, definition-owned capabilities, explicit stages and controller lifecycle');
+// The SDK tick adapter is the only gameplay clock. Feature-local projectile
+// steps are capabilities; historical global step continuations are not.
+assert(!/^function step\(/m.test(source),'No retired single-player scheduler');
+assert(!/(?<![\w.$])step\s*=\s*function\b/.test(source),'No layered global step overrides');
+assert(!/\b(?:\w+Core|core|rarityLegacy)\.step\b/.test(source),'No captured legacy scheduler continuation');
+assert(!/\bsoundStep\b/.test(source),'Audio does not wrap a second simulation clock');
+for(const capture of source.matchAll(/const (\w+Core|core|rarityLegacy)=\{([\s\S]*?)\};/g)){
+ assert(!/(?:^|,)\s*step\s*(?:,|$)/.test(capture[2]),`${capture[1]} does not retain a retired scheduler`);
+}
+assert(body('bloomRunTick').includes('WorldSimulation.step(CONFIG.sim.fixedStep,inputs)'),'SDK tick calls shared world authority');
+assert(!/\b(?:spatialStepDepth|spatialCaptureInitial)\b/.test(source),'Presentation has no abandoned nested scheduler state');
+for(const line of source.split('\n').filter(line=>line.includes('window.__army'))){
+ assert(!/(?:^|[,{])step[,}]/.test(line),'Public debug API cannot expose the retired scheduler');
+}
+assert(source.includes('step:bloomRunTick'),'Public tick API uses canonical SDK context');
+console.log('PASS stable combat entries, definition-owned capabilities, explicit stages, controller lifecycle and one simulation scheduler');

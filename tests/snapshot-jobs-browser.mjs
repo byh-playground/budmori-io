@@ -22,7 +22,7 @@ try{
   async function drain(label,job){await wait();const start=performance.now(),pulses=[],beforeHeartbeat=heartbeat;while(!job.done){const before=performance.now();job.pulse({budgetMs:8});pulses.push(performance.now()-before);if(pulses.length>10000)throw Error('Unbounded '+label);await wait()}const end=performance.now();await wait();return{label,bytes:job.result?.length,elapsedMs:end-start,cpuMs:pulses.reduce((a,b)=>a+b,0),pulses:pulses.length,maxPulseMs:Math.max(...pulses),heartbeatYields:heartbeat-beforeHeartbeat,longTasks:longTasks.filter(row=>row.start>=start&&row.start<end),result:job.result}}
   try{
    const save=await drain('save 5×1000',bloomAdapter.saveJob()),saved=save.result;delete save.result;
-   const expected={tick:0,membershipEpoch:0,simulationVersion:'budmori-shared-ms-v3',tickRate:10,seed:12345,players:['a','b','c','d','e']};
+   const expected={tick:0,membershipEpoch:0,simulationVersion:BloomSimulation.simulationVersion,tickRate:10,seed:12345,players:['a','b','c','d','e']};
    const prepare=await drain('validate canonical 5×1000',bloomAdapter.prepareSnapshotJob(saved,expected));bloomAdapter.loadPreparedSnapshot(prepare.result,expected);delete prepare.result;
    const same=bloomAdapter.save();if(same.length!==saved.length||same.some((v,i)=>v!==saved[i]))throw Error('Prepared install differs from canonical source');
    WorldMembership.apply({epoch:1,tick:0,players:['a','b','c','d'],left:['e'],coordinatorId:'a'});

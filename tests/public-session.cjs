@@ -13,7 +13,13 @@ function storage(){const data=new Map();return{data,getItem:k=>data.get(k)??null
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return{promise,resolve,reject}}
 async function turns(n=8){for(let i=0;i<n;i++)await Promise.resolve()}
 function make(){
- const a=harness(source),calls=[],tab=storage(),disk=storage();a.e.c.sessionStorage=tab;a.e.c.localStorage={...disk,setItem(key,value){disk.setItem(key,value);a.messages.push({type:'disk',disk:value,tick:JSON.parse(value).tick})}};
+ const a=harness(source),calls=[],tab=storage(),disk=storage();
+ // Complete the native DOM sink's removal behavior for actual binding cleanup.
+ // No production listener, public lifecycle or gameplay code is replaced.
+ const doc=a.e.doc,actions=doc.getElementById('actions'),createElement=doc.createElement;
+ doc.removeEventListener=function(type,listener,options){const capture=options===true||!!options?.capture;this.handlers[type]=(this.handlers[type]||[]).filter(h=>h.f!==listener||h.capture!==capture)};
+ doc.createElement=tag=>{const node=createElement(tag);node.remove=()=>{const index=actions.children.indexOf(node);if(index!==-1)actions.children.splice(index,1)};return node};
+ a.e.c.sessionStorage=tab;a.e.c.localStorage={...disk,setItem(key,value){disk.setItem(key,value);a.messages.push({type:'disk',disk:value,tick:JSON.parse(value).tick})}};
  a.e.c.qaPublicProvider=options=>{const d=deferred();calls.push({options,...d});return d.promise.then(r=>{options.signal.addEventListener('abort',()=>r.close(),{once:true});if(options.signal.aborted)r.close();return r})};
  Object.assign(a,{calls,tab,disk,start:opts=>{a.e.c.qaStartOptions=opts||{};return a.e.run('PublicSession.start(qaStartOptions)')},phase:()=>a.e.run('PublicSession.phase')});open.push(a);return a;
 }
@@ -31,14 +37,21 @@ async function main(){
   const restoredReference=make();await restoredReference.init(soloDisk);const restoredSoloBytes=bytes(restoredReference);
   // Bind the real capture listener using a native DOM surface, then restore the
   // headless presentation guard. No gameplay or lifecycle implementation patch.
-  a.e.run('BLOOM_HEADLESS=false;PublicSession.bind();BLOOM_HEADLESS=true');
+  const actions=a.e.doc.getElementById('actions'),listeners=()=>a.e.doc.handlers.click?.length||0,initialListeners=listeners();
+  const bind=()=>a.e.run('(()=>{BLOOM_HEADLESS=false;try{return PublicSession.bind()}finally{BLOOM_HEADLESS=true}})()');
+  const unsubscribe=bind();assert.equal(bind(),unsubscribe);assert.equal(listeners(),initialListeners+1);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,1);
+  const abandoned=a.start();a.e.run('PublicSession.cancel()');
   const first=a.start();a.e.click({action:'start'});a.e.click({action:'start'});await turns();
+  assert.equal(await abandoned,false,'Cancellation during the solo snapshot must not start a stale discovery');
   assert.equal(a.calls.length,1);assert.equal(a.phase(),'discovering');assert.deepEqual(bytes(a),soloBytes);
   const options=a.calls[0].options;assert.equal(options.maxPlayers,5);assert.equal(options.resume.storage,a.tab);assert.equal(options.resume.key,'budmori-public-resume-v1');assert.equal(options.resume.lifetimeMs,30*60*1000);assert.equal(options.resume.reset,false);
-  a.e.run('PublicSession.cancel()');assert.equal(options.signal.aborted,true);assert.equal(a.phase(),'idle');
+  a.e.run('PublicSession.unbind();PublicSession.unbind()');assert.equal(listeners(),initialListeners);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,0);
+  a.e.click({public:'cancel'});assert.equal(a.phase(),'discovering');assert.equal(options.signal.aborted,false);
+  const rebound=bind();assert.notEqual(rebound,unsubscribe);unsubscribe();assert.equal(bind(),rebound);assert.equal(listeners(),initialListeners+1);assert.equal(actions.children.filter(e=>e.id==='publicStatus').length,1);
+  a.e.click({public:'cancel'});assert.equal(options.signal.aborted,true);assert.equal(a.phase(),'idle');
   const stale=room(network(),'cancelled');a.calls[0].resolve(stale);assert.equal(await first,false);assert(stale.closed);assert.deepEqual(bytes(a),soloBytes);assert.equal(a.messages.length,savedWrites);
-  pass('Repeated Start clicks share one discovery; cancellation closes a late room and protects solo bytes');
-  const failed=a.start();await turns();a.calls.at(-1).reject(new Error('synthetic discovery failure'));assert.equal(await failed,false);assert.equal(a.phase(),'failed');assert.deepEqual(bytes(a),soloBytes);assert.equal(a.disk.getItem(a.e.run('CONFIG.saveKey')),soloDisk);assertHealthy(a);
+  pass('Repeated bind/unbind owns one label and listener; Start deduplicates and cancellation closes stale rooms without changing solo bytes');
+  const failed=a.start();await turns();a.calls.at(-1).reject(new Error('synthetic discovery failure'));assert.equal(await failed,false);assert.equal(a.calls.at(-1).options.signal.aborted,true);assert.equal(a.phase(),'failed');assert.deepEqual(bytes(a),soloBytes);assert.equal(a.disk.getItem(a.e.run('CONFIG.saveKey')),soloDisk);assertHealthy(a);
   pass('Failed public discovery preserves the entire solo world and original disk');
   // Resolve a newer attempt before an earlier cancelled one.
   const older=a.start();await turns();const oldCall=a.calls.at(-1);a.e.run('PublicSession.cancel()');const newer=a.start();await turns();const newCall=a.calls.at(-1),world=network(),activeRoom=room(world,'owner');
@@ -51,7 +64,7 @@ async function main(){
   const countdownBytes=bytes(a);
   assert.equal(a.e.run("PublicSession.observeStatus('interrupted',0)"),30);
   assert.equal(a.e.run("BLOOM_HEADLESS=false;PublicSession.observeStatus('interrupted',15000)"),15);
-  assert.match(a.e.doc.getElementById('publicStatus').textContent,/15초/);
+  assert.match(actions.children.find(e=>e.id==='publicStatus').textContent,/15초/);
   a.e.run('BLOOM_HEADLESS=true');assert.equal(a.e.run("PublicSession.observeStatus('interrupted',30000)"),0);
   assert.equal(a.e.run("PublicSession.observeStatus('running',30001)"),null);
   assert.deepEqual(bytes(a),countdownBytes,'Reconnect countdown cannot mutate world authority');
@@ -109,7 +122,7 @@ async function main(){
   pass('Unreadable original solo save remains protected across public entry, return, autosave and pagehide');
   // A newer public navigation must win over the asynchronous solo restoration
   // started by Cancel. Both use the real leave and startup paths.
-  const race=make();await race.init();await begin(race,room(network(),'race-old'));
+  const race=make();await race.init();race.e.run('BLOOM_HEADLESS=false;PublicSession.bind();BLOOM_HEADLESS=true');await begin(race,room(network(),'race-old'));
   const cancelling=race.e.run('PublicSession.cancel()'),replacement=race.start({fresh:true});await turns();
   const replacementRoom=room(network(),'race-new');race.calls.at(-1).resolve(replacementRoom);
   await Promise.all([cancelling,replacement]);
@@ -129,6 +142,20 @@ async function main(){
   assert.equal(race.e.run('BloomSimulation.sessionConfig.mode'),'online','A superseded multi-peer leave must not replace the newer public session');
   assert.equal(race.e.run('bloomSession.localPlayerId'),'race-newest');assert.equal(newRoom.closed,false);
   pass('New public entry wins over a superseded multi-peer graceful leave');
+  const changes=[],stopObserving=race.e.run('PublicSession.onChanged.on')(change=>changes.push(change));
+  race.e.run("PublicSession.observeStatus('interrupted',1000)");
+  assert.equal(changes.at(-1).reconnectSeconds,30);assert.equal(changes.at(-1).phase,'playing');assert(Object.isFrozen(changes.at(-1)));
+  assert.equal(race.e.run('PublicSession.onChanged.emit'),undefined);
+  stopObserving();const observed=changes.length;race.e.run("PublicSession.observeStatus('running',1001)");assert.equal(changes.length,observed);
+  pass('Session-owned readonly signals publish immutable status and unsubscribe without authority writes');
+  const activeMarker=race.tab.getItem('budmori-public-active-v1');
+  race.e.run('PublicSession.dispose();PublicSession.dispose()');
+  assert(newRoom.closed);assert.equal(newRoom.forgetCount,0);assert.equal(race.phase(),'idle');assert.equal(race.tab.getItem('budmori-public-active-v1'),activeMarker);
+  assert.equal(race.e.doc.getElementById('actions').children.filter(e=>e.id==='publicStatus').length,0);
+  const disposal=make();await disposal.init();const disposedBytes=bytes(disposal),disposedStart=disposal.start();await turns();const disposedCall=disposal.calls.at(-1);
+  disposal.e.run('PublicSession.dispose();PublicSession.dispose()');assert.equal(disposedCall.options.signal.aborted,true);const disposedRoom=room(network(),'disposed-late');disposedCall.resolve(disposedRoom);
+  assert.equal(await disposedStart,false);assert(disposedRoom.closed);assert.equal(disposal.phase(),'idle');assert.deepEqual(bytes(disposal),disposedBytes);
+  pass('Final disposal is idempotent, closes rooms and stale discoveries, removes bindings and preserves reload resume capability');
   console.log('PASS public lifecycle campaign '+JSON.stringify({sdk:source.sdk,packets:net.delivered}));
  }finally{for(const a of open)await a.close()}
 }

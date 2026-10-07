@@ -138,5 +138,18 @@ try{
  await mobileTick(1);assert.equal(await mobileRequest('__read',{expression:'qaReusedId'}),rivalId);assert(await mobile.evaluate(id=>{const u=__army.state.units.find(u=>u.id===id);return !u.rivalLeader&&!u.rival&&!BloomDiagnostics.fatal},rivalId));
  const dimensions=await mobile.evaluate(()=>({width:document.querySelector('#view').width,height:document.querySelector('#view').height,dpr:devicePixelRatio,tps:__army.CONFIG.sim.tickRate}));assert.deepEqual(dimensions,{width:720,height:1282,dpr:3,tps:20});
  report.recoveryMirror={reconstructed:true,exactUserSave:false,dimensions,cycles,loadFreshIdentity:true,resetIdReuseSafe:true};report.checks.push('20TPS mobile-sized real combat/recover twice preserves rival metadata; load/reset/same-ID role reuse remain safe');
+ const lifecycle=await mobile.evaluate(async()=>{
+  const runtime=BloomSimulation.runtime,session=BloomSimulation.session;
+  const sameOwner=bloomMainRuntime()===runtime;boot();
+  const sameSession=BloomSimulation.session===session,labels=document.querySelectorAll('#publicStatus').length;
+  runtime.close();runtime.close();
+  document.querySelector('#view').dispatchEvent(new Event('webglcontextlost'));
+  boot();
+  const frames=__army.performance.frames;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const framesStopped=__army.performance.frames===frames;
+  return{framesStopped,sameOwner,sameSession,labels,remainingLabels:document.querySelectorAll('#publicStatus').length,ready:runtime.ready,closed:session.closed,fatal:BloomDiagnostics.fatal};
+ });
+ assert.deepEqual(lifecycle,{framesStopped:true,sameOwner:true,sameSession:true,labels:1,remainingLabels:0,ready:false,closed:true,fatal:false});
+ report.checks.push('Repeated boot/runtime access retains one owner; final close removes public UI and WebGL lifecycle subscriptions without restarting');
  assert.deepEqual(errors,[]);await mobileContext.close();report.status='PASS';console.log(JSON.stringify(report,null,2));await writeFile(new URL('./browser-report.json',import.meta.url),JSON.stringify(report,null,2));
 }catch(error){try{await page?.screenshot({path:new URL('./browser-failure.png',import.meta.url).pathname});report.status='FAIL';report.error=String(error);await writeFile(new URL('./browser-report.json',import.meta.url),JSON.stringify(report,null,2));console.error('BROWSER_DIAGNOSTICS',JSON.stringify(await page?.evaluate(()=>({ready:globalThis.BloomSimulation?.runtime?.ready,game:!!globalThis.__army,gestures:globalThis.__qaGestures,focus:document.activeElement?.id,diagnostics:globalThis.BloomDiagnostics?.snapshot()}))));console.log('TEST_SCREENSHOT_JPEG '+(await page.screenshot({type:'jpeg',quality:55})).toString('base64'))}catch{}throw error}finally{await browser?.close();server.close()}
