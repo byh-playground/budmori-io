@@ -1,6 +1,6 @@
 # Coarse-grid adaptive SAP: full-game research
 
-Status: draft experiment; production `index.html` and SDK are unchanged. Real Chromium and five-peer CI evidence is pending. Do not interpret this draft as a production optimization or a device-FPS result.
+Status: research experiment; production `index.html` and SDK are unchanged. See PR #10 checks/artifacts for the latest exact-head Chromium and five-peer status. This document records exploratory measurements, not a production optimization or device-FPS result.
 
 ## Scope and source
 
@@ -78,19 +78,41 @@ Separate instrumented profiles use 20 warmup plus 60 moving ticks, five × 1,000
 | Final exact overlaps | 47,663 | 65,686 | 49,638 |
 | Mean normalized penetration | 0.335 | 0.373 | 0.335 |
 
-The coarse solver has 37.8% more overlaps and 69.1% more overlaps deeper than half the radius sum than baseline. The batched control has 4.1% more overlaps with essentially the same mean depth and slightly lower p95 depth. These are same-player crowd contacts; human leaders are excluded from this read-only quality count. The existing game already permits troop overlap; no zero-overlap guarantee is invented.
+All globally ID-ordered pair variants share the same solver trajectory; this quality regression belongs to that solver ordering, not intrinsically to SAP. The coarse solver has 37.8% more overlaps and 69.1% more overlaps deeper than half the radius sum than baseline. The batched control has 4.1% more overlaps with essentially the same mean depth and slightly lower p95 depth. These are same-player crowd contacts; human leaders are excluded from this read-only quality count. The existing game already permits troop overlap; no zero-overlap guarantee is invented.
 
 The first coarse raw profiles were overwritten by an interrupted repeat. Original summary numbers remain; replacement raw files are explicitly supplemental, not evidence for those original totals. The later quality-only replay records its distinct generator SHA, with no unsupported claim of matching an unrecorded historical final hash.
 
-Initial recommendation: do not ship the coarse pair solver on this evidence. Its small native speed difference does not compensate for worse allocation and crowd penetration. The simpler batched-grid control remains a browser-validation candidate, not a selected default. The 80 ms p95 goal is not established.
+Initial recommendation: do not ship the coarse pair solver on this evidence. Its small native speed difference does not compensate for worse allocation and crowd penetration. The simpler batched-grid control was carried into browser validation, not selected as default. The 80 ms p95 goal is not established.
+
+
+## Initial real Chromium result
+
+Run [37573238578](https://github.com/byh-playground/budmori-io/actions/runs/37573238578), commit `11debd6835888fa576bd4ad3b3a8e6cbd7032786`, Chrome 153.0.8010.12: all 42 matrix cases passed. Each had five human actors, 15 warmup + 50 measured full ticks, followed by actual WebGL CPU submission; two repeats reversed candidate order. All live counts stayed at 51 / 776 / 5,001. Full summary/raw samples are in `coarse-browser-results.json`.
+
+| Population per human | Solver | p50 ms, repeats 1 / 2 | p95 ms, repeats 1 / 2 |
+|---|---|---:|---:|
+| 10 | Existing grid | 1.4 / 1.0 | 4.1 / 2.0 |
+| 10 | Batched grid32 | 1.2 / 1.1 | 4.7 / 4.1 |
+| 10 | Coarse SAP128 | 1.4 / 1.1 | 3.8 / 4.8 |
+| 155 | Existing grid | 6.3 / 6.9 | 11.4 / 9.3 |
+| 155 | Batched grid32 | 6.9 / 6.9 | 9.4 / 9.6 |
+| 155 | Coarse SAP128 | 7.4 / 7.1 | 11.9 / 11.2 |
+| 1,000 | Existing grid | 61.7 / 67.9 | 84.6 / 82.1 |
+| 1,000 | Batched grid32 | 65.2 / 71.0 | 101.4 / 104.0 |
+| 1,000 | Global SAP | 71.2 / 84.8 | 98.3 / 123.9 |
+| 1,000 | Coarse SAP128 | 75.5 / 82.5 | 103.7 / 121.2 |
+
+Real Chromium does not confirm the small native gains. Neither candidate earns a production swap; keep the existing grid. Rendering CPU at 5,000 companions was separately around 61–70 ms p50 under SwiftShader, so these measurements are not real-hardware FPS. The first five-peer attempt reached five synchronized WebRTC actors but stopped at a test assertion for the old storage key; the test now derives the candidate's explicitly declared keys rather than weakening refresh/leave checks.
+
+A subsequent adversarial floating-point check found a near-tangent pair whose rounded SAP endpoints were equal despite a positive exact-circle overlap. Warm x/y cache history could alter that pair, which could change the eight-neighbor correction by about four world units. The experimental enumerator adds outward-conservative interval bounds and full coordinate/radius filtering, with a targeted regression. This affects only the research candidate. The initial matrix above predates that repair; final checks/artifacts must be read at the current PR head.
 
 ## Verification and reproduction
 
-- `node tests/coarse-pair-enumerator.cjs`: 1,814 brute-force checks including large/negative/corner boundaries, AIR, movement, spawn/death, shuffled input, cold caches, duplicate-free pairs and uint32 radix values above the signed boundary.
+- `node tests/coarse-pair-enumerator.cjs`: 3,575 brute-force checks including large/negative/corner boundaries, AIR, movement, spawn/death, shuffled input, cold caches, duplicate-free pairs and uint32 radix values above the signed boundary.
 - `node tests/coarse-collision-validation.cjs --experimental`: actual-engine canonical/effect continuation, cold load, warm graph replacement, rollback cache, behavioral eligibility, neighbor budget, coincident bodies, terrain, airborne support and disk/version compatibility.
 - `node tests/coarse-write-candidates.cjs`: exact candidate HTML and SHA manifest.
 - `node tests/shared-world.cjs tests/collision-artifacts/coarse-128.html` and the batched file: passed the real game/SDK five-human campaign with deterministic byte-transport fixture, admission, owner-attributed commands, death/recovery, restore, input replay, coordinator leave and fail-closed partition. This native test is not real WebRTC.
 - `node tests/coarse-grid-live-sweep.cjs`, `node tests/coarse-pair-live-sweep.cjs`, `node tests/coarse-matched-ticks.cjs`: full native controls and matched workloads.
 - `node --expose-gc tests/coarse-cpu-memory.cjs --mode coarse --cell 128 --exact false --out-prefix tests/profiles/coarse128`: CPU/allocation/retained-memory capture; see `--help` for baseline, batched and quality-only replay.
 - `node tests/coarse-browser-performance.mjs`: real Chromium low/high population matrix (10/155/1000 per human), serial isolated contexts and reversed order repeat; manual full ticks and WebGL CPU submission are separately measured.
-- CI runs five real Chromium/WebRTC peers for both finalists using the existing multiplayer E2E. Browser verification is pending; local browser socket creation is unavailable in this execution environment.
+- CI runs five real Chromium/WebRTC peers for both finalists using the existing multiplayer E2E. Consult PR #10 CI for exact-head status; local browser socket creation is unavailable in the development environment.

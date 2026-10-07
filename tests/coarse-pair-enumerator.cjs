@@ -25,6 +25,8 @@
  * instrument:false removes performance.now and per-loop metric updates; stage
  * times/inner-loop counters remain zero; cheap size fields are retained.
  * Output pairs and ordering are unchanged.
+ * Broadphase endpoints are padded outward for floating-point roundoff; final
+ * emission always tests actual center deltas against the radius sum on both axes.
  * exact:false returns strict AABB-overlap candidates; exact:true returns strict
  * circle overlaps. No contact-count, candidate-count, or work-budget cap exists.
  * The coherent-sort displacement threshold only selects a complete native sort.
@@ -84,7 +86,15 @@ function createCoarsePairEnumerator(options = {}) {
       if (!a) { a = {id, epoch:0, orderMark:0}; recordsById.set(id, a); }
       if (a.epoch === epoch) throw Error('Duplicate body ID: ' + id);
       a.u=u; a.x=x; a.y=y; a.radius=radius; a.layer=layer; a.epoch=epoch;
-      a.loX=x-radius; a.hiX=x+radius; a.loY=y-radius; a.hiY=y+radius;
+      // Center/radius subtraction can report a strict overlap while separately
+      // rounded endpoints coincide. Pad before cell ownership AND sweeping so
+      // neither an axis choice nor a cell boundary can drop that contact.
+      const padX=4*Number.EPSILON*Math.max(1,Math.abs(x),radius);
+      const padY=4*Number.EPSILON*Math.max(1,Math.abs(y),radius);
+      a.loX=x-radius-padX; a.hiX=x+radius+padX;
+      a.loY=y-radius-padY; a.hiY=y+radius+padY;
+      if (!Number.isFinite(a.loX) || !Number.isFinite(a.hiX) ||
+          !Number.isFinite(a.loY) || !Number.isFinite(a.hiY)) throw Error('Padded AABB overflow');
       records.push(a);
     }
     for (const [id, a] of recordsById) if (a.epoch !== epoch) recordsById.delete(id);
@@ -168,10 +178,12 @@ function createCoarsePairEnumerator(options = {}) {
       }
     }
     const ordered = instrument ? now() : 0;
-    function emit(a, b, axisKnown) {
+    function emit(a, b) {
       if (instrument) metrics.orthogonalTests++;
       const sum = a.radius + b.radius, dx = a.x-b.x, dy = a.y-b.y;
-      if (axisKnown !== 'x' && Math.abs(dx) >= sum || axisKnown !== 'y' && Math.abs(dy) >= sum) return;
+      // Padded intervals are conservative only. Preserve the strict AABB
+      // contract and make final eligibility independent of the cached axis.
+      if (Math.abs(dx) >= sum || Math.abs(dy) >= sum) return;
       if (exact) { if (instrument) metrics.circleTests++; if (dx*dx+dy*dy >= sum*sum) return; }
       const i = a.rank, j = b.rank;
       pairs.push(i < j ? i*stride+j : j*stride+i);
@@ -187,7 +199,7 @@ function createCoarsePairEnumerator(options = {}) {
           for (const b of cell.members) {
             if (instrument) metrics.rawVisits++;
             if (a.rank >= b.rank) continue;
-            if (instrument) metrics.candidateChecks++; emit(a,b,null);
+            if (instrument) metrics.candidateChecks++; emit(a,b);
           }
         }
       }
@@ -198,13 +210,13 @@ function createCoarsePairEnumerator(options = {}) {
           const a = order[i], high = x ? a.hiX : a.hiY;
           for (let j = i+1; j < order.length; j++) {
             const b = order[j]; if (instrument) metrics.intervalChecks++;
-            if ((x ? b.loX : b.loY) >= high) break;
+            if ((x ? b.loX : b.loY) > high) break;
             if (instrument) metrics.candidateChecks++;
             if (a.layer !== b.layer) { if (instrument) metrics.layerRejects++; continue; }
             if (mode === 'coarse' && (Math.max(a.cx0,b.cx0) !== cell.cx || Math.max(a.cy0,b.cy0) !== cell.cy)) {
               if (instrument) metrics.ownerRejects++; continue;
             }
-            emit(a,b,cell.axis);
+            emit(a,b);
           }
         }
       }
@@ -293,6 +305,50 @@ function selfTestCoarsePairEnumerator() {
     ]
   ];
   for(const units of fixtures)check(units);
+  // Actual-size fractional radii can overlap under the solver's arithmetic
+  // while rounded interval endpoints are equal: 1000+7 === 1014.7175-7.7175.
+  const nearTangent=[
+    {id:1,x:1000,y:2000,radius:7,layer:'GROUND',hp:1},
+    {id:2,x:1014.7175,y:2000,radius:7.7175,layer:'GROUND',hp:1}
+  ];
+  assert(nearTangent[0].x+nearTangent[0].radius===nearTangent[1].x-nearTangent[1].radius,'Rounded endpoint fixture');
+  assert(brute(nearTangent,true).length===1,'Solver detects near-tangent fixture');
+  check(nearTangent);
+  const bits=new DataView(new ArrayBuffer(8));
+  const adjacent=(value,step)=>{bits.setFloat64(0,value);bits.setBigUint64(0,bits.getBigUint64(0)+BigInt(step));return bits.getFloat64(0)};
+  for(const x of [1000,1800,7200,30000])for(const radius of [7.35,7.7175,11.025,23.1525])for(const step of [-1,0,1])for(const swap of [false,true]){
+    const target=x+7+radius,b=step?adjacent(target,step):target;
+    check([{id:1,x:swap?2000:x,y:swap?x:2000,radius:7,layer:'GROUND',hp:1},
+      {id:2,x:swap?2000:b,y:swap?b:2000,radius,layer:'GROUND',hp:1}]);
+  }
+  // Equal-variance geometry retains either warmed axis via hysteresis. Before
+  // conservative endpoints, X omitted 1:2 while Y emitted it after a restore.
+  const balanced=[...nearTangent,
+    {id:3,x:1007.35875,y:1992.6412500000001,radius:7,layer:'GROUND',hp:1},
+    {id:4,x:1007.35875,y:2007.3587499999999,radius:7,layer:'GROUND',hp:1}];
+  for(const mode of ['coarse','global'])for(const exact of [false,true])for(const history of ['cold','x','y']){
+    const e=createCoarsePairEnumerator({mode,exact});
+    if(history!=='cold')e.enumerate(balanced.map((u,i)=>history==='x'?{...u,y:2000}:{...u,x:1007.35875,y:2000+(i-1.5)*10}),u=>u.radius,u=>u.layer,64);
+    const r=e.enumerate(balanced,u=>u.radius,u=>u.layer,64);
+    assert(JSON.stringify(ids(r))===JSON.stringify(brute(balanced,exact)),'Near-tangent cache-axis independence '+mode+'/'+exact+'/'+history);
+    assert(history==='y'?r.metrics.axisYCells>0:r.metrics.axisXCells>0,'Both retained axes exercised');checks++;
+  }
+  // A sub-ULP correction still consumes one of the existing eight slots. With
+  // only body 1 active, dropping 1:2 changes its accumulated push by four pixels.
+  const capped=[...nearTangent,...Array.from({length:8},(_,i)=>({id:i+3,x:1001,y:2000,radius:7,layer:'GROUND',hp:1}))];
+  const correction=orderedPairs=>{
+    let x=0,count=0;
+    for(const pair of orderedPairs){const [a,b]=pair.split(':').map(Number);if(a!==1||count>=8)continue;
+      const u=capped.find(u=>u.id===a),v=capped.find(u=>u.id===b),dx=u.x-v.x,dy=u.y-v.y,len=Math.sqrt(dx*dx+dy*dy),sum=u.radius+v.radius;
+      if(dx*dx+dy*dy>=sum*sum)continue;x+=dx/len*Math.min(4,(sum-len)*12*.1);count++;
+    }return{x,count};
+  };
+  const expectedCorrection=correction(brute(capped,true));
+  assert(expectedCorrection.count===8&&Math.abs(expectedCorrection.x+28)<1e-10,'Near-tangent cap fixture has four-pixel consequence');
+  for(const mode of ['coarse','global','grid']){
+    const r=createCoarsePairEnumerator({mode,exact:true}).enumerate(capped,u=>u.radius,u=>u.layer,64);
+    assert(JSON.stringify(correction(ids(r)))===JSON.stringify(expectedCorrection),'Neighbor-eight consequence '+mode);checks++;
+  }
   for(let round=0;round<12;round++) {
     const units=[];
     for(let i=0;i<100;i++) {
@@ -352,7 +408,7 @@ function selfTestCoarsePairEnumerator() {
   const timingSample=createCoarsePairEnumerator().enumerate(units,u=>u.radius,u=>u.layer,64).metrics;
   const timeSum=timingSample.projectionMs+timingSample.indexMs+timingSample.orderMs+timingSample.enumerationMs+timingSample.pairSortMs;
   assert(Math.abs(timeSum-timingSample.totalMs)<1e-7,'Every stage is included in total timing');
-  return {passed:true,checks,frames,maximumPairs,coverage:['all requested cell sizes','AABB and exact-circle oracle','negative boundaries and corner contacts','radii larger than cells','ground/AIR/dead eligibility','zero-radius/tangent/coincident bodies','movement, spawn/death, object and input-order changes','axis hysteresis','cache-history independence','no per-unit or pair caps','all timing stages','uint32 high-bit radix ordering','uninstrumented output'],timingSample};
+  return {passed:true,checks,frames,maximumPairs,coverage:['all requested cell sizes','AABB and exact-circle oracle','negative boundaries and corner contacts','radii larger than cells','ground/AIR/dead eligibility','zero-radius/tangent/coincident bodies','fractional near-tangencies at world scales','near-tangent warm-axis independence','near-tangent neighbor-eight consequence','movement, spawn/death, object and input-order changes','axis hysteresis','cache-history independence','no per-unit or pair caps','all timing stages','uint32 high-bit radix ordering','uninstrumented output'],timingSample};
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports={createCoarsePairEnumerator,selfTestCoarsePairEnumerator};
