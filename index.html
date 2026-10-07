@@ -21303,8 +21303,11 @@ const PublicSession=globalThis.PublicSession=(()=>{
   })().catch(error=>{if(token===attempt&&!controller.signal.aborted)failed(error);return false}).finally(()=>{if(token===attempt)pending=null});return pending;
  }
  async function leave(){
-  const token=++attempt;controller?.abort();pending=null;phase='leaving';notify();
-  try{if(BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure)await bloomSession?.leave?.()}catch{}finally{if(token!==attempt)return;room?.forgetResume?.();room?.close();room=null;remember(false);phase='idle';notify()}
+  const token=++attempt,departingController=controller;
+  // The discovery signal also owns the resolved RTC room. Aborting it before
+  // leave consensus turns a graceful handover into an abrupt partition.
+  if(pending||!room)departingController?.abort();pending=null;phase='leaving';notify();
+  try{if(BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure)await bloomSession?.leave?.()}catch{}finally{if(token!==attempt)return;room?.forgetResume?.();room?.close();room=null;departingController?.abort();if(controller===departingController)controller=null;remember(false);phase='idle';notify()}
  }
  async function solo(){if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)openModal('reset',sheetHead('기존 저장을 불러오지 못했어요')+'<p>원본 저장은 보관 중이에요. 다른 백업을 불러오거나 새 게임으로 초기화할 수 있어요.</p><button class="primary danger" data-action="reset">확인 · 새 게임 시작</button><button class="primary" data-action="import">다른 백업 불러오기</button>');return false}const leaving=leave(),token=attempt;await leaving;if(token!==attempt)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(priorRate)bloomApplyTickRate(priorRate);if(priorNetcode)Object.assign(CONFIG.netcode,priorNetcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloDisk)restored=load(soloDisk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
  function cancel(){if(BloomSimulation.sessionConfig.mode==='online')return solo();++attempt;controller?.abort();pending=null;phase='idle';notify();if(!globalThis.BLOOM_HEADLESS)showIntro(startUXHasSave)}

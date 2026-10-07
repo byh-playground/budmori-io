@@ -14,7 +14,7 @@ function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{reso
 async function turns(n=8){for(let i=0;i<n;i++)await Promise.resolve()}
 function make(){
  const a=harness(source),calls=[],tab=storage(),disk=storage();a.e.c.sessionStorage=tab;a.e.c.localStorage={...disk,setItem(key,value){disk.setItem(key,value);a.messages.push({type:'disk',disk:value,tick:JSON.parse(value).tick})}};
- a.e.c.qaPublicProvider=options=>{const d=deferred();calls.push({options,...d});return d.promise};
+ a.e.c.qaPublicProvider=options=>{const d=deferred();calls.push({options,...d});return d.promise.then(r=>{options.signal.addEventListener('abort',()=>r.close(),{once:true});if(options.signal.aborted)r.close();return r})};
  Object.assign(a,{calls,tab,disk,start:opts=>{a.e.c.qaStartOptions=opts||{};return a.e.run('PublicSession.start(qaStartOptions)')},phase:()=>a.e.run('PublicSession.phase')});open.push(a);return a;
 }
 function room(net,id,resumed=false){const r=net.add(id,resumed);r.forgetCount=0;r.forgetResume=()=>{r.forgetCount++};return r}
@@ -101,7 +101,7 @@ async function main(){
   await until(()=>owner.e.run('bloomSession.ready&&bloomSession.epoch===2')&&peer.e.run('bloomSession.ready&&bloomSession.epoch===2')&&peer.phase()==='playing');
   const resumed=peer.value("(()=>{const p=WorldPlayers.get('b');return{owner:p.accountOwner,x:p.leader.x,y:p.leader.y,minerals:WorldPlayers.data(p).minerals}})()");assert.deepEqual(resumed,peerProgress);assertHealthy(peer);
   pass('Same-room resume delegates bounded tab capability and preserves existing participant progression');
-  const departing=owner.e.run('PublicSession.solo()');let departed=false;departing.then(()=>departed=true);await until(()=>departed&&peer.e.run("bloomSession.ready&&bloomSession.players.length===1&&bloomSession.coordinatorId==='b'"));await departing;assert.equal(ownerRoom.forgetCount,1);assert.equal(owner.phase(),'idle');assert.equal(owner.e.run('BloomSimulation.sessionConfig.mode'),'local');assert.equal(peer.phase(),'playing');const remainingTick=peer.e.run('bloomTick');peer.drive(3);assert.equal(peer.e.run('bloomTick'),remainingTick+3);assertHealthy(peer);
+  const departing=owner.e.run('PublicSession.solo()');assert.equal(owner.calls.at(-1).options.signal.aborted,false,'Discovery abort signal must stay live until graceful room handover completes');assert.equal(ownerRoom.closed,false);let departed=false;departing.then(()=>departed=true);await until(()=>departed&&peer.e.run("bloomSession.ready&&bloomSession.players.length===1&&bloomSession.coordinatorId==='b'"));await departing;assert.equal(ownerRoom.forgetCount,1);assert.equal(owner.phase(),'idle');assert.equal(owner.e.run('BloomSimulation.sessionConfig.mode'),'local');assert.equal(peer.phase(),'playing');const remainingTick=peer.e.run('bloomTick');peer.drive(3);assert.equal(peer.e.run('bloomTick'),remainingTick+3);assertHealthy(peer);
   pass('Graceful coordinator departure restores solo while the remaining public world keeps running');
   await peer.e.run('PublicSession.solo()');assert.deepEqual(bytes(peer),originalPeer);
   const protectedUser=make();const bad='{unreadable original solo save}';protectedUser.disk.setItem(protectedUser.e.run('CONFIG.saveKey'),bad);await protectedUser.init(bad);const protect=await protectedUser.e.run('PublicSession.solo()');assert.equal(protect,false);assert.equal(protectedUser.messages.length,0);

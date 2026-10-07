@@ -15,7 +15,7 @@ const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
  environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production SDK timer + RAF`,
- limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
+ limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','A declared epoch-zero fixture grants the first player resources/army and places a durable encounter plus an elevated slow physical projectile.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
@@ -54,7 +54,7 @@ const fixture=String.raw`
    const point=ThemedTerrain.safePoint(m.x+160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
    if(!target)throw Error('Initial durable encounter has no safe position');
    target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;state.camps[0].remaining++;
-   damage(m,target,17,'ranged');launchAbilityShot(target,11,{owner:m,speed:1,range:1800,homing:true});
+   damage(m,target,17,'ranged');const flight=launchAbilityShot(target,11,{owner:m,start:{x:m.x-200,y:m.y-200,z:spatialHeight(m)+160},speed:1,range:1800,homing:true});flight.qaAdmissionFlight=true;
    rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();
   }return result;
  };
@@ -67,7 +67,7 @@ const fixture=String.raw`
    mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
-   durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,input:qa.lastInputs,events:qa.events.slice(-20)};
+   durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,admissionFlights:projectiles.filter(p=>p.qaAdmissionFlight).map(p=>p.shotId),input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
 assert(source.html.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
@@ -164,6 +164,7 @@ try{
  assert.equal(initial.mode,'online');assert.equal(initial.persistence,false);assert.equal(initial.roster.length,1);assert(initial.time>0);
  assert.equal(await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey)),soloBefore,'Public Start must not overwrite the solo save');
  assert.equal(await evaluate(host,()=>PublicSession.inspect().inputBufferMs),100);
+ assert.equal(initial.admissionFlights.length,1);
  assert(initial.durable.length===1&&initial.durable[0].hp<initial.durable[0].maxHp&&initial.projectiles>0);
  record('Public Start creates a ticking one-player world with fresh public identity and 100ms input buffer');
  await host.keyboard.down('KeyD');await ticks([host],4);
@@ -177,7 +178,7 @@ try{
  assert.notEqual(hostId,guestId);assert.equal(pair[0].sessionId,initial.sessionId);assert(pair[0].tick>moving.tick&&pair[0].time>moving.time);assert(player(pair[0],hostId).x>player(moving,hostId).x+1,'Host keeps moving across late admission');
  assert.notEqual(player(pair[0],hostId).owner,player(pair[0],guestId).owner);
  assert(Math.hypot(player(pair[0],hostId).x-player(pair[0],guestId).x,player(pair[0],hostId).y-player(pair[0],guestId).y)>1500,'Distinct public start regions');
- assert.equal(pair[0].durable[0].id,initial.durable[0].id);assert(pair[0].durable[0].hp<=initial.durable[0].hp);assert(pair[0].projectiles>0,'In-flight combat survives late join');
+ assert.equal(pair[0].durable[0].id,initial.durable[0].id);assert(pair[0].durable[0].hp<=initial.durable[0].hp);assert.deepEqual(pair[0].admissionFlights,initial.admissionFlights,'The specific slow physical flight survives late admission');
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
