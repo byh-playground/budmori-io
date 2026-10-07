@@ -105,7 +105,7 @@ try{
  await mobile.locator('[data-public="solo"]').click();await mobile.waitForFunction(()=>BloomSimulation.sessionConfig.mode==='local'&&!__army.paused&&PublicSession.phase==='idle');
  await mobileFixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
   const m=state.mother,r=spawn('swordsman','enemy',m.x+250,m.y,{camp:0,variant:'rival'});if(!r)throw Error('Rival fixture spawn failed');
-  SpatialPosition.constrain(r,r.hx=r.homeX=m.x+45,r.hy=r.homeY=m.y+55);r.z=r.groundZ=r.hz=r.homeZ=spatialGround(r.x,r.y);SpatialPosition.checkpointHeight(r);r.stun=100000;r.hp=r.maxHp=1e9; // Durable render probe survives the live three-second enemy battle.
+  SpatialPosition.constrain(r,r.hx=r.homeX=m.x+45,r.hy=r.homeY=m.y+55);r.z=r.groundZ=r.hz=r.homeZ=spatialGround(r.x,r.y);SpatialPosition.checkpointHeight(r);r.stun=100000;r.rival.abilities.level=10000;r.rival.abilities.xp=abilityThreshold(10000);moaSyncLevelHP(r);r.hp=r.maxHp; // Durable render probe survives the live three-second enemy battle.
   r.rival.room=r.rival.targetRoom=regionAt(r.x,r.y);if(r.rival.ai?.home)Object.assign(r.rival.ai.home,{x:r.x,y:r.y,z:r.z});globalThis.qaRecoveryRivalId=r.id;
   rarityAcquire(-1,'swordsman',0,1);m.hp=1;m.stun=10;const killer=spawn('swordsman','enemy',m.x+20,m.y,{camp:0,rarityGrade:5});killer.aggroAt=0;killer.cooldown=0;`);
  const rivalId=await mobileRequest('__read',{expression:'qaRecoveryRivalId'});
