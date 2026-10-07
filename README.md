@@ -127,6 +127,8 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 
 `npm ci && npm test`는 실제 메인 스레드 런타임/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·메인 스레드 SDK·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
 
+PR과 main push의 GitHub Actions는 비용을 제한하기 위해 `npm ci`, 검증기 구문 검사, 고정 gamekit·inline bundle 무결성 검사만 필수로 실행합니다. 실제 브라우저·5인 WebRTC·snapshot·benchmark 검증은 자동 PR 게이트가 아니며, 필요한 경우 Actions의 `workflow_dispatch`로 `Full game verification (manual)`을 실행합니다. 머지 전에는 변경 범위에 맞는 전체 검증을 로컬에서 실행하고 PR에 통과·실패·미실행 범위를 기록합니다. CI가 비싸다는 이유로 이 로컬 검증을 생략하거나 결과를 Stable/VALIDATED로 표시하지 않습니다.
+
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
 
 ## v64/v65 전환 당시 검증 결과

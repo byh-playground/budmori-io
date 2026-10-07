@@ -2,6 +2,7 @@ import {chromium} from 'playwright';
 import {createServer} from 'node:http';
 import {writeFile} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import sharedHarness from './shared-harness.cjs';
 
@@ -149,7 +150,7 @@ async function transitionCheckpoint(label,active){
  for(const state of states){assert.equal(state.connection.transitionTimeoutMs,30000);for(const sample of state.transitionHistory||[])assert(sample.elapsedMs===null||sample.elapsedMs<30000,'Successful transition stays inside configured total deadline');}
  report.transitionCheckpoints.push({label,pages:states.map((state,index)=>({page:pages.indexOf(active[index])+1,budgetMs:state.connection.transitionTimeoutMs,history:state.transitionHistory,events:state.events,metrics:state.metrics}))});
 }
-async function screenshot(page,name,timeout){const path=new URL('./'+name,import.meta.url).pathname;await phase('screenshot '+name,()=>page.screenshot({path,...(timeout?{timeout}:{})}));report.screenshots.push(name)}
+async function screenshot(page,name,timeout){const path=fileURLToPath(new URL('./'+name,import.meta.url));await phase('screenshot '+name,()=>page.screenshot({path,...(timeout?{timeout}:{})}));report.screenshots.push(name)}
 // Real tab focus can invoke the game's ordinary blur-to-pause behavior.
 // Resume through visible UI rather than changing simulation/presentation flags.
 async function focusAndResume(page){

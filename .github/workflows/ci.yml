@@ -1,14 +1,42 @@
 name: Budmori gamekit verification
+
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: budmori-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
+
 jobs:
-  actual-game:
+  required-smoke:
+    name: Required build smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Check verifier syntax
+        run: node --check scripts/gamekit-provenance.cjs
+      - name: Verify pinned offline gamekit and inline bundles
+        run: node tests/provenance.cjs
+
+  full-verification:
+    name: Full game verification (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,7 +61,7 @@ jobs:
       - name: Compare rollback and lockstep with identical inputs
         run: npm run test:benchmark:modes
       - name: Verify exact Pages bytes after main deployment
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: node scripts/verify-pages.mjs
       - name: Upload browser reports and screenshots
         if: always()
