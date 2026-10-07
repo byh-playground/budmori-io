@@ -3,11 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/prepare-combat-baseline.cjs && node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs && node tests/main-boundaries.cjs && node tests/combat-structure.cjs",
+    "test": "node scripts/prepare-combat-baseline.cjs && node tests/provenance.cjs && node tests/campaign.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs && node tests/main-boundaries.cjs && node tests/combat-structure.cjs && npm run test:shared",
     "test:browser": "node tests/browser.e2e.mjs",
     "test:benchmark": "node tests/performance-browser.mjs tests/fixtures/v65-worker.html index.html",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
-    "test:benchmark:modes": "node tests/performance-modes.cjs && node tests/performance-modes-browser.mjs"
+    "test:benchmark:modes": "node tests/performance-modes.cjs && node tests/performance-modes-browser.mjs",
+    "test:shared": "node tests/shared-validation.cjs && node tests/shared-presentation.cjs && node tests/shared-audio.cjs && node tests/render-upload.cjs && node tests/flight-fixture.cjs && node tests/shared-world.cjs && node tests/session-runtime.cjs && node tests/public-session.cjs && node tests/shared-large-bootstrap.cjs",
+    "test:browser:multiplayer": "node tests/multiplayer-browser.e2e.mjs",
+    "test:benchmark:shared": "node tests/shared-performance.cjs"
   },
   "devDependencies": {
     "playwright": "1.63.0",

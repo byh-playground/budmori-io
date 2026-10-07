@@ -22,4 +22,4 @@ for(const [scenario,count,tps]of [['sparse',10,10],['dense',155,20],['maximum',1
   }
  }finally{engines.forEach(e=>e.run('bloomSession.close()'))}
 }
-fs.writeFileSync(`${__dirname}/lockstep-performance.json`,JSON.stringify(report,null,2)+'\n');
+fs.writeFileSync(process.env.BLOOM_MODE_BENCH_REPORT||`${__dirname}/lockstep-performance.json`,JSON.stringify(report,null,2)+'\n');
