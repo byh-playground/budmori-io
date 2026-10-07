@@ -47,6 +47,15 @@ async function main(){
   assert(a.e.run('view.x===WorldView.leader().x&&view.y===WorldView.leader().y'),'New public view begins at its own spawn without a cross-map camera flight');
   assert.equal(a.tab.getItem('budmori-public-active-v1'),'1');assert.equal(a.messages.length,savedWrites);assertHealthy(a);
   pass('Out-of-order results cannot replace the current room; public entry starts fresh rather than importing solo progression');
+  assert.equal(a.e.run('bloomSession.membership.reconnectGraceMs'),30000);
+  const countdownBytes=bytes(a);
+  assert.equal(a.e.run("PublicSession.observeStatus('interrupted',0)"),30);
+  assert.equal(a.e.run("BLOOM_HEADLESS=false;PublicSession.observeStatus('interrupted',15000)"),15);
+  assert.match(a.e.doc.getElementById('publicStatus').textContent,/15초/);
+  a.e.run('BLOOM_HEADLESS=true');assert.equal(a.e.run("PublicSession.observeStatus('interrupted',30000)"),0);
+  assert.equal(a.e.run("PublicSession.observeStatus('running',30001)"),null);
+  assert.deepEqual(bytes(a),countdownBytes,'Reconnect countdown cannot mutate world authority');
+  pass('Reconnect UI counts down the configured 30-second grace without mutating simulation');
   const liveCalls=a.calls.length;a.e.click({action:'start'});a.e.click({action:'start'});await turns();
   assert.equal(a.calls.length,liveCalls);assert.equal(a.e.run('bloomSession'),publicAuthority);assert.equal(activeRoom.closed,false);
   pass('Repeated Start after readiness resumes the same public session without another discovery');

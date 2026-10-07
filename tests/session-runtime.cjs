@@ -75,6 +75,11 @@ async function main(){
    BLOOM_HEADLESS=false;__sessionRuntimeTest.controls();BLOOM_HEADLESS=true;`);
   assert.equal(viewport.e.run('qaViewportOwner.id'),-2);
   pass('Final runtime publishes viewport bounds using the local participant camera scale');
+  await viewport.control({input:{x:.5,y:0,manual:true}});
+  viewport.e.run("Object.defineProperty(bloomSession,'status',{configurable:true,get:()=> 'interrupted'})");
+  assert.deepEqual(viewport.value('__sessionRuntimeTest.sample()'),{x:0,y:0,manual:false,suspended:true});
+  viewport.e.run("delete bloomSession.status");
+  pass('Reconnect waiting supplies neutral input even with a held device direction');
   console.log('PASS continuous actual-engine session runtime campaign '+JSON.stringify({sha256:source.sha256,sdk:source.sdk}));
  }finally{for(const a of open)await a.close()}
 }
