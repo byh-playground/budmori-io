@@ -221,8 +221,8 @@ try{
  // carry per-tab observer counters across reloads to manufacture flight proof.
  await focusAndResume(host);
  const encounter=await evaluate(host,()=>{const player=WorldPlayers.local(),target=state.units.find(u=>u.qaRegion===player.startRegion);return{x:target.x,y:target.y,playerX:player.leader.x,playerY:player.leader.y}});
- assert(Math.abs(encounter.playerY-encounter.y)<120,'Host encounter remains reachable along its keyboard path');
- if(Math.abs(encounter.playerX-encounter.x)>180){const key=encounter.playerX>encounter.x?'KeyA':'KeyD';await host.keyboard.down(key);try{await until(async()=>Math.abs(player(await read(host),hostId).x-encounter.x)<170,'Host returns to its combat encounter through keyboard',30000)}finally{await host.keyboard.up(key)}}
+ const heldReturnKeys=new Set();
+ try{await until(async()=>{const current=player(await read(host),hostId),dx=encounter.x-current.x,dy=encounter.y-current.y;if(Math.hypot(dx,dy)<180)return true;const wanted=new Set([...(Math.abs(dx)>80?[dx>0?'KeyD':'KeyA']:[]),...(Math.abs(dy)>80?[dy>0?'KeyS':'KeyW']:[])]);for(const key of [...heldReturnKeys])if(!wanted.has(key)){await host.keyboard.up(key);heldReturnKeys.delete(key)}for(const key of wanted)if(!heldReturnKeys.has(key)){await host.keyboard.down(key);heldReturnKeys.add(key)}return false},'Host returns to its combat encounter through real two-axis keyboard input',30000)}finally{for(const key of heldReturnKeys)await host.keyboard.up(key)}
  await until(async()=>(await Promise.all(pages.map(read))).every(s=>s.combat.length===5&&s.combat.every(c=>c.samples>0&&c.maxDistance>50&&c.primaryDamage>0&&c.damage>0)),'Natural primary shots travel and damage at all five start regions',30000);
  report.combat=await Promise.all(pages.map(async page=>(await read(page)).combat));
  record('Real timer-driven combat in all five spawn regions creates visible physical flights beyond 50 units and damages targets on every peer');
