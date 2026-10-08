@@ -14,6 +14,10 @@ import sharedHarness from './shared-harness.cjs';
 // public relay, STUN service, user identity, or real account credential is used.
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
+// Candidate solver versions deliberately isolate public-room persistence keys.
+const publicKeys=/const storageFlag='([^']+)',resumeKey='([^']+)'/.exec(source.html);
+assert(publicKeys,'Candidate declares explicit public-room persistence keys');
+const [,publicActiveKey,publicResumeKey]=publicKeys;
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
  environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
@@ -240,7 +244,7 @@ try{
  for(const page of transport){assert(page.relay.published>0&&page.relay.delivered>0);assert(page.verification.some(v=>v.verified>0),'SDK must verify signed Nostr events');for(const pc of page.connections){assert(pc.native&&pc.state==='connected');assert(pc.channels.some(channel=>channel.bytesSent>0&&channel.bytesReceived>0),'Real RTC data must flow both ways')}}
  report.transport=transport;record('Five WebGL tabs share exact canonical bytes over ten real RTC mesh links with verified Nostr signatures');
  const beforeRefresh=await read(guest),identity=player(beforeRefresh,guestId);
- assert.equal(await evaluate(guest,()=>sessionStorage.getItem('budmori-public-active-v1')),'1');
+ assert.equal(await evaluate(guest,key=>sessionStorage.getItem(key),publicActiveKey),'1');
  await phase('guest reload/load',()=>guest.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
  const resumed=await read(guest),resumedPlayer=player(resumed,guestId);
  assert.equal(resumed.localId,guestId);assert.equal(resumed.sessionId,beforeRefresh.sessionId);assert(resumed.tick>=beforeRefresh.tick);assert.equal(resumed.roster.length,5);
@@ -261,8 +265,8 @@ try{
  await until(async()=>{const states=await Promise.all(remaining.map(read));return states.every(s=>s.ready&&s.roster.length===4&&!s.roster.includes(hostId)&&s.coordinator!==hostId)},'Graceful coordinator succession');
  await host.waitForFunction(()=>PublicSession.phase==='idle'&&BloomSimulation.sessionConfig.mode==='local'&&!__army.paused);
  assert.equal(await evaluate(host,()=>PublicSession.phase),'idle');
- assert.equal(await evaluate(host,()=>sessionStorage.getItem('budmori-public-active-v1')),null);
- assert.equal(await evaluate(host,()=>Object.keys(sessionStorage).filter(key=>key.startsWith('budmori-public-resume-v1')).length),0,'Explicit leave must forget room credentials');
+ assert.equal(await evaluate(host,key=>sessionStorage.getItem(key),publicActiveKey),null);
+ assert.equal(await evaluate(host,prefix=>Object.keys(sessionStorage).filter(key=>key.startsWith(prefix)).length,publicResumeKey),0,'Explicit leave must forget room credentials');
  await ticks(remaining,10);await checkpoint(remaining,'coordinator-left');
  const successor=await read(guest);assert.equal(player(successor,hostId).lifecycle,'left');
  await screenshot(guest,'multiplayer-successor-world.png');record('Graceful coordinator leave forgets resume data and remaining players keep the same ticking world');

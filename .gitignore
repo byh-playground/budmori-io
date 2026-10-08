@@ -16,3 +16,6 @@ pre-recovery-fix.html
 tests/fixtures/v65-worker.html
 
 /tests/fixtures/runtime-combat-baseline.html
+
+/tests/collision-artifacts/
+/tests/profiles/

@@ -73,3 +73,52 @@ jobs:
             tests/*.png
           if-no-files-found: ignore
           retention-days: 14
+
+  collision-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Verify complete pair broadphases and cache-independent physics
+        id: collision_build
+        run: |
+          node tests/coarse-pair-enumerator.cjs
+          node tests/coarse-collision-validation.cjs --experimental
+          node tests/coarse-write-candidates.cjs
+          node tests/shared-world.cjs tests/collision-artifacts/coarse-128.html
+          node tests/shared-world.cjs tests/collision-artifacts/batched-grid-32.html
+      - run: npx playwright install --with-deps chromium
+      - name: Compare complete Chromium ticks at low and high population
+        run: node tests/coarse-browser-performance.mjs
+      - name: Verify coarse SAP in five real WebRTC peers
+        if: always() && steps.collision_build.outcome == 'success'
+        run: |
+          xvfb-run -a node tests/multiplayer-browser.e2e.mjs tests/collision-artifacts/coarse-128.html
+          cp tests/multiplayer-browser-report.json tests/collision-artifacts/coarse-multiplayer-report.json
+        env:
+          BUDMORI_HEADED: "1"
+      - name: Verify batched grid in five real WebRTC peers
+        if: always() && steps.collision_build.outcome == 'success'
+        run: |
+          xvfb-run -a node tests/multiplayer-browser.e2e.mjs tests/collision-artifacts/batched-grid-32.html
+          cp tests/multiplayer-browser-report.json tests/collision-artifacts/batched-multiplayer-report.json
+        env:
+          BUDMORI_HEADED: "1"
+      - name: Upload exact candidate artifacts and browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: budmori-collision-research
+          path: |
+            tests/collision-artifacts/
+            tests/*report.json
+            tests/*.png
+          if-no-files-found: ignore
+          retention-days: 14
