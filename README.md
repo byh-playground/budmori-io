@@ -150,10 +150,10 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `7f2441775c659a190d58d46b679f823e3af1cec6`; dist: `99bc18bb62789742aa070cabfd69fc84bbed0049`. `BloomSimulation.sdkCommit`과 진단 화면도 같은 source commit을 표시하며 실제 포함 번들은 `gamekit-lock.json`으로 검증합니다.
+현재 고정 SDK source: `059d6babf344efbf54867a342fecdd64f70a6a86`; dist: `17ef4c9340c8d8760ed8f648f1358430dca9c71f`. `BloomSimulation.sdkCommit`과 진단 화면도 같은 source commit을 표시하며 실제 포함 번들은 `gamekit-lock.json`으로 검증합니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
-- 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 밀린 실제 실행 시간은 보존하되 한 pulse당 한 tick만 처리한 뒤 이벤트 루프에 양보합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
+- 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 짧은 지연만 보존하며 `maxBacklogTicks`를 넘는 lifecycle clock gap은 backlog를 폐기하고 현재 시각을 새 기준으로 삼습니다. 온라인 복귀는 stale 클라이언트가 월드를 덮지 않고 canonical snapshot/resync를 사용합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
 - 실행 중 대기 명령이 있는 저장 요청은 다음 예정 SDK 경계를 기다립니다. 일시정지 중 대기 명령은 게임 시간을 진행하지 않는 suspended SDK 경계에서 확정합니다. 현재는 아래 락스텝 구성처럼 완료 경계에서 필요할 때 snapshot을 캡처합니다.
 - 시뮬레이션과 렌더가 CPU를 공유하므로 Worker 제거가 모든 기기에서 더 빠르다는 보장은 없습니다. 실제 Chromium/SwiftShader 전후 벤치마크는 같은 seed·군단·TPS를 사용하고 tick, snapshot, RAF, 입력 지연을 별도 기록합니다. Native V8 결과는 기기 FPS 측정이 아닙니다.
 

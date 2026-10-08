@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 7f2441775c659a190d58d46b679f823e3af1cec6; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 99bc18bb62789742aa070cabfd69fc84bbed0049. */
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><script id="bloom-gamekit-inline">/* bloom-gamekit source 059d6babf344efbf54867a342fecdd64f70a6a86; exact bundled SHA-256 values in gamekit-lock.json. Verified dist 17ef4c9340c8d8760ed8f648f1358430dca9c71f. */
 /* BEGIN GAMEKIT input */
 var BloomGamekitInput = (() => {
   var __defProp = Object.defineProperty;
@@ -2615,7 +2615,7 @@ function report(error,context={}){
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@7f2441775c659a190d58d46b679f823e3af1cec6',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@059d6babf344efbf54867a342fecdd64f70a6a86',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors:ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':'recoverable'}))};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -14532,15 +14532,20 @@ var BloomOwnedSDK = (() => {
     },
     onInputRelease = () => {
     },
+    onBacklogDrop = () => {
+    },
+    maxBacklogTicks = 8,
     requestFrame = globalThis.requestAnimationFrame?.bind(globalThis),
     cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis)
   } = {}) {
     if (!session || typeof session.poll !== "function" || typeof session.advance !== "function") throw new TypeError("session capability");
-    for (const callback of [getInput, render, beforeFrame, canAdvance, onAdvance, onError, onInputRelease]) {
+    for (const callback of [getInput, render, beforeFrame, canAdvance, onAdvance, onError, onInputRelease, onBacklogDrop]) {
       if (typeof callback !== "function") throw new TypeError("loop callback");
     }
     if (backlogPolicy !== "drop" && backlogPolicy !== "retain") throw new RangeError("backlogPolicy");
+    if (!Number.isInteger(maxBacklogTicks) || maxBacklogTicks < 1 || maxBacklogTicks > 8192) throw new RangeError("maxBacklogTicks");
     const quantum = 1e3 / session.profile.tickRate;
+    const maxBacklogMs = quantum * maxBacklogTicks;
     let running = false, handle, last, accumulator = 0, generation = 0, timingGeneration = 0;
     const resetTiming = () => {
       timingGeneration++;
@@ -14580,9 +14585,15 @@ var BloomOwnedSDK = (() => {
         const timing = timingGeneration;
         if (last === void 0) last = timestamp;
         const elapsed = Math.max(0, timestamp - last);
-        accumulator = backlogPolicy === "retain" ? accumulator + elapsed : Math.min(accumulator + Math.min(250, elapsed), quantum * session.profile.maxCatchupSteps);
+        if (elapsed > maxBacklogMs) {
+          accumulator = 0;
+          last = timestamp;
+          onBacklogDrop({ elapsedMs: elapsed, droppedTicks: Math.floor(elapsed / quantum), timestamp });
+        } else {
+          accumulator = backlogPolicy === "retain" ? accumulator + elapsed : Math.min(accumulator + Math.min(250, elapsed), quantum * session.profile.maxCatchupSteps);
+          last = timestamp;
+        }
         if (!Number.isFinite(accumulator) || accumulator > Number.MAX_SAFE_INTEGER) throw new RangeError("loop backlog exceeds safe milliseconds");
-        last = timestamp;
         session.poll();
         if (current !== generation || timing !== timingGeneration) return;
         let work = 0;
@@ -21945,7 +21956,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'7f2441775c659a190d58d46b679f823e3af1cec6',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'059d6babf344efbf54867a342fecdd64f70a6a86',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -22086,11 +22097,13 @@ function bloomMainRuntime() {
  const uiPhase=Object.freeze({idle:'idle',mounting:'mounting',ready:'ready',closed:'closed'});
  let phase=runtimePhase.idle,epoch=0;
  const driver={timer:null,wasActive:false,nextPulseAtMs:0};
+ const MAX_RESUME_BACKLOG_TICKS=4;
  const ui={phase:uiPhase.idle,viewSignature:'',subscriptions:[]};
  let inputOverride=null;
  function listen(target,type,listener,options){target.addEventListener(type,listener,options);ui.subscriptions.push(()=>target.removeEventListener(type,listener,options))}
  function unbind(){for(const off of ui.subscriptions.splice(0))off();PublicSession.unbind();ui.phase=uiPhase.closed}
  function stopDriver(){clearTimeout(driver.timer);driver.timer=null;bloomLoop?.stop()}
+ function rebaseDriverClock(now=performance.now()){bloomLoop?.resetTiming();driver.wasActive=active();driver.nextPulseAtMs=now+1000/CONFIG.sim.tickRate}
  const metrics={mode:'main-thread SDK loop',advanceStatus:'ready',tickMs:0,maxTickMs:0,ticks:0,presentationMs:0,maxPresentationMs:0};
  const oldQueue=bloomQueue,oldLoad=load,oldReset=reset,oldRate=bloomSetTickRate;
  // Session capabilities, never participant count or local presentation identity,
@@ -22148,8 +22161,10 @@ function bloomMainRuntime() {
   if(driver.timer===null)driver.timer=setTimeout(pump,bloomInputPending&&!active()?0:Math.max(0,driver.nextPulseAtMs-performance.now()));
  }
  function pump(){
-  driver.timer=null;if(phase!==runtimePhase.ready)return;driver.nextPulseAtMs+=1000/CONFIG.sim.tickRate;
-  try{const running=active(),now=performance.now();
+  driver.timer=null;if(phase!==runtimePhase.ready)return;
+  try{const running=active(),now=performance.now(),quantum=1000/CONFIG.sim.tickRate;
+   if(now-driver.nextPulseAtMs>quantum*MAX_RESUME_BACKLOG_TICKS){rebaseDriverClock(now);schedule();return}
+   driver.nextPulseAtMs+=quantum;
    if(running!==driver.wasActive){bloomLoop.resetTiming();bloomLoop.pulse(now);driver.wasActive=running;driver.nextPulseAtMs=now+1000/CONFIG.sim.tickRate}
    if(!running){if(bloomInputPending&&!discovering())advanceSuspended();bloomLoop.resetTiming()}
    else bloomLoop.pulse(now);
@@ -22164,7 +22179,8 @@ function bloomMainRuntime() {
   stopDriver();const superseded=persistence.pending;persistence.pending=[];for(const p of superseded){if(p.kind==='save')p.resolve(false);else p.reject(new Error('Save superseded by session boundary'))}
   if(online())persistence.soloWorld=false;epoch++;persistence.lastTick=bloomTick;ui.viewSignature='';driver.wasActive=false;metrics.advanceStatus='ready';driver.nextPulseAtMs=performance.now()+1000/CONFIG.sim.tickRate;
   let tickStart=0;
-  bloomLoop=BloomOwnedSDK.createLoop({session:next,backlogPolicy:'retain',
+  bloomLoop=BloomOwnedSDK.createLoop({session:next,backlogPolicy:'retain',maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,
+   onBacklogDrop(){rebaseDriverClock()},
    getInput(){tickStart=performance.now();return sampleInput()},
    canAdvance:active,onAdvance(result){afterAdvance(result,tickStart,next)},onError(error){fail(error,'sdk.loop')}
   });

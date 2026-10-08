@@ -8,6 +8,7 @@ module.exports=`globalThis.__budmoriTest={async request(type,m={}){
   if(ui.phase===uiPhase.ready)resetPresentation();return true;
  }
  if(type==='__clock'){globalThis.BLOOM_MAIN_TEST_MANUAL=!!m.manual;clearTimeout(driver.timer);driver.timer=null;driver.wasActive=false;bloomLoop.resetTiming();controls();return true}
+ if(type==='__staleDriver'){const now=performance.now();clearTimeout(driver.timer);driver.timer=null;driver.wasActive=true;driver.nextPulseAtMs=now-(Number(m.ticks)||12)*1000/CONFIG.sim.tickRate;schedule();return true}
  if(type==='__breakSession'){bloomStartDriver=()=>{bloomSession.close();throw Error('Controlled session recreation failure')};return true}
  if(type==='init')return runtime.initialize(m);
  if(type==='testTicks'){for(let i=0;i<m.count;i++){const start=performance.now();afterAdvance(bloomSession.advance(bloomEncodeInput({...inputOverride||moaRollCore.sampleSimulationInput(),suspended:paused||!playing||!!modalKind})),start)}return{tick:bloomTick,time:state.time}}
