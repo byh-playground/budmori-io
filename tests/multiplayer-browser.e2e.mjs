@@ -199,6 +199,17 @@ try{
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
+ // Optional real-clock soak beyond the reported ~94s renderer failure. Keep
+ // ordinary SDK timers/RAF and check both peers, without advancing test clocks.
+ const soakMs=Number(process.env.BUDMORI_TWO_PLAYER_SOAK_MS||0);
+ assert(Number.isFinite(soakMs)&&soakMs>=0,'BUDMORI_TWO_PLAYER_SOAK_MS must be nonnegative');
+ if(soakMs){
+  const before=await Promise.all([host,guest].map(read)),started=performance.now();
+  await until(async()=>{const states=await Promise.all([host,guest].map(read));for(const state of states){assert(!state.fatal&&!state.failure,JSON.stringify(state));assert.equal(state.roster.length,2);assert.equal(state.backend,'WebGL')}return performance.now()-started>=soakMs},'two-player WebGL soak',soakMs+20000);
+  const after=await Promise.all([host,guest].map(read));for(let i=0;i<2;i++){assert(after[i].tick>before[i].tick);assert(after[i].frames>before[i].frames)}
+  report.twoPlayerSoak={elapsedMs:Math.round(performance.now()-started),peers:after.map((s,i)=>({ticks:s.tick-before[i].tick,frames:s.frames-before[i].frames,render:s.performance.render}))};
+  record('Two-player WebGL rendering and simulation continue through real-clock soak',report.twoPlayerSoak);await checkpoint([host,guest],'two-player-soak');
+ }
  for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
  record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of pair){assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,player(state,state.localId).owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,player(state,state.localId).level)}

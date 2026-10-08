@@ -6,6 +6,7 @@
     "test": "node scripts/prepare-combat-baseline.cjs && node tests/provenance.cjs && node tests/reset-load-structure.cjs && node tests/save-version-policy.cjs && node tests/spawn-pipeline.cjs && node tests/campaign.cjs && node tests/rollable-continuation.cjs && node tests/motion-owner-continuation.cjs && node tests/presentation.cjs && node tests/recovery-mirror.cjs && node tests/main-boundaries.cjs && node tests/combat-structure.cjs && npm run test:shared",
     "test:browser:save": "node tests/save-version-browser.mjs",
     "test:browser": "node tests/browser.e2e.mjs",
+    "test:browser:webgl": "node tests/webgl-batches-browser.mjs",
     "test:benchmark": "node tests/performance-browser.mjs tests/fixtures/v65-worker.html index.html",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
     "test:benchmark:modes": "node tests/performance-modes.cjs && node tests/performance-modes-browser.mjs",
