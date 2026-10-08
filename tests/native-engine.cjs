@@ -18,6 +18,10 @@ function engine(file=`${__dirname}/BLOOM_LIVING_FRONTIER.html`,sourceHTML,native
  doc.createElement=tag=>Object.assign(surface(),{tagName:tag.toUpperCase()});doc.body=surface('body');doc.head=surface('head');doc.documentElement=surface('html');
  const canvas=doc.getElementById('view');
  const c=Object.assign(vm.createContext(vm.constants.DONT_CONTEXTIFY),{BLOOM_HEADLESS:true,testContext:nativeContext,devicePixelRatio:1,testCanvas:canvas,document:doc,console,TextEncoder,TextDecoder,structuredClone,performance,URL,Uint8Array,ArrayBuffer,DataView,setTimeout,clearTimeout,innerWidth:390,innerHeight:780,localStorage:{getItem(){return null},setItem(){}},requestAnimationFrame(){},matchMedia(){return{matches:false,addEventListener(){}}}});
+ // The native renderer and game run in separate test realms. Share the host
+ // constructor before scripts allocate arrays, preserving production instanceof
+ // and vertex-layout validation for both static and dynamic mesh uploads.
+ if(nativeContext)c.Float32Array=Float32Array;
  c.window=c;c.addEventListener=win.addEventListener.bind(win);let scripts=0;
  const html=sourceHTML??fs.readFileSync(file,'utf8'),sha256=crypto.createHash('sha256').update(html).digest('hex');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)){

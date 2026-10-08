@@ -1,26 +1,26 @@
-tree 5cbd8d23b96e29a456d0512140012752fce9a66d
-parent 7f2441775c659a190d58d46b679f823e3af1cec6
-parent 5775f416a38ee5ccf2362187420780b7a1d9942d
-author byh020907 <byh020907@naver.com> 1791422419 +0900
-committer GitHub <noreply@github.com> 1791422419 +0900
+tree 80fb6ebce03163b2c25093ab16d397a823adee35
+parent 723b7be1a89ed4ba93f258f944257d566edc4069
+parent 62df6ca94c511226ab961380dff8a515f17b2509
+author byh020907 <byh020907@naver.com> 1791467893 +0900
+committer GitHub <noreply@github.com> 1791467893 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqxu/TCRC1aQ7uu5UhlAAAhzAQAA93IOmwJETprBsDqWDxdiD/
- CG5sWcpPhD6UqwBVeuLIStWq/8skS63ZcTLrrNyI0FxFkUmLtg3P9dvmJ3PaemqU
- YTC9RQuaw/3HW8vU92o7jOfleqTfdpJKFZWEuxCiXHgF57BwZpwLi0beM4iE43qD
- UCuhmM0W1+xsuoUTjxoT5z+RgmEVVwXaS2v8EEFCBl5JJvF78ddAJCPOuDvqyKZN
- xW4eUxCzXoENBTp+0yi7chsd1LkKbu/ai9xSi2EeW/sA9LHTFW1EXlbfdDNpJlUQ
- I2lasYiE3nFD6bUm8OLRTzqKoMREzXqdl3P7DEKJ/3dWBu6UEBrwaTKKI3hPsqwe
- GW3YvUSo85kedvG85mutQgdadZhKw9TED5TEohp4dx6bDmhui6tvRUFDkVefNVW2
- 2+8twGFPCtwKG/wWA8iqT+qg7lXzmY1CkNfKdcguN5WzX6sHO49s0ha/GDfJODxW
- lwm5/IPPhNGTOMY0F36/9cmq+aWdePgdhRIASbpUK7ZljcukwHaZEA6OCbO3U4MG
- TQspDrS6U8VsYRlJNW8XEEbaKovsANPTJoJPRioMrRpnrst8of2m0HKvwdbqfRIp
- S7tc2SIn0AiY82a4WjJrkK8oWJZtYT3aqNjlfT/Q5jrbN/yBWvPaFhIgLFEo0ehd
- uWk7dQcnpaZBIxWyi6jg
- =HfOK
+ wsFcBAABCAAQBQJqx6F1CRC1aQ7uu5UhlAAAuxUQACY1r5Q7DCZEu/mwTDivffBs
+ qsqU2KWVpkG//KU1aaG5lO3FXfOfrCCMXReDwI66uVhFlAPGUmry1sXBcosNlSWz
+ a/9blW5DOm53z23DiM8P0vtF2rXf8FrJdqS2RYv2tElSWIq4dVGGFDW5vSlJYN9M
+ M5Nf4hZYjtgaUPtxeeUiJbbfrBQ7o8nUJ8ajOeqnhvlG3WGWl68kLJYAr3RGKy2q
+ FvYtz7qt52GrEfUR7QuJ/sPBJwkhdNhgX9CcqA6h9Clp39zU5+TSHORCrpHmYnat
+ i9g5Ntw0z+8d2+K5O6bsDa/HhWkao0Pwjs4lm5OZHd5M9girttn5A4XQyagYK/dL
+ zxnaQ491+DgbQ4SHtcb3e+EEgcw788i3c4NEwyHzvX5VLXmee4iTskbIJdG8wCRQ
+ diDCq4XGfdzlSKcK/qxhVFBpVfIrNRgHq0L2i/rqj37YejB80L4ox+MN50kDgRPe
+ o146+7XNRENqSCzu/MqmQsbg/JIPrS+Mjj4X+4su9X7F9moIs7qq4pb+xjdWUCAX
+ m3rLFd2MgPcAL4z5AXYX3rKCGSWlsDl0ndsKM34twqcNs2rse10cG227Yrit+l/2
+ lOzGFyhUxSzf8YmDu/SvcN5mLFi1A58UtIv6AaT1w1LvfLnI4IlGSopwGk/SJnbS
+ cXrjK4AJ3m3dlRAps1Rr
+ =2cH7
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #13 from byh-playground/codex/resume-backlog
+Merge pull request #18 from byh-playground/codex/vector-rendering
 
-[bug-fix] 공통 simulation loop의 stale backlog 폐기
+[feature] 공통 WebGL 도형·텍스트·그룹 합성 경계

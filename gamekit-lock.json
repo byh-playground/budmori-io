@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "059d6babf344efbf54867a342fecdd64f70a6a86",
-  "distCommit": "17ef4c9340c8d8760ed8f648f1358430dca9c71f",
+  "sourceCommit": "aadf23c043a913f4c2d2e6eb2875d7c852f06a0b",
+  "distCommit": "54f1c23b53e57e891ee0e16faaf9553aec2293d4",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -23,8 +23,8 @@
     },
     {
       "name": "interpolation",
-      "bundleSHA256": "23c90f377beb1fd2389023f42d11137c3c6e63ea148e07eb938882aeb9e9c45f",
-      "inlineSHA256": "6f9e0c0ff4c215b59cbacb1310547bf4f074a809983c77b4b211e7b9105d7af4"
+      "bundleSHA256": "50a71b2095eb86901b6ac37f5a38a229e6a6a69bf24c8b18ce471b7523db80f6",
+      "inlineSHA256": "733b6c0dae2e53573635504bca2615f9c1180efd76c1d3ab217138d8c81a330a"
     },
     {
       "name": "hud",
@@ -33,8 +33,8 @@
     },
     {
       "name": "rendering",
-      "bundleSHA256": "b6030b90345a31f7aad9cb832d3c47f775fff43f0990c7b925768a55a1a0017e",
-      "inlineSHA256": "1193aa97ead254e1c67479ec00f4d6875b720c73d1c9e0ce04969dc67f8a3b6c"
+      "bundleSHA256": "a5f7439c7c3e99dee8d378e8f51872203df92d5b8938218c56a4f201bf603146",
+      "inlineSHA256": "6fd608f0cc7f9449f9926c0962713e20a4ae148921b6536340545ed5916c3c3a"
     },
     {
       "name": "input",
@@ -43,9 +43,9 @@
     },
     {
       "name": "debug-tools",
-      "bundleSHA256": "2081257b357e16442d245ea7242a188a24235864a7991e2164376a7d8eee4b1d",
-      "inlineSHA256": "5de6c8410d182273b7bc7c9e127aa2fb95884c42097a9c0f6ee10874159206c9"
+      "bundleSHA256": "ff8c87307a2d26da23ecf2f5133f65ebb809c78c1fcbf9f59aa56f2dedc4697b",
+      "inlineSHA256": "f674c3429aae676da1c7e123c941ead3ee5b7c2f73a0cd5d07ad96ad05e5af8e"
     }
   ],
-  "manifestSHA256": "951712c6bcc4af2e86ac20358e9b7b11d3c7fbb3e9b3b1423789ab8e052ad997"
+  "manifestSHA256": "0b8ba7765cefb8db109e9dec38e9b8018d75688471033b389e52438b70df9021"
 }

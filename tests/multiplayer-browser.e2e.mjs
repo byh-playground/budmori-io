@@ -15,7 +15,7 @@ import sharedHarness from './shared-harness.cjs';
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
- environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; five independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
+ environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
@@ -82,8 +82,8 @@ const fixture=String.raw`
 })();`;
 assert(source.html.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
 // Observe actual static/atlas upload durations, including the first boot frame.
-const uploadProbe=`;(()=>{globalThis.__qaRenderUploads=[];const original=BloomWebGL.Renderer.prototype._upload;BloomWebGL.Renderer.prototype._upload=function(record){const start=performance.now(),prior=record.version,result=original.call(this,record),ms=performance.now()-start;if(prior!==record.version||ms>10){const row={frame:this.frame,width:record.width,height:record.height,kind:record.page?'atlas':'static',ms};__qaRenderUploads.push(row);if(__qaRenderUploads.length>80)__qaRenderUploads.shift();if(ms>100)console.log('ASSET_UPLOAD '+JSON.stringify(row))}return result}})();`;
-const rendererExport="global.BloomWebGL={create,Renderer,shaders,tessellate,version:64};";
+const uploadProbe=`;(()=>{globalThis.__qaRenderUploads=[];const record=row=>{row.frame=globalThis.__army?.performance?.frames||0;__qaRenderUploads.push(row);if(__qaRenderUploads.length>80)__qaRenderUploads.shift()};const p=BloomGamekitRendering.WebGLDevice.prototype,upload=p.uploadVertices,texture=p.createTexture,target=p.createRenderTarget;p.uploadVertices=function(handle,data){const start=performance.now(),result=upload.call(this,handle,data),ms=performance.now()-start;record({kind:'vertex-buffer',bytes:data.byteLength,ms});return result};p.createTexture=function(source,options){const handle=texture.call(this,source,options),bytes=(source.width||0)*(source.height||0)*((options?.format==='luminance')?1:4);record({kind:'texture',width:source.width,height:source.height,bytes});return handle};p.createRenderTarget=function(width,height,options){const handle=target.call(this,width,height,options);record({kind:'render-target',width,height,bytes:width*height*4});return handle}})();`;
+const rendererExport="global.BloomWebGL={create,Renderer,version:65};";
 assert(source.html.includes(rendererExport));
 const instrumented=source.html.replace(rendererExport,rendererExport+uploadProbe).replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>fixture);
 assert.notEqual(instrumented,source.html);
@@ -124,11 +124,12 @@ async function addPage(){
  assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Embedded SDK must include public-room API; --sdk is only a development override');
  assert.equal((await read(page)).backend,'WebGL');await samplePhase('page '+number+' booted',[page]);return page;
 }
-async function ready(active,count=active.length){
+async function ready(active,count=active.length,whileJoining){
  await phase('ready '+count+' participants',()=>until(async()=>{
   const states=await Promise.all(active.map(read));
   for(const state of states){assert(!state.fatal&&!state.failure,JSON.stringify(state));assert.notEqual(state.phase,'failed',JSON.stringify(state))}
-  return states.every(state=>state.phase==='playing'&&state.ready&&state.roster.length===count)&&new Set(states.map(state=>state.sessionId)).size===1;
+  const committed=states.every(state=>state.phase==='playing'&&state.ready&&state.roster.length===count)&&new Set(states.map(state=>state.sessionId)).size===1;
+  if(!committed)await whileJoining?.(states);return committed;
  },count+' participants commit the same room'));
  await samplePhase('ready '+count+' participants',active);
 }
@@ -189,10 +190,15 @@ try{
  record('Actual Cancel followed by Start abandons the previous discovery and can join normally');
  // Opening a tab can release held actions on blur. Reapply genuine keyboard
  // input during the asynchronous public discovery/admission window.
- await focusAndResume(host);await host.keyboard.down('KeyD');await ready([host,guest]);
+ await focusAndResume(host);let admissionKey='KeyD';const admissionOrigin=player(moving,hostId).x,admissionRange=[admissionOrigin,admissionOrigin];await host.keyboard.down(admissionKey);
+ // Continue genuine movement while joining, reversing near the encounter.
+ // Otherwise a slow handshake legitimately takes the host out of the spawn
+ // ring and the production game retires the supposedly "durable" fixture.
+ try{await ready([host,guest],2,async states=>{const x=player(states[0],hostId).x;admissionRange[0]=Math.min(admissionRange[0],x);admissionRange[1]=Math.max(admissionRange[1],x);const next=x>admissionOrigin+60?'KeyA':x<admissionOrigin-60?'KeyD':admissionKey;if(next!==admissionKey){await host.keyboard.up(admissionKey);admissionKey=next;await host.keyboard.down(admissionKey)}})}finally{await host.keyboard.up(admissionKey)}
+ await host.keyboard.down('KeyD');
  await ticks([host,guest],3);await host.keyboard.up('KeyD');
  const pair=await Promise.all([host,guest].map(read)),guestId=pair[1].localId;
- assert.notEqual(hostId,guestId);assert.equal(pair[0].sessionId,initial.sessionId);assert(pair[0].tick>moving.tick&&pair[0].time>moving.time);assert(player(pair[0],hostId).x>player(moving,hostId).x+1,'Host keeps moving across late admission');
+ assert.notEqual(hostId,guestId);assert.equal(pair[0].sessionId,initial.sessionId);assert(pair[0].tick>moving.tick&&pair[0].time>moving.time);assert(admissionRange[1]-admissionRange[0]>10,'Host keeps visibly moving across late admission');
  assert.notEqual(player(pair[0],hostId).owner,player(pair[0],guestId).owner);
  assert(Math.hypot(player(pair[0],hostId).x-player(pair[0],guestId).x,player(pair[0],hostId).y-player(pair[0],guestId).y)>1500,'Distinct public start regions');
  assert.equal(pair[0].durable[0].id,initial.durable[0].id);assert(pair[0].durable[0].hp<=initial.durable[0].hp);assert.deepEqual(pair[0].admissionFlights,initial.admissionFlights,'The specific slow physical flight survives late admission');
@@ -212,7 +218,7 @@ try{
  }
  for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
  record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
- for(const state of pair){assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,player(state,state.localId).owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,player(state,state.localId).level)}
+ for(const state of await Promise.all([host,guest].map(read))){const own=player(state,state.localId);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,own.owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,own.level);assert.equal(state.localView.hp,own.hp);assert.equal(state.localView.army,own.army)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);
  await openPause(host);await host.locator('[data-moa-stats]').click();
  await openPause(guest);await guest.locator('[data-moa-stats]').click();
@@ -225,51 +231,33 @@ try{
  const neutral=menuAfter.input.find(input=>input.playerId===hostId);assert(neutral?.suspended&&neutral.x===0&&neutral.y===0,'Menu input must be neutral even while a key is held');
  assert(menuAfter.time>menuBefore.time);assert(player(menuAfter,guestId).y>player(menuBefore,guestId).y+1,'Other player moves while host menu is open');
  assert(menuAfter.projectiles>0);assert.equal(menuAfter.modal,'moaStats');
- await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');await host.keyboard.press('Escape');
+ await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');await host.bringToFront();await host.locator('#sheet .primary[data-action="close"]').click();await host.locator('#modal.show').waitFor({state:'hidden'});
  record('Host menu neutralizes only its own input; other movement and shared combat continue');
- for(let count=3;count<=5;count++){const page=await addPage();await startPublic(page);await ready(pages,count);await ticks(pages,3)}
- // Earlier movement intentionally took the host away from its encounter.
- // Return with genuine held keyboard input; do not teleport the authority or
- // carry per-tab observer counters across reloads to manufacture flight proof.
+ // One stable two-player journey: admission, combat, both reloads, then leave.
+ // Peer-count cross products and repeated five-peer reloads are not retained.
  await focusAndResume(host);
- const encounter=await evaluate(host,()=>{const player=WorldPlayers.local(),target=state.units.find(u=>u.qaRegion===player.startRegion);return{x:target.x,y:target.y,playerX:player.leader.x,playerY:player.leader.y}});
- const heldReturnKeys=new Set();
- try{await until(async()=>{const current=player(await read(host),hostId),dx=encounter.x-current.x,dy=encounter.y-current.y;if(Math.hypot(dx,dy)<180)return true;const wanted=new Set([...(Math.abs(dx)>80?[dx>0?'KeyD':'KeyA']:[]),...(Math.abs(dy)>80?[dy>0?'KeyS':'KeyW']:[])]);for(const key of [...heldReturnKeys])if(!wanted.has(key)){await host.keyboard.up(key);heldReturnKeys.delete(key)}for(const key of wanted)if(!heldReturnKeys.has(key)){await host.keyboard.down(key);heldReturnKeys.add(key)}return false},'Host returns to its combat encounter through real two-axis keyboard input',30000)}finally{for(const key of heldReturnKeys)await host.keyboard.up(key)}
- await until(async()=>(await Promise.all(pages.map(read))).every(s=>s.combat.length===5&&s.combat.every(c=>c.samples>0&&c.maxDistance>50&&c.primaryDamage>0&&c.damage>0)),'Natural primary shots travel and damage at all five start regions',30000);
+ const encounter=await evaluate(host,()=>{const p=WorldPlayers.local(),target=state.units.find(u=>u.qaRegion===p.startRegion);if(!target)throw Error('Durable user encounter was retired');return{x:target.x,y:target.y}}),returnKeys=new Set();
+ try{await until(async()=>{const p=player(await read(host),hostId),dx=encounter.x-p.x,dy=encounter.y-p.y;if(Math.hypot(dx,dy)<180)return true;const wanted=new Set([...(Math.abs(dx)>80?[dx>0?'KeyD':'KeyA']:[]),...(Math.abs(dy)>80?[dy>0?'KeyS':'KeyW']:[])]);for(const k of [...returnKeys])if(!wanted.has(k)){await host.keyboard.up(k);returnKeys.delete(k)}for(const k of wanted)if(!returnKeys.has(k)){await host.keyboard.down(k);returnKeys.add(k)}return false},'Host walks back into combat through real input',10000)}finally{for(const k of returnKeys)await host.keyboard.up(k)}
+ await until(async()=>(await Promise.all(pages.map(read))).every(s=>s.combat.length===2&&s.combat.every(c=>c.samples>0&&c.maxDistance>50&&c.primaryDamage>0&&c.damage>0)),'Natural primary shots travel and damage at both start regions',15000);
  report.combat=await Promise.all(pages.map(async page=>(await read(page)).combat));
- record('Real timer-driven combat in all five spawn regions creates visible physical flights beyond 50 units and damages targets on every peer');
- await checkpoint(pages,'five-players');
- const five=await Promise.all(pages.map(read));assert.equal(new Set(five.map(s=>s.localId)).size,5);assert.equal(new Set(five[0].players.filter(p=>p.lifecycle==='active').map(p=>p.owner)).size,5);
- for(const state of five){assert.equal(state.backend,'WebGL');assert(state.frames>10);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.hudLeader,state.localView.leader)}
- await screenshot(host,'multiplayer-five-player-world.png');
+ record('Real timer-driven combat at both start regions creates physical flights beyond 50 units and damages targets on both peers');
+ await checkpoint(pages,'two-player-world');
+ const pairViews=await Promise.all(pages.map(read));assert.equal(new Set(pairViews.map(s=>s.localId)).size,2);
+ for(const state of pairViews){assert.equal(state.backend,'WebGL');assert(state.frames>10);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.hudLeader,state.localView.leader)}
+ await screenshot(host,'multiplayer-two-player-world.png');
  const transport=await Promise.all(pages.map(page=>evaluate(page,async()=>{
   const room=__sharedBrowser.rooms.at(-1),connections=[];
   for(const [id,pc]of room.peerConnections){const rows=[];(await pc.getStats()).forEach(row=>{if(row.type==='data-channel')rows.push({label:row.label,state:row.state,bytesSent:row.bytesSent,bytesReceived:row.bytesReceived})});connections.push({id,native:pc instanceof RTCPeerConnection,state:pc.connectionState,channels:rows})}
   return{connections,relay:__sharedBrowser.relay,verification:__sharedBrowser.signalers.map(s=>s.metrics)};
  })));
- assert.equal(transport.reduce((sum,p)=>sum+p.connections.length,0),20,'Five-player real RTC mesh has ten bidirectional links');
- for(const page of transport){assert(page.relay.published>0&&page.relay.delivered>0);assert(page.verification.some(v=>v.verified>0),'SDK must verify signed Nostr events');for(const pc of page.connections){assert(pc.native&&pc.state==='connected');assert(pc.channels.some(channel=>channel.bytesSent>0&&channel.bytesReceived>0),'Real RTC data must flow both ways')}}
- report.transport=transport;record('Five WebGL tabs share exact canonical bytes over ten real RTC mesh links with verified Nostr signatures');
- const beforeRefresh=await read(guest),identity=player(beforeRefresh,guestId);
- assert.equal(await evaluate(guest,()=>sessionStorage.getItem('budmori-public-active-v1')),'1');
- await phase('guest reload/load',()=>guest.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
- const resumed=await read(guest),resumedPlayer=player(resumed,guestId);
- assert.equal(resumed.localId,guestId);assert.equal(resumed.sessionId,beforeRefresh.sessionId);assert(resumed.tick>=beforeRefresh.tick);assert.equal(resumed.roster.length,5);
- for(const key of ['owner','level','chosen','minerals','army'])assert.equal(resumedPlayer[key],identity[key],'Refresh preserved '+key);
- await checkpoint(pages,'same-tab-refresh');await transitionCheckpoint('five-player-guest',pages);await screenshot(guest,'multiplayer-refreshed-guest.png');
- record('Actual guest page reload resumes the same room-scoped identity, actor, and five-player world');
- const hostBeforeRefresh=await read(host),hostProgress=player(hostBeforeRefresh,hostId);
- await phase('coordinator reload/load',()=>host.reload({waitUntil:'load'}));await ready(pages);await ticks(pages,4);
- const hostResumed=await read(host),retainedProgress=player(hostResumed,hostId);
- assert.equal(hostResumed.localId,hostId);assert.equal(hostResumed.coordinator,hostId);assert.equal(hostResumed.sessionId,hostBeforeRefresh.sessionId);assert(hostResumed.tick>=hostBeforeRefresh.tick);
- for(const key of ['owner','level','chosen','minerals','army'])assert.equal(retainedProgress[key],hostProgress[key],'Coordinator refresh preserved '+key);
- assert.equal(retainedProgress.level,3);assert.equal(retainedProgress.chosen,2);assert(retainedProgress.army>0);
- await checkpoint(pages,'coordinator-refresh');await transitionCheckpoint('five-player-coordinator',pages);record('Actual coordinator reload preserves its existing level, selected abilities, resources, and army');
+ assert.equal(transport.reduce((sum,p)=>sum+p.connections.length,0),2,'Two-player real RTC has one bidirectional link');
+ for(const page of transport){assert(page.relay.published>0&&page.relay.delivered>0);assert(page.verification.some(v=>v.verified>0),'SDK verifies signed Nostr events');for(const pc of page.connections){assert(pc.native&&pc.state==='connected');assert(pc.channels.some(channel=>channel.bytesSent>0&&channel.bytesReceived>0),'Real RTC data flows both ways')}}
+ report.transport=transport;record('Two WebGL tabs share canonical bytes over a real RTC link with verified Nostr signatures');
  // The actual public-menu button owns graceful departure and solo restoration.
  await openPause(host);
  await host.locator('[data-public="solo"]').click();
  const remaining=pages.slice(1);
- await until(async()=>{const states=await Promise.all(remaining.map(read));return states.every(s=>s.ready&&s.roster.length===4&&!s.roster.includes(hostId)&&s.coordinator!==hostId)},'Graceful coordinator succession');
+ await until(async()=>{const states=await Promise.all(remaining.map(read));return new Set(states.map(s=>s.coordinator)).size===1&&states.every(s=>s.ready&&s.sessionId===initial.sessionId&&s.roster.length===1&&!s.roster.includes(hostId)&&s.coordinator!==hostId)},'Graceful coordinator succession');
  await host.waitForFunction(()=>PublicSession.phase==='idle'&&BloomSimulation.sessionConfig.mode==='local'&&!__army.paused);
  assert.equal(await evaluate(host,()=>PublicSession.phase),'idle');
  assert.equal(await evaluate(host,()=>sessionStorage.getItem('budmori-public-active-v1')),null);

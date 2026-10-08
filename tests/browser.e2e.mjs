@@ -1,161 +1,336 @@
 import {chromium} from 'playwright';
 import {createServer} from 'node:http';
-import {readFile,writeFile} from 'node:fs/promises';
+import {readFile, writeFile, mkdtemp} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {resolve, join} from 'node:path';
+import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
-import runtimeHook from './main-runtime-hook.cjs';
-import sharedHarness from './shared-harness.cjs';
-// Optional --sdk is bundled in this test response only, never into index.html.
-const source=sharedHarness.candidate();
-const html=source.html;
-// Test-only stopped-session fixtures. This route is never shipped as index.html.
-let instrumented=html.replace('/* MAIN_RUNTIME_TEST_HOOK */',runtimeHook+';globalThis.__qaGestures=[];')
- .replace('onGesture(event){bloomInputPoints.push(event)}','onGesture(event){globalThis.__qaGestures?.push({...event,wall:performance.now()});bloomInputPoints.push(event)}');
-assert.notEqual(instrumented,html);
-const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html;charset=utf-8');res.end(req.url==='/raw'?html:instrumented)});
-await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser,page;
-const report={sourceSHA256:createHash('sha256').update(html).digest('hex'),sdk:source.sdk,environment:'Chromium + SwiftShader WebGL1, main-thread SDK authority, explicit solo mode; no phone FPS claim',checks:[]};
-try{
- browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
- page=await browser.newPage({viewport:{width:1000,height:800},hasTouch:true,deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGEERROR',e.stack)});page.on('console',m=>{if(m.type()==='error')console.error('PAGECONSOLE',m.text())});
- const cdp=await page.context().newCDPSession(page);
- async function replayTouchDoubleTap(x,y){
-  // Real Chromium touch -> PointerEvents with authored input times. Software GPU
-  // stalls may delay delivery; they must not rewrite the 80ms fixture cadence.
-  const at=await page.evaluate(()=>Date.now()/1000);
-  for(const [type,offset]of [['touchStart',0],['touchEnd',.02],['touchStart',.08],['touchEnd',.10]])await cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchStart'?[{id:1,x,y}]:[],timestamp:at+offset});
-  const pair=await page.evaluate(()=>__qaGestures.filter(e=>e.pointerType==='touch').slice(-2));
-  assert.equal(pair.length,2);assert.equal(pair[0].type,'tap');assert.equal(pair[1].type,'doubleTap');
-  const observed=pair[1].timeMs-pair[0].timeMs;assert(Math.abs(observed-80)<2,'DOM PointerEvent timestamps must preserve authored touch cadence');
-  report.touchReplay={expectedUpGapMs:80,observedUpGapMs:observed,deliveryGapMs:pair[1].wall-pair[0].wall};
- }
- const base=`http://127.0.0.1:${server.address().port}`;
- await page.goto(base+'/raw');await page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});
- assert.equal(await page.evaluate(()=>document.querySelector('#view').dataset.rendererBackend),'WebGL');assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);report.checks.push('Uninstrumented single HTML boots main-thread SDK and WebGL');
- await page.goto(base+'/qa');await page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});
- const fixture=async source=>{await page.evaluate(source=>__budmoriTest.request('__fixture',{source}),source);await page.waitForTimeout(150)};
- const tick=async count=>{await page.evaluate(count=>__budmoriTest.request('testTicks',{count}),count);await page.waitForTimeout(120)};
- const read=expression=>page.evaluate(expression=>__budmoriTest.request('__read',{expression}),expression);
- // Start now selects public matchmaking. This campaign explicitly selects solo
- // before stopped-session fixtures, and never contacts a public relay.
- await page.locator('[data-public="solo"]').click();
- await page.waitForFunction(()=>BloomSimulation.sessionConfig.mode==='local'&&!__army.paused&&PublicSession.phase==='idle');
- await page.locator('#pause').waitFor({state:'visible'});assert.equal(await page.evaluate(()=>document.body.classList.contains('intro')),false,'solo entry leaves the intro HUD state');
- await page.evaluate(()=>BloomDiagnostics.setProfiler(true));
- await page.evaluate(()=>new Promise(resolve=>{let remaining=8;function next(){if(--remaining===0)resolve();else requestAnimationFrame(next)}requestAnimationFrame(next)}));
- const profiler=await page.evaluate(()=>{BloomDiagnostics.setProfiler(false);return BloomDiagnostics.snapshot().runtime.profiler});
- assert(profiler.frames.length>0,'Opt-in profiler records real WebGL frames');assert(profiler.frames.some(frame=>frame.stages['render.actors']),'Profiler records actor render stage');assert(profiler.frames.some(frame=>frame.stages['webgl.endFrame']),'Profiler records WebGL endFrame stage');report.profiler={frames:profiler.frames.length,summary:profiler.summary};report.checks.push('Opt-in common performance profiler records bounded real-browser render stages and summaries');
- await fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}clearPointNav();autoHunt.enabled=false;autoHunt.idleMs=0;`);
- const start=await page.evaluate(()=>({x:__army.state.mother.x,y:__army.state.mother.y}));
- await page.keyboard.down('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));
- const moved=await page.evaluate(()=>({x:__army.state.mother.x,y:__army.state.mother.y}));assert(moved.x>start.x+15);report.checks.push('Shared keyboard input moves authoritative world');
- await page.keyboard.press('Escape');await page.waitForFunction(()=>__army.paused);await page.keyboard.press('Escape');await page.waitForFunction(()=>!__army.paused);report.checks.push('Escape closes paused modal despite focused UI button');
- await page.mouse.dblclick(750,500,{delay:50});await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);await page.waitForFunction(()=>__army.state.mother.roll.cooldown.leftMs>0,null,{timeout:10000});
- assert(await page.evaluate(()=>__army.state.mother.roll.cooldown.leftMs>0));report.checks.push('Double-click moves and rolls through SDK command queue');
- await fixture(`clearMoaRoll(state.mother);clearPointNav();autoHunt.enabled=false;autoHunt.idleMs=0;`);
- await page.locator('#pause').click();await page.waitForFunction(()=>__army.paused);await page.keyboard.press('Escape');await page.waitForFunction(()=>!__army.paused);const focusX=await page.evaluate(()=>__army.state.mother.x);await page.keyboard.down('KeyD');assert(await page.evaluate(()=>keys.has('KeyD')),'Focused-button regression must observe the real held action');await page.evaluate(()=>advanceSimulationClock(.016));await tick(4);await page.keyboard.up('KeyD');await page.evaluate(()=>advanceSimulationClock(.016));assert(await page.evaluate(x=>__army.state.mother.x>x+10,focusX));report.checks.push('Persistent pause-button focus cannot swallow WASD after Escape resume');
- await fixture(`clearMoaRoll(state.mother);state.mother.roll.cooldown.leftMs=0;clearPointNav();autoHunt.enabled=false;`);await page.keyboard.press('Space');await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);assert(await page.evaluate(()=>__army.state.mother.roll.cooldown.leftMs>0));report.checks.push('Space submits roll with persistent UI focus');
- await fixture(`clearMoaRoll(state.mother);state.mother.roll.cooldown.leftMs=0;clearPointNav();autoHunt.enabled=false;`);await replayTouchDoubleTap(700,500);await page.evaluate(()=>advanceSimulationClock(.016));await tick(1);assert(await page.evaluate(()=>__army.state.mother.roll.cooldown.leftMs>0));report.checks.push('Chromium touch event replay preserves 80ms cadence and rolls through shared input');
- await fixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}for(const u of state.units)if(u.team==='enemy'){u.stun=100000;u.aggroAt=u.wanderAt=state.time+100000}globalThis.qaEnemy=spawn('swordsman','enemy',state.mother.x+65,state.mother.y,{camp:0,rarityGrade:1});qaEnemy.stun=100000;`);
- const enemyId=await read('qaEnemy.id');const hp=await read('qaEnemy.hp');await tick(12);assert((await read(`idMap.get(${enemyId})?.hp??0`))<hp);report.checks.push('Actual combat advances and damage presentation renders');
- await page.evaluate(()=>__army.setPaused(true));await page.evaluate(source=>__budmoriTest.request('__fixture',{source}),`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}const m=state.mother,t=spawn('swordsman','enemy',m.x+220,m.y,{camp:0,rarityGrade:1});t.stun=100000;globalThis.qaSprout=launchAbilityShot(t,1,{owner:m,range:220,homing:true});`);await page.waitForTimeout(100);const sprout=await read(`(()=>{const p=qaSprout,visual=sproutVisualPoint(p);return{visualZ:visual.z,tipZ:p.sproutTip.z,physicsZ:p.z,deltaFromTip:Math.abs(visual.z-p.sproutTip.z),deltaFromPhysics:Math.abs(visual.z-p.z)}})()`);assert(sprout.physicsZ-sprout.tipZ>1,'fixture must expose the elevated physics launch height');assert(sprout.deltaFromTip<sprout.deltaFromPhysics,'sprout must remain at the muzzle height at launch');report.sproutLaunch=sprout;report.checks.push('Sprout projectile starts at the visual muzzle height instead of popping up to the elevated physics arc');await page.evaluate(()=>__army.setPaused(false));
- await fixture(`const m=state.mother;Object.assign(abilityState(),{ranks:{pod:1,lob:1,thorn:1,spore:1,beam:1,chain:1,breath:1},mods:{},chosen:7,level:8,xp:abilityThreshold(8),draft:null});moaSyncLevelHP(m);m.hp=m.maxHp*.6;m.auxScheduleMs={};clearPointNav();autoHunt.enabled=false;for(const u of state.units)if(u.team==='enemy'){u.hp=u.maxHp=1e7;u.stun=100000}let r=state.units.find(u=>u.rivalLeader&&u.hp>0);for(let attempt=0;!r&&attempt<20;attempt++)r=spawn('swordsman','enemy',m.x+250,m.y,{camp:0,variant:'rival'});if(!r)throw Error('No valid rival fixture position');r.stun=100000;const p=ThemedTerrain.safePoint(m.x+110,m.y,20),t=spawn('shellbug','enemy',p.x,p.y,{camp:0,rarityGrade:1});t.hp=t.maxHp=1e7;t.stun=100000;state.camps[0].remaining++;`);
- await tick(2);assert(await read('projectiles.some(p=>p.weapon==="beam")&&projectiles.some(p=>p.weapon==="breath")&&state.units.some(u=>u.rivalLeader)&&state.mother.hp<state.mother.maxHp'));
- const activeRenderHash=await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())');
- await page.evaluate(()=>new Promise(resolve=>{let remaining=12;function next(){if(--remaining===0)resolve();else requestAnimationFrame(next)}requestAnimationFrame(next)}));
- assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),activeRenderHash);assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);report.checks.push('Positive-dt render frames with live beam/breath, rival and partial HP leave fresh canonical authority unchanged');
- await page.evaluate(()=>__army.setPaused(true));
- const save=await page.evaluate(()=>BloomSimulation.disk.snapshot());const saveObject=JSON.parse(save);assert.equal(saveObject.schema,'budmori-snapshot');assert.equal(saveObject.productVersion,'0.2.0');assert.equal(saveObject.codec,'bloom-live-graph-v3');assert.equal(await read('BloomLiveCodec.decode(bloomAdapter.save()).schema'),'budmori-world');
- assert.equal(await read('bloomSession.profile.mode'),'lockstep');
- const normalizedHash='(()=>{const c=BloomLiveCodec.decode(bloomAdapter.save());c.tick=0;return BloomOwnedSDK.hashBytes(BloomLiveCodec.encode(c))})()';
- const savedHash=await read(normalizedHash);
- for(const mode of ['rollback','lockstep','rollback','lockstep']){
-  const previous=await read('bloomSession.profile.mode');await read(`CONFIG.netcode.mode=${JSON.stringify(mode)}`);
-  assert.equal(await read('bloomSession.profile.mode'),previous,'Config only affects a new session');
-  assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),save),true);
-  assert.equal(await read('bloomSession.profile.mode'),mode);assert.equal(await read(normalizedHash),savedHash);
-  const before=await read('bloomSnapshotStore.metrics().captures');await tick(2);
-  if(mode==='lockstep')assert.equal(await read('bloomSnapshotStore.metrics().captures'),before,'Settled lockstep ticks do not serialize every tick');
-  assert.equal(await page.evaluate(()=>BloomDiagnostics.fatal),false);
- }
- report.checks.push('Real browser repeated rollback/lockstep next-session switches retain canonical save; lockstep skips per-tick serialization');
- const bad={...saveObject,byteLength:saveObject.byteLength+1};assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),save),true);report.checks.push('Canonical save/load succeeds');await page.evaluate(()=>__army.setPaused(false));
- await fixture(`globalThis.qaRealtime=spawn('swordsman','enemy',state.mother.x+65,state.mother.y,{camp:0,rarityGrade:3});qaRealtime.stun=100000;`);
- const realBefore=await read('({tick:bloomTick,time:state.time,hp:state.units.filter(u=>u.team==="enemy").reduce((sum,u)=>sum+u.hp,0)})');
- await page.evaluate(()=>__budmoriTest.request('__clock',{manual:false}));
- await page.waitForFunction(t=>__army.state.time>t+2,realBefore.time,{timeout:15000});
- await page.evaluate(()=>__budmoriTest.request('__clock',{manual:true}));
- const realAfter=await read('({tick:bloomTick,time:state.time,hp:state.units.filter(u=>u.team==="enemy").reduce((sum,u)=>sum+u.hp,0)})');assert(realAfter.tick>realBefore.tick&&realAfter.hp<realBefore.hp);report.normalClockCombat={before:realBefore,after:realAfter};report.checks.push('Normal production setTimeout scheduler advances combat while actual WebGL/RAF renders');
- await page.evaluate(()=>__budmoriTest.request('__clock',{manual:false}));const gapBefore=await read('({tick:bloomTick,time:state.time})');await page.evaluate(()=>__budmoriTest.request('__staleDriver',{ticks:12}));await page.waitForTimeout(150);const gapAfter=await read('({tick:bloomTick,time:state.time})');assert(gapAfter.time-gapBefore.time<=.4,JSON.stringify({gapBefore,gapAfter}));report.lifecycleGap={before:gapBefore,after:gapAfter};report.checks.push('Stale driver backlog rebases without a tick burst');await page.evaluate(()=>__budmoriTest.request('__clock',{manual:true}));
- await fixture(`state.mother.hp=1;state.mother.stun=10;globalThis.qaKiller=spawn('swordsman','enemy',state.mother.x+20,state.mother.y,{camp:0,rarityGrade:5});qaKiller.aggroAt=0;qaKiller.cooldown=0;`);await tick(20);await page.waitForFunction(()=>__army.state.dead);assert.equal(await page.locator('#modal.show').count(),0,'death must not obscure the battlefield');assert.match(await page.locator('#motherHealth').textContent(),/초 후 부활/);await page.screenshot({path:fileURLToPath(new URL('./auto-revive-countdown.png',import.meta.url))});await page.evaluate(()=>__budmoriTest.request('__clock',{manual:false}));await page.waitForFunction(()=>!__army.state.dead);report.checks.push('Death has no overlay and revives automatically on the live SDK clock');
- const dense=await readFile(new URL('./dense-fixture.js',import.meta.url),'utf8');await fixture(dense);await tick(5);
- const count=await page.evaluate(()=>__army.state.units.filter(u=>u.team==='friendly'&&u.hp>0).length);assert.equal(count,155);
- const snapshot=await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())');await page.waitForTimeout(1000);assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),snapshot);report.checks.push('155-ally rendering keeps authority immutable while paused manual clock');
- if(await page.locator('#modal.show [data-action="close"]').count())await page.locator('#modal.show [data-action="close"]').click();await page.waitForFunction(()=>!document.querySelector('#modal').classList.contains('show'));
- await page.screenshot({path:fileURLToPath(new URL('./browser-game.png',import.meta.url))});console.log('TEST_SCREENSHOT_JPEG '+(await page.screenshot({type:'jpeg',quality:65})).toString('base64'));
- const gl=await page.evaluate(()=>({backend:document.querySelector('#view').dataset.rendererBackend,frames:__army.performance.frames,diagnostics:BloomDiagnostics.snapshot().runtime.render}));assert(gl.frames>20);report.render=gl;
- const beforeReject=await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())');assert.equal(await page.evaluate(disk=>BloomSimulation.disk.load(disk),JSON.stringify(bad)),false);assert.equal(await read('BloomOwnedSDK.hashBytes(bloomAdapter.save())'),beforeReject);report.checks.push('Corrupt metadata rejected without changing the current dense world');
- // Last chapter intentionally stops the main-thread SDK via a test-only thrown error.
- await page.evaluate(()=>__budmoriTest.request('__read',{expression:'(()=>{BloomDiagnostics.report(new Error("Controlled browser simulation failure"),{kind:"test.main",fatal:true});return true})()'}).catch(()=>{}));await page.waitForFunction(()=>BloomDiagnostics.fatal);
- assert.equal(await page.locator('#bloom-diagnostic-panel').isVisible(),true);assert.equal(await page.evaluate(()=>BloomSimulation.runtime.ready),false);report.checks.push('Main-thread fatal error stops simulation and opens selectable diagnostics');
- assert.deepEqual(errors,[]);
- // Reconstructed Android report boundary: 20 TPS, CSS360x641 at device DPR3
- // (game capped backing store720x1282), real combat deaths and UI recovery twice.
- // This is Chromium mobile emulation, not the user's exact save or Android GPU.
- const mobileContext=await browser.newContext({viewport:{width:360,height:641},deviceScaleFactor:3,hasTouch:true,isMobile:true});
- const mobile=await mobileContext.newPage();page=mobile;mobile.on('pageerror',e=>{errors.push(e.message);console.error('MOBILE_PAGEERROR',e.stack)});
- await mobile.goto(base+'/qa');await mobile.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});
- await mobile.locator('select[aria-label="시뮬레이션 초당 계산 횟수"]').selectOption('20');await mobile.waitForFunction(()=>__army.CONFIG.sim.tickRate===20);
- const mobileRequest=(type,data={})=>mobile.evaluate(({type,data})=>__budmoriTest.request(type,data),{type,data});
- const mobileFixture=source=>mobileRequest('__fixture',{source}),mobileTick=async count=>{await mobileRequest('testTicks',{count});await mobile.waitForTimeout(150)};
- await mobile.locator('[data-public="solo"]').click();await mobile.waitForFunction(()=>BloomSimulation.sessionConfig.mode==='local'&&!__army.paused&&PublicSession.phase==='idle');
- await mobileFixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}
-  const m=state.mother,r=spawn('swordsman','enemy',m.x+250,m.y,{camp:0,variant:'rival'});if(!r)throw Error('Rival fixture spawn failed');
-  SpatialPosition.constrain(r,r.hx=r.homeX=m.x+45,r.hy=r.homeY=m.y+55);r.z=r.groundZ=r.hz=r.homeZ=spatialGround(r.x,r.y);SpatialPosition.checkpointHeight(r);r.stun=100000;r.rival.abilities.level=10000;r.rival.abilities.xp=abilityThreshold(10000);moaSyncLevelHP(r);r.hp=r.maxHp; // Durable render probe survives the live three-second enemy battle.
-  r.rival.room=r.rival.targetRoom=regionAt(r.x,r.y);if(r.rival.ai?.home)Object.assign(r.rival.ai.home,{x:r.x,y:r.y,z:r.z});globalThis.qaRecoveryRivalId=r.id;
-  rarityAcquire(-1,'swordsman',0,1);m.hp=1;m.stun=10;const killer=spawn('swordsman','enemy',m.x+20,m.y,{camp:0,rarityGrade:5});killer.aggroAt=0;killer.cooldown=0;`);
- const rivalId=await mobileRequest('__read',{expression:'qaRecoveryRivalId'});
- await mobile.evaluate(()=>advanceSimulationClock(.016));
- const cycles=[];
- for(let cycle=0;cycle<2;cycle++){
-  await mobile.evaluate(()=>__army.setPaused(false));
-  // Opposing real keyboard inputs produce neutral manual intent, preventing
-  // auto-hunt steering from evading this deliberately lethal test encounter.
-  await mobile.keyboard.down('KeyW');await mobile.keyboard.down('KeyS');await mobile.evaluate(()=>advanceSimulationClock(.016));
-  // Attack selection and windups vary by the game's seed. Observe actual death
-  // in bounded combat batches instead of assuming the native seed's first1s hit.
-  for(let batch=0;batch<8&&!await mobile.evaluate(()=>__army.state.dead);batch++)await mobileTick(20);
-  await mobile.keyboard.up('KeyW');await mobile.keyboard.up('KeyS');
-  console.log('MOBILE_RECOVERY_CYCLE',JSON.stringify({cycle,main:await mobile.evaluate(()=>({hp:__army.state.mother.hp,dead:__army.state.dead,paused:__army.paused,modal:modalKind,frame:__army.performance.frames})),worker:await mobileRequest('inspect')}));
-  await mobile.waitForFunction(()=>__army.state.dead);
-  const reviveView=await mobile.evaluate(()=>{const overlay=document.querySelector('#reviveOverlay'),card=document.querySelector('#reviveCountdownCard'),rect=card?.getBoundingClientRect();return{hidden:!!overlay?.hidden,count:document.querySelector('#reviveCountdown')?.textContent,unit:document.querySelector('#reviveCountdownUnit')?.textContent,centerX:rect?(rect.left+rect.width/2):0,centerY:rect?(rect.top+rect.height/2):0,width:innerWidth,height:innerHeight}});assert.equal(reviveView.hidden,false);assert.match(reviveView.count,/^[123]$/);assert.equal(reviveView.unit,'초 후 부활');assert(Math.abs(reviveView.centerX-reviveView.width/2)<2);assert(Math.abs(reviveView.centerY-reviveView.height/2)<2);assert.equal(await mobile.locator('#modal.show').count(),0);report.mobileReviveOverlay=reviveView;
-  const frames=await mobile.evaluate(()=>__army.performance.frames);for(let tick=0;tick<60&&await mobile.evaluate(()=>__army.state.dead);tick++)await mobileTick(1);await mobile.waitForFunction(({id,frames})=>!__army.state.dead&&!BloomDiagnostics.fatal&&__army.performance.frames>frames+2&&projectionQueue.some(q=>q.source.id===id),{id:rivalId,frames},{timeout:30000});
-  const actor=await mobile.evaluate(id=>{const r=__army.state.units.find(u=>u.id===id);return{leader:r.rivalLeader,level:r.rival.abilities.level,owned:!!r.rival,frame:__army.performance.frames}},rivalId);
-  assert.equal(actor.leader,true);assert.equal(actor.owned,true);assert.equal(actor.level,await mobileRequest('__read',{expression:`idMap.get(${rivalId}).rival.abilities.level`}));cycles.push(actor);
- }
- await mobile.evaluate(()=>__army.setPaused(true));const recoveredDisk=await mobile.evaluate(()=>BloomSimulation.disk.snapshot());
- await mobile.evaluate(id=>{globalThis.__oldRecoveryActor=__army.state.units.find(u=>u.id===id)},rivalId);
- assert.equal(await mobile.evaluate(disk=>BloomSimulation.disk.load(disk),recoveredDisk),true);
- assert(await mobile.evaluate(id=>{const r=__army.state.units.find(u=>u.id===id);return r!==__oldRecoveryActor&&!!r.rival.abilities},rivalId));
- await mobile.screenshot({path:fileURLToPath(new URL('./mobile-recovery.png',import.meta.url))});console.log('TEST_RECOVERY_SCREENSHOT_JPEG '+(await mobile.screenshot({type:'jpeg',quality:65})).toString('base64'));
- await mobileRequest('reset');assert(await mobile.evaluate(id=>!__army.state.units.some(u=>u.id===id&&u.rivalLeader),rivalId));
- await mobileFixture(`for(const c of state.camps){c.enabled=false;c.spawned=true;c.regrowth=[]}const m=state.mother,u=spawn('swordsman','enemy',m.x+45,m.y+55,{camp:0,rarityGrade:1});u.stun=100000;globalThis.qaReusedId=u.id;`);
- await mobileTick(1);assert.equal(await mobileRequest('__read',{expression:'qaReusedId'}),rivalId);assert(await mobile.evaluate(id=>{const u=__army.state.units.find(u=>u.id===id);return !u.rivalLeader&&!u.rival&&!BloomDiagnostics.fatal},rivalId));
- const dimensions=await mobile.evaluate(()=>({width:document.querySelector('#view').width,height:document.querySelector('#view').height,dpr:devicePixelRatio,tps:__army.CONFIG.sim.tickRate}));assert.deepEqual(dimensions,{width:720,height:1282,dpr:3,tps:20});
- report.recoveryMirror={reconstructed:true,exactUserSave:false,dimensions,cycles,loadFreshIdentity:true,resetIdReuseSafe:true};report.checks.push('20TPS mobile-sized real combat/recover twice preserves rival metadata; load/reset/same-ID role reuse remain safe');
- const lifecycle=await mobile.evaluate(async()=>{
-  const runtime=BloomSimulation.runtime,session=BloomSimulation.session;
-  const sameOwner=bloomMainRuntime()===runtime;boot();
-  const sameSession=BloomSimulation.session===session,labels=document.querySelectorAll('#publicStatus').length;
-  runtime.close();runtime.close();
-  document.querySelector('#view').dispatchEvent(new Event('webglcontextlost'));
-  boot();
-  const frames=__army.performance.frames;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-  const framesStopped=__army.performance.frames===frames;
-  return{framesStopped,sameOwner,sameSession,labels,remainingLabels:document.querySelectorAll('#publicStatus').length,ready:runtime.ready,closed:session.closed,fatal:BloomDiagnostics.fatal};
- });
- assert.deepEqual(lifecycle,{framesStopped:true,sameOwner:true,sameSession:true,labels:1,remainingLabels:0,ready:false,closed:true,fatal:false});
- report.checks.push('Repeated boot/runtime access retains one owner; final close removes public UI and WebGL lifecycle subscriptions without restarting');
- assert.deepEqual(errors,[]);await mobileContext.close();report.status='PASS';console.log(JSON.stringify(report,null,2));await writeFile(new URL('./browser-report.json',import.meta.url),JSON.stringify(report,null,2));
-}catch(error){try{await page?.screenshot({path:fileURLToPath(new URL('./browser-failure.png',import.meta.url))});report.status='FAIL';report.error=String(error);await writeFile(new URL('./browser-report.json',import.meta.url),JSON.stringify(report,null,2));console.error('BROWSER_DIAGNOSTICS',JSON.stringify(await page?.evaluate(()=>({ready:globalThis.BloomSimulation?.runtime?.ready,game:!!globalThis.__army,gestures:globalThis.__qaGestures,focus:document.activeElement?.id,diagnostics:globalThis.BloomDiagnostics?.snapshot()}))));console.log('TEST_SCREENSHOT_JPEG '+(await page.screenshot({type:'jpeg',quality:55})).toString('base64'))}catch{}throw error}finally{await browser?.close();server.close()}
+
+// Run with an optional candidate index.html path. No harness, SDK replacement,
+// simulated time, or running-world edits: all actions below use the shipped UI.
+const started = performance.now(), budgetMs = 180000, scenarioBudgetMs = 170000;
+const sourceFile = resolve(process.argv[2] || fileURLToPath(new URL('../index.html', import.meta.url)));
+const original = await readFile(sourceFile), html = original.toString('utf8');
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+const artifact = name => fileURLToPath(new URL('./' + name, import.meta.url));
+const reportPath = artifact('browser-report.json');
+const report = {
+  status: 'RUNNING', sourceFile, sourceSHA256: sha256(original), budgetMs, scenarioBudgetMs,
+  nominalTargetMs: 60000, scheduler: 'production SDK timers and requestAnimationFrame',
+  environment: 'local solo Chromium / SwiftShader; desktop and mobile emulation run sequentially',
+  checks: [], screenshots: [], errors: [], unexpectedNetwork: [],
+  coverageLimits: [
+    'Initial camps and encounters are test-server fixtures; gameplay algorithms are unchanged.',
+    'Combat means rendered damage on a durable target; death uses a separate lethal initial encounter.',
+    'Save/load covers UI download, same-version file import, and local solo continuation after reload.',
+    'No multiplayer, old-save migration, long campaign, real phone performance, or pixel comparison.',
+  ],
+};
+
+// Inject only initial world contents, before the ordinary session is created.
+// This does not wrap step/advance, stop a driver, change RNG/time, or expose a
+// mutation API. UI reset/solo entry still run the production initialization path.
+function fixtureResponse(encounter) {
+  const fixture = `;(() => {
+    globalThis.__testWorldRenderer=ctx;
+    const devicePrototype=BloomGamekitRendering.WebGLDevice.prototype,endFrame=devicePrototype.endFrame;
+    globalThis.__captureActualWorldPixels=false;globalThis.__actualWorldPixelSummary=null;
+    devicePrototype.endFrame=function(...args){if(globalThis.__captureActualWorldPixels){globalThis.__captureActualWorldPixels=false;const gl=this.gl,w=this.canvas.width,h=this.canvas.height,pixels=new Uint8Array(w*h*4);gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,pixels);const bg=pixels.subarray(0,4);let green=0,bright=0,different=0;for(let i=0;i<pixels.length;i+=4){const r=pixels[i],g=pixels[i+1],b=pixels[i+2];if(g>r*1.15&&g>b*1.12)green++;if(r>215&&g>210&&b>180)bright++;if(Math.abs(r-bg[0])+Math.abs(g-bg[1])+Math.abs(b-bg[2])>36)different++}globalThis.__actualWorldPixelSummary={width:w,height:h,green,bright,different,error:gl.getError()}}return endFrame.apply(this,args)};
+    const initialize = bloomInitialize;
+    bloomInitialize = function(...args) {
+      const result = initialize(...args);
+      for (const camp of state.camps) {
+        camp.enabled = false; camp.spawned = true; camp.regrowth = [];
+      }
+      for (const unit of state.units) if (unit.team === 'enemy') {
+        unit.stun = 1e6; unit.aggroAt = unit.wanderAt = state.time + 1e6;
+      }
+      const m = state.mother;
+      if (${JSON.stringify(encounter)} === 'recovery') {
+        const point = ThemedTerrain.safePoint(m.x + 500, m.y, m.size + 4);
+        SpatialPosition.constrain(m, point.x, point.y); spatialUnit(m, true);
+        m.hp = 1;
+        for (const unit of state.units) if (unit.team === 'friendly') unit.stun = 1e6;
+        for (const [dx, dy] of [[24, 0], [-24, 0], [0, 24]]) {
+          const enemy = spawn('swordsman', 'enemy', m.x + dx, m.y + dy,
+            {camp: 0, rarityGrade: 5, hpScale: 20, attackScale: 10});
+          if (!enemy) throw Error('Cannot place initial lethal encounter');
+          enemy.cooldown = 0; enemy.aggroAt = 0; engageEnemy(enemy, m);
+          state.camps[0].remaining++;
+        }
+      } else {
+        const enemy = spawn('shellbug', 'enemy', m.x + 65, m.y,
+          {camp: 0, rarityGrade: 1, hpScale: 1000});
+        if (!enemy) throw Error('Cannot place initial durable encounter');
+        enemy.stun = 1e6; enemy.aggroAt = enemy.wanderAt = state.time + 1e6;
+        state.camps[0].remaining++;
+        globalThis.__playerScenarioEncounterId = enemy.id;
+      }
+      rebuildGrid(); spatialBoundary();
+      return result;
+    };
+  })();`;
+  const marker = '/* MAIN_RUNTIME_TEST_HOOK */';
+  assert(html.includes(marker), 'Candidate must provide the existing test-server fixture insertion point');
+  return html.replace(marker, () => fixture);
+}
+const responses = {'/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
+report.testResponseSHA256 = Object.fromEntries(Object.entries(responses).map(([route, body]) => [route, sha256(body)]));
+const server = createServer((req, res) => {
+  if (req.url === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+  const body = responses[req.url];
+  res.writeHead(body ? 200 : 404, {'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store'});
+  res.end(body || 'Not found');
+});
+let browser, page, activeContext, deadlineTimer;
+const remaining = () => Math.max(1, scenarioBudgetMs - (performance.now() - started));
+async function bounded(promise, ms, label) {
+  let timer;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Error(label + ' exceeded ' + ms + 'ms')), ms);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+function healthy() {
+  assert.deepEqual(report.errors, [], 'Browser errors');
+  assert.deepEqual(report.unexpectedNetwork, [], 'Solo scenario attempted external networking');
+}
+async function check(name, operation) {
+  const at = performance.now();
+  await operation(); healthy();
+  report.checks.push({name, elapsedMs: Math.round(performance.now() - at)});
+  console.log('PASS ' + name);
+}
+const read = (fn, arg) => bounded(page.evaluate(fn, arg), Math.min(5000, remaining()), 'UI/render observation');
+const wait = (fn, arg, timeout = 8000) => page.waitForFunction(fn, arg, {timeout: Math.min(timeout, remaining())});
+const mother = () => read(() => {
+  const model = projectionQueue.find(q => q.kind === 'mother' && q.source.id === -1)?.source;
+  return model ? {x: model.x, y: model.y, hp: model.hp} : null;
+});
+const moved = async before => {
+  await wait(p => {
+    const m = projectionQueue.find(q => q.kind === 'mother' && q.source.id === -1)?.source;
+    return m && Math.hypot(m.x - p.x, m.y - p.y) > 10;
+  }, before, 5000);
+  assert(await mother(), 'The moved local character remains in the actual actor render pass');
+};
+async function screenshot(name) {
+  const path = artifact(name);
+  await page.screenshot({path, timeout: Math.min(5000, remaining())});
+  report.screenshots.push(path);
+}
+async function webglPixels(){
+  await page.evaluate(()=>{globalThis.__actualWorldPixelSummary=null;globalThis.__captureActualWorldPixels=true});
+  await wait(()=>!!globalThis.__actualWorldPixelSummary,null,5000);
+  return page.evaluate(()=>globalThis.__actualWorldPixelSummary);
+}
+async function openPause() {
+  await page.locator('#pause').click();
+  await page.locator('#modal.show #sheet [data-ux="settings"]').waitFor({state: 'visible'});
+  await page.waitForTimeout(350); // Let the last real rendered movement settle.
+}
+async function resume() {
+  await page.locator('#modal.show #sheet .primary[data-action="close"]').click();
+  await page.locator('#modal.show').waitFor({state: 'hidden'});
+}
+async function settings() {
+  await openPause();
+  await page.locator('#sheet [data-ux="settings"]').click();
+  await page.locator('#sheet [data-action="export"]').waitFor({state: 'visible'});
+}
+async function newPlayer(options, route) {
+  activeContext = await browser.newContext({...options, acceptDownloads: true});
+  await activeContext.route('**/*', request => {
+    if (new URL(request.request().url()).origin === base) return request.continue();
+    report.unexpectedNetwork.push(request.request().url().slice(0, 300));
+    return request.abort();
+  });
+  await activeContext.routeWebSocket('**/*', socket => {
+    report.unexpectedNetwork.push(socket.url().slice(0, 300));
+    socket.close();
+  });
+  page = await activeContext.newPage();
+  page.setDefaultTimeout(8000); page.setDefaultNavigationTimeout(30000);
+  page.on('pageerror', error => report.errors.push(String(error).slice(0, 1000)));
+  page.on('console', message => {
+    if (message.type() === 'error') report.errors.push(message.text().slice(0, 1000));
+  });
+  await page.goto(base + route, {waitUntil: 'domcontentloaded'});
+  await wait(() => globalThis.BloomSimulation?.runtime?.ready &&
+    document.querySelector('#view')?.dataset.rendererBackend === 'WebGL', null, 30000);
+  await page.locator('#sheet [data-public="solo"]').click();
+  await page.locator('#modal.show').waitFor({state: 'hidden'});
+}
+let base;
+async function scenario() {
+  await new Promise((resolveListen, reject) => {
+    server.once('error', reject); server.listen(0, '127.0.0.1', resolveListen);
+  });
+  base = 'http://127.0.0.1:' + server.address().port;
+  browser = await chromium.launch({
+    headless: true, timeout: Math.min(30000, remaining()),
+    ...(process.env.CHROMIUM_EXECUTABLE_PATH ? {executablePath: process.env.CHROMIUM_EXECUTABLE_PATH} : {}),
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+      '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
+  });
+  await check('Desktop solo entry and real automatic combat', async () => {
+    await newPlayer({viewport: {width: 920, height: 700}, deviceScaleFactor: 1}, '/solo');
+    await wait(() => {
+      const target = projectionQueue.find(q => q.kind === 'unit' && q.source.id === globalThis.__playerScenarioEncounterId)?.source;
+      return target && target.hp > 0 && target.hp < target.maxHp;
+    });
+    assert(await mother(), 'The local character is rendered during combat');
+    assert.match(await page.locator('#motherHealth').innerText(), /HP/);
+    await screenshot('browser-combat.png');
+    const pixels=await webglPixels();report.worldPixels=pixels;assert.equal(pixels.error,0);assert.ok(pixels.green>pixels.width*pixels.height*.5,`Terrain is present in actual WebGL pixels: ${JSON.stringify(pixels)}`);assert.ok(pixels.bright>100,'Unit art, combat text, or world labels are present in actual WebGL pixels');assert.ok(pixels.different>pixels.width*pixels.height*.05,'The WebGL framebuffer contains drawn scene variation');
+    // Fusion fading writes ctx.globalAlpha around RallyArt.draw; sample the same production boundary plus the production white-flash outline through the actual WebGL target.
+    const artPixels=await page.evaluate(()=>{const c=__testWorldRenderer,gl=c.gl,canvas=c.canvas;c.beginFrame();c.save();c.setTransform(1,0,0,1,0,0);c.device.clear({color:[0,0,1,1]});c.globalAlpha=.5;RallyArt.draw(c,'swordsman','friendly',canvas.width/2,canvas.height/2,24,0,0,{gradeOutline:'#ff3020',whiteFlash:true});c.globalAlpha=1;c.vector.flush();const side=96,p=new Uint8Array(side*side*4),x=Math.floor((canvas.width-side)/2),y=Math.floor((canvas.height-side)/2);gl.readPixels(x,y,side,side,gl.RGBA,gl.UNSIGNED_BYTE,p);let maxRed=0,redBias=0,visible=0;for(let i=0;i<p.length;i+=4){maxRed=Math.max(maxRed,p[i]);if(p[i]>20&&p[i]>p[i+1]+8)redBias++;if(p[i]>35&&p[i+1]>35)visible++}const error=gl.getError();c.restore();c.endFrame();return{maxRed,redBias,visible,error}});assert.equal(artPixels.error,0);assert.ok(artPixels.maxRed<=132&&artPixels.redBias===0&&artPixels.visible>100,`Game art white flash and 0.5 object fade are one WebGL composition: ${JSON.stringify(artPixels)}`);report.artPixelProbe=artPixels;
+    report.artPixelProbe=artPixels;
+  });
+  await check('WASD movement, pause freeze, Escape resume, and keyboard roll', async () => {
+    const before = await mother();
+    await page.keyboard.down('KeyD');
+    try { await moved(before); } finally { await page.keyboard.up('KeyD'); }
+    await openPause();
+    const frozen = await mother();
+    await page.keyboard.down('KeyD');
+    try {
+      await page.waitForTimeout(350);
+      const after = await mother();
+      assert(Math.hypot(after.x - frozen.x, after.y - frozen.y) < 1, 'Solo pause keeps the rendered character still');
+    } finally { await page.keyboard.up('KeyD'); }
+    await page.keyboard.press('Escape');
+    await page.locator('#modal.show').waitFor({state: 'hidden'});
+    const from = await mother();
+    await page.keyboard.down('KeyA');
+    try {
+      await page.keyboard.press('Space');
+      await wait(() => document.querySelector('#rollStatus')?.dataset.ready === 'false', null, 5000);
+      await wait(p => projectionQueue.some(q => q.kind === 'mother' && q.source.id === -1 && q.source.x < p.x - 10), from, 5000);
+    } finally { await page.keyboard.up('KeyA'); }
+    await wait(() => document.querySelector('#rollStatus')?.dataset.ready === 'true', null, 5000);
+    const left = await mother();
+    await page.keyboard.down('KeyD');
+    try {
+      await wait(p => projectionQueue.some(q => q.kind === 'mother' && q.source.id === -1 && q.source.x > p.x + 10), left, 5000);
+    } finally { await page.keyboard.up('KeyD'); }
+  });
+  await check('Mouse double-click roll through the canvas', async () => {
+    const before = await mother();
+    await page.locator('#view').dblclick({position: {x: 650, y: 380}, delay: 40});
+    await wait(() => document.querySelector('#rollStatus')?.dataset.ready === 'false', null, 5000);
+    await moved(before);
+    await screenshot('browser-desktop.png');
+  });
+  await check('Settings save, downloaded backup import, and solo continuation after reload', async () => {
+    // Ordinary keyboard movement ends the click route before saving, so reload
+    // resumes a stationary position rather than an unfinished destination.
+    const walking = await mother();
+    await page.keyboard.down('KeyD');
+    try { await moved(walking); await settings(); } finally { await page.keyboard.up('KeyD'); }
+    const saved = await mother();
+    const hud = await page.locator('#minerals').innerText();
+    await page.locator('#sheet [data-action="save"]').click();
+    await wait(() => document.querySelector('#status')?.textContent.includes('이 기기에 진행을 저장했어요'));
+    const downloadEvent = page.waitForEvent('download');
+    await page.locator('#sheet [data-action="export"]').click();
+    const download = await downloadEvent;
+    const backup = join(await mkdtemp(join(tmpdir(), 'budmori-player-')), 'backup.json');
+    await download.saveAs(backup);
+    report.backupFile = backup;
+    await resume();
+    await page.keyboard.down('KeyD');
+    try { await moved(saved); } finally { await page.keyboard.up('KeyD'); }
+    await settings();
+    const chooserEvent = page.waitForEvent('filechooser');
+    await page.locator('#sheet [data-action="import"]').click();
+    await (await chooserEvent).setFiles(backup);
+    await wait(() => document.querySelector('#status')?.textContent.includes('백업한 군락을 불러왔어요'));
+    await page.locator('#sheet [data-ux="settings"]').waitFor({state: 'visible'});
+    await page.waitForTimeout(350);
+    const restored = await mother();
+    assert(Math.hypot(restored.x - saved.x, restored.y - saved.y) < 2, 'File import restores the character position shown when backing up');
+    assert.equal(await page.locator('#minerals').innerText(), hud, 'File import restores displayed resources');
+    await page.reload({waitUntil: 'domcontentloaded'});
+    await wait(() => globalThis.BloomSimulation?.runtime?.ready, null, 30000);
+    assert.match(await page.locator('#sheet [data-public="solo"]').innerText(), /이어하기/);
+    await page.locator('#sheet [data-public="solo"]').click();
+    await openPause();
+    const continued = await mother();
+    assert(Math.hypot(continued.x - saved.x, continued.y - saved.y) < 2, 'Solo continuation restores the imported position after reload');
+    await resume();
+    const before = await mother();
+    await page.keyboard.down('KeyD');
+    try { await moved(before); } finally { await page.keyboard.up('KeyD'); }
+  });
+  await activeContext.close(); activeContext = null; page = null;
+  await check('Mobile touch movement and double-tap roll', async () => {
+    // A fresh solo world shares the desktop fixture; recovery gets its own
+    // initial encounter via navigation, never an edit of a running session.
+    await newPlayer({viewport: {width: 360, height: 640}, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true}, '/solo');
+    await wait(() => projectionQueue.some(q => q.kind === 'mother' && q.source.id === -1));
+    const before = await mother();
+    await page.touchscreen.tap(275, 340);
+    await moved(before);
+    const beforeRoll = await mother();
+    await page.touchscreen.tap(85, 340);
+    await page.touchscreen.tap(85, 340);
+    await wait(() => document.querySelector('#rollStatus')?.dataset.ready === 'false', null, 5000);
+    await wait(() => document.querySelector('#rollStatus')?.dataset.ready === 'true', null, 5000);
+    await moved(beforeRoll);
+    await screenshot('browser-mobile.png');
+  });
+  // New context prevents an earlier solo save from replacing the death fixture.
+  await activeContext.close(); activeContext = null; page = null;
+  await check('Mobile real combat death, visible countdown, automatic revive, and resumed input', async () => {
+    await newPlayer({viewport: {width: 360, height: 640}, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true}, '/recovery');
+    try { await page.locator('#reviveOverlay').waitFor({state: 'visible', timeout: 12000}); }
+    catch (error) { const diagnostic=await page.evaluate(()=>BloomDiagnostics.snapshot()); throw new Error(`${error.message} · renderer diagnostics ${JSON.stringify(diagnostic.errors)}`); }
+    assert.equal(await page.locator('#modal.show').count(), 0, 'Combat death does not open a blocking menu');
+    assert.match(await page.locator('#reviveCountdown').innerText(), /^[123]$/);
+    assert.equal(await page.locator('#reviveCountdownUnit').innerText(), '초 후 부활');
+    const card = await page.locator('#reviveCountdownCard').boundingBox();
+    assert(card && card.x >= 0 && card.y >= 0 && card.x + card.width <= 360 && card.y + card.height <= 640, 'Mobile countdown fits the viewport');
+    await screenshot('browser-revive.png');
+    await page.locator('#reviveOverlay').waitFor({state: 'hidden', timeout: 10000});
+    await wait(() => projectionQueue.some(q => q.kind === 'mother' && q.source.id === -1 && q.source.hp > 0));
+    assert.match(await page.locator('#motherHealth').innerText(), /HP/);
+    const revived = await mother();
+    await page.touchscreen.tap(85, 340);
+    await moved(revived);
+    await screenshot('browser-mobile-recovered.png');
+  });
+  assert.equal(await read(() => globalThis.BloomDiagnostics?.fatal), false, 'No fatal renderer/runtime failure');
+  healthy(); report.status = 'PASS';
+}
+try {
+  await Promise.race([scenario(), new Promise((_, reject) => {
+    deadlineTimer = setTimeout(() => reject(Error('Player scenario exceeded its 170s budget; coverage is incomplete')), remaining());
+  })]);
+} catch (error) {
+  report.status = 'FAIL'; report.error = String(error);
+  try {
+    report.lastUI = await read(() => ({
+      fatal: globalThis.BloomDiagnostics?.fatal, health: document.querySelector('#motherHealth')?.textContent,
+      roll: document.querySelector('#rollStatus')?.textContent, modal: document.querySelector('#modal.show #sheet')?.innerText.slice(0, 700),
+    }));
+    await screenshot('browser-failure.png');
+  } catch {}
+  console.error(report.error); process.exitCode = 1;
+} finally {
+  clearTimeout(deadlineTimer);
+  await bounded(browser?.close() || Promise.resolve(), 3000, 'Browser cleanup').catch(error => {
+    report.status = 'FAIL'; report.cleanupError = String(error); process.exitCode = 1;
+  });
+  server.closeAllConnections();
+  await bounded(new Promise(resolveClose => server.close(resolveClose)), 1000, 'Server cleanup').catch(() => {});
+  report.elapsedMs = Math.round(performance.now() - started);
+  await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n');
+  console.log(JSON.stringify({status: report.status, sourceSHA256: report.sourceSHA256,
+    elapsedMs: report.elapsedMs, budgetMs, checks: report.checks.length, reportPath, screenshots: report.screenshots}));
+  if (report.cleanupError) process.exit(1);
+}
