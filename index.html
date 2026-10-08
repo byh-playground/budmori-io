@@ -21966,10 +21966,11 @@ const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.versio
 const PublicSession=globalThis.PublicSession=(()=>{
  const storageFlag='budmori-public-active-v1',resumeKey='budmori-public-resume-v1';
  const config={namespace:'budmori-public-v1',maxPlayers:5,discoveryMs:1500,totalTimeoutMs:60000,peerTimeoutMs:20000,leaseMs:15000,reservationMs:30000,resumeLifetimeMs:30*60*1000};
+ const networkFailureCodes=new Set(['PUBLIC_OFFLINE','PUBLIC_TIMEOUT','PUBLIC_RELAY_UNAVAILABLE','PUBLIC_RESERVATION_TIMEOUT','PUBLIC_NO_ROOM','PUBLIC_NETWORK_UNAVAILABLE','membership-connect-failed','partition-failed','transport-failed','transition-timeout']);
  const sessionPhase=Object.freeze({idle:'idle',discovering:'discovering',joining:'joining',playing:'playing',failed:'failed',leaving:'leaving'});
  const lifecycle={phase:sessionPhase.idle,generation:0};
  const connection={room:null,controller:null,attempt:null};
- const diagnosis={startedAt:0,stage:'idle',events:[],failure:null};
+ const diagnosis={startedAt:0,stage:'idle',events:[],failure:null,fallback:null};
  const connectionStages=new Set(['public-discovering','public-hosting','public-joining','public-resuming','public-attempt-failed','public-room-ready','peer-resuming','peer-connected','peer-failed','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed','transition-timeout','join-rejected']);
  function recordStage(stage){if(!connectionStages.has(stage))return;diagnosis.stage=stage;const entry=Object.freeze({stage,elapsedMs:Math.max(0,Math.round(performance.now()-diagnosis.startedAt))});if(diagnosis.events.at(-1)?.stage!==stage){diagnosis.events.push(entry);if(diagnosis.events.length>16)diagnosis.events.shift()}}
  const reconnect={sinceMs:null,seconds:null};
@@ -21979,7 +21980,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
  // they cannot publish a phase or mutate the connection's private state.
  const observers=new Set();
  const onChanged=Object.freeze({on(listener){if(typeof listener!=='function')throw new TypeError('Session observer');const subscription={listener};observers.add(subscription);return()=>observers.delete(subscription)}});
- function status(){return Object.freeze({phase:lifecycle.phase,connectionStage:diagnosis.stage,connectionEvents:Object.freeze([...diagnosis.events]),lastFailure:diagnosis.failure,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,transitionTimeoutMs:CONFIG.session.transitionTimeoutMs,peerTimeoutMs:config.peerTimeoutMs,reconnectSeconds:reconnect.seconds,resimulating:!!bloomSession?.resimulating})}
+ function status(){return Object.freeze({phase:lifecycle.phase,connectionStage:diagnosis.stage,connectionEvents:Object.freeze([...diagnosis.events]),lastFailure:diagnosis.failure,fallback:diagnosis.fallback,networkAvailable:globalThis.navigator?.onLine!==false,players:bloomSession?.players?.length||0,inputBufferMs:Math.round((bloomSession?.inputDelay||0)*1000/CONFIG.sim.tickRate),resumeLifetimeMs:config.resumeLifetimeMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,transitionTimeoutMs:CONFIG.session.transitionTimeoutMs,peerTimeoutMs:config.peerTimeoutMs,reconnectSeconds:reconnect.seconds,resimulating:!!bloomSession?.resimulating})}
  function notify(){const change=status();for(const {listener} of [...observers]){try{listener(change)}catch(error){BloomDiagnostics.report(error,{kind:'public.observer'})}}}
 
  const storage=()=>{try{return globalThis.sessionStorage}catch{return null}};
@@ -22001,15 +22002,30 @@ const PublicSession=globalThis.PublicSession=(()=>{
   if(interrupted){if(reconnect.sinceMs===null)reconnect.sinceMs=now}else reconnect.sinceMs=null;
   const seconds=reconnect.sinceMs===null?null:Math.max(0,Math.ceil((CONFIG.session.reconnectGraceMs-(now-reconnect.sinceMs))/1000));
   if(seconds!==reconnect.seconds){reconnect.seconds=seconds;notify()}
+  if(seconds===0&&lifecycle.phase===sessionPhase.playing&&status==='disconnected')failed(Object.assign(new Error('공개 세계 연결을 복구할 수 없어 혼자 플레이로 전환해요.'),{code:'PUBLIC_NETWORK_UNAVAILABLE'}));
   return seconds;
  }
  function ready(){if(lifecycle.phase!==sessionPhase.joining||!bloomSession?.ready||!WorldPlayers.get(bloomSession.localPlayerId))return false;setPhase(sessionPhase.playing);playing=true;paused=false;remember(true);const leader=WorldView.leader();view.x=leader.x;view.y=leader.y;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');modalKind='';$('modal').classList.remove('show');resetPresentation();refreshUI()}notify();return true}
+ function networkAvailable(){return globalThis.navigator?.onLine!==false}
+ function shouldFallbackToSolo(error){const code=String(error?.code||'');return networkFailureCodes.has(code)||!networkAvailable()}
+ let fallbackPromise=null;
+ function fallbackToSolo(reason){
+  if(fallbackPromise)return fallbackPromise;
+  diagnosis.fallback='solo';notify();
+  fallbackPromise=solo({graceful:false}).then(restored=>{
+   if(!globalThis.BLOOM_HEADLESS)toast(restored?'네트워크 연결이 끊겨 혼자 플레이로 전환했어요.':'네트워크 연결이 끊겨 새 혼자 세계로 전환했어요.');
+   return restored;
+  }).catch(error=>{BloomDiagnostics.report(error,{kind:'public.solo-fallback'});return false}).finally(()=>{fallbackPromise=null});
+  return fallbackPromise;
+ }
  function failed(error){
   if([sessionPhase.leaving,sessionPhase.idle,sessionPhase.failed].includes(lifecycle.phase))return;
   const code=typeof error?.code==='string'&&/^[A-Z_a-z-]{1,64}$/.test(error.code)?error.code:'PUBLIC_CONNECTION_FAILED';
   const reason=BloomDiagnostics.clean(String(error?.message||error||'Public room disconnected').replace(/\b[0-9a-f]{64}\b/gi,'[peer]').replace(/wss?:[^\s]+/g,'[relay]'),240);
-  diagnosis.failure=Object.freeze({code,reason,stage:diagnosis.stage});setPhase(sessionPhase.failed);playing=false;paused=true;bloomLoop?.stop();
+  const automaticSolo=shouldFallbackToSolo({...error,code});
+  diagnosis.failure=Object.freeze({code,reason,stage:diagnosis.stage});diagnosis.fallback=automaticSolo?'solo':null;setPhase(sessionPhase.failed);playing=false;paused=true;bloomLoop?.stop();
   BloomDiagnostics.report(new Error(reason),{kind:'public.connection'});
+  if(automaticSolo){fallbackToSolo(reason);return}
   if(!globalThis.BLOOM_HEADLESS){const invalid=code==='PUBLIC_RESUME_INVALID';openModal('online-failed',sheetHead('공개 세계 연결이 끊겼어요')+'<p>'+(invalid?'이전 접속 정보가 만료되었거나 게임 버전이 바뀌었어요. 새 판으로 시작해 주세요.':'다른 참가자가 남아 있으면 같은 모아로 다시 연결할 수 있어요. 모두 나간 세계는 종료됩니다.')+'</p>'+(invalid?'':'<button class="primary" data-public="resume">같은 세계 다시 연결</button>')+'<button class="primary" data-public="fresh">새 판 시작</button><button class="tab" data-public="solo">혼자 플레이</button><button class="tab" data-bloom-diagnostics>진단 정보 보기</button>')}
  }
  function event(e){recordStage(e.type);if(e.type==='membership-committed'){ready();notify()}else if(['membership-failed','membership-connect-failed','partition-failed','transport-failed','transition-timeout','join-rejected','fatal'].includes(e.type))failed(Object.assign(new Error(e.reason||e.type),{code:e.type}));}
@@ -22017,8 +22033,10 @@ const PublicSession=globalThis.PublicSession=(()=>{
   if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;
   if(connection.attempt)return connection.attempt.pending;
   if(lifecycle.phase===sessionPhase.playing&&!fresh){playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS)closeModal();return true}
+  if(!networkAvailable()){setPhase(sessionPhase.discovering);failed(Object.assign(new Error('네트워크가 오프라인이라 공개 세계에 연결할 수 없어요.'),{code:'PUBLIC_OFFLINE'}));return false}
   if(!BloomOwnedSDK.createNostrPublicRoom||!BloomOwnedSDK.createRoomSession){const error=new Error('Public-room SDK is unavailable');setPhase(sessionPhase.discovering);failed(error);return false}
-  const attempt={generation:++lifecycle.generation,controller:new AbortController(),pending:null};connection.attempt=attempt;Object.assign(diagnosis,{startedAt:performance.now(),stage:'public-discovering',events:[],failure:null});recordStage('public-discovering');playing=false;paused=true;setPhase(sessionPhase.discovering);
+  const attempt={generation:++lifecycle.generation,controller:new AbortController(),pending:null,deadlineTimer:null};connection.attempt=attempt;Object.assign(diagnosis,{startedAt:performance.now(),stage:'public-discovering',events:[],failure:null,fallback:null});recordStage('public-discovering');playing=false;paused=true;setPhase(sessionPhase.discovering);
+  attempt.deadlineTimer=setTimeout(()=>{if(isCurrent(attempt)&&[sessionPhase.discovering,sessionPhase.joining].includes(lifecycle.phase))failed(Object.assign(new Error('공개 세계 연결 시간이 지나 혼자 플레이로 전환해요.'),{code:'PUBLIC_TIMEOUT'}))},CONFIG.session.transitionTimeoutMs);
   if(!globalThis.BLOOM_HEADLESS)openModal('online-joining',sheetHead('공개 세계를 찾고 있어요')+'<p>빈자리가 있는 세계에 자동으로 합류해요. 새 세계는 혼자서도 바로 시작됩니다.</p><button class="tab" data-public="cancel">취소</button>');
   attempt.pending=(async()=>{
    if(BloomSimulation.sessionConfig.mode==='local'){
@@ -22036,19 +22054,19 @@ const PublicSession=globalThis.PublicSession=(()=>{
    const seed=BloomOwnedSDK.hashBytes(new TextEncoder().encode(next.sessionId));bloomInitialize(seed);
    const session=bloomNewSession({room:next,players:[...next.players],ownerId:next.coordinatorId,localPlayerId:next.localPlayerId,sessionConfig:{mode:'online',persistence:'none',progressionPolicy:'fresh'},onEvent(e){if(isCurrent(attempt))event(e)}});
    BloomSimulation.runtime?.installSession(session);playing=true;paused=true;remember(true);notify();ready();return true;
-  })().catch(error=>{if(isCurrent(attempt)){failed(error);if(connection.controller!==attempt.controller)attempt.controller.abort()}return false}).finally(()=>{if(connection.attempt===attempt)connection.attempt=null});return attempt.pending;
+  })().catch(error=>{if(isCurrent(attempt)){failed(error);if(connection.controller!==attempt.controller)attempt.controller.abort()}return false}).finally(()=>{clearTimeout(attempt.deadlineTimer);if(connection.attempt===attempt)connection.attempt=null});return attempt.pending;
  }
- async function leave(){
+ async function leave({graceful=true}={}){
   const generation=++lifecycle.generation;
   // Discovery owns an unfinished attempt; the resolved connection owns its
   // signal until graceful SDK handover finishes, so RTC is not cut off early.
   if(connection.attempt?.controller!==connection.controller)connection.attempt?.controller.abort();connection.attempt=null;setPhase(sessionPhase.leaving);
-  try{if(BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure)await bloomSession?.leave?.()}catch{}finally{
+  try{if(graceful&&BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure)await bloomSession?.leave?.()}catch{}finally{
    if(generation!==lifecycle.generation)return;
    releaseRoom({forget:true});remember(false);setPhase(sessionPhase.idle);
   }
  }
- async function solo(){if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)bloomShowRejectedSave();return false}const leaving=leave(),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
+ async function solo({graceful=true}={}){if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)bloomShowRejectedSave();return false}const leaving=leave({graceful}),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
  function cancel(){if(BloomSimulation.sessionConfig.mode==='online')return solo();++lifecycle.generation;connection.attempt?.controller.abort();connection.attempt=null;setPhase(sessionPhase.idle);if(!globalThis.BLOOM_HEADLESS)showIntro(startUXHasSave)}
  function bind(){
   if(globalThis.BLOOM_HEADLESS)return;
@@ -22057,10 +22075,12 @@ const PublicSession=globalThis.PublicSession=(()=>{
   const onClick=e=>{const b=e.target.closest('button'),action=b?.dataset.public;if(b?.dataset.action==='start'){e.preventDefault();e.stopImmediatePropagation();start();return}if(!action)return;e.preventDefault();e.stopImmediatePropagation();if(action==='cancel')cancel();else if(action==='solo')solo();else start({fresh:action==='fresh'})};
   document.addEventListener('click',onClick,true);
   const stopObserving=onChanged.on(renderStatus);
-  const unsubscribe=()=>{stopObserving();document.removeEventListener('click',onClick,true);label.remove();if(presentation.unsubscribe===unsubscribe){presentation.label=null;presentation.unsubscribe=null}};
+  const offline=()=>{if([sessionPhase.discovering,sessionPhase.joining,sessionPhase.playing].includes(lifecycle.phase))failed(Object.assign(new Error('네트워크가 오프라인이라 공개 세계를 유지할 수 없어요.'),{code:'PUBLIC_OFFLINE'}))};
+  const online=()=>notify();window.addEventListener?.('offline',offline);window.addEventListener?.('online',online);
+  const unsubscribe=()=>{stopObserving();document.removeEventListener('click',onClick,true);window.removeEventListener?.('offline',offline);window.removeEventListener?.('online',online);label.remove();if(presentation.unsubscribe===unsubscribe){presentation.label=null;presentation.unsubscribe=null}};
   presentation.label=label;presentation.unsubscribe=unsubscribe;renderStatus(status());
   // The marker is non-secret. Only the SDK reads its bounded room credential.
-  let resume=false;try{resume=storage()?.getItem(storageFlag)==='1'}catch{}if(resume)start();
+  let resume=false;try{resume=storage()?.getItem(storageFlag)==='1'}catch{}if(resume){if(networkAvailable())start();else{setPhase(sessionPhase.discovering);failed(Object.assign(new Error('네트워크가 오프라인이라 공개 세계를 유지할 수 없어요.'),{code:'PUBLIC_OFFLINE'}))}}
   return unsubscribe;
  }
  function unbind(){presentation.unsubscribe?.()}

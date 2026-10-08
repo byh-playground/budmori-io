@@ -59,10 +59,12 @@ async function main(){
   pass('Repeated bind/unbind owns one label and listener; Start deduplicates and cancellation closes stale rooms without changing solo bytes');
   const failed=a.start();await turns();a.calls.at(-1).reject(new Error('synthetic discovery failure'));assert.equal(await failed,false);assert.equal(a.calls.at(-1).options.signal.aborted,true);assert.equal(a.phase(),'failed');assert.deepEqual(bytes(a),soloBytes);assert.equal(a.disk.getItem(a.e.run('CONFIG.saveKey')),soloDisk);assertHealthy(a);
   pass('Failed public discovery preserves the entire solo world and original disk');
+  const offline=make();await offline.init();const offlineStart=offline.start();await turns();offline.calls.at(-1).reject(Object.assign(new Error('network unavailable'),{code:'PUBLIC_OFFLINE'}));assert.equal(await offlineStart,false);await turns(20);assert.equal(offline.phase(),'idle');assert.equal(offline.e.run('BloomSimulation.sessionConfig.mode'),'local');assert.equal(offline.e.run('PublicSession.inspect().fallback'),'solo');assert.equal(offline.tab.getItem('budmori-public-active-v1'),null);assertHealthy(offline);
+  pass('Network failure leaves public mode and explicitly falls back to a distinguishable solo world');
   const diagnosticAttempt=a.start();await turns();const diagnosticCall=a.calls.at(-1);
   for(let i=0;i<25;i++)diagnosticCall.options.onStatus({type:i%2?'peer-resuming':'public-resuming',secret:'never copy this',peerId:'f'.repeat(64)});
-  diagnosticCall.reject(Object.assign(new Error('x'.repeat(220)+' '+ 'a'.repeat(64)),{code:'membership-connect-failed'}));assert.equal(await diagnosticAttempt,false);
-  const diagnostic=a.e.run('PublicSession.inspect()');assert.equal(diagnostic.connectionEvents.length,16);assert.equal(diagnostic.lastFailure.code,'membership-connect-failed');assert.match(diagnostic.lastFailure.reason,/\[peer\]/);assert(!JSON.stringify(diagnostic).includes('never copy this'));assert(!JSON.stringify(diagnostic).includes('a'.repeat(10)));assert(diagnostic.lastFailure.reason.length<=240);
+  diagnosticCall.reject(Object.assign(new Error('x'.repeat(220)+' '+ 'a'.repeat(64)),{code:'membership-failed'}));assert.equal(await diagnosticAttempt,false);
+  const diagnostic=a.e.run('PublicSession.inspect()');assert.equal(diagnostic.connectionEvents.length,16);assert.equal(diagnostic.lastFailure.code,'membership-failed');assert.match(diagnostic.lastFailure.reason,/\[peer\]/);assert(!JSON.stringify(diagnostic).includes('never copy this'));assert(!JSON.stringify(diagnostic).includes('a'.repeat(10)));assert(diagnostic.lastFailure.reason.length<=240);
   assert(Object.isFrozen(diagnostic.connectionEvents)&&Object.isFrozen(diagnostic.lastFailure));
   pass('Connection diagnostics retain bounded stages and specific failure without peer identities or signaling payloads');
 
