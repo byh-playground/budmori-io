@@ -133,6 +133,12 @@ PR과 main push의 GitHub Actions는 비용을 제한하기 위해 `npm ci`, 검
 
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
 
+### WebGL 배치 재사용 회귀
+
+정적 지형과 일반 sprite는 같은 배치 풀을 재사용합니다. 정적 배치도 생성할 때 빈 `textures` 배열을 소유해야 다음 프레임의 일반 배치로 안전하게 전환할 수 있습니다. 누락되면 `textures.length` 접근 실패 뒤 렌더 정리 단계가 `Renderer.endFrame: b.textures is not iterable`을 보고합니다. `save.load UNSUPPORTED_SAVE_VERSION`과 만료된 공개 복귀 포인터는 이 오류와 별개의 recoverable 진단입니다.
+
+`npm run test:browser:webgl`은 실제 Chromium/SwiftShader에서 정적 배치 수 변화, static→normal→static 재사용, texture 슬롯 초과를 픽셀 색상으로 확인하고, 배치·배열 identity와 불필요한 GPU 재업로드도 검사합니다. 전체 게임 검증은 `npm run test:browser`와 `npm run test:browser:multiplayer`로 실행합니다. 후자는 `BUDMORI_TWO_PLAYER_SOAK_MS=120000` 환경 변수를 설정하면 두 플레이어가 참가한 뒤 실제 시계로 120초 동안 WebGL 프레임·시뮬레이션 진행·fatal 부재를 추가 검사합니다. 로컬 신호 fixture와 실제 WebRTC를 사용하며 공개 릴레이·물리 GPU 검증은 아닙니다.
+
 ## v64/v65 전환 당시 검증 결과
 
 - 당시 gamekit source: `5c70abf56c092c00926b1614c599a70968eca3d6`; 배포: `444f51c4cb293268dc6e20ffbc40a9afe963a069`
