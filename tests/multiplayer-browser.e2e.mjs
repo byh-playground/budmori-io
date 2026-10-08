@@ -5,6 +5,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import sharedHarness from './shared-harness.cjs';
+import fontAssets from './font-asset-fixture.cjs';
 
 // Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html] [--sdk=/absolute/dist/rollback-netcode.js]
 // The candidate remains the shipped one-file game. Only this server response gets
@@ -172,6 +173,7 @@ try{
  context=await phase('browser context',()=>browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1}));
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
+ report.fontAssetFixture=await fontAssets.install(context);
  await context.routeWebSocket('**/*',socket=>{unexpectedNetwork.push(socket.url());return socket.close()});
  const host=await addPage();
  const soloBefore=await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey));

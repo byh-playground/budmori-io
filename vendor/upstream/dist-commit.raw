@@ -1,14 +1,14 @@
-tree a33395f3537cf26cc8fbde208db0a5abe860a802
-parent 2d341ce195fe013fdc1c48e9e30c23db90a60dae
-author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791467912 +0000
-committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791467912 +0000
+tree 345eeb4667b2485b8928e0a86133d00dcbaa0c18
+parent 54f1c23b53e57e891ee0e16faaf9553aec2293d4
+author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791476896 +0000
+committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791476896 +0000
 
 [chore] 독립 모듈 배포물 갱신
 
-Source-Commit: aadf23c043a913f4c2d2e6eb2875d7c852f06a0b
-Manifest-SHA256: 0b8ba7765cefb8db109e9dec38e9b8018d75688471033b389e52438b70df9021
+Source-Commit: 9269ce16fdcf669a565838948d97ae5c1b30a6d8
+Manifest-SHA256: 94d35ad4c968108be73042079830fd28b69f0744136f462d19f3e733d95e7ee4
 Bundle-SHA256: interpolation.js 50a71b2095eb86901b6ac37f5a38a229e6a6a69bf24c8b18ce471b7523db80f6
-Bundle-SHA256: rendering.js a5f7439c7c3e99dee8d378e8f51872203df92d5b8938218c56a4f201bf603146
+Bundle-SHA256: rendering.js bdd2976df6105acf5a908e9d449bcb023b5c66a4fa40b4dab4f2dea97c4f774a
 Bundle-SHA256: input.js ae84399953c7e54c8d96408c97208f42b2246a8ac27ef5265053cb0beb306168
 Bundle-SHA256: deterministic.js 00ef12c8300fa6eda38d7a814bb136ecd6787d5f5cfbe620a123663528467654
 Bundle-SHA256: simloop.js 8a89d888ffaf164be37200d250d6939cc221dcd651aabeb5810a659669e4225c
@@ -20,3 +20,5 @@ Bundle-SHA256: camera.js 972268ad14de778f1dca437913cff576155754adf1195948897c0df
 Bundle-SHA256: presentation-events.js 30a1c9fd62f223998bba34e299b6f6baf0a789a4f09d468b62df87c8193930c5
 Bundle-SHA256: hud.js acec30fdab522ef151ab582113f26058aabb48a1d8d11cfe0ea640e1b61c86df
 Bundle-SHA256: debug-tools.js ff8c87307a2d26da23ecf2f5133f65ebb809c78c1fcbf9f59aa56f2dedc4697b
+Asset-SHA256: assets/fonts/noto-sans-kr-700-v1.json d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310
+Asset-Bytes: assets/fonts/noto-sans-kr-700-v1.json 514988
