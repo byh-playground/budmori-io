@@ -30,17 +30,23 @@
 
 ### 우선순위와 파일 구성
 
+검증 정책 원본은 [공통 프로젝트 관리 규칙 §13](https://github.com/byh-playground/bloom-reference/blob/main/rules/project-management.html#verification)입니다. 개발 중 단위 검증 코드는 완료 시 제거하고 고정 사용자 시나리오 E2E만 유지합니다. `npm test`는 실제 Chromium의 입력·플레이·전환·저장·모바일 복원 시나리오, `npm run test:browser:multiplayer`는 대표 2인 입장·재접속·승계 시나리오입니다. `scripts/test-scenarios.mjs`는 각 실행 전체 180초 상한을 적용하며 초과는 실패입니다. 성능·부하·snapshot pulse 측정은 별도 benchmark 명령으로 분리합니다.
+
 1. **최적화가 먼저, 재미가 그다음입니다.** 기능·표현을 추가할 때 계산량, 호출 빈도, 메모리, 초기 로딩, 틱·렌더 비용을 함께 판단합니다. 예상과 실제 측정을 구분하며 성능 회귀를 숨기지 않습니다.
 2. 실행·배포·AI 수정 대상은 단일 `index.html`로 유지합니다. 작업용 도구나 중간 생성물이 실행 의존성이 되어서는 안 되며, 중간 빌드·임시 결과물을 최종 게임 대신 전달하지 않습니다.
 3. 밸런스·타이밍·규모·표현 한도는 해당 `CONFIG`·Definition·정책 설정에서 관리합니다. 같은 규칙을 여러 위치에 하드코딩하거나 서로 다른 구현으로 복제하지 않습니다.
 4. 공통 세계관은 [bloom-world](https://github.com/byh-playground/bloom-world)를 참고하고, 게임 고유 규칙은 이 게임에서 관리합니다.
+
+### 공통 표시 모델
+
+그려지는 타입은 GameKit `RenderObject`의 `renderSchema`를 사용합니다. 스키마는 `"roll.progress": this.CYCLE`처럼 원본 필드 점 경로와 보간 상수의 1:1 맵입니다. 공통 runtime이 중첩 모델을 만들고 렌더·HUD·그림자·경고가 같은 프레임 모델을 공유합니다. Unit에 별도 보간 로직을 넣지 않으며 원본 Proxy·prototype 상속·this 교체·원본 fallback을 사용하지 않습니다. countdown·상태 경계·발사 시작점·위치 불연속도 스키마와 공통 정책으로 처리하며 게임 collector는 identity/source/type만 전달합니다. 입력 모듈과 게임 규칙은 독립적으로 유지하고, 입력 선반응은 아직 적용하지 않았습니다. 고정 SDK source/dist와 재현 가능한 inline bytes는 `gamekit-lock.json`과 `scripts/verify-gamekit-source.cjs`로 확인합니다.
 
 ### 유닛 생성 수명주기
 
 - 공개 `spawn()`은 `UnitSpawn.create()` 한 진입점을 사용합니다. 지형의 안전 위치 → 야생 등급 난수 → 라이벌 예약/위치 탐색 → 높이 검증 → 정예 예약 조회 → 기본 몸체 등록 → 조우/영입/귀환 기준점/정예/높이/진영/성장 초기화 → 등급/라이벌 계정 → 최종 위치 제한을 명시적으로 실행합니다. 이전 생성 함수 12개를 이어 부르던 캡처 체인은 남기지 않습니다.
 - 인벤토리의 `rarityDeploy()`는 `UnitSpawn.createBody()`에서 몸체를 만든 뒤 인벤토리 레코드·등급·잠금·배치를 설치합니다. 이 경로는 야생 등급 추첨과 외부 지형 배치 단계를 거치지 않던 기존 계약을 유지합니다. 부활은 저장된 몸체·ID를 재사용하며 생성 난수를 새로 쓰지 않습니다.
 - 체력의 생성 단계 변경은 `CombatHealth.initializeSpawn()`, 이동·높이·공격 시계는 기존 소유자의 실제 API를 사용합니다. 최종 등급이 덮어쓰는 중간 체력/성장 필드도 직렬화 키 순서와 참조 계약 때문에 원래 순서로 만듭니다. 새 capability, 밸런스, 저장 schema 또는 SDK 변경은 없습니다.
-- `tests/spawn-pipeline.cjs`는 실제 HTML/내장 SDK에서 51종 × 6등급 × 4역할, 사람/NPC 인벤토리, 예약·밀집 배치 실패, 잠든 몸체·라이벌·상주 우두머리의 부활을 검사합니다. 240개 연속 공유 세계 틱에서 자연 재생, live/disk/prepared 복원, 패배/회복과 참가/재참가를 이어 검사합니다. 두 HTML 경로를 인자로 주면 전체 snapshot bytes·키 순서·참조 그래프·난수·효과 payload/ID/순서를 이전 실행물과 직접 비교합니다. Native 엔진 검사이며 브라우저/GPU 검증을 대신하지 않습니다.
+- 생성·복원 내부 회귀는 개발 당시 검증하고 제거했습니다. 영구 검증은 아래 사용자 시나리오를 따릅니다.
 
 ### 시뮬레이션·렌더링·이동
 
@@ -61,7 +67,7 @@
 - 실행·대기·예측·롤백·복구는 세션의 상태이며 CAN-BE의 뜻이 아닙니다. 배타적인 상태는 하나의 phase로, 독립적인 상태는 별도 flag로 표현합니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
 - [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
 - HTML에는 필요한 공통 모듈과 SDK를 오프라인 실행용으로 포함합니다. 원본 SDK 동작은 c3173914519a78834360430071e7a125736d86d5와 호환됩니다. 배포 기준·각 ESM 원본과 포함 IIFE의 SHA-256은 `gamekit-lock.json`에서 검증합니다. 가변 main CDN import는 사용하지 않습니다.
-- 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다. 로컬 5탭 검증에서도 운영과 같은 500ms 신호 발행 간격을 유지하며 일반 게임 타이머로 새로고침·투사체 이동·피해를 확인합니다.
+- 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다. 로컬 대표 멀티 검증에서도 운영과 같은 500ms 신호 발행 간격을 유지하며 일반 게임 타이머로 새로고침·투사체 이동·피해를 확인합니다.
 
 ### 저장과 검증
 
@@ -79,7 +85,7 @@
 - v63, 이전 disk v3/v4, 숫자 배열 payload, 틱 타이머/인구 변환은 지원하지 않습니다. 오래된 저장을 발견하면 “지원하지 않는 저장 버전”과 새 게임·다른 백업 경로를 보여 줍니다. 자동 저장·수동 저장·TPS 변경·페이지 종료는 읽지 못한 원본을 덮어쓰지 않습니다. 확인한 새 게임 또는 정상 백업 불러오기가 현재 저장을 교체합니다.
 - 디스크 입력도 정규 코덱·메타데이터·체크섬·전체 그래프 검증과 detached 준비를 통과한 뒤에만 설치합니다. 준비/취소 중 기존 authority·세션·원본 bytes는 변경하지 않습니다.
 - 군단 잠금은 inventory record의 `locked`만 소유합니다. 몸체의 `rarityLocked` 필드·getter·복원 binder는 없습니다.
-- `tests/save-version-policy.cjs`는 실제 엔진/SDK로 과거 형식 거부, compatible patch 수용, 비호환 minor/major 거부, 저장 보호와 명시적 새 게임을 검사합니다. `npm run test:browser:save`는 실제 Chromium에서 안내·반복 취소·TPS·새로고침·새 게임·파일 import를 검사합니다.
+- `npm run test:browser:save`는 실제 Chromium의 미지원 저장 안내·반복 취소·TPS·새로고침·새 게임·파일 import를 확인합니다.
 
 ## 작업과 리뷰
 
@@ -115,7 +121,7 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 
 - input: ActionState와 DOM 입력 소유권, 클릭/더블탭/키보드 → 기존 SDK 명령 경계
 - interpolation: 동일한 단조 receipt/frame 시계, 도착 시점 곡선 retarget, XYZ와 별개인 공격 타이머 reset, 재사용 pose
-- rendering: 공통 WebGLDevice만 shader/resource/upload/draw/stencil을 소유합니다. 게임의 곡선/지형/아트/텍스트 atlas와 material은 게임에 남습니다. Canvas2D 전장 fallback은 없습니다.
+- rendering: 고정 GameKit source/dist의 `WebGLDevice`, `VectorRenderer`, `GlyphAtlas`가 WebGL1 자원·도형/path tessellation·곡선·clip·GPU group opacity·텍스트 metric/배치를 담당합니다. Budmori는 projection·정렬·static terrain mesh·게임 아트 레시피와 렌더 순서를 소유합니다. terrain mesh는 WebGL geometry이고 hit feedback·광물/월드 레이블은 사전 생성 공통 GlyphAtlas에서 직접 그립니다. World Canvas2D image upload, runtime glyph raster/crop/readback, legacy world-renderer fallback은 없습니다. 미니맵·DOM용 portrait preview처럼 world pass에 재사용하지 않는 UI는 별도입니다.
 - camera/hud: 동일한 40도 XYZ 투영과 카메라/앵커; 성장 줌·지형 역투영·체력 표현 정책은 게임 소유
 - presentation-events: SDK 확정 이벤트만 한 번 전달합니다. speculative 사운드를 재생하지 않습니다.
 - debug-tools: 유한 오류 ring·redaction·clipboard 공통 기능, 게임의 중단/진단 UI를 유지하며 같은 스레드에서 직접 보고
@@ -125,11 +131,17 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 
 ## 개발 검증
 
-`npm ci && npm test`는 실제 메인 스레드 런타임/엔진/포함 SDK의 연속 캠페인과 집중 보간 회귀를 검사합니다. `npx playwright install --with-deps chromium && npm run test:browser`는 실제 브라우저 WebGL·메인 스레드 SDK·DOM 입력·전투·저장·죽음/회복·오류 UI를 한 흐름으로 확인합니다. 테스트용 stopped-session fixture는 테스트 서버에서만 삽입되며 `index.html`에는 포함하지 않습니다.
+`npm ci && npm test`는 고정 싱글 플레이·저장 UI·대표 2인 멀티를 연속 실행하며 전체에 180초 상한을 적용합니다. `npm run test:browser`는 source integrity와 싱글을 실행합니다. 입력·일시정지/재개·구르기·전투·모바일 죽음/자동 부활을 실제 SDK timer와 RAF로 확인합니다. renderer는 production `WebGLDevice.endFrame()` 직전 실제 framebuffer pixels를 한 번 읽어 terrain/art/text가 그려진 것을 검사하며, 테스트 전용 렌더 샘플은 게임 상태·시간선을 바꾸지 않습니다. 시작 세계 fixture는 로컬 테스트 응답에만 삽입하고 제품 HTML에는 포함하지 않습니다. 수동 틱·배치 풀·코덱 단위 회귀는 유지하지 않습니다.
 
-전장 지형은 `ThemedTerrain`과 정적 WebGL mesh가 단일 렌더 경로를 소유합니다. legacy `TerrainHills` Canvas2D raster와 terrain texture upload 경로는 유지하지 않으며, Canvas2D는 sprite/text atlas·미니맵·UI 보조 렌더에만 사용합니다.
+전장 지형은 정적 WebGL mesh, 유닛 아트는 authored polygon fan의 direct geometry, 텍스트는 별도 runtime atlas upload 없이 공통 GlyphAtlas에서 제출합니다. thumbnail/canvas는 메뉴 미리보기 전용이며 world renderer에서 import/crop하지 않습니다. group alpha는 `RallyArt.draw`의 object boundary에서 RGBA target에 한 번 적용하고, fill/stroke/painter order는 공통 vector stream에 보냅니다.
 
-PR과 main push의 GitHub Actions는 비용을 제한하기 위해 `npm ci`, 검증기 구문 검사, 고정 gamekit·inline bundle 무결성 검사만 필수로 실행합니다. 실제 브라우저·5인 WebRTC·snapshot·benchmark 검증은 자동 PR 게이트가 아니며, 필요한 경우 Actions의 `workflow_dispatch`로 `Full game verification (manual)`을 실행합니다. 머지 전에는 변경 범위에 맞는 전체 검증을 로컬에서 실행하고 PR에 통과·실패·미실행 범위를 기록합니다. CI가 비싸다는 이유로 이 로컬 검증을 생략하거나 결과를 Stable/VALIDATED로 표시하지 않습니다.
+오프라인 glyph 생성기는 `node scripts/generate-glyph-atlas.mjs`입니다. `scripts/assets/world-glyph-atlas.json`이 generator provenance·metrics·재현 데이터를 보관하고, HTML에는 실행에 필요한 mask와 metrics만 압축해 포함합니다. corpus는 585 Hangul 음절과 printable ASCII/비ASCII source 기호를 포함한 총 750 codepoint이며 누락은 0개입니다. Noto Sans KR 700/32px 기준 atlas는 2016×864 R8 mask입니다: PackBits RLE 332,430 bytes, HTML 인라인 mask base64 443,240 characters, 런타임 확장 RGBA 및 최초 WebGL texture upload 각각 6,967,296 bytes(6.97 MB)입니다. CPU R8 decode는 1,741,824 bytes이며 texture 복구용 RGBA copy가 device 소유입니다. 이 atlas는 실행 중 재생성하거나 Canvas2D에서 crop하지 않습니다. Raw mask SHA-256은 `e2f2ca5b2d514fa441d5d75c1152ff0d66df66ed314aa93ab67079c1bae522df`, generator asset JSON SHA-256은 `1ec9df1f848c180f0309194378f1d1867410cefdba379d4944d440086e245562`입니다. Font는 로컬 Noto Sans KR, SIL OFL 1.1입니다.
+
+렌더 통합 전 `index.html`은 1,583,342 bytes, 후보는 2,110,490 bytes로 +527,148 bytes(+33.3%)입니다. 여기에는 513,108-byte 인라인 glyph asset/metrics와 GameKit rendering bundle 증가가 포함됩니다. `rendering.js` unminified bytes는 고정 base `723b7be`의 45,639에서 공개 bundle의 77,804로 +32,165(+70.5%)입니다. 이는 추가 API 비용이며 압축 전 bytes입니다.
+
+최신 고정 시나리오 실행: `index.html` SHA-256 `bea856c592f7aa3583c1e9b32868a5953c2508d1095ba5debabc363f9148cb68`에서 `npm ci && npm test` 전체가 142,011ms PASS였습니다(180,000ms 상한). solo·save·실제 두 탭 join/reload/leave가 통과했습니다. production `WebGLDevice.endFrame()` 직전 920×700 framebuffer에서 green terrain 639,268 pixels, 밝은 art/text 1,600 pixels, 주변과 다른 색 222,128 pixels를 관측했고 GL error는 0이었습니다. `RallyArt` 흰색 flash + object alpha 0.5 pixel 시나리오는 96×96 sample에서 max red 128, red-tinted pixels 0, visible pixels 1,527, GL error 0이었습니다. 모바일 death/countdown/revive 화면도 캡처했습니다. 대표 2인 SwiftShader frame 표본은 약 64–122 draw calls, 17–212K total vertices(정적 mesh 포함), 195–465K vertex upload bytes, 131,072-byte vector buffer였습니다. 별도 native 예제 한 장면은 6 draws/159 vertices/5,088 uploaded bytes/3.6ms CPU submit/1MiB RGBA target이었습니다. CPU submit은 GPU 완료시간이 아니며 FPS 개선을 입증하지 않습니다. 5-tab SwiftShader는 기존 timeout 실패로 남고 Android GPU·공개 relay·NAT는 미검증입니다.
+
+Budmori는 main의 정적 HTML을 GitHub Pages에서 직접 서빙하며 별도 빌드·dist 생성이 필요하지 않습니다. 검사 전용 Actions workflow는 제거했습니다. SDK 무결성과 실제 플레이 검증은 로컬에서 실행하고 PR에 기록합니다. Pages 응답은 `node scripts/verify-pages.mjs`로 검사한 HTML bytes와 비교합니다.
 
 Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비용만 비교합니다. Chromium SwiftShader도 실제 휴대폰 GPU/FPS 검증을 대신하지 않습니다.
 
@@ -137,26 +149,26 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 정적 지형과 일반 sprite는 같은 배치 풀을 재사용합니다. 정적 배치도 생성할 때 빈 `textures` 배열을 소유해야 다음 프레임의 일반 배치로 안전하게 전환할 수 있습니다. 누락되면 `textures.length` 접근 실패 뒤 렌더 정리 단계가 `Renderer.endFrame: b.textures is not iterable`을 보고합니다. `save.load UNSUPPORTED_SAVE_VERSION`과 만료된 공개 복귀 포인터는 이 오류와 별개의 recoverable 진단입니다.
 
-`npm run test:browser:webgl`은 실제 Chromium/SwiftShader에서 정적 배치 수 변화, static→normal→static 재사용, texture 슬롯 초과를 픽셀 색상으로 확인하고, 배치·배열 identity와 불필요한 GPU 재업로드도 검사합니다. 전체 게임 검증은 `npm run test:browser`와 `npm run test:browser:multiplayer`로 실행합니다. 후자는 `BUDMORI_TWO_PLAYER_SOAK_MS=120000` 환경 변수를 설정하면 두 플레이어가 참가한 뒤 실제 시계로 120초 동안 WebGL 프레임·시뮬레이션 진행·fatal 부재를 추가 검사합니다. 로컬 신호 fixture와 실제 WebRTC를 사용하며 공개 릴레이·물리 GPU 검증은 아닙니다.
+배치 풀·texture 슬롯·readPixels 집중 검사는 개발 중 사용한 뒤 제거했습니다. 영구 검증은 `npm test`, `npm run test:browser:save`, `npm run test:browser:multiplayer`의 사용자 시나리오입니다. 멀티는 로컬 신호 fixture와 실제 WebRTC를 사용하며 공개 릴레이·NAT·물리 모바일 기기/FPS 검증은 아닙니다.
 
 ## v64/v65 전환 당시 검증 결과
 
 - 당시 gamekit source: `5c70abf56c092c00926b1614c599a70968eca3d6`; 배포: `444f51c4cb293268dc6e20ffbc40a9afe963a069`
-- 실제 Chromium/SwiftShader + Blob Worker의 시작·WASD·Space·클릭/터치 구르기·메뉴 재개·전투·죽음/회복·저장/불러오기·오류 중단을 CI에서 검사합니다. 입력/복구 fixture는 수동 clock, 별도 전투 단계는 변경하지 않은 production setTimeout scheduler + RAF를 사용합니다.
+- 실제 Chromium/SwiftShader + Blob Worker의 시작·WASD·Space·클릭/터치 구르기·메뉴 재개·전투·죽음/회복·저장/불러오기·오류 중단을 당시 CI에서 검사했습니다. 입력/복구 fixture는 수동 clock, 별도 전투 단계는 변경하지 않은 production setTimeout scheduler + RAF를 사용합니다.
 - Native 연속 캠페인 96개 확인: 원본 v63 저장 bytes/향후 동일 입력 결과, 대기 명령, 손상 저장 거부, 실제 SDK 지연 패킷 rollback 정확 수렴을 포함합니다.
 - 보간은 수신 당시 곡선에서 다시 연결합니다. 늦게 도착하는 미래 표본을 예측하지 않으며, 목표에 먼저 도달하면 다음 표본까지 대기합니다. 불규칙 수신의 속도 변화/대기는 남습니다. 공격/flash 새 단계는 XYZ와 별도로 즉시 반영하며 hitstop이 XYZ를 권위 위치로 튀게 하지 않습니다.
 - 155 동료 native CPU 제출 비교는 `tests/performance-summary.json`에 기록합니다. 참고 runner `tests/native-render.cjs`는 추가로 `@napi-rs/canvas@0.2.000`이 필요합니다. 같은 원본 HTML을 인수로 실행해 비교하며, no-op GPU sink이므로 GPU 완료시간·실제 브라우저·휴대폰 FPS 측정이 아닙니다.
-- main CI는 Pages 응답 전체 bytes의 SHA-256이 검사한 `index.html`과 같은지 배포 후 확인합니다. 실제 휴대폰/기기 GPU 검증은 별도입니다.
+- 당시 Pages bytes 확인 CI는 현재 제거했습니다. 동일 확인 도구는 로컬에서 사용합니다.
 
 ## v65 · 회복 후 화면 동기화 수정
 
 회복 시 권위 세계를 복제하면서 내용이 같은 중첩 객체도 새 identity를 갖습니다. 이전 Worker delta가 새 identity 표시는 보내면서 값은 생략하여, 화면 쪽에서 라이벌의 능력 데이터 등 일부 필드를 지우는 문제가 있었습니다. 이제 교체 identity와 전체 값을 함께 보내고 함께 적용합니다. 라이벌을 숨기거나 누락된 능력을 임의 값으로 대체하지 않습니다.
 
-`tests/recovery-mirror.cjs`는 실제20TPS Worker 전투 사망/회복 두 번, 저장 복원, 새 게임 및 내용이 동일한 객체/배열 교체를 연속 검사합니다. 실제 브라우저 검증에는720×1282 backing store/DPR3 모바일 크기와20TPS, 라이벌이 화면에 보이는 회복/불러오기/동일 ID의 다른 역할 재사용을 추가했습니다. 사용자 원본 저장을 받은 것은 아니므로 같은 오류 경계를 재구성한 검증이며, 실제 Android 기기 검증을 의미하지 않습니다. 저장 schema·진행·게임 규칙은 변경하지 않습니다.
+당시 수동 틱/Worker 회복 회귀는 개발 완료 후 제거했습니다. 현재 모바일 크기의 실제 timer/RAF 죽음·자동 부활 시나리오를 사용합니다. 사용자 원본 저장이나 Android GPU 검증으로 확대하지 않습니다.
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 고정 SDK source: `059d6babf344efbf54867a342fecdd64f70a6a86`; dist: `17ef4c9340c8d8760ed8f648f1358430dca9c71f`. `BloomSimulation.sdkCommit`과 진단 화면도 같은 source commit을 표시하며 실제 포함 번들은 `gamekit-lock.json`으로 검증합니다.
+현재 SDK pin은 `gamekit-lock.json`의 source `aadf23c043a913f4c2d2e6eb2875d7c852f06a0b`, dist `54f1c23b53e57e891ee0e16faaf9553aec2293d4`입니다. 진단 화면과 실제 포함 번들을 같은 pin으로 확인합니다. Public `dist` manifest의 `rendering.js` SHA-256은 `a5f7439c7c3e99dee8d378e8f51872203df92d5b8938218c56a4f201bf603146`입니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 짧은 지연만 보존하며 `maxBacklogTicks`를 넘는 lifecycle clock gap은 backlog를 폐기하고 현재 시각을 새 기준으로 삼습니다. 온라인 복귀는 stale 클라이언트가 월드를 덮지 않고 canonical snapshot/resync를 사용합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
@@ -165,9 +177,9 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ### SDK 원본 검증과 오프라인 실행
 
-싱글 게임 실행에는 네트워크와 npm이 필요하지 않습니다. 공개 P2P 플레이에는 네트워크가 필요합니다. 개발·SDK 갱신 단계에서만 고정 버전 esbuild와 공식 upstream 저장소를 사용합니다. `vendor/upstream`은 정확한 dist/source Git 객체와 manifest/ESM 캐시입니다. `npm test`는 Git 객체 ID, manifest·각 bundle SHA-256과 ESM→IIFE 재생성 bytes를 검증합니다. 변경된 bundle·manifest·source pin을 거부하는 손상 fixture도 검사합니다.
+싱글 게임 실행에는 네트워크와 npm이 필요하지 않습니다. 공개 P2P 플레이에는 네트워크가 필요합니다. 개발·SDK 갱신 단계에서만 고정 버전 esbuild와 공식 upstream 저장소를 사용합니다. `vendor/upstream`은 정확한 dist/source Git 객체와 manifest/ESM 캐시입니다. `npm test`는 Git 객체 ID, manifest·각 bundle SHA-256과 ESM→IIFE 재생성 bytes를 검증합니다. 손상 주입 내부 검사는 개발 중 사용하고 제거했습니다.
 
-SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신하고 `npm run verify:upstream`으로 공식 저장소에서 해당 불변 객체를 받아 검증합니다. CI에서도 이 검증을 수행합니다. `index.html`은 외부 CDN이나 이 개발용 캐시에 실행 의존성을 갖지 않습니다.
+SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신하고 `npm run verify:upstream`으로 공식 저장소에서 해당 불변 객체를 받아 검증합니다. 로컬에서 이 검증을 수행합니다. `index.html`은 외부 CDN이나 이 개발용 캐시에 실행 의존성을 갖지 않습니다.
 
 
 ## 전투 책임과 상태 구성
@@ -191,7 +203,7 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 - 호스트 부하 영향을 줄이기 위해 같은 프로세스의 두 세계를 매 틱 교대로 실행한 1000명 추가 표본(각 200틱)은 p50 `46.583 → 48.085`, p95 `102.161 → 98.161`, p99 `215.443 → 234.343`ms였습니다. 모든 비교의 최종 권위 hash가 같았습니다. 일관된 속도 향상이나 성능 무회귀를 단정하지 않습니다. 1000명/30TPS는 양쪽 모두 틱 예산을 넘습니다.
 - Native 아트 raster/CPU draw 제출 p50 중앙값은 `9.265 → 8.940`ms, p95 `29.778 → 30.247`ms입니다. GPU 완료시간이나 실제 기기 FPS가 아닙니다.
 - V8 16KiB heap sampling(수거된 객체 포함)으로 측정한 155명/20TPS 할당 추정 중앙값은 틱당 `1,744,251 → 1,739,501`bytes입니다. 정확한 할당 카운터가 아니며 profiler 자체 비용을 포함합니다.
-- 원본 표본은 `tests/combat-performance.json`, `tests/combat-paired-timing.json`, `tests/combat-allocation-results.json`에 보관합니다. 이 구성 변경은 공격·피해·유닛 턴의 책임 분리에 한정하며 게임 전체의 모든 전역 시스템을 개편했다는 뜻은 아닙니다. 정확한 공개 후보의 Chromium/WebGL CI는 별도 최종 gate입니다.
+- 원본 표본은 `tests/combat-performance.json`, `tests/combat-paired-timing.json`, `tests/combat-allocation-results.json`에 보관합니다. 이 구성 변경은 공격·피해·유닛 턴의 책임 분리에 한정하며 게임 전체의 모든 전역 시스템을 개편했다는 뜻은 아닙니다. 정확한 공개 후보의 로컬 Chromium/WebGL 시나리오는 별도 최종 gate입니다.
 
 
 ## 락스텝 기본값과 롤백 선택
@@ -228,7 +240,7 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 
 공유 정규 상태 kind는 `budmori-world`, 싱글 디스크 envelope kind는 `budmori-snapshot`입니다. 두 경계는 같은 제품 버전 원본에서 호환군을 파생하며 major/minor가 같을 때만 호환됩니다. 구버전 저장은 변환하지 않고 거부합니다. 새 참가자는 충돌하지 않는 별도 entity/account ID를 받습니다. 형식이 바뀐 뒤 예전 전체 bytes와 같다고 주장하지 않습니다. 새 형식끼리의 복원·다음 입력·멤버십 재생은 완전한 정규 bytes로 비교합니다.
 
-개발 검증은 기존 싱글의 연속 저장/전투/회복 경로와 `tests/shared-world.cjs`, `tests/shared-validation.cjs`, `tests/shared-presentation.cjs`를 사용합니다. 실제 게임/SDK와 메모리 패킷 연결을 쓰는 native 검사는 실제 브라우저·WebGL·공개 relay·WebRTC 검사를 대신하지 않습니다. 개발 SDK bundle을 시험할 때는 `--sdk=/absolute/dist/rollback-netcode.js`를 줄 수 있으며, 시험 realm에서만 교체합니다. 최종 배포는 승인된 exact SDK source/dist pin과 실제 브라우저 CI를 별도로 확인해야 합니다.
+현재 사용자 검증은 실제 Chromium 싱글 시나리오와 2탭 WebRTC 입장·재접속·승계입니다. 이전 메모리 패킷/수동 틱 내부 회귀는 제거했습니다. SDK의 시험 교체는 테스트 응답에만 허용하고 제품에는 exact pin을 포함합니다.
 
 ### 고부하 측정 한계
 
@@ -236,7 +248,7 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 
 큰 상태의 직렬화와 설치는 아직 동기 작업입니다. 게시된 SDK에서 5명×1000 초기 checkpoint/전송은 약5MB로 허용되었으나, 받는 클라이언트의 검증·설치·재확인은 약2.4초였습니다. 4명×1000 뒤 새 다섯 번째 참가자의 입장에서는 기존 참가자의 약4MB 상태 staging(save/apply/save/restore)이 약677ms, commit load가 약570ms였습니다. 이는 실제 인터넷 방의 총 입장 시간이나 휴대폰 측정이 아니며, 기존 참가자에게도 큰 입장 정지가 생길 수 있음을 보여 줍니다. `maxCatchupSteps`는 이 직렬화/설치 시간을 분할하지 않습니다.
 
-공개 세션은 snapshot8MiB, sparse snapshot-history64MiB, bootstrap transfer8MiB의 byte budget을 사용합니다.64MiB는 미리 할당한 입력 버퍼가 아닌 보관 이력의 상한입니다. 기존 싱글 rollback 이력 설정은 유지합니다. `tests/shared-large-bootstrap.cjs`가 큰 실제 상태로 SDK budget과 완전한 bytes 복원을 검사하고, `test:benchmark:shared`가 5명 부하를 별도로 표시합니다.
+공개 세션은 snapshot8MiB, sparse snapshot-history64MiB, bootstrap transfer8MiB의 byte budget을 사용합니다.64MiB는 미리 할당한 입력 버퍼가 아닌 보관 이력의 상한입니다. 기존 싱글 rollback 이력 설정은 유지합니다. 당시 내부 snapshot 회귀는 제거했으며, `test:benchmark:shared`가 5명 부하를 별도로 표시합니다.
 
 ## 대규모 snapshot 준비와 결정론적 공간 질의
 
@@ -245,7 +257,7 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 - `saveJob`/`prepareSnapshotJob`/`prepareMembershipJob`은 8 ms 목표의 협력형 pulse를 제공합니다. 캡처·복사 동안 SDK가 하나의 확정 경계를 동결하며, 중간 틱을 섞지 않습니다. 참가자 추가는 별도 소유 그래프에서 준비하고 commit에서 설치합니다. 취소나 실패는 살아 있는 세계를 변경하지 않습니다. Worker는 사용하지 않습니다.
 - pulse 예산은 협력형 목표입니다. GC·브라우저 스케줄링·네이티브 메모리 할당까지 강제 선점하는 하드 실시간 보장은 아닙니다. 기존 동기 API와 초기 체크포인트처럼 아직 동기 경로가 필요한 작업도 별도로 측정합니다.
 - RALLY FRONTIER는 근방/동맹 질의 grid와 비동맹 최종 겹침 해소용 adaptive SAP를 함께 사용합니다. 이번 숫자 셀 조회·공간/뷰포트 파생 계산 수정은 Budmori의 기존 grid 경로를 최적화한 것이며, Rally adaptive SAP 자체를 측정하거나 대체한 결과가 아닙니다. Map의 snapshot 삽입 순서, center-first 셀 방문 순서, 같은 셀의 객체 순서와 기존 이웃 cutoff를 보존합니다. 군단 상한·AI 빈도·충돌·그래픽 표현은 줄이지 않습니다. SAP로 일괄 교체하지 않습니다.
-- `npm test`는 토큰·취소·악성 정규화·동기/협력형 codec·공간 질의 순서와 동일 입력의 canonical bytes를 검사합니다. `npm run test:browser:multiplayer`는 실제 다섯 탭 WebRTC/WebGL E2E, `npm run test:browser:snapshots`는 렌더/전송을 제외한 실제 Chromium snapshot pulse와 event-loop 양보를 측정합니다. native CPU 결과를 기기 FPS로 해석하지 않습니다.
+`npm test`는 실제 Chromium의 고정 플레이 시나리오를 실행합니다. `npm run test:browser:multiplayer`는 실제 두 탭 WebRTC/WebGL 시나리오, `npm run benchmark:snapshots`는 렌더/전송을 제외한 snapshot pulse·event-loop 양보 측정입니다. 벤치마크와 Native CPU 결과를 기기 FPS로 해석하지 않습니다.
 
 ### 이번 변경의 native 측정
 
@@ -276,7 +288,7 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 
 ### 이번 변경의 검증
 
-기존 캠페인에 종료·재바인딩 회귀만 추가하며 별도 게임 구현이나 테스트별 규칙을 만들지 않습니다. 단일 브라우저 검사는 중복 boot/owner 접근, 최종 close 후 UI와 WebGL 구독 해제를 포함합니다. PR의 exact head에서 전체 Node 캠페인, 단일 WebGL/모바일 크기, 5탭 WebRTC 합류·재연결, 준비 snapshot 브라우저 측정, 기존 mode 비교를 통과해야 머지합니다. 로컬 Native 검사와 실제 브라우저 CI 결과는 구분합니다.
+실행 소유권·종료·재바인딩 내부 회귀는 개발 중 검증하고 제거했습니다. 실제 브라우저 사용자 시나리오와 별도 benchmark를 구분합니다.
 
 Native 전후 보조 측정은 `tests/refactor-performance.json`에 기록합니다. 동일 seed·155 동료·20 TPS에서 30 warmup 뒤 200틱을 번갈아 실행했고, 표본 정규 bytes는 일치했습니다. p50 1.501→1.514ms, p95 2.638→2.557ms로 이번 표본에는 뚜렷한 비용 증가가 없었습니다. 이는 공유 heap/JIT의 Native CPU 표본이며 브라우저·네트워크·GPU·기기 FPS 보장이 아닙니다.
 
@@ -288,7 +300,7 @@ Human leaders are real `MoaActor` instances. Their intrinsic primary attack owns
 
 `PlayerLifecycle`, `UnitLifecycle`, and `ProjectileLifecycle` distinguish defeat, inventory detach, recovery, and membership leave. They deliberately retain the existing different cancellation and disposal policies. Membership delegates leave to the lifecycle owner. Unreachable historical `die`, `defeat`, `recover`, and `updateMoa` implementations and captured continuations are removed; public lifecycle adapters remain; obsolete compatibility command shapes are rejected.
 
-`node tests/health-lifecycle-ownership.cjs` checks independent human attacks, native owned state, health/revival policy, lifecycle cleanup, subscription disposal, confirmed-once replay, and reserved method/state collisions through synchronous and cooperative snapshot preparation. Use the test-only semantic oracle across incompatible artifacts; exact canonical bytes remain required for current-format restore and replay. `tests/unit-update-parity.cjs` likewise uses the actual final death path; its retired `core.die` test hook is not retained as gameplay. The historical direct dead-attacker damage probe uses the still-active area-damage capability.
+Health/primary-attack/lifecycle 내부 회귀는 개발 중 사용하고 제거했습니다. 벤치마크 semantic oracle는 CPU 비교 보조물이며 사용자 E2E나 기기 검증은 아닙니다.
 
 ### 공개 세션 회귀 검증
 
@@ -302,4 +314,4 @@ Human leaders are real `MoaActor` instances. Their intrinsic primary attack owns
 
 Auxiliary weapons store one deadline per weapon (`auxScheduleMs`). `sampledAtMs` marks the completed update observed by sprout presentation before the next combat tick. `weaponCooldownSeconds` derives its display without mutation; no `auxCooldowns`, rival `aux`, or `displaySeconds` mirror is saved or imported. Current cadence cards change future launch intervals through `weaponStats`; they do not rescale an already scheduled deadline. The overwritten paid-haste wrapper is removed rather than replaced with an unused rescale API.
 
-Before membership admission, `WorldPlayers` explicitly queries the freshly initialized bootstrap actor. This supports current initialization and is not an old-save importer. The 0.1.0 save-break policy is unchanged. `tests/auxiliary-authority.cjs` compares real engine continuation, seven weapon families, cadence upgrades, sprout values, and same-build snapshot restore at 10/20/30 TPS. An optional second HTML argument is a test-only semantic oracle.
+Before membership admission, `WorldPlayers` explicitly queries the freshly initialized bootstrap actor. This supports current initialization and is not an old-save importer. The 0.1.0 save-break policy is unchanged. 해당 내부 검사는 개발 중 사용한 뒤 제거했습니다.
