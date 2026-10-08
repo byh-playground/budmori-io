@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve, join} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
+import fontAssets from './font-asset-fixture.cjs';
 
 // Run with an optional candidate index.html path. No harness, SDK replacement,
 // simulated time, or running-world edits: all actions below use the shipped UI.
@@ -19,7 +20,7 @@ const report = {
   status: 'RUNNING', sourceFile, sourceSHA256: sha256(original), budgetMs, scenarioBudgetMs,
   nominalTargetMs: 60000, scheduler: 'production SDK timers and requestAnimationFrame',
   environment: 'local solo Chromium / SwiftShader; desktop and mobile emulation run sequentially',
-  checks: [], screenshots: [], errors: [], unexpectedNetwork: [],
+  checks: [], screenshots: [], errors: [], unexpectedNetwork: [], fontAssetFixtures: [],
   coverageLimits: [
     'Initial camps and encounters are test-server fixtures; gameplay algorithms are unchanged.',
     'Combat means rendered damage on a durable target; death uses a separate lethal initial encounter.',
@@ -147,6 +148,7 @@ async function newPlayer(options, route) {
     report.unexpectedNetwork.push(request.request().url().slice(0, 300));
     return request.abort();
   });
+  report.fontAssetFixtures.push(await fontAssets.install(activeContext));
   await activeContext.routeWebSocket('**/*', socket => {
     report.unexpectedNetwork.push(socket.url().slice(0, 300));
     socket.close();

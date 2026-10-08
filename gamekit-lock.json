@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "aadf23c043a913f4c2d2e6eb2875d7c852f06a0b",
-  "distCommit": "54f1c23b53e57e891ee0e16faaf9553aec2293d4",
+  "sourceCommit": "9269ce16fdcf669a565838948d97ae5c1b30a6d8",
+  "distCommit": "c68d62ab49f92b9097e0910a9d21e8dd8fe135bd",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -33,8 +33,8 @@
     },
     {
       "name": "rendering",
-      "bundleSHA256": "a5f7439c7c3e99dee8d378e8f51872203df92d5b8938218c56a4f201bf603146",
-      "inlineSHA256": "6fd608f0cc7f9449f9926c0962713e20a4ae148921b6536340545ed5916c3c3a"
+      "bundleSHA256": "bdd2976df6105acf5a908e9d449bcb023b5c66a4fa40b4dab4f2dea97c4f774a",
+      "inlineSHA256": "8fa0d2101d58388efd8d9dbdf0631d0f8ca2492779e5d7fa074856aee73c5cc5"
     },
     {
       "name": "input",
@@ -47,5 +47,13 @@
       "inlineSHA256": "f674c3429aae676da1c7e123c941ead3ee5b7c2f73a0cd5d07ad96ad05e5af8e"
     }
   ],
-  "manifestSHA256": "0b8ba7765cefb8db109e9dec38e9b8018d75688471033b389e52438b70df9021"
+  "manifestSHA256": "94d35ad4c968108be73042079830fd28b69f0744136f462d19f3e733d95e7ee4",
+  "assets": [
+    {
+      "file": "assets/fonts/noto-sans-kr-700-v1.json",
+      "version": "noto-sans-kr-700-v1",
+      "bytes": 514988,
+      "sha256": "d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310"
+    }
+  ]
 }
