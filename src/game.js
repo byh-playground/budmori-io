@@ -5155,11 +5155,12 @@ class MeshArtCompiler extends CanvasRenderer{
 }
 const meshArtCaches=new WeakMap(),meshArtTotals={meshes:0,bytes:0,hits:0,misses:0,evictions:0};
 const morphedUnitArt=new Set(['flowerbee','sporemoth','siege','shelltitan']);
+const staticMeshPart=Object.freeze({});
 function dropMeshArt(ctx,cache,key){
  const entry=cache.entries.get(key);if(!entry)return;
- for(const part of entry.parts)ctx.deleteMesh(part.mesh);
- cache.entries.delete(key);cache.meshes-=entry.parts.length;cache.bytes-=entry.bytes;
- meshArtTotals.meshes-=entry.parts.length;meshArtTotals.bytes-=entry.bytes;
+ ctx.deleteMesh(entry.mesh);
+ cache.entries.delete(key);cache.meshes--;cache.bytes-=entry.bytes;
+ meshArtTotals.meshes--;meshArtTotals.bytes-=entry.bytes;
 }
 function disposeMeshes(ctx){const cache=meshArtCaches.get(ctx);if(!cache)return;for(const key of cache.entries.keys())dropMeshArt(ctx,cache,key);meshArtCaches.delete(ctx)}
 function meshArtEntry(ctx,type,team,r,opts){
@@ -5175,20 +5176,24 @@ function meshArtEntry(ctx,type,team,r,opts){
   const a=first.finish(),b=second?second.finish():a;
   if(a.length!==b.length)throw new Error('Rally mesh part topology differs: '+type);
   const data=a.map((part,i)=>{if(part.name!==b[i].name)throw new Error('Rally mesh part order differs: '+type);return{name:part.name,geometry:part.builder.build({morphs:needsMorph?[b[i].builder]:[]})}});
-  const bytes=data.reduce((n,part)=>n+part.geometry.vertices.byteLength,0),limits=RALLY_ART_CONFIG.limits;
-  if(data.length>limits.meshCacheMeshes||bytes>limits.meshCacheBytes)throw new RangeError('Rally unit mesh exceeds retained cache budget');
-  while(cache.entries.size&&(cache.meshes+data.length>limits.meshCacheMeshes||cache.bytes+bytes>limits.meshCacheBytes)){dropMeshArt(ctx,cache,cache.entries.keys().next().value);meshArtTotals.evictions++}
-  entry={parts:[],bytes};
-  try{for(const part of data)entry.parts.push({name:part.name,mesh:ctx.createMesh(part.geometry)})}catch(error){for(const part of entry.parts)ctx.deleteMesh(part.mesh);throw error}
-  cache.entries.set(key,entry);cache.meshes+=entry.parts.length;cache.bytes+=bytes;meshArtTotals.meshes+=entry.parts.length;meshArtTotals.bytes+=bytes;
+  // Preserve the exact authored part / triangle sequence in ONE GPU mesh.
+  // Part transforms and morph weights are draw state, not separate submissions.
+  const geometry=globalThis.BloomGamekitRendering.MeshBuilder.combine(data.map(part=>part.geometry));
+  const bytes=geometry.vertices.byteLength,limits=RALLY_ART_CONFIG.limits;
+  if(limits.meshCacheMeshes<1||bytes>limits.meshCacheBytes)throw new RangeError('Rally unit mesh exceeds retained cache budget');
+  while(cache.entries.size&&(cache.meshes+1>limits.meshCacheMeshes||cache.bytes+bytes>limits.meshCacheBytes)){dropMeshArt(ctx,cache,cache.entries.keys().next().value);meshArtTotals.evictions++}
+  entry={mesh:ctx.createMesh(geometry),parts:data.map(part=>part.name),bytes};
+  cache.entries.set(key,entry);cache.meshes++;cache.bytes+=bytes;meshArtTotals.meshes++;meshArtTotals.bytes+=bytes;
  }
  return entry;
 }
 function retainedArt(ctx,type,team,x,y,r,timeMs,opts){
- const entry=opts.meshArtEntry||meshArtEntry(ctx,type,team,r,opts),motion=opts.meshArtMotion||artMotion(type,0,0,r,timeMs,opts);
+ const entry=opts.meshArtEntry||meshArtEntry(ctx,type,team,r,opts);
+ const sample=opts.meshArtSample||meshArtSample(entry,artMotion(type,0,0,r,timeMs,opts));
  if(x||y){ctx.save();ctx.translate(x,y)}
- try{for(const part of entry.parts){const state=motion.parts[part.name];if(state?.visible!==false)ctx.drawMesh(part.mesh,state)}}finally{if(x||y)ctx.restore()}
+ try{ctx.drawMesh(entry.mesh,sample)}finally{if(x||y)ctx.restore()}
 }
+function meshArtSample(entry,motion){return{parts:entry.parts.map(name=>motion.parts[name]||staticMeshPart)}}
 // World outlines repeat retained mesh instances; standalone DOM thumbnails may use a mask.
 function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
  if(ctx.isBloomWebGL)return ctx.withSilhouette(opts.gradeOutline,Math.max(1,r*.085),()=>compose(ctx,type,team,x,y,r,timeMs,{...opts,gradeOutline:null}));
@@ -5267,7 +5272,7 @@ function draw(ctx,type,team,x,y,radius,facing,timeMs=0,opts={}){
   if(Number.isFinite(opts.hullFacing))localOpts.hullFacing=opts.hullFacing-rotation;
   if(Number.isFinite(opts.turretFacing))localOpts.turretFacing=opts.turretFacing-rotation;
   // Outline passes reuse this same sample and retained handle, not ten cache lookups/recipes.
-  if(ctx.isBloomWebGL){localOpts.meshArtEntry=meshArtEntry(ctx,type,team,radius,localOpts);localOpts.meshArtMotion=artMotion(type,0,0,radius,timeMs,localOpts)}
+  if(ctx.isBloomWebGL){localOpts.meshArtEntry=meshArtEntry(ctx,type,team,radius,localOpts);localOpts.meshArtSample=meshArtSample(localOpts.meshArtEntry,artMotion(type,0,0,radius,timeMs,localOpts))}
   compose(ctx,type,team,0,0,radius,timeMs,localOpts);ctx.restore();
   if(ctx.isBloomWebGL&&alpha<.999999){ctx.endGroup();ctx.globalAlpha=outerAlpha}
 }
