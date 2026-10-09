@@ -80,7 +80,7 @@ function fixtureResponse(encounter) {
   assert(app.game.includes(marker), 'Candidate game source must provide the fixture insertion point');
   return runtimeSources.response(app, app.game.replace(marker, () => fixture));
 }
-const responses = {'/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
+const responses = {'/normal': runtimeSources.response(app), '/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
 report.gameSourceSHA256 = sha256(app.game);
 report.testResponseSHA256 = Object.fromEntries(Object.entries(responses).map(([route, body]) => [route, sha256(body.html + body.game)]));
 const server = createServer(runtimeSources.serve(responses));
@@ -178,6 +178,13 @@ async function scenario() {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
   });
+  await check('Unmodified normal world entry and pre-tick input preview', async () => {
+    await newPlayer({viewport: {width: 920, height: 700}, deviceScaleFactor: 1}, '/normal');
+    report.normalWorldInputPreview=await exerciseInputPreviewFlow(page);
+    assert.equal(await read(()=>BloomDiagnostics.fatal),false);
+    await screenshot('browser-normal-preview.png');
+  });
+  await activeContext.close(); activeContext=null; page=null;
   await check('Desktop solo entry and real automatic combat', async () => {
     await newPlayer({viewport: {width: 920, height: 700}, deviceScaleFactor: 1}, '/solo');
     await wait(() => {

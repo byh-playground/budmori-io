@@ -12754,7 +12754,7 @@ function bloomMainRuntime() {
   const started=performance.now(),snapshot=bloomAdapter.save();previewState.captureMs+=performance.now()-started;previewState.captureBytes+=snapshot.byteLength;
   const metadata=bloomSession.localInputState;
   previewState.scope.configure({tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});
-  previewState.capability.reconcile({snapshot,input:metadata.executedInput,revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata?.executedCommandSequence??undefined});
+  previewState.capability.reconcile({snapshot,input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata.executedCommandSequence});
   previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;return true;
  }
  function safeReconcilePreview(force=false){if(previewState.phase==='failed')return false;try{return reconcilePreview(force)}catch(error){previewState.capability?.setEnabled(false);previewState.phase='failed';previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview'});return false}}
