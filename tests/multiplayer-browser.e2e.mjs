@@ -9,7 +9,7 @@ import fontAssets from './font-asset-fixture.cjs';
 import moduleReferences from './module-reference-fixture.cjs';
 import runtimeSources from './runtime-source.cjs';
 
-// Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html] [--sdk=/absolute/dist/rollback-netcode.js]
+// Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html]
 // The candidate remains the shipped one-file game. Only this server response gets
 // a local relay capability and a declared initial-world fixture. The SDK signs
 // and verifies real Nostr events, and native Chromium RTCPeerConnections carry all

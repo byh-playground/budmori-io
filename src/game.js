@@ -150,65 +150,24 @@ function bloomBoundarySteps(milliseconds){return Math.max(1,Math.ceil(millisecon
 
 (function(global){
 'use strict';
-const {WebGLDevice,VectorRenderer,GlyphAtlas,FontAssetLoader}=global.BloomGamekitRendering;
-const TAU=Math.PI*2,IDENTITY=[1,0,0,1,0,0];
-function rgba(value){
- if(Array.isArray(value))return value;
- let text=String(value||'#000').trim().toLowerCase(),parts;
- if(text==='transparent')return[0,0,0,0];
- if(text[0]==='#'){let h=text.slice(1);if(h.length===3||h.length===4)h=[...h].map(c=>c+c).join('');if(h.length===6||h.length===8)return[parseInt(h.slice(0,2),16)/255,parseInt(h.slice(2,4),16)/255,parseInt(h.slice(4,6),16)/255,h.length===8?parseInt(h.slice(6,8),16)/255:1]}
- const m=text.match(/^rgba?\(([^)]+)\)$/);if(m){parts=m[1].split(/[ ,/]+/).filter(Boolean);if(parts.length>=3)return[...parts.slice(0,3).map(x=>x.endsWith('%')?parseFloat(x)/100:parseFloat(x)/255),parts[3]===undefined?1:parts[3].endsWith('%')?parseFloat(parts[3])/100:parseFloat(parts[3])].map(x=>Math.max(0,Math.min(1,x)))}
- const known={white:[1,1,1,1],black:[0,0,0,1],red:[1,0,0,1],green:[0,128/255,0,1],blue:[0,0,1,1]};if(known[text])return known[text];throw new Error('Unsupported WebGL world paint: '+text);
-}
-class Renderer{
+const {WebGLDevice,VectorContext}=global.BloomGamekitRendering;
+// Game policy: opaque world surface, terrain projection shader and shared font ownership.
+// Paths, text, paint, primitive geometry and GPU resource lifecycle belong to GameKit.
+class Renderer extends VectorContext{
  constructor(canvas,options={}){
-  if(!canvas)throw new Error('BLOOM requires a world canvas');this.canvas=canvas;this.device=new WebGLDevice(canvas,{alpha:false,depth:false,stencil:false,powerPreference:'high-performance',...options.contextAttributes});this.gl=this.device.gl;this.isBloomWebGL=true;this.isWebGL2=false;this.lost=false;this.failure=null;this.active=false;this.frame=0;this.options=options;this.maxTextureSize=this.device.maxTextureSize;this.staticMeshes=new Set();this.deferredStaticDeletes=[];this.stack=[];this._alpha=1;this._fillStyle='#000';this._strokeStyle='#000';this._lineWidth=1;this.lineCap='butt';this.lineJoin='round';this.miterLimit=10;this.lineDashOffset=0;this.dash=[];this.font='10px system-ui';this.textAlign='start';this.textBaseline='alphabetic';this.direction='ltr';this.filter='none';this.forceColor=null;this.frameStats={};this.total={frames:0,drawCalls:0,vertices:0,textureUploads:0};this.pathCount=0;this.staticVertices=0;
-  this.glyphAtlas=null;this.vector=null;this.fontAssetLoader=null;
+  if(!canvas)throw new Error('BLOOM requires a world canvas');
+  const device=new WebGLDevice(canvas,{alpha:false,depth:false,stencil:false,powerPreference:'high-performance',...options.contextAttributes});
+  super(device,{initialVertices:4096,maxVertices:1048576});
+  this.gl=device.gl;this.isBloomWebGL=true;this.isWebGL2=false;this.maxTextureSize=device.maxTextureSize;this.fontAssetLoader=null;
   const vertex='precision highp float;attribute vec2 a_position;attribute vec4 a_color;uniform mat3 u_projection;uniform vec2 u_resolution;varying vec4 v_color;void main(){vec3 p=u_projection*vec3(a_position,1.0);gl_Position=vec4(p.x/u_resolution.x*2.0-1.0,-(p.y/u_resolution.y*2.0-1.0),0.0,1.0);v_color=a_color;}';
   const fragment='precision mediump float;varying vec4 v_color;void main(){gl_FragColor=vec4(v_color.rgb*v_color.a,v_color.a);}';
-  this.staticPipeline=this.device.createPipeline({vertex,fragment,stride:24,attributes:[{name:'a_position',size:2,offset:0},{name:'a_color',size:4,offset:8}],uniforms:{u_projection:'matrix3fv',u_resolution:'2f'}});this.staticUniforms={u_projection:new Float32Array(9),u_resolution:[1,1]};this.canvas.dataset.rendererBackend='WebGL';
-  this.onLost=event=>{event.preventDefault();this.lost=true;this.active=false};this.onRestored=()=>{this.lost=this.device.state!=='ready';this.failure=this.device.failure;for(const mesh of this.staticMeshes)this.device.uploadVertices(mesh.buffer,mesh.vertices)};canvas.addEventListener('webglcontextlost',this.onLost);canvas.addEventListener('webglcontextrestored',this.onRestored);
+  this.staticPipeline=device.createPipeline({vertex,fragment,stride:24,attributes:[{name:'a_position',size:2,offset:0},{name:'a_color',size:4,offset:8}],uniforms:{u_projection:'matrix3fv',u_resolution:'2f'}});
+  this.canvas.dataset.rendererBackend='WebGL';
  }
- setGlyphAtlas(atlas,loader){if(this.vector||!atlas||!loader)throw new Error('A loaded shared font atlas and its owner are required');this.glyphAtlas=atlas;this.fontAssetLoader=loader;this.vector=new VectorRenderer(this.device,{glyphAtlas:atlas,initialVertices:4096,maxVertices:1048576});return atlas}
- get globalAlpha(){return this._alpha}set globalAlpha(value){if(Number.isFinite(value))this._alpha=Math.max(0,Math.min(1,value))}
- get fillStyle(){return this._fillStyle}set fillStyle(value){this._fillStyle=value}
- get strokeStyle(){return this._strokeStyle}set strokeStyle(value){this._strokeStyle=value}
- get lineWidth(){return this._lineWidth}set lineWidth(value){if(Number.isFinite(value)&&value>=0)this._lineWidth=value}
- _frame(){if(!this.active||!this.vector||this.device.state!=='ready')throw new Error('BLOOM WebGL frame is unavailable')}
- _paint(style){const c=rgba(this.forceColor??style).slice();c[3]*=this._alpha;if(this.filter==='brightness(0) invert(1)')c[0]=c[1]=c[2]=1;return c}
- beginFrame(){if(!this.vector||this.lost||this.device.state!=='ready')return false;const ready=this.device.beginFrame({width:this.canvas.width,height:this.canvas.height,clearColor:[0,0,0,1]});this.active=ready;if(!ready)return false;this.frame++;this.pathCount=0;this.staticVertices=0;this.frameStats={drawCalls:0,vertices:0,staticVertices:0,triangles:0,images:0,paths:0,textureUploads:0,textureBytes:0,vertexBytes:0,clipDraws:0,flushMs:0};this.vector.beginPath();return true}
- endFrame(){if(!this.active||!this.vector)return false;this.vector.flush();const stats=this.device.endFrame();for(const mesh of this.deferredStaticDeletes.splice(0))this.deleteStaticMesh(mesh);this.active=false;this.frameStats={drawCalls:stats.drawCalls,vertices:stats.vertices,staticVertices:this.staticVertices,triangles:Math.floor(stats.vertices/3),images:0,paths:this.pathCount,textureUploads:stats.textureUploads,textureBytes:stats.textureBytes,vertexBytes:stats.bufferBytes,clipDraws:0,flushMs:0};this.total.frames++;this.total.drawCalls+=stats.drawCalls;this.total.vertices+=stats.vertices;this.total.textureUploads+=stats.textureUploads;return true}
- save(){this._frame();this.stack.push({fillStyle:this.fillStyle,strokeStyle:this.strokeStyle,globalAlpha:this.globalAlpha,lineWidth:this.lineWidth,lineCap:this.lineCap,lineJoin:this.lineJoin,miterLimit:this.miterLimit,lineDashOffset:this.lineDashOffset,dash:this.dash.slice(),font:this.font,textAlign:this.textAlign,textBaseline:this.textBaseline,direction:this.direction,filter:this.filter,forceColor:this.forceColor});this.vector.save()}
- restore(){const s=this.stack.pop();if(!s)return;this.vector.restore();Object.assign(this,{fillStyle:s.fillStyle,strokeStyle:s.strokeStyle,globalAlpha:s.globalAlpha,lineWidth:s.lineWidth,lineCap:s.lineCap,lineJoin:s.lineJoin,miterLimit:s.miterLimit,lineDashOffset:s.lineDashOffset,font:s.font,textAlign:s.textAlign,textBaseline:s.textBaseline,direction:s.direction,filter:s.filter,forceColor:s.forceColor})}
- setTransform(a,b,c,d,e,f){this._frame();this.vector.setTransform(a,b,c,d,e,f)}resetTransform(){this.vector.setTransform(...IDENTITY)}getTransform(){const m=this.vector.matrix;return{a:m[0],b:m[1],c:m[2],d:m[3],e:m[4],f:m[5]}}
- transform(a,b,c,d,e,f){this.vector.transform(a,b,c,d,e,f)}translate(x,y){this.vector.translate(x,y)}scale(x,y){this.vector.scale(x,y)}rotate(a){this.vector.rotate(a)}
- beginPath(){this._frame();this.pathCount++;this.vector.beginPath()}moveTo(x,y){this.vector.moveTo(x,y)}lineTo(x,y){this.vector.lineTo(x,y)}closePath(){this.vector.closePath()}quadraticCurveTo(cx,cy,x,y){this.vector.quadraticCurveTo(cx,cy,x,y)}bezierCurveTo(x1,y1,x2,y2,x,y){this.vector.bezierCurveTo(x1,y1,x2,y2,x,y)}
- _arcPoints(x,y,rx,ry,rotation,start,end,ccw){if(rx<0||ry<0)throw new RangeError('Negative ellipse radius');let sweep=end-start;if(!ccw){if(sweep>=TAU)sweep=TAU;else while(sweep<0)sweep+=TAU}else if(sweep<=-TAU)sweep=-TAU;else while(sweep>0)sweep-=TAU;const m=this.vector.matrix,r=Math.max(rx,ry)*Math.max(Math.hypot(m[0],m[1]),Math.hypot(m[2],m[3])),step=r>.2?2*Math.acos(Math.max(-1,Math.min(1,1-.2/r))):Math.PI/2,n=Math.max(1,Math.min(256,Math.ceil(Math.abs(sweep)/Math.max(.01,step)))),c=Math.cos(rotation),s=Math.sin(rotation),out=[];for(let i=0;i<=n;i++){const a=start+sweep*i/n;out.push([x+Math.cos(a)*rx*c-Math.sin(a)*ry*s,y+Math.cos(a)*rx*s+Math.sin(a)*ry*c])}return out}
- arc(x,y,r,start,end,ccw=false){this.ellipse(x,y,r,r,0,start,end,ccw)}ellipse(x,y,rx,ry,rotation=0,start=0,end=TAU,ccw=false){const points=this._arcPoints(x,y,rx,ry,rotation,start,end,ccw);if(!this.vector.cursor)this.vector.moveTo(...points[0]);else this.vector.lineTo(...points[0]);for(let i=1;i<points.length;i++)this.vector.lineTo(...points[i])}
- rect(x,y,w,h){this.moveTo(x,y);this.lineTo(x+w,y);this.lineTo(x+w,y+h);this.lineTo(x,y+h);this.closePath()}
- roundRect(x,y,w,h,r=0){const q=Math.min(Math.abs(w)/2,Math.abs(h)/2,Math.max(0,Number(Array.isArray(r)?r[0]:r)||0));this.moveTo(x+q,y);this.lineTo(x+w-q,y);this.arc(x+w-q,y+q,q,-Math.PI/2,0);this.lineTo(x+w,y+h-q);this.arc(x+w-q,y+h-q,q,0,Math.PI/2);this.lineTo(x+q,y+h);this.arc(x+q,y+h-q,q,Math.PI/2,Math.PI);this.lineTo(x,y+q);this.arc(x+q,y+q,q,Math.PI,Math.PI*1.5);this.closePath()}
- fill(rule='nonzero'){this._frame();this.vector.fill(this._paint(this.fillStyle),rule)}
- _temporaryPath(callback){const v=this.vector,path=v.path,cursor=v.cursor,subpath=v.subpath;try{callback()}finally{v.path=path;v.cursor=cursor;v.subpath=subpath}}
- fillRect(x,y,w,h){this._frame();this._temporaryPath(()=>this.vector.polygon([[x,y],[x+w,y],[x+w,y+h],[x,y+h]],this._paint(this.fillStyle)))}
- stroke(){this._frame();if(!(this.lineWidth>0))return;const paint=this._paint(this.strokeStyle),width=this.lineWidth*Math.max(Math.hypot(this.vector.matrix[0],this.vector.matrix[1]),Math.hypot(this.vector.matrix[2],this.vector.matrix[3]));if(!this.dash.length){this.vector.stroke(paint,width);return}const original=this.vector.path,matrix=this.vector.matrix.slice(),period=this.dash.reduce((a,b)=>a+b,0);if(!period)return;this.vector.beginPath();this.vector.setTransform(...IDENTITY);let phase=((this.lineDashOffset%period)+period)%period,index=0;while(phase>=this.dash[index]&&this.dash[index]>0){phase-=this.dash[index];index=(index+1)%this.dash.length}let remaining=this.dash[index]-phase;for(const path of original){for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],length=Math.hypot(b.x-a.x,b.y-a.y)||0;let at=0;while(at<length-1e-7){if(remaining<=1e-7){index=(index+1)%this.dash.length;remaining=this.dash[index];continue}const stop=Math.min(length,at+remaining);if(index%2===0){this.vector.moveTo(a.x+(b.x-a.x)*at/length,a.y+(b.y-a.y)*at/length);this.vector.lineTo(a.x+(b.x-a.x)*stop/length,a.y+(b.y-a.y)*stop/length)}remaining-=stop-at;at=stop}}}this.vector.stroke(paint,width);this.vector.matrix=matrix;this.vector.path=original;this.vector.cursor=original.at(-1)?.at(-1)||null;this.vector.subpath=original[0]?.[0]||null}
- strokeRect(x,y,w,h){this._temporaryPath(()=>{this.vector.beginPath();this.rect(x,y,w,h);this.stroke()})}
- setLineDash(dash){if(Array.isArray(dash)&&dash.every(x=>Number.isFinite(x)&&x>=0))this.dash=dash.length%2?dash.concat(dash):dash.slice()}getLineDash(){return this.dash.slice()}
- fillTriangleFan(points,value){if(!this.active||points.length<3)return;const vector=this.vector,m=vector.matrix,color=this._paint(value),anchor={x:m[0]*points[0][0]+m[2]*points[0][1]+m[4],y:m[1]*points[0][0]+m[3]*points[0][1]+m[5]};vector._useTexture(vector.white);let previous={x:m[0]*points[1][0]+m[2]*points[1][1]+m[4],y:m[1]*points[1][0]+m[3]*points[1][1]+m[5]};for(let i=2;i<points.length;i++){const current={x:m[0]*points[i][0]+m[2]*points[i][1]+m[4],y:m[1]*points[i][0]+m[3]*points[i][1]+m[5]};vector._emitTriangle(anchor,previous,current,color);previous=current}}
- beginGroup(opacity,bounds){this._frame();this.vector.beginGroup(opacity,bounds)}endGroup(){this.vector.endGroup()}
- groupBounds(x,y,radius){const m=this.vector.matrix,cx=m[0]*x+m[2]*y+m[4],cy=m[1]*x+m[3]*y+m[5],r=radius*Math.max(Math.hypot(m[0],m[1]),Math.hypot(m[2],m[3]));return{x:cx-r,y:cy-r,width:r*2,height:r*2}}
- withSilhouette(value,width,paint,radius=128){const alpha=this.globalAlpha,bounds=this.groupBounds(0,0,radius+width);this.beginGroup(alpha,bounds);this.globalAlpha=1;this.forceColor=rgba(value);for(let i=0;i<8;i++){this.save();const angle=i*TAU/8;this.translate(Math.cos(angle)*width,Math.sin(angle)*width);paint();this.restore()}this.forceColor=null;paint();this.endGroup();this.globalAlpha=alpha}
- _fontSize(){const match=String(this.font).match(/([0-9]+(?:\.[0-9]+)?)px/);return match?Number(match[1]):10}
- _align(){return this.textAlign==='center'?'center':this.textAlign==='right'||this.textAlign==='end'?'right':'left'}
- measureText(text){return this.glyphAtlas.measureText(String(text),{fontSize:this._fontSize(),align:this._align()})}
- fillText(text,x,y,maxWidth){this._frame();const color=this._paint(this.fillStyle),fontSize=this._fontSize(),align=this._align(),baseline=this.textBaseline;const measured=this.glyphAtlas.measureText(String(text),{fontSize}).width,scale=maxWidth&&Number.isFinite(maxWidth)?Math.min(1,maxWidth/(measured||1)):1;if(scale!==1){const anchor=this.textAlign==='center'?x:this.textAlign==='right'?x:x;this.vector.save();this.vector.translate(anchor,y);this.vector.scale(scale,1);this.vector.translate(-anchor,-y)}this.vector.fillText(String(text),x,y,{fontSize,align,baseline,color});if(scale!==1)this.vector.restore()}
- strokeText(text,x,y,maxWidth){this._frame();const fontSize=this._fontSize(),align=this._align(),baseline=this.textBaseline;this.vector.strokeText(String(text),x,y,{fontSize,align,baseline,color:this._paint(this.strokeStyle),lineWidth:this.lineWidth});this.vector.flush()}
- createRadialGradient(){throw new Error('Game world radial gradients are not supported by this renderer')}
- createStaticMesh(vertices){if(!(vertices instanceof Float32Array)||vertices.length%6)throw new TypeError('Static mesh requires Float32Array with six floats per vertex');const buffer=this.device.createVertexBuffer({capacityBytes:vertices.byteLength});this.device.uploadVertices(buffer,vertices);const mesh={renderer:this,buffer,vertices,count:vertices.length/6};this.staticMeshes.add(mesh);return mesh}
- deleteStaticMesh(mesh){if(!mesh||mesh.renderer!==this||!this.staticMeshes.has(mesh))return false;this.device.deleteVertexBuffer(mesh.buffer);this.staticMeshes.delete(mesh);return true}
- deferDeleteStaticMesh(mesh){if(!mesh||mesh.renderer!==this||!this.staticMeshes.has(mesh)||this.deferredStaticDeletes.includes(mesh))return false;this.deferredStaticDeletes.push(mesh);return true}
- drawStaticMesh(mesh,projection){this._frame();if(!mesh||mesh.renderer!==this||!this.staticMeshes.has(mesh)||!projection||projection.length!==9)throw new TypeError('Invalid static mesh draw');this.vector.flush();this.staticUniforms.u_projection=projection;this.staticUniforms.u_resolution[0]=this.canvas.width;this.staticUniforms.u_resolution[1]=this.canvas.height;this.device.draw({pipeline:this.staticPipeline,buffer:mesh.buffer,count:mesh.count,uniforms:this.staticUniforms,blend:'source-over'});this.staticVertices+=mesh.count}
- stats(){return{backend:'webgl1',mandatory:true,canvasFallback:false,available:this.device.state==='ready',contextLost:this.device.state==='lost',failure:this.device.failure,frame:this.frame,textureCount:this.device.stats.textureCount,stagingBytes:this.vector.vertices.byteLength,...this.frameStats,totals:{...this.total},gpuRenderTargetBytes:this.device.stats.gpuRenderTargetBytes}}
- destroy(){if(this.device.state==='disposed')return;this.canvas.removeEventListener('webglcontextlost',this.onLost);this.canvas.removeEventListener('webglcontextrestored',this.onRestored);for(const mesh of this.staticMeshes)this.device.deleteVertexBuffer(mesh.buffer);this.staticMeshes.clear();this.deferredStaticDeletes.length=0;this.vector?.dispose();if(this.fontAssetLoader)this.fontAssetLoader.dispose();else this.glyphAtlas?.dispose();this.device.deletePipeline(this.staticPipeline);this.device.dispose();this.active=false;this.failure='Renderer destroyed'}
+ setGlyphAtlas(atlas,loader){if(this.fontAssetLoader||!atlas||!loader)throw new Error('A loaded shared font atlas and its owner are required');this.glyphAtlas=atlas;this.vector.glyphAtlas=atlas;this.fontAssetLoader=loader;return atlas}
+ beginFrame(){return super.beginFrame({width:this.canvas.width,height:this.canvas.height,clearColor:[0,0,0,1]})}
+ drawStaticMesh(mesh,projection){return super.drawStaticMesh(mesh,{pipeline:this.staticPipeline,projection,uniforms:{u_resolution:[this.canvas.width,this.canvas.height]}})}
+ destroy(){if(this.state==='disposed')return;super.dispose();this.fontAssetLoader?.dispose();this.device.deletePipeline(this.staticPipeline);this.device.dispose()}
 }
 function create(canvas,options={}){if(!canvas)throw new Error('BLOOM requires a world canvas');try{return new Renderer(canvas,options)}catch(error){global.BloomDiagnostics?.report(error,{kind:'webgl.initialize',fatal:true});throw error}}
 global.BloomWebGL={create,Renderer,version:65};
@@ -5132,36 +5091,12 @@ function directions(n,rot=0){
   const pts=Array.from({length:n},(_,i)=>[Math.cos(rot+i/n*Math.PI*2),Math.sin(rot+i/n*Math.PI*2)]);
   polygonTemplates.set(key,pts);return pts;
 }
-class CanvasRenderer{
-  constructor(ctx,opts={}){this.ctx=ctx;this.options=opts;this._unitFacingTransform=null;this._unitRenderAlphaMul=1;this.snapshot={tick:0,tps:20}}
+class CanvasRenderer extends globalThis.BloomGamekitRendering.PrimitivePainter{
+  constructor(ctx,opts={}){super(ctx);this.ctx=ctx;this.options=opts;this._unitFacingTransform=null;this._unitRenderAlphaMul=1;this.alphaMultiplier=()=>this._unitRenderAlphaMul;this.snapshot={tick:0,tps:20}}
   point(x,y){
     const tr=this._unitFacingTransform;if(!tr)return[x,y];
     const dx=x-tr.pivotX,dy=y-tr.pivotY;
     return[tr.pivotX+dx*tr.cos-dy*tr.sin,tr.pivotY+dx*tr.sin+dy*tr.cos];
-  }
-  poly(p,c){
-    if(p.length<3)return;
-    const ctx=this.ctx,alpha=ctx.globalAlpha;
-    if(ctx.isBloomWebGL){ctx.globalAlpha=alpha*this._unitRenderAlphaMul;ctx.fillTriangleFan(p.map(q=>this.point(q[0],q[1])),c);ctx.globalAlpha=alpha;return}
-    ctx.fillStyle=css(c);ctx.globalAlpha=alpha*this._unitRenderAlphaMul;
-    ctx.beginPath();
-    // One Canvas path for the exact source fan triangles avoids artificial
-    // antialias hairlines between the triangles of a single filled primitive.
-    const a=this.point(p[0][0],p[0][1]);
-    for(let i=1;i<p.length-1;i++){
-      const b=this.point(p[i][0],p[i][1]),d=this.point(p[i+1][0],p[i+1][1]);
-      ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineTo(d[0],d[1]);ctx.closePath();
-    }
-    ctx.fill();ctx.globalAlpha=alpha;
-  }
-  tri(x1,y1,x2,y2,x3,y3,c){this.poly([[x1,y1],[x2,y2],[x3,y3]],c)}
-  quad(x1,y1,x2,y2,x3,y3,x4,y4,c){this.poly([[x1,y1],[x2,y2],[x3,y3],[x4,y4]],c)}
-  regularPolygon(x,y,r,c,n=10,rot=0){if(n<3||r<=0)return;this.poly(directions(n,rot).map(p=>[x+p[0]*r,y+p[1]*r]),c)}
-  circle(x,y,r,c,n=10){this.regularPolygon(x,y,r,c,n,0)}
-  hex(x,y,r,c){this.regularPolygon(x,y,r,c,6,Math.PI/6)}
-  line(x1,y1,x2,y2,w,c){
-    const dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy)||1,nx=-dy/l*w/2,ny=dx/l*w/2;
-    this.quad(x1+nx,y1+ny,x2+nx,y2+ny,x2-nx,y2-ny,x1-nx,y1-ny,c);
   }
   outlineCircle(x,y,r,w,c,segments=56,dashEvery=0){
     const pts=directions(segments);
@@ -5459,14 +5394,13 @@ const WorldUI=(()=>{
   return{x:p.x,y:p.y,z:p.z,offsetX:spec.offsetX||0,
    offsetY:(spec.offsetY||0)-(at==='head'?extent+(spec.gap||0):0),pixelX:spec.pixelX||0,pixelY:spec.pixelY||0};
  }
- function point(source,spec){const a=anchor(source,spec),z=Math.max(.0001,view.zoom),p=WorldProjection.project(a.x,a.y,a.z);return{x:p.x+a.offsetX+a.pixelX/z,y:(p.y+a.offsetY+a.pixelY/z)/WorldProjection.K}}
  function screen(source,spec){const a=anchor(source,spec),p=BloomGamekitHud.resolveAnchorInto(bloomSyncCamera(),{space:'world',x:a.x,y:a.y,z:a.z,offsetX:a.offsetX*view.zoom+a.pixelX,offsetY:a.offsetY*view.zoom+a.pixelY},{});p.depth=WorldProjection.depth(a.y,a.z);return p}
  function begin(c,source,spec){const a=anchor(source,spec),z=Math.max(.0001,view.zoom);projectionBillboard(c,a.x,a.y,a.z);c.translate(a.offsetX+a.pixelX/z,a.offsetY+a.pixelY/z);return a}
  function define(name,definition){if(!definition||typeof definition.paint!=='function')throw TypeError('WorldUI definition needs paint');types.set(name,definition)}
  function draw(name,source,props={}){const d=types.get(name);if(!d)throw TypeError('Unknown world UI: '+name);const spec=typeof d.anchor==='function'?d.anchor(source,props):d.anchor,a=begin(ctx,source,spec);try{d.paint(ctx,a,source,props)}finally{ctx.restore()}}
  const ground={point:indicatorGroundPoint,vertex:indicatorGroundVertex,line:indicatorGroundLine,
   ellipse:indicatorGroundArc,circle(c,source,r){indicatorGroundArc(c,source.x,source.y,r)}};
- return{anchor,point,screen,begin,define,draw,ground,types:()=>[...types.keys()]};
+ return{anchor,screen,begin,define,draw,ground,types:()=>[...types.keys()]};
 })();
 WorldUI.define('label',{anchor:(s,d)=>({at:d.at||'head',extent:d.extent,gap:d.gap??17,offsetX:d.offsetX,offsetY:d.offsetY,pixelX:d.pixelX,pixelY:d.pixelY}),paint(c,a,s,d){if(d.font)c.font=d.font;if(d.color)c.fillStyle=d.color;c.textAlign=d.align||'center';c.fillText(d.text,a.x,a.y)}});
 WorldUI.define('health',{anchor:(s,d)=>({at:'head',extent:d.extent,gap:9}),paint(c,a,s,d){const source=d.source||s;if(source.team==='enemy'){drawJuicedHealthBar(source,a,d.width);return}c.fillStyle='#203325';c.fillRect(a.x-d.width/2,a.y,d.width,CONFIG.render.healthBarHeight);c.fillStyle=source.team==='friendly'?'#bddbf3':'#edbe8b';c.fillRect(a.x-d.width/2,a.y,d.width*Math.max(0,source.hp/source.maxHp),CONFIG.render.healthBarHeight)}});

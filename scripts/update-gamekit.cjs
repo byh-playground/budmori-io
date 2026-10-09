@@ -38,6 +38,7 @@ try{
  game=game.slice(0,sourceFrom+sourceStart.length)+'\n'+fontSource+'\n'+game.slice(sourceTo);
  fs.writeFileSync(path.join(staged,'index.html'),html);fs.writeFileSync(path.join(staged,'gamekit-lock.json'),JSON.stringify(lock,null,2)+'\n');
  fs.mkdirSync(path.join(staged,'src'),{recursive:true});fs.writeFileSync(path.join(staged,'src/game.js'),game);fs.copyFileSync(path.join(root,'src/bootstrap.js'),path.join(staged,'src/bootstrap.js'));
+ if(fs.existsSync(path.join(root,'src/scope.js')))fs.copyFileSync(path.join(root,'src/scope.js'),path.join(staged,'src/scope.js'));
  prepareRuntime(staged);
  verify(staged); // 완성한 staged 전체를 검증하기 전 작업 파일은 바꾸지 않습니다.
  for(const file of ['index.html','gamekit-lock.json'])fs.copyFileSync(path.join(staged,file),path.join(root,file));
