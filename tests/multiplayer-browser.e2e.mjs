@@ -6,15 +6,18 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import sharedHarness from './shared-harness.cjs';
 import fontAssets from './font-asset-fixture.cjs';
+import moduleReferences from './module-reference-fixture.cjs';
+import runtimeSources from './runtime-source.cjs';
+import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-preview-flow.mjs';
 
-// Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html] [--sdk=/absolute/dist/rollback-netcode.js]
+// Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html]
 // The candidate remains the shipped one-file game. Only this server response gets
 // a local relay capability and a declared initial-world fixture. The SDK signs
 // and verifies real Nostr events, and native Chromium RTCPeerConnections carry all
 // game inputs, admission snapshots, and catch-up. No mock peer/byte transport,
 // public relay, STUN service, user identity, or real account credential is used.
 const runStarted=performance.now();
-const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1';
+const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1'||process.platform==='win32'&&process.env.BUDMORI_HEADED!=='0';
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
  environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
@@ -22,6 +25,14 @@ const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
  const sdk=BloomOwnedSDK,qa=globalThis.__sharedBrowser={rooms:[],signalers:[],events:[],wanted:new Set(),checkpoints:new Map(),lastInputs:[],relay:{published:0,delivered:0}};
+ // Local latency fixture: withhold actual outgoing RTC packets, then deliver
+ // through the original native channel. Simulation/poll/RAF continue normally.
+ const nativeSend=RTCDataChannel.prototype.send;qa.heldRTC=[];qa.holdRTC=false;
+ RTCDataChannel.prototype.send=function(data){const packet=data instanceof ArrayBuffer?new Uint8Array(data):ArrayBuffer.isView(data)?new Uint8Array(data.buffer,data.byteOffset,data.byteLength):null;
+  // Fixed published wire header: MAGIC 0x314b4252, INPUT type 2. Keep CLOCK,
+  // heartbeat and room control flowing so this models input latency, not loss.
+  if(qa.holdRTC&&packet?.length>=12&&new DataView(packet.buffer,packet.byteOffset,packet.byteLength).getUint32(0,true)===0x314b4252&&packet[5]===2){const bytes=packet.slice();qa.heldRTC.push(()=>nativeSend.call(this,bytes));return}return nativeSend.call(this,data)};
+ qa.releaseRTC=()=>{qa.holdRTC=false;for(const send of qa.heldRTC.splice(0))send()};
  class LocalRelay extends EventTarget{
   constructor(){super();this.readyState=0;this.subscriptions=new Map();this.bus=new BroadcastChannel(${JSON.stringify(namespace)});
    this.bus.onmessage=({data:event})=>{if(this.readyState!==1)return;for(const[id,filter]of this.subscriptions){if(filter.kinds?.includes(event.kind)&&filter['#d']?.includes(event.tags.find(t=>t[0]==='d')?.[1])){qa.relay.delivered++;this.deliver(['EVENT',id,event])}}};
@@ -81,23 +92,21 @@ const fixture=String.raw`
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,admissionFlights:projectiles.filter(p=>p.qaAdmissionFlight).map(p=>p.shotId),input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
-assert(source.html.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
+const app=runtimeSources.read(source.file,source.html);
+assert(app.game.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
 // Observe actual static/atlas upload durations, including the first boot frame.
 const uploadProbe=`;(()=>{globalThis.__qaRenderUploads=[];const record=row=>{row.frame=globalThis.__army?.performance?.frames||0;__qaRenderUploads.push(row);if(__qaRenderUploads.length>80)__qaRenderUploads.shift()};const p=BloomGamekitRendering.WebGLDevice.prototype,upload=p.uploadVertices,texture=p.createTexture,target=p.createRenderTarget;p.uploadVertices=function(handle,data){const start=performance.now(),result=upload.call(this,handle,data),ms=performance.now()-start;record({kind:'vertex-buffer',bytes:data.byteLength,ms});return result};p.createTexture=function(source,options){const handle=texture.call(this,source,options),bytes=(source.width||0)*(source.height||0)*((options?.format==='luminance')?1:4);record({kind:'texture',width:source.width,height:source.height,bytes});return handle};p.createRenderTarget=function(width,height,options){const handle=target.call(this,width,height,options);record({kind:'render-target',width,height,bytes:width*height*4});return handle}})();`;
-const rendererExport="global.BloomWebGL={create,Renderer,version:65};";
-assert(source.html.includes(rendererExport));
-const instrumented=source.html.replace(rendererExport,rendererExport+uploadProbe).replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>fixture);
-assert.notEqual(instrumented,source.html);
-report.testResponseSHA256=createHash('sha256').update(instrumented).digest('hex');
-const server=createServer((req,res)=>{
- if(req.url==='/favicon.ico'){res.writeHead(204);res.end();return}
- res.setHeader('Content-Type','text/html;charset=utf-8');res.setHeader('Cache-Control','no-store');res.end(instrumented);
-});
+const game=app.game.replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>uploadProbe+fixture);
+assert.notEqual(game,app.game);
+const instrumented=runtimeSources.response(app,game);
+report.gameSourceSHA256=createHash('sha256').update(app.game).digest('hex');
+report.testResponseSHA256=createHash('sha256').update(instrumented.html+game).digest('hex');
+const server=createServer(runtimeSources.serve({'/public':instrumented}));
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`,pages=[],errors=[],unexpectedNetwork=[];
 let browser,context;
 const lastKnownStates=new Map();
-function timing(stage,status,data={}){const row={at:new Date().toISOString(),elapsedMs:Math.round(performance.now()-runStarted),stage,status,...data};report.timings.push(row);console.log('BROWSER_STAGE '+JSON.stringify(row));return row}
+function timing(stage,status,data={}){const row={at:new Date().toISOString(),elapsedMs:Math.round(performance.now()-runStarted),stage,status,...data};report.timings.push(row);const log={...row,pages:row.pages?.map(p=>({page:p.page,phase:p.phase,tick:p.tick,ready:p.ready,roster:p.roster,frames:p.performance.render.frames}))};console.log('BROWSER_STAGE '+JSON.stringify(log));return row}
 async function bounded(promise,timeoutMs,label){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label+' exceeded '+timeoutMs+'ms observation deadline')),timeoutMs)})])}finally{clearTimeout(timer)}}
 const evaluate=(page,fn,arg,label='evaluate',timeoutMs=10000)=>bounded(page.evaluate(fn,arg),timeoutMs,'page '+(pages.indexOf(page)+1)+' '+label);
 const read=async page=>{const state=await evaluate(page,()=>__sharedBrowser.inspect(),undefined,'read state');lastKnownStates.set(page,state);return state};
@@ -122,7 +131,7 @@ async function addPage(){
  page.on('console',message=>{if(message.text().startsWith('ASSET_UPLOAD '))console.log('PAGE '+number+' '+message.text());if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
  await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'domcontentloaded',timeout:120000}));
  await phase('page '+number+' boot/first WebGL frames',()=>page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000}));
- assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Embedded SDK must include public-room API; --sdk is only a development override');
+ assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Pinned SDK must include public-room API');
  assert.equal((await read(page)).backend,'WebGL');await samplePhase('page '+number+' booted',[page]);return page;
 }
 async function ready(active,count=active.length,whileJoining){
@@ -157,7 +166,7 @@ async function screenshot(page,name,timeout){const path=fileURLToPath(new URL('.
 // Resume through visible UI rather than changing simulation/presentation flags.
 async function focusAndResume(page){
  await page.bringToFront();const state=await read(page);
- if(state.modal==='pause')await page.locator('#sheet [data-action="close"]').click();
+ if(state.modal==='pause')await page.locator('#sheet .primary[data-action="close"]').click();
  else assert.equal(state.modal,'','Unexpected dialog while resuming a player');
  await until(async()=>{const s=await read(page);return !s.paused&&!s.modal},'focused player resumes through UI');
 }
@@ -169,11 +178,14 @@ async function openPause(page){
 }
 async function startPublic(page){const number=pages.indexOf(page)+1;await phase('page '+number+' Public Start click',()=>page.locator('[data-action="start"]').click());}
 try{
+ // Preserve native window visibility/occlusion: disabling it masks the real
+ // minimized-window event we need to verify. Background timers still run.
  browser=await phase('Chromium launch',()=>chromium.launch({headless:!headed,timeout:120000,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
  context=await phase('browser context',()=>browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1}));
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
  report.fontAssetFixture=await fontAssets.install(context);
+ await moduleReferences.install(context,source.html);
  await context.routeWebSocket('**/*',socket=>{unexpectedNetwork.push(socket.url());return socket.close()});
  const host=await addPage();
  const soloBefore=await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey));
@@ -186,7 +198,7 @@ try{
  assert(initial.durable.length===1&&initial.durable[0].hp<initial.durable[0].maxHp&&initial.projectiles>0);
  record('Public Start creates a ticking one-player world with fresh public identity and 100ms input buffer');
  await host.keyboard.down('KeyD');await ticks([host],4);
- const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement');await host.keyboard.up('KeyD');
+ const moving=await read(host);assert(player(moving,hostId).x>player(initial,hostId).x+1,'Host real keyboard movement '+JSON.stringify(await evaluate(host,()=>({held:[...keys],target:document.activeElement?.id,advance:BloomSimulation.runtime.metrics.advanceStatus,frames:__army.performance.frames,latest:BloomSimulation.session.localInputState.capture?.input&&bloomDecodeInput(BloomSimulation.session.localInputState.capture.input)}))));await host.keyboard.up('KeyD');
  const guest=await addPage();await startPublic(guest);
  await guest.locator('[data-public="cancel"]').click();await guest.locator('[data-action="start"]').waitFor({state:'visible'});await startPublic(guest);
  record('Actual Cancel followed by Start abandons the previous discovery and can join normally');
@@ -196,6 +208,7 @@ try{
  // Continue genuine movement while joining, reversing near the encounter.
  // Otherwise a slow handshake legitimately takes the host out of the spawn
  // ring and the production game retires the supposedly "durable" fixture.
+ await focusAndResume(host);await host.keyboard.up(admissionKey);await host.keyboard.down(admissionKey);
  try{await ready([host,guest],2,async states=>{const x=player(states[0],hostId).x;admissionRange[0]=Math.min(admissionRange[0],x);admissionRange[1]=Math.max(admissionRange[1],x);const next=x>admissionOrigin+60?'KeyA':x<admissionOrigin-60?'KeyD':admissionKey;if(next!==admissionKey){await host.keyboard.up(admissionKey);admissionKey=next;await host.keyboard.down(admissionKey)}})}finally{await host.keyboard.up(admissionKey)}
  await host.keyboard.down('KeyD');
  await ticks([host,guest],3);await host.keyboard.up('KeyD');
@@ -207,6 +220,30 @@ try{
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
+ await focusAndResume(guest);
+ await evaluate(host,()=>{__sharedBrowser.holdRTC=true});
+ try{
+  report.inputPreviewWaiting=await exerciseInputPreviewFlow(guest,{waiting:true,release:()=>evaluate(host,()=>__sharedBrowser.releaseRTC())});
+ }finally{await evaluate(host,()=>__sharedBrowser.releaseRTC())}
+ record('Real RTC input wait preserves authority while local preview responds and commands confirm once');
+ await checkpoint([host,guest],'input-preview-after-rtc-delay');
+ if(headed){
+  await focusAndResume(host);await host.keyboard.down('KeyD');await ticks([host,guest],2);
+  const nativeWindow=await context.newCDPSession(host),windowInfo=await nativeWindow.send('Browser.getWindowForTarget');
+  try{
+   // Playwright's default focused/active emulation masks native visibility.
+   // Turn off that override, then let actual minimization deliver the event.
+   await nativeWindow.send('Emulation.setFocusEmulationEnabled',{enabled:false});
+   await nativeWindow.send('Browser.setWindowBounds',{windowId:windowInfo.windowId,bounds:{windowState:'minimized'}});
+   report.nativeMinimize=await nativeWindow.send('Browser.getWindowBounds',{windowId:windowInfo.windowId});
+   await until(async()=>await evaluate(host,()=>(document.hidden||!document.hasFocus())&&paused),'Native window minimization blurs local controls',5000);
+   await assertInputPreviewCleared(host);await ticks([host,guest],4);
+   const inactive=await read(host),inactiveInput=inactive.input.find(input=>input.playerId===hostId);
+   assert(inactiveInput?.suspended&&inactiveInput.x===0&&inactiveInput.y===0,'Native hidden window releases cached held movement while the public world keeps ticking');
+   report.inactiveWindow={windowId:windowInfo.windowId,visibility:inactive.performance.visibility,tick:inactive.tick,input:inactiveInput};
+  }finally{await nativeWindow.send('Browser.setWindowBounds',{windowId:windowInfo.windowId,bounds:{windowState:windowInfo.bounds.windowState}});await nativeWindow.send('Emulation.setFocusEmulationEnabled',{enabled:true});await nativeWindow.detach();await host.keyboard.up('KeyD')}
+  await focusAndResume(host);record('Native window minimization clears cached held input and preview while the public world continues');
+ }else report.limitations.push('Native minimized-window visibility is not exercised in explicit headless mode.');
  // Optional real-clock soak beyond the reported ~94s renderer failure. Keep
  // ordinary SDK timers/RAF and check both peers, without advancing test clocks.
  const soakMs=Number(process.env.BUDMORI_TWO_PLAYER_SOAK_MS||0);
@@ -218,7 +255,7 @@ try{
   report.twoPlayerSoak={elapsedMs:Math.round(performance.now()-started),peers:after.map((s,i)=>({ticks:s.tick-before[i].tick,frames:s.frames-before[i].frames,render:s.performance.render}))};
   record('Two-player WebGL rendering and simulation continue through real-clock soak',report.twoPlayerSoak);await checkpoint([host,guest],'two-player-soak');
  }
- for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
+ for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await page.waitForFunction(()=>globalThis.__sharedBrowser?.inspect&&globalThis.BloomSimulation?.runtime?.ready,undefined,{timeout:15000});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
  record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of await Promise.all([host,guest].map(read))){const own=player(state,state.localId);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,own.owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,own.level);assert.equal(state.localView.hp,own.hp);assert.equal(state.localView.army,own.army)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);
@@ -273,11 +310,12 @@ try{
  // State observations are independent of GPU/compositor screenshots. Preserve
  // the last successful sample even when the renderer cannot answer JavaScript.
  report.lastStates=await Promise.all(pages.map(async(page,index)=>{try{return{page:index+1,current:await read(page)}}catch(error){return{page:index+1,unavailable:error.message,lastKnown:lastKnownStates.get(page)??null}}}));
- console.error('BROWSER_FAILURE_STATES '+JSON.stringify(report.lastStates));
+ console.error('BROWSER_FAILURE_STATES '+JSON.stringify(report.lastStates.map(p=>({page:p.page,unavailable:p.unavailable,current:p.current?{phase:p.current.phase,tick:p.current.tick,status:p.current.status,failure:p.current.failure,paused:p.current.paused,modal:p.current.modal}:undefined}))));
  await writeFile(new URL('./multiplayer-browser-report.json',import.meta.url),JSON.stringify(report,null,2));
  report.failedScreenshots=await Promise.all(pages.map(async(page,index)=>{try{await screenshot(page,`multiplayer-failure-${index+1}.png`,5000);return null}catch(error){return{page:index+1,error:error.message}}}));
 }finally{
  report.browserErrors=errors;report.unexpectedNetwork=unexpectedNetwork;
- await writeFile(new URL('./multiplayer-browser-report.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+ report.elapsedMs=Math.round(performance.now()-runStarted);
+ await writeFile(new URL('./multiplayer-browser-report.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify({status:report.status,failure:report.failure,elapsedMs:report.elapsedMs,checks:report.checks,checkpoints:report.checkpoints,report:'tests/multiplayer-browser-report.json'}));
  await context?.close();await browser?.close();await new Promise(resolve=>server.close(resolve));
 }

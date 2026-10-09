@@ -1,6 +1,6 @@
 const {engine}=require('./native-engine.cjs'),hook=require('./main-runtime-hook.cjs');
 function session(file,html,{tickRate=10}={}){
- const e=engine(file,html.replace('/* MAIN_RUNTIME_TEST_HOOK */',hook));const messages=[];
+ const program=require('./runtime-source.cjs').materialize(file,html);const e=engine(file,program.replace('/* MAIN_RUNTIME_TEST_HOOK */',hook));const messages=[];
  e.c.BLOOM_MAIN_TEST_MANUAL=true;e.c.localStorage={getItem(){return null},setItem(key,disk){messages.push({type:'disk',disk,tick:JSON.parse(disk).tick})}};
  e.run('bloomMainRuntime()');
  const request=async(type,data={})=>{e.c.qaType=type;e.c.qaData=data;return e.run('__budmoriTest.request(qaType,qaData)')};

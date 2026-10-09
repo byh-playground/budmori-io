@@ -1,16 +1,21 @@
 import {chromium} from 'playwright';
 import {createServer} from 'node:http';
 import {readFile,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import fontAssets from './font-asset-fixture.cjs';
+import moduleReferences from './module-reference-fixture.cjs';
+import runtimeSources from './runtime-source.cjs';
 const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const old=JSON.parse(await readFile(new URL('./fixtures/v63-compatibility.json',import.meta.url),'utf8')).disk;
-const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end(html)});
+const app=runtimeSources.read(fileURLToPath(new URL('../index.html',import.meta.url)),html);
+const server=createServer(runtimeSources.serve({'/':runtimeSources.response(app)}));
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{
  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  const context=await browser.newContext({viewport:{width:1000,height:800}});
  const fontFixture=await fontAssets.install(context,{failFirst:true});
+ await moduleReferences.install(context,html);
  await context.addInitScript(value=>{if(!localStorage.getItem('qa-save-seeded')){localStorage.setItem('bloom-weapon-cards-v3',value);localStorage.setItem('qa-save-seeded','1')}},old);
  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
  const ready=()=>page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2);

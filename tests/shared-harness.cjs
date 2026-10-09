@@ -1,16 +1,13 @@
 'use strict';
-// Actual HTML engine and embedded SDK; deterministic byte-transport test double.
+// Actual game engine and pinned SDK; deterministic byte-transport test double.
 // Does not exercise signaling, RTC, browser storage, browser refresh, or GPU.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {engine}=require('./native-engine.cjs');
 function candidate(argv=process.argv.slice(2)){
  const file=path.resolve(argv.find(a=>!a.startsWith('--'))||path.join(__dirname,'../index.html'));
- let html=fs.readFileSync(file,'utf8');const option=argv.find(a=>a.startsWith('--sdk='));
- if(option){const sdk=path.resolve(option.slice(6)),built=require('esbuild').buildSync({entryPoints:[sdk],bundle:true,format:'iife',globalName:'BloomOwnedSDK',write:false,platform:'browser',target:'es2020'}).outputFiles[0].text;
-  const pattern=/\/\* BEGIN GAMEKIT rollback-netcode \*\/[\s\S]*?\/\* END GAMEKIT rollback-netcode \*\//;
-  assert(pattern.test(html),'candidate must contain the declared SDK bundle');html=html.replace(pattern,`/* BEGIN GAMEKIT rollback-netcode */\n${built}\n/* END GAMEKIT rollback-netcode */`);
- }
- return{file,html,sha256:crypto.createHash('sha256').update(html).digest('hex'),sdk:option?.slice(6)||'embedded'};
+ const html=fs.readFileSync(file,'utf8');
+ assert(!argv.some(a=>a.startsWith('--sdk=')),'Use update-gamekit.cjs to verify and pin a complete SDK distribution; partial SDK replacement is unsupported');
+ return{file,html,sha256:crypto.createHash('sha256').update(html).digest('hex'),sdk:'pinned-esm'};
 }
 function network(){
  const rooms=new Map(),packets=[];let delivered=0;

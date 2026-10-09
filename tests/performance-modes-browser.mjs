@@ -3,18 +3,24 @@
 import {chromium} from 'playwright';
 import {createServer} from 'node:http';
 import {readFile,writeFile} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
 import runtimeHook from './main-runtime-hook.cjs';
 import bench from './netcode-benchmark.cjs';
-const html=await readFile(process.argv[2]||new URL('../index.html',import.meta.url),'utf8');
-const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html;charset=utf-8');res.end(html.replace('/* MAIN_RUNTIME_TEST_HOOK */',runtimeHook))});
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const require=createRequire(import.meta.url),runtimeSource=require('./runtime-source.cjs'),moduleFixture=require('./module-reference-fixture.cjs'),fontFixture=require('./font-asset-fixture.cjs');
+const file=resolve(process.argv[2]||fileURLToPath(new URL('../index.html',import.meta.url))),app=runtimeSource.read(file,await readFile(file,'utf8'));
+assert(app.config&&app.game&&app.bootstrap,'Performance mode benchmark requires authentic split game/bootstrap sources');
+assert(app.game.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Current src/game.js must expose its test-only fixture boundary');
+const candidate=runtimeSource.response(app,app.game.replace('/* MAIN_RUNTIME_TEST_HOOK */',runtimeHook));
+const server=createServer(runtimeSource.serve({'/':candidate}));
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
-const report={kind:'Chromium + SwiftShader, actual engine/SDK and WebGL draw calls, manual deterministic tick inputs; not production FPS or phone GPU',sourceSHA256:createHash('sha256').update(html).digest('hex'),seed:12345,tps:20,friendly:155,scope:'Same authority, commands and 100 inputs in both modes; 20 warmup + 80 measured ticks. One explicit actual render after each measured tick. Separate step/snapshot/advance/render CPU durations. WebGL completion is not synchronized.',excluded:'Constructor/fixture/warmup/final verification captures and runtime disk autosave are outside measurement. This is not the production timer or input latency benchmark.',copyMetric:'Disk cache copies only; excludes codec/SDK copies and JS allocations.',results:[]};
+const report={kind:'Chromium + SwiftShader, actual split game/SDK sources and WebGL draws, manual deterministic tick inputs; not production FPS or phone GPU',sourceSHA256:app.config.game.sha256,bootstrapSHA256:app.config.bootstrap.sha256,sdkDistCommit:app.config.distCommit,seed:12345,tps:20,friendly:155,scope:'Same authority, commands and 100 inputs in both modes; 20 warmup + 80 measured ticks. One explicit actual render after each measured tick. Separate step/snapshot/advance/render CPU durations. WebGL completion is not synchronized.',excluded:'Constructor/fixture/warmup/final verification captures and runtime disk autosave are outside measurement. This is not the production timer or input latency benchmark.',copyMetric:'Disk cache copies only; excludes codec/SDK copies and JS allocations.',results:[]};
 try{
  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding','--disable-background-timer-throttling']});report.browser=browser.version();
  for(const mode of ['rollback','lockstep']){
-  const context=await browser.newContext({viewport:{width:720,height:1282},deviceScaleFactor:1}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const context=await browser.newContext({viewport:{width:720,height:1282},deviceScaleFactor:1}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await moduleFixture.install(context,candidate.html);await fontFixture.install(context);
   await page.bringToFront();
   await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'domcontentloaded',timeout:120000});await page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000});await page.bringToFront();
   await page.evaluate(source=>__budmoriTest.request('__fixture',{source}),bench.fixture(155,20,mode));

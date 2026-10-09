@@ -1,13 +1,25 @@
 # Budmori.io · 버드모리
 
+## 입력 선반응
+
+실제 게임의 RAF는 공통 `observeInput()`으로 입력·UI command를 한 경로에서 수집하고, 공통 deadline scheduler가 SDK 경계의 canonical 제출을 소유합니다. RAF가 느리거나 멈춰 관찰이 한 quantum 이상 오래되면 deadline에서 같은 경로로 갱신합니다. 최근 관찰은 재사용하고 edge 명령은 한 번만 제출합니다. 선택된 local render identity는 같은 게임 source를 한 번 로드한 독립 simulation scope의 미래 표본을 공통 schema로 매 RAF 평가합니다. 모아·군단의 이동/구르기/충돌/전투는 기존 WorldSimulation·PlayerController·Unit update를 그대로 실행합니다.
+
+scope는 검증된 module Blob과 `src/game.js` 원본 SRI를 사용하며 native typed-array 경계를 맞춥니다. scope 안에만 snapshot을 설치하고 UI·저장·네트워크·음향·표현 journal은 simulation-only 소유권에서 억제합니다. ready 이후에만 preview가 활성화되고 오류/준비 상태 및 capture/install/step/model 비용은 `BloomSimulation.runtime.preview`에 노출됩니다. 기본 게임 예측 한도는 4 future steps/history와 최소 250ms snapshot age입니다. reset/load/TPS/session epoch/blur/pause/death/leave에서 지우고 실제 confirmed boundary로 다시 기준을 잡습니다.
+
+`tests/input-preview-flow.mjs`는 solo/two-peer browser scenario에 조합하는 helper입니다. 정상 deadline/poll/RAF를 계속 실행하며 실제 preview 발행과 새 입력의 권위 소비 순서를 직접 관측합니다. 표시 모델은 native clock으로 읽고, 실제 게임 render frame·WebGL 픽셀은 별도로 확인합니다. RTC 입력 패킷만 지연시키며 heartbeat·control은 계속 실제 채널로 전송합니다. 내부 timer freeze나 수동 render는 이 helper에 없습니다. snapshot install/replay는 새로운 입력 또는 활성 prediction의 canonical 경계에서 실행하며, idle/auto-hunt에는 전체 세계를 매 tick 복제하지 않습니다. 동일 held 관찰은 미래 sample을 재사용합니다.
+
+SDK source `b0e52991fe273fe470dea6f32d0d2e348708c217` / dist `d1e2c385033ad04a7a004cfbe9558948ef07a6d1` 조합에서 `npm test` 전체는 129,527ms PASS(180초 상한)했습니다. 수정하지 않은 정상 세계·싱글·모바일 에뮬레이션·사망/부활·저장 보호·실제 2-peer RTC 입력 대기·native 창 blur·재접속·방장 승계를 확인했습니다. 입력 발행 전후 권위 tick/hash/RNG와 객체 identity가 유지되고 실제 명령이 확인됐습니다. native 창 검증은 Playwright의 기본 focus emulation을 잠깐 해제해 실제 blur를 받으며, DOM visibility가 hidden이었다고 과장하지 않습니다.
+
+추가 예측 비용은 있습니다. 작은 정상 세계(7 유닛)의 개발 관측은 입력→모델 발행 39.3ms(관측 hook 비용 포함), scope install 11회/108.9ms, step 9회/39.7ms였습니다. 2-peer 관측은 install 14회/138.3ms, step 12회/55.2ms였습니다. cold compile/JIT가 섞인 누적 CPU 표본이며 input-to-photon이나 FPS 개선 수치가 아닙니다. 155 병력의 별도 native 2-tick/12-frame smoke는 genuine font·authority 불변을 통과했지만 GPU 없는 CPU 제출 비용이 약100ms/frame으로 컸습니다. 고부하 예측·실제 Android GPU/FPS·공개 relay/NAT는 미검증이며 무회귀나 60FPS를 보장하지 않습니다. `heapObservedDeltaBytes`는 coarse whole-page heap 값으로, 0은 추가 메모리 0을 뜻하지 않습니다.
+
 블룸 세계관에서 모아와 동료들을 키우며 탐험하고 싸우는 브라우저 게임입니다. **싱글 플레이와 최대 5명의 공개 P2P 경쟁 플레이**를 지원합니다.
 
-게임 실행·배포·AI 개발의 기준 소스는 **`index.html` 한 파일**입니다. 게임 코드, UI, 데이터와 실행에 필요한 리소스·SDK가 HTML에 포함되어 있으며 별도 패키지 설치나 빌드가 필요하지 않습니다.
+게임은 빌드 없이 정적 파일로 배포합니다. `index.html`은 UI·스타일·고정 모듈 manifest, `src/game.js`는 게임 규칙·데이터·표현의 원본, `src/bootstrap.js`는 검증된 ESM 부팅, `src/scope.js`는 같은 게임 원본을 실행하는 독립 예측 영역을 소유합니다. 공통 SDK와 폰트는 고정 GameKit dist에서 받아 SHA-256·크기를 검증하며, 게임에 SDK 구현을 복사하지 않습니다.
 
 ## 실행
 
-1. [공개 게임](https://byh-playground.github.io/budmori-io/)을 WebGL 지원 브라우저로 열고 **공개 사냥 시작** 또는 **혼자 플레이/혼자 이어하기**를 선택합니다. 싱글은 저장소의 `index.html`을 내려받아 실행할 수도 있습니다.
-2. 브라우저의 로컬 파일 정책으로 실행·저장이 제한되면 폴더를 정적 HTTP 서버로 제공해 엽니다.
+1. [공개 게임](https://byh-playground.github.io/budmori-io/)을 WebGL 지원 브라우저로 열고 **공개 사냥 시작** 또는 **혼자 플레이/혼자 이어하기**를 선택합니다.
+2. 로컬 실행은 저장소 폴더를 정적 HTTP 서버로 제공합니다. HTML 하나만 내려받는 방식은 지원하지 않으며, 최초 모듈·폰트 로딩에는 네트워크가 필요합니다.
 3. 싱글 진행을 다른 기기나 브라우저로 옮기기 전에는 **설정·저장 → 백업 다운로드**로 JSON을 저장합니다. 공개 세계의 진행은 개인 백업으로 내보내지 않습니다.
 
 공개 플레이: [Budmori.io](https://byh-playground.github.io/budmori-io/). PR의 후보 변경은 머지 전에는 공개 게임에 반영되지 않습니다.
@@ -33,13 +45,13 @@
 검증 정책 원본은 [공통 프로젝트 관리 규칙 §13](https://github.com/byh-playground/bloom-reference/blob/main/rules/project-management.html#verification)입니다. 개발 중 단위 검증 코드는 완료 시 제거하고 고정 사용자 시나리오 E2E만 유지합니다. `npm test`는 실제 Chromium의 입력·플레이·전환·저장·모바일 복원 시나리오, `npm run test:browser:multiplayer`는 대표 2인 입장·재접속·승계 시나리오입니다. `scripts/test-scenarios.mjs`는 각 실행 전체 180초 상한을 적용하며 초과는 실패입니다. 성능·부하·snapshot pulse 측정은 별도 benchmark 명령으로 분리합니다.
 
 1. **최적화가 먼저, 재미가 그다음입니다.** 기능·표현을 추가할 때 계산량, 호출 빈도, 메모리, 초기 로딩, 틱·렌더 비용을 함께 판단합니다. 예상과 실제 측정을 구분하며 성능 회귀를 숨기지 않습니다.
-2. 실행·배포·AI 수정 대상은 단일 `index.html`로 유지합니다. 작업용 도구나 중간 생성물이 실행 의존성이 되어서는 안 되며, 중간 빌드·임시 결과물을 최종 게임 대신 전달하지 않습니다.
+2. 실행·배포 대상은 `index.html`과 `src/`의 정적 원본입니다. 공통 모듈은 고정 배포 참조로 사용하며, 빌드 도구·임시 결과물을 게임의 실행 의존성으로 만들지 않습니다. 원본 변경 뒤 `node scripts/update-runtime-manifest.cjs`로 파일 SHA·크기와 SRI를 갱신합니다.
 3. 밸런스·타이밍·규모·표현 한도는 해당 `CONFIG`·Definition·정책 설정에서 관리합니다. 같은 규칙을 여러 위치에 하드코딩하거나 서로 다른 구현으로 복제하지 않습니다.
 4. 공통 세계관은 [bloom-world](https://github.com/byh-playground/bloom-world)를 참고하고, 게임 고유 규칙은 이 게임에서 관리합니다.
 
 ### 공통 표시 모델
 
-그려지는 타입은 GameKit `RenderObject`의 `renderSchema`를 사용합니다. 스키마는 `"roll.progress": this.CYCLE`처럼 원본 필드 점 경로와 보간 상수의 1:1 맵입니다. 공통 runtime이 중첩 모델을 만들고 렌더·HUD·그림자·경고가 같은 프레임 모델을 공유합니다. Unit에 별도 보간 로직을 넣지 않으며 원본 Proxy·prototype 상속·this 교체·원본 fallback을 사용하지 않습니다. countdown·상태 경계·발사 시작점·위치 불연속도 스키마와 공통 정책으로 처리하며 게임 collector는 identity/source/type만 전달합니다. 입력 모듈과 게임 규칙은 독립적으로 유지하고, 입력 선반응은 아직 적용하지 않았습니다. 고정 SDK source/dist와 재현 가능한 inline bytes는 `gamekit-lock.json`과 `scripts/verify-gamekit-source.cjs`로 확인합니다.
+그려지는 타입은 GameKit `RenderObject`의 `renderSchema`를 사용합니다. 스키마는 `"roll.progress": this.CYCLE`처럼 원본 필드 점 경로와 보간 상수의 1:1 맵입니다. 공통 runtime이 중첩 모델을 만들고 렌더·HUD·그림자·경고가 같은 프레임 모델을 공유합니다. Unit에 별도 보간·선반응 로직을 넣지 않으며 원본 Proxy·prototype 상속·this 교체·원본 fallback을 사용하지 않습니다. countdown·상태 경계·발사 시작점·위치 불연속도 스키마와 공통 정책으로 처리하며 게임 collector는 identity/source/type만 전달합니다. 입력 모듈과 게임 규칙은 독립적으로 유지합니다. 고정 SDK source/dist·실제 ESM 참조·게임 원본 무결성은 `gamekit-lock.json`과 `scripts/verify-gamekit-source.cjs`로 확인합니다.
 
 ### 유닛 생성 수명주기
 
@@ -66,7 +78,8 @@
 - 모아의 `Rollable`은 방향·쿨다운·무적·진행률과 시작·이동·틱·초기화를 직접 소유합니다. 수동 입력과 자동 사냥은 같은 actor를 사용하고, 저장 경계에서만 기존 flat 필드·키 순서로 투영합니다. 복원·재접속은 검증 뒤 같은 객체 identity에 capability를 복구합니다.
 - 실행·대기·예측·롤백·복구는 세션의 상태이며 CAN-BE의 뜻이 아닙니다. 배타적인 상태는 하나의 phase로, 독립적인 상태는 별도 flag로 표현합니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
 - [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
-- HTML에는 공통 JavaScript 모듈과 SDK를 포함하고 별도 immutable font asset은 고정 GameKit dist commit에서 가져옵니다. 첫 방문에 네트워크가 없으면 font gate가 게임 시작을 보류하고 재시도를 제공합니다. ESM 원본·포함 IIFE와 font asset의 Git provenance, manifest, hashes/bytes는 `gamekit-lock.json` 및 offline verifier로 검사합니다. 가변 main CDN import는 사용하지 않습니다.
+- 공통 JavaScript ESM과 immutable font asset은 고정 GameKit dist commit에서 가져옵니다. 첫 방문에 네트워크가 없으면 로딩 화면이 게임 시작을 보류하고 재시도를 제공합니다. 검증한 SDK Blob URL은 독립 예측 영역이 같은 바이트를 다시 import하도록 수명 동안 유지하고 종료 시 해제합니다. ESM·font asset의 Git provenance와 manifest/hashes/bytes, 첫-party 게임·부팅·scope SRI는 `gamekit-lock.json` 및 offline verifier로 검사합니다. 가변 main CDN import·인라인 SDK fallback은 사용하지 않습니다.
+- 범용 도형·path·text·outline·opacity·GPU 수명은 `VectorContext`와 `PrimitivePainter`를 참조합니다. 게임 Renderer는 전장 clear 정책·지형 투영 shader·폰트 소유권만, 유닛 painter는 facing·팔레트·아트 recipe만 소유합니다. 미니맵·UI thumbnail의 명시적 Canvas2D target은 전장 WebGL fallback과 다릅니다.
 - 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다. 로컬 대표 멀티 검증에서도 운영과 같은 500ms 신호 발행 간격을 유지하며 일반 게임 타이머로 새로고침·투사체 이동·피해를 확인합니다.
 
 ### 저장과 검증
@@ -236,13 +249,13 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 
 하나의 정의에서 싱글 3600×3600, 공개 7200×7200을 선택합니다. 지형·미니맵·캠프·우두머리 서식지도 같은 배율에서 파생됩니다. 공개 시작 구역 다섯 곳은 분리되어 있고, 가까운 시작 구역으로부터의 거리로 초반 야생 등급을 정합니다. 입장 위치는 seed와 참가자 ID에 따라 결정하며 다른 리더/지형/우두머리와의 안전 거리를 확인합니다.
 
-야생 재생은 살아 있는 참가자 관심 영역의 합집합을 사용합니다. 중복 셀은 한 번만 세고, 어느 참가자의 화면에서든 보이는 곳에는 생성하지 않습니다. 모든 참가자에게서 멀어진 일반 야생만 회수합니다. 소유 군단·라이벌·우두머리에는 이 회수 규칙을 적용하지 않으며, 군단 재미를 제한하는 새 인구 상한은 추가하지 않습니다. 배경 texture는 작은 타일로 유지하여 커진 맵이 기기 texture 한도를 넘지 않게 합니다.
+야생 재생은 살아 있는 참가자 관심 영역의 합집합을 사용합니다. 중복 셀은 한 번만 세고, 어느 참가자의 화면에서든 보이는 곳에는 생성하지 않습니다. 모든 참가자에게서 멀어진 일반 야생만 회수합니다. 소유 군단·라이벌·우두머리에는 이 회수 규칙을 적용하지 않으며, 군단 재미를 제한하는 새 인구 상한은 추가하지 않습니다. 지형은 chunk별 정적 vertex mesh이며 Canvas2D 타일·전장 texture 업로드를 사용하지 않습니다.
 
 ### 저장 호환성과 검증 범위
 
 공유 정규 상태 kind는 `budmori-world`, 싱글 디스크 envelope kind는 `budmori-snapshot`입니다. 두 경계는 같은 제품 버전 원본에서 호환군을 파생하며 major/minor가 같을 때만 호환됩니다. 구버전 저장은 변환하지 않고 거부합니다. 새 참가자는 충돌하지 않는 별도 entity/account ID를 받습니다. 형식이 바뀐 뒤 예전 전체 bytes와 같다고 주장하지 않습니다. 새 형식끼리의 복원·다음 입력·멤버십 재생은 완전한 정규 bytes로 비교합니다.
 
-현재 사용자 검증은 실제 Chromium 싱글 시나리오와 2탭 WebRTC 입장·재접속·승계입니다. 이전 메모리 패킷/수동 틱 내부 회귀는 제거했습니다. SDK의 시험 교체는 테스트 응답에만 허용하고 제품에는 exact pin을 포함합니다.
+현재 사용자 검증은 실제 Chromium 싱글 시나리오와 2탭 WebRTC 입장·입력 대기·비활성·재접속·승계입니다. 이전 메모리 패킷/수동 틱 내부 회귀는 제거했습니다. SDK 교체는 전체 dist provenance를 검증하는 updater로만 하며 부분 번들 덮어쓰기는 지원하지 않습니다.
 
 ### 고부하 측정 한계
 
@@ -255,7 +268,7 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 ## 대규모 snapshot 준비와 결정론적 공간 질의
 
 - 게임 adapter는 `prepareSnapshot`/`loadPreparedSnapshot`으로 외부 snapshot을 한 번 준비한 뒤 단일 사용 토큰으로 설치합니다. 토큰은 bytes와 별도로 보관되고 틱·epoch·버전·TPS·seed·참가자 context에 묶입니다. bytes 변경, 토큰 재사용, context 누락이나 변경은 허용하지 않습니다.
-- 정규 graph 형식뿐 아니라 **실제 설치 후 다시 저장되는 authority 형식**까지 확인합니다. 공간 캐시 압축·순서·중복, wrapper 필드와 참조 별칭이 달라지는 입력은 기존 세계를 보존하며 거부합니다. 솔로 이전 저장의 마이그레이션 경로는 유지합니다.
+- 정규 graph 형식뿐 아니라 **실제 설치 후 다시 저장되는 authority 형식**까지 확인합니다. 공간 캐시 압축·순서·중복, wrapper 필드와 참조 별칭이 달라지는 입력은 기존 세계를 보존하며 거부합니다. 솔로도 명시적 버전 검사를 사용하며 이전 호환군의 저장은 변환하지 않고 거부합니다.
 - `saveJob`/`prepareSnapshotJob`/`prepareMembershipJob`은 8 ms 목표의 협력형 pulse를 제공합니다. 캡처·복사 동안 SDK가 하나의 확정 경계를 동결하며, 중간 틱을 섞지 않습니다. 참가자 추가는 별도 소유 그래프에서 준비하고 commit에서 설치합니다. 취소나 실패는 살아 있는 세계를 변경하지 않습니다. Worker는 사용하지 않습니다.
 - pulse 예산은 협력형 목표입니다. GC·브라우저 스케줄링·네이티브 메모리 할당까지 강제 선점하는 하드 실시간 보장은 아닙니다. 기존 동기 API와 초기 체크포인트처럼 아직 동기 경로가 필요한 작업도 별도로 측정합니다.
 - RALLY FRONTIER는 근방/동맹 질의 grid와 비동맹 최종 겹침 해소용 adaptive SAP를 함께 사용합니다. 이번 숫자 셀 조회·공간/뷰포트 파생 계산 수정은 Budmori의 기존 grid 경로를 최적화한 것이며, Rally adaptive SAP 자체를 측정하거나 대체한 결과가 아닙니다. Map의 snapshot 삽입 순서, center-first 셀 방문 순서, 같은 셀의 객체 순서와 기존 이웃 cutoff를 보존합니다. 군단 상한·AI 빈도·충돌·그래픽 표현은 줄이지 않습니다. SAP로 일괄 교체하지 않습니다.

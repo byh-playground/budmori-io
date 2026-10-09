@@ -7,12 +7,16 @@ import {resolve, join} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
 import fontAssets from './font-asset-fixture.cjs';
+import moduleReferences from './module-reference-fixture.cjs';
+import runtimeSources from './runtime-source.cjs';
+import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-preview-flow.mjs';
 
 // Run with an optional candidate index.html path. No harness, SDK replacement,
 // simulated time, or running-world edits: all actions below use the shipped UI.
 const started = performance.now(), budgetMs = 180000, scenarioBudgetMs = 170000;
 const sourceFile = resolve(process.argv[2] || fileURLToPath(new URL('../index.html', import.meta.url)));
 const original = await readFile(sourceFile), html = original.toString('utf8');
+const app = runtimeSources.read(sourceFile, html);
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const artifact = name => fileURLToPath(new URL('./' + name, import.meta.url));
 const reportPath = artifact('browser-report.json');
@@ -73,17 +77,13 @@ function fixtureResponse(encounter) {
     };
   })();`;
   const marker = '/* MAIN_RUNTIME_TEST_HOOK */';
-  assert(html.includes(marker), 'Candidate must provide the existing test-server fixture insertion point');
-  return html.replace(marker, () => fixture);
+  assert(app.game.includes(marker), 'Candidate game source must provide the fixture insertion point');
+  return runtimeSources.response(app, app.game.replace(marker, () => fixture));
 }
-const responses = {'/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
-report.testResponseSHA256 = Object.fromEntries(Object.entries(responses).map(([route, body]) => [route, sha256(body)]));
-const server = createServer((req, res) => {
-  if (req.url === '/favicon.ico') { res.writeHead(204); res.end(); return; }
-  const body = responses[req.url];
-  res.writeHead(body ? 200 : 404, {'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store'});
-  res.end(body || 'Not found');
-});
+const responses = {'/normal': runtimeSources.response(app), '/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
+report.gameSourceSHA256 = sha256(app.game);
+report.testResponseSHA256 = Object.fromEntries(Object.entries(responses).map(([route, body]) => [route, sha256(body.html + body.game)]));
+const server = createServer(runtimeSources.serve(responses));
 let browser, page, activeContext, deadlineTimer;
 const remaining = () => Math.max(1, scenarioBudgetMs - (performance.now() - started));
 async function bounded(promise, ms, label) {
@@ -149,6 +149,7 @@ async function newPlayer(options, route) {
     return request.abort();
   });
   report.fontAssetFixtures.push(await fontAssets.install(activeContext));
+  await moduleReferences.install(activeContext, html);
   await activeContext.routeWebSocket('**/*', socket => {
     report.unexpectedNetwork.push(socket.url().slice(0, 300));
     socket.close();
@@ -177,6 +178,13 @@ async function scenario() {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
   });
+  await check('Unmodified normal world entry and pre-tick input preview', async () => {
+    await newPlayer({viewport: {width: 920, height: 700}, deviceScaleFactor: 1}, '/normal');
+    report.normalWorldInputPreview=await exerciseInputPreviewFlow(page);
+    assert.equal(await read(()=>BloomDiagnostics.fatal),false);
+    await screenshot('browser-normal-preview.png');
+  });
+  await activeContext.close(); activeContext=null; page=null;
   await check('Desktop solo entry and real automatic combat', async () => {
     await newPlayer({viewport: {width: 920, height: 700}, deviceScaleFactor: 1}, '/solo');
     await wait(() => {
@@ -192,11 +200,13 @@ async function scenario() {
     report.artPixelProbe=artPixels;
   });
   await check('WASD movement, pause freeze, Escape resume, and keyboard roll', async () => {
+    report.inputPreview=await exerciseInputPreviewFlow(page);
     const before = await mother();
     await page.keyboard.down('KeyD');
     try { await moved(before); } finally { await page.keyboard.up('KeyD'); }
     await openPause();
     const frozen = await mother();
+    await assertInputPreviewCleared(page);
     await page.keyboard.down('KeyD');
     try {
       await page.waitForTimeout(350);
