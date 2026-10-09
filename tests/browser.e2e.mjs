@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import fontAssets from './font-asset-fixture.cjs';
 import moduleReferences from './module-reference-fixture.cjs';
 import runtimeSources from './runtime-source.cjs';
+import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-preview-flow.mjs';
 
 // Run with an optional candidate index.html path. No harness, SDK replacement,
 // simulated time, or running-world edits: all actions below use the shipped UI.
@@ -192,11 +193,13 @@ async function scenario() {
     report.artPixelProbe=artPixels;
   });
   await check('WASD movement, pause freeze, Escape resume, and keyboard roll', async () => {
+    report.inputPreview=await exerciseInputPreviewFlow(page);
     const before = await mother();
     await page.keyboard.down('KeyD');
     try { await moved(before); } finally { await page.keyboard.up('KeyD'); }
     await openPause();
     const frozen = await mother();
+    await assertInputPreviewCleared(page);
     await page.keyboard.down('KeyD');
     try {
       await page.waitForTimeout(350);

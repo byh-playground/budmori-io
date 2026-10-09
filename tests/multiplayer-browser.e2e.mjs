@@ -8,6 +8,7 @@ import sharedHarness from './shared-harness.cjs';
 import fontAssets from './font-asset-fixture.cjs';
 import moduleReferences from './module-reference-fixture.cjs';
 import runtimeSources from './runtime-source.cjs';
+import {exerciseInputPreviewFlow} from './input-preview-flow.mjs';
 
 // Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html]
 // The candidate remains the shipped one-file game. Only this server response gets
@@ -24,6 +25,11 @@ const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
  const sdk=BloomOwnedSDK,qa=globalThis.__sharedBrowser={rooms:[],signalers:[],events:[],wanted:new Set(),checkpoints:new Map(),lastInputs:[],relay:{published:0,delivered:0}};
+ // Local latency fixture: withhold actual outgoing RTC packets, then deliver
+ // through the original native channel. Simulation/poll/RAF continue normally.
+ const nativeSend=RTCDataChannel.prototype.send;qa.heldRTC=[];qa.holdRTC=false;
+ RTCDataChannel.prototype.send=function(data){if(qa.holdRTC){const bytes=data instanceof ArrayBuffer?data.slice(0):ArrayBuffer.isView(data)?data.slice():data;qa.heldRTC.push(()=>nativeSend.call(this,bytes));return}return nativeSend.call(this,data)};
+ qa.releaseRTC=()=>{qa.holdRTC=false;for(const send of qa.heldRTC.splice(0))send()};
  class LocalRelay extends EventTarget{
   constructor(){super();this.readyState=0;this.subscriptions=new Map();this.bus=new BroadcastChannel(${JSON.stringify(namespace)});
    this.bus.onmessage=({data:event})=>{if(this.readyState!==1)return;for(const[id,filter]of this.subscriptions){if(filter.kinds?.includes(event.kind)&&filter['#d']?.includes(event.tags.find(t=>t[0]==='d')?.[1])){qa.relay.delivered++;this.deliver(['EVENT',id,event])}}};
@@ -122,7 +128,7 @@ async function addPage(){
  page.on('console',message=>{if(message.text().startsWith('ASSET_UPLOAD '))console.log('PAGE '+number+' '+message.text());if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
  await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'domcontentloaded',timeout:120000}));
  await phase('page '+number+' boot/first WebGL frames',()=>page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000}));
- assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Embedded SDK must include public-room API; --sdk is only a development override');
+ assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Pinned SDK must include public-room API');
  assert.equal((await read(page)).backend,'WebGL');await samplePhase('page '+number+' booted',[page]);return page;
 }
 async function ready(active,count=active.length,whileJoining){
@@ -208,6 +214,13 @@ try{
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
  await checkpoint([host,guest],'late-join-two');
+ await focusAndResume(guest);
+ await evaluate(host,()=>{__sharedBrowser.holdRTC=true});
+ try{
+  report.inputPreviewWaiting=await exerciseInputPreviewFlow(guest,{waiting:true,release:()=>evaluate(host,()=>__sharedBrowser.releaseRTC())});
+ }finally{await evaluate(host,()=>__sharedBrowser.releaseRTC())}
+ record('Real RTC input wait preserves authority while local preview responds and commands confirm once');
+ await checkpoint([host,guest],'input-preview-after-rtc-delay');
  // Optional real-clock soak beyond the reported ~94s renderer failure. Keep
  // ordinary SDK timers/RAF and check both peers, without advancing test clocks.
  const soakMs=Number(process.env.BUDMORI_TWO_PLAYER_SOAK_MS||0);

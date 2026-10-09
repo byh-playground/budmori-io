@@ -2,12 +2,12 @@
 
 블룸 세계관에서 모아와 동료들을 키우며 탐험하고 싸우는 브라우저 게임입니다. **싱글 플레이와 최대 5명의 공개 P2P 경쟁 플레이**를 지원합니다.
 
-게임 실행·배포·AI 개발의 기준 소스는 **`index.html` 한 파일**입니다. 게임 코드, UI, 데이터와 실행에 필요한 리소스·SDK가 HTML에 포함되어 있으며 별도 패키지 설치나 빌드가 필요하지 않습니다.
+게임은 빌드 없이 정적 파일로 배포합니다. `index.html`은 UI·스타일·고정 모듈 manifest, `src/game.js`는 게임 규칙·데이터·표현의 원본, `src/bootstrap.js`는 검증된 ESM 부팅, `src/scope.js`는 같은 게임 원본을 실행하는 독립 예측 영역을 소유합니다. 공통 SDK와 폰트는 고정 GameKit dist에서 받아 SHA-256·크기를 검증하며, 게임에 SDK 구현을 복사하지 않습니다.
 
 ## 실행
 
-1. [공개 게임](https://byh-playground.github.io/budmori-io/)을 WebGL 지원 브라우저로 열고 **공개 사냥 시작** 또는 **혼자 플레이/혼자 이어하기**를 선택합니다. 싱글은 저장소의 `index.html`을 내려받아 실행할 수도 있습니다.
-2. 브라우저의 로컬 파일 정책으로 실행·저장이 제한되면 폴더를 정적 HTTP 서버로 제공해 엽니다.
+1. [공개 게임](https://byh-playground.github.io/budmori-io/)을 WebGL 지원 브라우저로 열고 **공개 사냥 시작** 또는 **혼자 플레이/혼자 이어하기**를 선택합니다.
+2. 로컬 실행은 저장소 폴더를 정적 HTTP 서버로 제공합니다. HTML 하나만 내려받는 방식은 지원하지 않으며, 최초 모듈·폰트 로딩에는 네트워크가 필요합니다.
 3. 싱글 진행을 다른 기기나 브라우저로 옮기기 전에는 **설정·저장 → 백업 다운로드**로 JSON을 저장합니다. 공개 세계의 진행은 개인 백업으로 내보내지 않습니다.
 
 공개 플레이: [Budmori.io](https://byh-playground.github.io/budmori-io/). PR의 후보 변경은 머지 전에는 공개 게임에 반영되지 않습니다.
@@ -33,13 +33,13 @@
 검증 정책 원본은 [공통 프로젝트 관리 규칙 §13](https://github.com/byh-playground/bloom-reference/blob/main/rules/project-management.html#verification)입니다. 개발 중 단위 검증 코드는 완료 시 제거하고 고정 사용자 시나리오 E2E만 유지합니다. `npm test`는 실제 Chromium의 입력·플레이·전환·저장·모바일 복원 시나리오, `npm run test:browser:multiplayer`는 대표 2인 입장·재접속·승계 시나리오입니다. `scripts/test-scenarios.mjs`는 각 실행 전체 180초 상한을 적용하며 초과는 실패입니다. 성능·부하·snapshot pulse 측정은 별도 benchmark 명령으로 분리합니다.
 
 1. **최적화가 먼저, 재미가 그다음입니다.** 기능·표현을 추가할 때 계산량, 호출 빈도, 메모리, 초기 로딩, 틱·렌더 비용을 함께 판단합니다. 예상과 실제 측정을 구분하며 성능 회귀를 숨기지 않습니다.
-2. 실행·배포·AI 수정 대상은 단일 `index.html`로 유지합니다. 작업용 도구나 중간 생성물이 실행 의존성이 되어서는 안 되며, 중간 빌드·임시 결과물을 최종 게임 대신 전달하지 않습니다.
+2. 실행·배포 대상은 `index.html`과 `src/`의 정적 원본입니다. 공통 모듈은 고정 배포 참조로 사용하며, 빌드 도구·임시 결과물을 게임의 실행 의존성으로 만들지 않습니다. 원본 변경 뒤 `node scripts/update-runtime-manifest.cjs`로 파일 SHA·크기와 SRI를 갱신합니다.
 3. 밸런스·타이밍·규모·표현 한도는 해당 `CONFIG`·Definition·정책 설정에서 관리합니다. 같은 규칙을 여러 위치에 하드코딩하거나 서로 다른 구현으로 복제하지 않습니다.
 4. 공통 세계관은 [bloom-world](https://github.com/byh-playground/bloom-world)를 참고하고, 게임 고유 규칙은 이 게임에서 관리합니다.
 
 ### 공통 표시 모델
 
-그려지는 타입은 GameKit `RenderObject`의 `renderSchema`를 사용합니다. 스키마는 `"roll.progress": this.CYCLE`처럼 원본 필드 점 경로와 보간 상수의 1:1 맵입니다. 공통 runtime이 중첩 모델을 만들고 렌더·HUD·그림자·경고가 같은 프레임 모델을 공유합니다. Unit에 별도 보간 로직을 넣지 않으며 원본 Proxy·prototype 상속·this 교체·원본 fallback을 사용하지 않습니다. countdown·상태 경계·발사 시작점·위치 불연속도 스키마와 공통 정책으로 처리하며 게임 collector는 identity/source/type만 전달합니다. 입력 모듈과 게임 규칙은 독립적으로 유지하고, 입력 선반응은 아직 적용하지 않았습니다. 고정 SDK source/dist와 재현 가능한 inline bytes는 `gamekit-lock.json`과 `scripts/verify-gamekit-source.cjs`로 확인합니다.
+그려지는 타입은 GameKit `RenderObject`의 `renderSchema`를 사용합니다. 스키마는 `"roll.progress": this.CYCLE`처럼 원본 필드 점 경로와 보간 상수의 1:1 맵입니다. 공통 runtime이 중첩 모델을 만들고 렌더·HUD·그림자·경고가 같은 프레임 모델을 공유합니다. Unit에 별도 보간·선반응 로직을 넣지 않으며 원본 Proxy·prototype 상속·this 교체·원본 fallback을 사용하지 않습니다. countdown·상태 경계·발사 시작점·위치 불연속도 스키마와 공통 정책으로 처리하며 게임 collector는 identity/source/type만 전달합니다. 입력 모듈과 게임 규칙은 독립적으로 유지합니다. 고정 SDK source/dist·실제 ESM 참조·게임 원본 무결성은 `gamekit-lock.json`과 `scripts/verify-gamekit-source.cjs`로 확인합니다.
 
 ### 유닛 생성 수명주기
 
@@ -66,7 +66,8 @@
 - 모아의 `Rollable`은 방향·쿨다운·무적·진행률과 시작·이동·틱·초기화를 직접 소유합니다. 수동 입력과 자동 사냥은 같은 actor를 사용하고, 저장 경계에서만 기존 flat 필드·키 순서로 투영합니다. 복원·재접속은 검증 뒤 같은 객체 identity에 capability를 복구합니다.
 - 실행·대기·예측·롤백·복구는 세션의 상태이며 CAN-BE의 뜻이 아닙니다. 배타적인 상태는 하나의 phase로, 독립적인 상태는 별도 flag로 표현합니다. 기능별로 별도 엔진이나 동기화 체계를 만들지 않습니다.
 - [bloom-gamekit](https://github.com/byh-playground/bloom-gamekit)의 rollback-netcode 호환 번들 공개 계약을 사용합니다. 입력 순서·롤백·복구를 게임에 중복 구현하지 않습니다.
-- HTML에는 공통 JavaScript 모듈과 SDK를 포함하고 별도 immutable font asset은 고정 GameKit dist commit에서 가져옵니다. 첫 방문에 네트워크가 없으면 font gate가 게임 시작을 보류하고 재시도를 제공합니다. ESM 원본·포함 IIFE와 font asset의 Git provenance, manifest, hashes/bytes는 `gamekit-lock.json` 및 offline verifier로 검사합니다. 가변 main CDN import는 사용하지 않습니다.
+- 공통 JavaScript ESM과 immutable font asset은 고정 GameKit dist commit에서 가져옵니다. 첫 방문에 네트워크가 없으면 로딩 화면이 게임 시작을 보류하고 재시도를 제공합니다. 검증한 SDK Blob URL은 독립 예측 영역이 같은 바이트를 다시 import하도록 수명 동안 유지하고 종료 시 해제합니다. ESM·font asset의 Git provenance와 manifest/hashes/bytes, 첫-party 게임·부팅·scope SRI는 `gamekit-lock.json` 및 offline verifier로 검사합니다. 가변 main CDN import·인라인 SDK fallback은 사용하지 않습니다.
+- 범용 도형·path·text·outline·opacity·GPU 수명은 `VectorContext`와 `PrimitivePainter`를 참조합니다. 게임 Renderer는 전장 clear 정책·지형 투영 shader·폰트 소유권만, 유닛 painter는 facing·팔레트·아트 recipe만 소유합니다. 미니맵·UI thumbnail의 명시적 Canvas2D target은 전장 WebGL fallback과 다릅니다.
 - 공개 플레이는 최대 5명의 P2P 공유 세계를 사용합니다. 공개 릴레이 가용성·NAT 환경·실제 모바일 기기의 성능은 로컬 신호 fixture 검증과 별개입니다. 로컬 대표 멀티 검증에서도 운영과 같은 500ms 신호 발행 간격을 유지하며 일반 게임 타이머로 새로고침·투사체 이동·피해를 확인합니다.
 
 ### 저장과 검증
