@@ -1,5 +1,15 @@
 # Budmori.io · 버드모리
 
+## 입력 선반응
+
+실제 게임의 RAF는 공통 `observeInput()`으로 같은 입력·UI command 경로를 관찰하고, 공통 deadline scheduler가 SDK 경계의 canonical 제출을 소유합니다. 선택된 local render identity는 같은 게임 source를 한 번 로드한 독립 simulation scope의 미래 표본을 공통 schema로 매 RAF 평가합니다. 모아·군단의 이동/구르기/충돌/전투는 기존 WorldSimulation·PlayerController·Unit update를 그대로 실행합니다.
+
+scope는 검증된 module Blob과 `src/game.js` 원본 SRI를 사용하며 native typed-array 경계를 맞춥니다. scope 안에만 snapshot을 설치하고 UI·저장·네트워크·음향·표현 journal은 simulation-only 소유권에서 억제합니다. ready 이후에만 preview가 활성화되고 오류/준비 상태 및 capture/install/step/model 비용은 `BloomSimulation.runtime.preview`에 노출됩니다. 기본 게임 예측 한도는 4 future steps/history와 최소 250ms snapshot age입니다. reset/load/TPS/session epoch/blur/pause/death/leave에서 지우고 실제 confirmed boundary로 다시 기준을 잡습니다.
+
+`tests/input-preview-flow.mjs`는 기존 solo/two-peer browser scenario에 조합하는 helper입니다. 정상 deadline/poll/RAF를 계속 실행하며 실제 다음 authority tick 이전의 입력과 표시를 확인합니다. 부모 RTC fixture가 실제 transport 입력을 지연시키면 held/stalled 상태에서도 같은 helper를 사용할 수 있습니다. 내부 timer freeze 증명은 개발 중에만 수행했고 permanent helper에는 남기지 않았습니다. snapshot install/replay는 새로운 입력 또는 활성 prediction의 canonical 경계에서 실행하며, idle/auto-hunt에는 전체 세계를 매 tick 복제하지 않습니다. 동일 held 관찰은 미래 sample을 재사용합니다.
+
+초기 개발 scope 검사(동일 게임 source 두 realm)는 10,530-byte checkpoint, cold install 11.7ms, 첫 step 6.4ms, model capture 2ms를 관측했습니다. 실제 작은 solo 세계의 lazy-capture 개발 표본은 1.5초 동안 capture 2회/22,823 bytes/2.5ms, scope install 2회/24.6ms, speculative step 1회/19ms를 보였습니다. cold compile/JIT가 포함된 CPU 관측이며 FPS 향상이나 대규모 세계 무회귀를 주장하지 않습니다. `heapObservedDeltaBytes`는 Chromium의 coarse whole-page heap 관측이고 0이어도 무할당/추가 메모리 0을 뜻하지 않습니다. 부모 통합 scenario에서 실제 dense/2-peer/collision/lifecycle와 전체 180초 예산을 최종 확인합니다.
+
 블룸 세계관에서 모아와 동료들을 키우며 탐험하고 싸우는 브라우저 게임입니다. **싱글 플레이와 최대 5명의 공개 P2P 경쟁 플레이**를 지원합니다.
 
 게임은 빌드 없이 정적 파일로 배포합니다. `index.html`은 UI·스타일·고정 모듈 manifest, `src/game.js`는 게임 규칙·데이터·표현의 원본, `src/bootstrap.js`는 검증된 ESM 부팅, `src/scope.js`는 같은 게임 원본을 실행하는 독립 예측 영역을 소유합니다. 공통 SDK와 폰트는 고정 GameKit dist에서 받아 SHA-256·크기를 검증하며, 게임에 SDK 구현을 복사하지 않습니다.
