@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 function prepareRuntime(root=path.resolve(__dirname,'..')){
 const lock=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'),'utf8'));
-const namespaces={'input':'BloomGamekitInput','interpolation':'BloomGamekitInterpolation','camera':'BloomGamekitCamera','hud':'BloomGamekitHud','presentation-events':'BloomGamekitPresentationEvents','debug-tools':'BloomGamekitDebugTools','rendering':'BloomGamekitRendering','rollback-netcode':'BloomOwnedSDK','simloop':'BloomGamekitSimloop'};
+const namespaces={'input':'BloomGamekitInput','interpolation':'BloomGamekitInterpolation','camera':'BloomGamekitCamera','hud':'BloomGamekitHud','presentation-events':'BloomGamekitPresentationEvents','debug-tools':'BloomGamekitDebugTools','rendering':'BloomGamekitRendering','rollback-netcode':'BloomOwnedSDK'};
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const modules=Object.entries(namespaces).map(([name,globalName])=>{
   const bytes=fs.readFileSync(path.join(root,'vendor/upstream',name+'.js'));

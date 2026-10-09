@@ -1,26 +1,26 @@
-tree c4dda45e8647ade3a1dc086a641a57d1cb7eebd6
-parent aadf23c043a913f4c2d2e6eb2875d7c852f06a0b
-parent 81b8b603bcc7fef57e63f66091321bf6580f19c0
-author byh020907 <byh020907@naver.com> 1791476868 +0900
-committer GitHub <noreply@github.com> 1791476868 +0900
+tree 3c827e4e22fbab5f5d65bc0f605db9e6b9394a48
+parent 1f1b187586b2bf59150e4153d27c465c9bb1f38f
+parent 0b175f503755338bf539225037dd32c6de576387
+author byh020907 <byh020907@naver.com> 1791511174 +0900
+committer GitHub <noreply@github.com> 1791511174 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqx8SECRC1aQ7uu5UhlAAAOqkQAEIqFIxSG2tr2CsCppHN0bou
- TrN8LbW16kTTEtVABcdZzWR5HekEaTWfsFlczzkT4DWPV+GRNwQgmyq8pKl3zsqL
- FHEzB1aVXAKZE0vnBchZy174PZRUOTMTZxUxGvnwillAa10EiORymRMoUVTcWaPw
- TBpxbYqf82d2um+JFvcKJoR1lYx2kHxpxdnfgfBsCGHhvQ6rvguZ4HFljzTFgbBI
- qdakgl6Ad7bOgewBrR5Jin3UgpJ3lxsdATyXqcklVPi0zAZgYTWo3I0T7XAswwxH
- EWnbygBawh7porzSgztADyfjm/nbHFXuYMO4VUu4xbZ6vf03ys8MaPFXBorv21zp
- 1aqXpB0ARx/0ZHxYxZIyr7BKAT0CawwwjYosZe0L2nc4CbFUTjbss4/fRtVOKNDF
- eJ8f/3I/fGfe7dtBQNKfo557+PVJKpi/CwF4RvsCkFxl82T7lDmZkFaVTfZPZc7B
- 4cuVoZE4pgTL1aouwswCslws9O97dPJvzpXaLjXQOOPmoJhc2uSSFjk702oEI3Ng
- 6Y9xw/mBKBtmdkc5NeXaa4OMcQDWB76NAlkOVYIMKkdVEYZUZ+8wMMNxCkGfa+cn
- FeMnpbRt7fJ5UxGSYp20P4cmGuhtdM+qy4VkEgyUfpUIWjhgjOCTrK8lAINGh3XF
- F/E6tdZpreUs6MKGB5rs
- =0pfg
+ wsFcBAABCAAQBQJqyEqGCRC1aQ7uu5UhlAAAcksQAAj0IcarXvQZafP0coUFM2Df
+ /jbGhYe6qHowL7fl8mNGyLjR790ghYhcl3YjZ7JHOsI3fg+kRbE2lLAe8JobQZ5C
+ mnDadnDUjSUbfZ6zkDIH//bdrDLMyFWP8N6uImmvWlNZqoLHCRFwuMG8AfRJEY1m
+ Kyykv4JQYsz7UvfyF8mqheuO3xI0vL6SGWnlojpxfDqV9RpYzEw6Rx296U9JxaYW
+ 7Ct6tZKpRTE57eHPpDLgbhLnoVsb5m2ZfD4mGSGCWvFD6Jkkbcqw+/03mBlOwAi3
+ 7vApfKvMqJf7yLZXMXbvYS1pTDzby4dwEmVQR4foiyY5jC5Lqpd9+s4PyJsTF8Qp
+ azQUSOLuiPtyUOsow2/gQni8aN7ABPKsJLYU6Eyf5FqVa5ic03ts01BpYPseEIPv
+ 4NCV5Vz07mjXagawUqk5I63ZtmV2Jl1xJ4OlJJ/ScwG2vI3NTBFVPHUnv9miUO+a
+ sKemxQq4y9KxJ7RsswJki8q6HVu2JHJ4B5P+YQA7ye+9+tUGxaH0cR5VFKjBDRTb
+ mn2ceiWuZ78b3i2zr/c3Nb06YY3OCWO3MTZzT8Yc6agUoQIFh8avX9JPL48OWqi1
+ E6q7ycmRMb8gY4EFxYfwhYdiG6+sH7CU5HolARmAC9nPiHcIDX6c0Za8gOKBT7IV
+ z4Sy3JcXXw8vdJd2QBJD
+ =OD0m
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #20 from byh-playground/codex/shared-font-assets
+Merge pull request #21 from byh-playground/codex/immediate-input-preview
 
-[feature] 공통 글리프 자산의 버전별 배포·로딩
+[bug-fix] 틱 대기 중 입력 관찰과 즉시 preview 표시 연결

@@ -443,10 +443,17 @@ var PresentationRuntime = class {
   #tracks = /* @__PURE__ */ new Map();
   #sources = /* @__PURE__ */ new WeakMap();
   #models = /* @__PURE__ */ new WeakMap();
+  #preview = /* @__PURE__ */ new Map();
+  #previewSelection = /* @__PURE__ */ new Map();
+  #previewSources = /* @__PURE__ */ new WeakMap();
   #now = -Infinity;
   #revision = -1;
   #sequence = -1;
   #timeMs = -Infinity;
+  #previewRevision = -1;
+  #previewSequence = -1;
+  #previewTimeMs = -Infinity;
+  #previewMetrics = { captureMs: 0, captureBytes: 0, captures: 0 };
   #extrapolation;
   #snapDistance;
   /** @param {{stepMs:number, snapDistance?:number, extrapolation?:{fields:string[],maxMs:number}}} options */
@@ -465,8 +472,103 @@ var PresentationRuntime = class {
   get size() {
     return this.#tracks.size;
   }
+  get previewMetrics() {
+    return { ...this.#previewMetrics };
+  }
+  /** Select game-owned local identities only; remote authoritative tracks remain unchanged. */
+  selectPreview(identities) {
+    if (!Array.isArray(identities)) throw new TypeError("preview identities must be an array");
+    const next = /* @__PURE__ */ new Map();
+    for (const identity of identities) {
+      if (!identity || typeof identity.id !== "string" || !identity.id || !Number.isSafeInteger(identity.generation) || identity.generation < 0 || next.has(identity.id)) throw new TypeError("invalid preview identity");
+      next.set(identity.id, identity.generation);
+    }
+    this.#previewSelection = next;
+    for (const id of this.#preview.keys()) if (!next.has(id) || next.get(id) !== this.#preview.get(id).generation) this.#preview.delete(id);
+  }
+  clearPreview() {
+    this.#preview.clear();
+    this.#previewSelection.clear();
+    this.#previewSources = /* @__PURE__ */ new WeakMap();
+  }
+  releasePreview(nowMs) {
+    this.#checkClock(nowMs);
+    for (const [id, preview] of this.#preview) {
+      const track = this.#tracks.get(id);
+      if (!track || track.generation !== preview.generation) continue;
+      track.from = track.plan.fields.map((_, i) => this.#value(preview, i, nowMs));
+      track.at = nowMs;
+      track.sampledAt = -Infinity;
+    }
+    this.clearPreview();
+    this.#now = nowMs;
+  }
+  /** Detached declared-field baselines for the next fork step; no source references retained. */
+  snapshotPreview(entities) {
+    return entities.map((entity) => {
+      const type = entity.type ?? entity.source.constructor, plan = compileRenderSchema(type), data = captureRenderData(plan, entity.source);
+      return { id: entity.id, generation: entity.generation, type, source: writeRenderModel(plan, {}, data.values, data.shapes) };
+    });
+  }
+  /** Publish immediate schema-only local fork models. This never replaces authoritative tracks. */
+  capturePreview(packet, nowMs) {
+    const started = performance.now();
+    let bytes = 0;
+    this.#checkClock(nowMs);
+    if (!packet || !Array.isArray(packet.entities)) throw new TypeError("preview packet entities");
+    const revision = ordinal(packet.revision, "preview revision"), sequence = ordinal(packet.sequence, "preview sequence"), timeMs = finite(packet.timeMs, "preview timeMs");
+    if (revision !== this.#revision || revision < this.#previewRevision || revision === this.#previewRevision && sequence <= this.#previewSequence || timeMs < this.#previewTimeMs) return false;
+    if (timeMs < this.#now) return false;
+    const next = /* @__PURE__ */ new Map(), sources = /* @__PURE__ */ new WeakMap();
+    for (const entity of packet.entities) {
+      if (!entity || typeof entity.id !== "string" || !entity.id || !Number.isSafeInteger(entity.generation) || entity.generation < 0 || next.has(entity.id)) throw new TypeError("invalid preview entity");
+      if (this.#previewSelection.get(entity.id) !== entity.generation) continue;
+      if (!entity.source || typeof entity.source !== "object") throw new TypeError("preview source required");
+      const plan = compileRenderSchema(entity.type ?? entity.source.constructor), authority = this.#tracks.get(entity.id);
+      if (!authority || authority.generation !== entity.generation || authority.plan !== plan) throw new TypeError("preview must match a live authoritative render identity and schema");
+      const data = captureRenderData(plan, entity.source), old = this.#preview.get(entity.id);
+      const initial = entity.initialSource ? captureRenderData(plan, entity.initialSource) : authority.target;
+      const same = old && old.generation === entity.generation && old.plan === plan;
+      const from = same ? plan.fields.map((_, i) => this.#value(old, i, nowMs)) : plan.fields.map((_, i) => this.#value(authority, i, nowMs));
+      const at = same ? nowMs : Math.min(nowMs, finite(packet.phaseStartMs ?? nowMs, "phaseStartMs"));
+      const end = Math.max(nowMs + 1, finite(packet.phaseStartMs ?? nowMs, "phaseStartMs") + (packet.stepMs ?? this.#stepMs));
+      const model = same ? old.model : {};
+      bytes += data.values.length * 8 + data.shapes.length * 4;
+      writeRenderModel(plan, model, data.values, data.shapes);
+      const entry = {
+        id: entity.id,
+        generation: entity.generation,
+        plan,
+        data,
+        target: data,
+        from,
+        at,
+        durationMs: end - at,
+        preview: true,
+        model,
+        source: entity.source,
+        sequence,
+        sampledAt: -Infinity,
+        sampleValues: same ? old.sampleValues : void 0
+      };
+      next.set(entity.id, entry);
+      sources.set(entity.source, entry);
+    }
+    this.#preview = next;
+    this.#previewSources = sources;
+    this.#previewRevision = revision;
+    this.#previewSequence = sequence;
+    this.#previewTimeMs = timeMs;
+    this.#now = nowMs;
+    this.#previewMetrics.captureMs += performance.now() - started;
+    this.#previewMetrics.captureBytes += bytes;
+    this.#previewMetrics.captures++;
+    return true;
+  }
   isModel(value) {
     const owner = value && this.#models.get(value);
+    const preview = owner && this.#preview.get(owner.id);
+    if (preview?.model === value && this.#previewSelection.get(owner.id) === owner.generation) return true;
     const current = owner && this.#tracks.get(owner.id);
     return !!current && current.generation === owner.generation && current.model === value;
   }
@@ -511,11 +613,11 @@ var PresentationRuntime = class {
           reset.add(index);
         }
       }
-      const old = this.#tracks.get(entity.id);
+      const old = this.#tracks.get(entity.id), preview = this.#preview.get(entity.id);
       const same = mode === "continuous" && old && old.generation === generation && old.plan === plan;
       const snap = mode !== "continuous" || entity.teleport === true || !!same && positionDiscontinuity(plan.policies, old, target, this.#snapDistance);
       if (same && !snap) inferFieldResets(plan.policies, old, target, timeMs, reset);
-      const from = !same && !snap ? initial ? initial.values.slice() : seedFieldValues(plan.policies, target.values) : target.values.slice();
+      const from = same && !snap && preview?.generation === generation && this.#previewSelection.get(entity.id) === generation ? plan.fields.map((_, i) => this.#value(preview, i, nowMs)) : !same && !snap ? initial ? initial.values.slice() : seedFieldValues(plan.policies, target.values) : target.values.slice();
       const velocity = this.#extrapolation ? new Array(plan.fields.length).fill(0) : null;
       for (let i = 0; i < plan.fields.length; i++) {
         const field = plan.fields[i], value = target.values[i];
@@ -524,7 +626,7 @@ var PresentationRuntime = class {
           if (!Number.isFinite(from[i] - value)) throw new RangeError("extrapolation correction overflow: " + field.name);
         }
         if (same && !snap && !reset.has(i) && typeof value === "number" && typeof old.target.values[i] === "number") {
-          from[i] = this.#value(old, i, nowMs);
+          if (!preview || preview.generation !== generation) from[i] = this.#value(old, i, nowMs);
           if (field.code === RenderObject.DECAY && value > old.target.values[i]) from[i] = value;
           if (this.#extrapolation?.fields.has(field.name)) {
             if (!isLinearField(field.code)) throw new TypeError("extrapolation requires LINEAR: " + field.name);
@@ -557,6 +659,8 @@ var PresentationRuntime = class {
     }
     this.#tracks = next;
     this.#sources = sources;
+    this.#preview.clear();
+    this.#previewSources = /* @__PURE__ */ new WeakMap();
     this.#revision = revision;
     this.#sequence = sequence;
     this.#timeMs = timeMs;
@@ -566,8 +670,8 @@ var PresentationRuntime = class {
   #value(track, index, now) {
     const field = track.plan.fields[index], from = track.from[index], to = track.target.values[index];
     if (from == null || to == null || field.kind === "discrete") return to;
-    const alpha = fraction2(track, now, this.#stepMs);
-    if (this.#extrapolation?.fields.has(field.name)) {
+    const alpha = fraction2(track, now, track.durationMs ?? this.#stepMs);
+    if (!track.preview && this.#extrapolation?.fields.has(field.name)) {
       const age = Math.min(this.#extrapolation.maxMs, Math.max(0, now - track.at));
       const value = evaluate("number", from, to, alpha) + track.velocity[index] * age;
       if (!Number.isFinite(value)) throw new RangeError("extrapolated render value overflow: " + field.name);
@@ -583,6 +687,15 @@ var PresentationRuntime = class {
   /** 유효 identity가 아니면 null. 원본 fallback은 없습니다. 모델은 프레임 간 재사용됩니다. */
   sample(id, generation, nowMs) {
     this.#checkClock(nowMs);
+    const preview = this.#preview.get(id);
+    if (preview && preview.generation === generation && this.#previewSelection.get(id) === generation) {
+      const values = preview.sampleValues ??= new Array(preview.plan.fields.length);
+      for (let i = 0; i < values.length; i++) values[i] = this.#value(preview, i, nowMs);
+      writeRenderModel(preview.plan, preview.model, values, preview.target.shapes);
+      this.#models.set(preview.model, preview);
+      this.#now = nowMs;
+      return preview.model;
+    }
     const track = this.#tracks.get(id);
     if (!track || track.generation !== generation) {
       this.#now = nowMs;
@@ -605,6 +718,8 @@ var PresentationRuntime = class {
       const owner = this.#models.get(source);
       return this.sample(owner.id, owner.generation, nowMs);
     }
+    const preview = source && typeof source === "object" ? this.#previewSources.get(source) : null;
+    if (preview && this.#previewSelection.get(preview.id) === preview.generation) return this.sample(preview.id, preview.generation, nowMs);
     const track = this.#sources.get(source);
     if (track) return this.sample(track.id, track.generation, nowMs);
     this.#now = nowMs;

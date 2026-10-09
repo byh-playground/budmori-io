@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@9269ce16fdcf669a565838948d97ae5c1b30a6d8',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@ed876f6d31da5dc78d1199f176184ee59942718a',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -3977,8 +3977,9 @@ const shortNames={swordsman:'칼잎전사',archer:'씨앗궁수',dandelion:'민�
 function fmt(n){return n>=10000?(n/1000).toFixed(1)+'k':Math.floor(n).toLocaleString('ko-KR')}
 function portrait(type){return window.RallyArt?RallyArt.thumbnail(type,'friendly',{size:96}):''}
 function toast(text){if(bloomInTick){bloomEmit("toast",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;$('status').textContent=text;$('status').style.opacity='1';toastClock=CONFIG.render.toastTime}
-function openModal(kind,html){const same=modalKind===kind;paused=true;modalKind=kind;keys.clear();stick.x=stick.y=0;resetKnob();$('sheet').innerHTML=html;$('modal').classList.add('show');if(!same)$('sheet').scrollTop=0;refreshUI()}
-function closeModal(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;$('modal').classList.remove('show');modalKind='';paused=false;lastFrame=performance.now()}
+function openModal(kind,html){const same=modalKind===kind;paused=true;modalKind=kind;keys.clear();stick.x=stick.y=0;resetKnob();$('sheet').innerHTML=html;$('modal').classList.add('show');if(!same)$('sheet').scrollTop=0;refreshUI();globalThis.BloomSimulation?.runtime?.controls()}
+function bloomFocusWorld(){if(globalThis.BLOOM_HEADLESS)return;const surface=$('view');surface.tabIndex=0;surface.focus({preventScroll:true})}
+function closeModal(){if(bloomInTick){bloomEmit("closeModal",Array.from(arguments));return;}if(globalThis.BLOOM_HEADLESS)return;$('modal').classList.remove('show');modalKind='';paused=false;lastFrame=performance.now();bloomFocusWorld();globalThis.BloomSimulation?.runtime?.controls()}
 function sheetHead(title){return`<div class="sheetHead"><div><div class="eyebrow">BLOOM · LIVING FRONTIER</div><h2>${title}</h2></div><button class="close" data-action="close" aria-label="닫기">×</button></div>`}
 function showIntro(hasSave){openModal('intro',`<div class="eyebrow">A LIVING WORLD. YOUR GROWING ARMY.</div><h1>BLOOM</h1><p style="font-size:15px;color:#dce9c3;margin:0">군락의 행군</p><div class="introArt"><canvas id="introCanvas" width="540" height="160"></canvas></div><p>작은 모체 하나에서 시작해, 천 인구의 생명 군단으로.<br>이동으로 전선을 이끌고, 부화 카드를 골라 군락을 키우세요.</p><div class="introList"><div><b>01 · 이끈다</b>클릭·탭 / WASD<br>공격은 부대가 자동으로</div><div><b>02 · 키운다</b>6개의 생산 카드<br>자원과 인구를 투자</div><div><b>03 · 뻗는다</b>6개의 연결 구역<br>우두머리와 새 생장점</div></div><button class="primary" data-action="start">${hasSave?'군락 이어하기':'첫 군락 깨우기'} →</button><p class="fine">자동 저장 · 단일 파일 · 네트워크 연결 불필요<br>Rally Frontier의 원본 생물 외형과 공격 규칙을 바탕으로 만든 새로운 싱글플레이 게임.</p>`);let c=$('introCanvas').getContext('2d');drawNest(c,270,95,3,1);['swordsman','tank','archer','medic','flowerbee','shelltitan'].forEach((type,i)=>{let x=75+i*77,y=85+Math.sin(i)*27;if(window.RallyArt)RallyArt.draw(c,type,'friendly',x,y,unitDef(type).size*1.1,0,0,{})})}
 function upgradeDescription(kind){if(kind==='attack')return`모든 부대 공격력 +${Math.round(CONFIG.economy.attackPerLevel*100)}%`;if(kind==='health')return`부대 체력 +${Math.round(CONFIG.economy.healthPerLevel*100)}% · 모체 체력 +${CONFIG.mother.hpPerLevel}`;if(kind==='bounty')return`교전 보상 +${Math.round(CONFIG.economy.bountyPerLevel*100)}%`;if(kind==='production')return`부화 리듬 강화 · 속도 보너스 최대 +${Math.round(CONFIG.production.speedMaxBonus*100)}%`;return CONFIG.upgrades[kind].description}
@@ -11676,7 +11677,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c68d62ab49f92b9097e0910a9d21e8dd8fe135bd/assets/fonts/noto-sans-kr-700-v1.json",version:"c68d62ab49f92b9097e0910a9d21e8dd8fe135bd",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@5a5cfe72b75e30bfcb6a44c6d2b714e05e7af260/assets/fonts/noto-sans-kr-700-v1.json",version:"5a5cfe72b75e30bfcb6a44c6d2b714e05e7af260",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12541,7 +12542,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'9269ce16fdcf669a565838948d97ae5c1b30a6d8',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'ed876f6d31da5dc78d1199f176184ee59942718a',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -12590,7 +12591,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
   if(seconds===0&&lifecycle.phase===sessionPhase.playing&&status==='disconnected')failed(Object.assign(new Error('공개 세계 연결을 복구할 수 없어 혼자 플레이로 전환해요.'),{code:'PUBLIC_NETWORK_UNAVAILABLE'}));
   return seconds;
  }
- function ready(){if(lifecycle.phase!==sessionPhase.joining||!bloomSession?.ready||!WorldPlayers.get(bloomSession.localPlayerId))return false;setPhase(sessionPhase.playing);playing=true;paused=false;remember(true);const leader=WorldView.leader();view.x=leader.x;view.y=leader.y;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');modalKind='';$('modal').classList.remove('show');resetPresentation();refreshUI()}notify();return true}
+ function ready(){if(lifecycle.phase!==sessionPhase.joining||!bloomSession?.ready||!WorldPlayers.get(bloomSession.localPlayerId))return false;setPhase(sessionPhase.playing);playing=true;paused=false;remember(true);const leader=WorldView.leader();view.x=leader.x;view.y=leader.y;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');modalKind='';$('modal').classList.remove('show');resetPresentation();refreshUI();bloomFocusWorld()}notify();return true}
  function networkAvailable(){return globalThis.navigator?.onLine!==false}
  function shouldFallbackToSolo(error){const code=String(error?.code||'');return networkFailureCodes.has(code)||!networkAvailable()}
  let fallbackPromise=null;
@@ -12704,7 +12705,7 @@ function bloomMainRuntime() {
  const runtimePhase=Object.freeze({idle:'idle',initializing:'initializing',ready:'ready',closed:'closed',failed:'failed'});
  const uiPhase=Object.freeze({idle:'idle',mounting:'mounting',ready:'ready',closed:'closed'});
  let phase=runtimePhase.idle,epoch=0;
- const driver={scheduler:null,wasActive:false};
+ const driver={scheduler:null,wasActive:false,inputReady:false};
  const inputCommands=[];
  const previewState={phase:'preparing',scope:null,pending:null,capability:null,runtime:null,lastTick:-1,lastRevision:-1,lastEpoch:-1,input:null,needsPrediction:false,captureMs:0,captureBytes:0,heapBefore:null,error:null};
  const previewFacade={get enabled(){return previewState.phase==='ready'&&localReady()&&!!previewState.scope?.initialized&&!!previewState.capability?.enabled},observe(input,metadata){previewState.needsPrediction=true;safeReconcilePreview(true);return previewState.capability?.observe(input,{...metadata,observedAtMs:metadata.timeMs,timeMs:bloomPresentationNow()})},commit(capture,now){return previewState.capability?.commit(capture,now)},cancelObservation(now){previewState.needsPrediction=false;previewState.capability?.cancelObservation(now)},clear(){previewState.lastTick=-1;previewState.capability?.clear()}};
@@ -12721,7 +12722,7 @@ function bloomMainRuntime() {
  // choose scheduling and persistence. A public world cannot become a solo save
  // just because the last peer leaves or the transport is replaced.
  const online=()=>BloomSimulation.sessionConfig?.mode==='online';
- const localReady=()=>{const player=typeof WorldPlayers==='undefined'?null:WorldPlayers.local();return playing&&!paused&&!modalKind&&!(player?player.dead||player.leader?.hp<=0:state.dead)};
+ const localReady=()=>{const player=typeof WorldPlayers==='undefined'?null:WorldPlayers.local();return playing&&!paused&&!modalKind&&!document.hidden&&!(player?player.dead||player.leader?.hp<=0:state.dead)};
  const discovering=()=>online()&&PublicSession.phase==='discovering';
  const soloRunning=()=>playing&&!paused&&!modalKind;
  const active=()=>phase===runtimePhase.ready&&!discovering()&&(online()?!bloomSession?.failure&&!bloomSession?.closed:soloRunning());
@@ -12731,7 +12732,7 @@ function bloomMainRuntime() {
   get reason(){return online()?'Local saves are unavailable during a public session':'Restore or reset solo progress before saving'},
   disk(){if(!this.enabled)throw new Error(this.reason);return bloomSnapshotStore.disk()}
  };
- function sampleInput(){const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status)),sample=localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:!soloRunning()||reconnecting},commands=inputCommands.splice(0).map(payload=>({payload}));previewState.input={x:sample.x,y:sample.y,manual:sample.manual,suspended:sample.suspended,commands:commands.length};return {input:bloomEncodeInput(sample),commands,predict:localReady()&&!reconnecting&&(!!sample.x||!!sample.y||commands.length>0)}}
+ function sampleInput(){bloomCollectDeviceInput();const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status)),sample=localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:!localReady()||reconnecting},commands=inputCommands.splice(0).map(payload=>({payload}));previewState.input={x:sample.x,y:sample.y,manual:sample.manual,suspended:sample.suspended,commands:commands.length};return {input:bloomEncodeInput(sample),commands,predict:localReady()&&!reconnecting&&(!!sample.x||!!sample.y||commands.length>0)}}
  function preparePreviewScope(){
   if(previewState.pending||previewState.scope||phase===runtimePhase.closed)return;
   if(!globalThis.BloomGameSourceURL||!globalThis.BloomGameSourceIntegrity||!globalThis.BloomModuleReferences||!globalThis.BloomSimulationScopeModule)return;
@@ -12835,11 +12836,12 @@ function bloomMainRuntime() {
   if(phase!==runtimePhase.ready||!state)return;
   if(!discovering()&&!globalThis.BLOOM_HEADLESS&&(!online()||bloomSession?.ready)){const command=visibleHuntFromViewport(globalThis.innerWidth,globalThis.innerHeight,WorldView.leader()),signature=JSON.stringify(command);if(signature!==ui.viewSignature){ui.viewSignature=signature;enqueueCommand('huntView',Object.fromEntries(visibleHuntFields.map(k=>[k,command[k]])))}}
   const running=active();if(running!==driver.wasActive)rebaseDriverClock();
+  const inputReady=localReady();if(driver.inputReady&&!inputReady)bloomLoop?.releaseInput();driver.inputReady=inputReady;
   schedule();
  }
  bloomQueue=function(type,args={}){if(phase!==runtimePhase.ready||online()&&!WorldPlayers.get(bloomSession?.localPlayerId))return false;BloomDiagnostics.command(type);const result=enqueueCommand(type,args);schedule();return result};
  publishVisibleHuntView=function(){controls();return true};
- advanceSimulationClock=function(elapsed){if(phase!==runtimePhase.ready)return 0;bloomCollectDeviceInput();controls();observeInputFrame();uiClock+=Math.max(0,elapsed||0);return 0};
+ advanceSimulationClock=function(elapsed){if(phase!==runtimePhase.ready)return 0;controls();observeInputFrame();uiClock+=Math.max(0,elapsed||0);return 0};
  function snapshot(kind='snapshot'){
   if(phase!==runtimePhase.ready||BloomDiagnostics.fatal)return Promise.reject(new Error('Simulation is not available'));
   if(!persistence.enabled)return kind==='save'?Promise.resolve(false):Promise.reject(new Error(persistence.reason));
@@ -12883,6 +12885,10 @@ const bloomMountRuntime=function(){try{
   listen(document,'click',event=>{if(event.target.closest('button')?.dataset.action!=='start'||!persistence.protected)return;event.preventDefault();event.stopImmediatePropagation();bloomShowRejectedSave()},true);
   listen(document,'click',async event=>{if(event.target.closest('button')?.dataset.action!=='save')return;event.preventDefault();event.stopImmediatePropagation();try{if(!await snapshot('save'))throw new Error('Save unavailable');toast('이 기기에 진행을 저장했어요')}catch(error){BloomDiagnostics.report(error,{kind:'save.manual'});toast('진행을 저장하지 못했어요')}},true);
   listen(window,'pagehide',pagehide);
+  // The game owns RAF/deadlines, so the common loop's automatic start() listeners
+  // are not installed. Release its cached input immediately on real suspension.
+  listen(window,'blur',()=>bloomLoop?.releaseInput());
+  listen(document,'visibilitychange',()=>{if(document.hidden)bloomLoop?.releaseInput()});
  }catch(error){fail(error,'simulation.boot')}};
 boot=function(){if(bloomFontBootComplete){bloomMountRuntime();if(!BloomDiagnostics.fatal)bloomFontGate?.remove();return}if(bloomFontBootPending)return;void bloomFontReady().then(ready=>{if(!ready)return;bloomMountRuntime();if(!BloomDiagnostics.fatal)bloomFontGate?.remove()})};
  return runtime;
