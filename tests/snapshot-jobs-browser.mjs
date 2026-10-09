@@ -1,20 +1,24 @@
 import {chromium} from 'playwright';
 import {createServer} from 'node:http';
-import {writeFile} from 'node:fs/promises';
+import {readFile,writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
-import sharedHarness from './shared-harness.cjs';
-const source=sharedHarness.candidate();
+import {createRequire} from 'node:module';
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const require=createRequire(import.meta.url),runtimeSource=require('./runtime-source.cjs'),moduleFixture=require('./module-reference-fixture.cjs'),fontFixture=require('./font-asset-fixture.cjs');
+const file=resolve(process.argv[2]||fileURLToPath(new URL('../index.html',import.meta.url))),source=runtimeSource.read(file,await readFile(file,'utf8'));
+assert(source.config&&source.game&&source.bootstrap,'Snapshot benchmark requires authentic split runtime sources; legacy/inline fallback is not supported');
+const candidate=runtimeSource.response(source);
 // This benchmark isolates main-thread snapshot scheduling in real Chromium.
 // It deliberately omits rendering; the separate five-tab suite exercises real
 // WebGL + WebRTC. No FPS, mobile performance or public-network claim is made.
-const html=source.html.replace("const canvas=(globalThis.BLOOM_HEADLESS ? null : ($('view')))","const canvas=$('view')").replace('return globalThis.BLOOM_HEADLESS?null:document.getElementById(id)','return document.getElementById(id)');
-const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html;charset=utf-8');res.end(html)});
+const server=createServer(runtimeSource.serve({'/':candidate}));
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 let browser;
-const report={sourceSHA256:source.sha256,sdk:source.sdk,environment:'Real Chromium, actual headless game authority, no renderer or transport; 5×1000 declared fixture',status:'RUNNING'};
+const report={sourceSHA256:source.config.game.sha256,bootstrapSHA256:source.config.bootstrap.sha256,sdk:source.config.distCommit,environment:'Real Chromium, authentic split game/bootstrap and ESM modules, headless authority, no benchmark rendering or transport; 5×1000 declared fixture',status:'RUNNING'};
 try{
  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
- const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));await page.addInitScript(()=>{globalThis.BLOOM_HEADLESS=true});await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'domcontentloaded'});
+ const context=await browser.newContext(),page=await context.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));await moduleFixture.install(context,candidate.html);await fontFixture.install(context);await page.addInitScript(()=>{globalThis.BLOOM_HEADLESS=true});await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'domcontentloaded'});
  report.jobs=await page.evaluate(async()=>{
   bloomSession?.close();CONFIG.session.mode='online';bloomApplyTickRate(10);BloomSimulation.initialize(12345);WorldMembership.apply({epoch:0,tick:0,players:['a','b','c','d','e']});
   for(const p of WorldPlayers.all()){const d=WorldPlayers.data(p);let level=1;while(rarityCapacityAtLevel(level)<1000)level++;d.campaign.abilities.level=level;d.campaign.abilities.xp=abilityThreshold(level);moaSyncLevelHP(p.leader);p.leader.hp=p.leader.maxHp;for(const type of ['swordsman','shellbug','dandelion','archer'])rarityAcquire(p.accountOwner,type,2,250);for(const r of (globalThis.rarityGetAccount||rarityAccount)(p.accountOwner).active)rarityLock(r.uid,true);rarityRecall(p.accountOwner)}rebuildGrid();spatialBoundary();
