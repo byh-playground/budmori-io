@@ -7,12 +7,15 @@ import {resolve, join} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
 import fontAssets from './font-asset-fixture.cjs';
+import moduleReferences from './module-reference-fixture.cjs';
+import runtimeSources from './runtime-source.cjs';
 
 // Run with an optional candidate index.html path. No harness, SDK replacement,
 // simulated time, or running-world edits: all actions below use the shipped UI.
 const started = performance.now(), budgetMs = 180000, scenarioBudgetMs = 170000;
 const sourceFile = resolve(process.argv[2] || fileURLToPath(new URL('../index.html', import.meta.url)));
 const original = await readFile(sourceFile), html = original.toString('utf8');
+const app = runtimeSources.read(sourceFile, html);
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const artifact = name => fileURLToPath(new URL('./' + name, import.meta.url));
 const reportPath = artifact('browser-report.json');
@@ -73,17 +76,13 @@ function fixtureResponse(encounter) {
     };
   })();`;
   const marker = '/* MAIN_RUNTIME_TEST_HOOK */';
-  assert(html.includes(marker), 'Candidate must provide the existing test-server fixture insertion point');
-  return html.replace(marker, () => fixture);
+  assert(app.game.includes(marker), 'Candidate game source must provide the fixture insertion point');
+  return runtimeSources.response(app, app.game.replace(marker, () => fixture));
 }
 const responses = {'/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
-report.testResponseSHA256 = Object.fromEntries(Object.entries(responses).map(([route, body]) => [route, sha256(body)]));
-const server = createServer((req, res) => {
-  if (req.url === '/favicon.ico') { res.writeHead(204); res.end(); return; }
-  const body = responses[req.url];
-  res.writeHead(body ? 200 : 404, {'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store'});
-  res.end(body || 'Not found');
-});
+report.gameSourceSHA256 = sha256(app.game);
+report.testResponseSHA256 = Object.fromEntries(Object.entries(responses).map(([route, body]) => [route, sha256(body.html + body.game)]));
+const server = createServer(runtimeSources.serve(responses));
 let browser, page, activeContext, deadlineTimer;
 const remaining = () => Math.max(1, scenarioBudgetMs - (performance.now() - started));
 async function bounded(promise, ms, label) {
@@ -149,6 +148,7 @@ async function newPlayer(options, route) {
     return request.abort();
   });
   report.fontAssetFixtures.push(await fontAssets.install(activeContext));
+  await moduleReferences.install(activeContext, html);
   await activeContext.routeWebSocket('**/*', socket => {
     report.unexpectedNetwork.push(socket.url().slice(0, 300));
     socket.close();

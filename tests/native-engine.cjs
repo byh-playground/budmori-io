@@ -23,7 +23,7 @@ function engine(file=`${__dirname}/BLOOM_LIVING_FRONTIER.html`,sourceHTML,native
  // and vertex-layout validation for both static and dynamic mesh uploads.
  if(nativeContext)c.Float32Array=Float32Array;
  c.window=c;c.addEventListener=win.addEventListener.bind(win);let scripts=0;
- const html=sourceHTML??fs.readFileSync(file,'utf8'),sha256=crypto.createHash('sha256').update(html).digest('hex');
+ const artifact=sourceHTML??fs.readFileSync(file,'utf8'),html=require('./runtime-source.cjs').materialize(file,artifact),sha256=crypto.createHash('sha256').update(html).digest('hex');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)){
   // Supply only missing DOM objects. Gameplay, RNG, commands, SDK, and rendering
   // guards remain production code, unchanged.

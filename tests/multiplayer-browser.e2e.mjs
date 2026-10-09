@@ -6,6 +6,8 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import sharedHarness from './shared-harness.cjs';
 import fontAssets from './font-asset-fixture.cjs';
+import moduleReferences from './module-reference-fixture.cjs';
+import runtimeSources from './runtime-source.cjs';
 
 // Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html] [--sdk=/absolute/dist/rollback-netcode.js]
 // The candidate remains the shipped one-file game. Only this server response gets
@@ -81,18 +83,16 @@ const fixture=String.raw`
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,admissionFlights:projectiles.filter(p=>p.qaAdmissionFlight).map(p=>p.shotId),input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
-assert(source.html.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
+const app=runtimeSources.read(source.file,source.html);
+assert(app.game.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
 // Observe actual static/atlas upload durations, including the first boot frame.
 const uploadProbe=`;(()=>{globalThis.__qaRenderUploads=[];const record=row=>{row.frame=globalThis.__army?.performance?.frames||0;__qaRenderUploads.push(row);if(__qaRenderUploads.length>80)__qaRenderUploads.shift()};const p=BloomGamekitRendering.WebGLDevice.prototype,upload=p.uploadVertices,texture=p.createTexture,target=p.createRenderTarget;p.uploadVertices=function(handle,data){const start=performance.now(),result=upload.call(this,handle,data),ms=performance.now()-start;record({kind:'vertex-buffer',bytes:data.byteLength,ms});return result};p.createTexture=function(source,options){const handle=texture.call(this,source,options),bytes=(source.width||0)*(source.height||0)*((options?.format==='luminance')?1:4);record({kind:'texture',width:source.width,height:source.height,bytes});return handle};p.createRenderTarget=function(width,height,options){const handle=target.call(this,width,height,options);record({kind:'render-target',width,height,bytes:width*height*4});return handle}})();`;
-const rendererExport="global.BloomWebGL={create,Renderer,version:65};";
-assert(source.html.includes(rendererExport));
-const instrumented=source.html.replace(rendererExport,rendererExport+uploadProbe).replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>fixture);
-assert.notEqual(instrumented,source.html);
-report.testResponseSHA256=createHash('sha256').update(instrumented).digest('hex');
-const server=createServer((req,res)=>{
- if(req.url==='/favicon.ico'){res.writeHead(204);res.end();return}
- res.setHeader('Content-Type','text/html;charset=utf-8');res.setHeader('Cache-Control','no-store');res.end(instrumented);
-});
+const game=app.game.replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>uploadProbe+fixture);
+assert.notEqual(game,app.game);
+const instrumented=runtimeSources.response(app,game);
+report.gameSourceSHA256=createHash('sha256').update(app.game).digest('hex');
+report.testResponseSHA256=createHash('sha256').update(instrumented.html+game).digest('hex');
+const server=createServer(runtimeSources.serve({'/public':instrumented}));
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`,pages=[],errors=[],unexpectedNetwork=[];
 let browser,context;
@@ -174,6 +174,7 @@ try{
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
  report.fontAssetFixture=await fontAssets.install(context);
+ await moduleReferences.install(context,source.html);
  await context.routeWebSocket('**/*',socket=>{unexpectedNetwork.push(socket.url());return socket.close()});
  const host=await addPage();
  const soloBefore=await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey));
