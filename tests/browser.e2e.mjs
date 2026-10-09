@@ -199,7 +199,9 @@ async function scenario() {
     // Fusion fading writes ctx.globalAlpha around RallyArt.draw; sample the same production boundary plus the production white-flash outline through the actual WebGL target.
     const artPixels=await page.evaluate(()=>{const c=__testWorldRenderer,gl=c.gl,canvas=c.canvas;c.beginFrame();c.save();c.setTransform(1,0,0,1,0,0);c.device.clear({color:[0,0,1,1]});c.globalAlpha=.5;RallyArt.draw(c,'swordsman','friendly',canvas.width/2,canvas.height/2,24,0,0,{gradeOutline:'#ff3020',whiteFlash:true});c.globalAlpha=1;c.flush();const side=96,p=new Uint8Array(side*side*4),x=Math.floor((canvas.width-side)/2),y=Math.floor((canvas.height-side)/2);gl.readPixels(x,y,side,side,gl.RGBA,gl.UNSIGNED_BYTE,p);let maxRed=0,redBias=0,visible=0;for(let i=0;i<p.length;i+=4){maxRed=Math.max(maxRed,p[i]);if(p[i]>20&&p[i]>p[i+1]+8)redBias++;if(p[i]>35&&p[i+1]>35)visible++}const error=gl.getError();c.restore();c.endFrame();return{maxRed,redBias,visible,error}});assert.equal(artPixels.error,0);assert.ok(artPixels.maxRed<=132&&artPixels.redBias===0&&artPixels.visible>100,`Game art white flash and 0.5 object fade are one WebGL composition: ${JSON.stringify(artPixels)}`);report.artPixelProbe=artPixels;
     report.artPixelProbe=artPixels;
-    report.retainedArt=await exerciseRetainedArt(page);
+    const galleryPath=artifact('browser-retained-art.png');
+    report.retainedArt=await exerciseRetainedArt(page,{screenshotPath:galleryPath});
+    report.screenshots.push(galleryPath);
   });
   await check('WASD movement, pause freeze, Escape resume, and keyboard roll', async () => {
     report.inputPreview=await exerciseInputPreviewFlow(page);

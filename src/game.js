@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@fab6749ba925febeb1247b78eca3567935883f6d',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@893fff72d64118ebc5820379e8a76553f87458a9',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -5078,7 +5078,7 @@ function directions(n,rot=0){
   const pts=Array.from({length:n},(_,i)=>[Math.cos(rot+i/n*Math.PI*2),Math.sin(rot+i/n*Math.PI*2)]);
   polygonTemplates.set(key,pts);return pts;
 }
-class CanvasRenderer extends globalThis.BloomGamekitRendering.PrimitivePainter{
+class UnitArtPainter extends globalThis.BloomGamekitRendering.PrimitivePainter{
   constructor(ctx){super(ctx);this.ctx=ctx;this._partTransform=null;this._unitRenderAlphaMul=1;this.alphaMultiplier=()=>this._unitRenderAlphaMul}
   point(x,y){
     const m=this._partTransform;if(m){const px=x;x=m[0]*px+m[2]*y+m[4];y=m[1]*px+m[3]*y+m[5]}
@@ -5147,7 +5147,7 @@ function artMotion(type,x,y,r,timeMs,opts){
  }
  return motion;
 }
-class MeshArtCompiler extends CanvasRenderer{
+class MeshArtCompiler extends UnitArtPainter{
  constructor(){super(new globalThis.BloomGamekitRendering.MeshBuilder());this.parts=[];this.baseIndex=0}
  flushPart(name){if(this.ctx.vertices.length)this.parts.push({name,builder:this.ctx});this.ctx=new globalThis.BloomGamekitRendering.MeshBuilder();this.context=this.ctx}
  part(name,paint){this.flushPart('base-'+this.baseIndex++);paint();this.flushPart(name)}
@@ -5208,7 +5208,7 @@ function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
 function compose(ctx,type,team,x,y,r,timeMs,opts={}){
  if(opts.gradeOutline)return composeOutlined(ctx,type,team,x,y,r,timeMs,opts);
  if(ctx.isBloomWebGL)return retainedArt(ctx,type,team,x,y,r,timeMs,opts);
- return composeRecipe(new CanvasRenderer(ctx,opts),type,team,x,y,r,timeMs,opts);
+ return composeRecipe(new UnitArtPainter(ctx,opts),type,team,x,y,r,timeMs,opts);
 }
 function composeRecipe(rdr,type,team,x,y,r,timeMs,opts){
   const d=assertType(type),own=team==='friendly',palette=opts.factionPalette||RALLY_ART_CONFIG.palettes[team];
@@ -11750,7 +11750,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@458164ac74c2c6f770724f318e25adf0db0d7ad7/assets/fonts/noto-sans-kr-700-v1.json",version:"458164ac74c2c6f770724f318e25adf0db0d7ad7",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@2e5043e05b5605a64772f26f65932260c587b470/assets/fonts/noto-sans-kr-700-v1.json",version:"2e5043e05b5605a64772f26f65932260c587b470",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12615,7 +12615,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'fab6749ba925febeb1247b78eca3567935883f6d',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'893fff72d64118ebc5820379e8a76553f87458a9',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 

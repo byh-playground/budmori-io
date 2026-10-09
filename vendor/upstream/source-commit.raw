@@ -1,26 +1,26 @@
-tree a83bcd2aa8fb9cc0ed0595e6fc63f85fa642f69b
-parent b0e52991fe273fe470dea6f32d0d2e348708c217
-parent 390d249b533ae724b94ff0c84affef0fcc93b57e
-author byh020907 <byh020907@naver.com> 1791542645 +0900
-committer GitHub <noreply@github.com> 1791542645 +0900
+tree 9a4c1f7c802d72d634fe8f58f4a0c9d86d94f9cf
+parent fab6749ba925febeb1247b78eca3567935883f6d
+parent f7f954cbd7c3df669bb845f7028eb6e8e2c630a4
+author byh020907 <byh020907@naver.com> 1791544440 +0900
+committer GitHub <noreply@github.com> 1791544440 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqyMV1CRC1aQ7uu5UhlAAAph4QADTCgmQS/rHwW0l8LVOFBLHp
- w1IuKKnxWmV4fdSlGOSVn51yFKxwGkjVboCwrSILStdrtbCKh8+4FNYBr+bkVXcR
- /nGA6hZRl0+juzdo1YUqe3Oo6P9QArVnTFGiGavHqS5EqWRThnRaZtpoadoYe4aK
- UxIA0FcX4nMnK5d3kaMb5ZI1+lSbkN1pyQd2m0WfQK8PXOY/ie9vcmYJo+M+xMC0
- h+HGa88IFbvhRLI+86fBH1eKagnAmXt2T9lMF6LDh1zmqSMEN93qSpzhhWl0/KOz
- 6gvN+HA3C8i6TJ7OCdZ/reyy1pS6Y0cLfwCIzsysuu4N03EbluBhODsGsdj0HYIY
- CSTgoxXtwHTsEEilZrnerRxdn4lYGsAUr7BGCjSVWa+FikPppaIZFgSjU0I6yEXC
- I47HUkixDqpn+Oc+1RPx8FtQ84drB43rg0QNSYvMs2GBPl96Dveg5ui3O/0qXTU9
- D7/kBMvTDHobjUyRhMmgZ6lvyAKiCz40yf6WTXA1EBlvGdREtDREW3jJXhQLrzrt
- 9V1zLqSjEIWLeNKfKN2+MzpH+JuIXkFx4oTXcyBpeJ2KpqQQZre9o4x1L1p23GM3
- aVTnLGXBRex+aSYkPBc3JhDsQyRGXfvDpq00SMekAmfe142ilKa5+6f8ySNuDcgs
- goN92ryNR3tKvBYTDlQa
- =bAUl
+ wsFcBAABCAAQBQJqyMx4CRC1aQ7uu5UhlAAAbYoQAJAihZWDa9UNmLMoACh4oFAH
+ 4a4kO7FzTyivy94h/fmW2SmfQaBuZEFlV1Z/dvCQKu32GkgjC/th8L54oXeTfps6
+ A2EdpZH9Qcou/lPXRrumIvC7VQSD0p1MgOiO7pu4FDfVoO369u/NMfDXwRtF5oWA
+ 6RJEutWjRj2ttp+eJ1Efd77U6/BxNzjaOgNs3SrHfvl2AsoJ+YYI+uK6fSl40c9p
+ eAL5Hn83n+V3Zw60v+uqyh9JkuIdhQ6KcVqprdkpGZ+v8KVyAnrXIJIflHLalMOD
+ O6pZZ6Jm5Cqd9BbrDgADtl/QEOhl6vbpZ1mrYrqopwLQgpJbjUBkDqCPNUl8jml1
+ hUeqmEHHr2QOUZP5uAWyfISzP+y4IOjQ0o+HAbqXN12cWad7FvV3KTpA4XGKDPZh
+ vsusi6HxPohYPblXXH7SiAbPH2f/8wD1ZPI+S6pn8GuJfg+3hxYVlK/9yeXqPnAF
+ vq2QdA06nkdtc6ybln6oup4JGm0SWjZ3YI2mx8WRVBqfyHQfxHovzmZ4BctI8rTd
+ VGLBeoVMRY8FvDrq+mK7s9yRWyyHPsk2+1u6JOyVIZZ/94rPSnmKU/65kEVfQm4o
+ YCjdJxN53BB0iZ2G0SmMViQZm+Hl4XnuGVEQPaWYWm/YPA4TTxAbt/P2UAYMIJHZ
+ dbL2Doi+am4Arnt2H4Bh
+ =KsoW
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #26 from byh-playground/codex/reusable-unit-mesh
+Merge pull request #27 from byh-playground/codex/packed-mesh-parts
 
-[performance] 공통 재사용 메시와 순서 보존 인스턴스 렌더링
+[performance] 애니메이션 조각을 한 메시로 묶어 outline draw 폭증 제거

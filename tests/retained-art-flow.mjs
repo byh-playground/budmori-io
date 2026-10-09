@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
 
 // Actual game art / WebGL contract probe. Production RAF, input and authority
 // keep running between gallery frames. This is not an input-latency or FPS test.
 // The caller owns browser launch, SDK fixtures, integrity and full-scene parity.
-export async function exerciseRetainedArt(page) {
-  const result = await page.evaluate(async () => {
+export async function exerciseRetainedArt(page, {screenshotPath} = {}) {
+  const result = await page.evaluate(async takeScreenshot => {
     const context = globalThis.__testWorldRenderer;
     const art = globalThis.RallyArt;
     if (!context?.isBloomWebGL || !art?.draw) throw new Error('Actual world WebGL renderer and RallyArt required');
@@ -21,6 +22,7 @@ export async function exerciseRetainedArt(page) {
     const background = [9 / 255, 14 / 255, 19 / 255, 1];
     const samples = [], warmup = [];
     let firstPixels = null;
+    let galleryPNG = null;
 
     function paint(timeMs, deployProgress, attackProgress, measured) {
       if (canvas.width !== width || canvas.height !== height) throw new Error('Gallery framebuffer resized during sampling');
@@ -57,6 +59,7 @@ export async function exerciseRetainedArt(page) {
         context.flush();
         pixels = new Uint8Array(width * height * 4);
         gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        if (takeScreenshot && measured && timeMs === 641) galleryPNG = canvas.toDataURL('image/png');
         const error = gl.getError();
         if (error !== gl.NO_ERROR) throw new Error('Gallery WebGL readback error: ' + error);
       } finally {
@@ -101,8 +104,13 @@ export async function exerciseRetainedArt(page) {
       }));
     }
     return {kind: 'actual world WebGL retained-art gallery; not FPS or baseline pixel parity',
-      width, height, radius, attributes: gl.getContextAttributes(), types, animated, warmup, samples};
-  });
+      width, height, radius, attributes: gl.getContextAttributes(), types, animated, warmup, samples, galleryPNG};
+  }, Boolean(screenshotPath));
+  if (screenshotPath) {
+    assert.ok(result.galleryPNG?.startsWith('data:image/png;base64,'), 'Actual gallery pixels captured before browser composition clears the framebuffer');
+    await writeFile(screenshotPath, Buffer.from(result.galleryPNG.split(',')[1], 'base64'));
+  }
+  delete result.galleryPNG;
 
   assert.equal(result.types.length, 24);
   assert.equal(result.samples.length, 4);

@@ -1,5 +1,17 @@
 # Budmori.io · 버드모리
 
+## 병사 메시 재사용
+
+군대 24종은 공통 `MeshBuilder` / `VectorContext.drawMesh()`로 그립니다. 종류·실제 반경·팔레트·공격/피격 상태별 authored 삼각형을 한 번 만들고 GPU에 보관합니다. 회전·궤도·맥동·날갯짓·포탑 전개는 part transform/morph/visibility 값으로 전달하며, 시간·방향·연속 진행률을 캐시 키에 넣거나 애니메이션을 양자화하지 않습니다. 원래 레시피는 native UI thumbnail과 cold mesh 생성이 함께 사용하고, 세계를 Canvas2D로 rasterize해 올리지 않습니다.
+
+조각별 GPU buffer를 번갈아 제출하면 outline10pass와 교차해 draw가 폭증하므로 `MeshBuilder.combine()`으로 조각을 순서 그대로 한 메시로 합칩니다. 동일한 인접 메시·part pose는 공통 GPU instance batch에 들어가며 다른 종류를 정렬해 모으거나 깊이 순서를 바꾸지 않습니다. 모든 유닛이 한 draw라는 뜻은 아닙니다. 메시의 조각수·morph수·clip 유무에 맞춘 shader만 생성하며 불투명 direct group은 배치를 끊지 않습니다.
+
+게임 캐시 상한은384 GPU meshes /24MiB vertex payload입니다(CPU 보관과 GPU 할당 각각 추가). cold 생성·shader compile·캐시 miss 비용이 있고 종료 시 캐시와 공통 GPU 자원을 해제합니다. `RallyArt.stats().meshes`는 cache hit/miss/eviction, renderer `stats().mesh`는 실제 draw/instance, geometry/instance upload, 별도의 part uniform 제출량·pipeline 수·retained/scratch bytes를 표시합니다. GPU vertex/fill/overdraw 비용이 없어진 것은 아닙니다. 지형 높이에 맞추는 그림자와 모아의 곡선 아트는 기존 공통 vector 경로를 유지합니다.
+
+`npm run benchmark:meshes -- <index.html> [비교본 index.html]`은360×640 CSS/DPR2의 실제 Chromium/SwiftShader에서155·500·1000 초기 병력을 만들고 정상 RAF/deadline/input을 실행합니다. 테스트서버의 초기 배치 외에는 시간·물리·렌더 경로를 바꾸지 않습니다. preview OFF는 공개 capability를 꺼 두는 통제군이며 초기 scope 할당은 동일하게 남깁니다. `BLOOM_LOAD_COUNTS`로 규모를 선택하며 `BLOOM_RENDERING_CANDIDATE`는 미배포 로컬 bundle의 정확한 SHA/bytes를 검증하는 명시적 개발 fixture입니다(제품 import/provenance 주장이 아님). 벤치마크는 일반3분 E2E나 CI에 넣지 않습니다.
+
+재사용 구현만으로 기존 고부하 tick 정지와 preview snapshot restore 병목까지 해결했다고 판단하지 않습니다. 최종 고정 SDK 조합의 실제 기능·부하 결과와 제한은 PR30 본문에 기록합니다.
+
 ## 입력 선반응
 
 실제 게임의 RAF는 공통 `observeInput()`으로 입력·UI command를 한 경로에서 수집하고, 공통 deadline scheduler가 SDK 경계의 canonical 제출을 소유합니다. RAF가 느리거나 멈춰 관찰이 한 quantum 이상 오래되면 deadline에서 같은 경로로 갱신합니다. 최근 관찰은 재사용하고 edge 명령은 한 번만 제출합니다. 선택된 local render identity는 같은 게임 source를 한 번 로드한 독립 simulation scope의 미래 표본을 공통 schema로 매 RAF 평가합니다. 모아·군단의 이동/구르기/충돌/전투는 기존 WorldSimulation·PlayerController·Unit update를 그대로 실행합니다.

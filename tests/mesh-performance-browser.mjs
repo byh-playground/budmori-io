@@ -11,9 +11,12 @@ const inputs = process.argv.slice(2);
 const files = inputs.length ? inputs.map(file => resolve(file)) : [resolve('index.html')];
 const counts = (process.env.BLOOM_LOAD_COUNTS || '155,500,1000').split(',').map(Number);
 assert(counts.every(n => Number.isSafeInteger(n) && n > 0 && n <= 5000));
+// Explicit developmental fixture, never a production import or provenance claim.
+const candidateRendering = process.env.BLOOM_RENDERING_CANDIDATE ? await readFile(resolve(process.env.BLOOM_RENDERING_CANDIDATE)) : null;
 const report = { kind: 'Actual Chromium/SwiftShader WebGL, production RAF/deadlines; not phone hardware FPS',
   viewport: { width: 360, height: 640, dpr: 2 }, warmupMs: 1500, holdMs: 2000,
   scope: 'Four-species initial army, disabled camps and stunned enemies. Public preview OFF control keeps its initial allocated scope. No physics, time or rendering override.', results: [] };
+if (candidateRendering) report.developmentalRenderingFixture = { sha256: runtime.hash(candidateRendering), bytes: candidateRendering.length };
 let browser;
 function fixture(app, count, preview) {
   const source = `;(() => {
@@ -43,7 +46,7 @@ function fixture(app, count, preview) {
 async function installAssets(context, app) {
   await context.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
   for (const entry of app.config.modules) {
-    const bytes = await readFile(resolve(app.root, 'vendor/upstream', entry.name + '.js'));
+    const bytes = candidateRendering && entry.name === 'rendering' ? candidateRendering : await readFile(resolve(app.root, 'vendor/upstream', entry.name + '.js'));
     assert.equal(bytes.length, entry.bytes); assert.equal(runtime.hash(bytes), entry.sha256);
     await context.route(entry.url, route => route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: bytes }));
   }
@@ -62,6 +65,8 @@ try {
   report.browser = browser.version();
   for (const file of files) {
     const app = runtime.read(file), responses = {};
+    if (candidateRendering) app.config.modules = app.config.modules.map(entry => entry.name === 'rendering'
+      ? { ...entry, bytes: candidateRendering.length, sha256: runtime.hash(candidateRendering), url: `https://rendering-candidate.invalid/${runtime.hash(candidateRendering)}/rendering.js` } : entry);
     for (const count of counts) for (const preview of [false, true]) responses[`/${count}-${preview}`] = fixture(app, count, preview);
     const server = createServer(runtime.serve(responses));
     await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
@@ -75,7 +80,7 @@ try {
           const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); page.setDefaultTimeout(30000);
           await page.goto(`http://127.0.0.1:${server.address().port}/${count}-${preview}`, { waitUntil: 'domcontentloaded' });
           await page.waitForFunction(() => globalThis.BloomSimulation?.runtime?.ready);
-          await page.locator('#sheet [data-public="solo"]').click();
+          await page.locator('#sheet [data-public="solo"]').click({timeout: 30000});
           await page.locator('#modal.show').waitFor({ state: 'hidden' });
           await page.waitForTimeout(report.warmupMs);
           const before = await page.evaluate(() => { BloomDiagnostics.setProfiler(true); return __meshLoadRead(); });
