@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@b0e52991fe273fe470dea6f32d0d2e348708c217',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@893fff72d64118ebc5820379e8a76553f87458a9',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -167,7 +167,7 @@ class Renderer extends VectorContext{
  setGlyphAtlas(atlas,loader){if(this.fontAssetLoader||!atlas||!loader)throw new Error('A loaded shared font atlas and its owner are required');this.glyphAtlas=atlas;this.vector.glyphAtlas=atlas;this.fontAssetLoader=loader;return atlas}
  beginFrame(){return super.beginFrame({width:this.canvas.width,height:this.canvas.height,clearColor:[0,0,0,1]})}
  drawStaticMesh(mesh,projection){return super.drawStaticMesh(mesh,{pipeline:this.staticPipeline,projection,uniforms:{u_resolution:[this.canvas.width,this.canvas.height]}})}
- destroy(){if(this.state==='disposed')return;super.dispose();this.fontAssetLoader?.dispose();this.device.deletePipeline(this.staticPipeline);this.device.dispose()}
+ destroy(){if(this.state==='disposed')return;global.RallyArt?.disposeMeshes(this);super.dispose();this.fontAssetLoader?.dispose();this.device.deletePipeline(this.staticPipeline);this.device.dispose()}
 }
 function create(canvas,options={}){if(!canvas)throw new Error('BLOOM requires a world canvas');try{return new Renderer(canvas,options)}catch(error){global.BloomDiagnostics?.report(error,{kind:'webgl.initialize',fatal:true});throw error}}
 global.BloomWebGL={create,Renderer,version:65};
@@ -4025,9 +4025,6 @@ function drawProjectedProjectile(source){const p=presentationPose(source,'projec
  */
 (function(global){
 'use strict';
-let renderTime=0;
-// Lexical clock adapter keeps every original performance.now() expression intact.
-const performance={now:()=>renderTime};
 const RangeUtil={clamp:(v,a,b)=>Math.max(a,Math.min(b,v))};
 class HashUtil{static hash(s){s=String(s);let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}}
 const RALLY_ART_CONFIG={
@@ -4687,11 +4684,10 @@ const RALLY_ART_CONFIG={
     "visualScale": 1.08
   }
 },
-  limits:{thumbnailCacheEntries:96},
+  limits:{thumbnailCacheEntries:96,meshCacheMeshes:384,meshCacheBytes:24*1024*1024},
   commonBody:{ink:[.07,.10,.13,1],outerRadius:.78,outerY:.12,bodyRadius:.68,bodyY:.08,highlightRadius:.25,highlightX:-.18,highlightY:-.04},
   deployment:{deployMs:900,undeployMs:450}
 };
-const UnitDefinition={get:type=>type==='siege'?{...RALLY_ART_CONFIG.units[type],deployment:RALLY_ART_CONFIG.deployment}:RALLY_ART_CONFIG.units[type]};
 const UNIT_VISUAL_RENDER_FNS=Object.freeze({
   "swordsman":(rdr,ctx)=>{
     const {sc,x,y,r,attack,dir}=ctx;
@@ -4724,10 +4720,10 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
     }
   },
   "dandelion":(rdr,ctx)=>{
-    const {sc,x,y,r,team,accent}=ctx;
+    const {sc,x,y,r,team,accent,motion}=ctx;
     {
         rdr.circle(x,y+r*.16,r*.40,team,10);
-        for(let k=0;k<9;k++){const a=k*Math.PI*2/9+performance.now()*.0005;rdr.line(x,y-r*.30,x+Math.cos(a)*r*.72,y-r*.30+Math.sin(a)*r*.72,Math.max(1,1.3*sc),[.94,.95,.82,.9])}
+        rdr.part('spokes',()=>{for(let k=0;k<9;k++){const a=k*Math.PI*2/9;rdr.line(x,y-r*.30,x+Math.cos(a)*r*.72,y-r*.30+Math.sin(a)*r*.72,Math.max(1,1.3*sc),[.94,.95,.82,.9])}},motion.parts.spokes);
         rdr.circle(x,y-r*.30,r*.13,accent,8);
       
     }
@@ -4775,7 +4771,7 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
     }
   },
   "mage":(rdr,ctx)=>{
-    const {x,y,r,team,attack}=ctx;
+    const {x,y,r,team,attack,motion}=ctx;
     {
         // 폭발꽃: 지팡이 대신 꽃술 자체가 폭발성 꽃가루를 압축한다.
         rdr.petalRing(x,y-r*.08,r*.72,8,[.68,.35,.78,1],Math.PI/8,.76);
@@ -4784,8 +4780,7 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
         rdr.circle(x,y-r*.12,orb,[.92,.62,1,1],10);
         rdr.circle(x,y-r*.12,orb*1.9,[.86,.46,1,.14],12);
         for(let k=0;k<4;k++){
-          const a=k*Math.PI/2+performance.now()*.0015;
-          rdr.circle(x+Math.cos(a)*r*.72,y-r*.08+Math.sin(a)*r*.72,r*.07,[.94,.78,1,.6],7);
+          rdr.part('orb-'+k,()=>rdr.circle(x,y-r*.08,r*.07,[.94,.78,1,.6],7),motion.parts['orb-'+k]);
         }
       
     }
@@ -4815,29 +4810,24 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
     }
   },
   "siege":(rdr,ctx)=>{
-    const {u,sc,x,y,r,teamDark,accent,attack}=ctx;
-    // Cancel the outer generic facing transform: this species owns two independent pivots.
-    const outer=rdr._unitFacingTransform;rdr._unitFacingTransform=null;
-    try{
-      const facing=rdr.artilleryFacingScreen(u),st=facing.deployState,d0=UnitDefinition.get(u.type)?.deployment||{},until=Number(u.behaviorState?.deploymentUntil)||0,nowTick=Number(rdr.snapshot?.tick)||0;
-      let q=st==="deployed"?1:0;
-      if(st==="deploying"){const total=Math.max(1,Math.round((Number(d0.deployMs)||900)/(1000/Math.max(1,Number(rdr.snapshot?.tps)||20))));q=RangeUtil.clamp(1-(until-nowTick)/total,0,1)}
-      else if(st==="undeploying"){const total=Math.max(1,Math.round((Number(d0.undeployMs)||450)/(1000/Math.max(1,Number(rdr.snapshot?.tps)||20))));q=RangeUtil.clamp((until-nowTick)/total,0,1)}
-      const ease=q*q*(3-2*q),drop=r*.30*ease;
+    const {sc,x,y,r,teamDark,accent,attack,motion}=ctx;
+      const ease=motion.ease,drop=r*.30*ease;
       // HULL: tripod/chassis freezes when deployment begins.
-      rdr.withFacingAngle(facing.hullAngle,u,x,y,()=>{
         const cannonAngle=-Math.PI/2,anchorBase=cannonAngle+Math.PI/3;
         for(let i=0;i<3;i++){const a=anchorBase+i*Math.PI*2/3,ca=Math.cos(a),sa=Math.sin(a),rootR=r*(.42+.08*ease),footR=r*(.68+.82*ease),sx=x+ca*rootR,sy=y-drop+sa*rootR*.72,ex=x+ca*footR,ey=y-drop+sa*footR*.72;
+          rdr.part('hull-leg-'+i,()=>{
           rdr.line(sx,sy,ex,ey,Math.max(2.8,4.5*sc),[.25,.31,.15,1]);rdr.circle(ex,ey,r*(.12+.17*ease),[.31,.22,.10,1],10);
-          if(ease>.30){const tx=-sa,ty=ca*.72;rdr.line(ex,ey,ex+tx*r*.25,ey+ty*r*.25,Math.max(1.4,2.2*sc),[.38,.25,.11,.88]);rdr.line(ex,ey,ex-tx*r*.25,ey-ty*r*.25,Math.max(1.4,2.2*sc),[.38,.25,.11,.88])}
+          },motion.parts['hull-leg-'+i]);
+          rdr.part('hull-detail-'+i,()=>{const tx=-sa,ty=ca*.72;rdr.line(ex,ey,ex+tx*r*.25,ey+ty*r*.25,Math.max(1.4,2.2*sc),[.38,.25,.11,.88]);rdr.line(ex,ey,ex-tx*r*.25,ey-ty*r*.25,Math.max(1.4,2.2*sc),[.38,.25,.11,.88])},motion.parts['hull-detail-'+i]);
         }
+      rdr.part('hull-body',()=>{
         rdr.circle(x,y+r*.08-drop,r*(.76+.10*ease),[.32,.36,.20,1],14);rdr.circle(x,y-r*.05-drop,r*.54,teamDark,12);
-      });
+      },motion.parts['hull-body']);
       // TURRET ASSEMBLY: the whole upper body rotates around its bearing center.
       // Keeping every upper-body vertex centered on this pivot prevents the "head turning"
       // orbit that happened when the barrel and pod used different visual centers.
       const turretPivotX=x,turretPivotY=y-r*.08-drop;
-      rdr.withFacingPivot(facing.turretAngle,u,turretPivotX,turretPivotY,turretPivotX,turretPivotY,()=>{
+      rdr.part('turret',()=>{
         const cx=turretPivotX,cy=turretPivotY;
         rdr.circle(cx,cy,r*.60,[.46,.48,.22,1],14);
         rdr.circle(cx,cy,r*.34,[.30,.34,.17,1],12);
@@ -4848,12 +4838,11 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
         rdr.line(cx,cy-r*.12,cx,cy-barrelLen,Math.max(3.2,5.6*sc),[.34,.54,.23,1]);
         rdr.circle(cx,cy-r*(1.02+1.02*ease),r*.22,[.70,.58,.25,1],10);
         rdr.circle(cx,cy-barrelLen,r*.20,accent,10);
-      });
-      if(st==="deploying"&&ease>0)rdr.outlineCircle(x,y+r*.22,r*(.70+.78*ease),Math.max(1.4,2.2*sc),[.48,.32,.14,.48],20,1);
-    }finally{rdr._unitFacingTransform=outer}
+      },motion.parts.turret);
+      rdr.part('deployment-halo',()=>rdr.outlineCircle(x,y+r*.22,r*(.70+.78*ease),Math.max(1.4,2.2*sc),[.48,.32,.14,.48],20,1),motion.parts['deployment-halo']);
   },
   "shelltitan":(rdr,ctx)=>{
-    const {sc,x,y,r,attack}=ctx;
+    const {sc,x,y,r,attack,motion}=ctx;
     {
         // Final direction is intentionally close to the approved A prototype:
         // one massive oval shell + small head + sparse shell studs + antennae.
@@ -4875,8 +4864,7 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
         rdr.circle(x-r*.28,y-r*1.26,r*.05,antenna,7);
         rdr.circle(x+r*.28,y-r*1.26,r*.05,antenna,7);
         if(attack){
-          const phase=Math.sin(Math.min(1,Number(attack.progress)||.5)*Math.PI);
-          rdr.circle(x,y+r*.08,r*(1.02+.13*phase),[1,.76,.30,.09],20);
+          rdr.part('attack-aura',()=>rdr.circle(x,y+r*.08,r*(1.02+.13*motion.attackPhase),[1,.76,.30,.09],20),motion.parts['attack-aura']);
         }
     }
   },
@@ -4970,22 +4958,22 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
     }
   },
   "pillbug":(rdr,ctx)=>{
-    const {u,sc,x,y,r,team,teamDark,accent,attack,dir}=ctx;
+    const {sc,x,y,r,team,teamDark,accent,attack,dir,motion}=ctx;
     {
         // Rolling Pillbug: segmented round shell + volatile front sac.
-        const roll=performance.now()*.012+(HashUtil.hash(u.id)%997)*.01;
         rdr.circle(x,y,r*.88,[.13,.16,.18,1],14);
         rdr.circle(x,y,r*.76,team,14);
+        rdr.part('radial',()=>{
         for(let k=0;k<6;k++){
-          const a=roll+k*Math.PI/3;
+          const a=k*Math.PI/3;
           rdr.line(
             x+Math.cos(a)*r*.18,y+Math.sin(a)*r*.18,
             x+Math.cos(a)*r*.72,y+Math.sin(a)*r*.72,
             Math.max(1.3,2.2*sc),teamDark
           );
         }
-        const pulse=.82+.18*Math.sin(performance.now()*.012+(HashUtil.hash(u.id)%17));
-        rdr.circle(x+r*.62,y+dir*r*.14,r*.26* pulse,accent,10);
+        },motion.parts.radial);
+        rdr.part('pulse',()=>rdr.circle(x+r*.62,y+dir*r*.14,r*.26,accent,10),motion.parts.pulse);
         rdr.circle(x+r*.68,y+dir*r*.10,r*.10,[1,.94,.72,1],8);
         if(attack)rdr.circle(x,y,r*1.08,[1,.66,.22,.12],16);
       
@@ -5048,14 +5036,14 @@ const UNIT_VISUAL_RENDER_FNS=Object.freeze({
   }
 });
 const AIR_UNIT_VISUAL_RENDER_FNS=Object.freeze({
-  "flowerbee":(rdr,c)=>{const {r,accent,attack,sc,pt,linePts,fastFlap,wingBright,wingSoft,body,bodyDark}=c;
+  "flowerbee":(rdr,c)=>{const {r,accent,attack,sc,pt,linePts,fastFlap,wingBright,wingSoft,body,bodyDark,motion}=c;
       // Compact bee: chunky striped abdomen + petal-like double wings.
       const flap=.78+.28*fastFlap;
-      for(const side of [-1,1]){
+      rdr.part('wings',()=>{for(const side of [-1,1]){
         const root=pt(.02,side*.20),outer=pt(-.08,side*.92*flap),rear=pt(-.42,side*.70*flap);
         rdr.poly([root,outer,rear,pt(-.28,side*.18)],wingBright);
         rdr.poly([pt(.15,side*.15),pt(.32,side*.74*flap),pt(.02,side*.62*flap),pt(-.04,side*.13)],wingSoft);
-      }
+      }},motion.parts.wings);
       const rear=pt(-.40,0),mid=pt(.02,0),head=pt(.43,0),sting=pt(-.86,0);
       rdr.circle(rear[0],rear[1],r*.48,[.78,.54,.16,1],11);
       rdr.circle(mid[0],mid[1],r*.46,body,11);rdr.circle(head[0],head[1],r*.32,bodyDark,9);
@@ -5063,18 +5051,18 @@ const AIR_UNIT_VISUAL_RENDER_FNS=Object.freeze({
       linePts(pt(-.62,0),sting,Math.max(1.2,1.8*sc),accent);
       if(attack){const a=pt(.50,0),b=pt(1.12,0);linePts(a,b,Math.max(1.6,2.5*sc),[1,.86,.34,.88]);rdr.circle(b[0],b[1],r*.11,[1,.93,.54,.72],7)}
     },
-  "sporemoth":(rdr,c)=>{const {r,attack,pt,now,seed,slowFlap,wingSoft,body,bodyDark}=c;
+  "sporemoth":(rdr,c)=>{const {r,attack,pt,slowFlap,wingSoft,body,bodyDark,motion}=c;
       // Bomber moth: short thick wings and a conspicuous hanging spore sac.
       const flap=.86+.15*slowFlap;
-      for(const side of [-1,1])rdr.poly([pt(.18,side*.12),pt(.02,side*.98*flap),pt(-.54,side*.82*flap),pt(-.68,side*.28),pt(-.20,side*.08)],wingSoft);
+      rdr.part('wings',()=>{for(const side of [-1,1])rdr.poly([pt(.18,side*.12),pt(.02,side*.98*flap),pt(-.54,side*.82*flap),pt(-.68,side*.28),pt(-.20,side*.08)],wingSoft)},motion.parts.wings);
       rdr.circle(...pt(-.06,0),r*.48,bodyDark,11);rdr.circle(...pt(.32,0),r*.27,body,9);
-      const swell=attack?1.22:(.94+.08*Math.sin(now*.007+seed)),sac=pt(-.48,0);
-      rdr.circle(sac[0],sac[1],r*.34*swell,[.67,.40,.82,.98],11);rdr.circle(sac[0],sac[1],r*.17*swell,[.88,.72,1,.86],9);
+      const sac=pt(-.48,0);
+      rdr.part('sac',()=>{rdr.circle(sac[0],sac[1],r*.34,[.67,.40,.82,.98],11);rdr.circle(sac[0],sac[1],r*.17,[.88,.72,1,.86],9)},motion.parts.sac);
       if(attack)rdr.circle(sac[0],sac[1],r*.62,[.72,.50,.92,.10],14);
     }
 });
 
-// Canvas backend for the original renderer's polygon/quad primitive API.
+// Shared authored polygon/quad painter for native UI and cold retained-mesh compilation.
 // Circles intentionally remain n-sided polygons; using ctx.arc here would erase
 // the low-poly silhouette and change the source artwork at its normal game scale.
 const polygonTemplates=new Map(),colorCache=new Map();
@@ -5090,12 +5078,16 @@ function directions(n,rot=0){
   const pts=Array.from({length:n},(_,i)=>[Math.cos(rot+i/n*Math.PI*2),Math.sin(rot+i/n*Math.PI*2)]);
   polygonTemplates.set(key,pts);return pts;
 }
-class CanvasRenderer extends globalThis.BloomGamekitRendering.PrimitivePainter{
-  constructor(ctx,opts={}){super(ctx);this.ctx=ctx;this.options=opts;this._unitFacingTransform=null;this._unitRenderAlphaMul=1;this.alphaMultiplier=()=>this._unitRenderAlphaMul;this.snapshot={tick:0,tps:20}}
+class UnitArtPainter extends globalThis.BloomGamekitRendering.PrimitivePainter{
+  constructor(ctx){super(ctx);this.ctx=ctx;this._partTransform=null;this._unitRenderAlphaMul=1;this.alphaMultiplier=()=>this._unitRenderAlphaMul}
   point(x,y){
-    const tr=this._unitFacingTransform;if(!tr)return[x,y];
-    const dx=x-tr.pivotX,dy=y-tr.pivotY;
-    return[tr.pivotX+dx*tr.cos-dy*tr.sin,tr.pivotY+dx*tr.sin+dy*tr.cos];
+    const m=this._partTransform;if(m){const px=x;x=m[0]*px+m[2]*y+m[4];y=m[1]*px+m[3]*y+m[5]}
+    return[x,y];
+  }
+  part(name,paint,options={}){
+    if(options.visible===false)return;
+    const previous=this._partTransform;this._partTransform=options.transform||null;
+    try{return paint()}finally{this._partTransform=previous}
   }
   outlineCircle(x,y,r,w,c,segments=56,dashEvery=0){
     const pts=directions(segments);
@@ -5116,19 +5108,93 @@ class CanvasRenderer extends globalThis.BloomGamekitRendering.PrimitivePainter{
   crestTriangle(x,y,r,c,angle=-Math.PI/2){
     this.tri(x+Math.cos(angle)*r,y+Math.sin(angle)*r,x+Math.cos(angle+2.35)*r*.72,y+Math.sin(angle+2.35)*r*.72,x+Math.cos(angle-2.35)*r*.72,y+Math.sin(angle-2.35)*r*.72,c);
   }
-  withFacingAngle(angle,u,x,y,fn){return this.withFacingPivot(angle,u,x,y,x,y,fn)}
-  withFacingPivot(angle,u,pivotX,pivotY,baseX,baseY,fn){
-    const authoredForward=-Math.PI/2,a=Math.atan2(Math.sin(angle-authoredForward),Math.cos(angle-authoredForward)),prev=this._unitFacingTransform;
-    this._unitFacingTransform={pivotX,pivotY,cos:Math.cos(a),sin:Math.sin(a)};
-    try{return fn({baseX,baseY})}finally{this._unitFacingTransform=prev}
-  }
-  artilleryFacingScreen(u){return{hullAngle:this.options.hullFacing??-Math.PI/2,turretAngle:this.options.turretFacing??-Math.PI/2,deployState:u.behaviorState.deploymentState}}
 }
 function normalizeTeam(team){return team==='enemy'||team===1||team==='red'?'enemy':team==='neutral'?'neutral':'friendly'}
 function assertType(type){if(!RALLY_ART_CONFIG.units[type])throw new RangeError('Unknown Rally unit: '+type);return RALLY_ART_CONFIG.units[type]}
 function makeCanvas(w,h=w){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
 function attackValue(opts){return opts.attack?{progress:opts.attackProgress??.5}:false}
-// World outlines repeat vector geometry; standalone DOM thumbnails may use a mask.
+function rotationAbout(angle,x,y){const c=Math.cos(angle),s=Math.sin(angle);return[c,s,-s,c,x-c*x+s*y,y-s*x-c*y]}
+function scaleAbout(scale,x,y){return[scale,0,0,scale,x*(1-scale),y*(1-scale)]}
+// Only animation parameters are evaluated per draw. Authored vertices are built on cache misses.
+// The same parameter source drives native UI art and retained world mesh instances.
+function artMotion(type,x,y,r,timeMs,opts){
+ const parts={},pose=opts.meshPose,hash=HashUtil.hash(type),seed=(hash%997)*.017;
+ const motion={parts,fastFlap:pose??(.5+.5*Math.sin(timeMs*.026+seed)),slowFlap:pose??opts.slowFlap??(.5+.5*Math.sin(timeMs*.010+seed))};
+ if(type==='dandelion')parts.spokes={transform:rotationAbout(timeMs*.0005,x,y-r*.30)};
+ else if(type==='mage')for(let k=0;k<4;k++){const a=k*Math.PI/2+timeMs*.0015;parts['orb-'+k]={transform:[1,0,0,1,Math.cos(a)*r*.72,Math.sin(a)*r*.72]}}
+ else if(type==='pillbug'){
+  parts.radial={transform:rotationAbout(timeMs*.012+(hash%997)*.01,x,y)};
+  parts.pulse={transform:scaleAbout(.82+.18*Math.sin(timeMs*.012+(hash%17)),x+r*.62,y-r*.14)};
+ }else if(type==='flowerbee')parts.wings={morph:[motion.fastFlap,0]};
+ else if(type==='sporemoth'){
+  parts.wings={morph:[motion.slowFlap,0]};
+  parts.sac={transform:scaleAbout(opts.attack?1.22:(.94+.08*Math.sin(timeMs*.007+seed)),x,y+r*.48)};
+ }else if(type==='shelltitan'){
+  motion.attackPhase=pose??Math.sin(Math.min(1,Number(opts.attackProgress)||.5)*Math.PI);
+  parts['attack-aura']={morph:[motion.attackPhase,0]};
+ }else if(type==='siege'){
+  const deploying=opts.deployProgress!=null&&opts.deployProgress<1,q=deploying?RangeUtil.clamp(opts.deployProgress,0,1):opts.deployed?1:0;
+  const ease=motion.ease=pose??q*q*(3-2*q),hull=rotationAbout((opts.hullFacing??-Math.PI/2)+Math.PI/2,x,y);
+  parts['common-body']={transform:rotationAbout((opts.commonFacing??opts.hullFacing??-Math.PI/2)+Math.PI/2,x,y)};
+  parts.feedback=parts['common-body'];
+  for(let i=0;i<3;i++){
+   parts['hull-leg-'+i]={transform:hull,morph:[ease,0]};
+   parts['hull-detail-'+i]={transform:hull,morph:[ease,0],visible:ease>.30};
+  }
+  parts['hull-body']={transform:hull,morph:[ease,0]};
+  parts.turret={transform:rotationAbout((opts.turretFacing??-Math.PI/2)+Math.PI/2,x,y-r*.08-r*.30*ease),morph:[ease,0]};
+  parts['deployment-halo']={morph:[ease,0],visible:deploying&&ease>0};
+ }
+ return motion;
+}
+class MeshArtCompiler extends UnitArtPainter{
+ constructor(){super(new globalThis.BloomGamekitRendering.MeshBuilder());this.parts=[];this.baseIndex=0}
+ flushPart(name){if(this.ctx.vertices.length)this.parts.push({name,builder:this.ctx});this.ctx=new globalThis.BloomGamekitRendering.MeshBuilder();this.context=this.ctx}
+ part(name,paint){this.flushPart('base-'+this.baseIndex++);paint();this.flushPart(name)}
+ finish(){this.flushPart('base-'+this.baseIndex++);return this.parts}
+}
+const meshArtCaches=new WeakMap(),meshArtTotals={meshes:0,bytes:0,hits:0,misses:0,evictions:0};
+const morphedUnitArt=new Set(['flowerbee','sporemoth','siege','shelltitan']);
+const staticMeshPart=Object.freeze({});
+function dropMeshArt(ctx,cache,key){
+ const entry=cache.entries.get(key);if(!entry)return;
+ ctx.deleteMesh(entry.mesh);
+ cache.entries.delete(key);cache.meshes--;cache.bytes-=entry.bytes;
+ meshArtTotals.meshes--;meshArtTotals.bytes-=entry.bytes;
+}
+function disposeMeshes(ctx){const cache=meshArtCaches.get(ctx);if(!cache)return;for(const key of cache.entries.keys())dropMeshArt(ctx,cache,key);meshArtCaches.delete(ctx)}
+function meshArtEntry(ctx,type,team,r,opts){
+ let cache=meshArtCaches.get(ctx);if(!cache){cache={entries:new Map(),meshes:0,bytes:0};meshArtCaches.set(ctx,cache)}
+ const palette=opts.factionPalette||RALLY_ART_CONFIG.palettes[team];
+ const key=type+'|'+team+'|'+r+'|'+[palette.body,palette.dark,palette.light].map(c=>c.join(',')).join(';')+'|'+Number(!!opts.attack)+'|'+Number(!!opts.hit)+'|'+Number(!!opts.cloaked);
+ let entry=cache.entries.get(key);
+ if(entry){meshArtTotals.hits++;cache.entries.delete(key);cache.entries.set(key,entry)}else{
+  meshArtTotals.misses++;
+  const first=new MeshArtCompiler(opts),needsMorph=morphedUnitArt.has(type),second=needsMorph?new MeshArtCompiler(opts):null;
+  composeRecipe(first,type,team,0,0,r,0,{...opts,meshPose:0});
+  if(second)composeRecipe(second,type,team,0,0,r,0,{...opts,meshPose:1});
+  const a=first.finish(),b=second?second.finish():a;
+  if(a.length!==b.length)throw new Error('Rally mesh part topology differs: '+type);
+  const data=a.map((part,i)=>{if(part.name!==b[i].name)throw new Error('Rally mesh part order differs: '+type);return{name:part.name,geometry:part.builder.build({morphs:needsMorph?[b[i].builder]:[]})}});
+  // Preserve the exact authored part / triangle sequence in ONE GPU mesh.
+  // Part transforms and morph weights are draw state, not separate submissions.
+  const geometry=globalThis.BloomGamekitRendering.MeshBuilder.combine(data.map(part=>part.geometry));
+  const bytes=geometry.vertices.byteLength,limits=RALLY_ART_CONFIG.limits;
+  if(limits.meshCacheMeshes<1||bytes>limits.meshCacheBytes)throw new RangeError('Rally unit mesh exceeds retained cache budget');
+  while(cache.entries.size&&(cache.meshes+1>limits.meshCacheMeshes||cache.bytes+bytes>limits.meshCacheBytes)){dropMeshArt(ctx,cache,cache.entries.keys().next().value);meshArtTotals.evictions++}
+  entry={mesh:ctx.createMesh(geometry),parts:data.map(part=>part.name),bytes};
+  cache.entries.set(key,entry);cache.meshes++;cache.bytes+=bytes;meshArtTotals.meshes++;meshArtTotals.bytes+=bytes;
+ }
+ return entry;
+}
+function retainedArt(ctx,type,team,x,y,r,timeMs,opts){
+ const entry=opts.meshArtEntry||meshArtEntry(ctx,type,team,r,opts);
+ const sample=opts.meshArtSample||meshArtSample(entry,artMotion(type,0,0,r,timeMs,opts));
+ if(x||y){ctx.save();ctx.translate(x,y)}
+ try{ctx.drawMesh(entry.mesh,sample)}finally{if(x||y)ctx.restore()}
+}
+function meshArtSample(entry,motion){return{parts:entry.parts.map(name=>motion.parts[name]||staticMeshPart)}}
+// World outlines repeat retained mesh instances; standalone DOM thumbnails may use a mask.
 function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
  if(ctx.isBloomWebGL)return ctx.withSilhouette(opts.gradeOutline,Math.max(1,r*.085),()=>compose(ctx,type,team,x,y,r,timeMs,{...opts,gradeOutline:null}));
  const size=Math.ceil(r*6+12),half=size/2,body=makeCanvas(size),b=body.getContext('2d');
@@ -5141,37 +5207,42 @@ function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
 }
 function compose(ctx,type,team,x,y,r,timeMs,opts={}){
  if(opts.gradeOutline)return composeOutlined(ctx,type,team,x,y,r,timeMs,opts);
+ if(ctx.isBloomWebGL)return retainedArt(ctx,type,team,x,y,r,timeMs,opts);
+ return composeRecipe(new UnitArtPainter(ctx,opts),type,team,x,y,r,timeMs,opts);
+}
+function composeRecipe(rdr,type,team,x,y,r,timeMs,opts){
   const d=assertType(type),own=team==='friendly',palette=opts.factionPalette||RALLY_ART_CONFIG.palettes[team];
-  renderTime=timeMs;
   const ownStealthAlpha=own&&opts.cloaked?.30:1;
   const tint=c=>ownStealthAlpha<1?[...c.slice(0,3),ownStealthAlpha]:c;
   const body=tint(palette.body),teamDark=tint(palette.dark),teamLight=tint(palette.light);
   const accent=d.accent||teamLight,attack=attackValue(opts),sc=r/(d.size*1.56*d.visualScale);
-  const deploymentState=opts.deployProgress!=null&&opts.deployProgress<1?'deploying':opts.deployed?'deployed':'mobile';
-  const u={id:type,type,side:own?0:1,behaviorState:{deploymentState,deploymentUntil:(1-(opts.deployProgress??1))*18}};
-  const rdr=new CanvasRenderer(ctx,opts);rdr._unitRenderAlphaMul=ownStealthAlpha;
-  if(type==='siege'){const a=(opts.commonFacing??opts.hullFacing??-Math.PI/2)+Math.PI/2;rdr._unitFacingTransform={pivotX:x,pivotY:y,cos:Math.cos(a),sin:Math.sin(a)}}
-  const c={u,own,d,sc,neutral:team==='neutral',x,y,r,airUnit:d.layer==='AIR',ownStealthAlpha,cloaked:!!opts.cloaked,team:body,teamDark,teamLight,factionPalette:palette,accent,attack,hit:!!opts.hit,dir:-1};
+  const u={id:type,type,side:own?0:1};
+  rdr._unitRenderAlphaMul=ownStealthAlpha;
+  const motion=artMotion(type,x,y,r,timeMs,opts);
+  const c={u,own,d,sc,neutral:team==='neutral',x,y,r,airUnit:d.layer==='AIR',ownStealthAlpha,cloaked:!!opts.cloaked,team:body,teamDark,teamLight,factionPalette:palette,accent,attack,hit:!!opts.hit,dir:-1,motion};
   if(d.layer==='AIR'){
     const fx=0,fy=-1,sx=1,sy=0;
     const pt=(forward=0,side=0)=>[x+fx*forward*r+sx*side*r,y+fy*forward*r+sy*side*r];
     const linePts=(a,b,w,color)=>rdr.line(a[0],a[1],b[0],b[1],w,color);
     const now=timeMs,seed=(HashUtil.hash(u.id)%997)*.017;
-    const fastFlap=.5+.5*Math.sin(now*.026+seed),slowFlap=opts.slowFlap??(.5+.5*Math.sin(now*.010+seed));
+    const {fastFlap,slowFlap}=motion;
     const wingBright=[Math.min(1,accent[0]+.18),Math.min(1,accent[1]+.18),Math.min(1,accent[2]+.18),.72];
     const wingSoft=[Math.min(1,accent[0]+.12),Math.min(1,accent[1]+.12),Math.min(1,accent[2]+.12),.42];
     AIR_UNIT_VISUAL_RENDER_FNS[type](rdr,{...c,fx,fy,sx,sy,pt,linePts,now,seed,fastFlap,slowFlap,wingBright,wingSoft,body,bodyDark:teamDark,delta:{x:0,y:0}});
   }else{
     if(d.commonGroundBody!==false){
       const b=RALLY_ART_CONFIG.commonBody;
+      const paintBody=()=>{
       rdr.circle(x,y+r*b.outerY,r*b.outerRadius,b.ink,12);
       rdr.circle(x,y+r*b.bodyY,r*b.bodyRadius,body,12);
       rdr.circle(x+r*b.highlightX,y+r*b.highlightY,r*b.highlightRadius,teamLight,10);
+      };
+      if(type==='siege')rdr.part('common-body',paintBody,motion.parts['common-body']);else paintBody();
     }
     UNIT_VISUAL_RENDER_FNS[type](rdr,c);
   }
-  if(opts.hit)rdr.circle(x,y,r*1.42,[1,.94,.75,.18],12);
-  if(attack)rdr.circle(x,y,r*1.22,[1,.73,.22,.07],10);
+  const paintFeedback=()=>{if(opts.hit)rdr.circle(x,y,r*1.42,[1,.94,.75,.18],12);if(attack)rdr.circle(x,y,r*1.22,[1,.73,.22,.07],10)};
+  if(type==='siege')rdr.part('feedback',paintFeedback,motion.parts.feedback);else paintFeedback();
 }
 const thumbnails=new Map();
 function clearCache(){thumbnails.clear()}
@@ -5200,6 +5271,8 @@ function draw(ctx,type,team,x,y,radius,facing,timeMs=0,opts={}){
   if(type==='siege'){localOpts.hullFacing=opts.hullFacing??angle;localOpts.turretFacing=opts.turretFacing??angle;localOpts.commonFacing=angle}
   if(Number.isFinite(opts.hullFacing))localOpts.hullFacing=opts.hullFacing-rotation;
   if(Number.isFinite(opts.turretFacing))localOpts.turretFacing=opts.turretFacing-rotation;
+  // Outline passes reuse this same sample and retained handle, not ten cache lookups/recipes.
+  if(ctx.isBloomWebGL){localOpts.meshArtEntry=meshArtEntry(ctx,type,team,radius,localOpts);localOpts.meshArtSample=meshArtSample(localOpts.meshArtEntry,artMotion(type,0,0,radius,timeMs,localOpts))}
   compose(ctx,type,team,0,0,radius,timeMs,localOpts);ctx.restore();
   if(ctx.isBloomWebGL&&alpha<.999999){ctx.endGroup();ctx.globalAlpha=outerAlpha}
 }
@@ -5224,10 +5297,10 @@ function thumbnail(type,team='friendly',opts={}){
   if(thumbnails.size>=RALLY_ART_CONFIG.limits.thumbnailCacheEntries)thumbnails.clear();
   thumbnails.set(key,result);return result;
 }
-function stats(){return{backend:"vector",thumbnails:thumbnails.size}}
+function stats(){return{backend:"retained-mesh",thumbnails:thumbnails.size,meshes:{...meshArtTotals}}}
 RALLY_ART_CONFIG.renderers={ground:UNIT_VISUAL_RENDER_FNS,air:AIR_UNIT_VISUAL_RENDER_FNS};
 global.RALLY_ART_CONFIG=RALLY_ART_CONFIG;
-global.RallyArt={draw,visualExtent,thumbnail,canvas,clearCache,stats,config:RALLY_ART_CONFIG,types:RALLY_ART_CONFIG.types};
+global.RallyArt={draw,visualExtent,thumbnail,canvas,clearCache,disposeMeshes,stats,config:RALLY_ART_CONFIG,types:RALLY_ART_CONFIG.types};
 })(typeof window!=='undefined'?window:globalThis);
 
 ;
@@ -11677,7 +11750,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@d1e2c385033ad04a7a004cfbe9558948ef07a6d1/assets/fonts/noto-sans-kr-700-v1.json",version:"d1e2c385033ad04a7a004cfbe9558948ef07a6d1",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@2e5043e05b5605a64772f26f65932260c587b470/assets/fonts/noto-sans-kr-700-v1.json",version:"2e5043e05b5605a64772f26f65932260c587b470",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12542,7 +12615,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'b0e52991fe273fe470dea6f32d0d2e348708c217',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'893fff72d64118ebc5820379e8a76553f87458a9',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 

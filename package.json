@@ -11,6 +11,7 @@
     "test:benchmark:modes": "node tests/performance-modes.cjs && node tests/performance-modes-browser.mjs",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
     "benchmark:snapshots": "node tests/snapshot-jobs-browser.mjs",
+    "benchmark:meshes": "node tests/mesh-performance-browser.mjs",
     "test:benchmark:shared": "node tests/shared-performance.cjs"
   },
   "devDependencies": {

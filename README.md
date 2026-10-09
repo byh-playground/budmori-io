@@ -1,5 +1,19 @@
 # Budmori.io · 버드모리
 
+## 병사 메시 재사용
+
+군대 24종은 공통 `MeshBuilder` / `VectorContext.drawMesh()`로 그립니다. 종류·실제 반경·팔레트·공격/피격 상태별 authored 삼각형을 한 번 만들고 GPU에 보관합니다. 회전·궤도·맥동·날갯짓·포탑 전개는 part transform/morph/visibility 값으로 전달하며, 시간·방향·연속 진행률을 캐시 키에 넣거나 애니메이션을 양자화하지 않습니다. 원래 레시피는 native UI thumbnail과 cold mesh 생성이 함께 사용하고, 세계를 Canvas2D로 rasterize해 올리지 않습니다.
+
+조각별 GPU buffer를 번갈아 제출하면 outline10pass와 교차해 draw가 폭증하므로 `MeshBuilder.combine()`으로 조각을 순서 그대로 한 메시로 합칩니다. 동일한 인접 메시·part pose는 공통 GPU instance batch에 들어가며 다른 종류를 정렬해 모으거나 깊이 순서를 바꾸지 않습니다. 모든 유닛이 한 draw라는 뜻은 아닙니다. 메시의 조각수·morph수·clip 유무에 맞춘 shader만 생성하며 불투명 direct group은 배치를 끊지 않습니다.
+
+게임 캐시 상한은384 GPU meshes /24MiB vertex payload입니다(CPU 보관과 GPU 할당 각각 추가). cold 생성·shader compile·캐시 miss 비용이 있고 종료 시 캐시와 공통 GPU 자원을 해제합니다. `RallyArt.stats().meshes`는 cache hit/miss/eviction, renderer `stats().mesh`는 실제 draw/instance, geometry/instance upload, 별도의 part uniform 제출량·pipeline 수·retained/scratch bytes를 표시합니다. GPU vertex/fill/overdraw 비용이 없어진 것은 아닙니다. 지형 높이에 맞추는 그림자와 모아의 곡선 아트는 기존 공통 vector 경로를 유지합니다.
+
+`npm run benchmark:meshes -- <index.html> [비교본 index.html]`은360×640 CSS/DPR2의 실제 Chromium/SwiftShader에서155·500·1000 초기 병력을 만들고 정상 RAF/deadline/input을 실행합니다. 테스트서버의 초기 배치 외에는 시간·물리·렌더 경로를 바꾸지 않습니다. preview OFF는 공개 capability를 꺼 두는 통제군이며 초기 scope 할당은 동일하게 남깁니다. `BLOOM_LOAD_COUNTS`로 규모를 선택하며 `BLOOM_RENDERING_CANDIDATE`는 미배포 로컬 bundle의 정확한 SHA/bytes를 검증하는 명시적 개발 fixture입니다(제품 import/provenance 주장이 아님). 벤치마크는 일반3분 E2E나 CI에 넣지 않습니다.
+
+SDK source `893fff72d64118ebc5820379e8a76553f87458a9` /dist `2e5043e05b5605a64772f26f65932260c587b470` 조합의 전체 `npm test`는137,744ms PASS(180초 상한)입니다. 24종 실제 GPU gallery의 가시성·연속 애니메이션·warm geometry upload0과 단독/모바일/저장/실제2-peer 전환을 확인했습니다. 최초 개발 실행의 기존 입력 준비 대기1500ms timeout1회 뒤 재실행 및 최종 전체 실행이 통과한 이력도 PR에 남깁니다.
+
+별도 부하는 **PERFORMANCE_FAIL**입니다. 같은 초기 병력의 preview OFF actor 제출 p50은155병력82→30.5ms,500병력505.8→157.2ms,1000병력1022.7→780.9ms로 줄었지만,500previewON 및1000의tick 정지는 남았습니다. Chromium153/SwiftShader의 짧은3~12frame 표본이며 안정적인 최대시간·모바일GPU FPS·전체멀티부하 완료를 뜻하지 않습니다. warm 군대 geometry upload는0,4meshes25,608bytes/2pipelines였고 다른vector·그림자·instance upload 및GPU overdraw는 계속 있습니다. preview scope install 관측 평균은155/500/1000에서44.1/94.6/194.6ms로 별도 병목입니다. 실제 결과·제한·원본보고서 위치는 [PR30](https://github.com/byh-playground/budmori-io/pull/30) 본문에 기록합니다.
+
 ## 입력 선반응
 
 실제 게임의 RAF는 공통 `observeInput()`으로 입력·UI command를 한 경로에서 수집하고, 공통 deadline scheduler가 SDK 경계의 canonical 제출을 소유합니다. RAF가 느리거나 멈춰 관찰이 한 quantum 이상 오래되면 deadline에서 같은 경로로 갱신합니다. 최근 관찰은 재사용하고 edge 명령은 한 번만 제출합니다. 선택된 local render identity는 같은 게임 source를 한 번 로드한 독립 simulation scope의 미래 표본을 공통 schema로 매 RAF 평가합니다. 모아·군단의 이동/구르기/충돌/전투는 기존 WorldSimulation·PlayerController·Unit update를 그대로 실행합니다.
@@ -8,7 +22,7 @@ scope는 검증된 module Blob과 `src/game.js` 원본 SRI를 사용하며 nativ
 
 `tests/input-preview-flow.mjs`는 solo/two-peer browser scenario에 조합하는 helper입니다. 정상 deadline/poll/RAF를 계속 실행하며 실제 preview 발행과 새 입력의 권위 소비 순서를 직접 관측합니다. 표시 모델은 native clock으로 읽고, 실제 게임 render frame·WebGL 픽셀은 별도로 확인합니다. RTC 입력 패킷만 지연시키며 heartbeat·control은 계속 실제 채널로 전송합니다. 내부 timer freeze나 수동 render는 이 helper에 없습니다. snapshot install/replay는 새로운 입력 또는 활성 prediction의 canonical 경계에서 실행하며, idle/auto-hunt에는 전체 세계를 매 tick 복제하지 않습니다. 동일 held 관찰은 미래 sample을 재사용합니다.
 
-SDK source `b0e52991fe273fe470dea6f32d0d2e348708c217` / dist `d1e2c385033ad04a7a004cfbe9558948ef07a6d1` 조합에서 `npm test` 전체는 129,527ms PASS(180초 상한)했습니다. 수정하지 않은 정상 세계·싱글·모바일 에뮬레이션·사망/부활·저장 보호·실제 2-peer RTC 입력 대기·native 창 blur·재접속·방장 승계를 확인했습니다. 입력 발행 전후 권위 tick/hash/RNG와 객체 identity가 유지되고 실제 명령이 확인됐습니다. native 창 검증은 Playwright의 기본 focus emulation을 잠깐 해제해 실제 blur를 받으며, DOM visibility가 hidden이었다고 과장하지 않습니다.
+이전 입력 선반응 통합의 SDK source `b0e52991fe273fe470dea6f32d0d2e348708c217` / dist `d1e2c385033ad04a7a004cfbe9558948ef07a6d1` 조합에서 `npm test` 전체는 129,527ms PASS(180초 상한)했습니다. 수정하지 않은 정상 세계·싱글·모바일 에뮬레이션·사망/부활·저장 보호·실제 2-peer RTC 입력 대기·native 창 blur·재접속·방장 승계를 확인했습니다. 입력 발행 전후 권위 tick/hash/RNG와 객체 identity가 유지되고 실제 명령이 확인됐습니다. native 창 검증은 Playwright의 기본 focus emulation을 잠깐 해제해 실제 blur를 받으며, DOM visibility가 hidden이었다고 과장하지 않습니다.
 
 추가 예측 비용은 있습니다. 작은 정상 세계(7 유닛)의 개발 관측은 입력→모델 발행 39.3ms(관측 hook 비용 포함), scope install 11회/108.9ms, step 9회/39.7ms였습니다. 2-peer 관측은 install 14회/138.3ms, step 12회/55.2ms였습니다. cold compile/JIT가 섞인 누적 CPU 표본이며 input-to-photon이나 FPS 개선 수치가 아닙니다. 155 병력의 별도 native 2-tick/12-frame smoke는 genuine font·authority 불변을 통과했지만 GPU 없는 CPU 제출 비용이 약100ms/frame으로 컸습니다. 고부하 예측·실제 Android GPU/FPS·공개 relay/NAT는 미검증이며 무회귀나 60FPS를 보장하지 않습니다. `heapObservedDeltaBytes`는 coarse whole-page heap 값으로, 0은 추가 메모리 0을 뜻하지 않습니다.
 

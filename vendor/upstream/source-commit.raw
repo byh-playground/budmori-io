@@ -1,26 +1,26 @@
-tree 050e12208f4e47c2ee430270293128fc5bb5483d
-parent ed876f6d31da5dc78d1199f176184ee59942718a
-parent b8147bb87c6746526b760605115d18d5581f88de
-author byh020907 <byh020907@naver.com> 1791513633 +0900
-committer GitHub <noreply@github.com> 1791513633 +0900
+tree 9a4c1f7c802d72d634fe8f58f4a0c9d86d94f9cf
+parent fab6749ba925febeb1247b78eca3567935883f6d
+parent f7f954cbd7c3df669bb845f7028eb6e8e2c630a4
+author byh020907 <byh020907@naver.com> 1791544440 +0900
+committer GitHub <noreply@github.com> 1791544440 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqyFQhCRC1aQ7uu5UhlAAAf7EQAEkteharf3Ie6sixpryH9bK+
- CnnKD4nZUmKa/8vGmYaS3XK6XnyQ8Xi/rMRSEuV0nCPO4aYfbPBpVpduQR+rWZyq
- KADdd9yAx3fOCL7QIkarsIFG95ZopQS5x7g5pNgngtxBQ9wvcqlka51RjH2QlVkH
- q+F2/PaoNgmYO4P55FRh+oS4GuzXuKnkUjf+uEWoEBednwbH0FAw4rlsqiDD4PJq
- Evc8Fkv6DVpEaiJH81kTvGZ13qdK21Qb32RHSJYOgmWEOVS3rrqSJ87OOZBgquTW
- faXX445ER89OTWbFyUQ34zNBHoVfw3eYnuKfwXK1zfcXq2GYwJQggBawHm9al9tw
- 362UqqmzbRXKY2PUKtQ2dSmhcIa16qFrBUfkYnKGRWJ/po5/VVwO4jBrXBShKDN6
- QtRVfkRuupT5VEna08Vuiuwc18N4n9kVS/K0W5TYhbnLufJsUbxjhyBoTPzHUut8
- OFsQr4f3KeCkaPekv8EwlFnNDBpvoH3iR2ear/2Pp2x27ydyFAbeijlNF5eEL8Co
- lv8hKl/JEp32toXZl/RGJY59V8MmM3cDHVJQTypDRRB3bTkA2p8BIrvQX8ME/T1F
- UNDwMCN+HZ8zikS15q5GLvVznZaLN9/ivzVtiTeXW1+xTBG0zDgtbhBHbR0+6bCB
- N9ctODdG9KuAREB6SHCY
- =ogkt
+ wsFcBAABCAAQBQJqyMx4CRC1aQ7uu5UhlAAAbYoQAJAihZWDa9UNmLMoACh4oFAH
+ 4a4kO7FzTyivy94h/fmW2SmfQaBuZEFlV1Z/dvCQKu32GkgjC/th8L54oXeTfps6
+ A2EdpZH9Qcou/lPXRrumIvC7VQSD0p1MgOiO7pu4FDfVoO369u/NMfDXwRtF5oWA
+ 6RJEutWjRj2ttp+eJ1Efd77U6/BxNzjaOgNs3SrHfvl2AsoJ+YYI+uK6fSl40c9p
+ eAL5Hn83n+V3Zw60v+uqyh9JkuIdhQ6KcVqprdkpGZ+v8KVyAnrXIJIflHLalMOD
+ O6pZZ6Jm5Cqd9BbrDgADtl/QEOhl6vbpZ1mrYrqopwLQgpJbjUBkDqCPNUl8jml1
+ hUeqmEHHr2QOUZP5uAWyfISzP+y4IOjQ0o+HAbqXN12cWad7FvV3KTpA4XGKDPZh
+ vsusi6HxPohYPblXXH7SiAbPH2f/8wD1ZPI+S6pn8GuJfg+3hxYVlK/9yeXqPnAF
+ vq2QdA06nkdtc6ybln6oup4JGm0SWjZ3YI2mx8WRVBqfyHQfxHovzmZ4BctI8rTd
+ VGLBeoVMRY8FvDrq+mK7s9yRWyyHPsk2+1u6JOyVIZZ/94rPSnmKU/65kEVfQm4o
+ YCjdJxN53BB0iZ2G0SmMViQZm+Hl4XnuGVEQPaWYWm/YPA4TTxAbt/P2UAYMIJHZ
+ dbL2Doi+am4Arnt2H4Bh
+ =KsoW
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #25 from byh-playground/codex/deadline-input-freshness
+Merge pull request #27 from byh-playground/codex/packed-mesh-parts
 
-[bug-fix] 느린 RAF에서도 deadline 입력 관찰 갱신
+[performance] 애니메이션 조각을 한 메시로 묶어 outline draw 폭증 제거
