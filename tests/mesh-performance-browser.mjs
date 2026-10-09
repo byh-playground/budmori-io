@@ -73,7 +73,8 @@ try {
     try {
       for (const count of counts) for (const preview of [false, true]) {
         const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
-        const errors = [], row = { file, sourceSHA256: runtime.hash(app.game), sdk: app.config.distCommit, count, preview, errors };
+        const errors = [], row = { file, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
+          renderingSHA256: app.config.modules.find(entry => entry.name === 'rendering').sha256, sdk: app.config.distCommit, count, preview, errors };
         report.results.push(row);
         try {
           await installAssets(context, app);
@@ -98,6 +99,7 @@ try {
   }
 } finally {
   await browser?.close();
+  report.outcome = report.results.length && report.results.every(row => row.status === 'MEASURED') ? 'MEASURED' : 'PERFORMANCE_FAIL';
   await writeFile(new URL('./mesh-performance-report.json', import.meta.url), JSON.stringify(report, null, 2));
 }
 if (report.results.some(row => row.status === 'FAIL')) process.exitCode = 1;
