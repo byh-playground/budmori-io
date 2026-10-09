@@ -166,7 +166,7 @@ async function screenshot(page,name,timeout){const path=fileURLToPath(new URL('.
 // Resume through visible UI rather than changing simulation/presentation flags.
 async function focusAndResume(page){
  await page.bringToFront();const state=await read(page);
- if(state.modal==='pause')await page.locator('#sheet [data-action="close"]').click();
+ if(state.modal==='pause')await page.locator('#sheet .primary[data-action="close"]').click();
  else assert.equal(state.modal,'','Unexpected dialog while resuming a player');
  await until(async()=>{const s=await read(page);return !s.paused&&!s.modal},'focused player resumes through UI');
 }
@@ -178,10 +178,9 @@ async function openPause(page){
 }
 async function startPublic(page){const number=pages.indexOf(page)+1;await phase('page '+number+' Public Start click',()=>page.locator('[data-action="start"]').click());}
 try{
- // Keep the automation window rendering when Codex covers it on Windows.
- // This does not override native tab visibility/blur; those are tested below.
- // https://github.com/GoogleChrome/chrome-launcher/blob/main/docs/chrome-flags-for-tools.md
- browser=await phase('Chromium launch',()=>chromium.launch({headless:!headed,timeout:120000,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows','--disable-features=CalculateNativeWinOcclusion']}));
+ // Preserve native window visibility/occlusion: disabling it masks the real
+ // minimized-window event we need to verify. Background timers still run.
+ browser=await phase('Chromium launch',()=>chromium.launch({headless:!headed,timeout:120000,...(process.env.CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.CHROMIUM_EXECUTABLE_PATH}:{}),args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']}));
  context=await phase('browser context',()=>browser.newContext({viewport:{width:720,height:640},deviceScaleFactor:1}));
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
@@ -228,14 +227,23 @@ try{
  }finally{await evaluate(host,()=>__sharedBrowser.releaseRTC())}
  record('Real RTC input wait preserves authority while local preview responds and commands confirm once');
  await checkpoint([host,guest],'input-preview-after-rtc-delay');
- await focusAndResume(host);await host.keyboard.down('KeyD');await ticks([host,guest],2);
- await guest.bringToFront();
- await until(async()=>(await read(host)).paused,'Native tab switch pauses local controls',5000);
- await assertInputPreviewCleared(host);await ticks([host,guest],4);
- const inactive=await read(host),inactiveInput=inactive.input.find(input=>input.playerId===hostId);
- assert(inactiveInput?.suspended&&inactiveInput.x===0&&inactiveInput.y===0,'Real inactive tab releases cached held movement while shared world keeps ticking');
- await host.keyboard.up('KeyD');await focusAndResume(host);
- record('Native tab blur clears cached held input and preview without stopping the public world');
+ if(headed){
+  await focusAndResume(host);await host.keyboard.down('KeyD');await ticks([host,guest],2);
+  const nativeWindow=await context.newCDPSession(host),windowInfo=await nativeWindow.send('Browser.getWindowForTarget');
+  try{
+   // Playwright's default focused/active emulation masks native visibility.
+   // Turn off that override, then let actual minimization deliver the event.
+   await nativeWindow.send('Emulation.setFocusEmulationEnabled',{enabled:false});
+   await nativeWindow.send('Browser.setWindowBounds',{windowId:windowInfo.windowId,bounds:{windowState:'minimized'}});
+   report.nativeMinimize=await nativeWindow.send('Browser.getWindowBounds',{windowId:windowInfo.windowId});
+   await until(async()=>await evaluate(host,()=>(document.hidden||!document.hasFocus())&&paused),'Native window minimization blurs local controls',5000);
+   await assertInputPreviewCleared(host);await ticks([host,guest],4);
+   const inactive=await read(host),inactiveInput=inactive.input.find(input=>input.playerId===hostId);
+   assert(inactiveInput?.suspended&&inactiveInput.x===0&&inactiveInput.y===0,'Native hidden window releases cached held movement while the public world keeps ticking');
+   report.inactiveWindow={windowId:windowInfo.windowId,visibility:inactive.performance.visibility,tick:inactive.tick,input:inactiveInput};
+  }finally{await nativeWindow.send('Browser.setWindowBounds',{windowId:windowInfo.windowId,bounds:{windowState:windowInfo.bounds.windowState}});await nativeWindow.send('Emulation.setFocusEmulationEnabled',{enabled:true});await nativeWindow.detach();await host.keyboard.up('KeyD')}
+  await focusAndResume(host);record('Native window minimization clears cached held input and preview while the public world continues');
+ }else report.limitations.push('Native minimized-window visibility is not exercised in explicit headless mode.');
  // Optional real-clock soak beyond the reported ~94s renderer failure. Keep
  // ordinary SDK timers/RAF and check both peers, without advancing test clocks.
  const soakMs=Number(process.env.BUDMORI_TWO_PLAYER_SOAK_MS||0);
@@ -247,7 +255,7 @@ try{
   report.twoPlayerSoak={elapsedMs:Math.round(performance.now()-started),peers:after.map((s,i)=>({ticks:s.tick-before[i].tick,frames:s.frames-before[i].frames,render:s.performance.render}))};
   record('Two-player WebGL rendering and simulation continue through real-clock soak',report.twoPlayerSoak);await checkpoint([host,guest],'two-player-soak');
  }
- for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
+ for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await page.waitForFunction(()=>globalThis.__sharedBrowser?.inspect&&globalThis.BloomSimulation?.runtime?.ready,undefined,{timeout:15000});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
  record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of await Promise.all([host,guest].map(read))){const own=player(state,state.localId);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,own.owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,own.level);assert.equal(state.localView.hp,own.hp);assert.equal(state.localView.army,own.army)}
  assert.notEqual(pair[0].localView.level,pair[1].localView.level);

@@ -31,8 +31,8 @@ const fontLoader=new realm.BloomGamekitRendering.FontAssetLoader(ctx.device,font
 const rendererCall='ctx=(globalThis.BLOOM_HEADLESS ? null : (BloomWebGL.create(canvas)))';assert(html.includes(rendererCall),'Actual split game source renderer bootstrap changed; update the native injection explicitly');const adapted=html.replace(rendererCall,'ctx=globalThis.testContext');
 const e=engine(file,adapted,ctx);const old=e.doc.createElement;e.doc.createElement=tag=>tag==='canvas'?createCanvas(1,1):old(tag);realm.RallyArt=e.c.RallyArt;
 assert.equal(realm.Float32Array,e.c.Float32Array,'native game/renderer share the Float32Array constructor');
-assert.throws(()=>ctx.createStaticMesh(e.run('new Float64Array(6)')),/Static mesh requires Float32Array with six floats per vertex/,'wrong typed-array element type remains invalid');
-assert.throws(()=>ctx.createStaticMesh(e.run('new Float32Array(5)')),/Static mesh requires Float32Array with six floats per vertex/,'incomplete six-float vertex layout remains invalid');
+assert.throws(()=>ctx.createStaticMesh(e.run('new Float64Array(6)')),/mesh requires Float32Array/,'wrong typed-array element type remains invalid');
+assert.throws(()=>ctx.createStaticMesh(e.run('new Float32Array(5)')),/mesh requires Float32Array/,'incomplete six-float vertex layout remains invalid');
 let clock=1000;e.c.performance={now:()=>clock};
 e.run(fs.readFileSync(path.join(__dirname,'dense-fixture.js'),'utf8'));
 e.run('healthEnsureState();healthDOM={root:$("health"),fill:{style:{}},ghost:{style:{}},flash:{style:{}},label:$("motherHealth")};for(const k of ["showDefeat","refreshUI","toast","closeModal","refreshAutoHunt","refreshPermanentHuntControl","showAbilityChoices"])bloomPresentationFunctions[k]=()=>{};BloomSimulation.createSession();view.x=state.mother.x;view.y=state.mother.y;BLOOM_HEADLESS=false;resetPresentation();BLOOM_HEADLESS=true;');

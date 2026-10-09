@@ -27,7 +27,7 @@ function engine(file=`${__dirname}/BLOOM_LIVING_FRONTIER.html`,sourceHTML,native
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)){
   // Supply only missing DOM objects. Gameplay, RNG, commands, SDK, and rendering
   // guards remain production code, unchanged.
-  const source=m[1].replace("const canvas=(globalThis.BLOOM_HEADLESS ? null : ($('view')))","const canvas=(globalThis.BLOOM_HEADLESS ? globalThis.testCanvas : ($('view')))").replace('return globalThis.BLOOM_HEADLESS?null:document.getElementById(id)','return document.getElementById(id)');
+  const source=m[1].replace("const canvas=(globalThis.BLOOM_HEADLESS ? null : ($('view')))","const canvas=(globalThis.BLOOM_HEADLESS ? globalThis.testCanvas : ($('view')))").replace('return globalThis.BLOOM_HEADLESS&&!globalThis.BLOOM_SIMULATION_SCOPE?null:document.getElementById(id)','return document.getElementById(id)');
   vm.runInContext(nativeContext?source.replace("ctx=(globalThis.BLOOM_HEADLESS ? null : (canvas.getContext('2d',{alpha:false})))", "ctx=globalThis.testContext"):source,c,{filename:`${file}:script-${++scripts}`});
  }
  const run=(source)=>vm.runInContext(source,c),json=source=>JSON.parse(run(`JSON.stringify(${source})`));

@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@ed876f6d31da5dc78d1199f176184ee59942718a',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@b0e52991fe273fe470dea6f32d0d2e348708c217',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -11677,7 +11677,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@5a5cfe72b75e30bfcb6a44c6d2b714e05e7af260/assets/fonts/noto-sans-kr-700-v1.json",version:"5a5cfe72b75e30bfcb6a44c6d2b714e05e7af260",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@d1e2c385033ad04a7a004cfbe9558948ef07a6d1/assets/fonts/noto-sans-kr-700-v1.json",version:"d1e2c385033ad04a7a004cfbe9558948ef07a6d1",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12542,7 +12542,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'ed876f6d31da5dc78d1199f176184ee59942718a',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'b0e52991fe273fe470dea6f32d0d2e348708c217',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -12732,7 +12732,7 @@ function bloomMainRuntime() {
   get reason(){return online()?'Local saves are unavailable during a public session':'Restore or reset solo progress before saving'},
   disk(){if(!this.enabled)throw new Error(this.reason);return bloomSnapshotStore.disk()}
  };
- function sampleInput(){bloomCollectDeviceInput();const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status)),sample=localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:!localReady()||reconnecting},commands=inputCommands.splice(0).map(payload=>({payload}));previewState.input={x:sample.x,y:sample.y,manual:sample.manual,suspended:sample.suspended,commands:commands.length};return {input:bloomEncodeInput(sample),commands,predict:localReady()&&!reconnecting&&(!!sample.x||!!sample.y||commands.length>0)}}
+ function sampleInput(){bloomCollectDeviceInput();const reconnecting=online()&&(bloomSession?.resimulating||['interrupted','disconnected','recovering'].includes(bloomSession?.status)),sample=localReady()&&!reconnecting?{...inputOverride||moaRollCore.sampleSimulationInput(),suspended:false}:{x:0,y:0,manual:false,suspended:!soloRunning()||document.hidden||reconnecting},commands=inputCommands.splice(0).map(payload=>({payload}));previewState.input={x:sample.x,y:sample.y,manual:sample.manual,suspended:sample.suspended,commands:commands.length};return {input:bloomEncodeInput(sample),commands,predict:localReady()&&!reconnecting&&(!!sample.x||!!sample.y||commands.length>0)}}
  function preparePreviewScope(){
   if(previewState.pending||previewState.scope||phase===runtimePhase.closed)return;
   if(!globalThis.BloomGameSourceURL||!globalThis.BloomGameSourceIntegrity||!globalThis.BloomModuleReferences||!globalThis.BloomSimulationScopeModule)return;

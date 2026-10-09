@@ -2,13 +2,15 @@
 
 ## 입력 선반응
 
-실제 게임의 RAF는 공통 `observeInput()`으로 같은 입력·UI command 경로를 관찰하고, 공통 deadline scheduler가 SDK 경계의 canonical 제출을 소유합니다. 선택된 local render identity는 같은 게임 source를 한 번 로드한 독립 simulation scope의 미래 표본을 공통 schema로 매 RAF 평가합니다. 모아·군단의 이동/구르기/충돌/전투는 기존 WorldSimulation·PlayerController·Unit update를 그대로 실행합니다.
+실제 게임의 RAF는 공통 `observeInput()`으로 입력·UI command를 한 경로에서 수집하고, 공통 deadline scheduler가 SDK 경계의 canonical 제출을 소유합니다. RAF가 느리거나 멈춰 관찰이 한 quantum 이상 오래되면 deadline에서 같은 경로로 갱신합니다. 최근 관찰은 재사용하고 edge 명령은 한 번만 제출합니다. 선택된 local render identity는 같은 게임 source를 한 번 로드한 독립 simulation scope의 미래 표본을 공통 schema로 매 RAF 평가합니다. 모아·군단의 이동/구르기/충돌/전투는 기존 WorldSimulation·PlayerController·Unit update를 그대로 실행합니다.
 
 scope는 검증된 module Blob과 `src/game.js` 원본 SRI를 사용하며 native typed-array 경계를 맞춥니다. scope 안에만 snapshot을 설치하고 UI·저장·네트워크·음향·표현 journal은 simulation-only 소유권에서 억제합니다. ready 이후에만 preview가 활성화되고 오류/준비 상태 및 capture/install/step/model 비용은 `BloomSimulation.runtime.preview`에 노출됩니다. 기본 게임 예측 한도는 4 future steps/history와 최소 250ms snapshot age입니다. reset/load/TPS/session epoch/blur/pause/death/leave에서 지우고 실제 confirmed boundary로 다시 기준을 잡습니다.
 
-`tests/input-preview-flow.mjs`는 기존 solo/two-peer browser scenario에 조합하는 helper입니다. 정상 deadline/poll/RAF를 계속 실행하며 실제 다음 authority tick 이전의 입력과 표시를 확인합니다. 부모 RTC fixture가 실제 transport 입력을 지연시키면 held/stalled 상태에서도 같은 helper를 사용할 수 있습니다. 내부 timer freeze 증명은 개발 중에만 수행했고 permanent helper에는 남기지 않았습니다. snapshot install/replay는 새로운 입력 또는 활성 prediction의 canonical 경계에서 실행하며, idle/auto-hunt에는 전체 세계를 매 tick 복제하지 않습니다. 동일 held 관찰은 미래 sample을 재사용합니다.
+`tests/input-preview-flow.mjs`는 solo/two-peer browser scenario에 조합하는 helper입니다. 정상 deadline/poll/RAF를 계속 실행하며 실제 preview 발행과 새 입력의 권위 소비 순서를 직접 관측합니다. 표시 모델은 native clock으로 읽고, 실제 게임 render frame·WebGL 픽셀은 별도로 확인합니다. RTC 입력 패킷만 지연시키며 heartbeat·control은 계속 실제 채널로 전송합니다. 내부 timer freeze나 수동 render는 이 helper에 없습니다. snapshot install/replay는 새로운 입력 또는 활성 prediction의 canonical 경계에서 실행하며, idle/auto-hunt에는 전체 세계를 매 tick 복제하지 않습니다. 동일 held 관찰은 미래 sample을 재사용합니다.
 
-초기 개발 scope 검사(동일 게임 source 두 realm)는 10,530-byte checkpoint, cold install 11.7ms, 첫 step 6.4ms, model capture 2ms를 관측했습니다. 실제 작은 solo 세계의 lazy-capture 개발 표본은 1.5초 동안 capture 2회/22,823 bytes/2.5ms, scope install 2회/24.6ms, speculative step 1회/19ms를 보였습니다. cold compile/JIT가 포함된 CPU 관측이며 FPS 향상이나 대규모 세계 무회귀를 주장하지 않습니다. `heapObservedDeltaBytes`는 Chromium의 coarse whole-page heap 관측이고 0이어도 무할당/추가 메모리 0을 뜻하지 않습니다. 부모 통합 scenario에서 실제 dense/2-peer/collision/lifecycle와 전체 180초 예산을 최종 확인합니다.
+SDK source `b0e52991fe273fe470dea6f32d0d2e348708c217` / dist `d1e2c385033ad04a7a004cfbe9558948ef07a6d1` 조합에서 `npm test` 전체는 129,527ms PASS(180초 상한)했습니다. 수정하지 않은 정상 세계·싱글·모바일 에뮬레이션·사망/부활·저장 보호·실제 2-peer RTC 입력 대기·native 창 blur·재접속·방장 승계를 확인했습니다. 입력 발행 전후 권위 tick/hash/RNG와 객체 identity가 유지되고 실제 명령이 확인됐습니다. native 창 검증은 Playwright의 기본 focus emulation을 잠깐 해제해 실제 blur를 받으며, DOM visibility가 hidden이었다고 과장하지 않습니다.
+
+추가 예측 비용은 있습니다. 작은 정상 세계(7 유닛)의 개발 관측은 입력→모델 발행 39.3ms(관측 hook 비용 포함), scope install 11회/108.9ms, step 9회/39.7ms였습니다. 2-peer 관측은 install 14회/138.3ms, step 12회/55.2ms였습니다. cold compile/JIT가 섞인 누적 CPU 표본이며 input-to-photon이나 FPS 개선 수치가 아닙니다. 155 병력의 별도 native 2-tick/12-frame smoke는 genuine font·authority 불변을 통과했지만 GPU 없는 CPU 제출 비용이 약100ms/frame으로 컸습니다. 고부하 예측·실제 Android GPU/FPS·공개 relay/NAT는 미검증이며 무회귀나 60FPS를 보장하지 않습니다. `heapObservedDeltaBytes`는 coarse whole-page heap 값으로, 0은 추가 메모리 0을 뜻하지 않습니다.
 
 블룸 세계관에서 모아와 동료들을 키우며 탐험하고 싸우는 브라우저 게임입니다. **싱글 플레이와 최대 5명의 공개 P2P 경쟁 플레이**를 지원합니다.
 
@@ -247,13 +249,13 @@ SDK를 갱신할 때는 새 exact source/dist와 lock 및 HTML을 함께 갱신�
 
 하나의 정의에서 싱글 3600×3600, 공개 7200×7200을 선택합니다. 지형·미니맵·캠프·우두머리 서식지도 같은 배율에서 파생됩니다. 공개 시작 구역 다섯 곳은 분리되어 있고, 가까운 시작 구역으로부터의 거리로 초반 야생 등급을 정합니다. 입장 위치는 seed와 참가자 ID에 따라 결정하며 다른 리더/지형/우두머리와의 안전 거리를 확인합니다.
 
-야생 재생은 살아 있는 참가자 관심 영역의 합집합을 사용합니다. 중복 셀은 한 번만 세고, 어느 참가자의 화면에서든 보이는 곳에는 생성하지 않습니다. 모든 참가자에게서 멀어진 일반 야생만 회수합니다. 소유 군단·라이벌·우두머리에는 이 회수 규칙을 적용하지 않으며, 군단 재미를 제한하는 새 인구 상한은 추가하지 않습니다. 배경 texture는 작은 타일로 유지하여 커진 맵이 기기 texture 한도를 넘지 않게 합니다.
+야생 재생은 살아 있는 참가자 관심 영역의 합집합을 사용합니다. 중복 셀은 한 번만 세고, 어느 참가자의 화면에서든 보이는 곳에는 생성하지 않습니다. 모든 참가자에게서 멀어진 일반 야생만 회수합니다. 소유 군단·라이벌·우두머리에는 이 회수 규칙을 적용하지 않으며, 군단 재미를 제한하는 새 인구 상한은 추가하지 않습니다. 지형은 chunk별 정적 vertex mesh이며 Canvas2D 타일·전장 texture 업로드를 사용하지 않습니다.
 
 ### 저장 호환성과 검증 범위
 
 공유 정규 상태 kind는 `budmori-world`, 싱글 디스크 envelope kind는 `budmori-snapshot`입니다. 두 경계는 같은 제품 버전 원본에서 호환군을 파생하며 major/minor가 같을 때만 호환됩니다. 구버전 저장은 변환하지 않고 거부합니다. 새 참가자는 충돌하지 않는 별도 entity/account ID를 받습니다. 형식이 바뀐 뒤 예전 전체 bytes와 같다고 주장하지 않습니다. 새 형식끼리의 복원·다음 입력·멤버십 재생은 완전한 정규 bytes로 비교합니다.
 
-현재 사용자 검증은 실제 Chromium 싱글 시나리오와 2탭 WebRTC 입장·재접속·승계입니다. 이전 메모리 패킷/수동 틱 내부 회귀는 제거했습니다. SDK의 시험 교체는 테스트 응답에만 허용하고 제품에는 exact pin을 포함합니다.
+현재 사용자 검증은 실제 Chromium 싱글 시나리오와 2탭 WebRTC 입장·입력 대기·비활성·재접속·승계입니다. 이전 메모리 패킷/수동 틱 내부 회귀는 제거했습니다. SDK 교체는 전체 dist provenance를 검증하는 updater로만 하며 부분 번들 덮어쓰기는 지원하지 않습니다.
 
 ### 고부하 측정 한계
 
@@ -266,7 +268,7 @@ Native V8 CPU-only 표본에서 싱글 1000 병력의 simulation p50은 이전 �
 ## 대규모 snapshot 준비와 결정론적 공간 질의
 
 - 게임 adapter는 `prepareSnapshot`/`loadPreparedSnapshot`으로 외부 snapshot을 한 번 준비한 뒤 단일 사용 토큰으로 설치합니다. 토큰은 bytes와 별도로 보관되고 틱·epoch·버전·TPS·seed·참가자 context에 묶입니다. bytes 변경, 토큰 재사용, context 누락이나 변경은 허용하지 않습니다.
-- 정규 graph 형식뿐 아니라 **실제 설치 후 다시 저장되는 authority 형식**까지 확인합니다. 공간 캐시 압축·순서·중복, wrapper 필드와 참조 별칭이 달라지는 입력은 기존 세계를 보존하며 거부합니다. 솔로 이전 저장의 마이그레이션 경로는 유지합니다.
+- 정규 graph 형식뿐 아니라 **실제 설치 후 다시 저장되는 authority 형식**까지 확인합니다. 공간 캐시 압축·순서·중복, wrapper 필드와 참조 별칭이 달라지는 입력은 기존 세계를 보존하며 거부합니다. 솔로도 명시적 버전 검사를 사용하며 이전 호환군의 저장은 변환하지 않고 거부합니다.
 - `saveJob`/`prepareSnapshotJob`/`prepareMembershipJob`은 8 ms 목표의 협력형 pulse를 제공합니다. 캡처·복사 동안 SDK가 하나의 확정 경계를 동결하며, 중간 틱을 섞지 않습니다. 참가자 추가는 별도 소유 그래프에서 준비하고 commit에서 설치합니다. 취소나 실패는 살아 있는 세계를 변경하지 않습니다. Worker는 사용하지 않습니다.
 - pulse 예산은 협력형 목표입니다. GC·브라우저 스케줄링·네이티브 메모리 할당까지 강제 선점하는 하드 실시간 보장은 아닙니다. 기존 동기 API와 초기 체크포인트처럼 아직 동기 경로가 필요한 작업도 별도로 측정합니다.
 - RALLY FRONTIER는 근방/동맹 질의 grid와 비동맹 최종 겹침 해소용 adaptive SAP를 함께 사용합니다. 이번 숫자 셀 조회·공간/뷰포트 파생 계산 수정은 Budmori의 기존 grid 경로를 최적화한 것이며, Rally adaptive SAP 자체를 측정하거나 대체한 결과가 아닙니다. Map의 snapshot 삽입 순서, center-first 셀 방문 순서, 같은 셀의 객체 순서와 기존 이웃 cutoff를 보존합니다. 군단 상한·AI 빈도·충돌·그래픽 표현은 줄이지 않습니다. SAP로 일괄 교체하지 않습니다.
