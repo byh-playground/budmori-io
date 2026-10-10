@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "893fff72d64118ebc5820379e8a76553f87458a9",
-  "distCommit": "2e5043e05b5605a64772f26f65932260c587b470",
+  "sourceCommit": "812a6e231036cd366e2ce46e0afebf4db50ee001",
+  "distCommit": "c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -16,7 +16,7 @@
     },
     {
       "name": "rollback-netcode",
-      "bundleSHA256": "594d87b0a4ccb4e5fc9534edc9d48e3b6a6a3fd5816b676c22dd084afa1b0d3a"
+      "bundleSHA256": "cd0e0a316882a0ce56c4ea656d4e1eac2fae22b0f1d91484191d776fd215a827"
     },
     {
       "name": "interpolation",
@@ -28,7 +28,7 @@
     },
     {
       "name": "rendering",
-      "bundleSHA256": "5ac3a0ff6eeca46420870f652529648bd1c0f6b473508bee3f35bc3e84413ca4"
+      "bundleSHA256": "a6bf920ab341f227c8b62c60e81ec507b60b35aa31e4ebfbf43c491aa69f9885"
     },
     {
       "name": "input",
@@ -39,7 +39,7 @@
       "bundleSHA256": "ff8c87307a2d26da23ecf2f5133f65ebb809c78c1fcbf9f59aa56f2dedc4697b"
     }
   ],
-  "manifestSHA256": "8afce2454d2b891c661c855728d4efbe03688fb49a2e97d042b47da49239a532",
+  "manifestSHA256": "62b5e92268439cf333fc0f22def6c8fd41ea98542038cbebe83ea37192d8f22b",
   "assets": [
     {
       "file": "assets/fonts/noto-sans-kr-700-v1.json",

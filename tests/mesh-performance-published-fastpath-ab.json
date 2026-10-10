@@ -1,0 +1,47 @@
+{
+  "format": "BLOOM production renderer A/B v1",
+  "at": "2026-10-10",
+  "kind": "Actual Chromium 153.0.8010.12 + SwiftShader WebGL with production RAF/deadlines; not phone hardware FPS",
+  "conditions": {
+    "friendlyUnits": 1000,
+    "netcodeMode": "lockstep",
+    "preview": "disabled after the normal initial scope setup/correction",
+    "viewport": { "width": 360, "height": 640, "dpr": 2 },
+    "warmupMs": 1500,
+    "holdMs": 12000,
+    "candidateAdapter": false,
+    "renderingOverride": false,
+    "orderReversed": true
+  },
+  "baseline": {
+    "budmoriSourceSha256": "42e84f4564ae3ef77b04e1d58b8e4c48f434bb27bbdc7f6fe72e267f6a975a46",
+    "gamekitDistCommit": "2e5043e05b5605a64772f26f65932260c587b470",
+    "actorRender": {
+      "baselineFirst": { "samples": 16, "p50Ms": 194.3, "p95Ms": 295.2 },
+      "baselineSecond": { "samples": 14, "p50Ms": 227.2, "p95Ms": 442.6 }
+    },
+    "frame": {
+      "baselineSecond": { "samples": 14, "p50Ms": 251.8, "p95Ms": 490.1 }
+    },
+    "effectiveTps": { "baselineFirst": 5.837, "baselineSecond": 5.777 }
+  },
+  "integrated": {
+    "budmoriSourceSha256": "4ca233ded756fd339f27af06786b8bcbdc7cb800e26eed976e8c2b1b94ecee56",
+    "gamekitSourceCommit": "03498f6c2d51c806149d134e98d48e14d3ac81b7",
+    "gamekitDistCommit": "7828808a04be8f50e42d6ad0680e75b9520040e4",
+    "renderingBundleSha256": "a6bf920ab341f227c8b62c60e81ec507b60b35aa31e4ebfbf43c491aa69f9885",
+    "actorRender": {
+      "integratedSecond": { "samples": 15, "p50Ms": 120.2, "p95Ms": 169.5 },
+      "integratedFirst": { "samples": 15, "p50Ms": 117.6, "p95Ms": 153.7 }
+    },
+    "frame": {
+      "integratedFirst": { "samples": 15, "p50Ms": 165.1, "p95Ms": 219 }
+    },
+    "effectiveTps": { "integratedSecond": 5.825, "integratedFirst": 6.156 }
+  },
+  "meshCounters": {
+    "baseline": { "instances": 11012, "instanceBytesPerFrame": 704768, "geometryUploads": 0 },
+    "integrated": { "instances": 11012, "instanceBytesPerFrame": 704768, "geometryUploads": 0 }
+  },
+  "interpretation": "Across both execution orders actor render p50/p95 decreased materially with the published drawMeshSilhouette path and product cache hot-path change. At 1000 units effective TPS remained about 5.8-6.2 and integrated frame p50/p95 still exceeded the 100ms simulation / 16.7ms 60Hz budgets. This is a directional local stress result, not a mobile or real-network certification; more bottlenecks remain."
+}

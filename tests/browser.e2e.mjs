@@ -203,6 +203,22 @@ async function scenario() {
     report.retainedArt=await exerciseRetainedArt(page,{screenshotPath:galleryPath});
     report.screenshots.push(galleryPath);
   });
+  await check('A long active-frame gap drops backlog and advances one current tick', async () => {
+    const witness = await page.evaluate(async () => {
+      const before = BloomSimulation.tick, samples = [];
+      for (let i = 0; i < 4; i++) {
+        const start = performance.now();
+        while (performance.now() - start < 450) {}
+        const blockedTick = BloomSimulation.tick;
+        await new Promise(resolve => setTimeout(resolve, 20));
+        samples.push({blockedTick, resumedTick: BloomSimulation.tick});
+      }
+      return {before, after: BloomSimulation.tick, samples};
+    });
+    assert.deepEqual(witness.samples.map(sample => sample.blockedTick), [witness.before, witness.before + 1, witness.before + 2, witness.before + 3], 'Each new stall begins at the preceding current boundary');
+    assert.deepEqual(witness.samples.map(sample => sample.resumedTick), [witness.before + 1, witness.before + 2, witness.before + 3, witness.before + 4], 'Each long gap advances one current tick; stale backlog is not replayed or rebased away');
+    assert.equal(witness.after, witness.before + 4);
+  });
   await check('WASD movement, pause freeze, Escape resume, and keyboard roll', async () => {
     report.inputPreview=await exerciseInputPreviewFlow(page);
     const before = await mother();
@@ -316,9 +332,9 @@ async function scenario() {
     await wait(() => projectionQueue.some(q => q.kind === 'mother' && q.source.id === -1 && q.source.hp > 0));
     assert.match(await page.locator('#motherHealth').innerText(), /HP/);
     const revived = await mother();
+    await screenshot('browser-mobile-recovered.png');
     await page.touchscreen.tap(85, 340);
     await moved(revived);
-    await screenshot('browser-mobile-recovered.png');
   });
   assert.equal(await read(() => globalThis.BloomDiagnostics?.fatal), false, 'No fatal renderer/runtime failure');
   healthy(); report.status = 'PASS';
@@ -341,7 +357,7 @@ try {
   console.error(report.error); process.exitCode = 1;
 } finally {
   clearTimeout(deadlineTimer);
-  await bounded(browser?.close() || Promise.resolve(), 3000, 'Browser cleanup').catch(error => {
+  await bounded(browser?.close() || Promise.resolve(), 10000, 'Browser cleanup').catch(error => {
     report.status = 'FAIL'; report.cleanupError = String(error); process.exitCode = 1;
   });
   server.closeAllConnections();
