@@ -1,0 +1,108 @@
+{
+  "format": "BLOOM local leader preview and netcode load evidence v1",
+  "at": "2026-10-10",
+  "gameSourceSha256": "88df4d12d262c1f531d6ad5956e2418b784c2ab3ccd4bfd6274993ce73a2a413",
+  "gamekit": {
+    "sourceCommit": "812a6e231036cd366e2ce46e0afebf4db50ee001",
+    "distCommit": "c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",
+    "rollbackNetcodeSha256": "cd0e0a316882a0ce56c4ea656d4e1eac2fae22b0f1d91484191d776fd215a827"
+  },
+  "localRafPreviewOn": {
+    "kind": "Actual Chromium 153.0.8010.12 + SwiftShader WebGL, production RAF/deadline/input; not phone hardware or actual RTC",
+    "viewport": { "width": 360, "height": 640, "dpr": 2 },
+    "netcodeMode": "lockstep",
+    "warmupMs": 1500,
+    "holdMs": 6000,
+    "results": [
+      {
+        "order": "500,1000",
+        "units": 500,
+        "effectiveTps": 7.1434,
+        "actorRenderMs": { "samples": 13, "p50": 56.7, "p95": 83.4 },
+        "scope": { "installs": 14, "installMs": 1781.4, "steps": 34, "stepMs": 37.7, "modelBytes": 81810, "modelMs": 16.7 }
+      },
+      {
+        "order": "500,1000",
+        "units": 1000,
+        "effectiveTps": 4.1602,
+        "actorRenderMs": { "samples": 9, "p50": 97.6, "p95": 119.4 },
+        "scope": { "installs": 8, "installMs": 2541.6, "steps": 21, "stepMs": 57.7, "modelBytes": 60672, "modelMs": 15.9 }
+      },
+      {
+        "order": "500,1000; preview off/on paired",
+        "units": 500,
+        "previewOff": { "effectiveTps": 9.7417, "actorP50Ms": 45.1, "actorP95Ms": 61.1 },
+        "previewOn": { "effectiveTps": 6.6044, "actorP50Ms": 52.7, "actorP95Ms": 110.6 }
+      },
+      {
+        "order": "500,1000; preview off/on paired",
+        "units": 1000,
+        "previewOff": { "effectiveTps": 5.8496, "actorP50Ms": 113.4, "actorP95Ms": 357.9 },
+        "previewOn": { "effectiveTps": 3.4103, "actorP50Ms": 136.2, "actorP95Ms": 398.1 }
+      },
+      {
+        "order": "1000,500",
+        "units": 1000,
+        "effectiveTps": 4.2967,
+        "actorRenderMs": { "samples": 9, "p50": 93.3, "p95": 140.7 },
+        "scope": { "installs": 8, "installMs": 2191.2, "steps": 21, "stepMs": 57.2, "modelBytes": 63548, "modelMs": 17.6 }
+      },
+      {
+        "order": "1000,500",
+        "units": 500,
+        "effectiveTps": 6.6036,
+        "actorRenderMs": { "samples": 12, "p50": 56.0, "p95": 75.4 },
+        "scope": { "installs": 14, "installMs": 2086.0, "steps": 30, "stepMs": 42.4, "modelBytes": 70214, "modelMs": 13.0 }
+      }
+    ],
+    "instrumentedActorBreakdown": {
+      "kind": "Separate 6-second diagnostic run with render-substage wrappers enabled; instrumentation adds overhead, so these are attribution samples, not speed-comparison results. drawUnit includes nested RallyArt.draw.",
+      "500": { "actorStageMs": 814.2, "actorStageCalls": 14, "drawUnitMs": 618.1, "drawUnitCalls": 7000, "rallyArtMs": 447.7, "rallyArtCalls": 7000, "shadowMs": 75.0, "shadowCalls": 7014 },
+      "1000": { "actorStageMs": 872.3, "actorStageCalls": 7, "drawUnitMs": 689.5, "drawUnitCalls": 7000, "rallyArtMs": 541.8, "rallyArtCalls": 7000, "shadowMs": 76.3, "shadowCalls": 7007 },
+      "interpretation": "Per-unit art preparation is the dominant measured CPU substage after mesh geometry reuse; this identifies the next optimization area but not a fix. The mesh-submit wrapper did not observe calls on this path."
+    },
+    "mesh": {
+      "geometryUploads": 0,
+      "instances": { "500": 5501, "1000": 11001 },
+      "instanceBytes": { "500": 352064, "1000": 704064 },
+      "interpretation": "Retained mesh geometry is reused; preview scope installations and actor-render CPU remain costly. Short samples vary substantially, especially at 1000 units."
+    }
+  },
+  "actualTwoPeerLoad": {
+    "status": "PASS",
+    "kind": "Two independent Chromium tabs, production RAF/deadline, signed local Nostr signaling and native WebRTC data channels; local fixture, not public relay/NAT/mobile certification",
+    "mode": "lockstep",
+    "fixture": "500 stunned friendly units added to the coordinator's initial shared snapshot; each peer observed 505 total world units",
+    "holdMs": 8000,
+    "measurementElapsedMs": 8283,
+    "peers": [
+      { "ticks": 73, "frames": 85, "effectiveTps": 8.81, "effectiveFps": 10.26 },
+      { "ticks": 72, "frames": 33, "effectiveTps": 8.69, "effectiveFps": 3.98 }
+    ],
+    "checkpoint": { "tick": 196, "epoch": 1, "players": 2, "hash": 348936201, "bytes": 386942 },
+    "rtc": "Both native peer connections stayed connected with bidirectional input/control bytes.",
+    "limitations": [
+      "One tab was not the foreground render surface, so its FPS is not comparable to a single foreground mobile game.",
+      "The multiplayer load fixture freezes the added units to isolate shared snapshot/render/network load; active 500/1000-unit simulation is measured separately by the local RAF benchmark.",
+      "An earlier full edge-case suite under this load exceeded its 10-second page-observation deadline during refresh while both worlds remained playing; the focused soak above passed and does not claim loaded refresh/rejoin coverage."
+    ]
+  },
+  "netcodeModeBench": {
+    "sameAuthorityAndInputs": true,
+    "preview": "disabled",
+    "browser155": {
+      "kind": "Chromium + SwiftShader; 80 deterministic measured ticks and an explicit render per tick; not production timer/network",
+      "rollback": { "advanceMs": { "p50": 11.5, "p95": 22.5 }, "snapshotCount": 80, "serializedSnapshotBytes": 15446263 },
+      "lockstep": { "advanceMs": { "p50": 5.3, "p95": 8.5 }, "snapshotCount": 3, "serializedSnapshotBytes": 579347 },
+      "finalAuthorityHash": 4061510618
+    },
+    "native1000": {
+      "kind": "Native V8 actual game engine; 1000 friendly units, 30 TPS, 80 deterministic measured ticks, no renderer/network",
+      "rollback": { "advanceMs": { "total": 3893.838, "p50": 46.1247, "p95": 59.2644 }, "snapshotCount": 80, "serializedSnapshotBytes": 94883278, "snapshotCpuMs": 2331.1866 },
+      "lockstep": { "advanceMs": { "total": 1586.8609, "p50": 17.2176, "p95": 25.8934 }, "snapshotCount": 3, "serializedSnapshotBytes": 3562729, "snapshotCpuMs": 109.4422 },
+      "finalAuthorityHash": 2920600556
+    },
+    "publicRollbackAttempt": "Rejected before joining: PUBLIC_CONNECTION_FAILED / 'Public rooms require lockstep'. No rollback-mode public RTC performance or correctness claim is made.",
+    "conclusion": "Current data does not justify switching the public mode from lockstep to rollback."
+  }
+}

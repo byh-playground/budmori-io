@@ -12052,6 +12052,12 @@ const WorldSimulation=globalThis.WorldSimulation=Object.freeze({
   regrowCamps(dt);rarityRivalTick(dt);rarityMaintain(dt);wildRingCull();spatialTick();
   uiClock+=dt;saveClock+=dt;if(saveClock>=CONFIG.render.saveInterval){saveClock=0;bloomPersistenceRequested=true}
  },
+ stepLocalPreview(dt,inputs,playerId){
+  dt=Math.min(CONFIG.qa.maxStep,Math.max(0,dt));if(!dt)return;
+  const player=WorldPlayers.get(playerId);state.time+=dt;
+  if(player?.lifecycle==='active'){PlayerLifecycle.tick(player);PlayerController.move(player,inputs.get(playerId)||{x:0,y:0},dt);PlayerCombat.update(player,dt);PlayerController.finish(player,dt)}
+  uiClock+=dt;
+ },
  projectiles(dt){for(let i=events.length-1;i>=0;i--){const e=events[i];if(e.time>state.time)continue;events.splice(i,1);const u=idMap.get(e.unit),t=idMap.get(e.target);if(u?.hp>0&&t?.hp>0){let a=random()*Math.PI*2,r=e.spread*Math.sqrt(random());projectile(u,t,e.amount,e.splash,{aimX:t.x+Math.cos(a)*r,aimY:t.y+Math.sin(a)*r,point:!!e.spread})}}
  for(let i=projectiles.length-1;i>=0;i--){const p=projectiles[i];if(!p)break;if(p.finished){discardProjectile(i);continue;}const t=idMap.get(p.target);if(p.arcFlight){stepGroundArc(p,dt);if(p.finished)discardProjectile(i);continue}if(p.abilityShot){stepAbilityProjectile(p,dt);if(p.finished)discardProjectile(i);continue}if(p.moaSeed){if(!t||t.hp<=0||!factionsHostile(projectileOwner(p),t)||lockedParcelAt(t.x,t.y)!==-1){discardProjectile(i);continue}p.aimX=t.x;p.aimY=t.y;const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=Math.min(d,p.speed*dt),nx=p.x+(d?dx/d*travel:0),ny=p.y+(d?dy/d*travel:0),hit=segmentCircle(p.x,p.y,nx,ny,t.x,t.y,radius(t)+p.shotRadius);if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,nx,ny)){discardProjectile(i);continue}p.x=nx;p.y=ny;p.progress+=travel;if(hit){impact(p);discardProjectile(i)}else if(p.progress>(p.range||CONFIG.moa.rangedReach)*2){discardProjectile(i)}continue}if(p.dodgeable){const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=Math.min(d,p.speed*dt),nx=p.x+(d?dx/d*travel:0),ny=p.y+(d?dy/d*travel:0);const hit=t?.hp>0&&segmentCircle(p.x,p.y,nx,ny,t.x,t.y,radius(t)+CONFIG.control.shotRadius);if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,nx,ny)){discardProjectile(i);continue}p.x=nx;p.y=ny;p.progress+=travel;if(hit||d<=travel){if(hit)impact(p);discardProjectile(i)}continue}if(!p.point&&t?.hp>0){p.aimX=t.x;p.aimY=t.y}const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=p.speed*dt;if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,p.x+(d?dx/d*Math.min(d,travel):0),p.y+(d?dy/d*Math.min(d,travel):0))){discardProjectile(i);continue}p.progress+=travel;if(d<=travel+CONFIG.combat.projectileHitRadius){p.x=p.aimX;p.y=p.aimY;impact(p);discardProjectile(i)}else{p.x+=dx/d*travel;p.y+=dy/d*travel}}
  }
@@ -12462,7 +12468,7 @@ function bloomRunTick(context){
  const presentEffects=effects,presentTraces=permanentTraces,presentImpacts=sproutImpacts;effects=[];permanentTraces=[];sproutImpacts=[];
  try{for(const c of validated)PlayerCommands.apply(c.player,c.command,c.input);
   const solo=WorldPlayers.all()[0],run=BloomSimulation.sessionConfig.mode==='online'||solo&&!inputs.get(solo.playerId)?.suspended;
-  if(run)WorldSimulation.step(CONFIG.sim.fixedStep,inputs);
+  if(run){if(speculative)WorldSimulation.stepLocalPreview(CONFIG.sim.fixedStep,inputs,WorldPlayers.localPlayerId);else WorldSimulation.step(CONFIG.sim.fixedStep,inputs)}
   for(const f of permanentTraces)bloomEmit('permanentTrace',[f]);for(const f of sproutImpacts)bloomEmit('sproutImpact',[f]);if(!speculative)bloomPendingEffects.set(bloomTick,bloomCurrentEffects);bloomTick++;
  }finally{bloomInTick=false;effects=presentEffects;permanentTraces=presentTraces;sproutImpacts=presentImpacts}
 }
@@ -12846,7 +12852,7 @@ function bloomMainRuntime() {
   if(previewState.runtime!==presentation.runtime||previewState.lastEpoch!==epoch){previewState.capability?.dispose();previewState.runtime=presentation.runtime;previewState.lastTick=-1;
    previewState.capability=new BloomOwnedSDK.LocalInputPreview({presentation:presentation.runtime,stepMs:1000/CONFIG.sim.tickRate,maxPendingInputs:4,maxFutureTicks:4,maxAgeMs:Math.max(250,4000/CONFIG.sim.tickRate),cloneSnapshot:bytes=>bytes.slice(),captureSnapshot:capturePreviewSnapshot,
     createFork:bytes=>{previewState.scope.install(bytes,{tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});return previewState.scope},
-    readEntities:scope=>{const selected=[...presentation.maps.unit.entries()].filter(([,entry])=>WorldPlayers.forEntity(entry.source)?.playerId===WorldPlayers.localPlayerId);const models=new Map(scope.models(selected.map(([id])=>id)).map(dto=>[dto.id,dto.source]));return selected.flatMap(([id,entry])=>models.has(id)?[{id:entry.id,generation:entry.generation,type:BloomUnitRender,source:models.get(id)}]:[])}
+    readEntities:scope=>{const player=WorldPlayers.local(),id=player?.leader?.id,entry=id===undefined?null:presentation.maps.unit.get(id);if(!player||!entry||WorldPlayers.forEntity(entry.source)?.playerId!==WorldPlayers.localPlayerId)return[];const model=scope.models([id]).find(dto=>dto.id===id);return model?[{id:entry.id,generation:entry.generation,type:BloomUnitRender,source:model.source}]:[]}
    });mode='reset';
   }
   if(!localReady()||['interrupted','disconnected','recovering','joining','membership'].includes(bloomSession.status)){previewState.capability.setEnabled(false);previewState.lastTick=-1;return false}
@@ -13007,7 +13013,7 @@ if(globalThis.BLOOM_SIMULATION_SCOPE){
   step(input,context){if(!scopeContext||closed)throw new Error('Simulation scope unavailable');const local=scopeContext.localPlayerId;
    const inputs=WorldPlayers.all().filter(player=>player.lifecycle==='active').map(player=>({playerId:player.playerId,input:player.playerId===local?Uint8Array.from(input):(scopeRemote.get(player.playerId)?.slice()||bloomEncodeInput({x:0,y:0,manual:false,suspended:false})),commands:player.playerId===local?(context.commands||[]).map(command=>({...command,payload:Uint8Array.from(command.payload),canonicalExecuteTick:command.executeTick,executeTick:bloomTick})):[]}));
    bloomRunTick({tick:bloomTick,tickRate:CONFIG.sim.tickRate,inputs,speculative:true});bloomPendingEffects.clear();bloomCurrentEffects=[];},
-  models(ids){const sources=new Map(state.units.map(unit=>[unit.id,unit]));for(const player of WorldPlayers.all())sources.set(player.leader.id,player.leader);return ids.flatMap(id=>{const source=sources.get(id);return source&&source.hp>0?[{id,source:snapshotRenderModel(BloomUnitRender,source)}]:[]})},
+  models(ids){const players=WorldPlayers.all();return ids.flatMap(id=>{const source=idMap.get(id)||players.find(player=>player.leader.id===id)?.leader;return source&&source.hp>0?[{id,source:snapshotRenderModel(BloomUnitRender,source)}]:[]})},
   inspect(){return{tick:bloomTick,hash:BloomOwnedSDK.hashBytes(bloomAdapter.save()),rng:state.rng,entities:state.units.length,rendererCreated:!!ctx}},
   dispose(){closed=true;scopeRemote.clear();bloomPendingEffects.clear();scopeContext=null;}
  });

@@ -1,8 +1,8 @@
 {
   "kind": "Chromium + SwiftShader, actual split game/SDK sources and WebGL draws, manual deterministic tick inputs; not production FPS or phone GPU",
-  "sourceSHA256": "a8b08a71fce8f30e2524b0e905ce2c9edfcd61b3f212826796eb2fba08154674",
+  "sourceSHA256": "88df4d12d262c1f531d6ad5956e2418b784c2ab3ccd4bfd6274993ce73a2a413",
   "bootstrapSHA256": "097ca6b4872ef3e84af080096941c01f5eb21411a2374558fe742653aea9d405",
-  "sdkDistCommit": "2e5043e05b5605a64772f26f65932260c587b470",
+  "sdkDistCommit": "c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",
   "seed": 12345,
   "tps": 20,
   "friendly": 155,
@@ -29,30 +29,30 @@
         "enabled": false,
         "error": null
       },
-      "actualRAFFrames": 115,
+      "actualRAFFrames": 97,
       "measuredStartTick": 21,
       "measuredEndTick": 101,
       "checksumInterval": 30,
       "sessionAdvanceMs": {
         "samples": 80,
-        "total": 1398.999999910593,
-        "p50": 14.699999988079071,
-        "p95": 33.599999994039536,
-        "p99": 49.400000005960464
+        "total": 1039.199999988079,
+        "p50": 11.5,
+        "p95": 22.5,
+        "p99": 39.80000001192093
       },
       "simulationStepMs": {
         "samples": 80,
-        "total": 585.3999999165535,
-        "p50": 5.299999982118607,
-        "p95": 17.599999994039536,
-        "p99": 33.099999994039536
+        "total": 422.6999999284744,
+        "p50": 4.5,
+        "p95": 10.400000005960464,
+        "p99": 29.099999994039536
       },
       "snapshotMs": {
         "samples": 80,
-        "total": 792.1000000238419,
-        "p50": 8.300000011920929,
-        "p95": 21.299999982118607,
-        "p99": 30.5
+        "total": 596.5000001490116,
+        "p50": 6.5999999940395355,
+        "p95": 14.800000011920929,
+        "p99": 24.200000017881393
       },
       "snapshotCount": 80,
       "snapshotTicks": [
@@ -140,10 +140,10 @@
       "snapshotSerializedBytes": 15446263,
       "renderCPUms": {
         "samples": 80,
-        "total": 10632.399999916553,
-        "p50": 113.60000002384186,
-        "p95": 297.09999999403954,
-        "p99": 513.0999999940395
+        "total": 7775.799999982119,
+        "p50": 41.70000001788139,
+        "p95": 401.7000000178814,
+        "p99": 533.6999999880791
       },
       "diskCacheCopies": 0,
       "diskCacheCopyBytes": 0
@@ -167,30 +167,30 @@
         "enabled": false,
         "error": null
       },
-      "actualRAFFrames": 147,
+      "actualRAFFrames": 106,
       "measuredStartTick": 21,
       "measuredEndTick": 101,
       "checksumInterval": 30,
       "sessionAdvanceMs": {
         "samples": 80,
-        "total": 1023.8000000715256,
-        "p50": 9.5,
-        "p95": 34.80000001192093,
-        "p99": 60
+        "total": 476.0999999642372,
+        "p50": 5.299999982118607,
+        "p95": 8.5,
+        "p99": 20.5
       },
       "simulationStepMs": {
         "samples": 80,
-        "total": 944.6000001132488,
-        "p50": 9,
-        "p95": 33,
-        "p99": 58.5
+        "total": 422.89999985694885,
+        "p50": 4.700000017881393,
+        "p95": 7.9000000059604645,
+        "p99": 10.5
       },
       "snapshotMs": {
         "samples": 3,
-        "total": 51.30000001192093,
-        "p50": 18.5,
-        "p95": 25.100000023841858,
-        "p99": 25.100000023841858
+        "total": 34.49999997019768,
+        "p50": 11.099999994039536,
+        "p95": 13,
+        "p99": 13
       },
       "snapshotCount": 3,
       "snapshotTicks": [
@@ -201,10 +201,10 @@
       "snapshotSerializedBytes": 579347,
       "renderCPUms": {
         "samples": 80,
-        "total": 10705.200000166893,
-        "p50": 111.90000000596046,
-        "p95": 280.59999999403954,
-        "p99": 325.09999999403954
+        "total": 8898.299999922514,
+        "p50": 61.400000005960464,
+        "p95": 278.7000000178814,
+        "p99": 604
       },
       "diskCacheCopies": 0,
       "diskCacheCopyBytes": 0
