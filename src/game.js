@@ -12846,7 +12846,7 @@ function bloomMainRuntime() {
   if(previewState.runtime!==presentation.runtime||previewState.lastEpoch!==epoch){previewState.capability?.dispose();previewState.runtime=presentation.runtime;previewState.lastTick=-1;
    previewState.capability=new BloomOwnedSDK.LocalInputPreview({presentation:presentation.runtime,stepMs:1000/CONFIG.sim.tickRate,maxPendingInputs:4,maxFutureTicks:4,maxAgeMs:Math.max(250,4000/CONFIG.sim.tickRate),cloneSnapshot:bytes=>bytes.slice(),captureSnapshot:capturePreviewSnapshot,
     createFork:bytes=>{previewState.scope.install(bytes,{tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});return previewState.scope},
-    readEntities:scope=>{const selected=[...presentation.maps.unit.entries()].filter(([,entry])=>WorldPlayers.forEntity(entry.source)?.playerId===WorldPlayers.localPlayerId);const models=new Map(scope.models(selected.map(([id])=>id)).map(dto=>[dto.id,dto.source]));return selected.flatMap(([id,entry])=>models.has(id)?[{id:entry.id,generation:entry.generation,type:BloomUnitRender,source:models.get(id)}]:[])}
+    readEntities:scope=>{const player=WorldPlayers.local(),id=player?.leader?.id,entry=id===undefined?null:presentation.maps.unit.get(id);if(!player||!entry||WorldPlayers.forEntity(entry.source)?.playerId!==WorldPlayers.localPlayerId)return[];const model=scope.models([id]).find(dto=>dto.id===id);return model?[{id:entry.id,generation:entry.generation,type:BloomUnitRender,source:model.source}]:[]}
    });mode='reset';
   }
   if(!localReady()||['interrupted','disconnected','recovering','joining','membership'].includes(bloomSession.status)){previewState.capability.setEnabled(false);previewState.lastTick=-1;return false}
@@ -13007,7 +13007,7 @@ if(globalThis.BLOOM_SIMULATION_SCOPE){
   step(input,context){if(!scopeContext||closed)throw new Error('Simulation scope unavailable');const local=scopeContext.localPlayerId;
    const inputs=WorldPlayers.all().filter(player=>player.lifecycle==='active').map(player=>({playerId:player.playerId,input:player.playerId===local?Uint8Array.from(input):(scopeRemote.get(player.playerId)?.slice()||bloomEncodeInput({x:0,y:0,manual:false,suspended:false})),commands:player.playerId===local?(context.commands||[]).map(command=>({...command,payload:Uint8Array.from(command.payload),canonicalExecuteTick:command.executeTick,executeTick:bloomTick})):[]}));
    bloomRunTick({tick:bloomTick,tickRate:CONFIG.sim.tickRate,inputs,speculative:true});bloomPendingEffects.clear();bloomCurrentEffects=[];},
-  models(ids){const sources=new Map(state.units.map(unit=>[unit.id,unit]));for(const player of WorldPlayers.all())sources.set(player.leader.id,player.leader);return ids.flatMap(id=>{const source=sources.get(id);return source&&source.hp>0?[{id,source:snapshotRenderModel(BloomUnitRender,source)}]:[]})},
+  models(ids){const players=WorldPlayers.all();return ids.flatMap(id=>{const source=idMap.get(id)||players.find(player=>player.leader.id===id)?.leader;return source&&source.hp>0?[{id,source:snapshotRenderModel(BloomUnitRender,source)}]:[]})},
   inspect(){return{tick:bloomTick,hash:BloomOwnedSDK.hashBytes(bloomAdapter.save()),rng:state.rng,entities:state.units.length,rendererCreated:!!ctx}},
   dispose(){closed=true;scopeRemote.clear();bloomPendingEffects.clear();scopeContext=null;}
  });

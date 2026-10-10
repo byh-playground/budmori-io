@@ -33,7 +33,7 @@
       "1000": { "tps": 1.0468, "scopeInstalls": 10, "scopeInstallMs": 2947.3, "continuedCheckpoints": 0 }
     }
   },
-  "publishedPinRun": {
+  "preLeaderOnlyPublishedPinRun": {
     "override": false,
     "gamekitDistCommit": "c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",
     "rollbackNetcodeSha256": "cd0e0a316882a0ce56c4ea656d4e1eac2fae22b0f1d91484191d776fd215a827",
