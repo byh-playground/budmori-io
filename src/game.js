@@ -6,7 +6,8 @@
 if(g.BloomDiagnostics)return;
 const origin='main', commands=[], providers=new Map();
 let fatal=false,busy=false,stop=null,pauseForInspect=null,dropped=0,total=0,blocking=0,notices=0,panel=null,badge=null,summary=null,copyButton=null,profileButton=null,notice=null,closeButton=null,lastMono=0,copyAttempt=0;
-const classifications=new Map(),blockingKeys=new Set();
+// Lifetime unique blockers intentionally survive ring eviction; changing this would change the badge count.
+const blockingKeys=new Set();
 const mono=()=>{try{lastMono=Math.max(lastMono,Number(g.performance?.now())||0)}catch{}return Math.round(lastMono*100)/100};
 const ring=new BloomGamekitDebugTools.DiagnosticRing({capacity:20,now:mono,release:'Budmori'});
 const clean=(value,limit=1600)=>BloomGamekitDebugTools.redactDiagnostic(value,limit);
@@ -24,17 +25,18 @@ function halt(){if(stop)try{stop()}catch{dropped++}}
 function report(error,context={}){
  if(busy){dropped++;return null}busy=true;
  try{
-  const result=ring.report({message:detail(error),stack:field(error,'stack')||context.stack||'',cause:field(error,'cause')||context.cause},{...context,origin});
+  const visibility=context.visibility|| (context.fatal?'blocking':'log');
+  const result=ring.report({message:detail(error),stack:field(error,'stack')||context.stack||'',cause:field(error,'cause')||context.cause},{...context,visibility,origin});
   if(!result)return null;const record={...result,severity:result.fatal?'fatal':'recoverable'};total=ring.total;
-  const visibility=context.visibility|| (context.fatal?'blocking':'log'),key=`${record.kind}\n${record.message}`;
-  classifications.set(key,visibility);if(visibility==='notice')notices++;if(visibility==='blocking'&&!blockingKeys.has(key)){blockingKeys.add(key);blocking++}
+  const key=`${record.kind}\n${record.message}`;
+  if(visibility==='notice')notices++;if(visibility==='blocking'&&!blockingKeys.has(key)){blockingKeys.add(key);blocking++}
   if(context.fatal&&!fatal){fatal=true;halt()}
   try{present()}catch{dropped++}
   return record;
  }catch{dropped++;return null}finally{busy=false}
 }
 function snapshot(){
- const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
+ const errors=ring.snapshot().errors.map(e=>({...e,severity:e.fatal?'fatal':e.visibility==='blocking'?'blocking':'notice'}));
  const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@812a6e231036cd366e2ce46e0afebf4db50ee001',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
@@ -5448,9 +5450,13 @@ function keepOutsideLocked(u){const i=lockedParcelAt(u.x,u.y);if(i<0)return;cons
 })(globalThis);
 const bloomCamera=new BloomGamekitCamera.CameraViewport({projection:WorldProjection});
 function bloomSyncCamera(){
- bloomCamera.setViewport({width:Math.max(1,view.w*view.zoom),height:Math.max(1,view.h*view.zoom*WorldProjection.K),dpr:Math.min(CONFIG.render.dprMax,globalThis.devicePixelRatio||1)});
- bloomCamera.setCamera({x:view.x,y:view.y*WorldProjection.K,zoom:view.zoom});
- bloomCamera.setShake(hitfeel.offset.x,hitfeel.offset.y);return bloomCamera;
+ // View inputs can also change between frames (resize, reset, input queries).
+ // Compare live camera values, so follow() and those changes cannot leave stale anchors.
+ const width=Math.max(1,view.w*view.zoom),height=Math.max(1,view.h*view.zoom*WorldProjection.K),dpr=Math.min(CONFIG.render.dprMax,globalThis.devicePixelRatio||1),y=view.y*WorldProjection.K;
+ if(bloomCamera.width!==width||bloomCamera.height!==height||bloomCamera.dpr!==dpr)bloomCamera.setViewport({width,height,dpr});
+ if(bloomCamera.camera.x!==view.x||bloomCamera.camera.y!==y||bloomCamera.camera.zoom!==view.zoom)bloomCamera.setCamera({x:view.x,y,zoom:view.zoom});
+ if(bloomCamera.shakeX!==hitfeel.offset.x||bloomCamera.shakeY!==hitfeel.offset.y)bloomCamera.setShake(hitfeel.offset.x,hitfeel.offset.y);
+ return bloomCamera;
 }
 
 ;
@@ -5476,22 +5482,31 @@ function indicatorDeathPose(d,f=deathSample(d)){if(d.moa)return{x:d.pose.x,y:d.p
  * units (offsetX/Y) or screen pixels (pixelX/Y). Fixed DOM HUD is not in this layer.
  */
 const WorldUI=(()=>{
- const types=new Map();
- function anchor(source,spec={}){
+ const types=new Map(),screenAnchor={};
+ function anchorInto(source,spec={},out){
   if(!source)throw new TypeError('WorldUI requires a captured model or explicit point');
-  const at=spec.at||'body',p=at==='ground'?{x:source.x,y:source.y,z:spatialGround(source.x,source.y)}:
-   at==='point'||!source.type?{x:source.x,y:source.y,z:source.z??spatialGround(source.x,source.y)}:projectionBodyPose(source);
+  const at=spec.at||'body';
+  if(at==='ground'){out.x=source.x;out.y=source.y;out.z=spatialGround(source.x,source.y)}
+  else if(at==='point'||!source.type){out.x=source.x;out.y=source.y;out.z=source.z??spatialGround(source.x,source.y)}
+  else projectionBodyPoseInto(source,out);
   const extent=at==='head'?(spec.extent??(source.type==='mother'?(source.size||30):source.type?unitVisualExtent(source):0)):0;
-  return{x:p.x,y:p.y,z:p.z,offsetX:spec.offsetX||0,
-   offsetY:(spec.offsetY||0)-(at==='head'?extent+(spec.gap||0):0),pixelX:spec.pixelX||0,pixelY:spec.pixelY||0};
+  out.offsetX=spec.offsetX||0;out.offsetY=(spec.offsetY||0)-(at==='head'?extent+(spec.gap||0):0);
+  out.pixelX=spec.pixelX||0;out.pixelY=spec.pixelY||0;return out;
  }
- function screen(source,spec){const a=anchor(source,spec),p=BloomGamekitHud.resolveAnchorInto(bloomSyncCamera(),{space:'world',x:a.x,y:a.y,z:a.z,offsetX:a.offsetX*view.zoom+a.pixelX,offsetY:a.offsetY*view.zoom+a.pixelY},{});p.depth=WorldProjection.depth(a.y,a.z);return p}
+ function anchor(source,spec){return anchorInto(source,spec,{})}
+ function screenInto(source,spec,out){
+  const a=anchorInto(source,spec,screenAnchor),depth=WorldProjection.depth(a.y,a.z);
+  a.offsetX=a.offsetX*view.zoom+a.pixelX;a.offsetY=a.offsetY*view.zoom+a.pixelY;
+  BloomGamekitHud.resolveAnchorInto(bloomSyncCamera(),a,out);out.depth=depth;return out;
+ }
+ // Public convenience results remain independently owned; hot loops opt into reuse.
+ function screen(source,spec){return screenInto(source,spec,{})}
  function begin(c,source,spec){const a=anchor(source,spec),z=Math.max(.0001,view.zoom);projectionBillboard(c,a.x,a.y,a.z);c.translate(a.offsetX+a.pixelX/z,a.offsetY+a.pixelY/z);return a}
  function define(name,definition){if(!definition||typeof definition.paint!=='function')throw TypeError('WorldUI definition needs paint');types.set(name,definition)}
  function draw(name,source,props={}){const d=types.get(name);if(!d)throw TypeError('Unknown world UI: '+name);const spec=typeof d.anchor==='function'?d.anchor(source,props):d.anchor,a=begin(ctx,source,spec);try{d.paint(ctx,a,source,props)}finally{ctx.restore()}}
  const ground={point:indicatorGroundPoint,vertex:indicatorGroundVertex,line:indicatorGroundLine,
   ellipse:indicatorGroundArc,circle(c,source,r){indicatorGroundArc(c,source.x,source.y,r)}};
- return{anchor,screen,begin,define,draw,ground,types:()=>[...types.keys()]};
+ return{anchor,anchorInto,screen,screenInto,begin,define,draw,ground,types:()=>[...types.keys()]};
 })();
 WorldUI.define('label',{anchor:(s,d)=>({at:d.at||'head',extent:d.extent,gap:d.gap??17,offsetX:d.offsetX,offsetY:d.offsetY,pixelX:d.pixelX,pixelY:d.pixelY}),paint(c,a,s,d){if(d.font)c.font=d.font;if(d.color)c.fillStyle=d.color;c.textAlign=d.align||'center';c.fillText(d.text,a.x,a.y)}});
 WorldUI.define('health',{anchor:(s,d)=>({at:'head',extent:d.extent,gap:9}),paint(c,a,s,d){const source=d.source||s;if(source.team==='enemy'){drawJuicedHealthBar(source,a,d.width);return}c.fillStyle='#203325';c.fillRect(a.x-d.width/2,a.y,d.width,CONFIG.render.healthBarHeight);c.fillStyle=source.team==='friendly'?'#bddbf3':'#edbe8b';c.fillRect(a.x-d.width/2,a.y,d.width*Math.max(0,source.hp/source.maxHp),CONFIG.render.healthBarHeight)}});
@@ -7463,7 +7478,8 @@ function publishBallisticUI(){Object.assign(window.__army,{GroundArc,launchGroun
 CONFIG.render.projection={degrees:40,pixel2to1:false};
 function projectionBillboard(c,x,y,z=0){c.save();c.translate(x,y-z*WorldProjection.H/WorldProjection.K);c.scale(1,1/WorldProjection.K);c.translate(-x,-y)}
 function projectionUnitHeight(u){if(u.type==='mother')return(u.z||0)+MoaArt.pose(u).hop*(u.size||30);const d=unitDef(u.type)||{},basic=CONFIG.combat.poseTypes.includes(u.type),walk=basic&&u.moveSpeed>0?Math.min(1,u.moveSpeed/(effectiveSpeed(u)*CONFIG.motion.speedScale)):0;return (u.z||0)+walk*Math.sin(u.movePhase||0)*CONFIG.combat.walkBounce}
-function projectionBodyPose(u){if(u.type==='mother'){const p=MoaArt.pose(u);return{x:u.x-Math.cos(p.angle)*p.recoil*p.r,y:u.y-Math.sin(p.angle)*p.recoil*p.r/WorldProjection.K,z:projectionUnitHeight(u)}}const basic=CONFIG.combat.poseTypes.includes(u.type),prep=basic&&u.pendingMelee?1-u.pendingMelee.left/u.pendingMelee.total:0,finish=basic&&!u.pendingMelee?(u.attackPose||0)/CONFIG.combat.attackPoseTime:0,offset=prep?-CONFIG.combat.windupDrawBack*prep:CONFIG.combat.contactDrawForward*finish*finish;return{x:u.x+Math.cos(u.angle||0)*offset,y:u.y+Math.sin(u.angle||0)*offset,z:projectionUnitHeight(u)}}
+function projectionBodyPose(u){return projectionBodyPoseInto(u,{})}
+function projectionBodyPoseInto(u,out){if(u.type==='mother'){const p=MoaArt.pose(u);out.x=u.x-Math.cos(p.angle)*p.recoil*p.r;out.y=u.y-Math.sin(p.angle)*p.recoil*p.r/WorldProjection.K;out.z=projectionUnitHeight(u);return out}const basic=CONFIG.combat.poseTypes.includes(u.type),prep=basic&&u.pendingMelee?1-u.pendingMelee.left/u.pendingMelee.total:0,finish=basic&&!u.pendingMelee?(u.attackPose||0)/CONFIG.combat.attackPoseTime:0,offset=prep?-CONFIG.combat.windupDrawBack*prep:CONFIG.combat.contactDrawForward*finish*finish;out.x=u.x+Math.cos(u.angle||0)*offset;out.y=u.y+Math.sin(u.angle||0)*offset;out.z=projectionUnitHeight(u);return out}
 function projectionVisible(u,extent=120){const p=WorldProjection.project(u.x,u.y,projectionUnitHeight(u));return Math.abs(p.x-view.x)<=view.w/2+extent&&Math.abs(p.y-view.y*WorldProjection.K)<=view.h*WorldProjection.K/2+extent}
 function projectionToScreen(x,y,z=0){const p=bloomSyncCamera().worldToScreenInto(x,y,z,{});p.depth=WorldProjection.depth(y,z);return p}
 function projectionFromScreen(x,y){const p={};bloomSyncCamera().screenToGroundInto(x,y,p,{intersect(px,py,projection,out){Object.assign(out,WorldProjection.ground(px,py));return true}});return p}
@@ -7666,7 +7682,7 @@ function mineralGainCredit(source,amount){if(bloomInTick){bloomEmit("mineralGain
  n.amount+=amount;n.last=now;mineralGainMeasure(n);
 }
 function mineralGainOverlaps(n,b,gap){return n.left<b.right+gap&&n.right+gap>b.left&&n.top<b.bottom+gap&&n.bottom+gap>b.top}
-const mineralGainPointSpec={at:'point'};
+const mineralGainPointSpec={at:'point'},mineralGainScreen={};
 function mineralGainDraw(){
  const G=mineralGain,C=CONFIG.resourceGain;G.drawn=0;
  if(G.walletDirty&&G.badge){G.badge.textContent='+◇ '+fmt(G.walletSum);G.badge.hidden=false;G.walletDirty=false}
@@ -7682,7 +7698,7 @@ function mineralGainDraw(){
  ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
  for(const n of G.labels){
   if(!n.active)continue;if(G.time>=n.until){n.active=false;continue}
-  const p=WorldUI.screen(n,mineralGainPointSpec),age=(G.time-n.at)/C.life;
+  const p=WorldUI.screenInto(n,mineralGainPointSpec,mineralGainScreen),age=(G.time-n.at)/C.life;
   // Anchor must itself be visible: offscreen income stays in the wallet only.
   if(p.x<C.edge||p.x>innerWidth-C.edge||p.y<C.edge||p.y>innerHeight-C.edge)continue;
   const rise=G.reduced?0:C.rise*(1-(1-age)**2),scale=C.font/22;
@@ -8370,6 +8386,7 @@ function healingCredit(source,amount){
  if(!n){if(G.labels.length>=C.maxLabels)return;n={id:source.id,type:source.type,team:source.team,deathAt:source.deathAt||0,x:a.x,y:a.y,z:a.z,amount:0,at:now,until:now+C.life,visible:false,frozen:!live};G.labels.push(n)}
  n.amount+=amount;n.text='✚ +'+healingFormat(n.amount);
 }
+const healingBodySpec={at:'body'},healingPointSpec={at:'point'},healingAnchor={},healingScreen={};
 function healingDraw(c=ctx){
  const G=healingNumbers,C=CONFIG.healingNumbers;G.drawn=0;
  G.labels=G.labels.filter(n=>G.time<n.until);for(const n of G.labels)n.visible=false;
@@ -8378,8 +8395,8 @@ function healingDraw(c=ctx){
  c.font='bold '+C.font+'px system-ui';c.textAlign='center';c.textBaseline='middle';c.lineWidth=3;c.strokeStyle='#163a2cf2';c.fillStyle=C.color;
  for(const n of G.labels){
   const u=!n.frozen&&healingActor(n);
-  if(u){const a=WorldUI.anchor(u,{at:'body'});if((a.x-n.x)**2+(a.y-n.y)**2>180**2)n.frozen=true;else Object.assign(n,{x:a.x,y:a.y,z:a.z})}else n.frozen=true;
-  const p=WorldUI.screen({x:n.x,y:n.y,z:n.z},{at:'point'});if(p.x<0||p.x>innerWidth||p.y<0||p.y>innerHeight)continue;
+  if(u){const a=WorldUI.anchorInto(u,healingBodySpec,healingAnchor);if((a.x-n.x)**2+(a.y-n.y)**2>180**2)n.frozen=true;else Object.assign(n,{x:a.x,y:a.y,z:a.z})}else n.frozen=true;
+  const p=WorldUI.screenInto(n,healingPointSpec,healingScreen);if(p.x<0||p.x>innerWidth||p.y<0||p.y>innerHeight)continue;
   const age=(G.time-n.at)/C.life,w=c.measureText(n.text).width+8;
   // One bounded layout scheduler shares all existing damage/gold/HUD exclusions.
   const blockers=[...mineralGain.blockers,...hitfeel.numbers.filter(x=>x.layoutVisible&&x.layoutBounds).map(x=>x.layoutBounds),...mineralGain.labels.filter(x=>x.visible),...G.labels.filter(x=>x.visible)];
