@@ -20,6 +20,7 @@ assert(['both', 'on', 'off'].includes(previewSelection), 'BLOOM_LOAD_PREVIEW mus
 const previews = previewSelection === 'both' ? [false, true] : [previewSelection === 'on'];
 const renderSubstages = process.env.BLOOM_RENDER_SUBSTAGES === '1';
 const previewTrace=process.env.BLOOM_PREVIEW_TRACE==='1';
+const reportDestination=process.env.BLOOM_LOAD_REPORT?resolve(process.env.BLOOM_LOAD_REPORT):new URL('./mesh-performance-report.json',import.meta.url);
 // Explicit developmental fixture, never a production import or provenance claim.
 const candidateModules=new Map();
 if(process.env.BLOOM_RENDERING_CANDIDATE)candidateModules.set('rendering',await readFile(resolve(process.env.BLOOM_RENDERING_CANDIDATE)));
@@ -27,8 +28,10 @@ if(process.env.BLOOM_ROLLBACK_NETCODE_CANDIDATE)candidateModules.set('rollback-n
 const candidateRendering=candidateModules.get('rendering')||null;
 const candidateOrder = process.env.BLOOM_RENDERING_CANDIDATE_ORDER || 'last';
 assert(['first', 'last'].includes(candidateOrder), 'BLOOM_RENDERING_CANDIDATE_ORDER must be first or last');
+const rollbackPreviewControl=process.env.BLOOM_ROLLBACK_NETCODE_CONTROL||'snapshot-rebase';
+assert(['snapshot-rebase','pinned'].includes(rollbackPreviewControl),'BLOOM_ROLLBACK_NETCODE_CONTROL must be snapshot-rebase or pinned');
 const candidateIndex = candidateModules.size ? (candidateOrder === 'first' ? 0 : Math.max(0, files.length - 1)) : -1;
-const report = { kind: 'Actual Chromium/SwiftShader WebGL, production RAF/deadlines; not phone hardware FPS', netcodeMode,
+const report = { kind: 'Actual Chromium/SwiftShader WebGL, production RAF/deadlines; not phone hardware FPS', netcodeMode,rollbackPreviewControl,
   viewport: { width: 360, height: 640, dpr: 2 }, warmupMs: 1500, holdMs,
   scope: 'Four-species initial army, disabled camps and stunned enemies. Public preview OFF control keeps its initial allocated scope. No physics, time or rendering override.', renderSubstages, results: [] };
 if (candidateRendering) report.developmentalRenderingFixture = { sha256: runtime.hash(candidateRendering), bytes: candidateRendering.length };
@@ -55,19 +58,21 @@ function fixture(app, count, preview, useSilhouetteBatch, useRollbackPreviewFall
     BloomOwnedSDK.LocalInputPreview.prototype.continueFromCheckpoint=function(){return false};
   ` : '';
   const actorInstrumentation = renderSubstages ? `
-    globalThis.__actorStageProfile={enabled:false,insideArt:false,stageMs:0,stageCalls:0,unitMs:0,unitCalls:0,shadowMs:0,shadowCalls:0,artMs:0,artCalls:0,meshSubmitMs:0,meshSubmitCalls:0};
+    globalThis.__actorStageProfile={enabled:false,insideArt:false,stageMs:0,stageCalls:0,unitMs:0,unitCalls:0,shadowMs:0,shadowCalls:0,artMs:0,artCalls:0,meshSilhouetteMs:0,meshSilhouetteCalls:0,meshSubmitMs:0,meshSubmitCalls:0};
     const actorProfile=globalThis.__actorStageProfile;
     const measure=(name,original)=>function(...args){if(!actorProfile.enabled)return original.apply(this,args);const start=performance.now();try{return original.apply(this,args)}finally{actorProfile[name+'Ms']+=performance.now()-start;actorProfile[name+'Calls']++}};
     const projectedActors=drawProjectedActors;drawProjectedActors=measure('stage',projectedActors);
     const drawUnitCore=drawUnit;drawUnit=measure('unit',drawUnitCore);
     const shadowCore=cshadow;cshadow=function(...args){if(!actorProfile.enabled||projectionDrawingActors)return shadowCore.apply(this,args);const start=performance.now();try{return shadowCore.apply(this,args)}finally{actorProfile.shadowMs+=performance.now()-start;actorProfile.shadowCalls++}};
     const meshDrawCore=ctx.drawMesh;ctx.drawMesh=function(...args){if(!actorProfile.enabled||!actorProfile.insideArt)return meshDrawCore.apply(this,args);const start=performance.now();try{return meshDrawCore.apply(this,args)}finally{actorProfile.meshSubmitMs+=performance.now()-start;actorProfile.meshSubmitCalls++}};
+    const meshSilhouetteCore=ctx.drawMeshSilhouette;ctx.drawMeshSilhouette=function(...args){if(!actorProfile.enabled||!actorProfile.insideArt)return meshSilhouetteCore.apply(this,args);const start=performance.now();try{return meshSilhouetteCore.apply(this,args)}finally{actorProfile.meshSilhouetteMs+=performance.now()-start;actorProfile.meshSilhouetteCalls++}};
     const artCore=RallyArt.draw;RallyArt.draw=function(...args){if(!actorProfile.enabled)return artCore.apply(this,args);const nested=actorProfile.insideArt,start=performance.now();actorProfile.insideArt=true;try{return artCore.apply(this,args)}finally{actorProfile.artMs+=performance.now()-start;actorProfile.artCalls++;actorProfile.insideArt=nested}};
   ` : '';
   const previewInstrumentation=previewTrace?`
-    globalThis.__previewTrace={reconciles:[],inputs:[]};
+    globalThis.__previewTrace={reconciles:[],inputs:[],continues:[]};
     const traceRow=(list,row)=>{list.push(row);if(list.length>40)list.shift()};
     const reconcileCore=reconcilePreview;reconcilePreview=function(...args){const row={tick:bloomTick,force:args[0],mode:args[1],lastTick:previewState.lastTick,lastRevision:previewState.lastRevision,revision:presentation.revision,epoch,needsPrediction:previewState.needsPrediction,pending:previewState.capability?.pendingCount,ready:previewState.capability?.ready,localReady:localReady(),sessionReady:bloomSession?.ready,resimulating:bloomSession?.resimulating,playing,paused,modal:modalKind,hidden:document.hidden,dead:state.dead};const result=reconcileCore.apply(this,args);row.afterTick=previewState.lastTick;row.afterRevision=previewState.lastRevision;traceRow(globalThis.__previewTrace.reconciles,row);return result};
+    const continueCore=continuePreview;continuePreview=function(...args){const metadata=bloomSession?.localInputState||{},capture=metadata.capture,row={tick:bloomTick,lastTick:previewState.lastTick,revision:presentation.revision,lastRevision:previewState.lastRevision,needsPrediction:previewState.needsPrediction,pending:previewState.capability?.pendingCount,capture:capture?{sequence:capture.sequence,captureTick:capture.captureTick,executeTick:capture.executeTick,input:capture.input&&bloomDecodeInput(capture.input),commands:capture.commands?.length||0}:null,executed:metadata.executedInput&&bloomDecodeInput(metadata.executedInput),confirmedTick:metadata.confirmedTick,executedCommandSequence:metadata.executedCommandSequence};const result=continueCore.apply(this,args);row.result=result;row.afterTick=previewState.lastTick;row.afterPending=previewState.capability?.pendingCount;row.continued=previewState.capability?.metrics.continuedCheckpoints;traceRow(globalThis.__previewTrace.continues,row);return result};
     const inputCore=sampleInput;sampleInput=function(...args){const packet=inputCore.apply(this,args);traceRow(globalThis.__previewTrace.inputs,{tick:bloomTick,predict:packet?.predict,input:Array.from(packet?.input||[]),commands:packet?.commands?.length||0,manual:packet?.input?.[4]});return packet};
   `:'';
   const source = `;(() => {
@@ -124,14 +129,14 @@ try {
     if (moduleOverrides.size) app.config.modules = app.config.modules.map(entry => {
       const bytes=moduleOverrides.get(entry.name);return bytes?{...entry,bytes:bytes.length,sha256:runtime.hash(bytes),url:`https://${entry.name}-candidate.invalid/${runtime.hash(bytes)}/${entry.name}.js`}:entry;
     });
-    const useRollbackPreviewFallback=candidateModules.has('rollback-netcode')&&fileIndex!==candidateIndex;
+    const useRollbackPreviewFallback=candidateModules.has('rollback-netcode')&&fileIndex!==candidateIndex&&rollbackPreviewControl==='snapshot-rebase';
     for (const count of counts) for (const preview of previews) responses[`/${count}-${preview}`] = fixture(app, count, preview, !!renderingCandidate,useRollbackPreviewFallback);
     const server = createServer(runtime.serve(responses));
     await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
     try {
       for (const count of counts) for (const preview of previews) {
         const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
-        const errors = [], row = { file, renderingVariant:moduleOverrides.size?'candidate':'pinned', candidateModules:[...moduleOverrides.keys()], rollbackPreviewMode:moduleOverrides.has('rollback-netcode')?'incremental-confirmed-fork':useRollbackPreviewFallback?'snapshot-rebase-control':'production', netcodeMode, silhouetteBatchFastPath:!!renderingCandidate, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
+        const errors = [], row = { file, renderingVariant:moduleOverrides.size?'candidate':'pinned', candidateModules:[...moduleOverrides.keys()], rollbackPreviewMode:moduleOverrides.has('rollback-netcode')?'incremental-confirmed-fork':useRollbackPreviewFallback?'snapshot-rebase-control':candidateModules.has('rollback-netcode')&&rollbackPreviewControl==='pinned'?'pinned-control':'production', netcodeMode, silhouetteBatchFastPath:!!renderingCandidate, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
           renderingSHA256: app.config.modules.find(entry => entry.name === 'rendering').sha256, rollbackNetcodeSHA256:app.config.modules.find(entry=>entry.name==='rollback-netcode').sha256, sdk: app.config.distCommit, count, preview, errors };
         report.results.push(row);
         try {
@@ -142,7 +147,7 @@ try {
           await page.locator('#sheet [data-public="solo"]').click({timeout: 30000});
           await page.locator('#modal.show').waitFor({ state: 'hidden' });
           await page.waitForTimeout(report.warmupMs);
-          const before = await page.evaluate(() => { BloomDiagnostics.setProfiler(true); if(globalThis.__actorStageProfile){for(const key of ['stageMs','stageCalls','unitMs','unitCalls','shadowMs','shadowCalls','artMs','artCalls','meshSubmitMs','meshSubmitCalls'])__actorStageProfile[key]=0;__actorStageProfile.insideArt=false;__actorStageProfile.enabled=true} if(globalThis.__meshSilhouetteBatch)__meshSilhouetteBatch.calls=0; return __meshLoadRead(); });
+          const before = await page.evaluate(() => { BloomDiagnostics.setProfiler(true); if(globalThis.__actorStageProfile){for(const key of ['stageMs','stageCalls','unitMs','unitCalls','shadowMs','shadowCalls','artMs','artCalls','meshSilhouetteMs','meshSilhouetteCalls','meshSubmitMs','meshSubmitCalls'])__actorStageProfile[key]=0;__actorStageProfile.insideArt=false;__actorStageProfile.enabled=true} if(globalThis.__meshSilhouetteBatch)__meshSilhouetteBatch.calls=0; return __meshLoadRead(); });
           const start = performance.now(); await page.keyboard.down('KeyD'); await page.waitForTimeout(holdMs); await page.keyboard.up('KeyD');
           const after = await page.evaluate(() => __meshLoadRead());
           row.wallMs = performance.now() - start; row.before = before; row.after = after;
@@ -159,6 +164,6 @@ try {
 } finally {
   await browser?.close();
   report.outcome = report.results.length && report.results.every(row => row.status === 'MEASURED') ? 'MEASURED' : 'PERFORMANCE_FAIL';
-  await writeFile(new URL('./mesh-performance-report.json', import.meta.url), JSON.stringify(report, null, 2));
+  await writeFile(reportDestination, JSON.stringify(report, null, 2));
 }
 if (report.results.some(row => row.status === 'FAIL')) process.exitCode = 1;

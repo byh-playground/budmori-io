@@ -1,6 +1,6 @@
 import {chromium} from 'playwright';
 import {createServer} from 'node:http';
-import {writeFile} from 'node:fs/promises';
+import {readFile,writeFile} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
@@ -18,15 +18,23 @@ import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-previe
 // public relay, STUN service, user identity, or real account credential is used.
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1'||process.platform==='win32'&&process.env.BUDMORI_HEADED!=='0';
+const rollbackCandidatePath=process.env.BUDMORI_ROLLBACK_NETCODE_CANDIDATE,rollbackCandidateBytes=rollbackCandidatePath?await readFile(rollbackCandidatePath):null;
+if(rollbackCandidateBytes){const config=runtimeSources.manifest(source.html),entry=config?.modules.find(module=>module.name==='rollback-netcode');if(!entry)throw new Error('Rollback module is missing from the runtime manifest');const sha256=runtimeSources.hash(rollbackCandidateBytes);entry.bytes=rollbackCandidateBytes.length;entry.sha256=sha256;entry.url=`https://rollback-netcode-candidate.invalid/${sha256}/rollback-netcode.js`;source.html=source.html.replace(/<script id="bloom-runtime-manifest" type="application\/json">[\s\S]*?<\/script>/,'<script id="bloom-runtime-manifest" type="application/json">'+JSON.stringify(config)+'</script>')}
 const loadUnits=Number(process.env.BUDMORI_LOAD_UNITS||0);
 if(!Number.isSafeInteger(loadUnits)||loadUnits<0||loadUnits>1000)throw new Error('BUDMORI_LOAD_UNITS must be 0..1000');
+const loadProfile=process.env.BUDMORI_LOAD_PROFILE==='1';
+const loadPreview=process.env.BUDMORI_LOAD_PREVIEW||'on';
+if(!['on','off'].includes(loadPreview)||loadPreview==='off'&&!loadUnits)throw new Error('BUDMORI_LOAD_PREVIEW must be on|off and off requires BUDMORI_LOAD_UNITS');
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
- environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF; fixtureUnits=${loadUnits}`,
+ environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF; fixtureUnits=${loadUnits}; preview=${loadPreview}`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
+if(rollbackCandidateBytes)report.candidateRollbackNetcode={path:rollbackCandidatePath,bytes:rollbackCandidateBytes.length,sha256:runtimeSources.hash(rollbackCandidateBytes),published:false};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
  const sdk=BloomOwnedSDK,qa=globalThis.__sharedBrowser={rooms:[],signalers:[],events:[],wanted:new Set(),checkpoints:new Map(),lastInputs:[],relay:{published:0,delivered:0}};
+ ${loadPreview==='off'?"const previewPrototype=sdk.LocalInputPreview?.prototype,enablePreview=previewPrototype?.setEnabled;if(typeof enablePreview!=='function')throw Error('LocalInputPreview.setEnabled is required');previewPrototype.setEnabled=function(){return enablePreview.call(this,false)};":''}
+ ${loadUnits?"qa.loopSamples=[];let sampledTicks=-1;qa.sampleLoop=setInterval(()=>{const metrics=BloomSimulation.runtime?.metrics;if(!metrics||metrics.ticks===sampledTicks)return;sampledTicks=metrics.ticks;qa.loopSamples.push({tick:BloomSimulation.tick,tickMs:metrics.tickMs,presentationMs:metrics.presentationMs});if(qa.loopSamples.length>240)qa.loopSamples.shift()},25);":''}
  // Local latency fixture: withhold actual outgoing RTC packets, then deliver
  // through the original native channel. Simulation/poll/RAF continue normally.
  const nativeSend=RTCDataChannel.prototype.send;qa.heldRTC=[];qa.holdRTC=false;
@@ -91,7 +99,8 @@ const fixture=String.raw`
    transitionHistory:qa.transitions,connection:PublicSession.inspect(),metrics:session.metrics,mode:BloomSimulation.sessionConfig.mode,netcodeMode:session.profile.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
-   combat:WorldPlayers.all().map(p=>({id:p.playerId,region:p.startRegion,...qa.combat.get(p.playerId),damage:state.units.filter(u=>u.qaRegion===p.startRegion).reduce((sum,u)=>sum+u.maxHp-u.hp,0)})),
+    combat:WorldPlayers.all().map(p=>({id:p.playerId,region:p.startRegion,...qa.combat.get(p.playerId),damage:state.units.filter(u=>u.qaRegion===p.startRegion).reduce((sum,u)=>sum+u.maxHp-u.hp,0)})),
+    loopMetrics:BloomSimulation.runtime.metrics,preview:(()=>{const p=BloomSimulation.runtime.preview;return{phase:p.phase,enabled:p.enabled,error:p.error,captureMs:p.captureMs,captureBytes:p.captureBytes,scope:p.scope,capability:p.capability}})(),
    durable:state.units.filter(u=>u.qaDurable).map(u=>({id:u.id,hp:u.hp,maxHp:u.maxHp})),projectiles:projectiles.length,admissionFlights:projectiles.filter(p=>p.qaAdmissionFlight).map(p=>p.shotId),input:qa.lastInputs,events:qa.events.slice(-20)};
  };
 })();`;
@@ -109,15 +118,18 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`,pages=[],errors=[],unexpectedNetwork=[];
 let browser,context;
 const lastKnownStates=new Map();
+let loadCpuProfiler=null;
 function timing(stage,status,data={}){const row={at:new Date().toISOString(),elapsedMs:Math.round(performance.now()-runStarted),stage,status,...data};report.timings.push(row);const log={...row,pages:row.pages?.map(p=>({page:p.page,phase:p.phase,tick:p.tick,ready:p.ready,roster:p.roster,frames:p.performance.render.frames}))};console.log('BROWSER_STAGE '+JSON.stringify(log));return row}
 async function bounded(promise,timeoutMs,label){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label+' exceeded '+timeoutMs+'ms observation deadline')),timeoutMs)})])}finally{clearTimeout(timer)}}
 const evaluate=(page,fn,arg,label='evaluate',timeoutMs=10000)=>bounded(page.evaluate(fn,arg),timeoutMs,'page '+(pages.indexOf(page)+1)+' '+label);
-const read=async page=>{const state=await evaluate(page,()=>__sharedBrowser.inspect(),undefined,'read state');lastKnownStates.set(page,state);return state};
+const read=async page=>{const state=await evaluate(page,()=>__sharedBrowser.inspect());lastKnownStates.set(page,state);return state};
+const readWithTimeout=async(page,timeoutMs)=>{const state=await evaluate(page,()=>__sharedBrowser.inspect(),undefined,'read state',timeoutMs);lastKnownStates.set(page,state);return state};
 const phaseSummary=state=>({phase:state.phase,mode:state.mode,tick:state.tick,ready:state.ready,roster:state.roster.length,performance:state.performance});
 async function phase(label,operation){const start=performance.now();timing(label,'begin');try{const result=await operation();timing(label,'complete',{durationMs:Math.round(performance.now()-start)});return result}catch(error){timing(label,'failed',{durationMs:Math.round(performance.now()-start),error:error.message});throw error}}
 async function samplePhase(label,active){const states=await Promise.all(active.map(read));timing(label,'state',{pages:states.map((state,index)=>({page:pages.indexOf(active[index])+1,...phaseSummary(state)}))});return states}
 const player=(state,id)=>{const found=state.players.find(p=>p.id===id);assert(found,'Missing participant '+id);return found};
 const record=(label,data)=>{report.checks.push(label);console.log('PASS '+label+' '+JSON.stringify({at:new Date().toISOString(),elapsedMs:Math.round(performance.now()-runStarted),...(data?{details:data}:{})}))};
+function profileSummary(values){if(!values.length)return{count:0,p50Ms:0,p95Ms:0,maxMs:0};const sorted=[...values].sort((a,b)=>a-b);return{count:values.length,p50Ms:Math.round(sorted[Math.floor((sorted.length-1)*.5)]*100)/100,p95Ms:Math.round(sorted[Math.floor((sorted.length-1)*.95)]*100)/100,maxMs:Math.round(sorted.at(-1)*100)/100}}
 async function until(predicate,label,timeoutMs=60000){
  const end=Date.now()+timeoutMs;
  for(;;){
@@ -188,7 +200,7 @@ try{
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
  report.fontAssetFixture=await fontAssets.install(context);
- await moduleReferences.install(context,source.html);
+ await moduleReferences.install(context,source.html,rollbackCandidateBytes?{'rollback-netcode':rollbackCandidateBytes}:{});
  await context.routeWebSocket('**/*',socket=>{unexpectedNetwork.push(socket.url());return socket.close()});
  const host=await addPage();
  const soloBefore=await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey));
@@ -224,14 +236,22 @@ try{
  record('Second browser tab joins while the first moves and combat remains in flight');
  if(loadUnits){
   const holdMs=Number(process.env.BUDMORI_LOAD_HOLD_MS||8000);assert(Number.isSafeInteger(holdMs)&&holdMs>=1000&&holdMs<=30000,'BUDMORI_LOAD_HOLD_MS must be 1000..30000');
-  const before=await Promise.all([host,guest].map(read)),started=performance.now();
+   const before=await Promise.all([host,guest].map(read)),checkpointTick=Math.max(...before.map(state=>state.tick))+8,started=performance.now();
+   await Promise.all([host,guest].map(page=>evaluate(page,tick=>{if(BloomSimulation.tick>=tick)throw Error('Load checkpoint target was missed');__sharedBrowser.wanted.add(tick)},checkpointTick,'arm loaded checkpoint',30000)));
+   if(loadProfile){await evaluate(host,()=>BloomDiagnostics.setProfiler(true),undefined,'enable render-stage profiler',30000);loadCpuProfiler=await context.newCDPSession(host);await loadCpuProfiler.send('Profiler.enable');await loadCpuProfiler.send('Profiler.setSamplingInterval',{interval:1000});await loadCpuProfiler.send('Profiler.start')}
   await host.keyboard.down('KeyD');await guest.keyboard.down('KeyS');await new Promise(resolve=>setTimeout(resolve,holdMs));await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');
-  const after=await Promise.all([host,guest].map(read)),elapsedMs=performance.now()-started;
+   const elapsedMs=performance.now()-started,observations=await Promise.all([host,guest].map(async page=>{const observedAt=performance.now(),state=await readWithTimeout(page,30000);return{state,observationMs:Math.round(performance.now()-observedAt)}})),after=observations.map(row=>row.state);
+   let diagnostics=null;if(loadCpuProfiler){const {profile}=await loadCpuProfiler.send('Profiler.stop');await loadCpuProfiler.detach();loadCpuProfiler=null;const samples=new Map(),nodes=new Map(profile.nodes.map(node=>[node.id,node]));for(let i=0;i<profile.samples.length;i++){const id=profile.samples[i],delta=profile.timeDeltas?.[i]??1000;samples.set(id,(samples.get(id)||0)+delta)}const topCpu=[...samples].map(([id,us])=>{const callFrame=nodes.get(id)?.callFrame||{};let url=callFrame.url||'';try{url=new URL(url).pathname}catch{}return{function:callFrame.functionName||'(anonymous)',url,line:callFrame.lineNumber??null,selfMs:Math.round(us/1000*100)/100}}).sort((a,b)=>b.selfMs-a.selfMs).slice(0,25);const profiler=await evaluate(host,()=>{const data=BloomDiagnostics.snapshot().runtime.profiler;BloomDiagnostics.setProfiler(false);return data.summary},undefined,'read render-stage profile',30000);diagnostics={scope:'Host-page Chromium V8 CPU sampling plus in-game render-stage profiler; diagnostic overhead applies, not used as speed score',sampleCount:profile.samples.length,topCpu,renderStages:profiler}}
   for(let i=0;i<2;i++){const state=after[i];assert(!state.fatal&&!state.failure,JSON.stringify(state));assert.equal(state.roster.length,2);assert.equal(state.backend,'WebGL');assert(state.tick>before[i].tick);assert(state.frames>before[i].frames)}
   assert(after.every(state=>state.input.some(input=>input.playerId===hostId)&&state.input.some(input=>input.playerId===guestId)),'Both peers continue submitting actual inputs under load');
-  report.multiplayerLoad={units:loadUnits,holdMs,elapsedMs:Math.round(elapsedMs),mode:after[0].netcodeMode,peers:after.map((state,index)=>({page:index+1,ticks:state.tick-before[index].tick,frames:state.frames-before[index].frames,effectiveTPS:Math.round((state.tick-before[index].tick)*1000/elapsedMs*100)/100,effectiveFPS:Math.round((state.frames-before[index].frames)*1000/elapsedMs*100)/100,renderMs:state.performance.render.renderMs,renderP95Ms:state.performance.render.p95Ms,unitCount:state.performance.unitCount,fatal:state.fatal}))};
-  await checkpoint([host,guest],'loaded-two-player-world');
-  const transport=await Promise.all([host,guest].map(page=>evaluate(page,async()=>{const room=__sharedBrowser.rooms.at(-1),connections=[];for(const[id,pc]of room.peerConnections){const channels=[];(await pc.getStats()).forEach(row=>{if(row.type==='data-channel')channels.push({label:row.label,state:row.state,bytesSent:row.bytesSent,bytesReceived:row.bytesReceived})});connections.push({id,native:pc instanceof RTCPeerConnection,state:pc.connectionState,channels})}return connections})));
+    const targetTPS=await evaluate(host,()=>BloomSimulation.tickRate);
+    const checkpoints=await Promise.all([host,guest].map(page=>evaluate(page,tick=>__sharedBrowser.checkpoints.get(tick)||null,checkpointTick,'read loaded checkpoint',30000)));assert(checkpoints.every(Boolean),'Both peers must capture the same loaded-world checkpoint');for(const checkpoint of checkpoints){assert.equal(checkpoint.tick,checkpointTick);assert.equal(checkpoint.schema,'budmori-world')}assert.deepEqual(Buffer.from(checkpoints[0].bytes),Buffer.from(checkpoints[1].bytes),'Loaded-world peers diverged at the measured checkpoint');
+    const loopTraces=await Promise.all([host,guest].map(page=>evaluate(page,()=>__sharedBrowser.loopSamples.slice(),undefined,'read tick timings',30000)));
+    const loopWork=loopTraces.map((samples,index)=>{const selected=samples.filter(sample=>sample.tick>before[index].tick&&sample.tick<=after[index].tick);return{page:index+1,samples:selected.length,tick:profileSummary(selected.map(sample=>sample.tickMs)),presentation:profileSummary(selected.map(sample=>sample.presentationMs))}});
+    const previewDeltas=after.map((state,index)=>{const old=before[index].preview||{},newer=state.preview||{},oldScope=old.scope||{},newScope=newer.scope||{},oldCapability=old.capability||{},newCapability=newer.capability||{};return{page:index+1,captureMs:Math.round(((newer.captureMs||0)-(old.captureMs||0))*100)/100,captureBytes:(newer.captureBytes||0)-(old.captureBytes||0),installs:(newScope.installs||0)-(oldScope.installs||0),installMs:Math.round(((newScope.installMs||0)-(oldScope.installMs||0))*100)/100,restoreReuses:(newScope.restoreReuses||0)-(oldScope.restoreReuses||0),steps:(newScope.steps||0)-(oldScope.steps||0),stepMs:Math.round(((newScope.stepMs||0)-(oldScope.stepMs||0))*100)/100,corrections:(newCapability.corrections||0)-(oldCapability.corrections||0),correctionMs:Math.round(((newCapability.correctionMs||0)-(oldCapability.correctionMs||0))*100)/100,confirmedAdvances:(newCapability.confirmedAdvances||0)-(oldCapability.confirmedAdvances||0)}});
+    report.checkpoints.push({label:'loaded-two-player-world',tick:checkpointTick,epoch:checkpoints[0].epoch,players:2,hash:checkpoints[0].hash,bytes:checkpoints[0].bytes.length});
+    report.multiplayerLoad={units:loadUnits,previewMode:loadPreview,holdMs,elapsedMs:Math.round(elapsedMs),mode:after[0].netcodeMode,targetTPS,performanceStatus:after.every((state,index)=>(state.tick-before[index].tick)*1000/elapsedMs>=targetTPS)?'MEETS_TARGET':'BELOW_TARGET',checkpoint:{tick:checkpointTick,hash:checkpoints[0].hash,bytes:checkpoints[0].bytes.length},peers:after.map((state,index)=>({page:index+1,ticks:state.tick-before[index].tick,frames:state.frames-before[index].frames,effectiveTPS:Math.round((state.tick-before[index].tick)*1000/elapsedMs*100)/100,effectiveFPS:Math.round((state.frames-before[index].frames)*1000/elapsedMs*100)/100,renderCpuMs:Math.round((state.performance.render.renderMs-before[index].performance.render.renderMs)*100)/100,renderCpuMsPerFrame:state.frames===before[index].frames?null:Math.round((state.performance.render.renderMs-before[index].performance.render.renderMs)/(state.frames-before[index].frames)*100)/100,observationMs:observations[index].observationMs,unitCount:state.performance.unitCount,fatal:state.fatal})),loopWork,previewDeltas,preview:after.map(state=>state.preview),...(diagnostics?{diagnostics}:{})};
+   const transport=await Promise.all([host,guest].map(page=>evaluate(page,async()=>{const room=__sharedBrowser.rooms.at(-1),connections=[];for(const[id,pc]of room.peerConnections){const channels=[];(await pc.getStats()).forEach(row=>{if(row.type==='data-channel')channels.push({label:row.label,state:row.state,bytesSent:row.bytesSent,bytesReceived:row.bytesReceived})});connections.push({id,native:pc instanceof RTCPeerConnection,state:pc.connectionState,channels})}return connections},undefined,'loaded RTC stats',30000)));
   assert.equal(transport.reduce((sum,connections)=>sum+connections.length,0),2);for(const connections of transport)for(const pc of connections){assert(pc.native&&pc.state==='connected');assert(pc.channels.some(channel=>channel.bytesSent>0&&channel.bytesReceived>0))}
   report.multiplayerLoad.transport=transport;record('Real two-peer RTC loaded-world soak preserves live inputs and canonical checkpoint equality',report.multiplayerLoad);report.status='PASS';
  }else{
@@ -260,8 +280,9 @@ try{
   }finally{await nativeWindow.send('Browser.setWindowBounds',{windowId:windowInfo.windowId,bounds:{windowState:windowInfo.bounds.windowState}});await nativeWindow.send('Emulation.setFocusEmulationEnabled',{enabled:true});await nativeWindow.detach();await host.keyboard.up('KeyD')}
   await focusAndResume(host);record('Native window minimization clears cached held input and preview while the public world continues');
  }else report.limitations.push('Native minimized-window visibility is not exercised in explicit headless mode.');
- // Optional real-clock soak beyond the reported ~94s renderer failure. Keep
- // ordinary SDK timers/RAF and check both peers, without advancing test clocks.
+  if(!loadUnits){
+  // Optional real-clock soak beyond the reported ~94s renderer failure. Keep
+  // ordinary SDK timers/RAF and check both peers, without advancing test clocks.
  const soakMs=Number(process.env.BUDMORI_TWO_PLAYER_SOAK_MS||0);
  assert(Number.isFinite(soakMs)&&soakMs>=0,'BUDMORI_TWO_PLAYER_SOAK_MS must be nonnegative');
  if(soakMs){
@@ -270,7 +291,7 @@ try{
   const after=await Promise.all([host,guest].map(read));for(let i=0;i<2;i++){assert(after[i].tick>before[i].tick);assert(after[i].frames>before[i].frames)}
   report.twoPlayerSoak={elapsedMs:Math.round(performance.now()-started),peers:after.map((s,i)=>({ticks:s.tick-before[i].tick,frames:s.frames-before[i].frames,render:s.performance.render}))};
   record('Two-player WebGL rendering and simulation continue through real-clock soak',report.twoPlayerSoak);await checkpoint([host,guest],'two-player-soak');
- }
+  }
  for(const [page,id,label]of [[guest,guestId,'two-player-guest'],[host,hostId,'two-player-coordinator']]){const before=await read(page);await page.reload({waitUntil:'load'});await page.waitForFunction(()=>globalThis.__sharedBrowser?.inspect&&globalThis.BloomSimulation?.runtime?.ready,undefined,{timeout:15000});await ready([host,guest]);await ticks([host,guest],4);const after=await read(page);assert.equal(after.localId,id);assert.equal(after.sessionId,before.sessionId);assert.equal(after.roster.length,2);await checkpoint([host,guest],label+'-refresh');await transitionCheckpoint(label,[host,guest]);}
  record('Two-player guest and coordinator reload both preserve identity and resume through the production-paced handshake');
  for(const state of await Promise.all([host,guest].map(read))){const own=player(state,state.localId);assert.equal(state.localView.id,state.localId);assert.equal(state.localView.leader,own.owner);assert.equal(state.localView.hudLeader,state.localView.leader);assert.equal(state.localView.level,own.level);assert.equal(state.localView.hp,own.hp);assert.equal(state.localView.army,own.army)}
@@ -319,8 +340,9 @@ try{
  assert.equal(await evaluate(host,()=>Object.keys(sessionStorage).filter(key=>key.startsWith('budmori-public-resume-v1')).length),0,'Explicit leave must forget room credentials');
  await ticks(remaining,10);await checkpoint(remaining,'coordinator-left');
  const successor=await read(guest);assert.equal(player(successor,hostId).lifecycle,'left');
- await screenshot(guest,'multiplayer-successor-world.png');record('Graceful coordinator leave forgets resume data and remaining players keep the same ticking world');
- }
+  await screenshot(guest,'multiplayer-successor-world.png');record('Graceful coordinator leave forgets resume data and remaining players keep the same ticking world');
+  }
+  }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpectedNetwork,[]);report.status='PASS';
 }catch(error){
  report.status='FAIL';report.failure=error.stack||String(error);process.exitCode=1;console.error(error);

@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@812a6e231036cd366e2ce46e0afebf4db50ee001',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@13211fc0562b20d745e6a83d9f7ef2d7ca19fce0',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -5131,35 +5131,39 @@ function makeCanvas(w,h=w){const c=document.createElement('canvas');c.width=w;c.
 function attackValue(opts){return opts.attack?{progress:opts.attackProgress??.5}:false}
 function rotationAbout(angle,x,y){const c=Math.cos(angle),s=Math.sin(angle);return[c,s,-s,c,x-c*x+s*y,y-s*x-c*y]}
 function scaleAbout(scale,x,y){return[scale,0,0,scale,x*(1-scale),y*(1-scale)]}
+function rotationAboutInto(out,angle,x,y){const c=Math.cos(angle),s=Math.sin(angle);out[0]=c;out[1]=s;out[2]=-s;out[3]=c;out[4]=x-c*x+s*y;out[5]=y-s*x-c*y;return out}
+function scaleAboutInto(out,scale,x,y){out[0]=scale;out[1]=0;out[2]=0;out[3]=scale;out[4]=x*(1-scale);out[5]=y*(1-scale);return out}
+function motionPart(parts,name){return parts[name]||(parts[name]={})}
+function motionTransform(parts,name){const part=motionPart(parts,name);return part.transform||(part.transform=new Array(6))}
+function motionMorph(parts,name,first,second=0,visible){const part=motionPart(parts,name),morph=part.morph||(part.morph=[0,0]);morph[0]=first;morph[1]=second;if(visible!==undefined)part.visible=visible;return part}
 // Only animation parameters are evaluated per draw. Authored vertices are built on cache misses.
 // The same parameter source drives native UI art and retained world mesh instances.
-function artMotion(type,x,y,r,timeMs,opts){
- const parts={},pose=opts.meshPose,hash=artTypeHashes[type],seed=(hash%997)*.017;
- const motion={parts,fastFlap:pose??(.5+.5*Math.sin(timeMs*.026+seed)),slowFlap:pose??opts.slowFlap??(.5+.5*Math.sin(timeMs*.010+seed))};
- if(type==='dandelion')parts.spokes={transform:rotationAbout(timeMs*.0005,x,y-r*.30)};
- else if(type==='mage')for(let k=0;k<4;k++){const a=k*Math.PI/2+timeMs*.0015;parts['orb-'+k]={transform:[1,0,0,1,Math.cos(a)*r*.72,Math.sin(a)*r*.72]}}
+function artMotion(type,x,y,r,timeMs,opts,target=null){
+ const parts=target?.parts||{},pose=opts.meshPose,hash=artTypeHashes[type],seed=(hash%997)*.017,motion=target||{parts};motion.parts=parts;
+ motion.fastFlap=pose??(.5+.5*Math.sin(timeMs*.026+seed));motion.slowFlap=pose??opts.slowFlap??(.5+.5*Math.sin(timeMs*.010+seed));
+ if(type==='dandelion')rotationAboutInto(motionTransform(parts,'spokes'),timeMs*.0005,x,y-r*.30);
+ else if(type==='mage')for(let k=0;k<4;k++){const a=k*Math.PI/2+timeMs*.0015,m=motionTransform(parts,'orb-'+k);m[0]=1;m[1]=0;m[2]=0;m[3]=1;m[4]=Math.cos(a)*r*.72;m[5]=Math.sin(a)*r*.72}
  else if(type==='pillbug'){
-  parts.radial={transform:rotationAbout(timeMs*.012+(hash%997)*.01,x,y)};
-  parts.pulse={transform:scaleAbout(.82+.18*Math.sin(timeMs*.012+(hash%17)),x+r*.62,y-r*.14)};
- }else if(type==='flowerbee')parts.wings={morph:[motion.fastFlap,0]};
+  rotationAboutInto(motionTransform(parts,'radial'),timeMs*.012+(hash%997)*.01,x,y);
+  scaleAboutInto(motionTransform(parts,'pulse'),.82+.18*Math.sin(timeMs*.012+(hash%17)),x+r*.62,y-r*.14);
+ }else if(type==='flowerbee')motionMorph(parts,'wings',motion.fastFlap);
  else if(type==='sporemoth'){
-  parts.wings={morph:[motion.slowFlap,0]};
-  parts.sac={transform:scaleAbout(opts.attack?1.22:(.94+.08*Math.sin(timeMs*.007+seed)),x,y+r*.48)};
+  motionMorph(parts,'wings',motion.slowFlap);
+  scaleAboutInto(motionTransform(parts,'sac'),opts.attack?1.22:(.94+.08*Math.sin(timeMs*.007+seed)),x,y+r*.48);
  }else if(type==='shelltitan'){
   motion.attackPhase=pose??Math.sin(Math.min(1,Number(opts.attackProgress)||.5)*Math.PI);
-  parts['attack-aura']={morph:[motion.attackPhase,0]};
+  motionMorph(parts,'attack-aura',motion.attackPhase);
  }else if(type==='siege'){
   const deploying=opts.deployProgress!=null&&opts.deployProgress<1,q=deploying?RangeUtil.clamp(opts.deployProgress,0,1):opts.deployed?1:0;
-  const ease=motion.ease=pose??q*q*(3-2*q),hull=rotationAbout((opts.hullFacing??-Math.PI/2)+Math.PI/2,x,y);
-  parts['common-body']={transform:rotationAbout((opts.commonFacing??opts.hullFacing??-Math.PI/2)+Math.PI/2,x,y)};
-  parts.feedback=parts['common-body'];
+  const ease=motion.ease=pose??q*q*(3-2*q),hull=motion.hullTransform||(motion.hullTransform=new Array(6));rotationAboutInto(hull,(opts.hullFacing??-Math.PI/2)+Math.PI/2,x,y);
+  const common=motionPart(parts,'common-body');common.transform=rotationAboutInto(motionTransform(parts,'common-body'),(opts.commonFacing??opts.hullFacing??-Math.PI/2)+Math.PI/2,x,y);parts.feedback=common;
   for(let i=0;i<3;i++){
-   parts['hull-leg-'+i]={transform:hull,morph:[ease,0]};
-   parts['hull-detail-'+i]={transform:hull,morph:[ease,0],visible:ease>.30};
+   motionMorph(parts,'hull-leg-'+i,ease).transform=hull;
+   motionMorph(parts,'hull-detail-'+i,ease,0,ease>.30).transform=hull;
   }
-  parts['hull-body']={transform:hull,morph:[ease,0]};
-  parts.turret={transform:rotationAbout((opts.turretFacing??-Math.PI/2)+Math.PI/2,x,y-r*.08-r*.30*ease),morph:[ease,0]};
-  parts['deployment-halo']={morph:[ease,0],visible:deploying&&ease>0};
+  motionMorph(parts,'hull-body',ease).transform=hull;
+  rotationAboutInto(motionTransform(parts,'turret'),(opts.turretFacing??-Math.PI/2)+Math.PI/2,x,y-r*.08-r*.30*ease);motionMorph(parts,'turret',ease);
+  motionMorph(parts,'deployment-halo',ease,0,deploying&&ease>0);
  }
  return motion;
 }
@@ -5182,16 +5186,17 @@ function dropMeshArt(ctx,cache,key){
  meshArtTotals.meshes--;meshArtTotals.bytes-=entry.bytes;
 }
 function disposeMeshes(ctx){const cache=meshArtCaches.get(ctx);if(!cache)return;for(const key of cache.entries.keys())dropMeshArt(ctx,cache,key);meshArtCaches.delete(ctx)}
-function meshArtEntry(ctx,type,team,r,opts){
+function meshArtEntry(ctx,type,team,r,opts,fast=false,angle=0,rotation=0){
  let cache=meshArtCaches.get(ctx);if(!cache){cache={entries:new Map(),meshes:0,bytes:0,clock:0};meshArtCaches.set(ctx,cache)}
  const palette=opts.factionPalette||RALLY_ART_CONFIG.palettes[team];
- const key=type+'|'+team+'|'+r+'|'+artPaletteId(palette)+'|'+(Number(!!opts.attack)|(Number(!!opts.hit)<<1)|(Number(!!opts.cloaked)<<2));
+ const key=type+'|'+team+'|'+r+'|'+artPaletteId(palette)+'|'+(Number(!!opts.attack)|(Number(!!opts.hit)<<1)|(Number(!!(fast?false:opts.cloaked))<<2));
  let entry=cache.entries.get(key);
  if(entry){meshArtTotals.hits++;entry.lastUsed=++cache.clock}else{
   meshArtTotals.misses++;
-  const first=new MeshArtCompiler(opts),needsMorph=morphedUnitArt.has(type),second=needsMorph?new MeshArtCompiler(opts):null;
-  composeRecipe(first,type,team,0,0,r,0,{...opts,meshPose:0});
-  if(second)composeRecipe(second,type,team,0,0,r,0,{...opts,meshPose:1});
+   let buildOpts=opts;if(fast){buildOpts=cache.buildOptions||(cache.buildOptions={});for(const name of Object.keys(buildOpts))delete buildOpts[name];Object.assign(buildOpts,opts);buildOpts.cloaked=false;if(type==='siege'){buildOpts.hullFacing=opts.hullFacing??angle;buildOpts.turretFacing=opts.turretFacing??angle;buildOpts.commonFacing=angle}if(Number.isFinite(opts.hullFacing))buildOpts.hullFacing=opts.hullFacing-rotation;if(Number.isFinite(opts.turretFacing))buildOpts.turretFacing=opts.turretFacing-rotation}
+   const first=new MeshArtCompiler(buildOpts),needsMorph=morphedUnitArt.has(type),second=needsMorph?new MeshArtCompiler(buildOpts):null;
+   composeRecipe(first,type,team,0,0,r,0,{...buildOpts,meshPose:0});
+   if(second)composeRecipe(second,type,team,0,0,r,0,{...buildOpts,meshPose:1});
   const a=first.finish(),b=second?second.finish():a;
   if(a.length!==b.length)throw new Error('Rally mesh part topology differs: '+type);
   const data=a.map((part,i)=>{if(part.name!==b[i].name)throw new Error('Rally mesh part order differs: '+type);return{name:part.name,geometry:part.builder.build({morphs:needsMorph?[b[i].builder]:[]})}});
@@ -5213,6 +5218,26 @@ function retainedArt(ctx,type,team,x,y,r,timeMs,opts){
  try{ctx.drawMesh(entry.mesh,sample)}finally{if(x||y)ctx.restore()}
 }
 function meshArtSample(entry,motion){let sample=entry.sample;if(!sample)sample=entry.sample={parts:new Array(entry.parts.length)};for(let i=0;i<entry.parts.length;i++){const name=entry.parts[i];sample.parts[i]=motion.parts[name]||staticMeshPart}return sample}
+function drawRetainedFast(ctx,type,team,x,y,radius,facing,timeMs,opts){
+ assertType(type);team=normalizeTeam(team);timeMs=(Number(timeMs)||0)+(Number(opts.phaseOffsetMs)||0);
+ const outerAlpha=ctx.globalAlpha??1,stealth=team==='friendly'&&opts.cloaked?.30:1,alpha=outerAlpha*RangeUtil.clamp(opts.alpha??1,0,1)*stealth;
+ if(alpha<=0)return;
+ const angle=resolvedAngle(type,team,facing,opts),rotation=type==='siege'?0:angle+Math.PI/2,theta=rotation+(opts.poseTilt||0),stretch=RangeUtil.clamp(opts.poseStretch||1,.55,1.65),sx=(opts.feedbackX||1)*stretch,sy=(opts.feedbackY||1)/stretch,c=Math.cos(theta),s=Math.sin(theta),a=c*sx,b=s*sx,cc=-s*sy,d=c*sy;
+ const entry=meshArtEntry(ctx,type,team,radius,opts,true,angle,rotation),localOpts=entry.motionOptionsScratch||(entry.motionOptionsScratch={});localOpts.meshPose=opts.meshPose;localOpts.slowFlap=opts.slowFlap;localOpts.attack=opts.attack;localOpts.attackProgress=opts.attackProgress;localOpts.deployProgress=opts.deployProgress;localOpts.deployed=opts.deployed;localOpts.cloaked=false;localOpts.hullFacing=type==='siege'?(opts.hullFacing??angle):Number.isFinite(opts.hullFacing)?opts.hullFacing-rotation:undefined;localOpts.commonFacing=type==='siege'?angle:undefined;localOpts.turretFacing=type==='siege'?(opts.turretFacing??angle):Number.isFinite(opts.turretFacing)?opts.turretFacing-rotation:undefined;
+ const motion=entry.motionScratch||(entry.motionScratch={parts:{}}),sample=meshArtSample(entry,artMotion(type,0,0,radius,timeMs,localOpts,motion)),grouped=alpha<.999999;
+ if(grouped){ctx.beginGroup(alpha,ctx.groupBounds(x,y,radius*4.4));ctx.globalAlpha=1}
+ let saved=false;
+ try{
+  ctx.save();saved=true;
+  if(opts.whiteFlash)ctx.filter='brightness(0) invert(1)';
+  ctx.transform(a,b,cc,d,x,y);
+  if(opts.gradeOutline)ctx.drawMeshSilhouette(entry.mesh,{parts:sample.parts,color:opts.gradeOutline,width:Math.max(1,radius*.085),radius:128});
+  else ctx.drawMesh(entry.mesh,{parts:sample.parts});
+ }finally{
+  if(saved)ctx.restore();
+  if(grouped){ctx.endGroup();ctx.globalAlpha=outerAlpha}
+ }
+}
 // World outlines repeat retained mesh instances; standalone DOM thumbnails may use a mask.
 function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
  if(ctx.isBloomWebGL){const entry=opts.meshArtEntry||meshArtEntry(ctx,type,team,r,opts),sample=opts.meshArtSample||meshArtSample(entry,artMotion(type,0,0,r,timeMs,opts));return ctx.drawMeshSilhouette(entry.mesh,{parts:sample.parts,color:opts.gradeOutline,width:Math.max(1,r*.085),radius:128})}
@@ -5276,6 +5301,7 @@ function visualExtent(type){assertType(type);return visualExtentRadius[type]}
 
 function draw(ctx,type,team,x,y,radius,facing,timeMs=0,opts={}){
   if(!ctx||!Number.isFinite(radius)||radius<=0)return;
+  if(ctx.isBloomWebGL&&!opts.shadow&&typeof ctx.transform==='function')return drawRetainedFast(ctx,type,team,x,y,radius,facing,timeMs,opts);
   assertType(type);team=normalizeTeam(team);
   timeMs=(Number(timeMs)||0)+(Number(opts.phaseOffsetMs)||0);
   const outerAlpha=ctx.globalAlpha??1,stealth=team==='friendly'&&opts.cloaked?.30:1,alpha=outerAlpha*RangeUtil.clamp(opts.alpha??1,0,1)*stealth;
@@ -11772,7 +11798,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0/assets/fonts/noto-sans-kr-700-v1.json",version:"c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@ec9870ea3f73f27e654c22c9566fa20d88c45a0d/assets/fonts/noto-sans-kr-700-v1.json",version:"ec9870ea3f73f27e654c22c9566fa20d88c45a0d",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12352,7 +12378,7 @@ function bloomValidateJob(c,tick){
  },cancel(){if(done)return;done=true;cancelled=true;steps.return();steps=null}};
 }
 function bloomDecode(bytes,tick){const c=BloomLiveCodec.decode(bytes);if(!bloomValidate(c,tick))throw new TypeError('Invalid BLOOM live snapshot');return c}
-function *bloomPrepareAuthoritySteps(c,spatial={}){
+function *bloomPrepareAuthoritySteps(c,spatial={},trustedPreview=false){
  const entries=spatial.entries||c.spatial;
  // Derive all wrapper references only after the complete graph remap: a
  // supported controller alias can also be an actor, record or metadata value.
@@ -12360,11 +12386,11 @@ function *bloomPrepareAuthoritySteps(c,spatial={}){
  for(const r of entries){if(r.unit)spU.set(r.object,r.unit===1?{x:r.object.x,y:r.object.y,z:r.object.z}:r.unit);if(r.anchor)spA.set(r.object,Number.isInteger(r.anchor)?bloomExpandSpatialAnchor(r.object,r.anchor):r.anchor);yield}
  const maps={grid:new OrderedSpatialGrid(),collision:new OrderedSpatialGrid(),ids:new Map(),claims:new Map(),owners:new Map()};
  for(const [target,source]of [[maps.grid,g.grid],[maps.collision,g.collisionGrid],[maps.ids,g.idMap],[maps.claims,h.claims],[maps.owners,h.owners]])for(const [key,value]of source){target.set(key,value);yield}
- yield*hydrateWorldMotionSteps(w);
+ yield*hydrateWorldMotionSteps(w,trustedPreview);
  yield*hydrateUnitControllerSteps(w);
  return {c,w,g,h,rect,spU,spA,maps};
 }
-function bloomPrepareAuthority(c,spatial){return bloomDrainValidation(bloomPrepareAuthoritySteps(c,spatial))}
+function bloomPrepareAuthority(c,spatial,trustedPreview=false){return bloomDrainValidation(bloomPrepareAuthoritySteps(c,spatial,trustedPreview))}
 function bloomPrepareAuthorityJob(c,spatial){
  let steps=bloomPrepareAuthoritySteps(c,spatial),done=false,result;
  return {get done(){return done},get result(){return done?result:undefined},pulse({budgetMs=8}={}){
@@ -12388,17 +12414,17 @@ function actorOwnedStateNodes(actor){
  const r=actor.roll,p=actor.primaryAttack,m=actor.movement,c=actor.attackController,a=actor.rival?.ai,s=actor.sprout;
  return [r,r?.direction,r?.lastDirection,r?.cooldown,r?.invulnerability,p,p?.cooldown,p?.pose,p?.pending,actor.spatial,actor.spatial?.constrained,actor.impact,actor.impact?.velocity,actor.body,actor.body?.lean,s,s?.mounts,...Object.values(s?.mounts||{}),actor.auxScheduleMs,...Object.values(actor.auxScheduleMs||{}),m,m?.causes,m?.deployment,c?.timer,c?.origin,c?.cooldownsMs,c?.hit,a,a?.target,a?.progress,a?.avoid,a?.home,a?.steer].filter(v=>v&&typeof v==='object');
 }
-function hydrateActorMotion(actor){
- if(!actor)return actor;if(!motionStateValid(actor))throw new TypeError('Invalid actor motion state');
+function hydrateActorMotion(actor,trustedPreview=false){
+ if(!actor)return actor;if(!trustedPreview&&!motionStateValid(actor))throw new TypeError('Invalid actor motion state');
  if(Number.isFinite(actor.x)&&Number.isFinite(actor.y))SpatialPosition.state(actor);
  return actor;
 }
 // Hydration belongs to detached preparation. Each actor/grid entry is yielded;
 // atomic install only swaps a prepared graph and never walks thousands of bodies.
 const motionHydratedWorlds=new WeakSet();
-function *hydrateWorldMotionSteps(world){
+function *hydrateWorldMotionSteps(world,trustedPreview=false){
  if(motionHydratedWorlds.has(world.state))return true;
- const seen=new Set(),add=actor=>{if(actor&&!seen.has(actor)){seen.add(actor);hydrateActorMotion(actor)}};
+ const seen=new Set(),add=actor=>{if(actor&&!seen.has(actor)){seen.add(actor);hydrateActorMotion(actor,trustedPreview)}};
  add(MoaActor.hydrate(world.state.mother));yield;
  for(const player of Object.values(world.state.participants||{})){add(MoaActor.hydrate(player.leader));yield}
  for(const actor of world.state.units){add(actor);yield}
@@ -12522,6 +12548,17 @@ const BloomPreparedSnapshots=(()=>{
  function tokenFor(authority,expected={}){if(!unitControllerWorlds.has(authority.w)||!motionHydratedWorlds.has(authority.w.state))throw new Error('Authority must be prepared before token creation');const token=Object.freeze({});owned.set(token,{authority,binding:binding(expected)});return token}
  function prepare(bytes,expected={}){return tokenFor(authorityFor(bytes,expected),expected)}
  function install(token,expected={}){const entry=owned.get(token);if(!entry)throw new TypeError('Unknown or consumed prepared snapshot');if(entry.binding!==binding(expected))throw new TypeError('Prepared snapshot boundary context');context(entry.authority.c,expected);owned.delete(token);bloomInstallAuthority(entry.authority)}
+  // Only the same-page prediction adapter calls this with bytes produced by
+  // bloomSnapshotStore.capture(). Network/save entry points continue through
+  // prepare(), including full domain validation and canonical re-encoding.
+  function installPreview(bytes,metadata={}){
+   if(!(bytes instanceof Uint8Array)||bytes.byteLength>8388608)throw new TypeError('Preview snapshot bytes');
+   const c=BloomLiveCodec.decode(bytes),w=c?.world?.state,config=metadata.sessionConfig;
+   if(!c||c.schema!=='budmori-world'||!Number.isSafeInteger(c.tick)||c.tick<0||!w||!Number.isSafeInteger(w.membershipEpoch)||!Number.isInteger(metadata.tickRate)||metadata.tickRate!==CONFIG.sim.tickRate||typeof metadata.localPlayerId!=='string'||!metadata.localPlayerId||!config||!['local','online'].includes(config.mode)||config.mode==='online'&&config.persistence!=='none'||config.mode==='local'&&config.persistence!=='solo')throw new TypeError('Preview checkpoint context');
+   const players=WorldPlayers.all(w).filter(player=>player.lifecycle==='active').map(player=>player.playerId);if(!players.includes(metadata.localPlayerId))throw new TypeError('Preview local player is not active');
+   const expected={tick:c.tick,membershipEpoch:w.membershipEpoch,tickRate:metadata.tickRate,seed:c.seed,simulationVersion:BloomSimulation.simulationVersion,players};context(c,expected);
+   bloomInstallAuthority(bloomPrepareAuthority(c,undefined,true));
+  }
  function frozenBoundary(){
   if(bloomInTick||bloomInitializing)throw new Error('Snapshot needs a settled boundary');
   const source=state,tick=bloomTick,rate=CONFIG.sim.tickRate,revision=bloomSnapshotStore.metrics().revision;
@@ -12586,7 +12623,7 @@ const BloomPreparedSnapshots=(()=>{
  function membership(change,expected={}){
   const assertFrozen=frozenBoundary(),clone=cloneJob(bloomCapture(true),spatialUnits,spatialAnchors);while(!clone.done)clone.pulse({budgetMs:1000});assertFrozen();const branch=membershipBranch(clone.result,change),bytes=BloomLiveCodec.encode(branch.c,{units:branch.units,anchors:branch.anchors});if(!bloomValidate(branch.c,change.tick))throw new TypeError('Invalid prepared membership');context(branch.c,expected);return {bytes,prepared:tokenFor(branch.authority,expected)};
  }
- return Object.freeze({prepare,install,membership,prepareJob,membershipJob,saveJob,validate(bytes,expected={}){authorityFor(bytes,expected);return true}});
+  return Object.freeze({prepare,install,installPreview,membership,prepareJob,membershipJob,saveJob,validate(bytes,expected={}){authorityFor(bytes,expected);return true}});
 })();
 const bloomAdapter={saveJob:()=>BloomPreparedSnapshots.saveJob(),prepareSnapshotJob:(bytes,context)=>BloomPreparedSnapshots.prepareJob(bytes,context),prepareMembershipJob:(change,context)=>BloomPreparedSnapshots.membershipJob(change,context),applyMembership:change=>WorldMembership.apply(change),prepareMembership:(change,context)=>BloomPreparedSnapshots.membership(change,context),prepareSnapshot:(bytes,context)=>BloomPreparedSnapshots.prepare(bytes,context),loadPreparedSnapshot:(token,context)=>BloomPreparedSnapshots.install(token,context),save:()=>bloomSnapshotStore.capture(),load:bytes=>BloomPreparedSnapshots.install(BloomPreparedSnapshots.prepare(bytes)),validateSnapshot(bytes,context={}){try{return BloomPreparedSnapshots.validate(bytes,context)}catch{return false}},step:bloomRunTick};
 // Public functions form the DOM-to-intent boundary. Internal calls during a tick
@@ -12648,7 +12685,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'812a6e231036cd366e2ce46e0afebf4db50ee001',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'13211fc0562b20d745e6a83d9f7ef2d7ca19fce0',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -12813,8 +12850,8 @@ function bloomMainRuntime() {
  let phase=runtimePhase.idle,epoch=0;
  const driver={scheduler:null,wasActive:false,inputReady:false,gapTimestamp:null};
  const inputCommands=[];
- const previewState={phase:'preparing',scope:null,pending:null,capability:null,runtime:null,lastTick:-1,lastRevision:-1,lastEpoch:-1,input:null,needsPrediction:false,captureMs:0,captureBytes:0,heapBefore:null,error:null};
- const previewFacade={get enabled(){return previewState.phase==='ready'&&localReady()&&!!previewState.scope?.initialized&&!!previewState.capability?.enabled},observe(input,metadata){previewState.needsPrediction=true;safeReconcilePreview(true);return previewState.capability?.observe(input,{...metadata,continuationKey:bloomLastFrameContinuityKey,observedAtMs:metadata.timeMs,timeMs:bloomPresentationNow()})},commit(capture,now){return previewState.capability?.commit(capture,now)},cancelObservation(now){previewState.needsPrediction=false;previewState.capability?.cancelObservation(now)},clockGap(){previewState.capability?.clockGap?.()},clear(){previewState.lastTick=-1;previewState.capability?.clear()}};
+ const previewState={phase:'preparing',scope:null,pending:null,capability:null,runtime:null,lastTick:-1,lastRevision:-1,lastEpoch:-1,lastContinuationKey:'',input:null,needsPrediction:false,captureMs:0,captureBytes:0,heapBefore:null,error:null};
+ const previewFacade={get enabled(){return previewState.phase==='ready'&&localReady()&&!!previewState.scope?.initialized&&!!previewState.capability?.enabled},observe(input,metadata){previewState.needsPrediction=true;safeReconcilePreview(true);return previewState.capability?.observe(input,{...metadata,continuationKey:bloomLastFrameContinuityKey,observedAtMs:metadata.timeMs,timeMs:bloomPresentationNow()})},commit(capture,now){return previewState.capability?.commit(capture,now)},cancelObservation(now){previewState.needsPrediction=false;previewState.capability?.cancelObservation(now)},clockGap(){previewState.capability?.clockGap?.()},clear(){previewState.lastTick=-1;previewState.lastContinuationKey='';previewState.capability?.clear()}};
  const MAX_RESUME_BACKLOG_TICKS=4;
  const ui={phase:uiPhase.idle,viewSignature:'',subscriptions:[]};
  let inputOverride=null;
@@ -12863,10 +12900,19 @@ function bloomMainRuntime() {
   const metadata=bloomSession.localInputState;
   previewState.scope.configure({tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});
   previewState.capability.reconcile({snapshot,input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,continuationKey:bloomLastFrameContinuityKey,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata.executedCommandSequence??undefined});
-  previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;return true;
+  previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;previewState.lastContinuationKey=bloomLastFrameContinuityKey;return true;
  }
  function safeReconcilePreview(force=false){if(previewState.phase==='failed')return false;try{return reconcilePreview(force)}catch(error){previewState.capability?.setEnabled(false);previewState.phase='failed';previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview'});return false}}
- function continuePreview(){const capability=previewState.capability;if(!capability||previewState.phase!=='ready'||!previewState.needsPrediction&&!capability.pendingCount)return false;const metadata=bloomSession.localInputState,continued=capability.continueFromCheckpoint({input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,continuationKey:bloomLastFrameContinuityKey,timeMs:bloomPresentationNow(),confirmedCommandSequence:metadata.executedCommandSequence??undefined});if(!continued)return false;previewState.needsPrediction=false;previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;return true}
+ function continuePreview(){
+  const capability=previewState.capability;if(!capability||previewState.phase!=='ready')return false;
+  const metadata=bloomSession.localInputState,checkpoint={input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,continuationKey:bloomLastFrameContinuityKey,timeMs:bloomPresentationNow(),confirmedCommandSequence:metadata.executedCommandSequence??undefined};
+  const confirmedOnly=!previewState.needsPrediction&&!capability.pendingCount&&previewState.lastTick+1===bloomTick&&previewState.lastRevision===presentation.revision&&previewState.lastEpoch===epoch&&previewState.lastContinuationKey===bloomLastFrameContinuityKey;
+  const continued=confirmedOnly
+   ?capability.advanceConfirmedCheckpoint?.(checkpoint)??false
+   :previewState.needsPrediction||capability.pendingCount?capability.continueFromCheckpoint(checkpoint):false;
+  if(!continued)return false;
+  previewState.needsPrediction=false;previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;previewState.lastContinuationKey=bloomLastFrameContinuityKey;return true;
+ }
  function observeInputFrame(now=performance.now()){if(phase!==runtimePhase.ready)return;preparePreviewScope();bloomLoop?.observeInput(now)}
  function enqueueCommand(type,args={}){const command=bloomValidateCommand({version:1,type,...args});inputCommands.push(BloomOwnedSDK.binaryCodec.encode(command));bloomInputPending++;return true}
  const fail=(error,kind='simulation.main')=>BloomDiagnostics.report(error,{kind,fatal:true});
@@ -13008,8 +13054,10 @@ if(!globalThis.BLOOM_HEADLESS)bloomMainRuntime();
 
 if(globalThis.BLOOM_SIMULATION_SCOPE){
  let scopeContext=null,scopeRemote=new Map(),closed=false;
+ const scopeInstallSnapshot=(bytes,context,trustedPreview)=>{if(closed)throw new Error('Simulation scope closed');scopeContext={...context};CONFIG.session.mode=context.sessionConfig.mode;BloomSimulation.sessionConfig=Object.freeze({...context.sessionConfig});bloomApplyTickRate(context.tickRate);const snapshot=new Uint8Array(bytes);if(trustedPreview)BloomPreparedSnapshots.installPreview(snapshot,scopeContext);else bloomAdapter.load(snapshot);WorldPlayers.setLocalPlayerId(context.localPlayerId);scopeRemote=new Map((context.remoteInputs||[]).map(frame=>[frame.playerId,Uint8Array.from(frame.input)]));bloomPendingEffects.clear();bloomCurrentEffects=[]};
  globalThis.BloomSimulationScope=Object.freeze({ready:true,
-  install(bytes,context){if(closed)throw new Error('Simulation scope closed');scopeContext={...context};CONFIG.session.mode=context.sessionConfig.mode;BloomSimulation.sessionConfig=Object.freeze({...context.sessionConfig});bloomApplyTickRate(context.tickRate);bloomAdapter.load(new Uint8Array(bytes));WorldPlayers.setLocalPlayerId(context.localPlayerId);scopeRemote=new Map((context.remoteInputs||[]).map(frame=>[frame.playerId,Uint8Array.from(frame.input)]));bloomPendingEffects.clear();bloomCurrentEffects=[];},
+  install(bytes,context){scopeInstallSnapshot(bytes,context,false)},
+  installPreview(bytes,context){scopeInstallSnapshot(bytes,context,true)},
   step(input,context){if(!scopeContext||closed)throw new Error('Simulation scope unavailable');const local=scopeContext.localPlayerId;
    const inputs=WorldPlayers.all().filter(player=>player.lifecycle==='active').map(player=>({playerId:player.playerId,input:player.playerId===local?Uint8Array.from(input):(scopeRemote.get(player.playerId)?.slice()||bloomEncodeInput({x:0,y:0,manual:false,suspended:false})),commands:player.playerId===local?(context.commands||[]).map(command=>({...command,payload:Uint8Array.from(command.payload),canonicalExecuteTick:command.executeTick,executeTick:bloomTick})):[]}));
    bloomRunTick({tick:bloomTick,tickRate:CONFIG.sim.tickRate,inputs,speculative:true});bloomPendingEffects.clear();bloomCurrentEffects=[];},

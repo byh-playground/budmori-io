@@ -1,23 +1,27 @@
-tree 9c79ca922811e6a2f3ca61c0c9a9b47f78a9fa71
-parent c8b22855b2ef0b272ccfaf4b7a68d15a72c1a62a
-author byh020907 <byh020907@naver.com> 1791610910 +0900
-committer GitHub <noreply@github.com> 1791610910 +0900
+tree 6f8abb0a4b639cfce1d021c96b64ec59a0e76372
+parent 6a432464398bf5dd714e22063849a57e91e8b37f
+author byh020907 <byh020907@naver.com> 1791620489 +0900
+committer GitHub <noreply@github.com> 1791620489 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqydAeCRC1aQ7uu5UhlAAAcw8QAE80okuvccZ67I+Yyq0wsAif
- wLDGunbjXmxXy2NXz9/es5HniAkkM1bGxy8F/rRGAcwR2tPWpOVIV2lHhVMSROJu
- WmPCtwL+Cy6/k4HlDI7g7HjrpHdk700hOoGPfOs2L0U5olXtbcxG32VwDRICAuDj
- cbjhSlnedPIP8V2QREb1rKoevYhhsCAbpAIWCuLb7cyqd0g7F5ndq66cb2IZHzK4
- O1bF9KC93FLwhj3fBqMVjB99oMIjQOaGIWMhLA2rA/L28pCn2mRwjiAbVywOgOfE
- UbOQkFYKVszfX/Dz5dzpasKjHhUUQgrVKq4F5X7AHCZyu7x3EErFCG3W7uXbszyu
- JCH3p/JG8SuBQADt86H5+qdFm6CqGQrD6mCvcyK130OJCKMlq2NT0VhztrStm8MW
- 3Xho5dmWMHUmcj35K2yI8Fj2Kvg4WkxUCkarFOaajZszmOYiv0OpXPRNj8IHXHGu
- tyR8T7hUAJ7vM3koSbAs0j3yzADV+x80FZ/Ym29YTtuGWtpQVVe34xC0PTxH+XGA
- QKPeE4vrDMBdv7sR3HSNFspPZNm1VRsYgUbFc9nw1dPoshck5kbDL7Fej3b6dmCO
- 7t6CtsC/lHacUeLRT2FnEoTe8rty3VCkepWw69T7uaTbkDCBk7478Zw3LDj1fj7z
- tLtXOEATHOTxM5G+Uk9f
- =u7Cn
+ wsFcBAABCAAQBQJqyfWJCRC1aQ7uu5UhlAAAOkQQAG10WYnLOSoLXO31fGUjtbgT
+ lewmylwHCb9/QFhmk6g3KNYJegT8YJcDJP0flzL7Wx+jXno8jmJimioq5jE8u8VP
+ iTba/yRaV/fL4GMDo41D5S8bh+BFnuT1SGvWWYv7sB4gqaA4qFHFQhEQQcGONAQZ
+ CTuL6+ITDeUhuAzhb6LU+do6aVmPFijGW/F3kdkwE9oLz5CsfyqgTi5dyp3EEdm6
+ 6FRWwcQhYFKEXPw4l8YQ0cmilLrK49mxlJG1EoH9YViZ++A3UxM3LWZzexDD3zr5
+ bUu9+fM1347NJs3vyQwV7GWb6UCJnkbXk6qvXptzswpEPmjHnE0QZUuzTPxaYMA0
+ BJQeTfZZyYAnjbO/jQnDeWZ+ICvbfuyEjDRWUmM6M2oppQg5cvqueLIWnRzSZfIB
+ vzwIAEUnTo6NiDjBFRYR7ERA8keu66fKCRIvD3/8DD53q80mbnEyosGvYUZNQZQk
+ vxLh4W22D6TjF8WtAfZqn9tvQssMeQDIO/ChxIaTjFJeVqd8JQ6pPTFeNJYjpcW/
+ Nx1VzYCOeJT2LvEOk8iS0VDq+aI6/vpBDWXhUUx+qLLHdtEnN4q6LSBKYxvvNwjJ
+ EJ38V4ONxubMI/9OXmaj5LVy9eiD1+PdG3+lhUdPvTMtQ2aINKfcEOvWAtbIRLTl
+ yPf5TVOgjfqGcAAj4xPI
+ =zq29
  -----END PGP SIGNATURE-----
  
 
-연속 예측 fork의 표시 표본 유지 (#33)
+미예측 confirmed tick을 detached preview fork에 반영 (#34)
+
+* 예측 없는 확정 입력을 detached fork에 적용
+
+* 확정-only preview 거부 원인 계측

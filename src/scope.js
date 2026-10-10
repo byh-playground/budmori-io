@@ -15,7 +15,7 @@ export async function createSimulationScope({sourceURL,sourceIntegrity,reference
   await new Promise((resolve,reject)=>{realm.BloomScopeResolve=resolve;modules.onerror=()=>reject(new Error('Simulation scope SDK import failed'));doc.body.append(modules)});delete realm.BloomScopeResolve;
   const script=doc.createElement('script');script.src=sourceURL;if(sourceIntegrity){script.integrity=sourceIntegrity;script.crossOrigin='anonymous'}
   await new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=()=>reject(error||new Error('Simulation scope game source failed'));doc.body.append(script)});
-  if(error)throw error;if(!realm.BloomSimulationScope?.ready)throw new Error('Simulation-only source bridge unavailable');
+  if(error)throw error;if(!realm.BloomSimulationScope?.ready||typeof realm.BloomSimulationScope.installPreview!=='function')throw new Error('Simulation-only preview bridge unavailable');
  }catch(error){iframe.remove();throw error}
  const bridge=realm.BloomSimulationScope,metrics={installs:0,installMs:0,snapshotBytes:0,steps:0,stepMs:0,modelMs:0,modelBytes:0};
  let context=null,disposed=false;
@@ -25,8 +25,8 @@ export async function createSimulationScope({sourceURL,sourceIntegrity,reference
   get ready(){return !disposed},get metrics(){return {...metrics}},
   get initialized(){return !disposed&&metrics.installs>0},
   configure(metadata){live();context={...metadata}},
-  install(bytes,metadata){live();const started=performance.now();context={...metadata};bridge.install(nativeBytes(bytes),context);metrics.installMs+=performance.now()-started;metrics.snapshotBytes+=bytes.byteLength;metrics.installs++;},
-  restore(bytes){live();if(!context)throw new Error('Scope requires a confirmed checkpoint');const started=performance.now();bridge.install(nativeBytes(bytes),context);metrics.installMs+=performance.now()-started;metrics.installs++;},
+  install(bytes,metadata){live();const started=performance.now();context={...metadata};bridge.installPreview(nativeBytes(bytes),context);metrics.installMs+=performance.now()-started;metrics.snapshotBytes+=bytes.byteLength;metrics.installs++;},
+  restore(bytes){live();if(!context)throw new Error('Scope requires a confirmed checkpoint');const started=performance.now();bridge.installPreview(nativeBytes(bytes),context);metrics.installMs+=performance.now()-started;metrics.installs++;},
   step(input,metadata){live();const started=performance.now();bridge.step(nativeBytes(input),{...metadata,commands:(metadata.commands||[]).map(command=>({...command,payload:nativeBytes(command.payload)}))});metrics.stepMs+=performance.now()-started;metrics.steps++;},
   models(ids){live();const started=performance.now(),models=structuredClone(bridge.models(ids));metrics.modelMs+=performance.now()-started;metrics.modelBytes+=JSON.stringify(models).length*2;return models;},
   inspect(){live();return structuredClone(bridge.inspect());},
