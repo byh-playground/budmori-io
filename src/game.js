@@ -3965,7 +3965,23 @@ function ellipse(c,x,y,rx,ry,a,color){c.fillStyle=color;c.beginPath();c.ellipse(
 function drawNest(c,x,y,level,scale=1){c.save();c.translate(x,y);c.scale(scale,scale);let size=35+level*8;ellipse(c,0,12,size*1.45,size*.68,0,'#18382735');for(let i=0;i<7;i++){let a=i*Math.PI*2/7;ellipse(c,Math.cos(a)*size*.6,Math.sin(a)*size*.38,size*.38,size*.8,a,'#405d38');ellipse(c,Math.cos(a)*size*.5,Math.sin(a)*size*.32,size*.3,size*.65,a,'#95b67a')}ellipse(c,0,0,size*.75,size*.5,0,'#d4dfb0');ellipse(c,0,-6,size*.55,size*.4,0,'#647e49');ellipse(c,0,-9,size*.26,size*.2,0,'#dcefba');for(let i=0;i<level;i++){let a=i*2.399;ellipse(c,Math.cos(a)*size,Math.sin(a)*size*.7,9,13,a,'#d1daa2')}c.restore()}
 function drawMother(source=WorldView.leader()){const u=source;cshadow(u.x,u.y,CONFIG.mother.size*1.2);ctx.save();const bounce=u.moveSpeed>0?Math.sin(u.movePhase||0)*CONFIG.combat.motherWalkBounce:0;ctx.translate(u.x,u.y-bounce);const squash=1+(u.moveSpeed>0?Math.sin(u.movePhase||0)*CONFIG.combat.poseSquash:0)+(u.flash>0?CONFIG.combat.hitSquash:0);ctx.scale(squash,1/squash);const t=state.time,level=Math.floor(state.capTier/3),size=CONFIG.mother.size;ctx.rotate(Math.sin(t)*.04);for(let i=0;i<8;i++){let a=i*Math.PI/4;ellipse(ctx,Math.cos(a)*size*.72,Math.sin(a)*size*.58,size*.3,size*.67,a+Math.PI/2,'#334f35');ellipse(ctx,Math.cos(a)*size*.7,Math.sin(a)*size*.56,size*.23,size*.6,a+Math.PI/2,'#a8c991')}ellipse(ctx,0,0,size*.85,size*.74,0,u.flash>0?'#fff7d9':'#d9e9c0');ellipse(ctx,-2,-4,size*.58,size*.5,0,'#7fa184');ellipse(ctx,-4,-8,size*.39,size*.31,0,'#c4e5ca');ellipse(ctx,-7,-10,size*.14,size*.12,0,'#f1f8d7');for(let i=0;i<level+1;i++){let a=i*2.399+t*.1;ellipse(ctx,Math.cos(a)*size*.78,Math.sin(a)*size*.65,4,7,a,'#e9f1bb')}ctx.restore();ctx.strokeStyle='#f1f8d480';ctx.lineWidth=1;ctx.beginPath();ctx.arc(u.x,u.y,size+8,0,Math.PI*2);ctx.stroke()}
 function cshadow(x,y,r){ellipse(ctx,x+3,y+r*.45,r,r*.45,0,'#1b332326')}
-function drawUnit(source,options={}){if(source.hp<=0)return;const u=source;const d=unitDef(u.type),r=unitVisualRadius(u)*CONFIG.render.spriteScale,extent=unitVisualExtent(u),cull=Math.max(CONFIG.render.unitCullMargin,extent);if(!projectionVisible(u,cull))return;if(u.team==='enemy'&&u.pendingMelee){const p=u.pendingMelee,ready=clamp(1-p.left/p.total,0,1);ctx.save();ctx.strokeStyle='#ff947d';ctx.lineWidth=1.5+ready;ctx.globalAlpha=.35+.5*ready;ctx.beginPath();if(d.projectile){indicatorGroundLine(ctx,u.x,u.y,p.aimX,p.aimY,true);ctx.stroke();terrainCirclePath(p.aimX,p.aimY,10)}else{indicatorGroundArc(ctx,u.x,u.y,effectiveRange(source)+CONFIG.control.meleeSlack+12,effectiveRange(source)+CONFIG.control.meleeSlack+12,u.angle-.7,u.angle+.7,true,false)}ctx.stroke();ctx.restore()}const air=d.layer==='AIR',visible=!d.stealth||detected(source,'friendly')||u.reveal>bloomRenderWorld().time;ctx.globalAlpha=visible?1:CONFIG.combat.stealthOpacity;cshadow(u.x,u.y,r*.8);if(u.elite){ctx.strokeStyle='#f9dda2';ctx.lineWidth=2;ctx.beginPath();indicatorGroundArc(ctx,u.x,u.y+5,r+11,(r+11)*.7);ctx.stroke()}const basic=CONFIG.combat.poseTypes.includes(u.type),walk=basic&&u.moveSpeed>0?Math.min(1,u.moveSpeed/(effectiveSpeed(u)*CONFIG.motion.speedScale)):0,bob=walk*Math.sin(u.movePhase||0)*CONFIG.combat.walkBounce,prep=basic&&u.pendingMelee?1-u.pendingMelee.left/u.pendingMelee.total:0,finish=basic&&!u.pendingMelee?(u.attackPose||0)/CONFIG.combat.attackPoseTime:0,offset=prep?-CONFIG.combat.windupDrawBack*prep:CONFIG.combat.contactDrawForward*finish*finish,deform=1+CONFIG.combat.poseSquash*(prep-finish)+(basic&&u.flash>0?CONFIG.combat.hitSquash:0);const body=projectionBodyPose(u);projectionBillboard(ctx,body.x,body.y,body.z);if(window.RallyArt)RallyArt.draw(ctx,u.type,u.team,body.x,body.y,r,WorldProjection.angle(u.angle),CombatFeedback.animationTime(u,presentationTime())*1000,{factionPalette:WorldView.palette(u),gradeOutline:rarityOutline(u),poseStretch:deform,feedbackX:CombatFeedback.sample(u).sx,feedbackY:CombatFeedback.sample(u).sy,whiteFlash:CombatFeedback.sample(u).white,poseTilt:walk?Math.sin(u.movePhase||0)*CONFIG.combat.walkTilt*walk:0,attack:u.attackPose>0&&!u.pendingMelee,phaseOffsetMs:u.id*37,respectOriginalFacing:true,hit:u.flash>0,deployed:u.movement?.deployment.phase==='deployed',cloaked:!visible});else ellipse(ctx,body.x,body.y,r,r,0,u.team==='friendly'?'#96c5f2':'#ea9a8a');ctx.restore();ctx.globalAlpha=1;if(u.shield&&u.shieldUntil>bloomRenderWorld().time)WorldUI.draw('shield',u,{radius:r});if(!options.suppressHealthBar&&u.hp<u.maxHp&&(!d.stealth||visible)){const w=u.elite?CONFIG.render.bossHealthWidth:CONFIG.render.healthBarWidth*(u.permanentRank?permanentGrowthScale(u.permanentRank):1),healthTop=u.permanentRank?extent:r;WorldUI.draw('health',u,{width:w,extent:healthTop})}if(u.elite)WorldUI.draw('label',u,{text:u.boss?CONFIG.zones[u.zone].bossName:'정예 '+d.name,extent:r,gap:21,font:'bold 12px system-ui',color:'#fff0c6'})}
+function drawUnit(source,options={}){
+ if(source.hp<=0)return;
+ const u=source,d=unitDef(u.type),r=unitVisualRadius(u)*CONFIG.render.spriteScale;
+ const extent=options.preculled?null:unitVisualExtent(u),cull=Math.max(CONFIG.render.unitCullMargin,extent??0);
+ if(!options.preculled&&!projectionVisible(u,cull))return;
+ if(u.team==='enemy'&&u.pendingMelee){const p=u.pendingMelee,ready=clamp(1-p.left/p.total,0,1);ctx.save();ctx.strokeStyle='#ff947d';ctx.lineWidth=1.5+ready;ctx.globalAlpha=.35+.5*ready;ctx.beginPath();if(d.projectile){indicatorGroundLine(ctx,u.x,u.y,p.aimX,p.aimY,true);ctx.stroke();terrainCirclePath(p.aimX,p.aimY,10)}else{indicatorGroundArc(ctx,u.x,u.y,effectiveRange(source)+CONFIG.control.meleeSlack+12,effectiveRange(source)+CONFIG.control.meleeSlack+12,u.angle-.7,u.angle+.7,true,false)}ctx.stroke();ctx.restore()}
+ const visible=!d.stealth||detected(source,'friendly')||u.reveal>bloomRenderWorld().time;ctx.globalAlpha=visible?1:CONFIG.combat.stealthOpacity;cshadow(u.x,u.y,r*.8);
+ if(u.elite){ctx.strokeStyle='#f9dda2';ctx.lineWidth=2;ctx.beginPath();indicatorGroundArc(ctx,u.x,u.y+5,r+11,(r+11)*.7);ctx.stroke()}
+ const basic=CONFIG.combat.poseTypes.includes(u.type),walk=basic&&u.moveSpeed>0?Math.min(1,u.moveSpeed/(effectiveSpeed(u)*CONFIG.motion.speedScale)):0,prep=basic&&u.pendingMelee?1-u.pendingMelee.left/u.pendingMelee.total:0,finish=basic&&!u.pendingMelee?(u.attackPose||0)/CONFIG.combat.attackPoseTime:0,deform=1+CONFIG.combat.poseSquash*(prep-finish)+(basic&&u.flash>0?CONFIG.combat.hitSquash:0),walkSine=walk?Math.sin(u.movePhase||0):0;
+ const body=options.bodyPose||projectionBodyPose(u);projectionBillboard(ctx,body.x,body.y,body.z);
+ if(window.RallyArt){const feedback=CombatFeedback.sample(u),animationTime=CombatFeedback.animationTime(u,presentationTime())*1000;RallyArt.draw(ctx,u.type,u.team,body.x,body.y,r,WorldProjection.angle(u.angle),animationTime,{factionPalette:WorldView.palette(u),gradeOutline:rarityOutline(u),poseStretch:deform,feedbackX:feedback.sx,feedbackY:feedback.sy,whiteFlash:feedback.white,poseTilt:walkSine*CONFIG.combat.walkTilt,attack:u.attackPose>0&&!u.pendingMelee,phaseOffsetMs:u.id*37,respectOriginalFacing:true,hit:u.flash>0,deployed:u.movement?.deployment.phase==='deployed',cloaked:!visible})}
+ else ellipse(ctx,body.x,body.y,r,r,0,u.team==='friendly'?'#96c5f2':'#ea9a8a');
+ ctx.restore();ctx.globalAlpha=1;
+ if(u.shield&&u.shieldUntil>bloomRenderWorld().time)WorldUI.draw('shield',u,{radius:r});
+ if(!options.suppressHealthBar&&u.hp<u.maxHp&&(!d.stealth||visible)){const w=u.elite?CONFIG.render.bossHealthWidth:CONFIG.render.healthBarWidth*(u.permanentRank?permanentGrowthScale(u.permanentRank):1),healthTop=u.permanentRank?(extent??unitVisualExtent(u)):r;WorldUI.draw('health',u,{width:w,extent:healthTop})}
+ if(u.elite)WorldUI.draw('label',u,{text:u.boss?CONFIG.zones[u.zone].bossName:'정예 '+d.name,extent:extent??unitVisualExtent(u),gap:21,font:'bold 12px system-ui',color:'#fff0c6'});
+}
 function render(alpha=1,renderDelta=1/60){const started=performance.now(),world=bloomRenderWorld(),renderMother=combatBasePose(WorldView.leader());if(!renderMother)return;const dpr=Math.min(CONFIG.render.dprMax,devicePixelRatio||1),ww=innerWidth,hh=innerHeight;if(canvas.width!==Math.round(ww*dpr)||canvas.height!==Math.round(hh*dpr)){canvas.width=Math.round(ww*dpr);canvas.height=Math.round(hh*dpr)}view.zoom=moaCameraZoom(renderMother,ww);view.w=ww/view.zoom;view.h=hh/(view.zoom*WorldProjection.K);const worldWidth=worldLimit();const tx=view.w>=worldWidth?worldWidth/2:clamp(renderMother.x,view.w/2,worldWidth-view.w/2),ty=view.h>=CONFIG.world.height?CONFIG.world.height/2:clamp(renderMother.y,view.h/2,CONFIG.world.height-view.h/2);bloomCamera.setCamera({x:view.x,y:view.y*WorldProjection.K,zoom:view.zoom});bloomCamera.follow(tx,ty*WorldProjection.K,Math.max(0,renderDelta)*1000,Math.LN2*1000/CONFIG.render.presentation.cameraResponse);view.x=bloomCamera.camera.x;view.y=bloomCamera.camera.y/WorldProjection.K;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#3a593e';ctx.fillRect(0,0,ww,hh);if(typeof hitfeelApplyWorldShake==='function')hitfeelApplyWorldShake();ctx.scale(view.zoom,view.zoom);ctx.scale(1,WorldProjection.K);ctx.translate(view.w/2-view.x,view.h/2-view.y);
  for(const c of world.camps){if(c.zone>world.maxZone||!c.enabled||c.x<view.x-view.w/2-200||c.x>view.x+view.w/2+200)continue;ctx.strokeStyle=c.boss?'#f3d79444':'#29493630';ctx.lineWidth=c.boss?2:1;ctx.beginPath();ctx.ellipse(c.x,c.y,CONFIG.world.campRadius*(c.boss?1.25:1),CONFIG.world.campRadius*.7,0,0,Math.PI*2);ctx.stroke();if(c.boss&&world.bosses[c.zone]){drawNest(ctx,c.x,c.y,3,.7);ctx.font='11px system-ui';ctx.textAlign='center';ctx.fillStyle='#e2efc1';ctx.fillText('정복한 군락',c.x,c.y+65)}}
  BloomDiagnostics.profileMeasure('render.terrain',drawCampaignWorld);BloomDiagnostics.profileMeasure('render.actors',drawProjectedActors);
@@ -5118,7 +5134,7 @@ function scaleAbout(scale,x,y){return[scale,0,0,scale,x*(1-scale),y*(1-scale)]}
 // Only animation parameters are evaluated per draw. Authored vertices are built on cache misses.
 // The same parameter source drives native UI art and retained world mesh instances.
 function artMotion(type,x,y,r,timeMs,opts){
- const parts={},pose=opts.meshPose,hash=HashUtil.hash(type),seed=(hash%997)*.017;
+ const parts={},pose=opts.meshPose,hash=artTypeHashes[type],seed=(hash%997)*.017;
  const motion={parts,fastFlap:pose??(.5+.5*Math.sin(timeMs*.026+seed)),slowFlap:pose??opts.slowFlap??(.5+.5*Math.sin(timeMs*.010+seed))};
  if(type==='dandelion')parts.spokes={transform:rotationAbout(timeMs*.0005,x,y-r*.30)};
  else if(type==='mage')for(let k=0;k<4;k++){const a=k*Math.PI/2+timeMs*.0015;parts['orb-'+k]={transform:[1,0,0,1,Math.cos(a)*r*.72,Math.sin(a)*r*.72]}}
@@ -5156,6 +5172,7 @@ class MeshArtCompiler extends UnitArtPainter{
 const meshArtCaches=new WeakMap(),meshArtTotals={meshes:0,bytes:0,hits:0,misses:0,evictions:0};
 const morphedUnitArt=new Set(['flowerbee','sporemoth','siege','shelltitan']);
 const staticMeshPart=Object.freeze({});
+const artTypeHashes=Object.freeze(Object.fromEntries(Object.keys(RALLY_ART_CONFIG.units).map(type=>[type,HashUtil.hash(type)])));
 function dropMeshArt(ctx,cache,key){
  const entry=cache.entries.get(key);if(!entry)return;
  ctx.deleteMesh(entry.mesh);
@@ -5193,7 +5210,7 @@ function retainedArt(ctx,type,team,x,y,r,timeMs,opts){
  if(x||y){ctx.save();ctx.translate(x,y)}
  try{ctx.drawMesh(entry.mesh,sample)}finally{if(x||y)ctx.restore()}
 }
-function meshArtSample(entry,motion){return{parts:entry.parts.map(name=>motion.parts[name]||staticMeshPart)}}
+function meshArtSample(entry,motion){let sample=entry.sample;if(!sample)sample=entry.sample={parts:new Array(entry.parts.length)};for(let i=0;i<entry.parts.length;i++){const name=entry.parts[i];sample.parts[i]=motion.parts[name]||staticMeshPart}return sample}
 // World outlines repeat retained mesh instances; standalone DOM thumbnails may use a mask.
 function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
  if(ctx.isBloomWebGL)return ctx.withSilhouette(opts.gradeOutline,Math.max(1,r*.085),()=>compose(ctx,type,team,x,y,r,timeMs,{...opts,gradeOutline:null}));
@@ -7454,9 +7471,12 @@ drawNest=function(c,x,y,level,scale=1){if(c!==ctx)return projectionCore.drawNest
 // One reusable queue: ground decorations first, then actors by exact pitch depth.
 // Stable insertion order resolves ties. HUD/damage-label layout is never sorted.
 let projectionDrawingActors=false;
-cshadow=function(x,y,r){if(!projectionDrawingActors){indicatorGroundArc(ctx,x+3,y+r*.45,r,r*.45);ctx.fillStyle='#1b332326';ctx.fill()}};
+const projectionShadowMeshes=new WeakMap(),projectionShadowTransform=new Float32Array(6);
+function projectionShadowMesh(){let mesh=projectionShadowMeshes.get(ctx);if(mesh)return mesh;const builder=new BloomGamekitRendering.MeshBuilder(),points=[[0,0]],segments=24;for(let i=0;i<=segments;i++){const angle=Math.PI*2*(i%segments)/segments;points.push([Math.cos(angle),Math.sin(angle)*.45])}builder.fillTriangleFan(points,'#1b332326');mesh=ctx.createMesh(builder.build());projectionShadowMeshes.set(ctx,mesh);return mesh}
+function drawProjectedShadow(x,y,r){const cx=x+3,cy=y+r*.45,delta=Math.max(1,r*.25),height=spatialGround(cx,cy),slopeX=(spatialGround(cx+delta,cy)-spatialGround(cx-delta,cy))/(2*delta),slopeY=(spatialGround(cx,cy+delta)-spatialGround(cx,cy-delta))/(2*delta),heightScale=WorldProjection.H/WorldProjection.K;projectionShadowTransform[0]=r;projectionShadowTransform[1]=-slopeX*r*heightScale;projectionShadowTransform[2]=0;projectionShadowTransform[3]=r*(1-slopeY*heightScale);projectionShadowTransform[4]=cx;projectionShadowTransform[5]=cy-height*heightScale;ctx.drawMesh(projectionShadowMesh(),{transform:projectionShadowTransform})}
+cshadow=function(x,y,r){if(projectionDrawingActors)return;if(!(r>0))return;if(!ctx.isBloomWebGL){indicatorGroundArc(ctx,x+3,y+r*.45,r,r*.45);ctx.fillStyle='#1b332326';ctx.fill();return}drawProjectedShadow(x,y,r)};
 const projectionQueue=[],projectionPool=[];
-function projectionEnqueue(kind,source,depth,order){let q=projectionPool[order];if(!q)q=projectionPool[order]={};q.kind=kind;q.source=source;q.depth=depth;q.order=order;projectionQueue.push(q)}
+function projectionEnqueue(kind,source,depth,order,bodyPose=null){let q=projectionPool[order];if(!q)q=projectionPool[order]={};q.kind=kind;q.source=source;q.depth=depth;q.order=order;q.bodyPose=bodyPose;q.preculled=kind==='unit';projectionQueue.push(q)}
 function drawProjectedActors(){projectionQueue.length=0;let order=0;
   for(const u of bloomRenderUnits())if(u.hp>0&&projectionVisible(u,Math.max(120,unitVisualExtent(u)))){const p=projectionBodyPose(u);projectionEnqueue('unit',u,WorldProjection.depth(p.y,p.z),order++)}
   for(const p of bloomRenderLeaders())if(p.hp>0&&projectionVisible(p,Math.max(120,unitVisualExtent(p))))projectionEnqueue('mother',p,WorldProjection.depth(p.y,projectionUnitHeight(p)),order++);
@@ -11250,14 +11270,14 @@ if(AttackPatternRegistry.jumpSlam)AttackPatternRegistry.jumpSlam.canStart=patter
 function drawThemedRoot(c,s,projected=true){const k=WorldProjection.H/WorldProjection.K;themedPath(c,s.points,0,projected);c.fillStyle='#304b35';c.fill();themedPath(c,s.points,s.height,projected);c.fillStyle='#6b6340';c.fill();c.strokeStyle='#3c512f';c.lineWidth=7;c.stroke();const cy=s.cy-(projected?(ThemedTerrain.height(s.cx,s.cy)+s.height)*k:0);c.strokeStyle='#a59359';c.lineWidth=8;c.beginPath();for(let i=0;i<s.points.length;i+=8){const p=s.points[i];c.moveTo(s.cx,cy);c.quadraticCurveTo(s.cx+(p.x-s.cx)*.45+12,cy+(p.y-s.cy)*.4,p.x,p.y-(projected?(ThemedTerrain.height(p.x,p.y)+s.height)*k:0))}c.stroke();for(let i=0;i<5;i++){const a=i*2.4,px=s.cx+Math.cos(a)*34,py=cy+Math.sin(a)*24;c.fillStyle=['#47794a','#527f4e','#3e7045'][i%3];c.strokeStyle='#355c3a';c.lineWidth=3;c.beginPath();c.ellipse(px,py,68,57,a*.1,0,Math.PI*2);c.fill();c.stroke()}}
 
 drawProjectedActors=function(){projectionQueue.length=0;let order=0;
- for(const u of bloomRenderUnits())if(u.hp>0&&projectionVisible(u,Math.max(120,unitVisualExtent(u)))){const p=projectionBodyPose(u);projectionEnqueue('unit',u,WorldProjection.depth(p.y,p.z),order++)}
+ for(const u of bloomRenderUnits())if(u.hp>0&&projectionVisible(u,Math.max(120,unitVisualExtent(u)))){const p=projectionBodyPose(u);projectionEnqueue('unit',u,WorldProjection.depth(p.y,p.z),order++,p)}
  for(const p of bloomRenderLeaders())if(p.hp>0&&projectionVisible(p,Math.max(120,unitVisualExtent(p))))projectionEnqueue('mother',p,WorldProjection.depth(p.y,projectionUnitHeight(p)),order++);
  for(const d of healthJuice.dead){const p=indicatorDeathPose(d);projectionEnqueue('death',d,WorldProjection.depth(p.y,p.z),order++)}
  for(const sampled of bloomRenderProjectiles()){const v=sampled.abilityShot?sproutVisualPoint(sampled):sampled;if(!bloomProjectileVisible(sampled))continue;projectionEnqueue('projectile',sampled,WorldProjection.depth(v.y,v.z||0),order++)}
  for(const s of ThemedTerrain.shapes)if(s.kind==='root'&&s.maxX>=view.x-view.w/2-160&&s.minX<=view.x+view.w/2+160&&s.maxY>=view.y-view.h/2-160&&s.minY<=view.y+view.h/2+240)projectionEnqueue('terrain',s,WorldProjection.depth(s.maxY,0),order++);
  for(const q of projectionQueue){if(q.kind==='unit'||q.kind==='mother'){const u=presentationPose(q.source);cshadow(u.x,u.y,unitVisualRadius(u)*CONFIG.render.spriteScale*.8)}else if(q.kind==='death'){const p=indicatorDeathPose(q.source);ctx.save();if(q.source.moa)ctx.globalAlpha*=deathSample(q.source).alpha;cshadow(p.x,p.y,q.source.r*.8);ctx.restore()}}
  projectionQueue.sort((a,b)=>a.depth-b.depth||a.order-b.order);
- projectionDrawingActors=true;try{for(const q of projectionQueue){if(q.kind==='terrain')drawThemedRoot(ctx,q.source);else if(q.kind==='unit')drawUnit(q.source);else if(q.kind==='mother'){drawMother(q.source);if(!WorldView.isLocal(q.source))drawParticipantLabel(q.source);}else if(q.kind==='projectile')drawProjectedProjectile(q.source);else drawDeathBodies(q.source.air,q.source.pose.type==='mother',q.source)}}finally{projectionDrawingActors=false}if(WorldView.dead())drawSproutImpacts();CombatFeedback.draw();
+ projectionDrawingActors=true;try{for(const q of projectionQueue){if(q.kind==='terrain')drawThemedRoot(ctx,q.source);else if(q.kind==='unit')drawUnit(q.source,q);else if(q.kind==='mother'){drawMother(q.source);if(!WorldView.isLocal(q.source))drawParticipantLabel(q.source);}else if(q.kind==='projectile')drawProjectedProjectile(q.source);else drawDeathBodies(q.source.air,q.source.pose.type==='mother',q.source)}}finally{projectionDrawingActors=false}if(WorldView.dead())drawSproutImpacts();CombatFeedback.draw();
 };
 
 'use strict';
@@ -12778,7 +12798,7 @@ function bloomMainRuntime() {
  const runtimePhase=Object.freeze({idle:'idle',initializing:'initializing',ready:'ready',closed:'closed',failed:'failed'});
  const uiPhase=Object.freeze({idle:'idle',mounting:'mounting',ready:'ready',closed:'closed'});
  let phase=runtimePhase.idle,epoch=0;
- const driver={scheduler:null,wasActive:false,inputReady:false};
+ const driver={scheduler:null,wasActive:false,inputReady:false,gapTimestamp:null};
  const inputCommands=[];
  const previewState={phase:'preparing',scope:null,pending:null,capability:null,runtime:null,lastTick:-1,lastRevision:-1,lastEpoch:-1,input:null,needsPrediction:false,captureMs:0,captureBytes:0,heapBefore:null,error:null};
  const previewFacade={get enabled(){return previewState.phase==='ready'&&localReady()&&!!previewState.scope?.initialized&&!!previewState.capability?.enabled},observe(input,metadata){previewState.needsPrediction=true;safeReconcilePreview(true);return previewState.capability?.observe(input,{...metadata,observedAtMs:metadata.timeMs,timeMs:bloomPresentationNow()})},commit(capture,now){return previewState.capability?.commit(capture,now)},cancelObservation(now){previewState.needsPrediction=false;previewState.capability?.cancelObservation(now)},clear(){previewState.lastTick=-1;previewState.capability?.clear()}};
@@ -12788,7 +12808,7 @@ function bloomMainRuntime() {
  function listen(target,type,listener,options){target.addEventListener(type,listener,options);ui.subscriptions.push(()=>target.removeEventListener(type,listener,options))}
  function unbind(){for(const off of ui.subscriptions.splice(0))off();PublicSession.unbind();ui.phase=uiPhase.closed}
  function stopDriver(){driver.scheduler?.stop();bloomLoop?.stop()}
- function rebaseDriverClock(now=performance.now()){bloomLoop?.resetTiming();driver.wasActive=active();driver.scheduler?.rebase(now)}
+ function rebaseDriverClock(now=performance.now()){driver.gapTimestamp=null;bloomLoop?.resetTiming();driver.wasActive=active();driver.scheduler?.rebase(now)}
  const metrics={mode:'main-thread SDK loop',advanceStatus:'ready',tickMs:0,maxTickMs:0,ticks:0,presentationMs:0,maxPresentationMs:0};
  const oldQueue=bloomQueue,oldLoad=load,oldReset=reset,oldRate=bloomSetTickRate;
  // Session capabilities, never participant count or local presentation identity,
@@ -12828,7 +12848,7 @@ function bloomMainRuntime() {
   const started=performance.now(),snapshot=bloomAdapter.save();previewState.captureMs+=performance.now()-started;previewState.captureBytes+=snapshot.byteLength;
   const metadata=bloomSession.localInputState;
   previewState.scope.configure({tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});
-  previewState.capability.reconcile({snapshot,input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata.executedCommandSequence});
+  previewState.capability.reconcile({snapshot,input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata.executedCommandSequence??undefined});
   previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;return true;
  }
  function safeReconcilePreview(force=false){if(previewState.phase==='failed')return false;try{return reconcilePreview(force)}catch(error){previewState.capability?.setEnabled(false);previewState.phase='failed';previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview'});return false}}
@@ -12876,13 +12896,15 @@ function bloomMainRuntime() {
  function pump(now){
   if(phase!==runtimePhase.ready)return;
   try{const running=active();
+   const collapsedGap=driver.gapTimestamp===now;driver.gapTimestamp=null;
    if(running!==driver.wasActive){rebaseDriverClock(now);driver.wasActive=running}
    if(!running){if(bloomInputPending&&!discovering())advanceSuspended();bloomLoop.resetTiming()}
+   else if(collapsedGap){bloomLoop.resetTiming();bloomLoop.flushInput(now)}
    else bloomLoop.pulse(now);
    schedule();
   }catch(error){fail(error)}
  }
- driver.scheduler=BloomOwnedSDK.createDeadlineScheduler({getIntervalMs:()=>1000/CONFIG.sim.tickRate,pulse:pump,maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,onGap:({timestamp})=>rebaseDriverClock(timestamp)});
+ driver.scheduler=BloomOwnedSDK.createDeadlineScheduler({getIntervalMs:()=>1000/CONFIG.sim.tickRate,pulse:pump,maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,onGap:({timestamp})=>{driver.gapTimestamp=timestamp}});
  function boundary(options){
   if(![runtimePhase.ready,runtimePhase.initializing].includes(phase))throw new Error('Simulation is not available');
   // Selection validation happens before retiring the current loop or waiters.
@@ -12892,7 +12914,6 @@ function bloomMainRuntime() {
   if(online())persistence.soloWorld=false;epoch++;persistence.lastTick=bloomTick;ui.viewSignature='';driver.wasActive=false;metrics.advanceStatus='ready';driver.scheduler.rebase();previewFacade.clear();
   let tickStart=0;
   bloomLoop=BloomOwnedSDK.createLoop({session:next,inputPreview:previewFacade,backlogPolicy:'retain',maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,
-   onBacklogDrop(){rebaseDriverClock()},
    beforeFrame(){tickStart=performance.now()},getInput:sampleInput,
    canAdvance:()=>active()||!!bloomInputPending&&!discovering(),onAdvance(result){afterAdvance(result,tickStart,next)},onPreviewError(error){previewState.capability?.setEnabled(false);previewState.phase='failed';previewState.lastTick=-1;previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview'})},onError(error){fail(error,'sdk.loop')}
   });

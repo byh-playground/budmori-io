@@ -1,0 +1,1693 @@
+{
+  "kind": "Actual Chromium/SwiftShader WebGL, production RAF/deadlines; not phone hardware FPS",
+  "netcodeMode": "lockstep",
+  "viewport": {
+    "width": 360,
+    "height": 640,
+    "dpr": 2
+  },
+  "warmupMs": 1500,
+  "holdMs": 2000,
+  "scope": "Four-species initial army, disabled camps and stunned enemies. Public preview OFF control keeps its initial allocated scope. No physics, time or rendering override.",
+  "results": [
+    {
+      "file": "C:\\projects\\budmori-io\\index.html",
+      "netcodeMode": "lockstep",
+      "sourceSHA256": "808bf69433dfcc64ca6040025d003c342bd74ce5ef7c94436d98bd55a8185db3",
+      "fixtureSHA256": "f8aad77451e219279ecb2f07d84de7cd46af9904b17e8829093692e0b54245d4",
+      "renderingSHA256": "5ac3a0ff6eeca46420870f652529648bd1c0f6b473508bee3f35bc3e84413ca4",
+      "sdk": "2e5043e05b5605a64772f26f65932260c587b470",
+      "count": 500,
+      "preview": false,
+      "errors": [],
+      "wallMs": 2351.0859,
+      "before": {
+        "tick": 2,
+        "time": 0.2,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 500,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 10,
+          "drawCalls": 920,
+          "vertices": 879657,
+          "uploadedBytes": 1949456,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 511,
+          "mesh": {
+            "draws": 395,
+            "instances": 5000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 320000,
+            "partUniformBytesSubmitted": 18000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 2930296,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 15,
+          "totals": {
+            "frames": 10,
+            "drawCalls": 9203,
+            "vertices": 8248113,
+            "uploadedBytes": 19324472
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": false,
+          "error": null,
+          "captureMs": 82.5,
+          "captureBytes": 357312,
+          "scope": {
+            "installs": 1,
+            "installMs": 347,
+            "snapshotBytes": 357312,
+            "steps": 0,
+            "stepMs": 0,
+            "modelMs": 0,
+            "modelBytes": 0
+          },
+          "capability": {
+            "snapshotBytes": 357312,
+            "correctionBytes": 357312,
+            "replayBytes": 0,
+            "snapshotCloneMs": 0.800000011920929,
+            "forkMs": 347.30000001192093,
+            "replayMs": 0,
+            "replayedInputs": 0,
+            "replayGapSteps": 0,
+            "corrections": 1,
+            "correctionMs": 348.80000001192093,
+            "previewPublishes": 0,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 0,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 1
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 0,
+          "frames": [],
+          "summary": {
+            "frames": {
+              "count": 0,
+              "totalMs": 0,
+              "minMs": 0,
+              "maxMs": 0,
+              "p50Ms": 0,
+              "p95Ms": 0
+            },
+            "stages": {}
+          }
+        },
+        "fatal": false
+      },
+      "after": {
+        "tick": 9,
+        "time": 0.8999999999999999,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 500,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 15,
+          "drawCalls": 930,
+          "vertices": 966624,
+          "uploadedBytes": 2189504,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 511,
+          "mesh": {
+            "draws": 400,
+            "instances": 5000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 320000,
+            "partUniformBytesSubmitted": 18000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5017504,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 20,
+          "totals": {
+            "frames": 15,
+            "drawCalls": 13806,
+            "vertices": 12882699,
+            "uploadedBytes": 29739840
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": false,
+          "error": null,
+          "captureMs": 82.5,
+          "captureBytes": 357312,
+          "scope": {
+            "installs": 1,
+            "installMs": 347,
+            "snapshotBytes": 357312,
+            "steps": 0,
+            "stepMs": 0,
+            "modelMs": 0,
+            "modelBytes": 0
+          },
+          "capability": {
+            "snapshotBytes": 357312,
+            "correctionBytes": 357312,
+            "replayBytes": 0,
+            "snapshotCloneMs": 0.800000011920929,
+            "forkMs": 347.30000001192093,
+            "replayMs": 0,
+            "replayedInputs": 0,
+            "replayGapSteps": 0,
+            "corrections": 1,
+            "correctionMs": 348.80000001192093,
+            "previewPublishes": 0,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 0,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 1
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 5,
+          "frames": [
+            {
+              "sequence": 1,
+              "durationMs": 257.89999999999964,
+              "meta": {
+                "frame": 11,
+                "tick": 2,
+                "renderer": "webgl",
+                "tickMs": 62.5,
+                "presentationMs": 16.19999998807907
+              },
+              "stages": {
+                "render.terrainMeshBuild": {
+                  "ms": 38.099999994039536,
+                  "calls": 1,
+                  "maxMs": 38.099999994039536,
+                  "metadata": {
+                    "vertices": 13287,
+                    "bytes": 318888
+                  }
+                },
+                "render.terrain": {
+                  "ms": 48,
+                  "calls": 1,
+                  "maxMs": 48,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 208.79999999999927,
+                  "calls": 1,
+                  "maxMs": 208.79999999999927,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 916,
+                    "vertices": 892944
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 2,
+              "durationMs": 338.60000000000036,
+              "meta": {
+                "frame": 12,
+                "tick": 2,
+                "renderer": "webgl",
+                "tickMs": 62.5,
+                "presentationMs": 16.19999998807907
+              },
+              "stages": {
+                "render.terrainMeshBuild": {
+                  "ms": 53,
+                  "calls": 1,
+                  "maxMs": 53,
+                  "metadata": {
+                    "vertices": 15207,
+                    "bytes": 364968
+                  }
+                },
+                "render.terrain": {
+                  "ms": 74.59999999999945,
+                  "calls": 1,
+                  "maxMs": 74.59999999999945,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 262.59999999999945,
+                  "calls": 1,
+                  "maxMs": 262.59999999999945,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 917,
+                    "vertices": 908151
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 3,
+              "durationMs": 342.8000000000002,
+              "meta": {
+                "frame": 13,
+                "tick": 4,
+                "renderer": "webgl",
+                "tickMs": 41.5,
+                "presentationMs": 18.600000023841858
+              },
+              "stages": {
+                "render.terrainMeshBuild": {
+                  "ms": 14.5,
+                  "calls": 1,
+                  "maxMs": 14.5,
+                  "metadata": {
+                    "vertices": 13920,
+                    "bytes": 334080
+                  }
+                },
+                "render.terrain": {
+                  "ms": 25.699999999999818,
+                  "calls": 1,
+                  "maxMs": 25.699999999999818,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 316.60000000000036,
+                  "calls": 1,
+                  "maxMs": 316.60000000000036,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 924,
+                    "vertices": 922071
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 4,
+              "durationMs": 412.1999999999998,
+              "meta": {
+                "frame": 14,
+                "tick": 5,
+                "renderer": "webgl",
+                "tickMs": 61.39999997615814,
+                "presentationMs": 66
+              },
+              "stages": {
+                "render.terrainMeshBuild": {
+                  "ms": 58.5,
+                  "calls": 1,
+                  "maxMs": 58.5,
+                  "metadata": {
+                    "vertices": 22725,
+                    "bytes": 545400
+                  }
+                },
+                "render.terrain": {
+                  "ms": 72.30000000000018,
+                  "calls": 1,
+                  "maxMs": 72.30000000000018,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 337.1999999999998,
+                  "calls": 1,
+                  "maxMs": 337.1999999999998,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 916,
+                    "vertices": 944796
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 5,
+              "durationMs": 337.10000000000036,
+              "meta": {
+                "frame": 15,
+                "tick": 7,
+                "renderer": "webgl",
+                "tickMs": 29.19999998807907,
+                "presentationMs": 12.900000005960464
+              },
+              "stages": {
+                "render.terrainMeshBuild": {
+                  "ms": 50.19999998807907,
+                  "calls": 1,
+                  "maxMs": 50.19999998807907,
+                  "metadata": {
+                    "vertices": 21828,
+                    "bytes": 523872
+                  }
+                },
+                "render.terrain": {
+                  "ms": 67.30000000000018,
+                  "calls": 1,
+                  "maxMs": 67.30000000000018,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 261.8000000000002,
+                  "calls": 1,
+                  "maxMs": 261.8000000000002,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 930,
+                    "vertices": 966624
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            }
+          ],
+          "summary": {
+            "frames": {
+              "count": 5,
+              "totalMs": 1688.6000000000004,
+              "minMs": 257.89999999999964,
+              "maxMs": 412.1999999999998,
+              "p50Ms": 338.60000000000036,
+              "p95Ms": 342.8000000000002
+            },
+            "stages": {
+              "render.terrainMeshBuild": {
+                "count": 5,
+                "totalMs": 214.2999999821186,
+                "minMs": 14.5,
+                "maxMs": 58.5,
+                "p50Ms": 50.19999998807907,
+                "p95Ms": 53
+              },
+              "render.terrain": {
+                "count": 5,
+                "totalMs": 287.89999999999964,
+                "minMs": 25.699999999999818,
+                "maxMs": 74.59999999999945,
+                "p50Ms": 67.30000000000018,
+                "p95Ms": 72.30000000000018
+              },
+              "render.actors": {
+                "count": 5,
+                "totalMs": 1386.999999999999,
+                "minMs": 208.79999999999927,
+                "maxMs": 337.1999999999998,
+                "p50Ms": 262.59999999999945,
+                "p95Ms": 316.60000000000036
+              },
+              "webgl.endFrame": {
+                "count": 5,
+                "totalMs": 0,
+                "minMs": 0,
+                "maxMs": 0,
+                "p50Ms": 0,
+                "p95Ms": 0
+              }
+            }
+          }
+        },
+        "fatal": false
+      },
+      "effectiveTPS": 2.977347616265318,
+      "status": "MEASURED"
+    },
+    {
+      "file": "C:\\projects\\budmori-io\\index.html",
+      "netcodeMode": "lockstep",
+      "sourceSHA256": "808bf69433dfcc64ca6040025d003c342bd74ce5ef7c94436d98bd55a8185db3",
+      "fixtureSHA256": "3f93fd92a7cb31d7202c2807f0210a94921e1a8c4f03475506090da8e25bb5df",
+      "renderingSHA256": "5ac3a0ff6eeca46420870f652529648bd1c0f6b473508bee3f35bc3e84413ca4",
+      "sdk": "2e5043e05b5605a64772f26f65932260c587b470",
+      "count": 500,
+      "preview": true,
+      "errors": [],
+      "wallMs": 3092.9598000000005,
+      "before": {
+        "tick": 6,
+        "time": 0.6,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 500,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 24,
+          "drawCalls": 942,
+          "vertices": 991341,
+          "uploadedBytes": 1665632,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 511,
+          "mesh": {
+            "draws": 411,
+            "instances": 5000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 320000,
+            "partUniformBytesSubmitted": 18000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5610712,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 21,
+          "totals": {
+            "frames": 24,
+            "drawCalls": 22209,
+            "vertices": 21666228,
+            "uploadedBytes": 45323736
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": true,
+          "error": null,
+          "captureMs": 93.90000003576279,
+          "captureBytes": 1342878,
+          "scope": {
+            "installs": 5,
+            "installMs": 1092.3000000417233,
+            "snapshotBytes": 657044,
+            "steps": 3,
+            "stepMs": 165.59999999403954,
+            "modelMs": 85.7000000178814,
+            "modelBytes": 1523046
+          },
+          "capability": {
+            "snapshotBytes": 1342878,
+            "correctionBytes": 1342878,
+            "replayBytes": 654,
+            "snapshotCloneMs": 3.199999988079071,
+            "forkMs": 1093.1000000238419,
+            "replayMs": 165.89999997615814,
+            "replayedInputs": 3,
+            "replayGapSteps": 0,
+            "corrections": 4,
+            "correctionMs": 861.5999999940395,
+            "previewPublishes": 3,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 0,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 4
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 0,
+          "frames": [],
+          "summary": {
+            "frames": {
+              "count": 0,
+              "totalMs": 0,
+              "minMs": 0,
+              "maxMs": 0,
+              "p50Ms": 0,
+              "p95Ms": 0
+            },
+            "stages": {}
+          }
+        },
+        "fatal": false
+      },
+      "after": {
+        "tick": 7,
+        "time": 0.7,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 500,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 28,
+          "drawCalls": 930,
+          "vertices": 991341,
+          "uploadedBytes": 1665632,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 511,
+          "mesh": {
+            "draws": 399,
+            "instances": 5000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 320000,
+            "partUniformBytesSubmitted": 18000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5610712,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 21,
+          "totals": {
+            "frames": 28,
+            "drawCalls": 25938,
+            "vertices": 25631592,
+            "uploadedBytes": 51986264
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": true,
+          "error": null,
+          "captureMs": 179.20000004768372,
+          "captureBytes": 2793126,
+          "scope": {
+            "installs": 11,
+            "installMs": 2426.9000000953674,
+            "snapshotBytes": 1744516,
+            "steps": 6,
+            "stepMs": 370,
+            "modelMs": 173.30000001192093,
+            "modelBytes": 3054256
+          },
+          "capability": {
+            "snapshotBytes": 2793126,
+            "correctionBytes": 2793126,
+            "replayBytes": 693,
+            "snapshotCloneMs": 3.2999999821186066,
+            "forkMs": 2428.2000000476837,
+            "replayMs": 370.4999999701977,
+            "replayedInputs": 6,
+            "replayGapSteps": 0,
+            "corrections": 8,
+            "correctionMs": 1953.5999999940395,
+            "previewPublishes": 6,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 1,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 8
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 4,
+          "frames": [
+            {
+              "sequence": 1,
+              "durationMs": 280,
+              "meta": {
+                "frame": 25,
+                "tick": 6,
+                "renderer": "webgl",
+                "tickMs": 36.80000001192093,
+                "presentationMs": 13.599999994039536
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 16.400000000001455,
+                  "calls": 1,
+                  "maxMs": 16.400000000001455,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 263.09999999999854,
+                  "calls": 1,
+                  "maxMs": 263.09999999999854,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 928,
+                    "vertices": 991341
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 2,
+              "durationMs": 405.39999999999964,
+              "meta": {
+                "frame": 26,
+                "tick": 6,
+                "renderer": "webgl",
+                "tickMs": 36.80000001192093,
+                "presentationMs": 13.599999994039536
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 21.30000000000109,
+                  "calls": 1,
+                  "maxMs": 21.30000000000109,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 383,
+                  "calls": 1,
+                  "maxMs": 383,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 933,
+                    "vertices": 991341
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 3,
+              "durationMs": 293.6999999999989,
+              "meta": {
+                "frame": 27,
+                "tick": 7,
+                "renderer": "webgl",
+                "tickMs": 647.6999999880791,
+                "presentationMs": 192.90000000596046
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 20.600000000000364,
+                  "calls": 1,
+                  "maxMs": 20.600000000000364,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 269.7000000000007,
+                  "calls": 1,
+                  "maxMs": 269.7000000000007,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 938,
+                    "vertices": 991341
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 4,
+              "durationMs": 197.20000000000073,
+              "meta": {
+                "frame": 28,
+                "tick": 7,
+                "renderer": "webgl",
+                "tickMs": 647.6999999880791,
+                "presentationMs": 192.90000000596046
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 12.100000000000364,
+                  "calls": 1,
+                  "maxMs": 12.100000000000364,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 183.79999999999927,
+                  "calls": 1,
+                  "maxMs": 183.79999999999927,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 930,
+                    "vertices": 991341
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            }
+          ],
+          "summary": {
+            "frames": {
+              "count": 4,
+              "totalMs": 1176.2999999999993,
+              "minMs": 197.20000000000073,
+              "maxMs": 405.39999999999964,
+              "p50Ms": 280,
+              "p95Ms": 293.6999999999989
+            },
+            "stages": {
+              "render.terrain": {
+                "count": 4,
+                "totalMs": 70.40000000000327,
+                "minMs": 12.100000000000364,
+                "maxMs": 21.30000000000109,
+                "p50Ms": 16.400000000001455,
+                "p95Ms": 20.600000000000364
+              },
+              "render.actors": {
+                "count": 4,
+                "totalMs": 1099.5999999999985,
+                "minMs": 183.79999999999927,
+                "maxMs": 383,
+                "p50Ms": 263.09999999999854,
+                "p95Ms": 269.7000000000007
+              },
+              "webgl.endFrame": {
+                "count": 4,
+                "totalMs": 0,
+                "minMs": 0,
+                "maxMs": 0,
+                "p50Ms": 0,
+                "p95Ms": 0
+              }
+            }
+          }
+        },
+        "fatal": false
+      },
+      "effectiveTPS": 0.32331490373719046,
+      "status": "MEASURED"
+    },
+    {
+      "file": "C:\\projects\\budmori-io\\index.html",
+      "netcodeMode": "lockstep",
+      "sourceSHA256": "808bf69433dfcc64ca6040025d003c342bd74ce5ef7c94436d98bd55a8185db3",
+      "fixtureSHA256": "a16ae017c8a4a549f3fa9e333a001f33ef928fa575264c6e7b30d978be4637d0",
+      "renderingSHA256": "5ac3a0ff6eeca46420870f652529648bd1c0f6b473508bee3f35bc3e84413ca4",
+      "sdk": "2e5043e05b5605a64772f26f65932260c587b470",
+      "count": 1000,
+      "preview": false,
+      "errors": [],
+      "wallMs": 3740.9847999999984,
+      "before": {
+        "tick": 5,
+        "time": 0.5,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 1000,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 20,
+          "drawCalls": 1832,
+          "vertices": 1754841,
+          "uploadedBytes": 3137632,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 1011,
+          "mesh": {
+            "draws": 801,
+            "instances": 10000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 640000,
+            "partUniformBytesSubmitted": 36000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5610712,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 21,
+          "totals": {
+            "frames": 20,
+            "drawCalls": 36896,
+            "vertices": 32901594,
+            "uploadedBytes": 68101208
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": false,
+          "error": null,
+          "captureMs": 56.5,
+          "captureBytes": 646332,
+          "scope": {
+            "installs": 1,
+            "installMs": 405.7000000178814,
+            "snapshotBytes": 646332,
+            "steps": 0,
+            "stepMs": 0,
+            "modelMs": 0,
+            "modelBytes": 0
+          },
+          "capability": {
+            "snapshotBytes": 646332,
+            "correctionBytes": 646332,
+            "replayBytes": 0,
+            "snapshotCloneMs": 0.20000001788139343,
+            "forkMs": 406.59999999403954,
+            "replayMs": 0,
+            "replayedInputs": 0,
+            "replayGapSteps": 0,
+            "corrections": 1,
+            "correctionMs": 407.30000001192093,
+            "previewPublishes": 0,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 0,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 1
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 0,
+          "frames": [],
+          "summary": {
+            "frames": {
+              "count": 0,
+              "totalMs": 0,
+              "minMs": 0,
+              "maxMs": 0,
+              "p50Ms": 0,
+              "p95Ms": 0
+            },
+            "stages": {}
+          }
+        },
+        "fatal": false
+      },
+      "after": {
+        "tick": 8,
+        "time": 0.7999999999999999,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 1000,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 24,
+          "drawCalls": 1838,
+          "vertices": 1754841,
+          "uploadedBytes": 3137632,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 1011,
+          "mesh": {
+            "draws": 807,
+            "instances": 10000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 640000,
+            "partUniformBytesSubmitted": 36000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5610712,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 21,
+          "totals": {
+            "frames": 24,
+            "drawCalls": 44200,
+            "vertices": 39920958,
+            "uploadedBytes": 80651736
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": false,
+          "error": null,
+          "captureMs": 56.5,
+          "captureBytes": 646332,
+          "scope": {
+            "installs": 1,
+            "installMs": 405.7000000178814,
+            "snapshotBytes": 646332,
+            "steps": 0,
+            "stepMs": 0,
+            "modelMs": 0,
+            "modelBytes": 0
+          },
+          "capability": {
+            "snapshotBytes": 646332,
+            "correctionBytes": 646332,
+            "replayBytes": 0,
+            "snapshotCloneMs": 0.20000001788139343,
+            "forkMs": 406.59999999403954,
+            "replayMs": 0,
+            "replayedInputs": 0,
+            "replayGapSteps": 0,
+            "corrections": 1,
+            "correctionMs": 407.30000001192093,
+            "previewPublishes": 0,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 0,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 1
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 4,
+          "frames": [
+            {
+              "sequence": 1,
+              "durationMs": 754.7000000000007,
+              "meta": {
+                "frame": 21,
+                "tick": 6,
+                "renderer": "webgl",
+                "tickMs": 54,
+                "presentationMs": 26.69999998807907
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 12,
+                  "calls": 1,
+                  "maxMs": 12,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 741.5999999999985,
+                  "calls": 1,
+                  "maxMs": 741.5999999999985,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1823,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 2,
+              "durationMs": 881.6999999999971,
+              "meta": {
+                "frame": 22,
+                "tick": 6,
+                "renderer": "webgl",
+                "tickMs": 54,
+                "presentationMs": 26.69999998807907
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 34.900000000001455,
+                  "calls": 1,
+                  "maxMs": 34.900000000001455,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 846,
+                  "calls": 1,
+                  "maxMs": 846,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1814,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 3,
+              "durationMs": 806.2999999999993,
+              "meta": {
+                "frame": 23,
+                "tick": 7,
+                "renderer": "webgl",
+                "tickMs": 73.2000000178814,
+                "presentationMs": 44.400000005960464
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 12.799999999999272,
+                  "calls": 1,
+                  "maxMs": 12.799999999999272,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 792.8999999999978,
+                  "calls": 1,
+                  "maxMs": 792.8999999999978,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1829,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 4,
+              "durationMs": 938.0999999999985,
+              "meta": {
+                "frame": 24,
+                "tick": 7,
+                "renderer": "webgl",
+                "tickMs": 73.2000000178814,
+                "presentationMs": 44.400000005960464
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 12.799999999999272,
+                  "calls": 1,
+                  "maxMs": 12.799999999999272,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 924.6000000000022,
+                  "calls": 1,
+                  "maxMs": 924.6000000000022,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1838,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            }
+          ],
+          "summary": {
+            "frames": {
+              "count": 4,
+              "totalMs": 3380.7999999999956,
+              "minMs": 754.7000000000007,
+              "maxMs": 938.0999999999985,
+              "p50Ms": 806.2999999999993,
+              "p95Ms": 881.6999999999971
+            },
+            "stages": {
+              "render.terrain": {
+                "count": 4,
+                "totalMs": 72.5,
+                "minMs": 12,
+                "maxMs": 34.900000000001455,
+                "p50Ms": 12.799999999999272,
+                "p95Ms": 12.799999999999272
+              },
+              "render.actors": {
+                "count": 4,
+                "totalMs": 3305.0999999999985,
+                "minMs": 741.5999999999985,
+                "maxMs": 924.6000000000022,
+                "p50Ms": 792.8999999999978,
+                "p95Ms": 846
+              },
+              "webgl.endFrame": {
+                "count": 4,
+                "totalMs": 0,
+                "minMs": 0,
+                "maxMs": 0,
+                "p50Ms": 0,
+                "p95Ms": 0
+              }
+            }
+          }
+        },
+        "fatal": false
+      },
+      "effectiveTPS": 0.8019278773867249,
+      "status": "MEASURED"
+    },
+    {
+      "file": "C:\\projects\\budmori-io\\index.html",
+      "netcodeMode": "lockstep",
+      "sourceSHA256": "808bf69433dfcc64ca6040025d003c342bd74ce5ef7c94436d98bd55a8185db3",
+      "fixtureSHA256": "2285ce288f7973aeb997980d44118e9cb1163281303b7a14c6ab981bd31961b1",
+      "renderingSHA256": "5ac3a0ff6eeca46420870f652529648bd1c0f6b473508bee3f35bc3e84413ca4",
+      "sdk": "2e5043e05b5605a64772f26f65932260c587b470",
+      "count": 1000,
+      "preview": true,
+      "errors": [],
+      "wallMs": 3262.2804999999935,
+      "before": {
+        "tick": 6,
+        "time": 0.6,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 1000,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 19,
+          "drawCalls": 1822,
+          "vertices": 1754841,
+          "uploadedBytes": 3137632,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 1011,
+          "mesh": {
+            "draws": 791,
+            "instances": 10000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 640000,
+            "partUniformBytesSubmitted": 36000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5610712,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 21,
+          "totals": {
+            "frames": 19,
+            "drawCalls": 35067,
+            "vertices": 31216023,
+            "uploadedBytes": 64963576
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": true,
+          "error": null,
+          "captureMs": 250.19999995827675,
+          "captureBytes": 3933697,
+          "scope": {
+            "installs": 6,
+            "installMs": 2156.399999946356,
+            "snapshotBytes": 1292664,
+            "steps": 4,
+            "stepMs": 403.0000000298023,
+            "modelMs": 266.9999999701977,
+            "modelBytes": 4053368
+          },
+          "capability": {
+            "snapshotBytes": 3933697,
+            "correctionBytes": 3933697,
+            "replayBytes": 872,
+            "snapshotCloneMs": 0.6000000536441803,
+            "forkMs": 2158.2999999821186,
+            "replayMs": 403.7000000178814,
+            "replayedInputs": 4,
+            "replayGapSteps": 0,
+            "corrections": 6,
+            "correctionMs": 1948.0000000596046,
+            "previewPublishes": 4,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 1,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 6
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 0,
+          "frames": [],
+          "summary": {
+            "frames": {
+              "count": 0,
+              "totalMs": 0,
+              "minMs": 0,
+              "maxMs": 0,
+              "p50Ms": 0,
+              "p95Ms": 0
+            },
+            "stages": {}
+          }
+        },
+        "fatal": false
+      },
+      "after": {
+        "tick": 7,
+        "time": 0.7,
+        "playing": true,
+        "paused": false,
+        "modal": "",
+        "netcodeMode": "lockstep",
+        "friendly": 1000,
+        "render": {
+          "backend": "webgl1",
+          "available": true,
+          "contextLost": false,
+          "failure": null,
+          "frame": 22,
+          "drawCalls": 1838,
+          "vertices": 1754841,
+          "uploadedBytes": 3137632,
+          "textureUploads": 0,
+          "textureBytes": 0,
+          "gpuRenderTargetBytes": 0,
+          "paths": 1011,
+          "mesh": {
+            "draws": 807,
+            "instances": 10000,
+            "geometryUploads": 0,
+            "geometryBytesUploaded": 0,
+            "instanceBytesUploaded": 640000,
+            "partUniformBytesSubmitted": 36000,
+            "state": "ready",
+            "failure": null,
+            "pipelineCount": 2,
+            "meshCount": 4,
+            "retainedBytes": 25608,
+            "stagingBytes": 132224,
+            "instanced": true,
+            "maxClipPlanes": 32
+          },
+          "stagingBytes": 131072,
+          "gpuBufferBytes": 5610712,
+          "textureCount": 2,
+          "activeGradientTextureCount": 0,
+          "renderTargetCount": 0,
+          "bufferAllocations": 21,
+          "totals": {
+            "frames": 22,
+            "drawCalls": 40570,
+            "vertices": 36480546,
+            "uploadedBytes": 74376472
+          }
+        },
+        "preview": {
+          "phase": "ready",
+          "enabled": true,
+          "error": null,
+          "captureMs": 348.2999999821186,
+          "captureBytes": 6056632,
+          "scope": {
+            "installs": 10,
+            "installMs": 3403.999999910593,
+            "snapshotBytes": 2707228,
+            "steps": 6,
+            "stepMs": 575.0000000596046,
+            "modelMs": 401.5,
+            "modelBytes": 6089444
+          },
+          "capability": {
+            "snapshotBytes": 6056632,
+            "correctionBytes": 6056632,
+            "replayBytes": 898,
+            "snapshotCloneMs": 1.0000000596046448,
+            "forkMs": 3407.799999922514,
+            "replayMs": 575.7000000476837,
+            "replayedInputs": 6,
+            "replayGapSteps": 0,
+            "corrections": 9,
+            "correctionMs": 2498.7000000476837,
+            "previewPublishes": 6,
+            "rejectedEpoch": 0,
+            "rejectedHorizon": 0,
+            "rejectedAge": 1,
+            "rejectedCapacity": 0,
+            "pendingCount": 0,
+            "epoch": 0,
+            "generation": 9
+          }
+        },
+        "profiler": {
+          "enabled": true,
+          "capacity": 90,
+          "retainedFrames": 3,
+          "frames": [
+            {
+              "sequence": 1,
+              "durationMs": 339.1000000000022,
+              "meta": {
+                "frame": 20,
+                "tick": 6,
+                "renderer": "webgl",
+                "tickMs": 52.5,
+                "presentationMs": 25.599999994039536
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 18,
+                  "calls": 1,
+                  "maxMs": 18,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 320,
+                  "calls": 1,
+                  "maxMs": 320,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1827,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 2,
+              "durationMs": 558.2999999999993,
+              "meta": {
+                "frame": 21,
+                "tick": 6,
+                "renderer": "webgl",
+                "tickMs": 52.5,
+                "presentationMs": 25.599999994039536
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 42.39999999999782,
+                  "calls": 1,
+                  "maxMs": 42.39999999999782,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 513.8000000000029,
+                  "calls": 1,
+                  "maxMs": 513.8000000000029,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1838,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            },
+            {
+              "sequence": 3,
+              "durationMs": 470.6000000000022,
+              "meta": {
+                "frame": 22,
+                "tick": 7,
+                "renderer": "webgl",
+                "tickMs": 1060.800000011921,
+                "presentationMs": 71.2999999821186
+              },
+              "stages": {
+                "render.terrain": {
+                  "ms": 24.200000000000728,
+                  "calls": 1,
+                  "maxMs": 24.200000000000728,
+                  "metadata": {}
+                },
+                "render.actors": {
+                  "ms": 445.90000000000146,
+                  "calls": 1,
+                  "maxMs": 445.90000000000146,
+                  "metadata": {}
+                },
+                "webgl.endFrame": {
+                  "ms": 0,
+                  "calls": 1,
+                  "maxMs": 0,
+                  "metadata": {
+                    "textureUploads": 0,
+                    "textureBytes": 0,
+                    "drawCalls": 1838,
+                    "vertices": 1754841
+                  }
+                }
+              },
+              "counts": {
+                "render.terrainMeshCacheHit": 15
+              }
+            }
+          ],
+          "summary": {
+            "frames": {
+              "count": 3,
+              "totalMs": 1368.0000000000036,
+              "minMs": 339.1000000000022,
+              "maxMs": 558.2999999999993,
+              "p50Ms": 470.6000000000022,
+              "p95Ms": 470.6000000000022
+            },
+            "stages": {
+              "render.terrain": {
+                "count": 3,
+                "totalMs": 84.59999999999854,
+                "minMs": 18,
+                "maxMs": 42.39999999999782,
+                "p50Ms": 24.200000000000728,
+                "p95Ms": 24.200000000000728
+              },
+              "render.actors": {
+                "count": 3,
+                "totalMs": 1279.7000000000044,
+                "minMs": 320,
+                "maxMs": 513.8000000000029,
+                "p50Ms": 445.90000000000146,
+                "p95Ms": 445.90000000000146
+              },
+              "webgl.endFrame": {
+                "count": 3,
+                "totalMs": 0,
+                "minMs": 0,
+                "maxMs": 0,
+                "p50Ms": 0,
+                "p95Ms": 0
+              }
+            }
+          }
+        },
+        "fatal": false
+      },
+      "effectiveTPS": 0.306534033477502,
+      "status": "MEASURED"
+    }
+  ],
+  "browser": "153.0.8010.12",
+  "outcome": "MEASURED"
+}
