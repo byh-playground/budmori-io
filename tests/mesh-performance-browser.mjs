@@ -19,17 +19,22 @@ const previewSelection = process.env.BLOOM_LOAD_PREVIEW || 'both';
 assert(['both', 'on', 'off'].includes(previewSelection), 'BLOOM_LOAD_PREVIEW must be both, on, or off');
 const previews = previewSelection === 'both' ? [false, true] : [previewSelection === 'on'];
 const renderSubstages = process.env.BLOOM_RENDER_SUBSTAGES === '1';
+const previewTrace=process.env.BLOOM_PREVIEW_TRACE==='1';
 // Explicit developmental fixture, never a production import or provenance claim.
-const candidateRendering = process.env.BLOOM_RENDERING_CANDIDATE ? await readFile(resolve(process.env.BLOOM_RENDERING_CANDIDATE)) : null;
+const candidateModules=new Map();
+if(process.env.BLOOM_RENDERING_CANDIDATE)candidateModules.set('rendering',await readFile(resolve(process.env.BLOOM_RENDERING_CANDIDATE)));
+if(process.env.BLOOM_ROLLBACK_NETCODE_CANDIDATE)candidateModules.set('rollback-netcode',await readFile(resolve(process.env.BLOOM_ROLLBACK_NETCODE_CANDIDATE)));
+const candidateRendering=candidateModules.get('rendering')||null;
 const candidateOrder = process.env.BLOOM_RENDERING_CANDIDATE_ORDER || 'last';
 assert(['first', 'last'].includes(candidateOrder), 'BLOOM_RENDERING_CANDIDATE_ORDER must be first or last');
-const candidateIndex = candidateRendering ? (candidateOrder === 'first' ? 0 : Math.max(0, files.length - 1)) : -1;
+const candidateIndex = candidateModules.size ? (candidateOrder === 'first' ? 0 : Math.max(0, files.length - 1)) : -1;
 const report = { kind: 'Actual Chromium/SwiftShader WebGL, production RAF/deadlines; not phone hardware FPS', netcodeMode,
   viewport: { width: 360, height: 640, dpr: 2 }, warmupMs: 1500, holdMs,
   scope: 'Four-species initial army, disabled camps and stunned enemies. Public preview OFF control keeps its initial allocated scope. No physics, time or rendering override.', renderSubstages, results: [] };
 if (candidateRendering) report.developmentalRenderingFixture = { sha256: runtime.hash(candidateRendering), bytes: candidateRendering.length };
+if(candidateModules.size)report.developmentalModuleFixtures=Object.fromEntries([...candidateModules].map(([name,bytes])=>[name,{sha256:runtime.hash(bytes),bytes:bytes.length}]));
 let browser;
-function fixture(app, count, preview, useSilhouetteBatch) {
+function fixture(app, count, preview, useSilhouetteBatch, useRollbackPreviewFallback = false) {
   const silhouetteBatchAdapter = useSilhouetteBatch ? `
     globalThis.__meshSilhouetteBatch={calls:0};
     if(ctx?.withSilhouette&&typeof ctx.drawMeshSilhouette==='function'){
@@ -44,6 +49,11 @@ function fixture(app, count, preview, useSilhouetteBatch) {
       };
     }
   ` : '';
+  const rollbackPreviewFallbackAdapter = useRollbackPreviewFallback ? `
+    // Control arm for product code that expects the incremental-preview API.
+    // The published baseline has no method, so preserve its snapshot-rebase behavior.
+    BloomOwnedSDK.LocalInputPreview.prototype.continueFromCheckpoint=function(){return false};
+  ` : '';
   const actorInstrumentation = renderSubstages ? `
     globalThis.__actorStageProfile={enabled:false,insideArt:false,stageMs:0,stageCalls:0,unitMs:0,unitCalls:0,shadowMs:0,shadowCalls:0,artMs:0,artCalls:0,meshSubmitMs:0,meshSubmitCalls:0};
     const actorProfile=globalThis.__actorStageProfile;
@@ -54,6 +64,12 @@ function fixture(app, count, preview, useSilhouetteBatch) {
     const meshDrawCore=ctx.drawMesh;ctx.drawMesh=function(...args){if(!actorProfile.enabled||!actorProfile.insideArt)return meshDrawCore.apply(this,args);const start=performance.now();try{return meshDrawCore.apply(this,args)}finally{actorProfile.meshSubmitMs+=performance.now()-start;actorProfile.meshSubmitCalls++}};
     const artCore=RallyArt.draw;RallyArt.draw=function(...args){if(!actorProfile.enabled)return artCore.apply(this,args);const nested=actorProfile.insideArt,start=performance.now();actorProfile.insideArt=true;try{return artCore.apply(this,args)}finally{actorProfile.artMs+=performance.now()-start;actorProfile.artCalls++;actorProfile.insideArt=nested}};
   ` : '';
+  const previewInstrumentation=previewTrace?`
+    globalThis.__previewTrace={reconciles:[],inputs:[]};
+    const traceRow=(list,row)=>{list.push(row);if(list.length>40)list.shift()};
+    const reconcileCore=reconcilePreview;reconcilePreview=function(...args){const row={tick:bloomTick,force:args[0],mode:args[1],lastTick:previewState.lastTick,lastRevision:previewState.lastRevision,revision:presentation.revision,epoch,needsPrediction:previewState.needsPrediction,pending:previewState.capability?.pendingCount,ready:previewState.capability?.ready,localReady:localReady(),sessionReady:bloomSession?.ready,resimulating:bloomSession?.resimulating,playing,paused,modal:modalKind,hidden:document.hidden,dead:state.dead};const result=reconcileCore.apply(this,args);row.afterTick=previewState.lastTick;row.afterRevision=previewState.lastRevision;traceRow(globalThis.__previewTrace.reconciles,row);return result};
+    const inputCore=sampleInput;sampleInput=function(...args){const packet=inputCore.apply(this,args);traceRow(globalThis.__previewTrace.inputs,{tick:bloomTick,predict:packet?.predict,input:Array.from(packet?.input||[]),commands:packet?.commands?.length||0,manual:packet?.input?.[4]});return packet};
+  `:'';
   const source = `;(() => {
     const initialize=bloomInitialize;
     bloomInitialize=function(...args){CONFIG.netcode.mode=${JSON.stringify(netcodeMode)};const result=initialize(...args);
@@ -71,19 +87,21 @@ function fixture(app, count, preview, useSilhouetteBatch) {
     ${preview ? '' : `const enable=BloomOwnedSDK.LocalInputPreview.prototype.setEnabled;
     BloomOwnedSDK.LocalInputPreview.prototype.setEnabled=function(){return enable.call(this,false)};`}
     ${silhouetteBatchAdapter}
+    ${rollbackPreviewFallbackAdapter}
     ${actorInstrumentation}
+    ${previewInstrumentation}
     globalThis.__meshLoadRead=()=>({tick:BloomSimulation.tick,time:state.time,playing,paused,modal:modalKind,netcodeMode:BloomSimulation.session.profile.mode,
       friendly:state.units.filter(u=>u.team==='friendly'&&u.hp>0).length,
       render:ctx.stats(),preview:((p)=>({phase:p.phase,enabled:p.enabled,error:p.error,captureMs:p.captureMs,captureBytes:p.captureBytes,scope:p.scope,capability:p.capability}))(BloomSimulation.runtime.preview),
-      profiler:BloomDiagnostics.snapshot().runtime.profiler,actorSubstages:globalThis.__actorStageProfile?{...globalThis.__actorStageProfile}:null,silhouetteBatch:globalThis.__meshSilhouetteBatch?{...globalThis.__meshSilhouetteBatch}:null,fatal:BloomDiagnostics.fatal});
+      profiler:BloomDiagnostics.snapshot().runtime.profiler,actorSubstages:globalThis.__actorStageProfile?{...globalThis.__actorStageProfile}:null,silhouetteBatch:globalThis.__meshSilhouetteBatch?{...globalThis.__meshSilhouetteBatch}:null,previewTrace:globalThis.__previewTrace?structuredClone(globalThis.__previewTrace):null,fatal:BloomDiagnostics.fatal});
   })();`;
   assert(app.game.includes('/* MAIN_RUNTIME_TEST_HOOK */'));
   return runtime.response(app, app.game.replace('/* MAIN_RUNTIME_TEST_HOOK */', () => source));
 }
-async function installAssets(context, app, renderingCandidate) {
+async function installAssets(context, app, moduleOverrides) {
   await context.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
   for (const entry of app.config.modules) {
-    const bytes = renderingCandidate && entry.name === 'rendering' ? renderingCandidate : await readFile(resolve(app.root, 'vendor/upstream', entry.name + '.js'));
+    const bytes = moduleOverrides.get(entry.name) || await readFile(resolve(app.root, 'vendor/upstream', entry.name + '.js'));
     assert.equal(bytes.length, entry.bytes); assert.equal(runtime.hash(bytes), entry.sha256);
     await context.route(entry.url, route => route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: bytes }));
   }
@@ -101,21 +119,23 @@ try {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] });
   report.browser = browser.version();
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
-    const file = files[fileIndex], renderingCandidate = fileIndex === candidateIndex ? candidateRendering : null;
+    const file = files[fileIndex], moduleOverrides = fileIndex === candidateIndex ? candidateModules : new Map(), renderingCandidate = moduleOverrides.get('rendering') || null;
     const app = runtime.read(file), responses = {};
-    if (renderingCandidate) app.config.modules = app.config.modules.map(entry => entry.name === 'rendering'
-      ? { ...entry, bytes: renderingCandidate.length, sha256: runtime.hash(renderingCandidate), url: `https://rendering-candidate.invalid/${runtime.hash(renderingCandidate)}/rendering.js` } : entry);
-    for (const count of counts) for (const preview of previews) responses[`/${count}-${preview}`] = fixture(app, count, preview, !!renderingCandidate);
+    if (moduleOverrides.size) app.config.modules = app.config.modules.map(entry => {
+      const bytes=moduleOverrides.get(entry.name);return bytes?{...entry,bytes:bytes.length,sha256:runtime.hash(bytes),url:`https://${entry.name}-candidate.invalid/${runtime.hash(bytes)}/${entry.name}.js`}:entry;
+    });
+    const useRollbackPreviewFallback=candidateModules.has('rollback-netcode')&&fileIndex!==candidateIndex;
+    for (const count of counts) for (const preview of previews) responses[`/${count}-${preview}`] = fixture(app, count, preview, !!renderingCandidate,useRollbackPreviewFallback);
     const server = createServer(runtime.serve(responses));
     await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
     try {
       for (const count of counts) for (const preview of previews) {
         const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
-        const errors = [], row = { file, renderingVariant:renderingCandidate?'candidate':'pinned', netcodeMode, silhouetteBatchFastPath:!!renderingCandidate, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
-          renderingSHA256: app.config.modules.find(entry => entry.name === 'rendering').sha256, sdk: app.config.distCommit, count, preview, errors };
+        const errors = [], row = { file, renderingVariant:moduleOverrides.size?'candidate':'pinned', candidateModules:[...moduleOverrides.keys()], rollbackPreviewMode:moduleOverrides.has('rollback-netcode')?'incremental-confirmed-fork':useRollbackPreviewFallback?'snapshot-rebase-control':'production', netcodeMode, silhouetteBatchFastPath:!!renderingCandidate, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
+          renderingSHA256: app.config.modules.find(entry => entry.name === 'rendering').sha256, rollbackNetcodeSHA256:app.config.modules.find(entry=>entry.name==='rollback-netcode').sha256, sdk: app.config.distCommit, count, preview, errors };
         report.results.push(row);
         try {
-          await installAssets(context, app, renderingCandidate);
+          await installAssets(context, app, moduleOverrides);
           const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); page.setDefaultTimeout(30000);
           await page.goto(`http://127.0.0.1:${server.address().port}/${count}-${preview}`, { waitUntil: 'domcontentloaded' });
           await page.waitForFunction(() => globalThis.BloomSimulation?.runtime?.ready);

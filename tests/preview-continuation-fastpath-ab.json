@@ -1,0 +1,46 @@
+{
+  "format": "BLOOM preview continuation A/B v1",
+  "at": "2026-10-10",
+  "kind": "Actual Chromium 153.0.8010.12 + SwiftShader, WebGL production RAF/deadlines; not phone hardware or network certification",
+  "conditions": {
+    "friendlyUnits": [500, 1000],
+    "netcodeMode": "lockstep",
+    "preview": "on",
+    "viewport": { "width": 360, "height": 640, "dpr": 2 },
+    "warmupMs": 1500,
+    "holdMs": 6000,
+    "orderReversed": true,
+    "physicsOrRenderingOverride": false
+  },
+  "sameProduct": {
+    "budmoriSourceSha256": "237c2d66d466fce8f1fbdd13f3ce3b4f8ab8727cee4cc4e3ab7c37a1a8c0bb40",
+    "gamekitSourceCommit": "812a6e231036cd366e2ce46e0afebf4db50ee001",
+    "gamekitDistCommit": "c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",
+    "rollbackNetcodeSha256": "cd0e0a316882a0ce56c4ea656d4e1eac2fae22b0f1d91484191d776fd215a827",
+    "control": "Same published bundle with a benchmark-only continueFromCheckpoint()=false shim to exercise the previous snapshot-rebase behavior. It is not a separate historical SDK binary."
+  },
+  "candidateFirstRunTps": {
+    "snapshotRebaseControl": { "500": 2.7803, "1000": 1.0169 },
+    "incrementalConfirmedFork": { "500": 4.0161, "1000": 2.0867 }
+  },
+  "reverseOrderRun": {
+    "incrementalConfirmedFork": {
+      "500": { "tps": 4.8390, "scopeInstalls": 8, "scopeInstallMs": 1087.5, "continuedCheckpoints": 24 },
+      "1000": { "tps": 1.4178, "scopeInstalls": 7, "scopeInstallMs": 2293.1, "continuedCheckpoints": 7 }
+    },
+    "snapshotRebaseControl": {
+      "500": { "tps": 2.3732, "scopeInstalls": 16, "scopeInstallMs": 2389.8, "continuedCheckpoints": 0 },
+      "1000": { "tps": 1.0468, "scopeInstalls": 10, "scopeInstallMs": 2947.3, "continuedCheckpoints": 0 }
+    }
+  },
+  "publishedPinRun": {
+    "override": false,
+    "gamekitDistCommit": "c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",
+    "rollbackNetcodeSha256": "cd0e0a316882a0ce56c4ea656d4e1eac2fae22b0f1d91484191d776fd215a827",
+    "results": {
+      "500": { "effectiveTps": 4.3008, "scopeInstalls": 8, "scopeInstallMs": 1185.5 },
+      "1000": { "effectiveTps": 1.7442, "scopeInstalls": 5, "scopeInstallMs": 1578.2 }
+    }
+  },
+  "interpretation": "Both run orders improved effective TPS in the A/B fixture, and the reversed run reduced full scope installs/CPU time. The same direction was observed with the actually pinned published dist. 500/1000 unit worlds still remain below the 10TPS target; this is not a mobile GPU or real-RTC load result."
+}

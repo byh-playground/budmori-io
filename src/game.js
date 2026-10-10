@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@03498f6c2d51c806149d134e98d48e14d3ac81b7',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@812a6e231036cd366e2ce46e0afebf4db50ee001',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -8637,7 +8637,7 @@ function decodeGraphJob(ownedBytes){return graphJob(decodeGraphSteps(ownedBytes)
 globalThis.BloomLiveCodec={encode:encodeGraph,decode:decodeGraph,encodeJob:encodeGraphJob,decodeJob:decodeGraphJob};})();
 'use strict';
 /* One authority, one ordered tick stream. Rendering/persistence never decide combat. */
-let bloomTick=0,bloomSession=null,bloomLoop=null,bloomEventSequence=0,bloomInputPending=0,bloomLastFrameInputs=[];
+let bloomTick=0,bloomSession=null,bloomLoop=null,bloomEventSequence=0,bloomInputPending=0,bloomLastFrameInputs=[],bloomLastFrameContinuityKey='';
 const bloomPendingEffects=new Map();
 let bloomCurrentEffects=[],bloomEffectDelivered=0,bloomPresentationThrough=-1;
 'use strict';
@@ -11772,7 +11772,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@7828808a04be8f50e42d6ad0680e75b9520040e4/assets/fonts/noto-sans-kr-700-v1.json",version:"7828808a04be8f50e42d6ad0680e75b9520040e4",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0/assets/fonts/noto-sans-kr-700-v1.json",version:"c3176df8baf4641c5d07ca3e61d5f9339c6b6bd0",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12442,6 +12442,11 @@ function bloomValidateCommand(a){if(!a||a.version!==1||!Object.hasOwn(bloomComma
  if(a.type==='rarityReserveLock'&&(!friendlyTypes.includes(a.unitType)||!Number.isInteger(a.grade)||a.grade<0||a.grade>5||!Number.isSafeInteger(a.count)||a.count<0))throw new TypeError('Reserve lock command');
  return a;
 }
+function bloomPreviewRemoteContinuityKey(frames){
+ const local=WorldPlayers.localPlayerId,bytesKey=bytes=>{let key='';for(const byte of bytes||[])key+=byte.toString(16).padStart(2,'0');return key},parts=[];
+ for(const frame of frames){if(frame.playerId===local)continue;const commands=[...(frame.commands||[])].sort((a,b)=>(a.sequence??0)-(b.sequence??0)).map(command=>`${command.sequence??''}:${command.executeTick??''}:${bytesKey(command.payload)}`).join(',');parts.push(`${frame.playerId.length}:${frame.playerId}:${bytesKey(frame.input)}:${commands}`)}
+ return parts.join('|');
+}
 function bloomRunTick(context){
  bloomSnapshotStore.invalidate();
  if(context.tick!==bloomTick||context.tickRate!==CONFIG.sim.tickRate)throw new TypeError('BLOOM tick boundary');
@@ -12452,7 +12457,7 @@ function bloomRunTick(context){
   for(const c of commands){const order=commandOrder(c);if(c.executeTick!==bloomTick||!Number.isSafeInteger(order)||order<=sequence)throw new TypeError('Command order');sequence=order;validated.push({player,input,command:bloomValidateCommand(BloomOwnedSDK.binaryCodec.decode(c.payload))})}inputs.set(frame.playerId,input);
  }
  for(const p of WorldPlayers.all())if(p.lifecycle==='active'&&!inputs.has(p.playerId))throw new TypeError('Missing participant input');
- if(!speculative)bloomLastFrameInputs=frames.map(frame=>({playerId:frame.playerId,input:frame.input.slice()}));
+ if(!speculative){bloomLastFrameInputs=frames.map(frame=>({playerId:frame.playerId,input:frame.input.slice()}));bloomLastFrameContinuityKey=bloomPreviewRemoteContinuityKey(frames)}
  bloomCurrentEffects=[];bloomEventSequence=0;bloomInTick=true;
  const presentEffects=effects,presentTraces=permanentTraces,presentImpacts=sproutImpacts;effects=[];permanentTraces=[];sproutImpacts=[];
  try{for(const c of validated)PlayerCommands.apply(c.player,c.command,c.input);
@@ -12637,7 +12642,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'03498f6c2d51c806149d134e98d48e14d3ac81b7',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'812a6e231036cd366e2ce46e0afebf4db50ee001',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -12803,7 +12808,7 @@ function bloomMainRuntime() {
  const driver={scheduler:null,wasActive:false,inputReady:false,gapTimestamp:null};
  const inputCommands=[];
  const previewState={phase:'preparing',scope:null,pending:null,capability:null,runtime:null,lastTick:-1,lastRevision:-1,lastEpoch:-1,input:null,needsPrediction:false,captureMs:0,captureBytes:0,heapBefore:null,error:null};
- const previewFacade={get enabled(){return previewState.phase==='ready'&&localReady()&&!!previewState.scope?.initialized&&!!previewState.capability?.enabled},observe(input,metadata){previewState.needsPrediction=true;safeReconcilePreview(true);return previewState.capability?.observe(input,{...metadata,observedAtMs:metadata.timeMs,timeMs:bloomPresentationNow()})},commit(capture,now){return previewState.capability?.commit(capture,now)},cancelObservation(now){previewState.needsPrediction=false;previewState.capability?.cancelObservation(now)},clear(){previewState.lastTick=-1;previewState.capability?.clear()}};
+ const previewFacade={get enabled(){return previewState.phase==='ready'&&localReady()&&!!previewState.scope?.initialized&&!!previewState.capability?.enabled},observe(input,metadata){previewState.needsPrediction=true;safeReconcilePreview(true);return previewState.capability?.observe(input,{...metadata,continuationKey:bloomLastFrameContinuityKey,observedAtMs:metadata.timeMs,timeMs:bloomPresentationNow()})},commit(capture,now){return previewState.capability?.commit(capture,now)},cancelObservation(now){previewState.needsPrediction=false;previewState.capability?.cancelObservation(now)},clockGap(){previewState.capability?.clockGap?.()},clear(){previewState.lastTick=-1;previewState.capability?.clear()}};
  const MAX_RESUME_BACKLOG_TICKS=4;
  const ui={phase:uiPhase.idle,viewSignature:'',subscriptions:[]};
  let inputOverride=null;
@@ -12834,27 +12839,29 @@ function bloomMainRuntime() {
   previewState.heapBefore=performance.memory?.usedJSHeapSize??null;
   previewState.pending=Promise.resolve(BloomSimulationScopeModule.createSimulationScope({sourceURL:BloomGameSourceURL,sourceIntegrity:BloomGameSourceIntegrity,references:BloomModuleReferences})).then(scope=>{if(phase===runtimePhase.closed){scope.dispose();return}previewState.scope=scope;previewState.phase='ready';previewState.lastTick=-1;}).catch(error=>{if(phase===runtimePhase.closed)return;previewState.phase='failed';previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview.scope'})});
  }
+ function capturePreviewSnapshot(){const started=performance.now(),snapshot=bloomAdapter.save();previewState.captureMs+=performance.now()-started;previewState.captureBytes+=snapshot.byteLength;return snapshot}
  function reconcilePreview(force=false,mode='continuous'){
   if(!previewState.scope||!presentation.runtime||phase!==runtimePhase.ready)return false;
   if(bloomSession?.resimulating||!bloomSession?.ready){previewState.capability?.setEnabled(false);previewState.lastTick=-1;return false}
   if(previewState.runtime!==presentation.runtime||previewState.lastEpoch!==epoch){previewState.capability?.dispose();previewState.runtime=presentation.runtime;previewState.lastTick=-1;
-   previewState.capability=new BloomOwnedSDK.LocalInputPreview({presentation:presentation.runtime,stepMs:1000/CONFIG.sim.tickRate,maxPendingInputs:4,maxFutureTicks:4,maxAgeMs:Math.max(250,4000/CONFIG.sim.tickRate),cloneSnapshot:bytes=>bytes.slice(),
+   previewState.capability=new BloomOwnedSDK.LocalInputPreview({presentation:presentation.runtime,stepMs:1000/CONFIG.sim.tickRate,maxPendingInputs:4,maxFutureTicks:4,maxAgeMs:Math.max(250,4000/CONFIG.sim.tickRate),cloneSnapshot:bytes=>bytes.slice(),captureSnapshot:capturePreviewSnapshot,
     createFork:bytes=>{previewState.scope.install(bytes,{tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});return previewState.scope},
     readEntities:scope=>{const selected=[...presentation.maps.unit.entries()].filter(([,entry])=>WorldPlayers.forEntity(entry.source)?.playerId===WorldPlayers.localPlayerId);const models=new Map(scope.models(selected.map(([id])=>id)).map(dto=>[dto.id,dto.source]));return selected.flatMap(([id,entry])=>models.has(id)?[{id:entry.id,generation:entry.generation,type:BloomUnitRender,source:models.get(id)}]:[])}
    });mode='reset';
   }
   if(!localReady()||['interrupted','disconnected','recovering','joining','membership'].includes(bloomSession.status)){previewState.capability.setEnabled(false);previewState.lastTick=-1;return false}
   previewState.capability.setEnabled(true);
-  if(!force&&!previewState.needsPrediction&&!previewState.capability.pendingCount&&previewState.scope.initialized){previewState.lastTick=-1;return true}
-  if(previewState.capability.ready&&previewState.lastTick===bloomTick&&previewState.lastRevision===presentation.revision&&previewState.lastEpoch===epoch)return true;
-  const started=performance.now(),snapshot=bloomAdapter.save();previewState.captureMs+=performance.now()-started;previewState.captureBytes+=snapshot.byteLength;
+  if(!force&&!previewState.needsPrediction&&!previewState.capability.pendingCount&&previewState.scope.initialized)return true
+  if(previewState.lastTick===bloomTick&&previewState.lastRevision===presentation.revision&&previewState.lastEpoch===epoch)return true;
+  const snapshot=capturePreviewSnapshot();
   const metadata=bloomSession.localInputState;
   previewState.scope.configure({tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});
-  previewState.capability.reconcile({snapshot,input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata.executedCommandSequence??undefined});
+  previewState.capability.reconcile({snapshot,input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,continuationKey:bloomLastFrameContinuityKey,timeMs:bloomPresentationNow(),mode:previewState.lastRevision>=0&&presentation.revision!==previewState.lastRevision?'reset':mode,confirmedCommandSequence:metadata.executedCommandSequence??undefined});
   previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;return true;
  }
  function safeReconcilePreview(force=false){if(previewState.phase==='failed')return false;try{return reconcilePreview(force)}catch(error){previewState.capability?.setEnabled(false);previewState.phase='failed';previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview'});return false}}
- function observeInputFrame(now=performance.now()){if(phase!==runtimePhase.ready)return;preparePreviewScope();safeReconcilePreview();bloomLoop?.observeInput(now)}
+ function continuePreview(){const capability=previewState.capability;if(!capability||previewState.phase!=='ready'||!previewState.needsPrediction&&!capability.pendingCount)return false;const metadata=bloomSession.localInputState,continued=capability.continueFromCheckpoint({input:metadata.replayInput??metadata.executedInput??bloomEncodeInput({x:0,y:0,manual:false,suspended:false}),revision:presentation.revision,tick:bloomTick,epoch:bloomSession.epoch??0,continuationKey:bloomLastFrameContinuityKey,timeMs:bloomPresentationNow(),confirmedCommandSequence:metadata.executedCommandSequence??undefined});if(!continued)return false;previewState.needsPrediction=false;previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;return true}
+ function observeInputFrame(now=performance.now()){if(phase!==runtimePhase.ready)return;preparePreviewScope();bloomLoop?.observeInput(now)}
  function enqueueCommand(type,args={}){const command=bloomValidateCommand({version:1,type,...args});inputCommands.push(BloomOwnedSDK.binaryCodec.encode(command));bloomInputPending++;return true}
  const fail=(error,kind='simulation.main')=>BloomDiagnostics.report(error,{kind,fatal:true});
  function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld:persistence.soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
@@ -12880,7 +12887,7 @@ function bloomMainRuntime() {
   bloomInputPending=0;
   const presentAt=performance.now(),capturedEpoch=presentation.epoch;bloomPresent(Math.min(bloomSession.confirmedTick,bloomTick-1));
   if(ui.phase===uiPhase.ready&&!globalThis.BLOOM_HEADLESS){if(presentation.epoch===capturedEpoch)capturePresentation();maybeAbilityPrompt()}
-  safeReconcilePreview();
+  if(!continuePreview())safeReconcilePreview();
   metrics.presentationMs=performance.now()-presentAt;metrics.maxPresentationMs=Math.max(metrics.maxPresentationMs,metrics.presentationMs);
   // Confirmed UI effects can enqueue a follow-up command (for example an
   // ability draft). Persist only after that command reaches its SDK boundary.
@@ -12901,19 +12908,19 @@ function bloomMainRuntime() {
    const collapsedGap=driver.gapTimestamp===now;driver.gapTimestamp=null;
    if(running!==driver.wasActive){rebaseDriverClock(now);driver.wasActive=running}
    if(!running){if(bloomInputPending&&!discovering())advanceSuspended();bloomLoop.resetTiming()}
-   else if(collapsedGap){bloomLoop.resetTiming();bloomLoop.flushInput(now)}
+   else if(collapsedGap){bloomLoop.resetTiming(false);bloomLoop.flushInput(now)}
    else bloomLoop.pulse(now);
    schedule();
   }catch(error){fail(error)}
  }
- driver.scheduler=BloomOwnedSDK.createDeadlineScheduler({getIntervalMs:()=>1000/CONFIG.sim.tickRate,pulse:pump,maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,onGap:({timestamp})=>{driver.gapTimestamp=timestamp}});
+ driver.scheduler=BloomOwnedSDK.createDeadlineScheduler({getIntervalMs:()=>1000/CONFIG.sim.tickRate,pulse:pump,maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,onGap:({timestamp})=>{driver.gapTimestamp=timestamp;previewFacade.clockGap()}});
  function boundary(options){
   if(![runtimePhase.ready,runtimePhase.initializing].includes(phase))throw new Error('Simulation is not available');
   // Selection validation happens before retiring the current loop or waiters.
   const next=options?.adoptSession||bloomNewSession(options);
   if(options?.adoptSession){if(next!==bloomSession||next.tick!==bloomTick)throw new Error('Room authority boundary mismatch')}
   stopDriver();const superseded=persistence.pending;persistence.pending=[];for(const p of superseded){if(p.kind==='save')p.resolve(false);else p.reject(new Error('Save superseded by session boundary'))}
-  if(online())persistence.soloWorld=false;epoch++;persistence.lastTick=bloomTick;ui.viewSignature='';driver.wasActive=false;metrics.advanceStatus='ready';driver.scheduler.rebase();previewFacade.clear();
+  if(online())persistence.soloWorld=false;epoch++;bloomLastFrameInputs=[];bloomLastFrameContinuityKey='';persistence.lastTick=bloomTick;ui.viewSignature='';driver.wasActive=false;metrics.advanceStatus='ready';driver.scheduler.rebase();previewFacade.clear();
   let tickStart=0;
   bloomLoop=BloomOwnedSDK.createLoop({session:next,inputPreview:previewFacade,backlogPolicy:'retain',maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,
    beforeFrame(){tickStart=performance.now()},getInput:sampleInput,
