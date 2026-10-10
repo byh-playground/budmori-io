@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-10",
+  "purpose": "Actual 2-peer WebRTC lockstep soak; isolate local input-preview cost under a 500-unit shared-world fixture",
+  "source": {
+    "gameSha256": "dd43c045fd29f74b6ddd992d91a116d629b2c2a6b6cc002516616bbe403a9d2d",
+    "gamekitSourceCommit": "13211fc0562b20d745e6a83d9f7ef2d7ca19fce0",
+    "gamekitDistCommit": "ec9870ea3f73f27e654c22c9566fa20d88c45a0d"
+  },
+  "environment": "Headless Chromium / SwiftShader WebGL, two independent tabs, local signed relay fixture, actual WebRTC data channels, 500 static test units plus players, 8-second real-time hold",
+  "method": "Sequential single run per condition on the same game/SDK source. Preview-off is a test-response-only override. Both conditions keep the public session in lockstep and verify same-tick canonical checkpoint bytes across peers. No public relay, STUN/NAT, Android hardware or rollback-mode RTC.",
+  "results": {
+    "previewOn": {
+      "effectiveTps": [9.65, 9.40],
+      "targetTps": 10,
+      "scopeInstallsDuringHold": [26, 31],
+      "scopeInstallCpuMsDuringHold": [1018.2, 1289.5],
+      "scopeRestoreReusesDuringHold": [0, 0],
+      "previewCaptureMsDuringHold": [334.0, 367.9],
+      "previewCaptureBytesDuringHold": [9651137, 11134930],
+      "tickMsP50P95": [[11.7, 76.5], [14.0, 78.8]],
+      "presentationMsP50P95": [[1.0, 6.4], [1.1, 8.4]],
+      "canonicalCheckpoint": {
+        "tick": 189,
+        "hash": 3389680815,
+        "bytes": 372267,
+        "equalAcrossPeers": true
+      },
+      "rtcConnectedBothWays": true
+    },
+    "previewOff": {
+      "effectiveTps": [10.05, 10.05],
+      "targetTps": 10,
+      "scopeInstallsDuringHold": [0, 0],
+      "scopeInstallCpuMsDuringHold": [0, 0],
+      "tickMsP50P95": [[8.0, 15.2], [10.4, 20.5]],
+      "presentationMsP50P95": [[12.3, 24.1], [1.1, 4.9]],
+      "canonicalCheckpoint": {
+        "tick": 237,
+        "hash": 2723090497,
+        "bytes": 371135,
+        "equalAcrossPeers": true
+      },
+      "rtcConnectedBothWays": true
+    }
+  },
+  "previousFullValidationPreviewOn": {
+    "gameSha256": "a8bae4c9f26199fc5a76e44ddc13d20a84e9bb3ae3bfa47126a7728a214b15ad",
+    "effectiveTps": [7.18, 7.30],
+    "scopeInstallsDuringHold": [21, 25],
+    "scopeInstallCpuMsDuringHold": [2651.3, 3137.0],
+    "measurement": "Earlier single run with the same 500-unit two-peer fixture and GameKit dist, before the prediction-only fast install path."
+  },
+  "limitations": [
+    "One sequential sample per condition; not a reversed-order or statistically repeated A/B.",
+    "The headless two-tab RAF counter advanced only 1-2 frames during the hold and is not a usable mobile FPS result.",
+    "Preview-on remains below the 10 TPS target; this does not justify enabling rollback.",
+    "Preview-off is a diagnostic control, not a proposed product setting."
+  ]
+}
