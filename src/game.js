@@ -12052,6 +12052,12 @@ const WorldSimulation=globalThis.WorldSimulation=Object.freeze({
   regrowCamps(dt);rarityRivalTick(dt);rarityMaintain(dt);wildRingCull();spatialTick();
   uiClock+=dt;saveClock+=dt;if(saveClock>=CONFIG.render.saveInterval){saveClock=0;bloomPersistenceRequested=true}
  },
+ stepLocalPreview(dt,inputs,playerId){
+  dt=Math.min(CONFIG.qa.maxStep,Math.max(0,dt));if(!dt)return;
+  const player=WorldPlayers.get(playerId);state.time+=dt;
+  if(player?.lifecycle==='active'){PlayerLifecycle.tick(player);PlayerController.move(player,inputs.get(playerId)||{x:0,y:0},dt);PlayerCombat.update(player,dt);PlayerController.finish(player,dt)}
+  uiClock+=dt;
+ },
  projectiles(dt){for(let i=events.length-1;i>=0;i--){const e=events[i];if(e.time>state.time)continue;events.splice(i,1);const u=idMap.get(e.unit),t=idMap.get(e.target);if(u?.hp>0&&t?.hp>0){let a=random()*Math.PI*2,r=e.spread*Math.sqrt(random());projectile(u,t,e.amount,e.splash,{aimX:t.x+Math.cos(a)*r,aimY:t.y+Math.sin(a)*r,point:!!e.spread})}}
  for(let i=projectiles.length-1;i>=0;i--){const p=projectiles[i];if(!p)break;if(p.finished){discardProjectile(i);continue;}const t=idMap.get(p.target);if(p.arcFlight){stepGroundArc(p,dt);if(p.finished)discardProjectile(i);continue}if(p.abilityShot){stepAbilityProjectile(p,dt);if(p.finished)discardProjectile(i);continue}if(p.moaSeed){if(!t||t.hp<=0||!factionsHostile(projectileOwner(p),t)||lockedParcelAt(t.x,t.y)!==-1){discardProjectile(i);continue}p.aimX=t.x;p.aimY=t.y;const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=Math.min(d,p.speed*dt),nx=p.x+(d?dx/d*travel:0),ny=p.y+(d?dy/d*travel:0),hit=segmentCircle(p.x,p.y,nx,ny,t.x,t.y,radius(t)+p.shotRadius);if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,nx,ny)){discardProjectile(i);continue}p.x=nx;p.y=ny;p.progress+=travel;if(hit){impact(p);discardProjectile(i)}else if(p.progress>(p.range||CONFIG.moa.rangedReach)*2){discardProjectile(i)}continue}if(p.dodgeable){const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=Math.min(d,p.speed*dt),nx=p.x+(d?dx/d*travel:0),ny=p.y+(d?dy/d*travel:0);const hit=t?.hp>0&&segmentCircle(p.x,p.y,nx,ny,t.x,t.y,radius(t)+CONFIG.control.shotRadius);if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,nx,ny)){discardProjectile(i);continue}p.x=nx;p.y=ny;p.progress+=travel;if(hit||d<=travel){if(hit)impact(p);discardProjectile(i)}continue}if(!p.point&&t?.hp>0){p.aimX=t.x;p.aimY=t.y}const dx=p.aimX-p.x,dy=p.aimY-p.y,d=Math.hypot(dx,dy),travel=p.speed*dt;if(typeof projectileWallBlocked==='function'&&projectileWallBlocked(p,p.x+(d?dx/d*Math.min(d,travel):0),p.y+(d?dy/d*Math.min(d,travel):0))){discardProjectile(i);continue}p.progress+=travel;if(d<=travel+CONFIG.combat.projectileHitRadius){p.x=p.aimX;p.y=p.aimY;impact(p);discardProjectile(i)}else{p.x+=dx/d*travel;p.y+=dy/d*travel}}
  }
@@ -12462,7 +12468,7 @@ function bloomRunTick(context){
  const presentEffects=effects,presentTraces=permanentTraces,presentImpacts=sproutImpacts;effects=[];permanentTraces=[];sproutImpacts=[];
  try{for(const c of validated)PlayerCommands.apply(c.player,c.command,c.input);
   const solo=WorldPlayers.all()[0],run=BloomSimulation.sessionConfig.mode==='online'||solo&&!inputs.get(solo.playerId)?.suspended;
-  if(run)WorldSimulation.step(CONFIG.sim.fixedStep,inputs);
+  if(run){if(speculative)WorldSimulation.stepLocalPreview(CONFIG.sim.fixedStep,inputs,WorldPlayers.localPlayerId);else WorldSimulation.step(CONFIG.sim.fixedStep,inputs)}
   for(const f of permanentTraces)bloomEmit('permanentTrace',[f]);for(const f of sproutImpacts)bloomEmit('sproutImpact',[f]);if(!speculative)bloomPendingEffects.set(bloomTick,bloomCurrentEffects);bloomTick++;
  }finally{bloomInTick=false;effects=presentEffects;permanentTraces=presentTraces;sproutImpacts=presentImpacts}
 }

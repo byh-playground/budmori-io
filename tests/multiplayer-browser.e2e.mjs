@@ -18,8 +18,10 @@ import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-previe
 // public relay, STUN service, user identity, or real account credential is used.
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1'||process.platform==='win32'&&process.env.BUDMORI_HEADED!=='0';
+const loadUnits=Number(process.env.BUDMORI_LOAD_UNITS||0);
+if(!Number.isSafeInteger(loadUnits)||loadUnits<0||loadUnits>1000)throw new Error('BUDMORI_LOAD_UNITS must be 0..1000');
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
- environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF`,
+ environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF; fixtureUnits=${loadUnits}`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
@@ -67,6 +69,7 @@ const fixture=String.raw`
    const point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});
    if(!target)throw Error('Initial durable encounter has no safe position');
    target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaDurable=true;target.qaRegion=player.startRegion;state.camps[0].remaining++;
+   const types=['swordsman','shellbug','dandelion','archer'];for(let i=0;i<${loadUnits};i++){const angle=i*2.399963229728653,distance=40+Math.sqrt(i)*3,unit=spawn(types[i%types.length],'friendly',m.x+Math.cos(angle)*distance,m.y+Math.sin(angle)*distance,{rarityGrade:1});if(!unit)throw Error('Multiplayer load fixture spawn failed at '+i);unit.ownerId=BloomSimulation.ownerId;unit.stun=1e6;unit.aggroAt=unit.wanderAt=state.time+1e6}
    damage(m,target,17,'ranged');const flight=launchAbilityShot(target,11,{owner:m,start:{x:m.x-200,y:m.y-200,z:spatialHeight(m)+160},speed:1,range:1800,homing:true});flight.qaAdmissionFlight=true;
    rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();
   }return result;
@@ -85,7 +88,7 @@ const fixture=String.raw`
  qa.inspect=()=>{
   const session=BloomSimulation.session,local=WorldPlayers.local(),stats=local?currentMoaStats():null;
   return{phase:PublicSession.phase,tick:BloomSimulation.tick,time:state.time,sessionId:session.sessionId,localId:session.localPlayerId,coordinator:session.coordinatorId,epoch:session.epoch,roster:[...session.players],ready:session.ready,closed:session.closed,status:session.status,failure:session.failure??null,
-   transitionHistory:qa.transitions,connection:PublicSession.inspect(),metrics:session.metrics,mode:BloomSimulation.sessionConfig.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
+   transitionHistory:qa.transitions,connection:PublicSession.inspect(),metrics:session.metrics,mode:BloomSimulation.sessionConfig.mode,netcodeMode:session.profile.mode,persistence:BloomSimulation.runtime.metrics.persistenceAvailable,paused,modal:modalKind,frames:__army.performance.frames,performance:{render:{...__army.performance,...ctx.stats()},terrain:{...ThemedTerrain.stats,cacheSize:themedTileCache.size},unitCount:state.units.length,view:{...view},canvas:{width:canvas.width,height:canvas.height},boot:globalThis.__qaBootTimeline,uploads:globalThis.__qaRenderUploads,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()}},backend:document.querySelector('#view').dataset.rendererBackend,fatal:BloomDiagnostics.fatal,diagnostics:BloomDiagnostics.fatal?BloomDiagnostics.snapshot():undefined,
    localView:local?{id:WorldView.player().playerId,leader:WorldView.leader().id,hudLeader:healthJuice.hud?.source?.id,level:stats.level,hp:stats.hp,army:ruiSummary().total}:null,
    players:WorldPlayers.all().map(p=>({id:p.playerId,owner:p.accountOwner,lifecycle:p.lifecycle,x:p.leader.x,y:p.leader.y,hp:p.leader.hp,level:WorldPlayers.data(p).campaign.abilities.level,chosen:WorldPlayers.data(p).campaign.abilities.chosen,minerals:WorldPlayers.data(p).minerals,army:rarityOwnedCount(p.accountOwner)})),
    combat:WorldPlayers.all().map(p=>({id:p.playerId,region:p.startRegion,...qa.combat.get(p.playerId),damage:state.units.filter(u=>u.qaRegion===p.startRegion).reduce((sum,u)=>sum+u.maxHp-u.hp,0)})),
@@ -219,6 +222,19 @@ try{
  assert.equal(pair[0].durable[0].id,initial.durable[0].id);assert(pair[0].durable[0].hp<=initial.durable[0].hp);assert.deepEqual(pair[0].admissionFlights,initial.admissionFlights,'The specific slow physical flight survives late admission');
  assert.equal(player(pair[0],guestId).level,1);assert.equal(player(pair[0],guestId).army,0);
  record('Second browser tab joins while the first moves and combat remains in flight');
+ if(loadUnits){
+  const holdMs=Number(process.env.BUDMORI_LOAD_HOLD_MS||8000);assert(Number.isSafeInteger(holdMs)&&holdMs>=1000&&holdMs<=30000,'BUDMORI_LOAD_HOLD_MS must be 1000..30000');
+  const before=await Promise.all([host,guest].map(read)),started=performance.now();
+  await host.keyboard.down('KeyD');await guest.keyboard.down('KeyS');await new Promise(resolve=>setTimeout(resolve,holdMs));await host.keyboard.up('KeyD');await guest.keyboard.up('KeyS');
+  const after=await Promise.all([host,guest].map(read)),elapsedMs=performance.now()-started;
+  for(let i=0;i<2;i++){const state=after[i];assert(!state.fatal&&!state.failure,JSON.stringify(state));assert.equal(state.roster.length,2);assert.equal(state.backend,'WebGL');assert(state.tick>before[i].tick);assert(state.frames>before[i].frames)}
+  assert(after.every(state=>state.input.some(input=>input.playerId===hostId)&&state.input.some(input=>input.playerId===guestId)),'Both peers continue submitting actual inputs under load');
+  report.multiplayerLoad={units:loadUnits,holdMs,elapsedMs:Math.round(elapsedMs),mode:after[0].netcodeMode,peers:after.map((state,index)=>({page:index+1,ticks:state.tick-before[index].tick,frames:state.frames-before[index].frames,effectiveTPS:Math.round((state.tick-before[index].tick)*1000/elapsedMs*100)/100,effectiveFPS:Math.round((state.frames-before[index].frames)*1000/elapsedMs*100)/100,renderMs:state.performance.render.renderMs,renderP95Ms:state.performance.render.p95Ms,unitCount:state.performance.unitCount,fatal:state.fatal}))};
+  await checkpoint([host,guest],'loaded-two-player-world');
+  const transport=await Promise.all([host,guest].map(page=>evaluate(page,async()=>{const room=__sharedBrowser.rooms.at(-1),connections=[];for(const[id,pc]of room.peerConnections){const channels=[];(await pc.getStats()).forEach(row=>{if(row.type==='data-channel')channels.push({label:row.label,state:row.state,bytesSent:row.bytesSent,bytesReceived:row.bytesReceived})});connections.push({id,native:pc instanceof RTCPeerConnection,state:pc.connectionState,channels})}return connections})));
+  assert.equal(transport.reduce((sum,connections)=>sum+connections.length,0),2);for(const connections of transport)for(const pc of connections){assert(pc.native&&pc.state==='connected');assert(pc.channels.some(channel=>channel.bytesSent>0&&channel.bytesReceived>0))}
+  report.multiplayerLoad.transport=transport;record('Real two-peer RTC loaded-world soak preserves live inputs and canonical checkpoint equality',report.multiplayerLoad);report.status='PASS';
+ }else{
  await checkpoint([host,guest],'late-join-two');
  await focusAndResume(guest);
  await evaluate(host,()=>{__sharedBrowser.holdRTC=true});
@@ -304,6 +320,7 @@ try{
  await ticks(remaining,10);await checkpoint(remaining,'coordinator-left');
  const successor=await read(guest);assert.equal(player(successor,hostId).lifecycle,'left');
  await screenshot(guest,'multiplayer-successor-world.png');record('Graceful coordinator leave forgets resume data and remaining players keep the same ticking world');
+ }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpectedNetwork,[]);report.status='PASS';
 }catch(error){
  report.status='FAIL';report.failure=error.stack||String(error);process.exitCode=1;console.error(error);
