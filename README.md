@@ -75,6 +75,8 @@ scope는 검증된 module Blob과 `src/game.js` 원본 SRI를 사용하며 nativ
 3. 밸런스·타이밍·규모·표현 한도는 해당 `CONFIG`·Definition·정책 설정에서 관리합니다. 같은 규칙을 여러 위치에 하드코딩하거나 서로 다른 구현으로 복제하지 않습니다.
 4. 공통 세계관은 [bloom-world](https://github.com/byh-playground/bloom-world)를 참고하고, 게임 고유 규칙은 이 게임에서 관리합니다.
 
+공통 camera/HUD anchor 출력 재사용과 진단 visibility 소유권 정리의 범위·비용 표본·미검증 범위는 [소비 비용 기록](docs/consumer-costs.md)에 정리했습니다. 세션 전체 blocking 오류 수 의미는 유지합니다.
+
 ### 공통 표시 모델
 
 그려지는 타입은 GameKit `RenderObject`의 `renderSchema`를 사용합니다. 스키마는 `"roll.progress": this.CYCLE`처럼 원본 필드 점 경로와 보간 상수의 1:1 맵입니다. 공통 runtime이 중첩 모델을 만들고 렌더·HUD·그림자·경고가 같은 프레임 모델을 공유합니다. Unit에 별도 보간·선반응 로직을 넣지 않으며 원본 Proxy·prototype 상속·this 교체·원본 fallback을 사용하지 않습니다. countdown·상태 경계·발사 시작점·위치 불연속도 스키마와 공통 정책으로 처리하며 게임 collector는 identity/source/type만 전달합니다. 입력 모듈과 게임 규칙은 독립적으로 유지합니다. 고정 SDK source/dist·실제 ESM 참조·게임 원본 무결성은 `gamekit-lock.json`과 `scripts/verify-gamekit-source.cjs`로 확인합니다.
