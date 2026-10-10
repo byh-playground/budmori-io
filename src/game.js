@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@893fff72d64118ebc5820379e8a76553f87458a9',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@03498f6c2d51c806149d134e98d48e14d3ac81b7',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -5173,6 +5173,8 @@ const meshArtCaches=new WeakMap(),meshArtTotals={meshes:0,bytes:0,hits:0,misses:
 const morphedUnitArt=new Set(['flowerbee','sporemoth','siege','shelltitan']);
 const staticMeshPart=Object.freeze({});
 const artTypeHashes=Object.freeze(Object.fromEntries(Object.keys(RALLY_ART_CONFIG.units).map(type=>[type,HashUtil.hash(type)])));
+const artPaletteIds=new WeakMap();let nextArtPaletteId=1;
+function artPaletteId(palette){if(!palette||typeof palette!=='object')return 0;let id=artPaletteIds.get(palette);if(!id){id=nextArtPaletteId++;artPaletteIds.set(palette,id)}return id}
 function dropMeshArt(ctx,cache,key){
  const entry=cache.entries.get(key);if(!entry)return;
  ctx.deleteMesh(entry.mesh);
@@ -5181,11 +5183,11 @@ function dropMeshArt(ctx,cache,key){
 }
 function disposeMeshes(ctx){const cache=meshArtCaches.get(ctx);if(!cache)return;for(const key of cache.entries.keys())dropMeshArt(ctx,cache,key);meshArtCaches.delete(ctx)}
 function meshArtEntry(ctx,type,team,r,opts){
- let cache=meshArtCaches.get(ctx);if(!cache){cache={entries:new Map(),meshes:0,bytes:0};meshArtCaches.set(ctx,cache)}
+ let cache=meshArtCaches.get(ctx);if(!cache){cache={entries:new Map(),meshes:0,bytes:0,clock:0};meshArtCaches.set(ctx,cache)}
  const palette=opts.factionPalette||RALLY_ART_CONFIG.palettes[team];
- const key=type+'|'+team+'|'+r+'|'+[palette.body,palette.dark,palette.light].map(c=>c.join(',')).join(';')+'|'+Number(!!opts.attack)+'|'+Number(!!opts.hit)+'|'+Number(!!opts.cloaked);
+ const key=type+'|'+team+'|'+r+'|'+artPaletteId(palette)+'|'+(Number(!!opts.attack)|(Number(!!opts.hit)<<1)|(Number(!!opts.cloaked)<<2));
  let entry=cache.entries.get(key);
- if(entry){meshArtTotals.hits++;cache.entries.delete(key);cache.entries.set(key,entry)}else{
+ if(entry){meshArtTotals.hits++;entry.lastUsed=++cache.clock}else{
   meshArtTotals.misses++;
   const first=new MeshArtCompiler(opts),needsMorph=morphedUnitArt.has(type),second=needsMorph?new MeshArtCompiler(opts):null;
   composeRecipe(first,type,team,0,0,r,0,{...opts,meshPose:0});
@@ -5198,8 +5200,8 @@ function meshArtEntry(ctx,type,team,r,opts){
   const geometry=globalThis.BloomGamekitRendering.MeshBuilder.combine(data.map(part=>part.geometry));
   const bytes=geometry.vertices.byteLength,limits=RALLY_ART_CONFIG.limits;
   if(limits.meshCacheMeshes<1||bytes>limits.meshCacheBytes)throw new RangeError('Rally unit mesh exceeds retained cache budget');
-  while(cache.entries.size&&(cache.meshes+1>limits.meshCacheMeshes||cache.bytes+bytes>limits.meshCacheBytes)){dropMeshArt(ctx,cache,cache.entries.keys().next().value);meshArtTotals.evictions++}
-  entry={mesh:ctx.createMesh(geometry),parts:data.map(part=>part.name),bytes};
+  while(cache.entries.size&&(cache.meshes+1>limits.meshCacheMeshes||cache.bytes+bytes>limits.meshCacheBytes)){let oldestKey=null,oldestUse=Infinity;for(const [candidateKey,candidate] of cache.entries)if(candidate.lastUsed<oldestUse){oldestKey=candidateKey;oldestUse=candidate.lastUsed}if(oldestKey===null)throw new Error('Rally mesh cache eviction candidate missing');dropMeshArt(ctx,cache,oldestKey);meshArtTotals.evictions++}
+  entry={mesh:ctx.createMesh(geometry),parts:data.map(part=>part.name),bytes,lastUsed:++cache.clock};
   cache.entries.set(key,entry);cache.meshes++;cache.bytes+=bytes;meshArtTotals.meshes++;meshArtTotals.bytes+=bytes;
  }
  return entry;
@@ -5213,7 +5215,7 @@ function retainedArt(ctx,type,team,x,y,r,timeMs,opts){
 function meshArtSample(entry,motion){let sample=entry.sample;if(!sample)sample=entry.sample={parts:new Array(entry.parts.length)};for(let i=0;i<entry.parts.length;i++){const name=entry.parts[i];sample.parts[i]=motion.parts[name]||staticMeshPart}return sample}
 // World outlines repeat retained mesh instances; standalone DOM thumbnails may use a mask.
 function composeOutlined(ctx,type,team,x,y,r,timeMs,opts){
- if(ctx.isBloomWebGL)return ctx.withSilhouette(opts.gradeOutline,Math.max(1,r*.085),()=>compose(ctx,type,team,x,y,r,timeMs,{...opts,gradeOutline:null}));
+ if(ctx.isBloomWebGL){const entry=opts.meshArtEntry||meshArtEntry(ctx,type,team,r,opts),sample=opts.meshArtSample||meshArtSample(entry,artMotion(type,0,0,r,timeMs,opts));return ctx.drawMeshSilhouette(entry.mesh,{parts:sample.parts,color:opts.gradeOutline,width:Math.max(1,r*.085),radius:128})}
  const size=Math.ceil(r*6+12),half=size/2,body=makeCanvas(size),b=body.getContext('2d');
  compose(b,type,team,half,half,r,timeMs,{...opts,gradeOutline:null});
  const mask=makeCanvas(size),m=mask.getContext('2d');m.drawImage(body,0,0);
@@ -11770,7 +11772,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@2e5043e05b5605a64772f26f65932260c587b470/assets/fonts/noto-sans-kr-700-v1.json",version:"2e5043e05b5605a64772f26f65932260c587b470",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@7828808a04be8f50e42d6ad0680e75b9520040e4/assets/fonts/noto-sans-kr-700-v1.json",version:"7828808a04be8f50e42d6ad0680e75b9520040e4",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12635,7 +12637,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'893fff72d64118ebc5820379e8a76553f87458a9',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'03498f6c2d51c806149d134e98d48e14d3ac81b7',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 

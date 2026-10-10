@@ -1,26 +1,23 @@
-tree 9a4c1f7c802d72d634fe8f58f4a0c9d86d94f9cf
-parent fab6749ba925febeb1247b78eca3567935883f6d
-parent f7f954cbd7c3df669bb845f7028eb6e8e2c630a4
-author byh020907 <byh020907@naver.com> 1791544440 +0900
-committer GitHub <noreply@github.com> 1791544440 +0900
+tree 43bb08c81710c7a173dfa94e1358819dcc0abbc4
+parent 893fff72d64118ebc5820379e8a76553f87458a9
+author byh020907 <byh020907@naver.com> 1791605918 +0900
+committer GitHub <noreply@github.com> 1791605918 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqyMx4CRC1aQ7uu5UhlAAAbYoQAJAihZWDa9UNmLMoACh4oFAH
- 4a4kO7FzTyivy94h/fmW2SmfQaBuZEFlV1Z/dvCQKu32GkgjC/th8L54oXeTfps6
- A2EdpZH9Qcou/lPXRrumIvC7VQSD0p1MgOiO7pu4FDfVoO369u/NMfDXwRtF5oWA
- 6RJEutWjRj2ttp+eJ1Efd77U6/BxNzjaOgNs3SrHfvl2AsoJ+YYI+uK6fSl40c9p
- eAL5Hn83n+V3Zw60v+uqyh9JkuIdhQ6KcVqprdkpGZ+v8KVyAnrXIJIflHLalMOD
- O6pZZ6Jm5Cqd9BbrDgADtl/QEOhl6vbpZ1mrYrqopwLQgpJbjUBkDqCPNUl8jml1
- hUeqmEHHr2QOUZP5uAWyfISzP+y4IOjQ0o+HAbqXN12cWad7FvV3KTpA4XGKDPZh
- vsusi6HxPohYPblXXH7SiAbPH2f/8wD1ZPI+S6pn8GuJfg+3hxYVlK/9yeXqPnAF
- vq2QdA06nkdtc6ybln6oup4JGm0SWjZ3YI2mx8WRVBqfyHQfxHovzmZ4BctI8rTd
- VGLBeoVMRY8FvDrq+mK7s9yRWyyHPsk2+1u6JOyVIZZ/94rPSnmKU/65kEVfQm4o
- YCjdJxN53BB0iZ2G0SmMViQZm+Hl4XnuGVEQPaWYWm/YPA4TTxAbt/P2UAYMIJHZ
- dbL2Doi+am4Arnt2H4Bh
- =KsoW
+ wsFcBAABCAAQBQJqybyeCRC1aQ7uu5UhlAAA8RIQAIhorcGmiE/6Uj08GQ9cVqE6
+ NZeuq0rJSXGNdFX6tww8ZFxbrQjS1rUnbNWLzUl2u1rYAtNDvDJmRN874bJ9sokT
+ WMJS1ZK45zOo1twjXeGSkStzy/X/HohCfHBLHnw7ooVEqCzmWm8PiaISKIklJZay
+ nfCczCqFaIHw7IeZLWdq+EXVwEAWiz2ZKB7tS/Vj+Vwz1jiNy23JeT8d76fx6Oli
+ ImLTT0NeFJ90GvPhoqrpUuPXULDYyroE13KAH3Qazebn5qLRweTVaN1GxL6G49Fn
+ 1iEsMo0s77uoCJiHNyxtycZ8MDAwJXR+K5JesjkK2HtAW0UanLfwzsFBpp84W4iV
+ oT+/HxrroGAwGMWqywafCXhF8n3qUodAwNToGgRSk7nA3tQ8X98AM0FqkTLduXOd
+ AhV/lcki1Pc63XHHPLWNIUdGXWHeINIMYcL+MCkFG3pXkWghnHHJiVh9iJVNGbm2
+ W1Y2lqzfUQR46/6morpaHttXRs9IE8sBLlYVnGru0rBodjZzSJXuEX8VtQh/DqRW
+ ThRIkbfQFCMfHJFFoDH7l1jeh+hK6tsqLQlfPD4veG8T309VQbLu6PevS9veOcaW
+ iwEc+t717T4loUqACJdT88olM9qoknE/4m05xuHTib4RBNo0KMGW3bn/Bg8HORrc
+ CyTVtBqi+T9Ww5EtBTKM
+ =WG6x
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #27 from byh-playground/codex/packed-mesh-parts
-
-[performance] 애니메이션 조각을 한 메시로 묶어 outline draw 폭증 제거
+렌더 메시 실루엣 배치 최적화 (#30)

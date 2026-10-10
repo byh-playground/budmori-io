@@ -14,7 +14,7 @@ SDK source `893fff72d64118ebc5820379e8a76553f87458a9` /dist `2e5043e05b5605a6477
 
 별도 부하는 **PERFORMANCE_FAIL**입니다. 같은 초기 병력의 preview OFF actor 제출 p50은155병력82→30.5ms,500병력505.8→157.2ms,1000병력1022.7→780.9ms로 줄었지만,500previewON 및1000의tick 정지는 남았습니다. Chromium153/SwiftShader의 짧은3~12frame 표본이며 안정적인 최대시간·모바일GPU FPS·전체멀티부하 완료를 뜻하지 않습니다. warm 군대 geometry upload는0,4meshes25,608bytes/2pipelines였고 다른vector·그림자·instance upload 및GPU overdraw는 계속 있습니다. preview scope install 관측 평균은155/500/1000에서44.1/94.6/194.6ms로 별도 병목입니다. 실제 결과·제한·원본보고서 위치는 [PR30](https://github.com/byh-playground/budmori-io/pull/30) 본문에 기록합니다.
 
-2026-10 후속 측정에서 active main-thread gap 복구를 수정한 뒤 500·1000 병력이 lockstep/rollback 모두 틱을 다시 진행했지만, 정상 RAF의 목표 TPS에는 크게 못 미쳤습니다. shadow mesh 및 actor queue pose 재사용 후에도 1000 병력 `render.actors`는 목표 100ms/TPS 예산을 초과했습니다. 같은 6초 hold를 pinned renderer/candidate 순서 양쪽으로 실행했을 때 pinned p50은369~409ms, local GameKit `drawMeshSilhouette` 후보는174~260ms였습니다. 이는 benchmark 전용 adapter + 미배포 GameKit bundle의 Chromium/SwiftShader 7~10frame 결과이며 mobile GPU/FPS나 production integration 결과가 아닙니다. candidate와 pinned 모두 1000 병력 frame당 11,001 instances/약704KB instance upload로 같아 GPU instance/overdraw 자체는 줄지 않았습니다. actor `drawMesh` API/part-pose 제출 CPU는 줄었지만 남은 batch·GPU 비용이 있습니다. 후보 renderer SHA-256은 `a6bf920ab341f227c8b62c60e81ec507b60b35aa31e4ebfbf43c491aa69f9885`이며 결과는 `tests/mesh-performance-silhouette-fastpath-ab-first.json`과 순서를 뒤집은 `tests/mesh-performance-silhouette-fastpath-pair-last.json`에 있습니다. active-gap 후속 비교는 [lockstep](tests/mesh-performance-lockstep-post-fix.json)/[rollback](tests/mesh-performance-rollback-post-fix.json) 원자료를 참고하세요. 프리뷰 ON의 1000 병력은 scope install 10회/약3.4초, simulation step 약575ms/6회라는 별도 비용도 있습니다. 기기 FPS나 모바일 GPU 측정은 아닙니다.
+2026-10 실제 GameKit fastpath 공개 후, 동일 Budmori 스트레스 코드에서 구 SDK `2e5043e`와 신규 SDK `7828808`을 1,000 유닛·lockstep·preview OFF·12초 실제 RAF로 비교했습니다. 순서를 뒤집은 두 실행 모두 `render.actors` p50/p95가 구 SDK의 194~227/295~443ms에서 새 SDK의 118~120/154~170ms로 줄었습니다. 역순 실행의 전체 frame p50/p95도 252/490ms에서 165/219ms로 감소했습니다. 다만 effective TPS는 약5.8~6.2로 여전히 10TPS 목표보다 낮고 frame time도 100ms 시뮬레이션/16.7ms 렌더 예산을 넘습니다. 두 SDK 모두 frame당 11,012 instance/704,768 instance bytes라 GPU overdraw 자체는 줄지 않았습니다. 이 A/B는 제품이 실제 고정 배포 번들을 사용한 로컬 Chromium/SwiftShader 시험이며 모바일 GPU·실제 피어 네트워크 인증은 아닙니다. [원자료](tests/mesh-performance-published-fastpath-ab.json). Preview ON 1000 유닛에서는 prediction scope 설치/step 비용이 별도로 남아 있습니다. 공개 세계의 netcode는 lockstep으로 유지합니다.
 
 ## 입력 선반응
 
@@ -151,6 +151,7 @@ PR에는 변경 이유, 실제 검증 결과와 중요한 미검증 범위를 �
 - input: ActionState와 DOM 입력 소유권, 클릭/더블탭/키보드 → 기존 SDK 명령 경계
 - interpolation: 동일한 단조 receipt/frame 시계, 도착 시점 곡선 retarget, XYZ와 별개인 공격 타이머 reset, 재사용 pose
 - rendering: 고정 GameKit source/dist의 `WebGLDevice`, `VectorRenderer`, `GlyphAtlas`, `FontAssetLoader`가 WebGL1 자원·도형/path tessellation·곡선·clip·GPU group opacity·텍스트 metric/배치를 담당합니다. Budmori는 projection·정렬·static terrain mesh·게임 아트 레시피와 렌더 순서를 소유합니다. terrain mesh는 WebGL geometry이고 hit feedback·광물/월드 레이블은 고정된 공통 font asset의 GlyphAtlas에서 직접 그립니다. World Canvas2D image upload, runtime glyph raster/crop/readback, legacy world-renderer fallback은 없습니다. 미니맵·DOM용 portrait preview처럼 world pass에 재사용하지 않는 UI는 별도입니다.
+- rendering batch: 같은 retained unit mesh의 8방향 outline·중심 outline·body는 `VectorContext.drawMeshSilhouette()` 한 ordered instance batch로 제출합니다. CPU callback/pose 제출은 줄지만 10개 instance와 GPU overdraw는 그대로입니다.
 - camera/hud: 동일한 40도 XYZ 투영과 카메라/앵커; 성장 줌·지형 역투영·체력 표현 정책은 게임 소유
 - presentation-events: SDK 확정 이벤트만 한 번 전달합니다. speculative 사운드를 재생하지 않습니다.
 - debug-tools: 유한 오류 ring·redaction·clipboard 공통 기능, 게임의 중단/진단 UI를 유지하며 같은 스레드에서 직접 보고
@@ -199,7 +200,7 @@ Native V8/Canvas asset raster/GPU command sink 성능 표본은 CPU 제출 비�
 
 ## v66 · 단일 스레드 시뮬레이션
 
-현재 SDK pin은 `gamekit-lock.json`의 source `aadf23c043a913f4c2d2e6eb2875d7c852f06a0b`, dist `54f1c23b53e57e891ee0e16faaf9553aec2293d4`입니다. 진단 화면과 실제 포함 번들을 같은 pin으로 확인합니다. Public `dist` manifest의 `rendering.js` SHA-256은 `a5f7439c7c3e99dee8d378e8f51872203df92d5b8938218c56a4f201bf603146`입니다.
+현재 SDK pin은 `gamekit-lock.json`의 source `03498f6c2d51c806149d134e98d48e14d3ac81b7`, dist `7828808a04be8f50e42d6ad0680e75b9520040e4`입니다. 진단 화면과 실제 포함 번들을 같은 pin으로 확인합니다. Public `dist` manifest의 `rendering.js` SHA-256은 `a6bf920ab341f227c8b62c60e81ec507b60b35aa31e4ebfbf43c491aa69f9885`입니다.
 
 - Worker 생성, 소스 복제, postMessage 왕복, 그래프 delta 직렬화 및 화면 미러를 제거했습니다. HTML 한 파일의 오프라인 실행은 유지합니다.
 - 고정 TPS 시뮬레이션은 SDK `createLoop`의 `backlogPolicy: 'retain'`을 사용하고, 렌더는 별도 RAF에서 scalar pose를 보간합니다. 짧은 지연만 보존하며 `maxBacklogTicks`를 넘는 lifecycle clock gap은 backlog를 폐기하고 현재 시각을 새 기준으로 삼습니다. 온라인 복귀는 stale 클라이언트가 월드를 덮지 않고 canonical snapshot/resync를 사용합니다. 일시정지·재개는 타이밍을 재설정하여 멈춘 시간을 따라잡지 않습니다.
