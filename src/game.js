@@ -10227,7 +10227,7 @@ presentationPose=function(source,kind='unit'){
  // Animation-only hitstop: the single shared XYZ curve always keeps advancing.
  if(held&&r.pose)for(const [key,value]of Object.entries(r.pose)){
   if(key==='primaryAttack'){if(p.primaryAttack){p.primaryAttack.pose.leftSeconds=value.pose.leftSeconds;if(p.primaryAttack.pending&&value.pending)p.primaryAttack.pending.left=value.pending.left}}
-  else if(key==='pendingMelee'){if(p[key])p[key].left=value.left}
+  else if(key==='pendingMelee'){if(p[key]&&value)p[key].left=value.left}
   else p[key]=value;
  }
  return p;
