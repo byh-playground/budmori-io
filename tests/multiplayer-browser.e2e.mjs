@@ -9,6 +9,7 @@ import fontAssets from './font-asset-fixture.cjs';
 import moduleReferences from './module-reference-fixture.cjs';
 import runtimeSources from './runtime-source.cjs';
 import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-preview-flow.mjs';
+import {presentationFrameProbe,assertPresentationFrames} from './presentation-frame-flow.mjs';
 
 // Usage: node tests/multiplayer-browser.e2e.mjs [candidate.html]
 // The candidate remains the shipped one-file game. Only this server response gets
@@ -108,7 +109,7 @@ const app=runtimeSources.read(source.file,source.html);
 assert(app.game.includes('/* MAIN_RUNTIME_TEST_HOOK */'),'Runtime fixture hook is required');
 // Observe actual static/atlas upload durations, including the first boot frame.
 const uploadProbe=`;(()=>{globalThis.__qaRenderUploads=[];const record=row=>{row.frame=globalThis.__army?.performance?.frames||0;__qaRenderUploads.push(row);if(__qaRenderUploads.length>80)__qaRenderUploads.shift()};const p=BloomGamekitRendering.WebGLDevice.prototype,upload=p.uploadVertices,texture=p.createTexture,target=p.createRenderTarget;p.uploadVertices=function(handle,data){const start=performance.now(),result=upload.call(this,handle,data),ms=performance.now()-start;record({kind:'vertex-buffer',bytes:data.byteLength,ms});return result};p.createTexture=function(source,options){const handle=texture.call(this,source,options),bytes=(source.width||0)*(source.height||0)*((options?.format==='luminance')?1:4);record({kind:'texture',width:source.width,height:source.height,bytes});return handle};p.createRenderTarget=function(width,height,options){const handle=target.call(this,width,height,options);record({kind:'render-target',width,height,bytes:width*height*4});return handle}})();`;
-const game=app.game.replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>uploadProbe+fixture);
+const game=app.game.replace('/* MAIN_RUNTIME_TEST_HOOK */',()=>uploadProbe+fixture+presentationFrameProbe);
 assert.notEqual(game,app.game);
 const instrumented=runtimeSources.response(app,game);
 report.gameSourceSHA256=createHash('sha256').update(app.game).digest('hex');
@@ -263,6 +264,9 @@ try{
  }finally{await evaluate(host,()=>__sharedBrowser.releaseRTC())}
  record('Real RTC input wait preserves authority while local preview responds and commands confirm once');
  await checkpoint([host,guest],'input-preview-after-rtc-delay');
+ report.presentationFrames=await Promise.all([host,guest].map(page=>assertPresentationFrames(page,{projectiles:true})));
+ assert(report.presentationFrames.some(stats=>stats.elevated>0),'Elevated physical projectile uses the display frame');
+ record('Shared frame models, projectile display lifetime, elevated pose and selected local preview');
  if(headed){
   await focusAndResume(host);await host.keyboard.down('KeyD');await ticks([host,guest],2);
   const nativeWindow=await context.newCDPSession(host),windowInfo=await nativeWindow.send('Browser.getWindowForTarget');

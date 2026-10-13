@@ -1,27 +1,23 @@
-tree e86f0694d04f6459430656ba2641c7198c8a6685
-parent 3ba6e1f248721bca8275712dea4d48fa09af65ef
-author byh020907 <byh020907@naver.com> 1791881127 +0900
-committer GitHub <noreply@github.com> 1791881127 +0900
+tree eccec42477782de2fd40ed1510013cf0a42e687a
+parent cdb03088828a42b89f5683124bc47722ae2bb0a7
+author byh020907 <byh020907@naver.com> 1791931256 +0900
+committer GitHub <noreply@github.com> 1791931256 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqze+nCRC1aQ7uu5UhlAAAOoEQACdlDl4ctAD3kz3aQE81RzCS
- 1d0S0zRiDJf9Wc3uXc/ontk7I5aQNesq6SJJ4D62i96+8dTEH2IMLqDrJpqOdstA
- 2TZxCi8k0WNqbCVNpio5eBdAd2ViSBsRi8InHVR0hipAVNt7NYOGEQwgn4QNeNfi
- qRum80YMiSiB/lUafNrgJhiNZofwTJspMjT0KkqIv0m4qYwq5ulyXW+wwTPPsDSq
- orz2LECE+xnQSLEJKo4o2pQ2YxsLcMfIONYsLIxO8xi+3vKvok76GkIOKtOZARxp
- jMo59SGhjLDDW9+vaA6dwXTD4aQyJ4tPKvo14esEoqB+YuwTbX9MZ0ANuG+wek8k
- KzjnXfzi5QFkQRv9yc5QjZNGgbaWxasQ7RncIAKok9eEI8uZl32oW22hshsm9/kJ
- Hdl5tmSdfwugJsg07DbKdAN0GsweQnhuxeaBspDXKnzrw+jtiYex7wv2qYdPjCsz
- tPYii6Y4+7pDuc4FivBnH4NYD8e+RXoQBO31HspAMUvReZioHNgxoIxQV7GN/Pj4
- lLnt3qjCLBbp3ypiJEuIM/xVu7USNPqM7f7jrRyWW2gFQJrXwEraqn6XMGSZCptq
- MHvsjpWQM/V7WBCEuCBctFK63Ln1tp4vAeg2WzFUbybhXdXuZqd248FleRrScmWe
- O7qLwijp3YESmwRYytmc
- =gpy5
+ wsFcBAABCAAQBQJqzrN4CRC1aQ7uu5UhlAAApbIQAIc4J8/79YGFKzZkioerx4Ui
+ VOdoI3OM4KCAUYtvHqZMAHv7e+26ehT8E3aUZeN3Sb7SCG9PdCsbYmdYK8rwcW8w
+ FTHFO1WId7EhW9WlTQ6lAY9Rx0RpH4C4+E98UeuUtke/LuiAehMcXSFe3P30CniW
+ /ukDC87f3VYkUkrorCoQe29TdjTL4gTvs7UM6waNAyTk/TK63bcEmnUQzSI2e/3p
+ 5iGQck8zeYVsLF7c48X6gsF+22lZZIzUP8aMCoIOc6eVbeO1pUHOLc+bt4n+mWx6
+ sa53P0TsausKYRwZsPbS/+ZQ1vbjU6BbgDZE5lVJ+GUEOZ3iir5wkv5za1O6SxBG
+ S27BRgZQcQTzebQUAAEmJ06Ji3zXs3LiGxg6dOpd8pQHNrc/GkT1tv1YuuCAC0LC
+ C7uCzwea/XkwBPHiL7NJsnQquBZTVPXEpf8qHCuvuOnyGifJCe7cA+RoIS0Ut1OP
+ t8E4uhS48BvJvWkdJ3kZ3eWkLAA6l/EwfnudkOQspcH/+Dh0+vhzUAnOkYRXglNH
+ UlgIbmBRNk8ZvlwiqJ64Kcc3kyRvi0e3K2rLTQSvupHSzEHhZoLJRuLdIcqnAJ37
+ rzhBVOETHPE5L5vrRKQsq4qs8XDV7tP0MW2zrAziX1FTEsSlZRnMRD3Ogjj+H0H6
+ xoS7ynCLcBL+/LBrcGbg
+ =4eNY
  -----END PGP SIGNATURE-----
  
 
-진행 중 액션의 로컬 예측 수명 분리 (#44)
-
-* 진행 중 액션의 로컬 예측 수명을 입력 edge와 분리
-
-* 실제 액션 예제와 예약 tick 경계로 예측 수명 검증
+[bug-fix] preview 종료 시 지연 authority 구간 보존 (#48)

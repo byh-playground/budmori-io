@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "fbecfb6c06a5be98af9f6f556b322e7247df57ca",
-  "distCommit": "7cf67c33451848d1af4a7b003cbe1b81ffef8b53",
+  "sourceCommit": "2712703c83923f16bb70454ea60e2ac533489ef8",
+  "distCommit": "e108fe481aa7314974c39974a169b549500bf12c",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -16,11 +16,11 @@
     },
     {
       "name": "rollback-netcode",
-      "bundleSHA256": "3af97a2d5333de97a0049af41d9ee8e1646b54517b98ba00b85764de84f65da2"
+      "bundleSHA256": "e54794c5fff1fccf5325fe517a25bab6b61848d62276e1e9f9300dcf00aa2be2"
     },
     {
       "name": "interpolation",
-      "bundleSHA256": "d1f1c9c4502b97154c524fbdd4c1feb3d69d4dffb477a8585f51e124a9821ffe"
+      "bundleSHA256": "bf6c8737ef48ca327814cf7326406025c2ece6c49a690ca7652cac2cc6af2562"
     },
     {
       "name": "hud",
@@ -39,7 +39,7 @@
       "bundleSHA256": "72260336a6c3f2ee0357a303fa8943dd8cfa4f7deea5d9517d311d4cd8796a71"
     }
   ],
-  "manifestSHA256": "66b94ae83f5b657a7113a15086ccb49a6ec2dc06b6b6259b2144f5aba071264b",
+  "manifestSHA256": "800e4ddd95a33c332dff5a0c60b06438ffea6fd3bb3bca331b52d56b73f0775e",
   "assets": [
     {
       "file": "assets/fonts/noto-sans-kr-700-v1.json",
