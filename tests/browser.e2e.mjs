@@ -11,6 +11,7 @@ import moduleReferences from './module-reference-fixture.cjs';
 import runtimeSources from './runtime-source.cjs';
 import {exerciseInputPreviewFlow,assertInputPreviewCleared} from './input-preview-flow.mjs';
 import {exerciseRetainedArt} from './retained-art-flow.mjs';
+import {presentationFrameProbe,assertPresentationFrames} from './presentation-frame-flow.mjs';
 
 // Run with an optional candidate index.html path. No harness, SDK replacement,
 // simulated time, or running-world edits: all actions below use the shipped UI.
@@ -79,7 +80,7 @@ function fixtureResponse(encounter) {
   })();`;
   const marker = '/* MAIN_RUNTIME_TEST_HOOK */';
   assert(app.game.includes(marker), 'Candidate game source must provide the fixture insertion point');
-  return runtimeSources.response(app, app.game.replace(marker, () => fixture));
+  return runtimeSources.response(app, app.game.replace(marker, () => fixture+presentationFrameProbe));
 }
 const responses = {'/normal': runtimeSources.response(app), '/solo': fixtureResponse('solo'), '/recovery': fixtureResponse('recovery')};
 report.gameSourceSHA256 = sha256(app.game);
@@ -195,6 +196,7 @@ async function scenario() {
     assert(await mother(), 'The local character is rendered during combat');
     assert.match(await page.locator('#motherHealth').innerText(), /HP/);
     await screenshot('browser-combat.png');
+    report.combatPresentationFrames=await assertPresentationFrames(page,{projectiles:true});
     const pixels=await webglPixels();report.worldPixels=pixels;assert.equal(pixels.error,0);assert.ok(pixels.green>pixels.width*pixels.height*.5,`Terrain is present in actual WebGL pixels: ${JSON.stringify(pixels)}`);assert.ok(pixels.bright>100,'Unit art, combat text, or world labels are present in actual WebGL pixels');assert.ok(pixels.different>pixels.width*pixels.height*.05,'The WebGL framebuffer contains drawn scene variation');
     // Fusion fading writes ctx.globalAlpha around RallyArt.draw; sample the same production boundary plus the production white-flash outline through the actual WebGL target.
     const artPixels=await page.evaluate(()=>{const c=__testWorldRenderer,gl=c.gl,canvas=c.canvas;c.beginFrame();c.save();c.setTransform(1,0,0,1,0,0);c.device.clear({color:[0,0,1,1]});c.globalAlpha=.5;RallyArt.draw(c,'swordsman','friendly',canvas.width/2,canvas.height/2,24,0,0,{gradeOutline:'#ff3020',whiteFlash:true});c.globalAlpha=1;c.flush();const side=96,p=new Uint8Array(side*side*4),x=Math.floor((canvas.width-side)/2),y=Math.floor((canvas.height-side)/2);gl.readPixels(x,y,side,side,gl.RGBA,gl.UNSIGNED_BYTE,p);let maxRed=0,redBias=0,visible=0;for(let i=0;i<p.length;i+=4){maxRed=Math.max(maxRed,p[i]);if(p[i]>20&&p[i]>p[i+1]+8)redBias++;if(p[i]>35&&p[i+1]>35)visible++}const error=gl.getError();c.restore();c.endFrame();return{maxRed,redBias,visible,error}});assert.equal(artPixels.error,0);assert.ok(artPixels.maxRed<=132&&artPixels.redBias===0&&artPixels.visible>100,`Game art white flash and 0.5 object fade are one WebGL composition: ${JSON.stringify(artPixels)}`);report.artPixelProbe=artPixels;
@@ -337,6 +339,7 @@ async function scenario() {
     await moved(revived);
   });
   assert.equal(await read(() => globalThis.BloomDiagnostics?.fatal), false, 'No fatal renderer/runtime failure');
+  report.presentationFrames=await assertPresentationFrames(page);
   healthy(); report.status = 'PASS';
 }
 try {
@@ -347,10 +350,10 @@ try {
   report.status = 'FAIL'; report.error = error.stack || String(error);
   try {
     report.lastUI = await read(() => ({
-      fatal: globalThis.BloomDiagnostics?.fatal, health: document.querySelector('#motherHealth')?.textContent,
+      fatal: globalThis.BloomDiagnostics?.fatal, diagnostics:globalThis.BloomDiagnostics?.snapshot().errors, health: document.querySelector('#motherHealth')?.textContent,
       roll: document.querySelector('#rollStatus')?.textContent, modal: document.querySelector('#modal.show #sheet')?.innerText.slice(0, 700),
       focused: document.activeElement?.id, tick: globalThis.BloomSimulation?.tick,
-      runtime: globalThis.BloomSimulation?.runtime?.inspect(),
+      runtime: globalThis.BloomSimulation?.runtime?.inspect(), presentationFrames:globalThis.__presentationFrames,
     }));
     await screenshot('browser-failure.png');
   } catch {}

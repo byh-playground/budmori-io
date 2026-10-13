@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori 0.2.1 · local action preview',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@fbecfb6c06a5be98af9f6f556b322e7247df57ca',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori 0.2.2 · presentation frame',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@2712703c83923f16bb70454ea60e2ac533489ef8',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -115,7 +115,7 @@ if(!g.BLOOM_HEADLESS)g.document?.addEventListener?.('click',e=>{if(e.target?.clo
 // minor = incompatible change, patch = compatible change. One compatibility family
 // governs saved worlds, disk envelopes, replay and public-session negotiation.
 const BUDMORI_VERSION=(()=>{
- const major=0,minor=2,patch=1,version=`${major}.${minor}.${patch}`,compatibility=`${major}.${minor}`;
+ const major=0,minor=2,patch=2,version=`${major}.${minor}.${patch}`,compatibility=`${major}.${minor}`;
  function accepts(value){if(typeof value!=='string'||!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value))return false;const [a,b,c]=value.split('.').map(Number);return [a,b,c].every(Number.isSafeInteger)&&a===major&&b===minor}
  return Object.freeze({major,minor,patch,version,compatibility,simulation:`budmori-${compatibility}`,accepts});
 })();
@@ -3985,7 +3985,7 @@ function drawUnit(source,options={}){
 function render(alpha=1,renderDelta=1/60){const started=performance.now(),world=bloomRenderWorld(),renderMother=combatBasePose(WorldView.leader());if(!renderMother)return;const dpr=Math.min(CONFIG.render.dprMax,devicePixelRatio||1),ww=innerWidth,hh=innerHeight;if(canvas.width!==Math.round(ww*dpr)||canvas.height!==Math.round(hh*dpr)){canvas.width=Math.round(ww*dpr);canvas.height=Math.round(hh*dpr)}view.zoom=moaCameraZoom(renderMother,ww);view.w=ww/view.zoom;view.h=hh/(view.zoom*WorldProjection.K);const worldWidth=worldLimit();const tx=view.w>=worldWidth?worldWidth/2:clamp(renderMother.x,view.w/2,worldWidth-view.w/2),ty=view.h>=CONFIG.world.height?CONFIG.world.height/2:clamp(renderMother.y,view.h/2,CONFIG.world.height-view.h/2);bloomCamera.setCamera({x:view.x,y:view.y*WorldProjection.K,zoom:view.zoom});bloomCamera.follow(tx,ty*WorldProjection.K,Math.max(0,renderDelta)*1000,Math.LN2*1000/CONFIG.render.presentation.cameraResponse);view.x=bloomCamera.camera.x;view.y=bloomCamera.camera.y/WorldProjection.K;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#3a593e';ctx.fillRect(0,0,ww,hh);if(typeof hitfeelApplyWorldShake==='function')hitfeelApplyWorldShake();ctx.scale(view.zoom,view.zoom);ctx.scale(1,WorldProjection.K);ctx.translate(view.w/2-view.x,view.h/2-view.y);
  for(const c of world.camps){if(c.zone>world.maxZone||!c.enabled||c.x<view.x-view.w/2-200||c.x>view.x+view.w/2+200)continue;ctx.strokeStyle=c.boss?'#f3d79444':'#29493630';ctx.lineWidth=c.boss?2:1;ctx.beginPath();ctx.ellipse(c.x,c.y,CONFIG.world.campRadius*(c.boss?1.25:1),CONFIG.world.campRadius*.7,0,0,Math.PI*2);ctx.stroke();if(c.boss&&world.bosses[c.zone]){drawNest(ctx,c.x,c.y,3,.7);ctx.font='11px system-ui';ctx.textAlign='center';ctx.fillStyle='#e2efc1';ctx.fillText('정복한 군락',c.x,c.y+65)}}
  BloomDiagnostics.profileMeasure('render.terrain',drawCampaignWorld);BloomDiagnostics.profileMeasure('render.actors',drawProjectedActors);
- for(const e of presentation.maps.effect.values()){const original=presentation.effectRuntime.sample(e.id,e.generation,presentation.frameNow);if(!original)continue;const f={...original,y:original.y-(original.z||0)*WorldProjection.H/WorldProjection.K,y2:original.y2-(original.z2||0)*WorldProjection.H/WorldProjection.K};let a=f.life/f.maxLife;ctx.globalAlpha=a;ctx.strokeStyle=f.color;ctx.fillStyle=f.color;ctx.lineWidth=CONFIG.render.effectStroke;ctx.beginPath();if(f.kind==='ring'||f.kind==='burst'){const r=Math.max(1,f.r*(1-a));if(f.groundAnchor)terrainCirclePath(original.x,original.y,r);else ctx.arc(f.x,f.y,r,0,Math.PI*2)}else if(f.kind==='hit')ctx.arc(f.x,f.y,Math.max(1,f.r*.25),0,Math.PI*2);else{ctx.moveTo(f.x,f.y);ctx.lineTo(f.x2,f.y2)}ctx.stroke();ctx.globalAlpha=1}
+ for(const original of presentation.frameEffects){const f={...original,y:original.y-(original.z||0)*WorldProjection.H/WorldProjection.K,y2:original.y2-(original.z2||0)*WorldProjection.H/WorldProjection.K};let a=f.life/f.maxLife;ctx.globalAlpha=a;ctx.strokeStyle=f.color;ctx.fillStyle=f.color;ctx.lineWidth=CONFIG.render.effectStroke;ctx.beginPath();if(f.kind==='ring'||f.kind==='burst'){const r=Math.max(1,f.r*(1-a));if(f.groundAnchor)terrainCirclePath(original.x,original.y,r);else ctx.arc(f.x,f.y,r,0,Math.PI*2)}else if(f.kind==='hit')ctx.arc(f.x,f.y,Math.max(1,f.r*.25),0,Math.PI*2);else{ctx.moveTo(f.x,f.y);ctx.lineTo(f.x2,f.y2)}ctx.stroke();ctx.globalAlpha=1}
  frameStats.frames++;frameStats.renderMs+=performance.now()-started;
 }
 function drawMini(){return bloomWithPresentation(()=>{const world=bloomRenderWorld(),leader=bloomRenderUnit(world.local.leaderId);mini.clearRect(0,0,180,104);const w=25,h=18,gap=4;for(let z=0;z<CONFIG.zones.length;z++){let x=4+z*(w+gap),y=43;mini.fillStyle=z>world.maxZone?'#ffffff10':CONFIG.zones[z].accent+'70';mini.fillRect(x,y,w,h);if(world.bosses[z]){mini.fillStyle='#d9f4a0';mini.font='12px system-ui';mini.fillText('✓',x+8,y-8)}if(world.zone===z){mini.strokeStyle='#e5f2c0';mini.lineWidth=2;mini.strokeRect(x-2,y-2,w+4,h+4)}if(z<CONFIG.zones.length-1){mini.strokeStyle='#cde0ba50';mini.beginPath();mini.moveTo(x+w,y+h/2);mini.lineTo(x+w+gap,y+h/2);mini.stroke()}}if(!leader)return;let x=4+leader.x/(CONFIG.world.zoneWidth*CONFIG.zones.length)*(CONFIG.zones.length*(w+gap));mini.fillStyle='#eff9ce';mini.beginPath();mini.arc(x,52,3,0,Math.PI*2);mini.fill()})}
@@ -5785,10 +5785,11 @@ function bloomIsRenderModel(model){return !!model&&(bloomFrozenModels.has(model)
 function bloomRendering(){return presentation.active&&!bloomInTick}
 function bloomPresentationNow(now=performance.now()){const value=Math.max(now,presentation.lastNow||0);presentation.lastNow=value;return value}
 function bloomResetTimelines(){
- presentation.runtime=new PresentationRuntime({stepMs:1000/CONFIG.sim.tickRate,snapDistance:CONFIG.render.presentation.snapDistance});
+ const stepMs=1000/CONFIG.sim.tickRate;
+ presentation.runtime=new PresentationRuntime({stepMs,delayMs:stepMs,snapDistance:CONFIG.render.presentation.snapDistance});
  presentation.effectRuntime=new PresentationRuntime({stepMs:1000/CONFIG.sim.renderTargetFPS});presentation.effectRevision=-1;presentation.effectSequence=0;
- presentation.worldRuntime=new PresentationRuntime({stepMs:1000/CONFIG.sim.tickRate});
- presentation.clockTimeline=new BloomGamekitInterpolation.InterpolationTimeline({schema:{time:'number'},stepMs:1000/CONFIG.sim.tickRate});
+ presentation.frame=null;presentation.effectFrame=null;
+ presentation.frameUnits=new Map();presentation.frameProjectiles=[];presentation.frameEffects=[];
  presentation.rate=CONFIG.sim.tickRate;presentation.revision=0;presentation.sequence=0;
 }
 function renderTrack(kind,key,source){
@@ -5807,6 +5808,8 @@ function advanceEffectsPresentation(renderDelta=1/60,now=presentation.frameNow){
  const map=presentation.maps.effect;for(const [key,e]of map)if(e.effectEpoch!==epoch)map.delete(key);
  const reset=presentation.effectRevision!==presentation.revision;presentation.effectRevision=presentation.revision;
  presentation.effectRuntime.capture({revision:presentation.revision,sequence:++presentation.effectSequence,timeMs:presentation.effectTime*1000,mode:reset?'reset':'continuous',entities:presentation.effectEntities},now);
+ presentation.effectFrame=presentation.effectRuntime.frame(now);presentation.frameEffects.length=0;
+ presentation.effectFrame.forEach(model=>presentation.frameEffects.push(model));
 }
 function capturePresentation(initial=false){
  if(bloomInTick||globalThis.BLOOM_HEADLESS)return;
@@ -5816,6 +5819,8 @@ function capturePresentation(initial=false){
  if(!presentation.runtime||presentation.rate!==CONFIG.sim.tickRate){bloomResetTimelines();initial=true}
  if(presentation.state!==state){presentation.state=state;presentation.worldEpoch=(presentation.worldEpoch||0)+1;for(const map of Object.values(presentation.maps))map.clear();initial=true;accumulator=0}
  if(state.time<presentation.currentTime)initial=true;
+  // Pauses/RTC holds discard wall-clock backlog; start a new display epoch on resume.
+  if(presentation.receivedAt!==undefined&&now-presentation.receivedAt-(state.time-presentation.currentTime)*1000>1000/CONFIG.sim.tickRate)initial=true;
  presentation.epoch++;presentation.sequence++;if(initial)presentation.revision++;
  presentation.previousTime=presentation.time;presentation.currentTime=state.time;presentation.receivedAt=now;
  presentation.entities=[];
@@ -5826,25 +5831,23 @@ function capturePresentation(initial=false){
  for(const p of projectiles)renderTrack('projectile',p,p);
  const base={revision:presentation.revision,sequence:presentation.sequence,timeMs:state.time*1000,mode:initial?'reset':'continuous'};
  for(const kind of ['unit','projectile'])for(const [id,e]of presentation.maps[kind])if(e.epoch!==presentation.epoch)presentation.maps[kind].delete(id);
- presentation.runtime.capture({...base,entities:presentation.entities},now);
  presentation.worldSource=bloomCaptureRenderWorld();
- presentation.worldRuntime.capture({...base,entities:[{id:'world',generation:0,source:presentation.worldSource,type:BloomWorldRender}]},now);
- presentation.worldModel=presentation.worldRuntime.sample('world',0,now);
- presentation.clockTimeline.accept({...base,entities:[{id:'time',generation:0,values:{time:state.time}}]},now);
+ presentation.entities.push({id:'world',generation:0,source:presentation.worldSource,type:BloomWorldRender});
+ presentation.runtime.capture({...base,entities:presentation.entities},now);
  }finally{presentation.active=active}
 }
-function bloomVisualPose(source,kind='unit',now=presentation.frameNow){
+function bloomVisualPose(source,kind='unit'){
  if(!source)return null;if(bloomFrozenModels.has(source))return source;
  if(!presentation.runtime)return null;
- return (kind==='effect'?presentation.effectRuntime:presentation.runtime).modelFor(source,bloomPresentationNow(now));
+ return (kind==='effect'?presentation.effectFrame:presentation.frame)?.modelFor(source)??null;
 }
 function presentationPose(source,kind='unit'){return bloomRendering()?bloomVisualPose(source,kind):source}
 function presentationTime(){return bloomRendering()?presentation.time:state.time}
 function bloomRenderKey(u){const e=presentation.maps.unit.get(u.id),generation=e?e.generation+(!bloomRendering()&&e.source!==u?1:0):0;return (presentation.worldEpoch||0)+':unit:'+u.id+':'+generation}
-function bloomRenderUnit(id){const e=presentation.maps.unit.get(id);if(!e)return null;return presentationPose(presentation.runtime.sample(e.id,e.generation,bloomPresentationNow(presentation.frameNow)))}
-function bloomRenderUnits(){const out=[];for(const id of bloomRenderWorld().unitIds){const u=bloomRenderUnit(id);if(u)out.push(u)}return out}
+function bloomRenderUnit(id){return presentation.frameUnits.get(id)||null}
+function bloomRenderUnits(){const leaders=bloomRenderWorld().leaderIds,out=[];for(const [id,u]of presentation.frameUnits)if(!leaders.includes(id))out.push(u);return out}
 function bloomRenderLeaders(){const out=[];for(const id of bloomRenderWorld().leaderIds){const u=bloomRenderUnit(id);if(u)out.push(u)}return out}
-function bloomRenderProjectiles(){const out=[];for(const e of presentation.maps.projectile.values()){const p=presentation.runtime.sample(e.id,e.generation,bloomPresentationNow(presentation.frameNow));if(p)out.push(p)}return out}
+function bloomRenderProjectiles(){return presentation.frameProjectiles}
 function bloomRenderWorld(){return presentation.worldModel}
 function bloomCaptureRenderWorld(){
  const players=WorldPlayers.all(),player=WorldPlayers.local(),data=WorldPlayers.data(player),campaign=data?.campaign||{},owner=player?.accountOwner??-1;
@@ -5874,10 +5877,16 @@ function bloomCaptureRenderWorld(){
 function bloomBeginPresentation(alpha=1){
  if(!bloomPresentationStable()){presentation.active=false;return false}
  if(presentation.state!==state||presentation.currentTime!==state.time)capturePresentation(presentation.state!==state);
- const local=presentation.worldModel?.local;
- if(!local||local.leaderId===undefined||!presentation.maps.unit.has(local.leaderId)){presentation.active=false;return false}
  presentation.alpha=clamp(alpha,0,1);presentation.frameNow=bloomPresentationNow();presentation.frameSerial++;
- presentation.clockTimeline.sampleInto('time',0,presentation.frameNow,presentation);presentation.active=true;
+ const frame=presentation.frame=presentation.runtime.frame(presentation.frameNow);
+ presentation.worldModel=frame.sample('world',0);
+ presentation.frameUnits.clear();presentation.frameProjectiles.length=0;
+ // Only the module's display list owns visible lifetime, including removed authority objects.
+ frame.forEach((model,id)=>{if(id.startsWith('unit:'))presentation.frameUnits.set(model.id,model);else if(id.startsWith('projectile:'))presentation.frameProjectiles.push(model)});
+ const local=presentation.worldModel?.local;
+ if(!local||local.leaderId===undefined||!presentation.frameUnits.has(local.leaderId)){presentation.active=false;return false}
+ // The frame clock stops at the last completed world sample when authority is held.
+ presentation.time=Math.max(0,Math.min(frame.timeMs/1000,presentation.currentTime));presentation.active=true;
  return true;
 }
 function bloomPresentationStable(){return !!WorldPlayers.local()?.leader&&(!bloomSession||bloomSession.closed||bloomSession.ready&&!bloomSession.resimulating)}
@@ -11798,7 +11807,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@7cf67c33451848d1af4a7b003cbe1b81ffef8b53/assets/fonts/noto-sans-kr-700-v1.json",version:"7cf67c33451848d1af4a7b003cbe1b81ffef8b53",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@e108fe481aa7314974c39974a169b549500bf12c/assets/fonts/noto-sans-kr-700-v1.json",version:"e108fe481aa7314974c39974a169b549500bf12c",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12685,7 +12694,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'fbecfb6c06a5be98af9f6f556b322e7247df57ca',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'2712703c83923f16bb70454ea60e2ac533489ef8',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 

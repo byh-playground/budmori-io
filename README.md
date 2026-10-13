@@ -1,6 +1,10 @@
 # Budmori.io · 버드모리
 
-현재 제품 버전은 **0.2.1**입니다. GameKit [PR44](https://github.com/byh-playground/bloom-gamekit/pull/44)의 source `fbecfb6c06a5be98af9f6f556b322e7247df57ca`, dist `7cf67c33451848d1af4a7b003cbe1b81ffef8b53`를 사용합니다. 공개방은 계속 **lockstep 10TPS**이며 protocol 3을 사용하는 모든 참가자가 같은 번들을 새로 로드해야 합니다.
+현재 제품 버전은 **0.2.2**입니다. GameKit [PR48](https://github.com/byh-playground/bloom-gamekit/pull/48)의 source `2712703c83923f16bb70454ea60e2ac533489ef8`, dist `e108fe481aa7314974c39974a169b549500bf12c`를 사용합니다. 공개방은 계속 **lockstep 10TPS**이며 protocol 3을 사용하는 모든 참가자가 같은 번들을 새로 로드해야 합니다.
+
+표시는 GameKit의 단일 `PresentationRuntime.frame(nowMs)`에서 월드·유닛·투사체를 함께 읽습니다. 10TPS에서 authority 표시는 1 tick(100ms) 지연하며, 생성 seed와 제거 수명도 같은 표시 목록을 따릅니다. 로컬 입력 preview는 즉시 선택됩니다. 일시정지·긴 RTC 대기 후에는 표시 epoch를 재설정해 지난 벽시계 시간을 따라잡지 않습니다. 이 변경은 판정 tick·피해·이동 규칙을 바꾸지 않습니다.
+
+새싹 총구와 투사체 노출은 같은 프레임의 부모 pose·표시 시각을 사용합니다. 체인 공격의 명중 링크와 구르기 잔상은 기존 확정 위치 기록을 유지합니다. 이 기록은 이동 물체의 경로가 아니므로 새 `pathInto`로 재해석하지 않습니다. SDK의 선택적 공격 상태(object/null) 전환 수정도 포함합니다.
 
 입력 해제 후에도 로컬 Moa의 구르기 잔여 시간 또는 클릭 이동 목표가 있으면 공식 `LocalInputPreview.isActive` → 스코프의 `localActionActive` → facade `active`로 예측 표시를 유지합니다. 자동 공격과 다른 플레이어는 활성 조건에 포함하지 않습니다. 동작이 끝나면 정상 보간으로 돌아갑니다. 최신 SDK의 `flushInput`은 입력 예약만 하므로, 일시정지 중 명령은 실제 deadline `pulse`로 처리하고 실행 sequence를 확인한 뒤 저장·솔로 전환을 진행합니다.
 
@@ -371,3 +375,5 @@ Health/primary-attack/lifecycle 내부 회귀는 개발 중 사용하고 제거�
 Auxiliary weapons store one deadline per weapon (`auxScheduleMs`). `sampledAtMs` marks the completed update observed by sprout presentation before the next combat tick. `weaponCooldownSeconds` derives its display without mutation; no `auxCooldowns`, rival `aux`, or `displaySeconds` mirror is saved or imported. Current cadence cards change future launch intervals through `weaponStats`; they do not rescale an already scheduled deadline. The overwritten paid-haste wrapper is removed rather than replaced with an unused rescale API.
 
 Before membership admission, `WorldPlayers` explicitly queries the freshly initialized bootstrap actor. This supports current initialization and is not an old-save importer. The 0.1.0 save-break policy is unchanged. 해당 내부 검사는 개발 중 사용한 뒤 제거했습니다.
+
+0.2.2 표시 통합 검증: 실제 Edge/SwiftShader core 8개 시나리오(36.1초), RTC 11개 검사(64.5초)를 통과했습니다. RTC 두 참가자에서 각각 1,235/495개의 투사체 표시 표본과 authority 제거 후 유지된 264/84개 표본을 관측했고 프레임 오류는 0개였습니다. 후보 interpolation 번들과 최종 공식 dist의 SHA-256이 동일함을 확인했습니다. 공식 출처·소스 무결성·폰트 검증을 별도로 통과했습니다. 로컬 RTC 환경 결과이며 인터넷 NAT/relay 및 실제 모바일 GPU 성능 보장은 아닙니다.
