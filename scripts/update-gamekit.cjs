@@ -14,7 +14,7 @@ try{
  git(['fetch','--quiet','--no-tags','--depth=1',repository,sourceCommit]);
  const manifestBytes=git(['show',`${distCommit}:manifest.json`]),manifest=JSON.parse(manifestBytes);
  assert.deepEqual(Object.keys(manifest),['schemaVersion','modules','assets'],'manifest keys');assert.equal(manifest.schemaVersion,2,'font assets require manifest schema 2');
- assert.deepEqual(manifest.modules.map(m=>m.file),['interpolation.js','rendering.js','input.js','deterministic.js','simloop.js','transport.js','replay.js','rollback.js','rollback-netcode.js','camera.js','presentation-events.js','hud.js','debug-tools.js'],'fixed distribution module order');
+ assert.deepEqual(manifest.modules.map(m=>m.file),['interpolation.js','rendering.js','input.js','deterministic.js','simloop.js','transport.js','replay.js','rollback.js','rollback-netcode.js','camera.js','presentation-events.js','hud.js','debug-tools.js','audio.js','navigation.js','scenario.js'],'fixed distribution module order');
  assert.deepEqual(manifest.assets.map(({file,version})=>({file,version})),DIST_ASSETS,'fixed font asset inventory');
  assert.equal(Buffer.from(JSON.stringify(manifest,null,2)+'\n').equals(manifestBytes),true,'canonical distribution manifest');
  const staged=path.join(taskTemp,'staged'),vendor=path.join(staged,'vendor/upstream');fs.mkdirSync(vendor,{recursive:true});

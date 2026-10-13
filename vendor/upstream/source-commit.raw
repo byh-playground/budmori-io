@@ -1,27 +1,27 @@
-tree 6f8abb0a4b639cfce1d021c96b64ec59a0e76372
-parent 6a432464398bf5dd714e22063849a57e91e8b37f
-author byh020907 <byh020907@naver.com> 1791620489 +0900
-committer GitHub <noreply@github.com> 1791620489 +0900
+tree e86f0694d04f6459430656ba2641c7198c8a6685
+parent 3ba6e1f248721bca8275712dea4d48fa09af65ef
+author byh020907 <byh020907@naver.com> 1791881127 +0900
+committer GitHub <noreply@github.com> 1791881127 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqyfWJCRC1aQ7uu5UhlAAAOkQQAG10WYnLOSoLXO31fGUjtbgT
- lewmylwHCb9/QFhmk6g3KNYJegT8YJcDJP0flzL7Wx+jXno8jmJimioq5jE8u8VP
- iTba/yRaV/fL4GMDo41D5S8bh+BFnuT1SGvWWYv7sB4gqaA4qFHFQhEQQcGONAQZ
- CTuL6+ITDeUhuAzhb6LU+do6aVmPFijGW/F3kdkwE9oLz5CsfyqgTi5dyp3EEdm6
- 6FRWwcQhYFKEXPw4l8YQ0cmilLrK49mxlJG1EoH9YViZ++A3UxM3LWZzexDD3zr5
- bUu9+fM1347NJs3vyQwV7GWb6UCJnkbXk6qvXptzswpEPmjHnE0QZUuzTPxaYMA0
- BJQeTfZZyYAnjbO/jQnDeWZ+ICvbfuyEjDRWUmM6M2oppQg5cvqueLIWnRzSZfIB
- vzwIAEUnTo6NiDjBFRYR7ERA8keu66fKCRIvD3/8DD53q80mbnEyosGvYUZNQZQk
- vxLh4W22D6TjF8WtAfZqn9tvQssMeQDIO/ChxIaTjFJeVqd8JQ6pPTFeNJYjpcW/
- Nx1VzYCOeJT2LvEOk8iS0VDq+aI6/vpBDWXhUUx+qLLHdtEnN4q6LSBKYxvvNwjJ
- EJ38V4ONxubMI/9OXmaj5LVy9eiD1+PdG3+lhUdPvTMtQ2aINKfcEOvWAtbIRLTl
- yPf5TVOgjfqGcAAj4xPI
- =zq29
+ wsFcBAABCAAQBQJqze+nCRC1aQ7uu5UhlAAAOoEQACdlDl4ctAD3kz3aQE81RzCS
+ 1d0S0zRiDJf9Wc3uXc/ontk7I5aQNesq6SJJ4D62i96+8dTEH2IMLqDrJpqOdstA
+ 2TZxCi8k0WNqbCVNpio5eBdAd2ViSBsRi8InHVR0hipAVNt7NYOGEQwgn4QNeNfi
+ qRum80YMiSiB/lUafNrgJhiNZofwTJspMjT0KkqIv0m4qYwq5ulyXW+wwTPPsDSq
+ orz2LECE+xnQSLEJKo4o2pQ2YxsLcMfIONYsLIxO8xi+3vKvok76GkIOKtOZARxp
+ jMo59SGhjLDDW9+vaA6dwXTD4aQyJ4tPKvo14esEoqB+YuwTbX9MZ0ANuG+wek8k
+ KzjnXfzi5QFkQRv9yc5QjZNGgbaWxasQ7RncIAKok9eEI8uZl32oW22hshsm9/kJ
+ Hdl5tmSdfwugJsg07DbKdAN0GsweQnhuxeaBspDXKnzrw+jtiYex7wv2qYdPjCsz
+ tPYii6Y4+7pDuc4FivBnH4NYD8e+RXoQBO31HspAMUvReZioHNgxoIxQV7GN/Pj4
+ lLnt3qjCLBbp3ypiJEuIM/xVu7USNPqM7f7jrRyWW2gFQJrXwEraqn6XMGSZCptq
+ MHvsjpWQM/V7WBCEuCBctFK63Ln1tp4vAeg2WzFUbybhXdXuZqd248FleRrScmWe
+ O7qLwijp3YESmwRYytmc
+ =gpy5
  -----END PGP SIGNATURE-----
  
 
-미예측 confirmed tick을 detached preview fork에 반영 (#34)
+진행 중 액션의 로컬 예측 수명 분리 (#44)
 
-* 예측 없는 확정 입력을 detached fork에 적용
+* 진행 중 액션의 로컬 예측 수명을 입력 edge와 분리
 
-* 확정-only preview 거부 원인 계측
+* 실제 액션 예제와 예약 tick 경계로 예측 수명 검증

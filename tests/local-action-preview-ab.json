@@ -1,0 +1,291 @@
+{
+  "environment": "Edge 155.0.4283.45 / headless SwiftShader, 1280x900, real timers, unchanged normal world",
+  "distCommit": "7cf67c33451848d1af4a7b003cbe1b81ffef8b53",
+  "before": {
+    "version": "0.2.0",
+    "errors": [],
+    "idle": {
+      "frames": 8,
+      "durationMs": 671.9,
+      "previewPublishes": 0,
+      "scopeSteps": 0,
+      "scopeStepMs": 0,
+      "movingPoseSamples": []
+    },
+    "roll": {
+      "frames": 12,
+      "durationMs": 751.6,
+      "previewPublishes": 3,
+      "scopeSteps": 4,
+      "scopeStepMs": 7.6,
+      "movingPoseSamples": [
+        {
+          "timeMs": 5297.1,
+          "displayX": 1890.0,
+          "authorityX": 1890.0,
+          "rollMs": 166.7,
+          "goal": false
+        },
+        {
+          "timeMs": 5370.5,
+          "displayX": 1900.03,
+          "authorityX": 1938.0,
+          "rollMs": 66.7,
+          "goal": false
+        },
+        {
+          "timeMs": 5440.4,
+          "displayX": 1933.58,
+          "authorityX": 1938.0,
+          "rollMs": 66.7,
+          "goal": false
+        }
+      ]
+    },
+    "point": {
+      "frames": 24,
+      "durationMs": 1860.8,
+      "previewPublishes": 1,
+      "scopeSteps": 2,
+      "scopeStepMs": 1.1,
+      "movingPoseSamples": [
+        {
+          "timeMs": 6126.2,
+          "displayX": 1993.19,
+          "authorityX": 1997.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6198.7,
+          "displayX": 2003.75,
+          "authorityX": 2011.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6279.3,
+          "displayX": 2015.19,
+          "authorityX": 2025.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6350.1,
+          "displayX": 2025.1,
+          "authorityX": 2025.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6439.8,
+          "displayX": 2037.83,
+          "authorityX": 2039.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6514.2,
+          "displayX": 2048.66,
+          "authorityX": 2053.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6591.4,
+          "displayX": 2059.02,
+          "authorityX": 2067.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6668.4,
+          "displayX": 2067.99,
+          "authorityX": 2067.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6742.4,
+          "displayX": 2077.84,
+          "authorityX": 2081.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6827.2,
+          "displayX": 2092.43,
+          "authorityX": 2095.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6910.7,
+          "displayX": 2104.01,
+          "authorityX": 2109.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6997.4,
+          "displayX": 2113.73,
+          "authorityX": 2118.38,
+          "rollMs": 0,
+          "goal": true
+        }
+      ]
+    },
+    "idleEnd": {
+      "frames": 9,
+      "durationMs": 696.0,
+      "previewPublishes": 0,
+      "scopeSteps": 0,
+      "scopeStepMs": 0.0,
+      "movingPoseSamples": []
+    }
+  },
+  "after": {
+    "version": "0.2.1",
+    "errors": [],
+    "idle": {
+      "frames": 9,
+      "durationMs": 591.1,
+      "previewPublishes": 0,
+      "scopeSteps": 0,
+      "scopeStepMs": 0,
+      "movingPoseSamples": []
+    },
+    "roll": {
+      "frames": 11,
+      "durationMs": 735.3,
+      "previewPublishes": 4,
+      "scopeSteps": 4,
+      "scopeStepMs": 3.5,
+      "movingPoseSamples": [
+        {
+          "timeMs": 5349.3,
+          "displayX": 1921.88,
+          "authorityX": 1903.99,
+          "rollMs": 166.7,
+          "goal": false
+        },
+        {
+          "timeMs": 5417.4,
+          "displayX": 1953.46,
+          "authorityX": 1951.99,
+          "rollMs": 66.7,
+          "goal": false
+        },
+        {
+          "timeMs": 5492.1,
+          "displayX": 1971.13,
+          "authorityX": 1951.99,
+          "rollMs": 66.7,
+          "goal": false
+        }
+      ]
+    },
+    "point": {
+      "frames": 25,
+      "durationMs": 1899.9,
+      "previewPublishes": 11,
+      "scopeSteps": 12,
+      "scopeStepMs": 2.6,
+      "movingPoseSamples": [
+        {
+          "timeMs": 6178.4,
+          "displayX": 2014.09,
+          "authorityX": 2011.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6252,
+          "displayX": 2029.22,
+          "authorityX": 2025.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6340.8,
+          "displayX": 2043.79,
+          "authorityX": 2039.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6405.2,
+          "displayX": 2053.45,
+          "authorityX": 2039.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6487.4,
+          "displayX": 2064.9,
+          "authorityX": 2053.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6567.3,
+          "displayX": 2075.89,
+          "authorityX": 2067.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6625,
+          "displayX": 2083.97,
+          "authorityX": 2081.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6712.8,
+          "displayX": 2095.99,
+          "authorityX": 2081.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6795,
+          "displayX": 2106.43,
+          "authorityX": 2095.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6881.2,
+          "displayX": 2120.56,
+          "authorityX": 2109.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 6962,
+          "displayX": 2129.59,
+          "authorityX": 2123.99,
+          "rollMs": 0,
+          "goal": true
+        },
+        {
+          "timeMs": 7046.3,
+          "displayX": 2133.56,
+          "authorityX": 2133.56,
+          "rollMs": 0,
+          "goal": true
+        }
+      ]
+    },
+    "idleEnd": {
+      "frames": 8,
+      "durationMs": 601.0,
+      "previewPublishes": 0,
+      "scopeSteps": 0,
+      "scopeStepMs": 0.0,
+      "movingPoseSamples": []
+    },
+    "cameraFinite": true
+  }
+}
