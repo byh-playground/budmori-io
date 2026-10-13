@@ -738,7 +738,7 @@ var VectorRenderer = class {
     this.gl = device.gl;
     this.canvas = device.canvas;
     this.glyphAtlas = glyphAtlas;
-    this.maxVertices = maxVertices;
+    this.maxVertices = Math.min(maxVertices, Math.floor(device.maxBufferBytes / 32));
     this.pipeline = device.createPipeline({ vertex: VERTEX, fragment: FRAGMENT, stride: 32, attributes: [{ name: "a_position", size: 2, offset: 0 }, { name: "a_uv", size: 2, offset: 8 }, { name: "a_color", size: 4, offset: 16 }], uniforms: { u_projection: "matrix3fv", u_texture: "1i", u_textured: "1f", u_radial: "1f", u_whiteFlash: "1f" } });
     this.buffer = device.createVertexBuffer({ capacityBytes: initialVertices * 32 });
     this.white = device.createTexture({ width: 1, height: 1, data: new Uint8Array([255, 255, 255, 255]) }, { format: "rgba", premultiplied: true, filter: "nearest" });
@@ -756,6 +756,10 @@ var VectorRenderer = class {
     this.activeRadial = false;
     this.activeWhiteFlash = false;
     this.state = "ready";
+    this.onLost = () => {
+      this.count = 0;
+    };
+    this.canvas.addEventListener("webglcontextlost", this.onLost);
     this.projection = new Float32Array([2 / this.canvas.width, 0, 0, 0, -2 / this.canvas.height, 0, -1, 1, 1]);
   }
   _frame() {
@@ -906,7 +910,7 @@ var VectorRenderer = class {
     rgba(color2);
     const poly = this.clips.length ? this._clipTriangle(a, b, c, uv) : uv ? [a, b, c].map((p, i) => ({ ...p, u: uv[i][0], v: uv[i][1] })) : [a, b, c];
     for (let i = 1; i + 1 < poly.length; i++) {
-      if (this.count + 3 > this.maxVertices) throw new RangeError("VectorRenderer vertex capacity exceeded");
+      if (this.count + 3 > this.maxVertices) this._submit();
       if (this.count + 3 > this.vertices.length / 8) {
         const size = Math.min(this.maxVertices, Math.max(this.count + 3, this.vertices.length / 4));
         const next = new Float32Array(size * 8);
@@ -942,7 +946,6 @@ var VectorRenderer = class {
     this._useTexture(this.white);
     const col = rgba(colorValue), vertices = tessellate(this.path, rule);
     for (let i = 0; i + 2 < vertices.length; i += 3) this._emitTriangle(vertices[i], vertices[i + 1], vertices[i + 2], col);
-    this._submit();
   }
   fillRadialGradient({ texture, centerX, centerY, radius, matrixInverse, color: color2 = [1, 1, 1, 1], whiteFlash = false, rule = "nonzero" } = {}) {
     this._frame();
@@ -956,7 +959,6 @@ var VectorRenderer = class {
       const a = vertices[i], b = vertices[i + 1], c = vertices[i + 2];
       this._emitTriangle(a, b, c, color2, [uv(a), uv(b), uv(c)]);
     }
-    this._submit();
   }
   stroke(colorValue = [0, 0, 0, 1], width = 1, { lineCap = "butt", lineJoin = "miter", miterLimit = 10 } = {}) {
     this._frame();
@@ -1025,7 +1027,6 @@ var VectorRenderer = class {
         }
       }
     }
-    this._submit();
   }
   polygon(points, colorValue = [0, 0, 0, 1]) {
     this.beginPath();
@@ -1121,6 +1122,8 @@ var VectorRenderer = class {
   }
   dispose() {
     if (this.state === "disposed") return;
+    this.canvas.removeEventListener("webglcontextlost", this.onLost);
+    this.count = 0;
     for (const target of this.groupTargets) this.device.deleteRenderTarget(target);
     this.device.deleteVertexBuffer(this.buffer);
     this.device.deletePipeline(this.pipeline);
@@ -1598,6 +1601,7 @@ var VectorContext = class {
     this.deferredMeshes = [];
     this.gradientTextures = /* @__PURE__ */ new Map();
     this._silhouetteMatrices = new Float32Array(60);
+    this._scaledSilhouetteMatrices = new Float32Array(12);
     this._silhouetteColorCache = /* @__PURE__ */ new Map();
     this.onLost = (event) => {
       event.preventDefault();
@@ -1738,6 +1742,7 @@ var VectorContext = class {
       cached = { texture: this.device.createTexture({ width: 256, height: 1, data: gradient.raster() }, { format: "rgba", premultiplied: true, filter: "linear" }), revision: gradient.revision };
       this.gradientTextures.set(gradient, cached);
     } else if (cached.revision !== gradient.revision) {
+      this.vector.flush();
       this.device.updateTexture(cached.texture, { width: 256, height: 1, data: gradient.raster() });
       cached.revision = gradient.revision;
     }
@@ -1796,6 +1801,7 @@ var VectorContext = class {
       return this.stats();
     } catch (error) {
       this.active = false;
+      this.vector.count = 0;
       this._releaseGradientTextures();
       this.onError?.(error, { phase: "endFrame" });
       throw error;
@@ -2126,13 +2132,17 @@ var VectorContext = class {
     }
     this.meshRenderer.drawMesh(mesh, { matrix, projection: this.vector.projection, clips: this.vector.clips, morph, parts, color: this.forceColor ?? [1, 1, 1, 1], forceColor: this.forceColor !== null, alpha: this._globalAlpha, whiteFlash: this._filter === "brightness(0) invert(1)" });
   }
-  /** Draw a retained mesh with the existing eight-offset silhouette and body in one ordered instance batch. */
-  drawMeshSilhouette(mesh, { transform = null, morph = [0, 0], parts = null, color: color2 = "black", width, radius = 128 } = {}) {
+  /** Draw a retained mesh silhouette and body in one ordered instance batch. */
+  drawMeshSilhouette(mesh, { transform = null, morph = [0, 0], parts = null, color: color2 = "black", width, radius = 128, outlineScale = null } = {}) {
     this._frame();
     if (!this.meshRenderer) throw new TypeError("createMesh required");
     finite2(width, "silhouette width");
     finite2(radius, "silhouette radius");
     if (width < 0 || radius < 0) throw new RangeError("silhouette dimensions must be non-negative");
+    if (outlineScale !== null) {
+      finite2(outlineScale, "silhouette outlineScale");
+      if (outlineScale < 1) throw new RangeError("silhouette outlineScale must be at least one");
+    }
     let outline;
     if (typeof color2 === "string" && color2[0] === "#") {
       outline = this._silhouetteColorCache.get(color2);
@@ -2142,8 +2152,8 @@ var VectorContext = class {
         this._silhouetteColorCache.set(color2, outline);
       }
     } else outline = normalizeColor(color2);
-    const matrices = this._silhouetteMatrices;
-    const bounds = this.groupBounds(0, 0, radius + width);
+    const outlineInstances = outlineScale === null ? 9 : 1, count = outlineInstances + 1, matrices = outlineScale === null ? this._silhouetteMatrices : this._scaledSilhouetteMatrices;
+    const bounds = this.groupBounds(0, 0, Math.max(radius + width, radius * (outlineScale ?? 1)));
     return this.withGroupOpacity(this._globalAlpha, () => {
       this.vector.flush();
       const source = this.vector.matrix, a = source[0], b = source[1], c = source[2], d = source[3], e = source[4], f = source[5];
@@ -2152,17 +2162,17 @@ var VectorContext = class {
         if (transform.length !== 6 || Array.from(transform).some((n) => !Number.isFinite(n))) throw new TypeError("Six finite transform values required");
         [ta, tb, tc, td, te, tf] = transform;
       }
-      for (let i = 0; i < 10; i++) {
-        const outlinePass = i < 9, offset = outlinePass && i < 8, direction = offset ? SILHOUETTE_OFFSETS[i] : null, dx = direction ? direction[0] * width : 0, dy = direction ? direction[1] * width : 0, at = i * 6;
+      for (let i = 0; i < count; i++) {
+        const outlinePass = i < outlineInstances, offset = outlineScale === null && outlinePass && i < 8, direction = offset ? SILHOUETTE_OFFSETS[i] : null, dx = direction ? direction[0] * width : 0, dy = direction ? direction[1] * width : 0, scale = outlineScale !== null && i === 0 ? outlineScale : 1, at = i * 6;
         const eOffset = e + a * dx + c * dy, fOffset = f + b * dx + d * dy;
-        matrices[at] = a * ta + c * tb;
-        matrices[at + 1] = b * ta + d * tb;
-        matrices[at + 2] = a * tc + c * td;
-        matrices[at + 3] = b * tc + d * td;
+        matrices[at] = (a * ta + c * tb) * scale;
+        matrices[at + 1] = (b * ta + d * tb) * scale;
+        matrices[at + 2] = (a * tc + c * td) * scale;
+        matrices[at + 3] = (b * tc + d * td) * scale;
         matrices[at + 4] = a * te + c * tf + eOffset;
         matrices[at + 5] = b * te + d * tf + fOffset;
       }
-      this.meshRenderer._drawMeshInstances(mesh, { matrices, count: 10, projection: this.vector.projection, morph, parts, color: this.forceColor ?? WHITE3, forceColor: this.forceColor !== null, prefixColor: outline, prefixCount: 9, forceColorPrefixCount: 9, alpha: this._globalAlpha, whiteFlash: this._filter === "brightness(0) invert(1)", clips: this.vector.clips });
+      this.meshRenderer._drawMeshInstances(mesh, { matrices, count, projection: this.vector.projection, morph, parts, color: this.forceColor ?? WHITE3, forceColor: this.forceColor !== null, prefixColor: outline, prefixCount: outlineInstances, forceColorPrefixCount: outlineInstances, alpha: this._globalAlpha, whiteFlash: this._filter === "brightness(0) invert(1)", clips: this.vector.clips });
     }, bounds);
   }
   flush() {
@@ -2203,6 +2213,7 @@ var VectorContext = class {
   }
   dispose() {
     if (this.state === "disposed") return;
+    this.vector.count = 0;
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.canvas.removeEventListener("webglcontextrestored", this.onRestored);
     this.meshRenderer?.dispose();

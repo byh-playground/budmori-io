@@ -5,7 +5,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict'),cp=require('node:child_process'),os=require('node:os');
 const ROOT=path.resolve(__dirname,'..');
 const MODULES=Object.freeze({'presentation-events':'BloomGamekitPresentationEvents',camera:'BloomGamekitCamera','rollback-netcode':'BloomOwnedSDK',interpolation:'BloomGamekitInterpolation',hud:'BloomGamekitHud',rendering:'BloomGamekitRendering',input:'BloomGamekitInput','debug-tools':'BloomGamekitDebugTools'});
-const DIST_MODULES=Object.freeze(['interpolation','rendering','input','deterministic','simloop','transport','replay','rollback','rollback-netcode','camera','presentation-events','hud','debug-tools']);
+const DIST_MODULES=Object.freeze(['interpolation','rendering','input','deterministic','simloop','transport','replay','rollback','rollback-netcode','camera','presentation-events','hud','debug-tools','audio','navigation','scenario']);
 const DIST_ASSETS=Object.freeze([Object.freeze({file:'assets/fonts/noto-sans-kr-700-v1.json',version:'noto-sans-kr-700-v1'})]);
 const sha=(bytes,algorithm='sha256')=>crypto.createHash(algorithm).update(bytes).digest('hex');
 const objectId=(type,bytes)=>sha(Buffer.concat([Buffer.from(`${type} ${bytes.length}\0`),bytes]),'sha1');

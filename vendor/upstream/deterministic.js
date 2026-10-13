@@ -321,6 +321,9 @@ var CHUNK_SIZE = 16384;
 var MAX_TICK = 2147483646;
 var defaults = {
   mode: "rollback",
+  inputScheduling: "configured",
+  inputSafetyMarginMs: 8,
+  inputJitterMultiplier: 2,
   tickRate: 60,
   baseInputDelayTicks: 2,
   minInputDelayTicks: 0,
@@ -380,7 +383,9 @@ var TYPE = Object.freeze({
   HASH: 4,
   REQUEST: 5,
   BEGIN: 6,
-  CHUNK: 7
+  CHUNK: 7,
+  INPUT_RESERVATION: 8,
+  INPUT_RESERVATION_ACK: 9
 });
 var HEADER = 12;
 var SNAP_CHUNK_BYTES = CHUNK_SIZE - HEADER - 8;

@@ -23,6 +23,7 @@ export async function createSimulationScope({sourceURL,sourceIntegrity,reference
  const live=()=>{if(disposed)throw new Error('Simulation scope disposed')};
  return {
   get ready(){return !disposed},get metrics(){return {...metrics}},
+  get localActionActive(){return !disposed&&bridge.localActionActive},
   get initialized(){return !disposed&&metrics.installs>0},
   configure(metadata){live();context={...metadata}},
   install(bytes,metadata){live();const started=performance.now();context={...metadata};bridge.installPreview(nativeBytes(bytes),context);metrics.installMs+=performance.now()-started;metrics.snapshotBytes+=bytes.byteLength;metrics.installs++;},
