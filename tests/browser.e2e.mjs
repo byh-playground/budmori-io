@@ -203,20 +203,20 @@ async function scenario() {
     report.retainedArt=await exerciseRetainedArt(page,{screenshotPath:galleryPath});
     report.screenshots.push(galleryPath);
   });
-  await check('A long active-frame gap drops backlog and advances one current tick', async () => {
+  await check('A long active-frame gap drops backlog and resumes on a real deadline', async () => {
     const witness = await page.evaluate(async () => {
       const before = BloomSimulation.tick, samples = [];
       for (let i = 0; i < 4; i++) {
         const start = performance.now();
         while (performance.now() - start < 450) {}
         const blockedTick = BloomSimulation.tick;
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve,reject)=>{const start=performance.now();const next=()=>{if(BloomSimulation.tick>blockedTick)return resolve();if(performance.now()-start>1500)return reject(new Error('Real deadline did not resume'));requestAnimationFrame(next)};requestAnimationFrame(next)});
         samples.push({blockedTick, resumedTick: BloomSimulation.tick});
       }
       return {before, after: BloomSimulation.tick, samples};
     });
     assert.deepEqual(witness.samples.map(sample => sample.blockedTick), [witness.before, witness.before + 1, witness.before + 2, witness.before + 3], 'Each new stall begins at the preceding current boundary');
-    assert.deepEqual(witness.samples.map(sample => sample.resumedTick), [witness.before + 1, witness.before + 2, witness.before + 3, witness.before + 4], 'Each long gap advances one current tick; stale backlog is not replayed or rebased away');
+    assert.deepEqual(witness.samples.map(sample => sample.resumedTick), [witness.before + 1, witness.before + 2, witness.before + 3, witness.before + 4], 'Each long gap resumes one current tick on a real deadline without replaying stale backlog');
     assert.equal(witness.after, witness.before + 4);
   });
   await check('WASD movement, pause freeze, Escape resume, and keyboard roll', async () => {

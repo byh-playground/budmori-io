@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori v67 · shared-world authority',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@fbecfb6c06a5be98af9f6f556b322e7247df57ca',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori 0.2.1 · local action preview',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@fbecfb6c06a5be98af9f6f556b322e7247df57ca',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -12795,7 +12795,7 @@ const PublicSession=globalThis.PublicSession=(()=>{
    releaseRoom({forget:true});remember(false);setPhase(sessionPhase.idle);
   }
  }
- async function solo({graceful=true}={}){if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)bloomShowRejectedSave();return false}const leaving=leave({graceful}),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
+ async function solo({graceful=true}={}){if(BloomSimulation.runtime&&!BloomSimulation.runtime.ready)return false;if(BloomSimulation.sessionConfig.mode==='local'&&BloomSimulation.runtime?.metrics.persistenceProtected){if(!globalThis.BLOOM_HEADLESS)bloomShowRejectedSave();return false}if(BloomSimulation.sessionConfig.mode==='local'&&bloomInputPending)await BloomSimulation.runtime.snapshot('save');const leaving=leave({graceful}),generation=lifecycle.generation;await leaving;if(generation!==lifecycle.generation)return false;CONFIG.session.mode='local';CONFIG.session.persistence='solo';BloomSimulation.sessionConfig=Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'});if(soloReturn.tickRate)bloomApplyTickRate(soloReturn.tickRate);if(soloReturn.netcode)Object.assign(CONFIG.netcode,soloReturn.netcode);bloomInitialize(bloomSeed);BloomSimulation.runtime?.replaceSession({sessionConfig:BloomSimulation.sessionConfig});let restored=false;if(soloReturn.disk)restored=load(soloReturn.disk);else{try{const disk=localStorage.getItem(CONFIG.saveKey);if(disk)restored=load(disk)}catch{}}playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS){document.body.classList.remove('intro');closeModal();refreshUI()}BloomSimulation.runtime?.controls();return restored}
  function cancel(){if(BloomSimulation.sessionConfig.mode==='online')return solo();++lifecycle.generation;connection.attempt?.controller.abort();connection.attempt=null;setPhase(sessionPhase.idle);if(!globalThis.BLOOM_HEADLESS)showIntro(startUXHasSave)}
  function bind(){
   if(globalThis.BLOOM_HEADLESS)return;
@@ -12937,7 +12937,8 @@ function bloomMainRuntime() {
    throw new Error('SDK failed to advance: '+result.status);
   }
   metrics.tickMs=performance.now()-start;metrics.maxTickMs=Math.max(metrics.maxTickMs,metrics.tickMs);metrics.ticks++;
-  bloomInputPending=0;
+  const inputState=bloomSession.localInputState;
+  bloomInputPending=inputCommands.length+Math.max(0,inputState.commandSequence-(inputState.executedCommandSequence??inputState.commandSequence));
   const presentAt=performance.now(),capturedEpoch=presentation.epoch;bloomPresent(Math.min(bloomSession.confirmedTick,bloomTick-1));
   if(ui.phase===uiPhase.ready&&!globalThis.BLOOM_HEADLESS){if(presentation.epoch===capturedEpoch)capturePresentation();maybeAbilityPrompt()}
   if(!continuePreview())safeReconcilePreview();
@@ -12949,7 +12950,7 @@ function bloomMainRuntime() {
   else if(!persistence.enabled)bloomPersistenceRequested=false;
   const requests=persistence.pending;persistence.pending=[];for(const p of requests){try{p.resolve(p.kind==='save'?persist():persistence.disk())}catch(error){p.reject(error)}}
  }
- function advanceSuspended(){const now=performance.now();bloomLoop.observeInput(now);bloomLoop.flushInput(now)}
+ function advanceSuspended(now=performance.now()){bloomLoop.observeInput(now);bloomLoop.pulse(now,{render:false})}
  function schedule(){
   if(phase!==runtimePhase.ready||globalThis.BLOOM_MAIN_TEST_MANUAL){driver.scheduler.stop();return}
   if(discovering()||!active()&&!bloomInputPending){driver.scheduler.stop();return}
@@ -12960,8 +12961,8 @@ function bloomMainRuntime() {
   try{const running=active();
    const collapsedGap=driver.gapTimestamp===now;driver.gapTimestamp=null;
    if(running!==driver.wasActive){rebaseDriverClock(now);driver.wasActive=running}
-   if(!running){if(bloomInputPending&&!discovering())advanceSuspended();bloomLoop.resetTiming()}
-   else if(collapsedGap){bloomLoop.resetTiming(false);bloomLoop.flushInput(now)}
+   if(!running){if(bloomInputPending&&!discovering())advanceSuspended(now);else bloomLoop.resetTiming()}
+   else if(collapsedGap){bloomLoop.resetTiming(false);bloomLoop.pulse(now,{render:false})}
    else bloomLoop.pulse(now);
    schedule();
   }catch(error){fail(error)}
@@ -13015,7 +13016,7 @@ function bloomMainRuntime() {
  BloomDiagnostics.setPauseForInspect(()=>{if(ui.phase===uiPhase.ready&&phase!==runtimePhase.failed&&!paused){paused=true;showPause();controls()}});
  BloomDiagnostics.provide('mainLoop',()=>({initialized:phase===runtimePhase.ready,fatal:phase===runtimePhase.failed,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,epoch,pendingCommands:bloomInputPending,pendingSaves:persistence.pending.length,saveAvailable:persistence.enabled&&!persistence.protected&&!!persistence.latestDisk,sessionConfig:{...BloomSimulation.sessionConfig},storageFailed:!!persistence.error,...metrics}));
  function pagehide(){if(phase===runtimePhase.ready&&!BloomDiagnostics.fatal&&!persistence.protected&&persistence.enabled&&persistence.latestDisk)try{localStorage.setItem(CONFIG.saveKey,persistence.latestDisk)}catch(error){BloomDiagnostics.report(error,{kind:'save.pagehide'})}}
- const runtime={get ready(){return phase===runtimePhase.ready},get preview(){const leader=WorldPlayers.local()?.leader;return{phase:previewState.phase,enabled:previewFacade.enabled,error:previewState.error,display:leader?presentation.runtime?.modelFor(leader,bloomPresentationNow()):null,captureMs:previewState.captureMs,captureBytes:previewState.captureBytes,heapObservedDeltaBytes:previewState.heapBefore===null?null:(performance.memory?.usedJSHeapSize??previewState.heapBefore)-previewState.heapBefore,scope:previewState.scope?.metrics,capability:previewState.capability?.metrics}},get metrics(){return{...metrics,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,sessionConfig:{...BloomSimulation.sessionConfig},persistenceAvailable:persistence.enabled}},inspect,controls,snapshot,replaceSession,observeInput:observeInputFrame,rebaseClock:rebaseDriverClock,installSession(session){return boundary({adoptSession:session})},
+ const runtime={get ready(){return phase===runtimePhase.ready},get preview(){const leader=WorldPlayers.local()?.leader;return{phase:previewState.phase,enabled:previewFacade.enabled,active:previewFacade.active,error:previewState.error,display:leader?presentation.runtime?.modelFor(leader,bloomPresentationNow()):null,captureMs:previewState.captureMs,captureBytes:previewState.captureBytes,heapObservedDeltaBytes:previewState.heapBefore===null?null:(performance.memory?.usedJSHeapSize??previewState.heapBefore)-previewState.heapBefore,scope:previewState.scope?.metrics,capability:previewState.capability?.metrics}},get metrics(){return{...metrics,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,sessionConfig:{...BloomSimulation.sessionConfig},persistenceAvailable:persistence.enabled}},inspect,controls,snapshot,replaceSession,observeInput:observeInputFrame,rebaseClock:rebaseDriverClock,installSession(session){return boundary({adoptSession:session})},
   initialize({tickRate=CONFIG.sim.tickRate,seed=0x6d2b79f5,disk=null}={}){if(phase===runtimePhase.closed||phase===runtimePhase.failed)throw new Error('Simulation is not available');if(phase===runtimePhase.ready&&online())throw new Error('Leave the public session before initializing solo progress');phase=runtimePhase.initializing;persistence.soloWorld=true;persistence.protected=false;persistence.failure=null;persistence.latestDisk='';persistence.error=null;bloomApplyTickRate(tickRate);bloomInitialize(seed);let loaded=false;if(disk){loaded=oldLoad(disk);if(!loaded){persistence.protected=true;persistence.failure=bloomDiskFailure;BloomDiagnostics.notice(new Error(bloomDiskFailure?.message||'Stored save rejected. Original kept; reset or successfully import before saving.'),{kind:'save.load'})}}playing=false;paused=true;modalKind='intro';phase=runtimePhase.ready;boundary();return{loaded,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,tickRate:CONFIG.sim.tickRate}},
   close(){
    if(phase===runtimePhase.closed)return;

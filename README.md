@@ -1,5 +1,11 @@
 # Budmori.io · 버드모리
 
+현재 제품 버전은 **0.2.1**입니다. GameKit [PR44](https://github.com/byh-playground/bloom-gamekit/pull/44)의 source `fbecfb6c06a5be98af9f6f556b322e7247df57ca`, dist `7cf67c33451848d1af4a7b003cbe1b81ffef8b53`를 사용합니다. 공개방은 계속 **lockstep 10TPS**이며 protocol 3을 사용하는 모든 참가자가 같은 번들을 새로 로드해야 합니다.
+
+입력 해제 후에도 로컬 Moa의 구르기 잔여 시간 또는 클릭 이동 목표가 있으면 공식 `LocalInputPreview.isActive` → 스코프의 `localActionActive` → facade `active`로 예측 표시를 유지합니다. 자동 공격과 다른 플레이어는 활성 조건에 포함하지 않습니다. 동작이 끝나면 정상 보간으로 돌아갑니다. 최신 SDK의 `flushInput`은 입력 예약만 하므로, 일시정지 중 명령은 실제 deadline `pulse`로 처리하고 실행 sequence를 확인한 뒤 저장·솔로 전환을 진행합니다.
+
+실제 Edge 전후 관측: 클릭 이동의 예측 게시 1→11회, scope step CPU 1.1→2.6ms(각 약 1.9초 구간). 동작 종료 후 양쪽 모두 게시 0회·scope step 0회였습니다. [관측값](tests/local-action-preview-ab.json)은 일반 초기 월드의 서로 다른 실시간 실행이며, 동일 시각·동일 hash 대조나 FPS 개선 수치가 아닙니다. 구르기/클릭 이동 중 표시 좌표가 계속 진행했고 종료 시 권위 위치로 인계되었습니다. 수정 후 카메라 좌표는 유한했습니다. 실제 하드웨어 GPU, 인터넷 relay/NAT, 장시간·대규모 부하는 이번 범위에서 측정하지 않았습니다.
+
 ## 병사 메시 재사용
 
 군대 24종은 공통 `MeshBuilder` / `VectorContext.drawMesh()`로 그립니다. 종류·실제 반경·팔레트·공격/피격 상태별 authored 삼각형을 한 번 만들고 GPU에 보관합니다. 회전·궤도·맥동·날갯짓·포탑 전개는 part transform/morph/visibility 값으로 전달하며, 시간·방향·연속 진행률을 캐시 키에 넣거나 애니메이션을 양자화하지 않습니다. 원래 레시피는 native UI thumbnail과 cold mesh 생성이 함께 사용하고, 세계를 Canvas2D로 rasterize해 올리지 않습니다.
