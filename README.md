@@ -360,6 +360,10 @@ Health/primary-attack/lifecycle 내부 회귀는 개발 중 사용하고 제거�
 
 - 공개 transport 연결 예산은 20초, 전체 membership 전환 예산은 30초입니다. 기존 15초 총 전환 제한은 transport 예산보다 짧았으므로 이를 정렬하고 상태 복구 여유 10초를 둡니다. 기한을 넘기면 SDK가 여전히 실패 종료하며 무한 연장은 하지 않습니다.
 
+### Projectile disposal ownership
+
+`ProjectileLifecycle.discardAt(index)` owns synchronous disposal notifications and then removes the shot. Channel cleanup and finisher-assist cleanup subscribe through `onDisposed` in that order; subscribers cannot emit the notification. Assisted ability completion uses `finish(shot)` to release its binding before marking the shot finished, and later removal still sends the existing second notification. Wild-owner culling keeps its separate silent filter policy. No shot fields, snapshot keys, disposal timing, or SDK pin change.
+
 ### Auxiliary timing and pre-admission bootstrap
 
 Auxiliary weapons store one deadline per weapon (`auxScheduleMs`). `sampledAtMs` marks the completed update observed by sprout presentation before the next combat tick. `weaponCooldownSeconds` derives its display without mutation; no `auxCooldowns`, rival `aux`, or `displaySeconds` mirror is saved or imported. Current cadence cards change future launch intervals through `weaponStats`; they do not rescale an already scheduled deadline. The overwritten paid-haste wrapper is removed rather than replaced with an unused rescale API.
