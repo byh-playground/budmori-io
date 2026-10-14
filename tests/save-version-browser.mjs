@@ -39,7 +39,7 @@ try{
  if(process.env.BLOOM_SAVE_UI_SCREENSHOT)await page.screenshot({path:process.env.BLOOM_SAVE_UI_SCREENSHOT});
  await page.locator('[data-action="reset"]').click();
  await page.waitForFunction(()=>!BloomSimulation.runtime.metrics.persistenceProtected&&!__army.paused);
- const fresh=await stored();assert.equal(JSON.parse(fresh).productVersion,'0.2.2');
+ const fresh=await stored();assert.equal(JSON.parse(fresh).productVersion,'0.2.3');
  await page.locator('#pause').click();await page.locator('[data-ux="settings"]').click();
  // Settle the reset button's queued tutorial acknowledgement before the import baseline.
  await page.evaluate(()=>BloomSimulation.runtime.snapshot('save'));

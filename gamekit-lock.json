@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "9436219ae9fbcecfaf01f1f93e6271a0f3b73737",
-  "distCommit": "63c62dae8d339f6f0329c0940206806f69509630",
+  "sourceCommit": "baa96876876a08013ad28b5a71c83bfadd285fab",
+  "distCommit": "72b09b260edf9650353017acb49c06873fe9f5a1",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -16,7 +16,7 @@
     },
     {
       "name": "rollback",
-      "bundleSHA256": "efd95275b42e0c7457714123ac6497f6c02ffabf11a23f9dc7e2ec0ad1b244cc"
+      "bundleSHA256": "2c64772369f1bb110a7d5d7f090f687115ca42f9219edf957e1af87e56348696"
     },
     {
       "name": "deterministic",
@@ -24,7 +24,7 @@
     },
     {
       "name": "simloop",
-      "bundleSHA256": "6d8c3462ac01b0af967b3c259eede2b85e2f2f3f6813217391e6c322a7d10007"
+      "bundleSHA256": "1be543dc7e15ef7c87043af98a1fb49a0a45a779098bfa085dc7509709f1ea9c"
     },
     {
       "name": "transport",
@@ -32,7 +32,7 @@
     },
     {
       "name": "interpolation",
-      "bundleSHA256": "bf6c8737ef48ca327814cf7326406025c2ece6c49a690ca7652cac2cc6af2562"
+      "bundleSHA256": "64d1297162f07e78904954628a5c9595e1eddf576b8612a58f41ed594638c37c"
     },
     {
       "name": "hud",
@@ -51,7 +51,7 @@
       "bundleSHA256": "72260336a6c3f2ee0357a303fa8943dd8cfa4f7deea5d9517d311d4cd8796a71"
     }
   ],
-  "manifestSHA256": "245b55e8f100a56ad11373a25b63b292a838414f6be8b1ee9388d63572b62c03",
+  "manifestSHA256": "c713809653043e8eb1d9b629c0c2734e9526217f69e04b49283d068c1b5d7da7",
   "assets": [
     {
       "file": "assets/fonts/noto-sans-kr-700-v1.json",
