@@ -1,6 +1,6 @@
 # Budmori.io · 버드모리
 
-현재 제품 버전은 **0.2.2**입니다. 이번 변경은 SDK import 구조만 이관하므로 게임·저장 버전은 유지합니다. GameKit v0.3.0 [PR51](https://github.com/byh-playground/bloom-gamekit/pull/51)의 source `9436219ae9fbcecfaf01f1f93e6271a0f3b73737`, dist `63c62dae8d339f6f0329c0940206806f69509630`를 사용합니다. 공개방은 계속 **lockstep 10TPS**이며 protocol 3을 사용하는 모든 참가자가 같은 번들을 새로 로드해야 합니다.
+현재 제품 버전은 **0.2.3**입니다. GameKit v0.3.1 [PR52](https://github.com/byh-playground/bloom-gamekit/pull/52)의 source `baa96876876a08013ad28b5a71c83bfadd285fab`, dist `72b09b260edf9650353017acb49c06873fe9f5a1`를 사용합니다. 공식 표시 runtime의 preview 상태 경계와 authority 인계 이력 수정을 적용하며 게임별 우회 경로는 추가하지 않습니다. 기존 선언형 STATE_KEY와 거리 불연속 정책을 사용합니다. 게임·저장 호환성 0.2, 공개방 **lockstep 10TPS**, protocol 3은 유지됩니다.
 
 표시는 GameKit의 단일 `PresentationRuntime.frame(nowMs)`에서 월드·유닛·투사체를 함께 읽습니다. 10TPS에서 authority 표시는 1 tick(100ms) 지연하며, 생성 seed와 제거 수명도 같은 표시 목록을 따릅니다. 로컬 입력 preview는 즉시 선택됩니다. 일시정지·긴 RTC 대기 후에는 표시 epoch를 재설정해 지난 벽시계 시간을 따라잡지 않습니다. 이 변경은 판정 tick·피해·이동 규칙을 바꾸지 않습니다.
 

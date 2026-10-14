@@ -1,21 +1,21 @@
-tree 4ce049d0355270549f95c156f8affe30cdf30218
-parent 75b826f3cb60cc28d89e3fa2bb98050fdb29e412
-author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791942095 +0000
-committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791942095 +0000
+tree 53ecec21856f02678364b5a634f645c251006d28
+parent 63c62dae8d339f6f0329c0940206806f69509630
+author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791947766 +0000
+committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1791947766 +0000
 
 [chore] 독립 모듈 배포물 갱신
 
-SDK-Version: 0.3.0
-Source-Commit: 9436219ae9fbcecfaf01f1f93e6271a0f3b73737
-Manifest-SHA256: 245b55e8f100a56ad11373a25b63b292a838414f6be8b1ee9388d63572b62c03
-Bundle-SHA256: interpolation.js bf6c8737ef48ca327814cf7326406025c2ece6c49a690ca7652cac2cc6af2562
+SDK-Version: 0.3.1
+Source-Commit: baa96876876a08013ad28b5a71c83bfadd285fab
+Manifest-SHA256: c713809653043e8eb1d9b629c0c2734e9526217f69e04b49283d068c1b5d7da7
+Bundle-SHA256: interpolation.js 64d1297162f07e78904954628a5c9595e1eddf576b8612a58f41ed594638c37c
 Bundle-SHA256: rendering.js 5fed746a9797fab4e7c8b99239d00026b913b66f1956c8d6955b7eb4cdf426ef
 Bundle-SHA256: input.js ae84399953c7e54c8d96408c97208f42b2246a8ac27ef5265053cb0beb306168
 Bundle-SHA256: deterministic.js 688178b889e7bd3f19c1bc504c91c03f896a9a7bd832fd2c0fc958b2feadce55
-Bundle-SHA256: simloop.js 6d8c3462ac01b0af967b3c259eede2b85e2f2f3f6813217391e6c322a7d10007
+Bundle-SHA256: simloop.js 1be543dc7e15ef7c87043af98a1fb49a0a45a779098bfa085dc7509709f1ea9c
 Bundle-SHA256: transport.js 3bded746222c0aa1769697442b579922d406e67d79e3dbf65df5580dd387c007
 Bundle-SHA256: replay.js 2f9ca6c7220e282be8f7e070d1dc62ce368d3123649d0d8f62283deb8d9da4cf
-Bundle-SHA256: rollback.js efd95275b42e0c7457714123ac6497f6c02ffabf11a23f9dc7e2ec0ad1b244cc
+Bundle-SHA256: rollback.js 2c64772369f1bb110a7d5d7f090f687115ca42f9219edf957e1af87e56348696
 Bundle-SHA256: camera.js 972268ad14de778f1dca437913cff576155754adf1195948897c0df3ff8f66de
 Bundle-SHA256: presentation-events.js 469a820e22730cdff9a0e4cd37fcbbfa4ffc9af3e39eab6d9a784e1d544caf84
 Bundle-SHA256: hud.js acec30fdab522ef151ab582113f26058aabb48a1d8d11cfe0ea640e1b61c86df

@@ -1,26 +1,26 @@
-tree d37cbf83156ceab79b1d32502ff5464139856170
-parent da9484a22ad299ed07e70fb0419981fae1e76321
-parent cc5a456330cfb4a2514b06dba41deb7c543c8105
-author byh020907 <byh020907@naver.com> 1791942072 +0900
-committer GitHub <noreply@github.com> 1791942072 +0900
+tree 711c6a1ac786850fe5c1176c160ec524ec31b86f
+parent 9436219ae9fbcecfaf01f1f93e6271a0f3b73737
+parent 69b05b7c7e6e0e671447166f7e877bc9cab5b4ff
+author byh020907 <byh020907@naver.com> 1791947741 +0900
+committer GitHub <noreply@github.com> 1791947741 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqzt24CRC1aQ7uu5UhlAAAXpAQAAO1avsPY1VWsDdX3MTMOzM9
- wKSABGdg5je8TWys/IZfNFsOsQmL+5j5YDF8H0+tb24mmnkh7gcxApluFqwPQjzp
- Y1WCwWsSnOshwSSTkZOrsLeLUCDpenCVjlD0dpF3ix5uCIJIU+br+9VoGDuLg7df
- gE/1sLOIXlvjpD8A/6TwBMN6ZPfQBDkAGveEIylK67+oJCxna6rD8VGmyXa1wxkk
- TaSEY0+fBUEiiKo3pEAaAGws61OLLHR/CILP1vRZZu73+cXpP4RgucEiyZbS+k5V
- wUFua1ZNyab9OR3KxWBRLdQ4rN9+ODXPdhkWNTV8iC4nN4dz6141pOjC9pioVCF2
- yOUVwqwhYJ2HT9kFaiANESlvfTUldAqdWXe2LoEYqWpxhcw7PcARdPbINZSqnwb+
- uazopWoNzulWG7qad5BZe6BWrmxJMWTKRTpJFSDduAOpI83sXUuhL3djM6CLXIhW
- B0MMzVJjOZbnPB6H5wXv8iFfvUXJIB4jBWzN4W+3QnaJx9K+T4pdtmnnG3kuhmqg
- 9e6CvxhyC/v33cLzOv7I4frxSlwt5M1ZLg8e2yQLgZrveEVXpn8auvLWmyqcLnp0
- wIzDDmMVl9jZijwP8frNviplucCiz5o7TejBtq4dTBDZBQziidraZM/dd0gwWffT
- 7tHaOauTj0gOKhjdSS4F
- =CCGv
+ wsFcBAABCAAQBQJqzvPdCRC1aQ7uu5UhlAAArVgQAF2j3uM4YWButZDfry7xxmcv
+ OYJnj5yldYvMtG1YhxrPYbHafwtqr4Oj+MA81smdnYLsHF7JeGLnZ3OR5iolEss0
+ KPAuAW9A6cEIZhwFBnoGuv2ZSp9bBeTVa2ozb3ClpNBzRy7pxxKTGyZ3O3RwDvY1
+ rIzQJmDYMAuTdbC1FyzmEaC2ImcZ6HBO/ipRvihwFwhPP1bmLaamrNQBNgqgf2xX
+ gOuGLNgs5mWtjiCed3h8WEfCI1vNXHKr3zVQakMcZpZmGWMuAZQlEEx1jEobK3hN
+ 9O2syw4ZUVty9ZFMs/frK7cA4ENl59n7bFAUYRLPJIvgGhsz996TPK0BiV8FLULE
+ jmxH87Av0z7wBe36cbEUNjkfcFEyD6NE0pWTPHUgV/qyqMPGUI+NZz1lpRAsF6hP
+ P8dnZFrIhMm6nHrEVCOoDSs7X+WW4KyDgbZpv2DuJpyUkAnWlE+ru5bwsi8p9wuY
+ ROlcStjqaDgEWUShR4ZTOUL5DRgMMS+dS6PwlSzJY9niP48uBmo4oiKT5ddGZUlq
+ +FEgG0TvhOkrEm0dPnuXTidNIGnsDEK9A5wBo30SfWi+nMjf7DdDv1ftPWuKkuHA
+ S4n8WhHfGI+8hyMJ3t3P2iUDVBuahUsHyyPXKmfWT31oKIkTvhXKoUHblILv6tPV
+ c7d9QG9bZcGMZK1wb4D0
+ =2C5d
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #51 from byh-playground/codex/remove-compat-entry
+Merge pull request #52 from byh-playground/codex/rollback-teleport-policy
 
-전체 API 호환 진입점 제거와 독립 모듈 v0.3.0 배포
+[bug-fix] 로컬 순간이동·이동 표시 이력 연결 수정
