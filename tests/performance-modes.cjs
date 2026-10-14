@@ -6,7 +6,7 @@ const report={kind:'Native V8 actual engine and SDK, mock DOM, no renderer; not 
 for(const [scenario,count,tps]of [['sparse',10,10],['dense',155,20],['maximum',1000,30]]){
  const engines=['rollback','lockstep'].map(mode=>{const e=engine(file,html);e.fixture(bench.fixture(count,tps,mode));e.run(bench.instrument);return e});
  try{
-  const initial=engines.map(e=>e.json('({seed:bloomSeed,tps:CONFIG.sim.tickRate,units:state.units.length,friendly:state.units.filter(u=>u.team==="friendly"&&u.hp>0).length,hash:BloomOwnedSDK.hashBytes(bloomAdapter.save())})'));
+  const initial=engines.map(e=>e.json('({seed:bloomSeed,tps:CONFIG.sim.tickRate,units:state.units.length,friendly:state.units.filter(u=>u.team==="friendly"&&u.hp>0).length,hash:BloomGamekitDeterministic.hashBytes(bloomAdapter.save())})'));
   assert.deepEqual(initial[0],initial[1]);assert.equal(initial[0].friendly,count);
   for(let i=0;i<20;i++)for(const e of i%2?engines:[...engines].reverse())e.run(bench.advance(i));
   const before=engines.map(e=>e.json('bloomSnapshotStore.metrics()'));
@@ -17,7 +17,7 @@ for(const [scenario,count,tps]of [['sparse',10,10],['dense',155,20],['maximum',1
   const bytes=engines.map(e=>Buffer.from(e.run('bloomAdapter.save()')));assert(bytes[0].equals(bytes[1]),scenario+' identical complete final authority');
   for(let index=0;index<engines.length;index++){
    const e=engines[index],raw=e.json('__modeBench');assert.equal(raw.snapshot.length,index===0?80:3,'Only rollback saves each tick; lockstep saves at 30/60/90');
-   const row={scenario,mode:e.run('bloomSession.profile.mode'),sourceSHA256:e.sha256,initial:initial[index],measuredTicks:80,measuredStartTick:20,measuredEndTick:100,checksumInterval:e.run('bloomSession.profile.checksumInterval'),...bench.summarize(raw),diskCacheCopies:after[index].cacheCopies-before[index].cacheCopies,diskCacheCopyBytes:after[index].cacheCopyBytes-before[index].cacheCopyBytes,final:e.json('({tick:bloomTick,time:state.time,hash:BloomOwnedSDK.hashBytes(bloomAdapter.save())})')};
+   const row={scenario,mode:e.run('bloomSession.profile.mode'),sourceSHA256:e.sha256,initial:initial[index],measuredTicks:80,measuredStartTick:20,measuredEndTick:100,checksumInterval:e.run('bloomSession.profile.checksumInterval'),...bench.summarize(raw),diskCacheCopies:after[index].cacheCopies-before[index].cacheCopies,diskCacheCopyBytes:after[index].cacheCopyBytes-before[index].cacheCopyBytes,final:e.json('({tick:bloomTick,time:state.time,hash:BloomGamekitDeterministic.hashBytes(bloomAdapter.save())})')};
    report.results.push(row);console.log(JSON.stringify(row));
   }
  }finally{engines.forEach(e=>e.run('bloomSession.close()'))}

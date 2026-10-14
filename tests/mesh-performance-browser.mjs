@@ -24,12 +24,12 @@ const reportDestination=process.env.BLOOM_LOAD_REPORT?resolve(process.env.BLOOM_
 // Explicit developmental fixture, never a production import or provenance claim.
 const candidateModules=new Map();
 if(process.env.BLOOM_RENDERING_CANDIDATE)candidateModules.set('rendering',await readFile(resolve(process.env.BLOOM_RENDERING_CANDIDATE)));
-if(process.env.BLOOM_ROLLBACK_NETCODE_CANDIDATE)candidateModules.set('rollback-netcode',await readFile(resolve(process.env.BLOOM_ROLLBACK_NETCODE_CANDIDATE)));
+if(process.env.BLOOM_SIMLOOP_CANDIDATE)candidateModules.set('simloop',await readFile(resolve(process.env.BLOOM_SIMLOOP_CANDIDATE)));
 const candidateRendering=candidateModules.get('rendering')||null;
 const candidateOrder = process.env.BLOOM_RENDERING_CANDIDATE_ORDER || 'last';
 assert(['first', 'last'].includes(candidateOrder), 'BLOOM_RENDERING_CANDIDATE_ORDER must be first or last');
-const rollbackPreviewControl=process.env.BLOOM_ROLLBACK_NETCODE_CONTROL||'snapshot-rebase';
-assert(['snapshot-rebase','pinned'].includes(rollbackPreviewControl),'BLOOM_ROLLBACK_NETCODE_CONTROL must be snapshot-rebase or pinned');
+const rollbackPreviewControl=process.env.BLOOM_SIMLOOP_CONTROL||'snapshot-rebase';
+assert(['snapshot-rebase','pinned'].includes(rollbackPreviewControl),'BLOOM_SIMLOOP_CONTROL must be snapshot-rebase or pinned');
 const candidateIndex = candidateModules.size ? (candidateOrder === 'first' ? 0 : Math.max(0, files.length - 1)) : -1;
 const report = { kind: 'Actual Chromium/SwiftShader WebGL, production RAF/deadlines; not phone hardware FPS', netcodeMode,rollbackPreviewControl,
   viewport: { width: 360, height: 640, dpr: 2 }, warmupMs: 1500, holdMs,
@@ -55,7 +55,7 @@ function fixture(app, count, preview, useSilhouetteBatch, useRollbackPreviewFall
   const rollbackPreviewFallbackAdapter = useRollbackPreviewFallback ? `
     // Control arm for product code that expects the incremental-preview API.
     // The published baseline has no method, so preserve its snapshot-rebase behavior.
-    BloomOwnedSDK.LocalInputPreview.prototype.continueFromCheckpoint=function(){return false};
+    BloomGamekitSimloop.LocalInputPreview.prototype.continueFromCheckpoint=function(){return false};
   ` : '';
   const actorInstrumentation = renderSubstages ? `
     globalThis.__actorStageProfile={enabled:false,insideArt:false,stageMs:0,stageCalls:0,unitMs:0,unitCalls:0,shadowMs:0,shadowCalls:0,artMs:0,artCalls:0,meshSilhouetteMs:0,meshSilhouetteCalls:0,meshSubmitMs:0,meshSubmitCalls:0};
@@ -89,8 +89,8 @@ function fixture(app, count, preview, useSilhouetteBatch, useRollbackPreviewFall
       for(const u of state.units)if(u.team==='enemy'){u.stun=1e6;u.aggroAt=u.wanderAt=state.time+1e6}
       rebuildGrid();spatialBoundary();return result;
     };
-    ${preview ? '' : `const enable=BloomOwnedSDK.LocalInputPreview.prototype.setEnabled;
-    BloomOwnedSDK.LocalInputPreview.prototype.setEnabled=function(){return enable.call(this,false)};`}
+    ${preview ? '' : `const enable=BloomGamekitSimloop.LocalInputPreview.prototype.setEnabled;
+    BloomGamekitSimloop.LocalInputPreview.prototype.setEnabled=function(){return enable.call(this,false)};`}
     ${silhouetteBatchAdapter}
     ${rollbackPreviewFallbackAdapter}
     ${actorInstrumentation}
@@ -129,15 +129,15 @@ try {
     if (moduleOverrides.size) app.config.modules = app.config.modules.map(entry => {
       const bytes=moduleOverrides.get(entry.name);return bytes?{...entry,bytes:bytes.length,sha256:runtime.hash(bytes),url:`https://${entry.name}-candidate.invalid/${runtime.hash(bytes)}/${entry.name}.js`}:entry;
     });
-    const useRollbackPreviewFallback=candidateModules.has('rollback-netcode')&&fileIndex!==candidateIndex&&rollbackPreviewControl==='snapshot-rebase';
+    const useRollbackPreviewFallback=candidateModules.has('simloop')&&fileIndex!==candidateIndex&&rollbackPreviewControl==='snapshot-rebase';
     for (const count of counts) for (const preview of previews) responses[`/${count}-${preview}`] = fixture(app, count, preview, !!renderingCandidate,useRollbackPreviewFallback);
     const server = createServer(runtime.serve(responses));
     await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
     try {
       for (const count of counts) for (const preview of previews) {
         const context = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
-        const errors = [], row = { file, renderingVariant:moduleOverrides.size?'candidate':'pinned', candidateModules:[...moduleOverrides.keys()], rollbackPreviewMode:moduleOverrides.has('rollback-netcode')?'incremental-confirmed-fork':useRollbackPreviewFallback?'snapshot-rebase-control':candidateModules.has('rollback-netcode')&&rollbackPreviewControl==='pinned'?'pinned-control':'production', netcodeMode, silhouetteBatchFastPath:!!renderingCandidate, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
-          renderingSHA256: app.config.modules.find(entry => entry.name === 'rendering').sha256, rollbackNetcodeSHA256:app.config.modules.find(entry=>entry.name==='rollback-netcode').sha256, sdk: app.config.distCommit, count, preview, errors };
+        const errors = [], row = { file, renderingVariant:moduleOverrides.size?'candidate':'pinned', candidateModules:[...moduleOverrides.keys()], rollbackPreviewMode:moduleOverrides.has('simloop')?'incremental-confirmed-fork':useRollbackPreviewFallback?'snapshot-rebase-control':candidateModules.has('simloop')&&rollbackPreviewControl==='pinned'?'pinned-control':'production', netcodeMode, silhouetteBatchFastPath:!!renderingCandidate, sourceSHA256: runtime.hash(app.game), fixtureSHA256: responses[`/${count}-${preview}`].gameSha,
+          renderingSHA256: app.config.modules.find(entry => entry.name === 'rendering').sha256, simloopSHA256:app.config.modules.find(entry=>entry.name==='simloop').sha256, sdk: app.config.distCommit, count, preview, errors };
         report.results.push(row);
         try {
           await installAssets(context, app, moduleOverrides);

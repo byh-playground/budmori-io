@@ -36,10 +36,10 @@ function run({file,html,disk,check=(label,ok)=>assert(ok,label)}){
   // replay capture this authority on demand; recovery uses its retained checkpoint
   // and the complete confirmed-input suffix to rebuild this exact current tick.
   const hash=e.run('bloomSession.getStateHash()');
-  check('On-demand lockstep state hash matches complete current canonical bytes',hash===e.run('BloomOwnedSDK.hashBytes(bloomAdapter.save())'));
+  check('On-demand lockstep state hash matches complete current canonical bytes',hash===e.run('BloomGamekitDeterministic.hashBytes(bloomAdapter.save())'));
   const replay=e.run('bloomSession.exportReplay()'),replayEngine=engine(file,html);others.push(replayEngine);replayEngine.c.savedReplay=replay;
   replayEngine.run('BloomSimulation.initialize(12345);BloomSimulation.ownerId="solo";BloomSimulation.multiplayer=true');
-  const played=replayEngine.run('BloomOwnedSDK.playReplay({adapter:bloomAdapter,replay:savedReplay})');
+  const played=replayEngine.run('BloomGamekitReplay.playReplay({adapter:bloomAdapter,replay:savedReplay})');
   check('Non-checkpoint lockstep replay preserves future-relevant combat graph',played.hash===replay.hash&&played.tick===5&&bytes(replayEngine).equals(bytes(e)));
   net.peer.run('state.mother.hp-=1;bloomSnapshotStore.invalidate()');
   assert(net.peer.run('bloomSession.requestResync(bloomSession.tick)'));net.poll();net.poll();

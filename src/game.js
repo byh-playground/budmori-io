@@ -35,7 +35,7 @@ function report(error,context={}){
 }
 function snapshot(){
  const errors=ring.snapshot().errors.map(e=>{const visibility=classifications.get(`${e.kind}\n${e.message}`)|| (e.fatal?'blocking':'log');return {...e,visibility,severity:e.fatal?'fatal':visibility==='blocking'?'blocking':'notice'}});
- const data={format:'BLOOM diagnostic v1',release:'Budmori 0.2.2 · presentation frame',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@2712703c83923f16bb70454ea60e2ac533489ef8',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
+ const data={format:'BLOOM diagnostic v1',release:'Budmori 0.2.2 · presentation frame',base:'v65 · b545953af9c7',sdk:'bloom-gamekit@9436219ae9fbcecfaf01f1f93e6271a0f3b73737',at:new Date().toISOString(),elapsedMs:mono(),fatal,origin,totalErrors:ring.total,blockingErrors:blocking,noticeLogs:notices,dropped:dropped+ring.dropped,privacy:'Local only. No save or storage collection. Error text is redacted; review before sharing manually.',runtime:{},recentCommands:commands.map(c=>({...c})),errors};
  data.runtime.profiler=profiler.snapshot({limit:30});
  for(const [name,read]of providers){try{data.runtime[name]=read()}catch{data.runtime[name]={unavailable:true}}}
  return data;
@@ -8481,10 +8481,8 @@ const pointStyle=(globalThis.BLOOM_HEADLESS ? null : (document.createElement('st
 
 ;
 
-/* bloom-gamekit rollback-netcode compatibility bundle. Full SDK API, simulation and save contracts unchanged. */
+/* Each GameKit API is read from its owning independent module. */
 
-
-globalThis.RollbackNetcode=BloomOwnedSDK;
 
 (function(){const integer=(n,max=0x7ffffffe)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
 function check(ok,label){if(!ok)throw new TypeError('BLOOM live: '+label)}
@@ -11807,7 +11805,7 @@ const GameUI=(()=>{
  return Object.freeze({mount,dispose,listen,handler,cleanup,requestFrame,get active(){return phase==='mounting'||phase==='mounted'}});
 })();
 /* BEGIN BLOOM FONT ASSET SOURCE */
-const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@e108fe481aa7314974c39974a169b549500bf12c/assets/fonts/noto-sans-kr-700-v1.json",version:"e108fe481aa7314974c39974a169b549500bf12c",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
+const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@63c62dae8d339f6f0329c0940206806f69509630/assets/fonts/noto-sans-kr-700-v1.json",version:"63c62dae8d339f6f0329c0940206806f69509630",sha256:"d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310",bytes:514988});
 /* END BLOOM FONT ASSET SOURCE */
 function boot(){return GameUI.mount()}
 let bloomFontBootPending=false,bloomFontBootComplete=false,bloomFontAssetLoader=null,bloomFontGate=null,bloomFontLabel=null,bloomFontDetail=null,bloomFontRetry=null;
@@ -12495,7 +12493,7 @@ function bloomRunTick(context){
  const speculative=!!globalThis.BLOOM_SIMULATION_SCOPE&&context.speculative===true;
  const commandOrder=c=>speculative?(c.observationId??c.sequence):c.sequence;
  for(const frame of frames){const player=WorldPlayers.get(frame.playerId);if(!player||player.lifecycle!=='active')continue;const input=bloomDecodeInput(frame.input),commands=[...frame.commands].sort((a,b)=>commandOrder(a)-commandOrder(b));let sequence=-1;
-  for(const c of commands){const order=commandOrder(c);if(c.executeTick!==bloomTick||!Number.isSafeInteger(order)||order<=sequence)throw new TypeError('Command order');sequence=order;validated.push({player,input,command:bloomValidateCommand(BloomOwnedSDK.binaryCodec.decode(c.payload))})}inputs.set(frame.playerId,input);
+  for(const c of commands){const order=commandOrder(c);if(c.executeTick!==bloomTick||!Number.isSafeInteger(order)||order<=sequence)throw new TypeError('Command order');sequence=order;validated.push({player,input,command:bloomValidateCommand(BloomGamekitDeterministic.binaryCodec.decode(c.payload))})}inputs.set(frame.playerId,input);
  }
  for(const p of WorldPlayers.all())if(p.lifecycle==='active'&&!inputs.has(p.playerId))throw new TypeError('Missing participant input');
  if(!speculative){bloomLastFrameInputs=frames.map(frame=>({playerId:frame.playerId,input:frame.input.slice()}));bloomLastFrameContinuityKey=bloomPreviewRemoteContinuityKey(frames)}
@@ -12525,13 +12523,13 @@ const bloomSnapshotStore=(()=>{
   if(!latest||latest.revision!==revision||latest.tick!==bloomTick||latest.tickRate!==CONFIG.sim.tickRate||latest.state!==state){latest={bytes:capture(),revision,tick:bloomTick,tickRate:CONFIG.sim.tickRate,time:state.time,state};encoded=null}else metrics.cacheHits++;
   if(encoded)return encoded;
   const start=performance.now(),bytes=latest.bytes;
-  encoded=JSON.stringify({schema:'budmori-snapshot',productVersion:BUDMORI_VERSION.version,codec:'bloom-live-graph-v3',encoding:'base64',savedAt:Date.now(),tickRate:latest.tickRate,tick:latest.tick,worldTime:latest.time,byteLength:bytes.length,checksum:{algorithm:'fnv1a32',value:BloomOwnedSDK.hashBytes(bytes)},live:base64(bytes)});
+  encoded=JSON.stringify({schema:'budmori-snapshot',productVersion:BUDMORI_VERSION.version,codec:'bloom-live-graph-v3',encoding:'base64',savedAt:Date.now(),tickRate:latest.tickRate,tick:latest.tick,worldTime:latest.time,byteLength:bytes.length,checksum:{algorithm:'fnv1a32',value:BloomGamekitDeterministic.hashBytes(bytes)},live:base64(bytes)});
   metrics.diskEncodes++;metrics.diskBytes=encoded.length;metrics.diskEncodeMs=performance.now()-start;return encoded;
  }
  function read(disk){
   if(disk?.schema!=='budmori-snapshot'||!BUDMORI_VERSION.accepts(disk.productVersion))throw Object.assign(new TypeError('Unsupported save version'),{code:'UNSUPPORTED_SAVE_VERSION'});
   if(disk.codec!=='bloom-live-graph-v3'||disk.encoding!=='base64'||!Number.isFinite(disk.savedAt)||!BLOOM_TPS_OPTIONS.includes(disk.tickRate)||!Number.isSafeInteger(disk.tick)||disk.tick<0||!Number.isFinite(disk.worldTime)||disk.worldTime<0||disk.checksum?.algorithm!=='fnv1a32')throw new TypeError('Invalid snapshot envelope');
-  const bytes=unbase64(disk.live,disk.byteLength);if(BloomOwnedSDK.hashBytes(bytes)!==disk.checksum.value)throw new TypeError('Snapshot checksum mismatch');return bytes;
+  const bytes=unbase64(disk.live,disk.byteLength);if(BloomGamekitDeterministic.hashBytes(bytes)!==disk.checksum.value)throw new TypeError('Snapshot checksum mismatch');return bytes;
  }
  function metadata(disk,c){if(c.schema!=='budmori-world'||c.compatibility!==BUDMORI_VERSION.compatibility||disk.tick!==c.tick||disk.tickRate!==c.tickRate||disk.worldTime!==c.world?.state?.time)throw new TypeError('Snapshot metadata mismatch')}
  return Object.freeze({capture,invalidate,disk,read,metadata,metrics:()=>({...metrics,revision,cachedTick:latest?.tick??null})});
@@ -12637,7 +12635,7 @@ const BloomPreparedSnapshots=(()=>{
 const bloomAdapter={saveJob:()=>BloomPreparedSnapshots.saveJob(),prepareSnapshotJob:(bytes,context)=>BloomPreparedSnapshots.prepareJob(bytes,context),prepareMembershipJob:(change,context)=>BloomPreparedSnapshots.membershipJob(change,context),applyMembership:change=>WorldMembership.apply(change),prepareMembership:(change,context)=>BloomPreparedSnapshots.membership(change,context),prepareSnapshot:(bytes,context)=>BloomPreparedSnapshots.prepare(bytes,context),loadPreparedSnapshot:(token,context)=>BloomPreparedSnapshots.install(token,context),save:()=>bloomSnapshotStore.capture(),load:bytes=>BloomPreparedSnapshots.install(BloomPreparedSnapshots.prepare(bytes)),validateSnapshot(bytes,context={}){try{return BloomPreparedSnapshots.validate(bytes,context)}catch{return false}},step:bloomRunTick};
 // Public functions form the DOM-to-intent boundary. Internal calls during a tick
 // go straight to validated gameplay functions; UI calls only queue SDK commands.
-function bloomQueue(type,args={}){if(!bloomSession)return false;const a=bloomValidateCommand({version:1,type,...args});bloomSession.queueCommand(BloomOwnedSDK.binaryCodec.encode(a));bloomInputPending++;return true}
+function bloomQueue(type,args={}){if(!bloomSession)return false;const a=bloomValidateCommand({version:1,type,...args});bloomSession.queueCommand(BloomGamekitDeterministic.binaryCodec.encode(a));bloomInputPending++;return true}
 performRoll=function(p){if(bloomInTick)return false;if(!playing||paused||WorldPlayers.local()?.leader.hp<=0)return false;p=p||moaRollCore.sampleSimulationInput();return bloomQueue('roll',{x:bloomQuantize(p.x),y:bloomQuantize(p.y)})};
 setAutoHunt=function(enabled,player=WorldPlayers.byAccount(-1)){if(bloomInitializing||!state?.participants)return bloomCore.setAutoHunt(enabled);if(bloomInTick){player.auto.enabled=!!enabled;player.auto.target=0;return true}return bloomQueue('auto',{enabled:!!enabled})};
 setPermanentHuntMode=function(mode,player=WorldPlayers.byAccount(-1)){if(bloomInTick){if(!['hunt','follow'].includes(mode))return false;WorldPlayers.data(player).campaign.permanents.mode=mode;return true}return bloomQueue('permanentMode',{mode})};
@@ -12684,9 +12682,9 @@ function bloomNewSession({players=['solo'],localPlayerId='solo',ownerId='solo',c
  if(!['lockstep','rollback'].includes(mode))throw new TypeError('Netcode mode must be lockstep or rollback');
  if(!Number.isInteger(checksumInterval)||checksumInterval<1||checksumInterval>0x7fffffff||mode==='lockstep'&&checksumInterval>stateHistorySize)throw new RangeError('Checksum interval must be positive and fit lockstep input history');
  bloomSnapshotStore.invalidate();bloomSession?.close();CombatAudio.clear();CombatFeedback.clear();if(!preserveWorld)bloomTick=0;bloomPendingEffects.clear();bloomResetEventJournal();bloomInputPending=0;bloomPresentationThrough=-1;bloomEffectDelivered=0;BloomSimulation.ownerId=ownerId;BloomSimulation.sessionConfig=nextConfig;BloomSimulation.multiplayer=nextConfig.mode==='online';WorldPlayers.setLocalPlayerId(localPlayerId);
- const options={players,localPlayerId,sessionId:'budmori-local',simulationVersion:BloomSimulation.simulationVersion,seed:bloomSeed,inputSize:5,adapter:bloomAdapter,onEvent(event){if(onEvent)onEvent(event);if(event.type==='version-mismatch'||event.type==='handshake-mismatch')BloomDiagnostics.report(new Error('게임 버전 또는 동기화 설정이 달라 연결할 수 없어요. 양쪽 게임을 새로고침하고 같은 모드·TPS·입력 지연·체크섬 주기를 선택해 주세요.'),{kind:'sdk.compatibility',fatal:true})},profile:{...BloomOwnedSDK.profiles.action,mode,checksumInterval,...(globalThis.BLOOM_MAIN_AUTHORITY?{maxCatchupSteps:1}:{}),tickRate:CONFIG.sim.tickRate,baseInputDelayTicks:inputDelayTicks,minInputDelayTicks:inputDelayTicks,maxInputDelayTicks:inputDelayTicks,adaptiveInputDelay:false,pacingPolicy:'none',stateHistorySize,rollbackWindowTicks:24,maxHistoryBytes:nextConfig.mode==='online'?67108864:268435456,maxSnapshotBytes:8388608}};
+ const options={players,localPlayerId,sessionId:'budmori-local',simulationVersion:BloomSimulation.simulationVersion,seed:bloomSeed,inputSize:5,adapter:bloomAdapter,onEvent(event){if(onEvent)onEvent(event);if(event.type==='version-mismatch'||event.type==='handshake-mismatch')BloomDiagnostics.report(new Error('게임 버전 또는 동기화 설정이 달라 연결할 수 없어요. 양쪽 게임을 새로고침하고 같은 모드·TPS·입력 지연·체크섬 주기를 선택해 주세요.'),{kind:'sdk.compatibility',fatal:true})},profile:{...BloomGamekitRollback.profiles.action,mode,checksumInterval,...(globalThis.BLOOM_MAIN_AUTHORITY?{maxCatchupSteps:1}:{}),tickRate:CONFIG.sim.tickRate,baseInputDelayTicks:inputDelayTicks,minInputDelayTicks:inputDelayTicks,maxInputDelayTicks:inputDelayTicks,adaptiveInputDelay:false,pacingPolicy:'none',stateHistorySize,rollbackWindowTicks:24,maxHistoryBytes:nextConfig.mode==='online'?67108864:268435456,maxSnapshotBytes:8388608}};
  if(clock)options.clock=clock;
- if(BloomOwnedSDK.createRoomSession&&mode==='lockstep'&&(room||players.length===1)){bloomSession=BloomOwnedSDK.createRoomSession({...options,mode:nextConfig.mode,room:room||undefined,sessionId:room?.sessionId||options.sessionId,membership:{maxPlayers:CONFIG.session.maxPlayers,transitionTimeoutMs:CONFIG.session.transitionTimeoutMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,maxCatchupSteps:4}})}else{if(nextConfig.mode==='online'&&room)throw new Error('Dynamic room SDK unavailable');if(!state.participants)WorldPlayers.bindInitial(ownerId);if(players.length===1)bloomAdapter.applyMembership({epoch:0,tick:bloomTick,players:[ownerId],joined:[ownerId],left:[],coordinatorId:ownerId,reason:'initial'});bloomSession=BloomOwnedSDK.createSession(options)}return bloomSession;
+ if(mode==='lockstep'&&(room||players.length===1)){bloomSession=BloomGamekitRollback.createRoomSession({...options,mode:nextConfig.mode,room:room||undefined,sessionId:room?.sessionId||options.sessionId,membership:{maxPlayers:CONFIG.session.maxPlayers,transitionTimeoutMs:CONFIG.session.transitionTimeoutMs,reconnectGraceMs:CONFIG.session.reconnectGraceMs,maxCatchupSteps:4}})}else{if(nextConfig.mode==='online'&&room)throw new Error('Public rooms require lockstep mode');if(!state.participants)WorldPlayers.bindInitial(ownerId);if(players.length===1)bloomAdapter.applyMembership({epoch:0,tick:bloomTick,players:[ownerId],joined:[ownerId],left:[],coordinatorId:ownerId,reason:'initial'});bloomSession=BloomGamekitRollback.createSession(options)}return bloomSession;
 }
 function bloomInitialize(seed=0x6d2b79f5){bloomSnapshotStore.invalidate();if(!Number.isInteger(seed)||seed<0||seed>0xffffffff)throw new TypeError('Explicit uint32 seed');bloomSeed=seed;CONFIG.sim.seed=seed;WorldSpawn.configure(CONFIG.session.mode);bloomInitializing=true;try{WorldInitialization.create();MoaActor.hydrate(state.mother);state.campaign.savedAt=0;abilityShotSerial=0;finisherSerial=0;finisherShot=null;Object.assign(permanentHuntIndex,{state:null,room:-1,next:0,candidates:[],rebuilds:0});permanentHuntIndex.claims.clear();permanentHuntIndex.owners.clear();rectFriendState=null;rectFriendTime=-1;rectFriendMask=0;spatialBoundary();motionHydratedWorlds.add(state);}finally{bloomInitializing=false}bloomTick=0;WorldMembership.captureTemplate();return state}
 reset=function(){const s=bloomInitialize(bloomSeed);if(bloomSession)bloomStartDriver();return s};
@@ -12694,7 +12692,7 @@ load=function(raw){if(bloomInTick)throw new Error('Persistence load is not rollb
 // Non-running engine fixtures may replace the session directly. The browser
 // runtime installs its single driver boundary before boot; RAF never steps SIM.
 let bloomStartDriver=bloomNewSession;
-const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'2712703c83923f16bb70454ea60e2ac533489ef8',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomOwnedSDK.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
+const BloomSimulation=globalThis.BloomSimulation={version:BUDMORI_VERSION.version,simulationVersion:BUDMORI_VERSION.simulation,sdkCommit:'9436219ae9fbcecfaf01f1f93e6271a0f3b73737',get tickRate(){return CONFIG.sim.tickRate},setTickRate:bloomSetTickRate,ownerId:'solo',sessionConfig:Object.freeze({mode:'local',persistence:'solo',progressionPolicy:'fresh'}),adapter:bloomAdapter,initialize:bloomInitialize,createSession:bloomNewSession,encodeInput:bloomEncodeInput,encodeCommand:a=>BloomGamekitDeterministic.binaryCodec.encode(bloomValidateCommand({...a})),present:bloomPresent,get tick(){return bloomTick},get state(){return state},get session(){return bloomSession},get deliveredEffects(){return bloomEffectDelivered},get projectiles(){return projectiles},capture:bloomCapture,
  // Fixture construction before a session starts; these are actual gameplay entrypoints.
  scenario:{spawn:(...a)=>spawn(...a),damage:(...a)=>damage(...a),beginPattern:(...a)=>beginAttackPattern(...a),launch:(...a)=>launchAbilityShot(...a),rebuild:()=>{rebuildGrid();spatialBoundary()},get config(){return CONFIG},get growthCards(){return GROWTH_CARDS},get ability(){return abilityState()},get permanent(){return permanentState()},get hunt(){return permanentHuntIndex}},disk:{snapshot:()=>bloomSnapshotStore.disk(),load:raw=>load(raw),metrics:()=>bloomSnapshotStore.metrics()}};
 
@@ -12772,7 +12770,6 @@ const PublicSession=globalThis.PublicSession=(()=>{
   if(connection.attempt)return connection.attempt.pending;
   if(lifecycle.phase===sessionPhase.playing&&!fresh){playing=true;paused=false;if(!globalThis.BLOOM_HEADLESS)closeModal();return true}
   if(!networkAvailable()){setPhase(sessionPhase.discovering);failed(Object.assign(new Error('네트워크가 오프라인이라 공개 세계에 연결할 수 없어요.'),{code:'PUBLIC_OFFLINE'}));return false}
-  if(!BloomOwnedSDK.createNostrPublicRoom||!BloomOwnedSDK.createRoomSession){const error=new Error('Public-room SDK is unavailable');setPhase(sessionPhase.discovering);failed(error);return false}
   const attempt={generation:++lifecycle.generation,controller:new AbortController(),pending:null,deadlineTimer:null};connection.attempt=attempt;Object.assign(diagnosis,{startedAt:performance.now(),stage:'public-discovering',events:[],failure:null,fallback:null});recordStage('public-discovering');playing=false;paused=true;setPhase(sessionPhase.discovering);
   attempt.deadlineTimer=setTimeout(()=>{if(isCurrent(attempt)&&[sessionPhase.discovering,sessionPhase.joining].includes(lifecycle.phase))failed(Object.assign(new Error('공개 세계 연결 시간이 지나 혼자 플레이로 전환해요.'),{code:'PUBLIC_TIMEOUT'}))},CONFIG.session.transitionTimeoutMs);
   if(!globalThis.BLOOM_HEADLESS)openModal('online-joining',sheetHead('공개 세계를 찾고 있어요')+'<div class="connectionLoading" data-public-loading data-stage="public-discovering" role="status" aria-live="polite"><span class="connectionSpinner" aria-hidden="true"></span><div><strong data-public-loading-title>공개 세계를 찾는 중…</strong><small data-public-loading-detail>연결 단계 · public-discovering · 오래 걸리면 취소하고 혼자 플레이할 수 있어요.</small></div></div><p>빈자리가 있는 세계에 자동으로 합류해요. 새 세계는 혼자서도 바로 시작됩니다.</p><button class="tab" data-public="cancel">취소</button>');
@@ -12786,10 +12783,10 @@ const PublicSession=globalThis.PublicSession=(()=>{
    if(fresh&&BloomSimulation.sessionConfig.mode==='online'&&!bloomSession?.failure){setPhase(sessionPhase.leaving);try{await bloomSession?.leave?.()}catch{}if(!isCurrent(attempt))return false;setPhase(sessionPhase.discovering)}
    if(!isCurrent(attempt))return false;
    releaseRoom({forget:fresh});if(fresh)remember(false);
-   const store=storage(),next=await BloomOwnedSDK.createNostrPublicRoom({namespace:config.namespace,simulationVersion:`${BloomSimulation.simulationVersion}-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`,maxPlayers:config.maxPlayers,discoveryMs:config.discoveryMs,totalTimeoutMs:config.totalTimeoutMs,peerTimeoutMs:config.peerTimeoutMs,leaseMs:config.leaseMs,reservationMs:config.reservationMs,signal:attempt.controller.signal,...(store?{resume:{storage:store,key:resumeKey,lifetimeMs:config.resumeLifetimeMs,reset:fresh}}:{}),onStatus(e){if(isCurrent(attempt)){recordStage(e.type);notify()}}});
+   const store=storage(),next=await BloomGamekitTransport.createNostrPublicRoom({namespace:config.namespace,simulationVersion:`${BloomSimulation.simulationVersion}-${CONFIG.sim.tickRate}-${CONFIG.netcode.checksumInterval}`,maxPlayers:config.maxPlayers,discoveryMs:config.discoveryMs,totalTimeoutMs:config.totalTimeoutMs,peerTimeoutMs:config.peerTimeoutMs,leaseMs:config.leaseMs,reservationMs:config.reservationMs,signal:attempt.controller.signal,...(store?{resume:{storage:store,key:resumeKey,lifetimeMs:config.resumeLifetimeMs,reset:fresh}}:{}),onStatus(e){if(isCurrent(attempt)){recordStage(e.type);notify()}}});
    if(!isCurrent(attempt)){next.close();return false}
    connection.room=next;connection.controller=attempt.controller;setPhase(sessionPhase.joining);CONFIG.session.mode='online';CONFIG.session.persistence='none';CONFIG.session.progressionPolicy='fresh';CONFIG.netcode.mode='lockstep';
-   const seed=BloomOwnedSDK.hashBytes(new TextEncoder().encode(next.sessionId));bloomInitialize(seed);
+   const seed=BloomGamekitDeterministic.hashBytes(new TextEncoder().encode(next.sessionId));bloomInitialize(seed);
    const session=bloomNewSession({room:next,players:[...next.players],ownerId:next.coordinatorId,localPlayerId:next.localPlayerId,sessionConfig:{mode:'online',persistence:'none',progressionPolicy:'fresh'},onEvent(e){if(isCurrent(attempt))event(e)}});
    BloomSimulation.runtime?.installSession(session);playing=true;paused=true;remember(true);notify();ready();return true;
   })().catch(error=>{if(isCurrent(attempt)){failed(error);if(connection.controller!==attempt.controller)attempt.controller.abort()}return false}).finally(()=>{clearTimeout(attempt.deadlineTimer);if(connection.attempt===attempt)connection.attempt=null});return attempt.pending;
@@ -12896,7 +12893,7 @@ function bloomMainRuntime() {
   if(!previewState.scope||!presentation.runtime||phase!==runtimePhase.ready)return false;
   if(bloomSession?.resimulating||!bloomSession?.ready){previewState.capability?.setEnabled(false);previewState.lastTick=-1;return false}
   if(previewState.runtime!==presentation.runtime||previewState.lastEpoch!==epoch){previewState.capability?.dispose();previewState.runtime=presentation.runtime;previewState.lastTick=-1;
-   previewState.capability=new BloomOwnedSDK.LocalInputPreview({presentation:presentation.runtime,stepMs:1000/CONFIG.sim.tickRate,maxPendingInputs:4,maxFutureTicks:4,maxAgeMs:Math.max(250,4000/CONFIG.sim.tickRate),cloneSnapshot:bytes=>bytes.slice(),captureSnapshot:capturePreviewSnapshot,
+   previewState.capability=new BloomGamekitSimloop.LocalInputPreview({presentation:presentation.runtime,stepMs:1000/CONFIG.sim.tickRate,maxPendingInputs:4,maxFutureTicks:4,maxAgeMs:Math.max(250,4000/CONFIG.sim.tickRate),cloneSnapshot:bytes=>bytes.slice(),captureSnapshot:capturePreviewSnapshot,
     createFork:bytes=>{previewState.scope.install(bytes,{tickRate:CONFIG.sim.tickRate,localPlayerId:WorldPlayers.localPlayerId,sessionConfig:BloomSimulation.sessionConfig,remoteInputs:bloomLastFrameInputs});return previewState.scope},
     isActive:scope=>scope.localActionActive,
     readEntities:scope=>{const player=WorldPlayers.local(),id=player?.leader?.id,entry=id===undefined?null:presentation.maps.unit.get(id);if(!player||!entry||WorldPlayers.forEntity(entry.source)?.playerId!==WorldPlayers.localPlayerId)return[];const model=scope.models([id]).find(dto=>dto.id===id);return model?[{id:entry.id,generation:entry.generation,type:BloomUnitRender,source:model.source}]:[]}
@@ -12924,9 +12921,9 @@ function bloomMainRuntime() {
   previewState.needsPrediction=false;previewState.lastTick=bloomTick;previewState.lastRevision=presentation.revision;previewState.lastEpoch=epoch;previewState.lastContinuationKey=bloomLastFrameContinuityKey;return true;
  }
  function observeInputFrame(now=performance.now()){if(phase!==runtimePhase.ready)return;preparePreviewScope();bloomLoop?.observeInput(now)}
- function enqueueCommand(type,args={}){const command=bloomValidateCommand({version:1,type,...args});inputCommands.push(BloomOwnedSDK.binaryCodec.encode(command));bloomInputPending++;return true}
+ function enqueueCommand(type,args={}){const command=bloomValidateCommand({version:1,type,...args});inputCommands.push(BloomGamekitDeterministic.binaryCodec.encode(command));bloomInputPending++;return true}
  const fail=(error,kind='simulation.main')=>BloomDiagnostics.report(error,{kind,fatal:true});
- function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld:persistence.soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomOwnedSDK.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
+ function inspect(){const bytes=bloomAdapter.save();return{tick:bloomTick,time:state.time,tickRate:CONFIG.sim.tickRate,netcodeMode:bloomSession.profile.mode,checksumInterval:bloomSession.profile.checksumInterval,epoch,persistenceProtected:persistence.protected,persistenceFailure:persistence.failure,sessionConfig:{...BloomSimulation.sessionConfig},soloWorld:persistence.soloWorld,persistenceAvailable:persistence.enabled,snapshotBytes:bytes.length,validSnapshot:bloomAdapter.validateSnapshot(bytes,{tick:bloomTick}),hash:BloomGamekitDeterministic.hashBytes(bytes),sdkFailure:bloomSession.failure,worker:false,unitCount:state.units.length,persistence:bloomSnapshotStore.metrics(),...metrics}}
  function rejectSaves(error){const requests=persistence.pending;persistence.pending=[];for(const p of requests)p.reject(error)}
  function persist(){
   if(phase!==runtimePhase.ready||BloomDiagnostics.fatal||persistence.protected||!persistence.enabled)return false;
@@ -12976,7 +12973,7 @@ function bloomMainRuntime() {
    schedule();
   }catch(error){fail(error)}
  }
- driver.scheduler=BloomOwnedSDK.createDeadlineScheduler({getIntervalMs:()=>1000/CONFIG.sim.tickRate,pulse:pump,maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,onGap:({timestamp})=>{driver.gapTimestamp=timestamp;previewFacade.clockGap()}});
+ driver.scheduler=BloomGamekitSimloop.createDeadlineScheduler({getIntervalMs:()=>1000/CONFIG.sim.tickRate,pulse:pump,maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,onGap:({timestamp})=>{driver.gapTimestamp=timestamp;previewFacade.clockGap()}});
  function boundary(options){
   if(![runtimePhase.ready,runtimePhase.initializing].includes(phase))throw new Error('Simulation is not available');
   // Selection validation happens before retiring the current loop or waiters.
@@ -12985,7 +12982,7 @@ function bloomMainRuntime() {
   stopDriver();const superseded=persistence.pending;persistence.pending=[];for(const p of superseded){if(p.kind==='save')p.resolve(false);else p.reject(new Error('Save superseded by session boundary'))}
   if(online())persistence.soloWorld=false;epoch++;bloomLastFrameInputs=[];bloomLastFrameContinuityKey='';persistence.lastTick=bloomTick;ui.viewSignature='';driver.wasActive=false;metrics.advanceStatus='ready';driver.scheduler.rebase();previewFacade.clear();
   let tickStart=0;
-  bloomLoop=BloomOwnedSDK.createLoop({session:next,inputPreview:previewFacade,backlogPolicy:'retain',maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,
+  bloomLoop=BloomGamekitSimloop.createLoop({session:next,inputPreview:previewFacade,backlogPolicy:'retain',maxBacklogTicks:MAX_RESUME_BACKLOG_TICKS,
    beforeFrame(){tickStart=performance.now()},getInput:sampleInput,
    canAdvance:()=>active()||!!bloomInputPending&&!discovering(),onAdvance(result){afterAdvance(result,tickStart,next)},onPreviewError(error){previewState.capability?.setEnabled(false);previewState.phase='failed';previewState.lastTick=-1;previewState.error=String(error.message||error);BloomDiagnostics.report(error,{kind:'input.preview'})},onError(error){fail(error,'sdk.loop')}
   });
@@ -13074,7 +13071,7 @@ if(globalThis.BLOOM_SIMULATION_SCOPE){
    const inputs=WorldPlayers.all().filter(player=>player.lifecycle==='active').map(player=>({playerId:player.playerId,input:player.playerId===local?Uint8Array.from(input):(scopeRemote.get(player.playerId)?.slice()||bloomEncodeInput({x:0,y:0,manual:false,suspended:false})),commands:player.playerId===local?(context.commands||[]).map(command=>({...command,payload:Uint8Array.from(command.payload),canonicalExecuteTick:command.executeTick,executeTick:bloomTick})):[]}));
    bloomRunTick({tick:bloomTick,tickRate:CONFIG.sim.tickRate,inputs,speculative:true});bloomPendingEffects.clear();bloomCurrentEffects=[];},
   models(ids){const players=WorldPlayers.all();return ids.flatMap(id=>{const source=idMap.get(id)||players.find(player=>player.leader.id===id)?.leader;return source&&source.hp>0?[{id,source:snapshotRenderModel(BloomUnitRender,source)}]:[]})},
-  inspect(){return{tick:bloomTick,hash:BloomOwnedSDK.hashBytes(bloomAdapter.save()),rng:state.rng,entities:state.units.length,rendererCreated:!!ctx}},
+  inspect(){return{tick:bloomTick,hash:BloomGamekitDeterministic.hashBytes(bloomAdapter.save()),rng:state.rng,entities:state.units.length,rendererCreated:!!ctx}},
   dispose(){closed=true;scopeRemote.clear();bloomPendingEffects.clear();scopeContext=null;}
  });
 }

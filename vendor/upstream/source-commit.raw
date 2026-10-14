@@ -1,23 +1,26 @@
-tree eccec42477782de2fd40ed1510013cf0a42e687a
-parent cdb03088828a42b89f5683124bc47722ae2bb0a7
-author byh020907 <byh020907@naver.com> 1791931256 +0900
-committer GitHub <noreply@github.com> 1791931256 +0900
+tree d37cbf83156ceab79b1d32502ff5464139856170
+parent da9484a22ad299ed07e70fb0419981fae1e76321
+parent cc5a456330cfb4a2514b06dba41deb7c543c8105
+author byh020907 <byh020907@naver.com> 1791942072 +0900
+committer GitHub <noreply@github.com> 1791942072 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqzrN4CRC1aQ7uu5UhlAAApbIQAIc4J8/79YGFKzZkioerx4Ui
- VOdoI3OM4KCAUYtvHqZMAHv7e+26ehT8E3aUZeN3Sb7SCG9PdCsbYmdYK8rwcW8w
- FTHFO1WId7EhW9WlTQ6lAY9Rx0RpH4C4+E98UeuUtke/LuiAehMcXSFe3P30CniW
- /ukDC87f3VYkUkrorCoQe29TdjTL4gTvs7UM6waNAyTk/TK63bcEmnUQzSI2e/3p
- 5iGQck8zeYVsLF7c48X6gsF+22lZZIzUP8aMCoIOc6eVbeO1pUHOLc+bt4n+mWx6
- sa53P0TsausKYRwZsPbS/+ZQ1vbjU6BbgDZE5lVJ+GUEOZ3iir5wkv5za1O6SxBG
- S27BRgZQcQTzebQUAAEmJ06Ji3zXs3LiGxg6dOpd8pQHNrc/GkT1tv1YuuCAC0LC
- C7uCzwea/XkwBPHiL7NJsnQquBZTVPXEpf8qHCuvuOnyGifJCe7cA+RoIS0Ut1OP
- t8E4uhS48BvJvWkdJ3kZ3eWkLAA6l/EwfnudkOQspcH/+Dh0+vhzUAnOkYRXglNH
- UlgIbmBRNk8ZvlwiqJ64Kcc3kyRvi0e3K2rLTQSvupHSzEHhZoLJRuLdIcqnAJ37
- rzhBVOETHPE5L5vrRKQsq4qs8XDV7tP0MW2zrAziX1FTEsSlZRnMRD3Ogjj+H0H6
- xoS7ynCLcBL+/LBrcGbg
- =4eNY
+ wsFcBAABCAAQBQJqzt24CRC1aQ7uu5UhlAAAXpAQAAO1avsPY1VWsDdX3MTMOzM9
+ wKSABGdg5je8TWys/IZfNFsOsQmL+5j5YDF8H0+tb24mmnkh7gcxApluFqwPQjzp
+ Y1WCwWsSnOshwSSTkZOrsLeLUCDpenCVjlD0dpF3ix5uCIJIU+br+9VoGDuLg7df
+ gE/1sLOIXlvjpD8A/6TwBMN6ZPfQBDkAGveEIylK67+oJCxna6rD8VGmyXa1wxkk
+ TaSEY0+fBUEiiKo3pEAaAGws61OLLHR/CILP1vRZZu73+cXpP4RgucEiyZbS+k5V
+ wUFua1ZNyab9OR3KxWBRLdQ4rN9+ODXPdhkWNTV8iC4nN4dz6141pOjC9pioVCF2
+ yOUVwqwhYJ2HT9kFaiANESlvfTUldAqdWXe2LoEYqWpxhcw7PcARdPbINZSqnwb+
+ uazopWoNzulWG7qad5BZe6BWrmxJMWTKRTpJFSDduAOpI83sXUuhL3djM6CLXIhW
+ B0MMzVJjOZbnPB6H5wXv8iFfvUXJIB4jBWzN4W+3QnaJx9K+T4pdtmnnG3kuhmqg
+ 9e6CvxhyC/v33cLzOv7I4frxSlwt5M1ZLg8e2yQLgZrveEVXpn8auvLWmyqcLnp0
+ wIzDDmMVl9jZijwP8frNviplucCiz5o7TejBtq4dTBDZBQziidraZM/dd0gwWffT
+ 7tHaOauTj0gOKhjdSS4F
+ =CCGv
  -----END PGP SIGNATURE-----
  
 
-[bug-fix] preview 종료 시 지연 authority 구간 보존 (#48)
+Merge pull request #51 from byh-playground/codex/remove-compat-entry
+
+전체 API 호환 진입점 제거와 독립 모듈 v0.3.0 배포
