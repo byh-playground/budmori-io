@@ -12,5 +12,5 @@ for(let tick=0;tick<230;tick++){
  if(tick%20===0||tick===229)assert(Buffer.from(worlds[0].run('BloomSimulation.adapter.save()')).equals(Buffer.from(worlds[1].run('BloomSimulation.adapter.save()'))));
 }
 const summary=s=>{const a=[...s].sort((a,b)=>a-b),q=p=>a[Math.ceil(a.length*p)-1];return{samples:a.length,p50:q(.5),p95:q(.95),p99:q(.99)}};
-const report={method:'Actual SDK1000-body30TPS worlds in separate native V8 realms,30 warmup ticks+200 measured ticks each, alternating execution order each tick. Same process shares heap/JIT pressure; no rendering/browser/device claim.',before:{sha256:worlds[0].sha256,timing:summary(samples[0])},after:{sha256:worlds[1].sha256,timing:summary(samples[1])},finalHash:worlds[0].run('BloomOwnedSDK.hashBytes(BloomSimulation.adapter.save())'),raw:samples};
+const report={method:'Actual SDK1000-body30TPS worlds in separate native V8 realms,30 warmup ticks+200 measured ticks each, alternating execution order each tick. Same process shares heap/JIT pressure; no rendering/browser/device claim.',before:{sha256:worlds[0].sha256,timing:summary(samples[0])},after:{sha256:worlds[1].sha256,timing:summary(samples[1])},finalHash:worlds[0].run('BloomGamekitDeterministic.hashBytes(BloomSimulation.adapter.save())'),raw:samples};
 for(const e of worlds)e.run('bloomSession.close()');console.log(JSON.stringify(report,null,2));

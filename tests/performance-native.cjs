@@ -12,5 +12,5 @@ e.fixture(`BloomSimulation.initialize(12345);let level=1;while(rarityCapacityAtL
 const initial=e.json('({seed:bloomSeed,tps:CONFIG.sim.tickRate,units:state.units.length,friendly:state.units.filter(u=>u.team==="friendly"&&u.hp>0).length,tick:bloomTick})');assert.equal(initial.friendly,requested);assert.equal(initial.tps,tps);
 const tick=[],snapshot=[];
 for(let i=0;i<120;i++){const start=performance.now();e.tick();const after=performance.now();e.run('BloomSimulation.adapter.save()');const end=performance.now();if(i>=20){tick.push(after-start);snapshot.push(end-after)}}
-const result={kind:'Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance',sourceSHA256:e.sha256,scenario,initial,sessionAdvanceMs:summary(tick),snapshotReadMs:summary(snapshot),final:e.json('({tick:bloomTick,time:state.time,units:state.units.length,hash:BloomOwnedSDK.hashBytes(BloomSimulation.adapter.save())})')};
+const result={kind:'Actual game + SDK, native V8, mock DOM, no renderer; NOT browser or phone performance',sourceSHA256:e.sha256,scenario,initial,sessionAdvanceMs:summary(tick),snapshotReadMs:summary(snapshot),final:e.json('({tick:bloomTick,time:state.time,units:state.units.length,hash:BloomGamekitDeterministic.hashBytes(BloomSimulation.adapter.save())})')};
 e.run('BloomSimulation.session.close()');console.log(JSON.stringify(result,null,2));

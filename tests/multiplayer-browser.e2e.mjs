@@ -19,8 +19,8 @@ import {presentationFrameProbe,assertPresentationFrames} from './presentation-fr
 // public relay, STUN service, user identity, or real account credential is used.
 const runStarted=performance.now();
 const source=sharedHarness.candidate(),namespace='budmori-browser-'+randomUUID(),headed=process.env.BUDMORI_HEADED==='1'||process.platform==='win32'&&process.env.BUDMORI_HEADED!=='0';
-const rollbackCandidatePath=process.env.BUDMORI_ROLLBACK_NETCODE_CANDIDATE,rollbackCandidateBytes=rollbackCandidatePath?await readFile(rollbackCandidatePath):null;
-if(rollbackCandidateBytes){const config=runtimeSources.manifest(source.html),entry=config?.modules.find(module=>module.name==='rollback-netcode');if(!entry)throw new Error('Rollback module is missing from the runtime manifest');const sha256=runtimeSources.hash(rollbackCandidateBytes);entry.bytes=rollbackCandidateBytes.length;entry.sha256=sha256;entry.url=`https://rollback-netcode-candidate.invalid/${sha256}/rollback-netcode.js`;source.html=source.html.replace(/<script id="bloom-runtime-manifest" type="application\/json">[\s\S]*?<\/script>/,'<script id="bloom-runtime-manifest" type="application/json">'+JSON.stringify(config)+'</script>')}
+const rollbackCandidatePath=process.env.BUDMORI_SIMLOOP_CANDIDATE,rollbackCandidateBytes=rollbackCandidatePath?await readFile(rollbackCandidatePath):null;
+if(rollbackCandidateBytes){const config=runtimeSources.manifest(source.html),entry=config?.modules.find(module=>module.name==='simloop');if(!entry)throw new Error('Rollback module is missing from the runtime manifest');const sha256=runtimeSources.hash(rollbackCandidateBytes);entry.bytes=rollbackCandidateBytes.length;entry.sha256=sha256;entry.url=`https://simloop-candidate.invalid/${sha256}/simloop.js`;source.html=source.html.replace(/<script id="bloom-runtime-manifest" type="application\/json">[\s\S]*?<\/script>/,'<script id="bloom-runtime-manifest" type="application/json">'+JSON.stringify(config)+'</script>')}
 const loadUnits=Number(process.env.BUDMORI_LOAD_UNITS||0);
 if(!Number.isSafeInteger(loadUnits)||loadUnits<0||loadUnits>1000)throw new Error('BUDMORI_LOAD_UNITS must be 0..1000');
 const loadProfile=process.env.BUDMORI_LOAD_PROFILE==='1';
@@ -29,12 +29,12 @@ if(!['on','off'].includes(loadPreview)||loadPreview==='off'&&!loadUnits)throw ne
 const report={status:'RUNNING',sourceSHA256:source.sha256,sdk:source.sdk,
  environment:`${headed?'Headed':'Headless'} Chromium / SwiftShader WebGL; two independent tabs; native tab visibility; signed local Nostr relay over BroadcastChannel; real WebRTC data channels; production 500ms serialized signaling + SDK timer + RAF; fixtureUnits=${loadUnits}; preview=${loadPreview}`,
  limitations:['Local signaling fixture does not validate public relay availability, NAT traversal, Internet latency, mobile hardware, or device FPS.','Declared fixtures grant the first player resources/army and an elevated slow admission projectile, then place a durable encounter on each participant’s first ordinary step after admission; production spawning/culling and attack/flight logic are unchanged.'],checks:[],checkpoints:[],screenshots:[],timings:[]};
-if(rollbackCandidateBytes)report.candidateRollbackNetcode={path:rollbackCandidatePath,bytes:rollbackCandidateBytes.length,sha256:runtimeSources.hash(rollbackCandidateBytes),published:false};
+if(rollbackCandidateBytes)report.candidateSimloop={path:rollbackCandidatePath,bytes:rollbackCandidateBytes.length,sha256:runtimeSources.hash(rollbackCandidateBytes),published:false};
 const fixture=String.raw`
 // Test-server injection only. Do not copy this block into the shipped HTML.
 (()=>{
- const sdk=BloomOwnedSDK,qa=globalThis.__sharedBrowser={rooms:[],signalers:[],events:[],wanted:new Set(),checkpoints:new Map(),lastInputs:[],relay:{published:0,delivered:0}};
- ${loadPreview==='off'?"const previewPrototype=sdk.LocalInputPreview?.prototype,enablePreview=previewPrototype?.setEnabled;if(typeof enablePreview!=='function')throw Error('LocalInputPreview.setEnabled is required');previewPrototype.setEnabled=function(){return enablePreview.call(this,false)};":''}
+ const transport=BloomGamekitTransport,rollback=BloomGamekitRollback,simloop=BloomGamekitSimloop,deterministic=BloomGamekitDeterministic,qa=globalThis.__sharedBrowser={rooms:[],signalers:[],events:[],wanted:new Set(),checkpoints:new Map(),lastInputs:[],relay:{published:0,delivered:0}};
+ ${loadPreview==='off'?"const previewPrototype=simloop.LocalInputPreview?.prototype,enablePreview=previewPrototype?.setEnabled;if(typeof enablePreview!=='function')throw Error('LocalInputPreview.setEnabled is required');previewPrototype.setEnabled=function(){return enablePreview.call(this,false)};":''}
  ${loadUnits?"qa.loopSamples=[];let sampledTicks=-1;qa.sampleLoop=setInterval(()=>{const metrics=BloomSimulation.runtime?.metrics;if(!metrics||metrics.ticks===sampledTicks)return;sampledTicks=metrics.ticks;qa.loopSamples.push({tick:BloomSimulation.tick,tickMs:metrics.tickMs,presentationMs:metrics.presentationMs});if(qa.loopSamples.length>240)qa.loopSamples.shift()},25);":''}
  // Local latency fixture: withhold actual outgoing RTC packets, then deliver
  // through the original native channel. Simulation/poll/RAF continue normally.
@@ -59,12 +59,12 @@ const fixture=String.raw`
   }
   close(){if(this.readyState===3)return;this.readyState=3;this.subscriptions.clear();this.bus.close();this.dispatchEvent(new Event('close'))}
  }
- BloomOwnedSDK={...sdk,async createNostrPublicRoom(options){
-  const room=await sdk.createNostrPublicRoom({...options,namespace:${JSON.stringify(namespace)},rtcConfig:{iceServers:[]},
-   signalerFactory:async opts=>{const signaler=await sdk.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay});qa.signalers.push(signaler);return signaler},
-   peerFactory:opts=>sdk.createWebRTCPeer({...opts,rtcConfig:{iceServers:[]}})});
+ BloomGamekitTransport={...transport,async createNostrPublicRoom(options){
+  const room=await transport.createNostrPublicRoom({...options,namespace:${JSON.stringify(namespace)},rtcConfig:{iceServers:[]},
+   signalerFactory:async opts=>{const signaler=await transport.createNostrSignaler({...opts,relays:['wss://fixture.invalid'],WebSocketImpl:LocalRelay});qa.signalers.push(signaler);return signaler},
+   peerFactory:opts=>transport.createWebRTCPeer({...opts,rtcConfig:{iceServers:[]}})});
   qa.rooms.push(room);return room;
- },createRoomSession(options){const session=sdk.createRoomSession({...options,onEvent:event=>{if(['membership-preparing','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event,atMs:Math.round(performance.now())});options.onEvent?.(event)}}),poll=session.poll.bind(session);qa.transitions=[];let previous='',lastAt=0;session.poll=function(...args){const result=poll(...args),tr=session._transition;if(tr||session.failure){const metrics=session.metrics,row={atMs:Math.round(performance.now()),stage:!tr?session.status:tr.replay?'replay':tr.stageJob?'prepare':tr.applied?'commit':tr.preparedState?'hash':tr.installSent?'install':tr.target!==null?'barrier':'mesh-prepare',epoch:session.epoch,elapsedMs:tr?Math.round(session.clock()-tr.startedAt):null,mesh:session.room.transports.size,expected:session.players.length-1,prepared:tr?.prepared.size,reached:tr?.reached.size,installed:tr?.installed.size,committed:tr?.committed.size,target:tr?.target,postBytes:tr?.postState?.length||0,replayTicks:metrics.bootstrapTicks,receivedBytes:metrics.receivedControlBytes,queuedBytes:metrics.controlQueuedBytes,maxBoundaryTaskMs:metrics.maxBoundaryTaskMs,failure:session.failure?.type||null},signature=JSON.stringify({...row,atMs:0,elapsedMs:0});if(signature!==previous||row.atMs-lastAt>=1000){qa.transitions.push(row);if(qa.transitions.length>48)qa.transitions.shift();previous=signature;lastAt=row.atMs}}return result};return session}};
+ }}; BloomGamekitRollback={...rollback,createRoomSession(options){const session=rollback.createRoomSession({...options,onEvent:event=>{if(['membership-preparing','membership-committed','membership-failed','membership-connect-failed','partition-failed','transport-failed'].includes(event.type))qa.events.push({...event,atMs:Math.round(performance.now())});options.onEvent?.(event)}}),poll=session.poll.bind(session);qa.transitions=[];let previous='',lastAt=0;session.poll=function(...args){const result=poll(...args),tr=session._transition;if(tr||session.failure){const metrics=session.metrics,row={atMs:Math.round(performance.now()),stage:!tr?session.status:tr.replay?'replay':tr.stageJob?'prepare':tr.applied?'commit':tr.preparedState?'hash':tr.installSent?'install':tr.target!==null?'barrier':'mesh-prepare',epoch:session.epoch,elapsedMs:tr?Math.round(session.clock()-tr.startedAt):null,mesh:session.room.transports.size,expected:session.players.length-1,prepared:tr?.prepared.size,reached:tr?.reached.size,installed:tr?.installed.size,committed:tr?.committed.size,target:tr?.target,postBytes:tr?.postState?.length||0,replayTicks:metrics.bootstrapTicks,receivedBytes:metrics.receivedControlBytes,queuedBytes:metrics.controlQueuedBytes,maxBoundaryTaskMs:metrics.maxBoundaryTaskMs,failure:session.failure?.type||null},signature=JSON.stringify({...row,atMs:0,elapsedMs:0});if(signature!==previous||row.atMs-lastAt>=1000){qa.transitions.push(row);if(qa.transitions.length>48)qa.transitions.shift();previous=signature;lastAt=row.atMs}}return result};return session}};
  const apply=bloomAdapter.applyMembership,step=bloomAdapter.step;
  bloomAdapter.applyMembership=function(change){const result=apply(change);
   // This executes before the first SDK core captures its initial checkpoint.
@@ -92,7 +92,7 @@ const fixture=String.raw`
   let added=false;for(const player of WorldPlayers.all()){if(state.units.some(u=>u.qaRegion===player.startRegion))continue;const m=player.leader,point=ThemedTerrain.safePoint(m.x-160,m.y,20),target=spawn('shellbug','enemy',point.x,point.y,{camp:0,rarityGrade:1});target.hp=target.maxHp=1e7;target.stun=1e6;target.aggroAt=target.wanderAt=state.time+1e6;target.qaRegion=player.startRegion;state.camps[0].remaining++;added=true;}if(added){rebuildGrid();spatialBoundary();bloomSnapshotStore.invalidate();}
   const result=step(frame);
   for(const player of WorldPlayers.all()){const stats=qa.combat.get(player.playerId)||{samples:0,maxDistance:0,primaryDamage:0};for(const shot of projectiles){if(shot.u!==player.leader.id||shot.qaAdmissionFlight||!shot.abilityShot||shot.weapon||shot.secondary)continue;stats.samples++;stats.maxDistance=Math.max(stats.maxDistance,Math.hypot(shot.x-shot.startX,shot.y-shot.startY));}qa.combat.set(player.playerId,stats);}qa.lastInputs=frame.inputs.map(input=>({playerId:input.playerId,...bloomDecodeInput(input.input)}));
-  if(qa.wanted.delete(bloomTick)){const bytes=bloomAdapter.save();qa.checkpoints.set(bloomTick,{tick:bloomTick,epoch:state.membershipEpoch,bytes:Array.from(bytes),hash:sdk.hashBytes(bytes),schema:BloomLiveCodec.decode(bytes).schema});while(qa.checkpoints.size>4)qa.checkpoints.delete(qa.checkpoints.keys().next().value)}return result;
+  if(qa.wanted.delete(bloomTick)){const bytes=bloomAdapter.save();qa.checkpoints.set(bloomTick,{tick:bloomTick,epoch:state.membershipEpoch,bytes:Array.from(bytes),hash:deterministic.hashBytes(bytes),schema:BloomLiveCodec.decode(bytes).schema});while(qa.checkpoints.size>4)qa.checkpoints.delete(qa.checkpoints.keys().next().value)}return result;
  };
  qa.inspect=()=>{
   const session=BloomSimulation.session,local=WorldPlayers.local(),stats=local?currentMoaStats():null;
@@ -147,7 +147,7 @@ async function addPage(){
  page.on('console',message=>{if(message.text().startsWith('ASSET_UPLOAD '))console.log('PAGE '+number+' '+message.text());if(message.type()==='error')errors.push({page:number,type:'console',message:message.text()})});
  await phase('page '+number+' navigation/load',()=>page.goto(base+'/public',{waitUntil:'domcontentloaded',timeout:120000}));
  await phase('page '+number+' boot/first WebGL frames',()=>page.waitForFunction(()=>globalThis.BloomSimulation?.runtime?.ready&&globalThis.__army?.performance.frames>2,null,{timeout:60000}));
- assert.equal(await evaluate(page,()=>typeof BloomOwnedSDK.createNostrPublicRoom),'function','Pinned SDK must include public-room API');
+ assert.equal(await evaluate(page,()=>typeof BloomGamekitTransport.createNostrPublicRoom),'function','Pinned SDK must include public-room API');
  assert.equal((await read(page)).backend,'WebGL');await samplePhase('page '+number+' booted',[page]);return page;
 }
 async function ready(active,count=active.length,whileJoining){
@@ -201,7 +201,7 @@ try{
  await context.addInitScript(()=>{const timeline=globalThis.__qaBootTimeline={createdMs:performance.now(),events:[]};for(const type of ['DOMContentLoaded','load'])addEventListener(type,()=>timeline.events.push({type,elapsedMs:performance.now()-timeline.createdMs}),{once:true})});
  await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();unexpectedNetwork.push(route.request().url());return route.abort()});
  report.fontAssetFixture=await fontAssets.install(context);
- await moduleReferences.install(context,source.html,rollbackCandidateBytes?{'rollback-netcode':rollbackCandidateBytes}:{});
+ await moduleReferences.install(context,source.html,rollbackCandidateBytes?{'simloop':rollbackCandidateBytes}:{});
  await context.routeWebSocket('**/*',socket=>{unexpectedNetwork.push(socket.url());return socket.close()});
  const host=await addPage();
  const soloBefore=await evaluate(host,()=>localStorage.getItem(CONFIG.saveKey));

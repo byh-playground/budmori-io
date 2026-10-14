@@ -14,7 +14,7 @@ try{
  git(['fetch','--quiet','--no-tags','--depth=1',repository,sourceCommit]);
  const manifestBytes=git(['show',`${distCommit}:manifest.json`]),manifest=JSON.parse(manifestBytes);
  assert.deepEqual(Object.keys(manifest),['schemaVersion','modules','assets'],'manifest keys');assert.equal(manifest.schemaVersion,2,'font assets require manifest schema 2');
- assert.deepEqual(manifest.modules.map(m=>m.file),['interpolation.js','rendering.js','input.js','deterministic.js','simloop.js','transport.js','replay.js','rollback.js','rollback-netcode.js','camera.js','presentation-events.js','hud.js','debug-tools.js','audio.js','navigation.js','scenario.js'],'fixed distribution module order');
+ assert.deepEqual(manifest.modules.map(m=>m.file),['interpolation.js','rendering.js','input.js','deterministic.js','simloop.js','transport.js','replay.js','rollback.js','camera.js','presentation-events.js','hud.js','debug-tools.js','audio.js','navigation.js','scenario.js'],'fixed distribution module order');
  assert.deepEqual(manifest.assets.map(({file,version})=>({file,version})),DIST_ASSETS,'fixed font asset inventory');
  assert.equal(Buffer.from(JSON.stringify(manifest,null,2)+'\n').equals(manifestBytes),true,'canonical distribution manifest');
  const staged=path.join(taskTemp,'staged'),vendor=path.join(staged,'vendor/upstream');fs.mkdirSync(vendor,{recursive:true});
@@ -44,7 +44,8 @@ try{
  for(const file of ['index.html','gamekit-lock.json'])fs.copyFileSync(path.join(staged,file),path.join(root,file));
  fs.copyFileSync(path.join(staged,'src/game.js'),path.join(root,'src/game.js'));
  fs.mkdirSync(path.join(root,'vendor/upstream'),{recursive:true});
- fs.cpSync(vendor,path.join(root,'vendor/upstream'),{recursive:true,force:true}); // Merge new fixed assets; preserve unrelated source archive/user files.
+ fs.cpSync(vendor,path.join(root,'vendor/upstream'),{recursive:true,force:true});
+ fs.rmSync(path.join(root,'vendor/upstream/rollback-netcode.js'),{force:true}); // Merge new fixed assets; preserve unrelated source archive/user files.
  verify(root);console.log('PASS updated verified gamekit source',sourceCommit,'dist',distCommit);
 }finally{
  // mkdtemp가 만든 전용 디렉터리만 정리합니다. 저장소·사용자 파일은 대상이 아닙니다.

@@ -30,6 +30,8 @@ function engine(file=`${__dirname}/BLOOM_LIVING_FRONTIER.html`,sourceHTML,native
   const source=m[1].replace("const canvas=(globalThis.BLOOM_HEADLESS ? null : ($('view')))","const canvas=(globalThis.BLOOM_HEADLESS ? globalThis.testCanvas : ($('view')))").replace('return globalThis.BLOOM_HEADLESS&&!globalThis.BLOOM_SIMULATION_SCOPE?null:document.getElementById(id)','return document.getElementById(id)');
   vm.runInContext(nativeContext?source.replace("ctx=(globalThis.BLOOM_HEADLESS ? null : (canvas.getContext('2d',{alpha:false})))", "ctx=globalThis.testContext"):source,c,{filename:`${file}:script-${++scripts}`});
  }
+ const replay=require('esbuild').buildSync({stdin:{contents:fs.readFileSync(require('path').join(require('path').dirname(file),'vendor/upstream/replay.js'),'utf8')},bundle:true,write:false,format:'iife',globalName:'BloomGamekitReplay',platform:'browser',target:'es2022'}).outputFiles[0].text;
+ vm.runInContext(replay,c);
  const run=(source)=>vm.runInContext(source,c),json=source=>JSON.parse(run(`JSON.stringify(${source})`));
  const click=dataset=>{const button=Object.assign(surface(),{tagName:'BUTTON',dataset});doc.emit('click',{target:button,preventDefault(){},stopImmediatePropagation(){this.stopped=true}})};
  const tick=(n=1,input={x:0,y:0,manual:true})=>{for(let i=0;i<n;i++){c.testInput=input;const result=run('BloomSimulation.session.advance(BloomSimulation.encodeInput(testInput))');assert.equal(result.status,'advanced',JSON.stringify(result));assert.equal(run('BloomSimulation.session.failure'),null)}};

@@ -16,7 +16,7 @@ export async function exerciseInputPreviewFlow(page,{waiting=false,release=async
  // Wrappers only observe; each original method is called exactly once.
  const before=await page.evaluate(()=>{
   const sim=__army.BloomSimulation,session=sim.session,prototype=BloomGamekitInterpolation.PresentationRuntime.prototype;
-  const authority=()=>({tick:sim.tick,hash:BloomOwnedSDK.hashBytes(sim.adapter.save()),rng:sim.state.rng});
+  const authority=()=>({tick:sim.tick,hash:BloomGamekitDeterministic.hashBytes(sim.adapter.save()),rng:sim.state.rng});
   const witness=globalThis.__previewIdentityWitness={state:sim.state,leader:WorldPlayers.local().leader,baselines:new Map(),first:null,executed:null,keyAt:null};
   witness.baselines.set(sim.tick,authority());
   const onKey=event=>{if(event.code==='KeyD'&&witness.keyAt===null)witness.keyAt=performance.now()};document.addEventListener('keydown',onKey,true);
