@@ -1,9 +1,10 @@
 import {Garden,CONFIG,TREE_NODES,ArenaGeometry,ATTACK_TYPES,Ballistics} from './farm-model.js';
+import {SeedArt} from './seed-art.js';
 import {Diorama} from './farm-renderer.js';
 import {FarmSession} from './farm-session.js';
 import {FarmStorage} from './farm-storage.js';
 import {snapshot,restore} from './farm-state.js';
-import {PRODUCT_VERSION,COMPATIBILITY} from './version.js';
+import {PRODUCT_VERSION} from './version.js';
 import {FoodFeel} from './food-feel.js';
 import {CombatFeel} from './combat-feel.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
@@ -53,7 +54,7 @@ $('confirmImport').onclick=()=>{if(room||attempt)return;try{if(imported)storage.
 $('onlineGame').onclick=async()=>{
  if(attempt||room)return;persist();solo=restore(snapshot(storage.world||active.world));const controller=attempt=new AbortController();refreshStart();$('sessionNotice').textContent='함께할 정원을 찾고 있어요…';
  try{
-  const next=await BloomGamekitTransport.createNostrPublicRoom({namespace:'budmori-public-v1',simulationVersion:'budmori-farm-'+COMPATIBILITY,maxPlayers:5,discoveryMs:1500,totalTimeoutMs:60000,peerTimeoutMs:20000,signal:controller.signal,onStatus:e=>{if(attempt===controller)$('sessionNotice').textContent=({discovering:'함께할 정원을 찾고 있어요…',hosting:'새 정원을 열고 있어요…',joining:'정원에 연결하고 있어요…'})[e.type]||'함께할 정원을 준비하고 있어요…'}});
+  const next=await BloomGamekitTransport.createNostrPublicRoom({namespace:'budmori-public-v1',simulationVersion:'budmori-farm-'+PRODUCT_VERSION,maxPlayers:5,discoveryMs:1500,totalTimeoutMs:60000,peerTimeoutMs:20000,signal:controller.signal,onStatus:e=>{if(attempt===controller)$('sessionNotice').textContent=({discovering:'함께할 정원을 찾고 있어요…',hosting:'새 정원을 열고 있어요…',joining:'정원에 연결하고 있어요…'})[e.type]||'함께할 정원을 준비하고 있어요…'}});
   if(controller.signal.aborted){next.close();return}room=next;install(new Garden(BloomGamekitDeterministic.hashBytes(new TextEncoder().encode(next.sessionId))),{room:next});$('sessionNotice').textContent='함께 가꾸는 정원 · 개인 저장은 보존됩니다.';setHome(false);
  }catch(e){if(!controller.signal.aborted)$('sessionNotice').textContent='연결하지 못했어요. '+e.message}
  finally{if(attempt===controller)attempt=null;refreshStart()}
@@ -113,4 +114,4 @@ function frame(now){if(room||!home&&!document.hidden)active.pulse(now);combatFee
 $('productVersion').textContent=PRODUCT_VERSION;$('startVersion').textContent=PRODUCT_VERSION+' · 농장과 거대 보스';
 setHome(true,false);if(location.hash&&location.hash!=='#/')route();requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.
-globalThis.BUDMORI={get sim(){return active.world},get runtime(){return active},get room(){return room},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};
+globalThis.BUDMORI={SeedArt,get sim(){return active.world},get runtime(){return active},get room(){return room},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};

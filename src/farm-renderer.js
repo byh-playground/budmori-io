@@ -1,9 +1,8 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp} from './farm-model.js';
-import {BudmoriArt} from './unit-art.js';
+import {SeedArt,SEED_STYLES} from './seed-art.js';
 const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
   // render.js
-  var TYPES = ['lancer','siege','rogue'];
-  const COLORS=['#bf8144','#648b6b','#8b719c'];
+  const COLORS=SEED_STYLES.map(s=>s.shell);
   var Diorama = class {
     constructor(canvas) {
       this.canvas = canvas;
@@ -64,57 +63,23 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
     attackEffects(world){
       for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
     }
-    drawUnit(u, sim2) {
+    drawUnit(u,sim){
       u=this.feel?this.feel.unit(u,this.now):u;
-      const c = this.ctx, walk = Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim2.time * 9 + u.seed)) * 0.14 * walk : 0, p = this.project(u.x + Math.sin(sim2.time * 9 + u.seed) * 0.065 * walk, u.y, u.z + bob);
-      const r = Math.max(u.size * this.scale * 0.78, (sim2.scene==='raid'?2.8:11) * this.pixelRatio);
-      const landing = u.bounce > 0 ? u.bounce : 0, airStretch = clamp(Math.abs(u.vz) * 0.014, 0, 0.12), squash = 1 + (this.feel?.squash(u.id,this.now)||0) + landing * 0.8 - airStretch - (u.ability.phase==="windup"?.12:0);
-      BudmoriArt.draw(c, TYPES[u.species], "friendly", p.x, p.y - r * 0.35, r, Math.atan2(-Math.sin(u.angle)*.62,Math.cos(u.angle)), sim2.time * 1e3, { respectOriginalFacing: true, phaseOffsetMs: u.id * 37, poseStretch: squash, poseTilt: Math.sin(sim2.time * 9 + u.seed) * 0.045 * walk, whiteFlash: u.flash > 0.09, hit: u.flash > 0, attack: u.ability.phase==="active" || (u.ability.phase==="recover"&&u.ability.elapsed<.13), deployed: u.ability.phase!=="idle", turretFacing: Math.atan2(-Math.sin(u.angle)*.62,Math.cos(u.angle)), alpha: u.down > 0 ? 0.55 : 1 });
-      const joy = sim2.effects.some(e => (e.kind === "eat" || e.kind === "birth" || e.kind === "merge") && e.life < 0.85 && Math.hypot(e.x-u.x,e.y-u.y)<1.2);
-      const expression = u.z > 0.5 || u.stun > 0 || u.down > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal";
-      if(sim2.scene==="farm")this.face(p.x, p.y-r*0.35, r*.7, u.species, expression, squash, Math.sin(sim2.time*9+u.seed)*0.045*walk);
-      if (u.tier > 1) {
-        for (let k = 0; k < u.tier - 1; k++) {
-          const x = p.x + (k - (u.tier - 2) / 2) * r * 0.34, y = p.y - r * 1.5;
-          c.fillStyle = "#f1df9f";
-          c.beginPath();
-          c.moveTo(x, y - r * 0.11);
-          c.lineTo(x + r * 0.1, y);
-          c.lineTo(x, y + r * 0.11);
-          c.lineTo(x - r * 0.1, y);
-          c.closePath();
-          c.fill();
-        }
-      }
-    }
-    face(x, y, r, species, expression, stretch=1, tilt=0) {
-      const c=this.ctx, ink="#263c39", cream="#fff1ce";
-      c.save(); c.translate(x,y); c.rotate(tilt); c.scale(1/stretch,stretch);
-      const fy=species===1?r*0.48:species===0?r*0.04:r*0.16;
-      // A warm face inset keeps eyes and mouth readable against each original silhouette.
-      this.ellipse(0,fy,r*0.46,r*0.36,cream);
-      c.strokeStyle=ink; c.lineWidth=Math.max(this.pixelRatio*1.1,r*0.075);
-      for(const side of [-1,1]) {
-        const ex=side*r*0.20,ey=fy-r*0.075;
-        if(expression==="happy") { c.beginPath(); c.moveTo(ex-r*.08,ey+r*.025); c.lineTo(ex,ey-r*.055); c.lineTo(ex+r*.08,ey+r*.025); c.stroke(); }
-        else this.ellipse(ex,ey,r*(expression==="surprised"?.085:.065),r*(expression==="hungry"?.065:.10),ink);
-      }
-      if(expression==="surprised") this.ellipse(0,fy+r*.14,r*.09,r*.12,ink);
-      else { c.beginPath(); c.moveTo(-r*.13,fy+r*(expression==="hungry"?.20:.10)); c.lineTo(0,fy+r*(expression==="hungry"?.13:.19)); c.lineTo(r*.13,fy+r*(expression==="hungry"?.20:.10)); c.stroke(); }
-      if(expression==="happy") for(const side of [-1,1]) this.ellipse(side*r*.31,fy+r*.09,r*.075,r*.045,"#eaa09b");
-      c.restore();
+      const dead=u.hp<=0,walk=dead?0:Math.min(1,Math.hypot(u.vx,u.vy)),bob=u.z===0?Math.abs(Math.sin(sim.time*9+u.seed))*.10*walk:0,p=this.project(u.x,u.y,u.z+bob);
+      const r=Math.max(u.size*this.scale*.78,(sim.scene==='raid'?4.5:11)*this.pixelRatio);
+      const joy=sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
+      SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.now)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
     }
     bossPose(world){
       const b=world.boss,k=this.feel?.boss(this.now)||{x:0,y:0,squash:0};return {b,p:this.project(b.x+k.x,b.y+k.y,0),r:this.scale*b.radius*1.16,k};
     }
-    drawBoss(world){
+    bossSkin(world,faceOnly=false){
       const {b,p,r,k}=this.bossPose(world),wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep';
-      BudmoriArt.draw(this.ctx,'guardshroom','enemy',p.x,p.y-r*.34,r,void 0,world.time*1000,{respectOriginalFacing:true,poseStretch:(wind?1.06:1+Math.sin(world.time*2)*.012)+k.squash,poseTilt:wind?-.055:active?.035:Math.sin(world.time*5)*.012,attack:active});
+      const skin={species:0,tier:4,hp:b.hp,down:0,z:0,vx:0,vy:0,seed:0,flash:b.flash,bounce:0,ability:{phase:wind?'windup':active?'active':'idle',elapsed:wind?.24:0}};
+      SeedArt.draw(this.ctx,0,p.x,p.y,r,skin,world.time,{pixelRatio:this.pixelRatio,boss:true,hideFace:!faceOnly,faceOnly,extra:k.squash,expression:b.hp<=0?'dead':wind?'surprised':active?'happy':'normal'});
     }
-    drawBossFace(world){
-      const {b,p,r}=this.bossPose(world),wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep';
-      this.face(p.x,p.y-r*.34,r,1,wind?'surprised':active?'happy':'normal',wind?1.06:1,wind?-.055:active?.035:0);
-    }
+    drawBoss(world){this.bossSkin(world)}
+    drawBossFace(world){this.bossSkin(world,true)}
     drawBossWeapon(world){
       const b=world.boss,c=CONFIG.raid,heavy=b.phase==='sweep'||b.phase==='sweep-windup';
       let angle=heavy?b.startAngle:b.angle,reach=b.radius+.15;
