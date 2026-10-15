@@ -1,5 +1,4 @@
 import {Garden,CONFIG,TREE_NODES,ArenaGeometry,ATTACK_TYPES,Ballistics} from './farm-model.js';
-import {SeedArt} from './seed-art.js';
 import {Diorama} from './farm-renderer.js';
 import {FarmSession} from './farm-session.js';
 import {FarmStorage} from './farm-storage.js';
@@ -125,4 +124,4 @@ function frame(now){measureFrame(now);if(room||!home&&!document.hidden)active.pu
 $('productVersion').textContent=PRODUCT_VERSION;$('startVersion').textContent=PRODUCT_VERSION+' · 농장과 거대 보스';
 setHome(true,false);if(location.hash&&location.hash!=='#/')route();requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.
-globalThis.BUDMORI={SeedArt,get sim(){return active.world},get runtime(){return active},get room(){return room},get renderMetrics(){return frameRate()},get presentationDiagnostics(){return active.latestPresentationDiagnostics},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};
+globalThis.BUDMORI={get sim(){return active.world},get runtime(){return active},get room(){return room},get renderMetrics(){return frameRate()},get presentationDiagnostics(){return active.latestPresentationDiagnostics},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};

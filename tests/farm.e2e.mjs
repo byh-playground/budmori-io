@@ -103,16 +103,9 @@ async function combatScenarios(p){
 }
 async function seedScenarios(p,label){
  const poses=['idle','windup','active','recover'];
- const signatures=await p.evaluate(()=>{
-  const art=BUDMORI.SeedArt,w=new BUDMORI.sim.constructor(623),u=w.units[0],signatures=[];
-  for(let species=0;species<3;species++)for(let tier=1;tier<=4;tier++){
-   u.species=species;u.tier=tier;u.meals=3;const values=[];
-   for(const phase of ['idle','windup','active','recover']){u.ability.phase=phase;u.ability.elapsed=phase==='idle'?0:.12;const pose=art.pose(u,1.25,0);if(![pose.sx,pose.sy,pose.tilt,pose.open].every(Number.isFinite))throw Error('Non-finite seed pose');values.push(JSON.stringify([pose.sx,pose.sy,pose.tilt,pose.open]));}
-   if(new Set(values).size<3)throw Error('Seed preparation/contact/recovery poses indistinguishable');signatures.push({species,tier,distinct:new Set(values).size});
-  }
-  u.hp=0;u.down=1;if(!art.pose(u,1.25,0).dead)throw Error('Dead seed pose missing');return signatures;
- });
- report.seedPoses=signatures;
+ const assets=await p.evaluate(()=>[...BUDMORI.renderer.vectorAssets].map(([species,record])=>({species,clips:Object.keys(record.compiled.metadata.clips),expressions:Object.keys(record.compiled.metadata.expressions)})));
+ assert.equal(assets.length,3,'all troop species use compiled SVG assets');assert(assets.every(a=>['idle','walk','windup','fire','recover','hit','airborne','landing','death'].every(name=>a.clips.includes(name))&&['neutral','happy','focused','attack','surprised','hurt','hungry','dead'].every(name=>a.expressions.includes(name))));
+ report.vectorSpecies=assets;
  await p.evaluate(()=>{globalThis.seedOriginal={world:BUDMORI.runtime.world,paused:BUDMORI.runtime.paused};BUDMORI.runtime.paused=true;});
  try{
   for(const scene of ['farm','raid']){
@@ -122,7 +115,7 @@ async function seedScenarios(p,label){
    },scene);
    for(const phase of poses){
     await p.evaluate(phase=>{for(const u of BUDMORI.sim.units){u.ability.phase=phase;u.ability.elapsed=phase==='idle'?0:.12;}BUDMORI.runtime.capturePresentation('reset')},phase);
-    await p.evaluate(()=>new Promise(requestAnimationFrame));await render(p,label+'-seed-'+scene+'-'+phase);
+    await p.evaluate(()=>new Promise(requestAnimationFrame));await render(p,label+'-seed-'+scene+'-'+phase);const native=await p.evaluate(()=>({players:BUDMORI.renderer.vectorPlayers.size,clips:[...BUDMORI.renderer.vectorPlayers.values()].map(v=>v.currentClip),time:BUDMORI.renderer.displayTimeMs}));assert.equal(native.players,12,'all twelve tiers render through native vector players');assert(native.clips.every(clip=>clip===({idle:'idle',windup:'windup',active:'fire',recover:'recover'})[phase]));assert(native.time>0);
     const visible=await p.evaluate(()=>{const r=BUDMORI.renderer;return BUDMORI.sim.units.map(u=>{const q=r.project(u.x,u.y,u.z),d=r.pixelRatio;return {species:u.species,tier:u.tier,radius:u.radius,x:q.x/d,y:q.y/d,visible:q.x>=0&&q.y>=0&&q.x<r.canvas.width&&q.y<r.canvas.height};});});
     assert(visible.every(u=>u.visible),'seed grid inside actual '+scene+' viewport');report.seedGrid??=[];report.seedGrid.push({label,scene,phase,units:visible});
    }

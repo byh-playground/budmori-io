@@ -1,5 +1,4 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp} from './farm-model.js';
-import {SeedArt,SEED_STYLES} from './seed-art.js';
 import {BOSS_VECTOR_ASSETS,TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
 const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
@@ -25,7 +24,7 @@ function unitExpression(u,sim){
   return dead?'dead':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
 }
   // render.js
-  const COLORS=SEED_STYLES.map(s=>s.shell);
+  const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c'];
   var Diorama = class {
     constructor(canvas) {
       this.canvas = canvas;
@@ -95,10 +94,10 @@ function unitExpression(u,sim){
       c.stroke();
     }
     attackEffects(world){
-      for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(u.buffed&&u.hp>0)this.ring(u.x,u.y,u.radius+.16,'#eacb72',.055);if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
+      for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(u.buffed&&u.hp>0)this.ring(u.x,u.y,u.radius+.16,'#eacb72',.055);if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,ATTACK_ACCENTS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
     }
     drawVectorUnit(u,sim,p,r){
-      const record=this.vectorAssets.get(u.species);if(!record)return false;
+      const record=this.vectorAssets.get(u.species);if(!record)throw new Error('Missing required troop vector asset for species '+u.species);
       let player=this.vectorPlayers.get(u.id);
       const metadata=record.compiled.metadata,motionName=unitMotion(u),clip=metadata.clips[motionName]||metadata.clips.idle;
       const clipStartAtMs=this.displayTimeMs-motionElapsedMs(u,motionName,clip);
@@ -111,20 +110,10 @@ function unitExpression(u,sim){
       player.draw({projection:this.ctx.vector.projection,matrix});
       return true;
     }
-    drawCrowdUnit(u,sim){
-      const dead=u.hp<=0||u.down>0,p=this.project(u.x,u.y,u.z),r=Math.max(u.size*this.scale*.78,4.5*this.pixelRatio),style=SEED_STYLES[u.species],y=p.y-r*.79,c=this.ctx;
-      c.globalAlpha=dead?.8:1;this.ellipse(p.x,y,r*.9,r*.75,u.flash>.09?'#f4edc4':style.shell);this.ellipse(p.x-r*.23,y-r*.3,r*.25,r*.11,style.light,-.32);
-      if(dead){for(const side of [-1,1]){const x=p.x+side*r*.23,eyeY=y-r*.05;this.line({x:x-r*.09,y:eyeY-r*.09},{x:x+r*.09,y:eyeY+r*.09},.035,style.edge);this.line({x:x+r*.09,y:eyeY-r*.09},{x:x-r*.09,y:eyeY+r*.09},.035,style.edge)}}
-      else{for(const side of [-1,1])this.ellipse(p.x+side*r*.22,y+r*.08,r*.055,r*.075,style.edge);if(u.species===2)this.ellipse(p.x+r*.57,y-r*.35,r*.12,r*.19,style.germ,-.35)}
-      c.globalAlpha=1;
-    }
     drawUnit(u,sim){
-      if(sim.scene==='raid'&&sim.units.length>150&&!this.vectorAssets.has(u.species)){this.drawCrowdUnit(u,sim);return}
       const dead=u.hp<=0,walk=dead?0:Math.min(1,Math.hypot(u.vx,u.vy)),bob=u.z===0?Math.abs(Math.sin(sim.time*9+u.seed))*.10*walk:0,p=this.project(u.x,u.y,u.z+bob);
       const r=Math.max(u.size*this.scale*.78,(sim.scene==='raid'?4.5:11)*this.pixelRatio);
-      if(this.drawVectorUnit(u,sim,p,r))return;
-      const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
-      SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.displayTimeMs)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
+      this.drawVectorUnit(u,sim,p,r);
     }
     bossPose(world){
       const b=world.boss,k=this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0},ground=this.project(b.x+k.x,b.y+k.y,0),p=this.project(b.x+k.x,b.y+k.y,b.z||0),r=this.scale*b.radius*1.16;

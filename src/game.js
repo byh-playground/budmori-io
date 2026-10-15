@@ -1148,132 +1148,6 @@
   // src/farm-app.js
   init_farm_model();
 
-  // src/seed-art.js
-  var SEED_STYLES = Object.freeze([
-    { name: "돌격 완두콩", shell: "#8fac68", light: "#c7dc8d", shade: "#688851", edge: "#49684a", germ: "#48754b" },
-    { name: "곡사 수수알", shell: "#dbb76b", light: "#f6d995", shade: "#b28c4c", edge: "#846b43", germ: "#84914d" },
-    { name: "도약 콩알", shell: "#b58b9c", light: "#e5b4bd", shade: "#906d87", edge: "#6c556e", germ: "#87a35b" }
-  ]);
-  var ellipse = (c, x, y, rx, ry, color, a = 0) => {
-    c.fillStyle = color;
-    c.beginPath();
-    c.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), a, 0, Math.PI * 2);
-    c.fill();
-  };
-  var line = (c, points, color, width) => {
-    c.strokeStyle = color;
-    c.lineWidth = width;
-    c.lineCap = "round";
-    c.lineJoin = "round";
-    c.beginPath();
-    points.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
-    c.stroke();
-  };
-  function pose(u, time, extra = 0) {
-    const dead = u.hp <= 0 || u.down > 0, phase = u.ability?.phase || "idle", e = u.ability?.elapsed || 0, kind = u.species, walk = dead ? 0 : Math.min(1, Math.hypot(u.vx || 0, u.vy || 0));
-    let sx = 1, sy = 1, tilt = Math.sin(time * 9 + (u.seed || 0)) * 0.04 * walk, open = 0;
-    if (dead) {
-      sx = 1.17;
-      sy = u.z > 0.1 ? 0.76 : 0.57;
-      tilt = u.z > 0.1 ? 0.48 : 0.2;
-    } else if (phase === "windup") {
-      const q = Math.min(1, e / [0.28, 0.38, 0.32][kind]);
-      sy = 1 - q * [0.23, 0.1, 0.32][kind];
-      sx = 1 / Math.sqrt(sy);
-      tilt = -q * 0.1;
-      if (kind === 1) open = q;
-    } else if (phase === "active") {
-      if (kind === 0) {
-        sx = 1.25;
-        sy = 0.8;
-        tilt = Math.cos(u.angle || 0) * -0.12;
-      }
-      if (kind === 2) {
-        sy = 1.2;
-        sx = 0.88;
-        tilt = Math.cos(u.angle || 0) * 0.12;
-      }
-    } else if (phase === "recover") {
-      const q = Math.max(0, 1 - e / 0.3);
-      sy = 1 - q * 0.12;
-      sx = 1 / Math.sqrt(sy);
-      if (kind === 1) open = q;
-    }
-    if (!dead) {
-      sy = Math.max(0.55, sy - (u.bounce || 0) * 0.6 - extra);
-      sx *= Math.sqrt(1 / Math.max(0.75, 1 - extra));
-    }
-    return { sx, sy, tilt, open, dead };
-  }
-  function face(c, r, expression, pixelRatio = 1) {
-    const ink = "#293e36", ey = -r * 0.07, gap = r * 0.3, stroke = Math.max(pixelRatio * 0.65, r * 0.085);
-    for (const side of [-1, 1]) {
-      const x = side * gap;
-      if (expression === "dead") {
-        line(c, [[x - r * 0.1, ey - r * 0.11], [x + r * 0.1, ey + r * 0.11]], ink, stroke);
-        line(c, [[x - r * 0.1, ey + r * 0.11], [x + r * 0.1, ey - r * 0.11]], ink, stroke);
-      } else if (expression === "happy") line(c, [[x - r * 0.1, ey], [x, ey - r * 0.095], [x + r * 0.1, ey]], ink, stroke);
-      else {
-        ellipse(c, x, ey, r * 0.092, r * (expression === "surprised" ? 0.15 : 0.13), ink);
-        if (r > 9 * pixelRatio) ellipse(c, x - r * 0.018, ey - r * 0.045, r * 0.025, r * 0.035, "#fffae7");
-      }
-    }
-    if (expression === "surprised") ellipse(c, 0, r * 0.24, r * 0.1, r * 0.13, ink);
-    else if (expression === "dead") line(c, [[-r * 0.12, r * 0.25], [r * 0.12, r * 0.25]], ink, stroke);
-    else line(c, [[-r * 0.14, r * 0.18], [0, r * (expression === "hungry" ? 0.12 : 0.29)], [r * 0.14, r * 0.18]], ink, stroke);
-    if (expression === "happy") for (const side of [-1, 1]) ellipse(c, side * r * 0.48, r * 0.17, r * 0.11, r * 0.055, "#e9a39c");
-  }
-  function draw(c, species, x, y, r, u, time, options = {}) {
-    const style = options.boss ? { shell: "#ae7853", light: "#dfad79", shade: "#885d47", edge: "#614b3c", germ: "#77915a" } : SEED_STYLES[species];
-    const p = pose(u, time, options.extra || 0), pixel = options.pixelRatio || 1;
-    c.save();
-    c.translate(x, y - r * 0.79);
-    c.rotate(p.tilt);
-    c.scale(p.sx, p.sy);
-    c.globalAlpha = p.dead ? 0.84 : 1;
-    const expression = p.dead ? "dead" : options.expression || "normal";
-    if (options.faceOnly) {
-      face(c, r, expression, pixel);
-      c.restore();
-      return;
-    }
-    if (species === 1 && !options.boss) {
-      for (const side of [-1, 1]) {
-        ellipse(c, side * r * (0.56 + p.open * 0.24), -r * (0.09 + p.open * 0.12), r * 0.4, r * (0.83 + p.open * 0.1), style.edge, side * (0.17 + p.open * 0.52));
-        ellipse(c, side * r * (0.57 + p.open * 0.24), -r * (0.12 + p.open * 0.12), r * 0.32, r * 0.75, style.shade, side * (0.17 + p.open * 0.52));
-      }
-    }
-    if (!p.dead) {
-      const fold = species === 2 && u.ability?.phase === "windup" ? 0.65 : 0;
-      line(c, [[0, -r * 0.7], [r * 0.06, -r * (1.12 - fold)]], style.germ, r * 0.095);
-      const leaves = Math.max(1, Math.min(4, u.tier || 1));
-      for (let k = 0; k < leaves; k++) {
-        const side = k % 2 ? -1 : 1, yy = -r * (1.05 - fold) + k * r * 0.12;
-        ellipse(c, side * r * (0.19 + k * 0.015), yy, r * (0.24 - k * 0.018), r * 0.1, style.germ, side * -0.48);
-      }
-    }
-    ellipse(c, 0, 0, r, r * 0.87, style.edge);
-    ellipse(c, 0, -r * 0.035, r * 0.93, r * 0.8, style.shade);
-    ellipse(c, -r * 0.055, -r * 0.16, r * 0.88, r * 0.68, u.flash > 0.09 ? "#f4edc4" : style.shell);
-    ellipse(c, -r * 0.25, -r * 0.43, r * 0.39, r * 0.18, style.light, -0.32);
-    if (species === 2 && !options.boss) {
-      ellipse(c, r * 0.66, r * 0.17, r * 0.18, r * 0.36, style.shade, -0.22);
-      ellipse(c, r * 0.69, r * 0.15, r * 0.09, r * 0.24, "#e6d0a5", -0.22);
-    } else if (options.boss) {
-      c.fillStyle = style.shell;
-      c.beginPath();
-      c.moveTo(-r * 0.36, -r * 0.62);
-      c.quadraticCurveTo(0, -r * 1.16, r * 0.27, -r * 0.69);
-      c.closePath();
-      c.fill();
-      for (const side of [-1, 1]) line(c, [[side * r * 0.73, -r * 0.23], [side * r * 0.81, r * 0.1], [side * r * 0.64, r * 0.49]], style.light, r * 0.035);
-    }
-    for (let k = 0; k < (u.tier || 1) - 1; k++) for (const side of [-1, 1]) ellipse(c, side * r * (0.57 - k * 0.035), r * (0.28 + k * 0.14), r * 0.045, r * 0.065, style.light, side * -0.3);
-    if (!options.hideFace) face(c, r, expression, pixel);
-    c.restore();
-  }
-  var SeedArt = Object.freeze({ draw, pose, face, styles: SEED_STYLES });
-
   // src/farm-renderer.js
   init_farm_model();
 
@@ -1329,7 +1203,7 @@
     const phase = u.ability?.phase;
     return dead ? "dead" : u.stun > 0 ? "hurt" : airborne ? "surprised" : phase === "windup" ? "focused" : phase === "active" ? "attack" : joy ? "happy" : sim.scene === "farm" && !u.fed ? "hungry" : "neutral";
   }
-  var COLORS = SEED_STYLES.map((s) => s.shell);
+  var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c"];
   var Diorama = class {
     constructor(canvas2) {
       this.canvas = canvas2;
@@ -1420,12 +1294,12 @@
       for (const u of world.units) {
         const a = u.ability, s = ATTACK_TYPES[u.species];
         if (u.buffed && u.hp > 0) this.ring(u.x, u.y, u.radius + 0.16, "#eacb72", 0.055);
-        if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.1, COLORS[u.species], 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
+        if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.1, ATTACK_ACCENTS[u.species], 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
       }
     }
     drawVectorUnit(u, sim, p, r) {
       const record = this.vectorAssets.get(u.species);
-      if (!record) return false;
+      if (!record) throw new Error("Missing required troop vector asset for species " + u.species);
       let player = this.vectorPlayers.get(u.id);
       const metadata = record.compiled.metadata, motionName = unitMotion(u), clip = metadata.clips[motionName] || metadata.clips.idle;
       const clipStartAtMs = this.displayTimeMs - motionElapsedMs(u, motionName, clip);
@@ -1441,33 +1315,10 @@
       player.draw({ projection: this.ctx.vector.projection, matrix });
       return true;
     }
-    drawCrowdUnit(u, sim) {
-      const dead = u.hp <= 0 || u.down > 0, p = this.project(u.x, u.y, u.z), r = Math.max(u.size * this.scale * 0.78, 4.5 * this.pixelRatio), style = SEED_STYLES[u.species], y = p.y - r * 0.79, c = this.ctx;
-      c.globalAlpha = dead ? 0.8 : 1;
-      this.ellipse(p.x, y, r * 0.9, r * 0.75, u.flash > 0.09 ? "#f4edc4" : style.shell);
-      this.ellipse(p.x - r * 0.23, y - r * 0.3, r * 0.25, r * 0.11, style.light, -0.32);
-      if (dead) {
-        for (const side of [-1, 1]) {
-          const x = p.x + side * r * 0.23, eyeY = y - r * 0.05;
-          this.line({ x: x - r * 0.09, y: eyeY - r * 0.09 }, { x: x + r * 0.09, y: eyeY + r * 0.09 }, 0.035, style.edge);
-          this.line({ x: x + r * 0.09, y: eyeY - r * 0.09 }, { x: x - r * 0.09, y: eyeY + r * 0.09 }, 0.035, style.edge);
-        }
-      } else {
-        for (const side of [-1, 1]) this.ellipse(p.x + side * r * 0.22, y + r * 0.08, r * 0.055, r * 0.075, style.edge);
-        if (u.species === 2) this.ellipse(p.x + r * 0.57, y - r * 0.35, r * 0.12, r * 0.19, style.germ, -0.35);
-      }
-      c.globalAlpha = 1;
-    }
     drawUnit(u, sim) {
-      if (sim.scene === "raid" && sim.units.length > 150 && !this.vectorAssets.has(u.species)) {
-        this.drawCrowdUnit(u, sim);
-        return;
-      }
       const dead = u.hp <= 0, walk = dead ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * walk : 0, p = this.project(u.x, u.y, u.z + bob);
       const r = Math.max(u.size * this.scale * 0.78, (sim.scene === "raid" ? 4.5 : 11) * this.pixelRatio);
-      if (this.drawVectorUnit(u, sim, p, r)) return;
-      const joy = sim.scene === "farm" && sim.effects.some((e) => ["eat", "birth", "merge"].includes(e.kind) && e.life < 0.85 && Math.hypot(e.x - u.x, e.y - u.y) < 1.2);
-      SeedArt.draw(this.ctx, u.species, p.x, p.y, r, u, sim.time, { pixelRatio: this.pixelRatio, extra: this.feel?.squash(u.id, this.displayTimeMs) || 0, expression: u.z > 0.5 || u.stun > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal" });
+      this.drawVectorUnit(u, sim, p, r);
     }
     bossPose(world) {
       const b = world.boss, k = this.feel?.boss(this.displayTimeMs) || { x: 0, y: 0, squash: 0 }, ground = this.project(b.x + k.x, b.y + k.y, 0), p = this.project(b.x + k.x, b.y + k.y, b.z || 0), r = this.scale * b.radius * 1.16;
@@ -2808,7 +2659,7 @@
   setHome(true, false);
   if (location.hash && location.hash !== "#/") route();
   requestAnimationFrame(frame);
-  globalThis.BUDMORI = { SeedArt, get sim() {
+  globalThis.BUDMORI = { get sim() {
     return active.world;
   }, get runtime() {
     return active;
