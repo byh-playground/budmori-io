@@ -12,6 +12,9 @@ let networkTimer=null,observedWorld=null;
 let imported=null;
 let active=null,home=true,attempt=null,room=null,solo=null,noticeSequence=0,lastSave=0,treePause=false;
 const renderer=new Diorama($('world'));
+const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
+function measureFrame(now){if(lastFrameTimestamp!==null){measuredFrames.push(now-lastFrameTimestamp);if(measuredFrames.length>240)measuredFrames.shift()}lastFrameTimestamp=now;frameCount++}
+function frameRate(){const sorted=[...measuredFrames].sort((a,b)=>a-b),sum=measuredFrames.reduce((a,b)=>a+b,0);return{frames:frameCount,fps:sum?measuredFrames.length*1000/sum:0,frametimeMs:{p50:sorted[Math.floor((sorted.length-1)*.5)]||0,p95:sorted[Math.floor((sorted.length-1)*.95)]||0,max:Math.max(0,...measuredFrames)}}}
 const fail=error=>{$('error').hidden=false;$('error').textContent='정원을 진행하지 못했어요. '+error.message;console.error(error);if(active&&!room)active.paused=true};
 const foodFeel=new FoodFeel(requestFeed);
 const combatFeel=new CombatFeel(foodFeel);
@@ -93,16 +96,17 @@ window.addEventListener('resize',()=>renderer.resize());window.addEventListener(
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();persist();fail(Error('그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요.'))});
 function route(){const r=location.hash;if(r==='#/'||!r){setHome(true,false);return}if(home){if(!room&&storage.error&&!storage.world){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.world)start(restore(snapshot(storage.world)),false);else{install(new Garden());home=false;document.body.dataset.home='false';$('startScreen').hidden=true}}if(r==='#/help'||r==='#/growth')panel(r==='#/help'?'helpPanel':'treePanel',true,false);else{if(!$('treePanel').hidden)panel('treePanel',false,false);if(!$('helpPanel').hidden)panel('helpPanel',false,false);scene(r==='#/raid'?'raid':'farm',false)}}
 window.addEventListener('popstate',route);
-function sync(now){
- const w=active.world,raid=w.scene==='raid';for(const [id,value]of [['farm',!raid],['raid',raid],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
+function sync(display,now){
+ const w=active.world,raid=display.scene==='raid';for(const [id,value]of [['farm',!raid],['raid',raid],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
  $('farmControls').hidden=raid||home;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!raid||home;$('roles').hidden=!raid||home;
- $('count').textContent=w.units.length;$('starter').textContent=w.units.length>=CONFIG.cap?'정원이 가득해요':`새싹까지 ${Math.ceil(CONFIG.starterSeconds/w.progress.rate('production')-w.starter)}초`;
- const army=w.armyHealth;
+ $('count').textContent=display.units.length;$('starter').textContent=w.units.length>=CONFIG.cap?'정원이 가득해요':`새싹까지 ${Math.ceil(CONFIG.starterSeconds/w.progress.rate('production')-w.starter)}초`;
+ const army=display.units.reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(u.maxHp,u.hp)),max:sum.max+u.maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0});
  $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
  $('allyHealthText').textContent=Math.ceil(army.current)+' / '+Math.ceil(army.max)+' HP · '+army.living+'/'+army.total+' 생존';
- $('bossHealthText').textContent=Math.ceil(w.boss.hp)+' / '+w.boss.maxHp+' HP';
- for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',w.boss.hp,w.boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
- $('bossHealth').style.width=w.boss.hp/w.boss.maxHp*100+'%';$('battleOutcome').textContent=w.encounter.outcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':w.encounter.outcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':'';$('battleOutcome').hidden=home||!raid||w.running;$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('pause').textContent=active.paused?'▶':'Ⅱ';
+ const boss=display.boss,battleOutcome=boss.hp<=0?'victory':display.units.length&&display.units.every(u=>u.hp<=0)?'defeat':'fighting';
+  $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';
+ for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
+ $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':'';$('battleOutcome').hidden=home||!raid||battleOutcome==='fighting';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('pause').textContent=active.paused?'▶':'Ⅱ';
  $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;
  for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
  if(observedWorld!==w){observedWorld=w;noticeSequence=w.eventSequence}
@@ -110,8 +114,8 @@ function sync(now){
  $('connection').hidden=!room;$('connection').textContent=room?active.session.failure?'연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요':`함께 ${active.players.length}명 · ${active.session.ready?'연결됨':'동기화 중'}`:'';
  if(now-lastSave>3000){lastSave=now;persist()}
 }
-function frame(now){if(room||!home&&!document.hidden)active.pulse(now);combatFeel.observe(active.world,now);renderer.render(active.presentation(now),combatFeel,now);sync(now);requestAnimationFrame(frame)}
+function frame(now){measureFrame(now);if(room||!home&&!document.hidden)active.pulse(now);const display=active.presentation(now);combatFeel.observe(active.world,display.displayTimeMs,display.presentationRevision);renderer.render(display,combatFeel,display.displayTimeMs);sync(display,now);requestAnimationFrame(frame)}
 $('productVersion').textContent=PRODUCT_VERSION;$('startVersion').textContent=PRODUCT_VERSION+' · 농장과 거대 보스';
 setHome(true,false);if(location.hash&&location.hash!=='#/')route();requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.
-globalThis.BUDMORI={SeedArt,get sim(){return active.world},get runtime(){return active},get room(){return room},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};
+globalThis.BUDMORI={SeedArt,get sim(){return active.world},get runtime(){return active},get room(){return room},get renderMetrics(){return frameRate()},get presentationDiagnostics(){return active.latestPresentationDiagnostics},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};

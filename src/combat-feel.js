@@ -1,32 +1,35 @@
+import {presentationEventTimeMs} from './farm-model.js';
 // Presentation reads committed combat notices. It never pauses or writes simulation state.
 export class CombatFeel {
- constructor(audio){this.audio=audio;this.world=null;this.sequence=0;this.effects=[];this.poses=new Map();this.bossHit=null;this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;this.counts={hits:0,landings:0}}
- observe(world,now){
-  if(this.world!==world){this.world=world;this.sequence=world.eventSequence;this.effects=[];this.poses.clear();this.bossHit=null;return}
+ constructor(audio){this.audio=audio;this.world=null;this.revision=null;this.sequence=0;this.effects=[];this.poses=new Map();this.bossHit=null;this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;this.counts={hits:0,landings:0}}
+ observe(world,displayTimeMs,revision=0){
+  if(this.world!==world||this.revision!==revision){this.world=world;this.revision=revision;this.sequence=world.eventSequence;this.effects=[];this.poses.clear();this.bossHit=null;return}
   for(const e of world.notices){
    if(e.sequence<=this.sequence)continue;
    if(['boss-hit','unit-hit','unit-land','attack-launch','boss-launch'].includes(e.kind)){
-    this.effects.push({...e,at:now});if(this.effects.length>48)this.effects.shift();
-    if(e.kind==='boss-hit'){this.counts.hits++;this.bossHit={...e,at:now};this.audio.sound('strike',e.species||0)}
+    const at=presentationEventTimeMs(e),event={...e,at,heard:false};
+    this.effects.push(event);if(this.effects.length>48)this.effects.shift();
+    if(e.kind==='boss-hit'){this.counts.hits++;this.bossHit=event}
     if(e.kind==='unit-hit'){
-     const u=world.units.find(u=>u.id===e.unit);if(u)this.poses.set(u.id,{at:now,until:now+180,heldUntil:now+(this.reduced?0:35),x:u.x,y:u.y,z:u.z,strength:e.strength});
-     this.counts.hits++;this.audio.sound(e.attackKind==='sweep'?'heavy':'strike');
+     this.poses.set(e.unit,{at,until:at+180,strength:e.strength});this.counts.hits++;
     }
-    if(e.kind==='unit-land'){this.counts.landings++;if(e.strength>.2)this.audio.sound('land')}
-    if(e.kind==='boss-launch')this.audio.sound('launch');
+    if(e.kind==='unit-land')this.counts.landings++;
    }
   }
-  this.sequence=world.eventSequence;this.effects=this.effects.filter(e=>now-e.at<430);for(const [id,p]of this.poses)if(now>p.until)this.poses.delete(id);
+  this.sequence=world.eventSequence;this.effects=this.effects.filter(e=>displayTimeMs-e.at<430);for(const [id,p]of this.poses)if(displayTimeMs>p.until)this.poses.delete(id);
  }
- unit(u,now){
-  const p=this.poses.get(u.id);if(!p||now>p.heldUntil)return u;
-  return Object.assign(Object.create(Object.getPrototypeOf(u)),u,{x:p.x,y:p.y,z:p.z});
+ squash(id,displayTimeMs){const p=this.poses.get(id);return !p||this.reduced?0:Math.sin(Math.min(1,(displayTimeMs-p.at)/180)*Math.PI)*Math.min(.2,p.strength*.12)}
+ boss(displayTimeMs){const e=this.bossHit;if(!e||this.reduced)return {x:0,y:0,squash:0};const q=Math.max(0,Math.min(1,(displayTimeMs-e.at)/160)),k=Math.sin(q*Math.PI)*(1-q);return{x:-e.nx*k*.1,y:-e.ny*k*.1,squash:k*.035}}
+ sound(event){
+  if(event.kind==='boss-hit')this.audio.sound('strike',event.species||0);
+  else if(event.kind==='unit-hit')this.audio.sound(event.attackKind==='sweep'?'heavy':'strike');
+  else if(event.kind==='unit-land'&&event.strength>.2)this.audio.sound('land');
+  else if(event.kind==='boss-launch')this.audio.sound('launch');
  }
- squash(id,now){const p=this.poses.get(id);return !p||this.reduced?0:Math.sin(Math.min(1,(now-p.at)/180)*Math.PI)*Math.min(.2,p.strength*.12)}
- boss(now){const e=this.bossHit;if(!e||this.reduced)return {x:0,y:0,squash:0};const q=Math.min(1,(now-e.at)/160),k=Math.sin(q*Math.PI)*(1-q);return{x:-e.nx*k*.1,y:-e.ny*k*.1,squash:k*.035}}
- draw(r,now){
+ draw(r,displayTimeMs){
   for(const e of this.effects){
-   const q=(now-e.at)/430;if(q<0||q>1)continue;const c=r.ctx,heavy=e.attackKind==='sweep',impact=e.kind==='unit-hit'||e.kind==='boss-hit',landing=e.kind==='unit-land';
+   const age=displayTimeMs-e.at;if(age<0||age>430)continue;if(!e.heard){e.heard=true;this.sound(e)}
+   const q=age/430,heavy=e.attackKind==='sweep',impact=e.kind==='unit-hit'||e.kind==='boss-hit',landing=e.kind==='unit-land';
    if(e.kind==='attack-launch'){
     const t=Math.min(1,q/.35),p=r.project(e.x,e.y,e.z+.2);if(t<1)r.ellipse(p.x,p.y,r.scale*.12*(1-t),r.scale*.2*(1-t),'#ffe7a6');continue;
    }

@@ -15,6 +15,13 @@
   };
 
   // src/farm-model.js
+  function presentationEventTimeMs(event) {
+    return presentationEventTimes.get(event) ?? (Number.isFinite(event?.time) ? event.time * 1e3 : 0);
+  }
+  function bindPresentationClock(world, clock) {
+    if (clock) presentationClocks.set(world, clock);
+    else presentationClocks.delete(world);
+  }
   function contact(a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), r = a.radius + b.radius;
     if (Math.abs(a.z - b.z) > 0.65) return false;
@@ -49,10 +56,12 @@
     }
     return true;
   }
-  var SeededPRNG, CONFIG, clamp, stats, Body, Knockable, TREE_NODES, FarmProgress, ATTACK_TYPES, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, CONFIG, clamp, stats, Body, Knockable, TREE_NODES, FarmProgress, ATTACK_TYPES, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
+      presentationClocks = /* @__PURE__ */ new WeakMap();
+      presentationEventTimes = /* @__PURE__ */ new WeakMap();
       CONFIG = Object.freeze({ cap: 72, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8 }) });
       clamp = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
@@ -144,9 +153,9 @@
         },
         // Swept XY cylinder versus finite Z interval; includes entity radii, never center-only.
         sweep(a, b, r, h, target) {
-          const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, R = r + target.radius;
+          const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, R2 = r + target.radius;
           let lo = 0, hi = 1;
-          const A = dx * dx + dy * dy, B = 2 * ((a.x - target.x) * dx + (a.y - target.y) * dy), C = (a.x - target.x) ** 2 + (a.y - target.y) ** 2 - R * R;
+          const A = dx * dx + dy * dy, B = 2 * ((a.x - target.x) * dx + (a.y - target.y) * dy), C = (a.x - target.x) ** 2 + (a.y - target.y) ** 2 - R2 * R2;
           if (A < 1e-12) {
             if (C > 0) return null;
           } else {
@@ -366,8 +375,10 @@
           return u;
         }
         notice(kind, detail = {}) {
-          this.notices.push({ sequence: ++this.eventSequence, kind, ...detail });
+          const event = { sequence: ++this.eventSequence, kind, ...detail };
+          this.notices.push(event);
           if (this.notices.length > 512) this.notices.shift();
+          return event;
         }
         emit(kind, x, y, z = 0) {
           this.progress.record(kind);
@@ -568,7 +579,8 @@
           else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, 0.75);
         }
         combat(kind, detail) {
-          this.notice(kind, { time: this.time, ...detail });
+          const event = this.notice(kind, { time: this.time, ...detail }), toPresentationTime = presentationClocks.get(this);
+          if (toPresentationTime) presentationEventTimes.set(event, toPresentationTime(this.time));
         }
         boundBody(body, scene2, margin) {
           const before = { x: body.x, y: body.y }, p = ArenaGeometry.clamp(before, scene2, margin);
@@ -861,7 +873,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.4.1";
+      PRODUCT_VERSION = "0.4.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -1138,14 +1150,13 @@
       }
     }
     drawUnit(u, sim) {
-      u = this.feel ? this.feel.unit(u, this.now) : u;
       const dead = u.hp <= 0, walk = dead ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * walk : 0, p = this.project(u.x, u.y, u.z + bob);
       const r = Math.max(u.size * this.scale * 0.78, (sim.scene === "raid" ? 4.5 : 11) * this.pixelRatio);
       const joy = sim.effects.some((e) => ["eat", "birth", "merge"].includes(e.kind) && e.life < 0.85 && Math.hypot(e.x - u.x, e.y - u.y) < 1.2);
-      SeedArt.draw(this.ctx, u.species, p.x, p.y, r, u, sim.time, { pixelRatio: this.pixelRatio, extra: this.feel?.squash(u.id, this.now) || 0, expression: u.z > 0.5 || u.stun > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal" });
+      SeedArt.draw(this.ctx, u.species, p.x, p.y, r, u, sim.time, { pixelRatio: this.pixelRatio, extra: this.feel?.squash(u.id, this.displayTimeMs) || 0, expression: u.z > 0.5 || u.stun > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal" });
     }
     bossPose(world) {
-      const b = world.boss, k = this.feel?.boss(this.now) || { x: 0, y: 0, squash: 0 };
+      const b = world.boss, k = this.feel?.boss(this.displayTimeMs) || { x: 0, y: 0, squash: 0 };
       return { b, p: this.project(b.x + k.x, b.y + k.y, 0), r: this.scale * b.radius * 1.16, k };
     }
     bossSkin(world, faceOnly = false) {
@@ -1209,7 +1220,7 @@
     }
     render(sim2, feel = null, now = performance.now()) {
       this.feel = feel;
-      this.now = now;
+      this.displayTimeMs = now;
       this.configure(sim2.scene);
       const c = this.ctx;
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
@@ -1245,7 +1256,7 @@
       actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
       for (const actor of actors) actor.draw();
       this.attackEffects(sim2);
-      feel?.draw(this, now);
+      feel?.draw(this, this.displayTimeMs);
       for (const e of sim2.effects) {
         const q = e.life;
         if (e.kind === "feed") this.ring(e.x, e.y, 0.15 + q * 0.35, `rgba(166,121,59,${(1 - q) * 0.6})`, 0.035);
@@ -1301,21 +1312,172 @@
   init_farm_state();
   init_version();
   var { binaryCodec: codec } = globalThis.BloomGamekitDeterministic;
+  var { PresentationRuntime, RenderObject } = globalThis.BloomGamekitInterpolation;
+  var R = RenderObject;
+  var PRESENTATION_STEP_MS = 50;
+  var UnitRender = class extends RenderObject {
+    static renderSchema = Object.freeze({
+      x: R.POSITION_X,
+      y: R.POSITION_Y,
+      z: R.POSITION_Z,
+      angle: R.ANGLE,
+      vx: R.LINEAR,
+      vy: R.LINEAR,
+      hp: R.LINEAR,
+      down: R.LINEAR,
+      stun: R.LINEAR,
+      flash: R.LINEAR,
+      bounce: R.LINEAR,
+      "ability.phase": R.STATE_KEY,
+      "ability.elapsed": R.LINEAR,
+      species: R.STEP,
+      tier: R.STEP,
+      seed: R.STEP,
+      size: R.LINEAR,
+      radius: R.LINEAR,
+      maxHp: R.STEP,
+      fed: R.STEP
+    });
+    constructor(u) {
+      super();
+      Object.assign(this, {
+        x: u.x,
+        y: u.y,
+        z: u.z,
+        angle: u.angle,
+        vx: u.vx,
+        vy: u.vy,
+        hp: u.hp,
+        down: u.down,
+        stun: u.stun,
+        flash: u.flash,
+        bounce: u.bounce,
+        ability: { phase: u.ability.phase, elapsed: u.ability.elapsed },
+        species: u.species,
+        tier: u.tier,
+        seed: u.seed,
+        size: u.size,
+        radius: u.radius,
+        maxHp: 40 * 1.5 ** (u.tier - 1),
+        fed: u.fed
+      });
+    }
+  };
+  var BossRender = class extends RenderObject {
+    static renderSchema = Object.freeze({
+      x: R.POSITION_X,
+      y: R.POSITION_Y,
+      z: R.POSITION_Z,
+      angle: R.ANGLE,
+      startAngle: R.ANGLE,
+      phase: R.STATE_KEY,
+      clock: R.LINEAR,
+      hp: R.LINEAR,
+      maxHp: R.STEP,
+      radius: R.STEP,
+      height: R.STEP,
+      flash: R.LINEAR
+    });
+    constructor(b) {
+      super();
+      Object.assign(this, { x: b.x, y: b.y, z: b.z, angle: b.angle, startAngle: b.startAngle, phase: b.phase, clock: b.clock, hp: b.hp, maxHp: b.maxHp, radius: b.radius, height: b.height, flash: b.flash });
+    }
+  };
+  var FoodRender = class extends RenderObject {
+    static renderSchema = Object.freeze({
+      x: R.POSITION_X,
+      y: R.POSITION_Y,
+      z: R.POSITION_Z,
+      vx: R.LINEAR,
+      vy: R.LINEAR,
+      vz: R.LINEAR,
+      phase: R.STATE_KEY,
+      tx: R.STEP,
+      ty: R.STEP,
+      seed: R.STEP
+    });
+    constructor(f) {
+      super();
+      Object.assign(this, { x: f.x, y: f.y, z: f.z, vx: f.vx, vy: f.vy, vz: f.vz, phase: f.phase, tx: f.tx ?? 0, ty: f.ty ?? 0, seed: f.seed ?? 0 });
+    }
+  };
+  var ProjectileRender = class extends RenderObject {
+    static renderSchema = Object.freeze({
+      x: R.POSITION_X,
+      y: R.POSITION_Y,
+      z: R.POSITION_Z,
+      elapsed: R.LINEAR,
+      owner: R.STEP,
+      species: R.STEP,
+      tier: R.STEP,
+      radius: R.STEP,
+      height: R.STEP,
+      "path.from.x": R.STEP,
+      "path.from.y": R.STEP,
+      "path.from.z": R.STEP,
+      "path.to.x": R.STEP,
+      "path.to.y": R.STEP,
+      "path.to.z": R.STEP,
+      "path.height": R.STEP,
+      "path.duration": R.STEP
+    });
+    constructor(p) {
+      super();
+      Object.assign(this, {
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        elapsed: p.elapsed,
+        owner: p.owner,
+        species: p.species,
+        tier: p.tier,
+        radius: p.radius,
+        height: p.height,
+        path: { from: { ...p.path.from }, to: { ...p.path.to }, height: p.path.height, duration: p.path.duration }
+      });
+    }
+  };
+  var EffectRender = class extends RenderObject {
+    static renderSchema = Object.freeze({ x: R.POSITION_X, y: R.POSITION_Y, z: R.POSITION_Z, life: R.LINEAR, kind: R.STATE_KEY });
+    constructor(e) {
+      super();
+      Object.assign(this, { x: e.x, y: e.y, z: e.z, life: e.life, kind: e.kind });
+    }
+  };
+  var GameClockRender = class extends RenderObject {
+    static renderSchema = Object.freeze({ gameTimeMs: R.LINEAR });
+    constructor(gameTimeMs) {
+      super();
+      this.gameTimeMs = gameTimeMs;
+    }
+  };
   var FarmSession = class {
     constructor(world = new Garden(), { room: room2 = null, onError = console.error, onEvent = () => {
     } } = {}) {
       this.world = world;
-      this.previous = null;
-      this.previousBoss = null;
-      this.renderAt = 0;
       this.tick = 0;
+      this.presentationTick = 0;
       this.epoch = 0;
       this.players = [];
       this.speed = 1;
-      this.paused = false;
+      this._paused = false;
+      this.pauseStartedAt = null;
+      this.pausedDurationMs = 0;
       this.pending = [];
       this.room = room2;
       this.localPlayerId = room2?.localPlayerId || "solo";
+      this.presentationRevision = 0;
+      this.presentationSequence = 0;
+      this.pendingPresentationMode = null;
+      this.presentationRuntime = new PresentationRuntime({ stepMs: PRESENTATION_STEP_MS, delayMs: PRESENTATION_STEP_MS, snapDistance: 12 });
+      this.presentationIds = /* @__PURE__ */ new WeakMap();
+      this.nextPresentationId = 1;
+      this.previousCaptureTimeMs = null;
+      this.latestCaptureTimeMs = 0;
+      this.presentationOriginWallMs = null;
+      this.lastFrameClockMs = null;
+      this.lastCaptureClockMs = 0;
+      this.pulseTimestamp = null;
       const adapter = { save: () => codec.encode(this.capture()), load: (bytes) => this.load(codec.decode(bytes)), validateSnapshot: (bytes, context = {}) => {
         try {
           this.validate(codec.decode(bytes), context);
@@ -1326,9 +1488,34 @@
       }, applyMembership: (change) => {
         this.epoch = change.epoch;
         this.players = [...change.players];
+        this.pendingPresentationMode = "reset";
       }, step: (ctx) => this.step(ctx) };
-      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: 5, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent });
-      this.loop = globalThis.BloomGamekitSimloop.createLoop({ session: this.session, getInput: () => ({ input: new Uint8Array(1), commands: (this.session.ready ? this.pending.splice(0, 32) : []).map((payload) => ({ payload })), predict: false }), canAdvance: () => true, canObserveInput: () => !this.session.closed && !this.session.failure, onError });
+      const emitEvent = (event) => {
+        if (event.type === "rollback" || event.type === "reconciled") this.pendingPresentationMode = "rollback";
+        else if (event.type === "membership-committed") this.pendingPresentationMode = "reset";
+        else if (event.type === "recovered") {
+          this.pendingPresentationMode = "load";
+          this.capturePresentation("load");
+        }
+        onEvent(event);
+      };
+      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: 5, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent: emitEvent });
+      this.loop = globalThis.BloomGamekitSimloop.createLoop({
+        session: this.session,
+        getInput: () => ({ input: new Uint8Array(1), commands: (this.session.ready ? this.pending.splice(0, 32) : []).map((payload) => ({ payload })), predict: false }),
+        canAdvance: () => true,
+        canObserveInput: () => !this.session.closed && !this.session.failure,
+        onError,
+        onBacklogDrop: () => {
+          this.pendingPresentationMode = "reset";
+        },
+        onAdvance: (result) => {
+          if (this.session.resimulating) return;
+          if (this.pendingPresentationMode) this.capturePresentation(this.pendingPresentationMode);
+          else if (result.status === "advanced" && !this.paused) this.capturePresentation("continuous");
+        }
+      });
+      this.capturePresentation("reset");
     }
     capture() {
       return { tick: this.tick, epoch: this.epoch, players: this.players, speed: this.speed, world: snapshot(this.world) };
@@ -1338,12 +1525,15 @@
       return restore(s.world);
     }
     load(s) {
-      this.previous = null;
       this.world = this.validate(s);
       this.tick = s.tick;
       this.epoch = s.epoch;
       this.players = [...s.players];
       this.speed = s.speed;
+      this.presentationIds = /* @__PURE__ */ new WeakMap();
+      this.nextPresentationId = 1;
+      bindPresentationClock(this.world, null);
+      this.pendingPresentationMode = "load";
     }
     queue(type, args = {}) {
       if (!this.session.ready || this.pending.length >= 64) return false;
@@ -1364,13 +1554,12 @@
         this.tick = tick + 1;
         return;
       }
-      const w = this.world;
-      this.previous = new Map(w.units.map((u) => [u.id, { x: u.x, y: u.y, z: u.z, angle: u.angle }]));
-      this.previousBoss = { x: w.boss.x, y: w.boss.y };
-      this.renderAt = performance.now();
+      const w = this.world, startTime = w.time, speed = this.speed, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
+      bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3 / speed) / 1e3);
       w.advanceAutoTaps(0.05);
-      for (let i = 0; i < 6 * this.speed; i++) w.step(CONFIG.fixedStep);
+      for (let i = 0; i < 6 * speed; i++) w.step(CONFIG.fixedStep);
       this.tick = tick + 1;
+      if (!this.session.resimulating) this.presentationTick++;
     }
     command(c) {
       const w = this.world;
@@ -1382,7 +1571,10 @@
           if (["breed", "merge"].includes(c.value)) w.mode = c.value;
           break;
         case "scene":
-          if (["farm", "raid"].includes(c.value)) w.setScene(c.value);
+          if (["farm", "raid"].includes(c.value) && c.value !== w.scene) {
+            w.setScene(c.value);
+            this.pendingPresentationMode = "reset";
+          }
           break;
         case "speed":
           if ([1, 4].includes(c.value)) this.speed = c.value;
@@ -1392,22 +1584,96 @@
           break;
       }
     }
+    presentationIdentity(kind, source) {
+      let id = this.presentationIds.get(source);
+      if (!id) {
+        id = this.nextPresentationId++;
+        this.presentationIds.set(source, id);
+      }
+      return kind + ":" + id;
+    }
+    get paused() {
+      return this._paused;
+    }
+    set paused(value) {
+      value = !!value;
+      if (value === this._paused) return;
+      const now = globalThis.performance.now();
+      if (value) this.pauseStartedAt = now;
+      else if (this.pauseStartedAt !== null) {
+        this.pausedDurationMs += now - this.pauseStartedAt;
+        this.pauseStartedAt = null;
+      }
+      this._paused = value;
+    }
+    adjustedWallTime(now) {
+      return now - this.pausedDurationMs - (this._paused && !this.room && this.pauseStartedAt !== null ? now - this.pauseStartedAt : 0);
+    }
+    capturePresentation(mode = "continuous") {
+      if (mode !== "continuous" && this.presentationSequence > 0) this.presentationRevision++;
+      const world = this.world, receiptNowMs = this.captureClock(), timeMs = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, receiptNowMs - this.presentationOriginWallMs), entities = [];
+      if (this.presentationOriginWallMs === null) this.presentationOriginWallMs = receiptNowMs;
+      for (const u of world.units) entities.push({ id: "unit:" + u.id, generation: 0, source: new UnitRender(u) });
+      entities.push({ id: "boss", generation: 0, source: new BossRender(world.boss) });
+      for (const f of world.food) entities.push({ id: this.presentationIdentity("food", f), generation: 0, source: new FoodRender(f) });
+      for (const p of world.projectiles) entities.push({ id: "projectile:" + p.id, generation: 0, source: new ProjectileRender(p) });
+      for (const e of world.effects) entities.push({ id: this.presentationIdentity("effect", e), generation: 0, source: new EffectRender(e) });
+      entities.push({ id: "clock", generation: 0, source: new GameClockRender(world.time * 1e3) });
+      const captureMode = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
+      if (captureMode === "continuous") this.previousCaptureTimeMs = this.latestCaptureTimeMs;
+      else this.previousCaptureTimeMs = null;
+      const accepted = this.presentationRuntime.capture({ revision: this.presentationRevision, sequence: ++this.presentationSequence, timeMs, mode: captureMode, entities }, receiptNowMs);
+      if (accepted) {
+        this.latestCaptureTimeMs = timeMs;
+        this.lastCaptureClockMs = receiptNowMs;
+        this.pendingPresentationMode = null;
+      }
+      return accepted;
+    }
+    captureClock() {
+      const now = this.pulseTimestamp ?? globalThis.performance.now(), boundary = this.loop?.simulationTimeMs;
+      const candidate = this.adjustedWallTime(Number.isFinite(boundary) ? boundary : now);
+      const receipt = Math.max(candidate, this.lastCaptureClockMs, this.lastFrameClockMs ?? 0);
+      this.lastCaptureClockMs = receipt;
+      return receipt;
+    }
+    frameClock(now) {
+      const clock = Math.max(this.lastFrameClockMs ?? 0, this.lastCaptureClockMs, this.adjustedWallTime(now));
+      this.lastFrameClockMs = clock;
+      return clock;
+    }
     presentation(now) {
-      const w = this.world;
-      if (!this.previous || this.paused) return w;
-      const alpha = Math.max(0, Math.min(1, (now - this.renderAt) / 50));
-      const view = Object.create(w);
-      if (this.previousBoss) view.boss = { ...w.boss, x: this.previousBoss.x + (w.boss.x - this.previousBoss.x) * alpha, y: this.previousBoss.y + (w.boss.y - this.previousBoss.y) * alpha };
-      view.units = w.units.map((u) => {
-        const p = this.previous.get(u.id);
-        if (!p) return u;
-        const shown = Object.create(Object.getPrototypeOf(u));
-        Object.assign(shown, u, { x: p.x + (u.x - p.x) * alpha, y: p.y + (u.y - p.y) * alpha, z: p.z + (u.z - p.z) * alpha });
-        return shown;
+      const frame2 = this.presentationRuntime.frame(this.frameClock(now)), world = this.world, view = Object.create(world), units = [], food = [], projectiles = [], effects = [];
+      frame2.forEach((model, id) => {
+        if (id.startsWith("unit:")) units.push(Object.assign({ id: Number(id.slice(5)) }, model));
+        else if (id.startsWith("food:")) food.push(model);
+        else if (id.startsWith("projectile:")) projectiles.push(Object.assign({ id: Number(id.slice(11)) }, model));
+        else if (id.startsWith("effect:")) effects.push(model);
       });
+      view.time = (frame2.sample("clock", 0)?.gameTimeMs ?? world.time * 1e3) / 1e3;
+      view.units = units;
+      view.boss = frame2.sample("boss", 0) || new BossRender(world.boss);
+      view.food = food;
+      view.projectiles = projectiles;
+      view.effects = effects;
+      view.displayTimeMs = frame2.timeMs;
+      view.presentationRevision = this.presentationRevision;
+      const previous = this.previousCaptureTimeMs, latest = this.latestCaptureTimeMs, span = latest - previous;
+      view.presentationDiagnostics = {
+        timeMs: frame2.timeMs,
+        latestSnapshotTimeMs: latest,
+        previousSnapshotTimeMs: previous,
+        intervalMs: span,
+        sampleAgeMs: latest - frame2.timeMs,
+        renderFraction: previous === null || span <= 0 ? null : Math.max(0, Math.min(1, (frame2.timeMs - previous) / span)),
+        captureSequence: this.presentationSequence,
+        revision: this.presentationRevision
+      };
+      this.latestPresentationDiagnostics = view.presentationDiagnostics;
       return view;
     }
     pulse(now) {
+      this.pulseTimestamp = now;
       this.loop.pulse(now, { render: false });
     }
     dispose() {
@@ -1584,10 +1850,12 @@
   };
 
   // src/combat-feel.js
+  init_farm_model();
   var CombatFeel = class {
     constructor(audio) {
       this.audio = audio;
       this.world = null;
+      this.revision = null;
       this.sequence = 0;
       this.effects = [];
       this.poses = /* @__PURE__ */ new Map();
@@ -1595,9 +1863,10 @@
       this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
       this.counts = { hits: 0, landings: 0 };
     }
-    observe(world, now) {
-      if (this.world !== world) {
+    observe(world, displayTimeMs, revision = 0) {
+      if (this.world !== world || this.revision !== revision) {
         this.world = world;
+        this.revision = revision;
         this.sequence = world.eventSequence;
         this.effects = [];
         this.poses.clear();
@@ -1607,50 +1876,49 @@
       for (const e of world.notices) {
         if (e.sequence <= this.sequence) continue;
         if (["boss-hit", "unit-hit", "unit-land", "attack-launch", "boss-launch"].includes(e.kind)) {
-          this.effects.push({ ...e, at: now });
+          const at = presentationEventTimeMs(e), event = { ...e, at, heard: false };
+          this.effects.push(event);
           if (this.effects.length > 48) this.effects.shift();
           if (e.kind === "boss-hit") {
             this.counts.hits++;
-            this.bossHit = { ...e, at: now };
-            this.audio.sound("strike", e.species || 0);
+            this.bossHit = event;
           }
           if (e.kind === "unit-hit") {
-            const u = world.units.find((u2) => u2.id === e.unit);
-            if (u) this.poses.set(u.id, { at: now, until: now + 180, heldUntil: now + (this.reduced ? 0 : 35), x: u.x, y: u.y, z: u.z, strength: e.strength });
+            this.poses.set(e.unit, { at, until: at + 180, strength: e.strength });
             this.counts.hits++;
-            this.audio.sound(e.attackKind === "sweep" ? "heavy" : "strike");
           }
-          if (e.kind === "unit-land") {
-            this.counts.landings++;
-            if (e.strength > 0.2) this.audio.sound("land");
-          }
-          if (e.kind === "boss-launch") this.audio.sound("launch");
+          if (e.kind === "unit-land") this.counts.landings++;
         }
       }
       this.sequence = world.eventSequence;
-      this.effects = this.effects.filter((e) => now - e.at < 430);
-      for (const [id, p] of this.poses) if (now > p.until) this.poses.delete(id);
+      this.effects = this.effects.filter((e) => displayTimeMs - e.at < 430);
+      for (const [id, p] of this.poses) if (displayTimeMs > p.until) this.poses.delete(id);
     }
-    unit(u, now) {
-      const p = this.poses.get(u.id);
-      if (!p || now > p.heldUntil) return u;
-      return Object.assign(Object.create(Object.getPrototypeOf(u)), u, { x: p.x, y: p.y, z: p.z });
-    }
-    squash(id, now) {
+    squash(id, displayTimeMs) {
       const p = this.poses.get(id);
-      return !p || this.reduced ? 0 : Math.sin(Math.min(1, (now - p.at) / 180) * Math.PI) * Math.min(0.2, p.strength * 0.12);
+      return !p || this.reduced ? 0 : Math.sin(Math.min(1, (displayTimeMs - p.at) / 180) * Math.PI) * Math.min(0.2, p.strength * 0.12);
     }
-    boss(now) {
+    boss(displayTimeMs) {
       const e = this.bossHit;
       if (!e || this.reduced) return { x: 0, y: 0, squash: 0 };
-      const q = Math.min(1, (now - e.at) / 160), k = Math.sin(q * Math.PI) * (1 - q);
+      const q = Math.max(0, Math.min(1, (displayTimeMs - e.at) / 160)), k = Math.sin(q * Math.PI) * (1 - q);
       return { x: -e.nx * k * 0.1, y: -e.ny * k * 0.1, squash: k * 0.035 };
     }
-    draw(r, now) {
+    sound(event) {
+      if (event.kind === "boss-hit") this.audio.sound("strike", event.species || 0);
+      else if (event.kind === "unit-hit") this.audio.sound(event.attackKind === "sweep" ? "heavy" : "strike");
+      else if (event.kind === "unit-land" && event.strength > 0.2) this.audio.sound("land");
+      else if (event.kind === "boss-launch") this.audio.sound("launch");
+    }
+    draw(r, displayTimeMs) {
       for (const e of this.effects) {
-        const q = (now - e.at) / 430;
-        if (q < 0 || q > 1) continue;
-        const c = r.ctx, heavy = e.attackKind === "sweep", impact = e.kind === "unit-hit" || e.kind === "boss-hit", landing = e.kind === "unit-land";
+        const age = displayTimeMs - e.at;
+        if (age < 0 || age > 430) continue;
+        if (!e.heard) {
+          e.heard = true;
+          this.sound(e);
+        }
+        const q = age / 430, heavy = e.attackKind === "sweep", impact = e.kind === "unit-hit" || e.kind === "boss-hit", landing = e.kind === "unit-land";
         if (e.kind === "attack-launch") {
           const t2 = Math.min(1, q / 0.35), p = r.project(e.x, e.y, e.z + 0.2);
           if (t2 < 1) r.ellipse(p.x, p.y, r.scale * 0.12 * (1 - t2), r.scale * 0.2 * (1 - t2), "#ffe7a6");
@@ -1690,6 +1958,21 @@
   var lastSave = 0;
   var treePause = false;
   var renderer = new Diorama($2("world"));
+  var measuredFrames = [];
+  var lastFrameTimestamp = null;
+  var frameCount = 0;
+  function measureFrame(now) {
+    if (lastFrameTimestamp !== null) {
+      measuredFrames.push(now - lastFrameTimestamp);
+      if (measuredFrames.length > 240) measuredFrames.shift();
+    }
+    lastFrameTimestamp = now;
+    frameCount++;
+  }
+  function frameRate() {
+    const sorted = [...measuredFrames].sort((a, b) => a - b), sum = measuredFrames.reduce((a, b) => a + b, 0);
+    return { frames: frameCount, fps: sum ? measuredFrames.length * 1e3 / sum : 0, frametimeMs: { p50: sorted[Math.floor((sorted.length - 1) * 0.5)] || 0, p95: sorted[Math.floor((sorted.length - 1) * 0.95)] || 0, max: Math.max(0, ...measuredFrames) } };
+  }
   var fail = (error) => {
     $2("error").hidden = false;
     $2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
@@ -1995,27 +2278,28 @@
     }
   }
   window.addEventListener("popstate", route);
-  function sync(now) {
-    const w = active.world, raid = w.scene === "raid";
+  function sync(display, now) {
+    const w = active.world, raid = display.scene === "raid";
     for (const [id, value] of [["farm", !raid], ["raid", raid], ["breed", w.mode === "breed"], ["merge", w.mode === "merge"]]) $2(id).setAttribute("aria-pressed", value);
     $2("farmControls").hidden = raid || home;
     $2("raidControls").hidden = !raid || home;
     $2("bossbar").hidden = !raid || home;
     $2("roles").hidden = !raid || home;
-    $2("count").textContent = w.units.length;
+    $2("count").textContent = display.units.length;
     $2("starter").textContent = w.units.length >= CONFIG.cap ? "정원이 가득해요" : `새싹까지 ${Math.ceil(CONFIG.starterSeconds / w.progress.rate("production") - w.starter)}초`;
-    const army = w.armyHealth;
+    const army = display.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
     $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
-    $2("bossHealthText").textContent = Math.ceil(w.boss.hp) + " / " + w.boss.maxHp + " HP";
-    for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", w.boss.hp, w.boss.maxHp]]) {
+    const boss = display.boss, battleOutcome = boss.hp <= 0 ? "victory" : display.units.length && display.units.every((u) => u.hp <= 0) ? "defeat" : "fighting";
+    $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
+    for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
       const el = $2(id);
       el.setAttribute("aria-valuenow", value);
       el.setAttribute("aria-valuemax", max);
     }
-    $2("bossHealth").style.width = w.boss.hp / w.boss.maxHp * 100 + "%";
-    $2("battleOutcome").textContent = w.encounter.outcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : w.encounter.outcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "";
-    $2("battleOutcome").hidden = home || !raid || w.running;
+    $2("bossHealth").style.width = boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%";
+    $2("battleOutcome").textContent = battleOutcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : battleOutcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "";
+    $2("battleOutcome").hidden = home || !raid || battleOutcome === "fighting";
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
@@ -2041,10 +2325,12 @@
     }
   }
   function frame(now) {
+    measureFrame(now);
     if (room || !home && !document.hidden) active.pulse(now);
-    combatFeel.observe(active.world, now);
-    renderer.render(active.presentation(now), combatFeel, now);
-    sync(now);
+    const display = active.presentation(now);
+    combatFeel.observe(active.world, display.displayTimeMs, display.presentationRevision);
+    renderer.render(display, combatFeel, display.displayTimeMs);
+    sync(display, now);
     requestAnimationFrame(frame);
   }
   $2("productVersion").textContent = PRODUCT_VERSION;
@@ -2058,5 +2344,9 @@
     return active;
   }, get room() {
     return room;
+  }, get renderMetrics() {
+    return frameRate();
+  }, get presentationDiagnostics() {
+    return active.latestPresentationDiagnostics;
   }, renderer, storage, foodFeel, combatFeel, CONFIG, ATTACK_TYPES, Ballistics, ArenaGeometry, version: PRODUCT_VERSION };
 })();

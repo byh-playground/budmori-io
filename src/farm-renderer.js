@@ -64,14 +64,13 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
     }
     drawUnit(u,sim){
-      u=this.feel?this.feel.unit(u,this.now):u;
       const dead=u.hp<=0,walk=dead?0:Math.min(1,Math.hypot(u.vx,u.vy)),bob=u.z===0?Math.abs(Math.sin(sim.time*9+u.seed))*.10*walk:0,p=this.project(u.x,u.y,u.z+bob);
       const r=Math.max(u.size*this.scale*.78,(sim.scene==='raid'?4.5:11)*this.pixelRatio);
       const joy=sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
-      SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.now)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
+      SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.displayTimeMs)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
     }
     bossPose(world){
-      const b=world.boss,k=this.feel?.boss(this.now)||{x:0,y:0,squash:0};return {b,p:this.project(b.x+k.x,b.y+k.y,0),r:this.scale*b.radius*1.16,k};
+      const b=world.boss,k=this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0};return {b,p:this.project(b.x+k.x,b.y+k.y,0),r:this.scale*b.radius*1.16,k};
     }
     bossSkin(world,faceOnly=false){
       const {b,p,r,k}=this.bossPose(world),wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep';
@@ -121,7 +120,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
     }
 
     render(sim2,feel=null,now=performance.now()) {
-      this.feel=feel;this.now=now;this.configure(sim2.scene);
+      this.feel=feel;this.displayTimeMs=now;this.configure(sim2.scene);
       const c = this.ctx;
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
@@ -147,7 +146,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
       for (const actor of actors) actor.draw();
       this.attackEffects(sim2);
-      feel?.draw(this,now);
+      feel?.draw(this,this.displayTimeMs);
       for (const e of sim2.effects) {
         const q = e.life;
         if (e.kind === "feed") this.ring(e.x,e.y,.15+q*.35,`rgba(166,121,59,${(1-q)*.6})`,.035);

@@ -1,6 +1,6 @@
 # budmori
 
-농장에서 먹이를 뿌리고 번식·합체로 병력을 키워, 월드 안에서 추격하는 거대 보스에 도전하는 2.5D WebGL 게임입니다. 메인 버전은 **0.4.1**입니다.
+농장에서 먹이를 뿌리고 번식·합체로 병력을 키워, 월드 안에서 추격하는 거대 보스에 도전하는 2.5D WebGL 게임입니다. 메인 버전은 **0.4.2**입니다.
 
 [공개 게임](https://byh-playground.github.io/budmori-io/)
 
@@ -48,6 +48,7 @@ npm test
 도움말 `#/help`, 성장 `#/growth`, 정원 `#/farm`, 전투 `#/raid`, 시작 `#/`는 화면·이력·F5와 동기화됩니다.
 
 `FarmSession`이 싱글·멀티에서 같은 `Garden`을 GameKit 20Hz 세션과 120Hz 물리 하위 스텝으로 진행하며 표시는 보간합니다. 최대 5명이 정원·자원·병력·장면을 공유하고, 확정된 구성원의 명령만 권위 경계에서 받습니다. RTC 발견·세션은 전체 제품 버전으로 구분해 다른 전투 규칙이 섞이지 않게 합니다. Nostr는 발견·서명 signaling에, 실제 WebRTC/GameKit은 게임 명령·입장 스냅샷에 사용합니다. 충돌·추격·공격·피격 사건은 동일 상태에 속하고 표현은 각 클라이언트가 읽습니다.
+표시 프레임은 GameKit `PresentationRuntime`의 단일 샘플을 사용합니다. 20Hz 시뮬레이션과 브라우저 RAF는 같은 단조 시계에 놓이며, 위치·높이·방향·전투 효과가 같은 표시 시각을 읽습니다. 1x/4x 게임 시계도 동일 프레임에서 샘플링합니다. 결정론적 동기화를 위해 권위 이벤트의 시간은 시뮬레이션 데이터에 유지하고, 화면 표시 시각은 로컬 presentation sidecar로 관리합니다. 로드·리셋·장면 경계에서는 GameKit revision 계약에 따라 스냅하며 서로 다른 스냅샷을 보간하지 않습니다.
 
 온라인 플레이는 개인 저장에 쓰지 않습니다. 시작 화면에서 나가면 개인 정원으로 돌아옵니다. 온라인 세션은 별도 타이머로 진행하며 숨겨진 싱글 화면은 탭·진행을 누적하지 않습니다. 브라우저의 프로세스 동결·네트워크 차단은 정상 실행과 구분합니다.
 
@@ -73,4 +74,4 @@ npm test
 
 물리 모바일 기기·서로 다른 NAT망·장기 밸런스는 PC/터치 브라우저·동일 호스트의 실제 공개 RTC 검증과 구분합니다.
 
-씨앗 동작 참고: [Animation Mentor의 squash/stretch](https://www.animationmentor.com/blog/squash-and-stretch-the-12-basic-principles-of-animation/), [anticipation](https://www.animationmentor.com/blog/anticipation-the-12-basic-principles-of-animation/). 압축과 복원 및 발사 전 예고를 병종별 껍질·배아 동작에 적용했습니다. 0.4.1은 저장 구조를 변경하지 않아 0.4 저장과 호환됩니다.
+씨앗 동작 참고: [Animation Mentor의 squash/stretch](https://www.animationmentor.com/blog/squash-and-stretch-the-12-basic-principles-of-animation/), [anticipation](https://www.animationmentor.com/blog/anticipation-the-12-basic-principles-of-animation/). 압축과 복원 및 발사 전 예고를 병종별 껍질·배아 동작에 적용했습니다. 0.4.2은 저장 구조를 변경하지 않아 0.4 저장과 호환됩니다.
