@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="350" viewBox="0 0 320 350">
+  <metadata id="vector-asset">{"schemaVersion":1,"id":"budmori-pea","defaultExpression":"neutral","parts":[{"id":"body","parent":null,"pivot":[168,210]},{"id":"leaf","parent":"body","pivot":[174,108]},{"id":"eyes","parent":"body","pivot":[170,193]},{"id":"mouth","parent":"body","pivot":[176,210]}],"expressions":{"neutral":{"show":["body","leaf","eyes","mouth"],"hide":[]}},"sockets":{"mouth":{"part":"body","point":[176,210]},"leaf-tip":{"part":"leaf","point":[119,13]}},"clips":{"idle":{"durationMs":1,"loop":"repeat","easing":"linear","keyframes":[{"timeMs":0,"easing":"linear","parts":{"body":{"x":0,"y":0,"rotation":0,"scaleX":1,"scaleY":1,"opacity":1}}},{"timeMs":1,"easing":"linear","parts":{"body":{"x":0,"y":0,"rotation":0,"scaleX":1,"scaleY":1,"opacity":1}}}]}}}</metadata>
+  <g transform="translate(-60 -318)">
+    <g id="body">
+    <!-- Feet, side leaves, and curled tendrils sit behind the pea body. -->
+    <path id="foot-left" d="M183 611 C178 625 178 641 184 651 C189 658 202 658 209 651 C215 644 214 628 212 615 Z" fill="#83ad47" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="foot-right" d="M233 615 C231 628 231 644 238 651 C244 658 255 658 261 651 C267 643 265 628 259 615 Z" fill="#83ad47" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="arm-left" d="M132 540 C120 546 113 559 109 574 C105 586 108 594 116 596 C127 596 136 584 141 571 C146 558 143 547 132 540 Z" fill="#83ad47" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="arm-right" d="M321 538 C333 544 342 559 347 574 C352 588 349 596 341 597 C330 595 321 581 316 568 C312 555 313 545 321 538 Z" fill="#83ad47" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="tendril-left-outline" d="M125 510 C116 510 112 516 108 523 C103 531 98 537 91 541 C82 547 74 549 67 550 C77 553 91 550 101 543 C110 536 117 527 116 518 C115 511 109 508 102 508 C93 507 86 511 83 517 C79 524 83 531 90 532 C97 533 102 527 101 522 C100 518 97 516 93 515" fill="none" stroke="#171511" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tendril-left" d="M125 510 C116 510 112 516 108 523 C103 531 98 537 91 541 C82 547 74 549 67 550 C77 553 91 550 101 543 C110 536 117 527 116 518 C115 511 109 508 102 508 C93 507 86 511 83 517 C79 524 83 531 90 532 C97 533 102 527 101 522 C100 518 97 516 93 515" fill="none" stroke="#78a444" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tendril-right-stem-outline" d="M332 490 C344 489 350 484 357 487 C364 479 369 466 375 458" fill="none" stroke="#171511" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tendril-right-stem" d="M332 490 C344 489 350 484 357 487 C364 479 369 466 375 458" fill="none" stroke="#78a444" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tendril-right-outline" d="M357 487 C364 478 374 480 375 489 C376 497 370 505 362 505 C354 505 349 500 350 493 C351 487 356 484 361 486 C366 488 366 494 362 497" fill="none" stroke="#171511" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="tendril-right" d="M357 487 C364 478 374 480 375 489 C376 497 370 505 362 505 C354 505 349 500 350 493 C351 487 356 484 361 486 C366 488 366 494 362 497" fill="none" stroke="#78a444" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="body-outline" d="M218 424 C249 422 281 429 306 442 C325 452 335 475 336 502 C338 529 333 559 322 582 C311 604 294 615 272 622 C247 631 215 629 190 624 C164 619 145 607 133 588 C122 570 118 546 120 519 C122 487 132 460 152 442 C169 427 192 423 218 424 Z" fill="#83ad47" stroke="#171511" stroke-width="5" stroke-linejoin="round"/>
+    <g id="leaf">
+      <path id="leaf-crown" d="M127 427 C151 429 172 421 187 412 C200 404 207 393 206 379 C205 365 194 357 181 354 C173 352 168 348 168 342 C168 334 174 329 182 330 C203 331 220 346 229 365 C234 377 236 388 239 396 C252 408 269 421 288 428 C303 434 317 432 327 425 C324 439 313 449 298 453 C280 457 263 448 250 439 C261 452 278 463 282 469 C272 473 258 472 246 466 C229 459 219 446 210 434 C198 448 180 456 163 456 C146 456 133 447 127 436 C124 432 124 429 127 427 Z" fill="#79a846" stroke="#171511" stroke-width="5" stroke-linejoin="round"/>
+      <path id="leaf-fold-center" d="M210 400 C218 417 232 439 246 453 C257 462 269 468 280 470" fill="none" stroke="#171511" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="leaf-fold-right" d="M244 421 C254 430 267 437 282 441" fill="none" stroke="#171511" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g id="eyes">
+      <ellipse id="cheek-left" cx="183" cy="532" rx="14" ry="8" fill="#ed7a6d"/>
+      <ellipse id="cheek-right" cx="288" cy="532" rx="14" ry="8" fill="#ed7a6d"/>
+      <ellipse id="eye-left" cx="199" cy="508" rx="13.5" ry="13.5" fill="#4a1c16"/>
+      <ellipse id="eye-right" cx="276" cy="508" rx="13.5" ry="13.5" fill="#4a1c16"/>
+    </g>
+    <g id="mouth">
+      <path id="smile" d="M222 527 Q237 542 252 527" fill="none" stroke="#211711" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
+  </g>
+  </g>
+</svg>

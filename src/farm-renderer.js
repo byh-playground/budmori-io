@@ -1,6 +1,40 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp} from './farm-model.js';
 import {SeedArt,SEED_STYLES} from './seed-art.js';
-const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
+import {TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
+const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
+const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
+const normalizeAuthoredName=value=>value.toLowerCase().replace(/[^a-z0-9]/g,'');
+function authoredName(table,candidates,fallback=null){const names=Object.keys(table),normalized=new Map(names.map(name=>[normalizeAuthoredName(name),name]));for(const candidate of candidates){const name=normalized.get(normalizeAuthoredName(candidate));if(name)return name}return fallback}
+function unitMotion(record,u){
+  const motions=record.compiled.metadata.presentation.motions;
+  const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.1,phase=u.ability?.phase||'idle';
+  const moving=Math.hypot(u.vx||0,u.vy||0)>.18,kind=ATTACK_TYPES[u.species]?.kind;
+  if(dead)return 'death';if(airborne)return 'airborne';if(u.stun>0)return 'hit';if(u.bounce>.04)return 'landing';
+  if(phase==='windup')return 'windup';if(phase==='active')return 'fire';
+  if(phase==='recover')return kind==='lob'&&u.ability?.action?.path&&u.ability.elapsed<.12?'fire':'recover';
+  return moving?'walk':'idle';
+}
+function sampleMotion(motion,timeMs){
+  const frames=motion.keyframes,duration=motion.durationMs;let t=timeMs;
+  if(motion.loop==='repeat')t=(t%duration+duration)%duration;else t=Math.max(0,Math.min(duration,t));
+  let next=frames.findIndex(frame=>frame.timeMs>=t);if(next<=0)next=1;
+  const from=frames[next-1],to=frames[next],span=Math.max(1,to.timeMs-from.timeMs);let q=Math.max(0,Math.min(1,(t-from.timeMs)/span));
+  if(to.easing==='outQuad')q=1-(1-q)*(1-q);else if(to.easing==='inOutSine')q=-(Math.cos(Math.PI*q)-1)/2;
+  const result={};for(const id of new Set([...Object.keys(from.parts),...Object.keys(to.parts)])){const a=from.parts[id]||{},b=to.parts[id]||{},pose={};for(const key of new Set([...Object.keys(a),...Object.keys(b)])){const base=key==='scaleX'||key==='scaleY'||key==='opacity'?1:0;pose[key]=(a[key]??base)+((b[key]??base)-(a[key]??base))*q}result[id]=pose}return result;
+}
+function unitMotionTime(u,name,motion,displayTimeMs){
+  if(name==='idle'||name==='walk'||name==='airborne')return displayTimeMs+(u.seed||0)*80;
+  if(name==='windup'||name==='fire'||name==='recover')return (u.ability?.elapsed||0)*1000;
+  if(name==='hit')return motion.durationMs*(1-clamp((u.stun||0)/.5,0,1));
+  if(name==='landing')return motion.durationMs*(1-clamp((u.bounce||0)/.22,0,1));
+  return motion.durationMs;
+}
+function unitExpression(record,u,sim){
+  const expressions=record.compiled.metadata.expressions,dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.5;
+  const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
+  const phase=u.ability?.phase,choices=dead?['dead']:u.stun>0?['hurt']:airborne?['surprised']:phase==='windup'?['focused']:phase==='active'?['attack']:joy?['happy']:sim.scene==='farm'&&!u.fed?['hungry']:['neutral'];
+  return authoredName(expressions,choices,record.compiled.metadata.defaultExpression);
+}
   // render.js
   const COLORS=SEED_STYLES.map(s=>s.shell);
   var Diorama = class {
@@ -8,6 +42,13 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       this.canvas = canvas;
       this.device = new WebGLDevice(canvas, { alpha: false, depth: false, stencil: false, antialias: true });
       this.ctx = new VectorContext(this.device);
+      this.vectorAssets=new Map();this.vectorPlayers=new Map();
+      const entries=Object.entries(TROOP_VECTOR_ASSETS);
+      if(entries.length){
+        if(typeof createVectorAsset!=='function')throw new Error('GameKit vector-assets runtime did not load');
+        this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
+        for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
+      }
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
       this.resize();
@@ -65,6 +106,43 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
     attackEffects(world){
       for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(u.buffed&&u.hp>0)this.ring(u.x,u.y,u.radius+.16,'#eacb72',.055);if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
     }
+    drawVectorUnit(u,sim,p,r){
+      const record=this.vectorAssets.get(u.species);if(!record)return false;
+      let player=this.vectorPlayers.get(u.id);
+      const presentation=record.compiled.metadata.presentation,motionName=unitMotion(record,u),motion=presentation.motions[motionName]||presentation.motions.idle;
+      if(!player){player=record.asset.createPlayer({clip:'idle',startedAtMs:this.displayTimeMs});this.vectorPlayers.set(u.id,player)}
+      const pose=sampleMotion(motion,unitMotionTime(u,motionName,motion,this.displayTimeMs));
+      player.setBasePose(presentation.motionParts[0],{x:0,y:0,rotation:0,scaleX:1,scaleY:1,opacity:1,...pose[presentation.motionParts[0]]});
+      player.setBasePose(presentation.motionParts[1],{x:0,y:0,rotation:0,scaleX:1,scaleY:1,opacity:1,...pose[presentation.motionParts[1]]});
+      const expression=unitExpression(record,u,sim);if(expression&&expression!==player.currentExpression)player.setExpression(expression);
+      player.seek(this.displayTimeMs);
+      const [, ,width,height]=record.compiled.viewBox,scale=2*r/Math.max(width,height),centerY=p.y-r*.79;
+      const matrix=[scale,0,0,scale,p.x-width*scale*.5,centerY-height*scale*.5];
+      player.draw({projection:this.ctx.vector.projection,matrix});
+      this.drawVectorExpression(record,player,matrix,expression);
+      return true;
+    }
+    drawVectorExpression(record,player,matrix,name){
+      const metadata=record.compiled.metadata,face=metadata.presentation?.faces?.[name];if(!face||name==='neutral')return;
+      const art=metadata.presentation.faceArt,scale=matrix[0],tx=matrix[4],ty=matrix[5];
+      const point=name=>{const p=player.getSocket(name);return{x:p.x*scale+tx,y:p.y*scale+ty}};
+      const left=point('face-eye-left'),right=point('face-eye-right'),mouth=point('mouth'),ctx=this.ctx;
+      const half=(right.x-left.x)*.5,eyeRadius=Math.max(this.pixelRatio*.65,art.eyeRadius*scale),ink=metadata.presentation.faceInk;
+      ctx.strokeStyle=ink;ctx.lineWidth=Math.max(this.pixelRatio*.8,eyeRadius*.2);ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
+      if(face.eyes==='smile')for(const eye of [left,right]){ctx.moveTo(eye.x-eyeRadius,eye.y);ctx.quadraticCurveTo(eye.x,eye.y-eyeRadius,eye.x+eyeRadius,eye.y)}
+      else if(face.eyes==='focused')for(const [eye,side] of [[left,1],[right,-1]]){ctx.moveTo(eye.x-eyeRadius,eye.y-eyeRadius*.45);ctx.lineTo(eye.x+side*eyeRadius,eye.y+eyeRadius*.1)}
+      else if(face.eyes==='squint')for(const eye of [left,right]){ctx.moveTo(eye.x-eyeRadius,eye.y);ctx.lineTo(eye.x+eyeRadius,eye.y)}
+      else if(face.eyes==='cross')for(const eye of [left,right]){ctx.moveTo(eye.x-eyeRadius,eye.y-eyeRadius);ctx.lineTo(eye.x+eyeRadius,eye.y+eyeRadius);ctx.moveTo(eye.x+eyeRadius,eye.y-eyeRadius);ctx.lineTo(eye.x-eyeRadius,eye.y+eyeRadius)}
+      else if(face.eyes==='open')for(const eye of [left,right])ctx.ellipse(eye.x,eye.y,eyeRadius*.72,eyeRadius,0,0,Math.PI*2);
+      const mouthWidth=Math.max(eyeRadius*1.45,half*.72),mouthHeight=Math.max(this.pixelRatio*.65,eyeRadius*.58);
+      if(face.mouth==='smile'){ctx.moveTo(mouth.x-mouthWidth*.5,mouth.y);ctx.quadraticCurveTo(mouth.x,mouth.y+mouthHeight*1.4,mouth.x+mouthWidth*.5,mouth.y)}
+      else if(face.mouth==='wince'){ctx.moveTo(mouth.x-mouthWidth*.5,mouth.y+mouthHeight*.2);ctx.quadraticCurveTo(mouth.x,mouth.y-mouthHeight*.8,mouth.x+mouthWidth*.5,mouth.y+mouthHeight*.2)}
+      else if(face.mouth==='grit'){ctx.moveTo(mouth.x-mouthWidth*.5,mouth.y);ctx.lineTo(mouth.x-mouthWidth*.22,mouth.y+mouthHeight*.45);ctx.lineTo(mouth.x+mouthWidth*.05,mouth.y);ctx.lineTo(mouth.x+mouthWidth*.3,mouth.y+mouthHeight*.4);ctx.lineTo(mouth.x+mouthWidth*.5,mouth.y)}
+      else if(face.mouth==='flat'||face.mouth==='line'){ctx.moveTo(mouth.x-mouthWidth*.42,mouth.y);ctx.lineTo(mouth.x+mouthWidth*.42,mouth.y)}
+      else if(face.mouth==='round'||face.mouth==='hungry')ctx.ellipse(mouth.x,mouth.y,mouthWidth*(face.mouth==='round'?.27:.36),mouthHeight*(face.mouth==='round'?.75:1),0,0,Math.PI*2);
+      ctx.stroke();
+      if(face.cheeks){ctx.fillStyle=metadata.presentation.faceBlush;ctx.beginPath();ctx.ellipse(left.x-eyeRadius*1.6,left.y+eyeRadius*1.45,eyeRadius*.58,eyeRadius*.28,0,0,Math.PI*2);ctx.ellipse(right.x+eyeRadius*1.6,right.y+eyeRadius*1.45,eyeRadius*.58,eyeRadius*.28,0,0,Math.PI*2);ctx.fill()}
+    }
     drawCrowdUnit(u,sim){
       const dead=u.hp<=0||u.down>0,p=this.project(u.x,u.y,u.z),r=Math.max(u.size*this.scale*.78,4.5*this.pixelRatio),style=SEED_STYLES[u.species],y=p.y-r*.79,c=this.ctx;
       c.globalAlpha=dead?.8:1;this.ellipse(p.x,y,r*.9,r*.75,u.flash>.09?'#f4edc4':style.shell);this.ellipse(p.x-r*.23,y-r*.3,r*.25,r*.11,style.light,-.32);
@@ -73,9 +151,10 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       c.globalAlpha=1;
     }
     drawUnit(u,sim){
-      if(sim.scene==='raid'&&sim.units.length>150){this.drawCrowdUnit(u,sim);return}
+      if(sim.scene==='raid'&&sim.units.length>150&&!this.vectorAssets.has(u.species)){this.drawCrowdUnit(u,sim);return}
       const dead=u.hp<=0,walk=dead?0:Math.min(1,Math.hypot(u.vx,u.vy)),bob=u.z===0?Math.abs(Math.sin(sim.time*9+u.seed))*.10*walk:0,p=this.project(u.x,u.y,u.z+bob);
       const r=Math.max(u.size*this.scale*.78,(sim.scene==='raid'?4.5:11)*this.pixelRatio);
+      if(this.drawVectorUnit(u,sim,p,r))return;
       const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
       SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.displayTimeMs)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
     }
@@ -142,7 +221,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
       if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33');this.drawBossWeapon(sim2)}
-      const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, draw: () => this.drawUnit(u, sim2) }));
+      const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawUnit(u, sim2) }));
       if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y, id: 0, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x,f.y,.10,.07,"#55452433");
@@ -156,7 +235,15 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       } });
       if(sim2.scene==="raid")for(const f of sim2.projectiles)actors.push({depth:.785*f.y-.62*f.z,id:-f.id,draw:()=>{const p=this.project(f.x,f.y,f.z),tail=Ballistics.sample(f.path,Math.max(0,(f.elapsed-.04)/f.path.duration));this.groundEllipse(f.x,f.y,.14,.10,"#55452433");this.line(this.project(tail.x,tail.y,tail.z),p,.07,"#ba964a80");this.ellipse(p.x,p.y,this.scale*.14,this.scale*.2,"#cfa957",.3);this.ellipse(p.x-this.scale*.03,p.y-this.scale*.05,this.scale*.05,this.scale*.08,"#fff0ae")}});
       actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
-      for (const actor of actors) actor.draw();
+      let vectorRun=false;
+      for (const actor of actors) {
+        if(actor.vector&&!vectorRun){c.flush();vectorRun=true}
+        else if(!actor.vector&&vectorRun){c.flush();vectorRun=false}
+        actor.draw();
+      }
+      if(vectorRun)c.flush();
+      const liveUnitIds=new Set(sim2.units.map(unit=>unit.id));
+      for(const [id,player] of this.vectorPlayers)if(!liveUnitIds.has(id)){player.dispose();this.vectorPlayers.delete(id)}
       this.attackEffects(sim2);
       feel?.draw(this,this.displayTimeMs);
       for (const e of sim2.effects) {
@@ -193,6 +280,11 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       // Face is the final body layer: low contact effects and foreground troops cannot erase it.
       if(sim2.scene==='raid')this.drawBossFace(sim2);
       this.stats = c.endFrame();
+    }
+    dispose(){
+      for(const player of this.vectorPlayers.values())player.dispose();this.vectorPlayers.clear();
+      for(const record of this.vectorAssets.values())record.asset.dispose();this.vectorAssets.clear();
+      this.ctx.dispose();this.device.dispose();
     }
   };
 

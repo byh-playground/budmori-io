@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
   "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "c6ed3685cdad35dbe65fb99a1b6e1297c9c60ce4",
-  "distCommit": "280e86650abec73cb9333379999a6bcadbb9234d",
+  "sourceCommit": "e4ea1679a4bcd64c23eb52b0a549dc26f7611efd",
+  "distCommit": "26c1b32e4bf45f39c93ab0eaaa05f069709581e1",
   "status": "verified immutable distribution",
   "esbuild": "0.28.2",
   "modules": [
@@ -16,7 +16,7 @@
     },
     {
       "name": "rollback",
-      "bundleSHA256": "ed0dff4d77be1219a30d9ae6de1d0fdf91c9f3fafd63bdda058b6ed160784d6b"
+      "bundleSHA256": "1938802aba6e49042d790c96c3b24d9368348e9eb356cb042bf6d5733cfae784"
     },
     {
       "name": "deterministic",
@@ -40,7 +40,11 @@
     },
     {
       "name": "rendering",
-      "bundleSHA256": "5fed746a9797fab4e7c8b99239d00026b913b66f1956c8d6955b7eb4cdf426ef"
+      "bundleSHA256": "b184ce35b6453b215d7174a121d1fdaf9b2e11efd087eab7f27f87f8ddf9bd63"
+    },
+    {
+      "name": "vector-assets",
+      "bundleSHA256": "4f2841e42988f9def5c2efd6b88351543a36555589c57b497122dd4cb5602cc4"
     },
     {
       "name": "input",
@@ -51,7 +55,7 @@
       "bundleSHA256": "72260336a6c3f2ee0357a303fa8943dd8cfa4f7deea5d9517d311d4cd8796a71"
     }
   ],
-  "manifestSHA256": "565ccd33d69492902965a7689e82338c657e051b50091d04f2edfa4c306a0465",
+  "manifestSHA256": "a1fa3ed8d37457639271a96ded9d718bdab612ae4e8fb962352409ee2f7f85fe",
   "assets": [
     {
       "file": "assets/fonts/noto-sans-kr-700-v1.json",

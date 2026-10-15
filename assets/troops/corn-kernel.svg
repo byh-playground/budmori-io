@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="285" height="295" viewBox="0 0 285 295">
+  <metadata id="vector-asset">{"schemaVersion":1,"id":"budmori-corn-kernel","defaultExpression":"neutral","parts":[{"id":"body","parent":null,"pivot":[141,142]},{"id":"eyes","parent":"body","pivot":[141,89]},{"id":"mouth","parent":"body","pivot":[140,112]},{"id":"kernel-mark","parent":"body","pivot":[141,192]}],"expressions":{"neutral":{"show":["body","eyes","mouth","kernel-mark"],"hide":[]}},"sockets":{"mouth":{"part":"body","point":[140,112]},"kernel-center":{"part":"body","point":[141,192]}},"clips":{"idle":{"durationMs":1,"loop":"repeat","easing":"linear","keyframes":[{"timeMs":0,"easing":"linear","parts":{"body":{"x":0,"y":0,"rotation":0,"scaleX":1,"scaleY":1,"opacity":1}}},{"timeMs":1,"easing":"linear","parts":{"body":{"x":0,"y":0,"rotation":0,"scaleX":1,"scaleY":1,"opacity":1}}}]}}}</metadata>
+  <g transform="translate(-390 -380)">
+    <g id="body">
+    <path id="arm-left" d="M423 520 C412 527 404 539 400 552 C397 565 401 578 409 582 C419 585 425 573 429 560 C432 548 433 536 430 528 Z" fill="#f7cd36" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="arm-right" d="M640 519 C651 526 659 539 663 552 C666 565 662 578 654 582 C644 585 638 573 634 560 C631 548 630 536 633 528 Z" fill="#f7cd36" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="foot-left" d="M472 613 C469 626 470 642 476 652 C481 659 494 660 502 654 C510 648 512 632 510 615 Z" fill="#f7cd36" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="foot-right" d="M533 615 C531 629 532 644 539 653 C545 660 558 659 565 652 C572 643 572 627 568 613 Z" fill="#f7cd36" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="corn-body-outline" d="M531 390 C571 389 608 395 626 412 C640 421 646 433 646 449 C645 466 642 483 642 500 C641 531 630 575 611 594 C603 602 594 610 585 617 C557 622 501 622 477 617 C466 614 456 604 451 594 C433 575 425 556 422 540 C420 518 418 495 418 477 C417 455 413 435 418 420 C424 403 443 397 466 393 C486 390 508 391 531 390 Z" fill="#f7cd36" stroke="#171511" stroke-width="5" stroke-linejoin="round"/>
+    <g id="eyes">
+      <ellipse id="cheek-left" cx="478" cy="493" rx="14" ry="8" fill="#ef8273"/>
+      <ellipse id="cheek-right" cx="586" cy="493" rx="14" ry="8" fill="#ef8273"/>
+      <ellipse id="eye-left" cx="492" cy="469" rx="13" ry="13.5" fill="#4a1c16"/>
+      <ellipse id="eye-right" cx="570" cy="469" rx="13" ry="13.5" fill="#4a1c16"/>
+    </g>
+    <g id="mouth">
+      <path id="smile" d="M516 489 Q530 502 545 489" fill="none" stroke="#211711" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
+    <g id="kernel-mark">
+      <circle id="kernel-ring" cx="531" cy="572" r="37" fill="#fff1cc"/>
+      <circle id="kernel-center" cx="531" cy="572" r="23" fill="#f0cb7b"/>
+    </g>
+  </g>
+  </g>
+</svg>

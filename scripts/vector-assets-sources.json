@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    { "species": 0, "file": "assets/troops/pea.svg" },
+    { "species": 1, "file": "assets/troops/corn-kernel.svg" },
+    { "species": 2, "file": "assets/troops/kidney-bean.svg" }
+  ]
+}

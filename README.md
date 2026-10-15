@@ -11,13 +11,15 @@ Node.js와 Microsoft Edge가 필요합니다.
 ```sh
 npm ci
 npm run build
-node scripts/verify-gamekit-source.cjs
+node scripts/gamekit-provenance.cjs
 npm test
 ```
 
-정적 서버로 저장소 루트를 열면 실행됩니다. `index.html`, `src/bootstrap.js`, 빌드된 `src/game.js`가 제품 진입점입니다. 빌드는 농장 소스를 번들로 만들고 바이트 수·SHA256·SRI manifest를 갱신합니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드하며 게임 번들에 SDK를 복제하지 않습니다.
+정적 서버로 저장소 루트를 열면 실행됩니다. `index.html`, `src/bootstrap.js`, 빌드된 `src/game.js`가 제품 진입점입니다. 빌드는 농장 소스와 GameKit 컴파일 SVG를 번들로 만들고 바이트 수·SHA256·SRI manifest를 갱신합니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
 
-`npm test`는 고정 사용자 흐름 E2E를 180초 안에 실행합니다. `npm run test:browser`, `npm run test:browser:save`, `npm run test:browser:multiplayer`로 범위를 선택합니다. 결과 JSON과 실제 화면은 무시된 `tests/output/`에 생성됩니다. 네트워크 검사는 실제 공개 relay와 WebRTC를 사용하므로 인터넷이 필요하며, 실패한 의존성·입장·입력 단계는 실패로 기록합니다. 월드 배치·극단 상태의 초기 fixture와 실제 서비스·렌더 경로는 보고서에서 구분합니다.
+`assets/troops/`의 SVG 원본은 `scripts/vector-assets-sources.json`의 SHA256과 일치해야 합니다. `npm run vector-assets:compile`은 공식 고정 GameKit 컴파일러로 SVG 메타데이터·메시를 생성하고, `npm run build`는 이를 제품 번들에 포함합니다. 원본 SVG 바이트는 수정하지 않으며, `scripts/vector-assets-motion.json`의 종별 포즈 키프레임·표정 벡터를 컴파일된 메타데이터에 결합합니다. GameKit 유닛 플레이어는 공통 `PresentationRuntime` 표시 시각을 쓰고, 공격 준비·발사·피격·공중·착지·사망은 기존 전투 상태에 따라 몸통·잎·씨눈 파트를 변환합니다. 행복·집중·공격·놀람·피격·배고픔·사망 표정은 원본 얼굴을 숨긴 뒤 같은 작화 색의 벡터 선으로 그립니다. GameKit 플레이어 하나당 타임라인은 기본 하나만 만들며 나머지 움직임은 공유 메타데이터 프레임을 파트 변환 API에 적용합니다.
+
+`npm test`는 고정 사용자 흐름 E2E를 180초 안에 실행합니다. `npm run test:browser`, `npm run test:browser:save`, `npm run test:browser:multiplayer`, `npm run test:vector-assets`, `npm run verify:raid-load`로 범위를 선택합니다. 각 회귀 시나리오는 별도 명령으로도 실행할 수 있습니다. 결과 JSON과 실제 화면은 무시된 `tests/output/`에 생성됩니다. 네트워크 검사는 실제 공개 relay와 WebRTC를 사용하므로 인터넷이 필요하며, 실패한 의존성·입장·입력 단계는 실패로 기록합니다. 월드 배치·극단 상태의 초기 fixture와 실제 서비스·렌더 경로는 보고서에서 구분합니다.
 
 ## 농장
 

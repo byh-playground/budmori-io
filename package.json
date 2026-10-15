@@ -4,15 +4,19 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.cjs",
+    "vector-assets:compile": "node scripts/compile-vector-assets.mjs",
     "test": "node scripts/test-scenarios.mjs all",
     "test:browser": "node scripts/test-scenarios.mjs core",
     "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
+    "test:vector-assets": "node tests/vector-assets.e2e.mjs",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
     "verify:raid-load": "node tests/raid-load.mjs"
   },
   "devDependencies": {
+    "@xmldom/xmldom": "0.9.12",
+    "esbuild": "0.28.2",
     "playwright": "1.63.0",
-    "esbuild": "0.28.2"
+    "three": "0.186.1"
   }
 }

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="320" viewBox="0 0 260 320">
+  <metadata id="vector-asset">{"schemaVersion":1,"id":"budmori-kidney-bean","defaultExpression":"neutral","parts":[{"id":"body","parent":null,"pivot":[117,171]},{"id":"eyes","parent":"body","pivot":[117,93]},{"id":"mouth","parent":"body","pivot":[119,109]},{"id":"hilum","parent":"body","pivot":[65,149]}],"expressions":{"neutral":{"show":["body","eyes","mouth","hilum"],"hide":[]}},"sockets":{"mouth":{"part":"body","point":[119,109]},"hilum-center":{"part":"body","point":[65,149]}},"clips":{"idle":{"durationMs":1,"loop":"repeat","easing":"linear","keyframes":[{"timeMs":0,"easing":"linear","parts":{"body":{"x":0,"y":0,"rotation":0,"scaleX":1,"scaleY":1,"opacity":1}}},{"timeMs":1,"easing":"linear","parts":{"body":{"x":0,"y":0,"rotation":0,"scaleX":1,"scaleY":1,"opacity":1}}}]}}}</metadata>
+  <g transform="translate(-690 -352)">
+    <g id="body">
+    <path id="arm-left" d="M742 526 C728 536 718 549 710 564 C704 575 707 583 714 584 C725 584 738 570 747 555 C753 546 754 536 742 526 Z" fill="#d06a8f" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="arm-right" d="M894 530 C908 538 919 551 926 565 C931 576 928 584 920 584 C909 583 897 570 889 555 C885 546 884 537 894 530 Z" fill="#d06a8f" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="foot-left" d="M760 612 C757 628 759 645 764 654 C768 661 780 662 787 656 C794 648 795 630 792 613 Z" fill="#d06a8f" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="foot-right" d="M823 612 C820 628 821 645 827 654 C832 662 844 662 851 655 C858 647 858 629 853 612 Z" fill="#d06a8f" stroke="#171511" stroke-width="4.5" stroke-linejoin="round"/>
+    <path id="bean-body-outline" d="M803 367 C835 365 862 378 881 402 C900 426 908 455 910 483 C913 514 906 542 892 566 C879 587 860 600 839 614 C820 626 799 632 779 627 C758 624 741 614 733 600 C725 586 728 570 737 555 C746 540 752 526 753 510 C754 494 746 481 740 468 C730 446 730 420 737 400 C745 379 770 368 803 367 Z" fill="#d06a8f" stroke="#171511" stroke-width="5" stroke-linejoin="round"/>
+    <g id="hilum">
+      <path id="bean-hilum-shadow" d="M755 475 C746 478 741 486 738 495 C735 506 739 519 745 525 C749 527 753 524 755 520 C749 514 749 505 752 497 C755 489 760 482 762 479 Z" fill="#a95173"/>
+      <path id="bean-hilum" d="M756 478 C762 477 766 485 768 494 C770 504 768 514 763 520 C759 525 753 528 749 526 C751 519 753 511 754 503 C755 493 754 485 756 478 Z" fill="#fff0c8" stroke="#6b343a" stroke-width="3.3" stroke-linejoin="round"/>
+    </g>
+    <g id="eyes">
+      <ellipse id="cheek-left" cx="772" cy="465" rx="12.5" ry="7" fill="#f58a8d"/>
+      <ellipse id="cheek-right" cx="862" cy="465" rx="12.5" ry="7" fill="#f58a8d"/>
+      <ellipse id="eye-left" cx="786" cy="445" rx="10.8" ry="11.5" fill="#4b1a20"/>
+      <ellipse id="eye-right" cx="846" cy="445" rx="10.8" ry="11.5" fill="#4b1a20"/>
+    </g>
+    <g id="mouth">
+      <path id="smile" d="M804 459 Q815 470 827 459" fill="none" stroke="#24151a" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
+  </g>
+  </g>
+</svg>
