@@ -1,8 +1,9 @@
-import {ATTACK_TYPES,Ballistics,clamp} from './farm-model.js';
+import {ATTACK_TYPES,Ballistics,CONFIG,clamp} from './farm-model.js';
 import {BudmoriArt} from './unit-art.js';
 const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
   // render.js
-  var TYPES = ATTACK_TYPES.map(d=>d.art);
+  var TYPES = ['lancer','siege','rogue'];
+  const COLORS=['#bf8144','#648b6b','#8b719c'];
   var Diorama = class {
     constructor(canvas) {
       this.canvas = canvas;
@@ -17,7 +18,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       this.canvas.width = Math.round(r.width * d);
       this.pixelRatio = d;
       this.canvas.height = Math.round(r.height * d);
-      const aspect = r.width / r.height;
+      const aspect = r.width / r.height;this.aspect=aspect;this.scene=null;
       this.view = aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
       this.offset = [0, aspect < 0.8 ? 1.1 : -0.3];
       this.scale = this.canvas.width / (2 * this.view[0]);
@@ -25,9 +26,11 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
     project(x, y, z = 0) {
       return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (0.62 * y + 0.785 * z + this.offset[1])) * this.scale };
     }
-    groundPoint(clientX, clientY) {
-      const r = this.canvas.getBoundingClientRect();
-      return { x: ((clientX - r.left) / r.width * 2 - 1) * this.view[0] - this.offset[0], y: ((1 - (clientY - r.top) / r.height * 2) * this.view[1] - this.offset[1]) / 0.62 };
+    configure(scene){
+      if(this.scene===scene)return;this.scene=scene;const a=this.aspect;
+      if(scene==='raid')this.view=a>1.2?[Math.max(26.5,17*a),17]:[26.5,26.5/a];
+      else this.view=a>1.2?[Math.max(12,9*a),9]:[11.7,11.7/a];
+      this.offset=[0,a<.8?1.1:-.3];this.scale=this.canvas.width/(2*this.view[0]);
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const c = this.ctx;
@@ -58,36 +61,14 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       c.lineTo(b.x, b.y);
       c.stroke();
     }
-    attackPreview(sim2){
-      const c=this.ctx,k=sim2.cast;if(!k)return;
-      const power=sim2.chargePower();this.ring(k.origin.x,k.origin.y,k.radius,"#59a68a",.045);this.ring(k.origin.x,k.origin.y,k.radius+.1,"#86b9cc",.075,-Math.PI/2,-Math.PI/2+Math.PI*2*power);
-      for(const id of k.ids){
-        const u=sim2.units.find(v=>v.id===id);if(!u)continue;const ready=u.chargeReady();this.ring(u.x,u.y,u.radius+.16,ready?"#e0ce70":"#939b94",.065);if(!ready)continue;
-        const target=sim2.chargePoint(u,k),spec=ATTACK_TYPES[u.species],path=Ballistics.create(u,target,spec.kind,target.power);
-        let prev=this.project(u.x,u.y,path.from.z);for(let i=1;i<=16;i++){const p=Ballistics.sample(path,i/16),next=this.project(p.x,p.y,p.z);this.line(prev,next,.025,spec.color);prev=next}
-        this.ring(target.x,target.y,spec.kind==="lob"?.6:spec.kind==="leap"?.45:.22,"#c69637",.05);
-        const p=this.project(target.x,target.y,.04),s=this.scale*.12;this.line({x:p.x-s,y:p.y},{x:p.x+s,y:p.y},.035,"#e4bb55");this.line({x:p.x,y:p.y-s},{x:p.x,y:p.y+s},.035,"#e4bb55");
-      }
-      // White cursor is intent; gold endpoints are capped executable world positions.
-      const p=this.project(k.aim.x,k.aim.y,.02);this.ellipse(p.x,p.y,this.pixelRatio*3,this.pixelRatio*3,"#ffffff");
-      if(k.pointerType==="touch"){const top={x:p.x,y:p.y-44*this.pixelRatio};this.line(p,top,.02,"#ffffffaa");this.ellipse(top.x,top.y,6*this.pixelRatio,6*this.pixelRatio,"#ffffffaa");}
+    attackEffects(world){
+      for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
     }
-    attackEffects(sim2){
-      for(const e of sim2.effects){
-        const q=e.life;if(e.kind==="cancel"){const t=Math.min(1,q/.35);this.ring(e.x,e.y,sim2.progress.controlRadius*(1-t*.35),`rgba(158,109,90,${1-t})`,.07)}
-        if(["strike","shell-land","land-attack","launch"].includes(e.kind)){
-          const t=Math.min(1,q/.32),alpha=1-t;if(alpha<=0)continue;
-          this.ring(e.x,e.y,.12+t*(e.kind==="shell-land"?.8:.45),`rgba(205,155,65,${alpha})`,.06);
-          if(e.kind!=="launch")for(let i=0;i<4;i++){const a=i*Math.PI/2,p=this.project(e.x+Math.cos(a)*t*.5,e.y+Math.sin(a)*t*.5,e.z+.12+t*.25);this.ellipse(p.x,p.y,this.scale*.055,this.scale*.09,`rgba(255,239,182,${alpha})`,a)}
-        }
-      }
-      for(const u of sim2.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(a.phase==="windup")this.ring(u.x,u.y,u.radius+.08,s.color,.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));else if(a.manualCooldown>0)this.ring(u.x,u.y,u.radius+.08,"#899488",.025,0,Math.PI*2*(1-a.manualCooldown/3));}
-    }
-
     drawUnit(u, sim2) {
+      u=this.feel?this.feel.unit(u,this.now):u;
       const c = this.ctx, walk = Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim2.time * 9 + u.seed)) * 0.14 * walk : 0, p = this.project(u.x + Math.sin(sim2.time * 9 + u.seed) * 0.065 * walk, u.y, u.z + bob);
-      const r = Math.max(u.size * this.scale * 0.78, 11 * this.pixelRatio);
-      const landing = u.bounce > 0 ? u.bounce : 0, airStretch = clamp(Math.abs(u.vz) * 0.014, 0, 0.12), squash = 1 + landing * 0.8 - airStretch - (u.ability.phase==="windup"?.12:0);
+      const r = Math.max(u.size * this.scale * 0.78, (sim2.scene==='raid'?2.8:11) * this.pixelRatio);
+      const landing = u.bounce > 0 ? u.bounce : 0, airStretch = clamp(Math.abs(u.vz) * 0.014, 0, 0.12), squash = 1 + (this.feel?.squash(u.id,this.now)||0) + landing * 0.8 - airStretch - (u.ability.phase==="windup"?.12:0);
       BudmoriArt.draw(c, TYPES[u.species], "friendly", p.x, p.y - r * 0.35, r, Math.atan2(-Math.sin(u.angle)*.62,Math.cos(u.angle)), sim2.time * 1e3, { respectOriginalFacing: true, phaseOffsetMs: u.id * 37, poseStretch: squash, poseTilt: Math.sin(sim2.time * 9 + u.seed) * 0.045 * walk, whiteFlash: u.flash > 0.09, hit: u.flash > 0, attack: u.ability.phase==="active" || (u.ability.phase==="recover"&&u.ability.elapsed<.13), deployed: u.ability.phase!=="idle", turretFacing: Math.atan2(-Math.sin(u.angle)*.62,Math.cos(u.angle)), alpha: u.down > 0 ? 0.55 : 1 });
       const joy = sim2.effects.some(e => (e.kind === "eat" || e.kind === "birth" || e.kind === "merge") && e.life < 0.85 && Math.hypot(e.x-u.x,e.y-u.y)<1.2);
       const expression = u.z > 0.5 || u.stun > 0 || u.down > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal";
@@ -123,63 +104,59 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       if(expression==="happy") for(const side of [-1,1]) this.ellipse(side*r*.31,fy+r*.09,r*.075,r*.045,"#eaa09b");
       c.restore();
     }
-    drawBoss(sim2) {
-      const b = sim2.boss, c = this.ctx, p = this.project(b.x, b.y, 0), r = this.scale * 2.35, wind = b.phase === "windup", sweep = b.phase === "sweep";
-      BudmoriArt.draw(c, "guardshroom", "enemy", p.x, p.y - r * 0.34, r, void 0, sim2.time * 1e3, { respectOriginalFacing: true, poseStretch: wind ? 1.07 : 1 + Math.sin(sim2.time * 2) * 0.012 + (b.flash||0)*.2, poseTilt: wind ? -0.07 : sweep ? 0.04 : 0, attack: sweep });
-      this.face(p.x, p.y-r*.34, r, 1, wind ? "surprised" : sweep ? "happy" : "normal", wind ? 1.07 : 1, wind ? -.07 : sweep ? .04 : 0);
-      const angle = wind || sweep ? b.angle : -0.3, h = this.project(b.x + Math.cos(angle) * 3.2, b.y + Math.sin(angle) * 3.2, wind ? 1 : 0.25), base = this.project(b.x, b.y, 0.4);
-      this.line(base, h, 0.58, "#283d2c");
-      this.line(base, h, 0.41, "#7d9560");
-      c.save();
-      c.translate(h.x, h.y);
-      c.rotate(Math.atan2(h.y - base.y, h.x - base.x));
-      c.fillStyle = wind ? "#bd7854" : "#a4a872";
-      c.beginPath();
-      for (let i = 0; i < 8; i++) {
-        const a = i * Math.PI / 4, x = Math.cos(a) * this.scale * 0.87, y = Math.sin(a) * this.scale * 0.65;
-        i ? c.lineTo(x, y) : c.moveTo(x, y);
-      }
-      c.closePath();
-      c.fill();
-      this.ellipse(-this.scale * 0.19, -this.scale * 0.16, this.scale * 0.26, this.scale * 0.12, "#d3ce96");
-      c.restore();
+    bossPose(world){
+      const b=world.boss,k=this.feel?.boss(this.now)||{x:0,y:0,squash:0};return {b,p:this.project(b.x+k.x,b.y+k.y,0),r:this.scale*b.radius*1.16,k};
+    }
+    drawBoss(world){
+      const {b,p,r,k}=this.bossPose(world),wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep';
+      BudmoriArt.draw(this.ctx,'guardshroom','enemy',p.x,p.y-r*.34,r,void 0,world.time*1000,{respectOriginalFacing:true,poseStretch:(wind?1.06:1+Math.sin(world.time*2)*.012)+k.squash,poseTilt:wind?-.055:active?.035:Math.sin(world.time*5)*.012,attack:active});
+    }
+    drawBossFace(world){
+      const {b,p,r}=this.bossPose(world),wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep';
+      this.face(p.x,p.y-r*.34,r,1,wind?'surprised':active?'happy':'normal',wind?1.06:1,wind?-.055:active?.035:0);
+    }
+    drawBossWeapon(world){
+      const b=world.boss,c=CONFIG.raid,heavy=b.phase==='sweep'||b.phase==='sweep-windup';
+      let angle=heavy?b.startAngle:b.angle,reach=b.radius+.15;
+      if(b.phase==='sweep'){angle=b.startAngle+Math.PI*2*Math.min(1,b.clock/c.sweepDuration);reach=c.sweepReach}
+      else if(b.phase==='strike')reach=b.radius-.25+(c.basicReach-b.radius+.25)*Math.sin(Math.PI*Math.min(1,b.clock/c.basicDuration));
+      else if(b.phase.endsWith('windup'))reach=heavy?c.sweepReach:b.radius-.25;
+      const base=this.project(b.x+Math.cos(angle)*(b.radius*.65),b.y+Math.sin(angle)*(b.radius*.65),.35),tip=this.project(b.x+Math.cos(angle)*reach,b.y+Math.sin(angle)*reach,.35);
+      this.line(base,tip,.4,'#314331');this.line(base,tip,.24,'#879866');
+      this.ellipse(tip.x,tip.y,c.weaponRadius*this.scale,c.weaponRadius*this.scale*.62,b.phase.endsWith('windup')?'#ba7752':'#b5aa73',angle);
+      if(b.phase==='sweep'){const back=angle-.18,tail=this.project(b.x+Math.cos(back)*reach,b.y+Math.sin(back)*reach,.35);this.line(tail,tip,.26,'#e6cf7b99')}
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale;
-      this.groundEllipse(0, -0.2, 10.8, 7.9, "#bcc7a6");
-      this.groundEllipse(0, 0, 10.7, 7.9, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
-      this.groundEllipse(0, 0.15, 9.8, 7.1, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
+      const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',rx=raid?CONFIG.raid.radiusX:9.5,ry=raid?CONFIG.raid.radiusY:6.8;
+      this.groundEllipse(0, -0.2, rx+1.3, ry+1.1, "#bcc7a6");
+      this.groundEllipse(0, 0, rx+1.2, ry+1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
+      this.groundEllipse(0, 0.15, rx+.3, ry+.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
       for (let i = 0; i < 92; i++) {
-        const a = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92), x = Math.cos(a) * 9.8 * rad, y = Math.sin(a) * 7.1 * rad, p = this.project(x, y);
+        const a = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92), x = Math.cos(a) * (rx+.3) * rad, y = Math.sin(a) * (ry+.3) * rad, p = this.project(x, y);
         this.ellipse(p.x, p.y, S * 0.026, S * 0.02, "#a7b58b80");
       }
       for (let i = 0; i < 24; i++) {
-        const a = i * 2.39996, x = Math.cos(a) * 10.05, y = Math.sin(a) * 7.35, p = this.project(x, y);
+        const a = i * 2.39996, x = Math.cos(a) * (rx+.55), y = Math.sin(a) * (ry+.55), p = this.project(x, y);
         this.ellipse(p.x, p.y, 0.25 * S, 0.11 * S, "#94a577", a);
         this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", a + 0.7);
       }
-      if (sim2.scene === "raid") {
-        const b = sim2.boss;
-        if (b.phase === "windup" || b.phase === "sweep") {
-          c.save();
-          c.globalAlpha = b.phase === "windup" ? 0.15 : 0.07;
-          const p = this.project(b.x, b.y);
-          c.fillStyle = "#c36543";
-          c.beginPath();
-          c.moveTo(p.x, p.y);
-          c.ellipse(p.x, p.y, 4.25 * S, 4.25 * S * 0.62, 0, -0.2, Math.PI + 0.2);
-          c.closePath();
-          c.fill();
-          c.restore();
-          this.ring(b.x, b.y, 4.25, "#b86a49", 0.045, -Math.PI - 0.2, 0.2);
-        }
-        if (!sim2.running || sim2.moveTarget) {
-          this.ring(sim2.aim.x, sim2.aim.y, 0.45, "#397f83", 0.07);
-          this.ring(sim2.aim.x, sim2.aim.y, 0.2, "#597f70", 0.04);
+      if(raid){
+        const b=sim2.boss,wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep',heavy=b.phase==='sweep-windup'||b.phase==='sweep';
+        if(wind||active){
+          const reach=heavy?CONFIG.raid.sweepReach:CONFIG.raid.basicReach,color=heavy?'#b46c45':'#a98a52';
+          if(heavy){this.ring(b.x,b.y,reach+CONFIG.raid.weaponRadius,color,wind?.09:.05);this.ring(b.x,b.y,reach-CONFIG.raid.weaponRadius,'#c59b7288',.045);const progress=Math.min(1,b.clock/(wind?CONFIG.raid.sweepWindup:CONFIG.raid.sweepDuration));this.ring(b.x,b.y,reach+CONFIG.raid.weaponRadius+.12,'#dfad65',.14,b.startAngle,b.startAngle+progress*Math.PI*2)}
+          else{
+            const nx=Math.cos(b.angle),ny=Math.sin(b.angle),start=b.radius-.25,width=CONFIG.raid.weaponRadius;
+            for(const side of [-1,1])this.line(this.project(b.x+nx*start-ny*width*side,b.y+ny*start+nx*width*side),this.project(b.x+nx*reach-ny*width*side,b.y+ny*reach+nx*width*side),.055,color);
+            for(const distance of [start,reach])this.ring(b.x+nx*distance,b.y+ny*distance,width,color,.05);
+          }
+
         }
       }
     }
-    render(sim2) {
+
+    render(sim2,feel=null,now=performance.now()) {
+      this.feel=feel;this.now=now;this.configure(sim2.scene);
       const c = this.ctx;
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
@@ -188,7 +165,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
         this.groundEllipse(u.x, u.y, u.size * (0.65 + u.z * 0.035), u.size * 0.42, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
-      if (sim2.scene === "raid") this.groundEllipse(sim2.boss.x, sim2.boss.y, 2.6, 1.9, "#38472c33");
+      if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33');this.drawBossWeapon(sim2)}
       const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, draw: () => this.drawUnit(u, sim2) }));
       if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y, id: 0, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
@@ -205,7 +182,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
       for (const actor of actors) actor.draw();
       this.attackEffects(sim2);
-      this.attackPreview(sim2);
+      feel?.draw(this,now);
       for (const e of sim2.effects) {
         const q = e.life;
         if (e.kind === "feed") this.ring(e.x,e.y,.15+q*.35,`rgba(166,121,59,${(1-q)*.6})`,.035);
@@ -236,6 +213,8 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
           }
         }
       }
+      // Face is the final body layer: low contact effects and foreground troops cannot erase it.
+      if(sim2.scene==='raid')this.drawBossFace(sim2);
       this.stats = c.endFrame();
     }
   };

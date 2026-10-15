@@ -20,7 +20,7 @@ const $=id=>document.getElementById(id);
       const now=this.audio.currentTime,gap=kind==="tap"?.025:kind==="complete"?.055:.09;
       if(this.soundFrame[kind]===this.frameId||now-(this.lastSound[kind]??-99)<gap||this.voices.size>=4)return;
       this.soundFrame[kind]=this.frameId;this.lastSound[kind]=now;
-      const defs={tap:[340+step*65,420+step*65,.055,.14],complete:[520,1040,.12,.20],land:[240,150,.065,.10],eat:[740,990,.09,.09]},[hz,end,duration,gain]=defs[kind];
+      const defs={tap:[340+step*65,420+step*65,.055,.14],complete:[520,1040,.12,.20],land:[240,150,.065,.10],eat:[740,990,.09,.09],strike:[180,80,.075,.16],heavy:[95,42,.16,.22],launch:[290,145,.06,.07]},[hz,end,duration,gain]=defs[kind];
       const o=this.audio.createOscillator(),g=this.audio.createGain(),v={o,g};o.type=kind==="land"?"sine":"triangle";o.frequency.setValueAtTime(hz,now);o.frequency.exponentialRampToValueAtTime(end,now+duration);g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(gain,now+.004);g.gain.exponentialRampToValueAtTime(.0001,now+duration);o.connect(g);g.connect(this.master);this.voices.add(v);this.peakVoices=Math.max(this.peakVoices,this.voices.size);o.onended=()=>{o.disconnect();g.disconnect();this.voices.delete(v)};o.start(now);o.stop(now+duration+.01);
     }
     animate(el,frames,duration){this.animations.get(el)?.cancel();const a=el.animate(frames,{duration,easing:"ease-out"});this.animations.set(el,a);a.onfinish=()=>{if(this.animations.get(el)===a)this.animations.delete(el)}}
