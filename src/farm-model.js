@@ -196,6 +196,7 @@ const AttackingBody=Base=>class extends Base{
         u.growth = u.meals;
       }
     }
+    get armyHealth(){return this.units.reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(stats(u.tier).hp,u.hp)),max:sum.max+stats(u.tier).hp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0})}
     random() {
       return this.rng.nextUint32() / 4294967296;
     }
@@ -316,6 +317,7 @@ const AttackingBody=Base=>class extends Base{
         else if (this.running) this.raidUnit(u, dt);
         const oldZ = u.z,oldPosition={x:u.x,y:u.y,z:u.z};
         u.integrate(dt);
+        if(this.scene==="raid"&&u.hp<=0&&u.z===0&&u.vz===0){u.vx=u.vy=0;}
         if(this.scene==="raid"&&this.running)u.ability.afterMove(this,oldPosition);
         if (oldZ > 0 && u.z === 0) {
           this.metrics.landings++;
@@ -326,6 +328,7 @@ const AttackingBody=Base=>class extends Base{
 
       }
       for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+        if(this.scene==="raid"&&(units[i].hp<=0||units[j].hp<=0))continue;
         if (contact(units[i], units[j])) this.metrics.contacts++;
       }
       if (this.scene === "farm") {
@@ -380,7 +383,7 @@ const AttackingBody=Base=>class extends Base{
         if(out>0){body.vx-=1.3*out*nx/n;body.vy-=1.3*out*ny/n}}
     }
     separateBoss(u){
-      const b=this.boss;if(u.z>b.height)return;const dx=u.x-b.x,dy=u.y-b.y,d=Math.hypot(dx,dy),r=b.radius+u.radius;
+      const b=this.boss;if(u.hp<=0||u.z>b.height)return;const dx=u.x-b.x,dy=u.y-b.y,d=Math.hypot(dx,dy),r=b.radius+u.radius;
       if(d>=r)return;const a=d>1e-6?Math.atan2(dy,dx):u.seed,nx=Math.cos(a),ny=Math.sin(a);u.x=b.x+nx*r;u.y=b.y+ny*r;
       const inward=u.vx*nx+u.vy*ny;if(inward<0){u.vx-=inward*nx;u.vy-=inward*ny}this.boundBody(u,'raid',u.radius);
     }
@@ -409,15 +412,15 @@ const AttackingBody=Base=>class extends Base{
     raidUnit(u,dt){
       if(u.hp<=0){u.down=1;u.ability.interrupt();return}
       if(u.ability.update(this,dt)||u.stun>0||u.z>.1)return;
-      const b=this.boss,spec=ATTACK_TYPES[u.species],angle=u.seed+this.encounter.elapsed*.055,stand=b.radius+spec.stand+(u.tier-1)*.12;
-      const slot=ArenaGeometry.clamp({x:b.x+Math.cos(angle)*stand,y:b.y+Math.sin(angle)*stand},'raid',u.radius),d=Math.hypot(slot.x-u.x,slot.y-u.y);
-      if(d>.45){
-        // Follow the surface around a solid boss instead of steering through its face/body.
-        const dx=u.x-b.x,dy=u.y-b.y,rad=Math.hypot(dx,dy),delta=Math.atan2(Math.sin(angle-Math.atan2(dy,dx)),Math.cos(angle-Math.atan2(dy,dx)));
-        if(rad<b.radius+u.radius+1.1&&Math.abs(delta)>.3){const tangent=Math.atan2(dy,dx)+Math.sign(delta)*.32;this.steer(u,b.x+Math.cos(tangent)*(b.radius+u.radius+1.2),b.y+Math.sin(tangent)*(b.radius+u.radius+1.2),dt,4.1)}
-        else this.steer(u,slot.x,slot.y,dt,4.1);return;
+      const b=this.boss,spec=ATTACK_TYPES[u.species],dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;
+      // Hold the current firing bearing. Ranged troops retreat from a boss that closes in;
+      // they never follow a rotating slot through its body to reach the opposite side.
+      const stand=b.radius+spec.stand+(u.tier-1)*.12,min=stand-.55,max=stand+.55;
+      if(n>max||(spec.kind==='lob'&&n<min)){
+        const slot=ArenaGeometry.clamp({x:b.x+dx/n*stand,y:b.y+dy/n*stand},'raid',u.radius);
+        this.steer(u,slot.x,slot.y,dt,4.1);return;
       }
-      const dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;
+      u.vx=u.vy=0;
       const target=spec.kind==='lob'?{x:b.x,y:b.y}:{x:b.x+dx/n*(b.radius+u.radius-.16),y:b.y+dy/n*(b.radius+u.radius-.16)};
       u.ability.begin(this,target);
     }

@@ -353,6 +353,9 @@
             u.growth = u.meals;
           }
         }
+        get armyHealth() {
+          return this.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(stats(u.tier).hp, u.hp)), max: sum.max + stats(u.tier).hp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
+        }
         random() {
           return this.rng.nextUint32() / 4294967296;
         }
@@ -500,6 +503,9 @@
             else if (this.running) this.raidUnit(u, dt);
             const oldZ = u.z, oldPosition = { x: u.x, y: u.y, z: u.z };
             u.integrate(dt);
+            if (this.scene === "raid" && u.hp <= 0 && u.z === 0 && u.vz === 0) {
+              u.vx = u.vy = 0;
+            }
             if (this.scene === "raid" && this.running) u.ability.afterMove(this, oldPosition);
             if (oldZ > 0 && u.z === 0) {
               this.metrics.landings++;
@@ -509,6 +515,7 @@
             this.boundBody(u, this.scene, u.radius);
           }
           for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+            if (this.scene === "raid" && (units[i].hp <= 0 || units[j].hp <= 0)) continue;
             if (contact(units[i], units[j])) this.metrics.contacts++;
           }
           if (this.scene === "farm") {
@@ -577,7 +584,7 @@
         }
         separateBoss(u) {
           const b = this.boss;
-          if (u.z > b.height) return;
+          if (u.hp <= 0 || u.z > b.height) return;
           const dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy), r = b.radius + u.radius;
           if (d >= r) return;
           const a = d > 1e-6 ? Math.atan2(dy, dx) : u.seed, nx = Math.cos(a), ny = Math.sin(a);
@@ -631,17 +638,14 @@
             return;
           }
           if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1) return;
-          const b = this.boss, spec = ATTACK_TYPES[u.species], angle = u.seed + this.encounter.elapsed * 0.055, stand = b.radius + spec.stand + (u.tier - 1) * 0.12;
-          const slot = ArenaGeometry.clamp({ x: b.x + Math.cos(angle) * stand, y: b.y + Math.sin(angle) * stand }, "raid", u.radius), d = Math.hypot(slot.x - u.x, slot.y - u.y);
-          if (d > 0.45) {
-            const dx2 = u.x - b.x, dy2 = u.y - b.y, rad = Math.hypot(dx2, dy2), delta = Math.atan2(Math.sin(angle - Math.atan2(dy2, dx2)), Math.cos(angle - Math.atan2(dy2, dx2)));
-            if (rad < b.radius + u.radius + 1.1 && Math.abs(delta) > 0.3) {
-              const tangent = Math.atan2(dy2, dx2) + Math.sign(delta) * 0.32;
-              this.steer(u, b.x + Math.cos(tangent) * (b.radius + u.radius + 1.2), b.y + Math.sin(tangent) * (b.radius + u.radius + 1.2), dt, 4.1);
-            } else this.steer(u, slot.x, slot.y, dt, 4.1);
+          const b = this.boss, spec = ATTACK_TYPES[u.species], dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
+          const stand = b.radius + spec.stand + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + 0.55;
+          if (n > max || spec.kind === "lob" && n < min) {
+            const slot = ArenaGeometry.clamp({ x: b.x + dx / n * stand, y: b.y + dy / n * stand }, "raid", u.radius);
+            this.steer(u, slot.x, slot.y, dt, 4.1);
             return;
           }
-          const dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
+          u.vx = u.vy = 0;
           const target = spec.kind === "lob" ? { x: b.x, y: b.y } : { x: b.x + dx / n * (b.radius + u.radius - 0.16), y: b.y + dy / n * (b.radius + u.radius - 0.16) };
           u.ability.begin(this, target);
         }
@@ -3481,6 +3485,15 @@
     $2("roles").hidden = !raid || home;
     $2("count").textContent = w.units.length;
     $2("starter").textContent = w.units.length >= CONFIG.cap ? "정원이 가득해요" : `새싹까지 ${Math.ceil(CONFIG.starterSeconds / w.progress.rate("production") - w.starter)}초`;
+    const army = w.armyHealth;
+    $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
+    $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
+    $2("bossHealthText").textContent = Math.ceil(w.boss.hp) + " / " + w.boss.maxHp + " HP";
+    for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", w.boss.hp, w.boss.maxHp]]) {
+      const el = $2(id);
+      el.setAttribute("aria-valuenow", value);
+      el.setAttribute("aria-valuemax", max);
+    }
     $2("bossHealth").style.width = w.boss.hp / w.boss.maxHp * 100 + "%";
     $2("battleOutcome").textContent = w.encounter.outcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : w.encounter.outcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "";
     $2("battleOutcome").hidden = home || !raid || w.running;

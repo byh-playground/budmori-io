@@ -96,6 +96,11 @@ function sync(now){
  const w=active.world,raid=w.scene==='raid';for(const [id,value]of [['farm',!raid],['raid',raid],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
  $('farmControls').hidden=raid||home;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!raid||home;$('roles').hidden=!raid||home;
  $('count').textContent=w.units.length;$('starter').textContent=w.units.length>=CONFIG.cap?'정원이 가득해요':`새싹까지 ${Math.ceil(CONFIG.starterSeconds/w.progress.rate('production')-w.starter)}초`;
+ const army=w.armyHealth;
+ $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
+ $('allyHealthText').textContent=Math.ceil(army.current)+' / '+Math.ceil(army.max)+' HP · '+army.living+'/'+army.total+' 생존';
+ $('bossHealthText').textContent=Math.ceil(w.boss.hp)+' / '+w.boss.maxHp+' HP';
+ for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',w.boss.hp,w.boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
  $('bossHealth').style.width=w.boss.hp/w.boss.maxHp*100+'%';$('battleOutcome').textContent=w.encounter.outcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':w.encounter.outcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':'';$('battleOutcome').hidden=home||!raid||w.running;$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('pause').textContent=active.paused?'▶':'Ⅱ';
  $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;
  for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
