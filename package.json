@@ -10,6 +10,7 @@
     "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
     "test:vector-assets": "node tests/vector-assets.e2e.mjs",
+    "test:hungry-expression": "node tests/hungry-expression.e2e.mjs",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
     "verify:raid-load": "node tests/raid-load.mjs"
   },
