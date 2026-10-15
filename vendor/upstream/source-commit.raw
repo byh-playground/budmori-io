@@ -1,26 +1,26 @@
-tree 9316ac2980b9b9245eee94b7d485688b070cad79
-parent baa96876876a08013ad28b5a71c83bfadd285fab
-parent 0508e1ca58eaa13d160a0e10d2b26b43f9004fdb
-author byh020907 <byh020907@naver.com> 1791987010 +0900
-committer GitHub <noreply@github.com> 1791987010 +0900
+tree 1c287bba54529ad9b7f44e5934edb7a056402668
+parent c6ed3685cdad35dbe65fb99a1b6e1297c9c60ce4
+parent 268424a530b7084c0939e3508424ea7d92c66f8f
+author byh020907 <byh020907@naver.com> 1792061213 +0900
+committer GitHub <noreply@github.com> 1792061213 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqz41CCRC1aQ7uu5UhlAAA4XEQAA1Db863eqzq1Cvw/FLiWOEO
- 4Zn7GMQCVKvNdKcAob/km+OlmVS07Knuw/8OxgSQ9tvKp7NPMIMf9CdoA3hr10Qk
- T2vU+ITR5zl9Zfvkwxkv1sfSrfrMOktr5DLnLc/3iUE9WXp0ZdGoPdZyY41L1zOf
- mPt+cQMQCXXNTTpO8qopOU5TmiRc9QCofdoHgUo+GVpSwf/ZhST8o+IMMK/sOgwa
- z3UZ0xTNFeWsN6N7IbE0JvZdyWNZpcuW91xp8Mz1hm1lOVHwF9dBnyNgOVwLQS/z
- WlKnUQ3WQ43Vcm47eYVzJoVTZQR8QaqwLPeTvR+asCKDiJpHZlneEH/kOMsEEeKW
- F44xy11rGIwTmucYUVyLzHgeYBpr9mXDRjE3eASNdh2vEBSGcVsDbcEC4nsgX62y
- tBuPttmyaNpZB4kH1T9p/tgbv1/Gwj4NdZ9OtJyjmItSkJOdu8Ri2DXud5RLz1dD
- ps3OcoGucJPc6LB4cLSQm2RIM1Wcay1TXZK+Vy0ZiLRYk1RhNCSlfeD2asYhwYtj
- Qnn0Skvo2tGWenY+t4SwcLKTPZqa4c20yk7PEkprOiltmQtLR7XEt0P+OF4j5yIT
- 7dPNf2aCDaRrV2ZUJmo17OTlJus1TySThM1sbo6whaleoDCeF+MBC/BLFaGVimaF
- GzWtYnRfbl1bvWuDLjPW
- =LIdk
+ wsFcBAABCAAQBQJq0K8dCRC1aQ7uu5UhlAAAs28QAEB8tLbMLSWCdCcaOhNmrlmL
+ YKRBsJqKx7QP5FsRDfcfdcp5aYSqNlEOMWOKIqWgmCzeLtZw3GmrQeWaIqqtBnJm
+ MuZZsY0RwQHwVu/pv3YUVwSxPcrKLWmb7h7w50dmGRsoxmAdqKjPEIAbtNXNOK+i
+ OJTnTWZf3/H+emMn5K81OkfiDNEdOt1WoS3F1oj/lpULZ/ac00v2FqPTmQt49khh
+ dHVjcdF0ovL0NsKW2Be0erDa6gKXWXY5J9C7pRn8Qh6ypBExQZR0cvj2rVZRoynG
+ 6FNKssDRSDUhw+iVlUaXGty24MLhKEoIQank8KWCEbzA6EQ1GHbjDp26F1tOpN8p
+ QjKuKbYBovT6/hUQIiLpvPpgpiAXS+7IN7aad3CUTymQXtBxTztBO88ZnXh8wCoA
+ woiybwAfTrEKO+thzPfQs3QwkR2P7nGZJMWA6JlgjL1C7W7Q0fn0SKg22IuJVfkC
+ RMmAZcpJaO/pmMjVDdPLkuo1Jf/alQqLs6wp37kLYfgDWL9dCaTx8Dm8CyBWuUui
+ lDoKbfNdIAeyeE17puiP9tFHFHC0xgFeOIG0lM2HlUl1VG2CVENxds/IDg3xa8mO
+ GedApYf3delUq4r98n/3zeut0FCTnJvc90maKTbbuOwd7rTtOAzrNMmB5JlRSj4C
+ C5Xk9KO1zeizOzUCz3Xx
+ =ICS5
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #53 from byh-playground/codex/camera-collision-boom
+Merge pull request #54 from byh-playground/codex/svg-vector-assets-ssot
 
-[feature] 카메라 충돌 boom의 안전 축소와 안정 복원
+feat: add SVG single-source vector asset module

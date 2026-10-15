@@ -4,9 +4,10 @@
 // or independently attest the source build. Refresh fetches immutable commits.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict'),cp=require('node:child_process'),os=require('node:os');
 const ROOT=path.resolve(__dirname,'..');
-const MODULES=Object.freeze({'presentation-events':'BloomGamekitPresentationEvents',camera:'BloomGamekitCamera',rollback:'BloomGamekitRollback',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',transport:'BloomGamekitTransport',interpolation:'BloomGamekitInterpolation',hud:'BloomGamekitHud',rendering:'BloomGamekitRendering',input:'BloomGamekitInput','debug-tools':'BloomGamekitDebugTools'});
-const DIST_MODULES=Object.freeze(['interpolation','rendering','input','deterministic','simloop','transport','replay','rollback','camera','presentation-events','hud','debug-tools','audio','navigation','scenario']);
+const MODULES=Object.freeze({'presentation-events':'BloomGamekitPresentationEvents',camera:'BloomGamekitCamera',rollback:'BloomGamekitRollback',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',transport:'BloomGamekitTransport',interpolation:'BloomGamekitInterpolation',hud:'BloomGamekitHud',rendering:'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets',input:'BloomGamekitInput','debug-tools':'BloomGamekitDebugTools'});
+const DIST_MODULES=Object.freeze(['interpolation','rendering','vector-assets','input','deterministic','simloop','transport','replay','rollback','camera','presentation-events','hud','debug-tools','audio','navigation','scenario']);
 const DIST_ASSETS=Object.freeze([Object.freeze({file:'assets/fonts/noto-sans-kr-700-v1.json',version:'noto-sans-kr-700-v1'})]);
+const SOURCE_FILES=Object.freeze(['modules/vector-assets/compiler.js','modules/vector-assets/schema.js']);
 const sha=(bytes,algorithm='sha256')=>crypto.createHash(algorithm).update(bytes).digest('hex');
 const objectId=(type,bytes)=>sha(Buffer.concat([Buffer.from(`${type} ${bytes.length}\0`),bytes]),'sha1');
 function exactKeys(value,keys){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))}
@@ -20,13 +21,20 @@ function treeEntries(bytes){
  return result;
 }
 function verify(root=ROOT){
- const lock=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'))),dir=path.join(root,'vendor/upstream'),read=n=>fs.readFileSync(path.join(dir,...n.split('/')));
+ const lock=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'))),dir=path.join(root,'vendor/upstream'),sourceDir=path.join(root,'vendor/upstream-source'),read=n=>fs.readFileSync(path.join(dir,...n.split('/'))),readSource=n=>fs.readFileSync(path.join(sourceDir,...n.split('/')));
  assert.equal(lock.schemaVersion,3,'external ESM reference lock schema');assert.equal(lock.repository,'byh-playground/bloom-gamekit');for(const key of ['sourceCommit','distCommit'])assert.match(lock[key],/^[a-f0-9]{40}$/);
  assert.equal(lock.esbuild,'0.28.2');assert.equal(lock.modules.length,Object.keys(MODULES).length);assert.equal(new Set(lock.modules.map(m=>m.name)).size,lock.modules.length);
  assert.deepEqual(lock.assets?.map(({file,version,bytes,sha256})=>({file,version,bytes,sha256})),lock.assets,'Pinned font asset metadata is required');assert.equal(lock.assets.length,DIST_ASSETS.length);
  const commit=read('dist-commit.raw'),source=read('source-commit.raw'),treeText=read('dist-tree.base64').toString('ascii').replace(/\r\n/g,'\n'),tree=Buffer.from(treeText.trim(),'base64');assert.equal(tree.toString('base64')+'\n',treeText,'Canonical base64 Git tree cache');
  assert.equal(objectId('commit',commit),lock.distCommit,'Distribution commit object');assert.equal(objectId('commit',source),lock.sourceCommit,'Source commit object');
  const message=commit.toString('utf8');assert.equal(message.match(/^tree ([a-f0-9]{40})$/m)?.[1],objectId('tree',tree),'Distribution tree');
+  const sourceTreeText=readSource('source-tree.base64').toString('ascii').replace(/\r\n/g,'\n'),sourceTree=Buffer.from(sourceTreeText.trim(),'base64');assert.equal(sourceTree.toString('base64')+'\n',sourceTreeText,'Canonical source Git tree cache');
+  assert.equal(source.toString('utf8').match(/^tree ([a-f0-9]{40})$/m)?.[1],objectId('tree',sourceTree),'Source tree');
+  const sourceModulesTree=Buffer.from(readSource('modules-tree.base64').toString('ascii').trim(),'base64'),sourceVectorTree=Buffer.from(readSource('vector-assets-tree.base64').toString('ascii').trim(),'base64');
+  const sourceEntries=treeEntries(sourceTree),sourceModuleEntries=treeEntries(sourceModulesTree),sourceVectorEntries=treeEntries(sourceVectorTree);
+  assert.equal(sourceEntries.get('modules')?.mode,'40000','source modules tree');assert.equal(sourceEntries.get('modules')?.oid,objectId('tree',sourceModulesTree),'source modules tree object');
+  assert.equal(sourceModuleEntries.get('vector-assets')?.mode,'40000','source vector-assets tree');assert.equal(sourceModuleEntries.get('vector-assets')?.oid,objectId('tree',sourceVectorTree),'source vector-assets tree object');
+  for(const file of SOURCE_FILES){const basename=file.split('/').at(-1),entry=sourceVectorEntries.get(basename),bytes=readSource(file);assert.equal(entry?.mode,'100644',file+' must be regular file');assert.equal(objectId('blob',bytes),entry.oid,file+' pinned source Git blob');}
  assert.equal(message.match(/^Source-Commit: ([a-f0-9]{40})$/m)?.[1],lock.sourceCommit,'Distribution source trailer');
  assert.equal(message.match(/^Manifest-SHA256: ([a-f0-9]{64})$/m)?.[1],lock.manifestSHA256,'Distribution manifest trailer');
  const entries=treeEntries(tree),manifestBytes=read('manifest.json');
@@ -63,12 +71,14 @@ function refresh(repository,root=ROOT){
  const lock=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'))),temp=fs.mkdtempSync(path.join(os.tmpdir(),'budmori-provenance-'));
  const git=(args)=>cp.execFileSync('git',args,{cwd:temp,maxBuffer:32*1024*1024,timeout:120000,env:{...process.env,GIT_TERMINAL_PROMPT:'0'}});
  try{git(['init','--bare','--quiet']);for(const pin of [lock.distCommit,lock.sourceCommit]){assert.match(pin,/^[a-f0-9]{40}$/);git(['fetch','--quiet','--no-tags','--depth=1',repository,pin]);}
- const cache=path.join(temp,'cache');fs.mkdirSync(cache);const put=(name,bytes)=>{const target=path.join(cache,...name.split('/'));fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes)};
- put('dist-commit.raw',git(['cat-file','commit',lock.distCommit]));put('source-commit.raw',git(['cat-file','commit',lock.sourceCommit]));put('dist-tree.base64',git(['cat-file','tree',`${lock.distCommit}^{tree}`]).toString('base64')+'\n');
- for(const name of ['manifest.json',...DIST_MODULES.map(n=>n+'.js'),...DIST_ASSETS.map(a=>a.file)])put(name,git(['show',`${lock.distCommit}:${name}`]));
- put('assets-tree.base64',git(['cat-file','tree',`${lock.distCommit}:assets`]).toString('base64')+'\n');put('assets-fonts-tree.base64',git(['cat-file','tree',`${lock.distCommit}:assets/fonts`]).toString('base64')+'\n');
- const staged=path.join(temp,'staged');fs.mkdirSync(path.join(staged,'vendor'),{recursive:true});fs.cpSync(cache,path.join(staged,'vendor/upstream'),{recursive:true});for(const name of ['index.html','gamekit-lock.json'])fs.copyFileSync(path.join(root,name),path.join(staged,name));fs.cpSync(path.join(root,'src'),path.join(staged,'src'),{recursive:true});verify(staged);
- fs.mkdirSync(path.join(root,'vendor/upstream'),{recursive:true});fs.cpSync(cache,path.join(root,'vendor/upstream'),{recursive:true});console.log('Verified immutable cache refreshed:',lock.distCommit);
+  const cache=path.join(temp,'cache'),sourceCache=path.join(temp,'source-cache');fs.mkdirSync(cache);fs.mkdirSync(sourceCache);const put=(base,name,bytes)=>{const target=path.join(base,...name.split('/'));fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes)};
+  put(cache,'dist-commit.raw',git(['cat-file','commit',lock.distCommit]));put(cache,'source-commit.raw',git(['cat-file','commit',lock.sourceCommit]));put(cache,'dist-tree.base64',git(['cat-file','tree',`${lock.distCommit}^{tree}`]).toString('base64')+'\n');
+  for(const name of ['manifest.json',...DIST_MODULES.map(n=>n+'.js'),...DIST_ASSETS.map(a=>a.file)])put(cache,name,git(['show',`${lock.distCommit}:${name}`]));
+  put(cache,'assets-tree.base64',git(['cat-file','tree',`${lock.distCommit}:assets`]).toString('base64')+'\n');put(cache,'assets-fonts-tree.base64',git(['cat-file','tree',`${lock.distCommit}:assets/fonts`]).toString('base64')+'\n');
+  put(sourceCache,'source-tree.base64',git(['cat-file','tree',`${lock.sourceCommit}^{tree}`]).toString('base64')+'\n');put(sourceCache,'modules-tree.base64',git(['cat-file','tree',`${lock.sourceCommit}:modules`]).toString('base64')+'\n');put(sourceCache,'vector-assets-tree.base64',git(['cat-file','tree',`${lock.sourceCommit}:modules/vector-assets`]).toString('base64')+'\n');
+  for(const name of SOURCE_FILES)put(sourceCache,name,git(['show',`${lock.sourceCommit}:${name}`]));
+  const staged=path.join(temp,'staged');fs.mkdirSync(path.join(staged,'vendor'),{recursive:true});fs.cpSync(cache,path.join(staged,'vendor/upstream'),{recursive:true});fs.cpSync(sourceCache,path.join(staged,'vendor/upstream-source'),{recursive:true});for(const name of ['index.html','gamekit-lock.json'])fs.copyFileSync(path.join(root,name),path.join(staged,name));fs.cpSync(path.join(root,'src'),path.join(staged,'src'),{recursive:true});require('./update-runtime-manifest.cjs').prepareRuntime(staged);verify(staged);
+  fs.cpSync(cache,path.join(root,'vendor/upstream'),{recursive:true,force:true});fs.cpSync(sourceCache,path.join(root,'vendor/upstream-source'),{recursive:true,force:true});fs.copyFileSync(path.join(staged,'index.html'),path.join(root,'index.html'));console.log('Verified immutable cache refreshed:',lock.distCommit,'with vector compiler source',lock.sourceCommit);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 }
 module.exports={verify,inline,sha,MODULES,DIST_ASSETS};
