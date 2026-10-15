@@ -62,7 +62,7 @@
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
-      CONFIG = Object.freeze({ cap: 72, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8 }) });
+      CONFIG = Object.freeze({ cap: 72, maxFarmCap: 100, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, maxRaidUnits: 400, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
       clamp = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
       Body = class {
@@ -105,7 +105,8 @@
         { id: "food", name: "자동 탭", icon: "◒", metric: "eat", goal: 12, parent: "production", description: "자동 탭 속도 +10%/단계 · 수동은 매 탭 +1", value: (l) => `${(0.5 / (1 + 0.1 * l)).toFixed(3)}초 / 탭` },
         { id: "growth", name: "먹이 찾기", icon: "❧", metric: "eat", goal: 10, parent: "production", description: "먹이를 향한 이동속도 +10%/단계 · 성체까지 3끼 유지", value: (l) => `${(2.2 * (1 + 0.1 * l)).toFixed(2)} 속도` },
         { id: "breed", name: "번식 회복", icon: "♡", metric: "birth", goal: 2, parent: "growth", description: "부모의 번식 대기 속도 +10%/단계", value: (l) => `${(5 / (1 + 0.1 * l)).toFixed(2)}초` },
-        { id: "merge", name: "합체 회복", icon: "◇", metric: "merge", goal: 2, parent: "growth", description: "합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지", value: (l) => `${(4 / (1 + 0.1 * l)).toFixed(2)}초` }
+        { id: "merge", name: "합체 회복", icon: "◇", metric: "merge", goal: 2, parent: "growth", description: "합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지", value: (l) => `${(4 / (1 + 0.1 * l)).toFixed(2)}초` },
+        { id: "capacity", name: "Garden expansion", icon: "＋", metric: "birth", goal: 3, parent: "growth", description: "Expand farm capacity by 7 per level, up to 100.", value: (l) => `${Math.min(100, 72 + 7 * l)} troops` }
       ];
       FarmProgress = class {
         constructor() {
@@ -137,15 +138,15 @@
         { kind: "leap", windup: 0.32, recover: 0.9, stand: 2.5, damage: 1.3 }
       ]);
       ArenaGeometry = {
-        bounds(scene2 = "raid", margin = 0) {
-          return scene2 === "raid" ? { x: CONFIG.raid.radiusX - margin, y: CONFIG.raid.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
+        bounds(scene = "raid", margin = 0) {
+          return scene === "raid" ? { x: CONFIG.raid.radiusX - margin, y: CONFIG.raid.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
         },
-        inside(p, scene2 = "raid", margin = 0) {
-          const r = this.bounds(scene2, margin);
+        inside(p, scene = "raid", margin = 0) {
+          const r = this.bounds(scene, margin);
           return p.x * p.x / (r.x * r.x) + p.y * p.y / (r.y * r.y) <= 1;
         },
-        clamp(p, scene2 = "raid", margin = 0) {
-          const r = this.bounds(scene2, margin), k = Math.max(1, Math.hypot(p.x / r.x, p.y / r.y));
+        clamp(p, scene = "raid", margin = 0) {
+          const r = this.bounds(scene, margin), k = Math.max(1, Math.hypot(p.x / r.x, p.y / r.y));
           return { x: p.x / k, y: p.y / k };
         },
         overlaps(a, b) {
@@ -312,7 +313,7 @@
       Unit = class extends AttackingBody(Knockable(Body)) {
         constructor(id, species, tier, x, y) {
           super(x, y);
-          Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier).hp, down: 0, seed: id * 2.39996 });
+          Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier).hp, down: 0, seed: id * 2.39996, ownerId: "", farmId: 0, dropLanded: true });
         }
         get radius() {
           return (0.25 + 0.055 * this.tier) * (this.mature ? 1 : 0.8);
@@ -335,6 +336,22 @@
           this.eventSequence = 0;
           this.reset();
         }
+        static createRaidBattle(seed = 731, expectedPlayers = ["solo"]) {
+          const w = new Garden(seed);
+          w.units = [];
+          w.food = [];
+          w.scene = "raid";
+          w.running = false;
+          w.boss = w.createBoss();
+          w.boss.phase = "resting";
+          w.encounter = { outcome: "idle", elapsed: 0 };
+          w.raidExpectedPlayers = [...expectedPlayers];
+          w.raidRosters = [];
+          w.raidDeploymentStarted = false;
+          w.nextId = 1;
+          w.starter = 0;
+          return w;
+        }
         reset() {
           this.rng = new SeededPRNG(this.seed);
           this.units = [];
@@ -355,6 +372,9 @@
           this.running = false;
           this.encounter = { outcome: "idle", elapsed: 0 };
           this.boss = this.createBoss();
+          this.raidExpectedPlayers = ["solo"];
+          this.raidRosters = [];
+          this.raidDeploymentStarted = false;
           this.metrics = { births: 0, merges: 0, directHits: 0, contacts: 0, landings: 0, basicHits: 0, sweepHits: 0 };
           for (let i = 0; i < 36; i++) {
             const u = this.spawn(i % 3, 1, (this.random() - 0.5) * 15, (this.random() - 0.5) * 11);
@@ -365,11 +385,72 @@
         get armyHealth() {
           return this.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(stats(u.tier).hp, u.hp)), max: sum.max + stats(u.tier).hp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
         }
+        get capacity() {
+          return Math.min(CONFIG.maxFarmCap, CONFIG.cap + 7 * (this.progress?.levels?.capacity || 0));
+        }
+        raidRoster(ownerId) {
+          return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
+        }
+        setRaidPlayers(players) {
+          if (this.scene !== "raid" || !Array.isArray(players) || players.length < 1 || players.length > CONFIG.maxRaidPlayers || players.some((p) => typeof p !== "string" || !p) || new Set(players).size !== players.length) return false;
+          const live = [...players], ordered = this.raidDeploymentStarted ? [...this.raidExpectedPlayers, ...live.filter((id) => !this.raidExpectedPlayers.includes(id))] : live;
+          if (ordered.length > CONFIG.maxRaidPlayers) return false;
+          this.raidExpectedPlayers = ordered;
+          if (!this.raidDeploymentStarted) this.raidRosters = this.raidRosters.filter((r) => live.includes(r.ownerId));
+          this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
+          return true;
+        }
+        raidTotal() {
+          return this.raidRosters.reduce((n, r) => n + r.troops.length, 0);
+        }
+        raidRemaining(ownerId) {
+          const r = this.raidRoster(ownerId);
+          return r ? r.troops.reduce((n, t) => n + (!t.deployed ? 1 : 0), 0) : 0;
+        }
+        registerRaidRoster(ownerId, entries) {
+          if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.maxRaidPlayerUnits || this.raidTotal() + entries.length > CONFIG.maxRaidUnits) return false;
+          const ids = /* @__PURE__ */ new Set(), troops = [];
+          for (const e of entries) {
+            if (!Array.isArray(e) || e.length !== 3 || !Number.isSafeInteger(e[0]) || e[0] < 1 || e[0] > CONFIG.maxFarmCap || !Number.isInteger(e[1]) || e[1] < 0 || e[1] > 2 || !Number.isInteger(e[2]) || e[2] < 1 || e[2] > 4 || ids.has(e[0])) return false;
+            ids.add(e[0]);
+            troops.push({ farmId: e[0], species: e[1], tier: e[2], deployed: false });
+          }
+          this.raidRosters.push({ ownerId, troops, buffUntil: 0, buffReadyAt: 0 });
+          this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
+          return true;
+        }
+        deployRaidUnit(ownerId, farmId, x, y) {
+          if (this.scene !== "raid" || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.maxRaidUnits || !Number.isSafeInteger(farmId) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+          const roster = this.raidRoster(ownerId), troop = roster?.troops.find((t) => t.farmId === farmId);
+          if (!troop || troop.deployed || !ArenaGeometry.inside({ x, y }, "raid", 0.5)) return false;
+          const slot = this.raidExpectedPlayers.indexOf(ownerId), id = (slot + 1) * 1e6 + farmId;
+          if (this.units.some((u2) => u2.id === id)) return false;
+          const u = new Unit(id, troop.species, troop.tier, x, y);
+          Object.assign(u, { ownerId, farmId, z: CONFIG.raid.dropHeight, vz: 0, dropLanded: false, meals: 3, growth: 3 });
+          troop.deployed = true;
+          this.units.push(u);
+          if (!this.raidDeploymentStarted) {
+            this.raidDeploymentStarted = true;
+            this.running = true;
+            this.encounter = { outcome: "fighting", elapsed: 0 };
+            this.boss.phase = "chase";
+          }
+          this.combat("unit-drop", { unit: id, ownerId, x, y, z: u.z });
+          return true;
+        }
+        useRaidBuff(ownerId) {
+          const r = this.raidRoster(ownerId);
+          if (!this.running || !r || this.time < r.buffReadyAt) return false;
+          r.buffUntil = this.time + CONFIG.raid.buffDuration;
+          r.buffReadyAt = this.time + CONFIG.raid.buffCooldown;
+          this.combat("buff", { ownerId, until: r.buffUntil });
+          return true;
+        }
         random() {
           return this.rng.nextUint32() / 4294967296;
         }
         spawn(species, tier, x, y) {
-          if (this.units.length >= CONFIG.cap) return null;
+          if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.maxRaidUnits)) return null;
           const u = new Unit(this.nextId++, species, clamp(tier, 1, CONFIG.maxTier), x, y);
           this.units.push(u);
           return u;
@@ -427,24 +508,43 @@
         createBoss() {
           return { x: 0, y: 0, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp: 2400, maxHp: 2400, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "basic", startAngle: 0, travel: 0 };
         }
-        setScene(scene2) {
-          if (scene2 === this.scene) return;
+        setScene(scene) {
+          if (scene === this.scene) return;
           this.projectiles = [];
-          this.scene = scene2;
-          this.running = scene2 === "raid";
+          this.scene = scene;
+          this.running = scene === "raid";
           this.encounter = { outcome: this.running ? "fighting" : "idle", elapsed: 0 };
           this.boss = this.createBoss();
           for (let i = 0; i < this.units.length; i++) {
             const u = this.units[i];
-            if (scene2 === "raid") {
+            if (scene === "raid") {
               u.home = { x: u.x, y: u.y };
+              u.farmId = u.id;
+              u.ownerId = "solo";
+              u.id = 1e6 + u.farmId;
+              u.dropLanded = true;
               const angle = i * 2.3999632297, rad = 10.5 + i % 3 * 0.9;
               Object.assign(u, { x: Math.cos(angle) * rad, y: Math.sin(angle) * rad * 0.84 });
-            } else Object.assign(u, u.home);
+            } else {
+              u.id = u.farmId || u.id;
+              u.ownerId = "";
+              u.farmId = 0;
+              u.dropLanded = true;
+              Object.assign(u, u.home);
+            }
             u.ability = new AttackCycle(u);
             Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier).hp });
           }
-          if (this.running) this.boss.phase = "chase";
+          if (this.running) {
+            this.boss.phase = "chase";
+            this.raidExpectedPlayers = ["solo"];
+            this.raidRosters = [{ ownerId: "solo", troops: this.units.map((u) => ({ farmId: u.farmId, species: u.species, tier: u.tier, deployed: true })), buffUntil: 0, buffReadyAt: 0 }];
+            this.raidDeploymentStarted = true;
+          } else {
+            this.raidExpectedPlayers = ["solo"];
+            this.raidRosters = [];
+            this.raidDeploymentStarted = false;
+          }
         }
         pair(a, b) {
           if (a === b || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2) return false;
@@ -472,8 +572,8 @@
         step(dt) {
           this.time += dt;
           if (this.scene === "raid" && this.running) this.encounter.elapsed += dt;
-          this.starter += dt;
-          while (this.starter >= CONFIG.starterSeconds / this.progress.rate("production")) {
+          if (this.scene === "farm") this.starter += dt;
+          while (this.scene === "farm" && this.starter >= CONFIG.starterSeconds / this.progress.rate("production")) {
             this.starter -= CONFIG.starterSeconds / this.progress.rate("production");
             const u = this.spawn(Math.floor(this.random() * 3), 1, -7, 0);
             if (u && this.scene === "raid") {
@@ -511,7 +611,7 @@
             u.age += dt;
             u.cooldown = Math.max(0, u.cooldown - dt);
             if (this.scene === "farm") this.farmUnit(u, dt);
-            else if (this.running) this.raidUnit(u, dt);
+            else if (this.running && u.dropLanded) this.raidUnit(u, dt);
             const oldZ = u.z, oldPosition = { x: u.x, y: u.y, z: u.z };
             u.integrate(dt);
             if (this.scene === "raid" && u.hp <= 0 && u.z === 0 && u.vz === 0) {
@@ -519,16 +619,20 @@
             }
             if (this.scene === "raid" && this.running) u.ability.afterMove(this, oldPosition);
             if (oldZ > 0 && u.z === 0) {
+              if (this.scene === "raid" && !u.dropLanded) {
+                u.dropLanded = true;
+                u.bounce = 0.16;
+                this.combat("drop-land", { unit: u.id, ownerId: u.ownerId, x: u.x, y: u.y, z: 0 });
+                this.effects.push({ kind: "drop-dust", x: u.x, y: u.y, z: 0, life: 0 });
+              }
               this.metrics.landings++;
               if (this.scene === "raid") this.combat("unit-land", { unit: u.id, x: u.x, y: u.y, z: 0, strength: Math.min(1, Math.hypot(u.vx, u.vy) / 8) });
               else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
             }
             this.boundBody(u, this.scene, u.radius);
           }
-          for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
-            if (this.scene === "raid" && (units[i].hp <= 0 || units[j].hp <= 0)) continue;
-            if (contact(units[i], units[j])) this.metrics.contacts++;
-          }
+          if (this.scene === "raid") this.raidContacts(units);
+          else for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (contact(units[i], units[j])) this.metrics.contacts++;
           if (this.scene === "farm") {
             for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) this.pair(units[i], units[j]);
           } else if (this.running) {
@@ -544,6 +648,23 @@
             u.vx += (dx / d * speed2 - u.vx) * rate;
             u.vy += (dy / d * speed2 - u.vy) * rate;
             u.angle = Math.atan2(dy, dx);
+          }
+        }
+        raidContacts(units) {
+          const size = 1.5, cells = /* @__PURE__ */ new Map(), key = (x, y) => `${x},${y}`;
+          for (let i = 0; i < units.length; i++) {
+            const u = units[i];
+            if (u.hp <= 0 || !u.dropLanded) continue;
+            const cx = Math.floor(u.x / size), cy = Math.floor(u.y / size), near = [];
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) near.push(...cells.get(key(cx + dx, cy + dy)) || []);
+            near.sort((a, b) => a - b);
+            for (const j of near) {
+              const other = units[j];
+              if (other.hp > 0 && other.dropLanded && contact(other, u)) this.metrics.contacts++;
+            }
+            const k = key(cx, cy);
+            if (!cells.has(k)) cells.set(k, []);
+            cells.get(k).push(i);
           }
         }
         farmUnit(u, dt) {
@@ -582,12 +703,12 @@
           const event = this.notice(kind, { time: this.time, ...detail }), toPresentationTime = presentationClocks.get(this);
           if (toPresentationTime) presentationEventTimes.set(event, toPresentationTime(this.time));
         }
-        boundBody(body, scene2, margin) {
-          const before = { x: body.x, y: body.y }, p = ArenaGeometry.clamp(before, scene2, margin);
+        boundBody(body, scene, margin) {
+          const before = { x: body.x, y: body.y }, p = ArenaGeometry.clamp(before, scene, margin);
           body.x = p.x;
           body.y = p.y;
           if (before.x !== p.x || before.y !== p.y) {
-            const r = ArenaGeometry.bounds(scene2, margin), nx = p.x / (r.x * r.x), ny = p.y / (r.y * r.y), n = Math.hypot(nx, ny) || 1, out = ((body.vx || 0) * nx + (body.vy || 0) * ny) / n;
+            const r = ArenaGeometry.bounds(scene, margin), nx = p.x / (r.x * r.x), ny = p.y / (r.y * r.y), n = Math.hypot(nx, ny) || 1, out = ((body.vx || 0) * nx + (body.vy || 0) * ny) / n;
             if (out > 0) {
               body.vx -= 1.3 * out * nx / n;
               body.vy -= 1.3 * out * ny / n;
@@ -596,7 +717,7 @@
         }
         separateBoss(u) {
           const b = this.boss;
-          if (u.hp <= 0 || u.z > b.height) return;
+          if (u.hp <= 0 || !u.dropLanded || u.z > b.height) return;
           const dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy), r = b.radius + u.radius;
           if (d >= r) return;
           const a = d > 1e-6 ? Math.atan2(dy, dx) : u.seed, nx = Math.cos(a), ny = Math.sin(a);
@@ -617,11 +738,11 @@
         damageBoss(u, action, point) {
           if (action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
-          const spec = ATTACK_TYPES[u.species];
-          this.boss.hp = Math.max(0, this.boss.hp - stats(u.tier).atk * spec.damage);
+          const spec = ATTACK_TYPES[u.species], roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
+          this.boss.hp = Math.max(0, this.boss.hp - stats(u.tier).atk * spec.damage * (buffed ? CONFIG.raid.buffDamage : 1));
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, species: u.species, attackKind: spec.kind, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: spec.damage });
+          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackKind: spec.kind, buffed, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: spec.damage * (buffed ? CONFIG.raid.buffDamage : 1) });
           this.combatEvent("damage", u, action);
           this.progress.record("hit");
           return true;
@@ -644,6 +765,7 @@
           this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
         }
         raidUnit(u, dt) {
+          if (!u.dropLanded) return;
           if (u.hp <= 0) {
             u.down = 1;
             u.ability.interrupt();
@@ -692,7 +814,7 @@
         hitBossWeapon(from, to, kind) {
           const b = this.boss, c = CONFIG.raid;
           for (const u of this.units) {
-            if (u.hp <= 0 || b.hit.has(u.id)) continue;
+            if (u.hp <= 0 || !u.dropLanded || b.hit.has(u.id)) continue;
             const p = ArenaGeometry.sweep(from, to, c.weaponRadius, 1.4, { x: u.x, y: u.y, z: u.z, radius: u.radius, height: 0.65 });
             if (!p) continue;
             b.hit.add(u.id);
@@ -707,20 +829,22 @@
         }
         updateBoss(dt) {
           const b = this.boss, c = CONFIG.raid;
+          if (!this.raidDeploymentStarted) return;
           if (b.hp <= 0) {
             this.finish("victory");
             return;
           }
-          if (!this.units.some((u) => u.hp > 0)) {
+          if (this.raidRosters.length && this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) && !this.units.some((u) => u.hp > 0)) {
             this.finish("defeat");
             return;
           }
+          const living = this.units.filter((u) => u.hp > 0 && u.dropLanded);
+          if (!living.length) return;
           b.clock += dt;
           b.sweepClock += dt;
           if (b.phase === "chase") {
-            let target = this.units.find((u) => u.id === b.targetId && u.hp > 0);
+            let target = living.find((u) => u.id === b.targetId);
             if (!target) {
-              const living = this.units.filter((u) => u.hp > 0);
               target = living[(b.basicCount * 7 + b.swings * 11) % living.length];
               b.targetId = target.id;
             }
@@ -778,6 +902,39 @@
       return key === "owner" && this instanceof AttackCycle ? void 0 : value instanceof Set ? [...value] : value;
     }));
   }
+  function normalize(raw, migrateLegacyRaid = false) {
+    raw = structuredClone(raw);
+    const base = snapshot(new Garden()), fill = (v, d) => {
+      for (const [k, x] of Object.entries(d)) {
+        if (!Object.hasOwn(v, k)) v[k] = structuredClone(x);
+        else if (v[k] && x && typeof v[k] === "object" && typeof x === "object" && !Array.isArray(v[k]) && !Array.isArray(x)) fill(v[k], x);
+      }
+    };
+    fill(raw, base);
+    raw.progress.levels.capacity = Number.isInteger(raw.progress.levels.capacity) ? raw.progress.levels.capacity : 0;
+    for (const u of raw.units) {
+      if (!Object.hasOwn(u, "ownerId")) u.ownerId = "";
+      if (!Object.hasOwn(u, "farmId")) u.farmId = 0;
+      if (!Object.hasOwn(u, "dropLanded")) u.dropLanded = true;
+    }
+    if (migrateLegacyRaid && raw.scene === "raid") {
+      raw.scene = "farm";
+      raw.running = false;
+      raw.encounter = { outcome: "idle", elapsed: 0 };
+      raw.raidExpectedPlayers = ["solo"];
+      raw.raidRosters = [];
+      raw.raidDeploymentStarted = false;
+      raw.projectiles = [];
+      raw.boss = base.boss;
+      for (const u of raw.units) {
+        u.x = u.home?.x ?? u.x;
+        u.y = u.home?.y ?? u.y;
+        Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: 40 * 1.5 ** (u.tier - 1), dropLanded: true });
+        u.ability = { phase: "idle", elapsed: 0, action: null };
+      }
+    }
+    return raw;
+  }
   function assert(ok) {
     if (!ok) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
   }
@@ -808,20 +965,42 @@
       else assert(typeof v[k] === typeof x);
     }
   }
-  function restore(raw) {
+  function restore(raw, { migrateLegacyRaid = false } = {}) {
+    raw = normalize(raw, migrateLegacyRaid);
     finiteTree(raw);
     const g = new Garden();
     shape(raw, snapshot(g));
     assert(integer(raw.seed, 0, 4294967295) && integer(raw.rng.state, 0, 4294967295));
     assert(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
-    assert(raw.units.length <= CONFIG.cap && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.cap);
+    const farmCap = Math.min(CONFIG.maxFarmCap, CONFIG.cap + 7 * (raw.progress.levels.capacity || 0));
+    assert(raw.units.length <= (raw.scene === "farm" ? farmCap : CONFIG.maxRaidUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.maxRaidUnits);
     assert(integer(raw.nextId, 1, 1e9) && integer(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
-    const ids = /* @__PURE__ */ new Set();
+    assert(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.maxRaidPlayers && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
+    const rosterOwners = /* @__PURE__ */ new Set(), manifest = /* @__PURE__ */ new Set();
+    for (const r of raw.raidRosters) {
+      assert(raw.raidExpectedPlayers.includes(r.ownerId) && !rosterOwners.has(r.ownerId) && Array.isArray(r.troops) && r.troops.length <= CONFIG.maxRaidPlayerUnits);
+      rosterOwners.add(r.ownerId);
+      const ids2 = /* @__PURE__ */ new Set();
+      for (const t of r.troops) {
+        assert(integer(t.farmId, 1, CONFIG.maxFarmCap) && integer(t.species, 0, 2) && integer(t.tier, 1, 4) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
+        ids2.add(t.farmId);
+        manifest.add(r.ownerId + ":" + t.farmId);
+      }
+      assert(Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
+    }
+    assert(manifest.size <= CONFIG.maxRaidUnits);
+    const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set();
     for (const u of raw.units) {
       shape(u, snapshot(new Unit(1, 0, 1, 0, 0)));
-      assert(integer(u.id, 1, raw.nextId - 1) && !ids.has(u.id));
+      const maxId = raw.scene === "raid" ? CONFIG.maxRaidPlayers * 1e6 + CONFIG.maxFarmCap : raw.nextId - 1;
+      assert(integer(u.id, 1, maxId) && !ids.has(u.id));
       ids.add(u.id);
-      assert(integer(u.species, 0, 2) && integer(u.tier, 1, 4) && ["idle", "windup", "active", "recover"].includes(u.ability.phase));
+      assert(integer(u.species, 0, 2) && integer(u.tier, 1, 4) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && typeof u.dropLanded === "boolean");
+      if (raw.scene === "raid") {
+        assert(raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.maxFarmCap) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId));
+        deployed.add(u.ownerId + ":" + u.farmId);
+        assert(u.id === (raw.raidExpectedPlayers.indexOf(u.ownerId) + 1) * 1e6 + u.farmId);
+      }
       if (u.ability.action) {
         const a = u.ability.action;
         assert(integer(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
@@ -836,7 +1015,7 @@
     }
     for (const p of raw.projectiles) {
       validatePath(p.path);
-      assert(integer(p.owner, 1, raw.nextId - 1));
+      assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.maxRaidPlayers * 1e6 + CONFIG.maxFarmCap : raw.nextId - 1));
       assert(integer(p.species, 0, 2) && integer(p.tier, 1, 4) && typeof p.hit === "boolean");
     }
     for (const n of TREE_NODES) assert(integer(raw.progress.levels[n.id], 0, 4));
@@ -844,6 +1023,7 @@
     assert(["chase", "strike-windup", "strike", "sweep-windup", "sweep", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp);
     assert(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
     assert(raw.running === (raw.encounter.outcome === "fighting"));
+    assert(typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length));
     assert(raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && ["basic", "sweep"].includes(raw.boss.attackKind));
     Object.assign(g, structuredClone(raw));
     g.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
@@ -873,7 +1053,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.4.2";
+      PRODUCT_VERSION = "0.4.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -888,7 +1068,7 @@
     if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
     const data = JSON.parse(text);
     if (data.schema !== "budmori-farm" || typeof data.productVersion !== "string" || data.productVersion.split(".").slice(0, 2).join(".") !== COMPATIBILITY) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
-    return restore(data.world);
+    return restore(data.world, { migrateLegacyRaid: true });
   }
   var KEY, MAX_BYTES, FarmStorage;
   var init_farm_storage = __esm({
@@ -936,9 +1116,10 @@
           return this.save(world);
         }
         import(text) {
-          const world = parseSave(text);
-          localStorage.setItem(KEY, text);
-          this.raw = text;
+          const world = parseSave(text), normalized = this.encode(world);
+          restore(JSON.parse(normalized).world);
+          localStorage.setItem(KEY, normalized);
+          this.raw = normalized;
           this.world = world;
           this.writable = true;
           this.error = "";
@@ -1105,11 +1286,15 @@
     project(x, y, z = 0) {
       return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (0.62 * y + 0.785 * z + this.offset[1])) * this.scale };
     }
-    configure(scene2) {
-      if (this.scene === scene2) return;
-      this.scene = scene2;
+    screenToWorld(clientX, clientY) {
+      const r = this.canvas.getBoundingClientRect(), px = (clientX - r.left) * this.pixelRatio, py = (clientY - r.top) * this.pixelRatio;
+      return { x: px / this.scale - this.offset[0] - this.view[0], y: (this.view[1] - py / this.scale - this.offset[1]) / 0.62 };
+    }
+    configure(scene) {
+      if (this.scene === scene) return;
+      this.scene = scene;
       const a = this.aspect;
-      if (scene2 === "raid") this.view = a > 1.2 ? [Math.max(26.5, 17 * a), 17] : [26.5, 26.5 / a];
+      if (scene === "raid") this.view = a > 1.2 ? [Math.max(26.5, 17 * a), 17] : [26.5, 26.5 / a];
       else this.view = a > 1.2 ? [Math.max(12, 9 * a), 9] : [11.7, 11.7 / a];
       this.offset = [0, a < 0.8 ? 1.1 : -0.3];
       this.scale = this.canvas.width / (2 * this.view[0]);
@@ -1124,6 +1309,14 @@
     groundEllipse(x, y, rx, ry, color2, z = 0) {
       const p = this.project(x, y, z);
       this.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, color2);
+    }
+    strokeGroundEllipse(x, y, rx, ry, color2, width = 0.08) {
+      const c = this.ctx, p = this.project(x, y);
+      c.strokeStyle = color2;
+      c.lineWidth = width * this.scale;
+      c.beginPath();
+      c.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, 0, 0, Math.PI * 2);
+      c.stroke();
     }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
@@ -1146,13 +1339,35 @@
     attackEffects(world) {
       for (const u of world.units) {
         const a = u.ability, s = ATTACK_TYPES[u.species];
+        if (u.buffed && u.hp > 0) this.ring(u.x, u.y, u.radius + 0.16, "#eacb72", 0.055);
         if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.1, COLORS[u.species], 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
       }
     }
+    drawCrowdUnit(u, sim) {
+      const dead = u.hp <= 0 || u.down > 0, p = this.project(u.x, u.y, u.z), r = Math.max(u.size * this.scale * 0.78, 4.5 * this.pixelRatio), style = SEED_STYLES[u.species], y = p.y - r * 0.79, c = this.ctx;
+      c.globalAlpha = dead ? 0.8 : 1;
+      this.ellipse(p.x, y, r * 0.9, r * 0.75, u.flash > 0.09 ? "#f4edc4" : style.shell);
+      this.ellipse(p.x - r * 0.23, y - r * 0.3, r * 0.25, r * 0.11, style.light, -0.32);
+      if (dead) {
+        for (const side of [-1, 1]) {
+          const x = p.x + side * r * 0.23, eyeY = y - r * 0.05;
+          this.line({ x: x - r * 0.09, y: eyeY - r * 0.09 }, { x: x + r * 0.09, y: eyeY + r * 0.09 }, 0.035, style.edge);
+          this.line({ x: x + r * 0.09, y: eyeY - r * 0.09 }, { x: x - r * 0.09, y: eyeY + r * 0.09 }, 0.035, style.edge);
+        }
+      } else {
+        for (const side of [-1, 1]) this.ellipse(p.x + side * r * 0.22, y + r * 0.08, r * 0.055, r * 0.075, style.edge);
+        if (u.species === 2) this.ellipse(p.x + r * 0.57, y - r * 0.35, r * 0.12, r * 0.19, style.germ, -0.35);
+      }
+      c.globalAlpha = 1;
+    }
     drawUnit(u, sim) {
+      if (sim.scene === "raid" && sim.units.length > 150) {
+        this.drawCrowdUnit(u, sim);
+        return;
+      }
       const dead = u.hp <= 0, walk = dead ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * walk : 0, p = this.project(u.x, u.y, u.z + bob);
       const r = Math.max(u.size * this.scale * 0.78, (sim.scene === "raid" ? 4.5 : 11) * this.pixelRatio);
-      const joy = sim.effects.some((e) => ["eat", "birth", "merge"].includes(e.kind) && e.life < 0.85 && Math.hypot(e.x - u.x, e.y - u.y) < 1.2);
+      const joy = sim.scene === "farm" && sim.effects.some((e) => ["eat", "birth", "merge"].includes(e.kind) && e.life < 0.85 && Math.hypot(e.x - u.x, e.y - u.y) < 1.2);
       SeedArt.draw(this.ctx, u.species, p.x, p.y, r, u, sim.time, { pixelRatio: this.pixelRatio, extra: this.feel?.squash(u.id, this.displayTimeMs) || 0, expression: u.z > 0.5 || u.stun > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal" });
     }
     bossPose(world) {
@@ -1202,6 +1417,12 @@
         this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", a + 0.7);
       }
       if (raid) {
+        this.strokeGroundEllipse(0, 0, CONFIG.raid.radiusX - 0.5, CONFIG.raid.radiusY - 0.5, "#728e61a8", 0.075);
+        if (this.dropTarget) {
+          const t = this.dropTarget;
+          this.groundEllipse(t.x, t.y, 0.32, 0.22, t.valid ? "#f3d58a55" : "#b56d6266");
+          this.strokeGroundEllipse(t.x, t.y, 0.36, 0.25, t.valid ? "#f4e0a0" : "#b36359", 0.055);
+        }
         const b = sim2.boss, wind = b.phase.endsWith("windup"), active2 = b.phase === "strike" || b.phase === "sweep", heavy = b.phase === "sweep-windup" || b.phase === "sweep";
         if (wind || active2) {
           const reach = heavy ? CONFIG.raid.sweepReach : CONFIG.raid.basicReach, color = heavy ? "#b46c45" : "#a98a52";
@@ -1226,8 +1447,8 @@
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
       for (const u of sim2.units) {
-        const a = clamp(0.24 - u.z * 0.035, 0.07, 0.24);
-        this.groundEllipse(u.x, u.y, u.size * (0.65 + u.z * 0.035), u.size * 0.42, `rgba(42,61,35,${a})`);
+        const a = clamp(0.22 / (1 + u.z * 0.3), 0.045, 0.22), shadow = u.size * 0.66 / (1 + u.z * 0.65);
+        this.groundEllipse(u.x, u.y, shadow, shadow * 0.62, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
       if (sim2.scene === "raid") {
@@ -1268,7 +1489,14 @@
             this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.035, `rgba(245,213,133,${1 - t})`);
           }
         } else if (e.kind === "land" || e.kind === "impact") this.ring(e.x, e.y, 0.1 + q * 0.8, `rgba(146,131,78,${(1 - q) * 0.65})`);
-        else if (e.kind === "birth" || e.kind === "merge") {
+        else if (e.kind === "drop-dust") {
+          const t = Math.min(1, q / 0.28);
+          this.ring(e.x, e.y, 0.12 + t * 0.4, `rgba(126,126,99,${(1 - t) * 0.42})`, 0.045);
+          for (let i = 0; i < 4; i++) {
+            const a = i * Math.PI / 2 + t * 0.35, p = this.project(e.x + Math.cos(a) * t * 0.33, e.y + Math.sin(a) * t * 0.22, 0.025 + Math.sin(t * Math.PI) * 0.1);
+            this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.03, `rgba(179,169,137,${1 - t})`);
+          }
+        } else if (e.kind === "birth" || e.kind === "merge") {
           const birth = e.kind === "birth", color = birth ? "#df87a4" : "#58b9bb";
           this.ring(e.x, e.y, birth ? 0.35 + q * 1.5 : 1.8 * (1 - q) + 0.15, color, 0.07);
           for (let i = 0; i < 6; i++) {
@@ -1336,9 +1564,13 @@
       size: R.LINEAR,
       radius: R.LINEAR,
       maxHp: R.STEP,
-      fed: R.STEP
+      fed: R.STEP,
+      ownerId: R.STATE_KEY,
+      farmId: R.STEP,
+      dropLanded: R.STEP,
+      buffed: R.STEP
     });
-    constructor(u) {
+    constructor(u, world) {
       super();
       Object.assign(this, {
         x: u.x,
@@ -1359,7 +1591,11 @@
         size: u.size,
         radius: u.radius,
         maxHp: 40 * 1.5 ** (u.tier - 1),
-        fed: u.fed
+        fed: u.fed,
+        ownerId: u.ownerId,
+        farmId: u.farmId,
+        dropLanded: u.dropLanded,
+        buffed: world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0)
       });
     }
   };
@@ -1458,7 +1694,7 @@
       this.tick = 0;
       this.presentationTick = 0;
       this.epoch = 0;
-      this.players = [];
+      this.players = [...room2?.players || ["solo"]];
       this.speed = 1;
       this._paused = false;
       this.pauseStartedAt = null;
@@ -1488,6 +1724,7 @@
       }, applyMembership: (change) => {
         this.epoch = change.epoch;
         this.players = [...change.players];
+        if (this.world.scene === "raid") this.world.setRaidPlayers(this.players);
         this.pendingPresentationMode = "reset";
       }, step: (ctx) => this.step(ctx) };
       const emitEvent = (event) => {
@@ -1499,7 +1736,7 @@
         }
         onEvent(event);
       };
-      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: 5, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent: emitEvent });
+      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: CONFIG.maxRaidPlayers, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent: emitEvent });
       this.loop = globalThis.BloomGamekitSimloop.createLoop({
         session: this.session,
         getInput: () => ({ input: new Uint8Array(1), commands: (this.session.ready ? this.pending.splice(0, 32) : []).map((payload) => ({ payload })), predict: false }),
@@ -1521,7 +1758,7 @@
       return { tick: this.tick, epoch: this.epoch, players: this.players, speed: this.speed, world: snapshot(this.world) };
     }
     validate(s, ctx = {}) {
-      if (!Number.isSafeInteger(s.tick) || s.tick < 0 || !Number.isSafeInteger(s.epoch) || s.epoch < 0 || !Array.isArray(s.players) || s.players.length > 5 || s.players.some((p) => typeof p !== "string") || ![1, 4].includes(s.speed) || ctx.tick !== void 0 && s.tick !== ctx.tick || ctx.membershipEpoch !== void 0 && s.epoch !== ctx.membershipEpoch) throw Error("Invalid farm snapshot");
+      if (!Number.isSafeInteger(s.tick) || s.tick < 0 || !Number.isSafeInteger(s.epoch) || s.epoch < 0 || !Array.isArray(s.players) || s.players.length > CONFIG.maxRaidPlayers || s.players.some((p) => typeof p !== "string") || ![1, 4].includes(s.speed) || ctx.tick !== void 0 && s.tick !== ctx.tick || ctx.membershipEpoch !== void 0 && s.epoch !== ctx.membershipEpoch) throw Error("Invalid farm snapshot");
       return restore(s.world);
     }
     load(s) {
@@ -1536,7 +1773,7 @@
       this.pendingPresentationMode = "load";
     }
     queue(type, args = {}) {
-      if (!this.session.ready || this.pending.length >= 64) return false;
+      if (this.session.closed || this.pending.length >= 64) return false;
       this.pending.push(codec.encode({ type, ...args }));
       return true;
     }
@@ -1545,7 +1782,7 @@
         if (!this.players.includes(f.playerId)) continue;
         for (const c of f.commands) {
           try {
-            this.command(codec.decode(c.payload));
+            this.command(codec.decode(c.payload), f.playerId);
           } catch {
           }
         }
@@ -1556,31 +1793,34 @@
       }
       const w = this.world, startTime = w.time, speed = this.speed, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
       bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3 / speed) / 1e3);
-      w.advanceAutoTaps(0.05);
+      if (w.scene === "farm") w.advanceAutoTaps(0.05);
       for (let i = 0; i < 6 * speed; i++) w.step(CONFIG.fixedStep);
       this.tick = tick + 1;
       if (!this.session.resimulating) this.presentationTick++;
     }
-    command(c) {
+    command(c, ownerId = this.localPlayerId) {
       const w = this.world;
       switch (c.type) {
         case "feed":
-          w.tapFood("manual");
+          if (w.scene === "farm") w.tapFood("manual");
           break;
         case "mode":
-          if (["breed", "merge"].includes(c.value)) w.mode = c.value;
-          break;
-        case "scene":
-          if (["farm", "raid"].includes(c.value) && c.value !== w.scene) {
-            w.setScene(c.value);
-            this.pendingPresentationMode = "reset";
-          }
+          if (w.scene === "farm" && ["breed", "merge"].includes(c.value)) w.mode = c.value;
           break;
         case "speed":
           if ([1, 4].includes(c.value)) this.speed = c.value;
           break;
         case "invest":
-          if (typeof c.id === "string") w.progress.invest(c.id);
+          if (typeof c.id === "string" && w.scene === "farm") w.progress.invest(c.id);
+          break;
+        case "register-roster":
+          if (Array.isArray(c.entries)) w.registerRaidRoster(ownerId, c.entries);
+          break;
+        case "deploy":
+          if (Number.isSafeInteger(c.farmId) && Number.isFinite(c.x) && Number.isFinite(c.y)) w.deployRaidUnit(ownerId, c.farmId, c.x, c.y);
+          break;
+        case "buff":
+          w.useRaidBuff(ownerId);
           break;
       }
     }
@@ -1613,7 +1853,7 @@
       if (mode !== "continuous" && this.presentationSequence > 0) this.presentationRevision++;
       const world = this.world, receiptNowMs = this.captureClock(), timeMs = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, receiptNowMs - this.presentationOriginWallMs), entities = [];
       if (this.presentationOriginWallMs === null) this.presentationOriginWallMs = receiptNowMs;
-      for (const u of world.units) entities.push({ id: "unit:" + u.id, generation: 0, source: new UnitRender(u) });
+      for (const u of world.units) entities.push({ id: "unit:" + u.id, generation: 0, source: new UnitRender(u, world) });
       entities.push({ id: "boss", generation: 0, source: new BossRender(world.boss) });
       for (const f of world.food) entities.push({ id: this.presentationIdentity("food", f), generation: 0, source: new FoodRender(f) });
       for (const p of world.projectiles) entities.push({ id: "projectile:" + p.id, generation: 0, source: new ProjectileRender(p) });
@@ -1954,9 +2194,14 @@
   var attempt = null;
   var room = null;
   var solo = null;
+  var personalGarden = null;
   var noticeSequence = 0;
   var lastSave = 0;
   var treePause = false;
+  var selectedCard = { species: 0, tier: 1 };
+  var queuedFarmIds = /* @__PURE__ */ new Set();
+  var dropPointer = null;
+  var dropTimer = null;
   var renderer = new Diorama($2("world"));
   var measuredFrames = [];
   var lastFrameTimestamp = null;
@@ -1999,8 +2244,8 @@
   install(new Garden());
   active.paused = true;
   function persist() {
-    if (active && !room && !home) {
-      const ok = storage.save(active.world);
+    if (personalGarden) {
+      const ok = storage.save(personalGarden);
       $2("saveNotice").textContent = ok ? "" : storage.error;
       $2("treeStorage").hidden = ok;
     }
@@ -2036,7 +2281,35 @@
   }
   function start(world, push = true) {
     foodFeel.unlock();
+    personalGarden = world;
     install(world);
+    setHome(false, push);
+  }
+  function beginRaid(push = true) {
+    if (room || !personalGarden || active.world.scene === "raid") return;
+    persist();
+    queuedFarmIds.clear();
+    selectedCard = { species: 0, tier: 1 };
+    const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"]);
+    install(battle);
+    active.queue("register-roster", { entries: personalGarden.units.slice(0, CONFIG.maxRaidPlayerUnits).map((u) => [u.id, u.species, u.tier]) });
+    setHome(false, push);
+  }
+  async function returnToFarm(push = true) {
+    if (room) {
+      const leaving = room;
+      try {
+        await active.session.leave();
+      } catch {
+      }
+      active.dispose();
+      leaving.close();
+      room = null;
+      solo = null;
+    }
+    if (!personalGarden) return;
+    queuedFarmIds.clear();
+    install(personalGarden);
     setHome(false, push);
   }
   $2("continueGame").onclick = () => {
@@ -2106,13 +2379,14 @@
   };
   $2("onlineGame").onclick = async () => {
     if (attempt || room) return;
+    personalGarden = restore(snapshot(storage.world || personalGarden || active.world));
     persist();
-    solo = restore(snapshot(storage.world || active.world));
+    solo = restore(snapshot(personalGarden));
     const controller = attempt = new AbortController();
     refreshStart();
     $2("sessionNotice").textContent = "함께할 정원을 찾고 있어요…";
     try {
-      const next = await BloomGamekitTransport.createNostrPublicRoom({ namespace: "budmori-public-v1", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, maxPlayers: 5, discoveryMs: 1500, totalTimeoutMs: 6e4, peerTimeoutMs: 2e4, signal: controller.signal, onStatus: (e) => {
+      const next = await BloomGamekitTransport.createNostrPublicRoom({ namespace: "budmori-public-v1", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, maxPlayers: CONFIG.maxRaidPlayers, discoveryMs: 1500, totalTimeoutMs: 6e4, peerTimeoutMs: 2e4, signal: controller.signal, onStatus: (e) => {
         if (attempt === controller) $2("sessionNotice").textContent = { discovering: "함께할 정원을 찾고 있어요…", hosting: "새 정원을 열고 있어요…", joining: "정원에 연결하고 있어요…" }[e.type] || "함께할 정원을 준비하고 있어요…";
       } });
       if (controller.signal.aborted) {
@@ -2120,7 +2394,9 @@
         return;
       }
       room = next;
-      install(new Garden(BloomGamekitDeterministic.hashBytes(new TextEncoder().encode(next.sessionId))), { room: next });
+      const battle = Garden.createRaidBattle(BloomGamekitDeterministic.hashBytes(new TextEncoder().encode(next.sessionId)), next.players);
+      install(battle, { room: next });
+      active.queue("register-roster", { entries: personalGarden.units.slice(0, CONFIG.maxRaidPlayerUnits).map((u) => [u.id, u.species, u.tier]) });
       $2("sessionNotice").textContent = "함께 가꾸는 정원 · 개인 저장은 보존됩니다.";
       setHome(false);
     } catch (e) {
@@ -2138,30 +2414,17 @@
   };
   $2("leaveOnline").onclick = async () => {
     if (!room) return;
-    const leaving = room;
     $2("leaveOnline").disabled = true;
     try {
-      await active.session.leave();
-    } catch {
-    } finally {
-      active.dispose();
-      leaving.close();
-      room = null;
-      install(solo || new Garden());
-      solo = null;
-      $2("sessionNotice").textContent = "개인 정원으로 돌아왔어요.";
-      $2("leaveOnline").disabled = false;
+      await returnToFarm(false);
       setHome(true);
+    } finally {
+      $2("leaveOnline").disabled = false;
     }
   };
-  function scene(value, push = true) {
-    foodFeel.unlock();
-    active.queue("scene", { value });
-    if (push) history.pushState(null, "", value === "raid" ? "#/raid" : "#/farm");
-  }
-  $2("farm").onclick = () => scene("farm");
-  $2("raid").onclick = () => scene("raid");
-  $2("return").onclick = () => scene("farm");
+  $2("farm").onclick = () => returnToFarm();
+  $2("raid").onclick = () => beginRaid();
+  $2("return").onclick = () => returnToFarm();
   for (const value of ["breed", "merge"]) $2(value).onclick = () => active.queue("mode", { value });
   $2("feed").addEventListener("keydown", (e) => {
     if (e.repeat && ["Enter", " "].includes(e.key)) e.preventDefault();
@@ -2175,7 +2438,7 @@
     active.paused = !active.paused;
   };
   function drawTree() {
-    const p = active.world.progress, labels = { eat: "식사", birth: "번식", merge: "합체", hit: "보스 타격" };
+    const p = (personalGarden || active.world).progress, labels = { eat: "식사", birth: "번식", merge: "합체", hit: "보스 타격" };
     $2("treeNodes").innerHTML = TREE_NODES.map((n) => {
       const l = p.levels[n.id], goal = n.goal * (l + 1), parent = TREE_NODES.find((v) => v.id === n.parent);
       return `<article class="tree-node" data-ready="${p.ready(n)}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${n.icon}</span><h3>${n.name}</h3><span>${l}/4</span></div><p>${n.description}</p><div class="node-values">${n.value(l)}${l < 4 ? ` <span>→ ${n.value(l + 1)}</span>` : ""}</div><progress max="${goal}" value="${Math.min(goal, p.records[n.metric])}"></progress><small>${l === 4 ? "완료" : `${labels[n.metric]} ${p.records[n.metric]}/${goal}${parent && !p.levels[parent.id] ? ` · ${parent.name} 1 필요` : ""}`}</small><button data-invest="${n.id}" ${p.ready(n) ? "" : "disabled"}>${l === 4 ? "✓" : "+"}<span class="sr-only">${n.name} 투자</span></button></article>`;
@@ -2219,7 +2482,82 @@
     }
   };
   var canvas = $2("world");
-  canvas.addEventListener("pointerdown", () => foodFeel.unlock());
+  var speciesNames = ["씨앗", "버섯", "꽃"];
+  $2("deploymentCards").innerHTML = Array.from({ length: 12 }, (_, i) => {
+    const species = Math.floor(i / 4), tier = i % 4 + 1;
+    return `<button type="button" data-card="${species}:${tier}" aria-pressed="false" aria-label="${speciesNames[species]} 티어 ${tier} 선택">${speciesNames[species]} · T${tier} <b data-count="${species}:${tier}">0</b></button>`;
+  }).join("");
+  function remainingFor(species, tier) {
+    const roster = active.world.raidRoster(active.localPlayerId);
+    if (roster) return roster.troops.filter((t) => t.species === species && t.tier === tier && !t.deployed && !queuedFarmIds.has(t.farmId)).length;
+    return personalGarden?.units.filter((u) => u.species === species && u.tier === tier && !queuedFarmIds.has(u.id)).length || 0;
+  }
+  function deploymentHud() {
+    const w = active.world, raid = w.scene === "raid", roster = w.raidRoster(active.localPlayerId);
+    for (const b of $2("deploymentCards").querySelectorAll("[data-card]")) {
+      const [species, tier] = b.dataset.card.split(":").map(Number), count = remainingFor(species, tier);
+      b.setAttribute("aria-pressed", selectedCard.species === species && selectedCard.tier === tier);
+      b.disabled = !raid || count === 0 || room && active.players.length < 2 || !w.raidExpectedPlayers.every((id) => w.raidRoster(id));
+      const n = b.querySelector("[data-count]");
+      if (n) n.textContent = count;
+    }
+    const remaining = roster ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, registered = w.raidRosters.length, expected = w.raidExpectedPlayers.length;
+    $2("raidRemaining").textContent = room && active.players.length < 2 ? "동료가 들어오기를 기다리는 중…" : !roster || registered < expected ? `병력 명단 동기화 중 · ${registered}/${expected}명` : `남은 병력 ${remaining} · 전장 안을 탭하세요 (누르면 250ms마다 투입)`;
+    const own = w.raidRoster(active.localPlayerId), cooldown = own ? Math.max(0, own.buffReadyAt - w.time) : 0;
+    $2("buff").disabled = !raid || !w.running || !own || cooldown > 0;
+    $2("buff").textContent = cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화";
+  }
+  function deployAt(clientX, clientY) {
+    if (home || active.world.scene !== "raid" || room && active.players.length < 2 || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
+    const p = renderer.screenToWorld(clientX, clientY), valid = ArenaGeometry.inside(p, "raid", 0.5);
+    renderer.dropTarget = { ...p, valid };
+    if (!valid) return false;
+    const s = selectedCard.species, t = selectedCard.tier, roster = active.world.raidRoster(active.localPlayerId), unit = personalGarden?.units.find((u) => u.species === s && u.tier === t && !queuedFarmIds.has(u.id) && (!roster || !roster.troops.find((v) => v.farmId === u.id)?.deployed));
+    if (!unit) return false;
+    const ok = active.queue("deploy", { farmId: unit.id, x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 });
+    if (ok) queuedFarmIds.add(unit.id);
+    return ok;
+  }
+  function stopDrop(e) {
+    if (dropTimer !== null) clearInterval(dropTimer);
+    dropTimer = null;
+    if (dropPointer && canvas.hasPointerCapture?.(dropPointer.id)) canvas.releasePointerCapture(dropPointer.id);
+    dropPointer = null;
+    if (e) renderer.dropTarget = null;
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    foodFeel.unlock();
+    if (home || active.world.scene !== "raid") return;
+    canvas.setPointerCapture?.(e.pointerId);
+    const p = renderer.screenToWorld(e.clientX, e.clientY);
+    dropPointer = { id: e.pointerId, x: e.clientX, y: e.clientY, last: ArenaGeometry.inside(p, "raid", 0.5) ? p : null };
+    deployAt(e.clientX, e.clientY);
+    dropTimer = setInterval(() => {
+      if (dropPointer) deployAt(dropPointer.x, dropPointer.y);
+    }, 250);
+    e.preventDefault();
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dropPointer || e.pointerId !== dropPointer.id) return;
+    dropPointer.x = e.clientX;
+    dropPointer.y = e.clientY;
+    const p = renderer.screenToWorld(e.clientX, e.clientY);
+    renderer.dropTarget = { ...p, valid: ArenaGeometry.inside(p, "raid", 0.5) };
+    if (!dropPointer.last || Math.hypot(p.x - dropPointer.last.x, p.y - dropPointer.last.y) >= 0.9) {
+      if (deployAt(e.clientX, e.clientY)) dropPointer.last = p;
+    }
+  });
+  canvas.addEventListener("pointerup", (e) => stopDrop(e));
+  canvas.addEventListener("pointercancel", (e) => stopDrop(e));
+  canvas.addEventListener("lostpointercapture", (e) => stopDrop(e));
+  $2("deploymentCards").onclick = (e) => {
+    const b = e.target.closest("[data-card]");
+    if (!b) return;
+    const [species, tier] = b.dataset.card.split(":").map(Number);
+    selectedCard = { species, tier };
+    deploymentHud();
+  };
+  $2("buff").onclick = () => active.queue("buff");
   window.addEventListener("blur", persist);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
@@ -2263,18 +2601,15 @@
       }
       if (room) setHome(false, false);
       else if (storage.world) start(restore(snapshot(storage.world)), false);
-      else {
-        install(new Garden());
-        home = false;
-        document.body.dataset.home = "false";
-        $2("startScreen").hidden = true;
-      }
+      else start(new Garden(), false);
     }
     if (r === "#/help" || r === "#/growth") panel(r === "#/help" ? "helpPanel" : "treePanel", true, false);
     else {
       if (!$2("treePanel").hidden) panel("treePanel", false, false);
       if (!$2("helpPanel").hidden) panel("helpPanel", false, false);
-      scene(r === "#/raid" ? "raid" : "farm", false);
+      if (r === "#/raid") {
+        if (!room) beginRaid(false);
+      } else if (r === "#/farm" && active.world.scene === "raid" && !room) returnToFarm(false);
     }
   }
   window.addEventListener("popstate", route);
@@ -2285,12 +2620,13 @@
     $2("raidControls").hidden = !raid || home;
     $2("bossbar").hidden = !raid || home;
     $2("roles").hidden = !raid || home;
-    $2("count").textContent = display.units.length;
-    $2("starter").textContent = w.units.length >= CONFIG.cap ? "정원이 가득해요" : `새싹까지 ${Math.ceil(CONFIG.starterSeconds / w.progress.rate("production") - w.starter)}초`;
+    $2("count").textContent = raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : display.units.length;
+    $2("capacity").textContent = personalGarden?.capacity ?? CONFIG.cap;
+    $2("starter").textContent = raid ? `${w.units.length} deployed in raid` : w.units.length >= w.capacity ? "정원이 가득 찼어요" : `다음 씨앗까지 ${Math.ceil(CONFIG.starterSeconds / w.progress.rate("production") - w.starter)}초`;
     const army = display.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
     $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
-    const boss = display.boss, battleOutcome = boss.hp <= 0 ? "victory" : display.units.length && display.units.every((u) => u.hp <= 0) ? "defeat" : "fighting";
+    const boss = display.boss, battleOutcome = w.encounter.outcome;
     $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
     for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
       const el = $2(id);
@@ -2302,6 +2638,7 @@
     $2("battleOutcome").hidden = home || !raid || battleOutcome === "fighting";
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
+    $2("tree").disabled = raid;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
     $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
@@ -2317,6 +2654,11 @@
     }
     noticeSequence = w.eventSequence;
     foodFeel.frame(now);
+    for (const id of [...queuedFarmIds]) {
+      const troop = w.raidRoster(active.localPlayerId)?.troops.find((t) => t.farmId === id);
+      if (troop?.deployed) queuedFarmIds.delete(id);
+    }
+    deploymentHud();
     $2("connection").hidden = !room;
     $2("connection").textContent = room ? active.session.failure ? "연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요" : `함께 ${active.players.length}명 · ${active.session.ready ? "연결됨" : "동기화 중"}` : "";
     if (now - lastSave > 3e3) {

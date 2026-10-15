@@ -25,6 +25,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
     project(x, y, z = 0) {
       return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (0.62 * y + 0.785 * z + this.offset[1])) * this.scale };
     }
+    screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect(),px=(clientX-r.left)*this.pixelRatio,py=(clientY-r.top)*this.pixelRatio;return{x:px/this.scale-this.offset[0]-this.view[0],y:(this.view[1]-py/this.scale-this.offset[1])/.62}}
     configure(scene){
       if(this.scene===scene)return;this.scene=scene;const a=this.aspect;
       if(scene==='raid')this.view=a>1.2?[Math.max(26.5,17*a),17]:[26.5,26.5/a];
@@ -42,6 +43,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       const p = this.project(x, y, z);
       this.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, color2);
     }
+    strokeGroundEllipse(x,y,rx,ry,color2,width=.08){const c=this.ctx,p=this.project(x,y);c.strokeStyle=color2;c.lineWidth=width*this.scale;c.beginPath();c.ellipse(p.x,p.y,rx*this.scale,ry*this.scale*.62,0,0,Math.PI*2);c.stroke()}
     ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
       c.strokeStyle = color2;
@@ -61,12 +63,20 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       c.stroke();
     }
     attackEffects(world){
-      for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
+      for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(u.buffed&&u.hp>0)this.ring(u.x,u.y,u.radius+.16,'#eacb72',.055);if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,COLORS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
+    }
+    drawCrowdUnit(u,sim){
+      const dead=u.hp<=0||u.down>0,p=this.project(u.x,u.y,u.z),r=Math.max(u.size*this.scale*.78,4.5*this.pixelRatio),style=SEED_STYLES[u.species],y=p.y-r*.79,c=this.ctx;
+      c.globalAlpha=dead?.8:1;this.ellipse(p.x,y,r*.9,r*.75,u.flash>.09?'#f4edc4':style.shell);this.ellipse(p.x-r*.23,y-r*.3,r*.25,r*.11,style.light,-.32);
+      if(dead){for(const side of [-1,1]){const x=p.x+side*r*.23,eyeY=y-r*.05;this.line({x:x-r*.09,y:eyeY-r*.09},{x:x+r*.09,y:eyeY+r*.09},.035,style.edge);this.line({x:x+r*.09,y:eyeY-r*.09},{x:x-r*.09,y:eyeY+r*.09},.035,style.edge)}}
+      else{for(const side of [-1,1])this.ellipse(p.x+side*r*.22,y+r*.08,r*.055,r*.075,style.edge);if(u.species===2)this.ellipse(p.x+r*.57,y-r*.35,r*.12,r*.19,style.germ,-.35)}
+      c.globalAlpha=1;
     }
     drawUnit(u,sim){
+      if(sim.scene==='raid'&&sim.units.length>150){this.drawCrowdUnit(u,sim);return}
       const dead=u.hp<=0,walk=dead?0:Math.min(1,Math.hypot(u.vx,u.vy)),bob=u.z===0?Math.abs(Math.sin(sim.time*9+u.seed))*.10*walk:0,p=this.project(u.x,u.y,u.z+bob);
       const r=Math.max(u.size*this.scale*.78,(sim.scene==='raid'?4.5:11)*this.pixelRatio);
-      const joy=sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
+      const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
       SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.displayTimeMs)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
     }
     bossPose(world){
@@ -105,6 +115,8 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
         this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", a + 0.7);
       }
       if(raid){
+        this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
+        if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
         const b=sim2.boss,wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep',heavy=b.phase==='sweep-windup'||b.phase==='sweep';
         if(wind||active){
           const reach=heavy?CONFIG.raid.sweepReach:CONFIG.raid.basicReach,color=heavy?'#b46c45':'#a98a52';
@@ -125,8 +137,8 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
       for (const u of sim2.units) {
-        const a = clamp(0.24 - u.z * 0.035, 0.07, 0.24);
-        this.groundEllipse(u.x, u.y, u.size * (0.65 + u.z * 0.035), u.size * 0.42, `rgba(42,61,35,${a})`);
+        const a = clamp(0.22 / (1 + u.z * .3), 0.045, 0.22),shadow=u.size*.66/(1+u.z*.65);
+        this.groundEllipse(u.x, u.y, shadow, shadow * .62, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
       if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33');this.drawBossWeapon(sim2)}
@@ -155,6 +167,7 @@ const {WebGLDevice,VectorContext}=globalThis.BloomGamekitRendering;
           for(let i=0;i<3&&t<1;i++){const a=i*Math.PI*2/3,p=this.project(e.x+Math.cos(a)*t*.4,e.y+Math.sin(a)*t*.4,.08+Math.sin(t*Math.PI)*.2);this.ellipse(p.x,p.y,this.scale*.045,this.scale*.035,`rgba(245,213,133,${1-t})`);}
         }
         else if (e.kind === "land" || e.kind === "impact") this.ring(e.x, e.y, 0.1 + q * 0.8, `rgba(146,131,78,${(1 - q) * 0.65})`);
+        else if(e.kind==='drop-dust'){const t=Math.min(1,q/.28);this.ring(e.x,e.y,.12+t*.4,`rgba(126,126,99,${(1-t)*.42})`,.045);for(let i=0;i<4;i++){const a=i*Math.PI/2+t*.35,p=this.project(e.x+Math.cos(a)*t*.33,e.y+Math.sin(a)*t*.22,.025+Math.sin(t*Math.PI)*.1);this.ellipse(p.x,p.y,this.scale*.045,this.scale*.03,`rgba(179,169,137,${1-t})`)}}
         else if (e.kind === "birth" || e.kind === "merge") {
           const birth=e.kind==="birth", color=birth?"#df87a4":"#58b9bb";
           this.ring(e.x,e.y,birth ? .35+q*1.5 : 1.8*(1-q)+.15,color,.07);
