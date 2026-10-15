@@ -21,10 +21,10 @@ async function core(){
  await p.waitForFunction(()=>BUDMORI.sim.metrics.births>0,{},{timeout:12000});await p.locator('#merge').click();await p.waitForFunction(()=>BUDMORI.sim.metrics.merges>0,{},{timeout:15000});check('Farm production, same-species breeding and same-tier merging through normal play');
  for(let i=0;i<35;i++)await p.locator('#feed').click();await p.waitForFunction(()=>BUDMORI.sim.progress.records.eat>=8,{},{timeout:12000});await p.locator('#tree').click();assert.equal(new URL(p.url()).hash,'#/growth');await p.locator('[data-invest="production"]').click();await p.waitForFunction(()=>BUDMORI.sim.progress.levels.production===1);await p.locator('#treeClose').click();check('Activity record → growth investment → close and resume');
  await p.locator('#raid').click();await p.waitForFunction(()=>BUDMORI.sim.scene==='raid'&&BUDMORI.sim.running);await p.waitForFunction(()=>new Set(BUDMORI.sim.combatLog.filter(e=>e.kind==='damage').map(e=>e.species)).size===3,{},{timeout:20000});check('Boss starts immediately; all three automatic attack types cause actual impact damage');
- await passiveInput(p,'mouse');await render(p,'pc-battle');await combatScenarios(p);
+ await passiveInput(p,'mouse');await render(p,'pc-battle');await combatScenarios(p);await armyScenarios(p);await seedScenarios(p,'pc');
  await p.locator('#return').click();await p.waitForFunction(()=>BUDMORI.sim.scene==='farm');await p.locator('#home').click();const saved=await p.evaluate(()=>JSON.parse(localStorage.getItem('bloom-weapon-cards-v3')));assert.equal(saved.world.progress.levels.production,1);assert(saved.world.metrics.merges>0);await p.reload();await p.waitForFunction(()=>window.BUDMORI);await p.locator('#continueGame').click();assert.equal(await p.evaluate(()=>BUDMORI.sim.progress.levels.production),1);check('Boss return → home save → browser reload → continue retains army and investment');
  await p.locator('#help').click();assert.equal(new URL(p.url()).hash,'#/help');await p.reload();await p.waitForFunction(()=>window.BUDMORI);assert(await p.locator('#helpPanel').isVisible());await p.locator('#closeHelp').click();await p.goBack();assert(await p.locator('#helpPanel').isVisible());await p.goForward();assert.equal(await p.locator('#helpPanel').isVisible(),false);check('Help direct route, F5, close, back and forward agree');await p.locator('#tree').click();await p.evaluate(()=>{history.pushState(null,'','#/help');dispatchEvent(new PopStateEvent('popstate'))});await p.locator('#closeHelp').click();assert.equal(await p.evaluate(()=>BUDMORI.runtime.paused),false);await p.goto('about:blank');await p.goBack();await p.waitForFunction(()=>window.BUDMORI);if(await p.locator('#startScreen').isVisible())await p.locator('#continueGame').click();assert.equal(await p.evaluate(()=>BUDMORI.runtime.session.closed),false);check('Panel-to-panel route restores prior pause; browser Back revives a live session');await clean(p);await c.close();
- const mobile=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2,hasTouch:true,isMobile:true}),m=await open(mobile);await m.locator('#newGame').tap();await m.locator('#feed').tap();await m.locator('#raid').tap();await m.waitForFunction(()=>BUDMORI.sim.scene==='raid');await passiveInput(m,'touch');await m.waitForFunction(()=>BUDMORI.sim.notices.some(h=>h.kind==='unit-hit'&&BUDMORI.sim.notices.some(l=>l.kind==='unit-land'&&l.unit===h.unit&&l.sequence>h.sequence)),{},{timeout:20000});await render(m,'mobile-battle');await m.locator('#tree').tap();await render(m,'mobile-growth');await m.locator('#treeClose').tap();await m.setViewportSize({width:390,height:568});await m.locator('#help').tap();await render(m,'mobile-short-help');await clean(m);check('390px native touch with no manual command, airborne landing, growth, short viewport help and real GPU render');await mobile.close();
+ const mobile=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2,hasTouch:true,isMobile:true}),m=await open(mobile);await m.locator('#newGame').tap();await m.locator('#feed').tap();await m.locator('#raid').tap();await m.waitForFunction(()=>BUDMORI.sim.scene==='raid');await passiveInput(m,'touch');await m.waitForFunction(()=>BUDMORI.sim.notices.some(h=>h.kind==='unit-hit'&&BUDMORI.sim.notices.some(l=>l.kind==='unit-land'&&l.unit===h.unit&&l.sequence>h.sequence)),{},{timeout:20000});await render(m,'mobile-battle');await seedScenarios(m,'mobile');await m.locator('#tree').tap();await render(m,'mobile-growth');await m.locator('#treeClose').tap();await m.setViewportSize({width:390,height:568});await m.locator('#help').tap();await render(m,'mobile-short-help');await clean(m);check('390px native touch with no manual command, airborne landing, growth, short viewport help and real GPU render');await mobile.close();
 }
 async function passiveInput(p,pointerType){
  const canvas=p.locator('canvas'),box=await canvas.boundingBox(),x=box.x+box.width*.3,y=box.y+box.height*.55;
@@ -78,12 +78,77 @@ async function combatScenarios(p){
  }
  check('Victory and defeat render in product; native return restores farm army');
 }
+async function seedScenarios(p,label){
+ const poses=['idle','windup','active','recover'];
+ const signatures=await p.evaluate(()=>{
+  const art=BUDMORI.SeedArt,w=new BUDMORI.sim.constructor(623),u=w.units[0],signatures=[];
+  for(let species=0;species<3;species++)for(let tier=1;tier<=4;tier++){
+   u.species=species;u.tier=tier;u.meals=3;const values=[];
+   for(const phase of ['idle','windup','active','recover']){u.ability.phase=phase;u.ability.elapsed=phase==='idle'?0:.12;const pose=art.pose(u,1.25,0);if(![pose.sx,pose.sy,pose.tilt,pose.open].every(Number.isFinite))throw Error('Non-finite seed pose');values.push(JSON.stringify([pose.sx,pose.sy,pose.tilt,pose.open]));}
+   if(new Set(values).size<3)throw Error('Seed preparation/contact/recovery poses indistinguishable');signatures.push({species,tier,distinct:new Set(values).size});
+  }
+  u.hp=0;u.down=1;if(!art.pose(u,1.25,0).dead)throw Error('Dead seed pose missing');return signatures;
+ });
+ report.seedPoses=signatures;
+ await p.evaluate(()=>{globalThis.seedOriginal={world:BUDMORI.runtime.world,paused:BUDMORI.runtime.paused};BUDMORI.runtime.paused=true;});
+ try{
+  for(const scene of ['farm','raid']){
+   await p.evaluate(scene=>{const r=BUDMORI.runtime,w=new r.world.constructor(623);w.units=[];w.food=[];w.effects=[];w.projectiles=[];w.setScene(scene);w.time=1.25;w.boss.phase='resting';if(scene==='raid'){w.boss.x=14;w.boss.y=8;}
+    for(let species=0;species<3;species++)for(let tier=1;tier<=4;tier++){const u=w.spawn(species,tier,(tier-2.5)*3.4,(species-1)*3);Object.assign(u,{meals:3,growth:3,angle:Math.PI*.15,z:0,vx:0,vy:0,vz:0});}
+    r.world=w;r.previous=null;
+   },scene);
+   for(const phase of poses){
+    await p.evaluate(phase=>{for(const u of BUDMORI.sim.units){u.ability.phase=phase;u.ability.elapsed=phase==='idle'?0:.12;}},phase);
+    await p.evaluate(()=>new Promise(requestAnimationFrame));await render(p,label+'-seed-'+scene+'-'+phase);
+    const visible=await p.evaluate(()=>{const r=BUDMORI.renderer;return BUDMORI.sim.units.map(u=>{const q=r.project(u.x,u.y,u.z),d=r.pixelRatio;return {species:u.species,tier:u.tier,radius:u.radius,x:q.x/d,y:q.y/d,visible:q.x>=0&&q.y>=0&&q.x<r.canvas.width&&q.y<r.canvas.height};});});
+    assert(visible.every(u=>u.visible),'seed grid inside actual '+scene+' viewport');report.seedGrid??=[];report.seedGrid.push({label,scene,phase,units:visible});
+   }
+   if(scene==='raid'){
+    await p.evaluate(()=>{for(const u of BUDMORI.sim.units){u.hp=0;u.down=1;u.ability.phase='recover';u.z=0;u.vx=u.vy=u.vz=0;}});await p.evaluate(()=>new Promise(requestAnimationFrame));await render(p,label+'-seed-corpses');
+   }
+  }
+ }finally{await p.evaluate(()=>{const r=BUDMORI.runtime;r.world=seedOriginal.world;r.paused=seedOriginal.paused;r.previous=null;});}
+ check(label+' three seed species × tiers1–4 × four attack poses at real farm/raid camera sizes');
+}
+async function armyScenarios(p){
+ const evidence=await p.evaluate(()=>{
+  const Garden=BUDMORI.sim.constructor,specs=BUDMORI.ATTACK_TYPES;
+  const target=(species,x)=>{const w=new Garden(501);w.units=[];w.spawn(species,1,x,0);w.setScene('raid');Object.assign(w.units[0],{x,y:0,z:0,vx:0,vy:0,vz:0});w.boss.phase='resting';w.boss.hp=w.boss.maxHp=1e6;return w;};
+  const ranges=[];
+  for(let species=0;species<3;species++){
+   const initial=4.4+specs[species].stand+3,w=target(species,initial),u=w.units[0];let prepare=null;
+   for(let i=0;i<1800&&!prepare;i++){w.step(1/120);prepare=w.combatLog.find(e=>e.kind==='prepare');}
+   const distance=prepare?Math.hypot(prepare.x-w.boss.x,prepare.y-w.boss.y):null;let minDistance=Math.hypot(u.x,u.y),lateral=0;
+   for(let i=0;i<600;i++){w.step(1/120);minDistance=Math.min(minDistance,Math.hypot(u.x,u.y));lateral=Math.max(lateral,Math.abs(u.y));}
+   ranges.push({species,distance,stand:w.boss.radius+specs[species].stand,minDistance,lateral,damaged:w.boss.hp<w.boss.maxHp});
+  }
+  const close=target(1,5.1),lob=close.units[0];for(let i=0;i<1800&&!close.combatLog.some(e=>e.kind==='prepare');i++)close.step(1/120);const prep=close.combatLog.find(e=>e.kind==='prepare');
+  const retreat={distance:prep?Math.hypot(prep.x,prep.y):null,stand:close.boss.radius+specs[1].stand,x:lob.x};
+  const w=new Garden(829);w.units=[];const dead=w.spawn(0,1,5,0),alive=w.spawn(1,1,12,0);w.setScene('raid');Object.assign(dead,{x:5,y:0,hp:8,z:0,vx:0,vy:0,vz:0});Object.assign(alive,{x:12,y:0,hp:1e5,z:0,vx:0,vy:0,vz:0});w.boss.targetId=dead.id;
+  let airborne=false,landed=false;for(let i=0;i<1800;i++){w.step(1/120);if(dead.hp===0&&dead.z>.1)airborne=true;if(dead.hp===0&&w.notices.some(e=>e.kind==='unit-land'&&e.unit===dead.id))landed=true;}
+  const corpse={dead:dead.hp===0,airborne,landed,z:dead.z};
+  // Explicit overlap fixture: a settled corpse cannot be displaced by a boss or live unit.
+  const at={x:dead.x,y:dead.y};Object.assign(w.boss,{x:dead.x,y:dead.y,phase:'resting'});Object.assign(alive,{x:dead.x+.01,y:dead.y,z:0,vx:0,vy:0,vz:0});for(let i=0;i<240;i++)w.step(1/120);corpse.drift=Math.hypot(dead.x-at.x,dead.y-at.y);
+  w.boss.phase='chase';w.boss.targetId=dead.id;w.step(1/120);corpse.retargeted=w.boss.targetId!==dead.id;
+  w.setScene('farm');corpse.recovered=w.units.every(u=>u.hp>0&&u.down===0&&u.z===0);
+  const h=new Garden(307);h.units=[];for(let tier=1;tier<=3;tier++)h.spawn(tier-1,tier,(tier-2)*6,0);h.setScene('raid');h.boss.phase='resting';const max=h.units.reduce((n,u)=>n+u.hp,0);h.units[0].hp=0;h.units[1].hp=0;h.units[2].hp=17;const before={...h.armyHealth};h.starter=59.99;h.step(.02);const after={...h.armyHealth},added=h.units.at(-1).hp;
+  return {ranges,retreat,corpse,health:{max,before,after,added}};
+ });
+ for(const r of evidence.ranges){assert(r.distance!==null&&Math.abs(r.distance-r.stand)<=.65,'species '+r.species+' attacks within own range');assert(r.damaged,'species '+r.species+' real impact');assert(r.lateral<.15,'species '+r.species+' has no forced rotating slot');if(r.species===1)assert(r.minDistance>=r.stand-.65,'lob holds firing range');}
+ assert(evidence.retreat.distance!==null&&evidence.retreat.distance>=evidence.retreat.stand-.65&&evidence.retreat.x>5.1,'close lob retreats before firing');
+ const corpse=evidence.corpse;assert(corpse.dead&&corpse.airborne&&corpse.landed&&corpse.z===0,'lethal hit corpse completes airborne landing');assert(corpse.drift<.05,'settled corpse remains at landing under body overlap');assert(corpse.retargeted&&corpse.recovered,'corpse excluded from targets and restored on return');
+ const h=evidence.health;assert.deepEqual(h.before,{current:17,max:h.max,living:1,total:3});assert.equal(h.after.max,h.max+h.added);assert.equal(h.after.current,17+h.added);assert.equal(h.after.total,4);assert.equal(h.after.living,2);report.army=evidence;
+ const wasPaused=await p.evaluate(()=>{const r=BUDMORI.runtime,paused=r.paused;r.paused=true;return paused;});await p.evaluate(()=>new Promise(requestAnimationFrame));
+ const hud=await p.evaluate(()=>({army:BUDMORI.sim.armyHealth,boss:BUDMORI.sim.boss.hp,text:document.querySelector('#allyHealthText').textContent,bossText:document.querySelector('#bossHealthText').textContent,bar:document.querySelector('#allyHealth').parentElement.getBoundingClientRect().width,now:Number(document.querySelector('#allyHealth').getAttribute('aria-valuenow')),max:Number(document.querySelector('#allyHealth').getAttribute('aria-valuemax'))}));
+ await p.evaluate(paused=>{BUDMORI.runtime.paused=paused},wasPaused);assert(hud.bar>0);assert.equal(hud.now,hud.army.current);assert.equal(hud.max,hud.army.max);assert(hud.text.includes(String(Math.ceil(hud.army.current)))&&hud.text.includes(String(Math.ceil(hud.army.max))));assert(hud.bossText.includes(String(Math.ceil(hud.boss))));check('Species hold actual firing range; corpses land, stay nonblocking, leave targets and recover; aggregateHP retains dead denominator and adds reinforcements');
+}
+
 async function save(){
  const c=await browser.newContext({viewport:{width:1280,height:800}});await c.addInitScript(()=>localStorage.setItem('bloom-weapon-cards-v3',JSON.stringify({productVersion:'0.3.0',compatibility:'0.3',world:{army:['preserve-me'],cast:null,moveTarget:null}} )));const p=await open(c),old=await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3'));assert(await p.locator('#continueGame').isDisabled());assert((await p.locator('#saveNotice').textContent()).includes('호환'));await p.waitForTimeout(500);assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),old);
  await p.goto(base+'/#/raid');await p.waitForFunction(()=>window.BUDMORI);assert(await p.locator('#startScreen').isVisible());assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),old);check('Incompatible save with direct raid route redirects home and retains original bytes');
  const download=p.waitForEvent('download');await p.locator('#exportSave').click();const d=await download,raw=await readFile(await d.path(),'utf8');assert.equal(raw,old);check('Incompatible existing save is retained unchanged and exported byte-for-byte');
- await p.locator('#newGame').click();assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),old);await p.locator('#cancelNew').click();assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),old);await p.locator('#newGame').click();await p.locator('#confirmNew').click();await p.waitForFunction(()=>BUDMORI.runtime.tick>3);await p.locator('#home').click();const valid=await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3'));assert.equal(JSON.parse(valid).productVersion,'0.4.0');check('Only explicit new-garden confirmation replaces the incompatible save');
- await p.locator('#saveFile').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from('{"world":{}}')});assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),valid);await p.locator('#saveFile').setInputFiles({name:'valid.json',mimeType:'application/json',buffer:Buffer.from(valid)});await p.locator('#cancelImport').click();assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),valid);await p.locator('#saveFile').setInputFiles({name:'valid.json',mimeType:'application/json',buffer:Buffer.from(valid)});await p.locator('#confirmImport').click();await p.locator('#continueGame').click();await clean(p);check('Malformed import and cancelled import preserve save; explicit valid import resumes');await c.close();
+ await p.locator('#newGame').click();assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),old);await p.locator('#cancelNew').click();assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),old);await p.locator('#newGame').click();await p.locator('#confirmNew').click();await p.waitForFunction(()=>BUDMORI.runtime.tick>3);await p.locator('#home').click();const valid=await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3'));assert.equal(JSON.parse(valid).productVersion,'0.4.1');check('Only explicit new-garden confirmation replaces the incompatible save');
+ await p.locator('#saveFile').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from('{"world":{}}')});assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),valid);await p.locator('#saveFile').setInputFiles({name:'valid.json',mimeType:'application/json',buffer:Buffer.from(valid)});await p.locator('#cancelImport').click();assert.equal(await p.evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3')),valid);await p.locator('#saveFile').setInputFiles({name:'valid.json',mimeType:'application/json',buffer:Buffer.from(valid)});await p.locator('#confirmImport').click();await p.locator('#continueGame').click();await p.locator('#home').click();const prior=JSON.parse(valid);prior.productVersion='0.4.0';await p.locator('#saveFile').setInputFiles({name:'prior-0.4.0.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(prior))});await p.locator('#confirmImport').click();await p.locator('#continueGame').click();assert.equal(await p.evaluate(()=>BUDMORI.sim.units.length),prior.world.units.length);check('Compatible 0.4.0 save resumes directly under 0.4.1');await clean(p);check('Malformed import and cancelled import preserve save; explicit valid import resumes');await c.close();
 }
 async function network(){
  const c=await browser.newContext({viewport:{width:1280,height:800}}),a=await open(c);const sockets=[];c.on('page',p=>p.on('websocket',ws=>sockets.push(ws.url())));a.on('websocket',ws=>sockets.push(ws.url()));

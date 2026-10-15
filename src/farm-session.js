@@ -1,12 +1,12 @@
 import {Garden,CONFIG} from './farm-model.js';
 import {snapshot,restore} from './farm-state.js';
-import {COMPATIBILITY} from './version.js';
+import {PRODUCT_VERSION} from './version.js';
 const {binaryCodec:codec}=globalThis.BloomGamekitDeterministic;
 export class FarmSession{
  constructor(world=new Garden(),{room=null,onError=console.error,onEvent=()=>{}}={}){
   this.world=world;this.previous=null;this.previousBoss=null;this.renderAt=0;this.tick=0;this.epoch=0;this.players=[];this.speed=1;this.paused=false;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';
   const adapter={save:()=>codec.encode(this.capture()),load:bytes=>this.load(codec.decode(bytes)),validateSnapshot:(bytes,context={})=>{try{this.validate(codec.decode(bytes),context);return true}catch{return false}},applyMembership:change=>{this.epoch=change.epoch;this.players=[...change.players]},step:ctx=>this.step(ctx)};
-  this.session=globalThis.BloomGamekitRollback.createRoomSession({adapter,players:room?.players||['solo'],localPlayerId:this.localPlayerId,sessionId:room?.sessionId||'budmori-solo',simulationVersion:'budmori-farm-'+COMPATIBILITY,seed:world.seed,inputSize:1,mode:room?'online':'local',room:room||undefined,profile:{...globalThis.BloomGamekitRollback.profiles.action,mode:'lockstep',tickRate:20,baseInputDelayTicks:room?2:0,minInputDelayTicks:room?2:0,maxInputDelayTicks:room?2:0,adaptiveInputDelay:false,pacingPolicy:'none',checksumInterval:20,stateHistorySize:32,maxSnapshotBytes:8388608},membership:{maxPlayers:5,transitionTimeoutMs:30000,reconnectGraceMs:10000,maxCatchupSteps:4},onEvent});
+  this.session=globalThis.BloomGamekitRollback.createRoomSession({adapter,players:room?.players||['solo'],localPlayerId:this.localPlayerId,sessionId:room?.sessionId||'budmori-solo',simulationVersion:'budmori-farm-'+PRODUCT_VERSION,seed:world.seed,inputSize:1,mode:room?'online':'local',room:room||undefined,profile:{...globalThis.BloomGamekitRollback.profiles.action,mode:'lockstep',tickRate:20,baseInputDelayTicks:room?2:0,minInputDelayTicks:room?2:0,maxInputDelayTicks:room?2:0,adaptiveInputDelay:false,pacingPolicy:'none',checksumInterval:20,stateHistorySize:32,maxSnapshotBytes:8388608},membership:{maxPlayers:5,transitionTimeoutMs:30000,reconnectGraceMs:10000,maxCatchupSteps:4},onEvent});
   this.loop=globalThis.BloomGamekitSimloop.createLoop({session:this.session,getInput:()=>({input:new Uint8Array(1),commands:(this.session.ready?this.pending.splice(0,32):[]).map(payload=>({payload})),predict:false}),canAdvance:()=>true,canObserveInput:()=>!this.session.closed&&!this.session.failure,onError});
  }
  capture(){return {tick:this.tick,epoch:this.epoch,players:this.players,speed:this.speed,world:snapshot(this.world)}}

@@ -1,6 +1,6 @@
 # budmori
 
-농장에서 먹이를 뿌리고 번식·합체로 병력을 키워, 월드 안에서 추격하는 거대 보스에 도전하는 2.5D WebGL 게임입니다. 메인 버전은 **0.4.0**입니다.
+농장에서 먹이를 뿌리고 번식·합체로 병력을 키워, 월드 안에서 추격하는 거대 보스에 도전하는 2.5D WebGL 게임입니다. 메인 버전은 **0.4.1**입니다.
 
 [공개 게임](https://byh-playground.github.io/budmori-io/)
 
@@ -37,13 +37,17 @@ npm test
 
 `CombatFeel`은 확정된 공통 전투 사건의 실제 접점·법선·대상을 읽어 국소 섬광, 방향 불꽃, 착지 먼지와 제한된 오디오를 만듭니다. 강한 피격의 대상 표시만 최대 35ms 멈추며 시뮬레이션·입력·네트워크는 계속 진행합니다. 효과 48개·공유 오디오 4 voice 상한을 두고, 동작 줄이기 설정은 이 표현 정지와 변형을 생략합니다. 전체 화면 점멸·전역 hitstop·상시 카메라 흔들림은 사용하지 않습니다.
 
-캐릭터 세부 디자인은 이번 전투 변경의 범위가 아닙니다. 둥근 곡식·씨앗 중심의 테마 방향은 확정됐으며 세부 디자인은 별도 인터뷰 후 적용합니다. 현재 `unit-art.js`는 보존하고 전투 유형 데이터와 렌더러의 외형 매핑을 분리했습니다.
+캐릭터는 살아 있는 둥근 씨앗 군단입니다. 돌격 완두콩은 압축 후 돌진하고, 곡사 수수알은 껍질을 열어 낟알을 발사하며, 도약 콩알은 배아를 접었다 펴며 도약합니다. 표정은 몸체 위에 직접 그리며 얼굴판·장비·기본 팔다리를 붙이지 않습니다. 단계는 크기, 껍질 무늬와 작은 잎으로 표시합니다. 거대 밤톨도 같은 세계관을 쓰며 보스 크기·공격 판정은 유지합니다. `seed-art.js`는 순수 표시 계층으로 병종 물리 데이터와 분리합니다.
+
+아군은 현재 방향에서 병종별 사거리를 확보한 뒤 멈춰 공격합니다. 곡사 수수알은 보스가 너무 가까워지면 물러납니다. 아군 체력바는 개별 현재 HP 합계 / 배치된 모든 유닛의 최대 HP 합계입니다. 전사자도 최대 HP에 포함되며 60초 증원 시 현재·최대 합계가 함께 증가합니다. 개별 HP가 판정 기준입니다.
+
+전사자는 XX 눈을 표시하고, 공중이라면 넉백·중력·착지를 마친 위치에 쓰러져 남습니다. 공격·표적·아군 및 보스 몸체 충돌에서 제외되고 착지 후 이동하지 않습니다. 정원 복귀 시 원래 위치와 체력을 회복하며 영구 손실은 없습니다.
 
 ## 화면과 함께 가꾸기
 
 도움말 `#/help`, 성장 `#/growth`, 정원 `#/farm`, 전투 `#/raid`, 시작 `#/`는 화면·이력·F5와 동기화됩니다.
 
-`FarmSession`이 싱글·멀티에서 같은 `Garden`을 GameKit 20Hz 세션과 120Hz 물리 하위 스텝으로 진행하며 표시는 보간합니다. 최대 5명이 정원·자원·병력·장면을 공유하고, 확정된 구성원의 명령만 권위 경계에서 받습니다. Nostr는 발견·서명 signaling에, 실제 WebRTC/GameKit은 게임 명령·입장 스냅샷에 사용합니다. 충돌·추격·공격·피격 사건은 동일 상태에 속하고 표현은 각 클라이언트가 읽습니다.
+`FarmSession`이 싱글·멀티에서 같은 `Garden`을 GameKit 20Hz 세션과 120Hz 물리 하위 스텝으로 진행하며 표시는 보간합니다. 최대 5명이 정원·자원·병력·장면을 공유하고, 확정된 구성원의 명령만 권위 경계에서 받습니다. RTC 발견·세션은 전체 제품 버전으로 구분해 다른 전투 규칙이 섞이지 않게 합니다. Nostr는 발견·서명 signaling에, 실제 WebRTC/GameKit은 게임 명령·입장 스냅샷에 사용합니다. 충돌·추격·공격·피격 사건은 동일 상태에 속하고 표현은 각 클라이언트가 읽습니다.
 
 온라인 플레이는 개인 저장에 쓰지 않습니다. 시작 화면에서 나가면 개인 정원으로 돌아옵니다. 온라인 세션은 별도 타이머로 진행하며 숨겨진 싱글 화면은 탭·진행을 누적하지 않습니다. 브라우저의 프로세스 동결·네트워크 차단은 정상 실행과 구분합니다.
 
@@ -59,7 +63,7 @@ npm test
 
 - `src/farm-model.js`: 농장, 전방위 자동 AI, 월드 보스 상태기계·충돌·전투 사건.
 - `src/farm-state.js`, `farm-session.js`, `farm-storage.js`: 값 스냅샷, 구성원 명령·세션, 저장 보호.
-- `src/farm-renderer.js`, `unit-art.js`: 실제 WebGL 투영, 전투 예고와 외형 매핑.
+- `src/farm-renderer.js`, `seed-art.js`: 실제 WebGL 투영, 전투 예고와 외형 매핑.
 - `src/combat-feel.js`, `food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
 - `src/farm-app.js`: 시작·복귀·농장 입력·라우팅·함께 가꾸기·성장 UI.
 
@@ -68,3 +72,5 @@ npm test
 규칙 원본: [개발](https://github.com/byh-playground/bloom-reference/blob/main/rules/development.html), [프로젝트 관리·검증](https://github.com/byh-playground/bloom-reference/blob/main/rules/project-management.html), [타격감·영상 사례](https://github.com/byh-playground/bloom-reference/blob/main/rules/impact-feel.html), [AI 개발](https://github.com/byh-playground/bloom-reference/blob/main/rules/ai-development.html). 구현 전 [Unity 사건 기반 impulse 공식 문서](https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineImpulseSource.html)와 [타격감 연구](https://arxiv.org/abs/2208.06155)를 읽고 접촉·표현 사건 분리를 대조했습니다. 해당 엔진을 도입하거나 문서의 수치를 게임 규칙으로 복사한 것은 아닙니다.
 
 물리 모바일 기기·서로 다른 NAT망·장기 밸런스는 PC/터치 브라우저·동일 호스트의 실제 공개 RTC 검증과 구분합니다.
+
+씨앗 동작 참고: [Animation Mentor의 squash/stretch](https://www.animationmentor.com/blog/squash-and-stretch-the-12-basic-principles-of-animation/), [anticipation](https://www.animationmentor.com/blog/anticipation-the-12-basic-principles-of-animation/). 압축과 복원 및 발사 전 예고를 병종별 껍질·배아 동작에 적용했습니다. 0.4.1은 저장 구조를 변경하지 않아 0.4 저장과 호환됩니다.
