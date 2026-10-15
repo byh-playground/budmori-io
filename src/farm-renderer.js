@@ -1,11 +1,11 @@
-import {ATTACK_TYPES,Ballistics,CONFIG,clamp} from './farm-model.js';
+import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
 import {BOSS_VECTOR_ASSETS,TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
 const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
-function unitMotion(u){
+function unitMotion(u,sim){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.1,phase=u.ability?.phase||'idle';
   const moving=Math.hypot(u.vx||0,u.vy||0)>.18,kind=ATTACK_TYPES[u.species]?.kind;
-  if(dead)return 'death';if(airborne)return 'airborne';if(u.stun>0)return 'hit';if(u.bounce>.04)return 'landing';
+  if(dead)return 'death';if(sim.scene==='raid'&&sim.encounter?.outcome==='victory')return 'victory';if(airborne)return 'airborne';if(u.stun>0)return 'hit';if(u.bounce>.04)return 'landing';
   if(phase==='windup')return 'windup';if(phase==='active')return 'fire';
   if(phase==='recover')return kind==='lob'&&u.ability?.action?.path&&u.ability.elapsed<.12?'fire':'recover';
   return moving?'walk':'idle';
@@ -15,13 +15,14 @@ function motionElapsedMs(u,name,clip){
   if(name==='windup'||name==='fire'||name==='recover')return clamp((u.ability?.elapsed||0)*1000,0,clip.durationMs);
   if(name==='hit')return clip.durationMs*(1-clamp((u.stun||0)/.5,0,1));
   if(name==='landing')return clip.durationMs*(1-clamp((u.bounce||0)/.22,0,1));
+  if(name==='victory')return ((Math.abs(u.seed||0)*97.531)%clip.durationMs);
   return clip.durationMs;
 }
 function unitExpression(u,sim){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.5;
   const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
   const phase=u.ability?.phase;
-  return dead?'dead':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
+  return dead?'dead':sim.scene==='raid'&&sim.encounter?.outcome==='victory'?'happy':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
 }
   // render.js
   const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c'];
@@ -32,16 +33,19 @@ function unitExpression(u,sim){
       this.ctx = new VectorContext(this.device);
       this.vectorAssets=new Map();this.vectorPlayers=new Map();
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
-      if(entries.length){
-        if(typeof createVectorAsset!=='function')throw new Error('GameKit vector-assets runtime did not load');
-        this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
-        for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
-        this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
-      }
-      this.bossPlayer=null;this.bossPlayerAsset=null;
+      if(entries.length!==3||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
+      this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
+      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
+      this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
+      this.bossPlayer=null;this.bossPlayerAsset=null;this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
       this.resize();
+      const boss=this.bossAssets.get('chestnut');if(!boss)throw new Error('Pinned chestnut boss vector asset is required');
+      const prewarmAt=performance.now();this.bossPlayer=boss.asset.createPlayer({clip:'idle',startedAtMs:0});this.bossPlayerAsset=boss;
+      this.ctx.beginFrame({width:this.canvas.width,height:this.canvas.height,clearColor:[0.9,0.92,0.87,1]});
+      this.bossPlayer.draw({projection:this.ctx.vector.projection,matrix:[.001,0,0,.001,100,100]});
+      this.prewarmStats=this.ctx.endFrame();this.prewarmDurationMs=performance.now()-prewarmAt;this.assetsReady=true;
     }
     resize() {
       const r = this.canvas.getBoundingClientRect(), d = Math.min(globalThis.devicePixelRatio || 1, 2);
@@ -99,7 +103,7 @@ function unitExpression(u,sim){
     drawVectorUnit(u,sim,p,r){
       const record=this.vectorAssets.get(u.species);if(!record)throw new Error('Missing required troop vector asset for species '+u.species);
       let player=this.vectorPlayers.get(u.id);
-      const metadata=record.compiled.metadata,motionName=unitMotion(u),clip=metadata.clips[motionName]||metadata.clips.idle;
+      const metadata=record.compiled.metadata,motionName=unitMotion(u,sim),clip=metadata.clips[motionName]||metadata.clips.idle;
       const clipStartAtMs=this.displayTimeMs-motionElapsedMs(u,motionName,clip);
       if(!player){player=record.asset.createPlayer({clip:motionName,startedAtMs:clipStartAtMs});this.vectorPlayers.set(u.id,player)}
       else if(player.currentClip!==motionName)player.play(motionName,clipStartAtMs);
@@ -127,11 +131,10 @@ function unitExpression(u,sim){
       return b.phase==='chase'?'walk':'idle';
     }
     drawBoss(world){
-      const record=this.bossAssets?.get('chestnut');if(!record)return;
+      const record=this.bossAssets.get('chestnut');if(!record||!this.bossPlayer||this.bossPlayerAsset!==record)throw new Error('Prewarmed chestnut boss player is required');
       const {b,p,r,k}=this.bossPose(world),metadata=record.compiled.metadata,name=this.bossMotion(b),clip=metadata.clips[name]||metadata.clips.idle;
       const timed=['windup','strike','sweep','recover','hit','death'].includes(name),clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,b.clock||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
-      if(!this.bossPlayer||this.bossPlayerAsset!==record){this.bossPlayer?.dispose();this.bossPlayer=record.asset.createPlayer({clip:name,startedAtMs:clipStartAtMs});this.bossPlayerAsset=record}
-      else if(this.bossPlayer.currentClip!==name)this.bossPlayer.play(name,clipStartAtMs);
+      if(this.bossPlayer.currentClip!==name)this.bossPlayer.transitionTo(name,clipStartAtMs,70);
       const expression=b.hp<=0?'dead':name==='windup'?'focused':name==='strike'||name==='sweep'?'attack':b.flash>.07?'hurt':'neutral';
       if(this.bossPlayer.currentExpression!==expression)this.bossPlayer.setExpression(expression);
       this.bossPlayer.seek(this.displayTimeMs);
@@ -141,19 +144,6 @@ function unitExpression(u,sim){
       if(aiming){const target=Math.atan2(-.62*Math.sin(b.angle),Math.cos(b.angle));this.bossPlayer.setBasePose('arm-right',{rotation:target-.504});this.bossPlayer.setBasePose('arm-left',{rotation:target+Math.PI-2.637})}
       else{this.bossPlayer.setBasePose('arm-right',{rotation:0});this.bossPlayer.setBasePose('arm-left',{rotation:0})}
       this.bossPlayer.draw({projection:this.ctx.vector.projection,matrix});
-      this.drawBossWeapon(world,this.bossPlayer,matrix);
-    }
-    drawBossWeapon(world,player,matrix){
-      const b=world.boss,c=CONFIG.raid,heavy=b.phase==='sweep'||b.phase==='sweep-windup';
-      let angle=heavy?b.startAngle:b.angle,reach=b.radius+.15;
-      if(b.phase==='sweep'){angle=b.startAngle+Math.PI*2*Math.min(1,b.clock/c.sweepDuration);reach=c.sweepReach}
-      else if(b.phase==='strike')reach=b.radius-.25+(c.basicReach-b.radius+.25)*Math.sin(Math.PI*Math.min(1,b.clock/c.basicDuration));
-      else if(b.phase.endsWith('windup'))reach=heavy?c.sweepReach:b.radius-.25;
-      if(b.phase!=='strike'&&b.phase!=='sweep')return;
-      const socket=player.getSocket('fist-right'),base={x:matrix[0]*socket.x+matrix[4],y:matrix[3]*socket.y+matrix[5]},tip=this.project(b.x+Math.cos(angle)*reach,b.y+Math.sin(angle)*reach,.2);
-      this.line(base,tip,.26,'#684632');this.line(base,tip,.13,'#f0c77c');
-      this.ellipse(tip.x,tip.y,c.weaponRadius*this.scale*.48,c.weaponRadius*this.scale*.3,'#dfad79',angle);
-      if(b.phase==='sweep'){const back=angle-.18,tail=this.project(b.x+Math.cos(back)*reach,b.y+Math.sin(back)*reach,.35);this.line(tail,tip,.26,'#e6cf7b99')}
     }
     terrain(sim2) {
       const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',rx=raid?CONFIG.raid.radiusX:9.5,ry=raid?CONFIG.raid.radiusY:6.8;
@@ -172,16 +162,18 @@ function unitExpression(u,sim){
       if(raid){
         this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
         if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
-        const b=sim2.boss,wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep',heavy=b.phase==='sweep-windup'||b.phase==='sweep';
-        if(wind||active){
-          const reach=heavy?CONFIG.raid.sweepReach:CONFIG.raid.basicReach,color=heavy?'#b46c45':'#a98a52';
-          if(heavy){this.ring(b.x,b.y,reach+CONFIG.raid.weaponRadius,color,wind?.09:.05);this.ring(b.x,b.y,reach-CONFIG.raid.weaponRadius,'#c59b7288',.045);const progress=Math.min(1,b.clock/(wind?CONFIG.raid.sweepWindup:CONFIG.raid.sweepDuration));this.ring(b.x,b.y,reach+CONFIG.raid.weaponRadius+.12,'#dfad65',.14,b.startAngle,b.startAngle+progress*Math.PI*2)}
-          else{
-            const nx=Math.cos(b.angle),ny=Math.sin(b.angle),start=b.radius-.25,width=CONFIG.raid.weaponRadius;
-            for(const side of [-1,1])this.line(this.project(b.x+nx*start-ny*width*side,b.y+ny*start+nx*width*side),this.project(b.x+nx*reach-ny*width*side,b.y+ny*reach+nx*width*side),.055,color);
-            for(const distance of [start,reach])this.ring(b.x+nx*distance,b.y+ny*distance,width,color,.05);
+        const b=sim2.boss,area=bossAttackArea(b,CONFIG.maxUnitRadius);this.bossTelegraph=area;
+        if(area){
+          const heavy=area.kind==='sweep',color=heavy?'#b46c45':'#a35c48';
+          if(heavy){
+            const fill=this.project(area.x,area.y);this.ellipse(fill.x,fill.y,area.outerRadius*this.scale,area.outerRadius*this.scale*.62,'#b46c4522');
+            this.strokeGroundEllipse(area.x,area.y,area.outerRadius,area.outerRadius,color,area.active?.075:.12);
+            const progress=area.active?area.progress:1;this.ring(area.x,area.y,area.outerRadius+.13,'#dfad65',.16,area.startAngle,area.startAngle+progress*Math.PI*2);
+          }else{
+            const nx=Math.cos(area.angle),ny=Math.sin(area.angle),width=area.width,start=area.startRadius,end=area.endRadius;
+            for(const side of [-1,1])this.line(this.project(area.x+nx*start-ny*width*side,area.y+ny*start+nx*width*side),this.project(area.x+nx*end-ny*width*side,area.y+ny*end+nx*width*side),.08,color);
+            for(const distance of [start,end])this.ring(area.x+nx*distance,area.y+ny*distance,width,color,.06);
           }
-
         }
       }
     }

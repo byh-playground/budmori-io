@@ -4,7 +4,13 @@ const presentationEventTimes=new WeakMap();
 export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
 export function bindPresentationClock(world,clock){if(clock)presentationClocks.set(world,clock);else presentationClocks.delete(world)}
   // sim.js
-  var CONFIG = Object.freeze({ cap: 72, maxFarmCap:100, maxRaidPlayerUnits:100, maxRaidPlayers:4, maxRaidUnits:400, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
+  var CONFIG = Object.freeze({ cap: 72, maxFarmCap:100, maxRaidPlayerUnits:100, maxRaidPlayers:4, maxRaidUnits:400, maxUnitRadius:.47, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
+function bossAttackArea(boss,unitRadius=0){
+  const c=CONFIG.raid,phase=boss.phase,heavy=phase==='sweep-windup'||phase==='sweep',wind=phase==='sweep-windup'||phase==='strike-windup';
+  if(!heavy&&phase!=='strike-windup'&&phase!=='strike')return null;
+  const width=c.weaponRadius+Math.max(0,unitRadius),duration=heavy?(wind?c.sweepWindup:c.sweepDuration):(wind?c.basicWindup:c.basicDuration);
+  return heavy?{kind:'sweep',x:boss.x,y:boss.y,width,sweepRadius:c.sweepReach,outerRadius:c.sweepReach+width,startAngle:((boss.startAngle%(Math.PI*2))+Math.PI*2)%(Math.PI*2),progress:clamp(boss.clock/duration,0,1),active:phase==='sweep'}:{kind:'basic',x:boss.x,y:boss.y,width,startRadius:Math.max(0,boss.radius-.25),endRadius:c.basicReach,angle:boss.angle,progress:clamp(boss.clock/duration,0,1),active:phase==='strike'};
+}
   var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   var stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
   var Body = class {
@@ -467,6 +473,7 @@ const AttackingBody=Base=>class extends Base{
       if(!this.running)return;this.running=false;this.encounter.outcome=outcome;this.projectiles=[];this.boss.phase='resting';
       for(const u of this.units)u.ability.interrupt();this.combat(outcome,{x:this.boss.x,y:this.boss.y,z:0});
     }
+    bossAttackArea(unitRadius=0){return bossAttackArea(this.boss,unitRadius)}
     bossWeaponPoint(phase=this.boss.phase,q=0){
       const b=this.boss,c=CONFIG.raid;
       if(phase==='sweep'){const a=b.startAngle+Math.PI*2*q;return {x:b.x+Math.cos(a)*c.sweepReach,y:b.y+Math.sin(a)*c.sweepReach,z:.2}}
@@ -476,14 +483,29 @@ const AttackingBody=Base=>class extends Base{
       const b=this.boss;b.attackKind=kind;b.clock=0;b.phase=kind==='basic'?'strike-windup':'sweep-windup';b.angle=Math.atan2(target.y-b.y,target.x-b.x);b.startAngle=b.angle-Math.PI/2;b.hit.clear();
       this.combat('boss-prepare',{attackKind:kind,x:b.x,y:b.y,z:0,angle:b.angle});
     }
+    hitBossUnit(u,kind,p){
+      const b=this.boss,heavy=kind==='sweep';if(u.hp<=0||!u.dropLanded||b.hit.has(u.id))return false;
+      b.hit.add(u.id);const dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;u.knock(dx/n,dy/n,heavy?13:8.5,heavy?10.2:7.2);u.hp=Math.max(0,u.hp-(heavy?10:8));if(u.hp===0)u.down=1;
+      this.metrics.directHits++;this.metrics[heavy?'sweepHits':'basicHits']++;
+      this.combat('unit-hit',{attackKind:kind,attackId:b.attackId,unit:u.id,x:p.x,y:p.y,z:Math.max(.15,u.z+.25),nx:dx/n,ny:dy/n,strength:heavy?1.8:1});return true;
+    }
     hitBossWeapon(from,to,kind){
-      const b=this.boss,c=CONFIG.raid;
+      const c=CONFIG.raid;
       for(const u of this.units){
-        if(u.hp<=0||!u.dropLanded||b.hit.has(u.id))continue;const p=ArenaGeometry.sweep(from,to,c.weaponRadius,1.4,{x:u.x,y:u.y,z:u.z,radius:u.radius,height:.65});if(!p)continue;
-        b.hit.add(u.id);const dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1,heavy=kind==='sweep';u.knock(dx/n,dy/n,heavy?13:8.5,heavy?10.2:7.2);u.hp=Math.max(0,u.hp-(heavy?10:8));if(u.hp===0)u.down=1;
-        this.metrics.directHits++;this.metrics[heavy?'sweepHits':'basicHits']++;
-        this.combat('unit-hit',{attackKind:kind,attackId:b.attackId,unit:u.id,x:p.x,y:p.y,z:Math.max(.15,u.z+.25),nx:dx/n,ny:dy/n,strength:heavy?1.8:1});
+        if(u.hp<=0||!u.dropLanded||this.boss.hit.has(u.id))continue;const p=ArenaGeometry.sweep(from,to,c.weaponRadius,1.4,{x:u.x,y:u.y,z:u.z,radius:u.radius,height:.65});if(p)this.hitBossUnit(u,kind,p);
       }
+    }
+    hitBossSweep(q0,q1){
+      const b=this.boss,arc=Math.max(0,Math.min(1,q1)-Math.max(0,q0))*Math.PI*2;let hits=0;
+      for(const u of this.units){
+        if(u.hp<=0||!u.dropLanded||b.hit.has(u.id))continue;
+        const area=bossAttackArea(b,u.radius),dx=u.x-b.x,dy=u.y-b.y,d=Math.hypot(dx,dy),blade=area.width;
+        if(d>area.sweepRadius+blade||.2<u.z-1.4||.2>u.z+.65)continue;
+        const pad=d<=blade?Math.PI:Math.asin(Math.min(1,blade/d)),unitAngle=Math.atan2(dy,dx),scanStart=area.startAngle+Math.PI*2*Math.max(0,Math.min(1,q0)),offset=((unitAngle-scanStart)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);
+        if(offset>arc+pad&&offset<Math.PI*2-pad)continue;
+        const radius=Math.min(d,area.sweepRadius),p={x:b.x+Math.cos(unitAngle)*radius,y:b.y+Math.sin(unitAngle)*radius,z:.2};if(this.hitBossUnit(u,'sweep',p))hits++;
+      }
+      return hits;
     }
     updateBoss(dt){
       const b=this.boss,c=CONFIG.raid;
@@ -501,7 +523,7 @@ const AttackingBody=Base=>class extends Base{
         const heavy=b.phase==='sweep-windup';if(b.clock>=(heavy?c.sweepWindup:c.basicWindup)){b.phase=heavy?'sweep':'strike';b.clock=0;b.attackId=++this.attackSerial;if(heavy){b.swings++;b.sweepClock=0}else b.basicCount++;this.combat('boss-launch',{attackKind:heavy?'sweep':'basic',attackId:b.attackId,x:b.x,y:b.y,z:.2})}
       }else if(b.phase==='strike'||b.phase==='sweep'){
         const heavy=b.phase==='sweep',duration=heavy?c.sweepDuration:c.basicDuration,previous=Math.max(0,(b.clock-dt)/duration),q=Math.min(1,b.clock/duration);
-        this.hitBossWeapon(this.bossWeaponPoint(b.phase,previous),this.bossWeaponPoint(b.phase,q),heavy?'sweep':'basic');
+        if(heavy)this.hitBossSweep(previous,q);else this.hitBossWeapon(this.bossWeaponPoint(b.phase,previous),this.bossWeaponPoint(b.phase,q),'basic');
         if(heavy)b.angle=b.startAngle+Math.PI*2*q;
         if(b.clock>=duration){b.phase='recover';b.clock=0}
       }else if(b.phase==='recover'&&b.clock>=(b.attackKind==='sweep'?c.sweepRecover:c.basicRecover)){b.phase='chase';b.clock=0;b.targetId=0}
@@ -510,4 +532,4 @@ const AttackingBody=Base=>class extends Base{
   };
 
 
-export {Garden,Unit,AttackCycle,FarmProgress,TREE_NODES,ATTACK_TYPES,ArenaGeometry,Ballistics,CONFIG,clamp,stats};
+export {Garden,Unit,AttackCycle,FarmProgress,TREE_NODES,ATTACK_TYPES,ArenaGeometry,Ballistics,CONFIG,clamp,stats,bossAttackArea};
