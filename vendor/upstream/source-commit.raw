@@ -1,26 +1,26 @@
-tree 711c6a1ac786850fe5c1176c160ec524ec31b86f
-parent 9436219ae9fbcecfaf01f1f93e6271a0f3b73737
-parent 69b05b7c7e6e0e671447166f7e877bc9cab5b4ff
-author byh020907 <byh020907@naver.com> 1791947741 +0900
-committer GitHub <noreply@github.com> 1791947741 +0900
+tree 9316ac2980b9b9245eee94b7d485688b070cad79
+parent baa96876876a08013ad28b5a71c83bfadd285fab
+parent 0508e1ca58eaa13d160a0e10d2b26b43f9004fdb
+author byh020907 <byh020907@naver.com> 1791987010 +0900
+committer GitHub <noreply@github.com> 1791987010 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJqzvPdCRC1aQ7uu5UhlAAArVgQAF2j3uM4YWButZDfry7xxmcv
- OYJnj5yldYvMtG1YhxrPYbHafwtqr4Oj+MA81smdnYLsHF7JeGLnZ3OR5iolEss0
- KPAuAW9A6cEIZhwFBnoGuv2ZSp9bBeTVa2ozb3ClpNBzRy7pxxKTGyZ3O3RwDvY1
- rIzQJmDYMAuTdbC1FyzmEaC2ImcZ6HBO/ipRvihwFwhPP1bmLaamrNQBNgqgf2xX
- gOuGLNgs5mWtjiCed3h8WEfCI1vNXHKr3zVQakMcZpZmGWMuAZQlEEx1jEobK3hN
- 9O2syw4ZUVty9ZFMs/frK7cA4ENl59n7bFAUYRLPJIvgGhsz996TPK0BiV8FLULE
- jmxH87Av0z7wBe36cbEUNjkfcFEyD6NE0pWTPHUgV/qyqMPGUI+NZz1lpRAsF6hP
- P8dnZFrIhMm6nHrEVCOoDSs7X+WW4KyDgbZpv2DuJpyUkAnWlE+ru5bwsi8p9wuY
- ROlcStjqaDgEWUShR4ZTOUL5DRgMMS+dS6PwlSzJY9niP48uBmo4oiKT5ddGZUlq
- +FEgG0TvhOkrEm0dPnuXTidNIGnsDEK9A5wBo30SfWi+nMjf7DdDv1ftPWuKkuHA
- S4n8WhHfGI+8hyMJ3t3P2iUDVBuahUsHyyPXKmfWT31oKIkTvhXKoUHblILv6tPV
- c7d9QG9bZcGMZK1wb4D0
- =2C5d
+ wsFcBAABCAAQBQJqz41CCRC1aQ7uu5UhlAAA4XEQAA1Db863eqzq1Cvw/FLiWOEO
+ 4Zn7GMQCVKvNdKcAob/km+OlmVS07Knuw/8OxgSQ9tvKp7NPMIMf9CdoA3hr10Qk
+ T2vU+ITR5zl9Zfvkwxkv1sfSrfrMOktr5DLnLc/3iUE9WXp0ZdGoPdZyY41L1zOf
+ mPt+cQMQCXXNTTpO8qopOU5TmiRc9QCofdoHgUo+GVpSwf/ZhST8o+IMMK/sOgwa
+ z3UZ0xTNFeWsN6N7IbE0JvZdyWNZpcuW91xp8Mz1hm1lOVHwF9dBnyNgOVwLQS/z
+ WlKnUQ3WQ43Vcm47eYVzJoVTZQR8QaqwLPeTvR+asCKDiJpHZlneEH/kOMsEEeKW
+ F44xy11rGIwTmucYUVyLzHgeYBpr9mXDRjE3eASNdh2vEBSGcVsDbcEC4nsgX62y
+ tBuPttmyaNpZB4kH1T9p/tgbv1/Gwj4NdZ9OtJyjmItSkJOdu8Ri2DXud5RLz1dD
+ ps3OcoGucJPc6LB4cLSQm2RIM1Wcay1TXZK+Vy0ZiLRYk1RhNCSlfeD2asYhwYtj
+ Qnn0Skvo2tGWenY+t4SwcLKTPZqa4c20yk7PEkprOiltmQtLR7XEt0P+OF4j5yIT
+ 7dPNf2aCDaRrV2ZUJmo17OTlJus1TySThM1sbo6whaleoDCeF+MBC/BLFaGVimaF
+ GzWtYnRfbl1bvWuDLjPW
+ =LIdk
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #52 from byh-playground/codex/rollback-teleport-policy
+Merge pull request #53 from byh-playground/codex/camera-collision-boom
 
-[bug-fix] 로컬 순간이동·이동 표시 이력 연결 수정
+[feature] 카메라 충돌 boom의 안전 축소와 안정 복원

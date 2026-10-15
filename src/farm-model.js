@@ -1,4 +1,8 @@
 const {SeededPRNG}=globalThis.BloomGamekitDeterministic;
+const presentationClocks=new WeakMap();
+const presentationEventTimes=new WeakMap();
+export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
+export function bindPresentationClock(world,clock){if(clock)presentationClocks.set(world,clock);else presentationClocks.delete(world)}
   // sim.js
   var CONFIG = Object.freeze({ cap: 72, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8}) });
   var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -206,7 +210,7 @@ const AttackingBody=Base=>class extends Base{
       this.units.push(u);
       return u;
     }
-    notice(kind,detail={}){this.notices.push({sequence:++this.eventSequence,kind,...detail});if(this.notices.length>512)this.notices.shift()}
+    notice(kind,detail={}){const event={sequence:++this.eventSequence,kind,...detail};this.notices.push(event);if(this.notices.length>512)this.notices.shift();return event}
     emit(kind, x, y, z = 0) {
       this.progress.record(kind);
       this.notice(kind);
@@ -376,7 +380,7 @@ const AttackingBody=Base=>class extends Base{
       if (target) this.steer(u, target.x, target.y, dt, 2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1));
       else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, 0.75);
     }
-    combat(kind,detail){this.notice(kind,{time:this.time,...detail})}
+    combat(kind,detail){const event=this.notice(kind,{time:this.time,...detail}),toPresentationTime=presentationClocks.get(this);if(toPresentationTime)presentationEventTimes.set(event,toPresentationTime(this.time))}
     boundBody(body,scene,margin){
       const before={x:body.x,y:body.y},p=ArenaGeometry.clamp(before,scene,margin);body.x=p.x;body.y=p.y;
       if(before.x!==p.x||before.y!==p.y){const r=ArenaGeometry.bounds(scene,margin),nx=p.x/(r.x*r.x),ny=p.y/(r.y*r.y),n=Math.hypot(nx,ny)||1,out=((body.vx||0)*nx+(body.vy||0)*ny)/n;
