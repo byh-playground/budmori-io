@@ -53,7 +53,7 @@
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
-      CONFIG = Object.freeze({ cap: 72, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120 });
+      CONFIG = Object.freeze({ cap: 72, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8 }) });
       clamp = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
       Body = class {
@@ -96,8 +96,7 @@
         { id: "food", name: "자동 탭", icon: "◒", metric: "eat", goal: 12, parent: "production", description: "자동 탭 속도 +10%/단계 · 수동은 매 탭 +1", value: (l) => `${(0.5 / (1 + 0.1 * l)).toFixed(3)}초 / 탭` },
         { id: "growth", name: "먹이 찾기", icon: "❧", metric: "eat", goal: 10, parent: "production", description: "먹이를 향한 이동속도 +10%/단계 · 성체까지 3끼 유지", value: (l) => `${(2.2 * (1 + 0.1 * l)).toFixed(2)} 속도` },
         { id: "breed", name: "번식 회복", icon: "♡", metric: "birth", goal: 2, parent: "growth", description: "부모의 번식 대기 속도 +10%/단계", value: (l) => `${(5 / (1 + 0.1 * l)).toFixed(2)}초` },
-        { id: "merge", name: "합체 회복", icon: "◇", metric: "merge", goal: 2, parent: "growth", description: "합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지", value: (l) => `${(4 / (1 + 0.1 * l)).toFixed(2)}초` },
-        { id: "control", name: "제어 범위", icon: "◎", metric: "hit", goal: 5, parent: null, description: "충전 선택 반경 +0.25/단계", value: (l) => `${(1.5 + 0.25 * l).toFixed(2)} 반경` }
+        { id: "merge", name: "합체 회복", icon: "◇", metric: "merge", goal: 2, parent: "growth", description: "합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지", value: (l) => `${(4 / (1 + 0.1 * l)).toFixed(2)}초` }
       ];
       FarmProgress = class {
         constructor() {
@@ -122,21 +121,22 @@
         get autoTapSeconds() {
           return 0.5 / this.rate("food");
         }
-        get controlRadius() {
-          return 1.5 + 0.25 * this.levels.control;
-        }
       };
       ATTACK_TYPES = Object.freeze([
-        { art: "lancer", name: "왕사슴 돌격대", kind: "ram", color: "#bf8144", windup: 0.28, recover: 0.65, stand: 3.65, minReach: 1.8, maxReach: 6, damage: 1, arc: 0 },
-        { art: "siege", name: "철갑씨앗포", kind: "lob", color: "#648b6b", windup: 0.38, recover: 1.25, stand: 5.65, minReach: 2.2, maxReach: 8, damage: 1.6, arc: 2 },
-        { art: "rogue", name: "그림자벼룩", kind: "leap", color: "#8b719c", windup: 0.32, recover: 0.9, stand: 4.65, minReach: 2, maxReach: 7, damage: 1.3, arc: 2.7 }
+        { kind: "ram", windup: 0.28, recover: 0.65, stand: 1.45, damage: 1 },
+        { kind: "lob", windup: 0.38, recover: 1.25, stand: 4.1, damage: 1.6 },
+        { kind: "leap", windup: 0.32, recover: 0.9, stand: 2.5, damage: 1.3 }
       ]);
       ArenaGeometry = {
-        inside(p) {
-          return p.x * p.x / (9.2 * 9.2) + p.y * p.y / (6.5 * 6.5) <= 1;
+        bounds(scene2 = "raid", margin = 0) {
+          return scene2 === "raid" ? { x: CONFIG.raid.radiusX - margin, y: CONFIG.raid.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
         },
-        clamp(p) {
-          const k = Math.max(1, Math.hypot(p.x / 9.2, p.y / 6.5));
+        inside(p, scene2 = "raid", margin = 0) {
+          const r = this.bounds(scene2, margin);
+          return p.x * p.x / (r.x * r.x) + p.y * p.y / (r.y * r.y) <= 1;
+        },
+        clamp(p, scene2 = "raid", margin = 0) {
+          const r = this.bounds(scene2, margin), k = Math.max(1, Math.hypot(p.x / r.x, p.y / r.y));
           return { x: p.x / k, y: p.y / k };
         },
         overlaps(a, b) {
@@ -170,9 +170,9 @@
         }
       };
       Ballistics = {
-        create(from, to, kind, power = 0) {
+        create(from, to, kind) {
           const distance = Math.hypot(to.x - from.x, to.y - from.y);
-          return { from: { x: from.x, y: from.y, z: kind === "lob" ? 0.45 : 0 }, to: { ...to }, height: kind === "ram" ? 0 : (kind === "lob" ? 2 : 2.7) + power * 0.6, duration: kind === "ram" ? Math.max(0.12, distance / (8 + 4 * power)) : 0.65 + distance * 0.055 };
+          return { from: { x: from.x, y: from.y, z: kind === "lob" ? 0.45 : 0 }, to: { ...to }, height: kind === "ram" ? 0 : kind === "lob" ? 2 : 2.7, duration: kind === "ram" ? Math.max(0.12, distance / 10) : 0.65 + distance * 0.055 };
         },
         sample(path, q) {
           q = clamp(q, 0, 1);
@@ -184,23 +184,17 @@
           this.owner = owner;
           this.phase = "idle";
           this.elapsed = 0;
-          this.manualCooldown = 0;
           this.action = null;
         }
         get spec() {
           return ATTACK_TYPES[this.owner.species];
         }
-        ready() {
-          const u = this.owner;
-          return this.phase === "idle" && this.manualCooldown <= 0 && u.down <= 0 && u.stun <= 0 && u.z <= 0.1;
-        }
-        begin(sim, target, power = 0, manual = false) {
+        begin(sim, target) {
           const u = this.owner;
           if (this.phase !== "idle" || u.down > 0 || u.stun > 0 || u.z > 0.1) return false;
           this.phase = "windup";
           this.elapsed = 0;
-          this.action = { id: ++sim.attackSerial, target: { ...target }, power, manual, hit: false, path: null };
-          if (manual) this.manualCooldown = 3;
+          this.action = { id: ++sim.attackSerial, target: { ...target }, hit: false, path: null };
           u.angle = Math.atan2(target.y - u.y, target.x - u.x);
           u.vx = u.vy = 0;
           sim.combatEvent("prepare", u, this.action);
@@ -224,7 +218,6 @@
           sim.combatEvent("recover", u, this.action);
         }
         update(sim, dt) {
-          this.manualCooldown = Math.max(0, this.manualCooldown - dt);
           const u = this.owner;
           if (u.stun > 0 || u.down > 0) {
             this.interrupt();
@@ -239,7 +232,7 @@
               this.elapsed = 0;
               this.phase = "active";
               const a = this.action;
-              a.path = Ballistics.create(u, a.target, this.spec.kind, a.power);
+              a.path = Ballistics.create(u, a.target, this.spec.kind);
               sim.combatEvent("launch", u, a);
               if (this.spec.kind === "lob") {
                 sim.projectiles.push({ id: a.id, owner: u.id, species: u.species, tier: u.tier, path: a.path, elapsed: 0, x: u.x, y: u.y, z: 0.45, radius: 0.12, height: 0.24, hit: false });
@@ -299,9 +292,6 @@
           super(...args);
           this.ability = new AttackCycle(this);
         }
-        chargeReady() {
-          return this.ability.ready();
-        }
         knock(...args) {
           this.ability.interrupt();
           super.knock(...args);
@@ -351,14 +341,12 @@
           this.projectiles = [];
           this.attackSerial = 0;
           this.combatLog = [];
-          this.moveTarget = null;
-          this.cast = null;
           this.mode = "breed";
           this.scene = "farm";
           this.running = false;
-          this.aim = { x: 0, y: -4.8 };
-          this.boss = { x: 0, y: 3.4, z: 0, radius: 2, height: 2.4, flash: 0, hp: 2400, maxHp: 2400, phase: "idle", clock: 0, angle: -Math.PI, hit: /* @__PURE__ */ new Set(), swings: 0 };
-          this.metrics = { births: 0, merges: 0, directHits: 0, contacts: 0, landings: 0 };
+          this.encounter = { outcome: "idle", elapsed: 0 };
+          this.boss = this.createBoss();
+          this.metrics = { births: 0, merges: 0, directHits: 0, contacts: 0, landings: 0, basicHits: 0, sweepHits: 0 };
           for (let i = 0; i < 36; i++) {
             const u = this.spawn(i % 3, 1, (this.random() - 0.5) * 15, (this.random() - 0.5) * 11);
             u.meals = i < 18 ? 3 : 0;
@@ -408,10 +396,6 @@
             this.tapFood("auto");
           }
         }
-        command(x, y) {
-          this.aim = { x: clamp(x, -8, 8), y: clamp(y, -5.5, 5.5) };
-          if (this.running) this.moveTarget = { ...this.aim };
-        }
         scatter(x, y, count = 1) {
           for (let i = 0; i < count && this.food.length < 140; i++) {
             let tx = clamp(x, -8, 8), ty = clamp(y, -5.7, 5.7);
@@ -426,46 +410,27 @@
             this.emit("feed", tx, ty);
           }
         }
+        createBoss() {
+          return { x: 0, y: 0, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp: 2400, maxHp: 2400, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "basic", startAngle: 0, travel: 0 };
+        }
         setScene(scene2) {
-          this.cancelCharge();
           if (scene2 === this.scene) return;
-          this.running = false;
           this.projectiles = [];
-          for (const u of this.units) {
+          this.scene = scene2;
+          this.running = scene2 === "raid";
+          this.encounter = { outcome: this.running ? "fighting" : "idle", elapsed: 0 };
+          this.boss = this.createBoss();
+          for (let i = 0; i < this.units.length; i++) {
+            const u = this.units[i];
             if (scene2 === "raid") {
               u.home = { x: u.x, y: u.y };
-              u.x = (u.id % 9 - 4) * 0.7;
-              u.y = -3.7 - Math.floor((u.id - 1) / 9) * 0.64;
-            } else {
-              u.x = u.home.x;
-              u.y = u.home.y;
-            }
+              const angle = i * 2.3999632297, rad = 10.5 + i % 3 * 0.9;
+              Object.assign(u, { x: Math.cos(angle) * rad, y: Math.sin(angle) * rad * 0.84 });
+            } else Object.assign(u, u.home);
             u.ability = new AttackCycle(u);
             Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier).hp });
           }
-          this.scene = scene2;
-          this.moveTarget = null;
-          this.boss.phase = "idle";
-          this.boss.clock = 0;
-          this.boss.hp = this.boss.maxHp;
-          if (scene2 === "raid") this.deploy();
-        }
-        deploy() {
-          if (this.scene !== "raid") return;
-          if (this.running) {
-            this.command(this.aim.x, this.aim.y);
-            return;
-          }
-          for (let i = 0; i < this.units.length; i++) {
-            const u = this.units[i];
-            u.x = clamp(this.aim.x + (i % 9 - 4) * 0.66, -9, 9);
-            u.y = clamp(this.aim.y - Math.floor(i / 9) * 0.62, -6.5, 0);
-            Object.assign(u, { vx: 0, vy: 0, z: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier).hp });
-          }
-          this.boss.hp = this.boss.maxHp;
-          this.boss.phase = "rest";
-          this.boss.clock = 1;
-          this.running = true;
+          if (this.running) this.boss.phase = "chase";
         }
         pair(a, b) {
           if (a === b || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2) return false;
@@ -492,13 +457,15 @@
         }
         step(dt) {
           this.time += dt;
+          if (this.scene === "raid" && this.running) this.encounter.elapsed += dt;
           this.starter += dt;
           while (this.starter >= CONFIG.starterSeconds / this.progress.rate("production")) {
             this.starter -= CONFIG.starterSeconds / this.progress.rate("production");
             const u = this.spawn(Math.floor(this.random() * 3), 1, -7, 0);
             if (u && this.scene === "raid") {
               u.home = { x: -7, y: 0 };
-              u.y = -5;
+              const a = u.seed;
+              Object.assign(u, ArenaGeometry.clamp({ x: this.boss.x + Math.cos(a) * 12, y: this.boss.y + Math.sin(a) * 12 }, "raid", u.radius));
             }
             if (u) this.emit("starter", u.x, u.y);
           }
@@ -536,18 +503,10 @@
             if (this.scene === "raid" && this.running) u.ability.afterMove(this, oldPosition);
             if (oldZ > 0 && u.z === 0) {
               this.metrics.landings++;
-              if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
+              if (this.scene === "raid") this.combat("unit-land", { unit: u.id, x: u.x, y: u.y, z: 0, strength: Math.min(1, Math.hypot(u.vx, u.vy) / 8) });
+              else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
             }
-            const boundary = Math.hypot(u.x / 9.5, u.y / 6.8);
-            if (boundary > 1) {
-              u.x /= boundary;
-              u.y /= boundary;
-              const nx = u.x / (9.5 * 9.5), ny = u.y / (6.8 * 6.8), n = Math.hypot(nx, ny), out = (u.vx * nx + u.vy * ny) / n;
-              if (out > 0) {
-                u.vx -= 1.35 * out * nx / n;
-                u.vy -= 1.35 * out * ny / n;
-              }
-            }
+            this.boundBody(u, this.scene, u.radius);
           }
           for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
             if (contact(units[i], units[j])) this.metrics.contacts++;
@@ -557,6 +516,7 @@
           } else if (this.running) {
             this.updateProjectiles(dt);
             this.updateBoss(dt);
+            for (const u of this.units) this.separateBoss(u);
           }
         }
         steer(u, x, y, dt, speed2) {
@@ -600,157 +560,196 @@
           if (target) this.steer(u, target.x, target.y, dt, 2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1));
           else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, 0.75);
         }
-        chargeMembers(x, y) {
-          return this.units.filter((u) => u.chargeReady() && Math.hypot(u.x - x, u.y - y) <= this.progress.controlRadius + 1e-9).map((u) => u.id);
+        combat(kind, detail) {
+          this.notice(kind, { time: this.time, ...detail });
         }
-        beginCharge(origin, radius, ids, pointerType = "mouse") {
-          if (this.scene !== "raid" || !this.running) return false;
-          this.cast = { origin: { ...origin }, aim: { ...origin }, radius, ids: ids.filter((id) => this.units.some((u) => u.id === id && u.chargeReady())), elapsed: 0, pointerType };
-          return true;
-        }
-        aimCharge(p) {
-          if (this.cast) this.cast.aim = { ...p };
-        }
-        cancelCharge() {
-          if (this.cast) {
-            this.emit("cancel", this.cast.origin.x, this.cast.origin.y);
-            this.cast = null;
-          }
-        }
-        chargePower() {
-          return this.cast ? clamp(this.cast.elapsed / 1.2, 0, 1) : 0;
-        }
-        chargePoint(u, cast = this.cast) {
-          const spec = ATTACK_TYPES[u.species], power = clamp(cast.elapsed / 1.2, 0, 1), reach = spec.minReach + (spec.maxReach - spec.minReach) * power;
-          const dx = cast.aim.x - u.x, dy = cast.aim.y - u.y, d = Math.hypot(dx, dy), scale = d > 0 ? Math.min(d, reach) / d : 0;
-          return { ...ArenaGeometry.clamp({ x: u.x + dx * scale, y: u.y + dy * scale }), power };
-        }
-        releaseCharge() {
-          const cast = this.cast;
-          if (!cast) return [];
-          if (Math.hypot(cast.aim.x - cast.origin.x, cast.aim.y - cast.origin.y) < 0.25) {
-            this.cancelCharge();
-            return [];
-          }
-          const launched = [];
-          for (const id of cast.ids) {
-            const u = this.units.find((v) => v.id === id);
-            if (u?.chargeReady()) {
-              const target = this.chargePoint(u, cast);
-              if (u.ability.begin(this, target, target.power, true)) launched.push(id);
+        boundBody(body, scene2, margin) {
+          const before = { x: body.x, y: body.y }, p = ArenaGeometry.clamp(before, scene2, margin);
+          body.x = p.x;
+          body.y = p.y;
+          if (before.x !== p.x || before.y !== p.y) {
+            const r = ArenaGeometry.bounds(scene2, margin), nx = p.x / (r.x * r.x), ny = p.y / (r.y * r.y), n = Math.hypot(nx, ny) || 1, out = ((body.vx || 0) * nx + (body.vy || 0) * ny) / n;
+            if (out > 0) {
+              body.vx -= 1.3 * out * nx / n;
+              body.vy -= 1.3 * out * ny / n;
             }
           }
-          if (launched.length) this.moveTarget = null;
-          else this.emit("cancel", cast.origin.x, cast.origin.y);
-          this.cast = null;
-          return launched;
+        }
+        separateBoss(u) {
+          const b = this.boss;
+          if (u.z > b.height) return;
+          const dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy), r = b.radius + u.radius;
+          if (d >= r) return;
+          const a = d > 1e-6 ? Math.atan2(dy, dx) : u.seed, nx = Math.cos(a), ny = Math.sin(a);
+          u.x = b.x + nx * r;
+          u.y = b.y + ny * r;
+          const inward = u.vx * nx + u.vy * ny;
+          if (inward < 0) {
+            u.vx -= inward * nx;
+            u.vy -= inward * ny;
+          }
+          this.boundBody(u, "raid", u.radius);
         }
         combatEvent(kind, u, action) {
           this.combatLog.push({ kind, id: action?.id ?? 0, unit: u.id, species: u.species, time: this.time, x: u.x, y: u.y, z: u.z });
           if (this.combatLog.length > 240) this.combatLog.shift();
-          if (kind === "launch" || kind === "land-attack") this.emit(kind, u.x, u.y, u.z + 0.2);
-          if (kind === "launch") this.notice("attack-launch", { species: u.species });
+          if (kind === "launch") this.combat("attack-launch", { species: u.species, unit: u.id, x: u.x, y: u.y, z: u.z, attackKind: ATTACK_TYPES[u.species].kind });
         }
-        damageBoss(u, action, point2) {
+        damageBoss(u, action, point) {
           if (action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
           const spec = ATTACK_TYPES[u.species];
           this.boss.hp = Math.max(0, this.boss.hp - stats(u.tier).atk * spec.damage);
           this.boss.flash = 0.13;
-          const dx = point2.x - this.boss.x, dy = point2.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.emit("strike", this.boss.x + dx / d * this.boss.radius, this.boss.y + dy / d * this.boss.radius, clamp(point2.z + 0.3, 0.2, this.boss.height));
+          const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
+          this.combat("boss-hit", { unit: u.id, species: u.species, attackKind: spec.kind, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: spec.damage });
           this.combatEvent("damage", u, action);
           this.progress.record("hit");
-          this.notice("attack-hit");
           return true;
         }
         updateProjectiles(dt) {
           for (const p of this.projectiles) {
+            const old = { x: p.x, y: p.y, z: p.z };
             p.elapsed += dt;
             Object.assign(p, Ballistics.sample(p.path, p.elapsed / p.path.duration));
-            if (p.elapsed >= p.path.duration) {
+            const hit = ArenaGeometry.sweep(old, p, p.radius, p.height, this.boss);
+            if (hit) {
+              Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
+              this.damageBoss({ id: p.owner, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z }, p, hit);
+            } else if (p.elapsed >= p.path.duration) {
               p.z = 0;
               this.emit("shell-land", p.x, p.y);
-              if (ArenaGeometry.overlaps({ ...p, radius: 0.6, height: 0.4 }, this.boss)) this.damageBoss({ id: p.owner, species: p.species, tier: p.tier, x: p.x, y: p.y, z: 0 }, p, p);
             }
           }
-          this.projectiles = this.projectiles.filter((p) => p.elapsed < p.path.duration);
+          this.projectiles = this.projectiles.filter((p) => !p.hit && p.elapsed < p.path.duration);
           this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
         }
         raidUnit(u, dt) {
-          if (u.down > 0) {
-            u.down -= dt;
-            u.ability.update(this, dt);
-            if (u.down <= 0) u.hp = stats(u.tier).hp;
+          if (u.hp <= 0) {
+            u.down = 1;
+            u.ability.interrupt();
             return;
           }
           if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1) return;
-          if (this.cast?.ids.includes(u.id)) {
-            u.vx *= Math.exp(-dt * 16);
-            u.vy *= Math.exp(-dt * 16);
-            return;
-          }
-          if (this.moveTarget) {
-            const i = this.units.indexOf(u), a2 = i * 2.3999632297, r = Math.sqrt(i) * 0.66, target2 = ArenaGeometry.clamp({ x: this.moveTarget.x + Math.cos(a2) * r, y: this.moveTarget.y + Math.sin(a2) * r });
-            const d2 = Math.hypot(target2.x - u.x, target2.y - u.y);
-            if (d2 > 0.16) this.steer(u, target2.x, target2.y, dt, Math.min(3, d2 * 3));
-            else {
-              u.vx *= Math.exp(-dt * 12);
-              u.vy *= Math.exp(-dt * 12);
-            }
-            return;
-          }
-          const b = this.boss, spec = ATTACK_TYPES[u.species], a = -Math.PI + 0.25 + Math.floor((u.id - 1) / 3) % 12 / 11 * (Math.PI - 0.5), stand = spec.stand + (u.tier - 1) * 0.15;
-          const slot = ArenaGeometry.clamp({ x: b.x + Math.cos(a) * stand, y: b.y + Math.sin(a) * stand }), d = Math.hypot(slot.x - u.x, slot.y - u.y);
-          if (d > 0.42) {
-            this.steer(u, slot.x, slot.y, dt, 3.5);
+          const b = this.boss, spec = ATTACK_TYPES[u.species], angle = u.seed + this.encounter.elapsed * 0.055, stand = b.radius + spec.stand + (u.tier - 1) * 0.12;
+          const slot = ArenaGeometry.clamp({ x: b.x + Math.cos(angle) * stand, y: b.y + Math.sin(angle) * stand }, "raid", u.radius), d = Math.hypot(slot.x - u.x, slot.y - u.y);
+          if (d > 0.45) {
+            const dx2 = u.x - b.x, dy2 = u.y - b.y, rad = Math.hypot(dx2, dy2), delta = Math.atan2(Math.sin(angle - Math.atan2(dy2, dx2)), Math.cos(angle - Math.atan2(dy2, dx2)));
+            if (rad < b.radius + u.radius + 1.1 && Math.abs(delta) > 0.3) {
+              const tangent = Math.atan2(dy2, dx2) + Math.sign(delta) * 0.32;
+              this.steer(u, b.x + Math.cos(tangent) * (b.radius + u.radius + 1.2), b.y + Math.sin(tangent) * (b.radius + u.radius + 1.2), dt, 4.1);
+            } else this.steer(u, slot.x, slot.y, dt, 4.1);
             return;
           }
           const dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
-          const target = spec.kind === "lob" ? { x: b.x, y: b.y } : { x: b.x + dx / n * (b.radius + u.radius - 0.12), y: b.y + dy / n * (b.radius + u.radius - 0.12) };
-          u.ability.begin(this, target, 0, false);
+          const target = spec.kind === "lob" ? { x: b.x, y: b.y } : { x: b.x + dx / n * (b.radius + u.radius - 0.16), y: b.y + dy / n * (b.radius + u.radius - 0.16) };
+          u.ability.begin(this, target);
+        }
+        finish(outcome) {
+          if (!this.running) return;
+          this.running = false;
+          this.encounter.outcome = outcome;
+          this.projectiles = [];
+          this.boss.phase = "resting";
+          for (const u of this.units) u.ability.interrupt();
+          this.combat(outcome, { x: this.boss.x, y: this.boss.y, z: 0 });
+        }
+        bossWeaponPoint(phase = this.boss.phase, q = 0) {
+          const b = this.boss, c = CONFIG.raid;
+          if (phase === "sweep") {
+            const a = b.startAngle + Math.PI * 2 * q;
+            return { x: b.x + Math.cos(a) * c.sweepReach, y: b.y + Math.sin(a) * c.sweepReach, z: 0.2 };
+          }
+          const reach = b.radius - 0.25 + (c.basicReach - b.radius + 0.25) * Math.sin(Math.PI * clamp(q, 0, 1));
+          return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: 0.2 };
+        }
+        beginBossAttack(kind, target) {
+          const b = this.boss;
+          b.attackKind = kind;
+          b.clock = 0;
+          b.phase = kind === "basic" ? "strike-windup" : "sweep-windup";
+          b.angle = Math.atan2(target.y - b.y, target.x - b.x);
+          b.startAngle = b.angle - Math.PI / 2;
+          b.hit.clear();
+          this.combat("boss-prepare", { attackKind: kind, x: b.x, y: b.y, z: 0, angle: b.angle });
+        }
+        hitBossWeapon(from, to, kind) {
+          const b = this.boss, c = CONFIG.raid;
+          for (const u of this.units) {
+            if (u.hp <= 0 || b.hit.has(u.id)) continue;
+            const p = ArenaGeometry.sweep(from, to, c.weaponRadius, 1.4, { x: u.x, y: u.y, z: u.z, radius: u.radius, height: 0.65 });
+            if (!p) continue;
+            b.hit.add(u.id);
+            const dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1, heavy = kind === "sweep";
+            u.knock(dx / n, dy / n, heavy ? 13 : 8.5, heavy ? 10.2 : 7.2);
+            u.hp = Math.max(0, u.hp - (heavy ? 10 : 8));
+            if (u.hp === 0) u.down = 1;
+            this.metrics.directHits++;
+            this.metrics[heavy ? "sweepHits" : "basicHits"]++;
+            this.combat("unit-hit", { attackKind: kind, attackId: b.attackId, unit: u.id, x: p.x, y: p.y, z: Math.max(0.15, u.z + 0.25), nx: dx / n, ny: dy / n, strength: heavy ? 1.8 : 1 });
+          }
         }
         updateBoss(dt) {
-          const b = this.boss;
+          const b = this.boss, c = CONFIG.raid;
           if (b.hp <= 0) {
-            this.projectiles = [];
-            this.cancelCharge();
-            for (const u of this.units) u.ability.interrupt();
-            b.phase = "resting";
-            this.running = false;
-            this.emit("win", b.x, b.y, 2);
+            this.finish("victory");
+            return;
+          }
+          if (!this.units.some((u) => u.hp > 0)) {
+            this.finish("defeat");
             return;
           }
           b.clock += dt;
-          if (b.phase === "rest" && b.clock > 2 && this.units.some((u) => Math.hypot(u.x - b.x, u.y - b.y) < 4.8)) {
-            b.phase = "windup";
-            b.clock = 0;
-            b.hit.clear();
-            b.angle = -Math.PI - 0.2;
-          } else if (b.phase === "windup" && b.clock > 1.1) {
-            b.phase = "sweep";
-            b.clock = 0;
-            b.swings++;
-          } else if (b.phase === "sweep") {
-            b.angle = -Math.PI - 0.2 + clamp(b.clock / 0.72, 0, 1) * (Math.PI + 0.4);
-            const hx = b.x + Math.cos(b.angle) * 3.2, hy = b.y + Math.sin(b.angle) * 3.2;
-            for (const u of this.units) {
-              if (b.hit.has(u.id) || !ArenaGeometry.overlaps({ x: u.x, y: u.y, z: u.z, radius: u.radius, height: 0.65 }, { x: hx, y: hy, z: 0.05, radius: 1, height: 1.5 })) continue;
-              b.hit.add(u.id);
-              const dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy) || 1;
-              u.knock(dx / d, dy / d, 10.5, 6 + this.random() * 1.5);
-              u.hp -= 14;
-              if (u.hp <= 0) u.down = 3;
-              this.metrics.directHits++;
-              this.emit("impact", u.x, u.y, 0.5);
+          b.sweepClock += dt;
+          if (b.phase === "chase") {
+            let target = this.units.find((u) => u.id === b.targetId && u.hp > 0);
+            if (!target) {
+              const living = this.units.filter((u) => u.hp > 0);
+              target = living[(b.basicCount * 7 + b.swings * 11) % living.length];
+              b.targetId = target.id;
             }
-            if (b.clock > 0.72) {
+            const dx = target.x - b.x, dy = target.y - b.y, d = Math.hypot(dx, dy) || 1;
+            b.facing = Math.atan2(dy, dx);
+            b.angle = b.facing;
+            if (b.sweepClock >= c.sweepInterval) {
+              this.beginBossAttack("sweep", target);
+              return;
+            }
+            if (d <= c.basicReach + c.weaponRadius * 0.35 && target.z < 1.6 && b.clock > 0.35) {
+              this.beginBossAttack("basic", target);
+              return;
+            }
+            if (d > b.radius + target.radius + 0.2) {
+              const old = { x: b.x, y: b.y };
+              b.x += dx / d * c.chaseSpeed * dt;
+              b.y += dy / d * c.chaseSpeed * dt;
+              this.boundBody(b, "raid", b.radius + 0.25);
+              b.travel += Math.hypot(b.x - old.x, b.y - old.y);
+            }
+          } else if (b.phase === "strike-windup" || b.phase === "sweep-windup") {
+            const heavy = b.phase === "sweep-windup";
+            if (b.clock >= (heavy ? c.sweepWindup : c.basicWindup)) {
+              b.phase = heavy ? "sweep" : "strike";
+              b.clock = 0;
+              b.attackId = ++this.attackSerial;
+              if (heavy) {
+                b.swings++;
+                b.sweepClock = 0;
+              } else b.basicCount++;
+              this.combat("boss-launch", { attackKind: heavy ? "sweep" : "basic", attackId: b.attackId, x: b.x, y: b.y, z: 0.2 });
+            }
+          } else if (b.phase === "strike" || b.phase === "sweep") {
+            const heavy = b.phase === "sweep", duration = heavy ? c.sweepDuration : c.basicDuration, previous = Math.max(0, (b.clock - dt) / duration), q = Math.min(1, b.clock / duration);
+            this.hitBossWeapon(this.bossWeaponPoint(b.phase, previous), this.bossWeaponPoint(b.phase, q), heavy ? "sweep" : "basic");
+            if (heavy) b.angle = b.startAngle + Math.PI * 2 * q;
+            if (b.clock >= duration) {
               b.phase = "recover";
               b.clock = 0;
             }
-          } else if (b.phase === "recover" && b.clock > 1.1) {
-            b.phase = "rest";
+          } else if (b.phase === "recover" && b.clock >= (b.attackKind === "sweep" ? c.sweepRecover : c.basicRecover)) {
+            b.phase = "chase";
             b.clock = 0;
+            b.targetId = 0;
           }
         }
       };
@@ -810,7 +809,6 @@
       if (u.ability.action) {
         const a = u.ability.action;
         assert(integer(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
-        assert(typeof a.manual === "boolean" && a.power >= 0 && a.power <= 1);
         if (a.path) validatePath(a.path);
       }
       if (u.ability.phase === "active" || u.ability.phase === "windup") assert(u.ability.action !== null);
@@ -827,13 +825,10 @@
     }
     for (const n of TREE_NODES) assert(integer(raw.progress.levels[n.id], 0, 4));
     for (const v of Object.values(raw.progress.records)) assert(integer(v, 0, 1e12));
-    assert(["idle", "rest", "windup", "sweep", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp);
-    if (raw.cast) {
-      assert(raw.cast.origin && raw.cast.aim && Array.isArray(raw.cast.ids) && typeof raw.cast.owner === "string");
-      assert(raw.cast.ids.every((id) => ids.has(id)) && ["mouse", "touch"].includes(raw.cast.pointerType) && raw.cast.radius > 0 && raw.cast.radius <= 2.5);
-      for (const p of [raw.cast.origin, raw.cast.aim]) assert(Number.isFinite(p.x) && Number.isFinite(p.y));
-      assert(Number.isFinite(raw.cast.elapsed) && raw.cast.elapsed >= 0);
-    }
+    assert(["chase", "strike-windup", "strike", "sweep-windup", "sweep", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp);
+    assert(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
+    assert(raw.running === (raw.encounter.outcome === "fighting"));
+    assert(raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && ["basic", "sweep"].includes(raw.boss.attackKind));
     Object.assign(g, structuredClone(raw));
     g.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
     g.progress = Object.assign(new FarmProgress(), structuredClone(raw.progress));
@@ -862,7 +857,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.3.0";
+      PRODUCT_VERSION = "0.4.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -876,7 +871,7 @@
   function parseSave(text) {
     if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
     const data = JSON.parse(text);
-    if (data.schema !== "budmori-farm" || typeof data.productVersion !== "string" || data.productVersion.split(".").slice(0, 2).join(".") !== COMPATIBILITY) throw Error("이 저장은 현재 0.3 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
+    if (data.schema !== "budmori-farm" || typeof data.productVersion !== "string" || data.productVersion.split(".").slice(0, 2).join(".") !== COMPATIBILITY) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
     return restore(data.world);
   }
   var KEY, MAX_BYTES, FarmStorage;
@@ -902,7 +897,6 @@
         }
         encode(world) {
           const data = snapshot(world);
-          data.cast = null;
           return JSON.stringify({ schema: "budmori-farm", productVersion: PRODUCT_VERSION, world: data });
         }
         save(world) {
@@ -2506,7 +2500,8 @@
 
   // src/farm-renderer.js
   var { WebGLDevice, VectorContext } = globalThis.BloomGamekitRendering;
-  var TYPES = ATTACK_TYPES.map((d) => d.art);
+  var TYPES = ["lancer", "siege", "rogue"];
+  var COLORS = ["#bf8144", "#648b6b", "#8b719c"];
   var Diorama = class {
     constructor(canvas2) {
       this.canvas = canvas2;
@@ -2522,6 +2517,8 @@
       this.pixelRatio = d;
       this.canvas.height = Math.round(r.height * d);
       const aspect = r.width / r.height;
+      this.aspect = aspect;
+      this.scene = null;
       this.view = aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
       this.offset = [0, aspect < 0.8 ? 1.1 : -0.3];
       this.scale = this.canvas.width / (2 * this.view[0]);
@@ -2529,9 +2526,14 @@
     project(x, y, z = 0) {
       return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (0.62 * y + 0.785 * z + this.offset[1])) * this.scale };
     }
-    groundPoint(clientX, clientY) {
-      const r = this.canvas.getBoundingClientRect();
-      return { x: ((clientX - r.left) / r.width * 2 - 1) * this.view[0] - this.offset[0], y: ((1 - (clientY - r.top) / r.height * 2) * this.view[1] - this.offset[1]) / 0.62 };
+    configure(scene2) {
+      if (this.scene === scene2) return;
+      this.scene = scene2;
+      const a = this.aspect;
+      if (scene2 === "raid") this.view = a > 1.2 ? [Math.max(26.5, 17 * a), 17] : [26.5, 26.5 / a];
+      else this.view = a > 1.2 ? [Math.max(12, 9 * a), 9] : [11.7, 11.7 / a];
+      this.offset = [0, a < 0.8 ? 1.1 : -0.3];
+      this.scale = this.canvas.width / (2 * this.view[0]);
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const c = this.ctx;
@@ -2562,65 +2564,17 @@
       c.lineTo(b.x, b.y);
       c.stroke();
     }
-    attackPreview(sim2) {
-      const c = this.ctx, k = sim2.cast;
-      if (!k) return;
-      const power = sim2.chargePower();
-      this.ring(k.origin.x, k.origin.y, k.radius, "#59a68a", 0.045);
-      this.ring(k.origin.x, k.origin.y, k.radius + 0.1, "#86b9cc", 0.075, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * power);
-      for (const id of k.ids) {
-        const u = sim2.units.find((v) => v.id === id);
-        if (!u) continue;
-        const ready = u.chargeReady();
-        this.ring(u.x, u.y, u.radius + 0.16, ready ? "#e0ce70" : "#939b94", 0.065);
-        if (!ready) continue;
-        const target = sim2.chargePoint(u, k), spec = ATTACK_TYPES[u.species], path = Ballistics.create(u, target, spec.kind, target.power);
-        let prev = this.project(u.x, u.y, path.from.z);
-        for (let i = 1; i <= 16; i++) {
-          const p3 = Ballistics.sample(path, i / 16), next = this.project(p3.x, p3.y, p3.z);
-          this.line(prev, next, 0.025, spec.color);
-          prev = next;
-        }
-        this.ring(target.x, target.y, spec.kind === "lob" ? 0.6 : spec.kind === "leap" ? 0.45 : 0.22, "#c69637", 0.05);
-        const p2 = this.project(target.x, target.y, 0.04), s = this.scale * 0.12;
-        this.line({ x: p2.x - s, y: p2.y }, { x: p2.x + s, y: p2.y }, 0.035, "#e4bb55");
-        this.line({ x: p2.x, y: p2.y - s }, { x: p2.x, y: p2.y + s }, 0.035, "#e4bb55");
-      }
-      const p = this.project(k.aim.x, k.aim.y, 0.02);
-      this.ellipse(p.x, p.y, this.pixelRatio * 3, this.pixelRatio * 3, "#ffffff");
-      if (k.pointerType === "touch") {
-        const top = { x: p.x, y: p.y - 44 * this.pixelRatio };
-        this.line(p, top, 0.02, "#ffffffaa");
-        this.ellipse(top.x, top.y, 6 * this.pixelRatio, 6 * this.pixelRatio, "#ffffffaa");
-      }
-    }
-    attackEffects(sim2) {
-      for (const e of sim2.effects) {
-        const q = e.life;
-        if (e.kind === "cancel") {
-          const t = Math.min(1, q / 0.35);
-          this.ring(e.x, e.y, sim2.progress.controlRadius * (1 - t * 0.35), `rgba(158,109,90,${1 - t})`, 0.07);
-        }
-        if (["strike", "shell-land", "land-attack", "launch"].includes(e.kind)) {
-          const t = Math.min(1, q / 0.32), alpha = 1 - t;
-          if (alpha <= 0) continue;
-          this.ring(e.x, e.y, 0.12 + t * (e.kind === "shell-land" ? 0.8 : 0.45), `rgba(205,155,65,${alpha})`, 0.06);
-          if (e.kind !== "launch") for (let i = 0; i < 4; i++) {
-            const a = i * Math.PI / 2, p = this.project(e.x + Math.cos(a) * t * 0.5, e.y + Math.sin(a) * t * 0.5, e.z + 0.12 + t * 0.25);
-            this.ellipse(p.x, p.y, this.scale * 0.055, this.scale * 0.09, `rgba(255,239,182,${alpha})`, a);
-          }
-        }
-      }
-      for (const u of sim2.units) {
+    attackEffects(world) {
+      for (const u of world.units) {
         const a = u.ability, s = ATTACK_TYPES[u.species];
-        if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.08, s.color, 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
-        else if (a.manualCooldown > 0) this.ring(u.x, u.y, u.radius + 0.08, "#899488", 0.025, 0, Math.PI * 2 * (1 - a.manualCooldown / 3));
+        if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.1, COLORS[u.species], 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
       }
     }
     drawUnit(u, sim2) {
+      u = this.feel ? this.feel.unit(u, this.now) : u;
       const c = this.ctx, walk = Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim2.time * 9 + u.seed)) * 0.14 * walk : 0, p = this.project(u.x + Math.sin(sim2.time * 9 + u.seed) * 0.065 * walk, u.y, u.z + bob);
-      const r = Math.max(u.size * this.scale * 0.78, 11 * this.pixelRatio);
-      const landing = u.bounce > 0 ? u.bounce : 0, airStretch = clamp(Math.abs(u.vz) * 0.014, 0, 0.12), squash = 1 + landing * 0.8 - airStretch - (u.ability.phase === "windup" ? 0.12 : 0);
+      const r = Math.max(u.size * this.scale * 0.78, (sim2.scene === "raid" ? 2.8 : 11) * this.pixelRatio);
+      const landing = u.bounce > 0 ? u.bounce : 0, airStretch = clamp(Math.abs(u.vz) * 0.014, 0, 0.12), squash = 1 + (this.feel?.squash(u.id, this.now) || 0) + landing * 0.8 - airStretch - (u.ability.phase === "windup" ? 0.12 : 0);
       BudmoriArt.draw(c, TYPES[u.species], "friendly", p.x, p.y - r * 0.35, r, Math.atan2(-Math.sin(u.angle) * 0.62, Math.cos(u.angle)), sim2.time * 1e3, { respectOriginalFacing: true, phaseOffsetMs: u.id * 37, poseStretch: squash, poseTilt: Math.sin(sim2.time * 9 + u.seed) * 0.045 * walk, whiteFlash: u.flash > 0.09, hit: u.flash > 0, attack: u.ability.phase === "active" || u.ability.phase === "recover" && u.ability.elapsed < 0.13, deployed: u.ability.phase !== "idle", turretFacing: Math.atan2(-Math.sin(u.angle) * 0.62, Math.cos(u.angle)), alpha: u.down > 0 ? 0.55 : 1 });
       const joy = sim2.effects.some((e) => (e.kind === "eat" || e.kind === "birth" || e.kind === "merge") && e.life < 0.85 && Math.hypot(e.x - u.x, e.y - u.y) < 1.2);
       const expression = u.z > 0.5 || u.stun > 0 || u.down > 0 ? "surprised" : joy ? "happy" : !u.fed ? "hungry" : "normal";
@@ -2670,63 +2624,70 @@
       if (expression === "happy") for (const side of [-1, 1]) this.ellipse(side * r * 0.31, fy + r * 0.09, r * 0.075, r * 0.045, "#eaa09b");
       c.restore();
     }
-    drawBoss(sim2) {
-      const b = sim2.boss, c = this.ctx, p = this.project(b.x, b.y, 0), r = this.scale * 2.35, wind = b.phase === "windup", sweep = b.phase === "sweep";
-      BudmoriArt.draw(c, "guardshroom", "enemy", p.x, p.y - r * 0.34, r, void 0, sim2.time * 1e3, { respectOriginalFacing: true, poseStretch: wind ? 1.07 : 1 + Math.sin(sim2.time * 2) * 0.012 + (b.flash || 0) * 0.2, poseTilt: wind ? -0.07 : sweep ? 0.04 : 0, attack: sweep });
-      this.face(p.x, p.y - r * 0.34, r, 1, wind ? "surprised" : sweep ? "happy" : "normal", wind ? 1.07 : 1, wind ? -0.07 : sweep ? 0.04 : 0);
-      const angle = wind || sweep ? b.angle : -0.3, h = this.project(b.x + Math.cos(angle) * 3.2, b.y + Math.sin(angle) * 3.2, wind ? 1 : 0.25), base = this.project(b.x, b.y, 0.4);
-      this.line(base, h, 0.58, "#283d2c");
-      this.line(base, h, 0.41, "#7d9560");
-      c.save();
-      c.translate(h.x, h.y);
-      c.rotate(Math.atan2(h.y - base.y, h.x - base.x));
-      c.fillStyle = wind ? "#bd7854" : "#a4a872";
-      c.beginPath();
-      for (let i = 0; i < 8; i++) {
-        const a = i * Math.PI / 4, x = Math.cos(a) * this.scale * 0.87, y = Math.sin(a) * this.scale * 0.65;
-        i ? c.lineTo(x, y) : c.moveTo(x, y);
+    bossPose(world) {
+      const b = world.boss, k = this.feel?.boss(this.now) || { x: 0, y: 0, squash: 0 };
+      return { b, p: this.project(b.x + k.x, b.y + k.y, 0), r: this.scale * b.radius * 1.16, k };
+    }
+    drawBoss(world) {
+      const { b, p, r, k } = this.bossPose(world), wind = b.phase.endsWith("windup"), active2 = b.phase === "strike" || b.phase === "sweep";
+      BudmoriArt.draw(this.ctx, "guardshroom", "enemy", p.x, p.y - r * 0.34, r, void 0, world.time * 1e3, { respectOriginalFacing: true, poseStretch: (wind ? 1.06 : 1 + Math.sin(world.time * 2) * 0.012) + k.squash, poseTilt: wind ? -0.055 : active2 ? 0.035 : Math.sin(world.time * 5) * 0.012, attack: active2 });
+    }
+    drawBossFace(world) {
+      const { b, p, r } = this.bossPose(world), wind = b.phase.endsWith("windup"), active2 = b.phase === "strike" || b.phase === "sweep";
+      this.face(p.x, p.y - r * 0.34, r, 1, wind ? "surprised" : active2 ? "happy" : "normal", wind ? 1.06 : 1, wind ? -0.055 : active2 ? 0.035 : 0);
+    }
+    drawBossWeapon(world) {
+      const b = world.boss, c = CONFIG.raid, heavy = b.phase === "sweep" || b.phase === "sweep-windup";
+      let angle = heavy ? b.startAngle : b.angle, reach = b.radius + 0.15;
+      if (b.phase === "sweep") {
+        angle = b.startAngle + Math.PI * 2 * Math.min(1, b.clock / c.sweepDuration);
+        reach = c.sweepReach;
+      } else if (b.phase === "strike") reach = b.radius - 0.25 + (c.basicReach - b.radius + 0.25) * Math.sin(Math.PI * Math.min(1, b.clock / c.basicDuration));
+      else if (b.phase.endsWith("windup")) reach = heavy ? c.sweepReach : b.radius - 0.25;
+      const base = this.project(b.x + Math.cos(angle) * (b.radius * 0.65), b.y + Math.sin(angle) * (b.radius * 0.65), 0.35), tip = this.project(b.x + Math.cos(angle) * reach, b.y + Math.sin(angle) * reach, 0.35);
+      this.line(base, tip, 0.4, "#314331");
+      this.line(base, tip, 0.24, "#879866");
+      this.ellipse(tip.x, tip.y, c.weaponRadius * this.scale, c.weaponRadius * this.scale * 0.62, b.phase.endsWith("windup") ? "#ba7752" : "#b5aa73", angle);
+      if (b.phase === "sweep") {
+        const back = angle - 0.18, tail = this.project(b.x + Math.cos(back) * reach, b.y + Math.sin(back) * reach, 0.35);
+        this.line(tail, tip, 0.26, "#e6cf7b99");
       }
-      c.closePath();
-      c.fill();
-      this.ellipse(-this.scale * 0.19, -this.scale * 0.16, this.scale * 0.26, this.scale * 0.12, "#d3ce96");
-      c.restore();
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale;
-      this.groundEllipse(0, -0.2, 10.8, 7.9, "#bcc7a6");
-      this.groundEllipse(0, 0, 10.7, 7.9, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
-      this.groundEllipse(0, 0.15, 9.8, 7.1, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
+      const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", rx = raid ? CONFIG.raid.radiusX : 9.5, ry = raid ? CONFIG.raid.radiusY : 6.8;
+      this.groundEllipse(0, -0.2, rx + 1.3, ry + 1.1, "#bcc7a6");
+      this.groundEllipse(0, 0, rx + 1.2, ry + 1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
+      this.groundEllipse(0, 0.15, rx + 0.3, ry + 0.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
       for (let i = 0; i < 92; i++) {
-        const a = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92), x = Math.cos(a) * 9.8 * rad, y = Math.sin(a) * 7.1 * rad, p = this.project(x, y);
+        const a = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92), x = Math.cos(a) * (rx + 0.3) * rad, y = Math.sin(a) * (ry + 0.3) * rad, p = this.project(x, y);
         this.ellipse(p.x, p.y, S * 0.026, S * 0.02, "#a7b58b80");
       }
       for (let i = 0; i < 24; i++) {
-        const a = i * 2.39996, x = Math.cos(a) * 10.05, y = Math.sin(a) * 7.35, p = this.project(x, y);
+        const a = i * 2.39996, x = Math.cos(a) * (rx + 0.55), y = Math.sin(a) * (ry + 0.55), p = this.project(x, y);
         this.ellipse(p.x, p.y, 0.25 * S, 0.11 * S, "#94a577", a);
         this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", a + 0.7);
       }
-      if (sim2.scene === "raid") {
-        const b = sim2.boss;
-        if (b.phase === "windup" || b.phase === "sweep") {
-          c.save();
-          c.globalAlpha = b.phase === "windup" ? 0.15 : 0.07;
-          const p = this.project(b.x, b.y);
-          c.fillStyle = "#c36543";
-          c.beginPath();
-          c.moveTo(p.x, p.y);
-          c.ellipse(p.x, p.y, 4.25 * S, 4.25 * S * 0.62, 0, -0.2, Math.PI + 0.2);
-          c.closePath();
-          c.fill();
-          c.restore();
-          this.ring(b.x, b.y, 4.25, "#b86a49", 0.045, -Math.PI - 0.2, 0.2);
-        }
-        if (!sim2.running || sim2.moveTarget) {
-          this.ring(sim2.aim.x, sim2.aim.y, 0.45, "#397f83", 0.07);
-          this.ring(sim2.aim.x, sim2.aim.y, 0.2, "#597f70", 0.04);
+      if (raid) {
+        const b = sim2.boss, wind = b.phase.endsWith("windup"), active2 = b.phase === "strike" || b.phase === "sweep", heavy = b.phase === "sweep-windup" || b.phase === "sweep";
+        if (wind || active2) {
+          const reach = heavy ? CONFIG.raid.sweepReach : CONFIG.raid.basicReach, color = heavy ? "#b46c45" : "#a98a52";
+          if (heavy) {
+            this.ring(b.x, b.y, reach + CONFIG.raid.weaponRadius, color, wind ? 0.09 : 0.05);
+            this.ring(b.x, b.y, reach - CONFIG.raid.weaponRadius, "#c59b7288", 0.045);
+            const progress = Math.min(1, b.clock / (wind ? CONFIG.raid.sweepWindup : CONFIG.raid.sweepDuration));
+            this.ring(b.x, b.y, reach + CONFIG.raid.weaponRadius + 0.12, "#dfad65", 0.14, b.startAngle, b.startAngle + progress * Math.PI * 2);
+          } else {
+            const nx = Math.cos(b.angle), ny = Math.sin(b.angle), start2 = b.radius - 0.25, width = CONFIG.raid.weaponRadius;
+            for (const side of [-1, 1]) this.line(this.project(b.x + nx * start2 - ny * width * side, b.y + ny * start2 + nx * width * side), this.project(b.x + nx * reach - ny * width * side, b.y + ny * reach + nx * width * side), 0.055, color);
+            for (const distance of [start2, reach]) this.ring(b.x + nx * distance, b.y + ny * distance, width, color, 0.05);
+          }
         }
       }
     }
-    render(sim2) {
+    render(sim2, feel = null, now = performance.now()) {
+      this.feel = feel;
+      this.now = now;
+      this.configure(sim2.scene);
       const c = this.ctx;
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
@@ -2735,7 +2696,10 @@
         this.groundEllipse(u.x, u.y, u.size * (0.65 + u.z * 0.035), u.size * 0.42, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
-      if (sim2.scene === "raid") this.groundEllipse(sim2.boss.x, sim2.boss.y, 2.6, 1.9, "#38472c33");
+      if (sim2.scene === "raid") {
+        this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
+        this.drawBossWeapon(sim2);
+      }
       const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, draw: () => this.drawUnit(u, sim2) }));
       if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y, id: 0, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
@@ -2758,7 +2722,7 @@
       actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
       for (const actor of actors) actor.draw();
       this.attackEffects(sim2);
-      this.attackPreview(sim2);
+      feel?.draw(this, now);
       for (const e of sim2.effects) {
         const q = e.life;
         if (e.kind === "feed") this.ring(e.x, e.y, 0.15 + q * 0.35, `rgba(166,121,59,${(1 - q) * 0.6})`, 0.035);
@@ -2804,6 +2768,7 @@
           }
         }
       }
+      if (sim2.scene === "raid") this.drawBossFace(sim2);
       this.stats = c.endFrame();
     }
   };
@@ -2813,12 +2778,12 @@
   init_farm_state();
   init_version();
   var { binaryCodec: codec } = globalThis.BloomGamekitDeterministic;
-  var point = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) < 100 && Math.abs(p.y) < 100;
   var FarmSession = class {
     constructor(world = new Garden(), { room: room2 = null, onError = console.error, onEvent = () => {
     } } = {}) {
       this.world = world;
       this.previous = null;
+      this.previousBoss = null;
       this.renderAt = 0;
       this.tick = 0;
       this.epoch = 0;
@@ -2838,7 +2803,6 @@
       }, applyMembership: (change) => {
         this.epoch = change.epoch;
         this.players = [...change.players];
-        if (this.world.cast && !this.players.includes(this.world.cast.owner)) this.world.cancelCharge();
       }, step: (ctx) => this.step(ctx) };
       this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + COMPATIBILITY, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: 5, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent });
       this.loop = globalThis.BloomGamekitSimloop.createLoop({ session: this.session, getInput: () => ({ input: new Uint8Array(1), commands: (this.session.ready ? this.pending.splice(0, 32) : []).map((payload) => ({ payload })), predict: false }), canAdvance: () => true, canObserveInput: () => !this.session.closed && !this.session.failure, onError });
@@ -2868,7 +2832,7 @@
         if (!this.players.includes(f.playerId)) continue;
         for (const c of f.commands) {
           try {
-            this.command(codec.decode(c.payload), f.playerId);
+            this.command(codec.decode(c.payload));
           } catch {
           }
         }
@@ -2879,16 +2843,13 @@
       }
       const w = this.world;
       this.previous = new Map(w.units.map((u) => [u.id, { x: u.x, y: u.y, z: u.z, angle: u.angle }]));
+      this.previousBoss = { x: w.boss.x, y: w.boss.y };
       this.renderAt = performance.now();
-      if (w.cast) {
-        w.cast.elapsed += 0.05;
-        if (w.cast.elapsed > 6) w.cancelCharge();
-      }
       w.advanceAutoTaps(0.05);
       for (let i = 0; i < 6 * this.speed; i++) w.step(CONFIG.fixedStep);
       this.tick = tick + 1;
     }
-    command(c, owner) {
+    command(c) {
       const w = this.world;
       switch (c.type) {
         case "feed":
@@ -2906,29 +2867,6 @@
         case "invest":
           if (typeof c.id === "string") w.progress.invest(c.id);
           break;
-        case "move":
-          if (w.scene === "raid" && point(c.point) && ArenaGeometry.inside(c.point)) w.command(c.point.x, c.point.y);
-          break;
-        case "charge":
-          if (!w.cast && point(c.origin) && ArenaGeometry.inside(c.origin) && Array.isArray(c.ids)) {
-            const eligible = new Set(w.chargeMembers(c.origin.x, c.origin.y));
-            const ids = [...new Set(c.ids)].filter((id) => eligible.has(id));
-            if (w.beginCharge(c.origin, w.progress.controlRadius, ids, c.pointerType === "touch" ? "touch" : "mouse")) w.cast.owner = owner;
-          }
-          break;
-        case "aim":
-          if (w.cast?.owner === owner && point(c.point)) w.aimCharge(c.point);
-          break;
-        case "release":
-          if (w.cast?.owner === owner && point(c.point)) {
-            w.aimCharge(c.point);
-            if (ArenaGeometry.inside(c.point)) w.releaseCharge();
-            else w.cancelCharge();
-          }
-          break;
-        case "cancel":
-          if (w.cast?.owner === owner) w.cancelCharge();
-          break;
       }
     }
     presentation(now) {
@@ -2936,6 +2874,7 @@
       if (!this.previous || this.paused) return w;
       const alpha = Math.max(0, Math.min(1, (now - this.renderAt) / 50));
       const view = Object.create(w);
+      if (this.previousBoss) view.boss = { ...w.boss, x: this.previousBoss.x + (w.boss.x - this.previousBoss.x) * alpha, y: this.previousBoss.y + (w.boss.y - this.previousBoss.y) * alpha };
       view.units = w.units.map((u) => {
         const p = this.previous.get(u.id);
         if (!p) return u;
@@ -3063,7 +3002,7 @@
       if (this.soundFrame[kind] === this.frameId || now - (this.lastSound[kind] ?? -99) < gap || this.voices.size >= 4) return;
       this.soundFrame[kind] = this.frameId;
       this.lastSound[kind] = now;
-      const defs = { tap: [340 + step * 65, 420 + step * 65, 0.055, 0.14], complete: [520, 1040, 0.12, 0.2], land: [240, 150, 0.065, 0.1], eat: [740, 990, 0.09, 0.09] }, [hz, end, duration, gain] = defs[kind];
+      const defs = { tap: [340 + step * 65, 420 + step * 65, 0.055, 0.14], complete: [520, 1040, 0.12, 0.2], land: [240, 150, 0.065, 0.1], eat: [740, 990, 0.09, 0.09], strike: [180, 80, 0.075, 0.16], heavy: [95, 42, 0.16, 0.22], launch: [290, 145, 0.06, 0.07] }, [hz, end, duration, gain] = defs[kind];
       const o = this.audio.createOscillator(), g = this.audio.createGain(), v = { o, g };
       o.type = kind === "land" ? "sine" : "triangle";
       o.frequency.setValueAtTime(hz, now);
@@ -3121,6 +3060,98 @@
     }
   };
 
+  // src/combat-feel.js
+  var CombatFeel = class {
+    constructor(audio) {
+      this.audio = audio;
+      this.world = null;
+      this.sequence = 0;
+      this.effects = [];
+      this.poses = /* @__PURE__ */ new Map();
+      this.bossHit = null;
+      this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this.counts = { hits: 0, landings: 0 };
+    }
+    observe(world, now) {
+      if (this.world !== world) {
+        this.world = world;
+        this.sequence = world.eventSequence;
+        this.effects = [];
+        this.poses.clear();
+        this.bossHit = null;
+        return;
+      }
+      for (const e of world.notices) {
+        if (e.sequence <= this.sequence) continue;
+        if (["boss-hit", "unit-hit", "unit-land", "attack-launch", "boss-launch"].includes(e.kind)) {
+          this.effects.push({ ...e, at: now });
+          if (this.effects.length > 48) this.effects.shift();
+          if (e.kind === "boss-hit") {
+            this.counts.hits++;
+            this.bossHit = { ...e, at: now };
+            this.audio.sound("strike", e.species || 0);
+          }
+          if (e.kind === "unit-hit") {
+            const u = world.units.find((u2) => u2.id === e.unit);
+            if (u) this.poses.set(u.id, { at: now, until: now + 180, heldUntil: now + (this.reduced ? 0 : 35), x: u.x, y: u.y, z: u.z, strength: e.strength });
+            this.counts.hits++;
+            this.audio.sound(e.attackKind === "sweep" ? "heavy" : "strike");
+          }
+          if (e.kind === "unit-land") {
+            this.counts.landings++;
+            if (e.strength > 0.2) this.audio.sound("land");
+          }
+          if (e.kind === "boss-launch") this.audio.sound("launch");
+        }
+      }
+      this.sequence = world.eventSequence;
+      this.effects = this.effects.filter((e) => now - e.at < 430);
+      for (const [id, p] of this.poses) if (now > p.until) this.poses.delete(id);
+    }
+    unit(u, now) {
+      const p = this.poses.get(u.id);
+      if (!p || now > p.heldUntil) return u;
+      return Object.assign(Object.create(Object.getPrototypeOf(u)), u, { x: p.x, y: p.y, z: p.z });
+    }
+    squash(id, now) {
+      const p = this.poses.get(id);
+      return !p || this.reduced ? 0 : Math.sin(Math.min(1, (now - p.at) / 180) * Math.PI) * Math.min(0.2, p.strength * 0.12);
+    }
+    boss(now) {
+      const e = this.bossHit;
+      if (!e || this.reduced) return { x: 0, y: 0, squash: 0 };
+      const q = Math.min(1, (now - e.at) / 160), k = Math.sin(q * Math.PI) * (1 - q);
+      return { x: -e.nx * k * 0.1, y: -e.ny * k * 0.1, squash: k * 0.035 };
+    }
+    draw(r, now) {
+      for (const e of this.effects) {
+        const q = (now - e.at) / 430;
+        if (q < 0 || q > 1) continue;
+        const c = r.ctx, heavy = e.attackKind === "sweep", impact = e.kind === "unit-hit" || e.kind === "boss-hit", landing = e.kind === "unit-land";
+        if (e.kind === "attack-launch") {
+          const t2 = Math.min(1, q / 0.35), p = r.project(e.x, e.y, e.z + 0.2);
+          if (t2 < 1) r.ellipse(p.x, p.y, r.scale * 0.12 * (1 - t2), r.scale * 0.2 * (1 - t2), "#ffe7a6");
+          continue;
+        }
+        if (!impact && !landing) continue;
+        const t = Math.min(1, q / (landing ? 0.9 : 0.7)), alpha = 1 - t;
+        if (alpha <= 0) continue;
+        const size = landing ? 0.7 : heavy ? 1.15 : 0.6, color = landing ? "157,142,107" : e.kind === "boss-hit" ? "245,199,102" : "231,147,83";
+        r.ring(e.x, e.y, 0.15 + t * size, `rgba(${color},${alpha * 0.8})`, landing ? 0.045 : 0.075);
+        const center = r.project(e.x, e.y, e.z || 0.1), n = landing ? 5 : 6;
+        for (let i = 0; i < n; i++) {
+          const a = i * Math.PI * 2 / n + e.sequence % 11 * 0.19, d = (0.12 + t * size) * (landing ? 1.2 : 1), p = r.project(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, (e.z || 0.1) + (landing ? 0.12 : Math.sin(t * Math.PI) * 0.5));
+          if (landing) r.ellipse(p.x, p.y, r.scale * 0.09 * (1 - t), r.scale * 0.045 * (1 - t), `rgba(${color},${alpha * 0.65})`, a);
+          else {
+            const inner = { x: center.x + (p.x - center.x) * 0.55, y: center.y + (p.y - center.y) * 0.55 };
+            r.line(inner, p, 0.055, `rgba(255,242,190,${alpha})`);
+          }
+        }
+        if (impact && t < 0.28) r.ellipse(center.x, center.y, r.scale * 0.18 * (1 - t), r.scale * 0.12 * (1 - t), "#fff4d6");
+      }
+    }
+  };
+
   // src/farm-app.js
   var $2 = (id) => document.getElementById(id);
   var storage = new FarmStorage();
@@ -3135,7 +3166,6 @@
   var noticeSequence = 0;
   var lastSave = 0;
   var treePause = false;
-  var gesture = null;
   var renderer = new Diorama($2("world"));
   var fail = (error) => {
     $2("error").hidden = false;
@@ -3144,6 +3174,7 @@
     if (active && !room) active.paused = true;
   };
   var foodFeel = new FoodFeel(requestFeed);
+  var combatFeel = new CombatFeel(foodFeel);
   function requestFeed() {
     if (!home && active && !active.paused) {
       foodFeel.unlock();
@@ -3186,7 +3217,6 @@
     $2("newGame").disabled = !!attempt;
   }
   function setHome(value, push = true) {
-    cancelGesture();
     if (value) persist();
     home = value;
     document.body.dataset.home = String(value);
@@ -3199,6 +3229,7 @@
     if (value) $2("continueGame").focus();
   }
   function start(world, push = true) {
+    foodFeel.unlock();
     install(world);
     setHome(false, push);
   }
@@ -3318,7 +3349,7 @@
     }
   };
   function scene(value, push = true) {
-    cancelGesture();
+    foodFeel.unlock();
     active.queue("scene", { value });
     if (push) history.pushState(null, "", value === "raid" ? "#/raid" : "#/farm");
   }
@@ -3335,7 +3366,6 @@
   $2("speed").onclick = () => active.queue("speed", { value: active.speed === 1 ? 4 : 1 });
   $2("pause").onclick = () => {
     if (room) return;
-    cancelGesture();
     active.paused = !active.paused;
   };
   function drawTree() {
@@ -3346,7 +3376,6 @@
     }).join("");
   }
   function panel(id, open, push = true) {
-    cancelGesture();
     if (open) {
       if ($2("treePanel").hidden && $2("helpPanel").hidden) treePause = active.paused;
       if (!room) active.paused = true;
@@ -3384,69 +3413,16 @@
     }
   };
   var canvas = $2("world");
-  function cancelGesture() {
-    if (gesture) {
-      clearTimeout(gesture.timer);
-      const id = gesture.id;
-      gesture = null;
-      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
-    }
-    active?.queue("cancel");
-  }
-  function arm(g) {
-    if (g !== gesture || g.held || active.paused || home) return;
-    clearTimeout(g.timer);
-    g.held = true;
-    active.queue("charge", { origin: g.origin, ids: g.ids, pointerType: g.pointerType });
-    active.queue("aim", { point: g.aim });
-  }
-  canvas.addEventListener("pointerdown", (e) => {
-    const w = active.world;
-    if (e.button !== 0 || gesture || home || active.paused || w.scene !== "raid" || !w.running || !$2("treePanel").hidden || !$2("helpPanel").hidden) return;
-    const p = renderer.groundPoint(e.clientX, e.clientY);
-    if (!ArenaGeometry.inside(p)) return;
-    e.preventDefault();
-    foodFeel.unlock();
-    canvas.setPointerCapture(e.pointerId);
-    const g = gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, origin: p, aim: p, ids: w.chargeMembers(p.x, p.y), pointerType: e.pointerType, held: false, timer: 0 };
-    g.timer = setTimeout(() => arm(g), 250);
-  });
-  canvas.addEventListener("pointermove", (e) => {
-    if (e.pointerId !== gesture?.id) return;
-    e.preventDefault();
-    const g = gesture;
-    g.aim = renderer.groundPoint(e.clientX, e.clientY);
-    if (Math.hypot(e.clientX - g.x, e.clientY - g.y) > 10) arm(g);
-    if (g.held) active.queue("aim", { point: g.aim });
-  });
-  canvas.addEventListener("pointerup", (e) => {
-    if (e.pointerId !== gesture?.id) return;
-    const g = gesture, p = renderer.groundPoint(e.clientX, e.clientY);
-    g.aim = p;
-    if (Math.hypot(e.clientX - g.x, e.clientY - g.y) > 10) arm(g);
-    clearTimeout(g.timer);
-    gesture = null;
-    if (g.held) active.queue("release", { point: p });
-    else if (ArenaGeometry.inside(p)) active.queue("move", { point: p });
-    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-  });
-  canvas.addEventListener("pointercancel", cancelGesture);
-  canvas.addEventListener("lostpointercapture", cancelGesture);
-  window.addEventListener("blur", () => {
-    cancelGesture();
-    persist();
-  });
+  canvas.addEventListener("pointerdown", () => foodFeel.unlock());
+  window.addEventListener("blur", persist);
   document.addEventListener("visibilitychange", () => {
-    cancelGesture();
     if (document.hidden) {
       persist();
       active.loop.resetTiming();
     }
   });
-  for (const b of document.querySelectorAll("button")) b.addEventListener("pointerdown", cancelGesture);
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      cancelGesture();
       if (!$2("treePanel").hidden) panel("treePanel", false);
       else if (!$2("helpPanel").hidden) panel("helpPanel", false);
     }
@@ -3474,6 +3450,11 @@
       return;
     }
     if (home) {
+      if (!room && storage.error && !storage.world) {
+        setHome(true, false);
+        history.replaceState(null, "", "#/");
+        return;
+      }
       if (room) setHome(false, false);
       else if (storage.world) start(restore(snapshot(storage.world)), false);
       else {
@@ -3501,6 +3482,8 @@
     $2("count").textContent = w.units.length;
     $2("starter").textContent = w.units.length >= CONFIG.cap ? "정원이 가득해요" : `새싹까지 ${Math.ceil(CONFIG.starterSeconds / w.progress.rate("production") - w.starter)}초`;
     $2("bossHealth").style.width = w.boss.hp / w.boss.maxHp * 100 + "%";
+    $2("battleOutcome").textContent = w.encounter.outcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : w.encounter.outcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "";
+    $2("battleOutcome").hidden = home || !raid || w.running;
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
@@ -3527,7 +3510,8 @@
   }
   function frame(now) {
     if (room || !home && !document.hidden) active.pulse(now);
-    renderer.render(active.presentation(now));
+    combatFeel.observe(active.world, now);
+    renderer.render(active.presentation(now), combatFeel, now);
     sync(now);
     requestAnimationFrame(frame);
   }
@@ -3542,5 +3526,5 @@
     return active;
   }, get room() {
     return room;
-  }, renderer, storage, foodFeel, ATTACK_TYPES, Ballistics, ArenaGeometry, version: PRODUCT_VERSION };
+  }, renderer, storage, foodFeel, combatFeel, CONFIG, ATTACK_TYPES, Ballistics, ArenaGeometry, version: PRODUCT_VERSION };
 })();
