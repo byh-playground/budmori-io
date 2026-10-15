@@ -11,6 +11,7 @@ const root=fileURLToPath(new URL('../',import.meta.url)),out=path.join(root,'tes
 await mkdir(out,{recursive:true});
 const requiredClips=['idle','walk','windup','fire','recover','hit','airborne','landing','death'];
 const requiredExpressions=['neutral','happy','focused','attack','surprised','hurt','hungry','dead'];
+const requiredBossClips=['idle','walk','windup','strike','sweep','recover','hit','death'],requiredBossExpressions=['neutral','focused','attack','hurt','dead'];
 const sourceConfig=JSON.parse(await readFile(path.join(root,'scripts/vector-assets-sources.json'),'utf8'));
 assert.equal(existsSync(path.join(root,'scripts/vector-assets-motion.json')),false,'SVG motion sidecar must be removed');
 const authoredAssets=[];
@@ -22,6 +23,13 @@ for(const source of sourceConfig.assets){
   for(const name of requiredExpressions)assert(new RegExp(`<g id="face-${name}">`).test(sourceText),`${source.file} is missing authored SVG face geometry for ${name}`);
   authoredAssets.push({species:source.species,sourceSha256:createHash('sha256').update(sourceBytes).digest('hex'),parts:metadata.parts.length});
 }
+assert.deepEqual(sourceConfig.bosses.map(b=>b.id),['chestnut']);
+const bossSource=sourceConfig.bosses[0],bossBytes=await readFile(path.join(root,bossSource.file)),bossText=bossBytes.toString('utf8'),bossMetadata=JSON.parse(bossText.match(/<metadata id="vector-asset">([\s\S]*?)<\/metadata>/)?.[1]||'null');
+assert.deepEqual(Object.keys(bossMetadata.clips),requiredBossClips);assert.deepEqual(Object.keys(bossMetadata.expressions),requiredBossExpressions);
+for(const name of requiredBossExpressions)assert(new RegExp(`<g id="face-${name}">`).test(bossText),`${bossSource.file} is missing its authored ${name} face`);
+for(const name of ['ground','shoulder-left','shoulder-right','fist-left','fist-right'])assert(bossMetadata.sockets[name],`${bossSource.file} must author ${name} socket`);
+assert.equal(bossMetadata.parts.some(p=>p.id==='arm-left'),true);assert.equal(bossMetadata.parts.some(p=>p.id==='arm-right'),true);
+const authoredBoss={id:bossSource.id,sourceSha256:createHash('sha256').update(bossBytes).digest('hex'),parts:bossMetadata.parts.length};
 const server=createServer(async(q,r)=>{
   const url=new URL(q.url,'http://localhost');
   if(url.pathname==='/favicon.ico'){r.writeHead(204);r.end();return}
@@ -63,7 +71,7 @@ try{
     const entries=ids.map((species)=>[species+1,species,4]);
     if(!world.registerRaidRoster(owner,entries))throw Error('Visual roster registration failed');
     const points=[[-8,3],[0,-9],[8,3]];
-    for(let i=0;i<ids.length;i++)if(!world.deployRaidUnit(owner,ids[i]+1,points[i][0],points[i][1]))throw Error('Vector troop drop failed: '+i);
+    for(let i=0;i<ids.length;i++)if(!world.deployNextRaidUnit(owner,i+1,points[i][0],points[i][1]))throw Error('Vector troop drop failed: '+i);
     for(const unit of world.units){unit.dropLanded=true;unit.z=unit.vz=0;unit.vx=unit.vy=0;unit.ability.phase='idle';unit.ability.elapsed=0}
     const bySpecies=[...world.units].sort((a,b)=>a.species-b.species);
     bySpecies[0].ability.phase='windup';bySpecies[0].ability.elapsed=.14;
@@ -71,11 +79,13 @@ try{
     bySpecies[2].z=1.2;bySpecies[2].stun=.2;
     world.boss.phase='resting';world.boss.x=0;world.boss.y=-1;world.boss.hp=world.boss.maxHp=2400;
     BUDMORI.runtime.world=world;BUDMORI.runtime.speed=1;BUDMORI.runtime.paused=true;BUDMORI.runtime.capturePresentation('reset');
-    return{assets:[...renderer.vectorAssets].map(([species,record])=>({species,id:record.compiled.metadata.id,sourceSha256:record.compiled.sourceSha256,viewBox:record.compiled.viewBox,parts:record.compiled.geometry.partCount,vertices:record.compiled.geometry.vertices.length/11,clips:Object.keys(record.compiled.metadata.clips),expressions:Object.keys(record.compiled.metadata.expressions)})),sockets:ids.map(species=>({species,mouth:BUDMORI.renderer.vectorAssets.get(species).compiled.metadata.sockets.mouth.point})),rendererBackend:renderer.canvas.dataset.rendererBackend};
+    const boss=renderer.bossAssets.get('chestnut'),metadata=boss.compiled.metadata,player=boss.asset.createPlayer({clip:'idle',startedAtMs:0}),before=player.getSocket('fist-right');player.setBasePose('arm-right',{rotation:.32});const after=player.getSocket('fist-right'),origin=player.getSocket('ground');if(Math.hypot(after.x-before.x,after.y-before.y)<1)throw Error('Chestnut arm socket must follow its authored arm transform');for(const clip of Object.keys(metadata.clips)){player.play(clip,0);player.seek(metadata.clips[clip].durationMs*.5);if(player.currentClip!==clip)throw Error('Chestnut GameKit clip failed: '+clip)}for(const expression of Object.keys(metadata.expressions)){player.setExpression(expression);if(player.currentExpression!==expression)throw Error('Chestnut GameKit expression failed: '+expression)}player.dispose();
+    return{assets:[...renderer.vectorAssets].map(([species,record])=>({species,id:record.compiled.metadata.id,sourceSha256:record.compiled.sourceSha256,viewBox:record.compiled.viewBox,parts:record.compiled.geometry.partCount,vertices:record.compiled.geometry.vertices.length/11,clips:Object.keys(record.compiled.metadata.clips),expressions:Object.keys(record.compiled.metadata.expressions)})),boss:{id:boss.compiled.metadata.id,sourceSha256:boss.compiled.sourceSha256,parts:boss.compiled.geometry.partCount,vertices:boss.compiled.geometry.vertices.length/11,clips:Object.keys(metadata.clips),expressions:Object.keys(metadata.expressions),socketMotion:{before,after,ground:origin},activePlayer:renderer.bossPlayer?.currentClip},sockets:ids.map(species=>({species,mouth:BUDMORI.renderer.vectorAssets.get(species).compiled.metadata.sockets.mouth.point})),rendererBackend:renderer.canvas.dataset.rendererBackend};
   });
   for(const asset of vector.assets){assert.deepEqual(asset.clips,requiredClips);for(const expression of requiredExpressions)assert(asset.expressions.includes(expression),`${asset.id} is missing the ${expression} face expression`);const source=authoredAssets.find(entry=>entry.species===asset.species);assert.equal(asset.sourceSha256,source.sourceSha256,`${asset.id} runtime metadata must hash its exact SVG source`);assert.equal(asset.parts,source.parts)}
+  assert.equal(vector.boss.id,'budmori-chestnut-boss');assert.deepEqual(vector.boss.clips,requiredBossClips);assert.deepEqual(vector.boss.expressions,requiredBossExpressions);assert.equal(vector.boss.sourceSha256,authoredBoss.sourceSha256);assert.equal(vector.boss.parts,authoredBoss.parts);assert(vector.boss.socketMotion.after.x!==vector.boss.socketMotion.before.x||vector.boss.socketMotion.after.y!==vector.boss.socketMotion.before.y);
   report.assets=vector.assets;report.socketTransformCheck='PASS authored socket stays crop-local and follows the body part pivot';report.backend=vector.rendererBackend;
-  await page.waitForFunction(()=>BUDMORI.renderer.vectorPlayers.size===3,{},{timeout:5000}).catch(async error=>{
+  await page.waitForFunction(()=>BUDMORI.renderer.vectorPlayers.size===3&&BUDMORI.renderer.bossPlayer?.currentClip==='idle',{},{timeout:5000}).catch(async error=>{
     const debug=await page.evaluate(()=>({scene:BUDMORI.sim.scene,worldUnits:BUDMORI.sim.units.map(u=>({id:u.id,species:u.species,ownerId:u.ownerId})),runtimeWorld:BUDMORI.runtime.world.scene,presentation:BUDMORI.runtime.presentation(performance.now()).units.map(u=>({id:u.id,species:u.species,ownerId:u.ownerId})),players:BUDMORI.renderer.vectorPlayers.size}));
     throw new Error(error.message+'; renderer state '+JSON.stringify(debug));
   });

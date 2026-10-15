@@ -9,9 +9,11 @@ const outputPath = path.join(root, 'src/vector-assets.generated.js');
 
 export async function compileTroopAssets() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
-  if (config.schemaVersion !== 1 || !Array.isArray(config.assets) || config.assets.length !== 3) {
+  if (config.schemaVersion !== 1 || !Array.isArray(config.assets) || config.assets.length !== 3
+      || !Array.isArray(config.bosses) || config.bosses.length !== 1) {
     throw new TypeError('Vector source config must map exactly three species');
   }
+  if(config.bosses[0]?.id!=='chestnut'||typeof config.bosses[0]?.file!=='string')throw new TypeError('Vector source config must map the chestnut boss once');
   const sources = [...config.assets].sort((a, b) => a.species - b.species);
   if (sources.some((entry, index) => entry.species !== index || typeof entry.file !== 'string')) {
     throw new TypeError('Vector source config must map species 0, 1, and 2 once each');
@@ -44,6 +46,20 @@ export async function compileTroopAssets() {
   const declarations = [];
   const entries = [];
   const compiled = [];
+  const bossEntries=[],bossCompiled=[];
+  const bossDir=path.resolve(root,'assets/bosses');
+  const bossNames=await readdir(bossDir).catch(error=>error.code==='ENOENT'?[]:Promise.reject(error));
+  const configuredBossNames=config.bosses.map(entry=>path.basename(entry.file)).sort();
+  if(bossNames.filter(name=>name.toLowerCase().endsWith('.svg')).some(name=>!configuredBossNames.includes(name)))throw new TypeError('Unexpected SVG in assets/bosses; add its id mapping to vector-assets-sources.json');
+  for(const source of config.bosses){
+    const absolute=path.resolve(root,source.file);
+    if(!absolute.startsWith(bossDir+path.sep))throw new TypeError('Boss vector sources must stay inside assets/bosses');
+    const asset=await compileVectorAssetFile(absolute,source.file.replaceAll('\\','/'));
+    const {sourcePaths,...runtimeAsset}=asset,name='chestnutBossAsset';
+    declarations.push((await compiledAssetModuleSource(runtimeAsset,name)).trim());
+    bossEntries.push(`"${source.id}": ${name}`);
+    bossCompiled.push({id:source.id,sourceSha256:asset.sourceSha256,compilerVersion:asset.compilerVersion,parts:asset.geometry.partCount,vertices:asset.geometry.vertices.length/asset.geometry.strideFloats,clips:Object.keys(asset.metadata.clips),expressions:Object.keys(asset.metadata.expressions)});
+  }
   for (const source of supplied) {
     const asset = await compileVectorAssetFile(source.absolute, source.file.replaceAll('\\', '/'));
     const { sourcePaths, ...runtimeAsset } = asset;
@@ -60,11 +76,12 @@ export async function compileTroopAssets() {
     '// Generated from the SVG sources by GameKit vector-assets; do not edit.',
     ...declarations,
     `export const TROOP_VECTOR_ASSETS = Object.freeze({${entries.join(',')}});`,
+    `export const BOSS_VECTOR_ASSETS = Object.freeze({${bossEntries.join(',')}});`,
     '',
   ].join('\n');
   await writeFile(outputPath, contents, 'utf8');
   if (!supplied.length) console.warn('No troop SVG sources yet; the vector registry stays empty until all three sources arrive.');
-  return { sourceCount: supplied.length, assets: compiled, output: 'src/vector-assets.generated.js' };
+  return { sourceCount: supplied.length, assets: compiled, bosses:bossCompiled, output: 'src/vector-assets.generated.js' };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

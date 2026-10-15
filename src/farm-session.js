@@ -24,9 +24,9 @@ class UnitRender extends RenderObject {
 class BossRender extends RenderObject {
  static renderSchema=Object.freeze({
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,startAngle:R.ANGLE,
-  phase:R.STATE_KEY,clock:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR
+  phase:R.STATE_KEY,clock:R.LINEAR,travel:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR
  });
- constructor(b){super();Object.assign(this,{x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash})}
+ constructor(b){super();Object.assign(this,{x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash})}
 }
 
 class FoodRender extends RenderObject {
@@ -61,7 +61,7 @@ class GameClockRender extends RenderObject {
 
 export class FarmSession{
  constructor(world=new Garden(),{room=null,onError=console.error,onEvent=()=>{}}={}){
-  this.world=world;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[...(room?.players||['solo'])];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';
+  this.world=world;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[...(room?.players||['solo'])];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
   this.presentationRevision=0;this.presentationSequence=0;this.pendingPresentationMode=null;this.presentationRuntime=new PresentationRuntime({stepMs:PRESENTATION_STEP_MS,delayMs:PRESENTATION_STEP_MS,snapDistance:12});
   this.presentationIds=new WeakMap();this.nextPresentationId=1;this.previousCaptureTimeMs=null;this.latestCaptureTimeMs=0;this.presentationOriginWallMs=null;this.lastFrameClockMs=null;this.lastCaptureClockMs=0;this.pulseTimestamp=null;
   const adapter={save:()=>codec.encode(this.capture()),load:bytes=>this.load(codec.decode(bytes)),validateSnapshot:(bytes,context={})=>{try{this.validate(codec.decode(bytes),context);return true}catch{return false}},applyMembership:change=>{this.epoch=change.epoch;this.players=[...change.players];if(this.world.scene==='raid')this.world.setRaidPlayers(this.players);this.pendingPresentationMode='reset'},step:ctx=>this.step(ctx)};
@@ -80,6 +80,7 @@ export class FarmSession{
  validate(s,ctx={}){if(!Number.isSafeInteger(s.tick)||s.tick<0||!Number.isSafeInteger(s.epoch)||s.epoch<0||!Array.isArray(s.players)||s.players.length>CONFIG.maxRaidPlayers||s.players.some(p=>typeof p!=='string')||![1,4].includes(s.speed)||ctx.tick!==undefined&&s.tick!==ctx.tick||ctx.membershipEpoch!==undefined&&s.epoch!==ctx.membershipEpoch)throw Error('Invalid farm snapshot');return restore(s.world)}
  load(s){this.world=this.validate(s);this.tick=s.tick;this.epoch=s.epoch;this.players=[...s.players];this.speed=s.speed;this.presentationIds=new WeakMap();this.nextPresentationId=1;bindPresentationClock(this.world,null);this.pendingPresentationMode='load'}
  queue(type,args={}){if(this.session.closed||this.pending.length>=64)return false;this.pending.push(codec.encode({type,...args}));return true}
+ deployNext(x,y){const w=this.world,roster=w.scene==='raid'&&w.raidRoster(this.localPlayerId);if(!roster||!Number.isFinite(x)||!Number.isFinite(y))return false;this.localDeploySequence=Math.max(this.localDeploySequence,roster.lastDeploySequence);if(this.localDeploySequence-roster.lastDeploySequence>=w.raidRemaining(this.localPlayerId))return false;const sequence=this.localDeploySequence+1;if(!this.queue('deploy',{sequence,x,y}))return false;this.localDeploySequence=sequence;return true}
  step({tick,inputs}){
   for(const f of inputs){if(!this.players.includes(f.playerId))continue;for(const c of f.commands){try{this.command(codec.decode(c.payload),f.playerId)}catch{/* Reject malformed remote intent without changing the world. */}}}
   if(this.paused&&!this.room){this.tick=tick+1;return}
@@ -93,7 +94,7 @@ export class FarmSession{
    case 'speed':if([1,4].includes(c.value))this.speed=c.value;break;
    case 'invest':if(typeof c.id==='string'&&w.scene==='farm')w.progress.invest(c.id);break;
    case 'register-roster':if(Array.isArray(c.entries))w.registerRaidRoster(ownerId,c.entries);break;
-   case 'deploy':if(Number.isSafeInteger(c.farmId)&&Number.isFinite(c.x)&&Number.isFinite(c.y))w.deployRaidUnit(ownerId,c.farmId,c.x,c.y);break;
+   case 'deploy':if(Number.isSafeInteger(c.sequence)&&Number.isFinite(c.x)&&Number.isFinite(c.y))w.deployNextRaidUnit(ownerId,c.sequence,c.x,c.y);break;
    case 'buff':w.useRaidBuff(ownerId);break;
   }
  }

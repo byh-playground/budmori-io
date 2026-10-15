@@ -1,5 +1,4 @@
 import {Garden,CONFIG,TREE_NODES,ArenaGeometry,ATTACK_TYPES,Ballistics} from './farm-model.js';
-import {SeedArt} from './seed-art.js';
 import {Diorama} from './farm-renderer.js';
 import {FarmSession} from './farm-session.js';
 import {FarmStorage} from './farm-storage.js';
@@ -10,7 +9,7 @@ import {CombatFeel} from './combat-feel.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
 let networkTimer=null,observedWorld=null;
 let imported=null;
-let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,lastSave=0,treePause=false,selectedCard={species:0,tier:1},queuedFarmIds=new Set(),dropPointer=null,dropTimer=null;
+let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,lastSave=0,treePause=false,dropPointer=null,dropTimer=null;
 const renderer=new Diorama($('world'));
 const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
 function measureFrame(now){if(lastFrameTimestamp!==null){measuredFrames.push(now-lastFrameTimestamp);if(measuredFrames.length>240)measuredFrames.shift()}lastFrameTimestamp=now;frameCount++}
@@ -38,8 +37,8 @@ function setHome(value,push=true){
  refreshStart();if(value)$('continueGame').focus();
 }
 function start(world,push=true){foodFeel.unlock();personalGarden=world;install(world);setHome(false,push)}
-function beginRaid(push=true){if(room||!personalGarden||active.world.scene==='raid')return;persist();queuedFarmIds.clear();selectedCard={species:0,tier:1};const battle=Garden.createRaidBattle((personalGarden.seed+Math.floor(performance.now()))>>>0,['solo']);install(battle);active.queue('register-roster',{entries:personalGarden.units.slice(0,CONFIG.maxRaidPlayerUnits).map(u=>[u.id,u.species,u.tier])});setHome(false,push)}
-async function returnToFarm(push=true){if(room){const leaving=room;try{await active.session.leave()}catch{}active.dispose();leaving.close();room=null;solo=null}if(!personalGarden)return;queuedFarmIds.clear();install(personalGarden);setHome(false,push)}
+function beginRaid(push=true){if(room||!personalGarden||active.world.scene==='raid')return;persist();renderer.dropTarget=null;const battle=Garden.createRaidBattle((personalGarden.seed+Math.floor(performance.now()))>>>0,['solo']);install(battle);active.queue('register-roster',{entries:personalGarden.units.slice(0,CONFIG.maxRaidPlayerUnits).map(u=>[u.id,u.species,u.tier])});setHome(false,push)}
+async function returnToFarm(push=true){stopDrop();if(room){const leaving=room;try{await active.session.leave()}catch{}active.dispose();leaving.close();room=null;solo=null}if(!personalGarden)return;renderer.dropTarget=null;install(personalGarden);setHome(false,push)}
 $('continueGame').onclick=()=>{if(storage.world)start(restore(snapshot(storage.world)))};
 $('newGame').onclick=()=>{
  // Overwriting an existing save is a separate, explicit user action.
@@ -86,22 +85,17 @@ $('tree').onclick=()=>panel('treePanel',true);$('treeClose').onclick=()=>panel('
 $('treeNodes').onclick=e=>{const b=e.target.closest('[data-invest]');if(b){active.queue('invest',{id:b.dataset.invest});setTimeout(drawTree,180)}};
 $('treePanel').onkeydown=e=>{if(e.key==='Tab'){const f=[...$('treePanel').querySelectorAll('button:not(:disabled)')],i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0||!e.shiftKey&&i===f.length-1){e.preventDefault();f[e.shiftKey?f.length-1:0].focus()}}};
 const canvas=$('world');
-const speciesNames=['씨앗','버섯','꽃'];
-$('deploymentCards').innerHTML=Array.from({length:12},(_,i)=>{const species=Math.floor(i/4),tier=i%4+1;return `<button type="button" data-card="${species}:${tier}" aria-pressed="false" aria-label="${speciesNames[species]} 티어 ${tier} 선택">${speciesNames[species]} · T${tier} <b data-count="${species}:${tier}">0</b></button>`}).join('');
-function remainingFor(species,tier){const roster=active.world.raidRoster(active.localPlayerId);if(roster)return roster.troops.filter(t=>t.species===species&&t.tier===tier&&!t.deployed&&!queuedFarmIds.has(t.farmId)).length;return personalGarden?.units.filter(u=>u.species===species&&u.tier===tier&&!queuedFarmIds.has(u.id)).length||0}
-function deploymentHud(){const w=active.world,raid=w.scene==='raid',roster=w.raidRoster(active.localPlayerId);for(const b of $('deploymentCards').querySelectorAll('[data-card]')){const [species,tier]=b.dataset.card.split(':').map(Number),count=remainingFor(species,tier);b.setAttribute('aria-pressed',selectedCard.species===species&&selectedCard.tier===tier);b.disabled=!raid||count===0||room&&active.players.length<2||!w.raidExpectedPlayers.every(id=>w.raidRoster(id));const n=b.querySelector('[data-count]');if(n)n.textContent=count}
- const remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,registered=w.raidRosters.length,expected=w.raidExpectedPlayers.length;
- $('raidRemaining').textContent=room&&active.players.length<2?'동료가 들어오기를 기다리는 중…':!roster||registered<expected?`병력 명단 동기화 중 · ${registered}/${expected}명`:`남은 병력 ${remaining} · 전장 안을 탭하세요 (누르면 250ms마다 투입)`;
+function deploymentHud(){const w=active.world,raid=w.scene==='raid',roster=w.raidRoster(active.localPlayerId),registered=w.raidRosters.length,expected=w.raidExpectedPlayers.length,remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,queued=roster?Math.max(0,active.localDeploySequence-roster.lastDeploySequence):0;
+ $('raidRemaining').textContent=room&&active.players.length<2?'동료가 들어오기를 기다리는 중…':!roster||registered<expected?`병력 명단 동기화 중 · ${registered}/${expected}명`:`남은 병력 ${Math.max(0,remaining-queued)} · 전장을 탭해 투입 · 누르고 있으면 250ms마다 한 마리`;
  const own=w.raidRoster(active.localPlayerId),cooldown=own?Math.max(0,own.buffReadyAt-w.time):0;$('buff').disabled=!raid||!w.running||!own||cooldown>0;$('buff').textContent=cooldown>0?`강화 ${cooldown.toFixed(1)}초`:'팀 강화';
 }
-function deployAt(clientX,clientY){if(home||active.world.scene!=='raid'||room&&active.players.length<2||!active.world.raidExpectedPlayers.every(id=>active.world.raidRoster(id)))return false;const p=renderer.screenToWorld(clientX,clientY),valid=ArenaGeometry.inside(p,'raid',.5);renderer.dropTarget={...p,valid};if(!valid)return false;const s=selectedCard.species,t=selectedCard.tier,roster=active.world.raidRoster(active.localPlayerId),unit=personalGarden?.units.find(u=>u.species===s&&u.tier===t&&!queuedFarmIds.has(u.id)&&(!roster||!roster.troops.find(v=>v.farmId===u.id)?.deployed));if(!unit)return false;const ok=active.queue('deploy',{farmId:unit.id,x:Math.round(p.x*100)/100,y:Math.round(p.y*100)/100});if(ok)queuedFarmIds.add(unit.id);return ok}
-function stopDrop(e){if(dropTimer!==null)clearInterval(dropTimer);dropTimer=null;if(dropPointer&&canvas.hasPointerCapture?.(dropPointer.id))canvas.releasePointerCapture(dropPointer.id);dropPointer=null;if(e)renderer.dropTarget=null}
-canvas.addEventListener('pointerdown',e=>{foodFeel.unlock();if(home||active.world.scene!=='raid')return;canvas.setPointerCapture?.(e.pointerId);const p=renderer.screenToWorld(e.clientX,e.clientY);dropPointer={id:e.pointerId,x:e.clientX,y:e.clientY,last:ArenaGeometry.inside(p,'raid',.5)?p:null};deployAt(e.clientX,e.clientY);dropTimer=setInterval(()=>{if(dropPointer)deployAt(dropPointer.x,dropPointer.y)},250);e.preventDefault()});
-canvas.addEventListener('pointermove',e=>{if(!dropPointer||e.pointerId!==dropPointer.id)return;dropPointer.x=e.clientX;dropPointer.y=e.clientY;const p=renderer.screenToWorld(e.clientX,e.clientY);renderer.dropTarget={...p,valid:ArenaGeometry.inside(p,'raid',.5)};if(!dropPointer.last||Math.hypot(p.x-dropPointer.last.x,p.y-dropPointer.last.y)>=.9){if(deployAt(e.clientX,e.clientY))dropPointer.last=p}});
+function deployAt(p){if(home||active.world.scene!=='raid'||room&&active.players.length<2||!active.world.raidExpectedPlayers.every(id=>active.world.raidRoster(id)))return false;const valid=ArenaGeometry.inside(p,'raid',.5);renderer.dropTarget={...p,valid};return valid&&active.deployNext(Math.round(p.x*100)/100,Math.round(p.y*100)/100)}
+function stopDrop(e){if(e&&dropPointer&&e.pointerId!==dropPointer.id)return;if(dropTimer!==null)clearInterval(dropTimer);dropTimer=null;if(dropPointer&&canvas.hasPointerCapture?.(dropPointer.id))canvas.releasePointerCapture(dropPointer.id);dropPointer=null}
+canvas.addEventListener('pointerdown',e=>{foodFeel.unlock();if(home||active.world.scene!=='raid')return;canvas.setPointerCapture?.(e.pointerId);const p=renderer.screenToWorld(e.clientX,e.clientY);if(!ArenaGeometry.inside(p,'raid',.5)){renderer.dropTarget={...p,valid:false};return}dropPointer={id:e.pointerId,x:Math.round(p.x*100)/100,y:Math.round(p.y*100)/100};deployAt(dropPointer);dropTimer=setInterval(()=>{if(dropPointer)deployAt(dropPointer)},250);e.preventDefault()});
 canvas.addEventListener('pointerup',e=>stopDrop(e));canvas.addEventListener('pointercancel',e=>stopDrop(e));canvas.addEventListener('lostpointercapture',e=>stopDrop(e));
-$('deploymentCards').onclick=e=>{const b=e.target.closest('[data-card]');if(!b)return;const [species,tier]=b.dataset.card.split(':').map(Number);selectedCard={species,tier};deploymentHud()};
+window.addEventListener('pointerup',e=>stopDrop(e),true);window.addEventListener('pointercancel',e=>stopDrop(e),true);
 $('buff').onclick=()=>active.queue('buff');
-window.addEventListener('blur',persist);document.addEventListener('visibilitychange',()=>{if(document.hidden){persist();active.loop.resetTiming()}});
+window.addEventListener('blur',()=>{stopDrop();persist()});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopDrop();persist();active.loop.resetTiming()}});
 window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('treePanel').hidden)panel('treePanel',false);else if(!$('helpPanel').hidden)panel('helpPanel',false)}});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});
 window.addEventListener('resize',()=>renderer.resize());window.addEventListener('pagehide',()=>{persist();clearInterval(networkTimer);attempt?.abort();room?.close();active.dispose();renderer.dispose()});
@@ -123,11 +117,11 @@ function sync(display,now){
  for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
  if(observedWorld!==w){observedWorld=w;noticeSequence=w.eventSequence}
  for(const e of w.notices)if(e.sequence>noticeSequence){if(e.kind==='food-tap')foodFeel.tap(e.source,e.completed,e.remainder);else foodFeel.event(e.kind)}noticeSequence=w.eventSequence;foodFeel.frame(now);
- for(const id of [...queuedFarmIds]){const troop=w.raidRoster(active.localPlayerId)?.troops.find(t=>t.farmId===id);if(troop?.deployed)queuedFarmIds.delete(id)}deploymentHud();$('connection').hidden=!room;$('connection').textContent=room?active.session.failure?'연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요':`함께 ${active.players.length}명 · ${active.session.ready?'연결됨':'동기화 중'}`:'';
+ deploymentHud();$('connection').hidden=!room;$('connection').textContent=room?active.session.failure?'연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요':`함께 ${active.players.length}명 · ${active.session.ready?'연결됨':'동기화 중'}`:'';
  if(now-lastSave>3000){lastSave=now;persist()}
 }
 function frame(now){measureFrame(now);if(room||!home&&!document.hidden)active.pulse(now);const display=active.presentation(now);combatFeel.observe(active.world,display.displayTimeMs,display.presentationRevision);renderer.render(display,combatFeel,display.displayTimeMs);sync(display,now);requestAnimationFrame(frame)}
 $('productVersion').textContent=PRODUCT_VERSION;$('startVersion').textContent=PRODUCT_VERSION+' · 농장과 거대 보스';
 setHome(true,false);if(location.hash&&location.hash!=='#/')route();requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.
-globalThis.BUDMORI={SeedArt,get sim(){return active.world},get runtime(){return active},get room(){return room},get renderMetrics(){return frameRate()},get presentationDiagnostics(){return active.latestPresentationDiagnostics},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};
+globalThis.BUDMORI={get sim(){return active.world},get runtime(){return active},get room(){return room},get renderMetrics(){return frameRate()},get presentationDiagnostics(){return active.latestPresentationDiagnostics},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};

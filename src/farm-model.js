@@ -220,13 +220,15 @@ const AttackingBody=Base=>class extends Base{
     registerRaidRoster(ownerId,entries){
       if(this.scene!=='raid'||!this.raidExpectedPlayers.includes(ownerId)||this.raidRoster(ownerId)||!Array.isArray(entries)||entries.length>CONFIG.maxRaidPlayerUnits||this.raidTotal()+entries.length>CONFIG.maxRaidUnits)return false;
       const ids=new Set(),troops=[];for(const e of entries){if(!Array.isArray(e)||e.length!==3||!Number.isSafeInteger(e[0])||e[0]<1||e[0]>CONFIG.maxFarmCap||!Number.isInteger(e[1])||e[1]<0||e[1]>2||!Number.isInteger(e[2])||e[2]<1||e[2]>4||ids.has(e[0]))return false;ids.add(e[0]);troops.push({farmId:e[0],species:e[1],tier:e[2],deployed:false})}
-      this.raidRosters.push({ownerId,troops,buffUntil:0,buffReadyAt:0});this.raidRosters.sort((a,b)=>this.raidExpectedPlayers.indexOf(a.ownerId)-this.raidExpectedPlayers.indexOf(b.ownerId));return true;
+      const orderKey=farmId=>{let h=(this.seed^Math.imul(farmId,0x9e3779b9))>>>0;for(let i=0;i<ownerId.length;i++){h^=ownerId.charCodeAt(i);h=Math.imul(h,0x01000193)}h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;h=Math.imul(h,0x846ca68b);h^=h>>>16;return h>>>0};
+      troops.sort((a,b)=>orderKey(a.farmId)-orderKey(b.farmId)||a.farmId-b.farmId);
+      this.raidRosters.push({ownerId,troops,lastDeploySequence:0,buffUntil:0,buffReadyAt:0});this.raidRosters.sort((a,b)=>this.raidExpectedPlayers.indexOf(a.ownerId)-this.raidExpectedPlayers.indexOf(b.ownerId));return true;
     }
-    deployRaidUnit(ownerId,farmId,x,y){
-      if(this.scene!=='raid'||!this.raidExpectedPlayers.every(id=>this.raidRoster(id))||this.units.length>=CONFIG.maxRaidUnits||!Number.isSafeInteger(farmId)||!Number.isFinite(x)||!Number.isFinite(y))return false;
-      const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>t.farmId===farmId);if(!troop||troop.deployed||!ArenaGeometry.inside({x,y},'raid',.5))return false;
-      const slot=this.raidExpectedPlayers.indexOf(ownerId),id=(slot+1)*1000000+farmId;if(this.units.some(u=>u.id===id))return false;
-      const u=new Unit(id,troop.species,troop.tier,x,y);Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:3,growth:3});troop.deployed=true;this.units.push(u);
+    deployNextRaidUnit(ownerId,sequence,x,y){
+      if(this.scene!=='raid'||!this.raidExpectedPlayers.every(id=>this.raidRoster(id))||this.units.length>=CONFIG.maxRaidUnits||!Number.isSafeInteger(sequence)||!Number.isFinite(x)||!Number.isFinite(y))return false;
+      const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>!t.deployed);if(!roster||sequence!==roster.lastDeploySequence+1||!troop||!ArenaGeometry.inside({x,y},'raid',.5))return false;
+      const farmId=troop.farmId,slot=this.raidExpectedPlayers.indexOf(ownerId),id=(slot+1)*1000000+farmId;if(this.units.some(u=>u.id===id))return false;
+      const u=new Unit(id,troop.species,troop.tier,x,y);Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:3,growth:3});troop.deployed=true;roster.lastDeploySequence=sequence;this.units.push(u);
       if(!this.raidDeploymentStarted){this.raidDeploymentStarted=true;this.running=true;this.encounter={outcome:'fighting',elapsed:0};this.boss.phase='chase'}
       this.combat('unit-drop',{unit:id,ownerId,x,y,z:u.z});return true;
     }
