@@ -4,9 +4,24 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {existsSync} from 'node:fs';
 
 const root=fileURLToPath(new URL('../',import.meta.url)),out=path.join(root,'tests/output');
 await mkdir(out,{recursive:true});
+const requiredClips=['idle','walk','windup','fire','recover','hit','airborne','landing','death'];
+const requiredExpressions=['neutral','happy','focused','attack','surprised','hurt','hungry','dead'];
+const sourceConfig=JSON.parse(await readFile(path.join(root,'scripts/vector-assets-sources.json'),'utf8'));
+assert.equal(existsSync(path.join(root,'scripts/vector-assets-motion.json')),false,'SVG motion sidecar must be removed');
+const authoredAssets=[];
+for(const source of sourceConfig.assets){
+  const sourceBytes=await readFile(path.join(root,source.file)),sourceText=sourceBytes.toString('utf8');
+  const metadata=JSON.parse(sourceText.match(/<metadata id="vector-asset">([\s\S]*?)<\/metadata>/)?.[1]||'null');
+  assert.deepEqual(Object.keys(metadata.clips),requiredClips,`${source.file} must author all GameKit clips in SVG metadata`);
+  assert.deepEqual(Object.keys(metadata.expressions),requiredExpressions,`${source.file} must author all face states in SVG metadata`);
+  for(const name of requiredExpressions)assert(new RegExp(`<g id="face-${name}">`).test(sourceText),`${source.file} is missing authored SVG face geometry for ${name}`);
+  authoredAssets.push({species:source.species,sourceSha256:createHash('sha256').update(sourceBytes).digest('hex'),parts:metadata.parts.length});
+}
 const server=createServer(async(q,r)=>{
   const url=new URL(q.url,'http://localhost');
   if(url.pathname==='/favicon.ico'){r.writeHead(204);r.end();return}
@@ -30,9 +45,13 @@ try{
       const record=renderer.vectorAssets.get(species),metadata=record.compiled.metadata,viewBox=record.compiled.viewBox;
       if(!record.asset||record.asset.disposed)throw Error('Missing retained GameKit vector mesh for species '+species);
       if(viewBox[0]!==0||viewBox[1]!==0)throw Error('GameKit compile did not retain the crop-local origin');
+      if(metadata.presentation)throw Error('Compiled runtime must not synthesize separate presentation metadata');
       const player=record.asset.createPlayer({clip:'idle',startedAtMs:0});
       const expected=metadata.sockets.mouth.point,actual=player.getSocket('mouth');
       if(Math.hypot(actual.x-expected[0],actual.y-expected[1])>1e-6)throw Error('SVG mouth socket moved before parent transforms');
+      for(const clip of Object.keys(metadata.clips)){player.play(clip,0);player.seek(metadata.clips[clip].durationMs*.5);if(player.currentClip!==clip)throw Error('GameKit native clip failed to play: '+clip);if(!Number.isFinite(player.getPartPose('body').transform[0]))throw Error('GameKit clip produced a non-finite pose: '+clip)}
+      for(const expression of Object.keys(metadata.expressions)){player.setExpression(expression);if(player.currentExpression!==expression)throw Error('GameKit native expression failed: '+expression)}
+      player.play('idle',0);player.seek(0);
       const pivot=metadata.parts.find(part=>part.id==='body').pivot,angle=.2;
       player.setBasePose('body',{rotation:angle});
       const transformed=player.getSocket('mouth'),dx=expected[0]-pivot[0],dy=expected[1]-pivot[1];
@@ -52,11 +71,9 @@ try{
     bySpecies[2].z=1.2;bySpecies[2].stun=.2;
     world.boss.phase='resting';world.boss.x=0;world.boss.y=-1;world.boss.hp=world.boss.maxHp=2400;
     BUDMORI.runtime.world=world;BUDMORI.runtime.speed=1;BUDMORI.runtime.paused=true;BUDMORI.runtime.capturePresentation('reset');
-    return{assets:[...renderer.vectorAssets].map(([species,record])=>({species,id:record.compiled.metadata.id,sourceSha256:record.compiled.sourceSha256,viewBox:record.compiled.viewBox,parts:record.compiled.geometry.partCount,vertices:record.compiled.geometry.vertices.length/11,clips:Object.keys(record.compiled.metadata.clips),motions:Object.keys(record.compiled.metadata.presentation.motions),expressions:Object.keys(record.compiled.metadata.expressions)})),sockets:ids.map(species=>({species,mouth:BUDMORI.renderer.vectorAssets.get(species).compiled.metadata.sockets.mouth.point})),rendererBackend:renderer.canvas.dataset.rendererBackend};
+    return{assets:[...renderer.vectorAssets].map(([species,record])=>({species,id:record.compiled.metadata.id,sourceSha256:record.compiled.sourceSha256,viewBox:record.compiled.viewBox,parts:record.compiled.geometry.partCount,vertices:record.compiled.geometry.vertices.length/11,clips:Object.keys(record.compiled.metadata.clips),expressions:Object.keys(record.compiled.metadata.expressions)})),sockets:ids.map(species=>({species,mouth:BUDMORI.renderer.vectorAssets.get(species).compiled.metadata.sockets.mouth.point})),rendererBackend:renderer.canvas.dataset.rendererBackend};
   });
-  const requiredMotions=['idle','walk','windup','fire','recover','hit','airborne','landing','death'];
-  const requiredExpressions=['neutral','happy','focused','attack','surprised','hurt','hungry','dead'];
-  for(const asset of vector.assets){assert.deepEqual(asset.clips,['idle']);for(const motion of requiredMotions)assert(asset.motions.includes(motion),`${asset.id} is missing the ${motion} part-motion profile`);for(const expression of requiredExpressions)assert(asset.expressions.includes(expression),`${asset.id} is missing the ${expression} face expression`)}
+  for(const asset of vector.assets){assert.deepEqual(asset.clips,requiredClips);for(const expression of requiredExpressions)assert(asset.expressions.includes(expression),`${asset.id} is missing the ${expression} face expression`);const source=authoredAssets.find(entry=>entry.species===asset.species);assert.equal(asset.sourceSha256,source.sourceSha256,`${asset.id} runtime metadata must hash its exact SVG source`);assert.equal(asset.parts,source.parts)}
   report.assets=vector.assets;report.socketTransformCheck='PASS authored socket stays crop-local and follows the body part pivot';report.backend=vector.rendererBackend;
   await page.waitForFunction(()=>BUDMORI.renderer.vectorPlayers.size===3,{},{timeout:5000}).catch(async error=>{
     const debug=await page.evaluate(()=>({scene:BUDMORI.sim.scene,worldUnits:BUDMORI.sim.units.map(u=>({id:u.id,species:u.species,ownerId:u.ownerId})),runtimeWorld:BUDMORI.runtime.world.scene,presentation:BUDMORI.runtime.presentation(performance.now()).units.map(u=>({id:u.id,species:u.species,ownerId:u.ownerId})),players:BUDMORI.renderer.vectorPlayers.size}));
@@ -65,7 +82,7 @@ try{
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   await page.waitForTimeout(340);
   const first=await page.evaluate(()=>{const renderer=BUDMORI.renderer,units=[...BUDMORI.sim.units].sort((a,b)=>a.species-b.species),players=units.map(unit=>renderer.vectorPlayers.get(unit.id));const before=players[1].getSocket('mouth');players[0].setBasePose('body',{rotation:.17});const after=players[1].getSocket('mouth');players[0].setBasePose('body',{rotation:0});const playerIsolation=Math.hypot(before.x-after.x,before.y-after.y)<1e-8;const states=players.map((player,index)=>({motion:['windup','fire','airborne'][index],clip:player.currentClip,expression:player.currentExpression,body:player.getPartPose('body')}));return{players:players.length,assets:renderer.vectorAssets.size,mesh:renderer.stats?.mesh||null,time:renderer.displayTimeMs,allPlayersSeekSharedTime:players.every(player=>player.currentTimeMs===renderer.displayTimeMs),playerIsolation,states}});
-  assert.equal(first.players,3);assert.equal(first.assets,3);assert(first.allPlayersSeekSharedTime);assert(first.mesh?.draws>0);assert(first.playerIsolation);assert.deepEqual(first.states.map(state=>state.motion),['windup','fire','airborne']);assert(first.states.every(state=>state.clip==='idle'));assert.deepEqual(first.states.map(state=>state.expression),['focused','attack','hurt']);assert(new Set(first.states.map(state=>state.body.transform.map(v=>Number(v.toFixed(3))).join(':'))).size>1);report.singleFrame=first;
+  assert.equal(first.players,3);assert.equal(first.assets,3);assert(first.allPlayersSeekSharedTime);assert(first.mesh?.draws>0);assert(first.playerIsolation);assert.deepEqual(first.states.map(state=>state.motion),['windup','fire','airborne']);assert.deepEqual(first.states.map(state=>state.clip),['windup','fire','airborne']);assert.deepEqual(first.states.map(state=>state.expression),['focused','attack','hurt']);assert(new Set(first.states.map(state=>state.body.transform.map(v=>Number(v.toFixed(3))).join(':'))).size>1);report.singleFrame=first;
   await page.evaluate(()=>{document.body.dataset.home='false';document.querySelector('#startScreen').hidden=true});
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   await page.screenshot({path:path.join(out,'troop-vector-desktop.png')});
@@ -73,7 +90,7 @@ try{
   await page.evaluate(()=>{for(const unit of BUDMORI.sim.units)unit.hp=0;BUDMORI.runtime.capturePresentation('reset')});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   report.deathVectorExpression=await page.evaluate(()=>({deadUnits:BUDMORI.runtime.presentation(performance.now()).units.filter(u=>u.hp<=0).length,assets:BUDMORI.renderer.vectorAssets.size,players:[...BUDMORI.renderer.vectorPlayers.values()].map(player=>({clip:player.currentClip,expression:player.currentExpression}))}));
-  assert.equal(report.deathVectorExpression.deadUnits,3);assert.equal(report.deathVectorExpression.assets,3);assert(report.deathVectorExpression.players.every(player=>player.clip==='idle'&&player.expression==='dead'));
+  assert.equal(report.deathVectorExpression.deadUnits,3);assert.equal(report.deathVectorExpression.assets,3);assert(report.deathVectorExpression.players.every(player=>player.clip==='death'&&player.expression==='dead'));
   await page.screenshot({path:path.join(out,'troop-vector-death.png')});
   await page.setViewportSize({width:844,height:390});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
