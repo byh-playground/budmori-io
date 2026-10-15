@@ -4,7 +4,7 @@ const presentationEventTimes=new WeakMap();
 export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
 export function bindPresentationClock(world,clock){if(clock)presentationClocks.set(world,clock);else presentationClocks.delete(world)}
   // sim.js
-  var CONFIG = Object.freeze({ cap: 72, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8}) });
+  var CONFIG = Object.freeze({ cap: 72, maxFarmCap:100, maxRaidPlayerUnits:100, maxRaidPlayers:4, maxRaidUnits:400, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
   var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   var stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
   var Body = class {
@@ -48,7 +48,8 @@ const TREE_NODES = [
   {id:"food",name:"자동 탭",icon:"◒",metric:"eat",goal:12,parent:"production",description:"자동 탭 속도 +10%/단계 · 수동은 매 탭 +1",value:l=>`${(.5/(1+.1*l)).toFixed(3)}초 / 탭`},
   {id:"growth",name:"먹이 찾기",icon:"❧",metric:"eat",goal:10,parent:"production",description:"먹이를 향한 이동속도 +10%/단계 · 성체까지 3끼 유지",value:l=>`${(2.2*(1+.1*l)).toFixed(2)} 속도`},
   {id:"breed",name:"번식 회복",icon:"♡",metric:"birth",goal:2,parent:"growth",description:"부모의 번식 대기 속도 +10%/단계",value:l=>`${(5/(1+.1*l)).toFixed(2)}초`},
-  {id:"merge",name:"합체 회복",icon:"◇",metric:"merge",goal:2,parent:"growth",description:"합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지",value:l=>`${(4/(1+.1*l)).toFixed(2)}초`}
+  {id:"merge",name:"합체 회복",icon:"◇",metric:"merge",goal:2,parent:"growth",description:"합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지",value:l=>`${(4/(1+.1*l)).toFixed(2)}초`},
+  {id:"capacity",name:"Garden expansion",icon:"＋",metric:"birth",goal:3,parent:"growth",description:"Expand farm capacity by 7 per level, up to 100.",value:l=>`${Math.min(100,72+7*l)} troops`}
 ];
 class FarmProgress {
  constructor(){this.levels=Object.fromEntries(TREE_NODES.map(n=>[n.id,0]));this.records={eat:0,birth:0,merge:0,hit:0}}
@@ -130,7 +131,7 @@ const AttackingBody=Base=>class extends Base{
   var Unit = class extends AttackingBody(Knockable(Body)) {
     constructor(id, species, tier, x, y) {
       super(x, y);
-      Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier).hp, down: 0, seed: id * 2.39996 });
+      Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier).hp, down: 0, seed: id * 2.39996,ownerId:'',farmId:0,dropLanded:true });
     }
     get radius() {
       return (0.25 + 0.055 * this.tier) * (this.mature ? 1 : 0.8);
@@ -176,6 +177,10 @@ const AttackingBody=Base=>class extends Base{
       this.seed = seed;this.progress=new FarmProgress();this.notices=[];this.eventSequence=0;
       this.reset();
     }
+    static createRaidBattle(seed=731,expectedPlayers=['solo']){
+      const w=new Garden(seed);w.units=[];w.food=[];w.scene='raid';w.running=false;w.boss=w.createBoss();w.boss.phase='resting';
+      w.encounter={outcome:'idle',elapsed:0};w.raidExpectedPlayers=[...expectedPlayers];w.raidRosters=[];w.raidDeploymentStarted=false;w.nextId=1;w.starter=0;return w;
+    }
     reset() {
       this.rng = new SeededPRNG(this.seed);
       this.units = [];
@@ -193,6 +198,7 @@ const AttackingBody=Base=>class extends Base{
       this.running = false;
       this.encounter={outcome:'idle',elapsed:0};
       this.boss=this.createBoss();
+      this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false;
       this.metrics = { births: 0, merges: 0, directHits: 0, contacts: 0, landings: 0, basicHits:0, sweepHits:0 };
       for (let i = 0; i < 36; i++) {
         const u = this.spawn(i % 3, 1, (this.random() - 0.5) * 15, (this.random() - 0.5) * 11);
@@ -201,11 +207,35 @@ const AttackingBody=Base=>class extends Base{
       }
     }
     get armyHealth(){return this.units.reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(stats(u.tier).hp,u.hp)),max:sum.max+stats(u.tier).hp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0})}
+    get capacity(){return Math.min(CONFIG.maxFarmCap,CONFIG.cap+7*(this.progress?.levels?.capacity||0))}
+    raidRoster(ownerId){return this.raidRosters.find(r=>r.ownerId===ownerId)||null}
+    setRaidPlayers(players){
+      if(this.scene!=='raid'||!Array.isArray(players)||players.length<1||players.length>CONFIG.maxRaidPlayers||players.some(p=>typeof p!=='string'||!p)||new Set(players).size!==players.length)return false;
+      const live=[...players],ordered=this.raidDeploymentStarted?[...this.raidExpectedPlayers,...live.filter(id=>!this.raidExpectedPlayers.includes(id))]:live;if(ordered.length>CONFIG.maxRaidPlayers)return false;
+      this.raidExpectedPlayers=ordered;if(!this.raidDeploymentStarted)this.raidRosters=this.raidRosters.filter(r=>live.includes(r.ownerId));
+      this.raidRosters.sort((a,b)=>this.raidExpectedPlayers.indexOf(a.ownerId)-this.raidExpectedPlayers.indexOf(b.ownerId));return true;
+    }
+    raidTotal(){return this.raidRosters.reduce((n,r)=>n+r.troops.length,0)}
+    raidRemaining(ownerId){const r=this.raidRoster(ownerId);return r?r.troops.reduce((n,t)=>n+(!t.deployed?1:0),0):0}
+    registerRaidRoster(ownerId,entries){
+      if(this.scene!=='raid'||!this.raidExpectedPlayers.includes(ownerId)||this.raidRoster(ownerId)||!Array.isArray(entries)||entries.length>CONFIG.maxRaidPlayerUnits||this.raidTotal()+entries.length>CONFIG.maxRaidUnits)return false;
+      const ids=new Set(),troops=[];for(const e of entries){if(!Array.isArray(e)||e.length!==3||!Number.isSafeInteger(e[0])||e[0]<1||e[0]>CONFIG.maxFarmCap||!Number.isInteger(e[1])||e[1]<0||e[1]>2||!Number.isInteger(e[2])||e[2]<1||e[2]>4||ids.has(e[0]))return false;ids.add(e[0]);troops.push({farmId:e[0],species:e[1],tier:e[2],deployed:false})}
+      this.raidRosters.push({ownerId,troops,buffUntil:0,buffReadyAt:0});this.raidRosters.sort((a,b)=>this.raidExpectedPlayers.indexOf(a.ownerId)-this.raidExpectedPlayers.indexOf(b.ownerId));return true;
+    }
+    deployRaidUnit(ownerId,farmId,x,y){
+      if(this.scene!=='raid'||!this.raidExpectedPlayers.every(id=>this.raidRoster(id))||this.units.length>=CONFIG.maxRaidUnits||!Number.isSafeInteger(farmId)||!Number.isFinite(x)||!Number.isFinite(y))return false;
+      const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>t.farmId===farmId);if(!troop||troop.deployed||!ArenaGeometry.inside({x,y},'raid',.5))return false;
+      const slot=this.raidExpectedPlayers.indexOf(ownerId),id=(slot+1)*1000000+farmId;if(this.units.some(u=>u.id===id))return false;
+      const u=new Unit(id,troop.species,troop.tier,x,y);Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:3,growth:3});troop.deployed=true;this.units.push(u);
+      if(!this.raidDeploymentStarted){this.raidDeploymentStarted=true;this.running=true;this.encounter={outcome:'fighting',elapsed:0};this.boss.phase='chase'}
+      this.combat('unit-drop',{unit:id,ownerId,x,y,z:u.z});return true;
+    }
+    useRaidBuff(ownerId){const r=this.raidRoster(ownerId);if(!this.running||!r||this.time<r.buffReadyAt)return false;r.buffUntil=this.time+CONFIG.raid.buffDuration;r.buffReadyAt=this.time+CONFIG.raid.buffCooldown;this.combat('buff',{ownerId,until:r.buffUntil});return true}
     random() {
       return this.rng.nextUint32() / 4294967296;
     }
     spawn(species, tier, x, y) {
-      if (this.units.length >= CONFIG.cap) return null;
+      if (this.units.length >= (this.scene==='farm'?this.capacity:CONFIG.maxRaidUnits)) return null;
       const u = new Unit(this.nextId++, species, clamp(tier, 1, CONFIG.maxTier), x, y);
       this.units.push(u);
       return u;
@@ -257,10 +287,10 @@ const AttackingBody=Base=>class extends Base{
       if(scene===this.scene)return;
       this.projectiles=[];this.scene=scene;this.running=scene==='raid';this.encounter={outcome:this.running?'fighting':'idle',elapsed:0};this.boss=this.createBoss();
       for(let i=0;i<this.units.length;i++){
-        const u=this.units[i];if(scene==='raid'){u.home={x:u.x,y:u.y};const angle=i*2.3999632297,rad=10.5+(i%3)*.9;Object.assign(u,{x:Math.cos(angle)*rad,y:Math.sin(angle)*rad*.84})}else Object.assign(u,u.home);
+        const u=this.units[i];if(scene==='raid'){u.home={x:u.x,y:u.y};u.farmId=u.id;u.ownerId='solo';u.id=1000000+u.farmId;u.dropLanded=true;const angle=i*2.3999632297,rad=10.5+(i%3)*.9;Object.assign(u,{x:Math.cos(angle)*rad,y:Math.sin(angle)*rad*.84})}else{u.id=u.farmId||u.id;u.ownerId='';u.farmId=0;u.dropLanded=true;Object.assign(u,u.home)}
         u.ability=new AttackCycle(u);Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier).hp});
       }
-      if(this.running)this.boss.phase='chase';
+      if(this.running){this.boss.phase='chase';this.raidExpectedPlayers=['solo'];this.raidRosters=[{ownerId:'solo',troops:this.units.map(u=>({farmId:u.farmId,species:u.species,tier:u.tier,deployed:true})),buffUntil:0,buffReadyAt:0}];this.raidDeploymentStarted=true}else{this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false}
     }
     pair(a, b) {
       if (a === b || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2) return false;
@@ -289,8 +319,8 @@ const AttackingBody=Base=>class extends Base{
 
       this.time += dt;
       if(this.scene==='raid'&&this.running)this.encounter.elapsed+=dt;
-      this.starter += dt;
-      while (this.starter >= CONFIG.starterSeconds / this.progress.rate("production")) {
+      if(this.scene==='farm')this.starter += dt;
+      while (this.scene==='farm'&&this.starter >= CONFIG.starterSeconds / this.progress.rate("production")) {
         this.starter -= CONFIG.starterSeconds / this.progress.rate("production");
         const u = this.spawn(Math.floor(this.random() * 3), 1, -7, 0);
         if (u && this.scene === "raid") {
@@ -318,12 +348,13 @@ const AttackingBody=Base=>class extends Base{
         u.cooldown = Math.max(0, u.cooldown - dt);
 
         if (this.scene === "farm") this.farmUnit(u, dt);
-        else if (this.running) this.raidUnit(u, dt);
+        else if (this.running&&u.dropLanded) this.raidUnit(u, dt);
         const oldZ = u.z,oldPosition={x:u.x,y:u.y,z:u.z};
         u.integrate(dt);
         if(this.scene==="raid"&&u.hp<=0&&u.z===0&&u.vz===0){u.vx=u.vy=0;}
         if(this.scene==="raid"&&this.running)u.ability.afterMove(this,oldPosition);
         if (oldZ > 0 && u.z === 0) {
+          if(this.scene==='raid'&&!u.dropLanded){u.dropLanded=true;u.bounce=.16;this.combat('drop-land',{unit:u.id,ownerId:u.ownerId,x:u.x,y:u.y,z:0});this.effects.push({kind:'drop-dust',x:u.x,y:u.y,z:0,life:0})}
           this.metrics.landings++;
           if(this.scene==='raid')this.combat('unit-land',{unit:u.id,x:u.x,y:u.y,z:0,strength:Math.min(1,Math.hypot(u.vx,u.vy)/8)});
           else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
@@ -331,10 +362,7 @@ const AttackingBody=Base=>class extends Base{
         this.boundBody(u,this.scene,u.radius);
 
       }
-      for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
-        if(this.scene==="raid"&&(units[i].hp<=0||units[j].hp<=0))continue;
-        if (contact(units[i], units[j])) this.metrics.contacts++;
-      }
+      if(this.scene==='raid')this.raidContacts(units);else for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (contact(units[i], units[j])) this.metrics.contacts++;
       if (this.scene === "farm") {
         for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) this.pair(units[i], units[j]);
       } else if (this.running) { this.updateProjectiles(dt);this.updateBoss(dt);for(const u of this.units)this.separateBoss(u); }
@@ -347,6 +375,10 @@ const AttackingBody=Base=>class extends Base{
         u.vy += (dy / d * speed2 - u.vy) * rate;
         u.angle = Math.atan2(dy, dx);
       }
+    }
+    raidContacts(units){
+      const size=1.5,cells=new Map(),key=(x,y)=>`${x},${y}`;
+      for(let i=0;i<units.length;i++){const u=units[i];if(u.hp<=0||!u.dropLanded)continue;const cx=Math.floor(u.x/size),cy=Math.floor(u.y/size),near=[];for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)near.push(...(cells.get(key(cx+dx,cy+dy))||[]));near.sort((a,b)=>a-b);for(const j of near){const other=units[j];if(other.hp>0&&other.dropLanded&&contact(other,u))this.metrics.contacts++}const k=key(cx,cy);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(i)}
     }
     farmUnit(u, dt) {
       if (u.stun > 0 || u.z > 0.1) return;
@@ -387,7 +419,7 @@ const AttackingBody=Base=>class extends Base{
         if(out>0){body.vx-=1.3*out*nx/n;body.vy-=1.3*out*ny/n}}
     }
     separateBoss(u){
-      const b=this.boss;if(u.hp<=0||u.z>b.height)return;const dx=u.x-b.x,dy=u.y-b.y,d=Math.hypot(dx,dy),r=b.radius+u.radius;
+      const b=this.boss;if(u.hp<=0||!u.dropLanded||u.z>b.height)return;const dx=u.x-b.x,dy=u.y-b.y,d=Math.hypot(dx,dy),r=b.radius+u.radius;
       if(d>=r)return;const a=d>1e-6?Math.atan2(dy,dx):u.seed,nx=Math.cos(a),ny=Math.sin(a);u.x=b.x+nx*r;u.y=b.y+ny*r;
       const inward=u.vx*nx+u.vy*ny;if(inward<0){u.vx-=inward*nx;u.vy-=inward*ny}this.boundBody(u,'raid',u.radius);
     }
@@ -397,9 +429,9 @@ const AttackingBody=Base=>class extends Base{
     }
     damageBoss(u,action,point){
       if(action.hit||this.boss.hp<=0)return false;action.hit=true;
-      const spec=ATTACK_TYPES[u.species];this.boss.hp=Math.max(0,this.boss.hp-stats(u.tier).atk*spec.damage);this.boss.flash=.13;
+      const spec=ATTACK_TYPES[u.species],roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;this.boss.hp=Math.max(0,this.boss.hp-stats(u.tier).atk*spec.damage*(buffed?CONFIG.raid.buffDamage:1));this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
-      this.combat('boss-hit',{unit:u.id,species:u.species,attackKind:spec.kind,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:spec.damage});
+      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackKind:spec.kind,buffed,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:spec.damage*(buffed?CONFIG.raid.buffDamage:1)});
       this.combatEvent('damage',u,action);this.progress.record('hit');return true;
     }
 
@@ -414,6 +446,7 @@ const AttackingBody=Base=>class extends Base{
     }
 
     raidUnit(u,dt){
+      if(!u.dropLanded)return;
       if(u.hp<=0){u.down=1;u.ability.interrupt();return}
       if(u.ability.update(this,dt)||u.stun>0||u.z>.1)return;
       const b=this.boss,spec=ATTACK_TYPES[u.species],dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;
@@ -444,7 +477,7 @@ const AttackingBody=Base=>class extends Base{
     hitBossWeapon(from,to,kind){
       const b=this.boss,c=CONFIG.raid;
       for(const u of this.units){
-        if(u.hp<=0||b.hit.has(u.id))continue;const p=ArenaGeometry.sweep(from,to,c.weaponRadius,1.4,{x:u.x,y:u.y,z:u.z,radius:u.radius,height:.65});if(!p)continue;
+        if(u.hp<=0||!u.dropLanded||b.hit.has(u.id))continue;const p=ArenaGeometry.sweep(from,to,c.weaponRadius,1.4,{x:u.x,y:u.y,z:u.z,radius:u.radius,height:.65});if(!p)continue;
         b.hit.add(u.id);const dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1,heavy=kind==='sweep';u.knock(dx/n,dy/n,heavy?13:8.5,heavy?10.2:7.2);u.hp=Math.max(0,u.hp-(heavy?10:8));if(u.hp===0)u.down=1;
         this.metrics.directHits++;this.metrics[heavy?'sweepHits':'basicHits']++;
         this.combat('unit-hit',{attackKind:kind,attackId:b.attackId,unit:u.id,x:p.x,y:p.y,z:Math.max(.15,u.z+.25),nx:dx/n,ny:dy/n,strength:heavy?1.8:1});
@@ -452,10 +485,12 @@ const AttackingBody=Base=>class extends Base{
     }
     updateBoss(dt){
       const b=this.boss,c=CONFIG.raid;
-      if(b.hp<=0){this.finish('victory');return}if(!this.units.some(u=>u.hp>0)){this.finish('defeat');return}
+      if(!this.raidDeploymentStarted)return;
+      if(b.hp<=0){this.finish('victory');return}if(this.raidRosters.length&&this.raidRosters.every(r=>r.troops.every(t=>t.deployed))&&!this.units.some(u=>u.hp>0)){this.finish('defeat');return}
+      const living=this.units.filter(u=>u.hp>0&&u.dropLanded);if(!living.length)return;
       b.clock+=dt;b.sweepClock+=dt;
       if(b.phase==='chase'){
-        let target=this.units.find(u=>u.id===b.targetId&&u.hp>0);if(!target){const living=this.units.filter(u=>u.hp>0);target=living[(b.basicCount*7+b.swings*11)%living.length];b.targetId=target.id}
+        let target=living.find(u=>u.id===b.targetId);if(!target){target=living[(b.basicCount*7+b.swings*11)%living.length];b.targetId=target.id}
         const dx=target.x-b.x,dy=target.y-b.y,d=Math.hypot(dx,dy)||1;b.facing=Math.atan2(dy,dx);b.angle=b.facing;
         if(b.sweepClock>=c.sweepInterval){this.beginBossAttack('sweep',target);return}
         if(d<=c.basicReach+c.weaponRadius*.35&&target.z<1.6&&b.clock>.35){this.beginBossAttack('basic',target);return}

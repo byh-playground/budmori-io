@@ -8,7 +8,8 @@
     "test:browser": "node scripts/test-scenarios.mjs core",
     "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
-    "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git"
+    "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
+    "verify:raid-load": "node tests/raid-load.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0",

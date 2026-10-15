@@ -12,12 +12,12 @@ class UnitRender extends RenderObject {
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,
   vx:R.LINEAR,vy:R.LINEAR,hp:R.LINEAR,down:R.LINEAR,stun:R.LINEAR,flash:R.LINEAR,bounce:R.LINEAR,
   'ability.phase':R.STATE_KEY,'ability.elapsed':R.LINEAR,
-  species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP
+  species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP,ownerId:R.STATE_KEY,farmId:R.STEP,dropLanded:R.STEP,buffed:R.STEP
  });
- constructor(u){
+ constructor(u,world){
   super();Object.assign(this,{x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
    ability:{phase:u.ability.phase,elapsed:u.ability.elapsed},species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
-   maxHp:40*1.5**(u.tier-1),fed:u.fed});
+   maxHp:40*1.5**(u.tier-1),fed:u.fed,ownerId:u.ownerId,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0)});
  }
 }
 
@@ -61,38 +61,40 @@ class GameClockRender extends RenderObject {
 
 export class FarmSession{
  constructor(world=new Garden(),{room=null,onError=console.error,onEvent=()=>{}}={}){
-  this.world=world;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';
+  this.world=world;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[...(room?.players||['solo'])];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';
   this.presentationRevision=0;this.presentationSequence=0;this.pendingPresentationMode=null;this.presentationRuntime=new PresentationRuntime({stepMs:PRESENTATION_STEP_MS,delayMs:PRESENTATION_STEP_MS,snapDistance:12});
   this.presentationIds=new WeakMap();this.nextPresentationId=1;this.previousCaptureTimeMs=null;this.latestCaptureTimeMs=0;this.presentationOriginWallMs=null;this.lastFrameClockMs=null;this.lastCaptureClockMs=0;this.pulseTimestamp=null;
-  const adapter={save:()=>codec.encode(this.capture()),load:bytes=>this.load(codec.decode(bytes)),validateSnapshot:(bytes,context={})=>{try{this.validate(codec.decode(bytes),context);return true}catch{return false}},applyMembership:change=>{this.epoch=change.epoch;this.players=[...change.players];this.pendingPresentationMode='reset'},step:ctx=>this.step(ctx)};
+  const adapter={save:()=>codec.encode(this.capture()),load:bytes=>this.load(codec.decode(bytes)),validateSnapshot:(bytes,context={})=>{try{this.validate(codec.decode(bytes),context);return true}catch{return false}},applyMembership:change=>{this.epoch=change.epoch;this.players=[...change.players];if(this.world.scene==='raid')this.world.setRaidPlayers(this.players);this.pendingPresentationMode='reset'},step:ctx=>this.step(ctx)};
   const emitEvent=event=>{
    if(event.type==='rollback'||event.type==='reconciled')this.pendingPresentationMode='rollback';
    else if(event.type==='membership-committed')this.pendingPresentationMode='reset';
    else if(event.type==='recovered'){this.pendingPresentationMode='load';this.capturePresentation('load')}
    onEvent(event);
   };
-  this.session=globalThis.BloomGamekitRollback.createRoomSession({adapter,players:room?.players||['solo'],localPlayerId:this.localPlayerId,sessionId:room?.sessionId||'budmori-solo',simulationVersion:'budmori-farm-'+PRODUCT_VERSION,seed:world.seed,inputSize:1,mode:room?'online':'local',room:room||undefined,profile:{...globalThis.BloomGamekitRollback.profiles.action,mode:'lockstep',tickRate:20,baseInputDelayTicks:room?2:0,minInputDelayTicks:room?2:0,maxInputDelayTicks:room?2:0,adaptiveInputDelay:false,pacingPolicy:'none',checksumInterval:20,stateHistorySize:32,maxSnapshotBytes:8388608},membership:{maxPlayers:5,transitionTimeoutMs:30000,reconnectGraceMs:10000,maxCatchupSteps:4},onEvent:emitEvent});
+  this.session=globalThis.BloomGamekitRollback.createRoomSession({adapter,players:room?.players||['solo'],localPlayerId:this.localPlayerId,sessionId:room?.sessionId||'budmori-solo',simulationVersion:'budmori-farm-'+PRODUCT_VERSION,seed:world.seed,inputSize:1,mode:room?'online':'local',room:room||undefined,profile:{...globalThis.BloomGamekitRollback.profiles.action,mode:'lockstep',tickRate:20,baseInputDelayTicks:room?2:0,minInputDelayTicks:room?2:0,maxInputDelayTicks:room?2:0,adaptiveInputDelay:false,pacingPolicy:'none',checksumInterval:20,stateHistorySize:32,maxSnapshotBytes:8388608},membership:{maxPlayers:CONFIG.maxRaidPlayers,transitionTimeoutMs:30000,reconnectGraceMs:10000,maxCatchupSteps:4},onEvent:emitEvent});
   this.loop=globalThis.BloomGamekitSimloop.createLoop({session:this.session,getInput:()=>({input:new Uint8Array(1),commands:(this.session.ready?this.pending.splice(0,32):[]).map(payload=>({payload})),predict:false}),canAdvance:()=>true,canObserveInput:()=>!this.session.closed&&!this.session.failure,onError,onBacklogDrop:()=>{this.pendingPresentationMode='reset'},
    onAdvance:result=>{if(this.session.resimulating)return;if(this.pendingPresentationMode)this.capturePresentation(this.pendingPresentationMode);else if(result.status==='advanced'&&!this.paused)this.capturePresentation('continuous')}});
   this.capturePresentation('reset');
  }
  capture(){return {tick:this.tick,epoch:this.epoch,players:this.players,speed:this.speed,world:snapshot(this.world)}}
- validate(s,ctx={}){if(!Number.isSafeInteger(s.tick)||s.tick<0||!Number.isSafeInteger(s.epoch)||s.epoch<0||!Array.isArray(s.players)||s.players.length>5||s.players.some(p=>typeof p!=='string')||![1,4].includes(s.speed)||ctx.tick!==undefined&&s.tick!==ctx.tick||ctx.membershipEpoch!==undefined&&s.epoch!==ctx.membershipEpoch)throw Error('Invalid farm snapshot');return restore(s.world)}
+ validate(s,ctx={}){if(!Number.isSafeInteger(s.tick)||s.tick<0||!Number.isSafeInteger(s.epoch)||s.epoch<0||!Array.isArray(s.players)||s.players.length>CONFIG.maxRaidPlayers||s.players.some(p=>typeof p!=='string')||![1,4].includes(s.speed)||ctx.tick!==undefined&&s.tick!==ctx.tick||ctx.membershipEpoch!==undefined&&s.epoch!==ctx.membershipEpoch)throw Error('Invalid farm snapshot');return restore(s.world)}
  load(s){this.world=this.validate(s);this.tick=s.tick;this.epoch=s.epoch;this.players=[...s.players];this.speed=s.speed;this.presentationIds=new WeakMap();this.nextPresentationId=1;bindPresentationClock(this.world,null);this.pendingPresentationMode='load'}
- queue(type,args={}){if(!this.session.ready||this.pending.length>=64)return false;this.pending.push(codec.encode({type,...args}));return true}
+ queue(type,args={}){if(this.session.closed||this.pending.length>=64)return false;this.pending.push(codec.encode({type,...args}));return true}
  step({tick,inputs}){
-  for(const f of inputs){if(!this.players.includes(f.playerId))continue;for(const c of f.commands){try{this.command(codec.decode(c.payload))}catch{/* Reject malformed remote intent without changing the world. */}}}
+  for(const f of inputs){if(!this.players.includes(f.playerId))continue;for(const c of f.commands){try{this.command(codec.decode(c.payload),f.playerId)}catch{/* Reject malformed remote intent without changing the world. */}}}
   if(this.paused&&!this.room){this.tick=tick+1;return}
   const w=this.world,startTime=w.time,speed=this.speed,loopStart=this.loop?.simulationTimeMs,startClock=this.adjustedWallTime(Number.isFinite(loopStart)?loopStart:this.pulseTimestamp??globalThis.performance.now()),presentationStartMs=Math.max(0,startClock-(this.presentationOriginWallMs??startClock));bindPresentationClock(w,time=>(presentationStartMs+(time-startTime)*1000/speed)/1000);
-  w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick=tick+1;if(!this.session.resimulating)this.presentationTick++;
+  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick=tick+1;if(!this.session.resimulating)this.presentationTick++;
  }
- command(c){const w=this.world;
+ command(c,ownerId=this.localPlayerId){const w=this.world;
   switch(c.type){
-   case 'feed':w.tapFood('manual');break;
-   case 'mode':if(['breed','merge'].includes(c.value))w.mode=c.value;break;
-   case 'scene':if(['farm','raid'].includes(c.value)&&c.value!==w.scene){w.setScene(c.value);this.pendingPresentationMode='reset'}break;
+   case 'feed':if(w.scene==='farm')w.tapFood('manual');break;
+   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value))w.mode=c.value;break;
    case 'speed':if([1,4].includes(c.value))this.speed=c.value;break;
-   case 'invest':if(typeof c.id==='string')w.progress.invest(c.id);break;
+   case 'invest':if(typeof c.id==='string'&&w.scene==='farm')w.progress.invest(c.id);break;
+   case 'register-roster':if(Array.isArray(c.entries))w.registerRaidRoster(ownerId,c.entries);break;
+   case 'deploy':if(Number.isSafeInteger(c.farmId)&&Number.isFinite(c.x)&&Number.isFinite(c.y))w.deployRaidUnit(ownerId,c.farmId,c.x,c.y);break;
+   case 'buff':w.useRaidBuff(ownerId);break;
   }
  }
  presentationIdentity(kind,source){let id=this.presentationIds.get(source);if(!id){id=this.nextPresentationId++;this.presentationIds.set(source,id)}return kind+':'+id}
@@ -103,7 +105,7 @@ export class FarmSession{
   if(mode!=='continuous'&&this.presentationSequence>0)this.presentationRevision++;
   const world=this.world,receiptNowMs=this.captureClock(),timeMs=this.presentationOriginWallMs===null?0:Math.max(this.latestCaptureTimeMs,receiptNowMs-this.presentationOriginWallMs),entities=[];
   if(this.presentationOriginWallMs===null)this.presentationOriginWallMs=receiptNowMs;
-  for(const u of world.units)entities.push({id:'unit:'+u.id,generation:0,source:new UnitRender(u)});
+  for(const u of world.units)entities.push({id:'unit:'+u.id,generation:0,source:new UnitRender(u,world)});
   entities.push({id:'boss',generation:0,source:new BossRender(world.boss)});
   for(const f of world.food)entities.push({id:this.presentationIdentity('food',f),generation:0,source:new FoodRender(f)});
   for(const p of world.projectiles)entities.push({id:'projectile:'+p.id,generation:0,source:new ProjectileRender(p)});
