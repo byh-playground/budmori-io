@@ -24,9 +24,9 @@ class UnitRender extends RenderObject {
 class BossRender extends RenderObject {
  static renderSchema=Object.freeze({
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,startAngle:R.ANGLE,
-  phase:R.STATE_KEY,clock:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR
+  phase:R.STATE_KEY,clock:R.LINEAR,travel:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR
  });
- constructor(b){super();Object.assign(this,{x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash})}
+ constructor(b){super();Object.assign(this,{x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash})}
 }
 
 class FoodRender extends RenderObject {

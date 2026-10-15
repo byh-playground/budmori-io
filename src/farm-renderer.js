@@ -1,6 +1,6 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp} from './farm-model.js';
 import {SeedArt,SEED_STYLES} from './seed-art.js';
-import {TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
+import {BOSS_VECTOR_ASSETS,TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
 const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
 function unitMotion(u){
@@ -37,7 +37,9 @@ function unitExpression(u,sim){
         if(typeof createVectorAsset!=='function')throw new Error('GameKit vector-assets runtime did not load');
         this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
         for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
+        this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
       }
+      this.bossPlayer=null;this.bossPlayerAsset=null;
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
       this.resize();
@@ -125,24 +127,43 @@ function unitExpression(u,sim){
       SeedArt.draw(this.ctx,u.species,p.x,p.y,r,u,sim.time,{pixelRatio:this.pixelRatio,extra:this.feel?.squash(u.id,this.displayTimeMs)||0,expression:u.z>.5||u.stun>0?'surprised':joy?'happy':!u.fed?'hungry':'normal'});
     }
     bossPose(world){
-      const b=world.boss,k=this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0};return {b,p:this.project(b.x+k.x,b.y+k.y,0),r:this.scale*b.radius*1.16,k};
+      const b=world.boss,k=this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0},ground=this.project(b.x+k.x,b.y+k.y,0),p=this.project(b.x+k.x,b.y+k.y,b.z||0),r=this.scale*b.radius*1.16;
+      return {b,p,ground,r,k};
     }
-    bossSkin(world,faceOnly=false){
-      const {b,p,r,k}=this.bossPose(world),wind=b.phase.endsWith('windup'),active=b.phase==='strike'||b.phase==='sweep';
-      const skin={species:0,tier:4,hp:b.hp,down:0,z:0,vx:0,vy:0,seed:0,flash:b.flash,bounce:0,ability:{phase:wind?'windup':active?'active':'idle',elapsed:wind?.24:0}};
-      SeedArt.draw(this.ctx,0,p.x,p.y,r,skin,world.time,{pixelRatio:this.pixelRatio,boss:true,hideFace:!faceOnly,faceOnly,extra:k.squash,expression:b.hp<=0?'dead':wind?'surprised':active?'happy':'normal'});
+    bossMotion(b){
+      if(b.hp<=0)return 'death';
+      if(b.flash>.09&&b.phase==='chase')return 'hit';
+      if(b.phase==='strike-windup'||b.phase==='sweep-windup')return 'windup';
+      if(b.phase==='strike')return 'strike';if(b.phase==='sweep')return 'sweep';if(b.phase==='recover')return 'recover';
+      return b.phase==='chase'?'walk':'idle';
     }
-    drawBoss(world){this.bossSkin(world)}
-    drawBossFace(world){this.bossSkin(world,true)}
-    drawBossWeapon(world){
+    drawBoss(world){
+      const record=this.bossAssets?.get('chestnut');if(!record)return;
+      const {b,p,r,k}=this.bossPose(world),metadata=record.compiled.metadata,name=this.bossMotion(b),clip=metadata.clips[name]||metadata.clips.idle;
+      const timed=['windup','strike','sweep','recover','hit','death'].includes(name),clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,b.clock||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
+      if(!this.bossPlayer||this.bossPlayerAsset!==record){this.bossPlayer?.dispose();this.bossPlayer=record.asset.createPlayer({clip:name,startedAtMs:clipStartAtMs});this.bossPlayerAsset=record}
+      else if(this.bossPlayer.currentClip!==name)this.bossPlayer.play(name,clipStartAtMs);
+      const expression=b.hp<=0?'dead':name==='windup'?'focused':name==='strike'||name==='sweep'?'attack':b.flash>.07?'hurt':'neutral';
+      if(this.bossPlayer.currentExpression!==expression)this.bossPlayer.setExpression(expression);
+      this.bossPlayer.seek(this.displayTimeMs);
+      const [, ,width]=record.compiled.viewBox,s=2*r/220,anchorX=160,anchorY=261,matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];
+      this.bossPlayer.setBasePose('body',{scaleX:1+(k.squash||0),scaleY:1-(k.squash||0)});
+      const aiming=['strike-windup','sweep-windup','strike','sweep'].includes(b.phase);
+      if(aiming){const target=Math.atan2(-.62*Math.sin(b.angle),Math.cos(b.angle));this.bossPlayer.setBasePose('arm-right',{rotation:target-.504});this.bossPlayer.setBasePose('arm-left',{rotation:target+Math.PI-2.637})}
+      else{this.bossPlayer.setBasePose('arm-right',{rotation:0});this.bossPlayer.setBasePose('arm-left',{rotation:0})}
+      this.bossPlayer.draw({projection:this.ctx.vector.projection,matrix});
+      this.drawBossWeapon(world,this.bossPlayer,matrix);
+    }
+    drawBossWeapon(world,player,matrix){
       const b=world.boss,c=CONFIG.raid,heavy=b.phase==='sweep'||b.phase==='sweep-windup';
       let angle=heavy?b.startAngle:b.angle,reach=b.radius+.15;
       if(b.phase==='sweep'){angle=b.startAngle+Math.PI*2*Math.min(1,b.clock/c.sweepDuration);reach=c.sweepReach}
       else if(b.phase==='strike')reach=b.radius-.25+(c.basicReach-b.radius+.25)*Math.sin(Math.PI*Math.min(1,b.clock/c.basicDuration));
       else if(b.phase.endsWith('windup'))reach=heavy?c.sweepReach:b.radius-.25;
-      const base=this.project(b.x+Math.cos(angle)*(b.radius*.65),b.y+Math.sin(angle)*(b.radius*.65),.35),tip=this.project(b.x+Math.cos(angle)*reach,b.y+Math.sin(angle)*reach,.35);
-      this.line(base,tip,.4,'#314331');this.line(base,tip,.24,'#879866');
-      this.ellipse(tip.x,tip.y,c.weaponRadius*this.scale,c.weaponRadius*this.scale*.62,b.phase.endsWith('windup')?'#ba7752':'#b5aa73',angle);
+      if(b.phase!=='strike'&&b.phase!=='sweep')return;
+      const socket=player.getSocket('fist-right'),base={x:matrix[0]*socket.x+matrix[4],y:matrix[3]*socket.y+matrix[5]},tip=this.project(b.x+Math.cos(angle)*reach,b.y+Math.sin(angle)*reach,.2);
+      this.line(base,tip,.26,'#684632');this.line(base,tip,.13,'#f0c77c');
+      this.ellipse(tip.x,tip.y,c.weaponRadius*this.scale*.48,c.weaponRadius*this.scale*.3,'#dfad79',angle);
       if(b.phase==='sweep'){const back=angle-.18,tail=this.project(b.x+Math.cos(back)*reach,b.y+Math.sin(back)*reach,.35);this.line(tail,tip,.26,'#e6cf7b99')}
     }
     terrain(sim2) {
@@ -186,9 +207,9 @@ function unitExpression(u,sim){
         this.groundEllipse(u.x, u.y, shadow, shadow * .62, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
-      if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33');this.drawBossWeapon(sim2)}
+      if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
       const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawUnit(u, sim2) }));
-      if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y, id: 0, draw: () => this.drawBoss(sim2) });
+      if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x,f.y,.10,.07,"#55452433");
         if(f.phase === "flight") {
@@ -243,13 +264,12 @@ function unitExpression(u,sim){
           }
         }
       }
-      // Face is the final body layer: low contact effects and foreground troops cannot erase it.
-      if(sim2.scene==='raid')this.drawBossFace(sim2);
       this.stats = c.endFrame();
     }
     dispose(){
       for(const player of this.vectorPlayers.values())player.dispose();this.vectorPlayers.clear();
       for(const record of this.vectorAssets.values())record.asset.dispose();this.vectorAssets.clear();
+      this.bossPlayer?.dispose();this.bossPlayer=null;for(const record of this.bossAssets?.values()||[])record.asset.dispose();this.bossAssets?.clear();
       this.ctx.dispose();this.device.dispose();
     }
   };
