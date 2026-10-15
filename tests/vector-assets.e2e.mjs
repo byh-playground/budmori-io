@@ -71,7 +71,7 @@ try{
     const entries=ids.map((species)=>[species+1,species,4]);
     if(!world.registerRaidRoster(owner,entries))throw Error('Visual roster registration failed');
     const points=[[-8,3],[0,-9],[8,3]];
-    for(let i=0;i<ids.length;i++)if(!world.deployRaidUnit(owner,ids[i]+1,points[i][0],points[i][1]))throw Error('Vector troop drop failed: '+i);
+    for(let i=0;i<ids.length;i++)if(!world.deployNextRaidUnit(owner,i+1,points[i][0],points[i][1]))throw Error('Vector troop drop failed: '+i);
     for(const unit of world.units){unit.dropLanded=true;unit.z=unit.vz=0;unit.vx=unit.vy=0;unit.ability.phase='idle';unit.ability.elapsed=0}
     const bySpecies=[...world.units].sort((a,b)=>a.species-b.species);
     bySpecies[0].ability.phase='windup';bySpecies[0].ability.elapsed=.14;

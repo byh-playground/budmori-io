@@ -415,19 +415,34 @@
             ids.add(e[0]);
             troops.push({ farmId: e[0], species: e[1], tier: e[2], deployed: false });
           }
-          this.raidRosters.push({ ownerId, troops, buffUntil: 0, buffReadyAt: 0 });
+          const orderKey = (farmId) => {
+            let h = (this.seed ^ Math.imul(farmId, 2654435769)) >>> 0;
+            for (let i = 0; i < ownerId.length; i++) {
+              h ^= ownerId.charCodeAt(i);
+              h = Math.imul(h, 16777619);
+            }
+            h ^= h >>> 16;
+            h = Math.imul(h, 2146121005);
+            h ^= h >>> 15;
+            h = Math.imul(h, 2221713035);
+            h ^= h >>> 16;
+            return h >>> 0;
+          };
+          troops.sort((a, b) => orderKey(a.farmId) - orderKey(b.farmId) || a.farmId - b.farmId);
+          this.raidRosters.push({ ownerId, troops, lastDeploySequence: 0, buffUntil: 0, buffReadyAt: 0 });
           this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
           return true;
         }
-        deployRaidUnit(ownerId, farmId, x, y) {
-          if (this.scene !== "raid" || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.maxRaidUnits || !Number.isSafeInteger(farmId) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
-          const roster = this.raidRoster(ownerId), troop = roster?.troops.find((t) => t.farmId === farmId);
-          if (!troop || troop.deployed || !ArenaGeometry.inside({ x, y }, "raid", 0.5)) return false;
-          const slot = this.raidExpectedPlayers.indexOf(ownerId), id = (slot + 1) * 1e6 + farmId;
+        deployNextRaidUnit(ownerId, sequence, x, y) {
+          if (this.scene !== "raid" || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.maxRaidUnits || !Number.isSafeInteger(sequence) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+          const roster = this.raidRoster(ownerId), troop = roster?.troops.find((t) => !t.deployed);
+          if (!roster || sequence !== roster.lastDeploySequence + 1 || !troop || !ArenaGeometry.inside({ x, y }, "raid", 0.5)) return false;
+          const farmId = troop.farmId, slot = this.raidExpectedPlayers.indexOf(ownerId), id = (slot + 1) * 1e6 + farmId;
           if (this.units.some((u2) => u2.id === id)) return false;
           const u = new Unit(id, troop.species, troop.tier, x, y);
           Object.assign(u, { ownerId, farmId, z: CONFIG.raid.dropHeight, vz: 0, dropLanded: false, meals: 3, growth: 3 });
           troop.deployed = true;
+          roster.lastDeploySequence = sequence;
           this.units.push(u);
           if (!this.raidDeploymentStarted) {
             this.raidDeploymentStarted = true;
@@ -912,6 +927,7 @@
     };
     fill(raw, base);
     raw.progress.levels.capacity = Number.isInteger(raw.progress.levels.capacity) ? raw.progress.levels.capacity : 0;
+    for (const r of raw.raidRosters || []) if (!Object.hasOwn(r, "lastDeploySequence")) r.lastDeploySequence = Array.isArray(r.troops) ? r.troops.filter((t) => t?.deployed).length : 0;
     for (const u of raw.units) {
       if (!Object.hasOwn(u, "ownerId")) u.ownerId = "";
       if (!Object.hasOwn(u, "farmId")) u.farmId = 0;
@@ -986,7 +1002,7 @@
         ids2.add(t.farmId);
         manifest.add(r.ownerId + ":" + t.farmId);
       }
-      assert(Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
+      assert(integer(r.lastDeploySequence, 0, r.troops.length) && r.lastDeploySequence === r.troops.filter((t) => t.deployed).length && Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
     }
     assert(manifest.size <= CONFIG.maxRaidUnits);
     const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set();
@@ -1838,6 +1854,7 @@
       this.pending = [];
       this.room = room2;
       this.localPlayerId = room2?.localPlayerId || "solo";
+      this.localDeploySequence = world.raidRoster(this.localPlayerId)?.lastDeploySequence || 0;
       this.presentationRevision = 0;
       this.presentationSequence = 0;
       this.pendingPresentationMode = null;
@@ -1913,6 +1930,16 @@
       this.pending.push(codec.encode({ type, ...args }));
       return true;
     }
+    deployNext(x, y) {
+      const w = this.world, roster = w.scene === "raid" && w.raidRoster(this.localPlayerId);
+      if (!roster || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+      this.localDeploySequence = Math.max(this.localDeploySequence, roster.lastDeploySequence);
+      if (this.localDeploySequence - roster.lastDeploySequence >= w.raidRemaining(this.localPlayerId)) return false;
+      const sequence = this.localDeploySequence + 1;
+      if (!this.queue("deploy", { sequence, x, y })) return false;
+      this.localDeploySequence = sequence;
+      return true;
+    }
     step({ tick, inputs }) {
       for (const f of inputs) {
         if (!this.players.includes(f.playerId)) continue;
@@ -1953,7 +1980,7 @@
           if (Array.isArray(c.entries)) w.registerRaidRoster(ownerId, c.entries);
           break;
         case "deploy":
-          if (Number.isSafeInteger(c.farmId) && Number.isFinite(c.x) && Number.isFinite(c.y)) w.deployRaidUnit(ownerId, c.farmId, c.x, c.y);
+          if (Number.isSafeInteger(c.sequence) && Number.isFinite(c.x) && Number.isFinite(c.y)) w.deployNextRaidUnit(ownerId, c.sequence, c.x, c.y);
           break;
         case "buff":
           w.useRaidBuff(ownerId);
@@ -2334,8 +2361,6 @@
   var noticeSequence = 0;
   var lastSave = 0;
   var treePause = false;
-  var selectedCard = { species: 0, tier: 1 };
-  var queuedFarmIds = /* @__PURE__ */ new Set();
   var dropPointer = null;
   var dropTimer = null;
   var renderer = new Diorama($2("world"));
@@ -2424,14 +2449,14 @@
   function beginRaid(push = true) {
     if (room || !personalGarden || active.world.scene === "raid") return;
     persist();
-    queuedFarmIds.clear();
-    selectedCard = { species: 0, tier: 1 };
+    renderer.dropTarget = null;
     const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"]);
     install(battle);
     active.queue("register-roster", { entries: personalGarden.units.slice(0, CONFIG.maxRaidPlayerUnits).map((u) => [u.id, u.species, u.tier]) });
     setHome(false, push);
   }
   async function returnToFarm(push = true) {
+    stopDrop();
     if (room) {
       const leaving = room;
       try {
@@ -2444,7 +2469,7 @@
       solo = null;
     }
     if (!personalGarden) return;
-    queuedFarmIds.clear();
+    renderer.dropTarget = null;
     install(personalGarden);
     setHome(false, push);
   }
@@ -2618,85 +2643,55 @@
     }
   };
   var canvas = $2("world");
-  var speciesNames = ["씨앗", "버섯", "꽃"];
-  $2("deploymentCards").innerHTML = Array.from({ length: 12 }, (_, i) => {
-    const species = Math.floor(i / 4), tier = i % 4 + 1;
-    return `<button type="button" data-card="${species}:${tier}" aria-pressed="false" aria-label="${speciesNames[species]} 티어 ${tier} 선택">${speciesNames[species]} · T${tier} <b data-count="${species}:${tier}">0</b></button>`;
-  }).join("");
-  function remainingFor(species, tier) {
-    const roster = active.world.raidRoster(active.localPlayerId);
-    if (roster) return roster.troops.filter((t) => t.species === species && t.tier === tier && !t.deployed && !queuedFarmIds.has(t.farmId)).length;
-    return personalGarden?.units.filter((u) => u.species === species && u.tier === tier && !queuedFarmIds.has(u.id)).length || 0;
-  }
   function deploymentHud() {
-    const w = active.world, raid = w.scene === "raid", roster = w.raidRoster(active.localPlayerId);
-    for (const b of $2("deploymentCards").querySelectorAll("[data-card]")) {
-      const [species, tier] = b.dataset.card.split(":").map(Number), count = remainingFor(species, tier);
-      b.setAttribute("aria-pressed", selectedCard.species === species && selectedCard.tier === tier);
-      b.disabled = !raid || count === 0 || room && active.players.length < 2 || !w.raidExpectedPlayers.every((id) => w.raidRoster(id));
-      const n = b.querySelector("[data-count]");
-      if (n) n.textContent = count;
-    }
-    const remaining = roster ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, registered = w.raidRosters.length, expected = w.raidExpectedPlayers.length;
-    $2("raidRemaining").textContent = room && active.players.length < 2 ? "동료가 들어오기를 기다리는 중…" : !roster || registered < expected ? `병력 명단 동기화 중 · ${registered}/${expected}명` : `남은 병력 ${remaining} · 전장 안을 탭하세요 (누르면 250ms마다 투입)`;
+    const w = active.world, raid = w.scene === "raid", roster = w.raidRoster(active.localPlayerId), registered = w.raidRosters.length, expected = w.raidExpectedPlayers.length, remaining = roster ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster ? Math.max(0, active.localDeploySequence - roster.lastDeploySequence) : 0;
+    $2("raidRemaining").textContent = room && active.players.length < 2 ? "동료가 들어오기를 기다리는 중…" : !roster || registered < expected ? `병력 명단 동기화 중 · ${registered}/${expected}명` : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 250ms마다 한 마리`;
     const own = w.raidRoster(active.localPlayerId), cooldown = own ? Math.max(0, own.buffReadyAt - w.time) : 0;
     $2("buff").disabled = !raid || !w.running || !own || cooldown > 0;
     $2("buff").textContent = cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화";
   }
-  function deployAt(clientX, clientY) {
+  function deployAt(p) {
     if (home || active.world.scene !== "raid" || room && active.players.length < 2 || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
-    const p = renderer.screenToWorld(clientX, clientY), valid = ArenaGeometry.inside(p, "raid", 0.5);
+    const valid = ArenaGeometry.inside(p, "raid", 0.5);
     renderer.dropTarget = { ...p, valid };
-    if (!valid) return false;
-    const s = selectedCard.species, t = selectedCard.tier, roster = active.world.raidRoster(active.localPlayerId), unit = personalGarden?.units.find((u) => u.species === s && u.tier === t && !queuedFarmIds.has(u.id) && (!roster || !roster.troops.find((v) => v.farmId === u.id)?.deployed));
-    if (!unit) return false;
-    const ok = active.queue("deploy", { farmId: unit.id, x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 });
-    if (ok) queuedFarmIds.add(unit.id);
-    return ok;
+    return valid && active.deployNext(Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100);
   }
   function stopDrop(e) {
+    if (e && dropPointer && e.pointerId !== dropPointer.id) return;
     if (dropTimer !== null) clearInterval(dropTimer);
     dropTimer = null;
     if (dropPointer && canvas.hasPointerCapture?.(dropPointer.id)) canvas.releasePointerCapture(dropPointer.id);
     dropPointer = null;
-    if (e) renderer.dropTarget = null;
   }
   canvas.addEventListener("pointerdown", (e) => {
     foodFeel.unlock();
     if (home || active.world.scene !== "raid") return;
     canvas.setPointerCapture?.(e.pointerId);
     const p = renderer.screenToWorld(e.clientX, e.clientY);
-    dropPointer = { id: e.pointerId, x: e.clientX, y: e.clientY, last: ArenaGeometry.inside(p, "raid", 0.5) ? p : null };
-    deployAt(e.clientX, e.clientY);
+    if (!ArenaGeometry.inside(p, "raid", 0.5)) {
+      renderer.dropTarget = { ...p, valid: false };
+      return;
+    }
+    dropPointer = { id: e.pointerId, x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
+    deployAt(dropPointer);
     dropTimer = setInterval(() => {
-      if (dropPointer) deployAt(dropPointer.x, dropPointer.y);
+      if (dropPointer) deployAt(dropPointer);
     }, 250);
     e.preventDefault();
-  });
-  canvas.addEventListener("pointermove", (e) => {
-    if (!dropPointer || e.pointerId !== dropPointer.id) return;
-    dropPointer.x = e.clientX;
-    dropPointer.y = e.clientY;
-    const p = renderer.screenToWorld(e.clientX, e.clientY);
-    renderer.dropTarget = { ...p, valid: ArenaGeometry.inside(p, "raid", 0.5) };
-    if (!dropPointer.last || Math.hypot(p.x - dropPointer.last.x, p.y - dropPointer.last.y) >= 0.9) {
-      if (deployAt(e.clientX, e.clientY)) dropPointer.last = p;
-    }
   });
   canvas.addEventListener("pointerup", (e) => stopDrop(e));
   canvas.addEventListener("pointercancel", (e) => stopDrop(e));
   canvas.addEventListener("lostpointercapture", (e) => stopDrop(e));
-  $2("deploymentCards").onclick = (e) => {
-    const b = e.target.closest("[data-card]");
-    if (!b) return;
-    const [species, tier] = b.dataset.card.split(":").map(Number);
-    selectedCard = { species, tier };
-    deploymentHud();
-  };
+  window.addEventListener("pointerup", (e) => stopDrop(e), true);
+  window.addEventListener("pointercancel", (e) => stopDrop(e), true);
   $2("buff").onclick = () => active.queue("buff");
-  window.addEventListener("blur", persist);
+  window.addEventListener("blur", () => {
+    stopDrop();
+    persist();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
+      stopDrop();
       persist();
       active.loop.resetTiming();
     }
@@ -2791,10 +2786,6 @@
     }
     noticeSequence = w.eventSequence;
     foodFeel.frame(now);
-    for (const id of [...queuedFarmIds]) {
-      const troop = w.raidRoster(active.localPlayerId)?.troops.find((t) => t.farmId === id);
-      if (troop?.deployed) queuedFarmIds.delete(id);
-    }
     deploymentHud();
     $2("connection").hidden = !room;
     $2("connection").textContent = room ? active.session.failure ? "연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요" : `함께 ${active.players.length}명 · ${active.session.ready ? "연결됨" : "동기화 중"}` : "";
