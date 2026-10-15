@@ -32,10 +32,6 @@ try{
  }
  html=html.split(previous.sourceCommit).join(sourceCommit).split(previous.distCommit).join(distCommit);
  let game=fs.readFileSync(path.join(root,'src/game.js'),'utf8').replace(/\r\n/g,'\n').split(previous.sourceCommit).join(sourceCommit).split(previous.distCommit).join(distCommit);
- const sourceStart='/* BEGIN BLOOM FONT ASSET SOURCE */',sourceEnd='/* END BLOOM FONT ASSET SOURCE */',sourceFrom=game.indexOf(sourceStart),sourceTo=game.indexOf(sourceEnd,sourceFrom);
- assert(sourceFrom>=0&&sourceTo>sourceFrom&&game.indexOf(sourceStart,sourceFrom+sourceStart.length)===-1,'one explicit font asset source marker pair');
- const asset=manifest.assets[0],fontSource=`const BLOOM_FONT_ASSET_SOURCE=Object.freeze({url:${JSON.stringify(`https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@${distCommit}/${asset.file}`)},version:${JSON.stringify(distCommit)},sha256:${JSON.stringify(asset.sha256)},bytes:${asset.bytes}});`;
- game=game.slice(0,sourceFrom+sourceStart.length)+'\n'+fontSource+'\n'+game.slice(sourceTo);
  fs.writeFileSync(path.join(staged,'index.html'),html);fs.writeFileSync(path.join(staged,'gamekit-lock.json'),JSON.stringify(lock,null,2)+'\n');
  fs.mkdirSync(path.join(staged,'src'),{recursive:true});fs.writeFileSync(path.join(staged,'src/game.js'),game);fs.copyFileSync(path.join(root,'src/bootstrap.js'),path.join(staged,'src/bootstrap.js'));
  if(fs.existsSync(path.join(root,'src/scope.js')))fs.copyFileSync(path.join(root,'src/scope.js'),path.join(staged,'src/scope.js'));

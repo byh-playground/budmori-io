@@ -3,16 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.cjs",
     "test": "node scripts/test-scenarios.mjs all",
-    "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser": "node scripts/test-scenarios.mjs core",
-    "test:benchmark": "node tests/performance-browser.mjs tests/fixtures/v65-worker.html index.html",
-    "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
-    "test:benchmark:modes": "node tests/performance-modes.cjs && node tests/performance-modes-browser.mjs",
+    "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
-    "benchmark:snapshots": "node tests/snapshot-jobs-browser.mjs",
-    "benchmark:meshes": "node tests/mesh-performance-browser.mjs",
-    "test:benchmark:shared": "node tests/shared-performance.cjs"
+    "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git"
   },
   "devDependencies": {
     "playwright": "1.63.0",
