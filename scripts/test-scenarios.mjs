@@ -2,12 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const suites = {
-  all: ['scripts/verify-gamekit-source.cjs', 'tests/browser.e2e.mjs', 'tests/save-version-browser.mjs', 'tests/multiplayer-browser.e2e.mjs'],
-  core: ['scripts/verify-gamekit-source.cjs', 'tests/browser.e2e.mjs'],
-  network: ['scripts/verify-gamekit-source.cjs', 'tests/multiplayer-browser.e2e.mjs'],
-  save: ['scripts/verify-gamekit-source.cjs', 'tests/save-version-browser.mjs'],
-};
+const suites = { all:['core','save','network'],core:['core'],save:['save'],network:['network'] };
 const suite = process.argv[2] ?? 'all';
 const scenarios = suites[suite];
 if (!scenarios) throw new Error('Unknown scenario suite: ' + suite);
@@ -24,7 +19,7 @@ async function run(file) {
   if (remaining <= 0) throw new Error('Scenario verification exceeded 180 seconds; unfinished coverage is NOT PASS');
   console.log('Scenario:', file);
   await new Promise((resolve, reject) => {
-    const child = active = spawn(process.execPath, [file], { cwd: root, stdio: 'inherit', windowsHide: true, detached: process.platform !== 'win32' });
+    const child = active = spawn(process.execPath, ['tests/farm.e2e.mjs',file], { cwd: root, stdio: 'inherit', windowsHide: true, detached: process.platform !== 'win32' });
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; stopChild(child); }, remaining);
     child.once('error', error => { clearTimeout(timer); active = null; reject(error); });
