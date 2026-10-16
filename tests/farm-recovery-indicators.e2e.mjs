@@ -68,15 +68,20 @@ try{
   },{sleeperId:fixture.sleeperId});
 
   async function capture(label,down,hp=0){
-    await page.evaluate(({sleeperId,down,hp})=>{
-      const unit=BUDMORI.sim.units.find(entry=>entry.id===sleeperId);unit.down=down;unit.hp=hp;
-      BUDMORI.runtime.capturePresentation('reset');
-      BUDMORI.renderer.render(BUDMORI.runtime.presentation(performance.now()),null,1000);
+    const diagnostic=await page.evaluate(({sleeperId,down,hp})=>{
+      const world=BUDMORI.sim,renderer=BUDMORI.renderer,unit=world.units.find(entry=>entry.id===sleeperId);
+      unit.down=down;unit.hp=hp;
+      const accepted=BUDMORI.runtime.capturePresentation('reset');
+      const display=BUDMORI.runtime.presentation(performance.now()),shown=display.units.find(entry=>entry.id===sleeperId);
+      const calls=[],draw=renderer.drawSleepBadge;
+      renderer.drawSleepBadge=function(u,sim,pose){if(u.id===sleeperId)calls.push({down:u.down,hp:u.hp,scene:sim.scene,seconds:Math.ceil(u.down),pose:{x:pose.p.x,y:pose.p.y,r:pose.r}});return draw.call(this,u,sim,pose)};
+      try{renderer.render(display,null,1000)}finally{renderer.drawSleepBadge=draw}
+      return {accepted,raw:{hp:unit.hp,down:unit.down,x:unit.x,y:unit.y,z:unit.z},presentation:shown&&{hp:shown.hp,down:shown.down,x:shown.x,y:shown.y,z:shown.z},scene:display.scene,displayTimeMs:display.displayTimeMs,badgeCalls:calls};
     },{sleeperId:fixture.sleeperId,down,hp});
     const full=path.join(out,`farm-recovery-indicators-${label}.png`),badge=path.join(out,`farm-recovery-indicators-${label}-badge.png`);
     await canvas.screenshot({path:full});
     await page.screenshot({path:badge,clip});
-    report.screenshots.push({label,remainingSeconds:down,hp,canvas:path.basename(full),badge:path.basename(badge)});
+    report.screenshots.push({label,remainingSeconds:down,hp,canvas:path.basename(full),badge:path.basename(badge),clip,diagnostic});
     return readFile(badge);
   }
   const badge60=await capture('60s',60,0);
