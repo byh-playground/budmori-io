@@ -9,8 +9,12 @@ import {raidSettlementKey} from './raid-settlement.js';
 import {mergeMaterialCostForTier} from './unit-grades.js';
 // A value snapshot contains all authoritative state; class owners are rehydrated once.
 export function snapshot(g){return JSON.parse(JSON.stringify(g,function(key,value){return key==='owner'&&this instanceof AttackCycle?undefined:value instanceof Set?[...value]:value}))}
-function normalize(raw,migrateLegacyRaid=false){
- const resetLegacyCorpseTimers=!Object.hasOwn(raw,'corpseRecoveryVersion'),hasRewardWatermarks=Object.hasOwn(raw,'bossRewardWatermarks');raw=structuredClone(raw);if(resetLegacyCorpseTimers)raw.corpseRecoveryVersion=1;for(const u of raw.units||[])if(!Object.hasOwn(u,'cooldownDuration'))u.cooldownDuration=Math.max(0,Number.isFinite(u.cooldown)?u.cooldown:0);const base=snapshot(new Garden()),fill=(v,d)=>{for(const[k,x]of Object.entries(d)){if(!Object.hasOwn(v,k))v[k]=structuredClone(x);else if(v[k]&&x&&typeof v[k]==='object'&&typeof x==='object'&&!Array.isArray(v[k])&&!Array.isArray(x))fill(v[k],x)}};
+// Validation needs exact plain-data templates, but rebuilding these defaults for
+// every checkpoint only allocates throwaway Garden/Unit graphs.
+const GARDEN_SHAPE=snapshot(new Garden()),UNIT_SHAPE=snapshot(new Unit(1,0,1,0,0));
+export function normalizeSnapshot(raw,{migrateLegacyRaid=false,clone=true}={}){
+ // Internal checkpoint serialization can skip the copy because `snapshot()` already returned an owned plain-data graph.
+ const resetLegacyCorpseTimers=!Object.hasOwn(raw,'corpseRecoveryVersion'),hasRewardWatermarks=Object.hasOwn(raw,'bossRewardWatermarks');if(clone)raw=structuredClone(raw);if(resetLegacyCorpseTimers)raw.corpseRecoveryVersion=1;for(const u of raw.units||[])if(!Object.hasOwn(u,'cooldownDuration'))u.cooldownDuration=Math.max(0,Number.isFinite(u.cooldown)?u.cooldown:0);const base=GARDEN_SHAPE,fill=(v,d)=>{for(const[k,x]of Object.entries(d)){if(!Object.hasOwn(v,k))v[k]=structuredClone(x);else if(v[k]&&x&&typeof v[k]==='object'&&typeof x==='object'&&!Array.isArray(v[k])&&!Array.isArray(x))fill(v[k],x)}};
  fill(raw,base);raw.progress.levels.capacity=Number.isInteger(raw.progress.levels.capacity)?raw.progress.levels.capacity:0;
  // Merge tasks are transient. Discard pre-expansion pair tasks and older
  // animation records that cannot represent the material count/output actor.
@@ -27,7 +31,7 @@ function normalize(raw,migrateLegacyRaid=false){
  raw.nextRaidRunSequence=Math.max(raw.nextRaidRunSequence||0,raw.bossRewardWatermarks.raid||0);
  raw.raidSettlementWatermark=Math.max(raw.raidSettlementWatermark||0,raw.bossRewardWatermarks.raid||0);
  for(const u of raw.units){if(!Number.isFinite(u.cooldownDuration)||u.cooldownDuration<(Number.isFinite(u.cooldown)?u.cooldown:0))u.cooldownDuration=Math.max(0,Number.isFinite(u.cooldown)?u.cooldown:0);if(!Object.hasOwn(u,'growthDuration'))u.growthDuration=CONFIG.breedGrowthSeconds;if(!Object.hasOwn(u,'growthElapsed')){const progress=Number.isFinite(u.growth)?Math.max(0,Math.min(CONFIG.matureMeals,u.growth)):0;u.growthElapsed=u.growthDuration*progress/CONFIG.matureMeals}if(!Object.hasOwn(u,'mateId'))u.mateId=0;if(!Object.hasOwn(u,'perceptionRange'))u.perceptionRange=CONFIG.raid.perceptionRange;if(!Object.hasOwn(u,'ownerId'))u.ownerId='';if(!Object.hasOwn(u,'farmId'))u.farmId=0;if(!Object.hasOwn(u,'dropLanded'))u.dropLanded=true;if(u.hp<=0){if(resetLegacyCorpseTimers||!Number.isFinite(u.down)||u.down<=0)u.down=CONFIG.corpseRecoverySeconds;else u.down=Math.min(CONFIG.corpseRecoverySeconds,u.down)}else u.down=0}
- if(migrateLegacyRaid&&raw.scene==='raid'){raw.scene='farm';raw.running=false;raw.encounter={outcome:'idle',elapsed:0};raw.raidExpectedPlayers=['solo'];raw.raidRosters=[];raw.raidDeploymentStarted=false;raw.projectiles=[];raw.boss=base.boss;for(const u of raw.units){u.x=u.home?.x??u.x;u.y=u.home?.y??u.y;Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:resolveUnitStats(u).maxHp,dropLanded:true});u.ability={phase:'idle',elapsed:0,action:null}}}
+ if(migrateLegacyRaid&&raw.scene==='raid'){raw.scene='farm';raw.running=false;raw.encounter={outcome:'idle',elapsed:0};raw.raidExpectedPlayers=['solo'];raw.raidRosters=[];raw.raidDeploymentStarted=false;raw.projectiles=[];raw.boss=structuredClone(base.boss);for(const u of raw.units){u.x=u.home?.x??u.x;u.y=u.home?.y??u.y;Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:resolveUnitStats(u).maxHp,dropLanded:true});u.ability={phase:'idle',elapsed:0,action:null}}}
  return raw;
 }
 const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
@@ -35,8 +39,13 @@ function assert(ok){if(!ok)throw new TypeError('올바른 농장 저장 데이�
 function finiteTree(v,depth=0,key=''){assert(depth<18);if(typeof v==='number')assert(Number.isFinite(v)&&Math.abs(v)<1e13);else if(Array.isArray(v)){const max=key==='units'?CONFIG.maxRaidBattleUnits:key==='projectiles'?CONFIG.maxRaidProjectiles:key==='bossRewardReceipts'||key==='processedBossKillReceipts'?100000:key==='raidSettlementReceipts'?128:1024;assert(v.length<=max);v.forEach(x=>finiteTree(x,depth+1))}else if(v&&typeof v==='object'){for(const [k,x]of Object.entries(v)){assert(!['__proto__','constructor','prototype'].includes(k));finiteTree(x,depth+1,k)}}else assert(v===null||typeof v==='boolean'||typeof v==='string'&&v.length<256)}
 function shape(v,t){assert(v!==null&&typeof v==='object'&&!Array.isArray(v));assert(Object.keys(v).length===Object.keys(t).length);for(const[k,x]of Object.entries(t)){assert(Object.hasOwn(v,k));if(x===null)continue;if(Array.isArray(x)){assert(Array.isArray(v[k]));continue}if(typeof x==='object')shape(v[k],x);else assert(typeof v[k]===typeof x)}}
 export function restore(raw,{migrateLegacyRaid=false}={}){
- raw=normalize(raw,migrateLegacyRaid);
- finiteTree(raw);const g=new Garden();shape(raw,snapshot(g));assert(integer(raw.seed,0,0xffffffff)&&integer(raw.rng.state,0,0xffffffff));
+ raw=normalizeSnapshot(raw,{migrateLegacyRaid});validateSnapshot(raw);
+ const g=new Garden();
+ Object.assign(g,structuredClone(raw));g.rng=new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);g.progress=Object.assign(new FarmProgress(),structuredClone(raw.progress));g.boss.hit=new Set(raw.boss.hit);
+  g.units=raw.units.map(data=>{const u=Object.assign(new Unit(data.id,data.species,data.tier,data.x,data.y),structuredClone(data));u.ability=Object.assign(new AttackCycle(u),structuredClone(data.ability));return u});g.reconcileMateReservations();return g;
+}
+export function validateSnapshot(raw){
+ finiteTree(raw);shape(raw,GARDEN_SHAPE);assert(integer(raw.seed,0,0xffffffff)&&integer(raw.rng.state,0,0xffffffff));
  assert(['farm','raid'].includes(raw.scene)&&['breed','merge'].includes(raw.mode));
  if(raw.mergeTask!==null){const t=raw.mergeTask;assert(raw.scene==='farm'&&raw.mode==='merge'&&t&&['approach','animation'].includes(t.phase)&&Number.isFinite(t.elapsed)&&t.elapsed>=0&&Number.isFinite(t.duration)&&t.duration>0&&t.duration<=CONFIG.mergeAnimationSeconds+1e-9&&Array.isArray(t.materialIds)&&t.materialIds.length>=2&&t.materialIds.length<=CONFIG.maxMergeMaterials&&new Set(t.materialIds).size===t.materialIds.length&&t.materialIds.every(id=>integer(id,1,CONFIG.maxFarmUnitId)));if(t.phase==='approach'){const materials=t.materialIds.map(id=>raw.units.find(u=>u.id===id)),first=materials[0],cost=mergeMaterialCostForTier(first?.tier+1),sameSpeciesCount=raw.units.filter(u=>!u.isBattleOnlySummon&&u.species===first?.species).length;assert(integer(t.aId,1,CONFIG.maxFarmUnitId)&&integer(t.bId,1,CONFIG.maxFarmUnitId)&&t.aId===t.materialIds[0]&&t.bId===t.materialIds[1]&&cost===materials.length&&first&&materials.every(u=>u&&u.tier===first.tier&&u.species===first.species)&&sameSpeciesCount-materials.length+1>=2)}else{const result=raw.units.find(u=>u.id===t.resultId);assert(t.aId===0&&t.bId===0&&t.elapsed<=t.duration+1e-9&&integer(t.resultId,1,CONFIG.maxFarmUnitId)&&result&&integer(t.sourceSpecies,0,CONFIG.maxSpecies-1)&&integer(t.sourceTier,1,CONFIG.maxTier-1)&&result.species===t.sourceSpecies&&result.tier===t.sourceTier+1&&t.materialIds.length===mergeMaterialCostForTier(result.tier))}}
  const farmCap=Math.min(CONFIG.maxFarmCap,CONFIG.cap+7*(raw.progress.levels.capacity||0));assert(raw.units.length<=(raw.scene==='farm'?(raw.farmBossEvent?.phase==='idle'?farmCap:CONFIG.maxFarmBattleUnits):CONFIG.maxRaidBattleUnits)&&raw.food.length<=140&&raw.projectiles.length<=CONFIG.maxRaidProjectiles);
@@ -58,7 +67,7 @@ export function restore(raw,{migrateLegacyRaid=false}={}){
  const ids=new Set(),deployed=new Set(),mateIdLimit=raw.scene==='raid'?CONFIG.maxRaidPlayers*CONFIG.raidPlayerIdStride+CONFIG.maxRaidPlayerUnits:CONFIG.maxFarmUnitId;
  const unitsById=new Map(),summonsByParent=new Map();
  for(const u of raw.units){
-  shape(u,snapshot(new Unit(1,0,1,0,0)));
+  shape(u,UNIT_SHAPE);
   assert(Number.isFinite(u.growthElapsed)&&u.growthElapsed>=0&&Number.isFinite(u.growthDuration)&&u.growthDuration>0&&u.growthElapsed<=u.growthDuration+1e-9&&Number.isFinite(u.cooldown)&&u.cooldown>=0&&Number.isFinite(u.cooldownDuration)&&u.cooldownDuration>=u.cooldown-1e-9&&u.cooldownDuration<=100000&&integer(u.mateId,0,mateIdLimit)&&Number.isFinite(u.perceptionRange)&&u.perceptionRange>0&&u.perceptionRange<=100&&Number.isFinite(u.down)&&u.down>=0&&u.down<=CONFIG.corpseRecoverySeconds);
   assert(integer(u.species,0,CONFIG.maxSpecies-1)&&integer(u.tier,1,CONFIG.maxTier)&&['idle','windup','active','recover'].includes(u.ability.phase)&&typeof u.ownerId==='string'&&Number.isSafeInteger(u.farmId)&&typeof u.dropLanded==='boolean'&&typeof u.isBattleOnlySummon==='boolean'&&typeof u.splitUsedThisBattle==='boolean'&&typeof u.deathSplitHandled==='boolean'&&integer(u.chestnutBasicCycles,0,1e12));
   if(u.hp<=0)assert(u.down>0&&!u.isBattleOnlySummon);else assert(u.down===0);
@@ -85,8 +94,7 @@ export function restore(raw,{migrateLegacyRaid=false}={}){
  assert(['chase','strike-windup','strike','sweep-windup','sweep','recover','resting'].includes(raw.boss.phase)&&raw.boss.hp>=0&&raw.boss.hp<=raw.boss.maxHp);
  assert(['idle','fighting','victory','defeat'].includes(raw.encounter.outcome)&&raw.encounter.elapsed>=0);assert(raw.running===(raw.encounter.outcome==='fighting'));assert(typeof raw.raidDeploymentStarted==='boolean'&&(!raw.raidDeploymentStarted||raw.raidRosters.length===raw.raidExpectedPlayers.length));assert(raw.boss.radius===CONFIG.raid.bossRadius&&raw.boss.height===CONFIG.raid.bossHeight&&['basic','sweep'].includes(raw.boss.attackKind));
 
- Object.assign(g,structuredClone(raw));g.rng=new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);g.progress=Object.assign(new FarmProgress(),structuredClone(raw.progress));g.boss.hit=new Set(raw.boss.hit);
-  g.units=raw.units.map(data=>{const u=Object.assign(new Unit(data.id,data.species,data.tier,data.x,data.y),structuredClone(data));u.ability=Object.assign(new AttackCycle(u),structuredClone(data.ability));return u});g.reconcileMateReservations();return g;
+ return true;
 }
 function validatePath(p){assert(p&&p.from&&p.to&&p.duration>0&&Number.isFinite(p.height));for(const k of ['x','y'])assert(Number.isFinite(p.from[k])&&Number.isFinite(p.to[k]));assert(Number.isFinite(p.from.z))}
 function validatePopcornConfig(c){assert(c&&c.species===1&&c.fuseSeconds===1&&c.chainOnPopcornContact===true&&c.triggersOncePerProjectile===true&&c.eachTargetAtMostOncePerProjectile===true&&Number.isFinite(c.damageMultiplier)&&c.damageMultiplier>=.5&&c.damageMultiplier<=1.5&&c.radiusBaseRangeFraction===.25&&Number.isFinite(c.radiusMultiplier)&&c.radiusMultiplier>=1&&c.radiusMultiplier<=2&&Number.isFinite(c.radius)&&c.radius>0&&c.radius<=10)}

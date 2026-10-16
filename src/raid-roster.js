@@ -6,3 +6,7 @@ export function raidRosterEntries(units, limit = 100) {
     .slice(0, limit)
     .map(unit => [unit.id, unit.species, unit.tier]);
 }
+
+export function hasRaidRosterEntries(units) {
+  return Array.isArray(units) && units.some(unit => unit?.hp > 0 && unit.down <= 0 && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false);
+}

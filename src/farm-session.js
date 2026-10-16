@@ -77,8 +77,8 @@ class GameClockRender extends RenderObject {
 }
 
 export class FarmSession{
- constructor(world=new Garden(),{room=null,onError=console.error,onEvent=()=>{}}={}){
-  this.world=world;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[...(room?.players||['solo'])];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
+ constructor(world=new Garden(),{room=null,onError=console.error,onEvent=()=>{},onWorldStep=()=>{}}={}){
+  this.world=world;this.onWorldStep=onWorldStep;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[...(room?.players||['solo'])];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
   this.presentationRevision=0;this.presentationSequence=0;this.pendingPresentationMode=null;this.presentationRuntime=new PresentationRuntime({stepMs:PRESENTATION_STEP_MS,delayMs:PRESENTATION_STEP_MS,snapDistance:12});
   this.presentationIds=new WeakMap();this.nextPresentationId=1;this.previousCaptureTimeMs=null;this.latestCaptureTimeMs=0;this.presentationOriginWallMs=null;this.lastFrameClockMs=null;this.lastCaptureClockMs=0;this.pulseTimestamp=null;
   const adapter={save:()=>codec.encode(this.capture()),load:bytes=>this.load(codec.decode(bytes)),validateSnapshot:(bytes,context={})=>{try{this.validate(codec.decode(bytes),context);return true}catch{return false}},applyMembership:change=>{this.epoch=change.epoch;this.players=[...change.players];if(this.world.scene==='raid')this.world.setRaidPlayers(this.players);this.pendingPresentationMode='reset'},step:ctx=>this.step(ctx)};
@@ -99,23 +99,25 @@ export class FarmSession{
  queue(type,args={}){if(this.session.closed||this.pending.length>=64)return false;this.pending.push(codec.encode({type,...args}));return true}
  deployNext(x,y){const w=this.world,roster=w.scene==='raid'&&w.raidRoster(this.localPlayerId);if(!roster||!Number.isFinite(x)||!Number.isFinite(y))return false;this.localDeploySequence=Math.max(this.localDeploySequence,roster.lastDeploySequence);if(this.localDeploySequence-roster.lastDeploySequence>=w.raidRemaining(this.localPlayerId))return false;const sequence=this.localDeploySequence+1;if(!this.queue('deploy',{sequence,x,y}))return false;this.localDeploySequence=sequence;return true}
  step({tick,inputs}){
-  for(const f of inputs){if(!this.players.includes(f.playerId))continue;for(const c of f.commands){try{this.command(codec.decode(c.payload),f.playerId)}catch{/* Reject malformed remote intent without changing the world. */}}}
-  if(this.paused&&!this.room){this.tick=tick+1;return}
+  let commandChangedWorld=false;for(const f of inputs){if(!this.players.includes(f.playerId))continue;for(const c of f.commands){try{commandChangedWorld=this.command(codec.decode(c.payload),f.playerId)||commandChangedWorld}catch{/* Reject malformed remote intent without changing the world. */}}}
+  if(this.paused&&!this.room){this.tick=tick+1;if(commandChangedWorld&&!this.session.resimulating)this.onWorldStep(this.world);return}
   const w=this.world,startTime=w.time,speed=this.speed,loopStart=this.loop?.simulationTimeMs,startClock=this.adjustedWallTime(Number.isFinite(loopStart)?loopStart:this.pulseTimestamp??globalThis.performance.now()),presentationStartMs=Math.max(0,startClock-(this.presentationOriginWallMs??startClock));bindPresentationClock(w,time=>(presentationStartMs+(time-startTime)*1000/speed)/1000);
-  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick=tick+1;if(!this.session.resimulating)this.presentationTick++;
+  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick=tick+1;if(!this.session.resimulating){this.presentationTick++;this.onWorldStep(w)}
  }
+ flushQueuedCommands(){if(this.room||this.world.scene!=='farm'||!this.pending.length)return false;let changed=false;for(const payload of this.pending.splice(0)){try{changed=this.command(codec.decode(payload),this.localPlayerId)||changed}catch{/* Ignore malformed local input just as the simulation step does. */}}if(changed)this.onWorldStep(this.world);return changed}
  command(c,ownerId=this.localPlayerId){const w=this.world;
   switch(c.type){
-   case 'feed':if(w.scene==='farm')w.tapFood('manual');break;
-   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){if(c.value!=='merge')w.mergeTask=null;w.mode=c.value}break;
-   case 'speed':if([1,4].includes(c.value))this.speed=c.value;break;
-   case 'invest':if(typeof c.id==='string'&&w.scene==='farm')w.progress.invest(c.id);break;
-   case 'ability-invest':if(w.scene==='farm'&&typeof c.abilityId==='string'&&typeof c.nodeId==='string'&&c.abilityId.length<64&&c.nodeId.length<32)w.investAbilityNode(c.abilityId,c.nodeId);break;
-   case 'ability-reset':if(w.scene==='farm')w.resetAbilityTree();break;
-   case 'register-roster':if(Array.isArray(c.entries))w.registerRaidRoster(ownerId,c.entries,c.abilitySnapshot,c.settlement||null);break;
-   case 'deploy':if(Number.isSafeInteger(c.sequence)&&Number.isFinite(c.x)&&Number.isFinite(c.y))w.deployNextRaidUnit(ownerId,c.sequence,c.x,c.y);break;
-   case 'buff':w.useRaidBuff(ownerId);break;
+   case 'feed':return w.scene==='farm'&&w.tapFood('manual');
+   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){const changed=w.mode!==c.value||c.value!=='merge'&&w.mergeTask!==null;if(c.value!=='merge')w.mergeTask=null;w.mode=c.value;return changed}return false;
+   case 'speed':if([1,4].includes(c.value))this.speed=c.value;return false;
+   case 'invest':return typeof c.id==='string'&&w.scene==='farm'&&w.progress.invest(c.id);
+   case 'ability-invest':return w.scene==='farm'&&typeof c.abilityId==='string'&&typeof c.nodeId==='string'&&c.abilityId.length<64&&c.nodeId.length<32&&w.investAbilityNode(c.abilityId,c.nodeId).ok;
+   case 'ability-reset':return w.scene==='farm'&&w.resetAbilityTree().ok;
+   case 'register-roster':return Array.isArray(c.entries)&&w.registerRaidRoster(ownerId,c.entries,c.abilitySnapshot,c.settlement||null);
+   case 'deploy':return Number.isSafeInteger(c.sequence)&&Number.isFinite(c.x)&&Number.isFinite(c.y)&&w.deployNextRaidUnit(ownerId,c.sequence,c.x,c.y);
+   case 'buff':return w.useRaidBuff(ownerId);
   }
+  return false;
  }
  presentationIdentity(kind,source){let id=this.presentationIds.get(source);if(!id){id=this.nextPresentationId++;this.presentationIds.set(source,id)}return kind+':'+id}
  get paused(){return this._paused}

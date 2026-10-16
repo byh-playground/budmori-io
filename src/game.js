@@ -2708,12 +2708,12 @@
       return key === "owner" && this instanceof AttackCycle ? void 0 : value instanceof Set ? [...value] : value;
     }));
   }
-  function normalize(raw, migrateLegacyRaid = false) {
+  function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone: clone2 = true } = {}) {
     const resetLegacyCorpseTimers = !Object.hasOwn(raw, "corpseRecoveryVersion"), hasRewardWatermarks = Object.hasOwn(raw, "bossRewardWatermarks");
-    raw = structuredClone(raw);
+    if (clone2) raw = structuredClone(raw);
     if (resetLegacyCorpseTimers) raw.corpseRecoveryVersion = 1;
     for (const u of raw.units || []) if (!Object.hasOwn(u, "cooldownDuration")) u.cooldownDuration = Math.max(0, Number.isFinite(u.cooldown) ? u.cooldown : 0);
-    const base = snapshot(new Garden()), fill = (v, d) => {
+    const base = GARDEN_SHAPE, fill = (v, d) => {
       for (const [k, x] of Object.entries(d)) {
         if (!Object.hasOwn(v, k)) v[k] = structuredClone(x);
         else if (v[k] && x && typeof v[k] === "object" && typeof x === "object" && !Array.isArray(v[k]) && !Array.isArray(x)) fill(v[k], x);
@@ -2774,7 +2774,7 @@
       raw.raidRosters = [];
       raw.raidDeploymentStarted = false;
       raw.projectiles = [];
-      raw.boss = base.boss;
+      raw.boss = structuredClone(base.boss);
       for (const u of raw.units) {
         u.x = u.home?.x ?? u.x;
         u.y = u.home?.y ?? u.y;
@@ -2816,10 +2816,24 @@
     }
   }
   function restore(raw, { migrateLegacyRaid = false } = {}) {
-    raw = normalize(raw, migrateLegacyRaid);
-    finiteTree(raw);
+    raw = normalizeSnapshot(raw, { migrateLegacyRaid });
+    validateSnapshot(raw);
     const g = new Garden();
-    shape(raw, snapshot(g));
+    Object.assign(g, structuredClone(raw));
+    g.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
+    g.progress = Object.assign(new FarmProgress(), structuredClone(raw.progress));
+    g.boss.hit = new Set(raw.boss.hit);
+    g.units = raw.units.map((data) => {
+      const u = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
+      u.ability = Object.assign(new AttackCycle(u), structuredClone(data.ability));
+      return u;
+    });
+    g.reconcileMateReservations();
+    return g;
+  }
+  function validateSnapshot(raw) {
+    finiteTree(raw);
+    shape(raw, GARDEN_SHAPE);
     assert(integer(raw.seed, 0, 4294967295) && integer(raw.rng.state, 0, 4294967295));
     assert(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
     if (raw.mergeTask !== null) {
@@ -2895,7 +2909,7 @@
     const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set(), mateIdLimit = raw.scene === "raid" ? CONFIG.maxRaidPlayers * CONFIG.raidPlayerIdStride + CONFIG.maxRaidPlayerUnits : CONFIG.maxFarmUnitId;
     const unitsById = /* @__PURE__ */ new Map(), summonsByParent = /* @__PURE__ */ new Map();
     for (const u of raw.units) {
-      shape(u, snapshot(new Unit(1, 0, 1, 0, 0)));
+      shape(u, UNIT_SHAPE);
       assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds);
       assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
@@ -2965,17 +2979,7 @@
     assert(raw.running === (raw.encounter.outcome === "fighting"));
     assert(typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length));
     assert(raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && ["basic", "sweep"].includes(raw.boss.attackKind));
-    Object.assign(g, structuredClone(raw));
-    g.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
-    g.progress = Object.assign(new FarmProgress(), structuredClone(raw.progress));
-    g.boss.hit = new Set(raw.boss.hit);
-    g.units = raw.units.map((data) => {
-      const u = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
-      u.ability = Object.assign(new AttackCycle(u), structuredClone(data.ability));
-      return u;
-    });
-    g.reconcileMateReservations();
-    return g;
+    return true;
   }
   function validatePath(p) {
     assert(p && p.from && p.to && p.duration > 0 && Number.isFinite(p.height));
@@ -2985,7 +2989,7 @@
   function validatePopcornConfig(c) {
     assert(c && c.species === 1 && c.fuseSeconds === 1 && c.chainOnPopcornContact === true && c.triggersOncePerProjectile === true && c.eachTargetAtMostOncePerProjectile === true && Number.isFinite(c.damageMultiplier) && c.damageMultiplier >= 0.5 && c.damageMultiplier <= 1.5 && c.radiusBaseRangeFraction === 0.25 && Number.isFinite(c.radiusMultiplier) && c.radiusMultiplier >= 1 && c.radiusMultiplier <= 2 && Number.isFinite(c.radius) && c.radius > 0 && c.radius <= 10);
   }
-  var integer;
+  var GARDEN_SHAPE, UNIT_SHAPE, integer;
   var init_farm_state = __esm({
     "src/farm-state.js"() {
       init_farm_model();
@@ -2997,6 +3001,8 @@
       init_unit_abilities();
       init_raid_settlement();
       init_unit_grades();
+      GARDEN_SHAPE = snapshot(new Garden());
+      UNIT_SHAPE = snapshot(new Unit(1, 0, 1, 0, 0));
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
     }
   });
@@ -3005,7 +3011,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.6.2";
+      PRODUCT_VERSION = "0.6.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -3014,13 +3020,21 @@
   var farm_storage_exports = {};
   __export(farm_storage_exports, {
     FarmStorage: () => FarmStorage,
-    parseSave: () => parseSave
+    parseSave: () => parseSave,
+    validateSave: () => validateSave
   });
-  function parseSave(text) {
+  function saveWorld(text) {
     if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
     const data = JSON.parse(text);
     if (data.schema !== "budmori-farm" || !isReadableCompatibility(data.productVersion)) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
-    return restore(data.world, { migrateLegacyRaid: true });
+    return data.world;
+  }
+  function validateSave(text) {
+    validateSnapshot(normalizeSnapshot(saveWorld(text), { migrateLegacyRaid: true }));
+    return true;
+  }
+  function parseSave(text) {
+    return restore(saveWorld(text), { migrateLegacyRaid: true });
   }
   var KEY, LEGACY_KEY, MAX_BYTES, READ_COMPATIBILITIES, legacyCompatibility, isReadableCompatibility, FarmStorage;
   var init_farm_storage = __esm({
@@ -3036,7 +3050,8 @@
       FarmStorage = class {
         constructor() {
           this.raw = null;
-          this.world = null;
+          this._world = null;
+          this.savedSnapshot = null;
           this.error = "";
           this.writable = false;
           this.legacyRaw = null;
@@ -3049,7 +3064,7 @@
               this.world = parseSave(this.raw);
             } else if (this.legacyRaw) {
               try {
-                parseSave(this.legacyRaw);
+                validateSave(this.legacyRaw);
                 this.legacyCompatible = true;
               } catch (e) {
                 this.error = e.message;
@@ -3060,9 +3075,30 @@
             this.error = e.message;
           }
         }
+        get world() {
+          if (!this._world && this.savedSnapshot) this._world = restore(this.savedSnapshot);
+          return this._world;
+        }
+        get hasWorld() {
+          return !!(this._world || this.savedSnapshot);
+        }
+        get hasReservedRaid() {
+          const world = this._world || this.savedSnapshot;
+          return world?.activeRaidRunSequence !== null && world?.activeRaidRunSequence !== void 0;
+        }
+        set world(value) {
+          this._world = value;
+          this.savedSnapshot = null;
+        }
+        serializeCheckpoint(world) {
+          const data = normalizeSnapshot(snapshot(world), { clone: false });
+          validateSnapshot(data);
+          const text = JSON.stringify({ schema: "budmori-farm", productVersion: PRODUCT_VERSION, world: data });
+          if (text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
+          return { data, text };
+        }
         encode(world) {
-          const data = snapshot(world);
-          return JSON.stringify({ schema: "budmori-farm", productVersion: PRODUCT_VERSION, world: data });
+          return this.serializeCheckpoint(world).text;
         }
         refresh() {
           if (!this.writable) return false;
@@ -3087,11 +3123,11 @@
               this.error = "저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.";
               return false;
             }
-            const text = this.encode(world);
-            const verified = restore(JSON.parse(text).world);
+            const { data, text } = this.serializeCheckpoint(world);
             localStorage.setItem(KEY, text);
             this.raw = text;
-            this.world = verified;
+            this.savedSnapshot = data;
+            this._world = null;
             this.error = "";
             return true;
           } catch {
@@ -3106,11 +3142,11 @@
         }
         import(text) {
           if (localStorage.getItem(KEY) !== this.raw) throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.");
-          const world = parseSave(text), normalized = this.encode(world);
-          restore(JSON.parse(normalized).world);
+          const world = parseSave(text), { data, text: normalized } = this.serializeCheckpoint(world);
           localStorage.setItem(KEY, normalized);
           this.raw = normalized;
-          this.world = world;
+          this.savedSnapshot = data;
+          this._world = world;
           this.writable = true;
           this.error = "";
           return world;
@@ -3865,8 +3901,10 @@
   };
   var FarmSession = class {
     constructor(world = new Garden(), { room: room2 = null, onError = console.error, onEvent = () => {
+    }, onWorldStep = () => {
     } } = {}) {
       this.world = world;
+      this.onWorldStep = onWorldStep;
       this.tick = 0;
       this.presentationTick = 0;
       this.epoch = 0;
@@ -3965,17 +4003,19 @@
       return true;
     }
     step({ tick, inputs }) {
+      let commandChangedWorld = false;
       for (const f of inputs) {
         if (!this.players.includes(f.playerId)) continue;
         for (const c of f.commands) {
           try {
-            this.command(codec.decode(c.payload), f.playerId);
+            commandChangedWorld = this.command(codec.decode(c.payload), f.playerId) || commandChangedWorld;
           } catch {
           }
         }
       }
       if (this.paused && !this.room) {
         this.tick = tick + 1;
+        if (commandChangedWorld && !this.session.resimulating) this.onWorldStep(this.world);
         return;
       }
       const w = this.world, startTime = w.time, speed = this.speed, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
@@ -3983,42 +4023,53 @@
       if (w.scene === "farm") w.advanceAutoTaps(0.05);
       for (let i = 0; i < 6 * speed; i++) w.step(CONFIG.fixedStep);
       this.tick = tick + 1;
-      if (!this.session.resimulating) this.presentationTick++;
+      if (!this.session.resimulating) {
+        this.presentationTick++;
+        this.onWorldStep(w);
+      }
+    }
+    flushQueuedCommands() {
+      if (this.room || this.world.scene !== "farm" || !this.pending.length) return false;
+      let changed = false;
+      for (const payload of this.pending.splice(0)) {
+        try {
+          changed = this.command(codec.decode(payload), this.localPlayerId) || changed;
+        } catch {
+        }
+      }
+      if (changed) this.onWorldStep(this.world);
+      return changed;
     }
     command(c, ownerId = this.localPlayerId) {
       const w = this.world;
       switch (c.type) {
         case "feed":
-          if (w.scene === "farm") w.tapFood("manual");
-          break;
+          return w.scene === "farm" && w.tapFood("manual");
         case "mode":
           if (w.scene === "farm" && ["breed", "merge"].includes(c.value)) {
+            const changed = w.mode !== c.value || c.value !== "merge" && w.mergeTask !== null;
             if (c.value !== "merge") w.mergeTask = null;
             w.mode = c.value;
+            return changed;
           }
-          break;
+          return false;
         case "speed":
           if ([1, 4].includes(c.value)) this.speed = c.value;
-          break;
+          return false;
         case "invest":
-          if (typeof c.id === "string" && w.scene === "farm") w.progress.invest(c.id);
-          break;
+          return typeof c.id === "string" && w.scene === "farm" && w.progress.invest(c.id);
         case "ability-invest":
-          if (w.scene === "farm" && typeof c.abilityId === "string" && typeof c.nodeId === "string" && c.abilityId.length < 64 && c.nodeId.length < 32) w.investAbilityNode(c.abilityId, c.nodeId);
-          break;
+          return w.scene === "farm" && typeof c.abilityId === "string" && typeof c.nodeId === "string" && c.abilityId.length < 64 && c.nodeId.length < 32 && w.investAbilityNode(c.abilityId, c.nodeId).ok;
         case "ability-reset":
-          if (w.scene === "farm") w.resetAbilityTree();
-          break;
+          return w.scene === "farm" && w.resetAbilityTree().ok;
         case "register-roster":
-          if (Array.isArray(c.entries)) w.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null);
-          break;
+          return Array.isArray(c.entries) && w.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null);
         case "deploy":
-          if (Number.isSafeInteger(c.sequence) && Number.isFinite(c.x) && Number.isFinite(c.y)) w.deployNextRaidUnit(ownerId, c.sequence, c.x, c.y);
-          break;
+          return Number.isSafeInteger(c.sequence) && Number.isFinite(c.x) && Number.isFinite(c.y) && w.deployNextRaidUnit(ownerId, c.sequence, c.x, c.y);
         case "buff":
-          w.useRaidBuff(ownerId);
-          break;
+          return w.useRaidBuff(ownerId);
       }
+      return false;
     }
     presentationIdentity(kind, source) {
       let id = this.presentationIds.get(source);
@@ -4124,6 +4175,62 @@
 
   // src/farm-app.js
   init_farm_storage();
+
+  // src/farm-autosave.js
+  var FARM_AUTOSAVE_DEBOUNCE_MS = 1e3;
+  var FARM_AUTOSAVE_MAX_WAIT_MS = 1e4;
+  var FarmAutosave = class {
+    constructor(save, { debounceMs = FARM_AUTOSAVE_DEBOUNCE_MS, maxWaitMs = FARM_AUTOSAVE_MAX_WAIT_MS, now = () => globalThis.performance.now(), setTimer = (fn, delay) => globalThis.setTimeout(fn, delay), clearTimer = (id) => globalThis.clearTimeout(id) } = {}) {
+      this.save = save;
+      this.debounceMs = debounceMs;
+      this.maxWaitMs = maxWaitMs;
+      this.now = now;
+      this.setTimer = setTimer;
+      this.clearTimer = clearTimer;
+      this.timer = null;
+      this.dirty = false;
+      this.dirtySince = 0;
+    }
+    markDirty() {
+      const now = this.now();
+      if (!this.dirty) {
+        this.dirty = true;
+        this.dirtySince = now;
+      }
+      if (this.timer !== null) this.clearTimer(this.timer);
+      const remaining = Math.max(0, this.maxWaitMs - (now - this.dirtySince));
+      this.timer = this.setTimer(() => {
+        this.timer = null;
+        this.flush();
+      }, Math.min(this.debounceMs, remaining));
+    }
+    flush() {
+      this.cancelTimer();
+      if (!this.dirty) return true;
+      let saved = false;
+      try {
+        saved = this.save() !== false;
+      } catch {
+        saved = false;
+      }
+      if (saved) this.reset();
+      else this.dirtySince = this.now();
+      return saved;
+    }
+    reset() {
+      this.cancelTimer();
+      this.dirty = false;
+      this.dirtySince = 0;
+    }
+    cancelTimer() {
+      if (this.timer !== null) {
+        this.clearTimer(this.timer);
+        this.timer = null;
+      }
+    }
+  };
+
+  // src/farm-app.js
   init_farm_state();
   init_version();
 
@@ -4387,6 +4494,9 @@
     if (!Array.isArray(units) || !Number.isSafeInteger(limit) || limit < 0) return [];
     return units.filter((unit) => unit?.hp > 0 && unit.down <= 0 && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false).slice(0, limit).map((unit) => [unit.id, unit.species, unit.tier]);
   }
+  function hasRaidRosterEntries(units) {
+    return Array.isArray(units) && units.some((unit) => unit?.hp > 0 && unit.down <= 0 && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false);
+  }
 
   // src/farm-app.js
   init_ability_state();
@@ -4406,7 +4516,6 @@
   var solo = null;
   var personalGarden = null;
   var noticeSequence = 0;
-  var lastSave = 0;
   var treePause = false;
   var abilityPause = false;
   var dropPointer = null;
@@ -4433,6 +4542,26 @@
     console.error(error);
     if (active && !room) active.paused = true;
   };
+  function writeCheckpoint(world = personalGarden) {
+    if (!world) return false;
+    const ok = storage.save(world);
+    $2("saveNotice").textContent = ok ? "" : storage.error;
+    $2("treeStorage").hidden = ok;
+    return ok;
+  }
+  var autosave = new FarmAutosave(() => writeCheckpoint());
+  function saveImmediate(world = personalGarden) {
+    const ok = writeCheckpoint(world);
+    if (ok) autosave.reset();
+    return ok;
+  }
+  function markPersistentChange(world) {
+    if (world === personalGarden) autosave.markDirty();
+  }
+  function persist() {
+    if (active?.world === personalGarden && !room) active.flushQueuedCommands();
+    return autosave.flush();
+  }
   var foodFeel = new FoodFeel(requestFeed);
   var combatFeel = new CombatFeel(foodFeel);
   function requestFeed() {
@@ -4444,7 +4573,7 @@
   function install(world, options = {}) {
     clearInterval(networkTimer);
     active?.dispose();
-    active = new FarmSession(world, { ...options, onError: fail2 });
+    active = new FarmSession(world, { ...options, onError: fail2, onWorldStep: markPersistentChange });
     noticeSequence = world.eventSequence;
     observedWorld = world;
     if (options.room) networkTimer = setInterval(() => active.pulse(performance.now()), 50);
@@ -4452,21 +4581,14 @@
   }
   install(new Garden());
   active.paused = true;
-  function persist() {
-    if (!personalGarden) return false;
-    const ok = storage.save(personalGarden);
-    $2("saveNotice").textContent = ok ? "" : storage.error;
-    $2("treeStorage").hidden = ok;
-    return ok;
-  }
   function refreshStart() {
     if (room || attempt) {
       $2("newConfirm").hidden = true;
       $2("importConfirm").hidden = true;
       imported = null;
     }
-    const hasReservedRaid = storage.world?.activeRaidRunSequence !== null && storage.world?.activeRaidRunSequence !== void 0, liveRaid = active?.world?.scene === "raid" || !!room, staleRaid = hasReservedRaid && !liveRaid;
-    $2("continueGame").disabled = !storage.world || staleRaid;
+    const hasReservedRaid = storage.hasReservedRaid, liveRaid = active?.world?.scene === "raid" || !!room, staleRaid = hasReservedRaid && !liveRaid;
+    $2("continueGame").disabled = !storage.hasWorld || staleRaid;
     $2("staleRaidNotice").hidden = !staleRaid || !!attempt;
     $2("onlineGame").disabled = hasReservedRaid;
     $2("continueLegacyGame").disabled = !!room || !!attempt || !storage.legacyCompatible;
@@ -4495,6 +4617,7 @@
     if (value) $2("continueGame").focus();
   }
   function start(world, push = true) {
+    autosave.reset();
     foodFeel.unlock();
     personalGarden = world;
     install(world);
@@ -4509,7 +4632,7 @@
       return null;
     }
     const candidate = restore(reserved.farm);
-    if (!storage.save(candidate)) {
+    if (!saveImmediate(candidate)) {
       fail2(Error(storage.error || "농장 원정 예약을 저장하지 못했어요."));
       return null;
     }
@@ -4538,11 +4661,11 @@
       return { farm: snapshot(garden), summary: { acquisition: { status: reward.status, chance: reward.chance, roll: reward.roll, unitId: reward.unitId, receiptKey: reward.receiptKey }, xp: { status: reward.xpStatus, amount: reward.xpAmount, levelsGained: reward.levelsGained, pointsAwarded: reward.pointsAwarded, receiptKey: reward.xpReceiptKey } } };
     } });
     let settled = prepare(personalGarden), candidate = restore(settled.farm);
-    if (!storage.save(candidate)) {
+    if (!saveImmediate(candidate)) {
       if (!storage.refresh()) throw Error(storage.error || "최신 농장 저장을 다시 읽지 못했어요.");
       settled = prepare(storage.world);
       candidate = restore(settled.farm);
-      if (!storage.save(candidate)) throw Error(storage.error || "전투 결과 저장에 실패했어요.");
+      if (!saveImmediate(candidate)) throw Error(storage.error || "전투 결과 저장에 실패했어요.");
     }
     personalGarden = storage.world;
     return settled;
@@ -4601,7 +4724,7 @@
     try {
       const result = abortReservedRaidRun(snapshot(world), { completedAtMs: Date.now() });
       if (!result.applied) return refreshStart();
-      if (!storage.save(restore(result.farm))) {
+      if (!saveImmediate(restore(result.farm))) {
         $2("saveNotice").textContent = storage.error;
         return;
       }
@@ -4620,13 +4743,16 @@
       return;
     }
     const world = new Garden();
-    storage.replace(world);
-    start(world);
+    if (storage.replace(world)) {
+      autosave.reset();
+      start(world);
+    } else refreshStart();
   };
   $2("confirmNew").onclick = () => {
     if (room || attempt) return;
     const world = new Garden();
     if (storage.replace(world)) {
+      autosave.reset();
       $2("newConfirm").hidden = true;
       start(world);
     } else refreshStart();
@@ -4648,8 +4774,8 @@
   $2("continueLegacyGame").onclick = async () => {
     if (room || attempt || !storage.legacyRaw) return;
     try {
-      const { parseSave: parseSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
-      parseSave2(storage.legacyRaw);
+      const { validateSave: validateSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
+      validateSave2(storage.legacyRaw);
       imported = storage.legacyRaw;
       importedLegacy = true;
       $2("importConfirmText").textContent = "0.4 원본 저장은 그대로 두고, 새 0.5 저장 키에 복사해 이어갈까요?";
@@ -4665,8 +4791,8 @@
     try {
       if (file.size > 2 * 1024 * 1024) throw Error("저장 파일이 너무 큽니다.");
       const text = await file.text();
-      const { parseSave: parseSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
-      parseSave2(text);
+      const { validateSave: validateSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
+      validateSave2(text);
       imported = text;
       importedLegacy = false;
       $2("importConfirmText").textContent = "선택한 파일로 개인 저장을 바꿀까요?";
@@ -4688,6 +4814,7 @@
     try {
       if (imported) {
         const legacy = importedLegacy, world = storage.import(imported);
+        autosave.reset();
         if (legacy) start(world);
       }
       imported = null;
@@ -4700,12 +4827,12 @@
   };
   $2("onlineGame").onclick = async () => {
     if (attempt || room) return;
+    if (!persist()) return;
     personalGarden = restore(snapshot(storage.world || personalGarden || active.world));
     if (personalGarden.activeRaidRunSequence !== null) {
       $2("sessionNotice").textContent = "이전 원정 기록을 먼저 종료하고 다시 연결해 주세요.";
       return;
     }
-    if (!persist()) return;
     solo = restore(snapshot(personalGarden));
     const controller = attempt = new AbortController();
     refreshStart();
@@ -4765,6 +4892,7 @@
   $2("pause").onclick = () => {
     if (room) return;
     active.paused = !active.paused;
+    if (active.paused) persist();
   };
   function drawTree() {
     const p = (personalGarden || active.world).progress, labels = { eat: "식사", birth: "번식", merge: "합체", hit: "보스 타격" };
@@ -4783,7 +4911,10 @@
   function panel(id, open, push = true) {
     if (open) {
       if ($2("treePanel").hidden && $2("helpPanel").hidden && $2("abilityPanel").hidden) treePause = active.paused;
-      if (!room) active.paused = true;
+      if (!room) {
+        active.paused = true;
+        persist();
+      }
       $2("treePanel").hidden = id !== "treePanel";
       $2("helpPanel").hidden = id !== "helpPanel";
       $2("abilityPanel").hidden = true;
@@ -4803,7 +4934,10 @@
     if (open) {
       if (active.world.scene === "raid") return;
       if ($2("treePanel").hidden && $2("helpPanel").hidden && $2("abilityPanel").hidden) abilityPause = active.paused;
-      if (!room) active.paused = true;
+      if (!room) {
+        active.paused = true;
+        persist();
+      }
       $2("treePanel").hidden = true;
       $2("helpPanel").hidden = true;
       $2("abilityPanel").hidden = false;
@@ -4960,19 +5094,19 @@
       setHome(true, false);
       return;
     }
-    if (!room && storage.world?.activeRaidRunSequence !== null && storage.world?.activeRaidRunSequence !== void 0) {
+    if (!room && storage.hasReservedRaid) {
       setHome(true, false);
       history.replaceState(null, "", "#/");
       return;
     }
     if (home) {
-      if (!room && storage.error && !storage.world) {
+      if (!room && storage.error && !storage.hasWorld) {
         setHome(true, false);
         history.replaceState(null, "", "#/");
         return;
       }
       if (room) setHome(false, false);
-      else if (storage.world) start(restore(snapshot(storage.world)), false);
+      else if (storage.hasWorld) start(restore(snapshot(storage.world)), false);
       else start(new Garden(), false);
     }
     if (r === "#/help" || r === "#/growth") panel(r === "#/help" ? "helpPanel" : "treePanel", true, false);
@@ -4994,7 +5128,7 @@
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
-    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, readyTroops = personalGarden ? raidRosterEntries(personalGarden.units, CONFIG.maxFarmCap).length : 0, rewardWorld = personalGarden || w, pendingRewardCount = rewardWorld.bossRewardReceipts.filter((reward) => reward.status === "pending").length;
+    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingRewardCount = rewardWorld.bossRewardReceipts.filter((reward) => reward.status === "pending").length;
     for (const [id, value] of [["farm", !raid], ["raid", raid], ["breed", w.mode === "breed"], ["merge", w.mode === "merge"]]) $2(id).setAttribute("aria-pressed", value);
     $2("farmControls").hidden = raid || farmEventActive || home;
     $2("raidControls").hidden = !raid || home;
@@ -5003,7 +5137,7 @@
     $2("raid").disabled = farmEventActive;
     $2("count").textContent = raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : display.units.filter((unit) => !unit.isBattleOnlySummon).length;
     $2("capacity").textContent = personalGarden?.capacity ?? CONFIG.cap;
-    $2("starter").textContent = raid ? `${w.units.length} deployed in raid` : pendingRewardCount ? "밤톨 보상 대기 · 공간이 생기면 합류해요" : readyTroops === 0 ? "모두 휴식 중 · 회복까지 기다려 주세요" : w.units.filter((unit) => !unit.isBattleOnlySummon).length >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요";
+    $2("starter").textContent = raid ? `${w.units.length} deployed in raid` : pendingRewardCount ? "밤톨 보상 대기 · 공간이 생기면 합류해요" : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : w.units.filter((unit) => !unit.isBattleOnlySummon).length >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요";
     const army = display.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
     $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
@@ -5022,7 +5156,7 @@
     $2("pause").disabled = !!room;
     $2("tree").disabled = raid || farmEventActive;
     $2("abilities").disabled = raid || !personalGarden;
-    $2("raid").disabled = farmEventActive || !raid && readyTroops === 0;
+    $2("raid").disabled = farmEventActive || !raid && !hasReadyTroops;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
     $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
@@ -5041,10 +5175,6 @@
     deploymentHud();
     $2("connection").hidden = !room;
     $2("connection").textContent = room ? active.session.failure ? "연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요" : `함께 ${active.players.length}명 · ${active.session.ready ? "연결됨" : "동기화 중"}` : "";
-    if (now - lastSave > 3e3) {
-      lastSave = now;
-      persist();
-    }
   }
   function frame(now) {
     measureFrame(now);
