@@ -316,7 +316,7 @@
 .ability-panel__heading { align-items: center; background: #f2f6ec; border-bottom: 1px solid #d5dfd0; display: grid; flex: 0 0 auto; gap: .55rem; grid-template-columns: minmax(0, 1fr) 44px; grid-template-rows: auto auto; padding: .8rem 1.15rem; position: relative; z-index: 2; }
 .ability-panel__heading-main { align-items: center; display: flex; gap: .65rem; grid-column: 1; grid-row: 1; justify-content: space-between; min-width: 0; }
 .ability-panel__heading h2 { font-size: 1.35rem; margin: 0; white-space: nowrap; }
-.ability-panel__heading button { background: #dee8d4; border-radius: 50%; font-size: 1.5rem; grid-column: 2; grid-row: 1; height: 44px; padding: 0; width: 44px; }
+.ability-panel__heading > button { background: #dee8d4; border-radius: 50%; font-size: 1.5rem; grid-column: 2; grid-row: 1; height: 44px; padding: 0; width: 44px; }
 .ability-panel__species { display: grid; gap: .35rem; grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ability-panel__species button { background: #e5ebdf; border: 1px solid #d5dfd0; border-radius: .75rem; font-size: .9rem; font-weight: 750; min-height: 44px; padding: .25rem .45rem; white-space: nowrap; }
 .ability-panel__species button[aria-pressed="true"] { background: #526e50; border-color: #526e50; color: #fffbee; }
