@@ -27,6 +27,9 @@ try{
   report.styles=await page.evaluate(()=>{const button=getComputedStyle(document.querySelector('button'));return{tapHighlight:button.webkitTapHighlightColor,buttonTouchAction:button.touchAction,canvasTouchAction:getComputedStyle(document.querySelector('canvas')).touchAction,bodyOverflow:getComputedStyle(document.body).overflow}});
   assert(['rgba(0, 0, 0, 0)','transparent'].includes(report.styles.tapHighlight),'mobile button tap highlight is transparent');
   assert.equal(report.styles.buttonTouchAction,'manipulation');assert.equal(report.styles.canvasTouchAction,'none');
+  await page.locator('#help').click();await page.locator('#helpPanel').waitFor({state:'visible'});report.helpText=await page.locator('#helpPanel').innerText();
+  assert(report.helpText.includes('100ms')&&report.helpText.includes('포인터')&&report.helpText.includes('드래그'),'raid help explains the faster repeat cadence and draggable deployment location');
+  await page.locator('#help').click();
   const before=await page.evaluate(()=>({units:BUDMORI.sim.units.length,roster:BUDMORI.sim.raidRoster('solo').troops.length,remaining:BUDMORI.sim.raidRemaining('solo'),intervals:window.__deploymentIntervals.length}));
   async function screenPoint(x,y){return page.evaluate(({x,y})=>{const r=BUDMORI.renderer,p=r.project(x,y,0),b=r.canvas.getBoundingClientRect();return{x:b.left+p.x/r.pixelRatio,y:b.top+p.y/r.pixelRatio}},{x,y})}
   const first=await screenPoint(-4,5),middle=await screenPoint(-2,7),last=await screenPoint(1,6),other=await screenPoint(10,-1),cdp=await context.newCDPSession(page);
