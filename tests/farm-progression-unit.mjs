@@ -29,7 +29,7 @@ function advance(world, seconds, step = 0.1) {
   for (let i = 0; i < count; i++) world.step(step);
 }
 
-const adultSize = tier => 0.55 + 0.1 * tier;
+const adultSize = tier => (0.55 + 0.1 * tier);
 
 // A new garden has two adult, hungry T1 peas; the old 60s unit timer is gone.
 const start = new Garden(7);
@@ -60,6 +60,8 @@ assert.equal(breeding.metrics.births, 1);
 assert.equal(parentA.meals + parentB.meals, 0, 'each parent must eat again after breeding');
 assert.equal(parentA.cooldown, CONFIG.breedCooldownSeconds);
 assert.equal(parentB.cooldown, CONFIG.breedCooldownSeconds);
+assert.equal(parentA.cooldownDuration, CONFIG.breedCooldownSeconds, 'breeding stores the full cooldown duration for its foot arc');
+assert.equal(restore(snapshot(breeding)).units[0].cooldownDuration, CONFIG.breedCooldownSeconds, 'cooldown arc duration survives save/load');
 const child = breeding.units.find(unit => unit !== parentA && unit !== parentB);
 assert.deepEqual({species: child.species, tier: child.tier, growthElapsed: child.growthElapsed, growthDuration: child.growthDuration, meals: child.meals, cooldown: child.cooldown},
   {species: 0, tier: 1, growthElapsed: 0, growthDuration: CONFIG.breedGrowthSeconds, meals: 0, cooldown: 0});
@@ -252,6 +254,57 @@ assert.equal(expanded.capacity, CONFIG.cap + 7);
 assert.equal(expanded.pair(expanded.units[0], expanded.units[1]), true);
 assert.equal(expanded.units.length, CONFIG.cap + 1);
 
+// Merge selection is serialized: lowest tier first, then nearest pair, stable IDs on exact ties.
+const sequential = new Garden(160);
+sequential.mode = 'merge';
+const [seqA, seqB] = sequential.units;
+ready(seqA, {tier: 1, x: -8, y: 0});
+ready(seqB, {tier: 1, x: -4, y: 0});
+const seqC = addPea(sequential, 1, 3, 0);
+const seqD = addPea(sequential, 1, 4.5, 0);
+const seqE = addPea(sequential, 2, 9, 0);
+const seqF = addPea(sequential, 2, 9.5, 0);
+sequential.step(0.05);
+assert.deepEqual([sequential.mergeTask.aId, sequential.mergeTask.bId], [seqC.id, seqD.id], 'closest same-tier T1 pair wins over farther T1 and closer T2 pair');
+assert.equal(sequential.metrics.merges, 0, 'pair approaches before merging');
+const approachingSave = restore(snapshot(sequential));
+assert.deepEqual([approachingSave.mergeTask.aId, approachingSave.mergeTask.bId], [seqC.id, seqD.id], 'active sequential approach persists through save/load');
+seqC.x = 0; seqC.y = 0; seqD.x = 0.1; seqD.y = 0;
+sequential.step(0.05);
+assert.equal(sequential.metrics.merges, 1, 'only the reserved pair merges on contact');
+assert.equal(sequential.mergeTask.phase, 'animation', 'next pair waits for merge animation to finish');
+assert.equal(sequential.units.filter(unit => unit.species === 0).length, 5, 'one merge consumes exactly one pair');
+sequential.mode = 'breed';
+sequential.step(0.05);
+assert.equal(sequential.mergeTask, null, 'switching away from merge cancels the unconfirmed next pair');
+
+// Combat takes precedence over the merge approach; the reserved pair remains pending.
+const combatMerge = new Garden(162);
+combatMerge.mode = 'merge';
+const [combatA, combatB] = combatMerge.units;
+ready(combatA, {tier: 1, x: 6, y: 0});
+ready(combatB, {tier: 1, x: 8, y: 0});
+addPea(combatMerge, 1, 14, 0);
+combatMerge.step(0.01);
+assert.deepEqual([combatMerge.mergeTask.aId, combatMerge.mergeTask.bId], [combatA.id, combatB.id]);
+combatMerge.boss.active = true;
+combatMerge.boss.x = 0; combatMerge.boss.y = 0;
+combatMerge.step(0.01);
+assert.equal(combatA.ability.phase, 'windup', 'combat starts for a reserved unit inside boss range');
+assert.equal(combatMerge.metrics.merges, 0, 'combat prevents merging the reserved pair');
+assert.equal(combatMerge.mergeTask.phase, 'approach', 'pair resumes after combat instead of advancing the sequence');
+
+// Exact distance ties fall back to stable unit IDs.
+const tiedMerge = new Garden(161);
+tiedMerge.mode = 'merge';
+const [tieA, tieB] = tiedMerge.units;
+ready(tieA, {tier: 1, x: -8, y: 0});
+ready(tieB, {tier: 1, x: -7, y: 0});
+const tieC = addPea(tiedMerge, 1, 5, 0);
+addPea(tiedMerge, 1, 6, 0);
+tiedMerge.step(0.01);
+assert.deepEqual([tiedMerge.mergeTask.aId, tiedMerge.mergeTask.bId], [tieA.id, tieB.id]);
+
 // A species can never be merged below two units.
 const merge = new Garden(16);
 merge.mode = 'merge';
@@ -277,12 +330,19 @@ assert.ok(Math.abs(upgradeWorld.breedCooldownDuration() - 10 / 1.1) < 1e-9);
 assert.ok(Math.abs(upgradeWorld.breedGrowthDuration() - 10 / 2.2) < 1e-9);
 
 // Growth scale applies relatively to each tier's authored adult base size.
-const tierThree = new Unit(500, 0, 3, 0, 0);
-assert.equal(tierThree.size, adultSize(3) * 0.5);
-tierThree.growthElapsed = tierThree.growthDuration / 2;
-assert.equal(tierThree.size, adultSize(3) * 0.75);
-tierThree.growthElapsed = tierThree.growthDuration;
-assert.equal(tierThree.size, adultSize(3));
+for (const tier of [1, 2, 3, 4]) {
+  const unit = new Unit(500 + tier, 0, tier, 0, 0);
+  assert.ok(Math.abs(unit.size - adultSize(tier) * 0.5) < 1e-12, `T${tier} starts at 50% of its existing adult scale`);
+  unit.growthElapsed = unit.growthDuration / 2;
+  assert.ok(Math.abs(unit.size - adultSize(tier) * 0.75) < 1e-12, `T${tier} interpolates its saved growth state`);
+  unit.growthElapsed = unit.growthDuration;
+  assert.ok(Math.abs(unit.size - adultSize(tier)) < 1e-12, `T${tier} reaches its existing adult scale`);
+}
+const sizePersistence = new Garden(171);
+const persistedTierFour = sizePersistence.spawn(0, 4, 3, 2);
+persistedTierFour.growthElapsed = persistedTierFour.growthDuration / 2;
+const persistedSize = persistedTierFour.size;
+assert.equal(restore(snapshot(sizePersistence)).units.find(unit => unit.id === persistedTierFour.id).size, persistedSize, 'tier and growth state restore the same body size');
 
 // Current saves preserve reservations, growth time, and cooldown; invalid reservations clear safely.
 const savedWorld = new Garden(26);
