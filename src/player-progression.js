@@ -62,11 +62,14 @@ export function formatXpForDisplay(experience) {
 }
 
 export function isValidPlayerProgressionState(state) {
-  return isValidAbilityProgressionState(state) &&
-    Number.isSafeInteger(state.level) && state.level >= 1 &&
-    Number.isFinite(state.experience) && state.experience >= 0 &&
-    state.experience < experienceForNextLevel(state.level) &&
-    Array.isArray(state.processedBossKillReceipts) &&
-    state.processedBossKillReceipts.every(key => typeof key === "string" && key.length > 0) &&
-    new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length;
+  if (!isValidAbilityProgressionState(state) ||
+    !Number.isSafeInteger(state.level) || state.level < 1 ||
+    !Number.isFinite(state.experience) || state.experience < 0 ||
+    state.experience >= experienceForNextLevel(state.level) ||
+    !Array.isArray(state.processedBossKillReceipts) ||
+    !state.processedBossKillReceipts.every(key => typeof key === "string" && key.length > 0) ||
+    new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) return false;
+  const investedPoints = Object.values(state.abilities).reduce((total, investment) =>
+    total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
+  return investedPoints + state.availablePoints === state.level - 1;
 }

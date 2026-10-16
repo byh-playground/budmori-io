@@ -6,6 +6,18 @@ assert.equal(typeof globalThis.BloomGamekitDeterministic.SeededPRNG, 'function',
 const {Garden, Unit, CONFIG, TREE_NODES} = await import('../src/farm-model.js');
 const {snapshot, restore} = await import('../src/farm-state.js');
 const {parseSave, FarmStorage} = await import('../src/farm-storage.js');
+const {createPlayerProgressionState, isValidPlayerProgressionState, awardBossKillXp} = await import('../src/player-progression.js');
+
+const noProgress = createPlayerProgressionState();
+assert.equal(isValidPlayerProgressionState(noProgress), true);
+const impossibleWallet = {...noProgress, availablePoints: 1};
+assert.equal(isValidPlayerProgressionState(impossibleWallet), false, 'the Farm wallet cannot create a free point outside level progression');
+const earnedWallet = awardBossKillXp(noProgress, 'test:level-1').state;
+assert.equal(isValidPlayerProgressionState(earnedWallet), true, 'earned points preserve the level/investment conservation invariant');
+const invalidWalletSave = snapshot(new Garden(700));
+invalidWalletSave.playerProgression.availablePoints = 1;
+assert.throws(() => restore(invalidWalletSave), /올바른 농장 저장 데이터가 아닙니다/,
+  'a malformed saved wallet is rejected before it can silently block Raid roster snapshots');
 
 function ready(unit, {tier = unit.tier, meals = 1, x = 0, y = 0} = {}) {
   unit.tier = tier;
@@ -443,6 +455,8 @@ const writer = new FarmStorage();
 writer.world.starter += 1;
 assert.equal(writer.save(writer.world),true);
 assert.equal(staleTab.save(staleTab.world),false,'a stale same-version tab cannot overwrite a newer save');
+assert.equal(staleTab.refresh(),true,'a stale Farm tab can load the latest save before idempotent Raid settlement retry');
+assert.equal(staleTab.world.starter,writer.world.starter,'refresh exposes the current Farm after a compare-before-write conflict');
 assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'legacy isolation also protects an old client tab');
 
 console.log('farm progression unit checks passed');

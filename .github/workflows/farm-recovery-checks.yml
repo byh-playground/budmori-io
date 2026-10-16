@@ -19,10 +19,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm run test:ability-tree
       - run: npm run test:progression
       - run: node tests/runtime-manifest-unit.mjs
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser:abilities
       - run: node tests/svg-startup.e2e.mjs
+      - run: npm run test:browser:raid-settlement
       - run: npm run test:browser
       - run: npm run test:browser:save
       - run: node scripts/test-scenarios.mjs event

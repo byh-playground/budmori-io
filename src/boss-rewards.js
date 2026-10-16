@@ -1,5 +1,5 @@
-// Shared boss-reward tuning. Farm encounters use the normal boss acquisition
-// chance with one event-only multiplier; deployment bonuses do not stack.
+// Shared boss-reward tuning. Farm events use their event multiplier; Raid
+// deployment bonuses affect acquisition chance only, never progression XP.
 import {awardBossKillXp} from './player-progression.js';
 
 export const BOSS_REWARD_SETTINGS = Object.freeze({
@@ -7,19 +7,23 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
   farmEventAcquisitionMultiplier: 2
 });
 
-export function bossAcquisitionChance({ farmEvent = false } = {}) {
-  const multiplier = farmEvent ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : 1;
+export function bossAcquisitionChance({ farmEvent = false, acquisitionMultiplier = 1 } = {}) {
+  if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
+    throw new RangeError('Boss acquisition multiplier must be in [0, 2]');
+  }
+  const multiplier = farmEvent ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier;
   return Math.min(1, Math.max(0, BOSS_REWARD_SETTINGS.acquisitionChance * multiplier));
 }
 
-export function decideBossAcquisition({ encounterId, source = 'raid', random, species = 3, tier = 1, x = 0, y = 0 } = {}) {
+export function decideBossAcquisition({ encounterId, source = 'raid', random, species = 3, tier = 1, x = 0, y = 0, acquisitionMultiplier = 1, receiptKey = null } = {}) {
   if (!Number.isSafeInteger(encounterId) || encounterId < 1 || !['farm', 'raid'].includes(source) || typeof random !== 'function') {
     throw new TypeError('A boss encounter ID, source, and random roll are required');
   }
-  const chance = bossAcquisitionChance({ farmEvent: source === 'farm' });
+  if (receiptKey !== null && (typeof receiptKey !== 'string' || !receiptKey.trim() || receiptKey.length > 255)) throw new TypeError('Boss receipt key must be a non-empty string');
+  const chance = bossAcquisitionChance({ farmEvent: source === 'farm', acquisitionMultiplier });
   const roll = random();
   if (!Number.isFinite(roll) || roll < 0 || roll >= 1) throw new RangeError('Boss acquisition roll must be in [0, 1)');
-  return { encounterId, source, species, tier, x, y, chance, roll, status: roll < chance ? 'pending' : 'missed', unitId: 0 };
+  return { encounterId, source, receiptKey: receiptKey || `${source}:${encounterId}`, acquisitionMultiplier: source === 'farm' ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier, species, tier, x, y, chance, roll, status: roll < chance ? 'pending' : 'missed', unitId: 0 };
 }
 
 export function grantPendingBossAcquisitions(world, { grantUnit = null } = {}) {
@@ -46,9 +50,13 @@ export function grantPendingBossAcquisitions(world, { grantUnit = null } = {}) {
 
 export function resolveBossAcquisition(world, options) {
   const { encounterId, source = 'raid' } = options || {};
+  const requestedReceiptKey = options?.receiptKey;
+  if (requestedReceiptKey !== undefined && (typeof requestedReceiptKey !== 'string' || !requestedReceiptKey.trim() || requestedReceiptKey.length > 255)) throw new TypeError('Boss receipt key must be a non-empty string');
   world.bossRewardReceipts ||= [];
   world.bossRewardWatermarks ||= {farm:0,raid:0};
-  const previous = world.bossRewardReceipts.find(receipt => receipt.encounterId === encounterId && receipt.source === source);
+  const previous = world.bossRewardReceipts.find(receipt => requestedReceiptKey
+    ? receipt.receiptKey === requestedReceiptKey
+    : receipt.encounterId === encounterId && receipt.source === source);
   if (previous) return previous;
   if (!['farm','raid'].includes(source) || !Number.isSafeInteger(encounterId) || encounterId <= (world.bossRewardWatermarks[source] || 0)) {
     throw new RangeError('A settled or stale boss encounter cannot be rolled again');
@@ -80,7 +88,7 @@ export function settleBossKill(world, options) {
   const receipt = resolveBossAcquisition(world, options);
   const progressionOwner = options?.progressionOwner || world;
   const wallet = options?.playerProgression || progressionOwner.playerProgression;
-  const receiptKey = `${receipt.source}:${receipt.encounterId}`;
+  const receiptKey = options?.receiptKey || receipt.receiptKey || `${receipt.source}:${receipt.encounterId}`;
   const result = awardBossKillXp(wallet, receiptKey);
   if (result.awarded) {
     progressionOwner.playerProgression = result.state;
