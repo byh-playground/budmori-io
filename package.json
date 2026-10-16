@@ -10,6 +10,8 @@
     "test:browser:raid-settlement": "node tests/raid-settlement.e2e.mjs",
     "test:progression": "node tests/farm-progression-unit.mjs && node tests/farm-boss-event-unit.mjs && node tests/raid-settlement-unit.mjs && node tests/raid-settlement-farm-unit.mjs",
     "test:farm-boss-event": "node tests/farm-boss-event-unit.mjs",
+    "test:farm-recovery-indicators": "node tests/farm-recovery-indicators-unit.mjs",
+    "test:browser:farm-recovery-indicators": "node tests/farm-recovery-indicators.e2e.mjs",
     "test:browser": "node scripts/test-scenarios.mjs core",
     "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser:victory": "node scripts/test-scenarios.mjs victory",
