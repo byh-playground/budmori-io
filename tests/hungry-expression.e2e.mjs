@@ -51,7 +51,7 @@ try{
   const beforeBase='hungry-expression-'+stage+'-mobile';
   await page.screenshot({path:path.join(out,beforeBase+'.png')});await page.screenshot({clip:{x:120,y:360,width:150,height:120},path:path.join(out,beforeBase+'-faces.png')});
 
-  await page.locator('#speed').click();await page.waitForFunction(()=>BUDMORI.runtime.speed===4,{},{timeout:5000});
+  await page.locator('#gameMenu').click();await page.locator('#speed').click();await page.waitForFunction(()=>BUDMORI.runtime.speed===4,{},{timeout:5000});await page.locator('#gameMenuClose').click();
   for(let targetIndex=0;targetIndex<ids.length;targetIndex++){
     const targetId=ids[targetIndex];
     await page.evaluate(({targetId,targetIndex})=>{

@@ -4456,9 +4456,9 @@
     }
     updateSoundButton() {
       const b = $("sound");
-      b.textContent = this.muted ? "♪̸" : "♪";
-      b.setAttribute("aria-pressed", !this.muted);
-      b.setAttribute("aria-label", this.muted ? "소리 켜기" : "소리 끄기");
+      $("soundState").textContent = this.muted ? "꺼짐" : "켜짐";
+      b.setAttribute("aria-pressed", String(!this.muted));
+      b.setAttribute("aria-label", this.muted ? "효과음 켜기" : "효과음 끄기");
     }
     unlock() {
       if (this.muted) return;
@@ -4667,8 +4667,11 @@
   var solo = null;
   var personalGarden = null;
   var noticeSequence = 0;
-  var treePause = false;
-  var abilityPause = false;
+  var menuOpen = false;
+  var menuTab = "play";
+  var menuWasPaused = true;
+  var menuPauseChanged = false;
+  var menuAutoPaused = false;
   var dropPointer = null;
   var dropTimer = null;
   var renderer = new Diorama($2("world"));
@@ -4757,14 +4760,14 @@
     $2("newGame").disabled = !!attempt;
   }
   function setHome(value, push = true) {
-    if (value) persist();
+    if (value) {
+      persist();
+      if (menuOpen) closeMenu(false);
+    }
     home = value;
     document.body.dataset.home = String(value);
     $2("startScreen").hidden = !value;
     if (!room) active.paused = value;
-    $2("treePanel").hidden = true;
-    $2("helpPanel").hidden = true;
-    $2("abilityPanel").hidden = true;
     if (push) history.pushState(null, "", value ? "#/" : active.world.scene === "raid" ? "#/raid" : "#/farm");
     refreshStart();
     if (value) $2("continueGame").focus();
@@ -4913,7 +4916,6 @@
   $2("cancelNew").onclick = () => {
     $2("newConfirm").hidden = true;
   };
-  $2("home").onclick = () => setHome(true);
   $2("exportSave").onclick = () => {
     const raw = storage.raw || storage.legacyRaw;
     if (!raw) return;
@@ -5053,8 +5055,10 @@
   $2("speed").onclick = () => active.queue("speed", { value: active.speed === 1 ? 4 : 1 });
   $2("pause").onclick = () => {
     if (room) return;
+    menuPauseChanged = true;
     active.paused = !active.paused;
     if (active.paused) persist();
+    else if (menuOpen) closeMenu();
   };
   function drawTree() {
     const w = personalGarden || active.world, inCombat = w.running || w.farmBossEvent?.phase !== "idle";
@@ -5067,55 +5071,94 @@
     for (const button of $2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) button.setAttribute("aria-pressed", String(Number(button.dataset.abilitySpecies) === selectedSpecies));
     $2("abilityNodes").innerHTML = renderAbilityTreeMarkup(w.playerProgression, { highestSpeciesTier: w.highestSpeciesTiers(), location: w.scene, inCombat, selectedSpecies });
   }
-  function panel(id, open, push = true) {
-    if (open) {
-      if ($2("treePanel").hidden && $2("helpPanel").hidden && $2("abilityPanel").hidden) treePause = active.paused;
-      if (!room) {
-        active.paused = true;
-        persist();
-      }
-      $2("treePanel").hidden = id !== "treePanel";
-      $2("helpPanel").hidden = id !== "helpPanel";
-      $2("abilityPanel").hidden = true;
-      if (id === "treePanel") drawTree();
-      $2(id).querySelector("button").focus();
-    } else {
-      $2(id).hidden = true;
-      if (!room && $2("treePanel").hidden && $2("helpPanel").hidden && $2("abilityPanel").hidden) active.paused = treePause;
-      $2(id === "treePanel" ? "tree" : "help").focus();
+  var menuRoutes = { play: "#/menu", growth: "#/growth", abilities: "#/abilities", help: "#/help" };
+  var routeMenuTab = (route2) => route2 === "#/growth" ? "growth" : route2 === "#/abilities" ? "abilities" : route2 === "#/help" ? "help" : "play";
+  function applyMenuTab(tab) {
+    menuTab = tab;
+    for (const button of $2("gameMenuTabs").querySelectorAll("[data-menu-tab]")) {
+      const selected = button.dataset.menuTab === tab;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
     }
-    $2("tree").setAttribute("aria-expanded", !$2("treePanel").hidden);
-    $2("help").setAttribute("aria-expanded", !$2("helpPanel").hidden);
-    $2("abilities").setAttribute("aria-expanded", !$2("abilityPanel").hidden);
-    if (push) history.pushState(null, "", open ? id === "treePanel" ? "#/growth" : "#/help" : active.world.scene === "raid" ? "#/raid" : "#/farm");
+    for (const [name, id] of [["play", "menuPlayPanel"], ["growth", "treePanel"], ["abilities", "abilityPanel"], ["help", "helpPanel"]]) $2(id).hidden = name !== tab;
+    if (tab === "growth") drawTree();
+    else if (tab === "abilities") drawAbilityTree();
   }
-  function showAbilityPanel(open, push = true) {
-    if (open) {
-      if (active.world.scene === "raid") return;
-      if ($2("treePanel").hidden && $2("helpPanel").hidden && $2("abilityPanel").hidden) abilityPause = active.paused;
-      if (!room) {
-        active.paused = true;
-        persist();
-      }
-      $2("treePanel").hidden = true;
-      $2("helpPanel").hidden = true;
-      $2("abilityPanel").hidden = false;
-      drawAbilityTree();
-      $2("abilityClose").focus();
-    } else {
-      $2("abilityPanel").hidden = true;
-      if (!room) active.paused = abilityPause;
-      $2("abilities").focus();
+  function syncMenuPause(tab) {
+    if (room) return;
+    if (tab === "play") {
+      if (menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
+      menuAutoPaused = false;
+      return;
     }
-    $2("abilities").setAttribute("aria-expanded", !$2("abilityPanel").hidden);
-    $2("tree").setAttribute("aria-expanded", !$2("treePanel").hidden);
-    $2("help").setAttribute("aria-expanded", !$2("helpPanel").hidden);
-    if (push) history.pushState(null, "", open ? "#/abilities" : active.world.scene === "raid" ? "#/raid" : "#/farm");
+    if (!menuAutoPaused) menuWasPaused = active.paused;
+    menuAutoPaused = true;
+    if (!active.paused) {
+      active.paused = true;
+      persist();
+    }
   }
-  $2("tree").onclick = () => panel("treePanel", true);
-  $2("treeClose").onclick = () => panel("treePanel", false);
-  $2("help").onclick = () => panel("helpPanel", $2("helpPanel").hidden);
-  $2("closeHelp").onclick = () => panel("helpPanel", false);
+  function openMenu(tab = "play", push = true) {
+    if (!menuOpen) {
+      menuWasPaused = active.paused;
+      menuPauseChanged = false;
+      menuAutoPaused = false;
+      menuOpen = true;
+      $2("gameMenuOverlay").hidden = false;
+      $2("gameMenu").setAttribute("aria-expanded", "true");
+    }
+    syncMenuPause(tab);
+    applyMenuTab(tab);
+    if (push) history.pushState(null, "", menuRoutes[tab] || menuRoutes.play);
+    $2("gameMenuTabs").querySelector(`[data-menu-tab="${tab}"]`)?.focus();
+  }
+  function switchMenuTab(tab, push = true) {
+    if (!["play", "growth", "abilities", "help"].includes(tab)) return;
+    if (!menuOpen) {
+      openMenu(tab, push);
+      return;
+    }
+    if (menuTab === tab) return;
+    syncMenuPause(tab);
+    applyMenuTab(tab);
+    if (push) history.pushState(null, "", menuRoutes[tab]);
+  }
+  function closeMenu(push = true) {
+    if (!menuOpen) return;
+    menuOpen = false;
+    $2("gameMenuOverlay").hidden = true;
+    $2("gameMenu").setAttribute("aria-expanded", "false");
+    if (!room && menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
+    menuPauseChanged = false;
+    menuAutoPaused = false;
+    if (push) history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
+    $2("gameMenu").focus();
+  }
+  $2("gameMenu").onclick = () => menuOpen ? closeMenu() : openMenu();
+  $2("gameMenuClose").onclick = () => closeMenu();
+  $2("menuHome").onclick = () => {
+    closeMenu(false);
+    setHome(true);
+  };
+  $2("gameMenuTabs").onclick = (e) => {
+    const button = e.target.closest("[data-menu-tab]");
+    if (button && !button.disabled) switchMenuTab(button.dataset.menuTab);
+  };
+  $2("gameMenuTabs").onkeydown = (e) => {
+    const buttons = [...$2("gameMenuTabs").querySelectorAll('[role="tab"]:not(:disabled)')], index = buttons.indexOf(document.activeElement);
+    let next = index;
+    if (e.key === "ArrowRight") next = (index + 1) % buttons.length;
+    else if (e.key === "ArrowLeft") next = (index - 1 + buttons.length) % buttons.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = buttons.length - 1;
+    else return;
+    e.preventDefault();
+    buttons[next]?.focus();
+    if (buttons[next]) switchMenuTab(buttons[next].dataset.menuTab);
+  };
+  $2("gameMenuOverlay").addEventListener("pointerdown", (e) => {
+    if (e.target === $2("gameMenuOverlay")) closeMenu();
+  });
   $2("treeNodes").onclick = (e) => {
     const b = e.target.closest("[data-progression-farm-node]");
     if (b) {
@@ -5123,8 +5166,6 @@
       setTimeout(drawTree, 180);
     }
   };
-  $2("abilities").onclick = () => showAbilityPanel(true);
-  $2("abilityClose").onclick = () => showAbilityPanel(false);
   $2("abilitySpeciesTabs").onclick = (e) => {
     const button = e.target.closest("[data-ability-species]");
     if (!button) return;
@@ -5142,22 +5183,25 @@
     }
     setTimeout(drawAbilityTree, 180);
   };
-  $2("treePanel").onkeydown = (e) => {
-    if (e.key === "Tab") {
-      const f = [...$2("treePanel").querySelectorAll("button:not(:disabled)")], i = f.indexOf(document.activeElement);
-      if (e.shiftKey && i <= 0 || !e.shiftKey && i === f.length - 1) {
-        e.preventDefault();
-        f[e.shiftKey ? f.length - 1 : 0].focus();
-      }
+  function focusableMenuButtons() {
+    return [...$2("gameMenuPanel").querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter((button) => button.getClientRects().length > 0);
+  }
+  $2("gameMenuPanel").onkeydown = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeMenu();
+      return;
     }
-  };
-  $2("abilityPanel").onkeydown = (e) => {
-    if (e.key === "Tab") {
-      const f = [...$2("abilityPanel").querySelectorAll('button:not([aria-disabled="true"])')], i = f.indexOf(document.activeElement);
-      if (e.shiftKey && i <= 0 || !e.shiftKey && i === f.length - 1) {
-        e.preventDefault();
-        f[e.shiftKey ? f.length - 1 : 0].focus();
-      }
+    if (e.key !== "Tab") return;
+    const buttons = focusableMenuButtons();
+    if (!buttons.length) return;
+    const first = buttons[0], last = buttons.at(-1);
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
     }
   };
   var canvas = $2("world");
@@ -5224,10 +5268,9 @@
     }
   });
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      if (!$2("treePanel").hidden) panel("treePanel", false);
-      else if (!$2("helpPanel").hidden) panel("helpPanel", false);
-      else if (!$2("abilityPanel").hidden) showAbilityPanel(false);
+    if (e.key === "Escape" && menuOpen) {
+      e.preventDefault();
+      closeMenu();
     }
   });
   window.addEventListener("pageshow", (e) => {
@@ -5250,10 +5293,12 @@
   function route() {
     const r = location.hash;
     if (r === "#/" || !r) {
+      if (menuOpen) closeMenu(false);
       setHome(true, false);
       return;
     }
     if (!room && storage.hasReservedRaid) {
+      if (menuOpen) closeMenu(false);
       setHome(true, false);
       history.replaceState(null, "", "#/");
       return;
@@ -5268,22 +5313,23 @@
       else if (storage.hasWorld) start(restore(snapshot(storage.world)), false);
       else start(new Garden(), false);
     }
-    if (r === "#/help" || r === "#/growth") panel(r === "#/help" ? "helpPanel" : "treePanel", true, false);
-    else if (r === "#/abilities") showAbilityPanel(true, false);
-    else {
-      if (!$2("treePanel").hidden) panel("treePanel", false, false);
-      if (!$2("helpPanel").hidden) panel("helpPanel", false, false);
-      if (!$2("abilityPanel").hidden) {
-        $2("abilityPanel").hidden = true;
-        if (!room) active.paused = abilityPause;
+    if (r === "#/help" || r === "#/growth" || r === "#/abilities" || r === "#/menu") {
+      const raid = active.world.scene === "raid", farmEventActive = !raid && personalGarden?.farmBossEvent?.phase !== "idle";
+      const restricted = r === "#/growth" && (raid || farmEventActive) || r === "#/abilities" && (raid || !personalGarden);
+      if (restricted) {
+        if (menuOpen) closeMenu(false);
+        history.replaceState(null, "", raid ? "#/raid" : "#/farm");
+        return;
       }
-      $2("abilities").setAttribute("aria-expanded", "false");
-      if (r === "#/raid") {
-        if (!room && personalGarden?.farmBossEvent?.phase !== "idle") {
-          history.replaceState(null, "", "#/farm");
-        } else if (!room) beginRaid(false);
-      } else if (r === "#/farm" && active.world.scene === "raid" && !room) returnToFarm(false);
+      openMenu(routeMenuTab(r), false);
+      return;
     }
+    if (menuOpen) closeMenu(false);
+    if (r === "#/raid") {
+      if (!room && personalGarden?.farmBossEvent?.phase !== "idle") {
+        history.replaceState(null, "", "#/farm");
+      } else if (!room) beginRaid(false);
+    } else if (r === "#/farm" && active.world.scene === "raid" && !room) returnToFarm(false);
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
@@ -5292,7 +5338,6 @@
     $2("farmControls").hidden = raid || farmEventActive || home;
     $2("raidControls").hidden = !raid || home;
     $2("bossbar").hidden = !battleHud || home;
-    $2("roles").hidden = !battleHud || home;
     $2("raid").disabled = farmEventActive;
     $2("count").textContent = raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : display.units.filter((unit) => !unit.isBattleOnlySummon).length;
     $2("capacity").textContent = personalGarden?.capacity ?? CONFIG.cap;
@@ -5313,10 +5358,12 @@
     $2("battleOutcome").hidden = home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle";
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
-    $2("tree").disabled = raid || farmEventActive;
-    $2("abilities").disabled = raid || !personalGarden;
+    $2("pause").textContent = active.paused ? "계속하기" : "일시 정지";
+    $2("pause").setAttribute("aria-label", active.paused ? "계속하기" : "일시 정지");
+    $2("pause").setAttribute("aria-pressed", String(active.paused));
+    $2("menuTabGrowth").disabled = raid || farmEventActive;
+    $2("menuTabAbilities").disabled = raid || !personalGarden;
     $2("raid").disabled = farmEventActive || !raid && !hasReadyTroops;
-    $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
     $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
     $2("feed").dataset.produced = now < foodFeel.completeUntil;

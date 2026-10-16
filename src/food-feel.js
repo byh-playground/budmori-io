@@ -12,7 +12,7 @@ const $=id=>document.getElementById(id);
       window.addEventListener("blur",()=>{pointers.clear();this.silence()});document.addEventListener("visibilitychange",()=>{if(document.hidden){pointers.clear();this.silence()}});
       window.addEventListener("pagehide",()=>{this.silence();for(const a of this.animations.values())a.cancel();this.animations.clear();this.audio?.close().catch(()=>{})});
     }
-    updateSoundButton(){const b=$("sound");b.textContent=this.muted?"♪̸":"♪";b.setAttribute("aria-pressed",!this.muted);b.setAttribute("aria-label",this.muted?"소리 켜기":"소리 끄기")}
+    updateSoundButton(){const b=$("sound");$("soundState").textContent=this.muted?"꺼짐":"켜짐";b.setAttribute("aria-pressed",String(!this.muted));b.setAttribute("aria-label",this.muted?"효과음 켜기":"효과음 끄기")}
     unlock(){if(this.muted)return;try{if(!this.audio){this.audio=new AudioContext();this.master=this.audio.createGain();this.master.gain.value=.22;this.master.connect(this.audio.destination)}if(this.audio.state==="suspended")this.audio.resume().catch(()=>{})}catch{}}
     silence(){for(const v of this.voices){try{v.o.stop()}catch{}}}
     sound(kind,step=0){

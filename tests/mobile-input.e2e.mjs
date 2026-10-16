@@ -27,10 +27,18 @@ try{
   report.styles=await page.evaluate(()=>{const button=getComputedStyle(document.querySelector('button'));return{tapHighlight:button.webkitTapHighlightColor,buttonTouchAction:button.touchAction,canvasTouchAction:getComputedStyle(document.querySelector('canvas')).touchAction,bodyOverflow:getComputedStyle(document.body).overflow}});
   assert(['rgba(0, 0, 0, 0)','transparent'].includes(report.styles.tapHighlight),'mobile button tap highlight is transparent');
   assert.equal(report.styles.buttonTouchAction,'manipulation');assert.equal(report.styles.canvasTouchAction,'none');
-  await page.locator('#help').click();await page.locator('#helpPanel').waitFor({state:'visible'});report.helpText=await page.locator('#helpPanel').innerText();
+  const menuBefore=await page.evaluate(()=>({units:BUDMORI.sim.units.length,remaining:BUDMORI.sim.raidRemaining('solo'),utility:[...document.querySelectorAll('.utility button')].map(button=>button.id),roles:!!document.querySelector('#roles')}));
+  assert.deepEqual(menuBefore.utility,['gameMenu'],'one standard accessible gear button replaces scattered utility buttons');assert.equal(menuBefore.roles,false,'boss map omits floating troop-role text');
+  await page.locator('#gameMenu').tap();await page.locator('#menuTabHelp').tap();await page.locator('#helpPanel').waitFor({state:'visible'});report.helpText=await page.locator('#helpPanel').innerText();
   assert(report.helpText.includes('100ms')&&report.helpText.includes('포인터')&&report.helpText.includes('드래그'),'raid help explains the faster repeat cadence and draggable deployment location');
-  await page.locator('#help').click();
-  await mkdir(path.join(root,'tests/output'),{recursive:true});await page.screenshot({path:path.join(root,'tests/output/mobile-input.png')});
+  assert.equal(await page.locator('#menuTabGrowth').isDisabled(),true,'farm growth is unavailable during a Raid');assert.equal(await page.locator('#menuTabAbilities').isDisabled(),true,'ability management is unavailable during a Raid');
+  await mkdir(path.join(root,'tests/output'),{recursive:true});await page.screenshot({path:path.join(root,'tests/output/mobile-game-menu.png')});
+  await page.touchscreen.tap(2,Math.floor((await page.evaluate(()=>innerHeight))/2));await page.locator('#gameMenuOverlay').waitFor({state:'hidden'});
+  assert.deepEqual(await page.evaluate(()=>({units:BUDMORI.sim.units.length,remaining:BUDMORI.sim.raidRemaining('solo')})),{units:menuBefore.units,remaining:menuBefore.remaining},'touching the menu backdrop closes it without passing the tap through to troop deployment');
+  await page.locator('#gameMenu').tap();await page.locator('#menuTabHelp').tap();const menuUnits=await page.evaluate(()=>BUDMORI.sim.units.length);
+  await page.locator('#gameMenuClose').tap();await page.locator('#gameMenuOverlay').waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(()=>BUDMORI.sim.units.length),menuUnits,'touching menu controls during a Raid never deploys a troop');
+  await page.screenshot({path:path.join(root,'tests/output/mobile-input.png')});
   await page.evaluate(()=>{const troops=BUDMORI.sim.raidRoster('solo').troops,used=new Set(troops.map(t=>t.farmId));let farmId=Math.max(0,...used)+1;while(troops.length<4){while(used.has(farmId))farmId++;troops.push({farmId,species:0,tier:1,deployed:false});used.add(farmId++)}});
   const before=await page.evaluate(()=>({units:BUDMORI.sim.units.length,roster:BUDMORI.sim.raidRoster('solo').troops.length,remaining:BUDMORI.sim.raidRemaining('solo'),intervals:window.__deploymentIntervals.length}));
   async function screenPoint(x,y){return page.evaluate(({x,y})=>{const r=BUDMORI.renderer,p=r.project(x,y,0),b=r.canvas.getBoundingClientRect();return{x:b.left+p.x/r.pixelRatio,y:b.top+p.y/r.pixelRatio}},{x,y})}
