@@ -220,7 +220,7 @@ canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();persist();fail
 function route(){
  const r=location.hash;
  if(r==='#/'||!r){if(menuOpen)closeMenu(false);setHome(true,false);return}
- if(!room&&storage.hasReservedRaid){if(menuOpen)closeMenu(false);setHome(true,false);history.replaceState(null,'','#/');return}
+ if(!room&&storage.hasReservedRaid&&active.world.scene!=='raid'){if(menuOpen)closeMenu(false);setHome(true,false);history.replaceState(null,'','#/');return}
  if(home){if(!room&&storage.error&&!storage.hasWorld){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.hasWorld)start(restore(snapshot(storage.world)),false);else start(new Garden(),false)}
  if(r==='#/help'||r==='#/growth'||r==='#/abilities'||r==='#/menu'){
   const raid=active.world.scene==='raid',farmEventActive=!raid&&personalGarden?.farmBossEvent?.phase!=='idle';

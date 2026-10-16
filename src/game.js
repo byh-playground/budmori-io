@@ -5297,7 +5297,7 @@
       setHome(true, false);
       return;
     }
-    if (!room && storage.hasReservedRaid) {
+    if (!room && storage.hasReservedRaid && active.world.scene !== "raid") {
       if (menuOpen) closeMenu(false);
       setHome(true, false);
       history.replaceState(null, "", "#/");
