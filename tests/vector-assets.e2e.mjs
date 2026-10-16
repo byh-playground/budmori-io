@@ -11,7 +11,7 @@ const root=fileURLToPath(new URL('../',import.meta.url)),out=path.join(root,'tes
 await mkdir(out,{recursive:true});
 const requiredClips=['idle','walk','windup','fire','recover','hit','airborne','landing','death','victory'];
 const requiredExpressions=['neutral','happy','focused','attack','surprised','hurt','hungry','dead'];
-const requiredBossClips=['idle','walk','windup','strike','sweep','recover','hit','death'],requiredBossExpressions=['neutral','focused','attack','hurt','dead'];
+const requiredBossClips=['idle','walk','windup','strike','sweep','recover','hit','death'],requiredBossExpressions=['neutral','focused','attack','hurt','dead','happy'];
 const sourceConfig=JSON.parse(await readFile(path.join(root,'scripts/vector-assets-sources.json'),'utf8'));
 assert.equal(existsSync(path.join(root,'scripts/vector-assets-motion.json')),false,'SVG motion sidecar must be removed');
 const authoredAssets=[];
