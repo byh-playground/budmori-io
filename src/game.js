@@ -151,6 +151,168 @@
     }
   });
 
+  // src/ability-catalog.js
+  var SPECIES_ABILITY_DEFINITIONS;
+  var init_ability_catalog = __esm({
+    "src/ability-catalog.js"() {
+      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
+        Object.freeze({
+          id: "pea-death-split",
+          species: 0,
+          name: "콩 분열",
+          description: "전투에서 쓰러지면 같은 종의 T1 개체를 생성해 전투를 이어갑니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([2, 3, 4]),
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "corn-burst-fire",
+          species: 1,
+          name: "옥수수 알갱이 연사",
+          description: "한 기본 곡사 공격 주기 안에 알갱이를 시간차로 발사합니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([2, 3, 4]),
+          projectileAttackShare: 0.5,
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "corn-popcorn-chain",
+          species: 1,
+          name: "팝콘 연쇄 폭발",
+          description: "착탄한 알갱이가 1초 뒤 폭발하고, 주변 팝콘과 닿으면 즉시 연쇄 폭발합니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([0.5, 1, 1.5]),
+          radiusMultipliers: Object.freeze([1, 1.5, 2]),
+          fuseSeconds: 1,
+          baseRangeFraction: 0.25,
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "chestnut-spike-fan",
+          species: 3,
+          name: "밤톨 가시 부채",
+          description: "목표를 향해 부채꼴 가시를 발사합니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([3, 5, 7]),
+          projectileAttackMultiplier: 0.5,
+          intervalBasicCycles: 4,
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "kidney-continuous-leap",
+          species: 2,
+          name: "연속 도약",
+          description: "착지 후 확률적으로 도약 재사용 대기시간을 초기화합니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65]),
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "kidney-landing-shockwave",
+          species: 2,
+          name: "착지 충격파",
+          description: "도약 착지 지점에서 기본 공격력과 사거리 기준의 충격파를 냅니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([1, 1.5, 2]),
+          gradeThresholds: Object.freeze([3, 2, 1])
+        })
+      ]);
+    }
+  });
+
+  // src/ability-state.js
+  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
+    if (!isNonNegativeInteger(availablePoints)) throw new TypeError("availablePoints must be a non-negative integer");
+    return {
+      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
+      availablePoints,
+      abilities: Object.fromEntries(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, {
+        rootUnlocked: false,
+        powerLevel: 0,
+        gradeLevel: 0
+      }]))
+    };
+  }
+  function isValidAbilityProgressionState(state) {
+    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) return false;
+    if (!isNonNegativeInteger(state.availablePoints) || !state.abilities || typeof state.abilities !== "object") return false;
+    for (const definition of SPECIES_ABILITY_DEFINITIONS) {
+      const investment = state.abilities[definition.id];
+      if (!investment || typeof investment.rootUnlocked !== "boolean") return false;
+      if (!isNonNegativeInteger(investment.powerLevel) || investment.powerLevel > definition.powerValues.length - 1) return false;
+      if (!isNonNegativeInteger(investment.gradeLevel) || investment.gradeLevel > definition.gradeThresholds.length - 1) return false;
+      if (!investment.rootUnlocked && (investment.powerLevel !== 0 || investment.gradeLevel !== 0)) return false;
+    }
+    return true;
+  }
+  function isNonNegativeInteger(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  var ABILITY_TREE_SCHEMA_VERSION;
+  var init_ability_state = __esm({
+    "src/ability-state.js"() {
+      init_ability_catalog();
+      ABILITY_TREE_SCHEMA_VERSION = 1;
+    }
+  });
+
+  // src/player-progression.js
+  function createPlayerProgressionState() {
+    return {
+      ...createAbilityProgressionState(),
+      level: 1,
+      experience: 0,
+      processedBossKillReceipts: []
+    };
+  }
+  function awardBossKillXp(state, receiptKey) {
+    if (!isValidPlayerProgressionState(state)) {
+      return { state, awarded: false, reason: "invalid-state", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+    }
+    if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
+      return { state, awarded: false, reason: "invalid-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+    }
+    if (state.processedBossKillReceipts.includes(receiptKey)) {
+      return { state, awarded: false, reason: "duplicate-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+    }
+    let level = state.level;
+    let experience = state.experience + BOSS_KILL_XP;
+    let levelsGained = 0;
+    while (experience >= experienceForNextLevel(level)) {
+      experience -= experienceForNextLevel(level);
+      level += 1;
+      levelsGained += 1;
+    }
+    const pointsAwarded = levelsGained * SHARED_POINTS_PER_LEVEL;
+    const nextState = {
+      ...state,
+      level,
+      experience,
+      availablePoints: state.availablePoints + pointsAwarded,
+      abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }])),
+      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
+    };
+    return { state: nextState, awarded: true, reason: null, xpAwarded: BOSS_KILL_XP, levelsGained, pointsAwarded };
+  }
+  function experienceForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) throw new RangeError("level must be a positive integer");
+    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  function isValidPlayerProgressionState(state) {
+    return isValidAbilityProgressionState(state) && Number.isSafeInteger(state.level) && state.level >= 1 && Number.isFinite(state.experience) && state.experience >= 0 && state.experience < experienceForNextLevel(state.level) && Array.isArray(state.processedBossKillReceipts) && state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) && new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length;
+  }
+  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL;
+  var init_player_progression = __esm({
+    "src/player-progression.js"() {
+      init_ability_state();
+      PLAYER_PROGRESS_BASE_XP = 100;
+      BOSS_KILL_XP = PLAYER_PROGRESS_BASE_XP;
+      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
+      LEVEL_XP_MULTIPLIER = 1.2;
+      SHARED_POINTS_PER_LEVEL = 1;
+    }
+  });
+
   // src/boss-rewards.js
   function bossAcquisitionChance({ farmEvent = false } = {}) {
     const multiplier = farmEvent ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : 1;
@@ -209,9 +371,34 @@
     if (receipt.status === "pending") grantPendingBossAcquisitions(world, { grantUnit: options?.grantUnit || null });
     return receipt;
   }
+  function settleBossKill(world, options) {
+    const receipt = resolveBossAcquisition(world, options);
+    const progressionOwner = options?.progressionOwner || world;
+    const wallet = options?.playerProgression || progressionOwner.playerProgression;
+    const receiptKey = `${receipt.source}:${receipt.encounterId}`;
+    const result = awardBossKillXp(wallet, receiptKey);
+    if (result.awarded) {
+      progressionOwner.playerProgression = result.state;
+    }
+    receipt.xpReceiptKey = receiptKey;
+    receipt.xpStatus = result.awarded ? "awarded" : result.reason === "duplicate-receipt" ? "already-awarded" : "unsettled";
+    receipt.xpAmount = result.awarded ? result.xpAwarded : 0;
+    receipt.levelsGained = result.levelsGained;
+    receipt.pointsAwarded = result.pointsAwarded;
+    return {
+      receipt,
+      progression: result.state,
+      awarded: result.awarded,
+      reason: result.reason,
+      xpAwarded: result.xpAwarded,
+      levelsGained: result.levelsGained,
+      pointsAwarded: result.pointsAwarded
+    };
+  }
   var BOSS_REWARD_SETTINGS;
   var init_boss_rewards = __esm({
     "src/boss-rewards.js"() {
+      init_player_progression();
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.2,
         farmEventAcquisitionMultiplier: 2
@@ -274,6 +461,7 @@
       init_unit_stats();
       init_unit_abilities();
       init_boss_rewards();
+      init_player_progression();
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
@@ -581,6 +769,7 @@
           this.nextBossEncounterId = 1;
           this.bossRewardReceipts = [];
           this.bossRewardWatermarks = { farm: 0, raid: 0 };
+          this.playerProgression = createPlayerProgressionState();
           this.starter = 0;
           this.notices = [];
           this.eventSequence = 0;
@@ -973,13 +1162,15 @@
                 u.down = CONFIG.corpseRecoverySeconds;
                 u.ability.interrupt();
               }
-              u.down = Math.max(0, u.down - dt);
-              if (u.down < 1e-9) u.down = 0;
+              if (this.scene === "farm") {
+                u.down = Math.max(0, u.down - dt);
+                if (u.down < 1e-9) u.down = 0;
+              }
               const oldZ2 = u.z;
               u.integrate(dt);
               if (this.scene === "raid" && this.running && u.z === 0 && u.vz === 0) u.vx = u.vy = 0;
               if (oldZ2 > 0 && u.z === 0) this.metrics.landings++;
-              if (u.down === 0) {
+              if (this.scene === "farm" && u.down === 0) {
                 const maxHp = stats(u.tier, u.species).maxHp;
                 this.releaseMate(u);
                 Object.assign(u, { hp: maxHp, down: 0, z: 0, vx: 0, vy: 0, vz: 0, stun: 0, flash: 0, bounce: 0, angle: 0 });
@@ -1285,7 +1476,9 @@
           this.farmBossEvent = { phase: "celebrating", elapsed: 0, outcome, encounterId, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
           for (const u of this.units) if (u.hp > 0) u.ability.interrupt();
           if (outcome === "victory") {
-            const reward = resolveBossAcquisition(this, { encounterId, source: "farm", species: 3, tier: 1, x: this.boss.x, y: this.boss.y });
+            const settlement = settleBossKill(this, { encounterId, source: "farm", species: 3, tier: 1, x: this.boss.x, y: this.boss.y });
+            const reward = settlement.receipt;
+            this.combat("farm-boss-xp", { encounterId, xp: settlement.xpAwarded, levelsGained: settlement.levelsGained, pointsAwarded: settlement.pointsAwarded });
             this.combat("farm-boss-reward", { acquired: reward.status === "granted", pending: reward.status === "pending", species: reward.species, tier: reward.tier, chance: reward.chance, roll: reward.roll, encounterId });
           }
           this.combat(outcome === "victory" ? "farm-boss-victory" : "farm-boss-defeat", { x: this.boss.x, y: this.boss.y, z: 0 });
@@ -1538,7 +1731,7 @@
     assert(depth < 18);
     if (typeof v === "number") assert(Number.isFinite(v) && Math.abs(v) < 1e13);
     else if (Array.isArray(v)) {
-      assert(v.length <= (key === "bossRewardReceipts" ? 1e5 : 1024));
+      assert(v.length <= (key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : 1024));
       v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === "object") {
       for (const [k, x] of Object.entries(v)) {
@@ -1579,6 +1772,7 @@
     assert(raw.units.length <= (raw.scene === "farm" ? farmCap : CONFIG.maxRaidUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.maxRaidUnits);
     assert(raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0);
     assert(integer(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
+    assert(isValidPlayerProgressionState(raw.playerProgression));
     const farmEvent = raw.farmBossEvent;
     if (farmEvent.phase === "idle") {
       assert(farmEvent.outcome === "idle" && farmEvent.elapsed === 0 && farmEvent.encounterId === 0 && farmEvent.rewardStatus === "none" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
@@ -1679,6 +1873,7 @@
     "src/farm-state.js"() {
       init_farm_model();
       init_unit_stats();
+      init_player_progression();
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
     }
   });
@@ -1687,7 +1882,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.4.7";
+      PRODUCT_VERSION = "0.5.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -1701,25 +1896,41 @@
   function parseSave(text) {
     if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
     const data = JSON.parse(text);
-    if (data.schema !== "budmori-farm" || typeof data.productVersion !== "string" || data.productVersion.split(".").slice(0, 2).join(".") !== COMPATIBILITY) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
+    if (data.schema !== "budmori-farm" || !READ_COMPATIBILITIES.has(legacyCompatibility(data.productVersion))) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
     return restore(data.world, { migrateLegacyRaid: true });
   }
-  var KEY, MAX_BYTES, FarmStorage;
+  var KEY, LEGACY_KEY, MAX_BYTES, READ_COMPATIBILITIES, legacyCompatibility, FarmStorage;
   var init_farm_storage = __esm({
     "src/farm-storage.js"() {
       init_version();
       init_farm_state();
-      KEY = "bloom-weapon-cards-v3";
+      KEY = "bloom-weapon-cards-v4";
+      LEGACY_KEY = "bloom-weapon-cards-v3";
       MAX_BYTES = 2 * 1024 * 1024;
+      READ_COMPATIBILITIES = /* @__PURE__ */ new Set([COMPATIBILITY, "0.4"]);
+      legacyCompatibility = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
       FarmStorage = class {
         constructor() {
           this.raw = null;
           this.world = null;
           this.error = "";
           this.writable = false;
+          this.legacyRaw = null;
+          this.legacyCompatible = false;
           try {
             this.raw = localStorage.getItem(KEY);
-            if (this.raw) this.world = parseSave(this.raw);
+            this.legacyRaw = localStorage.getItem(LEGACY_KEY);
+            if (this.raw) {
+              if (legacyCompatibility(JSON.parse(this.raw).productVersion) !== COMPATIBILITY) throw Error("현재 저장은 다른 0.5 버전과 호환되지 않습니다. 원본 키는 그대로 보존했어요.");
+              this.world = parseSave(this.raw);
+            } else if (this.legacyRaw) {
+              try {
+                parseSave(this.legacyRaw);
+                this.legacyCompatible = true;
+              } catch (e) {
+                this.error = e.message;
+              }
+            }
             this.writable = true;
           } catch (e) {
             this.error = e.message;
@@ -1732,6 +1943,10 @@
         save(world) {
           if (!this.writable) return false;
           try {
+            if (localStorage.getItem(KEY) !== this.raw) {
+              this.error = "저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.";
+              return false;
+            }
             const text = this.encode(world);
             const verified = restore(JSON.parse(text).world);
             localStorage.setItem(KEY, text);
@@ -1740,7 +1955,7 @@
             this.error = "";
             return true;
           } catch {
-            this.error = "저장 공간을 사용할 수 없어요. 저장 내보내기로 보관해 주세요.";
+            this.error = "저장 공간을 사용할 수 없어요. 기존 저장은 보존했어요. 저장 내보내기로 보관해 주세요.";
             return false;
           }
         }
@@ -1750,6 +1965,7 @@
           return this.save(world);
         }
         import(text) {
+          if (localStorage.getItem(KEY) !== this.raw) throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.");
           const world = parseSave(text), normalized = this.encode(world);
           restore(JSON.parse(normalized).world);
           localStorage.setItem(KEY, normalized);
@@ -1995,7 +2211,7 @@
       const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, metadata = record.compiled.metadata, name = this.bossMotion(b, world), clip = metadata.clips[name] || metadata.clips.idle;
       const timed = ["windup", "strike", "sweep", "recover", "hit", "death"].includes(name), clipStartAtMs = timed ? this.displayTimeMs - Math.min(clip.durationMs, Math.max(0, b.clock || 0) * 1e3) : name === "walk" ? this.displayTimeMs - Math.max(0, b.travel || 0) * 110 : this.displayTimeMs - (b.travel || 0) * 37 % clip.durationMs;
       if (this.bossPlayer.currentClip !== name) this.bossPlayer.transitionTo(name, clipStartAtMs, 70);
-      const expression = b.hp <= 0 ? "dead" : name === "windup" ? "focused" : name === "strike" || name === "sweep" ? "attack" : b.flash > 0.07 ? "hurt" : "neutral";
+      const expression = b.hp <= 0 ? "dead" : event?.phase === "celebrating" && event.outcome === "defeat" ? "happy" : name === "windup" ? "focused" : name === "strike" || name === "sweep" ? "attack" : b.flash > 0.07 ? "hurt" : "neutral";
       if (this.bossPlayer.currentExpression !== expression) this.bossPlayer.setExpression(expression);
       this.bossPlayer.seek(this.displayTimeMs);
       const [, , width] = record.compiled.viewBox, s = 2 * r / 220, anchorX = 160, anchorY = 261, matrix = [s, 0, 0, s, p.x - anchorX * s, p.y - anchorY * s];
@@ -2855,6 +3071,7 @@
   var networkTimer = null;
   var observedWorld = null;
   var imported = null;
+  var importedLegacy = false;
   var active = null;
   var home = true;
   var attempt = null;
@@ -2921,7 +3138,9 @@
       imported = null;
     }
     $2("continueGame").disabled = !storage.world;
-    $2("exportSave").disabled = !storage.raw;
+    $2("continueLegacyGame").disabled = !!room || !!attempt || !storage.legacyCompatible;
+    $2("legacySaveNotice").hidden = !storage.legacyCompatible;
+    $2("exportSave").disabled = !(storage.raw || storage.legacyRaw);
     $2("saveNotice").textContent = storage.error;
     $2("newGame").hidden = !!room;
     $2("continueGame").hidden = !!room;
@@ -2980,8 +3199,9 @@
     if (storage.world) start(restore(snapshot(storage.world)));
   };
   $2("newGame").onclick = () => {
-    if (storage.raw && !$2("newConfirm").hidden) return;
-    if (storage.raw) {
+    if ((storage.raw || storage.legacyRaw) && !$2("newConfirm").hidden) return;
+    if (storage.raw || storage.legacyRaw) {
+      $2("newConfirmText").textContent = storage.raw ? "현재 0.5 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요." : "새 0.5 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.";
       $2("newConfirm").hidden = false;
       return;
     }
@@ -3002,14 +3222,29 @@
   };
   $2("home").onclick = () => setHome(true);
   $2("exportSave").onclick = () => {
-    if (!storage.raw) return;
-    const url = URL.createObjectURL(new Blob([storage.raw], { type: "application/json" })), a = document.createElement("a");
+    const raw = storage.raw || storage.legacyRaw;
+    if (!raw) return;
+    const url = URL.createObjectURL(new Blob([raw], { type: "application/json" })), a = document.createElement("a");
     a.href = url;
     a.download = "budmori-save-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1e3);
   };
   $2("importSave").onclick = () => $2("saveFile").click();
+  $2("continueLegacyGame").onclick = async () => {
+    if (room || attempt || !storage.legacyRaw) return;
+    try {
+      const { parseSave: parseSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
+      parseSave2(storage.legacyRaw);
+      imported = storage.legacyRaw;
+      importedLegacy = true;
+      $2("importConfirmText").textContent = "0.4 원본 저장은 그대로 두고, 새 0.5 저장 키에 복사해 이어갈까요?";
+      $2("confirmImport").textContent = "원본을 보존하고 이어가기";
+      $2("importConfirm").hidden = false;
+    } catch (e) {
+      $2("saveNotice").textContent = e.message;
+    }
+  };
   $2("saveFile").onchange = async () => {
     const file = $2("saveFile").files[0];
     if (!file) return;
@@ -3019,6 +3254,9 @@
       const { parseSave: parseSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
       parseSave2(text);
       imported = text;
+      importedLegacy = false;
+      $2("importConfirmText").textContent = "선택한 파일로 개인 저장을 바꿀까요?";
+      $2("confirmImport").textContent = "이 저장 불러오기";
       $2("importConfirm").hidden = false;
     } catch (e) {
       $2("saveNotice").textContent = e.message;
@@ -3028,13 +3266,18 @@
   };
   $2("cancelImport").onclick = () => {
     imported = null;
+    importedLegacy = false;
     $2("importConfirm").hidden = true;
   };
   $2("confirmImport").onclick = () => {
     if (room || attempt) return;
     try {
-      if (imported) storage.import(imported);
+      if (imported) {
+        const legacy = importedLegacy, world = storage.import(imported);
+        if (legacy) start(world);
+      }
       imported = null;
+      importedLegacy = false;
       $2("importConfirm").hidden = true;
       refreshStart();
     } catch (e) {
@@ -3275,6 +3518,7 @@
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
     const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome;
     $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
+    $2("bossHealthNote").textContent = farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP · 증원 시 함께 증가";
     for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
       const el = $2(id);
       el.setAttribute("aria-valuenow", value);

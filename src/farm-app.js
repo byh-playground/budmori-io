@@ -9,7 +9,7 @@ import {CombatFeel} from './combat-feel.js';
 import {raidRosterEntries} from './raid-roster.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
 let networkTimer=null,observedWorld=null;
-let imported=null;
+let imported=null,importedLegacy=false;
 let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,lastSave=0,treePause=false,dropPointer=null,dropTimer=null;
 const renderer=new Diorama($('world'));
 const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
@@ -24,7 +24,7 @@ install(new Garden());active.paused=true;
 function persist(){if(personalGarden){const ok=storage.save(personalGarden);$('saveNotice').textContent=ok?'':storage.error;$('treeStorage').hidden=ok}}
 function refreshStart(){
  if(room||attempt){$('newConfirm').hidden=true;$('importConfirm').hidden=true;imported=null}
- $('continueGame').disabled=!storage.world;$('exportSave').disabled=!storage.raw;
+ $('continueGame').disabled=!storage.world;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);
  $('saveNotice').textContent=storage.error;$('newGame').hidden=!!room;
  $('continueGame').hidden=!!room;$('onlineGame').hidden=!!room||!!attempt;
  $('cancelOnline').hidden=!attempt;$('leaveOnline').hidden=!room;
@@ -43,19 +43,20 @@ async function returnToFarm(push=true){stopDrop();if(room){const leaving=room;tr
 $('continueGame').onclick=()=>{if(storage.world)start(restore(snapshot(storage.world)))};
 $('newGame').onclick=()=>{
  // Overwriting an existing save is a separate, explicit user action.
- if(storage.raw&&!$('newConfirm').hidden)return;
- if(storage.raw){$('newConfirm').hidden=false;return}
+ if((storage.raw||storage.legacyRaw)&&!$('newConfirm').hidden)return;
+ if(storage.raw||storage.legacyRaw){$('newConfirmText').textContent=storage.raw?'현재 0.5 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.':'새 0.5 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.';$('newConfirm').hidden=false;return}
  const world=new Garden();storage.replace(world);start(world);
 };
 $('confirmNew').onclick=()=>{if(room||attempt)return;const world=new Garden();if(storage.replace(world)){$('newConfirm').hidden=true;start(world)}else refreshStart()};
 $('cancelNew').onclick=()=>{$('newConfirm').hidden=true};
 $('home').onclick=()=>setHome(true);
-$('exportSave').onclick=()=>{if(!storage.raw)return;const url=URL.createObjectURL(new Blob([storage.raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='budmori-save-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('exportSave').onclick=()=>{const raw=storage.raw||storage.legacyRaw;if(!raw)return;const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='budmori-save-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('importSave').onclick=()=>$('saveFile').click();
+$('continueLegacyGame').onclick=async()=>{if(room||attempt||!storage.legacyRaw)return;try{const {parseSave}=await import('./farm-storage.js');parseSave(storage.legacyRaw);imported=storage.legacyRaw;importedLegacy=true;$('importConfirmText').textContent='0.4 원본 저장은 그대로 두고, 새 0.5 저장 키에 복사해 이어갈까요?';$('confirmImport').textContent='원본을 보존하고 이어가기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}};
 
-$('saveFile').onchange=async()=>{const file=$('saveFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('저장 파일이 너무 큽니다.');const text=await file.text();const {parseSave}=await import('./farm-storage.js');parseSave(text);imported=text;$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}finally{$('saveFile').value=''}};
-$('cancelImport').onclick=()=>{imported=null;$('importConfirm').hidden=true};
-$('confirmImport').onclick=()=>{if(room||attempt)return;try{if(imported)storage.import(imported);imported=null;$('importConfirm').hidden=true;refreshStart()}catch(e){$('saveNotice').textContent=e.message}};
+$('saveFile').onchange=async()=>{const file=$('saveFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('저장 파일이 너무 큽니다.');const text=await file.text();const {parseSave}=await import('./farm-storage.js');parseSave(text);imported=text;importedLegacy=false;$('importConfirmText').textContent='선택한 파일로 개인 저장을 바꿀까요?';$('confirmImport').textContent='이 저장 불러오기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}finally{$('saveFile').value=''}};
+$('cancelImport').onclick=()=>{imported=null;importedLegacy=false;$('importConfirm').hidden=true};
+$('confirmImport').onclick=()=>{if(room||attempt)return;try{if(imported){const legacy=importedLegacy,world=storage.import(imported);if(legacy)start(world)}imported=null;importedLegacy=false;$('importConfirm').hidden=true;refreshStart()}catch(e){$('saveNotice').textContent=e.message}};
 $('onlineGame').onclick=async()=>{
  if(attempt||room)return;personalGarden=restore(snapshot(storage.world||personalGarden||active.world));persist();solo=restore(snapshot(personalGarden));const controller=attempt=new AbortController();refreshStart();$('sessionNotice').textContent='함께할 정원을 찾고 있어요…';
  try{
@@ -112,7 +113,7 @@ function sync(display,now){
  $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
  $('allyHealthText').textContent=Math.ceil(army.current)+' / '+Math.ceil(army.max)+' HP · '+army.living+'/'+army.total+' 생존';
  const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome;
-  $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';
+ $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';$('bossHealthNote').textContent=farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP · 증원 시 함께 증가';
  for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
  $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?'보스가 쓰러졌어요 · 밤톨이 합류했어요':farmEvent.rewardStatus==='pending'?'밤톨 획득 대기 · 공간이 생기면 합류해요':'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('tree').disabled=raid||farmEventActive;$('raid').disabled=farmEventActive||(!raid&&readyTroops===0);$('pause').textContent=active.paused?'▶':'Ⅱ';
  $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;

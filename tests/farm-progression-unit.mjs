@@ -4,7 +4,7 @@ globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/determin
 assert.equal(typeof globalThis.BloomGamekitDeterministic.SeededPRNG, 'function', 'use the pinned GameKit PRNG API');
 const {Garden, Unit, CONFIG, TREE_NODES} = await import('../src/farm-model.js');
 const {snapshot, restore} = await import('../src/farm-state.js');
-const {parseSave} = await import('../src/farm-storage.js');
+const {parseSave, FarmStorage} = await import('../src/farm-storage.js');
 
 function ready(unit, {tier = unit.tier, meals = 1, x = 0, y = 0} = {}) {
   unit.tier = tier;
@@ -416,5 +416,32 @@ assert.equal(loaded.units[18].growthElapsed, CONFIG.breedGrowthSeconds / CONFIG.
 assert.equal(loaded.units[35].growthElapsed, 0, 'old hungry units keep their zero growth progress');
 assert.equal(loaded.units[35].mature, false, 'old immature units receive the new growth timer');
 assert.ok(loaded.units.every(unit => typeof unit.ownerId === 'string' && Number.isSafeInteger(unit.farmId) && typeof unit.dropLanded === 'boolean'));
+
+// 0.5 uses a separate active key. Detect the 0.4 save without writing either key,
+// and copy it only after the explicit import action; the old key stays unchanged.
+class MemoryStorage {
+  values = new Map();
+  getItem(key) { return this.values.get(key) ?? null; }
+  setItem(key, value) { this.values.set(key, String(value)); }
+}
+globalThis.localStorage = new MemoryStorage();
+const oldFormatWorld = snapshot(legacy);
+for (const key of ['farmBossEvent','nextBossEncounterId','bossRewardReceipts','bossRewardWatermarks']) delete oldFormatWorld[key];
+const oldFormatSave = JSON.stringify({productVersion:'0.4.7',schema:'budmori-farm',world:oldFormatWorld});
+localStorage.setItem('bloom-weapon-cards-v3',oldFormatSave);
+const detectedOldSave = new FarmStorage();
+assert.equal(detectedOldSave.world,null,'old save is not silently loaded into the new schema');
+assert.equal(detectedOldSave.legacyRaw,oldFormatSave);
+assert.equal(localStorage.getItem('bloom-weapon-cards-v4'),null,'detection does not write the 0.5 storage key');
+const resumedOldGarden = detectedOldSave.import(detectedOldSave.legacyRaw);
+assert.equal(resumedOldGarden.units.length,36,'confirmed import keeps the previous garden roster');
+assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'the original 0.4 key remains untouched');
+assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,'0.5.0');
+const staleTab = new FarmStorage();
+const writer = new FarmStorage();
+writer.world.starter += 1;
+assert.equal(writer.save(writer.world),true);
+assert.equal(staleTab.save(staleTab.world),false,'a stale same-version tab cannot overwrite a newer save');
+assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'legacy isolation also protects an old client tab');
 
 console.log('farm progression unit checks passed');

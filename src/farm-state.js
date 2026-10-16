@@ -1,5 +1,6 @@
 import {Garden,Unit,AttackCycle,FarmProgress,CONFIG,TREE_NODES} from './farm-model.js';
 import {resolveUnitStats} from './unit-stats.js';
+import {isValidPlayerProgressionState} from './player-progression.js';
 // A value snapshot contains all authoritative state; class owners are rehydrated once.
 export function snapshot(g){return JSON.parse(JSON.stringify(g,function(key,value){return key==='owner'&&this instanceof AttackCycle?undefined:value instanceof Set?[...value]:value}))}
 function normalize(raw,migrateLegacyRaid=false){
@@ -14,7 +15,7 @@ function normalize(raw,migrateLegacyRaid=false){
 }
 const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
 function assert(ok){if(!ok)throw new TypeError('올바른 농장 저장 데이터가 아닙니다.')}
-function finiteTree(v,depth=0,key=''){assert(depth<18);if(typeof v==='number')assert(Number.isFinite(v)&&Math.abs(v)<1e13);else if(Array.isArray(v)){assert(v.length<=(key==='bossRewardReceipts'?100000:1024));v.forEach(x=>finiteTree(x,depth+1))}else if(v&&typeof v==='object'){for(const [k,x]of Object.entries(v)){assert(!['__proto__','constructor','prototype'].includes(k));finiteTree(x,depth+1,k)}}else assert(v===null||typeof v==='boolean'||typeof v==='string'&&v.length<256)}
+function finiteTree(v,depth=0,key=''){assert(depth<18);if(typeof v==='number')assert(Number.isFinite(v)&&Math.abs(v)<1e13);else if(Array.isArray(v)){assert(v.length<=(key==='bossRewardReceipts'||key==='processedBossKillReceipts'?100000:1024));v.forEach(x=>finiteTree(x,depth+1))}else if(v&&typeof v==='object'){for(const [k,x]of Object.entries(v)){assert(!['__proto__','constructor','prototype'].includes(k));finiteTree(x,depth+1,k)}}else assert(v===null||typeof v==='boolean'||typeof v==='string'&&v.length<256)}
 function shape(v,t){assert(v!==null&&typeof v==='object'&&!Array.isArray(v));assert(Object.keys(v).length===Object.keys(t).length);for(const[k,x]of Object.entries(t)){assert(Object.hasOwn(v,k));if(x===null)continue;if(Array.isArray(x)){assert(Array.isArray(v[k]));continue}if(typeof x==='object')shape(v[k],x);else assert(typeof v[k]===typeof x)}}
 export function restore(raw,{migrateLegacyRaid=false}={}){
  raw=normalize(raw,migrateLegacyRaid);
@@ -24,6 +25,7 @@ export function restore(raw,{migrateLegacyRaid=false}={}){
  const farmCap=Math.min(CONFIG.maxFarmCap,CONFIG.cap+7*(raw.progress.levels.capacity||0));assert(raw.units.length<=(raw.scene==='farm'?farmCap:CONFIG.maxRaidUnits)&&raw.food.length<=140&&raw.projectiles.length<=CONFIG.maxRaidUnits);
  assert(raw.farmBossEvent&&['idle','dropping','fighting','celebrating','fading'].includes(raw.farmBossEvent.phase)&&['idle','fighting','victory','defeat'].includes(raw.farmBossEvent.outcome)&&Number.isFinite(raw.farmBossEvent.elapsed)&&raw.farmBossEvent.elapsed>=0);
  assert(integer(raw.nextBossEncounterId,1,1e12)&&Array.isArray(raw.bossRewardReceipts));
+ assert(isValidPlayerProgressionState(raw.playerProgression));
  const farmEvent=raw.farmBossEvent;
  if(farmEvent.phase==='idle'){assert(farmEvent.outcome==='idle'&&farmEvent.elapsed===0&&farmEvent.encounterId===0&&farmEvent.rewardStatus==='none'&&farmEvent.rewardChance===0&&farmEvent.rewardRoll===0&&farmEvent.rewardUnitId===0);if(raw.scene==='farm')assert(!raw.boss.active)}
  else if(farmEvent.phase==='dropping'||farmEvent.phase==='fighting')assert(raw.scene==='farm'&&farmEvent.outcome==='fighting'&&raw.boss.active&&integer(farmEvent.encounterId,1,raw.nextBossEncounterId-1)&&farmEvent.rewardStatus==='unresolved'&&farmEvent.rewardChance===0&&farmEvent.rewardRoll===0&&farmEvent.rewardUnitId===0);

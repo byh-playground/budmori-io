@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 const {Garden, CONFIG} = await import('../src/farm-model.js');
 const {snapshot, restore} = await import('../src/farm-state.js');
-const {BOSS_REWARD_SETTINGS, bossAcquisitionChance, resolveBossAcquisition} = await import('../src/boss-rewards.js');
+const {BOSS_REWARD_SETTINGS, bossAcquisitionChance, resolveBossAcquisition, settleBossKill} = await import('../src/boss-rewards.js');
 const {UNIT_ABILITY_PROFILES} = await import('../src/unit-abilities.js');
 const {raidRosterEntries} = await import('../src/raid-roster.js');
 
@@ -19,6 +19,13 @@ assert.equal(bossAcquisitionChance(), .2);
 assert.equal(bossAcquisitionChance({farmEvent: true}), .4);
 assert.equal(bossAcquisitionChance({farmEvent: true, deploymentBonus: 50}), .4, 'deployment bonuses do not stack');
 assert.equal(UNIT_ABILITY_PROFILES[3].kind, 'punch', 'Chestnut basic ability is its two-arm melee attack');
+const xpCurve = new Garden(300);
+settleBossKill(xpCurve,{encounterId:1,source:'farm',random:()=>.99});
+assert.deepEqual([xpCurve.playerProgression.level,xpCurve.playerProgression.experience,xpCurve.playerProgression.availablePoints],[2,0,1]);
+settleBossKill(xpCurve,{encounterId:2,source:'farm',random:()=>.99});
+assert.deepEqual([xpCurve.playerProgression.level,xpCurve.playerProgression.experience,xpCurve.playerProgression.availablePoints],[2,100,1]);
+settleBossKill(xpCurve,{encounterId:3,source:'farm',random:()=>.99});
+assert.deepEqual([xpCurve.playerProgression.level,xpCurve.playerProgression.experience,xpCurve.playerProgression.availablePoints],[3,80,2],'next level uses the geometric 120 XP threshold and carries the remainder');
 
 // Every generated food uses the same 1% replacement roll; existing bosses leave normal food.
 assert.equal(CONFIG.farmBossEvent.spawnChance, .01);
@@ -102,12 +109,22 @@ assert(chestnutReward, 'a successful Farm reward roll grants the ordinary Chestn
 assert.equal(chestnutReward.tier, 1);
 assert.equal(chestnutReward.hp, 40, 'Chestnut reward uses shared ordinary T1 stats');
 assert(victory.notices.some(notice => notice.kind === 'farm-boss-reward' && notice.acquired && notice.chance === .4));
+assert.equal(victory.playerProgression.level,2,'a first boss kill reaches the first level');
+assert.equal(victory.playerProgression.experience,0,'XP beyond the threshold carries forward');
+assert.equal(victory.playerProgression.availablePoints,1,'level-up awards one shared point');
+assert.equal(victory.playerProgression.processedBossKillReceipts[0],'farm:'+victory.farmBossEvent.encounterId);
+assert.equal(victory.bossRewardReceipts[0].xpStatus,'awarded');
 const victorySave = restore(snapshot(victory));
 let duplicateRolls = 0;
 const repeatedDecision = resolveBossAcquisition(victorySave,{encounterId:victorySave.farmBossEvent.encounterId,source:'farm',random:()=>{duplicateRolls++;return 0}});
 assert.equal(repeatedDecision.status,'granted');
 assert.equal(duplicateRolls,0,'a saved encounter receipt prevents rerolling after reload');
 assert.equal(victorySave.units.filter(unit => unit.species === 3).length,1,'a restored granted reward is never duplicated');
+const duplicateXp = settleBossKill(victorySave,{encounterId:victorySave.farmBossEvent.encounterId,source:'farm',random:()=>{duplicateRolls++;return .99}});
+assert.equal(duplicateXp.awarded,false,'the persisted kill receipt prevents duplicate XP after reload');
+assert.equal(victorySave.playerProgression.level,2);
+assert.equal(victorySave.playerProgression.availablePoints,1);
+assert.equal(duplicateRolls,0);
 const raidRewardWorld = new Garden(315);
 let raidGrantCalls = 0;
 const raidReceipt = resolveBossAcquisition(raidRewardWorld,{encounterId:1,source:'raid',species:3,tier:1,random:()=>0,grantUnit:reward=>{raidGrantCalls++;return{id:2000001,species:reward.species,tier:reward.tier}}});
@@ -137,6 +154,8 @@ missedReward.boss.hp = 0;
 missedReward.finishFarmBossEvent('victory');
 assert(!missedReward.units.some(unit => unit.species === 3), 'the exact 40% roll boundary is not an acquisition');
 assert(missedReward.notices.some(notice => notice.kind === 'farm-boss-reward' && !notice.acquired));
+assert.equal(missedReward.playerProgression.experience,0,'a kill that misses its troop acquisition still earns XP');
+assert.equal(missedReward.playerProgression.availablePoints,1);
 // Full capacity keeps a successful acquisition pending until one slot is freed.
 const queuedReward = new Garden(314);
 queuedReward.progress.levels.capacity = 4;

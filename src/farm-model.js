@@ -1,7 +1,8 @@
 const {SeededPRNG}=globalThis.BloomGamekitDeterministic;
 import {resolveUnitStats,applyDamageToTargets,applyHealing,resolveStatusDuration,resolveKnockback,scaleMoveSpeed,scaleAttackRecovery,scaleAttackArea} from './unit-stats.js';
 import {UNIT_ABILITY_PROFILES as ATTACK_TYPES,abilityProfile} from './unit-abilities.js';
-import {bossAcquisitionChance, resolveBossAcquisition, grantPendingBossAcquisitions} from './boss-rewards.js';
+import {bossAcquisitionChance, settleBossKill, grantPendingBossAcquisitions} from './boss-rewards.js';
+import {createPlayerProgressionState} from './player-progression.js';
 const presentationClocks=new WeakMap();
 const presentationEventTimes=new WeakMap();
 export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
@@ -204,6 +205,7 @@ const AttackingBody=Base=>class extends Base{
       this.nextBossEncounterId = 1;
       this.bossRewardReceipts = [];
       this.bossRewardWatermarks = {farm:0,raid:0};
+      this.playerProgression = createPlayerProgressionState();
       this.starter = 0;
       this.notices=[];this.eventSequence=0;
       this.foodTaps = { remainder: 0, autoClock: 0, produced: 0, revision: 0 };
@@ -453,11 +455,11 @@ const AttackingBody=Base=>class extends Base{
       for (const u of units) {
         if(u.hp<=0){
           if(u.down<=0){u.down=CONFIG.corpseRecoverySeconds;u.ability.interrupt()}
-          u.down=Math.max(0,u.down-dt);if(u.down<1e-9)u.down=0;
+          if(this.scene==='farm'){u.down=Math.max(0,u.down-dt);if(u.down<1e-9)u.down=0}
           const oldZ=u.z;u.integrate(dt);
           if(this.scene==='raid'&&this.running&&u.z===0&&u.vz===0)u.vx=u.vy=0;
           if(oldZ>0&&u.z===0)this.metrics.landings++;
-          if(u.down===0){
+          if(this.scene==='farm'&&u.down===0){
             const maxHp=stats(u.tier,u.species).maxHp;this.releaseMate(u);Object.assign(u,{hp:maxHp,down:0,z:0,vx:0,vy:0,vz:0,stun:0,flash:0,bounce:0,angle:0});u.ability=new AttackCycle(u);this.combat('unit-recover',{unit:u.id,x:u.x,y:u.y});
           }
           continue;
@@ -650,7 +652,9 @@ const AttackingBody=Base=>class extends Base{
       this.farmBossEvent={phase:'celebrating',elapsed:0,outcome,encounterId,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};
       for(const u of this.units)if(u.hp>0)u.ability.interrupt();
       if(outcome==='victory'){
-        const reward=resolveBossAcquisition(this,{encounterId,source:'farm',species:3,tier:1,x:this.boss.x,y:this.boss.y});
+        const settlement=settleBossKill(this,{encounterId,source:'farm',species:3,tier:1,x:this.boss.x,y:this.boss.y});
+        const reward=settlement.receipt;
+        this.combat('farm-boss-xp',{encounterId,xp:settlement.xpAwarded,levelsGained:settlement.levelsGained,pointsAwarded:settlement.pointsAwarded});
         this.combat('farm-boss-reward',{acquired:reward.status==='granted',pending:reward.status==='pending',species:reward.species,tier:reward.tier,chance:reward.chance,roll:reward.roll,encounterId});
       }
       this.combat(outcome==='victory'?'farm-boss-victory':'farm-boss-defeat',{x:this.boss.x,y:this.boss.y,z:0});

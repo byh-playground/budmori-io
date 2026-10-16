@@ -157,7 +157,7 @@ function unitExpression(u,sim){
       const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,metadata=record.compiled.metadata,name=this.bossMotion(b,world),clip=metadata.clips[name]||metadata.clips.idle;
       const timed=['windup','strike','sweep','recover','hit','death'].includes(name),clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,b.clock||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
       if(this.bossPlayer.currentClip!==name)this.bossPlayer.transitionTo(name,clipStartAtMs,70);
-      const expression=b.hp<=0?'dead':name==='windup'?'focused':name==='strike'||name==='sweep'?'attack':b.flash>.07?'hurt':'neutral';
+      const expression=b.hp<=0?'dead':event?.phase==='celebrating'&&event.outcome==='defeat'?'happy':name==='windup'?'focused':name==='strike'||name==='sweep'?'attack':b.flash>.07?'hurt':'neutral';
       if(this.bossPlayer.currentExpression!==expression)this.bossPlayer.setExpression(expression);
       this.bossPlayer.seek(this.displayTimeMs);
       const [, ,width]=record.compiled.viewBox,s=2*r/220,anchorX=160,anchorY=261,matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];

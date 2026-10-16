@@ -1,5 +1,7 @@
 // Shared boss-reward tuning. Farm encounters use the normal boss acquisition
 // chance with one event-only multiplier; deployment bonuses do not stack.
+import {awardBossKillXp} from './player-progression.js';
+
 export const BOSS_REWARD_SETTINGS = Object.freeze({
   acquisitionChance: 0.20,
   farmEventAcquisitionMultiplier: 2
@@ -69,4 +71,25 @@ export function resolveBossAcquisition(world, options) {
   }
   if (receipt.status === 'pending') grantPendingBossAcquisitions(world, { grantUnit: options?.grantUnit || null });
   return receipt;
+}
+
+// The encounter receipt is the idempotency key for both parts of a boss kill.
+// Callers may supply an owner-scoped progression wallet for future Raid use;
+// Farm encounters use the saved wallet on the Garden itself.
+export function settleBossKill(world, options) {
+  const receipt = resolveBossAcquisition(world, options);
+  const progressionOwner = options?.progressionOwner || world;
+  const wallet = options?.playerProgression || progressionOwner.playerProgression;
+  const receiptKey = `${receipt.source}:${receipt.encounterId}`;
+  const result = awardBossKillXp(wallet, receiptKey);
+  if (result.awarded) {
+    progressionOwner.playerProgression = result.state;
+  }
+  receipt.xpReceiptKey = receiptKey;
+  receipt.xpStatus = result.awarded ? 'awarded' : result.reason === 'duplicate-receipt' ? 'already-awarded' : 'unsettled';
+  receipt.xpAmount = result.awarded ? result.xpAwarded : 0;
+  receipt.levelsGained = result.levelsGained;
+  receipt.pointsAwarded = result.pointsAwarded;
+  return {receipt, progression:result.state, awarded:result.awarded, reason:result.reason,
+    xpAwarded:result.xpAwarded, levelsGained:result.levelsGained, pointsAwarded:result.pointsAwarded};
 }
