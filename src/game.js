@@ -5156,9 +5156,12 @@
     buttons[next]?.focus();
     if (buttons[next]) switchMenuTab(buttons[next].dataset.menuTab);
   };
-  $2("gameMenuOverlay").addEventListener("pointerdown", (e) => {
-    if (e.target === $2("gameMenuOverlay")) closeMenu();
-  });
+  var gameMenuOverlay = $2("gameMenuOverlay");
+  var closeMenuFromBackdrop = (e) => {
+    if (e.target === gameMenuOverlay) closeMenu();
+  };
+  gameMenuOverlay.addEventListener("pointerdown", closeMenuFromBackdrop);
+  gameMenuOverlay.addEventListener("click", closeMenuFromBackdrop);
   $2("treeNodes").onclick = (e) => {
     const b = e.target.closest("[data-progression-farm-node]");
     if (b) {

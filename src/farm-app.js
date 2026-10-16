@@ -187,7 +187,9 @@ $('gameMenuTabs').onkeydown=e=>{
  if(e.key==='ArrowRight')next=(index+1)%buttons.length;else if(e.key==='ArrowLeft')next=(index-1+buttons.length)%buttons.length;else if(e.key==='Home')next=0;else if(e.key==='End')next=buttons.length-1;else return;
  e.preventDefault();buttons[next]?.focus();if(buttons[next])switchMenuTab(buttons[next].dataset.menuTab);
 };
-$('gameMenuOverlay').addEventListener('pointerdown',e=>{if(e.target===$('gameMenuOverlay'))closeMenu()});
+const gameMenuOverlay=$('gameMenuOverlay'),closeMenuFromBackdrop=e=>{if(e.target===gameMenuOverlay)closeMenu()};
+gameMenuOverlay.addEventListener('pointerdown',closeMenuFromBackdrop);
+gameMenuOverlay.addEventListener('click',closeMenuFromBackdrop);
 $('treeNodes').onclick=e=>{const b=e.target.closest('[data-progression-farm-node]');if(b){active.queue('progression-invest',{scope:'farm',nodeId:b.dataset.progressionFarmNode});setTimeout(drawTree,180)}};
 $('abilitySpeciesTabs').onclick=e=>{const button=e.target.closest('[data-ability-species]');if(!button)return;$('abilityPanel').dataset.selectedSpecies=button.dataset.abilitySpecies;drawAbilityTree()};
 $('abilityNodes').onclick=e=>{const button=e.target.closest('button[data-ability-action],button[data-ability-node]');if(!button||button.getAttribute('aria-disabled')==='true')return;if(button.dataset.abilityAction==='reset')active.queue('ability-reset');else if(button.dataset.abilityNode){const [abilityId,kind,level]=button.dataset.abilityNode.split(':');const nodeId=kind==='root'?'root':`${kind}-${level}`;active.queue('progression-invest',{scope:'ability',abilityId,nodeId})}setTimeout(drawAbilityTree,180)};

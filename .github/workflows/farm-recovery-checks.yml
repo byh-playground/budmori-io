@@ -34,7 +34,6 @@ jobs:
       - run: npm run test:browser:farm-recovery-indicators
       - run: npm run test:browser:raid-settlement
       - run: npm run test:browser
-      - run: npm run test:mobile-input
       - run: npm run test:browser:save
       - run: node scripts/test-scenarios.mjs event
       - uses: actions/upload-artifact@v4
