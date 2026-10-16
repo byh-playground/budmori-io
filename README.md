@@ -80,3 +80,7 @@ npm test
 물리 모바일 기기·서로 다른 NAT망·장기 밸런스는 PC/터치 브라우저·동일 호스트의 실제 공개 RTC 검증과 구분합니다.
 
 씨앗 동작 참고: [Animation Mentor의 squash/stretch](https://www.animationmentor.com/blog/squash-and-stretch-the-12-basic-principles-of-animation/), [anticipation](https://www.animationmentor.com/blog/anticipation-the-12-basic-principles-of-animation/). 압축과 복원 및 발사 전 예고를 병종별 껍질·배아 동작에 적용했습니다. 0.4.3은 저장 구조를 변경하지 않아 0.4 저장과 호환됩니다.
+
+## Unit combat stats
+
+See [docs/unit-stats.md](docs/unit-stats.md) for the common stat defaults, damage/healing order, ability profiles, and deterministic multiplayer notes.

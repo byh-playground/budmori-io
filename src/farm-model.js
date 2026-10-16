@@ -1,4 +1,6 @@
 const {SeededPRNG}=globalThis.BloomGamekitDeterministic;
+import {resolveUnitStats,applyDamageToTargets,applyHealing,resolveStatusDuration,resolveKnockback,scaleMoveSpeed,scaleAttackRecovery,scaleAttackArea} from './unit-stats.js';
+import {UNIT_ABILITY_PROFILES as ATTACK_TYPES,abilityProfile} from './unit-abilities.js';
 const presentationClocks=new WeakMap();
 const presentationEventTimes=new WeakMap();
 export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
@@ -12,18 +14,19 @@ function bossAttackArea(boss,unitRadius=0){
   return heavy?{kind:'sweep',x:boss.x,y:boss.y,width,sweepRadius:c.sweepReach,outerRadius:c.sweepReach+width,startAngle:((boss.startAngle%(Math.PI*2))+Math.PI*2)%(Math.PI*2),progress:clamp(boss.clock/duration,0,1),active:phase==='sweep'}:{kind:'basic',x:boss.x,y:boss.y,width,startRadius:Math.max(0,boss.radius-.25),endRadius:c.basicReach,angle:boss.angle,progress:clamp(boss.clock/duration,0,1),active:phase==='strike'};
 }
   var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-  var stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
+  var stats = (tier,species) => resolveUnitStats({tier,species});
   var Body = class {
     constructor(x, y) {
       Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, angle: 0, stun: 0, flash: 0, bounce: 0 });
     }
   };
   var Knockable = (Base) => class extends Base {
-    knock(nx, ny, power, lift = 0) {
-      this.vx += nx * power;
-      this.vy += ny * power;
-      this.vz = Math.max(this.vz, lift);
-      this.stun = Math.max(this.stun, 0.5);
+    knock(nx, ny, power, lift = 0, source = null) {
+      const appliedPower=resolveKnockback(power,source,this);
+      this.vx += nx * appliedPower;
+      this.vy += ny * appliedPower;
+      this.vz = Math.max(this.vz, lift * (power>0?appliedPower/power:0));
+      this.stun = Math.max(this.stun, resolveStatusDuration(0.5,source,this));
       this.flash = 0.18;
     }
     integrate(dt) {
@@ -66,11 +69,6 @@ class FarmProgress {
  get autoTapSeconds(){return .5/this.rate('food')}
 }
 // Simulation types are independent of the renderer skin mapping.
-const ATTACK_TYPES = Object.freeze([
-  {kind:"ram",windup:.28,recover:.65,stand:1.45,damage:1},
-  {kind:"lob",windup:.38,recover:1.25,stand:4.1,damage:1.6},
-  {kind:"leap",windup:.32,recover:.9,stand:2.5,damage:1.3}
-]);
 const ArenaGeometry = {
   bounds(scene='raid',margin=0){return scene==='raid'?{x:CONFIG.raid.radiusX-margin,y:CONFIG.raid.radiusY-margin}:{x:9.5-margin,y:6.8-margin}},
   inside(p,scene='raid',margin=0){const r=this.bounds(scene,margin);return p.x*p.x/(r.x*r.x)+p.y*p.y/(r.y*r.y)<=1},
@@ -91,7 +89,7 @@ const Ballistics = {
 };
 class AttackCycle {
   constructor(owner){this.owner=owner;this.phase="idle";this.elapsed=0;this.action=null;}
-  get spec(){return ATTACK_TYPES[this.owner.species]}
+  get spec(){return abilityProfile(this.owner.species)}
     begin(sim,target){
     const u=this.owner;if(this.phase!=="idle"||u.down>0||u.stun>0||u.z>.1)return false;
     this.phase="windup";this.elapsed=0;this.action={id:++sim.attackSerial,target:{...target},hit:false,path:null};
@@ -110,11 +108,11 @@ class AttackCycle {
       if(this.elapsed>=this.spec.windup){
         this.elapsed=0;this.phase="active";const a=this.action;a.path=Ballistics.create(u,a.target,this.spec.kind);sim.combatEvent("launch",u,a);
         if(this.spec.kind==="lob"){
-          sim.projectiles.push({id:a.id,owner:u.id,species:u.species,tier:u.tier,path:a.path,elapsed:0,x:u.x,y:u.y,z:.45,radius:.12,height:.24,hit:false});
+          sim.projectiles.push({id:a.id,owner:u.id,species:u.species,tier:u.tier,path:a.path,elapsed:0,x:u.x,y:u.y,z:.45,radius:scaleAttackArea(.12,u),height:.24,hit:false});
           this.recover(sim,true);
         }
       }
-    }else if(this.phase==="recover"&&this.elapsed>=this.spec.recover){this.phase="idle";this.action=null;this.elapsed=0}
+    }else if(this.phase==="recover"&&this.elapsed>=scaleAttackRecovery(this.spec.recovery,u)){this.phase="idle";this.action=null;this.elapsed=0}
     return true;
   }
   integrate(dt){
@@ -123,9 +121,10 @@ class AttackCycle {
   }
   afterMove(sim,old){
     const a=this.action,u=this.owner;if(this.phase!=="active"||!a?.path)return;
-    const hit=!a.hit&&ArenaGeometry.sweep(old,u,u.radius,.65,sim.boss);
+    const areaRadius=scaleAttackArea(u.radius,u);
+    const hit=!a.hit&&ArenaGeometry.sweep(old,u,areaRadius,.65,sim.boss);
     if(hit){sim.damageBoss(u,a,hit);if(this.spec.kind==="ram"){u.x=hit.x;u.y=hit.y;u.z=hit.z;this.recover(sim,true);return}}
-    if(this.elapsed>=a.path.duration){u.z=0;u.vz=0;u.vx=u.vy=0;if(this.spec.kind==="leap"){u.bounce=.2;sim.combatEvent("land-attack",u,a);if(!a.hit&&ArenaGeometry.overlaps({x:u.x,y:u.y,z:0,radius:u.radius+.35,height:.65},sim.boss))sim.damageBoss(u,a,u)}this.recover(sim,true)}
+    if(this.elapsed>=a.path.duration){u.z=0;u.vz=0;u.vx=u.vy=0;if(this.spec.kind==="leap"){u.bounce=.2;sim.combatEvent("land-attack",u,a);if(!a.hit&&ArenaGeometry.overlaps({x:u.x,y:u.y,z:0,radius:scaleAttackArea(u.radius+.35,u),height:.65},sim.boss))sim.damageBoss(u,a,u)}this.recover(sim,true)}
   }
 }
 const AttackingBody=Base=>class extends Base{
@@ -137,7 +136,7 @@ const AttackingBody=Base=>class extends Base{
   var Unit = class extends AttackingBody(Knockable(Body)) {
     constructor(id, species, tier, x, y) {
       super(x, y);
-      Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier).hp, down: 0, seed: id * 2.39996,ownerId:'',farmId:0,dropLanded:true });
+      Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier,species).maxHp, down: 0, seed: id * 2.39996,ownerId:'',farmId:0,dropLanded:true });
     }
     get radius() {
       return (0.25 + 0.055 * this.tier) * (this.mature ? 1 : 0.8);
@@ -164,14 +163,15 @@ const AttackingBody=Base=>class extends Base{
     const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
     if (closing > 0) {
       const impulse = closing * 0.57;
-      a.vx -= nx * impulse;
-      a.vy -= ny * impulse;
-      b.vx += nx * impulse;
-      b.vy += ny * impulse;
+      const impulseA=resolveKnockback(impulse,b,a),impulseB=resolveKnockback(impulse,a,b);
+      a.vx -= nx * impulseA;
+      a.vy -= ny * impulseA;
+      b.vx += nx * impulseB;
+      b.vy += ny * impulseB;
       if (closing > 2) {
         const receiver = Math.hypot(a.vx, a.vy) > Math.hypot(b.vx, b.vy) ? a : b;
         receiver.vz = Math.max(receiver.vz, Math.min(4, closing * 0.2));
-        receiver.stun = Math.max(receiver.stun, 0.3);
+        receiver.stun = Math.max(receiver.stun, resolveStatusDuration(0.3,receiver===a?b:a,receiver));
         receiver.flash = 0.1;
       }
     }
@@ -212,7 +212,7 @@ const AttackingBody=Base=>class extends Base{
         u.growth = u.meals;
       }
     }
-    get armyHealth(){return this.units.reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(stats(u.tier).hp,u.hp)),max:sum.max+stats(u.tier).hp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0})}
+    get armyHealth(){return this.units.reduce((sum,u)=>{const maxHp=stats(u.tier,u.species).maxHp;return {current:sum.current+Math.max(0,Math.min(maxHp,u.hp)),max:sum.max+maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}},{current:0,max:0,living:0,total:0})}
     get capacity(){return Math.min(CONFIG.maxFarmCap,CONFIG.cap+7*(this.progress?.levels?.capacity||0))}
     raidRoster(ownerId){return this.raidRosters.find(r=>r.ownerId===ownerId)||null}
     setRaidPlayers(players){
@@ -296,7 +296,7 @@ const AttackingBody=Base=>class extends Base{
       this.projectiles=[];this.scene=scene;this.running=scene==='raid';this.encounter={outcome:this.running?'fighting':'idle',elapsed:0};this.boss=this.createBoss();
       for(let i=0;i<this.units.length;i++){
         const u=this.units[i];if(scene==='raid'){u.home={x:u.x,y:u.y};u.farmId=u.id;u.ownerId='solo';u.id=1000000+u.farmId;u.dropLanded=true;const angle=i*2.3999632297,rad=10.5+(i%3)*.9;Object.assign(u,{x:Math.cos(angle)*rad,y:Math.sin(angle)*rad*.84})}else{u.id=u.farmId||u.id;u.ownerId='';u.farmId=0;u.dropLanded=true;Object.assign(u,u.home)}
-        u.ability=new AttackCycle(u);Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier).hp});
+        u.ability=new AttackCycle(u);Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier,u.species).maxHp});
       }
       if(this.running){this.boss.phase='chase';this.raidExpectedPlayers=['solo'];this.raidRosters=[{ownerId:'solo',troops:this.units.map(u=>({farmId:u.farmId,species:u.species,tier:u.tier,deployed:true})),buffUntil:0,buffReadyAt:0}];this.raidDeploymentStarted=true}else{this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false}
     }
@@ -352,6 +352,8 @@ const AttackingBody=Base=>class extends Base{
       const units = [...this.units];
       for (const u of units) {
         u.age += dt;
+        const unitStats=stats(u.tier,u.species);
+        if(u.hp>0&&unitStats.regen>0)applyHealing(u,unitStats.regen*dt,unitStats);
 
         u.cooldown = Math.max(0, u.cooldown - dt);
 
@@ -417,8 +419,8 @@ const AttackingBody=Base=>class extends Base{
           }
         }
       }
-      if (target) this.steer(u, target.x, target.y, dt, 2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1));
-      else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, 0.75);
+      if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1),u));
+      else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75,u));
     }
     combat(kind,detail){const event=this.notice(kind,{time:this.time,...detail}),toPresentationTime=presentationClocks.get(this);if(toPresentationTime)presentationEventTimes.set(event,toPresentationTime(this.time))}
     boundBody(body,scene,margin){
@@ -433,19 +435,20 @@ const AttackingBody=Base=>class extends Base{
     }
     combatEvent(kind,u,action){
       this.combatLog.push({kind,id:action?.id??0,unit:u.id,species:u.species,time:this.time,x:u.x,y:u.y,z:u.z});if(this.combatLog.length>240)this.combatLog.shift();
-      if(kind==="launch")this.combat("attack-launch",{species:u.species,unit:u.id,x:u.x,y:u.y,z:u.z,attackKind:ATTACK_TYPES[u.species].kind});
+      if(kind==="launch")this.combat("attack-launch",{species:u.species,unit:u.id,x:u.x,y:u.y,z:u.z,attackKind:abilityProfile(u.species).kind});
     }
-    damageBoss(u,action,point){
+    damageBoss(u,action,point,{lifestealSource=u}={}){
       if(action.hit||this.boss.hp<=0)return false;action.hit=true;
-      const spec=ATTACK_TYPES[u.species],roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
+      const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
       const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
       const hpRatio=Number.isFinite(hpBefore)&&Number.isFinite(maxHp)&&maxHp>0?clamp(hpBefore/maxHp,0,1):1;
       const armor=(1-hpRatio)*100;
-      const rawDamage=stats(u.tier).atk*spec.damage*(buffed?CONFIG.raid.buffDamage:1);
-      const receivedDamage=rawDamage*100/(100+armor);
-      this.boss.hp=Math.max(0,hpBefore-receivedDamage);this.boss.flash=.13;
+      const attackerStats=stats(u.tier,u.species);
+      const rawDamage=attackerStats.attackPower*spec.skillMultiplier*(buffed?CONFIG.raid.buffDamage:1);
+      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,armorForTarget:()=>armor,roll:()=>this.random()});
+      this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
-      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackKind:spec.kind,buffed,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:spec.damage*(buffed?CONFIG.raid.buffDamage:1)});
+      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackKind:spec.kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:spec.skillMultiplier*(buffed?CONFIG.raid.buffDamage:1)*(damage.critical?attackerStats.critMultiplier:1)});
       this.combatEvent('damage',u,action);this.progress.record('hit');return true;
     }
 
@@ -453,7 +456,7 @@ const AttackingBody=Base=>class extends Base{
       for(const p of this.projectiles){
         const old={x:p.x,y:p.y,z:p.z};p.elapsed+=dt;Object.assign(p,Ballistics.sample(p.path,p.elapsed/p.path.duration));
         const hit=ArenaGeometry.sweep(old,p,p.radius,p.height,this.boss);
-        if(hit){Object.assign(p,{x:hit.x,y:hit.y,z:hit.z});this.damageBoss({id:p.owner,species:p.species,tier:p.tier,x:p.x,y:p.y,z:p.z},p,hit)}
+        if(hit){Object.assign(p,{x:hit.x,y:hit.y,z:hit.z});const lifestealSource=this.units.find(u=>u.id===p.owner),impactUnit={id:p.owner,species:p.species,tier:p.tier,x:p.x,y:p.y,z:p.z};this.damageBoss(impactUnit,p,hit,{lifestealSource:lifestealSource||impactUnit})}
         else if(p.elapsed>=p.path.duration){p.z=0;this.emit('shell-land',p.x,p.y)}
       }
       this.projectiles=this.projectiles.filter(p=>!p.hit&&p.elapsed<p.path.duration);this.boss.flash=Math.max(0,(this.boss.flash||0)-dt);
@@ -463,13 +466,13 @@ const AttackingBody=Base=>class extends Base{
       if(!u.dropLanded)return;
       if(u.hp<=0){u.down=1;u.ability.interrupt();return}
       if(u.ability.update(this,dt)||u.stun>0||u.z>.1)return;
-      const b=this.boss,spec=ATTACK_TYPES[u.species],dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;
+      const b=this.boss,spec=abilityProfile(u.species),dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;
       // Hold the current firing bearing. Ranged troops retreat from a boss that closes in;
       // they never follow a rotating slot through its body to reach the opposite side.
-      const stand=b.radius+spec.stand+(u.tier-1)*.12,min=stand-.55,max=stand+.55;
+      const stand=b.radius+spec.range+(u.tier-1)*.12,min=stand-.55,max=stand+.55;
       if(n>max||(spec.kind==='lob'&&n<min)){
         const slot=ArenaGeometry.clamp({x:b.x+dx/n*stand,y:b.y+dy/n*stand},'raid',u.radius);
-        this.steer(u,slot.x,slot.y,dt,4.1);return;
+        this.steer(u,slot.x,slot.y,dt,scaleMoveSpeed(4.1,u));return;
       }
       u.vx=u.vy=0;
       const target=spec.kind==='lob'?{x:b.x,y:b.y}:{x:b.x+dx/n*(b.radius+u.radius-.16),y:b.y+dy/n*(b.radius+u.radius-.16)};
@@ -491,7 +494,7 @@ const AttackingBody=Base=>class extends Base{
     }
     hitBossUnit(u,kind,p){
       const b=this.boss,heavy=kind==='sweep';if(u.hp<=0||!u.dropLanded||b.hit.has(u.id))return false;
-      b.hit.add(u.id);const dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;u.knock(dx/n,dy/n,heavy?13:8.5,heavy?10.2:7.2);u.hp=Math.max(0,u.hp-(heavy?10:8));if(u.hp===0)u.down=1;
+      b.hit.add(u.id);const dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1;u.knock(dx/n,dy/n,heavy?13:8.5,heavy?10.2:7.2,b);applyDamageToTargets(null,[u],{rawDamage:heavy?10:8,sourceKind:'enemy'});if(u.hp===0)u.down=1;
       this.metrics.directHits++;this.metrics[heavy?'sweepHits':'basicHits']++;
       this.combat('unit-hit',{attackKind:kind,attackId:b.attackId,unit:u.id,x:p.x,y:p.y,z:Math.max(.15,u.z+.25),nx:dx/n,ny:dy/n,strength:heavy?1.8:1});return true;
     }

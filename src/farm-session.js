@@ -1,4 +1,5 @@
 import {Garden,CONFIG,bindPresentationClock} from './farm-model.js';
+import {resolveUnitStats} from './unit-stats.js';
 import {snapshot,restore} from './farm-state.js';
 import {PRODUCT_VERSION} from './version.js';
 
@@ -17,7 +18,7 @@ class UnitRender extends RenderObject {
  constructor(u,world){
   super();Object.assign(this,{x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
    ability:{phase:u.ability.phase,elapsed:u.ability.elapsed},species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
-   maxHp:40*1.5**(u.tier-1),fed:u.fed,ownerId:u.ownerId,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0)});
+   maxHp:resolveUnitStats(u).maxHp,fed:u.fed,ownerId:u.ownerId,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0)});
  }
 }
 

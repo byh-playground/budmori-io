@@ -14,6 +14,142 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // src/unit-stats.js
+  function resolveUnitStats(unit, overrides = {}) {
+    const tier = Math.max(1, Math.min(4, Number.isInteger(unit?.tier) ? unit.tier : 1));
+    const speciesProfile = COMMON_UNIT_STAT_PROFILES[unit?.species] || COMMON_UNIT_STAT_DEFAULTS;
+    return {
+      maxHp: TIER_HP * TIER_HP_SCALE ** (tier - 1),
+      attackPower: TIER_ATTACK * TIER_ATTACK_SCALE ** (tier - 1),
+      ...COMMON_UNIT_STAT_DEFAULTS,
+      ...speciesProfile,
+      ...overrides
+    };
+  }
+  function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = 1) {
+    const raw = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
+    const penetration = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
+    const effectiveArmor = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - penetration);
+    const crit = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
+    const mitigated = raw * crit * ARMOR_SCALE / (ARMOR_SCALE + effectiveArmor);
+    return { rawDamage: raw, effectiveArmor, critical, damage: mitigated };
+  }
+  function resolveCritical(stats2, roll = 1) {
+    const chance = clamp(Number.isFinite(stats2?.critChance) ? stats2.critChance : 0, 0, 1);
+    return chance > 0 && roll < chance;
+  }
+  function scaleMoveSpeed(baseSpeed, unit, overrides = {}) {
+    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, resolveUnitStats(unit, overrides).moveSpeed);
+  }
+  function scaleAttackRecovery(baseRecovery, unit, overrides = {}) {
+    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, resolveUnitStats(unit, overrides).attackSpeed);
+  }
+  function scaleAttackArea(baseArea, unit, overrides = {}) {
+    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, resolveUnitStats(unit, overrides).attackArea);
+  }
+  function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0, critical = false, critMultiplier = 1 } = {}) {
+    if (!target || !Number.isFinite(target.hp)) return { actualLoss: 0, ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier) };
+    const resolved = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
+    const actualLoss = Math.min(Math.max(0, target.hp), resolved.damage);
+    target.hp = Math.max(0, target.hp - actualLoss);
+    return { ...resolved, actualLoss };
+  }
+  function applyHealing(target, amount, receiverStats = resolveUnitStats(target)) {
+    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) return 0;
+    const maxHp = Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
+    const received = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
+    const requested = Number.isFinite(amount) ? Math.max(0, amount) * received : 0;
+    const healed = Math.min(Math.max(0, maxHp - target.hp), requested);
+    target.hp += healed;
+    return healed;
+  }
+  function applyDamageToTargets(source, targets, {
+    rawDamage,
+    area = false,
+    sourceKind = "direct",
+    sourceStatOverrides = {},
+    armorForTarget = (target) => resolveUnitStats(target).armor,
+    roll = () => 1
+  } = {}) {
+    const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : null;
+    const critical = !!sourceStats && sourceStats.critChance > 0 && resolveCritical(sourceStats, roll());
+    const hits = [];
+    let totalActualLoss = 0;
+    for (const target of targets || []) {
+      const result = applyDamage(target, rawDamage, {
+        armor: armorForTarget(target),
+        armorPenetration: sourceStats?.armorPenetration || 0,
+        critical,
+        critMultiplier: sourceStats?.critMultiplier || 1
+      });
+      hits.push(result);
+      totalActualLoss += result.actualLoss;
+    }
+    const baseRate = sourceKind === "direct" ? sourceStats?.lifesteal || 0 : 0;
+    const healRate = area ? baseRate / 3 : baseRate;
+    const healed = source && healRate > 0 ? applyHealing(source, totalActualLoss * healRate, sourceStats) : 0;
+    return { hits, totalActualLoss, healed, critical };
+  }
+  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides = {}, targetStatOverrides = {} } = {}) {
+    const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const targetStats = target ? resolveUnitStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const durationScale = Number.isFinite(sourceStats.statusDuration) ? Math.max(0, sourceStats.statusDuration) : 1;
+    const resistance = clamp(Number.isFinite(targetStats.statusResistance) ? targetStats.statusResistance : 0, 0, 1);
+    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * durationScale * (1 - resistance);
+  }
+  function resolveKnockback(basePower, source, target, { sourceStatOverrides = {}, targetStatOverrides = {} } = {}) {
+    const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const targetStats = target ? resolveUnitStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const power = Number.isFinite(sourceStats.knockbackPower) ? Math.max(0, sourceStats.knockbackPower) : 1;
+    const resistance = clamp(Number.isFinite(targetStats.knockbackResistance) ? targetStats.knockbackResistance : 0, 0, 1);
+    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * power * (1 - resistance);
+  }
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES;
+  var init_unit_stats = __esm({
+    "src/unit-stats.js"() {
+      TIER_HP = 40;
+      TIER_HP_SCALE = 1.5;
+      TIER_ATTACK = 4;
+      TIER_ATTACK_SCALE = 1.2;
+      ARMOR_SCALE = 100;
+      COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
+        armor: 0,
+        moveSpeed: 1,
+        attackSpeed: 1,
+        critChance: 0,
+        critMultiplier: 1,
+        armorPenetration: 0,
+        attackArea: 1,
+        lifesteal: 0,
+        regen: 0,
+        healingReceivedMultiplier: 1,
+        knockbackPower: 1,
+        knockbackResistance: 0,
+        statusDuration: 1,
+        statusResistance: 0
+      });
+      COMMON_UNIT_STAT_PROFILES = Object.freeze([0, 1, 2].map(() => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
+    }
+  });
+
+  // src/unit-abilities.js
+  function abilityProfile(species) {
+    return UNIT_ABILITY_PROFILES[species] || UNIT_ABILITY_PROFILES[0];
+  }
+  var UNIT_ABILITY_PROFILES;
+  var init_unit_abilities = __esm({
+    "src/unit-abilities.js"() {
+      UNIT_ABILITY_PROFILES = Object.freeze([
+        Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        Object.freeze({ kind: "lob", windup: 0.38, recovery: 1.25, range: 4.1, skillMultiplier: 1.6, projectileCount: 1, bounces: 0 }),
+        Object.freeze({ kind: "leap", windup: 0.32, recovery: 0.9, range: 2.5, skillMultiplier: 1.3, projectileCount: 0, bounces: 0 })
+      ]);
+    }
+  });
+
   // src/farm-model.js
   function presentationEventTimeMs(event) {
     return presentationEventTimes.get(event) ?? (Number.isFinite(event?.time) ? event.time * 1e3 : 0);
@@ -26,7 +162,7 @@
     const c = CONFIG.raid, phase = boss.phase, heavy = phase === "sweep-windup" || phase === "sweep", wind = phase === "sweep-windup" || phase === "strike-windup";
     if (!heavy && phase !== "strike-windup" && phase !== "strike") return null;
     const width = c.weaponRadius + Math.max(0, unitRadius), duration = heavy ? wind ? c.sweepWindup : c.sweepDuration : wind ? c.basicWindup : c.basicDuration;
-    return heavy ? { kind: "sweep", x: boss.x, y: boss.y, width, sweepRadius: c.sweepReach, outerRadius: c.sweepReach + width, startAngle: (boss.startAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2), progress: clamp(boss.clock / duration, 0, 1), active: phase === "sweep" } : { kind: "basic", x: boss.x, y: boss.y, width, startRadius: Math.max(0, boss.radius - 0.25), endRadius: c.basicReach, angle: boss.angle, progress: clamp(boss.clock / duration, 0, 1), active: phase === "strike" };
+    return heavy ? { kind: "sweep", x: boss.x, y: boss.y, width, sweepRadius: c.sweepReach, outerRadius: c.sweepReach + width, startAngle: (boss.startAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2), progress: clamp2(boss.clock / duration, 0, 1), active: phase === "sweep" } : { kind: "basic", x: boss.x, y: boss.y, width, startRadius: Math.max(0, boss.radius - 0.25), endRadius: c.basicReach, angle: boss.angle, progress: clamp2(boss.clock / duration, 0, 1), active: phase === "strike" };
   }
   function contact(a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), r = a.radius + b.radius;
@@ -49,39 +185,43 @@
     const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
     if (closing > 0) {
       const impulse = closing * 0.57;
-      a.vx -= nx * impulse;
-      a.vy -= ny * impulse;
-      b.vx += nx * impulse;
-      b.vy += ny * impulse;
+      const impulseA = resolveKnockback(impulse, b, a), impulseB = resolveKnockback(impulse, a, b);
+      a.vx -= nx * impulseA;
+      a.vy -= ny * impulseA;
+      b.vx += nx * impulseB;
+      b.vy += ny * impulseB;
       if (closing > 2) {
         const receiver = Math.hypot(a.vx, a.vy) > Math.hypot(b.vx, b.vy) ? a : b;
         receiver.vz = Math.max(receiver.vz, Math.min(4, closing * 0.2));
-        receiver.stun = Math.max(receiver.stun, 0.3);
+        receiver.stun = Math.max(receiver.stun, resolveStatusDuration(0.3, receiver === a ? b : a, receiver));
         receiver.flash = 0.1;
       }
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, CONFIG, clamp, stats, Body, Knockable, TREE_NODES, FarmProgress, ATTACK_TYPES, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, CONFIG, clamp2, stats, Body, Knockable, TREE_NODES, FarmProgress, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
+      init_unit_stats();
+      init_unit_abilities();
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
       CONFIG = Object.freeze({ cap: 72, maxFarmCap: 100, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxUnitRadius: 0.47, maxTier: 4, starterSeconds: 60, matureMeals: 3, gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
-      clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-      stats = (tier) => ({ hp: 40 * 1.5 ** (tier - 1), atk: 4 * 1.2 ** (tier - 1) });
+      clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
+      stats = (tier, species) => resolveUnitStats({ tier, species });
       Body = class {
         constructor(x, y) {
           Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, angle: 0, stun: 0, flash: 0, bounce: 0 });
         }
       };
       Knockable = (Base) => class extends Base {
-        knock(nx, ny, power, lift = 0) {
-          this.vx += nx * power;
-          this.vy += ny * power;
-          this.vz = Math.max(this.vz, lift);
-          this.stun = Math.max(this.stun, 0.5);
+        knock(nx, ny, power, lift = 0, source = null) {
+          const appliedPower = resolveKnockback(power, source, this);
+          this.vx += nx * appliedPower;
+          this.vy += ny * appliedPower;
+          this.vz = Math.max(this.vz, lift * (power > 0 ? appliedPower / power : 0));
+          this.stun = Math.max(this.stun, resolveStatusDuration(0.5, source, this));
           this.flash = 0.18;
         }
         integrate(dt) {
@@ -138,11 +278,6 @@
           return 0.5 / this.rate("food");
         }
       };
-      ATTACK_TYPES = Object.freeze([
-        { kind: "ram", windup: 0.28, recover: 0.65, stand: 1.45, damage: 1 },
-        { kind: "lob", windup: 0.38, recover: 1.25, stand: 4.1, damage: 1.6 },
-        { kind: "leap", windup: 0.32, recover: 0.9, stand: 2.5, damage: 1.3 }
-      ]);
       ArenaGeometry = {
         bounds(scene = "raid", margin = 0) {
           return scene === "raid" ? { x: CONFIG.raid.radiusX - margin, y: CONFIG.raid.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
@@ -181,7 +316,7 @@
             hi = Math.min(hi, y);
           }
           if (lo > hi || hi < 0 || lo > 1) return null;
-          const t = clamp(lo, 0, 1);
+          const t = clamp2(lo, 0, 1);
           return { x: a.x + dx * t, y: a.y + dy * t, z: a.z + dz * t, t };
         }
       };
@@ -191,7 +326,7 @@
           return { from: { x: from.x, y: from.y, z: kind === "lob" ? 0.45 : 0 }, to: { ...to }, height: kind === "ram" ? 0 : kind === "lob" ? 2 : 2.7, duration: kind === "ram" ? Math.max(0.12, distance / 10) : 0.65 + distance * 0.055 };
         },
         sample(path, q) {
-          q = clamp(q, 0, 1);
+          q = clamp2(q, 0, 1);
           return { x: path.from.x + (path.to.x - path.from.x) * q, y: path.from.y + (path.to.y - path.from.y) * q, z: path.from.z * (1 - q) + 4 * path.height * q * (1 - q) };
         }
       };
@@ -203,7 +338,7 @@
           this.action = null;
         }
         get spec() {
-          return ATTACK_TYPES[this.owner.species];
+          return abilityProfile(this.owner.species);
         }
         begin(sim, target) {
           const u = this.owner;
@@ -251,11 +386,11 @@
               a.path = Ballistics.create(u, a.target, this.spec.kind);
               sim.combatEvent("launch", u, a);
               if (this.spec.kind === "lob") {
-                sim.projectiles.push({ id: a.id, owner: u.id, species: u.species, tier: u.tier, path: a.path, elapsed: 0, x: u.x, y: u.y, z: 0.45, radius: 0.12, height: 0.24, hit: false });
+                sim.projectiles.push({ id: a.id, owner: u.id, species: u.species, tier: u.tier, path: a.path, elapsed: 0, x: u.x, y: u.y, z: 0.45, radius: scaleAttackArea(0.12, u), height: 0.24, hit: false });
                 this.recover(sim, true);
               }
             }
-          } else if (this.phase === "recover" && this.elapsed >= this.spec.recover) {
+          } else if (this.phase === "recover" && this.elapsed >= scaleAttackRecovery(this.spec.recovery, u)) {
             this.phase = "idle";
             this.action = null;
             this.elapsed = 0;
@@ -279,7 +414,8 @@
         afterMove(sim, old) {
           const a = this.action, u = this.owner;
           if (this.phase !== "active" || !a?.path) return;
-          const hit = !a.hit && ArenaGeometry.sweep(old, u, u.radius, 0.65, sim.boss);
+          const areaRadius = scaleAttackArea(u.radius, u);
+          const hit = !a.hit && ArenaGeometry.sweep(old, u, areaRadius, 0.65, sim.boss);
           if (hit) {
             sim.damageBoss(u, a, hit);
             if (this.spec.kind === "ram") {
@@ -297,7 +433,7 @@
             if (this.spec.kind === "leap") {
               u.bounce = 0.2;
               sim.combatEvent("land-attack", u, a);
-              if (!a.hit && ArenaGeometry.overlaps({ x: u.x, y: u.y, z: 0, radius: u.radius + 0.35, height: 0.65 }, sim.boss)) sim.damageBoss(u, a, u);
+              if (!a.hit && ArenaGeometry.overlaps({ x: u.x, y: u.y, z: 0, radius: scaleAttackArea(u.radius + 0.35, u), height: 0.65 }, sim.boss)) sim.damageBoss(u, a, u);
             }
             this.recover(sim, true);
           }
@@ -319,7 +455,7 @@
       Unit = class extends AttackingBody(Knockable(Body)) {
         constructor(id, species, tier, x, y) {
           super(x, y);
-          Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier).hp, down: 0, seed: id * 2.39996, ownerId: "", farmId: 0, dropLanded: true });
+          Object.assign(this, { id, species, tier, meals: 0, growth: 0, age: 0, cooldown: 0, home: { x, y }, hp: stats(tier, species).maxHp, down: 0, seed: id * 2.39996, ownerId: "", farmId: 0, dropLanded: true });
         }
         get radius() {
           return (0.25 + 0.055 * this.tier) * (this.mature ? 1 : 0.8);
@@ -389,7 +525,10 @@
           }
         }
         get armyHealth() {
-          return this.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(stats(u.tier).hp, u.hp)), max: sum.max + stats(u.tier).hp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
+          return this.units.reduce((sum, u) => {
+            const maxHp = stats(u.tier, u.species).maxHp;
+            return { current: sum.current + Math.max(0, Math.min(maxHp, u.hp)), max: sum.max + maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 };
+          }, { current: 0, max: 0, living: 0, total: 0 });
         }
         get capacity() {
           return Math.min(CONFIG.maxFarmCap, CONFIG.cap + 7 * (this.progress?.levels?.capacity || 0));
@@ -472,7 +611,7 @@
         }
         spawn(species, tier, x, y) {
           if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.maxRaidUnits)) return null;
-          const u = new Unit(this.nextId++, species, clamp(tier, 1, CONFIG.maxTier), x, y);
+          const u = new Unit(this.nextId++, species, clamp2(tier, 1, CONFIG.maxTier), x, y);
           this.units.push(u);
           return u;
         }
@@ -514,7 +653,7 @@
         }
         scatter(x, y, count = 1) {
           for (let i = 0; i < count && this.food.length < 140; i++) {
-            let tx = clamp(x, -8, 8), ty = clamp(y, -5.7, 5.7);
+            let tx = clamp2(x, -8, 8), ty = clamp2(y, -5.7, 5.7);
             const boundary = Math.hypot(tx / 8, ty / 5.7);
             if (boundary > 1) {
               tx /= boundary;
@@ -554,7 +693,7 @@
               Object.assign(u, u.home);
             }
             u.ability = new AttackCycle(u);
-            Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier).hp });
+            Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier, u.species).maxHp });
           }
           if (this.running) {
             this.boss.phase = "chase";
@@ -630,6 +769,8 @@
           const units = [...this.units];
           for (const u of units) {
             u.age += dt;
+            const unitStats = stats(u.tier, u.species);
+            if (u.hp > 0 && unitStats.regen > 0) applyHealing(u, unitStats.regen * dt, unitStats);
             u.cooldown = Math.max(0, u.cooldown - dt);
             if (this.scene === "farm") this.farmUnit(u, dt);
             else if (this.running && u.dropLanded) this.raidUnit(u, dt);
@@ -717,8 +858,8 @@
               }
             }
           }
-          if (target) this.steer(u, target.x, target.y, dt, 2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1));
-          else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, 0.75);
+          if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1), u));
+          else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75, u));
         }
         combat(kind, detail) {
           const event = this.notice(kind, { time: this.time, ...detail }), toPresentationTime = presentationClocks.get(this);
@@ -754,21 +895,21 @@
         combatEvent(kind, u, action) {
           this.combatLog.push({ kind, id: action?.id ?? 0, unit: u.id, species: u.species, time: this.time, x: u.x, y: u.y, z: u.z });
           if (this.combatLog.length > 240) this.combatLog.shift();
-          if (kind === "launch") this.combat("attack-launch", { species: u.species, unit: u.id, x: u.x, y: u.y, z: u.z, attackKind: ATTACK_TYPES[u.species].kind });
+          if (kind === "launch") this.combat("attack-launch", { species: u.species, unit: u.id, x: u.x, y: u.y, z: u.z, attackKind: abilityProfile(u.species).kind });
         }
-        damageBoss(u, action, point) {
+        damageBoss(u, action, point, { lifestealSource = u } = {}) {
           if (action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
-          const spec = ATTACK_TYPES[u.species], roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
+          const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
           const hpBefore = this.boss.hp, maxHp = this.boss.maxHp;
-          const hpRatio = Number.isFinite(hpBefore) && Number.isFinite(maxHp) && maxHp > 0 ? clamp(hpBefore / maxHp, 0, 1) : 1;
+          const hpRatio = Number.isFinite(hpBefore) && Number.isFinite(maxHp) && maxHp > 0 ? clamp2(hpBefore / maxHp, 0, 1) : 1;
           const armor = (1 - hpRatio) * 100;
-          const rawDamage = stats(u.tier).atk * spec.damage * (buffed ? CONFIG.raid.buffDamage : 1);
-          const receivedDamage = rawDamage * 100 / (100 + armor);
-          this.boss.hp = Math.max(0, hpBefore - receivedDamage);
+          const attackerStats = stats(u.tier, u.species);
+          const rawDamage = attackerStats.attackPower * spec.skillMultiplier * (buffed ? CONFIG.raid.buffDamage : 1);
+          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, armorForTarget: () => armor, roll: () => this.random() });
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackKind: spec.kind, buffed, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: spec.damage * (buffed ? CONFIG.raid.buffDamage : 1) });
+          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackKind: spec.kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp2(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: spec.skillMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * (damage.critical ? attackerStats.critMultiplier : 1) });
           this.combatEvent("damage", u, action);
           this.progress.record("hit");
           return true;
@@ -781,7 +922,8 @@
             const hit = ArenaGeometry.sweep(old, p, p.radius, p.height, this.boss);
             if (hit) {
               Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
-              this.damageBoss({ id: p.owner, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z }, p, hit);
+              const lifestealSource = this.units.find((u) => u.id === p.owner), impactUnit = { id: p.owner, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
+              this.damageBoss(impactUnit, p, hit, { lifestealSource: lifestealSource || impactUnit });
             } else if (p.elapsed >= p.path.duration) {
               p.z = 0;
               this.emit("shell-land", p.x, p.y);
@@ -798,11 +940,11 @@
             return;
           }
           if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1) return;
-          const b = this.boss, spec = ATTACK_TYPES[u.species], dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
-          const stand = b.radius + spec.stand + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + 0.55;
+          const b = this.boss, spec = abilityProfile(u.species), dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
+          const stand = b.radius + spec.range + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + 0.55;
           if (n > max || spec.kind === "lob" && n < min) {
             const slot = ArenaGeometry.clamp({ x: b.x + dx / n * stand, y: b.y + dy / n * stand }, "raid", u.radius);
-            this.steer(u, slot.x, slot.y, dt, 4.1);
+            this.steer(u, slot.x, slot.y, dt, scaleMoveSpeed(4.1, u));
             return;
           }
           u.vx = u.vy = 0;
@@ -827,7 +969,7 @@
             const a = b.startAngle + Math.PI * 2 * q;
             return { x: b.x + Math.cos(a) * c.sweepReach, y: b.y + Math.sin(a) * c.sweepReach, z: 0.2 };
           }
-          const reach = b.radius - 0.25 + (c.basicReach - b.radius + 0.25) * Math.sin(Math.PI * clamp(q, 0, 1));
+          const reach = b.radius - 0.25 + (c.basicReach - b.radius + 0.25) * Math.sin(Math.PI * clamp2(q, 0, 1));
           return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: 0.2 };
         }
         beginBossAttack(kind, target) {
@@ -845,8 +987,8 @@
           if (u.hp <= 0 || !u.dropLanded || b.hit.has(u.id)) return false;
           b.hit.add(u.id);
           const dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
-          u.knock(dx / n, dy / n, heavy ? 13 : 8.5, heavy ? 10.2 : 7.2);
-          u.hp = Math.max(0, u.hp - (heavy ? 10 : 8));
+          u.knock(dx / n, dy / n, heavy ? 13 : 8.5, heavy ? 10.2 : 7.2, b);
+          applyDamageToTargets(null, [u], { rawDamage: heavy ? 10 : 8, sourceKind: "enemy" });
           if (u.hp === 0) u.down = 1;
           this.metrics.directHits++;
           this.metrics[heavy ? "sweepHits" : "basicHits"]++;
@@ -979,7 +1121,7 @@
       for (const u of raw.units) {
         u.x = u.home?.x ?? u.x;
         u.y = u.home?.y ?? u.y;
-        Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: 40 * 1.5 ** (u.tier - 1), dropLanded: true });
+        Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: resolveUnitStats(u).maxHp, dropLanded: true });
         u.ability = { phase: "idle", elapsed: 0, action: null };
       }
     }
@@ -1095,6 +1237,7 @@
   var init_farm_state = __esm({
     "src/farm-state.js"() {
       init_farm_model();
+      init_unit_stats();
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
     }
   });
@@ -1214,7 +1357,7 @@
   var { createVectorAsset } = globalThis.BloomGamekitVectorAssets;
   function unitMotion(u, sim) {
     const dead = u.hp <= 0 || u.down > 0, airborne = !u.dropLanded || u.z > 0.1, phase = u.ability?.phase || "idle";
-    const moving = Math.hypot(u.vx || 0, u.vy || 0) > 0.18, kind = ATTACK_TYPES[u.species]?.kind;
+    const moving = Math.hypot(u.vx || 0, u.vy || 0) > 0.18, kind = UNIT_ABILITY_PROFILES[u.species]?.kind;
     if (dead) return "death";
     if (sim.scene === "raid" && sim.encounter?.outcome === "victory") return "victory";
     if (airborne) return "airborne";
@@ -1227,9 +1370,9 @@
   }
   function motionElapsedMs(u, name, clip) {
     if (name === "idle" || name === "walk" || name === "airborne") return (u.seed || 0) * 80 % clip.durationMs;
-    if (name === "windup" || name === "fire" || name === "recover") return clamp((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
-    if (name === "hit") return clip.durationMs * (1 - clamp((u.stun || 0) / 0.5, 0, 1));
-    if (name === "landing") return clip.durationMs * (1 - clamp((u.bounce || 0) / 0.22, 0, 1));
+    if (name === "windup" || name === "fire" || name === "recover") return clamp2((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
+    if (name === "hit") return clip.durationMs * (1 - clamp2((u.stun || 0) / 0.5, 0, 1));
+    if (name === "landing") return clip.durationMs * (1 - clamp2((u.bounce || 0) / 0.22, 0, 1));
     if (name === "victory") return Math.abs(u.seed || 0) * 97.531 % clip.durationMs;
     return clip.durationMs;
   }
@@ -1340,7 +1483,7 @@
     }
     attackEffects(world) {
       for (const u of world.units) {
-        const a = u.ability, s = ATTACK_TYPES[u.species];
+        const a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
         if (u.buffed && u.hp > 0) this.ring(u.x, u.y, u.radius + 0.16, "#eacb72", 0.055);
         if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.1, ATTACK_ACCENTS[u.species], 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
       }
@@ -1450,7 +1593,7 @@
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
       for (const u of sim2.units) {
-        const a = clamp(0.22 / (1 + u.z * 0.3), 0.045, 0.22), shadow = u.size * 0.66 / (1 + u.z * 0.65);
+        const a = clamp2(0.22 / (1 + u.z * 0.3), 0.045, 0.22), shadow = u.size * 0.66 / (1 + u.z * 0.65);
         this.groundEllipse(u.x, u.y, shadow, shadow * 0.62, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
@@ -1566,6 +1709,7 @@
 
   // src/farm-session.js
   init_farm_model();
+  init_unit_stats();
   init_farm_state();
   init_version();
   var { binaryCodec: codec } = globalThis.BloomGamekitDeterministic;
@@ -1619,7 +1763,7 @@
         seed: u.seed,
         size: u.size,
         radius: u.radius,
-        maxHp: 40 * 1.5 ** (u.tier - 1),
+        maxHp: resolveUnitStats(u).maxHp,
         fed: u.fed,
         ownerId: u.ownerId,
         farmId: u.farmId,
@@ -2705,5 +2849,5 @@
     return frameRate();
   }, get presentationDiagnostics() {
     return active.latestPresentationDiagnostics;
-  }, renderer, storage, foodFeel, combatFeel, CONFIG, ATTACK_TYPES, Ballistics, ArenaGeometry, version: PRODUCT_VERSION };
+  }, renderer, storage, foodFeel, combatFeel, CONFIG, ATTACK_TYPES: UNIT_ABILITY_PROFILES, Ballistics, ArenaGeometry, version: PRODUCT_VERSION };
 })();

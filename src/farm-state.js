@@ -1,4 +1,5 @@
 import {Garden,Unit,AttackCycle,FarmProgress,CONFIG,TREE_NODES} from './farm-model.js';
+import {resolveUnitStats} from './unit-stats.js';
 // A value snapshot contains all authoritative state; class owners are rehydrated once.
 export function snapshot(g){return JSON.parse(JSON.stringify(g,function(key,value){return key==='owner'&&this instanceof AttackCycle?undefined:value instanceof Set?[...value]:value}))}
 function normalize(raw,migrateLegacyRaid=false){
@@ -6,7 +7,7 @@ function normalize(raw,migrateLegacyRaid=false){
  fill(raw,base);raw.progress.levels.capacity=Number.isInteger(raw.progress.levels.capacity)?raw.progress.levels.capacity:0;
  for(const r of raw.raidRosters||[])if(!Object.hasOwn(r,'lastDeploySequence'))r.lastDeploySequence=Array.isArray(r.troops)?r.troops.filter(t=>t?.deployed).length:0;
  for(const u of raw.units){if(!Object.hasOwn(u,'ownerId'))u.ownerId='';if(!Object.hasOwn(u,'farmId'))u.farmId=0;if(!Object.hasOwn(u,'dropLanded'))u.dropLanded=true}
- if(migrateLegacyRaid&&raw.scene==='raid'){raw.scene='farm';raw.running=false;raw.encounter={outcome:'idle',elapsed:0};raw.raidExpectedPlayers=['solo'];raw.raidRosters=[];raw.raidDeploymentStarted=false;raw.projectiles=[];raw.boss=base.boss;for(const u of raw.units){u.x=u.home?.x??u.x;u.y=u.home?.y??u.y;Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:40*1.5**(u.tier-1),dropLanded:true});u.ability={phase:'idle',elapsed:0,action:null}}}
+ if(migrateLegacyRaid&&raw.scene==='raid'){raw.scene='farm';raw.running=false;raw.encounter={outcome:'idle',elapsed:0};raw.raidExpectedPlayers=['solo'];raw.raidRosters=[];raw.raidDeploymentStarted=false;raw.projectiles=[];raw.boss=base.boss;for(const u of raw.units){u.x=u.home?.x??u.x;u.y=u.home?.y??u.y;Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:resolveUnitStats(u).maxHp,dropLanded:true});u.ability={phase:'idle',elapsed:0,action:null}}}
  return raw;
 }
 const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;

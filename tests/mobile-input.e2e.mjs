@@ -10,7 +10,7 @@ const server=createServer(async(q,r)=>{const url=new URL(q.url,'http://localhost
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const report={suite:'mobile-input',errors:[],status:'running'};let browser;
 try{
-  browser=await chromium.launch({channel:'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+  browser=await chromium.launch({channel:process.env.BUDMORI_BROWSER_CHANNEL||'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:3,isMobile:true,hasTouch:true});
   await context.addInitScript(()=>{
     window.__deploymentIntervals=[];let nextFakeInterval=-1;const originalSet=window.setInterval,originalClear=window.clearInterval;
