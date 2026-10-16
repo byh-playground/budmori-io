@@ -131,8 +131,11 @@ try{
   }
   await page.waitForFunction(()=>document.querySelector('#abilityPoints')?.textContent.trim()==='0');
   for(const id of abilityIds){
-    assert.equal(await page.locator(`[data-ability-node="${id}:root"]`).getAttribute('aria-disabled'),'true',`${id} root reports purchased in Farm UI`);
-    assert.equal(await page.locator(`[data-ability-node="${id}:power:1"]`).getAttribute('aria-disabled'),'true',`${id} first power node reports purchased in Farm UI`);
+    await page.locator(`[data-ability-species="${speciesForAbility[id]}"]`).click();
+    const card=page.locator(`[data-ability="${id}"]`);
+    await card.waitFor();
+    assert.equal(await card.locator(`[data-ability-node="${id}:root"]`).getAttribute('aria-disabled'),'true',`${id} root reports purchased in Farm UI`);
+    assert.equal(await card.locator(`[data-ability-node="${id}:power:1"]`).getAttribute('aria-disabled'),'true',`${id} first power node reports purchased in Farm UI`);
   }
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   await page.screenshot({path:screenshot,fullPage:true,animations:'disabled'});
