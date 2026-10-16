@@ -36,7 +36,7 @@ const server=createServer(async(q,r)=>{
   if(url.pathname==='/favicon.ico'){r.writeHead(204);r.end();return}
   const file=path.resolve(root,'.'+(url.pathname==='/'?'/index.html':decodeURIComponent(url.pathname)));
   if(!file.startsWith(root)){r.writeHead(403);r.end();return}
-  try{const body=await readFile(file);r.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html;charset=utf-8':file.endsWith('.json')?'application/json':'text/javascript;charset=utf-8'});r.end(body)}catch{r.writeHead(404);r.end()}
+  try{const body=await readFile(file),type=file.endsWith('.html')?'text/html;charset=utf-8':file.endsWith('.json')?'application/json':file.endsWith('.svg')?'image/svg+xml':'text/javascript;charset=utf-8';r.writeHead(200,{'Content-Type':type});r.end(body)}catch{r.writeHead(404);r.end()}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const report={suite:'vector-assets',started:new Date().toISOString(),errors:[]};let browser;
