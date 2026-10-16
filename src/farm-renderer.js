@@ -1,5 +1,5 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
-import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress} from './farm-indicators.js';
+import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress,sevenSegmentDigitLines} from './farm-indicators.js';
 const {bosses:BOSS_VECTOR_ASSETS,troops:TROOP_VECTOR_ASSETS}=globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
@@ -125,13 +125,7 @@ function unitExpression(u,sim){
       }
     }
     drawSevenSegmentDigit(digit,x,y,size,color){
-      const segments={
-        0:'abcdef',1:'bc',2:'abged',3:'abgcd',4:'fgbc',5:'afgcd',6:'afgecd',7:'abc',8:'abcdefg',9:'abfgcd'
-      }[digit]||'';
-      const h=size*2.6,w=size*1.75,points={
-        a:[[x-w/2,y-h],[x+w/2,y-h]],b:[[x+w/2,y-h],[x+w/2,y]],c:[[x+w/2,y],[x+w/2,y+h]],d:[[x-w/2,y+h],[x+w/2,y+h]],e:[[x-w/2,y],[x-w/2,y+h]],f:[[x-w/2,y-h],[x-w/2,y]],g:[[x-w/2,y],[x+w/2,y]]
-      };
-      for(const segment of segments)if(points[segment])this.pixelLine(...points[segment],size*.7,color);
+      for(const [from,to] of sevenSegmentDigitLines(digit,x,y,size))this.pixelLine(from,to,size*.7,color);
     }
     drawSleepZ(x,y,size,color){
       const stroke=size*.32;

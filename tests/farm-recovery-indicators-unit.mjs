@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress} from '../src/farm-indicators.js';
+import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress,sevenSegmentDigitLines} from '../src/farm-indicators.js';
 globalThis.BloomGamekitDeterministic=await import('../vendor/upstream/deterministic.js');
 const {CONFIG,Garden}=await import('../src/farm-model.js');
 const {restore,snapshot}=await import('../src/farm-state.js');
@@ -58,4 +58,13 @@ assert.equal(farmSleepSeconds(sleeper,'raid'),0,'Raid does not display persisten
 assert.deepEqual(splitArcProgress(.25),{rear:[0,Math.PI/2],front:null});
 assert.deepEqual(splitArcProgress(.75),{rear:[0,Math.PI],front:[Math.PI,Math.PI*1.5]},'the ring is split into rear and front ground halves');
 assert.deepEqual(splitArcProgress(0),{rear:null,front:null});
+for(let digit=0;digit<=9;digit++){
+  const lines=sevenSegmentDigitLines(digit,24,8,3.5);
+  assert.ok(lines.length>0,`digit ${digit} has visible line segments`);
+  for(const [from,to] of lines){
+    assert.ok(Number.isFinite(from.x)&&Number.isFinite(from.y),'segment starts use finite {x,y} points for pixelLine');
+    assert.ok(Number.isFinite(to.x)&&Number.isFinite(to.y),'segment ends use finite {x,y} points for pixelLine');
+  }
+}
+assert.deepEqual(sevenSegmentDigitLines(10,24,8,3.5),[],'unknown digits do not create malformed path coordinates');
 console.log('Farm recovery indicator unit checks passed');

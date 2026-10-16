@@ -19,3 +19,19 @@ export function splitArcProgress(progress) {
     front: sweep > Math.PI ? [Math.PI, sweep] : null
   };
 }
+
+export function sevenSegmentDigitLines(digit,x,y,size) {
+  const segments={
+    0:'abcdef',1:'bc',2:'abged',3:'abgcd',4:'fgbc',5:'afgcd',6:'afgecd',7:'abc',8:'abcdefg',9:'abfgcd'
+  }[digit]||'';
+  const h=size*2.6,w=size*1.75,points={
+    a:[{x:x-w/2,y:y-h},{x:x+w/2,y:y-h}],
+    b:[{x:x+w/2,y:y-h},{x:x+w/2,y}],
+    c:[{x:x+w/2,y},{x:x+w/2,y:y+h}],
+    d:[{x:x-w/2,y:y+h},{x:x+w/2,y:y+h}],
+    e:[{x:x-w/2,y},{x:x-w/2,y:y+h}],
+    f:[{x:x-w/2,y:y-h},{x:x-w/2,y}],
+    g:[{x:x-w/2,y},{x:x+w/2,y}]
+  };
+  return Array.from(segments,segment=>points[segment]);
+}
