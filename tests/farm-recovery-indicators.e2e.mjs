@@ -37,10 +37,12 @@ try{
       unit.ability.phase='idle';unit.ability.elapsed=0;unit.ability.action=null;
     }
     Object.assign(sleeper,{x:-2,y:.12,hp:0,down:60,deathSplitHandled:true});
-    Object.assign(breeder,{x:.12,y:.26,meals:0,cooldown:3,cooldownDuration:10,ability:{...breeder.ability,phase:'recover',elapsed:.12,action:null}});
-    Object.assign(foreground,{x:.2,y:-.22,meals:1,cooldown:0,cooldownDuration:0,ability:{...foreground.ability,phase:'recover',elapsed:.2,action:null}});
+    Object.assign(breeder,{x:.12,y:.26,meals:0,cooldown:3,cooldownDuration:10});
+    Object.assign(breeder.ability,{phase:'recover',elapsed:.12,action:null});
+    Object.assign(foreground,{x:.2,y:-.22,meals:1,cooldown:0,cooldownDuration:0});
+    Object.assign(foreground.ability,{phase:'recover',elapsed:.2,action:null});
     BUDMORI.runtime.paused=true;BUDMORI.runtime.capturePresentation('reset');
-    return {sleeperId:sleeper.id,breederId:breeder.id,foregroundId:foreground.id,scene:world.scene,renderer:renderer.canvas.dataset.rendererBackend};
+    return {sleeperId:sleeper.id,breederId:breeder.id,foregroundId:foreground.id,scene:world.scene,renderer:renderer.canvas.dataset.rendererBackend,paused:BUDMORI.runtime.paused};
   });
   assert.equal(fixture.scene,'farm');assert.ok(fixture.sleeperId!==fixture.breederId);
 
@@ -73,11 +75,14 @@ try{
       const bounds=renderer.canvas.getBoundingClientRect(),d=renderer.pixelRatio,pose=calls[0]?.pose;
       const centerX=pose?bounds.left+pose.x/d:0,centerY=pose?bounds.top+(pose.y-pose.r*1.92)/d:0;
       const clip={x:Math.max(0,centerX-27),y:Math.max(0,centerY-11),width:54,height:22};
-      return {accepted,raw:{hp:unit.hp,down:unit.down,x:unit.x,y:unit.y,z:unit.z},presentation:shown&&{hp:shown.hp,down:shown.down,x:shown.x,y:shown.y,z:shown.z},scene:display.scene,displayTimeMs:display.displayTimeMs,badgeCalls:calls,clip};
+      return {accepted,paused:BUDMORI.runtime.paused,tick:BUDMORI.runtime.tick,worldTime:world.time,raw:{hp:unit.hp,down:unit.down,x:unit.x,y:unit.y,z:unit.z},presentation:shown&&{hp:shown.hp,down:shown.down,x:shown.x,y:shown.y,z:shown.z},scene:display.scene,displayTimeMs:display.displayTimeMs,badgeCalls:calls,clip};
     },{sleeperId:fixture.sleeperId,down,hp});
     const full=path.join(out,`farm-recovery-indicators-${label}.png`),badge=path.join(out,`farm-recovery-indicators-${label}-badge.png`);
-    await canvas.screenshot({path:full});
     await page.screenshot({path:badge,clip:diagnostic.clip});
+    await canvas.screenshot({path:full});
+    assert.equal(diagnostic.accepted,true,`${label} presentation snapshot is accepted`);
+    assert.equal(diagnostic.presentation?.hp,hp,`${label} presentation has expected health`);
+    assert.equal(diagnostic.presentation?.down,down,`${label} presentation has expected down timer`);
     report.screenshots.push({label,remainingSeconds:down,hp,canvas:path.basename(full),badge:path.basename(badge),clip:diagnostic.clip,diagnostic});
     return readFile(badge);
   }
