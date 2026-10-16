@@ -28,10 +28,10 @@ class BossRender extends RenderObject {
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,startAngle:R.ANGLE,
   phase:R.STATE_KEY,clock:R.LINEAR,travel:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR,species:R.STEP,
   patternId:R.STATE_KEY,patternPhase:R.STATE_KEY,patternPhaseElapsed:R.LINEAR,patternAim:R.ANGLE,patternLocked:R.STEP,patternTargetId:R.STEP,
-  patternTargetX:R.POSITION_X,patternTargetY:R.POSITION_Y,patternTargetZ:R.POSITION_Z,
-  patternStartX:R.POSITION_X,patternStartY:R.POSITION_Y,patternStartZ:R.POSITION_Z,
+  patternTargetX:R.STEP,patternTargetY:R.STEP,patternTargetZ:R.STEP,
+  patternStartX:R.STEP,patternStartY:R.STEP,patternStartZ:R.STEP,
   patternVolleyCount:R.STEP,patternReleased:R.STEP,patternTraveled:R.LINEAR,
-  summonMouthX:R.POSITION_X,summonMouthY:R.POSITION_Y,summonMouthZ:R.POSITION_Z
+  summonMouthX:R.STEP,summonMouthY:R.STEP,summonMouthZ:R.STEP
  });
  constructor(b){super();const action=b.patternRuntime?.active||null,target=action?.target||null,start=action?.start||null,mouth=b.summonMouth||{};Object.assign(this,{
   x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash,species:b.species??3,

@@ -3485,7 +3485,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.1";
+      PRODUCT_VERSION = "0.7.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4465,18 +4465,18 @@
       patternAim: R.ANGLE,
       patternLocked: R.STEP,
       patternTargetId: R.STEP,
-      patternTargetX: R.POSITION_X,
-      patternTargetY: R.POSITION_Y,
-      patternTargetZ: R.POSITION_Z,
-      patternStartX: R.POSITION_X,
-      patternStartY: R.POSITION_Y,
-      patternStartZ: R.POSITION_Z,
+      patternTargetX: R.STEP,
+      patternTargetY: R.STEP,
+      patternTargetZ: R.STEP,
+      patternStartX: R.STEP,
+      patternStartY: R.STEP,
+      patternStartZ: R.STEP,
       patternVolleyCount: R.STEP,
       patternReleased: R.STEP,
       patternTraveled: R.LINEAR,
-      summonMouthX: R.POSITION_X,
-      summonMouthY: R.POSITION_Y,
-      summonMouthZ: R.POSITION_Z
+      summonMouthX: R.STEP,
+      summonMouthY: R.STEP,
+      summonMouthZ: R.STEP
     });
     constructor(b) {
       super();
