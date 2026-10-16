@@ -40,6 +40,7 @@ export const SPECIES_ABILITY_DEFINITIONS = Object.freeze([
     rootTier: 3,
     powerValues: Object.freeze([3, 5, 7]),
     projectileAttackMultiplier: 0.5,
+    fanSpreadRadians: Math.PI / 2,
     intervalBasicCycles: 4,
     gradeThresholds: Object.freeze([3, 2, 1])
   }),

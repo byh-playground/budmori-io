@@ -14,12 +14,12 @@ class UnitRender extends RenderObject {
   vx:R.LINEAR,vy:R.LINEAR,hp:R.LINEAR,down:R.LINEAR,stun:R.LINEAR,flash:R.LINEAR,bounce:R.LINEAR,
   'ability.phase':R.STATE_KEY,'ability.elapsed':R.LINEAR,
   cooldown:R.LINEAR,cooldownDuration:R.STEP,
-  species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP,ownerId:R.STATE_KEY,farmId:R.STEP,dropLanded:R.STEP,buffed:R.STEP
+  species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP,ownerId:R.STATE_KEY,farmId:R.STEP,dropLanded:R.STEP,buffed:R.STEP,isBattleOnlySummon:R.STEP
  });
  constructor(u,world){
   super();Object.assign(this,{x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
    ability:{phase:u.ability.phase,elapsed:u.ability.elapsed},cooldown:u.cooldown,cooldownDuration:u.cooldownDuration,species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
-   maxHp:resolveUnitStats(u).maxHp,fed:u.fed,ownerId:u.ownerId,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0)});
+   maxHp:resolveUnitStats(u).maxHp,fed:u.fed,ownerId:u.ownerId,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0),isBattleOnlySummon:u.isBattleOnlySummon});
  }
 }
 
@@ -43,17 +43,22 @@ class ProjectileRender extends RenderObject {
  static renderSchema=Object.freeze({
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,elapsed:R.LINEAR,
   owner:R.STEP,species:R.STEP,tier:R.STEP,radius:R.STEP,height:R.STEP,
+  projectileKind:R.STATE_KEY,isPopcorn:R.STEP,landed:R.STEP,exploded:R.STEP,
+  fuseRemaining:R.LINEAR,explosionLife:R.LINEAR,shotIndex:R.STEP,fanIndex:R.STEP,
+  'popcornConfig.radius':R.STEP,
   'path.from.x':R.STEP,'path.from.y':R.STEP,'path.from.z':R.STEP,
   'path.to.x':R.STEP,'path.to.y':R.STEP,'path.to.z':R.STEP,
   'path.height':R.STEP,'path.duration':R.STEP
  });
  constructor(p){super();Object.assign(this,{x:p.x,y:p.y,z:p.z,elapsed:p.elapsed,owner:p.owner,species:p.species,tier:p.tier,radius:p.radius,height:p.height,
+  projectileKind:p.projectileKind||'',isPopcorn:!!p.isPopcorn,landed:!!p.landed,exploded:!!p.exploded,fuseRemaining:p.fuseRemaining||0,
+  explosionLife:p.explosionLife||0,shotIndex:p.shotIndex||0,fanIndex:p.fanIndex||0,popcornConfig:{radius:p.popcornConfig?.radius||0},
   path:{from:{...p.path.from},to:{...p.path.to},height:p.path.height,duration:p.path.duration}})}
 }
 
 class EffectRender extends RenderObject {
- static renderSchema=Object.freeze({x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,life:R.LINEAR,kind:R.STATE_KEY});
- constructor(e){super();Object.assign(this,{x:e.x,y:e.y,z:e.z,life:e.life,kind:e.kind})}
+ static renderSchema=Object.freeze({x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,life:R.LINEAR,kind:R.STATE_KEY,radius:R.STEP,duration:R.STEP,owner:R.STEP});
+ constructor(e){super();Object.assign(this,{x:e.x,y:e.y,z:e.z,life:e.life,kind:e.kind,radius:e.radius||0,duration:e.duration||0,owner:e.owner||0})}
 }
 
 class GameClockRender extends RenderObject {
@@ -95,7 +100,9 @@ export class FarmSession{
    case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){if(c.value!=='merge')w.mergeTask=null;w.mode=c.value}break;
    case 'speed':if([1,4].includes(c.value))this.speed=c.value;break;
    case 'invest':if(typeof c.id==='string'&&w.scene==='farm')w.progress.invest(c.id);break;
-   case 'register-roster':if(Array.isArray(c.entries))w.registerRaidRoster(ownerId,c.entries);break;
+   case 'ability-invest':if(w.scene==='farm'&&typeof c.abilityId==='string'&&typeof c.nodeId==='string'&&c.abilityId.length<64&&c.nodeId.length<32)w.investAbilityNode(c.abilityId,c.nodeId);break;
+   case 'ability-reset':if(w.scene==='farm')w.resetAbilityTree();break;
+   case 'register-roster':if(Array.isArray(c.entries))w.registerRaidRoster(ownerId,c.entries,c.abilitySnapshot,c.settlement||null);break;
    case 'deploy':if(Number.isSafeInteger(c.sequence)&&Number.isFinite(c.x)&&Number.isFinite(c.y))w.deployNextRaidUnit(ownerId,c.sequence,c.x,c.y);break;
    case 'buff':w.useRaidBuff(ownerId);break;
   }
