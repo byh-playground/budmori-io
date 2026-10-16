@@ -3,8 +3,9 @@ import {resolveUnitStats,applyDamageToTargets,applyHealing,resolveStatusDuration
 import {UNIT_ABILITY_PROFILES as ATTACK_TYPES,abilityProfile} from './unit-abilities.js';
 import {bossAcquisitionChance, settleBossKill, grantPendingBossAcquisitions} from './boss-rewards.js';
 import {createPlayerProgressionState} from './player-progression.js';
-import {purchaseAbilityNode, resetAbilityProgression} from './ability-tree.js';
+import {purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression} from './ability-tree.js';
 import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './ability-state.js';
+import {FARM_UPGRADE_NODES, farmUpgradeRate, getAutoTapSeconds, getBreedCooldownSeconds, getFarmCapacity, getMergeCooldownSeconds} from './farm-upgrades.js';
 import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig} from './species-abilities.js';
 import {MAX_BEAN_SPLIT_CHILDREN} from './species-abilities.js';
 import {MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier} from './unit-grades.js';
@@ -15,7 +16,7 @@ export function bindPresentationClock(world,clock){if(clock)presentationClocks.s
   // sim.js
   const BREED_COOLDOWN_SECONDS=10;
   const unitRadiusForTier=tier=>.25+.055*tier;
-  var CONFIG = Object.freeze({ cap: 72, maxFarmCap:100, maxFarmBattleUnits:100*(1+MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId:999999999, maxRaidPlayerUnits:100, maxRaidPlayers:4, raidPlayerIdStride:1000000, maxRaidUnits:400, maxRaidBattleUnits:400*(1+MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles:400*(1+MAX_BEAN_SPLIT_CHILDREN)*4, raidSummonIdBase:4000000+100+1, maxSpecies:4, maxUnitRadius:unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials:MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS/2, mergeAnimationSeconds:.85, matureMeals: 3, corpseRecoverySeconds:60, farmBossEvent:Object.freeze({spawnChance:.01,fadeSeconds:.5,celebrationSeconds:1}), gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,perceptionRange:18,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
+  var CONFIG = Object.freeze({ cap: 50, maxFarmCap:100, maxFarmBattleUnits:100*(1+MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId:999999999, maxRaidPlayerUnits:100, maxRaidPlayers:4, raidPlayerIdStride:1000000, maxRaidUnits:400, maxRaidBattleUnits:400*(1+MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles:400*(1+MAX_BEAN_SPLIT_CHILDREN)*4, raidSummonIdBase:4000000+100+1, maxSpecies:4, maxUnitRadius:unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials:MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS/2, mergeAnimationSeconds:.85, matureMeals: 3, corpseRecoverySeconds:60, farmBossEvent:Object.freeze({spawnChance:.01,fadeSeconds:.5,celebrationSeconds:1}), gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,perceptionRange:18,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
 const MAP_ENEMY_TARGETS={farm:world=>world.farmBossEvent?.phase==='fighting'&&world.boss?.active?[world.boss]:[],raid:world=>world.running&&world.raidDeploymentStarted&&world.boss?.active?[world.boss]:[]};
 function bossAttackArea(boss,unitRadius=0){
   const c=CONFIG.raid,phase=boss.phase,heavy=phase==='sweep-windup'||phase==='sweep',wind=phase==='sweep-windup'||phase==='strike-windup';
@@ -62,22 +63,6 @@ function bossAttackArea(boss,unitRadius=0){
     }
   };
 
-const TREE_NODES = [
-  {id:"production",name:"새싹 생산",icon:"♧",metric:"eat",goal:8,parent:null,description:"이전 저장 호환용 · 새싹 자동 생산은 종료",value:l=>`${(60/(1+.1*l)).toFixed(1)}초`,hidden:true},
-  {id:"food",name:"자동 탭",icon:"◒",metric:"eat",goal:12,parent:null,description:"자동 탭 속도 +10%/단계 · 수동은 매 탭 +1",value:l=>`${(.5/(1+.1*l)).toFixed(3)}초 / 탭`},
-  {id:"growth",name:"먹이 찾기",icon:"❧",metric:"eat",goal:10,parent:null,description:"먹이를 향한 이동속도 +10%/단계",value:l=>`${(2.2*(1+.1*l)).toFixed(2)} 속도`},
-  {id:"breed",name:"번식 회복",icon:"♡",metric:"birth",goal:2,parent:"growth",description:"부모 대기시간 감소 · 새끼 성장시간은 대기시간의 절반",value:l=>`${(CONFIG.breedCooldownSeconds/(1+.1*l)).toFixed(2)}초`},
-  {id:"merge",name:"합체 회복",icon:"◇",metric:"merge",goal:2,parent:"growth",description:"합체 후 대기 속도 +10%/단계 · 체력·공격 배율 유지",value:l=>`${(4/(1+.1*l)).toFixed(2)}초`},
-  {id:"capacity",name:"Garden expansion",icon:"＋",metric:"birth",goal:3,parent:"growth",description:"Expand farm capacity by 7 per level, up to 100.",value:l=>`${Math.min(100,72+7*l)} troops`}
-];
-class FarmProgress {
- constructor(){this.levels=Object.fromEntries(TREE_NODES.map(n=>[n.id,0]));this.records={eat:0,birth:0,merge:0,hit:0}}
- record(kind){if(kind in this.records)this.records[kind]++}
- ready(n){return !n.hidden&&this.levels[n.id]<4&&(!n.parent||this.levels[n.parent]>0)&&this.records[n.metric]>=n.goal*(this.levels[n.id]+1)}
- invest(id){const n=TREE_NODES.find(n=>n.id===id);if(!n||!this.ready(n))return false;this.levels[id]++;return true}
- rate(id){return 1+.1*this.levels[id]}
- get autoTapSeconds(){return .5/this.rate('food')}
-}
 // Simulation types are independent of the renderer skin mapping.
 const ArenaGeometry = {
   bounds(scene='raid',margin=0){return scene==='raid'?{x:CONFIG.raid.radiusX-margin,y:CONFIG.raid.radiusY-margin}:{x:9.5-margin,y:6.8-margin}},
@@ -210,7 +195,7 @@ const AttackingBody=Base=>class extends Base{
 
   var Garden = class {
     constructor(seed = 731) {
-      this.seed = seed;this.progress=new FarmProgress();this.notices=[];this.eventSequence=0;this.mergeTask=null;
+      this.seed = seed;this.notices=[];this.eventSequence=0;this.mergeTask=null;
       this.reset();
     }
     static createRaidBattle(seed=731,expectedPlayers=['solo']){
@@ -257,12 +242,13 @@ const AttackingBody=Base=>class extends Base{
       }
     }
     get armyHealth(){return this.units.reduce((sum,u)=>{const maxHp=stats(u.tier,u.species).maxHp;return {current:sum.current+Math.max(0,Math.min(maxHp,u.hp)),max:sum.max+maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}},{current:0,max:0,living:0,total:0})}
-    get capacity(){return Math.min(CONFIG.maxFarmCap,CONFIG.cap+7*(this.progress?.levels?.capacity||0))}
-    breedCooldownDuration(){return CONFIG.breedCooldownSeconds/this.progress.rate("breed")}
+    get capacity(){return getFarmCapacity(this.playerProgression?.farmUpgrades)}
+    breedCooldownDuration(){return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades,CONFIG.breedCooldownSeconds)}
     breedGrowthDuration(){return this.breedCooldownDuration()/2}
     abilityProgressionFor(unit){return this.scene==='raid'?this.raidRoster(unit?.ownerId)?.abilitySnapshot||null:this.playerProgression}
     highestSpeciesTiers(){const tiers=Array(CONFIG.maxSpecies).fill(0);for(const unit of this.units)if(!unit.isBattleOnlySummon)tiers[unit.species]=Math.max(tiers[unit.species],unit.tier);return tiers}
     investAbilityNode(abilityId,nodeId){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=purchaseAbilityNode(this.playerProgression,abilityId,nodeId,{location:this.scene,inCombat,highestSpeciesTier:this.highestSpeciesTiers()});if(result.ok)this.playerProgression=result.state;return result}
+    investFarmUpgrade(nodeId){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=purchaseFarmUpgrade(this.playerProgression,nodeId,{location:this.scene,inCombat});if(result.ok)this.playerProgression=result.state;return result}
     resetAbilityTree(){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=resetAbilityProgression(this.playerProgression,{location:this.scene,inCombat});if(result.ok)this.playerProgression=result.state;return result}
     spawnLobProjectile(unit,action,shot,popcornConfig=null){
       if(this.projectiles.length>=CONFIG.maxRaidProjectiles)return null;
@@ -355,7 +341,6 @@ const AttackingBody=Base=>class extends Base{
     }
     notice(kind,detail={}){const event={sequence:++this.eventSequence,kind,...detail};this.notices.push(event);if(this.notices.length>512)this.notices.shift();return event}
     emit(kind, x, y, z = 0, effectOptions = {}) {
-      this.progress.record(kind);
       this.notice(kind);
       const effect={kind, x, y, z, life: 0, ...effectOptions};
       if(Number.isFinite(effect.delay)&&Number.isFinite(effect.span))effect.duration=effect.delay+effect.span;
@@ -381,7 +366,7 @@ const AttackingBody=Base=>class extends Base{
       // Real elapsed time, independent of demo speed. Do not replay hidden/stalled frames.
       if (!Number.isFinite(elapsed) || elapsed <= 0) return;
       this.foodTaps.autoClock += Math.min(elapsed, .1);
-      const interval = this.progress.autoTapSeconds;
+      const interval = getAutoTapSeconds(this.playerProgression?.farmUpgrades);
       while (this.foodTaps.autoClock + 1e-9 >= interval) {
         this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - interval);
         this.tapFood("auto");
@@ -536,7 +521,7 @@ const AttackingBody=Base=>class extends Base{
       for(const unit of ordered)this.releaseMate(unit);
       this.units=this.units.filter(unit=>!consumed.has(unit.id));
       const result=this.spawn(first.species,first.tier+1,x,y);
-      result.meals=1;result.growth=CONFIG.matureMeals;result.growthDuration=this.breedGrowthDuration();result.growthElapsed=result.growthDuration;result.cooldown=4/this.progress.rate("merge");result.cooldownDuration=result.cooldown;
+      result.meals=1;result.growth=CONFIG.matureMeals;result.growthDuration=this.breedGrowthDuration();result.growthElapsed=result.growthDuration;result.cooldown=getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);result.cooldownDuration=result.cooldown;
       this.mergeTask={phase:"animation",aId:0,bId:0,materialIds,resultId:result.id,sourceSpecies:first.species,sourceTier:first.tier,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
       const sequenceWindow=CONFIG.mergeAnimationSeconds*.72,step=sequenceWindow/ordered.length;
       ordered.forEach((unit,index)=>this.effects.push({kind:"merge-material",x:unit.x,y:unit.y,z:.2,targetX:x,targetY:y,life:0,delay:index*step,span:step, duration:(index+1)*step,sequenceIndex:index,sequenceCount:ordered.length}));
@@ -699,7 +684,7 @@ const AttackingBody=Base=>class extends Base{
       }
       const hasDesignatedMate=this.mode==="breed"&&u.fed&&target&&this.units.includes(target);
       if(this.mode==="breed"&&u.fed&&!hasDesignatedMate&&this.avoidNearbyFood(u,dt))return;
-      if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? this.progress.rate("growth") : 1),u));
+      if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? farmUpgradeRate(this.playerProgression?.farmUpgrades,"growth") : 1),u));
       else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75,u));
     }
     combat(kind,detail){const event=this.notice(kind,{time:this.time,...detail}),toPresentationTime=presentationClocks.get(this);if(toPresentationTime)presentationEventTimes.set(event,toPresentationTime(this.time))}
@@ -733,7 +718,7 @@ const AttackingBody=Base=>class extends Base{
       this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
       this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*(damage.critical?attackerStats.critMultiplier:1)});
-      this.combatEvent('damage',u,action);this.progress.record('hit');return true;
+      this.combatEvent('damage',u,action);return true;
     }
 
     explodePopcorn(kernel){
@@ -897,4 +882,4 @@ const AttackingBody=Base=>class extends Base{
   };
 
 
-export {Garden,Unit,AttackCycle,FarmProgress,TREE_NODES,ATTACK_TYPES,ArenaGeometry,Ballistics,CONFIG,clamp,stats,bossAttackArea};
+export {Garden,Unit,AttackCycle,FARM_UPGRADE_NODES,ATTACK_TYPES,ArenaGeometry,Ballistics,CONFIG,clamp,stats,bossAttackArea};

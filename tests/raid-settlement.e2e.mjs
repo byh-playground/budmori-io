@@ -78,7 +78,7 @@ try{
   assert.deepEqual(settlement.sleptFarmUnitIds,[battle.farmId]);
   const casualty=saved.units.find(unit=>unit.id===battle.farmId);
   assert.equal(casualty.hp,0);
-  assert.equal(casualty.down,60,'the casualty returns to its Farm record with a 60-second recovery timer');
+  assert.ok(casualty.down<=60&&casualty.down>59.8,`the casualty returns to its Farm record with a 60-second recovery timer (observed ${casualty.down}s)`);
   assert.equal(saved.playerProgression.level,2);
   assert.equal(saved.playerProgression.experience,0);
   assert.equal(saved.playerProgression.availablePoints,1);

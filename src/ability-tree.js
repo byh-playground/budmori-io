@@ -1,7 +1,8 @@
 import { SPECIES_ABILITY_DEFINITIONS } from "./ability-catalog.js";
 import { createAbilityProgressionState, isValidAbilityProgressionState } from "./ability-state.js";
 import { abilityProfile } from "./unit-abilities.js";
-import { experienceForNextLevel, formatXpForDisplay } from "./player-progression.js";
+import { experienceForNextLevel, formatXpForDisplay, isValidPlayerProgressionState } from "./player-progression.js";
+import { FARM_UPGRADE_MAX_LEVELS, FARM_UPGRADE_NODES } from "./farm-upgrades.js";
 
 export { ABILITY_TREE_SCHEMA_VERSION, createAbilityProgressionState, isValidAbilityProgressionState } from "./ability-state.js";
 
@@ -109,6 +110,35 @@ export function resetAbilityProgression(state, context = {}) {
     gradeLevel: 0
   }]));
   return { ok: true, reason: null, refunded, state: next };
+}
+
+export function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
+  const node = FARM_UPGRADE_NODES.find(candidate => candidate.id === nodeId);
+  if (!node) return { allowed: false, reason: "unknown-node" };
+  if (!isValidPlayerProgressionState(state)) return { allowed: false, reason: "invalid-state" };
+  if (context.location !== "farm" || context.inCombat === true) return { allowed: false, reason: context.inCombat ? "combat-lock" : "farm-only" };
+  if (state.farmUpgrades[nodeId] >= FARM_UPGRADE_MAX_LEVELS[nodeId]) return { allowed: false, reason: "max-level" };
+  if (state.availablePoints < SHARED_ABILITY_POINT_COST) return { allowed: false, reason: "insufficient-points" };
+  return { allowed: true, reason: null };
+}
+
+export function purchaseFarmUpgrade(state, nodeId, context = {}) {
+  const check = canPurchaseFarmUpgrade(state, nodeId, context);
+  if (!check.allowed) return { ok: false, reason: check.reason, state };
+  const next = cloneState(state);
+  next.availablePoints -= SHARED_ABILITY_POINT_COST;
+  next.farmUpgrades[nodeId] += 1;
+  return { ok: true, reason: null, state: next };
+}
+
+export function renderFarmUpgradeTreeMarkup(state, { location = "farm", inCombat = false } = {}) {
+  if (!isValidPlayerProgressionState(state)) throw new TypeError("Cannot render invalid player progression state");
+  const nodes = FARM_UPGRADE_NODES.map(node => {
+    const level = state.farmUpgrades[node.id];
+    const check = canPurchaseFarmUpgrade(state, node.id, { location, inCombat });
+    return `<article class="tree-node" data-ready="${check.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${level}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(level)}${level < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(level + 1)}</span>` : ""}</div><small>${level === FARM_UPGRADE_MAX_LEVELS[node.id] ? "완료" : check.reason ? farmUpgradeReasonLabel(check.reason) : "공용 포인트 1개"}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!check.allowed}" ${check.allowed ? "" : "disabled"}>${level === FARM_UPGRADE_MAX_LEVELS[node.id] ? "✓" : "+"}<span class="sr-only">${node.name} 투자</span></button></article>`;
+  }).join("");
+  return `<section class="farm-upgrade-tree" aria-label="일반 정원 강화"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 XP 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${nodes}</div></section>`;
 }
 
 export function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
@@ -296,6 +326,17 @@ function resetReasonLabel(reason, invested) {
   return `투자 ${invested}개를 무료로 돌려받습니다.`;
 }
 
+function farmUpgradeReasonLabel(reason) {
+  switch (reason) {
+    case "insufficient-points": return "공용 XP 포인트가 필요합니다.";
+    case "combat-lock": return "전투 중에는 투자할 수 없습니다.";
+    case "farm-only": return "농장에서만 투자할 수 있습니다.";
+    case "max-level": return "최대 강화 단계입니다.";
+    case "invalid-state": return "성장 데이터가 유효하지 않습니다.";
+    default: return "사용할 수 없는 노드입니다.";
+  }
+}
+
 function parseNodeId(nodeId) {
   if (nodeId === "root") return { kind: "root", level: 0 };
   const match = /^(power|grade)-(\d+)$/.exec(String(nodeId || ""));
@@ -306,6 +347,7 @@ function parseNodeId(nodeId) {
 function cloneState(state) {
   return {
     ...state,
+    farmUpgrades: { ...state.farmUpgrades },
     abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }]))
   };
 }

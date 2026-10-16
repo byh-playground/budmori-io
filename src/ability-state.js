@@ -1,4 +1,5 @@
 import { SPECIES_ABILITY_DEFINITIONS } from "./ability-catalog.js";
+import { createFarmUpgradeState, getFarmUpgradeInvestedCount, isValidFarmUpgradeState } from "./farm-upgrades.js";
 
 export const ABILITY_TREE_SCHEMA_VERSION = 1;
 
@@ -7,6 +8,7 @@ export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
   return {
     schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
     availablePoints,
+    farmUpgrades: createFarmUpgradeState(),
     abilities: Object.fromEntries(SPECIES_ABILITY_DEFINITIONS.map(definition => [definition.id, {
       rootUnlocked: false,
       powerLevel: 0,
@@ -17,7 +19,7 @@ export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
 
 export function isValidAbilityProgressionState(state) {
   if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) return false;
-  if (!isNonNegativeInteger(state.availablePoints) || !state.abilities || typeof state.abilities !== "object") return false;
+  if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") return false;
   if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) return false;
   for (const definition of SPECIES_ABILITY_DEFINITIONS) {
     const investment = state.abilities[definition.id];
@@ -37,6 +39,7 @@ export function createAbilityRuntimeSnapshot(state) {
     schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
     level: state.level,
     availablePoints: state.availablePoints,
+    farmUpgrades: { ...state.farmUpgrades },
     abilities: Object.fromEntries(SPECIES_ABILITY_DEFINITIONS.map(({ id }) => [id, { ...state.abilities[id] }]))
   };
 }
@@ -49,25 +52,27 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
     level: snapshot.level,
     experience: 0,
     availablePoints: snapshot.availablePoints,
+    farmUpgrades: snapshot.farmUpgrades,
     abilities: snapshot.abilities,
     processedBossKillReceipts: []
   };
   if (!isValidAbilityProgressionState(state)) return false;
   const invested = Object.values(state.abilities).reduce((total, investment) => total +
     Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
-  return invested + state.availablePoints === state.level - 1;
+  return invested + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
 }
 
 function isValidPlayerLikeAbilityState(state) {
   const abilityState = {
     schemaVersion: state?.schemaVersion,
     availablePoints: state?.availablePoints,
+    farmUpgrades: state?.farmUpgrades,
     abilities: state?.abilities
   };
   if (!isValidAbilityProgressionState(abilityState) || !Number.isSafeInteger(state?.level) || state.level < 1) return false;
   const investedPoints = Object.values(state.abilities).reduce((total, investment) =>
     total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
-  return investedPoints + state.availablePoints === state.level - 1;
+  return investedPoints + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
 }
 
 function isNonNegativeInteger(value) {

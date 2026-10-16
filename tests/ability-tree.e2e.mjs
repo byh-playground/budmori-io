@@ -145,7 +145,7 @@ try{
     const Garden=farm.constructor;
     const Unit=farm.units[0].constructor;
     const progression=structuredClone(farm.playerProgression);
-    const snapshot={schemaVersion:progression.schemaVersion,level:progression.level,availablePoints:progression.availablePoints,abilities:progression.abilities};
+    const snapshot={schemaVersion:progression.schemaVersion,level:progression.level,availablePoints:progression.availablePoints,farmUpgrades:progression.farmUpgrades,abilities:progression.abilities};
     const battle=Garden.createRaidBattle(8217,['solo']);
     battle.running=true;battle.boss.active=true;battle.boss.phase='chase';battle.nextId=100;
     const entries=[[1,0,3],[2,1,3],[3,2,3],[4,3,3]];

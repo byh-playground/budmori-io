@@ -1,7 +1,7 @@
-import {Garden,CONFIG,TREE_NODES,ArenaGeometry,ATTACK_TYPES,Ballistics} from './farm-model.js';
+import {Garden,CONFIG,ArenaGeometry,ATTACK_TYPES,Ballistics} from './farm-model.js';
 import {Diorama} from './farm-renderer.js';
 import {FarmSession} from './farm-session.js';
-import {FarmStorage} from './farm-storage.js';
+import {FarmStorage,saveHasLegacyFarmProgress} from './farm-storage.js';
 import {FarmAutosave} from './farm-autosave.js';
 import {snapshot,restore} from './farm-state.js';
 import {PRODUCT_VERSION} from './version.js';
@@ -9,7 +9,7 @@ import {FoodFeel} from './food-feel.js';
 import {CombatFeel} from './combat-feel.js';
 import {raidRosterEntries,hasRaidRosterEntries} from './raid-roster.js';
 import {createAbilityRuntimeSnapshot} from './ability-state.js';
-import {renderAbilityTreeMarkup} from './ability-tree.js';
+import {renderAbilityTreeMarkup,renderFarmUpgradeTreeMarkup} from './ability-tree.js';
 import {abortReservedRaidRun,reserveRaidRun,settleRaidOwnerFarm} from './raid-settlement.js';
 import {settleBossKill} from './boss-rewards.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
@@ -34,8 +34,8 @@ install(new Garden());active.paused=true;
 function refreshStart(){
  if(room||attempt){$('newConfirm').hidden=true;$('importConfirm').hidden=true;imported=null}
  const hasReservedRaid=storage.hasReservedRaid,liveRaid=active?.world?.scene==='raid'||!!room,staleRaid=hasReservedRaid&&!liveRaid;
- $('continueGame').disabled=!storage.hasWorld||staleRaid;$('staleRaidNotice').hidden=!staleRaid||!!attempt;$('onlineGame').disabled=hasReservedRaid;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);
- $('saveNotice').textContent=storage.error;$('newGame').hidden=!!room;
+ $('continueGame').disabled=!storage.hasWorld||staleRaid;$('staleRaidNotice').hidden=!staleRaid||!!attempt;$('onlineGame').disabled=hasReservedRaid;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);$('exportLegacySave').hidden=!storage.legacyBackup;$('exportLegacySave').disabled=!storage.legacyBackup;
+ $('saveNotice').textContent=[storage.migrationNotice,storage.error].filter(Boolean).join(' ');$('newGame').hidden=!!room;
  $('continueGame').hidden=!!room;$('onlineGame').hidden=!!room||!!attempt;
  $('cancelOnline').hidden=!attempt;$('leaveOnline').hidden=!room;
  $('importSave').disabled=!!room||!!attempt;$('newGame').disabled=!!attempt;
@@ -100,10 +100,11 @@ $('confirmNew').onclick=()=>{if(room||attempt)return;const world=new Garden();if
 $('cancelNew').onclick=()=>{$('newConfirm').hidden=true};
 $('home').onclick=()=>setHome(true);
 $('exportSave').onclick=()=>{const raw=storage.raw||storage.legacyRaw;if(!raw)return;const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='budmori-save-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('exportLegacySave').onclick=()=>{const raw=storage.legacyBackup?.raw;if(!raw)return;const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='budmori-legacy-save-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('importSave').onclick=()=>$('saveFile').click();
-$('continueLegacyGame').onclick=async()=>{if(room||attempt||!storage.legacyRaw)return;try{const {validateSave}=await import('./farm-storage.js');validateSave(storage.legacyRaw);imported=storage.legacyRaw;importedLegacy=true;$('importConfirmText').textContent='0.4 원본 저장은 그대로 두고, 새 0.5 저장 키에 복사해 이어갈까요?';$('confirmImport').textContent='원본을 보존하고 이어가기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}};
+$('continueLegacyGame').onclick=async()=>{if(room||attempt||!storage.legacyRaw)return;try{const {validateSave}=await import('./farm-storage.js');validateSave(storage.legacyRaw);imported=storage.legacyRaw;importedLegacy=true;$('importConfirmText').textContent=saveHasLegacyFarmProgress(storage.legacyRaw)?'이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화되고, 원본을 먼저 백업합니다. 이어갈까요?':'0.4 원본 저장은 그대로 두고 새 저장 키에 복사해 이어갈까요?';$('confirmImport').textContent='원본을 보존하고 이어가기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}};
 
-$('saveFile').onchange=async()=>{const file=$('saveFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('저장 파일이 너무 큽니다.');const text=await file.text();const {validateSave}=await import('./farm-storage.js');validateSave(text);imported=text;importedLegacy=false;$('importConfirmText').textContent='선택한 파일로 개인 저장을 바꿀까요?';$('confirmImport').textContent='이 저장 불러오기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}finally{$('saveFile').value=''}};
+$('saveFile').onchange=async()=>{const file=$('saveFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('저장 파일이 너무 큽니다.');const text=await file.text();const {validateSave}=await import('./farm-storage.js');validateSave(text);imported=text;importedLegacy=false;$('importConfirmText').textContent=saveHasLegacyFarmProgress(text)?'이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화됩니다. 원본을 먼저 백업한 뒤 이 저장을 불러올까요?':'선택한 파일로 개인 저장을 바꿀까요?';$('confirmImport').textContent='이 저장 불러오기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}finally{$('saveFile').value=''}};
 $('cancelImport').onclick=()=>{imported=null;importedLegacy=false;$('importConfirm').hidden=true};
  $('confirmImport').onclick=()=>{if(room||attempt)return;try{if(imported){const legacy=importedLegacy,world=storage.import(imported);autosave.reset();if(legacy)start(world)}imported=null;importedLegacy=false;$('importConfirm').hidden=true;refreshStart()}catch(e){$('saveNotice').textContent=e.message}};
 $('onlineGame').onclick=async()=>{
@@ -123,8 +124,8 @@ $('feed').onclick=e=>{if(e.detail===0&&!e.pointerType)requestFeed()};
 $('speed').onclick=()=>active.queue('speed',{value:active.speed===1?4:1});
 $('pause').onclick=()=>{if(room)return;active.paused=!active.paused;if(active.paused)persist()};
 function drawTree(){
- const p=(personalGarden||active.world).progress,labels={eat:'식사',birth:'번식',merge:'합체',hit:'보스 타격'};
- $('treeNodes').innerHTML=TREE_NODES.filter(n=>!n.hidden).map(n=>{const l=p.levels[n.id],goal=n.goal*(l+1),parent=TREE_NODES.find(v=>v.id===n.parent);return `<article class="tree-node" data-ready="${p.ready(n)}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${n.icon}</span><h3>${n.name}</h3><span>${l}/4</span></div><p>${n.description}</p><div class="node-values">${n.value(l)}${l<4?` <span>→ ${n.value(l+1)}</span>`:''}</div><progress max="${goal}" value="${Math.min(goal,p.records[n.metric])}"></progress><small>${l===4?'완료':`${labels[n.metric]} ${p.records[n.metric]}/${goal}${parent&&!p.levels[parent.id]?` · ${parent.name} 1 필요`:''}`}</small><button data-invest="${n.id}" ${p.ready(n)?'':'disabled'}>${l===4?'✓':'+'}<span class="sr-only">${n.name} 투자</span></button></article>`}).join('');
+ const w=personalGarden||active.world,inCombat=w.running||w.farmBossEvent?.phase!=='idle';
+ $('treeNodes').innerHTML=renderFarmUpgradeTreeMarkup(w.playerProgression,{location:w.scene,inCombat});
 }
 function drawAbilityTree(){
  const w=personalGarden||active.world,inCombat=w.running||w.farmBossEvent?.phase!=='idle';
@@ -146,10 +147,10 @@ function showAbilityPanel(open,push=true){
  if(push)history.pushState(null,'',open?'#/abilities':active.world.scene==='raid'?'#/raid':'#/farm');
 }
 $('tree').onclick=()=>panel('treePanel',true);$('treeClose').onclick=()=>panel('treePanel',false);$('help').onclick=()=>panel('helpPanel',$('helpPanel').hidden);$('closeHelp').onclick=()=>panel('helpPanel',false);
-$('treeNodes').onclick=e=>{const b=e.target.closest('[data-invest]');if(b){active.queue('invest',{id:b.dataset.invest});setTimeout(drawTree,180)}};
+$('treeNodes').onclick=e=>{const b=e.target.closest('[data-progression-farm-node]');if(b){active.queue('progression-invest',{scope:'farm',nodeId:b.dataset.progressionFarmNode});setTimeout(drawTree,180)}};
 $('abilities').onclick=()=>showAbilityPanel(true);$('abilityClose').onclick=()=>showAbilityPanel(false);
 $('abilitySpeciesTabs').onclick=e=>{const button=e.target.closest('[data-ability-species]');if(!button)return;$('abilityPanel').dataset.selectedSpecies=button.dataset.abilitySpecies;drawAbilityTree()};
-$('abilityNodes').onclick=e=>{const button=e.target.closest('button[data-ability-action],button[data-ability-node]');if(!button||button.getAttribute('aria-disabled')==='true')return;if(button.dataset.abilityAction==='reset')active.queue('ability-reset');else if(button.dataset.abilityNode){const [abilityId,kind,level]=button.dataset.abilityNode.split(':');const nodeId=kind==='root'?'root':`${kind}-${level}`;active.queue('ability-invest',{abilityId,nodeId})}setTimeout(drawAbilityTree,180)};
+$('abilityNodes').onclick=e=>{const button=e.target.closest('button[data-ability-action],button[data-ability-node]');if(!button||button.getAttribute('aria-disabled')==='true')return;if(button.dataset.abilityAction==='reset')active.queue('ability-reset');else if(button.dataset.abilityNode){const [abilityId,kind,level]=button.dataset.abilityNode.split(':');const nodeId=kind==='root'?'root':`${kind}-${level}`;active.queue('progression-invest',{scope:'ability',abilityId,nodeId})}setTimeout(drawAbilityTree,180)};
 $('treePanel').onkeydown=e=>{if(e.key==='Tab'){const f=[...$('treePanel').querySelectorAll('button:not(:disabled)')],i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0||!e.shiftKey&&i===f.length-1){e.preventDefault();f[e.shiftKey?f.length-1:0].focus()}}};
 $('abilityPanel').onkeydown=e=>{if(e.key==='Tab'){const f=[...$('abilityPanel').querySelectorAll('button:not([aria-disabled="true"])')],i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0||!e.shiftKey&&i===f.length-1){e.preventDefault();f[e.shiftKey?f.length-1:0].focus()}}};
 const canvas=$('world');

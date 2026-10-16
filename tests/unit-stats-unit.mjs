@@ -34,6 +34,8 @@ for(let tier=1;tier<=MAX_UNIT_TIER;tier++){
   close(resolved.maxHp,gradeStats[tier-1][0]);
   close(resolved.attackPower,gradeStats[tier-1][1]);
 }
+assert.equal(COMMON_UNIT_STAT_DEFAULTS.critChance, 0);
+assert.equal(COMMON_UNIT_STAT_DEFAULTS.critMultiplier, 2);
 assert.deepEqual(resolveUnitStats({species:0,tier:1}), {maxHp:40,attackPower:4,...COMMON_UNIT_STAT_DEFAULTS});
 assert.deepEqual(resolveUnitStats({species:3,tier:1}), {maxHp:40,attackPower:4,...COMMON_UNIT_STAT_DEFAULTS}, 'Chestnut troops use the normal shared T1 stats');
 assert.deepEqual(UNIT_ABILITY_PROFILES.map(({kind,range,skillMultiplier,windup,recovery,projectileCount,bounces})=>({kind,range,skillMultiplier,windup,recovery,projectileCount,bounces})), [
@@ -50,20 +52,37 @@ close(scaleAttackArea(.12,unit,{attackArea:1.5}),.18);
 
 const basic=resolveDamage(100,100,0);
 close(basic.damage,50);
+close(resolveDamage(10).damage,10);
 close(resolveDamage(100,100,.5).damage,100/1.5);
 close(resolveDamage(10,0,0,true,2).damage,20);
+close(resolveDamage(10,0,0,true).damage,20);
+const defaultHitTarget={hp:100};
+const defaultHit=applyDamageToTargets(unit,[defaultHitTarget],{rawDamage:10,roll:()=>0});
+assert.equal(defaultHit.critical,false);
+close(defaultHitTarget.hp,90);
 const critTarget={hp:100};
-const crit=applyDamageToTargets(unit,[critTarget],{rawDamage:10,sourceStatOverrides:{critChance:.25,critMultiplier:2},roll:()=>.1});
+const crit=applyDamageToTargets(unit,[critTarget],{rawDamage:10,sourceStatOverrides:{critChance:.25},roll:()=>.1});
 assert.equal(crit.critical,true);
 close(critTarget.hp,80);
+const customCritTarget={hp:100};
+applyDamageToTargets(unit,[customCritTarget],{rawDamage:10,sourceStatOverrides:{critChance:1,critMultiplier:3},roll:()=>0});
+close(customCritTarget.hp,70);
 
-// Lifesteal reads HP actually removed after armor, then ignores overkill.
-const directAttacker={species:0,tier:1,hp:20};
+// Lifesteal reads HP actually removed after armor and overkill.
+const directAttacker={species:0,tier:1,hp:10};
+const armoredTarget={hp:1000};
+const direct=applyDamageToTargets(directAttacker,[armoredTarget],{rawDamage:100,sourceStatOverrides:{lifesteal:.5},armorForTarget:()=>100});
+close(direct.hits[0].damage,50);
+close(direct.totalActualLoss,50);
+close(direct.healed,25);
+close(directAttacker.hp,35);
+
+const overkillAttacker={species:0,tier:1,hp:20};
 const nearlyDead={hp:1};
-const direct=applyDamageToTargets(directAttacker,[nearlyDead],{rawDamage:100,sourceStatOverrides:{lifesteal:.5},armorForTarget:()=>100});
-close(direct.totalActualLoss,1);
-close(direct.healed,.5);
-close(directAttacker.hp,20.5);
+const overkill=applyDamageToTargets(overkillAttacker,[nearlyDead],{rawDamage:100,sourceStatOverrides:{lifesteal:.5},armorForTarget:()=>100});
+close(overkill.totalActualLoss,1);
+close(overkill.healed,.5);
+close(overkillAttacker.hp,20.5);
 
 // AoE sums each target's actual loss and pays one third of the normal rate.
 const areaAttacker={species:0,tier:1,hp:20};

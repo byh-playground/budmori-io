@@ -6,14 +6,14 @@ const TIER_ATTACK = 4;
 const TIER_ATTACK_SCALE = 1.2;
 const ARMOR_SCALE = 100;
 
-// Shared combat vocabulary for every unit. These are deliberately neutral so
-// that adding the stat layer does not alter current unit balance.
+// Shared combat vocabulary for every unit. Zero crit chance preserves the
+// normal baseline; critical hits use the agreed 2x multiplier once enabled.
 export const COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
   armor: 0,
   moveSpeed: 1,
   attackSpeed: 1,
   critChance: 0,
-  critMultiplier: 1,
+  critMultiplier: 2,
   armorPenetration: 0,
   attackArea: 1,
   lifesteal: 0,
@@ -49,7 +49,7 @@ export function resolveUnitStats(unit, overrides = {}) {
   };
 }
 
-export function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = 1) {
+export function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
   const raw = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
   const penetration = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
   const effectiveArmor = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - penetration);
@@ -75,7 +75,7 @@ export function scaleAttackArea(baseArea, unit, overrides = {}) {
   return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, resolveUnitStats(unit, overrides).attackArea);
 }
 
-export function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0, critical = false, critMultiplier = 1 } = {}) {
+export function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier } = {}) {
   if (!target || !Number.isFinite(target.hp)) return { actualLoss: 0, ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier) };
   const resolved = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
   const actualLoss = Math.min(Math.max(0, target.hp), resolved.damage);
@@ -112,7 +112,7 @@ export function applyDamageToTargets(source, targets, {
       armor: armorForTarget(target),
       armorPenetration: sourceStats?.armorPenetration || 0,
       critical,
-      critMultiplier: sourceStats?.critMultiplier || 1
+      critMultiplier: sourceStats?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
     });
     hits.push(result);
     totalActualLoss += result.actualLoss;
