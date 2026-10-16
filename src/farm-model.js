@@ -458,7 +458,11 @@ const AttackingBody=Base=>class extends Base{
           if(this.scene==='farm'){u.down=Math.max(0,u.down-dt);if(u.down<1e-9)u.down=0}
           const oldZ=u.z;u.integrate(dt);
           if(this.scene==='raid'&&this.running&&u.z===0&&u.vz===0)u.vx=u.vy=0;
-          if(oldZ>0&&u.z===0)this.metrics.landings++;
+          if(oldZ>0&&u.z===0){
+            this.metrics.landings++;
+            if(this.scene==='raid')this.combat('unit-land',{unit:u.id,x:u.x,y:u.y,z:0,strength:Math.min(1,Math.hypot(u.vx,u.vy)/8)});
+            else if(Math.hypot(u.vx,u.vy)>1)this.emit('land',u.x,u.y);
+          }
           if(this.scene==='farm'&&u.down===0){
             const maxHp=stats(u.tier,u.species).maxHp;this.releaseMate(u);Object.assign(u,{hp:maxHp,down:0,z:0,vx:0,vy:0,vz:0,stun:0,flash:0,bounce:0,angle:0});u.ability=new AttackCycle(u);this.combat('unit-recover',{unit:u.id,x:u.x,y:u.y});
           }

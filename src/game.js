@@ -1169,7 +1169,11 @@
               const oldZ2 = u.z;
               u.integrate(dt);
               if (this.scene === "raid" && this.running && u.z === 0 && u.vz === 0) u.vx = u.vy = 0;
-              if (oldZ2 > 0 && u.z === 0) this.metrics.landings++;
+              if (oldZ2 > 0 && u.z === 0) {
+                this.metrics.landings++;
+                if (this.scene === "raid") this.combat("unit-land", { unit: u.id, x: u.x, y: u.y, z: 0, strength: Math.min(1, Math.hypot(u.vx, u.vy) / 8) });
+                else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
+              }
               if (this.scene === "farm" && u.down === 0) {
                 const maxHp = stats(u.tier, u.species).maxHp;
                 this.releaseMate(u);
