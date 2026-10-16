@@ -41,6 +41,13 @@ const makeRaidWorld = (ownerId, farm, { casualties = [], deployedFarmIds = farm.
   })).concat(summons)
 });
 
+const mythicFarm=makeFarm('mythic-owner',1);
+mythicFarm.units[0].tier=6;
+const mythicRaid=makeRaidWorld('mythic-owner',mythicFarm);
+assert.deepEqual(raidDeadFarmUnitIds(mythicRaid,'mythic-owner'),[],'Raid settlement accepts a T6 Mythic manifest');
+mythicRaid.raidRosters[0].troops[0].tier=7;
+assert.throws(()=>raidDeadFarmUnitIds(mythicRaid,'mythic-owner'),/valid deployed entries/,'Raid settlement rejects unsupported T7 entries');
+
 // The proposed multiplier uses the eligible owner roster from encounter start
 // and cumulative unique original troop deployments (not currently living count).
 assert.equal(raidDeploymentRewardMultiplier({ availableAtStart: 10, originalUnitsDeployed: 10 }), 1);

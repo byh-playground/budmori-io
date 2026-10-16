@@ -1,16 +1,15 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
 import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress,sevenSegmentDigitLines} from './farm-indicators.js';
+import {UNIT_GRADES} from './unit-grades.js';
 const {bosses:BOSS_VECTOR_ASSETS,troops:TROOP_VECTOR_ASSETS}=globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
 const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
-// Historical Budmori grade outline colors for the currently supported T1–T4.
-const TIER_OUTLINE_COLORS=[
-  [0xd8/255,0xd4/255,0xbd/255,1],
-  [0x83/255,0xce/255,0x76/255,1],
-  [0x78/255,0xb9/255,0xff/255,1],
-  [0xbd/255,0x8c/255,0xff/255,1]
-];
+// Historical Budmori grade outline colors come from the shared grade catalog.
+const TIER_OUTLINE_COLORS=UNIT_GRADES.map(({outlineColor})=>{
+  const rgb=outlineColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i).slice(1).map(value=>parseInt(value,16)/255);
+  return [...rgb,1];
+});
 function unitMotion(u,sim){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.1,phase=u.ability?.phase||'idle';
   const moving=Math.hypot(u.vx||0,u.vy||0)>.18,kind=ATTACK_TYPES[u.species]?.kind;
@@ -254,7 +253,8 @@ function unitExpression(u,sim){
       }
       const farmBossVisible=sim2.scene==='farm'&&sim2.farmBossEvent?.phase!=='idle';
       if(sim2.scene==='raid'||farmBossVisible){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
-      const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
+      const hiddenMergeResultId=sim2.scene==='farm'&&sim2.mode==='merge'&&sim2.mergeTask?.phase==='animation'?sim2.mergeTask.resultId:0;
+      const actors = sim2.units.filter(unit=>unit.id!==hiddenMergeResultId).map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
       if (sim2.scene === "raid"||farmBossVisible) actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, vector:true, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x,f.y,.10,.07,"#55452433");
@@ -299,7 +299,9 @@ function unitExpression(u,sim){
       for(const [id,player] of this.vectorPlayers)if(!liveUnitIds.has(id)){player.dispose();this.vectorPlayers.delete(id)}
       feel?.draw(this,this.displayTimeMs);
       for (const e of sim2.effects) {
-        const q = e.life;
+        const delay=Number.isFinite(e.delay)?e.delay:0,span=Number.isFinite(e.span)?e.span:1;
+        if(e.life<delay)continue;
+        const q=Number.isFinite(e.span)?clamp((e.life-delay)/span,0,1):e.life;
         if (e.kind === "feed") this.ring(e.x,e.y,.15+q*.35,`rgba(166,121,59,${(1-q)*.6})`,.035);
         else if(e.kind === "food-land") {
           const t=Math.min(1,q/.35);this.ring(e.x,e.y,.10+t*.42,`rgba(194,145,62,${(1-t)*.85})`,.055);
@@ -323,6 +325,12 @@ function unitExpression(u,sim){
           const progress=clamp(q/(e.duration||.25),0,1);this.ring(e.x,e.y,.08+progress*(e.radius||.1)*1.6,`rgba(225,150,72,${.65*(1-progress)})`,.045);
         }
         else if(e.kind==='drop-dust'){const t=Math.min(1,q/.28);this.ring(e.x,e.y,.12+t*.4,`rgba(126,126,99,${(1-t)*.42})`,.045);for(let i=0;i<4;i++){const a=i*Math.PI/2+t*.35,p=this.project(e.x+Math.cos(a)*t*.33,e.y+Math.sin(a)*t*.22,.025+Math.sin(t*Math.PI)*.1);this.ellipse(p.x,p.y,this.scale*.045,this.scale*.03,`rgba(179,169,137,${1-t})`)}}
+        else if(e.kind==='merge-material'){
+          const t=clamp(q,0,1),x=e.x+(e.targetX-e.x)*t,y=e.y+(e.targetY-e.y)*t,z=(e.z||0)+Math.sin(Math.PI*t)*.55;
+          const start=this.project(e.x,e.y,e.z||0),point=this.project(x,y,z);
+          this.line(start,point,.045,`rgba(88,185,187,${.2+.65*(1-t)})`);
+          this.ellipse(point.x,point.y,this.scale*.12*(1-.4*t),this.scale*.09*(1-.4*t),`rgba(88,185,187,${1-.35*t})`,t*Math.PI);
+        }
         else if (e.kind === "birth" || e.kind === "merge") {
           const birth=e.kind==="birth", color=birth?"#df87a4":"#58b9bb";
           this.ring(e.x,e.y,birth ? .35+q*1.5 : 1.8*(1-q)+.15,color,.07);

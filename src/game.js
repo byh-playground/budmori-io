@@ -14,13 +14,44 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // src/unit-grades.js
+  function mergeMaterialCostForTier(resultTier) {
+    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) return 0;
+    return UNIT_GRADES[resultTier - 1].materialCost;
+  }
+  function isValidUnitTier(tier) {
+    return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
+  }
+  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
+  var init_unit_grades = __esm({
+    "src/unit-grades.js"() {
+      UNIT_GRADES = Object.freeze([
+        Object.freeze({ tier: 1, name: "Common", materialCost: 0, outlineColor: "#d8d4bd" }),
+        Object.freeze({ tier: 2, name: "Uncommon", materialCost: 2, outlineColor: "#83ce76" }),
+        Object.freeze({ tier: 3, name: "Rare", materialCost: 2, outlineColor: "#78b9ff" }),
+        Object.freeze({ tier: 4, name: "Epic", materialCost: 3, outlineColor: "#bd8cff" }),
+        Object.freeze({ tier: 5, name: "Legendary", materialCost: 4, outlineColor: "#ffb354" }),
+        Object.freeze({ tier: 6, name: "Mythic", materialCost: 5, outlineColor: "#ff7086" })
+      ]);
+      MAX_UNIT_TIER = UNIT_GRADES.length;
+      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
+    }
+  });
+
   // src/unit-stats.js
   function resolveUnitStats(unit, overrides = {}) {
-    const tier = Math.max(1, Math.min(4, Number.isInteger(unit?.tier) ? unit.tier : 1));
+    const tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(unit?.tier) ? unit.tier : 1));
+    let maxHp = TIER_HP;
+    let attackPower = TIER_ATTACK;
+    for (let resultTier = 2; resultTier <= tier; resultTier++) {
+      const transitionMultiplier = UNIT_GRADES[resultTier - 1].materialCost / 2;
+      maxHp *= TIER_HP_SCALE * transitionMultiplier;
+      attackPower *= TIER_ATTACK_SCALE * transitionMultiplier;
+    }
     const speciesProfile = COMMON_UNIT_STAT_PROFILES[unit?.species] || COMMON_UNIT_STAT_DEFAULTS;
     return {
-      maxHp: TIER_HP * TIER_HP_SCALE ** (tier - 1),
-      attackPower: TIER_ATTACK * TIER_ATTACK_SCALE ** (tier - 1),
+      maxHp,
+      attackPower,
       ...COMMON_UNIT_STAT_DEFAULTS,
       ...speciesProfile,
       ...overrides
@@ -110,6 +141,7 @@
   var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES;
   var init_unit_stats = __esm({
     "src/unit-stats.js"() {
+      init_unit_grades();
       TIER_HP = 40;
       TIER_HP_SCALE = 1.5;
       TIER_ATTACK = 4;
@@ -897,7 +929,7 @@
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, CONFIG, MAP_ENEMY_TARGETS, clamp2, stats, Body, Knockable, TREE_NODES, FarmProgress, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, unitRadiusForTier, CONFIG, MAP_ENEMY_TARGETS, clamp2, stats, Body, Knockable, TREE_NODES, FarmProgress, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_unit_stats();
@@ -908,11 +940,13 @@
       init_ability_state();
       init_species_abilities();
       init_species_abilities();
+      init_unit_grades();
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
-      CONFIG = Object.freeze({ cap: 72, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4, raidSummonIdBase: 4e6 + 100 + 1, maxSpecies: 4, maxUnitRadius: 0.47, maxTier: 4, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
+      unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
+      CONFIG = Object.freeze({ cap: 72, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4, raidSummonIdBase: 4e6 + 100 + 1, maxSpecies: 4, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
       MAP_ENEMY_TARGETS = { farm: (world) => world.farmBossEvent?.phase === "fighting" && world.boss?.active ? [world.boss] : [], raid: (world) => world.running && world.raidDeploymentStarted && world.boss?.active ? [world.boss] : [] };
       clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier, species) => resolveUnitStats({ tier, species });
@@ -1219,7 +1253,7 @@
           });
         }
         get radius() {
-          return (0.25 + 0.055 * this.tier) * (this.mature ? 1 : 0.8);
+          return unitRadiusForTier(this.tier) * (this.mature ? 1 : 0.8);
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -1432,7 +1466,7 @@
           if (hasSettlement && (!settlement || typeof settlement !== "object" || typeof settlement.sessionId !== "string" || !settlement.sessionId.trim() || settlement.sessionId.length > 128 || !Number.isSafeInteger(settlement.runSequence) || settlement.runSequence < 1 || settlement.runSequence > 1e12 || settlement.encounterId !== settlement.runSequence)) return false;
           const ids = /* @__PURE__ */ new Set(), troops = [];
           for (const e of entries) {
-            if (!Array.isArray(e) || e.length !== 3 || !Number.isSafeInteger(e[0]) || e[0] < 1 || e[0] > CONFIG.maxFarmUnitId || !Number.isInteger(e[1]) || e[1] < 0 || e[1] >= CONFIG.maxSpecies || !Number.isInteger(e[2]) || e[2] < 1 || e[2] > 4 || ids.has(e[0])) return false;
+            if (!Array.isArray(e) || e.length !== 3 || !Number.isSafeInteger(e[0]) || e[0] < 1 || e[0] > CONFIG.maxFarmUnitId || !Number.isInteger(e[1]) || e[1] < 0 || e[1] >= CONFIG.maxSpecies || !Number.isInteger(e[2]) || e[2] < 1 || e[2] > CONFIG.maxTier || ids.has(e[0])) return false;
             ids.add(e[0]);
             troops.push({ farmId: e[0], species: e[1], tier: e[2], deployed: false });
           }
@@ -1498,10 +1532,12 @@
           if (this.notices.length > 512) this.notices.shift();
           return event;
         }
-        emit(kind, x, y, z = 0) {
+        emit(kind, x, y, z = 0, effectOptions = {}) {
           this.progress.record(kind);
           this.notice(kind);
-          this.effects.push({ kind, x, y, z, life: 0 });
+          const effect = { kind, x, y, z, life: 0, ...effectOptions };
+          if (Number.isFinite(effect.delay) && Number.isFinite(effect.span)) effect.duration = effect.delay + effect.span;
+          this.effects.push(effect);
           if (this.effects.length > 100) this.effects.shift();
           this.events.push(kind);
           if (this.events.length > 20) this.events.shift();
@@ -1564,6 +1600,7 @@
         }
         setScene(scene) {
           if (scene === this.scene) return;
+          this.mergeTask = null;
           this.projectiles = [];
           this.scene = scene;
           this.running = scene === "raid";
@@ -1645,27 +1682,59 @@
           }
           return false;
         }
-        canMergePair(a, b, { requireContact = false, requireNoEnemy = false } = {}) {
-          if (!a || !b || a === b || a.isBattleOnlySummon || b.isBattleOnlySummon || a.mergeEligible === false || b.mergeEligible === false || a.species !== b.species || a.tier !== b.tier || a.tier >= CONFIG.maxTier || a.hp <= 0 || b.hp <= 0 || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b)) return false;
-          const speciesCount = this.units.reduce((count, u) => count + (!u.isBattleOnlySummon && u.species === a.species ? 1 : 0), 0);
-          if (speciesCount <= 2) return false;
-          if (requireNoEnemy && (this.senseEnemy(a) || this.senseEnemy(b))) return false;
-          return !requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2;
+        canMergeGroup(materials, { requireContact = false, requireNoEnemy = false } = {}) {
+          if (!Array.isArray(materials) || materials.length < 2) return false;
+          const first = materials[0], resultTier = first?.tier + 1, materialCount = mergeMaterialCostForTier(resultTier);
+          if (materialCount < 2 || materials.length !== materialCount || first.tier >= CONFIG.maxTier) return false;
+          const ids = /* @__PURE__ */ new Set();
+          for (const unit of materials) {
+            if (!unit || ids.has(unit.id) || unit.isBattleOnlySummon || unit.mergeEligible === false || unit.species !== first.species || unit.tier !== first.tier || unit.hp <= 0 || unit.down > 0 || !unit.mature || unit.cooldown > 0 || !this.units.includes(unit)) return false;
+            ids.add(unit.id);
+          }
+          const existingCount = this.units.reduce((count, unit) => count + (!unit.isBattleOnlySummon && unit.species === first.species ? 1 : 0), 0);
+          if (existingCount - materialCount + 1 < 2) return false;
+          if (requireNoEnemy && materials.some((unit) => this.senseEnemy(unit))) return false;
+          if (requireContact) {
+            const anchor = materials[0];
+            if (materials.slice(1).some((unit) => Math.hypot(anchor.x - unit.x, anchor.y - unit.y) > anchor.radius + unit.radius + 0.2)) return false;
+          }
+          return true;
+        }
+        canMergePair(a, b, options = {}) {
+          return this.canMergeGroup([a, b], options);
         }
         selectMergeTask() {
           if (this.mode !== "merge" || this.scene !== "farm" || this.mergeTask) return;
-          const counts = /* @__PURE__ */ new Map();
-          for (const u of this.units) counts.set(u.species, (counts.get(u.species) || 0) + 1);
-          const eligible = this.units.filter((u) => !u.isBattleOnlySummon && u.mergeEligible !== false && u.hp > 0 && u.mature && u.cooldown <= 0 && u.tier < CONFIG.maxTier && counts.get(u.species) > 2 && !this.senseEnemy(u));
-          let pair = null;
-          for (let i = 0; i < eligible.length; i++) for (let j = i + 1; j < eligible.length; j++) {
-            const a = eligible[i], b = eligible[j];
-            if (a.species !== b.species || a.tier !== b.tier) continue;
-            const first = a.id < b.id ? a : b, second = first === a ? b : a;
-            const candidate = { tier: a.tier, distance: (a.x - b.x) ** 2 + (a.y - b.y) ** 2, aId: first.id, bId: second.id };
-            if (!pair || candidate.tier < pair.tier || candidate.tier === pair.tier && (candidate.distance < pair.distance || candidate.distance === pair.distance && (candidate.aId < pair.aId || candidate.aId === pair.aId && candidate.bId < pair.bId))) pair = candidate;
+          const eligible = this.units.filter((unit) => !unit.isBattleOnlySummon && unit.mergeEligible !== false && unit.hp > 0 && unit.down <= 0 && unit.mature && unit.cooldown <= 0 && unit.tier < CONFIG.maxTier && !this.senseEnemy(unit));
+          const groups = /* @__PURE__ */ new Map(), ownedCounts = /* @__PURE__ */ new Map();
+          for (const unit of this.units) if (!unit.isBattleOnlySummon) ownedCounts.set(unit.species, (ownedCounts.get(unit.species) || 0) + 1);
+          for (const unit of eligible) {
+            const key = `${unit.species}:${unit.tier}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(unit);
           }
-          if (pair) this.mergeTask = { phase: "approach", aId: pair.aId, bId: pair.bId, elapsed: 0, duration: CONFIG.mergeAnimationSeconds };
+          const compareIds = (left, right) => {
+            for (let i = 0; i < Math.min(left.length, right.length); i++) if (left[i] !== right[i]) return left[i] - right[i];
+            return left.length - right.length;
+          };
+          let best = null;
+          for (let tier = 1; tier < CONFIG.maxTier; tier++) {
+            const materialCount = mergeMaterialCostForTier(tier + 1);
+            for (const group of groups.values()) {
+              if (group[0].tier !== tier || group.length < materialCount || ownedCounts.get(group[0].species) - materialCount + 1 < 2) continue;
+              for (const anchor of group) {
+                const nearest = group.filter((unit) => unit !== anchor).map((unit) => ({ unit, distance: (unit.x - anchor.x) ** 2 + (unit.y - anchor.y) ** 2 })).sort((a, b) => a.distance - b.distance || a.unit.id - b.unit.id).slice(0, materialCount - 1);
+                if (nearest.length !== materialCount - 1) continue;
+                const materials = [anchor, ...nearest.map((entry) => entry.unit)];
+                if (!this.canMergeGroup(materials, { requireNoEnemy: true })) continue;
+                let distance = 0;
+                for (let i = 0; i < materials.length; i++) for (let j = i + 1; j < materials.length; j++) distance += (materials[i].x - materials[j].x) ** 2 + (materials[i].y - materials[j].y) ** 2;
+                const sortedIds = materials.map((unit) => unit.id).sort((a, b) => a - b), candidate = { tier, distance, anchorId: anchor.id, materialIds: materials.map((unit) => unit.id), sortedIds };
+                if (!best || candidate.tier < best.tier || candidate.tier === best.tier && (candidate.distance < best.distance || candidate.distance === best.distance && (compareIds(candidate.sortedIds, best.sortedIds) < 0 || compareIds(candidate.sortedIds, best.sortedIds) === 0 && candidate.anchorId < best.anchorId))) best = candidate;
+              }
+            }
+          }
+          if (best) this.mergeTask = { phase: "approach", aId: best.materialIds[0], bId: best.materialIds[1], materialIds: best.materialIds, elapsed: 0, duration: CONFIG.mergeAnimationSeconds };
         }
         advanceMergeTask(dt) {
           if (this.mode !== "merge" || this.scene !== "farm") {
@@ -1678,38 +1747,25 @@
             return;
           }
           if (this.mergeTask?.phase === "approach") {
-            const a = this.units.find((u) => u.id === this.mergeTask.aId), b = this.units.find((u) => u.id === this.mergeTask.bId);
-            if (!this.canMergePair(a, b)) this.mergeTask = null;
+            const materials = (this.mergeTask.materialIds || [this.mergeTask.aId, this.mergeTask.bId]).map((id) => this.units.find((unit) => unit.id === id));
+            if (!this.canMergeGroup(materials)) this.mergeTask = null;
           }
           if (!this.mergeTask) this.selectMergeTask();
         }
         resolveMergeTaskAfterMovement() {
           const task = this.mergeTask;
           if (task?.phase !== "approach") return false;
-          const a = this.units.find((u) => u.id === task.aId), b = this.units.find((u) => u.id === task.bId);
-          if (!this.canMergePair(a, b, { requireContact: true, requireNoEnemy: true })) return false;
-          return this.pair(a, b, true);
+          const materials = (task.materialIds || [task.aId, task.bId]).map((id) => this.units.find((unit) => unit.id === id));
+          if (!this.canMergeGroup(materials, { requireContact: true, requireNoEnemy: true })) return false;
+          return this.mergeGroup(materials, { priorityResolved: true });
         }
         pair(a, b, priorityResolved = false) {
-          if (a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || this.senseEnemy(a) || this.senseEnemy(b)) return false;
-          if (a.isBattleOnlySummon || b.isBattleOnlySummon) return false;
           if (this.mode === "merge") {
-            if (!this.canMergePair(a, b, { requireNoEnemy: true })) return false;
-            const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
-            this.releaseMate(a);
-            this.releaseMate(b);
-            this.units = this.units.filter((u2) => u2 !== a && u2 !== b);
-            const u = this.spawn(a.species, a.tier + 1, x, y);
-            u.meals = 1;
-            u.growth = 3;
-            u.growthDuration = this.breedGrowthDuration();
-            u.growthElapsed = u.growthDuration;
-            u.cooldown = 4 / this.progress.rate("merge");
-            u.cooldownDuration = u.cooldown;
-            this.mergeTask = { phase: "animation", aId: 0, bId: 0, elapsed: 0, duration: CONFIG.mergeAnimationSeconds };
-            this.metrics.merges++;
-            this.emit("merge", x, y, 1);
-          } else {
+            return this.mergeGroup([a, b], { priorityResolved });
+          }
+          if (!a || !b || a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || this.senseEnemy(a) || this.senseEnemy(b)) return false;
+          if (a.isBattleOnlySummon || b.isBattleOnlySummon) return false;
+          {
             if (!this.canBreedPair(a, b, true) || this.units.length >= this.capacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !priorityResolved && a.tier !== b.tier && this.hasEligibleSameTierBreedPair()) return false;
             a.mateId = b.id;
             b.mateId = a.id;
@@ -1723,6 +1779,25 @@
             this.metrics.births++;
             this.emit("birth", child.x, child.y, 0.7);
           }
+          return true;
+        }
+        mergeGroup(materials, { priorityResolved = false } = {}) {
+          if (this.mode !== "merge" || this.scene !== "farm" || !this.canMergeGroup(materials, { requireContact: true, requireNoEnemy: true })) return false;
+          const ordered = [...materials], first = ordered[0], materialIds = ordered.map((unit) => unit.id), consumed = new Set(materialIds), x = ordered.reduce((sum, unit) => sum + unit.x, 0) / ordered.length, y = ordered.reduce((sum, unit) => sum + unit.y, 0) / ordered.length;
+          for (const unit of ordered) this.releaseMate(unit);
+          this.units = this.units.filter((unit) => !consumed.has(unit.id));
+          const result = this.spawn(first.species, first.tier + 1, x, y);
+          result.meals = 1;
+          result.growth = CONFIG.matureMeals;
+          result.growthDuration = this.breedGrowthDuration();
+          result.growthElapsed = result.growthDuration;
+          result.cooldown = 4 / this.progress.rate("merge");
+          result.cooldownDuration = result.cooldown;
+          this.mergeTask = { phase: "animation", aId: 0, bId: 0, materialIds, resultId: result.id, sourceSpecies: first.species, sourceTier: first.tier, elapsed: 0, duration: CONFIG.mergeAnimationSeconds };
+          const sequenceWindow = CONFIG.mergeAnimationSeconds * 0.72, step = sequenceWindow / ordered.length;
+          ordered.forEach((unit, index) => this.effects.push({ kind: "merge-material", x: unit.x, y: unit.y, z: 0.2, targetX: x, targetY: y, life: 0, delay: index * step, span: step, duration: (index + 1) * step, sequenceIndex: index, sequenceCount: ordered.length }));
+          this.metrics.merges++;
+          this.emit("merge", x, y, 1, { delay: sequenceWindow, span: CONFIG.mergeAnimationSeconds - sequenceWindow });
           return true;
         }
         step(dt) {
@@ -1934,9 +2009,9 @@
           }
           if (this.mode === "merge") {
             const task = this.mergeTask;
-            if (task?.phase === "approach" && (u.id === task.aId || u.id === task.bId)) {
-              const partner = this.units.find((candidate) => candidate.id === (u.id === task.aId ? task.bId : task.aId));
-              if (partner && u.cooldown <= 0) this.steer(u, partner.x, partner.y, dt, scaleMoveSpeed(2.2, u));
+            if (task?.phase === "approach" && task.materialIds?.includes(u.id)) {
+              const anchor = this.units.find((candidate) => candidate.id === task.materialIds[0]);
+              if (anchor && u.cooldown <= 0) this.steer(u, u.id === anchor.id ? u.x : anchor.x, u.id === anchor.id ? u.y : anchor.y, dt, scaleMoveSpeed(2.2, u));
               return;
             }
             this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75, u));
@@ -2363,7 +2438,7 @@
     const roster = ownerRoster(raidWorld, ownerId);
     const manifest = /* @__PURE__ */ new Map();
     for (const troop of roster.troops) {
-      if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 || !Number.isInteger(troop.species) || troop.species < 0 || troop.species > 3 || !Number.isInteger(troop.tier) || troop.tier < 1 || troop.tier > 4 || typeof troop.deployed !== "boolean" || manifest.has(troop.farmId)) {
+      if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 || !Number.isInteger(troop.species) || troop.species < 0 || troop.species > 3 || !isValidUnitTier(troop.tier) || typeof troop.deployed !== "boolean" || manifest.has(troop.farmId)) {
         fail("The owner Raid roster must have unique Farm IDs and valid deployed entries");
       }
       manifest.set(troop.farmId, troop);
@@ -2616,6 +2691,7 @@
   var RAID_SLEEP_SECONDS, RAID_SETTLEMENT_RECEIPT_LIMIT, fail, isNonEmptyString, isCount;
   var init_raid_settlement = __esm({
     "src/raid-settlement.js"() {
+      init_unit_grades();
       RAID_SLEEP_SECONDS = 60;
       RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
       fail = (message) => {
@@ -2645,6 +2721,7 @@
     };
     fill(raw, base);
     raw.progress.levels.capacity = Number.isInteger(raw.progress.levels.capacity) ? raw.progress.levels.capacity : 0;
+    if (raw.mergeTask && (!Array.isArray(raw.mergeTask.materialIds) || raw.mergeTask.phase === "animation" && !Number.isSafeInteger(raw.mergeTask.resultId))) raw.mergeTask = null;
     for (const r of raw.raidRosters || []) {
       if (!Object.hasOwn(r, "abilitySnapshot")) r.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());
       if (!Object.hasOwn(r, "settlementSessionId")) r.settlementSessionId = "";
@@ -2747,10 +2824,14 @@
     assert(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
     if (raw.mergeTask !== null) {
       const t = raw.mergeTask;
-      assert(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.mergeAnimationSeconds + 1e-9);
+      assert(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.mergeAnimationSeconds + 1e-9 && Array.isArray(t.materialIds) && t.materialIds.length >= 2 && t.materialIds.length <= CONFIG.maxMergeMaterials && new Set(t.materialIds).size === t.materialIds.length && t.materialIds.every((id) => integer(id, 1, CONFIG.maxFarmUnitId)));
       if (t.phase === "approach") {
-        assert(integer(t.aId, 1, CONFIG.maxFarmUnitId) && integer(t.bId, 1, CONFIG.maxFarmUnitId) && t.aId !== t.bId && raw.units.some((u) => u.id === t.aId) && raw.units.some((u) => u.id === t.bId));
-      } else assert(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9);
+        const materials = t.materialIds.map((id) => raw.units.find((u) => u.id === id)), first = materials[0], cost = mergeMaterialCostForTier(first?.tier + 1), sameSpeciesCount = raw.units.filter((u) => !u.isBattleOnlySummon && u.species === first?.species).length;
+        assert(integer(t.aId, 1, CONFIG.maxFarmUnitId) && integer(t.bId, 1, CONFIG.maxFarmUnitId) && t.aId === t.materialIds[0] && t.bId === t.materialIds[1] && cost === materials.length && first && materials.every((u) => u && u.tier === first.tier && u.species === first.species) && sameSpeciesCount - materials.length + 1 >= 2);
+      } else {
+        const result = raw.units.find((u) => u.id === t.resultId);
+        assert(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9 && integer(t.resultId, 1, CONFIG.maxFarmUnitId) && result && integer(t.sourceSpecies, 0, CONFIG.maxSpecies - 1) && integer(t.sourceTier, 1, CONFIG.maxTier - 1) && result.species === t.sourceSpecies && result.tier === t.sourceTier + 1 && t.materialIds.length === mergeMaterialCostForTier(result.tier));
+      }
     }
     const farmCap = Math.min(CONFIG.maxFarmCap, CONFIG.cap + 7 * (raw.progress.levels.capacity || 0));
     assert(raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? farmCap : CONFIG.maxFarmBattleUnits : CONFIG.maxRaidBattleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.maxRaidProjectiles);
@@ -2770,7 +2851,7 @@
     assert(raw.bossRewardWatermarks && integer(raw.bossRewardWatermarks.farm, 0, 1e12) && integer(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm);
     const rewardIds = /* @__PURE__ */ new Set();
     for (const reward of raw.bossRewardReceipts) {
-      assert(reward && integer(reward.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward.source) && reward.encounterId <= raw.bossRewardWatermarks[reward.source] && integer(reward.species, 0, CONFIG.maxSpecies - 1) && integer(reward.tier, 1, 4) && Number.isFinite(reward.x) && Number.isFinite(reward.y) && Number.isFinite(reward.chance) && reward.chance >= 0 && reward.chance <= 1 && Number.isFinite(reward.roll) && reward.roll >= 0 && reward.roll < 1 && ["pending", "missed", "granted"].includes(reward.status) && integer(reward.unitId, 0, CONFIG.maxFarmUnitId));
+      assert(reward && integer(reward.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward.source) && reward.encounterId <= raw.bossRewardWatermarks[reward.source] && integer(reward.species, 0, CONFIG.maxSpecies - 1) && integer(reward.tier, 1, CONFIG.maxTier) && Number.isFinite(reward.x) && Number.isFinite(reward.y) && Number.isFinite(reward.chance) && reward.chance >= 0 && reward.chance <= 1 && Number.isFinite(reward.roll) && reward.roll >= 0 && reward.roll < 1 && ["pending", "missed", "granted"].includes(reward.status) && integer(reward.unitId, 0, CONFIG.maxFarmUnitId));
       const key = reward.receiptKey || reward.source + ":" + reward.encounterId;
       assert(!rewardIds.has(key));
       rewardIds.add(key);
@@ -2804,7 +2885,7 @@
       rosterOwners.add(r.ownerId);
       const ids2 = /* @__PURE__ */ new Set();
       for (const t of r.troops) {
-        assert(integer(t.farmId, 1, CONFIG.maxFarmUnitId) && integer(t.species, 0, CONFIG.maxSpecies - 1) && integer(t.tier, 1, 4) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
+        assert(integer(t.farmId, 1, CONFIG.maxFarmUnitId) && integer(t.species, 0, CONFIG.maxSpecies - 1) && integer(t.tier, 1, CONFIG.maxTier) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
         ids2.add(t.farmId);
         manifest.add(r.ownerId + ":" + t.farmId);
       }
@@ -2816,7 +2897,7 @@
     for (const u of raw.units) {
       shape(u, snapshot(new Unit(1, 0, 1, 0, 0)));
       assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds);
-      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, 4) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
+      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
       else assert(u.down === 0);
       assert(!ids.has(u.id));
@@ -2869,7 +2950,7 @@
       assert(integer(p.id, 1, raw.projectileSerial) && !projectileIds.has(p.id));
       projectileIds.add(p.id);
       assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits - 1 : raw.nextId - 1));
-      assert(integer(p.species, 0, CONFIG.maxSpecies - 1) && integer(p.tier, 1, 4) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
+      assert(integer(p.species, 0, CONFIG.maxSpecies - 1) && integer(p.tier, 1, CONFIG.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
       if (p.isPopcorn) {
         assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.every((id) => id === "boss") && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
         validatePopcornConfig(p.popcornConfig);
@@ -2915,6 +2996,7 @@
       init_species_abilities();
       init_unit_abilities();
       init_raid_settlement();
+      init_unit_grades();
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
     }
   });
@@ -2923,7 +3005,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.5.5";
+      PRODUCT_VERSION = "0.6.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -2937,10 +3019,10 @@
   function parseSave(text) {
     if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
     const data = JSON.parse(text);
-    if (data.schema !== "budmori-farm" || !READ_COMPATIBILITIES.has(legacyCompatibility(data.productVersion))) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
+    if (data.schema !== "budmori-farm" || !isReadableCompatibility(data.productVersion)) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
     return restore(data.world, { migrateLegacyRaid: true });
   }
-  var KEY, LEGACY_KEY, MAX_BYTES, READ_COMPATIBILITIES, legacyCompatibility, FarmStorage;
+  var KEY, LEGACY_KEY, MAX_BYTES, READ_COMPATIBILITIES, legacyCompatibility, isReadableCompatibility, FarmStorage;
   var init_farm_storage = __esm({
     "src/farm-storage.js"() {
       init_version();
@@ -2948,8 +3030,9 @@
       KEY = "bloom-weapon-cards-v4";
       LEGACY_KEY = "bloom-weapon-cards-v3";
       MAX_BYTES = 2 * 1024 * 1024;
-      READ_COMPATIBILITIES = /* @__PURE__ */ new Set([COMPATIBILITY, "0.4"]);
+      READ_COMPATIBILITIES = /* @__PURE__ */ new Set([COMPATIBILITY, "0.5", "0.4"]);
       legacyCompatibility = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
+      isReadableCompatibility = (version) => READ_COMPATIBILITIES.has(legacyCompatibility(version));
       FarmStorage = class {
         constructor() {
           this.raw = null;
@@ -2962,7 +3045,7 @@
             this.raw = localStorage.getItem(KEY);
             this.legacyRaw = localStorage.getItem(LEGACY_KEY);
             if (this.raw) {
-              if (legacyCompatibility(JSON.parse(this.raw).productVersion) !== COMPATIBILITY) throw Error("현재 저장은 다른 0.5 버전과 호환되지 않습니다. 원본 키는 그대로 보존했어요.");
+              if (!isReadableCompatibility(JSON.parse(this.raw).productVersion)) throw Error("현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.");
               this.world = parseSave(this.raw);
             } else if (this.legacyRaw) {
               try {
@@ -3086,15 +3169,14 @@
   }
 
   // src/farm-renderer.js
+  init_unit_grades();
   var { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
   var { WebGLDevice, VectorContext, MeshRenderer } = globalThis.BloomGamekitRendering;
   var { createVectorAsset } = globalThis.BloomGamekitVectorAssets;
-  var TIER_OUTLINE_COLORS = [
-    [216 / 255, 212 / 255, 189 / 255, 1],
-    [131 / 255, 206 / 255, 118 / 255, 1],
-    [120 / 255, 185 / 255, 255 / 255, 1],
-    [189 / 255, 140 / 255, 255 / 255, 1]
-  ];
+  var TIER_OUTLINE_COLORS = UNIT_GRADES.map(({ outlineColor }) => {
+    const rgb = outlineColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i).slice(1).map((value) => parseInt(value, 16) / 255);
+    return [...rgb, 1];
+  });
   function unitMotion(u, sim) {
     const dead = u.hp <= 0 || u.down > 0, airborne = !u.dropLanded || u.z > 0.1, phase = u.ability?.phase || "idle";
     const moving = Math.hypot(u.vx || 0, u.vy || 0) > 0.18, kind = UNIT_ABILITY_PROFILES[u.species]?.kind;
@@ -3406,7 +3488,8 @@
       if (sim2.scene === "raid" || farmBossVisible) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
       }
-      const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector: this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
+      const hiddenMergeResultId = sim2.scene === "farm" && sim2.mode === "merge" && sim2.mergeTask?.phase === "animation" ? sim2.mergeTask.resultId : 0;
+      const actors = sim2.units.filter((unit) => unit.id !== hiddenMergeResultId).map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector: this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
       if (sim2.scene === "raid" || farmBossVisible) actors.push({ depth: 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), id: 0, vector: true, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x, f.y, 0.1, 0.07, "#55452433");
@@ -3463,7 +3546,9 @@
       }
       feel?.draw(this, this.displayTimeMs);
       for (const e of sim2.effects) {
-        const q = e.life;
+        const delay = Number.isFinite(e.delay) ? e.delay : 0, span = Number.isFinite(e.span) ? e.span : 1;
+        if (e.life < delay) continue;
+        const q = Number.isFinite(e.span) ? clamp2((e.life - delay) / span, 0, 1) : e.life;
         if (e.kind === "feed") this.ring(e.x, e.y, 0.15 + q * 0.35, `rgba(166,121,59,${(1 - q) * 0.6})`, 0.035);
         else if (e.kind === "food-land") {
           const t = Math.min(1, q / 0.35);
@@ -3497,6 +3582,11 @@
             const a = i * Math.PI / 2 + t * 0.35, p = this.project(e.x + Math.cos(a) * t * 0.33, e.y + Math.sin(a) * t * 0.22, 0.025 + Math.sin(t * Math.PI) * 0.1);
             this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.03, `rgba(179,169,137,${1 - t})`);
           }
+        } else if (e.kind === "merge-material") {
+          const t = clamp2(q, 0, 1), x = e.x + (e.targetX - e.x) * t, y = e.y + (e.targetY - e.y) * t, z = (e.z || 0) + Math.sin(Math.PI * t) * 0.55;
+          const start2 = this.project(e.x, e.y, e.z || 0), point = this.project(x, y, z);
+          this.line(start2, point, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - t)})`);
+          this.ellipse(point.x, point.y, this.scale * 0.12 * (1 - 0.4 * t), this.scale * 0.09 * (1 - 0.4 * t), `rgba(88,185,187,${1 - 0.35 * t})`, t * Math.PI);
         } else if (e.kind === "birth" || e.kind === "merge") {
           const birth = e.kind === "birth", color = birth ? "#df87a4" : "#58b9bb";
           this.ring(e.x, e.y, birth ? 0.35 + q * 1.5 : 1.8 * (1 - q) + 0.15, color, 0.07);
@@ -3720,6 +3810,20 @@
       Object.assign(this, { x: e.x, y: e.y, z: e.z, life: e.life, kind: e.kind, radius: e.radius || 0, duration: e.duration || 0, owner: e.owner || 0 });
     }
   };
+  var DelayedEffectRender = class extends EffectRender {
+    static renderSchema = Object.freeze({ ...EffectRender.renderSchema, delay: R.STEP, span: R.STEP });
+    constructor(e) {
+      super(e);
+      Object.assign(this, { delay: e.delay, span: e.span });
+    }
+  };
+  var MergeMaterialRender = class extends DelayedEffectRender {
+    static renderSchema = Object.freeze({ ...DelayedEffectRender.renderSchema, targetX: R.STEP, targetY: R.STEP, sequenceIndex: R.STEP, sequenceCount: R.STEP });
+    constructor(e) {
+      super(e);
+      Object.assign(this, { targetX: e.targetX, targetY: e.targetY, sequenceIndex: e.sequenceIndex, sequenceCount: e.sequenceCount });
+    }
+  };
   var GameClockRender = class extends RenderObject {
     static renderSchema = Object.freeze({ gameTimeMs: R.LINEAR });
     constructor(gameTimeMs) {
@@ -3917,7 +4021,10 @@
       entities.push({ id: "boss", generation: 0, source: new BossRender(world.boss) });
       for (const f of world.food) entities.push({ id: this.presentationIdentity("food", f), generation: 0, source: new FoodRender(f) });
       for (const p of world.projectiles) entities.push({ id: "projectile:" + p.id, generation: 0, source: new ProjectileRender(p) });
-      for (const e of world.effects) entities.push({ id: this.presentationIdentity("effect", e), generation: 0, source: new EffectRender(e) });
+      for (const e of world.effects) {
+        const source = e.kind === "merge-material" ? new MergeMaterialRender(e) : Number.isFinite(e.delay) && Number.isFinite(e.span) ? new DelayedEffectRender(e) : new EffectRender(e);
+        entities.push({ id: this.presentationIdentity("effect", e), generation: 0, source });
+      }
       entities.push({ id: "clock", generation: 0, source: new GameClockRender(world.time * 1e3) });
       const captureMode = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
       if (captureMode === "continuous") this.previousCaptureTimeMs = this.latestCaptureTimeMs;
@@ -4917,7 +5024,7 @@
     requestAnimationFrame(frame);
   }
   $2("productVersion").textContent = PRODUCT_VERSION;
-  $2("startVersion").textContent = PRODUCT_VERSION + " · 특수 능력과 레이드 성장";
+  $2("startVersion").textContent = PRODUCT_VERSION + " · 여섯 등급과 합체 확장";
   setHome(true, false);
   if (location.hash && location.hash !== "#/") route();
   requestAnimationFrame(frame);

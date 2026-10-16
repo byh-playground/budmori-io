@@ -13,15 +13,28 @@ import {
   scaleAttackArea
 } from '../src/unit-stats.js';
 import {UNIT_ABILITY_PROFILES} from '../src/unit-abilities.js';
+import {UNIT_GRADES,MAX_UNIT_TIER,mergeMaterialCostForTier,isValidUnitTier} from '../src/unit-grades.js';
 
 function close(actual, expected, tolerance = 1e-9) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `expected ${actual} ≈ ${expected}`);
 }
 
 for (const profile of COMMON_UNIT_STAT_PROFILES) assert.deepEqual(profile, COMMON_UNIT_STAT_DEFAULTS);
+assert.deepEqual(UNIT_GRADES.map(({name})=>name),['Common','Uncommon','Rare','Epic','Legendary','Mythic']);
+assert.equal(MAX_UNIT_TIER,6);
+assert.deepEqual(UNIT_GRADES.slice(1).map(({materialCost})=>materialCost),[2,2,3,4,5]);
+assert.deepEqual([2,3,4,5,6].map(mergeMaterialCostForTier),[2,2,3,4,5]);
+assert.equal(mergeMaterialCostForTier(7),0);
+assert(isValidUnitTier(6));assert(!isValidUnitTier(7));
+const gradeStats=[
+  [40,4],[60,4.8],[90,5.76],[202.5,10.368],[607.5,24.8832],[2278.125,74.6496]
+];
+for(let tier=1;tier<=MAX_UNIT_TIER;tier++){
+  const resolved=resolveUnitStats({species:2,tier});
+  close(resolved.maxHp,gradeStats[tier-1][0]);
+  close(resolved.attackPower,gradeStats[tier-1][1]);
+}
 assert.deepEqual(resolveUnitStats({species:0,tier:1}), {maxHp:40,attackPower:4,...COMMON_UNIT_STAT_DEFAULTS});
-close(resolveUnitStats({species:2,tier:4}).maxHp, 135);
-close(resolveUnitStats({species:2,tier:4}).attackPower, 6.912);
 assert.deepEqual(resolveUnitStats({species:3,tier:1}), {maxHp:40,attackPower:4,...COMMON_UNIT_STAT_DEFAULTS}, 'Chestnut troops use the normal shared T1 stats');
 assert.deepEqual(UNIT_ABILITY_PROFILES.map(({kind,range,skillMultiplier,windup,recovery,projectileCount,bounces})=>({kind,range,skillMultiplier,windup,recovery,projectileCount,bounces})), [
   {kind:'ram',range:1.45,skillMultiplier:1,windup:.28,recovery:.65,projectileCount:0,bounces:0},

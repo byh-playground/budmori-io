@@ -185,7 +185,7 @@ function sync(display,now){
  if(now-lastSave>3000){lastSave=now;persist()}
 }
 function frame(now){measureFrame(now);if(room||!home&&!document.hidden)active.pulse(now);const display=active.presentation(now);combatFeel.observe(active.world,display.displayTimeMs,display.presentationRevision);renderer.render(display,combatFeel,display.displayTimeMs);sync(display,now);requestAnimationFrame(frame)}
-$('productVersion').textContent=PRODUCT_VERSION;$('startVersion').textContent=PRODUCT_VERSION+' · 특수 능력과 레이드 성장';
+ $('productVersion').textContent=PRODUCT_VERSION;$('startVersion').textContent=PRODUCT_VERSION+' · 여섯 등급과 합체 확장';
 setHome(true,false);if(location.hash&&location.hash!=='#/')route();requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.
 globalThis.BUDMORI={get sim(){return active.world},get runtime(){return active},get room(){return room},get renderMetrics(){return frameRate()},get presentationDiagnostics(){return active.latestPresentationDiagnostics},renderer,storage,foodFeel,combatFeel,CONFIG,ATTACK_TYPES,Ballistics,ArenaGeometry,version:PRODUCT_VERSION};

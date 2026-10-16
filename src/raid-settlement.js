@@ -7,6 +7,8 @@
  * that makes the settlement receipt, sleeping units, and rewards atomic.
  */
 
+import {isValidUnitTier} from './unit-grades.js';
+
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
 
@@ -79,7 +81,7 @@ function raidOwnerManifest(raidWorld, ownerId) {
   for (const troop of roster.troops) {
     if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 ||
         !Number.isInteger(troop.species) || troop.species < 0 || troop.species > 3 ||
-        !Number.isInteger(troop.tier) || troop.tier < 1 || troop.tier > 4 ||
+        !isValidUnitTier(troop.tier) ||
         typeof troop.deployed !== 'boolean' || manifest.has(troop.farmId)) {
       fail('The owner Raid roster must have unique Farm IDs and valid deployed entries');
     }
