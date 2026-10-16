@@ -70,7 +70,8 @@ try{
   async function capture(label,down,hp=0){
     await page.evaluate(({sleeperId,down,hp})=>{
       const unit=BUDMORI.sim.units.find(entry=>entry.id===sleeperId);unit.down=down;unit.hp=hp;
-      BUDMORI.renderer.render(BUDMORI.sim,null,1000);
+      BUDMORI.runtime.capturePresentation('reset');
+      BUDMORI.renderer.render(BUDMORI.runtime.presentation(performance.now()),null,1000);
     },{sleeperId:fixture.sleeperId,down,hp});
     const full=path.join(out,`farm-recovery-indicators-${label}.png`),badge=path.join(out,`farm-recovery-indicators-${label}-badge.png`);
     await canvas.screenshot({path:full});
