@@ -11,41 +11,41 @@
     <ellipse id="arm-right-fist" cx="277" cy="223" rx="11" ry="10" fill="#875c3c" stroke="#403329" stroke-width="4"/>
   </g>
   <g id="body">
-    <path id="chestnut-shell" d="M58 206 C44 187 49 161 60 141 L48 119 L76 124 L91 101 L111 118 L132 86 L153 113 L175 88 L191 119 L220 102 L220 133 L252 128 L242 157 C258 177 262 199 252 222 C240 249 211 264 178 268 L142 266 C107 261 76 241 58 217 Z" fill="#795337" stroke="#403329" stroke-width="6" stroke-linejoin="round"/>
-    <path id="nut-face-patch" d="M82 207 C76 186 88 164 106 153 C124 141 145 140 160 142 C188 143 212 158 228 181 C243 204 236 229 216 244 C193 261 128 261 101 244 C86 233 78 219 82 207 Z" fill="#d7a56c" stroke="#563f2d" stroke-width="4" stroke-linejoin="round"/>
-    <path id="shell-grain-left" d="M67 175 Q58 194 68 215 M81 145 Q73 163 78 178" fill="none" stroke="#b7865c" stroke-width="3.5" stroke-linecap="round"/>
-    <path id="shell-grain-right" d="M253 180 Q261 199 250 217 M239 147 Q247 164 242 179" fill="none" stroke="#b7865c" stroke-width="3.5" stroke-linecap="round"/>
-    <path id="nut-shine" d="M101 181 Q113 163 135 160" fill="none" stroke="#edc28a" stroke-width="4" stroke-linecap="round"/>
+    <path id="chestnut-shell" d="M160 101 C144 102 132 113 119 128 C108 143 97 151 82 158 C62 167 48 176 44 189 C39 207 44 222 58 236 C76 250 107 259 137 261 L183 261 C213 259 244 250 262 236 C276 222 281 207 276 189 C272 176 258 167 238 158 C223 151 212 143 201 128 C188 113 176 102 160 101 Z" fill="#ae7853" stroke="#614b3c" stroke-width="6" stroke-linejoin="round"/>
+    <path id="chestnut-crown" d="M128 130 C138 115 149 100 160 89 C171 100 182 115 192 130 C181 125 173 125 166 132 L160 117 L154 132 C147 125 139 125 128 130 Z" fill="#885d47" stroke="#614b3c" stroke-width="3" stroke-linejoin="round"/>
+    <path id="nut-underside" d="M62 179 C68 159 84 148 103 141 C120 135 140 134 160 136 C180 134 200 135 217 141 C236 148 252 159 258 179 C265 200 254 221 237 236 C216 251 188 256 160 256 C132 256 104 251 83 236 C66 221 55 200 62 179 Z" fill="#dfad79" stroke="#885d47" stroke-width="4" stroke-linejoin="round"/>
+    <path id="shell-grain-left" d="M73 131 Q65 144 68 158" fill="none" stroke="#885d47" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="shell-grain-right" d="M247 131 Q255 144 252 158" fill="none" stroke="#885d47" stroke-width="3.5" stroke-linecap="round"/>
     <g id="face-neutral">
-      <ellipse id="neutral-cheek-left" cx="127" cy="213" rx="9" ry="5" fill="#e98977"/>
-      <ellipse id="neutral-cheek-right" cx="193" cy="213" rx="9" ry="5" fill="#e98977"/>
-      <ellipse id="neutral-eye-left" cx="141" cy="194" rx="7" ry="9" fill="#33251f"/>
-      <ellipse id="neutral-eye-right" cx="179" cy="194" rx="7" ry="9" fill="#33251f"/>
+      <ellipse id="neutral-cheek-left" cx="124" cy="213" rx="11" ry="6" fill="#e98977"/>
+      <ellipse id="neutral-cheek-right" cx="196" cy="213" rx="11" ry="6" fill="#e98977"/>
+      <ellipse id="neutral-eye-left" cx="141" cy="194" rx="9" ry="11" fill="#33251f"/>
+      <ellipse id="neutral-eye-right" cx="179" cy="194" rx="9" ry="11" fill="#33251f"/>
       <circle id="neutral-eye-glint-left" cx="139" cy="191" r="2.3" fill="#fff3db"/>
       <circle id="neutral-eye-glint-right" cx="177" cy="191" r="2.3" fill="#fff3db"/>
-      <path id="neutral-mouth" d="M151 218 Q160 225 169 218" fill="none" stroke="#49352d" stroke-width="3.5" stroke-linecap="round"/>
+      <path id="neutral-mouth" d="M148 216 Q160 232 172 216" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/>
     </g>
     <g id="face-focused">
       <path id="focused-brow-left" d="M131 183 L147 188 M173 188 L189 183" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <ellipse id="focused-eye-left" cx="141" cy="196" rx="6" ry="8" fill="#33251f"/>
-      <ellipse id="focused-eye-right" cx="179" cy="196" rx="6" ry="8" fill="#33251f"/>
+      <ellipse id="focused-eye-left" cx="141" cy="196" rx="7.5" ry="10" fill="#33251f"/>
+      <ellipse id="focused-eye-right" cx="179" cy="196" rx="7.5" ry="10" fill="#33251f"/>
       <path id="focused-mouth" d="M152 219 L168 219" fill="none" stroke="#49352d" stroke-width="3.5" stroke-linecap="round"/>
     </g>
     <g id="face-attack">
       <path id="attack-brow-left" d="M130 183 L147 189 M173 189 L190 183" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <ellipse id="attack-eye-left" cx="141" cy="196" rx="7.5" ry="9" fill="#33251f"/>
-      <ellipse id="attack-eye-right" cx="179" cy="196" rx="7.5" ry="9" fill="#33251f"/>
-      <ellipse id="attack-mouth" cx="160" cy="219" rx="6" ry="7" fill="#49352d"/>
+      <ellipse id="attack-eye-left" cx="141" cy="196" rx="8.5" ry="11" fill="#33251f"/>
+      <ellipse id="attack-eye-right" cx="179" cy="196" rx="8.5" ry="11" fill="#33251f"/>
+      <ellipse id="attack-mouth" cx="160" cy="219" rx="7" ry="8" fill="#49352d"/>
     </g>
     <g id="face-hurt">
-      <path id="hurt-eye-left" d="M134 194 L148 194 M134 188 L148 200" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <path id="hurt-eye-right" d="M172 194 L186 194 M172 200 L186 188" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <path id="hurt-mouth" d="M151 222 Q160 214 169 222" fill="none" stroke="#49352d" stroke-width="3.5" stroke-linecap="round"/>
+      <path id="hurt-eye-left" d="M134 194 L148 194 M134 188 L148 200" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
+      <path id="hurt-eye-right" d="M172 194 L186 194 M172 200 L186 188" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
+      <path id="hurt-mouth" d="M151 222 Q160 214 169 222" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/>
     </g>
     <g id="face-dead">
-      <path id="dead-eye-left" d="M134 188 L148 201 M148 188 L134 201" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <path id="dead-eye-right" d="M172 188 L186 201 M186 188 L172 201" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <path id="dead-mouth" d="M152 219 L168 219" fill="none" stroke="#49352d" stroke-width="3.5" stroke-linecap="round"/>
+      <path id="dead-eye-left" d="M134 188 L148 201 M148 188 L134 201" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
+      <path id="dead-eye-right" d="M172 188 L186 201 M186 188 L172 201" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
+      <path id="dead-mouth" d="M152 219 L168 219" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/>
     </g>
   </g>
 </svg>
