@@ -190,7 +190,7 @@ function unitExpression(u,sim){
       }
       if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
       const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawUnit(u, sim2) }));
-      if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, draw: () => this.drawBoss(sim2) });
+      if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, vector:true, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x,f.y,.10,.07,"#55452433");
         if(f.phase === "flight") {
