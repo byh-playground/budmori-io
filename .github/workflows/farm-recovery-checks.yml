@@ -21,12 +21,14 @@ jobs:
       - run: npm run build
       - run: npm run test:ability-tree
       - run: npm run test:progression
+      - run: npm run test:farm-recovery-indicators
       - run: node tests/runtime-manifest-unit.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser:abilities
       - run: node tests/svg-startup.e2e.mjs
       - run: npm run test:vector-assets
       - run: npm run test:boss-visual
+      - run: npm run test:browser:farm-recovery-indicators
       - run: npm run test:browser:raid-settlement
       - run: npm run test:browser
       - run: npm run test:browser:save
