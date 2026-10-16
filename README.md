@@ -84,4 +84,4 @@ npm test
 
 ## Unit combat stats
 
-Before adding a unit type or special ability, follow the [unit design and verification checklist](docs/unit-stats.md#새-병종-설계추가-체크리스트). The page also records current agreed design directions separately from unfinalized balance values, alongside common stats, per-unit ability profiles, damage/healing order, and deterministic multiplayer notes.
+병종이나 특수능력을 추가하기 전에 [새 병종 설계·검증 체크리스트](docs/unit-stats.md#새-병종-설계추가-체크리스트)를 따릅니다. 이 문서에는 밸런스가 미확정인 합의된 기획 방향도 별도 섹션으로 기록하며, 공통 스탯·종별 공격 프로필·피해와 회복 처리 순서·멀티플레이 결정론 기준을 설명합니다.
