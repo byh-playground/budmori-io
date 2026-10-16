@@ -20,6 +20,10 @@ const vectorAssets=require('./vector-sources.cjs').validateVectorSources(root);
 const manifest={vectorAssets,schemaVersion:1,sourceCommit:lock.sourceCommit,distCommit:lock.distCommit,modules,game:{file:'src/game.js',bytes:gameBytes.length,sha256:sha(gameBytes)},bootstrap:{file:'src/bootstrap.js',bytes:bootstrap.length,sha256:sha(bootstrap)}};
 const scopeFile=path.join(root,'src/scope.js');
 if(fs.existsSync(scopeFile)){const bytes=readCanonicalTextAsset(scopeFile);manifest.scope={file:'src/scope.js',bytes:bytes.length,sha256:sha(bytes)}}
+const versionSource=fs.readFileSync(path.join(root,'src/version.js'),'utf8');
+const productVersion=versionSource.match(/PRODUCT_VERSION\s*=\s*['"]([^'"]+)['"]/)?.[1];
+if(!productVersion)throw new Error('Product version is missing from src/version.js');
+manifest.productVersion=productVersion;
 let html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace(/\r\n/g,'\n');
 const marker=/<script id="bloom-runtime-manifest" type="application\/json">[\s\S]*?<\/script>/;
 if(!marker.test(html))throw new Error('Runtime manifest marker missing');

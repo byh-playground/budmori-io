@@ -105,7 +105,7 @@ for (const type of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click
 }
 
 function appVersion() {
-  return String(document.getElementById('startVersion')?.textContent || document.getElementById('productVersion')?.textContent || 'unknown').trim().slice(0, 80);
+  return String(config?.productVersion || document.getElementById('startVersion')?.textContent || document.getElementById('productVersion')?.textContent || 'unknown').trim().slice(0, 80);
 }
 function diagnosticSnapshot() {
   const errors = diagnosticRing ? diagnosticRing.snapshot() : {
