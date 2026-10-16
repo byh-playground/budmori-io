@@ -2,6 +2,7 @@ import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.
 import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress,sevenSegmentDigitLines} from './farm-indicators.js';
 import {UNIT_GRADES} from './unit-grades.js';
 import {capsuleContourPoints} from './attack-telegraph.js';
+import {BOSS_PATTERN_CONFIG} from './boss-patterns.js';
 const {bosses:BOSS_VECTOR_ASSETS,troops:TROOP_VECTOR_ASSETS}=globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
@@ -34,6 +35,13 @@ function unitExpression(u,sim){
   const restingCooldown=sim.scene==='farm'&&u.cooldown>0&&phase==='idle';
   return dead?'dead':sim.scene==='raid'&&sim.encounter?.outcome==='victory'?'happy':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':restingCooldown?'neutral':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
 }
+function renderedBossAttackArea(boss,unitRadius=0){
+  if(!boss?.patternId||boss.patternPhase==='recover')return null;
+  return bossAttackArea({...boss,patternRuntime:{active:{
+    id:boss.patternId,phase:boss.patternPhase,phaseElapsed:boss.patternPhaseElapsed,aim:boss.patternAim,locked:boss.patternLocked,
+    start:{x:boss.patternStartX,y:boss.patternStartY,z:boss.patternStartZ},target:{x:boss.patternTargetX,y:boss.patternTargetY,z:boss.patternTargetZ}
+  }}},unitRadius);
+}
   // render.js
   const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c','#9a6947'];
   var Diorama = class {
@@ -47,12 +55,12 @@ function unitExpression(u,sim){
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
       for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
-      this.bossPlayer=null;this.bossPlayerAsset=null;this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
+      this.bossPlayer=null;this.bossPlayerAsset=null;this.bossPlayers=new Map();this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
       this.resize();
       const boss=this.bossAssets.get('chestnut');if(!boss)throw new Error('Pinned chestnut boss vector asset is required');
-      const prewarmAt=performance.now();this.bossPlayer=boss.asset.createPlayer({clip:'idle',startedAtMs:0});this.bossPlayerAsset=boss;
+      const prewarmAt=performance.now();this.bossPlayer=boss.asset.createPlayer({clip:'idle',startedAtMs:0});this.bossPlayerAsset=boss;this.bossPlayers.set(3,{record:boss,player:this.bossPlayer});
       this.ctx.beginFrame({width:this.canvas.width,height:this.canvas.height,clearColor:[0.9,0.92,0.87,1]});
       this.bossPlayer.draw({projection:this.ctx.vector.projection,matrix:[.001,0,0,.001,100,100]});
       this.prewarmStats=this.ctx.endFrame();this.prewarmDurationMs=performance.now()-prewarmAt;this.assetsReady=true;
@@ -94,6 +102,51 @@ function unitExpression(u,sim){
       c.strokeStyle=color2;c.lineWidth=width*this.scale;c.beginPath();c.moveTo(points[0].x,points[0].y);
       for(const point of points.slice(1))c.lineTo(point.x,point.y);
       c.closePath();c.stroke();
+    }
+    groundPolygon(points,fill,stroke=null,width=.055){
+      if(!points.length)return;const c=this.ctx,projected=points.map(point=>this.project(point.x,point.y));
+      c.beginPath();c.moveTo(projected[0].x,projected[0].y);for(const point of projected.slice(1))c.lineTo(point.x,point.y);c.closePath();
+      if(fill){c.fillStyle=fill;c.fill()}if(stroke){c.strokeStyle=stroke;c.lineWidth=width*this.scale;c.stroke()}
+    }
+    groundSector(x,y,angle,sector,outerRadius,innerRadius=0,fill='#b46c4530',stroke='#b46c45'){
+      const points=[],segments=Math.max(12,Math.ceil(sector/(Math.PI/48))),start=angle-sector/2,end=angle+sector/2;
+      if(innerRadius<=0)points.push({x,y});
+      for(let i=0;i<=segments;i++){const a=start+(end-start)*i/segments;points.push({x:x+Math.cos(a)*outerRadius,y:y+Math.sin(a)*outerRadius})}
+      if(innerRadius>0)for(let i=segments;i>=0;i--){const a=start+(end-start)*i/segments;points.push({x:x+Math.cos(a)*innerRadius,y:y+Math.sin(a)*innerRadius})}
+      this.groundPolygon(points,fill,stroke,.045);
+      if(innerRadius<=0){const c=this.ctx,center=this.project(x,y),left=this.project(x+Math.cos(start)*outerRadius,y+Math.sin(start)*outerRadius),right=this.project(x+Math.cos(end)*outerRadius,y+Math.sin(end)*outerRadius);this.line(center,left,.035,stroke);this.line(center,right,.035,stroke)}
+    }
+    drawBossTelegraph(area){
+      const color=area.active?'#bd6648':area.locked?'#d09852':'#a8755c',soft=area.active?'rgba(195,91,62,.2)':'rgba(199,147,77,.15)';
+      if(area.kind==='sweep'){
+        this.strokeGroundEllipse(area.x,area.y,Math.max(0,area.sweepRadius-area.width),Math.max(0,area.sweepRadius-area.width),color,area.active?.075:.12);
+        const progress=area.active?area.progress:1;this.ring(area.x,area.y,area.outerRadius,color,.1,area.startAngle,area.startAngle+progress*Math.PI*2);
+        this.ring(area.x,area.y,area.sweepRadius,'rgba(216,159,84,.25)',.045);
+      }else if(area.kind==='sector'){
+        this.groundSector(area.x,area.y,area.angle,area.sector,area.reach,0,soft,color);
+      }else if(area.kind==='fan'){
+        const inner=Math.max(0,area.reach-area.width),outer=area.reach+area.width;
+        this.groundSector(area.x,area.y,area.angle,area.sector,outer,inner,soft,color);
+        const q=area.active?clamp(area.progress,0,1):0,a=area.angle-area.sector/2+q*area.sector;
+        const from=this.project(area.x+Math.cos(a)*inner,area.y+Math.sin(a)*inner),to=this.project(area.x+Math.cos(a)*outer,area.y+Math.sin(a)*outer);this.line(from,to,.12,area.active?'#f0c27b':'#d8ae70');
+      }else if(area.kind==='charge'){
+        const endRadius=area.active?Math.hypot(area.endX-area.x,area.endY-area.y):area.reach;
+        this.strokeGroundCapsule({x:area.x,y:area.y,angle:area.angle,width:area.width,startRadius:0,endRadius:Math.max(.04,endRadius)},soft);
+        const end=this.project(area.x+Math.cos(area.angle)*endRadius,area.y+Math.sin(area.angle)*endRadius),start=this.project(area.x,area.y);this.line(start,end,.045,color);
+      }else if(area.kind==='leap'){
+        const radius=area.reach,progress=area.progress||0,x=area.targetX,y=area.targetY;
+        this.groundEllipse(x,y,radius,radius,soft);this.strokeGroundEllipse(x,y,radius,radius,color,area.active?.09:.12);
+        this.strokeGroundEllipse(x,y,.46,.46,'#ead59b',.06);
+        const from=this.project(area.x,area.y),to=this.project(x,y);this.line(from,to,.055,'rgba(184,110,69,.58)');
+        const head=this.project(x-Math.cos(Math.atan2(y-area.y,x-area.x))*.56,y-Math.sin(Math.atan2(y-area.y,x-area.x))*.56);this.line(head,to,.10,color);
+        if(area.active){const r=radius*(1-.2*progress);this.strokeGroundEllipse(x,y,r,r,'rgba(247,207,128,.7)',.045)}
+      }else if(area.kind==='summon'){
+        const config=BOSS_PATTERN_CONFIG[area.patternId],reach=config?.landingRadius||4.8,angle=area.angle,target={x:area.x+Math.cos(angle)*reach,y:area.y+Math.sin(angle)*reach};
+        this.groundSector(area.x,area.y,angle,Math.PI/7,reach,.25,'rgba(183,125,73,.11)','rgba(178,129,76,.55)');
+        this.line(this.project(area.x,area.y),this.project(target.x,target.y),.05,'rgba(167,123,74,.62)');
+        this.groundEllipse(target.x,target.y,.65,.48,soft);this.strokeGroundEllipse(target.x,target.y,.65,.48,color,.085);
+        this.ring(target.x,target.y,.28,'#f1d391',.045,0,Math.PI*1.8);
+      }
     }
     ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
@@ -193,27 +246,49 @@ function unitExpression(u,sim){
       const event=world.farmBossEvent;
       if(event?.phase==='celebrating'&&event.outcome==='defeat')return 'idle';
       if(b.hp<=0)return 'death';
-      if(b.flash>.09&&b.phase==='chase')return 'hit';
-      if(b.phase==='strike-windup'||b.phase==='sweep-windup')return 'windup';
-      if(b.phase==='strike')return 'strike';if(b.phase==='sweep')return 'sweep';if(b.phase==='recover')return 'recover';
+      if(b.flash>.09&&b.patternPhase==='idle')return 'hit';
+      if(b.patternPhase==='windup')return 'windup';
+      if(b.patternPhase==='active'){
+        if(b.patternId==='attack.sweep-360'||b.patternId==='attack.fan-sweep')return 'sweep';
+        if(b.patternId==='attack.charge')return 'walk';
+        if(b.patternId==='attack.leap-slam')return b.z>.1?'airborne':'strike';
+        if(b.patternId==='summon.mouth-t1')return 'fire';
+        return 'strike';
+      }
+      if(b.patternPhase==='recover')return 'recover';
       return b.phase==='chase'?'walk':'idle';
     }
     drawBoss(world){
-      const record=this.bossAssets.get('chestnut');if(!record||!this.bossPlayer||this.bossPlayerAsset!==record)throw new Error('Prewarmed chestnut boss player is required');
-      const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,metadata=record.compiled.metadata,name=this.bossMotion(b,world),clip=metadata.clips[name]||metadata.clips.idle;
-      const timed=['windup','strike','sweep','recover','hit','death'].includes(name),clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,b.clock||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
-      if(this.bossPlayer.currentClip!==name)this.bossPlayer.transitionTo(name,clipStartAtMs,70);
-      const expression=b.hp<=0?'dead':event?.phase==='celebrating'&&event.outcome==='defeat'?'happy':name==='windup'?'focused':name==='strike'||name==='sweep'?'attack':b.flash>.07?'hurt':'neutral';
-      if(this.bossPlayer.currentExpression!==expression)this.bossPlayer.setExpression(expression);
-      this.bossPlayer.seek(this.displayTimeMs);
-      const [, ,width]=record.compiled.viewBox,s=2*r/220,anchorX=160,anchorY=261,matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];
-      const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farmBossEvent.celebrationSeconds*2)):0;
+      const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,species=Number.isInteger(b.species)?b.species:3;
+      const record=species===3?this.bossAssets.get('chestnut'):this.vectorAssets.get(species);if(!record)throw new Error('Missing required boss vector asset for species '+species);
+      let instance=this.bossPlayers.get(species);if(!instance){const player=record.asset.createPlayer({clip:'idle',startedAtMs:this.displayTimeMs});instance={record,player};this.bossPlayers.set(species,instance)}
+      const player=instance.player;this.bossPlayer=player;this.bossPlayerAsset=record;
+      const metadata=record.compiled.metadata,name=this.bossMotion(b,world),fallbackClip=name==='airborne'?(metadata.clips.strike?'strike':metadata.clips.fire?'fire':'idle'):['strike','sweep','fire'].includes(name)&&!metadata.clips[name]?(metadata.clips.fire?'fire':'idle'):'idle',clipName=metadata.clips[name]?name:fallbackClip,clip=metadata.clips[clipName];
+      const timed=['windup','strike','sweep','recover','hit','death','fire','airborne'].includes(name),elapsed=b.patternId?b.patternPhaseElapsed:b.clock;
+      const clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,elapsed||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
+      if(player.currentClip!==clipName)player.transitionTo(clipName,clipStartAtMs,70);
+      const summonOpen=b.patternId==='summon.mouth-t1'&&(b.patternPhase==='active'||b.patternPhase==='windup'&&b.patternPhaseElapsed>=BOSS_PATTERN_CONFIG['summon.mouth-t1'].windup*.5);
+      const expression=b.hp<=0?'dead':event?.phase==='celebrating'&&event.outcome==='defeat'?'happy':summonOpen?'attack':b.patternPhase==='windup'?'focused':b.patternPhase==='active'?'attack':b.flash>.07?'hurt':'neutral';
+      if(!metadata.expressions?.[expression]&&!metadata.expressions?.neutral)throw new Error('Boss asset is missing a supported expression');
+      const safeExpression=metadata.expressions?.[expression]?expression:'neutral';if(player.currentExpression!==safeExpression)player.setExpression(safeExpression);
+      player.seek(this.displayTimeMs);
+      const [, ,width,height]=record.compiled.viewBox,s=2*r/220,ground=metadata.sockets?.ground?.point||[width/2,height],anchorX=ground[0],anchorY=ground[1],matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];
+      const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farmBossEvent.celebrationSeconds*2)):0,summonConfig=BOSS_PATTERN_CONFIG['summon.mouth-t1'],summonSquash=b.patternId==='summon.mouth-t1'&&b.patternPhase==='windup'?.12*Math.sin(Math.PI*clamp((b.patternPhaseElapsed||0)/summonConfig.windup,0,1)):0;
       const fade=event?.phase==='fading'?clamp(1-event.elapsed/CONFIG.farmBossEvent.fadeSeconds,0,1):1;
-      this.bossPlayer.setBasePose('body',{y:-18*defeatBounce,scaleX:(1+(k.squash||0))*(1-.04*defeatBounce),scaleY:(1-(k.squash||0))*(1+.06*defeatBounce),opacity:fade});
-      const aiming=['strike-windup','sweep-windup','strike','sweep'].includes(b.phase);
-      if(aiming){const target=Math.atan2(-.62*Math.sin(b.angle),Math.cos(b.angle));this.bossPlayer.setBasePose('arm-right',{rotation:target-.504});this.bossPlayer.setBasePose('arm-left',{rotation:target+Math.PI-2.637})}
-      else{this.bossPlayer.setBasePose('arm-right',{rotation:0});this.bossPlayer.setBasePose('arm-left',{rotation:0})}
-      this.bossPlayer.draw({projection:this.ctx.vector.projection,matrix});
+      player.setBasePose('body',{y:-18*defeatBounce,scaleX:(1+(k.squash||0)+summonSquash)*(1-.04*defeatBounce),scaleY:(1-(k.squash||0)-summonSquash*.65)*(1+.06*defeatBounce),opacity:fade});
+      const parts=new Set(metadata.parts.map(part=>part.id)),aiming=b.patternId&&b.patternPhase!=='idle',target=Math.atan2(-.62*Math.sin(b.patternAim),Math.cos(b.patternAim));
+      if(parts.has('arm-right')&&parts.has('arm-left')){
+        if(aiming&&b.patternId==='summon.mouth-t1'&&b.patternPhase==='active'){
+          player.setBasePose('arm-right',{rotation:.42});player.setBasePose('arm-left',{rotation:-.42});
+        }else if(aiming){player.setBasePose('arm-right',{rotation:target-.504});player.setBasePose('arm-left',{rotation:target+Math.PI-2.637})}
+        else{player.setBasePose('arm-right',{rotation:0});player.setBasePose('arm-left',{rotation:0})}
+      }
+      player.draw({projection:this.ctx.vector.projection,matrix});
+      if(b.patternId==='summon.mouth-t1'&&b.patternPhase==='active'&&b.patternReleased>0){
+        this.ctx.flush();const mouth=this.project(b.summonMouthX,b.summonMouthY,b.summonMouthZ),pulse=.55+.45*Math.sin((b.patternPhaseElapsed||0)*Math.PI*8);
+        this.ellipse(mouth.x,mouth.y,this.scale*.18*pulse,this.scale*.12*pulse,'rgba(255,210,113,.72)');
+        this.ellipse(mouth.x+Math.cos(target)*this.scale*.16,mouth.y+Math.sin(target)*this.scale*.10,this.scale*.065,this.scale*.08,'#fff1ad');
+      }
     }
     terrain(sim2) {
       const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',rx=raid?CONFIG.raid.radiusX:9.5,ry=raid?CONFIG.raid.radiusY:6.8;
@@ -233,16 +308,8 @@ function unitExpression(u,sim){
         this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
         if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
       }
-      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?bossAttackArea(sim2.boss,CONFIG.maxUnitRadius):null;this.bossTelegraph=area;
-      if(area){
-        const heavy=area.kind==='sweep',color=heavy?'#b46c45':'#a35c48';
-        if(heavy){
-          this.strokeGroundEllipse(area.x,area.y,Math.max(0,area.sweepRadius-area.width),Math.max(0,area.sweepRadius-area.width),color,area.active?.075:.12);
-          const progress=area.active?area.progress:1;this.ring(area.x,area.y,area.outerRadius,'#dfad65',.1,area.startAngle,area.startAngle+progress*Math.PI*2);
-        }else{
-          this.strokeGroundCapsule(area,color,area.active?.075:.12);
-        }
-      }
+      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?renderedBossAttackArea(sim2.boss,CONFIG.maxUnitRadius):null;this.bossTelegraph=area;
+      if(area)this.drawBossTelegraph(area);
     }
 
     render(sim2,feel=null,now=performance.now()) {
@@ -362,7 +429,7 @@ function unitExpression(u,sim){
     dispose(){
       for(const player of this.vectorPlayers.values())player.dispose();this.vectorPlayers.clear();
       for(const record of this.vectorAssets.values())record.asset.dispose();this.vectorAssets.clear();
-      this.bossPlayer?.dispose();this.bossPlayer=null;for(const record of this.bossAssets?.values()||[])record.asset.dispose();this.bossAssets?.clear();
+      for(const {player} of this.bossPlayers.values())player.dispose();this.bossPlayers.clear();this.bossPlayer=null;for(const record of this.bossAssets?.values()||[])record.asset.dispose();this.bossAssets?.clear();
       this.ctx.dispose();this.device.dispose();
     }
   };
