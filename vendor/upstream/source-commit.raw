@@ -1,26 +1,25 @@
-tree 53652e850b379b0352f3bb81d946c801506b3a25
-parent 3125fb7fb577a92bbd2eb3fbdbbd56d4bb36bdce
-parent 4065dd0c4514c8aebaf38ad7705978f635c7de13
-author byh020907 <byh020907@naver.com> 1792165677 +0900
-committer GitHub <noreply@github.com> 1792165677 +0900
+tree 65c9a2e564325052015712ab32df1a091df45389
+parent 7715f0d42900cd1c9c6e3463aa3461f466eafb0b
+author byh020907 <byh020907@naver.com> 1792169756 +0900
+committer GitHub <noreply@github.com> 1792169756 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq0kctCRC1aQ7uu5UhlAAAv3sQAATwaJvFhHKgLYZK2Ctfs1aw
- arxI2hcDkwzZv8SsItc7zpn0nJU944foVuz3Z77LtGVfKZ35pHjH57XkziKFihYg
- 7wHghFs/Nd8xF/gdKtigMmiOqPaqwWIQ4D/JVL6aRBKSSa397OxbCooy7lGMnfzl
- K0TWZ+DMXoyceeewnGiTH1hs1D/V7KllXJfVZck49rdKGz8UDS0lUVm9ty672aZq
- 9VpaPsEVdDGONyLYSP2/sgVtXk5hmUfjDthuJgO8ZMNeduCLATBBR/ereCIo5Voh
- kup+jHaqgkkYtjp5HFMGIEeLZEdQKwmz8zByHnAILWEcGem9LkslO/5eTeIEPWet
- flIb9F9WEasOcr0oEnxDcHPs/lBRuH9OxQTD9hDzoh+r6XwnGKPNj7XL4L/IvoJX
- V2CvzlOnc7zi62J/0iumLZ/YfHb3gRpDpjE0FukR6Vq+geVMwd1GDiU2/u9/tGb0
- 1ieKopz2NnHy7dc+b1c0O2zk64qd8bF3r0BI7JZkLn1ueDMw0yWr29TLrGI0YbA3
- 9A6BlTIB43SRcKyCX1T2fb4FUXoJIJADDS5gSoAFi83AEKr9+Jcu/9OkNhFzQHLF
- jZstv9CXSKYd02XbqherGve/+dpwWS6xV1tBj7HhYeb7GCa9L2NgspId0+A+G3sU
- b1vP3FPV381BAncxam/5
- =7tKT
+ wsFcBAABCAAQBQJq0lccCRC1aQ7uu5UhlAAA89AQAHn+ZrsKh+p6B34FravwKO/e
+ W4pS6CMpnlltvIdja0+J1+RMzGRVRbN0Z45WErV6vewRFdBAcj7wrmHZqVKCPPO3
+ qn/TAJAGQeiurkB4xlC6MW7UJlMmBSzdLwqY4SjPDNdDlQvqwCiuPS2yX0uNLrJ8
+ LHcTCR6IngPU894Vs+s+D2dG9QkIsjZgAHRJwQRVyudDHw2DHigPVBbVtFenGy4Y
+ zrjlQ2WsCyBsjqjIPBq8Ty0PSNJkFRWEVGQplLCzh5UM4DQyCGW2XH/ZiiNW4xqq
+ NErCmdQuGoggARHwvY+sNK7S/4CBha1tgocU8AxSZx9ItO2xVhYugEw3l1dC1OrT
+ +0Xg9D8QcQdBXyG2AlynaYL/3/JZkGVz7x9klR2K5ormJFCiFNCLxFh610t10jd7
+ PMWEAFs+rIvppI4HgvZB1kkapdXBTwB1gH3J+77tfZyEdbmcsCRXXA+5NqYKNQcF
+ BgfFCfJNoJ/KQz/qPcG2QBzM4TQ+37yzlO64LjgoGprfV6nB8/I6QpvVVVs9STvR
+ flV98djfaxa3c4KXtioWZLCoY6eIyD0kIpKhf8j4bwHw0OVDQ/ga/HEmSW6OR4bu
+ 9io2jysmtwuFGxLfFKjydHi9J7O9gkVKdyx5VD1ufJpKLfdruV/+B35FYleXiX+8
+ 5eG4IKU0fjQEKUjHsnVc
+ =RcVU
  -----END PGP SIGNATURE-----
  
 
-[optimize] 싱글 로컬 lockstep snapshot/hash fast path
+fix: skip sampling completed SVG transition history
 
-[optimize] 싱글 로컬 lockstep snapshot/hash fast path
+Ship vector transition sampling short-circuit as GameKit 0.11.2.
