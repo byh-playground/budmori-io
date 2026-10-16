@@ -68,7 +68,9 @@ Cull은 죽음이나 inventory detach가 아니다. HP/deadEffect 변경, death/
 
 세부 호출/덮어쓰기 도달성 증명과 각 의존성의 존치 근거는 `retired-progression-reachability.md`에 있다. `growthDraft`, `growthChoice`, `gate`, `compress`의 encode/decode/queue와 최종 inert adapter에는 변화가 없다.
 
-## 검증
+## 이전 검증 기록 (아카이브)
+
+아래 PASS 기록은 당시 임시 검증 파일로 확인한 개발 이력이며 현재 재실행 가능한 테스트 목록이 아닙니다. 프로젝트의 영구 브라우저 검증은 `tests/farm.e2e.mjs`의 사용자 흐름만 유지하고, 현재 PR CI는 `npm ci`와 `npm run build`를 실행합니다.
 
 최종 HTML에서 `BLOOM_COMBAT_BASELINE=<검증된 pinned HTML> npm test` 전체 PASS. 초기 별도 checkout에는 기존 validator 기준 Git 객체가 없었으나, 원본 checkout의 정확한 d0636e4 이력을 read-only fetch하여 해결한 뒤 최종 전체 suite를 재실행했다. 테스트 기준이나 assertion을 약화하지 않았다.
 
@@ -82,13 +84,13 @@ Cull은 죽음이나 inventory detach가 아니다. HP/deadEffect 변경, death/
 - `retired-progression.cjs`: 45개 경계 및 24개 명령 검사 PASS, 10/20/30 TPS.
 - `git diff --check`: PASS.
 
-두 신규 검사를 `npm run test:shared`에 추가했다. 테스트의 domain-owner source 검사도 여섯 실제 owner 내부에 직접 `addFx`/`soundCue`/`bloomEmit`/`CombatAudio` 선택이 다시 들어오는 것을 막는다.
+당시 두 신규 검사는 `test:shared` 개발 스크립트로 사용했다. 이 스크립트와 개별 검증 파일은 임시 검증 정리에서 제거되었으며 현재 package script에는 포함되지 않는다.
 
 이는 실제 HTML/SDK의 native V8 검증 및 모의 DOM 경계이다. 이번 lane에서는 브라우저·GPU·실기기 시각 검증이나 별도 성능 비교를 실행하지 않았다. 최종 합본 이후 parent의 브라우저/성능 gate를 대체하지 않는다.
 
 ## 통합 주의
 
 - spawn lane과 같은 줄을 편집할 수 있는 capture 목록은 `rarityLegacy`와 `spatialCore`이다. 이 lane은 각각 `beginAttackPattern`, `compressPermanent`만 없앴다. spawn lane의 `spawn` 제거와 모두 합쳐야 한다.
-- `package.json`의 test:shared 문자열은 다른 신규 검사와 합집합으로 유지한다.
+- 이 기록의 테스트 이름과 실행 스크립트는 과거 이력이며 현재 검증 명령으로 사용하지 않는다.
 - projectile/critical 핫픽스의 실제 `launchAbilityShot` 최초 constructor, `gearDamage`, projectile XYZ/appearance 본문은 변경하지 않았다. 무기 construction을 기존 위치의 owner closure로 감싼 부분은 textual merge 위치가 근접할 수 있지만, 내용상 수식 변경은 없다.
 - canonical은 수정하지 않았으며 새 규칙/수치/SDK 변경을 이 패치에 섞지 않았다.

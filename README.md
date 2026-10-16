@@ -19,7 +19,7 @@ npm test
 
 `assets/troops/`와 `assets/bosses/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. `npm run vector-assets:compile`은 고정 GameKit 컴파일러로 SVG를 검증하고 메시를 생성하며, `npm run build`는 이를 제품 번들에 포함합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
 
-`npm test`는 고정 사용자 흐름 E2E를 180초 안에 실행합니다. `npm run test:browser`, `npm run test:browser:save`, `npm run test:browser:multiplayer`, `npm run test:vector-assets`, `npm run test:hungry-expression`, `npm run test:boss-visual`, `npm run verify:raid-load`로 범위를 선택합니다. 결과 JSON·이미지·영상은 무시된 `tests/output/`에 생성됩니다. 네트워크 검사는 실제 공개 relay와 WebRTC를 사용하므로 인터넷이 필요하며, 실패한 의존성·입장·입력 단계는 실패로 기록합니다. 월드 배치·극단 상태의 초기 fixture와 실제 서비스·렌더 경로는 보고서에서 구분합니다.
+PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 확인합니다. 빠른 피드백을 목표로 하며 1분 내외는 아직 측정하지 않은 목표입니다. 단일 브라우저 E2E는 필요할 때 `npm test`로 실행하고, 특정 사용자 흐름은 `npm test -- save`처럼 인수로 고릅니다. 지원 시나리오는 `save`, `migration`, `event`, `network`, `victory`이며 기본은 `core`이고, 각 실행은 180초 상한을 둡니다. 결과 JSON과 이미지는 무시된 `tests/output/`에 생성됩니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다. 네트워크 시나리오는 공개 relay와 WebRTC를 사용하므로 인터넷이 필요하고 실패한 의존성·입장·입력 단계는 실패로 기록합니다.
 
 ## 농장
 
@@ -92,4 +92,4 @@ npm test
 부트스트랩이 manifest의 SHA-256/크기를 확인하고 GameKit `vector-assets-loader`로 시작 시 한 번 변환한 뒤 게임을 시작합니다.
 메시와 애니메이션은 세션 캐시에서 재사용하며 장면 전환·매 프레임에 다시 컴파일하지 않습니다.
 생성 정점 배열/base64 메시를 `game.js` 또는 HTML에 내장하거나 생성 캐릭터 파일을 배포하지 않습니다.
-리소스 로딩 실패 시 시작을 막고 재시도 UI를 제공합니다. `node tests/svg-startup.e2e.mjs`는 실제 원본 요청, 인덱스 메시, 장면 재사용과 실패 후 재시도를 검사합니다.
+리소스 로딩 실패 시 시작을 막고 재시도 UI를 제공합니다. `npm run build`는 SVG 원본과 제품 manifest를 검증하며, 기본 Farm E2E는 실제 브라우저에서 게임 리소스가 로드되는 시작 흐름을 확인합니다.

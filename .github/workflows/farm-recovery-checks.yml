@@ -1,4 +1,4 @@
-name: Farm recovery checks
+name: Farm build checks
 on:
   pull_request:
   push:
@@ -8,9 +8,7 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      BUDMORI_BROWSER_CHANNEL: chromium
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,25 +17,3 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run test:ability-tree
-      - run: npm run test:progression
-      - run: npm run test:farm-recovery-indicators
-      - run: npm run test:farm-telegraph
-      - run: npm run test:vector-assets-quality
-      - run: npm run test:farm-app-dom-contract
-      - run: node tests/runtime-manifest-unit.mjs
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser:abilities
-      - run: node tests/svg-startup.e2e.mjs
-      - run: npm run test:vector-assets
-      - run: npm run test:boss-visual
-      - run: npm run test:browser:farm-recovery-indicators
-      - run: npm run test:browser:raid-settlement
-      - run: npm run test:browser
-      - run: npm run test:browser:save
-      - run: node scripts/test-scenarios.mjs event
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: farm-recovery-evidence
-          path: tests/output

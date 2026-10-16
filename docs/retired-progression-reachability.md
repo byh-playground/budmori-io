@@ -1,5 +1,7 @@
 # 폐기된 유료 성장·영구 압축 구현의 도달성 검증
 
+> 보관 기록입니다. 아래 일회성 검사 파일은 정리되어 현재 다시 실행할 수 없습니다. 현재 PR 검증은 `npm ci`와 `npm run build`, 사용자 흐름 E2E는 필요 시 `npm test`로 실행합니다.
+
 ## 기준과 범위
 
 - 기준 커밋: `2e086ba58db269a425d0ae9f452ffe8f1ea3db9f` (`baseline d0636e4 domain completion`). 정규 작업본 `d0636e4`와 같은 HTML이다.
