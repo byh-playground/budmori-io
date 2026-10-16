@@ -61,12 +61,6 @@ try{
   report.layers=order;report.renderer=depth.backend;
 
   const canvas=page.locator('#world');
-  const clip=await page.evaluate(({sleeperId})=>{
-    const renderer=BUDMORI.renderer,unit=BUDMORI.sim.units.find(entry=>entry.id===sleeperId),bounds=renderer.canvas.getBoundingClientRect(),p=renderer.project(unit.x,unit.y,unit.z||0),d=renderer.pixelRatio,r=Math.max(unit.size*renderer.scale*.78,11*d);
-    const centerX=bounds.left+p.x/d,centerY=bounds.top+(p.y-r*1.92)/d;
-    return{x:Math.max(0,centerX-27),y:Math.max(0,centerY-11),width:54,height:22};
-  },{sleeperId:fixture.sleeperId});
-
   async function capture(label,down,hp=0){
     const diagnostic=await page.evaluate(({sleeperId,down,hp})=>{
       const world=BUDMORI.sim,renderer=BUDMORI.renderer,unit=world.units.find(entry=>entry.id===sleeperId);
@@ -76,12 +70,15 @@ try{
       const calls=[],draw=renderer.drawSleepBadge;
       renderer.drawSleepBadge=function(u,sim,pose){if(u.id===sleeperId)calls.push({down:u.down,hp:u.hp,scene:sim.scene,seconds:Math.ceil(u.down),pose:{x:pose.p.x,y:pose.p.y,r:pose.r}});return draw.call(this,u,sim,pose)};
       try{renderer.render(display,null,1000)}finally{renderer.drawSleepBadge=draw}
-      return {accepted,raw:{hp:unit.hp,down:unit.down,x:unit.x,y:unit.y,z:unit.z},presentation:shown&&{hp:shown.hp,down:shown.down,x:shown.x,y:shown.y,z:shown.z},scene:display.scene,displayTimeMs:display.displayTimeMs,badgeCalls:calls};
+      const bounds=renderer.canvas.getBoundingClientRect(),d=renderer.pixelRatio,pose=calls[0]?.pose;
+      const centerX=pose?bounds.left+pose.x/d:0,centerY=pose?bounds.top+(pose.y-pose.r*1.92)/d:0;
+      const clip={x:Math.max(0,centerX-27),y:Math.max(0,centerY-11),width:54,height:22};
+      return {accepted,raw:{hp:unit.hp,down:unit.down,x:unit.x,y:unit.y,z:unit.z},presentation:shown&&{hp:shown.hp,down:shown.down,x:shown.x,y:shown.y,z:shown.z},scene:display.scene,displayTimeMs:display.displayTimeMs,badgeCalls:calls,clip};
     },{sleeperId:fixture.sleeperId,down,hp});
     const full=path.join(out,`farm-recovery-indicators-${label}.png`),badge=path.join(out,`farm-recovery-indicators-${label}-badge.png`);
     await canvas.screenshot({path:full});
-    await page.screenshot({path:badge,clip});
-    report.screenshots.push({label,remainingSeconds:down,hp,canvas:path.basename(full),badge:path.basename(badge),clip,diagnostic});
+    await page.screenshot({path:badge,clip:diagnostic.clip});
+    report.screenshots.push({label,remainingSeconds:down,hp,canvas:path.basename(full),badge:path.basename(badge),clip:diagnostic.clip,diagnostic});
     return readFile(badge);
   }
   const badge60=await capture('60s',60,0);
