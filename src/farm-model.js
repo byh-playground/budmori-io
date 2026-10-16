@@ -437,7 +437,13 @@ const AttackingBody=Base=>class extends Base{
     }
     damageBoss(u,action,point){
       if(action.hit||this.boss.hp<=0)return false;action.hit=true;
-      const spec=ATTACK_TYPES[u.species],roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;this.boss.hp=Math.max(0,this.boss.hp-stats(u.tier).atk*spec.damage*(buffed?CONFIG.raid.buffDamage:1));this.boss.flash=.13;
+      const spec=ATTACK_TYPES[u.species],roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
+      const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
+      const hpRatio=Number.isFinite(hpBefore)&&Number.isFinite(maxHp)&&maxHp>0?clamp(hpBefore/maxHp,0,1):1;
+      const armor=(1-hpRatio)*100;
+      const rawDamage=stats(u.tier).atk*spec.damage*(buffed?CONFIG.raid.buffDamage:1);
+      const receivedDamage=rawDamage*100/(100+armor);
+      this.boss.hp=Math.max(0,hpBefore-receivedDamage);this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
       this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackKind:spec.kind,buffed,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:spec.damage*(buffed?CONFIG.raid.buffDamage:1)});
       this.combatEvent('damage',u,action);this.progress.record('hit');return true;

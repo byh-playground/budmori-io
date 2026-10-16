@@ -12,6 +12,7 @@
     "test:vector-assets": "node tests/vector-assets.e2e.mjs",
     "test:hungry-expression": "node tests/hungry-expression.e2e.mjs",
     "test:boss-visual": "node tests/boss-visual.e2e.mjs",
+    "test:boss-armor": "node tests/boss-armor-unit.mjs",
     "test:cold-boss": "node tests/cold-boss-startup.e2e.mjs",
     "test:mobile-input": "node tests/mobile-input.e2e.mjs",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
