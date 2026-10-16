@@ -1,6 +1,6 @@
 import {chromium} from 'playwright';
 import {createServer} from 'node:http';
-import {readFile} from 'node:fs/promises';
+import {mkdir,readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
@@ -30,6 +30,8 @@ try{
   await page.locator('#help').click();await page.locator('#helpPanel').waitFor({state:'visible'});report.helpText=await page.locator('#helpPanel').innerText();
   assert(report.helpText.includes('100ms')&&report.helpText.includes('포인터')&&report.helpText.includes('드래그'),'raid help explains the faster repeat cadence and draggable deployment location');
   await page.locator('#help').click();
+  await mkdir(path.join(root,'tests/output'),{recursive:true});await page.screenshot({path:path.join(root,'tests/output/mobile-input.png')});
+  await page.evaluate(()=>{const troops=BUDMORI.sim.raidRoster('solo').troops,used=new Set(troops.map(t=>t.farmId));let farmId=Math.max(0,...used)+1;while(troops.length<4){while(used.has(farmId))farmId++;troops.push({farmId,species:0,tier:1,deployed:false});used.add(farmId++)}});
   const before=await page.evaluate(()=>({units:BUDMORI.sim.units.length,roster:BUDMORI.sim.raidRoster('solo').troops.length,remaining:BUDMORI.sim.raidRemaining('solo'),intervals:window.__deploymentIntervals.length}));
   async function screenPoint(x,y){return page.evaluate(({x,y})=>{const r=BUDMORI.renderer,p=r.project(x,y,0),b=r.canvas.getBoundingClientRect();return{x:b.left+p.x/r.pixelRatio,y:b.top+p.y/r.pixelRatio}},{x,y})}
   const first=await screenPoint(-4,5),middle=await screenPoint(-2,7),last=await screenPoint(1,6),other=await screenPoint(10,-1),cdp=await context.newCDPSession(page);
@@ -61,6 +63,10 @@ try{
   const close=(a,b)=>Math.hypot(a.x-b[0],a.y-b[1])<.08;
   assert(close(report.deployment.units[0],[-4,5])&&close(report.deployment.units[1],[-2,7])&&close(report.deployment.units[2],[1,6]),'repeat deployment uses the current primary pointer location and ignores second touch');
   await context.close();
+   const farmContext=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:3,isMobile:true,hasTouch:true}),farmPage=await farmContext.newPage();farmPage.on('pageerror',e=>report.errors.push(e.message));
+   await farmPage.goto('http://127.0.0.1:'+server.address().port+'/');await farmPage.waitForFunction(()=>window.BUDMORI);await farmPage.locator('#newGame').tap();await farmPage.waitForFunction(()=>BUDMORI.runtime.tick>5&&BUDMORI.sim.scene==='farm');
+   report.farmStart=await farmPage.evaluate(()=>({units:BUDMORI.sim.units.map(u=>({species:u.species,tier:u.tier,mature:u.mature,meals:u.meals})),width:innerWidth,height:innerHeight,overflow:document.documentElement.scrollWidth>innerWidth}));
+   assert.equal(report.farmStart.units.length,2,'the mobile new-garden screen begins with two peas');assert(report.farmStart.units.every(u=>u.species===0&&u.tier===1&&u.mature&&u.meals===0));assert(!report.farmStart.overflow);await farmPage.screenshot({path:path.join(root,'tests/output/mobile-farm-start.png')});assert.equal(await farmPage.locator('#error').isVisible(),false);await farmContext.close();
   const focusContext=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:3,isMobile:true,hasTouch:true}),focusPage=await focusContext.newPage();
   await focusPage.goto('http://127.0.0.1:'+server.address().port+'/');await focusPage.waitForFunction(()=>window.BUDMORI);await focusPage.keyboard.press('Tab');
   report.keyboardFocus=await focusPage.evaluate(()=>({tag:document.activeElement.tagName,visible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outline}));

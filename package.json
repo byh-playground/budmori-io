@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node scripts/build.cjs",
     "vector-assets:compile": "node scripts/compile-vector-assets.mjs",
-    "test": "node scripts/test-scenarios.mjs all",
+    "test": "node tests/farm-progression-unit.mjs && node scripts/test-scenarios.mjs all",
+    "test:progression": "node tests/farm-progression-unit.mjs",
     "test:browser": "node scripts/test-scenarios.mjs core",
     "test:browser:save": "node scripts/test-scenarios.mjs save",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
