@@ -7,7 +7,7 @@ const ROOT=path.resolve(__dirname,'..');
 const MODULES=Object.freeze({'presentation-events':'BloomGamekitPresentationEvents',camera:'BloomGamekitCamera',rollback:'BloomGamekitRollback',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',transport:'BloomGamekitTransport',interpolation:'BloomGamekitInterpolation',hud:'BloomGamekitHud',rendering:'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets','vector-assets-loader':'BloomGamekitVectorAssetLoader',input:'BloomGamekitInput','debug-tools':'BloomGamekitDebugTools'});
 const DIST_MODULES=Object.freeze(['interpolation','rendering','vector-assets','vector-assets-loader','input','deterministic','simloop','transport','replay','rollback','camera','presentation-events','hud','debug-tools','audio','navigation','scenario']);
 const DIST_ASSETS=Object.freeze([Object.freeze({file:'assets/fonts/noto-sans-kr-700-v1.json',version:'noto-sans-kr-700-v1'})]);
-const SOURCE_FILES=Object.freeze(['modules/vector-assets/compiler.js','modules/vector-assets/compiler-core.js','modules/vector-assets/schema.js']);
+const SOURCE_FILES=Object.freeze(['modules/vector-assets/compiler.js','modules/vector-assets/compiler-core.js','modules/vector-assets/quality-presets.js','modules/vector-assets/schema.js']);
 const sha=(bytes,algorithm='sha256')=>crypto.createHash(algorithm).update(bytes).digest('hex');
 const objectId=(type,bytes)=>sha(Buffer.concat([Buffer.from(`${type} ${bytes.length}\0`),bytes]),'sha1');
 function exactKeys(value,keys){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))}
