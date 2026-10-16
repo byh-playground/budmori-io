@@ -24,7 +24,7 @@ errorPopup.hidden = true;
 errorPopup.setAttribute('role', 'alertdialog');
 errorPopup.setAttribute('aria-modal', 'true');
 errorPopup.setAttribute('aria-labelledby', 'bloom-error-title');
-errorPopup.style.cssText = 'position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:20px;background:#101b18cc;font:16px system-ui;color:#183225';
+errorPopup.style.cssText = 'position:fixed;inset:0;z-index:2000;display:none;place-items:center;padding:20px;background:#101b18cc;font:16px system-ui;color:#183225';
 const errorPanel = document.createElement('section');
 errorPanel.style.cssText = 'width:min(100%,420px);max-height:90dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:#f9faee;box-shadow:0 12px 40px #0006';
 const errorTitle = document.createElement('h2');
@@ -61,6 +61,7 @@ document.body.append(errorPopup);
 
 function showErrorPopup(message) {
   if (message) errorMessage.textContent = message;
+  errorPopup.style.display = 'grid';
   errorPopup.hidden = false;
   diagnosticButton.focus();
 }
