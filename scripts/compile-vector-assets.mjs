@@ -9,14 +9,14 @@ const outputPath = path.join(root, 'src/vector-assets.generated.js');
 
 export async function compileTroopAssets() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
-  if (config.schemaVersion !== 1 || !Array.isArray(config.assets) || config.assets.length !== 3
+  if (config.schemaVersion !== 1 || !Array.isArray(config.assets) || config.assets.length < 3
       || !Array.isArray(config.bosses) || config.bosses.length !== 1) {
-    throw new TypeError('Vector source config must map exactly three species');
+    throw new TypeError('Vector source config must map at least three species');
   }
   if(config.bosses[0]?.id!=='chestnut'||typeof config.bosses[0]?.file!=='string')throw new TypeError('Vector source config must map the chestnut boss once');
   const sources = [...config.assets].sort((a, b) => a.species - b.species);
   if (sources.some((entry, index) => entry.species !== index || typeof entry.file !== 'string')) {
-    throw new TypeError('Vector source config must map species 0, 1, and 2 once each');
+    throw new TypeError('Vector source config must map contiguous species IDs starting at 0');
   }
 
   const troopDir = path.resolve(root, 'assets/troops');
@@ -40,7 +40,7 @@ export async function compileTroopAssets() {
   }
 
   if (supplied.length !== 0 && supplied.length !== sources.length) {
-    throw new Error('All three troop SVG sources are required before vector assets can be built');
+    throw new Error('All configured troop SVG sources are required before vector assets can be built');
   }
 
   const declarations = [];

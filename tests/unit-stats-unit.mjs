@@ -22,10 +22,12 @@ for (const profile of COMMON_UNIT_STAT_PROFILES) assert.deepEqual(profile, COMMO
 assert.deepEqual(resolveUnitStats({species:0,tier:1}), {maxHp:40,attackPower:4,...COMMON_UNIT_STAT_DEFAULTS});
 close(resolveUnitStats({species:2,tier:4}).maxHp, 135);
 close(resolveUnitStats({species:2,tier:4}).attackPower, 6.912);
+assert.deepEqual(resolveUnitStats({species:3,tier:1}), {maxHp:40,attackPower:4,...COMMON_UNIT_STAT_DEFAULTS}, 'Chestnut troops use the normal shared T1 stats');
 assert.deepEqual(UNIT_ABILITY_PROFILES.map(({kind,range,skillMultiplier,windup,recovery,projectileCount,bounces})=>({kind,range,skillMultiplier,windup,recovery,projectileCount,bounces})), [
   {kind:'ram',range:1.45,skillMultiplier:1,windup:.28,recovery:.65,projectileCount:0,bounces:0},
   {kind:'lob',range:4.1,skillMultiplier:1.6,windup:.38,recovery:1.25,projectileCount:1,bounces:0},
-  {kind:'leap',range:2.5,skillMultiplier:1.3,windup:.32,recovery:.9,projectileCount:0,bounces:0}
+  {kind:'leap',range:2.5,skillMultiplier:1.3,windup:.32,recovery:.9,projectileCount:0,bounces:0},
+  {kind:'punch',range:1.45,skillMultiplier:1,windup:.28,recovery:.65,projectileCount:0,bounces:0}
 ]);
 
 const unit={id:1,species:0,tier:1,hp:20};

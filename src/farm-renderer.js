@@ -33,7 +33,7 @@ function unitExpression(u,sim){
   return dead?'dead':sim.scene==='raid'&&sim.encounter?.outcome==='victory'?'happy':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':restingCooldown?'neutral':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
 }
   // render.js
-  const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c'];
+  const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c','#9a6947'];
   var Diorama = class {
     constructor(canvas) {
       this.canvas = canvas;
@@ -41,7 +41,7 @@ function unitExpression(u,sim){
       this.ctx = new VectorContext(this.device);
       this.vectorAssets=new Map();this.vectorPlayers=new Map();
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
-      if(entries.length!==3||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
+      if(entries.length!==4||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
       for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
@@ -143,7 +143,9 @@ function unitExpression(u,sim){
       const b=world.boss,k=this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0},ground=this.project(b.x+k.x,b.y+k.y,0),p=this.project(b.x+k.x,b.y+k.y,b.z||0),r=this.scale*b.radius*1.16;
       return {b,p,ground,r,k};
     }
-    bossMotion(b){
+    bossMotion(b,world){
+      const event=world.farmBossEvent;
+      if(event?.phase==='celebrating'&&event.outcome==='defeat')return 'idle';
       if(b.hp<=0)return 'death';
       if(b.flash>.09&&b.phase==='chase')return 'hit';
       if(b.phase==='strike-windup'||b.phase==='sweep-windup')return 'windup';
@@ -152,14 +154,16 @@ function unitExpression(u,sim){
     }
     drawBoss(world){
       const record=this.bossAssets.get('chestnut');if(!record||!this.bossPlayer||this.bossPlayerAsset!==record)throw new Error('Prewarmed chestnut boss player is required');
-      const {b,p,r,k}=this.bossPose(world),metadata=record.compiled.metadata,name=this.bossMotion(b),clip=metadata.clips[name]||metadata.clips.idle;
+      const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,metadata=record.compiled.metadata,name=this.bossMotion(b,world),clip=metadata.clips[name]||metadata.clips.idle;
       const timed=['windup','strike','sweep','recover','hit','death'].includes(name),clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,b.clock||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
       if(this.bossPlayer.currentClip!==name)this.bossPlayer.transitionTo(name,clipStartAtMs,70);
       const expression=b.hp<=0?'dead':name==='windup'?'focused':name==='strike'||name==='sweep'?'attack':b.flash>.07?'hurt':'neutral';
       if(this.bossPlayer.currentExpression!==expression)this.bossPlayer.setExpression(expression);
       this.bossPlayer.seek(this.displayTimeMs);
       const [, ,width]=record.compiled.viewBox,s=2*r/220,anchorX=160,anchorY=261,matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];
-      this.bossPlayer.setBasePose('body',{scaleX:1+(k.squash||0),scaleY:1-(k.squash||0)});
+      const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farmBossEvent.celebrationSeconds*2)):0;
+      const fade=event?.phase==='fading'?clamp(1-event.elapsed/CONFIG.farmBossEvent.fadeSeconds,0,1):1;
+      this.bossPlayer.setBasePose('body',{y:-18*defeatBounce,scaleX:(1+(k.squash||0))*(1-.04*defeatBounce),scaleY:(1-(k.squash||0))*(1+.06*defeatBounce),opacity:fade});
       const aiming=['strike-windup','sweep-windup','strike','sweep'].includes(b.phase);
       if(aiming){const target=Math.atan2(-.62*Math.sin(b.angle),Math.cos(b.angle));this.bossPlayer.setBasePose('arm-right',{rotation:target-.504});this.bossPlayer.setBasePose('arm-left',{rotation:target+Math.PI-2.637})}
       else{this.bossPlayer.setBasePose('arm-right',{rotation:0});this.bossPlayer.setBasePose('arm-left',{rotation:0})}
@@ -182,7 +186,7 @@ function unitExpression(u,sim){
       if(raid){
         this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
         if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
-        const b=sim2.boss,area=bossAttackArea(b,CONFIG.maxUnitRadius);this.bossTelegraph=area;
+        const b=sim2.boss,event=sim2.farmBossEvent,area=(raid||event?.phase==='fighting')?bossAttackArea(b,CONFIG.maxUnitRadius):null;this.bossTelegraph=area;
         if(area){
           const heavy=area.kind==='sweep',color=heavy?'#b46c45':'#a35c48';
           if(heavy){
@@ -208,9 +212,10 @@ function unitExpression(u,sim){
         this.groundEllipse(u.x, u.y, shadow, shadow * .62, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
-      if(sim2.scene==='raid'){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
+      const farmBossVisible=sim2.scene==='farm'&&sim2.farmBossEvent?.phase!=='idle';
+      if(sim2.scene==='raid'||farmBossVisible){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
       const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawUnit(u, sim2) }));
-      if (sim2.scene === "raid") actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, vector:true, draw: () => this.drawBoss(sim2) });
+      if (sim2.scene === "raid"||farmBossVisible) actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, vector:true, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x,f.y,.10,.07,"#55452433");
         if(f.phase === "flight") {
@@ -221,7 +226,7 @@ function unitExpression(u,sim){
         this.ellipse(p.x, p.y, this.scale * 0.09, this.scale * 0.12, "#c78a43", 0.4);
         this.ellipse(p.x - 0.025 * this.scale, p.y - 0.08 * this.scale, this.scale * 0.036, this.scale * 0.05, "#e7bf72");
       } });
-      if(sim2.scene==="raid")for(const f of sim2.projectiles)actors.push({depth:.785*f.y-.62*f.z,id:-f.id,draw:()=>{const p=this.project(f.x,f.y,f.z),tail=Ballistics.sample(f.path,Math.max(0,(f.elapsed-.04)/f.path.duration));this.groundEllipse(f.x,f.y,.14,.10,"#55452433");this.line(this.project(tail.x,tail.y,tail.z),p,.07,"#ba964a80");this.ellipse(p.x,p.y,this.scale*.14,this.scale*.2,"#cfa957",.3);this.ellipse(p.x-this.scale*.03,p.y-this.scale*.05,this.scale*.05,this.scale*.08,"#fff0ae")}});
+      if(sim2.scene==="raid"||farmBossVisible)for(const f of sim2.projectiles)actors.push({depth:.785*f.y-.62*f.z,id:-f.id,draw:()=>{const p=this.project(f.x,f.y,f.z),tail=Ballistics.sample(f.path,Math.max(0,(f.elapsed-.04)/f.path.duration));this.groundEllipse(f.x,f.y,.14,.10,"#55452433");this.line(this.project(tail.x,tail.y,tail.z),p,.07,"#ba964a80");this.ellipse(p.x,p.y,this.scale*.14,this.scale*.2,"#cfa957",.3);this.ellipse(p.x-this.scale*.03,p.y-this.scale*.05,this.scale*.05,this.scale*.08,"#fff0ae")}});
       actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
       let vectorRun=false;
       for (const actor of actors) {

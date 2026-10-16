@@ -47,8 +47,8 @@ try{
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.waitForFunction(()=>window.BUDMORI,{},{timeout:30000});
   const vector=await page.evaluate(async()=>{
-    const renderer=BUDMORI.renderer,ids=[0,1,2];
-    if(renderer.vectorAssets.size!==3)throw Error('Three compiled SVG vector assets are not active');
+    const renderer=BUDMORI.renderer,ids=[0,1,2,3];
+    if(renderer.vectorAssets.size!==4)throw Error('Four compiled SVG vector assets are not active');
     for(const species of ids){
       const record=renderer.vectorAssets.get(species),metadata=record.compiled.metadata,viewBox=record.compiled.viewBox;
       if(!record.asset||record.asset.disposed)throw Error('Missing retained GameKit vector mesh for species '+species);
@@ -70,7 +70,7 @@ try{
     const Garden=BUDMORI.sim.constructor,owner='visual-check',world=Garden.createRaidBattle(304,['visual-check']);
     const entries=ids.map((species)=>[species+1,species,4]);
     if(!world.registerRaidRoster(owner,entries))throw Error('Visual roster registration failed');
-    const points=[[-8,3],[0,-9],[8,3]];
+    const points=[[-8,3],[0,-9],[8,3],[12,-5]];
     for(let i=0;i<ids.length;i++)if(!world.deployNextRaidUnit(owner,i+1,points[i][0],points[i][1]))throw Error('Vector troop drop failed: '+i);
     for(const unit of world.units){unit.dropLanded=true;unit.z=unit.vz=0;unit.vx=unit.vy=0;unit.ability.phase='idle';unit.ability.elapsed=0}
     const bySpecies=[...world.units].sort((a,b)=>a.species-b.species);
@@ -92,7 +92,7 @@ try{
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   await page.waitForTimeout(340);
   const first=await page.evaluate(()=>{const renderer=BUDMORI.renderer,units=[...BUDMORI.sim.units].sort((a,b)=>a.species-b.species),players=units.map(unit=>renderer.vectorPlayers.get(unit.id));const before=players[1].getSocket('mouth');players[0].setBasePose('body',{rotation:.17});const after=players[1].getSocket('mouth');players[0].setBasePose('body',{rotation:0});const playerIsolation=Math.hypot(before.x-after.x,before.y-after.y)<1e-8;const states=players.map((player,index)=>({motion:['windup','fire','airborne'][index],clip:player.currentClip,expression:player.currentExpression,body:player.getPartPose('body')}));return{players:players.length,assets:renderer.vectorAssets.size,mesh:renderer.stats?.mesh||null,time:renderer.displayTimeMs,allPlayersSeekSharedTime:players.every(player=>player.currentTimeMs===renderer.displayTimeMs),playerIsolation,states}});
-  assert.equal(first.players,3);assert.equal(first.assets,3);assert(first.allPlayersSeekSharedTime);assert(first.mesh?.draws>0);assert(first.playerIsolation);assert.deepEqual(first.states.map(state=>state.motion),['windup','fire','airborne']);assert.deepEqual(first.states.map(state=>state.clip),['windup','fire','airborne']);assert.deepEqual(first.states.map(state=>state.expression),['focused','attack','hurt']);assert(new Set(first.states.map(state=>state.body.transform.map(v=>Number(v.toFixed(3))).join(':'))).size>1);report.singleFrame=first;
+  assert.equal(first.players,4);assert.equal(first.assets,4);assert(first.allPlayersSeekSharedTime);assert(first.mesh?.draws>0);assert(first.playerIsolation);assert.deepEqual(first.states.slice(0,3).map(state=>state.motion),['windup','fire','airborne']);assert.deepEqual(first.states.slice(0,3).map(state=>state.clip),['windup','fire','airborne']);assert.deepEqual(first.states.slice(0,3).map(state=>state.expression),['focused','attack','hurt']);assert(new Set(first.states.slice(0,3).map(state=>state.body.transform.map(v=>Number(v.toFixed(3))).join(':'))).size>1);report.singleFrame=first;
   await page.evaluate(()=>{document.body.dataset.home='false';document.querySelector('#startScreen').hidden=true});
   await page.evaluate(()=>new Promise(requestAnimationFrame));
   await page.screenshot({path:path.join(out,'troop-vector-desktop.png')});
@@ -100,12 +100,12 @@ try{
   await page.evaluate(()=>{for(const unit of BUDMORI.sim.units)unit.hp=0;BUDMORI.runtime.capturePresentation('reset')});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   report.deathVectorExpression=await page.evaluate(()=>({deadUnits:BUDMORI.runtime.presentation(performance.now()).units.filter(u=>u.hp<=0).length,assets:BUDMORI.renderer.vectorAssets.size,players:[...BUDMORI.renderer.vectorPlayers.values()].map(player=>({clip:player.currentClip,expression:player.currentExpression}))}));
-  assert.equal(report.deathVectorExpression.deadUnits,3);assert.equal(report.deathVectorExpression.assets,3);assert(report.deathVectorExpression.players.every(player=>player.clip==='death'&&player.expression==='dead'));
+  assert.equal(report.deathVectorExpression.deadUnits,4);assert.equal(report.deathVectorExpression.assets,4);assert(report.deathVectorExpression.players.every(player=>player.clip==='death'&&player.expression==='dead'));
   await page.screenshot({path:path.join(out,'troop-vector-death.png')});
   await page.setViewportSize({width:844,height:390});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const landscape=await page.evaluate(()=>({width:innerWidth,height:innerHeight,canvas:{width:BUDMORI.renderer.canvas.width,height:BUDMORI.renderer.canvas.height},view:BUDMORI.renderer.view,units:BUDMORI.sim.units.length,players:BUDMORI.renderer.vectorPlayers.size,mesh:BUDMORI.renderer.stats?.mesh||null}));
-  assert.equal(landscape.width,844);assert.equal(landscape.height,390);assert.equal(landscape.units,3);assert.equal(landscape.players,3);report.landscape=landscape;
+  assert.equal(landscape.width,844);assert.equal(landscape.height,390);assert.equal(landscape.units,4);assert.equal(landscape.players,4);report.landscape=landscape;
   await page.screenshot({path:path.join(out,'troop-vector-mobile-landscape.png')});
   await page.locator('#world').screenshot({path:path.join(out,'troop-vector-mobile-landscape-canvas.png')});
   assert.deepEqual(report.errors,[]);report.status='PASS';await context.close();
