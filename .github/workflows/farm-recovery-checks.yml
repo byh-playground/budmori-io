@@ -8,7 +8,7 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       BUDMORI_BROWSER_CHANNEL: chromium
     steps:
@@ -24,6 +24,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - run: npm run test:browser:save
+      - run: node scripts/test-scenarios.mjs event
       - uses: actions/upload-artifact@v4
         if: always()
         with:
