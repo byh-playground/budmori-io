@@ -8,7 +8,7 @@
     "test:ability-tree": "node tests/ability-tree-unit.mjs && node tests/ability-tree-garden-unit.mjs",
     "test:browser:abilities": "node tests/ability-tree.e2e.mjs",
     "test:browser:raid-settlement": "node tests/raid-settlement.e2e.mjs",
-    "test:progression": "node tests/farm-progression-unit.mjs && node tests/farm-boss-event-unit.mjs && node tests/raid-settlement-unit.mjs && node tests/raid-settlement-farm-unit.mjs && npm run test:farm-single-fastpath",
+    "test:progression": "node tests/farm-progression-unit.mjs && node tests/farm-boss-event-unit.mjs && node tests/raid-settlement-unit.mjs && node tests/raid-settlement-farm-unit.mjs && node tests/farm-autosave-unit.mjs && npm run test:farm-single-fastpath",
     "test:farm-boss-event": "node tests/farm-boss-event-unit.mjs",
     "test:farm-recovery-indicators": "node tests/farm-recovery-indicators-unit.mjs",
     "test:farm-single-fastpath": "node tests/farm-single-fastpath-unit.mjs",
