@@ -109,17 +109,13 @@ original pea of the same owner and Farm ID. Such children are excluded before
 original-manifest and casualty reconciliation; malformed or unmarked original
 troops still fail validation. Tests cover one original and two split children.
 
-## Verification and required app integration tests
+## User-flow verification
 
-Run the settlement contract and Farm-model integration with:
-
-`npm run test:progression`
-
-The tests cover stable owner-scoped receipt keys, private Farm isolation,
-species/tier manifest matching, split-summon filtering, retained sleeping
-casualties, victory-only reward callback behavior, duplicate/reload idempotency,
-bounded receipt history, the confirmed multiplier, shared wallet progression,
-Garden snapshot validation, run metadata, and migration from an older save.
+The previous per-feature settlement runner has been removed. The maintained
+browser suite is launched with `npm test`; its core Farm flow covers Raid entry,
+battle, return to the Farm, save, and reload. The contract details above remain
+design requirements, but they are not represented as a separate persistent
+unit-test suite.
 
 The owner-overlapping Farm ID isolation, CAS reservation/refresh helpers, and
 stored return receipt are covered at the unit/module layer. An online browser
