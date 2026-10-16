@@ -84,4 +84,4 @@ npm test
 
 ## Unit combat stats
 
-See [docs/unit-stats.md](docs/unit-stats.md) for the common stat defaults, damage/healing order, ability profiles, and deterministic multiplayer notes.
+Before adding a unit type or special ability, follow the [unit design and verification checklist](docs/unit-stats.md#새-병종-설계추가-체크리스트). The page also records current agreed design directions separately from unfinalized balance values, alongside common stats, per-unit ability profiles, damage/healing order, and deterministic multiplayer notes.
