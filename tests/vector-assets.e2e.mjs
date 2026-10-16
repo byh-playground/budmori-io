@@ -55,11 +55,11 @@ try{
       unit.z=unit.vx=unit.vy=unit.vz=0;unit.dropLanded=true;
       unit.ability.phase='idle';unit.ability.elapsed=0;
     }
-    const chestnut=world.spawn(3,1,3,0);
-    Object.assign(chestnut,{x:3,y:0,z:0,vx:0,vy:0,vz:0,dropLanded:true,home:{x:3,y:0}});
+    const peer=world.units[0],chestnut=world.spawn(3,peer.tier,3,0);
+    Object.assign(chestnut,{x:3,y:0,z:0,vx:0,vy:0,vz:0,dropLanded:true,home:{x:3,y:0},growthDuration:peer.growthDuration,growthElapsed:peer.growthElapsed});
     chestnut.ability.phase='idle';chestnut.ability.elapsed=0;
     BUDMORI.runtime.paused=true;BUDMORI.runtime.capturePresentation('reset');
-    return{chestnutId:chestnut.id,units:world.units.map(unit=>({id:unit.id,species:unit.species}))};
+    return{chestnutId:chestnut.id,tier:chestnut.tier,size:chestnut.size,units:world.units.map(unit=>({id:unit.id,species:unit.species,tier:unit.tier,size:unit.size}))};
   });
   await page.waitForFunction(id=>BUDMORI.renderer.vectorPlayers.has(id),farmChestnut.chestnutId,{timeout:5000});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
