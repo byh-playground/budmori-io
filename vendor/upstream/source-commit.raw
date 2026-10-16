@@ -1,27 +1,26 @@
-tree 11dece1ae6bca8a36151493531a4776a05c8e5a2
-parent 009c9d39686686bc2b6f97443103e7c342f62126
-author byh020907 <byh020907@naver.com> 1792160692 +0900
-committer GitHub <noreply@github.com> 1792160692 +0900
+tree 53652e850b379b0352f3bb81d946c801506b3a25
+parent 3125fb7fb577a92bbd2eb3fbdbbd56d4bb36bdce
+parent 4065dd0c4514c8aebaf38ad7705978f635c7de13
+author byh020907 <byh020907@naver.com> 1792165677 +0900
+committer GitHub <noreply@github.com> 1792165677 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq0jO0CRC1aQ7uu5UhlAAA4nsQAKcHSikjrSwU3DwD1bMGr10M
- QzFEKG3wwDXq8X1T7cZ2zr9lSvvDN7qac63EmvuE4aGmhyPynCyz0Bt+So947Sy8
- XNR7/V04xTUEnXOXzxDO09RUQQ5IkPMCLRAWnGks0ZG3v2axG5m9pMky/vrbG7QY
- FONjWxboowEgr0hdV4CbiL++ZhH4eF2+X8UiXro/GWcQjdw847JjRFSXOlXm//yK
- 4eWs5liXqMo8VSIMlcAujOBtUUmVBsFgpo3llp1YaaC435cU1Elp9RlqdXPjJNIF
- leeyRRA19WAvwkZWitKnB63L8sWhQ5ybpLtnlr92wiGe+tDJqITJUeTFidMfy7+Y
- bc+sRhrVhCbiLNgVr1AeC0os+kkp5KLCXGbZmx1/R4tLS/nmzjQLYBXTnFJkKUs6
- mt+3xtRK4d+l0QYVXjKFWEziFxTd7G9XU2zoZjGqW/UuntorRwUFmYK2cfNWpKed
- umdjKZ1qNNpERBnzJc3FmvLPyeM2FiILrp+six3dSDPAJofk0C3hCAX0y54ZdcXe
- FTg29vOJ3z+64RbDFEWAzInhyqWwiJi7+BO9/eqRF5wDHwFH7RY1fXTxNxqBKg1q
- a4naP8ejOlg+tVdY3tB/GJbKpQodgHvkN3N4Suqw9o+gF1NLB4M1mt+VaLLS55bY
- iBK221Y3J9vAEXCO+Rpv
- =KYXk
+ wsFcBAABCAAQBQJq0kctCRC1aQ7uu5UhlAAAv3sQAATwaJvFhHKgLYZK2Ctfs1aw
+ arxI2hcDkwzZv8SsItc7zpn0nJU944foVuz3Z77LtGVfKZ35pHjH57XkziKFihYg
+ 7wHghFs/Nd8xF/gdKtigMmiOqPaqwWIQ4D/JVL6aRBKSSa397OxbCooy7lGMnfzl
+ K0TWZ+DMXoyceeewnGiTH1hs1D/V7KllXJfVZck49rdKGz8UDS0lUVm9ty672aZq
+ 9VpaPsEVdDGONyLYSP2/sgVtXk5hmUfjDthuJgO8ZMNeduCLATBBR/ereCIo5Voh
+ kup+jHaqgkkYtjp5HFMGIEeLZEdQKwmz8zByHnAILWEcGem9LkslO/5eTeIEPWet
+ flIb9F9WEasOcr0oEnxDcHPs/lBRuH9OxQTD9hDzoh+r6XwnGKPNj7XL4L/IvoJX
+ V2CvzlOnc7zi62J/0iumLZ/YfHb3gRpDpjE0FukR6Vq+geVMwd1GDiU2/u9/tGb0
+ 1ieKopz2NnHy7dc+b1c0O2zk64qd8bF3r0BI7JZkLn1ueDMw0yWr29TLrGI0YbA3
+ 9A6BlTIB43SRcKyCX1T2fb4FUXoJIJADDS5gSoAFi83AEKr9+Jcu/9OkNhFzQHLF
+ jZstv9CXSKYd02XbqherGve/+dpwWS6xV1tBj7HhYeb7GCa9L2NgspId0+A+G3sU
+ b1vP3FPV381BAncxam/5
+ =7tKT
  -----END PGP SIGNATURE-----
  
 
-[performance] 벡터 에셋 morph 할당과 품질 옵션 추가
+[optimize] 싱글 로컬 lockstep snapshot/hash fast path
 
-draw 경로의 불필요한 morph 배열 생성을 제거하고, 기본 품질을 유지하는 stroke arc 분할 옵션과 기존 SVG 예제의 비교 UI를 추가합니다.
-
-실제 Chromium/WebGL CI와 빌드·release 검증을 통과했습니다.
+[optimize] 싱글 로컬 lockstep snapshot/hash fast path

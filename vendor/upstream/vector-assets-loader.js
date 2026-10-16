@@ -24529,7 +24529,7 @@ function addStops(canvasGradient, stops) {
 
 // modules/vector-assets/schema.js
 var VECTOR_ASSET_SCHEMA_VERSION = 1;
-var VECTOR_ASSET_COMPILER_VERSION = "0.10.0";
+var VECTOR_ASSET_COMPILER_VERSION = "0.11.0";
 var NUMERIC_POSE_FIELDS = Object.freeze(["x", "y", "rotation", "scaleX", "scaleY", "opacity"]);
 var EASINGS = /* @__PURE__ */ new Set(["linear", "inSine", "outSine", "inOutSine", "inQuad", "outQuad", "inOutQuad", "inCubic", "outCubic", "inOutCubic"]);
 var isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -24651,6 +24651,12 @@ function validateAssetMetadata(metadata, idNodes) {
   }
   return metadata;
 }
+
+// modules/vector-assets/quality-presets.js
+var VECTOR_ASSET_QUALITY_PRESETS = Object.freeze({
+  standard: Object.freeze({ curveSegments: 4, strokeArcDivisions: 2 }),
+  smallAsset: Object.freeze({ curveSegments: 2, strokeArcDivisions: 2 })
+});
 
 // modules/vector-assets/compiler-core.js
 var SVG_NS = "http://www.w3.org/2000/svg";
@@ -25754,7 +25760,7 @@ function compilePaths(paths, partIndices, parts, metadata, gradients, curveSegme
     }
     appendOrderedMeshRange(drawOrder, meshFirst, vertices.length / 11 - meshFirst, partIndex);
   }
-  if (!vertices.length && !shaderSurfaces.length || vertices.length % 33) throw new TypeError("SVG did not produce complete painted triangles or shader surfaces");
+  if (!vertices.length && !shaderSurfaces.length || vertices.length % 33) throw new TypeError("SVG did not produce complete painted triangles or shader surfaces at this tessellation; increase the selected subdivision or use a non-degenerate shape");
   const expanded = new Float32Array(vertices);
   const strideFloats = 11;
   const uniqueVertices = [], indices = [], vertexIds = /* @__PURE__ */ new Map();
@@ -25888,10 +25894,10 @@ function compileVectorAssetCore(svgBytes, sourcePath = "asset.svg", options = {}
   if (options === null || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some((key) => !["curveSegments", "normalizeCenteredViewBox", "strokeArcDivisions"].includes(key))) {
     throw new TypeError("Only curveSegments, normalizeCenteredViewBox, and strokeArcDivisions compiler options are supported");
   }
-  const curveSegments = options.curveSegments === void 0 ? 16 : options.curveSegments;
-  if (!Number.isSafeInteger(curveSegments) || curveSegments < 4 || curveSegments > 64) throw new RangeError("curveSegments must be an integer from 4 to 64");
-  const strokeArcDivisions = options.strokeArcDivisions === void 0 ? 12 : options.strokeArcDivisions;
-  if (!Number.isSafeInteger(strokeArcDivisions) || strokeArcDivisions < 4 || strokeArcDivisions > 64) throw new RangeError("strokeArcDivisions must be an integer from 4 to 64");
+  const curveSegments = options.curveSegments === void 0 ? VECTOR_ASSET_QUALITY_PRESETS.standard.curveSegments : options.curveSegments;
+  if (!Number.isSafeInteger(curveSegments) || curveSegments < 1 || curveSegments > 64) throw new RangeError("curveSegments must be an integer from 1 to 64");
+  const strokeArcDivisions = options.strokeArcDivisions === void 0 ? VECTOR_ASSET_QUALITY_PRESETS.standard.strokeArcDivisions : options.strokeArcDivisions;
+  if (!Number.isSafeInteger(strokeArcDivisions) || strokeArcDivisions < 1 || strokeArcDivisions > 64) throw new RangeError("strokeArcDivisions must be an integer from 1 to 64");
   const normalizeCenteredViewBox = options.normalizeCenteredViewBox ?? false;
   if (typeof normalizeCenteredViewBox !== "boolean") throw new TypeError("normalizeCenteredViewBox must be a boolean");
   if (!(svgBytes instanceof Uint8Array)) throw new TypeError("SVG source bytes must be a Uint8Array");
@@ -25988,15 +25994,15 @@ function validateLoadOptions(url, options) {
   const sourcePath = options.sourcePath ?? url;
   const expectedSha256 = options.expectedSha256;
   const maxBytes = options.maxBytes ?? MAX_SOURCE_BYTES2;
-  const curveSegments = options.curveSegments ?? 16;
-  const strokeArcDivisions = options.strokeArcDivisions === void 0 ? 12 : options.strokeArcDivisions;
+  const curveSegments = options.curveSegments === void 0 ? VECTOR_ASSET_QUALITY_PRESETS.standard.curveSegments : options.curveSegments;
+  const strokeArcDivisions = options.strokeArcDivisions === void 0 ? VECTOR_ASSET_QUALITY_PRESETS.standard.strokeArcDivisions : options.strokeArcDivisions;
   const includeSourcePaths = options.includeSourcePaths ?? false;
   const normalizeCenteredViewBox = options.normalizeCenteredViewBox ?? false;
   if (typeof sourcePath !== "string" || sourcePath.length < 1 || sourcePath.length > 2048) throw new TypeError("sourcePath must be a nonempty string of at most 2048 characters");
   if (expectedSha256 !== void 0 && (typeof expectedSha256 !== "string" || !SHA256.test(expectedSha256))) throw new TypeError("expectedSha256 must be a lowercase SHA-256 digest");
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_SOURCE_BYTES2) throw new RangeError("maxBytes must be an integer from 1 through 524288");
-  if (!Number.isSafeInteger(curveSegments) || curveSegments < 4 || curveSegments > 64) throw new RangeError("curveSegments must be an integer from 4 to 64");
-  if (!Number.isSafeInteger(strokeArcDivisions) || strokeArcDivisions < 4 || strokeArcDivisions > 64) throw new RangeError("strokeArcDivisions must be an integer from 4 to 64");
+  if (!Number.isSafeInteger(curveSegments) || curveSegments < 1 || curveSegments > 64) throw new RangeError("curveSegments must be an integer from 1 to 64");
+  if (!Number.isSafeInteger(strokeArcDivisions) || strokeArcDivisions < 1 || strokeArcDivisions > 64) throw new RangeError("strokeArcDivisions must be an integer from 1 to 64");
   if (typeof includeSourcePaths !== "boolean") throw new TypeError("includeSourcePaths must be a boolean");
   if (typeof normalizeCenteredViewBox !== "boolean") throw new TypeError("normalizeCenteredViewBox must be a boolean");
   return { sourcePath, expectedSha256, maxBytes, curveSegments, strokeArcDivisions, includeSourcePaths, normalizeCenteredViewBox };
@@ -26082,5 +26088,6 @@ function createVectorAssetLoader({ fetch: fetcher = globalThis.fetch, maxEntries
   } });
 }
 export {
+  VECTOR_ASSET_QUALITY_PRESETS,
   createVectorAssetLoader
 };

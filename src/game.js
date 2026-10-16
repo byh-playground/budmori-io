@@ -3005,7 +3005,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.6.0";
+      PRODUCT_VERSION = "0.6.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -3170,6 +3170,32 @@
 
   // src/farm-renderer.js
   init_unit_grades();
+
+  // src/attack-telegraph.js
+  function capsuleContourPoints(area, segments = 12) {
+    const { x, y, width, startRadius, endRadius, angle } = area || {};
+    if (![x, y, width, startRadius, endRadius, angle].every(Number.isFinite) || width <= 0 || startRadius < 0 || endRadius < startRadius) {
+      throw new TypeError("A finite capsule attack area is required");
+    }
+    if (!Number.isSafeInteger(segments) || segments < 4 || segments > 64) {
+      throw new RangeError("Capsule arc segments must be an integer from 4 through 64");
+    }
+    const forward = { x: Math.cos(angle), y: Math.sin(angle) };
+    const side = { x: -forward.y, y: forward.x };
+    const start2 = { x: x + forward.x * startRadius, y: y + forward.y * startRadius };
+    const end = { x: x + forward.x * endRadius, y: y + forward.y * endRadius };
+    const arcPoint = (center, theta) => ({
+      x: center.x + width * (forward.x * Math.cos(theta) + side.x * Math.sin(theta)),
+      y: center.y + width * (forward.y * Math.cos(theta) + side.y * Math.sin(theta))
+    });
+    const points = [arcPoint(start2, Math.PI / 2), arcPoint(end, Math.PI / 2)];
+    for (let i = 1; i <= segments; i++) points.push(arcPoint(end, Math.PI / 2 - Math.PI * i / segments));
+    points.push(arcPoint(start2, -Math.PI / 2));
+    for (let i = 1; i < segments; i++) points.push(arcPoint(start2, -Math.PI / 2 - Math.PI * i / segments));
+    return points;
+  }
+
+  // src/farm-renderer.js
   var { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
   var { WebGLDevice, VectorContext, MeshRenderer } = globalThis.BloomGamekitRendering;
   var { createVectorAsset } = globalThis.BloomGamekitVectorAssets;
@@ -3284,6 +3310,16 @@
       c.lineWidth = width * this.scale;
       c.beginPath();
       c.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, 0, 0, Math.PI * 2);
+      c.stroke();
+    }
+    strokeGroundCapsule(area, color2, width = 0.08) {
+      const c = this.ctx, points = capsuleContourPoints(area).map((point) => this.project(point.x, point.y));
+      c.strokeStyle = color2;
+      c.lineWidth = width * this.scale;
+      c.beginPath();
+      c.moveTo(points[0].x, points[0].y);
+      for (const point of points.slice(1)) c.lineTo(point.x, point.y);
+      c.closePath();
       c.stroke();
     }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
@@ -3454,21 +3490,17 @@
           this.groundEllipse(t.x, t.y, 0.32, 0.22, t.valid ? "#f3d58a55" : "#b56d6266");
           this.strokeGroundEllipse(t.x, t.y, 0.36, 0.25, t.valid ? "#f4e0a0" : "#b36359", 0.055);
         }
-        const b = sim2.boss, event = sim2.farmBossEvent, area = raid || event?.phase === "fighting" ? bossAttackArea(b, CONFIG.maxUnitRadius) : null;
-        this.bossTelegraph = area;
-        if (area) {
-          const heavy = area.kind === "sweep", color = heavy ? "#b46c45" : "#a35c48";
-          if (heavy) {
-            const fill = this.project(area.x, area.y);
-            this.ellipse(fill.x, fill.y, area.outerRadius * this.scale, area.outerRadius * this.scale * 0.62, "#b46c4522");
-            this.strokeGroundEllipse(area.x, area.y, area.outerRadius, area.outerRadius, color, area.active ? 0.075 : 0.12);
-            const progress = area.active ? area.progress : 1;
-            this.ring(area.x, area.y, area.outerRadius + 0.13, "#dfad65", 0.16, area.startAngle, area.startAngle + progress * Math.PI * 2);
-          } else {
-            const nx = Math.cos(area.angle), ny = Math.sin(area.angle), width = area.width, start2 = area.startRadius, end = area.endRadius;
-            for (const side of [-1, 1]) this.line(this.project(area.x + nx * start2 - ny * width * side, area.y + ny * start2 + nx * width * side), this.project(area.x + nx * end - ny * width * side, area.y + ny * end + nx * width * side), 0.08, color);
-            for (const distance of [start2, end]) this.ring(area.x + nx * distance, area.y + ny * distance, width, color, 0.06);
-          }
+      }
+      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? bossAttackArea(sim2.boss, CONFIG.maxUnitRadius) : null;
+      this.bossTelegraph = area;
+      if (area) {
+        const heavy = area.kind === "sweep", color = heavy ? "#b46c45" : "#a35c48";
+        if (heavy) {
+          this.strokeGroundEllipse(area.x, area.y, Math.max(0, area.sweepRadius - area.width), Math.max(0, area.sweepRadius - area.width), color, area.active ? 0.075 : 0.12);
+          const progress = area.active ? area.progress : 1;
+          this.ring(area.x, area.y, area.outerRadius, "#dfad65", 0.1, area.startAngle, area.startAngle + progress * Math.PI * 2);
+        } else {
+          this.strokeGroundCapsule(area, color, area.active ? 0.075 : 0.12);
         }
       }
     }
@@ -3881,7 +3913,7 @@
         }
         onEvent(event);
       };
-      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: CONFIG.maxRaidPlayers, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent: emitEvent });
+      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", localFastPath: !room2, room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: CONFIG.maxRaidPlayers, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent: emitEvent });
       this.loop = globalThis.BloomGamekitSimloop.createLoop({
         session: this.session,
         getInput: () => ({ input: new Uint8Array(1), commands: (this.session.ready ? this.pending.splice(0, 32) : []).map((payload) => ({ payload })), predict: false }),

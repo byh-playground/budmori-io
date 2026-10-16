@@ -29,7 +29,9 @@ async function launch(){
     const troops={},bosses={};
     const records=await Promise.all(config.vectorAssets.map(async spec=>{
       const url=new URL(spec.file+'?version='+spec.sha256,document.baseURI).href;
-      const compiled=await vectorLoader.load(url,{sourcePath:spec.file,expectedSha256:spec.sha256,maxBytes:spec.bytes});
+      const preset=globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[spec.qualityPreset];
+      if(!preset)throw new Error('Unknown shared SVG quality preset: '+spec.qualityPreset);
+      const compiled=await vectorLoader.load(url,{...preset,sourcePath:spec.file,expectedSha256:spec.sha256,maxBytes:spec.bytes});
       if(compiled.sourceSha256!==spec.sha256)throw new Error('Vector source integrity failed: '+spec.file);
       return {spec,compiled};
     }));

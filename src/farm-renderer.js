@@ -1,6 +1,7 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
 import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress,sevenSegmentDigitLines} from './farm-indicators.js';
 import {UNIT_GRADES} from './unit-grades.js';
+import {capsuleContourPoints} from './attack-telegraph.js';
 const {bosses:BOSS_VECTOR_ASSETS,troops:TROOP_VECTOR_ASSETS}=globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
@@ -88,6 +89,12 @@ function unitExpression(u,sim){
       this.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, color2);
     }
     strokeGroundEllipse(x,y,rx,ry,color2,width=.08){const c=this.ctx,p=this.project(x,y);c.strokeStyle=color2;c.lineWidth=width*this.scale;c.beginPath();c.ellipse(p.x,p.y,rx*this.scale,ry*this.scale*.62,0,0,Math.PI*2);c.stroke()}
+    strokeGroundCapsule(area,color2,width=.08){
+      const c=this.ctx,points=capsuleContourPoints(area).map(point=>this.project(point.x,point.y));
+      c.strokeStyle=color2;c.lineWidth=width*this.scale;c.beginPath();c.moveTo(points[0].x,points[0].y);
+      for(const point of points.slice(1))c.lineTo(point.x,point.y);
+      c.closePath();c.stroke();
+    }
     ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
       c.strokeStyle = color2;
@@ -225,18 +232,15 @@ function unitExpression(u,sim){
       if(raid){
         this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
         if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
-        const b=sim2.boss,event=sim2.farmBossEvent,area=(raid||event?.phase==='fighting')?bossAttackArea(b,CONFIG.maxUnitRadius):null;this.bossTelegraph=area;
-        if(area){
-          const heavy=area.kind==='sweep',color=heavy?'#b46c45':'#a35c48';
-          if(heavy){
-            const fill=this.project(area.x,area.y);this.ellipse(fill.x,fill.y,area.outerRadius*this.scale,area.outerRadius*this.scale*.62,'#b46c4522');
-            this.strokeGroundEllipse(area.x,area.y,area.outerRadius,area.outerRadius,color,area.active?.075:.12);
-            const progress=area.active?area.progress:1;this.ring(area.x,area.y,area.outerRadius+.13,'#dfad65',.16,area.startAngle,area.startAngle+progress*Math.PI*2);
-          }else{
-            const nx=Math.cos(area.angle),ny=Math.sin(area.angle),width=area.width,start=area.startRadius,end=area.endRadius;
-            for(const side of [-1,1])this.line(this.project(area.x+nx*start-ny*width*side,area.y+ny*start+nx*width*side),this.project(area.x+nx*end-ny*width*side,area.y+ny*end+nx*width*side),.08,color);
-            for(const distance of [start,end])this.ring(area.x+nx*distance,area.y+ny*distance,width,color,.06);
-          }
+      }
+      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?bossAttackArea(sim2.boss,CONFIG.maxUnitRadius):null;this.bossTelegraph=area;
+      if(area){
+        const heavy=area.kind==='sweep',color=heavy?'#b46c45':'#a35c48';
+        if(heavy){
+          this.strokeGroundEllipse(area.x,area.y,Math.max(0,area.sweepRadius-area.width),Math.max(0,area.sweepRadius-area.width),color,area.active?.075:.12);
+          const progress=area.active?area.progress:1;this.ring(area.x,area.y,area.outerRadius,'#dfad65',.1,area.startAngle,area.startAngle+progress*Math.PI*2);
+        }else{
+          this.strokeGroundCapsule(area,color,area.active?.075:.12);
         }
       }
     }

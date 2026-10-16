@@ -22,6 +22,8 @@ jobs:
       - run: npm run test:ability-tree
       - run: npm run test:progression
       - run: npm run test:farm-recovery-indicators
+      - run: npm run test:farm-telegraph
+      - run: npm run test:vector-assets-quality
       - run: node tests/runtime-manifest-unit.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser:abilities
