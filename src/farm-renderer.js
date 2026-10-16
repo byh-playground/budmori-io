@@ -2,6 +2,13 @@ import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.
 import {BOSS_VECTOR_ASSETS,TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
 const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
+// Historical Budmori grade outline colors for the currently supported T1–T4.
+const TIER_OUTLINE_COLORS=[
+  [0xd8/255,0xd4/255,0xbd/255,1],
+  [0x83/255,0xce/255,0x76/255,1],
+  [0x78/255,0xb9/255,0xff/255,1],
+  [0xbd/255,0x8c/255,0xff/255,1]
+];
 function unitMotion(u,sim){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.1,phase=u.ability?.phase||'idle';
   const moving=Math.hypot(u.vx||0,u.vy||0)>.18,kind=ATTACK_TYPES[u.species]?.kind;
@@ -22,7 +29,8 @@ function unitExpression(u,sim){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.5;
   const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
   const phase=u.ability?.phase;
-  return dead?'dead':sim.scene==='raid'&&sim.encounter?.outcome==='victory'?'happy':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
+  const restingCooldown=sim.scene==='farm'&&u.cooldown>0&&phase==='idle';
+  return dead?'dead':sim.scene==='raid'&&sim.encounter?.outcome==='victory'?'happy':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':restingCooldown?'neutral':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
 }
   // render.js
   const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c'];
@@ -98,7 +106,12 @@ function unitExpression(u,sim){
       c.stroke();
     }
     attackEffects(world){
-      for(const u of world.units){const a=u.ability,s=ATTACK_TYPES[u.species];if(u.buffed&&u.hp>0)this.ring(u.x,u.y,u.radius+.16,'#eacb72',.055);if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,ATTACK_ACCENTS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));}
+      for(const u of world.units){
+        const a=u.ability,s=ATTACK_TYPES[u.species];
+        if(u.buffed&&u.hp>0)this.ring(u.x,u.y,u.radius+.16,'#eacb72',.055);
+        if(a.phase==='windup')this.ring(u.x,u.y,u.radius+.1,ATTACK_ACCENTS[u.species],.065,0,Math.PI*2*Math.min(1,a.elapsed/s.windup));
+        if(world.scene==='farm'&&u.cooldown>0){const duration=u.cooldownDuration||world.breedCooldownDuration?.()||CONFIG.breedCooldownSeconds,progress=1-clamp(u.cooldown/duration,0,1);if(progress>0)this.ring(u.x,u.y,u.radius+.085,'#8fac68',.035,0,Math.PI*2*progress)}
+      }
     }
     drawVectorUnit(u,sim,p,r){
       const record=this.vectorAssets.get(u.species);if(!record)throw new Error('Missing required troop vector asset for species '+u.species);
@@ -111,6 +124,13 @@ function unitExpression(u,sim){
       player.seek(this.displayTimeMs);
       const [, ,width,height]=record.compiled.viewBox,scale=2*r/Math.max(width,height),centerY=p.y-r*.79;
       const matrix=[scale,0,0,scale,p.x-width*scale*.5,centerY-height*scale*.5];
+      const outline=TIER_OUTLINE_COLORS[u.tier-1];
+      if(outline){
+        // One enlarged silhouette pass, never eight full asset redraws.
+        const border=1.5*this.pixelRatio,factor=1+border/Math.max(r,1);
+        const outlineMatrix=[scale*factor,0,0,scale*factor,p.x-width*scale*factor*.5,centerY-height*scale*factor*.5];
+        player.draw({projection:this.ctx.vector.projection,matrix:outlineMatrix,color:outline,forceColor:true});
+      }
       player.draw({projection:this.ctx.vector.projection,matrix});
       return true;
     }

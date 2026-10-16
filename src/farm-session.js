@@ -13,11 +13,12 @@ class UnitRender extends RenderObject {
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,
   vx:R.LINEAR,vy:R.LINEAR,hp:R.LINEAR,down:R.LINEAR,stun:R.LINEAR,flash:R.LINEAR,bounce:R.LINEAR,
   'ability.phase':R.STATE_KEY,'ability.elapsed':R.LINEAR,
+  cooldown:R.LINEAR,cooldownDuration:R.STEP,
   species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP,ownerId:R.STATE_KEY,farmId:R.STEP,dropLanded:R.STEP,buffed:R.STEP
  });
  constructor(u,world){
   super();Object.assign(this,{x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
-   ability:{phase:u.ability.phase,elapsed:u.ability.elapsed},species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
+   ability:{phase:u.ability.phase,elapsed:u.ability.elapsed},cooldown:u.cooldown,cooldownDuration:u.cooldownDuration,species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
    maxHp:resolveUnitStats(u).maxHp,fed:u.fed,ownerId:u.ownerId,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0)});
  }
 }
@@ -91,7 +92,7 @@ export class FarmSession{
  command(c,ownerId=this.localPlayerId){const w=this.world;
   switch(c.type){
    case 'feed':if(w.scene==='farm')w.tapFood('manual');break;
-   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value))w.mode=c.value;break;
+   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){if(c.value!=='merge')w.mergeTask=null;w.mode=c.value}break;
    case 'speed':if([1,4].includes(c.value))this.speed=c.value;break;
    case 'invest':if(typeof c.id==='string'&&w.scene==='farm')w.progress.invest(c.id);break;
    case 'register-roster':if(Array.isArray(c.entries))w.registerRaidRoster(ownerId,c.entries);break;
