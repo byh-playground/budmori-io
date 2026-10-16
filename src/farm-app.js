@@ -13,6 +13,7 @@ import {renderAbilityTreeMarkup,renderFarmUpgradeTreeMarkup} from './ability-tre
 import {abortReservedRaidRun,reserveRaidRun,settleRaidOwnerFarm} from './raid-settlement.js';
 import {settleBossKill} from './boss-rewards.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
+const BOSS_SPECIES_NAMES=['콩','옥수수','강낭콩','밤톨'];
 let networkTimer=null,observedWorld=null;
 let imported=null,importedLegacy=false;
 let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,menuOpen=false,menuTab='play',menuWasPaused=true,menuPauseChanged=false,menuAutoPaused=false,dropPointer=null,dropTimer=null;
@@ -57,7 +58,7 @@ function persistRaidSettlement(raidWorld,ownerId){
  const farmRun={sessionId:personalGarden.activeRaidSessionId,runSequence:personalGarden.activeRaidRunSequence};if(!farmRun.sessionId||!farmRun.runSequence)return false;
  const outcome=['victory','defeat'].includes(raidWorld.encounter?.outcome)?raidWorld.encounter.outcome:'aborted';
  const prepare=base=>settleRaidOwnerFarm(snapshot(base),{ownerId,sessionId:farmRun.sessionId,encounterId:farmRun.runSequence,runSequence:farmRun.runSequence,outcome,raidWorld,completedAtMs:Date.now(),settleVictory:({farm,receiptKey,deploymentMultiplier})=>{
-   const garden=restore(farm),resolved=settleBossKill(garden,{encounterId:farmRun.runSequence,source:'raid',receiptKey,acquisitionMultiplier:deploymentMultiplier,species:3,tier:1,x:raidWorld.boss.x,y:raidWorld.boss.y});
+   const garden=restore(farm),resolved=settleBossKill(garden,{encounterId:farmRun.runSequence,source:'raid',receiptKey,acquisitionMultiplier:deploymentMultiplier,species:raidWorld.boss.species??3,tier:1,x:raidWorld.boss.x,y:raidWorld.boss.y});
    const reward=resolved.receipt;return{farm:snapshot(garden),summary:{acquisition:{status:reward.status,chance:reward.chance,roll:reward.roll,unitId:reward.unitId,receiptKey:reward.receiptKey},xp:{status:reward.xpStatus,amount:reward.xpAmount,levelsGained:reward.levelsGained,pointsAwarded:reward.pointsAwarded,receiptKey:reward.xpReceiptKey}}};
  }});
  let settled=prepare(personalGarden),candidate=restore(settled.farm);
@@ -244,7 +245,7 @@ function sync(display,now){
  const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome;
  $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';$('bossHealthNote').textContent=farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP · 증원 시 함께 증가';
  for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
- $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?'보스가 쓰러졌어요 · 밤톨이 합류했어요':farmEvent.rewardStatus==='pending'?'밤톨 획득 대기 · 공간이 생기면 합류해요':'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('pause').textContent=active.paused?'계속하기':'일시 정지';$('pause').setAttribute('aria-label',active.paused?'계속하기':'일시 정지');$('pause').setAttribute('aria-pressed',String(active.paused));$('menuTabGrowth').disabled=raid||farmEventActive;$('menuTabAbilities').disabled=raid||!personalGarden;$('raid').disabled=farmEventActive||(!raid&&!hasReadyTroops);
+ $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';const speciesName=BOSS_SPECIES_NAMES[boss.species]||BOSS_SPECIES_NAMES[3];$('battleOutcome').textContent=raid?(battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?`보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요`:farmEvent.rewardStatus==='pending'?`${speciesName} 획득 대기 · 공간이 생기면 합류해요`:'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('tree').disabled=raid||farmEventActive;$('abilities').disabled=raid||!personalGarden;$('raid').disabled=farmEventActive||(!raid&&!hasReadyTroops);$('pause').textContent=active.paused?'▶':'Ⅱ';
  $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;
  for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
  if(observedWorld!==w){observedWorld=w;noticeSequence=w.eventSequence}

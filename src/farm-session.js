@@ -26,9 +26,21 @@ class UnitRender extends RenderObject {
 class BossRender extends RenderObject {
  static renderSchema=Object.freeze({
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,startAngle:R.ANGLE,
-  phase:R.STATE_KEY,clock:R.LINEAR,travel:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR
+  phase:R.STATE_KEY,clock:R.LINEAR,travel:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR,species:R.STEP,
+  patternId:R.STATE_KEY,patternPhase:R.STATE_KEY,patternPhaseElapsed:R.LINEAR,patternAim:R.ANGLE,patternLocked:R.STEP,patternTargetId:R.STEP,
+  patternTargetX:R.POSITION_X,patternTargetY:R.POSITION_Y,patternTargetZ:R.POSITION_Z,
+  patternStartX:R.POSITION_X,patternStartY:R.POSITION_Y,patternStartZ:R.POSITION_Z,
+  patternVolleyCount:R.STEP,patternReleased:R.STEP,patternTraveled:R.LINEAR,
+  summonMouthX:R.POSITION_X,summonMouthY:R.POSITION_Y,summonMouthZ:R.POSITION_Z
  });
- constructor(b){super();Object.assign(this,{x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash})}
+ constructor(b){super();const action=b.patternRuntime?.active||null,target=action?.target||null,start=action?.start||null,mouth=b.summonMouth||{};Object.assign(this,{
+  x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash,species:b.species??3,
+  patternId:action?.id||'',patternPhase:action?.phase||'idle',patternPhaseElapsed:action?.phaseElapsed||0,patternAim:action?.aim??b.angle,patternLocked:!!action?.locked,patternTargetId:action?.targetId||0,
+  patternTargetX:target?.x??b.x,patternTargetY:target?.y??b.y,patternTargetZ:target?.z??0,
+  patternStartX:start?.x??b.x,patternStartY:start?.y??b.y,patternStartZ:start?.z??b.z,
+  patternVolleyCount:action?.volleyCount||0,patternReleased:action?.released||0,patternTraveled:action?.traveled||0,
+  summonMouthX:mouth.x??b.x,summonMouthY:mouth.y??b.y,summonMouthZ:mouth.z??b.z
+ })}
 }
 
 class FoodRender extends RenderObject {

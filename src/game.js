@@ -982,6 +982,56 @@
     }
   });
 
+  // src/boss-patterns.js
+  function createBossPatternRuntime() {
+    return {
+      weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
+      cooldowns: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, 0])),
+      active: null,
+      encounterElapsed: 0
+    };
+  }
+  function chooseBossPattern(runtime, eligibleIds, random) {
+    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
+    const eligible = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
+    if (!eligible.length) return null;
+    const total = eligible.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
+    if (!(total > 0)) return null;
+    let roll = random() * total, chosen = eligible.at(-1);
+    for (const id of eligible) {
+      roll -= Math.max(0, runtime.weights[id] || 0);
+      if (roll < 0) {
+        chosen = id;
+        break;
+      }
+    }
+    for (const id of eligible) runtime.weights[id] = id === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(BOSS_PATTERN_WEIGHT_DEFAULTS.cap, Math.max(0, runtime.weights[id] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus);
+    return chosen;
+  }
+  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
+  var init_boss_patterns = __esm({
+    "src/boss-patterns.js"() {
+      BOSS_PATTERN_IDS = Object.freeze([
+        "attack.sweep-360",
+        "attack.front-slam",
+        "attack.charge",
+        "attack.leap-slam",
+        "attack.fan-sweep",
+        "summon.mouth-t1"
+      ]);
+      BOSS_PATTERN_CONFIG = Object.freeze({
+        "attack.sweep-360": Object.freeze({ kind: "sweep-360", windup: 1.05, active: 0, recover: 1.05, cooldown: 10, reach: 6.5, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
+        "attack.front-slam": Object.freeze({ kind: "front-slam", windup: 0.75, active: 0, recover: 0.75, cooldown: 5, reach: 5.5, sector: Math.PI / 2, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
+        "attack.charge": Object.freeze({ kind: "charge", windup: 0.5, active: 6.6 / 5.3, recover: 0.75, cooldown: 5, reach: 6.6, speed: 5.3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: false }),
+        "attack.leap-slam": Object.freeze({ kind: "leap-slam", windup: 0.5, active: 1.013, recover: 0.75, cooldown: 5, reach: 6.6, landingRadius: 5.5, damageMultiplier: 2, knockback: 10, lift: 7.2, groundOnly: false }),
+        "attack.fan-sweep": Object.freeze({ kind: "fan-sweep", windup: 1, active: 0.8, recover: 1, cooldown: 5, reach: 6.5, width: 0.85, sector: Math.PI * 2 / 3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: true }),
+        "summon.mouth-t1": Object.freeze({ kind: "mouth-t1", windup: 0.5, active: 0.75, recover: 0.5, cooldown: 10, firstEligible: 10, volleyCount: 4, releaseInterval: 0.25, maxAlive: 10, dropHeight: 3, landingSeconds: 0.56, landingRadius: 4.8 })
+      });
+      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({ base: 1, eligibleBonus: 0.5, cap: 3 });
+      BOSS_AIM_TURN_RATE = 5.5;
+    }
+  });
+
   // src/farm-model.js
   function presentationEventTimeMs(event) {
     return presentationEventTimes.get(event) ?? (Number.isFinite(event?.time) ? event.time * 1e3 : 0);
@@ -991,10 +1041,17 @@
     else presentationClocks.delete(world);
   }
   function bossAttackArea(boss, unitRadius = 0) {
-    const c = CONFIG.raid, phase = boss.phase, heavy = phase === "sweep-windup" || phase === "sweep", wind = phase === "sweep-windup" || phase === "strike-windup";
-    if (!heavy && phase !== "strike-windup" && phase !== "strike") return null;
-    const width = c.weaponRadius + Math.max(0, unitRadius), duration = heavy ? wind ? c.sweepWindup : c.sweepDuration : wind ? c.basicWindup : c.basicDuration;
-    return heavy ? { kind: "sweep", x: boss.x, y: boss.y, width, sweepRadius: c.sweepReach, outerRadius: c.sweepReach + width, startAngle: (boss.startAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2), progress: clamp2(boss.clock / duration, 0, 1), active: phase === "sweep" } : { kind: "basic", x: boss.x, y: boss.y, width, startRadius: Math.max(0, boss.radius - 0.25), endRadius: c.basicReach, angle: boss.angle, progress: clamp2(boss.clock / duration, 0, 1), active: phase === "strike" };
+    const action = boss.patternRuntime?.active;
+    if (!action) return null;
+    const config = BOSS_PATTERN_CONFIG[action.id];
+    if (!config) return null;
+    const progress = clamp2(action.phaseElapsed / (action.phase === "windup" ? config.windup : config.active || 1), 0, 1), locked = !!action.locked;
+    if (action.id === "attack.sweep-360") return { kind: "sweep", x: boss.x, y: boss.y, width: CONFIG.raid.weaponRadius + Math.max(0, unitRadius), sweepRadius: config.reach, outerRadius: config.reach + CONFIG.raid.weaponRadius, startAngle: 0, progress: action.phase === "windup" ? 1 : 1, active: action.phase === "active", patternId: action.id, locked };
+    if (action.id === "attack.front-slam") return { kind: "sector", x: boss.x, y: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, sector: config.sector, progress, active: action.phase === "active", patternId: action.id, locked };
+    if (action.id === "attack.charge") return { kind: "charge", x: action.start?.x ?? boss.x, y: action.start?.y ?? boss.y, endX: boss.x, endY: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, width: boss.radius, progress, active: action.phase === "active", patternId: action.id, locked };
+    if (action.id === "attack.leap-slam") return { kind: "leap", x: boss.x, y: boss.y, targetX: action.target?.x ?? boss.x, targetY: action.target?.y ?? boss.y, reach: config.landingRadius, progress, active: action.phase === "active", patternId: action.id, locked };
+    if (action.id === "attack.fan-sweep") return { kind: "fan", x: boss.x, y: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, width: config.width, sector: config.sector, progress, active: action.phase === "active", patternId: action.id, locked };
+    return action.id === "summon.mouth-t1" ? { kind: "summon", x: boss.x, y: boss.y, angle: action.aim ?? boss.angle, progress, active: action.phase === "active", patternId: action.id, locked } : null;
   }
   function contact(a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), r = a.radius + b.radius;
@@ -1044,13 +1101,14 @@
       init_species_abilities();
       init_species_abilities();
       init_unit_grades();
+      init_boss_patterns();
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
-      CONFIG = Object.freeze({ cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4, raidSummonIdBase: 4e6 + 100 + 1, maxSpecies: 4, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, basicWindup: 0.5, basicDuration: 0.24, basicRecover: 0.48, sweepWindup: 1.05, sweepDuration: 1.05, sweepRecover: 1.05, sweepInterval: 6.8, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
-      MAP_ENEMY_TARGETS = { farm: (world) => world.farmBossEvent?.phase === "fighting" && world.boss?.active ? [world.boss] : [], raid: (world) => world.running && world.raidDeploymentStarted && world.boss?.active ? [world.boss] : [] };
+      CONFIG = Object.freeze({ cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: 4, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
+      MAP_ENEMY_TARGETS = { farm: (world) => world.farmBossEvent?.phase === "fighting" && world.boss?.active ? [world.boss, ...world.units.filter((unit) => unit.hp > 0 && unit.battleSummonKind === "boss-mouth-t1")] : [], raid: (world) => world.running && world.raidDeploymentStarted && world.boss?.active ? [world.boss, ...world.units.filter((unit) => unit.hp > 0 && unit.battleSummonKind === "boss-mouth-t1")] : [] };
       clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier, species) => resolveUnitStats({ tier, species });
       Body = class {
@@ -1153,10 +1211,10 @@
         }
         begin(sim, target) {
           const u = this.owner;
-          if (this.phase !== "idle" || u.down > 0 || u.stun > 0 || u.z > 0.1) return false;
+          if (this.phase !== "idle" || u.down > 0 || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return false;
           this.phase = "windup";
           this.elapsed = 0;
-          this.action = { id: ++sim.attackSerial, target: { ...target }, hit: false, path: null };
+          this.action = { id: ++sim.attackSerial, target: { ...target }, targetId: target.id ?? (u.battleSummonKind === "boss-mouth-t1" ? "" : "boss"), hit: false, path: null };
           u.angle = Math.atan2(target.y - u.y, target.x - u.x);
           u.vx = u.vy = 0;
           sim.combatEvent("prepare", u, this.action);
@@ -1223,7 +1281,7 @@
         }
         integrate(dt) {
           const u = this.owner, a = this.action;
-          if (this.phase !== "active" || !a?.path || u.stun > 0 || u.down > 0) return false;
+          if (this.phase !== "active" || !a?.path || u.stun > 0 || u.down > 0 || u.landingRecovery > 0 || u.z > 0.1 && !(a.path.height > 0)) return false;
           const p = Ballistics.sample(a.path, this.elapsed / a.path.duration);
           u.vx = (p.x - u.x) / dt;
           u.vy = (p.y - u.y) / dt;
@@ -1236,12 +1294,12 @@
           return true;
         }
         afterMove(sim, old) {
-          const a = this.action, u = this.owner;
-          if (this.phase !== "active" || !a?.path) return;
+          const a = this.action, u = this.owner, target = sim.attackTarget(u, a);
+          if (this.phase !== "active" || !a?.path || !target) return;
           const areaRadius = scaleAttackArea(u.radius, u);
-          const hit = !a.hit && ArenaGeometry.sweep(old, u, areaRadius, 0.65, sim.boss);
+          const hit = !a.hit && ArenaGeometry.sweep(old, u, areaRadius, 0.65, target);
           if (hit) {
-            sim.damageBoss(u, a, hit);
+            sim.damageCombatTarget(u, a, target, hit, { attackMultiplier: this.spec.skillMultiplier, attackKind: this.spec.kind });
             if (this.spec.kind === "ram" || this.spec.kind === "punch") {
               u.x = hit.x;
               u.y = hit.y;
@@ -1257,7 +1315,7 @@
             if (this.spec.kind === "leap") {
               u.bounce = 0.2;
               sim.combatEvent("land-attack", u, a);
-              if (!a.hit && ArenaGeometry.overlaps({ x: u.x, y: u.y, z: 0, radius: scaleAttackArea(u.radius + 0.35, u), height: 0.65 }, sim.boss)) sim.damageBoss(u, a, u);
+              if (!a.hit && ArenaGeometry.overlaps({ x: u.x, y: u.y, z: 0, radius: scaleAttackArea(u.radius + 0.35, u), height: 0.65 }, target)) sim.damageCombatTarget(u, a, target, u, { attackMultiplier: this.spec.skillMultiplier, attackKind: this.spec.kind });
               const progression = sim.abilityProgressionFor(u), leap = getContinuousLeapConfig(progression, u.tier), shockwave = getLandingShockwaveConfig(progression, u.tier);
               if (shockwave) sim.triggerLandingShockwave(u, a, shockwave);
               if (leap && shouldResetLeapCooldown(leap, sim.random())) {
@@ -1311,6 +1369,7 @@
             isBattleOnlySummon: false,
             battleSummonKind: "",
             battleSummonParentId: 0,
+            battleSummonEncounterId: 0,
             countsTowardPermanentRoster: true,
             eligibleForRaidDeployment: true,
             breedingEligible: true,
@@ -1320,7 +1379,8 @@
             deathSplitHandled: false,
             usesPersistentSleep: true,
             lifetime: "",
-            chestnutBasicCycles: 0
+            chestnutBasicCycles: 0,
+            landingRecovery: 0
           });
         }
         get radius() {
@@ -1351,7 +1411,7 @@
           w.food = [];
           w.scene = "raid";
           w.running = false;
-          w.boss = w.createBoss();
+          w.boss = w.createBoss(w.randomBossSpecies());
           w.boss.phase = "resting";
           w.encounter = { outcome: "idle", elapsed: 0 };
           w.raidExpectedPlayers = [...expectedPlayers];
@@ -1388,6 +1448,7 @@
           this.attackSerial = 0;
           this.projectileSerial = 0;
           this.raidSummonSerial = 0;
+          this.bossSummonSerial = 0;
           this.combatLog = [];
           this.mode = "breed";
           this.scene = "farm";
@@ -1423,6 +1484,7 @@
           return this.breedCooldownDuration() / 2;
         }
         abilityProgressionFor(unit) {
+          if (unit?.battleSummonKind === "boss-mouth-t1") return null;
           return this.scene === "raid" ? this.raidRoster(unit?.ownerId)?.abilitySnapshot || null : this.playerProgression;
         }
         highestSpeciesTiers() {
@@ -1451,7 +1513,7 @@
         spawnLobProjectile(unit, action, shot, popcornConfig = null) {
           if (this.projectiles.length >= CONFIG.maxRaidProjectiles) return null;
           const id = ++this.projectileSerial;
-          const projectile = { id, owner: unit.id, species: unit.species, tier: unit.tier, path: structuredClone(action.path), elapsed: 0, x: unit.x, y: unit.y, z: 0.45, radius: scaleAttackArea(0.12, unit), height: 0.24, hit: false, attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit), shotIndex: shot.shotIndex ?? 0 };
+          const projectile = { id, owner: unit.id, targetId: action.targetId || "boss", species: unit.species, tier: unit.tier, path: structuredClone(action.path), elapsed: 0, x: unit.x, y: unit.y, z: 0.45, radius: scaleAttackArea(0.12, unit), height: 0.24, hit: false, attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit), shotIndex: shot.shotIndex ?? 0 };
           if (popcornConfig) Object.assign(projectile, { isPopcorn: true, popcornConfig: structuredClone(popcornConfig), landed: false, exploded: false, fuseRemaining: popcornConfig.fuseSeconds, damagedTargetIds: [] });
           this.projectiles.push(projectile);
           return projectile;
@@ -1512,9 +1574,12 @@
         }
         senseEnemy(unit) {
           if (unit.hp <= 0 || !unit.dropLanded) return null;
+          if (unit.battleSummonKind === "boss-mouth-t1") {
+            const targets2 = this.units.filter((candidate) => candidate !== unit && candidate.hp > 0 && candidate.dropLanded && candidate.battleSummonKind !== "boss-mouth-t1").sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id);
+            return targets2[0] || null;
+          }
           const targets = MAP_ENEMY_TARGETS[this.scene]?.(this) || [];
-          for (const target of targets) if (target && target.hp > 0 && Number.isFinite(target.x) && Number.isFinite(target.y) && Number.isFinite(target.radius) && Math.hypot(unit.x - target.x, unit.y - target.y) <= unit.perceptionRange + target.radius + 1e-9) return target;
-          return null;
+          return targets.filter((target) => target && target !== unit && target.hp > 0 && Number.isFinite(target.x) && Number.isFinite(target.y) && Number.isFinite(target.radius) && Math.hypot(unit.x - target.x, unit.y - target.y) <= unit.perceptionRange + target.radius + 1e-9).sort((a, b) => Math.hypot(unit.x - a.x, unit.y - a.y) - Math.hypot(unit.x - b.x, unit.y - b.y) || (a.id || 0) - (b.id || 0))[0] || null;
         }
         raidRoster(ownerId) {
           return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
@@ -1580,6 +1645,8 @@
             this.running = true;
             this.encounter = { outcome: "fighting", elapsed: 0 };
             this.boss.active = true;
+            this.boss.encounterId = this.raidRosters[0]?.settlementRunSequence || this.nextRaidRunSequence || 1;
+            this.boss.patternRuntime = createBossPatternRuntime();
             this.boss.phase = "chase";
           }
           this.combat("unit-drop", { unit: id, ownerId, x, y, z: u.z });
@@ -1595,6 +1662,9 @@
         }
         random() {
           return this.rng.nextUint32() / 4294967296;
+        }
+        randomBossSpecies() {
+          return Math.min(CONFIG.maxSpecies - 1, Math.floor(this.random() * CONFIG.maxSpecies));
         }
         spawn(species, tier, x, y) {
           if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.maxRaidUnits)) return null;
@@ -1661,17 +1731,20 @@
             unit.deathSplitHandled = false;
             unit.chestnutBasicCycles = 0;
           }
-          this.boss = this.createBoss();
+          this.boss = this.createBoss(this.randomBossSpecies());
           Object.assign(this.boss, { x, y, z: CONFIG.raid.dropHeight, active: true });
           this.farmBossEvent = { phase: "dropping", elapsed: 0, outcome: "fighting", encounterId: this.nextBossEncounterId++, rewardStatus: "unresolved", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
+          this.boss.encounterId = this.farmBossEvent.encounterId;
+          this.boss.patternRuntime = createBossPatternRuntime();
           this.combat("farm-boss-drop", { x, y, z: this.boss.z });
           return true;
         }
         getBossAcquisitionChance({ farmEvent = false } = {}) {
           return bossAcquisitionChance({ farmEvent });
         }
-        createBoss() {
-          return { x: 0, y: 0, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp: 2400, maxHp: 2400, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "basic", startAngle: 0, travel: 0 };
+        createBoss(species = 3) {
+          const hp = 2e3;
+          return { x: 0, y: 0, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, summonMouth: { x: 0, y: 0, z: 0 } };
         }
         setScene(scene) {
           if (scene === this.scene) return;
@@ -1681,7 +1754,7 @@
           this.running = scene === "raid";
           this.encounter = { outcome: this.running ? "fighting" : "idle", elapsed: 0 };
           this.farmBossEvent = { phase: "idle", elapsed: 0, outcome: "idle", encounterId: 0, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
-          this.boss = this.createBoss();
+          this.boss = this.createBoss(this.running ? this.randomBossSpecies() : 3);
           const idMap = new Map(this.units.map((u, index) => [u.id, scene === "raid" ? 1e6 + index + 1 : u.farmId || u.id]));
           for (let i = 0; i < this.units.length; i++) {
             const u = this.units[i], oldMateId = u.mateId;
@@ -1707,6 +1780,8 @@
           if (this.running) {
             this.boss.active = true;
             this.boss.phase = "chase";
+            this.boss.encounterId = this.activeRaidRunSequence || this.nextRaidRunSequence || 1;
+            this.boss.patternRuntime = createBossPatternRuntime();
             this.raidExpectedPlayers = ["solo"];
             this.raidRosters = [{ ownerId: "solo", troops: this.units.filter((u) => !u.isBattleOnlySummon).map((u) => ({ farmId: u.farmId, species: u.species, tier: u.tier, deployed: true })), abilitySnapshot: createAbilityRuntimeSnapshot(this.playerProgression), buffUntil: 0, buffReadyAt: 0 }];
             this.raidDeploymentStarted = true;
@@ -1906,6 +1981,7 @@
           const units = [...this.units];
           this.reconcileMateReservations();
           for (const u of units) {
+            u.landingRecovery = Math.max(0, (u.landingRecovery || 0) - dt);
             if (u.hp <= 0) {
               if (!u.deathSplitHandled) this.handleUnitDeath(u);
               if (u.isBattleOnlySummon) {
@@ -1965,10 +2041,11 @@
             }
             if (enemy) u.ability.afterMove(this, oldPosition);
             if (oldZ > 0 && u.z === 0) {
-              if (this.scene === "raid" && !u.dropLanded) {
+              u.landingRecovery = 0.25;
+              if (!u.dropLanded) {
                 u.dropLanded = true;
                 u.bounce = 0.16;
-                this.combat("drop-land", { unit: u.id, ownerId: u.ownerId, x: u.x, y: u.y, z: 0 });
+                this.combat(this.scene === "raid" ? "drop-land" : "boss-add-land", { unit: u.id, ownerId: u.ownerId, x: u.x, y: u.y, z: 0 });
                 this.effects.push({ kind: "drop-dust", x: u.x, y: u.y, z: 0, life: 0 });
               }
               this.metrics.landings++;
@@ -2183,6 +2260,29 @@
           this.combatEvent("damage", u, action);
           return true;
         }
+        attackTarget(unit, action) {
+          if (action?.targetId === "boss" || !action?.targetId) return this.boss;
+          return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0) || null;
+        }
+        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null } = {}) {
+          if (!target || target.hp <= 0 || action.hit) return false;
+          action.hit = true;
+          const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier;
+          const damage = applyDamageToTargets(null, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1), sourceKind: "enemy" });
+          const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
+          target.knock(dx / n, dy / n, 5, 2.4, u);
+          if (target.hp === 0) {
+            target.down = target.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
+            this.handleUnitDeath(target);
+          }
+          this.metrics.directHits++;
+          this.metrics.basicHits++;
+          this.combat("unit-hit", { attackKind: attackKind || spec.kind, attackId: action.id, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point.x, y: point.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength: damageMultiplier * (damage?.critical ? attackerStats.critMultiplier : 1) });
+          return true;
+        }
+        damageCombatTarget(u, action, target, point, options = {}) {
+          return target === this.boss ? this.damageBoss(u, action, point, options) : this.damageUnitTarget(u, action, target, point, options);
+        }
         explodePopcorn(kernel) {
           if (!kernel?.isPopcorn || kernel.exploded) return false;
           const queue = [kernel], queued = /* @__PURE__ */ new Set();
@@ -2221,7 +2321,8 @@
             const old = { x: p.x, y: p.y, z: p.z };
             p.elapsed += dt;
             Object.assign(p, Ballistics.sample(p.path, p.elapsed / p.path.duration));
-            const hit = ArenaGeometry.sweep(old, p, p.radius, p.height, this.boss);
+            const target = p.targetId && p.targetId !== "boss" ? this.units.find((u) => u.id === p.targetId && u.hp > 0) : this.boss;
+            const hit = target ? ArenaGeometry.sweep(old, p, p.radius, p.height, target) : null;
             if (p.isPopcorn && (hit || p.elapsed >= p.path.duration)) {
               if (hit) Object.assign(p, { x: hit.x, y: hit.y, z: 0 });
               else p.z = 0;
@@ -2231,7 +2332,8 @@
             } else if (hit) {
               Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
               const source = this.units.find((u) => u.id === p.owner), impactUnit = source || { id: p.owner, ownerId: p.ownerId || "", species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
-              this.damageBoss(impactUnit, p, hit, { lifestealSource: source || impactUnit, attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
+              if (target === this.boss) this.damageBoss(impactUnit, p, hit, { lifestealSource: source || impactUnit, attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
+              else this.damageUnitTarget(impactUnit, p, target, hit, { attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
             } else if (p.elapsed >= p.path.duration) {
               p.z = 0;
               this.emit(p.projectileKind === "chestnut-spike" ? "spike-land" : "shell-land", p.x, p.y);
@@ -2253,9 +2355,21 @@
             u.ability.interrupt();
             return;
           }
-          if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1) return;
-          if (!enemy || enemy !== this.boss) return;
-          const b = enemy, spec = abilityProfile(u.species), dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
+          if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return;
+          if (!enemy) return;
+          if (u.battleSummonKind === "boss-mouth-t1") {
+            const spec2 = abilityProfile(u.species), dx2 = enemy.x - u.x, dy2 = enemy.y - u.y, d = Math.hypot(dx2, dy2) || 1, stand2 = enemy.radius + spec2.range, min2 = stand2 - 0.4, max2 = stand2 + 0.4;
+            if (d > max2 || spec2.kind === "lob" && d < min2) {
+              const slot = ArenaGeometry.clamp({ x: enemy.x - dx2 / d * stand2, y: enemy.y - dy2 / d * stand2 }, this.scene, u.radius);
+              this.steer(u, slot.x, slot.y, dt, scaleMoveSpeed(4.1, u));
+              return;
+            }
+            u.vx = u.vy = 0;
+            const target2 = spec2.kind === "lob" ? { id: enemy.id, x: enemy.x, y: enemy.y } : { id: enemy.id, x: enemy.x - dx2 / d * (enemy.radius + u.radius - 0.16), y: enemy.y - dy2 / d * (enemy.radius + u.radius - 0.16) };
+            u.ability.begin(this, target2);
+            return;
+          }
+          const b = enemy, spec = abilityProfile(u.species), dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1, targetId = enemy === this.boss ? "boss" : enemy.id;
           const stand = b.radius + spec.range + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + 0.55;
           if (n > max || spec.kind === "lob" && n < min) {
             const slot = ArenaGeometry.clamp({ x: b.x + dx / n * stand, y: b.y + dy / n * stand }, this.scene, u.radius);
@@ -2263,7 +2377,7 @@
             return;
           }
           u.vx = u.vy = 0;
-          const target = spec.kind === "lob" ? { x: b.x, y: b.y } : { x: b.x + dx / n * (b.radius + u.radius - 0.16), y: b.y + dy / n * (b.radius + u.radius - 0.16) };
+          const target = spec.kind === "lob" ? { id: targetId, x: b.x, y: b.y } : { id: targetId, x: b.x + dx / n * (b.radius + u.radius - 0.16), y: b.y + dy / n * (b.radius + u.radius - 0.16) };
           u.ability.begin(this, target);
         }
         finish(outcome) {
@@ -2273,6 +2387,7 @@
           this.encounter.outcome = outcome;
           this.projectiles = [];
           this.boss.phase = "resting";
+          if (this.boss.patternRuntime) this.boss.patternRuntime.active = null;
           for (const u of this.units) u.ability.interrupt();
           this.cleanupBattleSummons();
           this.combat(outcome, { x: this.boss.x, y: this.boss.y, z: 0 });
@@ -2283,12 +2398,13 @@
           this.boss.active = false;
           this.boss.phase = "resting";
           this.boss.clock = 0;
+          if (this.boss.patternRuntime) this.boss.patternRuntime.active = null;
           this.projectiles = [];
           const encounterId = this.farmBossEvent.encounterId;
           this.farmBossEvent = { phase: "celebrating", elapsed: 0, outcome, encounterId, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
           for (const u of this.units) if (u.hp > 0) u.ability.interrupt();
           if (outcome === "victory") {
-            const settlement = settleBossKill(this, { encounterId, source: "farm", species: 3, tier: 1, x: this.boss.x, y: this.boss.y });
+            const settlement = settleBossKill(this, { encounterId, source: "farm", species: this.boss.species, tier: 1, x: this.boss.x, y: this.boss.y });
             const reward = settlement.receipt;
             this.combat("farm-boss-xp", { encounterId, xp: settlement.xpAwarded, levelsGained: settlement.levelsGained, pointsAwarded: settlement.pointsAwarded });
             this.combat("farm-boss-reward", { acquired: reward.status === "granted", pending: reward.status === "pending", species: reward.species, tier: reward.tier, chance: reward.chance, roll: reward.roll, encounterId });
@@ -2300,64 +2416,367 @@
           return bossAttackArea(this.boss, unitRadius);
         }
         bossWeaponPoint(phase = this.boss.phase, q = 0) {
-          const b = this.boss, c = CONFIG.raid;
-          if (phase === "sweep") {
-            const a = b.startAngle + Math.PI * 2 * q;
-            return { x: b.x + Math.cos(a) * c.sweepReach, y: b.y + Math.sin(a) * c.sweepReach, z: 0.2 };
+          const b = this.boss, a = b.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[a?.id];
+          if (a?.id === "attack.fan-sweep") {
+            const angle = a.aim - config.sector / 2 + config.sector * clamp2(q, 0, 1);
+            return { x: b.x + Math.cos(angle) * config.reach, y: b.y + Math.sin(angle) * config.reach, z: b.z + 0.2 };
           }
-          const reach = b.radius - 0.25 + (c.basicReach - b.radius + 0.25) * Math.sin(Math.PI * clamp2(q, 0, 1));
-          return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: 0.2 };
+          const reach = b.radius - 0.25 + (CONFIG.raid.sweepReach - b.radius + 0.25) * Math.sin(Math.PI * clamp2(q, 0, 1));
+          return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: b.z + 0.2 };
         }
-        beginBossAttack(kind, target) {
-          const b = this.boss;
-          b.attackKind = kind;
+        livingBossTargets() {
+          return this.units.filter((u) => u.hp > 0 && u.dropLanded && u.battleSummonKind !== "boss-mouth-t1").sort((a, b) => a.id - b.id);
+        }
+        nearestBossTarget(living, groundOnly = false) {
+          const b = this.boss, candidates = groundOnly ? living.filter((u) => u.z <= 0.1) : living;
+          return [...candidates].sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y) || a.id - c.id)[0] || null;
+        }
+        bossTargetGrid(living) {
+          const b = this.boss, range = CONFIG.raid.perceptionRange, cellSize = 3, units = living.filter((u) => Math.hypot(u.x - b.x, u.y - b.y) <= range + u.radius).sort((a, c) => a.id - c.id), groundUnits = units.filter((u) => u.z <= 0.1), cells = /* @__PURE__ */ new Map(), groundCells = /* @__PURE__ */ new Map();
+          for (const unit of units) {
+            const x = Math.floor(unit.x / cellSize), y = Math.floor(unit.y / cellSize), key = `${x},${y}`;
+            if (!cells.has(key)) cells.set(key, []);
+            cells.get(key).push(unit);
+            if (unit.z <= 0.1) {
+              if (!groundCells.has(key)) groundCells.set(key, []);
+              groundCells.get(key).push(unit);
+            }
+          }
+          return { units, groundUnits, cells, groundCells, cellSize };
+        }
+        eachBossGridUnit(grid, minX, minY, maxX, maxY, visit, groundOnly = false) {
+          const size = grid.cellSize, x0 = Math.floor(minX / size), x1 = Math.floor(maxX / size), y0 = Math.floor(minY / size), y1 = Math.floor(maxY / size);
+          const cells = groundOnly ? grid.groundCells : grid.cells;
+          for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (const unit of cells.get(`${x},${y}`) || []) visit(unit);
+        }
+        chargeBossTarget(living, grid = this.bossTargetGrid(living)) {
+          const b = this.boss, config = BOSS_PATTERN_CONFIG["attack.charge"];
+          if (!grid.units.length) return null;
+          const bins = 72, candidates = /* @__PURE__ */ new Map();
+          for (const unit of grid.units) {
+            const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy), angle = Math.atan2(dy, dx), bin = Math.floor((angle + Math.PI) / (Math.PI * 2) * bins) % bins, current = candidates.get(bin);
+            if (!current || d < current.distance - 1e-9 || Math.abs(d - current.distance) <= 1e-9 && unit.id < current.unit.id) candidates.set(bin, { unit, distance: d, angle });
+          }
+          let best = null;
+          for (const candidate of candidates.values()) {
+            const end = ArenaGeometry.clamp({ x: b.x + Math.cos(candidate.angle) * config.reach, y: b.y + Math.sin(candidate.angle) * config.reach }, this.scene, b.radius + 0.25), from = { x: b.x, y: b.y, z: b.z }, to = { x: end.x, y: end.y, z: b.z }, extent = b.radius + CONFIG.maxUnitRadius;
+            let score = 0;
+            this.eachBossGridUnit(grid, Math.min(from.x, to.x) - extent, Math.min(from.y, to.y) - extent, Math.max(from.x, to.x) + extent, Math.max(from.y, to.y) + extent, (unit) => {
+              if (ArenaGeometry.sweep(from, to, b.radius, b.height, unit)) score++;
+            });
+            if (score && (!best || score > best.score || score === best.score && (candidate.distance < best.distance - 1e-9 || Math.abs(candidate.distance - best.distance) <= 1e-9 && candidate.unit.id < best.unit.id))) best = { ...candidate, score };
+          }
+          return best?.unit || null;
+        }
+        leapBossTarget(living, grid = this.bossTargetGrid(living)) {
+          const b = this.boss, config = BOSS_PATTERN_CONFIG["attack.leap-slam"];
+          if (!grid.units.length) return null;
+          const candidates = /* @__PURE__ */ new Map(), size = grid.cellSize;
+          for (const unit of grid.groundUnits) {
+            let dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy) || 1;
+            if (d > config.reach) {
+              dx *= config.reach / d;
+              dy *= config.reach / d;
+            }
+            const point = ArenaGeometry.clamp({ x: b.x + dx, y: b.y + dy }, this.scene, b.radius + 0.25), cellX = Math.floor(point.x / size), cellY = Math.floor(point.y / size), key = `${cellX},${cellY}`, distance = Math.hypot(unit.x - b.x, unit.y - b.y), current = candidates.get(key);
+            if (!current || distance < current.distance - 1e-9 || Math.abs(distance - current.distance) <= 1e-9 && unit.id < current.unit.id) candidates.set(key, { unit, distance, point });
+          }
+          let best = null;
+          for (const candidate of candidates.values()) {
+            let score = 0;
+            const extent = config.landingRadius + CONFIG.maxUnitRadius;
+            this.eachBossGridUnit(grid, candidate.point.x - extent, candidate.point.y - extent, candidate.point.x + extent, candidate.point.y + extent, (unit) => {
+              if (Math.hypot(unit.x - candidate.point.x, unit.y - candidate.point.y) <= config.landingRadius + unit.radius) score++;
+            }, true);
+            if (score && (!best || score > best.score || score === best.score && (candidate.distance < best.distance - 1e-9 || Math.abs(candidate.distance - best.distance) <= 1e-9 && candidate.unit.id < best.unit.id))) best = { ...candidate, score };
+          }
+          return best?.unit || null;
+        }
+        bossPatternTargets(living) {
+          const grid = this.bossTargetGrid(living);
+          return { nearest: this.nearestBossTarget(living, true), charge: this.chargeBossTarget(living, grid), leap: this.leapBossTarget(living, grid) };
+        }
+        bossTargetForPattern(id, living) {
+          if (id === "attack.charge") return this.chargeBossTarget(living);
+          if (id === "attack.leap-slam") return this.leapBossTarget(living);
+          return this.nearestBossTarget(living, true);
+        }
+        eligibleBossPatterns(living, targets = this.bossPatternTargets(living)) {
+          const runtime = this.boss.patternRuntime, aliveAdds = this.units.reduce((n, u) => n + (u.hp > 0 && u.battleSummonKind === "boss-mouth-t1" ? 1 : 0), 0), eligible = [];
+          for (const id of BOSS_PATTERN_IDS) {
+            if (runtime.cooldowns[id] > 1e-9) continue;
+            if (id === "summon.mouth-t1") {
+              if (runtime.encounterElapsed + 1e-9 >= BOSS_PATTERN_CONFIG[id].firstEligible && aliveAdds < CONFIG.maxBossSummons) eligible.push(id);
+              continue;
+            }
+            const target = id === "attack.charge" ? targets.charge : id === "attack.leap-slam" ? targets.leap : targets.nearest;
+            if (!target) continue;
+            if (id === "attack.charge" || id === "attack.leap-slam") eligible.push(id);
+            else if (Math.hypot(target.x - this.boss.x, target.y - this.boss.y) <= BOSS_PATTERN_CONFIG[id].reach + target.radius + 1e-9) eligible.push(id);
+          }
+          return eligible;
+        }
+        beginBossPattern(id, target) {
+          const b = this.boss, runtime = b.patternRuntime, config = BOSS_PATTERN_CONFIG[id];
+          if (!config) return false;
+          const targetPoint = target ? { x: target.x, y: target.y, z: target.z || 0 } : null, aim = targetPoint ? Math.atan2(targetPoint.y - b.y, targetPoint.x - b.x) : b.angle;
+          runtime.active = { id, phase: "windup", phaseElapsed: 0, targetId: target?.id ?? 0, target: targetPoint, aim, locked: false, start: { x: b.x, y: b.y, z: b.z }, traveled: 0, hitIds: [], volleyCount: 0, released: 0, nextRelease: 0, path: null };
+          b.phase = "windup";
           b.clock = 0;
-          b.phase = kind === "basic" ? "strike-windup" : "sweep-windup";
-          b.angle = Math.atan2(target.y - b.y, target.x - b.x);
-          b.startAngle = b.angle - Math.PI / 2;
+          b.attackKind = id;
+          b.angle = aim;
+          b.facing = aim;
+          b.targetId = target?.id ?? 0;
           b.hit.clear();
-          this.combat("boss-prepare", { attackKind: kind, x: b.x, y: b.y, z: 0, angle: b.angle });
-        }
-        hitBossUnit(u, kind, p) {
-          const b = this.boss, heavy = kind === "sweep";
-          if (u.hp <= 0 || !u.dropLanded || b.hit.has(u.id)) return false;
-          b.hit.add(u.id);
-          const dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1;
-          u.knock(dx / n, dy / n, heavy ? 13 : 8.5, heavy ? 10.2 : 7.2, b);
-          applyDamageToTargets(null, [u], { rawDamage: heavy ? 10 : 8, sourceKind: "enemy" });
-          if (u.hp === 0) {
-            u.down = u.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
-            this.handleUnitDeath(u);
-          }
-          this.metrics.directHits++;
-          this.metrics[heavy ? "sweepHits" : "basicHits"]++;
-          this.combat("unit-hit", { attackKind: kind, attackId: b.attackId, unit: u.id, x: p.x, y: p.y, z: Math.max(0.15, u.z + 0.25), nx: dx / n, ny: dy / n, strength: heavy ? 1.8 : 1 });
+          this.combat("boss-pattern-prepare", { patternId: id, attackKind: id, x: b.x, y: b.y, z: b.z, angle: aim, targetId: b.targetId || 0 });
           return true;
         }
-        hitBossWeapon(from, to, kind) {
-          const c = CONFIG.raid;
-          for (const u of this.units) {
-            if (u.hp <= 0 || !u.dropLanded || this.boss.hit.has(u.id)) continue;
-            const p = ArenaGeometry.sweep(from, to, c.weaponRadius, 1.4, { x: u.x, y: u.y, z: u.z, radius: u.radius, height: 0.65 });
-            if (p) this.hitBossUnit(u, kind, p);
+        hitBossPatternUnit(unit, patternId, point, normal = null) {
+          const b = this.boss, action = b.patternRuntime.active, config = BOSS_PATTERN_CONFIG[patternId];
+          if (!action || !config || unit.hp <= 0 || !unit.dropLanded || b.hit.has(unit.id)) return false;
+          if (config.groundOnly && unit.z > 0.1) return false;
+          b.hit.add(unit.id);
+          action.hitIds.push(unit.id);
+          const dx = normal?.x ?? unit.x - b.x, dy = normal?.y ?? unit.y - b.y, n = Math.hypot(dx, dy) || 1;
+          unit.knock(dx / n, dy / n, config.knockback, config.lift, b);
+          applyDamageToTargets(null, [unit], { rawDamage: b.attackPower * config.damageMultiplier, sourceKind: "enemy" });
+          if (unit.hp === 0) {
+            unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
+            this.handleUnitDeath(unit);
           }
+          const isSweep = patternId === "attack.sweep-360" || patternId === "attack.fan-sweep";
+          this.metrics.directHits++;
+          this.metrics[isSweep ? "sweepHits" : "basicHits"]++;
+          this.combat("unit-hit", { attackKind: patternId, attackId: b.attackId, unit: unit.id, x: point.x, y: point.y, z: Math.max(0.15, unit.z + 0.25), nx: dx / n, ny: dy / n, strength: config.damageMultiplier });
+          return true;
         }
-        hitBossSweep(q0, q1) {
-          const b = this.boss, arc = Math.max(0, Math.min(1, q1) - Math.max(0, q0)) * Math.PI * 2;
+        resolveBossSector(action, patternId, range, sector) {
+          const b = this.boss, aim = action.aim, half = sector / 2;
           let hits = 0;
-          for (const u of this.units) {
-            if (u.hp <= 0 || !u.dropLanded || b.hit.has(u.id)) continue;
-            const area = bossAttackArea(b, u.radius), dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy), blade = area.width;
-            if (d > area.sweepRadius + blade || 0.2 < u.z - 1.4 || 0.2 > u.z + 0.65) continue;
-            const pad = d <= blade ? Math.PI : Math.asin(Math.min(1, blade / d)), unitAngle = Math.atan2(dy, dx), scanStart = area.startAngle + Math.PI * 2 * Math.max(0, Math.min(1, q0)), offset = ((unitAngle - scanStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-            if (offset > arc + pad && offset < Math.PI * 2 - pad) continue;
-            const radius = Math.min(d, area.sweepRadius), p = { x: b.x + Math.cos(unitAngle) * radius, y: b.y + Math.sin(unitAngle) * radius, z: 0.2 };
-            if (this.hitBossUnit(u, "sweep", p)) hits++;
+          for (const unit of this.livingBossTargets()) {
+            if (b.hit.has(unit.id) || unit.z > 0.1) continue;
+            const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
+            if (d > range + unit.radius) continue;
+            const offset = Math.atan2(Math.sin(Math.atan2(dy, dx) - aim), Math.cos(Math.atan2(dy, dx) - aim)), pad = d <= unit.radius ? Math.PI : Math.asin(Math.min(1, unit.radius / Math.max(d, 1e-6)));
+            if (Math.abs(offset) > half + pad) continue;
+            const n = d || 1;
+            if (this.hitBossPatternUnit(unit, patternId, { x: unit.x, y: unit.y, z: 0 }, { x: dx / n, y: dy / n })) hits++;
           }
           return hits;
         }
+        resolveBossCircle(action, patternId, range) {
+          const b = this.boss;
+          let hits = 0;
+          for (const unit of this.livingBossTargets()) {
+            if (b.hit.has(unit.id) || unit.z > 0.1) continue;
+            const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
+            if (d > range + unit.radius) continue;
+            if (this.hitBossPatternUnit(unit, patternId, { x: b.x + dx / (d || 1) * Math.min(d, range), y: b.y + dy / (d || 1) * Math.min(d, range), z: 0 }, { x: dx / (d || 1), y: dy / (d || 1) })) hits++;
+          }
+          return hits;
+        }
+        sweepBossBody(old, patternId) {
+          const b = this.boss;
+          for (const unit of this.livingBossTargets()) {
+            if (b.hit.has(unit.id)) continue;
+            const hit = ArenaGeometry.sweep(old, b, b.radius, b.height, unit);
+            if (hit) this.hitBossPatternUnit(unit, patternId, hit, patternId === "attack.charge" ? { x: Math.cos(b.patternRuntime.active.aim), y: Math.sin(b.patternRuntime.active.aim) } : null);
+          }
+        }
+        fanBossWeapon(action, q0, q1) {
+          const config = BOSS_PATTERN_CONFIG[action.id], span = config.sector, fromAngle = action.aim - span / 2 + span * clamp2(q0, 0, 1), toAngle = action.aim - span / 2 + span * clamp2(q1, 0, 1), b = this.boss;
+          const from = { x: b.x + Math.cos(fromAngle) * config.reach, y: b.y + Math.sin(fromAngle) * config.reach, z: 0.2 }, to = { x: b.x + Math.cos(toAngle) * config.reach, y: b.y + Math.sin(toAngle) * config.reach, z: 0.2 };
+          for (const unit of this.livingBossTargets()) {
+            if (b.hit.has(unit.id) || unit.z > 0.1) continue;
+            const hit = ArenaGeometry.sweep(from, to, config.width, 1.4, unit);
+            if (hit) {
+              const dx = unit.x - b.x, dy = unit.y - b.y, n = Math.hypot(dx, dy) || 1;
+              this.hitBossPatternUnit(unit, action.id, hit, { x: dx / n, y: dy / n });
+            }
+          }
+        }
+        bossMouthPoint() {
+          const anchors = [[176, 210, 160, 350], [140, 112, 142.5, 295], [119, 109, 130, 320], [160, 145, 160, 261]][this.boss.species], b = this.boss, scale = 2 * b.radius * 1.16 / 220, forward = (anchors[0] - anchors[2]) * scale, vertical = Math.max(0, (anchors[3] - anchors[1]) * scale / 0.785);
+          return { x: b.x + Math.cos(b.angle) * forward, y: b.y + Math.sin(b.angle) * forward, z: vertical };
+        }
+        bossSummonLanding(angle, action = null) {
+          const b = this.boss, scene = this.scene, radius = unitRadiusForTier(1);
+          for (let i = 0; i < 16; i++) {
+            const offset = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, a = angle + offset, candidate = { x: b.x + Math.cos(a) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius, y: b.y + Math.sin(a) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius };
+            if (!ArenaGeometry.inside(candidate, scene, radius)) continue;
+            const blocked = this.units.some((unit) => unit.hp > 0 && Math.hypot(unit.x - candidate.x, unit.y - candidate.y) < radius + unit.radius + 0.08) || (action?.landingPoints || []).some((point) => Math.hypot(point.x - candidate.x, point.y - candidate.y) < radius * 2 + 0.08);
+            if (!blocked) return candidate;
+          }
+          return null;
+        }
+        spawnBossMouthUnit(action) {
+          if (action.released >= action.volleyCount) return false;
+          const b = this.boss, landing = this.bossSummonLanding(action.aim, action), mouth = this.bossMouthPoint();
+          if (!landing) return false;
+          const id = CONFIG.bossSummonIdBase + ++this.bossSummonSerial, unit = new Unit(id, b.species, 1, mouth.x, mouth.y), angle = Math.atan2(landing.y - mouth.y, landing.x - mouth.x), flightSeconds = Math.sqrt(2 * mouth.z / CONFIG.gravity), horizontalDistance = Math.hypot(landing.x - mouth.x, landing.y - mouth.y), drag = 0.8, speed = horizontalDistance * drag / (1 - Math.exp(-drag * flightSeconds));
+          Object.assign(unit, { ownerId: "boss", farmId: 0, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit.growthDuration, growth: CONFIG.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
+          this.units.push(unit);
+          action.released++;
+          action.landingPoints ||= [];
+          action.landingPoints.push(landing);
+          this.boss.summonMouth = mouth;
+          this.combat("boss-mouth-spit", { patternId: action.id, unit: id, species: b.species, x: mouth.x, y: mouth.y, z: mouth.z, landingX: landing.x, landingY: landing.y, sequence: action.released });
+          return true;
+        }
+        activateBossPattern(action) {
+          const b = this.boss, runtime = b.patternRuntime, config = BOSS_PATTERN_CONFIG[action.id];
+          action.phase = "active";
+          action.phaseElapsed = 0;
+          b.phase = "active";
+          b.clock = 0;
+          b.attackId = ++this.attackSerial;
+          b.hit.clear();
+          runtime.cooldowns[action.id] = config.cooldown;
+          this.combat("boss-pattern-launch", { patternId: action.id, attackKind: action.id, attackId: b.attackId, x: b.x, y: b.y, z: b.z, angle: action.aim, targetId: action.targetId || 0 });
+          if (action.id === "attack.sweep-360") {
+            this.resolveBossCircle(action, action.id, config.reach);
+            this.enterBossPatternRecovery(action);
+            return;
+          }
+          if (action.id === "attack.front-slam") {
+            this.resolveBossSector(action, action.id, config.reach, config.sector);
+            this.enterBossPatternRecovery(action);
+            return;
+          }
+          if (action.id === "attack.charge") {
+            action.start = { x: b.x, y: b.y, z: b.z };
+            action.traveled = 0;
+            return;
+          }
+          if (action.id === "attack.leap-slam") {
+            let x = action.target?.x ?? b.x, y = action.target?.y ?? b.y, dx = x - b.x, dy = y - b.y, d = Math.hypot(dx, dy);
+            if (d > config.reach) {
+              x = b.x + dx / d * config.reach;
+              y = b.y + dy / d * config.reach;
+            }
+            const land = ArenaGeometry.clamp({ x, y }, this.scene, b.radius + 0.25);
+            action.target = { x: land.x, y: land.y, z: 0 };
+            action.path = Ballistics.create({ x: b.x, y: b.y, z: 0 }, action.target, "leap");
+            return;
+          }
+          if (action.id === "summon.mouth-t1") {
+            runtime.cooldowns[action.id] = config.cooldown;
+            const alive = this.units.reduce((n, u) => n + (u.hp > 0 && u.battleSummonKind === "boss-mouth-t1" ? 1 : 0), 0);
+            action.volleyCount = Math.min(config.volleyCount, Math.max(0, CONFIG.maxBossSummons - alive));
+            action.nextRelease = 0;
+            this.spawnBossMouthUnit(action);
+            action.nextRelease = config.releaseInterval;
+            return;
+          }
+        }
+        enterBossPatternRecovery(action) {
+          action.phase = "recover";
+          action.phaseElapsed = 0;
+          this.boss.phase = "recover";
+          this.boss.clock = 0;
+        }
+        updateBossPattern(dt, living) {
+          const b = this.boss, runtime = b.patternRuntime;
+          runtime.encounterElapsed += dt;
+          for (const id of BOSS_PATTERN_IDS) runtime.cooldowns[id] = Math.max(0, (runtime.cooldowns[id] || 0) - dt);
+          let action = runtime.active;
+          if (!action) {
+            const targets = this.bossPatternTargets(living), target = targets.nearest || this.nearestBossTarget(living), eligible = this.eligibleBossPatterns(living, targets), selected = chooseBossPattern(runtime, eligible, () => this.random());
+            if (selected) {
+              const pick = selected === "summon.mouth-t1" ? target : selected === "attack.charge" ? targets.charge : selected === "attack.leap-slam" ? targets.leap : targets.nearest;
+              this.beginBossPattern(selected, pick);
+              action = runtime.active;
+              if (selected === "summon.mouth-t1") runtime.cooldowns[selected] = BOSS_PATTERN_CONFIG[selected].cooldown;
+            } else {
+              if (target) {
+                const dx = target.x - b.x, dy = target.y - b.y, d = Math.hypot(dx, dy) || 1;
+                b.angle = b.facing = Math.atan2(dy, dx);
+                const contact2 = b.radius + target.radius + 0.2;
+                if (d > contact2) {
+                  const amount = Math.min(b.moveSpeed * dt, d - contact2), next = { x: b.x + dx / d * amount, y: b.y + dy / d * amount }, bounded = ArenaGeometry.clamp(next, this.scene, b.radius + 0.25), old = { x: b.x, y: b.y, z: b.z };
+                  b.x = bounded.x;
+                  b.y = bounded.y;
+                  b.travel += Math.hypot(b.x - old.x, b.y - old.y);
+                }
+              }
+              return;
+            }
+          }
+          if (!action) return;
+          action.phaseElapsed += dt;
+          b.clock = action.phaseElapsed;
+          b.phase = action.phase;
+          if (action.phase === "windup") {
+            const config2 = BOSS_PATTERN_CONFIG[action.id], remaining = config2.windup - action.phaseElapsed;
+            if (!action.locked) {
+              const target = this.bossTargetForPattern(action.id, living);
+              if (target) {
+                action.targetId = target.id;
+                action.target = { x: target.x, y: target.y, z: target.z || 0 };
+                const desired = Math.atan2(target.y - b.y, target.x - b.x), delta = Math.atan2(Math.sin(desired - action.aim), Math.cos(desired - action.aim));
+                action.aim += clamp2(delta, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
+                b.angle = b.facing = action.aim;
+                b.targetId = target.id;
+              }
+              if (remaining <= 0.25 + 1e-9) {
+                action.locked = true;
+                this.combat("boss-pattern-lock", { patternId: action.id, attackId: b.attackId + 1, targetId: action.targetId || 0, x: action.target?.x ?? b.x, y: action.target?.y ?? b.y, angle: action.aim });
+              }
+            }
+            if (action.phaseElapsed >= config2.windup - 1e-9) this.activateBossPattern(action);
+            return;
+          }
+          const config = BOSS_PATTERN_CONFIG[action.id];
+          if (action.phase === "active") {
+            if (action.id === "attack.charge") {
+              const direction = { x: Math.cos(action.aim), y: Math.sin(action.aim) }, remaining = Math.max(0, config.reach - action.traveled), distance = Math.min(config.speed * dt, remaining), old = { x: b.x, y: b.y, z: b.z }, candidate = { x: b.x + direction.x * distance, y: b.y + direction.y * distance }, bounded = ArenaGeometry.clamp(candidate, this.scene, b.radius + 0.25), hitBoundary = Math.hypot(candidate.x - bounded.x, candidate.y - bounded.y) > 1e-8;
+              b.x = bounded.x;
+              b.y = bounded.y;
+              const moved = Math.hypot(b.x - old.x, b.y - old.y);
+              action.traveled += moved;
+              b.travel += moved;
+              this.sweepBossBody(old, action.id);
+              if (hitBoundary || action.traveled >= config.reach - 1e-8 || moved < 1e-8) this.enterBossPatternRecovery(action);
+            } else if (action.id === "attack.leap-slam") {
+              const old = { x: b.x, y: b.y, z: b.z }, p = Ballistics.sample(action.path, action.phaseElapsed / action.path.duration);
+              b.x = p.x;
+              b.y = p.y;
+              b.z = p.z;
+              this.sweepBossBody(old, action.id);
+              if (action.phaseElapsed >= action.path.duration) {
+                b.x = action.path.to.x;
+                b.y = action.path.to.y;
+                b.z = 0;
+                for (const unit of this.livingBossTargets()) {
+                  if (b.hit.has(unit.id) || unit.z > 0.1) continue;
+                  const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
+                  if (d <= config.landingRadius + unit.radius) this.hitBossPatternUnit(unit, action.id, { x: unit.x, y: unit.y, z: 0 }, { x: dx / (d || 1), y: dy / (d || 1) });
+                }
+                this.combat("boss-pattern-land", { patternId: action.id, attackId: b.attackId, x: b.x, y: b.y, z: 0 });
+                this.enterBossPatternRecovery(action);
+              }
+            } else if (action.id === "attack.fan-sweep") {
+              const q0 = Math.max(0, (action.phaseElapsed - dt) / config.active), q1 = Math.min(1, action.phaseElapsed / config.active);
+              this.fanBossWeapon(action, q0, q1);
+              if (action.phaseElapsed >= config.active) this.enterBossPatternRecovery(action);
+            } else if (action.id === "summon.mouth-t1") {
+              while (action.released < action.volleyCount && action.phaseElapsed + 1e-9 >= action.nextRelease) {
+                if (!this.spawnBossMouthUnit(action)) break;
+                action.nextRelease += config.releaseInterval;
+              }
+              if (action.phaseElapsed >= config.active) this.enterBossPatternRecovery(action);
+            }
+            return;
+          }
+          if (action.phase === "recover" && action.phaseElapsed >= config.recover) {
+            runtime.active = null;
+            b.phase = "chase";
+            b.clock = 0;
+            b.targetId = 0;
+          }
+        }
         updateBoss(dt) {
-          const b = this.boss, c = CONFIG.raid;
+          const b = this.boss;
           if (this.scene === "farm" && this.farmBossEvent.phase !== "idle") {
             const event = this.farmBossEvent;
             if (event.phase === "dropping") {
@@ -2377,7 +2796,7 @@
                 this.finishFarmBossEvent("victory");
                 return;
               }
-              if (!this.units.some((u) => u.hp > 0 && u.dropLanded)) {
+              if (!this.units.some((u) => u.hp > 0 && u.dropLanded && u.battleSummonKind !== "boss-mouth-t1")) {
                 this.finishFarmBossEvent("defeat");
                 return;
               }
@@ -2410,65 +2829,14 @@
             }
             return;
           }
-          if (this.running && this.raidRosters.length && this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) && !this.units.some((u) => u.hp > 0)) {
+          if (this.running && this.raidRosters.length && this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) && !this.units.some((u) => u.hp > 0 && u.battleSummonKind !== "boss-mouth-t1")) {
             this.finish("defeat");
             return;
           }
-          const living = this.units.filter((u) => u.hp > 0 && u.dropLanded);
+          const living = this.livingBossTargets();
           if (!living.length) return;
           if (b.phase === "resting") b.phase = "chase";
-          b.clock += dt;
-          b.sweepClock += dt;
-          if (b.phase === "chase") {
-            let target = living.find((u) => u.id === b.targetId);
-            if (!target) {
-              target = living[(b.basicCount * 7 + b.swings * 11) % living.length];
-              b.targetId = target.id;
-            }
-            const dx = target.x - b.x, dy = target.y - b.y, d = Math.hypot(dx, dy) || 1;
-            b.facing = Math.atan2(dy, dx);
-            b.angle = b.facing;
-            if (b.sweepClock >= c.sweepInterval) {
-              this.beginBossAttack("sweep", target);
-              return;
-            }
-            if (d <= c.basicReach + c.weaponRadius * 0.35 && target.z < 1.6 && b.clock > 0.35) {
-              this.beginBossAttack("basic", target);
-              return;
-            }
-            if (d > b.radius + target.radius + 0.2) {
-              const old = { x: b.x, y: b.y };
-              b.x += dx / d * c.chaseSpeed * dt;
-              b.y += dy / d * c.chaseSpeed * dt;
-              this.boundBody(b, this.scene, b.radius + 0.25);
-              b.travel += Math.hypot(b.x - old.x, b.y - old.y);
-            }
-          } else if (b.phase === "strike-windup" || b.phase === "sweep-windup") {
-            const heavy = b.phase === "sweep-windup";
-            if (b.clock >= (heavy ? c.sweepWindup : c.basicWindup)) {
-              b.phase = heavy ? "sweep" : "strike";
-              b.clock = 0;
-              b.attackId = ++this.attackSerial;
-              if (heavy) {
-                b.swings++;
-                b.sweepClock = 0;
-              } else b.basicCount++;
-              this.combat("boss-launch", { attackKind: heavy ? "sweep" : "basic", attackId: b.attackId, x: b.x, y: b.y, z: 0.2 });
-            }
-          } else if (b.phase === "strike" || b.phase === "sweep") {
-            const heavy = b.phase === "sweep", duration = heavy ? c.sweepDuration : c.basicDuration, previous = Math.max(0, (b.clock - dt) / duration), q = Math.min(1, b.clock / duration);
-            if (heavy) this.hitBossSweep(previous, q);
-            else this.hitBossWeapon(this.bossWeaponPoint(b.phase, previous), this.bossWeaponPoint(b.phase, q), "basic");
-            if (heavy) b.angle = b.startAngle + Math.PI * 2 * q;
-            if (b.clock >= duration) {
-              b.phase = "recover";
-              b.clock = 0;
-            }
-          } else if (b.phase === "recover" && b.clock >= (b.attackKind === "sweep" ? c.sweepRecover : c.basicRecover)) {
-            b.phase = "chase";
-            b.clock = 0;
-            b.targetId = 0;
-          }
+          this.updateBossPattern(dt, living);
         }
       };
     }
@@ -2803,7 +3171,7 @@
       if (!Object.hasOwn(r, "settlementRunSequence")) r.settlementRunSequence = 0;
       if (!Object.hasOwn(r, "settlementEncounterId")) r.settlementEncounterId = 0;
     }
-    const unitDefaults = { isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0 };
+    const unitDefaults = { isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, battleSummonEncounterId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0, landingRecovery: 0 };
     for (const u of raw.units || []) for (const [key, value] of Object.entries(unitDefaults)) if (!Object.hasOwn(u, key)) u[key] = value;
     for (const p of raw.projectiles || []) {
       if (!Object.hasOwn(p, "attackMultiplier")) p.attackMultiplier = abilityProfile(p.species).skillMultiplier;
@@ -2822,6 +3190,21 @@
     }
     for (const r of raw.raidRosters || []) if (!Object.hasOwn(r, "lastDeploySequence")) r.lastDeploySequence = Array.isArray(r.troops) ? r.troops.filter((t) => t?.deployed).length : 0;
     if (!hasRewardWatermarks) for (const source of ["farm", "raid"]) raw.bossRewardWatermarks[source] = Math.max(0, ...raw.bossRewardReceipts.filter((reward) => reward?.source === source && Number.isSafeInteger(reward.encounterId)).map((reward) => reward.encounterId));
+    if (!Object.hasOwn(raw.boss, "species")) raw.boss.species = 3;
+    if (!Object.hasOwn(raw.boss, "encounterId")) raw.boss.encounterId = raw.scene === "raid" && raw.running ? 1 : raw.farmBossEvent?.encounterId || 0;
+    if (!Object.hasOwn(raw.boss, "attackPower")) raw.boss.attackPower = 4;
+    if (!Object.hasOwn(raw.boss, "moveSpeed")) raw.boss.moveSpeed = CONFIG.raid.chaseSpeed;
+    if (!Object.hasOwn(raw.boss, "patternRuntime") || raw.boss.patternRuntime?.active === void 0) {
+      raw.boss.patternRuntime = structuredClone(base.boss.patternRuntime);
+      if (raw.boss.active) raw.boss.phase = "chase";
+    }
+    if (["strike-windup", "strike", "sweep-windup", "sweep"].includes(raw.boss.phase)) {
+      raw.boss.phase = "chase";
+      raw.boss.patternRuntime.active = null;
+    }
+    if (raw.boss.attackKind === "basic") raw.boss.attackKind = "attack.front-slam";
+    else if (raw.boss.attackKind === "sweep") raw.boss.attackKind = "attack.sweep-360";
+    raw.bossSummonSerial = Number.isSafeInteger(raw.bossSummonSerial) ? raw.bossSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.bossSummonIdBase ? u.id - CONFIG.bossSummonIdBase : 0));
     raw.nextRaidRunSequence = Math.max(raw.nextRaidRunSequence || 0, raw.bossRewardWatermarks.raid || 0);
     raw.raidSettlementWatermark = Math.max(raw.raidSettlementWatermark || 0, raw.bossRewardWatermarks.raid || 0);
     for (const u of raw.units) {
@@ -2962,7 +3345,7 @@
       const receipt = raw.bossRewardReceipts.find((reward) => reward.source === "farm" && reward.encounterId === farmEvent.encounterId);
       assert(receipt && receipt.status === farmEvent.rewardStatus && receipt.chance === farmEvent.rewardChance && receipt.roll === farmEvent.rewardRoll && receipt.unitId === farmEvent.rewardUnitId);
     }
-    assert(raw.corpseRecoveryVersion === 1 && integer(raw.nextId, 1, 1e9) && integer(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
+    assert(raw.corpseRecoveryVersion === 1 && integer(raw.nextId, 1, 1e9) && integer(raw.bossSummonSerial, 0, 1e12) && integer(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
     assert(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.maxRaidPlayers && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
     const rosterOwners = /* @__PURE__ */ new Set(), manifest = /* @__PURE__ */ new Set();
     for (const r of raw.raidRosters) {
@@ -2983,7 +3366,7 @@
     const unitsById = /* @__PURE__ */ new Map(), summonsByParent = /* @__PURE__ */ new Map();
     for (const u of raw.units) {
       shape(u, UNIT_SHAPE);
-      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds);
+      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9);
       assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
       else assert(u.down === 0);
@@ -2991,16 +3374,21 @@
       ids.add(u.id);
       unitsById.set(u.id, u);
       if (u.isBattleOnlySummon) {
-        assert(["farm", "raid"].includes(raw.scene) && u.battleSummonKind === "pea-death-split" && integer(u.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && u.species === 0 && u.tier === 1 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0);
-        const parent = unitsById.get(u.battleSummonParentId);
-        assert(parent && parent.isBattleOnlySummon === false && parent.hp <= 0 && parent.species === 0 && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
-        const list = summonsByParent.get(parent.id) || [];
-        list.push(u);
-        summonsByParent.set(parent.id, list);
-        if (raw.scene === "raid") assert(u.id >= CONFIG.raidSummonIdBase && u.id < CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.maxFarmUnitId));
-        else assert(integer(u.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
+        if (u.battleSummonKind === "pea-death-split") {
+          assert(["farm", "raid"].includes(raw.scene) && integer(u.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && u.battleSummonEncounterId === 0 && u.species === 0 && u.tier === 1 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0);
+          const parent = unitsById.get(u.battleSummonParentId);
+          assert(parent && parent.isBattleOnlySummon === false && parent.hp <= 0 && parent.species === 0 && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
+          const list = summonsByParent.get(parent.id) || [];
+          list.push(u);
+          summonsByParent.set(parent.id, list);
+          if (raw.scene === "raid") assert(u.id >= CONFIG.raidSummonIdBase && u.id < CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.maxFarmUnitId));
+          else assert(integer(u.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
+        } else {
+          assert(u.battleSummonKind === "boss-mouth-t1" && u.battleSummonParentId === 0 && integer(u.battleSummonEncounterId, 1, 1e12) && u.battleSummonEncounterId === raw.boss.encounterId && u.species === raw.boss.species && u.tier === 1 && u.ownerId === "boss" && u.farmId === 0 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0 && u.battleSummonEncounterId > 0 && u.id >= CONFIG.bossSummonIdBase && u.id <= CONFIG.bossSummonIdBase + raw.bossSummonSerial);
+          assert(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
+        }
       } else {
-        assert(u.battleSummonKind === "" && u.battleSummonParentId === 0 && u.countsTowardPermanentRoster === true && u.eligibleForRaidDeployment === true && u.breedingEligible === true && u.mergeEligible === true && u.canSplit === true && u.usesPersistentSleep === true && u.lifetime === "");
+        assert(u.battleSummonKind === "" && u.battleSummonParentId === 0 && u.battleSummonEncounterId === 0 && u.countsTowardPermanentRoster === true && u.eligibleForRaidDeployment === true && u.breedingEligible === true && u.mergeEligible === true && u.canSplit === true && u.usesPersistentSleep === true && u.lifetime === "");
         if (raw.scene === "raid") {
           const roster = raw.raidRosters.find((r) => r.ownerId === u.ownerId), troopIndex = roster?.troops.findIndex((t) => t.farmId === u.farmId) ?? -1, slot = raw.raidExpectedPlayers.indexOf(u.ownerId), currentId = (slot + 1) * CONFIG.raidPlayerIdStride + troopIndex + 1, legacyId = (slot + 1) * CONFIG.raidPlayerIdStride + u.farmId;
           assert(raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.maxFarmUnitId) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId) && (u.id === currentId || u.farmId <= CONFIG.maxFarmCap && u.id === legacyId));
@@ -3036,7 +3424,8 @@
       validatePath(p.path);
       assert(integer(p.id, 1, raw.projectileSerial) && !projectileIds.has(p.id));
       projectileIds.add(p.id);
-      assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits - 1 : raw.nextId - 1));
+      assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits - 1 : raw.nextId - 1) || integer(p.owner, CONFIG.bossSummonIdBase + 1, CONFIG.bossSummonIdBase + raw.bossSummonSerial));
+      assert(p.targetId === void 0 || p.targetId === "boss" || validBattleUnitId(p.targetId, raw.bossSummonSerial));
       assert(integer(p.species, 0, CONFIG.maxSpecies - 1) && integer(p.tier, 1, CONFIG.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
       if (p.isPopcorn) {
         assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.every((id) => id === "boss") && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
@@ -3044,12 +3433,24 @@
         if (p.exploded) assert(Number.isFinite(p.explosionLife) && p.explosionLife >= 0 && p.explosionLife < 0.5 + 1e-9);
       }
     }
-    assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits));
-    assert(["chase", "strike-windup", "strike", "sweep-windup", "sweep", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp);
+    assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
+    assert(["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && raw.boss.attackPower === 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind));
+    assert(Array.isArray(raw.boss.hit) && raw.boss.hit.length <= CONFIG.maxRaidBattleUnits && raw.boss.hit.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(raw.boss.hit).size === raw.boss.hit.length);
+    const runtime = raw.boss.patternRuntime;
+    assert(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
+    for (const id of BOSS_PATTERN_IDS) {
+      assert(Number.isFinite(runtime.weights[id]) && runtime.weights[id] >= 0 && runtime.weights[id] <= 3 && Number.isFinite(runtime.cooldowns[id]) && runtime.cooldowns[id] >= 0 && runtime.cooldowns[id] <= 10);
+    }
+    assert(Object.keys(runtime.weights).length === BOSS_PATTERN_IDS.length && Object.keys(runtime.cooldowns).length === BOSS_PATTERN_IDS.length);
+    if (runtime.active) {
+      const a = runtime.active;
+      assert(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.maxRaidBattleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && a.hitIds.length === raw.boss.hit.length && a.hitIds.every((id) => raw.boss.hit.includes(id)) && integer(a.released, 0, 4) && integer(a.volleyCount, 0, 4));
+      if (a.target) assert(Number.isFinite(a.target.x) && Number.isFinite(a.target.y) && Number.isFinite(a.target.z));
+      if (a.path) validatePath(a.path);
+    }
     assert(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
     assert(raw.running === (raw.encounter.outcome === "fighting"));
     assert(typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length));
-    assert(raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && ["basic", "sweep"].includes(raw.boss.attackKind));
     return true;
   }
   function validatePath(p) {
@@ -3060,7 +3461,7 @@
   function validatePopcornConfig(c) {
     assert(c && c.species === 1 && c.fuseSeconds === 1 && c.chainOnPopcornContact === true && c.triggersOncePerProjectile === true && c.eachTargetAtMostOncePerProjectile === true && Number.isFinite(c.damageMultiplier) && c.damageMultiplier >= 0.5 && c.damageMultiplier <= 1.5 && c.radiusBaseRangeFraction === 0.25 && Number.isFinite(c.radiusMultiplier) && c.radiusMultiplier >= 1 && c.radiusMultiplier <= 2 && Number.isFinite(c.radius) && c.radius > 0 && c.radius <= 10);
   }
-  var GARDEN_SHAPE, UNIT_SHAPE, integer;
+  var GARDEN_SHAPE, UNIT_SHAPE, integer, validBattleUnitId;
   var init_farm_state = __esm({
     "src/farm-state.js"() {
       init_farm_model();
@@ -3072,9 +3473,11 @@
       init_unit_abilities();
       init_raid_settlement();
       init_unit_grades();
+      init_boss_patterns();
       GARDEN_SHAPE = snapshot(new Garden());
       UNIT_SHAPE = snapshot(new Unit(1, 0, 1, 0, 0));
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
+      validBattleUnitId = (id, bossSummonSerial) => integer(id, 1, CONFIG.maxFarmUnitId) || integer(id, CONFIG.bossSummonIdBase + 1, CONFIG.bossSummonIdBase + bossSummonSerial);
     }
   });
 
@@ -3381,6 +3784,7 @@
   }
 
   // src/farm-renderer.js
+  init_boss_patterns();
   var { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
   var { WebGLDevice, VectorContext, MeshRenderer } = globalThis.BloomGamekitRendering;
   var { createVectorAsset } = globalThis.BloomGamekitVectorAssets;
@@ -3416,6 +3820,18 @@
     const restingCooldown = sim.scene === "farm" && u.cooldown > 0 && phase === "idle";
     return dead ? "dead" : sim.scene === "raid" && sim.encounter?.outcome === "victory" ? "happy" : u.stun > 0 ? "hurt" : airborne ? "surprised" : phase === "windup" ? "focused" : phase === "active" ? "attack" : restingCooldown ? "neutral" : joy ? "happy" : sim.scene === "farm" && !u.fed ? "hungry" : "neutral";
   }
+  function renderedBossAttackArea(boss, unitRadius = 0) {
+    if (!boss?.patternId || boss.patternPhase === "recover") return null;
+    return bossAttackArea({ ...boss, patternRuntime: { active: {
+      id: boss.patternId,
+      phase: boss.patternPhase,
+      phaseElapsed: boss.patternPhaseElapsed,
+      aim: boss.patternAim,
+      locked: boss.patternLocked,
+      start: { x: boss.patternStartX, y: boss.patternStartY, z: boss.patternStartZ },
+      target: { x: boss.patternTargetX, y: boss.patternTargetY, z: boss.patternTargetZ }
+    } } }, unitRadius);
+  }
   var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c", "#9a6947"];
   var Diorama = class {
     constructor(canvas2) {
@@ -3432,6 +3848,7 @@
       this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled) }]));
       this.bossPlayer = null;
       this.bossPlayerAsset = null;
+      this.bossPlayers = /* @__PURE__ */ new Map();
       this.assetsReady = false;
       this.prewarmStats = null;
       this.prewarmDurationMs = 0;
@@ -3444,6 +3861,7 @@
       const prewarmAt = performance.now();
       this.bossPlayer = boss.asset.createPlayer({ clip: "idle", startedAtMs: 0 });
       this.bossPlayerAsset = boss;
+      this.bossPlayers.set(3, { record: boss, player: this.bossPlayer });
       this.ctx.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.bossPlayer.draw({ projection: this.ctx.vector.projection, matrix: [1e-3, 0, 0, 1e-3, 100, 100] });
       this.prewarmStats = this.ctx.endFrame();
@@ -3506,6 +3924,83 @@
       for (const point of points.slice(1)) c.lineTo(point.x, point.y);
       c.closePath();
       c.stroke();
+    }
+    groundPolygon(points, fill, stroke = null, width = 0.055) {
+      if (!points.length) return;
+      const c = this.ctx, projected = points.map((point) => this.project(point.x, point.y));
+      c.beginPath();
+      c.moveTo(projected[0].x, projected[0].y);
+      for (const point of projected.slice(1)) c.lineTo(point.x, point.y);
+      c.closePath();
+      if (fill) {
+        c.fillStyle = fill;
+        c.fill();
+      }
+      if (stroke) {
+        c.strokeStyle = stroke;
+        c.lineWidth = width * this.scale;
+        c.stroke();
+      }
+    }
+    groundSector(x, y, angle, sector, outerRadius, innerRadius = 0, fill = "#b46c4530", stroke = "#b46c45") {
+      const points = [], segments = Math.max(12, Math.ceil(sector / (Math.PI / 48))), start2 = angle - sector / 2, end = angle + sector / 2;
+      if (innerRadius <= 0) points.push({ x, y });
+      for (let i = 0; i <= segments; i++) {
+        const a = start2 + (end - start2) * i / segments;
+        points.push({ x: x + Math.cos(a) * outerRadius, y: y + Math.sin(a) * outerRadius });
+      }
+      if (innerRadius > 0) for (let i = segments; i >= 0; i--) {
+        const a = start2 + (end - start2) * i / segments;
+        points.push({ x: x + Math.cos(a) * innerRadius, y: y + Math.sin(a) * innerRadius });
+      }
+      this.groundPolygon(points, fill, stroke, 0.045);
+      if (innerRadius <= 0) {
+        const c = this.ctx, center = this.project(x, y), left = this.project(x + Math.cos(start2) * outerRadius, y + Math.sin(start2) * outerRadius), right = this.project(x + Math.cos(end) * outerRadius, y + Math.sin(end) * outerRadius);
+        this.line(center, left, 0.035, stroke);
+        this.line(center, right, 0.035, stroke);
+      }
+    }
+    drawBossTelegraph(area) {
+      const color = area.active ? "#bd6648" : area.locked ? "#d09852" : "#a8755c", soft = area.active ? "rgba(195,91,62,.2)" : "rgba(199,147,77,.15)";
+      if (area.kind === "sweep") {
+        this.strokeGroundEllipse(area.x, area.y, Math.max(0, area.sweepRadius - area.width), Math.max(0, area.sweepRadius - area.width), color, area.active ? 0.075 : 0.12);
+        const progress = area.active ? area.progress : 1;
+        this.ring(area.x, area.y, area.outerRadius, color, 0.1, area.startAngle, area.startAngle + progress * Math.PI * 2);
+        this.ring(area.x, area.y, area.sweepRadius, "rgba(216,159,84,.25)", 0.045);
+      } else if (area.kind === "sector") {
+        this.groundSector(area.x, area.y, area.angle, area.sector, area.reach, 0, soft, color);
+      } else if (area.kind === "fan") {
+        const inner = Math.max(0, area.reach - area.width), outer = area.reach + area.width;
+        this.groundSector(area.x, area.y, area.angle, area.sector, outer, inner, soft, color);
+        const q = area.active ? clamp2(area.progress, 0, 1) : 0, a = area.angle - area.sector / 2 + q * area.sector;
+        const from = this.project(area.x + Math.cos(a) * inner, area.y + Math.sin(a) * inner), to = this.project(area.x + Math.cos(a) * outer, area.y + Math.sin(a) * outer);
+        this.line(from, to, 0.12, area.active ? "#f0c27b" : "#d8ae70");
+      } else if (area.kind === "charge") {
+        const endRadius = area.active ? Math.hypot(area.endX - area.x, area.endY - area.y) : area.reach;
+        this.strokeGroundCapsule({ x: area.x, y: area.y, angle: area.angle, width: area.width, startRadius: 0, endRadius: Math.max(0.04, endRadius) }, soft);
+        const end = this.project(area.x + Math.cos(area.angle) * endRadius, area.y + Math.sin(area.angle) * endRadius), start2 = this.project(area.x, area.y);
+        this.line(start2, end, 0.045, color);
+      } else if (area.kind === "leap") {
+        const radius = area.reach, progress = area.progress || 0, x = area.targetX, y = area.targetY;
+        this.groundEllipse(x, y, radius, radius, soft);
+        this.strokeGroundEllipse(x, y, radius, radius, color, area.active ? 0.09 : 0.12);
+        this.strokeGroundEllipse(x, y, 0.46, 0.46, "#ead59b", 0.06);
+        const from = this.project(area.x, area.y), to = this.project(x, y);
+        this.line(from, to, 0.055, "rgba(184,110,69,.58)");
+        const head = this.project(x - Math.cos(Math.atan2(y - area.y, x - area.x)) * 0.56, y - Math.sin(Math.atan2(y - area.y, x - area.x)) * 0.56);
+        this.line(head, to, 0.1, color);
+        if (area.active) {
+          const r = radius * (1 - 0.2 * progress);
+          this.strokeGroundEllipse(x, y, r, r, "rgba(247,207,128,.7)", 0.045);
+        }
+      } else if (area.kind === "summon") {
+        const config = BOSS_PATTERN_CONFIG[area.patternId], reach = config?.landingRadius || 4.8, angle = area.angle, target = { x: area.x + Math.cos(angle) * reach, y: area.y + Math.sin(angle) * reach };
+        this.groundSector(area.x, area.y, angle, Math.PI / 7, reach, 0.25, "rgba(183,125,73,.11)", "rgba(178,129,76,.55)");
+        this.line(this.project(area.x, area.y), this.project(target.x, target.y), 0.05, "rgba(167,123,74,.62)");
+        this.groundEllipse(target.x, target.y, 0.65, 0.48, soft);
+        this.strokeGroundEllipse(target.x, target.y, 0.65, 0.48, color, 0.085);
+        this.ring(target.x, target.y, 0.28, "#f1d391", 0.045, 0, Math.PI * 1.8);
+      }
     }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
@@ -3623,36 +4118,65 @@
       const event = world.farmBossEvent;
       if (event?.phase === "celebrating" && event.outcome === "defeat") return "idle";
       if (b.hp <= 0) return "death";
-      if (b.flash > 0.09 && b.phase === "chase") return "hit";
-      if (b.phase === "strike-windup" || b.phase === "sweep-windup") return "windup";
-      if (b.phase === "strike") return "strike";
-      if (b.phase === "sweep") return "sweep";
-      if (b.phase === "recover") return "recover";
+      if (b.flash > 0.09 && b.patternPhase === "idle") return "hit";
+      if (b.patternPhase === "windup") return "windup";
+      if (b.patternPhase === "active") {
+        if (b.patternId === "attack.sweep-360" || b.patternId === "attack.fan-sweep") return "sweep";
+        if (b.patternId === "attack.charge") return "walk";
+        if (b.patternId === "attack.leap-slam") return b.z > 0.1 ? "airborne" : "strike";
+        if (b.patternId === "summon.mouth-t1") return "fire";
+        return "strike";
+      }
+      if (b.patternPhase === "recover") return "recover";
       return b.phase === "chase" ? "walk" : "idle";
     }
     drawBoss(world) {
-      const record = this.bossAssets.get("chestnut");
-      if (!record || !this.bossPlayer || this.bossPlayerAsset !== record) throw new Error("Prewarmed chestnut boss player is required");
-      const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, metadata = record.compiled.metadata, name = this.bossMotion(b, world), clip = metadata.clips[name] || metadata.clips.idle;
-      const timed = ["windup", "strike", "sweep", "recover", "hit", "death"].includes(name), clipStartAtMs = timed ? this.displayTimeMs - Math.min(clip.durationMs, Math.max(0, b.clock || 0) * 1e3) : name === "walk" ? this.displayTimeMs - Math.max(0, b.travel || 0) * 110 : this.displayTimeMs - (b.travel || 0) * 37 % clip.durationMs;
-      if (this.bossPlayer.currentClip !== name) this.bossPlayer.transitionTo(name, clipStartAtMs, 70);
-      const expression = b.hp <= 0 ? "dead" : event?.phase === "celebrating" && event.outcome === "defeat" ? "happy" : name === "windup" ? "focused" : name === "strike" || name === "sweep" ? "attack" : b.flash > 0.07 ? "hurt" : "neutral";
-      if (this.bossPlayer.currentExpression !== expression) this.bossPlayer.setExpression(expression);
-      this.bossPlayer.seek(this.displayTimeMs);
-      const [, , width] = record.compiled.viewBox, s = 2 * r / 220, anchorX = 160, anchorY = 261, matrix = [s, 0, 0, s, p.x - anchorX * s, p.y - anchorY * s];
-      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0;
-      const fade = event?.phase === "fading" ? clamp2(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
-      this.bossPlayer.setBasePose("body", { y: -18 * defeatBounce, scaleX: (1 + (k.squash || 0)) * (1 - 0.04 * defeatBounce), scaleY: (1 - (k.squash || 0)) * (1 + 0.06 * defeatBounce), opacity: fade });
-      const aiming = ["strike-windup", "sweep-windup", "strike", "sweep"].includes(b.phase);
-      if (aiming) {
-        const target = Math.atan2(-0.62 * Math.sin(b.angle), Math.cos(b.angle));
-        this.bossPlayer.setBasePose("arm-right", { rotation: target - 0.504 });
-        this.bossPlayer.setBasePose("arm-left", { rotation: target + Math.PI - 2.637 });
-      } else {
-        this.bossPlayer.setBasePose("arm-right", { rotation: 0 });
-        this.bossPlayer.setBasePose("arm-left", { rotation: 0 });
+      const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, species = Number.isInteger(b.species) ? b.species : 3;
+      const record = species === 3 ? this.bossAssets.get("chestnut") : this.vectorAssets.get(species);
+      if (!record) throw new Error("Missing required boss vector asset for species " + species);
+      let instance = this.bossPlayers.get(species);
+      if (!instance) {
+        const player2 = record.asset.createPlayer({ clip: "idle", startedAtMs: this.displayTimeMs });
+        instance = { record, player: player2 };
+        this.bossPlayers.set(species, instance);
       }
-      this.bossPlayer.draw({ projection: this.ctx.vector.projection, matrix });
+      const player = instance.player;
+      this.bossPlayer = player;
+      this.bossPlayerAsset = record;
+      const metadata = record.compiled.metadata, name = this.bossMotion(b, world), fallbackClip = name === "airborne" ? metadata.clips.strike ? "strike" : metadata.clips.fire ? "fire" : "idle" : ["strike", "sweep", "fire"].includes(name) && !metadata.clips[name] ? metadata.clips.fire ? "fire" : "idle" : "idle", clipName = metadata.clips[name] ? name : fallbackClip, clip = metadata.clips[clipName];
+      const timed = ["windup", "strike", "sweep", "recover", "hit", "death", "fire", "airborne"].includes(name), elapsed = b.patternId ? b.patternPhaseElapsed : b.clock;
+      const clipStartAtMs = timed ? this.displayTimeMs - Math.min(clip.durationMs, Math.max(0, elapsed || 0) * 1e3) : name === "walk" ? this.displayTimeMs - Math.max(0, b.travel || 0) * 110 : this.displayTimeMs - (b.travel || 0) * 37 % clip.durationMs;
+      if (player.currentClip !== clipName) player.transitionTo(clipName, clipStartAtMs, 70);
+      const summonOpen = b.patternId === "summon.mouth-t1" && (b.patternPhase === "active" || b.patternPhase === "windup" && b.patternPhaseElapsed >= BOSS_PATTERN_CONFIG["summon.mouth-t1"].windup * 0.5);
+      const expression = b.hp <= 0 ? "dead" : event?.phase === "celebrating" && event.outcome === "defeat" ? "happy" : summonOpen ? "attack" : b.patternPhase === "windup" ? "focused" : b.patternPhase === "active" ? "attack" : b.flash > 0.07 ? "hurt" : "neutral";
+      if (!metadata.expressions?.[expression] && !metadata.expressions?.neutral) throw new Error("Boss asset is missing a supported expression");
+      const safeExpression = metadata.expressions?.[expression] ? expression : "neutral";
+      if (player.currentExpression !== safeExpression) player.setExpression(safeExpression);
+      player.seek(this.displayTimeMs);
+      const [, , width, height] = record.compiled.viewBox, s = 2 * r / 220, ground = metadata.sockets?.ground?.point || [width / 2, height], anchorX = ground[0], anchorY = ground[1], matrix = [s, 0, 0, s, p.x - anchorX * s, p.y - anchorY * s];
+      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0, summonConfig = BOSS_PATTERN_CONFIG["summon.mouth-t1"], summonSquash = b.patternId === "summon.mouth-t1" && b.patternPhase === "windup" ? 0.12 * Math.sin(Math.PI * clamp2((b.patternPhaseElapsed || 0) / summonConfig.windup, 0, 1)) : 0;
+      const fade = event?.phase === "fading" ? clamp2(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
+      player.setBasePose("body", { y: -18 * defeatBounce, scaleX: (1 + (k.squash || 0) + summonSquash) * (1 - 0.04 * defeatBounce), scaleY: (1 - (k.squash || 0) - summonSquash * 0.65) * (1 + 0.06 * defeatBounce), opacity: fade });
+      const parts = new Set(metadata.parts.map((part) => part.id)), aiming = b.patternId && b.patternPhase !== "idle", target = Math.atan2(-0.62 * Math.sin(b.patternAim), Math.cos(b.patternAim));
+      if (parts.has("arm-right") && parts.has("arm-left")) {
+        if (aiming && b.patternId === "summon.mouth-t1" && b.patternPhase === "active") {
+          player.setBasePose("arm-right", { rotation: 0.42 });
+          player.setBasePose("arm-left", { rotation: -0.42 });
+        } else if (aiming) {
+          player.setBasePose("arm-right", { rotation: target - 0.504 });
+          player.setBasePose("arm-left", { rotation: target + Math.PI - 2.637 });
+        } else {
+          player.setBasePose("arm-right", { rotation: 0 });
+          player.setBasePose("arm-left", { rotation: 0 });
+        }
+      }
+      player.draw({ projection: this.ctx.vector.projection, matrix });
+      if (b.patternId === "summon.mouth-t1" && b.patternPhase === "active" && b.patternReleased > 0) {
+        this.ctx.flush();
+        const mouth = this.project(b.summonMouthX, b.summonMouthY, b.summonMouthZ), pulse = 0.55 + 0.45 * Math.sin((b.patternPhaseElapsed || 0) * Math.PI * 8);
+        this.ellipse(mouth.x, mouth.y, this.scale * 0.18 * pulse, this.scale * 0.12 * pulse, "rgba(255,210,113,.72)");
+        this.ellipse(mouth.x + Math.cos(target) * this.scale * 0.16, mouth.y + Math.sin(target) * this.scale * 0.1, this.scale * 0.065, this.scale * 0.08, "#fff1ad");
+      }
     }
     terrain(sim2) {
       const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", rx = raid ? CONFIG.raid.radiusX : 9.5, ry = raid ? CONFIG.raid.radiusY : 6.8;
@@ -3676,18 +4200,9 @@
           this.strokeGroundEllipse(t.x, t.y, 0.36, 0.25, t.valid ? "#f4e0a0" : "#b36359", 0.055);
         }
       }
-      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? bossAttackArea(sim2.boss, CONFIG.maxUnitRadius) : null;
+      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, CONFIG.maxUnitRadius) : null;
       this.bossTelegraph = area;
-      if (area) {
-        const heavy = area.kind === "sweep", color = heavy ? "#b46c45" : "#a35c48";
-        if (heavy) {
-          this.strokeGroundEllipse(area.x, area.y, Math.max(0, area.sweepRadius - area.width), Math.max(0, area.sweepRadius - area.width), color, area.active ? 0.075 : 0.12);
-          const progress = area.active ? area.progress : 1;
-          this.ring(area.x, area.y, area.outerRadius, "#dfad65", 0.1, area.startAngle, area.startAngle + progress * Math.PI * 2);
-        } else {
-          this.strokeGroundCapsule(area, color, area.active ? 0.075 : 0.12);
-        }
-      }
+      if (area) this.drawBossTelegraph(area);
     }
     render(sim2, feel = null, now = performance.now()) {
       this.feel = feel;
@@ -3845,7 +4360,8 @@
       this.vectorPlayers.clear();
       for (const record of this.vectorAssets.values()) record.asset.dispose();
       this.vectorAssets.clear();
-      this.bossPlayer?.dispose();
+      for (const { player } of this.bossPlayers.values()) player.dispose();
+      this.bossPlayers.clear();
       this.bossPlayer = null;
       for (const record of this.bossAssets?.values() || []) record.asset.dispose();
       this.bossAssets?.clear();
@@ -3941,11 +4457,64 @@
       maxHp: R.STEP,
       radius: R.STEP,
       height: R.STEP,
-      flash: R.LINEAR
+      flash: R.LINEAR,
+      species: R.STEP,
+      patternId: R.STATE_KEY,
+      patternPhase: R.STATE_KEY,
+      patternPhaseElapsed: R.LINEAR,
+      patternAim: R.ANGLE,
+      patternLocked: R.STEP,
+      patternTargetId: R.STEP,
+      patternTargetX: R.POSITION_X,
+      patternTargetY: R.POSITION_Y,
+      patternTargetZ: R.POSITION_Z,
+      patternStartX: R.POSITION_X,
+      patternStartY: R.POSITION_Y,
+      patternStartZ: R.POSITION_Z,
+      patternVolleyCount: R.STEP,
+      patternReleased: R.STEP,
+      patternTraveled: R.LINEAR,
+      summonMouthX: R.POSITION_X,
+      summonMouthY: R.POSITION_Y,
+      summonMouthZ: R.POSITION_Z
     });
     constructor(b) {
       super();
-      Object.assign(this, { x: b.x, y: b.y, z: b.z, angle: b.angle, startAngle: b.startAngle, phase: b.phase, clock: b.clock, travel: b.travel || 0, hp: b.hp, maxHp: b.maxHp, radius: b.radius, height: b.height, flash: b.flash });
+      const action = b.patternRuntime?.active || null, target = action?.target || null, start2 = action?.start || null, mouth = b.summonMouth || {};
+      Object.assign(this, {
+        x: b.x,
+        y: b.y,
+        z: b.z,
+        angle: b.angle,
+        startAngle: b.startAngle,
+        phase: b.phase,
+        clock: b.clock,
+        travel: b.travel || 0,
+        hp: b.hp,
+        maxHp: b.maxHp,
+        radius: b.radius,
+        height: b.height,
+        flash: b.flash,
+        species: b.species ?? 3,
+        patternId: action?.id || "",
+        patternPhase: action?.phase || "idle",
+        patternPhaseElapsed: action?.phaseElapsed || 0,
+        patternAim: action?.aim ?? b.angle,
+        patternLocked: !!action?.locked,
+        patternTargetId: action?.targetId || 0,
+        patternTargetX: target?.x ?? b.x,
+        patternTargetY: target?.y ?? b.y,
+        patternTargetZ: target?.z ?? 0,
+        patternStartX: start2?.x ?? b.x,
+        patternStartY: start2?.y ?? b.y,
+        patternStartZ: start2?.z ?? b.z,
+        patternVolleyCount: action?.volleyCount || 0,
+        patternReleased: action?.released || 0,
+        patternTraveled: action?.traveled || 0,
+        summonMouthX: mouth.x ?? b.x,
+        summonMouthY: mouth.y ?? b.y,
+        summonMouthZ: mouth.z ?? b.z
+      });
     }
   };
   var FoodRender = class extends RenderObject {
@@ -4656,6 +5225,7 @@
   init_boss_rewards();
   var $2 = (id) => document.getElementById(id);
   var storage = new FarmStorage();
+  var BOSS_SPECIES_NAMES = ["콩", "옥수수", "강낭콩", "밤톨"];
   var networkTimer = null;
   var observedWorld = null;
   var imported = null;
@@ -4812,7 +5382,7 @@
     if (!farmRun.sessionId || !farmRun.runSequence) return false;
     const outcome = ["victory", "defeat"].includes(raidWorld.encounter?.outcome) ? raidWorld.encounter.outcome : "aborted";
     const prepare = (base) => settleRaidOwnerFarm(snapshot(base), { ownerId, sessionId: farmRun.sessionId, encounterId: farmRun.runSequence, runSequence: farmRun.runSequence, outcome, raidWorld, completedAtMs: Date.now(), settleVictory: ({ farm, receiptKey, deploymentMultiplier }) => {
-      const garden = restore(farm), resolved = settleBossKill(garden, { encounterId: farmRun.runSequence, source: "raid", receiptKey, acquisitionMultiplier: deploymentMultiplier, species: 3, tier: 1, x: raidWorld.boss.x, y: raidWorld.boss.y });
+      const garden = restore(farm), resolved = settleBossKill(garden, { encounterId: farmRun.runSequence, source: "raid", receiptKey, acquisitionMultiplier: deploymentMultiplier, species: raidWorld.boss.species ?? 3, tier: 1, x: raidWorld.boss.x, y: raidWorld.boss.y });
       const reward = resolved.receipt;
       return { farm: snapshot(garden), summary: { acquisition: { status: reward.status, chance: reward.chance, roll: reward.roll, unitId: reward.unitId, receiptKey: reward.receiptKey }, xp: { status: reward.xpStatus, amount: reward.xpAmount, levelsGained: reward.levelsGained, pointsAwarded: reward.pointsAwarded, receiptKey: reward.xpReceiptKey } } };
     } });
@@ -5357,16 +5927,15 @@
       el.setAttribute("aria-valuemax", max);
     }
     $2("bossHealth").style.width = boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%";
-    $2("battleOutcome").textContent = raid ? battleOutcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : battleOutcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? "보스가 쓰러졌어요 · 밤톨이 합류했어요" : farmEvent.rewardStatus === "pending" ? "밤톨 획득 대기 · 공간이 생기면 합류해요" : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "";
+    const speciesName = BOSS_SPECIES_NAMES[boss.species] || BOSS_SPECIES_NAMES[3];
+    $2("battleOutcome").textContent = raid ? battleOutcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : battleOutcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "";
     $2("battleOutcome").hidden = home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle";
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
-    $2("pause").textContent = active.paused ? "계속하기" : "일시 정지";
-    $2("pause").setAttribute("aria-label", active.paused ? "계속하기" : "일시 정지");
-    $2("pause").setAttribute("aria-pressed", String(active.paused));
-    $2("menuTabGrowth").disabled = raid || farmEventActive;
-    $2("menuTabAbilities").disabled = raid || !personalGarden;
+    $2("tree").disabled = raid || farmEventActive;
+    $2("abilities").disabled = raid || !personalGarden;
     $2("raid").disabled = farmEventActive || !raid && !hasReadyTroops;
+    $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
     $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
     $2("feed").dataset.produced = now < foodFeel.completeUntil;
