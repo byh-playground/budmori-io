@@ -2923,7 +2923,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.5.3";
+      PRODUCT_VERSION = "0.5.5";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -3041,6 +3041,51 @@
 
   // src/farm-renderer.js
   init_farm_model();
+
+  // src/farm-indicators.js
+  function farmBreedingCooldown(unit, world, defaultDuration = 10) {
+    if (world?.scene !== "farm" || unit?.hp <= 0 || unit?.down > 0 || unit?.cooldown <= 0 || unit?.meals !== 0) return null;
+    const duration = unit.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
+    const remaining = Math.max(0, unit.cooldown);
+    return { remaining, duration, progress: Math.max(0, Math.min(1, 1 - remaining / duration)) };
+  }
+  function farmSleepSeconds(unit, scene) {
+    if (scene !== "farm" || unit?.hp > 0 || !Number.isFinite(unit?.down) || unit.down <= 0) return 0;
+    return Math.ceil(unit.down);
+  }
+  function splitArcProgress(progress) {
+    const sweep = Math.PI * 2 * Math.max(0, Math.min(1, Number(progress) || 0));
+    return {
+      rear: sweep > 0 ? [0, Math.min(Math.PI, sweep)] : null,
+      front: sweep > Math.PI ? [Math.PI, sweep] : null
+    };
+  }
+  function sevenSegmentDigitLines(digit, x, y, size) {
+    const segments = {
+      0: "abcdef",
+      1: "bc",
+      2: "abged",
+      3: "abgcd",
+      4: "fgbc",
+      5: "afgcd",
+      6: "afgecd",
+      7: "abc",
+      8: "abcdefg",
+      9: "abfgcd"
+    }[digit] || "";
+    const h = size * 2.6, w = size * 1.75, points = {
+      a: [{ x: x - w / 2, y: y - h }, { x: x + w / 2, y: y - h }],
+      b: [{ x: x + w / 2, y: y - h }, { x: x + w / 2, y }],
+      c: [{ x: x + w / 2, y }, { x: x + w / 2, y: y + h }],
+      d: [{ x: x - w / 2, y: y + h }, { x: x + w / 2, y: y + h }],
+      e: [{ x: x - w / 2, y }, { x: x - w / 2, y: y + h }],
+      f: [{ x: x - w / 2, y: y - h }, { x: x - w / 2, y }],
+      g: [{ x: x - w / 2, y }, { x: x + w / 2, y }]
+    };
+    return Array.from(segments, (segment) => points[segment]);
+  }
+
+  // src/farm-renderer.js
   var { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
   var { WebGLDevice, VectorContext, MeshRenderer } = globalThis.BloomGamekitRendering;
   var { createVectorAsset } = globalThis.BloomGamekitVectorAssets;
@@ -3177,16 +3222,58 @@
       c.lineTo(b.x, b.y);
       c.stroke();
     }
-    attackEffects(world) {
-      for (const u of world.units) {
-        const a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
-        if (u.buffed && u.hp > 0) this.ring(u.x, u.y, u.radius + 0.16, "#eacb72", 0.055);
-        if (a.phase === "windup") this.ring(u.x, u.y, u.radius + 0.1, ATTACK_ACCENTS[u.species], 0.065, 0, Math.PI * 2 * Math.min(1, a.elapsed / s.windup));
-        if (world.scene === "farm" && u.cooldown > 0) {
-          const duration = u.cooldownDuration || world.breedCooldownDuration?.() || CONFIG.breedCooldownSeconds, progress = 1 - clamp2(u.cooldown / duration, 0, 1);
-          if (progress > 0) this.ring(u.x, u.y, u.radius + 0.085, "#8fac68", 0.035, 0, Math.PI * 2 * progress);
-        }
+    pixelLine(a, b, width, color2) {
+      const c = this.ctx;
+      c.strokeStyle = color2;
+      c.lineWidth = width;
+      c.lineCap = "round";
+      c.beginPath();
+      c.moveTo(a.x, a.y);
+      c.lineTo(b.x, b.y);
+      c.stroke();
+    }
+    unitRingEffects(u, world) {
+      const effects = [], a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
+      if (u.buffed && u.hp > 0) effects.push({ radius: u.radius + 0.16, color: "#eacb72", width: 0.055, progress: 1 });
+      if (a.phase === "windup" && s) effects.push({ radius: u.radius + 0.1, color: ATTACK_ACCENTS[u.species], width: 0.065, progress: Math.min(1, a.elapsed / s.windup) });
+      const breeding = farmBreedingCooldown(u, world, CONFIG.breedCooldownSeconds);
+      if (breeding && breeding.progress > 0) effects.push({ radius: u.radius + 0.085, color: "#8fac68", width: 0.035, progress: breeding.progress });
+      return effects;
+    }
+    drawUnitRingLayer(u, effects, side) {
+      for (const effect of effects) {
+        const arc = splitArcProgress(effect.progress)[side];
+        if (arc) this.ring(u.x, u.y, effect.radius, effect.color, effect.width, arc[0], arc[1]);
       }
+    }
+    drawSevenSegmentDigit(digit, x, y, size, color) {
+      for (const [from, to] of sevenSegmentDigitLines(digit, x, y, size)) this.pixelLine(from, to, size * 0.7, color);
+    }
+    drawSleepZ(x, y, size, color) {
+      const stroke = size * 0.32;
+      this.pixelLine({ x, y: y - size }, { x: x + size, y: y - size }, stroke, color);
+      this.pixelLine({ x: x + size, y: y - size }, { x, y: y + size }, stroke, color);
+      this.pixelLine({ x, y: y + size }, { x: x + size, y: y + size }, stroke, color);
+    }
+    drawSleepBadge(u, sim, pose) {
+      const seconds = farmSleepSeconds(u, sim.scene);
+      if (!seconds) return;
+      const d = this.pixelRatio, scale = 1.75 * d, w = 43 * d, h = 16 * d, x = pose.p.x - w / 2, y = pose.p.y - pose.r * 1.92 - h / 2;
+      const c = this.ctx;
+      c.fillStyle = "#35473df0";
+      c.beginPath();
+      c.roundRect(x, y, w, h, h / 2);
+      c.fill();
+      c.strokeStyle = "#f3edcf";
+      c.lineWidth = d;
+      c.beginPath();
+      c.roundRect(x, y, w, h, h / 2);
+      c.stroke();
+      this.drawSleepZ(x + 5.8 * d, y + 8 * d, 2.3 * d, "#f3edcf");
+      this.drawSleepZ(x + 10.4 * d, y + 5.2 * d, 1.75 * d, "#f3edcf");
+      const label = String(Math.min(99, seconds)).padStart(2, "0");
+      this.drawSevenSegmentDigit(Number(label[0]), x + 24 * d, y + 8 * d, scale, "#fff7db");
+      this.drawSevenSegmentDigit(Number(label[1]), x + 34 * d, y + 8 * d, scale, "#fff7db");
     }
     drawVectorUnit(u, sim, p, r) {
       const record = this.vectorAssets.get(u.species);
@@ -3216,6 +3303,14 @@
       const dead = u.hp <= 0, walk = dead ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * walk : 0, p = this.project(u.x, u.y, u.z + bob);
       const r = Math.max(u.size * this.scale * 0.78, (sim.scene === "raid" ? 4.5 : 11) * this.pixelRatio);
       this.drawVectorUnit(u, sim, p, r);
+      return { p, r };
+    }
+    drawFarmUnitActor(u, sim) {
+      const effects = this.unitRingEffects(u, sim);
+      this.drawUnitRingLayer(u, effects, "rear");
+      const pose = this.drawUnit(u, sim);
+      this.drawUnitRingLayer(u, effects, "front");
+      this.drawSleepBadge(u, sim, pose);
     }
     bossPose(world) {
       const b = world.boss, k = this.feel?.boss(this.displayTimeMs) || { x: 0, y: 0, squash: 0 }, ground = this.project(b.x + k.x, b.y + k.y, 0), p = this.project(b.x + k.x, b.y + k.y, b.z || 0), r = this.scale * b.radius * 1.16;
@@ -3311,7 +3406,7 @@
       if (sim2.scene === "raid" || farmBossVisible) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
       }
-      const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector: this.vectorAssets.has(u.species), draw: () => this.drawUnit(u, sim2) }));
+      const actors = sim2.units.map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector: this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
       if (sim2.scene === "raid" || farmBossVisible) actors.push({ depth: 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), id: 0, vector: true, draw: () => this.drawBoss(sim2) });
       if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
         this.groundEllipse(f.x, f.y, 0.1, 0.07, "#55452433");
@@ -3366,7 +3461,6 @@
         player.dispose();
         this.vectorPlayers.delete(id);
       }
-      this.attackEffects(sim2);
       feel?.draw(this, this.displayTimeMs);
       for (const e of sim2.effects) {
         const q = e.life;
@@ -3479,6 +3573,7 @@
       "ability.elapsed": R.LINEAR,
       cooldown: R.LINEAR,
       cooldownDuration: R.STEP,
+      meals: R.STEP,
       species: R.STEP,
       tier: R.STEP,
       seed: R.STEP,
@@ -3509,6 +3604,7 @@
         ability: { phase: u.ability.phase, elapsed: u.ability.elapsed },
         cooldown: u.cooldown,
         cooldownDuration: u.cooldownDuration,
+        meals: u.meals,
         species: u.species,
         tier: u.tier,
         seed: u.seed,

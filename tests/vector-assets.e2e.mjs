@@ -11,7 +11,7 @@ const root=fileURLToPath(new URL('../',import.meta.url)),out=path.join(root,'tes
 await mkdir(out,{recursive:true});
 const requiredClips=['idle','walk','windup','fire','recover','hit','airborne','landing','death','victory'];
 const requiredExpressions=['neutral','happy','focused','attack','surprised','hurt','hungry','dead'];
-const requiredBossClips=['idle','walk','windup','strike','sweep','recover','hit','death'],requiredBossExpressions=['neutral','focused','attack','hurt','dead'];
+const requiredBossClips=['idle','walk','windup','strike','sweep','recover','hit','death'],requiredBossExpressions=['neutral','focused','attack','hurt','dead','happy'];
 const sourceConfig=JSON.parse(await readFile(path.join(root,'scripts/vector-assets-sources.json'),'utf8'));
 assert.equal(existsSync(path.join(root,'scripts/vector-assets-motion.json')),false,'SVG motion sidecar must be removed');
 const authoredAssets=[];
@@ -19,6 +19,7 @@ for(const source of sourceConfig.assets){
   const sourceBytes=await readFile(path.join(root,source.file)),sourceText=sourceBytes.toString('utf8');
   const metadata=JSON.parse(sourceText.match(/<metadata id="vector-asset">([\s\S]*?)<\/metadata>/)?.[1]||'null');
   assert.deepEqual(Object.keys(metadata.clips),requiredClips,`${source.file} must author all GameKit clips in SVG metadata`);
+  if(source.species===3){const blush=sourceText.match(/<ellipse id="neutral-cheek-left"[^>]*rx="([0-9.]+)"[^>]*ry="([0-9.]+)"[^>]*fill="([^"]+)"/);assert(blush&&Number(blush[1])>=16&&Number(blush[2])>=12,`${source.file} neutral blush must remain visible at 24px`);}
   assert.deepEqual(Object.keys(metadata.expressions),requiredExpressions,`${source.file} must author all face states in SVG metadata`);
   for(const name of requiredExpressions)assert(new RegExp(`<g id="face-${name}">`).test(sourceText),`${source.file} is missing authored SVG face geometry for ${name}`);
   authoredAssets.push({species:source.species,sourceSha256:createHash('sha256').update(sourceBytes).digest('hex'),parts:metadata.parts.length});
@@ -35,17 +36,39 @@ const server=createServer(async(q,r)=>{
   if(url.pathname==='/favicon.ico'){r.writeHead(204);r.end();return}
   const file=path.resolve(root,'.'+(url.pathname==='/'?'/index.html':decodeURIComponent(url.pathname)));
   if(!file.startsWith(root)){r.writeHead(403);r.end();return}
-  try{const body=await readFile(file);r.writeHead(200,{'Content-Type':file.endsWith('.html')?'text/html;charset=utf-8':file.endsWith('.json')?'application/json':'text/javascript;charset=utf-8'});r.end(body)}catch{r.writeHead(404);r.end()}
+  try{const body=await readFile(file),type=file.endsWith('.html')?'text/html;charset=utf-8':file.endsWith('.json')?'application/json':file.endsWith('.svg')?'image/svg+xml':'text/javascript;charset=utf-8';r.writeHead(200,{'Content-Type':type});r.end(body)}catch{r.writeHead(404);r.end()}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const report={suite:'vector-assets',started:new Date().toISOString(),errors:[]};let browser;
 try{
-  browser=await chromium.launch({channel:'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+  browser=await chromium.launch({channel:process.env.BUDMORI_BROWSER_CHANNEL??'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   report.browser=await browser.version();
   const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage();
   page.on('pageerror',error=>report.errors.push(error.message));
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.waitForFunction(()=>window.BUDMORI,{},{timeout:30000});
+  await page.locator('#newGame').click();
+  await page.waitForFunction(()=>BUDMORI.sim.scene==='farm'&&BUDMORI.sim.units.length===2,{},{timeout:8000});
+  const farmChestnut=await page.evaluate(()=>{
+    const world=BUDMORI.sim;
+    for(const[index,unit]of world.units.entries()){
+      unit.x=-3+index*2;unit.y=0;unit.home={x:unit.x,y:unit.y};
+      unit.z=unit.vx=unit.vy=unit.vz=0;unit.dropLanded=true;
+      unit.ability.phase='idle';unit.ability.elapsed=0;
+    }
+    const peer=world.units[0],chestnut=world.spawn(3,peer.tier,3,0);
+    Object.assign(chestnut,{x:3,y:0,z:0,vx:0,vy:0,vz:0,dropLanded:true,home:{x:3,y:0},growthDuration:peer.growthDuration,growthElapsed:peer.growthElapsed});
+    chestnut.ability.phase='idle';chestnut.ability.elapsed=0;
+    BUDMORI.runtime.paused=true;BUDMORI.runtime.capturePresentation('reset');
+    return{chestnutId:chestnut.id,tier:chestnut.tier,size:chestnut.size,units:world.units.map(unit=>({id:unit.id,species:unit.species,tier:unit.tier,size:unit.size}))};
+  });
+  await page.waitForFunction(id=>BUDMORI.renderer.vectorPlayers.has(id),farmChestnut.chestnutId,{timeout:5000});
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await page.screenshot({path:path.join(out,'chestnut-farm.png')});
+  await page.evaluate(async()=>{const card=document.createElement('div');card.id='chestnut-24px-preview';Object.assign(card.style,{position:'fixed',left:'12px',bottom:'12px',width:'28px',height:'28px',padding:'2px',boxSizing:'border-box',background:'#fffdf2',border:'1px solid #d7dccd'});const img=document.createElement('img');img.src='/assets/troops/chestnut.svg';img.width=24;img.height=22.5;card.append(img);document.body.append(card);await img.decode()});
+  await page.locator('#chestnut-24px-preview').screenshot({path:path.join(out,'chestnut-troop-24px-preview.png')});
+  await page.locator('#chestnut-24px-preview').evaluate(el=>el.remove());
+  report.farmChestnut=farmChestnut;
   const vector=await page.evaluate(async()=>{
     const renderer=BUDMORI.renderer,ids=[0,1,2,3];
     if(renderer.vectorAssets.size!==4)throw Error('Four compiled SVG vector assets are not active');
@@ -85,7 +108,7 @@ try{
   for(const asset of vector.assets){assert.deepEqual(asset.clips,requiredClips);for(const expression of requiredExpressions)assert(asset.expressions.includes(expression),`${asset.id} is missing the ${expression} face expression`);const source=authoredAssets.find(entry=>entry.species===asset.species);assert.equal(asset.sourceSha256,source.sourceSha256,`${asset.id} runtime metadata must hash its exact SVG source`);assert.equal(asset.parts,source.parts)}
   assert.equal(vector.boss.id,'budmori-chestnut-boss');assert.deepEqual(vector.boss.clips,requiredBossClips);assert.deepEqual(vector.boss.expressions,requiredBossExpressions);assert.equal(vector.boss.sourceSha256,authoredBoss.sourceSha256);assert.equal(vector.boss.parts,authoredBoss.parts);assert(vector.boss.socketMotion.after.x!==vector.boss.socketMotion.before.x||vector.boss.socketMotion.after.y!==vector.boss.socketMotion.before.y);
   report.assets=vector.assets;report.socketTransformCheck='PASS authored socket stays crop-local and follows the body part pivot';report.backend=vector.rendererBackend;
-  await page.waitForFunction(()=>BUDMORI.renderer.vectorPlayers.size===3&&BUDMORI.renderer.bossPlayer?.currentClip==='idle',{},{timeout:5000}).catch(async error=>{
+  await page.waitForFunction(()=>BUDMORI.renderer.vectorPlayers.size===4&&BUDMORI.renderer.bossPlayer?.currentClip==='idle',{},{timeout:5000}).catch(async error=>{
     const debug=await page.evaluate(()=>({scene:BUDMORI.sim.scene,worldUnits:BUDMORI.sim.units.map(u=>({id:u.id,species:u.species,ownerId:u.ownerId})),runtimeWorld:BUDMORI.runtime.world.scene,presentation:BUDMORI.runtime.presentation(performance.now()).units.map(u=>({id:u.id,species:u.species,ownerId:u.ownerId})),players:BUDMORI.renderer.vectorPlayers.size}));
     throw new Error(error.message+'; renderer state '+JSON.stringify(debug));
   });
