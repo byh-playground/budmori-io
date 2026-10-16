@@ -1,28 +1,29 @@
-tree e717ae6d74d4d2d972768b265359bfb1a8cb0803
-parent 280e86650abec73cb9333379999a6bcadbb9234d
-author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792061235 +0000
-committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792061235 +0000
+tree 9a7241cbeb69d5336875e23b4424de9f259869a8
+parent b9a7e3d6ea0866e7c1bd6d7ba1b910b41ff933f5
+author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792155345 +0000
+committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792155345 +0000
 
 [chore] 독립 모듈 배포물 갱신
 
-SDK-Version: 0.3.3
-Source-Commit: e4ea1679a4bcd64c23eb52b0a549dc26f7611efd
-Manifest-SHA256: a1fa3ed8d37457639271a96ded9d718bdab612ae4e8fb962352409ee2f7f85fe
-Bundle-SHA256: interpolation.js 64d1297162f07e78904954628a5c9595e1eddf576b8612a58f41ed594638c37c
-Bundle-SHA256: rendering.js b184ce35b6453b215d7174a121d1fdaf9b2e11efd087eab7f27f87f8ddf9bd63
-Bundle-SHA256: vector-assets.js 4f2841e42988f9def5c2efd6b88351543a36555589c57b497122dd4cb5602cc4
+SDK-Version: 0.10.4
+Source-Commit: 0abe586967704e193a5e85b6b0c598e58bbf193b
+Manifest-SHA256: 64699fdd06eef0f94e874703cbb9f7e87c5f1ef067c68241b7dc17d9b172f625
+Bundle-SHA256: interpolation.js 193c0e00bd60b89ea59a74be5badb898420ffbd350eb9cd3b7f6b56600d33a74
+Bundle-SHA256: rendering.js 5ec22f1b4c3689b11cd0d4c14acc017b94ce5c11afc859df399898645976e227
+Bundle-SHA256: vector-assets.js 16400cab82c41e6bf7f6457dd292955dc95e140d806cf5e4c353d8ca74568fbb
+Bundle-SHA256: vector-assets-loader.js bdc951f4f6b912a9beea98c2d6056c437064a4e08f4602ede92a2ecbd47e47cf
 Bundle-SHA256: input.js ae84399953c7e54c8d96408c97208f42b2246a8ac27ef5265053cb0beb306168
 Bundle-SHA256: deterministic.js 688178b889e7bd3f19c1bc504c91c03f896a9a7bd832fd2c0fc958b2feadce55
-Bundle-SHA256: simloop.js 1be543dc7e15ef7c87043af98a1fb49a0a45a779098bfa085dc7509709f1ea9c
+Bundle-SHA256: simloop.js f1d348b2f6a80b69c867b9bd45fc359f6d0b238885d85edfe0e9b73d03f043f4
 Bundle-SHA256: transport.js 3bded746222c0aa1769697442b579922d406e67d79e3dbf65df5580dd387c007
 Bundle-SHA256: replay.js 2f9ca6c7220e282be8f7e070d1dc62ce368d3123649d0d8f62283deb8d9da4cf
-Bundle-SHA256: rollback.js 1938802aba6e49042d790c96c3b24d9368348e9eb356cb042bf6d5733cfae784
+Bundle-SHA256: rollback.js cd6353610bf4e8c3b457ee17b4f6b3f9db7df0f261d7c6e74a25d3c07006076c
 Bundle-SHA256: camera.js 3fd1c8a61b49e22b50606dbf472495775419640a8487f3a0ec079cb4d3522cb7
 Bundle-SHA256: presentation-events.js 469a820e22730cdff9a0e4cd37fcbbfa4ffc9af3e39eab6d9a784e1d544caf84
 Bundle-SHA256: hud.js acec30fdab522ef151ab582113f26058aabb48a1d8d11cfe0ea640e1b61c86df
 Bundle-SHA256: debug-tools.js 72260336a6c3f2ee0357a303fa8943dd8cfa4f7deea5d9517d311d4cd8796a71
 Bundle-SHA256: audio.js 7e3e16d34ce88124e6ba7699f16d23107a3e42ee93ea5a16691e856e5865c14a
 Bundle-SHA256: navigation.js 92c387dcfa8af47beb3544f4a16121bbfc8fa9831052b33ce07076dd733c81d3
-Bundle-SHA256: scenario.js bf13eb4a859e052487fe5b43c46ccb4d4b7523db4bb13032a8942283be4cc386
+Bundle-SHA256: scenario.js c826d7c3fbefb14e83ad95af36d4afe25e9b1c962355123581bdacb13cf11c9f
 Asset-SHA256: assets/fonts/noto-sans-kr-700-v1.json d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310
 Asset-Bytes: assets/fonts/noto-sans-kr-700-v1.json 514988

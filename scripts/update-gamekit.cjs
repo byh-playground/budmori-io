@@ -1,7 +1,7 @@
 'use strict';
 // 검증한 배포 Git objects와 실제 ESM 참조/게임 원본 무결성을 함께 갱신합니다.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cp=require('node:child_process'),assert=require('node:assert/strict');
-const {verify,sha,MODULES,DIST_ASSETS}=require('./gamekit-provenance.cjs');
+const {verify,sha,MODULES,DIST_ASSETS,SOURCE_FILES}=require('./gamekit-provenance.cjs');
 const {prepareRuntime}=require('./update-runtime-manifest.cjs');
 const root=path.resolve(__dirname,'..'),repository=process.argv[2]||'https://github.com/byh-playground/bloom-gamekit.git',ref=process.argv[3]||'refs/heads/dist';
 const previous=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'),'utf8'));
@@ -14,11 +14,17 @@ try{
  git(['fetch','--quiet','--no-tags','--depth=1',repository,sourceCommit]);
  const manifestBytes=git(['show',`${distCommit}:manifest.json`]),manifest=JSON.parse(manifestBytes);
  assert.deepEqual(Object.keys(manifest),['schemaVersion','modules','assets'],'manifest keys');assert.equal(manifest.schemaVersion,2,'font assets require manifest schema 2');
- assert.deepEqual(manifest.modules.map(m=>m.file),['interpolation.js','rendering.js','input.js','deterministic.js','simloop.js','transport.js','replay.js','rollback.js','camera.js','presentation-events.js','hud.js','debug-tools.js','audio.js','navigation.js','scenario.js'],'fixed distribution module order');
+ assert.deepEqual(manifest.modules.map(m=>m.file),['interpolation.js','rendering.js','vector-assets.js','vector-assets-loader.js','input.js','deterministic.js','simloop.js','transport.js','replay.js','rollback.js','camera.js','presentation-events.js','hud.js','debug-tools.js','audio.js','navigation.js','scenario.js'],'fixed distribution module order');
  assert.deepEqual(manifest.assets.map(({file,version})=>({file,version})),DIST_ASSETS,'fixed font asset inventory');
  assert.equal(Buffer.from(JSON.stringify(manifest,null,2)+'\n').equals(manifestBytes),true,'canonical distribution manifest');
  const staged=path.join(taskTemp,'staged'),vendor=path.join(staged,'vendor/upstream');fs.mkdirSync(vendor,{recursive:true});
  const put=(file,bytes)=>{const target=path.join(vendor,...file.split('/'));fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes)};
+ const sourceCache=path.join(staged,'vendor/upstream-source');fs.mkdirSync(sourceCache,{recursive:true});
+ const putSource=(file,bytes)=>{const target=path.join(sourceCache,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes)};
+ putSource('source-tree.base64',git(['cat-file','tree',`${sourceCommit}^{tree}`]).toString('base64')+'\n');
+ putSource('modules-tree.base64',git(['cat-file','tree',`${sourceCommit}:modules`]).toString('base64')+'\n');
+ putSource('vector-assets-tree.base64',git(['cat-file','tree',`${sourceCommit}:modules/vector-assets`]).toString('base64')+'\n');
+ for(const file of SOURCE_FILES)putSource(file,git(['show',`${sourceCommit}:${file}`]));
  put('dist-commit.raw',distBytes);put('source-commit.raw',git(['cat-file','commit',sourceCommit]));
  put('dist-tree.base64',git(['cat-file','tree',`${distCommit}^{tree}`]).toString('base64')+'\n');put('manifest.json',manifestBytes);
  put('assets-tree.base64',git(['cat-file','tree',`${distCommit}:assets`]).toString('base64')+'\n');put('assets-fonts-tree.base64',git(['cat-file','tree',`${distCommit}:assets/fonts`]).toString('base64')+'\n');
@@ -35,12 +41,14 @@ try{
  fs.writeFileSync(path.join(staged,'index.html'),html);fs.writeFileSync(path.join(staged,'gamekit-lock.json'),JSON.stringify(lock,null,2)+'\n');
  fs.mkdirSync(path.join(staged,'src'),{recursive:true});fs.writeFileSync(path.join(staged,'src/game.js'),game);fs.copyFileSync(path.join(root,'src/bootstrap.js'),path.join(staged,'src/bootstrap.js'));
  if(fs.existsSync(path.join(root,'src/scope.js')))fs.copyFileSync(path.join(root,'src/scope.js'),path.join(staged,'src/scope.js'));
+ fs.cpSync(path.join(root,'assets'),path.join(staged,'assets'),{recursive:true});fs.mkdirSync(path.join(staged,'scripts'),{recursive:true});fs.copyFileSync(path.join(root,'scripts/vector-assets-sources.json'),path.join(staged,'scripts/vector-assets-sources.json'));
  prepareRuntime(staged);
  verify(staged); // 완성한 staged 전체를 검증하기 전 작업 파일은 바꾸지 않습니다.
  for(const file of ['index.html','gamekit-lock.json'])fs.copyFileSync(path.join(staged,file),path.join(root,file));
  fs.copyFileSync(path.join(staged,'src/game.js'),path.join(root,'src/game.js'));
  fs.mkdirSync(path.join(root,'vendor/upstream'),{recursive:true});
  fs.cpSync(vendor,path.join(root,'vendor/upstream'),{recursive:true,force:true});
+ fs.cpSync(sourceCache,path.join(root,'vendor/upstream-source'),{recursive:true,force:true});
  fs.rmSync(path.join(root,'vendor/upstream/rollback-netcode.js'),{force:true}); // Merge new fixed assets; preserve unrelated source archive/user files.
  verify(root);console.log('PASS updated verified gamekit source',sourceCommit,'dist',distCommit);
 }finally{

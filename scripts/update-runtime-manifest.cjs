@@ -9,14 +9,15 @@ function readCanonicalTextAsset(file){
 }
 function prepareRuntime(root=path.resolve(__dirname,'..')){
 const lock=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'),'utf8'));
-const namespaces={'input':'BloomGamekitInput','interpolation':'BloomGamekitInterpolation','camera':'BloomGamekitCamera','hud':'BloomGamekitHud','presentation-events':'BloomGamekitPresentationEvents','debug-tools':'BloomGamekitDebugTools','rendering':'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets',rollback:'BloomGamekitRollback',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',transport:'BloomGamekitTransport'};
+const namespaces={'input':'BloomGamekitInput','interpolation':'BloomGamekitInterpolation','camera':'BloomGamekitCamera','hud':'BloomGamekitHud','presentation-events':'BloomGamekitPresentationEvents','debug-tools':'BloomGamekitDebugTools','rendering':'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets','vector-assets-loader':'BloomGamekitVectorAssetLoader',rollback:'BloomGamekitRollback',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',transport:'BloomGamekitTransport'};
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const modules=Object.entries(namespaces).map(([name,globalName])=>{
   const bytes=fs.readFileSync(path.join(root,'vendor/upstream',name+'.js'));
   return{name,globalName,url:`https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@${lock.distCommit}/${name}.js`,bytes:bytes.length,sha256:sha(bytes)};
 });
 const gameBytes=readCanonicalTextAsset(path.join(root,'src/game.js')),bootstrap=readCanonicalTextAsset(path.join(root,'src/bootstrap.js'));
-const manifest={schemaVersion:1,sourceCommit:lock.sourceCommit,distCommit:lock.distCommit,modules,game:{file:'src/game.js',bytes:gameBytes.length,sha256:sha(gameBytes)},bootstrap:{file:'src/bootstrap.js',bytes:bootstrap.length,sha256:sha(bootstrap)}};
+const vectorAssets=require('./vector-sources.cjs').validateVectorSources(root);
+const manifest={vectorAssets,schemaVersion:1,sourceCommit:lock.sourceCommit,distCommit:lock.distCommit,modules,game:{file:'src/game.js',bytes:gameBytes.length,sha256:sha(gameBytes)},bootstrap:{file:'src/bootstrap.js',bytes:bootstrap.length,sha256:sha(bootstrap)}};
 const scopeFile=path.join(root,'src/scope.js');
 if(fs.existsSync(scopeFile)){const bytes=readCanonicalTextAsset(scopeFile);manifest.scope={file:'src/scope.js',bytes:bytes.length,sha256:sha(bytes)}}
 let html=fs.readFileSync(path.join(root,'index.html'),'utf8').replace(/\r\n/g,'\n');

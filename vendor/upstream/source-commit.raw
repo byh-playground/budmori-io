@@ -1,26 +1,27 @@
-tree 1c287bba54529ad9b7f44e5934edb7a056402668
-parent c6ed3685cdad35dbe65fb99a1b6e1297c9c60ce4
-parent 268424a530b7084c0939e3508424ea7d92c66f8f
-author byh020907 <byh020907@naver.com> 1792061213 +0900
-committer GitHub <noreply@github.com> 1792061213 +0900
+tree 9c72e1808554a9b790a6d13504a98ea9dbf975e0
+parent 52b7b50075a638e67ddba1e390d4920d2a9e6a5f
+author byh020907 <byh020907@naver.com> 1792155273 +0900
+committer GitHub <noreply@github.com> 1792155273 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq0K8dCRC1aQ7uu5UhlAAAs28QAEB8tLbMLSWCdCcaOhNmrlmL
- YKRBsJqKx7QP5FsRDfcfdcp5aYSqNlEOMWOKIqWgmCzeLtZw3GmrQeWaIqqtBnJm
- MuZZsY0RwQHwVu/pv3YUVwSxPcrKLWmb7h7w50dmGRsoxmAdqKjPEIAbtNXNOK+i
- OJTnTWZf3/H+emMn5K81OkfiDNEdOt1WoS3F1oj/lpULZ/ac00v2FqPTmQt49khh
- dHVjcdF0ovL0NsKW2Be0erDa6gKXWXY5J9C7pRn8Qh6ypBExQZR0cvj2rVZRoynG
- 6FNKssDRSDUhw+iVlUaXGty24MLhKEoIQank8KWCEbzA6EQ1GHbjDp26F1tOpN8p
- QjKuKbYBovT6/hUQIiLpvPpgpiAXS+7IN7aad3CUTymQXtBxTztBO88ZnXh8wCoA
- woiybwAfTrEKO+thzPfQs3QwkR2P7nGZJMWA6JlgjL1C7W7Q0fn0SKg22IuJVfkC
- RMmAZcpJaO/pmMjVDdPLkuo1Jf/alQqLs6wp37kLYfgDWL9dCaTx8Dm8CyBWuUui
- lDoKbfNdIAeyeE17puiP9tFHFHC0xgFeOIG0lM2HlUl1VG2CVENxds/IDg3xa8mO
- GedApYf3delUq4r98n/3zeut0FCTnJvc90maKTbbuOwd7rTtOAzrNMmB5JlRSj4C
- C5Xk9KO1zeizOzUCz3Xx
- =ICS5
+ wsFcBAABCAAQBQJq0h6JCRC1aQ7uu5UhlAAAiUcQAJeP9yFdDmEbh/4xPuXiB1lG
+ o3/XV+wr0KwHdvvVzKGQ8Ezs2b3gPheF+I9OCJaH7AqjcnRre4ZHxESodjyoP5yS
+ g1PmZ7FWKVl7JGGNxtQM45BqYgdNx2r50/MIA1jOMlyQQd6rbarObzUlV2mLcXs3
+ +MAHV80bBrP6K2OoEFSEVH7iaEqevgEbKwPw7aLYK387dDHYwa/3rwQdMj3NEm49
+ EOlaM87B9KkeUt6Lp6aAXkywPXeaUpWBAMjlNIA1A62Mq8yt7i4RZbpO6Kxm+FUD
+ vZlCv+NjHHlE+/HGbNw0WNWeQHjjuMSAXBFp5DdmhZeOTDvPL94pNFX3Dco2MIZB
+ UiMXviP++TIdHCL514o8A35ZKFDEem/RNdKm/pZLtsm3zg48AEwvjMPz7yaT9WJd
+ Zp9IyR+B4iCKLmqgX6cIth1MzY/LPK9hux4JVXx+oo1xI1h1kNzCmide8ckVER1w
+ 09vSzBFaDjDqdGT3+06+bNkUtRyUnALW6ZvqLjslNJosnWHROO7QshEkCFshOX+W
+ MT6WWadnuw1AHQp4fiLpLp4U6RGNwrxCWXqyRlz1Dc87wzA8rR//x+UAIi2+lTmy
+ WOt19mvHCDBUdScvOaqvmLjKVxJapOMGZRlCwuARe6s+kP7GAD8k3J4P+5ckrQJJ
+ OFZVYTl/xrCwtPvSyrw7
+ =FoPA
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #54 from byh-playground/codex/svg-vector-assets-ssot
+브라우저 SVG 시작 로더 추가 (#77)
 
-feat: add SVG single-source vector asset module
+원본 SVG의 시작 시점 검증·컴파일·캐시를 위한 독립 브라우저 API를 추가하고, Node/browser compiler core를 공유합니다.
+
+CI의 실제 Chromium/WebGL 브라우저 검사에서 SHA-256 검증, 동시 로드 캐시, Node/browser geometry 일치와 렌더를 확인했습니다.
