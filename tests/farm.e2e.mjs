@@ -47,6 +47,17 @@ async function unlockAbilityFlow(p){
 }
 async function core(){
  const c=await browser.newContext({viewport:{width:1280,height:800}}),p=await open(c);
+ await p.waitForFunction(()=>!document.getElementById('bloom-module-loading'));
+ await p.evaluate(()=>{
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__startupDiagnostics=text}}});
+  window.dispatchEvent(new ErrorEvent('error',{message:'diagnostic-probe',error:new Error('diagnostic-probe')}));
+ });
+ await p.locator('#bloom-diagnostic-copy').click();await p.waitForFunction(()=>typeof window.__startupDiagnostics==='string');
+ const startupDiagnostics=JSON.parse(await p.evaluate(()=>window.__startupDiagnostics));
+ assert.equal(startupDiagnostics.format,'budmori startup diagnostics v1');assert.equal(startupDiagnostics.app.version.split(' ')[0],PRODUCT_VERSION);
+ assert(startupDiagnostics.diagnostics.errors.some(error=>error.kind==='global-error'&&error.message==='diagnostic-probe'),'GameKit global diagnostics retain the startup/global error');
+ assert(startupDiagnostics.recentInputs.some(input=>input.type==='click'&&input.target?.id==='bloom-diagnostic-copy'),'bounded input trace records the diagnostic button tap without form data');
+ check('Startup diagnostics use the pinned GameKit error ring and copy a redacted bounded input trace');
  await p.locator('#newGame').click();await p.evaluate(()=>{const seed=4463;BUDMORI.sim.seed=seed;BUDMORI.sim.rng=new BloomGamekitDeterministic.SeededPRNG(seed)});await p.waitForFunction(()=>BUDMORI.runtime.tick>5);assert.equal(await p.locator('#startScreen').isVisible(),false);
  const menuContract=await p.evaluate(()=>({utility:[...document.querySelectorAll('.utility button')].map(button=>button.id),label:document.querySelector('#gameMenu')?.getAttribute('aria-label'),tabs:[...document.querySelectorAll('#gameMenuTabs [role="tab"]')].map(button=>button.textContent.trim()),roles:!!document.querySelector('#roles'),essentials:['feed','raidControls','raidRemaining','bossbar','allyHealth','bossHealth'].every(id=>!!document.getElementById(id))}));
  assert.deepEqual(menuContract.utility,['gameMenu'],'only one conventional gear button remains in the utility menu');assert.equal(menuContract.label,'게임 설정 열기');assert.deepEqual(menuContract.tabs,['플레이','성장','특수 능력','도움말']);assert.equal(menuContract.roles,false,'troop-role explainer is removed from the battle map');assert(menuContract.essentials,'feed, deploy status and both HP indicators remain available');
