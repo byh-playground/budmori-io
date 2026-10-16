@@ -15,7 +15,7 @@ import {settleBossKill} from './boss-rewards.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
 let networkTimer=null,observedWorld=null;
 let imported=null,importedLegacy=false;
-let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,treePause=false,abilityPause=false,dropPointer=null,dropTimer=null;
+let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,menuOpen=false,menuTab='play',menuWasPaused=true,menuPauseChanged=false,menuAutoPaused=false,dropPointer=null,dropTimer=null;
 const renderer=new Diorama($('world'));
 const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
 function measureFrame(now){if(lastFrameTimestamp!==null){measuredFrames.push(now-lastFrameTimestamp);if(measuredFrames.length>240)measuredFrames.shift()}lastFrameTimestamp=now;frameCount++}
@@ -41,9 +41,8 @@ function refreshStart(){
  $('importSave').disabled=!!room||!!attempt;$('newGame').disabled=!!attempt;
 }
 function setHome(value,push=true){
- if(value)persist();home=value;document.body.dataset.home=String(value);$('startScreen').hidden=!value;
+ if(value){persist();if(menuOpen)closeMenu(false)}home=value;document.body.dataset.home=String(value);$('startScreen').hidden=!value;
  if(!room)active.paused=value;
- $('treePanel').hidden=true;$('helpPanel').hidden=true;$('abilityPanel').hidden=true;
  if(push)history.pushState(null,'',value?'#/':active.world.scene==='raid'?'#/raid':'#/farm');
  refreshStart();if(value)$('continueGame').focus();
 }
@@ -98,7 +97,6 @@ $('newGame').onclick=()=>{
 };
 $('confirmNew').onclick=()=>{if(room||attempt)return;const world=new Garden();if(storage.replace(world)){autosave.reset();$('newConfirm').hidden=true;start(world)}else refreshStart()};
 $('cancelNew').onclick=()=>{$('newConfirm').hidden=true};
-$('home').onclick=()=>setHome(true);
 $('exportSave').onclick=()=>{const raw=storage.raw||storage.legacyRaw;if(!raw)return;const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='budmori-save-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('exportLegacySave').onclick=()=>{const raw=storage.legacyBackup?.raw;if(!raw)return;const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='budmori-legacy-save-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('importSave').onclick=()=>$('saveFile').click();
@@ -122,7 +120,7 @@ for(const value of ['breed','merge'])$(value).onclick=()=>active.queue('mode',{v
 $('feed').addEventListener('keydown',e=>{if(e.repeat&&['Enter',' '].includes(e.key))e.preventDefault()});
 $('feed').onclick=e=>{if(e.detail===0&&!e.pointerType)requestFeed()};
 $('speed').onclick=()=>active.queue('speed',{value:active.speed===1?4:1});
-$('pause').onclick=()=>{if(room)return;active.paused=!active.paused;if(active.paused)persist()};
+$('pause').onclick=()=>{if(room)return;menuPauseChanged=true;active.paused=!active.paused;if(active.paused)persist();else if(menuOpen)closeMenu()};
 function drawTree(){
  const w=personalGarden||active.world,inCombat=w.running||w.farmBossEvent?.phase!=='idle';
  $('treeNodes').innerHTML=renderFarmUpgradeTreeMarkup(w.playerProgression,{location:w.scene,inCombat});
@@ -134,25 +132,76 @@ function drawAbilityTree(){
  for(const button of $('abilitySpeciesTabs').querySelectorAll('[data-ability-species]'))button.setAttribute('aria-pressed',String(Number(button.dataset.abilitySpecies)===selectedSpecies));
  $('abilityNodes').innerHTML=renderAbilityTreeMarkup(w.playerProgression,{highestSpeciesTier:w.highestSpeciesTiers(),location:w.scene,inCombat,selectedSpecies});
 }
-function panel(id,open,push=true){
- if(open){if($('treePanel').hidden&&$('helpPanel').hidden&&$('abilityPanel').hidden)treePause=active.paused;if(!room){active.paused=true;persist()}$('treePanel').hidden=id!=='treePanel';$('helpPanel').hidden=id!=='helpPanel';$('abilityPanel').hidden=true;if(id==='treePanel')drawTree();$(id).querySelector('button').focus()}
- else{$(id).hidden=true;if(!room&&$('treePanel').hidden&&$('helpPanel').hidden&&$('abilityPanel').hidden)active.paused=treePause;$(id==='treePanel'?'tree':'help').focus()}
- $('tree').setAttribute('aria-expanded',!$('treePanel').hidden);$('help').setAttribute('aria-expanded',!$('helpPanel').hidden);$('abilities').setAttribute('aria-expanded',!$('abilityPanel').hidden);
- if(push)history.pushState(null,'',open?id==='treePanel'?'#/growth':'#/help':active.world.scene==='raid'?'#/raid':'#/farm');
+const menuRoutes={play:'#/menu',growth:'#/growth',abilities:'#/abilities',help:'#/help'};
+const routeMenuTab=route=>route==='#/growth'?'growth':route==='#/abilities'?'abilities':route==='#/help'?'help':'play';
+function applyMenuTab(tab){
+ menuTab=tab;
+ for(const button of $('gameMenuTabs').querySelectorAll('[data-menu-tab]')){
+  const selected=button.dataset.menuTab===tab;
+  button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
+ }
+ for(const [name,id] of [['play','menuPlayPanel'],['growth','treePanel'],['abilities','abilityPanel'],['help','helpPanel']])$(id).hidden=name!==tab;
+ if(tab==='growth')drawTree();else if(tab==='abilities')drawAbilityTree();
 }
-function showAbilityPanel(open,push=true){
- if(open){if(active.world.scene==='raid')return;if($('treePanel').hidden&&$('helpPanel').hidden&&$('abilityPanel').hidden)abilityPause=active.paused;if(!room){active.paused=true;persist()}$('treePanel').hidden=true;$('helpPanel').hidden=true;$('abilityPanel').hidden=false;drawAbilityTree();$('abilityClose').focus()}
- else{$('abilityPanel').hidden=true;if(!room)active.paused=abilityPause;$('abilities').focus()}
- $('abilities').setAttribute('aria-expanded',!$('abilityPanel').hidden);$('tree').setAttribute('aria-expanded',!$('treePanel').hidden);$('help').setAttribute('aria-expanded',!$('helpPanel').hidden);
- if(push)history.pushState(null,'',open?'#/abilities':active.world.scene==='raid'?'#/raid':'#/farm');
+function syncMenuPause(tab){
+ if(room)return;
+ if(tab==='play'){
+  if(menuAutoPaused&&!menuPauseChanged)active.paused=menuWasPaused;
+  menuAutoPaused=false;
+  return;
+ }
+ if(!menuAutoPaused)menuWasPaused=active.paused;
+ menuAutoPaused=true;
+ if(!active.paused){active.paused=true;persist()}
 }
-$('tree').onclick=()=>panel('treePanel',true);$('treeClose').onclick=()=>panel('treePanel',false);$('help').onclick=()=>panel('helpPanel',$('helpPanel').hidden);$('closeHelp').onclick=()=>panel('helpPanel',false);
+function openMenu(tab='play',push=true){
+ if(!menuOpen){menuWasPaused=active.paused;menuPauseChanged=false;menuAutoPaused=false;menuOpen=true;$('gameMenuOverlay').hidden=false;$('gameMenu').setAttribute('aria-expanded','true')}
+ syncMenuPause(tab);
+ applyMenuTab(tab);
+ if(push)history.pushState(null,'',menuRoutes[tab]||menuRoutes.play);
+ $('gameMenuTabs').querySelector(`[data-menu-tab="${tab}"]`)?.focus();
+}
+function switchMenuTab(tab,push=true){
+ if(!['play','growth','abilities','help'].includes(tab))return;
+ if(!menuOpen){openMenu(tab,push);return}
+ if(menuTab===tab)return;
+ syncMenuPause(tab);
+ applyMenuTab(tab);
+ if(push)history.pushState(null,'',menuRoutes[tab]);
+}
+function closeMenu(push=true){
+ if(!menuOpen)return;
+ menuOpen=false;$('gameMenuOverlay').hidden=true;$('gameMenu').setAttribute('aria-expanded','false');
+ if(!room&&menuAutoPaused&&!menuPauseChanged)active.paused=menuWasPaused;
+ menuPauseChanged=false;menuAutoPaused=false;
+ if(push)history.pushState(null,'',active.world.scene==='raid'?'#/raid':'#/farm');
+ $('gameMenu').focus();
+}
+$('gameMenu').onclick=()=>menuOpen?closeMenu():openMenu();
+$('gameMenuClose').onclick=()=>closeMenu();
+$('menuHome').onclick=()=>{closeMenu(false);setHome(true)};
+$('gameMenuTabs').onclick=e=>{const button=e.target.closest('[data-menu-tab]');if(button&&!button.disabled)switchMenuTab(button.dataset.menuTab)};
+$('gameMenuTabs').onkeydown=e=>{
+ const buttons=[...$('gameMenuTabs').querySelectorAll('[role="tab"]:not(:disabled)')],index=buttons.indexOf(document.activeElement);
+ let next=index;
+ if(e.key==='ArrowRight')next=(index+1)%buttons.length;else if(e.key==='ArrowLeft')next=(index-1+buttons.length)%buttons.length;else if(e.key==='Home')next=0;else if(e.key==='End')next=buttons.length-1;else return;
+ e.preventDefault();buttons[next]?.focus();if(buttons[next])switchMenuTab(buttons[next].dataset.menuTab);
+};
+const gameMenuOverlay=$('gameMenuOverlay'),closeMenuFromBackdrop=e=>{if(e.target===gameMenuOverlay)closeMenu()};
+gameMenuOverlay.addEventListener('pointerdown',closeMenuFromBackdrop);
+gameMenuOverlay.addEventListener('click',closeMenuFromBackdrop);
 $('treeNodes').onclick=e=>{const b=e.target.closest('[data-progression-farm-node]');if(b){active.queue('progression-invest',{scope:'farm',nodeId:b.dataset.progressionFarmNode});setTimeout(drawTree,180)}};
-$('abilities').onclick=()=>showAbilityPanel(true);$('abilityClose').onclick=()=>showAbilityPanel(false);
 $('abilitySpeciesTabs').onclick=e=>{const button=e.target.closest('[data-ability-species]');if(!button)return;$('abilityPanel').dataset.selectedSpecies=button.dataset.abilitySpecies;drawAbilityTree()};
 $('abilityNodes').onclick=e=>{const button=e.target.closest('button[data-ability-action],button[data-ability-node]');if(!button||button.getAttribute('aria-disabled')==='true')return;if(button.dataset.abilityAction==='reset')active.queue('ability-reset');else if(button.dataset.abilityNode){const [abilityId,kind,level]=button.dataset.abilityNode.split(':');const nodeId=kind==='root'?'root':`${kind}-${level}`;active.queue('progression-invest',{scope:'ability',abilityId,nodeId})}setTimeout(drawAbilityTree,180)};
-$('treePanel').onkeydown=e=>{if(e.key==='Tab'){const f=[...$('treePanel').querySelectorAll('button:not(:disabled)')],i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0||!e.shiftKey&&i===f.length-1){e.preventDefault();f[e.shiftKey?f.length-1:0].focus()}}};
-$('abilityPanel').onkeydown=e=>{if(e.key==='Tab'){const f=[...$('abilityPanel').querySelectorAll('button:not([aria-disabled="true"])')],i=f.indexOf(document.activeElement);if(e.shiftKey&&i<=0||!e.shiftKey&&i===f.length-1){e.preventDefault();f[e.shiftKey?f.length-1:0].focus()}}};
+function focusableMenuButtons(){return[...$('gameMenuPanel').querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter(button=>button.getClientRects().length>0)}
+$('gameMenuPanel').onkeydown=e=>{
+ if(e.key==='Escape'){e.preventDefault();closeMenu();return}
+ if(e.key!=='Tab')return;
+ const buttons=focusableMenuButtons();if(!buttons.length)return;
+ const first=buttons[0],last=buttons.at(-1);
+ if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+ else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+};
 const canvas=$('world');
 function deploymentHud(){const w=active.world,raid=w.scene==='raid',roster=w.raidRoster(active.localPlayerId),registered=w.raidRosters.length,expected=w.raidExpectedPlayers.length,remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,queued=roster?Math.max(0,active.localDeploySequence-roster.lastDeploySequence):0;
  $('raidRemaining').textContent=room&&active.players.length<2?'동료가 들어오기를 기다리는 중…':!roster||registered<expected?`병력 명단 동기화 중 · ${registered}/${expected}명`:`남은 병력 ${Math.max(0,remaining-queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`;
@@ -166,15 +215,28 @@ canvas.addEventListener('pointermove',updateDropPointer);canvas.addEventListener
 window.addEventListener('pointerup',e=>stopDrop(e),true);window.addEventListener('pointercancel',e=>stopDrop(e),true);
 $('buff').onclick=()=>active.queue('buff');
 window.addEventListener('blur',()=>{stopDrop();persist()});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopDrop();persist();active.loop.resetTiming()}});
-window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('treePanel').hidden)panel('treePanel',false);else if(!$('helpPanel').hidden)panel('helpPanel',false);else if(!$('abilityPanel').hidden)showAbilityPanel(false)}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&menuOpen){e.preventDefault();closeMenu()}});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});
 window.addEventListener('resize',()=>renderer.resize());window.addEventListener('pagehide',()=>{persist();clearInterval(networkTimer);attempt?.abort();room?.close();active.dispose();renderer.dispose()});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();persist();fail(Error('그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요.'))});
-function route(){const r=location.hash;if(r==='#/'||!r){setHome(true,false);return}if(!room&&storage.hasReservedRaid){setHome(true,false);history.replaceState(null,'','#/');return}if(home){if(!room&&storage.error&&!storage.hasWorld){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.hasWorld)start(restore(snapshot(storage.world)),false);else start(new Garden(),false)}if(r==='#/help'||r==='#/growth')panel(r==='#/help'?'helpPanel':'treePanel',true,false);else if(r==='#/abilities')showAbilityPanel(true,false);else{if(!$('treePanel').hidden)panel('treePanel',false,false);if(!$('helpPanel').hidden)panel('helpPanel',false,false);if(!$('abilityPanel').hidden){$('abilityPanel').hidden=true;if(!room)active.paused=abilityPause}$('abilities').setAttribute('aria-expanded','false');if(r==='#/raid'){if(!room&&personalGarden?.farmBossEvent?.phase!=='idle'){history.replaceState(null,'','#/farm')}else if(!room)beginRaid(false)}else if(r==='#/farm'&&active.world.scene==='raid'&&!room)returnToFarm(false)}}
+function route(){
+ const r=location.hash;
+ if(r==='#/'||!r){if(menuOpen)closeMenu(false);setHome(true,false);return}
+ if(!room&&storage.hasReservedRaid&&active.world.scene!=='raid'){if(menuOpen)closeMenu(false);setHome(true,false);history.replaceState(null,'','#/');return}
+ if(home){if(!room&&storage.error&&!storage.hasWorld){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.hasWorld)start(restore(snapshot(storage.world)),false);else start(new Garden(),false)}
+ if(r==='#/help'||r==='#/growth'||r==='#/abilities'||r==='#/menu'){
+  const raid=active.world.scene==='raid',farmEventActive=!raid&&personalGarden?.farmBossEvent?.phase!=='idle';
+  const restricted=r==='#/growth'&&(raid||farmEventActive)||r==='#/abilities'&&(raid||!personalGarden);
+  if(restricted){if(menuOpen)closeMenu(false);history.replaceState(null,'',raid?'#/raid':'#/farm');return}
+  openMenu(routeMenuTab(r),false);return
+ }
+ if(menuOpen)closeMenu(false);
+ if(r==='#/raid'){if(!room&&personalGarden?.farmBossEvent?.phase!=='idle'){history.replaceState(null,'','#/farm')}else if(!room)beginRaid(false)}else if(r==='#/farm'&&active.world.scene==='raid'&&!room)returnToFarm(false)
+}
 window.addEventListener('popstate',route);
 function sync(display,now){
  const w=active.world,raid=display.scene==='raid',farmEvent=display.farmBossEvent,farmEventActive=!raid&&farmEvent?.phase!=='idle',battleHud=raid||farmEventActive,hasReadyTroops=personalGarden?hasRaidRosterEntries(personalGarden.units):false,rewardWorld=personalGarden||w,pendingRewardCount=rewardWorld.bossRewardReceipts.filter(reward=>reward.status==='pending').length;for(const [id,value]of [['farm',!raid],['raid',raid],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
- $('farmControls').hidden=raid||farmEventActive||home;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!battleHud||home;$('roles').hidden=!battleHud||home;$('raid').disabled=farmEventActive;
+ $('farmControls').hidden=raid||farmEventActive||home;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!battleHud||home;$('raid').disabled=farmEventActive;
  $('count').textContent=raid?(w.raidRoster(active.localPlayerId)?.troops.length??personalGarden?.units.length??0):display.units.filter(unit=>!unit.isBattleOnlySummon).length;$('capacity').textContent=personalGarden?.capacity??CONFIG.cap;$('starter').textContent=raid?`${w.units.length} deployed in raid`:pendingRewardCount?'밤톨 보상 대기 · 공간이 생기면 합류해요':!hasReadyTroops?'모두 휴식 중 · 회복까지 기다려 주세요':w.units.filter(unit=>!unit.isBattleOnlySummon).length>=w.capacity?'정원이 가득 찼어요':'번식으로 식구를 늘려요';
  const army=display.units.reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(u.maxHp,u.hp)),max:sum.max+u.maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0});
  $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
@@ -182,7 +244,7 @@ function sync(display,now){
  const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome;
  $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';$('bossHealthNote').textContent=farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP · 증원 시 함께 증가';
  for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
- $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?'보스가 쓰러졌어요 · 밤톨이 합류했어요':farmEvent.rewardStatus==='pending'?'밤톨 획득 대기 · 공간이 생기면 합류해요':'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('tree').disabled=raid||farmEventActive;$('abilities').disabled=raid||!personalGarden;$('raid').disabled=farmEventActive||(!raid&&!hasReadyTroops);$('pause').textContent=active.paused?'▶':'Ⅱ';
+ $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?'보스가 쓰러졌어요 · 밤톨이 합류했어요':farmEvent.rewardStatus==='pending'?'밤톨 획득 대기 · 공간이 생기면 합류해요':'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('pause').textContent=active.paused?'계속하기':'일시 정지';$('pause').setAttribute('aria-label',active.paused?'계속하기':'일시 정지');$('pause').setAttribute('aria-pressed',String(active.paused));$('menuTabGrowth').disabled=raid||farmEventActive;$('menuTabAbilities').disabled=raid||!personalGarden;$('raid').disabled=farmEventActive||(!raid&&!hasReadyTroops);
  $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;
  for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
  if(observedWorld!==w){observedWorld=w;noticeSequence=w.eventSequence}

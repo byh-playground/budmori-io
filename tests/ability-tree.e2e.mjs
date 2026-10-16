@@ -45,6 +45,7 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base='http://127.0.0.1:'+server.address().port;
 let browser;
 let context;
+async function openMenuTab(page,tab){if(!(await page.locator('#gameMenuOverlay').isVisible()))await page.locator('#gameMenu').click();const button=page.locator(`[data-menu-tab=\"${tab}\"]`);if(await button.getAttribute('aria-selected')!=='true')await button.click()}
 try{
   const launchOptions={
     channel:process.env.BUDMORI_BROWSER_CHANNEL||'chromium',
@@ -97,11 +98,12 @@ try{
     };
   },abilityIds);
 
-  await page.locator('#abilities').click();
-  assert.equal(new URL(page.url()).hash,'#/abilities','Farm toolbar opens the ability tree route');
-  assert.equal(await page.locator('#abilityPanel').isVisible(),true,'ability tree dialog is visible');
-  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#abilityPanel')).zIndex==='31');
-  assert.equal(await page.locator('#abilityPanel').evaluate(el=>getComputedStyle(el).position),'fixed','the ability panel stylesheet is loaded above the Farm canvas');
+  await openMenuTab(page,'abilities');
+  assert.equal(new URL(page.url()).hash,'#/abilities','the consolidated menu opens the ability route');
+  assert.equal(await page.locator('#abilityPanel').isVisible(),true,'the special ability tab is visible');
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#gameMenuOverlay')).zIndex==='30');
+  assert.equal(await page.locator('#gameMenuOverlay').evaluate(el=>getComputedStyle(el).position),'fixed','the consolidated menu sits above the Farm canvas');
+  assert.equal(await page.locator('#abilityPanel').evaluate(el=>getComputedStyle(el).position),'static','special abilities remain inside the single shared menu');
   assert.equal(await page.locator('[data-ability-species]').count(),4,'Farm tree offers a selector for all four species');
   assert.equal(await page.locator('[data-ability]').count(),1,'Farm tree shows only the selected species abilities');
   for(const id of abilityIds){
@@ -233,22 +235,22 @@ try{
   assert.equal(await page.locator('[data-ability-node="corn-burst-fire:root"] .ability-node__title').textContent(),'능력 해금');
   assert.equal(await page.locator('[data-ability-node="corn-burst-fire:power:1"] .ability-node__title').textContent(),'3발 연사');
   const mobileBefore=await page.evaluate(()=>{
-    const panel=document.querySelector('#abilityPanel'),heading=panel.querySelector('.ability-panel__heading'),content=document.querySelector('#abilityNodes'),close=document.querySelector('#abilityClose'),rect=el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom}};
+    const panel=document.querySelector('#abilityPanel'),heading=panel.querySelector('.ability-panel__heading'),content=document.querySelector('#abilityNodes'),close=document.querySelector('#gameMenuClose'),rect=el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom}};
     content.scrollTop=0;
     return{viewport:[innerWidth,innerHeight],body:[document.documentElement.scrollHeight,document.documentElement.clientHeight,document.body.scrollHeight,document.body.clientHeight],panel:rect(panel),heading:rect(heading),content:rect(content),contentScroll:[content.scrollHeight,content.clientHeight],close:rect(close)};
   });
   assert.deepEqual(mobileBefore.viewport,[390,844]);
   assert(mobileBefore.body.every(value=>value<=844),'mobile page and body do not scroll outside the ability panel');
   assert(mobileBefore.contentScroll[0]>mobileBefore.contentScroll[1],'selected species content scrolls inside its panel');
-  assert(mobileBefore.close.y>=0&&mobileBefore.close.bottom<=844,'close control remains visible in the fixed panel header');
+  assert(mobileBefore.close.y>=0&&mobileBefore.close.bottom<=844,'shared menu close control remains visible in the fixed header');
   await page.locator('#abilityNodes').evaluate(el=>{el.scrollTop=el.scrollHeight});
   const mobileAfter=await page.evaluate(()=>{
-    const panel=document.querySelector('#abilityPanel'),heading=panel.querySelector('.ability-panel__heading'),content=document.querySelector('#abilityNodes'),close=document.querySelector('#abilityClose'),rect=el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom}};
+    const panel=document.querySelector('#abilityPanel'),heading=panel.querySelector('.ability-panel__heading'),content=document.querySelector('#abilityNodes'),close=document.querySelector('#gameMenuClose'),rect=el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom}};
     return{heading:rect(heading),close:rect(close),scrollTop:content.scrollTop,content:rect(content)};
   });
   assert(mobileAfter.scrollTop>0,'swiping/scrolling moves the ability list');
   assert.equal(mobileAfter.heading.y,mobileBefore.heading.y,'species selector and points stay fixed while the list scrolls');
-  assert.equal(mobileAfter.close.y,mobileBefore.close.y,'close button stays fixed while the list scrolls');
+  assert.equal(mobileAfter.close.y,mobileBefore.close.y,'shared menu close button stays fixed while the list scrolls');
   assert.equal(mobileAfter.content.y,mobileBefore.content.y,'scroll is confined to the list, not the page');
   await page.locator('#abilityNodes').evaluate(el=>{el.scrollTop=0});
   await page.evaluate(()=>new Promise(requestAnimationFrame));
