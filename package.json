@@ -9,6 +9,7 @@
     "test:progression": "node tests/farm-progression-unit.mjs",
     "test:browser": "node scripts/test-scenarios.mjs core",
     "test:browser:save": "node scripts/test-scenarios.mjs save",
+    "test:browser:victory": "node scripts/test-scenarios.mjs victory",
     "test:browser:multiplayer": "node scripts/test-scenarios.mjs network",
     "test:vector-assets": "node tests/vector-assets.e2e.mjs",
     "test:hungry-expression": "node tests/hungry-expression.e2e.mjs",
