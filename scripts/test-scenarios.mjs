@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const suites = { all:['core','save','network'],core:['core'],save:['save'],network:['network'] };
+const suites = { all:['core','save','network'],core:['core'],save:['save'],network:['network'],victory:['victory'] };
 const suite = process.argv[2] ?? 'all';
 const scenarios = suites[suite];
 if (!scenarios) throw new Error('Unknown scenario suite: ' + suite);
