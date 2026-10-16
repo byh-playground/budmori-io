@@ -3485,7 +3485,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.2";
+      PRODUCT_VERSION = "0.7.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -5932,8 +5932,8 @@
     $2("battleOutcome").hidden = home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle";
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
-    $2("tree").disabled = raid || farmEventActive;
-    $2("abilities").disabled = raid || !personalGarden;
+    $2("menuTabGrowth").disabled = raid || farmEventActive;
+    $2("menuTabAbilities").disabled = raid || !personalGarden;
     $2("raid").disabled = farmEventActive || !raid && !hasReadyTroops;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
@@ -5955,13 +5955,18 @@
     $2("connection").textContent = room ? active.session.failure ? "연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요" : `함께 ${active.players.length}명 · ${active.session.ready ? "연결됨" : "동기화 중"}` : "";
   }
   function frame(now) {
-    measureFrame(now);
-    if (room || !home && !document.hidden) active.pulse(now);
-    const display = active.presentation(now);
-    combatFeel.observe(active.world, display.displayTimeMs, display.presentationRevision);
-    renderer.render(display, combatFeel, display.displayTimeMs);
-    sync(display, now);
-    requestAnimationFrame(frame);
+    try {
+      measureFrame(now);
+      if (room || !home && !document.hidden) active.pulse(now);
+      const display = active.presentation(now);
+      combatFeel.observe(active.world, display.displayTimeMs, display.presentationRevision);
+      renderer.render(display, combatFeel, display.displayTimeMs);
+      sync(display, now);
+      requestAnimationFrame(frame);
+    } catch (error) {
+      if (typeof globalThis.BloomReportRuntimeFatal === "function") globalThis.BloomReportRuntimeFatal(error);
+      else console.error("Farm render loop stopped", error);
+    }
   }
   $2("productVersion").textContent = PRODUCT_VERSION;
   $2("startVersion").textContent = PRODUCT_VERSION + " · 여섯 등급과 합체 확장";

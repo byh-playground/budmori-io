@@ -48,10 +48,13 @@ async function unlockAbilityFlow(p){
 async function core(){
  const c=await browser.newContext({viewport:{width:1280,height:800}}),p=await open(c);
  await p.waitForFunction(()=>!document.getElementById('bloom-module-loading'));
+ assert.equal(await p.locator('#bloom-error-popup').isVisible(),false,'diagnostics stay hidden during normal play');
  await p.evaluate(()=>{
   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__startupDiagnostics=text}}});
   window.dispatchEvent(new ErrorEvent('error',{message:'diagnostic-probe',error:new Error('diagnostic-probe')}));
+  window.BloomReportRuntimeFatal(new Error('diagnostic-probe'));
  });
+ assert.equal(await p.locator('#bloom-error-popup').isVisible(),true,'blocking runtime failure opens the isolated diagnostic popup');
  await p.locator('#bloom-diagnostic-copy').click();await p.waitForFunction(()=>typeof window.__startupDiagnostics==='string');
  const startupDiagnostics=JSON.parse(await p.evaluate(()=>window.__startupDiagnostics));
  assert.equal(startupDiagnostics.format,'budmori startup diagnostics v1');assert.equal(startupDiagnostics.app.version.split(' ')[0],PRODUCT_VERSION);

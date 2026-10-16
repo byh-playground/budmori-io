@@ -18,25 +18,53 @@ retry.hidden = true;
 loading.append(label, retry);
 document.body.append(loading);
 
+const errorPopup = document.createElement('div');
+errorPopup.id = 'bloom-error-popup';
+errorPopup.hidden = true;
+errorPopup.setAttribute('role', 'alertdialog');
+errorPopup.setAttribute('aria-modal', 'true');
+errorPopup.setAttribute('aria-labelledby', 'bloom-error-title');
+errorPopup.style.cssText = 'position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:20px;background:#101b18cc;font:16px system-ui;color:#183225';
+const errorPanel = document.createElement('section');
+errorPanel.style.cssText = 'width:min(100%,420px);max-height:90dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:#f9faee;box-shadow:0 12px 40px #0006';
+const errorTitle = document.createElement('h2');
+errorTitle.id = 'bloom-error-title';
+errorTitle.textContent = '게임이 오류로 중단됐어요';
+const errorMessage = document.createElement('p');
+errorMessage.textContent = '진단 정보를 복사해 알려 주시거나 새로고침해 주세요.';
 const diagnosticButton = document.createElement('button');
 diagnosticButton.id = 'bloom-diagnostic-copy';
 diagnosticButton.type = 'button';
 diagnosticButton.textContent = '진단 복사';
-diagnosticButton.setAttribute('aria-label', '오류 및 최근 입력 진단 정보 복사');
-diagnosticButton.style.cssText = 'position:fixed;left:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:1001;min-width:48px;min-height:44px;padding:0 12px;border:0;border-radius:16px;background:#f9faeedd;color:#33483b;font:600 12px system-ui;box-shadow:0 3px 12px #0003;touch-action:manipulation;-webkit-tap-highlight-color:transparent';
+diagnosticButton.style.cssText = 'min-height:48px;padding:0 16px;border:0;border-radius:12px;background:#315b40;color:#fff;font:600 16px system-ui;touch-action:manipulation';
+const reloadButton = document.createElement('button');
+reloadButton.type = 'button';
+reloadButton.textContent = '새로고침';
+reloadButton.style.cssText = 'min-height:48px;margin-left:8px;padding:0 16px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#183225;font:600 16px system-ui;touch-action:manipulation';
 const diagnosticText = document.createElement('textarea');
 diagnosticText.id = 'bloom-diagnostic-text';
 diagnosticText.readOnly = true;
 diagnosticText.setAttribute('aria-label', '진단 정보 복사 결과');
 diagnosticText.hidden = true;
-diagnosticText.style.cssText = 'position:fixed;left:12px;right:12px;bottom:68px;z-index:1002;width:calc(100% - 24px);height:38vh;padding:12px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#111;font:12px/1.4 ui-monospace,monospace';
+diagnosticText.style.cssText = 'display:block;box-sizing:border-box;width:100%;height:30vh;margin-top:12px;padding:10px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#111;font:12px/1.4 ui-monospace,monospace';
 const diagnosticStatus = document.createElement('span');
 diagnosticStatus.id = 'bloom-diagnostic-status';
 diagnosticStatus.setAttribute('role', 'status');
 diagnosticStatus.setAttribute('aria-live', 'polite');
-diagnosticStatus.style.cssText = 'position:fixed;left:12px;bottom:62px;z-index:1002;max-width:calc(100% - 24px);padding:6px 10px;border-radius:8px;background:#183225;color:#ecf4d5;font:12px system-ui';
+diagnosticStatus.style.cssText = 'display:block;margin-top:10px;font:14px system-ui;color:#183225';
 diagnosticStatus.hidden = true;
-document.body.append(diagnosticButton, diagnosticText, diagnosticStatus);
+const errorActions = document.createElement('div');
+errorActions.append(diagnosticButton, reloadButton);
+errorPanel.append(errorTitle, errorMessage, errorActions, diagnosticStatus, diagnosticText);
+errorPopup.append(errorPanel);
+document.body.append(errorPopup);
+
+function showErrorPopup(message) {
+  if (message) errorMessage.textContent = message;
+  errorPopup.hidden = false;
+  diagnosticButton.focus();
+}
+reloadButton.addEventListener('click', () => location.reload());
 
 const earlyErrors = [];
 const recentInputs = [];
@@ -61,7 +89,7 @@ function recordDiagnostic(error, kind = 'startup-error', details = {}) {
       kind, origin: 'bootstrap', source,
       line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
       column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
-      cause: `stage=${initStage}`
+      cause: `stage=${initStage}`, fatal: details.fatal === true
     });
     return;
   }
@@ -77,9 +105,11 @@ function earlyError(event) {
   recordDiagnostic(event.error ?? event.message ?? 'Global error', 'global-error', {
     source: event.filename, line: event.lineno, column: event.colno
   });
+  if (initStage !== 'ready') showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
 }
 function earlyRejection(event) {
   recordDiagnostic(event.reason ?? 'Unhandled promise rejection', 'unhandled-rejection');
+  if (initStage !== 'ready') showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
 }
 window.addEventListener('error', earlyError, true);
 window.addEventListener('unhandledrejection', earlyRejection);
@@ -123,7 +153,7 @@ function diagnosticSnapshot() {
 }
 diagnosticButton.addEventListener('click', async () => {
   diagnosticStatus.hidden = false;
-  diagnosticText.hidden = false;
+  diagnosticText.hidden = true;
   const text = diagnosticSnapshot();
   try {
     const result = debugTools?.copyDiagnostic
@@ -131,14 +161,16 @@ diagnosticButton.addEventListener('click', async () => {
       : await (async () => {
           try {
             if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return { copied: true }; }
-          } catch {}
-          diagnosticText.value = text; diagnosticText.focus(); diagnosticText.select();
+          } catch (error) { recordDiagnostic(error, 'clipboard-copy-error'); }
           return { copied: false };
         })();
     if (result.copied) {
       diagnosticText.hidden = true;
       diagnosticStatus.textContent = '진단 정보가 복사됐어요';
     } else {
+      diagnosticText.value = result.text || text;
+      diagnosticText.hidden = false;
+      diagnosticText.focus(); diagnosticText.select();
       diagnosticStatus.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
     }
   } catch (error) {
@@ -160,6 +192,7 @@ try {
   label.textContent = '게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요';
   retry.textContent = '다시 불러오기';
   retry.hidden = false;
+  showErrorPopup('게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요.');
   console.error('Game manifest failed to initialize', error);
 }
 
@@ -196,7 +229,9 @@ async function enableGamekitDiagnostics(record) {
   });
   diagnosticRing = ring;
   debugTools = api;
-  ring.installGlobal(window);
+  ring.installGlobal(window, { onReport: () => {
+    if (initStage !== 'ready') showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+  } });
   removeEarlyDiagnostics();
   earlyErrors.length = 0;
 }
@@ -265,10 +300,17 @@ async function launch() {
     retry.textContent = gameScriptAttempted && !globalThis.BUDMORI ? '다시 불러오기' : '다시 시도';
     retry.hidden = false;
     console.error('Game startup failed at ' + initStage, error);
+    showErrorPopup('게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요.');
   } finally {
     pending = false;
   }
 }
+globalThis.BloomReportRuntimeFatal = error => {
+  initStage = 'runtime-frame';
+  recordDiagnostic(error, 'runtime-fatal', { fatal: true });
+  console.error('Farm render loop stopped', error);
+  showErrorPopup('게임이 오류로 중단됐어요. 진단 정보를 복사해 알려 주세요.');
+};
 retry.addEventListener('click', () => {
   if (!config || gameScriptAttempted && !globalThis.BUDMORI) location.reload();
   else void launch();
