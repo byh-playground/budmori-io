@@ -8,6 +8,7 @@ globalThis.BloomGamekitSimloop = await import('../vendor/upstream/simloop.js');
 const {FarmAutosave,FARM_AUTOSAVE_DEBOUNCE_MS,FARM_AUTOSAVE_MAX_WAIT_MS} = await import('../src/farm-autosave.js');
 const {Garden} = await import('../src/farm-model.js');
 const {FarmSession} = await import('../src/farm-session.js');
+const {awardBossKillXp} = await import('../src/player-progression.js');
 const {snapshot,restore,normalizeSnapshot,validateSnapshot} = await import('../src/farm-state.js');
 const {FarmStorage,validateSave} = await import('../src/farm-storage.js');
 
@@ -116,16 +117,27 @@ try {
   session.step({tick: 1, inputs: [{playerId: 'solo', commands: [{payload: feed}]}]});
   assert.equal(session.world.foodTaps.remainder, 1, 'a paused manual feed still applies');
   assert.equal(commandChanges.length, 2, 'a paused feed mutation marks the save dirty');
-  session.world.progress.records.eat = 12;
-  const invest = globalThis.BloomGamekitDeterministic.binaryCodec.encode({type: 'invest', id: 'food'});
-  session.step({tick: 2, inputs: [{playerId: 'solo', commands: [{payload: invest}]}]});
-  assert.equal(session.world.progress.levels.food, 1, 'a paused investment still applies');
-  assert.equal(commandChanges.length, 3, 'a paused investment mutation marks the save dirty');
+  session.world.playerProgression = awardBossKillXp(session.world.playerProgression, 'autosave:farm-upgrade').state;
+  session.world.playerProgression = awardBossKillXp(session.world.playerProgression, 'autosave:ability-upgrade').state;
+  session.world.playerProgression = awardBossKillXp(session.world.playerProgression, 'autosave:ability-upgrade-extra').state;
+  const investFarm = globalThis.BloomGamekitDeterministic.binaryCodec.encode({type: 'progression-invest', scope: 'farm', nodeId: 'food'});
+  session.step({tick: 2, inputs: [{playerId: 'solo', commands: [{payload: investFarm}]}]});
+  assert.equal(session.world.playerProgression.farmUpgrades.food, 1, 'a paused shared-wallet farm investment still applies');
+  assert.equal(commandChanges.length, 3, 'a successful paused investment marks the save dirty');
+  session.world.spawn(0, 3, 0, 0); // The pea ability root requires an available T3 species.
+  const investAbility = globalThis.BloomGamekitDeterministic.binaryCodec.encode({type: 'progression-invest', scope: 'ability', abilityId: 'pea-death-split', nodeId: 'root'});
+  session.step({tick: 3, inputs: [{playerId: 'solo', commands: [{payload: investAbility}]}]});
+  assert.equal(session.world.playerProgression.abilities['pea-death-split'].rootUnlocked, true, 'a paused ability purchase uses the same XP wallet');
+  assert.equal(commandChanges.length, 4, 'a successful paused ability purchase marks the save dirty');
+  const failedInvest = globalThis.BloomGamekitDeterministic.binaryCodec.encode({type: 'progression-invest', scope: 'farm', nodeId: 'growth'});
+  session.step({tick: 4, inputs: [{playerId: 'solo', commands: [{payload: failedInvest}]}]});
+  assert.equal(session.world.playerProgression.farmUpgrades.growth, 0, 'an unaffordable paused investment is rejected');
+  assert.equal(commandChanges.length, 4, 'a failed purchase does not mark the save dirty');
 
   session.queue('mode', {value: 'breed'});
   assert.equal(session.flushQueuedCommands(), true, 'lifecycle flush applies a queued command before persisting');
   assert.equal(session.world.mode, 'breed');
-  assert.equal(commandChanges.length, 4);
+  assert.equal(commandChanges.length, 5);
 } finally {
   session.dispose();
 }

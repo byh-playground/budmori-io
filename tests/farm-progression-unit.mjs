@@ -3,19 +3,41 @@ import {PRODUCT_VERSION} from '../src/version.js';
 
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 assert.equal(typeof globalThis.BloomGamekitDeterministic.SeededPRNG, 'function', 'use the pinned GameKit PRNG API');
-const {Garden, Unit, CONFIG, TREE_NODES} = await import('../src/farm-model.js');
+const {Garden, Unit, CONFIG, FARM_UPGRADE_NODES} = await import('../src/farm-model.js');
 const {snapshot, restore} = await import('../src/farm-state.js');
 const {parseSave, FarmStorage} = await import('../src/farm-storage.js');
 const {createPlayerProgressionState, isValidPlayerProgressionState, awardBossKillXp} = await import('../src/player-progression.js');
 const {UNIT_GRADES,mergeMaterialCostForTier} = await import('../src/unit-grades.js');
 const {resolveUnitStats} = await import('../src/unit-stats.js');
-
+const {purchaseAbilityNode,purchaseFarmUpgrade,renderFarmUpgradeTreeMarkup} = await import('../src/ability-tree.js');
+const {createAbilityRuntimeSnapshot,isValidAbilityRuntimeSnapshot} = await import('../src/ability-state.js');
+const {getAutoTapSeconds,getFarmCapacity,getMergeCooldownSeconds,farmUpgradeRate} = await import('../src/farm-upgrades.js');
 const noProgress = createPlayerProgressionState();
 assert.equal(isValidPlayerProgressionState(noProgress), true);
+assert.equal(getFarmCapacity(noProgress.farmUpgrades),50,'the new Farm starts at the approved base population cap');
+assert.equal(getAutoTapSeconds(noProgress.farmUpgrades),0.5,'auto-tap default duration is unchanged');
+assert.equal(getMergeCooldownSeconds(noProgress.farmUpgrades),4,'merge recovery default duration is unchanged');
+assert.equal(farmUpgradeRate(noProgress.farmUpgrades,'growth'),1,'food-seeking movement begins at its existing baseline');
+const mergeCooldownWorld = new Garden(701);
+mergeCooldownWorld.mode = 'merge';
+mergeCooldownWorld.playerProgression = awardBossKillXp(mergeCooldownWorld.playerProgression, 'test:merge-upgrade').state;
+assert.equal(mergeCooldownWorld.investFarmUpgrade('merge').ok, true, 'merge recovery spends a shared XP point');
+const mergeMaterials = [addPea(mergeCooldownWorld,1,0,0),addPea(mergeCooldownWorld,1,.1,0)];
+addPea(mergeCooldownWorld,1,8,0);
+assert.equal(mergeCooldownWorld.mergeGroup(mergeMaterials), true);
+assert.ok(Math.abs(mergeCooldownWorld.units.find(unit=>unit.tier===2).cooldown - 4/1.1) < 1e-9, 'invested merge recovery affects the actual result cooldown');
 const impossibleWallet = {...noProgress, availablePoints: 1};
 assert.equal(isValidPlayerProgressionState(impossibleWallet), false, 'the Farm wallet cannot create a free point outside level progression');
 const earnedWallet = awardBossKillXp(noProgress, 'test:level-1').state;
 assert.equal(isValidPlayerProgressionState(earnedWallet), true, 'earned points preserve the level/investment conservation invariant');
+const sharedWallet = purchaseFarmUpgrade(earnedWallet, 'food', {location:'farm'}).state;
+assert.equal(sharedWallet.availablePoints, 0, 'ordinary farm upgrades spend the earned XP point wallet');
+assert.equal(sharedWallet.farmUpgrades.food, 1);
+assert.equal(isValidPlayerProgressionState(sharedWallet), true, 'normal investments remain in shared XP conservation');
+assert.equal(isValidAbilityRuntimeSnapshot(createAbilityRuntimeSnapshot(sharedWallet)), true, 'raid snapshots preserve farm investments in shared wallet accounting');
+assert.equal(purchaseFarmUpgrade(sharedWallet, 'growth', {location:'farm'}).reason, 'insufficient-points', 'normal upgrades cannot create free investment paths');
+assert.equal(purchaseFarmUpgrade(earnedWallet, 'growth', {location:'raid'}).reason, 'farm-only');
+assert.match(renderFarmUpgradeTreeMarkup(earnedWallet), /공용 XP 포인트/);
 const invalidWalletSave = snapshot(new Garden(700));
 invalidWalletSave.playerProgression.availablePoints = 1;
 assert.throws(() => restore(invalidWalletSave), /올바른 농장 저장 데이터가 아닙니다/,
@@ -264,13 +286,37 @@ ready(baseCap.units[1], {meals: 1, x: 0.1, y: 0});
 assert.equal(baseCap.pair(baseCap.units[0], baseCap.units[1]), false);
 assert.equal(baseCap.units.length, CONFIG.cap);
 const expanded = new Garden(15);
-expanded.progress.levels.capacity = 1;
+expanded.playerProgression = awardBossKillXp(expanded.playerProgression, 'capacity-step-1').state;
+assert.equal(expanded.investFarmUpgrade('capacity').ok, true);
 while (expanded.units.length < CONFIG.cap) expanded.spawn(1, 1, 8, 5);
 ready(expanded.units[0], {meals: 1, x: 0, y: 0});
 ready(expanded.units[1], {meals: 1, x: 0.1, y: 0});
-assert.equal(expanded.capacity, CONFIG.cap + 7);
+assert.equal(expanded.capacity, CONFIG.cap + 10);
 assert.equal(expanded.pair(expanded.units[0], expanded.units[1]), true);
 assert.equal(expanded.units.length, CONFIG.cap + 1);
+for(let level=2;level<=5;level++){
+  let rewardIndex=0;
+  while(expanded.playerProgression.availablePoints===0)expanded.playerProgression=awardBossKillXp(expanded.playerProgression,`capacity-step-${level}-${rewardIndex++}`).state;
+  assert.equal(expanded.investFarmUpgrade('capacity').ok,true);
+  assert.equal(expanded.capacity,50+10*level);
+}
+assert.equal(expanded.capacity,100,'five XP-purchased steps raise the cap to exactly 100');
+assert.equal(expanded.investFarmUpgrade('capacity').reason,'max-level');
+assert.equal(isValidPlayerProgressionState(expanded.playerProgression),true,'five normal investments remain in wallet conservation');
+const overCap = new Garden(16);
+const overCapRaw=snapshot(overCap);
+for(let id=3;id<=60;id++){
+  const unit=structuredClone(overCapRaw.units[0]);
+  unit.id=id;unit.farmId=id;unit.mateId=0;unit.x=(id%10)-5;unit.y=Math.floor(id/10)-3;
+  overCapRaw.units.push(unit);
+}
+overCapRaw.nextId=61;
+const overCapSave=restore(overCapRaw);
+assert.equal(overCapSave.units.length,60,'migration keeps existing populations above the new base cap');
+assert.equal(overCapSave.capacity,50);
+assert.equal(overCapSave.spawn(1,1,0,0),null,'over-cap populations cannot grow further');
+ready(overCapSave.units[0],{meals:1});ready(overCapSave.units[1],{meals:1});
+assert.equal(overCapSave.pair(overCapSave.units[0],overCapSave.units[1]),false,'over-cap populations cannot breed');
 
 // Merge selection is serialized: lowest tier first, then nearest pair, stable IDs on exact ties.
 const sequential = new Garden(160);
@@ -453,13 +499,11 @@ assert.throws(()=>restore(invalidTierWorld),/올바른 농장 저장 데이터�
 
 // Breed cooldown and child growth stay connected; the cooldown upgrade remains effective.
 assert.equal(CONFIG.breedGrowthSeconds, CONFIG.breedCooldownSeconds / 2);
-const breedUpgrade = TREE_NODES.find(node => node.id === 'breed');
+const breedUpgrade = FARM_UPGRADE_NODES.find(node => node.id === 'breed');
 const upgradeWorld = new Garden(17);
-upgradeWorld.progress.levels.growth = 1;
-upgradeWorld.progress.records.birth = 2;
 assert.equal(breedUpgrade.value(0), '10.00초');
-assert.equal(upgradeWorld.progress.ready(breedUpgrade), true);
-assert.equal(upgradeWorld.progress.invest('breed'), true);
+upgradeWorld.playerProgression = awardBossKillXp(upgradeWorld.playerProgression, 'breed-upgrade').state;
+assert.equal(upgradeWorld.investFarmUpgrade('breed').ok, true, 'earned XP points unlock normal upgrades without activity-record gates');
 assert.ok(Math.abs(upgradeWorld.breedCooldownDuration() - 10 / 1.1) < 1e-9);
 assert.ok(Math.abs(upgradeWorld.breedGrowthDuration() - 10 / 2.2) < 1e-9);
 
@@ -491,6 +535,8 @@ const savedCooldown = ready(savedWorld.spawn(1, 1, 7, 6), {meals: 0});
 savedCooldown.cooldown = 6.25;
 const currentSave = JSON.stringify({productVersion: '0.5.2', schema: 'budmori-farm', world: snapshot(savedWorld)});
 const resumed = parseSave(currentSave);
+const gradeReleaseSave = JSON.stringify({productVersion: '0.6.0', schema: 'budmori-farm', world: snapshot(savedWorld)});
+assert.equal(parseSave(gradeReleaseSave).units.length, savedWorld.units.length, 'the XP release can import a compatible 0.6 grade-release save');
 assert.equal(resumed.units[0].mateId, resumed.units[1].id, 'valid pair reservation resumes after save/load');
 assert.equal(resumed.units[1].mateId, resumed.units[0].id);
 assert.equal(resumed.units[2].growthElapsed, savedChild.growthDuration / 2, 'child growth time resumes unchanged');
@@ -534,12 +580,22 @@ for (let i = 0; i < 36; i++) {
   delete unit.dropLanded;
 }
 legacy.starter = 43;
-legacy.progress.levels.production = 2;
-legacy.progress.levels.breed = 1;
+legacy.progress = {levels:{production:2,food:4,growth:2,breed:1,merge:3,capacity:4},records:{eat:1000,birth:100,merge:80,hit:240}};
+let preservedProgression = createPlayerProgressionState();
+for (let index = 0; index < 5; index++) preservedProgression = awardBossKillXp(preservedProgression, `legacy-xp-${index}`).state;
+for (const nodeId of ['root', 'power-1']) preservedProgression = purchaseAbilityNode(preservedProgression, 'pea-death-split', nodeId, {location:'farm',highestSpeciesTier:{0:3}}).state;
+delete preservedProgression.farmUpgrades;
+legacy.playerProgression = preservedProgression;
 const previousWorld = snapshot(legacy);
-const loaded = parseSave(JSON.stringify({productVersion: '0.4.5', schema: 'budmori-farm', world: previousWorld}));
+const loaded = parseSave(JSON.stringify({productVersion: '0.5.2', schema: 'budmori-farm', world: previousWorld}));
 assert.equal(loaded.units.length, 36);
-assert.equal(loaded.progress.levels.production, 2);
+assert.equal(loaded.progress, undefined, 'activity-based upgrade levels and records are removed during migration');
+assert.deepEqual(loaded.playerProgression.abilities, preservedProgression.abilities, 'ability investments are preserved');
+assert.equal(loaded.playerProgression.level, preservedProgression.level, 'XP level is preserved');
+assert.equal(loaded.playerProgression.experience, preservedProgression.experience, 'XP remainder is preserved');
+assert.equal(loaded.playerProgression.availablePoints, preservedProgression.availablePoints, 'unspent XP points are preserved without retroactive grants');
+assert.deepEqual(loaded.playerProgression.farmUpgrades, {food:0,growth:0,breed:0,merge:0,capacity:0}, 'old free upgrade levels are reset without granting XP points');
+assert.equal(loaded.capacity, 50, 'the migrated base capacity uses the new population rule');
 assert.equal(loaded.starter, 43);
 assert.equal(loaded.units[0].mature, true, 'old grown units remain grown');
 assert.equal(loaded.units[18].growthElapsed, CONFIG.breedGrowthSeconds / CONFIG.matureMeals, 'old partial growth maps proportionally into the new timer');
@@ -556,6 +612,8 @@ class MemoryStorage {
   values = new Map();
   getItem(key) { return this.values.get(key) ?? null; }
   setItem(key, value) { this.values.set(key, String(value)); }
+  key(index) { return [...this.values.keys()][index] ?? null; }
+  get length() { return this.values.size; }
 }
 globalThis.localStorage = new MemoryStorage();
 const oldFormatWorld = snapshot(legacy);
@@ -569,7 +627,30 @@ assert.equal(localStorage.getItem('bloom-weapon-cards-v4'),null,'detection does 
 const resumedOldGarden = detectedOldSave.import(detectedOldSave.legacyRaw);
 assert.equal(resumedOldGarden.units.length,36,'confirmed import keeps the previous garden roster');
 assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'the original 0.4 key remains untouched');
+assert.equal(detectedOldSave.legacyBackup.raw,oldFormatSave,'the original legacy JSON is backed up before migration');
+assert.equal(localStorage.getItem(detectedOldSave.legacyBackup.key),oldFormatSave,'the raw backup remains recoverable in browser storage');
 assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,PRODUCT_VERSION);
+localStorage.setItem('bloom-weapon-cards-v4',JSON.stringify({productVersion:'0.5.2',schema:'budmori-farm',world:previousWorld}));
+const migratingStorage=new FarmStorage();
+assert.ok(migratingStorage.migrationNotice.includes('경험치 포인트로 통합'),'the migration explains the progression change before continuing');
+assert.equal(migratingStorage.legacyBackup.raw,localStorage.getItem(migratingStorage.legacyBackup.key),'the current-key save is backed up before normalized save');
+assert.equal(migratingStorage.save(migratingStorage.world),true);
+assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).world.progress,undefined,'normalized save removes legacy records');
+assert.ok(migratingStorage.legacyBackup.raw.includes('"progress"'),'the exact prior save stays available after migration');
+class BackupBlockedStorage extends MemoryStorage {
+  setItem(key,value) { if(key.startsWith('bloom-weapon-cards-legacy-backup-'))throw Error('quota exceeded'); super.setItem(key,value); }
+}
+localStorage=new BackupBlockedStorage();
+const unbackedRaw=JSON.stringify({productVersion:'0.5.2',schema:'budmori-farm',world:previousWorld});
+localStorage.setItem('bloom-weapon-cards-v4',unbackedRaw);
+const backupBlocked=new FarmStorage();
+assert.equal(backupBlocked.legacyBackupRequired,true);
+assert.equal(backupBlocked.replace(new Garden()),false,'a failed backup blocks replacement of an old save');
+assert.equal(localStorage.getItem('bloom-weapon-cards-v4'),unbackedRaw,'a failed backup never overwrites the original save');
+assert.ok(backupBlocked.error.includes('백업하지 못해 덮어쓰지 않았어요'));
+localStorage=new MemoryStorage();
+localStorage.setItem('bloom-weapon-cards-v3',oldFormatSave);
+localStorage.setItem('bloom-weapon-cards-v4',JSON.stringify({productVersion:PRODUCT_VERSION,schema:'budmori-farm',world:snapshot(new Garden())}));
 const staleTab = new FarmStorage();
 const writer = new FarmStorage();
 writer.world.starter += 1;
@@ -581,9 +662,9 @@ assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'legacy
 
 localStorage.setItem('bloom-weapon-cards-v4',currentSave);
 const upgraded05 = new FarmStorage();
-assert.equal(upgraded05.world.units[0].tier,1,'an existing 0.5 save remains readable after the 0.6 bump');
+assert.equal(upgraded05.world.units[0].tier,1,'an existing 0.5 save remains readable after the 0.7 bump');
 assert.equal(upgraded05.save(upgraded05.world),true,'the upgraded legacy save writes through normal validation');
-assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,PRODUCT_VERSION,'saving upgrades the compatibility marker to 0.6.0');
+assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,PRODUCT_VERSION,'saving upgrades the compatibility marker to 0.7.0');
 localStorage.setItem('bloom-weapon-cards-v4',mythicSave);
 const mythicStorage = new FarmStorage();
 assert.equal(mythicStorage.world.units[0].tier,6,'current-key Mythic saves retain T6 during storage restore');

@@ -4,6 +4,7 @@ globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/determin
 const {Garden, CONFIG} = await import('../src/farm-model.js');
 const {snapshot, restore} = await import('../src/farm-state.js');
 const {BOSS_REWARD_SETTINGS, bossAcquisitionChance, resolveBossAcquisition, settleBossKill} = await import('../src/boss-rewards.js');
+const {awardBossKillXp} = await import('../src/player-progression.js');
 const {UNIT_ABILITY_PROFILES} = await import('../src/unit-abilities.js');
 const {raidRosterEntries} = await import('../src/raid-roster.js');
 
@@ -158,7 +159,8 @@ assert.equal(missedReward.playerProgression.experience,0,'a kill that misses its
 assert.equal(missedReward.playerProgression.availablePoints,1);
 // Full capacity keeps a successful acquisition pending until one slot is freed.
 const queuedReward = new Garden(314);
-queuedReward.progress.levels.capacity = 4;
+for(let index=0;index<8;index++)queuedReward.playerProgression=awardBossKillXp(queuedReward.playerProgression,`capacity-xp-${index}`).state;
+for(let level=0;level<5;level++)assert.equal(queuedReward.investFarmUpgrade('capacity').ok,true);
 while (queuedReward.units.length < queuedReward.capacity) queuedReward.spawn(0,1,0,0);
 queuedReward.nextBossEncounterId = 2;
 queuedReward.farmBossEvent = {phase:'fighting',elapsed:0,outcome:'fighting',encounterId:1,rewardStatus:'unresolved',rewardChance:0,rewardRoll:0,rewardUnitId:0};

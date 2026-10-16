@@ -1,4 +1,5 @@
 import { createAbilityProgressionState, isValidAbilityProgressionState } from "./ability-state.js";
+import { getFarmUpgradeInvestedCount } from "./farm-upgrades.js";
 
 // One base value anchors both confirmed progression numbers. The next-level
 // increment is derived, not tuned independently.
@@ -71,5 +72,5 @@ export function isValidPlayerProgressionState(state) {
     new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) return false;
   const investedPoints = Object.values(state.abilities).reduce((total, investment) =>
     total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
-  return investedPoints + state.availablePoints === state.level - 1;
+  return investedPoints + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
 }
