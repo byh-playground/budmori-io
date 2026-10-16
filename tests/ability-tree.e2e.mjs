@@ -101,8 +101,8 @@ try{
   await openMenuTab(page,'abilities');
   assert.equal(new URL(page.url()).hash,'#/abilities','the consolidated menu opens the ability route');
   assert.equal(await page.locator('#abilityPanel').isVisible(),true,'the special ability tab is visible');
-  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#gameMenuPanel')).zIndex==='30');
-  assert.equal(await page.locator('#gameMenuPanel').evaluate(el=>getComputedStyle(el).position),'fixed','the consolidated menu sits above the Farm canvas');
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#gameMenuOverlay')).zIndex==='30');
+  assert.equal(await page.locator('#gameMenuOverlay').evaluate(el=>getComputedStyle(el).position),'fixed','the consolidated menu sits above the Farm canvas');
   assert.equal(await page.locator('#abilityPanel').evaluate(el=>getComputedStyle(el).position),'static','special abilities remain inside the single shared menu');
   assert.equal(await page.locator('[data-ability-species]').count(),4,'Farm tree offers a selector for all four species');
   assert.equal(await page.locator('[data-ability]').count(),1,'Farm tree shows only the selected species abilities');
