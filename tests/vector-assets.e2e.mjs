@@ -19,6 +19,7 @@ for(const source of sourceConfig.assets){
   const sourceBytes=await readFile(path.join(root,source.file)),sourceText=sourceBytes.toString('utf8');
   const metadata=JSON.parse(sourceText.match(/<metadata id="vector-asset">([\s\S]*?)<\/metadata>/)?.[1]||'null');
   assert.deepEqual(Object.keys(metadata.clips),requiredClips,`${source.file} must author all GameKit clips in SVG metadata`);
+  if(source.species===3){const blush=sourceText.match(/<ellipse id="neutral-cheek-left"[^>]*rx="([0-9.]+)"[^>]*ry="([0-9.]+)"[^>]*fill="([^"]+)"/);assert(blush&&Number(blush[1])>=16&&Number(blush[2])>=12,`${source.file} neutral blush must remain visible at 24px`);}
   assert.deepEqual(Object.keys(metadata.expressions),requiredExpressions,`${source.file} must author all face states in SVG metadata`);
   for(const name of requiredExpressions)assert(new RegExp(`<g id="face-${name}">`).test(sourceText),`${source.file} is missing authored SVG face geometry for ${name}`);
   authoredAssets.push({species:source.species,sourceSha256:createHash('sha256').update(sourceBytes).digest('hex'),parts:metadata.parts.length});
@@ -64,6 +65,9 @@ try{
   await page.waitForFunction(id=>BUDMORI.renderer.vectorPlayers.has(id),farmChestnut.chestnutId,{timeout:5000});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await page.screenshot({path:path.join(out,'chestnut-farm.png')});
+  await page.evaluate(async()=>{const card=document.createElement('div');card.id='chestnut-24px-preview';Object.assign(card.style,{position:'fixed',left:'12px',bottom:'12px',width:'28px',height:'28px',padding:'2px',boxSizing:'border-box',background:'#fffdf2',border:'1px solid #d7dccd'});const img=document.createElement('img');img.src='/assets/troops/chestnut.svg';img.width=24;img.height=22.5;card.append(img);document.body.append(card);await img.decode()});
+  await page.locator('#chestnut-24px-preview').screenshot({path:path.join(out,'chestnut-troop-24px-preview.png')});
+  await page.locator('#chestnut-24px-preview').evaluate(el=>el.remove());
   report.farmChestnut=farmChestnut;
   const vector=await page.evaluate(async()=>{
     const renderer=BUDMORI.renderer,ids=[0,1,2,3];
