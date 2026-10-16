@@ -32,7 +32,7 @@ try{
   await page.waitForFunction(()=>window.BUDMORI||!document.querySelector('#bloom-module-loading'),{},{timeout:20000});
   assert.ok(await page.evaluate(()=>!!window.BUDMORI),'Farm runtime loads before the settlement scenario');
   await page.locator('#newGame').click();
-  await page.locator('#confirmNew').click();
+  if(await page.locator('#confirmNew').isVisible())await page.locator('#confirmNew').click();
   await page.waitForFunction(()=>BUDMORI.sim.scene==='farm'&&document.querySelector('#startScreen').hidden,{},{timeout:10000});
   await page.locator('#raid').click();
   await page.waitForFunction(()=>BUDMORI.sim.scene==='raid'&&BUDMORI.sim.raidRoster('solo'),{},{timeout:10000});
