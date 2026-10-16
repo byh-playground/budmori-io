@@ -133,14 +133,14 @@ async function armyScenarios(p){
   const target=(species,x)=>{const w=new Garden(501);w.units=[];w.spawn(species,1,x,0);w.setScene('raid');Object.assign(w.units[0],{x,y:0,z:0,vx:0,vy:0,vz:0});w.boss.phase='resting';w.boss.hp=w.boss.maxHp=1e6;return w;};
   const ranges=[];
   for(let species=0;species<3;species++){
-   const initial=4.4+specs[species].stand+3,w=target(species,initial),u=w.units[0];let prepare=null;
+   const initial=4.4+specs[species].range+3,w=target(species,initial),u=w.units[0];let prepare=null;
    for(let i=0;i<1800&&!prepare;i++){w.step(1/120);prepare=w.combatLog.find(e=>e.kind==='prepare');}
    const distance=prepare?Math.hypot(prepare.x-w.boss.x,prepare.y-w.boss.y):null;let minDistance=Math.hypot(u.x,u.y),lateral=0;
    for(let i=0;i<600;i++){w.step(1/120);minDistance=Math.min(minDistance,Math.hypot(u.x,u.y));lateral=Math.max(lateral,Math.abs(u.y));}
-   ranges.push({species,distance,stand:w.boss.radius+specs[species].stand,minDistance,lateral,damaged:w.boss.hp<w.boss.maxHp});
+   ranges.push({species,distance,stand:w.boss.radius+specs[species].range,minDistance,lateral,damaged:w.boss.hp<w.boss.maxHp});
   }
   const close=target(1,5.1),lob=close.units[0];for(let i=0;i<1800&&!close.combatLog.some(e=>e.kind==='prepare');i++)close.step(1/120);const prep=close.combatLog.find(e=>e.kind==='prepare');
-  const retreat={distance:prep?Math.hypot(prep.x,prep.y):null,stand:close.boss.radius+specs[1].stand,x:lob.x};
+  const retreat={distance:prep?Math.hypot(prep.x,prep.y):null,stand:close.boss.radius+specs[1].range,x:lob.x};
   const w=new Garden(829);w.units=[];const dead=w.spawn(0,1,5,0),alive=w.spawn(1,1,12,0);w.setScene('raid');Object.assign(dead,{x:5,y:0,hp:8,z:0,vx:0,vy:0,vz:0});Object.assign(alive,{x:12,y:0,hp:1e5,z:0,vx:0,vy:0,vz:0});w.boss.targetId=dead.id;
   let airborne=false,landed=false;for(let i=0;i<1800;i++){w.step(1/120);if(dead.hp===0&&dead.z>.1)airborne=true;if(dead.hp===0&&w.notices.some(e=>e.kind==='unit-land'&&e.unit===dead.id))landed=true;}
   const corpse={dead:dead.hp===0,airborne,landed,z:dead.z};
@@ -191,7 +191,7 @@ async function network(){
   for(let i=0;i<peers.length;i++){await peers[i].locator('#return').click();await peers[i].waitForFunction(()=>!BUDMORI.room&&BUDMORI.sim.scene==='farm',{},{timeout:20000});const persisted=JSON.parse(await peers[i].evaluate(()=>localStorage.getItem('bloom-weapon-cards-v3'))).world;assert.equal(persisted.scene,'farm');assert.equal(persisted.raidRosters.length,0);const saved=JSON.parse(farmSaves[i]).world,actual=await peers[i].evaluate(()=>BUDMORI.sim.units.map(u=>({id:u.id,hp:u.hp})));assert(saved.units.every(u=>actual.some(v=>v.id===u.id)),'every saved farm unit returns intact for peer '+i);assert.equal(new Set(actual.map(u=>u.id)).size,actual.length,'returned farm contains unique IDs');assert(actual.every(u=>u.hp>0),'farm roster must not retain raid losses for peer '+i+': '+JSON.stringify({expected:saved.units.length,actual:actual.length,dead:actual.filter(u=>u.hp<=0).length}));}
  await Promise.all(peers.map(clean));check('Leaving RTC returns every player to their own farm and never saves the shared raid world');await Promise.all(peers.slice(0,2).map(p=>p.locator('#home').click()));await peers[0].locator('#onlineGame').click();await peers[0].waitForFunction(()=>BUDMORI.room&&BUDMORI.runtime.session.ready&&BUDMORI.sim.raidRosters.length===1,{},{timeout:65000});await peers[1].locator('#onlineGame').click();await Promise.all(peers.slice(0,2).map(p=>p.waitForFunction(()=>BUDMORI.runtime.players.length===2&&BUDMORI.runtime.session.ready&&BUDMORI.sim.raidRosters.length===2,{},{timeout:65000})));check('Reentry after leaving a full party forms a new two-player roster consensus');for(const c of contexts)await c.close();
 }
-try{browser=await chromium.launch({channel:'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});report.browser=await browser.version();await ({core,save,network}[suite]||core)();report.status='PASS'}catch(e){report.status='FAIL';report.failure=e.stack;throw e}finally{await browser?.close();server.close();await writeFile(path.join(out,suite+'-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report))}
+try{browser=await chromium.launch({channel:process.env.BUDMORI_BROWSER_CHANNEL||'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});report.browser=await browser.version();await ({core,save,network}[suite]||core)();report.status='PASS'}catch(e){report.status='FAIL';report.failure=e.stack;throw e}finally{await browser?.close();server.close();await writeFile(path.join(out,suite+'-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report))}
 
 
 
