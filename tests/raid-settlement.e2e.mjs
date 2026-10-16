@@ -93,25 +93,18 @@ try{
   // intact until the player explicitly chooses to end that interrupted run.
   await page.locator('#raid').click();
   await page.waitForFunction(()=>BUDMORI.sim.scene==='raid'&&BUDMORI.storage.world.activeRaidRunSequence===2,{},{timeout:10000});
-  const beforeReload=await page.evaluate(()=>({
-    units:structuredClone(BUDMORI.storage.world.units),
-    progression:structuredClone(BUDMORI.storage.world.playerProgression),
-    rewards:structuredClone(BUDMORI.storage.world.bossRewardReceipts),
-    sessionId:BUDMORI.storage.world.activeRaidSessionId,
-    runSequence:BUDMORI.storage.world.activeRaidRunSequence
-  }));
+  const beforeReload=await page.evaluate(()=>{
+    const world=JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).world;
+    return{units:world.units,progression:world.playerProgression,rewards:world.bossRewardReceipts,sessionId:world.activeRaidSessionId,runSequence:world.activeRaidRunSequence};
+  });
   await page.reload();
   await page.waitForFunction(()=>!!window.BUDMORI&&!document.querySelector('#bloom-module-loading'),{},{timeout:20000});
   assert.equal(await page.locator('#staleRaidNotice').isVisible(),true,'the saved active run is identified after the old Raid runtime disappears');
   assert.equal(await page.locator('#continueGame').isDisabled(),true,'Farm continuation waits for an explicit stale-run decision');
-  const afterReload=await page.evaluate(()=>({
-    units:BUDMORI.storage.world.units,
-    progression:BUDMORI.storage.world.playerProgression,
-    rewards:BUDMORI.storage.world.bossRewardReceipts,
-    sessionId:BUDMORI.storage.world.activeRaidSessionId,
-    runSequence:BUDMORI.storage.world.activeRaidRunSequence,
-    receipts:BUDMORI.storage.world.raidSettlementReceipts
-  }));
+  const afterReload=await page.evaluate(()=>{
+    const world=JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).world;
+    return{units:world.units,progression:world.playerProgression,rewards:world.bossRewardReceipts,sessionId:world.activeRaidSessionId,runSequence:world.activeRaidRunSequence,receipts:world.raidSettlementReceipts};
+  });
   assert.deepEqual(afterReload.units,beforeReload.units,'reload itself does not alter ownership or unit recovery');
   assert.deepEqual(afterReload.progression,beforeReload.progression,'reload itself does not award XP or points');
   assert.deepEqual(afterReload.rewards,beforeReload.rewards,'reload itself does not settle a boss reward');
