@@ -12,8 +12,8 @@
     <path id="chestnut-shell" d="M160 22 C142 39 114 53 91 70 C64 92 47 120 43 151 C39 173 44 193 58 208 C76 225 117 230 160 230 C203 230 244 225 262 208 C276 193 281 173 277 151 C273 120 256 92 229 70 C206 53 178 39 160 22 Z" fill="#87482f" stroke="#2c201c" stroke-width="6" stroke-linejoin="round"/>
     <path id="nut-underside" d="M50 176 C78 161 116 157 160 158 C204 157 242 161 270 176 C266 192 250 207 228 216 C205 224 180 226 160 226 C140 226 115 224 92 216 C70 207 54 192 50 176 Z" fill="#f1d4aa" stroke="#2c201c" stroke-width="5" stroke-linejoin="round"/>
     <g id="face-neutral">
-      <ellipse id="neutral-cheek-left" cx="104" cy="137" rx="10" ry="5.5" fill="#e88a86"/>
-      <ellipse id="neutral-cheek-right" cx="216" cy="137" rx="10" ry="5.5" fill="#e88a86"/>
+      <ellipse id="neutral-cheek-left" cx="104" cy="137" rx="16" ry="12" fill="#f07880"/>
+      <ellipse id="neutral-cheek-right" cx="216" cy="137" rx="16" ry="12" fill="#f07880"/>
       <ellipse id="neutral-eye-left" cx="128" cy="116" rx="10" ry="12" fill="#2d1e1a"/>
       <ellipse id="neutral-eye-right" cx="192" cy="116" rx="10" ry="12" fill="#2d1e1a"/>
       <path id="neutral-mouth" d="M148 136 Q160 149 172 136" fill="none" stroke="#2d1e1a" stroke-width="4.5" stroke-linecap="round"/>
@@ -41,8 +41,8 @@
       <path id="dead-mouth" d="M150 140 L170 140" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
     <g id="face-happy">
-      <ellipse id="happy-cheek-left" cx="104" cy="137" rx="11" ry="6" fill="#e88a86"/>
-      <ellipse id="happy-cheek-right" cx="216" cy="137" rx="11" ry="6" fill="#e88a86"/>
+      <ellipse id="happy-cheek-left" cx="104" cy="137" rx="16" ry="12" fill="#f07880"/>
+      <ellipse id="happy-cheek-right" cx="216" cy="137" rx="16" ry="12" fill="#f07880"/>
       <path id="happy-eyes" d="M118 120 Q128 107 138 120 M182 120 Q192 107 202 120" fill="none" stroke="#2d1e1a" stroke-width="4.5" stroke-linecap="round"/>
       <path id="happy-mouth" d="M147 136 Q160 153 173 136 Z" fill="#2d1e1a"/>
     </g>
