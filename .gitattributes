@@ -1,1 +1,2 @@
 vendor/upstream/** -text
+vendor/upstream-source/** -text
