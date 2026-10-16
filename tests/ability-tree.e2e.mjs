@@ -100,6 +100,8 @@ try{
   await page.locator('#abilities').click();
   assert.equal(new URL(page.url()).hash,'#/abilities','Farm toolbar opens the ability tree route');
   assert.equal(await page.locator('#abilityPanel').isVisible(),true,'ability tree dialog is visible');
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#abilityPanel')).zIndex==='31');
+  assert.equal(await page.locator('#abilityPanel').evaluate(el=>getComputedStyle(el).position),'fixed','the ability panel stylesheet is loaded above the Farm canvas');
   assert.equal(await page.locator('[data-ability-species]').count(),4,'Farm tree offers a selector for all four species');
   assert.equal(await page.locator('[data-ability]').count(),1,'Farm tree shows only the selected species abilities');
   for(const id of abilityIds){

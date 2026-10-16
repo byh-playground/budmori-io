@@ -2464,6 +2464,39 @@
     nextFarm.raidSettlementReceipts = [...ledger.receipts];
     return { farm: nextFarm, runSequence, sessionId: stableSessionId, resumed: false };
   }
+  function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
+    if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
+      fail("A private Farm snapshot with a units array is required");
+    }
+    if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
+      fail("Settlement timestamp must be a non-negative finite number");
+    }
+    const ledger = ledgerState(farm);
+    if (ledger.activeSequence === null) return { farm, receipt: null, applied: false };
+    const ownerId = "recovery-abort";
+    const { activeSequence: runSequence, activeSessionId: sessionId } = ledger;
+    const receipt = {
+      key: raidSettlementKey({ ownerId, sessionId, encounterId: runSequence }),
+      ownerId,
+      sessionId,
+      encounterId: runSequence,
+      runSequence,
+      outcome: "aborted",
+      status: "settled",
+      completedAtMs,
+      sleptFarmUnitIds: [],
+      availableAtStart: 0,
+      originalUnitsDeployed: 0,
+      deploymentMultiplier: 0,
+      reward: null
+    };
+    const nextFarm = clone(farm);
+    nextFarm.activeRaidRunSequence = null;
+    nextFarm.activeRaidSessionId = null;
+    nextFarm.raidSettlementWatermark = runSequence;
+    nextFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
+    return { farm: nextFarm, receipt: clone(receipt), applied: true };
+  }
   function settleRaidOwnerFarm(farm, {
     ownerId,
     sessionId,
@@ -4197,7 +4230,10 @@
       $2("importConfirm").hidden = true;
       imported = null;
     }
-    $2("continueGame").disabled = !storage.world;
+    const hasReservedRaid = storage.world?.activeRaidRunSequence !== null && storage.world?.activeRaidRunSequence !== void 0, liveRaid = active?.world?.scene === "raid" || !!room, staleRaid = hasReservedRaid && !liveRaid;
+    $2("continueGame").disabled = !storage.world || staleRaid;
+    $2("staleRaidNotice").hidden = !staleRaid || !!attempt;
+    $2("onlineGame").disabled = hasReservedRaid;
     $2("continueLegacyGame").disabled = !!room || !!attempt || !storage.legacyCompatible;
     $2("legacySaveNotice").hidden = !storage.legacyCompatible;
     $2("exportSave").disabled = !(storage.raw || storage.legacyRaw);
@@ -4277,7 +4313,7 @@
     return settled;
   }
   function beginRaid(push = true) {
-    if (room || !personalGarden || active.world.scene === "raid" || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) return;
+    if (room || !personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) return;
     if (!persist()) return;
     const reserved = reservePersonalRaidRun();
     if (!reserved) return;
@@ -4317,7 +4353,29 @@
     return true;
   }
   $2("continueGame").onclick = () => {
-    if (storage.world) start(restore(snapshot(storage.world)));
+    if (room || active?.world?.scene === "raid") {
+      setHome(false);
+      return;
+    }
+    if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)));
+  };
+  $2("abortRaidRun").onclick = () => {
+    if (room || active?.world?.scene === "raid") return;
+    const world = storage.world;
+    if (!world || world.activeRaidRunSequence === null) return refreshStart();
+    try {
+      const result = abortReservedRaidRun(snapshot(world), { completedAtMs: Date.now() });
+      if (!result.applied) return refreshStart();
+      if (!storage.save(restore(result.farm))) {
+        $2("saveNotice").textContent = storage.error;
+        return;
+      }
+      personalGarden = storage.world;
+      refreshStart();
+      $2("saveNotice").textContent = "이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.";
+    } catch (error) {
+      fail2(error);
+    }
   };
   $2("newGame").onclick = () => {
     if ((storage.raw || storage.legacyRaw) && !$2("newConfirm").hidden) return;
@@ -4408,6 +4466,10 @@
   $2("onlineGame").onclick = async () => {
     if (attempt || room) return;
     personalGarden = restore(snapshot(storage.world || personalGarden || active.world));
+    if (personalGarden.activeRaidRunSequence !== null) {
+      $2("sessionNotice").textContent = "이전 원정 기록을 먼저 종료하고 다시 연결해 주세요.";
+      return;
+    }
     if (!persist()) return;
     solo = restore(snapshot(personalGarden));
     const controller = attempt = new AbortController();
@@ -4661,6 +4723,11 @@
     const r = location.hash;
     if (r === "#/" || !r) {
       setHome(true, false);
+      return;
+    }
+    if (!room && storage.world?.activeRaidRunSequence !== null && storage.world?.activeRaidRunSequence !== void 0) {
+      setHome(true, false);
+      history.replaceState(null, "", "#/");
       return;
     }
     if (home) {

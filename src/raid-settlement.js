@@ -221,6 +221,47 @@ export function reserveRaidRun(farm, { sessionId = null } = {}) {
 }
 
 /**
+ * Close a previously reserved run when its Raid runtime no longer exists.
+ * This is only called from the explicit "end previous Raid" action; it never
+ * applies casualties, rewards, XP, or points. A dedicated owner sentinel keeps
+ * the receipt distinct from any live owner's normal settlement key.
+ */
+export function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
+  if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
+    fail('A private Farm snapshot with a units array is required');
+  }
+  if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
+    fail('Settlement timestamp must be a non-negative finite number');
+  }
+  const ledger = ledgerState(farm);
+  if (ledger.activeSequence === null) return { farm, receipt: null, applied: false };
+
+  const ownerId = 'recovery-abort';
+  const { activeSequence: runSequence, activeSessionId: sessionId } = ledger;
+  const receipt = {
+    key: raidSettlementKey({ ownerId, sessionId, encounterId: runSequence }),
+    ownerId,
+    sessionId,
+    encounterId: runSequence,
+    runSequence,
+    outcome: 'aborted',
+    status: 'settled',
+    completedAtMs,
+    sleptFarmUnitIds: [],
+    availableAtStart: 0,
+    originalUnitsDeployed: 0,
+    deploymentMultiplier: 0,
+    reward: null
+  };
+  const nextFarm = clone(farm);
+  nextFarm.activeRaidRunSequence = null;
+  nextFarm.activeRaidSessionId = null;
+  nextFarm.raidSettlementWatermark = runSequence;
+  nextFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
+  return { farm: nextFarm, receipt: clone(receipt), applied: true };
+}
+
+/**
  * Apply one completed Raid outcome to one owner's private Farm snapshot.
  *
  * Casualties and deployment counts are derived from the requested owner's

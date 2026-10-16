@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   RAID_SLEEP_SECONDS,
+  abortReservedRaidRun,
   raidDeadFarmUnitIds,
   raidDeploymentRewardMultiplier,
   raidSettlementKey,
@@ -86,6 +87,38 @@ assert.equal(reconnect.runSequence, 1);
 assert.equal(reconnect.sessionId, 'room-abc');
 assert.equal(reconnect.resumed, true);
 assert.throws(() => reserveRaidRun(reserved.farm, { sessionId: 'another-room' }), /different active Raid/);
+
+// A browser reload loses the Raid runtime but leaves the earlier Farm
+// reservation. Explicitly abandoning it changes only the settlement ledger.
+const interruptedFarm = makeFarm('alice', 2);
+interruptedFarm.playerProgression.experience = 37;
+const interrupted = reserveRaidRun(interruptedFarm, { sessionId: 'interrupted-room' });
+const interruptedUnits = structuredClone(interrupted.farm.units);
+const interruptedProgression = structuredClone(interrupted.farm.playerProgression);
+const interruptedRewards = structuredClone(interrupted.farm.bossRewardReceipts);
+const interruptedResult = abortReservedRaidRun(interrupted.farm, { completedAtMs: 1234 });
+assert.equal(interruptedResult.applied, true);
+assert.equal(interruptedResult.receipt.outcome, 'aborted');
+assert.equal(interruptedResult.receipt.ownerId, 'recovery-abort');
+assert.deepEqual(interruptedResult.receipt.sleptFarmUnitIds, []);
+assert.equal(interruptedResult.farm.activeRaidRunSequence, null);
+assert.equal(interruptedResult.farm.activeRaidSessionId, null);
+assert.equal(interruptedResult.farm.raidSettlementWatermark, interrupted.runSequence);
+assert.deepEqual(interruptedResult.farm.units, interruptedUnits, 'abandonment does not change any Farm units');
+assert.deepEqual(interruptedResult.farm.playerProgression, interruptedProgression, 'abandonment grants no XP or points');
+assert.deepEqual(interruptedResult.farm.bossRewardReceipts, interruptedRewards, 'abandonment grants no boss reward');
+let staleRewardCalls = 0;
+const staleReturn = settleRaidOwnerFarm(interruptedResult.farm, {
+  ownerId: 'alice', sessionId: interrupted.sessionId, encounterId: interrupted.runSequence,
+  runSequence: interrupted.runSequence, outcome: 'victory',
+  raidWorld: makeRaidWorld('alice', interrupted.farm, { casualties: [1] }),
+  settleVictory: () => { staleRewardCalls++; throw new Error('stale victory cannot award'); }
+});
+assert.equal(staleReturn.applied, false, 'a still-running old tab cannot settle after explicit abandonment');
+assert.equal(staleRewardCalls, 0);
+assert.deepEqual(staleReturn.farm.units, interruptedUnits);
+const newAfterAbandon = reserveRaidRun(interruptedResult.farm, { sessionId: 'new-room' });
+assert.equal(newAfterAbandon.runSequence, interrupted.runSequence + 1, 'a new run can start after the abort receipt advances the watermark');
 let rewardCalls = 0;
 const victory = settleRaidOwnerFarm(reserved.farm, {
   ownerId: 'alice', sessionId: 'room-abc', encounterId: 4, runSequence: reserved.runSequence, outcome: 'victory',

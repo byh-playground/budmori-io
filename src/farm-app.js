@@ -9,7 +9,7 @@ import {CombatFeel} from './combat-feel.js';
 import {raidRosterEntries} from './raid-roster.js';
 import {createAbilityRuntimeSnapshot} from './ability-state.js';
 import {renderAbilityTreeMarkup} from './ability-tree.js';
-import {reserveRaidRun,settleRaidOwnerFarm} from './raid-settlement.js';
+import {abortReservedRaidRun,reserveRaidRun,settleRaidOwnerFarm} from './raid-settlement.js';
 import {settleBossKill} from './boss-rewards.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
 let networkTimer=null,observedWorld=null;
@@ -28,7 +28,8 @@ install(new Garden());active.paused=true;
 function persist(){if(!personalGarden)return false;const ok=storage.save(personalGarden);$('saveNotice').textContent=ok?'':storage.error;$('treeStorage').hidden=ok;return ok}
 function refreshStart(){
  if(room||attempt){$('newConfirm').hidden=true;$('importConfirm').hidden=true;imported=null}
- $('continueGame').disabled=!storage.world;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);
+ const hasReservedRaid=storage.world?.activeRaidRunSequence!==null&&storage.world?.activeRaidRunSequence!==undefined,liveRaid=active?.world?.scene==='raid'||!!room,staleRaid=hasReservedRaid&&!liveRaid;
+ $('continueGame').disabled=!storage.world||staleRaid;$('staleRaidNotice').hidden=!staleRaid||!!attempt;$('onlineGame').disabled=hasReservedRaid;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);
  $('saveNotice').textContent=storage.error;$('newGame').hidden=!!room;
  $('continueGame').hidden=!!room;$('onlineGame').hidden=!!room||!!attempt;
  $('cancelOnline').hidden=!attempt;$('leaveOnline').hidden=!room;
@@ -63,7 +64,7 @@ function persistRaidSettlement(raidWorld,ownerId){
  }
  personalGarden=storage.world;return settled;
 }
-function beginRaid(push=true){if(room||!personalGarden||active.world.scene==='raid'||personalGarden.farmBossEvent?.phase!=='idle'||!raidRosterEntries(personalGarden.units,1).length)return;if(!persist())return;const reserved=reservePersonalRaidRun();if(!reserved)return;renderer.dropTarget=null;const battle=Garden.createRaidBattle((personalGarden.seed+Math.floor(performance.now()))>>>0,['solo']);install(battle);active.queue('register-roster',{entries:raidRosterEntries(personalGarden.units,CONFIG.maxRaidPlayerUnits),abilitySnapshot:createAbilityRuntimeSnapshot(personalGarden.playerProgression),settlement:{sessionId:reserved.sessionId,runSequence:reserved.runSequence,encounterId:reserved.runSequence}});setHome(false,push)}
+function beginRaid(push=true){if(room||!personalGarden||active.world.scene==='raid'||personalGarden.activeRaidRunSequence!==null||personalGarden.farmBossEvent?.phase!=='idle'||!raidRosterEntries(personalGarden.units,1).length)return;if(!persist())return;const reserved=reservePersonalRaidRun();if(!reserved)return;renderer.dropTarget=null;const battle=Garden.createRaidBattle((personalGarden.seed+Math.floor(performance.now()))>>>0,['solo']);install(battle);active.queue('register-roster',{entries:raidRosterEntries(personalGarden.units,CONFIG.maxRaidPlayerUnits),abilitySnapshot:createAbilityRuntimeSnapshot(personalGarden.playerProgression),settlement:{sessionId:reserved.sessionId,runSequence:reserved.runSequence,encounterId:reserved.runSequence}});setHome(false,push)}
 async function returnToFarm(push=true){
  stopDrop();if(!personalGarden)return;
  const raidWorld=active?.world?.scene==='raid'?snapshot(active.world):null;
@@ -74,7 +75,16 @@ async function returnToFarm(push=true){
  if(room){const leaving=room;try{await active.session.leave()}catch{}active.dispose();leaving.close();room=null;solo=null}
  renderer.dropTarget=null;install(personalGarden);setHome(false,push);return true;
 }
-$('continueGame').onclick=()=>{if(storage.world)start(restore(snapshot(storage.world)))};
+$('continueGame').onclick=()=>{if(room||active?.world?.scene==='raid'){setHome(false);return}if(storage.world&&storage.world.activeRaidRunSequence===null)start(restore(snapshot(storage.world)))};
+$('abortRaidRun').onclick=()=>{
+ if(room||active?.world?.scene==='raid')return;
+ const world=storage.world;if(!world||world.activeRaidRunSequence===null)return refreshStart();
+ try{
+  const result=abortReservedRaidRun(snapshot(world),{completedAtMs:Date.now()});if(!result.applied)return refreshStart();
+  if(!storage.save(restore(result.farm))){$('saveNotice').textContent=storage.error;return}
+  personalGarden=storage.world;refreshStart();$('saveNotice').textContent='이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.';
+ }catch(error){fail(error)}
+};
 $('newGame').onclick=()=>{
  // Overwriting an existing save is a separate, explicit user action.
  if((storage.raw||storage.legacyRaw)&&!$('newConfirm').hidden)return;
@@ -92,7 +102,7 @@ $('saveFile').onchange=async()=>{const file=$('saveFile').files[0];if(!file)retu
 $('cancelImport').onclick=()=>{imported=null;importedLegacy=false;$('importConfirm').hidden=true};
 $('confirmImport').onclick=()=>{if(room||attempt)return;try{if(imported){const legacy=importedLegacy,world=storage.import(imported);if(legacy)start(world)}imported=null;importedLegacy=false;$('importConfirm').hidden=true;refreshStart()}catch(e){$('saveNotice').textContent=e.message}};
 $('onlineGame').onclick=async()=>{
- if(attempt||room)return;personalGarden=restore(snapshot(storage.world||personalGarden||active.world));if(!persist())return;solo=restore(snapshot(personalGarden));const controller=attempt=new AbortController();refreshStart();$('sessionNotice').textContent='함께할 정원을 찾고 있어요…';
+ if(attempt||room)return;personalGarden=restore(snapshot(storage.world||personalGarden||active.world));if(personalGarden.activeRaidRunSequence!==null){$('sessionNotice').textContent='이전 원정 기록을 먼저 종료하고 다시 연결해 주세요.';return}if(!persist())return;solo=restore(snapshot(personalGarden));const controller=attempt=new AbortController();refreshStart();$('sessionNotice').textContent='함께할 정원을 찾고 있어요…';
  try{
   const next=await BloomGamekitTransport.createNostrPublicRoom({namespace:'budmori-public-v1',simulationVersion:'budmori-farm-'+PRODUCT_VERSION,maxPlayers:CONFIG.maxRaidPlayers,discoveryMs:1500,totalTimeoutMs:60000,peerTimeoutMs:20000,signal:controller.signal,onStatus:e=>{if(attempt===controller)$('sessionNotice').textContent=({discovering:'함께할 정원을 찾고 있어요…',hosting:'새 정원을 열고 있어요…',joining:'정원에 연결하고 있어요…'})[e.type]||'함께할 정원을 준비하고 있어요…'}});
   if(controller.signal.aborted){next.close();return}const reserved=reservePersonalRaidRun(next.sessionId);if(!reserved){next.close();return}room=next;const battle=Garden.createRaidBattle(BloomGamekitDeterministic.hashBytes(new TextEncoder().encode(next.sessionId)),next.players);install(battle,{room:next});active.queue('register-roster',{entries:raidRosterEntries(personalGarden.units),abilitySnapshot:createAbilityRuntimeSnapshot(personalGarden.playerProgression),settlement:{sessionId:reserved.sessionId,runSequence:reserved.runSequence,encounterId:reserved.runSequence}});$('sessionNotice').textContent='함께 가꾸는 정원 · 개인 저장은 보존됩니다.';setHome(false);
@@ -154,7 +164,7 @@ window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('treePanel').hi
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});
 window.addEventListener('resize',()=>renderer.resize());window.addEventListener('pagehide',()=>{persist();clearInterval(networkTimer);attempt?.abort();room?.close();active.dispose();renderer.dispose()});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();persist();fail(Error('그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요.'))});
-function route(){const r=location.hash;if(r==='#/'||!r){setHome(true,false);return}if(home){if(!room&&storage.error&&!storage.world){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.world)start(restore(snapshot(storage.world)),false);else start(new Garden(),false)}if(r==='#/help'||r==='#/growth')panel(r==='#/help'?'helpPanel':'treePanel',true,false);else if(r==='#/abilities')showAbilityPanel(true,false);else{if(!$('treePanel').hidden)panel('treePanel',false,false);if(!$('helpPanel').hidden)panel('helpPanel',false,false);if(!$('abilityPanel').hidden){$('abilityPanel').hidden=true;if(!room)active.paused=abilityPause}$('abilities').setAttribute('aria-expanded','false');if(r==='#/raid'){if(!room&&personalGarden?.farmBossEvent?.phase!=='idle'){history.replaceState(null,'','#/farm')}else if(!room)beginRaid(false)}else if(r==='#/farm'&&active.world.scene==='raid'&&!room)returnToFarm(false)}}
+function route(){const r=location.hash;if(r==='#/'||!r){setHome(true,false);return}if(!room&&storage.world?.activeRaidRunSequence!==null&&storage.world?.activeRaidRunSequence!==undefined){setHome(true,false);history.replaceState(null,'','#/');return}if(home){if(!room&&storage.error&&!storage.world){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.world)start(restore(snapshot(storage.world)),false);else start(new Garden(),false)}if(r==='#/help'||r==='#/growth')panel(r==='#/help'?'helpPanel':'treePanel',true,false);else if(r==='#/abilities')showAbilityPanel(true,false);else{if(!$('treePanel').hidden)panel('treePanel',false,false);if(!$('helpPanel').hidden)panel('helpPanel',false,false);if(!$('abilityPanel').hidden){$('abilityPanel').hidden=true;if(!room)active.paused=abilityPause}$('abilities').setAttribute('aria-expanded','false');if(r==='#/raid'){if(!room&&personalGarden?.farmBossEvent?.phase!=='idle'){history.replaceState(null,'','#/farm')}else if(!room)beginRaid(false)}else if(r==='#/farm'&&active.world.scene==='raid'&&!room)returnToFarm(false)}}
 window.addEventListener('popstate',route);
 function sync(display,now){
  const w=active.world,raid=display.scene==='raid',farmEvent=display.farmBossEvent,farmEventActive=!raid&&farmEvent?.phase!=='idle',battleHud=raid||farmEventActive,readyTroops=personalGarden?raidRosterEntries(personalGarden.units,CONFIG.maxFarmCap).length:0,rewardWorld=personalGarden||w,pendingRewardCount=rewardWorld.bossRewardReceipts.filter(reward=>reward.status==='pending').length;for(const [id,value]of [['farm',!raid],['raid',raid],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);

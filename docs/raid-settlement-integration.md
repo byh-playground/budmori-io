@@ -34,8 +34,9 @@ block reapplication after older receipt details are compacted.
 Farm. It must be committed through the existing FarmStorage compare-before-write
 guard **before** a new Raid session starts. If two tabs race from the same Farm
 snapshot, only the CAS winner may start; a losing tab must not report success or
-open another run. The same Farm cannot host simultaneous Raids. A reconnect
-must reuse its stored active session/sequence; it must not create a fresh run.
+open another run. The same Farm cannot host simultaneous Raids. A reconnect to a still-running
+session must reuse its stored active session/sequence; it must not create a
+fresh run.
 
 Settlement must also be committed with compare-before-write against the stored
 active-run Farm revision. Do not show death or reward settlement as successful
@@ -46,8 +47,15 @@ another tab already committed the result, reload the watermark/receipt and
 return that result without changing the Farm again.
 
 The active sequence and session fields are part of the private Farm snapshot,
-so they survive reload. A failed/aborted attempt can still apply verified
-casualties as 60-second sleep, but defeat and abort never call the reward seam.
+so they survive reload even though the Raid runtime does not. The app must not
+silently resume that reservation as a new fight or automatically discard a
+possibly-live Raid in another tab. It blocks continuation until the player
+explicitly chooses “end previous Raid and return”; that action writes an
+`aborted` recovery receipt with no casualties, rewards, XP, points, or unit
+changes, then advances the watermark under the same compare-before-write guard.
+An old tab that later tries to settle that run is ignored by the watermark.
+Normal in-runtime aborts may still apply verified casualties as 60-second
+sleep, but never call the reward seam.
 
 ## Shared resolver integration seam
 
