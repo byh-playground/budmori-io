@@ -1,54 +1,60 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="300" viewBox="0 0 320 300">
   <metadata id="vector-asset">{"schemaVersion":1,"id":"budmori-chestnut-troop","defaultExpression":"neutral","parts":[{"id":"arm-left","parent":null,"pivot":[91,198]},{"id":"arm-right","parent":null,"pivot":[229,198]},{"id":"body","parent":null,"pivot":[160,205]},{"id":"face-neutral","parent":"body","pivot":[160,205]},{"id":"face-focused","parent":"body","pivot":[160,205]},{"id":"face-attack","parent":"body","pivot":[160,205]},{"id":"face-hurt","parent":"body","pivot":[160,205]},{"id":"face-dead","parent":"body","pivot":[160,205]},{"id":"face-happy","parent":"body","pivot":[160,205]},{"id":"face-surprised","parent":"body","pivot":[160,205]},{"id":"face-hungry","parent":"body","pivot":[160,205]}],"expressions":{"neutral":{"show":["face-neutral"],"hide":["face-happy","face-focused","face-attack","face-surprised","face-hurt","face-hungry","face-dead"]},"happy":{"show":["face-happy"],"hide":["face-neutral","face-focused","face-attack","face-surprised","face-hurt","face-hungry","face-dead"]},"focused":{"show":["face-focused"],"hide":["face-neutral","face-happy","face-attack","face-surprised","face-hurt","face-hungry","face-dead"]},"attack":{"show":["face-attack"],"hide":["face-neutral","face-happy","face-focused","face-surprised","face-hurt","face-hungry","face-dead"]},"surprised":{"show":["face-surprised"],"hide":["face-neutral","face-happy","face-focused","face-attack","face-hurt","face-hungry","face-dead"]},"hurt":{"show":["face-hurt"],"hide":["face-neutral","face-happy","face-focused","face-attack","face-surprised","face-hungry","face-dead"]},"hungry":{"show":["face-hungry"],"hide":["face-neutral","face-happy","face-focused","face-attack","face-surprised","face-hurt","face-dead"]},"dead":{"show":["face-dead"],"hide":["face-neutral","face-happy","face-focused","face-attack","face-surprised","face-hurt","face-hungry"]}},"sockets":{"ground":{"part":"body","point":[160,261]},"shoulder-left":{"part":"body","point":[91,198]},"shoulder-right":{"part":"body","point":[229,198]},"fist-left":{"part":"arm-left","point":[42,225]},"fist-right":{"part":"arm-right","point":[278,225]},"mouth":{"part":"body","point":[160,219]}},"clips":{"idle":{"durationMs":1200,"loop":"repeat","easing":"inOutSine","keyframes":[{"timeMs":0,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":-0.025},"arm-right":{"rotation":0.025}}},{"timeMs":600,"easing":"inOutSine","parts":{"body":{"y":-2,"rotation":0.012,"scaleX":1.01,"scaleY":0.99},"arm-left":{"rotation":0.035},"arm-right":{"rotation":-0.035}}},{"timeMs":1200,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":-0.025},"arm-right":{"rotation":0.025}}}]},"walk":{"durationMs":480,"loop":"repeat","easing":"inOutSine","keyframes":[{"timeMs":0,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":-0.018,"scaleX":1.02,"scaleY":0.98},"arm-left":{"rotation":-0.08},"arm-right":{"rotation":0.08}}},{"timeMs":240,"easing":"inOutSine","parts":{"body":{"y":-4,"rotation":0.018,"scaleX":0.98,"scaleY":1.02},"arm-left":{"rotation":0.08},"arm-right":{"rotation":-0.08}}},{"timeMs":480,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":-0.018,"scaleX":1.02,"scaleY":0.98},"arm-left":{"rotation":-0.08},"arm-right":{"rotation":0.08}}}]},"windup":{"durationMs":500,"loop":"once","easing":"outQuad","keyframes":[{"timeMs":0,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":-0.1},"arm-right":{"rotation":0.1}}},{"timeMs":350,"easing":"outQuad","parts":{"body":{"y":5,"rotation":-0.035,"scaleX":0.96,"scaleY":1.04},"arm-left":{"rotation":-0.52},"arm-right":{"rotation":0.52}}},{"timeMs":500,"easing":"outQuad","parts":{"body":{"y":5,"rotation":-0.035,"scaleX":0.96,"scaleY":1.04},"arm-left":{"rotation":-0.52},"arm-right":{"rotation":0.52}}}]},"fire":{"durationMs":240,"loop":"once","easing":"outQuad","keyframes":[{"timeMs":0,"easing":"outQuad","parts":{"body":{"y":-2,"rotation":0.025,"scaleX":1.04,"scaleY":0.96},"arm-left":{"rotation":0.08},"arm-right":{"rotation":-0.08}}},{"timeMs":110,"easing":"outQuad","parts":{"body":{"y":-8,"rotation":0.055,"scaleX":1.07,"scaleY":0.93},"arm-left":{"rotation":0.15},"arm-right":{"rotation":-0.15}}},{"timeMs":240,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":0},"arm-right":{"rotation":0}}}]},"recover":{"durationMs":700,"loop":"once","easing":"outQuad","keyframes":[{"timeMs":0,"easing":"outQuad","parts":{"body":{"y":3,"rotation":-0.02,"scaleX":0.96,"scaleY":1.04},"arm-left":{"rotation":-0.14},"arm-right":{"rotation":0.14}}},{"timeMs":260,"easing":"outQuad","parts":{"body":{"y":-2,"rotation":0.01,"scaleX":1.01,"scaleY":0.99},"arm-left":{"rotation":0.06},"arm-right":{"rotation":-0.06}}},{"timeMs":700,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":0},"arm-right":{"rotation":0}}}]},"hit":{"durationMs":240,"loop":"once","easing":"outQuad","keyframes":[{"timeMs":0,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0.08,"scaleX":0.97,"scaleY":1.03},"arm-left":{"rotation":-0.3},"arm-right":{"rotation":0.3}}},{"timeMs":110,"easing":"outQuad","parts":{"body":{"y":2,"rotation":-0.06,"scaleX":1.04,"scaleY":0.96},"arm-left":{"rotation":0.2},"arm-right":{"rotation":-0.2}}},{"timeMs":240,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":0},"arm-right":{"rotation":0}}}]},"airborne":{"durationMs":480,"loop":"repeat","easing":"inOutSine","keyframes":[{"timeMs":0,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":-0.018,"scaleX":1.02,"scaleY":0.98},"arm-left":{"rotation":-0.08},"arm-right":{"rotation":0.08}}},{"timeMs":240,"easing":"inOutSine","parts":{"body":{"y":-4,"rotation":0.018,"scaleX":0.98,"scaleY":1.02},"arm-left":{"rotation":0.08},"arm-right":{"rotation":-0.08}}},{"timeMs":480,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":-0.018,"scaleX":1.02,"scaleY":0.98},"arm-left":{"rotation":-0.08},"arm-right":{"rotation":0.08}}}]},"landing":{"durationMs":700,"loop":"once","easing":"outQuad","keyframes":[{"timeMs":0,"easing":"outQuad","parts":{"body":{"y":3,"rotation":-0.02,"scaleX":0.96,"scaleY":1.04},"arm-left":{"rotation":-0.14},"arm-right":{"rotation":0.14}}},{"timeMs":260,"easing":"outQuad","parts":{"body":{"y":-2,"rotation":0.01,"scaleX":1.01,"scaleY":0.99},"arm-left":{"rotation":0.06},"arm-right":{"rotation":-0.06}}},{"timeMs":700,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":0},"arm-right":{"rotation":0}}}]},"death":{"durationMs":480,"loop":"once","easing":"outQuad","keyframes":[{"timeMs":0,"easing":"outQuad","parts":{"body":{"y":0,"rotation":0.04,"scaleX":1,"scaleY":1},"arm-left":{"rotation":-0.2},"arm-right":{"rotation":0.2}}},{"timeMs":230,"easing":"outQuad","parts":{"body":{"y":9,"rotation":0.08,"scaleX":1.12,"scaleY":0.63},"arm-left":{"rotation":-1.05},"arm-right":{"rotation":1.05}}},{"timeMs":480,"easing":"outQuad","parts":{"body":{"y":9,"rotation":0.08,"scaleX":1.12,"scaleY":0.63},"arm-left":{"rotation":-1.05},"arm-right":{"rotation":1.05}}}]},"victory":{"durationMs":1200,"loop":"repeat","easing":"inOutSine","keyframes":[{"timeMs":0,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":-0.025},"arm-right":{"rotation":0.025}}},{"timeMs":600,"easing":"inOutSine","parts":{"body":{"y":-2,"rotation":0.012,"scaleX":1.01,"scaleY":0.99},"arm-left":{"rotation":0.035},"arm-right":{"rotation":-0.035}}},{"timeMs":1200,"easing":"inOutSine","parts":{"body":{"y":0,"rotation":0,"scaleX":1,"scaleY":1},"arm-left":{"rotation":-0.025},"arm-right":{"rotation":0.025}}}]}}}</metadata>
   <g id="arm-left">
-    <path id="arm-left-outline" d="M95 190 C78 179 61 185 49 198 C38 210 34 221 41 228 C48 235 57 229 66 219 C76 208 85 205 98 208 Z" fill="#69472f" stroke="#403329" stroke-width="5" stroke-linejoin="round"/>
-    <path id="arm-left-light" d="M89 195 C74 188 62 194 52 205 C48 210 45 216 44 220 C53 222 62 213 70 205 C77 199 84 197 91 200 Z" fill="#aa7950"/>
-    <ellipse id="arm-left-fist" cx="43" cy="223" rx="11" ry="10" fill="#875c3c" stroke="#403329" stroke-width="4"/>
+    <path id="arm-left-outline" d="M79 179 C63 178 50 186 45 198 C40 211 40 220 48 224 C56 228 62 219 68 208 L88 195 Z" fill="#84472f" stroke="#2c201c" stroke-width="5.5" stroke-linejoin="round"/>
   </g>
   <g id="arm-right">
-    <path id="arm-right-outline" d="M225 190 C242 179 259 185 271 198 C282 210 286 221 279 228 C272 235 263 229 254 219 C244 208 235 205 222 208 Z" fill="#69472f" stroke="#403329" stroke-width="5" stroke-linejoin="round"/>
-    <path id="arm-right-light" d="M231 195 C246 188 258 194 268 205 C272 210 275 216 276 220 C267 222 258 213 250 205 C243 199 236 197 229 200 Z" fill="#aa7950"/>
-    <ellipse id="arm-right-fist" cx="277" cy="223" rx="11" ry="10" fill="#875c3c" stroke="#403329" stroke-width="4"/>
+    <path id="arm-right-outline" d="M241 179 C257 178 270 186 275 198 C280 211 280 220 272 224 C264 228 258 219 252 208 L232 195 Z" fill="#84472f" stroke="#2c201c" stroke-width="5.5" stroke-linejoin="round"/>
   </g>
   <g id="body">
-    <path id="chestnut-shell" d="M160 101 C144 102 132 113 119 128 C108 143 97 151 82 158 C62 167 48 176 44 189 C39 207 44 222 58 236 C76 250 107 259 137 261 L183 261 C213 259 244 250 262 236 C276 222 281 207 276 189 C272 176 258 167 238 158 C223 151 212 143 201 128 C188 113 176 102 160 101 Z" fill="#ae7853" stroke="#614b3c" stroke-width="6" stroke-linejoin="round"/>
-    <path id="chestnut-crown" d="M128 130 C138 115 149 100 160 89 C171 100 182 115 192 130 C181 125 173 125 166 132 L160 117 L154 132 C147 125 139 125 128 130 Z" fill="#885d47" stroke="#614b3c" stroke-width="3" stroke-linejoin="round"/>
-    <path id="nut-underside" d="M62 179 C68 159 84 148 103 141 C120 135 140 134 160 136 C180 134 200 135 217 141 C236 148 252 159 258 179 C265 200 254 221 237 236 C216 251 188 256 160 256 C132 256 104 251 83 236 C66 221 55 200 62 179 Z" fill="#dfad79" stroke="#885d47" stroke-width="4" stroke-linejoin="round"/>
-    <path id="shell-grain-left" d="M73 131 Q65 144 68 158" fill="none" stroke="#885d47" stroke-width="3.5" stroke-linecap="round"/>
-    <path id="shell-grain-right" d="M247 131 Q255 144 252 158" fill="none" stroke="#885d47" stroke-width="3.5" stroke-linecap="round"/>
+    <ellipse id="foot-left" cx="128" cy="242" rx="12" ry="20" fill="#74402e" stroke="#2c201c" stroke-width="5.5"/>
+    <ellipse id="foot-right" cx="192" cy="242" rx="12" ry="20" fill="#74402e" stroke="#2c201c" stroke-width="5.5"/>
+    <path id="chestnut-shell" d="M160 22 C142 39 114 53 91 70 C64 92 47 120 43 151 C39 173 44 193 58 208 C76 225 117 230 160 230 C203 230 244 225 262 208 C276 193 281 173 277 151 C273 120 256 92 229 70 C206 53 178 39 160 22 Z" fill="#87482f" stroke="#2c201c" stroke-width="6" stroke-linejoin="round"/>
+    <path id="nut-underside" d="M50 176 C78 161 116 157 160 158 C204 157 242 161 270 176 C266 192 250 207 228 216 C205 224 180 226 160 226 C140 226 115 224 92 216 C70 207 54 192 50 176 Z" fill="#f1d4aa" stroke="#2c201c" stroke-width="5" stroke-linejoin="round"/>
     <g id="face-neutral">
-      <ellipse id="neutral-cheek-left" cx="124" cy="213" rx="11" ry="6" fill="#e98977"/>
-      <ellipse id="neutral-cheek-right" cx="196" cy="213" rx="11" ry="6" fill="#e98977"/>
-      <ellipse id="neutral-eye-left" cx="141" cy="194" rx="9" ry="11" fill="#33251f"/>
-      <ellipse id="neutral-eye-right" cx="179" cy="194" rx="9" ry="11" fill="#33251f"/>
-      <circle id="neutral-eye-glint-left" cx="139" cy="191" r="2.3" fill="#fff3db"/>
-      <circle id="neutral-eye-glint-right" cx="177" cy="191" r="2.3" fill="#fff3db"/>
-      <path id="neutral-mouth" d="M148 216 Q160 232 172 216" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/>
+      <ellipse id="neutral-cheek-left" cx="104" cy="137" rx="10" ry="5.5" fill="#e88a86"/>
+      <ellipse id="neutral-cheek-right" cx="216" cy="137" rx="10" ry="5.5" fill="#e88a86"/>
+      <ellipse id="neutral-eye-left" cx="128" cy="116" rx="10" ry="12" fill="#2d1e1a"/>
+      <ellipse id="neutral-eye-right" cx="192" cy="116" rx="10" ry="12" fill="#2d1e1a"/>
+      <path id="neutral-mouth" d="M148 136 Q160 149 172 136" fill="none" stroke="#2d1e1a" stroke-width="4.5" stroke-linecap="round"/>
     </g>
     <g id="face-focused">
-      <path id="focused-brow-left" d="M131 183 L147 188 M173 188 L189 183" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <ellipse id="focused-eye-left" cx="141" cy="196" rx="7.5" ry="10" fill="#33251f"/>
-      <ellipse id="focused-eye-right" cx="179" cy="196" rx="7.5" ry="10" fill="#33251f"/>
-      <path id="focused-mouth" d="M152 219 L168 219" fill="none" stroke="#49352d" stroke-width="3.5" stroke-linecap="round"/>
+      <path id="focused-brow-left" d="M117 104 L135 109 M185 109 L203 104" fill="none" stroke="#2d1e1a" stroke-width="3.5" stroke-linecap="round"/>
+      <ellipse id="focused-eye-left" cx="128" cy="118" rx="8" ry="10" fill="#2d1e1a"/>
+      <ellipse id="focused-eye-right" cx="192" cy="118" rx="8" ry="10" fill="#2d1e1a"/>
+      <path id="focused-mouth" d="M150 140 L170 140" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
     <g id="face-attack">
-      <path id="attack-brow-left" d="M130 183 L147 189 M173 189 L190 183" fill="none" stroke="#49352d" stroke-width="3.2" stroke-linecap="round"/>
-      <ellipse id="attack-eye-left" cx="141" cy="196" rx="8.5" ry="11" fill="#33251f"/>
-      <ellipse id="attack-eye-right" cx="179" cy="196" rx="8.5" ry="11" fill="#33251f"/>
-      <ellipse id="attack-mouth" cx="160" cy="219" rx="7" ry="8" fill="#49352d"/>
+      <path id="attack-brow-left" d="M116 104 L135 110 M185 110 L204 104" fill="none" stroke="#2d1e1a" stroke-width="3.5" stroke-linecap="round"/>
+      <ellipse id="attack-eye-left" cx="128" cy="118" rx="9" ry="11" fill="#2d1e1a"/>
+      <ellipse id="attack-eye-right" cx="192" cy="118" rx="9" ry="11" fill="#2d1e1a"/>
+      <ellipse id="attack-mouth" cx="160" cy="140" rx="7" ry="8" fill="#2d1e1a"/>
     </g>
     <g id="face-hurt">
-      <path id="hurt-eye-left" d="M134 194 L148 194 M134 188 L148 200" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
-      <path id="hurt-eye-right" d="M172 194 L186 194 M172 200 L186 188" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
-      <path id="hurt-mouth" d="M151 222 Q160 214 169 222" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/>
+      <path id="hurt-eye-left" d="M119 116 L137 116 M119 109 L137 123" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
+      <path id="hurt-eye-right" d="M183 116 L201 116 M183 123 L201 109" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
+      <path id="hurt-mouth" d="M149 145 Q160 137 171 145" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
     <g id="face-dead">
-      <path id="dead-eye-left" d="M134 188 L148 201 M148 188 L134 201" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
-      <path id="dead-eye-right" d="M172 188 L186 201 M186 188 L172 201" fill="none" stroke="#49352d" stroke-width="3.8" stroke-linecap="round"/>
-      <path id="dead-mouth" d="M152 219 L168 219" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/>
+      <path id="dead-eye-left" d="M120 110 L136 124 M136 110 L120 124" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
+      <path id="dead-eye-right" d="M184 110 L200 124 M200 110 L184 124" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
+      <path id="dead-mouth" d="M150 140 L170 140" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g id="face-happy"><path id="troop-happy-eye-left" d="M132 196 Q141 186 150 196 M170 196 Q179 186 188 196" fill="none" stroke="#33251f" stroke-width="3.5" stroke-linecap="round"/><path id="troop-happy-mouth" d="M148 215 Q160 229 172 215" fill="none" stroke="#49352d" stroke-width="4" stroke-linecap="round"/></g>
-    <g id="face-surprised"><ellipse id="troop-surprised-eye-left" cx="141" cy="194" rx="8" ry="10" fill="none" stroke="#33251f" stroke-width="3.5"/><ellipse id="troop-surprised-eye-right" cx="179" cy="194" rx="8" ry="10" fill="none" stroke="#33251f" stroke-width="3.5"/><ellipse id="troop-surprised-mouth" cx="160" cy="220" rx="6" ry="8" fill="none" stroke="#49352d" stroke-width="3.5"/></g>
-    <g id="face-hungry"><ellipse id="troop-hungry-eye-left" cx="141" cy="194" rx="8" ry="10" fill="#33251f"/><ellipse id="troop-hungry-eye-right" cx="179" cy="194" rx="8" ry="10" fill="#33251f"/><circle id="troop-hungry-glint-left" cx="139" cy="191" r="2.2" fill="#fff3db"/><circle id="troop-hungry-glint-right" cx="177" cy="191" r="2.2" fill="#fff3db"/><path id="troop-hungry-mouth" d="M155 220 Q160 215 165 220 Q160 227 155 220" fill="#49352d"/></g>
+    <g id="face-happy">
+      <ellipse id="happy-cheek-left" cx="104" cy="137" rx="11" ry="6" fill="#e88a86"/>
+      <ellipse id="happy-cheek-right" cx="216" cy="137" rx="11" ry="6" fill="#e88a86"/>
+      <path id="happy-eyes" d="M118 120 Q128 107 138 120 M182 120 Q192 107 202 120" fill="none" stroke="#2d1e1a" stroke-width="4.5" stroke-linecap="round"/>
+      <path id="happy-mouth" d="M147 136 Q160 153 173 136 Z" fill="#2d1e1a"/>
+    </g>
+    <g id="face-surprised">
+      <ellipse id="troop-surprised-eye-left" cx="128" cy="116" rx="9" ry="11" fill="none" stroke="#2d1e1a" stroke-width="4"/>
+      <ellipse id="troop-surprised-eye-right" cx="192" cy="116" rx="9" ry="11" fill="none" stroke="#2d1e1a" stroke-width="4"/>
+      <ellipse id="troop-surprised-mouth" cx="160" cy="140" rx="6" ry="8" fill="none" stroke="#2d1e1a" stroke-width="4"/>
+    </g>
+    <g id="face-hungry">
+      <ellipse id="troop-hungry-eye-left" cx="128" cy="116" rx="9" ry="11" fill="#2d1e1a"/>
+      <ellipse id="troop-hungry-eye-right" cx="192" cy="116" rx="9" ry="11" fill="#2d1e1a"/>
+      <path id="troop-hungry-mouth" d="M160 136 C154 136 153 144 160 148 C167 144 166 136 160 136 Z" fill="#2d1e1a"/>
+    </g>
   </g>
 </svg>

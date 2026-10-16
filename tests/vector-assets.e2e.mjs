@@ -40,12 +40,31 @@ const server=createServer(async(q,r)=>{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const report={suite:'vector-assets',started:new Date().toISOString(),errors:[]};let browser;
 try{
-  browser=await chromium.launch({channel:'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+  browser=await chromium.launch({channel:process.env.BUDMORI_BROWSER_CHANNEL??'msedge',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   report.browser=await browser.version();
   const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage();
   page.on('pageerror',error=>report.errors.push(error.message));
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.waitForFunction(()=>window.BUDMORI,{},{timeout:30000});
+  await page.locator('#newGame').click();
+  await page.waitForFunction(()=>BUDMORI.sim.scene==='farm'&&BUDMORI.sim.units.length===2,{},{timeout:8000});
+  const farmChestnut=await page.evaluate(()=>{
+    const world=BUDMORI.sim;
+    for(const[index,unit]of world.units.entries()){
+      unit.x=-3+index*2;unit.y=0;unit.home={x:unit.x,y:unit.y};
+      unit.z=unit.vx=unit.vy=unit.vz=0;unit.dropLanded=true;
+      unit.ability.phase='idle';unit.ability.elapsed=0;
+    }
+    const chestnut=world.spawn(3,1,3,0);
+    Object.assign(chestnut,{x:3,y:0,z:0,vx:0,vy:0,vz:0,dropLanded:true,home:{x:3,y:0}});
+    chestnut.ability.phase='idle';chestnut.ability.elapsed=0;
+    BUDMORI.runtime.paused=true;BUDMORI.runtime.capturePresentation('reset');
+    return{chestnutId:chestnut.id,units:world.units.map(unit=>({id:unit.id,species:unit.species}))};
+  });
+  await page.waitForFunction(id=>BUDMORI.renderer.vectorPlayers.has(id),farmChestnut.chestnutId,{timeout:5000});
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await page.screenshot({path:path.join(out,'chestnut-farm.png')});
+  report.farmChestnut=farmChestnut;
   const vector=await page.evaluate(async()=>{
     const renderer=BUDMORI.renderer,ids=[0,1,2,3];
     if(renderer.vectorAssets.size!==4)throw Error('Four compiled SVG vector assets are not active');
