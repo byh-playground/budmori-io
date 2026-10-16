@@ -23,7 +23,7 @@ async function render(p,label){
     boss:{raw:{x:BUDMORI.sim.boss.x,y:BUDMORI.sim.boss.y,angle:BUDMORI.sim.boss.angle},display:{x:display.boss.x,y:display.boss.y,z:display.boss.z,angle:display.boss.angle}}});
    if(samples.length>180)samples.shift();return draw.call(this,display,...args)
   };
-  try{await new Promise(requestAnimationFrame);await new Promise(resolve=>setTimeout(resolve,250))}finally{r.render=draw}
+  try{const deadline=performance.now()+5000;while(samples.length<3&&performance.now()<deadline)await new Promise(requestAnimationFrame)}finally{r.render=draw}
   const d=samples.at(-1),times=samples.map(s=>s.displayTimeMs).filter(Number.isFinite);
   return{renderMetrics:BUDMORI.renderMetrics,sampleCount:samples.length,displayTimeMonotonic:times.every((t,i)=>!i||t>=times[i-1]),latest:d}
  });
