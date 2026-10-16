@@ -1,27 +1,27 @@
-tree 9c72e1808554a9b790a6d13504a98ea9dbf975e0
-parent 52b7b50075a638e67ddba1e390d4920d2a9e6a5f
-author byh020907 <byh020907@naver.com> 1792155273 +0900
-committer GitHub <noreply@github.com> 1792155273 +0900
+tree 11dece1ae6bca8a36151493531a4776a05c8e5a2
+parent 009c9d39686686bc2b6f97443103e7c342f62126
+author byh020907 <byh020907@naver.com> 1792160692 +0900
+committer GitHub <noreply@github.com> 1792160692 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq0h6JCRC1aQ7uu5UhlAAAiUcQAJeP9yFdDmEbh/4xPuXiB1lG
- o3/XV+wr0KwHdvvVzKGQ8Ezs2b3gPheF+I9OCJaH7AqjcnRre4ZHxESodjyoP5yS
- g1PmZ7FWKVl7JGGNxtQM45BqYgdNx2r50/MIA1jOMlyQQd6rbarObzUlV2mLcXs3
- +MAHV80bBrP6K2OoEFSEVH7iaEqevgEbKwPw7aLYK387dDHYwa/3rwQdMj3NEm49
- EOlaM87B9KkeUt6Lp6aAXkywPXeaUpWBAMjlNIA1A62Mq8yt7i4RZbpO6Kxm+FUD
- vZlCv+NjHHlE+/HGbNw0WNWeQHjjuMSAXBFp5DdmhZeOTDvPL94pNFX3Dco2MIZB
- UiMXviP++TIdHCL514o8A35ZKFDEem/RNdKm/pZLtsm3zg48AEwvjMPz7yaT9WJd
- Zp9IyR+B4iCKLmqgX6cIth1MzY/LPK9hux4JVXx+oo1xI1h1kNzCmide8ckVER1w
- 09vSzBFaDjDqdGT3+06+bNkUtRyUnALW6ZvqLjslNJosnWHROO7QshEkCFshOX+W
- MT6WWadnuw1AHQp4fiLpLp4U6RGNwrxCWXqyRlz1Dc87wzA8rR//x+UAIi2+lTmy
- WOt19mvHCDBUdScvOaqvmLjKVxJapOMGZRlCwuARe6s+kP7GAD8k3J4P+5ckrQJJ
- OFZVYTl/xrCwtPvSyrw7
- =FoPA
+ wsFcBAABCAAQBQJq0jO0CRC1aQ7uu5UhlAAA4nsQAKcHSikjrSwU3DwD1bMGr10M
+ QzFEKG3wwDXq8X1T7cZ2zr9lSvvDN7qac63EmvuE4aGmhyPynCyz0Bt+So947Sy8
+ XNR7/V04xTUEnXOXzxDO09RUQQ5IkPMCLRAWnGks0ZG3v2axG5m9pMky/vrbG7QY
+ FONjWxboowEgr0hdV4CbiL++ZhH4eF2+X8UiXro/GWcQjdw847JjRFSXOlXm//yK
+ 4eWs5liXqMo8VSIMlcAujOBtUUmVBsFgpo3llp1YaaC435cU1Elp9RlqdXPjJNIF
+ leeyRRA19WAvwkZWitKnB63L8sWhQ5ybpLtnlr92wiGe+tDJqITJUeTFidMfy7+Y
+ bc+sRhrVhCbiLNgVr1AeC0os+kkp5KLCXGbZmx1/R4tLS/nmzjQLYBXTnFJkKUs6
+ mt+3xtRK4d+l0QYVXjKFWEziFxTd7G9XU2zoZjGqW/UuntorRwUFmYK2cfNWpKed
+ umdjKZ1qNNpERBnzJc3FmvLPyeM2FiILrp+six3dSDPAJofk0C3hCAX0y54ZdcXe
+ FTg29vOJ3z+64RbDFEWAzInhyqWwiJi7+BO9/eqRF5wDHwFH7RY1fXTxNxqBKg1q
+ a4naP8ejOlg+tVdY3tB/GJbKpQodgHvkN3N4Suqw9o+gF1NLB4M1mt+VaLLS55bY
+ iBK221Y3J9vAEXCO+Rpv
+ =KYXk
  -----END PGP SIGNATURE-----
  
 
-브라우저 SVG 시작 로더 추가 (#77)
+[performance] 벡터 에셋 morph 할당과 품질 옵션 추가
 
-원본 SVG의 시작 시점 검증·컴파일·캐시를 위한 독립 브라우저 API를 추가하고, Node/browser compiler core를 공유합니다.
+draw 경로의 불필요한 morph 배열 생성을 제거하고, 기본 품질을 유지하는 stroke arc 분할 옵션과 기존 SVG 예제의 비교 UI를 추가합니다.
 
-CI의 실제 Chromium/WebGL 브라우저 검사에서 SHA-256 검증, 동시 로드 캐시, Node/browser geometry 일치와 렌더를 확인했습니다.
+실제 Chromium/WebGL CI와 빌드·release 검증을 통과했습니다.
