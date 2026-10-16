@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {PRODUCT_VERSION} from '../src/version.js';
 
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 assert.equal(typeof globalThis.BloomGamekitDeterministic.SeededPRNG, 'function', 'use the pinned GameKit PRNG API');
@@ -436,7 +437,7 @@ assert.equal(localStorage.getItem('bloom-weapon-cards-v4'),null,'detection does 
 const resumedOldGarden = detectedOldSave.import(detectedOldSave.legacyRaw);
 assert.equal(resumedOldGarden.units.length,36,'confirmed import keeps the previous garden roster');
 assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'the original 0.4 key remains untouched');
-assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,'0.5.0');
+assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,PRODUCT_VERSION);
 const staleTab = new FarmStorage();
 const writer = new FarmStorage();
 writer.world.starter += 1;

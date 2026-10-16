@@ -4,7 +4,7 @@ const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const canonicalText=bytes=>Buffer.from(bytes.toString('utf8').replace(/\r\n/g,'\n'),'utf8');
 const html=canonicalText(await readFile(new URL('../index.html',import.meta.url))),expected=hash(html);
 const manifest=JSON.parse(html.toString('utf8').match(/<script id="bloom-runtime-manifest" type="application\/json">([\s\S]*?)<\/script>/)?.[1]||'null');
-const files=[{file:'index.html',sha256:expected,bytes:html.length},...[manifest?.game,manifest?.bootstrap,manifest?.scope].filter(Boolean)];
+const files=[{file:'index.html',sha256:expected,bytes:html.length},...[manifest?.game,manifest?.bootstrap,manifest?.scope,...(manifest?.vectorAssets||[])].filter(Boolean)];
 const url='https://byh-playground.github.io/budmori-io/';
 const deadline=Date.now()+8*60*1000;let observed='not fetched',verified=false;
 while(Date.now()<deadline){

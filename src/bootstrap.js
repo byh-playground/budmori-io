@@ -7,7 +7,7 @@ loading.style.cssText='position:fixed;inset:0;z-index:1000;display:grid;place-co
 const label=document.createElement('span'),retry=document.createElement('button');
 label.textContent='게임을 준비하고 있어요';retry.textContent='다시 시도';retry.hidden=true;
 loading.append(label,retry);document.body.append(loading);
-const ready=new Map();let pending=false,started=false;
+const ready=new Map();let pending=false,started=false;let vectorLoader=null;
 const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
 async function namespace(entry){
   if(ready.has(entry.name))return ready.get(entry.name);
@@ -24,6 +24,17 @@ async function launch(){
   try{
     const modules=await Promise.all(config.modules.map(async entry=>({entry,record:await namespace(entry)})));
     for(const {entry,record}of modules)globalThis[entry.globalName]=record.exports;
+    label.textContent='캐릭터를 준비하고 있어요';
+    vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({maxEntries:16});
+    const troops={},bosses={};
+    const records=await Promise.all(config.vectorAssets.map(async spec=>{
+      const url=new URL(spec.file+'?version='+spec.sha256,document.baseURI).href;
+      const compiled=await vectorLoader.load(url,{sourcePath:spec.file,expectedSha256:spec.sha256,maxBytes:spec.bytes});
+      if(compiled.sourceSha256!==spec.sha256)throw new Error('Vector source integrity failed: '+spec.file);
+      return {spec,compiled};
+    }));
+    for(const {spec,compiled} of records)(spec.kind==='troop'?troops:bosses)[spec.id]=compiled;
+    globalThis.BudmoriVectorResources=Object.freeze({troops:Object.freeze(troops),bosses:Object.freeze(bosses)});
     let scope=null;
     if(config.scope){const entry={...config.scope,name:'app-simulation-scope',url:new URL(config.scope.file+'?version='+config.scope.sha256,document.baseURI).href};
       const record=await namespace(entry);globalThis.BloomSimulationScopeModule=record.exports;

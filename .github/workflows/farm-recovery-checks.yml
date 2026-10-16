@@ -22,6 +22,7 @@ jobs:
       - run: npm run test:progression
       - run: node tests/runtime-manifest-unit.mjs
       - run: npx playwright install --with-deps chromium
+      - run: node tests/svg-startup.e2e.mjs
       - run: npm run test:browser
       - run: npm run test:browser:save
       - run: node scripts/test-scenarios.mjs event

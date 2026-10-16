@@ -13,9 +13,15 @@ const manifest=JSON.parse(html.toString('utf8').match(/<script id="bloom-runtime
 assert.ok(manifest?.game&&manifest?.bootstrap,'runtime asset manifest is present');
 const bootstrapIntegrity='sha256-'+Buffer.from(manifest.bootstrap.sha256,'hex').toString('base64');
 assert.ok(html.toString('utf8').includes(`integrity="${bootstrapIntegrity}"`),'bootstrap SRI matches the canonical content hash');
-for(const asset of [manifest.game,manifest.bootstrap,manifest.scope].filter(Boolean)){
+for(const asset of [manifest.game,manifest.bootstrap,manifest.scope,...(manifest.vectorAssets||[])].filter(Boolean)){
   const bytes=await readFile(new URL('../'+asset.file,import.meta.url));
   assert.equal(bytes.length,asset.bytes,asset.file+' byte length is canonical');
   assert.equal(hash(bytes),asset.sha256,asset.file+' SHA matches canonical Git text bytes');
 }
 console.log('runtime manifest canonical byte checks passed');
+
+assert.equal(manifest.vectorAssets.length,5,'five original SVG sources are startup resources');
+assert(manifest.vectorAssets.every(a=>a.file.endsWith('.svg')));
+const game=await readFile(new URL('../src/game.js',import.meta.url),'utf8');
+assert(!game.includes('vector-assets.generated.js'),'no compiled character import in game bundle');
+assert(game.length<1000000,'game logic bundle must not contain expanded character mesh data');

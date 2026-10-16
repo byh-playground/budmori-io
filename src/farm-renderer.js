@@ -1,5 +1,6 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
-import {BOSS_VECTOR_ASSETS,TROOP_VECTOR_ASSETS} from './vector-assets.generated.js';
+const {bosses:BOSS_VECTOR_ASSETS,troops:TROOP_VECTOR_ASSETS}=globalThis.BudmoriVectorResources;
+// Original SVG sources are compiled once by the startup loader before this module runs.
 const {WebGLDevice,VectorContext,MeshRenderer}=globalThis.BloomGamekitRendering;
 const {createVectorAsset}=globalThis.BloomGamekitVectorAssets;
 // Historical Budmori grade outline colors for the currently supported T1–T4.

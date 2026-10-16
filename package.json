@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.cjs",
-    "vector-assets:compile": "node scripts/compile-vector-assets.mjs",
     "test": "npm run test:progression && node scripts/test-scenarios.mjs all",
     "test:progression": "node tests/farm-progression-unit.mjs && node tests/farm-boss-event-unit.mjs",
     "test:farm-boss-event": "node tests/farm-boss-event-unit.mjs",
@@ -21,7 +20,8 @@
     "test:cold-boss": "node tests/cold-boss-startup.e2e.mjs",
     "test:mobile-input": "node tests/mobile-input.e2e.mjs",
     "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
-    "verify:raid-load": "node tests/raid-load.mjs"
+    "verify:raid-load": "node tests/raid-load.mjs",
+    "vector-assets:validate": "node scripts/vector-sources.cjs"
   },
   "devDependencies": {
     "@xmldom/xmldom": "0.9.12",
