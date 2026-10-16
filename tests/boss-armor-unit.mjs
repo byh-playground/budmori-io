@@ -32,7 +32,7 @@ assert.equal(full.applied,true);
 close(full.world.boss.hp,2396);
 close(scenario({species:1}).world.boss.hp,2400-6.4);
 close(scenario({species:2}).world.boss.hp,2400-5.2);
-close(scenario({tier:4}).world.boss.hp,2400-6.912);
+close(scenario({tier:4}).world.boss.hp,2400-10.368);
 const half=scenario({hp:1200});
 close(half.world.boss.hp,1200-4*100/150);
 

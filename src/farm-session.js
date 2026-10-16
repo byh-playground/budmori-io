@@ -61,6 +61,16 @@ class EffectRender extends RenderObject {
  constructor(e){super();Object.assign(this,{x:e.x,y:e.y,z:e.z,life:e.life,kind:e.kind,radius:e.radius||0,duration:e.duration||0,owner:e.owner||0})}
 }
 
+class DelayedEffectRender extends EffectRender {
+ static renderSchema=Object.freeze({...EffectRender.renderSchema,delay:R.STEP,span:R.STEP});
+ constructor(e){super(e);Object.assign(this,{delay:e.delay,span:e.span})}
+}
+
+class MergeMaterialRender extends DelayedEffectRender {
+ static renderSchema=Object.freeze({...DelayedEffectRender.renderSchema,targetX:R.STEP,targetY:R.STEP,sequenceIndex:R.STEP,sequenceCount:R.STEP});
+ constructor(e){super(e);Object.assign(this,{targetX:e.targetX,targetY:e.targetY,sequenceIndex:e.sequenceIndex,sequenceCount:e.sequenceCount})}
+}
+
 class GameClockRender extends RenderObject {
  static renderSchema=Object.freeze({gameTimeMs:R.LINEAR});
  constructor(gameTimeMs){super();this.gameTimeMs=gameTimeMs}
@@ -119,7 +129,10 @@ export class FarmSession{
   entities.push({id:'boss',generation:0,source:new BossRender(world.boss)});
   for(const f of world.food)entities.push({id:this.presentationIdentity('food',f),generation:0,source:new FoodRender(f)});
   for(const p of world.projectiles)entities.push({id:'projectile:'+p.id,generation:0,source:new ProjectileRender(p)});
-  for(const e of world.effects)entities.push({id:this.presentationIdentity('effect',e),generation:0,source:new EffectRender(e)});
+  for(const e of world.effects){
+   const source=e.kind==='merge-material'?new MergeMaterialRender(e):Number.isFinite(e.delay)&&Number.isFinite(e.span)?new DelayedEffectRender(e):new EffectRender(e);
+   entities.push({id:this.presentationIdentity('effect',e),generation:0,source});
+  }
   entities.push({id:'clock',generation:0,source:new GameClockRender(world.time*1000)});
   const captureMode=mode==='continuous'?'continuous':mode==='load'?'load':mode==='rollback'?'rollback':'reset';
   if(captureMode==='continuous')this.previousCaptureTimeMs=this.latestCaptureTimeMs;else this.previousCaptureTimeMs=null;

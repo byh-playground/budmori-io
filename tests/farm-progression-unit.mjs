@@ -7,6 +7,8 @@ const {Garden, Unit, CONFIG, TREE_NODES} = await import('../src/farm-model.js');
 const {snapshot, restore} = await import('../src/farm-state.js');
 const {parseSave, FarmStorage} = await import('../src/farm-storage.js');
 const {createPlayerProgressionState, isValidPlayerProgressionState, awardBossKillXp} = await import('../src/player-progression.js');
+const {UNIT_GRADES,mergeMaterialCostForTier} = await import('../src/unit-grades.js');
+const {resolveUnitStats} = await import('../src/unit-stats.js');
 
 const noProgress = createPlayerProgressionState();
 assert.equal(isValidPlayerProgressionState(noProgress), true);
@@ -334,6 +336,121 @@ assert.equal(merge.pair(mergeA, mergeB), true, 'merging is allowed when a third 
 assert.equal(merge.units.filter(unit => unit.species === 0).length, 2);
 assert.equal(mergeThird.species, 0);
 
+// Grade merge costs, deterministic closest-group selection, and the exact
+// post-merge minimum-roster formula are exercised at every output tier.
+for (let resultTier = 2; resultTier <= CONFIG.maxTier; resultTier++) {
+  const materialCount = mergeMaterialCostForTier(resultTier);
+  const sourceTier = resultTier - 1;
+  assert.equal(materialCount, UNIT_GRADES[resultTier - 1].materialCost);
+  const blocked = new Garden(1700 + resultTier);
+  blocked.mode = 'merge'; blocked.units = []; blocked.nextId = 1;
+  for (let i = 0; i < materialCount; i++) addPea(blocked, sourceTier, i * .05, 0);
+  assert.equal(blocked.canMergeGroup(blocked.units), false, `T${resultTier} cannot consume the whole roster and leave one`);
+  assert.equal(blocked.selectMergeTask(), undefined);
+  assert.equal(blocked.mergeTask, null, 'a blocked min-count group never starts an approach');
+
+  const world = new Garden(1800 + resultTier);
+  world.mode = 'merge'; world.units = []; world.nextId = 1; world.effects = [];
+  const near = [];
+  for (let i = 0; i < materialCount; i++) near.push(addPea(world, sourceTier, i * .08, 0));
+  const survivor = addPea(world, sourceTier, 8, 0);
+  assert.equal(world.units.length - materialCount + 1, 2, 'exact minimum leaves two owned species members');
+  world.selectMergeTask();
+  assert(world.mergeTask);
+  assert.equal(world.mergeTask.materialIds.length, materialCount, `T${resultTier} task holds all ${materialCount} materials`);
+  assert.deepEqual(new Set(world.mergeTask.materialIds), new Set(near.map(unit => unit.id)), 'nearest eligible group excludes the distant survivor');
+  const approachSave = restore(snapshot(world));
+  assert.deepEqual(approachSave.mergeTask.materialIds, world.mergeTask.materialIds, 'all material IDs survive save/load');
+  const legacyPairSave = snapshot(world);
+  legacyPairSave.mergeTask = {phase:'approach',aId:near[0].id,bId:near[1].id,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
+  assert.equal(restore(legacyPairSave).mergeTask, null, 'old transient pair tasks are safely discarded on load');
+  for(const replica of [world,approachSave]){
+    replica.mergeTask.materialIds.map(id=>replica.units.find(unit=>unit.id===id)).forEach((unit,index)=>{unit.x=index*.04;unit.y=0});
+  }
+  assert.equal(world.resolveMergeTaskAfterMovement(), true, `T${resultTier} consumes the configured group`);
+  assert.equal(approachSave.resolveMergeTaskAfterMovement(),true,'restored network peers consume the same material group');
+  assert.deepEqual(snapshot(approachSave),snapshot(world),'seeded Farm merge simulation remains lockstep deterministic after restore');
+  assert.equal(world.units.filter(unit => unit.species === 0).length, 2, 'same-species count uses existingCount - materialCount + 1');
+  const result = world.units.find(unit => unit.tier === resultTier);
+  assert(result, `T${resultTier} output is created`);
+  assert.equal(result.hp,resolveUnitStats(result).maxHp,`T${resultTier} merge output uses the grade-cost stat resolver`);
+  const materialEffects = world.effects.filter(effect => effect.kind === 'merge-material');
+  assert.equal(materialEffects.length, materialCount, `T${resultTier} animates each source material`);
+  assert.deepEqual(materialEffects.map(effect => effect.sequenceIndex), Array.from({length:materialCount},(_,index)=>index));
+  assert(materialEffects.every((effect,index) => effect.delay < (materialEffects[index+1]?.delay ?? Infinity)), 'material travel starts sequentially');
+  assert(world.effects.find(effect => effect.kind === 'merge').delay > materialEffects.at(-1).delay, 'result burst follows the final material');
+  const animationSave = restore(snapshot(world));
+  assert.equal(animationSave.mergeTask.resultId, result.id, 'animated output identity restores');
+  const restoredMaterialEffects = animationSave.effects.filter(effect => effect.kind === 'merge-material');
+  assert.equal(restoredMaterialEffects.length, materialCount);
+  assert.deepEqual(restoredMaterialEffects.map(({x,y,targetX,targetY,delay,span,sequenceIndex,sequenceCount})=>({x,y,targetX,targetY,delay,span,sequenceIndex,sequenceCount})),
+    materialEffects.map(({x,y,targetX,targetY,delay,span,sequenceIndex,sequenceCount})=>({x,y,targetX,targetY,delay,span,sequenceIndex,sequenceCount})),
+    'network/save roundtrips retain each sequential material path and order');
+  world.step(CONFIG.mergeAnimationSeconds - .01);
+  assert.equal(world.mergeTask.phase, 'animation', 'output stays in the material sequence until the animation ends');
+  world.step(.02);
+  assert.equal(world.mergeTask, null, 'next merge group may start only after the current animation');
+  assert.equal(world.units.filter(unit => unit.species === 0).length, 2);
+  assert.equal(survivor.hp > 0, true);
+}
+
+// Eligibility remains strict for group composition and battle state.
+const invalidGroup = new Garden(1901); invalidGroup.mode = 'merge';
+const [invalidA, invalidB] = invalidGroup.units;
+ready(invalidA,{x:0,y:0});ready(invalidB,{x:.1,y:0});
+const invalidC=addPea(invalidGroup,1,.2,0);
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidA]),false,'duplicate IDs do not count as distinct materials');
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB,invalidC]),false,'material count must exactly match the next grade cost');
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB]),true,'the minimum three-unit roster permits a two-material result');
+invalidB.tier=2;
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB]),false,'mixed grades are not compatible');
+invalidB.tier=1;invalidB.cooldown=1;
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB]),false,'cooldown units are not eligible');
+invalidB.cooldown=0;invalidB.growthElapsed=0;
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB]),false,'immature units are not eligible');
+invalidB.growthElapsed=invalidB.growthDuration;invalidB.hp=0;invalidB.down=1;
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB]),false,'sleeping units count toward roster size but cannot be materials');
+invalidB.hp=40;invalidB.down=0;invalidB.isBattleOnlySummon=true;
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB]),false,'battle-only summons cannot be consumed');
+invalidB.isBattleOnlySummon=false;invalidGroup.boss.active=true;invalidGroup.farmBossEvent.phase='fighting';
+invalidGroup.boss.x=0;invalidGroup.boss.y=0;
+assert.equal(invalidGroup.canMergeGroup([invalidA,invalidB],{requireNoEnemy:true}),false,'combat blocks selecting materials');
+
+const sleepingCount = new Garden(1905); sleepingCount.mode='merge';
+const [awakeA,awakeB]=sleepingCount.units;
+const asleepSurvivor=addPea(sleepingCount,1,.2,0);
+ready(awakeA,{x:0,y:0});ready(awakeB,{x:.1,y:0});
+asleepSurvivor.hp=0;asleepSurvivor.down=CONFIG.corpseRecoverySeconds;
+assert.equal(sleepingCount.canMergeGroup([awakeA,awakeB]),true,'sleeping owned units count toward the exact two-unit result minimum');
+assert.equal(sleepingCount.mergeGroup([awakeA,awakeB]),true);
+assert.equal(sleepingCount.units.length,2);
+assert.equal(sleepingCount.units.includes(asleepSurvivor),true,'sleeping survivor remains untouched');
+
+// Grade six survives state, network roster registration, Raid, and settlement paths.
+const tierSixWorld = new Garden(1902); tierSixWorld.units=[];
+const tierSix=tierSixWorld.spawn(0,6,0,0);
+assert.equal(restore(snapshot(tierSixWorld)).units[0].tier,6);
+assert.ok(Math.abs(CONFIG.maxUnitRadius-.58)<1e-12,'shared geometry bound accepts the T6 radius');
+const tierSixProjectile=snapshot(tierSixWorld);
+tierSixProjectile.projectiles=[{id:1,owner:tierSix.id,species:0,tier:6,path:{from:{x:0,y:0,z:0},to:{x:1,y:0,z:0},height:1,duration:1},elapsed:0,x:0,y:0,z:0,radius:.1,height:.2,hit:false,attackMultiplier:1,shotIndex:0}];
+tierSixProjectile.projectileSerial=1;
+assert.equal(restore(tierSixProjectile).projectiles[0].tier,6,'T6 projectile snapshots restore');
+const tierSixReward=snapshot(tierSixWorld);
+tierSixReward.nextBossEncounterId=2;tierSixReward.bossRewardWatermarks.farm=1;
+tierSixReward.bossRewardReceipts=[{encounterId:1,source:'farm',species:0,tier:6,x:0,y:0,chance:.2,roll:.1,status:'pending',unitId:0}];
+assert.equal(restore(tierSixReward).bossRewardReceipts[0].tier,6,'T6 acquisition receipts restore');
+const invalidTierProjectile=structuredClone(tierSixProjectile);invalidTierProjectile.projectiles[0].tier=7;
+assert.throws(()=>restore(invalidTierProjectile),/올바른 농장 저장 데이터가 아닙니다/,'T7 projectile snapshots are rejected');
+const invalidTierReward=structuredClone(tierSixReward);invalidTierReward.bossRewardReceipts[0].tier=7;
+assert.throws(()=>restore(invalidTierReward),/올바른 농장 저장 데이터가 아닙니다/,'T7 reward receipts are rejected');
+const raidRosterValidation=Garden.createRaidBattle(1903,['solo']);
+assert.equal(raidRosterValidation.registerRaidRoster('solo',[[tierSix.id,0,6]]),true,'Raid roster accepts Mythic units');
+assert.equal(Garden.createRaidBattle(1904,['solo']).registerRaidRoster('solo',[[tierSix.id,0,7]]),false,'Raid roster rejects unsupported tier seven');
+assert.equal(raidRosterValidation.deployNextRaidUnit('solo',1,0,0),true);
+assert.equal(restore(snapshot(raidRosterValidation)).units[0].tier,6,'Mythic deployment survives Raid network-state restore');
+const invalidTierWorld=snapshot(tierSixWorld);invalidTierWorld.units[0].tier=7;
+assert.throws(()=>restore(invalidTierWorld),/올바른 농장 저장 데이터가 아닙니다/,'T7 save data is rejected');
+
 // Breed cooldown and child growth stay connected; the cooldown upgrade remains effective.
 assert.equal(CONFIG.breedGrowthSeconds, CONFIG.breedCooldownSeconds / 2);
 const breedUpgrade = TREE_NODES.find(node => node.id === 'breed');
@@ -347,7 +464,7 @@ assert.ok(Math.abs(upgradeWorld.breedCooldownDuration() - 10 / 1.1) < 1e-9);
 assert.ok(Math.abs(upgradeWorld.breedGrowthDuration() - 10 / 2.2) < 1e-9);
 
 // Growth scale applies relatively to each tier's authored adult base size.
-for (const tier of [1, 2, 3, 4]) {
+for (const tier of [1, 2, 3, 4, 5, 6]) {
   const unit = new Unit(500 + tier, 0, tier, 0, 0);
   assert.ok(Math.abs(unit.size - adultSize(tier) * 0.5) < 1e-12, `T${tier} starts at 50% of its existing adult scale`);
   unit.growthElapsed = unit.growthDuration / 2;
@@ -356,10 +473,10 @@ for (const tier of [1, 2, 3, 4]) {
   assert.ok(Math.abs(unit.size - adultSize(tier)) < 1e-12, `T${tier} reaches its existing adult scale`);
 }
 const sizePersistence = new Garden(171);
-const persistedTierFour = sizePersistence.spawn(0, 4, 3, 2);
-persistedTierFour.growthElapsed = persistedTierFour.growthDuration / 2;
-const persistedSize = persistedTierFour.size;
-assert.equal(restore(snapshot(sizePersistence)).units.find(unit => unit.id === persistedTierFour.id).size, persistedSize, 'tier and growth state restore the same body size');
+const persistedTierSix = sizePersistence.spawn(0, 6, 3, 2);
+persistedTierSix.growthElapsed = persistedTierSix.growthDuration / 2;
+const persistedSize = persistedTierSix.size;
+assert.equal(restore(snapshot(sizePersistence)).units.find(unit => unit.id === persistedTierSix.id).size, persistedSize, 'tier and growth state restore the same body size');
 
 // Current saves preserve reservations, growth time, and cooldown; invalid reservations clear safely.
 const savedWorld = new Garden(26);
@@ -372,7 +489,7 @@ const savedChild = savedWorld.spawn(2, 1, 6, 6);
 savedChild.growthElapsed = savedChild.growthDuration / 2;
 const savedCooldown = ready(savedWorld.spawn(1, 1, 7, 6), {meals: 0});
 savedCooldown.cooldown = 6.25;
-const currentSave = JSON.stringify({productVersion: '0.4.6', schema: 'budmori-farm', world: snapshot(savedWorld)});
+const currentSave = JSON.stringify({productVersion: '0.5.2', schema: 'budmori-farm', world: snapshot(savedWorld)});
 const resumed = parseSave(currentSave);
 assert.equal(resumed.units[0].mateId, resumed.units[1].id, 'valid pair reservation resumes after save/load');
 assert.equal(resumed.units[1].mateId, resumed.units[0].id);
@@ -430,8 +547,11 @@ assert.equal(loaded.units[35].growthElapsed, 0, 'old hungry units keep their zer
 assert.equal(loaded.units[35].mature, false, 'old immature units receive the new growth timer');
 assert.ok(loaded.units.every(unit => typeof unit.ownerId === 'string' && Number.isSafeInteger(unit.farmId) && typeof unit.dropLanded === 'boolean'));
 
-// 0.5 uses a separate active key. Detect the 0.4 save without writing either key,
-// and copy it only after the explicit import action; the old key stays unchanged.
+const mythicSave=JSON.stringify({productVersion:'0.6.0',schema:'budmori-farm',world:snapshot(tierSixWorld)});
+assert.equal(parseSave(mythicSave).units[0].tier,6,'0.6 Mythic saves restore at T6');
+
+// The active save key remains isolated from 0.4 saves. Detect the old format
+// without writing either key, and copy it only after the explicit import action.
 class MemoryStorage {
   values = new Map();
   getItem(key) { return this.values.get(key) ?? null; }
@@ -458,5 +578,15 @@ assert.equal(staleTab.save(staleTab.world),false,'a stale same-version tab canno
 assert.equal(staleTab.refresh(),true,'a stale Farm tab can load the latest save before idempotent Raid settlement retry');
 assert.equal(staleTab.world.starter,writer.world.starter,'refresh exposes the current Farm after a compare-before-write conflict');
 assert.equal(localStorage.getItem('bloom-weapon-cards-v3'),oldFormatSave,'legacy isolation also protects an old client tab');
+
+localStorage.setItem('bloom-weapon-cards-v4',currentSave);
+const upgraded05 = new FarmStorage();
+assert.equal(upgraded05.world.units[0].tier,1,'an existing 0.5 save remains readable after the 0.6 bump');
+assert.equal(upgraded05.save(upgraded05.world),true,'the upgraded legacy save writes through normal validation');
+assert.equal(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion,PRODUCT_VERSION,'saving upgrades the compatibility marker to 0.6.0');
+localStorage.setItem('bloom-weapon-cards-v4',mythicSave);
+const mythicStorage = new FarmStorage();
+assert.equal(mythicStorage.world.units[0].tier,6,'current-key Mythic saves retain T6 during storage restore');
+assert.equal(mythicStorage.save(mythicStorage.world),true,'Mythic saves write through normal storage validation');
 
 console.log('farm progression unit checks passed');

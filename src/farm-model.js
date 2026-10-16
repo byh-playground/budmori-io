@@ -7,13 +7,15 @@ import {purchaseAbilityNode, resetAbilityProgression} from './ability-tree.js';
 import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './ability-state.js';
 import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig} from './species-abilities.js';
 import {MAX_BEAN_SPLIT_CHILDREN} from './species-abilities.js';
+import {MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier} from './unit-grades.js';
 const presentationClocks=new WeakMap();
 const presentationEventTimes=new WeakMap();
 export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
 export function bindPresentationClock(world,clock){if(clock)presentationClocks.set(world,clock);else presentationClocks.delete(world)}
   // sim.js
   const BREED_COOLDOWN_SECONDS=10;
-  var CONFIG = Object.freeze({ cap: 72, maxFarmCap:100, maxFarmBattleUnits:100*(1+MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId:999999999, maxRaidPlayerUnits:100, maxRaidPlayers:4, raidPlayerIdStride:1000000, maxRaidUnits:400, maxRaidBattleUnits:400*(1+MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles:400*(1+MAX_BEAN_SPLIT_CHILDREN)*4, raidSummonIdBase:4000000+100+1, maxSpecies:4, maxUnitRadius:.47, maxTier: 4, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS/2, mergeAnimationSeconds:.85, matureMeals: 3, corpseRecoverySeconds:60, farmBossEvent:Object.freeze({spawnChance:.01,fadeSeconds:.5,celebrationSeconds:1}), gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,perceptionRange:18,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
+  const unitRadiusForTier=tier=>.25+.055*tier;
+  var CONFIG = Object.freeze({ cap: 72, maxFarmCap:100, maxFarmBattleUnits:100*(1+MAX_BEAN_SPLIT_CHILDREN), maxFarmUnitId:999999999, maxRaidPlayerUnits:100, maxRaidPlayers:4, raidPlayerIdStride:1000000, maxRaidUnits:400, maxRaidBattleUnits:400*(1+MAX_BEAN_SPLIT_CHILDREN), maxRaidProjectiles:400*(1+MAX_BEAN_SPLIT_CHILDREN)*4, raidSummonIdBase:4000000+100+1, maxSpecies:4, maxUnitRadius:unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials:MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS/2, mergeAnimationSeconds:.85, matureMeals: 3, corpseRecoverySeconds:60, farmBossEvent:Object.freeze({spawnChance:.01,fadeSeconds:.5,celebrationSeconds:1}), gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,perceptionRange:18,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,basicWindup:.5,basicDuration:.24,basicRecover:.48,sweepWindup:1.05,sweepDuration:1.05,sweepRecover:1.05,sweepInterval:6.8,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
 const MAP_ENEMY_TARGETS={farm:world=>world.farmBossEvent?.phase==='fighting'&&world.boss?.active?[world.boss]:[],raid:world=>world.running&&world.raidDeploymentStarted&&world.boss?.active?[world.boss]:[]};
 function bossAttackArea(boss,unitRadius=0){
   const c=CONFIG.raid,phase=boss.phase,heavy=phase==='sweep-windup'||phase==='sweep',wind=phase==='sweep-windup'||phase==='strike-windup';
@@ -166,7 +168,7 @@ const AttackingBody=Base=>class extends Base{
         isBattleOnlySummon:false,battleSummonKind:'',battleSummonParentId:0,countsTowardPermanentRoster:true,eligibleForRaidDeployment:true,breedingEligible:true,mergeEligible:true,canSplit:true,splitUsedThisBattle:false,deathSplitHandled:false,usesPersistentSleep:true,lifetime:'',chestnutBasicCycles:0 });
     }
     get radius() {
-      return (0.25 + 0.055 * this.tier) * (this.mature ? 1 : 0.8);
+      return unitRadiusForTier(this.tier) * (this.mature ? 1 : 0.8);
     }
     get mature() {
       return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -328,7 +330,7 @@ const AttackingBody=Base=>class extends Base{
       if(!isValidAbilityRuntimeSnapshot(abilitySnapshot))return false;
       const hasSettlement=settlement!==null;
       if(hasSettlement&&(!settlement||typeof settlement!=='object'||typeof settlement.sessionId!=='string'||!settlement.sessionId.trim()||settlement.sessionId.length>128||!Number.isSafeInteger(settlement.runSequence)||settlement.runSequence<1||settlement.runSequence>1e12||settlement.encounterId!==settlement.runSequence))return false;
-      const ids=new Set(),troops=[];for(const e of entries){if(!Array.isArray(e)||e.length!==3||!Number.isSafeInteger(e[0])||e[0]<1||e[0]>CONFIG.maxFarmUnitId||!Number.isInteger(e[1])||e[1]<0||e[1]>=CONFIG.maxSpecies||!Number.isInteger(e[2])||e[2]<1||e[2]>4||ids.has(e[0]))return false;ids.add(e[0]);troops.push({farmId:e[0],species:e[1],tier:e[2],deployed:false})}
+      const ids=new Set(),troops=[];for(const e of entries){if(!Array.isArray(e)||e.length!==3||!Number.isSafeInteger(e[0])||e[0]<1||e[0]>CONFIG.maxFarmUnitId||!Number.isInteger(e[1])||e[1]<0||e[1]>=CONFIG.maxSpecies||!Number.isInteger(e[2])||e[2]<1||e[2]>CONFIG.maxTier||ids.has(e[0]))return false;ids.add(e[0]);troops.push({farmId:e[0],species:e[1],tier:e[2],deployed:false})}
       const orderKey=farmId=>{let h=(this.seed^Math.imul(farmId,0x9e3779b9))>>>0;for(let i=0;i<ownerId.length;i++){h^=ownerId.charCodeAt(i);h=Math.imul(h,0x01000193)}h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;h=Math.imul(h,0x846ca68b);h^=h>>>16;return h>>>0};
       troops.sort((a,b)=>orderKey(a.farmId)-orderKey(b.farmId)||a.farmId-b.farmId);
       this.raidRosters.push({ownerId,troops,abilitySnapshot:structuredClone(abilitySnapshot),settlementSessionId:hasSettlement?settlement.sessionId:'',settlementRunSequence:hasSettlement?settlement.runSequence:0,settlementEncounterId:hasSettlement?settlement.encounterId:0,lastDeploySequence:0,buffUntil:0,buffReadyAt:0});this.raidRosters.sort((a,b)=>this.raidExpectedPlayers.indexOf(a.ownerId)-this.raidExpectedPlayers.indexOf(b.ownerId));return true;
@@ -352,10 +354,12 @@ const AttackingBody=Base=>class extends Base{
       return u;
     }
     notice(kind,detail={}){const event={sequence:++this.eventSequence,kind,...detail};this.notices.push(event);if(this.notices.length>512)this.notices.shift();return event}
-    emit(kind, x, y, z = 0) {
+    emit(kind, x, y, z = 0, effectOptions = {}) {
       this.progress.record(kind);
       this.notice(kind);
-      this.effects.push({ kind, x, y, z, life: 0 });
+      const effect={kind, x, y, z, life: 0, ...effectOptions};
+      if(Number.isFinite(effect.delay)&&Number.isFinite(effect.span))effect.duration=effect.delay+effect.span;
+      this.effects.push(effect);
       if (this.effects.length > 100) this.effects.shift();
       this.events.push(kind);
       if (this.events.length > 20) this.events.shift();
@@ -406,7 +410,7 @@ const AttackingBody=Base=>class extends Base{
     createBoss(){return {x:0,y:0,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp:2400,maxHp:2400,active:false,phase:'resting',clock:0,angle:0,facing:0,flash:0,hit:new Set(),swings:0,basicCount:0,attackId:0,targetId:0,sweepClock:0,attackKind:'basic',startAngle:0,travel:0}}
     setScene(scene){
       if(scene===this.scene)return;
-      this.projectiles=[];this.scene=scene;this.running=scene==='raid';this.encounter={outcome:this.running?'fighting':'idle',elapsed:0};this.farmBossEvent={phase:'idle',elapsed:0,outcome:'idle',encounterId:0,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};this.boss=this.createBoss();
+      this.mergeTask=null;this.projectiles=[];this.scene=scene;this.running=scene==='raid';this.encounter={outcome:this.running?'fighting':'idle',elapsed:0};this.farmBossEvent={phase:'idle',elapsed:0,outcome:'idle',encounterId:0,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};this.boss=this.createBoss();
       const idMap=new Map(this.units.map((u,index)=>[u.id,scene==='raid'?1000000+index+1:(u.farmId||u.id)]));
       for(let i=0;i<this.units.length;i++){
         const u=this.units[i],oldMateId=u.mateId;if(scene==='raid'){u.home={x:u.x,y:u.y};u.farmId=u.farmId||u.id;u.ownerId='solo';u.id=1000000+i+1;u.dropLanded=true;const angle=i*2.3999632297,rad=10.5+(i%3)*.9;Object.assign(u,{x:Math.cos(angle)*rad,y:Math.sin(angle)*rad*.84})}else{u.id=u.farmId||u.id;u.ownerId='';u.farmId=0;u.dropLanded=true;Object.assign(u,u.home)}u.mateId=idMap.get(oldMateId)||0;
@@ -439,28 +443,51 @@ const AttackingBody=Base=>class extends Base{
       for(let i=0;i<this.units.length;i++)for(let j=i+1;j<this.units.length;j++){const a=this.units[i],b=this.units[j];if(a.tier===b.tier&&this.canBreedPair(a,b)&&(!a.mateId&&!b.mateId||a.mateId===b.id&&b.mateId===a.id))return true}
       return false;
     }
-    canMergePair(a,b,{requireContact=false,requireNoEnemy=false}={}){
-      if(!a||!b||a===b||a.isBattleOnlySummon||b.isBattleOnlySummon||a.mergeEligible===false||b.mergeEligible===false||a.species!==b.species||a.tier!==b.tier||a.tier>=CONFIG.maxTier||a.hp<=0||b.hp<=0||!a.mature||!b.mature||a.cooldown>0||b.cooldown>0||!this.units.includes(a)||!this.units.includes(b))return false;
-      // A sleeping unit is still owned and counts toward species protection, but
-      // canMergePair's health checks keep it out of actual merge candidates.
-      const speciesCount=this.units.reduce((count,u)=>count+(!u.isBattleOnlySummon&&u.species===a.species?1:0),0);
-      if(speciesCount<=2)return false;
-      if(requireNoEnemy&&(this.senseEnemy(a)||this.senseEnemy(b)))return false;
-      return !requireContact||Math.hypot(a.x-b.x,a.y-b.y)<=a.radius+b.radius+.2;
+    canMergeGroup(materials,{requireContact=false,requireNoEnemy=false}={}){
+      if(!Array.isArray(materials)||materials.length<2)return false;
+      const first=materials[0],resultTier=first?.tier+1,materialCount=mergeMaterialCostForTier(resultTier);
+      if(materialCount<2||materials.length!==materialCount||first.tier>=CONFIG.maxTier)return false;
+      const ids=new Set();
+      for(const unit of materials){
+        if(!unit||ids.has(unit.id)||unit.isBattleOnlySummon||unit.mergeEligible===false||unit.species!==first.species||unit.tier!==first.tier||unit.hp<=0||unit.down>0||!unit.mature||unit.cooldown>0||!this.units.includes(unit))return false;
+        ids.add(unit.id);
+      }
+      // Sleeping owned units count toward the minimum roster, but cannot be
+      // consumed. The resulting same-species count must remain at least two.
+      const existingCount=this.units.reduce((count,unit)=>count+(!unit.isBattleOnlySummon&&unit.species===first.species?1:0),0);
+      if(existingCount-materialCount+1<2)return false;
+      if(requireNoEnemy&&materials.some(unit=>this.senseEnemy(unit)))return false;
+      if(requireContact){
+        const anchor=materials[0];
+        if(materials.slice(1).some(unit=>Math.hypot(anchor.x-unit.x,anchor.y-unit.y)>anchor.radius+unit.radius+.2))return false;
+      }
+      return true;
     }
+    canMergePair(a,b,options={}){return this.canMergeGroup([a,b],options)}
     selectMergeTask(){
       if(this.mode!=="merge"||this.scene!=="farm"||this.mergeTask)return;
-      const counts=new Map();
-      for(const u of this.units)counts.set(u.species,(counts.get(u.species)||0)+1);
-      const eligible=this.units.filter(u=>!u.isBattleOnlySummon&&u.mergeEligible!==false&&u.hp>0&&u.mature&&u.cooldown<=0&&u.tier<CONFIG.maxTier&&counts.get(u.species)>2&&!this.senseEnemy(u));
-      let pair=null;
-      for(let i=0;i<eligible.length;i++)for(let j=i+1;j<eligible.length;j++){
-        const a=eligible[i],b=eligible[j];if(a.species!==b.species||a.tier!==b.tier)continue;
-        const first=a.id<b.id?a:b,second=first===a?b:a;
-        const candidate={tier:a.tier,distance:(a.x-b.x)**2+(a.y-b.y)**2,aId:first.id,bId:second.id};
-        if(!pair||candidate.tier<pair.tier||candidate.tier===pair.tier&&(candidate.distance<pair.distance||candidate.distance===pair.distance&&(candidate.aId<pair.aId||candidate.aId===pair.aId&&candidate.bId<pair.bId)))pair=candidate;
+      const eligible=this.units.filter(unit=>!unit.isBattleOnlySummon&&unit.mergeEligible!==false&&unit.hp>0&&unit.down<=0&&unit.mature&&unit.cooldown<=0&&unit.tier<CONFIG.maxTier&&!this.senseEnemy(unit));
+      const groups=new Map(),ownedCounts=new Map();
+      for(const unit of this.units)if(!unit.isBattleOnlySummon)ownedCounts.set(unit.species,(ownedCounts.get(unit.species)||0)+1);
+      for(const unit of eligible){const key=`${unit.species}:${unit.tier}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(unit)}
+      const compareIds=(left,right)=>{for(let i=0;i<Math.min(left.length,right.length);i++)if(left[i]!==right[i])return left[i]-right[i];return left.length-right.length};
+      let best=null;
+      for(let tier=1;tier<CONFIG.maxTier;tier++){
+        const materialCount=mergeMaterialCostForTier(tier+1);
+        for(const group of groups.values()){
+          if(group[0].tier!==tier||group.length<materialCount||ownedCounts.get(group[0].species)-materialCount+1<2)continue;
+          for(const anchor of group){
+            const nearest=group.filter(unit=>unit!==anchor).map(unit=>({unit,distance:(unit.x-anchor.x)**2+(unit.y-anchor.y)**2})).sort((a,b)=>a.distance-b.distance||a.unit.id-b.unit.id).slice(0,materialCount-1);
+            if(nearest.length!==materialCount-1)continue;
+            const materials=[anchor,...nearest.map(entry=>entry.unit)];
+            if(!this.canMergeGroup(materials,{requireNoEnemy:true}))continue;
+            let distance=0;for(let i=0;i<materials.length;i++)for(let j=i+1;j<materials.length;j++)distance+=(materials[i].x-materials[j].x)**2+(materials[i].y-materials[j].y)**2;
+            const sortedIds=materials.map(unit=>unit.id).sort((a,b)=>a-b),candidate={tier,distance,anchorId:anchor.id,materialIds:materials.map(unit=>unit.id),sortedIds};
+            if(!best||candidate.tier<best.tier||candidate.tier===best.tier&&(candidate.distance<best.distance||candidate.distance===best.distance&&(compareIds(candidate.sortedIds,best.sortedIds)<0||compareIds(candidate.sortedIds,best.sortedIds)===0&&candidate.anchorId<best.anchorId)))best=candidate;
+          }
+        }
       }
-      if(pair)this.mergeTask={phase:"approach",aId:pair.aId,bId:pair.bId,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
+      if(best)this.mergeTask={phase:"approach",aId:best.materialIds[0],bId:best.materialIds[1],materialIds:best.materialIds,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
     }
     advanceMergeTask(dt){
       if(this.mode!=="merge"||this.scene!=="farm"){this.mergeTask=null;return}
@@ -470,37 +497,25 @@ const AttackingBody=Base=>class extends Base{
         return;
       }
       if(this.mergeTask?.phase==="approach"){
-        const a=this.units.find(u=>u.id===this.mergeTask.aId),b=this.units.find(u=>u.id===this.mergeTask.bId);
-        // Combat pauses an otherwise valid pair; death, invalid tiers, or removed units cancel it.
-        if(!this.canMergePair(a,b))this.mergeTask=null;
+        const materials=(this.mergeTask.materialIds||[this.mergeTask.aId,this.mergeTask.bId]).map(id=>this.units.find(unit=>unit.id===id));
+        // Combat pauses an otherwise valid group; death, invalid tiers, or removed units cancel it.
+        if(!this.canMergeGroup(materials))this.mergeTask=null;
       }
       if(!this.mergeTask)this.selectMergeTask();
     }
     resolveMergeTaskAfterMovement(){
       const task=this.mergeTask;if(task?.phase!=="approach")return false;
-      const a=this.units.find(u=>u.id===task.aId),b=this.units.find(u=>u.id===task.bId);
-      if(!this.canMergePair(a,b,{requireContact:true,requireNoEnemy:true}))return false;
-      return this.pair(a,b,true);
+      const materials=(task.materialIds||[task.aId,task.bId]).map(id=>this.units.find(unit=>unit.id===id));
+      if(!this.canMergeGroup(materials,{requireContact:true,requireNoEnemy:true}))return false;
+      return this.mergeGroup(materials,{priorityResolved:true});
     }
     pair(a, b, priorityResolved=false) {
-      if(a===b||a.hp<=0||b.hp<=0||a.down>0||b.down>0||a.species!==b.species||!a.mature||!b.mature||a.cooldown>0||b.cooldown>0||!this.units.includes(a)||!this.units.includes(b)||Math.hypot(a.x-b.x,a.y-b.y)>a.radius+b.radius+.2||this.senseEnemy(a)||this.senseEnemy(b))return false;
-      if(a.isBattleOnlySummon||b.isBattleOnlySummon)return false;
       if (this.mode === "merge") {
-        if (!this.canMergePair(a,b,{requireNoEnemy:true})) return false;
-        const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
-        this.releaseMate(a);this.releaseMate(b);
-        this.units = this.units.filter((u2) => u2 !== a && u2 !== b);
-        const u = this.spawn(a.species, a.tier + 1, x, y);
-        u.meals = 1;
-        u.growth = 3;
-        u.growthDuration=this.breedGrowthDuration();
-        u.growthElapsed=u.growthDuration;
-        u.cooldown = 4 / this.progress.rate("merge");
-        u.cooldownDuration = u.cooldown;
-        this.mergeTask = {phase:"animation",aId:0,bId:0,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
-        this.metrics.merges++;
-        this.emit("merge", x, y, 1);
-      } else {
+        return this.mergeGroup([a,b],{priorityResolved});
+      }
+      if(!a||!b||a===b||a.hp<=0||b.hp<=0||a.down>0||b.down>0||a.species!==b.species||!a.mature||!b.mature||a.cooldown>0||b.cooldown>0||!this.units.includes(a)||!this.units.includes(b)||Math.hypot(a.x-b.x,a.y-b.y)>a.radius+b.radius+.2||this.senseEnemy(a)||this.senseEnemy(b))return false;
+      if(a.isBattleOnlySummon||b.isBattleOnlySummon)return false;
+      {
         if (!this.canBreedPair(a,b,true)||this.units.length>=this.capacity||a.mateId&&a.mateId!==b.id||b.mateId&&b.mateId!==a.id||!priorityResolved&&a.tier!==b.tier&&this.hasEligibleSameTierBreedPair()) return false;
         a.mateId=b.id;b.mateId=a.id;
         const child = this.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
@@ -513,6 +528,19 @@ const AttackingBody=Base=>class extends Base{
         this.metrics.births++;
         this.emit("birth", child.x, child.y, 0.7);
       }
+      return true;
+    }
+    mergeGroup(materials,{priorityResolved=false}={}) {
+      if(this.mode!=="merge"||this.scene!=="farm"||!this.canMergeGroup(materials,{requireContact:true,requireNoEnemy:true}))return false;
+      const ordered=[...materials],first=ordered[0],materialIds=ordered.map(unit=>unit.id),consumed=new Set(materialIds),x=ordered.reduce((sum,unit)=>sum+unit.x,0)/ordered.length,y=ordered.reduce((sum,unit)=>sum+unit.y,0)/ordered.length;
+      for(const unit of ordered)this.releaseMate(unit);
+      this.units=this.units.filter(unit=>!consumed.has(unit.id));
+      const result=this.spawn(first.species,first.tier+1,x,y);
+      result.meals=1;result.growth=CONFIG.matureMeals;result.growthDuration=this.breedGrowthDuration();result.growthElapsed=result.growthDuration;result.cooldown=4/this.progress.rate("merge");result.cooldownDuration=result.cooldown;
+      this.mergeTask={phase:"animation",aId:0,bId:0,materialIds,resultId:result.id,sourceSpecies:first.species,sourceTier:first.tier,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
+      const sequenceWindow=CONFIG.mergeAnimationSeconds*.72,step=sequenceWindow/ordered.length;
+      ordered.forEach((unit,index)=>this.effects.push({kind:"merge-material",x:unit.x,y:unit.y,z:.2,targetX:x,targetY:y,life:0,delay:index*step,span:step, duration:(index+1)*step,sequenceIndex:index,sequenceCount:ordered.length}));
+      this.metrics.merges++;this.emit("merge",x,y,1,{delay:sequenceWindow,span:CONFIG.mergeAnimationSeconds-sequenceWindow});
       return true;
     }
     step(dt) {
@@ -639,7 +667,7 @@ const AttackingBody=Base=>class extends Base{
       if(!u.mature||u.cooldown>0){if(!this.avoidNearbyFood(u,dt))this.steer(u,Math.sin(this.time*.18+u.seed)*7.4,Math.cos(this.time*.16+u.seed)*5.3,dt,scaleMoveSpeed(.75,u));return}
       if(this.mode==="merge") {
         const task=this.mergeTask;
-        if(task?.phase==="approach"&&(u.id===task.aId||u.id===task.bId)){const partner=this.units.find(candidate=>candidate.id===(u.id===task.aId?task.bId:task.aId));if(partner&&u.cooldown<=0)this.steer(u,partner.x,partner.y,dt,scaleMoveSpeed(2.2,u));return}
+        if(task?.phase==="approach"&&task.materialIds?.includes(u.id)){const anchor=this.units.find(candidate=>candidate.id===task.materialIds[0]);if(anchor&&u.cooldown<=0)this.steer(u,u.id===anchor.id?u.x:anchor.x,u.id===anchor.id?u.y:anchor.y,dt,scaleMoveSpeed(2.2,u));return}
         this.steer(u,Math.sin(this.time*.18+u.seed)*7.4,Math.cos(this.time*.16+u.seed)*5.3,dt,scaleMoveSpeed(.75,u));return;
       }
       let target = null, best = Infinity;

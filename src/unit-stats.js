@@ -1,3 +1,5 @@
+import { MAX_UNIT_TIER, UNIT_GRADES } from './unit-grades.js';
+
 const TIER_HP = 40;
 const TIER_HP_SCALE = 1.5;
 const TIER_ATTACK = 4;
@@ -29,11 +31,18 @@ export const COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
 export const COMMON_UNIT_STAT_PROFILES = Object.freeze([0, 1, 2, 3].map(() => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
 
 export function resolveUnitStats(unit, overrides = {}) {
-  const tier = Math.max(1, Math.min(4, Number.isInteger(unit?.tier) ? unit.tier : 1));
+  const tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(unit?.tier) ? unit.tier : 1));
+  let maxHp = TIER_HP;
+  let attackPower = TIER_ATTACK;
+  for (let resultTier = 2; resultTier <= tier; resultTier++) {
+    const transitionMultiplier = UNIT_GRADES[resultTier - 1].materialCost / 2;
+    maxHp *= TIER_HP_SCALE * transitionMultiplier;
+    attackPower *= TIER_ATTACK_SCALE * transitionMultiplier;
+  }
   const speciesProfile = COMMON_UNIT_STAT_PROFILES[unit?.species] || COMMON_UNIT_STAT_DEFAULTS;
   return {
-    maxHp: TIER_HP * TIER_HP_SCALE ** (tier - 1),
-    attackPower: TIER_ATTACK * TIER_ATTACK_SCALE ** (tier - 1),
+    maxHp,
+    attackPower,
     ...COMMON_UNIT_STAT_DEFAULTS,
     ...speciesProfile,
     ...overrides
