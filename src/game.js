@@ -3899,7 +3899,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.8";
+      PRODUCT_VERSION = "0.7.9";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4963,6 +4963,7 @@
       maxHp: R.STEP,
       fed: R.STEP,
       ownerId: R.STATE_KEY,
+      faction: R.STEP,
       farmId: R.STEP,
       dropLanded: R.STEP,
       buffed: R.STEP,
@@ -4994,6 +4995,7 @@
         maxHp: resolveUnitStats(u).maxHp,
         fed: u.fed,
         ownerId: u.ownerId,
+        faction: u.faction,
         farmId: u.farmId,
         dropLanded: u.dropLanded,
         buffed: world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0),
