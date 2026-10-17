@@ -3,6 +3,9 @@ import { baseUnitStatsFor } from './unit-stats.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
 const R = RENDER_OBJECT;
 const PRESENTATION_STEP_MS = 50;
+function createPointBuffer(count) {
+    return Array.from({ length: count }, () => [0, 0, 0]);
+}
 const LOCAL_PROFILE = Object.freeze({
     tickRate: 20,
     maxCatchupSteps: 4,
@@ -324,6 +327,8 @@ class FormationEffectRender extends RENDER_OBJECT {
         targetY: R.LINEAR,
         targetZ: R.LINEAR,
         lastPulse: R.STEP,
+        pulse: R.STEP,
+        beamTargetZ: R.LINEAR,
     });
     update(effect) {
         for (const KEY of Object.keys(FormationEffectRender.renderSchema)) {
@@ -331,6 +336,28 @@ class FormationEffectRender extends RENDER_OBJECT {
         }
     }
 }
+class UfoFormationEffectRender extends FormationEffectRender {
+    constructor() {
+        super();
+        this.beamPoints = createPointBuffer(2);
+    }
+}
+class StormCloudFormationEffectRender extends FormationEffectRender {
+    constructor() {
+        super();
+        this.arcPoints = createPointBuffer(13);
+        this.introPoints = createPointBuffer(4);
+        this.branchPoints = Array.from({ length: 3 }, () => createPointBuffer(3));
+    }
+}
+const FORMATION_EFFECT_RENDER_TYPES = new Map([
+    ['ufo', UfoFormationEffectRender],
+    ['storm-cloud', StormCloudFormationEffectRender],
+]);
+const PRESENTATION_BUFFER_FIELDS = new Map([
+    ['ufo', ['beamPoints']],
+    ['storm-cloud', ['arcPoints', 'introPoints', 'branchPoints']],
+]);
 class DelayedEffectRender extends EffectRender {
     static renderSchema = Object.freeze({
         ...EffectRender.renderSchema,
@@ -396,6 +423,8 @@ class FarmSession {
             snapDistance: 12,
         });
         this.presentationAdapters = new WeakMap();
+        this.formationEffectRenderAdapters = new Map();
+        this.formationEffectCaptureSequence = 0;
         this.captureEntities = [];
         this.clockEntity = {
             id: 'clock',
@@ -668,8 +697,18 @@ class FarmSession {
                       : EffectRender;
             ENTITIES.push(this.presentationEntity(this.presentationIdentity('effect', E), E, TYPE));
         }
+        const CAPTURE_SEQUENCE = ++this.formationEffectCaptureSequence;
         for (const EFFECT of WORLD.formationRuntime.effects) {
-            ENTITIES.push(this.presentationEntity('formation:' + EFFECT.id, EFFECT, FormationEffectRender));
+            const TYPE = FORMATION_EFFECT_RENDER_TYPES.get(EFFECT.kind) || FormationEffectRender,
+                ENTITY = this.presentationEntity('formation:' + EFFECT.id, EFFECT, TYPE);
+            ENTITIES.push(ENTITY);
+            ENTITY.source.captureSequence = CAPTURE_SEQUENCE;
+            this.formationEffectRenderAdapters.set(EFFECT.id, ENTITY.source);
+        }
+        for (const [ID, SOURCE] of this.formationEffectRenderAdapters) {
+            if (CAPTURE_SEQUENCE - SOURCE.captureSequence > 2) {
+                this.formationEffectRenderAdapters.delete(ID);
+            }
         }
         this.clockEntity.source.gameTimeMs = WORLD.time * 1000;
         ENTITIES.push(this.clockEntity);
@@ -758,6 +797,15 @@ class FarmSession {
         VIEW.formationEffects.length = 0;
         VIEW.formationSlots = WORLD.formationRuntime.slots;
         FRAME.forEach(this.collectPresentationModel);
+        for (const EFFECT of VIEW.formationEffects) {
+            const SOURCE = this.formationEffectRenderAdapters.get(EFFECT.id);
+            if (!SOURCE) {
+                continue;
+            }
+            for (const KEY of PRESENTATION_BUFFER_FIELDS.get(EFFECT.kind) || []) {
+                EFFECT[KEY] = SOURCE[KEY];
+            }
+        }
         VIEW.time = (FRAME.sample('clock', 0)?.gameTimeMs ?? WORLD.time * 1000) / 1000;
         VIEW.boss = FRAME.sample('boss', 0) || this.presentationEntity('boss', WORLD.boss, BossRender).source;
         VIEW.displayTimeMs = FRAME.timeMs;
@@ -796,6 +844,7 @@ class FarmSession {
         this.loop.stop();
         this.pending.length = 0;
         this.captureEntities.length = 0;
+        this.formationEffectRenderAdapters.clear();
         this.presentationAdapters = new WeakMap();
     }
 }

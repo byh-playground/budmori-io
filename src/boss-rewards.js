@@ -1,6 +1,6 @@
 // Shared boss-reward tuning. Farm events use their event multiplier; Raid
 // deployment bonuses affect acquisition chance only, never progression XP.
-import { awardBossKillXp } from './player-progression.js';
+import { awardBossKillXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { BOSS_SPECIES_WEIGHTS } from './species-catalog.js';
 export const BOSS_REWARD_SETTINGS = Object.freeze({
     acquisitionChance: 0.2,
@@ -11,7 +11,7 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
     stageAttackMultiplier: 1.2,
     stageXpBase: 20,
     stageXpMultiplier: 1.2,
-    maxStage: 61,
+    maxStage: FARM_BOSS_EVENT_MAX_STAGE,
     speciesWeights: BOSS_SPECIES_WEIGHTS,
 });
 export function bossStageStats(stage) {

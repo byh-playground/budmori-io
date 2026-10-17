@@ -1549,7 +1549,7 @@ function sync(display, now, notices) {
         STAGE_NAME = RAID && BOSS.stage ? `STAGE ${BOSS.stage}` : '',
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', ENCOUNTER_NAME);
+    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · EVENT STAGE ${BOSS.stage}` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
     syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '전사자 포함 최대 HP');

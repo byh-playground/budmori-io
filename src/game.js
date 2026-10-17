@@ -175,17 +175,22 @@
   });
 
   // src/features/formation-skills/ufo/definition.js
-  var DEFINITION8;
+  var DURATION, PULSE_INTERVAL, PULSE_DAMAGE, DEFINITION8;
   var init_definition8 = __esm({
     "src/features/formation-skills/ufo/definition.js"() {
+      DURATION = 5;
+      PULSE_INTERVAL = 0.2;
+      PULSE_DAMAGE = 4;
       DEFINITION8 = Object.freeze({
         id: "ufo",
         name: "우주선",
         condition: "critHits",
         required: 10,
-        description: "5초 동안 0.5초마다 수직 레이저 피해 10. 매 발동 별도 우주선.",
+        description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 수직 레이저 ${PULSE_DAMAGE} 피해 (${DURATION / PULSE_INTERVAL * PULSE_DAMAGE} 피해).`,
         upgradeAxis: "지속시간 +1초",
-        upgradeBase: 5,
+        pulseInterval: PULSE_INTERVAL,
+        pulseDamage: PULSE_DAMAGE,
+        upgradeBase: DURATION,
         upgradeFactor: 1,
         upgradeStep: 1,
         upgradeUnit: "초"
@@ -194,17 +199,22 @@
   });
 
   // src/features/formation-skills/storm-cloud/definition.js
-  var DEFINITION9;
+  var DURATION2, PULSE_INTERVAL2, PULSE_DAMAGE2, DEFINITION9;
   var init_definition9 = __esm({
     "src/features/formation-skills/storm-cloud/definition.js"() {
+      DURATION2 = 5;
+      PULSE_INTERVAL2 = 0.2;
+      PULSE_DAMAGE2 = 3;
       DEFINITION9 = Object.freeze({
         id: "storm-cloud",
         name: "뇌운",
         condition: "hits",
         required: 75,
-        description: "5초 동안 1초마다 전기 아크 피해 15. 매 발동 별도 뇌운.",
+        description: `${DURATION2}초 동안 ${PULSE_INTERVAL2}초마다 전기 아크 ${PULSE_DAMAGE2} 피해 (${DURATION2 / PULSE_INTERVAL2 * PULSE_DAMAGE2} 피해).`,
         upgradeAxis: "지속시간 +1초",
-        upgradeBase: 5,
+        pulseInterval: PULSE_INTERVAL2,
+        pulseDamage: PULSE_DAMAGE2,
+        upgradeBase: DURATION2,
         upgradeFactor: 1,
         upgradeStep: 1,
         upgradeUnit: "초"
@@ -1133,7 +1143,7 @@
       function unitBodyRadius3(unit) {
         return bodyRadiusAtScale(unitBodyDefinition3(unit.species), unitVectorScale2(unit));
       }
-      function unitBodyHeight2(unit) {
+      function unitBodyHeight3(unit) {
         const BODY2 = unitBodyDefinition3(unit.species);
         return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
       }
@@ -1172,7 +1182,7 @@
         unitVisualSize: unitVisualSize2,
         unitVectorScale: unitVectorScale2,
         unitBodyRadius: unitBodyRadius3,
-        unitBodyHeight: unitBodyHeight2,
+        unitBodyHeight: unitBodyHeight3,
         unitTorsoHeight: unitTorsoHeight2,
         maximumUnitRadius: maximumUnitRadius2,
         unitDisplayScale: unitDisplayScale3,
@@ -1182,6 +1192,10 @@
   });
 
   // src/features/formation-skills/model-base.js
+  function targetTop(owner, target) {
+    const BODY_HEIGHT = target === owner.world.boss ? target.height : (0, import_definition10.unitBodyHeight)(target) * (target.giantUntil > owner.world.time ? 1.5 : 1), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
+    return target.z + BODY_HEIGHT * 0.84 + MARGIN;
+  }
   var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
   var init_model_base = __esm({
     "src/features/formation-skills/model-base.js"() {
@@ -1239,45 +1253,55 @@
           if (!TARGET) {
             return false;
           }
-          const ANGLE = owner.world.random() * Math.PI * 2;
-          owner.addEffect(this.definition.id, {
-            x: TARGET.x + Math.cos(ANGLE) * 0.6,
-            y: TARGET.y + Math.sin(ANGLE) * 0.6,
-            z: TARGET.height + 2,
-            targetId: owner.targetId(TARGET),
+          const ANGLE = owner.world.random() * Math.PI * 2, STATE = this.effectState(owner, TARGET, slot, ANGLE);
+          owner.addEffect(this.definition.id, STATE);
+          return true;
+        }
+        effectState(owner, target, slot, angle) {
+          const TARGET_Z = targetTop(owner, target);
+          return {
+            x: target.x + Math.cos(angle) * 0.6,
+            y: target.y + Math.sin(angle) * 0.6,
+            z: TARGET_Z + 2,
+            targetId: owner.targetId(target),
             duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
             pulse: 0,
             lastPulse: -10,
-            targetX: TARGET.x,
-            targetY: TARGET.y,
-            targetZ: TARGET.height
-          });
-          return true;
+            targetX: target.x,
+            targetY: target.y,
+            targetZ: TARGET_Z
+          };
+        }
+        onPulse(_owner, _effect, _target) {
+        }
+        strike(_owner, _effect, _target) {
         }
         update(owner, effect, dt) {
           effect.age += dt;
           const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
           if (TARGET) {
             effect.targetId = owner.targetId(TARGET);
-            const DX = TARGET.x - effect.x, DY = TARGET.y - effect.y, DISTANCE = Math.hypot(DX, DY), RATE = Math.min(1, dt * 6 / Math.max(DISTANCE, 0.01));
+            const DX = TARGET.x - effect.x, DY = TARGET.y - effect.y, TARGET_Z = targetTop(owner, TARGET), RATE = 1 - Math.exp(-dt * 6);
             effect.x += DX * RATE;
             effect.y += DY * RATE;
-            effect.z = TARGET.z + TARGET.height + 2;
+            effect.z += (TARGET_Z + 2 - effect.z) * RATE;
             effect.targetX = TARGET.x;
             effect.targetY = TARGET.y;
-            effect.targetZ = TARGET.z + TARGET.height * 0.6;
+            effect.targetZ = TARGET_Z;
           }
           owner.separateAir(effect, dt);
           const ACTIVE_AGE = effect.age - 0.5;
-          if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / this.interval)) {
+          const INTERVAL = this.definition.pulseInterval;
+          if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / INTERVAL)) {
             const DUE = Math.min(
-              Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / this.interval),
-              Math.floor((effect.duration + 1e-9) / this.interval)
+              Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / INTERVAL),
+              Math.floor((effect.duration + 1e-9) / INTERVAL)
             );
             while (effect.pulse < DUE) {
               effect.pulse++;
+              effect.lastPulse = effect.age;
+              this.onPulse(owner, effect, TARGET);
               if (TARGET && Math.hypot(TARGET.x - effect.x, TARGET.y - effect.y) <= 18) {
-                effect.lastPulse = effect.age;
                 this.strike(owner, effect, TARGET);
               }
             }
@@ -1510,13 +1534,13 @@
       UfoSkill = class extends FlyingSkill {
         constructor() {
           super(DEFINITION8);
-          this.interval = 0.5;
         }
-        strike(owner, effect, _target) {
+        onPulse(owner, effect) {
           const TARGET = owner.verticalTarget(effect.x, effect.y);
           if (TARGET) {
-            owner.damage(TARGET, 10);
+            owner.damage(TARGET, this.definition.pulseDamage);
           }
+          effect.beamTargetZ = TARGET?.z ?? 0;
         }
       };
     }
@@ -1531,10 +1555,9 @@
       StormCloudSkill = class extends FlyingSkill {
         constructor() {
           super(DEFINITION9);
-          this.interval = 1;
         }
         strike(owner, _effect, target) {
-          owner.damage(target, 15);
+          owner.damage(target, this.definition.pulseDamage);
         }
       };
     }
@@ -3578,8 +3601,8 @@
     class CelebratingFarmBossEventPhase extends FarmBossEventPhase {
       update(world, dt) {
         world.farmBossEvent.elapsed += dt;
-        const DURATION = world.farmBossEvent.outcome === "defeat" ? config.farm.bossEvent.celebrationSeconds : config.farm.bossEvent.fadeSeconds;
-        if (world.farmBossEvent.elapsed >= DURATION) {
+        const DURATION3 = world.farmBossEvent.outcome === "defeat" ? config.farm.bossEvent.celebrationSeconds : config.farm.bossEvent.fadeSeconds;
+        if (world.farmBossEvent.elapsed >= DURATION3) {
           world.farmBossEvent.phase = "fading";
           world.farmBossEvent.elapsed = 0;
         }
@@ -4652,6 +4675,7 @@
       formationSkills: createFormationSkillState(),
       level: 1,
       experience: 0,
+      farmBossEventStage: 1,
       processedBossKillReceipts: []
     };
   }
@@ -4742,7 +4766,7 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
       return false;
     }
     const INVESTED_POINTS = Object.values(state.abilities).reduce(
@@ -4751,7 +4775,7 @@
     );
     return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
   }
-  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL;
+  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
   var init_player_progression = __esm({
     "src/player-progression.js"() {
       init_ability_state();
@@ -4762,6 +4786,7 @@
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
       LEVEL_XP_MULTIPLIER = 1.2;
       SHARED_POINTS_PER_LEVEL = 1;
+      FARM_BOSS_EVENT_MAX_STAGE = 61;
     }
   });
 
@@ -5051,7 +5076,7 @@
         stageAttackMultiplier: 1.2,
         stageXpBase: 20,
         stageXpMultiplier: 1.2,
-        maxStage: 61,
+        maxStage: FARM_BOSS_EVENT_MAX_STAGE,
         speciesWeights: BOSS_SPECIES_WEIGHTS
       });
     }
@@ -7951,14 +7976,14 @@
               continue;
             }
             const ANGLE = this.random() * Math.PI * 2, SX = Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7), SY = Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
-            const DURATION = 0.85 + this.random() * 0.25, Z = 0.3;
+            const DURATION3 = 0.85 + this.random() * 0.25, Z = 0.3;
             const FOOD = {
               x: SX,
               y: SY,
               z: Z,
-              vx: (tx - SX) / DURATION,
-              vy: (ty - SY) / DURATION,
-              vz: 6 * DURATION - Z / DURATION,
+              vx: (tx - SX) / DURATION3,
+              vy: (ty - SY) / DURATION3,
+              vz: 6 * DURATION3 - Z / DURATION3,
               seed: this.random(),
               phase: "flight",
               tx,
@@ -7981,7 +8006,9 @@
               UNIT_LOCAL.chestnutBasicCycles = 0;
             }
           }
-          this.boss = this.createBoss(this.randomBossSpecies());
+          const SPECIES = this.randomBossSpecies(), EVENT_STAGE = this.playerProgression.farmBossEventStage;
+          this.boss = this.createBoss(SPECIES);
+          this.configureBossStage(EVENT_STAGE, SPECIES);
           Object.assign(this.boss, {
             x,
             y,
@@ -9407,14 +9434,18 @@
             }
           }
           if (outcome === "victory") {
+            const EVENT_STAGE = this.boss.stage, STAGE_STATS = bossStageStats(EVENT_STAGE), EVENT_XP = Math.round(BOSS_KILL_XP * STAGE_STATS.xp / BOSS_REWARD_SETTINGS.stageXpBase);
             const SETTLEMENT2 = settleBossKill(this, {
               encounterId: ENCOUNTER_ID,
               source: "farm",
               species: this.boss.species,
               tier: 1,
               x: this.boss.x,
-              y: this.boss.y
+              y: this.boss.y,
+              rollCount: 1 + STAGE_STATS.rolls,
+              xpAmount: EVENT_XP
             });
+            this.playerProgression.farmBossEventStage = Math.min(EVENT_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
             const REWARD2 = SETTLEMENT2.receipt;
             this.combat("farm-boss-xp", {
               encounterId: ENCOUNTER_ID,
@@ -10109,6 +10140,7 @@
       formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
       level: player.level,
       experience: player.experience,
+      farmBossEventStage: Object.hasOwn(player, "farmBossEventStage") ? player.farmBossEventStage : 1,
       availablePoints: player.availablePoints,
       farmUpgrades: {
         ...player.farmUpgrades
@@ -10163,13 +10195,13 @@
       if (UNIT3.isBattleOnlySummon || UNIT3.countsTowardPermanentRoster === false || UNIT3.faction !== "player") {
         continue;
       }
-      const [SPECIES, TIER, FED, GROWTH, DURATION, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT3);
+      const [SPECIES, TIER, FED, GROWTH, DURATION3, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT3);
       const KEY2 = [
         SPECIES,
         TIER,
         Number(FED),
         GROWTH,
-        GROWTH ? DURATION : 0,
+        GROWTH ? DURATION3 : 0,
         COOLDOWN,
         COOLDOWN ? COOLDOWN_DURATION : 0,
         REST
@@ -10190,7 +10222,7 @@
       if (GROWTH > 0) {
         ROW.growth = {
           remaining: GROWTH,
-          duration: DURATION
+          duration: DURATION3
         };
       }
       if (COOLDOWN > 0) {
@@ -10255,11 +10287,14 @@
     ASSERT(
       INTEGER(data.seed, 0, 4294967295) && INTEGER(data.rngState, 0, 4294967295) && ["breed", "merge"].includes(data.mode)
     );
-    const PLAYER = data.player, DEFAULTS = createPlayerProgressionState();
+    const PLAYER = data.player, PLAYER_WITH_DEFAULTS = {
+      ...PLAYER,
+      farmBossEventStage: Object.hasOwn(PLAYER, "farmBossEventStage") ? PLAYER.farmBossEventStage : 1
+    }, DEFAULTS = createPlayerProgressionState();
     keys(
       PLAYER,
-      Object.keys(DEFAULTS).filter((key) => key !== "formationSkills"),
-      ["formationSkills"]
+      Object.keys(DEFAULTS).filter((key) => key !== "formationSkills" && key !== "farmBossEventStage"),
+      ["formationSkills", "farmBossEventStage"]
     );
     keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
@@ -10267,7 +10302,7 @@
       keys(BUILD, ["rootUnlocked", "powerLevel", "gradeLevel"]);
     }
     ASSERT(
-      isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER3(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
+      isValidPlayerProgressionState(PLAYER_WITH_DEFAULTS) && INTEGER(PLAYER.level, 1) && NUMBER3(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
     );
     ASSERT(Array.isArray(data.roster) && data.roster.length <= CONFIG.farm.capacity.max);
     let count = 0;
@@ -10502,7 +10537,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.6";
+      PRODUCT_VERSION = "0.8.7";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -10734,6 +10769,7 @@
           abilities: ABILITY_INVESTMENTS(),
           level: 1,
           experience: 0,
+          farmBossEventStage: 1,
           processedBossKillReceipts: []
         },
         starter: 0,
@@ -12927,10 +12963,13 @@
         renderer.ellipse(P.x, P.y + S * 0.15, S * (0.1 + 0.05 * Math.sin(effect.age * 12)), S * 0.07, "#afffeb88");
       }
       if (PULSE_AGE >= 0 && PULSE_AGE < 0.13 && effect.age > 0.5 && EXIT === 0) {
-        const POINTS = [
-          [effect.x, effect.y, Z - 0.15],
-          [effect.x, effect.y, 0]
-        ];
+        const POINTS = effect.beamPoints;
+        POINTS[0][0] = effect.x;
+        POINTS[0][1] = effect.y;
+        POINTS[0][2] = Z - 0.15;
+        POINTS[1][0] = effect.x;
+        POINTS[1][1] = effect.y;
+        POINTS[1][2] = effect.beamTargetZ;
         stroke(renderer, POINTS, "#74f5db44", 0.33);
         stroke(renderer, POINTS, "#afffe6cc", 0.11);
         stroke(renderer, POINTS, "#f4fff3", 0.035);
@@ -12941,46 +12980,67 @@
   };
 
   // src/features/formation-skills/storm-cloud/presentation.js
+  function visualOffset(effect, index, salt) {
+    const VALUE = Math.sin(effect.id * 127.1 + effect.pulse * 311.7 + index * 74.7 + salt * 41.3) * 43758.5453;
+    return (VALUE - Math.floor(VALUE)) * 2 - 1;
+  }
   var StormCloudPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
       const ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * 0.1, SPREAD = (1 - ENTER + EXIT) * 1.2;
-      for (let i = 0; i < 3; i++) {
-        const A = i * Math.PI * 2 / 3;
+      for (let index = 0; index < 3; index++) {
+        const ANGLE = index * Math.PI * 2 / 3;
         cloud(
           renderer,
-          effect.x + Math.cos(A) * SPREAD,
-          effect.y + Math.sin(A) * SPREAD,
+          effect.x + Math.cos(ANGLE) * SPREAD,
+          effect.y + Math.sin(ANGLE) * SPREAD,
           Z,
           0.7,
           Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8)
         );
       }
       if (ENTER < 1 && effect.age > 0.15) {
-        stroke(
-          renderer,
-          [
-            [effect.x - 0.3, effect.y, Z],
-            [effect.x + 0.1, effect.y, Z + 0.1],
-            [effect.x - 0.05, effect.y, Z - 0.1],
-            [effect.x + 0.3, effect.y, Z]
-          ],
-          "#b7e8f0aa",
-          0.035
-        );
+        const INTRO_POINTS = effect.introPoints;
+        INTRO_POINTS[0][0] = effect.x - 0.3;
+        INTRO_POINTS[0][1] = effect.y;
+        INTRO_POINTS[0][2] = Z;
+        INTRO_POINTS[1][0] = effect.x + 0.1;
+        INTRO_POINTS[1][1] = effect.y;
+        INTRO_POINTS[1][2] = Z + 0.1;
+        INTRO_POINTS[2][0] = effect.x - 0.05;
+        INTRO_POINTS[2][1] = effect.y;
+        INTRO_POINTS[2][2] = Z - 0.1;
+        INTRO_POINTS[3][0] = effect.x + 0.3;
+        INTRO_POINTS[3][1] = effect.y;
+        INTRO_POINTS[3][2] = Z;
+        stroke(renderer, INTRO_POINTS, "#b7e8f0aa", 0.035);
       }
-      const AGE = effect.age - effect.lastPulse;
-      if (AGE >= 0 && AGE < 0.25 && effect.age > 0.5 && EXIT === 0) {
-        const POINTS = [];
-        for (let i = 0; i <= 12; i++) {
-          const T = i / 12, ARC = Math.sin(T * Math.PI) * 0.8;
-          POINTS.push([
-            effect.x + (effect.targetX - effect.x) * T + ARC,
-            effect.y + (effect.targetY - effect.y) * T,
-            Z + (effect.targetZ - Z) * T + Math.sin(i * 9.2 + effect.id) * 0.13
-          ]);
+      if (effect.pulse > 0 && effect.age > 0.5 && EXIT === 0) {
+        const POINTS = effect.arcPoints, BRANCHES = effect.branchPoints;
+        for (let index = 0; index < POINTS.length; index++) {
+          const T = index / (POINTS.length - 1), BEND = visualOffset(effect, index, 0) * Math.sin(T * Math.PI), POINT2 = POINTS[index];
+          POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55;
+          POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22;
+          POINT2[2] = Z + (effect.targetZ - Z) * T + Math.sin(T * Math.PI) * 0.28 + BEND * 0.16;
         }
-        stroke(renderer, POINTS, "#72b1f344", 0.2);
-        stroke(renderer, POINTS, "#d8f5ff", 0.045);
+        for (let index = 0; index < BRANCHES.length; index++) {
+          const T = 0.24 + index * 0.24 + visualOffset(effect, index, 1) * 0.08, ROOT = POINTS[Math.round(T * (POINTS.length - 1))], DX = visualOffset(effect, index, 2) * 0.72, DY = visualOffset(effect, index, 3) * 0.58, BRANCH = BRANCHES[index];
+          BRANCH[0][0] = ROOT[0];
+          BRANCH[0][1] = ROOT[1];
+          BRANCH[0][2] = ROOT[2];
+          BRANCH[1][0] = ROOT[0] + DX * 0.55;
+          BRANCH[1][1] = ROOT[1] + DY * 0.55;
+          BRANCH[1][2] = ROOT[2] + 0.16;
+          BRANCH[2][0] = ROOT[0] + DX;
+          BRANCH[2][1] = ROOT[1] + DY;
+          BRANCH[2][2] = ROOT[2] + 0.08;
+        }
+        stroke(renderer, POINTS, "#408bff99", 0.3);
+        stroke(renderer, POINTS, "#8bd4ff", 0.13);
+        stroke(renderer, POINTS, "#f3fdff", 0.045);
+        for (const BRANCH of BRANCHES) {
+          stroke(renderer, BRANCH, "#408bff88", 0.18);
+          stroke(renderer, BRANCH, "#d9f5ff", 0.045);
+        }
       }
     }
   };
@@ -13537,11 +13597,11 @@
     if (world?.scene !== "farm" || unit?.hp <= 0 || unit?.down > 0 || unit?.cooldown <= 0 || unit?.meals !== 0) {
       return null;
     }
-    const DURATION = unit.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
+    const DURATION3 = unit.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
     const REMAINING = Math.max(0, unit.cooldown);
     result.remaining = REMAINING;
-    result.duration = DURATION;
-    result.progress = Math.max(0, Math.min(1, 1 - REMAINING / DURATION));
+    result.duration = DURATION3;
+    result.progress = Math.max(0, Math.min(1, 1 - REMAINING / DURATION3));
     return result;
   }
   function unitRestPresentation(unit, world, duration, result) {
@@ -14837,6 +14897,9 @@
   var { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
   var R = RENDER_OBJECT;
   var PRESENTATION_STEP_MS = 50;
+  function createPointBuffer(count) {
+    return Array.from({ length: count }, () => [0, 0, 0]);
+  }
   var LOCAL_PROFILE = Object.freeze({
     tickRate: 20,
     maxCatchupSteps: 4
@@ -15142,7 +15205,9 @@
       targetX: R.LINEAR,
       targetY: R.LINEAR,
       targetZ: R.LINEAR,
-      lastPulse: R.STEP
+      lastPulse: R.STEP,
+      pulse: R.STEP,
+      beamTargetZ: R.LINEAR
     });
     update(effect) {
       for (const KEY2 of Object.keys(_FormationEffectRender.renderSchema)) {
@@ -15150,6 +15215,28 @@
       }
     }
   };
+  var UfoFormationEffectRender = class extends FormationEffectRender {
+    constructor() {
+      super();
+      this.beamPoints = createPointBuffer(2);
+    }
+  };
+  var StormCloudFormationEffectRender = class extends FormationEffectRender {
+    constructor() {
+      super();
+      this.arcPoints = createPointBuffer(13);
+      this.introPoints = createPointBuffer(4);
+      this.branchPoints = Array.from({ length: 3 }, () => createPointBuffer(3));
+    }
+  };
+  var FORMATION_EFFECT_RENDER_TYPES = /* @__PURE__ */ new Map([
+    ["ufo", UfoFormationEffectRender],
+    ["storm-cloud", StormCloudFormationEffectRender]
+  ]);
+  var PRESENTATION_BUFFER_FIELDS = /* @__PURE__ */ new Map([
+    ["ufo", ["beamPoints"]],
+    ["storm-cloud", ["arcPoints", "introPoints", "branchPoints"]]
+  ]);
   var DelayedEffectRender = class extends EffectRender {
     static renderSchema = Object.freeze({
       ...EffectRender.renderSchema,
@@ -15216,6 +15303,8 @@
         snapDistance: 12
       });
       this.presentationAdapters = /* @__PURE__ */ new WeakMap();
+      this.formationEffectRenderAdapters = /* @__PURE__ */ new Map();
+      this.formationEffectCaptureSequence = 0;
       this.captureEntities = [];
       this.clockEntity = {
         id: "clock",
@@ -15457,8 +15546,17 @@
         const TYPE = E.kind === "merge-material" ? MergeMaterialRender : Number.isFinite(E.delay) && Number.isFinite(E.span) ? DelayedEffectRender : EffectRender;
         ENTITIES.push(this.presentationEntity(this.presentationIdentity("effect", E), E, TYPE));
       }
+      const CAPTURE_SEQUENCE = ++this.formationEffectCaptureSequence;
       for (const EFFECT of WORLD.formationRuntime.effects) {
-        ENTITIES.push(this.presentationEntity("formation:" + EFFECT.id, EFFECT, FormationEffectRender));
+        const TYPE = FORMATION_EFFECT_RENDER_TYPES.get(EFFECT.kind) || FormationEffectRender, ENTITY = this.presentationEntity("formation:" + EFFECT.id, EFFECT, TYPE);
+        ENTITIES.push(ENTITY);
+        ENTITY.source.captureSequence = CAPTURE_SEQUENCE;
+        this.formationEffectRenderAdapters.set(EFFECT.id, ENTITY.source);
+      }
+      for (const [ID, SOURCE] of this.formationEffectRenderAdapters) {
+        if (CAPTURE_SEQUENCE - SOURCE.captureSequence > 2) {
+          this.formationEffectRenderAdapters.delete(ID);
+        }
       }
       this.clockEntity.source.gameTimeMs = WORLD.time * 1e3;
       ENTITIES.push(this.clockEntity);
@@ -15536,6 +15634,15 @@
       VIEW.formationEffects.length = 0;
       VIEW.formationSlots = WORLD.formationRuntime.slots;
       FRAME.forEach(this.collectPresentationModel);
+      for (const EFFECT of VIEW.formationEffects) {
+        const SOURCE = this.formationEffectRenderAdapters.get(EFFECT.id);
+        if (!SOURCE) {
+          continue;
+        }
+        for (const KEY2 of PRESENTATION_BUFFER_FIELDS.get(EFFECT.kind) || []) {
+          EFFECT[KEY2] = SOURCE[KEY2];
+        }
+      }
       VIEW.time = (FRAME.sample("clock", 0)?.gameTimeMs ?? WORLD.time * 1e3) / 1e3;
       VIEW.boss = FRAME.sample("boss", 0) || this.presentationEntity("boss", WORLD.boss, BossRender).source;
       VIEW.displayTimeMs = FRAME.timeMs;
@@ -15570,6 +15677,7 @@
       this.loop.stop();
       this.pending.length = 0;
       this.captureEntities.length = 0;
+      this.formationEffectRenderAdapters.clear();
       this.presentationAdapters = /* @__PURE__ */ new WeakMap();
     }
   };
@@ -15809,17 +15917,17 @@
         strike: [180, 80, 0.075, 0.16],
         heavy: [95, 42, 0.16, 0.22],
         launch: [290, 145, 0.06, 0.07]
-      }, [HZ, END, DURATION, GAIN] = DEFS[kind];
+      }, [HZ, END, DURATION3, GAIN] = DEFS[kind];
       const O = this.audio.createOscillator(), G = this.audio.createGain(), V = {
         o: O,
         g: G
       };
       O.type = kind === "land" ? "sine" : "triangle";
       O.frequency.setValueAtTime(HZ, NOW);
-      O.frequency.exponentialRampToValueAtTime(END, NOW + DURATION);
+      O.frequency.exponentialRampToValueAtTime(END, NOW + DURATION3);
       G.gain.setValueAtTime(0, NOW);
       G.gain.linearRampToValueAtTime(GAIN, NOW + 4e-3);
-      G.gain.exponentialRampToValueAtTime(1e-4, NOW + DURATION);
+      G.gain.exponentialRampToValueAtTime(1e-4, NOW + DURATION3);
       O.connect(G);
       G.connect(this.master);
       this.voices.add(V);
@@ -15830,7 +15938,7 @@
         this.voices.delete(V);
       };
       O.start(NOW);
-      O.stop(NOW + DURATION + 0.01);
+      O.stop(NOW + DURATION3 + 0.01);
     }
     animate(el, frames, duration) {
       this.animations.get(el)?.cancel();
@@ -17773,7 +17881,7 @@
       Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존"
     );
     const BOSS2 = display.boss, BATTLE_OUTCOME = RAID ? W.encounter.outcome : FARM_EVENT?.outcome, SETTLED_RUN_SEQUENCE = RAID ? personalGarden?.activeRaidRunSequence ?? W.boss.encounterId : null, SETTLED_REWARD = RAID && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === SETTLED_RUN_SEQUENCE)?.reward, STAGE_NAME = RAID && BOSS2.stage ? `STAGE ${BOSS2.stage}` : "", REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
-    syncText("bossName", ENCOUNTER_NAME);
+    syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · EVENT STAGE ${BOSS2.stage}` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
     syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "전사자 포함 최대 HP");

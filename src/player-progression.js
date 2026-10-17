@@ -13,12 +13,14 @@ export const BOSS_KILL_XP = PLAYER_PROGRESS_BASE_XP;
 export const FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
 export const LEVEL_XP_MULTIPLIER = 1.2;
 export const SHARED_POINTS_PER_LEVEL = 1;
+export const FARM_BOSS_EVENT_MAX_STAGE = 61;
 export function createPlayerProgressionState() {
     return {
         ...createAbilityProgressionState(),
         formationSkills: createFormationSkillState(),
         level: 1,
         experience: 0,
+        farmBossEventStage: 1,
         processedBossKillReceipts: [],
     };
 }
@@ -118,6 +120,9 @@ export function isValidPlayerProgressionState(state) {
         (state.formationSkills !== undefined && !isValidFormationSkillState(state.formationSkills)) ||
         !Number.isSafeInteger(state.level) ||
         state.level < 1 ||
+        !Number.isSafeInteger(state.farmBossEventStage) ||
+        state.farmBossEventStage < 1 ||
+        state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE ||
         !Number.isFinite(state.experience) ||
         state.experience < 0 ||
         state.experience >= experienceForNextLevel(state.level) ||

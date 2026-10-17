@@ -99,6 +99,11 @@ async function open(context) {
 }
 async function clean(p) {
     assert.equal(await p.locator('#error').isVisible(), false, await p.locator('#error').textContent());
+    assert.equal(
+        await p.locator('#bloom-error-popup').isVisible(),
+        false,
+        await p.evaluate(() => globalThis.BloomDiagnostics?.summary() || 'No diagnostic available'),
+    );
     assert.deepEqual(REPORT.errors, []);
 }
 async function openMenuTab(p, tab = 'play') {
@@ -818,17 +823,44 @@ async function formationBrowserUI() {
             await P.screenshot({ path: path.join(OUT, 'formation-meteor-impact.png') });
         }
         if (index === 2) {
-            await P.evaluate(() => {
+            const ARC_TRACE = await P.evaluate(() => {
                 const W = BUDMORI.sim;
                 for (let i = 0; i < 176; i++) {
                     W.time += 1 / 120;
                     W.formationSkills.update(1 / 120);
                 }
                 BUDMORI.runtime.capturePresentation('reset');
+                let display = BUDMORI.runtime.presentation(performance.now());
+                const MODEL_CLOUD = W.formationRuntime.effects.find((effect) => effect.kind === 'storm-cloud');
+                let cloudRender = display.formationEffects.find((effect) => effect.id === MODEL_CLOUD.id);
+                BUDMORI.renderer.render(display, BUDMORI.combatFeel, display.displayTimeMs);
+                const POINT_BUFFER = cloudRender.arcPoints,
+                    SAMPLE = POINT_BUFFER[5],
+                    FIRST_POINT = [...SAMPLE],
+                    FIRST_PULSE = MODEL_CLOUD.pulse;
+                W.time += 0.2;
+                W.formationSkills.update(0.2);
+                BUDMORI.runtime.capturePresentation('reset');
+                display = BUDMORI.runtime.presentation(performance.now());
+                const NEXT_MODEL_CLOUD = W.formationRuntime.effects.find((effect) => effect.kind === 'storm-cloud');
+                cloudRender = display.formationEffects.find((effect) => effect.id === NEXT_MODEL_CLOUD.id);
+                BUDMORI.renderer.render(display, BUDMORI.combatFeel, display.displayTimeMs);
+                return {
+                    pulseAdvanced: NEXT_MODEL_CLOUD.pulse > FIRST_PULSE,
+                    reusedPoints: cloudRender.arcPoints === POINT_BUFFER,
+                    reusedPoint: cloudRender.arcPoints[5] === SAMPLE,
+                    reshaped: SAMPLE.some((value, index) => value !== FIRST_POINT[index]),
+                    sourceEndpoint: SAMPLE[0] !== 0 || SAMPLE[1] !== 0 || SAMPLE[2] !== 0,
+                };
             });
             await P.waitForTimeout(80);
             await clean(P);
             await P.screenshot({ path: path.join(OUT, 'formation-sky-beams.png') });
+            assert.equal(ARC_TRACE.pulseAdvanced, true);
+            assert.equal(ARC_TRACE.reusedPoints, true);
+            assert.equal(ARC_TRACE.reusedPoint, true);
+            assert.equal(ARC_TRACE.reshaped, true);
+            assert.equal(ARC_TRACE.sourceEndpoint, true);
         }
     }
     await openMenuTab(P, 'formation');
@@ -3274,6 +3306,7 @@ async function event() {
             timeout: 8000,
         },
     );
+    assert((await P.locator('#bossName').textContent()).includes('EVENT STAGE 1'));
     assert.equal(await P.locator('#bossbar').isVisible(), true);
     assert.equal(await P.locator('#farmControls').isVisible(), false);
     assert.equal(await P.locator('#bossHealthNote').textContent(), '상대 능력치 고정');
@@ -3307,6 +3340,7 @@ async function event() {
     assert(CELEBRATION.message.includes('다시 일어날'));
     assert.equal(CELEBRATION.scene, 'farm');
     assert.equal(CELEBRATION.running, false);
+    assert.equal(await P.evaluate(() => BUDMORI.sim.playerProgression.farmBossEventStage), 1);
     await P.screenshot({
         path: path.join(OUT, 'mobile-farm-boss-defeat.png'),
     });
@@ -3353,9 +3387,88 @@ async function event() {
         })),
     );
     assert(RESTORED.every((unit) => unit.hp === 0 && unit.down > 0 && unit.down <= 60));
+    const STAGE_RESULTS = await P.evaluate(async () => {
+        const W = BUDMORI.sim,
+            { captureFarmProgress: CAPTURE_FARM_PROGRESS, restoreFarmProgress: RESTORE_FARM_PROGRESS } =
+                await import('/src/farm-progress.js'),
+            LEGACY_PROGRESS = CAPTURE_FARM_PROGRESS(W);
+        delete LEGACY_PROGRESS.player.farmBossEventStage;
+        const LEGACY_STAGE = RESTORE_FARM_PROGRESS(LEGACY_PROGRESS).playerProgression.farmBossEventStage;
+        W.random = () => 0;
+        W.playerProgression.farmBossEventStage = 1;
+        const FIRST_STARTED = W.tryStartFarmBossEvent(0, 0),
+            FIRST_BOSS_STAGE = W.boss.stage;
+        W.farmBossEvent.phase = 'fighting';
+        W.boss.hp = 0;
+        const FIRST_VICTORY = W.finishFarmBossEvent('victory'),
+            FIRST_NEXT_STAGE = W.playerProgression.farmBossEventStage,
+            DUPLICATE_VICTORY = W.finishFarmBossEvent('victory');
+        W.farmBossEvent = {
+            phase: 'idle',
+            elapsed: 0,
+            outcome: 'idle',
+            encounterId: 0,
+            rewardStatus: 'none',
+            rewardChance: 0,
+            rewardRoll: 0,
+            rewardUnitId: 0,
+        };
+        W.boss.active = false;
+        W.playerProgression.farmBossEventStage = 5;
+        const STAGE_FIVE_STARTED = W.tryStartFarmBossEvent(0, 0),
+            STAGE_FIVE_BOSS = {
+                stage: W.boss.stage,
+                hp: W.boss.maxHp,
+                attackPower: W.boss.attackPower,
+            };
+        W.farmBossEvent.phase = 'fighting';
+        W.boss.hp = 0;
+        const STAGE_FIVE_VICTORY = W.finishFarmBossEvent('victory'),
+            STAGE_FIVE_RECEIPT = W.bossRewardReceipts.at(-1);
+        delete W.random;
+        return {
+            legacyStage: LEGACY_STAGE,
+            firstStarted: FIRST_STARTED,
+            firstBossStage: FIRST_BOSS_STAGE,
+            firstVictory: FIRST_VICTORY,
+            firstNextStage: FIRST_NEXT_STAGE,
+            duplicateVictory: DUPLICATE_VICTORY,
+            stageFiveStarted: STAGE_FIVE_STARTED,
+            stageFiveBoss: STAGE_FIVE_BOSS,
+            stageFiveVictory: STAGE_FIVE_VICTORY,
+            stageSix: W.playerProgression.farmBossEventStage,
+            stageFiveReceipt: {
+                tier: STAGE_FIVE_RECEIPT.tier,
+                rollCount: STAGE_FIVE_RECEIPT.rollCount,
+                chance: STAGE_FIVE_RECEIPT.chance,
+                acquisitionMultiplier: STAGE_FIVE_RECEIPT.acquisitionMultiplier,
+            },
+        };
+    });
+    assert.equal(STAGE_RESULTS.legacyStage, 1);
+    assert.equal(STAGE_RESULTS.firstStarted, true);
+    assert.equal(STAGE_RESULTS.firstBossStage, 1);
+    assert.equal(STAGE_RESULTS.firstVictory, true);
+    assert.equal(STAGE_RESULTS.firstNextStage, 2);
+    assert.equal(STAGE_RESULTS.duplicateVictory, false);
+    assert.equal(STAGE_RESULTS.stageFiveStarted, true);
+    assert.equal(STAGE_RESULTS.stageFiveBoss.stage, 5);
+    assert.equal(STAGE_RESULTS.stageFiveBoss.hp, 200 * 1.5 ** 4);
+    assert.equal(STAGE_RESULTS.stageFiveBoss.attackPower, 4 * 1.2 ** 4);
+    assert.equal(STAGE_RESULTS.stageFiveVictory, true);
+    assert.equal(STAGE_RESULTS.stageSix, 6);
+    assert.deepEqual(STAGE_RESULTS.stageFiveReceipt, {
+        tier: 1,
+        rollCount: 2,
+        chance: 0.4,
+        acquisitionMultiplier: 2,
+    });
+    await goHome(P);
+    const STAGE_SAVE = JSON.parse(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4'))).progress;
+    assert.equal(STAGE_SAVE.player.farmBossEventStage, 6);
     await clean(P);
     CHECK(
-        'Mobile 1% food replacement, fixed-stat HUD, happy defeat bounce/fade, Farm-only scene, and corpse sleep save/restore',
+        'Mobile 1% event spawn, stage HUD/scale/rewards, victory idempotency, legacy stage default, and progression save',
     );
     await C.close();
 }

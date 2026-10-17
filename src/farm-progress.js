@@ -24,6 +24,7 @@ function copyPlayer(player) {
         formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
         level: player.level,
         experience: player.experience,
+        farmBossEventStage: Object.hasOwn(player, 'farmBossEventStage') ? player.farmBossEventStage : 1,
         availablePoints: player.availablePoints,
         farmUpgrades: {
             ...player.farmUpgrades,
@@ -192,11 +193,15 @@ export function validateFarmProgress(data) {
             ['breed', 'merge'].includes(data.mode),
     );
     const PLAYER = data.player,
+        PLAYER_WITH_DEFAULTS = {
+            ...PLAYER,
+            farmBossEventStage: Object.hasOwn(PLAYER, 'farmBossEventStage') ? PLAYER.farmBossEventStage : 1,
+        },
         DEFAULTS = createPlayerProgressionState();
     keys(
         PLAYER,
-        Object.keys(DEFAULTS).filter((key) => key !== 'formationSkills'),
-        ['formationSkills'],
+        Object.keys(DEFAULTS).filter((key) => key !== 'formationSkills' && key !== 'farmBossEventStage'),
+        ['formationSkills', 'farmBossEventStage'],
     );
     keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
@@ -204,7 +209,7 @@ export function validateFarmProgress(data) {
         keys(BUILD, ['rootUnlocked', 'powerLevel', 'gradeLevel']);
     }
     ASSERT(
-        isValidPlayerProgressionState(PLAYER) &&
+        isValidPlayerProgressionState(PLAYER_WITH_DEFAULTS) &&
             INTEGER(PLAYER.level, 1) &&
             NUMBER(PLAYER.experience) &&
             Array.isArray(PLAYER.processedBossKillReceipts) &&

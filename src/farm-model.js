@@ -35,10 +35,16 @@ import {
     unitCapabilityComposition,
     speciesWithCapability,
 } from './unit-abilities.js';
-import { bossAcquisitionChance, bossStageStats, settleBossKill, grantPendingBossAcquisitions } from './boss-rewards.js';
+import {
+    BOSS_REWARD_SETTINGS,
+    bossAcquisitionChance,
+    bossStageStats,
+    settleBossKill,
+    grantPendingBossAcquisitions,
+} from './boss-rewards.js';
 import { createFarmBossProgress } from './farm-boss-stages.js';
 import { SPECIES_COUNT } from './species-catalog.js';
-import { createPlayerProgressionState } from './player-progression.js';
+import { BOSS_KILL_XP, createPlayerProgressionState } from './player-progression.js';
 import { purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression } from './ability-progression.js';
 import { createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot } from './ability-state.js';
 import {
@@ -1971,7 +1977,10 @@ const GARDEN = class Garden {
                 UNIT_LOCAL.chestnutBasicCycles = 0;
             }
         }
-        this.boss = this.createBoss(this.randomBossSpecies());
+        const SPECIES = this.randomBossSpecies(),
+            EVENT_STAGE = this.playerProgression.farmBossEventStage;
+        this.boss = this.createBoss(SPECIES);
+        this.configureBossStage(EVENT_STAGE, SPECIES);
         Object.assign(this.boss, {
             x,
             y,
@@ -3630,6 +3639,9 @@ const GARDEN = class Garden {
             }
         }
         if (outcome === 'victory') {
+            const EVENT_STAGE = this.boss.stage,
+                STAGE_STATS = bossStageStats(EVENT_STAGE),
+                EVENT_XP = Math.round((BOSS_KILL_XP * STAGE_STATS.xp) / BOSS_REWARD_SETTINGS.stageXpBase);
             const SETTLEMENT = settleBossKill(this, {
                 encounterId: ENCOUNTER_ID,
                 source: 'farm',
@@ -3637,7 +3649,10 @@ const GARDEN = class Garden {
                 tier: 1,
                 x: this.boss.x,
                 y: this.boss.y,
+                rollCount: 1 + STAGE_STATS.rolls,
+                xpAmount: EVENT_XP,
             });
+            this.playerProgression.farmBossEventStage = Math.min(EVENT_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
             const REWARD = SETTLEMENT.receipt;
             this.combat('farm-boss-xp', {
                 encounterId: ENCOUNTER_ID,
