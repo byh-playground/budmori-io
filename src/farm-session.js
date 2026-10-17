@@ -1,12 +1,13 @@
 import {Garden,CONFIG,bindPresentationClock} from './farm-model.js';
 import {resolveUnitStats} from './unit-stats.js';
-import {snapshot,restore} from './farm-state.js';
-import {PRODUCT_VERSION} from './version.js';
 
-const {binaryCodec:codec}=globalThis.BloomGamekitDeterministic;
 const {PresentationRuntime,RenderObject}=globalThis.BloomGamekitInterpolation;
 const R=RenderObject;
 const PRESENTATION_STEP_MS=50;
+const LOCAL_PROFILE=Object.freeze({tickRate:20,maxCatchupSteps:4});
+const LOCAL_INPUT=new Uint8Array(0);
+const ADVANCED=Object.freeze({status:'advanced'});
+const CLOSED=Object.freeze({status:'closed'});
 
 class UnitRender extends RenderObject {
  static renderSchema=Object.freeze({
@@ -89,34 +90,32 @@ class GameClockRender extends RenderObject {
 }
 
 export class FarmSession{
- constructor(world=new Garden(),{room=null,onError=console.error,onEvent=()=>{},onWorldStep=()=>{}}={}){
-  this.world=world;this.onWorldStep=onWorldStep;this.tick=0;this.presentationTick=0;this.epoch=0;this.players=[...(room?.players||['solo'])];this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.room=room;this.localPlayerId=room?.localPlayerId||'solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
+ constructor(world=new Garden(),{onError=console.error,onWorldStep=()=>{}}={}){
+  this.world=world;this.onWorldStep=onWorldStep;this.tick=0;this.presentationTick=0;this.profile=LOCAL_PROFILE;this.pace=1;this.closed=false;this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.localPlayerId='solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
   this.presentationRevision=0;this.presentationSequence=0;this.pendingPresentationMode=null;this.presentationRuntime=new PresentationRuntime({stepMs:PRESENTATION_STEP_MS,delayMs:PRESENTATION_STEP_MS,snapDistance:12});
   this.presentationIds=new WeakMap();this.nextPresentationId=1;this.previousCaptureTimeMs=null;this.latestCaptureTimeMs=0;this.presentationOriginWallMs=null;this.lastFrameClockMs=null;this.lastCaptureClockMs=0;this.pulseTimestamp=null;
-  const adapter={save:()=>codec.encode(this.capture()),load:bytes=>this.load(codec.decode(bytes)),validateSnapshot:(bytes,context={})=>{try{this.validate(codec.decode(bytes),context);return true}catch{return false}},applyMembership:change=>{this.epoch=change.epoch;this.players=[...change.players];if(this.world.scene==='raid')this.world.setRaidPlayers(this.players);this.pendingPresentationMode='reset'},step:ctx=>this.step(ctx)};
-  const emitEvent=event=>{
-   if(event.type==='rollback'||event.type==='reconciled')this.pendingPresentationMode='rollback';
-   else if(event.type==='membership-committed')this.pendingPresentationMode='reset';
-   else if(event.type==='recovered'){this.pendingPresentationMode='load';this.capturePresentation('load')}
-   onEvent(event);
-  };
-  this.session=globalThis.BloomGamekitRollback.createRoomSession({adapter,players:room?.players||['solo'],localPlayerId:this.localPlayerId,sessionId:room?.sessionId||'budmori-solo',simulationVersion:'budmori-farm-'+PRODUCT_VERSION,seed:world.seed,inputSize:1,mode:room?'online':'local',localFastPath:!room,room:room||undefined,profile:{...globalThis.BloomGamekitRollback.profiles.action,mode:'lockstep',tickRate:20,baseInputDelayTicks:room?2:0,minInputDelayTicks:room?2:0,maxInputDelayTicks:room?2:0,adaptiveInputDelay:false,pacingPolicy:'none',checksumInterval:20,stateHistorySize:32,maxSnapshotBytes:8388608},membership:{maxPlayers:CONFIG.maxRaidPlayers,transitionTimeoutMs:30000,reconnectGraceMs:10000,maxCatchupSteps:4},onEvent:emitEvent});
-  this.loop=globalThis.BloomGamekitSimloop.createLoop({session:this.session,getInput:()=>({input:new Uint8Array(1),commands:(this.session.ready?this.pending.splice(0,32):[]).map(payload=>({payload})),predict:false}),canAdvance:()=>true,canObserveInput:()=>!this.session.closed&&!this.session.failure,onError,onBacklogDrop:()=>{this.pendingPresentationMode='reset'},
-   onAdvance:result=>{if(this.session.resimulating)return;if(this.pendingPresentationMode)this.capturePresentation(this.pendingPresentationMode);else if(result.status==='advanced'&&!this.paused)this.capturePresentation('continuous')}});
+  // FarmSession owns local command order; the shared loop owns timing/backlog.
+  // No room, transport, rollback history or input-submission pipeline is created.
+  this.loop=globalThis.BloomGamekitSimloop.createLoop({session:this,getInput:()=>LOCAL_INPUT,onError,onBacklogDrop:()=>{this.pendingPresentationMode='reset'},
+   onAdvance:result=>{if(this.pendingPresentationMode)this.capturePresentation(this.pendingPresentationMode);else if(result.status==='advanced'&&!this.paused)this.capturePresentation('continuous')}});
   this.capturePresentation('reset');
  }
- capture(){return {tick:this.tick,epoch:this.epoch,players:this.players,speed:this.speed,world:snapshot(this.world)}}
- validate(s,ctx={}){if(!Number.isSafeInteger(s.tick)||s.tick<0||!Number.isSafeInteger(s.epoch)||s.epoch<0||!Array.isArray(s.players)||s.players.length>CONFIG.maxRaidPlayers||s.players.some(p=>typeof p!=='string')||![1,4].includes(s.speed)||ctx.tick!==undefined&&s.tick!==ctx.tick||ctx.membershipEpoch!==undefined&&s.epoch!==ctx.membershipEpoch)throw Error('Invalid farm snapshot');return restore(s.world)}
- load(s){this.world=this.validate(s);this.tick=s.tick;this.epoch=s.epoch;this.players=[...s.players];this.speed=s.speed;this.presentationIds=new WeakMap();this.nextPresentationId=1;bindPresentationClock(this.world,null);this.pendingPresentationMode='load'}
- queue(type,args={}){if(this.session.closed||this.pending.length>=64)return false;this.pending.push(codec.encode({type,...args}));return true}
+ // Required by the shared loop; a local session has no incoming work to poll.
+ poll(){}
+ queue(type,args={}){if(this.closed||this.pending.length>=64)return false;this.pending.push(structuredClone({type,...args}));return true}
  deployNext(x,y){const w=this.world,roster=w.scene==='raid'&&w.raidRoster(this.localPlayerId);if(!roster||!Number.isFinite(x)||!Number.isFinite(y))return false;this.localDeploySequence=Math.max(this.localDeploySequence,roster.lastDeploySequence);if(this.localDeploySequence-roster.lastDeploySequence>=w.raidRemaining(this.localPlayerId))return false;const sequence=this.localDeploySequence+1;if(!this.queue('deploy',{sequence,x,y}))return false;this.localDeploySequence=sequence;return true}
- step({tick,inputs}){
-  let commandChangedWorld=false;for(const f of inputs){if(!this.players.includes(f.playerId))continue;for(const c of f.commands){try{commandChangedWorld=this.command(codec.decode(c.payload),f.playerId)||commandChangedWorld}catch{/* Reject malformed remote intent without changing the world. */}}}
-  if(this.paused&&!this.room){this.tick=tick+1;if(commandChangedWorld&&!this.session.resimulating)this.onWorldStep(this.world);return}
+ advance(){
+  if(this.closed)return CLOSED;
+  const commandChangedWorld=this.applyPendingCommands(32);
+  if(this.paused){this.tick++;if(commandChangedWorld)this.onWorldStep(this.world);return ADVANCED}
   const w=this.world,startTime=w.time,speed=this.speed,loopStart=this.loop?.simulationTimeMs,startClock=this.adjustedWallTime(Number.isFinite(loopStart)?loopStart:this.pulseTimestamp??globalThis.performance.now()),presentationStartMs=Math.max(0,startClock-(this.presentationOriginWallMs??startClock));bindPresentationClock(w,time=>(presentationStartMs+(time-startTime)*1000/speed)/1000);
-  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick=tick+1;if(!this.session.resimulating){this.presentationTick++;this.onWorldStep(w)}
+  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick++;this.presentationTick++;this.onWorldStep(w);return ADVANCED;
  }
- flushQueuedCommands(){if(this.room||this.world.scene!=='farm'||!this.pending.length)return false;let changed=false;for(const payload of this.pending.splice(0)){try{changed=this.command(codec.decode(payload),this.localPlayerId)||changed}catch{/* Ignore malformed local input just as the simulation step does. */}}if(changed)this.onWorldStep(this.world);return changed}
+ applyPendingCommands(limit){
+  if(!this.pending.length)return false;
+  let changed=false;for(const command of this.pending.splice(0,limit)){try{changed=this.command(command)||changed}catch{/* Reject invalid local intent without blocking later commands. */}}return changed;
+ }
+ flushQueuedCommands(){if(this.closed||this.world.scene!=='farm')return false;const changed=this.applyPendingCommands(this.pending.length);if(changed)this.onWorldStep(this.world);return changed}
  command(c,ownerId=this.localPlayerId){const w=this.world;
   switch(c.type){
    case 'feed':return w.scene==='farm'&&w.tapFood('manual');
@@ -133,7 +132,7 @@ export class FarmSession{
  presentationIdentity(kind,source){let id=this.presentationIds.get(source);if(!id){id=this.nextPresentationId++;this.presentationIds.set(source,id)}return kind+':'+id}
  get paused(){return this._paused}
  set paused(value){value=!!value;if(value===this._paused)return;const now=globalThis.performance.now();if(value)this.pauseStartedAt=now;else if(this.pauseStartedAt!==null){this.pausedDurationMs+=now-this.pauseStartedAt;this.pauseStartedAt=null}this._paused=value}
- adjustedWallTime(now){return now-this.pausedDurationMs-(this._paused&&!this.room&&this.pauseStartedAt!==null?now-this.pauseStartedAt:0)}
+ adjustedWallTime(now){return now-this.pausedDurationMs-(this._paused&&this.pauseStartedAt!==null?now-this.pauseStartedAt:0)}
  capturePresentation(mode='continuous'){
   if(mode!=='continuous'&&this.presentationSequence>0)this.presentationRevision++;
   const world=this.world,receiptNowMs=this.captureClock(),timeMs=this.presentationOriginWallMs===null?0:Math.max(this.latestCaptureTimeMs,receiptNowMs-this.presentationOriginWallMs),entities=[];
@@ -179,5 +178,5 @@ export class FarmSession{
   return view;
  }
  pulse(now){this.pulseTimestamp=now;this.loop.pulse(now,{render:false})}
- dispose(){this.loop.stop();this.session.close();this.pending=[]}
+ dispose(){this.closed=true;this.loop.stop();this.pending.length=0}
 }

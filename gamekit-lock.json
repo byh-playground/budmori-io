@@ -15,20 +15,12 @@
       "bundleSHA256": "3fd1c8a61b49e22b50606dbf472495775419640a8487f3a0ec079cb4d3522cb7"
     },
     {
-      "name": "rollback",
-      "bundleSHA256": "e27677386da40fa28285e533fab8362d6f0993331025e31437ada1035996acc5"
-    },
-    {
       "name": "deterministic",
       "bundleSHA256": "688178b889e7bd3f19c1bc504c91c03f896a9a7bd832fd2c0fc958b2feadce55"
     },
     {
       "name": "simloop",
       "bundleSHA256": "f1d348b2f6a80b69c867b9bd45fc359f6d0b238885d85edfe0e9b73d03f043f4"
-    },
-    {
-      "name": "transport",
-      "bundleSHA256": "3bded746222c0aa1769697442b579922d406e67d79e3dbf65df5580dd387c007"
     },
     {
       "name": "interpolation",
