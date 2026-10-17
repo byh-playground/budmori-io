@@ -291,11 +291,10 @@ function syncWidth(id,value){
  if(!previous){previous={};hudWidths.set(id,previous)}previous.value=value;previous.applied=node.style.width;
 }
 function syncData(id,key,value){const node=$(id),text=String(value);if(node.dataset[key]!==text)node.dataset[key]=text}
-function deploymentHud(){const w=active.world,raid=w.scene==='raid',roster=w.raidRoster(active.localPlayerId),remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,queued=roster?Math.max(0,active.localDeploySequence-roster.lastDeploySequence):0;
+function deploymentHud(){const w=active.world,roster=w.raidRoster(active.localPlayerId),remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,queued=roster?Math.max(0,active.localDeploySequence-roster.lastDeploySequence):0;
  syncText('raidRemaining',!roster?'출전 병력을 준비하고 있어요…':`남은 병력 ${Math.max(0,remaining-queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`);
- const own=w.raidRoster(active.localPlayerId),cooldown=own?Math.max(0,own.buffReadyAt-w.time):0;syncFlag('buff','disabled',!raid||!w.running||!own||cooldown>0);syncText('buff',cooldown>0?`강화 ${cooldown.toFixed(1)}초`:'팀 강화');
- let deployed=0;if(own)for(const troop of own.troops)if(troop.deployed)deployed++;
- const stage=w.boss.stage||0;if(stage){const stageReward=bossStageStats(stage),multiplier=raidDeploymentRewardMultiplier({availableAtStart:own?.troops.length||0,originalUnitsDeployed:deployed}),chance=Math.round(bossAcquisitionChance({acquisitionMultiplier:multiplier})*100);syncText('raidRewardChance',stageReward.rolls?`${speciesRewardName(w.boss.species)} · ${chance}%씩 · ${stageReward.rolls}회 개별 추첨`:'종 추첨 없음');}else syncText('raidRewardChance','');
+ let deployed=0;if(roster)for(const troop of roster.troops)if(troop.deployed)deployed++;
+ const stage=w.boss.stage||0;if(stage){const stageReward=bossStageStats(stage),multiplier=raidDeploymentRewardMultiplier({availableAtStart:roster?.troops.length||0,originalUnitsDeployed:deployed}),chance=Math.round(bossAcquisitionChance({acquisitionMultiplier:multiplier})*100);syncText('raidRewardChance',stageReward.rolls?`${speciesRewardName(w.boss.species)} · ${chance}%씩 · ${stageReward.rolls}회 개별 추첨`:'종 추첨 없음');}else syncText('raidRewardChance','');
 }
 function deployAt(p){if(home||active.world.scene!=='raid'||!active.world.raidExpectedPlayers.every(id=>active.world.raidRoster(id)))return false;const valid=ArenaGeometry.inside(p,'raid',.5);renderer.dropTarget={...p,valid};return valid&&active.deployNext(Math.round(p.x*100)/100,Math.round(p.y*100)/100)}
 function updateDropPointer(e){if(!dropPointer||e.pointerId!==dropPointer.id)return;const p=renderer.screenToWorld(e.clientX,e.clientY);dropPointer.x=Math.round(p.x*100)/100;dropPointer.y=Math.round(p.y*100)/100;renderer.dropTarget={x:dropPointer.x,y:dropPointer.y,valid:ArenaGeometry.inside(p,'raid',.5)}}
@@ -303,7 +302,6 @@ function stopDrop(e){if(e&&dropPointer&&e.pointerId!==dropPointer.id)return;cons
 canvas.addEventListener('pointerdown',e=>{foodFeel.unlock();if(home||active.world.scene!=='raid'||dropPointer)return;const p=renderer.screenToWorld(e.clientX,e.clientY);if(!ArenaGeometry.inside(p,'raid',.5)){renderer.dropTarget={...p,valid:false};return}canvas.setPointerCapture?.(e.pointerId);dropPointer={id:e.pointerId,x:Math.round(p.x*100)/100,y:Math.round(p.y*100)/100};deployAt(dropPointer);dropTimer=setInterval(()=>{if(dropPointer)deployAt(dropPointer)},100);e.preventDefault()});
 canvas.addEventListener('pointermove',updateDropPointer);canvas.addEventListener('pointerup',e=>stopDrop(e));canvas.addEventListener('pointercancel',e=>stopDrop(e));canvas.addEventListener('lostpointercapture',e=>stopDrop(e));
 window.addEventListener('pointerup',e=>stopDrop(e),true);window.addEventListener('pointercancel',e=>stopDrop(e),true);
-$('buff').onclick=()=>active.queue('buff');
 window.addEventListener('blur',()=>{stopDrop();persist()});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopDrop();persist();active.loop.resetTiming()}});
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&bossEncounterOpen){e.preventDefault();closeBossEncounter()}else if(e.key==='Escape'&&menuOpen){e.preventDefault();closeMenu()}else if(bossEncounterOpen&&(e.key==='ArrowUp'||e.key==='ArrowDown')){e.preventDefault();const current=personalGarden?.farmBossProgress?.currentStage||1,next=e.key==='ArrowUp'?Math.min(BOSS_REWARD_SETTINGS.maxStage,current+1):Math.max(1,current-1);renderBossEncounterStage(next)}});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});
