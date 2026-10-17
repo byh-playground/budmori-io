@@ -73,7 +73,8 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 
 ## 소스와 기준
 
-- `src/farm-model.js`: 농장, 전방위 자동 AI, 월드 보스 상태기계·충돌·전투 사건.
+- `src/farm-model.js`: 농장, 전방위 자동 AI, 공통 공격 phase, 월드 보스 상태기계·충돌·전투 사건.
+- `src/unit-abilities.js`, `src/unit-attack-capabilities.js`: 종별 공격 수치·능력 조합 registry와 재사용 공격/패시브 capability.
 - `src/farm-state.js`, `farm-session.js`, `farm-storage.js`: 값 스냅샷, 구성원 명령·세션, 저장 보호.
 - `src/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
 - `assets/troops/*.svg`, `assets/bosses/chestnut.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
