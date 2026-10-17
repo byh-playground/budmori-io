@@ -10,6 +10,11 @@ export class PopcornProjectile extends BallisticProjectile {
             super.update(world, projectile, dt);
             return;
         }
+    }
+    advanceLifecycle(_world, projectile, dt) {
+        if (!projectile.landed) {
+            return;
+        }
         if (!projectile.exploded) {
             projectile.fuseRemaining = Math.max(0, projectile.fuseRemaining - dt);
         } else {

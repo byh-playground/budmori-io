@@ -2296,30 +2296,31 @@
           return false;
         }
         advanceDownedUnit(world, unit, dt) {
-          const ADVANCED2 = this.advanceRest(world, unit, dt), OLD_Z = unit.z;
+          const ADVANCED2 = this.advanceRest(world, unit, dt);
+          this.restoreUnit(world, unit);
+          return ADVANCED2;
+        }
+        advanceDownedPhysics(world, unit, dt) {
+          const OLD_Z = unit.z;
           unit.integrate(dt);
           this.afterDownedIntegration(world, unit);
           if (OLD_Z > 0 && unit.z === 0) {
             world.metrics.landings++;
             this.landUnit(world, unit);
           }
-          this.restoreUnit(world, unit);
-          world.unitSpatial.update(unit);
-          return ADVANCED2;
+          world.updateUnitSpatial(unit);
         }
         separateBossUnits(world) {
           for (const UNIT3 of world.units) {
             world.separateBoss(UNIT3);
-            world.unitSpatial.update(UNIT3);
+            world.updateUnitSpatial(UNIT3);
           }
         }
         updateBattle(world, dt) {
           if (!world.boss.active) {
             return;
           }
-          world.updateProjectiles(dt);
           world.updateBoss(dt);
-          this.separateBossUnits(world);
         }
       };
     }
@@ -2408,8 +2409,8 @@
             world.markProgressChanged();
           }
         }
-        resolveContacts(world, units) {
-          world.resolveFarmContacts(units);
+        resolveContacts(world, units, dt) {
+          world.resolveFarmContacts(units, dt);
         }
         resolveLifeContacts(world, units) {
           const { FARM_MODES: FARM_MODES2 } = this.dependencies;
@@ -2424,13 +2425,7 @@
             super.updateBattle(world, dt);
             return;
           }
-          if (world.boss.active) {
-            world.updateProjectiles(dt);
-          }
           world.updateBoss(dt);
-          if (world.boss.active) {
-            this.separateBossUnits(world);
-          }
         }
       };
     }
@@ -3275,8 +3270,8 @@
             strength: Math.min(1, Math.hypot(unit.vx, unit.vy) / 8)
           });
         }
-        resolveContacts(world, units) {
-          world.raidContacts(units);
+        resolveContacts(world, units, dt) {
+          world.raidContacts(units, dt);
         }
       };
     }
@@ -3316,12 +3311,22 @@
         constructor(feature, dependencies) {
           this.feature = feature;
           this.dependencies = dependencies;
+          this.oldPoint = { x: 0, y: 0, z: 0 };
+          this.motionPoint = { x: 0, y: 0, z: 0 };
+        }
+        advanceLifecycle(_world, _projectile, _dt) {
         }
         update(world, projectile, dt) {
           const { Ballistics: BALLISTICS2, ArenaGeometry: ARENA_GEOMETRY2 } = this.dependencies;
-          const OLD = { x: projectile.x, y: projectile.y, z: projectile.z };
+          const OLD = this.oldPoint;
+          OLD.x = projectile.x;
+          OLD.y = projectile.y;
+          OLD.z = projectile.z;
           projectile.elapsed += dt;
-          Object.assign(projectile, BALLISTICS2.sample(projectile.path, projectile.elapsed / projectile.path.duration));
+          Object.assign(
+            projectile,
+            BALLISTICS2.sample(projectile.path, projectile.elapsed / projectile.path.duration, this.motionPoint)
+          );
           const CANDIDATE = projectile.targetId && projectile.targetId !== "boss" ? world._unitForId(projectile.targetId) : world.boss;
           const TARGET = CANDIDATE === world.boss || CANDIDATE?.hp > 0 ? CANDIDATE : null;
           const HIT = TARGET ? ARENA_GEOMETRY2.sweep(OLD, projectile, projectile.radius, projectile.height, TARGET) : null;
@@ -3432,6 +3437,11 @@
         update(world, projectile, dt) {
           if (!projectile.landed) {
             super.update(world, projectile, dt);
+            return;
+          }
+        }
+        advanceLifecycle(_world, projectile, dt) {
+          if (!projectile.landed) {
             return;
           }
           if (!projectile.exploded) {
@@ -3823,6 +3833,7 @@
           this.id = feature.id;
           this.config = feature.config;
           this.dependencies = dependencies;
+          this.physicalActive = false;
         }
         target(world, living) {
           return world.nearestBossTarget(living, true);
@@ -3941,6 +3952,7 @@
       ChargeBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE10, dependencies);
+          this.physicalActive = true;
         }
         writeArea(boss, action, scene, pad, area) {
           const { CONFIG: CONFIG2 } = this.dependencies;
@@ -3952,8 +3964,8 @@
           const EXIT = Math.max(
             0,
             (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL)
-          ), STEP = this.config.speed * CONFIG2.physics.fixedStep;
-          const DISTANCE = EXIT < this.config.reach ? Math.min(this.config.reach, (Math.floor(EXIT / STEP + 1e-8) + 1) * STEP) : this.config.reach;
+          );
+          const DISTANCE = Math.min(this.config.reach, EXIT);
           const EX = SX + DX * DISTANCE, EY = SY + DY * DISTANCE, K = Math.max(1, Math.hypot(EX / RX, EY / RY));
           area.endX = action.phase === "recover" ? boss.x : EX / K;
           area.endY = action.phase === "recover" ? boss.y : EY / K;
@@ -4026,6 +4038,7 @@
       LeapBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE11, dependencies);
+          this.physicalActive = true;
         }
         writeArea(boss, action, scene, pad, area) {
           const { CONFIG: CONFIG2, CLAMP: CLAMP3 } = this.dependencies;
@@ -4173,6 +4186,7 @@
       FanBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE12, dependencies);
+          this.physicalActive = true;
         }
         writeArea(_boss, _action, _scene, pad, area) {
           area.kind = "fan";
@@ -4312,6 +4326,7 @@
           }
         }
         if (action.phaseElapsed >= CONFIG_LOCAL.windup - 1e-9) {
+          action.motionDelay = Math.max(0, dt + REMAINING);
           world.activateBossPattern(action);
         }
         return;
@@ -5926,7 +5941,10 @@
         if (this.phase !== "active" || !A?.path || U.stun > 0 || U.down > 0 || U.landingRecovery > 0 || U.z > 0.1 && !(A.path.height > 0)) {
           return false;
         }
-        const P = ballistics.sample(A.path, this.elapsed / A.path.duration);
+        const DELAY = Math.min(dt, A.motionDelay || 0);
+        A.motionDelay = Math.max(0, (A.motionDelay || 0) - DELAY);
+        this.elapsed += dt - DELAY;
+        const P = ballistics.sample(A.path, this.elapsed / A.path.duration, this.motionPoint);
         U.vx = (P.x - U.x) / dt;
         U.vy = (P.y - U.y) / dt;
         U.vz = (P.z - U.z) / dt;
@@ -6223,14 +6241,14 @@
     BOSS_BEHAVIORS.forId(ACTION.id).writeArea(boss, ACTION, scene, PAD, area);
     return area;
   }
-  function contact(a, b) {
+  function contact(a, b, dt) {
     const DX = b.x - a.x, DY = b.y - a.y, D_LOCAL = Math.hypot(DX, DY), R_LOCAL = a.radius + b.radius;
     if (a.z > b.z + b.height || b.z > a.z + a.height) {
       return false;
     }
     if (D_LOCAL >= R_LOCAL) {
       if (D_LOCAL < R_LOCAL + 0.22 && a.z < 0.1 && b.z < 0.1 && a.ability.phase === "idle" && b.ability.phase === "idle") {
-        const K = (R_LOCAL + 0.22 - D_LOCAL) * 0.035 / (D_LOCAL || 1);
+        const K = (R_LOCAL + 0.22 - D_LOCAL) * (1 - Math.exp(-CONFIG.physics.softSeparationRate * dt)) / (D_LOCAL || 1);
         a.x -= DX * K;
         a.y -= DY * K;
         b.x += DX * K;
@@ -6370,7 +6388,10 @@
         }),
         physics: Object.freeze({
           gravity: 19,
-          fixedStep: 1 / 120
+          maxStep: 1 / 60,
+          // Relative body travel is bounded by the smallest body radius per substep.
+          travelRadiusRatio: 0.5,
+          softSeparationRate: -Math.log(1 - 0.035) * 120
         })
       });
       CLAMP2 = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -6510,13 +6531,12 @@
             duration: MELEE ? Math.max(0.12, DISTANCE / 10) : 0.65 + DISTANCE * 0.055
           };
         },
-        sample(path, q) {
+        sample(path, q, output = {}) {
           q = CLAMP2(q, 0, 1);
-          return {
-            x: path.from.x + (path.to.x - path.from.x) * q,
-            y: path.from.y + (path.to.y - path.from.y) * q,
-            z: path.from.z * (1 - q) + 4 * path.height * q * (1 - q)
-          };
+          output.x = path.from.x + (path.to.x - path.from.x) * q;
+          output.y = path.from.y + (path.to.y - path.from.y) * q;
+          output.z = path.from.z * (1 - q) + 4 * path.height * q * (1 - q);
+          return output;
         }
       };
       FARM_BOSS_PHASES = createFarmBossEventPhases(CONFIG);
@@ -6531,6 +6551,7 @@
       AttackCycle = class {
         constructor(owner) {
           this.owner = owner;
+          this.motionPoint = { x: 0, y: 0, z: 0 };
           this.phase = "idle";
           this.elapsed = 0;
           this.action = null;
@@ -6598,11 +6619,14 @@
           if (this.phase === "idle") {
             return false;
           }
-          this.elapsed += dt;
+          if (this.phase !== "active") {
+            this.elapsed += dt;
+          }
           if (this.phase === "windup") {
             U.vx *= Math.exp(-dt * 18);
             U.vy *= Math.exp(-dt * 18);
             if (this.elapsed >= this.spec.timing.windup) {
+              this.action.motionDelay = Math.max(0, dt - (this.elapsed - this.spec.timing.windup));
               this.elapsed = 0;
               this.phase = "active";
               this.createAttackPath();
@@ -6641,6 +6665,11 @@
           super.knock(...args);
         }
         integrate(dt) {
+          if (this.moveControlActive && this.stun <= 0 && this.down <= 0) {
+            const RATE = 1 - Math.exp(-dt * 3);
+            this.vx += (this.moveControlVx - this.vx) * RATE;
+            this.vy += (this.moveControlVy - this.vy) * RATE;
+          }
           if (!this.ability.integrate(dt)) {
             super.integrate(dt);
           }
@@ -6887,6 +6916,7 @@
           Object.defineProperty(this, "formationSkills", { value: new FormationSkills(this) });
         }
         _rebuildUnitSpatialIndex(stepUnits = this.units) {
+          const SPATIAL_START = this.profiler?.start();
           const GRID = this.unitSpatial;
           GRID.clear();
           this._unitById.clear();
@@ -6921,8 +6951,10 @@
             this._unitStepOrder.set(stepUnits[index], index);
           }
           this._unitSpatialDirty = false;
+          this.profiler?.end("spatial", SPATIAL_START);
         }
         _rebuildFoodSpatialIndex() {
+          const SPATIAL_START = this.profiler?.start();
           this.foodSpatial.clear();
           this._foodOrder.clear();
           let grounded = 0;
@@ -6938,6 +6970,7 @@
           }
           this._groundedFoodCount = grounded;
           this._foodSpatialDirty = false;
+          this.profiler?.end("spatial", SPATIAL_START);
         }
         _trackFoodAdded(food) {
           if (!this._spatialStepActive) {
@@ -8493,6 +8526,7 @@
           this.mutationNotifications.end(failure);
         }
         _step(dt) {
+          const LOGIC_START = this.profiler?.start();
           this._spatialStepActive = true;
           this._spatialQueryDepth = 0;
           this.time += dt;
@@ -8508,32 +8542,21 @@
           const SCENE = SIMULATION_SCENES[this.scene];
           SCENE.advanceClock(this, dt);
           this.advanceMergeTask(dt);
-          this.effects = this.effects.filter((e) => (e.life += dt) < (Number.isFinite(e.duration) ? e.duration : 1));
-          for (const F of this.food) {
-            if (F.phase !== "grounded") {
-              F.x += F.vx * dt;
-              F.y += F.vy * dt;
-              F.z += F.vz * dt - 6 * dt * dt;
-              F.vz -= 12 * dt;
-              if (F.z <= 0) {
-                F.z = 0;
-                if (F.phase === "flight") {
-                  F.x = F.tx;
-                  F.y = F.ty;
-                  F.vx = F.vy = 0;
-                  F.vz = 1.1;
-                  F.phase = "bounce";
-                  this.emit("food-land", F.x, F.y);
-                } else {
-                  F.vz = 0;
-                  F.phase = "grounded";
-                }
-              }
+          let effectWrite = 0;
+          for (const EFFECT of this.effects) {
+            EFFECT.life += dt;
+            if (EFFECT.life < (Number.isFinite(EFFECT.duration) ? EFFECT.duration : 1)) {
+              this.effects[effectWrite++] = EFFECT;
             }
+          }
+          this.effects.length = effectWrite;
+          for (const PROJECTILE2 of this.projectiles) {
+            PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE2).advanceLifecycle(this, PROJECTILE2, dt);
           }
           this._rebuildFoodSpatialIndex();
           this.reconcileMateReservations();
           for (const U of UNITS) {
+            U.moveControlActive = false;
             U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
             if (U.hp <= 0) {
               if (!U.deathSplitHandled) {
@@ -8577,16 +8600,110 @@
               U.cooldown = 0;
               U.cooldownDuration = 0;
             }
+            const AI_START = this.profiler?.start();
             const ENEMY_LOCAL = this.senseEnemy(U) || SCENE.fallbackEnemy(this, U);
             this.updateUnitIntent(U, dt, ENEMY_LOCAL, SCENE);
-            const OLD_Z = U.z, OLD_POSITION = {
-              x: U.x,
-              y: U.y,
-              z: U.z
-            };
+            this.profiler?.end("ai", AI_START);
+          }
+          SCENE.checkpointProgress(this, dt, progressTimersAdvanced);
+          SCENE.updateBattle(this, dt);
+          this.metrics.logicTicks = (this.metrics.logicTicks || 0) + 1;
+          this.profiler?.count("logicTicks");
+          this.profiler?.end("logic", LOGIC_START);
+          const PHYSICS_START = this.profiler?.start();
+          const SUBSTEPS = this.physicsSubsteps(dt, UNITS), PHYSICS_DT = dt / SUBSTEPS;
+          for (let index = 0; index < SUBSTEPS; index++) {
+            this.advancePhysics(PHYSICS_DT, UNITS, SCENE);
+          }
+          this.profiler?.end("physics", PHYSICS_START);
+          SCENE.resolveLifeContacts(this, UNITS);
+          let projectileWrite = 0;
+          for (const PROJECTILE2 of this.projectiles) {
+            if (PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE2).isAlive(PROJECTILE2)) {
+              this.projectiles[projectileWrite++] = PROJECTILE2;
+            }
+          }
+          this.projectiles.length = projectileWrite;
+          this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon && unit.hp <= 0);
+          UNITS.length = 0;
+          this.unitCollection.releaseStepReferences();
+          this._spatialStepActive = false;
+          this._unitSpatialDirty = true;
+          this._foodSpatialDirty = true;
+        }
+        updateUnitSpatial(unit) {
+          const START = this.profiler?.start();
+          this.unitSpatial.update(unit);
+          this.profiler?.end("spatial", START);
+        }
+        updateFoodSpatial(food) {
+          const START = this.profiler?.start();
+          this.foodSpatial.update(food);
+          this.profiler?.end("spatial", START);
+        }
+        physicsSubsteps(dt, units) {
+          if (dt <= 0) {
+            return 1;
+          }
+          let minimumRadius = Infinity;
+          let maximumSpeed = 0;
+          for (const UNIT3 of units) {
+            minimumRadius = Math.min(minimumRadius, UNIT3.radius);
+            if (UNIT3.ability.phase !== "active") {
+              maximumSpeed = Math.max(
+                maximumSpeed,
+                Math.hypot(UNIT3.vx, UNIT3.vy),
+                UNIT3.moveControlActive ? Math.hypot(UNIT3.moveControlVx, UNIT3.moveControlVy) : 0
+              );
+            }
+          }
+          const TRAVEL_STEP = maximumSpeed > 0 ? minimumRadius * CONFIG.physics.travelRadiusRatio / maximumSpeed : dt;
+          return Math.max(1, Math.ceil(dt / Math.min(CONFIG.physics.maxStep, TRAVEL_STEP)));
+        }
+        advancePhysics(dt, units, scene) {
+          this.metrics.physicsSteps = (this.metrics.physicsSteps || 0) + 1;
+          this.profiler?.count("physicsSteps");
+          this._oldStepPosition ||= { x: 0, y: 0, z: 0 };
+          for (const F of this.food) {
+            if (F.phase !== "grounded") {
+              F.x += F.vx * dt;
+              F.y += F.vy * dt;
+              F.z += F.vz * dt - 6 * dt * dt;
+              F.vz -= 12 * dt;
+              if (F.z <= 0) {
+                F.z = 0;
+                if (F.phase === "flight") {
+                  F.x = F.tx;
+                  F.y = F.ty;
+                  F.vx = F.vy = 0;
+                  F.vz = 1.1;
+                  F.phase = "bounce";
+                  this.emit("food-land", F.x, F.y);
+                } else {
+                  F.vz = 0;
+                  F.phase = "grounded";
+                }
+              }
+              this.updateFoodSpatial(F);
+            }
+          }
+          for (const U of units) {
+            if (U.hp <= 0) {
+              if (!U.isBattleOnlySummon) {
+                scene.advanceDownedPhysics(this, U, dt);
+              }
+              continue;
+            }
+            const OLD_Z = U.z, OLD_POSITION = this._oldStepPosition;
+            OLD_POSITION.x = U.x;
+            OLD_POSITION.y = U.y;
+            OLD_POSITION.z = U.z;
+            if (U.stun > 0 && U.ability.phase !== "idle") {
+              U.ability.interrupt();
+            }
             U.integrate(dt);
-            SCENE.afterLivingIntegration(this, U);
-            if (ENEMY_LOCAL) {
+            scene.afterLivingIntegration(this, U);
+            if (U.ability.phase === "active") {
               U.ability.afterMove?.(this, OLD_POSITION);
             }
             if (OLD_Z > 0 && U.z === 0) {
@@ -8594,7 +8711,7 @@
               if (!U.dropLanded) {
                 U.dropLanded = true;
                 U.bounce = 0.16;
-                this.combat(SCENE.dropLandingEvent, {
+                this.combat(scene.dropLandingEvent, {
                   unit: U.id,
                   ownerId: U.ownerId,
                   x: U.x,
@@ -8610,21 +8727,19 @@
                 });
               }
               this.metrics.landings++;
-              SCENE.landUnit(this, U);
+              scene.landUnit(this, U);
             }
             this.boundBody(U, this.scene, U.radius);
-            this.unitSpatial.update(U);
+            this.updateUnitSpatial(U);
           }
-          SCENE.checkpointProgress(this, dt, progressTimersAdvanced);
-          this.resolveContacts(UNITS);
-          SCENE.resolveLifeContacts(this, UNITS);
-          SCENE.updateBattle(this, dt);
-          this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon && unit.hp <= 0);
-          UNITS.length = 0;
-          this.unitCollection.releaseStepReferences();
-          this._spatialStepActive = false;
-          this._unitSpatialDirty = true;
-          this._foodSpatialDirty = true;
+          const COLLISION_START = this.profiler?.start();
+          this.resolveContacts(units, dt);
+          this.profiler?.end("collision", COLLISION_START);
+          this.integrateBossMotion(dt);
+          if (this.boss.active) {
+            this.updateProjectiles(dt);
+            scene.separateBossUnits(this);
+          }
         }
         updateUnitIntent(unit, dt, enemy, scene) {
           if (enemy) {
@@ -8643,16 +8758,16 @@
           }
           scene.updateUnoccupied(this, unit, dt);
         }
-        steer(u, x, y, dt, speed2) {
+        steer(u, x, y, _dt, speed2) {
           const DX = x - u.x, DY = y - u.y, D_LOCAL = Math.hypot(DX, DY);
           if (D_LOCAL > 0.08) {
-            const RATE = 1 - Math.exp(-dt * 3);
-            u.vx += (DX / D_LOCAL * speed2 - u.vx) * RATE;
-            u.vy += (DY / D_LOCAL * speed2 - u.vy) * RATE;
+            u.moveControlActive = true;
+            u.moveControlVx = DX / D_LOCAL * speed2;
+            u.moveControlVy = DY / D_LOCAL * speed2;
             u.angle = Math.atan2(DY, DX);
           }
         }
-        raidContacts(units) {
+        raidContacts(units, dt = CONFIG.physics.maxStep) {
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
             if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded) {
@@ -8664,23 +8779,23 @@
               if (OTHER.hp <= 0 || !OTHER.dropLanded) {
                 continue;
               }
-              const AX = OTHER.x, AY = OTHER.y, BX = UNIT_LOCAL.x, BY = UNIT_LOCAL.y, DID_CONTACT = contact(OTHER, UNIT_LOCAL);
+              const AX = OTHER.x, AY = OTHER.y, BX = UNIT_LOCAL.x, BY = UNIT_LOCAL.y, DID_CONTACT = contact(OTHER, UNIT_LOCAL, dt);
               if (DID_CONTACT) {
                 this.metrics.contacts++;
               }
               if (AX !== OTHER.x || AY !== OTHER.y) {
-                this.unitSpatial.update(OTHER);
+                this.updateUnitSpatial(OTHER);
               }
               if (BX !== UNIT_LOCAL.x || BY !== UNIT_LOCAL.y) {
-                this.unitSpatial.update(UNIT_LOCAL);
+                this.updateUnitSpatial(UNIT_LOCAL);
               }
             }
           }
         }
-        resolveContacts(units) {
-          SIMULATION_SCENES[this.scene].resolveContacts(this, units);
+        resolveContacts(units, dt = CONFIG.physics.maxStep) {
+          SIMULATION_SCENES[this.scene].resolveContacts(this, units, dt);
         }
-        resolveFarmContacts(units) {
+        resolveFarmContacts(units, dt = CONFIG.physics.maxStep) {
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i], GENERATION = this._nextContactGeneration(units.length), PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
             for (const ORDER of PENDING) {
@@ -8688,16 +8803,16 @@
             }
             let cursor = 0;
             while (cursor < PENDING.length) {
-              const J = PENDING[cursor++], OTHER = units[J], AX = UNIT_LOCAL.x, AY = UNIT_LOCAL.y, BX = OTHER.x, BY = OTHER.y, DID_CONTACT = contact(UNIT_LOCAL, OTHER);
+              const J = PENDING[cursor++], OTHER = units[J], AX = UNIT_LOCAL.x, AY = UNIT_LOCAL.y, BX = OTHER.x, BY = OTHER.y, DID_CONTACT = contact(UNIT_LOCAL, OTHER, dt);
               if (DID_CONTACT) {
                 this.metrics.contacts++;
               }
               const UNIT_MOVED = AX !== UNIT_LOCAL.x || AY !== UNIT_LOCAL.y, OTHER_MOVED = BX !== OTHER.x || BY !== OTHER.y;
               if (UNIT_MOVED) {
-                this.unitSpatial.update(UNIT_LOCAL);
+                this.updateUnitSpatial(UNIT_LOCAL);
               }
               if (OTHER_MOVED) {
-                this.unitSpatial.update(OTHER);
+                this.updateUnitSpatial(OTHER);
               }
               if (UNIT_MOVED) {
                 const EXTRAS = this._collectContactOrders(UNIT_LOCAL, J + 1, units.length - 1, this._contactExtra);
@@ -8841,18 +8956,16 @@
           this.notice(kind, { time: this.time, ...detail });
         }
         boundBody(body, scene, margin) {
-          const BEFORE = {
-            x: body.x,
-            y: body.y
-          }, P = ARENA_GEOMETRY.clamp(BEFORE, scene, margin);
-          body.x = P.x;
-          body.y = P.y;
-          if (BEFORE.x !== P.x || BEFORE.y !== P.y) {
-            const R_LOCAL = ARENA_GEOMETRY.bounds(scene, margin), NX = P.x / (R_LOCAL.x * R_LOCAL.x), NY = P.y / (R_LOCAL.y * R_LOCAL.y), N = Math.hypot(NX, NY) || 1, OUT = ((body.vx || 0) * NX + (body.vy || 0) * NY) / N;
-            if (OUT > 0) {
-              body.vx -= 1.3 * OUT * NX / N;
-              body.vy -= 1.3 * OUT * NY / N;
-            }
+          const ARENA = CONFIG[scene].arena, RX = ARENA.radiusX - margin, RY = ARENA.radiusY - margin, K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
+          if (K === 1) {
+            return;
+          }
+          body.x /= K;
+          body.y /= K;
+          const NX = body.x / (RX * RX), NY = body.y / (RY * RY), LENGTH = Math.hypot(NX, NY) || 1, OUTWARD = ((body.vx || 0) * NX + (body.vy || 0) * NY) / LENGTH;
+          if (OUTWARD > 0) {
+            body.vx -= NX / LENGTH * OUTWARD * 1.3;
+            body.vy -= NY / LENGTH * OUTWARD * 1.3;
           }
         }
         separateBoss(u) {
@@ -9179,14 +9292,17 @@
           }
           try {
             for (const PROJECTILE2 of this.projectiles) {
-              PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE2).update(this, PROJECTILE2, dt);
+              const BEHAVIOR = PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE2);
+              if (!this._spatialStepActive) {
+                BEHAVIOR.advanceLifecycle(this, PROJECTILE2, dt);
+              }
+              if (BEHAVIOR.isAlive(PROJECTILE2)) {
+                BEHAVIOR.update(this, PROJECTILE2, dt);
+              }
             }
             for (const PROJECTILE2 of this.projectiles) {
               PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE2).updateChain(this, PROJECTILE2);
             }
-            this.projectiles = this.projectiles.filter(
-              (projectile) => PROJECTILE_BEHAVIORS.forProjectile(projectile).isAlive(projectile)
-            );
             this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
           } finally {
             if (BATCH) {
@@ -9887,23 +10003,18 @@
                 B_LOCAL.angle = B_LOCAL.facing = Math.atan2(DY, DX);
                 const CONTACT = B_LOCAL.radius + TARGET.radius + 0.2;
                 if (D_LOCAL > CONTACT) {
-                  const AMOUNT = Math.min(B_LOCAL.moveSpeed * dt, D_LOCAL - CONTACT), NEXT = {
-                    x: B_LOCAL.x + DX / D_LOCAL * AMOUNT,
-                    y: B_LOCAL.y + DY / D_LOCAL * AMOUNT
-                  }, BOUNDED = ARENA_GEOMETRY.clamp(NEXT, this.scene, B_LOCAL.radius + 0.25), OLD = {
-                    x: B_LOCAL.x,
-                    y: B_LOCAL.y,
-                    z: B_LOCAL.z
-                  };
-                  B_LOCAL.x = BOUNDED.x;
-                  B_LOCAL.y = BOUNDED.y;
-                  B_LOCAL.travel += Math.hypot(B_LOCAL.x - OLD.x, B_LOCAL.y - OLD.y);
+                  const SPEED = Math.min(B_LOCAL.moveSpeed, (D_LOCAL - CONTACT) / dt);
+                  B_LOCAL.chaseVx = DX / D_LOCAL * SPEED;
+                  B_LOCAL.chaseVy = DY / D_LOCAL * SPEED;
                 }
               }
               return;
             }
           }
           if (!action) {
+            return;
+          }
+          if (action.phase === "active" && BOSS_BEHAVIORS.forId(action.id).physicalActive) {
             return;
           }
           action.phaseElapsed += dt;
@@ -9924,8 +10035,35 @@
           BOSS2.knockVx *= Math.exp(-dt * 6);
           BOSS2.knockVy *= Math.exp(-dt * 6);
         }
+        integrateBossMotion(dt) {
+          const BOSS2 = this.boss;
+          if (!BOSS2.active) {
+            return;
+          }
+          this.integrateBossKnockback(dt);
+          if (BOSS2.stun > 0) {
+            return;
+          }
+          const ACTION = BOSS2.patternRuntime.active;
+          if (ACTION?.phase === "active" && BOSS_BEHAVIORS.forId(ACTION.id).physicalActive) {
+            const DELAY = Math.min(dt, ACTION.motionDelay || 0);
+            ACTION.motionDelay = Math.max(0, (ACTION.motionDelay || 0) - DELAY);
+            const ACTIVE_DT = dt - DELAY;
+            if (ACTIVE_DT > 0) {
+              ACTION.phaseElapsed += ACTIVE_DT;
+              BOSS_BEHAVIORS.forId(ACTION.id).updateActive(this, ACTION, ACTIVE_DT);
+            }
+          } else if (!ACTION) {
+            const X = BOSS2.x, Y = BOSS2.y;
+            BOSS2.x += (BOSS2.chaseVx || 0) * dt;
+            BOSS2.y += (BOSS2.chaseVy || 0) * dt;
+            this.boundBody(BOSS2, this.scene, BOSS2.radius + 0.25);
+            BOSS2.travel += Math.hypot(BOSS2.x - X, BOSS2.y - Y);
+          }
+        }
         updateBoss(dt) {
           const B_LOCAL = this.boss;
+          B_LOCAL.chaseVx = B_LOCAL.chaseVy = 0;
           if (SIMULATION_SCENES[this.scene].updateBossPhase(this, dt)) {
             return;
           }
@@ -9949,7 +10087,6 @@
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
             return;
           }
-          this.integrateBossKnockback(dt);
           const LIVING = this.livingBossTargets();
           if (!LIVING.length) {
             return;
@@ -10130,7 +10267,7 @@
       keys(BUILD, ["rootUnlocked", "powerLevel", "gradeLevel"]);
     }
     ASSERT(
-      isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER2(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
+      isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER3(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
     );
     ASSERT(Array.isArray(data.roster) && data.roster.length <= CONFIG.farm.capacity.max);
     let count = 0;
@@ -10148,12 +10285,12 @@
         if (Object.hasOwn(ROW, KEY2)) {
           keys(ROW[KEY2], ["remaining", "duration"]);
           ASSERT(
-            NUMBER2(ROW[KEY2].remaining, Number.MIN_VALUE, 1e5) && NUMBER2(ROW[KEY2].duration, ROW[KEY2].remaining, 1e5)
+            NUMBER3(ROW[KEY2].remaining, Number.MIN_VALUE, 1e5) && NUMBER3(ROW[KEY2].duration, ROW[KEY2].remaining, 1e5)
           );
         }
       }
       if (Object.hasOwn(ROW, "rest")) {
-        ASSERT(NUMBER2(ROW.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
+        ASSERT(NUMBER3(ROW.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
       }
       const SIGNATURE = [
         ROW.species,
@@ -10178,13 +10315,13 @@
     ASSERT(
       INTEGER(STAGE.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(STAGE.encounterSeed, 0, 4294967295) && INTEGER(STAGE.encounterEpoch) && INTEGER(STAGE.nextSelectionId, 1) && Array.isArray(STAGE.selections) && STAGE.selections.length <= BOSS_REWARD_SETTINGS.maxStage
     );
-    const STAGES = /* @__PURE__ */ new Set(), SELECTIONS = /* @__PURE__ */ new Set();
+    const STAGES2 = /* @__PURE__ */ new Set(), SELECTIONS = /* @__PURE__ */ new Set();
     for (const ENTRY of STAGE.selections) {
       keys(ENTRY, ["stage", "species", "selectionId"]);
       ASSERT(
-        INTEGER(ENTRY.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(ENTRY.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ENTRY.selectionId, 1, STAGE.nextSelectionId - 1) && !STAGES.has(ENTRY.stage) && !SELECTIONS.has(ENTRY.selectionId)
+        INTEGER(ENTRY.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(ENTRY.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ENTRY.selectionId, 1, STAGE.nextSelectionId - 1) && !STAGES2.has(ENTRY.stage) && !SELECTIONS.has(ENTRY.selectionId)
       );
-      STAGES.add(ENTRY.stage);
+      STAGES2.add(ENTRY.stage);
       SELECTIONS.add(ENTRY.selectionId);
     }
     const LEDGER = data.ledger;
@@ -10209,17 +10346,17 @@
     for (const REWARD2 of BOSS2.pendingRewards) {
       keys(REWARD2, ["encounterId", "source", "receiptKey", "species", "tier", "chance", "rolls"], REWARD_EXTRAS);
       ASSERT(
-        ["farm", "raid"].includes(REWARD2.source) && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER2(REWARD2.chance, 0, 1)
+        ["farm", "raid"].includes(REWARD2.source) && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1)
       );
       RECEIPTS.add(REWARD2.receiptKey);
       const ENCOUNTER = `${REWARD2.source}:${REWARD2.encounterId}`;
       ASSERT(!ENCOUNTERS.has(ENCOUNTER));
       ENCOUNTERS.add(ENCOUNTER);
       ASSERT(
-        Array.isArray(REWARD2.rolls) && REWARD2.rolls.length > 0 && REWARD2.rolls.length <= BOSS_REWARD_SETTINGS.maxStage && REWARD2.rolls.every((roll) => NUMBER2(roll, 0, 1) && roll < REWARD2.chance)
+        Array.isArray(REWARD2.rolls) && REWARD2.rolls.length > 0 && REWARD2.rolls.length <= BOSS_REWARD_SETTINGS.maxStage && REWARD2.rolls.every((roll) => NUMBER3(roll, 0, 1) && roll < REWARD2.chance)
       );
       if (REWARD2.acquisitionMultiplier !== void 0) {
-        ASSERT(NUMBER2(REWARD2.acquisitionMultiplier, 0, 2));
+        ASSERT(NUMBER3(REWARD2.acquisitionMultiplier, 0, 2));
       }
       if (REWARD2.xpReceiptKey !== void 0) {
         ASSERT(STRING(REWARD2.xpReceiptKey));
@@ -10229,7 +10366,7 @@
       }
       for (const KEY2 of ["xpAmount", "levelsGained", "pointsAwarded"]) {
         if (REWARD2[KEY2] !== void 0) {
-          ASSERT(NUMBER2(REWARD2[KEY2]));
+          ASSERT(NUMBER3(REWARD2[KEY2]));
         }
       }
     }
@@ -10332,7 +10469,7 @@
     WORLD.reconcileMateReservations();
     return WORLD;
   }
-  var FAIL, ASSERT, INTEGER, NUMBER2, STRING, REWARD_EXTRAS;
+  var FAIL, ASSERT, INTEGER, NUMBER3, STRING, REWARD_EXTRAS;
   var init_farm_progress = __esm({
     "src/farm-progress.js"() {
       init_formation_skill_state();
@@ -10348,7 +10485,7 @@
         }
       };
       INTEGER = (value, min = 0, max = 1e12) => Number.isSafeInteger(value) && value >= min && value <= max;
-      NUMBER2 = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
+      NUMBER3 = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
       STRING = (value) => typeof value === "string" && value.trim().length > 0 && value.length < 256;
       REWARD_EXTRAS = [
         "acquisitionMultiplier",
@@ -10365,7 +10502,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.4";
+      PRODUCT_VERSION = "0.8.5";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12161,7 +12298,12 @@
           this.savedProgress = null;
         }
         serializeCheckpoint(world, data) {
-          return encodeFarmSave(world, data);
+          const START = this.profiler?.start();
+          try {
+            return encodeFarmSave(world, data);
+          } finally {
+            this.profiler?.end("saveEncode", START);
+          }
         }
         encode(world) {
           return this.serializeCheckpoint(world).text;
@@ -12197,6 +12339,15 @@
           }
         }
         save(world) {
+          const START = this.profiler?.start();
+          this.profiler?.count("saveCalls");
+          try {
+            return this.saveCheckpoint(world);
+          } finally {
+            this.profiler?.end("save", START);
+          }
+        }
+        saveCheckpoint(world) {
           if (!this.writable || this.legacyBackupRequired) {
             return false;
           }
@@ -12205,14 +12356,18 @@
               this.error = "저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.";
               return false;
             }
+            const CAPTURE_START = this.profiler?.start();
             const DATA = captureFarmProgress(world);
+            this.profiler?.end("saveCapture", CAPTURE_START);
             if (!this.migrationPending && sameFarmProgress(DATA, this.savedProgress)) {
               this._world = world;
               this.error = "";
               return true;
             }
             const { text: TEXT } = this.serializeCheckpoint(world, DATA);
+            const IO_START = this.profiler?.start();
             localStorage.setItem(KEY, TEXT);
+            this.profiler?.end("saveIO", IO_START);
             this.raw = TEXT;
             this.savedProgress = DATA;
             this.migrationPending = false;
@@ -12268,6 +12423,125 @@
     }
   });
 
+  // src/performance-diagnostics.js
+  var STAGES = Object.freeze([
+    "simulation",
+    "logic",
+    "ai",
+    "spatial",
+    "physics",
+    "collision",
+    "presentation",
+    "render",
+    "ui",
+    "save",
+    "saveCapture",
+    "saveEncode",
+    "saveIO",
+    "instrumentation"
+  ]);
+  var COUNTERS = Object.freeze([
+    "logicTicks",
+    "physicsSteps",
+    "catchupTicks",
+    "backlogDrops",
+    "saveCalls",
+    "drawCalls",
+    "vectorFlushCalls",
+    "vectorSubmissions",
+    "pathTessellations",
+    "pathStrokeBuilds",
+    "meshCreates",
+    "bufferUploads",
+    "bufferBytes"
+  ]);
+  var NUMBER = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits) : "미측정";
+  var PerformanceDiagnostics = class {
+    constructor() {
+      this.meter = new globalThis.BloomGamekitDebugTools.FrameMetrics({
+        capacity: 240,
+        stages: STAGES,
+        counters: COUNTERS
+      });
+      this.detailed = false;
+    }
+    setDetailed(enabled) {
+      this.detailed = !!enabled;
+      this.meter.clear();
+    }
+    start() {
+      return this.detailed ? performance.now() : 0;
+    }
+    end(name, startedAtMs) {
+      if (!this.detailed) {
+        return;
+      }
+      const END = performance.now();
+      this.meter.stage(name, Math.max(0, END - startedAtMs));
+      this.meter.stage("instrumentation", Math.max(0, performance.now() - END));
+    }
+    count(name, amount = 1) {
+      this.meter.count(name, amount);
+    }
+    beginFrame(now) {
+      this.meter.beginFrame(now);
+    }
+    endFrame(renderer) {
+      for (const NAME of COUNTERS) {
+        if (NAME in renderer.device.stats) {
+          this.count(NAME, renderer.device.stats[NAME]);
+        }
+      }
+      this.meter.endFrame();
+    }
+    snapshot(limit = 0) {
+      return {
+        ...this.meter.snapshot({ limit, slowLimit: 2 }),
+        detailed: this.detailed,
+        gpuMs: null,
+        units: "milliseconds and counts; no GPU completion timing",
+        timingHierarchy: "callback CPU contains simulation/presentation/render/ui; simulation contains logic/physics/save; logic contains AI/spatial; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; save contains capture/encode/IO. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU."
+      };
+    }
+    frameRate() {
+      const SNAPSHOT = this.meter.snapshot();
+      return {
+        frames: this.meter.sequence,
+        fps: SNAPSHOT.fps || 0,
+        frametimeMs: {
+          p50: SNAPSHOT.intervalMs.p50,
+          p95: SNAPSHOT.intervalMs.p95,
+          max: SNAPSHOT.intervalMs.max
+        }
+      };
+    }
+    summary(world, paused) {
+      const SAMPLE = this.snapshot(), COUNT = (name) => SAMPLE.counts[name]?.total || 0, FRAME_COUNT = Math.max(1, SAMPLE.retainedFrames), PER_FRAME = (name) => NUMBER(COUNT(name) / FRAME_COUNT), TIME = (name) => {
+        const VALUE = SAMPLE.stagesMs[name];
+        return this.detailed && SAMPLE.retainedFrames > 1 ? `${NUMBER(VALUE.mean)}/${NUMBER(VALUE.p95)}/${NUMBER(VALUE.max)}` : "미측정";
+      };
+      const LINES = [
+        `상태 ${world.scene}/${world.mode} ${paused ? "정지" : "실행"} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
+        `창 ${NUMBER(SAMPLE.windowMs / 1e3, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? "켜짐" : "꺼짐"} · ${SAMPLE.retainedFrames > 1 ? "유효" : "표본 부족"}`,
+        `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
+        `창 합계: 논리 ${COUNT("logicTicks")} · 물리 ${COUNT("physicsSteps")} · 추가 catchup ${COUNT("catchupTicks")} · backlog drop ${COUNT("backlogDrops")}`,
+        `CPU 평균/p95/최대(ms, 부모·자식 합산 금지): sim ${TIME("simulation")} · 논리 ${TIME("logic")} · 물리 ${TIME("physics")}`,
+        `CPU AI ${TIME("ai")} · 인덱스 재구축/갱신 ${TIME("spatial")} · 충돌 ${TIME("collision")}`,
+        `CPU 보간 ${TIME("presentation")} · WebGL 제출 ${TIME("render")} · UI ${TIME("ui")}`,
+        `저장 ${COUNT("saveCalls")}회 · CPU 전체 ${TIME("save")} / 캡처 ${TIME("saveCapture")} / 인코딩 ${TIME("saveEncode")} / IO ${TIME("saveIO")}`,
+        `프레임 평균: draw ${PER_FRAME("drawCalls")} · vector flush ${PER_FRAME("vectorFlushCalls")} · submit ${PER_FRAME("vectorSubmissions")} · fill 재테셀 ${PER_FRAME("pathTessellations")} · stroke 생성 ${PER_FRAME("pathStrokeBuilds")}`,
+        `프레임 평균: retained mesh 생성 ${PER_FRAME("meshCreates")} · upload ${PER_FRAME("bufferUploads")}회/${NUMBER(COUNT("bufferBytes") / FRAME_COUNT / 1024)}KiB · 계측 기록 비용 ${TIME("instrumentation")}`,
+        "GPU 시간 미측정 · CPU=콜백 작업, RAF=다음 콜백까지 간격. 외부 이벤트·대기 시간은 CPU에 합산하지 않음."
+      ];
+      for (const FRAME of SAMPLE.slowFrames.slice(0, 1)) {
+        LINES.push(
+          `느린 구간 #${FRAME.sequence} RAF ${NUMBER(FRAME.intervalMs)}ms/콜백 CPU ${NUMBER(FRAME.cpuMs)}ms · sim ${NUMBER(FRAME.stagesMs.simulation)} render ${NUMBER(FRAME.stagesMs.render)} save ${NUMBER(FRAME.stagesMs.save)} · tick/substep ${FRAME.counts.logicTicks}/${FRAME.counts.physicsSteps} draw ${FRAME.counts.drawCalls}${this.detailed ? "" : " · 상세 시간 미측정"}`
+        );
+      }
+      return LINES;
+    }
+  };
+
   // src/formation-skills-ui.js
   init_formation_skill_state();
   var CONDITION_LABELS = Object.freeze({
@@ -12299,7 +12573,7 @@
       "'": "&#39;"
     })[character]
   );
-  var NUMBER = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value || 0);
+  var NUMBER2 = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value || 0);
   var FormationSkillsUI = class {
     constructor(command) {
       this.command = command;
@@ -12363,12 +12637,12 @@
           `${COOLDOWN / FORMATION_COOLDOWN_SECONDS * 360}deg`
         );
         ELEMENT.querySelector(".formation-charge i").style.width = `${CHARGE / REQUIRED * 100}%`;
-        ELEMENT.querySelector("small b").textContent = DEFINITION10 ? `${NUMBER(CHARGE)}/${NUMBER(REQUIRED)}` : "";
+        ELEMENT.querySelector("small b").textContent = DEFINITION10 ? `${NUMBER2(CHARGE)}/${NUMBER2(REQUIRED)}` : "";
         ELEMENT.querySelector("small span").textContent = DEFINITION10 ? CONDITION_LABELS[DEFINITION10.condition] || "" : "장착 가능";
         ELEMENT.dataset.ready = String(READY);
         ELEMENT.querySelector(".formation-icon").setAttribute(
           "aria-label",
-          `${DEFINITION10?.name || "빈 슬롯"}, 재사용 ${NUMBER(COOLDOWN)}초`
+          `${DEFINITION10?.name || "빈 슬롯"}, 재사용 ${NUMBER2(COOLDOWN)}초`
         );
       }
     }
@@ -12388,7 +12662,7 @@
                 <p>${ESCAPE(definition.description || "")}</p>
                 <div class="formation-rule">${CONDITION_LABELS[definition.condition] || ""} ${definition.required}
                 <span>재사용 ${FORMATION_COOLDOWN_SECONDS}초</span></div>
-                <small class="formation-axis">강화: ${ESCAPE(definition.upgradeAxis || "")}<br>${NUMBER(formationUpgradeValue(definition, LEVEL))}${ESCAPE(definition.upgradeUnit)}${LEVEL > 0 && LEVEL < FORMATION_MAX_LEVEL ? " → " + NUMBER(formationUpgradeValue(definition, LEVEL + 1)) + ESCAPE(definition.upgradeUnit) : ""}</small>
+                <small class="formation-axis">강화: ${ESCAPE(definition.upgradeAxis || "")}<br>${NUMBER2(formationUpgradeValue(definition, LEVEL))}${ESCAPE(definition.upgradeUnit)}${LEVEL > 0 && LEVEL < FORMATION_MAX_LEVEL ? " → " + NUMBER2(formationUpgradeValue(definition, LEVEL + 1)) + ESCAPE(definition.upgradeUnit) : ""}</small>
                 <div class="formation-card-actions"><button type="button" data-formation-purchase="${definition.id}"
                 ${BUY_DISABLED ? "disabled" : ""}>${LEVEL ? "강화" : "습득"} · 1 포인트</button>
                 <button type="button" data-formation-equip="${definition.id}" data-slot="${EMPTY ?? 0}"
@@ -14961,6 +15235,7 @@
         getInput: () => LOCAL_INPUT,
         onError,
         onBacklogDrop: () => {
+          this.profiler?.count("backlogDrops");
           this.pendingPresentationMode = "reset";
         },
         onAdvance: (result) => {
@@ -15049,11 +15324,9 @@
       ), PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
       bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1e3) / 1e3);
       if (W.scene === "farm") {
-        W.advanceAutoTaps(0.05);
+        W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
       }
-      for (let i = 0; i < 6; i++) {
-        W.step(CONFIG.physics.fixedStep);
-      }
+      W.step(1 / LOCAL_PROFILE.tickRate);
       this.tick++;
       this.presentationTick++;
       this.onWorldStep(W);
@@ -15281,9 +15554,11 @@
     }
     pulse(now) {
       this.pulseTimestamp = now;
+      const PREVIOUS_TICK = this.tick;
       this.loop.pulse(now, {
         render: false
       });
+      this.profiler?.count("catchupTicks", Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {
       this.closed = true;
@@ -16111,31 +16386,29 @@
   var lastAutoSettledRunKey = null;
   var RENDERER = new DIORAMA(DOLLAR2("world"));
   var FORMATION_UI = new FormationSkillsUI((kind, payload) => active?.queue(kind, payload));
-  var MEASURED_FRAMES = [];
-  var lastFrameTimestamp = null;
-  var frameCount = 0;
-  function measureFrame(now) {
-    if (lastFrameTimestamp !== null) {
-      MEASURED_FRAMES.push(now - lastFrameTimestamp);
-      if (MEASURED_FRAMES.length > 240) {
-        MEASURED_FRAMES.shift();
-      }
-    }
-    lastFrameTimestamp = now;
-    frameCount++;
-  }
+  var PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
+  STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
   function frameRate() {
-    const SORTED = [...MEASURED_FRAMES].sort((a, b) => a - b), SUM = MEASURED_FRAMES.reduce((a, b) => a + b, 0);
-    return {
-      frames: frameCount,
-      fps: SUM ? MEASURED_FRAMES.length * 1e3 / SUM : 0,
-      frametimeMs: {
-        p50: SORTED[Math.floor((SORTED.length - 1) * 0.5)] || 0,
-        p95: SORTED[Math.floor((SORTED.length - 1) * 0.95)] || 0,
-        max: Math.max(0, ...MEASURED_FRAMES)
-      }
-    };
+    return PERFORMANCE_DIAGNOSTICS.frameRate();
   }
+  globalThis.BudmoriPerformanceDiagnostics = {
+    summary: () => active ? PERFORMANCE_DIAGNOSTICS.summary(active.world, active.paused) : [],
+    snapshot: () => PERFORMANCE_DIAGNOSTICS.snapshot(30)
+  };
+  DOLLAR2("diagnosticDetail").onchange = (event) => PERFORMANCE_DIAGNOSTICS.setDetailed(event.target.checked);
+  DOLLAR2("copyDiagnostics").onclick = async () => {
+    const RESULT = await globalThis.BloomDiagnostics.copy({ textarea: DOLLAR2("settingsDiagnosticText") });
+    DOLLAR2("settingsDiagnosticText").hidden = RESULT.copied;
+    DOLLAR2("diagnosticStatus").textContent = RESULT.copied ? "진단 요약을 복사했어요. 채팅에 붙여 넣어 주세요." : "아래 진단 요약을 선택해 복사해 주세요.";
+  };
+  DOLLAR2("exportDiagnostics").onclick = () => {
+    const TEXT = DOLLAR2("settingsDiagnosticText");
+    TEXT.value = globalThis.BloomDiagnostics.detail();
+    TEXT.hidden = false;
+    TEXT.focus();
+    TEXT.select();
+    DOLLAR2("diagnosticStatus").textContent = "명시적으로 요청한 상세 JSON입니다. 저장 데이터는 포함하지 않습니다.";
+  };
   var FAIL3 = (error) => {
     DOLLAR2("error").hidden = false;
     DOLLAR2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
@@ -17550,15 +17823,26 @@
   }
   function frame(now) {
     try {
-      measureFrame(now);
+      PERFORMANCE_DIAGNOSTICS.beginFrame(now);
+      active.profiler = PERFORMANCE_DIAGNOSTICS;
+      active.world.profiler = PERFORMANCE_DIAGNOSTICS;
+      const SIMULATION_START = PERFORMANCE_DIAGNOSTICS.start();
       if (!home && !document.hidden) {
         active.pulse(now);
       }
+      PERFORMANCE_DIAGNOSTICS.end("simulation", SIMULATION_START);
+      const PRESENTATION_START = PERFORMANCE_DIAGNOSTICS.start();
       const DISPLAY = active.presentation(now), NOTICES = active.takePresentationNotices();
       COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
+      PERFORMANCE_DIAGNOSTICS.end("presentation", PRESENTATION_START);
+      const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
       RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
+      PERFORMANCE_DIAGNOSTICS.end("render", RENDER_START);
+      const UI_START = PERFORMANCE_DIAGNOSTICS.start();
       sync(DISPLAY, now, NOTICES);
       FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
+      PERFORMANCE_DIAGNOSTICS.end("ui", UI_START);
+      PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
       requestAnimationFrame(frame);
     } catch (error) {
       if (typeof globalThis.BloomReportRuntimeFatal === "function") {

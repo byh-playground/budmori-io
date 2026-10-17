@@ -57,7 +57,10 @@ export function composeUnitAttackCycles(
                 ) {
                     return false;
                 }
-                const P = ballistics.sample(A.path, this.elapsed / A.path.duration);
+                const DELAY = Math.min(dt, A.motionDelay || 0);
+                A.motionDelay = Math.max(0, (A.motionDelay || 0) - DELAY);
+                this.elapsed += dt - DELAY;
+                const P = ballistics.sample(A.path, this.elapsed / A.path.duration, this.motionPoint);
                 U.vx = (P.x - U.x) / dt;
                 U.vy = (P.y - U.y) / dt;
                 U.vz = (P.z - U.z) / dt;

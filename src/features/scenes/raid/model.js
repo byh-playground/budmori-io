@@ -103,7 +103,7 @@ export class RaidSimulationScene extends SimulationScene {
             strength: Math.min(1, Math.hypot(unit.vx, unit.vy) / 8),
         });
     }
-    resolveContacts(world, units) {
-        world.raidContacts(units);
+    resolveContacts(world, units, dt) {
+        world.raidContacts(units, dt);
     }
 }

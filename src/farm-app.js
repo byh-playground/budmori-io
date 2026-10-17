@@ -1,3 +1,4 @@
+import { PerformanceDiagnostics } from './performance-diagnostics.js';
 import { FormationSkillsUI } from './formation-skills-ui.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
@@ -47,32 +48,31 @@ let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
 const RENDERER = new Diorama(DOLLAR('world'));
 const FORMATION_UI = new FormationSkillsUI((kind, payload) => active?.queue(kind, payload));
-const MEASURED_FRAMES = [];
-let lastFrameTimestamp = null;
-let frameCount = 0;
-function measureFrame(now) {
-    if (lastFrameTimestamp !== null) {
-        MEASURED_FRAMES.push(now - lastFrameTimestamp);
-        if (MEASURED_FRAMES.length > 240) {
-            MEASURED_FRAMES.shift();
-        }
-    }
-    lastFrameTimestamp = now;
-    frameCount++;
-}
+const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
+STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
 function frameRate() {
-    const SORTED = [...MEASURED_FRAMES].sort((a, b) => a - b),
-        SUM = MEASURED_FRAMES.reduce((a, b) => a + b, 0);
-    return {
-        frames: frameCount,
-        fps: SUM ? (MEASURED_FRAMES.length * 1000) / SUM : 0,
-        frametimeMs: {
-            p50: SORTED[Math.floor((SORTED.length - 1) * 0.5)] || 0,
-            p95: SORTED[Math.floor((SORTED.length - 1) * 0.95)] || 0,
-            max: Math.max(0, ...MEASURED_FRAMES),
-        },
-    };
+    return PERFORMANCE_DIAGNOSTICS.frameRate();
 }
+globalThis.BudmoriPerformanceDiagnostics = {
+    summary: () => (active ? PERFORMANCE_DIAGNOSTICS.summary(active.world, active.paused) : []),
+    snapshot: () => PERFORMANCE_DIAGNOSTICS.snapshot(30),
+};
+DOLLAR('diagnosticDetail').onchange = (event) => PERFORMANCE_DIAGNOSTICS.setDetailed(event.target.checked);
+DOLLAR('copyDiagnostics').onclick = async () => {
+    const RESULT = await globalThis.BloomDiagnostics.copy({ textarea: DOLLAR('settingsDiagnosticText') });
+    DOLLAR('settingsDiagnosticText').hidden = RESULT.copied;
+    DOLLAR('diagnosticStatus').textContent = RESULT.copied
+        ? '진단 요약을 복사했어요. 채팅에 붙여 넣어 주세요.'
+        : '아래 진단 요약을 선택해 복사해 주세요.';
+};
+DOLLAR('exportDiagnostics').onclick = () => {
+    const TEXT = DOLLAR('settingsDiagnosticText');
+    TEXT.value = globalThis.BloomDiagnostics.detail();
+    TEXT.hidden = false;
+    TEXT.focus();
+    TEXT.select();
+    DOLLAR('diagnosticStatus').textContent = '명시적으로 요청한 상세 JSON입니다. 저장 데이터는 포함하지 않습니다.';
+};
 const FAIL = (error) => {
     DOLLAR('error').hidden = false;
     DOLLAR('error').textContent = '정원을 진행하지 못했어요. ' + error.message;
@@ -1614,16 +1614,27 @@ function sync(display, now, notices) {
 }
 function frame(now) {
     try {
-        measureFrame(now);
+        PERFORMANCE_DIAGNOSTICS.beginFrame(now);
+        active.profiler = PERFORMANCE_DIAGNOSTICS;
+        active.world.profiler = PERFORMANCE_DIAGNOSTICS;
+        const SIMULATION_START = PERFORMANCE_DIAGNOSTICS.start();
         if (!home && !document.hidden) {
             active.pulse(now);
         }
+        PERFORMANCE_DIAGNOSTICS.end('simulation', SIMULATION_START);
+        const PRESENTATION_START = PERFORMANCE_DIAGNOSTICS.start();
         const DISPLAY = active.presentation(now),
             NOTICES = active.takePresentationNotices();
         COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
+        PERFORMANCE_DIAGNOSTICS.end('presentation', PRESENTATION_START);
+        const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
         RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
+        PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
+        const UI_START = PERFORMANCE_DIAGNOSTICS.start();
         sync(DISPLAY, now, NOTICES);
         FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
+        PERFORMANCE_DIAGNOSTICS.end('ui', UI_START);
+        PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
         requestAnimationFrame(frame);
     } catch (error) {
         if (typeof globalThis.BloomReportRuntimeFatal === 'function') {

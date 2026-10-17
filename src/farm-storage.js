@@ -136,7 +136,12 @@ class FarmStorage {
         this.savedProgress = null;
     }
     serializeCheckpoint(world, data) {
-        return encodeFarmSave(world, data);
+        const START = this.profiler?.start();
+        try {
+            return encodeFarmSave(world, data);
+        } finally {
+            this.profiler?.end('saveEncode', START);
+        }
     }
     encode(world) {
         return this.serializeCheckpoint(world).text;
@@ -175,6 +180,15 @@ class FarmStorage {
         }
     }
     save(world) {
+        const START = this.profiler?.start();
+        this.profiler?.count('saveCalls');
+        try {
+            return this.saveCheckpoint(world);
+        } finally {
+            this.profiler?.end('save', START);
+        }
+    }
+    saveCheckpoint(world) {
         if (!this.writable || this.legacyBackupRequired) {
             return false;
         }
@@ -183,14 +197,18 @@ class FarmStorage {
                 this.error = '저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.';
                 return false;
             }
+            const CAPTURE_START = this.profiler?.start();
             const DATA = captureFarmProgress(world);
+            this.profiler?.end('saveCapture', CAPTURE_START);
             if (!this.migrationPending && sameFarmProgress(DATA, this.savedProgress)) {
                 this._world = world;
                 this.error = '';
                 return true;
             }
             const { text: TEXT } = this.serializeCheckpoint(world, DATA);
+            const IO_START = this.profiler?.start();
             localStorage.setItem(KEY, TEXT);
+            this.profiler?.end('saveIO', IO_START);
             this.raw = TEXT;
             this.savedProgress = DATA;
             this.migrationPending = false;

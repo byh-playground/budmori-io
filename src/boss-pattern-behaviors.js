@@ -61,6 +61,7 @@ export function createBossPatternBehaviors(dependencies) {
                 }
             }
             if (action.phaseElapsed >= CONFIG_LOCAL.windup - 1e-9) {
+                action.motionDelay = Math.max(0, dt + REMAINING);
                 world.activateBossPattern(action);
             }
             return;

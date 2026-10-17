@@ -71,8 +71,8 @@ export class FarmSimulationScene extends SimulationScene {
             world.markProgressChanged();
         }
     }
-    resolveContacts(world, units) {
-        world.resolveFarmContacts(units);
+    resolveContacts(world, units, dt) {
+        world.resolveFarmContacts(units, dt);
     }
     resolveLifeContacts(world, units) {
         const { FARM_MODES } = this.dependencies;
@@ -87,12 +87,6 @@ export class FarmSimulationScene extends SimulationScene {
             super.updateBattle(world, dt);
             return;
         }
-        if (world.boss.active) {
-            world.updateProjectiles(dt);
-        }
         world.updateBoss(dt);
-        if (world.boss.active) {
-            this.separateBossUnits(world);
-        }
     }
 }

@@ -4,6 +4,7 @@ import { FEATURE } from './definition.js';
 export class ChargeBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
+        this.physicalActive = true;
     }
     writeArea(boss, action, scene, pad, area) {
         const { CONFIG } = this.dependencies;
@@ -21,14 +22,10 @@ export class ChargeBossPattern extends BossPattern {
             B_LOCAL = 2 * ((SX * DX) / (RX * RX) + (SY * DY) / (RY * RY)),
             C_LOCAL = (SX * SX) / (RX * RX) + (SY * SY) / (RY * RY) - 1;
         const EXIT = Math.max(
-                0,
-                (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL),
-            ),
-            STEP = this.config.speed * CONFIG.physics.fixedStep;
-        const DISTANCE =
-            EXIT < this.config.reach
-                ? Math.min(this.config.reach, (Math.floor(EXIT / STEP + 1e-8) + 1) * STEP)
-                : this.config.reach;
+            0,
+            (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL),
+        );
+        const DISTANCE = Math.min(this.config.reach, EXIT);
         const EX = SX + DX * DISTANCE,
             EY = SY + DY * DISTANCE,
             K = Math.max(1, Math.hypot(EX / RX, EY / RY));

@@ -5,6 +5,7 @@ export class BossPattern {
         this.id = feature.id;
         this.config = feature.config;
         this.dependencies = dependencies;
+        this.physicalActive = false;
     }
     target(world, living) {
         return world.nearestBossTarget(living, true);

@@ -150,7 +150,10 @@ const CONFIG = Object.freeze({
     }),
     physics: Object.freeze({
         gravity: 19,
-        fixedStep: 1 / 120,
+        maxStep: 1 / 60,
+        // Relative body travel is bounded by the smallest body radius per substep.
+        travelRadiusRatio: 0.5,
+        softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
 function bossAttackArea(boss, unitRadius = 0, scene = 'raid', area = {}) {
@@ -333,13 +336,12 @@ const BALLISTICS = {
             duration: MELEE ? Math.max(0.12, DISTANCE / 10) : 0.65 + DISTANCE * 0.055,
         };
     },
-    sample(path, q) {
+    sample(path, q, output = {}) {
         q = CLAMP(q, 0, 1);
-        return {
-            x: path.from.x + (path.to.x - path.from.x) * q,
-            y: path.from.y + (path.to.y - path.from.y) * q,
-            z: path.from.z * (1 - q) + 4 * path.height * q * (1 - q),
-        };
+        output.x = path.from.x + (path.to.x - path.from.x) * q;
+        output.y = path.from.y + (path.to.y - path.from.y) * q;
+        output.z = path.from.z * (1 - q) + 4 * path.height * q * (1 - q);
+        return output;
     },
 };
 const FARM_BOSS_PHASES = createFarmBossEventPhases(CONFIG);
@@ -356,6 +358,7 @@ const BOSS_BEHAVIORS = createBossPatternBehaviors({
 class AttackCycle {
     constructor(owner) {
         this.owner = owner;
+        this.motionPoint = { x: 0, y: 0, z: 0 };
         this.phase = 'idle';
         this.elapsed = 0;
         this.action = null;
@@ -427,11 +430,14 @@ class AttackCycle {
         if (this.phase === 'idle') {
             return false;
         }
-        this.elapsed += dt;
+        if (this.phase !== 'active') {
+            this.elapsed += dt;
+        }
         if (this.phase === 'windup') {
             U.vx *= Math.exp(-dt * 18);
             U.vy *= Math.exp(-dt * 18);
             if (this.elapsed >= this.spec.timing.windup) {
+                this.action.motionDelay = Math.max(0, dt - (this.elapsed - this.spec.timing.windup));
                 this.elapsed = 0;
                 this.phase = 'active';
                 this.createAttackPath();
@@ -470,6 +476,11 @@ const ATTACKING_BODY = (baseLocal) =>
             super.knock(...args);
         }
         integrate(dt) {
+            if (this.moveControlActive && this.stun <= 0 && this.down <= 0) {
+                const RATE = 1 - Math.exp(-dt * 3);
+                this.vx += (this.moveControlVx - this.vx) * RATE;
+                this.vy += (this.moveControlVy - this.vy) * RATE;
+            }
             if (!this.ability.integrate(dt)) {
                 super.integrate(dt);
             }
@@ -596,7 +607,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return unitTorsoHeight(this);
     }
 };
-function contact(a, b) {
+function contact(a, b, dt) {
     const DX = b.x - a.x,
         DY = b.y - a.y,
         D_LOCAL = Math.hypot(DX, DY),
@@ -612,7 +623,8 @@ function contact(a, b) {
             a.ability.phase === 'idle' &&
             b.ability.phase === 'idle'
         ) {
-            const K = ((R_LOCAL + 0.22 - D_LOCAL) * 0.035) / (D_LOCAL || 1);
+            const K =
+                ((R_LOCAL + 0.22 - D_LOCAL) * (1 - Math.exp(-CONFIG.physics.softSeparationRate * dt))) / (D_LOCAL || 1);
             a.x -= DX * K;
             a.y -= DY * K;
             b.x += DX * K;
@@ -765,6 +777,7 @@ const GARDEN = class Garden {
         Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
     }
     _rebuildUnitSpatialIndex(stepUnits = this.units) {
+        const SPATIAL_START = this.profiler?.start();
         const GRID = this.unitSpatial;
         GRID.clear();
         this._unitById.clear();
@@ -799,8 +812,10 @@ const GARDEN = class Garden {
             this._unitStepOrder.set(stepUnits[index], index);
         }
         this._unitSpatialDirty = false;
+        this.profiler?.end('spatial', SPATIAL_START);
     }
     _rebuildFoodSpatialIndex() {
+        const SPATIAL_START = this.profiler?.start();
         this.foodSpatial.clear();
         this._foodOrder.clear();
         let grounded = 0;
@@ -816,6 +831,7 @@ const GARDEN = class Garden {
         }
         this._groundedFoodCount = grounded;
         this._foodSpatialDirty = false;
+        this.profiler?.end('spatial', SPATIAL_START);
     }
     _trackFoodAdded(food) {
         if (!this._spatialStepActive) {
@@ -2618,13 +2634,14 @@ const GARDEN = class Garden {
         this.mutationNotifications.end(failure);
     }
     _step(dt) {
+        const LOGIC_START = this.profiler?.start();
         this._spatialStepActive = true;
         this._spatialQueryDepth = 0;
         this.time += dt;
         let progressTimersAdvanced = false;
         grantPendingBossAcquisitions(this);
         // Keep the original step membership/order; spawns join indexes now but
-        // are first advanced by the next physics step, just like the prior copy.
+        // are first advanced by the next logical tick.
         const UNITS = this._stepUnits;
         UNITS.length = 0;
         for (const UNIT_LOCAL of this.units) {
@@ -2635,32 +2652,21 @@ const GARDEN = class Garden {
         const SCENE = SIMULATION_SCENES[this.scene];
         SCENE.advanceClock(this, dt);
         this.advanceMergeTask(dt);
-        this.effects = this.effects.filter((e) => (e.life += dt) < (Number.isFinite(e.duration) ? e.duration : 1));
-        for (const F of this.food) {
-            if (F.phase !== 'grounded') {
-                F.x += F.vx * dt;
-                F.y += F.vy * dt;
-                F.z += F.vz * dt - 6 * dt * dt;
-                F.vz -= 12 * dt;
-                if (F.z <= 0) {
-                    F.z = 0;
-                    if (F.phase === 'flight') {
-                        F.x = F.tx;
-                        F.y = F.ty;
-                        F.vx = F.vy = 0;
-                        F.vz = 1.1;
-                        F.phase = 'bounce';
-                        this.emit('food-land', F.x, F.y);
-                    } else {
-                        F.vz = 0;
-                        F.phase = 'grounded';
-                    }
-                }
+        let effectWrite = 0;
+        for (const EFFECT of this.effects) {
+            EFFECT.life += dt;
+            if (EFFECT.life < (Number.isFinite(EFFECT.duration) ? EFFECT.duration : 1)) {
+                this.effects[effectWrite++] = EFFECT;
             }
+        }
+        this.effects.length = effectWrite;
+        for (const PROJECTILE of this.projectiles) {
+            PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).advanceLifecycle(this, PROJECTILE, dt);
         }
         this._rebuildFoodSpatialIndex();
         this.reconcileMateReservations();
         for (const U of UNITS) {
+            U.moveControlActive = false;
             U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
             if (U.hp <= 0) {
                 if (!U.deathSplitHandled) {
@@ -2704,17 +2710,116 @@ const GARDEN = class Garden {
                 U.cooldown = 0;
                 U.cooldownDuration = 0;
             }
+            const AI_START = this.profiler?.start();
             const ENEMY_LOCAL = this.senseEnemy(U) || SCENE.fallbackEnemy(this, U);
             this.updateUnitIntent(U, dt, ENEMY_LOCAL, SCENE);
+            this.profiler?.end('ai', AI_START);
+        }
+        // Timed growth/rest is real progress, but movement is not. Checkpoint
+        // advancing timers at a coarse cadence, never once per physics tick.
+        SCENE.checkpointProgress(this, dt, progressTimersAdvanced);
+        SCENE.updateBattle(this, dt);
+        this.metrics.logicTicks = (this.metrics.logicTicks || 0) + 1;
+        this.profiler?.count('logicTicks');
+        this.profiler?.end('logic', LOGIC_START);
+        const PHYSICS_START = this.profiler?.start();
+        const SUBSTEPS = this.physicsSubsteps(dt, UNITS),
+            PHYSICS_DT = dt / SUBSTEPS;
+        for (let index = 0; index < SUBSTEPS; index++) {
+            this.advancePhysics(PHYSICS_DT, UNITS, SCENE);
+        }
+        this.profiler?.end('physics', PHYSICS_START);
+        SCENE.resolveLifeContacts(this, UNITS);
+        let projectileWrite = 0;
+        for (const PROJECTILE of this.projectiles) {
+            if (PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).isAlive(PROJECTILE)) {
+                this.projectiles[projectileWrite++] = PROJECTILE;
+            }
+        }
+        this.projectiles.length = projectileWrite;
+        this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon && unit.hp <= 0);
+        UNITS.length = 0;
+        this.unitCollection.releaseStepReferences();
+        this._spatialStepActive = false;
+        this._unitSpatialDirty = true;
+        this._foodSpatialDirty = true;
+    }
+    updateUnitSpatial(unit) {
+        const START = this.profiler?.start();
+        this.unitSpatial.update(unit);
+        this.profiler?.end('spatial', START);
+    }
+    updateFoodSpatial(food) {
+        const START = this.profiler?.start();
+        this.foodSpatial.update(food);
+        this.profiler?.end('spatial', START);
+    }
+    physicsSubsteps(dt, units) {
+        if (dt <= 0) {
+            return 1;
+        }
+        let minimumRadius = Infinity;
+        let maximumSpeed = 0;
+        for (const UNIT of units) {
+            minimumRadius = Math.min(minimumRadius, UNIT.radius);
+            // Active authored paths already use swept attack contact. Free bodies need the travel bound.
+            if (UNIT.ability.phase !== 'active') {
+                maximumSpeed = Math.max(
+                    maximumSpeed,
+                    Math.hypot(UNIT.vx, UNIT.vy),
+                    UNIT.moveControlActive ? Math.hypot(UNIT.moveControlVx, UNIT.moveControlVy) : 0,
+                );
+            }
+        }
+        const TRAVEL_STEP = maximumSpeed > 0 ? (minimumRadius * CONFIG.physics.travelRadiusRatio) / maximumSpeed : dt;
+        return Math.max(1, Math.ceil(dt / Math.min(CONFIG.physics.maxStep, TRAVEL_STEP)));
+    }
+    advancePhysics(dt, units, scene) {
+        this.metrics.physicsSteps = (this.metrics.physicsSteps || 0) + 1;
+        this.profiler?.count('physicsSteps');
+        this._oldStepPosition ||= { x: 0, y: 0, z: 0 };
+        for (const F of this.food) {
+            if (F.phase !== 'grounded') {
+                F.x += F.vx * dt;
+                F.y += F.vy * dt;
+                F.z += F.vz * dt - 6 * dt * dt;
+                F.vz -= 12 * dt;
+                if (F.z <= 0) {
+                    F.z = 0;
+                    if (F.phase === 'flight') {
+                        F.x = F.tx;
+                        F.y = F.ty;
+                        F.vx = F.vy = 0;
+                        F.vz = 1.1;
+                        F.phase = 'bounce';
+                        this.emit('food-land', F.x, F.y);
+                    } else {
+                        F.vz = 0;
+                        F.phase = 'grounded';
+                    }
+                }
+                this.updateFoodSpatial(F);
+            }
+        }
+
+        for (const U of units) {
+            if (U.hp <= 0) {
+                if (!U.isBattleOnlySummon) {
+                    scene.advanceDownedPhysics(this, U, dt);
+                }
+                continue;
+            }
             const OLD_Z = U.z,
-                OLD_POSITION = {
-                    x: U.x,
-                    y: U.y,
-                    z: U.z,
-                };
+                OLD_POSITION = this._oldStepPosition;
+            OLD_POSITION.x = U.x;
+            OLD_POSITION.y = U.y;
+            OLD_POSITION.z = U.z;
+            if (U.stun > 0 && U.ability.phase !== 'idle') {
+                U.ability.interrupt();
+            }
             U.integrate(dt);
-            SCENE.afterLivingIntegration(this, U);
-            if (ENEMY_LOCAL) {
+            scene.afterLivingIntegration(this, U);
+            if (U.ability.phase === 'active') {
                 U.ability.afterMove?.(this, OLD_POSITION);
             }
             if (OLD_Z > 0 && U.z === 0) {
@@ -2722,7 +2827,7 @@ const GARDEN = class Garden {
                 if (!U.dropLanded) {
                     U.dropLanded = true;
                     U.bounce = 0.16;
-                    this.combat(SCENE.dropLandingEvent, {
+                    this.combat(scene.dropLandingEvent, {
                         unit: U.id,
                         ownerId: U.ownerId,
                         x: U.x,
@@ -2738,23 +2843,19 @@ const GARDEN = class Garden {
                     });
                 }
                 this.metrics.landings++;
-                SCENE.landUnit(this, U);
+                scene.landUnit(this, U);
             }
             this.boundBody(U, this.scene, U.radius);
-            this.unitSpatial.update(U);
+            this.updateUnitSpatial(U);
         }
-        // Timed growth/rest is real progress, but movement is not. Checkpoint
-        // advancing timers at a coarse cadence, never once per physics tick.
-        SCENE.checkpointProgress(this, dt, progressTimersAdvanced);
-        this.resolveContacts(UNITS);
-        SCENE.resolveLifeContacts(this, UNITS);
-        SCENE.updateBattle(this, dt);
-        this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon && unit.hp <= 0);
-        UNITS.length = 0;
-        this.unitCollection.releaseStepReferences();
-        this._spatialStepActive = false;
-        this._unitSpatialDirty = true;
-        this._foodSpatialDirty = true;
+        const COLLISION_START = this.profiler?.start();
+        this.resolveContacts(units, dt);
+        this.profiler?.end('collision', COLLISION_START);
+        this.integrateBossMotion(dt);
+        if (this.boss.active) {
+            this.updateProjectiles(dt);
+            scene.separateBossUnits(this);
+        }
     }
     updateUnitIntent(unit, dt, enemy, scene) {
         if (enemy) {
@@ -2773,18 +2874,18 @@ const GARDEN = class Garden {
         }
         scene.updateUnoccupied(this, unit, dt);
     }
-    steer(u, x, y, dt, speed2) {
+    steer(u, x, y, _dt, speed2) {
         const DX = x - u.x,
             DY = y - u.y,
             D_LOCAL = Math.hypot(DX, DY);
         if (D_LOCAL > 0.08) {
-            const RATE = 1 - Math.exp(-dt * 3);
-            u.vx += ((DX / D_LOCAL) * speed2 - u.vx) * RATE;
-            u.vy += ((DY / D_LOCAL) * speed2 - u.vy) * RATE;
+            u.moveControlActive = true;
+            u.moveControlVx = (DX / D_LOCAL) * speed2;
+            u.moveControlVy = (DY / D_LOCAL) * speed2;
             u.angle = Math.atan2(DY, DX);
         }
     }
-    raidContacts(units) {
+    raidContacts(units, dt = CONFIG.physics.maxStep) {
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
             if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded) {
@@ -2800,23 +2901,23 @@ const GARDEN = class Garden {
                     AY = OTHER.y,
                     BX = UNIT_LOCAL.x,
                     BY = UNIT_LOCAL.y,
-                    DID_CONTACT = contact(OTHER, UNIT_LOCAL);
+                    DID_CONTACT = contact(OTHER, UNIT_LOCAL, dt);
                 if (DID_CONTACT) {
                     this.metrics.contacts++;
                 }
                 if (AX !== OTHER.x || AY !== OTHER.y) {
-                    this.unitSpatial.update(OTHER);
+                    this.updateUnitSpatial(OTHER);
                 }
                 if (BX !== UNIT_LOCAL.x || BY !== UNIT_LOCAL.y) {
-                    this.unitSpatial.update(UNIT_LOCAL);
+                    this.updateUnitSpatial(UNIT_LOCAL);
                 }
             }
         }
     }
-    resolveContacts(units) {
-        SIMULATION_SCENES[this.scene].resolveContacts(this, units);
+    resolveContacts(units, dt = CONFIG.physics.maxStep) {
+        SIMULATION_SCENES[this.scene].resolveContacts(this, units, dt);
     }
-    resolveFarmContacts(units) {
+    resolveFarmContacts(units, dt = CONFIG.physics.maxStep) {
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i],
                 GENERATION = this._nextContactGeneration(units.length),
@@ -2832,17 +2933,17 @@ const GARDEN = class Garden {
                     AY = UNIT_LOCAL.y,
                     BX = OTHER.x,
                     BY = OTHER.y,
-                    DID_CONTACT = contact(UNIT_LOCAL, OTHER);
+                    DID_CONTACT = contact(UNIT_LOCAL, OTHER, dt);
                 if (DID_CONTACT) {
                     this.metrics.contacts++;
                 }
                 const UNIT_MOVED = AX !== UNIT_LOCAL.x || AY !== UNIT_LOCAL.y,
                     OTHER_MOVED = BX !== OTHER.x || BY !== OTHER.y;
                 if (UNIT_MOVED) {
-                    this.unitSpatial.update(UNIT_LOCAL);
+                    this.updateUnitSpatial(UNIT_LOCAL);
                 }
                 if (OTHER_MOVED) {
-                    this.unitSpatial.update(OTHER);
+                    this.updateUnitSpatial(OTHER);
                 }
                 if (UNIT_MOVED) {
                     const EXTRAS = this._collectContactOrders(UNIT_LOCAL, J + 1, units.length - 1, this._contactExtra);
@@ -2994,23 +3095,22 @@ const GARDEN = class Garden {
         this.notice(kind, { time: this.time, ...detail });
     }
     boundBody(body, scene, margin) {
-        const BEFORE = {
-                x: body.x,
-                y: body.y,
-            },
-            P = ARENA_GEOMETRY.clamp(BEFORE, scene, margin);
-        body.x = P.x;
-        body.y = P.y;
-        if (BEFORE.x !== P.x || BEFORE.y !== P.y) {
-            const R_LOCAL = ARENA_GEOMETRY.bounds(scene, margin),
-                NX = P.x / (R_LOCAL.x * R_LOCAL.x),
-                NY = P.y / (R_LOCAL.y * R_LOCAL.y),
-                N = Math.hypot(NX, NY) || 1,
-                OUT = ((body.vx || 0) * NX + (body.vy || 0) * NY) / N;
-            if (OUT > 0) {
-                body.vx -= (1.3 * OUT * NX) / N;
-                body.vy -= (1.3 * OUT * NY) / N;
-            }
+        const ARENA = CONFIG[scene].arena,
+            RX = ARENA.radiusX - margin,
+            RY = ARENA.radiusY - margin,
+            K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
+        if (K === 1) {
+            return;
+        }
+        body.x /= K;
+        body.y /= K;
+        const NX = body.x / (RX * RX),
+            NY = body.y / (RY * RY),
+            LENGTH = Math.hypot(NX, NY) || 1,
+            OUTWARD = ((body.vx || 0) * NX + (body.vy || 0) * NY) / LENGTH;
+        if (OUTWARD > 0) {
+            body.vx -= (NX / LENGTH) * OUTWARD * 1.3;
+            body.vy -= (NY / LENGTH) * OUTWARD * 1.3;
         }
     }
     separateBoss(u) {
@@ -3401,15 +3501,19 @@ const GARDEN = class Garden {
         }
         try {
             for (const PROJECTILE of this.projectiles) {
-                PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).update(this, PROJECTILE, dt);
+                const BEHAVIOR = PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE);
+                if (!this._spatialStepActive) {
+                    BEHAVIOR.advanceLifecycle(this, PROJECTILE, dt);
+                }
+                if (BEHAVIOR.isAlive(PROJECTILE)) {
+                    BEHAVIOR.update(this, PROJECTILE, dt);
+                }
             }
             // Preserve the second-pass chain ordering after every flight update.
             for (const PROJECTILE of this.projectiles) {
                 PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).updateChain(this, PROJECTILE);
             }
-            this.projectiles = this.projectiles.filter((projectile) =>
-                PROJECTILE_BEHAVIORS.forProjectile(projectile).isAlive(projectile),
-            );
+
             this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
         } finally {
             if (BATCH) {
@@ -4256,26 +4360,18 @@ const GARDEN = class Garden {
                     B_LOCAL.angle = B_LOCAL.facing = Math.atan2(DY, DX);
                     const CONTACT = B_LOCAL.radius + TARGET.radius + 0.2;
                     if (D_LOCAL > CONTACT) {
-                        const AMOUNT = Math.min(B_LOCAL.moveSpeed * dt, D_LOCAL - CONTACT),
-                            NEXT = {
-                                x: B_LOCAL.x + (DX / D_LOCAL) * AMOUNT,
-                                y: B_LOCAL.y + (DY / D_LOCAL) * AMOUNT,
-                            },
-                            BOUNDED = ARENA_GEOMETRY.clamp(NEXT, this.scene, B_LOCAL.radius + 0.25),
-                            OLD = {
-                                x: B_LOCAL.x,
-                                y: B_LOCAL.y,
-                                z: B_LOCAL.z,
-                            };
-                        B_LOCAL.x = BOUNDED.x;
-                        B_LOCAL.y = BOUNDED.y;
-                        B_LOCAL.travel += Math.hypot(B_LOCAL.x - OLD.x, B_LOCAL.y - OLD.y);
+                        const SPEED = Math.min(B_LOCAL.moveSpeed, (D_LOCAL - CONTACT) / dt);
+                        B_LOCAL.chaseVx = (DX / D_LOCAL) * SPEED;
+                        B_LOCAL.chaseVy = (DY / D_LOCAL) * SPEED;
                     }
                 }
                 return;
             }
         }
         if (!action) {
+            return;
+        }
+        if (action.phase === 'active' && BOSS_BEHAVIORS.forId(action.id).physicalActive) {
             return;
         }
         action.phaseElapsed += dt;
@@ -4298,8 +4394,36 @@ const GARDEN = class Garden {
         BOSS.knockVx *= Math.exp(-dt * 6);
         BOSS.knockVy *= Math.exp(-dt * 6);
     }
+    integrateBossMotion(dt) {
+        const BOSS = this.boss;
+        if (!BOSS.active) {
+            return;
+        }
+        this.integrateBossKnockback(dt);
+        if (BOSS.stun > 0) {
+            return;
+        }
+        const ACTION = BOSS.patternRuntime.active;
+        if (ACTION?.phase === 'active' && BOSS_BEHAVIORS.forId(ACTION.id).physicalActive) {
+            const DELAY = Math.min(dt, ACTION.motionDelay || 0);
+            ACTION.motionDelay = Math.max(0, (ACTION.motionDelay || 0) - DELAY);
+            const ACTIVE_DT = dt - DELAY;
+            if (ACTIVE_DT > 0) {
+                ACTION.phaseElapsed += ACTIVE_DT;
+                BOSS_BEHAVIORS.forId(ACTION.id).updateActive(this, ACTION, ACTIVE_DT);
+            }
+        } else if (!ACTION) {
+            const X = BOSS.x,
+                Y = BOSS.y;
+            BOSS.x += (BOSS.chaseVx || 0) * dt;
+            BOSS.y += (BOSS.chaseVy || 0) * dt;
+            this.boundBody(BOSS, this.scene, BOSS.radius + 0.25);
+            BOSS.travel += Math.hypot(BOSS.x - X, BOSS.y - Y);
+        }
+    }
     updateBoss(dt) {
         const B_LOCAL = this.boss;
+        B_LOCAL.chaseVx = B_LOCAL.chaseVy = 0;
         if (SIMULATION_SCENES[this.scene].updateBossPhase(this, dt)) {
             return;
         }
@@ -4328,7 +4452,6 @@ const GARDEN = class Garden {
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
             return;
         }
-        this.integrateBossKnockback(dt);
         const LIVING = this.livingBossTargets();
         if (!LIVING.length) {
             return;
