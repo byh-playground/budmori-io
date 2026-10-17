@@ -2624,6 +2624,7 @@ const GARDEN = class Garden {
         return true;
     }
     step(dt) {
+        const STEP_START = this.profiler?.start();
         this.mutationNotifications.begin();
         let failure = null;
         try {
@@ -2631,7 +2632,13 @@ const GARDEN = class Garden {
         } catch (error) {
             failure = error;
         }
-        this.mutationNotifications.end(failure);
+        const MUTATION_START = this.profiler?.start();
+        try {
+            this.mutationNotifications.end(failure);
+        } finally {
+            this.profiler?.end('mutationDispatch', MUTATION_START);
+            this.profiler?.end('worldStep', STEP_START);
+        }
     }
     _step(dt) {
         const LOGIC_START = this.profiler?.start();
@@ -2725,10 +2732,15 @@ const GARDEN = class Garden {
         const PHYSICS_START = this.profiler?.start();
         const SUBSTEPS = this.physicsSubsteps(dt, UNITS),
             PHYSICS_DT = dt / SUBSTEPS;
+        this.profiler?.count(
+            'physicsAdaptiveExtraSteps',
+            Math.max(0, SUBSTEPS - Math.ceil(dt / CONFIG.physics.maxStep)),
+        );
         for (let index = 0; index < SUBSTEPS; index++) {
             this.advancePhysics(PHYSICS_DT, UNITS, SCENE);
         }
         this.profiler?.end('physics', PHYSICS_START);
+        const POST_STEP_START = this.profiler?.start();
         SCENE.resolveLifeContacts(this, UNITS);
         let projectileWrite = 0;
         for (const PROJECTILE of this.projectiles) {
@@ -2743,6 +2755,7 @@ const GARDEN = class Garden {
         this._spatialStepActive = false;
         this._unitSpatialDirty = true;
         this._foodSpatialDirty = true;
+        this.profiler?.end('worldPostStep', POST_STEP_START);
     }
     updateUnitSpatial(unit) {
         const START = this.profiler?.start();

@@ -8516,6 +8516,7 @@
           return true;
         }
         step(dt) {
+          const STEP_START = this.profiler?.start();
           this.mutationNotifications.begin();
           let failure = null;
           try {
@@ -8523,7 +8524,13 @@
           } catch (error) {
             failure = error;
           }
-          this.mutationNotifications.end(failure);
+          const MUTATION_START = this.profiler?.start();
+          try {
+            this.mutationNotifications.end(failure);
+          } finally {
+            this.profiler?.end("mutationDispatch", MUTATION_START);
+            this.profiler?.end("worldStep", STEP_START);
+          }
         }
         _step(dt) {
           const LOGIC_START = this.profiler?.start();
@@ -8612,10 +8619,15 @@
           this.profiler?.end("logic", LOGIC_START);
           const PHYSICS_START = this.profiler?.start();
           const SUBSTEPS = this.physicsSubsteps(dt, UNITS), PHYSICS_DT = dt / SUBSTEPS;
+          this.profiler?.count(
+            "physicsAdaptiveExtraSteps",
+            Math.max(0, SUBSTEPS - Math.ceil(dt / CONFIG.physics.maxStep))
+          );
           for (let index = 0; index < SUBSTEPS; index++) {
             this.advancePhysics(PHYSICS_DT, UNITS, SCENE);
           }
           this.profiler?.end("physics", PHYSICS_START);
+          const POST_STEP_START = this.profiler?.start();
           SCENE.resolveLifeContacts(this, UNITS);
           let projectileWrite = 0;
           for (const PROJECTILE2 of this.projectiles) {
@@ -8630,6 +8642,7 @@
           this._spatialStepActive = false;
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
+          this.profiler?.end("worldPostStep", POST_STEP_START);
         }
         updateUnitSpatial(unit) {
           const START = this.profiler?.start();
@@ -12431,6 +12444,12 @@
     "spatial",
     "physics",
     "collision",
+    "worldStep",
+    "worldPostStep",
+    "mutationDispatch",
+    "worldStepFollowup",
+    "presentationCapture",
+    "runtimeCapture",
     "presentation",
     "render",
     "ui",
@@ -12443,8 +12462,14 @@
   var COUNTERS = Object.freeze([
     "logicTicks",
     "physicsSteps",
+    "physicsAdaptiveExtraSteps",
     "catchupTicks",
     "backlogDrops",
+    "backlogDroppedMs",
+    "backlogCappedFrames",
+    "backlogClippedMs",
+    "presentationCaptures",
+    "presentationEntities",
     "saveCalls",
     "drawCalls",
     "vectorFlushCalls",
@@ -12500,7 +12525,7 @@
         detailed: this.detailed,
         gpuMs: null,
         units: "milliseconds and counts; no GPU completion timing",
-        timingHierarchy: "callback CPU contains simulation/presentation/render/ui; simulation contains logic/physics/save; logic contains AI/spatial; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; save contains capture/encode/IO. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU."
+        timingHierarchy: "callback CPU contains simulation/presentation/render/ui; simulation contains worldStep, presentationCapture and save; worldStep contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; presentationCapture contains runtimeCapture; save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU."
       };
     }
     frameRate() {
@@ -12524,8 +12549,10 @@
         `상태 ${world.scene}/${world.mode} ${paused ? "정지" : "실행"} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
         `창 ${NUMBER(SAMPLE.windowMs / 1e3, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? "켜짐" : "꺼짐"} · ${SAMPLE.retainedFrames > 1 ? "유효" : "표본 부족"}`,
         `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
-        `창 합계: 논리 ${COUNT("logicTicks")} · 물리 ${COUNT("physicsSteps")} · 추가 catchup ${COUNT("catchupTicks")} · backlog drop ${COUNT("backlogDrops")}`,
+        `창 합계: 논리 ${COUNT("logicTicks")} · 물리 ${COUNT("physicsSteps")} · 추가 catchup ${COUNT("catchupTicks")} · backlog drop ${COUNT("backlogDrops")}회/${NUMBER(COUNT("backlogDroppedMs"), 0)}ms · cap ${COUNT("backlogCappedFrames")}프레임/${NUMBER(COUNT("backlogClippedMs"), 0)}ms`,
         `CPU 평균/p95/최대(ms, 부모·자식 합산 금지): sim ${TIME("simulation")} · 논리 ${TIME("logic")} · 물리 ${TIME("physics")}`,
+        `CPU 월드 후처리 ${TIME("worldPostStep")} · 변경 신호 발행 ${TIME("mutationDispatch")} · 보간 스냅샷 ${TIME("presentationCapture")} / SDK 캡처 ${TIME("runtimeCapture")}`,
+        `프레임 평균: 프레젠테이션 캡처 ${PER_FRAME("presentationCaptures")}회 / 엔티티 ${PER_FRAME("presentationEntities")} · 적응 물리 추가 단계 ${PER_FRAME("physicsAdaptiveExtraSteps")}`,
         `CPU AI ${TIME("ai")} · 인덱스 재구축/갱신 ${TIME("spatial")} · 충돌 ${TIME("collision")}`,
         `CPU 보간 ${TIME("presentation")} · WebGL 제출 ${TIME("render")} · UI ${TIME("ui")}`,
         `저장 ${COUNT("saveCalls")}회 · CPU 전체 ${TIME("save")} / 캡처 ${TIME("saveCapture")} / 인코딩 ${TIME("saveEncode")} / IO ${TIME("saveIO")}`,
@@ -15230,12 +15257,18 @@
       this.lastFrameClockMs = null;
       this.lastCaptureClockMs = 0;
       this.pulseTimestamp = null;
+      this.lastLoopPulseTimestamp = null;
+      this.currentPulsePriorAccumulatorMs = 0;
       this.loop = globalThis.BloomGamekitSimloop.createLoop({
         session: this,
         getInput: () => LOCAL_INPUT,
         onError,
-        onBacklogDrop: () => {
+        onBacklogDrop: (details) => {
           this.profiler?.count("backlogDrops");
+          this.profiler?.count(
+            "backlogDroppedMs",
+            Math.max(0, details?.elapsedMs || 0) + this.currentPulsePriorAccumulatorMs
+          );
           this.pendingPresentationMode = "reset";
         },
         onAdvance: (result) => {
@@ -15329,7 +15362,12 @@
       W.step(1 / LOCAL_PROFILE.tickRate);
       this.tick++;
       this.presentationTick++;
-      this.onWorldStep(W);
+      const WORLD_STEP_FOLLOWUP_START = this.profiler?.start();
+      try {
+        this.onWorldStep(W);
+      } finally {
+        this.profiler?.end("worldStepFollowup", WORLD_STEP_FOLLOWUP_START);
+      }
       return ADVANCED;
     }
     applyPendingCommands(limit) {
@@ -15434,6 +15472,15 @@
       return now - this.pausedDurationMs - (this._paused && this.pauseStartedAt !== null ? now - this.pauseStartedAt : 0);
     }
     capturePresentation(mode = "continuous") {
+      const START = this.profiler?.start();
+      this.profiler?.count("presentationCaptures");
+      try {
+        return this.capturePresentationSnapshot(mode);
+      } finally {
+        this.profiler?.end("presentationCapture", START);
+      }
+    }
+    capturePresentationSnapshot(mode) {
       if (mode !== "continuous" && this.presentationSequence > 0) {
         this.presentationRevision++;
         this.bindNoticeJournal();
@@ -15448,6 +15495,9 @@
       }
       ENTITIES.push(this.presentationEntity("boss", WORLD.boss, BossRender));
       for (const F of WORLD.food) {
+        if (mode === "continuous" && F.phase === "grounded") {
+          continue;
+        }
         ENTITIES.push(this.presentationEntity(this.presentationIdentity("food", F), F, FoodRender));
       }
       for (const P of WORLD.projectiles) {
@@ -15462,28 +15512,35 @@
       }
       this.clockEntity.source.gameTimeMs = WORLD.time * 1e3;
       ENTITIES.push(this.clockEntity);
+      this.profiler?.count("presentationEntities", ENTITIES.length);
       const CAPTURE_MODE = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
       if (CAPTURE_MODE === "continuous") {
         this.previousCaptureTimeMs = this.latestCaptureTimeMs;
       } else {
         this.previousCaptureTimeMs = null;
       }
-      const ACCEPTED = this.presentationRuntime.capture(
-        {
-          revision: this.presentationRevision,
-          sequence: ++this.presentationSequence,
-          timeMs: TIME_MS,
-          mode: CAPTURE_MODE,
-          entities: ENTITIES
-        },
-        RECEIPT_NOW_MS
-      );
-      if (ACCEPTED) {
+      const RUNTIME_START = this.profiler?.start();
+      let accepted;
+      try {
+        accepted = this.presentationRuntime.capture(
+          {
+            revision: this.presentationRevision,
+            sequence: ++this.presentationSequence,
+            timeMs: TIME_MS,
+            mode: CAPTURE_MODE,
+            entities: ENTITIES
+          },
+          RECEIPT_NOW_MS
+        );
+      } finally {
+        this.profiler?.end("runtimeCapture", RUNTIME_START);
+      }
+      if (accepted) {
         this.latestCaptureTimeMs = TIME_MS;
         this.lastCaptureClockMs = RECEIPT_NOW_MS;
         this.pendingPresentationMode = null;
       }
-      return ACCEPTED;
+      return accepted;
     }
     captureClock() {
       const NOW = this.pulseTimestamp ?? globalThis.performance.now(), BOUNDARY = this.loop?.simulationTimeMs;
@@ -15508,6 +15565,7 @@
           }),
           {
             food: [],
+            presentationFoodIds: /* @__PURE__ */ new Set(),
             projectiles: [],
             effects: [],
             formationEffects: [],
@@ -15521,6 +15579,7 @@
             VIEW2.units.push(model);
           } else if (id.startsWith("food:")) {
             VIEW2.food.push(model);
+            VIEW2.presentationFoodIds.add(id);
           } else if (id.startsWith("projectile:")) {
             VIEW2.projectiles.push(model);
           } else if (id.startsWith("effect:")) {
@@ -15531,11 +15590,20 @@
       const VIEW = this.presentationView;
       VIEW.units.length = 0;
       VIEW.food.length = 0;
+      VIEW.presentationFoodIds.clear();
       VIEW.projectiles.length = 0;
       VIEW.effects.length = 0;
       VIEW.formationEffects.length = 0;
       VIEW.formationSlots = WORLD.formationRuntime.slots;
       FRAME.forEach(this.collectPresentationModel);
+      for (const FOOD of WORLD.food) {
+        if (FOOD.phase === "grounded") {
+          const ID = this.presentationIdentity("food", FOOD);
+          if (!VIEW.presentationFoodIds.has(ID)) {
+            VIEW.food.push(FOOD);
+          }
+        }
+      }
       VIEW.time = (FRAME.sample("clock", 0)?.gameTimeMs ?? WORLD.time * 1e3) / 1e3;
       VIEW.boss = FRAME.sample("boss", 0) || this.presentationEntity("boss", WORLD.boss, BossRender).source;
       VIEW.displayTimeMs = FRAME.timeMs;
@@ -15553,6 +15621,19 @@
       return VIEW;
     }
     pulse(now) {
+      const PREVIOUS_PULSE = this.lastLoopPulseTimestamp, PREVIOUS_SIMULATION_TIME = this.loop.simulationTimeMs;
+      this.currentPulsePriorAccumulatorMs = Number.isFinite(PREVIOUS_PULSE) && Number.isFinite(PREVIOUS_SIMULATION_TIME) ? Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME) : 0;
+      if (Number.isFinite(PREVIOUS_PULSE) && Number.isFinite(PREVIOUS_SIMULATION_TIME) && now >= PREVIOUS_PULSE && now - PREVIOUS_PULSE <= 400) {
+        const ELAPSED = now - PREVIOUS_PULSE, PRIOR_ACCUMULATOR = Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME), ELAPSED_AFTER_INPUT_CAP = Math.min(250, ELAPSED), ACCUMULATOR_AFTER_CAP = Math.min(
+          PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP,
+          PRESENTATION_STEP_MS * LOCAL_PROFILE.maxCatchupSteps
+        ), CLIPPED_MS = Math.max(0, ELAPSED - ELAPSED_AFTER_INPUT_CAP) + Math.max(0, PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP - ACCUMULATOR_AFTER_CAP);
+        if (CLIPPED_MS > 0) {
+          this.profiler?.count("backlogCappedFrames");
+          this.profiler?.count("backlogClippedMs", CLIPPED_MS);
+        }
+      }
+      this.lastLoopPulseTimestamp = now;
       this.pulseTimestamp = now;
       const PREVIOUS_TICK = this.tick;
       this.loop.pulse(now, {
