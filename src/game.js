@@ -38,6 +38,26 @@
     }
   });
 
+  // src/species-catalog.js
+  function speciesById(id) {
+    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
+  }
+  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
+  var init_species_catalog = __esm({
+    "src/species-catalog.js"() {
+      SPECIES_CATALOG = Object.freeze([
+        Object.freeze({ id: 0, name: "콩", asset: "pea.svg", bossWeight: 1 }),
+        Object.freeze({ id: 1, name: "옥수수", asset: "corn-kernel.svg", bossWeight: 1 }),
+        Object.freeze({ id: 2, name: "강낭콩", asset: "kidney-bean.svg", bossWeight: 1 }),
+        Object.freeze({ id: 3, name: "밤톨", asset: "chestnut.svg", bossWeight: 1 }),
+        Object.freeze({ id: 4, name: "땅콩", asset: "peanut.svg", bossWeight: 1 }),
+        Object.freeze({ id: 5, name: "호두", asset: "walnut.svg", bossWeight: 1 })
+      ]);
+      SPECIES_COUNT = SPECIES_CATALOG.length;
+      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
+    }
+  });
+
   // src/unit-stats.js
   function resolveUnitStats(unit, overrides = {}) {
     const tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(unit?.tier) ? unit.tier : 1));
@@ -142,6 +162,7 @@
   var init_unit_stats = __esm({
     "src/unit-stats.js"() {
       init_unit_grades();
+      init_species_catalog();
       TIER_HP = 40;
       TIER_HP_SCALE = 1.5;
       TIER_ATTACK = 4;
@@ -163,7 +184,7 @@
         statusDuration: 1,
         statusResistance: 0
       });
-      COMMON_UNIT_STAT_PROFILES = Object.freeze([0, 1, 2, 3].map(() => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
+      COMMON_UNIT_STAT_PROFILES = Object.freeze(Array.from({ length: SPECIES_COUNT }, () => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
     }
   });
 
@@ -174,12 +195,18 @@
   var UNIT_ABILITY_PROFILES;
   var init_unit_abilities = __esm({
     "src/unit-abilities.js"() {
-      UNIT_ABILITY_PROFILES = Object.freeze([
-        Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-        Object.freeze({ kind: "lob", windup: 0.38, recovery: 1.25, range: 4.1, skillMultiplier: 1.6, projectileCount: 1, bounces: 0 }),
-        Object.freeze({ kind: "leap", windup: 0.32, recovery: 0.9, range: 2.5, skillMultiplier: 1.3, projectileCount: 0, bounces: 0 }),
-        Object.freeze({ kind: "punch", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
-      ]);
+      UNIT_ABILITY_PROFILES = Object.freeze({
+        0: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        1: Object.freeze({ kind: "lob", windup: 0.38, recovery: 1.25, range: 4.1, skillMultiplier: 1.6, projectileCount: 1, bounces: 0 }),
+        2: Object.freeze({ kind: "leap", windup: 0.32, recovery: 0.9, range: 2.5, skillMultiplier: 1.3, projectileCount: 0, bounces: 0 }),
+        3: Object.freeze({ kind: "punch", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        // One Peanut remains one world unit; its two kernels are presentation-only
+        // and the two deterministic strike slots share the same active window.
+        4: Object.freeze({ kind: "peanut-dual-strike", windup: 0.25, active: 0.5, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        // Walnut's base hammer is a single hit; its guard skill is being held for
+        // the follow-up ability-tree implementation.
+        5: Object.freeze({ kind: "walnut-hammer", windup: 0.5, active: 0.25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
+      });
     }
   });
 
@@ -444,24 +471,6 @@
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
       LEVEL_XP_MULTIPLIER = 1.2;
       SHARED_POINTS_PER_LEVEL = 1;
-    }
-  });
-
-  // src/species-catalog.js
-  function speciesById(id) {
-    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
-  }
-  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
-  var init_species_catalog = __esm({
-    "src/species-catalog.js"() {
-      SPECIES_CATALOG = Object.freeze([
-        Object.freeze({ id: 0, name: "콩", asset: "pea.svg", bossWeight: 1 }),
-        Object.freeze({ id: 1, name: "옥수수", asset: "corn-kernel.svg", bossWeight: 1 }),
-        Object.freeze({ id: 2, name: "강낭콩", asset: "kidney-bean.svg", bossWeight: 1 }),
-        Object.freeze({ id: 3, name: "밤톨", asset: "chestnut.svg", bossWeight: 1 })
-      ]);
-      SPECIES_COUNT = SPECIES_CATALOG.length;
-      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
     }
   });
 
@@ -1121,6 +1130,48 @@
     }
   });
 
+  // src/unit-combat-patterns.js
+  function createPeanutStrikeSchedule({
+    strikeCount = PEANUT_BASE_STRIKE.count,
+    activeSeconds = PEANUT_BASE_STRIKE.activeSeconds,
+    attackMultiplier = PEANUT_BASE_STRIKE.attackMultiplier,
+    spreadRadians = PEANUT_BASE_STRIKE.spreadRadians
+  } = {}) {
+    if (!Number.isSafeInteger(strikeCount) || strikeCount < 1 || strikeCount > MASK_BITS || !Number.isFinite(activeSeconds) || activeSeconds <= 0 || !Number.isFinite(attackMultiplier) || attackMultiplier <= 0 || !Number.isFinite(spreadRadians) || spreadRadians < 0 || spreadRadians > Math.PI) return [];
+    return Array.from({ length: strikeCount }, (_, strikeIndex) => {
+      const side = strikeIndex % 2 === 0 ? -1 : 1;
+      return Object.freeze({
+        strikeIndex,
+        kernelIndex: strikeIndex % 2,
+        side,
+        angleOffsetRadians: side * spreadRadians,
+        dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
+        attackMultiplier
+      });
+    });
+  }
+  function resolveStrikeMask({ resolvedMask = 0, hitMask = 0 } = {}, strikeIndex, didHit) {
+    if (!Number.isSafeInteger(resolvedMask) || resolvedMask < 0 || !Number.isSafeInteger(hitMask) || hitMask < 0 || !Number.isSafeInteger(strikeIndex) || strikeIndex < 0 || strikeIndex >= MASK_BITS || typeof didHit !== "boolean") return null;
+    const bit = 1 << strikeIndex;
+    if ((resolvedMask & bit) !== 0) return null;
+    return {
+      resolvedMask: resolvedMask | bit,
+      hitMask: didHit ? hitMask | bit : hitMask
+    };
+  }
+  var PEANUT_BASE_STRIKE, MASK_BITS;
+  var init_unit_combat_patterns = __esm({
+    "src/unit-combat-patterns.js"() {
+      PEANUT_BASE_STRIKE = Object.freeze({
+        count: 2,
+        attackMultiplier: 0.5,
+        activeSeconds: 0.5,
+        spreadRadians: Math.PI / 12
+      });
+      MASK_BITS = 30;
+    }
+  });
+
   // src/boss-patterns.js
   function createBossPatternRuntime() {
     return {
@@ -1258,6 +1309,7 @@
       init_farm_upgrades();
       init_species_abilities();
       init_species_abilities();
+      init_unit_combat_patterns();
       init_unit_grades();
       init_boss_patterns();
       init_factions();
@@ -1373,6 +1425,7 @@
           this.phase = "windup";
           this.elapsed = 0;
           this.action = { id: ++sim.attackSerial, target: { ...target }, targetId: target.id ?? "boss", hit: false, path: null };
+          if (this.spec.kind === "peanut-dual-strike") Object.assign(this.action, { resolvedMask: 0, hitMask: 0 });
           u.angle = Math.atan2(target.y - u.y, target.x - u.x);
           u.vx = u.vy = 0;
           sim.combatEvent("prepare", u, this.action);
@@ -1410,7 +1463,12 @@
               this.elapsed = 0;
               this.phase = "active";
               const a = this.action;
-              a.path = Ballistics.create(u, a.target, this.spec.kind);
+              if (this.spec.kind === "peanut-dual-strike") {
+                a.path = { from: { x: u.x, y: u.y, z: 0 }, to: { x: u.x, y: u.y, z: 0 }, height: 0, duration: this.spec.active };
+              } else {
+                a.path = Ballistics.create(u, a.target, this.spec.kind);
+                if (this.spec.kind === "walnut-hammer") a.path.duration = this.spec.active;
+              }
               sim.combatEvent("launch", u, a);
               if (this.spec.kind === "lob") {
                 const burst = getCornBurstConfig(sim.abilityProgressionFor(u), u.tier);
@@ -1452,7 +1510,36 @@
           return true;
         }
         afterMove(sim, old) {
-          const a = this.action, u = this.owner, target = sim.attackTarget(u, a);
+          const a = this.action, u = this.owner;
+          if (this.spec.kind === "peanut-dual-strike") {
+            if (this.phase !== "active" || !a?.path) return;
+            const schedule = createPeanutStrikeSchedule({ activeSeconds: this.spec.active });
+            for (const slot of schedule) {
+              if (this.elapsed + 1e-9 < slot.dueSeconds || ((a.resolvedMask || 0) & 1 << slot.strikeIndex) !== 0) continue;
+              const target2 = sim.attackTarget(u, a);
+              let hit2 = null;
+              if (target2 && target2.hp > 0) {
+                const distance = Math.hypot(target2.x - u.x, target2.y - u.y), reach = target2.radius + u.radius + this.spec.range;
+                if (distance <= reach) {
+                  const aim = Math.atan2(target2.y - u.y, target2.x - u.x), side = slot.angleOffsetRadians;
+                  const from = { x: u.x + Math.cos(aim + side) * u.radius * 0.45, y: u.y + Math.sin(aim + side) * u.radius * 0.45, z: 0 };
+                  const to = { x: target2.x - Math.cos(aim) * target2.radius * 0.9, y: target2.y - Math.sin(aim) * target2.radius * 0.9, z: 0 };
+                  hit2 = ArenaGeometry.sweep(from, to, Math.max(0.06, u.radius * 0.2), 0.24, target2);
+                }
+              }
+              const strikeAction = { ...a, hit: false, strikeIndex: slot.strikeIndex };
+              const didHit = !!hit2 && sim.damageCombatTarget(u, strikeAction, target2, hit2, { attackMultiplier: slot.attackMultiplier, attackKind: this.spec.kind, strikeIndex: slot.strikeIndex });
+              const masks = resolveStrikeMask(a, slot.strikeIndex, didHit);
+              if (masks) Object.assign(a, masks);
+            }
+            if (this.elapsed >= this.spec.active - 1e-9) {
+              u.z = 0;
+              u.vz = 0;
+              this.recover(sim, false);
+            }
+            return;
+          }
+          const target = sim.attackTarget(u, a);
           if (this.phase !== "active" || !a?.path || !target) return;
           const areaRadius = scaleAttackArea(u.radius, u);
           const hit = !a.hit && ArenaGeometry.sweep(old, u, areaRadius, 0.65, target);
@@ -2411,7 +2498,7 @@
             }
           }
         }
-        damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null } = {}) {
+        damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null, strikeIndex = null } = {}) {
           if (!hasFaction(u, FACTION_CONFIG.PLAYER) || !areOpposingFactions(u, this.boss) || action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
@@ -2424,7 +2511,7 @@
           const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, armorForTarget: () => armor, roll: () => this.random() });
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp2(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * (damage.critical ? attackerStats.critMultiplier : 1) });
+          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp2(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * (damage.critical ? attackerStats.critMultiplier : 1) });
           this.combatEvent("damage", u, action);
           return true;
         }
@@ -2432,7 +2519,7 @@
           if (action?.targetId === "boss" || !action?.targetId) return areOpposingFactions(unit, this.boss) ? this.boss : null;
           return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0 && areOpposingFactions(unit, candidate)) || null;
         }
-        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null } = {}) {
+        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null } = {}) {
           if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier;
@@ -2445,7 +2532,7 @@
           }
           this.metrics.directHits++;
           this.metrics.basicHits++;
-          this.combat("unit-hit", { attackKind: attackKind || spec.kind, attackId: action.id, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point.x, y: point.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength: damageMultiplier * (damage?.critical ? attackerStats.critMultiplier : 1) });
+          this.combat("unit-hit", { attackKind: attackKind || spec.kind, attackId: action.id, strikeIndex, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point.x, y: point.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength: damageMultiplier * (damage?.critical ? attackerStats.critMultiplier : 1) });
           return true;
         }
         damageCombatTarget(u, action, target, point, options = {}) {
@@ -2529,7 +2616,7 @@
           if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return;
           if (!enemy) return;
           const b = enemy, spec = abilityProfile(u.species), dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1, targetId = enemy === this.boss ? "boss" : enemy.id;
-          const stand = b.radius + spec.range + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + 0.55;
+          const stand = b.radius + spec.range + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + (spec.kind === "peanut-dual-strike" ? 0 : 0.55);
           if (n > max || spec.kind === "lob" && n < min) {
             const slot = ArenaGeometry.clamp({ x: b.x + dx / n * stand, y: b.y + dy / n * stand }, this.scene, u.radius);
             this.steer(u, slot.x, slot.y, dt, scaleMoveSpeed(4.1, u));
@@ -2756,7 +2843,7 @@
           }
         }
         bossMouthPoint() {
-          const anchors = [[176, 210, 160, 350], [140, 112, 142.5, 295], [119, 109, 130, 320], [160, 145, 160, 261]][this.boss.species], b = this.boss, scale = 2 * b.radius * 1.16 / 220, forward = (anchors[0] - anchors[2]) * scale, vertical = Math.max(0, (anchors[3] - anchors[1]) * scale / 0.785);
+          const anchors = [[176, 210, 160, 350], [140, 112, 142.5, 295], [119, 109, 130, 320], [160, 145, 160, 261], [160, 164, 160, 267], [160, 165, 160, 266]][this.boss.species] || [160, 165, 160, 266], b = this.boss, scale = 2 * b.radius * 1.16 / 220, forward = (anchors[0] - anchors[2]) * scale, vertical = Math.max(0, (anchors[3] - anchors[1]) * scale / 0.785);
           return { x: b.x + Math.cos(b.angle) * forward, y: b.y + Math.sin(b.angle) * forward, z: vertical };
         }
         bossSummonLanding(angle, action = null) {
@@ -3040,7 +3127,7 @@
     const roster = ownerRoster(raidWorld, ownerId);
     const manifest = /* @__PURE__ */ new Map();
     for (const troop of roster.troops) {
-      if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 || !Number.isInteger(troop.species) || troop.species < 0 || troop.species > 3 || !isValidUnitTier(troop.tier) || typeof troop.deployed !== "boolean" || manifest.has(troop.farmId)) {
+      if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 || !Number.isInteger(troop.species) || troop.species < 0 || troop.species >= SPECIES_COUNT || !isValidUnitTier(troop.tier) || typeof troop.deployed !== "boolean" || manifest.has(troop.farmId)) {
         fail("The owner Raid roster must have unique Farm IDs and valid deployed entries");
       }
       manifest.set(troop.farmId, troop);
@@ -3296,6 +3383,7 @@
     "src/raid-settlement.js"() {
       init_unit_grades();
       init_factions();
+      init_species_catalog();
       RAID_SLEEP_SECONDS = 60;
       RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
       fail = (message) => {
@@ -3582,6 +3670,7 @@
       if (u.ability.action) {
         const a = u.ability.action;
         assert(integer(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
+        if (u.species === 4) assert(integer(a.resolvedMask, 0, 3) && integer(a.hitMask, 0, 3) && (a.hitMask & ~a.resolvedMask) === 0);
         if (a.path) validatePath(a.path);
         if (a.pendingShots !== void 0) {
           assert(Array.isArray(a.pendingShots) && a.pendingShots.length <= 3 && a.pendingShots.every((shot) => integer(shot.shotIndex, 1, 4) && Number.isFinite(shot.delaySeconds) && shot.delaySeconds >= 0 && Number.isFinite(shot.attackMultiplier) && shot.attackMultiplier > 0 && shot.attackMultiplier <= 10));
@@ -3677,7 +3766,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.6";
+      PRODUCT_VERSION = "0.7.7";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4172,7 +4261,7 @@
     if (parts.has("hilum") && id === "attack.charge") extras.hilum = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
     return { body, arms, extras, impact, releasePulse: 0 };
   }
-  var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c", "#9a6947"];
+  var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c", "#9a6947", "#d7914f", "#a86b32"];
   var Diorama = class {
     constructor(canvas2) {
       this.canvas = canvas2;
@@ -4181,7 +4270,7 @@
       this.vectorAssets = /* @__PURE__ */ new Map();
       this.vectorPlayers = /* @__PURE__ */ new Map();
       const entries = Object.entries(TROOP_VECTOR_ASSETS);
-      if (entries.length !== 4 || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
+      if (entries.length !== CONFIG.maxSpecies || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
       this.meshes = new MeshRenderer(this.device);
       this.ctx.meshRenderer = this.meshes;
       for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled) });
@@ -4373,7 +4462,7 @@
     unitRingEffects(u, world) {
       const effects = [], a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
       if (u.buffed && u.hp > 0) effects.push({ radius: u.radius + 0.16, color: "#eacb72", width: 0.055, progress: 1 });
-      if (a.phase === "windup" && s) effects.push({ radius: u.radius + 0.1, color: ATTACK_ACCENTS[u.species], width: 0.065, progress: Math.min(1, a.elapsed / s.windup) });
+      if (a.phase === "windup" && s) effects.push({ radius: u.radius + 0.1, color: ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0], width: 0.065, progress: Math.min(1, a.elapsed / s.windup) });
       const breeding = farmBreedingCooldown(u, world, CONFIG.breedCooldownSeconds);
       if (breeding && breeding.progress > 0) effects.push({ radius: u.radius + 0.085, color: "#8fac68", width: 0.035, progress: breeding.progress });
       return effects;

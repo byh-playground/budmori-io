@@ -1,4 +1,5 @@
 import { MAX_UNIT_TIER, UNIT_GRADES } from './unit-grades.js';
+import { SPECIES_COUNT } from './species-catalog.js';
 
 const TIER_HP = 40;
 const TIER_HP_SCALE = 1.5;
@@ -28,7 +29,7 @@ export const COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
 // Static profiles are the one production source for unit common-stat tuning.
 // All current species inherit neutral values; fixtures may override these to
 // exercise the shared math without changing live balance.
-export const COMMON_UNIT_STAT_PROFILES = Object.freeze([0, 1, 2, 3].map(() => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
+export const COMMON_UNIT_STAT_PROFILES = Object.freeze(Array.from({ length: SPECIES_COUNT }, () => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
 
 export function resolveUnitStats(unit, overrides = {}) {
   const tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(unit?.tier) ? unit.tier : 1));

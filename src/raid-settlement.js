@@ -9,6 +9,7 @@
 
 import {isValidUnitTier} from './unit-grades.js';
 import {FACTION_CONFIG,hasFaction} from './factions.js';
+import {SPECIES_COUNT} from './species-catalog.js';
 
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
@@ -81,7 +82,7 @@ function raidOwnerManifest(raidWorld, ownerId) {
   const manifest = new Map();
   for (const troop of roster.troops) {
     if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 ||
-        !Number.isInteger(troop.species) || troop.species < 0 || troop.species > 3 ||
+        !Number.isInteger(troop.species) || troop.species < 0 || troop.species >= SPECIES_COUNT ||
         !isValidUnitTier(troop.tier) ||
         typeof troop.deployed !== 'boolean' || manifest.has(troop.farmId)) {
       fail('The owner Raid roster must have unique Farm IDs and valid deployed entries');
