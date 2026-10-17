@@ -33,46 +33,46 @@
     <path id="walnut-side-brain-groove-left" d="M 0 0" fill="none" opacity="0"/>
     <path id="walnut-side-brain-groove-right" d="M 0 0" fill="none" opacity="0"/>
   </g>  <g id="face-neutral" transform="translate(-415 10) scale(1.25)">
-    <ellipse id="neutral-blush-left" cx="424" cy="124" rx="5.5" ry="3.0" fill="#e98178"/>
-    <ellipse id="neutral-blush-right" cx="493" cy="124" rx="5.5" ry="3.0" fill="#e98178"/>
-    <ellipse id="neutral-eye-left" cx="438" cy="112" rx="6.3" ry="6.7" fill="#352019"/>
-    <ellipse id="neutral-eye-right" cx="480" cy="112" rx="6.3" ry="6.7" fill="#352019"/>
-    <path id="neutral-mouth" d="M451 122 C454 127 461 127 466 122" fill="none" stroke="#352019" stroke-width="2.6" stroke-linecap="round"/>
+    <ellipse id="neutral-blush-left" cx="430" cy="125" rx="7.5" ry="3.5" fill="#e27c63"/>
+    <ellipse id="neutral-blush-right" cx="489" cy="125" rx="7.5" ry="3.5" fill="#e27c63"/>
+    <ellipse id="neutral-eye-left" cx="438.5" cy="113" rx="6.7" ry="7.2" fill="#431811"/>
+    <ellipse id="neutral-eye-right" cx="480.5" cy="113" rx="6.7" ry="7.2" fill="#431811"/>
+    <path id="neutral-mouth" d="M451.5 122 C454.5 128 461.5 128 466.5 122" fill="none" stroke="#431811" stroke-width="2.6" stroke-linecap="round"/>
   </g>
   <g id="face-happy" transform="translate(0 10)">
     <ellipse id="walnut-happy-blush-left" cx="111" cy="137" rx="12" ry="6" fill="#e98278"/>
     <ellipse id="walnut-happy-blush-right" cx="209" cy="137" rx="12" ry="6" fill="#e98278"/>
-    <path id="walnut-happy-eyes-mouth" d="M126 121 Q135 109 144 121 M176 121 Q185 109 194 121 M146 143 Q160 162 174 143 Z" fill="#39231d" stroke="#39231d" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="walnut-happy-eyes-mouth" d="M126 121 Q135 109 144 121 M176 121 Q185 109 194 121 M146 143 Q160 162 174 143 Z" fill="#431811" stroke="#431811" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <g id="face-focused" transform="translate(0 10)">
-    <path id="walnut-focused-brows" d="M125 109 L144 114 M176 114 L195 109" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
-    <ellipse id="walnut-focused-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#39231d"/>
-    <ellipse id="walnut-focused-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#39231d"/>
-    <path id="walnut-focused-mouth" d="M150 150 L170 150" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="walnut-focused-brows" d="M125 109 L144 114 M176 114 L195 109" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
+    <ellipse id="walnut-focused-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#431811"/>
+    <ellipse id="walnut-focused-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#431811"/>
+    <path id="walnut-focused-mouth" d="M150 150 L170 150" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   </g>
   <g id="face-attack" transform="translate(0 10)">
-    <path id="walnut-attack-brows" d="M125 110 L144 115 M176 115 L195 110" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
-    <ellipse id="walnut-attack-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#39231d"/>
-    <ellipse id="walnut-attack-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#39231d"/>
-    <ellipse id="walnut-attack-mouth" cx="160" cy="151" rx="5" ry="7" fill="#39231d"/>
+    <path id="walnut-attack-brows" d="M125 110 L144 115 M176 115 L195 110" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
+    <ellipse id="walnut-attack-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#431811"/>
+    <ellipse id="walnut-attack-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#431811"/>
+    <ellipse id="walnut-attack-mouth" cx="160" cy="151" rx="5" ry="7" fill="#431811"/>
   </g>
   <g id="face-surprised" transform="translate(0 10)">
-    <ellipse id="walnut-surprised-eye-left" cx="135" cy="121" rx="8.5" ry="9.5" fill="none" stroke="#39231d" stroke-width="3.5"/>
-    <ellipse id="walnut-surprised-eye-right" cx="185" cy="121" rx="8.5" ry="9.5" fill="none" stroke="#39231d" stroke-width="3.5"/>
-    <ellipse id="walnut-surprised-mouth" cx="160" cy="151" rx="5" ry="7" fill="none" stroke="#39231d" stroke-width="3.5"/>
+    <ellipse id="walnut-surprised-eye-left" cx="135" cy="121" rx="8.5" ry="9.5" fill="none" stroke="#431811" stroke-width="3.5"/>
+    <ellipse id="walnut-surprised-eye-right" cx="185" cy="121" rx="8.5" ry="9.5" fill="none" stroke="#431811" stroke-width="3.5"/>
+    <ellipse id="walnut-surprised-mouth" cx="160" cy="151" rx="5" ry="7" fill="none" stroke="#431811" stroke-width="3.5"/>
   </g>
   <g id="face-hurt" transform="translate(0 10)">
-    <path id="walnut-hurt-eyes" d="M127 113 L143 129 M143 113 L127 129 M177 113 L193 129 M193 113 L177 129" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
-    <path id="walnut-hurt-mouth" d="M148 153 Q160 142 172 153" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="walnut-hurt-eyes" d="M127 113 L143 129 M143 113 L127 129 M177 113 L193 129 M193 113 L177 129" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="walnut-hurt-mouth" d="M148 153 Q160 142 172 153" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   </g>
   <g id="face-hungry" transform="translate(0 10)">
-    <ellipse id="walnut-hungry-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#39231d"/>
-    <ellipse id="walnut-hungry-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#39231d"/>
-    <path id="walnut-hungry-mouth" d="M160 145 C152 145 151 157 160 162 C169 157 168 145 160 145 Z" fill="#39231d"/>
+    <ellipse id="walnut-hungry-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#431811"/>
+    <ellipse id="walnut-hungry-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#431811"/>
+    <path id="walnut-hungry-mouth" d="M160 145 C152 145 151 157 160 162 C169 157 168 145 160 145 Z" fill="#431811"/>
   </g>
   <g id="face-dead" transform="translate(0 10)">
-    <path id="walnut-dead-eyes" d="M127 113 L143 129 M143 113 L127 129 M177 113 L193 129 M193 113 L177 129" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
-    <path id="walnut-dead-mouth" d="M151 152 L169 152" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="walnut-dead-eyes" d="M127 113 L143 129 M143 113 L127 129 M177 113 L193 129 M193 113 L177 129" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="walnut-dead-mouth" d="M151 152 L169 152" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   </g>
 </g>
 
@@ -89,9 +89,9 @@
   <path id="walnut-guard-top-crease" d="M160 47 Q157 62 157 77" fill="none" stroke="#b9791d" stroke-width="4" stroke-linecap="round"/>
   <ellipse id="walnut-guard-blush-left" cx="120" cy="116" rx="11" ry="6" fill="#e98278"/>
   <ellipse id="walnut-guard-blush-right" cx="200" cy="116" rx="11" ry="6" fill="#e98278"/>
-  <ellipse id="walnut-guard-eye-left" cx="137" cy="105" rx="7.5" ry="8.5" fill="#39231d"/>
-  <ellipse id="walnut-guard-eye-right" cx="183" cy="105" rx="7.5" ry="8.5" fill="#39231d"/>
-  <path id="walnut-guard-mouth" d="M151 124 Q160 133 169 124" fill="none" stroke="#39231d" stroke-width="3.5" stroke-linecap="round"/>
+  <ellipse id="walnut-guard-eye-left" cx="137" cy="105" rx="7.5" ry="8.5" fill="#431811"/>
+  <ellipse id="walnut-guard-eye-right" cx="183" cy="105" rx="7.5" ry="8.5" fill="#431811"/>
+  <path id="walnut-guard-mouth" d="M151 124 Q160 133 169 124" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   <path id="walnut-guard-arm-left" d="M105 166 C116 174 128 172 140 161 C147 154 154 159 150 167 C142 180 124 186 109 177" fill="none" stroke="#613b22" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
   <path id="walnut-guard-arm-right" d="M215 166 C204 174 192 172 180 161 C173 154 166 159 170 167 C178 180 196 186 211 177" fill="none" stroke="#613b22" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
   <path id="walnut-guard-foot" d="M154 187 C152 195 154 205 160 211 C166 205 168 195 166 187 Z" fill="#d89328" stroke="#3d2b22" stroke-width="4.2" stroke-linejoin="round"/>

@@ -4,8 +4,8 @@
     <ellipse id="barley-ground-shadow" cx="465" cy="209" rx="57" ry="7.5" fill="#cbbd9e" opacity=".46"/>
     <path id="barley-foot-left" d="M434 187 C432 193 431 202 434 207 C437 212 444 213 449 209 C454 205 456 196 457 189 Z" fill="#c9883d" stroke="#342017" stroke-width="2.8" stroke-linejoin="round"/>
     <path id="barley-foot-right" d="M470 189 C470 197 472 206 477 210 C482 214 489 211 491 205 C493 199 491 190 489 186 Z" fill="#c9883d" stroke="#342017" stroke-width="2.8" stroke-linejoin="round"/>
-    <path id="barley-arm-left" d="M427 151 C429 147 433 145 437 145 C441 146 443 150 441 154 C438 157 432 158 428 156 Z" fill="#d9a34c" stroke="#342017" stroke-width="2.4" stroke-linejoin="round"/>
-    <path id="barley-arm-right" d="M501 139 C506 140 509 145 513 151 L523 163 C527 168 529 172 527 175 C525 178 521 177 517 175 C512 172 507 167 503 163 C498 158 495 153 495 148 C495 144 497 140 501 139 Z" fill="#dcae55" stroke="#342017" stroke-width="2.8" stroke-linejoin="round"/>
+    <path id="barley-arm-left" d="M422 139 C415 141 410 147 408 154 C406 160 409 166 414 169 C420 172 426 169 432 164 C437 160 441 155 439 150 C437 144 430 140 422 139 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
+    <path id="barley-arm-right" d="M508 141 C514 144 519 150 522 157 C525 163 523 169 518 172 C512 174 507 170 502 165 C498 161 494 156 496 151 C498 146 502 142 508 141 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
     <path id="barley-seed-outline" d="M 465.5 87.5 C 482.0 87.5 497.0 94.0 506.0 105.0 C 512.5 114.0 515.5 126.0 515.5 139.0 C 515.5 153.0 512.5 166.0 506.0 175.0 C 499.0 184.0 487.0 191.0 475.0 194.0 C 471.5 195.0 468.0 194.5 465.5 194.5 C 456.0 194.5 447.5 192.0 440.0 188.0 C 431.0 183.0 424.0 175.0 420.5 164.0 C 417.0 155.0 415.5 145.0 415.5 135.0 C 415.5 124.0 418.5 113.0 424.0 104.0 C 432.0 94.0 445.0 89.0 458.0 88.5 C 461.0 87.5 463.0 87.5 465.5 87.5 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
     <path id="barley-seed-right-shade" d="M476 94 C490 102 500 118 504 136 C508 154 504 171 495 183 C488 191 478 196 468 198 C480 185 486 168 487 150 C489 130 484 108 476 94 Z" fill="#c98f3a" opacity=".24"/>
     <path id="barley-seed-base-shade" d="M418 176 C430 188 443 193 458 194 C473 195 486 190 497 180 C493 188 485 194 476 196 C460 201 442 197 430 190 C424 186 420 181 418 176 Z" fill="#bf8736" opacity=".24"/>
@@ -15,46 +15,46 @@
     <path id="barley-seed-side-crease" d="M486 149 Q482 158 477 165 M482 162 Q478 169 474 174" fill="none" stroke="#ae7a32" stroke-width="1.9" stroke-linecap="round" opacity=".66"/>
     <path id="barley-seed-base-crease" d="M459 139 C459 155 460 174 463 195" fill="none" stroke="#aa7932" stroke-width="2.8" stroke-linecap="round" opacity=".8"/>
     <g id="face-neutral">
-      <ellipse id="barley-neutral-blush-left" cx="438" cy="126" rx="7" ry="3.6" fill="#e98275"/>
-      <ellipse id="barley-neutral-blush-right" cx="493" cy="126" rx="7" ry="3.6" fill="#e98275"/>
-      <ellipse id="barley-neutral-eye-left" cx="446" cy="114" rx="6.1" ry="6.2" fill="#4b211b"/>
-      <ellipse id="barley-neutral-eye-right" cx="486" cy="114" rx="6.1" ry="6.2" fill="#4b211b"/>
-      <path id="barley-neutral-mouth" d="M457 124 C460 130 469 131 473 124" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round"/>
+      <ellipse id="barley-neutral-blush-left" cx="437.5" cy="126" rx="7" ry="4.2" fill="#e98275"/>
+      <ellipse id="barley-neutral-blush-right" cx="493" cy="126" rx="7" ry="4.2" fill="#e98275"/>
+      <ellipse id="barley-neutral-eye-left" cx="445.6" cy="114.2" rx="6.5" ry="6.5" fill="#4b211b"/>
+      <ellipse id="barley-neutral-eye-right" cx="484.9" cy="114.3" rx="6.5" ry="6.5" fill="#4b211b"/>
+      <path id="barley-neutral-mouth" d="M458 122 C461 128 469 129 473 122" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round"/>
     </g>
     <g id="face-happy">
-      <ellipse id="barley-happy-blush-left" cx="438" cy="126" rx="7" ry="3.6" fill="#e98275"/>
-      <ellipse id="barley-happy-blush-right" cx="493" cy="126" rx="7" ry="3.6" fill="#e98275"/>
-      <path id="barley-happy-eye-left" d="M440 114 Q446 108 452 114" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
-      <path id="barley-happy-eye-right" d="M480 114 Q486 108 492 114" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
+      <ellipse id="barley-happy-blush-left" cx="437.5" cy="126" rx="7" ry="4.2" fill="#e98275"/>
+      <ellipse id="barley-happy-blush-right" cx="493" cy="126" rx="7" ry="4.2" fill="#e98275"/>
+      <path id="barley-happy-eye-left" d="M439.6 114.2 Q445.6 107.7 451.6 114.2" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
+      <path id="barley-happy-eye-right" d="M478.9 114.3 Q484.9 107.8 490.9 114.3" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-happy-mouth" d="M457 123 Q465 132 473 123" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
     </g>
     <g id="face-focused">
-      <ellipse id="barley-focused-eye-left" cx="446" cy="114" rx="5.4" ry="6" fill="#4b211b"/>
-      <ellipse id="barley-focused-eye-right" cx="486" cy="114" rx="5.4" ry="6" fill="#4b211b"/>
+      <ellipse id="barley-focused-eye-left" cx="445.6" cy="114.2" rx="5.4" ry="6" fill="#4b211b"/>
+      <ellipse id="barley-focused-eye-right" cx="484.9" cy="114.3" rx="5.4" ry="6" fill="#4b211b"/>
       <path id="barley-focused-brows" d="M439 104 L452 107 M479 107 L493 104" fill="none" stroke="#39271b" stroke-width="2" stroke-linecap="round"/>
       <path id="barley-focused-mouth" d="M458 126 L472 126" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round"/>
     </g>
     <g id="face-attack">
-      <ellipse id="barley-attack-eye-left" cx="446" cy="114" rx="5" ry="6" fill="#4b211b"/>
-      <ellipse id="barley-attack-eye-right" cx="486" cy="114" rx="5" ry="6" fill="#4b211b"/>
+      <ellipse id="barley-attack-eye-left" cx="445.6" cy="114.2" rx="5" ry="6" fill="#4b211b"/>
+      <ellipse id="barley-attack-eye-right" cx="484.9" cy="114.3" rx="5" ry="6" fill="#4b211b"/>
       <path id="barley-attack-brows" d="M439 105 L452 108 M479 108 L493 105" fill="none" stroke="#39271b" stroke-width="2" stroke-linecap="round"/>
       <path id="barley-attack-mouth" d="M456 124 L460 127 L465 124 L470 127 L474 124" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
     <g id="face-surprised">
-      <ellipse id="barley-surprised-eye-left" cx="446" cy="114" rx="5.6" ry="6" fill="#4b211b"/>
-      <ellipse id="barley-surprised-eye-right" cx="486" cy="114" rx="5.6" ry="6" fill="#4b211b"/>
+      <ellipse id="barley-surprised-eye-left" cx="445.6" cy="114.2" rx="5.6" ry="6" fill="#4b211b"/>
+      <ellipse id="barley-surprised-eye-right" cx="484.9" cy="114.3" rx="5.6" ry="6" fill="#4b211b"/>
       <ellipse id="barley-surprised-mouth" cx="465" cy="126" rx="3.5" ry="4.5" fill="none" stroke="#2c1c18" stroke-width="2"/>
     </g>
     <g id="face-hurt">
-      <path id="barley-hurt-eye-left" d="M440 114 L452 114" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
-      <path id="barley-hurt-eye-right" d="M480 114 L492 114" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
+      <path id="barley-hurt-eye-left" d="M439.6 114.2 L451.6 114.2" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
+      <path id="barley-hurt-eye-right" d="M478.9 114.3 L490.9 114.3" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-hurt-mouth" d="M456 131 Q465 124 474 131" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
-      <ellipse id="barley-hurt-blush-left" cx="438" cy="126" rx="7" ry="3.6" fill="#e98275"/>
-      <ellipse id="barley-hurt-blush-right" cx="493" cy="126" rx="7" ry="3.6" fill="#e98275"/>
+      <ellipse id="barley-hurt-blush-left" cx="437.5" cy="126" rx="7" ry="4.2" fill="#e98275"/>
+      <ellipse id="barley-hurt-blush-right" cx="493" cy="126" rx="7" ry="4.2" fill="#e98275"/>
     </g>
     <g id="face-hungry">
-      <circle id="barley-hungry-eye-left" cx="446" cy="114" r="5.8" fill="#4b211b"/>
-      <circle id="barley-hungry-eye-right" cx="486" cy="114" r="5.8" fill="#4b211b"/>
+      <circle id="barley-hungry-eye-left" cx="445.6" cy="114.2" r="6.5" fill="#4b211b"/>
+      <circle id="barley-hungry-eye-right" cx="484.9" cy="114.3" r="6.5" fill="#4b211b"/>
       <circle id="barley-hungry-glint-left" cx="436" cy="112" r="1.5" fill="#fff5d8"/>
       <circle id="barley-hungry-glint-right" cx="484" cy="112" r="1.5" fill="#fff5d8"/>
       <path id="barley-hungry-mouth" d="M459 125 Q465 129 471 125" fill="none" stroke="#2c1c18" stroke-width="2" stroke-linecap="round"/>
@@ -65,19 +65,25 @@
     </g>
   </g>
   <g id="awn-crown" transform="translate(-667.7 -51.54) scale(1.78)">
-    <path id="barley-leaf-outline" d="M417 97 C419 89 423 81 430 74 C432 72 435 71 438 70 C439 69 438 68 437 67 C441 63 446 60 452 58 C455 57 458 57 461 57 C462 56 460 54 460 53 C466 51 472 50 478 52 C481 52 479 51 478 50 C485 50 492 53 498 58 C500 59 499 57 498 56 C502 60 506 66 507 72 C508 79 505 87 500 92 C496 96 492 98 488 101 L482 105 C486 103 490 100 492 97 L466 106 C470 104 473 101 475 98 L447 106 C451 104 454 101 456 98 L428 104 C432 102 435 99 438 96 L417 97 Z" fill="#dcaa50" stroke="#342017" stroke-width="2.6" stroke-linejoin="miter" stroke-miterlimit="2" stroke-linecap="round"/>
-    <path id="barley-leaf-lower-shade" d="M420 94 C435 99 451 97 468 91 C482 86 495 78 507 67 C502 78 494 86 484 92 C467 102 444 105 426 101 Z" fill="#c88d39" opacity=".16"/>
-    <path id="barley-leaf-central-crease" d="M420 95 C440 85 459 75 480 65 C486 62 489 61 492 61" fill="none" stroke="#a87935" stroke-width="1.8" stroke-linecap="round"/>
-    <path id="barley-leaf-vein-left-one" d="M432 89 Q437 78 429 73" fill="none" stroke="#a77332" stroke-width="1.4" stroke-linecap="round"/>
-    <path id="barley-leaf-vein-left-two" d="M445 83 Q452 70 450 58" fill="none" stroke="#a77332" stroke-width="1.4" stroke-linecap="round"/>
-    <path id="barley-leaf-vein-mid" d="M461 74 Q470 61 469 52" fill="none" stroke="#a77332" stroke-width="1.4" stroke-linecap="round"/>
-    <path id="barley-leaf-vein-right" d="M478 67 Q489 57 491 56" fill="none" stroke="#a77332" stroke-width="1.4" stroke-linecap="round"/>
-    <path id="barley-leaf-curled-tip" d="M506 79 C512 75 517 70 520 65 C523 60 524 56 525 53 C526 50 528 49 529 51 C530 53 528 57 526 60 C522 69 516 75 508 81 Z" fill="#dcaa50" stroke="#342017" stroke-width="1.7" stroke-linejoin="round"/>
-    <path id="barley-leaf-tip-highlight" d="M507 78 C515 73 521 65 526 53" fill="none" stroke="#a87935" stroke-width="1.3" stroke-linecap="round"/>
+    <path id="barley-ear-base" d="M417 98 C421 92 425 84 429 80 C430 75 436 68 443 65 C447 60 455 57 461 56 C466 52 474 50 480 52 C487 51 495 55 499 60 C505 63 510 69 509 76 C510 83 505 90 500 94 C495 98 490 102 484 104 C478 106 472 102 466 100 C460 104 454 106 449 102 C444 105 438 104 434 101 C428 104 422 103 419 100 C417 99 417 98 417 98 Z" fill="#dba94d"/>
+    <path id="barley-ear-kernel-01" d="M419 98 C421 91 426 84 432 80 C437 80 441 83 442 88 C441 94 435 100 428 102 C424 102 421 100 419 98 Z" fill="#e4b44f" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-kernel-02" d="M428 85 C431 77 437 70 444 67 C449 67 452 71 452 76 C451 82 445 88 438 90 C434 89 430 87 428 85 Z" fill="#dfae4b" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-kernel-03" d="M438 97 C441 89 447 82 454 78 C459 78 462 82 462 87 C461 93 455 99 448 102 C444 101 440 99 438 97 Z" fill="#e8bb58" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-kernel-04" d="M446 82 C449 73 456 66 463 62 C468 62 471 66 471 71 C470 77 464 83 457 87 C453 86 449 84 446 82 Z" fill="#dfae4b" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-kernel-05" d="M458 93 C461 85 468 78 475 74 C480 74 483 78 483 83 C482 89 476 95 469 98 C465 97 461 95 458 93 Z" fill="#e7b955" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-kernel-06" d="M467 77 C470 69 478 62 485 58 C490 58 493 62 493 68 C492 74 486 80 479 84 C475 83 470 80 467 77 Z" fill="#e1b14e" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-kernel-07" d="M480 85 C484 77 491 71 498 68 C503 69 506 73 505 78 C503 84 496 90 489 93 C485 91 482 88 480 85 Z" fill="#e8bb58" stroke="#ad7e39" stroke-width="1.1" stroke-linejoin="round"/>
+    <path id="barley-ear-rachis" d="M421 97 C445 86 469 74 505 66" fill="none" stroke="#a67835" stroke-width="1.7" stroke-linecap="round"/>
+    <path id="barley-ear-awn-left-low" d="M424 91 C419 88 414 87 410 87" fill="none" stroke="#342017" stroke-width="1.5" stroke-linecap="round"/>
+    <path id="barley-ear-awn-left-high" d="M433 77 C428 73 422 71 417 71" fill="none" stroke="#342017" stroke-width="1.5" stroke-linecap="round"/>
+    <path id="barley-ear-awn-mid" d="M451 64 C448 60 445 57 442 55" fill="none" stroke="#342017" stroke-width="1.5" stroke-linecap="round"/>
+    <path id="barley-ear-outline" d="M417 98 C421 92 425 84 429 80 C430 75 436 68 443 65 C447 60 455 57 461 56 C466 52 474 50 480 52 C487 51 495 55 499 60 C505 63 510 69 509 76 C510 83 505 90 500 94 C495 98 490 102 484 104 C478 106 472 102 466 100 C460 104 454 106 449 102 C444 105 438 104 434 101 C428 104 422 103 419 100 C417 99 417 98 417 98 Z" fill="none" stroke="#342017" stroke-width="2.3" stroke-linejoin="round"/>
+    <path id="barley-ear-awn-right" d="M506 73 C514 69 519 62 523 55 C525 51 527 48 529 49 C531 50 529 54 527 58 C522 67 516 73 508 77" fill="none" stroke="#342017" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="barley-ear-awn-right-highlight" d="M508 73 C516 68 522 59 527 51" fill="none" stroke="#a87935" stroke-width="0.9" stroke-linecap="round"/>
   </g>
   <g id="flail" transform="translate(-667.7 -51.54) scale(1.78)">
-    <path id="barley-flail-grip-outline" d="M440 162 C435 153 430 141 425 130" fill="none" stroke="#342017" stroke-width="6" stroke-linecap="round"/>
-    <path id="barley-flail-grip-wood" d="M440 162 C435 153 430 141 425 130" fill="none" stroke="#8b5b32" stroke-width="3.5" stroke-linecap="round"/>
+    <path id="barley-flail-grip-outline" d="M432 164 C429 154 426 142 425 130" fill="none" stroke="#342017" stroke-width="6" stroke-linecap="round"/>
+    <path id="barley-flail-grip-wood" d="M432 164 C429 154 426 142 425 130" fill="none" stroke="#8b5b32" stroke-width="3.5" stroke-linecap="round"/>
     <path id="barley-flail-cap" d="M421 129 Q425 125 429 129 L430 134 L423 136 Z" fill="#80552f" stroke="#342017" stroke-width="2" stroke-linejoin="round"/>
     <path id="barley-flail-cord-left" d="M423 131 C418 136 416 142 415 147" fill="none" stroke="#342017" stroke-width="1.5" stroke-linecap="round"/>
     <path id="barley-flail-cord-center" d="M426 133 C423 139 423 145 424 151" fill="none" stroke="#342017" stroke-width="1.5" stroke-linecap="round"/>
@@ -91,5 +97,6 @@
     <path id="barley-shield-weave-vertical" d="M494 150 L494 158 M500 147 L500 155 M506 150 L506 158 M493 163 L493 172 M500 158 L500 168 M507 163 L507 172 M498 171 L498 180 M504 171 L504 180" fill="none" stroke="#9d7135" stroke-width="1.2" stroke-linecap="round"/>
     <path id="barley-shield-weave-horizontal" d="M492 155 L509 155 M491 161 L511 161 M491 167 L510 167 M494 174 L507 174 M497 180 L504 180" fill="none" stroke="#9d7135" stroke-width="1.2" stroke-linecap="round"/>
     <path id="barley-shield-top-chevron" d="M493 155 L501 151 L508 155" fill="none" stroke="#815a2d" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="barley-shield-grip-hand" d="M513 158 C516 154 521 154 525 157 C529 160 529 165 525 169 C521 173 516 171 513 168 C510 165 510 161 513 158 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
   </g>
 </svg>

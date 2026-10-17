@@ -14,63 +14,61 @@
       <ellipse id="rice-body-highlight-small" cx="92" cy="121" rx="2.4" ry="3.5" fill="#ffffff" opacity=".74"/>
     </g>
     <g id="face-neutral">
-      <ellipse id="rice-neutral-blush-left" cx="104" cy="183" rx="8.5" ry="5.5" fill="#e77b70"/>
-      <ellipse id="rice-neutral-blush-right" cx="214" cy="183" rx="8.5" ry="5.5" fill="#e77b70"/>
-      <ellipse id="rice-neutral-eye-left" cx="121" cy="163" rx="9" ry="9" fill="#4b211b"/>
-      <ellipse id="rice-neutral-eye-right" cx="199" cy="163" rx="9" ry="9" fill="#4b211b"/>
-      <path id="rice-neutral-mouth" d="M143 178 Q160 193 177 178" fill="none" stroke="#2c1c18" stroke-width="3.3" stroke-linecap="round"/>
+      <ellipse id="rice-neutral-blush-left" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e77b70"/>
+      <ellipse id="rice-neutral-blush-right" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e77b70"/>
+      <ellipse id="rice-neutral-eye-left" cx="126" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <ellipse id="rice-neutral-eye-right" cx="189" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <path id="rice-neutral-mouth" d="M145 177 Q159 195 173 177" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
     </g>
-    <g id="face-happy" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <path id="rice-happy-eye-left" d="M131 160 Q140 151 149 160" fill="none" stroke="#2c1c18" stroke-width="3.6" stroke-linecap="round"/>
-      <path id="rice-happy-eye-right" d="M171 160 Q180 151 189 160" fill="none" stroke="#2c1c18" stroke-width="3.6" stroke-linecap="round"/>
-      <path id="rice-happy-mouth" d="M151 180 Q160 193 169 180" fill="none" stroke="#2c1c18" stroke-width="3.8" stroke-linecap="round"/>
-      <ellipse id="rice-happy-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="121" cy="181" rx="8" ry="5.5" fill="#e97c72"/>
-      <ellipse id="rice-happy-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="199" cy="181" rx="8" ry="5.5" fill="#e97c72"/>
+    <g id="face-happy">
+      <path id="rice-happy-eye-left" d="M116 164 Q126 151 136 164" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <path id="rice-happy-eye-right" d="M179 164 Q189 151 199 164" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <path id="rice-happy-mouth" d="M145 177 Q159 195 173 177" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <ellipse id="rice-happy-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
+      <ellipse id="rice-happy-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
     </g>
-    <g id="face-focused" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <ellipse id="rice-focused-eye-left" cx="140" cy="160" rx="8" ry="10" fill="#4b211b"/>
-      <ellipse id="rice-focused-eye-right" cx="180" cy="160" rx="8" ry="10" fill="#4b211b"/>
-      <path id="rice-focused-brows" d="M130 146 L148 151 M172 151 L190 146" fill="none" stroke="#33241c" stroke-width="3" stroke-linecap="round"/>
-      <path id="rice-focused-mouth" d="M152 184 L168 184" fill="none" stroke="#2c1c18" stroke-width="3.6" stroke-linecap="round"/>
+    <g id="face-focused">
+      <ellipse id="rice-focused-eye-left" cx="126" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <ellipse id="rice-focused-eye-right" cx="189" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <path id="rice-focused-brows" d="M115 147 L136 152 M179 152 L200 147" fill="none" stroke="#33241c" stroke-width="3" stroke-linecap="round"/>
+      <path id="rice-focused-mouth" d="M145 183 L173 183" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
     </g>
-    <g id="face-attack" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <ellipse id="rice-attack-eye-left" cx="140" cy="160" rx="7" ry="10" fill="#4b211b"/>
-      <ellipse id="rice-attack-eye-right" cx="180" cy="160" rx="7" ry="10" fill="#4b211b"/>
-      <path id="rice-attack-brows" d="M130 148 L149 152 M171 152 L190 148" fill="none" stroke="#33241c" stroke-width="3" stroke-linecap="round"/>
-      <path id="rice-attack-mouth" d="M151 181 L156 184 L160 181 L164 184 L169 181" fill="none" stroke="#2c1c18" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <g id="face-attack">
+      <ellipse id="rice-attack-eye-left" cx="126" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <ellipse id="rice-attack-eye-right" cx="189" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <path id="rice-attack-brows" d="M115 150 L136 155 M179 155 L200 150" fill="none" stroke="#33241c" stroke-width="3" stroke-linecap="round"/>
+      <path id="rice-attack-mouth" d="M145 178 L152 184 L159 178 L166 184 L173 178" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
-    <g id="face-surprised" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <ellipse id="rice-surprised-eye-left" cx="140" cy="160" rx="8" ry="10" fill="#4b211b"/>
-      <ellipse id="rice-surprised-eye-right" cx="180" cy="160" rx="8" ry="10" fill="#4b211b"/>
-      <ellipse id="rice-surprised-mouth" cx="160" cy="184" rx="5" ry="7" fill="none" stroke="#2c1c18" stroke-width="3"/>
+    <g id="face-surprised">
+      <ellipse id="rice-surprised-eye-left" cx="126" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <ellipse id="rice-surprised-eye-right" cx="189" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
+      <ellipse id="rice-surprised-mouth" cx="159" cy="184" rx="6" ry="8" fill="none" stroke="#2c1c18" stroke-width="3"/>
     </g>
-    <g id="face-hurt" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <path id="rice-hurt-eye-left" d="M132 160 L148 160" fill="none" stroke="#2c1c18" stroke-width="3.6" stroke-linecap="round"/>
-      <path id="rice-hurt-eye-right" d="M172 160 L188 160" fill="none" stroke="#2c1c18" stroke-width="3.6" stroke-linecap="round"/>
-      <path id="rice-hurt-mouth" d="M151 188 Q160 179 169 188" fill="none" stroke="#2c1c18" stroke-width="3.6" stroke-linecap="round"/>
-      <ellipse id="rice-hurt-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="121" cy="181" rx="8" ry="5.5" fill="#e97c72"/>
-      <ellipse id="rice-hurt-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="199" cy="181" rx="8" ry="5.5" fill="#e97c72"/>
+    <g id="face-hurt">
+      <path id="rice-hurt-eye-left" d="M116 163 L136 163" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <path id="rice-hurt-eye-right" d="M179 163 L199 163" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <path id="rice-hurt-mouth" d="M145 187 Q159 174 173 187" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <ellipse id="rice-hurt-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
+      <ellipse id="rice-hurt-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
     </g>
-    <g id="face-hungry" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <circle id="rice-hungry-eye-left" cx="140" cy="160" r="8.5" fill="#4b211b"/>
-      <circle id="rice-hungry-eye-right" cx="180" cy="160" r="8.5" fill="#4b211b"/>
-      <circle id="rice-hungry-glint-left" cx="137" cy="157" r="2.3" fill="#fff5d8"/>
-      <circle id="rice-hungry-glint-right" cx="177" cy="157" r="2.3" fill="#fff5d8"/>
-      <path id="rice-hungry-mouth" d="M155 183 Q160 188 165 183" fill="none" stroke="#2c1c18" stroke-width="3.3" stroke-linecap="round"/>
+    <g id="face-hungry">
+      <circle id="rice-hungry-eye-left" cx="126" cy="163" r="10.3" fill="#4b211b"/>
+      <circle id="rice-hungry-eye-right" cx="189" cy="163" r="10.3" fill="#4b211b"/>
+      <circle id="rice-hungry-glint-left" cx="123" cy="159" r="2.6" fill="#fff5d8"/>
+      <circle id="rice-hungry-glint-right" cx="186" cy="159" r="2.6" fill="#fff5d8"/>
+      <path id="rice-hungry-mouth" d="M151 182 Q159 189 167 182" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
     </g>
-    <g id="face-dead" transform="translate(0 9) translate(160 0) scale(1.36 1) translate(-160 0) translate(-40 -7) scale(1.25 1)">
-      <path id="rice-dead-eyes" d="M133 153 L147 167 M147 153 L133 167 M173 153 L187 167 M187 153 L173 167" fill="none" stroke="#2c1c18" stroke-width="3.5" stroke-linecap="round"/>
-      <path id="rice-dead-mouth" d="M152 184 L168 184" fill="none" stroke="#2c1c18" stroke-width="3.5" stroke-linecap="round"/>
+    <g id="face-dead">
+      <path id="rice-dead-eyes" d="M119 156 L133 170 M133 156 L119 170 M182 156 L196 170 M196 156 L182 170" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
+      <path id="rice-dead-mouth" d="M145 183 L173 183" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
     </g>
   </g>
   <g id="conical-hat" transform="matrix(1.88 0 0 1.88 -84.4 -59.36)">
-    <path id="rice-hat-crown" d="M78 83 C94 72 111 48 130 47 C149 46 166 72 182 83 C180 86 175 88 168 87 C153 80 143 77 130 77 C116 77 104 80 92 87 C85 89 80 87 78 83 Z" fill="#81a843" stroke="#33241c" stroke-width="2.25" stroke-linejoin="round"/>
-    <path id="rice-hat-left-panel" d="M130 48 C120 49 112 58 103 66 C95 74 87 80 80 83 C91 81 106 77 119 77 C124 77 128 77 130 78 Z" fill="#739a3a" opacity=".94"/>
-    <path id="rice-hat-right-panel" d="M131 48 C141 49 149 59 160 68 C168 75 176 80 180 83 C167 80 151 77 139 77 C136 77 133 77 130 78 Z" fill="#8db34a" opacity=".92"/>
-    <path id="rice-hat-brim" d="M78 82 C94 77 111 76 130 76 C149 76 166 78 182 82 C182 86 176 89 169 89 C153 85 143 84 130 84 C117 84 104 85 91 89 C84 89 78 86 78 82 Z" fill="#59742d" stroke="#33241c" stroke-width="2.25" stroke-linejoin="round"/>
-    <path id="rice-hat-center-seam" d="M130 49 C131 58 130 69 130 77" fill="none" stroke="#596f31" stroke-width="1.25" stroke-linecap="round" opacity=".9"/>
-    <path id="rice-hat-left-seam" d="M109 59 C116 65 123 72 130 77" fill="none" stroke="#526b2e" stroke-width="1.25" stroke-linecap="round"/>
-    <path id="rice-hat-right-seam" d="M150 59 C143 66 136 72 130 77" fill="none" stroke="#526b2e" stroke-width="1.25" stroke-linecap="round"/>
+    <path id="rice-hat-crown" d="M78 82 C88 62 110 44 130 43 C150 44 172 62 182 82 C166 77 148 73 130 73 C112 73 94 77 78 82 Z" fill="#82a747" stroke="#33241c" stroke-width="1.8" stroke-linejoin="round"/>
+    <path id="rice-hat-brim" d="M78 82 C96 76 113 74 130 74 C147 74 164 77 182 82 C182 85 178 86 174 86 C157 82 144 80 130 80 C116 80 102 82 86 86 C82 86 78 85 78 82 Z" fill="#617b32" stroke="#33241c" stroke-width="1.8" stroke-linejoin="round"/>
+    <path id="rice-hat-center-seam" d="M130 46 C130 56 129 68 130 77" fill="none" stroke="#596f31" stroke-width="1.1" stroke-linecap="round" opacity=".78"/>
+    <path id="rice-hat-left-seam" d="M105 78 C112 69 121 56 130 46" fill="none" stroke="#526b2e" stroke-width="1.1" stroke-linecap="round" opacity=".78"/>
+    <path id="rice-hat-right-seam" d="M130 46 C140 56 150 69 159 78" fill="none" stroke="#526b2e" stroke-width="1.1" stroke-linecap="round" opacity=".78"/>
     <path id="rice-hat-soft-highlight" d="M84 80 C98 69 112 56 123 51" fill="none" stroke="#a9c66b" stroke-width="1.4" stroke-linecap="round" opacity=".62"/>
   </g>
   <g id="sickle">
