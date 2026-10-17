@@ -1,6 +1,10 @@
 (() => {
+  var __create = Object.create;
   var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __esm = (fn, res, err) => function __init() {
     if (err) throw err[0];
     try {
@@ -9,10 +13,195 @@
       throw err = [e], e;
     }
   };
+  var __commonJS = (cb, mod) => function __require() {
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
+  };
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
   };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
+
+  // src/boss-patterns.js
+  function createBossPatternRuntime() {
+    return {
+      weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
+      cooldowns: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, 0])),
+      active: null,
+      encounterElapsed: 0
+    };
+  }
+  function chooseBossPattern(runtime, eligibleIds, random) {
+    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
+    const eligible = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
+    if (!eligible.length) return null;
+    const total = eligible.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
+    if (!(total > 0)) return null;
+    let roll = random() * total, chosen = eligible.at(-1);
+    for (const id of eligible) {
+      roll -= Math.max(0, runtime.weights[id] || 0);
+      if (roll < 0) {
+        chosen = id;
+        break;
+      }
+    }
+    for (const id of eligible) runtime.weights[id] = id === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(BOSS_PATTERN_WEIGHT_DEFAULTS.cap, Math.max(0, runtime.weights[id] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus);
+    return chosen;
+  }
+  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
+  var init_boss_patterns = __esm({
+    "src/boss-patterns.js"() {
+      BOSS_PATTERN_IDS = Object.freeze([
+        "attack.sweep-360",
+        "attack.front-slam",
+        "attack.charge",
+        "attack.leap-slam",
+        "attack.fan-sweep",
+        "summon.mouth-t1"
+      ]);
+      BOSS_PATTERN_CONFIG = Object.freeze({
+        "attack.sweep-360": Object.freeze({ kind: "sweep-360", windup: 1.05, active: 0, recover: 1.05, cooldown: 10, reach: 6.5, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
+        "attack.front-slam": Object.freeze({ kind: "front-slam", windup: 0.75, active: 0, recover: 0.75, cooldown: 5, reach: 5.5, sector: Math.PI / 2, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
+        "attack.charge": Object.freeze({ kind: "charge", windup: 0.5, active: 6.6 / 5.3, recover: 0.75, cooldown: 5, reach: 6.6, speed: 5.3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: false }),
+        "attack.leap-slam": Object.freeze({ kind: "leap-slam", windup: 0.5, active: 1.013, recover: 0.75, cooldown: 5, reach: 6.6, landingRadius: 5.5, damageMultiplier: 2, knockback: 10, lift: 7.2, groundOnly: false }),
+        "attack.fan-sweep": Object.freeze({ kind: "fan-sweep", windup: 1, active: 0.8, recover: 1, cooldown: 5, reach: 6.5, width: 0.85, sector: Math.PI * 2 / 3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: true }),
+        "summon.mouth-t1": Object.freeze({ kind: "mouth-t1", windup: 0.5, active: 0.75, recover: 0.5, cooldown: 10, firstEligible: 10, volleyCount: 4, releaseInterval: 0.25, maxAlive: 10, dropHeight: 3, landingSeconds: 0.56, landingRadius: 4.8 })
+      });
+      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({ base: 1, eligibleBonus: 0.5, cap: 3 });
+      BOSS_AIM_TURN_RATE = 5.5;
+    }
+  });
+
+  // src/vector-sockets.cjs
+  var require_vector_sockets = __commonJS({
+    "src/vector-sockets.cjs"(exports, module) {
+      "use strict";
+      function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
+        const fail3 = (message) => {
+          throw new Error(`Vector socket contract (${label}): ${message}`);
+        };
+        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) fail3("a finite SVG viewBox is required");
+        const parts = new Map((metadata?.parts || []).map((part) => [part.id, part]));
+        const anchors = {};
+        for (const name of ["mouth", "ground"]) {
+          const socket = metadata?.sockets?.[name];
+          if (!socket || !parts.has(socket.part)) fail3(`${name} must name an authored part`);
+          if (!Array.isArray(socket.point) || socket.point.length !== 2 || !socket.point.every(Number.isFinite)) fail3(`${name} must contain two finite canvas coordinates`);
+          const [x, y] = socket.point;
+          if (x < viewBox[0] || x > viewBox[0] + viewBox[2] || y < viewBox[1] || y > viewBox[1] + viewBox[3]) fail3(`${name} lies outside the SVG canvas`);
+          anchors[name] = Object.freeze({ part: socket.part, x, y });
+        }
+        if (anchors.ground.part !== "body") fail3("ground must belong to body");
+        if (anchors.mouth.y >= anchors.ground.y) fail3("mouth must be above the authored ground baseline");
+        return Object.freeze(anchors);
+      }
+      var BOSS_VECTOR_DIAMETER = 220;
+      var BOSS_VECTOR_RADIUS_SCALE = 1.16;
+      var WORLD_HEIGHT_PROJECTION2 = 0.785;
+      var WORLD_DEPTH_PROJECTION3 = 0.62;
+      function bossVectorScale2(radius) {
+        return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
+      }
+      function socketWorldPoint2(boss, socket, ground) {
+        const scale = bossVectorScale2(boss.radius);
+        return { x: boss.x + (socket.x - ground.x) * scale, y: boss.y, z: (boss.z || 0) + (ground.y - socket.y) * scale / WORLD_HEIGHT_PROJECTION2 };
+      }
+      module.exports = { readVectorSockets: readVectorSockets3, bossVectorScale: bossVectorScale2, socketWorldPoint: socketWorldPoint2, WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION2, WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3 };
+    }
+  });
+
+  // src/boss-vector-sockets.js
+  function bindBossSocketAsset(species, record) {
+    const label = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
+    const anchors = (0, import_vector_sockets.readVectorSockets)(record.compiled, label);
+    bossAssets.get(species)?.player?.dispose();
+    bossAssets.set(species, { record, anchors, player: null });
+    return anchors;
+  }
+  function unbindBossSocketAsset(species, record) {
+    const entry = bossAssets.get(species);
+    if (entry?.record !== record) return;
+    entry.player?.dispose();
+    bossAssets.delete(species);
+  }
+  function bossSummonPose(b, parts = /* @__PURE__ */ new Set()) {
+    const config = BOSS_PATTERN_CONFIG["summon.mouth-t1"], phase = b.patternPhase, elapsed = Math.max(0, b.patternPhaseElapsed || 0);
+    const aim = Math.atan2(-import_vector_sockets.WORLD_DEPTH_PROJECTION * Math.sin(b.patternAim ?? b.angle), Math.cos(b.patternAim ?? b.angle));
+    const body = { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }, arms = { "arm-left": 0, "arm-right": 0 };
+    let releasePulse = 0;
+    if (phase === "windup") {
+      const wind = clamp(elapsed / config.windup, 0, 1), ease = wind * wind * (3 - 2 * wind);
+      body.y = 2 * ease;
+      body.scaleX = 1 + 0.025 * ease;
+      body.scaleY = 1 - 0.035 * ease;
+      arms["arm-left"] = -0.34 * ease;
+      arms["arm-right"] = 0.34 * ease;
+    } else if (phase === "active" || phase === "recover") {
+      const last = (b.patternReleased || 0) - 1, age = last < 0 ? 1 : phase === "active" ? Math.max(0, elapsed - last * config.releaseInterval) : elapsed;
+      releasePulse = clamp(1 - age / 0.16, 0, 1);
+      body.scaleX = 1 + 0.025 * releasePulse;
+      body.scaleY = 1 - 0.018 * releasePulse;
+      body.rotation = aim * 0.02;
+      arms["arm-left"] = -0.3;
+      arms["arm-right"] = 0.3;
+    }
+    const extras = {};
+    for (const part of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) if (parts.has(part)) extras[part] = { x: 0, y: 0, rotation: part === "leaf" ? 0.08 * releasePulse : 0 };
+    return { body, arms, extras, impact: false, releasePulse };
+  }
+  function sampleBossSummon(player, metadata, b) {
+    const name = b.patternPhase === "windup" ? "windup" : b.patternPhase === "recover" ? "recover" : "fire";
+    const clipName = metadata.clips[name] ? name : "idle", clip = metadata.clips[clipName];
+    if (!clip) throw new Error(`Vector socket contract (${metadata.id}): summon clip ${name} or idle is required`);
+    player.play(clipName, 0);
+    player.seek(Math.min(clip.durationMs, Math.max(0, b.patternPhaseElapsed || 0) * 1e3));
+    const pose = bossSummonPose(b);
+    player.setBasePose("body", pose.body);
+    return pose;
+  }
+  function bossMouthWorldPoint(boss, released) {
+    const entry = bossAssets.get(boss.species);
+    if (!entry) throw new Error(`Vector socket contract (species ${boss.species}): startup boss asset binding is missing`);
+    const { record, anchors } = entry, action = boss.patternRuntime?.active;
+    if (action?.id !== "summon.mouth-t1") throw new Error(`Vector socket contract (species ${boss.species}): mouth spawn requires the active summon pattern`);
+    entry.player ||= record.asset.createPlayer({ clip: "idle", startedAtMs: 0 });
+    sampleBossSummon(entry.player, record.compiled.metadata, {
+      angle: boss.angle,
+      patternAim: action.aim,
+      patternPhase: action.phase,
+      patternPhaseElapsed: action.phaseElapsed,
+      patternReleased: released ?? action.released
+    });
+    return (0, import_vector_sockets.socketWorldPoint)(boss, entry.player.getSocket("mouth"), anchors.ground);
+  }
+  var import_vector_sockets, clamp, bossAssets;
+  var init_boss_vector_sockets = __esm({
+    "src/boss-vector-sockets.js"() {
+      init_boss_patterns();
+      import_vector_sockets = __toESM(require_vector_sockets(), 1);
+      clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+      bossAssets = /* @__PURE__ */ new Map();
+    }
+  });
 
   // src/unit-grades.js
   function mergeMaterialCostForTier(resultTier) {
@@ -91,14 +280,14 @@
   }
   function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
     const raw = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
-    const penetration = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
+    const penetration = clamp2(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
     const effectiveArmor = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - penetration);
     const crit = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
     const mitigated = raw * crit * ARMOR_SCALE / (ARMOR_SCALE + effectiveArmor);
     return { rawDamage: raw, effectiveArmor, critical, damage: mitigated };
   }
   function resolveCritical(stats2, roll = 1) {
-    const chance = clamp(Number.isFinite(stats2?.critChance) ? stats2.critChance : 0, 0, 1);
+    const chance = clamp2(Number.isFinite(stats2?.critChance) ? stats2.critChance : 0, 0, 1);
     return chance > 0 && roll < chance;
   }
   function scaleMoveSpeed(baseSpeed, unit, overrides) {
@@ -157,17 +346,17 @@
     const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
     const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
     const durationScale = Number.isFinite(sourceStats.statusDuration) ? Math.max(0, sourceStats.statusDuration) : 1;
-    const resistance = clamp(Number.isFinite(targetStats.statusResistance) ? targetStats.statusResistance : 0, 0, 1);
+    const resistance = clamp2(Number.isFinite(targetStats.statusResistance) ? targetStats.statusResistance : 0, 0, 1);
     return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * durationScale * (1 - resistance);
   }
   function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
     const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
     const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
     const power = Number.isFinite(sourceStats.knockbackPower) ? Math.max(0, sourceStats.knockbackPower) : 1;
-    const resistance = clamp(Number.isFinite(targetStats.knockbackResistance) ? targetStats.knockbackResistance : 0, 0, 1);
+    const resistance = clamp2(Number.isFinite(targetStats.knockbackResistance) ? targetStats.knockbackResistance : 0, 0, 1);
     return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * power * (1 - resistance);
   }
-  function clamp(value, min, max) {
+  function clamp2(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
   var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
@@ -1171,56 +1360,6 @@
     }
   });
 
-  // src/boss-patterns.js
-  function createBossPatternRuntime() {
-    return {
-      weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
-      cooldowns: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, 0])),
-      active: null,
-      encounterElapsed: 0
-    };
-  }
-  function chooseBossPattern(runtime, eligibleIds, random) {
-    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
-    const eligible = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
-    if (!eligible.length) return null;
-    const total = eligible.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
-    if (!(total > 0)) return null;
-    let roll = random() * total, chosen = eligible.at(-1);
-    for (const id of eligible) {
-      roll -= Math.max(0, runtime.weights[id] || 0);
-      if (roll < 0) {
-        chosen = id;
-        break;
-      }
-    }
-    for (const id of eligible) runtime.weights[id] = id === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(BOSS_PATTERN_WEIGHT_DEFAULTS.cap, Math.max(0, runtime.weights[id] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus);
-    return chosen;
-  }
-  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
-  var init_boss_patterns = __esm({
-    "src/boss-patterns.js"() {
-      BOSS_PATTERN_IDS = Object.freeze([
-        "attack.sweep-360",
-        "attack.front-slam",
-        "attack.charge",
-        "attack.leap-slam",
-        "attack.fan-sweep",
-        "summon.mouth-t1"
-      ]);
-      BOSS_PATTERN_CONFIG = Object.freeze({
-        "attack.sweep-360": Object.freeze({ kind: "sweep-360", windup: 1.05, active: 0, recover: 1.05, cooldown: 10, reach: 6.5, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
-        "attack.front-slam": Object.freeze({ kind: "front-slam", windup: 0.75, active: 0, recover: 0.75, cooldown: 5, reach: 5.5, sector: Math.PI / 2, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
-        "attack.charge": Object.freeze({ kind: "charge", windup: 0.5, active: 6.6 / 5.3, recover: 0.75, cooldown: 5, reach: 6.6, speed: 5.3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: false }),
-        "attack.leap-slam": Object.freeze({ kind: "leap-slam", windup: 0.5, active: 1.013, recover: 0.75, cooldown: 5, reach: 6.6, landingRadius: 5.5, damageMultiplier: 2, knockback: 10, lift: 7.2, groundOnly: false }),
-        "attack.fan-sweep": Object.freeze({ kind: "fan-sweep", windup: 1, active: 0.8, recover: 1, cooldown: 5, reach: 6.5, width: 0.85, sector: Math.PI * 2 / 3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: true }),
-        "summon.mouth-t1": Object.freeze({ kind: "mouth-t1", windup: 0.5, active: 0.75, recover: 0.5, cooldown: 10, firstEligible: 10, volleyCount: 4, releaseInterval: 0.25, maxAlive: 10, dropHeight: 3, landingSeconds: 0.56, landingRadius: 4.8 })
-      });
-      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({ base: 1, eligibleBonus: 0.5, cap: 3 });
-      BOSS_AIM_TURN_RATE = 5.5;
-    }
-  });
-
   // src/factions.js
   function hasFaction(actor, faction) {
     return actor?.faction === faction;
@@ -1414,7 +1553,7 @@
     if (!action) return null;
     const config = BOSS_PATTERN_CONFIG[action.id];
     if (!config) return null;
-    const progress = clamp2(action.phaseElapsed / (action.phase === "windup" ? config.windup : config.active || 1), 0, 1), locked = !!action.locked;
+    const progress = clamp3(action.phaseElapsed / (action.phase === "windup" ? config.windup : config.active || 1), 0, 1), locked = !!action.locked;
     if (action.id === "attack.sweep-360") return { kind: "sweep", x: boss.x, y: boss.y, width: CONFIG.raid.weaponRadius + Math.max(0, unitRadius), sweepRadius: config.reach, outerRadius: config.reach + CONFIG.raid.weaponRadius, startAngle: 0, progress: action.phase === "windup" ? 1 : 1, active: action.phase === "active", patternId: action.id, locked };
     if (action.id === "attack.front-slam") return { kind: "sector", x: boss.x, y: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, sector: config.sector, progress, active: action.phase === "active", patternId: action.id, locked };
     if (action.id === "attack.charge") return { kind: "charge", x: action.start?.x ?? boss.x, y: action.start?.y ?? boss.y, endX: boss.x, endY: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, width: boss.radius, progress, active: action.phase === "active", patternId: action.id, locked };
@@ -1457,9 +1596,10 @@
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, unitRadiusForTier, CONFIG, clamp2, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, unitRadiusForTier, CONFIG, clamp3, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
+      init_boss_vector_sockets();
       init_unit_stats();
       init_unit_abilities();
       init_boss_rewards();
@@ -1482,7 +1622,7 @@
       BREED_COOLDOWN_SECONDS = 10;
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
       CONFIG = Object.freeze({ factions: FACTION_CONFIG, cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: SPECIES_COUNT, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
-      clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
+      clamp3 = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = baseUnitStatsFor;
       Body = class {
         constructor(x, y) {
@@ -1558,7 +1698,7 @@
             hi = Math.min(hi, y);
           }
           if (lo > hi || hi < 0 || lo > 1) return null;
-          const t = clamp2(lo, 0, 1);
+          const t = clamp3(lo, 0, 1);
           return { x: a.x + dx * t, y: a.y + dy * t, z: a.z + dz * t, t };
         }
       };
@@ -1568,7 +1708,7 @@
           return { from: { x: from.x, y: from.y, z: kind === "lob" ? 0.45 : 0 }, to: { ...to }, height: melee ? 0 : kind === "lob" ? 2 : 2.7, duration: melee ? Math.max(0.12, distance / 10) : 0.65 + distance * 0.055 };
         },
         sample(path, q) {
-          q = clamp2(q, 0, 1);
+          q = clamp3(q, 0, 1);
           return { x: path.from.x + (path.to.x - path.from.x) * q, y: path.from.y + (path.to.y - path.from.y) * q, z: path.from.z * (1 - q) + 4 * path.height * q * (1 - q) };
         }
       };
@@ -1824,7 +1964,7 @@
           return this.meals >= 1;
         }
         get size() {
-          const growth = this.mature ? 1 : this.growthDuration > 0 ? clamp2(this.growthElapsed / this.growthDuration, 0, 1) : 1;
+          const growth = this.mature ? 1 : this.growthDuration > 0 ? clamp3(this.growthElapsed / this.growthDuration, 0, 1) : 1;
           return (0.55 + 0.1 * this.tier) * (0.5 + 0.5 * growth);
         }
       };
@@ -2352,7 +2492,7 @@
         }
         spawn(species, tier, x, y) {
           if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.maxRaidUnits)) return null;
-          const u = new Unit(this.nextId++, species, clamp2(tier, 1, CONFIG.maxTier), x, y);
+          const u = new Unit(this.nextId++, species, clamp3(tier, 1, CONFIG.maxTier), x, y);
           this.units.push(u);
           this._trackUnitAdded(u);
           return u;
@@ -2396,7 +2536,7 @@
         }
         scatter(x, y, count = 1) {
           for (let i = 0; i < count && this.food.length < 140; i++) {
-            let tx = clamp2(x, -8, 8), ty = clamp2(y, -5.7, 5.7);
+            let tx = clamp3(x, -8, 8), ty = clamp3(y, -5.7, 5.7);
             const boundary = Math.hypot(tx / 8, ty / 5.7);
             if (boundary > 1) {
               tx /= boundary;
@@ -2431,11 +2571,11 @@
         }
         createBoss(species = 3) {
           const hp = 2e3;
-          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, angle: 0, facing: 0, flash: 0, swings: 0, basicCount: 0, attackId: 0, sweepClock: 0, startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp3(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, angle: 0, facing: 0, flash: 0, swings: 0, basicCount: 0, attackId: 0, sweepClock: 0, startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
         }
         configureBossStage(stage, species = this.boss.species) {
           const stats2 = bossStageStats(stage);
-          this.boss.species = clamp2(species, 0, CONFIG.maxSpecies - 1);
+          this.boss.species = clamp3(species, 0, CONFIG.maxSpecies - 1);
           this.boss.stage = stats2.stage;
           this.boss.hp = this.boss.maxHp = stats2.hp;
           this.boss.attackPower = stats2.attackPower;
@@ -3144,7 +3284,7 @@
             area,
             criticalRoll,
             hitTargets: area ? /* @__PURE__ */ new Set() : null,
-            sourceStatOverrides: { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) }
+            sourceStatOverrides: { critChance: clamp3(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) }
           };
         }
         combatTargetDefense(target) {
@@ -3152,7 +3292,7 @@
             const targetStats = stats(target.tier, target.species);
             return { maxHp: targetStats.maxHp, armor: effectiveBarleyArmor(target, targetStats.armor, this.time) };
           }
-          const hpRatio = Number.isFinite(target.hp) && Number.isFinite(target.maxHp) && target.maxHp > 0 ? clamp2(target.hp / target.maxHp, 0, 1) : 1;
+          const hpRatio = Number.isFinite(target.hp) && Number.isFinite(target.maxHp) && target.maxHp > 0 ? clamp3(target.hp / target.maxHp, 0, 1) : 1;
           return { maxHp: target.maxHp, armor: effectiveBarleyArmor(target, (1 - hpRatio) * 100, this.time) };
         }
         damageCombatTarget(u, action, target, point, options = {}) {
@@ -3175,7 +3315,7 @@
         finishBossHit(u, action, point, { kind, strikeIndex, buffed }, damage, strength) {
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp2(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength });
+          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp3(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength });
           this.combatEvent("damage", u, action);
         }
         finishUnitHit(u, action, target, point, { kind, strikeIndex }, damage, strength, guard) {
@@ -3326,10 +3466,10 @@
         bossWeaponPoint(q = 0) {
           const b = this.boss, a = b.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[a?.id];
           if (a?.id === "attack.fan-sweep") {
-            const angle = a.aim - config.sector / 2 + config.sector * clamp2(q, 0, 1);
+            const angle = a.aim - config.sector / 2 + config.sector * clamp3(q, 0, 1);
             return { x: b.x + Math.cos(angle) * config.reach, y: b.y + Math.sin(angle) * config.reach, z: b.z + 0.2 };
           }
-          const reach = b.radius - 0.25 + (CONFIG.raid.sweepReach - b.radius + 0.25) * Math.sin(Math.PI * clamp2(q, 0, 1));
+          const reach = b.radius - 0.25 + (CONFIG.raid.sweepReach - b.radius + 0.25) * Math.sin(Math.PI * clamp3(q, 0, 1));
           return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: b.z + 0.2 };
         }
         livingBossTargets() {
@@ -3505,7 +3645,7 @@
           }
         }
         fanBossWeapon(action, q0, q1) {
-          const config = BOSS_PATTERN_CONFIG[action.id], span = config.sector, fromAngle = action.aim - span / 2 + span * clamp2(q0, 0, 1), toAngle = action.aim - span / 2 + span * clamp2(q1, 0, 1), b = this.boss;
+          const config = BOSS_PATTERN_CONFIG[action.id], span = config.sector, fromAngle = action.aim - span / 2 + span * clamp3(q0, 0, 1), toAngle = action.aim - span / 2 + span * clamp3(q1, 0, 1), b = this.boss;
           const from = { x: b.x + Math.cos(fromAngle) * config.reach, y: b.y + Math.sin(fromAngle) * config.reach, z: 0.2 }, to = { x: b.x + Math.cos(toAngle) * config.reach, y: b.y + Math.sin(toAngle) * config.reach, z: 0.2 };
           const extent = config.reach + config.width + CONFIG.maxUnitRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
@@ -3517,9 +3657,8 @@
             }
           }
         }
-        bossMouthPoint() {
-          const anchors = [[176, 210, 160, 350], [140, 112, 142.5, 295], [119, 109, 130, 320], [160, 145, 160, 261], [160, 164, 160, 267], [160, 165, 160, 266]][this.boss.species] || [160, 165, 160, 266], b = this.boss, scale = 2 * b.radius * 1.16 / 220, forward = (anchors[0] - anchors[2]) * scale, vertical = Math.max(0, (anchors[3] - anchors[1]) * scale / 0.785);
-          return { x: b.x + Math.cos(b.angle) * forward, y: b.y + Math.sin(b.angle) * forward, z: vertical };
+        bossMouthPoint(released) {
+          return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
           const b = this.boss, scene = this.scene, radius = unitRadiusForTier(1);
@@ -3533,8 +3672,9 @@
         }
         spawnBossMouthUnit(action) {
           if (action.released >= action.volleyCount) return false;
-          const b = this.boss, landing = this.bossSummonLanding(action.aim, action), mouth = this.bossMouthPoint();
+          const b = this.boss, landing = this.bossSummonLanding(action.aim, action);
           if (!landing) return false;
+          const mouth = this.bossMouthPoint(action.released + 1);
           const id = CONFIG.bossSummonIdBase + ++this.bossSummonSerial, unit = new Unit(id, b.species, 1, mouth.x, mouth.y), angle = Math.atan2(landing.y - mouth.y, landing.x - mouth.x), flightSeconds = Math.sqrt(2 * mouth.z / CONFIG.gravity), horizontalDistance = Math.hypot(landing.x - mouth.x, landing.y - mouth.y), drag = 0.8, speed = horizontalDistance * drag / (1 - Math.exp(-drag * flightSeconds));
           Object.assign(unit, { ownerId: "boss", farmId: 0, faction: FACTION_CONFIG.ENEMY, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit.growthDuration, growth: CONFIG.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
           this.units.push(unit);
@@ -3631,7 +3771,7 @@
                 action.targetId = target.id;
                 action.target = { x: target.x, y: target.y, z: target.z || 0 };
                 const desired = Math.atan2(target.y - b.y, target.x - b.x), delta = Math.atan2(Math.sin(desired - action.aim), Math.cos(desired - action.aim));
-                action.aim += clamp2(delta, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
+                action.aim += clamp3(delta, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
                 b.angle = b.facing = action.aim;
               }
               if (remaining <= 0.25 + 1e-9) {
@@ -3753,7 +3893,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.25";
+      PRODUCT_VERSION = "0.7.26";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4685,6 +4825,8 @@
   init_farm_model();
 
   // src/farm-renderer.js
+  var import_vector_sockets2 = __toESM(require_vector_sockets(), 1);
+  init_boss_vector_sockets();
   init_farm_model();
 
   // src/farm-indicators.js
@@ -4777,9 +4919,9 @@
   }
   function motionElapsedMs(u, name, clip) {
     if (name === "idle" || name === "walk" || name === "airborne") return (u.seed || 0) * 80 % clip.durationMs;
-    if (name === "windup" || name === "fire" || name.startsWith("fire-") || name === "recover") return clamp2((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
-    if (name === "hit") return clip.durationMs * (1 - clamp2((u.stun || 0) / 0.5, 0, 1));
-    if (name === "landing") return clip.durationMs * (1 - clamp2((u.bounce || 0) / 0.22, 0, 1));
+    if (name === "windup" || name === "fire" || name.startsWith("fire-") || name === "recover") return clamp3((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
+    if (name === "hit") return clip.durationMs * (1 - clamp3((u.stun || 0) / 0.5, 0, 1));
+    if (name === "landing") return clip.durationMs * (1 - clamp3((u.bounce || 0) / 0.22, 0, 1));
     if (name === "victory") return Math.abs(u.seed || 0) * 97.531 % clip.durationMs;
     return clip.durationMs;
   }
@@ -4818,14 +4960,14 @@
     const body = { y: 0, rotation: 0, scaleX: 1, scaleY: 1 }, arms = { "arm-left": 0, "arm-right": 0 }, extras = {};
     for (const part of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) if (parts.has(part)) extras[part] = { x: 0, y: 0, rotation: 0 };
     if (!config || !parts.has("body")) return { body, arms, extras, impact: false, releasePulse: 0 };
-    const wind = phase === "windup" ? clamp2(elapsed / config.windup, 0, 1) : 0, windEase = wind * wind * (3 - 2 * wind);
-    const recovering = phase === "recover", recover = recovering ? clamp2(elapsed / config.recover, 0, 1) : 0, recoverEase = recover * recover * (3 - 2 * recover);
+    const wind = phase === "windup" ? clamp3(elapsed / config.windup, 0, 1) : 0, windEase = wind * wind * (3 - 2 * wind);
+    const recovering = phase === "recover", recover = recovering ? clamp3(elapsed / config.recover, 0, 1) : 0, recoverEase = recover * recover * (3 - 2 * recover);
     const instantImpact = recovering && ["attack.sweep-360", "attack.front-slam"].includes(id) && elapsed < 0.14;
     const leapImpact = recovering && id === "attack.leap-slam" && elapsed < 0.18;
     const active2 = phase === "active", recoverImpact = instantImpact || leapImpact;
     const impact = active2 || recoverImpact;
     const lead = Math.cos(aim) >= 0 ? "arm-right" : "arm-left", trail = lead === "arm-right" ? "arm-left" : "arm-right";
-    const strikeAngle = clamp2(aim, -1.2, 1.2);
+    const strikeAngle = clamp3(aim, -1.2, 1.2);
     const arm = (key, value) => {
       if (parts.has(key)) arms[key] = value;
     };
@@ -4865,7 +5007,7 @@
           arm("arm-left", -0.72);
           arm("arm-right", 0.72);
         } else if (impact) {
-          const q = instantImpact ? 1 : clamp2(elapsed / Math.max(config.active, 1e-3), 0, 1), sweep = 2 * Math.PI * q;
+          const q = instantImpact ? 1 : clamp3(elapsed / Math.max(config.active, 1e-3), 0, 1), sweep = 2 * Math.PI * q;
           body.rotation = 0.12 * Math.sin(sweep);
           body.scaleX = 1.055;
           body.scaleY = 0.94;
@@ -4898,7 +5040,7 @@
           arm(lead, -0.9);
           arm(trail, -0.45);
         } else if (active2) {
-          const lift = clamp2((b.z || 0) / Math.max(1, b.height || 1), 0, 1);
+          const lift = clamp3((b.z || 0) / Math.max(1, b.height || 1), 0, 1);
           body.rotation = aim * 0.06;
           body.scaleX = 1 + 0.045 * lift;
           body.scaleY = 1 - 0.035 * lift;
@@ -4921,12 +5063,12 @@
       case "attack.fan-sweep":
         if (phase === "windup") windup();
         else if (active2) {
-          const q = clamp2(elapsed / config.active, 0, 1), arc = aim - config.sector / 2 + config.sector * q, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
+          const q = clamp3(elapsed / config.active, 0, 1), arc = aim - config.sector / 2 + config.sector * q, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
           body.rotation = 0.1 * Math.sin(projected - aim);
           body.scaleX = 1.035;
           body.scaleY = 0.97;
-          arm(lead, 0.4 + clamp2(projected, -1.1, 1.1) * 0.58);
-          arm(trail, -0.3 - clamp2(projected, -1.1, 1.1) * 0.2);
+          arm(lead, 0.4 + clamp3(projected, -1.1, 1.1) * 0.58);
+          arm(trail, -0.3 - clamp3(projected, -1.1, 1.1) * 0.2);
           if (parts.has("leaf")) extras.leaf = { rotation: 0.12 * Math.sin(q * Math.PI) };
         } else if (recovering && elapsed < 0.12) {
           const arc = aim + config.sector / 2, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
@@ -4935,26 +5077,8 @@
           arm(lead, 0.4 + projected * 0.5);
         } else if (recovering) settle();
         break;
-      case "summon.mouth-t1": {
-        if (phase === "windup") {
-          body.y = 2 * windEase;
-          body.scaleX = 1 + 0.025 * windEase;
-          body.scaleY = 1 - 0.035 * windEase;
-          arm("arm-left", -0.34 * windEase);
-          arm("arm-right", 0.34 * windEase);
-        } else if (active2 || recovering) {
-          const interval = config.releaseInterval || 0.25, last = (b.patternReleased || 0) - 1, age = last < 0 ? 1 : active2 ? Math.max(0, elapsed - last * interval) : elapsed;
-          const pulse = clamp2(1 - age / 0.16, 0, 1);
-          body.scaleX = 1 + 0.025 * pulse;
-          body.scaleY = 1 - 0.018 * pulse;
-          body.rotation = aim * 0.02;
-          arm("arm-left", -0.3);
-          arm("arm-right", 0.3);
-          if (parts.has("leaf")) extras.leaf = { rotation: 0.08 * pulse };
-          return { body, arms, extras, impact: false, releasePulse: pulse };
-        }
-        break;
-      }
+      case "summon.mouth-t1":
+        return bossSummonPose(b, parts);
     }
     if (recovering && !recoverImpact && !["attack.front-slam", "attack.sweep-360", "attack.charge", "attack.leap-slam", "attack.fan-sweep"].includes(id)) settle();
     if (parts.has("kernel-mark") && id === "attack.charge") extras["kernel-mark"] = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
@@ -4982,8 +5106,13 @@
       if (entries.length !== CONFIG.maxSpecies || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
       this.meshes = new MeshRenderer(this.device);
       this.ctx.meshRenderer = this.meshes;
-      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)), faceParts: compiled.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id) });
+      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), anchors: (0, import_vector_sockets2.readVectorSockets)(compiled, `species ${species}, ${compiled.sourcePath}`), parts: new Set(compiled.metadata.parts.map((part) => part.id)), faceParts: compiled.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id) });
       this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) }]));
+      for (const [species, troop] of this.vectorAssets) {
+        const record = species === 3 ? this.bossAssets.get("chestnut") : troop;
+        if (!record) throw new Error("Missing required boss vector asset for species " + species);
+        record.anchors = bindBossSocketAsset(species, record);
+      }
       this.bossPlayer = null;
       this.bossPlayerAsset = null;
       this.bossPlayers = /* @__PURE__ */ new Map();
@@ -5019,7 +5148,7 @@
       this.scale = this.canvas.width / (2 * this.view[0]);
     }
     project(x, y, z = 0) {
-      return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (0.62 * y + 0.785 * z + this.offset[1])) * this.scale };
+      return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (import_vector_sockets2.WORLD_DEPTH_PROJECTION * y + import_vector_sockets2.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale };
     }
     screenToWorld(clientX, clientY) {
       const r = this.canvas.getBoundingClientRect(), px = (clientX - r.left) * this.pixelRatio, py = (clientY - r.top) * this.pixelRatio;
@@ -5119,7 +5248,7 @@
       } else if (area.kind === "fan") {
         const inner = Math.max(0, area.reach - area.width), outer = area.reach + area.width;
         this.groundSector(area.x, area.y, area.angle, area.sector, outer, inner, soft, color);
-        const q = area.active ? clamp2(area.progress, 0, 1) : 0, a = area.angle - area.sector / 2 + q * area.sector;
+        const q = area.active ? clamp3(area.progress, 0, 1) : 0, a = area.angle - area.sector / 2 + q * area.sector;
         const from = this.project(area.x + Math.cos(a) * inner, area.y + Math.sin(a) * inner), to = this.project(area.x + Math.cos(a) * outer, area.y + Math.sin(a) * outer);
         this.line(from, to, 0.12, area.active ? "#f0c27b" : "#d8ae70");
       } else if (area.kind === "charge") {
@@ -5277,7 +5406,7 @@
       this.drawSleepBadge(u, sim, pose);
     }
     bossPose(world) {
-      const b = world.boss, k = this.feel?.boss(this.displayTimeMs) || { x: 0, y: 0, squash: 0 }, ground = this.project(b.x + k.x, b.y + k.y, 0), p = this.project(b.x + k.x, b.y + k.y, b.z || 0), r = this.scale * b.radius * 1.16;
+      const b = world.boss, k = b.patternId === "summon.mouth-t1" ? { x: 0, y: 0, squash: 0 } : this.feel?.boss(this.displayTimeMs) || { x: 0, y: 0, squash: 0 }, ground = this.project(b.x + k.x, b.y + k.y, 0), p = this.project(b.x + k.x, b.y + k.y, b.z || 0), r = this.scale * b.radius * 1.16;
       return { b, p, ground, r, k };
     }
     bossMotion(b, world) {
@@ -5302,7 +5431,7 @@
       return b.phase === "chase" ? "walk" : "idle";
     }
     drawBoss(world) {
-      const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, species = Number.isInteger(b.species) ? b.species : 3;
+      const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, species = b.species;
       const record = species === 3 ? this.bossAssets.get("chestnut") : this.vectorAssets.get(species);
       if (!record) throw new Error("Missing required boss vector asset for species " + species);
       let instance = this.bossPlayers.get(species);
@@ -5317,21 +5446,24 @@
       const metadata = record.compiled.metadata, name = this.bossMotion(b, world), fallbackClip = name === "airborne" ? metadata.clips.strike ? "strike" : metadata.clips.fire ? "fire" : "idle" : ["strike", "sweep", "fire"].includes(name) && !metadata.clips[name] ? metadata.clips.fire ? "fire" : "idle" : "idle", clipName = metadata.clips[name] ? name : fallbackClip, clip = metadata.clips[clipName];
       const timed = ["windup", "strike", "sweep", "recover", "hit", "death", "fire", "airborne"].includes(name), elapsed = b.patternId ? b.patternPhaseElapsed : b.clock;
       const clipStartAtMs = timed ? this.displayTimeMs - Math.min(clip.durationMs, Math.max(0, elapsed || 0) * 1e3) : name === "walk" ? this.displayTimeMs - Math.max(0, b.travel || 0) * 110 : this.displayTimeMs - (b.travel || 0) * 37 % clip.durationMs;
-      if (player.currentClip !== clipName) player.transitionTo(clipName, clipStartAtMs, 70);
+      const summoning = b.patternId === "summon.mouth-t1";
+      if (summoning) sampleBossSummon(player, metadata, b);
+      else if (instance.summoning || player.currentClip !== clipName) player.transitionTo(clipName, clipStartAtMs, 70);
+      instance.summoning = summoning;
       const summonOpen = b.patternId === "summon.mouth-t1" && (b.patternPhase === "active" || b.patternPhase === "windup" && b.patternPhaseElapsed >= BOSS_PATTERN_CONFIG["summon.mouth-t1"].windup * 0.5);
       const expression = b.hp <= 0 ? "dead" : event?.phase === "celebrating" && event.outcome === "defeat" ? "happy" : summonOpen ? "attack" : b.patternPhase === "windup" ? "focused" : b.patternPhase === "active" ? "attack" : b.flash > 0.07 ? "hurt" : "neutral";
       if (!metadata.expressions?.[expression] && !metadata.expressions?.neutral) throw new Error("Boss asset is missing a supported expression");
       const safeExpression = metadata.expressions?.[expression] ? expression : "neutral";
       if (player.currentExpression !== safeExpression) player.setExpression(safeExpression);
-      player.seek(this.displayTimeMs);
-      const [, , width, height] = record.compiled.viewBox, s = 2 * r / 220, ground = metadata.sockets?.ground?.point || [width / 2, height], anchorX = ground[0], anchorY = ground[1], matrix = [s, 0, 0, s, p.x - anchorX * s, p.y - anchorY * s];
+      if (b.patternId !== "summon.mouth-t1") player.seek(this.displayTimeMs);
+      const s = this.scale * (0, import_vector_sockets2.bossVectorScale)(b.radius), ground = record.anchors.ground, matrix = [s, 0, 0, s, p.x - ground.x * s, p.y - ground.y * s];
       const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0;
-      const fade = event?.phase === "fading" ? clamp2(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
+      const fade = event?.phase === "fading" ? clamp3(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
       const parts = record.parts, pose = bossAttackPose(b, parts);
       player.setBasePose("body", { x: 0, y: pose.body.y - 18 * defeatBounce, rotation: pose.body.rotation, scaleX: pose.body.scaleX * (1 + (k.squash || 0)) * (1 - 0.04 * defeatBounce), scaleY: pose.body.scaleY * (1 - (k.squash || 0)) * (1 + 0.06 * defeatBounce), opacity: fade });
       for (const [part, rotation] of Object.entries(pose.arms)) if (parts.has(part)) player.setBasePose(part, { rotation });
       for (const [part, partPose] of Object.entries(pose.extras)) if (parts.has(part)) player.setBasePose(part, partPose);
-      const mouthSocket = metadata.sockets?.mouth ? player.getSocket("mouth") : null, mouthScreen = mouthSocket ? { x: mouthSocket.x * s + matrix[4], y: mouthSocket.y * s + matrix[5] } : null;
+      const mouthSocket = player.getSocket("mouth"), mouthScreen = { x: mouthSocket.x * s + matrix[4], y: mouthSocket.y * s + matrix[5] };
       this.ctx.vector.flush();
       player.draw({ projection: this.ctx.vector.projection, matrix });
       if (b.patternId === "summon.mouth-t1" && b.patternReleased > 0 && pose.releasePulse > 0 && mouthScreen) {
@@ -5419,7 +5551,7 @@
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
       for (const u of sim2.units) {
-        const a = clamp2(0.22 / (1 + u.z * 0.3), 0.045, 0.22), shadow = u.size * 0.66 / (1 + u.z * 0.65);
+        const a = clamp3(0.22 / (1 + u.z * 0.3), 0.045, 0.22), shadow = u.size * 0.66 / (1 + u.z * 0.65);
         this.groundEllipse(u.x, u.y, shadow, shadow * 0.62, `rgba(42,61,35,${a})`);
         if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
@@ -5462,7 +5594,7 @@
       for (const e of sim2.effects) {
         const delay = Number.isFinite(e.delay) ? e.delay : 0, span = Number.isFinite(e.span) ? e.span : 1;
         if (e.life < delay) continue;
-        const q = Number.isFinite(e.span) ? clamp2((e.life - delay) / span, 0, 1) : e.life;
+        const q = Number.isFinite(e.span) ? clamp3((e.life - delay) / span, 0, 1) : e.life;
         if (e.kind === "feed") this.ring(e.x, e.y, 0.15 + q * 0.35, `rgba(166,121,59,${(1 - q) * 0.6})`, 0.035);
         else if (e.kind === "food-land") {
           const t = Math.min(1, q / 0.35);
@@ -5473,12 +5605,12 @@
           }
         } else if (e.kind === "land" || e.kind === "impact") this.ring(e.x, e.y, 0.1 + q * 0.8, `rgba(146,131,78,${(1 - q) * 0.65})`);
         else if (e.kind === "landing-shockwave" || e.kind === "walnut-shockwave") {
-          const progress = clamp2(q / (e.duration || 0.55), 0, 1), radius = Math.max(0.08, e.radius) * (0.2 + 0.8 * progress);
+          const progress = clamp3(q / (e.duration || 0.55), 0, 1), radius = Math.max(0.08, e.radius) * (0.2 + 0.8 * progress);
           this.groundEllipse(e.x, e.y, radius, radius, `rgba(225,190,103,${0.12 * (1 - progress)})`);
           this.ring(e.x, e.y, radius, `rgba(234,194,104,${0.82 * (1 - progress)})`, 0.12 * (1 - progress) + 0.025);
           this.ring(e.x, e.y, Math.max(0.05, radius - 0.12), `rgba(250,225,158,${0.55 * (1 - progress)})`, 0.045);
         } else if (e.kind === "popcorn-explosion") {
-          const progress = clamp2(q / (e.duration || 0.5), 0, 1), radius = Math.max(0.08, e.radius) * (0.18 + 0.82 * progress);
+          const progress = clamp3(q / (e.duration || 0.5), 0, 1), radius = Math.max(0.08, e.radius) * (0.18 + 0.82 * progress);
           this.groundEllipse(e.x, e.y, radius, radius, `rgba(235,143,63,${0.18 * (1 - progress)})`);
           this.ring(e.x, e.y, radius, `rgba(233,115,49,${0.88 * (1 - progress)})`, 0.1 * (1 - progress) + 0.025);
           this.ring(e.x, e.y, Math.max(0.05, radius * 0.72), `rgba(255,206,101,${0.7 * (1 - progress)})`, 0.055);
@@ -5487,7 +5619,7 @@
             this.ellipse(p.x, p.y, this.scale * 0.045 * (1 - progress), this.scale * 0.03 * (1 - progress), `rgba(255,216,119,${1 - progress})`, a);
           }
         } else if (e.kind === "popcorn-kernel-impact") {
-          const progress = clamp2(q / (e.duration || 0.25), 0, 1);
+          const progress = clamp3(q / (e.duration || 0.25), 0, 1);
           this.ring(e.x, e.y, 0.08 + progress * (e.radius || 0.1) * 1.6, `rgba(225,150,72,${0.65 * (1 - progress)})`, 0.045);
         } else if (e.kind === "drop-dust") {
           const t = Math.min(1, q / 0.28);
@@ -5497,7 +5629,7 @@
             this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.03, `rgba(179,169,137,${1 - t})`);
           }
         } else if (e.kind === "merge-material") {
-          const t = clamp2(q, 0, 1), x = e.x + (e.targetX - e.x) * t, y = e.y + (e.targetY - e.y) * t, z = (e.z || 0) + Math.sin(Math.PI * t) * 0.55;
+          const t = clamp3(q, 0, 1), x = e.x + (e.targetX - e.x) * t, y = e.y + (e.targetY - e.y) * t, z = (e.z || 0) + Math.sin(Math.PI * t) * 0.55;
           const start2 = this.project(e.x, e.y, e.z || 0), point = this.project(x, y, z);
           this.line(start2, point, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - t)})`);
           this.ellipse(point.x, point.y, this.scale * 0.12 * (1 - 0.4 * t), this.scale * 0.09 * (1 - 0.4 * t), `rgba(88,185,187,${1 - 0.35 * t})`, t * Math.PI);
@@ -5538,6 +5670,7 @@
       this.stats = c.endFrame();
     }
     dispose() {
+      for (const [species, troop] of this.vectorAssets) unbindBossSocketAsset(species, species === 3 ? this.bossAssets.get("chestnut") : troop);
       for (const player of this.vectorPlayers.values()) player.dispose();
       this.vectorPlayers.clear();
       for (const record of this.vectorAssets.values()) record.asset.dispose();
