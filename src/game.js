@@ -3899,7 +3899,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.9";
+      PRODUCT_VERSION = "0.7.10";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -5833,6 +5833,69 @@
     console.error(error);
     if (active && !room) active.paused = true;
   };
+  var bossPreviewSources = /* @__PURE__ */ new Map();
+  var bossPreviewVersions = /* @__PURE__ */ new WeakMap();
+  function bossPreviewSource(asset) {
+    if (bossPreviewSources.has(asset)) {
+      const cached = bossPreviewSources.get(asset);
+      bossPreviewSources.delete(asset);
+      bossPreviewSources.set(asset, cached);
+      return cached;
+    }
+    const source = fetch(new URL(asset, document.baseURI), { credentials: "same-origin" }).then((response) => {
+      if (!response.ok) throw Error(`Boss preview source failed: ${response.status}`);
+      return response.text();
+    });
+    bossPreviewSources.set(asset, source);
+    if (bossPreviewSources.size > 16) bossPreviewSources.delete(bossPreviewSources.keys().next().value);
+    source.catch(() => {
+      if (bossPreviewSources.get(asset) === source) bossPreviewSources.delete(asset);
+    });
+    return source;
+  }
+  async function createNeutralBossPreview(species, asset) {
+    const compiled = globalThis.BudmoriVectorResources?.troops?.[species], expressions = compiled?.metadata?.expressions, neutral = expressions?.neutral;
+    if (!neutral) throw Error(`Species ${species} is missing the neutral GameKit expression`);
+    const documentSvg = new DOMParser().parseFromString(await bossPreviewSource(`./assets/troops/${asset}`), "image/svg+xml");
+    if (documentSvg.getElementsByTagName("parsererror").length || documentSvg.documentElement.localName !== "svg") throw Error(`Invalid SVG preview source: ${asset}`);
+    const svg = documentSvg.documentElement, nodesById = new Map([...svg.querySelectorAll("[id]")].map((node) => [node.getAttribute("id"), node]));
+    const expressionParts = new Set(Object.values(expressions).flatMap((variant) => [...variant.show, ...variant.hide])), visible = new Set(neutral.show);
+    for (const id of neutral.hide) visible.delete(id);
+    for (const id of expressionParts) {
+      const node = nodesById.get(id);
+      if (!node) throw Error(`SVG preview is missing GameKit expression part: ${id}`);
+      node.style.setProperty("display", visible.has(id) ? "inline" : "none");
+    }
+    return document.importNode(svg, true);
+  }
+  async function renderNeutralBossPreview(target, species, asset, label = "") {
+    const version = (bossPreviewVersions.get(target) || 0) + 1;
+    bossPreviewVersions.set(target, version);
+    target.setAttribute("aria-busy", "true");
+    try {
+      const svg = await createNeutralBossPreview(species, asset);
+      if (bossPreviewVersions.get(target) !== version || !target.isConnected) return;
+      svg.id = target.id;
+      svg.setAttribute("class", target.getAttribute("class") || "");
+      svg.removeAttribute("hidden");
+      svg.setAttribute("aria-busy", "false");
+      if (label) {
+        svg.setAttribute("role", "img");
+        svg.setAttribute("aria-label", label);
+      } else {
+        svg.setAttribute("aria-hidden", "true");
+        svg.removeAttribute("role");
+        svg.removeAttribute("aria-label");
+      }
+      target.replaceWith(svg);
+      bossPreviewVersions.set(svg, version);
+    } catch (error) {
+      if (bossPreviewVersions.get(target) !== version) return;
+      target.hidden = true;
+      target.setAttribute("aria-busy", "false");
+      console.error("Unable to render neutral boss preview", error);
+    }
+  }
   function writeCheckpoint(world = personalGarden) {
     if (!world) return false;
     const ok = storage.save(world);
@@ -5891,15 +5954,22 @@
     const species = selection.species, catalogEntry = speciesById(species), name = catalogEntry.name, rolls = selection.rolls;
     $2("bossStageCounter").textContent = `${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
     $2("bossStageLabel").textContent = `STAGE ${selection.stage}`;
-    $2("bossPreview").src = `./assets/troops/${catalogEntry.asset}`;
-    $2("bossPreview").alt = `${name} 보스 미리보기`;
+    renderNeutralBossPreview($2("bossPreview"), species, catalogEntry.asset, `${name} 보스 미리보기`);
     $2("bossStageName").textContent = `${name} 보스`;
     $2("bossStageHp").textContent = `HP ${Math.round(selection.hp).toLocaleString("ko-KR")}`;
     $2("bossStageAttack").textContent = `공격력 ${Number(selection.attackPower.toPrecision(3)).toLocaleString("ko-KR")}`;
     $2("bossStageXp").textContent = `+${selection.xp.toLocaleString("ko-KR")} XP`;
     $2("bossStageDrop").hidden = rolls === 0;
+    $2("bossStageDrop").replaceChildren();
     if (rolls > 0) {
-      $2("bossStageDrop").innerHTML = `<img src="./assets/troops/${catalogEntry.asset}" alt=""><span><strong>${name} 보스 종</strong><small>${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리</small></span>`;
+      const icon = document.createElement("img");
+      icon.draggable = false;
+      const label = document.createElement("span"), title = document.createElement("strong"), details = document.createElement("small");
+      title.textContent = `${name} 보스 종`;
+      details.textContent = `${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리`;
+      label.append(title, details);
+      $2("bossStageDrop").append(icon, label);
+      renderNeutralBossPreview(icon, species, catalogEntry.asset);
       $2("bossStageNotice").textContent = "";
     } else $2("bossStageNotice").textContent = "보스 종 보상은 없어요 · 5스테이지부터 1회 추첨";
     $2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.units) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null;
@@ -5934,6 +6004,13 @@
     document.body.dataset.bossScreen = "false";
     $2("bossEncounterScreen").hidden = true;
     bossSwipe = null;
+    for (const id of ["bossPreview"]) {
+      const preview = $2(id);
+      if (preview) {
+        bossPreviewVersions.set(preview, (bossPreviewVersions.get(preview) || 0) + 1);
+        preview.hidden = true;
+      }
+    }
     if (active && bossPauseBeforeOpen !== null) {
       active.paused = bossPauseBeforeOpen;
       bossPauseBeforeOpen = null;
