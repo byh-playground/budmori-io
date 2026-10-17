@@ -41,6 +41,9 @@ async function createNeutralBossPreview(species,asset){
  const expressionParts=new Set(Object.values(expressions).flatMap(variant=>[...variant.show,...variant.hide])),visible=new Set(neutral.show);
  for(const id of neutral.hide)visible.delete(id);
  for(const id of expressionParts){const node=nodesById.get(id);if(!node)throw Error(`SVG preview is missing GameKit expression part: ${id}`);node.style.setProperty('display',visible.has(id)?'inline':'none')}
+ // Source opacity stays paintable for runtime animation; previews use the idle starting pose.
+ const idlePose=compiled.metadata.clips.idle.keyframes[0].parts;
+ for(const [id,pose] of Object.entries(idlePose))if(pose.opacity!==undefined){const node=nodesById.get(id);if(!node)throw Error(`SVG preview is missing idle part: ${id}`);node.style.setProperty('opacity',String(pose.opacity))}
  return document.importNode(svg,true);
 }
 async function renderNeutralBossPreview(target,species,asset,label=''){
