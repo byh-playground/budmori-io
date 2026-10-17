@@ -1,4 +1,5 @@
-// Storage-owned fallback values for the supported additive 0.4–0.7 formats.
+// Internal checkpoint shapes and import defaults for supported 0.4–0.7 saves.
+// Disk writes use farm-progress.js; these runtime values are never exported.
 // These are not live entity defaults. Changing a runtime constructor must not
 // change either the save field set or how an older save fills missing fields.
 export const UNIT_SNAPSHOT_SHAPE = {
@@ -84,7 +85,7 @@ export const LEGACY_UNIT_DEFAULT_KEYS = Object.freeze([
   'growthDuration','mateId','perceptionRange','ownerId','farmId','dropLanded'
 ]);
 
-// A recipe selects persisted fields even when an entity gains enumerable
+// A recipe selects internal checkpoint fields even when an entity gains enumerable
 // caches, backreferences, or rendering helpers. Nullable/optional records and
 // arrays have explicit recipes too; no runtime object is JSON-stringified.
 const fields = (names, nested={}) => ({...Object.fromEntries(names.split(' ').filter(Boolean).map(key=>[key,true])),...nested});

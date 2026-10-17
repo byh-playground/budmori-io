@@ -96,22 +96,22 @@
     "src/vector-sockets.cjs"(exports, module) {
       "use strict";
       function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
-        const fail3 = (message) => {
+        const fail4 = (message) => {
           throw new Error(`Vector socket contract (${label}): ${message}`);
         };
-        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) fail3("a finite SVG viewBox is required");
+        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) fail4("a finite SVG viewBox is required");
         const parts = new Map((metadata?.parts || []).map((part) => [part.id, part]));
         const anchors = {};
         for (const name of ["mouth", "ground"]) {
           const socket = metadata?.sockets?.[name];
-          if (!socket || !parts.has(socket.part)) fail3(`${name} must name an authored part`);
-          if (!Array.isArray(socket.point) || socket.point.length !== 2 || !socket.point.every(Number.isFinite)) fail3(`${name} must contain two finite canvas coordinates`);
+          if (!socket || !parts.has(socket.part)) fail4(`${name} must name an authored part`);
+          if (!Array.isArray(socket.point) || socket.point.length !== 2 || !socket.point.every(Number.isFinite)) fail4(`${name} must contain two finite canvas coordinates`);
           const [x, y] = socket.point;
-          if (x < viewBox[0] || x > viewBox[0] + viewBox[2] || y < viewBox[1] || y > viewBox[1] + viewBox[3]) fail3(`${name} lies outside the SVG canvas`);
+          if (x < viewBox[0] || x > viewBox[0] + viewBox[2] || y < viewBox[1] || y > viewBox[1] + viewBox[3]) fail4(`${name} lies outside the SVG canvas`);
           anchors[name] = Object.freeze({ part: socket.part, x, y });
         }
-        if (anchors.ground.part !== "body") fail3("ground must belong to body");
-        if (anchors.mouth.y >= anchors.ground.y) fail3("mouth must be above the authored ground baseline");
+        if (anchors.ground.part !== "body") fail4("ground must belong to body");
+        if (anchors.mouth.y >= anchors.ground.y) fail4("mouth must be above the authored ground baseline");
         return Object.freeze(anchors);
       }
       var BOSS_VECTOR_DIAMETER = 220;
@@ -2297,7 +2297,7 @@
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
           for (const key of ["unitSpatial", "foodSpatial", "_unitById", "_unitStepOrder", "_unitAliveState", "_liveFactionCounts", "_foodOrder", "_speciesGroups", "_speciesTierGroups", "_mergeEligibleGroups", "_ownedSpeciesCounts", "_stepUnits", "_unitCandidates", "_foodCandidates", "_groundedFoods", "_groundedFoodCount", "_contactPending", "_contactExtra", "_contactQuery", "_contactSeen", "_contactGeneration", "_bossGridUnits", "_bossGroundUnits", "_bossQueryCandidates", "_bossHitCandidates", "_mergeNearestScratch", "_mergeMaterialsScratch", "_mergeIdScratch", "_spatialStepActive", "_spatialQueryDepth", "_unitSpatialDirty", "_foodSpatialDirty"]) Object.defineProperty(this, key, { enumerable: false });
-          Object.defineProperties(this, { localScatter: { value: { active: false, x: 0, y: 0, radius: CONFIG.scatter.minRadius, handleX: 0, handleY: 0, generation: 0 } }, _scatterStates: { value: /* @__PURE__ */ new WeakMap() } });
+          Object.defineProperties(this, { progressRevision: { value: 0, writable: true }, _progressTimerCheckpoint: { value: 0, writable: true }, localScatter: { value: { active: false, x: 0, y: 0, radius: CONFIG.scatter.minRadius, handleX: 0, handleY: 0, generation: 0 } }, _scatterStates: { value: /* @__PURE__ */ new WeakMap() } });
           this.reset();
         }
         _rebuildUnitSpatialIndex(stepUnits = this.units) {
@@ -2483,6 +2483,8 @@
         }
         reset() {
           this.clearLocalScatter();
+          this.progressRevision = 0;
+          this._progressTimerCheckpoint = 0;
           this.mergeTask = null;
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
@@ -2531,6 +2533,12 @@
             u.growthElapsed = u.growthDuration;
           }
         }
+        markProgressChanged() {
+          if (this.scene === "farm") this.progressRevision++;
+        }
+        hasProgressTimers() {
+          return this.units.some((unit2) => !unit2.isBattleOnlySummon && (unit2.down > 0 || unit2.cooldown > 0 || !unit2.mature));
+        }
         get armyHealth() {
           return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER)).reduce((sum, u) => {
             const maxHp = stats(u.tier, u.species).maxHp;
@@ -2558,19 +2566,28 @@
         investAbilityNode(abilityId, nodeId) {
           const inCombat = this.running || this.farmBossEvent?.phase !== "idle";
           const result = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, { location: this.scene, inCombat, highestSpeciesTier: this.highestSpeciesTiers() });
-          if (result.ok) this.playerProgression = result.state;
+          if (result.ok) {
+            this.playerProgression = result.state;
+            this.markProgressChanged();
+          }
           return result;
         }
         investFarmUpgrade(nodeId) {
           const inCombat = this.running || this.farmBossEvent?.phase !== "idle";
           const result = purchaseFarmUpgrade(this.playerProgression, nodeId, { location: this.scene, inCombat });
-          if (result.ok) this.playerProgression = result.state;
+          if (result.ok) {
+            this.playerProgression = result.state;
+            this.markProgressChanged();
+          }
           return result;
         }
         resetAbilityTree() {
           const inCombat = this.running || this.farmBossEvent?.phase !== "idle";
           const result = resetAbilityProgression(this.playerProgression, { location: this.scene, inCombat });
-          if (result.ok) this.playerProgression = result.state;
+          if (result.ok) {
+            this.playerProgression = result.state;
+            this.markProgressChanged();
+          }
           return result;
         }
         spawnLobProjectile(unit2, action, shot, popcornConfig = null) {
@@ -2600,6 +2617,7 @@
           if (unit2.deathSplitHandled) return false;
           this._syncUnitAliveCount(unit2);
           unit2.deathSplitHandled = true;
+          if (!unit2.isBattleOnlySummon) this.markProgressChanged();
           if (unit2.isBattleOnlySummon) {
             unit2.down = 0;
             this._trackUnitRemoved(unit2, { keepStepSnapshot: true });
@@ -2773,6 +2791,7 @@
           const u = new Unit(this.nextId++, species, clamp3(tier, 1, CONFIG.unit.maxTier), x, y);
           this.units.push(u);
           this._trackUnitAdded(u);
+          this.markProgressChanged();
           return u;
         }
         notice(kind, detail = {}) {
@@ -2801,6 +2820,7 @@
             this.foodTaps.produced++;
           }
           this.notice("food-tap", { source, completed, remainder: this.foodTaps.remainder });
+          this.markProgressChanged();
           return true;
         }
         advanceAutoTaps(elapsed) {
@@ -2828,6 +2848,7 @@
             this.food.push(food);
             this._trackFoodAdded(food);
             this.emit("feed", tx, ty);
+            this.markProgressChanged();
           }
         }
         tryStartFarmBossEvent(x, y) {
@@ -2843,6 +2864,7 @@
           this.boss.encounterId = this.farmBossEvent.encounterId;
           this.boss.patternRuntime = createBossPatternRuntime();
           this.combat("farm-boss-drop", { x, y, z: this.boss.z });
+          this.markProgressChanged();
           return true;
         }
         getBossAcquisitionChance({ farmEvent = false } = {}) {
@@ -3044,10 +3066,10 @@
                     if (unit2 === anchor) continue;
                     const distance2 = (unit2.x - anchor.x) ** 2 + (unit2.y - anchor.y) ** 2;
                     let insertAt = nearest.length;
-                    for (let position = 0; position < nearest.length; position++) {
-                      const current = nearest[position];
+                    for (let position2 = 0; position2 < nearest.length; position2++) {
+                      const current = nearest[position2];
                       if (distance2 < current.distance || distance2 === current.distance && unit2.id < current.unit.id) {
-                        insertAt = position;
+                        insertAt = position2;
                         break;
                       }
                     }
@@ -3151,6 +3173,7 @@
           this._spatialStepActive = true;
           this._spatialQueryDepth = 0;
           this.time += dt;
+          let progressTimersAdvanced = false;
           grantPendingBossAcquisitions(this);
           const units = this._stepUnits;
           units.length = 0;
@@ -3196,6 +3219,7 @@
                 u.ability.interrupt();
               }
               if (this.scene === "farm") {
+                progressTimersAdvanced = true;
                 u.down = Math.max(0, u.down - dt);
                 if (u.down < 1e-9) u.down = 0;
               }
@@ -3214,6 +3238,7 @@
                 this._syncUnitAliveCount(u);
                 u.ability = createUnitAttackCycle(u);
                 this.combat("unit-recover", { unit: u.id, x: u.x, y: u.y });
+                this.markProgressChanged();
               }
               this.unitSpatial.update(u);
               continue;
@@ -3222,9 +3247,13 @@
             const unitStats = stats(u.tier, u.species);
             if (u.hp > 0 && unitStats.regen > 0) applyHealing(u, unitStats.regen * dt, unitStats);
             if (!u.mature) {
+              progressTimersAdvanced = true;
               u.growthElapsed = Math.min(u.growthDuration, u.growthElapsed + dt);
               u.growth = Math.min(CONFIG.farm.breeding.matureMeals, Math.floor(CONFIG.farm.breeding.matureMeals * u.growthElapsed / u.growthDuration + 1e-9));
+              if (u.mature) this.markProgressChanged();
             }
+            if (u.cooldown > 0) progressTimersAdvanced = true;
+            if (u.cooldown > 0 && u.cooldown <= dt + 1e-9) this.markProgressChanged();
             u.cooldown = Math.max(0, u.cooldown - dt);
             if (u.cooldown < 1e-9) {
               u.cooldown = 0;
@@ -3261,6 +3290,13 @@
             }
             this.boundBody(u, this.scene, u.radius);
             this.unitSpatial.update(u);
+          }
+          if (this.scene === "farm" && progressTimersAdvanced) {
+            this._progressTimerCheckpoint += dt;
+            if (this._progressTimerCheckpoint >= 5) {
+              this._progressTimerCheckpoint = 0;
+              this.markProgressChanged();
+            }
           }
           this.resolveContacts(units);
           if (this.scene === "farm") {
@@ -3602,6 +3638,7 @@
               this._removeGroupItem(this._groundedFoods, target);
               this._groundedFoodCount = Math.max(0, this._groundedFoodCount - 1);
               u.meals = 1;
+              this.markProgressChanged();
               u.vz = 2;
               this.emit("eat", u.x, u.y, 0.5);
               target = null;
@@ -3873,6 +3910,7 @@
             this.combat("farm-boss-xp", { encounterId, xp: settlement2.xpAwarded, levelsGained: settlement2.levelsGained, pointsAwarded: settlement2.pointsAwarded });
             this.combat("farm-boss-reward", { acquired: reward2.status === "granted", pending: reward2.status === "pending", species: reward2.species, tier: reward2.tier, chance: reward2.chance, roll: reward2.roll, encounterId });
           }
+          this.markProgressChanged();
           this.combat(outcome === "victory" ? "farm-boss-victory" : "farm-boss-defeat", { x: this.boss.x, y: this.boss.y, z: 0 });
           return true;
         }
@@ -4305,6 +4343,205 @@
     }
   });
 
+  // src/farm-progress.js
+  function keys(value, required, optional = []) {
+    assert(value && typeof value === "object" && !Array.isArray(value));
+    assert(required.every((key) => Object.hasOwn(value, key)));
+    assert(Object.keys(value).every((key) => required.includes(key) || optional.includes(key)));
+  }
+  function copyPlayer(player) {
+    return { schemaVersion: player.schemaVersion, level: player.level, experience: player.experience, availablePoints: player.availablePoints, farmUpgrades: { ...player.farmUpgrades }, abilities: Object.fromEntries(Object.entries(player.abilities).map(([id, build]) => [id, { rootUnlocked: build.rootUnlocked, powerLevel: build.powerLevel, gradeLevel: build.gradeLevel }])), processedBossKillReceipts: [...player.processedBossKillReceipts] };
+  }
+  function pendingReward(reward2) {
+    const rolls = reward2.drops ? reward2.drops.filter((drop2) => drop2.status === "pending").map((drop2) => drop2.roll) : [reward2.roll];
+    const result = { encounterId: reward2.encounterId, source: reward2.source, receiptKey: reward2.receiptKey || `${reward2.source}:${reward2.encounterId}`, species: reward2.species, tier: reward2.tier, chance: reward2.chance, rolls };
+    for (const key of rewardExtras) if (reward2[key] !== void 0) result[key] = reward2[key];
+    return result;
+  }
+  function cohortValues(unit2) {
+    return [unit2.species, unit2.tier, unit2.meals >= 1, Math.max(0, unit2.growthDuration - unit2.growthElapsed), unit2.growthDuration, unit2.cooldown, unit2.cooldownDuration, unit2.hp <= 0 ? unit2.down : 0];
+  }
+  function captureFarmProgress(world) {
+    assert(world.scene === "farm");
+    const groups = /* @__PURE__ */ new Map();
+    for (const unit2 of world.units) {
+      if (unit2.isBattleOnlySummon || unit2.countsTowardPermanentRoster === false || unit2.faction !== "player") continue;
+      const [species, tier, fed, growth, duration, cooldown, cooldownDuration, rest] = cohortValues(unit2);
+      const key = [species, tier, Number(fed), growth, growth ? duration : 0, cooldown, cooldown ? cooldownDuration : 0, rest].join(":");
+      const previous = groups.get(key);
+      if (previous) {
+        previous.count++;
+        continue;
+      }
+      const row = { species, tier, count: 1 };
+      if (fed) row.fed = true;
+      if (growth > 0) row.growth = { remaining: growth, duration };
+      if (cooldown > 0) row.cooldown = { remaining: cooldown, duration: cooldownDuration };
+      if (rest > 0) row.rest = rest;
+      groups.set(key, row);
+    }
+    const roster2 = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row), stage = world.farmBossProgress;
+    return {
+      seed: world.seed,
+      rngState: world.rng.state,
+      mode: world.mode,
+      player: copyPlayer(world.playerProgression),
+      roster: roster2,
+      food: { count: world.food.length, remainder: world.foodTaps.remainder, produced: world.foodTaps.produced },
+      totals: { births: world.metrics.births, merges: world.metrics.merges },
+      bossStages: { currentStage: stage.currentStage, encounterSeed: stage.encounterSeed, encounterEpoch: stage.encounterEpoch, nextSelectionId: stage.nextSelectionId, selections: stage.selections.map(({ stage: stage2, species, selectionId }) => ({ stage: stage2, species, selectionId })) },
+      ledger: { boss: { nextEncounterId: world.nextBossEncounterId, settledThrough: { ...world.bossRewardWatermarks }, pendingRewards: world.bossRewardReceipts.filter((reward2) => reward2.status === "pending").map(pendingReward) }, raid: { nextRunSequence: world.nextRaidRunSequence, activeRun: world.activeRaidRunSequence === null ? null : { sequence: world.activeRaidRunSequence, sessionId: world.activeRaidSessionId }, settledThrough: world.raidSettlementWatermark } }
+    };
+  }
+  function validateFarmProgress(data) {
+    keys(data, ["seed", "rngState", "mode", "player", "roster", "food", "totals", "bossStages", "ledger"]);
+    assert(integer(data.seed, 0, 4294967295) && integer(data.rngState, 0, 4294967295) && ["breed", "merge"].includes(data.mode));
+    const player = data.player, defaults = createPlayerProgressionState();
+    keys(player, Object.keys(defaults));
+    keys(player.farmUpgrades, Object.keys(defaults.farmUpgrades));
+    keys(player.abilities, Object.keys(defaults.abilities));
+    for (const build of Object.values(player.abilities)) keys(build, ["rootUnlocked", "powerLevel", "gradeLevel"]);
+    assert(isValidPlayerProgressionState(player) && integer(player.level, 1) && number(player.experience) && Array.isArray(player.processedBossKillReceipts) && player.processedBossKillReceipts.length <= 1e5 && player.processedBossKillReceipts.every(string));
+    assert(Array.isArray(data.roster) && data.roster.length <= CONFIG.farm.capacity.max);
+    let count = 0;
+    const cohorts = /* @__PURE__ */ new Set();
+    for (const row of data.roster) {
+      keys(row, ["species", "tier", "count"], ["fed", "growth", "cooldown", "rest"]);
+      assert(integer(row.species, 0, CONFIG.unit.speciesCount - 1) && integer(row.tier, 1, CONFIG.unit.maxTier) && integer(row.count, 1, CONFIG.farm.capacity.max));
+      count += row.count;
+      if (Object.hasOwn(row, "fed")) assert(row.fed === true);
+      for (const key of ["growth", "cooldown"]) if (Object.hasOwn(row, key)) {
+        keys(row[key], ["remaining", "duration"]);
+        assert(number(row[key].remaining, Number.MIN_VALUE, 1e5) && number(row[key].duration, row[key].remaining, 1e5));
+      }
+      if (Object.hasOwn(row, "rest")) assert(number(row.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
+      const signature = [row.species, row.tier, Number(!!row.fed), row.growth?.remaining || 0, row.growth?.duration || 0, row.cooldown?.remaining || 0, row.cooldown?.duration || 0, row.rest || 0].join(":");
+      assert(!cohorts.has(signature));
+      cohorts.add(signature);
+    }
+    assert(count <= CONFIG.farm.capacity.max);
+    keys(data.food, ["count", "remainder", "produced"]);
+    assert(integer(data.food.count, 0, 140) && integer(data.food.remainder, 0, 4) && integer(data.food.produced));
+    keys(data.totals, ["births", "merges"]);
+    assert(integer(data.totals.births) && integer(data.totals.merges));
+    const stage = data.bossStages;
+    keys(stage, ["currentStage", "encounterSeed", "encounterEpoch", "nextSelectionId", "selections"]);
+    assert(integer(stage.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stage.encounterSeed, 0, 4294967295) && integer(stage.encounterEpoch) && integer(stage.nextSelectionId, 1) && Array.isArray(stage.selections) && stage.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
+    const stages = /* @__PURE__ */ new Set(), selections = /* @__PURE__ */ new Set();
+    for (const entry of stage.selections) {
+      keys(entry, ["stage", "species", "selectionId"]);
+      assert(integer(entry.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(entry.species, 0, CONFIG.unit.speciesCount - 1) && integer(entry.selectionId, 1, stage.nextSelectionId - 1) && !stages.has(entry.stage) && !selections.has(entry.selectionId));
+      stages.add(entry.stage);
+      selections.add(entry.selectionId);
+    }
+    const ledger = data.ledger;
+    keys(ledger, ["boss", "raid"]);
+    const boss2 = ledger.boss, raid = ledger.raid;
+    keys(boss2, ["nextEncounterId", "settledThrough", "pendingRewards"]);
+    keys(boss2.settledThrough, ["farm", "raid"]);
+    keys(raid, ["nextRunSequence", "activeRun", "settledThrough"]);
+    assert(integer(boss2.settledThrough.farm) && integer(boss2.settledThrough.raid) && integer(boss2.nextEncounterId, boss2.settledThrough.farm + 1) && integer(raid.nextRunSequence) && integer(raid.settledThrough, boss2.settledThrough.raid, raid.nextRunSequence));
+    if (raid.activeRun === null) assert(raid.nextRunSequence === raid.settledThrough);
+    else {
+      keys(raid.activeRun, ["sequence", "sessionId"]);
+      assert(integer(raid.activeRun.sequence, 1) && raid.activeRun.sequence === raid.nextRunSequence && raid.activeRun.sequence === raid.settledThrough + 1 && string(raid.activeRun.sessionId) && raid.activeRun.sessionId.length <= 128);
+    }
+    assert(Array.isArray(boss2.pendingRewards) && boss2.pendingRewards.length <= 1e5);
+    const receipts = /* @__PURE__ */ new Set(), encounters = /* @__PURE__ */ new Set();
+    for (const reward2 of boss2.pendingRewards) {
+      keys(reward2, ["encounterId", "source", "receiptKey", "species", "tier", "chance", "rolls"], rewardExtras);
+      assert(["farm", "raid"].includes(reward2.source) && integer(reward2.encounterId, 1, boss2.settledThrough[reward2.source]) && string(reward2.receiptKey) && !receipts.has(reward2.receiptKey) && integer(reward2.species, 0, CONFIG.unit.speciesCount - 1) && integer(reward2.tier, 1, CONFIG.unit.maxTier) && number(reward2.chance, 0, 1));
+      receipts.add(reward2.receiptKey);
+      const encounter = `${reward2.source}:${reward2.encounterId}`;
+      assert(!encounters.has(encounter));
+      encounters.add(encounter);
+      assert(Array.isArray(reward2.rolls) && reward2.rolls.length > 0 && reward2.rolls.length <= BOSS_REWARD_SETTINGS.maxStage && reward2.rolls.every((roll) => number(roll, 0, 1) && roll < reward2.chance));
+      if (reward2.acquisitionMultiplier !== void 0) assert(number(reward2.acquisitionMultiplier, 0, 2));
+      if (reward2.xpReceiptKey !== void 0) assert(string(reward2.xpReceiptKey));
+      if (reward2.xpStatus !== void 0) assert(["awarded", "already-awarded", "unsettled"].includes(reward2.xpStatus));
+      for (const key of ["xpAmount", "levelsGained", "pointsAwarded"]) if (reward2[key] !== void 0) assert(number(reward2[key]));
+    }
+    return true;
+  }
+  function sameFarmProgress(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return false;
+    const keysA = Object.keys(a), keysB = Object.keys(b);
+    return keysA.length === keysB.length && keysA.every((key) => Object.hasOwn(b, key) && sameFarmProgress(a[key], b[key]));
+  }
+  function position(index, count, seed, scale) {
+    const angle = index * 2.399963229728653 + seed % 6283 / 1e3, radius = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
+    return { x: Math.cos(angle) * CONFIG.farm.arena.radiusX * radius, y: Math.sin(angle) * CONFIG.farm.arena.radiusY * radius };
+  }
+  function restoreFarmProgress(data) {
+    validateFarmProgress(data);
+    const world = new Garden(data.seed);
+    world.units = [];
+    world.food = [];
+    world.nextId = 1;
+    world.mode = data.mode;
+    world.playerProgression = copyPlayer(data.player);
+    world.farmBossProgress = structuredClone(data.bossStages);
+    Object.assign(world.metrics, data.totals);
+    const count = data.roster.reduce((total, row) => total + row.count, 0);
+    for (const row of data.roster) for (let i = 0; i < row.count; i++) {
+      const point3 = position(world.units.length, count, data.seed, 0.7), unit2 = new Unit(world.nextId++, row.species, row.tier, point3.x, point3.y);
+      unit2.meals = row.fed ? 1 : 0;
+      unit2.growthDuration = row.growth?.duration || world.breedGrowthDuration();
+      unit2.growthElapsed = row.growth ? row.growth.duration - row.growth.remaining : unit2.growthDuration;
+      unit2.growth = Math.floor(CONFIG.farm.breeding.matureMeals * unit2.growthElapsed / unit2.growthDuration + 1e-9);
+      unit2.cooldown = row.cooldown?.remaining || 0;
+      unit2.cooldownDuration = row.cooldown?.duration || 0;
+      if (row.rest) {
+        unit2.hp = 0;
+        unit2.down = row.rest;
+        unit2.deathSplitHandled = true;
+      }
+      world.units.push(unit2);
+    }
+    for (let i = 0; i < data.food.count; i++) {
+      const point3 = position(i, data.food.count, data.seed + 103, 0.8);
+      world.food.push({ ...point3, z: 0, vx: 0, vy: 0, vz: 0, seed: i * 0.61803398875 % 1, phase: "grounded", tx: point3.x, ty: point3.y });
+    }
+    Object.assign(world.foodTaps, { remainder: data.food.remainder, produced: data.food.produced });
+    const { boss: boss2, raid } = data.ledger;
+    Object.assign(world, { nextBossEncounterId: boss2.nextEncounterId, bossRewardWatermarks: { ...boss2.settledThrough }, nextRaidRunSequence: raid.nextRunSequence, activeRaidRunSequence: raid.activeRun?.sequence ?? null, activeRaidSessionId: raid.activeRun?.sessionId ?? null, raidSettlementWatermark: raid.settledThrough });
+    world.bossRewardReceipts = boss2.pendingRewards.map((reward2) => {
+      const { rolls, ...fields2 } = reward2;
+      return { ...fields2, x: 0, y: 0, roll: rolls[0], status: "pending", unitId: 0, rollCount: rolls.length, drops: rolls.map((roll) => ({ roll, status: "pending", unitId: 0 })) };
+    });
+    world.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
+    world.reconcileMateReservations();
+    return world;
+  }
+  var fail, assert, integer, number, string, rewardExtras;
+  var init_farm_progress = __esm({
+    "src/farm-progress.js"() {
+      init_farm_model();
+      init_player_progression();
+      init_boss_rewards();
+      fail = () => {
+        throw new TypeError("올바른 농장 진행 저장 데이터가 아닙니다.");
+      };
+      assert = (value) => {
+        if (!value) fail();
+      };
+      integer = (value, min = 0, max = 1e12) => Number.isSafeInteger(value) && value >= min && value <= max;
+      number = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
+      string = (value) => typeof value === "string" && value.trim().length > 0 && value.length < 256;
+      rewardExtras = ["acquisitionMultiplier", "xpReceiptKey", "xpStatus", "xpAmount", "levelsGained", "pointsAwarded"];
+    }
+  });
+
+  // src/version.js
+  var PRODUCT_VERSION, COMPATIBILITY;
+  var init_version = __esm({
+    "src/version.js"() {
+      PRODUCT_VERSION = "0.8.0";
+      COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
+    }
+  });
+
   // src/farm-snapshot.js
   function shapeFields(shape2, nested = {}) {
     return Object.fromEntries(Object.entries(shape2).map(([key, value]) => [
@@ -4567,26 +4804,26 @@
     const activeSessionId = farm.activeRaidSessionId ?? null;
     const receipts = farm.raidSettlementReceipts ?? [];
     if (!isCount(nextSequence) || !isCount(watermark) || watermark > nextSequence || activeSequence !== null && (!Number.isSafeInteger(activeSequence) || activeSequence < 1) || activeSessionId !== null && !isNonEmptyString(activeSessionId) || !Array.isArray(receipts) || activeSequence === null !== (activeSessionId === null)) {
-      fail("Private Farm Raid settlement ledger is invalid");
+      fail2("Private Farm Raid settlement ledger is invalid");
     }
     if (activeSequence === null && nextSequence !== watermark || activeSequence !== null && (activeSequence !== nextSequence || activeSequence !== watermark + 1)) {
-      fail("Private Farm Raid run sequence is inconsistent");
+      fail2("Private Farm Raid run sequence is inconsistent");
     }
     return { nextSequence, watermark, activeSequence, activeSessionId, receipts };
   }
   function ownerRoster(raidWorld, ownerId) {
     if (!raidWorld || typeof raidWorld !== "object" || !Array.isArray(raidWorld.raidRosters) || !Array.isArray(raidWorld.units) || !isNonEmptyString(ownerId)) {
-      fail("A Raid world, roster array, unit array, and owner ID are required");
+      fail2("A Raid world, roster array, unit array, and owner ID are required");
     }
     const ownerRosters = raidWorld.raidRosters.filter((roster2) => roster2?.ownerId === ownerId);
     if (ownerRosters.length !== 1 || !Array.isArray(ownerRosters[0].troops)) {
-      fail("The Raid must contain exactly one roster for this owner");
+      fail2("The Raid must contain exactly one roster for this owner");
     }
     return ownerRosters[0];
   }
   function raidSettlementKey({ ownerId, sessionId, encounterId } = {}) {
     if (!isNonEmptyString(ownerId) || !isNonEmptyString(sessionId) || !(isNonEmptyString(encounterId) || Number.isSafeInteger(encounterId) && encounterId > 0)) {
-      fail("A Raid owner, stable session ID, and encounter ID are required");
+      fail2("A Raid owner, stable session ID, and encounter ID are required");
     }
     return `raid:${JSON.stringify([ownerId, sessionId, encounterId])}`;
   }
@@ -4598,16 +4835,16 @@
     const manifest = /* @__PURE__ */ new Map();
     for (const troop of roster2.troops) {
       if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 || !Number.isInteger(troop.species) || troop.species < 0 || troop.species >= SPECIES_COUNT || !isValidUnitTier(troop.tier) || typeof troop.deployed !== "boolean" || manifest.has(troop.farmId)) {
-        fail("The owner Raid roster must have unique Farm IDs and valid deployed entries");
+        fail2("The owner Raid roster must have unique Farm IDs and valid deployed entries");
       }
       manifest.set(troop.farmId, troop);
     }
     const ownerUnits = raidWorld.units.filter((unit2) => unit2?.ownerId === ownerId);
-    if (ownerUnits.some((unit2) => !hasFaction(unit2, FACTION_CONFIG.PLAYER))) fail("An enemy-faction actor cannot enter an owner’s Farm settlement");
+    if (ownerUnits.some((unit2) => !hasFaction(unit2, FACTION_CONFIG.PLAYER))) fail2("An enemy-faction actor cannot enter an owner’s Farm settlement");
     const ownerUnitsById = /* @__PURE__ */ new Map();
     for (const unit2 of ownerUnits) {
       if (!Number.isSafeInteger(unit2.id) || unit2.id < 1 || ownerUnitsById.has(unit2.id) || !Number.isFinite(unit2.hp) || unit2.hp < 0) {
-        fail("The owner Raid units must have unique IDs and valid health");
+        fail2("The owner Raid units must have unique IDs and valid health");
       }
       ownerUnitsById.set(unit2.id, unit2);
     }
@@ -4618,19 +4855,19 @@
         const parent = ownerUnitsById.get(unit2.battleSummonParentId);
         const parentTroop = parent && manifest.get(parent.farmId);
         const validSplit = hasFaction(unit2, FACTION_CONFIG.PLAYER) && unit2.isBattleOnlySummon === true && unit2.battleSummonKind === "pea-death-split" && Number.isSafeInteger(unit2.battleSummonParentId) && unit2.battleSummonParentId > 0 && parent && parent.ownerId === ownerId && !isBattleOnlySummon(parent) && parent.hp <= 0 && parentTroop?.deployed === true && parent.farmId === unit2.farmId && parent.species === 0 && unit2.species === 0 && unit2.tier === 1 && unit2.canSplit === false && unit2.countsTowardPermanentRoster === false && unit2.eligibleForRaidDeployment === false && unit2.breedingEligible === false && unit2.mergeEligible === false && unit2.usesPersistentSleep === false;
-        if (!validSplit) fail("A battle-only Raid split is missing its validated origin marker");
+        if (!validSplit) fail2("A battle-only Raid split is missing its validated origin marker");
         continue;
       }
       const troop = manifest.get(unit2.farmId);
       if (!troop || !troop.deployed || troop.species !== unit2.species || troop.tier !== unit2.tier || originalUnitsByFarmId.has(unit2.farmId)) {
-        fail("A Raid unit does not match this owner’s deployed roster");
+        fail2("A Raid unit does not match this owner’s deployed roster");
       }
       originalUnitsByFarmId.set(unit2.farmId, unit2);
       if (unit2.hp <= 0) deadFarmUnitIds.push(unit2.farmId);
     }
     for (const [farmId, troop] of manifest) {
       if (troop.deployed && !originalUnitsByFarmId.has(farmId)) {
-        fail("A deployed original Farm unit is missing from this owner’s Raid world");
+        fail2("A deployed original Farm unit is missing from this owner’s Raid world");
       }
     }
     return {
@@ -4643,7 +4880,7 @@
   }
   function raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed } = {}) {
     if (!isCount(availableAtStart) || !isCount(originalUnitsDeployed) || originalUnitsDeployed > availableAtStart) {
-      fail("Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster");
+      fail2("Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster");
     }
     if (availableAtStart === 0 || originalUnitsDeployed === 0) return 0;
     return Math.min(2, Math.max(1, 1 + (availableAtStart - originalUnitsDeployed) / availableAtStart));
@@ -4654,41 +4891,41 @@
   }
   function validateReturnedPrivateFarm(sourceFarm, resultFarm, sleptFarmUnitIds) {
     if (sourceFarm.ownerId !== void 0 && resultFarm.ownerId !== sourceFarm.ownerId) {
-      fail("The Raid victory resolver returned a different owner Farm");
+      fail2("The Raid victory resolver returned a different owner Farm");
     }
     const originalUnits = new Map(sourceFarm.units.map((unit2) => [unit2.id, unit2]));
     const resultUnits = /* @__PURE__ */ new Map();
     for (const unit2 of resultFarm.units) {
       if (!unit2 || !Number.isSafeInteger(unit2.id) || unit2.id < 1 || resultUnits.has(unit2.id)) {
-        fail("The Raid victory resolver returned invalid or duplicate private Farm units");
+        fail2("The Raid victory resolver returned invalid or duplicate private Farm units");
       }
       resultUnits.set(unit2.id, unit2);
     }
     for (const [unitId, original] of originalUnits) {
       const result = resultUnits.get(unitId);
       if (!result || result.species !== original.species || result.tier !== original.tier) {
-        fail("The Raid victory resolver did not preserve the owner’s Farm roster");
+        fail2("The Raid victory resolver did not preserve the owner’s Farm roster");
       }
     }
     for (const unitId of sleptFarmUnitIds) {
       const unit2 = resultUnits.get(unitId);
       if (!unit2 || unit2.hp !== 0 || unit2.down !== RAID_SLEEP_SECONDS) {
-        fail("The Raid victory resolver must preserve the owner Farm’s casualty sleep");
+        fail2("The Raid victory resolver must preserve the owner Farm’s casualty sleep");
       }
     }
   }
   function reserveRaidRun(farm, { sessionId = null } = {}) {
     if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      fail("A private Farm snapshot with a units array is required");
+      fail2("A private Farm snapshot with a units array is required");
     }
     const ledger = ledgerState(farm);
     if (ledger.activeSequence !== null) {
       if (sessionId !== null && sessionId !== ledger.activeSessionId) {
-        fail("This Farm already has a different active Raid; reconnect to it or settle it first");
+        fail2("This Farm already has a different active Raid; reconnect to it or settle it first");
       }
       return { farm, runSequence: ledger.activeSequence, sessionId: ledger.activeSessionId, resumed: true };
     }
-    if (sessionId !== null && !isNonEmptyString(sessionId)) fail("Raid session ID must be a non-empty string");
+    if (sessionId !== null && !isNonEmptyString(sessionId)) fail2("Raid session ID must be a non-empty string");
     const runSequence = ledger.nextSequence + 1;
     const stableSessionId = sessionId ?? `farm-raid-${runSequence}`;
     const nextFarm = clone(farm);
@@ -4701,10 +4938,10 @@
   }
   function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
     if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      fail("A private Farm snapshot with a units array is required");
+      fail2("A private Farm snapshot with a units array is required");
     }
     if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-      fail("Settlement timestamp must be a non-negative finite number");
+      fail2("Settlement timestamp must be a non-negative finite number");
     }
     const ledger = ledgerState(farm);
     if (ledger.activeSequence === null) return { farm, receipt: null, applied: false };
@@ -4743,14 +4980,14 @@
     settleVictory = null
   } = {}) {
     if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      fail("A private Farm snapshot with a units array is required");
+      fail2("A private Farm snapshot with a units array is required");
     }
     const key = raidSettlementKey({ ownerId, sessionId, encounterId });
-    if (!["victory", "defeat", "aborted"].includes(outcome)) fail("Raid outcome must be victory, defeat, or aborted");
-    if (!Number.isSafeInteger(runSequence) || runSequence < 1) fail("A positive Farm-local Raid run sequence is required");
-    if (settleVictory !== null && typeof settleVictory !== "function") fail("settleVictory must be a function");
+    if (!["victory", "defeat", "aborted"].includes(outcome)) fail2("Raid outcome must be victory, defeat, or aborted");
+    if (!Number.isSafeInteger(runSequence) || runSequence < 1) fail2("A positive Farm-local Raid run sequence is required");
+    if (settleVictory !== null && typeof settleVictory !== "function") fail2("settleVictory must be a function");
     if (completedAtMs !== void 0 && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-      fail("Settlement timestamp must be a non-negative finite number");
+      fail2("Settlement timestamp must be a non-negative finite number");
     }
     const ledger = ledgerState(farm);
     if (runSequence <= ledger.watermark) {
@@ -4775,25 +5012,25 @@
       };
     }
     if (runSequence !== ledger.watermark + 1 || ledger.activeSequence !== runSequence || ledger.activeSessionId !== sessionId) {
-      fail("Raid settlement does not match the active Farm-local run");
+      fail2("Raid settlement does not match the active Farm-local run");
     }
     const raidOwner = raidOwnerManifest(raidWorld, ownerId);
     const { manifest, deadFarmUnitIds, availableAtStart, originalUnitsDeployed } = raidOwner;
     const unitsByFarmId = /* @__PURE__ */ new Map();
     for (const unit2 of farm.units) {
       if (!unit2 || !Number.isSafeInteger(unit2.id) || unit2.id < 1 || unitsByFarmId.has(unit2.id)) {
-        fail("Private Farm units must have unique positive IDs");
+        fail2("Private Farm units must have unique positive IDs");
       }
       unitsByFarmId.set(unit2.id, unit2);
     }
     for (const [farmUnitId, troop] of manifest) {
       const farmUnit = unitsByFarmId.get(farmUnitId);
       if (!farmUnit || farmUnit.species !== troop.species || farmUnit.tier !== troop.tier) {
-        fail("The Raid roster no longer matches this owner’s private Farm units");
+        fail2("The Raid roster no longer matches this owner’s private Farm units");
       }
     }
     for (const farmUnitId of deadFarmUnitIds) {
-      if (!unitsByFarmId.has(farmUnitId)) fail("A dead Raid unit does not belong to this owner Farm");
+      if (!unitsByFarmId.has(farmUnitId)) fail2("A dead Raid unit does not belong to this owner Farm");
     }
     let privateFarm = clone(farm);
     privateFarm.raidSettlementReceipts = Array.isArray(privateFarm.raidSettlementReceipts) ? privateFarm.raidSettlementReceipts : [];
@@ -4808,7 +5045,7 @@
     if (outcome === "victory") {
       deploymentMultiplier = raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed });
       if (deploymentMultiplier > 0) {
-        if (settleVictory === null) fail("A reward-capable Raid victory needs the common reward/progression resolver");
+        if (settleVictory === null) fail2("A reward-capable Raid victory needs the common reward/progression resolver");
         const resolution = settleVictory({
           farm: privateFarm,
           ownerId,
@@ -4819,7 +5056,7 @@
           deploymentMultiplier
         });
         if (!resolution || !resolution.farm || typeof resolution.farm !== "object" || Array.isArray(resolution.farm) || !Array.isArray(resolution.farm.units)) {
-          fail("The Raid victory resolver must return a private Farm snapshot and summary");
+          fail2("The Raid victory resolver must return a private Farm snapshot and summary");
         }
         validateReturnedPrivateFarm(farm, resolution.farm, deadFarmUnitIds);
         privateFarm = clone(resolution.farm);
@@ -4851,7 +5088,7 @@
     privateFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
     return { farm: privateFarm, receipt: clone(receipt), applied: true };
   }
-  var RAID_SLEEP_SECONDS, RAID_SETTLEMENT_RECEIPT_LIMIT, fail, isNonEmptyString, isCount;
+  var RAID_SLEEP_SECONDS, RAID_SETTLEMENT_RECEIPT_LIMIT, fail2, isNonEmptyString, isCount;
   var init_raid_settlement = __esm({
     "src/raid-settlement.js"() {
       init_unit_grades();
@@ -4860,7 +5097,7 @@
       init_farm_boss_stages();
       RAID_SLEEP_SECONDS = 60;
       RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
-      fail = (message) => {
+      fail2 = (message) => {
         throw new TypeError(message);
       };
       isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
@@ -4873,232 +5110,232 @@
     if (!ok) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
   }
   function finiteTree(v, depth = 0, key = "") {
-    assert(depth < 18);
-    if (typeof v === "number") assert(Number.isFinite(v) && Math.abs(v) < 1e13);
+    assert2(depth < 18);
+    if (typeof v === "number") assert2(Number.isFinite(v) && Math.abs(v) < 1e13);
     else if (Array.isArray(v)) {
       const max = key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
-      assert(v.length <= max);
+      assert2(v.length <= max);
       v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === "object") {
       for (const [k, x] of Object.entries(v)) {
-        assert(!["__proto__", "constructor", "prototype"].includes(k));
+        assert2(!["__proto__", "constructor", "prototype"].includes(k));
         finiteTree(x, depth + 1, k);
       }
-    } else assert(v === null || typeof v === "boolean" || typeof v === "string" && v.length < 256);
+    } else assert2(v === null || typeof v === "boolean" || typeof v === "string" && v.length < 256);
   }
   function shape(v, t) {
-    assert(v !== null && typeof v === "object" && !Array.isArray(v));
-    assert(Object.keys(v).length === Object.keys(t).length);
+    assert2(v !== null && typeof v === "object" && !Array.isArray(v));
+    assert2(Object.keys(v).length === Object.keys(t).length);
     for (const [k, x] of Object.entries(t)) {
-      assert(Object.hasOwn(v, k));
+      assert2(Object.hasOwn(v, k));
       if (x === null) continue;
       if (Array.isArray(x)) {
-        assert(Array.isArray(v[k]));
+        assert2(Array.isArray(v[k]));
         continue;
       }
       if (typeof x === "object") shape(v[k], x);
-      else assert(typeof v[k] === typeof x);
+      else assert2(typeof v[k] === typeof x);
     }
   }
   function validateSnapshot(raw) {
     finiteTree(raw);
     shape(raw, FARM_SNAPSHOT_SHAPE);
-    assert(integer(raw.seed, 0, 4294967295) && integer(raw.rng.state, 0, 4294967295));
-    assert(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
+    assert2(integer2(raw.seed, 0, 4294967295) && integer2(raw.rng.state, 0, 4294967295));
+    assert2(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
     if (raw.mergeTask !== null) {
       const t = raw.mergeTask;
-      assert(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && Array.isArray(t.materialIds) && t.materialIds.length >= 2 && t.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(t.materialIds).size === t.materialIds.length && t.materialIds.every((id) => integer(id, 1, CONFIG.farm.maxUnitId)));
+      assert2(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && Array.isArray(t.materialIds) && t.materialIds.length >= 2 && t.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(t.materialIds).size === t.materialIds.length && t.materialIds.every((id) => integer2(id, 1, CONFIG.farm.maxUnitId)));
       if (t.phase === "approach") {
         const materials = t.materialIds.map((id) => raw.units.find((u) => u.id === id)), first = materials[0], cost = mergeMaterialCostForTier(first?.tier + 1), sameSpeciesCount = raw.units.filter((u) => !u.isBattleOnlySummon && u.species === first?.species).length;
-        assert(integer(t.aId, 1, CONFIG.farm.maxUnitId) && integer(t.bId, 1, CONFIG.farm.maxUnitId) && t.aId === t.materialIds[0] && t.bId === t.materialIds[1] && cost === materials.length && first && materials.every((u) => u && u.tier === first.tier && u.species === first.species) && sameSpeciesCount - materials.length + 1 >= 2);
+        assert2(integer2(t.aId, 1, CONFIG.farm.maxUnitId) && integer2(t.bId, 1, CONFIG.farm.maxUnitId) && t.aId === t.materialIds[0] && t.bId === t.materialIds[1] && cost === materials.length && first && materials.every((u) => u && u.tier === first.tier && u.species === first.species) && sameSpeciesCount - materials.length + 1 >= 2);
       } else {
         const result = raw.units.find((u) => u.id === t.resultId);
-        assert(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9 && integer(t.resultId, 1, CONFIG.farm.maxUnitId) && result && integer(t.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && integer(t.sourceTier, 1, CONFIG.unit.maxTier - 1) && result.species === t.sourceSpecies && result.tier === t.sourceTier + 1 && t.materialIds.length === mergeMaterialCostForTier(result.tier));
+        assert2(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9 && integer2(t.resultId, 1, CONFIG.farm.maxUnitId) && result && integer2(t.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && integer2(t.sourceTier, 1, CONFIG.unit.maxTier - 1) && result.species === t.sourceSpecies && result.tier === t.sourceTier + 1 && t.materialIds.length === mergeMaterialCostForTier(result.tier));
       }
     }
-    assert(raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : CONFIG.raid.capacity.battleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.raid.capacity.projectiles);
-    assert(raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0);
-    assert(integer(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
-    assert(isValidPlayerProgressionState(raw.playerProgression));
+    assert2(raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : CONFIG.raid.capacity.battleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.raid.capacity.projectiles);
+    assert2(raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0);
+    assert2(integer2(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
+    assert2(isValidPlayerProgressionState(raw.playerProgression));
     const farmEvent = raw.farmBossEvent;
     if (farmEvent.phase === "idle") {
-      assert(farmEvent.outcome === "idle" && farmEvent.elapsed === 0 && farmEvent.encounterId === 0 && farmEvent.rewardStatus === "none" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
-      if (raw.scene === "farm") assert(!raw.boss.active);
-    } else if (farmEvent.phase === "dropping" || farmEvent.phase === "fighting") assert(raw.scene === "farm" && farmEvent.outcome === "fighting" && raw.boss.active && integer(farmEvent.encounterId, 1, raw.nextBossEncounterId - 1) && farmEvent.rewardStatus === "unresolved" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
+      assert2(farmEvent.outcome === "idle" && farmEvent.elapsed === 0 && farmEvent.encounterId === 0 && farmEvent.rewardStatus === "none" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
+      if (raw.scene === "farm") assert2(!raw.boss.active);
+    } else if (farmEvent.phase === "dropping" || farmEvent.phase === "fighting") assert2(raw.scene === "farm" && farmEvent.outcome === "fighting" && raw.boss.active && integer2(farmEvent.encounterId, 1, raw.nextBossEncounterId - 1) && farmEvent.rewardStatus === "unresolved" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
     else {
-      assert(raw.scene === "farm" && ["victory", "defeat"].includes(farmEvent.outcome) && !raw.boss.active && integer(farmEvent.encounterId, 1, raw.nextBossEncounterId - 1));
-      assert(farmEvent.outcome === "victory" ? raw.boss.hp === 0 : raw.boss.hp > 0);
-      assert(farmEvent.outcome === "victory" ? ["missed", "pending", "granted"].includes(farmEvent.rewardStatus) : farmEvent.rewardStatus === "none");
+      assert2(raw.scene === "farm" && ["victory", "defeat"].includes(farmEvent.outcome) && !raw.boss.active && integer2(farmEvent.encounterId, 1, raw.nextBossEncounterId - 1));
+      assert2(farmEvent.outcome === "victory" ? raw.boss.hp === 0 : raw.boss.hp > 0);
+      assert2(farmEvent.outcome === "victory" ? ["missed", "pending", "granted"].includes(farmEvent.rewardStatus) : farmEvent.rewardStatus === "none");
     }
-    assert(raw.bossRewardWatermarks && integer(raw.bossRewardWatermarks.farm, 0, 1e12) && integer(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm);
+    assert2(raw.bossRewardWatermarks && integer2(raw.bossRewardWatermarks.farm, 0, 1e12) && integer2(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm);
     const rewardIds = /* @__PURE__ */ new Set();
     for (const reward2 of raw.bossRewardReceipts) {
-      assert(reward2 && integer(reward2.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward2.source) && reward2.encounterId <= raw.bossRewardWatermarks[reward2.source] && integer(reward2.species, 0, CONFIG.unit.speciesCount - 1) && integer(reward2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(reward2.x) && Number.isFinite(reward2.y) && Number.isFinite(reward2.chance) && reward2.chance >= 0 && reward2.chance <= 1 && Number.isFinite(reward2.roll) && reward2.roll >= 0 && reward2.roll < 1 && ["pending", "missed", "granted"].includes(reward2.status) && integer(reward2.unitId, 0, CONFIG.farm.maxUnitId));
+      assert2(reward2 && integer2(reward2.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward2.source) && reward2.encounterId <= raw.bossRewardWatermarks[reward2.source] && integer2(reward2.species, 0, CONFIG.unit.speciesCount - 1) && integer2(reward2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(reward2.x) && Number.isFinite(reward2.y) && Number.isFinite(reward2.chance) && reward2.chance >= 0 && reward2.chance <= 1 && Number.isFinite(reward2.roll) && reward2.roll >= 0 && reward2.roll < 1 && ["pending", "missed", "granted"].includes(reward2.status) && integer2(reward2.unitId, 0, CONFIG.farm.maxUnitId));
       const key = reward2.receiptKey || reward2.source + ":" + reward2.encounterId;
-      assert(!rewardIds.has(key));
+      assert2(!rewardIds.has(key));
       rewardIds.add(key);
-      assert(reward2.status === "granted" === reward2.unitId > 0);
+      assert2(reward2.status === "granted" === reward2.unitId > 0);
       if (reward2.drops !== void 0) {
-        assert(Array.isArray(reward2.drops) && reward2.drops.length <= BOSS_REWARD_SETTINGS.maxStage && integer(reward2.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && reward2.drops.length === reward2.rollCount);
-        for (const drop2 of reward2.drops) assert(drop2 && Number.isFinite(drop2.roll) && drop2.roll >= 0 && drop2.roll < 1 && ["pending", "missed", "granted"].includes(drop2.status) && integer(drop2.unitId, 0, CONFIG.farm.maxUnitId) && drop2.status === "granted" === drop2.unitId > 0);
-        assert(reward2.status === (reward2.drops.some((drop2) => drop2.status === "pending") ? "pending" : reward2.drops.some((drop2) => drop2.status === "granted") ? "granted" : "missed"));
+        assert2(Array.isArray(reward2.drops) && reward2.drops.length <= BOSS_REWARD_SETTINGS.maxStage && integer2(reward2.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && reward2.drops.length === reward2.rollCount);
+        for (const drop2 of reward2.drops) assert2(drop2 && Number.isFinite(drop2.roll) && drop2.roll >= 0 && drop2.roll < 1 && ["pending", "missed", "granted"].includes(drop2.status) && integer2(drop2.unitId, 0, CONFIG.farm.maxUnitId) && drop2.status === "granted" === drop2.unitId > 0);
+        assert2(reward2.status === (reward2.drops.some((drop2) => drop2.status === "pending") ? "pending" : reward2.drops.some((drop2) => drop2.status === "granted") ? "granted" : "missed"));
       }
-      if (reward2.receiptKey !== void 0) assert(typeof reward2.receiptKey === "string" && reward2.receiptKey.length > 0 && reward2.receiptKey.length < 256);
-      if (reward2.acquisitionMultiplier !== void 0) assert(Number.isFinite(reward2.acquisitionMultiplier) && reward2.acquisitionMultiplier >= 0 && reward2.acquisitionMultiplier <= 2);
-      if (reward2.source === "farm" && reward2.status === "granted") assert(reward2.unitId < raw.nextId);
+      if (reward2.receiptKey !== void 0) assert2(typeof reward2.receiptKey === "string" && reward2.receiptKey.length > 0 && reward2.receiptKey.length < 256);
+      if (reward2.acquisitionMultiplier !== void 0) assert2(Number.isFinite(reward2.acquisitionMultiplier) && reward2.acquisitionMultiplier >= 0 && reward2.acquisitionMultiplier <= 2);
+      if (reward2.source === "farm" && reward2.status === "granted") assert2(reward2.unitId < raw.nextId);
     }
     const stageProgress = raw.farmBossProgress;
-    assert(stageProgress && integer(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stageProgress.encounterSeed, 0, 4294967295) && integer(stageProgress.encounterEpoch, 0, 1e12) && integer(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
+    assert2(stageProgress && integer2(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer2(stageProgress.encounterSeed, 0, 4294967295) && integer2(stageProgress.encounterEpoch, 0, 1e12) && integer2(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
     const stageIds = /* @__PURE__ */ new Set(), selectionIds = /* @__PURE__ */ new Set();
     for (const selection of stageProgress.selections) {
-      assert(selection && integer(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(selection.species, 0, CONFIG.unit.speciesCount - 1) && integer(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
+      assert2(selection && integer2(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer2(selection.species, 0, CONFIG.unit.speciesCount - 1) && integer2(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
       stageIds.add(selection.stage);
       selectionIds.add(selection.selectionId);
     }
-    assert(integer(raw.nextRaidRunSequence, 0, 1e12) && integer(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) && raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid && raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid && Array.isArray(raw.raidSettlementReceipts));
+    assert2(integer2(raw.nextRaidRunSequence, 0, 1e12) && integer2(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) && raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid && raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid && Array.isArray(raw.raidSettlementReceipts));
     const activeRaid = raw.activeRaidRunSequence, activeSession = raw.activeRaidSessionId;
-    assert(activeRaid === null === (activeSession === null));
-    if (activeRaid === null) assert(raw.nextRaidRunSequence === raw.raidSettlementWatermark);
-    else assert(integer(activeRaid, 1, 1e12) && activeRaid === raw.nextRaidRunSequence && activeRaid === raw.raidSettlementWatermark + 1 && typeof activeSession === "string" && activeSession.trim().length > 0 && activeSession.length <= 128);
+    assert2(activeRaid === null === (activeSession === null));
+    if (activeRaid === null) assert2(raw.nextRaidRunSequence === raw.raidSettlementWatermark);
+    else assert2(integer2(activeRaid, 1, 1e12) && activeRaid === raw.nextRaidRunSequence && activeRaid === raw.raidSettlementWatermark + 1 && typeof activeSession === "string" && activeSession.trim().length > 0 && activeSession.length <= 128);
     const raidReceiptKeys = /* @__PURE__ */ new Set();
     for (const receipt of raw.raidSettlementReceipts) {
-      assert(receipt && typeof receipt.ownerId === "string" && receipt.ownerId.length > 0 && typeof receipt.sessionId === "string" && receipt.sessionId.length > 0 && integer(receipt.encounterId, 1, 1e12) && integer(receipt.runSequence, 1, raw.raidSettlementWatermark) && ["victory", "defeat", "aborted"].includes(receipt.outcome));
-      assert(receipt.status === "settled" && receipt.key === raidSettlementKey({ ownerId: receipt.ownerId, sessionId: receipt.sessionId, encounterId: receipt.encounterId }) && !raidReceiptKeys.has(receipt.key) && receipt.runSequence <= raw.raidSettlementWatermark && Array.isArray(receipt.sleptFarmUnitIds) && receipt.sleptFarmUnitIds.every((id) => integer(id, 1, CONFIG.farm.maxUnitId)) && new Set(receipt.sleptFarmUnitIds).size === receipt.sleptFarmUnitIds.length && integer(receipt.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) && integer(receipt.originalUnitsDeployed, 0, receipt.availableAtStart) && Number.isFinite(receipt.deploymentMultiplier) && receipt.deploymentMultiplier >= 0 && receipt.deploymentMultiplier <= 2 && (receipt.completedAtMs === null || Number.isFinite(receipt.completedAtMs) && receipt.completedAtMs >= 0) && (receipt.reward === null || receipt.reward && typeof receipt.reward === "object" && !Array.isArray(receipt.reward)));
+      assert2(receipt && typeof receipt.ownerId === "string" && receipt.ownerId.length > 0 && typeof receipt.sessionId === "string" && receipt.sessionId.length > 0 && integer2(receipt.encounterId, 1, 1e12) && integer2(receipt.runSequence, 1, raw.raidSettlementWatermark) && ["victory", "defeat", "aborted"].includes(receipt.outcome));
+      assert2(receipt.status === "settled" && receipt.key === raidSettlementKey({ ownerId: receipt.ownerId, sessionId: receipt.sessionId, encounterId: receipt.encounterId }) && !raidReceiptKeys.has(receipt.key) && receipt.runSequence <= raw.raidSettlementWatermark && Array.isArray(receipt.sleptFarmUnitIds) && receipt.sleptFarmUnitIds.every((id) => integer2(id, 1, CONFIG.farm.maxUnitId)) && new Set(receipt.sleptFarmUnitIds).size === receipt.sleptFarmUnitIds.length && integer2(receipt.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) && integer2(receipt.originalUnitsDeployed, 0, receipt.availableAtStart) && Number.isFinite(receipt.deploymentMultiplier) && receipt.deploymentMultiplier >= 0 && receipt.deploymentMultiplier <= 2 && (receipt.completedAtMs === null || Number.isFinite(receipt.completedAtMs) && receipt.completedAtMs >= 0) && (receipt.reward === null || receipt.reward && typeof receipt.reward === "object" && !Array.isArray(receipt.reward)));
       raidReceiptKeys.add(receipt.key);
     }
     if (farmEvent.outcome === "victory" && farmEvent.phase !== "idle") {
       const receipt = raw.bossRewardReceipts.find((reward2) => reward2.source === "farm" && reward2.encounterId === farmEvent.encounterId);
-      assert(receipt && receipt.status === farmEvent.rewardStatus && receipt.chance === farmEvent.rewardChance && receipt.roll === farmEvent.rewardRoll && receipt.unitId === farmEvent.rewardUnitId);
+      assert2(receipt && receipt.status === farmEvent.rewardStatus && receipt.chance === farmEvent.rewardChance && receipt.roll === farmEvent.rewardRoll && receipt.unitId === farmEvent.rewardUnitId);
     }
-    assert(raw.corpseRecoveryVersion === 1 && integer(raw.nextId, 1, 1e9) && integer(raw.bossSummonSerial, 0, 1e12) && integer(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
-    assert(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
+    assert2(raw.corpseRecoveryVersion === 1 && integer2(raw.nextId, 1, 1e9) && integer2(raw.bossSummonSerial, 0, 1e12) && integer2(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
+    assert2(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
     const rosterOwners = /* @__PURE__ */ new Set(), manifest = /* @__PURE__ */ new Set();
     for (const r of raw.raidRosters) {
-      assert(raw.raidExpectedPlayers.includes(r.ownerId) && !rosterOwners.has(r.ownerId) && Array.isArray(r.troops) && r.troops.length <= CONFIG.raid.capacity.playerUnits && isValidAbilityRuntimeSnapshot(r.abilitySnapshot));
-      assert(typeof r.settlementSessionId === "string" && r.settlementSessionId.length <= 128 && integer(r.settlementRunSequence, 0, 1e12) && integer(r.settlementEncounterId, 0, 1e12));
-      assert(r.settlementRunSequence === 0 ? r.settlementSessionId === "" && r.settlementEncounterId === 0 : r.settlementSessionId.trim().length > 0 && r.settlementEncounterId === r.settlementRunSequence);
+      assert2(raw.raidExpectedPlayers.includes(r.ownerId) && !rosterOwners.has(r.ownerId) && Array.isArray(r.troops) && r.troops.length <= CONFIG.raid.capacity.playerUnits && isValidAbilityRuntimeSnapshot(r.abilitySnapshot));
+      assert2(typeof r.settlementSessionId === "string" && r.settlementSessionId.length <= 128 && integer2(r.settlementRunSequence, 0, 1e12) && integer2(r.settlementEncounterId, 0, 1e12));
+      assert2(r.settlementRunSequence === 0 ? r.settlementSessionId === "" && r.settlementEncounterId === 0 : r.settlementSessionId.trim().length > 0 && r.settlementEncounterId === r.settlementRunSequence);
       rosterOwners.add(r.ownerId);
       const ids2 = /* @__PURE__ */ new Set();
       for (const t of r.troops) {
-        assert(integer(t.farmId, 1, CONFIG.farm.maxUnitId) && integer(t.species, 0, CONFIG.unit.speciesCount - 1) && integer(t.tier, 1, CONFIG.unit.maxTier) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
+        assert2(integer2(t.farmId, 1, CONFIG.farm.maxUnitId) && integer2(t.species, 0, CONFIG.unit.speciesCount - 1) && integer2(t.tier, 1, CONFIG.unit.maxTier) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
         ids2.add(t.farmId);
         manifest.add(r.ownerId + ":" + t.farmId);
       }
-      assert(integer(r.lastDeploySequence, 0, r.troops.length) && r.lastDeploySequence === r.troops.filter((t) => t.deployed).length && Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
+      assert2(integer2(r.lastDeploySequence, 0, r.troops.length) && r.lastDeploySequence === r.troops.filter((t) => t.deployed).length && Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
     }
-    assert(manifest.size <= CONFIG.raid.capacity.units);
+    assert2(manifest.size <= CONFIG.raid.capacity.units);
     const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set(), mateIdLimit = raw.scene === "raid" ? CONFIG.raid.capacity.players * CONFIG.raid.ids.playerStride + CONFIG.raid.capacity.playerUnits : CONFIG.farm.maxUnitId;
     const unitsById = /* @__PURE__ */ new Map(), summonsByParent = /* @__PURE__ */ new Map();
     for (const u of raw.units) {
       shape(u, UNIT_SNAPSHOT_SHAPE);
-      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.unit.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
-      assert(integer(u.species, 0, CONFIG.unit.speciesCount - 1) && integer(u.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && typeof u.walnutEmpoweredNextBasic === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
-      if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
-      else assert(u.down === 0);
-      if (hasFaction(u, FACTION_CONFIG.ENEMY)) assert(u.isBattleOnlySummon && u.battleSummonKind === "boss-mouth-t1" && u.ownerId === "boss" && u.farmId === 0);
-      else assert(u.battleSummonKind !== "boss-mouth-t1" && u.ownerId !== "boss");
-      assert(!ids.has(u.id));
+      assert2(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer2(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.unit.corpseRecoverySeconds && integer2(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
+      assert2(integer2(u.species, 0, CONFIG.unit.speciesCount - 1) && integer2(u.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && typeof u.walnutEmpoweredNextBasic === "boolean" && integer2(u.chestnutBasicCycles, 0, 1e12));
+      if (u.hp <= 0) assert2(u.down > 0 && !u.isBattleOnlySummon);
+      else assert2(u.down === 0);
+      if (hasFaction(u, FACTION_CONFIG.ENEMY)) assert2(u.isBattleOnlySummon && u.battleSummonKind === "boss-mouth-t1" && u.ownerId === "boss" && u.farmId === 0);
+      else assert2(u.battleSummonKind !== "boss-mouth-t1" && u.ownerId !== "boss");
+      assert2(!ids.has(u.id));
       ids.add(u.id);
       unitsById.set(u.id, u);
       if (u.isBattleOnlySummon) {
         if (hasFaction(u, FACTION_CONFIG.PLAYER) && u.battleSummonKind === "pea-death-split") {
-          assert(["farm", "raid"].includes(raw.scene) && integer(u.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && u.battleSummonEncounterId === 0 && hasUnitCapability(u.species, "deathSplit") && u.tier === 1 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0);
+          assert2(["farm", "raid"].includes(raw.scene) && integer2(u.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && u.battleSummonEncounterId === 0 && hasUnitCapability(u.species, "deathSplit") && u.tier === 1 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0);
           const parent = unitsById.get(u.battleSummonParentId);
-          assert(parent && hasFaction(parent, FACTION_CONFIG.PLAYER) && parent.isBattleOnlySummon === false && parent.hp <= 0 && hasUnitCapability(parent.species, "deathSplit") && parent.species === u.species && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
+          assert2(parent && hasFaction(parent, FACTION_CONFIG.PLAYER) && parent.isBattleOnlySummon === false && parent.hp <= 0 && hasUnitCapability(parent.species, "deathSplit") && parent.species === u.species && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
           const list = summonsByParent.get(parent.id) || [];
           list.push(u);
           summonsByParent.set(parent.id, list);
-          if (raw.scene === "raid") assert(u.id >= CONFIG.raid.ids.summonBase && u.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.farm.maxUnitId));
-          else assert(integer(u.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
+          if (raw.scene === "raid") assert2(u.id >= CONFIG.raid.ids.summonBase && u.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer2(u.farmId, 1, CONFIG.farm.maxUnitId));
+          else assert2(integer2(u.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
         } else {
-          assert(u.battleSummonKind === "boss-mouth-t1" && u.battleSummonParentId === 0 && integer(u.battleSummonEncounterId, 1, 1e12) && u.battleSummonEncounterId === raw.boss.encounterId && u.species === raw.boss.species && u.tier === 1 && u.ownerId === "boss" && u.farmId === 0 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0 && u.battleSummonEncounterId > 0 && u.id >= CONFIG.boss.summonIdBase && u.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial);
-          assert(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
+          assert2(u.battleSummonKind === "boss-mouth-t1" && u.battleSummonParentId === 0 && integer2(u.battleSummonEncounterId, 1, 1e12) && u.battleSummonEncounterId === raw.boss.encounterId && u.species === raw.boss.species && u.tier === 1 && u.ownerId === "boss" && u.farmId === 0 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0 && u.battleSummonEncounterId > 0 && u.id >= CONFIG.boss.summonIdBase && u.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial);
+          assert2(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
         }
       } else {
-        assert(u.battleSummonKind === "" && u.battleSummonParentId === 0 && u.battleSummonEncounterId === 0 && u.countsTowardPermanentRoster === true && u.eligibleForRaidDeployment === true && u.breedingEligible === true && u.mergeEligible === true && u.canSplit === true && u.usesPersistentSleep === true && u.lifetime === "");
+        assert2(u.battleSummonKind === "" && u.battleSummonParentId === 0 && u.battleSummonEncounterId === 0 && u.countsTowardPermanentRoster === true && u.eligibleForRaidDeployment === true && u.breedingEligible === true && u.mergeEligible === true && u.canSplit === true && u.usesPersistentSleep === true && u.lifetime === "");
         if (raw.scene === "raid") {
           const roster2 = raw.raidRosters.find((r) => r.ownerId === u.ownerId), troopIndex = roster2?.troops.findIndex((t) => t.farmId === u.farmId) ?? -1, slot = raw.raidExpectedPlayers.indexOf(u.ownerId), currentId = (slot + 1) * CONFIG.raid.ids.playerStride + troopIndex + 1, legacyId = (slot + 1) * CONFIG.raid.ids.playerStride + u.farmId;
-          assert(raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.farm.maxUnitId) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId) && (u.id === currentId || u.farmId <= CONFIG.farm.capacity.max && u.id === legacyId));
+          assert2(raw.raidExpectedPlayers.includes(u.ownerId) && integer2(u.farmId, 1, CONFIG.farm.maxUnitId) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId) && (u.id === currentId || u.farmId <= CONFIG.farm.capacity.max && u.id === legacyId));
           deployed.add(u.ownerId + ":" + u.farmId);
-        } else assert(integer(u.id, 1, raw.nextId - 1));
+        } else assert2(integer2(u.id, 1, raw.nextId - 1));
       }
       if (u.ability.action) {
         const a = u.ability.action;
-        assert(integer(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
+        assert2(integer2(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
         if (hasUnitCapability(u.species, "repeatedStrike")) {
-          assert(integer(a.peanutStrikeCount, 2, 5) && Number.isFinite(a.peanutAttackMultiplier) && a.peanutAttackMultiplier > 0 && a.peanutAttackMultiplier <= 10 && Number.isFinite(a.peanutSpreadRadians) && a.peanutSpreadRadians >= 0 && a.peanutSpreadRadians <= Math.PI / 6);
+          assert2(integer2(a.peanutStrikeCount, 2, 5) && Number.isFinite(a.peanutAttackMultiplier) && a.peanutAttackMultiplier > 0 && a.peanutAttackMultiplier <= 10 && Number.isFinite(a.peanutSpreadRadians) && a.peanutSpreadRadians >= 0 && a.peanutSpreadRadians <= Math.PI / 6);
           const mask = (1 << a.peanutStrikeCount) - 1;
-          assert(integer(a.resolvedMask, 0, mask) && integer(a.hitMask, 0, mask) && (a.hitMask & ~a.resolvedMask) === 0);
+          assert2(integer2(a.resolvedMask, 0, mask) && integer2(a.hitMask, 0, mask) && (a.hitMask & ~a.resolvedMask) === 0);
         }
-        if (hasUnitCapability(u.species, "guard")) assert(typeof a.walnutEmpowered === "boolean" && typeof a.walnutGuardUsed === "boolean");
+        if (hasUnitCapability(u.species, "guard")) assert2(typeof a.walnutEmpowered === "boolean" && typeof a.walnutGuardUsed === "boolean");
         if (a.path) validatePath(a.path);
         if (a.pendingShots !== void 0) {
-          assert(Array.isArray(a.pendingShots) && a.pendingShots.length <= 3 && a.pendingShots.every((shot) => integer(shot.shotIndex, 1, 4) && Number.isFinite(shot.delaySeconds) && shot.delaySeconds >= 0 && Number.isFinite(shot.attackMultiplier) && shot.attackMultiplier > 0 && shot.attackMultiplier <= 10));
+          assert2(Array.isArray(a.pendingShots) && a.pendingShots.length <= 3 && a.pendingShots.every((shot) => integer2(shot.shotIndex, 1, 4) && Number.isFinite(shot.delaySeconds) && shot.delaySeconds >= 0 && Number.isFinite(shot.attackMultiplier) && shot.attackMultiplier > 0 && shot.attackMultiplier <= 10));
         }
         if (a.projectileAbility !== void 0) {
-          assert(a.projectileAbility && Object.hasOwn(a.projectileAbility, "popcorn"));
+          assert2(a.projectileAbility && Object.hasOwn(a.projectileAbility, "popcorn"));
           if (a.projectileAbility.popcorn) validatePopcornConfig(a.projectileAbility.popcorn);
         }
       }
-      if (u.ability.phase === "active" || u.ability.phase === "windup") assert(u.ability.action !== null);
+      if (u.ability.phase === "active" || u.ability.phase === "windup") assert2(u.ability.action !== null);
       if (u.ability.phase === "active") validatePath(u.ability.action.path);
     }
     for (const [parentId, children] of summonsByParent) {
-      assert(children.length <= MAX_BEAN_SPLIT_CHILDREN);
+      assert2(children.length <= MAX_BEAN_SPLIT_CHILDREN);
       const parent = unitsById.get(parentId);
-      assert(parent && parent.ownerId === children[0].ownerId && parent.farmId === children[0].farmId);
+      assert2(parent && parent.ownerId === children[0].ownerId && parent.farmId === children[0].farmId);
     }
     for (const f of raw.food) {
-      assert(["flight", "bounce", "grounded"].includes(f.phase));
-      for (const k of ["x", "y", "z", "vx", "vy", "vz", "tx", "ty"]) assert(Number.isFinite(f[k]));
+      assert2(["flight", "bounce", "grounded"].includes(f.phase));
+      for (const k of ["x", "y", "z", "vx", "vy", "vz", "tx", "ty"]) assert2(Number.isFinite(f[k]));
     }
     const projectileIds = /* @__PURE__ */ new Set();
     for (const p of raw.projectiles) {
       validatePath(p.path);
-      assert(integer(p.id, 1, raw.projectileSerial) && !projectileIds.has(p.id));
+      assert2(integer2(p.id, 1, raw.projectileSerial) && !projectileIds.has(p.id));
       projectileIds.add(p.id);
-      assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1 : raw.nextId - 1) || integer(p.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial));
-      assert(p.targetId === void 0 || p.targetId === "boss" || validBattleUnitId(p.targetId, raw.bossSummonSerial));
-      assert(Object.values(FACTION_CONFIG).includes(p.faction) && typeof p.ownerId === "string" && integer(p.species, 0, CONFIG.unit.speciesCount - 1) && integer(p.tier, 1, CONFIG.unit.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
+      assert2(integer2(p.owner, 1, raw.scene === "raid" ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1 : raw.nextId - 1) || integer2(p.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial));
+      assert2(p.targetId === void 0 || p.targetId === "boss" || validBattleUnitId(p.targetId, raw.bossSummonSerial));
+      assert2(Object.values(FACTION_CONFIG).includes(p.faction) && typeof p.ownerId === "string" && integer2(p.species, 0, CONFIG.unit.speciesCount - 1) && integer2(p.tier, 1, CONFIG.unit.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer2(p.shotIndex, 0, 4));
       if (p.isPopcorn) {
-        assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.length <= CONFIG.raid.capacity.battleUnits + 1 && p.damagedTargetIds.every((id) => id === "boss" || validBattleUnitId(id, raw.bossSummonSerial)) && new Set(p.damagedTargetIds).size === p.damagedTargetIds.length && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
+        assert2(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.length <= CONFIG.raid.capacity.battleUnits + 1 && p.damagedTargetIds.every((id) => id === "boss" || validBattleUnitId(id, raw.bossSummonSerial)) && new Set(p.damagedTargetIds).size === p.damagedTargetIds.length && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
         validatePopcornConfig(p.popcornConfig);
-        if (p.exploded) assert(Number.isFinite(p.explosionLife) && p.explosionLife >= 0 && p.explosionLife < 0.5 + 1e-9);
+        if (p.exploded) assert2(Number.isFinite(p.explosionLife) && p.explosionLife >= 0 && p.explosionLife < 0.5 + 1e-9);
       }
     }
-    assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
-    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
-    if (raw.boss.stage === 0) assert(raw.boss.attackPower === 4);
+    assert2(integer2(raw.projectileSerial, 0, 1e12) && integer2(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) && integer2(raw.bossSummonSerial, 0, 1e12));
+    assert2(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer2(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && integer2(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer2(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
+    if (raw.boss.stage === 0) assert2(raw.boss.attackPower === 4);
     else {
       const stageStats = bossStageStats(raw.boss.stage);
-      assert(raw.boss.maxHp === stageStats.hp && raw.boss.attackPower === stageStats.attackPower);
+      assert2(raw.boss.maxHp === stageStats.hp && raw.boss.attackPower === stageStats.attackPower);
     }
     const runtime = raw.boss.patternRuntime;
-    assert(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
+    assert2(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
     for (const id of BOSS_PATTERN_IDS) {
-      assert(Number.isFinite(runtime.weights[id]) && runtime.weights[id] >= 0 && runtime.weights[id] <= 3 && Number.isFinite(runtime.cooldowns[id]) && runtime.cooldowns[id] >= 0 && runtime.cooldowns[id] <= 10);
+      assert2(Number.isFinite(runtime.weights[id]) && runtime.weights[id] >= 0 && runtime.weights[id] <= 3 && Number.isFinite(runtime.cooldowns[id]) && runtime.cooldowns[id] >= 0 && runtime.cooldowns[id] <= 10);
     }
-    assert(Object.keys(runtime.weights).length === BOSS_PATTERN_IDS.length && Object.keys(runtime.cooldowns).length === BOSS_PATTERN_IDS.length);
+    assert2(Object.keys(runtime.weights).length === BOSS_PATTERN_IDS.length && Object.keys(runtime.cooldowns).length === BOSS_PATTERN_IDS.length);
     if (runtime.active) {
       const a = runtime.active;
-      assert(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.raid.capacity.battleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && integer(a.released, 0, 4) && integer(a.volleyCount, 0, 4));
-      if (a.target) assert(Number.isFinite(a.target.x) && Number.isFinite(a.target.y) && Number.isFinite(a.target.z));
+      assert2(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.raid.capacity.battleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && integer2(a.released, 0, 4) && integer2(a.volleyCount, 0, 4));
+      if (a.target) assert2(Number.isFinite(a.target.x) && Number.isFinite(a.target.y) && Number.isFinite(a.target.z));
       if (a.path) validatePath(a.path);
     }
-    assert(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
-    assert(raw.running === (raw.encounter.outcome === "fighting"));
-    assert(typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length));
+    assert2(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
+    assert2(raw.running === (raw.encounter.outcome === "fighting"));
+    assert2(typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length));
     return true;
   }
   function validatePath(p) {
-    assert(p && p.from && p.to && p.duration > 0 && Number.isFinite(p.height));
-    for (const k of ["x", "y"]) assert(Number.isFinite(p.from[k]) && Number.isFinite(p.to[k]));
-    assert(Number.isFinite(p.from.z));
+    assert2(p && p.from && p.to && p.duration > 0 && Number.isFinite(p.height));
+    for (const k of ["x", "y"]) assert2(Number.isFinite(p.from[k]) && Number.isFinite(p.to[k]));
+    assert2(Number.isFinite(p.from.z));
   }
   function validatePopcornConfig(c) {
-    assert(c && c.species === 1 && c.fuseSeconds === 1 && c.chainOnPopcornContact === true && c.triggersOncePerProjectile === true && c.eachTargetAtMostOncePerProjectile === true && Number.isFinite(c.damageMultiplier) && c.damageMultiplier >= 0.5 && c.damageMultiplier <= 1.5 && c.radiusBaseRangeFraction === 0.25 && Number.isFinite(c.radiusMultiplier) && c.radiusMultiplier >= 1 && c.radiusMultiplier <= 2 && Number.isFinite(c.radius) && c.radius > 0 && c.radius <= 10);
+    assert2(c && c.species === 1 && c.fuseSeconds === 1 && c.chainOnPopcornContact === true && c.triggersOncePerProjectile === true && c.eachTargetAtMostOncePerProjectile === true && Number.isFinite(c.damageMultiplier) && c.damageMultiplier >= 0.5 && c.damageMultiplier <= 1.5 && c.radiusBaseRangeFraction === 0.25 && Number.isFinite(c.radiusMultiplier) && c.radiusMultiplier >= 1 && c.radiusMultiplier <= 2 && Number.isFinite(c.radius) && c.radius > 0 && c.radius <= 10);
   }
-  var integer, validBattleUnitId, assert;
+  var integer2, validBattleUnitId, assert2;
   var init_farm_snapshot_validation = __esm({
     "src/farm-snapshot-validation.js"() {
       init_farm_model();
@@ -5112,9 +5349,9 @@
       init_boss_rewards();
       init_factions();
       init_farm_snapshot();
-      integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
-      validBattleUnitId = (id, bossSummonSerial) => integer(id, 1, CONFIG.farm.maxUnitId) || integer(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
-      assert = assertSnapshot;
+      integer2 = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
+      validBattleUnitId = (id, bossSummonSerial) => integer2(id, 1, CONFIG.farm.maxUnitId) || integer2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
+      assert2 = assertSnapshot;
     }
   });
 
@@ -5268,30 +5505,36 @@
     }
   });
 
-  // src/version.js
-  var PRODUCT_VERSION, COMPATIBILITY;
-  var init_version = __esm({
-    "src/version.js"() {
-      PRODUCT_VERSION = "0.7.29";
-      COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
-    }
-  });
-
   // src/farm-save-codec.js
   function readFarmSave(text) {
     if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
-    const parsed = JSON.parse(text);
-    if (parsed.schema !== "budmori-farm" || !isReadableCompatibility(parsed.productVersion) || !parsed.world || typeof parsed.world !== "object" || Array.isArray(parsed.world)) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
+    const parsed = JSON.parse(text), version = compatibility(parsed?.productVersion), field = version === COMPATIBILITY ? "progress" : "world";
+    if (parsed?.schema !== "budmori-farm" || !isReadableCompatibility(parsed.productVersion) || !parsed[field] || typeof parsed[field] !== "object" || Array.isArray(parsed[field]) || Object.keys(parsed).some((key) => !["schema", "productVersion", field].includes(key))) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
     return parsed;
   }
   function decodeFarmSave(text) {
-    const parsed = readFarmSave(text), world = normalizeSnapshot(parsed.world, { migrateLegacyRaid: true });
-    validateSnapshot(world);
-    return world;
+    const parsed = readFarmSave(text);
+    let progress = parsed.progress;
+    if (!progress) {
+      if (!["seed", "rng", "units", "food", "time", "nextId", "mode", "scene", "metrics"].every((key) => Object.hasOwn(parsed.world, key))) throw Error("이전 저장의 필수 진행 데이터가 누락됐어요. 원본은 그대로 보존합니다.");
+      const world = normalizeSnapshot(parsed.world, { migrateLegacyRaid: true });
+      validateSnapshot(world);
+      progress = captureFarmProgress(world);
+    }
+    validateFarmProgress(progress);
+    return progress;
+  }
+  function saveNeedsMigration(text) {
+    try {
+      return !!readFarmSave(text).world;
+    } catch {
+      return false;
+    }
   }
   function saveHasLegacyFarmProgress(text) {
     try {
-      return Object.hasOwn(readFarmSave(text).world, "progress");
+      const { world } = readFarmSave(text);
+      return !!world && Object.hasOwn(world, "progress");
     } catch {
       return false;
     }
@@ -5301,24 +5544,24 @@
     return true;
   }
   function parseSave(text) {
-    return restore(readFarmSave(text).world, { migrateLegacyRaid: true });
+    return restoreFarmProgress(decodeFarmSave(text));
   }
-  function encodeFarmSave(world) {
-    const data = normalizeSnapshot(snapshot(world), { clone: false });
-    validateSnapshot(data);
-    const text = JSON.stringify({ schema: "budmori-farm", productVersion: PRODUCT_VERSION, world: data });
+  function encodeFarmSave(world, data = captureFarmProgress(world)) {
+    validateFarmProgress(data);
+    const text = JSON.stringify({ schema: "budmori-farm", productVersion: PRODUCT_VERSION, progress: data });
     if (text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
     return { data, text };
   }
-  var MAX_BYTES, READ_COMPATIBILITIES, legacyCompatibility, isReadableCompatibility;
+  var MAX_BYTES, LEGACY_COMPATIBILITIES, compatibility, isReadableCompatibility;
   var init_farm_save_codec = __esm({
     "src/farm-save-codec.js"() {
       init_version();
       init_farm_state();
+      init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
-      READ_COMPATIBILITIES = /* @__PURE__ */ new Set([COMPATIBILITY, "0.6", "0.5", "0.4"]);
-      legacyCompatibility = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      isReadableCompatibility = (version) => READ_COMPATIBILITIES.has(legacyCompatibility(version));
+      LEGACY_COMPATIBILITIES = /* @__PURE__ */ new Set(["0.7", "0.6", "0.5", "0.4"]);
+      compatibility = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
+      isReadableCompatibility = (version) => compatibility(version) === COMPATIBILITY || LEGACY_COMPATIBILITIES.has(compatibility(version));
     }
   });
 
@@ -5330,6 +5573,9 @@
     saveHasLegacyFarmProgress: () => saveHasLegacyFarmProgress,
     validateSave: () => validateSave
   });
+  function migrationNotice(text) {
+    return saveHasLegacyFarmProgress(text) ? "이전 무료 강화가 종료됐어요. 경험치·유닛 진행은 이어지고 원본은 별도 백업했어요." : "진행도 중심 저장으로 바꿨어요. 경험치·유닛 수·성장·휴식은 이어지고, 위치와 전투 장면은 새로 만들어요. 이전 원본은 별도 백업했어요.";
+  }
   function readLegacyBackup() {
     try {
       const preferred = localStorage.getItem(BACKUP_LATEST);
@@ -5349,7 +5595,7 @@
     return null;
   }
   function preserveLegacySave(text) {
-    if (!saveHasLegacyFarmProgress(text)) return null;
+    if (!saveNeedsMigration(text)) return null;
     const digest = Array.from(text).reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0;
     let key = BACKUP_PREFIX + digest.toString(16).padStart(8, "0"), suffix = 0;
     while (localStorage.getItem(key) !== null && localStorage.getItem(key) !== text) key = BACKUP_PREFIX + digest.toString(16).padStart(8, "0") + "-" + ++suffix;
@@ -5363,7 +5609,7 @@
   var KEY, LEGACY_KEY, BACKUP_PREFIX, BACKUP_LATEST, FarmStorage;
   var init_farm_storage = __esm({
     "src/farm-storage.js"() {
-      init_farm_state();
+      init_farm_progress();
       init_farm_save_codec();
       KEY = "bloom-weapon-cards-v4";
       LEGACY_KEY = "bloom-weapon-cards-v3";
@@ -5373,7 +5619,7 @@
         constructor() {
           this.raw = null;
           this._world = null;
-          this.savedSnapshot = null;
+          this.savedProgress = null;
           this.error = "";
           this.writable = false;
           this.legacyRaw = null;
@@ -5381,22 +5627,25 @@
           this.legacyBackupRequired = false;
           this.legacyBackup = readLegacyBackup();
           this.migrationNotice = "";
+          this.migrationPending = false;
           try {
             this.raw = localStorage.getItem(KEY);
             this.legacyRaw = localStorage.getItem(LEGACY_KEY);
             if (this.raw) {
               if (!isReadableCompatibility(readFarmSave(this.raw).productVersion)) throw Error("현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.");
-              if (saveHasLegacyFarmProgress(this.raw)) {
+              const data = decodeFarmSave(this.raw);
+              this.migrationPending = saveNeedsMigration(this.raw);
+              if (this.migrationPending) {
                 this.legacyBackupRequired = true;
                 try {
                   this.legacyBackup = preserveLegacySave(this.raw);
                   this.legacyBackupRequired = false;
-                  this.migrationNotice = "이전 활동 기반 강화가 종료되고 경험치 포인트로 통합됐어요. 기존 무료 강화는 초기화되며, 원본 저장은 별도 백업했어요.";
+                  this.migrationNotice = migrationNotice(this.raw);
                 } catch {
                   throw Error("이전 저장 원본을 백업하지 못해 덮어쓰지 않았어요. 저장 공간을 비우거나 저장 파일을 내보낸 뒤 다시 시도해 주세요.");
                 }
               }
-              this.savedSnapshot = decodeFarmSave(this.raw);
+              this.savedProgress = data;
             } else if (this.legacyRaw) {
               try {
                 validateSave(this.legacyRaw);
@@ -5411,22 +5660,22 @@
           }
         }
         get world() {
-          if (!this._world && this.savedSnapshot) this._world = restore(this.savedSnapshot);
+          if (!this._world && this.savedProgress) this._world = restoreFarmProgress(this.savedProgress);
           return this._world;
         }
         get hasWorld() {
-          return !!(this._world || this.savedSnapshot);
+          return !!(this._world || this.savedProgress);
         }
         get hasReservedRaid() {
-          const world = this._world || this.savedSnapshot;
-          return world?.activeRaidRunSequence !== null && world?.activeRaidRunSequence !== void 0;
+          const run = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
+          return run !== null && run !== void 0;
         }
         set world(value) {
           this._world = value;
-          this.savedSnapshot = null;
+          this.savedProgress = null;
         }
-        serializeCheckpoint(world) {
-          return encodeFarmSave(world);
+        serializeCheckpoint(world, data) {
+          return encodeFarmSave(world, data);
         }
         encode(world) {
           return this.serializeCheckpoint(world).text;
@@ -5437,15 +5686,16 @@
             const text = localStorage.getItem(KEY);
             if (text === this.raw) return true;
             if (!text) throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 정원을 시작했을 수 있어요.");
-            if (saveHasLegacyFarmProgress(text)) {
+            const data = decodeFarmSave(text), migrationPending = saveNeedsMigration(text);
+            if (migrationPending) {
               this.legacyBackupRequired = true;
               this.legacyBackup = preserveLegacySave(text);
               this.legacyBackupRequired = false;
-              this.migrationNotice = "이전 활동 기반 강화가 종료되고 경험치 포인트로 통합됐어요. 기존 무료 강화는 초기화되며, 원본 저장은 별도 백업했어요.";
+              this.migrationNotice = migrationNotice(text);
             }
-            const data = decodeFarmSave(text);
             this.raw = text;
-            this.savedSnapshot = data;
+            this.savedProgress = data;
+            this.migrationPending = migrationPending;
             this._world = null;
             this.error = "";
             return true;
@@ -5461,11 +5711,18 @@
               this.error = "저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.";
               return false;
             }
-            const { data, text } = this.serializeCheckpoint(world);
+            const data = captureFarmProgress(world);
+            if (!this.migrationPending && sameFarmProgress(data, this.savedProgress)) {
+              this._world = world;
+              this.error = "";
+              return true;
+            }
+            const { text } = this.serializeCheckpoint(world, data);
             localStorage.setItem(KEY, text);
             this.raw = text;
-            this.savedSnapshot = data;
-            this._world = null;
+            this.savedProgress = data;
+            this.migrationPending = false;
+            this._world = world;
             this.error = "";
             return true;
           } catch {
@@ -5475,15 +5732,17 @@
         }
         replace(world) {
           if (this.legacyBackupRequired) return false;
+          const writable = this.writable;
           this.writable = true;
-          this.world = world;
-          return this.save(world);
+          const saved = this.save(world);
+          if (!saved) this.writable = writable;
+          return saved;
         }
         import(text) {
           if (this.legacyBackupRequired) throw Error("이전 저장 원본을 백업하지 못해 불러오기를 취소했어요. 기존 저장은 그대로입니다.");
           if (localStorage.getItem(KEY) !== this.raw) throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.");
           validateSave(text);
-          if (saveHasLegacyFarmProgress(text)) {
+          if (saveNeedsMigration(text)) {
             this.legacyBackupRequired = true;
             try {
               this.legacyBackup = preserveLegacySave(text);
@@ -5491,12 +5750,13 @@
             } catch {
               throw Error("이전 저장 원본을 백업하지 못해 불러오기를 취소했어요. 기존 저장은 그대로입니다.");
             }
-            this.migrationNotice = "이전 활동 기반 강화가 종료되고 경험치 포인트로 통합됐어요. 기존 무료 강화는 초기화되며, 원본 저장은 별도 백업했어요.";
+            this.migrationNotice = migrationNotice(text);
           }
           const world = parseSave(text), { data, text: normalized } = this.serializeCheckpoint(world);
           localStorage.setItem(KEY, normalized);
           this.raw = normalized;
-          this.savedSnapshot = data;
+          this.savedProgress = data;
+          this.migrationPending = false;
           this._world = world;
           this.writable = true;
           this.error = "";
@@ -6821,6 +7081,7 @@
             const changed = w.mode !== c.value || c.value !== "merge" && w.mergeTask !== null;
             if (c.value !== "merge") w.mergeTask = null;
             w.mode = c.value;
+            if (changed) w.markProgressChanged();
             return changed;
           }
           return false;
@@ -7574,7 +7835,7 @@
     const sorted = [...measuredFrames].sort((a, b) => a - b), sum = measuredFrames.reduce((a, b) => a + b, 0);
     return { frames: frameCount, fps: sum ? measuredFrames.length * 1e3 / sum : 0, frametimeMs: { p50: sorted[Math.floor((sorted.length - 1) * 0.5)] || 0, p95: sorted[Math.floor((sorted.length - 1) * 0.95)] || 0, max: Math.max(0, ...measuredFrames) } };
   }
-  var fail2 = (error) => {
+  var fail3 = (error) => {
     $2("error").hidden = false;
     $2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
     console.error(error);
@@ -7662,8 +7923,11 @@
     if (ok) autosave.reset();
     return ok;
   }
+  var observedProgressRevisions = /* @__PURE__ */ new WeakMap();
   function markPersistentChange(world) {
-    if (world === personalGarden) autosave.markDirty();
+    if (world !== personalGarden || observedProgressRevisions.get(world) === world.progressRevision) return;
+    observedProgressRevisions.set(world, world.progressRevision);
+    autosave.markDirty();
   }
   function onWorldStep(world) {
     markPersistentChange(world);
@@ -7676,11 +7940,12 @@
     try {
       persistRaidSettlement(localSettlementRoster(world, ownerId, run), ownerId);
     } catch (error) {
-      fail2(error);
+      fail3(error);
     }
   }
   function persist() {
     if (active?.world === personalGarden) active.flushQueuedCommands();
+    if (personalGarden?.hasProgressTimers()) autosave.markDirty();
     return autosave.flush();
   }
   var foodFeel = new FoodFeel(requestFeed);
@@ -7695,7 +7960,7 @@
     if (active) stopWorldInput();
     active?.dispose();
     renderer.resetPan();
-    active = new FarmSession(world, { onError: fail2, onWorldStep });
+    active = new FarmSession(world, { onError: fail3, onWorldStep });
     noticeSequence = world.eventSequence;
     observedWorld = world;
     return active;
@@ -7717,7 +7982,10 @@
     if (!personalGarden || active?.world?.scene === "raid") return null;
     const progress = personalGarden.farmBossProgress, wasSelected = progress.selections.some((entry) => entry.stage === stage), previousStage = progress.currentStage;
     const selection = selectFarmBossStage(progress, stage);
-    if (!wasSelected || previousStage !== stage) saveImmediate(personalGarden);
+    if (!wasSelected || previousStage !== stage) {
+      personalGarden.markProgressChanged();
+      saveImmediate(personalGarden);
+    }
     const species = selection.species, catalogEntry = speciesById(species), rewardName = speciesRewardName(species), encounterName = giantSpeciesName(species), rolls = selection.rolls;
     $2("bossStageCounter").textContent = `${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
     $2("bossStageLabel").textContent = `STAGE ${selection.stage}`;
@@ -7829,12 +8097,12 @@
     try {
       reserved = reserveRaidRun(snapshot(personalGarden), { sessionId });
     } catch (error) {
-      fail2(error);
+      fail3(error);
       return null;
     }
     const candidate = restore(reserved.farm);
     if (!saveImmediate(candidate)) {
-      fail2(Error(storage.error || "농장 원정 예약을 저장하지 못했어요."));
+      fail3(Error(storage.error || "농장 원정 예약을 저장하지 못했어요."));
       return null;
     }
     personalGarden = storage.world;
@@ -7894,7 +8162,7 @@
       try {
         persistRaidSettlement(localSettlementRoster(raidWorld, ownerId, run), ownerId);
       } catch (error) {
-        fail2(error);
+        fail3(error);
         return false;
       }
     }
@@ -7990,13 +8258,13 @@
       refreshStart();
       $2("saveNotice").textContent = "이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.";
     } catch (error) {
-      fail2(error);
+      fail3(error);
     }
   };
   $2("newGame").onclick = () => {
     if ((storage.raw || storage.legacyRaw) && !$2("newConfirm").hidden) return;
     if (storage.raw || storage.legacyRaw) {
-      $2("newConfirmText").textContent = storage.raw ? "현재 0.5 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요." : "새 0.5 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.";
+      $2("newConfirmText").textContent = storage.raw ? "현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요." : "새 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.";
       $2("newConfirm").hidden = false;
       return;
     }
@@ -8080,6 +8348,11 @@
         const legacy = importedLegacy, world = storage.import(imported);
         autosave.reset();
         if (legacy) start(world);
+        else {
+          personalGarden = world;
+          install(world);
+          active.paused = true;
+        }
       }
       imported = null;
       importedLegacy = false;
@@ -8452,7 +8725,7 @@
     e.preventDefault();
     stopWorldInput();
     persist();
-    fail2(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
+    fail3(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
   });
   function route() {
     stopWorldInput();
@@ -8502,7 +8775,7 @@
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
-    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingReward = rewardWorld.bossRewardReceipts.find((reward2) => reward2.status === "pending");
+    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingReward2 = rewardWorld.bossRewardReceipts.find((reward2) => reward2.status === "pending");
     syncFlag("worldInputControls", "hidden", home || bossEncounterOpen);
     syncFlag("scatterHint", "hidden", home || menuOpen || bossEncounterOpen || now >= scatterHintUntil);
     if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || scatterPointer || panPointer)) stopWorldInput();
@@ -8529,7 +8802,7 @@
     syncFlag("bossbar", "hidden", !battleHud || home);
     syncText("count", raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
-    syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingReward ? `${speciesRewardName(pendingReward.species)} 보상 대기 · 공간이 생기면 합류해요` : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
+    syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingReward2 ? `${speciesRewardName(pendingReward2.species)} 보상 대기 · 공간이 생기면 합류해요` : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText("allyHealthText", Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존");
     const boss2 = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss2.stage ? `STAGE ${boss2.stage}` : "", rewardName = speciesRewardName(boss2.species), encounterName = giantSpeciesName(boss2.species);
