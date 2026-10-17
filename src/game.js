@@ -3797,6 +3797,15 @@
     }
   });
 
+  // src/version.js
+  var PRODUCT_VERSION, COMPATIBILITY;
+  var init_version = __esm({
+    "src/version.js"() {
+      PRODUCT_VERSION = "0.7.17";
+      COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
+    }
+  });
+
   // src/raid-settlement.js
   function ledgerState(farm) {
     const nextSequence = farm.nextRaidRunSequence ?? 0;
@@ -4473,15 +4482,6 @@
       UNIT_SHAPE = snapshot(new Unit(1, 0, 1, 0, 0));
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
       validBattleUnitId = (id, bossSummonSerial) => integer(id, 1, CONFIG.maxFarmUnitId) || integer(id, CONFIG.bossSummonIdBase + 1, CONFIG.bossSummonIdBase + bossSummonSerial);
-    }
-  });
-
-  // src/version.js
-  var PRODUCT_VERSION, COMPATIBILITY;
-  var init_version = __esm({
-    "src/version.js"() {
-      PRODUCT_VERSION = "0.7.16";
-      COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
 
@@ -5512,12 +5512,13 @@
   // src/farm-session.js
   init_farm_model();
   init_unit_stats();
-  init_farm_state();
-  init_version();
-  var { binaryCodec: codec } = globalThis.BloomGamekitDeterministic;
   var { PresentationRuntime, RenderObject } = globalThis.BloomGamekitInterpolation;
   var R = RenderObject;
   var PRESENTATION_STEP_MS = 50;
+  var LOCAL_PROFILE = Object.freeze({ tickRate: 20, maxCatchupSteps: 4 });
+  var LOCAL_INPUT = new Uint8Array(0);
+  var ADVANCED = Object.freeze({ status: "advanced" });
+  var CLOSED = Object.freeze({ status: "closed" });
   var UnitRender = class extends RenderObject {
     static renderSchema = Object.freeze({
       x: R.POSITION_X,
@@ -5761,22 +5762,21 @@
     }
   };
   var FarmSession = class {
-    constructor(world = new Garden(), { room: room2 = null, onError = console.error, onEvent = () => {
-    }, onWorldStep: onWorldStep2 = () => {
+    constructor(world = new Garden(), { onError = console.error, onWorldStep: onWorldStep2 = () => {
     } } = {}) {
       this.world = world;
       this.onWorldStep = onWorldStep2;
       this.tick = 0;
       this.presentationTick = 0;
-      this.epoch = 0;
-      this.players = [...room2?.players || ["solo"]];
+      this.profile = LOCAL_PROFILE;
+      this.pace = 1;
+      this.closed = false;
       this.speed = 1;
       this._paused = false;
       this.pauseStartedAt = null;
       this.pausedDurationMs = 0;
       this.pending = [];
-      this.room = room2;
-      this.localPlayerId = room2?.localPlayerId || "solo";
+      this.localPlayerId = "solo";
       this.localDeploySequence = world.raidRoster(this.localPlayerId)?.lastDeploySequence || 0;
       this.presentationRevision = 0;
       this.presentationSequence = 0;
@@ -5790,67 +5790,26 @@
       this.lastFrameClockMs = null;
       this.lastCaptureClockMs = 0;
       this.pulseTimestamp = null;
-      const adapter = { save: () => codec.encode(this.capture()), load: (bytes) => this.load(codec.decode(bytes)), validateSnapshot: (bytes, context = {}) => {
-        try {
-          this.validate(codec.decode(bytes), context);
-          return true;
-        } catch {
-          return false;
-        }
-      }, applyMembership: (change) => {
-        this.epoch = change.epoch;
-        this.players = [...change.players];
-        if (this.world.scene === "raid") this.world.setRaidPlayers(this.players);
-        this.pendingPresentationMode = "reset";
-      }, step: (ctx) => this.step(ctx) };
-      const emitEvent = (event) => {
-        if (event.type === "rollback" || event.type === "reconciled") this.pendingPresentationMode = "rollback";
-        else if (event.type === "membership-committed") this.pendingPresentationMode = "reset";
-        else if (event.type === "recovered") {
-          this.pendingPresentationMode = "load";
-          this.capturePresentation("load");
-        }
-        onEvent(event);
-      };
-      this.session = globalThis.BloomGamekitRollback.createRoomSession({ adapter, players: room2?.players || ["solo"], localPlayerId: this.localPlayerId, sessionId: room2?.sessionId || "budmori-solo", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, seed: world.seed, inputSize: 1, mode: room2 ? "online" : "local", localFastPath: !room2, room: room2 || void 0, profile: { ...globalThis.BloomGamekitRollback.profiles.action, mode: "lockstep", tickRate: 20, baseInputDelayTicks: room2 ? 2 : 0, minInputDelayTicks: room2 ? 2 : 0, maxInputDelayTicks: room2 ? 2 : 0, adaptiveInputDelay: false, pacingPolicy: "none", checksumInterval: 20, stateHistorySize: 32, maxSnapshotBytes: 8388608 }, membership: { maxPlayers: CONFIG.maxRaidPlayers, transitionTimeoutMs: 3e4, reconnectGraceMs: 1e4, maxCatchupSteps: 4 }, onEvent: emitEvent });
       this.loop = globalThis.BloomGamekitSimloop.createLoop({
-        session: this.session,
-        getInput: () => ({ input: new Uint8Array(1), commands: (this.session.ready ? this.pending.splice(0, 32) : []).map((payload) => ({ payload })), predict: false }),
-        canAdvance: () => true,
-        canObserveInput: () => !this.session.closed && !this.session.failure,
+        session: this,
+        getInput: () => LOCAL_INPUT,
         onError,
         onBacklogDrop: () => {
           this.pendingPresentationMode = "reset";
         },
         onAdvance: (result) => {
-          if (this.session.resimulating) return;
           if (this.pendingPresentationMode) this.capturePresentation(this.pendingPresentationMode);
           else if (result.status === "advanced" && !this.paused) this.capturePresentation("continuous");
         }
       });
       this.capturePresentation("reset");
     }
-    capture() {
-      return { tick: this.tick, epoch: this.epoch, players: this.players, speed: this.speed, world: snapshot(this.world) };
-    }
-    validate(s, ctx = {}) {
-      if (!Number.isSafeInteger(s.tick) || s.tick < 0 || !Number.isSafeInteger(s.epoch) || s.epoch < 0 || !Array.isArray(s.players) || s.players.length > CONFIG.maxRaidPlayers || s.players.some((p) => typeof p !== "string") || ![1, 4].includes(s.speed) || ctx.tick !== void 0 && s.tick !== ctx.tick || ctx.membershipEpoch !== void 0 && s.epoch !== ctx.membershipEpoch) throw Error("Invalid farm snapshot");
-      return restore(s.world);
-    }
-    load(s) {
-      this.world = this.validate(s);
-      this.tick = s.tick;
-      this.epoch = s.epoch;
-      this.players = [...s.players];
-      this.speed = s.speed;
-      this.presentationIds = /* @__PURE__ */ new WeakMap();
-      this.nextPresentationId = 1;
-      bindPresentationClock(this.world, null);
-      this.pendingPresentationMode = "load";
+    // Required by the shared loop; a local session has no incoming work to poll.
+    poll() {
     }
     queue(type, args = {}) {
-      if (this.session.closed || this.pending.length >= 64) return false;
-      this.pending.push(codec.encode({ type, ...args }));
+      if (this.closed || this.pending.length >= 64) return false;
+      this.pending.push(structuredClone({ type, ...args }));
       return true;
     }
     deployNext(x, y) {
@@ -5863,41 +5822,37 @@
       this.localDeploySequence = sequence;
       return true;
     }
-    step({ tick, inputs }) {
-      let commandChangedWorld = false;
-      for (const f of inputs) {
-        if (!this.players.includes(f.playerId)) continue;
-        for (const c of f.commands) {
-          try {
-            commandChangedWorld = this.command(codec.decode(c.payload), f.playerId) || commandChangedWorld;
-          } catch {
-          }
-        }
-      }
-      if (this.paused && !this.room) {
-        this.tick = tick + 1;
-        if (commandChangedWorld && !this.session.resimulating) this.onWorldStep(this.world);
-        return;
+    advance() {
+      if (this.closed) return CLOSED;
+      const commandChangedWorld = this.applyPendingCommands(32);
+      if (this.paused) {
+        this.tick++;
+        if (commandChangedWorld) this.onWorldStep(this.world);
+        return ADVANCED;
       }
       const w = this.world, startTime = w.time, speed = this.speed, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
       bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3 / speed) / 1e3);
       if (w.scene === "farm") w.advanceAutoTaps(0.05);
       for (let i = 0; i < 6 * speed; i++) w.step(CONFIG.fixedStep);
-      this.tick = tick + 1;
-      if (!this.session.resimulating) {
-        this.presentationTick++;
-        this.onWorldStep(w);
-      }
+      this.tick++;
+      this.presentationTick++;
+      this.onWorldStep(w);
+      return ADVANCED;
     }
-    flushQueuedCommands() {
-      if (this.room || this.world.scene !== "farm" || !this.pending.length) return false;
+    applyPendingCommands(limit) {
+      if (!this.pending.length) return false;
       let changed = false;
-      for (const payload of this.pending.splice(0)) {
+      for (const command of this.pending.splice(0, limit)) {
         try {
-          changed = this.command(codec.decode(payload), this.localPlayerId) || changed;
+          changed = this.command(command) || changed;
         } catch {
         }
       }
+      return changed;
+    }
+    flushQueuedCommands() {
+      if (this.closed || this.world.scene !== "farm") return false;
+      const changed = this.applyPendingCommands(this.pending.length);
       if (changed) this.onWorldStep(this.world);
       return changed;
     }
@@ -5957,7 +5912,7 @@
       this._paused = value;
     }
     adjustedWallTime(now) {
-      return now - this.pausedDurationMs - (this._paused && !this.room && this.pauseStartedAt !== null ? now - this.pauseStartedAt : 0);
+      return now - this.pausedDurationMs - (this._paused && this.pauseStartedAt !== null ? now - this.pauseStartedAt : 0);
     }
     capturePresentation(mode = "continuous") {
       if (mode !== "continuous" && this.presentationSequence > 0) this.presentationRevision++;
@@ -6030,9 +5985,9 @@
       this.loop.pulse(now, { render: false });
     }
     dispose() {
+      this.closed = true;
       this.loop.stop();
-      this.session.close();
-      this.pending = [];
+      this.pending.length = 0;
     }
   };
 
@@ -6371,15 +6326,11 @@
   init_species_catalog();
   var $2 = (id) => document.getElementById(id);
   var storage = new FarmStorage();
-  var networkTimer = null;
   var observedWorld = null;
   var imported = null;
   var importedLegacy = false;
   var active = null;
   var home = true;
-  var attempt = null;
-  var room = null;
-  var solo = null;
   var personalGarden = null;
   var noticeSequence = 0;
   var menuOpen = false;
@@ -6413,7 +6364,7 @@
     $2("error").hidden = false;
     $2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
     console.error(error);
-    if (active && !room) active.paused = true;
+    if (active) active.paused = true;
   };
   var bossPreviewSources = /* @__PURE__ */ new Map();
   var bossPreviewVersions = /* @__PURE__ */ new WeakMap();
@@ -6509,7 +6460,7 @@
     }
   }
   function persist() {
-    if (active?.world === personalGarden && !room) active.flushQueuedCommands();
+    if (active?.world === personalGarden) active.flushQueuedCommands();
     return autosave.flush();
   }
   var foodFeel = new FoodFeel(requestFeed);
@@ -6520,13 +6471,11 @@
       active.queue("feed");
     }
   }
-  function install(world, options = {}) {
-    clearInterval(networkTimer);
+  function install(world) {
     active?.dispose();
-    active = new FarmSession(world, { ...options, onError: fail2, onWorldStep });
+    active = new FarmSession(world, { onError: fail2, onWorldStep });
     noticeSequence = world.eventSequence;
     observedWorld = world;
-    if (options.room) networkTimer = setInterval(() => active.pulse(performance.now()), 50);
     return active;
   }
   install(new Garden());
@@ -6543,7 +6492,7 @@
     }
   }
   function renderBossEncounterStage(stage) {
-    if (!personalGarden || room || active?.world?.scene === "raid") return null;
+    if (!personalGarden || active?.world?.scene === "raid") return null;
     const progress = personalGarden.farmBossProgress, wasSelected = progress.selections.some((entry) => entry.stage === stage), previousStage = progress.currentStage;
     const selection = selectFarmBossStage(progress, stage);
     if (!wasSelected || previousStage !== stage) saveImmediate(personalGarden);
@@ -6573,7 +6522,7 @@
     return selection;
   }
   function openBossEncounter(push = true) {
-    if (room || attempt || active?.world?.scene === "raid") return false;
+    if (active?.world?.scene === "raid") return false;
     if (!personalGarden) {
       if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)), false);
       else return false;
@@ -6615,29 +6564,16 @@
     if (push) history.pushState(null, "", "#/farm");
   }
   function refreshStart() {
-    if (room || attempt) {
-      $2("newConfirm").hidden = true;
-      $2("importConfirm").hidden = true;
-      imported = null;
-    }
-    const hasReservedRaid = storage.hasReservedRaid, liveRaid = active?.world?.scene === "raid" || !!room, staleRaid = hasReservedRaid && !liveRaid;
+    const hasReservedRaid = storage.hasReservedRaid, liveRaid = active?.world?.scene === "raid", staleRaid = hasReservedRaid && !liveRaid;
     $2("continueGame").disabled = !storage.hasWorld || staleRaid;
-    $2("startBossEncounter").disabled = !storage.hasWorld || staleRaid || !!room || !!attempt;
-    $2("staleRaidNotice").hidden = !staleRaid || !!attempt;
-    $2("onlineGame").disabled = hasReservedRaid;
-    $2("continueLegacyGame").disabled = !!room || !!attempt || !storage.legacyCompatible;
+    $2("startBossEncounter").disabled = !storage.hasWorld || staleRaid;
+    $2("staleRaidNotice").hidden = !staleRaid;
+    $2("continueLegacyGame").disabled = !storage.legacyCompatible;
     $2("legacySaveNotice").hidden = !storage.legacyCompatible;
     $2("exportSave").disabled = !(storage.raw || storage.legacyRaw);
     $2("exportLegacySave").hidden = !storage.legacyBackup;
     $2("exportLegacySave").disabled = !storage.legacyBackup;
     $2("saveNotice").textContent = [storage.migrationNotice, storage.error].filter(Boolean).join(" ");
-    $2("newGame").hidden = !!room;
-    $2("continueGame").hidden = !!room;
-    $2("onlineGame").hidden = !!room || !!attempt;
-    $2("cancelOnline").hidden = !attempt;
-    $2("leaveOnline").hidden = !room;
-    $2("importSave").disabled = !!room || !!attempt;
-    $2("newGame").disabled = !!attempt;
   }
   function setHome(value, push = true) {
     if (value) {
@@ -6648,7 +6584,7 @@
     home = value;
     document.body.dataset.home = String(value);
     $2("startScreen").hidden = !value;
-    if (!room) active.paused = value;
+    active.paused = value;
     if (push) history.pushState(null, "", value ? "#/" : active.world.scene === "raid" ? "#/raid" : "#/farm");
     refreshStart();
     if (value) $2("continueGame").focus();
@@ -6708,7 +6644,7 @@
     return settled;
   }
   function beginRaid(push = true) {
-    if (room || !personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) return;
+    if (!personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) return;
     if (!persist()) return;
     const bossStage = renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
     if (!bossStage || !persist()) return;
@@ -6735,31 +6671,20 @@
         return false;
       }
     }
-    if (room) {
-      const leaving = room;
-      try {
-        await active.session.leave();
-      } catch {
-      }
-      active.dispose();
-      leaving.close();
-      room = null;
-      solo = null;
-    }
     renderer.dropTarget = null;
     install(personalGarden);
     setHome(false, push);
     return true;
   }
   $2("continueGame").onclick = () => {
-    if (room || active?.world?.scene === "raid") {
+    if (active?.world?.scene === "raid") {
       setHome(false);
       return;
     }
     if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)));
   };
   $2("startBossEncounter").onclick = () => {
-    if (room || attempt || !storage.world || storage.world.activeRaidRunSequence !== null) return;
+    if (!storage.world || storage.world.activeRaidRunSequence !== null) return;
     start(restore(snapshot(storage.world)), false);
     openBossEncounter();
   };
@@ -6825,7 +6750,7 @@
     }
   });
   $2("abortRaidRun").onclick = () => {
-    if (room || active?.world?.scene === "raid") return;
+    if (active?.world?.scene === "raid") return;
     const world = storage.world;
     if (!world || world.activeRaidRunSequence === null) return refreshStart();
     try {
@@ -6856,7 +6781,6 @@
     } else refreshStart();
   };
   $2("confirmNew").onclick = () => {
-    if (room || attempt) return;
     const world = new Garden();
     if (storage.replace(world)) {
       autosave.reset();
@@ -6887,7 +6811,7 @@
   };
   $2("importSave").onclick = () => $2("saveFile").click();
   $2("continueLegacyGame").onclick = async () => {
-    if (room || attempt || !storage.legacyRaw) return;
+    if (!storage.legacyRaw) return;
     try {
       const { validateSave: validateSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
       validateSave2(storage.legacyRaw);
@@ -6925,7 +6849,6 @@
     $2("importConfirm").hidden = true;
   };
   $2("confirmImport").onclick = () => {
-    if (room || attempt) return;
     try {
       if (imported) {
         const legacy = importedLegacy, world = storage.import(imported);
@@ -6940,59 +6863,6 @@
       $2("saveNotice").textContent = e.message;
     }
   };
-  $2("onlineGame").onclick = async () => {
-    if (attempt || room) return;
-    if (!persist()) return;
-    personalGarden = restore(snapshot(storage.world || personalGarden || active.world));
-    if (personalGarden.activeRaidRunSequence !== null) {
-      $2("sessionNotice").textContent = "이전 원정 기록을 먼저 종료하고 다시 연결해 주세요.";
-      return;
-    }
-    solo = restore(snapshot(personalGarden));
-    const controller = attempt = new AbortController();
-    refreshStart();
-    $2("sessionNotice").textContent = "함께할 정원을 찾고 있어요…";
-    try {
-      const next = await BloomGamekitTransport.createNostrPublicRoom({ namespace: "budmori-public-v1", simulationVersion: "budmori-farm-" + PRODUCT_VERSION, maxPlayers: CONFIG.maxRaidPlayers, discoveryMs: 1500, totalTimeoutMs: 6e4, peerTimeoutMs: 2e4, signal: controller.signal, onStatus: (e) => {
-        if (attempt === controller) $2("sessionNotice").textContent = { discovering: "함께할 정원을 찾고 있어요…", hosting: "새 정원을 열고 있어요…", joining: "정원에 연결하고 있어요…" }[e.type] || "함께할 정원을 준비하고 있어요…";
-      } });
-      if (controller.signal.aborted) {
-        next.close();
-        return;
-      }
-      const reserved = reservePersonalRaidRun(next.sessionId);
-      if (!reserved) {
-        next.close();
-        return;
-      }
-      room = next;
-      const battle = Garden.createRaidBattle(BloomGamekitDeterministic.hashBytes(new TextEncoder().encode(next.sessionId)), next.players);
-      install(battle, { room: next });
-      active.queue("register-roster", { entries: raidRosterEntries(personalGarden.units), abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlement: { sessionId: reserved.sessionId, runSequence: reserved.runSequence, encounterId: reserved.runSequence } });
-      $2("sessionNotice").textContent = "함께 가꾸는 정원 · 개인 저장은 보존됩니다.";
-      setHome(false);
-    } catch (e) {
-      if (!controller.signal.aborted) $2("sessionNotice").textContent = "연결하지 못했어요. " + e.message;
-    } finally {
-      if (attempt === controller) attempt = null;
-      refreshStart();
-    }
-  };
-  $2("cancelOnline").onclick = () => {
-    attempt?.abort();
-    attempt = null;
-    $2("sessionNotice").textContent = "연결을 취소했어요.";
-    refreshStart();
-  };
-  $2("leaveOnline").onclick = async () => {
-    if (!room) return;
-    $2("leaveOnline").disabled = true;
-    try {
-      if (await returnToFarm(false)) setHome(true);
-    } finally {
-      $2("leaveOnline").disabled = false;
-    }
-  };
   $2("farm").onclick = () => returnToFarm();
   $2("raid").onclick = () => openBossEncounter();
   $2("return").onclick = () => returnToFarm();
@@ -7005,7 +6875,6 @@
   };
   $2("speed").onclick = () => active.queue("speed", { value: active.speed === 1 ? 4 : 1 });
   $2("pause").onclick = () => {
-    if (room) return;
     menuPauseChanged = true;
     active.paused = !active.paused;
     if (active.paused) persist();
@@ -7036,7 +6905,6 @@
     else if (tab === "abilities") drawAbilityTree();
   }
   function syncMenuPause(tab) {
-    if (room) return;
     if (tab === "play") {
       if (menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
       menuAutoPaused = false;
@@ -7079,7 +6947,7 @@
     menuOpen = false;
     $2("gameMenuOverlay").hidden = true;
     $2("gameMenu").setAttribute("aria-expanded", "false");
-    if (!room && menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
+    if (menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
     menuPauseChanged = false;
     menuAutoPaused = false;
     if (push) history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
@@ -7160,8 +7028,8 @@
   };
   var canvas = $2("world");
   function deploymentHud() {
-    const w = active.world, raid = w.scene === "raid", roster = w.raidRoster(active.localPlayerId), registered = w.raidRosters.length, expected = w.raidExpectedPlayers.length, remaining = roster ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster ? Math.max(0, active.localDeploySequence - roster.lastDeploySequence) : 0;
-    $2("raidRemaining").textContent = room && active.players.length < 2 ? "동료가 들어오기를 기다리는 중…" : !roster || registered < expected ? `병력 명단 동기화 중 · ${registered}/${expected}명` : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`;
+    const w = active.world, raid = w.scene === "raid", roster = w.raidRoster(active.localPlayerId), remaining = roster ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster ? Math.max(0, active.localDeploySequence - roster.lastDeploySequence) : 0;
+    $2("raidRemaining").textContent = !roster ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`;
     const own = w.raidRoster(active.localPlayerId), cooldown = own ? Math.max(0, own.buffReadyAt - w.time) : 0;
     $2("buff").disabled = !raid || !w.running || !own || cooldown > 0;
     $2("buff").textContent = cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화";
@@ -7172,7 +7040,7 @@
     } else $2("raidRewardChance").textContent = "";
   }
   function deployAt(p) {
-    if (home || active.world.scene !== "raid" || room && active.players.length < 2 || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
+    if (home || active.world.scene !== "raid" || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
     const valid = ArenaGeometry.inside(p, "raid", 0.5);
     renderer.dropTarget = { ...p, valid };
     return valid && active.deployNext(Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100);
@@ -7245,9 +7113,6 @@
   window.addEventListener("resize", () => renderer.resize());
   window.addEventListener("pagehide", () => {
     persist();
-    clearInterval(networkTimer);
-    attempt?.abort();
-    room?.close();
     active.dispose();
     renderer.dispose();
   });
@@ -7263,20 +7128,19 @@
       setHome(true, false);
       return;
     }
-    if (!room && storage.hasReservedRaid && active.world.scene !== "raid") {
+    if (storage.hasReservedRaid && active.world.scene !== "raid") {
       if (menuOpen) closeMenu(false);
       setHome(true, false);
       history.replaceState(null, "", "#/");
       return;
     }
     if (home) {
-      if (!room && storage.error && !storage.hasWorld) {
+      if (storage.error && !storage.hasWorld) {
         setHome(true, false);
         history.replaceState(null, "", "#/");
         return;
       }
-      if (room) setHome(false, false);
-      else if (storage.hasWorld) start(restore(snapshot(storage.world)), false);
+      if (storage.hasWorld) start(restore(snapshot(storage.world)), false);
       else start(new Garden(), false);
     }
     if (r === "#/boss") {
@@ -7297,10 +7161,10 @@
     if (menuOpen) closeMenu(false);
     if (bossEncounterOpen && r !== "#/boss") closeBossEncounter(false);
     if (r === "#/raid") {
-      if (!room && personalGarden?.farmBossEvent?.phase !== "idle") {
+      if (personalGarden?.farmBossEvent?.phase !== "idle") {
         history.replaceState(null, "", "#/farm");
-      } else if (!room) openBossEncounter(false);
-    } else if (r === "#/farm" && active.world.scene === "raid" && !room) returnToFarm(false);
+      } else openBossEncounter(false);
+    } else if (r === "#/farm" && active.world.scene === "raid") returnToFarm(false);
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
@@ -7329,11 +7193,10 @@
     $2("battleOutcome").textContent = raid ? battleOutcome === "victory" ? `${stageName} 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · 보스 종 ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 보스 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 보스 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "";
     $2("battleOutcome").hidden = home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle";
     $2("speed").textContent = active.speed + "×";
-    $2("pause").disabled = !!room;
-    $2("bossEncounterChallenge").disabled = !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null || room;
+    $2("bossEncounterChallenge").disabled = !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null;
     $2("menuTabGrowth").disabled = raid || farmEventActive || bossEncounterOpen;
     $2("menuTabAbilities").disabled = raid || !personalGarden;
-    $2("raid").disabled = raid || farmEventActive || room || !personalGarden;
+    $2("raid").disabled = raid || farmEventActive || !personalGarden;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
     $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
@@ -7350,13 +7213,11 @@
     noticeSequence = w.eventSequence;
     foodFeel.frame(now);
     deploymentHud();
-    $2("connection").hidden = !room;
-    $2("connection").textContent = room ? active.session.failure ? "연결이 끊겼어요 · 시작 화면에서 나갈 수 있어요" : `함께 ${active.players.length}명 · ${active.session.ready ? "연결됨" : "동기화 중"}` : "";
   }
   function frame(now) {
     try {
       measureFrame(now);
-      if (room || !home && !document.hidden) active.pulse(now);
+      if (!home && !document.hidden) active.pulse(now);
       const display = active.presentation(now);
       combatFeel.observe(active.world, display.displayTimeMs, display.presentationRevision);
       renderer.render(display, combatFeel, display.displayTimeMs);
@@ -7376,8 +7237,6 @@
     return active.world;
   }, get runtime() {
     return active;
-  }, get room() {
-    return room;
   }, get renderMetrics() {
     return frameRate();
   }, get presentationDiagnostics() {
