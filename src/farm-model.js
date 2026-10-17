@@ -5,7 +5,7 @@ import {bossAcquisitionChance, bossStageStats, settleBossKill, grantPendingBossA
 import {createFarmBossProgress} from './farm-boss-stages.js';
 import {SPECIES_COUNT} from './species-catalog.js';
 import {createPlayerProgressionState} from './player-progression.js';
-import {purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression} from './ability-tree.js';
+import {purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression} from './ability-progression.js';
 import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './ability-state.js';
 import {FARM_UPGRADE_NODES, farmUpgradeRate, getAutoTapSeconds, getBreedCooldownSeconds, getFarmCapacity, getMergeCooldownSeconds} from './farm-upgrades.js';
 import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig, getRiceHarvestMultiplier, getWheatCommandConfig, refreshWheatCommandBuff, getBarleyArmorBreakConfig, refreshBarleyArmorBreak, effectiveBarleyArmor} from './species-abilities.js';

@@ -77,6 +77,8 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 - `assets/troops/*.svg`, `assets/bosses/chestnut.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
 - `src/combat-feel.js`, `food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
 - `src/farm-app.js`: 시작·복귀·농장 입력·라우팅·성장 UI.
+- `src/ability-progression.js`: 능력·일반 강화 구매, 환불, 적용 등급과 노드 상태 판정. 모델과 성장 UI가 같은 도메인 규칙을 사용합니다.
+- `src/ability-tree.js`: 도메인 조회·명령을 사용하는 성장 화면 마크업과 DOM 입력. 저장 스키마는 `src/ability-state.js`가 관리합니다.
 
 농장 원본 기준은 지정 후보 SHA256 `f7ba37cf172d8b92ab5c7b55424827eccd8e7b2fd57300a24c2e65f9b4a7a5d6`이며, 정식 통합 기준은 [PR41](https://github.com/byh-playground/budmori-io/pull/41)의 `6f555cca264b601b23e8e381c2a5ddfac2e10796`입니다.
 

@@ -1,4 +1,4 @@
-import { isAbilityActive, powerLevelFor } from "./ability-tree.js";
+import { isAbilityActive, powerLevelFor } from "./ability-progression.js";
 import { SPECIES_ABILITY_DEFINITIONS } from "./ability-catalog.js";
 import { abilityProfile } from "./unit-abilities.js";
 
