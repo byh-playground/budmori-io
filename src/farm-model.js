@@ -14,6 +14,7 @@ import {createPeanutStrikeSchedule,resolveStrikeMask} from './unit-combat-patter
 import {MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier} from './unit-grades.js';
 import {BOSS_PATTERN_IDS,BOSS_PATTERN_CONFIG,BOSS_AIM_TURN_RATE,createBossPatternRuntime,chooseBossPattern} from './boss-patterns.js';
 import {FACTION_CONFIG,hasFaction,areOpposingFactions} from './factions.js';
+import {FixedSpatialGrid} from './spatial-grid.js';
 const presentationClocks=new WeakMap();
 const presentationEventTimes=new WeakMap();
 export function presentationEventTimeMs(event){return presentationEventTimes.get(event)??(Number.isFinite(event?.time)?event.time*1000:0)}
@@ -237,7 +238,92 @@ const AttackingBody=Base=>class extends Base{
   var Garden = class {
     constructor(seed = 731) {
       this.seed = seed;this.notices=[];this.eventSequence=0;this.mergeTask=null;
+      this.unitSpatial=new FixedSpatialGrid();this.foodSpatial=new FixedSpatialGrid();
+      this._unitById=new Map();this._unitStepOrder=new Map();this._unitAliveState=new Map();this._liveFactionCounts=new Map();this._foodOrder=new Map();
+      this._speciesGroups=Array.from({length:CONFIG.maxSpecies},()=>[]);
+      this._speciesTierGroups=Array.from({length:CONFIG.maxSpecies*(CONFIG.maxTier+1)},()=>[]);
+      this._mergeEligibleGroups=Array.from({length:CONFIG.maxSpecies*(CONFIG.maxTier+1)},()=>[]);
+      this._ownedSpeciesCounts=new Int32Array(CONFIG.maxSpecies);
+      this._unitCandidates=[];this._foodCandidates=[];this._groundedFoods=[];this._groundedFoodCount=0;this._contactPending=[];this._contactExtra=[];this._contactQuery=[];this._contactSeen=new Uint32Array(0);this._contactGeneration=0;
+      this._bossGridUnits=[];this._bossGroundUnits=[];this._bossQueryCandidates=[];this._bossHitCandidates=[];
+      this._mergeNearestScratch=[];this._mergeMaterialsScratch=[];this._mergeIdScratch=[];this._spatialStepActive=false;this._spatialQueryDepth=0;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
+      for(const key of ['unitSpatial','foodSpatial','_unitById','_unitStepOrder','_unitAliveState','_liveFactionCounts','_foodOrder','_speciesGroups','_speciesTierGroups','_mergeEligibleGroups','_ownedSpeciesCounts','_unitCandidates','_foodCandidates','_groundedFoods','_groundedFoodCount','_contactPending','_contactExtra','_contactQuery','_contactSeen','_contactGeneration','_bossGridUnits','_bossGroundUnits','_bossQueryCandidates','_bossHitCandidates','_mergeNearestScratch','_mergeMaterialsScratch','_mergeIdScratch','_spatialStepActive','_spatialQueryDepth','_unitSpatialDirty','_foodSpatialDirty'])Object.defineProperty(this,key,{enumerable:false});
       this.reset();
+    }
+    _rebuildUnitSpatialIndex(stepUnits=this.units){
+      const grid=this.unitSpatial;grid.clear();this._unitById.clear();this._unitStepOrder.clear();this._unitAliveState.clear();this._liveFactionCounts.clear();this._ownedSpeciesCounts.fill(0);
+      for(const group of this._speciesGroups)group.length=0;
+      for(const group of this._speciesTierGroups)group.length=0;
+      for(const unit of this.units){
+        grid.insert(unit);this._unitById.set(unit.id,unit);
+        if(unit.species>=0&&unit.species<CONFIG.maxSpecies){this._speciesGroups[unit.species].push(unit);this._ownedSpeciesCounts[unit.species]+=unit.isBattleOnlySummon?0:1;
+          const tier=Math.max(0,Math.min(CONFIG.maxTier,unit.tier|0));this._speciesTierGroups[unit.species*(CONFIG.maxTier+1)+tier].push(unit)}
+        if(unit.hp>0&&typeof unit.faction==='string')this._liveFactionCounts.set(unit.faction,(this._liveFactionCounts.get(unit.faction)||0)+1);
+        this._unitAliveState.set(unit,unit.hp>0);
+      }
+      for(let index=0;index<stepUnits.length;index++)this._unitStepOrder.set(stepUnits[index],index);
+      this._unitSpatialDirty=false;
+    }
+    _rebuildFoodSpatialIndex(){
+      this.foodSpatial.clear();this._foodOrder.clear();let grounded=0;
+      this._groundedFoods.length=0;for(let index=0;index<this.food.length;index++){const food=this.food[index];this._foodOrder.set(food,index);if(food.phase==='grounded'){this.foodSpatial.insert(food);this._groundedFoods.push(food);grounded++}}
+      this._groundedFoodCount=grounded;this._foodSpatialDirty=false;
+    }
+    _trackFoodAdded(food){
+      if(!this._spatialStepActive){this._foodSpatialDirty=true;return}
+      this._foodOrder.set(food,this.food.length-1);
+      if(food.phase==='grounded'){this.foodSpatial.insert(food);this._groundedFoods.push(food);this._groundedFoodCount=(this._groundedFoodCount||0)+1}
+    }
+    _trackUnitAdded(unit){
+      if(!this._spatialStepActive){this._unitSpatialDirty=true;return}
+      this.unitSpatial.insert(unit);this._unitById.set(unit.id,unit);this._unitStepOrder.set(unit,-1);
+      if(unit.species>=0&&unit.species<CONFIG.maxSpecies){this._speciesGroups[unit.species].push(unit);this._ownedSpeciesCounts[unit.species]+=unit.isBattleOnlySummon?0:1;
+        const tier=Math.max(0,Math.min(CONFIG.maxTier,unit.tier|0));this._speciesTierGroups[unit.species*(CONFIG.maxTier+1)+tier].push(unit)}
+      if(unit.hp>0&&typeof unit.faction==='string')this._liveFactionCounts.set(unit.faction,(this._liveFactionCounts.get(unit.faction)||0)+1);
+      this._unitAliveState.set(unit,unit.hp>0);
+    }
+    _trackUnitRemoved(unit,{keepStepSnapshot=false}={}){
+      if(!this._spatialStepActive){this._unitSpatialDirty=true;return}
+      this._unitById.delete(unit.id);
+      this._syncUnitAliveCount(unit);if(unit.hp>0&&typeof unit.faction==='string')this._adjustFactionCount(unit.faction,-1);
+      this._unitAliveState.set(unit,false);
+      if(unit.species>=0&&unit.species<CONFIG.maxSpecies){this._removeGroupItem(this._speciesGroups[unit.species],unit);
+        const tier=Math.max(0,Math.min(CONFIG.maxTier,unit.tier|0));this._removeGroupItem(this._speciesTierGroups[unit.species*(CONFIG.maxTier+1)+tier],unit);
+        if(!unit.isBattleOnlySummon)this._ownedSpeciesCounts[unit.species]=Math.max(0,this._ownedSpeciesCounts[unit.species]-1)}
+      if(!keepStepSnapshot||!this._unitStepOrder.has(unit)||this._unitStepOrder.get(unit)<0){this.unitSpatial.remove(unit);this._unitStepOrder.delete(unit)}
+    }
+    _removeGroupItem(group,item){const index=group.indexOf(item);if(index>=0)group.splice(index,1)}
+    _adjustFactionCount(faction,delta){const next=(this._liveFactionCounts.get(faction)||0)+delta;if(next>0)this._liveFactionCounts.set(faction,next);else this._liveFactionCounts.delete(faction)}
+    _syncUnitAliveCount(unit){
+      const wasAlive=this._unitAliveState?.get(unit);const isAlive=unit.hp>0;if(wasAlive===isAlive)return;
+      if(!this._unitAliveState)this._unitAliveState=new Map();this._unitAliveState.set(unit,isAlive);
+      if(typeof unit.faction==='string')this._adjustFactionCount(unit.faction,isAlive?1:-1);
+    }
+    _unitIsActive(unit){return this._unitById.get(unit?.id)===unit}
+    _beginSpatialQueryBatch(){if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);this._spatialQueryDepth++}
+    _endSpatialQueryBatch(){this._spatialQueryDepth=Math.max(0,this._spatialQueryDepth-1)}
+    _collectContactOrders(unit,minimumOrder,maximumOrder,out){
+      const radius=unit.radius+CONFIG.maxUnitRadius+.22;
+      this.unitSpatial.queryAABB(unit.x-radius,unit.y-radius,unit.x+radius,unit.y+radius,this._contactQuery);
+      out.length=0;
+      for(const candidate of this._contactQuery){const order=this._unitStepOrder.get(candidate);if(order!==undefined&&order>=minimumOrder&&order<=maximumOrder)out.push(order)}
+      out.sort((a,b)=>a-b);return out;
+    }
+    _nextContactGeneration(length){
+      if(this._contactSeen.length<length)this._contactSeen=new Uint32Array(Math.max(length,this._contactSeen.length*2,16));
+      this._contactGeneration=(this._contactGeneration+1)>>>0;if(this._contactGeneration===0){this._contactSeen.fill(0);this._contactGeneration=1}return this._contactGeneration;
+    }
+    _insertContactOrder(order,lastOrder,pending,generation){
+      if(order<=lastOrder||this._contactSeen[order]===generation)return;
+      this._contactSeen[order]=generation;
+      let low=0,high=pending.length;while(low<high){const middle=(low+high)>>>1;if(pending[middle]<order)low=middle+1;else high=middle}
+      pending.splice(low,0,order);
+    }
+    _collectBossTargets(minX,minY,maxX,maxY,out,groundOnly=false){
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);
+      this.unitSpatial.queryAABB(minX,minY,maxX,maxY,out);
+      let length=0;for(let index=0;index<out.length;index++){const unit=out[index];if(this._unitIsActive(unit)&&hasFaction(unit,FACTION_CONFIG.PLAYER)&&unit.hp>0&&unit.dropLanded&&(!groundOnly||unit.z<=.1))out[length++]=unit}
+      out.length=length;out.sort((a,b)=>a.id-b.id);return out;
     }
     static createRaidBattle(seed=731,expectedPlayers=['solo'],bossStage=null){
       const w=new Garden(seed);w.units=[];w.food=[];w.scene='raid';w.running=false;w.boss=w.createBoss(bossStage?.species??w.randomBossSpecies());w.boss.phase='resting';
@@ -316,8 +402,9 @@ const AttackingBody=Base=>class extends Base{
     }
     handleUnitDeath(unit){
       if(!unit||unit.deathSplitHandled)return false;
+      this._syncUnitAliveCount(unit);
       unit.deathSplitHandled=true;
-      if(unit.isBattleOnlySummon){unit.down=0;this.units=this.units.filter(candidate=>candidate!==unit);return false}
+      if(unit.isBattleOnlySummon){unit.down=0;this._trackUnitRemoved(unit,{keepStepSnapshot:true});this.units=this.units.filter(candidate=>candidate!==unit);return false}
       const inBattle=this.scene==='raid'?this.running:this.farmBossEvent?.phase==='fighting';
       const descriptors=createBeanSplitDescriptors({unit,progression:this.abilityProgressionFor(unit),inBattle});
       if(!descriptors.length)return false;
@@ -328,11 +415,12 @@ const AttackingBody=Base=>class extends Base{
         const x=unit.x+Math.cos(angle)*.38,y=unit.y+Math.sin(angle)*.38,child=new Unit(id,desc.species,desc.tier,x,y);
         Object.assign(child,desc,{ownerId:unit.ownerId,farmId:unit.farmId,home:{x,y},hp:stats(desc.tier,desc.species).maxHp,down:0,growthElapsed:child.growthDuration,growth:CONFIG.matureMeals,meals:1,dropLanded:true,deathSplitHandled:false});
         this.units.push(child);
+        this._trackUnitAdded(child);
       }
       this.combat('pea-split',{unit:unit.id,ownerId:unit.ownerId,species:0,count:descriptors.length,x:unit.x,y:unit.y});
       return true;
     }
-    cleanupBattleSummons(){this.units=this.units.filter(unit=>!unit.isBattleOnlySummon);this.projectiles=[];return true}
+    cleanupBattleSummons(){for(const unit of this.units)if(unit.isBattleOnlySummon)this._trackUnitRemoved(unit);this.units=this.units.filter(unit=>!unit.isBattleOnlySummon);this.projectiles=[];return true}
     triggerLandingShockwave(unit,action,config){
       const range=abilityProfile(unit.species).range*config.radiusMultiplier,point={x:unit.x,y:unit.y,z:0},distance=Math.hypot(unit.x-this.boss.x,unit.y-this.boss.y);
       this.effects.push({kind:'landing-shockwave',x:unit.x,y:unit.y,z:0,life:0,duration:.55,radius:range,owner:unit.id});
@@ -341,11 +429,23 @@ const AttackingBody=Base=>class extends Base{
     }
     senseEnemy(unit){
       if(unit.hp<=0||!unit.dropLanded)return null;
-      const targets=[];
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);
       const battleActive=this.scene==='farm'?this.farmBossEvent?.phase==='fighting':this.running&&this.raidDeploymentStarted;
-      if(battleActive&&this.boss?.active&&areOpposingFactions(unit,this.boss))targets.push(this.boss);
-      for(const candidate of this.units)if(candidate!==unit&&candidate.hp>0&&candidate.dropLanded&&areOpposingFactions(unit,candidate))targets.push(candidate);
-      return targets.filter(target=>Number.isFinite(target.x)&&Number.isFinite(target.y)&&Number.isFinite(target.radius)&&Math.hypot(unit.x-target.x,unit.y-target.y)<=unit.perceptionRange+target.radius+1e-9).sort((a,b)=>Math.hypot(a.x-unit.x,a.y-unit.y)-Math.hypot(b.x-unit.x,b.y-unit.y)||(a.id||0)-(b.id||0))[0]||null;
+      const bossTarget=battleActive&&this.boss?.active&&areOpposingFactions(unit,this.boss)?this.boss:null;
+      let hasUnitEnemy=false;for(const [faction,count] of this._liveFactionCounts)if(faction!==unit.faction&&count>0){hasUnitEnemy=true;break}
+      if(!hasUnitEnemy&&!bossTarget)return null;
+      let nearest=null,nearestDistance=Infinity,nearestId=Infinity;
+      const consider=target=>{
+        if(!target||!Number.isFinite(target.x)||!Number.isFinite(target.y)||!Number.isFinite(target.radius))return;
+        const distance=Math.hypot(unit.x-target.x,unit.y-target.y),id=target.id||0;
+        if(distance<=unit.perceptionRange+target.radius+1e-9&&(distance<nearestDistance||distance===nearestDistance&&id<nearestId)){nearest=target;nearestDistance=distance;nearestId=id}
+      };
+      consider(bossTarget);
+      if(hasUnitEnemy){const extent=Math.max(0,unit.perceptionRange+CONFIG.maxUnitRadius+1e-9);
+        this.unitSpatial.queryAABB(unit.x-extent,unit.y-extent,unit.x+extent,unit.y+extent,this._unitCandidates);
+        for(const candidate of this._unitCandidates)if(candidate!==unit&&this._unitIsActive(candidate)&&candidate.hp>0&&candidate.dropLanded&&areOpposingFactions(unit,candidate))consider(candidate);
+      }
+      return nearest;
     }
     raidRoster(ownerId){return this.raidRosters.find(r=>r.ownerId===ownerId)||null}
     setRaidPlayers(players){
@@ -370,7 +470,7 @@ const AttackingBody=Base=>class extends Base{
       if(this.scene!=='raid'||!this.raidExpectedPlayers.every(id=>this.raidRoster(id))||this.units.length>=CONFIG.maxRaidBattleUnits||!Number.isSafeInteger(sequence)||!Number.isFinite(x)||!Number.isFinite(y))return false;
       const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>!t.deployed);if(!roster||sequence!==roster.lastDeploySequence+1||!troop||!ArenaGeometry.inside({x,y},'raid',.5))return false;
       const farmId=troop.farmId,slot=this.raidExpectedPlayers.indexOf(ownerId),troopIndex=roster.troops.indexOf(troop),id=(slot+1)*CONFIG.raidPlayerIdStride+troopIndex+1;if(this.units.some(u=>u.id===id))return false;
-      const u=new Unit(id,troop.species,troop.tier,x,y),growthDuration=this.breedGrowthDuration();Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:1,growth:CONFIG.matureMeals,growthDuration,growthElapsed:growthDuration});troop.deployed=true;roster.lastDeploySequence=sequence;this.units.push(u);
+      const u=new Unit(id,troop.species,troop.tier,x,y),growthDuration=this.breedGrowthDuration();Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:1,growth:CONFIG.matureMeals,growthDuration,growthElapsed:growthDuration});troop.deployed=true;roster.lastDeploySequence=sequence;this.units.push(u);this._trackUnitAdded(u);
       if(!this.raidDeploymentStarted){this.raidDeploymentStarted=true;this.running=true;this.encounter={outcome:'fighting',elapsed:0};this.boss.active=true;this.boss.encounterId=this.raidRosters[0]?.settlementRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime();this.boss.phase='chase'}
       this.combat('unit-drop',{unit:id,ownerId,x,y,z:u.z});return true;
     }
@@ -382,7 +482,7 @@ const AttackingBody=Base=>class extends Base{
     spawn(species, tier, x, y) {
       if (this.units.length >= (this.scene==='farm'?this.capacity:CONFIG.maxRaidUnits)) return null;
       const u = new Unit(this.nextId++, species, clamp(tier, 1, CONFIG.maxTier), x, y);
-      this.units.push(u);
+      this.units.push(u);this._trackUnitAdded(u);
       return u;
     }
     notice(kind,detail={}){const event={sequence:++this.eventSequence,kind,...detail};this.notices.push(event);if(this.notices.length>512)this.notices.shift();return event}
@@ -425,7 +525,7 @@ const AttackingBody=Base=>class extends Base{
         if(this.tryStartFarmBossEvent(tx,ty))continue;
         const angle=this.random()*Math.PI*2, sx=Math.cos(angle)*10.2, sy=Math.sin(angle)*7.0;
         const duration=.85+this.random()*.25, z=.3;
-        this.food.push({x:sx,y:sy,z,vx:(tx-sx)/duration,vy:(ty-sy)/duration,vz:6*duration-z/duration,seed:this.random(),phase:"flight",tx,ty});
+      const food={x:sx,y:sy,z,vx:(tx-sx)/duration,vy:(ty-sy)/duration,vz:6*duration-z/duration,seed:this.random(),phase:"flight",tx,ty};this.food.push(food);this._trackFoodAdded(food);
         this.emit("feed",tx,ty);
       }
     }
@@ -449,77 +549,107 @@ const AttackingBody=Base=>class extends Base{
         u.ability=new AttackCycle(u);Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier,u.species).maxHp});
       }
       if(this.running){this.boss.active=true;this.boss.phase='chase';this.boss.encounterId=this.activeRaidRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime();this.raidExpectedPlayers=['solo'];this.raidRosters=[{ownerId:'solo',troops:this.units.filter(u=>!u.isBattleOnlySummon).map(u=>({farmId:u.farmId,species:u.species,tier:u.tier,deployed:true})),abilitySnapshot:createAbilityRuntimeSnapshot(this.playerProgression),buffUntil:0,buffReadyAt:0}];this.raidDeploymentStarted=true}else{this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false}
+      this._unitSpatialDirty=true;
     }
     canBreedPair(a,b,requireContact=false){
-      return a!==b&&!a.isBattleOnlySummon&&!b.isBattleOnlySummon&&a.breedingEligible!==false&&b.breedingEligible!==false&&a.hp>0&&b.hp>0&&a.species===b.species&&a.mature&&b.mature&&a.fed&&b.fed&&a.cooldown<=0&&b.cooldown<=0&&this.units.includes(a)&&this.units.includes(b)&&(!requireContact||Math.hypot(a.x-b.x,a.y-b.y)<=a.radius+b.radius+.2);
+      const batch=!this._spatialStepActive; if(batch)this._beginSpatialQueryBatch();
+      try{return a!==b&&!a.isBattleOnlySummon&&!b.isBattleOnlySummon&&a.breedingEligible!==false&&b.breedingEligible!==false&&a.hp>0&&b.hp>0&&a.species===b.species&&a.mature&&b.mature&&a.fed&&b.fed&&a.cooldown<=0&&b.cooldown<=0&&this._unitIsActive(a)&&this._unitIsActive(b)&&(!requireContact||Math.hypot(a.x-b.x,a.y-b.y)<=a.radius+b.radius+.2)}
+      finally{if(batch)this._endSpatialQueryBatch()}
     }
     releaseMate(unit){
-      const mate=this.units.find(candidate=>candidate.id===unit.mateId);unit.mateId=0;if(mate&&mate.mateId===unit.id)mate.mateId=0;
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);
+      const mate=this._unitById.get(unit.mateId);unit.mateId=0;if(mate&&mate.mateId===unit.id)mate.mateId=0;
     }
     reconcileMateReservations(){
-      for(const unit of this.units){
-        if(!unit.mateId)continue;
-        const mate=this.units.find(candidate=>candidate.id===unit.mateId);
-        if(this.mode!=='breed'||!mate||mate.mateId!==unit.id||!this.canBreedPair(unit,mate))this.releaseMate(unit);
-      }
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{for(const unit of this.units){
+          if(!unit.mateId)continue;
+          const mate=this._unitById.get(unit.mateId);
+          if(this.mode!=='breed'||!mate||mate.mateId!==unit.id||!this.canBreedPair(unit,mate))this.releaseMate(unit);
+        }}finally{if(batch)this._endSpatialQueryBatch()}
     }
     findOrReserveMate(unit){
-      if(this.mode!=='breed'||!unit.mature||!unit.fed||unit.cooldown>0||unit.hp<=0||this.senseEnemy(unit)){this.releaseMate(unit);return null}
-      if(unit.mateId){const current=this.units.find(candidate=>candidate.id===unit.mateId);if(current&&current.mateId===unit.id&&this.canBreedPair(unit,current))return current;this.releaseMate(unit)}
-      const candidates=this.units.filter(candidate=>candidate!==unit&&!candidate.mateId&&this.canBreedPair(unit,candidate)&&!this.senseEnemy(candidate));
-      candidates.sort((a,b)=>(a.tier===unit.tier?0:1)-(b.tier===unit.tier?0:1)||Math.hypot(a.x-unit.x,a.y-unit.y)-Math.hypot(b.x-unit.x,b.y-unit.y));
-      const mate=candidates[0];if(!mate)return null;unit.mateId=mate.id;mate.mateId=unit.id;return mate;
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{
+        if(this.mode!=='breed'||!unit.mature||!unit.fed||unit.cooldown>0||unit.hp<=0||this.senseEnemy(unit)){this.releaseMate(unit);return null}
+        if(unit.mateId){const current=this._unitById.get(unit.mateId);if(current&&current.mateId===unit.id&&this.canBreedPair(unit,current))return current;this.releaseMate(unit)}
+        let mate=null,bestRank=Infinity,bestDistance=Infinity;
+        for(const candidate of this._speciesGroups[unit.species]||[]){
+          if(candidate===unit||candidate.mateId||!this.canBreedPair(unit,candidate)||this.senseEnemy(candidate))continue;
+          const rank=candidate.tier===unit.tier?0:1,distance=Math.hypot(candidate.x-unit.x,candidate.y-unit.y);
+          if(rank<bestRank||rank===bestRank&&distance<bestDistance){mate=candidate;bestRank=rank;bestDistance=distance}
+        }
+        if(!mate)return null;unit.mateId=mate.id;mate.mateId=unit.id;return mate;
+      }finally{if(batch)this._endSpatialQueryBatch()}
     }
     hasEligibleSameTierBreedPair(){
       if(this.mode!=="breed"||this.units.length>=this.capacity)return false;
-      for(let i=0;i<this.units.length;i++)for(let j=i+1;j<this.units.length;j++){const a=this.units[i],b=this.units[j];if(a.tier===b.tier&&this.canBreedPair(a,b)&&(!a.mateId&&!b.mateId||a.mateId===b.id&&b.mateId===a.id))return true}
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{
+        for(const group of this._speciesTierGroups){let unreserved=0;
+          for(const unit of group){if(unit.isBattleOnlySummon||unit.breedingEligible===false||unit.hp<=0||!unit.mature||!unit.fed||unit.cooldown>0||!this._unitIsActive(unit))continue;
+            if(!unit.mateId){if(++unreserved>=2)return true;continue}
+            const mate=this._unitById.get(unit.mateId);if(mate?.mateId===unit.id&&mate.species===unit.species&&mate.tier===unit.tier&&mate.hp>0&&mate.mature&&mate.fed&&mate.cooldown<=0&&mate.breedingEligible!==false&&!mate.isBattleOnlySummon)return true;
+          }
+        }
+      }finally{if(batch)this._endSpatialQueryBatch()}
       return false;
     }
     canMergeGroup(materials,{requireContact=false,requireNoEnemy=false}={}){
-      if(!Array.isArray(materials)||materials.length<2)return false;
-      const first=materials[0],resultTier=first?.tier+1,materialCount=mergeMaterialCostForTier(resultTier);
-      if(materialCount<2||materials.length!==materialCount||first.tier>=CONFIG.maxTier)return false;
-      const ids=new Set();
-      for(const unit of materials){
-        if(!unit||ids.has(unit.id)||unit.isBattleOnlySummon||unit.mergeEligible===false||unit.species!==first.species||unit.tier!==first.tier||unit.hp<=0||unit.down>0||!unit.mature||unit.cooldown>0||!this.units.includes(unit))return false;
-        ids.add(unit.id);
-      }
-      // Sleeping owned units count toward the minimum roster, but cannot be
-      // consumed. The resulting same-species count must remain at least two.
-      const existingCount=this.units.reduce((count,unit)=>count+(!unit.isBattleOnlySummon&&unit.species===first.species?1:0),0);
-      if(existingCount-materialCount+1<2)return false;
-      if(requireNoEnemy&&materials.some(unit=>this.senseEnemy(unit)))return false;
-      if(requireContact){
-        const anchor=materials[0];
-        if(materials.slice(1).some(unit=>Math.hypot(anchor.x-unit.x,anchor.y-unit.y)>anchor.radius+unit.radius+.2))return false;
-      }
-      return true;
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{
+        if(!Array.isArray(materials)||materials.length<2)return false;
+        const first=materials[0],resultTier=first?.tier+1,materialCount=mergeMaterialCostForTier(resultTier);
+        if(materialCount<2||materials.length!==materialCount||first.tier>=CONFIG.maxTier)return false;
+        const ids=new Set();
+        for(const unit of materials){
+          if(!unit||ids.has(unit.id)||unit.isBattleOnlySummon||unit.mergeEligible===false||unit.species!==first.species||unit.tier!==first.tier||unit.hp<=0||unit.down>0||!unit.mature||unit.cooldown>0||!this._unitIsActive(unit))return false;
+          ids.add(unit.id);
+        }
+        // Sleeping owned units count toward the minimum roster, but cannot be
+        // consumed. The resulting same-species count must remain at least two.
+        if(this._ownedSpeciesCounts[first.species]-materialCount+1<2)return false;
+        if(requireNoEnemy&&materials.some(unit=>this.senseEnemy(unit)))return false;
+        if(requireContact){const anchor=materials[0];for(let index=1;index<materials.length;index++){const unit=materials[index];if(Math.hypot(anchor.x-unit.x,anchor.y-unit.y)>anchor.radius+unit.radius+.2)return false}}
+        return true;
+      }finally{if(batch)this._endSpatialQueryBatch()}
     }
     canMergePair(a,b,options={}){return this.canMergeGroup([a,b],options)}
     selectMergeTask(){
       if(this.mode!=="merge"||this.scene!=="farm"||this.mergeTask)return;
-      const eligible=this.units.filter(unit=>!unit.isBattleOnlySummon&&unit.mergeEligible!==false&&unit.hp>0&&unit.down<=0&&unit.mature&&unit.cooldown<=0&&unit.tier<CONFIG.maxTier&&!this.senseEnemy(unit));
-      const groups=new Map(),ownedCounts=new Map();
-      for(const unit of this.units)if(!unit.isBattleOnlySummon)ownedCounts.set(unit.species,(ownedCounts.get(unit.species)||0)+1);
-      for(const unit of eligible){const key=`${unit.species}:${unit.tier}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(unit)}
-      const compareIds=(left,right)=>{for(let i=0;i<Math.min(left.length,right.length);i++)if(left[i]!==right[i])return left[i]-right[i];return left.length-right.length};
-      let best=null;
-      for(let tier=1;tier<CONFIG.maxTier;tier++){
-        const materialCount=mergeMaterialCostForTier(tier+1);
-        for(const group of groups.values()){
-          if(group[0].tier!==tier||group.length<materialCount||ownedCounts.get(group[0].species)-materialCount+1<2)continue;
-          for(const anchor of group){
-            const nearest=group.filter(unit=>unit!==anchor).map(unit=>({unit,distance:(unit.x-anchor.x)**2+(unit.y-anchor.y)**2})).sort((a,b)=>a.distance-b.distance||a.unit.id-b.unit.id).slice(0,materialCount-1);
-            if(nearest.length!==materialCount-1)continue;
-            const materials=[anchor,...nearest.map(entry=>entry.unit)];
-            if(!this.canMergeGroup(materials,{requireNoEnemy:true}))continue;
-            let distance=0;for(let i=0;i<materials.length;i++)for(let j=i+1;j<materials.length;j++)distance+=(materials[i].x-materials[j].x)**2+(materials[i].y-materials[j].y)**2;
-            const sortedIds=materials.map(unit=>unit.id).sort((a,b)=>a-b),candidate={tier,distance,anchorId:anchor.id,materialIds:materials.map(unit=>unit.id),sortedIds};
-            if(!best||candidate.tier<best.tier||candidate.tier===best.tier&&(candidate.distance<best.distance||candidate.distance===best.distance&&(compareIds(candidate.sortedIds,best.sortedIds)<0||compareIds(candidate.sortedIds,best.sortedIds)===0&&candidate.anchorId<best.anchorId)))best=candidate;
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{
+        for(const group of this._mergeEligibleGroups)group.length=0;
+        for(const group of this._speciesTierGroups){for(const unit of group)if(!unit.isBattleOnlySummon&&unit.mergeEligible!==false&&unit.hp>0&&unit.down<=0&&unit.mature&&unit.cooldown<=0&&unit.tier<CONFIG.maxTier&&!this.senseEnemy(unit))this._mergeEligibleGroups[unit.species*(CONFIG.maxTier+1)+unit.tier].push(unit)}
+        const compareIds=(left,right)=>{for(let index=0;index<left.length;index++)if(left[index]!==right[index])return left[index]-right[index];return 0};
+        let bestTier=Infinity,bestDistance=Infinity,bestAnchorId=Infinity,bestMaterialIds=null,bestSortedIds=null;
+        const nearest=this._mergeNearestScratch,materials=this._mergeMaterialsScratch,sortedIds=this._mergeIdScratch;
+        for(let tier=1;tier<CONFIG.maxTier;tier++){
+          const materialCount=mergeMaterialCostForTier(tier+1),nearestCount=materialCount-1;
+          if(materialCount<2)continue;
+          for(let species=0;species<CONFIG.maxSpecies;species++){
+            const group=this._mergeEligibleGroups[species*(CONFIG.maxTier+1)+tier];
+            if(group.length<materialCount||this._ownedSpeciesCounts[species]-materialCount+1<2)continue;
+            for(const anchor of group){
+              nearest.length=0;
+              for(const unit of group){if(unit===anchor)continue;const distance=(unit.x-anchor.x)**2+(unit.y-anchor.y)**2;let insertAt=nearest.length;
+                for(let position=0;position<nearest.length;position++){const current=nearest[position];if(distance<current.distance||distance===current.distance&&unit.id<current.unit.id){insertAt=position;break}}
+                if(insertAt>=nearestCount)continue;nearest.splice(insertAt,0,{unit,distance});if(nearest.length>nearestCount)nearest.length=nearestCount;
+              }
+              if(nearest.length!==nearestCount)continue;
+              materials.length=0;materials.push(anchor);for(const entry of nearest)materials.push(entry.unit);
+              if(!this.canMergeGroup(materials,{requireNoEnemy:true}))continue;
+              let distance=0;for(let i=0;i<materials.length;i++)for(let j=i+1;j<materials.length;j++)distance+=(materials[i].x-materials[j].x)**2+(materials[i].y-materials[j].y)**2;
+              if(tier>bestTier||tier===bestTier&&distance>bestDistance)continue;
+              sortedIds.length=0;for(const unit of materials)sortedIds.push(unit.id);sortedIds.sort((a,b)=>a-b);
+              const idsOrder=bestSortedIds?compareIds(sortedIds,bestSortedIds):-1;
+              if(bestMaterialIds&&(tier>bestTier||tier===bestTier&&(distance>bestDistance||distance===bestDistance&&(idsOrder>0||idsOrder===0&&anchor.id>=bestAnchorId))))continue;
+              bestTier=tier;bestDistance=distance;bestAnchorId=anchor.id;bestMaterialIds=materials.map(unit=>unit.id);bestSortedIds=[...sortedIds];
+            }
           }
         }
-      }
-      if(best)this.mergeTask={phase:"approach",aId:best.materialIds[0],bId:best.materialIds[1],materialIds:best.materialIds,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
+        if(bestMaterialIds)this.mergeTask={phase:"approach",aId:bestMaterialIds[0],bId:bestMaterialIds[1],materialIds:bestMaterialIds,elapsed:0,duration:CONFIG.mergeAnimationSeconds};
+      }finally{if(batch)this._endSpatialQueryBatch()}
     }
     advanceMergeTask(dt){
       if(this.mode!=="merge"||this.scene!=="farm"){this.mergeTask=null;return}
@@ -529,7 +659,7 @@ const AttackingBody=Base=>class extends Base{
         return;
       }
       if(this.mergeTask?.phase==="approach"){
-        const materials=(this.mergeTask.materialIds||[this.mergeTask.aId,this.mergeTask.bId]).map(id=>this.units.find(unit=>unit.id===id));
+        const materials=(this.mergeTask.materialIds||[this.mergeTask.aId,this.mergeTask.bId]).map(id=>this._unitById.get(id));
         // Combat pauses an otherwise valid group; death, invalid tiers, or removed units cancel it.
         if(!this.canMergeGroup(materials))this.mergeTask=null;
       }
@@ -537,7 +667,7 @@ const AttackingBody=Base=>class extends Base{
     }
     resolveMergeTaskAfterMovement(){
       const task=this.mergeTask;if(task?.phase!=="approach")return false;
-      const materials=(task.materialIds||[task.aId,task.bId]).map(id=>this.units.find(unit=>unit.id===id));
+      const materials=(task.materialIds||[task.aId,task.bId]).map(id=>this._unitById.get(id));
       if(!this.canMergeGroup(materials,{requireContact:true,requireNoEnemy:true}))return false;
       return this.mergeGroup(materials,{priorityResolved:true});
     }
@@ -566,6 +696,7 @@ const AttackingBody=Base=>class extends Base{
       if(this.mode!=="merge"||this.scene!=="farm"||!this.canMergeGroup(materials,{requireContact:true,requireNoEnemy:true}))return false;
       const ordered=[...materials],first=ordered[0],materialIds=ordered.map(unit=>unit.id),consumed=new Set(materialIds),x=ordered.reduce((sum,unit)=>sum+unit.x,0)/ordered.length,y=ordered.reduce((sum,unit)=>sum+unit.y,0)/ordered.length;
       for(const unit of ordered)this.releaseMate(unit);
+      for(const unit of ordered)this._trackUnitRemoved(unit);
       this.units=this.units.filter(unit=>!consumed.has(unit.id));
       const result=this.spawn(first.species,first.tier+1,x,y);
       result.meals=1;result.growth=CONFIG.matureMeals;result.growthDuration=this.breedGrowthDuration();result.growthElapsed=result.growthDuration;result.cooldown=getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);result.cooldownDuration=result.cooldown;
@@ -576,9 +707,10 @@ const AttackingBody=Base=>class extends Base{
       return true;
     }
     step(dt) {
-
+      this._spatialStepActive=true;this._spatialQueryDepth=0;
       this.time += dt;
       grantPendingBossAcquisitions(this);
+      const units=[...this.units];this._rebuildUnitSpatialIndex(units);
       if(this.scene==='raid'&&this.running)this.encounter.elapsed+=dt;
       this.advanceMergeTask(dt);
       this.effects = this.effects.filter((e) => (e.life += dt) < (Number.isFinite(e.duration)?e.duration:1));
@@ -593,7 +725,7 @@ const AttackingBody=Base=>class extends Base{
           }
         }
       }
-      const units = [...this.units];
+      this._rebuildFoodSpatialIndex();
       this.reconcileMateReservations();
       for (const u of units) {
         u.landingRecovery=Math.max(0,(u.landingRecovery||0)-dt);
@@ -610,8 +742,9 @@ const AttackingBody=Base=>class extends Base{
             else if(Math.hypot(u.vx,u.vy)>1)this.emit('land',u.x,u.y);
           }
           if(this.scene==='farm'&&u.down===0){
-            const maxHp=stats(u.tier,u.species).maxHp;this.releaseMate(u);Object.assign(u,{hp:maxHp,down:0,z:0,vx:0,vy:0,vz:0,stun:0,flash:0,bounce:0,angle:0,deathSplitHandled:false});u.ability=new AttackCycle(u);this.combat('unit-recover',{unit:u.id,x:u.x,y:u.y});
+            const maxHp=stats(u.tier,u.species).maxHp;this.releaseMate(u);Object.assign(u,{hp:maxHp,down:0,z:0,vx:0,vy:0,vz:0,stun:0,flash:0,bounce:0,angle:0,deathSplitHandled:false});this._syncUnitAliveCount(u);u.ability=new AttackCycle(u);this.combat('unit-recover',{unit:u.id,x:u.x,y:u.y});
           }
+          this.unitSpatial.update(u);
           continue;
         }
         u.age += dt;
@@ -638,21 +771,23 @@ const AttackingBody=Base=>class extends Base{
           else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
         }
         this.boundBody(u,this.scene,u.radius);
+        this.unitSpatial.update(u);
 
       }
-      if(this.scene==='raid')this.raidContacts(units);else for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) if (contact(units[i], units[j])) this.metrics.contacts++;
+      this.resolveContacts(units);
       if (this.scene === "farm") {
         if(this.mode==="breed"){
-          for(let i=0;i<units.length;i++)for(let j=i+1;j<units.length;j++)if(units[i].tier===units[j].tier)this.pair(units[i],units[j],true);
-          if(!this.hasEligibleSameTierBreedPair())for(let i=0;i<units.length;i++)for(let j=i+1;j<units.length;j++)if(units[i].tier!==units[j].tier)this.pair(units[i],units[j],true);
+          this.resolveFarmContactPairs(units,true);
+          if(!this.hasEligibleSameTierBreedPair())this.resolveFarmContactPairs(units,false);
         }else this.resolveMergeTaskAfterMovement();
       }
       if(this.scene==='farm'&&this.farmBossEvent.phase!=='idle'){
         if(this.boss.active)this.updateProjectiles(dt);
         this.updateBoss(dt);
-        if(this.boss.active)for(const u of this.units)this.separateBoss(u);
-      }else if(this.boss.active){this.updateProjectiles(dt);this.updateBoss(dt);for(const u of this.units)this.separateBoss(u)}
+        if(this.boss.active)for(const u of this.units){this.separateBoss(u);this.unitSpatial.update(u)}
+      }else if(this.boss.active){this.updateProjectiles(dt);this.updateBoss(dt);for(const u of this.units){this.separateBoss(u);this.unitSpatial.update(u)}}
       this.units=this.units.filter(unit=>!unit.isBattleOnlySummon||unit.hp>0);
+      this._spatialStepActive=false;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
     }
     steer(u, x, y, dt, speed2) {
       const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);
@@ -664,12 +799,47 @@ const AttackingBody=Base=>class extends Base{
       }
     }
     raidContacts(units){
-      const size=1.5,cells=new Map(),key=(x,y)=>`${x},${y}`;
-      for(let i=0;i<units.length;i++){const u=units[i];if(u.hp<=0||!u.dropLanded)continue;const cx=Math.floor(u.x/size),cy=Math.floor(u.y/size),near=[];for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)near.push(...(cells.get(key(cx+dx,cy+dy))||[]));near.sort((a,b)=>a-b);for(const j of near){const other=units[j];if(other.hp>0&&other.dropLanded&&contact(other,u))this.metrics.contacts++}const k=key(cx,cy);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(i)}
+      for(let i=0;i<units.length;i++){
+        const unit=units[i];if(unit.hp<=0||!unit.dropLanded)continue;
+        const pending=this._collectContactOrders(unit,0,i-1,this._contactPending);
+        for(const j of pending){const other=units[j];if(other.hp<=0||!other.dropLanded)continue;
+          const ax=other.x,ay=other.y,bx=unit.x,by=unit.y,didContact=contact(other,unit);
+          if(didContact)this.metrics.contacts++;
+          if(ax!==other.x||ay!==other.y)this.unitSpatial.update(other);
+          if(bx!==unit.x||by!==unit.y)this.unitSpatial.update(unit);
+        }
+      }
+    }
+    resolveContacts(units){
+      if(this.scene==='raid'){this.raidContacts(units);return}
+      for(let i=0;i<units.length;i++){
+        const unit=units[i],generation=this._nextContactGeneration(units.length),pending=this._collectContactOrders(unit,i+1,units.length-1,this._contactPending);
+        for(const order of pending)this._contactSeen[order]=generation;
+        let cursor=0;
+        while(cursor<pending.length){
+          const j=pending[cursor++],other=units[j],ax=unit.x,ay=unit.y,bx=other.x,by=other.y,didContact=contact(unit,other);
+          if(didContact)this.metrics.contacts++;
+          const unitMoved=ax!==unit.x||ay!==unit.y,otherMoved=bx!==other.x||by!==other.y;
+          if(unitMoved)this.unitSpatial.update(unit);if(otherMoved)this.unitSpatial.update(other);
+          if(unitMoved){
+            const extras=this._collectContactOrders(unit,j+1,units.length-1,this._contactExtra);
+            for(const order of extras)this._insertContactOrder(order,j,pending,generation);
+          }
+        }
+      }
+    }
+    resolveFarmContactPairs(units,sameTier){
+      for(let i=0;i<units.length;i++){
+        const unit=units[i],pending=this._collectContactOrders(unit,i+1,units.length-1,this._contactPending);
+        for(const j of pending){const other=units[j];if((unit.tier===other.tier)!==sameTier)continue;this.pair(unit,other,true)}
+      }
     }
     avoidNearbyFood(u,dt){
       const radius=1.25;let pushX=0,pushY=0,strongest=0,nearest=null,nearestDistance=Infinity;
-      for(const food of this.food){
+      if(!this._spatialStepActive)this._rebuildFoodSpatialIndex();
+      this.foodSpatial.queryAABB(u.x-radius,u.y-radius,u.x+radius,u.y+radius,this._foodCandidates);
+      this._foodCandidates.sort((a,b)=>(this._foodOrder.get(a)??Infinity)-(this._foodOrder.get(b)??Infinity));
+      for(const food of this._foodCandidates){
         if(food.phase!=="grounded")continue;
         let dx=u.x-food.x,dy=u.y-food.y,distance=Math.hypot(dx,dy);
         if(distance>=radius)continue;
@@ -696,25 +866,35 @@ const AttackingBody=Base=>class extends Base{
       this.steer(u,u.x+moveX/moveLength,u.y+moveY/moveLength,dt,scaleMoveSpeed(.75,u));
       return true;
     }
+    findNearestGroundFood(x,y){
+      if(!this._spatialStepActive)this._rebuildFoodSpatialIndex();
+      if(!this._groundedFoodCount)return null;
+      const grid=this.foodSpatial,cx=grid.cellX(x),cy=grid.cellY(y);
+      if(cx<0||cy<0||cx>=grid.cellCount||cy>=grid.cellCount)return null;
+      let nearest=null,nearestDistance=Infinity,nearestOrder=Infinity;
+      const maxRing=Math.max(cx,cy,grid.cellCount-1-cx,grid.cellCount-1-cy);
+      for(let ring=0;ring<=maxRing;ring++){
+        grid.queryCellRing(cx,cy,ring,this._foodCandidates);
+        for(const food of this._foodCandidates){const distance=Math.hypot(food.x-x,food.y-y),order=this._foodOrder.get(food)??Infinity;
+          if(distance<nearestDistance||distance===nearestDistance&&order<nearestOrder){nearest=food;nearestDistance=distance;nearestOrder=order}}
+        if(nearest&&nearestDistance<grid.distanceToOutsideRing(x,y,cx,cy,ring))break;
+        if((2*ring+1)*(2*ring+1)>this._groundedFoodCount){nearest=null;nearestDistance=Infinity;nearestOrder=Infinity;for(const food of this._groundedFoods){const distance=Math.hypot(food.x-x,food.y-y);if(distance<nearestDistance){nearest=food;nearestDistance=distance}}break}
+      }
+      return nearest;
+    }
     farmUnit(u, dt) {
       if (u.stun > 0 || u.z > 0.1) return;
       if(!u.mature||u.cooldown>0){if(!this.avoidNearbyFood(u,dt))this.steer(u,Math.sin(this.time*.18+u.seed)*7.4,Math.cos(this.time*.16+u.seed)*5.3,dt,scaleMoveSpeed(.75,u));return}
       if(this.mode==="merge") {
         const task=this.mergeTask;
-        if(task?.phase==="approach"&&task.materialIds?.includes(u.id)){const anchor=this.units.find(candidate=>candidate.id===task.materialIds[0]);if(anchor&&u.cooldown<=0)this.steer(u,u.id===anchor.id?u.x:anchor.x,u.id===anchor.id?u.y:anchor.y,dt,scaleMoveSpeed(2.2,u));return}
+        if(task?.phase==="approach"&&task.materialIds?.includes(u.id)){const anchor=this._unitById.get(task.materialIds[0]);if(anchor&&u.cooldown<=0)this.steer(u,u.id===anchor.id?u.x:anchor.x,u.id===anchor.id?u.y:anchor.y,dt,scaleMoveSpeed(2.2,u));return}
         this.steer(u,Math.sin(this.time*.18+u.seed)*7.4,Math.cos(this.time*.16+u.seed)*5.3,dt,scaleMoveSpeed(.75,u));return;
       }
       let target = null, best = Infinity;
       if (this.mode === "breed" && !u.fed) {
-        for (const f of this.food) {
-          const d = Math.hypot(f.x - u.x, f.y - u.y);
-          if (f.phase === "grounded" && d < best) {
-            best = d;
-            target = f;
-          }
-        }
+        target=this.findNearestGroundFood(u.x,u.y);if(target)best=Math.hypot(target.x-u.x,target.y-u.y);
         if (target && best < 0.42) {
-          this.food.splice(this.food.indexOf(target), 1);
+          this.food.splice(this.food.indexOf(target), 1);this.foodSpatial.remove(target);this._foodOrder.delete(target);this._removeGroupItem(this._groundedFoods,target);this._groundedFoodCount=Math.max(0,this._groundedFoodCount-1);
           u.meals = 1;
           u.vz = 2;
           this.emit("eat", u.x, u.y, 0.5);
@@ -722,8 +902,8 @@ const AttackingBody=Base=>class extends Base{
         }
       } else if (this.mode==="breed"&&u.cooldown===0) target=this.findOrReserveMate(u);
       else if (u.cooldown === 0) {
-        const candidates=this.units.filter(p=>p!==u&&p.hp>0&&p.down<=0&&p.species===u.species&&p.mature&&p.cooldown<=0&&(this.mode!=="breed"||p.fed)&&(this.mode!=="merge"||p.tier===u.tier&&u.tier<CONFIG.maxTier));
-        for (const p of candidates) {
+        for (const p of this._speciesGroups[u.species]||[]) {
+          if(p===u||p.hp<=0||p.down>0||!p.mature||p.cooldown>0||(this.mode==="breed"&&!p.fed)||(this.mode==="merge"&&!(p.tier===u.tier&&u.tier<CONFIG.maxTier)))continue;
           const d = Math.hypot(p.x - u.x, p.y - u.y);
           if (d < best) {
             best = d;
@@ -808,7 +988,7 @@ const AttackingBody=Base=>class extends Base{
       const targetMaxHp=stats(target.tier,target.species).maxHp,harvestMultiplier=this.riceHarvestMultiplier(u,target,kind,target.hp,targetMaxHp);
       const baselineArmor=stats(target.tier,target.species).armor,armor=effectiveBarleyArmor(target,baselineArmor,this.time);
       const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier,sourceKind:'enemy',sourceStatOverrides,armorForTarget:()=>armor});
+      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier,sourceKind:'enemy',sourceStatOverrides,armorForTarget:()=>armor});this._syncUnitAliveCount(target);
       this.applyGrainOnBasicHit(u,target,kind);
       const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5,2.4,u);
       if(target.hp===0){target.down=target.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(target)}
@@ -907,15 +1087,19 @@ const AttackingBody=Base=>class extends Base{
       const reach=b.radius-.25+(CONFIG.raid.sweepReach-b.radius+.25)*Math.sin(Math.PI*clamp(q,0,1));return {x:b.x+Math.cos(b.angle)*reach,y:b.y+Math.sin(b.angle)*reach,z:b.z+.2};
     }
     livingBossTargets(){return this.units.filter(u=>hasFaction(u,FACTION_CONFIG.PLAYER)&&u.hp>0&&u.dropLanded).sort((a,b)=>a.id-b.id)}
-    nearestBossTarget(living,groundOnly=false){const b=this.boss,candidates=groundOnly?living.filter(u=>u.z<=.1):living;return [...candidates].sort((a,c)=>Math.hypot(a.x-b.x,a.y-b.y)-Math.hypot(c.x-b.x,c.y-b.y)||a.id-c.id)[0]||null}
+    nearestBossTarget(living,groundOnly=false){const b=this.boss;let best=null,distance=Infinity;for(const unit of living){if(groundOnly&&unit.z>.1)continue;const next=Math.hypot(unit.x-b.x,unit.y-b.y);if(next<distance||next===distance&&(!best||unit.id<best.id)){best=unit;distance=next}}return best}
     bossTargetGrid(living){
-      const b=this.boss,range=CONFIG.raid.perceptionRange,cellSize=3,units=living.filter(u=>Math.hypot(u.x-b.x,u.y-b.y)<=range+u.radius).sort((a,c)=>a.id-c.id),groundUnits=units.filter(u=>u.z<=.1),cells=new Map(),groundCells=new Map();
-      for(const unit of units){const x=Math.floor(unit.x/cellSize),y=Math.floor(unit.y/cellSize),key=`${x},${y}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(unit);if(unit.z<=.1){if(!groundCells.has(key))groundCells.set(key,[]);groundCells.get(key).push(unit)}}
-      return {units,groundUnits,cells,groundCells,cellSize};
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);
+      const b=this.boss,range=CONFIG.raid.perceptionRange,extent=range+CONFIG.maxUnitRadius,units=this._bossGridUnits,groundUnits=this._bossGroundUnits;
+      units.length=0;groundUnits.length=0;
+      this.unitSpatial.queryAABB(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossQueryCandidates);
+      for(const unit of this._bossQueryCandidates){if(!this._unitIsActive(unit)||!hasFaction(unit,FACTION_CONFIG.PLAYER)||unit.hp<=0||!unit.dropLanded||Math.hypot(unit.x-b.x,unit.y-b.y)>range+unit.radius)continue;units.push(unit);if(unit.z<=.1)groundUnits.push(unit)}
+      units.sort((a,c)=>a.id-c.id);groundUnits.sort((a,c)=>a.id-c.id);
+      return {units,groundUnits,cellSize:3,range};
     }
     eachBossGridUnit(grid,minX,minY,maxX,maxY,visit,groundOnly=false){
-      const size=grid.cellSize,x0=Math.floor(minX/size),x1=Math.floor(maxX/size),y0=Math.floor(minY/size),y1=Math.floor(maxY/size);
-      const cells=groundOnly?grid.groundCells:grid.cells;for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++)for(const unit of cells.get(`${x},${y}`)||[])visit(unit);
+      this.unitSpatial.queryAABB(minX,minY,maxX,maxY,this._bossQueryCandidates);
+      const b=this.boss;for(const unit of this._bossQueryCandidates){if(!this._unitIsActive(unit)||!hasFaction(unit,FACTION_CONFIG.PLAYER)||unit.hp<=0||!unit.dropLanded||groundOnly&&unit.z>.1||Math.hypot(unit.x-b.x,unit.y-b.y)>grid.range+unit.radius)continue;visit(unit)}
     }
     chargeBossTarget(living,grid=this.bossTargetGrid(living)){
       const b=this.boss,config=BOSS_PATTERN_CONFIG['attack.charge'];if(!grid.units.length)return null;
@@ -937,7 +1121,7 @@ const AttackingBody=Base=>class extends Base{
       // the exact landing disk with a spatial-cell query, not a unit-pair pass.
       const candidates=new Map(),size=grid.cellSize;
       for(const unit of grid.groundUnits){let dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy)||1;if(d>config.reach){dx*=config.reach/d;dy*=config.reach/d}
-        const point=ArenaGeometry.clamp({x:b.x+dx,y:b.y+dy},this.scene,b.radius+.25),cellX=Math.floor(point.x/size),cellY=Math.floor(point.y/size),key=`${cellX},${cellY}`,distance=Math.hypot(unit.x-b.x,unit.y-b.y),current=candidates.get(key);
+        const point=ArenaGeometry.clamp({x:b.x+dx,y:b.y+dy},this.scene,b.radius+.25),cellX=Math.floor(point.x/size),cellY=Math.floor(point.y/size),key=(cellY+64)*128+(cellX+64),distance=Math.hypot(unit.x-b.x,unit.y-b.y),current=candidates.get(key);
         if(!current||distance<current.distance-1e-9||Math.abs(distance-current.distance)<=1e-9&&unit.id<current.unit.id)candidates.set(key,{unit,distance,point});
       }
       let best=null;
@@ -974,29 +1158,29 @@ const AttackingBody=Base=>class extends Base{
       const dx=normal?.x??unit.x-b.x,dy=normal?.y??unit.y-b.y,n=Math.hypot(dx,dy)||1;
       unit.knock(dx/n,dy/n,config.knockback,config.lift,b);
       if(!hasFaction(unit,FACTION_CONFIG.PLAYER)||!areOpposingFactions(b,unit))return false;
-      applyDamageToTargets(null,[unit],{rawDamage:b.attackPower*config.damageMultiplier,sourceKind:'enemy'});
+      applyDamageToTargets(null,[unit],{rawDamage:b.attackPower*config.damageMultiplier,sourceKind:'enemy'});this._syncUnitAliveCount(unit);
       if(unit.hp===0){unit.down=unit.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(unit)}
       const isSweep=patternId==='attack.sweep-360'||patternId==='attack.fan-sweep';this.metrics.directHits++;this.metrics[isSweep?'sweepHits':'basicHits']++;
       this.combat('unit-hit',{attackKind:patternId,attackId:b.attackId,unit:unit.id,x:point.x,y:point.y,z:Math.max(.15,unit.z+.25),nx:dx/n,ny:dy/n,strength:config.damageMultiplier});return true;
     }
     resolveBossSector(action,patternId,range,sector){
       const b=this.boss,aim=action.aim,half=sector/2;let hits=0;
-      for(const unit of this.livingBossTargets()){
+      const extent=range+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){
         if(b.hit.has(unit.id)||unit.z>.1)continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;
         const offset=Math.atan2(Math.sin(Math.atan2(dy,dx)-aim),Math.cos(Math.atan2(dy,dx)-aim)),pad=d<=unit.radius?Math.PI:Math.asin(Math.min(1,unit.radius/Math.max(d,1e-6)));if(Math.abs(offset)>half+pad)continue;
         const n=d||1;if(this.hitBossPatternUnit(unit,patternId,{x:unit.x,y:unit.y,z:0},{x:dx/n,y:dy/n}))hits++;
       }return hits;
     }
     resolveBossCircle(action,patternId,range){
-      const b=this.boss;let hits=0;for(const unit of this.livingBossTargets()){if(b.hit.has(unit.id)||unit.z>.1)continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;if(this.hitBossPatternUnit(unit,patternId,{x:b.x+dx/(d||1)*Math.min(d,range),y:b.y+dy/(d||1)*Math.min(d,range),z:0},{x:dx/(d||1),y:dy/(d||1)}))hits++}return hits;
+      const b=this.boss;let hits=0;const extent=range+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(b.hit.has(unit.id))continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;if(this.hitBossPatternUnit(unit,patternId,{x:b.x+dx/(d||1)*Math.min(d,range),y:b.y+dy/(d||1)*Math.min(d,range),z:0},{x:dx/(d||1),y:dy/(d||1)}))hits++}return hits;
     }
     sweepBossBody(old,patternId){
-      const b=this.boss;for(const unit of this.livingBossTargets()){if(b.hit.has(unit.id))continue;const hit=ArenaGeometry.sweep(old,b,b.radius,b.height,unit);if(hit)this.hitBossPatternUnit(unit,patternId,hit,patternId==='attack.charge'?{x:Math.cos(b.patternRuntime.active.aim),y:Math.sin(b.patternRuntime.active.aim)}:null)}
+      const b=this.boss,extent=b.radius+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(Math.min(old.x,b.x)-extent,Math.min(old.y,b.y)-extent,Math.max(old.x,b.x)+extent,Math.max(old.y,b.y)+extent,this._bossHitCandidates)){if(b.hit.has(unit.id))continue;const hit=ArenaGeometry.sweep(old,b,b.radius,b.height,unit);if(hit)this.hitBossPatternUnit(unit,patternId,hit,patternId==='attack.charge'?{x:Math.cos(b.patternRuntime.active.aim),y:Math.sin(b.patternRuntime.active.aim)}:null)}
     }
     fanBossWeapon(action,q0,q1){
       const config=BOSS_PATTERN_CONFIG[action.id],span=config.sector,fromAngle=action.aim-span/2+span*clamp(q0,0,1),toAngle=action.aim-span/2+span*clamp(q1,0,1),b=this.boss;
       const from={x:b.x+Math.cos(fromAngle)*config.reach,y:b.y+Math.sin(fromAngle)*config.reach,z:.2},to={x:b.x+Math.cos(toAngle)*config.reach,y:b.y+Math.sin(toAngle)*config.reach,z:.2};
-      for(const unit of this.livingBossTargets()){if(b.hit.has(unit.id)||unit.z>.1)continue;const hit=ArenaGeometry.sweep(from,to,config.width,1.4,unit);if(hit){const dx=unit.x-b.x,dy=unit.y-b.y,n=Math.hypot(dx,dy)||1;this.hitBossPatternUnit(unit,action.id,hit,{x:dx/n,y:dy/n})}}
+      const extent=config.reach+config.width+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(b.hit.has(unit.id))continue;const hit=ArenaGeometry.sweep(from,to,config.width,1.4,unit);if(hit){const dx=unit.x-b.x,dy=unit.y-b.y,n=Math.hypot(dx,dy)||1;this.hitBossPatternUnit(unit,action.id,hit,{x:dx/n,y:dy/n})}}
     }
     bossMouthPoint(){
       // Local coordinates are taken from each troop SVG's authored mouth socket;
@@ -1016,7 +1200,7 @@ const AttackingBody=Base=>class extends Base{
       const b=this.boss,landing=this.bossSummonLanding(action.aim,action),mouth=this.bossMouthPoint();if(!landing)return false;
       const id=CONFIG.bossSummonIdBase+ ++this.bossSummonSerial,unit=new Unit(id,b.species,1,mouth.x,mouth.y),angle=Math.atan2(landing.y-mouth.y,landing.x-mouth.x),flightSeconds=Math.sqrt(2*mouth.z/CONFIG.gravity),horizontalDistance=Math.hypot(landing.x-mouth.x,landing.y-mouth.y),drag=.8,speed=horizontalDistance*drag/(1-Math.exp(-drag*flightSeconds));
       Object.assign(unit,{ownerId:'boss',farmId:0,faction:FACTION_CONFIG.ENEMY,home:{x:mouth.x,y:mouth.y},hp:stats(1,b.species).maxHp,down:0,isBattleOnlySummon:true,battleSummonKind:'boss-mouth-t1',battleSummonParentId:0,battleSummonEncounterId:b.encounterId||1,countsTowardPermanentRoster:false,eligibleForRaidDeployment:false,breedingEligible:false,mergeEligible:false,canSplit:false,usesPersistentSleep:false,lifetime:'until-death-or-battle-end',growthElapsed:unit.growthDuration,growth:CONFIG.matureMeals,meals:1,deathSplitHandled:false,splitUsedThisBattle:true,dropLanded:false,z:mouth.z,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,vz:0,landingRecovery:0,seed:id*2.39996});
-      this.units.push(unit);action.released++;action.landingPoints||=[];action.landingPoints.push(landing);this.boss.summonMouth=mouth;
+      this.units.push(unit);this._trackUnitAdded(unit);action.released++;action.landingPoints||=[];action.landingPoints.push(landing);this.boss.summonMouth=mouth;
       this.combat('boss-mouth-spit',{patternId:action.id,unit:id,species:b.species,x:mouth.x,y:mouth.y,z:mouth.z,landingX:landing.x,landingY:landing.y,sequence:action.released});return true;
     }
     activateBossPattern(action){
@@ -1051,7 +1235,7 @@ const AttackingBody=Base=>class extends Base{
           const direction={x:Math.cos(action.aim),y:Math.sin(action.aim)},remaining=Math.max(0,config.reach-action.traveled),distance=Math.min(config.speed*dt,remaining),old={x:b.x,y:b.y,z:b.z},candidate={x:b.x+direction.x*distance,y:b.y+direction.y*distance},bounded=ArenaGeometry.clamp(candidate,this.scene,b.radius+.25),hitBoundary=Math.hypot(candidate.x-bounded.x,candidate.y-bounded.y)>1e-8;b.x=bounded.x;b.y=bounded.y;const moved=Math.hypot(b.x-old.x,b.y-old.y);action.traveled+=moved;b.travel+=moved;this.sweepBossBody(old,action.id);if(hitBoundary||action.traveled>=config.reach-1e-8||moved<1e-8)this.enterBossPatternRecovery(action);
         }else if(action.id==='attack.leap-slam'){
           const old={x:b.x,y:b.y,z:b.z},p=Ballistics.sample(action.path,action.phaseElapsed/action.path.duration);b.x=p.x;b.y=p.y;b.z=p.z;this.sweepBossBody(old,action.id);
-          if(action.phaseElapsed>=action.path.duration){b.x=action.path.to.x;b.y=action.path.to.y;b.z=0;for(const unit of this.livingBossTargets()){if(b.hit.has(unit.id)||unit.z>.1)continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d<=config.landingRadius+unit.radius)this.hitBossPatternUnit(unit,action.id,{x:unit.x,y:unit.y,z:0},{x:dx/(d||1),y:dy/(d||1)})}this.combat('boss-pattern-land',{patternId:action.id,attackId:b.attackId,x:b.x,y:b.y,z:0});this.enterBossPatternRecovery(action)}
+          if(action.phaseElapsed>=action.path.duration){b.x=action.path.to.x;b.y=action.path.to.y;b.z=0;const extent=config.landingRadius+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(b.hit.has(unit.id))continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d<=config.landingRadius+unit.radius)this.hitBossPatternUnit(unit,action.id,{x:unit.x,y:unit.y,z:0},{x:dx/(d||1),y:dy/(d||1)})}this.combat('boss-pattern-land',{patternId:action.id,attackId:b.attackId,x:b.x,y:b.y,z:0});this.enterBossPatternRecovery(action)}
         }else if(action.id==='attack.fan-sweep'){
           const q0=Math.max(0,(action.phaseElapsed-dt)/config.active),q1=Math.min(1,action.phaseElapsed/config.active);this.fanBossWeapon(action,q0,q1);if(action.phaseElapsed>=config.active)this.enterBossPatternRecovery(action);
         }else if(action.id==='summon.mouth-t1'){
