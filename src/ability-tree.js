@@ -9,7 +9,7 @@ import {
     canPurchaseFarmUpgrade,
     canResetAbilityProgression,
     getAbilityNodeStatus,
-    getInvestedPointCount,
+    getInvestedAbilityPointCount,
     getMinimumApplicableTier,
     purchaseAbilityNode,
     resetAbilityProgression,
@@ -77,13 +77,17 @@ export function renderAbilityTreeMarkup(
     if (!isValidAbilityProgressionState(state)) {
         throw new TypeError('Cannot render invalid ability progression state');
     }
-    const INVESTED = getInvestedPointCount(state);
+    const INVESTED = getInvestedAbilityPointCount(state, Number.isInteger(selectedSpecies) ? selectedSpecies : null);
     const CONTEXT = {
         highestSpeciesTier,
         location,
         inCombat,
     };
-    const RESET_CHECK = canResetAbilityProgression(state, CONTEXT);
+    const RESET_CHECK = canResetAbilityProgression(
+        state,
+        CONTEXT,
+        Number.isInteger(selectedSpecies) ? selectedSpecies : null,
+    );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies)
         ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies)
         : SPECIES_ABILITY_DEFINITIONS;
@@ -145,7 +149,11 @@ export function mountAbilityTreePanel(host, { getState, getContext = () => ({}),
         const CONTEXT = getContext();
         let result;
         if (BUTTON.dataset.abilityAction === 'reset') {
-            result = resetAbilityProgression(STATE, CONTEXT);
+            result = resetAbilityProgression(
+                STATE,
+                CONTEXT,
+                Number.isInteger(CONTEXT.selectedSpecies) ? CONTEXT.selectedSpecies : null,
+            );
         } else if (BUTTON.dataset.abilityNode) {
             const [ABILITY_ID, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(':');
             const NODE_ID = KIND === 'root' ? 'root' : `${KIND}-${LEVEL}`;

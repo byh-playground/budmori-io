@@ -45,7 +45,7 @@ import {
 import { createFarmBossProgress } from './farm-boss-stages.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { createPlayerProgressionState } from './player-progression.js';
-import { purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression } from './ability-progression.js';
+import { purchaseAbilityNode, purchaseFarmUpgrade, resetPlayerProgression } from './ability-progression.js';
 import { createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot } from './ability-state.js';
 import {
     FARM_UPGRADE_NODES,
@@ -1204,9 +1204,9 @@ const GARDEN = class Garden {
         }
         return RESULT;
     }
-    resetAbilityTree() {
+    resetProgression(scope) {
         const IN_COMBAT = this.running || this.farmBossEvent?.phase !== 'idle';
-        const RESULT = resetAbilityProgression(this.playerProgression, {
+        const RESULT = resetPlayerProgression(this.playerProgression, scope, {
             location: this.scene,
             inCombat: IN_COMBAT,
         });
@@ -1215,6 +1215,9 @@ const GARDEN = class Garden {
             this.markProgressChanged();
         }
         return RESULT;
+    }
+    resetAbilityTree() {
+        return this.resetProgression({ type: 'abilities' });
     }
     spawnLobProjectile(unit, action, shot, popcornConfig = null) {
         if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {

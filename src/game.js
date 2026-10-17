@@ -1542,6 +1542,12 @@
           }
           effect.beamTargetZ = TARGET?.z ?? 0;
         }
+        update(owner, effect, dt) {
+          const ALIVE = super.update(owner, effect, dt), TARGET = owner.verticalTarget(effect.x, effect.y);
+          effect.beamTarget = !!TARGET;
+          effect.beamTargetZ = TARGET?.z ?? 0;
+          return ALIVE;
+        }
       };
     }
   });
@@ -5295,13 +5301,17 @@
     return getAbilityPowerLevel(state, abilityId);
   }
   function getInvestedPointCount(state) {
+    return getInvestedAbilityPointCount(state);
+  }
+  function getInvestedAbilityPointCount(state, speciesId = null) {
     if (!isValidAbilityProgressionState(state)) {
       return 0;
     }
-    return Object.values(state.abilities).reduce(
-      (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
-      0
-    );
+    const DEFINITIONS = speciesId === null ? SPECIES_ABILITY_DEFINITIONS : SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === speciesId);
+    return DEFINITIONS.reduce((total, definition) => {
+      const INVESTMENT = state.abilities[definition.id];
+      return total + Number(INVESTMENT.rootUnlocked) + INVESTMENT.powerLevel + INVESTMENT.gradeLevel;
+    }, 0);
   }
   function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
     const DEFINITION10 = DEFINITION_BY_ID.get(abilityId);
@@ -5410,11 +5420,17 @@
       state: NEXT
     };
   }
-  function canResetAbilityProgression(state, context = {}) {
+  function canResetAbilityProgression(state, context = {}, speciesId = null) {
     if (!isValidAbilityProgressionState(state)) {
       return {
         allowed: false,
         reason: "invalid-state"
+      };
+    }
+    if (speciesId !== null && !SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.species === speciesId)) {
+      return {
+        allowed: false,
+        reason: "invalid-scope"
       };
     }
     const LOCK_REASON = progressionLockReason(context);
@@ -5424,7 +5440,7 @@
         reason: LOCK_REASON
       };
     }
-    if (getInvestedPointCount(state) === 0) {
+    if (getInvestedAbilityPointCount(state, speciesId) === 0) {
       return {
         allowed: false,
         reason: "nothing-invested"
@@ -5435,34 +5451,79 @@
       reason: null
     };
   }
-  function resetAbilityProgression(state, context = {}) {
-    const CHECK = canResetAbilityProgression(state, context);
-    if (!CHECK.allowed) {
-      return {
-        ok: false,
-        reason: CHECK.reason,
-        state
-      };
+  function canResetPlayerProgression(state, scope = { type: "all" }, context = {}) {
+    if (!isValidPlayerProgressionState(state)) {
+      return { allowed: false, reason: "invalid-state", refunded: 0 };
     }
-    const REFUNDED = getInvestedPointCount(state);
-    const NEXT = cloneState(state);
-    NEXT.availablePoints += REFUNDED;
-    NEXT.abilities = Object.fromEntries(
-      SPECIES_ABILITY_DEFINITIONS.map((definition) => [
-        definition.id,
-        {
-          rootUnlocked: false,
-          powerLevel: 0,
-          gradeLevel: 0
+    const NORMALIZED_SCOPE = normalizeResetScope(scope);
+    if (!NORMALIZED_SCOPE) {
+      return { allowed: false, reason: "invalid-scope", refunded: 0 };
+    }
+    const REFUNDED = progressionResetInvestment(state, NORMALIZED_SCOPE);
+    const LOCK_REASON = progressionLockReason(context);
+    if (LOCK_REASON) {
+      return { allowed: false, reason: LOCK_REASON, refunded: REFUNDED };
+    }
+    if (REFUNDED === 0) {
+      return { allowed: false, reason: "nothing-invested", refunded: 0 };
+    }
+    return { allowed: true, reason: null, refunded: REFUNDED };
+  }
+  function resetPlayerProgression(state, scope = { type: "all" }, context = {}) {
+    const NORMALIZED_SCOPE = normalizeResetScope(scope), CHECK = canResetPlayerProgression(state, NORMALIZED_SCOPE || scope, context);
+    if (!CHECK.allowed) {
+      return { ok: false, reason: CHECK.reason, refunded: CHECK.refunded, state };
+    }
+    const NEXT = cloneState(state), TYPE = NORMALIZED_SCOPE.type;
+    NEXT.availablePoints += CHECK.refunded;
+    if (TYPE === "all" || TYPE === "farm") {
+      NEXT.farmUpgrades = createFarmUpgradeState();
+    }
+    if (TYPE === "all" || TYPE === "abilities") {
+      for (const DEFINITION10 of SPECIES_ABILITY_DEFINITIONS) {
+        if (TYPE === "all" || NORMALIZED_SCOPE.speciesId === void 0 || DEFINITION10.species === NORMALIZED_SCOPE.speciesId) {
+          NEXT.abilities[DEFINITION10.id] = {
+            rootUnlocked: false,
+            powerLevel: 0,
+            gradeLevel: 0
+          };
         }
-      ])
-    );
-    return {
-      ok: true,
-      reason: null,
-      refunded: REFUNDED,
-      state: NEXT
-    };
+      }
+    }
+    if (TYPE === "all" || TYPE === "formation") {
+      NEXT.formationSkills = createFormationSkillState();
+    }
+    return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
+  }
+  function progressionResetInvestment(state, scope) {
+    switch (scope.type) {
+      case "all":
+        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills);
+      case "farm":
+        return getFarmUpgradeInvestedCount(state.farmUpgrades);
+      case "abilities":
+        return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
+      case "formation":
+        return formationInvestedPoints(state.formationSkills);
+      default:
+        return 0;
+    }
+  }
+  function normalizeResetScope(scope) {
+    const NORMALIZED = typeof scope === "string" ? { type: scope } : scope;
+    if (!NORMALIZED || typeof NORMALIZED !== "object" || Array.isArray(NORMALIZED)) {
+      return null;
+    }
+    if (NORMALIZED.type === "all" || NORMALIZED.type === "farm" || NORMALIZED.type === "formation") {
+      return NORMALIZED;
+    }
+    if (NORMALIZED.type === "abilities") {
+      const SPECIES_ID = NORMALIZED.speciesId;
+      if (SPECIES_ID === void 0 || Number.isInteger(SPECIES_ID) && SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.species === SPECIES_ID)) {
+        return NORMALIZED;
+      }
+    }
+    return null;
   }
   function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
     const NODE = FARM_UPGRADE_NODES.find((candidate) => candidate.id === nodeId);
@@ -5591,7 +5652,14 @@
             ...value
           }
         ])
-      )
+      ),
+      ...state.formationSkills ? {
+        formationSkills: {
+          ...state.formationSkills,
+          levels: { ...state.formationSkills.levels },
+          equipped: [...state.formationSkills.equipped]
+        }
+      } : {}
     };
   }
   function progressionLockReason(context) {
@@ -5606,6 +5674,7 @@
       init_ability_catalog();
       init_ability_state();
       init_player_progression();
+      init_formation_skill_state();
       init_farm_upgrades();
       SHARED_ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
@@ -7475,9 +7544,9 @@
           }
           return RESULT;
         }
-        resetAbilityTree() {
+        resetProgression(scope) {
           const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
-          const RESULT = resetAbilityProgression(this.playerProgression, {
+          const RESULT = resetPlayerProgression(this.playerProgression, scope, {
             location: this.scene,
             inCombat: IN_COMBAT
           });
@@ -7486,6 +7555,9 @@
             this.markProgressChanged();
           }
           return RESULT;
+        }
+        resetAbilityTree() {
+          return this.resetProgression({ type: "abilities" });
         }
         spawnLobProjectile(unit, action, shot, popcornConfig = null) {
           if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
@@ -10769,7 +10841,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.7";
+      PRODUCT_VERSION = "0.8.8";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12728,6 +12800,14 @@
     "backlogDroppedMs",
     "backlogCappedFrames",
     "backlogClippedMs",
+    "inputDtClampEvents",
+    "inputDtClampedMs",
+    "backlogOverflowEvents",
+    "backlogOverflowMs",
+    "clockGapDrops",
+    "clockGapDroppedMs",
+    "dropPolicyDrops",
+    "dropPolicyDroppedMs",
     "presentationCaptures",
     "presentationEntities",
     "saveCalls",
@@ -12806,6 +12886,7 @@
         return this.detailed && SAMPLE.retainedFrames > 1 ? `${NUMBER(VALUE.mean)}/${NUMBER(VALUE.p95)}/${NUMBER(VALUE.max)}` : "미측정";
       };
       const LINES = [
+        `SDK loss ms: clock-gap ${NUMBER(COUNT("clockGapDroppedMs"), 0)} / input clamp ${NUMBER(COUNT("inputDtClampedMs"), 0)} / backlog overflow ${NUMBER(COUNT("backlogOverflowMs"), 0)} / drop-policy ${NUMBER(COUNT("dropPolicyDroppedMs"), 0)}`,
         `상태 ${world.scene} ${paused ? "정지" : "실행"} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
         `창 ${NUMBER(SAMPLE.windowMs / 1e3, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? "켜짐" : "꺼짐"} · ${SAMPLE.retainedFrames > 1 ? "유효" : "표본 부족"}`,
         `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
@@ -13225,7 +13306,8 @@
       if (CHARGING || effect.age >= 0.5 && EXIT === 0) {
         renderer.ellipse(P.x, P.y + S * 0.15, S * (0.1 + 0.05 * Math.sin(effect.age * 12)), S * 0.07, "#afffeb88");
       }
-      if (PULSE_AGE >= 0 && PULSE_AGE < 0.13 && effect.age > 0.5 && EXIT === 0) {
+      const BEAM_ACTIVE = effect.beamTarget === true && effect.age > 0.5 && EXIT === 0, PULSE_ACTIVE = PULSE_AGE >= 0 && PULSE_AGE < 0.13;
+      if (BEAM_ACTIVE) {
         const POINTS = beamPointsFor(effect);
         POINTS[0][0] = effect.x;
         POINTS[0][1] = effect.y;
@@ -13236,7 +13318,9 @@
         stroke(renderer, POINTS, "#74f5db44", 0.33);
         stroke(renderer, POINTS, "#afffe6cc", 0.11);
         stroke(renderer, POINTS, "#f4fff3", 0.035);
-        renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, "#bfffd7aa", 0.04);
+        if (PULSE_ACTIVE) {
+          renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, "#bfffd7aa", 0.04);
+        }
       }
       C.globalAlpha = 1;
     }
@@ -15481,6 +15565,7 @@
       targetZ: R.LINEAR,
       lastPulse: R.STEP,
       pulse: R.STEP,
+      beamTarget: R.STATE_KEY,
       beamTargetZ: R.LINEAR
     });
     update(effect) {
@@ -15569,18 +15654,33 @@
       this.lastFrameClockMs = null;
       this.lastCaptureClockMs = 0;
       this.pulseTimestamp = null;
-      this.lastLoopPulseTimestamp = null;
-      this.currentPulsePriorAccumulatorMs = 0;
+      this.currentPulseCapped = false;
       this.loop = globalThis.BloomGamekitSimloop.createLoop({
         session: this,
         getInput: () => LOCAL_INPUT,
         onError,
         onBacklogDrop: (details) => {
+          const REASON = details?.reason, DROPPED_MS = Math.max(0, Number.isFinite(details?.droppedMs) ? details.droppedMs : 0);
+          if (REASON === "input-dt-clamp" || REASON === "backlog-overflow") {
+            const IS_INPUT_CLAMP = REASON === "input-dt-clamp";
+            this.profiler?.count(IS_INPUT_CLAMP ? "inputDtClampEvents" : "backlogOverflowEvents");
+            this.profiler?.count(IS_INPUT_CLAMP ? "inputDtClampedMs" : "backlogOverflowMs", DROPPED_MS);
+            if (!this.currentPulseCapped) {
+              this.profiler?.count("backlogCappedFrames");
+              this.currentPulseCapped = true;
+            }
+            this.profiler?.count("backlogClippedMs", DROPPED_MS);
+            return;
+          }
           this.profiler?.count("backlogDrops");
-          this.profiler?.count(
-            "backlogDroppedMs",
-            Math.max(0, details?.elapsedMs || 0) + this.currentPulsePriorAccumulatorMs
-          );
+          this.profiler?.count("backlogDroppedMs", DROPPED_MS);
+          if (REASON === "clock-gap") {
+            this.profiler?.count("clockGapDrops");
+            this.profiler?.count("clockGapDroppedMs", DROPPED_MS);
+          } else if (REASON === "drop-policy") {
+            this.profiler?.count("dropPolicyDrops");
+            this.profiler?.count("dropPolicyDroppedMs", DROPPED_MS);
+          }
           this.pendingPresentationMode = "reset";
         },
         onAdvance: (result) => {
@@ -15728,6 +15828,8 @@
           return W.formationSkills.buySlot();
         case "formation-equip":
           return W.formationSkills.equip(c.slot, c.id);
+        case "progression-reset":
+          return W.scene === "farm" && W.resetProgression(c.scope).ok;
         case "ability-reset":
           return W.scene === "farm" && W.resetAbilityTree().ok;
         case "register-roster":
@@ -15933,24 +16035,13 @@
       return VIEW;
     }
     pulse(now) {
-      const PREVIOUS_PULSE = this.lastLoopPulseTimestamp, PREVIOUS_SIMULATION_TIME = this.loop.simulationTimeMs;
-      this.currentPulsePriorAccumulatorMs = Number.isFinite(PREVIOUS_PULSE) && Number.isFinite(PREVIOUS_SIMULATION_TIME) ? Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME) : 0;
-      if (Number.isFinite(PREVIOUS_PULSE) && Number.isFinite(PREVIOUS_SIMULATION_TIME) && now >= PREVIOUS_PULSE && now - PREVIOUS_PULSE <= 400) {
-        const ELAPSED = now - PREVIOUS_PULSE, PRIOR_ACCUMULATOR = Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME), ELAPSED_AFTER_INPUT_CAP = Math.min(250, ELAPSED), ACCUMULATOR_AFTER_CAP = Math.min(
-          PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP,
-          PRESENTATION_STEP_MS * LOCAL_PROFILE.maxCatchupSteps
-        ), CLIPPED_MS = Math.max(0, ELAPSED - ELAPSED_AFTER_INPUT_CAP) + Math.max(0, PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP - ACCUMULATOR_AFTER_CAP);
-        if (CLIPPED_MS > 0) {
-          this.profiler?.count("backlogCappedFrames");
-          this.profiler?.count("backlogClippedMs", CLIPPED_MS);
-        }
-      }
-      this.lastLoopPulseTimestamp = now;
       this.pulseTimestamp = now;
+      this.currentPulseCapped = false;
       const PREVIOUS_TICK = this.tick;
       this.loop.pulse(now, {
         render: false
       });
+      this.currentPulseCapped = false;
       this.profiler?.count("catchupTicks", Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {
@@ -16649,13 +16740,17 @@
     if (!isValidAbilityProgressionState(state)) {
       throw new TypeError("Cannot render invalid ability progression state");
     }
-    const INVESTED = getInvestedPointCount(state);
+    const INVESTED = getInvestedAbilityPointCount(state, Number.isInteger(selectedSpecies) ? selectedSpecies : null);
     const CONTEXT = {
       highestSpeciesTier,
       location: location2,
       inCombat
     };
-    const RESET_CHECK = canResetAbilityProgression(state, CONTEXT);
+    const RESET_CHECK = canResetAbilityProgression(
+      state,
+      CONTEXT,
+      Number.isInteger(selectedSpecies) ? selectedSpecies : null
+    );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
     const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
     const LEVEL_MARKUP = renderPlayerProgressMarkup(state);
@@ -16752,6 +16847,7 @@
   }
 
   // src/farm-app.js
+  init_ability_progression();
   init_raid_settlement();
   init_boss_rewards();
   init_farm_boss_stages();
@@ -16784,7 +16880,11 @@
     value: null
   };
   var RENDERER = new DIORAMA(DOLLAR2("world"));
-  var FORMATION_UI = new FormationSkillsUI((kind, payload) => active?.queue(kind, payload));
+  var FORMATION_UI = new FormationSkillsUI((kind, payload) => {
+    const QUEUED = active?.queue(kind, payload) ?? false;
+    setTimeout(renderProgressionResetActions, 180);
+    return QUEUED;
+  });
   var PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
   STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
   function frameRate() {
@@ -17612,6 +17712,7 @@
       location: active.world.scene,
       inCombat: IN_COMBAT
     });
+    renderProgressionResetActions();
   }
   function drawAbilityTree() {
     const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle";
@@ -17626,6 +17727,33 @@
       inCombat: IN_COMBAT,
       selectedSpecies: SELECTED_SPECIES
     });
+    renderProgressionResetActions();
+  }
+  function currentProgressionResetScope() {
+    if (menuTab === "growth") {
+      return { type: "farm" };
+    }
+    if (menuTab === "abilities") {
+      return { type: "abilities", speciesId: Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0) };
+    }
+    if (menuTab === "formation") {
+      return { type: "formation" };
+    }
+    return null;
+  }
+  function renderProgressionResetActions() {
+    const HOST = DOLLAR2("progressionResetActions"), CURRENT = DOLLAR2("progressionResetCurrent"), ALL = DOLLAR2("progressionResetAll");
+    if (!active || !menuOpen || !["growth", "abilities", "formation"].includes(menuTab)) {
+      HOST.hidden = true;
+      return;
+    }
+    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
+    HOST.hidden = false;
+    CURRENT.hidden = menuTab === "abilities";
+    CURRENT.disabled = !CURRENT_CHECK.allowed;
+    CURRENT.textContent = `${LABEL} · ${CURRENT_CHECK.refunded}P`;
+    ALL.disabled = !ALL_CHECK.allowed;
+    ALL.textContent = `전체 초기화 · ${ALL_CHECK.refunded}P`;
   }
   var MENU_ROUTES = {
     play: "#/menu",
@@ -17667,6 +17795,7 @@
     } else if (tab === "abilities") {
       drawAbilityTree();
     }
+    renderProgressionResetActions();
   }
   function syncMenuPause(tab) {
     if (tab === "play") {
@@ -17754,6 +17883,21 @@
       switchMenuTab(BUTTON.dataset.menuTab);
     }
   };
+  DOLLAR2("progressionResetActions").onclick = (event) => {
+    const BUTTON = event.target.closest("button[data-progression-reset]");
+    if (!BUTTON || BUTTON.disabled) {
+      return;
+    }
+    const SCOPE = BUTTON.dataset.progressionReset === "all" ? { type: "all" } : currentProgressionResetScope();
+    if (SCOPE) {
+      active.queue("progression-reset", { scope: SCOPE });
+      setTimeout(() => {
+        drawTree();
+        drawAbilityTree();
+        renderProgressionResetActions();
+      }, 180);
+    }
+  };
   DOLLAR2("gameMenuTabs").onkeydown = (e) => {
     const BUTTONS = [...DOLLAR2("gameMenuTabs").querySelectorAll('[role="tab"]:not(:disabled)')], INDEX = BUTTONS.indexOf(document.activeElement);
     let next;
@@ -17806,7 +17950,12 @@
       return;
     }
     if (BUTTON.dataset.abilityAction === "reset") {
-      active.queue("ability-reset");
+      active.queue("progression-reset", {
+        scope: {
+          type: "abilities",
+          speciesId: Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0)
+        }
+      });
     } else if (BUTTON.dataset.abilityNode) {
       const [ABILITY_ID, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(":");
       const NODE_ID = KIND === "root" ? "root" : `${KIND}-${LEVEL}`;
@@ -17816,7 +17965,10 @@
         nodeId: NODE_ID
       });
     }
-    setTimeout(drawAbilityTree, 180);
+    setTimeout(() => {
+      drawAbilityTree();
+      renderProgressionResetActions();
+    }, 180);
   };
   function focusableMenuButtons() {
     return [...DOLLAR2("gameMenuPanel").querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter(

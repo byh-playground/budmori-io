@@ -1,23 +1,25 @@
-tree 8379ab882f551a35e163826e021b68b71fe765ed
-parent 74df66a55f7e028c7506702b9f917f9783defd1b
-author byh020907 <byh020907@naver.com> 1792248493 +0900
-committer GitHub <noreply@github.com> 1792248493 +0900
+tree d89671f74e2346f4674b7e409b78370ebd0f7696
+parent 352127aa93e95e91c2fcd2f9646f0961538da6e0
+author byh020907 <byh020907@naver.com> 1792257307 +0900
+committer GitHub <noreply@github.com> 1792257307 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq04qtCRC1aQ7uu5UhlAAAWyYQAH7G72lJAi+2KIGFFZQR44uM
- eAHKKjSE6qtKc63YT4lB/vwTHLWfYfGPYWL0vIBQ3qi5Bq+r7CKEA8RShdnC0JiL
- yCW7Znftl7gmW7c+AK+rNFFXsPnCcTyz/jpWR63Fb3C0BXnVe8+nlxotgYFcv0c0
- NqEURM2KCJvtU2c8ObLWBMU8jUbPFDXP425VwOgm5HMP8axolUjUpgI9ufQgtit/
- J6/uAzs7cv8dtObiNX8Pym8mvwKQqIKXsu3EEjUgwrmf4flpvy8U5cVvMFbDZiH3
- itFQEo0YXbv4IbH/N0nVwthK9OxkjU8EXdmBdUfW8c5hjSJ79pCQBa3hljeOjMzq
- i350s48BdaQHrfN0SxNfBicJBE9J528ICr2c7Ks61ai8qkzrDx6duQNshAE0MKEc
- CIK4Ua66cg+jB5ReZnx29X+JoO4j7F4xa+gBZx6BUo10fTTtIpS6LKshezqNwRJj
- E3bgV7pOMcN4H9tzDEul/dfDAw9+4JPa7wCeiPps/IJoV2CbV5tIYGeCGMt8bxKd
- tpbFDvdPZJtIc7+eCBE5jswM7P9HJFRRWmOjFtlTO+QKOkBKzEvE4k7bHf+GI9HB
- 25f6rJC/vSdQa6ZSLSbvYrL95pG5rFicllTz+tzYRvWXCyY5/lOc0ruXv6ExU5RH
- +RoRylQK7E8xAuJjYs0J
- =5J7h
+ wsFcBAABCAAQBQJq060cCRC1aQ7uu5UhlAAATTsQAIQXgnxyxW2UkTanrofN++25
+ RNPs6FfWcSgUoExzu0l1ZCFTkyPawHloC/2KhlDUx5/V0gUd0cCpwqKklBGO70Qi
+ i9M51RU4AjzO+HG1ZQSaeLeDdTJGj0J8RRLLX28i4VZt3BCchJBopeh2JQuql88K
+ UfEOTsckaYmiTh+wyDMEk281PX+cDt3jfrdR1kq3xGCh4KLLWJ+K6jVXkb944ZW6
+ a3Ujcf5pUPXAeQVv1uN+w11QI9fdqw2nAxPXOB+sOjlT5Q5CTT92gcM6laMvc8X4
+ hU/RSTfIGw/2ao430pBa5DQzsCEpsMeI2SEinf2vU6l78soiBeA/JbX7mfbpN4Cx
+ KwxtVswx7gNFFI5p9k2KfhqKB27oI619jtcHdtMrQJt3pxRJNXyQkodUC+cbkwoa
+ /0HV9HN/XoOHbil44p6nu5zNis+gkQpcya8FLseSWUBMAezfmYDQYvXfK7hMgnqp
+ KtutariHJF2lPrnlrlw8MJaHw7x9lIpR2zbkDJhpdYDkwwcrJB6hpbM+MqsSLIYL
+ vQqPte0Lr+RMhweYopbxhr5UPSkgvdRD9MrBc21nT0hO6H8IlIQwxMlkOMe3vFMz
+ 1NNqKhBI4hnWTVLmw7dqlfteNQxEfuc8vSgwOXgpDbusLMPfjd6meSE9lK6BbE6q
+ DmXsFvXzo2ugKkiP4cWd
+ =9f7r
  -----END PGP SIGNATURE-----
  
 
-렌더링 기본 도형 인스턴스 경로 추가 (#87)
+Reduce capture churn and report dropped simulation time (#88)
+
+Reuse capture and pose data, and report exact dropped simulation time.

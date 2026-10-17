@@ -325,6 +325,7 @@ class FormationEffectRender extends RENDER_OBJECT {
         targetZ: R.LINEAR,
         lastPulse: R.STEP,
         pulse: R.STEP,
+        beamTarget: R.STATE_KEY,
         beamTargetZ: R.LINEAR,
     });
     update(effect) {
@@ -412,8 +413,7 @@ class FarmSession {
         this.lastFrameClockMs = null;
         this.lastCaptureClockMs = 0;
         this.pulseTimestamp = null;
-        this.lastLoopPulseTimestamp = null;
-        this.currentPulsePriorAccumulatorMs = 0;
+        this.currentPulseCapped = false;
         // FarmSession owns local command order; the shared loop owns timing/backlog.
         // No room, transport, rollback history or input-submission pipeline is created.
         this.loop = globalThis.BloomGamekitSimloop.createLoop({
@@ -421,11 +421,28 @@ class FarmSession {
             getInput: () => LOCAL_INPUT,
             onError,
             onBacklogDrop: (details) => {
+                const REASON = details?.reason,
+                    DROPPED_MS = Math.max(0, Number.isFinite(details?.droppedMs) ? details.droppedMs : 0);
+                if (REASON === 'input-dt-clamp' || REASON === 'backlog-overflow') {
+                    const IS_INPUT_CLAMP = REASON === 'input-dt-clamp';
+                    this.profiler?.count(IS_INPUT_CLAMP ? 'inputDtClampEvents' : 'backlogOverflowEvents');
+                    this.profiler?.count(IS_INPUT_CLAMP ? 'inputDtClampedMs' : 'backlogOverflowMs', DROPPED_MS);
+                    if (!this.currentPulseCapped) {
+                        this.profiler?.count('backlogCappedFrames');
+                        this.currentPulseCapped = true;
+                    }
+                    this.profiler?.count('backlogClippedMs', DROPPED_MS);
+                    return;
+                }
                 this.profiler?.count('backlogDrops');
-                this.profiler?.count(
-                    'backlogDroppedMs',
-                    Math.max(0, details?.elapsedMs || 0) + this.currentPulsePriorAccumulatorMs,
-                );
+                this.profiler?.count('backlogDroppedMs', DROPPED_MS);
+                if (REASON === 'clock-gap') {
+                    this.profiler?.count('clockGapDrops');
+                    this.profiler?.count('clockGapDroppedMs', DROPPED_MS);
+                } else if (REASON === 'drop-policy') {
+                    this.profiler?.count('dropPolicyDrops');
+                    this.profiler?.count('dropPolicyDroppedMs', DROPPED_MS);
+                }
                 this.pendingPresentationMode = 'reset';
             },
             onAdvance: (result) => {
@@ -584,6 +601,8 @@ class FarmSession {
                 return W.formationSkills.buySlot();
             case 'formation-equip':
                 return W.formationSkills.equip(c.slot, c.id);
+            case 'progression-reset':
+                return W.scene === 'farm' && W.resetProgression(c.scope).ok;
             case 'ability-reset':
                 return W.scene === 'farm' && W.resetAbilityTree().ok;
             case 'register-roster':
@@ -824,41 +843,15 @@ class FarmSession {
         return VIEW;
     }
     pulse(now) {
-        // Mirror the pinned GameKit loop's 250ms input and 4 × 50ms accumulator
+        // GameKit reports exact drop reasons; Farm records each reason once.
         // limits for diagnostics only; the loop itself remains the timekeeper.
-        const PREVIOUS_PULSE = this.lastLoopPulseTimestamp,
-            PREVIOUS_SIMULATION_TIME = this.loop.simulationTimeMs;
-        this.currentPulsePriorAccumulatorMs =
-            Number.isFinite(PREVIOUS_PULSE) && Number.isFinite(PREVIOUS_SIMULATION_TIME)
-                ? Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME)
-                : 0;
-        if (
-            Number.isFinite(PREVIOUS_PULSE) &&
-            Number.isFinite(PREVIOUS_SIMULATION_TIME) &&
-            now >= PREVIOUS_PULSE &&
-            now - PREVIOUS_PULSE <= 400
-        ) {
-            const ELAPSED = now - PREVIOUS_PULSE,
-                PRIOR_ACCUMULATOR = Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME),
-                ELAPSED_AFTER_INPUT_CAP = Math.min(250, ELAPSED),
-                ACCUMULATOR_AFTER_CAP = Math.min(
-                    PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP,
-                    PRESENTATION_STEP_MS * LOCAL_PROFILE.maxCatchupSteps,
-                ),
-                CLIPPED_MS =
-                    Math.max(0, ELAPSED - ELAPSED_AFTER_INPUT_CAP) +
-                    Math.max(0, PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP - ACCUMULATOR_AFTER_CAP);
-            if (CLIPPED_MS > 0) {
-                this.profiler?.count('backlogCappedFrames');
-                this.profiler?.count('backlogClippedMs', CLIPPED_MS);
-            }
-        }
-        this.lastLoopPulseTimestamp = now;
         this.pulseTimestamp = now;
+        this.currentPulseCapped = false;
         const PREVIOUS_TICK = this.tick;
         this.loop.pulse(now, {
             render: false,
         });
+        this.currentPulseCapped = false;
         this.profiler?.count('catchupTicks', Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {

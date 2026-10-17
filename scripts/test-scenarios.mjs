@@ -5,6 +5,7 @@ const SUITES = {
     core: ['core'],
     cadence: ['cadence'],
     upgrades: ['upgrades'],
+    reset: ['reset'],
     formation: ['formation'],
     save: ['save'],
     migration: ['migration'],

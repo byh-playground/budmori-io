@@ -1,7 +1,13 @@
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
-import { FARM_UPGRADE_MAX_LEVELS, FARM_UPGRADE_NODES } from './farm-upgrades.js';
+import { createFormationSkillState, formationInvestedPoints } from './formation-skill-state.js';
+import {
+    createFarmUpgradeState,
+    FARM_UPGRADE_MAX_LEVELS,
+    FARM_UPGRADE_NODES,
+    getFarmUpgradeInvestedCount,
+} from './farm-upgrades.js';
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
@@ -50,13 +56,20 @@ export function getAbilityEffects(state, abilityId, unitTier) {
     };
 }
 export function getInvestedPointCount(state) {
+    return getInvestedAbilityPointCount(state);
+}
+export function getInvestedAbilityPointCount(state, speciesId = null) {
     if (!isValidAbilityProgressionState(state)) {
         return 0;
     }
-    return Object.values(state.abilities).reduce(
-        (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
-        0,
-    );
+    const DEFINITIONS =
+        speciesId === null
+            ? SPECIES_ABILITY_DEFINITIONS
+            : SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === speciesId);
+    return DEFINITIONS.reduce((total, definition) => {
+        const INVESTMENT = state.abilities[definition.id];
+        return total + Number(INVESTMENT.rootUnlocked) + INVESTMENT.powerLevel + INVESTMENT.gradeLevel;
+    }, 0);
 }
 export function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
     const DEFINITION = DEFINITION_BY_ID.get(abilityId);
@@ -166,11 +179,17 @@ export function purchaseAbilityNode(state, abilityId, nodeId, context = {}) {
         state: NEXT,
     };
 }
-export function canResetAbilityProgression(state, context = {}) {
+export function canResetAbilityProgression(state, context = {}, speciesId = null) {
     if (!isValidAbilityProgressionState(state)) {
         return {
             allowed: false,
             reason: 'invalid-state',
+        };
+    }
+    if (speciesId !== null && !SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.species === speciesId)) {
+        return {
+            allowed: false,
+            reason: 'invalid-scope',
         };
     }
     const LOCK_REASON = progressionLockReason(context);
@@ -180,7 +199,7 @@ export function canResetAbilityProgression(state, context = {}) {
             reason: LOCK_REASON,
         };
     }
-    if (getInvestedPointCount(state) === 0) {
+    if (getInvestedAbilityPointCount(state, speciesId) === 0) {
         return {
             allowed: false,
             reason: 'nothing-invested',
@@ -191,8 +210,8 @@ export function canResetAbilityProgression(state, context = {}) {
         reason: null,
     };
 }
-export function resetAbilityProgression(state, context = {}) {
-    const CHECK = canResetAbilityProgression(state, context);
+export function resetAbilityProgression(state, context = {}, speciesId = null) {
+    const CHECK = canResetAbilityProgression(state, context, speciesId);
     if (!CHECK.allowed) {
         return {
             ok: false,
@@ -200,25 +219,112 @@ export function resetAbilityProgression(state, context = {}) {
             state,
         };
     }
-    const REFUNDED = getInvestedPointCount(state);
+    const REFUNDED = getInvestedAbilityPointCount(state, speciesId);
     const NEXT = cloneState(state);
     NEXT.availablePoints += REFUNDED;
-    NEXT.abilities = Object.fromEntries(
-        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
-            definition.id,
-            {
+    for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
+        if (speciesId === null || DEFINITION.species === speciesId) {
+            NEXT.abilities[DEFINITION.id] = {
                 rootUnlocked: false,
                 powerLevel: 0,
                 gradeLevel: 0,
-            },
-        ]),
-    );
+            };
+        }
+    }
     return {
         ok: true,
         reason: null,
         refunded: REFUNDED,
         state: NEXT,
     };
+}
+export function canResetPlayerProgression(state, scope = { type: 'all' }, context = {}) {
+    if (!isValidPlayerProgressionState(state)) {
+        return { allowed: false, reason: 'invalid-state', refunded: 0 };
+    }
+    const NORMALIZED_SCOPE = normalizeResetScope(scope);
+    if (!NORMALIZED_SCOPE) {
+        return { allowed: false, reason: 'invalid-scope', refunded: 0 };
+    }
+    const REFUNDED = progressionResetInvestment(state, NORMALIZED_SCOPE);
+    const LOCK_REASON = progressionLockReason(context);
+    if (LOCK_REASON) {
+        return { allowed: false, reason: LOCK_REASON, refunded: REFUNDED };
+    }
+    if (REFUNDED === 0) {
+        return { allowed: false, reason: 'nothing-invested', refunded: 0 };
+    }
+    return { allowed: true, reason: null, refunded: REFUNDED };
+}
+export function resetPlayerProgression(state, scope = { type: 'all' }, context = {}) {
+    const NORMALIZED_SCOPE = normalizeResetScope(scope),
+        CHECK = canResetPlayerProgression(state, NORMALIZED_SCOPE || scope, context);
+    if (!CHECK.allowed) {
+        return { ok: false, reason: CHECK.reason, refunded: CHECK.refunded, state };
+    }
+    const NEXT = cloneState(state),
+        TYPE = NORMALIZED_SCOPE.type;
+    NEXT.availablePoints += CHECK.refunded;
+    if (TYPE === 'all' || TYPE === 'farm') {
+        NEXT.farmUpgrades = createFarmUpgradeState();
+    }
+    if (TYPE === 'all' || TYPE === 'abilities') {
+        for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
+            if (
+                TYPE === 'all' ||
+                NORMALIZED_SCOPE.speciesId === undefined ||
+                DEFINITION.species === NORMALIZED_SCOPE.speciesId
+            ) {
+                NEXT.abilities[DEFINITION.id] = {
+                    rootUnlocked: false,
+                    powerLevel: 0,
+                    gradeLevel: 0,
+                };
+            }
+        }
+    }
+    if (TYPE === 'all' || TYPE === 'formation') {
+        NEXT.formationSkills = createFormationSkillState();
+    }
+    return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
+}
+function progressionResetInvestment(state, scope) {
+    switch (scope.type) {
+        case 'all':
+            return (
+                getInvestedPointCount(state) +
+                getFarmUpgradeInvestedCount(state.farmUpgrades) +
+                formationInvestedPoints(state.formationSkills)
+            );
+        case 'farm':
+            return getFarmUpgradeInvestedCount(state.farmUpgrades);
+        case 'abilities':
+            return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
+        case 'formation':
+            return formationInvestedPoints(state.formationSkills);
+        default:
+            return 0;
+    }
+}
+function normalizeResetScope(scope) {
+    const NORMALIZED = typeof scope === 'string' ? { type: scope } : scope;
+    if (!NORMALIZED || typeof NORMALIZED !== 'object' || Array.isArray(NORMALIZED)) {
+        return null;
+    }
+    if (NORMALIZED.type === 'all' || NORMALIZED.type === 'farm' || NORMALIZED.type === 'formation') {
+        return NORMALIZED;
+    }
+    if (NORMALIZED.type === 'abilities') {
+        const SPECIES_ID = NORMALIZED.speciesId;
+        if (
+            SPECIES_ID === undefined ||
+            (Number.isInteger(SPECIES_ID) &&
+                SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.species === SPECIES_ID))
+        ) {
+            return NORMALIZED;
+        }
+    }
+    return null;
 }
 export function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
     const NODE = FARM_UPGRADE_NODES.find((candidate) => candidate.id === nodeId);
@@ -348,6 +454,15 @@ function cloneState(state) {
                 },
             ]),
         ),
+        ...(state.formationSkills
+            ? {
+                  formationSkills: {
+                      ...state.formationSkills,
+                      levels: { ...state.formationSkills.levels },
+                      equipped: [...state.formationSkills.equipped],
+                  },
+              }
+            : {}),
     };
 }
 function progressionLockReason(context) {
