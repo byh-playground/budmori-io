@@ -23,6 +23,35 @@ const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
 function measureFrame(now){if(lastFrameTimestamp!==null){measuredFrames.push(now-lastFrameTimestamp);if(measuredFrames.length>240)measuredFrames.shift()}lastFrameTimestamp=now;frameCount++}
 function frameRate(){const sorted=[...measuredFrames].sort((a,b)=>a-b),sum=measuredFrames.reduce((a,b)=>a+b,0);return{frames:frameCount,fps:sum?measuredFrames.length*1000/sum:0,frametimeMs:{p50:sorted[Math.floor((sorted.length-1)*.5)]||0,p95:sorted[Math.floor((sorted.length-1)*.95)]||0,max:Math.max(0,...measuredFrames)}}}
 const fail=error=>{$('error').hidden=false;$('error').textContent='정원을 진행하지 못했어요. '+error.message;console.error(error);if(active&&!room)active.paused=true};
+const bossPreviewSources=new Map(),bossPreviewVersions=new WeakMap();
+function bossPreviewSource(asset){
+ if(bossPreviewSources.has(asset)){const cached=bossPreviewSources.get(asset);bossPreviewSources.delete(asset);bossPreviewSources.set(asset,cached);return cached}
+ const source=fetch(new URL(asset,document.baseURI),{credentials:'same-origin'}).then(response=>{if(!response.ok)throw Error(`Boss preview source failed: ${response.status}`);return response.text()});
+ bossPreviewSources.set(asset,source);if(bossPreviewSources.size>16)bossPreviewSources.delete(bossPreviewSources.keys().next().value);
+ source.catch(()=>{if(bossPreviewSources.get(asset)===source)bossPreviewSources.delete(asset)});
+ return source;
+}
+async function createNeutralBossPreview(species,asset){
+ const compiled=globalThis.BudmoriVectorResources?.troops?.[species],expressions=compiled?.metadata?.expressions,neutral=expressions?.neutral;
+ if(!neutral)throw Error(`Species ${species} is missing the neutral GameKit expression`);
+ const documentSvg=new DOMParser().parseFromString(await bossPreviewSource(`./assets/troops/${asset}`),'image/svg+xml');
+ if(documentSvg.getElementsByTagName('parsererror').length||documentSvg.documentElement.localName!=='svg')throw Error(`Invalid SVG preview source: ${asset}`);
+ const svg=documentSvg.documentElement,nodesById=new Map([...svg.querySelectorAll('[id]')].map(node=>[node.getAttribute('id'),node]));
+ const expressionParts=new Set(Object.values(expressions).flatMap(variant=>[...variant.show,...variant.hide])),visible=new Set(neutral.show);
+ for(const id of neutral.hide)visible.delete(id);
+ for(const id of expressionParts){const node=nodesById.get(id);if(!node)throw Error(`SVG preview is missing GameKit expression part: ${id}`);node.style.setProperty('display',visible.has(id)?'inline':'none')}
+ return document.importNode(svg,true);
+}
+async function renderNeutralBossPreview(target,species,asset,label=''){
+ const version=(bossPreviewVersions.get(target)||0)+1;bossPreviewVersions.set(target,version);target.setAttribute('aria-busy','true');
+ try{
+  const svg=await createNeutralBossPreview(species,asset);
+  if(bossPreviewVersions.get(target)!==version||!target.isConnected)return;
+  svg.id=target.id;svg.setAttribute('class',target.getAttribute('class')||'');svg.removeAttribute('hidden');svg.setAttribute('aria-busy','false');
+  if(label){svg.setAttribute('role','img');svg.setAttribute('aria-label',label)}else{svg.setAttribute('aria-hidden','true');svg.removeAttribute('role');svg.removeAttribute('aria-label')}
+  target.replaceWith(svg);bossPreviewVersions.set(svg,version);
+ }catch(error){if(bossPreviewVersions.get(target)!==version)return;target.hidden=true;target.setAttribute('aria-busy','false');console.error('Unable to render neutral boss preview',error)}
+}
 function writeCheckpoint(world=personalGarden){if(!world)return false;const ok=storage.save(world);$('saveNotice').textContent=ok?'':storage.error;$('treeStorage').hidden=ok;return ok}
 const autosave=new FarmAutosave(()=>writeCheckpoint());
 function saveImmediate(world=personalGarden){const ok=writeCheckpoint(world);if(ok)autosave.reset();return ok}
@@ -42,14 +71,13 @@ function renderBossEncounterStage(stage){
  const species=selection.species,catalogEntry=speciesById(species),name=catalogEntry.name,rolls=selection.rolls;
  $('bossStageCounter').textContent=`${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
  $('bossStageLabel').textContent=`STAGE ${selection.stage}`;
- $('bossPreview').src=`./assets/troops/${catalogEntry.asset}`;
- $('bossPreview').alt=`${name} 보스 미리보기`;
+ renderNeutralBossPreview($('bossPreview'),species,catalogEntry.asset,`${name} 보스 미리보기`);
  $('bossStageName').textContent=`${name} 보스`;
  $('bossStageHp').textContent=`HP ${Math.round(selection.hp).toLocaleString('ko-KR')}`;
  $('bossStageAttack').textContent=`공격력 ${Number(selection.attackPower.toPrecision(3)).toLocaleString('ko-KR')}`;
  $('bossStageXp').textContent=`+${selection.xp.toLocaleString('ko-KR')} XP`;
- $('bossStageDrop').hidden=rolls===0;
- if(rolls>0){$('bossStageDrop').innerHTML=`<img src="./assets/troops/${catalogEntry.asset}" alt=""><span><strong>${name} 보스 종</strong><small>${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance*100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리</small></span>`;$('bossStageNotice').textContent='';}
+ $('bossStageDrop').hidden=rolls===0;$('bossStageDrop').replaceChildren();
+ if(rolls>0){const icon=document.createElement('img');icon.draggable=false;const label=document.createElement('span'),title=document.createElement('strong'),details=document.createElement('small');title.textContent=`${name} 보스 종`;details.textContent=`${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance*100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리`;label.append(title,details);$('bossStageDrop').append(icon,label);renderNeutralBossPreview(icon,species,catalogEntry.asset);$('bossStageNotice').textContent='';}
  else $('bossStageNotice').textContent='보스 종 보상은 없어요 · 5스테이지부터 1회 추첨';
  $('bossEncounterChallenge').disabled=!hasRaidRosterEntries(personalGarden.units)||personalGarden.farmBossEvent?.phase!=='idle'||personalGarden.activeRaidRunSequence!==null;
  $('bossEncounterChallenge').title=$('bossEncounterChallenge').disabled?'전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요.':'';
@@ -66,7 +94,7 @@ function openBossEncounter(push=true){
  if(push)history.pushState(null,'','#/boss');
  $('bossEncounterBack').focus();return true;
 }
-function closeBossEncounter(push=true){if(!bossEncounterOpen)return;bossEncounterOpen=false;document.body.dataset.bossScreen='false';$('bossEncounterScreen').hidden=true;bossSwipe=null;if(active&&bossPauseBeforeOpen!==null){active.paused=bossPauseBeforeOpen;bossPauseBeforeOpen=null;active.loop.resetTiming()}if(push)history.pushState(null,'','#/farm')}
+function closeBossEncounter(push=true){if(!bossEncounterOpen)return;bossEncounterOpen=false;document.body.dataset.bossScreen='false';$('bossEncounterScreen').hidden=true;bossSwipe=null;for(const id of ['bossPreview']){const preview=$(id);if(preview){bossPreviewVersions.set(preview,(bossPreviewVersions.get(preview)||0)+1);preview.hidden=true}}if(active&&bossPauseBeforeOpen!==null){active.paused=bossPauseBeforeOpen;bossPauseBeforeOpen=null;active.loop.resetTiming()}if(push)history.pushState(null,'','#/farm')}
 function refreshStart(){
  if(room||attempt){$('newConfirm').hidden=true;$('importConfirm').hidden=true;imported=null}
  const hasReservedRaid=storage.hasReservedRaid,liveRaid=active?.world?.scene==='raid'||!!room,staleRaid=hasReservedRaid&&!liveRaid;
