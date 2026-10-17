@@ -65,7 +65,7 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 
 거대개체의 표시 단계·시각은 실행 중 패턴과 전투 이벤트에서 읽습니다. 구 저장의 중복 패턴 필드는 가져오기 경계에서 검증·정규화하며, 새 저장에는 실행 중 패턴의 상태와 명중 목록만 기록합니다.
 
-메인 버전의 `MAJOR.MINOR`에서 호환 범위를 파생합니다. 저장은 `productVersion`, `schema: budmori-farm`, 전체 `world`이며 기존 키 `bloom-weapon-cards-v3`를 씁니다. 0.4는 제거한 수동 명령과 변경된 전투 상태 때문에 0.3과 비호환입니다.
+메인 버전의 `MAJOR.MINOR`에서 호환 범위를 파생합니다. 저장은 `productVersion`, `schema: budmori-farm`, 명시적인 값 스냅샷 `world`이며 키 `bloom-weapon-cards-v4`를 씁니다. `farm-save-codec.js`가 지원하는 0.4·0.5·0.6·현재 0.7 저장을 판별하고, `farm-snapshot-migrations.js`가 해당 형식의 누락 필드·이전 전투 상태를 현재 값으로 이관합니다. 이전 `bloom-weapon-cards-v3` 키는 원본 그대로 읽습니다. 0.4는 제거한 수동 명령과 변경된 전투 상태 때문에 0.3과 비호환입니다.
 
 비호환·손상 저장을 자동 삭제·덮어쓰기·마이그레이션하지 않습니다. 원본 내보내기를 제공하고 이어가기를 차단합니다. 전투 직접 링크도 시작 화면으로 돌려 보호하며, 새 정원 또는 유효한 가져오기는 명시적 확인 후 기록합니다. 취소·검증 실패 시 원본을 유지합니다. 난수·남은 행동·비행 탄·먹이 나머지·투자를 보존하며 구 게임 호환 실행 경로는 없습니다.
 
@@ -75,7 +75,10 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 
 - `src/farm-model.js`: 농장, 전방위 자동 AI, 공통 공격 phase, 월드 보스 상태기계·충돌·전투 사건.
 - `src/unit-abilities.js`, `src/unit-attack-capabilities.js`: 종별 공격 수치·능력 조합 registry와 재사용 공격/패시브 capability.
-- `src/farm-state.js`, `farm-session.js`, `farm-storage.js`: 값 스냅샷, 구성원 명령·세션, 저장 보호.
+- `src/farm-snapshot.js`: 명시적인 지속 필드와 중첩 스냅샷 복사. 런타임 cache·소유자 참조는 저장 형식에 포함하지 않습니다. 사건·표시 기록과 정산 요약은 기존 확장 가능한 JSON 값 계약을 유지합니다.
+- `src/farm-snapshot-migrations.js`, `farm-snapshot-validation.js`, `farm-state.js`: 지원 구 저장의 이관, 값 검증, 런타임 복원. 누락 필드의 이관 기본값은 저장 계약에 고정하며 런타임 constructor에서 추출하지 않습니다.
+- `src/farm-save-codec.js`, `farm-storage.js`: 버전·크기 경계, 최종 정규화 후 JSON 인코딩, 원본 백업과 저장 보호.
+- `src/farm-session.js`: 로컬 명령과 실행 세션.
 - `src/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
 - `assets/troops/*.svg`, `assets/bosses/chestnut.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
 - `src/combat-feel.js`, `food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.

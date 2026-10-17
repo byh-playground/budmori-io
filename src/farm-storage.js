@@ -1,27 +1,8 @@
-import {PRODUCT_VERSION,COMPATIBILITY} from './version.js';
-import {snapshot,restore,normalizeSnapshot,validateSnapshot} from './farm-state.js';
-const KEY='bloom-weapon-cards-v4',LEGACY_KEY='bloom-weapon-cards-v3',MAX_BYTES=2*1024*1024;
+import {restore} from './farm-state.js';
+import {readFarmSave,decodeFarmSave,encodeFarmSave,isReadableCompatibility,saveHasLegacyFarmProgress,validateSave,parseSave} from './farm-save-codec.js';
+export {saveHasLegacyFarmProgress,validateSave,parseSave};
+const KEY='bloom-weapon-cards-v4',LEGACY_KEY='bloom-weapon-cards-v3';
 const BACKUP_PREFIX='bloom-weapon-cards-legacy-backup-',BACKUP_LATEST='bloom-weapon-cards-legacy-backup-latest';
-const READ_COMPATIBILITIES=new Set([COMPATIBILITY,'0.6','0.5','0.4']);
-const legacyCompatibility=version=>typeof version==='string'?version.split('.').slice(0,2).join('.') : '';
-const isReadableCompatibility=version=>READ_COMPATIBILITIES.has(legacyCompatibility(version));
-function saveData(text){
- if(typeof text!=='string'||text.length>MAX_BYTES)throw Error('저장 파일이 너무 큽니다.');
- const parsed=JSON.parse(text);
- if(parsed.schema!=='budmori-farm'||!isReadableCompatibility(parsed.productVersion)||!parsed.world||typeof parsed.world!=='object'||Array.isArray(parsed.world))throw Error('이 저장은 현재 '+COMPATIBILITY+' 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.');
- return parsed;
-}
-function normalizedSaveData(text){
- const parsed=saveData(text),world=normalizeSnapshot(parsed.world,{migrateLegacyRaid:true});
- validateSnapshot(world);
- return world;
-}
-export function saveHasLegacyFarmProgress(text){
- try{return Object.hasOwn(saveData(text).world,'progress')}
- catch{return false}
-}
-export function validateSave(text){normalizedSaveData(text);return true}
-export function parseSave(text){return restore(saveData(text).world,{migrateLegacyRaid:true})}
 function readLegacyBackup(){
  try{
   const preferred=localStorage.getItem(BACKUP_LATEST);
@@ -46,13 +27,13 @@ export class FarmStorage{
   try{
    this.raw=localStorage.getItem(KEY);this.legacyRaw=localStorage.getItem(LEGACY_KEY);
    if(this.raw){
-    if(!isReadableCompatibility(saveData(this.raw).productVersion))throw Error('현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.');
+    if(!isReadableCompatibility(readFarmSave(this.raw).productVersion))throw Error('현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.');
     if(saveHasLegacyFarmProgress(this.raw)){
      this.legacyBackupRequired=true;
      try{this.legacyBackup=preserveLegacySave(this.raw);this.legacyBackupRequired=false;this.migrationNotice='이전 활동 기반 강화가 종료되고 경험치 포인트로 통합됐어요. 기존 무료 강화는 초기화되며, 원본 저장은 별도 백업했어요.'}
      catch{throw Error('이전 저장 원본을 백업하지 못해 덮어쓰지 않았어요. 저장 공간을 비우거나 저장 파일을 내보낸 뒤 다시 시도해 주세요.')}
     }
-    this.savedSnapshot=normalizedSaveData(this.raw);
+    this.savedSnapshot=decodeFarmSave(this.raw);
    }else if(this.legacyRaw){try{validateSave(this.legacyRaw);this.legacyCompatible=true}catch(e){this.error=e.message}}
    this.writable=true;
   }catch(e){this.error=e.message}
@@ -61,14 +42,14 @@ export class FarmStorage{
  get hasWorld(){return !!(this._world||this.savedSnapshot)}
  get hasReservedRaid(){const world=this._world||this.savedSnapshot;return world?.activeRaidRunSequence!==null&&world?.activeRaidRunSequence!==undefined}
  set world(value){this._world=value;this.savedSnapshot=null}
- serializeCheckpoint(world){const data=normalizeSnapshot(snapshot(world),{clone:false});validateSnapshot(data);const text=JSON.stringify({schema:'budmori-farm',productVersion:PRODUCT_VERSION,world:data});if(text.length>MAX_BYTES)throw Error('저장 파일이 너무 큽니다.');return{data,text}}
+ serializeCheckpoint(world){return encodeFarmSave(world)}
  encode(world){return this.serializeCheckpoint(world).text}
  refresh(){
   if(!this.writable)return false;
   try{
    const text=localStorage.getItem(KEY);if(text===this.raw)return true;if(!text)throw Error('농장 저장을 찾지 못했어요. 다른 탭에서 새 정원을 시작했을 수 있어요.');
    if(saveHasLegacyFarmProgress(text)){this.legacyBackupRequired=true;this.legacyBackup=preserveLegacySave(text);this.legacyBackupRequired=false;this.migrationNotice='이전 활동 기반 강화가 종료되고 경험치 포인트로 통합됐어요. 기존 무료 강화는 초기화되며, 원본 저장은 별도 백업했어요.'}
-   const data=normalizedSaveData(text);this.raw=text;this.savedSnapshot=data;this._world=null;this.error='';return true;
+   const data=decodeFarmSave(text);this.raw=text;this.savedSnapshot=data;this._world=null;this.error='';return true;
   }catch(e){this.error=this.legacyBackupRequired?'이전 저장 원본을 백업하지 못해 덮어쓰지 않았어요. 저장 공간을 비우거나 저장 파일을 내보낸 뒤 다시 시도해 주세요.':e.message||'저장을 다시 읽지 못했어요.';return false}
  }
  save(world){
