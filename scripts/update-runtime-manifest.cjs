@@ -9,7 +9,7 @@ function readCanonicalTextAsset(file){
 }
 function prepareRuntime(root=path.resolve(__dirname,'..')){
 const lock=JSON.parse(fs.readFileSync(path.join(root,'gamekit-lock.json'),'utf8'));
-const namespaces={'input':'BloomGamekitInput','interpolation':'BloomGamekitInterpolation','camera':'BloomGamekitCamera','hud':'BloomGamekitHud','presentation-events':'BloomGamekitPresentationEvents','debug-tools':'BloomGamekitDebugTools','rendering':'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets','vector-assets-loader':'BloomGamekitVectorAssetLoader',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop'};
+const namespaces={'input':'BloomGamekitInput','interpolation':'BloomGamekitInterpolation','camera':'BloomGamekitCamera','hud':'BloomGamekitHud','presentation-events':'BloomGamekitPresentationEvents','debug-tools':'BloomGamekitDebugTools','object-pool':'BloomGamekitObjectPool','rendering':'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets','vector-assets-loader':'BloomGamekitVectorAssetLoader',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop'};
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const modules=Object.entries(namespaces).map(([name,globalName])=>{
   const bytes=fs.readFileSync(path.join(root,'vendor/upstream',name+'.js'));

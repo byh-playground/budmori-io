@@ -4,8 +4,8 @@
 // or independently attest the source build. Refresh fetches immutable commits.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict'),cp=require('node:child_process'),os=require('node:os');
 const ROOT=path.resolve(__dirname,'..');
-const MODULES=Object.freeze({'presentation-events':'BloomGamekitPresentationEvents',camera:'BloomGamekitCamera',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',interpolation:'BloomGamekitInterpolation',hud:'BloomGamekitHud',rendering:'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets','vector-assets-loader':'BloomGamekitVectorAssetLoader',input:'BloomGamekitInput','debug-tools':'BloomGamekitDebugTools'});
-const DIST_MODULES=Object.freeze(['interpolation','rendering','vector-assets','vector-assets-loader','input','deterministic','simloop','transport','replay','rollback','camera','presentation-events','hud','debug-tools','audio','navigation','scenario']);
+const MODULES=Object.freeze({'presentation-events':'BloomGamekitPresentationEvents',camera:'BloomGamekitCamera',deterministic:'BloomGamekitDeterministic',simloop:'BloomGamekitSimloop',interpolation:'BloomGamekitInterpolation',hud:'BloomGamekitHud',rendering:'BloomGamekitRendering','vector-assets':'BloomGamekitVectorAssets','vector-assets-loader':'BloomGamekitVectorAssetLoader',input:'BloomGamekitInput','debug-tools':'BloomGamekitDebugTools','object-pool':'BloomGamekitObjectPool'});
+const DIST_MODULES=Object.freeze(['interpolation','rendering','vector-assets','vector-assets-loader','input','deterministic','simloop','transport','replay','rollback','camera','presentation-events','hud','debug-tools','audio','navigation','scenario','object-pool']);
 const DIST_ASSETS=Object.freeze([Object.freeze({file:'assets/fonts/noto-sans-kr-700-v1.json',version:'noto-sans-kr-700-v1'})]);
 const SOURCE_FILES=Object.freeze(['modules/vector-assets/compiler.js','modules/vector-assets/compiler-core.js','modules/vector-assets/quality-presets.js','modules/vector-assets/schema.js']);
 const sha=(bytes,algorithm='sha256')=>crypto.createHash(algorithm).update(bytes).digest('hex');

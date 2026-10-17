@@ -6931,6 +6931,13 @@
 
   // src/combat-feel.js
   init_farm_model();
+  var { ObjectPool } = globalThis.BloomGamekitObjectPool;
+  var createLandingEffect = () => ({ sequence: 0, kind: "unit-land", time: 0, unit: null, x: 0, y: 0, z: 0, strength: 0, at: 0, heard: false });
+  function resetLandingEffect(e) {
+    e.sequence = e.time = e.x = e.y = e.z = e.strength = e.at = 0;
+    e.unit = null;
+    e.heard = false;
+  }
   var CombatFeel = class {
     constructor(audio) {
       this.audio = audio;
@@ -6938,17 +6945,35 @@
       this.revision = null;
       this.sequence = 0;
       this.effects = [];
+      this.landingPool = new ObjectPool(createLandingEffect, resetLandingEffect, 48);
       this.poses = /* @__PURE__ */ new Map();
       this.bossHit = null;
       this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
       this.counts = { hits: 0, landings: 0 };
+    }
+    acquireLandingEffect(e, at) {
+      const event = this.landingPool.acquire();
+      event.sequence = e.sequence;
+      event.time = e.time;
+      event.unit = e.unit;
+      event.x = e.x;
+      event.y = e.y;
+      event.z = e.z;
+      event.strength = e.strength;
+      event.at = at;
+      event.heard = false;
+      return event;
+    }
+    releaseEffect(event) {
+      if (event.kind === "unit-land") this.landingPool.release(event);
     }
     observe(world, displayTimeMs, revision = 0) {
       if (this.world !== world || this.revision !== revision) {
         this.world = world;
         this.revision = revision;
         this.sequence = world.eventSequence;
-        this.effects = [];
+        for (const e of this.effects) this.releaseEffect(e);
+        this.effects.length = 0;
         this.poses.clear();
         this.bossHit = null;
         return;
@@ -6956,9 +6981,9 @@
       for (const e of world.notices) {
         if (e.sequence <= this.sequence) continue;
         if (["boss-hit", "unit-hit", "unit-land", "attack-launch", "boss-launch"].includes(e.kind)) {
-          const at = presentationEventTimeMs(e), event = { ...e, at, heard: false };
+          const at = presentationEventTimeMs(e), event = e.kind === "unit-land" ? this.acquireLandingEffect(e, at) : { ...e, at, heard: false };
           this.effects.push(event);
-          if (this.effects.length > 48) this.effects.shift();
+          if (this.effects.length > 48) this.releaseEffect(this.effects.shift());
           if (e.kind === "boss-hit") {
             this.counts.hits++;
             this.bossHit = event;
@@ -6973,6 +6998,7 @@
       this.sequence = world.eventSequence;
       let retained = 0;
       for (const e of this.effects) if (displayTimeMs - e.at < 430) this.effects[retained++] = e;
+      else this.releaseEffect(e);
       this.effects.length = retained;
       for (const [id, p] of this.poses) if (displayTimeMs > p.until) this.poses.delete(id);
     }
