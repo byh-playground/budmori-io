@@ -8,6 +8,7 @@
  */
 
 import {isValidUnitTier} from './unit-grades.js';
+import {FACTION_CONFIG,hasFaction} from './factions.js';
 
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
@@ -89,6 +90,7 @@ function raidOwnerManifest(raidWorld, ownerId) {
   }
 
   const ownerUnits = raidWorld.units.filter(unit => unit?.ownerId === ownerId);
+  if (ownerUnits.some(unit => !hasFaction(unit, FACTION_CONFIG.PLAYER))) fail('An enemy-faction actor cannot enter an owner’s Farm settlement');
   const ownerUnitsById = new Map();
   for (const unit of ownerUnits) {
     if (!Number.isSafeInteger(unit.id) || unit.id < 1 || ownerUnitsById.has(unit.id) ||
@@ -104,7 +106,7 @@ function raidOwnerManifest(raidWorld, ownerId) {
     if (isBattleOnlySummon(unit)) {
       const parent = ownerUnitsById.get(unit.battleSummonParentId);
       const parentTroop = parent && manifest.get(parent.farmId);
-      const validSplit = unit.isBattleOnlySummon === true &&
+      const validSplit = hasFaction(unit, FACTION_CONFIG.PLAYER) && unit.isBattleOnlySummon === true &&
         unit.battleSummonKind === 'pea-death-split' &&
         Number.isSafeInteger(unit.battleSummonParentId) && unit.battleSummonParentId > 0 &&
         parent && parent.ownerId === ownerId && !isBattleOnlySummon(parent) && parent.hp <= 0 &&

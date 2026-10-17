@@ -1032,6 +1032,23 @@
     }
   });
 
+  // src/factions.js
+  function hasFaction(actor, faction) {
+    return actor?.faction === faction;
+  }
+  function areOpposingFactions(a, b) {
+    return !!a && !!b && typeof a.faction === "string" && typeof b.faction === "string" && a.faction !== b.faction;
+  }
+  function legacyUnitFaction(unit) {
+    return unit?.battleSummonKind === "boss-mouth-t1" ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
+  }
+  var FACTION_CONFIG;
+  var init_factions = __esm({
+    "src/factions.js"() {
+      FACTION_CONFIG = Object.freeze({ PLAYER: "player", ENEMY: "enemy" });
+    }
+  });
+
   // src/farm-model.js
   function presentationEventTimeMs(event) {
     return presentationEventTimes.get(event) ?? (Number.isFinite(event?.time) ? event.time * 1e3 : 0);
@@ -1088,7 +1105,7 @@
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, unitRadiusForTier, CONFIG, MAP_ENEMY_TARGETS, clamp2, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, unitRadiusForTier, CONFIG, clamp2, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_unit_stats();
@@ -1102,13 +1119,13 @@
       init_species_abilities();
       init_unit_grades();
       init_boss_patterns();
+      init_factions();
       ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
-      CONFIG = Object.freeze({ cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: 4, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
-      MAP_ENEMY_TARGETS = { farm: (world) => world.farmBossEvent?.phase === "fighting" && world.boss?.active ? [world.boss, ...world.units.filter((unit) => unit.hp > 0 && unit.battleSummonKind === "boss-mouth-t1")] : [], raid: (world) => world.running && world.raidDeploymentStarted && world.boss?.active ? [world.boss, ...world.units.filter((unit) => unit.hp > 0 && unit.battleSummonKind === "boss-mouth-t1")] : [] };
+      CONFIG = Object.freeze({ factions: FACTION_CONFIG, cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: 4, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
       clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier, species) => resolveUnitStats({ tier, species });
       Body = class {
@@ -1214,7 +1231,7 @@
           if (this.phase !== "idle" || u.down > 0 || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return false;
           this.phase = "windup";
           this.elapsed = 0;
-          this.action = { id: ++sim.attackSerial, target: { ...target }, targetId: target.id ?? (u.battleSummonKind === "boss-mouth-t1" ? "" : "boss"), hit: false, path: null };
+          this.action = { id: ++sim.attackSerial, target: { ...target }, targetId: target.id ?? "boss", hit: false, path: null };
           u.angle = Math.atan2(target.y - u.y, target.x - u.x);
           u.vx = u.vy = 0;
           sim.combatEvent("prepare", u, this.action);
@@ -1350,6 +1367,7 @@
             id,
             species,
             tier,
+            faction: FACTION_CONFIG.PLAYER,
             meals: 0,
             growth: 0,
             growthElapsed: 0,
@@ -1469,7 +1487,7 @@
           }
         }
         get armyHealth() {
-          return this.units.reduce((sum, u) => {
+          return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER)).reduce((sum, u) => {
             const maxHp = stats(u.tier, u.species).maxHp;
             return { current: sum.current + Math.max(0, Math.min(maxHp, u.hp)), max: sum.max + maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 };
           }, { current: 0, max: 0, living: 0, total: 0 });
@@ -1484,7 +1502,7 @@
           return this.breedCooldownDuration() / 2;
         }
         abilityProgressionFor(unit) {
-          if (unit?.battleSummonKind === "boss-mouth-t1") return null;
+          if (hasFaction(unit, FACTION_CONFIG.ENEMY)) return null;
           return this.scene === "raid" ? this.raidRoster(unit?.ownerId)?.abilitySnapshot || null : this.playerProgression;
         }
         highestSpeciesTiers() {
@@ -1513,7 +1531,7 @@
         spawnLobProjectile(unit, action, shot, popcornConfig = null) {
           if (this.projectiles.length >= CONFIG.maxRaidProjectiles) return null;
           const id = ++this.projectileSerial;
-          const projectile = { id, owner: unit.id, targetId: action.targetId || "boss", species: unit.species, tier: unit.tier, path: structuredClone(action.path), elapsed: 0, x: unit.x, y: unit.y, z: 0.45, radius: scaleAttackArea(0.12, unit), height: 0.24, hit: false, attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit), shotIndex: shot.shotIndex ?? 0 };
+          const projectile = { id, owner: unit.id, targetId: action.targetId || "boss", faction: unit.faction, ownerId: unit.ownerId, species: unit.species, tier: unit.tier, path: structuredClone(action.path), elapsed: 0, x: unit.x, y: unit.y, z: 0.45, radius: scaleAttackArea(0.12, unit), height: 0.24, hit: false, attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit), shotIndex: shot.shotIndex ?? 0 };
           if (popcornConfig) Object.assign(projectile, { isPopcorn: true, popcornConfig: structuredClone(popcornConfig), landed: false, exploded: false, fuseRemaining: popcornConfig.fuseSeconds, damagedTargetIds: [] });
           this.projectiles.push(projectile);
           return projectile;
@@ -1531,7 +1549,7 @@
           for (let index = 0; index < angles.length; index++) {
             const a = angles[index], target = { x: unit.x + Math.cos(a) * length, y: unit.y + Math.sin(a) * length, z: 0 }, path = Ballistics.create({ x: unit.x, y: unit.y, z: 0 }, target, "punch");
             path.height = 0.7;
-            this.projectiles.push({ id: ++this.projectileSerial, owner: unit.id, species: unit.species, tier: unit.tier, path, elapsed: 0, x: unit.x, y: unit.y, z: 0, radius: scaleAttackArea(0.08, unit), height: 0.22, hit: false, attackMultiplier: config.projectileAttackMultiplier, projectileKind: "chestnut-spike", fanIndex: index });
+            this.projectiles.push({ id: ++this.projectileSerial, owner: unit.id, faction: unit.faction, ownerId: unit.ownerId, species: unit.species, tier: unit.tier, path, elapsed: 0, x: unit.x, y: unit.y, z: 0, radius: scaleAttackArea(0.08, unit), height: 0.22, hit: false, attackMultiplier: config.projectileAttackMultiplier, projectileKind: "chestnut-spike", fanIndex: index });
           }
           return true;
         }
@@ -1574,12 +1592,11 @@
         }
         senseEnemy(unit) {
           if (unit.hp <= 0 || !unit.dropLanded) return null;
-          if (unit.battleSummonKind === "boss-mouth-t1") {
-            const targets2 = this.units.filter((candidate) => candidate !== unit && candidate.hp > 0 && candidate.dropLanded && candidate.battleSummonKind !== "boss-mouth-t1").sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id);
-            return targets2[0] || null;
-          }
-          const targets = MAP_ENEMY_TARGETS[this.scene]?.(this) || [];
-          return targets.filter((target) => target && target !== unit && target.hp > 0 && Number.isFinite(target.x) && Number.isFinite(target.y) && Number.isFinite(target.radius) && Math.hypot(unit.x - target.x, unit.y - target.y) <= unit.perceptionRange + target.radius + 1e-9).sort((a, b) => Math.hypot(unit.x - a.x, unit.y - a.y) - Math.hypot(unit.x - b.x, unit.y - b.y) || (a.id || 0) - (b.id || 0))[0] || null;
+          const targets = [];
+          const battleActive = this.scene === "farm" ? this.farmBossEvent?.phase === "fighting" : this.running && this.raidDeploymentStarted;
+          if (battleActive && this.boss?.active && areOpposingFactions(unit, this.boss)) targets.push(this.boss);
+          for (const candidate of this.units) if (candidate !== unit && candidate.hp > 0 && candidate.dropLanded && areOpposingFactions(unit, candidate)) targets.push(candidate);
+          return targets.filter((target) => Number.isFinite(target.x) && Number.isFinite(target.y) && Number.isFinite(target.radius) && Math.hypot(unit.x - target.x, unit.y - target.y) <= unit.perceptionRange + target.radius + 1e-9).sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || (a.id || 0) - (b.id || 0))[0] || null;
         }
         raidRoster(ownerId) {
           return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
@@ -1744,7 +1761,7 @@
         }
         createBoss(species = 3) {
           const hp = 2e3;
-          return { x: 0, y: 0, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, summonMouth: { x: 0, y: 0, z: 0 } };
         }
         setScene(scene) {
           if (scene === this.scene) return;
@@ -2027,7 +2044,7 @@
             }
             const enemy = this.senseEnemy(u);
             if (enemy) this.raidUnit(u, dt, enemy);
-            else if (u.hp > 0 && !u.isBattleOnlySummon) {
+            else if (u.hp > 0 && hasFaction(u, FACTION_CONFIG.PLAYER) && !u.isBattleOnlySummon) {
               if (u.ability.phase !== "idle") {
                 u.ability.interrupt();
                 u.ability.update(this, dt);
@@ -2219,7 +2236,7 @@
         }
         separateBoss(u) {
           const b = this.boss;
-          if (u.hp <= 0 || !u.dropLanded || u.z > b.height) return;
+          if (!areOpposingFactions(u, b) || u.hp <= 0 || !u.dropLanded || u.z > b.height) return;
           const dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy), r = b.radius + u.radius;
           if (d >= r) return;
           const a = d > 1e-6 ? Math.atan2(dy, dx) : u.seed, nx = Math.cos(a), ny = Math.sin(a);
@@ -2244,7 +2261,7 @@
           }
         }
         damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null } = {}) {
-          if (action.hit || this.boss.hp <= 0) return false;
+          if (!hasFaction(u, FACTION_CONFIG.PLAYER) || !areOpposingFactions(u, this.boss) || action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
           const hpBefore = this.boss.hp, maxHp = this.boss.maxHp;
@@ -2261,11 +2278,11 @@
           return true;
         }
         attackTarget(unit, action) {
-          if (action?.targetId === "boss" || !action?.targetId) return this.boss;
-          return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0) || null;
+          if (action?.targetId === "boss" || !action?.targetId) return areOpposingFactions(unit, this.boss) ? this.boss : null;
+          return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0 && areOpposingFactions(unit, candidate)) || null;
         }
         damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null } = {}) {
-          if (!target || target.hp <= 0 || action.hit) return false;
+          if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier;
           const damage = applyDamageToTargets(null, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1), sourceKind: "enemy" });
@@ -2297,11 +2314,14 @@
             triggered = true;
             const config = current.popcornConfig, center = { x: current.x, y: current.y, z: 0 }, range = config.radius;
             this.effects.push({ kind: "popcorn-explosion", x: current.x, y: current.y, z: 0, life: 0, duration: 0.5, radius: range, owner: current.owner });
-            if (!current.damagedTargetIds.includes("boss") && Math.hypot(current.x - this.boss.x, current.y - this.boss.y) <= range + this.boss.radius) {
-              const unit = this.units.find((candidate) => candidate.id === current.owner) || { id: current.owner, ownerId: current.ownerId || "", species: current.species, tier: current.tier, x: current.x, y: current.y, z: 0 };
+            const owner = this.units.find((candidate) => candidate.id === current.owner) || { id: current.owner, ownerId: current.ownerId || "", faction: current.faction, species: current.species, tier: current.tier, x: current.x, y: current.y, z: 0 };
+            const targets = [];
+            if (areOpposingFactions(owner, this.boss) && !current.damagedTargetIds.includes("boss") && Math.hypot(current.x - this.boss.x, current.y - this.boss.y) <= range + this.boss.radius) targets.push(this.boss);
+            for (const target of this.units) if (target.hp > 0 && areOpposingFactions(owner, target) && !current.damagedTargetIds.includes(target.id) && Math.hypot(current.x - target.x, current.y - target.y) <= range + target.radius) targets.push(target);
+            for (const target of targets) {
               const action = { id: current.id, hit: false, attackKind: "corn-popcorn-explosion" };
-              this.damageBoss(unit, action, center, { attackMultiplier: config.damageMultiplier, attackKind: "corn-popcorn-explosion" });
-              current.damagedTargetIds.push("boss");
+              const applied = target === this.boss ? this.damageBoss(owner, action, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind }) : this.damageUnitTarget(owner, action, target, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind });
+              if (applied) current.damagedTargetIds.push(target === this.boss ? "boss" : target.id);
             }
             for (const other of this.projectiles) {
               if (other === current || !other.isPopcorn || other.exploded || !other.landed || queued.has(other.id)) continue;
@@ -2331,7 +2351,7 @@
               this.effects.push({ kind: "popcorn-kernel-impact", x: p.x, y: p.y, z: 0, life: 0, duration: 0.25, radius: p.radius, owner: p.owner });
             } else if (hit) {
               Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
-              const source = this.units.find((u) => u.id === p.owner), impactUnit = source || { id: p.owner, ownerId: p.ownerId || "", species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
+              const source = this.units.find((u) => u.id === p.owner), impactUnit = source || { id: p.owner, ownerId: p.ownerId || "", faction: p.faction, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
               if (target === this.boss) this.damageBoss(impactUnit, p, hit, { lifestealSource: source || impactUnit, attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
               else this.damageUnitTarget(impactUnit, p, target, hit, { attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
             } else if (p.elapsed >= p.path.duration) {
@@ -2349,7 +2369,7 @@
           this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
         }
         raidUnit(u, dt, enemy = this.boss) {
-          if (!u.dropLanded) return;
+          if (!u.dropLanded || !areOpposingFactions(u, enemy)) return;
           if (u.hp <= 0) {
             u.down = CONFIG.corpseRecoverySeconds;
             u.ability.interrupt();
@@ -2357,18 +2377,6 @@
           }
           if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return;
           if (!enemy) return;
-          if (u.battleSummonKind === "boss-mouth-t1") {
-            const spec2 = abilityProfile(u.species), dx2 = enemy.x - u.x, dy2 = enemy.y - u.y, d = Math.hypot(dx2, dy2) || 1, stand2 = enemy.radius + spec2.range, min2 = stand2 - 0.4, max2 = stand2 + 0.4;
-            if (d > max2 || spec2.kind === "lob" && d < min2) {
-              const slot = ArenaGeometry.clamp({ x: enemy.x - dx2 / d * stand2, y: enemy.y - dy2 / d * stand2 }, this.scene, u.radius);
-              this.steer(u, slot.x, slot.y, dt, scaleMoveSpeed(4.1, u));
-              return;
-            }
-            u.vx = u.vy = 0;
-            const target2 = spec2.kind === "lob" ? { id: enemy.id, x: enemy.x, y: enemy.y } : { id: enemy.id, x: enemy.x - dx2 / d * (enemy.radius + u.radius - 0.16), y: enemy.y - dy2 / d * (enemy.radius + u.radius - 0.16) };
-            u.ability.begin(this, target2);
-            return;
-          }
           const b = enemy, spec = abilityProfile(u.species), dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1, targetId = enemy === this.boss ? "boss" : enemy.id;
           const stand = b.radius + spec.range + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + 0.55;
           if (n > max || spec.kind === "lob" && n < min) {
@@ -2425,7 +2433,7 @@
           return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: b.z + 0.2 };
         }
         livingBossTargets() {
-          return this.units.filter((u) => u.hp > 0 && u.dropLanded && u.battleSummonKind !== "boss-mouth-t1").sort((a, b) => a.id - b.id);
+          return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.dropLanded).sort((a, b) => a.id - b.id);
         }
         nearestBossTarget(living, groundOnly = false) {
           const b = this.boss, candidates = groundOnly ? living.filter((u) => u.z <= 0.1) : living;
@@ -2502,7 +2510,7 @@
           return this.nearestBossTarget(living, true);
         }
         eligibleBossPatterns(living, targets = this.bossPatternTargets(living)) {
-          const runtime = this.boss.patternRuntime, aliveAdds = this.units.reduce((n, u) => n + (u.hp > 0 && u.battleSummonKind === "boss-mouth-t1" ? 1 : 0), 0), eligible = [];
+          const runtime = this.boss.patternRuntime, aliveAdds = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0), eligible = [];
           for (const id of BOSS_PATTERN_IDS) {
             if (runtime.cooldowns[id] > 1e-9) continue;
             if (id === "summon.mouth-t1") {
@@ -2533,12 +2541,13 @@
         }
         hitBossPatternUnit(unit, patternId, point, normal = null) {
           const b = this.boss, action = b.patternRuntime.active, config = BOSS_PATTERN_CONFIG[patternId];
-          if (!action || !config || unit.hp <= 0 || !unit.dropLanded || b.hit.has(unit.id)) return false;
+          if (!action || !config || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit) || unit.hp <= 0 || !unit.dropLanded || b.hit.has(unit.id)) return false;
           if (config.groundOnly && unit.z > 0.1) return false;
           b.hit.add(unit.id);
           action.hitIds.push(unit.id);
           const dx = normal?.x ?? unit.x - b.x, dy = normal?.y ?? unit.y - b.y, n = Math.hypot(dx, dy) || 1;
           unit.knock(dx / n, dy / n, config.knockback, config.lift, b);
+          if (!hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit)) return false;
           applyDamageToTargets(null, [unit], { rawDamage: b.attackPower * config.damageMultiplier, sourceKind: "enemy" });
           if (unit.hp === 0) {
             unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
@@ -2614,7 +2623,7 @@
           const b = this.boss, landing = this.bossSummonLanding(action.aim, action), mouth = this.bossMouthPoint();
           if (!landing) return false;
           const id = CONFIG.bossSummonIdBase + ++this.bossSummonSerial, unit = new Unit(id, b.species, 1, mouth.x, mouth.y), angle = Math.atan2(landing.y - mouth.y, landing.x - mouth.x), flightSeconds = Math.sqrt(2 * mouth.z / CONFIG.gravity), horizontalDistance = Math.hypot(landing.x - mouth.x, landing.y - mouth.y), drag = 0.8, speed = horizontalDistance * drag / (1 - Math.exp(-drag * flightSeconds));
-          Object.assign(unit, { ownerId: "boss", farmId: 0, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit.growthDuration, growth: CONFIG.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
+          Object.assign(unit, { ownerId: "boss", farmId: 0, faction: FACTION_CONFIG.ENEMY, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit.growthDuration, growth: CONFIG.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
           this.units.push(unit);
           action.released++;
           action.landingPoints ||= [];
@@ -2661,7 +2670,7 @@
           }
           if (action.id === "summon.mouth-t1") {
             runtime.cooldowns[action.id] = config.cooldown;
-            const alive = this.units.reduce((n, u) => n + (u.hp > 0 && u.battleSummonKind === "boss-mouth-t1" ? 1 : 0), 0);
+            const alive = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0);
             action.volleyCount = Math.min(config.volleyCount, Math.max(0, CONFIG.maxBossSummons - alive));
             action.nextRelease = 0;
             this.spawnBossMouthUnit(action);
@@ -2796,7 +2805,7 @@
                 this.finishFarmBossEvent("victory");
                 return;
               }
-              if (!this.units.some((u) => u.hp > 0 && u.dropLanded && u.battleSummonKind !== "boss-mouth-t1")) {
+              if (!this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.dropLanded)) {
                 this.finishFarmBossEvent("defeat");
                 return;
               }
@@ -2829,7 +2838,7 @@
             }
             return;
           }
-          if (this.running && this.raidRosters.length && this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) && !this.units.some((u) => u.hp > 0 && u.battleSummonKind !== "boss-mouth-t1")) {
+          if (this.running && this.raidRosters.length && this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) && !this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0)) {
             this.finish("defeat");
             return;
           }
@@ -2886,6 +2895,7 @@
       manifest.set(troop.farmId, troop);
     }
     const ownerUnits = raidWorld.units.filter((unit) => unit?.ownerId === ownerId);
+    if (ownerUnits.some((unit) => !hasFaction(unit, FACTION_CONFIG.PLAYER))) fail("An enemy-faction actor cannot enter an owner’s Farm settlement");
     const ownerUnitsById = /* @__PURE__ */ new Map();
     for (const unit of ownerUnits) {
       if (!Number.isSafeInteger(unit.id) || unit.id < 1 || ownerUnitsById.has(unit.id) || !Number.isFinite(unit.hp) || unit.hp < 0) {
@@ -2899,7 +2909,7 @@
       if (isBattleOnlySummon(unit)) {
         const parent = ownerUnitsById.get(unit.battleSummonParentId);
         const parentTroop = parent && manifest.get(parent.farmId);
-        const validSplit = unit.isBattleOnlySummon === true && unit.battleSummonKind === "pea-death-split" && Number.isSafeInteger(unit.battleSummonParentId) && unit.battleSummonParentId > 0 && parent && parent.ownerId === ownerId && !isBattleOnlySummon(parent) && parent.hp <= 0 && parentTroop?.deployed === true && parent.farmId === unit.farmId && parent.species === 0 && unit.species === 0 && unit.tier === 1 && unit.canSplit === false && unit.countsTowardPermanentRoster === false && unit.eligibleForRaidDeployment === false && unit.breedingEligible === false && unit.mergeEligible === false && unit.usesPersistentSleep === false;
+        const validSplit = hasFaction(unit, FACTION_CONFIG.PLAYER) && unit.isBattleOnlySummon === true && unit.battleSummonKind === "pea-death-split" && Number.isSafeInteger(unit.battleSummonParentId) && unit.battleSummonParentId > 0 && parent && parent.ownerId === ownerId && !isBattleOnlySummon(parent) && parent.hp <= 0 && parentTroop?.deployed === true && parent.farmId === unit.farmId && parent.species === 0 && unit.species === 0 && unit.tier === 1 && unit.canSplit === false && unit.countsTowardPermanentRoster === false && unit.eligibleForRaidDeployment === false && unit.breedingEligible === false && unit.mergeEligible === false && unit.usesPersistentSleep === false;
         if (!validSplit) fail("A battle-only Raid split is missing its validated origin marker");
         continue;
       }
@@ -3134,6 +3144,7 @@
   var init_raid_settlement = __esm({
     "src/raid-settlement.js"() {
       init_unit_grades();
+      init_factions();
       RAID_SLEEP_SECONDS = 60;
       RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
       fail = (message) => {
@@ -3172,10 +3183,16 @@
       if (!Object.hasOwn(r, "settlementEncounterId")) r.settlementEncounterId = 0;
     }
     const unitDefaults = { isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, battleSummonEncounterId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0, landingRecovery: 0 };
-    for (const u of raw.units || []) for (const [key, value] of Object.entries(unitDefaults)) if (!Object.hasOwn(u, key)) u[key] = value;
+    for (const u of raw.units || []) {
+      for (const [key, value] of Object.entries(unitDefaults)) if (!Object.hasOwn(u, key)) u[key] = value;
+      if (!Object.hasOwn(u, "faction")) u.faction = legacyUnitFaction(u);
+    }
+    if (!Object.hasOwn(raw.boss, "faction")) raw.boss.faction = FACTION_CONFIG.ENEMY;
     for (const p of raw.projectiles || []) {
       if (!Object.hasOwn(p, "attackMultiplier")) p.attackMultiplier = abilityProfile(p.species).skillMultiplier;
       if (!Object.hasOwn(p, "shotIndex")) p.shotIndex = 0;
+      if (!Object.hasOwn(p, "ownerId")) p.ownerId = raw.units.find((u) => u.id === p.owner)?.ownerId || "";
+      if (!Object.hasOwn(p, "faction")) p.faction = p.ownerId === "boss" || p.owner >= CONFIG.bossSummonIdBase ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
     }
     raw.projectileSerial = Math.max(Number.isSafeInteger(raw.projectileSerial) ? raw.projectileSerial : 0, ...(raw.projectiles || []).map((p) => Number.isSafeInteger(p?.id) ? p.id : 0));
     raw.raidSummonSerial = Number.isSafeInteger(raw.raidSummonSerial) ? raw.raidSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.raidSummonIdBase ? u.id - CONFIG.raidSummonIdBase + 1 : 0));
@@ -3367,17 +3384,19 @@
     for (const u of raw.units) {
       shape(u, UNIT_SHAPE);
       assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9);
-      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
+      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
       else assert(u.down === 0);
+      if (hasFaction(u, FACTION_CONFIG.ENEMY)) assert(u.isBattleOnlySummon && u.battleSummonKind === "boss-mouth-t1" && u.ownerId === "boss" && u.farmId === 0);
+      else assert(u.battleSummonKind !== "boss-mouth-t1" && u.ownerId !== "boss");
       assert(!ids.has(u.id));
       ids.add(u.id);
       unitsById.set(u.id, u);
       if (u.isBattleOnlySummon) {
-        if (u.battleSummonKind === "pea-death-split") {
+        if (hasFaction(u, FACTION_CONFIG.PLAYER) && u.battleSummonKind === "pea-death-split") {
           assert(["farm", "raid"].includes(raw.scene) && integer(u.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && u.battleSummonEncounterId === 0 && u.species === 0 && u.tier === 1 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0);
           const parent = unitsById.get(u.battleSummonParentId);
-          assert(parent && parent.isBattleOnlySummon === false && parent.hp <= 0 && parent.species === 0 && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
+          assert(parent && hasFaction(parent, FACTION_CONFIG.PLAYER) && parent.isBattleOnlySummon === false && parent.hp <= 0 && parent.species === 0 && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
           const list = summonsByParent.get(parent.id) || [];
           list.push(u);
           summonsByParent.set(parent.id, list);
@@ -3426,15 +3445,15 @@
       projectileIds.add(p.id);
       assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits - 1 : raw.nextId - 1) || integer(p.owner, CONFIG.bossSummonIdBase + 1, CONFIG.bossSummonIdBase + raw.bossSummonSerial));
       assert(p.targetId === void 0 || p.targetId === "boss" || validBattleUnitId(p.targetId, raw.bossSummonSerial));
-      assert(integer(p.species, 0, CONFIG.maxSpecies - 1) && integer(p.tier, 1, CONFIG.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
+      assert(Object.values(FACTION_CONFIG).includes(p.faction) && typeof p.ownerId === "string" && integer(p.species, 0, CONFIG.maxSpecies - 1) && integer(p.tier, 1, CONFIG.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
       if (p.isPopcorn) {
-        assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.every((id) => id === "boss") && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
+        assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.length <= CONFIG.maxRaidBattleUnits + 1 && p.damagedTargetIds.every((id) => id === "boss" || validBattleUnitId(id, raw.bossSummonSerial)) && new Set(p.damagedTargetIds).size === p.damagedTargetIds.length && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
         validatePopcornConfig(p.popcornConfig);
         if (p.exploded) assert(Number.isFinite(p.explosionLife) && p.explosionLife >= 0 && p.explosionLife < 0.5 + 1e-9);
       }
     }
     assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
-    assert(["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && raw.boss.attackPower === 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind));
+    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && ["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && raw.boss.attackPower === 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind));
     assert(Array.isArray(raw.boss.hit) && raw.boss.hit.length <= CONFIG.maxRaidBattleUnits && raw.boss.hit.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(raw.boss.hit).size === raw.boss.hit.length);
     const runtime = raw.boss.patternRuntime;
     assert(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
@@ -3474,6 +3493,7 @@
       init_raid_settlement();
       init_unit_grades();
       init_boss_patterns();
+      init_factions();
       GARDEN_SHAPE = snapshot(new Garden());
       UNIT_SHAPE = snapshot(new Unit(1, 0, 1, 0, 0));
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
@@ -3485,7 +3505,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.3";
+      PRODUCT_VERSION = "0.7.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -5210,12 +5230,13 @@
   };
 
   // src/raid-roster.js
+  init_factions();
   function raidRosterEntries(units, limit = 100) {
     if (!Array.isArray(units) || !Number.isSafeInteger(limit) || limit < 0) return [];
-    return units.filter((unit) => unit?.hp > 0 && unit.down <= 0 && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false).slice(0, limit).map((unit) => [unit.id, unit.species, unit.tier]);
+    return units.filter((unit) => unit?.hp > 0 && unit.down <= 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false).slice(0, limit).map((unit) => [unit.id, unit.species, unit.tier]);
   }
   function hasRaidRosterEntries(units) {
-    return Array.isArray(units) && units.some((unit) => unit?.hp > 0 && unit.down <= 0 && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false);
+    return Array.isArray(units) && units.some((unit) => unit?.hp > 0 && unit.down <= 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false);
   }
 
   // src/farm-app.js
@@ -5915,12 +5936,12 @@
     $2("count").textContent = raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : display.units.filter((unit) => !unit.isBattleOnlySummon).length;
     $2("capacity").textContent = personalGarden?.capacity ?? CONFIG.cap;
     $2("starter").textContent = raid ? `${w.units.length} deployed in raid` : pendingRewardCount ? "밤톨 보상 대기 · 공간이 생기면 합류해요" : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : w.units.filter((unit) => !unit.isBattleOnlySummon).length >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요";
-    const army = display.units.reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
+    const army = display.units.filter((u) => u.faction === CONFIG.factions.PLAYER).reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
     $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
     const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome;
     $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
-    $2("bossHealthNote").textContent = farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP · 증원 시 함께 증가";
+    $2("bossHealthNote").textContent = farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP";
     for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
       const el = $2(id);
       el.setAttribute("aria-valuenow", value);
