@@ -1,10 +1,10 @@
-import {Garden,Unit,AttackCycle,CONFIG} from './farm-model.js';
+import {Garden,Unit,AttackCycle,createUnitAttackCycle,CONFIG} from './farm-model.js';
 import {resolveUnitStats} from './unit-stats.js';
 import {isValidPlayerProgressionState} from './player-progression.js';
 import {createPlayerProgressionState} from './player-progression.js';
 import {createAbilityRuntimeSnapshot,isValidAbilityRuntimeSnapshot} from './ability-state.js';
 import {MAX_BEAN_SPLIT_CHILDREN} from './species-abilities.js';
-import {abilityProfile} from './unit-abilities.js';
+import {abilityProfile,hasUnitCapability} from './unit-abilities.js';
 import {raidSettlementKey} from './raid-settlement.js';
 import {mergeMaterialCostForTier} from './unit-grades.js';
 import {BOSS_PATTERN_IDS} from './boss-patterns.js';
@@ -26,8 +26,8 @@ export function normalizeSnapshot(raw,{migrateLegacyRaid=false,clone=true}={}){
  for(const r of raw.raidRosters||[]){if(!Object.hasOwn(r,'abilitySnapshot'))r.abilitySnapshot=createAbilityRuntimeSnapshot(createPlayerProgressionState());else if(!Object.hasOwn(r.abilitySnapshot,'farmUpgrades'))r.abilitySnapshot.farmUpgrades=structuredClone(createPlayerProgressionState().farmUpgrades);if(r.abilitySnapshot?.abilities&&typeof r.abilitySnapshot.abilities==='object'&&!Array.isArray(r.abilitySnapshot.abilities))for(const [id,value] of Object.entries(base.playerProgression.abilities))if(!Object.hasOwn(r.abilitySnapshot.abilities,id))r.abilitySnapshot.abilities[id]=structuredClone(value);if(!Object.hasOwn(r,'settlementSessionId'))r.settlementSessionId='';if(!Object.hasOwn(r,'settlementRunSequence'))r.settlementRunSequence=0;if(!Object.hasOwn(r,'settlementEncounterId'))r.settlementEncounterId=0}
  const unitDefaults={walnutEmpoweredNextBasic:false,wheatCommandUntil:0,wheatCommandCritBonus:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0,isBattleOnlySummon:false,battleSummonKind:'',battleSummonParentId:0,battleSummonEncounterId:0,countsTowardPermanentRoster:true,eligibleForRaidDeployment:true,breedingEligible:true,mergeEligible:true,canSplit:true,splitUsedThisBattle:false,deathSplitHandled:false,usesPersistentSleep:true,lifetime:'',chestnutBasicCycles:0,landingRecovery:0};
  for(const u of raw.units||[]){for(const [key,value] of Object.entries(unitDefaults))if(!Object.hasOwn(u,key))u[key]=value;if(!Object.hasOwn(u,'faction'))u.faction=legacyUnitFaction(u);
-   const action=u.ability?.action;if(action&&u.species===4){if(!Object.hasOwn(action,'peanutStrikeCount'))action.peanutStrikeCount=2;if(!Object.hasOwn(action,'peanutAttackMultiplier'))action.peanutAttackMultiplier=.5;if(!Object.hasOwn(action,'peanutSpreadRadians'))action.peanutSpreadRadians=Math.PI/12}
-   if(action&&u.species===5){if(!Object.hasOwn(action,'walnutEmpowered'))action.walnutEmpowered=false;if(!Object.hasOwn(action,'walnutGuardUsed'))action.walnutGuardUsed=false}
+   const action=u.ability?.action;if(action&&hasUnitCapability(u.species,'repeatedStrike')){if(!Object.hasOwn(action,'peanutStrikeCount'))action.peanutStrikeCount=2;if(!Object.hasOwn(action,'peanutAttackMultiplier'))action.peanutAttackMultiplier=.5;if(!Object.hasOwn(action,'peanutSpreadRadians'))action.peanutSpreadRadians=Math.PI/12}
+   if(action&&hasUnitCapability(u.species,'guard')){if(!Object.hasOwn(action,'walnutEmpowered'))action.walnutEmpowered=false;if(!Object.hasOwn(action,'walnutGuardUsed'))action.walnutGuardUsed=false}
   }
  if(!Object.hasOwn(raw.boss,'faction'))raw.boss.faction=FACTION_CONFIG.ENEMY;
  if(!Object.hasOwn(raw.boss,'barleyArmorBreakUntil'))raw.boss.barleyArmorBreakUntil=0;
@@ -77,7 +77,7 @@ export function restore(raw,{migrateLegacyRaid=false}={}){
  raw=normalizeSnapshot(raw,{migrateLegacyRaid});validateSnapshot(raw);
  const g=new Garden();
  Object.assign(g,structuredClone(raw));g.rng=new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);if(g.boss.patternRuntime.active)g.boss.patternRuntime.active.hitIds=new Set(raw.boss.patternRuntime.active.hitIds);
-  g.units=raw.units.map(data=>{const u=Object.assign(new Unit(data.id,data.species,data.tier,data.x,data.y),structuredClone(data));u.ability=Object.assign(new AttackCycle(u),structuredClone(data.ability));return u});g.reconcileMateReservations();return g;
+  g.units=raw.units.map(data=>{const u=Object.assign(new Unit(data.id,data.species,data.tier,data.x,data.y),structuredClone(data));u.ability=Object.assign(createUnitAttackCycle(u),structuredClone(data.ability));return u});g.reconcileMateReservations();return g;
 }
 export function validateSnapshot(raw){
  finiteTree(raw);shape(raw,GARDEN_SHAPE);assert(integer(raw.seed,0,0xffffffff)&&integer(raw.rng.state,0,0xffffffff));
@@ -111,8 +111,8 @@ export function validateSnapshot(raw){
   assert(!ids.has(u.id));ids.add(u.id);unitsById.set(u.id,u);
   if(u.isBattleOnlySummon){
    if(hasFaction(u,FACTION_CONFIG.PLAYER)&&u.battleSummonKind==='pea-death-split'){
-    assert(['farm','raid'].includes(raw.scene)&&integer(u.battleSummonParentId,1,Number.MAX_SAFE_INTEGER)&&u.battleSummonEncounterId===0&&u.species===0&&u.tier===1&&u.canSplit===false&&u.countsTowardPermanentRoster===false&&u.eligibleForRaidDeployment===false&&u.breedingEligible===false&&u.mergeEligible===false&&u.usesPersistentSleep===false&&u.lifetime==='until-death-or-battle-end'&&u.deathSplitHandled===false&&u.splitUsedThisBattle===true&&u.hp>0);
-    const parent=unitsById.get(u.battleSummonParentId);assert(parent&&hasFaction(parent,FACTION_CONFIG.PLAYER)&&parent.isBattleOnlySummon===false&&parent.hp<=0&&parent.species===0&&parent.splitUsedThisBattle&&parent.ownerId===u.ownerId&&parent.farmId===u.farmId);
+    assert(['farm','raid'].includes(raw.scene)&&integer(u.battleSummonParentId,1,Number.MAX_SAFE_INTEGER)&&u.battleSummonEncounterId===0&&hasUnitCapability(u.species,'deathSplit')&&u.tier===1&&u.canSplit===false&&u.countsTowardPermanentRoster===false&&u.eligibleForRaidDeployment===false&&u.breedingEligible===false&&u.mergeEligible===false&&u.usesPersistentSleep===false&&u.lifetime==='until-death-or-battle-end'&&u.deathSplitHandled===false&&u.splitUsedThisBattle===true&&u.hp>0);
+    const parent=unitsById.get(u.battleSummonParentId);assert(parent&&hasFaction(parent,FACTION_CONFIG.PLAYER)&&parent.isBattleOnlySummon===false&&parent.hp<=0&&hasUnitCapability(parent.species,'deathSplit')&&parent.species===u.species&&parent.splitUsedThisBattle&&parent.ownerId===u.ownerId&&parent.farmId===u.farmId);
     const list=summonsByParent.get(parent.id)||[];list.push(u);summonsByParent.set(parent.id,list);
     if(raw.scene==='raid')assert(u.id>=CONFIG.raidSummonIdBase&&u.id<CONFIG.raidSummonIdBase+CONFIG.maxRaidBattleUnits&&raw.raidExpectedPlayers.includes(u.ownerId)&&integer(u.farmId,1,CONFIG.maxFarmUnitId));
     else assert(integer(u.id,1,raw.nextId-1)&&raw.farmBossEvent.phase!=='idle');
@@ -125,7 +125,7 @@ export function validateSnapshot(raw){
    if(raw.scene==='raid'){const roster=raw.raidRosters.find(r=>r.ownerId===u.ownerId),troopIndex=roster?.troops.findIndex(t=>t.farmId===u.farmId)??-1,slot=raw.raidExpectedPlayers.indexOf(u.ownerId),currentId=(slot+1)*CONFIG.raidPlayerIdStride+troopIndex+1,legacyId=(slot+1)*CONFIG.raidPlayerIdStride+u.farmId;assert(raw.raidExpectedPlayers.includes(u.ownerId)&&integer(u.farmId,1,CONFIG.maxFarmUnitId)&&manifest.has(u.ownerId+':'+u.farmId)&&!deployed.has(u.ownerId+':'+u.farmId)&&(u.id===currentId||u.farmId<=CONFIG.maxFarmCap&&u.id===legacyId));deployed.add(u.ownerId+':'+u.farmId)}
    else assert(integer(u.id,1,raw.nextId-1));
   }
-  if(u.ability.action){const a=u.ability.action;assert(integer(a.id,1,raw.attackSerial)&&typeof a.hit==='boolean'&&a.target&&Number.isFinite(a.target.x)&&Number.isFinite(a.target.y));if(u.species===4){assert(integer(a.peanutStrikeCount,2,5)&&Number.isFinite(a.peanutAttackMultiplier)&&a.peanutAttackMultiplier>0&&a.peanutAttackMultiplier<=10&&Number.isFinite(a.peanutSpreadRadians)&&a.peanutSpreadRadians>=0&&a.peanutSpreadRadians<=Math.PI/6);const mask=(1<<a.peanutStrikeCount)-1;assert(integer(a.resolvedMask,0,mask)&&integer(a.hitMask,0,mask)&&(a.hitMask&~a.resolvedMask)===0)}if(u.species===5)assert(typeof a.walnutEmpowered==='boolean'&&typeof a.walnutGuardUsed==='boolean');if(a.path)validatePath(a.path);if(a.pendingShots!==undefined){assert(Array.isArray(a.pendingShots)&&a.pendingShots.length<=3&&a.pendingShots.every(shot=>integer(shot.shotIndex,1,4)&&Number.isFinite(shot.delaySeconds)&&shot.delaySeconds>=0&&Number.isFinite(shot.attackMultiplier)&&shot.attackMultiplier>0&&shot.attackMultiplier<=10))}if(a.projectileAbility!==undefined){assert(a.projectileAbility&&Object.hasOwn(a.projectileAbility,'popcorn'));if(a.projectileAbility.popcorn)validatePopcornConfig(a.projectileAbility.popcorn)}}
+  if(u.ability.action){const a=u.ability.action;assert(integer(a.id,1,raw.attackSerial)&&typeof a.hit==='boolean'&&a.target&&Number.isFinite(a.target.x)&&Number.isFinite(a.target.y));if(hasUnitCapability(u.species,'repeatedStrike')){assert(integer(a.peanutStrikeCount,2,5)&&Number.isFinite(a.peanutAttackMultiplier)&&a.peanutAttackMultiplier>0&&a.peanutAttackMultiplier<=10&&Number.isFinite(a.peanutSpreadRadians)&&a.peanutSpreadRadians>=0&&a.peanutSpreadRadians<=Math.PI/6);const mask=(1<<a.peanutStrikeCount)-1;assert(integer(a.resolvedMask,0,mask)&&integer(a.hitMask,0,mask)&&(a.hitMask&~a.resolvedMask)===0)}if(hasUnitCapability(u.species,'guard'))assert(typeof a.walnutEmpowered==='boolean'&&typeof a.walnutGuardUsed==='boolean');if(a.path)validatePath(a.path);if(a.pendingShots!==undefined){assert(Array.isArray(a.pendingShots)&&a.pendingShots.length<=3&&a.pendingShots.every(shot=>integer(shot.shotIndex,1,4)&&Number.isFinite(shot.delaySeconds)&&shot.delaySeconds>=0&&Number.isFinite(shot.attackMultiplier)&&shot.attackMultiplier>0&&shot.attackMultiplier<=10))}if(a.projectileAbility!==undefined){assert(a.projectileAbility&&Object.hasOwn(a.projectileAbility,'popcorn'));if(a.projectileAbility.popcorn)validatePopcornConfig(a.projectileAbility.popcorn)}}
   if(u.ability.phase==='active'||u.ability.phase==='windup')assert(u.ability.action!==null);if(u.ability.phase==='active')validatePath(u.ability.action.path)
  }
  for(const [parentId,children] of summonsByParent){assert(children.length<=MAX_BEAN_SPLIT_CHILDREN);const parent=unitsById.get(parentId);assert(parent&&parent.ownerId===children[0].ownerId&&parent.farmId===children[0].farmId);}

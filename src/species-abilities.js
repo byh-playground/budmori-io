@@ -1,6 +1,6 @@
 import { isAbilityActive, powerLevelFor } from "./ability-progression.js";
 import { SPECIES_ABILITY_DEFINITIONS } from "./ability-catalog.js";
-import { abilityProfile } from "./unit-abilities.js";
+import { abilityProfile, hasUnitCapability } from "./unit-abilities.js";
 
 // These are game-specific contracts, separate from the generic tree/wallet.
 // Values below follow docs/unit-stats.md and the confirmed follow-up decisions.
@@ -120,7 +120,7 @@ function isPopcornExplosionState(state) {
 // returns spawn descriptors only; the caller still owns IDs, placement, HP,
 // parent sleep, combat membership, and battle-end cleanup.
 export function createBeanSplitDescriptors({ unit, progression, inBattle = false } = {}) {
-  if (!inBattle || !unit || unit.species !== 0 || !Number.isFinite(unit.hp) || unit.hp > 0 || unit.isBattleOnlySummon || unit.battleOnlySummon || unit.canSplit === false || unit.splitUsedThisBattle === true) return [];
+  if (!inBattle || !unit || !hasUnitCapability(unit.species, "deathSplit") || !Number.isFinite(unit.hp) || unit.hp > 0 || unit.isBattleOnlySummon || unit.battleOnlySummon || unit.canSplit === false || unit.splitUsedThisBattle === true) return [];
   const count = getBeanSplitCount(progression, unit.tier);
   if (!count) return [];
   return Array.from({ length: count }, () => ({
@@ -272,7 +272,7 @@ export function getWalnutGuardConfig(progression, tier) {
 }
 
 export function isWalnutGuardActive(unit, config, recoverySeconds) {
-  return !!config && unit?.species === 5 && unit.hp > 0 && unit.down <= 0 &&
+  return !!config && hasUnitCapability(unit?.species, "guard") && unit.hp > 0 && unit.down <= 0 &&
     unit.stun <= 0 && unit.z <= 0.1 && unit.ability?.phase === "recover" &&
     !!unit.ability.action && !unit.ability.action.walnutEmpowered && !unit.ability.action.walnutGuardUsed &&
     unit.ability.elapsed >= recoverySeconds * config.guardRecoveryStartFraction && unit.ability.elapsed < recoverySeconds;
