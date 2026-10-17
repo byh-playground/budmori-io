@@ -137,10 +137,10 @@ async function combatScenarios(p){
    for(const [i,u]of w.units.entries()){u.x=quadrant[0]*(11+i*.15);u.y=quadrant[1]*(8+i*.1);u.vx=u.vy=u.vz=u.z=0;u.hp=1e5;}
    const before={x:w.boss.x,y:w.boss.y};let chased=false,maxZ=0,hit=false,basic=false,land=false,sweep=false,prepared=false,launched=false,windupSafe=true,uniqueHits=true,lastSequence=0;const hits=new Set();
    for(let i=0;i<3600;i++){
-    const windup=w.boss.phase.endsWith('windup'),health=new Map(w.units.map(u=>[u.id,u.hp]));w.step(1/120);
-    if(windup)windupSafe &&= w.units.every(u=>!health.has(u.id)||u.hp===health.get(u.id));
+    const action=w.boss.patternRuntime.active,windup=action?.phase==='windup';w.step(1/120);
+    if(windup&&action?.phase==='windup')windupSafe &&= !w.notices.some(e=>e.sequence>lastSequence&&e.kind==='unit-hit'&&e.attackKind?.startsWith('attack.'));
     chased ||= (w.boss.x-before.x)*quadrant[0]>.25&&(w.boss.y-before.y)*quadrant[1]>.25;maxZ=Math.max(maxZ,...w.units.map(u=>u.z));
-    for(const e of w.notices){if(e.sequence<=lastSequence)continue;lastSequence=e.sequence;if(e.kind==='unit-hit'){hit=true;if(e.attackKind==='basic')basic=true;const key=e.attackId+':'+e.unit;uniqueHits &&= Number.isInteger(e.attackId)&&e.attackId>0&&!hits.has(key);hits.add(key);}if(e.kind==='unit-land')land=true;if(e.kind==='unit-hit'&&e.attackKind==='sweep')sweep=true;if(e.kind==='boss-prepare')prepared=true;if(e.kind==='boss-launch')launched=true;}
+    for(const e of w.notices){if(e.sequence<=lastSequence)continue;lastSequence=e.sequence;if(e.kind==='unit-hit'){hit=true;if(e.attackKind==='attack.front-slam')basic=true;const key=e.attackId+':'+e.unit;uniqueHits &&= Number.isInteger(e.attackId)&&e.attackId>0&&!hits.has(key);hits.add(key);}if(e.kind==='unit-land')land=true;if(e.kind==='unit-hit'&&['attack.sweep-360','attack.fan-sweep'].includes(e.attackKind))sweep=true;if(e.kind==='boss-pattern-prepare')prepared=true;if(e.kind==='boss-pattern-launch')launched=true;}
    }
    results.push({quadrant,chased,maxZ,hit,basic,land,sweep,prepared,launched,windupSafe,uniqueHits,finite:w.units.every(u=>[u.x,u.y,u.z].every(Number.isFinite))});
   }
@@ -178,7 +178,7 @@ async function seedScenarios(p,label){
  await p.evaluate(()=>{globalThis.seedOriginal={world:BUDMORI.runtime.world,paused:BUDMORI.runtime.paused};BUDMORI.runtime.paused=true;});
  try{
   for(const scene of ['farm','raid']){
-   await p.evaluate(scene=>{const r=BUDMORI.runtime,w=new r.world.constructor(623);w.units=[];w.food=[];w.effects=[];w.projectiles=[];w.setScene(scene);w.time=1.25;w.boss.phase='resting';if(scene==='raid'){w.boss.x=14;w.boss.y=8;}
+   await p.evaluate(scene=>{const r=BUDMORI.runtime,w=new r.world.constructor(623);w.units=[];w.food=[];w.effects=[];w.projectiles=[];w.setScene(scene);w.time=1.25;if(scene==='raid'){w.boss.x=14;w.boss.y=8;}
     for(let species=0;species<BUDMORI.CONFIG.maxSpecies;species++)for(let tier=1;tier<=6;tier++){const u=w.spawn(species,tier,(tier-3.5)*2.3,(species-(BUDMORI.CONFIG.maxSpecies-1)/2)*2);Object.assign(u,{meals:3,growth:3,angle:Math.PI*.15,z:0,vx:0,vy:0,vz:0});}
     r.world=w;r.capturePresentation('reset');
    },scene);
@@ -225,7 +225,7 @@ async function seedScenarios(p,label){
 async function armyScenarios(p){
  const evidence=await p.evaluate(()=>{
   const Garden=BUDMORI.sim.constructor,specs=BUDMORI.ATTACK_TYPES;
-  const target=(species,x)=>{const w=new Garden(501);w.units=[];w.spawn(species,1,x,0);w.setScene('raid');Object.assign(w.units[0],{x,y:0,z:0,vx:0,vy:0,vz:0});w.boss.phase='resting';w.boss.hp=w.boss.maxHp=1e6;return w;};
+  const target=(species,x)=>{const w=new Garden(501);w.units=[];w.spawn(species,1,x,0);w.setScene('raid');Object.assign(w.units[0],{x,y:0,z:0,vx:0,vy:0,vz:0});w.boss.hp=w.boss.maxHp=1e6;return w;};
   const ranges=[];
   for(let species=0;species<BUDMORI.CONFIG.maxSpecies;species++){
    const initial=4.4+specs[species].range+3,w=target(species,initial),u=w.units[0];let prepare=null;
@@ -236,14 +236,14 @@ async function armyScenarios(p){
   }
   const close=target(1,5.1),lob=close.units[0];for(let i=0;i<1800&&!close.combatLog.some(e=>e.kind==='prepare');i++)close.step(1/120);const prep=close.combatLog.find(e=>e.kind==='prepare');
   const retreat={distance:prep?Math.hypot(prep.x,prep.y):null,stand:close.boss.radius+specs[1].range,x:lob.x};
-  const w=new Garden(829);w.units=[];const dead=w.spawn(0,1,5,0),alive=w.spawn(1,1,12,0);w.setScene('raid');Object.assign(dead,{x:5,y:0,hp:8,z:0,vx:0,vy:0,vz:0});Object.assign(alive,{x:12,y:0,hp:1e5,z:0,vx:0,vy:0,vz:0});w.boss.targetId=dead.id;
+  const w=new Garden(829);w.units=[];const dead=w.spawn(0,1,5,0),alive=w.spawn(1,1,12,0);w.setScene('raid');Object.assign(dead,{x:5,y:0,hp:8,z:0,vx:0,vy:0,vz:0});Object.assign(alive,{x:12,y:0,hp:1e5,z:0,vx:0,vy:0,vz:0});
   let airborne=false,landed=false;for(let i=0;i<1800;i++){w.step(1/120);if(dead.hp===0&&dead.z>.1)airborne=true;if(dead.hp===0&&w.notices.some(e=>e.kind==='unit-land'&&e.unit===dead.id))landed=true;}
   const corpse={dead:dead.hp===0,airborne,landed,z:dead.z};
   // Explicit overlap fixture: a settled corpse cannot be displaced by a boss or live unit.
-  const at={x:dead.x,y:dead.y};Object.assign(w.boss,{x:dead.x,y:dead.y,phase:'resting'});Object.assign(alive,{x:dead.x+.01,y:dead.y,z:0,vx:0,vy:0,vz:0});for(let i=0;i<240;i++)w.step(1/120);corpse.drift=Math.hypot(dead.x-at.x,dead.y-at.y);
-  w.boss.phase='chase';w.boss.targetId=dead.id;w.step(1/120);corpse.retargeted=w.boss.targetId!==dead.id;
+  const at={x:dead.x,y:dead.y};Object.assign(w.boss,{x:dead.x,y:dead.y});Object.assign(alive,{x:dead.x+.01,y:dead.y,z:0,vx:0,vy:0,vz:0});for(let i=0;i<240;i++)w.step(1/120);corpse.drift=Math.hypot(dead.x-at.x,dead.y-at.y);
+  w.beginBossPattern('attack.front-slam',dead);w.step(1/120);corpse.retargeted=w.boss.patternRuntime.active?.targetId!==dead.id;
   w.setScene('farm');corpse.recovered=w.units.every(u=>u.hp>0&&u.down===0&&u.z===0);
-  const h=new Garden(307);h.units=[];for(let tier=1;tier<=3;tier++)h.spawn(tier-1,tier,(tier-2)*6,0);h.setScene('raid');h.boss.phase='resting';const max=h.units.reduce((n,u)=>n+u.hp,0);h.units[0].hp=0;h.units[1].hp=0;h.units[2].hp=17;const before={...h.armyHealth},count=h.units.length;h.starter=59.99;h.step(.02);const after={...h.armyHealth},spawned=h.units.length-count;
+  const h=new Garden(307);h.units=[];for(let tier=1;tier<=3;tier++)h.spawn(tier-1,tier,(tier-2)*6,0);h.setScene('raid');const max=h.units.reduce((n,u)=>n+u.hp,0);h.units[0].hp=0;h.units[1].hp=0;h.units[2].hp=17;const before={...h.armyHealth},count=h.units.length;h.starter=59.99;h.step(.02);const after={...h.armyHealth},spawned=h.units.length-count;
   return {ranges,retreat,corpse,health:{max,before,after,spawned}};
  });
  for(const r of evidence.ranges){assert(r.distance!==null&&Math.abs(r.distance-r.stand)<=.65,'species '+r.species+' attacks within own range');assert(r.damaged,'species '+r.species+' real impact');assert(r.lateral<.15,'species '+r.species+' has no forced rotating slot');if(r.species===1)assert(r.minDistance>=r.stand-.65,'lob holds firing range');}

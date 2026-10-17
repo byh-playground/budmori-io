@@ -2040,7 +2040,6 @@
           w.scene = "raid";
           w.running = false;
           w.boss = w.createBoss(bossStage?.species ?? w.randomBossSpecies());
-          w.boss.phase = "resting";
           if (bossStage?.stage !== void 0) w.configureBossStage(bossStage.stage, bossStage.species);
           w.encounter = { outcome: "idle", elapsed: 0 };
           w.raidExpectedPlayers = [...expectedPlayers];
@@ -2333,7 +2332,6 @@
             this.boss.active = true;
             this.boss.encounterId = this.raidRosters[0]?.settlementRunSequence || this.nextRaidRunSequence || 1;
             this.boss.patternRuntime = createBossPatternRuntime();
-            this.boss.phase = "chase";
           }
           this.combat("unit-drop", { unit: id, ownerId, x, y, z: u.z });
           return true;
@@ -2433,7 +2431,7 @@
         }
         createBoss(species = 3) {
           const hp = 2e3;
-          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, angle: 0, facing: 0, flash: 0, swings: 0, basicCount: 0, attackId: 0, sweepClock: 0, startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
         }
         configureBossStage(stage, species = this.boss.species) {
           const stats2 = bossStageStats(stage);
@@ -2477,7 +2475,6 @@
           }
           if (this.running) {
             this.boss.active = true;
-            this.boss.phase = "chase";
             this.boss.encounterId = this.activeRaidRunSequence || this.nextRaidRunSequence || 1;
             this.boss.patternRuntime = createBossPatternRuntime();
             this.raidExpectedPlayers = ["solo"];
@@ -3295,22 +3292,20 @@
         }
         finish(outcome) {
           if (!this.running) return;
+          const bossPatternElapsed = this.boss.patternRuntime.active?.phaseElapsed || 0;
           this.running = false;
           this.boss.active = false;
           this.encounter.outcome = outcome;
           this.projectiles = [];
-          this.boss.phase = "resting";
-          if (this.boss.patternRuntime) this.boss.patternRuntime.active = null;
+          this.boss.patternRuntime.active = null;
           for (const u of this.units) u.ability.interrupt();
           this.cleanupBattleSummons();
-          this.combat(outcome, { x: this.boss.x, y: this.boss.y, z: 0 });
+          this.combat(outcome, { x: this.boss.x, y: this.boss.y, z: 0, bossPatternElapsed });
         }
         finishFarmBossEvent(outcome) {
           if (this.scene !== "farm" || this.farmBossEvent.phase !== "fighting") return false;
           this.cleanupBattleSummons();
           this.boss.active = false;
-          this.boss.phase = "resting";
-          this.boss.clock = 0;
           if (this.boss.patternRuntime) this.boss.patternRuntime.active = null;
           this.projectiles = [];
           const encounterId = this.farmBossEvent.encounterId;
@@ -3328,7 +3323,7 @@
         bossAttackArea(unitRadius = 0) {
           return bossAttackArea(this.boss, unitRadius);
         }
-        bossWeaponPoint(phase = this.boss.phase, q = 0) {
+        bossWeaponPoint(q = 0) {
           const b = this.boss, a = b.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[a?.id];
           if (a?.id === "attack.fan-sweep") {
             const angle = a.aim - config.sector / 2 + config.sector * clamp2(q, 0, 1);
@@ -3447,23 +3442,17 @@
           const b = this.boss, runtime = b.patternRuntime, config = BOSS_PATTERN_CONFIG[id];
           if (!config) return false;
           const targetPoint = target ? { x: target.x, y: target.y, z: target.z || 0 } : null, aim = targetPoint ? Math.atan2(targetPoint.y - b.y, targetPoint.x - b.x) : b.angle;
-          runtime.active = { id, phase: "windup", phaseElapsed: 0, targetId: target?.id ?? 0, target: targetPoint, aim, locked: false, start: { x: b.x, y: b.y, z: b.z }, traveled: 0, hitIds: [], volleyCount: 0, released: 0, nextRelease: 0, path: null };
-          b.phase = "windup";
-          b.clock = 0;
-          b.attackKind = id;
+          runtime.active = { id, phase: "windup", phaseElapsed: 0, targetId: target?.id ?? 0, target: targetPoint, aim, locked: false, start: { x: b.x, y: b.y, z: b.z }, traveled: 0, hitIds: /* @__PURE__ */ new Set(), volleyCount: 0, released: 0, nextRelease: 0, path: null };
           b.angle = aim;
           b.facing = aim;
-          b.targetId = target?.id ?? 0;
-          b.hit.clear();
-          this.combat("boss-pattern-prepare", { patternId: id, attackKind: id, x: b.x, y: b.y, z: b.z, angle: aim, targetId: b.targetId || 0 });
+          this.combat("boss-pattern-prepare", { patternId: id, attackKind: id, x: b.x, y: b.y, z: b.z, angle: aim, targetId: runtime.active.targetId });
           return true;
         }
         hitBossPatternUnit(unit, patternId, point, normal = null) {
           const b = this.boss, action = b.patternRuntime.active, config = BOSS_PATTERN_CONFIG[patternId];
-          if (!action || !config || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit) || unit.hp <= 0 || !unit.dropLanded || b.hit.has(unit.id)) return false;
+          if (!action || !config || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit) || unit.hp <= 0 || !unit.dropLanded || action.hitIds.has(unit.id)) return false;
           if (config.groundOnly && unit.z > 0.1) return false;
-          b.hit.add(unit.id);
-          action.hitIds.push(unit.id);
+          action.hitIds.add(unit.id);
           const dx = normal?.x ?? unit.x - b.x, dy = normal?.y ?? unit.y - b.y, n = Math.hypot(dx, dy) || 1;
           const guard = this.receiveWalnutGuard(unit), knockbackMultiplier = guard?.receivedKnockbackMultiplier ?? 1;
           unit.knock(dx / n, dy / n, config.knockback * knockbackMultiplier, config.lift * knockbackMultiplier, b);
@@ -3485,7 +3474,7 @@
           let hits = 0;
           const extent = range + CONFIG.maxUnitRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-            if (b.hit.has(unit.id) || unit.z > 0.1) continue;
+            if (action.hitIds.has(unit.id) || unit.z > 0.1) continue;
             const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
             if (d > range + unit.radius) continue;
             const offset = Math.atan2(Math.sin(Math.atan2(dy, dx) - aim), Math.cos(Math.atan2(dy, dx) - aim)), pad = d <= unit.radius ? Math.PI : Math.asin(Math.min(1, unit.radius / Math.max(d, 1e-6)));
@@ -3500,7 +3489,7 @@
           let hits = 0;
           const extent = range + CONFIG.maxUnitRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-            if (b.hit.has(unit.id)) continue;
+            if (action.hitIds.has(unit.id)) continue;
             const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
             if (d > range + unit.radius) continue;
             if (this.hitBossPatternUnit(unit, patternId, { x: b.x + dx / (d || 1) * Math.min(d, range), y: b.y + dy / (d || 1) * Math.min(d, range), z: 0 }, { x: dx / (d || 1), y: dy / (d || 1) })) hits++;
@@ -3508,9 +3497,9 @@
           return hits;
         }
         sweepBossBody(old, patternId) {
-          const b = this.boss, extent = b.radius + CONFIG.maxUnitRadius;
+          const b = this.boss, action = b.patternRuntime.active, extent = b.radius + CONFIG.maxUnitRadius;
           for (const unit of this._collectBossTargets(Math.min(old.x, b.x) - extent, Math.min(old.y, b.y) - extent, Math.max(old.x, b.x) + extent, Math.max(old.y, b.y) + extent, this._bossHitCandidates)) {
-            if (b.hit.has(unit.id)) continue;
+            if (action.hitIds.has(unit.id)) continue;
             const hit = ArenaGeometry.sweep(old, b, b.radius, b.height, unit);
             if (hit) this.hitBossPatternUnit(unit, patternId, hit, patternId === "attack.charge" ? { x: Math.cos(b.patternRuntime.active.aim), y: Math.sin(b.patternRuntime.active.aim) } : null);
           }
@@ -3520,7 +3509,7 @@
           const from = { x: b.x + Math.cos(fromAngle) * config.reach, y: b.y + Math.sin(fromAngle) * config.reach, z: 0.2 }, to = { x: b.x + Math.cos(toAngle) * config.reach, y: b.y + Math.sin(toAngle) * config.reach, z: 0.2 };
           const extent = config.reach + config.width + CONFIG.maxUnitRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-            if (b.hit.has(unit.id)) continue;
+            if (action.hitIds.has(unit.id)) continue;
             const hit = ArenaGeometry.sweep(from, to, config.width, 1.4, unit);
             if (hit) {
               const dx = unit.x - b.x, dy = unit.y - b.y, n = Math.hypot(dx, dy) || 1;
@@ -3561,10 +3550,8 @@
           const b = this.boss, runtime = b.patternRuntime, config = BOSS_PATTERN_CONFIG[action.id];
           action.phase = "active";
           action.phaseElapsed = 0;
-          b.phase = "active";
-          b.clock = 0;
           b.attackId = ++this.attackSerial;
-          b.hit.clear();
+          action.hitIds.clear();
           runtime.cooldowns[action.id] = config.cooldown;
           this.combat("boss-pattern-launch", { patternId: action.id, attackKind: action.id, attackId: b.attackId, x: b.x, y: b.y, z: b.z, angle: action.aim, targetId: action.targetId || 0 });
           if (action.id === "attack.sweep-360") {
@@ -3606,8 +3593,6 @@
         enterBossPatternRecovery(action) {
           action.phase = "recover";
           action.phaseElapsed = 0;
-          this.boss.phase = "recover";
-          this.boss.clock = 0;
         }
         updateBossPattern(dt, living) {
           const b = this.boss, runtime = b.patternRuntime;
@@ -3638,8 +3623,6 @@
           }
           if (!action) return;
           action.phaseElapsed += dt;
-          b.clock = action.phaseElapsed;
-          b.phase = action.phase;
           if (action.phase === "windup") {
             const config2 = BOSS_PATTERN_CONFIG[action.id], remaining = config2.windup - action.phaseElapsed;
             if (!action.locked) {
@@ -3650,7 +3633,6 @@
                 const desired = Math.atan2(target.y - b.y, target.x - b.x), delta = Math.atan2(Math.sin(desired - action.aim), Math.cos(desired - action.aim));
                 action.aim += clamp2(delta, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
                 b.angle = b.facing = action.aim;
-                b.targetId = target.id;
               }
               if (remaining <= 0.25 + 1e-9) {
                 action.locked = true;
@@ -3683,7 +3665,7 @@
                 b.z = 0;
                 const extent = config.landingRadius + CONFIG.maxUnitRadius;
                 for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-                  if (b.hit.has(unit.id)) continue;
+                  if (action.hitIds.has(unit.id)) continue;
                   const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
                   if (d <= config.landingRadius + unit.radius) this.hitBossPatternUnit(unit, action.id, { x: unit.x, y: unit.y, z: 0 }, { x: dx / (d || 1), y: dy / (d || 1) });
                 }
@@ -3703,12 +3685,7 @@
             }
             return;
           }
-          if (action.phase === "recover" && action.phaseElapsed >= config.recover) {
-            runtime.active = null;
-            b.phase = "chase";
-            b.clock = 0;
-            b.targetId = 0;
-          }
+          if (action.phase === "recover" && action.phaseElapsed >= config.recover) runtime.active = null;
         }
         updateBoss(dt) {
           const b = this.boss;
@@ -3720,7 +3697,6 @@
               if (b.z === 0) {
                 event.phase = "fighting";
                 event.elapsed = 0;
-                b.phase = "chase";
                 this.combat("farm-boss-land", { x: b.x, y: b.y, z: 0 });
               }
               return;
@@ -3737,17 +3713,14 @@
               }
             } else if (event.phase === "celebrating") {
               event.elapsed += dt;
-              b.clock = event.elapsed;
               const duration = event.outcome === "defeat" ? CONFIG.farmBossEvent.celebrationSeconds : CONFIG.farmBossEvent.fadeSeconds;
               if (event.elapsed >= duration) {
                 event.phase = "fading";
                 event.elapsed = 0;
-                b.clock = 0;
               }
               return;
             } else if (event.phase === "fading") {
               event.elapsed += dt;
-              b.clock = event.elapsed;
               if (event.elapsed >= CONFIG.farmBossEvent.fadeSeconds) {
                 this.farmBossEvent = { phase: "idle", elapsed: 0, outcome: "idle", encounterId: 0, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
                 this.boss = this.createBoss();
@@ -3760,7 +3733,7 @@
             if (this.running) this.finish("victory");
             else {
               b.active = false;
-              b.phase = "resting";
+              b.patternRuntime.active = null;
             }
             return;
           }
@@ -3770,7 +3743,6 @@
           }
           const living = this.livingBossTargets();
           if (!living.length) return;
-          if (b.phase === "resting") b.phase = "chase";
           this.updateBossPattern(dt, living);
         }
       };
@@ -4168,17 +4140,12 @@
     if (!Object.hasOwn(raw.boss, "encounterId")) raw.boss.encounterId = raw.scene === "raid" && raw.running ? 1 : raw.farmBossEvent?.encounterId || 0;
     if (!Object.hasOwn(raw.boss, "attackPower")) raw.boss.attackPower = 4;
     if (!Object.hasOwn(raw.boss, "moveSpeed")) raw.boss.moveSpeed = CONFIG.raid.chaseSpeed;
-    if (!Object.hasOwn(raw.boss, "patternRuntime") || raw.boss.patternRuntime?.active === void 0) {
-      raw.boss.patternRuntime = structuredClone(base.boss.patternRuntime);
-      if (raw.boss.active) raw.boss.phase = "chase";
-    }
-    if (["strike-windup", "strike", "sweep-windup", "sweep"].includes(raw.boss.phase)) {
-      raw.boss.phase = "chase";
-      raw.boss.patternRuntime.active = null;
-    }
-    if (raw.boss.attackKind === "basic") raw.boss.attackKind = "attack.front-slam";
-    else if (raw.boss.attackKind === "sweep") raw.boss.attackKind = "attack.sweep-360";
     raw.bossSummonSerial = Number.isSafeInteger(raw.bossSummonSerial) ? raw.bossSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.bossSummonIdBase ? u.id - CONFIG.bossSummonIdBase : 0));
+    if (raw.scene === "raid" && !raw.boss.active && Number.isFinite(raw.boss.clock)) {
+      const ended = raw.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat");
+      if (ended && !Object.hasOwn(ended, "bossPatternElapsed")) ended.bossPatternElapsed = raw.boss.clock;
+    }
+    normalizeBossPatternSnapshot(raw.boss, base.boss.patternRuntime, raw.bossSummonSerial);
     raw.nextRaidRunSequence = Math.max(raw.nextRaidRunSequence || 0, raw.bossRewardWatermarks.raid || 0);
     raw.raidSettlementWatermark = Math.max(raw.raidSettlementWatermark || 0, raw.bossRewardWatermarks.raid || 0);
     for (const u of raw.units) {
@@ -4215,6 +4182,20 @@
       }
     }
     return raw;
+  }
+  function normalizeBossPatternSnapshot(boss, baseRuntime, bossSummonSerial) {
+    if (Object.hasOwn(boss, "phase")) assert(["chase", "windup", "active", "recover", "resting", "strike-windup", "strike", "sweep-windup", "sweep"].includes(boss.phase));
+    if (Object.hasOwn(boss, "clock")) assert(Number.isFinite(boss.clock));
+    if (Object.hasOwn(boss, "targetId")) assert(Number.isFinite(boss.targetId));
+    if (Object.hasOwn(boss, "attackKind")) assert(["basic", "sweep", ...BOSS_PATTERN_IDS].includes(boss.attackKind));
+    if (Object.hasOwn(boss, "hit")) assert(Array.isArray(boss.hit) && boss.hit.length <= CONFIG.maxRaidBattleUnits && boss.hit.every((id) => validBattleUnitId(id, bossSummonSerial)) && new Set(boss.hit).size === boss.hit.length);
+    if (!boss.patternRuntime || boss.patternRuntime.active === void 0) boss.patternRuntime = structuredClone(baseRuntime);
+    if (["strike-windup", "strike", "sweep-windup", "sweep"].includes(boss.phase)) boss.patternRuntime.active = null;
+    const action = boss.patternRuntime.active;
+    if (action) {
+      if (Object.hasOwn(boss, "hit")) assert(Array.isArray(action.hitIds) && boss.hit.length === action.hitIds.length && action.hitIds.every((id) => boss.hit.includes(id)));
+    }
+    for (const key of ["phase", "clock", "hit", "targetId", "attackKind"]) delete boss[key];
   }
   function assert(ok) {
     if (!ok) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
@@ -4253,7 +4234,7 @@
     const g = new Garden();
     Object.assign(g, structuredClone(raw));
     g.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
-    g.boss.hit = new Set(raw.boss.hit);
+    if (g.boss.patternRuntime.active) g.boss.patternRuntime.active.hitIds = new Set(raw.boss.patternRuntime.active.hitIds);
     g.units = raw.units.map((data) => {
       const u = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
       u.ability = Object.assign(new AttackCycle(u), structuredClone(data.ability));
@@ -4429,13 +4410,12 @@
       }
     }
     assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
-    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && ["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind) && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
+    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
     if (raw.boss.stage === 0) assert(raw.boss.attackPower === 4);
     else {
       const stageStats = bossStageStats(raw.boss.stage);
       assert(raw.boss.maxHp === stageStats.hp && raw.boss.attackPower === stageStats.attackPower);
     }
-    assert(Array.isArray(raw.boss.hit) && raw.boss.hit.length <= CONFIG.maxRaidBattleUnits && raw.boss.hit.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(raw.boss.hit).size === raw.boss.hit.length);
     const runtime = raw.boss.patternRuntime;
     assert(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
     for (const id of BOSS_PATTERN_IDS) {
@@ -4444,7 +4424,7 @@
     assert(Object.keys(runtime.weights).length === BOSS_PATTERN_IDS.length && Object.keys(runtime.cooldowns).length === BOSS_PATTERN_IDS.length);
     if (runtime.active) {
       const a = runtime.active;
-      assert(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.maxRaidBattleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && a.hitIds.length === raw.boss.hit.length && a.hitIds.every((id) => raw.boss.hit.includes(id)) && integer(a.released, 0, 4) && integer(a.volleyCount, 0, 4));
+      assert(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.maxRaidBattleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && integer(a.released, 0, 4) && integer(a.volleyCount, 0, 4));
       if (a.target) assert(Number.isFinite(a.target.x) && Number.isFinite(a.target.y) && Number.isFinite(a.target.z));
       if (a.path) validatePath(a.path);
     }
@@ -5693,17 +5673,17 @@
       summonMouthY: R.STEP,
       summonMouthZ: R.STEP
     });
-    constructor(b) {
+    constructor(b, world) {
       super();
-      const action = b.patternRuntime?.active || null, target = action?.target || null, start2 = action?.start || null, mouth = b.summonMouth || {};
+      const action = b.patternRuntime.active, event = world.farmBossEvent, target = action?.target || null, start2 = action?.start || null, mouth = b.summonMouth || {}, ended = world.scene === "raid" && !b.active ? world.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat") : null;
       Object.assign(this, {
         x: b.x,
         y: b.y,
         z: b.z,
         angle: b.angle,
         startAngle: b.startAngle,
-        phase: b.phase,
-        clock: b.clock,
+        phase: action?.phase || (!b.active || event?.phase === "dropping" ? "resting" : "chase"),
+        clock: action?.phaseElapsed ?? (event.phase === "celebrating" || event.phase === "fading" ? event.elapsed : ended?.bossPatternElapsed || 0),
         travel: b.travel || 0,
         hp: b.hp,
         maxHp: b.maxHp,
@@ -5989,7 +5969,7 @@
       const world = this.world, receiptNowMs = this.captureClock(), timeMs = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, receiptNowMs - this.presentationOriginWallMs), entities = [];
       if (this.presentationOriginWallMs === null) this.presentationOriginWallMs = receiptNowMs;
       for (const u of world.units) entities.push({ id: "unit:" + u.id, generation: 0, source: new UnitRender(u, world) });
-      entities.push({ id: "boss", generation: 0, source: new BossRender(world.boss) });
+      entities.push({ id: "boss", generation: 0, source: new BossRender(world.boss, world) });
       for (const f of world.food) entities.push({ id: this.presentationIdentity("food", f), generation: 0, source: new FoodRender(f) });
       for (const p of world.projectiles) entities.push({ id: "projectile:" + p.id, generation: 0, source: new ProjectileRender(p) });
       for (const e of world.effects) {
@@ -6038,7 +6018,7 @@
       view.effects.length = 0;
       frame2.forEach(this.collectPresentationModel);
       view.time = (frame2.sample("clock", 0)?.gameTimeMs ?? world.time * 1e3) / 1e3;
-      view.boss = frame2.sample("boss", 0) || new BossRender(world.boss);
+      view.boss = frame2.sample("boss", 0) || new BossRender(world.boss, world);
       view.displayTimeMs = frame2.timeMs;
       view.presentationRevision = this.presentationRevision;
       const previous = this.previousCaptureTimeMs, latest = this.latestCaptureTimeMs, span = latest - previous, diagnostics = view.presentationDiagnostics;
