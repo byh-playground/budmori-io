@@ -389,18 +389,21 @@
       processedBossKillReceipts: []
     };
   }
-  function awardBossKillXp(state, receiptKey) {
+  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
     if (!isValidPlayerProgressionState(state)) {
       return { state, awarded: false, reason: "invalid-state", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
     }
     if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
       return { state, awarded: false, reason: "invalid-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
     }
+    if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
+      return { state, awarded: false, reason: "invalid-xp", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+    }
     if (state.processedBossKillReceipts.includes(receiptKey)) {
       return { state, awarded: false, reason: "duplicate-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
     }
     let level = state.level;
-    let experience = state.experience + BOSS_KILL_XP;
+    let experience = state.experience + xpAmount;
     let levelsGained = 0;
     while (experience >= experienceForNextLevel(level)) {
       experience -= experienceForNextLevel(level);
@@ -416,7 +419,7 @@
       abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }])),
       processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
     };
-    return { state: nextState, awarded: true, reason: null, xpAwarded: BOSS_KILL_XP, levelsGained, pointsAwarded };
+    return { state: nextState, awarded: true, reason: null, xpAwarded: xpAmount, levelsGained, pointsAwarded };
   }
   function experienceForNextLevel(level) {
     if (!Number.isSafeInteger(level) || level < 1) throw new RangeError("level must be a positive integer");
@@ -444,7 +447,47 @@
     }
   });
 
+  // src/species-catalog.js
+  function speciesById(id) {
+    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
+  }
+  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
+  var init_species_catalog = __esm({
+    "src/species-catalog.js"() {
+      SPECIES_CATALOG = Object.freeze([
+        Object.freeze({ id: 0, name: "콩", asset: "pea.svg", bossWeight: 1 }),
+        Object.freeze({ id: 1, name: "옥수수", asset: "corn-kernel.svg", bossWeight: 1 }),
+        Object.freeze({ id: 2, name: "강낭콩", asset: "kidney-bean.svg", bossWeight: 1 }),
+        Object.freeze({ id: 3, name: "밤톨", asset: "chestnut.svg", bossWeight: 1 })
+      ]);
+      SPECIES_COUNT = SPECIES_CATALOG.length;
+      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
+    }
+  });
+
   // src/boss-rewards.js
+  function bossStageStats(stage) {
+    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
+    const exponent = stage - 1;
+    return {
+      stage,
+      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** exponent,
+      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** exponent,
+      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** exponent),
+      rolls: Math.floor(stage / 5)
+    };
+  }
+  function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
+    if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) throw new TypeError("Boss species weights and random source are required");
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    let remaining = random() * total;
+    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= total) throw new RangeError("Boss species roll must be in [0, 1)");
+    for (let index = 0; index < weights.length; index += 1) {
+      remaining -= weights[index];
+      if (remaining < 0) return index;
+    }
+    return weights.length - 1;
+  }
   function bossAcquisitionChance({ farmEvent = false, acquisitionMultiplier = 1 } = {}) {
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
       throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
@@ -466,15 +509,23 @@
     const granted = [];
     for (const reward of world.bossRewardReceipts || []) {
       if (reward.status !== "pending") continue;
-      const unit = grantUnit ? grantUnit(reward) : world.units.length < world.capacity ? world.spawn(reward.species, reward.tier, reward.x, reward.y) : null;
-      if (!unit) continue;
-      reward.status = "granted";
-      reward.unitId = unit.id;
-      granted.push(reward);
+      const drops = Array.isArray(reward.drops) ? reward.drops : [{ roll: reward.roll, status: "pending", unitId: 0 }];
+      for (const drop of drops) {
+        if (drop.status !== "pending") continue;
+        const unit = grantUnit ? grantUnit({ ...reward, roll: drop.roll }) : world.units.length < world.capacity ? world.spawn(reward.species, reward.tier, reward.x, reward.y) : null;
+        if (!unit) continue;
+        drop.status = "granted";
+        drop.unitId = unit.id;
+        granted.push({ ...reward, roll: drop.roll, unitId: unit.id });
+      }
+      const pending = drops.some((drop) => drop.status === "pending");
+      const successful = drops.filter((drop) => drop.status === "granted");
+      reward.status = pending ? "pending" : successful.length ? "granted" : "missed";
+      reward.unitId = pending ? 0 : successful[0]?.unitId || 0;
       const event = world.farmBossEvent;
       if (event?.encounterId === reward.encounterId) {
-        event.rewardStatus = "granted";
-        event.rewardUnitId = unit.id;
+        event.rewardStatus = reward.status;
+        event.rewardUnitId = reward.unitId;
       }
     }
     return granted;
@@ -486,11 +537,36 @@
     world.bossRewardReceipts ||= [];
     world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
     const previous = world.bossRewardReceipts.find((receipt2) => requestedReceiptKey ? receipt2.receiptKey === requestedReceiptKey : receipt2.encounterId === encounterId && receipt2.source === source);
-    if (previous) return previous;
+    if (previous) {
+      if (previous.status === "pending") grantPendingBossAcquisitions(world, { grantUnit: options?.grantUnit || null });
+      return previous;
+    }
     if (!["farm", "raid"].includes(source) || !Number.isSafeInteger(encounterId) || encounterId <= (world.bossRewardWatermarks[source] || 0)) {
       throw new RangeError("A settled or stale boss encounter cannot be rolled again");
     }
-    const receipt = decideBossAcquisition({ ...options, random: options?.random || (() => world.random()) });
+    const random = options?.random || (() => world.random());
+    const rollCount = options?.rollCount === void 0 ? 1 : options.rollCount;
+    if (!Number.isSafeInteger(rollCount) || rollCount < 0 || rollCount > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError("Boss drop roll count is out of range");
+    const decision = rollCount > 0 ? decideBossAcquisition({ ...options, random }) : {
+      encounterId,
+      source,
+      receiptKey: options?.receiptKey || `${source}:${encounterId}`,
+      acquisitionMultiplier: source === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options?.acquisitionMultiplier ?? 1,
+      species: options?.species ?? 3,
+      tier: options?.tier ?? 1,
+      x: options?.x ?? 0,
+      y: options?.y ?? 0,
+      chance: bossAcquisitionChance({ farmEvent: source === "farm", acquisitionMultiplier: options?.acquisitionMultiplier ?? 1 }),
+      roll: 0,
+      status: "missed",
+      unitId: 0
+    };
+    const drops = rollCount > 0 ? [{ roll: decision.roll, status: decision.roll < decision.chance ? "pending" : "missed", unitId: 0 }, ...Array.from({ length: rollCount - 1 }, () => {
+      const roll = random();
+      if (!Number.isFinite(roll) || roll < 0 || roll >= 1) throw new RangeError("Boss acquisition roll must be in [0, 1)");
+      return { roll, status: roll < decision.chance ? "pending" : "missed", unitId: 0 };
+    })] : [];
+    const receipt = { ...decision, drops, rollCount, roll: drops[0]?.roll ?? 0, status: drops.some((drop) => drop.status === "pending") ? "pending" : "missed", unitId: 0 };
     world.bossRewardReceipts.push(receipt);
     world.bossRewardWatermarks[source] = encounterId;
     let settled = world.bossRewardReceipts.filter((item) => item.status !== "pending");
@@ -512,16 +588,29 @@
     const receipt = resolveBossAcquisition(world, options);
     const progressionOwner = options?.progressionOwner || world;
     const wallet = options?.playerProgression || progressionOwner.playerProgression;
-    const receiptKey = options?.receiptKey || receipt.receiptKey || `${receipt.source}:${receipt.encounterId}`;
-    const result = awardBossKillXp(wallet, receiptKey);
-    if (result.awarded) {
-      progressionOwner.playerProgression = result.state;
+    const receiptKey = receipt.xpReceiptKey || options?.receiptKey || receipt.receiptKey || `${receipt.source}:${receipt.encounterId}`;
+    if (receipt.xpReceiptKey && ["awarded", "already-awarded"].includes(receipt.xpStatus)) {
+      return {
+        receipt,
+        progression: wallet,
+        awarded: false,
+        reason: "duplicate-receipt",
+        xpAwarded: receipt.xpAmount ?? 0,
+        levelsGained: receipt.levelsGained ?? 0,
+        pointsAwarded: receipt.pointsAwarded ?? 0
+      };
     }
-    receipt.xpReceiptKey = receiptKey;
-    receipt.xpStatus = result.awarded ? "awarded" : result.reason === "duplicate-receipt" ? "already-awarded" : "unsettled";
-    receipt.xpAmount = result.awarded ? result.xpAwarded : 0;
-    receipt.levelsGained = result.levelsGained;
-    receipt.pointsAwarded = result.pointsAwarded;
+    const result = awardBossKillXp(wallet, receiptKey, options?.xpAmount === void 0 ? void 0 : options.xpAmount);
+    if (result.awarded) progressionOwner.playerProgression = result.state;
+    if (result.awarded || result.reason === "duplicate-receipt") {
+      receipt.xpReceiptKey = receiptKey;
+      receipt.xpStatus = result.awarded ? "awarded" : "already-awarded";
+      receipt.xpAmount = result.awarded ? result.xpAwarded : 0;
+      receipt.levelsGained = result.levelsGained;
+      receipt.pointsAwarded = result.pointsAwarded;
+    } else {
+      receipt.xpStatus = "unsettled";
+    }
     return {
       receipt,
       progression: result.state,
@@ -536,10 +625,60 @@
   var init_boss_rewards = __esm({
     "src/boss-rewards.js"() {
       init_player_progression();
+      init_species_catalog();
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.2,
-        farmEventAcquisitionMultiplier: 2
+        farmEventAcquisitionMultiplier: 2,
+        stageHpBase: 200,
+        stageHpMultiplier: 1.5,
+        stageAttackBase: 4,
+        stageAttackMultiplier: 1.2,
+        stageXpBase: 20,
+        stageXpMultiplier: 1.2,
+        maxStage: 61,
+        speciesWeights: BOSS_SPECIES_WEIGHTS
       });
+    }
+  });
+
+  // src/farm-boss-stages.js
+  function createFarmBossProgress(seed = 731) {
+    return {
+      currentStage: 1,
+      encounterSeed: (clampUint32(seed) ^ 2738958700) >>> 0,
+      nextSelectionId: 1,
+      selections: []
+    };
+  }
+  function selectionRandom(seed, selectionId, stage) {
+    let state = (seed ^ Math.imul(selectionId, 2654435769) ^ Math.imul(stage, 2246822507)) >>> 0;
+    return () => {
+      state = state + 1831565813 >>> 0;
+      let value = state;
+      value = Math.imul(value ^ value >>> 15, value | 1);
+      value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+      return ((value ^ value >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function selectFarmBossStage(progress, stage) {
+    if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError("Boss stage is outside the supported range");
+    let selection = progress.selections.find((entry) => entry.stage === stage);
+    if (!selection) {
+      const selectionId = progress.nextSelectionId;
+      const random = selectionRandom(progress.encounterSeed, selectionId, stage);
+      selection = { stage, species: chooseBossSpecies(random), selectionId };
+      progress.selections.push(selection);
+      progress.nextSelectionId += 1;
+    }
+    progress.currentStage = stage;
+    const stats2 = bossStageStats(stage);
+    return { ...selection, ...stats2 };
+  }
+  var clampUint32;
+  var init_farm_boss_stages = __esm({
+    "src/farm-boss-stages.js"() {
+      init_boss_rewards();
+      clampUint32 = (value) => Number.isSafeInteger(value) ? value >>> 0 : 0;
     }
   });
 
@@ -1111,6 +1250,8 @@
       init_unit_stats();
       init_unit_abilities();
       init_boss_rewards();
+      init_farm_boss_stages();
+      init_species_catalog();
       init_player_progression();
       init_ability_tree();
       init_ability_state();
@@ -1125,7 +1266,7 @@
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
-      CONFIG = Object.freeze({ factions: FACTION_CONFIG, cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: 4, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
+      CONFIG = Object.freeze({ factions: FACTION_CONFIG, cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: SPECIES_COUNT, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
       clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = (tier, species) => resolveUnitStats({ tier, species });
       Body = class {
@@ -1423,14 +1564,15 @@
           this.mergeTask = null;
           this.reset();
         }
-        static createRaidBattle(seed = 731, expectedPlayers = ["solo"]) {
+        static createRaidBattle(seed = 731, expectedPlayers = ["solo"], bossStage = null) {
           const w = new Garden(seed);
           w.units = [];
           w.food = [];
           w.scene = "raid";
           w.running = false;
-          w.boss = w.createBoss(w.randomBossSpecies());
+          w.boss = w.createBoss(bossStage?.species ?? w.randomBossSpecies());
           w.boss.phase = "resting";
+          if (bossStage?.stage !== void 0) w.configureBossStage(bossStage.stage, bossStage.species);
           w.encounter = { outcome: "idle", elapsed: 0 };
           w.raidExpectedPlayers = [...expectedPlayers];
           w.raidRosters = [];
@@ -1468,6 +1610,7 @@
           this.raidSummonSerial = 0;
           this.bossSummonSerial = 0;
           this.combatLog = [];
+          this.farmBossProgress = createFarmBossProgress(this.seed);
           this.mode = "breed";
           this.scene = "farm";
           this.running = false;
@@ -1761,7 +1904,15 @@
         }
         createBoss(species = 3) {
           const hp = 2e3;
-          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+        }
+        configureBossStage(stage, species = this.boss.species) {
+          const stats2 = bossStageStats(stage);
+          this.boss.species = clamp2(species, 0, CONFIG.maxSpecies - 1);
+          this.boss.stage = stats2.stage;
+          this.boss.hp = this.boss.maxHp = stats2.hp;
+          this.boss.attackPower = stats2.attackPower;
+          return this.boss;
         }
         setScene(scene) {
           if (scene === this.scene) return;
@@ -3166,6 +3317,7 @@
     if (clone2) raw = structuredClone(raw);
     delete raw.progress;
     if (resetLegacyCorpseTimers) raw.corpseRecoveryVersion = 1;
+    if (!Object.hasOwn(raw, "farmBossProgress")) raw.farmBossProgress = createFarmBossProgress(raw.seed);
     for (const u of raw.units || []) if (!Object.hasOwn(u, "cooldownDuration")) u.cooldownDuration = Math.max(0, Number.isFinite(u.cooldown) ? u.cooldown : 0);
     const base = GARDEN_SHAPE, fill = (v, d) => {
       for (const [k, x] of Object.entries(d)) {
@@ -3343,9 +3495,22 @@
       assert(!rewardIds.has(key));
       rewardIds.add(key);
       assert(reward.status === "granted" === reward.unitId > 0);
+      if (reward.drops !== void 0) {
+        assert(Array.isArray(reward.drops) && reward.drops.length <= BOSS_REWARD_SETTINGS.maxStage && integer(reward.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && reward.drops.length === reward.rollCount);
+        for (const drop of reward.drops) assert(drop && Number.isFinite(drop.roll) && drop.roll >= 0 && drop.roll < 1 && ["pending", "missed", "granted"].includes(drop.status) && integer(drop.unitId, 0, CONFIG.maxFarmUnitId) && drop.status === "granted" === drop.unitId > 0);
+        assert(reward.status === (reward.drops.some((drop) => drop.status === "pending") ? "pending" : reward.drops.some((drop) => drop.status === "granted") ? "granted" : "missed"));
+      }
       if (reward.receiptKey !== void 0) assert(typeof reward.receiptKey === "string" && reward.receiptKey.length > 0 && reward.receiptKey.length < 256);
       if (reward.acquisitionMultiplier !== void 0) assert(Number.isFinite(reward.acquisitionMultiplier) && reward.acquisitionMultiplier >= 0 && reward.acquisitionMultiplier <= 2);
       if (reward.source === "farm" && reward.status === "granted") assert(reward.unitId < raw.nextId);
+    }
+    const stageProgress = raw.farmBossProgress;
+    assert(stageProgress && integer(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stageProgress.encounterSeed, 0, 4294967295) && integer(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
+    const stageIds = /* @__PURE__ */ new Set(), selectionIds = /* @__PURE__ */ new Set();
+    for (const selection of stageProgress.selections) {
+      assert(selection && integer(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(selection.species, 0, CONFIG.maxSpecies - 1) && integer(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
+      stageIds.add(selection.stage);
+      selectionIds.add(selection.selectionId);
     }
     assert(integer(raw.nextRaidRunSequence, 0, 1e12) && integer(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) && raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid && raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid && Array.isArray(raw.raidSettlementReceipts));
     const activeRaid = raw.activeRaidRunSequence, activeSession = raw.activeRaidSessionId;
@@ -3453,7 +3618,12 @@
       }
     }
     assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
-    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && ["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && raw.boss.attackPower === 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind));
+    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && ["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind));
+    if (raw.boss.stage === 0) assert(raw.boss.attackPower === 4);
+    else {
+      const stageStats = bossStageStats(raw.boss.stage);
+      assert(raw.boss.maxHp === stageStats.hp && raw.boss.attackPower === stageStats.attackPower);
+    }
     assert(Array.isArray(raw.boss.hit) && raw.boss.hit.length <= CONFIG.maxRaidBattleUnits && raw.boss.hit.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(raw.boss.hit).size === raw.boss.hit.length);
     const runtime = raw.boss.patternRuntime;
     assert(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
@@ -3493,6 +3663,8 @@
       init_raid_settlement();
       init_unit_grades();
       init_boss_patterns();
+      init_boss_rewards();
+      init_farm_boss_stages();
       init_factions();
       GARDEN_SHAPE = snapshot(new Garden());
       UNIT_SHAPE = snapshot(new Unit(1, 0, 1, 0, 0));
@@ -3505,7 +3677,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.5";
+      PRODUCT_VERSION = "0.7.6";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4632,6 +4804,7 @@
       patternTargetX: R.STEP,
       patternTargetY: R.STEP,
       patternTargetZ: R.STEP,
+      stage: R.STEP,
       patternStartX: R.STEP,
       patternStartY: R.STEP,
       patternStartZ: R.STEP,
@@ -4660,6 +4833,7 @@
         height: b.height,
         flash: b.flash,
         species: b.species ?? 3,
+        stage: b.stage ?? 0,
         patternId: action?.id || "",
         patternPhase: action?.phase || "idle",
         patternPhaseElapsed: action?.phaseElapsed || 0,
@@ -5388,9 +5562,10 @@
   init_ability_tree();
   init_raid_settlement();
   init_boss_rewards();
+  init_farm_boss_stages();
+  init_species_catalog();
   var $2 = (id) => document.getElementById(id);
   var storage = new FarmStorage();
-  var BOSS_SPECIES_NAMES = ["콩", "옥수수", "강낭콩", "밤톨"];
   var networkTimer = null;
   var observedWorld = null;
   var imported = null;
@@ -5409,6 +5584,9 @@
   var menuAutoPaused = false;
   var dropPointer = null;
   var dropTimer = null;
+  var bossEncounterOpen = false;
+  var bossSwipe = null;
+  var bossPauseBeforeOpen = null;
   var renderer = new Diorama($2("world"));
   var measuredFrames = [];
   var lastFrameTimestamp = null;
@@ -5470,6 +5648,75 @@
   }
   install(new Garden());
   active.paused = true;
+  function showBossEncounterMessage(text) {
+    const message = $2("bossEncounterMessage");
+    message.textContent = text;
+    message.hidden = !text;
+    if (text) {
+      clearTimeout(showBossEncounterMessage.timer);
+      showBossEncounterMessage.timer = setTimeout(() => {
+        message.hidden = true;
+      }, 1800);
+    }
+  }
+  function renderBossEncounterStage(stage) {
+    if (!personalGarden || room || active?.world?.scene === "raid") return null;
+    const progress = personalGarden.farmBossProgress, wasSelected = progress.selections.some((entry) => entry.stage === stage), previousStage = progress.currentStage;
+    const selection = selectFarmBossStage(progress, stage);
+    if (!wasSelected || previousStage !== stage) saveImmediate(personalGarden);
+    const species = selection.species, catalogEntry = speciesById(species), name = catalogEntry.name, rolls = selection.rolls;
+    $2("bossStageCounter").textContent = `${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
+    $2("bossStageLabel").textContent = `STAGE ${selection.stage}`;
+    $2("bossPreview").src = `./assets/troops/${catalogEntry.asset}`;
+    $2("bossPreview").alt = `${name} 보스 미리보기`;
+    $2("bossStageName").textContent = `${name} 보스`;
+    $2("bossStageHp").textContent = `HP ${Math.round(selection.hp).toLocaleString("ko-KR")}`;
+    $2("bossStageAttack").textContent = `공격력 ${Number(selection.attackPower.toPrecision(3)).toLocaleString("ko-KR")}`;
+    $2("bossStageXp").textContent = `+${selection.xp.toLocaleString("ko-KR")} XP`;
+    $2("bossStageDrop").hidden = rolls === 0;
+    if (rolls > 0) {
+      $2("bossStageDrop").innerHTML = `<img src="./assets/troops/${catalogEntry.asset}" alt=""><span><strong>${name} 보스 종</strong><small>${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리</small></span>`;
+      $2("bossStageNotice").textContent = "";
+    } else $2("bossStageNotice").textContent = "보스 종 보상은 없어요 · 5스테이지부터 1회 추첨";
+    $2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.units) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null;
+    $2("bossEncounterChallenge").title = $2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요." : "";
+    return selection;
+  }
+  function openBossEncounter(push = true) {
+    if (room || attempt || active?.world?.scene === "raid") return false;
+    if (!personalGarden) {
+      if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)), false);
+      else return false;
+    }
+    if (personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null) return false;
+    if (!persist()) return false;
+    if (menuOpen) closeMenu(false);
+    bossPauseBeforeOpen = active?.paused ?? true;
+    if (active && !bossPauseBeforeOpen) {
+      active.paused = true;
+      active.loop.resetTiming();
+    }
+    bossEncounterOpen = true;
+    document.body.dataset.bossScreen = "true";
+    $2("bossEncounterScreen").hidden = false;
+    renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
+    if (push) history.pushState(null, "", "#/boss");
+    $2("bossEncounterBack").focus();
+    return true;
+  }
+  function closeBossEncounter(push = true) {
+    if (!bossEncounterOpen) return;
+    bossEncounterOpen = false;
+    document.body.dataset.bossScreen = "false";
+    $2("bossEncounterScreen").hidden = true;
+    bossSwipe = null;
+    if (active && bossPauseBeforeOpen !== null) {
+      active.paused = bossPauseBeforeOpen;
+      bossPauseBeforeOpen = null;
+      active.loop.resetTiming();
+    }
+    if (push) history.pushState(null, "", "#/farm");
+  }
   function refreshStart() {
     if (room || attempt) {
       $2("newConfirm").hidden = true;
@@ -5478,6 +5725,7 @@
     }
     const hasReservedRaid = storage.hasReservedRaid, liveRaid = active?.world?.scene === "raid" || !!room, staleRaid = hasReservedRaid && !liveRaid;
     $2("continueGame").disabled = !storage.hasWorld || staleRaid;
+    $2("startBossEncounter").disabled = !storage.hasWorld || staleRaid || !!room || !!attempt;
     $2("staleRaidNotice").hidden = !staleRaid || !!attempt;
     $2("onlineGame").disabled = hasReservedRaid;
     $2("continueLegacyGame").disabled = !!room || !!attempt || !storage.legacyCompatible;
@@ -5498,6 +5746,7 @@
     if (value) {
       persist();
       if (menuOpen) closeMenu(false);
+      if (bossEncounterOpen) closeBossEncounter(false);
     }
     home = value;
     document.body.dataset.home = String(value);
@@ -5547,9 +5796,9 @@
     if (!farmRun.sessionId || !farmRun.runSequence) return false;
     const outcome = ["victory", "defeat"].includes(raidWorld.encounter?.outcome) ? raidWorld.encounter.outcome : "aborted";
     const prepare = (base) => settleRaidOwnerFarm(snapshot(base), { ownerId, sessionId: farmRun.sessionId, encounterId: farmRun.runSequence, runSequence: farmRun.runSequence, outcome, raidWorld, completedAtMs: Date.now(), settleVictory: ({ farm, receiptKey, deploymentMultiplier }) => {
-      const garden = restore(farm), resolved = settleBossKill(garden, { encounterId: farmRun.runSequence, source: "raid", receiptKey, acquisitionMultiplier: deploymentMultiplier, species: raidWorld.boss.species ?? 3, tier: 1, x: raidWorld.boss.x, y: raidWorld.boss.y });
+      const garden = restore(farm), stage = raidWorld.boss.stage || 0, stageReward = stage ? bossStageStats(stage) : null, resolved = settleBossKill(garden, { encounterId: farmRun.runSequence, source: "raid", receiptKey, acquisitionMultiplier: deploymentMultiplier, rollCount: stageReward?.rolls ?? 1, xpAmount: stageReward?.xp, species: raidWorld.boss.species ?? 3, tier: 1, x: raidWorld.boss.x, y: raidWorld.boss.y });
       const reward = resolved.receipt;
-      return { farm: snapshot(garden), summary: { acquisition: { status: reward.status, chance: reward.chance, roll: reward.roll, unitId: reward.unitId, receiptKey: reward.receiptKey }, xp: { status: reward.xpStatus, amount: reward.xpAmount, levelsGained: reward.levelsGained, pointsAwarded: reward.pointsAwarded, receiptKey: reward.xpReceiptKey } } };
+      return { farm: snapshot(garden), summary: { stage, acquisition: { status: reward.status, chance: reward.chance, roll: reward.roll, rollCount: reward.rollCount, rolls: reward.drops, unitId: reward.unitId, receiptKey: reward.receiptKey }, xp: { status: reward.xpStatus, amount: reward.xpAmount, levelsGained: reward.levelsGained, pointsAwarded: reward.pointsAwarded, receiptKey: reward.xpReceiptKey } } };
     } });
     let settled = prepare(personalGarden), candidate = restore(settled.farm);
     if (!saveImmediate(candidate)) {
@@ -5564,16 +5813,20 @@
   function beginRaid(push = true) {
     if (room || !personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) return;
     if (!persist()) return;
+    const bossStage = renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
+    if (!bossStage || !persist()) return;
     const reserved = reservePersonalRaidRun();
     if (!reserved) return;
     renderer.dropTarget = null;
-    const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"]);
+    closeBossEncounter(false);
+    const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"], bossStage);
     install(battle);
     active.queue("register-roster", { entries: raidRosterEntries(personalGarden.units, CONFIG.maxRaidPlayerUnits), abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlement: { sessionId: reserved.sessionId, runSequence: reserved.runSequence, encounterId: reserved.runSequence } });
     setHome(false, push);
   }
   async function returnToFarm(push = true) {
     stopDrop();
+    if (bossEncounterOpen) closeBossEncounter(false);
     if (!personalGarden) return;
     const raidWorld = active?.world?.scene === "raid" ? snapshot(active.world) : null;
     if (raidWorld && personalGarden.activeRaidRunSequence !== null) {
@@ -5608,6 +5861,72 @@
     }
     if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)));
   };
+  $2("startBossEncounter").onclick = () => {
+    if (room || attempt || !storage.world || storage.world.activeRaidRunSequence !== null) return;
+    start(restore(snapshot(storage.world)), false);
+    openBossEncounter();
+  };
+  $2("menuBossEncounter").onclick = () => {
+    closeMenu(false);
+    openBossEncounter();
+  };
+  $2("bossEncounterBack").onclick = () => closeBossEncounter();
+  $2("bossEncounterChallenge").onclick = () => {
+    if ($2("bossEncounterChallenge").disabled) return;
+    closeBossEncounter(false);
+    beginRaid(true);
+  };
+  $2("bossEncounterScreen").addEventListener("pointerdown", (e) => {
+    if (!bossEncounterOpen || e.button > 0 || e.target.closest("button")) return;
+    const viewport = $2("bossEncounterViewport"), card = $2("bossEncounterCard");
+    bossSwipe = { pointerId: e.pointerId, y: e.clientY };
+    card.style.transition = "none";
+    viewport.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  });
+  $2("bossEncounterScreen").addEventListener("pointermove", (e) => {
+    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) return;
+    const delta = Math.max(-120, Math.min(120, e.clientY - bossSwipe.y));
+    $2("bossEncounterCard").style.transform = `translateY(${delta * 0.55}px)`;
+    e.preventDefault();
+  });
+  $2("bossEncounterScreen").addEventListener("pointerup", (e) => {
+    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) return;
+    const delta = e.clientY - bossSwipe.y, card = $2("bossEncounterCard");
+    bossSwipe = null;
+    if (Math.abs(delta) < 42) {
+      card.style.transition = "transform .18s ease-out";
+      card.style.transform = "translateY(0)";
+      setTimeout(() => {
+        card.style.transition = "";
+        card.style.transform = "";
+      }, 200);
+      return;
+    }
+    const current = personalGarden?.farmBossProgress?.currentStage || 1, next = delta < 0 ? Math.min(BOSS_REWARD_SETTINGS.maxStage, current + 1) : Math.max(1, current - 1);
+    if (next === current) {
+      showBossEncounterMessage(delta < 0 ? `현재 스테이지 상한 ${BOSS_REWARD_SETTINGS.maxStage}예요` : "첫 스테이지예요");
+      return;
+    }
+    card.style.transform = "";
+    card.style.transition = "";
+    card.style.animation = "none";
+    void card.offsetWidth;
+    card.style.animation = "";
+    renderBossEncounterStage(next);
+  });
+  $2("bossEncounterScreen").addEventListener("pointercancel", (e) => {
+    if (bossSwipe?.pointerId === e.pointerId) {
+      bossSwipe = null;
+      const card = $2("bossEncounterCard");
+      card.style.transition = "transform .18s ease-out";
+      card.style.transform = "translateY(0)";
+      setTimeout(() => {
+        card.style.transition = "";
+        card.style.transform = "";
+      }, 200);
+    }
+  });
   $2("abortRaidRun").onclick = () => {
     if (room || active?.world?.scene === "raid") return;
     const world = storage.world;
@@ -5778,7 +6097,7 @@
     }
   };
   $2("farm").onclick = () => returnToFarm();
-  $2("raid").onclick = () => beginRaid();
+  $2("raid").onclick = () => openBossEncounter();
   $2("return").onclick = () => returnToFarm();
   for (const value of ["breed", "merge"]) $2(value).onclick = () => active.queue("mode", { value });
   $2("feed").addEventListener("keydown", (e) => {
@@ -5949,6 +6268,11 @@
     const own = w.raidRoster(active.localPlayerId), cooldown = own ? Math.max(0, own.buffReadyAt - w.time) : 0;
     $2("buff").disabled = !raid || !w.running || !own || cooldown > 0;
     $2("buff").textContent = cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화";
+    const stage = w.boss.stage || 0;
+    if (stage) {
+      const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: own?.troops.length || 0, originalUnitsDeployed: own?.troops.filter((t) => t.deployed).length || 0 }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
+      $2("raidRewardChance").textContent = stageReward.rolls ? `보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "보스 종 추첨 없음";
+    } else $2("raidRewardChance").textContent = "";
   }
   function deployAt(p) {
     if (home || active.world.scene !== "raid" || room && active.players.length < 2 || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
@@ -6006,9 +6330,16 @@
     }
   });
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && menuOpen) {
+    if (e.key === "Escape" && bossEncounterOpen) {
+      e.preventDefault();
+      closeBossEncounter();
+    } else if (e.key === "Escape" && menuOpen) {
       e.preventDefault();
       closeMenu();
+    } else if (bossEncounterOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      const current = personalGarden?.farmBossProgress?.currentStage || 1, next = e.key === "ArrowUp" ? Math.min(BOSS_REWARD_SETTINGS.maxStage, current + 1) : Math.max(1, current - 1);
+      renderBossEncounterStage(next);
     }
   });
   window.addEventListener("pageshow", (e) => {
@@ -6051,6 +6382,10 @@
       else if (storage.hasWorld) start(restore(snapshot(storage.world)), false);
       else start(new Garden(), false);
     }
+    if (r === "#/boss") {
+      if (!openBossEncounter(false)) history.replaceState(null, "", "#/farm");
+      return;
+    }
     if (r === "#/help" || r === "#/growth" || r === "#/abilities" || r === "#/menu") {
       const raid = active.world.scene === "raid", farmEventActive = !raid && personalGarden?.farmBossEvent?.phase !== "idle";
       const restricted = r === "#/growth" && (raid || farmEventActive) || r === "#/abilities" && (raid || !personalGarden);
@@ -6063,17 +6398,19 @@
       return;
     }
     if (menuOpen) closeMenu(false);
+    if (bossEncounterOpen && r !== "#/boss") closeBossEncounter(false);
     if (r === "#/raid") {
       if (!room && personalGarden?.farmBossEvent?.phase !== "idle") {
         history.replaceState(null, "", "#/farm");
-      } else if (!room) beginRaid(false);
+      } else if (!room) openBossEncounter(false);
     } else if (r === "#/farm" && active.world.scene === "raid" && !room) returnToFarm(false);
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
     const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingRewardCount = rewardWorld.bossRewardReceipts.filter((reward) => reward.status === "pending").length;
-    for (const [id, value] of [["farm", !raid], ["raid", raid], ["breed", w.mode === "breed"], ["merge", w.mode === "merge"]]) $2(id).setAttribute("aria-pressed", value);
-    $2("farmControls").hidden = raid || farmEventActive || home;
+    for (const [id, value] of [["farm", !raid && !bossEncounterOpen], ["raid", raid || bossEncounterOpen], ["breed", w.mode === "breed"], ["merge", w.mode === "merge"]]) $2(id).setAttribute("aria-pressed", value);
+    $2("bossEncounterScreen").hidden = home || !bossEncounterOpen;
+    $2("farmControls").hidden = raid || farmEventActive || home || bossEncounterOpen;
     $2("raidControls").hidden = !raid || home;
     $2("bossbar").hidden = !battleHud || home;
     $2("raid").disabled = farmEventActive;
@@ -6083,7 +6420,7 @@
     const army = display.units.filter((u) => u.faction === CONFIG.factions.PLAYER).reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
     $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
-    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome;
+    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === personalGarden.activeRaidRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", speciesName = speciesById(boss.species).name;
     $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
     $2("bossHealthNote").textContent = farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP";
     for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
@@ -6092,14 +6429,14 @@
       el.setAttribute("aria-valuemax", max);
     }
     $2("bossHealth").style.width = boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%";
-    const speciesName = BOSS_SPECIES_NAMES[boss.species] || BOSS_SPECIES_NAMES[3];
-    $2("battleOutcome").textContent = raid ? battleOutcome === "victory" ? "승리 · 모두 정원으로 돌아갈 수 있어요" : battleOutcome === "defeat" ? "휴식이 필요해요 · 정원에서 다시 준비해요" : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "";
+    $2("battleOutcome").textContent = raid ? battleOutcome === "victory" ? `${stageName} 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · 보스 종 ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 보스 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 보스 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "";
     $2("battleOutcome").hidden = home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle";
     $2("speed").textContent = active.speed + "×";
     $2("pause").disabled = !!room;
-    $2("menuTabGrowth").disabled = raid || farmEventActive;
+    $2("bossEncounterChallenge").disabled = !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null || room;
+    $2("menuTabGrowth").disabled = raid || farmEventActive || bossEncounterOpen;
     $2("menuTabAbilities").disabled = raid || !personalGarden;
-    $2("raid").disabled = farmEventActive || !raid && !hasReadyTroops;
+    $2("raid").disabled = raid || farmEventActive || room || !personalGarden;
     $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
     $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
     $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
