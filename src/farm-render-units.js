@@ -254,7 +254,8 @@ export class UnitPresentation {
                 CENTER_Y - HEIGHT * SCALE * FACTOR * 0.5,
             ];
             // Faces are interior details, never part of the enlarged silhouette.
-            for (const PART of RECORD.faceParts) {
+            const OUTLINE_FACE_PARTS = RECORD.visibleFacePartsByExpression?.get(EXPRESSION) ?? RECORD.faceParts;
+            for (const PART of OUTLINE_FACE_PARTS) {
                 player.setPartVisible(PART, false);
             }
             player.draw({
@@ -263,7 +264,9 @@ export class UnitPresentation {
                 color: u.isFormationClone ? [0.45, 0.75, 1, 0.35] : OUTLINE,
                 forceColor: true,
             });
-            player.setExpression(EXPRESSION);
+            if (OUTLINE_FACE_PARTS.length) {
+                player.setExpression(EXPRESSION);
+            }
         }
         player.draw({
             projection: this.renderer.ctx.vector.projection,
