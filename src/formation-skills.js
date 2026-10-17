@@ -85,8 +85,12 @@ export class FormationSkills {
             this.trackHealth(UNIT);
         }
     }
-    injuredAllies() {
-        return [...this.injured];
+    injuredAllies(out = []) {
+        out.length = 0;
+        for (const UNIT of this.injured) {
+            out.push(UNIT);
+        }
+        return out;
     }
     includeBuild(ownerId, state) {
         if (!this.runtime.active || this.slots.some((slot) => slot.ownerId === ownerId)) {
