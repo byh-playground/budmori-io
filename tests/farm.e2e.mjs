@@ -1305,6 +1305,57 @@ async function cadenceDiagnosticsFlow() {
     assert(!BASIC.trim().startsWith('{') && BASIC.split('\n').length <= 20);
     await P.locator('#diagnosticDetail').check();
     await closeMenu(P);
+    const CATCHUP_PAIR = await P.evaluate(() => {
+        const SESSION = BUDMORI.runtime,
+            START = Math.max(performance.now(), SESSION.lastFrameClockMs || 0),
+            END = START + 200,
+            CAPTURED = [],
+            ORIGINAL_CAPTURE = SESSION.capturePresentation;
+        SESSION.capturePresentation = function (mode) {
+            const ACCEPTED = ORIGINAL_CAPTURE.call(this, mode);
+            CAPTURED.push({ timeMs: this.latestCaptureTimeMs, x: this.world.units[0]?.x });
+            return ACCEPTED;
+        };
+        try {
+            SESSION.loop.resetTiming();
+            SESSION.pulse(START);
+            const START_TICK = SESSION.tick,
+                START_CAPTURE = SESSION.presentationSequence,
+                START_TIME = SESSION.world.time;
+            SESSION.pulse(END);
+            const FRAME = SESSION.presentation(END),
+                DIAGNOSTICS = FRAME.presentationDiagnostics,
+                UNIT = FRAME.units.find((unit) => unit.id === SESSION.world.units[0]?.id);
+            return {
+                ticks: SESSION.tick - START_TICK,
+                captures: SESSION.presentationSequence - START_CAPTURE,
+                simulationSeconds: SESSION.world.time - START_TIME,
+                intervalMs: DIAGNOSTICS.intervalMs,
+                sampleAgeMs: DIAGNOSTICS.sampleAgeMs,
+                renderFraction: DIAGNOSTICS.renderFraction,
+                previousSnapshotX: CAPTURED[0]?.x,
+                currentSnapshotX: CAPTURED[1]?.x,
+                presentedX: UNIT?.x,
+            };
+        } finally {
+            SESSION.capturePresentation = ORIGINAL_CAPTURE;
+            SESSION.loop.resetTiming();
+        }
+    });
+    assert.equal(CATCHUP_PAIR.ticks, 4, 'controlled 200ms pulse advances four 20Hz logic ticks');
+    assert.equal(CATCHUP_PAIR.captures, 2, 'catch-up captures the penultimate and current states');
+    assert(Math.abs(CATCHUP_PAIR.simulationSeconds - 0.2) < 1e-8, 'all four logical steps remain simulated');
+    assert(
+        Math.abs(CATCHUP_PAIR.intervalMs - 50) < 1e-4,
+        'captured states retain their actual 50ms simulation interval: ' + JSON.stringify(CATCHUP_PAIR),
+    );
+    assert(Math.abs(CATCHUP_PAIR.sampleAgeMs - 50) < 1e-4, 'presentation keeps the configured one-tick delay');
+    assert(Math.abs(CATCHUP_PAIR.renderFraction) < 1e-6, 'delayed presentation samples the captured previous endpoint');
+    assert(
+        Math.abs(CATCHUP_PAIR.presentedX - CATCHUP_PAIR.previousSnapshotX) < 1e-6,
+        'the rendered unit position is the preserved penultimate snapshot',
+    );
+    await P.waitForTimeout(220);
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
     for (let index = 0; index < 5; index++) {
         await P.locator('#feed').click();
@@ -1352,7 +1403,7 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
     assert(
         PERFORMANCE.counts.presentationCaptures.total < PERFORMANCE.counts.logicTicks.total,
-        'catch-up ticks are coalesced into one presentation capture per RAF pulse',
+        'catch-up capture retains delayed-render endpoints instead of every intermediate tick',
     );
     assert.equal(
         PERFORMANCE.counts.backlogDrops.total,

@@ -10841,7 +10841,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.8";
+      PRODUCT_VERSION = "0.8.9";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15689,6 +15689,10 @@
             this.pendingPulsePresentationMode = "reset";
           } else if (result.status === "advanced" && !this.paused) {
             this.pendingPulsePresentationMode ||= "continuous";
+            const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs, STEP_MS = 1e3 / LOCAL_PROFILE.tickRate * this.pace, EPSILON_MS = 1e-7, HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS, HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
+            if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
+              this.capturePresentation("continuous");
+            }
           }
         }
       });

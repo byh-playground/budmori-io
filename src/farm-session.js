@@ -451,6 +451,16 @@ class FarmSession {
                     this.pendingPulsePresentationMode = 'reset';
                 } else if (result.status === 'advanced' && !this.paused) {
                     this.pendingPulsePresentationMode ||= 'continuous';
+                    const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs,
+                        STEP_MS = (1000 / LOCAL_PROFILE.tickRate) * this.pace,
+                        EPSILON_MS = 1e-7,
+                        HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS,
+                        HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
+                    if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
+                        // Preserve the exact penultimate/current pair for the delayed
+                        // presentation sample; intermediate catch-up states are never drawn.
+                        this.capturePresentation('continuous');
+                    }
                 }
             },
         });
