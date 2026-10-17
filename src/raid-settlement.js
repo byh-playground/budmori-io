@@ -10,6 +10,7 @@
 import {isValidUnitTier} from './unit-grades.js';
 import {FACTION_CONFIG,hasFaction} from './factions.js';
 import {SPECIES_COUNT} from './species-catalog.js';
+import {advanceFarmBossEncounterEpoch} from './farm-boss-stages.js';
 
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
@@ -378,6 +379,13 @@ export function settleRaidOwnerFarm(farm, {
       privateFarm = clone(resolution.farm);
       rewardSummary = resolution.summary ?? null;
     }
+  }
+
+  // A result closes this encounter generation exactly once, in the same
+  // private-Farm snapshot as its settlement receipt. Abandoned runs and
+  // duplicate callbacks never advance the epoch.
+  if (outcome === 'victory' || outcome === 'defeat') {
+    advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
   }
 
   const receipt = {
