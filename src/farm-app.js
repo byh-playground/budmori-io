@@ -16,6 +16,7 @@ import {
     renderAbilitySpeciesTabsMarkup,
     renderFarmUpgradeTreeMarkup,
 } from './ability-tree.js';
+import { canResetPlayerProgression } from './ability-progression.js';
 import {
     abortReservedRaidRun,
     reserveRaidRun,
@@ -53,7 +54,11 @@ let mergeStatusCache = {
     value: null,
 };
 const RENDERER = new Diorama(DOLLAR('world'));
-const FORMATION_UI = new FormationSkillsUI((kind, payload) => active?.queue(kind, payload));
+const FORMATION_UI = new FormationSkillsUI((kind, payload) => {
+    const QUEUED = active?.queue(kind, payload) ?? false;
+    setTimeout(renderProgressionResetActions, 180);
+    return QUEUED;
+});
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
 STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
 function frameRate() {
@@ -948,6 +953,7 @@ function drawTree() {
         location: active.world.scene,
         inCombat: IN_COMBAT,
     });
+    renderProgressionResetActions();
 }
 function drawAbilityTree() {
     const W = personalGarden || active.world,
@@ -963,6 +969,46 @@ function drawAbilityTree() {
         inCombat: IN_COMBAT,
         selectedSpecies: SELECTED_SPECIES,
     });
+    renderProgressionResetActions();
+}
+function currentProgressionResetScope() {
+    if (menuTab === 'growth') {
+        return { type: 'farm' };
+    }
+    if (menuTab === 'abilities') {
+        return { type: 'abilities', speciesId: Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0) };
+    }
+    if (menuTab === 'formation') {
+        return { type: 'formation' };
+    }
+    return null;
+}
+function renderProgressionResetActions() {
+    const HOST = DOLLAR('progressionResetActions'),
+        CURRENT = DOLLAR('progressionResetCurrent'),
+        ALL = DOLLAR('progressionResetAll');
+    if (!active || !menuOpen || !['growth', 'abilities', 'formation'].includes(menuTab)) {
+        HOST.hidden = true;
+        return;
+    }
+    const W = personalGarden || active.world,
+        IN_COMBAT = active.world.scene === 'raid' || W.running || W.farmBossEvent?.phase !== 'idle',
+        CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT },
+        SCOPE = currentProgressionResetScope(),
+        CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT),
+        ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: 'all' }, CONTEXT),
+        LABEL =
+            menuTab === 'growth'
+                ? '\uc131\uc7a5 \ud56d\ubaa9 \ucd08\uae30\ud654'
+                : menuTab === 'formation'
+                  ? '\ud615\uc131 \ub2a5\ub825 \ucd08\uae30\ud654'
+                  : '\uc774 \uc885 \ud2b9\uc131 \ucd08\uae30\ud654';
+    HOST.hidden = false;
+    CURRENT.hidden = menuTab === 'abilities';
+    CURRENT.disabled = !CURRENT_CHECK.allowed;
+    CURRENT.textContent = `${LABEL} · ${CURRENT_CHECK.refunded}P`;
+    ALL.disabled = !ALL_CHECK.allowed;
+    ALL.textContent = `\uc804\uccb4 \ucd08\uae30\ud654 · ${ALL_CHECK.refunded}P`;
 }
 const MENU_ROUTES = {
     play: '#/menu',
@@ -1004,6 +1050,7 @@ function applyMenuTab(tab) {
     } else if (tab === 'abilities') {
         drawAbilityTree();
     }
+    renderProgressionResetActions();
 }
 function syncMenuPause(tab) {
     if (tab === 'play') {
@@ -1096,6 +1143,21 @@ DOLLAR('gameMenuTabs').onclick = (e) => {
         switchMenuTab(BUTTON.dataset.menuTab);
     }
 };
+DOLLAR('progressionResetActions').onclick = (event) => {
+    const BUTTON = event.target.closest('button[data-progression-reset]');
+    if (!BUTTON || BUTTON.disabled) {
+        return;
+    }
+    const SCOPE = BUTTON.dataset.progressionReset === 'all' ? { type: 'all' } : currentProgressionResetScope();
+    if (SCOPE) {
+        active.queue('progression-reset', { scope: SCOPE });
+        setTimeout(() => {
+            drawTree();
+            drawAbilityTree();
+            renderProgressionResetActions();
+        }, 180);
+    }
+};
 DOLLAR('gameMenuTabs').onkeydown = (e) => {
     const BUTTONS = [...DOLLAR('gameMenuTabs').querySelectorAll('[role="tab"]:not(:disabled)')],
         INDEX = BUTTONS.indexOf(document.activeElement);
@@ -1149,7 +1211,12 @@ DOLLAR('abilityNodes').onclick = (e) => {
         return;
     }
     if (BUTTON.dataset.abilityAction === 'reset') {
-        active.queue('ability-reset');
+        active.queue('progression-reset', {
+            scope: {
+                type: 'abilities',
+                speciesId: Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0),
+            },
+        });
     } else if (BUTTON.dataset.abilityNode) {
         const [ABILITY_ID, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(':');
         const NODE_ID = KIND === 'root' ? 'root' : `${KIND}-${LEVEL}`;
@@ -1159,7 +1226,10 @@ DOLLAR('abilityNodes').onclick = (e) => {
             nodeId: NODE_ID,
         });
     }
-    setTimeout(drawAbilityTree, 180);
+    setTimeout(() => {
+        drawAbilityTree();
+        renderProgressionResetActions();
+    }, 180);
 };
 function focusableMenuButtons() {
     return [...DOLLAR('gameMenuPanel').querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter(

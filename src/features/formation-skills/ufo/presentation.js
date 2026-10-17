@@ -32,7 +32,9 @@ export class UfoPresentation extends FormationPresentation {
         if (CHARGING || (effect.age >= 0.5 && EXIT === 0)) {
             renderer.ellipse(P.x, P.y + S * 0.15, S * (0.1 + 0.05 * Math.sin(effect.age * 12)), S * 0.07, '#afffeb88');
         }
-        if (PULSE_AGE >= 0 && PULSE_AGE < 0.13 && effect.age > 0.5 && EXIT === 0) {
+        const BEAM_ACTIVE = effect.beamTarget === true && effect.age > 0.5 && EXIT === 0,
+            PULSE_ACTIVE = PULSE_AGE >= 0 && PULSE_AGE < 0.13;
+        if (BEAM_ACTIVE) {
             const POINTS = beamPointsFor(effect);
             POINTS[0][0] = effect.x;
             POINTS[0][1] = effect.y;
@@ -43,7 +45,9 @@ export class UfoPresentation extends FormationPresentation {
             stroke(renderer, POINTS, '#74f5db44', 0.33);
             stroke(renderer, POINTS, '#afffe6cc', 0.11);
             stroke(renderer, POINTS, '#f4fff3', 0.035);
-            renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, '#bfffd7aa', 0.04);
+            if (PULSE_ACTIVE) {
+                renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, '#bfffd7aa', 0.04);
+            }
         }
         C.globalAlpha = 1;
     }

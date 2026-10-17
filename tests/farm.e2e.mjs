@@ -858,9 +858,115 @@ async function formationBrowserUI() {
     }
     await openMenuTab(P, 'formation');
     assert.equal(await P.locator('[data-formation-equip="giant"]').isDisabled(), true);
+    const UFO_TRACE = await P.evaluate(async () => {
+        const [{ UfoSkill: UFO_SKILL }, { UfoPresentation: UFO_PRESENTATION }] = await Promise.all([
+                import('/src/features/formation-skills/ufo/model.js'),
+                import('/src/features/formation-skills/ufo/presentation.js'),
+            ]),
+            TARGET = { id: 7, x: 0, y: 0, z: 0, height: 2, giantUntil: 0, hp: 100, faction: 'enemy' };
+        let damageCount = 0,
+            strokeCount = 0,
+            ringCount = 0;
+        const OWNER = {
+                world: { boss: TARGET, time: 0 },
+                target: () => TARGET,
+                enemy: () => TARGET,
+                targetId: () => 'boss',
+                separateAir() {},
+                verticalTarget: () => TARGET,
+                damage() {
+                    damageCount++;
+                },
+            },
+            SKILL = new UFO_SKILL(),
+            EFFECT = {
+                age: 0.8,
+                duration: 5,
+                x: 0,
+                y: 0,
+                z: 2,
+                targetId: 'boss',
+                pulse: 1,
+                lastPulse: 0.7,
+                targetX: 0,
+                targetY: 0,
+                targetZ: 0,
+                beamTarget: false,
+                beamTargetZ: 0,
+            };
+        SKILL.update(OWNER, EFFECT, 0.01);
+        const CTX = {
+                globalAlpha: 1,
+                beginPath() {},
+                moveTo() {},
+                lineTo() {},
+                stroke() {
+                    strokeCount++;
+                },
+            },
+            RENDERER = {
+                ctx: CTX,
+                scale: 1,
+                pixelRatio: 1,
+                project: (x, y) => ({ x, y }),
+                ellipse() {},
+                ring() {
+                    ringCount++;
+                },
+            },
+            PRESENTATION = new UFO_PRESENTATION();
+        PRESENTATION.draw(RENDERER, { ...EFFECT, age: 0.95, lastPulse: 0.8, beamTarget: true });
+        const GAP_STROKES = strokeCount,
+            GAP_RINGS = ringCount;
+        PRESENTATION.draw(RENDERER, { ...EFFECT, age: 0.95, lastPulse: 0.8, beamTarget: false });
+        const NO_TARGET_STROKES = strokeCount;
+        const CADENCE_EFFECT = { ...EFFECT, age: 0.8, pulse: 1, lastPulse: 0.7 },
+            DAMAGE_BY_STEP = [];
+        for (let i = 0; i < 6; i++) {
+            SKILL.update(OWNER, CADENCE_EFFECT, 0.05);
+            DAMAGE_BY_STEP.push(damageCount);
+        }
+        const WORLD = BUDMORI.sim,
+            ORIGINAL_EFFECTS = WORLD.formationRuntime.effects,
+            CAPTURE_EFFECT = {
+                ...EFFECT,
+                id: 987654,
+                kind: 'ufo',
+                age: 0.95,
+                lastPulse: 0.8,
+                beamTarget: true,
+            };
+        WORLD.formationRuntime.effects = [CAPTURE_EFFECT];
+        let capturedBeamTarget;
+        try {
+            BUDMORI.runtime.capturePresentation('reset');
+            capturedBeamTarget = BUDMORI.runtime
+                .presentation(performance.now())
+                .formationEffects.find((effect) => effect.id === CAPTURE_EFFECT.id)?.beamTarget;
+        } finally {
+            WORLD.formationRuntime.effects = ORIGINAL_EFFECTS;
+            BUDMORI.runtime.capturePresentation('reset');
+        }
+        return {
+            beamTargetFound: EFFECT.beamTarget,
+            gapStrokes: GAP_STROKES,
+            gapRings: GAP_RINGS,
+            noTargetStrokes: NO_TARGET_STROKES,
+            damageByStep: DAMAGE_BY_STEP,
+            capturedBeamTarget,
+        };
+    });
+    assert.deepEqual(UFO_TRACE, {
+        beamTargetFound: true,
+        gapStrokes: 3,
+        gapRings: 0,
+        noTargetStrokes: 3,
+        damageByStep: [0, 1, 1, 1, 1, 2],
+        capturedBeamTarget: true,
+    });
     await C.close();
     CHECK(
-        'Formation UI: real purchase/upgrade/equip/slot commands, 390px layout, combat lock and all nine GPU effects',
+        'Formation UI and all nine effects; UFO beam stays visible between pulses, schema captures its target, and damage remains on the 0.2s pulse',
     );
 }
 async function upgradeMenuFlow() {
@@ -1058,6 +1164,133 @@ async function upgrades() {
     await upgradeMenuFlow();
     await formationHudFlow();
 }
+async function progressionResetFlow() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await openMenuTab(P, 'growth');
+    await P.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            STATE = WORLD.playerProgression;
+        STATE.level = 15;
+        STATE.availablePoints = 14;
+        STATE.farmUpgrades.food = 2;
+        STATE.farmUpgrades.capacity = 1;
+        STATE.availablePoints -= 3;
+        WORLD.markProgressChanged();
+    });
+    await P.locator('#menuTabAbilities').click();
+    await P.locator('#menuTabGrowth').click();
+    assert.equal(await P.locator('#progressionResetCurrent').isEnabled(), true);
+    const GROWTH_RESET_LABEL = await P.locator('#progressionResetCurrent').textContent();
+    assert(GROWTH_RESET_LABEL.includes('3P'), GROWTH_RESET_LABEL);
+    await P.locator('#progressionResetCurrent').click();
+    await P.waitForFunction(() => {
+        const STATE = BUDMORI.sim.playerProgression;
+        return STATE.farmUpgrades.food === 0 && STATE.farmUpgrades.capacity === 0 && STATE.availablePoints === 14;
+    });
+    await P.waitForFunction(() => document.querySelector('#progressionResetCurrent').disabled);
+    assert.equal(await P.locator('#progressionResetCurrent').isDisabled(), true);
+
+    await P.locator('#menuTabAbilities').click();
+    await P.locator('[data-ability-species="0"]').click();
+    const ABILITY_0 = await P.locator('[data-species="0"]').first().getAttribute('data-ability');
+    await P.locator('[data-ability-species="1"]').click();
+    const ABILITY_1 = await P.locator('[data-species="1"]').first().getAttribute('data-ability');
+    await P.evaluate(
+        ([id0, id1]) => {
+            const WORLD = BUDMORI.sim,
+                STATE = WORLD.playerProgression;
+            STATE.abilities[id0] = { rootUnlocked: true, powerLevel: 1, gradeLevel: 0 };
+            STATE.abilities[id1] = { rootUnlocked: true, powerLevel: 0, gradeLevel: 0 };
+            STATE.availablePoints -= 3;
+            WORLD.markProgressChanged();
+        },
+        [ABILITY_0, ABILITY_1],
+    );
+    await P.locator('[data-ability-species="0"]').click();
+    assert.equal(await P.locator('#progressionResetCurrent').isHidden(), true);
+    assert.equal(await P.locator('[data-ability-action="reset"]').getAttribute('aria-disabled'), 'false');
+    await P.locator('[data-ability-action="reset"]').click();
+    await P.waitForFunction(
+        ([id0, id1]) => {
+            const STATE = BUDMORI.sim.playerProgression;
+            return (
+                STATE.availablePoints === 13 &&
+                !STATE.abilities[id0].rootUnlocked &&
+                STATE.abilities[id0].powerLevel === 0 &&
+                STATE.abilities[id1].rootUnlocked
+            );
+        },
+        [ABILITY_0, ABILITY_1],
+    );
+
+    await P.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            STATE = WORLD.playerProgression;
+        STATE.farmUpgrades.growth = 1;
+        STATE.availablePoints -= 1;
+        STATE.formationSkills.slots = 3;
+        STATE.formationSkills.levels.giant = 2;
+        STATE.formationSkills.equipped = ['giant'];
+        STATE.availablePoints -= 4;
+        WORLD.markProgressChanged();
+    });
+    await P.locator('#menuTabFormation').click();
+    assert.equal(await P.locator('#progressionResetAll').isEnabled(), true);
+    assert((await P.locator('#progressionResetAll').textContent()).includes('6P'));
+    await P.locator('#progressionResetAll').click();
+    assert.equal(
+        await P.evaluate(() => BUDMORI.runtime.queue('progression-reset', { scope: { type: 'all' } })),
+        true,
+        'a repeated reset request is accepted by the queue but cannot refund the same investment twice',
+    );
+    await P.waitForFunction(() => {
+        const STATE = BUDMORI.sim.playerProgression;
+        return (
+            STATE.level === 15 &&
+            STATE.availablePoints === 14 &&
+            Object.values(STATE.farmUpgrades).every((level) => level === 0) &&
+            Object.values(STATE.abilities).every(
+                (ability) => !ability.rootUnlocked && ability.powerLevel === 0 && ability.gradeLevel === 0,
+            ) &&
+            STATE.formationSkills.slots === 1 &&
+            STATE.formationSkills.equipped.length === 0 &&
+            Object.values(STATE.formationSkills.levels).every((level) => level === 0)
+        );
+    });
+
+    await P.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            STATE = WORLD.playerProgression;
+        STATE.formationSkills.slots = 2;
+        STATE.formationSkills.levels.ufo = 2;
+        STATE.formationSkills.equipped = ['ufo'];
+        STATE.availablePoints -= 3;
+        WORLD.markProgressChanged();
+    });
+    await P.locator('#menuTabGrowth').click();
+    await P.locator('#menuTabFormation').click();
+    assert.equal(await P.locator('#progressionResetCurrent').isEnabled(), true);
+    assert((await P.locator('#progressionResetCurrent').textContent()).includes('3P'));
+    await P.locator('#progressionResetCurrent').click();
+    await P.waitForFunction(() => {
+        const STATE = BUDMORI.sim.playerProgression;
+        return (
+            STATE.availablePoints === 14 &&
+            STATE.formationSkills.slots === 1 &&
+            STATE.formationSkills.equipped.length === 0 &&
+            Object.values(STATE.formationSkills.levels).every((level) => level === 0)
+        );
+    });
+    await P.waitForFunction(() => document.querySelector('#progressionResetAll').disabled);
+    assert.equal(await P.locator('#progressionResetAll').isDisabled(), true);
+    await clean(P);
+    await C.close();
+    CHECK(
+        'Current growth, species, and formation resets refund only scoped investments; full reset restores all levels/slots/equipment and rejects duplicate refunds',
+    );
+}
 async function cadenceDiagnosticsFlow() {
     const C = await browser.newContext({
             viewport: { width: 390, height: 844 },
@@ -1117,6 +1350,27 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.counts.logicTicks.total <= Math.ceil((PERFORMANCE.windowMs / 1000) * 20) + 3);
     assert(PERFORMANCE.counts.physicsSteps.total >= PERFORMANCE.counts.logicTicks.total * 3);
     assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
+    assert.equal(
+        PERFORMANCE.counts.backlogDrops.total,
+        PERFORMANCE.counts.clockGapDrops.total + PERFORMANCE.counts.dropPolicyDrops.total,
+        'SDK drop events are counted once under their exact reason',
+    );
+    assert(
+        Math.abs(
+            PERFORMANCE.counts.backlogDroppedMs.total -
+                PERFORMANCE.counts.clockGapDroppedMs.total -
+                PERFORMANCE.counts.dropPolicyDroppedMs.total,
+        ) < 1e-6,
+        'SDK dropped time is not mixed with input clamp or overflow time',
+    );
+    assert(
+        Math.abs(
+            PERFORMANCE.counts.backlogClippedMs.total -
+                PERFORMANCE.counts.inputDtClampedMs.total -
+                PERFORMANCE.counts.backlogOverflowMs.total,
+        ) < 1e-6,
+        'input clamp and backlog overflow are each counted once',
+    );
     assert(PERFORMANCE.counts.drawCalls.total > 0 && PERFORMANCE.counts.bufferUploads.total > 0);
     assert(PERFORMANCE.stagesMs.render.max > 0 && PERFORMANCE.stagesMs.ai.total >= 0);
     assert(SUMMARY.split('\n').length <= 20);
@@ -3683,6 +3937,7 @@ try {
         {
             core,
             upgrades,
+            reset: progressionResetFlow,
             cadence: cadenceDiagnosticsFlow,
             formation: formationBrowserUI,
             save,

@@ -11,4 +11,11 @@ export class UfoSkill extends FlyingSkill {
         }
         effect.beamTargetZ = TARGET?.z ?? 0;
     }
+    update(owner, effect, dt) {
+        const ALIVE = super.update(owner, effect, dt),
+            TARGET = owner.verticalTarget(effect.x, effect.y);
+        effect.beamTarget = !!TARGET;
+        effect.beamTargetZ = TARGET?.z ?? 0;
+        return ALIVE;
+    }
 }
