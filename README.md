@@ -127,3 +127,7 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 시작에 한 번 읽은 compiled metadata와 native GameKit asset에서 모델·렌더가 같은 socket 계약을 사용합니다. 모델은 소환을 실제로 방출할 때만 별도 runtime player를 phase seek하여 애니메이션된 입을 읽습니다. 렌더의 소환도 동일 phase seek와 몸통 pose를 사용하며 이전 프레임의 crossfade나 피격 장식 변형에 의존하지 않습니다. 화면을 향한 보스 SVG의 가로축은 월드 x, 세로축은 기존 0.785 높이 투영으로 바꾸고 현재 보스 높이를 더합니다. 지면 기준은 애니메이션된 ground socket으로 흔들지 않습니다.
 
 asset/player는 세션 runtime에만 보관하고 저장에 넣지 않습니다. 저장 복원은 기존 패턴 phase·elapsed·released로 다음 방출 좌표를 다시 계산합니다. 소환 간격·개수·전투 스탯과 저장 schema는 그대로입니다.
+
+## 코드 규약 확인
+
+[코드 규약](docs/code-conventions.md)을 따릅니다. `npm run format`은 직접 작성한 소스·스크립트·기존 E2E·문서의 포맷을 적용하고, `npm run format:check`와 `npm run lint`는 파일을 고치지 않고 위반을 검사합니다. `npm run build`는 두 검사를 통과해야 기존 시작 검증·SVG 검증·번들을 생성합니다. vendor와 생성된 `src/game.js`는 직접 포맷하지 않습니다. 이 내부 이름·포맷 정리는 제품·저장 계약을 바꾸지 않아 버전 `0.8.0`을 유지합니다.

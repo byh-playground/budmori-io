@@ -1,25 +1,25 @@
 {
-  "schemaVersion": 1,
-  "bosses": [
-    { "id": "chestnut", "file": "assets/bosses/chestnut.svg", "qualityPreset": "standard" },
-    { "id": "species-0", "file": "assets/troops/pea.svg", "qualityPreset": "standard" },
-    { "id": "species-1", "file": "assets/troops/corn-kernel.svg", "qualityPreset": "standard" },
-    { "id": "species-2", "file": "assets/troops/kidney-bean.svg", "qualityPreset": "standard" },
-    { "id": "species-4", "file": "assets/troops/peanut.svg", "qualityPreset": "standard" },
-    { "id": "species-5", "file": "assets/troops/walnut.svg", "qualityPreset": "standard" },
-    { "id": "species-6", "file": "assets/troops/rice.svg", "qualityPreset": "standard" },
-    { "id": "species-7", "file": "assets/troops/wheat.svg", "qualityPreset": "standard" },
-    { "id": "species-8", "file": "assets/troops/barley.svg", "qualityPreset": "standard" }
-  ],
-  "assets": [
-    { "species": 0, "file": "assets/troops/pea.svg", "qualityPreset": "smallAsset" },
-    { "species": 1, "file": "assets/troops/corn-kernel.svg", "qualityPreset": "smallAsset" },
-    { "species": 2, "file": "assets/troops/kidney-bean.svg", "qualityPreset": "smallAsset" },
-    { "species": 3, "file": "assets/troops/chestnut.svg", "qualityPreset": "smallAsset" },
-    { "species": 4, "file": "assets/troops/peanut.svg", "qualityPreset": "smallAsset" },
-    { "species": 5, "file": "assets/troops/walnut.svg", "qualityPreset": "smallAsset" },
-    { "species": 6, "file": "assets/troops/rice.svg", "qualityPreset": "smallAsset" },
-    { "species": 7, "file": "assets/troops/wheat.svg", "qualityPreset": "smallAsset" },
-    { "species": 8, "file": "assets/troops/barley.svg", "qualityPreset": "smallAsset" }
-  ]
+    "schemaVersion": 1,
+    "bosses": [
+        { "id": "chestnut", "file": "assets/bosses/chestnut.svg", "qualityPreset": "standard" },
+        { "id": "species-0", "file": "assets/troops/pea.svg", "qualityPreset": "standard" },
+        { "id": "species-1", "file": "assets/troops/corn-kernel.svg", "qualityPreset": "standard" },
+        { "id": "species-2", "file": "assets/troops/kidney-bean.svg", "qualityPreset": "standard" },
+        { "id": "species-4", "file": "assets/troops/peanut.svg", "qualityPreset": "standard" },
+        { "id": "species-5", "file": "assets/troops/walnut.svg", "qualityPreset": "standard" },
+        { "id": "species-6", "file": "assets/troops/rice.svg", "qualityPreset": "standard" },
+        { "id": "species-7", "file": "assets/troops/wheat.svg", "qualityPreset": "standard" },
+        { "id": "species-8", "file": "assets/troops/barley.svg", "qualityPreset": "standard" }
+    ],
+    "assets": [
+        { "species": 0, "file": "assets/troops/pea.svg", "qualityPreset": "smallAsset" },
+        { "species": 1, "file": "assets/troops/corn-kernel.svg", "qualityPreset": "smallAsset" },
+        { "species": 2, "file": "assets/troops/kidney-bean.svg", "qualityPreset": "smallAsset" },
+        { "species": 3, "file": "assets/troops/chestnut.svg", "qualityPreset": "smallAsset" },
+        { "species": 4, "file": "assets/troops/peanut.svg", "qualityPreset": "smallAsset" },
+        { "species": 5, "file": "assets/troops/walnut.svg", "qualityPreset": "smallAsset" },
+        { "species": 6, "file": "assets/troops/rice.svg", "qualityPreset": "smallAsset" },
+        { "species": 7, "file": "assets/troops/wheat.svg", "qualityPreset": "smallAsset" },
+        { "species": 8, "file": "assets/troops/barley.svg", "qualityPreset": "smallAsset" }
+    ]
 }

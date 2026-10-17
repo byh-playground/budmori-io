@@ -1,51 +1,61 @@
-import {BOSS_REWARD_SETTINGS, bossStageStats, chooseBossSpecies} from './boss-rewards.js';
-
-const clampUint32 = value => Number.isSafeInteger(value) ? value >>> 0 : 0;
-
+import { BOSS_REWARD_SETTINGS, bossStageStats, chooseBossSpecies } from './boss-rewards.js';
+const CLAMP_UINT32 = (value) => (Number.isSafeInteger(value) ? value >>> 0 : 0);
 export function createFarmBossProgress(seed = 731) {
-  return {
-    currentStage: 1,
-    encounterSeed: (clampUint32(seed) ^ 0xa341316c) >>> 0,
-    encounterEpoch: 0,
-    nextSelectionId: 1,
-    selections: []
-  };
+    return {
+        currentStage: 1,
+        encounterSeed: (CLAMP_UINT32(seed) ^ 0xa341316c) >>> 0,
+        encounterEpoch: 0,
+        nextSelectionId: 1,
+        selections: [],
+    };
 }
-
 function selectionRandom(seed, selectionId, stage, encounterEpoch = 0) {
-  const epochSalt = Math.imul(encounterEpoch >>> 0, 0x27d4eb2d);
-  let state = (seed ^ Math.imul(selectionId, 0x9e3779b9) ^ Math.imul(stage, 0x85ebca6b) ^ epochSalt) >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let value = state;
-    value = Math.imul(value ^ value >>> 15, value | 1);
-    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
-    return ((value ^ value >>> 14) >>> 0) / 4294967296;
-  };
+    const EPOCH_SALT = Math.imul(encounterEpoch >>> 0, 0x27d4eb2d);
+    let state = (seed ^ Math.imul(selectionId, 0x9e3779b9) ^ Math.imul(stage, 0x85ebca6b) ^ EPOCH_SALT) >>> 0;
+    return () => {
+        state = (state + 0x6d2b79f5) >>> 0;
+        let value = state;
+        value = Math.imul(value ^ (value >>> 15), value | 1);
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
 }
-
 export function advanceFarmBossEncounterEpoch(progress) {
-  if (!progress || typeof progress !== 'object' || Array.isArray(progress) ||
-      !Number.isSafeInteger(progress.encounterEpoch ?? 0) || (progress.encounterEpoch ?? 0) < 0 ||
-      (progress.encounterEpoch ?? 0) >= 1e12 || !Array.isArray(progress.selections)) {
-    throw new TypeError('Farm boss encounter progress is invalid');
-  }
-  progress.encounterEpoch = (progress.encounterEpoch ?? 0) + 1;
-  progress.selections = [];
-  return progress.encounterEpoch;
+    if (
+        !progress ||
+        typeof progress !== 'object' ||
+        Array.isArray(progress) ||
+        !Number.isSafeInteger(progress.encounterEpoch ?? 0) ||
+        (progress.encounterEpoch ?? 0) < 0 ||
+        (progress.encounterEpoch ?? 0) >= 1e12 ||
+        !Array.isArray(progress.selections)
+    ) {
+        throw new TypeError('Farm boss encounter progress is invalid');
+    }
+    progress.encounterEpoch = (progress.encounterEpoch ?? 0) + 1;
+    progress.selections = [];
+    return progress.encounterEpoch;
 }
-
 export function selectFarmBossStage(progress, stage) {
-  if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError('Boss stage is outside the supported range');
-  let selection = progress.selections.find(entry => entry.stage === stage);
-  if (!selection) {
-    const selectionId = progress.nextSelectionId;
-    const random = selectionRandom(progress.encounterSeed, selectionId, stage, progress.encounterEpoch ?? 0);
-    selection = {stage, species:chooseBossSpecies(random), selectionId};
-    progress.selections.push(selection);
-    progress.nextSelectionId += 1;
-  }
-  progress.currentStage = stage;
-  const stats = bossStageStats(stage);
-  return {...selection, ...stats};
+    if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
+        throw new RangeError('Boss stage is outside the supported range');
+    }
+    let selection = progress.selections.find((entry) => entry.stage === stage);
+    if (!selection) {
+        const SELECTION_ID = progress.nextSelectionId;
+        const RANDOM = selectionRandom(progress.encounterSeed, SELECTION_ID, stage, progress.encounterEpoch ?? 0);
+        selection = {
+            stage,
+            species: chooseBossSpecies(RANDOM),
+            selectionId: SELECTION_ID,
+        };
+        progress.selections.push(selection);
+        progress.nextSelectionId += 1;
+    }
+    progress.currentStage = stage;
+    const STATS = bossStageStats(stage);
+    return {
+        ...selection,
+        ...STATS,
+    };
 }

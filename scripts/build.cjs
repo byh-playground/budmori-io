@@ -1,49 +1,112 @@
 'use strict';
-const path=require('node:path'),{buildSync}=require('esbuild');
-const root=path.resolve(__dirname,'..');
-async function verifyStartupPresentation(){
-  const assert=require('node:assert/strict'),{pathToFileURL}=require('node:url');
-  const load=file=>import(pathToFileURL(path.join(root,file)).href);
-  // Use the real pinned runtime and application models: bundling alone cannot
-  // detect a removed simulation method still called by a presentation adapter.
-  for(const [name,file] of [['BloomGamekitDeterministic','deterministic'],['BloomGamekitInterpolation','interpolation'],['BloomGamekitSimloop','simloop']])globalThis[name]=await load(`vendor/upstream/${file}.js`);
-  const {Garden}=await load('src/farm-model.js'),{FarmSession}=await load('src/farm-session.js');
-  const {SPECIES_CATALOG}=await load('src/species-catalog.js'),{scaleAttackRecovery}=await load('src/unit-stats.js');
-  const starter=new FarmSession();
-  try{
-    const view=starter.presentation(performance.now());
-    assert.equal(view.units.length,2,'default FarmSession captures both starter peas');
-    assert(view.units.every(unit=>unit.species===0&&unit.walnutGuarding===false));
-  }finally{starter.dispose()}
-  const world=new Garden(),units=SPECIES_CATALOG.map(({id})=>world.spawn(id,3,0,0)),session=new FarmSession(world);
-  try{
-    const view=session.presentation(performance.now());
-    for(const unit of units){
-      const rendered=view.units.find(item=>item.id===unit.id);
-      assert(rendered&&rendered.species===unit.species&&rendered.walnutGuarding===false,`species ${unit.species} has an initial presentation`);
+
+const PATH = require('node:path'),
+    { buildSync: BUILD_SYNC } = require('esbuild');
+const ROOT = PATH.resolve(__dirname, '..');
+async function verifyStartupPresentation() {
+    const ASSERT = require('node:assert/strict'),
+        { pathToFileURL: PATH_TO_FILE_URL } = require('node:url');
+    const LOAD = (file) => import(PATH_TO_FILE_URL(PATH.join(ROOT, file)).href);
+    // Use the real pinned runtime and application models: bundling alone cannot
+    // detect a removed simulation method still called by a presentation adapter.
+    for (const [NAME, FILE] of [
+        ['BloomGamekitDeterministic', 'deterministic'],
+        ['BloomGamekitInterpolation', 'interpolation'],
+        ['BloomGamekitSimloop', 'simloop'],
+    ]) {
+        globalThis[NAME] = await LOAD(`vendor/upstream/${FILE}.js`);
     }
-    const walnut=units.find(unit=>typeof unit.ability.guardConfig==='function'),cycle=walnut.ability;
-    const sampleGuard=()=>{
-      assert(session.capturePresentation('reset'));
-      return session.presentation(performance.now()).units.find(unit=>unit.id===walnut.id).walnutGuarding;
+    const { Garden: GARDEN } = await LOAD('src/farm-model.js'),
+        { FarmSession: FARM_SESSION } = await LOAD('src/farm-session.js');
+    const { SPECIES_CATALOG } = await LOAD('src/species-catalog.js'),
+        { scaleAttackRecovery: SCALE_ATTACK_RECOVERY } = await LOAD('src/unit-stats.js');
+    const STARTER = new FARM_SESSION();
+    try {
+        const VIEW = STARTER.presentation(performance.now());
+        ASSERT.equal(VIEW.units.length, 2, 'default FarmSession captures both starter peas');
+        ASSERT(VIEW.units.every((unit) => unit.species === 0 && unit.walnutGuarding === false));
+    } finally {
+        STARTER.dispose();
+    }
+    const WORLD = new GARDEN(),
+        UNITS = SPECIES_CATALOG.map(({ id }) => WORLD.spawn(id, 3, 0, 0)),
+        SESSION = new FARM_SESSION(WORLD);
+    try {
+        const VIEW = SESSION.presentation(performance.now());
+        for (const UNIT of UNITS) {
+            const RENDERED = VIEW.units.find((item) => item.id === UNIT.id);
+            ASSERT(
+                RENDERED && RENDERED.species === UNIT.species && RENDERED.walnutGuarding === false,
+                `species ${UNIT.species} has an initial presentation`,
+            );
+        }
+        const WALNUT = UNITS.find((unit) => typeof unit.ability.guardConfig === 'function'),
+            CYCLE = WALNUT.ability;
+        const SAMPLE_GUARD = () => {
+            ASSERT(SESSION.capturePresentation('reset'));
+            return SESSION.presentation(performance.now()).units.find((unit) => unit.id === WALNUT.id).walnutGuarding;
+        };
+        WORLD.playerProgression.abilities['walnut-guard-slam'].rootUnlocked = true;
+        ASSERT(
+            CYCLE.begin(WORLD, {
+                id: 'boss',
+                x: WORLD.boss.x,
+                y: WORLD.boss.y,
+            }),
+        );
+        CYCLE.recover(WORLD);
+        ASSERT.equal(SAMPLE_GUARD(), false, 'early recovery is not guarding');
+        CYCLE.update(WORLD, SCALE_ATTACK_RECOVERY(CYCLE.spec.timing.recovery, WALNUT) * 0.75);
+        const ACTION_BEFORE = JSON.stringify(CYCLE.action),
+            NOTICES_BEFORE = WORLD.notices.length;
+        ASSERT.equal(SAMPLE_GUARD(), true, 'late recovery presents the active guard');
+        ASSERT.equal(SAMPLE_GUARD(), true, 'repeated presentation does not consume the guard');
+        ASSERT.equal(JSON.stringify(CYCLE.action), ACTION_BEFORE);
+        ASSERT.equal(WALNUT.walnutEmpoweredNextBasic, false);
+        ASSERT.equal(WORLD.notices.length, NOTICES_BEFORE);
+        ASSERT(CYCLE.receiveGuard(WORLD));
+        ASSERT.equal(SAMPLE_GUARD(), false, 'consumed guard is no longer presented');
+        CYCLE.ready();
+        ASSERT.equal(SAMPLE_GUARD(), false, 'idle cycle is not guarding');
+    } finally {
+        SESSION.dispose();
+    }
+    return {
+        starterUnits: 2,
+        species: SPECIES_CATALOG.length,
+        walnutGuard: 'active, read-only, consumed and idle checked',
     };
-    world.playerProgression.abilities['walnut-guard-slam'].rootUnlocked=true;
-    assert(cycle.begin(world,{id:'boss',x:world.boss.x,y:world.boss.y}));cycle.recover(world);
-    assert.equal(sampleGuard(),false,'early recovery is not guarding');
-    cycle.update(world,scaleAttackRecovery(cycle.spec.timing.recovery,walnut)*.75);
-    const actionBefore=JSON.stringify(cycle.action),noticesBefore=world.notices.length;
-    assert.equal(sampleGuard(),true,'late recovery presents the active guard');
-    assert.equal(sampleGuard(),true,'repeated presentation does not consume the guard');
-    assert.equal(JSON.stringify(cycle.action),actionBefore);assert.equal(walnut.walnutEmpoweredNextBasic,false);assert.equal(world.notices.length,noticesBefore);
-    assert(cycle.receiveGuard(world));assert.equal(sampleGuard(),false,'consumed guard is no longer presented');
-    cycle.ready();assert.equal(sampleGuard(),false,'idle cycle is not guarding');
-  }finally{session.dispose()}
-  return{starterUnits:2,species:SPECIES_CATALOG.length,walnutGuard:'active, read-only, consumed and idle checked'};
 }
-(async()=>{
-  const {validateVectorSources}=require('./vector-sources.cjs');
-  const vectorAssets=validateVectorSources(root);
-  const startupPresentation=await verifyStartupPresentation();
-  buildSync({entryPoints:[path.join(root,'src/farm-app.js')],outfile:path.join(root,'src/game.js'),bundle:true,format:'iife',target:'es2022',charset:'utf8',legalComments:'inline'});
-  console.log(JSON.stringify({startupPresentation,vectorAssets,...require('./update-runtime-manifest.cjs').prepareRuntime(root)},null,2));
-})().catch(error=>{console.error(error.stack||error);process.exitCode=1});
+(async () => {
+    const { validateVectorSources: VALIDATE_VECTOR_SOURCES } = require('./vector-sources.cjs');
+    const { validateVectorArtifacts: VALIDATE_VECTOR_ARTIFACTS } = require('./vector-artifacts.cjs');
+    VALIDATE_VECTOR_ARTIFACTS(ROOT);
+    const VECTOR_ASSETS = VALIDATE_VECTOR_SOURCES(ROOT);
+    const STARTUP_PRESENTATION = await verifyStartupPresentation();
+    BUILD_SYNC({
+        entryPoints: [PATH.join(ROOT, 'src/farm-app.js')],
+        outfile: PATH.join(ROOT, 'src/game.js'),
+        bundle: true,
+        format: 'iife',
+        target: 'es2022',
+        charset: 'utf8',
+        legalComments: 'inline',
+    });
+    const RUNTIME = require('./update-runtime-manifest.cjs').prepareRuntime(ROOT);
+    const VECTOR_ARTIFACTS = VALIDATE_VECTOR_ARTIFACTS(ROOT);
+    console.log(
+        JSON.stringify(
+            {
+                startupPresentation: STARTUP_PRESENTATION,
+                vectorAssets: VECTOR_ASSETS,
+                vectorArtifacts: VECTOR_ARTIFACTS,
+                ...RUNTIME,
+            },
+            null,
+            2,
+        ),
+    );
+})().catch((error) => {
+    console.error(error.stack || error);
+    process.exitCode = 1;
+});

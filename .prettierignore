@@ -1,0 +1,7 @@
+node_modules/
+vendor/
+src/game.js
+src/vector-assets.generated.js
+tests/output/
+assets/
+package-lock.json
