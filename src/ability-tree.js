@@ -1,4 +1,5 @@
 import { SPECIES_ABILITY_DEFINITIONS } from "./ability-catalog.js";
+import { SPECIES_CATALOG, speciesById } from "./species-catalog.js";
 import { createAbilityProgressionState, isValidAbilityProgressionState } from "./ability-state.js";
 import { abilityProfile } from "./unit-abilities.js";
 import { experienceForNextLevel, formatXpForDisplay, isValidPlayerProgressionState } from "./player-progression.js";
@@ -9,7 +10,6 @@ export { ABILITY_TREE_SCHEMA_VERSION, createAbilityProgressionState, isValidAbil
 export const SHARED_ABILITY_POINT_COST = 1;
 
 const definitionById = new Map(SPECIES_ABILITY_DEFINITIONS.map(definition => [definition.id, definition]));
-const speciesNames = new Map([[0, "완두콩"], [1, "옥수수"], [2, "팥"], [3, "밤톨"], [6, "쌀"], [7, "밀"], [8, "보리"]]);
 
 export function abilityStateFor(state, abilityId) {
   if (!definitionById.has(abilityId) || !state?.abilities?.[abilityId]) return null;
@@ -152,6 +152,10 @@ export function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
   return { purchased: false, ready: result.allowed, reason: result.reason };
 }
 
+export function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
+  return SPECIES_CATALOG.map(species => `<button type="button" data-ability-species="${species.id}" aria-pressed="${species.id === selectedSpecies}">${species.name}</button>`).join("");
+}
+
 export function renderAbilityTreeMarkup(state, {
   highestSpeciesTier = {},
   location = "farm",
@@ -165,7 +169,8 @@ export function renderAbilityTreeMarkup(state, {
   const visibleDefinitions = Number.isInteger(selectedSpecies)
     ? SPECIES_ABILITY_DEFINITIONS.filter(definition => definition.species === selectedSpecies)
     : SPECIES_ABILITY_DEFINITIONS;
-  const cards = visibleDefinitions.map(definition => renderAbilityCard(state, definition, context)).join("");
+  const cards = visibleDefinitions.map(definition => renderAbilityCard(state, definition, context)).join("") ||
+    `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
   const levelMarkup = renderPlayerProgressMarkup(state);
   return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
@@ -244,7 +249,7 @@ function renderAbilityCard(state, definition, context) {
   }).join("");
   const minimumTier = getMinimumApplicableTier(state, definition.id);
   const rootStatus = getAbilityNodeStatus(state, definition, "root", context);
-  const speciesName = speciesNames.get(definition.species) || `종 ${definition.species}`;
+  const speciesName = speciesById(definition.species).name;
   return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
     <header class="ability-card__header"><div><p class="ability-card__species">${speciesName}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${investment.rootUnlocked ? `최소 T${minimumTier}` : "Rare · T3 해금"}</span></header>
     <p class="ability-card__description">${definition.description}</p>

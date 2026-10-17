@@ -42,13 +42,19 @@
   function speciesById(id) {
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
   }
+  function giantSpeciesName(id) {
+    return `거대 ${speciesById(id).name}`;
+  }
+  function speciesRewardName(id) {
+    return `${speciesById(id).name} 종`;
+  }
   var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
   var init_species_catalog = __esm({
     "src/species-catalog.js"() {
       SPECIES_CATALOG = Object.freeze([
         Object.freeze({ id: 0, name: "콩", asset: "pea.svg", bossWeight: 1 }),
         Object.freeze({ id: 1, name: "옥수수", asset: "corn-kernel.svg", bossWeight: 1 }),
-        Object.freeze({ id: 2, name: "강낭콩", asset: "kidney-bean.svg", bossWeight: 1 }),
+        Object.freeze({ id: 2, name: "팥", asset: "kidney-bean.svg", bossWeight: 1 }),
         Object.freeze({ id: 3, name: "밤톨", asset: "chestnut.svg", bossWeight: 1 }),
         Object.freeze({ id: 4, name: "땅콩", asset: "peanut.svg", bossWeight: 1 }),
         Object.freeze({ id: 5, name: "호두", asset: "walnut.svg", bossWeight: 1 }),
@@ -856,6 +862,9 @@
     const result = canPurchaseAbilityNode(state, definition.id, nodeId, context);
     return { purchased: false, ready: result.allowed, reason: result.reason };
   }
+  function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
+    return SPECIES_CATALOG.map((species) => `<button type="button" data-ability-species="${species.id}" aria-pressed="${species.id === selectedSpecies}">${species.name}</button>`).join("");
+  }
   function renderAbilityTreeMarkup(state, {
     highestSpeciesTier = {},
     location: location2 = "farm",
@@ -867,7 +876,7 @@
     const context = { highestSpeciesTier, location: location2, inCombat };
     const resetCheck = canResetAbilityProgression(state, context);
     const visibleDefinitions = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
-    const cards = visibleDefinitions.map((definition) => renderAbilityCard(state, definition, context)).join("");
+    const cards = visibleDefinitions.map((definition) => renderAbilityCard(state, definition, context)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
     const levelMarkup = renderPlayerProgressMarkup(state);
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
@@ -908,7 +917,7 @@
     }).join("");
     const minimumTier = getMinimumApplicableTier(state, definition.id);
     const rootStatus = getAbilityNodeStatus(state, definition, "root", context);
-    const speciesName = speciesNames.get(definition.species) || `종 ${definition.species}`;
+    const speciesName = speciesById(definition.species).name;
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
     <header class="ability-card__header"><div><p class="ability-card__species">${speciesName}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${investment.rootUnlocked ? `최소 T${minimumTier}` : "Rare · T3 해금"}</span></header>
     <p class="ability-card__description">${definition.description}</p>
@@ -1032,10 +1041,11 @@
       abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }]))
     };
   }
-  var SHARED_ABILITY_POINT_COST, definitionById, speciesNames;
+  var SHARED_ABILITY_POINT_COST, definitionById;
   var init_ability_tree = __esm({
     "src/ability-tree.js"() {
       init_ability_catalog();
+      init_species_catalog();
       init_ability_state();
       init_unit_abilities();
       init_player_progression();
@@ -1043,7 +1053,6 @@
       init_ability_state();
       SHARED_ABILITY_POINT_COST = 1;
       definitionById = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
-      speciesNames = /* @__PURE__ */ new Map([[0, "완두콩"], [1, "옥수수"], [2, "팥"], [3, "밤톨"], [6, "쌀"], [7, "밀"], [8, "보리"]]);
     }
   });
 
@@ -2284,7 +2293,7 @@
           this.effects.push({ kind: "landing-shockwave", x: unit.x, y: unit.y, z: 0, life: 0, duration: 0.55, radius: range, owner: unit.id });
           if (this.boss.hp > 0 && distance <= range + this.boss.radius) {
             const blast = { id: action.id, hit: false, attackKind: "kidney-shockwave" };
-            this.damageBoss(unit, blast, point, { attackMultiplier: config.damageMultiplier, attackKind: "kidney-shockwave" });
+            this.damageBoss(unit, blast, point, { attackMultiplier: config.damageMultiplier, attackKind: "kidney-shockwave", area: true });
           }
           this.combat("kidney-shockwave", { unit: unit.id, ownerId: unit.ownerId, species: 2, x: unit.x, y: unit.y, radius: range, damageMultiplier: config.damageMultiplier });
         }
@@ -3163,7 +3172,7 @@
           return Math.max(0, Math.min(1, strongest));
         }
         riceHarvestMultiplier(u, target, kind, hpBefore = target?.hp, maxHp = target?.maxHp) {
-          if (kind !== abilityProfile(u.species).kind) return 1;
+          if (u.species !== 6 || kind !== abilityProfile(u.species).kind) return 1;
           const progression = this.abilityProgressionFor(u);
           return getRiceHarvestMultiplier(progression, u.tier, hpBefore, maxHp);
         }
@@ -3178,7 +3187,7 @@
             if (config) refreshBarleyArmorBreak(target, config, this.time, resolveStatusDuration(config.durationSeconds, u, target));
           }
         }
-        damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null, strikeIndex = null } = {}) {
+        damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null, strikeIndex = null, area = false } = {}) {
           if (!hasFaction(u, FACTION_CONFIG.PLAYER) || !areOpposingFactions(u, this.boss) || action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
@@ -3190,7 +3199,7 @@
           const harvestMultiplier = this.riceHarvestMultiplier(u, this.boss, kind, hpBefore, maxHp);
           const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier;
           const sourceStatOverrides = { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) };
-          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, sourceStatOverrides, armorForTarget: () => armor, roll: () => this.random() });
+          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, area, sourceStatOverrides, armorForTarget: () => armor, roll: () => this.random() });
           this.applyGrainOnBasicHit(u, this.boss, kind);
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
@@ -3202,14 +3211,14 @@
           if (action?.targetId === "boss" || !action?.targetId) return areOpposingFactions(unit, this.boss) ? this.boss : null;
           return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0 && areOpposingFactions(unit, candidate)) || null;
         }
-        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null } = {}) {
+        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false } = {}) {
           if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier, kind = attackKind || spec.kind;
           const targetMaxHp = stats(target.tier, target.species).maxHp, harvestMultiplier = this.riceHarvestMultiplier(u, target, kind, target.hp, targetMaxHp);
           const baselineArmor = stats(target.tier, target.species).armor, armor = effectiveBarleyArmor(target, baselineArmor, this.time);
           const sourceStatOverrides = { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) };
-          const damage = applyDamageToTargets(u, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier, sourceKind: "enemy", sourceStatOverrides, armorForTarget: () => armor });
+          const damage = applyDamageToTargets(u, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier, area, sourceKind: hasFaction(u, FACTION_CONFIG.PLAYER) ? "direct" : "enemy", sourceStatOverrides, armorForTarget: () => armor });
           this._syncUnitAliveCount(target);
           this.applyGrainOnBasicHit(u, target, kind);
           const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
@@ -3246,7 +3255,7 @@
             for (const target of this.units) if (target.hp > 0 && areOpposingFactions(owner, target) && !current.damagedTargetIds.includes(target.id) && Math.hypot(current.x - target.x, current.y - target.y) <= range + target.radius) targets.push(target);
             for (const target of targets) {
               const action = { id: current.id, hit: false, attackKind: "corn-popcorn-explosion" };
-              const applied = target === this.boss ? this.damageBoss(owner, action, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind }) : this.damageUnitTarget(owner, action, target, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind });
+              const applied = target === this.boss ? this.damageBoss(owner, action, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind, area: true }) : this.damageUnitTarget(owner, action, target, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind, area: true });
               if (applied) current.damagedTargetIds.push(target === this.boss ? "boss" : target.id);
             }
             for (const other of this.projectiles) {
@@ -3801,7 +3810,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.19";
+      PRODUCT_VERSION = "0.7.20";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -6391,6 +6400,7 @@
   init_species_catalog();
   var $2 = (id) => document.getElementById(id);
   var storage = new FarmStorage();
+  $2("abilitySpeciesTabs").innerHTML = renderAbilitySpeciesTabsMarkup();
   var observedWorld = null;
   var imported = null;
   var importedLegacy = false;
@@ -6561,11 +6571,11 @@
     const progress = personalGarden.farmBossProgress, wasSelected = progress.selections.some((entry) => entry.stage === stage), previousStage = progress.currentStage;
     const selection = selectFarmBossStage(progress, stage);
     if (!wasSelected || previousStage !== stage) saveImmediate(personalGarden);
-    const species = selection.species, catalogEntry = speciesById(species), name = catalogEntry.name, rolls = selection.rolls;
+    const species = selection.species, catalogEntry = speciesById(species), rewardName = speciesRewardName(species), encounterName = giantSpeciesName(species), rolls = selection.rolls;
     $2("bossStageCounter").textContent = `${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
     $2("bossStageLabel").textContent = `STAGE ${selection.stage}`;
-    renderNeutralBossPreview($2("bossPreview"), species, catalogEntry.asset, `${name} 보스 미리보기`);
-    $2("bossStageName").textContent = `${name} 보스`;
+    renderNeutralBossPreview($2("bossPreview"), species, catalogEntry.asset, `${encounterName} 미리보기`);
+    $2("bossStageName").textContent = encounterName;
     $2("bossStageHp").textContent = `HP ${Math.round(selection.hp).toLocaleString("ko-KR")}`;
     $2("bossStageAttack").textContent = `공격력 ${Number(selection.attackPower.toPrecision(3)).toLocaleString("ko-KR")}`;
     $2("bossStageXp").textContent = `+${selection.xp.toLocaleString("ko-KR")} XP`;
@@ -6575,13 +6585,13 @@
       const icon = document.createElement("img");
       icon.draggable = false;
       const label = document.createElement("span"), title = document.createElement("strong"), details = document.createElement("small");
-      title.textContent = `${name} 보스 종`;
+      title.textContent = rewardName;
       details.textContent = `${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리`;
       label.append(title, details);
       $2("bossStageDrop").append(icon, label);
       renderNeutralBossPreview(icon, species, catalogEntry.asset);
       $2("bossStageNotice").textContent = "";
-    } else $2("bossStageNotice").textContent = "보스 종 보상은 없어요 · 5스테이지부터 1회 추첨";
+    } else $2("bossStageNotice").textContent = "종 보상은 없어요 · 5스테이지부터 1회 추첨";
     $2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.units) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null;
     $2("bossEncounterChallenge").title = $2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요." : "";
     return selection;
@@ -7134,7 +7144,7 @@
     const stage = w.boss.stage || 0;
     if (stage) {
       const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: own?.troops.length || 0, originalUnitsDeployed: deployed }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
-      syncText("raidRewardChance", stageReward.rolls ? `보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "보스 종 추첨 없음");
+      syncText("raidRewardChance", stageReward.rolls ? `${speciesRewardName(w.boss.species)} · ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "종 추첨 없음");
     } else syncText("raidRewardChance", "");
   }
   function deployAt(p) {
@@ -7266,7 +7276,7 @@
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
-    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingRewardCount = rewardWorld.bossRewardReceipts.some((reward) => reward.status === "pending");
+    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingReward = rewardWorld.bossRewardReceipts.find((reward) => reward.status === "pending");
     syncAttribute("farm", "aria-pressed", !raid && !bossEncounterOpen);
     syncAttribute("raid", "aria-pressed", raid || bossEncounterOpen);
     syncAttribute("breed", "aria-pressed", w.mode === "breed");
@@ -7290,18 +7300,20 @@
     syncFlag("bossbar", "hidden", !battleHud || home);
     syncText("count", raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.cap);
-    syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingRewardCount ? "밤톨 보상 대기 · 공간이 생기면 합류해요" : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
+    syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingReward ? `${speciesRewardName(pendingReward.species)} 보상 대기 · 공간이 생기면 합류해요` : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText("allyHealthText", Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존");
-    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", speciesName = speciesById(boss.species).name;
+    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", rewardName = speciesRewardName(boss.species), encounterName = giantSpeciesName(boss.species);
+    syncText("bossName", encounterName);
+    syncAttribute("bossHealth", "aria-label", `${encounterName} 체력`);
     syncText("bossHealthText", Math.ceil(boss.hp) + " / " + boss.maxHp + " HP");
-    syncText("bossHealthNote", farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP");
+    syncText("bossHealthNote", farmEventActive ? "상대 능력치 고정" : "전사자 포함 최대 HP");
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
     syncAttribute("allyHealth", "aria-valuemax", armyMax);
     syncAttribute("bossHealth", "aria-valuenow", boss.hp);
     syncAttribute("bossHealth", "aria-valuemax", boss.maxHp);
     syncWidth("bossHealth", boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%");
-    syncText("battleOutcome", raid ? battleOutcome === "victory" ? `${stageName} 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · 보스 종 ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 보스 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 보스 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "");
+    syncText("battleOutcome", raid ? battleOutcome === "victory" ? `${stageName} · ${encounterName} · 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · ${rewardName} ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} · ${encounterName} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `${encounterName} 격파 · ${rewardName} 획득 · 정원에 합류했어요` : farmEvent.rewardStatus === "pending" ? `${encounterName} 격파 · ${rewardName} 획득 대기 · 공간이 생기면 합류해요` : `${encounterName} 격파` : battleOutcome === "defeat" ? `${encounterName} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요` : "");
     syncFlag("battleOutcome", "hidden", home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle");
     syncText("speed", active.speed + "×");
     syncFlag("bossEncounterChallenge", "disabled", !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null);

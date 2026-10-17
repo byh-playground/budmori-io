@@ -424,7 +424,7 @@ const AttackingBody=Base=>class extends Base{
     triggerLandingShockwave(unit,action,config){
       const range=abilityProfile(unit.species).range*config.radiusMultiplier,point={x:unit.x,y:unit.y,z:0},distance=Math.hypot(unit.x-this.boss.x,unit.y-this.boss.y);
       this.effects.push({kind:'landing-shockwave',x:unit.x,y:unit.y,z:0,life:0,duration:.55,radius:range,owner:unit.id});
-      if(this.boss.hp>0&&distance<=range+this.boss.radius){const blast={id:action.id,hit:false,attackKind:'kidney-shockwave'};this.damageBoss(unit,blast,point,{attackMultiplier:config.damageMultiplier,attackKind:'kidney-shockwave'});}
+      if(this.boss.hp>0&&distance<=range+this.boss.radius){const blast={id:action.id,hit:false,attackKind:'kidney-shockwave'};this.damageBoss(unit,blast,point,{attackMultiplier:config.damageMultiplier,attackKind:'kidney-shockwave',area:true});}
       this.combat('kidney-shockwave',{unit:unit.id,ownerId:unit.ownerId,species:2,x:unit.x,y:unit.y,radius:range,damageMultiplier:config.damageMultiplier});
     }
     senseEnemy(unit){
@@ -945,7 +945,7 @@ const AttackingBody=Base=>class extends Base{
       return Math.max(0,Math.min(1,strongest));
     }
     riceHarvestMultiplier(u,target,kind,hpBefore=target?.hp,maxHp=target?.maxHp){
-      if(kind!==abilityProfile(u.species).kind)return 1;
+      if(u.species!==6||kind!==abilityProfile(u.species).kind)return 1;
       const progression=this.abilityProgressionFor(u);
       return getRiceHarvestMultiplier(progression,u.tier,hpBefore,maxHp);
     }
@@ -960,7 +960,7 @@ const AttackingBody=Base=>class extends Base{
         if(config)refreshBarleyArmorBreak(target,config,this.time,resolveStatusDuration(config.durationSeconds,u,target));
       }
     }
-    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null}={}){
+    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null,area=false}={}){
       if(!hasFaction(u,FACTION_CONFIG.PLAYER)||!areOpposingFactions(u,this.boss)||action.hit||this.boss.hp<=0)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
       const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
@@ -971,7 +971,7 @@ const AttackingBody=Base=>class extends Base{
       const harvestMultiplier=this.riceHarvestMultiplier(u,this.boss,kind,hpBefore,maxHp);
       const rawDamage=attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier;
       const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,sourceStatOverrides,armorForTarget:()=>armor,roll:()=>this.random()});
+      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,area,sourceStatOverrides,armorForTarget:()=>armor,roll:()=>this.random()});
       this.applyGrainOnBasicHit(u,this.boss,kind);
       this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
@@ -982,13 +982,13 @@ const AttackingBody=Base=>class extends Base{
       if(action?.targetId==='boss'||!action?.targetId)return areOpposingFactions(unit,this.boss)?this.boss:null;
       return this.units.find(candidate=>candidate.id===action.targetId&&candidate.hp>0&&areOpposingFactions(unit,candidate))||null;
     }
-    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null}={}){
+    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null,area=false}={}){
       if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil,attackerStats=stats(u.tier,u.species),damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind=attackKind||spec.kind;
       const targetMaxHp=stats(target.tier,target.species).maxHp,harvestMultiplier=this.riceHarvestMultiplier(u,target,kind,target.hp,targetMaxHp);
       const baselineArmor=stats(target.tier,target.species).armor,armor=effectiveBarleyArmor(target,baselineArmor,this.time);
       const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier,sourceKind:'enemy',sourceStatOverrides,armorForTarget:()=>armor});this._syncUnitAliveCount(target);
+      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier,area,sourceKind:hasFaction(u,FACTION_CONFIG.PLAYER)?'direct':'enemy',sourceStatOverrides,armorForTarget:()=>armor});this._syncUnitAliveCount(target);
       this.applyGrainOnBasicHit(u,target,kind);
       const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5,2.4,u);
       if(target.hp===0){target.down=target.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(target)}
@@ -1012,7 +1012,7 @@ const AttackingBody=Base=>class extends Base{
         for(const target of this.units)if(target.hp>0&&areOpposingFactions(owner,target)&&!current.damagedTargetIds.includes(target.id)&&Math.hypot(current.x-target.x,current.y-target.y)<=range+target.radius)targets.push(target);
         for(const target of targets){
           const action={id:current.id,hit:false,attackKind:'corn-popcorn-explosion'};
-          const applied=target===this.boss?this.damageBoss(owner,action,center,{attackMultiplier:config.damageMultiplier,attackKind:action.attackKind}):this.damageUnitTarget(owner,action,target,center,{attackMultiplier:config.damageMultiplier,attackKind:action.attackKind});
+          const applied=target===this.boss?this.damageBoss(owner,action,center,{attackMultiplier:config.damageMultiplier,attackKind:action.attackKind,area:true}):this.damageUnitTarget(owner,action,target,center,{attackMultiplier:config.damageMultiplier,attackKind:action.attackKind,area:true});
           if(applied)current.damagedTargetIds.push(target===this.boss?'boss':target.id);
         }
         for(const other of this.projectiles){if(other===current||!other.isPopcorn||other.exploded||!other.landed||queued.has(other.id))continue;if(Math.hypot(other.x-current.x,other.y-current.y)<=range+other.radius)queue.push(other)}
