@@ -9,17 +9,19 @@ const LOCAL_INPUT=new Uint8Array(0);
 const ADVANCED=Object.freeze({status:'advanced'});
 const CLOSED=Object.freeze({status:'closed'});
 
+// Health changes can interpolate while alive; death/revival must snap as one
+// state boundary so a 0→60 down reset never looks like half-completed sleep.
 class UnitRender extends RenderObject {
  static renderSchema=Object.freeze({
   id:R.STEP,x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,
-  vx:R.LINEAR,vy:R.LINEAR,hp:R.LINEAR,down:R.LINEAR,stun:R.LINEAR,flash:R.LINEAR,bounce:R.LINEAR,
+  vx:R.LINEAR,vy:R.LINEAR,hp:R.LINEAR,down:R.LINEAR,isDowned:R.STATE_KEY,stun:R.LINEAR,flash:R.LINEAR,bounce:R.LINEAR,
   'ability.phase':R.STATE_KEY,'ability.elapsed':R.LINEAR,'ability.peanutStrikeCount':R.STEP,walnutGuarding:R.STEP,
   cooldown:R.LINEAR,cooldownDuration:R.STEP,meals:R.STEP,
   species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP,ownerId:R.STATE_KEY,faction:R.STEP,farmId:R.STEP,dropLanded:R.STEP,buffed:R.STEP,isBattleOnlySummon:R.STEP
  });
  constructor(){super();this.ability={}}
  update(u,world){
-  this.id=u.id;this.x=u.x;this.y=u.y;this.z=u.z;this.angle=u.angle;this.vx=u.vx;this.vy=u.vy;this.hp=u.hp;this.down=u.down;this.stun=u.stun;this.flash=u.flash;this.bounce=u.bounce;
+  this.id=u.id;this.x=u.x;this.y=u.y;this.z=u.z;this.angle=u.angle;this.vx=u.vx;this.vy=u.vy;this.hp=u.hp;this.down=u.down;this.isDowned=u.hp<=0;this.stun=u.stun;this.flash=u.flash;this.bounce=u.bounce;
   this.ability.phase=u.ability.phase;this.ability.elapsed=u.ability.elapsed;this.ability.peanutStrikeCount=u.ability.action?.peanutStrikeCount||2;
   this.walnutGuarding=!!u.ability.guardConfig?.(world);this.cooldown=u.cooldown;this.cooldownDuration=u.cooldownDuration;this.meals=u.meals;this.species=u.species;this.tier=u.tier;this.seed=u.seed;this.size=u.size;this.radius=u.radius;
   this.maxHp=baseUnitStatsFor(u.tier,u.species).maxHp;this.fed=u.fed;this.ownerId=u.ownerId;this.faction=u.faction;this.farmId=u.farmId;this.dropLanded=u.dropLanded;this.buffed=world.time<(world.raidRoster(u.ownerId)?.buffUntil||0);this.isBattleOnlySummon=u.isBattleOnlySummon;

@@ -1,3 +1,5 @@
+import {FACTION_CONFIG} from './factions.js';
+
 // Presentation-only status derived from existing Farm simulation fields.
 // Breeding sets meals to zero; merged offspring keep the one meal assigned at birth.
 export function farmBreedingCooldown(unit, world, defaultDuration = 10, result = {}) {
@@ -8,23 +10,24 @@ export function farmBreedingCooldown(unit, world, defaultDuration = 10, result =
   return result;
 }
 
-export function farmSleepSeconds(unit, scene) {
-  if (scene !== 'farm' || unit?.hp > 0 || !Number.isFinite(unit?.down) || unit.down <= 0) return 0;
-  return Math.ceil(unit.down);
-}
-
-export function sevenSegmentDigitLines(digit,x,y,size) {
-  const segments={
-    0:'abcdef',1:'bc',2:'abged',3:'abgcd',4:'fgbc',5:'afgcd',6:'afgecd',7:'abc',8:'abcdefg',9:'abfgcd'
-  }[digit]||'';
-  const h=size*2.6,w=size*1.75,points={
-    a:[{x:x-w/2,y:y-h},{x:x+w/2,y:y-h}],
-    b:[{x:x+w/2,y:y-h},{x:x+w/2,y}],
-    c:[{x:x+w/2,y},{x:x+w/2,y:y+h}],
-    d:[{x:x-w/2,y:y+h},{x:x+w/2,y:y+h}],
-    e:[{x:x-w/2,y},{x:x-w/2,y:y+h}],
-    f:[{x:x-w/2,y:y-h},{x:x-w/2,y}],
-    g:[{x:x-w/2,y},{x:x+w/2,y}]
-  };
-  return Array.from(segments,segment=>points[segment]);
+// The existing down value owns Farm recovery. Raid casualties stay down until
+// return: their recent authoritative hit only times the brief visual recoil.
+// The caller reuses result; this presentation query never starts a timer.
+export function unitRestPresentation(unit, world, duration, result) {
+  if (unit.faction !== FACTION_CONFIG.PLAYER || unit.isBattleOnlySummon || unit.hp > 0) return null;
+  const recovering = world.scene === 'farm' && unit.down > 0;
+  let elapsed = recovering ? Math.max(0, duration - unit.down) : Infinity;
+  if (!recovering) {
+    for (let i = world.notices.length - 1; i >= 0; i--) {
+      const event = world.notices[i];
+      if (!Number.isFinite(event.time)) continue;
+      const age = world.time - event.time;
+      if (age >= .5) break;
+      if (event.kind === 'unit-hit' && event.unit === unit.id && age >= 0) { elapsed = age; break; }
+    }
+  }
+  result.phase = elapsed < .5 ? 'defeat' : recovering && unit.down <= .5 ? 'wake' : 'sleep';
+  result.elapsed = result.phase === 'defeat' ? elapsed : result.phase === 'wake' ? .5 - unit.down : recovering ? elapsed - .5 : world.time;
+  result.progress = recovering ? Math.max(0, Math.min(1, 1 - unit.down / duration)) : -1;
+  return result;
 }
