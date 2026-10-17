@@ -51,20 +51,32 @@
     };
   }
   function chooseBossPattern(runtime, eligibleIds, random) {
-    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
-    const eligible = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
-    if (!eligible.length) return null;
-    const total = eligible.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
-    if (!(total > 0)) return null;
-    let roll = random() * total, chosen = eligible.at(-1);
-    for (const id of eligible) {
-      roll -= Math.max(0, runtime.weights[id] || 0);
+    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") {
+      throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
+    }
+    const ELIGIBLE = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
+    if (!ELIGIBLE.length) {
+      return null;
+    }
+    const TOTAL = ELIGIBLE.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
+    if (!(TOTAL > 0)) {
+      return null;
+    }
+    let roll = random() * TOTAL;
+    let chosen = ELIGIBLE.at(-1);
+    for (const ID of ELIGIBLE) {
+      roll -= Math.max(0, runtime.weights[ID] || 0);
       if (roll < 0) {
-        chosen = id;
+        chosen = ID;
         break;
       }
     }
-    for (const id of eligible) runtime.weights[id] = id === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(BOSS_PATTERN_WEIGHT_DEFAULTS.cap, Math.max(0, runtime.weights[id] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus);
+    for (const ID of ELIGIBLE) {
+      runtime.weights[ID] = ID === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(
+        BOSS_PATTERN_WEIGHT_DEFAULTS.cap,
+        Math.max(0, runtime.weights[ID] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus
+      );
+    }
     return chosen;
   }
   var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
@@ -79,14 +91,91 @@
         "summon.mouth-t1"
       ]);
       BOSS_PATTERN_CONFIG = Object.freeze({
-        "attack.sweep-360": Object.freeze({ kind: "sweep-360", windup: 1.05, active: 0, recover: 1.05, cooldown: 10, reach: 6.5, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
-        "attack.front-slam": Object.freeze({ kind: "front-slam", windup: 0.75, active: 0, recover: 0.75, cooldown: 5, reach: 5.5, sector: Math.PI / 2, damageMultiplier: 2.5, knockback: 13, lift: 10.2, groundOnly: true }),
-        "attack.charge": Object.freeze({ kind: "charge", windup: 0.5, active: 6.6 / 5.3, recover: 0.75, cooldown: 5, reach: 6.6, speed: 5.3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: false }),
-        "attack.leap-slam": Object.freeze({ kind: "leap-slam", windup: 0.5, active: 1.013, recover: 0.75, cooldown: 5, reach: 6.6, landingRadius: 5.5, damageMultiplier: 2, knockback: 10, lift: 7.2, groundOnly: false }),
-        "attack.fan-sweep": Object.freeze({ kind: "fan-sweep", windup: 1, active: 0.8, recover: 1, cooldown: 5, reach: 6.5, width: 0.85, sector: Math.PI * 2 / 3, damageMultiplier: 2, knockback: 13, lift: 10.2, groundOnly: true }),
-        "summon.mouth-t1": Object.freeze({ kind: "mouth-t1", windup: 0.5, active: 0.75, recover: 0.5, cooldown: 10, firstEligible: 10, volleyCount: 4, releaseInterval: 0.25, maxAlive: 10, dropHeight: 3, landingSeconds: 0.56, landingRadius: 4.8 })
+        "attack.sweep-360": Object.freeze({
+          kind: "sweep-360",
+          windup: 1.05,
+          active: 0,
+          recover: 1.05,
+          cooldown: 10,
+          reach: 6.5,
+          damageMultiplier: 2.5,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: true
+        }),
+        "attack.front-slam": Object.freeze({
+          kind: "front-slam",
+          windup: 0.75,
+          active: 0,
+          recover: 0.75,
+          cooldown: 5,
+          reach: 5.5,
+          sector: Math.PI / 2,
+          damageMultiplier: 2.5,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: true
+        }),
+        "attack.charge": Object.freeze({
+          kind: "charge",
+          windup: 0.5,
+          active: 6.6 / 5.3,
+          recover: 0.75,
+          cooldown: 5,
+          reach: 6.6,
+          speed: 5.3,
+          damageMultiplier: 2,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: false
+        }),
+        "attack.leap-slam": Object.freeze({
+          kind: "leap-slam",
+          windup: 0.5,
+          active: 1.013,
+          recover: 0.75,
+          cooldown: 5,
+          reach: 6.6,
+          landingRadius: 5.5,
+          damageMultiplier: 2,
+          knockback: 10,
+          lift: 7.2,
+          groundOnly: false
+        }),
+        "attack.fan-sweep": Object.freeze({
+          kind: "fan-sweep",
+          windup: 1,
+          active: 0.8,
+          recover: 1,
+          cooldown: 5,
+          reach: 6.5,
+          width: 0.85,
+          sector: Math.PI * 2 / 3,
+          damageMultiplier: 2,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: true
+        }),
+        "summon.mouth-t1": Object.freeze({
+          kind: "mouth-t1",
+          windup: 0.5,
+          active: 0.75,
+          recover: 0.5,
+          cooldown: 10,
+          firstEligible: 10,
+          volleyCount: 4,
+          releaseInterval: 0.25,
+          maxAlive: 10,
+          dropHeight: 3,
+          landingSeconds: 0.56,
+          landingRadius: 4.8
+        })
       });
-      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({ base: 1, eligibleBonus: 0.5, cap: 3 });
+      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
+        base: 1,
+        eligibleBonus: 0.5,
+        cap: 3
+      });
       BOSS_AIM_TURN_RATE = 5.5;
     }
   });
@@ -96,23 +185,39 @@
     "src/vector-sockets.cjs"(exports, module) {
       "use strict";
       function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
-        const fail4 = (message) => {
+        const FAIL4 = (message) => {
           throw new Error(`Vector socket contract (${label}): ${message}`);
         };
-        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) fail4("a finite SVG viewBox is required");
-        const parts = new Map((metadata?.parts || []).map((part) => [part.id, part]));
-        const anchors = {};
-        for (const name of ["mouth", "ground"]) {
-          const socket = metadata?.sockets?.[name];
-          if (!socket || !parts.has(socket.part)) fail4(`${name} must name an authored part`);
-          if (!Array.isArray(socket.point) || socket.point.length !== 2 || !socket.point.every(Number.isFinite)) fail4(`${name} must contain two finite canvas coordinates`);
-          const [x, y] = socket.point;
-          if (x < viewBox[0] || x > viewBox[0] + viewBox[2] || y < viewBox[1] || y > viewBox[1] + viewBox[3]) fail4(`${name} lies outside the SVG canvas`);
-          anchors[name] = Object.freeze({ part: socket.part, x, y });
+        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
+          FAIL4("a finite SVG viewBox is required");
         }
-        if (anchors.ground.part !== "body") fail4("ground must belong to body");
-        if (anchors.mouth.y >= anchors.ground.y) fail4("mouth must be above the authored ground baseline");
-        return Object.freeze(anchors);
+        const PARTS = new Map((metadata?.parts || []).map((part) => [part.id, part]));
+        const ANCHORS = {};
+        for (const NAME of ["mouth", "ground"]) {
+          const SOCKET = metadata?.sockets?.[NAME];
+          if (!SOCKET || !PARTS.has(SOCKET.part)) {
+            FAIL4(`${NAME} must name an authored part`);
+          }
+          if (!Array.isArray(SOCKET.point) || SOCKET.point.length !== 2 || !SOCKET.point.every(Number.isFinite)) {
+            FAIL4(`${NAME} must contain two finite canvas coordinates`);
+          }
+          const [X, Y] = SOCKET.point;
+          if (X < viewBox[0] || X > viewBox[0] + viewBox[2] || Y < viewBox[1] || Y > viewBox[1] + viewBox[3]) {
+            FAIL4(`${NAME} lies outside the SVG canvas`);
+          }
+          ANCHORS[NAME] = Object.freeze({
+            part: SOCKET.part,
+            x: X,
+            y: Y
+          });
+        }
+        if (ANCHORS.ground.part !== "body") {
+          FAIL4("ground must belong to body");
+        }
+        if (ANCHORS.mouth.y >= ANCHORS.ground.y) {
+          FAIL4("mouth must be above the authored ground baseline");
+        }
+        return Object.freeze(ANCHORS);
       }
       var BOSS_VECTOR_DIAMETER = 220;
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
@@ -121,91 +226,146 @@
       function bossVectorScale2(radius) {
         return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
       }
-      function socketWorldPoint2(boss2, socket, ground) {
-        const scale = bossVectorScale2(boss2.radius);
-        return { x: boss2.x + (socket.x - ground.x) * scale, y: boss2.y, z: (boss2.z || 0) + (ground.y - socket.y) * scale / WORLD_HEIGHT_PROJECTION2 };
+      function socketWorldPoint2(boss, socket, ground) {
+        const SCALE = bossVectorScale2(boss.radius);
+        return {
+          x: boss.x + (socket.x - ground.x) * SCALE,
+          y: boss.y,
+          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION2
+        };
       }
-      module.exports = { readVectorSockets: readVectorSockets3, bossVectorScale: bossVectorScale2, socketWorldPoint: socketWorldPoint2, WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION2, WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3 };
+      module.exports = {
+        readVectorSockets: readVectorSockets3,
+        bossVectorScale: bossVectorScale2,
+        socketWorldPoint: socketWorldPoint2,
+        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION2,
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
+      };
     }
   });
 
   // src/boss-vector-sockets.js
   function bindBossSocketAsset(species, record) {
-    const label = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
-    const anchors = (0, import_vector_sockets.readVectorSockets)(record.compiled, label);
-    bossAssets.get(species)?.player?.dispose();
-    bossAssets.set(species, { record, anchors, player: null });
-    return anchors;
+    const LABEL = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
+    const ANCHORS = (0, import_vector_sockets.readVectorSockets)(record.compiled, LABEL);
+    BOSS_ASSETS.get(species)?.player?.dispose();
+    BOSS_ASSETS.set(species, {
+      record,
+      anchors: ANCHORS,
+      player: null
+    });
+    return ANCHORS;
   }
   function unbindBossSocketAsset(species, record) {
-    const entry = bossAssets.get(species);
-    if (entry?.record !== record) return;
-    entry.player?.dispose();
-    bossAssets.delete(species);
+    const ENTRY = BOSS_ASSETS.get(species);
+    if (ENTRY?.record !== record) {
+      return;
+    }
+    ENTRY.player?.dispose();
+    BOSS_ASSETS.delete(species);
   }
   function bossSummonPose(b, parts = /* @__PURE__ */ new Set()) {
-    const config = BOSS_PATTERN_CONFIG["summon.mouth-t1"], phase = b.patternPhase, elapsed = Math.max(0, b.patternPhaseElapsed || 0);
-    const aim = Math.atan2(-import_vector_sockets.WORLD_DEPTH_PROJECTION * Math.sin(b.patternAim ?? b.angle), Math.cos(b.patternAim ?? b.angle));
-    const body = { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }, arms = { "arm-left": 0, "arm-right": 0 };
+    const CONFIG2 = BOSS_PATTERN_CONFIG["summon.mouth-t1"], PHASE = b.patternPhase, ELAPSED = Math.max(0, b.patternPhaseElapsed || 0);
+    const AIM = Math.atan2(
+      -import_vector_sockets.WORLD_DEPTH_PROJECTION * Math.sin(b.patternAim ?? b.angle),
+      Math.cos(b.patternAim ?? b.angle)
+    );
+    const BODY2 = {
+      x: 0,
+      y: 0,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1
+    }, ARMS = {
+      "arm-left": 0,
+      "arm-right": 0
+    };
     let releasePulse = 0;
-    if (phase === "windup") {
-      const wind = clamp(elapsed / config.windup, 0, 1), ease = wind * wind * (3 - 2 * wind);
-      body.y = 2 * ease;
-      body.scaleX = 1 + 0.025 * ease;
-      body.scaleY = 1 - 0.035 * ease;
-      arms["arm-left"] = -0.34 * ease;
-      arms["arm-right"] = 0.34 * ease;
-    } else if (phase === "active" || phase === "recover") {
-      const last = (b.patternReleased || 0) - 1, age = last < 0 ? 1 : phase === "active" ? Math.max(0, elapsed - last * config.releaseInterval) : elapsed;
-      releasePulse = clamp(1 - age / 0.16, 0, 1);
-      body.scaleX = 1 + 0.025 * releasePulse;
-      body.scaleY = 1 - 0.018 * releasePulse;
-      body.rotation = aim * 0.02;
-      arms["arm-left"] = -0.3;
-      arms["arm-right"] = 0.3;
+    if (PHASE === "windup") {
+      const WIND = CLAMP(ELAPSED / CONFIG2.windup, 0, 1), EASE = WIND * WIND * (3 - 2 * WIND);
+      BODY2.y = 2 * EASE;
+      BODY2.scaleX = 1 + 0.025 * EASE;
+      BODY2.scaleY = 1 - 0.035 * EASE;
+      ARMS["arm-left"] = -0.34 * EASE;
+      ARMS["arm-right"] = 0.34 * EASE;
+    } else if (PHASE === "active" || PHASE === "recover") {
+      const LAST = (b.patternReleased || 0) - 1, AGE = LAST < 0 ? 1 : PHASE === "active" ? Math.max(0, ELAPSED - LAST * CONFIG2.releaseInterval) : ELAPSED;
+      releasePulse = CLAMP(1 - AGE / 0.16, 0, 1);
+      BODY2.scaleX = 1 + 0.025 * releasePulse;
+      BODY2.scaleY = 1 - 0.018 * releasePulse;
+      BODY2.rotation = AIM * 0.02;
+      ARMS["arm-left"] = -0.3;
+      ARMS["arm-right"] = 0.3;
     }
-    const extras = {};
-    for (const part of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) if (parts.has(part)) extras[part] = { x: 0, y: 0, rotation: part === "leaf" ? 0.08 * releasePulse : 0 };
-    return { body, arms, extras, impact: false, releasePulse };
+    const EXTRAS = {};
+    for (const PART of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) {
+      if (parts.has(PART)) {
+        EXTRAS[PART] = {
+          x: 0,
+          y: 0,
+          rotation: PART === "leaf" ? 0.08 * releasePulse : 0
+        };
+      }
+    }
+    return {
+      body: BODY2,
+      arms: ARMS,
+      extras: EXTRAS,
+      impact: false,
+      releasePulse
+    };
   }
   function sampleBossSummon(player, metadata, b) {
-    const name = b.patternPhase === "windup" ? "windup" : b.patternPhase === "recover" ? "recover" : "fire";
-    const clipName = metadata.clips[name] ? name : "idle", clip = metadata.clips[clipName];
-    if (!clip) throw new Error(`Vector socket contract (${metadata.id}): summon clip ${name} or idle is required`);
-    player.play(clipName, 0);
-    player.seek(Math.min(clip.durationMs, Math.max(0, b.patternPhaseElapsed || 0) * 1e3));
-    const pose = bossSummonPose(b);
-    player.setBasePose("body", pose.body);
-    return pose;
+    const NAME = b.patternPhase === "windup" ? "windup" : b.patternPhase === "recover" ? "recover" : "fire";
+    const CLIP_NAME = metadata.clips[NAME] ? NAME : "idle", CLIP = metadata.clips[CLIP_NAME];
+    if (!CLIP) {
+      throw new Error(`Vector socket contract (${metadata.id}): summon clip ${NAME} or idle is required`);
+    }
+    player.play(CLIP_NAME, 0);
+    player.seek(Math.min(CLIP.durationMs, Math.max(0, b.patternPhaseElapsed || 0) * 1e3));
+    const POSE = bossSummonPose(b);
+    player.setBasePose("body", POSE.body);
+    return POSE;
   }
-  function bossMouthWorldPoint(boss2, released) {
-    const entry = bossAssets.get(boss2.species);
-    if (!entry) throw new Error(`Vector socket contract (species ${boss2.species}): startup boss asset binding is missing`);
-    const { record, anchors } = entry, action = boss2.patternRuntime?.active;
-    if (action?.id !== "summon.mouth-t1") throw new Error(`Vector socket contract (species ${boss2.species}): mouth spawn requires the active summon pattern`);
-    entry.player ||= record.asset.createPlayer({ clip: "idle", startedAtMs: 0 });
-    sampleBossSummon(entry.player, record.compiled.metadata, {
-      angle: boss2.angle,
-      patternAim: action.aim,
-      patternPhase: action.phase,
-      patternPhaseElapsed: action.phaseElapsed,
-      patternReleased: released ?? action.released
+  function bossMouthWorldPoint(boss, released) {
+    const ENTRY = BOSS_ASSETS.get(boss.species);
+    if (!ENTRY) {
+      throw new Error(`Vector socket contract (species ${boss.species}): startup boss asset binding is missing`);
+    }
+    const { record: RECORD, anchors: ANCHORS } = ENTRY, ACTION = boss.patternRuntime?.active;
+    if (ACTION?.id !== "summon.mouth-t1") {
+      throw new Error(
+        `Vector socket contract (species ${boss.species}): mouth spawn requires the active summon pattern`
+      );
+    }
+    ENTRY.player ||= RECORD.asset.createPlayer({
+      clip: "idle",
+      startedAtMs: 0
     });
-    return (0, import_vector_sockets.socketWorldPoint)(boss2, entry.player.getSocket("mouth"), anchors.ground);
+    sampleBossSummon(ENTRY.player, RECORD.compiled.metadata, {
+      angle: boss.angle,
+      patternAim: ACTION.aim,
+      patternPhase: ACTION.phase,
+      patternPhaseElapsed: ACTION.phaseElapsed,
+      patternReleased: released ?? ACTION.released
+    });
+    return (0, import_vector_sockets.socketWorldPoint)(boss, ENTRY.player.getSocket("mouth"), ANCHORS.ground);
   }
-  var import_vector_sockets, clamp, bossAssets;
+  var import_vector_sockets, CLAMP, BOSS_ASSETS;
   var init_boss_vector_sockets = __esm({
     "src/boss-vector-sockets.js"() {
       init_boss_patterns();
       import_vector_sockets = __toESM(require_vector_sockets(), 1);
-      clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-      bossAssets = /* @__PURE__ */ new Map();
+      CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
+      BOSS_ASSETS = /* @__PURE__ */ new Map();
     }
   });
 
   // src/unit-grades.js
   function mergeMaterialCostForTier(resultTier) {
-    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) return 0;
+    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
+      return 0;
+    }
     return UNIT_GRADES[resultTier - 1].materialCost;
   }
   function isValidUnitTier(tier) {
@@ -215,12 +375,42 @@
   var init_unit_grades = __esm({
     "src/unit-grades.js"() {
       UNIT_GRADES = Object.freeze([
-        Object.freeze({ tier: 1, name: "Common", materialCost: 0, outlineColor: "#d8d4bd" }),
-        Object.freeze({ tier: 2, name: "Uncommon", materialCost: 2, outlineColor: "#83ce76" }),
-        Object.freeze({ tier: 3, name: "Rare", materialCost: 2, outlineColor: "#78b9ff" }),
-        Object.freeze({ tier: 4, name: "Epic", materialCost: 3, outlineColor: "#bd8cff" }),
-        Object.freeze({ tier: 5, name: "Legendary", materialCost: 4, outlineColor: "#ffb354" }),
-        Object.freeze({ tier: 6, name: "Mythic", materialCost: 5, outlineColor: "#ff7086" })
+        Object.freeze({
+          tier: 1,
+          name: "Common",
+          materialCost: 0,
+          outlineColor: "#d8d4bd"
+        }),
+        Object.freeze({
+          tier: 2,
+          name: "Uncommon",
+          materialCost: 2,
+          outlineColor: "#83ce76"
+        }),
+        Object.freeze({
+          tier: 3,
+          name: "Rare",
+          materialCost: 2,
+          outlineColor: "#78b9ff"
+        }),
+        Object.freeze({
+          tier: 4,
+          name: "Epic",
+          materialCost: 3,
+          outlineColor: "#bd8cff"
+        }),
+        Object.freeze({
+          tier: 5,
+          name: "Legendary",
+          materialCost: 4,
+          outlineColor: "#ffb354"
+        }),
+        Object.freeze({
+          tier: 6,
+          name: "Mythic",
+          materialCost: 5,
+          outlineColor: "#ff7086"
+        })
       ]);
       MAX_UNIT_TIER = UNIT_GRADES.length;
       MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
@@ -241,15 +431,60 @@
   var init_species_catalog = __esm({
     "src/species-catalog.js"() {
       SPECIES_CATALOG = Object.freeze([
-        Object.freeze({ id: 0, name: "콩", asset: "pea.svg", bossWeight: 1 }),
-        Object.freeze({ id: 1, name: "옥수수", asset: "corn-kernel.svg", bossWeight: 1 }),
-        Object.freeze({ id: 2, name: "팥", asset: "kidney-bean.svg", bossWeight: 1 }),
-        Object.freeze({ id: 3, name: "밤톨", asset: "chestnut.svg", bossWeight: 1 }),
-        Object.freeze({ id: 4, name: "땅콩", asset: "peanut.svg", bossWeight: 1 }),
-        Object.freeze({ id: 5, name: "호두", asset: "walnut.svg", bossWeight: 1 }),
-        Object.freeze({ id: 6, name: "쌀", asset: "rice.svg", bossWeight: 1 }),
-        Object.freeze({ id: 7, name: "밀", asset: "wheat.svg", bossWeight: 1 }),
-        Object.freeze({ id: 8, name: "보리", asset: "barley.svg", bossWeight: 1 })
+        Object.freeze({
+          id: 0,
+          name: "콩",
+          asset: "pea.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 1,
+          name: "옥수수",
+          asset: "corn-kernel.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 2,
+          name: "팥",
+          asset: "kidney-bean.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 3,
+          name: "밤톨",
+          asset: "chestnut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 4,
+          name: "땅콩",
+          asset: "peanut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 5,
+          name: "호두",
+          asset: "walnut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 6,
+          name: "쌀",
+          asset: "rice.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 7,
+          name: "밀",
+          asset: "wheat.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 8,
+          name: "보리",
+          asset: "barley.svg",
+          bossWeight: 1
+        })
       ]);
       SPECIES_COUNT = SPECIES_CATALOG.length;
       BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
@@ -261,59 +496,87 @@
     let maxHp = TIER_HP;
     let attackPower = TIER_ATTACK;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
-      const transitionMultiplier = UNIT_GRADES[resultTier - 1].materialCost / 2;
-      maxHp *= TIER_HP_SCALE * transitionMultiplier;
-      attackPower *= TIER_ATTACK_SCALE * transitionMultiplier;
+      const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
+      maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
+      attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
     }
-    return Object.freeze({ maxHp, attackPower, ...COMMON_UNIT_STAT_DEFAULTS, ...speciesProfile });
+    return Object.freeze({
+      maxHp,
+      attackPower,
+      ...COMMON_UNIT_STAT_DEFAULTS,
+      ...speciesProfile
+    });
   }
   function baseUnitStatsFor(tier, species) {
     tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
-    const profile = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
-    return BASE_STATS_BY_PROFILE.get(profile)?.[tier - 1] || createBaseStats(tier, profile);
+    const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
+    return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
   }
-  function resolveUnitStats(unit2, overrides) {
-    return { ...baseUnitStatsFor(unit2?.tier, unit2?.species), ...overrides };
+  function resolveUnitStats(unit, overrides) {
+    return {
+      ...baseUnitStatsFor(unit?.tier, unit?.species),
+      ...overrides
+    };
   }
-  function combatStats(unit2, overrides) {
-    return overrides === void 0 ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
+  function combatStats(unit, overrides) {
+    return overrides === void 0 ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
   }
   function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
-    const raw = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
-    const penetration = clamp2(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
-    const effectiveArmor = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - penetration);
-    const crit = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
-    const mitigated = raw * crit * ARMOR_SCALE / (ARMOR_SCALE + effectiveArmor);
-    return { rawDamage: raw, effectiveArmor, critical, damage: mitigated };
+    const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
+    const PENETRATION = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
+    const EFFECTIVE_ARMOR = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - PENETRATION);
+    const CRIT = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
+    const MITIGATED = RAW * CRIT * ARMOR_SCALE / (ARMOR_SCALE + EFFECTIVE_ARMOR);
+    return {
+      rawDamage: RAW,
+      effectiveArmor: EFFECTIVE_ARMOR,
+      critical,
+      damage: MITIGATED
+    };
   }
-  function resolveCritical(stats2, roll = 1) {
-    const chance = clamp2(Number.isFinite(stats2?.critChance) ? stats2.critChance : 0, 0, 1);
-    return chance > 0 && roll < chance;
+  function resolveCritical(stats, roll = 1) {
+    const CHANCE = clamp(Number.isFinite(stats?.critChance) ? stats.critChance : 0, 0, 1);
+    return CHANCE > 0 && roll < CHANCE;
   }
-  function scaleMoveSpeed(baseSpeed, unit2, overrides) {
-    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit2, overrides).moveSpeed);
+  function scaleMoveSpeed(baseSpeed, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit, overrides).moveSpeed);
   }
-  function scaleAttackRecovery(baseRecovery, unit2, overrides) {
-    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit2, overrides).attackSpeed);
+  function scaleAttackRecovery(baseRecovery, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit, overrides).attackSpeed);
   }
-  function scaleAttackArea(baseArea, unit2, overrides) {
-    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit2, overrides).attackArea);
+  function scaleAttackArea(baseArea, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit, overrides).attackArea);
   }
-  function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier } = {}) {
-    if (!target || !Number.isFinite(target.hp)) return { actualLoss: 0, ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier) };
-    const resolved = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
-    const actualLoss = Math.min(Math.max(0, target.hp), resolved.damage);
-    target.hp = Math.max(0, target.hp - actualLoss);
-    return { ...resolved, actualLoss };
+  function applyDamage(target, rawDamage, {
+    armor = 0,
+    armorPenetration = 0,
+    critical = false,
+    critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier
+  } = {}) {
+    if (!target || !Number.isFinite(target.hp)) {
+      return {
+        actualLoss: 0,
+        ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier)
+      };
+    }
+    const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
+    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
+    target.hp = Math.max(0, target.hp - ACTUAL_LOSS);
+    return {
+      ...RESOLVED,
+      actualLoss: ACTUAL_LOSS
+    };
   }
   function applyHealing(target, amount, receiverStats = combatStats(target)) {
-    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) return 0;
-    const maxHp = Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
-    const received = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
-    const requested = Number.isFinite(amount) ? Math.max(0, amount) * received : 0;
-    const healed = Math.min(Math.max(0, maxHp - target.hp), requested);
-    target.hp += healed;
-    return healed;
+    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) {
+      return 0;
+    }
+    const MAX_HP = Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
+    const RECEIVED = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
+    const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
+    const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
+    target.hp += HEALED;
+    return HEALED;
   }
   function applyDamageToTargets(source, targets, {
     rawDamage,
@@ -323,40 +586,49 @@
     armorForTarget = (target) => combatStats(target).armor,
     roll = () => 1
   } = {}) {
-    const sourceStats = source ? combatStats(source, sourceStatOverrides) : null;
-    const critical = !!sourceStats && sourceStats.critChance > 0 && resolveCritical(sourceStats, roll());
-    const hits = [];
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : null;
+    const CRITICAL = !!SOURCE_STATS && SOURCE_STATS.critChance > 0 && resolveCritical(SOURCE_STATS, roll());
+    const HITS = [];
     let totalActualLoss = 0;
-    for (const target of targets || []) {
-      const result = applyDamage(target, rawDamage, {
-        armor: armorForTarget(target),
-        armorPenetration: sourceStats?.armorPenetration || 0,
-        critical,
-        critMultiplier: sourceStats?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
+    for (const TARGET of targets || []) {
+      const RESULT = applyDamage(TARGET, rawDamage, {
+        armor: armorForTarget(TARGET),
+        armorPenetration: SOURCE_STATS?.armorPenetration || 0,
+        critical: CRITICAL,
+        critMultiplier: SOURCE_STATS?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
       });
-      hits.push(result);
-      totalActualLoss += result.actualLoss;
+      HITS.push(RESULT);
+      totalActualLoss += RESULT.actualLoss;
     }
-    const baseRate = sourceKind === "direct" ? sourceStats?.lifesteal || 0 : 0;
-    const healRate = area ? baseRate / 3 : baseRate;
-    const healed = source && healRate > 0 ? applyHealing(source, totalActualLoss * healRate, sourceStats) : 0;
-    return { hits, totalActualLoss, healed, critical };
+    const BASE_RATE = sourceKind === "direct" ? SOURCE_STATS?.lifesteal || 0 : 0;
+    const HEAL_RATE = area ? BASE_RATE / 3 : BASE_RATE;
+    const HEALED = source && HEAL_RATE > 0 ? applyHealing(source, totalActualLoss * HEAL_RATE, SOURCE_STATS) : 0;
+    return {
+      hits: HITS,
+      totalActualLoss,
+      healed: HEALED,
+      critical: CRITICAL
+    };
   }
   function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
-    const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const durationScale = Number.isFinite(sourceStats.statusDuration) ? Math.max(0, sourceStats.statusDuration) : 1;
-    const resistance = clamp2(Number.isFinite(targetStats.statusResistance) ? targetStats.statusResistance : 0, 0, 1);
-    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * durationScale * (1 - resistance);
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const DURATION_SCALE = Number.isFinite(SOURCE_STATS.statusDuration) ? Math.max(0, SOURCE_STATS.statusDuration) : 1;
+    const RESISTANCE = clamp(Number.isFinite(TARGET_STATS.statusResistance) ? TARGET_STATS.statusResistance : 0, 0, 1);
+    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * DURATION_SCALE * (1 - RESISTANCE);
   }
   function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
-    const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const power = Number.isFinite(sourceStats.knockbackPower) ? Math.max(0, sourceStats.knockbackPower) : 1;
-    const resistance = clamp2(Number.isFinite(targetStats.knockbackResistance) ? targetStats.knockbackResistance : 0, 0, 1);
-    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * power * (1 - resistance);
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const POWER = Number.isFinite(SOURCE_STATS.knockbackPower) ? Math.max(0, SOURCE_STATS.knockbackPower) : 1;
+    const RESISTANCE = clamp(
+      Number.isFinite(TARGET_STATS.knockbackResistance) ? TARGET_STATS.knockbackResistance : 0,
+      0,
+      1
+    );
+    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * POWER * (1 - RESISTANCE);
   }
-  function clamp2(value, min, max) {
+  function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
   var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
@@ -385,11 +657,27 @@
         statusDuration: 1,
         statusResistance: 0
       });
-      COMMON_UNIT_STAT_PROFILES = Object.freeze(Array.from({ length: SPECIES_COUNT }, () => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
-      BASE_STATS_BY_PROFILE = new Map([COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
-        profile,
-        Array.from({ length: MAX_UNIT_TIER }, (_, index) => createBaseStats(index + 1, profile))
-      ]));
+      COMMON_UNIT_STAT_PROFILES = Object.freeze(
+        Array.from(
+          {
+            length: SPECIES_COUNT
+          },
+          () => Object.freeze({
+            ...COMMON_UNIT_STAT_DEFAULTS
+          })
+        )
+      );
+      BASE_STATS_BY_PROFILE = new Map(
+        [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
+          profile,
+          Array.from(
+            {
+              length: MAX_UNIT_TIER
+            },
+            (_, index) => createBaseStats(index + 1, profile)
+          )
+        ])
+      );
     }
   });
 
@@ -399,7 +687,10 @@
       kind,
       ...ATTACK_DEFAULTS,
       ...overrides,
-      timing: timing ? Object.freeze({ ...ATTACK_DEFAULTS.timing, ...timing }) : ATTACK_DEFAULTS.timing
+      timing: timing ? Object.freeze({
+        ...ATTACK_DEFAULTS.timing,
+        ...timing
+      }) : ATTACK_DEFAULTS.timing
     });
   }
   function abilityProfile(species) {
@@ -409,17 +700,20 @@
     return UNIT_CAPABILITY_COMPOSITIONS[species] || UNIT_CAPABILITY_COMPOSITIONS[0];
   }
   function hasUnitCapability(species, capability) {
-    const definition = UNIT_CAPABILITY_COMPOSITIONS[species];
-    return !!definition && (definition.attack === capability || definition.traits.includes(capability));
+    const DEFINITION = UNIT_CAPABILITY_COMPOSITIONS[species];
+    return !!DEFINITION && (DEFINITION.attack === capability || DEFINITION.traits.includes(capability));
   }
   function speciesWithCapability(capability) {
-    return capabilitySpecies.get(capability) || NO_SPECIES;
+    return CAPABILITY_SPECIES.get(capability) || NO_SPECIES;
   }
-  var ATTACK_DEFAULTS, UNIT_ABILITY_PROFILES, composition, UNIT_CAPABILITY_COMPOSITIONS, capabilitySpecies, NO_SPECIES;
+  var ATTACK_DEFAULTS, UNIT_ABILITY_PROFILES, COMPOSITION, UNIT_CAPABILITY_COMPOSITIONS, CAPABILITY_SPECIES, NO_SPECIES;
   var init_unit_abilities = __esm({
     "src/unit-abilities.js"() {
       ATTACK_DEFAULTS = Object.freeze({
-        timing: Object.freeze({ windup: 0.28, recovery: 0.65 }),
+        timing: Object.freeze({
+          windup: 0.28,
+          recovery: 0.65
+        }),
         range: 1.45,
         skillMultiplier: 1,
         projectileCount: 0,
@@ -427,21 +721,48 @@
       });
       UNIT_ABILITY_PROFILES = Object.freeze({
         0: attackProfile("ram"),
-        1: attackProfile("lob", { timing: { windup: 0.38, recovery: 1.25 }, range: 4.1, skillMultiplier: 1.6, projectileCount: 1 }),
-        2: attackProfile("leap", { timing: { windup: 0.32, recovery: 0.9 }, range: 2.5, skillMultiplier: 1.3 }),
+        1: attackProfile("lob", {
+          timing: {
+            windup: 0.38,
+            recovery: 1.25
+          },
+          range: 4.1,
+          skillMultiplier: 1.6,
+          projectileCount: 1
+        }),
+        2: attackProfile("leap", {
+          timing: {
+            windup: 0.32,
+            recovery: 0.9
+          },
+          range: 2.5,
+          skillMultiplier: 1.3
+        }),
         3: attackProfile("punch"),
         // One Peanut remains one world unit; its two kernels are presentation-only
         // and the two deterministic strike slots share the same active window.
-        4: attackProfile("peanut-dual-strike", { timing: { windup: 0.25, active: 0.5, recovery: 1 } }),
+        4: attackProfile("peanut-dual-strike", {
+          timing: {
+            windup: 0.25,
+            active: 0.5,
+            recovery: 1
+          }
+        }),
         // Walnut's base hammer is a single hit; the separate guard trait empowers
         // one subsequent basic cycle without adding an attack queue or timer.
-        5: attackProfile("walnut-hammer", { timing: { windup: 0.5, active: 0.25, recovery: 1 } }),
+        5: attackProfile("walnut-hammer", {
+          timing: {
+            windup: 0.5,
+            active: 0.25,
+            recovery: 1
+          }
+        }),
         6: attackProfile("ram"),
         7: attackProfile("punch"),
         8: attackProfile("ram")
       });
-      composition = (attack2, traits = [], options = {}) => Object.freeze({
-        attack: attack2,
+      COMPOSITION = (attack, traits = [], options = {}) => Object.freeze({
+        attack,
         traits: Object.freeze(traits),
         contactRecoil: false,
         useActiveDuration: false,
@@ -451,24 +772,46 @@
         ...options
       });
       UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
-        0: composition("contact", ["deathSplit"], { contactRecoil: true }),
-        1: composition("projectile", ["burstFire", "popcorn"], { retreatWithinRange: true, aimAtCenter: true }),
-        2: composition("contact", ["landing", "landingShockwave", "leapReset"]),
-        3: composition("contact", ["launchFan"], { contactRecoil: true }),
-        4: composition("repeatedStrike", ["assault"], { useActiveDuration: true, outerRangeSlack: 0 }),
-        5: composition("contact", ["guard"], { useActiveDuration: true }),
-        6: composition("contact", ["harvest"], { contactRecoil: true }),
-        7: composition("contact", ["commandAura"], { contactRecoil: true }),
-        8: composition("contact", ["armorBreak"], { contactRecoil: true })
+        0: COMPOSITION("contact", ["deathSplit"], {
+          contactRecoil: true
+        }),
+        1: COMPOSITION("projectile", ["burstFire", "popcorn"], {
+          retreatWithinRange: true,
+          aimAtCenter: true
+        }),
+        2: COMPOSITION("contact", ["landing", "landingShockwave", "leapReset"]),
+        3: COMPOSITION("contact", ["launchFan"], {
+          contactRecoil: true
+        }),
+        4: COMPOSITION("repeatedStrike", ["assault"], {
+          useActiveDuration: true,
+          outerRangeSlack: 0
+        }),
+        5: COMPOSITION("contact", ["guard"], {
+          useActiveDuration: true
+        }),
+        6: COMPOSITION("contact", ["harvest"], {
+          contactRecoil: true
+        }),
+        7: COMPOSITION("contact", ["commandAura"], {
+          contactRecoil: true
+        }),
+        8: COMPOSITION("contact", ["armorBreak"], {
+          contactRecoil: true
+        })
       });
-      capabilitySpecies = /* @__PURE__ */ new Map();
-      for (const [species, definition] of Object.entries(UNIT_CAPABILITY_COMPOSITIONS)) {
-        for (const capability of /* @__PURE__ */ new Set([definition.attack, ...definition.traits])) {
-          if (!capabilitySpecies.has(capability)) capabilitySpecies.set(capability, []);
-          capabilitySpecies.get(capability).push(Number(species));
+      CAPABILITY_SPECIES = /* @__PURE__ */ new Map();
+      for (const [SPECIES, DEFINITION] of Object.entries(UNIT_CAPABILITY_COMPOSITIONS)) {
+        for (const CAPABILITY of /* @__PURE__ */ new Set([DEFINITION.attack, ...DEFINITION.traits])) {
+          if (!CAPABILITY_SPECIES.has(CAPABILITY)) {
+            CAPABILITY_SPECIES.set(CAPABILITY, []);
+          }
+          CAPABILITY_SPECIES.get(CAPABILITY).push(Number(SPECIES));
         }
       }
-      for (const species of capabilitySpecies.values()) Object.freeze(species);
+      for (const SPECIES of CAPABILITY_SPECIES.values()) {
+        Object.freeze(SPECIES);
+      }
       NO_SPECIES = Object.freeze([]);
     }
   });
@@ -606,15 +949,23 @@
     return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
   }
   function isValidFarmUpgradeState(state) {
-    if (!state || typeof state !== "object" || Array.isArray(state)) return false;
-    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) return false;
-    return FARM_UPGRADE_IDS.every((id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]);
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      return false;
+    }
+    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) {
+      return false;
+    }
+    return FARM_UPGRADE_IDS.every(
+      (id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]
+    );
   }
   function getFarmUpgradeLevel(state, id) {
     return Number.isSafeInteger(state?.[id]) ? state[id] : 0;
   }
   function getFarmUpgradeInvestedCount(state) {
-    if (!isValidFarmUpgradeState(state)) return 0;
+    if (!isValidFarmUpgradeState(state)) {
+      return 0;
+    }
     return FARM_UPGRADE_IDS.reduce((total, id) => total + state[id], 0);
   }
   function farmUpgradeRate(state, id) {
@@ -643,11 +994,41 @@
         capacity: 5
       });
       FARM_UPGRADE_NODES = Object.freeze([
-        { id: "food", name: "자동 탭", icon: "◒", description: "자동 먹이 생성 간격을 단계마다 10% 줄입니다.", value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 탭` },
-        { id: "growth", name: "먹이 찾기", icon: "❧", description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높입니다.", value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도` },
-        { id: "breed", name: "번식 회복", icon: "♡", description: "부모의 번식 대기시간을 단계마다 10% 줄입니다.", value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초` },
-        { id: "merge", name: "합체 회복", icon: "◇", description: "합체 후 대기시간을 단계마다 10% 줄입니다.", value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초` },
-        { id: "capacity", name: "정원 확장", icon: "＋", description: "정원 인원 상한을 단계마다 10명 늘립니다.", value: (level) => `${Math.min(100, 50 + 10 * level)}명` }
+        {
+          id: "food",
+          name: "자동 탭",
+          icon: "◒",
+          description: "자동 먹이 생성 간격을 단계마다 10% 줄입니다.",
+          value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 탭`
+        },
+        {
+          id: "growth",
+          name: "먹이 찾기",
+          icon: "❧",
+          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높입니다.",
+          value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
+        },
+        {
+          id: "breed",
+          name: "번식 회복",
+          icon: "♡",
+          description: "부모의 번식 대기시간을 단계마다 10% 줄입니다.",
+          value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
+        },
+        {
+          id: "merge",
+          name: "합체 회복",
+          icon: "◇",
+          description: "합체 후 대기시간을 단계마다 10% 줄입니다.",
+          value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
+        },
+        {
+          id: "capacity",
+          name: "정원 확장",
+          icon: "＋",
+          description: "정원 인원 상한을 단계마다 10명 늘립니다.",
+          value: (level) => `${Math.min(100, 50 + 10 * level)}명`
+        }
       ]);
       FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
     }
@@ -655,44 +1036,80 @@
 
   // src/ability-state.js
   function createAbilityProgressionState({ availablePoints = 0 } = {}) {
-    if (!isNonNegativeInteger(availablePoints)) throw new TypeError("availablePoints must be a non-negative integer");
+    if (!isNonNegativeInteger(availablePoints)) {
+      throw new TypeError("availablePoints must be a non-negative integer");
+    }
     return {
       schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
       availablePoints,
       farmUpgrades: createFarmUpgradeState(),
-      abilities: Object.fromEntries(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, {
-        rootUnlocked: false,
-        powerLevel: 0,
-        gradeLevel: 0
-      }]))
+      abilities: Object.fromEntries(
+        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
+          definition.id,
+          {
+            rootUnlocked: false,
+            powerLevel: 0,
+            gradeLevel: 0
+          }
+        ])
+      )
     };
   }
   function isValidAbilityProgressionState(state) {
-    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) return false;
-    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") return false;
-    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) return false;
-    for (const definition of SPECIES_ABILITY_DEFINITIONS) {
-      const investment = state.abilities[definition.id];
-      if (!investment || typeof investment.rootUnlocked !== "boolean") return false;
-      if (!isNonNegativeInteger(investment.powerLevel) || investment.powerLevel > definition.powerValues.length - 1) return false;
-      if (!isNonNegativeInteger(investment.gradeLevel) || investment.gradeLevel > definition.gradeThresholds.length - 1) return false;
-      if (!investment.rootUnlocked && (investment.powerLevel !== 0 || investment.gradeLevel !== 0)) return false;
+    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
+      return false;
     }
-    return Object.keys(state.abilities).every((abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId));
+    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") {
+      return false;
+    }
+    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
+      return false;
+    }
+    for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
+      const INVESTMENT = state.abilities[DEFINITION.id];
+      if (!INVESTMENT || typeof INVESTMENT.rootUnlocked !== "boolean") {
+        return false;
+      }
+      if (!isNonNegativeInteger(INVESTMENT.powerLevel) || INVESTMENT.powerLevel > DEFINITION.powerValues.length - 1) {
+        return false;
+      }
+      if (!isNonNegativeInteger(INVESTMENT.gradeLevel) || INVESTMENT.gradeLevel > DEFINITION.gradeThresholds.length - 1) {
+        return false;
+      }
+      if (!INVESTMENT.rootUnlocked && (INVESTMENT.powerLevel !== 0 || INVESTMENT.gradeLevel !== 0)) {
+        return false;
+      }
+    }
+    return Object.keys(state.abilities).every(
+      (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
+    );
   }
   function createAbilityRuntimeSnapshot(state) {
-    if (!isValidPlayerLikeAbilityState(state)) throw new TypeError("Cannot snapshot invalid ability progression state");
+    if (!isValidPlayerLikeAbilityState(state)) {
+      throw new TypeError("Cannot snapshot invalid ability progression state");
+    }
     return {
       schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
       level: state.level,
       availablePoints: state.availablePoints,
-      farmUpgrades: { ...state.farmUpgrades },
-      abilities: Object.fromEntries(SPECIES_ABILITY_DEFINITIONS.map(({ id }) => [id, { ...state.abilities[id] }]))
+      farmUpgrades: {
+        ...state.farmUpgrades
+      },
+      abilities: Object.fromEntries(
+        SPECIES_ABILITY_DEFINITIONS.map(({ id }) => [
+          id,
+          {
+            ...state.abilities[id]
+          }
+        ])
+      )
     };
   }
   function isValidAbilityRuntimeSnapshot(snapshot2) {
-    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1) return false;
-    const state = {
+    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1) {
+      return false;
+    }
+    const STATE = {
       schemaVersion: snapshot2.schemaVersion,
       level: snapshot2.level,
       experience: 0,
@@ -701,20 +1118,30 @@
       abilities: snapshot2.abilities,
       processedBossKillReceipts: []
     };
-    if (!isValidAbilityProgressionState(state)) return false;
-    const invested = Object.values(state.abilities).reduce((total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
-    return invested + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
+    if (!isValidAbilityProgressionState(STATE)) {
+      return false;
+    }
+    const INVESTED = Object.values(STATE.abilities).reduce(
+      (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
+      0
+    );
+    return INVESTED + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
   }
   function isValidPlayerLikeAbilityState(state) {
-    const abilityState = {
+    const ABILITY_STATE = {
       schemaVersion: state?.schemaVersion,
       availablePoints: state?.availablePoints,
       farmUpgrades: state?.farmUpgrades,
       abilities: state?.abilities
     };
-    if (!isValidAbilityProgressionState(abilityState) || !Number.isSafeInteger(state?.level) || state.level < 1) return false;
-    const investedPoints = Object.values(state.abilities).reduce((total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
-    return investedPoints + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
+    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1) {
+      return false;
+    }
+    const INVESTED_POINTS = Object.values(state.abilities).reduce(
+      (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
+      0
+    );
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
   }
   function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
@@ -739,16 +1166,44 @@
   }
   function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
     if (!isValidPlayerProgressionState(state)) {
-      return { state, awarded: false, reason: "invalid-state", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-state",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
     }
     if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
-      return { state, awarded: false, reason: "invalid-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-receipt",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
     }
     if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
-      return { state, awarded: false, reason: "invalid-xp", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-xp",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
     }
     if (state.processedBossKillReceipts.includes(receiptKey)) {
-      return { state, awarded: false, reason: "duplicate-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+      return {
+        state,
+        awarded: false,
+        reason: "duplicate-receipt",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
     }
     let level = state.level;
     let experience = state.experience + xpAmount;
@@ -758,29 +1213,52 @@
       level += 1;
       levelsGained += 1;
     }
-    const pointsAwarded = levelsGained * SHARED_POINTS_PER_LEVEL;
-    const nextState = {
+    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
+    const NEXT_STATE = {
       ...state,
       level,
       experience,
-      availablePoints: state.availablePoints + pointsAwarded,
-      abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }])),
+      availablePoints: state.availablePoints + POINTS_AWARDED,
+      abilities: Object.fromEntries(
+        Object.entries(state.abilities).map(([id, value]) => [
+          id,
+          {
+            ...value
+          }
+        ])
+      ),
       processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
     };
-    return { state: nextState, awarded: true, reason: null, xpAwarded: xpAmount, levelsGained, pointsAwarded };
+    return {
+      state: NEXT_STATE,
+      awarded: true,
+      reason: null,
+      xpAwarded: xpAmount,
+      levelsGained,
+      pointsAwarded: POINTS_AWARDED
+    };
   }
   function experienceForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) throw new RangeError("level must be a positive integer");
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("level must be a positive integer");
+    }
     return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
   }
   function formatXpForDisplay(experience) {
-    const value = Number.isFinite(experience) ? Math.max(0, experience) : 0;
-    return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
+    const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
+    return new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: 1
+    }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) return false;
-    const investedPoints = Object.values(state.abilities).reduce((total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
-    return investedPoints + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
+    if (!isValidAbilityProgressionState(state) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+      return false;
+    }
+    const INVESTED_POINTS = Object.values(state.abilities).reduce(
+      (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
+      0
+    );
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
   }
   var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL;
   var init_player_progression = __esm({
@@ -797,24 +1275,32 @@
 
   // src/boss-rewards.js
   function bossStageStats(stage) {
-    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
-    const exponent = stage - 1;
+    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
+      throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
+    }
+    const EXPONENT = stage - 1;
     return {
       stage,
-      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** exponent,
-      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** exponent,
-      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** exponent),
+      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
+      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
+      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
       rolls: Math.floor(stage / 5)
     };
   }
   function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
-    if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) throw new TypeError("Boss species weights and random source are required");
-    const total = weights.reduce((sum, weight) => sum + weight, 0);
-    let remaining = random() * total;
-    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= total) throw new RangeError("Boss species roll must be in [0, 1)");
+    if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) {
+      throw new TypeError("Boss species weights and random source are required");
+    }
+    const TOTAL = weights.reduce((sum, weight) => sum + weight, 0);
+    let remaining = random() * TOTAL;
+    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= TOTAL) {
+      throw new RangeError("Boss species roll must be in [0, 1)");
+    }
     for (let index = 0; index < weights.length; index += 1) {
       remaining -= weights[index];
-      if (remaining < 0) return index;
+      if (remaining < 0) {
+        return index;
+      }
     }
     return weights.length - 1;
   }
@@ -822,133 +1308,232 @@
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
       throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
     }
-    const multiplier = farmEvent ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier;
-    return Math.min(1, Math.max(0, BOSS_REWARD_SETTINGS.acquisitionChance * multiplier));
+    const MULTIPLIER = farmEvent ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier;
+    return Math.min(1, Math.max(0, BOSS_REWARD_SETTINGS.acquisitionChance * MULTIPLIER));
   }
-  function decideBossAcquisition({ encounterId, source = "raid", random, species = 3, tier = 1, x = 0, y = 0, acquisitionMultiplier = 1, receiptKey = null } = {}) {
+  function decideBossAcquisition({
+    encounterId,
+    source = "raid",
+    random,
+    species = 3,
+    tier = 1,
+    x = 0,
+    y = 0,
+    acquisitionMultiplier = 1,
+    receiptKey = null
+  } = {}) {
     if (!Number.isSafeInteger(encounterId) || encounterId < 1 || !["farm", "raid"].includes(source) || typeof random !== "function") {
       throw new TypeError("A boss encounter ID, source, and random roll are required");
     }
-    if (receiptKey !== null && (typeof receiptKey !== "string" || !receiptKey.trim() || receiptKey.length > 255)) throw new TypeError("Boss receipt key must be a non-empty string");
-    const chance = bossAcquisitionChance({ farmEvent: source === "farm", acquisitionMultiplier });
-    const roll = random();
-    if (!Number.isFinite(roll) || roll < 0 || roll >= 1) throw new RangeError("Boss acquisition roll must be in [0, 1)");
-    return { encounterId, source, receiptKey: receiptKey || `${source}:${encounterId}`, acquisitionMultiplier: source === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier, species, tier, x, y, chance, roll, status: roll < chance ? "pending" : "missed", unitId: 0 };
-  }
-  function grantPendingBossAcquisitions(world, { grantUnit = null } = {}) {
-    const granted = [];
-    for (const reward2 of world.bossRewardReceipts || []) {
-      if (reward2.status !== "pending") continue;
-      const drops = Array.isArray(reward2.drops) ? reward2.drops : [{ roll: reward2.roll, status: "pending", unitId: 0 }];
-      for (const drop2 of drops) {
-        if (drop2.status !== "pending") continue;
-        const unit2 = grantUnit ? grantUnit({ ...reward2, roll: drop2.roll }) : world.units.length < world.capacity ? world.spawn(reward2.species, reward2.tier, reward2.x, reward2.y) : null;
-        if (!unit2) continue;
-        drop2.status = "granted";
-        drop2.unitId = unit2.id;
-        granted.push({ ...reward2, roll: drop2.roll, unitId: unit2.id });
-      }
-      const pending = drops.some((drop2) => drop2.status === "pending");
-      const successful = drops.filter((drop2) => drop2.status === "granted");
-      reward2.status = pending ? "pending" : successful.length ? "granted" : "missed";
-      reward2.unitId = pending ? 0 : successful[0]?.unitId || 0;
-      const event = world.farmBossEvent;
-      if (event?.encounterId === reward2.encounterId) {
-        event.rewardStatus = reward2.status;
-        event.rewardUnitId = reward2.unitId;
-      }
+    if (receiptKey !== null && (typeof receiptKey !== "string" || !receiptKey.trim() || receiptKey.length > 255)) {
+      throw new TypeError("Boss receipt key must be a non-empty string");
     }
-    return granted;
-  }
-  function resolveBossAcquisition(world, options) {
-    const { encounterId, source = "raid" } = options || {};
-    const requestedReceiptKey = options?.receiptKey;
-    if (requestedReceiptKey !== void 0 && (typeof requestedReceiptKey !== "string" || !requestedReceiptKey.trim() || requestedReceiptKey.length > 255)) throw new TypeError("Boss receipt key must be a non-empty string");
-    world.bossRewardReceipts ||= [];
-    world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
-    const previous = world.bossRewardReceipts.find((receipt2) => requestedReceiptKey ? receipt2.receiptKey === requestedReceiptKey : receipt2.encounterId === encounterId && receipt2.source === source);
-    if (previous) {
-      if (previous.status === "pending") grantPendingBossAcquisitions(world, { grantUnit: options?.grantUnit || null });
-      return previous;
+    const CHANCE = bossAcquisitionChance({
+      farmEvent: source === "farm",
+      acquisitionMultiplier
+    });
+    const ROLL = random();
+    if (!Number.isFinite(ROLL) || ROLL < 0 || ROLL >= 1) {
+      throw new RangeError("Boss acquisition roll must be in [0, 1)");
     }
-    if (!["farm", "raid"].includes(source) || !Number.isSafeInteger(encounterId) || encounterId <= (world.bossRewardWatermarks[source] || 0)) {
-      throw new RangeError("A settled or stale boss encounter cannot be rolled again");
-    }
-    const random = options?.random || (() => world.random());
-    const rollCount = options?.rollCount === void 0 ? 1 : options.rollCount;
-    if (!Number.isSafeInteger(rollCount) || rollCount < 0 || rollCount > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError("Boss drop roll count is out of range");
-    const decision = rollCount > 0 ? decideBossAcquisition({ ...options, random }) : {
+    return {
       encounterId,
       source,
-      receiptKey: options?.receiptKey || `${source}:${encounterId}`,
-      acquisitionMultiplier: source === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options?.acquisitionMultiplier ?? 1,
+      receiptKey: receiptKey || `${source}:${encounterId}`,
+      acquisitionMultiplier: source === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier,
+      species,
+      tier,
+      x,
+      y,
+      chance: CHANCE,
+      roll: ROLL,
+      status: ROLL < CHANCE ? "pending" : "missed",
+      unitId: 0
+    };
+  }
+  function grantPendingBossAcquisitions(world, { grantUnit = null } = {}) {
+    const GRANTED = [];
+    for (const REWARD2 of world.bossRewardReceipts || []) {
+      if (REWARD2.status !== "pending") {
+        continue;
+      }
+      const DROPS = Array.isArray(REWARD2.drops) ? REWARD2.drops : [
+        {
+          roll: REWARD2.roll,
+          status: "pending",
+          unitId: 0
+        }
+      ];
+      for (const DROP2 of DROPS) {
+        if (DROP2.status !== "pending") {
+          continue;
+        }
+        const UNIT3 = grantUnit ? grantUnit({
+          ...REWARD2,
+          roll: DROP2.roll
+        }) : world.units.length < world.capacity ? world.spawn(REWARD2.species, REWARD2.tier, REWARD2.x, REWARD2.y) : null;
+        if (!UNIT3) {
+          continue;
+        }
+        DROP2.status = "granted";
+        DROP2.unitId = UNIT3.id;
+        GRANTED.push({
+          ...REWARD2,
+          roll: DROP2.roll,
+          unitId: UNIT3.id
+        });
+      }
+      const PENDING = DROPS.some((drop) => drop.status === "pending");
+      const SUCCESSFUL = DROPS.filter((drop) => drop.status === "granted");
+      REWARD2.status = PENDING ? "pending" : SUCCESSFUL.length ? "granted" : "missed";
+      REWARD2.unitId = PENDING ? 0 : SUCCESSFUL[0]?.unitId || 0;
+      const EVENT = world.farmBossEvent;
+      if (EVENT?.encounterId === REWARD2.encounterId) {
+        EVENT.rewardStatus = REWARD2.status;
+        EVENT.rewardUnitId = REWARD2.unitId;
+      }
+    }
+    return GRANTED;
+  }
+  function resolveBossAcquisition(world, options) {
+    const { encounterId: ENCOUNTER_ID, source: SOURCE = "raid" } = options || {};
+    const REQUESTED_RECEIPT_KEY = options?.receiptKey;
+    if (REQUESTED_RECEIPT_KEY !== void 0 && (typeof REQUESTED_RECEIPT_KEY !== "string" || !REQUESTED_RECEIPT_KEY.trim() || REQUESTED_RECEIPT_KEY.length > 255)) {
+      throw new TypeError("Boss receipt key must be a non-empty string");
+    }
+    world.bossRewardReceipts ||= [];
+    world.bossRewardWatermarks ||= {
+      farm: 0,
+      raid: 0
+    };
+    const PREVIOUS = world.bossRewardReceipts.find(
+      (receipt) => REQUESTED_RECEIPT_KEY ? receipt.receiptKey === REQUESTED_RECEIPT_KEY : receipt.encounterId === ENCOUNTER_ID && receipt.source === SOURCE
+    );
+    if (PREVIOUS) {
+      if (PREVIOUS.status === "pending") {
+        grantPendingBossAcquisitions(world, {
+          grantUnit: options?.grantUnit || null
+        });
+      }
+      return PREVIOUS;
+    }
+    if (!["farm", "raid"].includes(SOURCE) || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
+      throw new RangeError("A settled or stale boss encounter cannot be rolled again");
+    }
+    const RANDOM = options?.random || (() => world.random());
+    const ROLL_COUNT = options?.rollCount === void 0 ? 1 : options.rollCount;
+    if (!Number.isSafeInteger(ROLL_COUNT) || ROLL_COUNT < 0 || ROLL_COUNT > BOSS_REWARD_SETTINGS.maxStage) {
+      throw new RangeError("Boss drop roll count is out of range");
+    }
+    const DECISION = ROLL_COUNT > 0 ? decideBossAcquisition({
+      ...options,
+      random: RANDOM
+    }) : {
+      encounterId: ENCOUNTER_ID,
+      source: SOURCE,
+      receiptKey: options?.receiptKey || `${SOURCE}:${ENCOUNTER_ID}`,
+      acquisitionMultiplier: SOURCE === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options?.acquisitionMultiplier ?? 1,
       species: options?.species ?? 3,
       tier: options?.tier ?? 1,
       x: options?.x ?? 0,
       y: options?.y ?? 0,
-      chance: bossAcquisitionChance({ farmEvent: source === "farm", acquisitionMultiplier: options?.acquisitionMultiplier ?? 1 }),
+      chance: bossAcquisitionChance({
+        farmEvent: SOURCE === "farm",
+        acquisitionMultiplier: options?.acquisitionMultiplier ?? 1
+      }),
       roll: 0,
       status: "missed",
       unitId: 0
     };
-    const drops = rollCount > 0 ? [{ roll: decision.roll, status: decision.roll < decision.chance ? "pending" : "missed", unitId: 0 }, ...Array.from({ length: rollCount - 1 }, () => {
-      const roll = random();
-      if (!Number.isFinite(roll) || roll < 0 || roll >= 1) throw new RangeError("Boss acquisition roll must be in [0, 1)");
-      return { roll, status: roll < decision.chance ? "pending" : "missed", unitId: 0 };
-    })] : [];
-    const receipt = { ...decision, drops, rollCount, roll: drops[0]?.roll ?? 0, status: drops.some((drop2) => drop2.status === "pending") ? "pending" : "missed", unitId: 0 };
-    world.bossRewardReceipts.push(receipt);
-    world.bossRewardWatermarks[source] = encounterId;
-    let settled = world.bossRewardReceipts.filter((item) => item.status !== "pending");
-    if (settled.length > 128) {
-      const remove = new Set(settled.slice(0, settled.length - 128));
-      world.bossRewardReceipts = world.bossRewardReceipts.filter((item) => !remove.has(item));
+    const DROPS = ROLL_COUNT > 0 ? [
+      {
+        roll: DECISION.roll,
+        status: DECISION.roll < DECISION.chance ? "pending" : "missed",
+        unitId: 0
+      },
+      ...Array.from(
+        {
+          length: ROLL_COUNT - 1
+        },
+        () => {
+          const ROLL = RANDOM();
+          if (!Number.isFinite(ROLL) || ROLL < 0 || ROLL >= 1) {
+            throw new RangeError("Boss acquisition roll must be in [0, 1)");
+          }
+          return {
+            roll: ROLL,
+            status: ROLL < DECISION.chance ? "pending" : "missed",
+            unitId: 0
+          };
+        }
+      )
+    ] : [];
+    const RECEIPT = {
+      ...DECISION,
+      drops: DROPS,
+      rollCount: ROLL_COUNT,
+      roll: DROPS[0]?.roll ?? 0,
+      status: DROPS.some((drop) => drop.status === "pending") ? "pending" : "missed",
+      unitId: 0
+    };
+    world.bossRewardReceipts.push(RECEIPT);
+    world.bossRewardWatermarks[SOURCE] = ENCOUNTER_ID;
+    const SETTLED = world.bossRewardReceipts.filter((item) => item.status !== "pending");
+    if (SETTLED.length > 128) {
+      const REMOVE = new Set(SETTLED.slice(0, SETTLED.length - 128));
+      world.bossRewardReceipts = world.bossRewardReceipts.filter((item) => !REMOVE.has(item));
     }
-    const event = world.farmBossEvent;
-    if (event?.encounterId === encounterId) {
-      event.rewardStatus = receipt.status;
-      event.rewardChance = receipt.chance;
-      event.rewardRoll = receipt.roll;
-      event.rewardUnitId = receipt.unitId;
+    const EVENT = world.farmBossEvent;
+    if (EVENT?.encounterId === ENCOUNTER_ID) {
+      EVENT.rewardStatus = RECEIPT.status;
+      EVENT.rewardChance = RECEIPT.chance;
+      EVENT.rewardRoll = RECEIPT.roll;
+      EVENT.rewardUnitId = RECEIPT.unitId;
     }
-    if (receipt.status === "pending") grantPendingBossAcquisitions(world, { grantUnit: options?.grantUnit || null });
-    return receipt;
+    if (RECEIPT.status === "pending") {
+      grantPendingBossAcquisitions(world, {
+        grantUnit: options?.grantUnit || null
+      });
+    }
+    return RECEIPT;
   }
   function settleBossKill(world, options) {
-    const receipt = resolveBossAcquisition(world, options);
-    const progressionOwner = options?.progressionOwner || world;
-    const wallet = options?.playerProgression || progressionOwner.playerProgression;
-    const receiptKey = receipt.xpReceiptKey || options?.receiptKey || receipt.receiptKey || `${receipt.source}:${receipt.encounterId}`;
-    if (receipt.xpReceiptKey && ["awarded", "already-awarded"].includes(receipt.xpStatus)) {
+    const RECEIPT = resolveBossAcquisition(world, options);
+    const PROGRESSION_OWNER = options?.progressionOwner || world;
+    const WALLET = options?.playerProgression || PROGRESSION_OWNER.playerProgression;
+    const RECEIPT_KEY = RECEIPT.xpReceiptKey || options?.receiptKey || RECEIPT.receiptKey || `${RECEIPT.source}:${RECEIPT.encounterId}`;
+    if (RECEIPT.xpReceiptKey && ["awarded", "already-awarded"].includes(RECEIPT.xpStatus)) {
       return {
-        receipt,
-        progression: wallet,
+        receipt: RECEIPT,
+        progression: WALLET,
         awarded: false,
         reason: "duplicate-receipt",
-        xpAwarded: receipt.xpAmount ?? 0,
-        levelsGained: receipt.levelsGained ?? 0,
-        pointsAwarded: receipt.pointsAwarded ?? 0
+        xpAwarded: RECEIPT.xpAmount ?? 0,
+        levelsGained: RECEIPT.levelsGained ?? 0,
+        pointsAwarded: RECEIPT.pointsAwarded ?? 0
       };
     }
-    const result = awardBossKillXp(wallet, receiptKey, options?.xpAmount === void 0 ? void 0 : options.xpAmount);
-    if (result.awarded) progressionOwner.playerProgression = result.state;
-    if (result.awarded || result.reason === "duplicate-receipt") {
-      receipt.xpReceiptKey = receiptKey;
-      receipt.xpStatus = result.awarded ? "awarded" : "already-awarded";
-      receipt.xpAmount = result.awarded ? result.xpAwarded : 0;
-      receipt.levelsGained = result.levelsGained;
-      receipt.pointsAwarded = result.pointsAwarded;
+    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options?.xpAmount === void 0 ? void 0 : options.xpAmount);
+    if (RESULT.awarded) {
+      PROGRESSION_OWNER.playerProgression = RESULT.state;
+    }
+    if (RESULT.awarded || RESULT.reason === "duplicate-receipt") {
+      RECEIPT.xpReceiptKey = RECEIPT_KEY;
+      RECEIPT.xpStatus = RESULT.awarded ? "awarded" : "already-awarded";
+      RECEIPT.xpAmount = RESULT.awarded ? RESULT.xpAwarded : 0;
+      RECEIPT.levelsGained = RESULT.levelsGained;
+      RECEIPT.pointsAwarded = RESULT.pointsAwarded;
     } else {
-      receipt.xpStatus = "unsettled";
+      RECEIPT.xpStatus = "unsettled";
     }
     return {
-      receipt,
-      progression: result.state,
-      awarded: result.awarded,
-      reason: result.reason,
-      xpAwarded: result.xpAwarded,
-      levelsGained: result.levelsGained,
-      pointsAwarded: result.pointsAwarded
+      receipt: RECEIPT,
+      progression: RESULT.state,
+      awarded: RESULT.awarded,
+      reason: RESULT.reason,
+      xpAwarded: RESULT.xpAwarded,
+      levelsGained: RESULT.levelsGained,
+      pointsAwarded: RESULT.pointsAwarded
     };
   }
   var BOSS_REWARD_SETTINGS;
@@ -975,15 +1560,15 @@
   function createFarmBossProgress(seed = 731) {
     return {
       currentStage: 1,
-      encounterSeed: (clampUint32(seed) ^ 2738958700) >>> 0,
+      encounterSeed: (CLAMP_UINT32(seed) ^ 2738958700) >>> 0,
       encounterEpoch: 0,
       nextSelectionId: 1,
       selections: []
     };
   }
   function selectionRandom(seed, selectionId, stage, encounterEpoch = 0) {
-    const epochSalt = Math.imul(encounterEpoch >>> 0, 668265261);
-    let state = (seed ^ Math.imul(selectionId, 2654435769) ^ Math.imul(stage, 2246822507) ^ epochSalt) >>> 0;
+    const EPOCH_SALT = Math.imul(encounterEpoch >>> 0, 668265261);
+    let state = (seed ^ Math.imul(selectionId, 2654435769) ^ Math.imul(stage, 2246822507) ^ EPOCH_SALT) >>> 0;
     return () => {
       state = state + 1831565813 >>> 0;
       let value = state;
@@ -1001,30 +1586,41 @@
     return progress.encounterEpoch;
   }
   function selectFarmBossStage(progress, stage) {
-    if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError("Boss stage is outside the supported range");
+    if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
+      throw new RangeError("Boss stage is outside the supported range");
+    }
     let selection = progress.selections.find((entry) => entry.stage === stage);
     if (!selection) {
-      const selectionId = progress.nextSelectionId;
-      const random = selectionRandom(progress.encounterSeed, selectionId, stage, progress.encounterEpoch ?? 0);
-      selection = { stage, species: chooseBossSpecies(random), selectionId };
+      const SELECTION_ID = progress.nextSelectionId;
+      const RANDOM = selectionRandom(progress.encounterSeed, SELECTION_ID, stage, progress.encounterEpoch ?? 0);
+      selection = {
+        stage,
+        species: chooseBossSpecies(RANDOM),
+        selectionId: SELECTION_ID
+      };
       progress.selections.push(selection);
       progress.nextSelectionId += 1;
     }
     progress.currentStage = stage;
-    const stats2 = bossStageStats(stage);
-    return { ...selection, ...stats2 };
+    const STATS2 = bossStageStats(stage);
+    return {
+      ...selection,
+      ...STATS2
+    };
   }
-  var clampUint32;
+  var CLAMP_UINT32;
   var init_farm_boss_stages = __esm({
     "src/farm-boss-stages.js"() {
       init_boss_rewards();
-      clampUint32 = (value) => Number.isSafeInteger(value) ? value >>> 0 : 0;
+      CLAMP_UINT32 = (value) => Number.isSafeInteger(value) ? value >>> 0 : 0;
     }
   });
 
   // src/ability-progression.js
   function abilityStateFor(state, abilityId) {
-    if (!definitionById.has(abilityId) || !state?.abilities?.[abilityId]) return null;
+    if (!DEFINITION_BY_ID.has(abilityId) || !state?.abilities?.[abilityId]) {
+      return null;
+    }
     return state.abilities[abilityId];
   }
   function getAbilityPowerLevel(state, abilityId) {
@@ -1034,124 +1630,328 @@
     return abilityStateFor(state, abilityId)?.gradeLevel || 0;
   }
   function getMinimumApplicableTier(state, abilityId) {
-    const definition = definitionById.get(abilityId);
-    if (!definition) return null;
-    const gradeLevel = getAbilityGradeLevel(state, abilityId);
-    return definition.gradeThresholds[Math.min(gradeLevel, definition.gradeThresholds.length - 1)];
+    const DEFINITION = DEFINITION_BY_ID.get(abilityId);
+    if (!DEFINITION) {
+      return null;
+    }
+    const GRADE_LEVEL = getAbilityGradeLevel(state, abilityId);
+    return DEFINITION.gradeThresholds[Math.min(GRADE_LEVEL, DEFINITION.gradeThresholds.length - 1)];
   }
   function isAbilityActive(state, abilityId, unitTier) {
-    const investment = abilityStateFor(state, abilityId);
-    const minimumTier = getMinimumApplicableTier(state, abilityId);
-    return !!investment?.rootUnlocked && Number.isInteger(unitTier) && unitTier >= minimumTier;
+    const INVESTMENT = abilityStateFor(state, abilityId);
+    const MINIMUM_TIER = getMinimumApplicableTier(state, abilityId);
+    return !!INVESTMENT?.rootUnlocked && Number.isInteger(unitTier) && unitTier >= MINIMUM_TIER;
   }
   function powerLevelFor(state, abilityId) {
     return getAbilityPowerLevel(state, abilityId);
   }
   function getInvestedPointCount(state) {
-    if (!isValidAbilityProgressionState(state)) return 0;
-    return Object.values(state.abilities).reduce((total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel, 0);
+    if (!isValidAbilityProgressionState(state)) {
+      return 0;
+    }
+    return Object.values(state.abilities).reduce(
+      (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
+      0
+    );
   }
   function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
-    const definition = definitionById.get(abilityId);
-    if (!definition) return { allowed: false, reason: "unknown-ability" };
-    if (!isValidAbilityProgressionState(state)) return { allowed: false, reason: "invalid-state" };
-    const lockReason = progressionLockReason(context);
-    if (lockReason) return { allowed: false, reason: lockReason };
-    const investment = state.abilities[abilityId];
-    const node = parseNodeId(nodeId);
-    if (!node) return { allowed: false, reason: "unknown-node" };
-    if (node.kind === "root") {
-      if (investment.rootUnlocked) return { allowed: false, reason: "already-invested" };
-      const highestTier = context.highestSpeciesTier?.[definition.species] ?? context.highestSpeciesTier ?? 0;
-      if (!Number.isInteger(highestTier) || highestTier < definition.rootTier) return { allowed: false, reason: "requires-rare-tier" };
-    } else {
-      if (!investment.rootUnlocked) return { allowed: false, reason: "root-required" };
-      const currentLevel = node.kind === "power" ? investment.powerLevel : investment.gradeLevel;
-      const maxLevel = node.kind === "power" ? definition.powerValues.length - 1 : definition.gradeThresholds.length - 1;
-      if (node.level <= currentLevel) return { allowed: false, reason: "already-invested" };
-      if (node.level !== currentLevel + 1) return { allowed: false, reason: "prerequisite-required" };
-      if (node.level > maxLevel) return { allowed: false, reason: "max-level" };
+    const DEFINITION = DEFINITION_BY_ID.get(abilityId);
+    if (!DEFINITION) {
+      return {
+        allowed: false,
+        reason: "unknown-ability"
+      };
     }
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) return { allowed: false, reason: "insufficient-points" };
-    return { allowed: true, reason: null };
+    if (!isValidAbilityProgressionState(state)) {
+      return {
+        allowed: false,
+        reason: "invalid-state"
+      };
+    }
+    const LOCK_REASON = progressionLockReason(context);
+    if (LOCK_REASON) {
+      return {
+        allowed: false,
+        reason: LOCK_REASON
+      };
+    }
+    const INVESTMENT = state.abilities[abilityId];
+    const NODE = parseNodeId(nodeId);
+    if (!NODE) {
+      return {
+        allowed: false,
+        reason: "unknown-node"
+      };
+    }
+    if (NODE.kind === "root") {
+      if (INVESTMENT.rootUnlocked) {
+        return {
+          allowed: false,
+          reason: "already-invested"
+        };
+      }
+      const HIGHEST_TIER = context.highestSpeciesTier?.[DEFINITION.species] ?? context.highestSpeciesTier ?? 0;
+      if (!Number.isInteger(HIGHEST_TIER) || HIGHEST_TIER < DEFINITION.rootTier) {
+        return {
+          allowed: false,
+          reason: "requires-rare-tier"
+        };
+      }
+    } else {
+      if (!INVESTMENT.rootUnlocked) {
+        return {
+          allowed: false,
+          reason: "root-required"
+        };
+      }
+      const CURRENT_LEVEL = NODE.kind === "power" ? INVESTMENT.powerLevel : INVESTMENT.gradeLevel;
+      const MAX_LEVEL = NODE.kind === "power" ? DEFINITION.powerValues.length - 1 : DEFINITION.gradeThresholds.length - 1;
+      if (NODE.level <= CURRENT_LEVEL) {
+        return {
+          allowed: false,
+          reason: "already-invested"
+        };
+      }
+      if (NODE.level !== CURRENT_LEVEL + 1) {
+        return {
+          allowed: false,
+          reason: "prerequisite-required"
+        };
+      }
+      if (NODE.level > MAX_LEVEL) {
+        return {
+          allowed: false,
+          reason: "max-level"
+        };
+      }
+    }
+    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
+      return {
+        allowed: false,
+        reason: "insufficient-points"
+      };
+    }
+    return {
+      allowed: true,
+      reason: null
+    };
   }
   function purchaseAbilityNode(state, abilityId, nodeId, context = {}) {
-    const check = canPurchaseAbilityNode(state, abilityId, nodeId, context);
-    if (!check.allowed) return { ok: false, reason: check.reason, state };
-    const node = parseNodeId(nodeId);
-    const next = cloneState(state);
-    next.availablePoints -= SHARED_ABILITY_POINT_COST;
-    if (node.kind === "root") next.abilities[abilityId].rootUnlocked = true;
-    else if (node.kind === "power") next.abilities[abilityId].powerLevel = node.level;
-    else next.abilities[abilityId].gradeLevel = node.level;
-    return { ok: true, reason: null, state: next };
+    const CHECK = canPurchaseAbilityNode(state, abilityId, nodeId, context);
+    if (!CHECK.allowed) {
+      return {
+        ok: false,
+        reason: CHECK.reason,
+        state
+      };
+    }
+    const NODE = parseNodeId(nodeId);
+    const NEXT = cloneState(state);
+    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
+    if (NODE.kind === "root") {
+      NEXT.abilities[abilityId].rootUnlocked = true;
+    } else if (NODE.kind === "power") {
+      NEXT.abilities[abilityId].powerLevel = NODE.level;
+    } else {
+      NEXT.abilities[abilityId].gradeLevel = NODE.level;
+    }
+    return {
+      ok: true,
+      reason: null,
+      state: NEXT
+    };
   }
   function canResetAbilityProgression(state, context = {}) {
-    if (!isValidAbilityProgressionState(state)) return { allowed: false, reason: "invalid-state" };
-    const lockReason = progressionLockReason(context);
-    if (lockReason) return { allowed: false, reason: lockReason };
-    if (getInvestedPointCount(state) === 0) return { allowed: false, reason: "nothing-invested" };
-    return { allowed: true, reason: null };
+    if (!isValidAbilityProgressionState(state)) {
+      return {
+        allowed: false,
+        reason: "invalid-state"
+      };
+    }
+    const LOCK_REASON = progressionLockReason(context);
+    if (LOCK_REASON) {
+      return {
+        allowed: false,
+        reason: LOCK_REASON
+      };
+    }
+    if (getInvestedPointCount(state) === 0) {
+      return {
+        allowed: false,
+        reason: "nothing-invested"
+      };
+    }
+    return {
+      allowed: true,
+      reason: null
+    };
   }
   function resetAbilityProgression(state, context = {}) {
-    const check = canResetAbilityProgression(state, context);
-    if (!check.allowed) return { ok: false, reason: check.reason, state };
-    const refunded = getInvestedPointCount(state);
-    const next = cloneState(state);
-    next.availablePoints += refunded;
-    next.abilities = Object.fromEntries(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, {
+    const CHECK = canResetAbilityProgression(state, context);
+    if (!CHECK.allowed) {
+      return {
+        ok: false,
+        reason: CHECK.reason,
+        state
+      };
+    }
+    const REFUNDED = getInvestedPointCount(state);
+    const NEXT = cloneState(state);
+    NEXT.availablePoints += REFUNDED;
+    NEXT.abilities = Object.fromEntries(
+      SPECIES_ABILITY_DEFINITIONS.map((definition) => [
+        definition.id,
+        {
+          rootUnlocked: false,
+          powerLevel: 0,
+          gradeLevel: 0
+        }
+      ])
+    );
+    return {
+      ok: true,
+      reason: null,
+      refunded: REFUNDED,
+      state: NEXT
+    };
+  }
+  function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
+    const NODE = FARM_UPGRADE_NODES.find((candidate) => candidate.id === nodeId);
+    if (!NODE) {
+      return {
+        allowed: false,
+        reason: "unknown-node"
+      };
+    }
+    if (!isValidPlayerProgressionState(state)) {
+      return {
+        allowed: false,
+        reason: "invalid-state"
+      };
+    }
+    const LOCK_REASON = progressionLockReason(context);
+    if (LOCK_REASON) {
+      return {
+        allowed: false,
+        reason: LOCK_REASON
+      };
+    }
+    if (state.farmUpgrades[nodeId] >= FARM_UPGRADE_MAX_LEVELS[nodeId]) {
+      return {
+        allowed: false,
+        reason: "max-level"
+      };
+    }
+    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
+      return {
+        allowed: false,
+        reason: "insufficient-points"
+      };
+    }
+    return {
+      allowed: true,
+      reason: null
+    };
+  }
+  function purchaseFarmUpgrade(state, nodeId, context = {}) {
+    const CHECK = canPurchaseFarmUpgrade(state, nodeId, context);
+    if (!CHECK.allowed) {
+      return {
+        ok: false,
+        reason: CHECK.reason,
+        state
+      };
+    }
+    const NEXT = cloneState(state);
+    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
+    NEXT.farmUpgrades[nodeId] += 1;
+    return {
+      ok: true,
+      reason: null,
+      state: NEXT
+    };
+  }
+  function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
+    const NODE = parseNodeId(nodeId);
+    if (!NODE) {
+      return {
+        purchased: false,
+        ready: false,
+        reason: "unknown-node"
+      };
+    }
+    const INVESTMENT = state?.abilities?.[definition.id] || {
       rootUnlocked: false,
       powerLevel: 0,
       gradeLevel: 0
-    }]));
-    return { ok: true, reason: null, refunded, state: next };
-  }
-  function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
-    const node = FARM_UPGRADE_NODES.find((candidate) => candidate.id === nodeId);
-    if (!node) return { allowed: false, reason: "unknown-node" };
-    if (!isValidPlayerProgressionState(state)) return { allowed: false, reason: "invalid-state" };
-    const lockReason = progressionLockReason(context);
-    if (lockReason) return { allowed: false, reason: lockReason };
-    if (state.farmUpgrades[nodeId] >= FARM_UPGRADE_MAX_LEVELS[nodeId]) return { allowed: false, reason: "max-level" };
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) return { allowed: false, reason: "insufficient-points" };
-    return { allowed: true, reason: null };
-  }
-  function purchaseFarmUpgrade(state, nodeId, context = {}) {
-    const check = canPurchaseFarmUpgrade(state, nodeId, context);
-    if (!check.allowed) return { ok: false, reason: check.reason, state };
-    const next = cloneState(state);
-    next.availablePoints -= SHARED_ABILITY_POINT_COST;
-    next.farmUpgrades[nodeId] += 1;
-    return { ok: true, reason: null, state: next };
-  }
-  function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
-    const node = parseNodeId(nodeId);
-    if (!node) return { purchased: false, ready: false, reason: "unknown-node" };
-    const investment = state?.abilities?.[definition.id] || { rootUnlocked: false, powerLevel: 0, gradeLevel: 0 };
-    if (node.kind === "root" && investment.rootUnlocked) return { purchased: true, ready: false, reason: "already-invested" };
-    if (node.kind === "power" && node.level <= investment.powerLevel) return { purchased: true, ready: false, reason: "already-invested" };
-    if (node.kind === "grade" && node.level <= investment.gradeLevel) return { purchased: true, ready: false, reason: "already-invested" };
-    const result = canPurchaseAbilityNode(state, definition.id, nodeId, context);
-    return { purchased: false, ready: result.allowed, reason: result.reason };
+    };
+    if (NODE.kind === "root" && INVESTMENT.rootUnlocked) {
+      return {
+        purchased: true,
+        ready: false,
+        reason: "already-invested"
+      };
+    }
+    if (NODE.kind === "power" && NODE.level <= INVESTMENT.powerLevel) {
+      return {
+        purchased: true,
+        ready: false,
+        reason: "already-invested"
+      };
+    }
+    if (NODE.kind === "grade" && NODE.level <= INVESTMENT.gradeLevel) {
+      return {
+        purchased: true,
+        ready: false,
+        reason: "already-invested"
+      };
+    }
+    const RESULT = canPurchaseAbilityNode(state, definition.id, nodeId, context);
+    return {
+      purchased: false,
+      ready: RESULT.allowed,
+      reason: RESULT.reason
+    };
   }
   function parseNodeId(nodeId) {
-    if (nodeId === "root") return { kind: "root", level: 0 };
-    const match = /^(power|grade)-(\d+)$/.exec(String(nodeId || ""));
-    if (!match) return null;
-    return { kind: match[1], level: Number(match[2]) };
+    if (nodeId === "root") {
+      return {
+        kind: "root",
+        level: 0
+      };
+    }
+    const MATCH = /^(power|grade)-(\d+)$/.exec(String(nodeId || ""));
+    if (!MATCH) {
+      return null;
+    }
+    return {
+      kind: MATCH[1],
+      level: Number(MATCH[2])
+    };
   }
   function cloneState(state) {
     return {
       ...state,
-      farmUpgrades: { ...state.farmUpgrades },
-      abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }]))
+      farmUpgrades: {
+        ...state.farmUpgrades
+      },
+      abilities: Object.fromEntries(
+        Object.entries(state.abilities).map(([id, value]) => [
+          id,
+          {
+            ...value
+          }
+        ])
+      )
     };
   }
   function progressionLockReason(context) {
-    if (context.location !== "farm" || context.inCombat === true) return context.inCombat ? "combat-lock" : "farm-only";
+    if (context.location !== "farm" || context.inCombat === true) {
+      return context.inCombat ? "combat-lock" : "farm-only";
+    }
     return null;
   }
-  var SHARED_ABILITY_POINT_COST, definitionById;
+  var SHARED_ABILITY_POINT_COST, DEFINITION_BY_ID;
   var init_ability_progression = __esm({
     "src/ability-progression.js"() {
       init_ability_catalog();
@@ -1159,113 +1959,152 @@
       init_player_progression();
       init_farm_upgrades();
       SHARED_ABILITY_POINT_COST = 1;
-      definitionById = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
+      DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
   });
 
   // src/species-abilities.js
   function definitionFor(abilityId) {
-    return definitionById2.get(abilityId) || null;
+    return DEFINITION_BY_ID2.get(abilityId) || null;
   }
-  function getBeanSplitCount(progression2, tier = 3) {
-    const definition = definitionFor("pea-death-split");
-    if (!isAbilityActive(progression2, definition.id, tier)) return 0;
-    const level = powerLevelFor(progression2, definition.id);
-    return definition.powerValues[level] || definition.powerValues[0];
+  function getBeanSplitCount(progression, tier = 3) {
+    const DEFINITION = definitionFor("pea-death-split");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return 0;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
+    return DEFINITION.powerValues[LEVEL] || DEFINITION.powerValues[0];
   }
-  function getCornBurstConfig(progression2, tier) {
-    const definition = definitionFor("corn-burst-fire");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
+  function getCornBurstConfig(progression, tier) {
+    const DEFINITION = definitionFor("corn-burst-fire");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
       species: 1,
       attackKind: "lob",
-      projectileCount: definition.powerValues[level],
-      perProjectileAttackMultiplier: abilityProfile(definition.species).skillMultiplier * definition.projectileAttackShare,
-      skillMultiplierShare: definition.projectileAttackShare,
+      projectileCount: DEFINITION.powerValues[LEVEL],
+      perProjectileAttackMultiplier: abilityProfile(DEFINITION.species).skillMultiplier * DEFINITION.projectileAttackShare,
+      skillMultiplierShare: DEFINITION.projectileAttackShare,
       oneBasicAttackCycle: true,
       timeSpaced: true
     };
   }
   function createCornBurstShotSchedule(config, { activeSeconds, recoverySeconds } = {}) {
-    if (!config || !Number.isFinite(activeSeconds) || activeSeconds < 0 || !Number.isFinite(recoverySeconds) || recoverySeconds < 0) return [];
-    const windowSeconds = activeSeconds + recoverySeconds;
-    if (!(windowSeconds > 0) || !Number.isSafeInteger(config.projectileCount) || config.projectileCount < 1) return [];
-    return Array.from({ length: config.projectileCount }, (_, index) => ({
-      shotIndex: index,
-      delaySeconds: index * windowSeconds / config.projectileCount,
-      attackMultiplier: config.perProjectileAttackMultiplier
-    }));
+    if (!config || !Number.isFinite(activeSeconds) || activeSeconds < 0 || !Number.isFinite(recoverySeconds) || recoverySeconds < 0) {
+      return [];
+    }
+    const WINDOW_SECONDS = activeSeconds + recoverySeconds;
+    if (!(WINDOW_SECONDS > 0) || !Number.isSafeInteger(config.projectileCount) || config.projectileCount < 1) {
+      return [];
+    }
+    return Array.from(
+      {
+        length: config.projectileCount
+      },
+      (_, index) => ({
+        shotIndex: index,
+        delaySeconds: index * WINDOW_SECONDS / config.projectileCount,
+        attackMultiplier: config.perProjectileAttackMultiplier
+      })
+    );
   }
-  function getPopcornExplosionConfig(progression2, tier) {
-    const definition = definitionFor("corn-popcorn-chain");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
-    const radiusMultiplier = definition.radiusMultipliers[level];
+  function getPopcornExplosionConfig(progression, tier) {
+    const DEFINITION = definitionFor("corn-popcorn-chain");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
+    const RADIUS_MULTIPLIER = DEFINITION.radiusMultipliers[LEVEL];
     return {
-      species: definition.species,
-      fuseSeconds: definition.fuseSeconds,
+      species: DEFINITION.species,
+      fuseSeconds: DEFINITION.fuseSeconds,
       chainOnPopcornContact: true,
       triggersOncePerProjectile: true,
       eachTargetAtMostOncePerProjectile: true,
-      damageMultiplier: definition.powerValues[level],
-      radiusBaseRangeFraction: definition.baseRangeFraction,
-      radiusMultiplier,
-      radius: abilityProfile(definition.species).range * definition.baseRangeFraction * radiusMultiplier
+      damageMultiplier: DEFINITION.powerValues[LEVEL],
+      radiusBaseRangeFraction: DEFINITION.baseRangeFraction,
+      radiusMultiplier: RADIUS_MULTIPLIER,
+      radius: abilityProfile(DEFINITION.species).range * DEFINITION.baseRangeFraction * RADIUS_MULTIPLIER
     };
   }
-  function getChestnutSpikeConfig(progression2, tier) {
-    const definition = definitionFor("chestnut-spike-fan");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
+  function getChestnutSpikeConfig(progression, tier) {
+    const DEFINITION = definitionFor("chestnut-spike-fan");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
-      species: definition.species,
+      species: DEFINITION.species,
       targetPattern: "fan-toward-target",
-      projectileCount: definition.powerValues[level],
-      projectileAttackMultiplier: definition.projectileAttackMultiplier,
-      fanSpreadRadians: definition.fanSpreadRadians,
-      intervalBasicCycles: definition.intervalBasicCycles
+      projectileCount: DEFINITION.powerValues[LEVEL],
+      projectileAttackMultiplier: DEFINITION.projectileAttackMultiplier,
+      fanSpreadRadians: DEFINITION.fanSpreadRadians,
+      intervalBasicCycles: DEFINITION.intervalBasicCycles
     };
   }
   function getChestnutSpikeIntervalSeconds(config, basicAttackCycleSeconds) {
-    if (!config || !Number.isFinite(basicAttackCycleSeconds) || basicAttackCycleSeconds <= 0) return null;
+    if (!config || !Number.isFinite(basicAttackCycleSeconds) || basicAttackCycleSeconds <= 0) {
+      return null;
+    }
     return config.intervalBasicCycles * basicAttackCycleSeconds;
   }
   function getChestnutSpikeFanAngles(config, targetAngle) {
-    if (!config || !Number.isSafeInteger(config.projectileCount) || config.projectileCount < 1 || !Number.isFinite(config.fanSpreadRadians) || config.fanSpreadRadians < 0 || !Number.isFinite(targetAngle)) return [];
-    if (config.projectileCount === 1) return [targetAngle];
-    const start2 = targetAngle - config.fanSpreadRadians / 2;
-    const step = config.fanSpreadRadians / (config.projectileCount - 1);
-    return Array.from({ length: config.projectileCount }, (_, index) => start2 + step * index);
+    if (!config || !Number.isSafeInteger(config.projectileCount) || config.projectileCount < 1 || !Number.isFinite(config.fanSpreadRadians) || config.fanSpreadRadians < 0 || !Number.isFinite(targetAngle)) {
+      return [];
+    }
+    if (config.projectileCount === 1) {
+      return [targetAngle];
+    }
+    const START = targetAngle - config.fanSpreadRadians / 2;
+    const STEP = config.fanSpreadRadians / (config.projectileCount - 1);
+    return Array.from(
+      {
+        length: config.projectileCount
+      },
+      (_, index) => START + STEP * index
+    );
   }
-  function createBeanSplitDescriptors({ unit: unit2, progression: progression2, inBattle = false } = {}) {
-    if (!inBattle || !unit2 || !hasUnitCapability(unit2.species, "deathSplit") || !Number.isFinite(unit2.hp) || unit2.hp > 0 || unit2.isBattleOnlySummon || unit2.battleOnlySummon || unit2.canSplit === false || unit2.splitUsedThisBattle === true) return [];
-    const count = getBeanSplitCount(progression2, unit2.tier);
-    if (!count) return [];
-    return Array.from({ length: count }, () => ({
-      species: unit2.species,
-      tier: 1,
-      isBattleOnlySummon: true,
-      battleSummonKind: "pea-death-split",
-      battleSummonParentId: unit2.id,
-      ownerId: unit2.ownerId || "",
-      farmId: unit2.farmId || 0,
-      countsTowardPermanentRoster: false,
-      eligibleForRaidDeployment: false,
-      breedingEligible: false,
-      mergeEligible: false,
-      canSplit: false,
-      splitUsedThisBattle: true,
-      usesPersistentSleep: false,
-      lifetime: "until-death-or-battle-end"
-    }));
+  function createBeanSplitDescriptors({ unit, progression, inBattle = false } = {}) {
+    if (!inBattle || !unit || !hasUnitCapability(unit.species, "deathSplit") || !Number.isFinite(unit.hp) || unit.hp > 0 || unit.isBattleOnlySummon || unit.battleOnlySummon || unit.canSplit === false || unit.splitUsedThisBattle === true) {
+      return [];
+    }
+    const COUNT = getBeanSplitCount(progression, unit.tier);
+    if (!COUNT) {
+      return [];
+    }
+    return Array.from(
+      {
+        length: COUNT
+      },
+      () => ({
+        species: unit.species,
+        tier: 1,
+        isBattleOnlySummon: true,
+        battleSummonKind: "pea-death-split",
+        battleSummonParentId: unit.id,
+        ownerId: unit.ownerId || "",
+        farmId: unit.farmId || 0,
+        countsTowardPermanentRoster: false,
+        eligibleForRaidDeployment: false,
+        breedingEligible: false,
+        mergeEligible: false,
+        canSplit: false,
+        splitUsedThisBattle: true,
+        usesPersistentSleep: false,
+        lifetime: "until-death-or-battle-end"
+      })
+    );
   }
-  function getContinuousLeapConfig(progression2, tier) {
-    const definition = definitionFor("kidney-continuous-leap");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
+  function getContinuousLeapConfig(progression, tier) {
+    const DEFINITION = definitionFor("kidney-continuous-leap");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
-      cooldownResetChance: definition.powerValues[level],
+      cooldownResetChance: DEFINITION.powerValues[LEVEL],
       resetCooldownOnSuccessfulRoll: true,
       usesExistingAttackReadiness: true,
       leapAtCloseRangeWhenReady: true,
@@ -1275,101 +2114,115 @@
   function shouldResetLeapCooldown(config, roll) {
     return !!config && Number.isFinite(roll) && roll >= 0 && roll < config.cooldownResetChance;
   }
-  function getLandingShockwaveConfig(progression2, tier) {
-    const definition = definitionFor("kidney-landing-shockwave");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
-    const multiplier = definition.powerValues[level];
+  function getLandingShockwaveConfig(progression, tier) {
+    const DEFINITION = definitionFor("kidney-landing-shockwave");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
+    const MULTIPLIER = DEFINITION.powerValues[LEVEL];
     return {
-      damageMultiplier: multiplier,
-      radiusMultiplier: multiplier,
+      damageMultiplier: MULTIPLIER,
+      radiusMultiplier: MULTIPLIER,
       triggersOncePerLanding: true,
       // Repeated shockwaves happen only when the separate continuous-leap tree
       // causes another leap to occur; this module invents no timing or loop.
-      repeatedAfterCooldownReset: isAbilityActive(progression2, "kidney-continuous-leap", tier)
+      repeatedAfterCooldownReset: isAbilityActive(progression, "kidney-continuous-leap", tier)
     };
   }
-  function getRiceHarvestMultiplier(progression2, tier, targetHp, targetMaxHp) {
-    const definition = definitionFor("rice-low-health-harvest");
-    if (!isAbilityActive(progression2, definition.id, tier) || !Number.isFinite(targetHp) || !Number.isFinite(targetMaxHp) || targetMaxHp <= 0 || targetHp / targetMaxHp > definition.targetHpThreshold) return 1;
-    const level = powerLevelFor(progression2, definition.id);
-    return definition.powerValues[level] || definition.powerValues[0];
+  function getRiceHarvestMultiplier(progression, tier, targetHp, targetMaxHp) {
+    const DEFINITION = definitionFor("rice-low-health-harvest");
+    if (!isAbilityActive(progression, DEFINITION.id, tier) || !Number.isFinite(targetHp) || !Number.isFinite(targetMaxHp) || targetMaxHp <= 0 || targetHp / targetMaxHp > DEFINITION.targetHpThreshold) {
+      return 1;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
+    return DEFINITION.powerValues[LEVEL] || DEFINITION.powerValues[0];
   }
-  function getWheatCommandConfig(progression2, tier) {
-    const definition = definitionFor("wheat-command-crit");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
+  function getWheatCommandConfig(progression, tier) {
+    const DEFINITION = definitionFor("wheat-command-crit");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
-      critBonus: definition.powerValues[level] || definition.powerValues[0],
-      durationSeconds: definition.durationSeconds,
-      radius: abilityProfile(definition.species).range * definition.radiusRangeRatio,
-      radiusRangeRatio: definition.radiusRangeRatio
+      critBonus: DEFINITION.powerValues[LEVEL] || DEFINITION.powerValues[0],
+      durationSeconds: DEFINITION.durationSeconds,
+      radius: abilityProfile(DEFINITION.species).range * DEFINITION.radiusRangeRatio,
+      radiusRangeRatio: DEFINITION.radiusRangeRatio
     };
   }
   function refreshWheatCommandBuff(source, config, now, durationSeconds = config?.durationSeconds) {
-    if (!source || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) return false;
-    const currentUntil = Number.isFinite(source.wheatCommandUntil) ? source.wheatCommandUntil : 0;
-    const currentBonus = Number.isFinite(source.wheatCommandCritBonus) ? source.wheatCommandCritBonus : 0;
+    if (!source || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) {
+      return false;
+    }
+    const CURRENT_UNTIL = Number.isFinite(source.wheatCommandUntil) ? source.wheatCommandUntil : 0;
+    const CURRENT_BONUS = Number.isFinite(source.wheatCommandCritBonus) ? source.wheatCommandCritBonus : 0;
     source.wheatCommandUntil = now + durationSeconds;
-    source.wheatCommandCritBonus = Math.max(currentUntil > now ? currentBonus : 0, config.critBonus);
+    source.wheatCommandCritBonus = Math.max(CURRENT_UNTIL > now ? CURRENT_BONUS : 0, config.critBonus);
     return true;
   }
-  function getBarleyArmorBreakConfig(progression2, tier) {
-    const definition = definitionFor("barley-armor-break");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
+  function getBarleyArmorBreakConfig(progression, tier) {
+    const DEFINITION = definitionFor("barley-armor-break");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
-      armorReduction: definition.powerValues[level] || definition.powerValues[0],
-      durationSeconds: definition.durationSeconds
+      armorReduction: DEFINITION.powerValues[LEVEL] || DEFINITION.powerValues[0],
+      durationSeconds: DEFINITION.durationSeconds
     };
   }
   function refreshBarleyArmorBreak(target, config, now, durationSeconds = config?.durationSeconds) {
-    if (!target || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) return false;
-    const currentUntil = Number.isFinite(target.barleyArmorBreakUntil) ? target.barleyArmorBreakUntil : 0;
-    const currentReduction = Number.isFinite(target.barleyArmorBreakReduction) ? target.barleyArmorBreakReduction : 0;
-    const activeReduction = currentUntil > now ? currentReduction : 0;
+    if (!target || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) {
+      return false;
+    }
+    const CURRENT_UNTIL = Number.isFinite(target.barleyArmorBreakUntil) ? target.barleyArmorBreakUntil : 0;
+    const CURRENT_REDUCTION = Number.isFinite(target.barleyArmorBreakReduction) ? target.barleyArmorBreakReduction : 0;
+    const ACTIVE_REDUCTION = CURRENT_UNTIL > now ? CURRENT_REDUCTION : 0;
     target.barleyArmorBreakUntil = now + durationSeconds;
-    target.barleyArmorBreakReduction = Math.max(activeReduction, config.armorReduction);
+    target.barleyArmorBreakReduction = Math.max(ACTIVE_REDUCTION, config.armorReduction);
     return true;
   }
   function effectiveBarleyArmor(target, baselineArmor, now) {
-    const reduction = target && Number.isFinite(target.barleyArmorBreakUntil) && target.barleyArmorBreakUntil > now && Number.isFinite(target.barleyArmorBreakReduction) ? Math.max(0, Math.min(1, target.barleyArmorBreakReduction)) : 0;
-    return Math.max(0, Number.isFinite(baselineArmor) ? baselineArmor : 0) * (1 - reduction);
+    const REDUCTION = target && Number.isFinite(target.barleyArmorBreakUntil) && target.barleyArmorBreakUntil > now && Number.isFinite(target.barleyArmorBreakReduction) ? Math.max(0, Math.min(1, target.barleyArmorBreakReduction)) : 0;
+    return Math.max(0, Number.isFinite(baselineArmor) ? baselineArmor : 0) * (1 - REDUCTION);
   }
-  function getPeanutAssaultConfig(progression2, tier) {
-    const definition = definitionFor("peanut-separated-assault");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
+  function getPeanutAssaultConfig(progression, tier) {
+    const DEFINITION = definitionFor("peanut-separated-assault");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
     return {
-      strikeCount: definition.powerValues[powerLevelFor(progression2, definition.id)],
-      attackMultiplier: definition.strikeAttackMultiplier,
-      spreadRadians: definition.spreadRadians
+      strikeCount: DEFINITION.powerValues[powerLevelFor(progression, DEFINITION.id)],
+      attackMultiplier: DEFINITION.strikeAttackMultiplier,
+      spreadRadians: DEFINITION.spreadRadians
     };
   }
-  function getWalnutGuardConfig(progression2, tier) {
-    const definition = definitionFor("walnut-guard-slam");
-    if (!isAbilityActive(progression2, definition.id, tier)) return null;
-    const level = powerLevelFor(progression2, definition.id);
+  function getWalnutGuardConfig(progression, tier) {
+    const DEFINITION = definitionFor("walnut-guard-slam");
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+      return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
-      damageMultiplier: definition.powerValues[level],
-      receivedDamageMultiplier: definition.receivedDamageMultiplier,
-      receivedKnockbackMultiplier: definition.receivedKnockbackMultiplier,
-      guardRecoveryStartFraction: definition.guardRecoveryStartFraction,
-      radius: abilityProfile(definition.species).range * definition.radiusBaseRangeFraction * definition.radiusMultipliers[level]
+      damageMultiplier: DEFINITION.powerValues[LEVEL],
+      receivedDamageMultiplier: DEFINITION.receivedDamageMultiplier,
+      receivedKnockbackMultiplier: DEFINITION.receivedKnockbackMultiplier,
+      guardRecoveryStartFraction: DEFINITION.guardRecoveryStartFraction,
+      radius: abilityProfile(DEFINITION.species).range * DEFINITION.radiusBaseRangeFraction * DEFINITION.radiusMultipliers[LEVEL]
     };
   }
-  function isWalnutGuardActive(unit2, config, recoverySeconds) {
-    return !!config && hasUnitCapability(unit2?.species, "guard") && unit2.hp > 0 && unit2.down <= 0 && unit2.stun <= 0 && unit2.z <= 0.1 && unit2.ability?.phase === "recover" && !!unit2.ability.action && !unit2.ability.action.walnutEmpowered && !unit2.ability.action.walnutGuardUsed && unit2.ability.elapsed >= recoverySeconds * config.guardRecoveryStartFraction && unit2.ability.elapsed < recoverySeconds;
+  function isWalnutGuardActive(unit, config, recoverySeconds) {
+    return !!config && hasUnitCapability(unit?.species, "guard") && unit.hp > 0 && unit.down <= 0 && unit.stun <= 0 && unit.z <= 0.1 && unit.ability?.phase === "recover" && !!unit.ability.action && !unit.ability.action.walnutEmpowered && !unit.ability.action.walnutGuardUsed && unit.ability.elapsed >= recoverySeconds * config.guardRecoveryStartFraction && unit.ability.elapsed < recoverySeconds;
   }
-  var definitionById2, MAX_BEAN_SPLIT_CHILDREN;
+  var DEFINITION_BY_ID2, MAX_BEAN_SPLIT_CHILDREN;
   var init_species_abilities = __esm({
     "src/species-abilities.js"() {
       init_ability_progression();
       init_ability_catalog();
       init_unit_abilities();
-      definitionById2 = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
-      MAX_BEAN_SPLIT_CHILDREN = Math.max(
-        ...definitionById2.get("pea-death-split").powerValues
-      );
+      DEFINITION_BY_ID2 = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
+      MAX_BEAN_SPLIT_CHILDREN = Math.max(...DEFINITION_BY_ID2.get("pea-death-split").powerValues);
     }
   });
 
@@ -1380,26 +2233,37 @@
     attackMultiplier = PEANUT_BASE_STRIKE.attackMultiplier,
     spreadRadians = PEANUT_BASE_STRIKE.spreadRadians
   } = {}) {
-    if (!Number.isSafeInteger(strikeCount) || strikeCount < 1 || strikeCount > MASK_BITS || !Number.isFinite(activeSeconds) || activeSeconds <= 0 || !Number.isFinite(attackMultiplier) || attackMultiplier <= 0 || !Number.isFinite(spreadRadians) || spreadRadians < 0 || spreadRadians > Math.PI) return [];
-    return Array.from({ length: strikeCount }, (_, strikeIndex) => {
-      const side = strikeIndex % 2 === 0 ? -1 : 1;
-      return Object.freeze({
-        strikeIndex,
-        kernelIndex: strikeIndex % 2,
-        side,
-        angleOffsetRadians: side * spreadRadians,
-        dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
-        attackMultiplier
-      });
-    });
+    if (!Number.isSafeInteger(strikeCount) || strikeCount < 1 || strikeCount > MASK_BITS || !Number.isFinite(activeSeconds) || activeSeconds <= 0 || !Number.isFinite(attackMultiplier) || attackMultiplier <= 0 || !Number.isFinite(spreadRadians) || spreadRadians < 0 || spreadRadians > Math.PI) {
+      return [];
+    }
+    return Array.from(
+      {
+        length: strikeCount
+      },
+      (_, strikeIndex) => {
+        const SIDE = strikeIndex % 2 === 0 ? -1 : 1;
+        return Object.freeze({
+          strikeIndex,
+          kernelIndex: strikeIndex % 2,
+          side: SIDE,
+          angleOffsetRadians: SIDE * spreadRadians,
+          dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
+          attackMultiplier
+        });
+      }
+    );
   }
   function resolveStrikeMask({ resolvedMask = 0, hitMask = 0 } = {}, strikeIndex, didHit) {
-    if (!Number.isSafeInteger(resolvedMask) || resolvedMask < 0 || !Number.isSafeInteger(hitMask) || hitMask < 0 || !Number.isSafeInteger(strikeIndex) || strikeIndex < 0 || strikeIndex >= MASK_BITS || typeof didHit !== "boolean") return null;
-    const bit = 1 << strikeIndex;
-    if ((resolvedMask & bit) !== 0) return null;
+    if (!Number.isSafeInteger(resolvedMask) || resolvedMask < 0 || !Number.isSafeInteger(hitMask) || hitMask < 0 || !Number.isSafeInteger(strikeIndex) || strikeIndex < 0 || strikeIndex >= MASK_BITS || typeof didHit !== "boolean") {
+      return null;
+    }
+    const BIT = 1 << strikeIndex;
+    if ((resolvedMask & BIT) !== 0) {
+      return null;
+    }
     return {
-      resolvedMask: resolvedMask | bit,
-      hitMask: didHit ? hitMask | bit : hitMask
+      resolvedMask: resolvedMask | BIT,
+      hitMask: didHit ? hitMask | BIT : hitMask
     };
   }
   var PEANUT_BASE_STRIKE, MASK_BITS;
@@ -1416,243 +2280,398 @@
   });
 
   // src/unit-attack-capabilities.js
-  function composeUnitAttackCycles(Cycle, { ArenaGeometry: ArenaGeometry2, Ballistics: Ballistics2, CONFIG: CONFIG2 }) {
-    const PathMotion = (Base) => class extends Base {
-      resolveAttackHit(sim, action, target, point3, options) {
-        return sim.damageCombatTarget(this.owner, action, target, point3, options);
+  function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, Ballistics: ballistics, CONFIG: configLocal }) {
+    const PATH_MOTION = (base) => class extends base {
+      resolveAttackHit(sim, action, target, point2, options) {
+        return sim.damageCombatTarget(this.owner, action, target, point2, options);
       }
       createAttackPath() {
-        const u = this.owner, a = this.action;
-        a.path = Ballistics2.create(u, a.target, this.spec.kind);
-        if (this.composition.useActiveDuration) a.path.duration = this.spec.timing.active ?? a.path.duration;
+        const U = this.owner, A = this.action;
+        A.path = ballistics.create(U, A.target, this.spec.kind);
+        if (this.composition.useActiveDuration) {
+          A.path.duration = this.spec.timing.active ?? A.path.duration;
+        }
       }
       integrate(dt) {
-        const u = this.owner, a = this.action;
-        if (this.phase !== "active" || !a?.path || u.stun > 0 || u.down > 0 || u.landingRecovery > 0 || u.z > 0.1 && !(a.path.height > 0)) return false;
-        const p = Ballistics2.sample(a.path, this.elapsed / a.path.duration);
-        u.vx = (p.x - u.x) / dt;
-        u.vy = (p.y - u.y) / dt;
-        u.vz = (p.z - u.z) / dt;
-        u.x = p.x;
-        u.y = p.y;
-        u.z = p.z;
-        u.flash = Math.max(0, u.flash - dt);
-        u.bounce = Math.max(0, u.bounce - dt);
+        const U = this.owner, A = this.action;
+        if (this.phase !== "active" || !A?.path || U.stun > 0 || U.down > 0 || U.landingRecovery > 0 || U.z > 0.1 && !(A.path.height > 0)) {
+          return false;
+        }
+        const P = ballistics.sample(A.path, this.elapsed / A.path.duration);
+        U.vx = (P.x - U.x) / dt;
+        U.vy = (P.y - U.y) / dt;
+        U.vz = (P.z - U.z) / dt;
+        U.x = P.x;
+        U.y = P.y;
+        U.z = P.z;
+        U.flash = Math.max(0, U.flash - dt);
+        U.bounce = Math.max(0, U.bounce - dt);
         return true;
       }
     };
-    const ContactAttack = (Base) => class extends PathMotion(Base) {
+    const CONTACT_ATTACK = (base) => class extends PATH_MOTION(base) {
       afterMove(sim, old) {
-        const a = this.action, u = this.owner, target = sim.attackTarget(u, a);
-        if (this.phase !== "active" || !a?.path) return;
-        if (!target || target.hp <= 0) {
+        const A = this.action, U = this.owner, TARGET = sim.attackTarget(U, A);
+        if (this.phase !== "active" || !A?.path) {
+          return;
+        }
+        if (!TARGET || TARGET.hp <= 0) {
           this.interrupt();
           return;
         }
-        const areaRadius = scaleAttackArea(u.radius, u), hit = !a.hit && ArenaGeometry2.sweep(old, u, areaRadius, 0.65, target);
-        if (hit) {
-          this.resolveAttackHit(sim, a, target, hit, { attackMultiplier: this.spec.skillMultiplier, attackKind: this.spec.kind });
+        const AREA_RADIUS = scaleAttackArea(U.radius, U), HIT = !A.hit && arenaGeometry.sweep(old, U, AREA_RADIUS, 0.65, TARGET);
+        if (HIT) {
+          this.resolveAttackHit(sim, A, TARGET, HIT, {
+            attackMultiplier: this.spec.skillMultiplier,
+            attackKind: this.spec.kind
+          });
           if (this.composition.contactRecoil) {
-            u.x = hit.x;
-            u.y = hit.y;
-            u.z = hit.z;
+            U.x = HIT.x;
+            U.y = HIT.y;
+            U.z = HIT.z;
             this.recover(sim, true);
             return;
           }
         }
-        if (this.elapsed >= a.path.duration) {
-          u.z = 0;
-          u.vz = 0;
-          u.vx = u.vy = 0;
-          if (this.landAttack?.(sim, target)) return;
+        if (this.elapsed >= A.path.duration) {
+          U.z = 0;
+          U.vz = 0;
+          U.vx = U.vy = 0;
+          if (this.landAttack?.(sim, TARGET)) {
+            return;
+          }
           this.recover(sim, true);
         }
       }
     };
-    const RepeatedStrike = (Base) => class extends PathMotion(Base) {
+    const REPEATED_STRIKE = (base) => class extends PATH_MOTION(base) {
       get strikeDuration() {
         return this.spec.timing.active ?? PEANUT_BASE_STRIKE.activeSeconds;
       }
       prepareAttack(sim) {
         super.prepareAttack?.(sim);
-        const assault = this.strikeConfig?.(sim);
-        Object.assign(this.action, { resolvedMask: 0, hitMask: 0, peanutStrikeCount: assault?.strikeCount || PEANUT_BASE_STRIKE.count, peanutAttackMultiplier: assault?.attackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier, peanutSpreadRadians: assault?.spreadRadians ?? PEANUT_BASE_STRIKE.spreadRadians });
+        const ASSAULT_LOCAL = this.strikeConfig?.(sim);
+        Object.assign(this.action, {
+          resolvedMask: 0,
+          hitMask: 0,
+          peanutStrikeCount: ASSAULT_LOCAL?.strikeCount || PEANUT_BASE_STRIKE.count,
+          peanutAttackMultiplier: ASSAULT_LOCAL?.attackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier,
+          peanutSpreadRadians: ASSAULT_LOCAL?.spreadRadians ?? PEANUT_BASE_STRIKE.spreadRadians
+        });
       }
       createAttackPath() {
-        const u = this.owner;
-        this.action.path = { from: { x: u.x, y: u.y, z: 0 }, to: { x: u.x, y: u.y, z: 0 }, height: 0, duration: this.strikeDuration };
+        const U = this.owner;
+        this.action.path = {
+          from: {
+            x: U.x,
+            y: U.y,
+            z: 0
+          },
+          to: {
+            x: U.x,
+            y: U.y,
+            z: 0
+          },
+          height: 0,
+          duration: this.strikeDuration
+        };
       }
       afterMove(sim) {
-        const a = this.action, u = this.owner;
-        if (this.phase !== "active" || !a?.path) return;
-        const schedule = createPeanutStrikeSchedule({ strikeCount: a.peanutStrikeCount || 2, attackMultiplier: a.peanutAttackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier, spreadRadians: a.peanutSpreadRadians ?? Math.PI / 12, activeSeconds: this.strikeDuration });
-        for (const slot of schedule) {
-          if (this.elapsed + 1e-9 < slot.dueSeconds || ((a.resolvedMask || 0) & 1 << slot.strikeIndex) !== 0) continue;
-          const target = sim.attackTarget(u, a);
+        const A = this.action, U = this.owner;
+        if (this.phase !== "active" || !A?.path) {
+          return;
+        }
+        const SCHEDULE = createPeanutStrikeSchedule({
+          strikeCount: A.peanutStrikeCount || 2,
+          attackMultiplier: A.peanutAttackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier,
+          spreadRadians: A.peanutSpreadRadians ?? Math.PI / 12,
+          activeSeconds: this.strikeDuration
+        });
+        for (const SLOT of SCHEDULE) {
+          if (this.elapsed + 1e-9 < SLOT.dueSeconds || ((A.resolvedMask || 0) & 1 << SLOT.strikeIndex) !== 0) {
+            continue;
+          }
+          const TARGET = sim.attackTarget(U, A);
           let hit = null;
-          if (target && target.hp > 0) {
-            const distance = Math.hypot(target.x - u.x, target.y - u.y), reach = target.radius + u.radius + this.spec.range;
-            if (distance <= reach) {
-              const aim = Math.atan2(target.y - u.y, target.x - u.x), side = slot.angleOffsetRadians;
-              const from = { x: u.x + Math.cos(aim + side) * u.radius * 0.45, y: u.y + Math.sin(aim + side) * u.radius * 0.45, z: 0 };
-              const to = { x: target.x - Math.cos(aim) * target.radius * 0.9, y: target.y - Math.sin(aim) * target.radius * 0.9, z: 0 };
-              hit = ArenaGeometry2.sweep(from, to, Math.max(0.06, u.radius * 0.2), 0.24, target);
+          if (TARGET && TARGET.hp > 0) {
+            const DISTANCE = Math.hypot(TARGET.x - U.x, TARGET.y - U.y), REACH = TARGET.radius + U.radius + this.spec.range;
+            if (DISTANCE <= REACH) {
+              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE = SLOT.angleOffsetRadians;
+              const FROM = {
+                x: U.x + Math.cos(AIM + SIDE) * U.radius * 0.45,
+                y: U.y + Math.sin(AIM + SIDE) * U.radius * 0.45,
+                z: 0
+              };
+              const TO = {
+                x: TARGET.x - Math.cos(AIM) * TARGET.radius * 0.9,
+                y: TARGET.y - Math.sin(AIM) * TARGET.radius * 0.9,
+                z: 0
+              };
+              hit = arenaGeometry.sweep(FROM, TO, Math.max(0.06, U.radius * 0.2), 0.24, TARGET);
             }
           }
-          const strikeAction = { ...a, hit: false, strikeIndex: slot.strikeIndex };
-          const didHit = !!hit && this.resolveAttackHit(sim, strikeAction, target, hit, { attackMultiplier: slot.attackMultiplier, attackKind: this.spec.kind, strikeIndex: slot.strikeIndex });
-          const masks = resolveStrikeMask(a, slot.strikeIndex, didHit);
-          if (masks) Object.assign(a, masks);
+          const STRIKE_ACTION = {
+            ...A,
+            hit: false,
+            strikeIndex: SLOT.strikeIndex
+          };
+          const DID_HIT = !!hit && this.resolveAttackHit(sim, STRIKE_ACTION, TARGET, hit, {
+            attackMultiplier: SLOT.attackMultiplier,
+            attackKind: this.spec.kind,
+            strikeIndex: SLOT.strikeIndex
+          });
+          const MASKS = resolveStrikeMask(A, SLOT.strikeIndex, DID_HIT);
+          if (MASKS) {
+            Object.assign(A, MASKS);
+          }
         }
         if (this.elapsed >= this.strikeDuration - 1e-9) {
-          u.z = 0;
-          u.vz = 0;
+          U.z = 0;
+          U.vz = 0;
           this.recover(sim, false);
         }
       }
     };
-    const ProjectileAttack = (Base) => class extends PathMotion(Base) {
+    const PROJECTILE_ATTACK = (base) => class extends PATH_MOTION(base) {
       projectileShots() {
-        return [{ shotIndex: 0, delaySeconds: 0, attackMultiplier: this.spec.skillMultiplier }];
+        return [
+          {
+            shotIndex: 0,
+            delaySeconds: 0,
+            attackMultiplier: this.spec.skillMultiplier
+          }
+        ];
       }
       launchAttack(sim) {
         super.launchAttack?.(sim);
-        const u = this.owner, a = this.action, popcorn2 = this.projectileEffect?.(sim) || null, shots = this.projectileShots(sim);
-        a.pendingShots = shots.slice(1);
-        a.projectileAbility = { popcorn: popcorn2 };
-        sim.spawnLobProjectile(u, a, shots[0], popcorn2);
+        const U = this.owner, A = this.action, POPCORN_LOCAL = this.projectileEffect?.(sim) || null, SHOTS = this.projectileShots(sim);
+        A.pendingShots = SHOTS.slice(1);
+        A.projectileAbility = {
+          popcorn: POPCORN_LOCAL
+        };
+        sim.spawnLobProjectile(U, A, SHOTS[0], POPCORN_LOCAL);
         this.recover(sim, true);
       }
       updateRecovery(sim) {
         super.updateRecovery?.(sim);
-        const pending = this.action?.pendingShots || [];
-        while (pending.length && pending[0].delaySeconds <= this.elapsed + 1e-9) {
-          const shot = pending.shift();
-          sim.spawnLobProjectile(this.owner, this.action, shot, this.action.projectileAbility?.popcorn || null);
+        const PENDING = this.action?.pendingShots || [];
+        while (PENDING.length && PENDING[0].delaySeconds <= this.elapsed + 1e-9) {
+          const SHOT = PENDING.shift();
+          sim.spawnLobProjectile(
+            this.owner,
+            this.action,
+            SHOT,
+            this.action.projectileAbility?.popcorn || null
+          );
         }
       }
     };
-    const Landing = (Base) => class extends Base {
+    const LANDING = (base) => class extends base {
       landAttack(sim, target) {
-        if (super.landAttack?.(sim, target)) return true;
-        const u = this.owner, a = this.action;
-        u.bounce = 0.2;
-        sim.combatEvent("land-attack", u, a);
-        if (!a.hit && ArenaGeometry2.overlaps({ x: u.x, y: u.y, z: 0, radius: scaleAttackArea(u.radius + 0.35, u), height: 0.65 }, target)) this.resolveAttackHit(sim, a, target, u, { attackMultiplier: this.spec.skillMultiplier, attackKind: this.spec.kind });
+        if (super.landAttack?.(sim, target)) {
+          return true;
+        }
+        const U = this.owner, A = this.action;
+        U.bounce = 0.2;
+        sim.combatEvent("land-attack", U, A);
+        if (!A.hit && arenaGeometry.overlaps(
+          {
+            x: U.x,
+            y: U.y,
+            z: 0,
+            radius: scaleAttackArea(U.radius + 0.35, U),
+            height: 0.65
+          },
+          target
+        )) {
+          this.resolveAttackHit(sim, A, target, U, {
+            attackMultiplier: this.spec.skillMultiplier,
+            attackKind: this.spec.kind
+          });
+        }
         return this.resolveLandingEffects?.(sim) || false;
       }
     };
-    const LandingShockwave = (Base) => class extends Base {
+    const LANDING_SHOCKWAVE = (base) => class extends base {
       resolveLandingEffects(sim) {
-        const reset = super.resolveLandingEffects?.(sim), u = this.owner;
-        const config = getLandingShockwaveConfig(sim.abilityProgressionFor(u), u.tier);
-        if (config) sim.triggerLandingShockwave(u, this.action, config);
-        return reset;
+        const RESET = super.resolveLandingEffects?.(sim), U = this.owner;
+        const CONFIG_LOCAL = getLandingShockwaveConfig(sim.abilityProgressionFor(U), U.tier);
+        if (CONFIG_LOCAL) {
+          sim.triggerLandingShockwave(U, this.action, CONFIG_LOCAL);
+        }
+        return RESET;
       }
     };
-    const LeapReset = (Base) => class extends Base {
+    const LEAP_RESET = (base) => class extends base {
       resolveLandingEffects(sim) {
-        if (super.resolveLandingEffects?.(sim)) return true;
-        const u = this.owner, config = getContinuousLeapConfig(sim.abilityProgressionFor(u), u.tier);
-        if (!config || !shouldResetLeapCooldown(config, sim.random())) return false;
+        if (super.resolveLandingEffects?.(sim)) {
+          return true;
+        }
+        const U = this.owner, CONFIG_LOCAL = getContinuousLeapConfig(sim.abilityProgressionFor(U), U.tier);
+        if (!CONFIG_LOCAL || !shouldResetLeapCooldown(CONFIG_LOCAL, sim.random())) {
+          return false;
+        }
         this.ready();
-        sim.combat("leap-cooldown-reset", { unit: u.id, ownerId: u.ownerId, species: u.species });
+        sim.combat("leap-cooldown-reset", {
+          unit: U.id,
+          ownerId: U.ownerId,
+          species: U.species
+        });
         return true;
       }
     };
-    const Assault = (Base) => class extends Base {
+    const ASSAULT = (base) => class extends base {
       strikeConfig(sim) {
         return getPeanutAssaultConfig(sim.abilityProgressionFor(this.owner), this.owner.tier);
       }
     };
-    const BurstFire = (Base) => class extends Base {
+    const BURST_FIRE = (base) => class extends base {
       projectileShots(sim) {
-        const u = this.owner, config = getCornBurstConfig(sim.abilityProgressionFor(u), u.tier);
-        return config ? createCornBurstShotSchedule(config, { activeSeconds: 0, recoverySeconds: scaleAttackRecovery(this.spec.timing.recovery, u) }) : super.projectileShots(sim);
+        const U = this.owner, CONFIG_LOCAL = getCornBurstConfig(sim.abilityProgressionFor(U), U.tier);
+        return CONFIG_LOCAL ? createCornBurstShotSchedule(CONFIG_LOCAL, {
+          activeSeconds: 0,
+          recoverySeconds: scaleAttackRecovery(this.spec.timing.recovery, U)
+        }) : super.projectileShots(sim);
       }
     };
-    const Popcorn = (Base) => class extends Base {
+    const POPCORN2 = (base) => class extends base {
       projectileEffect(sim) {
         return getPopcornExplosionConfig(sim.abilityProgressionFor(this.owner), this.owner.tier);
       }
     };
-    const Guard = (Base) => class extends Base {
+    const GUARD = (base) => class extends base {
       resetCombatEffects() {
         super.resetCombatEffects?.();
         this.owner.walnutEmpoweredNextBasic = false;
       }
       prepareAttack(sim) {
         super.prepareAttack?.(sim);
-        const u = this.owner, guard = getWalnutGuardConfig(sim.abilityProgressionFor(u), u.tier);
-        Object.assign(this.action, { walnutEmpowered: !!guard && u.walnutEmpoweredNextBasic, walnutGuardUsed: false });
-        u.walnutEmpoweredNextBasic = false;
+        const U = this.owner, GUARD_LOCAL = getWalnutGuardConfig(sim.abilityProgressionFor(U), U.tier);
+        Object.assign(this.action, {
+          walnutEmpowered: !!GUARD_LOCAL && U.walnutEmpoweredNextBasic,
+          walnutGuardUsed: false
+        });
+        U.walnutEmpoweredNextBasic = false;
       }
       guardConfig(sim) {
-        const u = this.owner, config = getWalnutGuardConfig(sim.abilityProgressionFor(u), u.tier);
-        return isWalnutGuardActive(u, config, scaleAttackRecovery(this.spec.timing.recovery, u)) ? config : null;
+        const U = this.owner, CONFIG_LOCAL = getWalnutGuardConfig(sim.abilityProgressionFor(U), U.tier);
+        return isWalnutGuardActive(U, CONFIG_LOCAL, scaleAttackRecovery(this.spec.timing.recovery, U)) ? CONFIG_LOCAL : null;
       }
       receiveGuard(sim) {
-        const config = this.guardConfig(sim);
-        if (!config) return null;
+        const CONFIG_LOCAL = this.guardConfig(sim);
+        if (!CONFIG_LOCAL) {
+          return null;
+        }
         this.action.walnutGuardUsed = true;
         this.owner.walnutEmpoweredNextBasic = true;
-        const u = this.owner;
-        sim.combat("walnut-guard", { unit: u.id, x: u.x, y: u.y, z: u.z });
-        return config;
+        const U = this.owner;
+        sim.combat("walnut-guard", {
+          unit: U.id,
+          x: U.x,
+          y: U.y,
+          z: U.z
+        });
+        return CONFIG_LOCAL;
       }
-      resolveAttackHit(sim, action, target, point3, options) {
-        return action.walnutEmpowered ? sim.triggerWalnutSlam(this.owner, action, target, point3) : super.resolveAttackHit(sim, action, target, point3, options);
+      resolveAttackHit(sim, action, target, point2, options) {
+        return action.walnutEmpowered ? sim.triggerWalnutSlam(this.owner, action, target, point2) : super.resolveAttackHit(sim, action, target, point2, options);
       }
     };
-    const LaunchFan = (Base) => class extends Base {
+    const LAUNCH_FAN = (base) => class extends base {
       onLaunch(sim, action) {
         super.onLaunch?.(sim, action);
-        const u = this.owner, config = getChestnutSpikeConfig(sim.abilityProgressionFor(u), u.tier);
-        if (!config || sim.projectiles.length + config.projectileCount > CONFIG2.raid.capacity.projectiles) return;
-        const cycleSeconds = this.spec.timing.windup + scaleAttackRecovery(this.spec.timing.recovery, u), interval = getChestnutSpikeIntervalSeconds(config, cycleSeconds);
-        if (!Number.isFinite(interval) || interval <= 0) return;
-        u.chestnutBasicCycles++;
-        if (u.chestnutBasicCycles % config.intervalBasicCycles === 0) sim.spawnChestnutSpikes(u, action, config);
+        const U = this.owner, CONFIG_LOCAL = getChestnutSpikeConfig(sim.abilityProgressionFor(U), U.tier);
+        if (!CONFIG_LOCAL || sim.projectiles.length + CONFIG_LOCAL.projectileCount > configLocal.raid.capacity.projectiles) {
+          return;
+        }
+        const CYCLE_SECONDS = this.spec.timing.windup + scaleAttackRecovery(this.spec.timing.recovery, U), INTERVAL = getChestnutSpikeIntervalSeconds(CONFIG_LOCAL, CYCLE_SECONDS);
+        if (!Number.isFinite(INTERVAL) || INTERVAL <= 0) {
+          return;
+        }
+        U.chestnutBasicCycles++;
+        if (U.chestnutBasicCycles % CONFIG_LOCAL.intervalBasicCycles === 0) {
+          sim.spawnChestnutSpikes(U, action, CONFIG_LOCAL);
+        }
       }
     };
-    const DeathSplit = (Base) => class extends Base {
+    const DEATH_SPLIT = (base) => class extends base {
       deathSplitDescriptors(sim, inBattle) {
-        return createBeanSplitDescriptors({ unit: this.owner, progression: sim.abilityProgressionFor(this.owner), inBattle });
+        return createBeanSplitDescriptors({
+          unit: this.owner,
+          progression: sim.abilityProgressionFor(this.owner),
+          inBattle
+        });
       }
     };
-    const Harvest = (Base) => class extends Base {
+    const HARVEST = (base) => class extends base {
       harvestMultiplier(sim, hp, maxHp) {
         return getRiceHarvestMultiplier(sim.abilityProgressionFor(this.owner), this.owner.tier, hp, maxHp);
       }
     };
-    const CommandAura = (Base) => class extends Base {
+    const COMMAND_AURA = (base) => class extends base {
       commandAuraConfig(sim) {
         return getWheatCommandConfig(sim.abilityProgressionFor(this.owner), this.owner.tier);
       }
       onBasicHit(sim, target) {
         super.onBasicHit?.(sim, target);
-        const u = this.owner, config = this.commandAuraConfig(sim);
-        if (config) refreshWheatCommandBuff(u, config, sim.time, resolveStatusDuration(config.durationSeconds, u, null));
+        const U = this.owner, CONFIG_LOCAL = this.commandAuraConfig(sim);
+        if (CONFIG_LOCAL) {
+          refreshWheatCommandBuff(
+            U,
+            CONFIG_LOCAL,
+            sim.time,
+            resolveStatusDuration(CONFIG_LOCAL.durationSeconds, U, null)
+          );
+        }
       }
     };
-    const ArmorBreak = (Base) => class extends Base {
+    const ARMOR_BREAK = (base) => class extends base {
       onBasicHit(sim, target) {
         super.onBasicHit?.(sim, target);
-        const u = this.owner, config = getBarleyArmorBreakConfig(sim.abilityProgressionFor(u), u.tier);
-        if (config) refreshBarleyArmorBreak(target, config, sim.time, resolveStatusDuration(config.durationSeconds, u, target));
+        const U = this.owner, CONFIG_LOCAL = getBarleyArmorBreakConfig(sim.abilityProgressionFor(U), U.tier);
+        if (CONFIG_LOCAL) {
+          refreshBarleyArmorBreak(
+            target,
+            CONFIG_LOCAL,
+            sim.time,
+            resolveStatusDuration(CONFIG_LOCAL.durationSeconds, U, target)
+          );
+        }
       }
     };
-    const attacks = { contact: ContactAttack, projectile: ProjectileAttack, repeatedStrike: RepeatedStrike };
-    const traits = { landing: Landing, landingShockwave: LandingShockwave, leapReset: LeapReset, assault: Assault, burstFire: BurstFire, popcorn: Popcorn, guard: Guard, launchFan: LaunchFan, deathSplit: DeathSplit, harvest: Harvest, commandAura: CommandAura, armorBreak: ArmorBreak };
-    const mixin = (Base, ...capabilities) => {
-      for (const capability of new Set(capabilities)) Base = capability(Base);
-      return Base;
+    const ATTACKS = {
+      contact: CONTACT_ATTACK,
+      projectile: PROJECTILE_ATTACK,
+      repeatedStrike: REPEATED_STRIKE
     };
-    const classes = /* @__PURE__ */ new Map();
-    for (const definition of Object.values(UNIT_CAPABILITY_COMPOSITIONS)) {
-      classes.set(definition, mixin(Cycle, attacks[definition.attack], ...definition.traits.map((name) => traits[name])));
+    const TRAITS = {
+      landing: LANDING,
+      landingShockwave: LANDING_SHOCKWAVE,
+      leapReset: LEAP_RESET,
+      assault: ASSAULT,
+      burstFire: BURST_FIRE,
+      popcorn: POPCORN2,
+      guard: GUARD,
+      launchFan: LAUNCH_FAN,
+      deathSplit: DEATH_SPLIT,
+      harvest: HARVEST,
+      commandAura: COMMAND_AURA,
+      armorBreak: ARMOR_BREAK
+    };
+    const MIXIN = (base, ...capabilities) => {
+      for (const CAPABILITY of new Set(capabilities)) {
+        base = CAPABILITY(base);
+      }
+      return base;
+    };
+    const CLASSES = /* @__PURE__ */ new Map();
+    for (const DEFINITION of Object.values(UNIT_CAPABILITY_COMPOSITIONS)) {
+      CLASSES.set(
+        DEFINITION,
+        MIXIN(cycle, ATTACKS[DEFINITION.attack], ...DEFINITION.traits.map((name) => TRAITS[name]))
+      );
     }
-    return (owner) => new (classes.get(unitCapabilityComposition(owner.species)))(owner);
+    return (owner) => new (CLASSES.get(unitCapabilityComposition(owner.species)))(owner);
   }
   var init_unit_attack_capabilities = __esm({
     "src/unit-attack-capabilities.js"() {
@@ -1670,13 +2689,16 @@
   function areOpposingFactions(a, b) {
     return !!a && !!b && typeof a.faction === "string" && typeof b.faction === "string" && a.faction !== b.faction;
   }
-  function legacyUnitFaction(unit2) {
-    return unit2?.battleSummonKind === "boss-mouth-t1" ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
+  function legacyUnitFaction(unit) {
+    return unit?.battleSummonKind === "boss-mouth-t1" ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
   }
   var FACTION_CONFIG;
   var init_factions = __esm({
     "src/factions.js"() {
-      FACTION_CONFIG = Object.freeze({ PLAYER: "player", ENEMY: "enemy" });
+      FACTION_CONFIG = Object.freeze({
+        PLAYER: "player",
+        ENEMY: "enemy"
+      });
     }
   });
 
@@ -1701,9 +2723,9 @@
           this.overflowItems = [];
         }
         clear() {
-          for (const key of this.usedCells) {
-            this.cells[key].length = 0;
-            this.touched[key] = 0;
+          for (const KEY2 of this.usedCells) {
+            this.cells[KEY2].length = 0;
+            this.touched[KEY2] = 0;
           }
           this.usedCells.length = 0;
           this.itemCells.clear();
@@ -1716,127 +2738,182 @@
           return Math.floor((y - WORLD_MIN) / CELL_SIZE);
         }
         _cellKey(x, y) {
-          if (!Number.isFinite(x) || !Number.isFinite(y)) return -1;
-          const cx = this.cellX(x), cy = this.cellY(y);
-          return cx < 0 || cy < 0 || cx >= CELL_COUNT || cy >= CELL_COUNT ? -1 : cy * CELL_COUNT + cx;
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            return -1;
+          }
+          const CX = this.cellX(x), CY = this.cellY(y);
+          return CX < 0 || CY < 0 || CX >= CELL_COUNT || CY >= CELL_COUNT ? -1 : CY * CELL_COUNT + CX;
         }
         insert(item, x = item?.x, y = item?.y) {
-          if (!item) return false;
-          const previous = this.itemCells.get(item);
-          if (previous !== void 0) {
-            if (previous >= 0) this._removeFromCell(item, previous);
-            else this._removeOverflow(item);
+          if (!item) {
+            return false;
           }
-          const key = this._cellKey(x, y);
-          this.itemCells.set(item, key);
-          if (key < 0) {
+          const PREVIOUS = this.itemCells.get(item);
+          if (PREVIOUS !== void 0) {
+            if (PREVIOUS >= 0) {
+              this._removeFromCell(item, PREVIOUS);
+            } else {
+              this._removeOverflow(item);
+            }
+          }
+          const KEY2 = this._cellKey(x, y);
+          this.itemCells.set(item, KEY2);
+          if (KEY2 < 0) {
             this.overflowItems.push(item);
             return false;
           }
-          let bucket = this.cells[key];
-          if (!bucket) bucket = this.cells[key] = [];
-          if (!this.touched[key]) {
-            this.touched[key] = 1;
-            this.usedCells.push(key);
+          let bucket = this.cells[KEY2];
+          if (!bucket) {
+            bucket = this.cells[KEY2] = [];
+          }
+          if (!this.touched[KEY2]) {
+            this.touched[KEY2] = 1;
+            this.usedCells.push(KEY2);
           }
           bucket.push(item);
           return true;
         }
         update(item, x = item?.x, y = item?.y) {
-          if (!item) return false;
-          const previous = this.itemCells.get(item);
-          const next = this._cellKey(x, y);
-          if (previous === next) return next >= 0;
-          if (previous !== void 0) {
-            if (previous >= 0) this._removeFromCell(item, previous);
-            else this._removeOverflow(item);
+          if (!item) {
+            return false;
           }
-          this.itemCells.set(item, next);
-          if (next < 0) {
+          const PREVIOUS = this.itemCells.get(item);
+          const NEXT = this._cellKey(x, y);
+          if (PREVIOUS === NEXT) {
+            return NEXT >= 0;
+          }
+          if (PREVIOUS !== void 0) {
+            if (PREVIOUS >= 0) {
+              this._removeFromCell(item, PREVIOUS);
+            } else {
+              this._removeOverflow(item);
+            }
+          }
+          this.itemCells.set(item, NEXT);
+          if (NEXT < 0) {
             this.overflowItems.push(item);
             return false;
           }
-          let bucket = this.cells[next];
-          if (!bucket) bucket = this.cells[next] = [];
-          if (!this.touched[next]) {
-            this.touched[next] = 1;
-            this.usedCells.push(next);
+          let bucket = this.cells[NEXT];
+          if (!bucket) {
+            bucket = this.cells[NEXT] = [];
+          }
+          if (!this.touched[NEXT]) {
+            this.touched[NEXT] = 1;
+            this.usedCells.push(NEXT);
           }
           bucket.push(item);
           return true;
         }
         remove(item) {
-          const key = this.itemCells.get(item);
-          if (key === void 0) return false;
-          if (key >= 0) this._removeFromCell(item, key);
-          else this._removeOverflow(item);
+          const KEY2 = this.itemCells.get(item);
+          if (KEY2 === void 0) {
+            return false;
+          }
+          if (KEY2 >= 0) {
+            this._removeFromCell(item, KEY2);
+          } else {
+            this._removeOverflow(item);
+          }
           this.itemCells.delete(item);
           return true;
         }
         _removeOverflow(item) {
-          const index = this.overflowItems.indexOf(item);
-          if (index < 0) return;
-          const last = this.overflowItems.pop();
-          if (index < this.overflowItems.length) this.overflowItems[index] = last;
+          const INDEX = this.overflowItems.indexOf(item);
+          if (INDEX < 0) {
+            return;
+          }
+          const LAST = this.overflowItems.pop();
+          if (INDEX < this.overflowItems.length) {
+            this.overflowItems[INDEX] = LAST;
+          }
         }
         _removeFromCell(item, key) {
-          const bucket = this.cells[key];
-          if (!bucket) return;
-          const index = bucket.indexOf(item);
-          if (index < 0) return;
-          const last = bucket.pop();
-          if (index < bucket.length) bucket[index] = last;
+          const BUCKET = this.cells[key];
+          if (!BUCKET) {
+            return;
+          }
+          const INDEX = BUCKET.indexOf(item);
+          if (INDEX < 0) {
+            return;
+          }
+          const LAST = BUCKET.pop();
+          if (INDEX < BUCKET.length) {
+            BUCKET[INDEX] = LAST;
+          }
         }
         queryAABB(minX, minY, maxX, maxY, out) {
           out.length = 0;
-          if (![minX, minY, maxX, maxY].every(Number.isFinite)) return out;
+          if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
+            return out;
+          }
           if (maxX >= WORLD_MIN && maxY >= WORLD_MIN && minX < WORLD_MAX && minY < WORLD_MAX) {
-            const x0 = Math.max(0, this.cellX(minX)), y0 = Math.max(0, this.cellY(minY));
-            const x1 = Math.min(CELL_COUNT - 1, this.cellX(maxX)), y1 = Math.min(CELL_COUNT - 1, this.cellY(maxY));
-            for (let y = y0; y <= y1; y++) {
-              const row = y * CELL_COUNT;
-              for (let x = x0; x <= x1; x++) {
-                const bucket = this.cells[row + x];
-                if (bucket) for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
+            const X0 = Math.max(0, this.cellX(minX)), Y0 = Math.max(0, this.cellY(minY));
+            const X1 = Math.min(CELL_COUNT - 1, this.cellX(maxX)), Y1 = Math.min(CELL_COUNT - 1, this.cellY(maxY));
+            for (let y = Y0; y <= Y1; y++) {
+              const ROW = y * CELL_COUNT;
+              for (let x = X0; x <= X1; x++) {
+                const BUCKET = this.cells[ROW + x];
+                if (BUCKET) {
+                  for (let i = 0; i < BUCKET.length; i++) {
+                    out.push(BUCKET[i]);
+                  }
+                }
               }
             }
           }
-          for (const item of this.overflowItems) {
-            if (item.x >= minX && item.x <= maxX && item.y >= minY && item.y <= maxY) out.push(item);
+          for (const ITEM of this.overflowItems) {
+            if (ITEM.x >= minX && ITEM.x <= maxX && ITEM.y >= minY && ITEM.y <= maxY) {
+              out.push(ITEM);
+            }
           }
           return out;
         }
         queryCellRing(centerX, centerY, radius, out) {
           out.length = 0;
-          const x0 = centerX - radius, x1 = centerX + radius;
-          const y0 = centerY - radius, y1 = centerY + radius;
+          const X0 = centerX - radius, X1 = centerX + radius;
+          const Y0 = centerY - radius, Y1 = centerY + radius;
           if (radius === 0) {
             this._appendCell(centerX, centerY, out);
             return out;
           }
-          for (let x = x0; x <= x1; x++) {
-            this._appendCell(x, y0, out);
-            this._appendCell(x, y1, out);
+          for (let x = X0; x <= X1; x++) {
+            this._appendCell(x, Y0, out);
+            this._appendCell(x, Y1, out);
           }
-          for (let y = y0 + 1; y < y1; y++) {
-            this._appendCell(x0, y, out);
-            this._appendCell(x1, y, out);
+          for (let y = Y0 + 1; y < Y1; y++) {
+            this._appendCell(X0, y, out);
+            this._appendCell(X1, y, out);
           }
           return out;
         }
         _appendCell(x, y, out) {
-          if (x < 0 || y < 0 || x >= CELL_COUNT || y >= CELL_COUNT) return;
-          const bucket = this.cells[y * CELL_COUNT + x];
-          if (bucket) for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
+          if (x < 0 || y < 0 || x >= CELL_COUNT || y >= CELL_COUNT) {
+            return;
+          }
+          const BUCKET = this.cells[y * CELL_COUNT + x];
+          if (BUCKET) {
+            for (let i = 0; i < BUCKET.length; i++) {
+              out.push(BUCKET[i]);
+            }
+          }
         }
         distanceToOutsideRing(x, y, centerX, centerY, radius) {
-          const left = Math.max(0, centerX - radius), right = Math.min(CELL_COUNT - 1, centerX + radius);
-          const bottom = Math.max(0, centerY - radius), top = Math.min(CELL_COUNT - 1, centerY + radius);
+          const LEFT = Math.max(0, centerX - radius), RIGHT = Math.min(CELL_COUNT - 1, centerX + radius);
+          const BOTTOM = Math.max(0, centerY - radius), TOP = Math.min(CELL_COUNT - 1, centerY + radius);
           let nearest = Infinity;
-          if (left > 0) nearest = Math.min(nearest, x - (WORLD_MIN + left * CELL_SIZE));
-          if (right < CELL_COUNT - 1) nearest = Math.min(nearest, WORLD_MIN + (right + 1) * CELL_SIZE - x);
-          if (bottom > 0) nearest = Math.min(nearest, y - (WORLD_MIN + bottom * CELL_SIZE));
-          if (top < CELL_COUNT - 1) nearest = Math.min(nearest, WORLD_MIN + (top + 1) * CELL_SIZE - y);
+          if (LEFT > 0) {
+            nearest = Math.min(nearest, x - (WORLD_MIN + LEFT * CELL_SIZE));
+          }
+          if (RIGHT < CELL_COUNT - 1) {
+            nearest = Math.min(nearest, WORLD_MIN + (RIGHT + 1) * CELL_SIZE - x);
+          }
+          if (BOTTOM > 0) {
+            nearest = Math.min(nearest, y - (WORLD_MIN + BOTTOM * CELL_SIZE));
+          }
+          if (TOP < CELL_COUNT - 1) {
+            nearest = Math.min(nearest, WORLD_MIN + (TOP + 1) * CELL_SIZE - y);
+          }
           return Math.max(0, nearest);
         }
       };
@@ -1845,111 +2922,127 @@
 
   // src/farm-model.js
   function presentationEventTimeMs(event) {
-    return presentationEventTimes.get(event) ?? (Number.isFinite(event?.time) ? event.time * 1e3 : 0);
+    return PRESENTATION_EVENT_TIMES.get(event) ?? (Number.isFinite(event?.time) ? event.time * 1e3 : 0);
   }
   function bindPresentationClock(world, clock) {
-    if (clock) presentationClocks.set(world, clock);
-    else presentationClocks.delete(world);
+    if (clock) {
+      PRESENTATION_CLOCKS.set(world, clock);
+    } else {
+      PRESENTATION_CLOCKS.delete(world);
+    }
   }
-  function bossAttackArea(boss2, unitRadius = 0, scene = "raid", area = {}) {
-    const action = boss2.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[action?.id];
-    if (!config) return null;
-    const phase = action.phase, pad = Math.max(0, unitRadius), elapsed = Math.max(0, action.phaseElapsed || 0);
-    area.x = boss2.x;
-    area.y = boss2.y;
-    area.angle = action.aim ?? boss2.angle;
-    area.patternId = action.id;
-    area.phase = phase;
-    area.elapsed = elapsed;
-    area.active = phase === "active";
-    area.locked = !!action.locked;
-    area.progress = phase === "recover" ? 1 : clamp3(elapsed / (phase === "windup" ? config.windup : config.active || 1), 0, 1);
-    if (action.id === "attack.sweep-360") {
+  function bossAttackArea(boss, unitRadius = 0, scene = "raid", area = {}) {
+    const ACTION = boss.patternRuntime?.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[ACTION?.id];
+    if (!CONFIG_LOCAL) {
+      return null;
+    }
+    const PHASE = ACTION.phase, PAD = Math.max(0, unitRadius), ELAPSED = Math.max(0, ACTION.phaseElapsed || 0);
+    area.x = boss.x;
+    area.y = boss.y;
+    area.angle = ACTION.aim ?? boss.angle;
+    area.patternId = ACTION.id;
+    area.phase = PHASE;
+    area.elapsed = ELAPSED;
+    area.active = PHASE === "active";
+    area.locked = !!ACTION.locked;
+    area.progress = PHASE === "recover" ? 1 : CLAMP2(ELAPSED / (PHASE === "windup" ? CONFIG_LOCAL.windup : CONFIG_LOCAL.active || 1), 0, 1);
+    if (ACTION.id === "attack.sweep-360") {
       area.kind = "sweep";
-      area.reach = config.reach + pad;
-    } else if (action.id === "attack.front-slam") {
+      area.reach = CONFIG_LOCAL.reach + PAD;
+    } else if (ACTION.id === "attack.front-slam") {
       area.kind = "sector";
-      area.reach = config.reach + pad;
-      area.sector = config.sector;
-    } else if (action.id === "attack.charge") {
+      area.reach = CONFIG_LOCAL.reach + PAD;
+      area.sector = CONFIG_LOCAL.sector;
+    } else if (ACTION.id === "attack.charge") {
       area.kind = "charge";
-      area.width = boss2.radius + pad;
-      const sx = action.start?.x ?? boss2.x, sy = action.start?.y ?? boss2.y, dx = Math.cos(area.angle), dy = Math.sin(area.angle);
-      const rx = CONFIG[scene].arena.radiusX - boss2.radius - 0.25, ry = CONFIG[scene].arena.radiusY - boss2.radius - 0.25;
-      const a = dx * dx / (rx * rx) + dy * dy / (ry * ry), b = 2 * (sx * dx / (rx * rx) + sy * dy / (ry * ry)), c = sx * sx / (rx * rx) + sy * sy / (ry * ry) - 1;
-      const exit = Math.max(0, (-b + Math.sqrt(Math.max(0, b * b - 4 * a * c))) / (2 * a)), step = config.speed * CONFIG.physics.fixedStep;
-      const distance = exit < config.reach ? Math.min(config.reach, (Math.floor(exit / step + 1e-8) + 1) * step) : config.reach;
-      const ex = sx + dx * distance, ey = sy + dy * distance, k = Math.max(1, Math.hypot(ex / rx, ey / ry));
-      area.endX = phase === "recover" ? boss2.x : ex / k;
-      area.endY = phase === "recover" ? boss2.y : ey / k;
-      area.x = sx;
-      area.y = sy;
-    } else if (action.id === "attack.leap-slam") {
+      area.width = boss.radius + PAD;
+      const SX = ACTION.start?.x ?? boss.x, SY = ACTION.start?.y ?? boss.y, DX = Math.cos(area.angle), DY = Math.sin(area.angle);
+      const RX = CONFIG[scene].arena.radiusX - boss.radius - 0.25, RY = CONFIG[scene].arena.radiusY - boss.radius - 0.25;
+      const A_LOCAL = DX * DX / (RX * RX) + DY * DY / (RY * RY), B_LOCAL = 2 * (SX * DX / (RX * RX) + SY * DY / (RY * RY)), C_LOCAL = SX * SX / (RX * RX) + SY * SY / (RY * RY) - 1;
+      const EXIT = Math.max(
+        0,
+        (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL)
+      ), STEP = CONFIG_LOCAL.speed * CONFIG.physics.fixedStep;
+      const DISTANCE = EXIT < CONFIG_LOCAL.reach ? Math.min(CONFIG_LOCAL.reach, (Math.floor(EXIT / STEP + 1e-8) + 1) * STEP) : CONFIG_LOCAL.reach;
+      const EX = SX + DX * DISTANCE, EY = SY + DY * DISTANCE, K = Math.max(1, Math.hypot(EX / RX, EY / RY));
+      area.endX = PHASE === "recover" ? boss.x : EX / K;
+      area.endY = PHASE === "recover" ? boss.y : EY / K;
+      area.x = SX;
+      area.y = SY;
+    } else if (ACTION.id === "attack.leap-slam") {
       area.kind = "leap";
-      area.width = boss2.radius + pad;
-      area.reach = config.landingRadius + pad;
-      let x = action.target?.x ?? boss2.x, y = action.target?.y ?? boss2.y;
-      if (phase === "windup") {
-        const dx = x - boss2.x, dy = y - boss2.y, d = Math.hypot(dx, dy);
-        if (d > config.reach) {
-          x = boss2.x + dx / d * config.reach;
-          y = boss2.y + dy / d * config.reach;
+      area.width = boss.radius + PAD;
+      area.reach = CONFIG_LOCAL.landingRadius + PAD;
+      let x = ACTION.target?.x ?? boss.x;
+      let y = ACTION.target?.y ?? boss.y;
+      if (PHASE === "windup") {
+        const DX = x - boss.x, DY = y - boss.y, D_LOCAL = Math.hypot(DX, DY);
+        if (D_LOCAL > CONFIG_LOCAL.reach) {
+          x = boss.x + DX / D_LOCAL * CONFIG_LOCAL.reach;
+          y = boss.y + DY / D_LOCAL * CONFIG_LOCAL.reach;
         }
-        const rx = CONFIG[scene].arena.radiusX - boss2.radius - 0.25, ry = CONFIG[scene].arena.radiusY - boss2.radius - 0.25, k = Math.max(1, Math.hypot(x / rx, y / ry));
-        x /= k;
-        y /= k;
+        const RX = CONFIG[scene].arena.radiusX - boss.radius - 0.25, RY = CONFIG[scene].arena.radiusY - boss.radius - 0.25, K = Math.max(1, Math.hypot(x / RX, y / RY));
+        x /= K;
+        y /= K;
       }
       area.targetX = x;
       area.targetY = y;
-      const sx = action.start?.x ?? boss2.x, sy = action.start?.y ?? boss2.y;
-      area.x = sx;
-      area.y = sy;
-      if (phase === "active" && action.path) area.progress = clamp3(elapsed / action.path.duration, 0, 1);
-    } else if (action.id === "attack.fan-sweep") {
+      const SX = ACTION.start?.x ?? boss.x, SY = ACTION.start?.y ?? boss.y;
+      area.x = SX;
+      area.y = SY;
+      if (PHASE === "active" && ACTION.path) {
+        area.progress = CLAMP2(ELAPSED / ACTION.path.duration, 0, 1);
+      }
+    } else if (ACTION.id === "attack.fan-sweep") {
       area.kind = "fan";
-      area.reach = config.reach;
-      area.width = config.width + pad;
-      area.sector = config.sector;
-    } else if (action.id === "summon.mouth-t1") area.kind = "summon";
-    else return null;
+      area.reach = CONFIG_LOCAL.reach;
+      area.width = CONFIG_LOCAL.width + PAD;
+      area.sector = CONFIG_LOCAL.sector;
+    } else if (ACTION.id === "summon.mouth-t1") {
+      area.kind = "summon";
+    } else {
+      return null;
+    }
     return area;
   }
   function contact(a, b) {
-    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), r = a.radius + b.radius;
-    if (Math.abs(a.z - b.z) > 0.65) return false;
-    if (d >= r) {
-      if (d < r + 0.22 && a.z < 0.1 && b.z < 0.1 && a.ability.phase === "idle" && b.ability.phase === "idle") {
-        const k = (r + 0.22 - d) * 0.035 / (d || 1);
-        a.x -= dx * k;
-        a.y -= dy * k;
-        b.x += dx * k;
-        b.y += dy * k;
+    const DX = b.x - a.x, DY = b.y - a.y, D_LOCAL = Math.hypot(DX, DY), R_LOCAL = a.radius + b.radius;
+    if (Math.abs(a.z - b.z) > 0.65) {
+      return false;
+    }
+    if (D_LOCAL >= R_LOCAL) {
+      if (D_LOCAL < R_LOCAL + 0.22 && a.z < 0.1 && b.z < 0.1 && a.ability.phase === "idle" && b.ability.phase === "idle") {
+        const K = (R_LOCAL + 0.22 - D_LOCAL) * 0.035 / (D_LOCAL || 1);
+        a.x -= DX * K;
+        a.y -= DY * K;
+        b.x += DX * K;
+        b.y += DY * K;
       }
       return false;
     }
-    const nx = d > 1e-6 ? dx / d : 1, ny = d > 1e-6 ? dy / d : 0, overlap = r - d;
-    a.x -= nx * overlap * 0.5;
-    a.y -= ny * overlap * 0.5;
-    b.x += nx * overlap * 0.5;
-    b.y += ny * overlap * 0.5;
-    const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-    if (closing > 0) {
-      const impulse = closing * 0.57;
-      const impulseA = resolveKnockback(impulse, b, a), impulseB = resolveKnockback(impulse, a, b);
-      a.vx -= nx * impulseA;
-      a.vy -= ny * impulseA;
-      b.vx += nx * impulseB;
-      b.vy += ny * impulseB;
-      if (closing > 2) {
-        const receiver = Math.hypot(a.vx, a.vy) > Math.hypot(b.vx, b.vy) ? a : b;
-        receiver.vz = Math.max(receiver.vz, Math.min(4, closing * 0.2));
-        receiver.stun = Math.max(receiver.stun, resolveStatusDuration(0.3, receiver === a ? b : a, receiver));
-        receiver.flash = 0.1;
+    const NX = D_LOCAL > 1e-6 ? DX / D_LOCAL : 1, NY = D_LOCAL > 1e-6 ? DY / D_LOCAL : 0, OVERLAP = R_LOCAL - D_LOCAL;
+    a.x -= NX * OVERLAP * 0.5;
+    a.y -= NY * OVERLAP * 0.5;
+    b.x += NX * OVERLAP * 0.5;
+    b.y += NY * OVERLAP * 0.5;
+    const CLOSING = (a.vx - b.vx) * NX + (a.vy - b.vy) * NY;
+    if (CLOSING > 0) {
+      const IMPULSE = CLOSING * 0.57;
+      const IMPULSE_A = resolveKnockback(IMPULSE, b, a), IMPULSE_B = resolveKnockback(IMPULSE, a, b);
+      a.vx -= NX * IMPULSE_A;
+      a.vy -= NY * IMPULSE_A;
+      b.vx += NX * IMPULSE_B;
+      b.vy += NY * IMPULSE_B;
+      if (CLOSING > 2) {
+        const RECEIVER = Math.hypot(a.vx, a.vy) > Math.hypot(b.vx, b.vy) ? a : b;
+        RECEIVER.vz = Math.max(RECEIVER.vz, Math.min(4, CLOSING * 0.2));
+        RECEIVER.stun = Math.max(RECEIVER.stun, resolveStatusDuration(0.3, RECEIVER === a ? b : a, RECEIVER));
+        RECEIVER.flash = 0.1;
       }
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, unitRadiusForTier, CONFIG, clamp3, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, createUnitAttackCycle, AttackingBody, Unit, Garden;
+  var SEEDED_PRNG, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, UNIT_RADIUS_FOR_TIER, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_boss_vector_sockets();
@@ -1968,9 +3061,9 @@
       init_boss_patterns();
       init_factions();
       init_spatial_grid();
-      ({ SeededPRNG } = globalThis.BloomGamekitDeterministic);
-      presentationClocks = /* @__PURE__ */ new WeakMap();
-      presentationEventTimes = /* @__PURE__ */ new WeakMap();
+      ({ SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic);
+      PRESENTATION_CLOCKS = /* @__PURE__ */ new WeakMap();
+      PRESENTATION_EVENT_TIMES = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
       FARM_MAX_UNITS = 100;
       RAID_PLAYER_UNITS = 100;
@@ -1978,44 +3071,109 @@
       RAID_PLAYER_ID_STRIDE = 1e6;
       MAX_BOSS_SUMMONS = 10;
       RAID_MAX_UNITS = RAID_PLAYER_UNITS * RAID_MAX_PLAYERS;
-      WORLD_ARENA = Object.freeze({ radiusX: 23, radiusY: 17 });
-      unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
+      WORLD_ARENA = Object.freeze({
+        radiusX: 23,
+        radiusY: 17
+      });
+      UNIT_RADIUS_FOR_TIER = (tier) => 0.25 + 0.055 * tier;
       CONFIG = Object.freeze({
         factions: FACTION_CONFIG,
         farm: Object.freeze({
           arena: WORLD_ARENA,
-          capacity: Object.freeze({ base: 50, max: FARM_MAX_UNITS, battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS }),
+          capacity: Object.freeze({
+            base: 50,
+            max: FARM_MAX_UNITS,
+            battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS
+          }),
           maxUnitId: 999999999,
           starterSeconds: 60,
-          breeding: Object.freeze({ cooldownSeconds: BREED_COOLDOWN_SECONDS, growthSeconds: BREED_COOLDOWN_SECONDS / 2, matureMeals: 3 }),
-          merge: Object.freeze({ animationSeconds: 0.85, maxMaterials: MAX_GRADE_MATERIAL_COUNT }),
-          bossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 })
+          breeding: Object.freeze({
+            cooldownSeconds: BREED_COOLDOWN_SECONDS,
+            growthSeconds: BREED_COOLDOWN_SECONDS / 2,
+            matureMeals: 3
+          }),
+          merge: Object.freeze({
+            animationSeconds: 0.85,
+            maxMaterials: MAX_GRADE_MATERIAL_COUNT
+          }),
+          bossEvent: Object.freeze({
+            spawnChance: 0.01,
+            fadeSeconds: 0.5,
+            celebrationSeconds: 1
+          })
         }),
         raid: Object.freeze({
-          capacity: Object.freeze({ playerUnits: RAID_PLAYER_UNITS, players: RAID_MAX_PLAYERS, units: RAID_MAX_UNITS, battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS, projectiles: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40 }),
-          ids: Object.freeze({ playerStride: RAID_PLAYER_ID_STRIDE, summonBase: RAID_MAX_PLAYERS * RAID_PLAYER_ID_STRIDE + RAID_PLAYER_UNITS + 1 }),
+          capacity: Object.freeze({
+            playerUnits: RAID_PLAYER_UNITS,
+            players: RAID_MAX_PLAYERS,
+            units: RAID_MAX_UNITS,
+            battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS,
+            projectiles: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40
+          }),
+          ids: Object.freeze({
+            playerStride: RAID_PLAYER_ID_STRIDE,
+            summonBase: RAID_MAX_PLAYERS * RAID_PLAYER_ID_STRIDE + RAID_PLAYER_UNITS + 1
+          }),
           arena: WORLD_ARENA,
           dropHeight: 3,
-          buff: Object.freeze({ duration: 3, cooldown: 12, damage: 1.25 })
+          buff: Object.freeze({
+            duration: 3,
+            cooldown: 12,
+            damage: 1.25
+          })
         }),
-        scatter: Object.freeze({ minRadius: unitRadiusForTier(1) * 4, maxRadius: unitRadiusForTier(1) * 10, bodyMargin: 0.08, hysteresis: 0.18 }),
-        unit: Object.freeze({ speciesCount: SPECIES_COUNT, maxTier: MAX_UNIT_TIER, maxRadius: unitRadiusForTier(MAX_UNIT_TIER), perceptionRange: 18, corpseRecoverySeconds: 60 }),
-        boss: Object.freeze({ maxSummons: MAX_BOSS_SUMMONS, summonIdBase: 5e6, radius: 4.4, height: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65 }),
-        physics: Object.freeze({ gravity: 19, fixedStep: 1 / 120 })
+        scatter: Object.freeze({
+          minRadius: UNIT_RADIUS_FOR_TIER(1) * 4,
+          maxRadius: UNIT_RADIUS_FOR_TIER(1) * 10,
+          bodyMargin: 0.08,
+          hysteresis: 0.18
+        }),
+        unit: Object.freeze({
+          speciesCount: SPECIES_COUNT,
+          maxTier: MAX_UNIT_TIER,
+          maxRadius: UNIT_RADIUS_FOR_TIER(MAX_UNIT_TIER),
+          perceptionRange: 18,
+          corpseRecoverySeconds: 60
+        }),
+        boss: Object.freeze({
+          maxSummons: MAX_BOSS_SUMMONS,
+          summonIdBase: 5e6,
+          radius: 4.4,
+          height: 5.2,
+          basicReach: 6.2,
+          sweepReach: 6.5,
+          weaponRadius: 0.85,
+          chaseSpeed: 2.65
+        }),
+        physics: Object.freeze({
+          gravity: 19,
+          fixedStep: 1 / 120
+        })
       });
-      clamp3 = (x, a, b) => Math.max(a, Math.min(b, x));
-      stats = baseUnitStatsFor;
-      Body = class {
+      CLAMP2 = (x, a, b) => Math.max(a, Math.min(b, x));
+      STATS = baseUnitStatsFor;
+      BODY = class Body {
         constructor(x, y) {
-          Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, angle: 0, stun: 0, flash: 0, bounce: 0 });
+          Object.assign(this, {
+            x,
+            y,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            angle: 0,
+            stun: 0,
+            flash: 0,
+            bounce: 0
+          });
         }
       };
-      Knockable = (Base) => class extends Base {
+      KNOCKABLE = (baseLocal) => class extends baseLocal {
         knock(nx, ny, power, lift = 0, source = null) {
-          const appliedPower = resolveKnockback(power, source, this);
-          this.vx += nx * appliedPower;
-          this.vy += ny * appliedPower;
-          this.vz = Math.max(this.vz, lift * (power > 0 ? appliedPower / power : 0));
+          const APPLIED_POWER = resolveKnockback(power, source, this);
+          this.vx += nx * APPLIED_POWER;
+          this.vy += ny * APPLIED_POWER;
+          this.vz = Math.max(this.vz, lift * (power > 0 ? APPLIED_POWER / power : 0));
           this.stun = Math.max(this.stun, resolveStatusDuration(0.5, source, this));
           this.flash = 0.18;
         }
@@ -2030,72 +3188,112 @@
               if (this.vz < -3) {
                 this.vz = -this.vz * 0.24;
                 this.bounce = 0.22;
-              } else this.vz = 0;
+              } else {
+                this.vz = 0;
+              }
             }
           }
-          const drag = Math.exp(-(this.z > 0.04 ? 0.8 : 5) * dt);
-          this.vx *= drag;
-          this.vy *= drag;
+          const DRAG = Math.exp(-(this.z > 0.04 ? 0.8 : 5) * dt);
+          this.vx *= DRAG;
+          this.vy *= DRAG;
           this.stun = Math.max(0, this.stun - dt);
           this.flash = Math.max(0, this.flash - dt);
           this.bounce = Math.max(0, this.bounce - dt);
         }
       };
-      ArenaGeometry = {
+      ARENA_GEOMETRY = {
         bounds(scene = "raid", margin = 0) {
-          const arena = CONFIG[scene].arena;
-          return { x: arena.radiusX - margin, y: arena.radiusY - margin };
+          const ARENA = CONFIG[scene].arena;
+          return {
+            x: ARENA.radiusX - margin,
+            y: ARENA.radiusY - margin
+          };
         },
         inside(p, scene = "raid", margin = 0) {
-          const r = this.bounds(scene, margin);
-          return p.x * p.x / (r.x * r.x) + p.y * p.y / (r.y * r.y) <= 1;
+          const R_LOCAL = this.bounds(scene, margin);
+          return p.x * p.x / (R_LOCAL.x * R_LOCAL.x) + p.y * p.y / (R_LOCAL.y * R_LOCAL.y) <= 1;
         },
         clamp(p, scene = "raid", margin = 0) {
-          const r = this.bounds(scene, margin), k = Math.max(1, Math.hypot(p.x / r.x, p.y / r.y));
-          return { x: p.x / k, y: p.y / k };
+          const R_LOCAL = this.bounds(scene, margin), K = Math.max(1, Math.hypot(p.x / R_LOCAL.x, p.y / R_LOCAL.y));
+          return {
+            x: p.x / K,
+            y: p.y / K
+          };
         },
         segmentInsideCircle(x, y, tx, ty, cx, cy, radius) {
-          const dx = tx - x, dy = ty - y, length = dx * dx + dy * dy, q = length > 1e-12 ? clamp3(((cx - x) * dx + (cy - y) * dy) / length, 0, 1) : 0;
-          return (x + dx * q - cx) ** 2 + (y + dy * q - cy) ** 2 < radius * radius - 1e-10;
+          const DX = tx - x, DY = ty - y, LENGTH = DX * DX + DY * DY, Q = LENGTH > 1e-12 ? CLAMP2(((cx - x) * DX + (cy - y) * DY) / LENGTH, 0, 1) : 0;
+          return (x + DX * Q - cx) ** 2 + (y + DY * Q - cy) ** 2 < radius * radius - 1e-10;
         },
         overlaps(a, b) {
           return a.z <= b.z + b.height && a.z + a.height >= b.z && Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius;
         },
         // Swept XY cylinder versus finite Z interval; includes entity radii, never center-only.
         sweep(a, b, r, h, target) {
-          const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, R2 = r + target.radius;
-          let lo = 0, hi = 1;
-          const A = dx * dx + dy * dy, B = 2 * ((a.x - target.x) * dx + (a.y - target.y) * dy), C = (a.x - target.x) ** 2 + (a.y - target.y) ** 2 - R2 * R2;
+          const DX = b.x - a.x, DY = b.y - a.y, DZ = b.z - a.z, R2 = r + target.radius;
+          let lo = 0;
+          let hi = 1;
+          const A = DX * DX + DY * DY, B = 2 * ((a.x - target.x) * DX + (a.y - target.y) * DY), C = (a.x - target.x) ** 2 + (a.y - target.y) ** 2 - R2 * R2;
           if (A < 1e-12) {
-            if (C > 0) return null;
+            if (C > 0) {
+              return null;
+            }
           } else {
             const D = B * B - 4 * A * C;
-            if (D < 0) return null;
+            if (D < 0) {
+              return null;
+            }
             lo = Math.max(lo, (-B - Math.sqrt(D)) / (2 * A));
             hi = Math.min(hi, (-B + Math.sqrt(D)) / (2 * A));
           }
-          const bottom = target.z - h, top = target.z + target.height;
-          if (Math.abs(dz) < 1e-12) {
-            if (a.z < bottom || a.z > top) return null;
+          const BOTTOM = target.z - h, TOP = target.z + target.height;
+          if (Math.abs(DZ) < 1e-12) {
+            if (a.z < BOTTOM || a.z > TOP) {
+              return null;
+            }
           } else {
-            let x = (bottom - a.z) / dz, y = (top - a.z) / dz;
-            if (x > y) [x, y] = [y, x];
+            let x = (BOTTOM - a.z) / DZ;
+            let y = (TOP - a.z) / DZ;
+            if (x > y) {
+              [x, y] = [y, x];
+            }
             lo = Math.max(lo, x);
             hi = Math.min(hi, y);
           }
-          if (lo > hi || hi < 0 || lo > 1) return null;
-          const t = clamp3(lo, 0, 1);
-          return { x: a.x + dx * t, y: a.y + dy * t, z: a.z + dz * t, t };
+          if (lo > hi || hi < 0 || lo > 1) {
+            return null;
+          }
+          const T = CLAMP2(lo, 0, 1);
+          return {
+            x: a.x + DX * T,
+            y: a.y + DY * T,
+            z: a.z + DZ * T,
+            t: T
+          };
         }
       };
-      Ballistics = {
+      BALLISTICS = {
         create(from, to, kind) {
-          const distance = Math.hypot(to.x - from.x, to.y - from.y), melee = kind === "ram" || kind === "punch";
-          return { from: { x: from.x, y: from.y, z: kind === "lob" ? 0.45 : 0 }, to: { ...to }, height: melee ? 0 : kind === "lob" ? 2 : 2.7, duration: melee ? Math.max(0.12, distance / 10) : 0.65 + distance * 0.055 };
+          const DISTANCE = Math.hypot(to.x - from.x, to.y - from.y), MELEE = kind === "ram" || kind === "punch";
+          return {
+            from: {
+              x: from.x,
+              y: from.y,
+              z: kind === "lob" ? 0.45 : 0
+            },
+            to: {
+              ...to
+            },
+            height: MELEE ? 0 : kind === "lob" ? 2 : 2.7,
+            duration: MELEE ? Math.max(0.12, DISTANCE / 10) : 0.65 + DISTANCE * 0.055
+          };
         },
-        sample(path2, q) {
-          q = clamp3(q, 0, 1);
-          return { x: path2.from.x + (path2.to.x - path2.from.x) * q, y: path2.from.y + (path2.to.y - path2.from.y) * q, z: path2.from.z * (1 - q) + 4 * path2.height * q * (1 - q) };
+        sample(path, q) {
+          q = CLAMP2(q, 0, 1);
+          return {
+            x: path.from.x + (path.to.x - path.from.x) * q,
+            y: path.from.y + (path.to.y - path.from.y) * q,
+            z: path.from.z * (1 - q) + 4 * path.height * q * (1 - q)
+          };
         }
       };
       AttackCycle = class {
@@ -2112,19 +3310,31 @@
           return unitCapabilityComposition(this.owner.species);
         }
         begin(sim, target) {
-          const u = this.owner;
-          if (this.phase !== "idle" || u.down > 0 || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return false;
+          const U = this.owner;
+          if (this.phase !== "idle" || U.down > 0 || U.stun > 0 || U.z > 0.1 || U.landingRecovery > 0) {
+            return false;
+          }
           this.phase = "windup";
           this.elapsed = 0;
-          this.action = { id: ++sim.attackSerial, target: { ...target }, targetId: target.id ?? "boss", hit: false, path: null };
+          this.action = {
+            id: ++sim.attackSerial,
+            target: {
+              ...target
+            },
+            targetId: target.id ?? "boss",
+            hit: false,
+            path: null
+          };
           this.prepareAttack?.(sim);
-          u.angle = Math.atan2(target.y - u.y, target.x - u.x);
-          u.vx = u.vy = 0;
-          sim.combatEvent("prepare", u, this.action);
+          U.angle = Math.atan2(target.y - U.y, target.x - U.x);
+          U.vx = U.vy = 0;
+          sim.combatEvent("prepare", U, this.action);
           return true;
         }
         cancelForScatter() {
-          if (this.action?.pendingShots) this.action.pendingShots.length = 0;
+          if (this.action?.pendingShots) {
+            this.action.pendingShots.length = 0;
+          }
           if (this.phase === "windup" || this.phase === "active") {
             this.phase = "recover";
             this.elapsed = 0;
@@ -2141,12 +3351,12 @@
         recover(sim, recoil = false) {
           this.phase = "recover";
           this.elapsed = 0;
-          const u = this.owner;
+          const U = this.owner;
           if (recoil) {
-            u.vx = -Math.cos(u.angle) * 2.2;
-            u.vy = -Math.sin(u.angle) * 2.2;
+            U.vx = -Math.cos(U.angle) * 2.2;
+            U.vy = -Math.sin(U.angle) * 2.2;
           }
-          sim.combatEvent("recover", u, this.action);
+          sim.combatEvent("recover", U, this.action);
         }
         ready() {
           this.phase = "idle";
@@ -2154,36 +3364,44 @@
           this.elapsed = 0;
         }
         update(sim, dt) {
-          const u = this.owner;
-          if (u.stun > 0 || u.down > 0) {
+          const U = this.owner;
+          if (U.stun > 0 || U.down > 0) {
             this.interrupt();
             return true;
           }
-          if (this.action && (this.phase === "windup" || this.phase === "active") && !(sim.attackTarget(u, this.action)?.hp > 0)) {
+          if (this.action && (this.phase === "windup" || this.phase === "active") && !(sim.attackTarget(U, this.action)?.hp > 0)) {
             this.interrupt();
             return true;
           }
-          if (this.phase === "idle") return false;
+          if (this.phase === "idle") {
+            return false;
+          }
           this.elapsed += dt;
           if (this.phase === "windup") {
-            u.vx *= Math.exp(-dt * 18);
-            u.vy *= Math.exp(-dt * 18);
+            U.vx *= Math.exp(-dt * 18);
+            U.vy *= Math.exp(-dt * 18);
             if (this.elapsed >= this.spec.timing.windup) {
               this.elapsed = 0;
               this.phase = "active";
               this.createAttackPath();
-              sim.combatEvent("launch", u, this.action);
+              sim.combatEvent("launch", U, this.action);
               this.launchAttack?.(sim);
             }
           } else if (this.phase === "recover") {
             this.updateRecovery?.(sim);
-            if (this.elapsed >= scaleAttackRecovery(this.spec.timing.recovery, u)) this.ready();
+            if (this.elapsed >= scaleAttackRecovery(this.spec.timing.recovery, U)) {
+              this.ready();
+            }
           }
           return true;
         }
       };
-      createUnitAttackCycle = composeUnitAttackCycles(AttackCycle, { ArenaGeometry, Ballistics, CONFIG });
-      AttackingBody = (Base) => class extends Base {
+      CREATE_UNIT_ATTACK_CYCLE = composeUnitAttackCycles(AttackCycle, {
+        ArenaGeometry: ARENA_GEOMETRY,
+        Ballistics: BALLISTICS,
+        CONFIG
+      });
+      ATTACKING_BODY = (baseLocal) => class extends baseLocal {
         constructor(...args) {
           super(...args);
           this.ability = null;
@@ -2194,10 +3412,12 @@
           super.knock(...args);
         }
         integrate(dt) {
-          if (!this.ability.integrate(dt)) super.integrate(dt);
+          if (!this.ability.integrate(dt)) {
+            super.integrate(dt);
+          }
         }
       };
-      Unit = class extends AttackingBody(Knockable(Body)) {
+      UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         constructor(id, species, tier, x, y) {
           super(x, y);
           Object.assign(this, {
@@ -2214,8 +3434,11 @@
             cooldownDuration: 0,
             mateId: 0,
             perceptionRange: CONFIG.unit.perceptionRange,
-            home: { x, y },
-            hp: stats(tier, species).maxHp,
+            home: {
+              x,
+              y
+            },
+            hp: STATS(tier, species).maxHp,
             down: 0,
             seed: id * 2.39996,
             ownerId: "",
@@ -2242,10 +3465,10 @@
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0
           });
-          this.ability = createUnitAttackCycle(this);
+          this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
         }
         get radius() {
-          return unitRadiusForTier(this.tier) * (this.mature ? 1 : 0.8);
+          return UNIT_RADIUS_FOR_TIER(this.tier) * (this.mature ? 1 : 0.8);
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -2254,11 +3477,11 @@
           return this.meals >= 1;
         }
         get size() {
-          const growth = this.mature ? 1 : this.growthDuration > 0 ? clamp3(this.growthElapsed / this.growthDuration, 0, 1) : 1;
-          return (0.55 + 0.1 * this.tier) * (0.5 + 0.5 * growth);
+          const GROWTH = this.mature ? 1 : this.growthDuration > 0 ? CLAMP2(this.growthElapsed / this.growthDuration, 0, 1) : 1;
+          return (0.55 + 0.1 * this.tier) * (0.5 + 0.5 * GROWTH);
         }
       };
-      Garden = class {
+      GARDEN = class Garden {
         constructor(seed = 731) {
           this.seed = seed;
           this.notices = [];
@@ -2271,9 +3494,24 @@
           this._unitAliveState = /* @__PURE__ */ new Map();
           this._liveFactionCounts = /* @__PURE__ */ new Map();
           this._foodOrder = /* @__PURE__ */ new Map();
-          this._speciesGroups = Array.from({ length: CONFIG.unit.speciesCount }, () => []);
-          this._speciesTierGroups = Array.from({ length: CONFIG.unit.speciesCount * (CONFIG.unit.maxTier + 1) }, () => []);
-          this._mergeEligibleGroups = Array.from({ length: CONFIG.unit.speciesCount * (CONFIG.unit.maxTier + 1) }, () => []);
+          this._speciesGroups = Array.from(
+            {
+              length: CONFIG.unit.speciesCount
+            },
+            () => []
+          );
+          this._speciesTierGroups = Array.from(
+            {
+              length: CONFIG.unit.speciesCount * (CONFIG.unit.maxTier + 1)
+            },
+            () => []
+          );
+          this._mergeEligibleGroups = Array.from(
+            {
+              length: CONFIG.unit.speciesCount * (CONFIG.unit.maxTier + 1)
+            },
+            () => []
+          );
           this._ownedSpeciesCounts = new Int32Array(CONFIG.unit.speciesCount);
           this._stepUnits = [];
           this._unitCandidates = [];
@@ -2296,33 +3534,104 @@
           this._spatialQueryDepth = 0;
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
-          for (const key of ["unitSpatial", "foodSpatial", "_unitById", "_unitStepOrder", "_unitAliveState", "_liveFactionCounts", "_foodOrder", "_speciesGroups", "_speciesTierGroups", "_mergeEligibleGroups", "_ownedSpeciesCounts", "_stepUnits", "_unitCandidates", "_foodCandidates", "_groundedFoods", "_groundedFoodCount", "_contactPending", "_contactExtra", "_contactQuery", "_contactSeen", "_contactGeneration", "_bossGridUnits", "_bossGroundUnits", "_bossQueryCandidates", "_bossHitCandidates", "_mergeNearestScratch", "_mergeMaterialsScratch", "_mergeIdScratch", "_spatialStepActive", "_spatialQueryDepth", "_unitSpatialDirty", "_foodSpatialDirty"]) Object.defineProperty(this, key, { enumerable: false });
-          Object.defineProperties(this, { progressRevision: { value: 0, writable: true }, _progressTimerCheckpoint: { value: 0, writable: true }, localScatter: { value: { active: false, x: 0, y: 0, radius: CONFIG.scatter.minRadius, handleX: 0, handleY: 0, generation: 0 } }, _scatterStates: { value: /* @__PURE__ */ new WeakMap() } });
+          for (const KEY2 of [
+            "unitSpatial",
+            "foodSpatial",
+            "_unitById",
+            "_unitStepOrder",
+            "_unitAliveState",
+            "_liveFactionCounts",
+            "_foodOrder",
+            "_speciesGroups",
+            "_speciesTierGroups",
+            "_mergeEligibleGroups",
+            "_ownedSpeciesCounts",
+            "_stepUnits",
+            "_unitCandidates",
+            "_foodCandidates",
+            "_groundedFoods",
+            "_groundedFoodCount",
+            "_contactPending",
+            "_contactExtra",
+            "_contactQuery",
+            "_contactSeen",
+            "_contactGeneration",
+            "_bossGridUnits",
+            "_bossGroundUnits",
+            "_bossQueryCandidates",
+            "_bossHitCandidates",
+            "_mergeNearestScratch",
+            "_mergeMaterialsScratch",
+            "_mergeIdScratch",
+            "_spatialStepActive",
+            "_spatialQueryDepth",
+            "_unitSpatialDirty",
+            "_foodSpatialDirty"
+          ]) {
+            Object.defineProperty(this, KEY2, {
+              enumerable: false
+            });
+          }
+          Object.defineProperties(this, {
+            progressRevision: {
+              value: 0,
+              writable: true
+            },
+            _progressTimerCheckpoint: {
+              value: 0,
+              writable: true
+            },
+            localScatter: {
+              value: {
+                active: false,
+                x: 0,
+                y: 0,
+                radius: CONFIG.scatter.minRadius,
+                handleX: 0,
+                handleY: 0,
+                generation: 0
+              }
+            },
+            _scatterStates: {
+              value: /* @__PURE__ */ new WeakMap()
+            }
+          });
           this.reset();
         }
         _rebuildUnitSpatialIndex(stepUnits = this.units) {
-          const grid = this.unitSpatial;
-          grid.clear();
+          const GRID = this.unitSpatial;
+          GRID.clear();
           this._unitById.clear();
           this._unitStepOrder.clear();
           this._unitAliveState.clear();
           this._liveFactionCounts.clear();
           this._ownedSpeciesCounts.fill(0);
-          for (const group of this._speciesGroups) group.length = 0;
-          for (const group of this._speciesTierGroups) group.length = 0;
-          for (const unit2 of this.units) {
-            grid.insert(unit2);
-            this._unitById.set(unit2.id, unit2);
-            if (unit2.species >= 0 && unit2.species < CONFIG.unit.speciesCount) {
-              this._speciesGroups[unit2.species].push(unit2);
-              this._ownedSpeciesCounts[unit2.species] += unit2.isBattleOnlySummon ? 0 : 1;
-              const tier = Math.max(0, Math.min(CONFIG.unit.maxTier, unit2.tier | 0));
-              this._speciesTierGroups[unit2.species * (CONFIG.unit.maxTier + 1) + tier].push(unit2);
-            }
-            if (unit2.hp > 0 && typeof unit2.faction === "string") this._liveFactionCounts.set(unit2.faction, (this._liveFactionCounts.get(unit2.faction) || 0) + 1);
-            this._unitAliveState.set(unit2, unit2.hp > 0);
+          for (const GROUP of this._speciesGroups) {
+            GROUP.length = 0;
           }
-          for (let index = 0; index < stepUnits.length; index++) this._unitStepOrder.set(stepUnits[index], index);
+          for (const GROUP of this._speciesTierGroups) {
+            GROUP.length = 0;
+          }
+          for (const UNIT_LOCAL of this.units) {
+            GRID.insert(UNIT_LOCAL);
+            this._unitById.set(UNIT_LOCAL.id, UNIT_LOCAL);
+            if (UNIT_LOCAL.species >= 0 && UNIT_LOCAL.species < CONFIG.unit.speciesCount) {
+              this._speciesGroups[UNIT_LOCAL.species].push(UNIT_LOCAL);
+              this._ownedSpeciesCounts[UNIT_LOCAL.species] += UNIT_LOCAL.isBattleOnlySummon ? 0 : 1;
+              const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, UNIT_LOCAL.tier | 0));
+              this._speciesTierGroups[UNIT_LOCAL.species * (CONFIG.unit.maxTier + 1) + TIER].push(UNIT_LOCAL);
+            }
+            if (UNIT_LOCAL.hp > 0 && typeof UNIT_LOCAL.faction === "string") {
+              this._liveFactionCounts.set(
+                UNIT_LOCAL.faction,
+                (this._liveFactionCounts.get(UNIT_LOCAL.faction) || 0) + 1
+              );
+            }
+            this._unitAliveState.set(UNIT_LOCAL, UNIT_LOCAL.hp > 0);
+          }
+          for (let index = 0; index < stepUnits.length; index++) {
+            this._unitStepOrder.set(stepUnits[index], index);
+          }
           this._unitSpatialDirty = false;
         }
         _rebuildFoodSpatialIndex() {
@@ -2331,11 +3640,11 @@
           let grounded = 0;
           this._groundedFoods.length = 0;
           for (let index = 0; index < this.food.length; index++) {
-            const food = this.food[index];
-            this._foodOrder.set(food, index);
-            if (food.phase === "grounded") {
-              this.foodSpatial.insert(food);
-              this._groundedFoods.push(food);
+            const FOOD = this.food[index];
+            this._foodOrder.set(FOOD, index);
+            if (FOOD.phase === "grounded") {
+              this.foodSpatial.insert(FOOD);
+              this._groundedFoods.push(FOOD);
               grounded++;
             }
           }
@@ -2354,87 +3663,118 @@
             this._groundedFoodCount = (this._groundedFoodCount || 0) + 1;
           }
         }
-        _trackUnitAdded(unit2) {
+        _trackUnitAdded(unit) {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
           }
-          this.unitSpatial.insert(unit2);
-          this._unitById.set(unit2.id, unit2);
-          this._unitStepOrder.set(unit2, -1);
-          if (unit2.species >= 0 && unit2.species < CONFIG.unit.speciesCount) {
-            this._speciesGroups[unit2.species].push(unit2);
-            this._ownedSpeciesCounts[unit2.species] += unit2.isBattleOnlySummon ? 0 : 1;
-            const tier = Math.max(0, Math.min(CONFIG.unit.maxTier, unit2.tier | 0));
-            this._speciesTierGroups[unit2.species * (CONFIG.unit.maxTier + 1) + tier].push(unit2);
+          this.unitSpatial.insert(unit);
+          this._unitById.set(unit.id, unit);
+          this._unitStepOrder.set(unit, -1);
+          if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
+            this._speciesGroups[unit.species].push(unit);
+            this._ownedSpeciesCounts[unit.species] += unit.isBattleOnlySummon ? 0 : 1;
+            const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
+            this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER].push(unit);
           }
-          if (unit2.hp > 0 && typeof unit2.faction === "string") this._liveFactionCounts.set(unit2.faction, (this._liveFactionCounts.get(unit2.faction) || 0) + 1);
-          this._unitAliveState.set(unit2, unit2.hp > 0);
+          if (unit.hp > 0 && typeof unit.faction === "string") {
+            this._liveFactionCounts.set(unit.faction, (this._liveFactionCounts.get(unit.faction) || 0) + 1);
+          }
+          this._unitAliveState.set(unit, unit.hp > 0);
         }
-        _trackUnitRemoved(unit2, { keepStepSnapshot = false } = {}) {
+        _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
           }
-          this._unitById.delete(unit2.id);
-          this._syncUnitAliveCount(unit2);
-          if (unit2.hp > 0 && typeof unit2.faction === "string") this._adjustFactionCount(unit2.faction, -1);
-          this._unitAliveState.set(unit2, false);
-          if (unit2.species >= 0 && unit2.species < CONFIG.unit.speciesCount) {
-            this._removeGroupItem(this._speciesGroups[unit2.species], unit2);
-            const tier = Math.max(0, Math.min(CONFIG.unit.maxTier, unit2.tier | 0));
-            this._removeGroupItem(this._speciesTierGroups[unit2.species * (CONFIG.unit.maxTier + 1) + tier], unit2);
-            if (!unit2.isBattleOnlySummon) this._ownedSpeciesCounts[unit2.species] = Math.max(0, this._ownedSpeciesCounts[unit2.species] - 1);
+          this._unitById.delete(unit.id);
+          this._syncUnitAliveCount(unit);
+          if (unit.hp > 0 && typeof unit.faction === "string") {
+            this._adjustFactionCount(unit.faction, -1);
           }
-          if (!keepStepSnapshot || !this._unitStepOrder.has(unit2) || this._unitStepOrder.get(unit2) < 0) {
-            this.unitSpatial.remove(unit2);
-            this._unitStepOrder.delete(unit2);
+          this._unitAliveState.set(unit, false);
+          if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
+            this._removeGroupItem(this._speciesGroups[unit.species], unit);
+            const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
+            this._removeGroupItem(this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER], unit);
+            if (!unit.isBattleOnlySummon) {
+              this._ownedSpeciesCounts[unit.species] = Math.max(0, this._ownedSpeciesCounts[unit.species] - 1);
+            }
+          }
+          if (!keepStepSnapshot || !this._unitStepOrder.has(unit) || this._unitStepOrder.get(unit) < 0) {
+            this.unitSpatial.remove(unit);
+            this._unitStepOrder.delete(unit);
           }
         }
         _removeGroupItem(group, item) {
-          const index = group.indexOf(item);
-          if (index >= 0) group.splice(index, 1);
+          const INDEX = group.indexOf(item);
+          if (INDEX >= 0) {
+            group.splice(INDEX, 1);
+          }
         }
         _adjustFactionCount(faction, delta) {
-          const next = (this._liveFactionCounts.get(faction) || 0) + delta;
-          if (next > 0) this._liveFactionCounts.set(faction, next);
-          else this._liveFactionCounts.delete(faction);
+          const NEXT = (this._liveFactionCounts.get(faction) || 0) + delta;
+          if (NEXT > 0) {
+            this._liveFactionCounts.set(faction, NEXT);
+          } else {
+            this._liveFactionCounts.delete(faction);
+          }
         }
-        _syncUnitAliveCount(unit2) {
-          const wasAlive = this._unitAliveState?.get(unit2);
-          const isAlive = unit2.hp > 0;
-          if (wasAlive === isAlive) return;
-          if (!this._unitAliveState) this._unitAliveState = /* @__PURE__ */ new Map();
-          this._unitAliveState.set(unit2, isAlive);
-          if (typeof unit2.faction === "string") this._adjustFactionCount(unit2.faction, isAlive ? 1 : -1);
+        _syncUnitAliveCount(unit) {
+          const WAS_ALIVE = this._unitAliveState?.get(unit);
+          const IS_ALIVE = unit.hp > 0;
+          if (WAS_ALIVE === IS_ALIVE) {
+            return;
+          }
+          if (!this._unitAliveState) {
+            this._unitAliveState = /* @__PURE__ */ new Map();
+          }
+          this._unitAliveState.set(unit, IS_ALIVE);
+          if (typeof unit.faction === "string") {
+            this._adjustFactionCount(unit.faction, IS_ALIVE ? 1 : -1);
+          }
         }
         _unitForId(id) {
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
+          }
           return this._unitById.get(id);
         }
-        _unitIsActive(unit2) {
-          return this._unitById.get(unit2?.id) === unit2;
+        _unitIsActive(unit) {
+          return this._unitById.get(unit?.id) === unit;
         }
         _beginSpatialQueryBatch() {
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
+          }
           this._spatialQueryDepth++;
         }
         _endSpatialQueryBatch() {
           this._spatialQueryDepth = Math.max(0, this._spatialQueryDepth - 1);
         }
-        _collectContactOrders(unit2, minimumOrder, maximumOrder, out) {
-          const radius = unit2.radius + CONFIG.unit.maxRadius + 0.22;
-          this.unitSpatial.queryAABB(unit2.x - radius, unit2.y - radius, unit2.x + radius, unit2.y + radius, this._contactQuery);
+        _collectContactOrders(unit, minimumOrder, maximumOrder, out) {
+          const RADIUS = unit.radius + CONFIG.unit.maxRadius + 0.22;
+          this.unitSpatial.queryAABB(
+            unit.x - RADIUS,
+            unit.y - RADIUS,
+            unit.x + RADIUS,
+            unit.y + RADIUS,
+            this._contactQuery
+          );
           out.length = 0;
-          for (const candidate of this._contactQuery) {
-            const order = this._unitStepOrder.get(candidate);
-            if (order !== void 0 && order >= minimumOrder && order <= maximumOrder) out.push(order);
+          for (const CANDIDATE of this._contactQuery) {
+            const ORDER = this._unitStepOrder.get(CANDIDATE);
+            if (ORDER !== void 0 && ORDER >= minimumOrder && ORDER <= maximumOrder) {
+              out.push(ORDER);
+            }
           }
           out.sort((a, b) => a - b);
           return out;
         }
         _nextContactGeneration(length) {
-          if (this._contactSeen.length < length) this._contactSeen = new Uint32Array(Math.max(length, this._contactSeen.length * 2, 16));
+          if (this._contactSeen.length < length) {
+            this._contactSeen = new Uint32Array(Math.max(length, this._contactSeen.length * 2, 16));
+          }
           this._contactGeneration = this._contactGeneration + 1 >>> 0;
           if (this._contactGeneration === 0) {
             this._contactSeen.fill(0);
@@ -2443,43 +3783,58 @@
           return this._contactGeneration;
         }
         _insertContactOrder(order, lastOrder, pending, generation) {
-          if (order <= lastOrder || this._contactSeen[order] === generation) return;
+          if (order <= lastOrder || this._contactSeen[order] === generation) {
+            return;
+          }
           this._contactSeen[order] = generation;
-          let low = 0, high = pending.length;
+          let low = 0;
+          let high = pending.length;
           while (low < high) {
-            const middle = low + high >>> 1;
-            if (pending[middle] < order) low = middle + 1;
-            else high = middle;
+            const MIDDLE = low + high >>> 1;
+            if (pending[MIDDLE] < order) {
+              low = MIDDLE + 1;
+            } else {
+              high = MIDDLE;
+            }
           }
           pending.splice(low, 0, order);
         }
         _collectBossTargets(minX, minY, maxX, maxY, out, groundOnly = false) {
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
+          }
           this.unitSpatial.queryAABB(minX, minY, maxX, maxY, out);
           let length = 0;
           for (let index = 0; index < out.length; index++) {
-            const unit2 = out[index];
-            if (this._unitIsActive(unit2) && hasFaction(unit2, FACTION_CONFIG.PLAYER) && unit2.hp > 0 && unit2.dropLanded && (!groundOnly || unit2.z <= 0.1)) out[length++] = unit2;
+            const UNIT_LOCAL = out[index];
+            if (this._unitIsActive(UNIT_LOCAL) && hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) && UNIT_LOCAL.hp > 0 && UNIT_LOCAL.dropLanded && (!groundOnly || UNIT_LOCAL.z <= 0.1)) {
+              out[length++] = UNIT_LOCAL;
+            }
           }
           out.length = length;
           out.sort((a, b) => a.id - b.id);
           return out;
         }
         static createRaidBattle(seed = 731, expectedPlayers = ["solo"], bossStage = null) {
-          const w = new Garden(seed);
-          w.units = [];
-          w.food = [];
-          w.scene = "raid";
-          w.running = false;
-          w.boss = w.createBoss(bossStage?.species ?? w.randomBossSpecies());
-          if (bossStage?.stage !== void 0) w.configureBossStage(bossStage.stage, bossStage.species);
-          w.encounter = { outcome: "idle", elapsed: 0 };
-          w.raidExpectedPlayers = [...expectedPlayers];
-          w.raidRosters = [];
-          w.raidDeploymentStarted = false;
-          w.nextId = 1;
-          w.starter = 0;
-          return w;
+          const W = new GARDEN(seed);
+          W.units = [];
+          W.food = [];
+          W.scene = "raid";
+          W.running = false;
+          W.boss = W.createBoss(bossStage?.species ?? W.randomBossSpecies());
+          if (bossStage?.stage !== void 0) {
+            W.configureBossStage(bossStage.stage, bossStage.species);
+          }
+          W.encounter = {
+            outcome: "idle",
+            elapsed: 0
+          };
+          W.raidExpectedPlayers = [...expectedPlayers];
+          W.raidRosters = [];
+          W.raidDeploymentStarted = false;
+          W.nextId = 1;
+          W.starter = 0;
+          return W;
         }
         reset() {
           this.clearLocalScatter();
@@ -2488,7 +3843,7 @@
           this.mergeTask = null;
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
-          this.rng = new SeededPRNG(this.seed);
+          this.rng = new SEEDED_PRNG(this.seed);
           this.units = [];
           this.food = [];
           this.effects = [];
@@ -2497,7 +3852,10 @@
           this.nextId = 1;
           this.nextBossEncounterId = 1;
           this.bossRewardReceipts = [];
-          this.bossRewardWatermarks = { farm: 0, raid: 0 };
+          this.bossRewardWatermarks = {
+            farm: 0,
+            raid: 0
+          };
           this.nextRaidRunSequence = 0;
           this.activeRaidRunSequence = null;
           this.activeRaidSessionId = null;
@@ -2507,7 +3865,12 @@
           this.starter = 0;
           this.notices = [];
           this.eventSequence = 0;
-          this.foodTaps = { remainder: 0, autoClock: 0, produced: 0, revision: 0 };
+          this.foodTaps = {
+            remainder: 0,
+            autoClock: 0,
+            produced: 0,
+            revision: 0
+          };
           this.projectiles = [];
           this.attackSerial = 0;
           this.projectileSerial = 0;
@@ -2518,32 +3881,69 @@
           this.mode = "breed";
           this.scene = "farm";
           this.running = false;
-          this.encounter = { outcome: "idle", elapsed: 0 };
-          this.farmBossEvent = { phase: "idle", elapsed: 0, outcome: "idle", encounterId: 0, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
+          this.encounter = {
+            outcome: "idle",
+            elapsed: 0
+          };
+          this.farmBossEvent = {
+            phase: "idle",
+            elapsed: 0,
+            outcome: "idle",
+            encounterId: 0,
+            rewardStatus: "none",
+            rewardChance: 0,
+            rewardRoll: 0,
+            rewardUnitId: 0
+          };
           this.boss = this.createBoss();
           this.raidExpectedPlayers = ["solo"];
           this.raidRosters = [];
           this.raidDeploymentStarted = false;
-          this.metrics = { births: 0, merges: 0, directHits: 0, contacts: 0, landings: 0, basicHits: 0, sweepHits: 0 };
+          this.metrics = {
+            births: 0,
+            merges: 0,
+            directHits: 0,
+            contacts: 0,
+            landings: 0,
+            basicHits: 0,
+            sweepHits: 0
+          };
           for (let i = 0; i < 2; i++) {
-            const u = this.spawn(0, 1, (this.random() - 0.5) * 4, (this.random() - 0.5) * 3);
-            u.meals = 0;
-            u.growth = CONFIG.farm.breeding.matureMeals;
-            u.growthDuration = this.breedGrowthDuration();
-            u.growthElapsed = u.growthDuration;
+            const U = this.spawn(0, 1, (this.random() - 0.5) * 4, (this.random() - 0.5) * 3);
+            U.meals = 0;
+            U.growth = CONFIG.farm.breeding.matureMeals;
+            U.growthDuration = this.breedGrowthDuration();
+            U.growthElapsed = U.growthDuration;
           }
         }
         markProgressChanged() {
-          if (this.scene === "farm") this.progressRevision++;
+          if (this.scene === "farm") {
+            this.progressRevision++;
+          }
         }
         hasProgressTimers() {
-          return this.units.some((unit2) => !unit2.isBattleOnlySummon && (unit2.down > 0 || unit2.cooldown > 0 || !unit2.mature));
+          return this.units.some(
+            (unit) => !unit.isBattleOnlySummon && (unit.down > 0 || unit.cooldown > 0 || !unit.mature)
+          );
         }
         get armyHealth() {
-          return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER)).reduce((sum, u) => {
-            const maxHp = stats(u.tier, u.species).maxHp;
-            return { current: sum.current + Math.max(0, Math.min(maxHp, u.hp)), max: sum.max + maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 };
-          }, { current: 0, max: 0, living: 0, total: 0 });
+          return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER)).reduce(
+            (sum, u) => {
+              const MAX_HP = STATS(u.tier, u.species).maxHp;
+              return {
+                current: sum.current + Math.max(0, Math.min(MAX_HP, u.hp)),
+                max: sum.max + MAX_HP,
+                living: sum.living + (u.hp > 0 ? 1 : 0),
+                total: sum.total + 1
+              };
+            },
+            {
+              current: 0,
+              max: 0,
+              living: 0,
+              total: 0
+            }
+          );
         }
         get capacity() {
           return getFarmCapacity(this.playerProgression?.farmUpgrades);
@@ -2554,149 +3954,359 @@
         breedGrowthDuration() {
           return this.breedCooldownDuration() / 2;
         }
-        abilityProgressionFor(unit2) {
-          if (hasFaction(unit2, FACTION_CONFIG.ENEMY)) return null;
-          return this.scene === "raid" ? this.raidRoster(unit2?.ownerId)?.abilitySnapshot || null : this.playerProgression;
+        abilityProgressionFor(unit) {
+          if (hasFaction(unit, FACTION_CONFIG.ENEMY)) {
+            return null;
+          }
+          return this.scene === "raid" ? this.raidRoster(unit?.ownerId)?.abilitySnapshot || null : this.playerProgression;
         }
         highestSpeciesTiers() {
-          const tiers = Array(CONFIG.unit.speciesCount).fill(0);
-          for (const unit2 of this.units) if (!unit2.isBattleOnlySummon) tiers[unit2.species] = Math.max(tiers[unit2.species], unit2.tier);
-          return tiers;
+          const TIERS = Array(CONFIG.unit.speciesCount).fill(0);
+          for (const UNIT_LOCAL of this.units) {
+            if (!UNIT_LOCAL.isBattleOnlySummon) {
+              TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
+            }
+          }
+          return TIERS;
         }
         investAbilityNode(abilityId, nodeId) {
-          const inCombat = this.running || this.farmBossEvent?.phase !== "idle";
-          const result = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, { location: this.scene, inCombat, highestSpeciesTier: this.highestSpeciesTiers() });
-          if (result.ok) {
-            this.playerProgression = result.state;
+          const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
+          const RESULT = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, {
+            location: this.scene,
+            inCombat: IN_COMBAT,
+            highestSpeciesTier: this.highestSpeciesTiers()
+          });
+          if (RESULT.ok) {
+            this.playerProgression = RESULT.state;
             this.markProgressChanged();
           }
-          return result;
+          return RESULT;
         }
         investFarmUpgrade(nodeId) {
-          const inCombat = this.running || this.farmBossEvent?.phase !== "idle";
-          const result = purchaseFarmUpgrade(this.playerProgression, nodeId, { location: this.scene, inCombat });
-          if (result.ok) {
-            this.playerProgression = result.state;
+          const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
+          const RESULT = purchaseFarmUpgrade(this.playerProgression, nodeId, {
+            location: this.scene,
+            inCombat: IN_COMBAT
+          });
+          if (RESULT.ok) {
+            this.playerProgression = RESULT.state;
             this.markProgressChanged();
           }
-          return result;
+          return RESULT;
         }
         resetAbilityTree() {
-          const inCombat = this.running || this.farmBossEvent?.phase !== "idle";
-          const result = resetAbilityProgression(this.playerProgression, { location: this.scene, inCombat });
-          if (result.ok) {
-            this.playerProgression = result.state;
+          const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
+          const RESULT = resetAbilityProgression(this.playerProgression, {
+            location: this.scene,
+            inCombat: IN_COMBAT
+          });
+          if (RESULT.ok) {
+            this.playerProgression = RESULT.state;
             this.markProgressChanged();
           }
-          return result;
+          return RESULT;
         }
-        spawnLobProjectile(unit2, action, shot, popcornConfig = null) {
-          if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) return null;
-          const id = ++this.projectileSerial;
-          const projectile2 = { id, owner: unit2.id, targetId: action.targetId || "boss", faction: unit2.faction, ownerId: unit2.ownerId, species: unit2.species, tier: unit2.tier, path: structuredClone(action.path), elapsed: 0, x: unit2.x, y: unit2.y, z: 0.45, radius: scaleAttackArea(0.12, unit2), height: 0.24, hit: false, attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit2), shotIndex: shot.shotIndex ?? 0 };
-          if (popcornConfig) Object.assign(projectile2, { isPopcorn: true, popcornConfig: structuredClone(popcornConfig), landed: false, exploded: false, fuseRemaining: popcornConfig.fuseSeconds, damagedTargetIds: [] });
-          this.projectiles.push(projectile2);
-          return projectile2;
+        spawnLobProjectile(unit, action, shot, popcornConfig = null) {
+          if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
+            return null;
+          }
+          const ID = ++this.projectileSerial;
+          const PROJECTILE2 = {
+            id: ID,
+            owner: unit.id,
+            targetId: action.targetId || "boss",
+            faction: unit.faction,
+            ownerId: unit.ownerId,
+            species: unit.species,
+            tier: unit.tier,
+            path: structuredClone(action.path),
+            elapsed: 0,
+            x: unit.x,
+            y: unit.y,
+            z: 0.45,
+            radius: scaleAttackArea(0.12, unit),
+            height: 0.24,
+            hit: false,
+            attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
+            shotIndex: shot.shotIndex ?? 0
+          };
+          if (popcornConfig) {
+            Object.assign(PROJECTILE2, {
+              isPopcorn: true,
+              popcornConfig: structuredClone(popcornConfig),
+              landed: false,
+              exploded: false,
+              fuseRemaining: popcornConfig.fuseSeconds,
+              damagedTargetIds: []
+            });
+          }
+          this.projectiles.push(PROJECTILE2);
+          return PROJECTILE2;
         }
-        speciesAbilityDamageMultiplier(unit2) {
-          return abilityProfile(unit2.species).skillMultiplier;
+        speciesAbilityDamageMultiplier(unit) {
+          return abilityProfile(unit.species).skillMultiplier;
         }
-        spawnChestnutSpikes(unit2, action, config) {
-          if (this.projectiles.length + config.projectileCount > CONFIG.raid.capacity.projectiles) return false;
-          const angle = Math.atan2(action.target.y - unit2.y, action.target.x - unit2.x), angles = getChestnutSpikeFanAngles(config, angle), distance = Math.hypot(action.target.x - unit2.x, action.target.y - unit2.y), length = Math.max(abilityProfile(unit2.species).range, distance) + this.boss.radius;
-          for (let index = 0; index < angles.length; index++) {
-            const a = angles[index], target = { x: unit2.x + Math.cos(a) * length, y: unit2.y + Math.sin(a) * length, z: 0 }, path2 = Ballistics.create({ x: unit2.x, y: unit2.y, z: 0 }, target, "punch");
-            path2.height = 0.7;
-            this.projectiles.push({ id: ++this.projectileSerial, owner: unit2.id, faction: unit2.faction, ownerId: unit2.ownerId, species: unit2.species, tier: unit2.tier, path: path2, elapsed: 0, x: unit2.x, y: unit2.y, z: 0, radius: scaleAttackArea(0.08, unit2), height: 0.22, hit: false, attackMultiplier: config.projectileAttackMultiplier, projectileKind: "chestnut-spike", fanIndex: index });
+        spawnChestnutSpikes(unit, action, config) {
+          if (this.projectiles.length + config.projectileCount > CONFIG.raid.capacity.projectiles) {
+            return false;
+          }
+          const ANGLE = Math.atan2(action.target.y - unit.y, action.target.x - unit.x), ANGLES = getChestnutSpikeFanAngles(config, ANGLE), DISTANCE = Math.hypot(action.target.x - unit.x, action.target.y - unit.y), LENGTH = Math.max(abilityProfile(unit.species).range, DISTANCE) + this.boss.radius;
+          for (let index = 0; index < ANGLES.length; index++) {
+            const A_LOCAL = ANGLES[index], TARGET = {
+              x: unit.x + Math.cos(A_LOCAL) * LENGTH,
+              y: unit.y + Math.sin(A_LOCAL) * LENGTH,
+              z: 0
+            }, PATH2 = BALLISTICS.create(
+              {
+                x: unit.x,
+                y: unit.y,
+                z: 0
+              },
+              TARGET,
+              "punch"
+            );
+            PATH2.height = 0.7;
+            this.projectiles.push({
+              id: ++this.projectileSerial,
+              owner: unit.id,
+              faction: unit.faction,
+              ownerId: unit.ownerId,
+              species: unit.species,
+              tier: unit.tier,
+              path: PATH2,
+              elapsed: 0,
+              x: unit.x,
+              y: unit.y,
+              z: 0,
+              radius: scaleAttackArea(0.08, unit),
+              height: 0.22,
+              hit: false,
+              attackMultiplier: config.projectileAttackMultiplier,
+              projectileKind: "chestnut-spike",
+              fanIndex: index
+            });
           }
           return true;
         }
-        handleUnitDeath(unit2) {
-          if (!unit2) return false;
-          unit2.ability.resetCombatEffects?.();
-          if (unit2.deathSplitHandled) return false;
-          this._syncUnitAliveCount(unit2);
-          unit2.deathSplitHandled = true;
-          if (!unit2.isBattleOnlySummon) this.markProgressChanged();
-          if (unit2.isBattleOnlySummon) {
-            unit2.down = 0;
-            this._trackUnitRemoved(unit2, { keepStepSnapshot: true });
-            this.units = this.units.filter((candidate) => candidate !== unit2);
+        handleUnitDeath(unit) {
+          if (!unit) {
             return false;
           }
-          const inBattle = this.scene === "raid" ? this.running : this.farmBossEvent?.phase === "fighting";
-          const descriptors = unit2.ability.deathSplitDescriptors?.(this, inBattle) || [];
-          if (!descriptors.length) return false;
-          if (this.units.length + descriptors.length > (this.scene === "raid" ? CONFIG.raid.capacity.battleUnits : CONFIG.farm.capacity.battleUnits)) return false;
-          unit2.splitUsedThisBattle = true;
-          unit2.down = CONFIG.unit.corpseRecoverySeconds;
-          for (let index = 0; index < descriptors.length; index++) {
-            const desc = descriptors[index], angle = (index + 0.5) * Math.PI * 2 / descriptors.length, id = this.scene === "raid" ? CONFIG.raid.ids.summonBase + ++this.raidSummonSerial : this.nextId++;
-            const x = unit2.x + Math.cos(angle) * 0.38, y = unit2.y + Math.sin(angle) * 0.38, child = new Unit(id, desc.species, desc.tier, x, y);
-            Object.assign(child, desc, { ownerId: unit2.ownerId, farmId: unit2.farmId, home: { x, y }, hp: stats(desc.tier, desc.species).maxHp, down: 0, growthElapsed: child.growthDuration, growth: CONFIG.farm.breeding.matureMeals, meals: 1, dropLanded: true, deathSplitHandled: false });
-            this.units.push(child);
-            this._trackUnitAdded(child);
+          unit.ability.resetCombatEffects?.();
+          if (unit.deathSplitHandled) {
+            return false;
           }
-          this.combat("pea-split", { unit: unit2.id, ownerId: unit2.ownerId, species: unit2.species, count: descriptors.length, x: unit2.x, y: unit2.y });
+          this._syncUnitAliveCount(unit);
+          unit.deathSplitHandled = true;
+          if (!unit.isBattleOnlySummon) {
+            this.markProgressChanged();
+          }
+          if (unit.isBattleOnlySummon) {
+            unit.down = 0;
+            this._trackUnitRemoved(unit, {
+              keepStepSnapshot: true
+            });
+            this.units = this.units.filter((candidate) => candidate !== unit);
+            return false;
+          }
+          const IN_BATTLE = this.scene === "raid" ? this.running : this.farmBossEvent?.phase === "fighting";
+          const DESCRIPTORS = unit.ability.deathSplitDescriptors?.(this, IN_BATTLE) || [];
+          if (!DESCRIPTORS.length) {
+            return false;
+          }
+          if (this.units.length + DESCRIPTORS.length > (this.scene === "raid" ? CONFIG.raid.capacity.battleUnits : CONFIG.farm.capacity.battleUnits)) {
+            return false;
+          }
+          unit.splitUsedThisBattle = true;
+          unit.down = CONFIG.unit.corpseRecoverySeconds;
+          for (let index = 0; index < DESCRIPTORS.length; index++) {
+            const DESC = DESCRIPTORS[index], ANGLE = (index + 0.5) * Math.PI * 2 / DESCRIPTORS.length, ID = this.scene === "raid" ? CONFIG.raid.ids.summonBase + ++this.raidSummonSerial : this.nextId++;
+            const X = unit.x + Math.cos(ANGLE) * 0.38, Y = unit.y + Math.sin(ANGLE) * 0.38, CHILD = new UNIT(ID, DESC.species, DESC.tier, X, Y);
+            Object.assign(CHILD, DESC, {
+              ownerId: unit.ownerId,
+              farmId: unit.farmId,
+              home: {
+                x: X,
+                y: Y
+              },
+              hp: STATS(DESC.tier, DESC.species).maxHp,
+              down: 0,
+              growthElapsed: CHILD.growthDuration,
+              growth: CONFIG.farm.breeding.matureMeals,
+              meals: 1,
+              dropLanded: true,
+              deathSplitHandled: false
+            });
+            this.units.push(CHILD);
+            this._trackUnitAdded(CHILD);
+          }
+          this.combat("pea-split", {
+            unit: unit.id,
+            ownerId: unit.ownerId,
+            species: unit.species,
+            count: DESCRIPTORS.length,
+            x: unit.x,
+            y: unit.y
+          });
           return true;
         }
         cleanupBattleSummons() {
-          for (const unit2 of this.units) unit2.ability.resetCombatEffects?.();
-          for (const unit2 of this.units) if (unit2.isBattleOnlySummon) this._trackUnitRemoved(unit2);
-          this.units = this.units.filter((unit2) => !unit2.isBattleOnlySummon);
+          for (const UNIT_LOCAL of this.units) {
+            UNIT_LOCAL.ability.resetCombatEffects?.();
+          }
+          for (const UNIT_LOCAL of this.units) {
+            if (UNIT_LOCAL.isBattleOnlySummon) {
+              this._trackUnitRemoved(UNIT_LOCAL);
+            }
+          }
+          this.units = this.units.filter((unit) => !unit.isBattleOnlySummon);
           this.projectiles = [];
           return true;
         }
-        triggerLandingShockwave(unit2, action, config) {
-          const range = abilityProfile(unit2.species).range * config.radiusMultiplier, point3 = { x: unit2.x, y: unit2.y, z: 0 }, distance = Math.hypot(unit2.x - this.boss.x, unit2.y - this.boss.y);
-          this.effects.push({ kind: "landing-shockwave", x: unit2.x, y: unit2.y, z: 0, life: 0, duration: 0.55, radius: range, owner: unit2.id });
-          if (this.boss.hp > 0 && distance <= range + this.boss.radius) {
-            const blast = { id: action.id, hit: false, attackKind: "kidney-shockwave" };
-            this.damageCombatTarget(unit2, blast, this.boss, point3, { attackMultiplier: config.damageMultiplier, attackKind: "kidney-shockwave", area: true });
+        triggerLandingShockwave(unit, action, config) {
+          const RANGE = abilityProfile(unit.species).range * config.radiusMultiplier, POINT2 = {
+            x: unit.x,
+            y: unit.y,
+            z: 0
+          }, DISTANCE = Math.hypot(unit.x - this.boss.x, unit.y - this.boss.y);
+          this.effects.push({
+            kind: "landing-shockwave",
+            x: unit.x,
+            y: unit.y,
+            z: 0,
+            life: 0,
+            duration: 0.55,
+            radius: RANGE,
+            owner: unit.id
+          });
+          if (this.boss.hp > 0 && DISTANCE <= RANGE + this.boss.radius) {
+            const BLAST = {
+              id: action.id,
+              hit: false,
+              attackKind: "kidney-shockwave"
+            };
+            this.damageCombatTarget(unit, BLAST, this.boss, POINT2, {
+              attackMultiplier: config.damageMultiplier,
+              attackKind: "kidney-shockwave",
+              area: true
+            });
           }
-          this.combat("kidney-shockwave", { unit: unit2.id, ownerId: unit2.ownerId, species: unit2.species, x: unit2.x, y: unit2.y, radius: range, damageMultiplier: config.damageMultiplier });
+          this.combat("kidney-shockwave", {
+            unit: unit.id,
+            ownerId: unit.ownerId,
+            species: unit.species,
+            x: unit.x,
+            y: unit.y,
+            radius: RANGE,
+            damageMultiplier: config.damageMultiplier
+          });
         }
-        triggerWalnutSlam(unit2, action, primaryTarget, point3) {
-          if (action.hit || !primaryTarget || primaryTarget.hp <= 0 || !areOpposingFactions(unit2, primaryTarget)) return false;
-          const config = getWalnutGuardConfig(this.abilityProgressionFor(unit2), unit2.tier);
-          if (!config) return false;
+        triggerWalnutSlam(unit, action, primaryTarget, point2) {
+          if (action.hit || !primaryTarget || primaryTarget.hp <= 0 || !areOpposingFactions(unit, primaryTarget)) {
+            return false;
+          }
+          const CONFIG_LOCAL = getWalnutGuardConfig(this.abilityProgressionFor(unit), unit.tier);
+          if (!CONFIG_LOCAL) {
+            return false;
+          }
           action.hit = true;
-          const targets = [primaryTarget];
-          if (primaryTarget !== this.boss && this.boss.hp > 0 && areOpposingFactions(unit2, this.boss) && Math.hypot(this.boss.x - point3.x, this.boss.y - point3.y) <= config.radius + this.boss.radius) targets.push(this.boss);
-          for (const target of this.units) if (target !== primaryTarget && target.hp > 0 && areOpposingFactions(unit2, target) && Math.hypot(target.x - point3.x, target.y - point3.y) <= config.radius + target.radius) targets.push(target);
-          const attackContext = this.createAttackContext(unit2, { attackMultiplier: config.damageMultiplier, attackKind: "walnut-empowered-slam", area: true });
-          attackContext.criticalRoll = attackContext.sourceStatOverrides.critChance > 0 ? this.random() : 1;
-          for (const target of targets) this.damageCombatTarget(unit2, { id: action.id, hit: false }, target, point3, { attackContext });
-          this.effects.push({ kind: "walnut-shockwave", x: point3.x, y: point3.y, z: 0, life: 0, duration: 0.5, radius: config.radius, owner: unit2.id });
-          this.combat("walnut-slam", { unit: unit2.id, attackId: action.id, x: point3.x, y: point3.y, z: 0, radius: config.radius });
+          const TARGETS = [primaryTarget];
+          if (primaryTarget !== this.boss && this.boss.hp > 0 && areOpposingFactions(unit, this.boss) && Math.hypot(this.boss.x - point2.x, this.boss.y - point2.y) <= CONFIG_LOCAL.radius + this.boss.radius) {
+            TARGETS.push(this.boss);
+          }
+          for (const TARGET of this.units) {
+            if (TARGET !== primaryTarget && TARGET.hp > 0 && areOpposingFactions(unit, TARGET) && Math.hypot(TARGET.x - point2.x, TARGET.y - point2.y) <= CONFIG_LOCAL.radius + TARGET.radius) {
+              TARGETS.push(TARGET);
+            }
+          }
+          const ATTACK_CONTEXT = this.createAttackContext(unit, {
+            attackMultiplier: CONFIG_LOCAL.damageMultiplier,
+            attackKind: "walnut-empowered-slam",
+            area: true
+          });
+          ATTACK_CONTEXT.criticalRoll = ATTACK_CONTEXT.sourceStatOverrides.critChance > 0 ? this.random() : 1;
+          for (const TARGET of TARGETS) {
+            this.damageCombatTarget(
+              unit,
+              {
+                id: action.id,
+                hit: false
+              },
+              TARGET,
+              point2,
+              {
+                attackContext: ATTACK_CONTEXT
+              }
+            );
+          }
+          this.effects.push({
+            kind: "walnut-shockwave",
+            x: point2.x,
+            y: point2.y,
+            z: 0,
+            life: 0,
+            duration: 0.5,
+            radius: CONFIG_LOCAL.radius,
+            owner: unit.id
+          });
+          this.combat("walnut-slam", {
+            unit: unit.id,
+            attackId: action.id,
+            x: point2.x,
+            y: point2.y,
+            z: 0,
+            radius: CONFIG_LOCAL.radius
+          });
           return true;
         }
-        senseEnemy(unit2) {
-          if (unit2.hp <= 0 || !unit2.dropLanded) return null;
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
-          const battleActive = this.scene === "farm" ? this.farmBossEvent?.phase === "fighting" : this.running && this.raidDeploymentStarted;
-          const bossTarget = battleActive && this.boss?.active && areOpposingFactions(unit2, this.boss) ? this.boss : null;
-          let hasUnitEnemy = false;
-          for (const [faction, count] of this._liveFactionCounts) if (faction !== unit2.faction && count > 0) {
-            hasUnitEnemy = true;
-            break;
+        senseEnemy(unit) {
+          if (unit.hp <= 0 || !unit.dropLanded) {
+            return null;
           }
-          if (!hasUnitEnemy && !bossTarget) return null;
-          let nearest = null, nearestDistance = Infinity, nearestId = Infinity;
-          const consider = (target) => {
-            if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) || !Number.isFinite(target.radius)) return;
-            const distance = Math.hypot(unit2.x - target.x, unit2.y - target.y), id = target.id || 0;
-            if (distance <= unit2.perceptionRange + target.radius + 1e-9 && (distance < nearestDistance || distance === nearestDistance && id < nearestId)) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
+          }
+          const BATTLE_ACTIVE = this.scene === "farm" ? this.farmBossEvent?.phase === "fighting" : this.running && this.raidDeploymentStarted;
+          const BOSS_TARGET = BATTLE_ACTIVE && this.boss?.active && areOpposingFactions(unit, this.boss) ? this.boss : null;
+          let hasUnitEnemy = false;
+          for (const [FACTION, COUNT] of this._liveFactionCounts) {
+            if (FACTION !== unit.faction && COUNT > 0) {
+              hasUnitEnemy = true;
+              break;
+            }
+          }
+          if (!hasUnitEnemy && !BOSS_TARGET) {
+            return null;
+          }
+          let nearest = null;
+          let nearestDistance = Infinity;
+          let nearestId = Infinity;
+          const CONSIDER = (target) => {
+            if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) || !Number.isFinite(target.radius)) {
+              return;
+            }
+            const DISTANCE = Math.hypot(unit.x - target.x, unit.y - target.y), ID = target.id || 0;
+            if (DISTANCE <= unit.perceptionRange + target.radius + 1e-9 && (DISTANCE < nearestDistance || DISTANCE === nearestDistance && ID < nearestId)) {
               nearest = target;
-              nearestDistance = distance;
-              nearestId = id;
+              nearestDistance = DISTANCE;
+              nearestId = ID;
             }
           };
-          consider(bossTarget);
+          CONSIDER(BOSS_TARGET);
           if (hasUnitEnemy) {
-            const extent = Math.max(0, unit2.perceptionRange + CONFIG.unit.maxRadius + 1e-9);
-            this.unitSpatial.queryAABB(unit2.x - extent, unit2.y - extent, unit2.x + extent, unit2.y + extent, this._unitCandidates);
-            for (const candidate of this._unitCandidates) if (candidate !== unit2 && this._unitIsActive(candidate) && candidate.hp > 0 && candidate.dropLanded && areOpposingFactions(unit2, candidate)) consider(candidate);
+            const EXTENT = Math.max(0, unit.perceptionRange + CONFIG.unit.maxRadius + 1e-9);
+            this.unitSpatial.queryAABB(
+              unit.x - EXTENT,
+              unit.y - EXTENT,
+              unit.x + EXTENT,
+              unit.y + EXTENT,
+              this._unitCandidates
+            );
+            for (const CANDIDATE of this._unitCandidates) {
+              if (CANDIDATE !== unit && this._unitIsActive(CANDIDATE) && CANDIDATE.hp > 0 && CANDIDATE.dropLanded && areOpposingFactions(unit, CANDIDATE)) {
+                CONSIDER(CANDIDATE);
+              }
+            }
           }
           return nearest;
         }
@@ -2704,33 +4314,54 @@
           return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
         }
         setRaidPlayers(players) {
-          if (this.scene !== "raid" || !Array.isArray(players) || players.length < 1 || players.length > CONFIG.raid.capacity.players || players.some((p) => typeof p !== "string" || !p) || new Set(players).size !== players.length) return false;
-          const live = [...players], ordered = this.raidDeploymentStarted ? [...this.raidExpectedPlayers, ...live.filter((id) => !this.raidExpectedPlayers.includes(id))] : live;
-          if (ordered.length > CONFIG.raid.capacity.players) return false;
-          this.raidExpectedPlayers = ordered;
-          if (!this.raidDeploymentStarted) this.raidRosters = this.raidRosters.filter((r) => live.includes(r.ownerId));
-          this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
+          if (this.scene !== "raid" || !Array.isArray(players) || players.length < 1 || players.length > CONFIG.raid.capacity.players || players.some((p) => typeof p !== "string" || !p) || new Set(players).size !== players.length) {
+            return false;
+          }
+          const LIVE = [...players], ORDERED = this.raidDeploymentStarted ? [...this.raidExpectedPlayers, ...LIVE.filter((id) => !this.raidExpectedPlayers.includes(id))] : LIVE;
+          if (ORDERED.length > CONFIG.raid.capacity.players) {
+            return false;
+          }
+          this.raidExpectedPlayers = ORDERED;
+          if (!this.raidDeploymentStarted) {
+            this.raidRosters = this.raidRosters.filter((r) => LIVE.includes(r.ownerId));
+          }
+          this.raidRosters.sort(
+            (a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId)
+          );
           return true;
         }
         raidTotal() {
           return this.raidRosters.reduce((n, r) => n + r.troops.length, 0);
         }
         raidRemaining(ownerId) {
-          const r = this.raidRoster(ownerId);
-          return r ? r.troops.reduce((n, t) => n + (!t.deployed ? 1 : 0), 0) : 0;
+          const R_LOCAL = this.raidRoster(ownerId);
+          return R_LOCAL ? R_LOCAL.troops.reduce((n, t) => n + (!t.deployed ? 1 : 0), 0) : 0;
         }
-        registerRaidRoster(ownerId, entries, abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()), settlement2 = null) {
-          if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.raid.capacity.playerUnits || this.raidTotal() + entries.length > CONFIG.raid.capacity.units) return false;
-          if (!isValidAbilityRuntimeSnapshot(abilitySnapshot)) return false;
-          const hasSettlement = settlement2 !== null;
-          if (hasSettlement && (!settlement2 || typeof settlement2 !== "object" || typeof settlement2.sessionId !== "string" || !settlement2.sessionId.trim() || settlement2.sessionId.length > 128 || !Number.isSafeInteger(settlement2.runSequence) || settlement2.runSequence < 1 || settlement2.runSequence > 1e12 || settlement2.encounterId !== settlement2.runSequence)) return false;
-          const ids = /* @__PURE__ */ new Set(), troops = [];
-          for (const e of entries) {
-            if (!Array.isArray(e) || e.length !== 3 || !Number.isSafeInteger(e[0]) || e[0] < 1 || e[0] > CONFIG.farm.maxUnitId || !Number.isInteger(e[1]) || e[1] < 0 || e[1] >= CONFIG.unit.speciesCount || !Number.isInteger(e[2]) || e[2] < 1 || e[2] > CONFIG.unit.maxTier || ids.has(e[0])) return false;
-            ids.add(e[0]);
-            troops.push({ farmId: e[0], species: e[1], tier: e[2], deployed: false });
+        registerRaidRoster(ownerId, entries, abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()), settlement = null) {
+          if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.raid.capacity.playerUnits || this.raidTotal() + entries.length > CONFIG.raid.capacity.units) {
+            return false;
           }
-          const orderKey = (farmId) => {
+          if (!isValidAbilityRuntimeSnapshot(abilitySnapshot)) {
+            return false;
+          }
+          const HAS_SETTLEMENT = settlement !== null;
+          if (HAS_SETTLEMENT && (!settlement || typeof settlement !== "object" || typeof settlement.sessionId !== "string" || !settlement.sessionId.trim() || settlement.sessionId.length > 128 || !Number.isSafeInteger(settlement.runSequence) || settlement.runSequence < 1 || settlement.runSequence > 1e12 || settlement.encounterId !== settlement.runSequence)) {
+            return false;
+          }
+          const IDS = /* @__PURE__ */ new Set(), TROOPS = [];
+          for (const E of entries) {
+            if (!Array.isArray(E) || E.length !== 3 || !Number.isSafeInteger(E[0]) || E[0] < 1 || E[0] > CONFIG.farm.maxUnitId || !Number.isInteger(E[1]) || E[1] < 0 || E[1] >= CONFIG.unit.speciesCount || !Number.isInteger(E[2]) || E[2] < 1 || E[2] > CONFIG.unit.maxTier || IDS.has(E[0])) {
+              return false;
+            }
+            IDS.add(E[0]);
+            TROOPS.push({
+              farmId: E[0],
+              species: E[1],
+              tier: E[2],
+              deployed: false
+            });
+          }
+          const ORDER_KEY = (farmId) => {
             let h = (this.seed ^ Math.imul(farmId, 2654435769)) >>> 0;
             for (let i = 0; i < ownerId.length; i++) {
               h ^= ownerId.charCodeAt(i);
@@ -2743,41 +4374,83 @@
             h ^= h >>> 16;
             return h >>> 0;
           };
-          troops.sort((a, b) => a.tier - b.tier || orderKey(a.farmId) - orderKey(b.farmId) || a.farmId - b.farmId);
-          this.raidRosters.push({ ownerId, troops, abilitySnapshot: structuredClone(abilitySnapshot), settlementSessionId: hasSettlement ? settlement2.sessionId : "", settlementRunSequence: hasSettlement ? settlement2.runSequence : 0, settlementEncounterId: hasSettlement ? settlement2.encounterId : 0, lastDeploySequence: 0, buffUntil: 0, buffReadyAt: 0 });
-          this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
+          TROOPS.sort((a, b) => a.tier - b.tier || ORDER_KEY(a.farmId) - ORDER_KEY(b.farmId) || a.farmId - b.farmId);
+          this.raidRosters.push({
+            ownerId,
+            troops: TROOPS,
+            abilitySnapshot: structuredClone(abilitySnapshot),
+            settlementSessionId: HAS_SETTLEMENT ? settlement.sessionId : "",
+            settlementRunSequence: HAS_SETTLEMENT ? settlement.runSequence : 0,
+            settlementEncounterId: HAS_SETTLEMENT ? settlement.encounterId : 0,
+            lastDeploySequence: 0,
+            buffUntil: 0,
+            buffReadyAt: 0
+          });
+          this.raidRosters.sort(
+            (a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId)
+          );
           return true;
         }
         deployNextRaidUnit(ownerId, sequence) {
-          if (this.scene !== "raid" || ["victory", "defeat"].includes(this.encounter.outcome) || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence)) return false;
-          const roster2 = this.raidRoster(ownerId), troop = roster2?.troops.find((t) => !t.deployed);
-          if (!roster2 || sequence !== roster2.lastDeploySequence + 1 || !troop) return false;
-          const farmId = troop.farmId, slot = this.raidExpectedPlayers.indexOf(ownerId), troopIndex = roster2.troops.indexOf(troop), id = (slot + 1) * CONFIG.raid.ids.playerStride + troopIndex + 1;
-          if (this.units.some((u2) => u2.id === id)) return false;
-          const angle = this.random() * Math.PI * 2, margin = unitRadiusForTier(troop.tier) + 0.05, bounds = ArenaGeometry.bounds("raid", margin), x = Math.cos(angle) * bounds.x, y = Math.sin(angle) * bounds.y;
-          const u = new Unit(id, troop.species, troop.tier, x, y), growthDuration = this.breedGrowthDuration();
-          Object.assign(u, { ownerId, farmId, z: CONFIG.raid.dropHeight, vz: 0, dropLanded: false, meals: 1, growth: CONFIG.farm.breeding.matureMeals, growthDuration, growthElapsed: growthDuration });
-          troop.deployed = true;
-          roster2.lastDeploySequence = sequence;
-          this.units.push(u);
-          this._trackUnitAdded(u);
+          if (this.scene !== "raid" || ["victory", "defeat"].includes(this.encounter.outcome) || !this.raidExpectedPlayers.every((id) => this.raidRoster(id)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence)) {
+            return false;
+          }
+          const ROSTER2 = this.raidRoster(ownerId), TROOP = ROSTER2?.troops.find((t) => !t.deployed);
+          if (!ROSTER2 || sequence !== ROSTER2.lastDeploySequence + 1 || !TROOP) {
+            return false;
+          }
+          const FARM_ID = TROOP.farmId, SLOT = this.raidExpectedPlayers.indexOf(ownerId), TROOP_INDEX = ROSTER2.troops.indexOf(TROOP), ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1;
+          if (this.units.some((u) => u.id === ID)) {
+            return false;
+          }
+          const ANGLE = this.random() * Math.PI * 2, MARGIN = UNIT_RADIUS_FOR_TIER(TROOP.tier) + 0.05, BOUNDS = ARENA_GEOMETRY.bounds("raid", MARGIN), X = Math.cos(ANGLE) * BOUNDS.x, Y = Math.sin(ANGLE) * BOUNDS.y;
+          const U = new UNIT(ID, TROOP.species, TROOP.tier, X, Y), GROWTH_DURATION = this.breedGrowthDuration();
+          Object.assign(U, {
+            ownerId,
+            farmId: FARM_ID,
+            z: CONFIG.raid.dropHeight,
+            vz: 0,
+            dropLanded: false,
+            meals: 1,
+            growth: CONFIG.farm.breeding.matureMeals,
+            growthDuration: GROWTH_DURATION,
+            growthElapsed: GROWTH_DURATION
+          });
+          TROOP.deployed = true;
+          ROSTER2.lastDeploySequence = sequence;
+          this.units.push(U);
+          this._trackUnitAdded(U);
           if (!this.raidDeploymentStarted) {
             this.raidDeploymentStarted = true;
             this.running = true;
-            this.encounter = { outcome: "fighting", elapsed: 0 };
+            this.encounter = {
+              outcome: "fighting",
+              elapsed: 0
+            };
             this.boss.active = true;
             this.boss.encounterId = this.raidRosters[0]?.settlementRunSequence || this.nextRaidRunSequence || 1;
             this.boss.patternRuntime = createBossPatternRuntime();
           }
-          this.combat("unit-drop", { unit: id, ownerId, x, y, z: u.z });
+          this.combat("unit-drop", {
+            unit: ID,
+            ownerId,
+            x: X,
+            y: Y,
+            z: U.z
+          });
           return true;
         }
         useRaidBuff(ownerId) {
-          const r = this.raidRoster(ownerId);
-          if (!this.running || !r || this.time < r.buffReadyAt) return false;
-          r.buffUntil = this.time + CONFIG.raid.buff.duration;
-          r.buffReadyAt = this.time + CONFIG.raid.buff.cooldown;
-          this.combat("buff", { ownerId, until: r.buffUntil });
+          const R_LOCAL = this.raidRoster(ownerId);
+          if (!this.running || !R_LOCAL || this.time < R_LOCAL.buffReadyAt) {
+            return false;
+          }
+          R_LOCAL.buffUntil = this.time + CONFIG.raid.buff.duration;
+          R_LOCAL.buffReadyAt = this.time + CONFIG.raid.buff.cooldown;
+          this.combat("buff", {
+            ownerId,
+            until: R_LOCAL.buffUntil
+          });
           return true;
         }
         random() {
@@ -2787,139 +4460,286 @@
           return Math.min(CONFIG.unit.speciesCount - 1, Math.floor(this.random() * CONFIG.unit.speciesCount));
         }
         spawn(species, tier, x, y) {
-          if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.raid.capacity.units)) return null;
-          const u = new Unit(this.nextId++, species, clamp3(tier, 1, CONFIG.unit.maxTier), x, y);
-          this.units.push(u);
-          this._trackUnitAdded(u);
+          if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.raid.capacity.units)) {
+            return null;
+          }
+          const U = new UNIT(this.nextId++, species, CLAMP2(tier, 1, CONFIG.unit.maxTier), x, y);
+          this.units.push(U);
+          this._trackUnitAdded(U);
           this.markProgressChanged();
-          return u;
+          return U;
         }
         notice(kind, detail = {}) {
-          const event = { sequence: ++this.eventSequence, kind, ...detail };
-          this.notices.push(event);
-          if (this.notices.length > 512) this.notices.shift();
-          return event;
+          const EVENT = {
+            sequence: ++this.eventSequence,
+            kind,
+            ...detail
+          };
+          this.notices.push(EVENT);
+          if (this.notices.length > 512) {
+            this.notices.shift();
+          }
+          return EVENT;
         }
         emit(kind, x, y, z = 0, effectOptions = {}) {
           this.notice(kind);
-          const effect = { kind, x, y, z, life: 0, ...effectOptions };
-          if (Number.isFinite(effect.delay) && Number.isFinite(effect.span)) effect.duration = effect.delay + effect.span;
-          this.effects.push(effect);
-          if (this.effects.length > 100) this.effects.shift();
+          const EFFECT = {
+            kind,
+            x,
+            y,
+            z,
+            life: 0,
+            ...effectOptions
+          };
+          if (Number.isFinite(EFFECT.delay) && Number.isFinite(EFFECT.span)) {
+            EFFECT.duration = EFFECT.delay + EFFECT.span;
+          }
+          this.effects.push(EFFECT);
+          if (this.effects.length > 100) {
+            this.effects.shift();
+          }
           this.events.push(kind);
-          if (this.events.length > 20) this.events.shift();
+          if (this.events.length > 20) {
+            this.events.shift();
+          }
         }
         tapFood(source) {
-          if (source !== "auto" && source !== "manual" || source === "manual" && this.scene !== "farm" || this.food.length >= 140) return false;
-          const completed = this.foodTaps.remainder === 4;
+          if (source !== "auto" && source !== "manual" || source === "manual" && this.scene !== "farm" || this.food.length >= 140) {
+            return false;
+          }
+          const COMPLETED = this.foodTaps.remainder === 4;
           this.foodTaps.remainder++;
           this.foodTaps.revision++;
           if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.scatter((this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5, (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35, 1);
+            this.scatter(
+              (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
+              (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
+              1
+            );
             this.foodTaps.produced++;
           }
-          this.notice("food-tap", { source, completed, remainder: this.foodTaps.remainder });
+          this.notice("food-tap", {
+            source,
+            completed: COMPLETED,
+            remainder: this.foodTaps.remainder
+          });
           this.markProgressChanged();
           return true;
         }
         advanceAutoTaps(elapsed) {
-          if (!Number.isFinite(elapsed) || elapsed <= 0) return;
+          if (!Number.isFinite(elapsed) || elapsed <= 0) {
+            return;
+          }
           this.foodTaps.autoClock += Math.min(elapsed, 0.1);
-          const interval = getAutoTapSeconds(this.playerProgression?.farmUpgrades);
-          while (this.foodTaps.autoClock + 1e-9 >= interval) {
-            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - interval);
+          const INTERVAL = getAutoTapSeconds(this.playerProgression?.farmUpgrades);
+          while (this.foodTaps.autoClock + 1e-9 >= INTERVAL) {
+            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - INTERVAL);
             this.tapFood("auto");
           }
         }
         scatter(x, y, count = 1) {
           for (let i = 0; i < count && this.food.length < 140; i++) {
-            const radiusX = CONFIG.farm.arena.radiusX - 1.5, radiusY = CONFIG.farm.arena.radiusY - 1.1;
-            let tx = clamp3(x, -radiusX, radiusX), ty = clamp3(y, -radiusY, radiusY);
-            const boundary = Math.hypot(tx / radiusX, ty / radiusY);
-            if (boundary > 1) {
-              tx /= boundary;
-              ty /= boundary;
+            const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5, RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
+            let tx = CLAMP2(x, -RADIUS_X, RADIUS_X);
+            let ty = CLAMP2(y, -RADIUS_Y, RADIUS_Y);
+            const BOUNDARY = Math.hypot(tx / RADIUS_X, ty / RADIUS_Y);
+            if (BOUNDARY > 1) {
+              tx /= BOUNDARY;
+              ty /= BOUNDARY;
             }
-            if (this.tryStartFarmBossEvent(tx, ty)) continue;
-            const angle = this.random() * Math.PI * 2, sx = Math.cos(angle) * (CONFIG.farm.arena.radiusX + 0.7), sy = Math.sin(angle) * (CONFIG.farm.arena.radiusY + 0.2);
-            const duration = 0.85 + this.random() * 0.25, z = 0.3;
-            const food = { x: sx, y: sy, z, vx: (tx - sx) / duration, vy: (ty - sy) / duration, vz: 6 * duration - z / duration, seed: this.random(), phase: "flight", tx, ty };
-            this.food.push(food);
-            this._trackFoodAdded(food);
+            if (this.tryStartFarmBossEvent(tx, ty)) {
+              continue;
+            }
+            const ANGLE = this.random() * Math.PI * 2, SX = Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7), SY = Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
+            const DURATION = 0.85 + this.random() * 0.25, Z = 0.3;
+            const FOOD = {
+              x: SX,
+              y: SY,
+              z: Z,
+              vx: (tx - SX) / DURATION,
+              vy: (ty - SY) / DURATION,
+              vz: 6 * DURATION - Z / DURATION,
+              seed: this.random(),
+              phase: "flight",
+              tx,
+              ty
+            };
+            this.food.push(FOOD);
+            this._trackFoodAdded(FOOD);
             this.emit("feed", tx, ty);
             this.markProgressChanged();
           }
         }
         tryStartFarmBossEvent(x, y) {
-          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.random() >= CONFIG.farm.bossEvent.spawnChance) return false;
-          for (const unit2 of this.units) if (!unit2.isBattleOnlySummon) {
-            unit2.splitUsedThisBattle = false;
-            unit2.deathSplitHandled = false;
-            unit2.chestnutBasicCycles = 0;
+          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.random() >= CONFIG.farm.bossEvent.spawnChance) {
+            return false;
+          }
+          for (const UNIT_LOCAL of this.units) {
+            if (!UNIT_LOCAL.isBattleOnlySummon) {
+              UNIT_LOCAL.splitUsedThisBattle = false;
+              UNIT_LOCAL.deathSplitHandled = false;
+              UNIT_LOCAL.chestnutBasicCycles = 0;
+            }
           }
           this.boss = this.createBoss(this.randomBossSpecies());
-          Object.assign(this.boss, { x, y, z: CONFIG.raid.dropHeight, active: true });
-          this.farmBossEvent = { phase: "dropping", elapsed: 0, outcome: "fighting", encounterId: this.nextBossEncounterId++, rewardStatus: "unresolved", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
+          Object.assign(this.boss, {
+            x,
+            y,
+            z: CONFIG.raid.dropHeight,
+            active: true
+          });
+          this.farmBossEvent = {
+            phase: "dropping",
+            elapsed: 0,
+            outcome: "fighting",
+            encounterId: this.nextBossEncounterId++,
+            rewardStatus: "unresolved",
+            rewardChance: 0,
+            rewardRoll: 0,
+            rewardUnitId: 0
+          };
           this.boss.encounterId = this.farmBossEvent.encounterId;
           this.boss.patternRuntime = createBossPatternRuntime();
-          this.combat("farm-boss-drop", { x, y, z: this.boss.z });
+          this.combat("farm-boss-drop", {
+            x,
+            y,
+            z: this.boss.z
+          });
           this.markProgressChanged();
           return true;
         }
         getBossAcquisitionChance({ farmEvent = false } = {}) {
-          return bossAcquisitionChance({ farmEvent });
+          return bossAcquisitionChance({
+            farmEvent
+          });
         }
         createBoss(species = 3) {
-          const hp = 2e3;
-          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.boss.radius, height: CONFIG.boss.height, hp, maxHp: hp, species: clamp3(species, 0, CONFIG.unit.speciesCount - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.boss.chaseSpeed, encounterId: 0, active: false, angle: 0, facing: 0, flash: 0, swings: 0, basicCount: 0, attackId: 0, sweepClock: 0, startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          const HP = 2e3;
+          return {
+            x: 0,
+            y: 0,
+            faction: FACTION_CONFIG.ENEMY,
+            z: 0,
+            radius: CONFIG.boss.radius,
+            height: CONFIG.boss.height,
+            hp: HP,
+            maxHp: HP,
+            species: CLAMP2(species, 0, CONFIG.unit.speciesCount - 1),
+            attackPower: 4,
+            stage: 0,
+            moveSpeed: CONFIG.boss.chaseSpeed,
+            encounterId: 0,
+            active: false,
+            angle: 0,
+            facing: 0,
+            flash: 0,
+            swings: 0,
+            basicCount: 0,
+            attackId: 0,
+            sweepClock: 0,
+            startAngle: 0,
+            travel: 0,
+            patternRuntime: createBossPatternRuntime(),
+            airborneRecovery: 0,
+            barleyArmorBreakUntil: 0,
+            barleyArmorBreakReduction: 0,
+            summonMouth: {
+              x: 0,
+              y: 0,
+              z: 0
+            }
+          };
         }
         configureBossStage(stage, species = this.boss.species) {
-          const stats2 = bossStageStats(stage);
-          this.boss.species = clamp3(species, 0, CONFIG.unit.speciesCount - 1);
-          this.boss.stage = stats2.stage;
-          this.boss.hp = this.boss.maxHp = stats2.hp;
-          this.boss.attackPower = stats2.attackPower;
+          const STATS2 = bossStageStats(stage);
+          this.boss.species = CLAMP2(species, 0, CONFIG.unit.speciesCount - 1);
+          this.boss.stage = STATS2.stage;
+          this.boss.hp = this.boss.maxHp = STATS2.hp;
+          this.boss.attackPower = STATS2.attackPower;
           return this.boss;
         }
         setScene(scene) {
-          if (scene === this.scene) return;
+          if (scene === this.scene) {
+            return;
+          }
           this.mergeTask = null;
           this.projectiles = [];
           this.scene = scene;
           this.running = scene === "raid";
-          this.encounter = { outcome: this.running ? "fighting" : "idle", elapsed: 0 };
-          this.farmBossEvent = { phase: "idle", elapsed: 0, outcome: "idle", encounterId: 0, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
+          this.encounter = {
+            outcome: this.running ? "fighting" : "idle",
+            elapsed: 0
+          };
+          this.farmBossEvent = {
+            phase: "idle",
+            elapsed: 0,
+            outcome: "idle",
+            encounterId: 0,
+            rewardStatus: "none",
+            rewardChance: 0,
+            rewardRoll: 0,
+            rewardUnitId: 0
+          };
           this.boss = this.createBoss(this.running ? this.randomBossSpecies() : 3);
-          const idMap = new Map(this.units.map((u, index) => [u.id, scene === "raid" ? 1e6 + index + 1 : u.farmId || u.id]));
+          const ID_MAP = new Map(
+            this.units.map((u, index) => [u.id, scene === "raid" ? 1e6 + index + 1 : u.farmId || u.id])
+          );
           for (let i = 0; i < this.units.length; i++) {
-            const u = this.units[i], oldMateId = u.mateId;
+            const U = this.units[i], OLD_MATE_ID = U.mateId;
             if (scene === "raid") {
-              u.home = { x: u.x, y: u.y };
-              u.farmId = u.farmId || u.id;
-              u.ownerId = "solo";
-              u.id = 1e6 + i + 1;
-              u.dropLanded = true;
-              const angle = i * 2.3999632297, rad = 10.5 + i % 3 * 0.9;
-              Object.assign(u, { x: Math.cos(angle) * rad, y: Math.sin(angle) * rad * 0.84 });
+              U.home = {
+                x: U.x,
+                y: U.y
+              };
+              U.farmId = U.farmId || U.id;
+              U.ownerId = "solo";
+              U.id = 1e6 + i + 1;
+              U.dropLanded = true;
+              const ANGLE = i * 2.3999632297, RAD = 10.5 + i % 3 * 0.9;
+              Object.assign(U, {
+                x: Math.cos(ANGLE) * RAD,
+                y: Math.sin(ANGLE) * RAD * 0.84
+              });
             } else {
-              u.id = u.farmId || u.id;
-              u.ownerId = "";
-              u.farmId = 0;
-              u.dropLanded = true;
-              Object.assign(u, u.home);
+              U.id = U.farmId || U.id;
+              U.ownerId = "";
+              U.farmId = 0;
+              U.dropLanded = true;
+              Object.assign(U, U.home);
             }
-            u.mateId = idMap.get(oldMateId) || 0;
-            u.ability = createUnitAttackCycle(u);
-            u.walnutEmpoweredNextBasic = false;
-            Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier, u.species).maxHp });
+            U.mateId = ID_MAP.get(OLD_MATE_ID) || 0;
+            U.ability = CREATE_UNIT_ATTACK_CYCLE(U);
+            U.walnutEmpoweredNextBasic = false;
+            Object.assign(U, {
+              z: 0,
+              vx: 0,
+              vy: 0,
+              vz: 0,
+              stun: 0,
+              down: 0,
+              hp: STATS(U.tier, U.species).maxHp
+            });
           }
           if (this.running) {
             this.boss.active = true;
             this.boss.encounterId = this.activeRaidRunSequence || this.nextRaidRunSequence || 1;
             this.boss.patternRuntime = createBossPatternRuntime();
             this.raidExpectedPlayers = ["solo"];
-            this.raidRosters = [{ ownerId: "solo", troops: this.units.filter((u) => !u.isBattleOnlySummon).map((u) => ({ farmId: u.farmId, species: u.species, tier: u.tier, deployed: true })), abilitySnapshot: createAbilityRuntimeSnapshot(this.playerProgression), buffUntil: 0, buffReadyAt: 0 }];
+            this.raidRosters = [
+              {
+                ownerId: "solo",
+                troops: this.units.filter((u) => !u.isBattleOnlySummon).map((u) => ({
+                  farmId: u.farmId,
+                  species: u.species,
+                  tier: u.tier,
+                  deployed: true
+                })),
+                abilitySnapshot: createAbilityRuntimeSnapshot(this.playerProgression),
+                buffUntil: 0,
+                buffReadyAt: 0
+              }
+            ];
             this.raidDeploymentStarted = true;
           } else {
             this.raidExpectedPlayers = ["solo"];
@@ -2929,178 +4749,296 @@
           this._unitSpatialDirty = true;
         }
         canBreedPair(a, b, requireContact = false) {
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
           try {
             return a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && a.breedingEligible !== false && b.breedingEligible !== false && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this._unitIsActive(a) && this._unitIsActive(b) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
         }
-        releaseMate(unit2) {
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
-          const mate = this._unitById.get(unit2.mateId);
-          unit2.mateId = 0;
-          if (mate && mate.mateId === unit2.id) mate.mateId = 0;
+        releaseMate(unit) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
+          }
+          const MATE = this._unitById.get(unit.mateId);
+          unit.mateId = 0;
+          if (MATE && MATE.mateId === unit.id) {
+            MATE.mateId = 0;
+          }
         }
         reconcileMateReservations() {
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
-          try {
-            for (const unit2 of this.units) {
-              if (!unit2.mateId) continue;
-              const mate = this._unitById.get(unit2.mateId);
-              if (this.mode !== "breed" || !mate || mate.mateId !== unit2.id || !this.canBreedPair(unit2, mate)) this.releaseMate(unit2);
-            }
-          } finally {
-            if (batch) this._endSpatialQueryBatch();
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
           }
-        }
-        findOrReserveMate(unit2) {
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
           try {
-            if (this.mode !== "breed" || !unit2.mature || !unit2.fed || unit2.cooldown > 0 || unit2.hp <= 0 || this.senseEnemy(unit2)) {
-              this.releaseMate(unit2);
-              return null;
-            }
-            if (unit2.mateId) {
-              const current = this._unitById.get(unit2.mateId);
-              if (current && current.mateId === unit2.id && this.canBreedPair(unit2, current)) return current;
-              this.releaseMate(unit2);
-            }
-            let mate = null, bestRank = Infinity, bestDistance = Infinity;
-            for (const candidate of this._speciesGroups[unit2.species] || []) {
-              if (candidate === unit2 || candidate.mateId || !this.canBreedPair(unit2, candidate) || this.senseEnemy(candidate)) continue;
-              const rank = candidate.tier === unit2.tier ? 0 : 1, distance = Math.hypot(candidate.x - unit2.x, candidate.y - unit2.y);
-              if (rank < bestRank || rank === bestRank && distance < bestDistance) {
-                mate = candidate;
-                bestRank = rank;
-                bestDistance = distance;
+            for (const UNIT_LOCAL of this.units) {
+              if (!UNIT_LOCAL.mateId) {
+                continue;
+              }
+              const MATE = this._unitById.get(UNIT_LOCAL.mateId);
+              if (this.mode !== "breed" || !MATE || MATE.mateId !== UNIT_LOCAL.id || !this.canBreedPair(UNIT_LOCAL, MATE)) {
+                this.releaseMate(UNIT_LOCAL);
               }
             }
-            if (!mate) return null;
-            unit2.mateId = mate.id;
-            mate.mateId = unit2.id;
+          } finally {
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
+          }
+        }
+        findOrReserveMate(unit) {
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
+          try {
+            if (this.mode !== "breed" || !unit.mature || !unit.fed || unit.cooldown > 0 || unit.hp <= 0 || this.senseEnemy(unit)) {
+              this.releaseMate(unit);
+              return null;
+            }
+            if (unit.mateId) {
+              const CURRENT = this._unitById.get(unit.mateId);
+              if (CURRENT && CURRENT.mateId === unit.id && this.canBreedPair(unit, CURRENT)) {
+                return CURRENT;
+              }
+              this.releaseMate(unit);
+            }
+            let mate = null;
+            let bestRank = Infinity;
+            let bestDistance = Infinity;
+            for (const CANDIDATE of this._speciesGroups[unit.species] || []) {
+              if (CANDIDATE === unit || CANDIDATE.mateId || !this.canBreedPair(unit, CANDIDATE) || this.senseEnemy(CANDIDATE)) {
+                continue;
+              }
+              const RANK = CANDIDATE.tier === unit.tier ? 0 : 1, DISTANCE = Math.hypot(CANDIDATE.x - unit.x, CANDIDATE.y - unit.y);
+              if (RANK < bestRank || RANK === bestRank && DISTANCE < bestDistance) {
+                mate = CANDIDATE;
+                bestRank = RANK;
+                bestDistance = DISTANCE;
+              }
+            }
+            if (!mate) {
+              return null;
+            }
+            unit.mateId = mate.id;
+            mate.mateId = unit.id;
             return mate;
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
         }
         hasEligibleSameTierBreedPair() {
-          if (this.mode !== "breed" || this.units.length >= this.capacity) return false;
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
+          if (this.mode !== "breed" || this.units.length >= this.capacity) {
+            return false;
+          }
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
           try {
-            for (const group of this._speciesTierGroups) {
+            for (const GROUP of this._speciesTierGroups) {
               let unreserved = 0;
-              for (const unit2 of group) {
-                if (unit2.isBattleOnlySummon || unit2.breedingEligible === false || unit2.hp <= 0 || !unit2.mature || !unit2.fed || unit2.cooldown > 0 || !this._unitIsActive(unit2)) continue;
-                if (!unit2.mateId) {
-                  if (++unreserved >= 2) return true;
+              for (const UNIT_LOCAL of GROUP) {
+                if (UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.breedingEligible === false || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.mature || !UNIT_LOCAL.fed || UNIT_LOCAL.cooldown > 0 || !this._unitIsActive(UNIT_LOCAL)) {
                   continue;
                 }
-                const mate = this._unitById.get(unit2.mateId);
-                if (mate?.mateId === unit2.id && mate.species === unit2.species && mate.tier === unit2.tier && mate.hp > 0 && mate.mature && mate.fed && mate.cooldown <= 0 && mate.breedingEligible !== false && !mate.isBattleOnlySummon) return true;
+                if (!UNIT_LOCAL.mateId) {
+                  if (++unreserved >= 2) {
+                    return true;
+                  }
+                  continue;
+                }
+                const MATE = this._unitById.get(UNIT_LOCAL.mateId);
+                if (MATE?.mateId === UNIT_LOCAL.id && MATE.species === UNIT_LOCAL.species && MATE.tier === UNIT_LOCAL.tier && MATE.hp > 0 && MATE.mature && MATE.fed && MATE.cooldown <= 0 && MATE.breedingEligible !== false && !MATE.isBattleOnlySummon) {
+                  return true;
+                }
               }
             }
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
           return false;
         }
         canMergeGroup(materials, { requireContact = false, requireNoEnemy = false } = {}) {
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
           try {
-            if (!Array.isArray(materials) || materials.length < 2) return false;
-            const first = materials[0], resultTier = first?.tier + 1, materialCount = mergeMaterialCostForTier(resultTier);
-            if (materialCount < 2 || materials.length !== materialCount || first.tier >= CONFIG.unit.maxTier) return false;
-            const ids = /* @__PURE__ */ new Set();
-            for (const unit2 of materials) {
-              if (this.localScatter.active && this.scatterInside(unit2)) return false;
-              if (!unit2 || ids.has(unit2.id) || unit2.isBattleOnlySummon || unit2.mergeEligible === false || unit2.species !== first.species || unit2.tier !== first.tier || unit2.hp <= 0 || unit2.down > 0 || !unit2.mature || unit2.cooldown > 0 || !this._unitIsActive(unit2)) return false;
-              ids.add(unit2.id);
+            if (!Array.isArray(materials) || materials.length < 2) {
+              return false;
             }
-            if (this._ownedSpeciesCounts[first.species] - materialCount + 1 < 2) return false;
-            if (requireNoEnemy && materials.some((unit2) => this.senseEnemy(unit2))) return false;
+            const FIRST = materials[0], RESULT_TIER = FIRST?.tier + 1, MATERIAL_COUNT = mergeMaterialCostForTier(RESULT_TIER);
+            if (MATERIAL_COUNT < 2 || materials.length !== MATERIAL_COUNT || FIRST.tier >= CONFIG.unit.maxTier) {
+              return false;
+            }
+            const IDS = /* @__PURE__ */ new Set();
+            for (const UNIT_LOCAL of materials) {
+              if (this.localScatter.active && this.scatterInside(UNIT_LOCAL)) {
+                return false;
+              }
+              if (!UNIT_LOCAL || IDS.has(UNIT_LOCAL.id) || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.mergeEligible === false || UNIT_LOCAL.species !== FIRST.species || UNIT_LOCAL.tier !== FIRST.tier || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || !UNIT_LOCAL.mature || UNIT_LOCAL.cooldown > 0 || !this._unitIsActive(UNIT_LOCAL)) {
+                return false;
+              }
+              IDS.add(UNIT_LOCAL.id);
+            }
+            if (this._ownedSpeciesCounts[FIRST.species] - MATERIAL_COUNT + 1 < 2) {
+              return false;
+            }
+            if (requireNoEnemy && materials.some((unit) => this.senseEnemy(unit))) {
+              return false;
+            }
             if (requireContact) {
-              const anchor = materials[0];
+              const ANCHOR = materials[0];
               for (let index = 1; index < materials.length; index++) {
-                const unit2 = materials[index];
-                if (Math.hypot(anchor.x - unit2.x, anchor.y - unit2.y) > anchor.radius + unit2.radius + 0.2) return false;
+                const UNIT_LOCAL = materials[index];
+                if (Math.hypot(ANCHOR.x - UNIT_LOCAL.x, ANCHOR.y - UNIT_LOCAL.y) > ANCHOR.radius + UNIT_LOCAL.radius + 0.2) {
+                  return false;
+                }
               }
             }
             return true;
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
         }
         canMergePair(a, b, options = {}) {
           return this.canMergeGroup([a, b], options);
         }
         selectMergeTask() {
-          if (this.mode !== "merge" || this.scene !== "farm" || this.mergeTask) return;
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
+          if (this.mode !== "merge" || this.scene !== "farm" || this.mergeTask) {
+            return;
+          }
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
           try {
-            for (const group of this._mergeEligibleGroups) group.length = 0;
-            for (const group of this._speciesTierGroups) {
-              for (const unit2 of group) if (!unit2.isBattleOnlySummon && unit2.mergeEligible !== false && unit2.hp > 0 && unit2.down <= 0 && unit2.mature && unit2.cooldown <= 0 && unit2.tier < CONFIG.unit.maxTier && !this.senseEnemy(unit2)) this._mergeEligibleGroups[unit2.species * (CONFIG.unit.maxTier + 1) + unit2.tier].push(unit2);
+            for (const GROUP of this._mergeEligibleGroups) {
+              GROUP.length = 0;
             }
-            const compareIds = (left, right) => {
-              for (let index = 0; index < left.length; index++) if (left[index] !== right[index]) return left[index] - right[index];
+            for (const GROUP of this._speciesTierGroups) {
+              for (const UNIT_LOCAL of GROUP) {
+                if (!UNIT_LOCAL.isBattleOnlySummon && UNIT_LOCAL.mergeEligible !== false && UNIT_LOCAL.hp > 0 && UNIT_LOCAL.down <= 0 && UNIT_LOCAL.mature && UNIT_LOCAL.cooldown <= 0 && UNIT_LOCAL.tier < CONFIG.unit.maxTier && !this.senseEnemy(UNIT_LOCAL)) {
+                  this._mergeEligibleGroups[UNIT_LOCAL.species * (CONFIG.unit.maxTier + 1) + UNIT_LOCAL.tier].push(UNIT_LOCAL);
+                }
+              }
+            }
+            const COMPARE_IDS = (left, right) => {
+              for (let index = 0; index < left.length; index++) {
+                if (left[index] !== right[index]) {
+                  return left[index] - right[index];
+                }
+              }
               return 0;
             };
-            let bestTier = Infinity, bestDistance = Infinity, bestAnchorId = Infinity, bestMaterialIds = null, bestSortedIds = null;
-            const nearest = this._mergeNearestScratch, materials = this._mergeMaterialsScratch, sortedIds = this._mergeIdScratch;
+            let bestTier = Infinity;
+            let bestDistance = Infinity;
+            let bestAnchorId = Infinity;
+            let bestMaterialIds = null;
+            let bestSortedIds = null;
+            const NEAREST = this._mergeNearestScratch, MATERIALS = this._mergeMaterialsScratch, SORTED_IDS = this._mergeIdScratch;
             for (let tier = 1; tier < CONFIG.unit.maxTier; tier++) {
-              const materialCount = mergeMaterialCostForTier(tier + 1), nearestCount = materialCount - 1;
-              if (materialCount < 2) continue;
+              const MATERIAL_COUNT = mergeMaterialCostForTier(tier + 1), NEAREST_COUNT = MATERIAL_COUNT - 1;
+              if (MATERIAL_COUNT < 2) {
+                continue;
+              }
               for (let species = 0; species < CONFIG.unit.speciesCount; species++) {
-                const group = this._mergeEligibleGroups[species * (CONFIG.unit.maxTier + 1) + tier];
-                if (group.length < materialCount || this._ownedSpeciesCounts[species] - materialCount + 1 < 2) continue;
-                for (const anchor of group) {
-                  nearest.length = 0;
-                  for (const unit2 of group) {
-                    if (unit2 === anchor) continue;
-                    const distance2 = (unit2.x - anchor.x) ** 2 + (unit2.y - anchor.y) ** 2;
-                    let insertAt = nearest.length;
-                    for (let position2 = 0; position2 < nearest.length; position2++) {
-                      const current = nearest[position2];
-                      if (distance2 < current.distance || distance2 === current.distance && unit2.id < current.unit.id) {
+                const GROUP = this._mergeEligibleGroups[species * (CONFIG.unit.maxTier + 1) + tier];
+                if (GROUP.length < MATERIAL_COUNT || this._ownedSpeciesCounts[species] - MATERIAL_COUNT + 1 < 2) {
+                  continue;
+                }
+                for (const ANCHOR of GROUP) {
+                  NEAREST.length = 0;
+                  for (const UNIT_LOCAL of GROUP) {
+                    if (UNIT_LOCAL === ANCHOR) {
+                      continue;
+                    }
+                    const DISTANCE = (UNIT_LOCAL.x - ANCHOR.x) ** 2 + (UNIT_LOCAL.y - ANCHOR.y) ** 2;
+                    let insertAt = NEAREST.length;
+                    for (let position2 = 0; position2 < NEAREST.length; position2++) {
+                      const CURRENT = NEAREST[position2];
+                      if (DISTANCE < CURRENT.distance || DISTANCE === CURRENT.distance && UNIT_LOCAL.id < CURRENT.unit.id) {
                         insertAt = position2;
                         break;
                       }
                     }
-                    if (insertAt >= nearestCount) continue;
-                    nearest.splice(insertAt, 0, { unit: unit2, distance: distance2 });
-                    if (nearest.length > nearestCount) nearest.length = nearestCount;
+                    if (insertAt >= NEAREST_COUNT) {
+                      continue;
+                    }
+                    NEAREST.splice(insertAt, 0, {
+                      unit: UNIT_LOCAL,
+                      distance: DISTANCE
+                    });
+                    if (NEAREST.length > NEAREST_COUNT) {
+                      NEAREST.length = NEAREST_COUNT;
+                    }
                   }
-                  if (nearest.length !== nearestCount) continue;
-                  materials.length = 0;
-                  materials.push(anchor);
-                  for (const entry of nearest) materials.push(entry.unit);
-                  if (!this.canMergeGroup(materials, { requireNoEnemy: true })) continue;
+                  if (NEAREST.length !== NEAREST_COUNT) {
+                    continue;
+                  }
+                  MATERIALS.length = 0;
+                  MATERIALS.push(ANCHOR);
+                  for (const ENTRY of NEAREST) {
+                    MATERIALS.push(ENTRY.unit);
+                  }
+                  if (!this.canMergeGroup(MATERIALS, {
+                    requireNoEnemy: true
+                  })) {
+                    continue;
+                  }
                   let distance = 0;
-                  for (let i = 0; i < materials.length; i++) for (let j = i + 1; j < materials.length; j++) distance += (materials[i].x - materials[j].x) ** 2 + (materials[i].y - materials[j].y) ** 2;
-                  if (tier > bestTier || tier === bestTier && distance > bestDistance) continue;
-                  sortedIds.length = 0;
-                  for (const unit2 of materials) sortedIds.push(unit2.id);
-                  sortedIds.sort((a, b) => a - b);
-                  const idsOrder = bestSortedIds ? compareIds(sortedIds, bestSortedIds) : -1;
-                  if (bestMaterialIds && (tier > bestTier || tier === bestTier && (distance > bestDistance || distance === bestDistance && (idsOrder > 0 || idsOrder === 0 && anchor.id >= bestAnchorId)))) continue;
+                  for (let i = 0; i < MATERIALS.length; i++) {
+                    for (let j = i + 1; j < MATERIALS.length; j++) {
+                      distance += (MATERIALS[i].x - MATERIALS[j].x) ** 2 + (MATERIALS[i].y - MATERIALS[j].y) ** 2;
+                    }
+                  }
+                  if (tier > bestTier || tier === bestTier && distance > bestDistance) {
+                    continue;
+                  }
+                  SORTED_IDS.length = 0;
+                  for (const UNIT_LOCAL of MATERIALS) {
+                    SORTED_IDS.push(UNIT_LOCAL.id);
+                  }
+                  SORTED_IDS.sort((a, b) => a - b);
+                  const IDS_ORDER = bestSortedIds ? COMPARE_IDS(SORTED_IDS, bestSortedIds) : -1;
+                  if (bestMaterialIds && (tier > bestTier || tier === bestTier && (distance > bestDistance || distance === bestDistance && (IDS_ORDER > 0 || IDS_ORDER === 0 && ANCHOR.id >= bestAnchorId)))) {
+                    continue;
+                  }
                   bestTier = tier;
                   bestDistance = distance;
-                  bestAnchorId = anchor.id;
-                  bestMaterialIds = materials.map((unit2) => unit2.id);
-                  bestSortedIds = [...sortedIds];
+                  bestAnchorId = ANCHOR.id;
+                  bestMaterialIds = MATERIALS.map((unit) => unit.id);
+                  bestSortedIds = [...SORTED_IDS];
                 }
               }
             }
-            if (bestMaterialIds) this.mergeTask = { phase: "approach", aId: bestMaterialIds[0], bId: bestMaterialIds[1], materialIds: bestMaterialIds, elapsed: 0, duration: CONFIG.farm.merge.animationSeconds };
+            if (bestMaterialIds) {
+              this.mergeTask = {
+                phase: "approach",
+                aId: bestMaterialIds[0],
+                bId: bestMaterialIds[1],
+                materialIds: bestMaterialIds,
+                elapsed: 0,
+                duration: CONFIG.farm.merge.animationSeconds
+              };
+            }
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
         }
         advanceMergeTask(dt) {
@@ -3110,63 +5048,127 @@
           }
           if (this.mergeTask?.phase === "animation") {
             this.mergeTask.elapsed = Math.min(this.mergeTask.duration, this.mergeTask.elapsed + dt);
-            if (this.mergeTask.elapsed >= this.mergeTask.duration - 1e-9) this.mergeTask = null;
+            if (this.mergeTask.elapsed >= this.mergeTask.duration - 1e-9) {
+              this.mergeTask = null;
+            }
             return;
           }
           if (this.mergeTask?.phase === "approach") {
-            const materials = (this.mergeTask.materialIds || [this.mergeTask.aId, this.mergeTask.bId]).map((id) => this._unitById.get(id));
-            if (!this.canMergeGroup(materials)) this.mergeTask = null;
+            const MATERIALS = (this.mergeTask.materialIds || [this.mergeTask.aId, this.mergeTask.bId]).map(
+              (id) => this._unitById.get(id)
+            );
+            if (!this.canMergeGroup(MATERIALS)) {
+              this.mergeTask = null;
+            }
           }
-          if (!this.mergeTask) this.selectMergeTask();
+          if (!this.mergeTask) {
+            this.selectMergeTask();
+          }
         }
         resolveMergeTaskAfterMovement() {
-          const task = this.mergeTask;
-          if (task?.phase !== "approach") return false;
-          const materials = (task.materialIds || [task.aId, task.bId]).map((id) => this._unitById.get(id));
-          if (!this.canMergeGroup(materials, { requireContact: true, requireNoEnemy: true })) return false;
-          return this.mergeGroup(materials, { priorityResolved: true });
+          const TASK = this.mergeTask;
+          if (TASK?.phase !== "approach") {
+            return false;
+          }
+          const MATERIALS = (TASK.materialIds || [TASK.aId, TASK.bId]).map((id) => this._unitById.get(id));
+          if (!this.canMergeGroup(MATERIALS, {
+            requireContact: true,
+            requireNoEnemy: true
+          })) {
+            return false;
+          }
+          return this.mergeGroup(MATERIALS, {
+            priorityResolved: true
+          });
         }
         pair(a, b, priorityResolved = false) {
           if (this.mode === "merge") {
-            return this.mergeGroup([a, b], { priorityResolved });
+            return this.mergeGroup([a, b], {
+              priorityResolved
+            });
           }
-          if (this.localScatter.active && (this.scatterInside(a) || this.scatterInside(b))) return false;
-          if (!a || !b || a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || this.senseEnemy(a) || this.senseEnemy(b)) return false;
-          if (a.isBattleOnlySummon || b.isBattleOnlySummon) return false;
+          if (this.localScatter.active && (this.scatterInside(a) || this.scatterInside(b))) {
+            return false;
+          }
+          if (!a || !b || a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || this.senseEnemy(a) || this.senseEnemy(b)) {
+            return false;
+          }
+          if (a.isBattleOnlySummon || b.isBattleOnlySummon) {
+            return false;
+          }
           {
-            if (!this.canBreedPair(a, b, true) || this.units.length >= this.capacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !priorityResolved && a.tier !== b.tier && this.hasEligibleSameTierBreedPair()) return false;
+            if (!this.canBreedPair(a, b, true) || this.units.length >= this.capacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !priorityResolved && a.tier !== b.tier && this.hasEligibleSameTierBreedPair()) {
+              return false;
+            }
             a.mateId = b.id;
             b.mateId = a.id;
-            const child = this.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
-            child.growthDuration = this.breedGrowthDuration();
-            child.vz = 3;
+            const CHILD = this.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
+            CHILD.growthDuration = this.breedGrowthDuration();
+            CHILD.vz = 3;
             a.meals = b.meals = 0;
             a.cooldown = b.cooldown = this.breedCooldownDuration();
             a.cooldownDuration = b.cooldownDuration = a.cooldown;
             this.releaseMate(a);
             this.metrics.births++;
-            this.emit("birth", child.x, child.y, 0.7);
+            this.emit("birth", CHILD.x, CHILD.y, 0.7);
           }
           return true;
         }
-        mergeGroup(materials, { priorityResolved = false } = {}) {
-          if (this.mode !== "merge" || this.scene !== "farm" || !this.canMergeGroup(materials, { requireContact: true, requireNoEnemy: true })) return false;
-          const ordered = [...materials], first = ordered[0], materialIds = ordered.map((unit2) => unit2.id), consumed = new Set(materialIds), x = ordered.reduce((sum, unit2) => sum + unit2.x, 0) / ordered.length, y = ordered.reduce((sum, unit2) => sum + unit2.y, 0) / ordered.length;
-          for (const unit2 of ordered) this.releaseMate(unit2);
-          for (const unit2 of ordered) this._trackUnitRemoved(unit2);
-          this.units = this.units.filter((unit2) => !consumed.has(unit2.id));
-          const result = this.spawn(first.species, first.tier + 1, x, y);
-          result.meals = 1;
-          result.growth = CONFIG.farm.breeding.matureMeals;
-          result.growthDuration = this.breedGrowthDuration();
-          result.growthElapsed = result.growthDuration;
-          result.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
-          result.cooldownDuration = result.cooldown;
-          this.mergeTask = { phase: "animation", aId: 0, bId: 0, materialIds, resultId: result.id, sourceSpecies: first.species, sourceTier: first.tier, elapsed: 0, duration: CONFIG.farm.merge.animationSeconds };
-          const sequenceWindow = CONFIG.farm.merge.animationSeconds * 0.72, step = sequenceWindow / ordered.length;
-          ordered.forEach((unit2, index) => this.effects.push({ kind: "merge-material", x: unit2.x, y: unit2.y, z: 0.2, targetX: x, targetY: y, life: 0, delay: index * step, span: step, duration: (index + 1) * step, sequenceIndex: index, sequenceCount: ordered.length }));
+        mergeGroup(materials, { priorityResolved: _priorityResolved = false } = {}) {
+          if (this.mode !== "merge" || this.scene !== "farm" || !this.canMergeGroup(materials, {
+            requireContact: true,
+            requireNoEnemy: true
+          })) {
+            return false;
+          }
+          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), CONSUMED = new Set(MATERIAL_IDS), X = ORDERED.reduce((sum, unit) => sum + unit.x, 0) / ORDERED.length, Y = ORDERED.reduce((sum, unit) => sum + unit.y, 0) / ORDERED.length;
+          for (const UNIT_LOCAL of ORDERED) {
+            this.releaseMate(UNIT_LOCAL);
+          }
+          for (const UNIT_LOCAL of ORDERED) {
+            this._trackUnitRemoved(UNIT_LOCAL);
+          }
+          this.units = this.units.filter((unit) => !CONSUMED.has(unit.id));
+          const RESULT = this.spawn(FIRST.species, FIRST.tier + 1, X, Y);
+          RESULT.meals = 1;
+          RESULT.growth = CONFIG.farm.breeding.matureMeals;
+          RESULT.growthDuration = this.breedGrowthDuration();
+          RESULT.growthElapsed = RESULT.growthDuration;
+          RESULT.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
+          RESULT.cooldownDuration = RESULT.cooldown;
+          this.mergeTask = {
+            phase: "animation",
+            aId: 0,
+            bId: 0,
+            materialIds: MATERIAL_IDS,
+            resultId: RESULT.id,
+            sourceSpecies: FIRST.species,
+            sourceTier: FIRST.tier,
+            elapsed: 0,
+            duration: CONFIG.farm.merge.animationSeconds
+          };
+          const SEQUENCE_WINDOW = CONFIG.farm.merge.animationSeconds * 0.72, STEP = SEQUENCE_WINDOW / ORDERED.length;
+          ORDERED.forEach(
+            (unit, index) => this.effects.push({
+              kind: "merge-material",
+              x: unit.x,
+              y: unit.y,
+              z: 0.2,
+              targetX: X,
+              targetY: Y,
+              life: 0,
+              delay: index * STEP,
+              span: STEP,
+              duration: (index + 1) * STEP,
+              sequenceIndex: index,
+              sequenceCount: ORDERED.length
+            })
+          );
           this.metrics.merges++;
-          this.emit("merge", x, y, 1, { delay: sequenceWindow, span: CONFIG.farm.merge.animationSeconds - sequenceWindow });
+          this.emit("merge", X, Y, 1, {
+            delay: SEQUENCE_WINDOW,
+            span: CONFIG.farm.merge.animationSeconds - SEQUENCE_WINDOW
+          });
           return true;
         }
         step(dt) {
@@ -3175,121 +5177,199 @@
           this.time += dt;
           let progressTimersAdvanced = false;
           grantPendingBossAcquisitions(this);
-          const units = this._stepUnits;
-          units.length = 0;
-          for (const unit2 of this.units) units.push(unit2);
-          this._rebuildUnitSpatialIndex(units);
-          if (this.scene === "raid" && this.running) this.encounter.elapsed += dt;
+          const UNITS = this._stepUnits;
+          UNITS.length = 0;
+          for (const UNIT_LOCAL of this.units) {
+            UNITS.push(UNIT_LOCAL);
+          }
+          this._rebuildUnitSpatialIndex(UNITS);
+          if (this.scene === "raid" && this.running) {
+            this.encounter.elapsed += dt;
+          }
           this.advanceMergeTask(dt);
           this.effects = this.effects.filter((e) => (e.life += dt) < (Number.isFinite(e.duration) ? e.duration : 1));
-          for (const f of this.food) {
-            if (f.phase !== "grounded") {
-              f.x += f.vx * dt;
-              f.y += f.vy * dt;
-              f.z += f.vz * dt - 6 * dt * dt;
-              f.vz -= 12 * dt;
-              if (f.z <= 0) {
-                f.z = 0;
-                if (f.phase === "flight") {
-                  f.x = f.tx;
-                  f.y = f.ty;
-                  f.vx = f.vy = 0;
-                  f.vz = 1.1;
-                  f.phase = "bounce";
-                  this.emit("food-land", f.x, f.y);
+          for (const F of this.food) {
+            if (F.phase !== "grounded") {
+              F.x += F.vx * dt;
+              F.y += F.vy * dt;
+              F.z += F.vz * dt - 6 * dt * dt;
+              F.vz -= 12 * dt;
+              if (F.z <= 0) {
+                F.z = 0;
+                if (F.phase === "flight") {
+                  F.x = F.tx;
+                  F.y = F.ty;
+                  F.vx = F.vy = 0;
+                  F.vz = 1.1;
+                  F.phase = "bounce";
+                  this.emit("food-land", F.x, F.y);
                 } else {
-                  f.vz = 0;
-                  f.phase = "grounded";
+                  F.vz = 0;
+                  F.phase = "grounded";
                 }
               }
             }
           }
           this._rebuildFoodSpatialIndex();
           this.reconcileMateReservations();
-          for (const u of units) {
-            u.landingRecovery = Math.max(0, (u.landingRecovery || 0) - dt);
-            if (u.hp <= 0) {
-              if (!u.deathSplitHandled) this.handleUnitDeath(u);
-              if (u.isBattleOnlySummon) {
-                u.down = 0;
+          for (const U of UNITS) {
+            U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
+            if (U.hp <= 0) {
+              if (!U.deathSplitHandled) {
+                this.handleUnitDeath(U);
+              }
+              if (U.isBattleOnlySummon) {
+                U.down = 0;
                 continue;
               }
-              if (u.down <= 0) {
-                u.down = CONFIG.unit.corpseRecoverySeconds;
-                u.ability.interrupt();
+              if (U.down <= 0) {
+                U.down = CONFIG.unit.corpseRecoverySeconds;
+                U.ability.interrupt();
               }
               if (this.scene === "farm") {
                 progressTimersAdvanced = true;
-                u.down = Math.max(0, u.down - dt);
-                if (u.down < 1e-9) u.down = 0;
+                U.down = Math.max(0, U.down - dt);
+                if (U.down < 1e-9) {
+                  U.down = 0;
+                }
               }
-              const oldZ2 = u.z;
-              u.integrate(dt);
-              if (this.scene === "raid" && this.running && u.z === 0 && u.vz === 0) u.vx = u.vy = 0;
-              if (oldZ2 > 0 && u.z === 0) {
+              const OLD_Z2 = U.z;
+              U.integrate(dt);
+              if (this.scene === "raid" && this.running && U.z === 0 && U.vz === 0) {
+                U.vx = U.vy = 0;
+              }
+              if (OLD_Z2 > 0 && U.z === 0) {
                 this.metrics.landings++;
-                if (this.scene === "raid") this.combat("unit-land", { unit: u.id, x: u.x, y: u.y, z: 0, strength: Math.min(1, Math.hypot(u.vx, u.vy) / 8) });
-                else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
+                if (this.scene === "raid") {
+                  this.combat("unit-land", {
+                    unit: U.id,
+                    x: U.x,
+                    y: U.y,
+                    z: 0,
+                    strength: Math.min(1, Math.hypot(U.vx, U.vy) / 8)
+                  });
+                } else if (Math.hypot(U.vx, U.vy) > 1) {
+                  this.emit("land", U.x, U.y);
+                }
               }
-              if (this.scene === "farm" && u.down === 0) {
-                const maxHp = stats(u.tier, u.species).maxHp;
-                this.releaseMate(u);
-                Object.assign(u, { hp: maxHp, down: 0, z: 0, vx: 0, vy: 0, vz: 0, stun: 0, flash: 0, bounce: 0, angle: 0, deathSplitHandled: false });
-                this._syncUnitAliveCount(u);
-                u.ability = createUnitAttackCycle(u);
-                this.combat("unit-recover", { unit: u.id, x: u.x, y: u.y });
+              if (this.scene === "farm" && U.down === 0) {
+                const MAX_HP = STATS(U.tier, U.species).maxHp;
+                this.releaseMate(U);
+                Object.assign(U, {
+                  hp: MAX_HP,
+                  down: 0,
+                  z: 0,
+                  vx: 0,
+                  vy: 0,
+                  vz: 0,
+                  stun: 0,
+                  flash: 0,
+                  bounce: 0,
+                  angle: 0,
+                  deathSplitHandled: false
+                });
+                this._syncUnitAliveCount(U);
+                U.ability = CREATE_UNIT_ATTACK_CYCLE(U);
+                this.combat("unit-recover", {
+                  unit: U.id,
+                  x: U.x,
+                  y: U.y
+                });
                 this.markProgressChanged();
               }
-              this.unitSpatial.update(u);
+              this.unitSpatial.update(U);
               continue;
             }
-            u.age += dt;
-            const unitStats = stats(u.tier, u.species);
-            if (u.hp > 0 && unitStats.regen > 0) applyHealing(u, unitStats.regen * dt, unitStats);
-            if (!u.mature) {
+            U.age += dt;
+            const UNIT_STATS = STATS(U.tier, U.species);
+            if (U.hp > 0 && UNIT_STATS.regen > 0) {
+              applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
+            }
+            if (!U.mature) {
               progressTimersAdvanced = true;
-              u.growthElapsed = Math.min(u.growthDuration, u.growthElapsed + dt);
-              u.growth = Math.min(CONFIG.farm.breeding.matureMeals, Math.floor(CONFIG.farm.breeding.matureMeals * u.growthElapsed / u.growthDuration + 1e-9));
-              if (u.mature) this.markProgressChanged();
-            }
-            if (u.cooldown > 0) progressTimersAdvanced = true;
-            if (u.cooldown > 0 && u.cooldown <= dt + 1e-9) this.markProgressChanged();
-            u.cooldown = Math.max(0, u.cooldown - dt);
-            if (u.cooldown < 1e-9) {
-              u.cooldown = 0;
-              u.cooldownDuration = 0;
-            }
-            const enemy = this.senseEnemy(u) || (this.scene === "raid" && this.running && hasFaction(u, FACTION_CONFIG.PLAYER) && this.boss.hp > 0 ? this.boss : null), scattering = this.updateLocalScatter(u, dt, enemy);
-            if (scattering) {
-            } else if (enemy) this.raidUnit(u, dt, enemy);
-            else if (u.hp > 0 && hasFaction(u, FACTION_CONFIG.PLAYER) && !u.isBattleOnlySummon) {
-              if (u.ability.phase !== "idle") {
-                if (u.ability.phase !== "recover") u.ability.interrupt();
-                u.ability.update(this, dt);
+              U.growthElapsed = Math.min(U.growthDuration, U.growthElapsed + dt);
+              U.growth = Math.min(
+                CONFIG.farm.breeding.matureMeals,
+                Math.floor(CONFIG.farm.breeding.matureMeals * U.growthElapsed / U.growthDuration + 1e-9)
+              );
+              if (U.mature) {
+                this.markProgressChanged();
               }
-              this.farmUnit(u, dt);
-            } else if (this.scene === "raid" && this.running) this.raidUnit(u, dt, null);
-            const oldZ = u.z, oldPosition = { x: u.x, y: u.y, z: u.z };
-            this.limitScatterVelocity(u, dt);
-            u.integrate(dt);
-            if (this.scene === "raid" && u.hp <= 0 && u.z === 0 && u.vz === 0) {
-              u.vx = u.vy = 0;
             }
-            if (enemy) u.ability.afterMove?.(this, oldPosition);
-            if (oldZ > 0 && u.z === 0) {
-              u.landingRecovery = 0.25;
-              if (!u.dropLanded) {
-                u.dropLanded = true;
-                u.bounce = 0.16;
-                this.combat(this.scene === "raid" ? "drop-land" : "boss-add-land", { unit: u.id, ownerId: u.ownerId, x: u.x, y: u.y, z: 0 });
-                this.effects.push({ kind: "drop-dust", x: u.x, y: u.y, z: 0, life: 0 });
+            if (U.cooldown > 0) {
+              progressTimersAdvanced = true;
+            }
+            if (U.cooldown > 0 && U.cooldown <= dt + 1e-9) {
+              this.markProgressChanged();
+            }
+            U.cooldown = Math.max(0, U.cooldown - dt);
+            if (U.cooldown < 1e-9) {
+              U.cooldown = 0;
+              U.cooldownDuration = 0;
+            }
+            const ENEMY_LOCAL = this.senseEnemy(U) || (this.scene === "raid" && this.running && hasFaction(U, FACTION_CONFIG.PLAYER) && this.boss.hp > 0 ? this.boss : null), SCATTERING = this.updateLocalScatter(U, dt, ENEMY_LOCAL);
+            if (SCATTERING) {
+            } else if (ENEMY_LOCAL) {
+              this.raidUnit(U, dt, ENEMY_LOCAL);
+            } else if (U.hp > 0 && hasFaction(U, FACTION_CONFIG.PLAYER) && !U.isBattleOnlySummon) {
+              if (U.ability.phase !== "idle") {
+                if (U.ability.phase !== "recover") {
+                  U.ability.interrupt();
+                }
+                U.ability.update(this, dt);
+              }
+              this.farmUnit(U, dt);
+            } else if (this.scene === "raid" && this.running) {
+              this.raidUnit(U, dt, null);
+            }
+            const OLD_Z = U.z, OLD_POSITION = {
+              x: U.x,
+              y: U.y,
+              z: U.z
+            };
+            this.limitScatterVelocity(U, dt);
+            U.integrate(dt);
+            if (this.scene === "raid" && U.hp <= 0 && U.z === 0 && U.vz === 0) {
+              U.vx = U.vy = 0;
+            }
+            if (ENEMY_LOCAL) {
+              U.ability.afterMove?.(this, OLD_POSITION);
+            }
+            if (OLD_Z > 0 && U.z === 0) {
+              U.landingRecovery = 0.25;
+              if (!U.dropLanded) {
+                U.dropLanded = true;
+                U.bounce = 0.16;
+                this.combat(this.scene === "raid" ? "drop-land" : "boss-add-land", {
+                  unit: U.id,
+                  ownerId: U.ownerId,
+                  x: U.x,
+                  y: U.y,
+                  z: 0
+                });
+                this.effects.push({
+                  kind: "drop-dust",
+                  x: U.x,
+                  y: U.y,
+                  z: 0,
+                  life: 0
+                });
               }
               this.metrics.landings++;
-              if (this.scene === "raid") this.combat("unit-land", { unit: u.id, x: u.x, y: u.y, z: 0, strength: Math.min(1, Math.hypot(u.vx, u.vy) / 8) });
-              else if (Math.hypot(u.vx, u.vy) > 1) this.emit("land", u.x, u.y);
+              if (this.scene === "raid") {
+                this.combat("unit-land", {
+                  unit: U.id,
+                  x: U.x,
+                  y: U.y,
+                  z: 0,
+                  strength: Math.min(1, Math.hypot(U.vx, U.vy) / 8)
+                });
+              } else if (Math.hypot(U.vx, U.vy) > 1) {
+                this.emit("land", U.x, U.y);
+              }
             }
-            this.boundBody(u, this.scene, u.radius);
-            this.unitSpatial.update(u);
+            this.boundBody(U, this.scene, U.radius);
+            this.unitSpatial.update(U);
           }
           if (this.scene === "farm" && progressTimersAdvanced) {
             this._progressTimerCheckpoint += dt;
@@ -3298,44 +5378,56 @@
               this.markProgressChanged();
             }
           }
-          this.resolveContacts(units);
+          this.resolveContacts(UNITS);
           if (this.scene === "farm") {
             if (this.mode === "breed") {
-              this.resolveFarmContactPairs(units, true);
-              if (!this.hasEligibleSameTierBreedPair()) this.resolveFarmContactPairs(units, false);
-            } else this.resolveMergeTaskAfterMovement();
+              this.resolveFarmContactPairs(UNITS, true);
+              if (!this.hasEligibleSameTierBreedPair()) {
+                this.resolveFarmContactPairs(UNITS, false);
+              }
+            } else {
+              this.resolveMergeTaskAfterMovement();
+            }
           }
           if (this.scene === "farm" && this.farmBossEvent.phase !== "idle") {
-            if (this.boss.active) this.updateProjectiles(dt);
+            if (this.boss.active) {
+              this.updateProjectiles(dt);
+            }
             this.updateBoss(dt);
-            if (this.boss.active) for (const u of this.units) {
-              this.separateBoss(u);
-              this.unitSpatial.update(u);
+            if (this.boss.active) {
+              for (const U of this.units) {
+                this.separateBoss(U);
+                this.unitSpatial.update(U);
+              }
             }
           } else if (this.boss.active) {
             this.updateProjectiles(dt);
             this.updateBoss(dt);
-            for (const u of this.units) {
-              this.separateBoss(u);
-              this.unitSpatial.update(u);
+            for (const U of this.units) {
+              this.separateBoss(U);
+              this.unitSpatial.update(U);
             }
           }
-          this.units = this.units.filter((unit2) => !unit2.isBattleOnlySummon || unit2.hp > 0);
-          units.length = 0;
+          this.units = this.units.filter((unit) => !unit.isBattleOnlySummon || unit.hp > 0);
+          UNITS.length = 0;
           this._spatialStepActive = false;
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
         }
         setLocalScatter(x, y, radius = CONFIG.scatter.minRadius, handleX = x + radius, handleY = y) {
-          if (![x, y, radius, handleX, handleY].every(Number.isFinite)) return false;
-          const c = this.localScatter;
-          if (!c.active || c.x !== x || c.y !== y) c.generation++;
-          c.active = true;
-          c.x = x;
-          c.y = y;
-          c.radius = clamp3(radius, CONFIG.scatter.minRadius, CONFIG.scatter.maxRadius);
-          c.handleX = handleX;
-          c.handleY = handleY;
+          if (![x, y, radius, handleX, handleY].every(Number.isFinite)) {
+            return false;
+          }
+          const C_LOCAL = this.localScatter;
+          if (!C_LOCAL.active || C_LOCAL.x !== x || C_LOCAL.y !== y) {
+            C_LOCAL.generation++;
+          }
+          C_LOCAL.active = true;
+          C_LOCAL.x = x;
+          C_LOCAL.y = y;
+          C_LOCAL.radius = CLAMP2(radius, CONFIG.scatter.minRadius, CONFIG.scatter.maxRadius);
+          C_LOCAL.handleX = handleX;
+          C_LOCAL.handleY = handleY;
           return true;
         }
         clearLocalScatter() {
@@ -3345,47 +5437,71 @@
           return this.localScatter.active && hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.down <= 0 && u.dropLanded && u.z <= 1e-9 && u.vz <= 0;
         }
         scatterInside(u) {
-          if (!u) return false;
-          const c = this.localScatter;
-          return Math.hypot(u.x - c.x, u.y - c.y) < c.radius + u.radius + CONFIG.scatter.bodyMargin;
+          if (!u) {
+            return false;
+          }
+          const C_LOCAL = this.localScatter;
+          return Math.hypot(u.x - C_LOCAL.x, u.y - C_LOCAL.y) < C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin;
         }
         scatterSegmentBlocked(x, y, tx, ty, radius) {
-          const c = this.localScatter;
-          return ArenaGeometry.segmentInsideCircle(x, y, tx, ty, c.x, c.y, radius);
+          const C_LOCAL = this.localScatter;
+          return ARENA_GEOMETRY.segmentInsideCircle(x, y, tx, ty, C_LOCAL.x, C_LOCAL.y, radius);
         }
         scatterBossBlocks(u, x, y) {
-          const b = this.boss;
-          if (!b.active || b.hp <= 0 || !areOpposingFactions(u, b) || b.z > u.z + 0.65) return false;
-          const radius = Math.min(b.radius + u.radius + 0.015, Math.max(0, Math.hypot(u.x - b.x, u.y - b.y) - 2e-3));
-          return ArenaGeometry.segmentInsideCircle(u.x, u.y, x, y, b.x, b.y, radius);
+          const B_LOCAL = this.boss;
+          if (!B_LOCAL.active || B_LOCAL.hp <= 0 || !areOpposingFactions(u, B_LOCAL) || B_LOCAL.z > u.z + 0.65) {
+            return false;
+          }
+          const RADIUS = Math.min(
+            B_LOCAL.radius + u.radius + 0.015,
+            Math.max(0, Math.hypot(u.x - B_LOCAL.x, u.y - B_LOCAL.y) - 2e-3)
+          );
+          return ARENA_GEOMETRY.segmentInsideCircle(u.x, u.y, x, y, B_LOCAL.x, B_LOCAL.y, RADIUS);
         }
         updateLocalScatter(u, dt, enemy) {
-          if (!this.scatterApplies(u) || u.stun > 0 || u.landingRecovery > 0) return false;
-          const c = this.localScatter, r = c.radius + u.radius + CONFIG.scatter.bodyMargin, d = Math.hypot(u.x - c.x, u.y - c.y);
+          if (!this.scatterApplies(u) || u.stun > 0 || u.landingRecovery > 0) {
+            return false;
+          }
+          const C_LOCAL = this.localScatter, R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin, D_LOCAL = Math.hypot(u.x - C_LOCAL.x, u.y - C_LOCAL.y);
           let state = this._scatterStates.get(u);
           if (!state) {
-            state = { generation: 0, escaping: false, radius: 0, x: 0, y: 0, waypoint: false, bossX: 0, bossY: 0 };
+            state = {
+              generation: 0,
+              escaping: false,
+              radius: 0,
+              x: 0,
+              y: 0,
+              waypoint: false,
+              bossX: 0,
+              bossY: 0
+            };
             this._scatterStates.set(u, state);
           }
-          if (state.generation !== c.generation) {
-            state.generation = c.generation;
+          if (state.generation !== C_LOCAL.generation) {
+            state.generation = C_LOCAL.generation;
             state.escaping = false;
             state.radius = 0;
           }
-          if (d < r) state.escaping = true;
-          if (state.escaping && d >= r + CONFIG.scatter.hysteresis) {
+          if (D_LOCAL < R_LOCAL) {
+            state.escaping = true;
+          }
+          if (state.escaping && D_LOCAL >= R_LOCAL + CONFIG.scatter.hysteresis) {
             state.escaping = false;
             u.vx = u.vy = 0;
           }
-          const cycle = u.ability;
-          const attackBlocked = unitCapabilityComposition(u.species).attack === "contact" && cycle.action && (cycle.phase === "windup" || cycle.phase === "active") && this.scatterSegmentBlocked(u.x, u.y, cycle.action.target.x, cycle.action.target.y, r);
-          if (!state.escaping && !attackBlocked) return false;
-          cycle.cancelForScatter();
-          cycle.update(this, dt);
-          if (!state.escaping) return true;
-          if (state.radius !== r || this.scatterBossBlocks(u, state.x, state.y) || state.waypoint && (Math.hypot(state.x - u.x, state.y - u.y) < 0.14 || state.bossX !== this.boss.x || state.bossY !== this.boss.y)) {
-            state.radius = r;
-            const goalRadius = r + CONFIG.scatter.hysteresis + 0.12, bearing = d > 1e-8 ? Math.atan2(u.y - c.y, u.x - c.x) : u.seed, bounds = ArenaGeometry.bounds(this.scene, u.radius + 0.02);
+          const CYCLE = u.ability;
+          const ATTACK_BLOCKED = unitCapabilityComposition(u.species).attack === "contact" && CYCLE.action && (CYCLE.phase === "windup" || CYCLE.phase === "active") && this.scatterSegmentBlocked(u.x, u.y, CYCLE.action.target.x, CYCLE.action.target.y, R_LOCAL);
+          if (!state.escaping && !ATTACK_BLOCKED) {
+            return false;
+          }
+          CYCLE.cancelForScatter();
+          CYCLE.update(this, dt);
+          if (!state.escaping) {
+            return true;
+          }
+          if (state.radius !== R_LOCAL || this.scatterBossBlocks(u, state.x, state.y) || state.waypoint && (Math.hypot(state.x - u.x, state.y - u.y) < 0.14 || state.bossX !== this.boss.x || state.bossY !== this.boss.y)) {
+            state.radius = R_LOCAL;
+            const GOAL_RADIUS = R_LOCAL + CONFIG.scatter.hysteresis + 0.12, BEARING = D_LOCAL > 1e-8 ? Math.atan2(u.y - C_LOCAL.y, u.x - C_LOCAL.x) : u.seed, BOUNDS = ARENA_GEOMETRY.bounds(this.scene, u.radius + 0.02);
             let best = Infinity;
             state.x = u.x;
             state.y = u.y;
@@ -3393,73 +5509,97 @@
             state.bossX = this.boss.x;
             state.bossY = this.boss.y;
             for (let i = 0; i < 33; i++) {
-              const angle = bearing + (i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 16), x = c.x + Math.cos(angle) * goalRadius, y = c.y + Math.sin(angle) * goalRadius;
-              if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1 || this.scatterBossBlocks(u, x, y)) continue;
-              const distance = (x - u.x) ** 2 + (y - u.y) ** 2;
-              if (distance < best - 1e-9) {
-                best = distance;
-                state.x = x;
-                state.y = y;
-                if (i === 0) break;
+              const ANGLE = BEARING + (i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 16), X = C_LOCAL.x + Math.cos(ANGLE) * GOAL_RADIUS, Y = C_LOCAL.y + Math.sin(ANGLE) * GOAL_RADIUS;
+              if (X * X / (BOUNDS.x * BOUNDS.x) + Y * Y / (BOUNDS.y * BOUNDS.y) > 1 || this.scatterBossBlocks(u, X, Y)) {
+                continue;
+              }
+              const DISTANCE = (X - u.x) ** 2 + (Y - u.y) ** 2;
+              if (DISTANCE < best - 1e-9) {
+                best = DISTANCE;
+                state.x = X;
+                state.y = Y;
+                if (i === 0) {
+                  break;
+                }
               }
             }
             if (!Number.isFinite(best)) {
               state.waypoint = true;
               let score = -Infinity;
-              for (let step = 0.55; step > 0.1 && !Number.isFinite(score); step *= 0.5) for (let i = 0; i < 34; i++) {
-                const angle = i < 32 ? bearing + i * Math.PI / 16 : Math.atan2(u.y - this.boss.y, u.x - this.boss.x) + (i === 32 ? 1 : -1) * Math.PI / 2, x = u.x + Math.cos(angle) * step, y = u.y + Math.sin(angle) * step;
-                if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1 || this.scatterBossBlocks(u, x, y)) continue;
-                const distance = (x - c.x) ** 2 + (y - c.y) ** 2;
-                if (distance > score + 1e-9) {
-                  score = distance;
-                  state.x = x;
-                  state.y = y;
+              for (let step = 0.55; step > 0.1 && !Number.isFinite(score); step *= 0.5) {
+                for (let i = 0; i < 34; i++) {
+                  const ANGLE = i < 32 ? BEARING + i * Math.PI / 16 : Math.atan2(u.y - this.boss.y, u.x - this.boss.x) + (i === 32 ? 1 : -1) * Math.PI / 2, X = u.x + Math.cos(ANGLE) * step, Y = u.y + Math.sin(ANGLE) * step;
+                  if (X * X / (BOUNDS.x * BOUNDS.x) + Y * Y / (BOUNDS.y * BOUNDS.y) > 1 || this.scatterBossBlocks(u, X, Y)) {
+                    continue;
+                  }
+                  const DISTANCE = (X - C_LOCAL.x) ** 2 + (Y - C_LOCAL.y) ** 2;
+                  if (DISTANCE > score + 1e-9) {
+                    score = DISTANCE;
+                    state.x = X;
+                    state.y = Y;
+                  }
                 }
               }
-              if (!Number.isFinite(score)) state.radius = 0;
+              if (!Number.isFinite(score)) {
+                state.radius = 0;
+              }
             }
           }
-          const dx = u.x - c.x, dy = u.y - c.y, radial = d > 1e-8 ? (u.vx * dx + u.vy * dy) / d : 0;
-          if (radial < 0) {
-            u.vx -= radial * dx / d;
-            u.vy -= radial * dy / d;
+          const DX = u.x - C_LOCAL.x, DY = u.y - C_LOCAL.y, RADIAL = D_LOCAL > 1e-8 ? (u.vx * DX + u.vy * DY) / D_LOCAL : 0;
+          if (RADIAL < 0) {
+            u.vx -= RADIAL * DX / D_LOCAL;
+            u.vy -= RADIAL * DY / D_LOCAL;
           }
           this.steer(u, state.x, state.y, dt, scaleMoveSpeed(enemy ? 4.1 : 2.2, u));
           return true;
         }
         limitScatterVelocity(u, dt) {
-          if (!this.scatterApplies(u) || u.stun > 0) return;
-          const c = this.localScatter, r = c.radius + u.radius + CONFIG.scatter.bodyMargin, dx = u.x - c.x, dy = u.y - c.y, d = Math.hypot(dx, dy);
-          if (d < r - 1e-8) return;
-          const mx = u.vx * dt, my = u.vy * dt, a = mx * mx + my * my, b = 2 * (dx * mx + dy * my), outside = dx * dx + dy * dy - r * r, disc = b * b - 4 * a * outside;
-          if (a < 1e-14 || b >= 0 || disc <= 0) return;
-          const hit = (-b - Math.sqrt(disc)) / (2 * a);
-          if (hit < 0 || hit > 1) return;
-          const fraction = Math.max(0, hit - 1e-3);
-          u.vx *= fraction;
-          u.vy *= fraction;
+          if (!this.scatterApplies(u) || u.stun > 0) {
+            return;
+          }
+          const C_LOCAL = this.localScatter, R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin, DX = u.x - C_LOCAL.x, DY = u.y - C_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
+          if (D_LOCAL < R_LOCAL - 1e-8) {
+            return;
+          }
+          const MX = u.vx * dt, MY = u.vy * dt, A_LOCAL = MX * MX + MY * MY, B_LOCAL = 2 * (DX * MX + DY * MY), OUTSIDE = DX * DX + DY * DY - R_LOCAL * R_LOCAL, DISC = B_LOCAL * B_LOCAL - 4 * A_LOCAL * OUTSIDE;
+          if (A_LOCAL < 1e-14 || B_LOCAL >= 0 || DISC <= 0) {
+            return;
+          }
+          const HIT = (-B_LOCAL - Math.sqrt(DISC)) / (2 * A_LOCAL);
+          if (HIT < 0 || HIT > 1) {
+            return;
+          }
+          const FRACTION = Math.max(0, HIT - 1e-3);
+          u.vx *= FRACTION;
+          u.vy *= FRACTION;
         }
         steer(u, x, y, dt, speed2) {
           if (this.scatterApplies(u) && !this.scatterInside(u)) {
-            const c = this.localScatter, r = c.radius + u.radius + CONFIG.scatter.bodyMargin + 0.12;
-            if (this.scatterSegmentBlocked(u.x, u.y, x, y, r)) {
-              const dx2 = u.x - c.x, dy2 = u.y - c.y, d2 = Math.hypot(dx2, dy2), bearing = d2 > 1e-8 ? Math.atan2(dy2, dx2) : u.seed;
-              const tx = x - c.x, ty = y - c.y;
-              if (Math.hypot(tx, ty) <= r) {
-                x = c.x + Math.cos(bearing) * (r + 0.06);
-                y = c.y + Math.sin(bearing) * (r + 0.06);
+            const C_LOCAL = this.localScatter, R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin + 0.12;
+            if (this.scatterSegmentBlocked(u.x, u.y, x, y, R_LOCAL)) {
+              const DX2 = u.x - C_LOCAL.x, DY2 = u.y - C_LOCAL.y, D_LOCAL2 = Math.hypot(DX2, DY2), BEARING = D_LOCAL2 > 1e-8 ? Math.atan2(DY2, DX2) : u.seed;
+              const TX = x - C_LOCAL.x, TY = y - C_LOCAL.y;
+              if (Math.hypot(TX, TY) <= R_LOCAL) {
+                x = C_LOCAL.x + Math.cos(BEARING) * (R_LOCAL + 0.06);
+                y = C_LOCAL.y + Math.sin(BEARING) * (R_LOCAL + 0.06);
               } else {
-                const delta = Math.atan2(Math.sin(Math.atan2(ty, tx) - bearing), Math.cos(Math.atan2(ty, tx) - bearing)), side = delta === 0 ? u.id % 2 ? 1 : -1 : Math.sign(delta);
-                const turn = Math.min(0.5, Math.max(0.2, Math.acos(Math.min(1, r / Math.max(r, d2))) * 0.8)), distance = r / Math.cos(turn) + 0.08;
-                const bounds = ArenaGeometry.bounds(this.scene, u.radius);
-                let angle = bearing + side * turn;
-                x = c.x + Math.cos(angle) * distance;
-                y = c.y + Math.sin(angle) * distance;
-                if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1) {
-                  angle = bearing - side * turn;
-                  x = c.x + Math.cos(angle) * distance;
-                  y = c.y + Math.sin(angle) * distance;
-                  if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1) {
+                const DELTA = Math.atan2(
+                  Math.sin(Math.atan2(TY, TX) - BEARING),
+                  Math.cos(Math.atan2(TY, TX) - BEARING)
+                ), SIDE = DELTA === 0 ? u.id % 2 ? 1 : -1 : Math.sign(DELTA);
+                const TURN = Math.min(
+                  0.5,
+                  Math.max(0.2, Math.acos(Math.min(1, R_LOCAL / Math.max(R_LOCAL, D_LOCAL2))) * 0.8)
+                ), DISTANCE = R_LOCAL / Math.cos(TURN) + 0.08;
+                const BOUNDS = ARENA_GEOMETRY.bounds(this.scene, u.radius);
+                let angle = BEARING + SIDE * TURN;
+                x = C_LOCAL.x + Math.cos(angle) * DISTANCE;
+                y = C_LOCAL.y + Math.sin(angle) * DISTANCE;
+                if (x * x / (BOUNDS.x * BOUNDS.x) + y * y / (BOUNDS.y * BOUNDS.y) > 1) {
+                  angle = BEARING - SIDE * TURN;
+                  x = C_LOCAL.x + Math.cos(angle) * DISTANCE;
+                  y = C_LOCAL.y + Math.sin(angle) * DISTANCE;
+                  if (x * x / (BOUNDS.x * BOUNDS.x) + y * y / (BOUNDS.y * BOUNDS.y) > 1) {
                     u.vx = u.vy = 0;
                     return;
                   }
@@ -3467,26 +5607,36 @@
               }
             }
           }
-          const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);
-          if (d > 0.08) {
-            const rate = 1 - Math.exp(-dt * 3);
-            u.vx += (dx / d * speed2 - u.vx) * rate;
-            u.vy += (dy / d * speed2 - u.vy) * rate;
-            u.angle = Math.atan2(dy, dx);
+          const DX = x - u.x, DY = y - u.y, D_LOCAL = Math.hypot(DX, DY);
+          if (D_LOCAL > 0.08) {
+            const RATE = 1 - Math.exp(-dt * 3);
+            u.vx += (DX / D_LOCAL * speed2 - u.vx) * RATE;
+            u.vy += (DY / D_LOCAL * speed2 - u.vy) * RATE;
+            u.angle = Math.atan2(DY, DX);
           }
         }
         raidContacts(units) {
           for (let i = 0; i < units.length; i++) {
-            const unit2 = units[i];
-            if (unit2.hp <= 0 || !unit2.dropLanded) continue;
-            const pending = this._collectContactOrders(unit2, 0, i - 1, this._contactPending);
-            for (const j of pending) {
-              const other = units[j];
-              if (other.hp <= 0 || !other.dropLanded) continue;
-              const ax = other.x, ay = other.y, bx = unit2.x, by = unit2.y, didContact = contact(other, unit2);
-              if (didContact) this.metrics.contacts++;
-              if (ax !== other.x || ay !== other.y) this.unitSpatial.update(other);
-              if (bx !== unit2.x || by !== unit2.y) this.unitSpatial.update(unit2);
+            const UNIT_LOCAL = units[i];
+            if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded) {
+              continue;
+            }
+            const PENDING = this._collectContactOrders(UNIT_LOCAL, 0, i - 1, this._contactPending);
+            for (const J of PENDING) {
+              const OTHER = units[J];
+              if (OTHER.hp <= 0 || !OTHER.dropLanded) {
+                continue;
+              }
+              const AX = OTHER.x, AY = OTHER.y, BX = UNIT_LOCAL.x, BY = UNIT_LOCAL.y, DID_CONTACT = contact(OTHER, UNIT_LOCAL);
+              if (DID_CONTACT) {
+                this.metrics.contacts++;
+              }
+              if (AX !== OTHER.x || AY !== OTHER.y) {
+                this.unitSpatial.update(OTHER);
+              }
+              if (BX !== UNIT_LOCAL.x || BY !== UNIT_LOCAL.y) {
+                this.unitSpatial.update(UNIT_LOCAL);
+              }
             }
           }
         }
@@ -3496,54 +5646,80 @@
             return;
           }
           for (let i = 0; i < units.length; i++) {
-            const unit2 = units[i], generation = this._nextContactGeneration(units.length), pending = this._collectContactOrders(unit2, i + 1, units.length - 1, this._contactPending);
-            for (const order of pending) this._contactSeen[order] = generation;
+            const UNIT_LOCAL = units[i], GENERATION = this._nextContactGeneration(units.length), PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+            for (const ORDER of PENDING) {
+              this._contactSeen[ORDER] = GENERATION;
+            }
             let cursor = 0;
-            while (cursor < pending.length) {
-              const j = pending[cursor++], other = units[j], ax = unit2.x, ay = unit2.y, bx = other.x, by = other.y, didContact = contact(unit2, other);
-              if (didContact) this.metrics.contacts++;
-              const unitMoved = ax !== unit2.x || ay !== unit2.y, otherMoved = bx !== other.x || by !== other.y;
-              if (unitMoved) this.unitSpatial.update(unit2);
-              if (otherMoved) this.unitSpatial.update(other);
-              if (unitMoved) {
-                const extras = this._collectContactOrders(unit2, j + 1, units.length - 1, this._contactExtra);
-                for (const order of extras) this._insertContactOrder(order, j, pending, generation);
+            while (cursor < PENDING.length) {
+              const J = PENDING[cursor++], OTHER = units[J], AX = UNIT_LOCAL.x, AY = UNIT_LOCAL.y, BX = OTHER.x, BY = OTHER.y, DID_CONTACT = contact(UNIT_LOCAL, OTHER);
+              if (DID_CONTACT) {
+                this.metrics.contacts++;
+              }
+              const UNIT_MOVED = AX !== UNIT_LOCAL.x || AY !== UNIT_LOCAL.y, OTHER_MOVED = BX !== OTHER.x || BY !== OTHER.y;
+              if (UNIT_MOVED) {
+                this.unitSpatial.update(UNIT_LOCAL);
+              }
+              if (OTHER_MOVED) {
+                this.unitSpatial.update(OTHER);
+              }
+              if (UNIT_MOVED) {
+                const EXTRAS = this._collectContactOrders(UNIT_LOCAL, J + 1, units.length - 1, this._contactExtra);
+                for (const ORDER of EXTRAS) {
+                  this._insertContactOrder(ORDER, J, PENDING, GENERATION);
+                }
               }
             }
           }
         }
         resolveFarmContactPairs(units, sameTier) {
           for (let i = 0; i < units.length; i++) {
-            const unit2 = units[i], pending = this._collectContactOrders(unit2, i + 1, units.length - 1, this._contactPending);
-            for (const j of pending) {
-              const other = units[j];
-              if (unit2.tier === other.tier !== sameTier) continue;
-              this.pair(unit2, other, true);
+            const UNIT_LOCAL = units[i], PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+            for (const J of PENDING) {
+              const OTHER = units[J];
+              if (UNIT_LOCAL.tier === OTHER.tier !== sameTier) {
+                continue;
+              }
+              this.pair(UNIT_LOCAL, OTHER, true);
             }
           }
         }
         avoidNearbyFood(u, dt) {
-          const radius = 1.25;
-          let pushX = 0, pushY = 0, strongest = 0, nearest = null, nearestDistance = Infinity;
-          if (!this._spatialStepActive) this._rebuildFoodSpatialIndex();
-          this.foodSpatial.queryAABB(u.x - radius, u.y - radius, u.x + radius, u.y + radius, this._foodCandidates);
-          this._foodCandidates.sort((a, b) => (this._foodOrder.get(a) ?? Infinity) - (this._foodOrder.get(b) ?? Infinity));
-          for (const food of this._foodCandidates) {
-            if (food.phase !== "grounded") continue;
-            let dx = u.x - food.x, dy = u.y - food.y, distance = Math.hypot(dx, dy);
-            if (distance >= radius) continue;
-            const strength = 1 - distance / radius, weight = strength * strength;
-            if (distance < nearestDistance) {
-              nearestDistance = distance;
-              nearest = food;
+          const RADIUS = 1.25;
+          let pushX = 0;
+          let pushY = 0;
+          let strongest = 0;
+          let nearest = null;
+          let nearestDistance = Infinity;
+          if (!this._spatialStepActive) {
+            this._rebuildFoodSpatialIndex();
+          }
+          this.foodSpatial.queryAABB(u.x - RADIUS, u.y - RADIUS, u.x + RADIUS, u.y + RADIUS, this._foodCandidates);
+          this._foodCandidates.sort(
+            (a, b) => (this._foodOrder.get(a) ?? Infinity) - (this._foodOrder.get(b) ?? Infinity)
+          );
+          for (const FOOD of this._foodCandidates) {
+            if (FOOD.phase !== "grounded") {
+              continue;
             }
-            strongest = Math.max(strongest, strength);
-            if (distance > 1e-6) {
-              pushX += dx / distance * weight;
-              pushY += dy / distance * weight;
+            const DX = u.x - FOOD.x, DY = u.y - FOOD.y, DISTANCE = Math.hypot(DX, DY);
+            if (DISTANCE >= RADIUS) {
+              continue;
+            }
+            const STRENGTH = 1 - DISTANCE / RADIUS, WEIGHT = STRENGTH * STRENGTH;
+            if (DISTANCE < nearestDistance) {
+              nearestDistance = DISTANCE;
+              nearest = FOOD;
+            }
+            strongest = Math.max(strongest, STRENGTH);
+            if (DISTANCE > 1e-6) {
+              pushX += DX / DISTANCE * WEIGHT;
+              pushY += DY / DISTANCE * WEIGHT;
             }
           }
-          if (!nearest) return false;
+          if (!nearest) {
+            return false;
+          }
           let magnitude = Math.hypot(pushX, pushY);
           if (magnitude < 1e-4) {
             if (nearestDistance > 1e-6) {
@@ -3551,59 +5727,70 @@
               pushY = u.y - nearest.y;
               magnitude = nearestDistance;
             } else {
-              const angle = (u.seed + (nearest.seed || 0)) * 2.3999632297;
-              pushX = Math.cos(angle);
-              pushY = Math.sin(angle);
+              const ANGLE = (u.seed + (nearest.seed || 0)) * 2.3999632297;
+              pushX = Math.cos(ANGLE);
+              pushY = Math.sin(ANGLE);
               magnitude = 1;
             }
           }
-          const awayX = pushX / magnitude, awayY = pushY / magnitude;
+          const AWAY_X = pushX / magnitude, AWAY_Y = pushY / magnitude;
           let desiredX = Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78) - u.x;
           let desiredY = Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78) - u.y;
-          const desiredLength = Math.hypot(desiredX, desiredY) || 1;
-          desiredX /= desiredLength;
-          desiredY /= desiredLength;
-          const towardFood = desiredX * awayX + desiredY * awayY;
-          if (towardFood < 0) {
-            desiredX -= towardFood * awayX;
-            desiredY -= towardFood * awayY;
+          const DESIRED_LENGTH = Math.hypot(desiredX, desiredY) || 1;
+          desiredX /= DESIRED_LENGTH;
+          desiredY /= DESIRED_LENGTH;
+          const TOWARD_FOOD = desiredX * AWAY_X + desiredY * AWAY_Y;
+          if (TOWARD_FOOD < 0) {
+            desiredX -= TOWARD_FOOD * AWAY_X;
+            desiredY -= TOWARD_FOOD * AWAY_Y;
           }
-          let moveX = desiredX + awayX * (0.5 + 1.5 * strongest), moveY = desiredY + awayY * (0.5 + 1.5 * strongest), moveLength = Math.hypot(moveX, moveY);
+          let moveX = desiredX + AWAY_X * (0.5 + 1.5 * strongest);
+          let moveY = desiredY + AWAY_Y * (0.5 + 1.5 * strongest);
+          let moveLength = Math.hypot(moveX, moveY);
           if (moveLength < 1e-4) {
-            moveX = awayX;
-            moveY = awayY;
+            moveX = AWAY_X;
+            moveY = AWAY_Y;
             moveLength = 1;
           }
           this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(0.75, u));
           return true;
         }
         findNearestGroundFood(x, y) {
-          if (!this._spatialStepActive) this._rebuildFoodSpatialIndex();
-          if (!this._groundedFoodCount) return null;
-          const grid = this.foodSpatial, cx = grid.cellX(x), cy = grid.cellY(y);
-          if (cx < 0 || cy < 0 || cx >= grid.cellCount || cy >= grid.cellCount) return null;
-          let nearest = null, nearestDistance = Infinity, nearestOrder = Infinity;
-          const maxRing = Math.max(cx, cy, grid.cellCount - 1 - cx, grid.cellCount - 1 - cy);
-          for (let ring = 0; ring <= maxRing; ring++) {
-            grid.queryCellRing(cx, cy, ring, this._foodCandidates);
-            for (const food of this._foodCandidates) {
-              const distance = Math.hypot(food.x - x, food.y - y), order = this._foodOrder.get(food) ?? Infinity;
-              if (distance < nearestDistance || distance === nearestDistance && order < nearestOrder) {
-                nearest = food;
-                nearestDistance = distance;
-                nearestOrder = order;
+          if (!this._spatialStepActive) {
+            this._rebuildFoodSpatialIndex();
+          }
+          if (!this._groundedFoodCount) {
+            return null;
+          }
+          const GRID = this.foodSpatial, CX = GRID.cellX(x), CY = GRID.cellY(y);
+          if (CX < 0 || CY < 0 || CX >= GRID.cellCount || CY >= GRID.cellCount) {
+            return null;
+          }
+          let nearest = null;
+          let nearestDistance = Infinity;
+          let nearestOrder = Infinity;
+          const MAX_RING = Math.max(CX, CY, GRID.cellCount - 1 - CX, GRID.cellCount - 1 - CY);
+          for (let ring = 0; ring <= MAX_RING; ring++) {
+            GRID.queryCellRing(CX, CY, ring, this._foodCandidates);
+            for (const FOOD of this._foodCandidates) {
+              const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y), ORDER = this._foodOrder.get(FOOD) ?? Infinity;
+              if (DISTANCE < nearestDistance || DISTANCE === nearestDistance && ORDER < nearestOrder) {
+                nearest = FOOD;
+                nearestDistance = DISTANCE;
+                nearestOrder = ORDER;
               }
             }
-            if (nearest && nearestDistance < grid.distanceToOutsideRing(x, y, cx, cy, ring)) break;
+            if (nearest && nearestDistance < GRID.distanceToOutsideRing(x, y, CX, CY, ring)) {
+              break;
+            }
             if ((2 * ring + 1) * (2 * ring + 1) > this._groundedFoodCount) {
               nearest = null;
               nearestDistance = Infinity;
-              nearestOrder = Infinity;
-              for (const food of this._groundedFoods) {
-                const distance = Math.hypot(food.x - x, food.y - y);
-                if (distance < nearestDistance) {
-                  nearest = food;
-                  nearestDistance = distance;
+              for (const FOOD of this._groundedFoods) {
+                const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y);
+                if (DISTANCE < nearestDistance) {
+                  nearest = FOOD;
+                  nearestDistance = DISTANCE;
                 }
               }
               break;
@@ -3612,25 +5799,52 @@
           return nearest;
         }
         farmUnit(u, dt) {
-          if (u.stun > 0 || u.z > 0.1) return;
+          if (u.stun > 0 || u.z > 0.1) {
+            return;
+          }
           if (!u.mature || u.cooldown > 0) {
-            if (!this.avoidNearbyFood(u, dt)) this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78), dt, scaleMoveSpeed(0.75, u));
+            if (!this.avoidNearbyFood(u, dt)) {
+              this.steer(
+                u,
+                Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78),
+                Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78),
+                dt,
+                scaleMoveSpeed(0.75, u)
+              );
+            }
             return;
           }
           if (this.mode === "merge") {
-            const task = this.mergeTask;
-            if (task?.phase === "approach" && task.materialIds?.includes(u.id)) {
-              const anchor = this._unitById.get(task.materialIds[0]);
-              if (anchor && u.cooldown <= 0) this.steer(u, u.id === anchor.id ? u.x : anchor.x, u.id === anchor.id ? u.y : anchor.y, dt, scaleMoveSpeed(2.2, u));
+            const TASK = this.mergeTask;
+            if (TASK?.phase === "approach" && TASK.materialIds?.includes(u.id)) {
+              const ANCHOR = this._unitById.get(TASK.materialIds[0]);
+              if (ANCHOR && u.cooldown <= 0) {
+                this.steer(
+                  u,
+                  u.id === ANCHOR.id ? u.x : ANCHOR.x,
+                  u.id === ANCHOR.id ? u.y : ANCHOR.y,
+                  dt,
+                  scaleMoveSpeed(2.2, u)
+                );
+              }
               return;
             }
-            this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78), dt, scaleMoveSpeed(0.75, u));
+            this.steer(
+              u,
+              Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78),
+              Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78),
+              dt,
+              scaleMoveSpeed(0.75, u)
+            );
             return;
           }
-          let target = null, best = Infinity;
+          let target = null;
+          let best = Infinity;
           if (this.mode === "breed" && !u.fed) {
             target = this.findNearestGroundFood(u.x, u.y);
-            if (target) best = Math.hypot(target.x - u.x, target.y - u.y);
+            if (target) {
+              best = Math.hypot(target.x - u.x, target.y - u.y);
+            }
             if (target && best < 0.42) {
               this.food.splice(this.food.indexOf(target), 1);
               this.foodSpatial.remove(target);
@@ -3643,471 +5857,1058 @@
               this.emit("eat", u.x, u.y, 0.5);
               target = null;
             }
-          } else if (this.mode === "breed" && u.cooldown === 0) target = this.findOrReserveMate(u);
-          else if (u.cooldown === 0) {
-            for (const p of this._speciesGroups[u.species] || []) {
-              if (p === u || p.hp <= 0 || p.down > 0 || !p.mature || p.cooldown > 0 || this.mode === "breed" && !p.fed || this.mode === "merge" && !(p.tier === u.tier && u.tier < CONFIG.unit.maxTier)) continue;
-              const d = Math.hypot(p.x - u.x, p.y - u.y);
-              if (d < best) {
-                best = d;
-                target = p;
+          } else if (this.mode === "breed" && u.cooldown === 0) {
+            target = this.findOrReserveMate(u);
+          } else if (u.cooldown === 0) {
+            for (const P of this._speciesGroups[u.species] || []) {
+              if (P === u || P.hp <= 0 || P.down > 0 || !P.mature || P.cooldown > 0 || this.mode === "breed" && !P.fed || this.mode === "merge" && !(P.tier === u.tier && u.tier < CONFIG.unit.maxTier)) {
+                continue;
+              }
+              const D_LOCAL = Math.hypot(P.x - u.x, P.y - u.y);
+              if (D_LOCAL < best) {
+                best = D_LOCAL;
+                target = P;
               }
             }
           }
-          const hasDesignatedMate = this.mode === "breed" && u.fed && target && this.units.includes(target);
-          if (this.mode === "breed" && u.fed && !hasDesignatedMate && this.avoidNearbyFood(u, dt)) return;
-          if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? farmUpgradeRate(this.playerProgression?.farmUpgrades, "growth") : 1), u));
-          else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78), dt, scaleMoveSpeed(0.75, u));
+          const HAS_DESIGNATED_MATE = this.mode === "breed" && u.fed && target && this.units.includes(target);
+          if (this.mode === "breed" && u.fed && !HAS_DESIGNATED_MATE && this.avoidNearbyFood(u, dt)) {
+            return;
+          }
+          if (target) {
+            this.steer(
+              u,
+              target.x,
+              target.y,
+              dt,
+              scaleMoveSpeed(
+                2.2 * (target.phase === "grounded" ? farmUpgradeRate(this.playerProgression?.farmUpgrades, "growth") : 1),
+                u
+              )
+            );
+          } else {
+            this.steer(
+              u,
+              Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78),
+              Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78),
+              dt,
+              scaleMoveSpeed(0.75, u)
+            );
+          }
         }
         combat(kind, detail) {
-          const event = this.notice(kind, { time: this.time, ...detail }), toPresentationTime = presentationClocks.get(this);
-          if (toPresentationTime) presentationEventTimes.set(event, toPresentationTime(this.time));
+          const EVENT = this.notice(kind, {
+            time: this.time,
+            ...detail
+          }), TO_PRESENTATION_TIME = PRESENTATION_CLOCKS.get(this);
+          if (TO_PRESENTATION_TIME) {
+            PRESENTATION_EVENT_TIMES.set(EVENT, TO_PRESENTATION_TIME(this.time));
+          }
         }
         boundBody(body, scene, margin) {
-          const before = { x: body.x, y: body.y }, p = ArenaGeometry.clamp(before, scene, margin);
-          body.x = p.x;
-          body.y = p.y;
-          if (before.x !== p.x || before.y !== p.y) {
-            const r = ArenaGeometry.bounds(scene, margin), nx = p.x / (r.x * r.x), ny = p.y / (r.y * r.y), n = Math.hypot(nx, ny) || 1, out = ((body.vx || 0) * nx + (body.vy || 0) * ny) / n;
-            if (out > 0) {
-              body.vx -= 1.3 * out * nx / n;
-              body.vy -= 1.3 * out * ny / n;
+          const BEFORE = {
+            x: body.x,
+            y: body.y
+          }, P = ARENA_GEOMETRY.clamp(BEFORE, scene, margin);
+          body.x = P.x;
+          body.y = P.y;
+          if (BEFORE.x !== P.x || BEFORE.y !== P.y) {
+            const R_LOCAL = ARENA_GEOMETRY.bounds(scene, margin), NX = P.x / (R_LOCAL.x * R_LOCAL.x), NY = P.y / (R_LOCAL.y * R_LOCAL.y), N = Math.hypot(NX, NY) || 1, OUT = ((body.vx || 0) * NX + (body.vy || 0) * NY) / N;
+            if (OUT > 0) {
+              body.vx -= 1.3 * OUT * NX / N;
+              body.vy -= 1.3 * OUT * NY / N;
             }
           }
         }
         separateBoss(u) {
-          const b = this.boss;
-          if (!areOpposingFactions(u, b) || u.hp <= 0 || !u.dropLanded || u.z > b.height) return;
-          const dx = u.x - b.x, dy = u.y - b.y, d = Math.hypot(dx, dy), r = b.radius + u.radius;
-          if (d >= r) return;
-          const a = d > 1e-6 ? Math.atan2(dy, dx) : u.seed, nx = Math.cos(a), ny = Math.sin(a);
-          u.x = b.x + nx * r;
-          u.y = b.y + ny * r;
-          const inward = u.vx * nx + u.vy * ny;
-          if (inward < 0) {
-            u.vx -= inward * nx;
-            u.vy -= inward * ny;
+          const B_LOCAL = this.boss;
+          if (!areOpposingFactions(u, B_LOCAL) || u.hp <= 0 || !u.dropLanded || u.z > B_LOCAL.height) {
+            return;
+          }
+          const DX = u.x - B_LOCAL.x, DY = u.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY), R_LOCAL = B_LOCAL.radius + u.radius;
+          if (D_LOCAL >= R_LOCAL) {
+            return;
+          }
+          const A_LOCAL = D_LOCAL > 1e-6 ? Math.atan2(DY, DX) : u.seed, NX = Math.cos(A_LOCAL), NY = Math.sin(A_LOCAL);
+          u.x = B_LOCAL.x + NX * R_LOCAL;
+          u.y = B_LOCAL.y + NY * R_LOCAL;
+          const INWARD = u.vx * NX + u.vy * NY;
+          if (INWARD < 0) {
+            u.vx -= INWARD * NX;
+            u.vy -= INWARD * NY;
           }
           this.boundBody(u, this.scene, u.radius);
         }
         combatEvent(kind, u, action) {
-          this.combatLog.push({ kind, id: action?.id ?? 0, unit: u.id, species: u.species, time: this.time, x: u.x, y: u.y, z: u.z });
-          if (this.combatLog.length > 240) this.combatLog.shift();
+          this.combatLog.push({
+            kind,
+            id: action?.id ?? 0,
+            unit: u.id,
+            species: u.species,
+            time: this.time,
+            x: u.x,
+            y: u.y,
+            z: u.z
+          });
+          if (this.combatLog.length > 240) {
+            this.combatLog.shift();
+          }
           if (kind === "launch") {
-            this.combat("attack-launch", { species: u.species, unit: u.id, x: u.x, y: u.y, z: u.z, attackKind: abilityProfile(u.species).kind });
+            this.combat("attack-launch", {
+              species: u.species,
+              unit: u.id,
+              x: u.x,
+              y: u.y,
+              z: u.z,
+              attackKind: abilityProfile(u.species).kind
+            });
             u.ability.onLaunch?.(this, action);
           }
         }
         wheatCommandCritBonusFor(attacker) {
-          if (!attacker || attacker.hp <= 0) return 0;
+          if (!attacker || attacker.hp <= 0) {
+            return 0;
+          }
           let strongest = 0;
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
-          for (const species of speciesWithCapability("commandAura")) for (const source of this._speciesGroups[species]) {
-            if (source.hp <= 0 || !hasFaction(source, attacker.faction) || source.wheatCommandUntil <= this.time) continue;
-            const config = source.ability.commandAuraConfig?.(this);
-            if (!config || Math.hypot(source.x - attacker.x, source.y - attacker.y) > config.radius) continue;
-            strongest = Math.max(strongest, Number.isFinite(source.wheatCommandCritBonus) ? source.wheatCommandCritBonus : 0);
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
+          }
+          for (const SPECIES of speciesWithCapability("commandAura")) {
+            for (const SOURCE of this._speciesGroups[SPECIES]) {
+              if (SOURCE.hp <= 0 || !hasFaction(SOURCE, attacker.faction) || SOURCE.wheatCommandUntil <= this.time) {
+                continue;
+              }
+              const CONFIG_LOCAL = SOURCE.ability.commandAuraConfig?.(this);
+              if (!CONFIG_LOCAL || Math.hypot(SOURCE.x - attacker.x, SOURCE.y - attacker.y) > CONFIG_LOCAL.radius) {
+                continue;
+              }
+              strongest = Math.max(
+                strongest,
+                Number.isFinite(SOURCE.wheatCommandCritBonus) ? SOURCE.wheatCommandCritBonus : 0
+              );
+            }
           }
           return Math.max(0, Math.min(1, strongest));
         }
         riceHarvestMultiplier(u, target, kind, hpBefore = target?.hp, maxHp = target?.maxHp) {
-          if (kind !== abilityProfile(u.species).kind) return 1;
-          return (u.ability || createUnitAttackCycle(u)).harvestMultiplier?.(this, hpBefore, maxHp) ?? 1;
+          if (kind !== abilityProfile(u.species).kind) {
+            return 1;
+          }
+          return (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).harvestMultiplier?.(this, hpBefore, maxHp) ?? 1;
         }
         applyGrainOnBasicHit(u, target, kind) {
-          if (!hasFaction(u, FACTION_CONFIG.PLAYER) || kind !== abilityProfile(u.species).kind) return;
-          (u.ability || createUnitAttackCycle(u)).onBasicHit?.(this, target);
+          if (!hasFaction(u, FACTION_CONFIG.PLAYER) || kind !== abilityProfile(u.species).kind) {
+            return;
+          }
+          (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).onBasicHit?.(this, target);
         }
-        attackTarget(unit2, action) {
-          if (action?.targetId === "boss" || !action?.targetId) return areOpposingFactions(unit2, this.boss) ? this.boss : null;
-          const target = this._unitForId(action.targetId);
-          return target?.hp > 0 && areOpposingFactions(unit2, target) ? target : null;
+        attackTarget(unit, action) {
+          if (action?.targetId === "boss" || !action?.targetId) {
+            return areOpposingFactions(unit, this.boss) ? this.boss : null;
+          }
+          const TARGET = this._unitForId(action.targetId);
+          return TARGET?.hp > 0 && areOpposingFactions(unit, TARGET) ? TARGET : null;
         }
         createAttackContext(u, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {}) {
-          const spec = abilityProfile(u.species), roster2 = this.raidRoster(u.ownerId), attackerStats = stats(u.tier, u.species);
+          const SPEC = abilityProfile(u.species), ROSTER2 = this.raidRoster(u.ownerId), ATTACKER_STATS = STATS(u.tier, u.species);
           return {
             source: u,
             sourceKind: hasFaction(u, FACTION_CONFIG.PLAYER) ? "direct" : "enemy",
-            attackerStats,
-            damageMultiplier: Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier,
-            kind: attackKind || spec.kind,
-            buffed: !!roster2 && this.time < roster2.buffUntil,
+            attackerStats: ATTACKER_STATS,
+            damageMultiplier: Number.isFinite(attackMultiplier) ? attackMultiplier : SPEC.skillMultiplier,
+            kind: attackKind || SPEC.kind,
+            buffed: !!ROSTER2 && this.time < ROSTER2.buffUntil,
             strikeIndex,
             area,
             criticalRoll,
             hitTargets: area ? /* @__PURE__ */ new Set() : null,
-            sourceStatOverrides: { critChance: clamp3(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) }
+            sourceStatOverrides: {
+              critChance: CLAMP2(ATTACKER_STATS.critChance + this.wheatCommandCritBonusFor(u), 0, 1)
+            }
           };
         }
         combatTargetDefense(target) {
           if (target !== this.boss) {
-            const targetStats = stats(target.tier, target.species);
-            return { maxHp: targetStats.maxHp, armor: effectiveBarleyArmor(target, targetStats.armor, this.time) };
+            const TARGET_STATS = STATS(target.tier, target.species);
+            return {
+              maxHp: TARGET_STATS.maxHp,
+              armor: effectiveBarleyArmor(target, TARGET_STATS.armor, this.time)
+            };
           }
-          const hpRatio = Number.isFinite(target.hp) && Number.isFinite(target.maxHp) && target.maxHp > 0 ? clamp3(target.hp / target.maxHp, 0, 1) : 1;
-          return { maxHp: target.maxHp, armor: effectiveBarleyArmor(target, (1 - hpRatio) * 100, this.time) };
+          const HP_RATIO = Number.isFinite(target.hp) && Number.isFinite(target.maxHp) && target.maxHp > 0 ? CLAMP2(target.hp / target.maxHp, 0, 1) : 1;
+          return {
+            maxHp: target.maxHp,
+            armor: effectiveBarleyArmor(target, (1 - HP_RATIO) * 100, this.time)
+          };
         }
-        damageCombatTarget(u, action, target, point3, options = {}) {
-          const isBoss = target === this.boss;
-          if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit || isBoss && !hasFaction(u, FACTION_CONFIG.PLAYER) || options.attackContext?.hitTargets?.has(target)) return false;
+        damageCombatTarget(u, action, target, point2, options = {}) {
+          const IS_BOSS = target === this.boss;
+          if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit || IS_BOSS && !hasFaction(u, FACTION_CONFIG.PLAYER) || options.attackContext?.hitTargets?.has(target)) {
+            return false;
+          }
           action.hit = true;
-          const context = options.attackContext || this.createAttackContext(u, options), { source, attackerStats, damageMultiplier, kind, buffed } = context;
-          context.hitTargets?.add(target);
-          const defense = this.combatTargetDefense(target), harvestMultiplier = this.riceHarvestMultiplier(source, target, kind, target.hp, defense.maxHp);
-          const guard = isBoss ? null : target.ability.receiveGuard?.(this);
-          const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buff.damage : 1) * harvestMultiplier * (guard?.receivedDamageMultiplier ?? 1);
-          const damage = applyDamageToTargets(source, [target], { rawDamage, area: context.area, sourceKind: context.sourceKind, sourceStatOverrides: context.sourceStatOverrides, armorForTarget: () => defense.armor, roll: () => context.criticalRoll ?? (context.criticalRoll = this.random()) });
-          if (!isBoss) this._syncUnitAliveCount(target);
-          this.applyGrainOnBasicHit(source, target, kind);
-          const strength = damageMultiplier * (buffed ? CONFIG.raid.buff.damage : 1) * harvestMultiplier * (damage.critical ? attackerStats.critMultiplier : 1);
-          if (isBoss) this.finishBossHit(source, action, point3, context, damage, strength);
-          else this.finishUnitHit(source, action, target, point3, context, damage, strength, guard);
+          const CONTEXT = options.attackContext || this.createAttackContext(u, options), {
+            source: SOURCE,
+            attackerStats: ATTACKER_STATS,
+            damageMultiplier: DAMAGE_MULTIPLIER,
+            kind: KIND,
+            buffed: BUFFED
+          } = CONTEXT;
+          CONTEXT.hitTargets?.add(target);
+          const DEFENSE = this.combatTargetDefense(target), HARVEST_MULTIPLIER = this.riceHarvestMultiplier(SOURCE, target, KIND, target.hp, DEFENSE.maxHp);
+          const GUARD = IS_BOSS ? null : target.ability.receiveGuard?.(this);
+          const RAW_DAMAGE = ATTACKER_STATS.attackPower * DAMAGE_MULTIPLIER * (BUFFED ? CONFIG.raid.buff.damage : 1) * HARVEST_MULTIPLIER * (GUARD?.receivedDamageMultiplier ?? 1);
+          const DAMAGE = applyDamageToTargets(SOURCE, [target], {
+            rawDamage: RAW_DAMAGE,
+            area: CONTEXT.area,
+            sourceKind: CONTEXT.sourceKind,
+            sourceStatOverrides: CONTEXT.sourceStatOverrides,
+            armorForTarget: () => DEFENSE.armor,
+            roll: () => CONTEXT.criticalRoll ?? (CONTEXT.criticalRoll = this.random())
+          });
+          if (!IS_BOSS) {
+            this._syncUnitAliveCount(target);
+          }
+          this.applyGrainOnBasicHit(SOURCE, target, KIND);
+          const STRENGTH = DAMAGE_MULTIPLIER * (BUFFED ? CONFIG.raid.buff.damage : 1) * HARVEST_MULTIPLIER * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
+          if (IS_BOSS) {
+            this.finishBossHit(SOURCE, action, point2, CONTEXT, DAMAGE, STRENGTH);
+          } else {
+            this.finishUnitHit(SOURCE, action, target, point2, CONTEXT, DAMAGE, STRENGTH, GUARD);
+          }
           return true;
         }
-        finishBossHit(u, action, point3, { kind, strikeIndex, buffed }, damage, strength) {
+        finishBossHit(u, action, point2, { kind, strikeIndex, buffed }, damage, strength) {
           this.boss.flash = 0.13;
-          const dx = point3.x - this.boss.x, dy = point3.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp3(point3.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength });
+          const DX = point2.x - this.boss.x, DY = point2.y - this.boss.y, D_LOCAL = Math.hypot(DX, DY) || 1;
+          this.combat("boss-hit", {
+            unit: u.id,
+            ownerId: u.ownerId,
+            species: u.species,
+            attackId: action.id,
+            strikeIndex,
+            attackKind: kind,
+            buffed,
+            critical: damage.critical,
+            x: this.boss.x + DX / D_LOCAL * this.boss.radius,
+            y: this.boss.y + DY / D_LOCAL * this.boss.radius,
+            z: CLAMP2(point2.z + 0.2, 0.2, this.boss.height),
+            nx: DX / D_LOCAL,
+            ny: DY / D_LOCAL,
+            strength
+          });
           this.combatEvent("damage", u, action);
         }
-        finishUnitHit(u, action, target, point3, { kind, strikeIndex }, damage, strength, guard) {
-          const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
-          target.knock(dx / n, dy / n, 5 * (guard?.receivedKnockbackMultiplier ?? 1), 2.4 * (guard?.receivedKnockbackMultiplier ?? 1), u);
+        finishUnitHit(u, action, target, point2, { kind, strikeIndex }, damage, strength, guard) {
+          const DX = target.x - u.x, DY = target.y - u.y, N = Math.hypot(DX, DY) || 1;
+          target.knock(
+            DX / N,
+            DY / N,
+            5 * (guard?.receivedKnockbackMultiplier ?? 1),
+            2.4 * (guard?.receivedKnockbackMultiplier ?? 1),
+            u
+          );
           if (target.hp === 0) {
             target.down = target.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
             this.handleUnitDeath(target);
           }
           this.metrics.directHits++;
           this.metrics.basicHits++;
-          this.combat("unit-hit", { attackKind: kind, attackId: action.id, strikeIndex, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point3.x, y: point3.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength });
+          this.combat("unit-hit", {
+            attackKind: kind,
+            attackId: action.id,
+            strikeIndex,
+            unit: target.id,
+            sourceUnit: u.id,
+            damage: damage?.damage || 0,
+            x: point2.x,
+            y: point2.y,
+            z: Math.max(0.15, target.z + 0.25),
+            nx: DX / N,
+            ny: DY / N,
+            strength
+          });
         }
         explodePopcorn(kernel) {
-          if (!kernel?.isPopcorn || kernel.exploded) return false;
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
+          if (!kernel?.isPopcorn || kernel.exploded) {
+            return false;
+          }
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
           try {
-            const queue = [kernel], queued = /* @__PURE__ */ new Set();
+            const QUEUE = [kernel], QUEUED = /* @__PURE__ */ new Set();
             let triggered = false;
-            while (queue.length) {
-              const current = queue.shift();
-              if (!current?.isPopcorn || current.exploded || queued.has(current.id)) continue;
-              queued.add(current.id);
-              current.exploded = true;
-              current.explosionLife = 0;
-              current.hit = true;
+            while (QUEUE.length) {
+              const CURRENT = QUEUE.shift();
+              if (!CURRENT?.isPopcorn || CURRENT.exploded || QUEUED.has(CURRENT.id)) {
+                continue;
+              }
+              QUEUED.add(CURRENT.id);
+              CURRENT.exploded = true;
+              CURRENT.explosionLife = 0;
+              CURRENT.hit = true;
               triggered = true;
-              const config = current.popcornConfig, center = { x: current.x, y: current.y, z: 0 }, range = config.radius;
-              this.effects.push({ kind: "popcorn-explosion", x: current.x, y: current.y, z: 0, life: 0, duration: 0.5, radius: range, owner: current.owner });
-              const owner = this._unitForId(current.owner) || { id: current.owner, ownerId: current.ownerId || "", faction: current.faction, species: current.species, tier: current.tier, x: current.x, y: current.y, z: 0 };
-              const targets = [];
-              if (areOpposingFactions(owner, this.boss) && !current.damagedTargetIds.includes("boss") && Math.hypot(current.x - this.boss.x, current.y - this.boss.y) <= range + this.boss.radius) targets.push(this.boss);
-              for (const target of this.units) if (target.hp > 0 && areOpposingFactions(owner, target) && !current.damagedTargetIds.includes(target.id) && Math.hypot(current.x - target.x, current.y - target.y) <= range + target.radius) targets.push(target);
-              const attackContext = this.createAttackContext(owner, { attackMultiplier: config.damageMultiplier, attackKind: "corn-popcorn-explosion", area: true });
-              for (const target of targets) {
-                const action = { id: current.id, hit: false, attackKind: "corn-popcorn-explosion" };
-                const applied = this.damageCombatTarget(owner, action, target, center, { attackContext });
-                if (applied) current.damagedTargetIds.push(target === this.boss ? "boss" : target.id);
+              const CONFIG_LOCAL = CURRENT.popcornConfig, CENTER = {
+                x: CURRENT.x,
+                y: CURRENT.y,
+                z: 0
+              }, RANGE = CONFIG_LOCAL.radius;
+              this.effects.push({
+                kind: "popcorn-explosion",
+                x: CURRENT.x,
+                y: CURRENT.y,
+                z: 0,
+                life: 0,
+                duration: 0.5,
+                radius: RANGE,
+                owner: CURRENT.owner
+              });
+              const OWNER = this._unitForId(CURRENT.owner) || {
+                id: CURRENT.owner,
+                ownerId: CURRENT.ownerId || "",
+                faction: CURRENT.faction,
+                species: CURRENT.species,
+                tier: CURRENT.tier,
+                x: CURRENT.x,
+                y: CURRENT.y,
+                z: 0
+              };
+              const TARGETS = [];
+              if (areOpposingFactions(OWNER, this.boss) && !CURRENT.damagedTargetIds.includes("boss") && Math.hypot(CURRENT.x - this.boss.x, CURRENT.y - this.boss.y) <= RANGE + this.boss.radius) {
+                TARGETS.push(this.boss);
               }
-              for (const other of this.projectiles) {
-                if (other === current || !other.isPopcorn || other.exploded || !other.landed || queued.has(other.id)) continue;
-                if (Math.hypot(other.x - current.x, other.y - current.y) <= range + other.radius) queue.push(other);
+              for (const TARGET of this.units) {
+                if (TARGET.hp > 0 && areOpposingFactions(OWNER, TARGET) && !CURRENT.damagedTargetIds.includes(TARGET.id) && Math.hypot(CURRENT.x - TARGET.x, CURRENT.y - TARGET.y) <= RANGE + TARGET.radius) {
+                  TARGETS.push(TARGET);
+                }
               }
-              this.combat("popcorn-explosion", { unit: current.owner, ownerId: current.ownerId || "", species: current.species, x: current.x, y: current.y, radius: range });
+              const ATTACK_CONTEXT = this.createAttackContext(OWNER, {
+                attackMultiplier: CONFIG_LOCAL.damageMultiplier,
+                attackKind: "corn-popcorn-explosion",
+                area: true
+              });
+              for (const TARGET of TARGETS) {
+                const ACTION = {
+                  id: CURRENT.id,
+                  hit: false,
+                  attackKind: "corn-popcorn-explosion"
+                };
+                const APPLIED = this.damageCombatTarget(OWNER, ACTION, TARGET, CENTER, {
+                  attackContext: ATTACK_CONTEXT
+                });
+                if (APPLIED) {
+                  CURRENT.damagedTargetIds.push(TARGET === this.boss ? "boss" : TARGET.id);
+                }
+              }
+              for (const OTHER of this.projectiles) {
+                if (OTHER === CURRENT || !OTHER.isPopcorn || OTHER.exploded || !OTHER.landed || QUEUED.has(OTHER.id)) {
+                  continue;
+                }
+                if (Math.hypot(OTHER.x - CURRENT.x, OTHER.y - CURRENT.y) <= RANGE + OTHER.radius) {
+                  QUEUE.push(OTHER);
+                }
+              }
+              this.combat("popcorn-explosion", {
+                unit: CURRENT.owner,
+                ownerId: CURRENT.ownerId || "",
+                species: CURRENT.species,
+                x: CURRENT.x,
+                y: CURRENT.y,
+                radius: RANGE
+              });
             }
             return triggered;
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
         }
         updateProjectiles(dt) {
-          const batch = !this._spatialStepActive;
-          if (batch) this._beginSpatialQueryBatch();
+          const BATCH = !this._spatialStepActive;
+          if (BATCH) {
+            this._beginSpatialQueryBatch();
+          }
           try {
-            for (const p of this.projectiles) {
-              if (p.isPopcorn && p.landed) {
-                if (!p.exploded) p.fuseRemaining = Math.max(0, p.fuseRemaining - dt);
-                else p.explosionLife = (p.explosionLife || 0) + dt;
+            for (const P of this.projectiles) {
+              if (P.isPopcorn && P.landed) {
+                if (!P.exploded) {
+                  P.fuseRemaining = Math.max(0, P.fuseRemaining - dt);
+                } else {
+                  P.explosionLife = (P.explosionLife || 0) + dt;
+                }
                 continue;
               }
-              const old = { x: p.x, y: p.y, z: p.z };
-              p.elapsed += dt;
-              Object.assign(p, Ballistics.sample(p.path, p.elapsed / p.path.duration));
-              const candidate = p.targetId && p.targetId !== "boss" ? this._unitForId(p.targetId) : this.boss;
-              const target = candidate === this.boss || candidate?.hp > 0 ? candidate : null;
-              const hit = target ? ArenaGeometry.sweep(old, p, p.radius, p.height, target) : null;
-              if (p.isPopcorn && (hit || p.elapsed >= p.path.duration)) {
-                if (hit) Object.assign(p, { x: hit.x, y: hit.y, z: 0 });
-                else p.z = 0;
-                p.landed = true;
-                p.fuseRemaining = p.popcornConfig.fuseSeconds;
-                this.effects.push({ kind: "popcorn-kernel-impact", x: p.x, y: p.y, z: 0, life: 0, duration: 0.25, radius: p.radius, owner: p.owner });
-              } else if (hit) {
-                Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
-                const source = this._unitForId(p.owner), impactUnit = source || { id: p.owner, ownerId: p.ownerId || "", faction: p.faction, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
-                this.damageCombatTarget(impactUnit, p, target, hit, { attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
-              } else if (p.elapsed >= p.path.duration) {
-                p.z = 0;
-                this.emit(p.projectileKind === "chestnut-spike" ? "spike-land" : "shell-land", p.x, p.y);
+              const OLD = {
+                x: P.x,
+                y: P.y,
+                z: P.z
+              };
+              P.elapsed += dt;
+              Object.assign(P, BALLISTICS.sample(P.path, P.elapsed / P.path.duration));
+              const CANDIDATE = P.targetId && P.targetId !== "boss" ? this._unitForId(P.targetId) : this.boss;
+              const TARGET = CANDIDATE === this.boss || CANDIDATE?.hp > 0 ? CANDIDATE : null;
+              const HIT = TARGET ? ARENA_GEOMETRY.sweep(OLD, P, P.radius, P.height, TARGET) : null;
+              if (P.isPopcorn && (HIT || P.elapsed >= P.path.duration)) {
+                if (HIT) {
+                  Object.assign(P, {
+                    x: HIT.x,
+                    y: HIT.y,
+                    z: 0
+                  });
+                } else {
+                  P.z = 0;
+                }
+                P.landed = true;
+                P.fuseRemaining = P.popcornConfig.fuseSeconds;
+                this.effects.push({
+                  kind: "popcorn-kernel-impact",
+                  x: P.x,
+                  y: P.y,
+                  z: 0,
+                  life: 0,
+                  duration: 0.25,
+                  radius: P.radius,
+                  owner: P.owner
+                });
+              } else if (HIT) {
+                Object.assign(P, {
+                  x: HIT.x,
+                  y: HIT.y,
+                  z: HIT.z
+                });
+                const SOURCE = this._unitForId(P.owner), IMPACT_UNIT = SOURCE || {
+                  id: P.owner,
+                  ownerId: P.ownerId || "",
+                  faction: P.faction,
+                  species: P.species,
+                  tier: P.tier,
+                  x: P.x,
+                  y: P.y,
+                  z: P.z
+                };
+                this.damageCombatTarget(IMPACT_UNIT, P, TARGET, HIT, {
+                  attackMultiplier: P.attackMultiplier,
+                  attackKind: P.projectileKind || "lob"
+                });
+              } else if (P.elapsed >= P.path.duration) {
+                P.z = 0;
+                this.emit(P.projectileKind === "chestnut-spike" ? "spike-land" : "shell-land", P.x, P.y);
               }
             }
-            for (const p of this.projectiles) {
-              if (!p.isPopcorn || !p.landed || p.exploded) continue;
-              const touching = this.projectiles.some((other) => other !== p && other.isPopcorn && other.landed && !other.exploded && Math.hypot(other.x - p.x, other.y - p.y) <= other.radius + p.radius);
-              if (p.fuseRemaining > 0 && !touching) continue;
-              this.explodePopcorn(p);
+            for (const P of this.projectiles) {
+              if (!P.isPopcorn || !P.landed || P.exploded) {
+                continue;
+              }
+              const TOUCHING = this.projectiles.some(
+                (other) => other !== P && other.isPopcorn && other.landed && !other.exploded && Math.hypot(other.x - P.x, other.y - P.y) <= other.radius + P.radius
+              );
+              if (P.fuseRemaining > 0 && !TOUCHING) {
+                continue;
+              }
+              this.explodePopcorn(P);
             }
-            this.projectiles = this.projectiles.filter((p) => p.isPopcorn ? !p.exploded || p.explosionLife < 0.5 : !p.hit && p.elapsed < p.path.duration);
+            this.projectiles = this.projectiles.filter(
+              (p) => p.isPopcorn ? !p.exploded || p.explosionLife < 0.5 : !p.hit && p.elapsed < p.path.duration
+            );
             this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
           } finally {
-            if (batch) this._endSpatialQueryBatch();
+            if (BATCH) {
+              this._endSpatialQueryBatch();
+            }
           }
         }
         raidUnit(u, dt, enemy = this.boss) {
-          if (!u.dropLanded || !areOpposingFactions(u, enemy)) return;
+          if (!u.dropLanded || !areOpposingFactions(u, enemy)) {
+            return;
+          }
           if (u.hp <= 0) {
             u.down = CONFIG.unit.corpseRecoverySeconds;
             u.ability.interrupt();
             return;
           }
-          if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) return;
-          if (!enemy) return;
-          const b = enemy, spec = abilityProfile(u.species), dx = u.x - b.x, dy = u.y - b.y, n = Math.hypot(dx, dy) || 1, targetId = enemy === this.boss ? "boss" : enemy.id;
-          const behavior = unitCapabilityComposition(u.species), stand = b.radius + spec.range + (u.tier - 1) * 0.12, min = stand - 0.55, max = stand + behavior.outerRangeSlack;
-          if (n > max || behavior.retreatWithinRange && n < min) {
-            const slot = ArenaGeometry.clamp({ x: b.x + dx / n * stand, y: b.y + dy / n * stand }, this.scene, u.radius);
-            this.steer(u, slot.x, slot.y, dt, scaleMoveSpeed(4.1, u));
+          if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
+            return;
+          }
+          if (!enemy) {
+            return;
+          }
+          const B_LOCAL = enemy, SPEC = abilityProfile(u.species), DX = u.x - B_LOCAL.x, DY = u.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1, TARGET_ID = enemy === this.boss ? "boss" : enemy.id;
+          const BEHAVIOR = unitCapabilityComposition(u.species), STAND = B_LOCAL.radius + SPEC.range + (u.tier - 1) * 0.12, MIN = STAND - 0.55, MAX = STAND + BEHAVIOR.outerRangeSlack;
+          if (N > MAX || BEHAVIOR.retreatWithinRange && N < MIN) {
+            const SLOT = ARENA_GEOMETRY.clamp(
+              {
+                x: B_LOCAL.x + DX / N * STAND,
+                y: B_LOCAL.y + DY / N * STAND
+              },
+              this.scene,
+              u.radius
+            );
+            this.steer(u, SLOT.x, SLOT.y, dt, scaleMoveSpeed(4.1, u));
             return;
           }
           u.vx = u.vy = 0;
-          const target = behavior.aimAtCenter ? { id: targetId, x: b.x, y: b.y } : { id: targetId, x: b.x + dx / n * (b.radius + u.radius - 0.16), y: b.y + dy / n * (b.radius + u.radius - 0.16) };
-          if (this.scatterApplies(u) && behavior.attack === "contact" && this.scatterSegmentBlocked(u.x, u.y, target.x, target.y, this.localScatter.radius + u.radius + CONFIG.scatter.bodyMargin)) return;
-          u.ability.begin(this, target);
+          const TARGET = BEHAVIOR.aimAtCenter ? {
+            id: TARGET_ID,
+            x: B_LOCAL.x,
+            y: B_LOCAL.y
+          } : {
+            id: TARGET_ID,
+            x: B_LOCAL.x + DX / N * (B_LOCAL.radius + u.radius - 0.16),
+            y: B_LOCAL.y + DY / N * (B_LOCAL.radius + u.radius - 0.16)
+          };
+          if (this.scatterApplies(u) && BEHAVIOR.attack === "contact" && this.scatterSegmentBlocked(
+            u.x,
+            u.y,
+            TARGET.x,
+            TARGET.y,
+            this.localScatter.radius + u.radius + CONFIG.scatter.bodyMargin
+          )) {
+            return;
+          }
+          u.ability.begin(this, TARGET);
         }
         finish(outcome) {
-          if (!this.running) return;
-          const bossPatternElapsed = this.boss.patternRuntime.active?.phaseElapsed || 0;
+          if (!this.running) {
+            return;
+          }
+          const BOSS_PATTERN_ELAPSED = this.boss.patternRuntime.active?.phaseElapsed || 0;
           this.running = false;
           this.boss.active = false;
           this.encounter.outcome = outcome;
           this.projectiles = [];
           this.boss.patternRuntime.active = null;
-          for (const u of this.units) u.ability.interrupt();
+          for (const U of this.units) {
+            U.ability.interrupt();
+          }
           this.cleanupBattleSummons();
-          this.combat(outcome, { x: this.boss.x, y: this.boss.y, z: 0, bossPatternElapsed });
+          this.combat(outcome, {
+            x: this.boss.x,
+            y: this.boss.y,
+            z: 0,
+            bossPatternElapsed: BOSS_PATTERN_ELAPSED
+          });
         }
         finishFarmBossEvent(outcome) {
-          if (this.scene !== "farm" || this.farmBossEvent.phase !== "fighting") return false;
+          if (this.scene !== "farm" || this.farmBossEvent.phase !== "fighting") {
+            return false;
+          }
           this.cleanupBattleSummons();
           this.boss.active = false;
-          if (this.boss.patternRuntime) this.boss.patternRuntime.active = null;
+          if (this.boss.patternRuntime) {
+            this.boss.patternRuntime.active = null;
+          }
           this.projectiles = [];
-          const encounterId = this.farmBossEvent.encounterId;
-          this.farmBossEvent = { phase: "celebrating", elapsed: 0, outcome, encounterId, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
-          for (const u of this.units) if (u.hp > 0) u.ability.interrupt();
+          const ENCOUNTER_ID = this.farmBossEvent.encounterId;
+          this.farmBossEvent = {
+            phase: "celebrating",
+            elapsed: 0,
+            outcome,
+            encounterId: ENCOUNTER_ID,
+            rewardStatus: "none",
+            rewardChance: 0,
+            rewardRoll: 0,
+            rewardUnitId: 0
+          };
+          for (const U of this.units) {
+            if (U.hp > 0) {
+              U.ability.interrupt();
+            }
+          }
           if (outcome === "victory") {
-            const settlement2 = settleBossKill(this, { encounterId, source: "farm", species: this.boss.species, tier: 1, x: this.boss.x, y: this.boss.y });
-            const reward2 = settlement2.receipt;
-            this.combat("farm-boss-xp", { encounterId, xp: settlement2.xpAwarded, levelsGained: settlement2.levelsGained, pointsAwarded: settlement2.pointsAwarded });
-            this.combat("farm-boss-reward", { acquired: reward2.status === "granted", pending: reward2.status === "pending", species: reward2.species, tier: reward2.tier, chance: reward2.chance, roll: reward2.roll, encounterId });
+            const SETTLEMENT2 = settleBossKill(this, {
+              encounterId: ENCOUNTER_ID,
+              source: "farm",
+              species: this.boss.species,
+              tier: 1,
+              x: this.boss.x,
+              y: this.boss.y
+            });
+            const REWARD2 = SETTLEMENT2.receipt;
+            this.combat("farm-boss-xp", {
+              encounterId: ENCOUNTER_ID,
+              xp: SETTLEMENT2.xpAwarded,
+              levelsGained: SETTLEMENT2.levelsGained,
+              pointsAwarded: SETTLEMENT2.pointsAwarded
+            });
+            this.combat("farm-boss-reward", {
+              acquired: REWARD2.status === "granted",
+              pending: REWARD2.status === "pending",
+              species: REWARD2.species,
+              tier: REWARD2.tier,
+              chance: REWARD2.chance,
+              roll: REWARD2.roll,
+              encounterId: ENCOUNTER_ID
+            });
           }
           this.markProgressChanged();
-          this.combat(outcome === "victory" ? "farm-boss-victory" : "farm-boss-defeat", { x: this.boss.x, y: this.boss.y, z: 0 });
+          this.combat(outcome === "victory" ? "farm-boss-victory" : "farm-boss-defeat", {
+            x: this.boss.x,
+            y: this.boss.y,
+            z: 0
+          });
           return true;
         }
         bossAttackArea(unitRadius = 0) {
           return bossAttackArea(this.boss, unitRadius, this.scene);
         }
         bossWeaponPoint(q = 0) {
-          const b = this.boss, a = b.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[a?.id];
-          if (a?.id === "attack.fan-sweep") {
-            const angle = a.aim - config.sector / 2 + config.sector * clamp3(q, 0, 1);
-            return { x: b.x + Math.cos(angle) * config.reach, y: b.y + Math.sin(angle) * config.reach, z: b.z + 0.2 };
+          const B_LOCAL = this.boss, A_LOCAL = B_LOCAL.patternRuntime?.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[A_LOCAL?.id];
+          if (A_LOCAL?.id === "attack.fan-sweep") {
+            const ANGLE = A_LOCAL.aim - CONFIG_LOCAL.sector / 2 + CONFIG_LOCAL.sector * CLAMP2(q, 0, 1);
+            return {
+              x: B_LOCAL.x + Math.cos(ANGLE) * CONFIG_LOCAL.reach,
+              y: B_LOCAL.y + Math.sin(ANGLE) * CONFIG_LOCAL.reach,
+              z: B_LOCAL.z + 0.2
+            };
           }
-          const reach = b.radius - 0.25 + (CONFIG.boss.sweepReach - b.radius + 0.25) * Math.sin(Math.PI * clamp3(q, 0, 1));
-          return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: b.z + 0.2 };
+          const REACH = B_LOCAL.radius - 0.25 + (CONFIG.boss.sweepReach - B_LOCAL.radius + 0.25) * Math.sin(Math.PI * CLAMP2(q, 0, 1));
+          return {
+            x: B_LOCAL.x + Math.cos(B_LOCAL.angle) * REACH,
+            y: B_LOCAL.y + Math.sin(B_LOCAL.angle) * REACH,
+            z: B_LOCAL.z + 0.2
+          };
         }
         livingBossTargets() {
           return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.dropLanded).sort((a, b) => a.id - b.id);
         }
         nearestBossTarget(living, groundOnly = false) {
-          const b = this.boss;
-          let best = null, distance = Infinity;
-          for (const unit2 of living) {
-            if (groundOnly && unit2.z > 0.1) continue;
-            const next = Math.hypot(unit2.x - b.x, unit2.y - b.y);
-            if (next < distance || next === distance && (!best || unit2.id < best.id)) {
-              best = unit2;
-              distance = next;
+          const B_LOCAL = this.boss;
+          let best = null;
+          let distance = Infinity;
+          for (const UNIT_LOCAL of living) {
+            if (groundOnly && UNIT_LOCAL.z > 0.1) {
+              continue;
+            }
+            const NEXT = Math.hypot(UNIT_LOCAL.x - B_LOCAL.x, UNIT_LOCAL.y - B_LOCAL.y);
+            if (NEXT < distance || NEXT === distance && (!best || UNIT_LOCAL.id < best.id)) {
+              best = UNIT_LOCAL;
+              distance = NEXT;
             }
           }
           return best;
         }
-        bossTargetGrid(living) {
-          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
-          const b = this.boss, range = CONFIG.unit.perceptionRange, extent = range + CONFIG.unit.maxRadius, units = this._bossGridUnits, groundUnits = this._bossGroundUnits;
-          units.length = 0;
-          groundUnits.length = 0;
-          this.unitSpatial.queryAABB(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossQueryCandidates);
-          for (const unit2 of this._bossQueryCandidates) {
-            if (!this._unitIsActive(unit2) || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || unit2.hp <= 0 || !unit2.dropLanded || Math.hypot(unit2.x - b.x, unit2.y - b.y) > range + unit2.radius) continue;
-            units.push(unit2);
-            if (unit2.z <= 0.1) groundUnits.push(unit2);
+        bossTargetGrid(_living) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
+            this._rebuildUnitSpatialIndex(this.units);
           }
-          units.sort((a, c) => a.id - c.id);
-          groundUnits.sort((a, c) => a.id - c.id);
-          return { units, groundUnits, cellSize: 3, range };
+          const B_LOCAL = this.boss, RANGE = CONFIG.unit.perceptionRange, EXTENT = RANGE + CONFIG.unit.maxRadius, UNITS = this._bossGridUnits, GROUND_UNITS = this._bossGroundUnits;
+          UNITS.length = 0;
+          GROUND_UNITS.length = 0;
+          this.unitSpatial.queryAABB(
+            B_LOCAL.x - EXTENT,
+            B_LOCAL.y - EXTENT,
+            B_LOCAL.x + EXTENT,
+            B_LOCAL.y + EXTENT,
+            this._bossQueryCandidates
+          );
+          for (const UNIT_LOCAL of this._bossQueryCandidates) {
+            if (!this._unitIsActive(UNIT_LOCAL) || !hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || Math.hypot(UNIT_LOCAL.x - B_LOCAL.x, UNIT_LOCAL.y - B_LOCAL.y) > RANGE + UNIT_LOCAL.radius) {
+              continue;
+            }
+            UNITS.push(UNIT_LOCAL);
+            if (UNIT_LOCAL.z <= 0.1) {
+              GROUND_UNITS.push(UNIT_LOCAL);
+            }
+          }
+          UNITS.sort((a, c) => a.id - c.id);
+          GROUND_UNITS.sort((a, c) => a.id - c.id);
+          return {
+            units: UNITS,
+            groundUnits: GROUND_UNITS,
+            cellSize: 3,
+            range: RANGE
+          };
         }
         eachBossGridUnit(grid, minX, minY, maxX, maxY, visit, groundOnly = false) {
           this.unitSpatial.queryAABB(minX, minY, maxX, maxY, this._bossQueryCandidates);
-          const b = this.boss;
-          for (const unit2 of this._bossQueryCandidates) {
-            if (!this._unitIsActive(unit2) || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || unit2.hp <= 0 || !unit2.dropLanded || groundOnly && unit2.z > 0.1 || Math.hypot(unit2.x - b.x, unit2.y - b.y) > grid.range + unit2.radius) continue;
-            visit(unit2);
+          const B_LOCAL = this.boss;
+          for (const UNIT_LOCAL of this._bossQueryCandidates) {
+            if (!this._unitIsActive(UNIT_LOCAL) || !hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || groundOnly && UNIT_LOCAL.z > 0.1 || Math.hypot(UNIT_LOCAL.x - B_LOCAL.x, UNIT_LOCAL.y - B_LOCAL.y) > grid.range + UNIT_LOCAL.radius) {
+              continue;
+            }
+            visit(UNIT_LOCAL);
           }
         }
         chargeBossTarget(living, grid = this.bossTargetGrid(living)) {
-          const b = this.boss, config = BOSS_PATTERN_CONFIG["attack.charge"];
-          if (!grid.units.length) return null;
-          const bins = 72, candidates = /* @__PURE__ */ new Map();
-          for (const unit2 of grid.units) {
-            const dx = unit2.x - b.x, dy = unit2.y - b.y, d = Math.hypot(dx, dy), angle = Math.atan2(dy, dx), bin = Math.floor((angle + Math.PI) / (Math.PI * 2) * bins) % bins, current = candidates.get(bin);
-            if (!current || d < current.distance - 1e-9 || Math.abs(d - current.distance) <= 1e-9 && unit2.id < current.unit.id) candidates.set(bin, { unit: unit2, distance: d, angle });
+          const B_LOCAL = this.boss, CONFIG_LOCAL = BOSS_PATTERN_CONFIG["attack.charge"];
+          if (!grid.units.length) {
+            return null;
+          }
+          const BINS = 72, CANDIDATES = /* @__PURE__ */ new Map();
+          for (const UNIT_LOCAL of grid.units) {
+            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY), ANGLE = Math.atan2(DY, DX), BIN = Math.floor((ANGLE + Math.PI) / (Math.PI * 2) * BINS) % BINS, CURRENT = CANDIDATES.get(BIN);
+            if (!CURRENT || D_LOCAL < CURRENT.distance - 1e-9 || Math.abs(D_LOCAL - CURRENT.distance) <= 1e-9 && UNIT_LOCAL.id < CURRENT.unit.id) {
+              CANDIDATES.set(BIN, {
+                unit: UNIT_LOCAL,
+                distance: D_LOCAL,
+                angle: ANGLE
+              });
+            }
           }
           let best = null;
-          for (const candidate of candidates.values()) {
-            const end = ArenaGeometry.clamp({ x: b.x + Math.cos(candidate.angle) * config.reach, y: b.y + Math.sin(candidate.angle) * config.reach }, this.scene, b.radius + 0.25), from = { x: b.x, y: b.y, z: b.z }, to = { x: end.x, y: end.y, z: b.z }, extent = b.radius + CONFIG.unit.maxRadius;
+          for (const CANDIDATE of CANDIDATES.values()) {
+            const END = ARENA_GEOMETRY.clamp(
+              {
+                x: B_LOCAL.x + Math.cos(CANDIDATE.angle) * CONFIG_LOCAL.reach,
+                y: B_LOCAL.y + Math.sin(CANDIDATE.angle) * CONFIG_LOCAL.reach
+              },
+              this.scene,
+              B_LOCAL.radius + 0.25
+            ), FROM = {
+              x: B_LOCAL.x,
+              y: B_LOCAL.y,
+              z: B_LOCAL.z
+            }, TO = {
+              x: END.x,
+              y: END.y,
+              z: B_LOCAL.z
+            }, EXTENT = B_LOCAL.radius + CONFIG.unit.maxRadius;
             let score = 0;
-            this.eachBossGridUnit(grid, Math.min(from.x, to.x) - extent, Math.min(from.y, to.y) - extent, Math.max(from.x, to.x) + extent, Math.max(from.y, to.y) + extent, (unit2) => {
-              if (ArenaGeometry.sweep(from, to, b.radius, b.height, unit2)) score++;
-            });
-            if (score && (!best || score > best.score || score === best.score && (candidate.distance < best.distance - 1e-9 || Math.abs(candidate.distance - best.distance) <= 1e-9 && candidate.unit.id < best.unit.id))) best = { ...candidate, score };
+            this.eachBossGridUnit(
+              grid,
+              Math.min(FROM.x, TO.x) - EXTENT,
+              Math.min(FROM.y, TO.y) - EXTENT,
+              Math.max(FROM.x, TO.x) + EXTENT,
+              Math.max(FROM.y, TO.y) + EXTENT,
+              (unit) => {
+                if (ARENA_GEOMETRY.sweep(FROM, TO, B_LOCAL.radius, B_LOCAL.height, unit)) {
+                  score++;
+                }
+              }
+            );
+            if (score && (!best || score > best.score || score === best.score && (CANDIDATE.distance < best.distance - 1e-9 || Math.abs(CANDIDATE.distance - best.distance) <= 1e-9 && CANDIDATE.unit.id < best.unit.id))) {
+              best = {
+                ...CANDIDATE,
+                score
+              };
+            }
           }
           return best?.unit || null;
         }
         leapBossTarget(living, grid = this.bossTargetGrid(living)) {
-          const b = this.boss, config = BOSS_PATTERN_CONFIG["attack.leap-slam"];
-          if (!grid.units.length) return null;
-          const candidates = /* @__PURE__ */ new Map(), size = grid.cellSize;
-          for (const unit2 of grid.groundUnits) {
-            let dx = unit2.x - b.x, dy = unit2.y - b.y, d = Math.hypot(dx, dy) || 1;
-            if (d > config.reach) {
-              dx *= config.reach / d;
-              dy *= config.reach / d;
+          const B_LOCAL = this.boss, CONFIG_LOCAL = BOSS_PATTERN_CONFIG["attack.leap-slam"];
+          if (!grid.units.length) {
+            return null;
+          }
+          const CANDIDATES = /* @__PURE__ */ new Map(), SIZE = grid.cellSize;
+          for (const UNIT_LOCAL of grid.groundUnits) {
+            let dx = UNIT_LOCAL.x - B_LOCAL.x;
+            let dy = UNIT_LOCAL.y - B_LOCAL.y;
+            const D_LOCAL = Math.hypot(dx, dy) || 1;
+            if (D_LOCAL > CONFIG_LOCAL.reach) {
+              dx *= CONFIG_LOCAL.reach / D_LOCAL;
+              dy *= CONFIG_LOCAL.reach / D_LOCAL;
             }
-            const point3 = ArenaGeometry.clamp({ x: b.x + dx, y: b.y + dy }, this.scene, b.radius + 0.25), cellX = Math.floor(point3.x / size), cellY = Math.floor(point3.y / size), key = (cellY + 64) * 128 + (cellX + 64), distance = Math.hypot(unit2.x - b.x, unit2.y - b.y), current = candidates.get(key);
-            if (!current || distance < current.distance - 1e-9 || Math.abs(distance - current.distance) <= 1e-9 && unit2.id < current.unit.id) candidates.set(key, { unit: unit2, distance, point: point3 });
+            const POINT2 = ARENA_GEOMETRY.clamp(
+              {
+                x: B_LOCAL.x + dx,
+                y: B_LOCAL.y + dy
+              },
+              this.scene,
+              B_LOCAL.radius + 0.25
+            ), CELL_X = Math.floor(POINT2.x / SIZE), CELL_Y = Math.floor(POINT2.y / SIZE), KEY2 = (CELL_Y + 64) * 128 + (CELL_X + 64), DISTANCE = Math.hypot(UNIT_LOCAL.x - B_LOCAL.x, UNIT_LOCAL.y - B_LOCAL.y), CURRENT = CANDIDATES.get(KEY2);
+            if (!CURRENT || DISTANCE < CURRENT.distance - 1e-9 || Math.abs(DISTANCE - CURRENT.distance) <= 1e-9 && UNIT_LOCAL.id < CURRENT.unit.id) {
+              CANDIDATES.set(KEY2, {
+                unit: UNIT_LOCAL,
+                distance: DISTANCE,
+                point: POINT2
+              });
+            }
           }
           let best = null;
-          for (const candidate of candidates.values()) {
+          for (const CANDIDATE of CANDIDATES.values()) {
             let score = 0;
-            const extent = config.landingRadius + CONFIG.unit.maxRadius;
-            this.eachBossGridUnit(grid, candidate.point.x - extent, candidate.point.y - extent, candidate.point.x + extent, candidate.point.y + extent, (unit2) => {
-              if (Math.hypot(unit2.x - candidate.point.x, unit2.y - candidate.point.y) <= config.landingRadius + unit2.radius) score++;
-            }, true);
-            if (score && (!best || score > best.score || score === best.score && (candidate.distance < best.distance - 1e-9 || Math.abs(candidate.distance - best.distance) <= 1e-9 && candidate.unit.id < best.unit.id))) best = { ...candidate, score };
+            const EXTENT = CONFIG_LOCAL.landingRadius + CONFIG.unit.maxRadius;
+            this.eachBossGridUnit(
+              grid,
+              CANDIDATE.point.x - EXTENT,
+              CANDIDATE.point.y - EXTENT,
+              CANDIDATE.point.x + EXTENT,
+              CANDIDATE.point.y + EXTENT,
+              (unit) => {
+                if (Math.hypot(unit.x - CANDIDATE.point.x, unit.y - CANDIDATE.point.y) <= CONFIG_LOCAL.landingRadius + unit.radius) {
+                  score++;
+                }
+              },
+              true
+            );
+            if (score && (!best || score > best.score || score === best.score && (CANDIDATE.distance < best.distance - 1e-9 || Math.abs(CANDIDATE.distance - best.distance) <= 1e-9 && CANDIDATE.unit.id < best.unit.id))) {
+              best = {
+                ...CANDIDATE,
+                score
+              };
+            }
           }
           return best?.unit || null;
         }
         bossPatternTargets(living) {
-          const grid = this.bossTargetGrid(living);
-          return { nearest: this.nearestBossTarget(living, true), charge: this.chargeBossTarget(living, grid), leap: this.leapBossTarget(living, grid) };
+          const GRID = this.bossTargetGrid(living);
+          return {
+            nearest: this.nearestBossTarget(living, true),
+            charge: this.chargeBossTarget(living, GRID),
+            leap: this.leapBossTarget(living, GRID)
+          };
         }
         bossTargetForPattern(id, living) {
-          if (id === "attack.charge") return this.chargeBossTarget(living);
-          if (id === "attack.leap-slam") return this.leapBossTarget(living);
+          if (id === "attack.charge") {
+            return this.chargeBossTarget(living);
+          }
+          if (id === "attack.leap-slam") {
+            return this.leapBossTarget(living);
+          }
           return this.nearestBossTarget(living, true);
         }
         eligibleBossPatterns(living, targets = this.bossPatternTargets(living)) {
-          const runtime = this.boss.patternRuntime, aliveAdds = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0), eligible = [];
-          for (const id of BOSS_PATTERN_IDS) {
-            if (runtime.cooldowns[id] > 1e-9) continue;
-            if (id === "summon.mouth-t1") {
-              if (runtime.encounterElapsed + 1e-9 >= BOSS_PATTERN_CONFIG[id].firstEligible && aliveAdds < CONFIG.boss.maxSummons) eligible.push(id);
+          const RUNTIME = this.boss.patternRuntime, ALIVE_ADDS = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0), ELIGIBLE = [];
+          for (const ID of BOSS_PATTERN_IDS) {
+            if (RUNTIME.cooldowns[ID] > 1e-9) {
               continue;
             }
-            const target = id === "attack.charge" ? targets.charge : id === "attack.leap-slam" ? targets.leap : targets.nearest;
-            if (!target) continue;
-            if (id === "attack.charge" || id === "attack.leap-slam") eligible.push(id);
-            else if (Math.hypot(target.x - this.boss.x, target.y - this.boss.y) <= BOSS_PATTERN_CONFIG[id].reach + target.radius + 1e-9) eligible.push(id);
+            if (ID === "summon.mouth-t1") {
+              if (RUNTIME.encounterElapsed + 1e-9 >= BOSS_PATTERN_CONFIG[ID].firstEligible && ALIVE_ADDS < CONFIG.boss.maxSummons) {
+                ELIGIBLE.push(ID);
+              }
+              continue;
+            }
+            const TARGET = ID === "attack.charge" ? targets.charge : ID === "attack.leap-slam" ? targets.leap : targets.nearest;
+            if (!TARGET) {
+              continue;
+            }
+            if (ID === "attack.charge" || ID === "attack.leap-slam") {
+              ELIGIBLE.push(ID);
+            } else if (Math.hypot(TARGET.x - this.boss.x, TARGET.y - this.boss.y) <= BOSS_PATTERN_CONFIG[ID].reach + TARGET.radius + 1e-9) {
+              ELIGIBLE.push(ID);
+            }
           }
-          return eligible;
+          return ELIGIBLE;
         }
         beginBossPattern(id, target) {
-          const b = this.boss, runtime = b.patternRuntime, config = BOSS_PATTERN_CONFIG[id];
-          if (!config) return false;
-          const targetPoint = target ? { x: target.x, y: target.y, z: target.z || 0 } : null, aim = targetPoint ? Math.atan2(targetPoint.y - b.y, targetPoint.x - b.x) : b.angle;
-          runtime.active = { id, phase: "windup", phaseElapsed: 0, targetId: target?.id ?? 0, target: targetPoint, aim, locked: false, start: { x: b.x, y: b.y, z: b.z }, traveled: 0, hitIds: /* @__PURE__ */ new Set(), volleyCount: 0, released: 0, nextRelease: 0, path: null };
-          b.angle = aim;
-          b.facing = aim;
-          this.combat("boss-pattern-prepare", { patternId: id, attackKind: id, x: b.x, y: b.y, z: b.z, angle: aim, targetId: runtime.active.targetId });
+          const B_LOCAL = this.boss, RUNTIME = B_LOCAL.patternRuntime, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[id];
+          if (!CONFIG_LOCAL) {
+            return false;
+          }
+          const TARGET_POINT = target ? {
+            x: target.x,
+            y: target.y,
+            z: target.z || 0
+          } : null, AIM = TARGET_POINT ? Math.atan2(TARGET_POINT.y - B_LOCAL.y, TARGET_POINT.x - B_LOCAL.x) : B_LOCAL.angle;
+          RUNTIME.active = {
+            id,
+            phase: "windup",
+            phaseElapsed: 0,
+            targetId: target?.id ?? 0,
+            target: TARGET_POINT,
+            aim: AIM,
+            locked: false,
+            start: {
+              x: B_LOCAL.x,
+              y: B_LOCAL.y,
+              z: B_LOCAL.z
+            },
+            traveled: 0,
+            hitIds: /* @__PURE__ */ new Set(),
+            volleyCount: 0,
+            released: 0,
+            nextRelease: 0,
+            path: null
+          };
+          B_LOCAL.angle = AIM;
+          B_LOCAL.facing = AIM;
+          this.combat("boss-pattern-prepare", {
+            patternId: id,
+            attackKind: id,
+            x: B_LOCAL.x,
+            y: B_LOCAL.y,
+            z: B_LOCAL.z,
+            angle: AIM,
+            targetId: RUNTIME.active.targetId
+          });
           return true;
         }
-        hitBossPatternUnit(unit2, patternId, point3, normal = null) {
-          const b = this.boss, action = b.patternRuntime.active, config = BOSS_PATTERN_CONFIG[patternId];
-          if (!action || !config || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit2) || unit2.hp <= 0 || !unit2.dropLanded || action.hitIds.has(unit2.id)) return false;
-          if (config.groundOnly && unit2.z > 0.1) return false;
-          action.hitIds.add(unit2.id);
-          const dx = normal?.x ?? unit2.x - b.x, dy = normal?.y ?? unit2.y - b.y, n = Math.hypot(dx, dy) || 1;
-          const guard = unit2.ability.receiveGuard?.(this), knockbackMultiplier = guard?.receivedKnockbackMultiplier ?? 1;
-          unit2.knock(dx / n, dy / n, config.knockback * knockbackMultiplier, config.lift * knockbackMultiplier, b);
-          if (!hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit2)) return false;
-          applyDamageToTargets(null, [unit2], { rawDamage: b.attackPower * config.damageMultiplier * (guard?.receivedDamageMultiplier ?? 1), sourceKind: "enemy" });
-          this._syncUnitAliveCount(unit2);
-          if (unit2.hp === 0) {
-            unit2.down = unit2.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
-            this.handleUnitDeath(unit2);
+        hitBossPatternUnit(unit, patternId, point2, normal = null) {
+          const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
+          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit) || unit.hp <= 0 || !unit.dropLanded || ACTION.hitIds.has(unit.id)) {
+            return false;
           }
-          const isSweep = patternId === "attack.sweep-360" || patternId === "attack.fan-sweep";
+          if (CONFIG_LOCAL.groundOnly && unit.z > 0.1) {
+            return false;
+          }
+          ACTION.hitIds.add(unit.id);
+          const DX = normal?.x ?? unit.x - B_LOCAL.x, DY = normal?.y ?? unit.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
+          const GUARD = unit.ability.receiveGuard?.(this), KNOCKBACK_MULTIPLIER = GUARD?.receivedKnockbackMultiplier ?? 1;
+          unit.knock(
+            DX / N,
+            DY / N,
+            CONFIG_LOCAL.knockback * KNOCKBACK_MULTIPLIER,
+            CONFIG_LOCAL.lift * KNOCKBACK_MULTIPLIER,
+            B_LOCAL
+          );
+          if (!hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit)) {
+            return false;
+          }
+          applyDamageToTargets(null, [unit], {
+            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (GUARD?.receivedDamageMultiplier ?? 1),
+            sourceKind: "enemy"
+          });
+          this._syncUnitAliveCount(unit);
+          if (unit.hp === 0) {
+            unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
+            this.handleUnitDeath(unit);
+          }
+          const IS_SWEEP = patternId === "attack.sweep-360" || patternId === "attack.fan-sweep";
           this.metrics.directHits++;
-          this.metrics[isSweep ? "sweepHits" : "basicHits"]++;
-          this.combat("unit-hit", { attackKind: patternId, attackId: b.attackId, unit: unit2.id, x: point3.x, y: point3.y, z: Math.max(0.15, unit2.z + 0.25), nx: dx / n, ny: dy / n, strength: config.damageMultiplier });
+          this.metrics[IS_SWEEP ? "sweepHits" : "basicHits"]++;
+          this.combat("unit-hit", {
+            attackKind: patternId,
+            attackId: B_LOCAL.attackId,
+            unit: unit.id,
+            x: point2.x,
+            y: point2.y,
+            z: Math.max(0.15, unit.z + 0.25),
+            nx: DX / N,
+            ny: DY / N,
+            strength: CONFIG_LOCAL.damageMultiplier
+          });
           return true;
         }
         resolveBossSector(action, patternId, range, sector) {
-          const b = this.boss, aim = action.aim, half = sector / 2;
+          const B_LOCAL = this.boss, AIM = action.aim, HALF = sector / 2;
           let hits = 0;
-          const extent = range + CONFIG.unit.maxRadius;
-          for (const unit2 of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-            if (action.hitIds.has(unit2.id) || unit2.z > 0.1) continue;
-            const dx = unit2.x - b.x, dy = unit2.y - b.y, d = Math.hypot(dx, dy);
-            if (d > range + unit2.radius) continue;
-            const offset = Math.atan2(Math.sin(Math.atan2(dy, dx) - aim), Math.cos(Math.atan2(dy, dx) - aim)), pad = d <= unit2.radius ? Math.PI : Math.asin(Math.min(1, unit2.radius / Math.max(d, 1e-6)));
-            if (Math.abs(offset) > half + pad) continue;
-            const n = d || 1;
-            if (this.hitBossPatternUnit(unit2, patternId, { x: unit2.x, y: unit2.y, z: 0 }, { x: dx / n, y: dy / n })) hits++;
+          const EXTENT = range + CONFIG.unit.maxRadius;
+          for (const UNIT_LOCAL of this._collectBossTargets(
+            B_LOCAL.x - EXTENT,
+            B_LOCAL.y - EXTENT,
+            B_LOCAL.x + EXTENT,
+            B_LOCAL.y + EXTENT,
+            this._bossHitCandidates,
+            true
+          )) {
+            if (action.hitIds.has(UNIT_LOCAL.id) || UNIT_LOCAL.z > 0.1) {
+              continue;
+            }
+            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
+            if (D_LOCAL > range + UNIT_LOCAL.radius) {
+              continue;
+            }
+            const OFFSET = Math.atan2(Math.sin(Math.atan2(DY, DX) - AIM), Math.cos(Math.atan2(DY, DX) - AIM)), PAD = D_LOCAL <= UNIT_LOCAL.radius ? Math.PI : Math.asin(Math.min(1, UNIT_LOCAL.radius / Math.max(D_LOCAL, 1e-6)));
+            if (Math.abs(OFFSET) > HALF + PAD) {
+              continue;
+            }
+            const N = D_LOCAL || 1;
+            if (this.hitBossPatternUnit(
+              UNIT_LOCAL,
+              patternId,
+              {
+                x: UNIT_LOCAL.x,
+                y: UNIT_LOCAL.y,
+                z: 0
+              },
+              {
+                x: DX / N,
+                y: DY / N
+              }
+            )) {
+              hits++;
+            }
           }
           return hits;
         }
         resolveBossCircle(action, patternId, range) {
-          const b = this.boss;
+          const B_LOCAL = this.boss;
           let hits = 0;
-          const extent = range + CONFIG.unit.maxRadius;
-          for (const unit2 of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-            if (action.hitIds.has(unit2.id)) continue;
-            const dx = unit2.x - b.x, dy = unit2.y - b.y, d = Math.hypot(dx, dy);
-            if (d > range + unit2.radius) continue;
-            if (this.hitBossPatternUnit(unit2, patternId, { x: b.x + dx / (d || 1) * Math.min(d, range), y: b.y + dy / (d || 1) * Math.min(d, range), z: 0 }, { x: dx / (d || 1), y: dy / (d || 1) })) hits++;
+          const EXTENT = range + CONFIG.unit.maxRadius;
+          for (const UNIT_LOCAL of this._collectBossTargets(
+            B_LOCAL.x - EXTENT,
+            B_LOCAL.y - EXTENT,
+            B_LOCAL.x + EXTENT,
+            B_LOCAL.y + EXTENT,
+            this._bossHitCandidates,
+            true
+          )) {
+            if (action.hitIds.has(UNIT_LOCAL.id)) {
+              continue;
+            }
+            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
+            if (D_LOCAL > range + UNIT_LOCAL.radius) {
+              continue;
+            }
+            if (this.hitBossPatternUnit(
+              UNIT_LOCAL,
+              patternId,
+              {
+                x: B_LOCAL.x + DX / (D_LOCAL || 1) * Math.min(D_LOCAL, range),
+                y: B_LOCAL.y + DY / (D_LOCAL || 1) * Math.min(D_LOCAL, range),
+                z: 0
+              },
+              {
+                x: DX / (D_LOCAL || 1),
+                y: DY / (D_LOCAL || 1)
+              }
+            )) {
+              hits++;
+            }
           }
           return hits;
         }
         sweepBossBody(old, patternId) {
-          const b = this.boss, action = b.patternRuntime.active, extent = b.radius + CONFIG.unit.maxRadius;
-          for (const unit2 of this._collectBossTargets(Math.min(old.x, b.x) - extent, Math.min(old.y, b.y) - extent, Math.max(old.x, b.x) + extent, Math.max(old.y, b.y) + extent, this._bossHitCandidates)) {
-            if (action.hitIds.has(unit2.id)) continue;
-            const hit = ArenaGeometry.sweep(old, b, b.radius, b.height, unit2);
-            if (hit) this.hitBossPatternUnit(unit2, patternId, hit, patternId === "attack.charge" ? { x: Math.cos(b.patternRuntime.active.aim), y: Math.sin(b.patternRuntime.active.aim) } : null);
+          const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, EXTENT = B_LOCAL.radius + CONFIG.unit.maxRadius;
+          for (const UNIT_LOCAL of this._collectBossTargets(
+            Math.min(old.x, B_LOCAL.x) - EXTENT,
+            Math.min(old.y, B_LOCAL.y) - EXTENT,
+            Math.max(old.x, B_LOCAL.x) + EXTENT,
+            Math.max(old.y, B_LOCAL.y) + EXTENT,
+            this._bossHitCandidates
+          )) {
+            if (ACTION.hitIds.has(UNIT_LOCAL.id)) {
+              continue;
+            }
+            const HIT = ARENA_GEOMETRY.sweep(old, B_LOCAL, B_LOCAL.radius, B_LOCAL.height, UNIT_LOCAL);
+            if (HIT) {
+              this.hitBossPatternUnit(
+                UNIT_LOCAL,
+                patternId,
+                HIT,
+                patternId === "attack.charge" ? {
+                  x: Math.cos(B_LOCAL.patternRuntime.active.aim),
+                  y: Math.sin(B_LOCAL.patternRuntime.active.aim)
+                } : null
+              );
+            }
           }
         }
         fanBossWeapon(action, q0, q1) {
-          const config = BOSS_PATTERN_CONFIG[action.id], span = config.sector, fromAngle = action.aim - span / 2 + span * clamp3(q0, 0, 1), toAngle = action.aim - span / 2 + span * clamp3(q1, 0, 1), b = this.boss;
-          const from = { x: b.x + Math.cos(fromAngle) * config.reach, y: b.y + Math.sin(fromAngle) * config.reach, z: 0.2 }, to = { x: b.x + Math.cos(toAngle) * config.reach, y: b.y + Math.sin(toAngle) * config.reach, z: 0.2 };
-          const extent = config.reach + config.width + CONFIG.unit.maxRadius;
-          for (const unit2 of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-            if (action.hitIds.has(unit2.id)) continue;
-            const hit = ArenaGeometry.sweep(from, to, config.width, 1.4, unit2);
-            if (hit) {
-              const dx = unit2.x - b.x, dy = unit2.y - b.y, n = Math.hypot(dx, dy) || 1;
-              this.hitBossPatternUnit(unit2, action.id, hit, { x: dx / n, y: dy / n });
+          const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id], SPAN = CONFIG_LOCAL.sector, FROM_ANGLE = action.aim - SPAN / 2 + SPAN * CLAMP2(q0, 0, 1), TO_ANGLE = action.aim - SPAN / 2 + SPAN * CLAMP2(q1, 0, 1), B_LOCAL = this.boss;
+          const FROM = {
+            x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
+            y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
+            z: 0.2
+          }, TO = {
+            x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
+            y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
+            z: 0.2
+          };
+          const EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
+          for (const UNIT_LOCAL of this._collectBossTargets(
+            B_LOCAL.x - EXTENT,
+            B_LOCAL.y - EXTENT,
+            B_LOCAL.x + EXTENT,
+            B_LOCAL.y + EXTENT,
+            this._bossHitCandidates,
+            true
+          )) {
+            if (action.hitIds.has(UNIT_LOCAL.id)) {
+              continue;
+            }
+            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
+            if (HIT) {
+              const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
+              this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
+                x: DX / N,
+                y: DY / N
+              });
             }
           }
         }
@@ -4115,72 +6916,166 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const b = this.boss, scene = this.scene, radius = unitRadiusForTier(1);
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = UNIT_RADIUS_FOR_TIER(1);
           for (let i = 0; i < 16; i++) {
-            const offset = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, a = angle + offset, candidate = { x: b.x + Math.cos(a) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius, y: b.y + Math.sin(a) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius };
-            if (!ArenaGeometry.inside(candidate, scene, radius)) continue;
-            const blocked = this.units.some((unit2) => unit2.hp > 0 && Math.hypot(unit2.x - candidate.x, unit2.y - candidate.y) < radius + unit2.radius + 0.08) || (action?.landingPoints || []).some((point3) => Math.hypot(point3.x - candidate.x, point3.y - candidate.y) < radius * 2 + 0.08);
-            if (!blocked) return candidate;
+            const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
+              x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
+              y: B_LOCAL.y + Math.sin(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius
+            };
+            if (!ARENA_GEOMETRY.inside(CANDIDATE, SCENE, RADIUS)) {
+              continue;
+            }
+            const BLOCKED = this.units.some(
+              (unit) => unit.hp > 0 && Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS + unit.radius + 0.08
+            ) || (action?.landingPoints || []).some(
+              (point2) => Math.hypot(point2.x - CANDIDATE.x, point2.y - CANDIDATE.y) < RADIUS * 2 + 0.08
+            );
+            if (!BLOCKED) {
+              return CANDIDATE;
+            }
           }
           return null;
         }
         spawnBossMouthUnit(action) {
-          if (action.released >= action.volleyCount) return false;
-          const b = this.boss, landing = this.bossSummonLanding(action.aim, action);
-          if (!landing) return false;
-          const mouth = this.bossMouthPoint(action.released + 1);
-          const id = CONFIG.boss.summonIdBase + ++this.bossSummonSerial, unit2 = new Unit(id, b.species, 1, mouth.x, mouth.y), angle = Math.atan2(landing.y - mouth.y, landing.x - mouth.x), flightSeconds = Math.sqrt(2 * mouth.z / CONFIG.physics.gravity), horizontalDistance = Math.hypot(landing.x - mouth.x, landing.y - mouth.y), drag = 0.8, speed = horizontalDistance * drag / (1 - Math.exp(-drag * flightSeconds));
-          Object.assign(unit2, { ownerId: "boss", farmId: 0, faction: FACTION_CONFIG.ENEMY, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit2.growthDuration, growth: CONFIG.farm.breeding.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
-          this.units.push(unit2);
-          this._trackUnitAdded(unit2);
+          if (action.released >= action.volleyCount) {
+            return false;
+          }
+          const B_LOCAL = this.boss, LANDING = this.bossSummonLanding(action.aim, action);
+          if (!LANDING) {
+            return false;
+          }
+          const MOUTH = this.bossMouthPoint(action.released + 1);
+          const ID = CONFIG.boss.summonIdBase + ++this.bossSummonSerial, UNIT_LOCAL = new UNIT(ID, B_LOCAL.species, 1, MOUTH.x, MOUTH.y), ANGLE = Math.atan2(LANDING.y - MOUTH.y, LANDING.x - MOUTH.x), FLIGHT_SECONDS = Math.sqrt(2 * MOUTH.z / CONFIG.physics.gravity), HORIZONTAL_DISTANCE = Math.hypot(LANDING.x - MOUTH.x, LANDING.y - MOUTH.y), DRAG = 0.8, SPEED = HORIZONTAL_DISTANCE * DRAG / (1 - Math.exp(-DRAG * FLIGHT_SECONDS));
+          Object.assign(UNIT_LOCAL, {
+            ownerId: "boss",
+            farmId: 0,
+            faction: FACTION_CONFIG.ENEMY,
+            home: {
+              x: MOUTH.x,
+              y: MOUTH.y
+            },
+            hp: STATS(1, B_LOCAL.species).maxHp,
+            down: 0,
+            isBattleOnlySummon: true,
+            battleSummonKind: "boss-mouth-t1",
+            battleSummonParentId: 0,
+            battleSummonEncounterId: B_LOCAL.encounterId || 1,
+            countsTowardPermanentRoster: false,
+            eligibleForRaidDeployment: false,
+            breedingEligible: false,
+            mergeEligible: false,
+            canSplit: false,
+            usesPersistentSleep: false,
+            lifetime: "until-death-or-battle-end",
+            growthElapsed: UNIT_LOCAL.growthDuration,
+            growth: CONFIG.farm.breeding.matureMeals,
+            meals: 1,
+            deathSplitHandled: false,
+            splitUsedThisBattle: true,
+            dropLanded: false,
+            z: MOUTH.z,
+            vx: Math.cos(ANGLE) * SPEED,
+            vy: Math.sin(ANGLE) * SPEED,
+            vz: 0,
+            landingRecovery: 0,
+            seed: ID * 2.39996
+          });
+          this.units.push(UNIT_LOCAL);
+          this._trackUnitAdded(UNIT_LOCAL);
           action.released++;
           action.landingPoints ||= [];
-          action.landingPoints.push(landing);
-          this.boss.summonMouth = mouth;
-          this.combat("boss-mouth-spit", { patternId: action.id, unit: id, species: b.species, x: mouth.x, y: mouth.y, z: mouth.z, landingX: landing.x, landingY: landing.y, sequence: action.released });
+          action.landingPoints.push(LANDING);
+          this.boss.summonMouth = MOUTH;
+          this.combat("boss-mouth-spit", {
+            patternId: action.id,
+            unit: ID,
+            species: B_LOCAL.species,
+            x: MOUTH.x,
+            y: MOUTH.y,
+            z: MOUTH.z,
+            landingX: LANDING.x,
+            landingY: LANDING.y,
+            sequence: action.released
+          });
           return true;
         }
         activateBossPattern(action) {
-          const b = this.boss, runtime = b.patternRuntime, config = BOSS_PATTERN_CONFIG[action.id];
+          const B_LOCAL = this.boss, RUNTIME = B_LOCAL.patternRuntime, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id];
           action.phase = "active";
           action.phaseElapsed = 0;
-          b.attackId = ++this.attackSerial;
+          B_LOCAL.attackId = ++this.attackSerial;
           action.hitIds.clear();
-          runtime.cooldowns[action.id] = config.cooldown;
-          this.combat("boss-pattern-launch", { patternId: action.id, attackKind: action.id, attackId: b.attackId, x: b.x, y: b.y, z: b.z, angle: action.aim, targetId: action.targetId || 0 });
+          RUNTIME.cooldowns[action.id] = CONFIG_LOCAL.cooldown;
+          this.combat("boss-pattern-launch", {
+            patternId: action.id,
+            attackKind: action.id,
+            attackId: B_LOCAL.attackId,
+            x: B_LOCAL.x,
+            y: B_LOCAL.y,
+            z: B_LOCAL.z,
+            angle: action.aim,
+            targetId: action.targetId || 0
+          });
           if (action.id === "attack.sweep-360") {
-            this.resolveBossCircle(action, action.id, config.reach);
+            this.resolveBossCircle(action, action.id, CONFIG_LOCAL.reach);
             this.enterBossPatternRecovery(action);
             return;
           }
           if (action.id === "attack.front-slam") {
-            this.resolveBossSector(action, action.id, config.reach, config.sector);
+            this.resolveBossSector(action, action.id, CONFIG_LOCAL.reach, CONFIG_LOCAL.sector);
             this.enterBossPatternRecovery(action);
             return;
           }
           if (action.id === "attack.charge") {
-            action.start = { x: b.x, y: b.y, z: b.z };
+            action.start = {
+              x: B_LOCAL.x,
+              y: B_LOCAL.y,
+              z: B_LOCAL.z
+            };
             action.traveled = 0;
             return;
           }
           if (action.id === "attack.leap-slam") {
-            let x = action.target?.x ?? b.x, y = action.target?.y ?? b.y, dx = x - b.x, dy = y - b.y, d = Math.hypot(dx, dy);
-            if (d > config.reach) {
-              x = b.x + dx / d * config.reach;
-              y = b.y + dy / d * config.reach;
+            let x = action.target?.x ?? B_LOCAL.x;
+            let y = action.target?.y ?? B_LOCAL.y;
+            const DX = x - B_LOCAL.x;
+            const DY = y - B_LOCAL.y;
+            const D_LOCAL = Math.hypot(DX, DY);
+            if (D_LOCAL > CONFIG_LOCAL.reach) {
+              x = B_LOCAL.x + DX / D_LOCAL * CONFIG_LOCAL.reach;
+              y = B_LOCAL.y + DY / D_LOCAL * CONFIG_LOCAL.reach;
             }
-            const land = ArenaGeometry.clamp({ x, y }, this.scene, b.radius + 0.25);
-            action.target = { x: land.x, y: land.y, z: 0 };
-            action.path = Ballistics.create({ x: b.x, y: b.y, z: 0 }, action.target, "leap");
+            const LAND = ARENA_GEOMETRY.clamp(
+              {
+                x,
+                y
+              },
+              this.scene,
+              B_LOCAL.radius + 0.25
+            );
+            action.target = {
+              x: LAND.x,
+              y: LAND.y,
+              z: 0
+            };
+            action.path = BALLISTICS.create(
+              {
+                x: B_LOCAL.x,
+                y: B_LOCAL.y,
+                z: 0
+              },
+              action.target,
+              "leap"
+            );
             return;
           }
           if (action.id === "summon.mouth-t1") {
-            runtime.cooldowns[action.id] = config.cooldown;
-            const alive = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0);
-            action.volleyCount = Math.min(config.volleyCount, Math.max(0, CONFIG.boss.maxSummons - alive));
+            RUNTIME.cooldowns[action.id] = CONFIG_LOCAL.cooldown;
+            const ALIVE = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0);
+            action.volleyCount = Math.min(CONFIG_LOCAL.volleyCount, Math.max(0, CONFIG.boss.maxSummons - ALIVE));
             action.nextRelease = 0;
             this.spawnBossMouthUnit(action);
-            action.nextRelease = config.releaseInterval;
+            action.nextRelease = CONFIG_LOCAL.releaseInterval;
             return;
           }
         }
@@ -4189,115 +7084,201 @@
           action.phaseElapsed = 0;
         }
         updateBossPattern(dt, living) {
-          const b = this.boss, runtime = b.patternRuntime;
-          runtime.encounterElapsed += dt;
-          for (const id of BOSS_PATTERN_IDS) runtime.cooldowns[id] = Math.max(0, (runtime.cooldowns[id] || 0) - dt);
-          let action = runtime.active;
+          const B_LOCAL = this.boss, RUNTIME = B_LOCAL.patternRuntime;
+          RUNTIME.encounterElapsed += dt;
+          for (const ID of BOSS_PATTERN_IDS) {
+            RUNTIME.cooldowns[ID] = Math.max(0, (RUNTIME.cooldowns[ID] || 0) - dt);
+          }
+          let action = RUNTIME.active;
           if (!action) {
-            const targets = this.bossPatternTargets(living), target = targets.nearest || this.nearestBossTarget(living), eligible = this.eligibleBossPatterns(living, targets), selected = chooseBossPattern(runtime, eligible, () => this.random());
-            if (selected) {
-              const pick = selected === "summon.mouth-t1" ? target : selected === "attack.charge" ? targets.charge : selected === "attack.leap-slam" ? targets.leap : targets.nearest;
-              this.beginBossPattern(selected, pick);
-              action = runtime.active;
-              if (selected === "summon.mouth-t1") runtime.cooldowns[selected] = BOSS_PATTERN_CONFIG[selected].cooldown;
+            const TARGETS = this.bossPatternTargets(living), TARGET = TARGETS.nearest || this.nearestBossTarget(living), ELIGIBLE = this.eligibleBossPatterns(living, TARGETS), SELECTED = chooseBossPattern(RUNTIME, ELIGIBLE, () => this.random());
+            if (SELECTED) {
+              const PICK = SELECTED === "summon.mouth-t1" ? TARGET : SELECTED === "attack.charge" ? TARGETS.charge : SELECTED === "attack.leap-slam" ? TARGETS.leap : TARGETS.nearest;
+              this.beginBossPattern(SELECTED, PICK);
+              action = RUNTIME.active;
+              if (SELECTED === "summon.mouth-t1") {
+                RUNTIME.cooldowns[SELECTED] = BOSS_PATTERN_CONFIG[SELECTED].cooldown;
+              }
             } else {
-              if (target) {
-                const dx = target.x - b.x, dy = target.y - b.y, d = Math.hypot(dx, dy) || 1;
-                b.angle = b.facing = Math.atan2(dy, dx);
-                const contact2 = b.radius + target.radius + 0.2;
-                if (d > contact2) {
-                  const amount = Math.min(b.moveSpeed * dt, d - contact2), next = { x: b.x + dx / d * amount, y: b.y + dy / d * amount }, bounded = ArenaGeometry.clamp(next, this.scene, b.radius + 0.25), old = { x: b.x, y: b.y, z: b.z };
-                  b.x = bounded.x;
-                  b.y = bounded.y;
-                  b.travel += Math.hypot(b.x - old.x, b.y - old.y);
+              if (TARGET) {
+                const DX = TARGET.x - B_LOCAL.x, DY = TARGET.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY) || 1;
+                B_LOCAL.angle = B_LOCAL.facing = Math.atan2(DY, DX);
+                const CONTACT = B_LOCAL.radius + TARGET.radius + 0.2;
+                if (D_LOCAL > CONTACT) {
+                  const AMOUNT = Math.min(B_LOCAL.moveSpeed * dt, D_LOCAL - CONTACT), NEXT = {
+                    x: B_LOCAL.x + DX / D_LOCAL * AMOUNT,
+                    y: B_LOCAL.y + DY / D_LOCAL * AMOUNT
+                  }, BOUNDED = ARENA_GEOMETRY.clamp(NEXT, this.scene, B_LOCAL.radius + 0.25), OLD = {
+                    x: B_LOCAL.x,
+                    y: B_LOCAL.y,
+                    z: B_LOCAL.z
+                  };
+                  B_LOCAL.x = BOUNDED.x;
+                  B_LOCAL.y = BOUNDED.y;
+                  B_LOCAL.travel += Math.hypot(B_LOCAL.x - OLD.x, B_LOCAL.y - OLD.y);
                 }
               }
               return;
             }
           }
-          if (!action) return;
-          action.phaseElapsed += dt;
-          if (action.phase === "windup") {
-            const config2 = BOSS_PATTERN_CONFIG[action.id], remaining = config2.windup - action.phaseElapsed;
-            if (!action.locked) {
-              const target = this.bossTargetForPattern(action.id, living);
-              if (target) {
-                action.targetId = target.id;
-                action.target = { x: target.x, y: target.y, z: target.z || 0 };
-                const desired = Math.atan2(target.y - b.y, target.x - b.x), delta = Math.atan2(Math.sin(desired - action.aim), Math.cos(desired - action.aim));
-                action.aim += clamp3(delta, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
-                b.angle = b.facing = action.aim;
-              }
-              if (remaining <= 0.25 + 1e-9) {
-                action.locked = true;
-                this.combat("boss-pattern-lock", { patternId: action.id, attackId: b.attackId + 1, targetId: action.targetId || 0, x: action.target?.x ?? b.x, y: action.target?.y ?? b.y, angle: action.aim });
-              }
-            }
-            if (action.phaseElapsed >= config2.windup - 1e-9) this.activateBossPattern(action);
+          if (!action) {
             return;
           }
-          const config = BOSS_PATTERN_CONFIG[action.id];
+          action.phaseElapsed += dt;
+          if (action.phase === "windup") {
+            const CONFIG_LOCAL2 = BOSS_PATTERN_CONFIG[action.id], REMAINING = CONFIG_LOCAL2.windup - action.phaseElapsed;
+            if (!action.locked) {
+              const TARGET = this.bossTargetForPattern(action.id, living);
+              if (TARGET) {
+                action.targetId = TARGET.id;
+                action.target = {
+                  x: TARGET.x,
+                  y: TARGET.y,
+                  z: TARGET.z || 0
+                };
+                const DESIRED = Math.atan2(TARGET.y - B_LOCAL.y, TARGET.x - B_LOCAL.x), DELTA = Math.atan2(Math.sin(DESIRED - action.aim), Math.cos(DESIRED - action.aim));
+                action.aim += CLAMP2(DELTA, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
+                B_LOCAL.angle = B_LOCAL.facing = action.aim;
+              }
+              if (REMAINING <= 0.25 + 1e-9) {
+                action.locked = true;
+                this.combat("boss-pattern-lock", {
+                  patternId: action.id,
+                  attackId: B_LOCAL.attackId + 1,
+                  targetId: action.targetId || 0,
+                  x: action.target?.x ?? B_LOCAL.x,
+                  y: action.target?.y ?? B_LOCAL.y,
+                  angle: action.aim
+                });
+              }
+            }
+            if (action.phaseElapsed >= CONFIG_LOCAL2.windup - 1e-9) {
+              this.activateBossPattern(action);
+            }
+            return;
+          }
+          const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id];
           if (action.phase === "active") {
             if (action.id === "attack.charge") {
-              const direction = { x: Math.cos(action.aim), y: Math.sin(action.aim) }, remaining = Math.max(0, config.reach - action.traveled), distance = Math.min(config.speed * dt, remaining), old = { x: b.x, y: b.y, z: b.z }, candidate = { x: b.x + direction.x * distance, y: b.y + direction.y * distance }, bounded = ArenaGeometry.clamp(candidate, this.scene, b.radius + 0.25), hitBoundary = Math.hypot(candidate.x - bounded.x, candidate.y - bounded.y) > 1e-8;
-              b.x = bounded.x;
-              b.y = bounded.y;
-              const moved = Math.hypot(b.x - old.x, b.y - old.y);
-              action.traveled += moved;
-              b.travel += moved;
-              this.sweepBossBody(old, action.id);
-              if (hitBoundary || action.traveled >= config.reach - 1e-8 || moved < 1e-8) this.enterBossPatternRecovery(action);
+              const DIRECTION = {
+                x: Math.cos(action.aim),
+                y: Math.sin(action.aim)
+              }, REMAINING = Math.max(0, CONFIG_LOCAL.reach - action.traveled), DISTANCE = Math.min(CONFIG_LOCAL.speed * dt, REMAINING), OLD = {
+                x: B_LOCAL.x,
+                y: B_LOCAL.y,
+                z: B_LOCAL.z
+              }, CANDIDATE = {
+                x: B_LOCAL.x + DIRECTION.x * DISTANCE,
+                y: B_LOCAL.y + DIRECTION.y * DISTANCE
+              }, BOUNDED = ARENA_GEOMETRY.clamp(CANDIDATE, this.scene, B_LOCAL.radius + 0.25), HIT_BOUNDARY = Math.hypot(CANDIDATE.x - BOUNDED.x, CANDIDATE.y - BOUNDED.y) > 1e-8;
+              B_LOCAL.x = BOUNDED.x;
+              B_LOCAL.y = BOUNDED.y;
+              const MOVED = Math.hypot(B_LOCAL.x - OLD.x, B_LOCAL.y - OLD.y);
+              action.traveled += MOVED;
+              B_LOCAL.travel += MOVED;
+              this.sweepBossBody(OLD, action.id);
+              if (HIT_BOUNDARY || action.traveled >= CONFIG_LOCAL.reach - 1e-8 || MOVED < 1e-8) {
+                this.enterBossPatternRecovery(action);
+              }
             } else if (action.id === "attack.leap-slam") {
-              const old = { x: b.x, y: b.y, z: b.z }, p = Ballistics.sample(action.path, action.phaseElapsed / action.path.duration);
-              b.x = p.x;
-              b.y = p.y;
-              b.z = p.z;
-              this.sweepBossBody(old, action.id);
+              const OLD = {
+                x: B_LOCAL.x,
+                y: B_LOCAL.y,
+                z: B_LOCAL.z
+              }, P = BALLISTICS.sample(action.path, action.phaseElapsed / action.path.duration);
+              B_LOCAL.x = P.x;
+              B_LOCAL.y = P.y;
+              B_LOCAL.z = P.z;
+              this.sweepBossBody(OLD, action.id);
               if (action.phaseElapsed >= action.path.duration) {
-                b.x = action.path.to.x;
-                b.y = action.path.to.y;
-                b.z = 0;
-                const extent = config.landingRadius + CONFIG.unit.maxRadius;
-                for (const unit2 of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
-                  if (action.hitIds.has(unit2.id)) continue;
-                  const dx = unit2.x - b.x, dy = unit2.y - b.y, d = Math.hypot(dx, dy);
-                  if (d <= config.landingRadius + unit2.radius) this.hitBossPatternUnit(unit2, action.id, { x: unit2.x, y: unit2.y, z: 0 }, { x: dx / (d || 1), y: dy / (d || 1) });
+                B_LOCAL.x = action.path.to.x;
+                B_LOCAL.y = action.path.to.y;
+                B_LOCAL.z = 0;
+                const EXTENT = CONFIG_LOCAL.landingRadius + CONFIG.unit.maxRadius;
+                for (const UNIT_LOCAL of this._collectBossTargets(
+                  B_LOCAL.x - EXTENT,
+                  B_LOCAL.y - EXTENT,
+                  B_LOCAL.x + EXTENT,
+                  B_LOCAL.y + EXTENT,
+                  this._bossHitCandidates,
+                  true
+                )) {
+                  if (action.hitIds.has(UNIT_LOCAL.id)) {
+                    continue;
+                  }
+                  const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
+                  if (D_LOCAL <= CONFIG_LOCAL.landingRadius + UNIT_LOCAL.radius) {
+                    this.hitBossPatternUnit(
+                      UNIT_LOCAL,
+                      action.id,
+                      {
+                        x: UNIT_LOCAL.x,
+                        y: UNIT_LOCAL.y,
+                        z: 0
+                      },
+                      {
+                        x: DX / (D_LOCAL || 1),
+                        y: DY / (D_LOCAL || 1)
+                      }
+                    );
+                  }
                 }
-                this.combat("boss-pattern-land", { patternId: action.id, attackId: b.attackId, x: b.x, y: b.y, z: 0 });
+                this.combat("boss-pattern-land", {
+                  patternId: action.id,
+                  attackId: B_LOCAL.attackId,
+                  x: B_LOCAL.x,
+                  y: B_LOCAL.y,
+                  z: 0
+                });
                 this.enterBossPatternRecovery(action);
               }
             } else if (action.id === "attack.fan-sweep") {
-              const q0 = Math.max(0, (action.phaseElapsed - dt) / config.active), q1 = Math.min(1, action.phaseElapsed / config.active);
-              this.fanBossWeapon(action, q0, q1);
-              if (action.phaseElapsed >= config.active) this.enterBossPatternRecovery(action);
+              const Q0 = Math.max(0, (action.phaseElapsed - dt) / CONFIG_LOCAL.active), Q1 = Math.min(1, action.phaseElapsed / CONFIG_LOCAL.active);
+              this.fanBossWeapon(action, Q0, Q1);
+              if (action.phaseElapsed >= CONFIG_LOCAL.active) {
+                this.enterBossPatternRecovery(action);
+              }
             } else if (action.id === "summon.mouth-t1") {
               while (action.released < action.volleyCount && action.phaseElapsed + 1e-9 >= action.nextRelease) {
-                if (!this.spawnBossMouthUnit(action)) break;
-                action.nextRelease += config.releaseInterval;
+                if (!this.spawnBossMouthUnit(action)) {
+                  break;
+                }
+                action.nextRelease += CONFIG_LOCAL.releaseInterval;
               }
-              if (action.phaseElapsed >= config.active) this.enterBossPatternRecovery(action);
+              if (action.phaseElapsed >= CONFIG_LOCAL.active) {
+                this.enterBossPatternRecovery(action);
+              }
             }
             return;
           }
-          if (action.phase === "recover" && action.phaseElapsed >= config.recover) runtime.active = null;
+          if (action.phase === "recover" && action.phaseElapsed >= CONFIG_LOCAL.recover) {
+            RUNTIME.active = null;
+          }
         }
         updateBoss(dt) {
-          const b = this.boss;
+          const B_LOCAL = this.boss;
           if (this.scene === "farm" && this.farmBossEvent.phase !== "idle") {
-            const event = this.farmBossEvent;
-            if (event.phase === "dropping") {
-              event.elapsed += dt;
-              b.z = Math.max(0, CONFIG.raid.dropHeight - 0.5 * CONFIG.physics.gravity * event.elapsed * event.elapsed);
-              if (b.z === 0) {
-                event.phase = "fighting";
-                event.elapsed = 0;
-                this.combat("farm-boss-land", { x: b.x, y: b.y, z: 0 });
+            const EVENT = this.farmBossEvent;
+            if (EVENT.phase === "dropping") {
+              EVENT.elapsed += dt;
+              B_LOCAL.z = Math.max(
+                0,
+                CONFIG.raid.dropHeight - 0.5 * CONFIG.physics.gravity * EVENT.elapsed * EVENT.elapsed
+              );
+              if (B_LOCAL.z === 0) {
+                EVENT.phase = "fighting";
+                EVENT.elapsed = 0;
+                this.combat("farm-boss-land", {
+                  x: B_LOCAL.x,
+                  y: B_LOCAL.y,
+                  z: 0
+                });
               }
               return;
             }
-            if (event.phase === "fighting") {
-              event.elapsed += dt;
-              if (b.hp <= 0) {
+            if (EVENT.phase === "fighting") {
+              EVENT.elapsed += dt;
+              if (B_LOCAL.hp <= 0) {
                 this.finishFarmBossEvent("victory");
                 return;
               }
@@ -4305,29 +7286,41 @@
                 this.finishFarmBossEvent("defeat");
                 return;
               }
-            } else if (event.phase === "celebrating") {
-              event.elapsed += dt;
-              const duration = event.outcome === "defeat" ? CONFIG.farm.bossEvent.celebrationSeconds : CONFIG.farm.bossEvent.fadeSeconds;
-              if (event.elapsed >= duration) {
-                event.phase = "fading";
-                event.elapsed = 0;
+            } else if (EVENT.phase === "celebrating") {
+              EVENT.elapsed += dt;
+              const DURATION = EVENT.outcome === "defeat" ? CONFIG.farm.bossEvent.celebrationSeconds : CONFIG.farm.bossEvent.fadeSeconds;
+              if (EVENT.elapsed >= DURATION) {
+                EVENT.phase = "fading";
+                EVENT.elapsed = 0;
               }
               return;
-            } else if (event.phase === "fading") {
-              event.elapsed += dt;
-              if (event.elapsed >= CONFIG.farm.bossEvent.fadeSeconds) {
-                this.farmBossEvent = { phase: "idle", elapsed: 0, outcome: "idle", encounterId: 0, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
+            } else if (EVENT.phase === "fading") {
+              EVENT.elapsed += dt;
+              if (EVENT.elapsed >= CONFIG.farm.bossEvent.fadeSeconds) {
+                this.farmBossEvent = {
+                  phase: "idle",
+                  elapsed: 0,
+                  outcome: "idle",
+                  encounterId: 0,
+                  rewardStatus: "none",
+                  rewardChance: 0,
+                  rewardRoll: 0,
+                  rewardUnitId: 0
+                };
                 this.boss = this.createBoss();
               }
               return;
             }
           }
-          if (!b.active) return;
-          if (b.hp <= 0) {
-            if (this.running) this.finish("victory");
-            else {
-              b.active = false;
-              b.patternRuntime.active = null;
+          if (!B_LOCAL.active) {
+            return;
+          }
+          if (B_LOCAL.hp <= 0) {
+            if (this.running) {
+              this.finish("victory");
+            } else {
+              B_LOCAL.active = false;
+              B_LOCAL.patternRuntime.active = null;
             }
             return;
           }
@@ -4335,9 +7328,11 @@
             this.finish("defeat");
             return;
           }
-          const living = this.livingBossTargets();
-          if (!living.length) return;
-          this.updateBossPattern(dt, living);
+          const LIVING = this.livingBossTargets();
+          if (!LIVING.length) {
+            return;
+          }
+          this.updateBossPattern(dt, LIVING);
         }
       };
     }
@@ -4345,191 +7340,396 @@
 
   // src/farm-progress.js
   function keys(value, required, optional = []) {
-    assert(value && typeof value === "object" && !Array.isArray(value));
-    assert(required.every((key) => Object.hasOwn(value, key)));
-    assert(Object.keys(value).every((key) => required.includes(key) || optional.includes(key)));
+    ASSERT(value && typeof value === "object" && !Array.isArray(value));
+    ASSERT(required.every((key) => Object.hasOwn(value, key)));
+    ASSERT(Object.keys(value).every((key) => required.includes(key) || optional.includes(key)));
   }
   function copyPlayer(player) {
-    return { schemaVersion: player.schemaVersion, level: player.level, experience: player.experience, availablePoints: player.availablePoints, farmUpgrades: { ...player.farmUpgrades }, abilities: Object.fromEntries(Object.entries(player.abilities).map(([id, build]) => [id, { rootUnlocked: build.rootUnlocked, powerLevel: build.powerLevel, gradeLevel: build.gradeLevel }])), processedBossKillReceipts: [...player.processedBossKillReceipts] };
+    return {
+      schemaVersion: player.schemaVersion,
+      level: player.level,
+      experience: player.experience,
+      availablePoints: player.availablePoints,
+      farmUpgrades: {
+        ...player.farmUpgrades
+      },
+      abilities: Object.fromEntries(
+        Object.entries(player.abilities).map(([id, build]) => [
+          id,
+          {
+            rootUnlocked: build.rootUnlocked,
+            powerLevel: build.powerLevel,
+            gradeLevel: build.gradeLevel
+          }
+        ])
+      ),
+      processedBossKillReceipts: [...player.processedBossKillReceipts]
+    };
   }
-  function pendingReward(reward2) {
-    const rolls = reward2.drops ? reward2.drops.filter((drop2) => drop2.status === "pending").map((drop2) => drop2.roll) : [reward2.roll];
-    const result = { encounterId: reward2.encounterId, source: reward2.source, receiptKey: reward2.receiptKey || `${reward2.source}:${reward2.encounterId}`, species: reward2.species, tier: reward2.tier, chance: reward2.chance, rolls };
-    for (const key of rewardExtras) if (reward2[key] !== void 0) result[key] = reward2[key];
-    return result;
+  function pendingReward(reward) {
+    const ROLLS = reward.drops ? reward.drops.filter((drop) => drop.status === "pending").map((drop) => drop.roll) : [reward.roll];
+    const RESULT = {
+      encounterId: reward.encounterId,
+      source: reward.source,
+      receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
+      species: reward.species,
+      tier: reward.tier,
+      chance: reward.chance,
+      rolls: ROLLS
+    };
+    for (const KEY2 of REWARD_EXTRAS) {
+      if (reward[KEY2] !== void 0) {
+        RESULT[KEY2] = reward[KEY2];
+      }
+    }
+    return RESULT;
   }
-  function cohortValues(unit2) {
-    return [unit2.species, unit2.tier, unit2.meals >= 1, Math.max(0, unit2.growthDuration - unit2.growthElapsed), unit2.growthDuration, unit2.cooldown, unit2.cooldownDuration, unit2.hp <= 0 ? unit2.down : 0];
+  function cohortValues(unit) {
+    return [
+      unit.species,
+      unit.tier,
+      unit.meals >= 1,
+      Math.max(0, unit.growthDuration - unit.growthElapsed),
+      unit.growthDuration,
+      unit.cooldown,
+      unit.cooldownDuration,
+      unit.hp <= 0 ? unit.down : 0
+    ];
   }
   function captureFarmProgress(world) {
-    assert(world.scene === "farm");
-    const groups = /* @__PURE__ */ new Map();
-    for (const unit2 of world.units) {
-      if (unit2.isBattleOnlySummon || unit2.countsTowardPermanentRoster === false || unit2.faction !== "player") continue;
-      const [species, tier, fed, growth, duration, cooldown, cooldownDuration, rest] = cohortValues(unit2);
-      const key = [species, tier, Number(fed), growth, growth ? duration : 0, cooldown, cooldown ? cooldownDuration : 0, rest].join(":");
-      const previous = groups.get(key);
-      if (previous) {
-        previous.count++;
+    ASSERT(world.scene === "farm");
+    const GROUPS = /* @__PURE__ */ new Map();
+    for (const UNIT3 of world.units) {
+      if (UNIT3.isBattleOnlySummon || UNIT3.countsTowardPermanentRoster === false || UNIT3.faction !== "player") {
         continue;
       }
-      const row = { species, tier, count: 1 };
-      if (fed) row.fed = true;
-      if (growth > 0) row.growth = { remaining: growth, duration };
-      if (cooldown > 0) row.cooldown = { remaining: cooldown, duration: cooldownDuration };
-      if (rest > 0) row.rest = rest;
-      groups.set(key, row);
+      const [SPECIES, TIER, FED, GROWTH, DURATION, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT3);
+      const KEY2 = [
+        SPECIES,
+        TIER,
+        Number(FED),
+        GROWTH,
+        GROWTH ? DURATION : 0,
+        COOLDOWN,
+        COOLDOWN ? COOLDOWN_DURATION : 0,
+        REST
+      ].join(":");
+      const PREVIOUS = GROUPS.get(KEY2);
+      if (PREVIOUS) {
+        PREVIOUS.count++;
+        continue;
+      }
+      const ROW = {
+        species: SPECIES,
+        tier: TIER,
+        count: 1
+      };
+      if (FED) {
+        ROW.fed = true;
+      }
+      if (GROWTH > 0) {
+        ROW.growth = {
+          remaining: GROWTH,
+          duration: DURATION
+        };
+      }
+      if (COOLDOWN > 0) {
+        ROW.cooldown = {
+          remaining: COOLDOWN,
+          duration: COOLDOWN_DURATION
+        };
+      }
+      if (REST > 0) {
+        ROW.rest = REST;
+      }
+      GROUPS.set(KEY2, ROW);
     }
-    const roster2 = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row), stage = world.farmBossProgress;
+    const ROSTER2 = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row), STAGE = world.farmBossProgress;
     return {
       seed: world.seed,
       rngState: world.rng.state,
       mode: world.mode,
       player: copyPlayer(world.playerProgression),
-      roster: roster2,
-      food: { count: world.food.length, remainder: world.foodTaps.remainder, produced: world.foodTaps.produced },
-      totals: { births: world.metrics.births, merges: world.metrics.merges },
-      bossStages: { currentStage: stage.currentStage, encounterSeed: stage.encounterSeed, encounterEpoch: stage.encounterEpoch, nextSelectionId: stage.nextSelectionId, selections: stage.selections.map(({ stage: stage2, species, selectionId }) => ({ stage: stage2, species, selectionId })) },
-      ledger: { boss: { nextEncounterId: world.nextBossEncounterId, settledThrough: { ...world.bossRewardWatermarks }, pendingRewards: world.bossRewardReceipts.filter((reward2) => reward2.status === "pending").map(pendingReward) }, raid: { nextRunSequence: world.nextRaidRunSequence, activeRun: world.activeRaidRunSequence === null ? null : { sequence: world.activeRaidRunSequence, sessionId: world.activeRaidSessionId }, settledThrough: world.raidSettlementWatermark } }
+      roster: ROSTER2,
+      food: {
+        count: world.food.length,
+        remainder: world.foodTaps.remainder,
+        produced: world.foodTaps.produced
+      },
+      totals: {
+        births: world.metrics.births,
+        merges: world.metrics.merges
+      },
+      bossStages: {
+        currentStage: STAGE.currentStage,
+        encounterSeed: STAGE.encounterSeed,
+        encounterEpoch: STAGE.encounterEpoch,
+        nextSelectionId: STAGE.nextSelectionId,
+        selections: STAGE.selections.map(({ stage, species, selectionId }) => ({
+          stage,
+          species,
+          selectionId
+        }))
+      },
+      ledger: {
+        boss: {
+          nextEncounterId: world.nextBossEncounterId,
+          settledThrough: {
+            ...world.bossRewardWatermarks
+          },
+          pendingRewards: world.bossRewardReceipts.filter((reward) => reward.status === "pending").map(pendingReward)
+        },
+        raid: {
+          nextRunSequence: world.nextRaidRunSequence,
+          activeRun: world.activeRaidRunSequence === null ? null : {
+            sequence: world.activeRaidRunSequence,
+            sessionId: world.activeRaidSessionId
+          },
+          settledThrough: world.raidSettlementWatermark
+        }
+      }
     };
   }
   function validateFarmProgress(data) {
     keys(data, ["seed", "rngState", "mode", "player", "roster", "food", "totals", "bossStages", "ledger"]);
-    assert(integer(data.seed, 0, 4294967295) && integer(data.rngState, 0, 4294967295) && ["breed", "merge"].includes(data.mode));
-    const player = data.player, defaults = createPlayerProgressionState();
-    keys(player, Object.keys(defaults));
-    keys(player.farmUpgrades, Object.keys(defaults.farmUpgrades));
-    keys(player.abilities, Object.keys(defaults.abilities));
-    for (const build of Object.values(player.abilities)) keys(build, ["rootUnlocked", "powerLevel", "gradeLevel"]);
-    assert(isValidPlayerProgressionState(player) && integer(player.level, 1) && number(player.experience) && Array.isArray(player.processedBossKillReceipts) && player.processedBossKillReceipts.length <= 1e5 && player.processedBossKillReceipts.every(string));
-    assert(Array.isArray(data.roster) && data.roster.length <= CONFIG.farm.capacity.max);
+    ASSERT(
+      INTEGER(data.seed, 0, 4294967295) && INTEGER(data.rngState, 0, 4294967295) && ["breed", "merge"].includes(data.mode)
+    );
+    const PLAYER = data.player, DEFAULTS = createPlayerProgressionState();
+    keys(PLAYER, Object.keys(DEFAULTS));
+    keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
+    keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
+    for (const BUILD of Object.values(PLAYER.abilities)) {
+      keys(BUILD, ["rootUnlocked", "powerLevel", "gradeLevel"]);
+    }
+    ASSERT(
+      isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
+    );
+    ASSERT(Array.isArray(data.roster) && data.roster.length <= CONFIG.farm.capacity.max);
     let count = 0;
-    const cohorts = /* @__PURE__ */ new Set();
-    for (const row of data.roster) {
-      keys(row, ["species", "tier", "count"], ["fed", "growth", "cooldown", "rest"]);
-      assert(integer(row.species, 0, CONFIG.unit.speciesCount - 1) && integer(row.tier, 1, CONFIG.unit.maxTier) && integer(row.count, 1, CONFIG.farm.capacity.max));
-      count += row.count;
-      if (Object.hasOwn(row, "fed")) assert(row.fed === true);
-      for (const key of ["growth", "cooldown"]) if (Object.hasOwn(row, key)) {
-        keys(row[key], ["remaining", "duration"]);
-        assert(number(row[key].remaining, Number.MIN_VALUE, 1e5) && number(row[key].duration, row[key].remaining, 1e5));
+    const COHORTS = /* @__PURE__ */ new Set();
+    for (const ROW of data.roster) {
+      keys(ROW, ["species", "tier", "count"], ["fed", "growth", "cooldown", "rest"]);
+      ASSERT(
+        INTEGER(ROW.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ROW.tier, 1, CONFIG.unit.maxTier) && INTEGER(ROW.count, 1, CONFIG.farm.capacity.max)
+      );
+      count += ROW.count;
+      if (Object.hasOwn(ROW, "fed")) {
+        ASSERT(ROW.fed === true);
       }
-      if (Object.hasOwn(row, "rest")) assert(number(row.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
-      const signature = [row.species, row.tier, Number(!!row.fed), row.growth?.remaining || 0, row.growth?.duration || 0, row.cooldown?.remaining || 0, row.cooldown?.duration || 0, row.rest || 0].join(":");
-      assert(!cohorts.has(signature));
-      cohorts.add(signature);
+      for (const KEY2 of ["growth", "cooldown"]) {
+        if (Object.hasOwn(ROW, KEY2)) {
+          keys(ROW[KEY2], ["remaining", "duration"]);
+          ASSERT(
+            NUMBER(ROW[KEY2].remaining, Number.MIN_VALUE, 1e5) && NUMBER(ROW[KEY2].duration, ROW[KEY2].remaining, 1e5)
+          );
+        }
+      }
+      if (Object.hasOwn(ROW, "rest")) {
+        ASSERT(NUMBER(ROW.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
+      }
+      const SIGNATURE = [
+        ROW.species,
+        ROW.tier,
+        Number(!!ROW.fed),
+        ROW.growth?.remaining || 0,
+        ROW.growth?.duration || 0,
+        ROW.cooldown?.remaining || 0,
+        ROW.cooldown?.duration || 0,
+        ROW.rest || 0
+      ].join(":");
+      ASSERT(!COHORTS.has(SIGNATURE));
+      COHORTS.add(SIGNATURE);
     }
-    assert(count <= CONFIG.farm.capacity.max);
+    ASSERT(count <= CONFIG.farm.capacity.max);
     keys(data.food, ["count", "remainder", "produced"]);
-    assert(integer(data.food.count, 0, 140) && integer(data.food.remainder, 0, 4) && integer(data.food.produced));
+    ASSERT(INTEGER(data.food.count, 0, 140) && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced));
     keys(data.totals, ["births", "merges"]);
-    assert(integer(data.totals.births) && integer(data.totals.merges));
-    const stage = data.bossStages;
-    keys(stage, ["currentStage", "encounterSeed", "encounterEpoch", "nextSelectionId", "selections"]);
-    assert(integer(stage.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stage.encounterSeed, 0, 4294967295) && integer(stage.encounterEpoch) && integer(stage.nextSelectionId, 1) && Array.isArray(stage.selections) && stage.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
-    const stages = /* @__PURE__ */ new Set(), selections = /* @__PURE__ */ new Set();
-    for (const entry of stage.selections) {
-      keys(entry, ["stage", "species", "selectionId"]);
-      assert(integer(entry.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(entry.species, 0, CONFIG.unit.speciesCount - 1) && integer(entry.selectionId, 1, stage.nextSelectionId - 1) && !stages.has(entry.stage) && !selections.has(entry.selectionId));
-      stages.add(entry.stage);
-      selections.add(entry.selectionId);
+    ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
+    const STAGE = data.bossStages;
+    keys(STAGE, ["currentStage", "encounterSeed", "encounterEpoch", "nextSelectionId", "selections"]);
+    ASSERT(
+      INTEGER(STAGE.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(STAGE.encounterSeed, 0, 4294967295) && INTEGER(STAGE.encounterEpoch) && INTEGER(STAGE.nextSelectionId, 1) && Array.isArray(STAGE.selections) && STAGE.selections.length <= BOSS_REWARD_SETTINGS.maxStage
+    );
+    const STAGES = /* @__PURE__ */ new Set(), SELECTIONS = /* @__PURE__ */ new Set();
+    for (const ENTRY of STAGE.selections) {
+      keys(ENTRY, ["stage", "species", "selectionId"]);
+      ASSERT(
+        INTEGER(ENTRY.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(ENTRY.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ENTRY.selectionId, 1, STAGE.nextSelectionId - 1) && !STAGES.has(ENTRY.stage) && !SELECTIONS.has(ENTRY.selectionId)
+      );
+      STAGES.add(ENTRY.stage);
+      SELECTIONS.add(ENTRY.selectionId);
     }
-    const ledger = data.ledger;
-    keys(ledger, ["boss", "raid"]);
-    const boss2 = ledger.boss, raid = ledger.raid;
-    keys(boss2, ["nextEncounterId", "settledThrough", "pendingRewards"]);
-    keys(boss2.settledThrough, ["farm", "raid"]);
-    keys(raid, ["nextRunSequence", "activeRun", "settledThrough"]);
-    assert(integer(boss2.settledThrough.farm) && integer(boss2.settledThrough.raid) && integer(boss2.nextEncounterId, boss2.settledThrough.farm + 1) && integer(raid.nextRunSequence) && integer(raid.settledThrough, boss2.settledThrough.raid, raid.nextRunSequence));
-    if (raid.activeRun === null) assert(raid.nextRunSequence === raid.settledThrough);
-    else {
-      keys(raid.activeRun, ["sequence", "sessionId"]);
-      assert(integer(raid.activeRun.sequence, 1) && raid.activeRun.sequence === raid.nextRunSequence && raid.activeRun.sequence === raid.settledThrough + 1 && string(raid.activeRun.sessionId) && raid.activeRun.sessionId.length <= 128);
+    const LEDGER = data.ledger;
+    keys(LEDGER, ["boss", "raid"]);
+    const BOSS2 = LEDGER.boss, RAID = LEDGER.raid;
+    keys(BOSS2, ["nextEncounterId", "settledThrough", "pendingRewards"]);
+    keys(BOSS2.settledThrough, ["farm", "raid"]);
+    keys(RAID, ["nextRunSequence", "activeRun", "settledThrough"]);
+    ASSERT(
+      INTEGER(BOSS2.settledThrough.farm) && INTEGER(BOSS2.settledThrough.raid) && INTEGER(BOSS2.nextEncounterId, BOSS2.settledThrough.farm + 1) && INTEGER(RAID.nextRunSequence) && INTEGER(RAID.settledThrough, BOSS2.settledThrough.raid, RAID.nextRunSequence)
+    );
+    if (RAID.activeRun === null) {
+      ASSERT(RAID.nextRunSequence === RAID.settledThrough);
+    } else {
+      keys(RAID.activeRun, ["sequence", "sessionId"]);
+      ASSERT(
+        INTEGER(RAID.activeRun.sequence, 1) && RAID.activeRun.sequence === RAID.nextRunSequence && RAID.activeRun.sequence === RAID.settledThrough + 1 && STRING(RAID.activeRun.sessionId) && RAID.activeRun.sessionId.length <= 128
+      );
     }
-    assert(Array.isArray(boss2.pendingRewards) && boss2.pendingRewards.length <= 1e5);
-    const receipts = /* @__PURE__ */ new Set(), encounters = /* @__PURE__ */ new Set();
-    for (const reward2 of boss2.pendingRewards) {
-      keys(reward2, ["encounterId", "source", "receiptKey", "species", "tier", "chance", "rolls"], rewardExtras);
-      assert(["farm", "raid"].includes(reward2.source) && integer(reward2.encounterId, 1, boss2.settledThrough[reward2.source]) && string(reward2.receiptKey) && !receipts.has(reward2.receiptKey) && integer(reward2.species, 0, CONFIG.unit.speciesCount - 1) && integer(reward2.tier, 1, CONFIG.unit.maxTier) && number(reward2.chance, 0, 1));
-      receipts.add(reward2.receiptKey);
-      const encounter = `${reward2.source}:${reward2.encounterId}`;
-      assert(!encounters.has(encounter));
-      encounters.add(encounter);
-      assert(Array.isArray(reward2.rolls) && reward2.rolls.length > 0 && reward2.rolls.length <= BOSS_REWARD_SETTINGS.maxStage && reward2.rolls.every((roll) => number(roll, 0, 1) && roll < reward2.chance));
-      if (reward2.acquisitionMultiplier !== void 0) assert(number(reward2.acquisitionMultiplier, 0, 2));
-      if (reward2.xpReceiptKey !== void 0) assert(string(reward2.xpReceiptKey));
-      if (reward2.xpStatus !== void 0) assert(["awarded", "already-awarded", "unsettled"].includes(reward2.xpStatus));
-      for (const key of ["xpAmount", "levelsGained", "pointsAwarded"]) if (reward2[key] !== void 0) assert(number(reward2[key]));
+    ASSERT(Array.isArray(BOSS2.pendingRewards) && BOSS2.pendingRewards.length <= 1e5);
+    const RECEIPTS = /* @__PURE__ */ new Set(), ENCOUNTERS = /* @__PURE__ */ new Set();
+    for (const REWARD2 of BOSS2.pendingRewards) {
+      keys(REWARD2, ["encounterId", "source", "receiptKey", "species", "tier", "chance", "rolls"], REWARD_EXTRAS);
+      ASSERT(
+        ["farm", "raid"].includes(REWARD2.source) && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER(REWARD2.chance, 0, 1)
+      );
+      RECEIPTS.add(REWARD2.receiptKey);
+      const ENCOUNTER = `${REWARD2.source}:${REWARD2.encounterId}`;
+      ASSERT(!ENCOUNTERS.has(ENCOUNTER));
+      ENCOUNTERS.add(ENCOUNTER);
+      ASSERT(
+        Array.isArray(REWARD2.rolls) && REWARD2.rolls.length > 0 && REWARD2.rolls.length <= BOSS_REWARD_SETTINGS.maxStage && REWARD2.rolls.every((roll) => NUMBER(roll, 0, 1) && roll < REWARD2.chance)
+      );
+      if (REWARD2.acquisitionMultiplier !== void 0) {
+        ASSERT(NUMBER(REWARD2.acquisitionMultiplier, 0, 2));
+      }
+      if (REWARD2.xpReceiptKey !== void 0) {
+        ASSERT(STRING(REWARD2.xpReceiptKey));
+      }
+      if (REWARD2.xpStatus !== void 0) {
+        ASSERT(["awarded", "already-awarded", "unsettled"].includes(REWARD2.xpStatus));
+      }
+      for (const KEY2 of ["xpAmount", "levelsGained", "pointsAwarded"]) {
+        if (REWARD2[KEY2] !== void 0) {
+          ASSERT(NUMBER(REWARD2[KEY2]));
+        }
+      }
     }
     return true;
   }
   function sameFarmProgress(a, b) {
-    if (a === b) return true;
-    if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return false;
-    const keysA = Object.keys(a), keysB = Object.keys(b);
-    return keysA.length === keysB.length && keysA.every((key) => Object.hasOwn(b, key) && sameFarmProgress(a[key], b[key]));
+    if (a === b) {
+      return true;
+    }
+    if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) {
+      return false;
+    }
+    const KEYS_A = Object.keys(a), KEYS_B = Object.keys(b);
+    return KEYS_A.length === KEYS_B.length && KEYS_A.every((key) => Object.hasOwn(b, key) && sameFarmProgress(a[key], b[key]));
   }
   function position(index, count, seed, scale) {
-    const angle = index * 2.399963229728653 + seed % 6283 / 1e3, radius = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
-    return { x: Math.cos(angle) * CONFIG.farm.arena.radiusX * radius, y: Math.sin(angle) * CONFIG.farm.arena.radiusY * radius };
+    const ANGLE = index * 2.399963229728653 + seed % 6283 / 1e3, RADIUS = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
+    return {
+      x: Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS,
+      y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS
+    };
   }
   function restoreFarmProgress(data) {
     validateFarmProgress(data);
-    const world = new Garden(data.seed);
-    world.units = [];
-    world.food = [];
-    world.nextId = 1;
-    world.mode = data.mode;
-    world.playerProgression = copyPlayer(data.player);
-    world.farmBossProgress = structuredClone(data.bossStages);
-    Object.assign(world.metrics, data.totals);
-    const count = data.roster.reduce((total, row) => total + row.count, 0);
-    for (const row of data.roster) for (let i = 0; i < row.count; i++) {
-      const point3 = position(world.units.length, count, data.seed, 0.7), unit2 = new Unit(world.nextId++, row.species, row.tier, point3.x, point3.y);
-      unit2.meals = row.fed ? 1 : 0;
-      unit2.growthDuration = row.growth?.duration || world.breedGrowthDuration();
-      unit2.growthElapsed = row.growth ? row.growth.duration - row.growth.remaining : unit2.growthDuration;
-      unit2.growth = Math.floor(CONFIG.farm.breeding.matureMeals * unit2.growthElapsed / unit2.growthDuration + 1e-9);
-      unit2.cooldown = row.cooldown?.remaining || 0;
-      unit2.cooldownDuration = row.cooldown?.duration || 0;
-      if (row.rest) {
-        unit2.hp = 0;
-        unit2.down = row.rest;
-        unit2.deathSplitHandled = true;
+    const WORLD = new GARDEN(data.seed);
+    WORLD.units = [];
+    WORLD.food = [];
+    WORLD.nextId = 1;
+    WORLD.mode = data.mode;
+    WORLD.playerProgression = copyPlayer(data.player);
+    WORLD.farmBossProgress = structuredClone(data.bossStages);
+    Object.assign(WORLD.metrics, data.totals);
+    const COUNT = data.roster.reduce((total, row) => total + row.count, 0);
+    for (const ROW of data.roster) {
+      for (let i = 0; i < ROW.count; i++) {
+        const POINT2 = position(WORLD.units.length, COUNT, data.seed, 0.7), UNIT3 = new UNIT(WORLD.nextId++, ROW.species, ROW.tier, POINT2.x, POINT2.y);
+        UNIT3.meals = ROW.fed ? 1 : 0;
+        UNIT3.growthDuration = ROW.growth?.duration || WORLD.breedGrowthDuration();
+        UNIT3.growthElapsed = ROW.growth ? ROW.growth.duration - ROW.growth.remaining : UNIT3.growthDuration;
+        UNIT3.growth = Math.floor(
+          CONFIG.farm.breeding.matureMeals * UNIT3.growthElapsed / UNIT3.growthDuration + 1e-9
+        );
+        UNIT3.cooldown = ROW.cooldown?.remaining || 0;
+        UNIT3.cooldownDuration = ROW.cooldown?.duration || 0;
+        if (ROW.rest) {
+          UNIT3.hp = 0;
+          UNIT3.down = ROW.rest;
+          UNIT3.deathSplitHandled = true;
+        }
+        WORLD.units.push(UNIT3);
       }
-      world.units.push(unit2);
     }
     for (let i = 0; i < data.food.count; i++) {
-      const point3 = position(i, data.food.count, data.seed + 103, 0.8);
-      world.food.push({ ...point3, z: 0, vx: 0, vy: 0, vz: 0, seed: i * 0.61803398875 % 1, phase: "grounded", tx: point3.x, ty: point3.y });
+      const POINT2 = position(i, data.food.count, data.seed + 103, 0.8);
+      WORLD.food.push({
+        ...POINT2,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        seed: i * 0.61803398875 % 1,
+        phase: "grounded",
+        tx: POINT2.x,
+        ty: POINT2.y
+      });
     }
-    Object.assign(world.foodTaps, { remainder: data.food.remainder, produced: data.food.produced });
-    const { boss: boss2, raid } = data.ledger;
-    Object.assign(world, { nextBossEncounterId: boss2.nextEncounterId, bossRewardWatermarks: { ...boss2.settledThrough }, nextRaidRunSequence: raid.nextRunSequence, activeRaidRunSequence: raid.activeRun?.sequence ?? null, activeRaidSessionId: raid.activeRun?.sessionId ?? null, raidSettlementWatermark: raid.settledThrough });
-    world.bossRewardReceipts = boss2.pendingRewards.map((reward2) => {
-      const { rolls, ...fields2 } = reward2;
-      return { ...fields2, x: 0, y: 0, roll: rolls[0], status: "pending", unitId: 0, rollCount: rolls.length, drops: rolls.map((roll) => ({ roll, status: "pending", unitId: 0 })) };
+    Object.assign(WORLD.foodTaps, {
+      remainder: data.food.remainder,
+      produced: data.food.produced
     });
-    world.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
-    world.reconcileMateReservations();
-    return world;
+    const { boss: BOSS2, raid: RAID } = data.ledger;
+    Object.assign(WORLD, {
+      nextBossEncounterId: BOSS2.nextEncounterId,
+      bossRewardWatermarks: {
+        ...BOSS2.settledThrough
+      },
+      nextRaidRunSequence: RAID.nextRunSequence,
+      activeRaidRunSequence: RAID.activeRun?.sequence ?? null,
+      activeRaidSessionId: RAID.activeRun?.sessionId ?? null,
+      raidSettlementWatermark: RAID.settledThrough
+    });
+    WORLD.bossRewardReceipts = BOSS2.pendingRewards.map((reward) => {
+      const { rolls: ROLLS, ...FIELDS2 } = reward;
+      return {
+        ...FIELDS2,
+        x: 0,
+        y: 0,
+        roll: ROLLS[0],
+        status: "pending",
+        unitId: 0,
+        rollCount: ROLLS.length,
+        drops: ROLLS.map((roll) => ({
+          roll,
+          status: "pending",
+          unitId: 0
+        }))
+      };
+    });
+    WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
+    WORLD.reconcileMateReservations();
+    return WORLD;
   }
-  var fail, assert, integer, number, string, rewardExtras;
+  var FAIL, ASSERT, INTEGER, NUMBER, STRING, REWARD_EXTRAS;
   var init_farm_progress = __esm({
     "src/farm-progress.js"() {
       init_farm_model();
       init_player_progression();
       init_boss_rewards();
-      fail = () => {
+      FAIL = () => {
         throw new TypeError("올바른 농장 진행 저장 데이터가 아닙니다.");
       };
-      assert = (value) => {
-        if (!value) fail();
+      ASSERT = (value) => {
+        if (!value) {
+          FAIL();
+        }
       };
-      integer = (value, min = 0, max = 1e12) => Number.isSafeInteger(value) && value >= min && value <= max;
-      number = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
-      string = (value) => typeof value === "string" && value.trim().length > 0 && value.length < 256;
-      rewardExtras = ["acquisitionMultiplier", "xpReceiptKey", "xpStatus", "xpAmount", "levelsGained", "pointsAwarded"];
+      INTEGER = (value, min = 0, max = 1e12) => Number.isSafeInteger(value) && value >= min && value <= max;
+      NUMBER = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
+      STRING = (value) => typeof value === "string" && value.trim().length > 0 && value.length < 256;
+      REWARD_EXTRAS = [
+        "acquisitionMultiplier",
+        "xpReceiptKey",
+        "xpStatus",
+        "xpAmount",
+        "levelsGained",
+        "pointsAwarded"
+      ];
     }
   });
 
@@ -4544,40 +7744,70 @@
 
   // src/farm-snapshot.js
   function shapeFields(shape2, nested = {}) {
-    return Object.fromEntries(Object.entries(shape2).map(([key, value]) => [
-      key,
-      nested[key] ?? (Array.isArray(value) ? [true] : value && typeof value === "object" ? shapeFields(value) : true)
-    ]));
+    return Object.fromEntries(
+      Object.entries(shape2).map(([key, value]) => [
+        key,
+        nested[key] ?? (Array.isArray(value) ? [true] : value && typeof value === "object" ? shapeFields(value) : true)
+      ])
+    );
   }
   function copyJsonPayload(value, depth = 0) {
-    if (depth >= 18) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
-    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-    if (typeof value === "number") return Number.isFinite(value) ? value === 0 ? 0 : value : null;
-    if (Array.isArray(value)) return Array.from(value, (item) => item === void 0 ? null : copyJsonPayload(item, depth + 1));
-    if (!value || typeof value !== "object" || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
-    return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0).map(([key, item]) => [key, copyJsonPayload(item, depth + 1)]));
+    if (depth >= 18) {
+      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+    }
+    if (value === null || typeof value === "string" || typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value === 0 ? 0 : value : null;
+    }
+    if (Array.isArray(value)) {
+      return Array.from(value, (item) => item === void 0 ? null : copyJsonPayload(item, depth + 1));
+    }
+    if (!value || typeof value !== "object" || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+    }
+    return Object.fromEntries(
+      Object.entries(value).filter(([, item]) => item !== void 0).map(([key, item]) => [key, copyJsonPayload(item, depth + 1)])
+    );
   }
   function copyFields(value, recipe) {
-    if (value === null) return null;
-    if (recipe === jsonPayload) return copyJsonPayload(value);
+    if (value === null) {
+      return null;
+    }
+    if (recipe === JSON_PAYLOAD) {
+      return copyJsonPayload(value);
+    }
     if (recipe === true) {
-      if (typeof value === "number") return Number.isFinite(value) ? value === 0 ? 0 : value : null;
-      if (typeof value === "string" || typeof value === "boolean") return value;
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? value === 0 ? 0 : value : null;
+      }
+      if (typeof value === "string" || typeof value === "boolean") {
+        return value;
+      }
       throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
     }
     if (Array.isArray(recipe)) {
-      if (!Array.isArray(value) && !(value instanceof Set)) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      if (!Array.isArray(value) && !(value instanceof Set)) {
+        throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      }
       return Array.from(value, (item) => copyFields(item, recipe[0]));
     }
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
-    const result = {};
-    for (const [key, child] of Object.entries(recipe)) if (Object.hasOwn(value, key) && value[key] !== void 0) result[key] = copyFields(value[key], child);
-    return result;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+    }
+    const RESULT = {};
+    for (const [KEY2, CHILD] of Object.entries(recipe)) {
+      if (Object.hasOwn(value, KEY2) && value[KEY2] !== void 0) {
+        RESULT[KEY2] = copyFields(value[KEY2], CHILD);
+      }
+    }
+    return RESULT;
   }
   function snapshot(world) {
     return copyFields(world, SNAPSHOT_FIELDS);
   }
-  var UNIT_SNAPSHOT_SHAPE, legacyStarter, patternValues, abilityInvestments, FARM_SNAPSHOT_SHAPE, LEGACY_UNIT_DEFAULT_KEYS, fields, point2, path, popcorn, attack, unit, bossAction, boss, drop, reward, jsonPayload, settlement, progression, runtimeProgression, roster, projectile, SNAPSHOT_FIELDS;
+  var UNIT_SNAPSHOT_SHAPE, LEGACY_STARTER, PATTERN_VALUES, ABILITY_INVESTMENTS, FARM_SNAPSHOT_SHAPE, LEGACY_UNIT_DEFAULT_KEYS, FIELDS, POINT, PATH, POPCORN, ATTACK, UNIT2, BOSS_ACTION, BOSS, DROP, REWARD, JSON_PAYLOAD, SETTLEMENT, PROGRESSION, RUNTIME_PROGRESSION, ROSTER, PROJECTILE, SNAPSHOT_FIELDS;
   var init_farm_snapshot = __esm({
     "src/farm-snapshot.js"() {
       UNIT_SNAPSHOT_SHAPE = {
@@ -4591,7 +7821,11 @@
         stun: 0,
         flash: 0,
         bounce: 0,
-        ability: { phase: "idle", elapsed: 0, action: null },
+        ability: {
+          phase: "idle",
+          elapsed: 0,
+          action: null
+        },
         id: 1,
         species: 0,
         tier: 1,
@@ -4605,7 +7839,10 @@
         cooldownDuration: 0,
         mateId: 0,
         perceptionRange: 18,
-        home: { x: 0, y: 0 },
+        home: {
+          x: 0,
+          y: 0
+        },
         hp: 40,
         down: 0,
         seed: 2.39996,
@@ -4633,46 +7870,69 @@
         barleyArmorBreakUntil: 0,
         barleyArmorBreakReduction: 0
       };
-      legacyStarter = (id, x, y) => ({
+      LEGACY_STARTER = (id, x, y) => ({
         ...UNIT_SNAPSHOT_SHAPE,
         id,
         x,
         y,
-        home: { x, y },
+        home: {
+          x,
+          y
+        },
         seed: id * 2.39996,
         growth: 3,
         growthElapsed: 5,
-        ability: { phase: "idle", elapsed: 0, action: null }
+        ability: {
+          phase: "idle",
+          elapsed: 0,
+          action: null
+        }
       });
-      patternValues = (value) => Object.fromEntries([
-        "attack.sweep-360",
-        "attack.front-slam",
-        "attack.charge",
-        "attack.leap-slam",
-        "attack.fan-sweep",
-        "summon.mouth-t1"
-      ].map((id) => [id, value]));
-      abilityInvestments = () => Object.fromEntries([
-        "pea-death-split",
-        "corn-burst-fire",
-        "corn-popcorn-chain",
-        "chestnut-spike-fan",
-        "kidney-continuous-leap",
-        "kidney-landing-shockwave",
-        "peanut-separated-assault",
-        "walnut-guard-slam",
-        "rice-low-health-harvest",
-        "wheat-command-crit",
-        "barley-armor-break"
-      ].map((id) => [id, { rootUnlocked: false, powerLevel: 0, gradeLevel: 0 }]));
+      PATTERN_VALUES = (value) => Object.fromEntries(
+        [
+          "attack.sweep-360",
+          "attack.front-slam",
+          "attack.charge",
+          "attack.leap-slam",
+          "attack.fan-sweep",
+          "summon.mouth-t1"
+        ].map((id) => [id, value])
+      );
+      ABILITY_INVESTMENTS = () => Object.fromEntries(
+        [
+          "pea-death-split",
+          "corn-burst-fire",
+          "corn-popcorn-chain",
+          "chestnut-spike-fan",
+          "kidney-continuous-leap",
+          "kidney-landing-shockwave",
+          "peanut-separated-assault",
+          "walnut-guard-slam",
+          "rice-low-health-harvest",
+          "wheat-command-crit",
+          "barley-armor-break"
+        ].map((id) => [
+          id,
+          {
+            rootUnlocked: false,
+            powerLevel: 0,
+            gradeLevel: 0
+          }
+        ])
+      );
       FARM_SNAPSHOT_SHAPE = {
         seed: 731,
         notices: [],
         eventSequence: 0,
         mergeTask: null,
         corpseRecoveryVersion: 1,
-        rng: { "state": 3031296687 },
-        units: [legacyStarter(1, 1.7868577390909195, -0.7556014072615653), legacyStarter(2, -1.5288560669869184, -0.5486694728024304)],
+        rng: {
+          state: 3031296687
+        },
+        units: [
+          LEGACY_STARTER(1, 1.7868577390909195, -0.7556014072615653),
+          LEGACY_STARTER(2, -1.5288560669869184, -0.5486694728024304)
+        ],
         food: [],
         effects: [],
         events: [],
@@ -4680,32 +7940,118 @@
         nextId: 3,
         nextBossEncounterId: 1,
         bossRewardReceipts: [],
-        bossRewardWatermarks: { "farm": 0, "raid": 0 },
+        bossRewardWatermarks: {
+          farm: 0,
+          raid: 0
+        },
         nextRaidRunSequence: 0,
         activeRaidRunSequence: null,
         activeRaidSessionId: null,
         raidSettlementWatermark: 0,
         raidSettlementReceipts: [],
-        playerProgression: { schemaVersion: 1, availablePoints: 0, farmUpgrades: { food: 0, growth: 0, breed: 0, merge: 0, capacity: 0 }, abilities: abilityInvestments(), level: 1, experience: 0, processedBossKillReceipts: [] },
+        playerProgression: {
+          schemaVersion: 1,
+          availablePoints: 0,
+          farmUpgrades: {
+            food: 0,
+            growth: 0,
+            breed: 0,
+            merge: 0,
+            capacity: 0
+          },
+          abilities: ABILITY_INVESTMENTS(),
+          level: 1,
+          experience: 0,
+          processedBossKillReceipts: []
+        },
         starter: 0,
-        foodTaps: { "remainder": 0, "autoClock": 0, "produced": 0, "revision": 0 },
+        foodTaps: {
+          remainder: 0,
+          autoClock: 0,
+          produced: 0,
+          revision: 0
+        },
         projectiles: [],
         attackSerial: 0,
         projectileSerial: 0,
         raidSummonSerial: 0,
         bossSummonSerial: 0,
         combatLog: [],
-        farmBossProgress: { currentStage: 1, encounterSeed: 2738959287, encounterEpoch: 0, nextSelectionId: 1, selections: [] },
+        farmBossProgress: {
+          currentStage: 1,
+          encounterSeed: 2738959287,
+          encounterEpoch: 0,
+          nextSelectionId: 1,
+          selections: []
+        },
         mode: "breed",
         scene: "farm",
         running: false,
-        encounter: { "outcome": "idle", "elapsed": 0 },
-        farmBossEvent: { "phase": "idle", "elapsed": 0, "outcome": "idle", "encounterId": 0, "rewardStatus": "none", "rewardChance": 0, "rewardRoll": 0, "rewardUnitId": 0 },
-        boss: { "x": 0, "y": 0, "faction": "enemy", "z": 0, "radius": 4.4, "height": 5.2, "hp": 2e3, "maxHp": 2e3, "species": 3, "attackPower": 4, "stage": 0, "moveSpeed": 2.65, "encounterId": 0, "active": false, "angle": 0, "facing": 0, "flash": 0, "swings": 0, "basicCount": 0, "attackId": 0, "sweepClock": 0, "startAngle": 0, "travel": 0, "patternRuntime": { weights: patternValues(1), cooldowns: patternValues(0), active: null, encounterElapsed: 0 }, "airborneRecovery": 0, "barleyArmorBreakUntil": 0, "barleyArmorBreakReduction": 0, "summonMouth": { "x": 0, "y": 0, "z": 0 } },
+        encounter: {
+          outcome: "idle",
+          elapsed: 0
+        },
+        farmBossEvent: {
+          phase: "idle",
+          elapsed: 0,
+          outcome: "idle",
+          encounterId: 0,
+          rewardStatus: "none",
+          rewardChance: 0,
+          rewardRoll: 0,
+          rewardUnitId: 0
+        },
+        boss: {
+          x: 0,
+          y: 0,
+          faction: "enemy",
+          z: 0,
+          radius: 4.4,
+          height: 5.2,
+          hp: 2e3,
+          maxHp: 2e3,
+          species: 3,
+          attackPower: 4,
+          stage: 0,
+          moveSpeed: 2.65,
+          encounterId: 0,
+          active: false,
+          angle: 0,
+          facing: 0,
+          flash: 0,
+          swings: 0,
+          basicCount: 0,
+          attackId: 0,
+          sweepClock: 0,
+          startAngle: 0,
+          travel: 0,
+          patternRuntime: {
+            weights: PATTERN_VALUES(1),
+            cooldowns: PATTERN_VALUES(0),
+            active: null,
+            encounterElapsed: 0
+          },
+          airborneRecovery: 0,
+          barleyArmorBreakUntil: 0,
+          barleyArmorBreakReduction: 0,
+          summonMouth: {
+            x: 0,
+            y: 0,
+            z: 0
+          }
+        },
         raidExpectedPlayers: ["solo"],
         raidRosters: [],
         raidDeploymentStarted: false,
-        metrics: { "births": 0, "merges": 0, "directHits": 0, "contacts": 0, "landings": 0, "basicHits": 0, "sweepHits": 0 }
+        metrics: {
+          births: 0,
+          merges: 0,
+          directHits: 0,
+          contacts: 0,
+          landings: 0,
+          basicHits: 0,
+          sweepHits: 0
+        }
       };
       LEGACY_UNIT_DEFAULT_KEYS = Object.freeze([
         "walnutEmpoweredNextBasic",
@@ -4735,224 +8081,305 @@
         "farmId",
         "dropLanded"
       ]);
-      fields = (names, nested = {}) => ({ ...Object.fromEntries(names.split(" ").filter(Boolean).map((key) => [key, true])), ...nested });
-      point2 = fields("x y z id");
-      path = fields("height duration", { from: point2, to: point2 });
-      popcorn = fields("species fuseSeconds chainOnPopcornContact triggersOncePerProjectile eachTargetAtMostOncePerProjectile damageMultiplier radiusBaseRangeFraction radiusMultiplier radius");
-      attack = fields("id targetId hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians walnutEmpowered walnutGuardUsed", {
-        target: point2,
-        path,
-        pendingShots: [fields("shotIndex delaySeconds attackMultiplier")],
-        projectileAbility: { popcorn }
+      FIELDS = (names, nested = {}) => ({
+        ...Object.fromEntries(
+          names.split(" ").filter(Boolean).map((key) => [key, true])
+        ),
+        ...nested
       });
-      unit = shapeFields(UNIT_SNAPSHOT_SHAPE, { ability: { phase: true, elapsed: true, action: attack } });
-      bossAction = fields("id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease", {
-        target: point2,
-        start: point2,
-        path,
+      POINT = FIELDS("x y z id");
+      PATH = FIELDS("height duration", {
+        from: POINT,
+        to: POINT
+      });
+      POPCORN = FIELDS(
+        "species fuseSeconds chainOnPopcornContact triggersOncePerProjectile eachTargetAtMostOncePerProjectile damageMultiplier radiusBaseRangeFraction radiusMultiplier radius"
+      );
+      ATTACK = FIELDS(
+        "id targetId hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians walnutEmpowered walnutGuardUsed",
+        {
+          target: POINT,
+          path: PATH,
+          pendingShots: [FIELDS("shotIndex delaySeconds attackMultiplier")],
+          projectileAbility: {
+            popcorn: POPCORN
+          }
+        }
+      );
+      UNIT2 = shapeFields(UNIT_SNAPSHOT_SHAPE, {
+        ability: {
+          phase: true,
+          elapsed: true,
+          action: ATTACK
+        }
+      });
+      BOSS_ACTION = FIELDS("id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease", {
+        target: POINT,
+        start: POINT,
+        path: PATH,
         hitIds: [true],
-        landingPoints: [point2]
+        landingPoints: [POINT]
       });
-      boss = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
-        patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, { active: bossAction })
+      BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
+        patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, {
+          active: BOSS_ACTION
+        })
       });
-      drop = fields("roll status unitId");
-      reward = fields("encounterId source receiptKey acquisitionMultiplier species tier x y chance roll status unitId rollCount xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded", { drops: [drop] });
-      jsonPayload = /* @__PURE__ */ Symbol("json-payload");
-      settlement = fields("key ownerId sessionId encounterId runSequence outcome status completedAtMs availableAtStart originalUnitsDeployed deploymentMultiplier", {
-        sleptFarmUnitIds: [true],
-        reward: jsonPayload
+      DROP = FIELDS("roll status unitId");
+      REWARD = FIELDS(
+        "encounterId source receiptKey acquisitionMultiplier species tier x y chance roll status unitId rollCount xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded",
+        {
+          drops: [DROP]
+        }
+      );
+      JSON_PAYLOAD = /* @__PURE__ */ Symbol("json-payload");
+      SETTLEMENT = FIELDS(
+        "key ownerId sessionId encounterId runSequence outcome status completedAtMs availableAtStart originalUnitsDeployed deploymentMultiplier",
+        {
+          sleptFarmUnitIds: [true],
+          reward: JSON_PAYLOAD
+        }
+      );
+      PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression);
+      RUNTIME_PROGRESSION = FIELDS("schemaVersion level availablePoints", {
+        farmUpgrades: PROGRESSION.farmUpgrades,
+        abilities: PROGRESSION.abilities
       });
-      progression = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression);
-      runtimeProgression = fields("schemaVersion level availablePoints", {
-        farmUpgrades: progression.farmUpgrades,
-        abilities: progression.abilities
-      });
-      roster = fields("ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt", {
-        troops: [fields("farmId species tier deployed")],
-        abilitySnapshot: runtimeProgression
-      });
-      projectile = fields("id owner targetId faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex isPopcorn landed exploded fuseRemaining explosionLife", {
-        path,
-        popcornConfig: popcorn,
-        damagedTargetIds: [true]
-      });
+      ROSTER = FIELDS(
+        "ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt",
+        {
+          troops: [FIELDS("farmId species tier deployed")],
+          abilitySnapshot: RUNTIME_PROGRESSION
+        }
+      );
+      PROJECTILE = FIELDS(
+        "id owner targetId faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex isPopcorn landed exploded fuseRemaining explosionLife",
+        {
+          path: PATH,
+          popcornConfig: POPCORN,
+          damagedTargetIds: [true]
+        }
+      );
       SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
-        units: [unit],
-        boss,
-        playerProgression: progression,
-        raidRosters: [roster],
-        projectiles: [projectile],
-        bossRewardReceipts: [reward],
-        raidSettlementReceipts: [settlement],
-        food: [fields("x y z vx vy vz seed phase tx ty")],
-        events: [jsonPayload],
-        effects: [jsonPayload],
-        notices: [jsonPayload],
-        combatLog: [jsonPayload],
-        farmBossProgress: shapeFields(FARM_SNAPSHOT_SHAPE.farmBossProgress, { selections: [fields("stage species selectionId")] }),
-        mergeTask: fields("phase aId bId elapsed duration resultId sourceSpecies sourceTier", { materialIds: [true] })
+        units: [UNIT2],
+        boss: BOSS,
+        playerProgression: PROGRESSION,
+        raidRosters: [ROSTER],
+        projectiles: [PROJECTILE],
+        bossRewardReceipts: [REWARD],
+        raidSettlementReceipts: [SETTLEMENT],
+        food: [FIELDS("x y z vx vy vz seed phase tx ty")],
+        events: [JSON_PAYLOAD],
+        effects: [JSON_PAYLOAD],
+        notices: [JSON_PAYLOAD],
+        combatLog: [JSON_PAYLOAD],
+        farmBossProgress: shapeFields(FARM_SNAPSHOT_SHAPE.farmBossProgress, {
+          selections: [FIELDS("stage species selectionId")]
+        }),
+        mergeTask: FIELDS("phase aId bId elapsed duration resultId sourceSpecies sourceTier", {
+          materialIds: [true]
+        })
       });
     }
   });
 
   // src/raid-settlement.js
   function ledgerState(farm) {
-    const nextSequence = farm.nextRaidRunSequence ?? 0;
-    const watermark = farm.raidSettlementWatermark ?? 0;
-    const activeSequence = farm.activeRaidRunSequence ?? null;
-    const activeSessionId = farm.activeRaidSessionId ?? null;
-    const receipts = farm.raidSettlementReceipts ?? [];
-    if (!isCount(nextSequence) || !isCount(watermark) || watermark > nextSequence || activeSequence !== null && (!Number.isSafeInteger(activeSequence) || activeSequence < 1) || activeSessionId !== null && !isNonEmptyString(activeSessionId) || !Array.isArray(receipts) || activeSequence === null !== (activeSessionId === null)) {
-      fail2("Private Farm Raid settlement ledger is invalid");
+    const NEXT_SEQUENCE = farm.nextRaidRunSequence ?? 0;
+    const WATERMARK = farm.raidSettlementWatermark ?? 0;
+    const ACTIVE_SEQUENCE = farm.activeRaidRunSequence ?? null;
+    const ACTIVE_SESSION_ID = farm.activeRaidSessionId ?? null;
+    const RECEIPTS = farm.raidSettlementReceipts ?? [];
+    if (!IS_COUNT(NEXT_SEQUENCE) || !IS_COUNT(WATERMARK) || WATERMARK > NEXT_SEQUENCE || ACTIVE_SEQUENCE !== null && (!Number.isSafeInteger(ACTIVE_SEQUENCE) || ACTIVE_SEQUENCE < 1) || ACTIVE_SESSION_ID !== null && !IS_NON_EMPTY_STRING(ACTIVE_SESSION_ID) || !Array.isArray(RECEIPTS) || ACTIVE_SEQUENCE === null !== (ACTIVE_SESSION_ID === null)) {
+      FAIL2("Private Farm Raid settlement ledger is invalid");
     }
-    if (activeSequence === null && nextSequence !== watermark || activeSequence !== null && (activeSequence !== nextSequence || activeSequence !== watermark + 1)) {
-      fail2("Private Farm Raid run sequence is inconsistent");
+    if (ACTIVE_SEQUENCE === null && NEXT_SEQUENCE !== WATERMARK || ACTIVE_SEQUENCE !== null && (ACTIVE_SEQUENCE !== NEXT_SEQUENCE || ACTIVE_SEQUENCE !== WATERMARK + 1)) {
+      FAIL2("Private Farm Raid run sequence is inconsistent");
     }
-    return { nextSequence, watermark, activeSequence, activeSessionId, receipts };
+    return {
+      nextSequence: NEXT_SEQUENCE,
+      watermark: WATERMARK,
+      activeSequence: ACTIVE_SEQUENCE,
+      activeSessionId: ACTIVE_SESSION_ID,
+      receipts: RECEIPTS
+    };
   }
   function ownerRoster(raidWorld, ownerId) {
-    if (!raidWorld || typeof raidWorld !== "object" || !Array.isArray(raidWorld.raidRosters) || !Array.isArray(raidWorld.units) || !isNonEmptyString(ownerId)) {
-      fail2("A Raid world, roster array, unit array, and owner ID are required");
+    if (!raidWorld || typeof raidWorld !== "object" || !Array.isArray(raidWorld.raidRosters) || !Array.isArray(raidWorld.units) || !IS_NON_EMPTY_STRING(ownerId)) {
+      FAIL2("A Raid world, roster array, unit array, and owner ID are required");
     }
-    const ownerRosters = raidWorld.raidRosters.filter((roster2) => roster2?.ownerId === ownerId);
-    if (ownerRosters.length !== 1 || !Array.isArray(ownerRosters[0].troops)) {
-      fail2("The Raid must contain exactly one roster for this owner");
+    const OWNER_ROSTERS = raidWorld.raidRosters.filter((roster) => roster?.ownerId === ownerId);
+    if (OWNER_ROSTERS.length !== 1 || !Array.isArray(OWNER_ROSTERS[0].troops)) {
+      FAIL2("The Raid must contain exactly one roster for this owner");
     }
-    return ownerRosters[0];
+    return OWNER_ROSTERS[0];
   }
   function raidSettlementKey({ ownerId, sessionId, encounterId } = {}) {
-    if (!isNonEmptyString(ownerId) || !isNonEmptyString(sessionId) || !(isNonEmptyString(encounterId) || Number.isSafeInteger(encounterId) && encounterId > 0)) {
-      fail2("A Raid owner, stable session ID, and encounter ID are required");
+    if (!IS_NON_EMPTY_STRING(ownerId) || !IS_NON_EMPTY_STRING(sessionId) || !(IS_NON_EMPTY_STRING(encounterId) || Number.isSafeInteger(encounterId) && encounterId > 0)) {
+      FAIL2("A Raid owner, stable session ID, and encounter ID are required");
     }
     return `raid:${JSON.stringify([ownerId, sessionId, encounterId])}`;
   }
-  function isBattleOnlySummon(unit2) {
-    return unit2?.isBattleOnlySummon === true || unit2?.battleSummonKind !== void 0 && unit2.battleSummonKind !== "" || unit2?.battleSummonParentId !== void 0 && unit2.battleSummonParentId !== 0;
+  function isBattleOnlySummon(unit) {
+    return unit?.isBattleOnlySummon === true || unit?.battleSummonKind !== void 0 && unit.battleSummonKind !== "" || unit?.battleSummonParentId !== void 0 && unit.battleSummonParentId !== 0;
   }
   function raidOwnerManifest(raidWorld, ownerId) {
-    const roster2 = ownerRoster(raidWorld, ownerId);
-    const manifest = /* @__PURE__ */ new Map();
-    for (const troop of roster2.troops) {
-      if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 || !Number.isInteger(troop.species) || troop.species < 0 || troop.species >= SPECIES_COUNT || !isValidUnitTier(troop.tier) || typeof troop.deployed !== "boolean" || manifest.has(troop.farmId)) {
-        fail2("The owner Raid roster must have unique Farm IDs and valid deployed entries");
+    const ROSTER2 = ownerRoster(raidWorld, ownerId);
+    const MANIFEST = /* @__PURE__ */ new Map();
+    for (const TROOP of ROSTER2.troops) {
+      if (!TROOP || !Number.isSafeInteger(TROOP.farmId) || TROOP.farmId < 1 || !Number.isInteger(TROOP.species) || TROOP.species < 0 || TROOP.species >= SPECIES_COUNT || !isValidUnitTier(TROOP.tier) || typeof TROOP.deployed !== "boolean" || MANIFEST.has(TROOP.farmId)) {
+        FAIL2("The owner Raid roster must have unique Farm IDs and valid deployed entries");
       }
-      manifest.set(troop.farmId, troop);
+      MANIFEST.set(TROOP.farmId, TROOP);
     }
-    const ownerUnits = raidWorld.units.filter((unit2) => unit2?.ownerId === ownerId);
-    if (ownerUnits.some((unit2) => !hasFaction(unit2, FACTION_CONFIG.PLAYER))) fail2("An enemy-faction actor cannot enter an owner’s Farm settlement");
-    const ownerUnitsById = /* @__PURE__ */ new Map();
-    for (const unit2 of ownerUnits) {
-      if (!Number.isSafeInteger(unit2.id) || unit2.id < 1 || ownerUnitsById.has(unit2.id) || !Number.isFinite(unit2.hp) || unit2.hp < 0) {
-        fail2("The owner Raid units must have unique IDs and valid health");
+    const OWNER_UNITS = raidWorld.units.filter((unit) => unit?.ownerId === ownerId);
+    if (OWNER_UNITS.some((unit) => !hasFaction(unit, FACTION_CONFIG.PLAYER))) {
+      FAIL2("An enemy-faction actor cannot enter an owner’s Farm settlement");
+    }
+    const OWNER_UNITS_BY_ID = /* @__PURE__ */ new Map();
+    for (const UNIT3 of OWNER_UNITS) {
+      if (!Number.isSafeInteger(UNIT3.id) || UNIT3.id < 1 || OWNER_UNITS_BY_ID.has(UNIT3.id) || !Number.isFinite(UNIT3.hp) || UNIT3.hp < 0) {
+        FAIL2("The owner Raid units must have unique IDs and valid health");
       }
-      ownerUnitsById.set(unit2.id, unit2);
+      OWNER_UNITS_BY_ID.set(UNIT3.id, UNIT3);
     }
-    const originalUnitsByFarmId = /* @__PURE__ */ new Map();
-    const deadFarmUnitIds = [];
-    for (const unit2 of ownerUnits) {
-      if (isBattleOnlySummon(unit2)) {
-        const parent = ownerUnitsById.get(unit2.battleSummonParentId);
-        const parentTroop = parent && manifest.get(parent.farmId);
-        const validSplit = hasFaction(unit2, FACTION_CONFIG.PLAYER) && unit2.isBattleOnlySummon === true && unit2.battleSummonKind === "pea-death-split" && Number.isSafeInteger(unit2.battleSummonParentId) && unit2.battleSummonParentId > 0 && parent && parent.ownerId === ownerId && !isBattleOnlySummon(parent) && parent.hp <= 0 && parentTroop?.deployed === true && parent.farmId === unit2.farmId && parent.species === 0 && unit2.species === 0 && unit2.tier === 1 && unit2.canSplit === false && unit2.countsTowardPermanentRoster === false && unit2.eligibleForRaidDeployment === false && unit2.breedingEligible === false && unit2.mergeEligible === false && unit2.usesPersistentSleep === false;
-        if (!validSplit) fail2("A battle-only Raid split is missing its validated origin marker");
+    const ORIGINAL_UNITS_BY_FARM_ID = /* @__PURE__ */ new Map();
+    const DEAD_FARM_UNIT_IDS = [];
+    for (const UNIT3 of OWNER_UNITS) {
+      if (isBattleOnlySummon(UNIT3)) {
+        const PARENT = OWNER_UNITS_BY_ID.get(UNIT3.battleSummonParentId);
+        const PARENT_TROOP = PARENT && MANIFEST.get(PARENT.farmId);
+        const VALID_SPLIT = hasFaction(UNIT3, FACTION_CONFIG.PLAYER) && UNIT3.isBattleOnlySummon === true && UNIT3.battleSummonKind === "pea-death-split" && Number.isSafeInteger(UNIT3.battleSummonParentId) && UNIT3.battleSummonParentId > 0 && PARENT && PARENT.ownerId === ownerId && !isBattleOnlySummon(PARENT) && PARENT.hp <= 0 && PARENT_TROOP?.deployed === true && PARENT.farmId === UNIT3.farmId && PARENT.species === 0 && UNIT3.species === 0 && UNIT3.tier === 1 && UNIT3.canSplit === false && UNIT3.countsTowardPermanentRoster === false && UNIT3.eligibleForRaidDeployment === false && UNIT3.breedingEligible === false && UNIT3.mergeEligible === false && UNIT3.usesPersistentSleep === false;
+        if (!VALID_SPLIT) {
+          FAIL2("A battle-only Raid split is missing its validated origin marker");
+        }
         continue;
       }
-      const troop = manifest.get(unit2.farmId);
-      if (!troop || !troop.deployed || troop.species !== unit2.species || troop.tier !== unit2.tier || originalUnitsByFarmId.has(unit2.farmId)) {
-        fail2("A Raid unit does not match this owner’s deployed roster");
+      const TROOP = MANIFEST.get(UNIT3.farmId);
+      if (!TROOP || !TROOP.deployed || TROOP.species !== UNIT3.species || TROOP.tier !== UNIT3.tier || ORIGINAL_UNITS_BY_FARM_ID.has(UNIT3.farmId)) {
+        FAIL2("A Raid unit does not match this owner’s deployed roster");
       }
-      originalUnitsByFarmId.set(unit2.farmId, unit2);
-      if (unit2.hp <= 0) deadFarmUnitIds.push(unit2.farmId);
+      ORIGINAL_UNITS_BY_FARM_ID.set(UNIT3.farmId, UNIT3);
+      if (UNIT3.hp <= 0) {
+        DEAD_FARM_UNIT_IDS.push(UNIT3.farmId);
+      }
     }
-    for (const [farmId, troop] of manifest) {
-      if (troop.deployed && !originalUnitsByFarmId.has(farmId)) {
-        fail2("A deployed original Farm unit is missing from this owner’s Raid world");
+    for (const [FARM_ID, TROOP] of MANIFEST) {
+      if (TROOP.deployed && !ORIGINAL_UNITS_BY_FARM_ID.has(FARM_ID)) {
+        FAIL2("A deployed original Farm unit is missing from this owner’s Raid world");
       }
     }
     return {
-      roster: roster2,
-      manifest,
-      deadFarmUnitIds: deadFarmUnitIds.sort((a, b) => a - b),
-      availableAtStart: roster2.troops.length,
-      originalUnitsDeployed: roster2.troops.filter((troop) => troop.deployed).length
+      roster: ROSTER2,
+      manifest: MANIFEST,
+      deadFarmUnitIds: DEAD_FARM_UNIT_IDS.sort((a, b) => a - b),
+      availableAtStart: ROSTER2.troops.length,
+      originalUnitsDeployed: ROSTER2.troops.filter((troop) => troop.deployed).length
     };
   }
   function raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed } = {}) {
-    if (!isCount(availableAtStart) || !isCount(originalUnitsDeployed) || originalUnitsDeployed > availableAtStart) {
-      fail2("Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster");
+    if (!IS_COUNT(availableAtStart) || !IS_COUNT(originalUnitsDeployed) || originalUnitsDeployed > availableAtStart) {
+      FAIL2(
+        "Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster"
+      );
     }
-    if (availableAtStart === 0 || originalUnitsDeployed === 0) return 0;
+    if (availableAtStart === 0 || originalUnitsDeployed === 0) {
+      return 0;
+    }
     return Math.min(2, Math.max(1, 1 + (availableAtStart - originalUnitsDeployed) / availableAtStart));
   }
   function clone(value) {
-    if (typeof structuredClone === "function") return structuredClone(value);
+    if (typeof structuredClone === "function") {
+      return structuredClone(value);
+    }
     return JSON.parse(JSON.stringify(value));
   }
   function validateReturnedPrivateFarm(sourceFarm, resultFarm, sleptFarmUnitIds) {
     if (sourceFarm.ownerId !== void 0 && resultFarm.ownerId !== sourceFarm.ownerId) {
-      fail2("The Raid victory resolver returned a different owner Farm");
+      FAIL2("The Raid victory resolver returned a different owner Farm");
     }
-    const originalUnits = new Map(sourceFarm.units.map((unit2) => [unit2.id, unit2]));
-    const resultUnits = /* @__PURE__ */ new Map();
-    for (const unit2 of resultFarm.units) {
-      if (!unit2 || !Number.isSafeInteger(unit2.id) || unit2.id < 1 || resultUnits.has(unit2.id)) {
-        fail2("The Raid victory resolver returned invalid or duplicate private Farm units");
+    const ORIGINAL_UNITS = new Map(sourceFarm.units.map((unit) => [unit.id, unit]));
+    const RESULT_UNITS = /* @__PURE__ */ new Map();
+    for (const UNIT3 of resultFarm.units) {
+      if (!UNIT3 || !Number.isSafeInteger(UNIT3.id) || UNIT3.id < 1 || RESULT_UNITS.has(UNIT3.id)) {
+        FAIL2("The Raid victory resolver returned invalid or duplicate private Farm units");
       }
-      resultUnits.set(unit2.id, unit2);
+      RESULT_UNITS.set(UNIT3.id, UNIT3);
     }
-    for (const [unitId, original] of originalUnits) {
-      const result = resultUnits.get(unitId);
-      if (!result || result.species !== original.species || result.tier !== original.tier) {
-        fail2("The Raid victory resolver did not preserve the owner’s Farm roster");
+    for (const [UNIT_ID, ORIGINAL] of ORIGINAL_UNITS) {
+      const RESULT = RESULT_UNITS.get(UNIT_ID);
+      if (!RESULT || RESULT.species !== ORIGINAL.species || RESULT.tier !== ORIGINAL.tier) {
+        FAIL2("The Raid victory resolver did not preserve the owner’s Farm roster");
       }
     }
-    for (const unitId of sleptFarmUnitIds) {
-      const unit2 = resultUnits.get(unitId);
-      if (!unit2 || unit2.hp !== 0 || unit2.down !== RAID_SLEEP_SECONDS) {
-        fail2("The Raid victory resolver must preserve the owner Farm’s casualty sleep");
+    for (const UNIT_ID of sleptFarmUnitIds) {
+      const UNIT3 = RESULT_UNITS.get(UNIT_ID);
+      if (!UNIT3 || UNIT3.hp !== 0 || UNIT3.down !== RAID_SLEEP_SECONDS) {
+        FAIL2("The Raid victory resolver must preserve the owner Farm’s casualty sleep");
       }
     }
   }
   function reserveRaidRun(farm, { sessionId = null } = {}) {
     if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      fail2("A private Farm snapshot with a units array is required");
+      FAIL2("A private Farm snapshot with a units array is required");
     }
-    const ledger = ledgerState(farm);
-    if (ledger.activeSequence !== null) {
-      if (sessionId !== null && sessionId !== ledger.activeSessionId) {
-        fail2("This Farm already has a different active Raid; reconnect to it or settle it first");
+    const LEDGER = ledgerState(farm);
+    if (LEDGER.activeSequence !== null) {
+      if (sessionId !== null && sessionId !== LEDGER.activeSessionId) {
+        FAIL2("This Farm already has a different active Raid; reconnect to it or settle it first");
       }
-      return { farm, runSequence: ledger.activeSequence, sessionId: ledger.activeSessionId, resumed: true };
+      return {
+        farm,
+        runSequence: LEDGER.activeSequence,
+        sessionId: LEDGER.activeSessionId,
+        resumed: true
+      };
     }
-    if (sessionId !== null && !isNonEmptyString(sessionId)) fail2("Raid session ID must be a non-empty string");
-    const runSequence = ledger.nextSequence + 1;
-    const stableSessionId = sessionId ?? `farm-raid-${runSequence}`;
-    const nextFarm = clone(farm);
-    nextFarm.nextRaidRunSequence = runSequence;
-    nextFarm.activeRaidRunSequence = runSequence;
-    nextFarm.activeRaidSessionId = stableSessionId;
-    nextFarm.raidSettlementWatermark = ledger.watermark;
-    nextFarm.raidSettlementReceipts = [...ledger.receipts];
-    return { farm: nextFarm, runSequence, sessionId: stableSessionId, resumed: false };
+    if (sessionId !== null && !IS_NON_EMPTY_STRING(sessionId)) {
+      FAIL2("Raid session ID must be a non-empty string");
+    }
+    const RUN_SEQUENCE = LEDGER.nextSequence + 1;
+    const STABLE_SESSION_ID = sessionId ?? `farm-raid-${RUN_SEQUENCE}`;
+    const NEXT_FARM = clone(farm);
+    NEXT_FARM.nextRaidRunSequence = RUN_SEQUENCE;
+    NEXT_FARM.activeRaidRunSequence = RUN_SEQUENCE;
+    NEXT_FARM.activeRaidSessionId = STABLE_SESSION_ID;
+    NEXT_FARM.raidSettlementWatermark = LEDGER.watermark;
+    NEXT_FARM.raidSettlementReceipts = [...LEDGER.receipts];
+    return {
+      farm: NEXT_FARM,
+      runSequence: RUN_SEQUENCE,
+      sessionId: STABLE_SESSION_ID,
+      resumed: false
+    };
   }
   function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
     if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      fail2("A private Farm snapshot with a units array is required");
+      FAIL2("A private Farm snapshot with a units array is required");
     }
     if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-      fail2("Settlement timestamp must be a non-negative finite number");
+      FAIL2("Settlement timestamp must be a non-negative finite number");
     }
-    const ledger = ledgerState(farm);
-    if (ledger.activeSequence === null) return { farm, receipt: null, applied: false };
-    const ownerId = "recovery-abort";
-    const { activeSequence: runSequence, activeSessionId: sessionId } = ledger;
-    const receipt = {
-      key: raidSettlementKey({ ownerId, sessionId, encounterId: runSequence }),
-      ownerId,
-      sessionId,
-      encounterId: runSequence,
-      runSequence,
+    const LEDGER = ledgerState(farm);
+    if (LEDGER.activeSequence === null) {
+      return {
+        farm,
+        receipt: null,
+        applied: false
+      };
+    }
+    const OWNER_ID = "recovery-abort";
+    const { activeSequence: RUN_SEQUENCE, activeSessionId: SESSION_ID } = LEDGER;
+    const RECEIPT = {
+      key: raidSettlementKey({
+        ownerId: OWNER_ID,
+        sessionId: SESSION_ID,
+        encounterId: RUN_SEQUENCE
+      }),
+      ownerId: OWNER_ID,
+      sessionId: SESSION_ID,
+      encounterId: RUN_SEQUENCE,
+      runSequence: RUN_SEQUENCE,
       outcome: "aborted",
       status: "settled",
       completedAtMs,
@@ -4962,112 +8389,133 @@
       deploymentMultiplier: 0,
       reward: null
     };
-    const nextFarm = clone(farm);
-    nextFarm.activeRaidRunSequence = null;
-    nextFarm.activeRaidSessionId = null;
-    nextFarm.raidSettlementWatermark = runSequence;
-    nextFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
-    return { farm: nextFarm, receipt: clone(receipt), applied: true };
+    const NEXT_FARM = clone(farm);
+    NEXT_FARM.activeRaidRunSequence = null;
+    NEXT_FARM.activeRaidSessionId = null;
+    NEXT_FARM.raidSettlementWatermark = RUN_SEQUENCE;
+    NEXT_FARM.raidSettlementReceipts = [...LEDGER.receipts, RECEIPT].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
+    return {
+      farm: NEXT_FARM,
+      receipt: clone(RECEIPT),
+      applied: true
+    };
   }
-  function settleRaidOwnerFarm(farm, {
-    ownerId,
-    sessionId,
-    encounterId,
-    runSequence,
-    outcome,
-    raidWorld,
-    completedAtMs,
-    settleVictory = null
-  } = {}) {
+  function settleRaidOwnerFarm(farm, { ownerId, sessionId, encounterId, runSequence, outcome, raidWorld, completedAtMs, settleVictory = null } = {}) {
     if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      fail2("A private Farm snapshot with a units array is required");
+      FAIL2("A private Farm snapshot with a units array is required");
     }
-    const key = raidSettlementKey({ ownerId, sessionId, encounterId });
-    if (!["victory", "defeat", "aborted"].includes(outcome)) fail2("Raid outcome must be victory, defeat, or aborted");
-    if (!Number.isSafeInteger(runSequence) || runSequence < 1) fail2("A positive Farm-local Raid run sequence is required");
-    if (settleVictory !== null && typeof settleVictory !== "function") fail2("settleVictory must be a function");
+    const KEY2 = raidSettlementKey({
+      ownerId,
+      sessionId,
+      encounterId
+    });
+    if (!["victory", "defeat", "aborted"].includes(outcome)) {
+      FAIL2("Raid outcome must be victory, defeat, or aborted");
+    }
+    if (!Number.isSafeInteger(runSequence) || runSequence < 1) {
+      FAIL2("A positive Farm-local Raid run sequence is required");
+    }
+    if (settleVictory !== null && typeof settleVictory !== "function") {
+      FAIL2("settleVictory must be a function");
+    }
     if (completedAtMs !== void 0 && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-      fail2("Settlement timestamp must be a non-negative finite number");
+      FAIL2("Settlement timestamp must be a non-negative finite number");
     }
-    const ledger = ledgerState(farm);
-    if (runSequence <= ledger.watermark) {
-      const previous = ledger.receipts.find((receipt2) => receipt2?.key === key);
+    const LEDGER = ledgerState(farm);
+    if (runSequence <= LEDGER.watermark) {
+      const PREVIOUS = LEDGER.receipts.find((receipt) => receipt?.key === KEY2);
       return {
         farm,
-        receipt: clone(previous || {
-          key,
-          ownerId,
-          sessionId,
-          encounterId,
-          runSequence,
-          outcome: "already-settled",
-          status: "compacted",
-          sleptFarmUnitIds: [],
-          availableAtStart: 0,
-          originalUnitsDeployed: 0,
-          deploymentMultiplier: 0,
-          reward: null
-        }),
+        receipt: clone(
+          PREVIOUS || {
+            key: KEY2,
+            ownerId,
+            sessionId,
+            encounterId,
+            runSequence,
+            outcome: "already-settled",
+            status: "compacted",
+            sleptFarmUnitIds: [],
+            availableAtStart: 0,
+            originalUnitsDeployed: 0,
+            deploymentMultiplier: 0,
+            reward: null
+          }
+        ),
         applied: false
       };
     }
-    if (runSequence !== ledger.watermark + 1 || ledger.activeSequence !== runSequence || ledger.activeSessionId !== sessionId) {
-      fail2("Raid settlement does not match the active Farm-local run");
+    if (runSequence !== LEDGER.watermark + 1 || LEDGER.activeSequence !== runSequence || LEDGER.activeSessionId !== sessionId) {
+      FAIL2("Raid settlement does not match the active Farm-local run");
     }
-    const raidOwner = raidOwnerManifest(raidWorld, ownerId);
-    const { manifest, deadFarmUnitIds, availableAtStart, originalUnitsDeployed } = raidOwner;
-    const unitsByFarmId = /* @__PURE__ */ new Map();
-    for (const unit2 of farm.units) {
-      if (!unit2 || !Number.isSafeInteger(unit2.id) || unit2.id < 1 || unitsByFarmId.has(unit2.id)) {
-        fail2("Private Farm units must have unique positive IDs");
+    const RAID_OWNER = raidOwnerManifest(raidWorld, ownerId);
+    const {
+      manifest: MANIFEST,
+      deadFarmUnitIds: DEAD_FARM_UNIT_IDS,
+      availableAtStart: AVAILABLE_AT_START,
+      originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED
+    } = RAID_OWNER;
+    const UNITS_BY_FARM_ID = /* @__PURE__ */ new Map();
+    for (const UNIT3 of farm.units) {
+      if (!UNIT3 || !Number.isSafeInteger(UNIT3.id) || UNIT3.id < 1 || UNITS_BY_FARM_ID.has(UNIT3.id)) {
+        FAIL2("Private Farm units must have unique positive IDs");
       }
-      unitsByFarmId.set(unit2.id, unit2);
+      UNITS_BY_FARM_ID.set(UNIT3.id, UNIT3);
     }
-    for (const [farmUnitId, troop] of manifest) {
-      const farmUnit = unitsByFarmId.get(farmUnitId);
-      if (!farmUnit || farmUnit.species !== troop.species || farmUnit.tier !== troop.tier) {
-        fail2("The Raid roster no longer matches this owner’s private Farm units");
+    for (const [FARM_UNIT_ID, TROOP] of MANIFEST) {
+      const FARM_UNIT = UNITS_BY_FARM_ID.get(FARM_UNIT_ID);
+      if (!FARM_UNIT || FARM_UNIT.species !== TROOP.species || FARM_UNIT.tier !== TROOP.tier) {
+        FAIL2("The Raid roster no longer matches this owner’s private Farm units");
       }
     }
-    for (const farmUnitId of deadFarmUnitIds) {
-      if (!unitsByFarmId.has(farmUnitId)) fail2("A dead Raid unit does not belong to this owner Farm");
+    for (const FARM_UNIT_ID of DEAD_FARM_UNIT_IDS) {
+      if (!UNITS_BY_FARM_ID.has(FARM_UNIT_ID)) {
+        FAIL2("A dead Raid unit does not belong to this owner Farm");
+      }
     }
     let privateFarm = clone(farm);
     privateFarm.raidSettlementReceipts = Array.isArray(privateFarm.raidSettlementReceipts) ? privateFarm.raidSettlementReceipts : [];
-    const deadSet = new Set(deadFarmUnitIds);
-    for (const unit2 of privateFarm.units) {
-      if (!deadSet.has(unit2.id)) continue;
-      unit2.hp = 0;
-      unit2.down = RAID_SLEEP_SECONDS;
+    const DEAD_SET = new Set(DEAD_FARM_UNIT_IDS);
+    for (const UNIT3 of privateFarm.units) {
+      if (!DEAD_SET.has(UNIT3.id)) {
+        continue;
+      }
+      UNIT3.hp = 0;
+      UNIT3.down = RAID_SLEEP_SECONDS;
     }
     let rewardSummary = null;
     let deploymentMultiplier = 0;
     if (outcome === "victory") {
-      deploymentMultiplier = raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed });
+      deploymentMultiplier = raidDeploymentRewardMultiplier({
+        availableAtStart: AVAILABLE_AT_START,
+        originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED
+      });
       if (deploymentMultiplier > 0) {
-        if (settleVictory === null) fail2("A reward-capable Raid victory needs the common reward/progression resolver");
-        const resolution = settleVictory({
+        if (settleVictory === null) {
+          FAIL2("A reward-capable Raid victory needs the common reward/progression resolver");
+        }
+        const RESOLUTION = settleVictory({
           farm: privateFarm,
           ownerId,
           sessionId,
           encounterId,
-          receiptKey: key,
+          receiptKey: KEY2,
           source: "raid",
           deploymentMultiplier
         });
-        if (!resolution || !resolution.farm || typeof resolution.farm !== "object" || Array.isArray(resolution.farm) || !Array.isArray(resolution.farm.units)) {
-          fail2("The Raid victory resolver must return a private Farm snapshot and summary");
+        if (!RESOLUTION || !RESOLUTION.farm || typeof RESOLUTION.farm !== "object" || Array.isArray(RESOLUTION.farm) || !Array.isArray(RESOLUTION.farm.units)) {
+          FAIL2("The Raid victory resolver must return a private Farm snapshot and summary");
         }
-        validateReturnedPrivateFarm(farm, resolution.farm, deadFarmUnitIds);
-        privateFarm = clone(resolution.farm);
-        rewardSummary = resolution.summary ?? null;
+        validateReturnedPrivateFarm(farm, RESOLUTION.farm, DEAD_FARM_UNIT_IDS);
+        privateFarm = clone(RESOLUTION.farm);
+        rewardSummary = RESOLUTION.summary ?? null;
       }
     }
     if (outcome === "victory" || outcome === "defeat") {
       advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
     }
-    const receipt = {
-      key,
+    const RECEIPT = {
+      key: KEY2,
       ownerId,
       sessionId,
       encounterId,
@@ -5075,20 +8523,24 @@
       outcome,
       status: "settled",
       completedAtMs: completedAtMs ?? null,
-      sleptFarmUnitIds: [...deadFarmUnitIds].sort((a, b) => a - b),
-      availableAtStart,
-      originalUnitsDeployed,
+      sleptFarmUnitIds: [...DEAD_FARM_UNIT_IDS].sort((a, b) => a - b),
+      availableAtStart: AVAILABLE_AT_START,
+      originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED,
       deploymentMultiplier,
       reward: rewardSummary === null ? null : clone(rewardSummary)
     };
-    privateFarm.nextRaidRunSequence = ledger.nextSequence;
+    privateFarm.nextRaidRunSequence = LEDGER.nextSequence;
     privateFarm.activeRaidRunSequence = null;
     privateFarm.activeRaidSessionId = null;
     privateFarm.raidSettlementWatermark = runSequence;
-    privateFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
-    return { farm: privateFarm, receipt: clone(receipt), applied: true };
+    privateFarm.raidSettlementReceipts = [...LEDGER.receipts, RECEIPT].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
+    return {
+      farm: privateFarm,
+      receipt: clone(RECEIPT),
+      applied: true
+    };
   }
-  var RAID_SLEEP_SECONDS, RAID_SETTLEMENT_RECEIPT_LIMIT, fail2, isNonEmptyString, isCount;
+  var RAID_SLEEP_SECONDS, RAID_SETTLEMENT_RECEIPT_LIMIT, FAIL2, IS_NON_EMPTY_STRING, IS_COUNT;
   var init_raid_settlement = __esm({
     "src/raid-settlement.js"() {
       init_unit_grades();
@@ -5097,245 +8549,425 @@
       init_farm_boss_stages();
       RAID_SLEEP_SECONDS = 60;
       RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
-      fail2 = (message) => {
+      FAIL2 = (message) => {
         throw new TypeError(message);
       };
-      isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
-      isCount = (value) => Number.isSafeInteger(value) && value >= 0;
+      IS_NON_EMPTY_STRING = (value) => typeof value === "string" && value.trim().length > 0;
+      IS_COUNT = (value) => Number.isSafeInteger(value) && value >= 0;
     }
   });
 
   // src/farm-snapshot-validation.js
   function assertSnapshot(ok) {
-    if (!ok) throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+    if (!ok) {
+      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+    }
   }
   function finiteTree(v, depth = 0, key = "") {
-    assert2(depth < 18);
-    if (typeof v === "number") assert2(Number.isFinite(v) && Math.abs(v) < 1e13);
-    else if (Array.isArray(v)) {
-      const max = key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
-      assert2(v.length <= max);
+    ASSERT2(depth < 18);
+    if (typeof v === "number") {
+      ASSERT2(Number.isFinite(v) && Math.abs(v) < 1e13);
+    } else if (Array.isArray(v)) {
+      const MAX = key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
+      ASSERT2(v.length <= MAX);
       v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === "object") {
-      for (const [k, x] of Object.entries(v)) {
-        assert2(!["__proto__", "constructor", "prototype"].includes(k));
-        finiteTree(x, depth + 1, k);
+      for (const [K, X] of Object.entries(v)) {
+        ASSERT2(!["__proto__", "constructor", "prototype"].includes(K));
+        finiteTree(X, depth + 1, K);
       }
-    } else assert2(v === null || typeof v === "boolean" || typeof v === "string" && v.length < 256);
+    } else {
+      ASSERT2(v === null || typeof v === "boolean" || typeof v === "string" && v.length < 256);
+    }
   }
   function shape(v, t) {
-    assert2(v !== null && typeof v === "object" && !Array.isArray(v));
-    assert2(Object.keys(v).length === Object.keys(t).length);
-    for (const [k, x] of Object.entries(t)) {
-      assert2(Object.hasOwn(v, k));
-      if (x === null) continue;
-      if (Array.isArray(x)) {
-        assert2(Array.isArray(v[k]));
+    ASSERT2(v !== null && typeof v === "object" && !Array.isArray(v));
+    ASSERT2(Object.keys(v).length === Object.keys(t).length);
+    for (const [K, X] of Object.entries(t)) {
+      ASSERT2(Object.hasOwn(v, K));
+      if (X === null) {
         continue;
       }
-      if (typeof x === "object") shape(v[k], x);
-      else assert2(typeof v[k] === typeof x);
+      if (Array.isArray(X)) {
+        ASSERT2(Array.isArray(v[K]));
+        continue;
+      }
+      if (typeof X === "object") {
+        shape(v[K], X);
+      } else {
+        ASSERT2(typeof v[K] === typeof X);
+      }
     }
   }
   function validateSnapshot(raw) {
     finiteTree(raw);
     shape(raw, FARM_SNAPSHOT_SHAPE);
-    assert2(integer2(raw.seed, 0, 4294967295) && integer2(raw.rng.state, 0, 4294967295));
-    assert2(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
+    ASSERT2(INTEGER2(raw.seed, 0, 4294967295) && INTEGER2(raw.rng.state, 0, 4294967295));
+    ASSERT2(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
     if (raw.mergeTask !== null) {
-      const t = raw.mergeTask;
-      assert2(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && Array.isArray(t.materialIds) && t.materialIds.length >= 2 && t.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(t.materialIds).size === t.materialIds.length && t.materialIds.every((id) => integer2(id, 1, CONFIG.farm.maxUnitId)));
-      if (t.phase === "approach") {
-        const materials = t.materialIds.map((id) => raw.units.find((u) => u.id === id)), first = materials[0], cost = mergeMaterialCostForTier(first?.tier + 1), sameSpeciesCount = raw.units.filter((u) => !u.isBattleOnlySummon && u.species === first?.species).length;
-        assert2(integer2(t.aId, 1, CONFIG.farm.maxUnitId) && integer2(t.bId, 1, CONFIG.farm.maxUnitId) && t.aId === t.materialIds[0] && t.bId === t.materialIds[1] && cost === materials.length && first && materials.every((u) => u && u.tier === first.tier && u.species === first.species) && sameSpeciesCount - materials.length + 1 >= 2);
+      const T = raw.mergeTask;
+      ASSERT2(
+        raw.scene === "farm" && raw.mode === "merge" && T && ["approach", "animation"].includes(T.phase) && Number.isFinite(T.elapsed) && T.elapsed >= 0 && Number.isFinite(T.duration) && T.duration > 0 && T.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && Array.isArray(T.materialIds) && T.materialIds.length >= 2 && T.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(T.materialIds).size === T.materialIds.length && T.materialIds.every((id) => INTEGER2(id, 1, CONFIG.farm.maxUnitId))
+      );
+      if (T.phase === "approach") {
+        const MATERIALS = T.materialIds.map((id) => raw.units.find((u) => u.id === id)), FIRST = MATERIALS[0], COST = mergeMaterialCostForTier(FIRST?.tier + 1), SAME_SPECIES_COUNT = raw.units.filter(
+          (u) => !u.isBattleOnlySummon && u.species === FIRST?.species
+        ).length;
+        ASSERT2(
+          INTEGER2(T.aId, 1, CONFIG.farm.maxUnitId) && INTEGER2(T.bId, 1, CONFIG.farm.maxUnitId) && T.aId === T.materialIds[0] && T.bId === T.materialIds[1] && COST === MATERIALS.length && FIRST && MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species) && SAME_SPECIES_COUNT - MATERIALS.length + 1 >= 2
+        );
       } else {
-        const result = raw.units.find((u) => u.id === t.resultId);
-        assert2(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9 && integer2(t.resultId, 1, CONFIG.farm.maxUnitId) && result && integer2(t.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && integer2(t.sourceTier, 1, CONFIG.unit.maxTier - 1) && result.species === t.sourceSpecies && result.tier === t.sourceTier + 1 && t.materialIds.length === mergeMaterialCostForTier(result.tier));
+        const RESULT = raw.units.find((u) => u.id === T.resultId);
+        ASSERT2(
+          T.aId === 0 && T.bId === 0 && T.elapsed <= T.duration + 1e-9 && INTEGER2(T.resultId, 1, CONFIG.farm.maxUnitId) && RESULT && INTEGER2(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(T.sourceTier, 1, CONFIG.unit.maxTier - 1) && RESULT.species === T.sourceSpecies && RESULT.tier === T.sourceTier + 1 && T.materialIds.length === mergeMaterialCostForTier(RESULT.tier)
+        );
       }
     }
-    assert2(raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : CONFIG.raid.capacity.battleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.raid.capacity.projectiles);
-    assert2(raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0);
-    assert2(integer2(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
-    assert2(isValidPlayerProgressionState(raw.playerProgression));
-    const farmEvent = raw.farmBossEvent;
-    if (farmEvent.phase === "idle") {
-      assert2(farmEvent.outcome === "idle" && farmEvent.elapsed === 0 && farmEvent.encounterId === 0 && farmEvent.rewardStatus === "none" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
-      if (raw.scene === "farm") assert2(!raw.boss.active);
-    } else if (farmEvent.phase === "dropping" || farmEvent.phase === "fighting") assert2(raw.scene === "farm" && farmEvent.outcome === "fighting" && raw.boss.active && integer2(farmEvent.encounterId, 1, raw.nextBossEncounterId - 1) && farmEvent.rewardStatus === "unresolved" && farmEvent.rewardChance === 0 && farmEvent.rewardRoll === 0 && farmEvent.rewardUnitId === 0);
-    else {
-      assert2(raw.scene === "farm" && ["victory", "defeat"].includes(farmEvent.outcome) && !raw.boss.active && integer2(farmEvent.encounterId, 1, raw.nextBossEncounterId - 1));
-      assert2(farmEvent.outcome === "victory" ? raw.boss.hp === 0 : raw.boss.hp > 0);
-      assert2(farmEvent.outcome === "victory" ? ["missed", "pending", "granted"].includes(farmEvent.rewardStatus) : farmEvent.rewardStatus === "none");
-    }
-    assert2(raw.bossRewardWatermarks && integer2(raw.bossRewardWatermarks.farm, 0, 1e12) && integer2(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm);
-    const rewardIds = /* @__PURE__ */ new Set();
-    for (const reward2 of raw.bossRewardReceipts) {
-      assert2(reward2 && integer2(reward2.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward2.source) && reward2.encounterId <= raw.bossRewardWatermarks[reward2.source] && integer2(reward2.species, 0, CONFIG.unit.speciesCount - 1) && integer2(reward2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(reward2.x) && Number.isFinite(reward2.y) && Number.isFinite(reward2.chance) && reward2.chance >= 0 && reward2.chance <= 1 && Number.isFinite(reward2.roll) && reward2.roll >= 0 && reward2.roll < 1 && ["pending", "missed", "granted"].includes(reward2.status) && integer2(reward2.unitId, 0, CONFIG.farm.maxUnitId));
-      const key = reward2.receiptKey || reward2.source + ":" + reward2.encounterId;
-      assert2(!rewardIds.has(key));
-      rewardIds.add(key);
-      assert2(reward2.status === "granted" === reward2.unitId > 0);
-      if (reward2.drops !== void 0) {
-        assert2(Array.isArray(reward2.drops) && reward2.drops.length <= BOSS_REWARD_SETTINGS.maxStage && integer2(reward2.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && reward2.drops.length === reward2.rollCount);
-        for (const drop2 of reward2.drops) assert2(drop2 && Number.isFinite(drop2.roll) && drop2.roll >= 0 && drop2.roll < 1 && ["pending", "missed", "granted"].includes(drop2.status) && integer2(drop2.unitId, 0, CONFIG.farm.maxUnitId) && drop2.status === "granted" === drop2.unitId > 0);
-        assert2(reward2.status === (reward2.drops.some((drop2) => drop2.status === "pending") ? "pending" : reward2.drops.some((drop2) => drop2.status === "granted") ? "granted" : "missed"));
+    ASSERT2(
+      raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : CONFIG.raid.capacity.battleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.raid.capacity.projectiles
+    );
+    ASSERT2(
+      raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0
+    );
+    ASSERT2(INTEGER2(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
+    ASSERT2(isValidPlayerProgressionState(raw.playerProgression));
+    const FARM_EVENT = raw.farmBossEvent;
+    if (FARM_EVENT.phase === "idle") {
+      ASSERT2(
+        FARM_EVENT.outcome === "idle" && FARM_EVENT.elapsed === 0 && FARM_EVENT.encounterId === 0 && FARM_EVENT.rewardStatus === "none" && FARM_EVENT.rewardChance === 0 && FARM_EVENT.rewardRoll === 0 && FARM_EVENT.rewardUnitId === 0
+      );
+      if (raw.scene === "farm") {
+        ASSERT2(!raw.boss.active);
       }
-      if (reward2.receiptKey !== void 0) assert2(typeof reward2.receiptKey === "string" && reward2.receiptKey.length > 0 && reward2.receiptKey.length < 256);
-      if (reward2.acquisitionMultiplier !== void 0) assert2(Number.isFinite(reward2.acquisitionMultiplier) && reward2.acquisitionMultiplier >= 0 && reward2.acquisitionMultiplier <= 2);
-      if (reward2.source === "farm" && reward2.status === "granted") assert2(reward2.unitId < raw.nextId);
+    } else if (FARM_EVENT.phase === "dropping" || FARM_EVENT.phase === "fighting") {
+      ASSERT2(
+        raw.scene === "farm" && FARM_EVENT.outcome === "fighting" && raw.boss.active && INTEGER2(FARM_EVENT.encounterId, 1, raw.nextBossEncounterId - 1) && FARM_EVENT.rewardStatus === "unresolved" && FARM_EVENT.rewardChance === 0 && FARM_EVENT.rewardRoll === 0 && FARM_EVENT.rewardUnitId === 0
+      );
+    } else {
+      ASSERT2(
+        raw.scene === "farm" && ["victory", "defeat"].includes(FARM_EVENT.outcome) && !raw.boss.active && INTEGER2(FARM_EVENT.encounterId, 1, raw.nextBossEncounterId - 1)
+      );
+      ASSERT2(FARM_EVENT.outcome === "victory" ? raw.boss.hp === 0 : raw.boss.hp > 0);
+      ASSERT2(
+        FARM_EVENT.outcome === "victory" ? ["missed", "pending", "granted"].includes(FARM_EVENT.rewardStatus) : FARM_EVENT.rewardStatus === "none"
+      );
     }
-    const stageProgress = raw.farmBossProgress;
-    assert2(stageProgress && integer2(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer2(stageProgress.encounterSeed, 0, 4294967295) && integer2(stageProgress.encounterEpoch, 0, 1e12) && integer2(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
-    const stageIds = /* @__PURE__ */ new Set(), selectionIds = /* @__PURE__ */ new Set();
-    for (const selection of stageProgress.selections) {
-      assert2(selection && integer2(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer2(selection.species, 0, CONFIG.unit.speciesCount - 1) && integer2(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
-      stageIds.add(selection.stage);
-      selectionIds.add(selection.selectionId);
-    }
-    assert2(integer2(raw.nextRaidRunSequence, 0, 1e12) && integer2(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) && raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid && raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid && Array.isArray(raw.raidSettlementReceipts));
-    const activeRaid = raw.activeRaidRunSequence, activeSession = raw.activeRaidSessionId;
-    assert2(activeRaid === null === (activeSession === null));
-    if (activeRaid === null) assert2(raw.nextRaidRunSequence === raw.raidSettlementWatermark);
-    else assert2(integer2(activeRaid, 1, 1e12) && activeRaid === raw.nextRaidRunSequence && activeRaid === raw.raidSettlementWatermark + 1 && typeof activeSession === "string" && activeSession.trim().length > 0 && activeSession.length <= 128);
-    const raidReceiptKeys = /* @__PURE__ */ new Set();
-    for (const receipt of raw.raidSettlementReceipts) {
-      assert2(receipt && typeof receipt.ownerId === "string" && receipt.ownerId.length > 0 && typeof receipt.sessionId === "string" && receipt.sessionId.length > 0 && integer2(receipt.encounterId, 1, 1e12) && integer2(receipt.runSequence, 1, raw.raidSettlementWatermark) && ["victory", "defeat", "aborted"].includes(receipt.outcome));
-      assert2(receipt.status === "settled" && receipt.key === raidSettlementKey({ ownerId: receipt.ownerId, sessionId: receipt.sessionId, encounterId: receipt.encounterId }) && !raidReceiptKeys.has(receipt.key) && receipt.runSequence <= raw.raidSettlementWatermark && Array.isArray(receipt.sleptFarmUnitIds) && receipt.sleptFarmUnitIds.every((id) => integer2(id, 1, CONFIG.farm.maxUnitId)) && new Set(receipt.sleptFarmUnitIds).size === receipt.sleptFarmUnitIds.length && integer2(receipt.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) && integer2(receipt.originalUnitsDeployed, 0, receipt.availableAtStart) && Number.isFinite(receipt.deploymentMultiplier) && receipt.deploymentMultiplier >= 0 && receipt.deploymentMultiplier <= 2 && (receipt.completedAtMs === null || Number.isFinite(receipt.completedAtMs) && receipt.completedAtMs >= 0) && (receipt.reward === null || receipt.reward && typeof receipt.reward === "object" && !Array.isArray(receipt.reward)));
-      raidReceiptKeys.add(receipt.key);
-    }
-    if (farmEvent.outcome === "victory" && farmEvent.phase !== "idle") {
-      const receipt = raw.bossRewardReceipts.find((reward2) => reward2.source === "farm" && reward2.encounterId === farmEvent.encounterId);
-      assert2(receipt && receipt.status === farmEvent.rewardStatus && receipt.chance === farmEvent.rewardChance && receipt.roll === farmEvent.rewardRoll && receipt.unitId === farmEvent.rewardUnitId);
-    }
-    assert2(raw.corpseRecoveryVersion === 1 && integer2(raw.nextId, 1, 1e9) && integer2(raw.bossSummonSerial, 0, 1e12) && integer2(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
-    assert2(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
-    const rosterOwners = /* @__PURE__ */ new Set(), manifest = /* @__PURE__ */ new Set();
-    for (const r of raw.raidRosters) {
-      assert2(raw.raidExpectedPlayers.includes(r.ownerId) && !rosterOwners.has(r.ownerId) && Array.isArray(r.troops) && r.troops.length <= CONFIG.raid.capacity.playerUnits && isValidAbilityRuntimeSnapshot(r.abilitySnapshot));
-      assert2(typeof r.settlementSessionId === "string" && r.settlementSessionId.length <= 128 && integer2(r.settlementRunSequence, 0, 1e12) && integer2(r.settlementEncounterId, 0, 1e12));
-      assert2(r.settlementRunSequence === 0 ? r.settlementSessionId === "" && r.settlementEncounterId === 0 : r.settlementSessionId.trim().length > 0 && r.settlementEncounterId === r.settlementRunSequence);
-      rosterOwners.add(r.ownerId);
-      const ids2 = /* @__PURE__ */ new Set();
-      for (const t of r.troops) {
-        assert2(integer2(t.farmId, 1, CONFIG.farm.maxUnitId) && integer2(t.species, 0, CONFIG.unit.speciesCount - 1) && integer2(t.tier, 1, CONFIG.unit.maxTier) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
-        ids2.add(t.farmId);
-        manifest.add(r.ownerId + ":" + t.farmId);
+    ASSERT2(
+      raw.bossRewardWatermarks && INTEGER2(raw.bossRewardWatermarks.farm, 0, 1e12) && INTEGER2(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm
+    );
+    const REWARD_IDS = /* @__PURE__ */ new Set();
+    for (const REWARD2 of raw.bossRewardReceipts) {
+      ASSERT2(
+        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && ["farm", "raid"].includes(REWARD2.source) && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && Number.isFinite(REWARD2.roll) && REWARD2.roll >= 0 && REWARD2.roll < 1 && ["pending", "missed", "granted"].includes(REWARD2.status) && INTEGER2(REWARD2.unitId, 0, CONFIG.farm.maxUnitId)
+      );
+      const KEY2 = REWARD2.receiptKey || REWARD2.source + ":" + REWARD2.encounterId;
+      ASSERT2(!REWARD_IDS.has(KEY2));
+      REWARD_IDS.add(KEY2);
+      ASSERT2(REWARD2.status === "granted" === REWARD2.unitId > 0);
+      if (REWARD2.drops !== void 0) {
+        ASSERT2(
+          Array.isArray(REWARD2.drops) && REWARD2.drops.length <= BOSS_REWARD_SETTINGS.maxStage && INTEGER2(REWARD2.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && REWARD2.drops.length === REWARD2.rollCount
+        );
+        for (const DROP2 of REWARD2.drops) {
+          ASSERT2(
+            DROP2 && Number.isFinite(DROP2.roll) && DROP2.roll >= 0 && DROP2.roll < 1 && ["pending", "missed", "granted"].includes(DROP2.status) && INTEGER2(DROP2.unitId, 0, CONFIG.farm.maxUnitId) && DROP2.status === "granted" === DROP2.unitId > 0
+          );
+        }
+        ASSERT2(
+          REWARD2.status === (REWARD2.drops.some((drop) => drop.status === "pending") ? "pending" : REWARD2.drops.some((drop) => drop.status === "granted") ? "granted" : "missed")
+        );
       }
-      assert2(integer2(r.lastDeploySequence, 0, r.troops.length) && r.lastDeploySequence === r.troops.filter((t) => t.deployed).length && Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
+      if (REWARD2.receiptKey !== void 0) {
+        ASSERT2(
+          typeof REWARD2.receiptKey === "string" && REWARD2.receiptKey.length > 0 && REWARD2.receiptKey.length < 256
+        );
+      }
+      if (REWARD2.acquisitionMultiplier !== void 0) {
+        ASSERT2(
+          Number.isFinite(REWARD2.acquisitionMultiplier) && REWARD2.acquisitionMultiplier >= 0 && REWARD2.acquisitionMultiplier <= 2
+        );
+      }
+      if (REWARD2.source === "farm" && REWARD2.status === "granted") {
+        ASSERT2(REWARD2.unitId < raw.nextId);
+      }
     }
-    assert2(manifest.size <= CONFIG.raid.capacity.units);
-    const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set(), mateIdLimit = raw.scene === "raid" ? CONFIG.raid.capacity.players * CONFIG.raid.ids.playerStride + CONFIG.raid.capacity.playerUnits : CONFIG.farm.maxUnitId;
-    const unitsById = /* @__PURE__ */ new Map(), summonsByParent = /* @__PURE__ */ new Map();
-    for (const u of raw.units) {
-      shape(u, UNIT_SNAPSHOT_SHAPE);
-      assert2(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer2(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.unit.corpseRecoverySeconds && integer2(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
-      assert2(integer2(u.species, 0, CONFIG.unit.speciesCount - 1) && integer2(u.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && typeof u.walnutEmpoweredNextBasic === "boolean" && integer2(u.chestnutBasicCycles, 0, 1e12));
-      if (u.hp <= 0) assert2(u.down > 0 && !u.isBattleOnlySummon);
-      else assert2(u.down === 0);
-      if (hasFaction(u, FACTION_CONFIG.ENEMY)) assert2(u.isBattleOnlySummon && u.battleSummonKind === "boss-mouth-t1" && u.ownerId === "boss" && u.farmId === 0);
-      else assert2(u.battleSummonKind !== "boss-mouth-t1" && u.ownerId !== "boss");
-      assert2(!ids.has(u.id));
-      ids.add(u.id);
-      unitsById.set(u.id, u);
-      if (u.isBattleOnlySummon) {
-        if (hasFaction(u, FACTION_CONFIG.PLAYER) && u.battleSummonKind === "pea-death-split") {
-          assert2(["farm", "raid"].includes(raw.scene) && integer2(u.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && u.battleSummonEncounterId === 0 && hasUnitCapability(u.species, "deathSplit") && u.tier === 1 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0);
-          const parent = unitsById.get(u.battleSummonParentId);
-          assert2(parent && hasFaction(parent, FACTION_CONFIG.PLAYER) && parent.isBattleOnlySummon === false && parent.hp <= 0 && hasUnitCapability(parent.species, "deathSplit") && parent.species === u.species && parent.splitUsedThisBattle && parent.ownerId === u.ownerId && parent.farmId === u.farmId);
-          const list = summonsByParent.get(parent.id) || [];
-          list.push(u);
-          summonsByParent.set(parent.id, list);
-          if (raw.scene === "raid") assert2(u.id >= CONFIG.raid.ids.summonBase && u.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer2(u.farmId, 1, CONFIG.farm.maxUnitId));
-          else assert2(integer2(u.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
+    const STAGE_PROGRESS = raw.farmBossProgress;
+    ASSERT2(
+      STAGE_PROGRESS && INTEGER2(STAGE_PROGRESS.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER2(STAGE_PROGRESS.encounterSeed, 0, 4294967295) && INTEGER2(STAGE_PROGRESS.encounterEpoch, 0, 1e12) && INTEGER2(STAGE_PROGRESS.nextSelectionId, 1, 1e12) && Array.isArray(STAGE_PROGRESS.selections) && STAGE_PROGRESS.selections.length <= BOSS_REWARD_SETTINGS.maxStage
+    );
+    const STAGE_IDS = /* @__PURE__ */ new Set(), SELECTION_IDS = /* @__PURE__ */ new Set();
+    for (const SELECTION of STAGE_PROGRESS.selections) {
+      ASSERT2(
+        SELECTION && INTEGER2(SELECTION.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER2(SELECTION.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(SELECTION.selectionId, 1, STAGE_PROGRESS.nextSelectionId - 1) && !STAGE_IDS.has(SELECTION.stage) && !SELECTION_IDS.has(SELECTION.selectionId)
+      );
+      STAGE_IDS.add(SELECTION.stage);
+      SELECTION_IDS.add(SELECTION.selectionId);
+    }
+    ASSERT2(
+      INTEGER2(raw.nextRaidRunSequence, 0, 1e12) && INTEGER2(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) && raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid && raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid && Array.isArray(raw.raidSettlementReceipts)
+    );
+    const ACTIVE_RAID = raw.activeRaidRunSequence, ACTIVE_SESSION = raw.activeRaidSessionId;
+    ASSERT2(ACTIVE_RAID === null === (ACTIVE_SESSION === null));
+    if (ACTIVE_RAID === null) {
+      ASSERT2(raw.nextRaidRunSequence === raw.raidSettlementWatermark);
+    } else {
+      ASSERT2(
+        INTEGER2(ACTIVE_RAID, 1, 1e12) && ACTIVE_RAID === raw.nextRaidRunSequence && ACTIVE_RAID === raw.raidSettlementWatermark + 1 && typeof ACTIVE_SESSION === "string" && ACTIVE_SESSION.trim().length > 0 && ACTIVE_SESSION.length <= 128
+      );
+    }
+    const RAID_RECEIPT_KEYS = /* @__PURE__ */ new Set();
+    for (const RECEIPT of raw.raidSettlementReceipts) {
+      ASSERT2(
+        RECEIPT && typeof RECEIPT.ownerId === "string" && RECEIPT.ownerId.length > 0 && typeof RECEIPT.sessionId === "string" && RECEIPT.sessionId.length > 0 && INTEGER2(RECEIPT.encounterId, 1, 1e12) && INTEGER2(RECEIPT.runSequence, 1, raw.raidSettlementWatermark) && ["victory", "defeat", "aborted"].includes(RECEIPT.outcome)
+      );
+      ASSERT2(
+        RECEIPT.status === "settled" && RECEIPT.key === raidSettlementKey({
+          ownerId: RECEIPT.ownerId,
+          sessionId: RECEIPT.sessionId,
+          encounterId: RECEIPT.encounterId
+        }) && !RAID_RECEIPT_KEYS.has(RECEIPT.key) && RECEIPT.runSequence <= raw.raidSettlementWatermark && Array.isArray(RECEIPT.sleptFarmUnitIds) && RECEIPT.sleptFarmUnitIds.every((id) => INTEGER2(id, 1, CONFIG.farm.maxUnitId)) && new Set(RECEIPT.sleptFarmUnitIds).size === RECEIPT.sleptFarmUnitIds.length && INTEGER2(RECEIPT.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) && INTEGER2(RECEIPT.originalUnitsDeployed, 0, RECEIPT.availableAtStart) && Number.isFinite(RECEIPT.deploymentMultiplier) && RECEIPT.deploymentMultiplier >= 0 && RECEIPT.deploymentMultiplier <= 2 && (RECEIPT.completedAtMs === null || Number.isFinite(RECEIPT.completedAtMs) && RECEIPT.completedAtMs >= 0) && (RECEIPT.reward === null || RECEIPT.reward && typeof RECEIPT.reward === "object" && !Array.isArray(RECEIPT.reward))
+      );
+      RAID_RECEIPT_KEYS.add(RECEIPT.key);
+    }
+    if (FARM_EVENT.outcome === "victory" && FARM_EVENT.phase !== "idle") {
+      const RECEIPT = raw.bossRewardReceipts.find(
+        (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
+      );
+      ASSERT2(
+        RECEIPT && RECEIPT.status === FARM_EVENT.rewardStatus && RECEIPT.chance === FARM_EVENT.rewardChance && RECEIPT.roll === FARM_EVENT.rewardRoll && RECEIPT.unitId === FARM_EVENT.rewardUnitId
+      );
+    }
+    ASSERT2(
+      raw.corpseRecoveryVersion === 1 && INTEGER2(raw.nextId, 1, 1e9) && INTEGER2(raw.bossSummonSerial, 0, 1e12) && INTEGER2(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51
+    );
+    ASSERT2(
+      Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters)
+    );
+    const ROSTER_OWNERS = /* @__PURE__ */ new Set(), MANIFEST = /* @__PURE__ */ new Set();
+    for (const R2 of raw.raidRosters) {
+      ASSERT2(
+        raw.raidExpectedPlayers.includes(R2.ownerId) && !ROSTER_OWNERS.has(R2.ownerId) && Array.isArray(R2.troops) && R2.troops.length <= CONFIG.raid.capacity.playerUnits && isValidAbilityRuntimeSnapshot(R2.abilitySnapshot)
+      );
+      ASSERT2(
+        typeof R2.settlementSessionId === "string" && R2.settlementSessionId.length <= 128 && INTEGER2(R2.settlementRunSequence, 0, 1e12) && INTEGER2(R2.settlementEncounterId, 0, 1e12)
+      );
+      ASSERT2(
+        R2.settlementRunSequence === 0 ? R2.settlementSessionId === "" && R2.settlementEncounterId === 0 : R2.settlementSessionId.trim().length > 0 && R2.settlementEncounterId === R2.settlementRunSequence
+      );
+      ROSTER_OWNERS.add(R2.ownerId);
+      const IDS2 = /* @__PURE__ */ new Set();
+      for (const T of R2.troops) {
+        ASSERT2(
+          INTEGER2(T.farmId, 1, CONFIG.farm.maxUnitId) && INTEGER2(T.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(T.tier, 1, CONFIG.unit.maxTier) && typeof T.deployed === "boolean" && !IDS2.has(T.farmId)
+        );
+        IDS2.add(T.farmId);
+        MANIFEST.add(R2.ownerId + ":" + T.farmId);
+      }
+      ASSERT2(
+        INTEGER2(R2.lastDeploySequence, 0, R2.troops.length) && R2.lastDeploySequence === R2.troops.filter((t) => t.deployed).length && Number.isFinite(R2.buffUntil) && Number.isFinite(R2.buffReadyAt) && R2.buffUntil >= 0 && R2.buffReadyAt >= 0
+      );
+    }
+    ASSERT2(MANIFEST.size <= CONFIG.raid.capacity.units);
+    const IDS = /* @__PURE__ */ new Set(), DEPLOYED = /* @__PURE__ */ new Set(), MATE_ID_LIMIT = raw.scene === "raid" ? CONFIG.raid.capacity.players * CONFIG.raid.ids.playerStride + CONFIG.raid.capacity.playerUnits : CONFIG.farm.maxUnitId;
+    const UNITS_BY_ID = /* @__PURE__ */ new Map(), SUMMONS_BY_PARENT = /* @__PURE__ */ new Map();
+    for (const U of raw.units) {
+      shape(U, UNIT_SNAPSHOT_SHAPE);
+      ASSERT2(
+        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75
+      );
+      ASSERT2(
+        INTEGER2(U.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(U.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(U.ability.phase) && typeof U.ownerId === "string" && Number.isSafeInteger(U.farmId) && Object.values(FACTION_CONFIG).includes(U.faction) && typeof U.dropLanded === "boolean" && typeof U.isBattleOnlySummon === "boolean" && typeof U.splitUsedThisBattle === "boolean" && typeof U.deathSplitHandled === "boolean" && typeof U.walnutEmpoweredNextBasic === "boolean" && INTEGER2(U.chestnutBasicCycles, 0, 1e12)
+      );
+      if (U.hp <= 0) {
+        ASSERT2(U.down > 0 && !U.isBattleOnlySummon);
+      } else {
+        ASSERT2(U.down === 0);
+      }
+      if (hasFaction(U, FACTION_CONFIG.ENEMY)) {
+        ASSERT2(
+          U.isBattleOnlySummon && U.battleSummonKind === "boss-mouth-t1" && U.ownerId === "boss" && U.farmId === 0
+        );
+      } else {
+        ASSERT2(U.battleSummonKind !== "boss-mouth-t1" && U.ownerId !== "boss");
+      }
+      ASSERT2(!IDS.has(U.id));
+      IDS.add(U.id);
+      UNITS_BY_ID.set(U.id, U);
+      if (U.isBattleOnlySummon) {
+        if (hasFaction(U, FACTION_CONFIG.PLAYER) && U.battleSummonKind === "pea-death-split") {
+          ASSERT2(
+            ["farm", "raid"].includes(raw.scene) && INTEGER2(U.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && U.battleSummonEncounterId === 0 && hasUnitCapability(U.species, "deathSplit") && U.tier === 1 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.eligibleForRaidDeployment === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && U.deathSplitHandled === false && U.splitUsedThisBattle === true && U.hp > 0
+          );
+          const PARENT = UNITS_BY_ID.get(U.battleSummonParentId);
+          ASSERT2(
+            PARENT && hasFaction(PARENT, FACTION_CONFIG.PLAYER) && PARENT.isBattleOnlySummon === false && PARENT.hp <= 0 && hasUnitCapability(PARENT.species, "deathSplit") && PARENT.species === U.species && PARENT.splitUsedThisBattle && PARENT.ownerId === U.ownerId && PARENT.farmId === U.farmId
+          );
+          const LIST = SUMMONS_BY_PARENT.get(PARENT.id) || [];
+          LIST.push(U);
+          SUMMONS_BY_PARENT.set(PARENT.id, LIST);
+          if (raw.scene === "raid") {
+            ASSERT2(
+              U.id >= CONFIG.raid.ids.summonBase && U.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits && raw.raidExpectedPlayers.includes(U.ownerId) && INTEGER2(U.farmId, 1, CONFIG.farm.maxUnitId)
+            );
+          } else {
+            ASSERT2(INTEGER2(U.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
+          }
         } else {
-          assert2(u.battleSummonKind === "boss-mouth-t1" && u.battleSummonParentId === 0 && integer2(u.battleSummonEncounterId, 1, 1e12) && u.battleSummonEncounterId === raw.boss.encounterId && u.species === raw.boss.species && u.tier === 1 && u.ownerId === "boss" && u.farmId === 0 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0 && u.battleSummonEncounterId > 0 && u.id >= CONFIG.boss.summonIdBase && u.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial);
-          assert2(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
+          ASSERT2(
+            U.battleSummonKind === "boss-mouth-t1" && U.battleSummonParentId === 0 && INTEGER2(U.battleSummonEncounterId, 1, 1e12) && U.battleSummonEncounterId === raw.boss.encounterId && U.species === raw.boss.species && U.tier === 1 && U.ownerId === "boss" && U.farmId === 0 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.eligibleForRaidDeployment === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && U.deathSplitHandled === false && U.splitUsedThisBattle === true && U.hp > 0 && U.battleSummonEncounterId > 0 && U.id >= CONFIG.boss.summonIdBase && U.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial
+          );
+          ASSERT2(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
         }
       } else {
-        assert2(u.battleSummonKind === "" && u.battleSummonParentId === 0 && u.battleSummonEncounterId === 0 && u.countsTowardPermanentRoster === true && u.eligibleForRaidDeployment === true && u.breedingEligible === true && u.mergeEligible === true && u.canSplit === true && u.usesPersistentSleep === true && u.lifetime === "");
+        ASSERT2(
+          U.battleSummonKind === "" && U.battleSummonParentId === 0 && U.battleSummonEncounterId === 0 && U.countsTowardPermanentRoster === true && U.eligibleForRaidDeployment === true && U.breedingEligible === true && U.mergeEligible === true && U.canSplit === true && U.usesPersistentSleep === true && U.lifetime === ""
+        );
         if (raw.scene === "raid") {
-          const roster2 = raw.raidRosters.find((r) => r.ownerId === u.ownerId), troopIndex = roster2?.troops.findIndex((t) => t.farmId === u.farmId) ?? -1, slot = raw.raidExpectedPlayers.indexOf(u.ownerId), currentId = (slot + 1) * CONFIG.raid.ids.playerStride + troopIndex + 1, legacyId = (slot + 1) * CONFIG.raid.ids.playerStride + u.farmId;
-          assert2(raw.raidExpectedPlayers.includes(u.ownerId) && integer2(u.farmId, 1, CONFIG.farm.maxUnitId) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId) && (u.id === currentId || u.farmId <= CONFIG.farm.capacity.max && u.id === legacyId));
-          deployed.add(u.ownerId + ":" + u.farmId);
-        } else assert2(integer2(u.id, 1, raw.nextId - 1));
-      }
-      if (u.ability.action) {
-        const a = u.ability.action;
-        assert2(integer2(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
-        if (hasUnitCapability(u.species, "repeatedStrike")) {
-          assert2(integer2(a.peanutStrikeCount, 2, 5) && Number.isFinite(a.peanutAttackMultiplier) && a.peanutAttackMultiplier > 0 && a.peanutAttackMultiplier <= 10 && Number.isFinite(a.peanutSpreadRadians) && a.peanutSpreadRadians >= 0 && a.peanutSpreadRadians <= Math.PI / 6);
-          const mask = (1 << a.peanutStrikeCount) - 1;
-          assert2(integer2(a.resolvedMask, 0, mask) && integer2(a.hitMask, 0, mask) && (a.hitMask & ~a.resolvedMask) === 0);
-        }
-        if (hasUnitCapability(u.species, "guard")) assert2(typeof a.walnutEmpowered === "boolean" && typeof a.walnutGuardUsed === "boolean");
-        if (a.path) validatePath(a.path);
-        if (a.pendingShots !== void 0) {
-          assert2(Array.isArray(a.pendingShots) && a.pendingShots.length <= 3 && a.pendingShots.every((shot) => integer2(shot.shotIndex, 1, 4) && Number.isFinite(shot.delaySeconds) && shot.delaySeconds >= 0 && Number.isFinite(shot.attackMultiplier) && shot.attackMultiplier > 0 && shot.attackMultiplier <= 10));
-        }
-        if (a.projectileAbility !== void 0) {
-          assert2(a.projectileAbility && Object.hasOwn(a.projectileAbility, "popcorn"));
-          if (a.projectileAbility.popcorn) validatePopcornConfig(a.projectileAbility.popcorn);
+          const ROSTER2 = raw.raidRosters.find((r) => r.ownerId === U.ownerId), TROOP_INDEX = ROSTER2?.troops.findIndex((t) => t.farmId === U.farmId) ?? -1, SLOT = raw.raidExpectedPlayers.indexOf(U.ownerId), CURRENT_ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1, LEGACY_ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + U.farmId;
+          ASSERT2(
+            raw.raidExpectedPlayers.includes(U.ownerId) && INTEGER2(U.farmId, 1, CONFIG.farm.maxUnitId) && MANIFEST.has(U.ownerId + ":" + U.farmId) && !DEPLOYED.has(U.ownerId + ":" + U.farmId) && (U.id === CURRENT_ID || U.farmId <= CONFIG.farm.capacity.max && U.id === LEGACY_ID)
+          );
+          DEPLOYED.add(U.ownerId + ":" + U.farmId);
+        } else {
+          ASSERT2(INTEGER2(U.id, 1, raw.nextId - 1));
         }
       }
-      if (u.ability.phase === "active" || u.ability.phase === "windup") assert2(u.ability.action !== null);
-      if (u.ability.phase === "active") validatePath(u.ability.action.path);
-    }
-    for (const [parentId, children] of summonsByParent) {
-      assert2(children.length <= MAX_BEAN_SPLIT_CHILDREN);
-      const parent = unitsById.get(parentId);
-      assert2(parent && parent.ownerId === children[0].ownerId && parent.farmId === children[0].farmId);
-    }
-    for (const f of raw.food) {
-      assert2(["flight", "bounce", "grounded"].includes(f.phase));
-      for (const k of ["x", "y", "z", "vx", "vy", "vz", "tx", "ty"]) assert2(Number.isFinite(f[k]));
-    }
-    const projectileIds = /* @__PURE__ */ new Set();
-    for (const p of raw.projectiles) {
-      validatePath(p.path);
-      assert2(integer2(p.id, 1, raw.projectileSerial) && !projectileIds.has(p.id));
-      projectileIds.add(p.id);
-      assert2(integer2(p.owner, 1, raw.scene === "raid" ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1 : raw.nextId - 1) || integer2(p.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial));
-      assert2(p.targetId === void 0 || p.targetId === "boss" || validBattleUnitId(p.targetId, raw.bossSummonSerial));
-      assert2(Object.values(FACTION_CONFIG).includes(p.faction) && typeof p.ownerId === "string" && integer2(p.species, 0, CONFIG.unit.speciesCount - 1) && integer2(p.tier, 1, CONFIG.unit.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer2(p.shotIndex, 0, 4));
-      if (p.isPopcorn) {
-        assert2(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.length <= CONFIG.raid.capacity.battleUnits + 1 && p.damagedTargetIds.every((id) => id === "boss" || validBattleUnitId(id, raw.bossSummonSerial)) && new Set(p.damagedTargetIds).size === p.damagedTargetIds.length && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
-        validatePopcornConfig(p.popcornConfig);
-        if (p.exploded) assert2(Number.isFinite(p.explosionLife) && p.explosionLife >= 0 && p.explosionLife < 0.5 + 1e-9);
+      if (U.ability.action) {
+        const A = U.ability.action;
+        ASSERT2(
+          INTEGER2(A.id, 1, raw.attackSerial) && typeof A.hit === "boolean" && A.target && Number.isFinite(A.target.x) && Number.isFinite(A.target.y)
+        );
+        if (hasUnitCapability(U.species, "repeatedStrike")) {
+          ASSERT2(
+            INTEGER2(A.peanutStrikeCount, 2, 5) && Number.isFinite(A.peanutAttackMultiplier) && A.peanutAttackMultiplier > 0 && A.peanutAttackMultiplier <= 10 && Number.isFinite(A.peanutSpreadRadians) && A.peanutSpreadRadians >= 0 && A.peanutSpreadRadians <= Math.PI / 6
+          );
+          const MASK = (1 << A.peanutStrikeCount) - 1;
+          ASSERT2(
+            INTEGER2(A.resolvedMask, 0, MASK) && INTEGER2(A.hitMask, 0, MASK) && (A.hitMask & ~A.resolvedMask) === 0
+          );
+        }
+        if (hasUnitCapability(U.species, "guard")) {
+          ASSERT2(typeof A.walnutEmpowered === "boolean" && typeof A.walnutGuardUsed === "boolean");
+        }
+        if (A.path) {
+          validatePath(A.path);
+        }
+        if (A.pendingShots !== void 0) {
+          ASSERT2(
+            Array.isArray(A.pendingShots) && A.pendingShots.length <= 3 && A.pendingShots.every(
+              (shot) => INTEGER2(shot.shotIndex, 1, 4) && Number.isFinite(shot.delaySeconds) && shot.delaySeconds >= 0 && Number.isFinite(shot.attackMultiplier) && shot.attackMultiplier > 0 && shot.attackMultiplier <= 10
+            )
+          );
+        }
+        if (A.projectileAbility !== void 0) {
+          ASSERT2(A.projectileAbility && Object.hasOwn(A.projectileAbility, "popcorn"));
+          if (A.projectileAbility.popcorn) {
+            validatePopcornConfig(A.projectileAbility.popcorn);
+          }
+        }
+      }
+      if (U.ability.phase === "active" || U.ability.phase === "windup") {
+        ASSERT2(U.ability.action !== null);
+      }
+      if (U.ability.phase === "active") {
+        validatePath(U.ability.action.path);
       }
     }
-    assert2(integer2(raw.projectileSerial, 0, 1e12) && integer2(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) && integer2(raw.bossSummonSerial, 0, 1e12));
-    assert2(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer2(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && integer2(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer2(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
-    if (raw.boss.stage === 0) assert2(raw.boss.attackPower === 4);
-    else {
-      const stageStats = bossStageStats(raw.boss.stage);
-      assert2(raw.boss.maxHp === stageStats.hp && raw.boss.attackPower === stageStats.attackPower);
+    for (const [PARENT_ID, CHILDREN] of SUMMONS_BY_PARENT) {
+      ASSERT2(CHILDREN.length <= MAX_BEAN_SPLIT_CHILDREN);
+      const PARENT = UNITS_BY_ID.get(PARENT_ID);
+      ASSERT2(PARENT && PARENT.ownerId === CHILDREN[0].ownerId && PARENT.farmId === CHILDREN[0].farmId);
     }
-    const runtime = raw.boss.patternRuntime;
-    assert2(runtime && Number.isFinite(runtime.encounterElapsed) && runtime.encounterElapsed >= 0 && runtime.weights && runtime.cooldowns);
-    for (const id of BOSS_PATTERN_IDS) {
-      assert2(Number.isFinite(runtime.weights[id]) && runtime.weights[id] >= 0 && runtime.weights[id] <= 3 && Number.isFinite(runtime.cooldowns[id]) && runtime.cooldowns[id] >= 0 && runtime.cooldowns[id] <= 10);
+    for (const F of raw.food) {
+      ASSERT2(["flight", "bounce", "grounded"].includes(F.phase));
+      for (const K of ["x", "y", "z", "vx", "vy", "vz", "tx", "ty"]) {
+        ASSERT2(Number.isFinite(F[K]));
+      }
     }
-    assert2(Object.keys(runtime.weights).length === BOSS_PATTERN_IDS.length && Object.keys(runtime.cooldowns).length === BOSS_PATTERN_IDS.length);
-    if (runtime.active) {
-      const a = runtime.active;
-      assert2(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.raid.capacity.battleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && integer2(a.released, 0, 4) && integer2(a.volleyCount, 0, 4));
-      if (a.target) assert2(Number.isFinite(a.target.x) && Number.isFinite(a.target.y) && Number.isFinite(a.target.z));
-      if (a.path) validatePath(a.path);
+    const PROJECTILE_IDS = /* @__PURE__ */ new Set();
+    for (const P of raw.projectiles) {
+      validatePath(P.path);
+      ASSERT2(INTEGER2(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
+      PROJECTILE_IDS.add(P.id);
+      ASSERT2(
+        INTEGER2(
+          P.owner,
+          1,
+          raw.scene === "raid" ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1 : raw.nextId - 1
+        ) || INTEGER2(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial)
+      );
+      ASSERT2(
+        P.targetId === void 0 || P.targetId === "boss" || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial)
+      );
+      ASSERT2(
+        Object.values(FACTION_CONFIG).includes(P.faction) && typeof P.ownerId === "string" && INTEGER2(P.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(P.tier, 1, CONFIG.unit.maxTier) && typeof P.hit === "boolean" && Number.isFinite(P.attackMultiplier) && P.attackMultiplier > 0 && P.attackMultiplier <= 10 && INTEGER2(P.shotIndex, 0, 4)
+      );
+      if (P.isPopcorn) {
+        ASSERT2(
+          typeof P.landed === "boolean" && typeof P.exploded === "boolean" && Array.isArray(P.damagedTargetIds) && P.damagedTargetIds.length <= CONFIG.raid.capacity.battleUnits + 1 && P.damagedTargetIds.every((id) => id === "boss" || VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial)) && new Set(P.damagedTargetIds).size === P.damagedTargetIds.length && Number.isFinite(P.fuseRemaining) && P.fuseRemaining >= 0 && P.fuseRemaining <= 1.01
+        );
+        validatePopcornConfig(P.popcornConfig);
+        if (P.exploded) {
+          ASSERT2(Number.isFinite(P.explosionLife) && P.explosionLife >= 0 && P.explosionLife < 0.5 + 1e-9);
+        }
+      }
     }
-    assert2(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
-    assert2(raw.running === (raw.encounter.outcome === "fighting"));
-    assert2(typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length));
+    ASSERT2(
+      INTEGER2(raw.projectileSerial, 0, 1e12) && INTEGER2(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) && INTEGER2(raw.bossSummonSerial, 0, 1e12)
+    );
+    ASSERT2(
+      hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && INTEGER2(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && INTEGER2(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && INTEGER2(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75
+    );
+    if (raw.boss.stage === 0) {
+      ASSERT2(raw.boss.attackPower === 4);
+    } else {
+      const STAGE_STATS = bossStageStats(raw.boss.stage);
+      ASSERT2(raw.boss.maxHp === STAGE_STATS.hp && raw.boss.attackPower === STAGE_STATS.attackPower);
+    }
+    const RUNTIME = raw.boss.patternRuntime;
+    ASSERT2(
+      RUNTIME && Number.isFinite(RUNTIME.encounterElapsed) && RUNTIME.encounterElapsed >= 0 && RUNTIME.weights && RUNTIME.cooldowns
+    );
+    for (const ID of BOSS_PATTERN_IDS) {
+      ASSERT2(
+        Number.isFinite(RUNTIME.weights[ID]) && RUNTIME.weights[ID] >= 0 && RUNTIME.weights[ID] <= 3 && Number.isFinite(RUNTIME.cooldowns[ID]) && RUNTIME.cooldowns[ID] >= 0 && RUNTIME.cooldowns[ID] <= 10
+      );
+    }
+    ASSERT2(
+      Object.keys(RUNTIME.weights).length === BOSS_PATTERN_IDS.length && Object.keys(RUNTIME.cooldowns).length === BOSS_PATTERN_IDS.length
+    );
+    if (RUNTIME.active) {
+      const A = RUNTIME.active;
+      ASSERT2(
+        BOSS_PATTERN_IDS.includes(A.id) && ["windup", "active", "recover"].includes(A.phase) && Number.isFinite(A.phaseElapsed) && A.phaseElapsed >= 0 && Number.isFinite(A.aim) && (A.targetId === 0 || VALID_BATTLE_UNIT_ID(A.targetId, raw.bossSummonSerial)) && typeof A.locked === "boolean" && Array.isArray(A.hitIds) && A.hitIds.length <= CONFIG.raid.capacity.battleUnits && A.hitIds.every((id) => VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial)) && new Set(A.hitIds).size === A.hitIds.length && INTEGER2(A.released, 0, 4) && INTEGER2(A.volleyCount, 0, 4)
+      );
+      if (A.target) {
+        ASSERT2(Number.isFinite(A.target.x) && Number.isFinite(A.target.y) && Number.isFinite(A.target.z));
+      }
+      if (A.path) {
+        validatePath(A.path);
+      }
+    }
+    ASSERT2(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
+    ASSERT2(raw.running === (raw.encounter.outcome === "fighting"));
+    ASSERT2(
+      typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length)
+    );
     return true;
   }
   function validatePath(p) {
-    assert2(p && p.from && p.to && p.duration > 0 && Number.isFinite(p.height));
-    for (const k of ["x", "y"]) assert2(Number.isFinite(p.from[k]) && Number.isFinite(p.to[k]));
-    assert2(Number.isFinite(p.from.z));
+    ASSERT2(p && p.from && p.to && p.duration > 0 && Number.isFinite(p.height));
+    for (const K of ["x", "y"]) {
+      ASSERT2(Number.isFinite(p.from[K]) && Number.isFinite(p.to[K]));
+    }
+    ASSERT2(Number.isFinite(p.from.z));
   }
   function validatePopcornConfig(c) {
-    assert2(c && c.species === 1 && c.fuseSeconds === 1 && c.chainOnPopcornContact === true && c.triggersOncePerProjectile === true && c.eachTargetAtMostOncePerProjectile === true && Number.isFinite(c.damageMultiplier) && c.damageMultiplier >= 0.5 && c.damageMultiplier <= 1.5 && c.radiusBaseRangeFraction === 0.25 && Number.isFinite(c.radiusMultiplier) && c.radiusMultiplier >= 1 && c.radiusMultiplier <= 2 && Number.isFinite(c.radius) && c.radius > 0 && c.radius <= 10);
+    ASSERT2(
+      c && c.species === 1 && c.fuseSeconds === 1 && c.chainOnPopcornContact === true && c.triggersOncePerProjectile === true && c.eachTargetAtMostOncePerProjectile === true && Number.isFinite(c.damageMultiplier) && c.damageMultiplier >= 0.5 && c.damageMultiplier <= 1.5 && c.radiusBaseRangeFraction === 0.25 && Number.isFinite(c.radiusMultiplier) && c.radiusMultiplier >= 1 && c.radiusMultiplier <= 2 && Number.isFinite(c.radius) && c.radius > 0 && c.radius <= 10
+    );
   }
-  var integer2, validBattleUnitId, assert2;
+  var INTEGER2, VALID_BATTLE_UNIT_ID, ASSERT2;
   var init_farm_snapshot_validation = __esm({
     "src/farm-snapshot-validation.js"() {
       init_farm_model();
@@ -5349,121 +8981,267 @@
       init_boss_rewards();
       init_factions();
       init_farm_snapshot();
-      integer2 = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
-      validBattleUnitId = (id, bossSummonSerial) => integer2(id, 1, CONFIG.farm.maxUnitId) || integer2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
-      assert2 = assertSnapshot;
+      INTEGER2 = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
+      VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
+      ASSERT2 = assertSnapshot;
     }
   });
 
   // src/farm-snapshot-migrations.js
   function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone: clone2 = true } = {}) {
-    const resetLegacyCorpseTimers = !Object.hasOwn(raw, "corpseRecoveryVersion"), hasRewardWatermarks = Object.hasOwn(raw, "bossRewardWatermarks");
-    if (clone2) raw = structuredClone(raw);
+    const RESET_LEGACY_CORPSE_TIMERS = !Object.hasOwn(raw, "corpseRecoveryVersion"), HAS_REWARD_WATERMARKS = Object.hasOwn(raw, "bossRewardWatermarks");
+    if (clone2) {
+      raw = structuredClone(raw);
+    }
     delete raw.progress;
-    if (raw.speed === 1 || raw.speed === 4) delete raw.speed;
-    if (resetLegacyCorpseTimers) raw.corpseRecoveryVersion = 1;
-    if (!Object.hasOwn(raw, "farmBossProgress")) raw.farmBossProgress = createFarmBossProgress(raw.seed);
-    const base = FARM_SNAPSHOT_SHAPE, fill = (v, d) => {
-      for (const [k, x] of Object.entries(d)) {
-        if (!Object.hasOwn(v, k)) v[k] = structuredClone(x);
-        else if (v[k] && x && typeof v[k] === "object" && typeof x === "object" && !Array.isArray(v[k]) && !Array.isArray(x)) fill(v[k], x);
+    if (raw.speed === 1 || raw.speed === 4) {
+      delete raw.speed;
+    }
+    if (RESET_LEGACY_CORPSE_TIMERS) {
+      raw.corpseRecoveryVersion = 1;
+    }
+    if (!Object.hasOwn(raw, "farmBossProgress")) {
+      raw.farmBossProgress = createFarmBossProgress(raw.seed);
+    }
+    const BASE = FARM_SNAPSHOT_SHAPE, FILL = (v, d) => {
+      for (const [K, X] of Object.entries(d)) {
+        if (!Object.hasOwn(v, K)) {
+          v[K] = structuredClone(X);
+        } else if (v[K] && X && typeof v[K] === "object" && typeof X === "object" && !Array.isArray(v[K]) && !Array.isArray(X)) {
+          FILL(v[K], X);
+        }
       }
     };
-    fill(raw, base);
-    if (raw.mergeTask && (!Array.isArray(raw.mergeTask.materialIds) || raw.mergeTask.phase === "animation" && !Number.isSafeInteger(raw.mergeTask.resultId))) raw.mergeTask = null;
-    for (const r of raw.raidRosters || []) {
-      if (!Object.hasOwn(r, "abilitySnapshot")) r.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());
-      else if (!Object.hasOwn(r.abilitySnapshot, "farmUpgrades")) r.abilitySnapshot.farmUpgrades = structuredClone(createPlayerProgressionState().farmUpgrades);
-      if (r.abilitySnapshot?.abilities && typeof r.abilitySnapshot.abilities === "object" && !Array.isArray(r.abilitySnapshot.abilities)) {
-        for (const [id, value] of Object.entries(base.playerProgression.abilities)) if (!Object.hasOwn(r.abilitySnapshot.abilities, id)) r.abilitySnapshot.abilities[id] = structuredClone(value);
-      }
-      if (!Object.hasOwn(r, "settlementSessionId")) r.settlementSessionId = "";
-      if (!Object.hasOwn(r, "settlementRunSequence")) r.settlementRunSequence = 0;
-      if (!Object.hasOwn(r, "settlementEncounterId")) r.settlementEncounterId = 0;
+    FILL(raw, BASE);
+    if (raw.mergeTask && (!Array.isArray(raw.mergeTask.materialIds) || raw.mergeTask.phase === "animation" && !Number.isSafeInteger(raw.mergeTask.resultId))) {
+      raw.mergeTask = null;
     }
-    for (const u of raw.units || []) {
-      for (const key of LEGACY_UNIT_DEFAULT_KEYS) if (!Object.hasOwn(u, key)) u[key] = UNIT_SNAPSHOT_SHAPE[key];
-      if (!Object.hasOwn(u, "faction")) u.faction = legacyUnitFaction(u);
-      const action = u.ability?.action;
-      if (action && hasUnitCapability(u.species, "repeatedStrike")) {
-        if (!Object.hasOwn(action, "peanutStrikeCount")) action.peanutStrikeCount = 2;
-        if (!Object.hasOwn(action, "peanutAttackMultiplier")) action.peanutAttackMultiplier = 0.5;
-        if (!Object.hasOwn(action, "peanutSpreadRadians")) action.peanutSpreadRadians = Math.PI / 12;
+    for (const R2 of raw.raidRosters || []) {
+      if (!Object.hasOwn(R2, "abilitySnapshot")) {
+        R2.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());
+      } else if (!Object.hasOwn(R2.abilitySnapshot, "farmUpgrades")) {
+        R2.abilitySnapshot.farmUpgrades = structuredClone(createPlayerProgressionState().farmUpgrades);
       }
-      if (action && hasUnitCapability(u.species, "guard")) {
-        if (!Object.hasOwn(action, "walnutEmpowered")) action.walnutEmpowered = false;
-        if (!Object.hasOwn(action, "walnutGuardUsed")) action.walnutGuardUsed = false;
+      if (R2.abilitySnapshot?.abilities && typeof R2.abilitySnapshot.abilities === "object" && !Array.isArray(R2.abilitySnapshot.abilities)) {
+        for (const [ID, VALUE] of Object.entries(BASE.playerProgression.abilities)) {
+          if (!Object.hasOwn(R2.abilitySnapshot.abilities, ID)) {
+            R2.abilitySnapshot.abilities[ID] = structuredClone(VALUE);
+          }
+        }
+      }
+      if (!Object.hasOwn(R2, "settlementSessionId")) {
+        R2.settlementSessionId = "";
+      }
+      if (!Object.hasOwn(R2, "settlementRunSequence")) {
+        R2.settlementRunSequence = 0;
+      }
+      if (!Object.hasOwn(R2, "settlementEncounterId")) {
+        R2.settlementEncounterId = 0;
       }
     }
-    for (const p of raw.projectiles || []) {
-      if (!Object.hasOwn(p, "attackMultiplier")) p.attackMultiplier = abilityProfile(p.species).skillMultiplier;
-      if (!Object.hasOwn(p, "shotIndex")) p.shotIndex = 0;
-      if (!Object.hasOwn(p, "ownerId")) p.ownerId = raw.units.find((u) => u.id === p.owner)?.ownerId || "";
-      if (!Object.hasOwn(p, "faction")) p.faction = p.ownerId === "boss" || p.owner >= CONFIG.boss.summonIdBase ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
+    for (const U of raw.units || []) {
+      for (const KEY2 of LEGACY_UNIT_DEFAULT_KEYS) {
+        if (!Object.hasOwn(U, KEY2)) {
+          U[KEY2] = UNIT_SNAPSHOT_SHAPE[KEY2];
+        }
+      }
+      if (!Object.hasOwn(U, "faction")) {
+        U.faction = legacyUnitFaction(U);
+      }
+      const ACTION = U.ability?.action;
+      if (ACTION && hasUnitCapability(U.species, "repeatedStrike")) {
+        if (!Object.hasOwn(ACTION, "peanutStrikeCount")) {
+          ACTION.peanutStrikeCount = 2;
+        }
+        if (!Object.hasOwn(ACTION, "peanutAttackMultiplier")) {
+          ACTION.peanutAttackMultiplier = 0.5;
+        }
+        if (!Object.hasOwn(ACTION, "peanutSpreadRadians")) {
+          ACTION.peanutSpreadRadians = Math.PI / 12;
+        }
+      }
+      if (ACTION && hasUnitCapability(U.species, "guard")) {
+        if (!Object.hasOwn(ACTION, "walnutEmpowered")) {
+          ACTION.walnutEmpowered = false;
+        }
+        if (!Object.hasOwn(ACTION, "walnutGuardUsed")) {
+          ACTION.walnutGuardUsed = false;
+        }
+      }
     }
-    raw.projectileSerial = Math.max(Number.isSafeInteger(raw.projectileSerial) ? raw.projectileSerial : 0, ...(raw.projectiles || []).map((p) => Number.isSafeInteger(p?.id) ? p.id : 0));
-    raw.raidSummonSerial = Number.isSafeInteger(raw.raidSummonSerial) ? raw.raidSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.raid.ids.summonBase ? u.id - CONFIG.raid.ids.summonBase + 1 : 0));
+    for (const P of raw.projectiles || []) {
+      if (!Object.hasOwn(P, "attackMultiplier")) {
+        P.attackMultiplier = abilityProfile(P.species).skillMultiplier;
+      }
+      if (!Object.hasOwn(P, "shotIndex")) {
+        P.shotIndex = 0;
+      }
+      if (!Object.hasOwn(P, "ownerId")) {
+        P.ownerId = raw.units.find((u) => u.id === P.owner)?.ownerId || "";
+      }
+      if (!Object.hasOwn(P, "faction")) {
+        P.faction = P.ownerId === "boss" || P.owner >= CONFIG.boss.summonIdBase ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
+      }
+    }
+    raw.projectileSerial = Math.max(
+      Number.isSafeInteger(raw.projectileSerial) ? raw.projectileSerial : 0,
+      ...(raw.projectiles || []).map((p) => Number.isSafeInteger(p?.id) ? p.id : 0)
+    );
+    raw.raidSummonSerial = Number.isSafeInteger(raw.raidSummonSerial) ? raw.raidSummonSerial : Math.max(
+      0,
+      ...(raw.units || []).map(
+        (u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.raid.ids.summonBase ? u.id - CONFIG.raid.ids.summonBase + 1 : 0
+      )
+    );
     if (raw.farmBossEvent.phase !== "idle" && raw.farmBossEvent.encounterId === 0) {
-      const encounterId = raw.nextBossEncounterId++;
-      raw.farmBossEvent.encounterId = encounterId;
+      const ENCOUNTER_ID = raw.nextBossEncounterId++;
+      raw.farmBossEvent.encounterId = ENCOUNTER_ID;
       raw.farmBossEvent.rewardStatus = raw.farmBossEvent.outcome === "victory" ? "missed" : raw.farmBossEvent.outcome === "defeat" ? "none" : "unresolved";
       raw.farmBossEvent.rewardChance = 0;
       raw.farmBossEvent.rewardRoll = 0;
       raw.farmBossEvent.rewardUnitId = 0;
-      if (raw.farmBossEvent.outcome === "victory") raw.bossRewardReceipts.push({ encounterId, source: "farm", species: 3, tier: 1, x: raw.boss.x, y: raw.boss.y, chance: 0, roll: 0, status: "missed", unitId: 0 });
+      if (raw.farmBossEvent.outcome === "victory") {
+        raw.bossRewardReceipts.push({
+          encounterId: ENCOUNTER_ID,
+          source: "farm",
+          species: 3,
+          tier: 1,
+          x: raw.boss.x,
+          y: raw.boss.y,
+          chance: 0,
+          roll: 0,
+          status: "missed",
+          unitId: 0
+        });
+      }
     }
-    for (const r of raw.raidRosters || []) if (!Object.hasOwn(r, "lastDeploySequence")) r.lastDeploySequence = Array.isArray(r.troops) ? r.troops.filter((t) => t?.deployed).length : 0;
-    if (!hasRewardWatermarks) for (const source of ["farm", "raid"]) raw.bossRewardWatermarks[source] = Math.max(0, ...raw.bossRewardReceipts.filter((reward2) => reward2?.source === source && Number.isSafeInteger(reward2.encounterId)).map((reward2) => reward2.encounterId));
-    raw.bossSummonSerial = Number.isSafeInteger(raw.bossSummonSerial) ? raw.bossSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.boss.summonIdBase ? u.id - CONFIG.boss.summonIdBase : 0));
+    for (const R2 of raw.raidRosters || []) {
+      if (!Object.hasOwn(R2, "lastDeploySequence")) {
+        R2.lastDeploySequence = Array.isArray(R2.troops) ? R2.troops.filter((t) => t?.deployed).length : 0;
+      }
+    }
+    if (!HAS_REWARD_WATERMARKS) {
+      for (const SOURCE of ["farm", "raid"]) {
+        raw.bossRewardWatermarks[SOURCE] = Math.max(
+          0,
+          ...raw.bossRewardReceipts.filter((reward) => reward?.source === SOURCE && Number.isSafeInteger(reward.encounterId)).map((reward) => reward.encounterId)
+        );
+      }
+    }
+    raw.bossSummonSerial = Number.isSafeInteger(raw.bossSummonSerial) ? raw.bossSummonSerial : Math.max(
+      0,
+      ...(raw.units || []).map(
+        (u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.boss.summonIdBase ? u.id - CONFIG.boss.summonIdBase : 0
+      )
+    );
     if (raw.scene === "raid" && !raw.boss.active && Number.isFinite(raw.boss.clock)) {
-      const ended = raw.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat");
-      if (ended && !Object.hasOwn(ended, "bossPatternElapsed")) ended.bossPatternElapsed = raw.boss.clock;
+      const ENDED = raw.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat");
+      if (ENDED && !Object.hasOwn(ENDED, "bossPatternElapsed")) {
+        ENDED.bossPatternElapsed = raw.boss.clock;
+      }
     }
-    normalizeBossPatternSnapshot(raw.boss, base.boss.patternRuntime, raw.bossSummonSerial);
+    normalizeBossPatternSnapshot(raw.boss, BASE.boss.patternRuntime, raw.bossSummonSerial);
     raw.nextRaidRunSequence = Math.max(raw.nextRaidRunSequence || 0, raw.bossRewardWatermarks.raid || 0);
     raw.raidSettlementWatermark = Math.max(raw.raidSettlementWatermark || 0, raw.bossRewardWatermarks.raid || 0);
-    for (const u of raw.units) {
-      if (!Number.isFinite(u.cooldownDuration) || u.cooldownDuration < (Number.isFinite(u.cooldown) ? u.cooldown : 0)) u.cooldownDuration = Math.max(0, Number.isFinite(u.cooldown) ? u.cooldown : 0);
-      if (!Object.hasOwn(u, "growthElapsed")) {
-        const progress = Number.isFinite(u.growth) ? Math.max(0, Math.min(CONFIG.farm.breeding.matureMeals, u.growth)) : 0;
-        u.growthElapsed = u.growthDuration * progress / CONFIG.farm.breeding.matureMeals;
+    for (const U of raw.units) {
+      if (!Number.isFinite(U.cooldownDuration) || U.cooldownDuration < (Number.isFinite(U.cooldown) ? U.cooldown : 0)) {
+        U.cooldownDuration = Math.max(0, Number.isFinite(U.cooldown) ? U.cooldown : 0);
       }
-      if (u.hp <= 0) {
-        if (resetLegacyCorpseTimers || !Number.isFinite(u.down) || u.down <= 0) u.down = CONFIG.unit.corpseRecoverySeconds;
-        else u.down = Math.min(CONFIG.unit.corpseRecoverySeconds, u.down);
-      } else u.down = 0;
+      if (!Object.hasOwn(U, "growthElapsed")) {
+        const PROGRESS = Number.isFinite(U.growth) ? Math.max(0, Math.min(CONFIG.farm.breeding.matureMeals, U.growth)) : 0;
+        U.growthElapsed = U.growthDuration * PROGRESS / CONFIG.farm.breeding.matureMeals;
+      }
+      if (U.hp <= 0) {
+        if (RESET_LEGACY_CORPSE_TIMERS || !Number.isFinite(U.down) || U.down <= 0) {
+          U.down = CONFIG.unit.corpseRecoverySeconds;
+        } else {
+          U.down = Math.min(CONFIG.unit.corpseRecoverySeconds, U.down);
+        }
+      } else {
+        U.down = 0;
+      }
     }
     if (migrateLegacyRaid && raw.scene === "raid") {
       raw.scene = "farm";
       raw.running = false;
-      raw.encounter = { outcome: "idle", elapsed: 0 };
+      raw.encounter = {
+        outcome: "idle",
+        elapsed: 0
+      };
       raw.raidExpectedPlayers = ["solo"];
       raw.raidRosters = [];
       raw.raidDeploymentStarted = false;
       raw.projectiles = [];
-      raw.boss = structuredClone(base.boss);
-      for (const u of raw.units) {
-        u.x = u.home?.x ?? u.x;
-        u.y = u.home?.y ?? u.y;
-        Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: resolveUnitStats(u).maxHp, dropLanded: true });
-        u.ability = { phase: "idle", elapsed: 0, action: null };
+      raw.boss = structuredClone(BASE.boss);
+      for (const U of raw.units) {
+        U.x = U.home?.x ?? U.x;
+        U.y = U.home?.y ?? U.y;
+        Object.assign(U, {
+          z: 0,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          stun: 0,
+          down: 0,
+          hp: resolveUnitStats(U).maxHp,
+          dropLanded: true
+        });
+        U.ability = {
+          phase: "idle",
+          elapsed: 0,
+          action: null
+        };
       }
     }
     return raw;
   }
-  function normalizeBossPatternSnapshot(boss2, baseRuntime, bossSummonSerial) {
-    if (Object.hasOwn(boss2, "phase")) assertSnapshot(["chase", "windup", "active", "recover", "resting", "strike-windup", "strike", "sweep-windup", "sweep"].includes(boss2.phase));
-    if (Object.hasOwn(boss2, "clock")) assertSnapshot(Number.isFinite(boss2.clock));
-    if (Object.hasOwn(boss2, "targetId")) assertSnapshot(Number.isFinite(boss2.targetId));
-    if (Object.hasOwn(boss2, "attackKind")) assertSnapshot(["basic", "sweep", ...BOSS_PATTERN_IDS].includes(boss2.attackKind));
-    if (Object.hasOwn(boss2, "hit")) assertSnapshot(Array.isArray(boss2.hit) && boss2.hit.length <= CONFIG.raid.capacity.battleUnits && boss2.hit.every((id) => validBattleUnitId(id, bossSummonSerial)) && new Set(boss2.hit).size === boss2.hit.length);
-    if (!boss2.patternRuntime || boss2.patternRuntime.active === void 0) boss2.patternRuntime = structuredClone(baseRuntime);
-    if (["strike-windup", "strike", "sweep-windup", "sweep"].includes(boss2.phase)) boss2.patternRuntime.active = null;
-    const action = boss2.patternRuntime.active;
-    if (action) {
-      if (Object.hasOwn(boss2, "hit")) assertSnapshot(Array.isArray(action.hitIds) && boss2.hit.length === action.hitIds.length && action.hitIds.every((id) => boss2.hit.includes(id)));
+  function normalizeBossPatternSnapshot(boss, baseRuntime, bossSummonSerial) {
+    if (Object.hasOwn(boss, "phase")) {
+      assertSnapshot(
+        [
+          "chase",
+          "windup",
+          "active",
+          "recover",
+          "resting",
+          "strike-windup",
+          "strike",
+          "sweep-windup",
+          "sweep"
+        ].includes(boss.phase)
+      );
     }
-    for (const key of ["phase", "clock", "hit", "targetId", "attackKind"]) delete boss2[key];
+    if (Object.hasOwn(boss, "clock")) {
+      assertSnapshot(Number.isFinite(boss.clock));
+    }
+    if (Object.hasOwn(boss, "targetId")) {
+      assertSnapshot(Number.isFinite(boss.targetId));
+    }
+    if (Object.hasOwn(boss, "attackKind")) {
+      assertSnapshot(["basic", "sweep", ...BOSS_PATTERN_IDS].includes(boss.attackKind));
+    }
+    if (Object.hasOwn(boss, "hit")) {
+      assertSnapshot(
+        Array.isArray(boss.hit) && boss.hit.length <= CONFIG.raid.capacity.battleUnits && boss.hit.every((id) => VALID_BATTLE_UNIT_ID(id, bossSummonSerial)) && new Set(boss.hit).size === boss.hit.length
+      );
+    }
+    if (!boss.patternRuntime || boss.patternRuntime.active === void 0) {
+      boss.patternRuntime = structuredClone(baseRuntime);
+    }
+    if (["strike-windup", "strike", "sweep-windup", "sweep"].includes(boss.phase)) {
+      boss.patternRuntime.active = null;
+    }
+    const ACTION = boss.patternRuntime.active;
+    if (ACTION) {
+      if (Object.hasOwn(boss, "hit")) {
+        assertSnapshot(
+          Array.isArray(ACTION.hitIds) && boss.hit.length === ACTION.hitIds.length && ACTION.hitIds.every((id) => boss.hit.includes(id))
+        );
+      }
+    }
+    for (const KEY2 of ["phase", "clock", "hit", "targetId", "attackKind"]) {
+      delete boss[KEY2];
+    }
   }
   var init_farm_snapshot_migrations = __esm({
     "src/farm-snapshot-migrations.js"() {
@@ -5482,19 +9260,23 @@
 
   // src/farm-state.js
   function restore(raw, { migrateLegacyRaid = false } = {}) {
-    raw = normalizeSnapshot(raw, { migrateLegacyRaid });
-    validateSnapshot(raw);
-    const g = new Garden();
-    Object.assign(g, structuredClone(raw));
-    g.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
-    if (g.boss.patternRuntime.active) g.boss.patternRuntime.active.hitIds = new Set(raw.boss.patternRuntime.active.hitIds);
-    g.units = raw.units.map((data) => {
-      const u = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
-      u.ability = Object.assign(createUnitAttackCycle(u), structuredClone(data.ability));
-      return u;
+    raw = normalizeSnapshot(raw, {
+      migrateLegacyRaid
     });
-    g.reconcileMateReservations();
-    return g;
+    validateSnapshot(raw);
+    const G = new GARDEN();
+    Object.assign(G, structuredClone(raw));
+    G.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
+    if (G.boss.patternRuntime.active) {
+      G.boss.patternRuntime.active.hitIds = new Set(raw.boss.patternRuntime.active.hitIds);
+    }
+    G.units = raw.units.map((data) => {
+      const U = Object.assign(new UNIT(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
+      U.ability = Object.assign(CREATE_UNIT_ATTACK_CYCLE(U), structuredClone(data.ability));
+      return U;
+    });
+    G.reconcileMateReservations();
+    return G;
   }
   var init_farm_state = __esm({
     "src/farm-state.js"() {
@@ -5507,19 +9289,31 @@
 
   // src/farm-save-codec.js
   function readFarmSave(text) {
-    if (typeof text !== "string" || text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
-    const parsed = JSON.parse(text), version = compatibility(parsed?.productVersion), field = version === COMPATIBILITY ? "progress" : "world";
-    if (parsed?.schema !== "budmori-farm" || !isReadableCompatibility(parsed.productVersion) || !parsed[field] || typeof parsed[field] !== "object" || Array.isArray(parsed[field]) || Object.keys(parsed).some((key) => !["schema", "productVersion", field].includes(key))) throw Error("이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요.");
-    return parsed;
+    if (typeof text !== "string" || text.length > MAX_BYTES) {
+      throw Error("저장 파일이 너무 큽니다.");
+    }
+    const PARSED = JSON.parse(text), VERSION = COMPATIBILITY_LOCAL(PARSED?.productVersion), FIELD = VERSION === COMPATIBILITY ? "progress" : "world";
+    if (PARSED?.schema !== "budmori-farm" || !IS_READABLE_COMPATIBILITY(PARSED.productVersion) || !PARSED[FIELD] || typeof PARSED[FIELD] !== "object" || Array.isArray(PARSED[FIELD]) || Object.keys(PARSED).some((key) => !["schema", "productVersion", FIELD].includes(key))) {
+      throw Error(
+        "이 저장은 현재 " + COMPATIBILITY + " 버전과 호환되지 않습니다. 원본을 내보내 보관한 뒤 새 정원을 시작해 주세요."
+      );
+    }
+    return PARSED;
   }
   function decodeFarmSave(text) {
-    const parsed = readFarmSave(text);
-    let progress = parsed.progress;
+    const PARSED = readFarmSave(text);
+    let progress = PARSED.progress;
     if (!progress) {
-      if (!["seed", "rng", "units", "food", "time", "nextId", "mode", "scene", "metrics"].every((key) => Object.hasOwn(parsed.world, key))) throw Error("이전 저장의 필수 진행 데이터가 누락됐어요. 원본은 그대로 보존합니다.");
-      const world = normalizeSnapshot(parsed.world, { migrateLegacyRaid: true });
-      validateSnapshot(world);
-      progress = captureFarmProgress(world);
+      if (!["seed", "rng", "units", "food", "time", "nextId", "mode", "scene", "metrics"].every(
+        (key) => Object.hasOwn(PARSED.world, key)
+      )) {
+        throw Error("이전 저장의 필수 진행 데이터가 누락됐어요. 원본은 그대로 보존합니다.");
+      }
+      const WORLD = normalizeSnapshot(PARSED.world, {
+        migrateLegacyRaid: true
+      });
+      validateSnapshot(WORLD);
+      progress = captureFarmProgress(WORLD);
     }
     validateFarmProgress(progress);
     return progress;
@@ -5533,8 +9327,8 @@
   }
   function saveHasLegacyFarmProgress(text) {
     try {
-      const { world } = readFarmSave(text);
-      return !!world && Object.hasOwn(world, "progress");
+      const { world: WORLD } = readFarmSave(text);
+      return !!WORLD && Object.hasOwn(WORLD, "progress");
     } catch {
       return false;
     }
@@ -5548,11 +9342,20 @@
   }
   function encodeFarmSave(world, data = captureFarmProgress(world)) {
     validateFarmProgress(data);
-    const text = JSON.stringify({ schema: "budmori-farm", productVersion: PRODUCT_VERSION, progress: data });
-    if (text.length > MAX_BYTES) throw Error("저장 파일이 너무 큽니다.");
-    return { data, text };
+    const TEXT = JSON.stringify({
+      schema: "budmori-farm",
+      productVersion: PRODUCT_VERSION,
+      progress: data
+    });
+    if (TEXT.length > MAX_BYTES) {
+      throw Error("저장 파일이 너무 큽니다.");
+    }
+    return {
+      data,
+      text: TEXT
+    };
   }
-  var MAX_BYTES, LEGACY_COMPATIBILITIES, compatibility, isReadableCompatibility;
+  var MAX_BYTES, LEGACY_COMPATIBILITIES, COMPATIBILITY_LOCAL, IS_READABLE_COMPATIBILITY;
   var init_farm_save_codec = __esm({
     "src/farm-save-codec.js"() {
       init_version();
@@ -5560,8 +9363,8 @@
       init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
       LEGACY_COMPATIBILITIES = /* @__PURE__ */ new Set(["0.7", "0.6", "0.5", "0.4"]);
-      compatibility = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      isReadableCompatibility = (version) => compatibility(version) === COMPATIBILITY || LEGACY_COMPATIBILITIES.has(compatibility(version));
+      COMPATIBILITY_LOCAL = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
+      IS_READABLE_COMPATIBILITY = (version) => COMPATIBILITY_LOCAL(version) === COMPATIBILITY || LEGACY_COMPATIBILITIES.has(COMPATIBILITY_LOCAL(version));
     }
   });
 
@@ -5578,16 +9381,26 @@
   }
   function readLegacyBackup() {
     try {
-      const preferred = localStorage.getItem(BACKUP_LATEST);
-      if (preferred?.startsWith(BACKUP_PREFIX)) {
-        const raw = localStorage.getItem(preferred);
-        if (raw) return { key: preferred, raw };
+      const PREFERRED = localStorage.getItem(BACKUP_LATEST);
+      if (PREFERRED?.startsWith(BACKUP_PREFIX)) {
+        const RAW = localStorage.getItem(PREFERRED);
+        if (RAW) {
+          return {
+            key: PREFERRED,
+            raw: RAW
+          };
+        }
       }
       for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (key?.startsWith(BACKUP_PREFIX)) {
-          const raw = localStorage.getItem(key);
-          if (raw) return { key, raw };
+        const KEY_LOCAL = localStorage.key(i);
+        if (KEY_LOCAL?.startsWith(BACKUP_PREFIX)) {
+          const RAW = localStorage.getItem(KEY_LOCAL);
+          if (RAW) {
+            return {
+              key: KEY_LOCAL,
+              raw: RAW
+            };
+          }
         }
       }
     } catch {
@@ -5595,16 +9408,24 @@
     return null;
   }
   function preserveLegacySave(text) {
-    if (!saveNeedsMigration(text)) return null;
-    const digest = Array.from(text).reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0;
-    let key = BACKUP_PREFIX + digest.toString(16).padStart(8, "0"), suffix = 0;
-    while (localStorage.getItem(key) !== null && localStorage.getItem(key) !== text) key = BACKUP_PREFIX + digest.toString(16).padStart(8, "0") + "-" + ++suffix;
+    if (!saveNeedsMigration(text)) {
+      return null;
+    }
+    const DIGEST = Array.from(text).reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0;
+    let key = BACKUP_PREFIX + DIGEST.toString(16).padStart(8, "0");
+    let suffix = 0;
+    while (localStorage.getItem(key) !== null && localStorage.getItem(key) !== text) {
+      key = BACKUP_PREFIX + DIGEST.toString(16).padStart(8, "0") + "-" + ++suffix;
+    }
     localStorage.setItem(key, text);
     try {
       localStorage.setItem(BACKUP_LATEST, key);
     } catch {
     }
-    return { key, raw: text };
+    return {
+      key,
+      raw: text
+    };
   }
   var KEY, LEGACY_KEY, BACKUP_PREFIX, BACKUP_LATEST, FarmStorage;
   var init_farm_storage = __esm({
@@ -5632,8 +9453,10 @@
             this.raw = localStorage.getItem(KEY);
             this.legacyRaw = localStorage.getItem(LEGACY_KEY);
             if (this.raw) {
-              if (!isReadableCompatibility(readFarmSave(this.raw).productVersion)) throw Error("현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.");
-              const data = decodeFarmSave(this.raw);
+              if (!IS_READABLE_COMPATIBILITY(readFarmSave(this.raw).productVersion)) {
+                throw Error("현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.");
+              }
+              const DATA = decodeFarmSave(this.raw);
               this.migrationPending = saveNeedsMigration(this.raw);
               if (this.migrationPending) {
                 this.legacyBackupRequired = true;
@@ -5642,10 +9465,12 @@
                   this.legacyBackupRequired = false;
                   this.migrationNotice = migrationNotice(this.raw);
                 } catch {
-                  throw Error("이전 저장 원본을 백업하지 못해 덮어쓰지 않았어요. 저장 공간을 비우거나 저장 파일을 내보낸 뒤 다시 시도해 주세요.");
+                  throw Error(
+                    "이전 저장 원본을 백업하지 못해 덮어쓰지 않았어요. 저장 공간을 비우거나 저장 파일을 내보낸 뒤 다시 시도해 주세요."
+                  );
                 }
               }
-              this.savedProgress = data;
+              this.savedProgress = DATA;
             } else if (this.legacyRaw) {
               try {
                 validateSave(this.legacyRaw);
@@ -5660,15 +9485,17 @@
           }
         }
         get world() {
-          if (!this._world && this.savedProgress) this._world = restoreFarmProgress(this.savedProgress);
+          if (!this._world && this.savedProgress) {
+            this._world = restoreFarmProgress(this.savedProgress);
+          }
           return this._world;
         }
         get hasWorld() {
           return !!(this._world || this.savedProgress);
         }
         get hasReservedRaid() {
-          const run = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
-          return run !== null && run !== void 0;
+          const RUN = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
+          return RUN !== null && RUN !== void 0;
         }
         set world(value) {
           this._world = value;
@@ -5681,21 +9508,27 @@
           return this.serializeCheckpoint(world).text;
         }
         refresh() {
-          if (!this.writable) return false;
+          if (!this.writable) {
+            return false;
+          }
           try {
-            const text = localStorage.getItem(KEY);
-            if (text === this.raw) return true;
-            if (!text) throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 정원을 시작했을 수 있어요.");
-            const data = decodeFarmSave(text), migrationPending = saveNeedsMigration(text);
-            if (migrationPending) {
-              this.legacyBackupRequired = true;
-              this.legacyBackup = preserveLegacySave(text);
-              this.legacyBackupRequired = false;
-              this.migrationNotice = migrationNotice(text);
+            const TEXT = localStorage.getItem(KEY);
+            if (TEXT === this.raw) {
+              return true;
             }
-            this.raw = text;
-            this.savedProgress = data;
-            this.migrationPending = migrationPending;
+            if (!TEXT) {
+              throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 정원을 시작했을 수 있어요.");
+            }
+            const DATA = decodeFarmSave(TEXT), MIGRATION_PENDING = saveNeedsMigration(TEXT);
+            if (MIGRATION_PENDING) {
+              this.legacyBackupRequired = true;
+              this.legacyBackup = preserveLegacySave(TEXT);
+              this.legacyBackupRequired = false;
+              this.migrationNotice = migrationNotice(TEXT);
+            }
+            this.raw = TEXT;
+            this.savedProgress = DATA;
+            this.migrationPending = MIGRATION_PENDING;
             this._world = null;
             this.error = "";
             return true;
@@ -5705,22 +9538,24 @@
           }
         }
         save(world) {
-          if (!this.writable || this.legacyBackupRequired) return false;
+          if (!this.writable || this.legacyBackupRequired) {
+            return false;
+          }
           try {
             if (localStorage.getItem(KEY) !== this.raw) {
               this.error = "저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.";
               return false;
             }
-            const data = captureFarmProgress(world);
-            if (!this.migrationPending && sameFarmProgress(data, this.savedProgress)) {
+            const DATA = captureFarmProgress(world);
+            if (!this.migrationPending && sameFarmProgress(DATA, this.savedProgress)) {
               this._world = world;
               this.error = "";
               return true;
             }
-            const { text } = this.serializeCheckpoint(world, data);
-            localStorage.setItem(KEY, text);
-            this.raw = text;
-            this.savedProgress = data;
+            const { text: TEXT } = this.serializeCheckpoint(world, DATA);
+            localStorage.setItem(KEY, TEXT);
+            this.raw = TEXT;
+            this.savedProgress = DATA;
             this.migrationPending = false;
             this._world = world;
             this.error = "";
@@ -5731,16 +9566,24 @@
           }
         }
         replace(world) {
-          if (this.legacyBackupRequired) return false;
-          const writable = this.writable;
+          if (this.legacyBackupRequired) {
+            return false;
+          }
+          const WRITABLE = this.writable;
           this.writable = true;
-          const saved = this.save(world);
-          if (!saved) this.writable = writable;
-          return saved;
+          const SAVED = this.save(world);
+          if (!SAVED) {
+            this.writable = WRITABLE;
+          }
+          return SAVED;
         }
         import(text) {
-          if (this.legacyBackupRequired) throw Error("이전 저장 원본을 백업하지 못해 불러오기를 취소했어요. 기존 저장은 그대로입니다.");
-          if (localStorage.getItem(KEY) !== this.raw) throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.");
+          if (this.legacyBackupRequired) {
+            throw Error("이전 저장 원본을 백업하지 못해 불러오기를 취소했어요. 기존 저장은 그대로입니다.");
+          }
+          if (localStorage.getItem(KEY) !== this.raw) {
+            throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.");
+          }
           validateSave(text);
           if (saveNeedsMigration(text)) {
             this.legacyBackupRequired = true;
@@ -5752,15 +9595,15 @@
             }
             this.migrationNotice = migrationNotice(text);
           }
-          const world = parseSave(text), { data, text: normalized } = this.serializeCheckpoint(world);
-          localStorage.setItem(KEY, normalized);
-          this.raw = normalized;
-          this.savedProgress = data;
+          const WORLD = parseSave(text), { data: DATA, text: NORMALIZED } = this.serializeCheckpoint(WORLD);
+          localStorage.setItem(KEY, NORMALIZED);
+          this.raw = NORMALIZED;
+          this.savedProgress = DATA;
           this.migrationPending = false;
-          this._world = world;
+          this._world = WORLD;
           this.writable = true;
           this.error = "";
-          return world;
+          return WORLD;
         }
       };
     }
@@ -5776,34 +9619,42 @@
 
   // src/farm-indicators.js
   init_factions();
-  function farmBreedingCooldown(unit2, world, defaultDuration = 10, result = {}) {
-    if (world?.scene !== "farm" || unit2?.hp <= 0 || unit2?.down > 0 || unit2?.cooldown <= 0 || unit2?.meals !== 0) return null;
-    const duration = unit2.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
-    const remaining = Math.max(0, unit2.cooldown);
-    result.remaining = remaining;
-    result.duration = duration;
-    result.progress = Math.max(0, Math.min(1, 1 - remaining / duration));
+  function farmBreedingCooldown(unit, world, defaultDuration = 10, result = {}) {
+    if (world?.scene !== "farm" || unit?.hp <= 0 || unit?.down > 0 || unit?.cooldown <= 0 || unit?.meals !== 0) {
+      return null;
+    }
+    const DURATION = unit.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
+    const REMAINING = Math.max(0, unit.cooldown);
+    result.remaining = REMAINING;
+    result.duration = DURATION;
+    result.progress = Math.max(0, Math.min(1, 1 - REMAINING / DURATION));
     return result;
   }
-  function unitRestPresentation(unit2, world, duration, result) {
-    if (unit2.faction !== FACTION_CONFIG.PLAYER || unit2.isBattleOnlySummon || unit2.hp > 0) return null;
-    const recovering = world.scene === "farm" && unit2.down > 0;
-    let elapsed = recovering ? Math.max(0, duration - unit2.down) : Infinity;
-    if (!recovering) {
+  function unitRestPresentation(unit, world, duration, result) {
+    if (unit.faction !== FACTION_CONFIG.PLAYER || unit.isBattleOnlySummon || unit.hp > 0) {
+      return null;
+    }
+    const RECOVERING = world.scene === "farm" && unit.down > 0;
+    let elapsed = RECOVERING ? Math.max(0, duration - unit.down) : Infinity;
+    if (!RECOVERING) {
       for (let i = world.notices.length - 1; i >= 0; i--) {
-        const event = world.notices[i];
-        if (!Number.isFinite(event.time)) continue;
-        const age = world.time - event.time;
-        if (age >= 0.5) break;
-        if (event.kind === "unit-hit" && event.unit === unit2.id && age >= 0) {
-          elapsed = age;
+        const EVENT = world.notices[i];
+        if (!Number.isFinite(EVENT.time)) {
+          continue;
+        }
+        const AGE = world.time - EVENT.time;
+        if (AGE >= 0.5) {
+          break;
+        }
+        if (EVENT.kind === "unit-hit" && EVENT.unit === unit.id && AGE >= 0) {
+          elapsed = AGE;
           break;
         }
       }
     }
-    result.phase = elapsed < 0.5 ? "defeat" : recovering && unit2.down <= 0.5 ? "wake" : "sleep";
-    result.elapsed = result.phase === "defeat" ? elapsed : result.phase === "wake" ? 0.5 - unit2.down : recovering ? elapsed - 0.5 : world.time;
-    result.progress = recovering ? Math.max(0, Math.min(1, 1 - unit2.down / duration)) : -1;
+    result.phase = elapsed < 0.5 ? "defeat" : RECOVERING && unit.down <= 0.5 ? "wake" : "sleep";
+    result.elapsed = result.phase === "defeat" ? elapsed : result.phase === "wake" ? 0.5 - unit.down : RECOVERING ? elapsed - 0.5 : world.time;
+    result.progress = RECOVERING ? Math.max(0, Math.min(1, 1 - unit.down / duration)) : -1;
     return result;
   }
 
@@ -5819,45 +9670,61 @@
     return count + 1;
   }
   function arc(out, count, x, y, r, start2, end) {
-    const segments = Math.max(1, Math.ceil(Math.abs(end - start2) / ARC_STEP));
-    for (let i = 0; i <= segments; i++) {
-      const a = start2 + (end - start2) * i / segments;
-      count = point(out, count, x + Math.cos(a) * r, y + Math.sin(a) * r);
+    const SEGMENTS = Math.max(1, Math.ceil(Math.abs(end - start2) / ARC_STEP));
+    for (let i = 0; i <= SEGMENTS; i++) {
+      const A = start2 + (end - start2) * i / SEGMENTS;
+      count = point(out, count, x + Math.cos(A) * r, y + Math.sin(A) * r);
     }
     return count;
   }
   function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
-    const dx = endX - x, dy = endY - y, d = Math.hypot(dx, dy), angle = Math.atan2(dy, dx), R2 = Math.max(r, landingRadius);
-    if (d <= R2 - r + 1e-9) return arc(out, 0, endX, endY, R2, 0, TAU);
-    const join = Math.sqrt(Math.max(0, R2 * R2 - r * r));
+    const DX = endX - x, DY = endY - y, D = Math.hypot(DX, DY), ANGLE = Math.atan2(DY, DX), R2 = Math.max(r, landingRadius);
+    if (D <= R2 - r + 1e-9) {
+      return arc(out, 0, endX, endY, R2, 0, TAU);
+    }
+    const JOIN = Math.sqrt(Math.max(0, R2 * R2 - r * r));
     let n = 0;
-    if (d >= join) {
-      const a = Math.acos(-join / R2);
-      n = arc(out, n, x, y, r, angle - Math.PI / 2, angle - Math.PI * 1.5);
-      n = arc(out, n, endX, endY, R2, angle + a, angle - a);
+    if (D >= JOIN) {
+      const A = Math.acos(-JOIN / R2);
+      n = arc(out, n, x, y, r, ANGLE - Math.PI / 2, ANGLE - Math.PI * 1.5);
+      n = arc(out, n, endX, endY, R2, ANGLE + A, ANGLE - A);
     } else {
-      const cross = (r * r - R2 * R2 + d * d) / (2 * d), height = Math.sqrt(Math.max(0, r * r - cross * cross));
-      const small = Math.atan2(height, cross), large = Math.atan2(height, cross - d);
-      n = arc(out, n, x, y, r, angle - small, angle + small - TAU);
-      n = arc(out, n, endX, endY, R2, angle + large, angle - large);
+      const CROSS = (r * r - R2 * R2 + D * D) / (2 * D), HEIGHT = Math.sqrt(Math.max(0, r * r - CROSS * CROSS));
+      const SMALL = Math.atan2(HEIGHT, CROSS), LARGE = Math.atan2(HEIGHT, CROSS - D);
+      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU);
+      n = arc(out, n, endX, endY, R2, ANGLE + LARGE, ANGLE - LARGE);
     }
     return n;
   }
   function bossDangerContour(area, out) {
     let n = 0;
-    if (area.kind === "sweep") return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
+    if (area.kind === "sweep") {
+      return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
+    }
     if (area.kind === "sector") {
       n = point(out, n, area.x, area.y);
       return arc(out, n, area.x, area.y, area.reach, area.angle - area.sector / 2, area.angle + area.sector / 2);
     }
-    if (area.kind === "charge") return bodyLandingContour(out, area.x, area.y, area.endX, area.endY, area.width, area.width);
-    if (area.kind === "leap") return bodyLandingContour(out, area.x, area.y, area.targetX, area.targetY, area.width, area.reach);
+    if (area.kind === "charge") {
+      return bodyLandingContour(out, area.x, area.y, area.endX, area.endY, area.width, area.width);
+    }
+    if (area.kind === "leap") {
+      return bodyLandingContour(out, area.x, area.y, area.targetX, area.targetY, area.width, area.reach);
+    }
     if (area.kind === "fan") {
-      const start2 = area.angle - area.sector / 2, end = area.angle + area.sector / 2, r = area.reach, w = area.width;
-      n = arc(out, n, area.x, area.y, r + w, start2, end);
-      n = arc(out, n, area.x + Math.cos(end) * r, area.y + Math.sin(end) * r, w, end, end + Math.PI);
-      n = arc(out, n, area.x, area.y, Math.max(0, r - w), end, start2);
-      return arc(out, n, area.x + Math.cos(start2) * r, area.y + Math.sin(start2) * r, w, start2 + Math.PI, start2 + TAU);
+      const START = area.angle - area.sector / 2, END = area.angle + area.sector / 2, R_LOCAL = area.reach, W = area.width;
+      n = arc(out, n, area.x, area.y, R_LOCAL + W, START, END);
+      n = arc(out, n, area.x + Math.cos(END) * R_LOCAL, area.y + Math.sin(END) * R_LOCAL, W, END, END + Math.PI);
+      n = arc(out, n, area.x, area.y, Math.max(0, R_LOCAL - W), END, START);
+      return arc(
+        out,
+        n,
+        area.x + Math.cos(START) * R_LOCAL,
+        area.y + Math.sin(START) * R_LOCAL,
+        W,
+        START + Math.PI,
+        START + TAU
+      );
     }
     return 0;
   }
@@ -5865,212 +9732,365 @@
   // src/farm-renderer.js
   init_boss_patterns();
   var { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
-  var { WebGLDevice, VectorContext, MeshRenderer } = globalThis.BloomGamekitRendering;
-  var { createVectorAsset } = globalThis.BloomGamekitVectorAssets;
+  var {
+    WebGLDevice: WEB_GL_DEVICE,
+    VectorContext: VECTOR_CONTEXT,
+    MeshRenderer: MESH_RENDERER
+  } = globalThis.BloomGamekitRendering;
+  var { createVectorAsset: CREATE_VECTOR_ASSET } = globalThis.BloomGamekitVectorAssets;
   var TIER_OUTLINE_COLORS = UNIT_GRADES.map(({ outlineColor }) => {
-    const rgb = outlineColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i).slice(1).map((value) => parseInt(value, 16) / 255);
-    return [...rgb, 1];
+    const RGB = outlineColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i).slice(1).map((value) => parseInt(value, 16) / 255);
+    return [...RGB, 1];
   });
   function unitMotion(u, sim, rest) {
-    const dead = u.hp <= 0 || u.down > 0, airborne = !u.dropLanded || u.z > 0.1, phase = u.ability?.phase || "idle";
-    const moving = Math.hypot(u.vx || 0, u.vy || 0) > 0.18, kind = UNIT_ABILITY_PROFILES[u.species]?.kind;
-    if (rest) return rest.phase;
-    if (dead) return "death";
-    if (sim.scene === "raid" && sim.encounter?.outcome === "victory") return "victory";
-    if (airborne) return "airborne";
-    if (u.stun > 0) return "hit";
-    if (u.bounce > 0.04) return "landing";
-    if (phase === "windup") return "windup";
-    if (phase === "active") return kind === "peanut-dual-strike" && u.ability.peanutStrikeCount > 2 ? `fire-${u.ability.peanutStrikeCount}` : "fire";
-    if (phase === "recover") return kind === "lob" && u.ability?.action?.path && u.ability.elapsed < 0.12 ? "fire" : "recover";
-    return moving ? "walk" : "idle";
+    const DEAD = u.hp <= 0 || u.down > 0, AIRBORNE = !u.dropLanded || u.z > 0.1, PHASE = u.ability?.phase || "idle";
+    const MOVING = Math.hypot(u.vx || 0, u.vy || 0) > 0.18, KIND = UNIT_ABILITY_PROFILES[u.species]?.kind;
+    if (rest) {
+      return rest.phase;
+    }
+    if (DEAD) {
+      return "death";
+    }
+    if (sim.scene === "raid" && sim.encounter?.outcome === "victory") {
+      return "victory";
+    }
+    if (AIRBORNE) {
+      return "airborne";
+    }
+    if (u.stun > 0) {
+      return "hit";
+    }
+    if (u.bounce > 0.04) {
+      return "landing";
+    }
+    if (PHASE === "windup") {
+      return "windup";
+    }
+    if (PHASE === "active") {
+      return KIND === "peanut-dual-strike" && u.ability.peanutStrikeCount > 2 ? `fire-${u.ability.peanutStrikeCount}` : "fire";
+    }
+    if (PHASE === "recover") {
+      return KIND === "lob" && u.ability?.action?.path && u.ability.elapsed < 0.12 ? "fire" : "recover";
+    }
+    return MOVING ? "walk" : "idle";
   }
   function motionElapsedMs(u, name, clip) {
-    if (name === "idle" || name === "walk" || name === "airborne") return (u.seed || 0) * 80 % clip.durationMs;
-    if (name === "windup" || name === "fire" || name.startsWith("fire-") || name === "recover") return clamp3((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
-    if (name === "hit") return clip.durationMs * (1 - clamp3((u.stun || 0) / 0.5, 0, 1));
-    if (name === "landing") return clip.durationMs * (1 - clamp3((u.bounce || 0) / 0.22, 0, 1));
-    if (name === "victory") return Math.abs(u.seed || 0) * 97.531 % clip.durationMs;
+    if (name === "idle" || name === "walk" || name === "airborne") {
+      return (u.seed || 0) * 80 % clip.durationMs;
+    }
+    if (name === "windup" || name === "fire" || name.startsWith("fire-") || name === "recover") {
+      return CLAMP2((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
+    }
+    if (name === "hit") {
+      return clip.durationMs * (1 - CLAMP2((u.stun || 0) / 0.5, 0, 1));
+    }
+    if (name === "landing") {
+      return clip.durationMs * (1 - CLAMP2((u.bounce || 0) / 0.22, 0, 1));
+    }
+    if (name === "victory") {
+      return Math.abs(u.seed || 0) * 97.531 % clip.durationMs;
+    }
     return clip.durationMs;
   }
   function unitExpression(u, sim, joyEffects, rest) {
-    const dead = u.hp <= 0 || u.down > 0, airborne = !u.dropLanded || u.z > 0.5;
-    const phase = u.ability?.phase;
-    const restingCooldown = sim.scene === "farm" && u.cooldown > 0 && phase === "idle";
-    if (rest) return rest.phase === "defeat" ? "dead" : rest.phase === "wake" ? "neutral" : "sleep";
-    if (dead) return "dead";
-    if (sim.scene === "raid" && sim.encounter?.outcome === "victory") return "happy";
-    if (u.stun > 0) return "hurt";
-    if (airborne) return "surprised";
-    if (u.walnutGuarding) return "guard";
-    if (phase === "windup") return "focused";
-    if (phase === "active") return "attack";
-    if (restingCooldown) return "neutral";
+    const DEAD = u.hp <= 0 || u.down > 0, AIRBORNE = !u.dropLanded || u.z > 0.5;
+    const PHASE = u.ability?.phase;
+    const RESTING_COOLDOWN = sim.scene === "farm" && u.cooldown > 0 && PHASE === "idle";
+    if (rest) {
+      return rest.phase === "defeat" ? "dead" : rest.phase === "wake" ? "neutral" : "sleep";
+    }
+    if (DEAD) {
+      return "dead";
+    }
+    if (sim.scene === "raid" && sim.encounter?.outcome === "victory") {
+      return "happy";
+    }
+    if (u.stun > 0) {
+      return "hurt";
+    }
+    if (AIRBORNE) {
+      return "surprised";
+    }
+    if (u.walnutGuarding) {
+      return "guard";
+    }
+    if (PHASE === "windup") {
+      return "focused";
+    }
+    if (PHASE === "active") {
+      return "attack";
+    }
+    if (RESTING_COOLDOWN) {
+      return "neutral";
+    }
     if (sim.scene === "farm") {
-      for (const e of joyEffects) if (Math.hypot(e.x - u.x, e.y - u.y) < 1.2) return "happy";
-      if (!u.fed) return "hungry";
+      for (const E of joyEffects) {
+        if (Math.hypot(E.x - u.x, E.y - u.y) < 1.2) {
+          return "happy";
+        }
+      }
+      if (!u.fed) {
+        return "hungry";
+      }
     }
     return "neutral";
   }
-  function renderedBossAttackArea(boss2, scene, scratch, area) {
-    if (!boss2?.patternId || boss2.hp <= 0 || boss2.patternPhase === "recover" && (boss2.patternPhaseElapsed || 0) >= 0.14) return null;
-    const action = scratch.patternRuntime.active;
-    scratch.x = boss2.x;
-    scratch.y = boss2.y;
-    scratch.z = boss2.z;
-    scratch.angle = boss2.angle;
-    scratch.radius = boss2.radius;
-    scratch.height = boss2.height;
-    action.id = boss2.patternId;
-    action.phase = boss2.patternPhase;
-    action.phaseElapsed = boss2.patternPhaseElapsed;
-    action.aim = boss2.patternAim;
-    action.locked = boss2.patternLocked;
-    action.start.x = boss2.patternStartX;
-    action.start.y = boss2.patternStartY;
-    action.start.z = boss2.patternStartZ;
-    action.target.x = boss2.patternTargetX;
-    action.target.y = boss2.patternTargetY;
-    action.target.z = boss2.patternTargetZ;
+  function renderedBossAttackArea(boss, scene, scratch, area) {
+    if (!boss?.patternId || boss.hp <= 0 || boss.patternPhase === "recover" && (boss.patternPhaseElapsed || 0) >= 0.14) {
+      return null;
+    }
+    const ACTION = scratch.patternRuntime.active;
+    scratch.x = boss.x;
+    scratch.y = boss.y;
+    scratch.z = boss.z;
+    scratch.angle = boss.angle;
+    scratch.radius = boss.radius;
+    scratch.height = boss.height;
+    ACTION.id = boss.patternId;
+    ACTION.phase = boss.patternPhase;
+    ACTION.phaseElapsed = boss.patternPhaseElapsed;
+    ACTION.aim = boss.patternAim;
+    ACTION.locked = boss.patternLocked;
+    ACTION.start.x = boss.patternStartX;
+    ACTION.start.y = boss.patternStartY;
+    ACTION.start.z = boss.patternStartZ;
+    ACTION.target.x = boss.patternTargetX;
+    ACTION.target.y = boss.patternTargetY;
+    ACTION.target.z = boss.patternTargetZ;
     return bossAttackArea(scratch, 0, scene, area);
   }
   function bossAttackPose(b, parts) {
-    const id = b.patternId, config = BOSS_PATTERN_CONFIG[id], phase = b.patternPhase, elapsed = Math.max(0, b.patternPhaseElapsed || 0), aim = Math.atan2(-0.62 * Math.sin(b.patternAim ?? b.angle), Math.cos(b.patternAim ?? b.angle));
-    const body = { y: 0, rotation: 0, scaleX: 1, scaleY: 1 }, arms = { "arm-left": 0, "arm-right": 0 }, extras = {};
-    for (const part of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) if (parts.has(part)) extras[part] = { x: 0, y: 0, rotation: 0 };
-    if (!config || !parts.has("body")) return { body, arms, extras, impact: false, releasePulse: 0 };
-    const wind = phase === "windup" ? clamp3(elapsed / config.windup, 0, 1) : 0, windEase = wind * wind * (3 - 2 * wind);
-    const recovering = phase === "recover", recover = recovering ? clamp3(elapsed / config.recover, 0, 1) : 0, recoverEase = recover * recover * (3 - 2 * recover);
-    const instantImpact = recovering && ["attack.sweep-360", "attack.front-slam"].includes(id) && elapsed < 0.14;
-    const leapImpact = recovering && id === "attack.leap-slam" && elapsed < 0.18;
-    const active2 = phase === "active", recoverImpact = instantImpact || leapImpact;
-    const impact = active2 || recoverImpact;
-    const lead = Math.cos(aim) >= 0 ? "arm-right" : "arm-left", trail = lead === "arm-right" ? "arm-left" : "arm-right";
-    const strikeAngle = clamp3(aim, -1.2, 1.2);
-    const arm = (key, value) => {
-      if (parts.has(key)) arms[key] = value;
+    const ID = b.patternId, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[ID], PHASE = b.patternPhase, ELAPSED = Math.max(0, b.patternPhaseElapsed || 0), AIM = Math.atan2(-0.62 * Math.sin(b.patternAim ?? b.angle), Math.cos(b.patternAim ?? b.angle));
+    const BODY2 = {
+      y: 0,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1
+    }, ARMS = {
+      "arm-left": 0,
+      "arm-right": 0
+    }, EXTRAS = {};
+    for (const PART of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) {
+      if (parts.has(PART)) {
+        EXTRAS[PART] = {
+          x: 0,
+          y: 0,
+          rotation: 0
+        };
+      }
+    }
+    if (!CONFIG_LOCAL || !parts.has("body")) {
+      return {
+        body: BODY2,
+        arms: ARMS,
+        extras: EXTRAS,
+        impact: false,
+        releasePulse: 0
+      };
+    }
+    const WIND = PHASE === "windup" ? CLAMP2(ELAPSED / CONFIG_LOCAL.windup, 0, 1) : 0, WIND_EASE = WIND * WIND * (3 - 2 * WIND);
+    const RECOVERING = PHASE === "recover", RECOVER = RECOVERING ? CLAMP2(ELAPSED / CONFIG_LOCAL.recover, 0, 1) : 0, RECOVER_EASE = RECOVER * RECOVER * (3 - 2 * RECOVER);
+    const INSTANT_IMPACT = RECOVERING && ["attack.sweep-360", "attack.front-slam"].includes(ID) && ELAPSED < 0.14;
+    const LEAP_IMPACT = RECOVERING && ID === "attack.leap-slam" && ELAPSED < 0.18;
+    const ACTIVE = PHASE === "active", RECOVER_IMPACT = INSTANT_IMPACT || LEAP_IMPACT;
+    const IMPACT = ACTIVE || RECOVER_IMPACT;
+    const LEAD = Math.cos(AIM) >= 0 ? "arm-right" : "arm-left", TRAIL = LEAD === "arm-right" ? "arm-left" : "arm-right";
+    const STRIKE_ANGLE = CLAMP2(AIM, -1.2, 1.2);
+    const ARM = (key, value) => {
+      if (parts.has(key)) {
+        ARMS[key] = value;
+      }
     };
-    const windup = () => {
-      body.y = 4 * windEase;
-      body.scaleX = 1 - 0.035 * windEase;
-      body.scaleY = 1 + 0.06 * windEase;
-      body.rotation = aim * 0.045 * windEase;
-      arm(lead, -0.72 + strikeAngle * 0.22);
-      arm(trail, 0.28 - strikeAngle * 0.12);
+    const WINDUP = () => {
+      BODY2.y = 4 * WIND_EASE;
+      BODY2.scaleX = 1 - 0.035 * WIND_EASE;
+      BODY2.scaleY = 1 + 0.06 * WIND_EASE;
+      BODY2.rotation = AIM * 0.045 * WIND_EASE;
+      ARM(LEAD, -0.72 + STRIKE_ANGLE * 0.22);
+      ARM(TRAIL, 0.28 - STRIKE_ANGLE * 0.12);
     };
-    const settle = () => {
-      body.y = 3 * (1 - recoverEase);
-      body.scaleX = 1 + 0.045 * (1 - recoverEase);
-      body.scaleY = 1 - 0.065 * (1 - recoverEase);
-      body.rotation = aim * 0.025 * (1 - recoverEase);
-      arm(lead, 0.35 * (1 - recoverEase) + strikeAngle * 0.16);
-      arm(trail, -0.12 * (1 - recoverEase));
+    const SETTLE = () => {
+      BODY2.y = 3 * (1 - RECOVER_EASE);
+      BODY2.scaleX = 1 + 0.045 * (1 - RECOVER_EASE);
+      BODY2.scaleY = 1 - 0.065 * (1 - RECOVER_EASE);
+      BODY2.rotation = AIM * 0.025 * (1 - RECOVER_EASE);
+      ARM(LEAD, 0.35 * (1 - RECOVER_EASE) + STRIKE_ANGLE * 0.16);
+      ARM(TRAIL, -0.12 * (1 - RECOVER_EASE));
     };
-    const strike = () => {
-      body.y = -3;
-      body.scaleX = 1.075;
-      body.scaleY = 0.91;
-      body.rotation = aim * 0.09;
-      arm(lead, 0.95 + strikeAngle * 0.55);
-      arm(trail, -0.42 - strikeAngle * 0.18);
+    const STRIKE = () => {
+      BODY2.y = -3;
+      BODY2.scaleX = 1.075;
+      BODY2.scaleY = 0.91;
+      BODY2.rotation = AIM * 0.09;
+      ARM(LEAD, 0.95 + STRIKE_ANGLE * 0.55);
+      ARM(TRAIL, -0.42 - STRIKE_ANGLE * 0.18);
     };
-    switch (id) {
+    switch (ID) {
       case "attack.front-slam":
-        if (phase === "windup") windup();
-        else if (impact) strike();
-        else if (recovering) settle();
+        if (PHASE === "windup") {
+          WINDUP();
+        } else if (IMPACT) {
+          STRIKE();
+        } else if (RECOVERING) {
+          SETTLE();
+        }
         break;
       case "attack.sweep-360": {
-        if (phase === "windup") {
-          windup();
-          arm("arm-left", -0.72);
-          arm("arm-right", 0.72);
-        } else if (impact) {
-          const q = instantImpact ? 1 : clamp3(elapsed / Math.max(config.active, 1e-3), 0, 1), sweep = 2 * Math.PI * q;
-          body.rotation = 0.12 * Math.sin(sweep);
-          body.scaleX = 1.055;
-          body.scaleY = 0.94;
-          arm("arm-left", -0.78 - 0.55 * Math.sin(sweep));
-          arm("arm-right", 0.78 + 0.55 * Math.sin(sweep));
-        } else if (recovering) settle();
+        if (PHASE === "windup") {
+          WINDUP();
+          ARM("arm-left", -0.72);
+          ARM("arm-right", 0.72);
+        } else if (IMPACT) {
+          const Q = INSTANT_IMPACT ? 1 : CLAMP2(ELAPSED / Math.max(CONFIG_LOCAL.active, 1e-3), 0, 1), SWEEP = 2 * Math.PI * Q;
+          BODY2.rotation = 0.12 * Math.sin(SWEEP);
+          BODY2.scaleX = 1.055;
+          BODY2.scaleY = 0.94;
+          ARM("arm-left", -0.78 - 0.55 * Math.sin(SWEEP));
+          ARM("arm-right", 0.78 + 0.55 * Math.sin(SWEEP));
+        } else if (RECOVERING) {
+          SETTLE();
+        }
         break;
       }
       case "attack.charge":
-        if (phase === "windup") windup();
-        else if (active2) {
-          const stride = Math.sin((b.patternTraveled || 0) * 3.1), lift = Math.max(0, stride);
-          body.y = -1.5 - Math.abs(stride) * 1.2;
-          body.scaleX = 1.055;
-          body.scaleY = 0.965;
-          body.rotation = aim * 0.11;
-          arm(lead, -0.72 + strikeAngle * 0.3 + stride * 0.12);
-          arm(trail, 0.46 - stride * 0.18);
-          extras["foot-left"] = { x: -stride * 4, y: -lift * 5, rotation: -stride * 0.12 };
-          extras["foot-right"] = { x: stride * 4, y: -Math.max(0, -stride) * 5, rotation: stride * 0.12 };
-          if (parts.has("leaf")) extras.leaf = { rotation: stride * 0.14 };
-        } else if (recovering) settle();
+        if (PHASE === "windup") {
+          WINDUP();
+        } else if (ACTIVE) {
+          const STRIDE = Math.sin((b.patternTraveled || 0) * 3.1), LIFT = Math.max(0, STRIDE);
+          BODY2.y = -1.5 - Math.abs(STRIDE) * 1.2;
+          BODY2.scaleX = 1.055;
+          BODY2.scaleY = 0.965;
+          BODY2.rotation = AIM * 0.11;
+          ARM(LEAD, -0.72 + STRIKE_ANGLE * 0.3 + STRIDE * 0.12);
+          ARM(TRAIL, 0.46 - STRIDE * 0.18);
+          EXTRAS["foot-left"] = {
+            x: -STRIDE * 4,
+            y: -LIFT * 5,
+            rotation: -STRIDE * 0.12
+          };
+          EXTRAS["foot-right"] = {
+            x: STRIDE * 4,
+            y: -Math.max(0, -STRIDE) * 5,
+            rotation: STRIDE * 0.12
+          };
+          if (parts.has("leaf")) {
+            EXTRAS.leaf = {
+              rotation: STRIDE * 0.14
+            };
+          }
+        } else if (RECOVERING) {
+          SETTLE();
+        }
         break;
       case "attack.leap-slam":
-        if (phase === "windup") {
-          windup();
-          body.y = 5 * windEase;
-          body.scaleX = 1 - 0.05 * windEase;
-          body.scaleY = 1 + 0.09 * windEase;
-          arm(lead, -0.9);
-          arm(trail, -0.45);
-        } else if (active2) {
-          const lift = clamp3((b.z || 0) / Math.max(1, b.height || 1), 0, 1);
-          body.rotation = aim * 0.06;
-          body.scaleX = 1 + 0.045 * lift;
-          body.scaleY = 1 - 0.035 * lift;
-          arm("arm-left", -0.28);
-          arm("arm-right", 0.28);
-          extras["foot-left"] = { y: -4 * lift, rotation: -0.08 * lift };
-          extras["foot-right"] = { y: -4 * lift, rotation: 0.08 * lift };
-          if (parts.has("leaf")) extras.leaf = { rotation: -0.12 * lift };
-        } else if (leapImpact) {
-          body.y = 5;
-          body.scaleX = 1.12;
-          body.scaleY = 0.8;
-          body.rotation = aim * 0.08;
-          arm("arm-left", -0.65);
-          arm("arm-right", 0.65);
-          extras["foot-left"] = { x: -5, y: 2, rotation: -0.14 };
-          extras["foot-right"] = { x: 5, y: 2, rotation: 0.14 };
-        } else if (recovering) settle();
+        if (PHASE === "windup") {
+          WINDUP();
+          BODY2.y = 5 * WIND_EASE;
+          BODY2.scaleX = 1 - 0.05 * WIND_EASE;
+          BODY2.scaleY = 1 + 0.09 * WIND_EASE;
+          ARM(LEAD, -0.9);
+          ARM(TRAIL, -0.45);
+        } else if (ACTIVE) {
+          const LIFT = CLAMP2((b.z || 0) / Math.max(1, b.height || 1), 0, 1);
+          BODY2.rotation = AIM * 0.06;
+          BODY2.scaleX = 1 + 0.045 * LIFT;
+          BODY2.scaleY = 1 - 0.035 * LIFT;
+          ARM("arm-left", -0.28);
+          ARM("arm-right", 0.28);
+          EXTRAS["foot-left"] = {
+            y: -4 * LIFT,
+            rotation: -0.08 * LIFT
+          };
+          EXTRAS["foot-right"] = {
+            y: -4 * LIFT,
+            rotation: 0.08 * LIFT
+          };
+          if (parts.has("leaf")) {
+            EXTRAS.leaf = {
+              rotation: -0.12 * LIFT
+            };
+          }
+        } else if (LEAP_IMPACT) {
+          BODY2.y = 5;
+          BODY2.scaleX = 1.12;
+          BODY2.scaleY = 0.8;
+          BODY2.rotation = AIM * 0.08;
+          ARM("arm-left", -0.65);
+          ARM("arm-right", 0.65);
+          EXTRAS["foot-left"] = {
+            x: -5,
+            y: 2,
+            rotation: -0.14
+          };
+          EXTRAS["foot-right"] = {
+            x: 5,
+            y: 2,
+            rotation: 0.14
+          };
+        } else if (RECOVERING) {
+          SETTLE();
+        }
         break;
       case "attack.fan-sweep":
-        if (phase === "windup") windup();
-        else if (active2) {
-          const q = clamp3(elapsed / config.active, 0, 1), arc2 = aim - config.sector / 2 + config.sector * q, projected = Math.atan2(-0.62 * Math.sin(arc2), Math.cos(arc2));
-          body.rotation = 0.1 * Math.sin(projected - aim);
-          body.scaleX = 1.035;
-          body.scaleY = 0.97;
-          arm(lead, 0.4 + clamp3(projected, -1.1, 1.1) * 0.58);
-          arm(trail, -0.3 - clamp3(projected, -1.1, 1.1) * 0.2);
-          if (parts.has("leaf")) extras.leaf = { rotation: 0.12 * Math.sin(q * Math.PI) };
-        } else if (recovering && elapsed < 0.12) {
-          const arc2 = aim + config.sector / 2, projected = Math.atan2(-0.62 * Math.sin(arc2), Math.cos(arc2));
-          body.rotation = 0.08 * Math.sin(projected - aim);
-          body.scaleX = 1.05;
-          arm(lead, 0.4 + projected * 0.5);
-        } else if (recovering) settle();
+        if (PHASE === "windup") {
+          WINDUP();
+        } else if (ACTIVE) {
+          const Q = CLAMP2(ELAPSED / CONFIG_LOCAL.active, 0, 1), ARC = AIM - CONFIG_LOCAL.sector / 2 + CONFIG_LOCAL.sector * Q, PROJECTED = Math.atan2(-0.62 * Math.sin(ARC), Math.cos(ARC));
+          BODY2.rotation = 0.1 * Math.sin(PROJECTED - AIM);
+          BODY2.scaleX = 1.035;
+          BODY2.scaleY = 0.97;
+          ARM(LEAD, 0.4 + CLAMP2(PROJECTED, -1.1, 1.1) * 0.58);
+          ARM(TRAIL, -0.3 - CLAMP2(PROJECTED, -1.1, 1.1) * 0.2);
+          if (parts.has("leaf")) {
+            EXTRAS.leaf = {
+              rotation: 0.12 * Math.sin(Q * Math.PI)
+            };
+          }
+        } else if (RECOVERING && ELAPSED < 0.12) {
+          const ARC = AIM + CONFIG_LOCAL.sector / 2, PROJECTED = Math.atan2(-0.62 * Math.sin(ARC), Math.cos(ARC));
+          BODY2.rotation = 0.08 * Math.sin(PROJECTED - AIM);
+          BODY2.scaleX = 1.05;
+          ARM(LEAD, 0.4 + PROJECTED * 0.5);
+        } else if (RECOVERING) {
+          SETTLE();
+        }
         break;
       case "summon.mouth-t1":
         return bossSummonPose(b, parts);
     }
-    if (recovering && !recoverImpact && !["attack.front-slam", "attack.sweep-360", "attack.charge", "attack.leap-slam", "attack.fan-sweep"].includes(id)) settle();
-    if (parts.has("kernel-mark") && id === "attack.charge") extras["kernel-mark"] = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
-    if (parts.has("hilum") && id === "attack.charge") extras.hilum = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
-    return { body, arms, extras, impact, releasePulse: 0 };
+    if (RECOVERING && !RECOVER_IMPACT && !["attack.front-slam", "attack.sweep-360", "attack.charge", "attack.leap-slam", "attack.fan-sweep"].includes(ID)) {
+      SETTLE();
+    }
+    if (parts.has("kernel-mark") && ID === "attack.charge") {
+      EXTRAS["kernel-mark"] = {
+        rotation: ACTIVE ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0
+      };
+    }
+    if (parts.has("hilum") && ID === "attack.charge") {
+      EXTRAS.hilum = {
+        rotation: ACTIVE ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0
+      };
+    }
+    return {
+      body: BODY2,
+      arms: ARMS,
+      extras: EXTRAS,
+      impact: IMPACT,
+      releasePulse: 0
+    };
   }
-  var compareActors = (a, b) => b.depth - a.depth || a.id - b.id;
+  var COMPARE_ACTORS = (a, b) => b.depth - a.depth || a.id - b.id;
   var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c", "#9a6947", "#d7914f", "#a86b32"];
-  var Diorama = class {
-    constructor(canvas2) {
-      this.canvas = canvas2;
-      this.device = new WebGLDevice(canvas2, { alpha: false, depth: false, stencil: false, antialias: true });
-      this.ctx = new VectorContext(this.device);
+  var DIORAMA = class Diorama {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.device = new WEB_GL_DEVICE(canvas, {
+        alpha: false,
+        depth: false,
+        stencil: false,
+        antialias: true
+      });
+      this.ctx = new VECTOR_CONTEXT(this.device);
       this.vectorAssets = /* @__PURE__ */ new Map();
       this.vectorPlayers = /* @__PURE__ */ new Map();
       this.vectorPlayerAssets = /* @__PURE__ */ new WeakMap();
@@ -6084,17 +10104,45 @@
       this.restIndicator = {};
       this.dangerContour = new Float64Array(512);
       this.dangerArea = {};
-      this.telegraphBoss = { patternRuntime: { active: { start: {}, target: {} } } };
-      const entries = Object.entries(TROOP_VECTOR_ASSETS);
-      if (entries.length !== CONFIG.unit.speciesCount || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
-      this.meshes = new MeshRenderer(this.device);
+      this.telegraphBoss = {
+        patternRuntime: {
+          active: {
+            start: {},
+            target: {}
+          }
+        }
+      };
+      const ENTRIES = Object.entries(TROOP_VECTOR_ASSETS);
+      if (ENTRIES.length !== CONFIG.unit.speciesCount || ENTRIES.some(([species], index) => Number(species) !== index) || typeof CREATE_VECTOR_ASSET !== "function") {
+        throw new Error("All pinned GameKit troop and vector-assets sources are required");
+      }
+      this.meshes = new MESH_RENDERER(this.device);
       this.ctx.meshRenderer = this.meshes;
-      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), anchors: (0, import_vector_sockets2.readVectorSockets)(compiled, `species ${species}, ${compiled.sourcePath}`), parts: new Set(compiled.metadata.parts.map((part) => part.id)), faceParts: compiled.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id) });
-      this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) }]));
-      for (const species of this.vectorAssets.keys()) {
-        const record = this.bossAssets.get(species === 3 ? "chestnut" : `species-${species}`);
-        if (!record) throw new Error("Missing required boss vector asset for species " + species);
-        record.anchors = bindBossSocketAsset(species, record);
+      for (const [SPECIES, COMPILED] of ENTRIES) {
+        this.vectorAssets.set(Number(SPECIES), {
+          compiled: COMPILED,
+          asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
+          anchors: (0, import_vector_sockets2.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
+          parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
+          faceParts: COMPILED.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id)
+        });
+      }
+      this.bossAssets = new Map(
+        Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [
+          id,
+          {
+            compiled,
+            asset: CREATE_VECTOR_ASSET(this.meshes, compiled),
+            parts: new Set(compiled.metadata.parts.map((part) => part.id))
+          }
+        ])
+      );
+      for (const SPECIES of this.vectorAssets.keys()) {
+        const RECORD = this.bossAssets.get(SPECIES === 3 ? "chestnut" : `species-${SPECIES}`);
+        if (!RECORD) {
+          throw new Error("Missing required boss vector asset for species " + SPECIES);
+        }
+        RECORD.anchors = bindBossSocketAsset(SPECIES, RECORD);
       }
       this.bossPlayer = null;
       this.bossPlayerAsset = null;
@@ -6106,576 +10154,938 @@
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
       this.resize();
-      const boss2 = this.bossAssets.get("chestnut");
-      if (!boss2) throw new Error("Pinned chestnut boss vector asset is required");
-      const prewarmAt = performance.now();
-      this.bossPlayer = boss2.asset.createPlayer({ clip: "idle", startedAtMs: 0 });
-      this.bossPlayerAsset = boss2;
-      this.bossPlayers.set(3, { record: boss2, player: this.bossPlayer });
-      this.ctx.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
-      this.bossPlayer.draw({ projection: this.ctx.vector.projection, matrix: [1e-3, 0, 0, 1e-3, 100, 100] });
+      const BOSS2 = this.bossAssets.get("chestnut");
+      if (!BOSS2) {
+        throw new Error("Pinned chestnut boss vector asset is required");
+      }
+      const PREWARM_AT = performance.now();
+      this.bossPlayer = BOSS2.asset.createPlayer({
+        clip: "idle",
+        startedAtMs: 0
+      });
+      this.bossPlayerAsset = BOSS2;
+      this.bossPlayers.set(3, {
+        record: BOSS2,
+        player: this.bossPlayer
+      });
+      this.ctx.beginFrame({
+        width: this.canvas.width,
+        height: this.canvas.height,
+        clearColor: [0.9, 0.92, 0.87, 1]
+      });
+      this.bossPlayer.draw({
+        projection: this.ctx.vector.projection,
+        matrix: [1e-3, 0, 0, 1e-3, 100, 100]
+      });
       this.prewarmStats = this.ctx.endFrame();
-      this.prewarmDurationMs = performance.now() - prewarmAt;
+      this.prewarmDurationMs = performance.now() - PREWARM_AT;
       this.assetsReady = true;
     }
     resize() {
-      const r = this.canvas.getBoundingClientRect(), d = Math.min(globalThis.devicePixelRatio || 1, 2);
-      this.canvas.width = Math.round(r.width * d);
-      this.pixelRatio = d;
-      this.canvas.height = Math.round(r.height * d);
-      this.aspect = r.width / r.height;
+      const R2 = this.canvas.getBoundingClientRect(), D = Math.min(globalThis.devicePixelRatio || 1, 2);
+      this.canvas.width = Math.round(R2.width * D);
+      this.pixelRatio = D;
+      this.canvas.height = Math.round(R2.height * D);
+      this.aspect = R2.width / R2.height;
       this.configure(this.scene || "farm", true);
     }
     project(x, y, z = 0) {
-      return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (import_vector_sockets2.WORLD_DEPTH_PROJECTION * y + import_vector_sockets2.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale };
+      return {
+        x: (x + this.offset[0] + this.view[0]) * this.scale,
+        y: (this.view[1] - (import_vector_sockets2.WORLD_DEPTH_PROJECTION * y + import_vector_sockets2.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
+      };
     }
     screenToWorld(clientX, clientY) {
-      const r = this.canvas.getBoundingClientRect(), px = (clientX - r.left) * this.pixelRatio, py = (clientY - r.top) * this.pixelRatio;
-      return { x: px / this.scale - this.offset[0] - this.view[0], y: (this.view[1] - py / this.scale - this.offset[1]) / import_vector_sockets2.WORLD_DEPTH_PROJECTION };
+      const R2 = this.canvas.getBoundingClientRect(), PX = (clientX - R2.left) * this.pixelRatio, PY = (clientY - R2.top) * this.pixelRatio;
+      return {
+        x: PX / this.scale - this.offset[0] - this.view[0],
+        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets2.WORLD_DEPTH_PROJECTION
+      };
     }
     configure(scene, force = false) {
-      if (this.scene === scene && !force) return;
-      if (this.scene !== scene) this.pan = { x: 0, y: 0 };
+      if (this.scene === scene && !force) {
+        return;
+      }
+      if (this.scene !== scene) {
+        this.pan = {
+          x: 0,
+          y: 0
+        };
+      }
       this.scene = scene;
-      const a = this.aspect;
-      if (scene === "raid") this.view = a > 1.2 ? [Math.max(26.5, 17 * a), 17] : [26.5, 26.5 / a];
-      else this.view = a > 1.2 ? [Math.max(12, 9 * a), 9] : [11.7, 11.7 / a];
+      const A = this.aspect;
+      if (scene === "raid") {
+        this.view = A > 1.2 ? [Math.max(26.5, 17 * A), 17] : [26.5, 26.5 / A];
+      } else {
+        this.view = A > 1.2 ? [Math.max(12, 9 * A), 9] : [11.7, 11.7 / A];
+      }
       this.scale = this.canvas.width / (2 * this.view[0]);
-      const { radiusX: rx, radiusY: ry } = CONFIG[scene].arena;
-      const bounds = { left: -rx - 1.3, right: rx + 1.3, bottom: -(ry + 1.3) * import_vector_sockets2.WORLD_DEPTH_PROJECTION, top: (ry + 1.3) * import_vector_sockets2.WORLD_DEPTH_PROJECTION };
-      const bossScale = (0, import_vector_sockets2.bossVectorScale)(CONFIG.boss.radius), bossX = rx - CONFIG.boss.radius, bossY = (ry - CONFIG.boss.radius) * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
-      const includeBoss = (record) => {
-        const [x, y, w, h] = record.compiled.viewBox, g = record.anchors.ground;
-        bounds.left = Math.min(bounds.left, -bossX - (g.x - x) * bossScale);
-        bounds.right = Math.max(bounds.right, bossX + (x + w - g.x) * bossScale);
-        bounds.bottom = Math.min(bounds.bottom, -bossY - (y + h - g.y) * bossScale);
-        bounds.top = Math.max(bounds.top, bossY + (g.y - y) * bossScale + CONFIG.raid.dropHeight * import_vector_sockets2.WORLD_HEIGHT_PROJECTION);
+      const { radiusX: RX, radiusY: RY } = CONFIG[scene].arena;
+      const BOUNDS = {
+        left: -RX - 1.3,
+        right: RX + 1.3,
+        bottom: -(RY + 1.3) * import_vector_sockets2.WORLD_DEPTH_PROJECTION,
+        top: (RY + 1.3) * import_vector_sockets2.WORLD_DEPTH_PROJECTION
       };
-      for (const record of this.bossAssets.values()) includeBoss(record);
-      const baseY = a < 0.8 ? 1.1 : -0.3, top = this.view[1] - baseY, bottom = top - this.canvas.height / this.scale;
-      this.panLimits = { minX: Math.min(0, this.view[0] - bounds.right), maxX: Math.max(0, -this.view[0] - bounds.left), minY: Math.min(0, top - bounds.top), maxY: Math.max(0, bottom - bounds.bottom) };
-      this.pan.x = clamp3(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
-      this.pan.y = clamp3(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
-      this.offset = [this.pan.x, baseY + this.pan.y];
-      this.terrainDots = Array.from({ length: 92 }, (_, i) => {
-        const angle = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92);
-        return this.project(Math.cos(angle) * (rx + 0.3) * rad, Math.sin(angle) * (ry + 0.3) * rad);
-      });
-      this.terrainLeaves = Array.from({ length: 24 }, (_, i) => {
-        const angle = i * 2.39996;
-        return { ...this.project(Math.cos(angle) * (rx + 0.55), Math.sin(angle) * (ry + 0.55)), angle };
-      });
+      const BOSS_SCALE = (0, import_vector_sockets2.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX - CONFIG.boss.radius, BOSS_Y = (RY - CONFIG.boss.radius) * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
+      const INCLUDE_BOSS = (record) => {
+        const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
+        BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
+        BOUNDS.right = Math.max(BOUNDS.right, BOSS_X + (X + W - G.x) * BOSS_SCALE);
+        BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
+        BOUNDS.top = Math.max(
+          BOUNDS.top,
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.raid.dropHeight * import_vector_sockets2.WORLD_HEIGHT_PROJECTION
+        );
+      };
+      for (const RECORD of this.bossAssets.values()) {
+        INCLUDE_BOSS(RECORD);
+      }
+      const BASE_Y = A < 0.8 ? 1.1 : -0.3, TOP = this.view[1] - BASE_Y, BOTTOM = TOP - this.canvas.height / this.scale;
+      this.panLimits = {
+        minX: Math.min(0, this.view[0] - BOUNDS.right),
+        maxX: Math.max(0, -this.view[0] - BOUNDS.left),
+        minY: Math.min(0, TOP - BOUNDS.top),
+        maxY: Math.max(0, BOTTOM - BOUNDS.bottom)
+      };
+      this.pan.x = CLAMP2(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
+      this.pan.y = CLAMP2(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
+      this.offset = [this.pan.x, BASE_Y + this.pan.y];
+      this.terrainDots = Array.from(
+        {
+          length: 92
+        },
+        (_, i) => {
+          const ANGLE = i * 2.39996, RAD = Math.sqrt((i + 0.5) / 92);
+          return this.project(Math.cos(ANGLE) * (RX + 0.3) * RAD, Math.sin(ANGLE) * (RY + 0.3) * RAD);
+        }
+      );
+      this.terrainLeaves = Array.from(
+        {
+          length: 24
+        },
+        (_, i) => {
+          const ANGLE = i * 2.39996;
+          return {
+            ...this.project(Math.cos(ANGLE) * (RX + 0.55), Math.sin(ANGLE) * (RY + 0.55)),
+            angle: ANGLE
+          };
+        }
+      );
     }
     get cameraPan() {
-      return { x: this.pan.x, y: this.pan.y };
+      return {
+        x: this.pan.x,
+        y: this.pan.y
+      };
     }
     setPan(x, y) {
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-      const b = this.panLimits, nextX = clamp3(x, b.minX, b.maxX), nextY = clamp3(y, b.minY, b.maxY), dx = nextX - this.pan.x, dy = nextY - this.pan.y;
-      if (dx === 0 && dy === 0) return false;
-      this.pan.x = nextX;
-      this.pan.y = nextY;
-      this.offset[0] = nextX;
-      this.offset[1] = (this.aspect < 0.8 ? 1.1 : -0.3) + nextY;
-      for (const points of [this.terrainDots, this.terrainLeaves]) for (const point3 of points) {
-        point3.x += dx * this.scale;
-        point3.y -= dy * this.scale;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return false;
+      }
+      const B = this.panLimits, NEXT_X = CLAMP2(x, B.minX, B.maxX), NEXT_Y = CLAMP2(y, B.minY, B.maxY), DX = NEXT_X - this.pan.x, DY = NEXT_Y - this.pan.y;
+      if (DX === 0 && DY === 0) {
+        return false;
+      }
+      this.pan.x = NEXT_X;
+      this.pan.y = NEXT_Y;
+      this.offset[0] = NEXT_X;
+      this.offset[1] = (this.aspect < 0.8 ? 1.1 : -0.3) + NEXT_Y;
+      for (const POINTS of [this.terrainDots, this.terrainLeaves]) {
+        for (const POINT2 of POINTS) {
+          POINT2.x += DX * this.scale;
+          POINT2.y -= DY * this.scale;
+        }
       }
       return true;
     }
     panByScreen(dx, dy) {
-      return this.setPan(this.pan.x + dx * this.pixelRatio / this.scale, this.pan.y - dy * this.pixelRatio / this.scale);
+      return this.setPan(
+        this.pan.x + dx * this.pixelRatio / this.scale,
+        this.pan.y - dy * this.pixelRatio / this.scale
+      );
     }
     resetPan() {
       return this.setPan(0, 0);
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
-      const c = this.ctx;
-      c.fillStyle = color2;
-      c.beginPath();
-      c.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), angle, 0, Math.PI * 2);
-      c.fill();
+      const C = this.ctx;
+      C.fillStyle = color2;
+      C.beginPath();
+      C.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), angle, 0, Math.PI * 2);
+      C.fill();
     }
     groundEllipse(x, y, rx, ry, color2, z = 0) {
-      const p = this.project(x, y, z);
-      this.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, color2);
+      const P = this.project(x, y, z);
+      this.ellipse(P.x, P.y, rx * this.scale, ry * this.scale * 0.62, color2);
     }
     strokeGroundEllipse(x, y, rx, ry, color2, width = 0.08) {
-      const c = this.ctx, p = this.project(x, y);
-      c.strokeStyle = color2;
-      c.lineWidth = width * this.scale;
-      c.beginPath();
-      c.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, 0, 0, Math.PI * 2);
-      c.stroke();
+      const C = this.ctx, P = this.project(x, y);
+      C.strokeStyle = color2;
+      C.lineWidth = width * this.scale;
+      C.beginPath();
+      C.ellipse(P.x, P.y, rx * this.scale, ry * this.scale * 0.62, 0, 0, Math.PI * 2);
+      C.stroke();
     }
     drawBossTelegraph(area) {
       if (area.kind === "summon") {
-        const reach = BOSS_PATTERN_CONFIG[area.patternId].landingRadius, x = area.x + Math.cos(area.angle) * reach, y = area.y + Math.sin(area.angle) * reach;
-        this.strokeGroundEllipse(x, y, 0.65, 0.48, "#bd915d", 0.085);
-        this.ring(x, y, 0.28, "#f1d391", 0.045, 0, Math.PI * 1.8);
+        const REACH = BOSS_PATTERN_CONFIG[area.patternId].landingRadius, X = area.x + Math.cos(area.angle) * REACH, Y = area.y + Math.sin(area.angle) * REACH;
+        this.strokeGroundEllipse(X, Y, 0.65, 0.48, "#bd915d", 0.085);
+        this.ring(X, Y, 0.28, "#f1d391", 0.045, 0, Math.PI * 1.8);
         return;
       }
-      const c = this.ctx, points = this.dangerContour, count = bossDangerContour(area, points);
-      if (!count) return;
-      const S = this.scale, ox = this.offset[0] + this.view[0], oy = this.view[1] - this.offset[1], alpha = c.globalAlpha;
-      c.beginPath();
-      for (let i = 0; i < count; i++) {
-        const x = (points[i * 2] + ox) * S, y = (oy - import_vector_sockets2.WORLD_DEPTH_PROJECTION * points[i * 2 + 1]) * S;
-        if (i === 0) c.moveTo(x, y);
-        else c.lineTo(x, y);
+      const C = this.ctx, POINTS = this.dangerContour, COUNT = bossDangerContour(area, POINTS);
+      if (!COUNT) {
+        return;
       }
-      c.closePath();
-      const flash = area.phase === "recover", fade = flash ? Math.max(0, 1 - area.elapsed / 0.14) : 1, progress = clamp3(area.progress, 0, 1);
-      c.fillStyle = "#e63744";
-      c.globalAlpha = alpha * (flash ? 0.38 * fade : area.active ? 0.25 : 0.08 + 0.18 * progress * progress);
-      c.fill();
-      c.strokeStyle = flash ? "#ff7377" : area.locked || area.active ? "#e43d49" : "#c93240";
-      c.lineWidth = Math.max(1.6 * this.pixelRatio, (flash ? 0.13 : 0.095) * S);
-      c.globalAlpha = alpha * (flash ? fade : 0.9);
-      c.lineJoin = "round";
-      c.stroke();
-      c.globalAlpha = alpha;
+      const S = this.scale, OX = this.offset[0] + this.view[0], OY = this.view[1] - this.offset[1], ALPHA = C.globalAlpha;
+      C.beginPath();
+      for (let i = 0; i < COUNT; i++) {
+        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets2.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
+        if (i === 0) {
+          C.moveTo(X, Y);
+        } else {
+          C.lineTo(X, Y);
+        }
+      }
+      C.closePath();
+      const FLASH = area.phase === "recover", FADE = FLASH ? Math.max(0, 1 - area.elapsed / 0.14) : 1, PROGRESS = CLAMP2(area.progress, 0, 1);
+      C.fillStyle = "#e63744";
+      C.globalAlpha = ALPHA * (FLASH ? 0.38 * FADE : area.active ? 0.25 : 0.08 + 0.18 * PROGRESS * PROGRESS);
+      C.fill();
+      C.strokeStyle = FLASH ? "#ff7377" : area.locked || area.active ? "#e43d49" : "#c93240";
+      C.lineWidth = Math.max(1.6 * this.pixelRatio, (FLASH ? 0.13 : 0.095) * S);
+      C.globalAlpha = ALPHA * (FLASH ? FADE : 0.9);
+      C.lineJoin = "round";
+      C.stroke();
+      C.globalAlpha = ALPHA;
     }
     drawLocalScatter(scatter) {
-      if (!scatter?.active || !Number.isFinite(scatter.x) || !Number.isFinite(scatter.y) || !(scatter.radius > 0)) return;
-      const c = this.ctx, S = this.scale, r = scatter.radius, p = this.project(scatter.x, scatter.y), ry = r * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
-      const segments = Math.max(8, Math.min(24, Math.round(Math.PI * 2 * r * S / (10 * this.pixelRatio)))), step = Math.PI * 2 / segments;
-      c.beginPath();
-      for (let i = 0; i < segments; i++) for (let j = 0; j <= 4; j++) {
-        const a = i * step + j / 4 * step * 0.58, x = p.x + Math.cos(a) * r * S, y = p.y - Math.sin(a) * ry;
-        if (j === 0) c.moveTo(x, y);
-        else c.lineTo(x, y);
+      if (!scatter?.active || !Number.isFinite(scatter.x) || !Number.isFinite(scatter.y) || !(scatter.radius > 0)) {
+        return;
       }
-      c.strokeStyle = "#145967";
-      c.lineWidth = 3.4 * this.pixelRatio;
-      c.lineCap = "round";
-      c.stroke();
-      c.strokeStyle = "#50e3ed";
-      c.lineWidth = 1.7 * this.pixelRatio;
-      c.stroke();
-      c.beginPath();
-      const arrow = Math.max(0.25, 3.5 * this.pixelRatio / S), tip = r + arrow * 0.9;
+      const C = this.ctx, S = this.scale, R2 = scatter.radius, P = this.project(scatter.x, scatter.y), RY = R2 * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
+      const SEGMENTS = Math.max(8, Math.min(24, Math.round(Math.PI * 2 * R2 * S / (10 * this.pixelRatio)))), STEP = Math.PI * 2 / SEGMENTS;
+      C.beginPath();
+      for (let i = 0; i < SEGMENTS; i++) {
+        for (let j = 0; j <= 4; j++) {
+          const A = i * STEP + j / 4 * STEP * 0.58, X = P.x + Math.cos(A) * R2 * S, Y = P.y - Math.sin(A) * RY;
+          if (j === 0) {
+            C.moveTo(X, Y);
+          } else {
+            C.lineTo(X, Y);
+          }
+        }
+      }
+      C.strokeStyle = "#145967";
+      C.lineWidth = 3.4 * this.pixelRatio;
+      C.lineCap = "round";
+      C.stroke();
+      C.strokeStyle = "#50e3ed";
+      C.lineWidth = 1.7 * this.pixelRatio;
+      C.stroke();
+      C.beginPath();
+      const ARROW = Math.max(0.25, 3.5 * this.pixelRatio / S), TIP = R2 + ARROW * 0.9;
       for (let i = 0; i < 4; i++) {
-        const a = Math.PI / 4 + i * Math.PI / 2, dx = Math.cos(a), dy = Math.sin(a), tx = p.x + dx * tip * S, ty = p.y - dy * tip * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
-        c.moveTo(p.x + dx * (r - arrow * 0.55) * S, p.y - dy * (r - arrow * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
-        c.lineTo(tx, ty);
-        c.moveTo(p.x + (dx * (tip - arrow) - dy * arrow * 0.55) * S, p.y - (dy * (tip - arrow) + dx * arrow * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
-        c.lineTo(tx, ty);
-        c.lineTo(p.x + (dx * (tip - arrow) + dy * arrow * 0.55) * S, p.y - (dy * (tip - arrow) - dx * arrow * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
+        const A = Math.PI / 4 + i * Math.PI / 2, DX = Math.cos(A), DY = Math.sin(A), TX = P.x + DX * TIP * S, TY = P.y - DY * TIP * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
+        C.moveTo(P.x + DX * (R2 - ARROW * 0.55) * S, P.y - DY * (R2 - ARROW * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
+        C.lineTo(TX, TY);
+        C.moveTo(
+          P.x + (DX * (TIP - ARROW) - DY * ARROW * 0.55) * S,
+          P.y - (DY * (TIP - ARROW) + DX * ARROW * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION
+        );
+        C.lineTo(TX, TY);
+        C.lineTo(
+          P.x + (DX * (TIP - ARROW) + DY * ARROW * 0.55) * S,
+          P.y - (DY * (TIP - ARROW) - DX * ARROW * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION
+        );
       }
-      const center = 2.8 * this.pixelRatio;
-      c.moveTo(p.x - center, p.y);
-      c.lineTo(p.x + center, p.y);
-      c.moveTo(p.x, p.y - center);
-      c.lineTo(p.x, p.y + center);
-      const handle = this.project(Number.isFinite(scatter.handleX) ? scatter.handleX : scatter.x, Number.isFinite(scatter.handleY) ? scatter.handleY : scatter.y), hr = 3.5 * this.pixelRatio;
-      c.moveTo(handle.x + hr, handle.y);
-      c.ellipse(handle.x, handle.y, hr, hr, 0, 0, Math.PI * 2);
-      c.strokeStyle = "#145967";
-      c.lineWidth = 3.5 * this.pixelRatio;
-      c.stroke();
-      c.strokeStyle = "#7df5fb";
-      c.lineWidth = 1.7 * this.pixelRatio;
-      c.stroke();
+      const CENTER = 2.8 * this.pixelRatio;
+      C.moveTo(P.x - CENTER, P.y);
+      C.lineTo(P.x + CENTER, P.y);
+      C.moveTo(P.x, P.y - CENTER);
+      C.lineTo(P.x, P.y + CENTER);
+      const HANDLE = this.project(
+        Number.isFinite(scatter.handleX) ? scatter.handleX : scatter.x,
+        Number.isFinite(scatter.handleY) ? scatter.handleY : scatter.y
+      ), HR = 3.5 * this.pixelRatio;
+      C.moveTo(HANDLE.x + HR, HANDLE.y);
+      C.ellipse(HANDLE.x, HANDLE.y, HR, HR, 0, 0, Math.PI * 2);
+      C.strokeStyle = "#145967";
+      C.lineWidth = 3.5 * this.pixelRatio;
+      C.stroke();
+      C.strokeStyle = "#7df5fb";
+      C.lineWidth = 1.7 * this.pixelRatio;
+      C.stroke();
     }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
-      const c = this.ctx, p = this.project(x, y);
-      c.strokeStyle = color2;
-      c.lineWidth = width * this.scale;
-      c.beginPath();
-      c.ellipse(p.x, p.y, r * this.scale, r * this.scale * 0.62, 0, -end, -start2);
-      c.stroke();
+      const C = this.ctx, P = this.project(x, y);
+      C.strokeStyle = color2;
+      C.lineWidth = width * this.scale;
+      C.beginPath();
+      C.ellipse(P.x, P.y, r * this.scale, r * this.scale * 0.62, 0, -end, -start2);
+      C.stroke();
     }
     line(a, b, width, color2) {
-      const c = this.ctx;
-      c.strokeStyle = color2;
-      c.lineWidth = width * this.scale;
-      c.lineCap = "round";
-      c.beginPath();
-      c.moveTo(a.x, a.y);
-      c.lineTo(b.x, b.y);
-      c.stroke();
+      const C = this.ctx;
+      C.strokeStyle = color2;
+      C.lineWidth = width * this.scale;
+      C.lineCap = "round";
+      C.beginPath();
+      C.moveTo(a.x, a.y);
+      C.lineTo(b.x, b.y);
+      C.stroke();
     }
     pixelLine(a, b, width, color2) {
-      const c = this.ctx;
-      c.strokeStyle = color2;
-      c.lineWidth = width;
-      c.lineCap = "round";
-      c.beginPath();
-      c.moveTo(a.x, a.y);
-      c.lineTo(b.x, b.y);
-      c.stroke();
+      const C = this.ctx;
+      C.strokeStyle = color2;
+      C.lineWidth = width;
+      C.lineCap = "round";
+      C.beginPath();
+      C.moveTo(a.x, a.y);
+      C.lineTo(b.x, b.y);
+      C.stroke();
     }
     addUnitRing(radius, color, width, progress) {
-      const effect = this.unitRingPool[this.unitRings.length];
-      effect.radius = radius;
-      effect.color = color;
-      effect.width = width;
-      effect.progress = progress;
-      this.unitRings.push(effect);
+      const EFFECT = this.unitRingPool[this.unitRings.length];
+      EFFECT.radius = radius;
+      EFFECT.color = color;
+      EFFECT.width = width;
+      EFFECT.progress = progress;
+      this.unitRings.push(EFFECT);
     }
     unitRingEffects(u, world) {
-      const effects = this.unitRings, a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
-      effects.length = 0;
-      if (u.buffed && u.hp > 0) this.addUnitRing(u.radius + 0.16, "#eacb72", 0.055, 1);
-      if (a.phase === "windup" && s) this.addUnitRing(u.radius + 0.1, ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0], 0.065, Math.min(1, a.elapsed / s.timing.windup));
-      const breeding = farmBreedingCooldown(u, world, CONFIG.farm.breeding.cooldownSeconds, this.breedingIndicator);
-      if (breeding && breeding.progress > 0) this.addUnitRing(u.radius + 0.085, "#8fac68", 0.035, breeding.progress);
-      return effects;
+      const EFFECTS = this.unitRings, A = u.ability, S_LOCAL = UNIT_ABILITY_PROFILES[u.species];
+      EFFECTS.length = 0;
+      if (u.buffed && u.hp > 0) {
+        this.addUnitRing(u.radius + 0.16, "#eacb72", 0.055, 1);
+      }
+      if (A.phase === "windup" && S_LOCAL) {
+        this.addUnitRing(
+          u.radius + 0.1,
+          ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0],
+          0.065,
+          Math.min(1, A.elapsed / S_LOCAL.timing.windup)
+        );
+      }
+      const BREEDING = farmBreedingCooldown(u, world, CONFIG.farm.breeding.cooldownSeconds, this.breedingIndicator);
+      if (BREEDING && BREEDING.progress > 0) {
+        this.addUnitRing(u.radius + 0.085, "#8fac68", 0.035, BREEDING.progress);
+      }
+      return EFFECTS;
     }
     drawUnitRingLayer(u, effects, side) {
-      for (const effect of effects) {
-        const sweep = Math.PI * 2 * Math.max(0, Math.min(1, Number(effect.progress) || 0));
-        if (side === "rear" && sweep > 0) this.ring(u.x, u.y, effect.radius, effect.color, effect.width, 0, Math.min(Math.PI, sweep));
-        else if (side === "front" && sweep > Math.PI) this.ring(u.x, u.y, effect.radius, effect.color, effect.width, Math.PI, sweep);
+      for (const EFFECT of effects) {
+        const SWEEP = Math.PI * 2 * Math.max(0, Math.min(1, Number(EFFECT.progress) || 0));
+        if (side === "rear" && SWEEP > 0) {
+          this.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, 0, Math.min(Math.PI, SWEEP));
+        } else if (side === "front" && SWEEP > Math.PI) {
+          this.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, Math.PI, SWEEP);
+        }
       }
     }
     drawSleepIndicator(rest, pose) {
-      if (!rest || rest.phase === "defeat") return;
-      const c = this.ctx, d = this.pixelRatio, p = pose.p, r = pose.r;
+      if (!rest || rest.phase === "defeat") {
+        return;
+      }
+      const C = this.ctx, D = this.pixelRatio, P = pose.p, R2 = pose.r;
       if (rest.progress >= 0) {
-        const w = Math.max(18 * d, Math.min(30 * d, r * 1.6)), h = 3 * d, x = p.x - w / 2, y = p.y + r * 0.35 + 3 * d;
-        c.fillStyle = "#494257";
-        c.beginPath();
-        c.roundRect(x - d, y - d, w + 2 * d, h + 2 * d, 2.5 * d);
-        c.fill();
-        c.fillStyle = "#c2b2e8";
-        c.beginPath();
-        c.roundRect(x, y, w * rest.progress, h, 1.5 * d);
-        c.fill();
+        const W = Math.max(18 * D, Math.min(30 * D, R2 * 1.6)), H = 3 * D, X = P.x - W / 2, Y = P.y + R2 * 0.35 + 3 * D;
+        C.fillStyle = "#494257";
+        C.beginPath();
+        C.roundRect(X - D, Y - D, W + 2 * D, H + 2 * D, 2.5 * D);
+        C.fill();
+        C.fillStyle = "#c2b2e8";
+        C.beginPath();
+        C.roundRect(X, Y, W * rest.progress, H, 1.5 * D);
+        C.fill();
       }
       if (rest.phase === "sleep") {
-        const size = 2.4 * d, x = p.x + r * 0.9, y = p.y - r * 0.9;
-        c.strokeStyle = "#494257";
-        c.lineWidth = 2.2 * d;
-        c.lineCap = "round";
-        c.beginPath();
-        c.moveTo(x, y - size);
-        c.lineTo(x + size * 1.5, y - size);
-        c.lineTo(x, y + size);
-        c.lineTo(x + size * 1.5, y + size);
-        c.stroke();
-        c.strokeStyle = "#ded3f5";
-        c.lineWidth = d;
-        c.stroke();
+        const SIZE = 2.4 * D, X = P.x + R2 * 0.9, Y = P.y - R2 * 0.9;
+        C.strokeStyle = "#494257";
+        C.lineWidth = 2.2 * D;
+        C.lineCap = "round";
+        C.beginPath();
+        C.moveTo(X, Y - SIZE);
+        C.lineTo(X + SIZE * 1.5, Y - SIZE);
+        C.lineTo(X, Y + SIZE);
+        C.lineTo(X + SIZE * 1.5, Y + SIZE);
+        C.stroke();
+        C.strokeStyle = "#ded3f5";
+        C.lineWidth = D;
+        C.stroke();
       }
     }
     drawVectorUnit(u, sim, p, r, rest) {
-      const record = this.vectorAssets.get(u.species);
-      if (!record) throw new Error("Missing required troop vector asset for species " + u.species);
+      const RECORD = this.vectorAssets.get(u.species);
+      if (!RECORD) {
+        throw new Error("Missing required troop vector asset for species " + u.species);
+      }
       let player = this.vectorPlayers.get(u.id);
-      if (player && this.vectorPlayerAssets.get(player) !== record) {
+      if (player && this.vectorPlayerAssets.get(player) !== RECORD) {
         player.dispose();
         this.vectorPlayers.delete(u.id);
         player = null;
       }
-      const metadata = record.compiled.metadata, motionName = unitMotion(u, sim, rest), clip = metadata.clips[motionName] || metadata.clips.idle;
-      const clipStartAtMs = rest ? 0 : this.displayTimeMs - motionElapsedMs(u, motionName, clip);
+      const METADATA = RECORD.compiled.metadata, MOTION_NAME = unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
+      const CLIP_START_AT_MS = rest ? 0 : this.displayTimeMs - motionElapsedMs(u, MOTION_NAME, CLIP);
       if (!player) {
-        player = record.asset.createPlayer({ clip: motionName, startedAtMs: clipStartAtMs });
+        player = RECORD.asset.createPlayer({
+          clip: MOTION_NAME,
+          startedAtMs: CLIP_START_AT_MS
+        });
         this.vectorPlayers.set(u.id, player);
-        this.vectorPlayerAssets.set(player, record);
-      } else if (player.currentClip !== motionName) player.play(motionName, clipStartAtMs);
-      const expression = unitExpression(u, sim, this.joyEffects, rest);
-      if (expression !== player.currentExpression) player.setExpression(expression);
-      player.seek(rest ? rest.elapsed * 1e3 : this.displayTimeMs);
-      const [, , width, height] = record.compiled.viewBox, scale = 2 * r / Math.max(width, height), centerY = p.y - r * 0.79;
-      const matrix = [scale, 0, 0, scale, p.x - width * scale * 0.5, centerY - height * scale * 0.5];
-      this.ctx.vector.flush();
-      const outline = TIER_OUTLINE_COLORS[u.tier - 1];
-      if (outline) {
-        const border = 1.5 * this.pixelRatio, factor = 1 + border / Math.max(r, 1);
-        const outlineMatrix = [scale * factor, 0, 0, scale * factor, p.x - width * scale * factor * 0.5, centerY - height * scale * factor * 0.5];
-        for (const part of record.faceParts) player.setPartVisible(part, false);
-        player.draw({ projection: this.ctx.vector.projection, matrix: outlineMatrix, color: outline, forceColor: true });
-        player.setExpression(expression);
+        this.vectorPlayerAssets.set(player, RECORD);
+      } else if (player.currentClip !== MOTION_NAME) {
+        player.play(MOTION_NAME, CLIP_START_AT_MS);
       }
-      player.draw({ projection: this.ctx.vector.projection, matrix });
+      const EXPRESSION = unitExpression(u, sim, this.joyEffects, rest);
+      if (EXPRESSION !== player.currentExpression) {
+        player.setExpression(EXPRESSION);
+      }
+      player.seek(rest ? rest.elapsed * 1e3 : this.displayTimeMs);
+      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, SCALE = 2 * r / Math.max(WIDTH, HEIGHT), CENTER_Y = p.y - r * 0.79;
+      const MATRIX = [SCALE, 0, 0, SCALE, p.x - WIDTH * SCALE * 0.5, CENTER_Y - HEIGHT * SCALE * 0.5];
+      this.ctx.vector.flush();
+      const OUTLINE = TIER_OUTLINE_COLORS[u.tier - 1];
+      if (OUTLINE) {
+        const BORDER = 1.5 * this.pixelRatio, FACTOR = 1 + BORDER / Math.max(r, 1);
+        const OUTLINE_MATRIX = [
+          SCALE * FACTOR,
+          0,
+          0,
+          SCALE * FACTOR,
+          p.x - WIDTH * SCALE * FACTOR * 0.5,
+          CENTER_Y - HEIGHT * SCALE * FACTOR * 0.5
+        ];
+        for (const PART of RECORD.faceParts) {
+          player.setPartVisible(PART, false);
+        }
+        player.draw({
+          projection: this.ctx.vector.projection,
+          matrix: OUTLINE_MATRIX,
+          color: OUTLINE,
+          forceColor: true
+        });
+        player.setExpression(EXPRESSION);
+      }
+      player.draw({
+        projection: this.ctx.vector.projection,
+        matrix: MATRIX
+      });
       return true;
     }
     drawUnit(u, sim, rest) {
-      const dead = u.hp <= 0, walk = dead ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), bob = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * walk : 0, p = this.project(u.x, u.y, u.z + bob);
-      const r = Math.max(u.size * this.scale * 0.78, (sim.scene === "raid" ? 4.5 : 11) * this.pixelRatio);
-      this.drawVectorUnit(u, sim, p, r, rest);
-      return { p, r };
+      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0, P = this.project(u.x, u.y, u.z + BOB);
+      const R2 = Math.max(u.size * this.scale * 0.78, (sim.scene === "raid" ? 4.5 : 11) * this.pixelRatio);
+      this.drawVectorUnit(u, sim, P, R2, rest);
+      return {
+        p: P,
+        r: R2
+      };
     }
     drawFarmUnitActor(u, sim) {
-      const effects = this.unitRingEffects(u, sim);
-      this.drawUnitRingLayer(u, effects, "rear");
-      const rest = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
-      const pose = this.drawUnit(u, sim, rest);
-      this.drawUnitRingLayer(u, effects, "front");
-      this.drawSleepIndicator(rest, pose);
+      const EFFECTS = this.unitRingEffects(u, sim);
+      this.drawUnitRingLayer(u, EFFECTS, "rear");
+      const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+      const POSE = this.drawUnit(u, sim, REST);
+      this.drawUnitRingLayer(u, EFFECTS, "front");
+      this.drawSleepIndicator(REST, POSE);
     }
     bossPose(world) {
-      const b = world.boss, k = b.patternId === "summon.mouth-t1" ? { x: 0, y: 0, squash: 0 } : this.feel?.boss(this.displayTimeMs) || { x: 0, y: 0, squash: 0 }, ground = this.project(b.x + k.x, b.y + k.y, 0), p = this.project(b.x + k.x, b.y + k.y, b.z || 0), r = this.scale * b.radius * 1.16;
-      return { b, p, ground, r, k };
+      const B = world.boss, K = B.patternId === "summon.mouth-t1" ? {
+        x: 0,
+        y: 0,
+        squash: 0
+      } : this.feel?.boss(this.displayTimeMs) || {
+        x: 0,
+        y: 0,
+        squash: 0
+      }, GROUND = this.project(B.x + K.x, B.y + K.y, 0), P = this.project(B.x + K.x, B.y + K.y, B.z || 0), R2 = this.scale * B.radius * 1.16;
+      return {
+        b: B,
+        p: P,
+        ground: GROUND,
+        r: R2,
+        k: K
+      };
     }
     bossMotion(b, world) {
-      const event = world.farmBossEvent;
-      if (event?.phase === "celebrating" && event.outcome === "defeat") return "idle";
-      if (b.hp <= 0) return "death";
-      if (b.flash > 0.09 && b.patternPhase === "idle") return "hit";
-      if (b.patternPhase === "windup") return "windup";
+      const EVENT = world.farmBossEvent;
+      if (EVENT?.phase === "celebrating" && EVENT.outcome === "defeat") {
+        return "idle";
+      }
+      if (b.hp <= 0) {
+        return "death";
+      }
+      if (b.flash > 0.09 && b.patternPhase === "idle") {
+        return "hit";
+      }
+      if (b.patternPhase === "windup") {
+        return "windup";
+      }
       if (b.patternPhase === "active") {
-        if (b.patternId === "attack.sweep-360" || b.patternId === "attack.fan-sweep") return "sweep";
-        if (b.patternId === "attack.charge") return "walk";
-        if (b.patternId === "attack.leap-slam") return b.z > 0.1 ? "airborne" : "strike";
-        if (b.patternId === "summon.mouth-t1") return "fire";
+        if (b.patternId === "attack.sweep-360" || b.patternId === "attack.fan-sweep") {
+          return "sweep";
+        }
+        if (b.patternId === "attack.charge") {
+          return "walk";
+        }
+        if (b.patternId === "attack.leap-slam") {
+          return b.z > 0.1 ? "airborne" : "strike";
+        }
+        if (b.patternId === "summon.mouth-t1") {
+          return "fire";
+        }
         return "strike";
       }
       if (b.patternPhase === "recover") {
-        if (b.patternId === "attack.sweep-360" && (b.patternPhaseElapsed || 0) < 0.14) return "sweep";
-        if (["attack.front-slam", "attack.leap-slam"].includes(b.patternId) && (b.patternPhaseElapsed || 0) < 0.18) return "strike";
-        if (b.patternId === "attack.fan-sweep" && (b.patternPhaseElapsed || 0) < 0.12) return "sweep";
+        if (b.patternId === "attack.sweep-360" && (b.patternPhaseElapsed || 0) < 0.14) {
+          return "sweep";
+        }
+        if (["attack.front-slam", "attack.leap-slam"].includes(b.patternId) && (b.patternPhaseElapsed || 0) < 0.18) {
+          return "strike";
+        }
+        if (b.patternId === "attack.fan-sweep" && (b.patternPhaseElapsed || 0) < 0.12) {
+          return "sweep";
+        }
         return "recover";
       }
       return b.phase === "chase" ? "walk" : "idle";
     }
     drawBoss(world) {
-      const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, species = b.species;
-      const record = this.bossAssets.get(species === 3 ? "chestnut" : `species-${species}`);
-      if (!record) throw new Error("Missing required boss vector asset for species " + species);
-      let instance = this.bossPlayers.get(species);
-      if (!instance) {
-        const player2 = record.asset.createPlayer({ clip: "idle", startedAtMs: this.displayTimeMs });
-        instance = { record, player: player2 };
-        this.bossPlayers.set(species, instance);
+      const { b: B, p: P, k: K } = this.bossPose(world), EVENT = world.farmBossEvent, SPECIES = B.species;
+      const RECORD = this.bossAssets.get(SPECIES === 3 ? "chestnut" : `species-${SPECIES}`);
+      if (!RECORD) {
+        throw new Error("Missing required boss vector asset for species " + SPECIES);
       }
-      const player = instance.player;
-      this.bossPlayer = player;
-      this.bossPlayerAsset = record;
-      const metadata = record.compiled.metadata, name = this.bossMotion(b, world), fallbackClip = name === "airborne" ? metadata.clips.strike ? "strike" : metadata.clips.fire ? "fire" : "idle" : ["strike", "sweep", "fire"].includes(name) && !metadata.clips[name] ? metadata.clips.fire ? "fire" : "idle" : "idle", clipName = metadata.clips[name] ? name : fallbackClip, clip = metadata.clips[clipName];
-      const timed = ["windup", "strike", "sweep", "recover", "hit", "death", "fire", "airborne"].includes(name), elapsed = b.patternId ? b.patternPhaseElapsed : b.clock;
-      const clipStartAtMs = timed ? this.displayTimeMs - Math.min(clip.durationMs, Math.max(0, elapsed || 0) * 1e3) : name === "walk" ? this.displayTimeMs - Math.max(0, b.travel || 0) * 110 : this.displayTimeMs - (b.travel || 0) * 37 % clip.durationMs;
-      const summoning = b.patternId === "summon.mouth-t1";
-      if (summoning) sampleBossSummon(player, metadata, b);
-      else if (instance.summoning || player.currentClip !== clipName) player.transitionTo(clipName, clipStartAtMs, 70);
-      instance.summoning = summoning;
-      const summonOpen = b.patternId === "summon.mouth-t1" && (b.patternPhase === "active" || b.patternPhase === "windup" && b.patternPhaseElapsed >= BOSS_PATTERN_CONFIG["summon.mouth-t1"].windup * 0.5);
-      const expression = b.hp <= 0 ? "dead" : event?.phase === "celebrating" && event.outcome === "defeat" ? "happy" : summonOpen ? "attack" : b.patternPhase === "windup" ? "focused" : b.patternPhase === "active" ? "attack" : b.flash > 0.07 ? "hurt" : "neutral";
-      if (!metadata.expressions?.[expression] && !metadata.expressions?.neutral) throw new Error("Boss asset is missing a supported expression");
-      const safeExpression = metadata.expressions?.[expression] ? expression : "neutral";
-      if (player.currentExpression !== safeExpression) player.setExpression(safeExpression);
-      if (b.patternId !== "summon.mouth-t1") player.seek(this.displayTimeMs);
-      const s = this.scale * (0, import_vector_sockets2.bossVectorScale)(b.radius), ground = record.anchors.ground, matrix = [s, 0, 0, s, p.x - ground.x * s, p.y - ground.y * s];
-      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
-      const fade = event?.phase === "fading" ? clamp3(1 - event.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
-      const parts = record.parts, pose = bossAttackPose(b, parts);
-      player.setBasePose("body", { x: 0, y: pose.body.y - 18 * defeatBounce, rotation: pose.body.rotation, scaleX: pose.body.scaleX * (1 + (k.squash || 0)) * (1 - 0.04 * defeatBounce), scaleY: pose.body.scaleY * (1 - (k.squash || 0)) * (1 + 0.06 * defeatBounce), opacity: fade });
-      for (const [part, rotation] of Object.entries(pose.arms)) if (parts.has(part)) player.setBasePose(part, { rotation });
-      for (const [part, partPose] of Object.entries(pose.extras)) if (parts.has(part)) player.setBasePose(part, partPose);
-      const mouthSocket = player.getSocket("mouth"), mouthScreen = { x: mouthSocket.x * s + matrix[4], y: mouthSocket.y * s + matrix[5] };
+      let instance = this.bossPlayers.get(SPECIES);
+      if (!instance) {
+        const PLAYER2 = RECORD.asset.createPlayer({
+          clip: "idle",
+          startedAtMs: this.displayTimeMs
+        });
+        instance = {
+          record: RECORD,
+          player: PLAYER2
+        };
+        this.bossPlayers.set(SPECIES, instance);
+      }
+      const PLAYER = instance.player;
+      this.bossPlayer = PLAYER;
+      this.bossPlayerAsset = RECORD;
+      const METADATA = RECORD.compiled.metadata, NAME = this.bossMotion(B, world), FALLBACK_CLIP = NAME === "airborne" ? METADATA.clips.strike ? "strike" : METADATA.clips.fire ? "fire" : "idle" : ["strike", "sweep", "fire"].includes(NAME) && !METADATA.clips[NAME] ? METADATA.clips.fire ? "fire" : "idle" : "idle", CLIP_NAME = METADATA.clips[NAME] ? NAME : FALLBACK_CLIP, CLIP = METADATA.clips[CLIP_NAME];
+      const TIMED = ["windup", "strike", "sweep", "recover", "hit", "death", "fire", "airborne"].includes(NAME), ELAPSED = B.patternId ? B.patternPhaseElapsed : B.clock;
+      const CLIP_START_AT_MS = TIMED ? this.displayTimeMs - Math.min(CLIP.durationMs, Math.max(0, ELAPSED || 0) * 1e3) : NAME === "walk" ? this.displayTimeMs - Math.max(0, B.travel || 0) * 110 : this.displayTimeMs - (B.travel || 0) * 37 % CLIP.durationMs;
+      const SUMMONING = B.patternId === "summon.mouth-t1";
+      if (SUMMONING) {
+        sampleBossSummon(PLAYER, METADATA, B);
+      } else if (instance.summoning || PLAYER.currentClip !== CLIP_NAME) {
+        PLAYER.transitionTo(CLIP_NAME, CLIP_START_AT_MS, 70);
+      }
+      instance.summoning = SUMMONING;
+      const SUMMON_OPEN = B.patternId === "summon.mouth-t1" && (B.patternPhase === "active" || B.patternPhase === "windup" && B.patternPhaseElapsed >= BOSS_PATTERN_CONFIG["summon.mouth-t1"].windup * 0.5);
+      const EXPRESSION = B.hp <= 0 ? "dead" : EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? "happy" : SUMMON_OPEN ? "attack" : B.patternPhase === "windup" ? "focused" : B.patternPhase === "active" ? "attack" : B.flash > 0.07 ? "hurt" : "neutral";
+      if (!METADATA.expressions?.[EXPRESSION] && !METADATA.expressions?.neutral) {
+        throw new Error("Boss asset is missing a supported expression");
+      }
+      const SAFE_EXPRESSION = METADATA.expressions?.[EXPRESSION] ? EXPRESSION : "neutral";
+      if (PLAYER.currentExpression !== SAFE_EXPRESSION) {
+        PLAYER.setExpression(SAFE_EXPRESSION);
+      }
+      if (B.patternId !== "summon.mouth-t1") {
+        PLAYER.seek(this.displayTimeMs);
+      }
+      const S_LOCAL = this.scale * (0, import_vector_sockets2.bossVectorScale)(B.radius), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+      const DEFEAT_BOUNCE = EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? Math.max(0, Math.sin(EVENT.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
+      const FADE = EVENT?.phase === "fading" ? CLAMP2(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
+      const PARTS = RECORD.parts, POSE = bossAttackPose(B, PARTS);
+      PLAYER.setBasePose("body", {
+        x: 0,
+        y: POSE.body.y - 18 * DEFEAT_BOUNCE,
+        rotation: POSE.body.rotation,
+        scaleX: POSE.body.scaleX * (1 + (K.squash || 0)) * (1 - 0.04 * DEFEAT_BOUNCE),
+        scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
+        opacity: FADE
+      });
+      for (const [PART, ROTATION] of Object.entries(POSE.arms)) {
+        if (PARTS.has(PART)) {
+          PLAYER.setBasePose(PART, {
+            rotation: ROTATION
+          });
+        }
+      }
+      for (const [PART, PART_POSE] of Object.entries(POSE.extras)) {
+        if (PARTS.has(PART)) {
+          PLAYER.setBasePose(PART, PART_POSE);
+        }
+      }
+      const MOUTH_SOCKET = PLAYER.getSocket("mouth"), MOUTH_SCREEN = {
+        x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
+        y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5]
+      };
       this.ctx.vector.flush();
-      player.draw({ projection: this.ctx.vector.projection, matrix });
-      if (b.patternId === "summon.mouth-t1" && b.patternReleased > 0 && pose.releasePulse > 0 && mouthScreen) {
+      PLAYER.draw({
+        projection: this.ctx.vector.projection,
+        matrix: MATRIX
+      });
+      if (B.patternId === "summon.mouth-t1" && B.patternReleased > 0 && POSE.releasePulse > 0 && MOUTH_SCREEN) {
         this.ctx.flush();
-        const mouth = mouthScreen, pulse = 0.55 + 0.45 * pose.releasePulse, target = Math.atan2(-0.62 * Math.sin(b.patternAim), Math.cos(b.patternAim));
-        this.ellipse(mouth.x, mouth.y, this.scale * 0.18 * pulse, this.scale * 0.12 * pulse, "rgba(255,210,113,.72)");
-        this.ellipse(mouth.x + Math.cos(target) * this.scale * 0.16, mouth.y + Math.sin(target) * this.scale * 0.1, this.scale * 0.065, this.scale * 0.08, "#fff1ad");
+        const MOUTH = MOUTH_SCREEN, PULSE = 0.55 + 0.45 * POSE.releasePulse, TARGET = Math.atan2(-0.62 * Math.sin(B.patternAim), Math.cos(B.patternAim));
+        this.ellipse(
+          MOUTH.x,
+          MOUTH.y,
+          this.scale * 0.18 * PULSE,
+          this.scale * 0.12 * PULSE,
+          "rgba(255,210,113,.72)"
+        );
+        this.ellipse(
+          MOUTH.x + Math.cos(TARGET) * this.scale * 0.16,
+          MOUTH.y + Math.sin(TARGET) * this.scale * 0.1,
+          this.scale * 0.065,
+          this.scale * 0.08,
+          "#fff1ad"
+        );
       }
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", { radiusX: rx, radiusY: ry } = CONFIG[sim2.scene].arena;
-      this.groundEllipse(0, -0.2, rx + 1.3, ry + 1.1, "#bcc7a6");
-      this.groundEllipse(0, 0, rx + 1.2, ry + 1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
-      this.groundEllipse(0, 0.15, rx + 0.3, ry + 0.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
-      for (const p of this.terrainDots) this.ellipse(p.x, p.y, S * 0.026, S * 0.02, "#a7b58b80");
-      for (const p of this.terrainLeaves) {
-        this.ellipse(p.x, p.y, 0.25 * S, 0.11 * S, "#94a577", p.angle);
-        this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", p.angle + 0.7);
+      const S = this.scale, RAID = sim2.scene === "raid", { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
+      this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
+      this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
+      this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
+      for (const P of this.terrainDots) {
+        this.ellipse(P.x, P.y, S * 0.026, S * 0.02, "#a7b58b80");
       }
-      if (raid) {
-        this.strokeGroundEllipse(0, 0, CONFIG.raid.arena.radiusX - 0.5, CONFIG.raid.arena.radiusY - 0.5, "#728e61a8", 0.075);
+      for (const P of this.terrainLeaves) {
+        this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, "#94a577", P.angle);
+        this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", P.angle + 0.7);
       }
-      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
-      this.bossTelegraph = area;
-      if (area) this.drawBossTelegraph(area);
+      if (RAID) {
+        this.strokeGroundEllipse(
+          0,
+          0,
+          CONFIG.raid.arena.radiusX - 0.5,
+          CONFIG.raid.arena.radiusY - 0.5,
+          "#728e61a8",
+          0.075
+        );
+      }
+      const EVENT = sim2.farmBossEvent, AREA = RAID || sim2.scene === "farm" && EVENT?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
+      this.bossTelegraph = AREA;
+      if (AREA) {
+        this.drawBossTelegraph(AREA);
+      }
     }
     addActor(kind, source, depth, id, vector = false) {
-      const index = this.actors.length, actor = this.actorPool[index] || (this.actorPool[index] = {});
-      actor.kind = kind;
-      actor.source = source;
-      actor.depth = depth;
-      actor.id = id;
-      actor.vector = vector;
-      this.actors.push(actor);
+      const INDEX = this.actors.length, ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
+      ACTOR.kind = kind;
+      ACTOR.source = source;
+      ACTOR.depth = depth;
+      ACTOR.id = id;
+      ACTOR.vector = vector;
+      this.actors.push(ACTOR);
     }
     drawFood(f) {
       this.groundEllipse(f.x, f.y, 0.1, 0.07, "#55452433");
       if (f.phase === "flight") {
-        const tail = this.project(f.x - f.vx * 0.045, f.y - f.vy * 0.045, Math.max(0, f.z - f.vz * 0.045) + 0.1), head = this.project(f.x, f.y, f.z + 0.1);
-        this.line(tail, head, 0.055, "#e6bd7480");
+        const TAIL = this.project(f.x - f.vx * 0.045, f.y - f.vy * 0.045, Math.max(0, f.z - f.vz * 0.045) + 0.1), HEAD = this.project(f.x, f.y, f.z + 0.1);
+        this.line(TAIL, HEAD, 0.055, "#e6bd7480");
       }
-      const p = this.project(f.x, f.y, f.z + 0.1);
-      this.ellipse(p.x, p.y, this.scale * 0.09, this.scale * 0.12, "#c78a43", 0.4);
-      this.ellipse(p.x - 0.025 * this.scale, p.y - 0.08 * this.scale, this.scale * 0.036, this.scale * 0.05, "#e7bf72");
+      const P = this.project(f.x, f.y, f.z + 0.1);
+      this.ellipse(P.x, P.y, this.scale * 0.09, this.scale * 0.12, "#c78a43", 0.4);
+      this.ellipse(
+        P.x - 0.025 * this.scale,
+        P.y - 0.08 * this.scale,
+        this.scale * 0.036,
+        this.scale * 0.05,
+        "#e7bf72"
+      );
     }
     drawProjectile(f) {
-      const p = this.project(f.x, f.y, f.z), tail = Ballistics.sample(f.path, Math.max(0, (f.elapsed - 0.04) / f.path.duration));
+      const P = this.project(f.x, f.y, f.z), TAIL = BALLISTICS.sample(f.path, Math.max(0, (f.elapsed - 0.04) / f.path.duration));
       this.groundEllipse(f.x, f.y, 0.14, 0.1, "#55452433");
       if (f.isPopcorn && f.landed) {
-        const fuse = Math.max(0, Math.min(1, f.fuseRemaining || 0));
+        const FUSE = Math.max(0, Math.min(1, f.fuseRemaining || 0));
         this.groundEllipse(f.x, f.y, 0.16, 0.12, f.exploded ? "#d86c3b55" : "#c78a4366");
-        if (!f.exploded && f.popcornConfig?.radius > 0) this.ring(f.x, f.y, f.popcornConfig.radius, "rgba(190,111,52,.18)", 0.035);
+        if (!f.exploded && f.popcornConfig?.radius > 0) {
+          this.ring(f.x, f.y, f.popcornConfig.radius, "rgba(190,111,52,.18)", 0.035);
+        }
         if (f.exploded) {
-          const progress = Math.max(0, Math.min(1, (f.explosionLife || 0) / 0.5));
-          this.ring(f.x, f.y, (f.popcornConfig?.radius || 0.3) * (0.25 + 0.75 * progress), `rgba(224,111,54,${0.68 * (1 - progress)})`, 0.12);
-        } else this.ring(f.x, f.y, 0.2 + 0.2 * (1 - fuse), `rgba(238,181,83,${0.45 + 0.4 * (1 - fuse)})`, 0.045);
-        const kernel = this.project(f.x, f.y, 0.12);
-        this.ellipse(kernel.x, kernel.y, this.scale * 0.13, this.scale * 0.08, f.exploded ? "#e37f42" : "#d4a347", 0.2);
-        this.ellipse(kernel.x - this.scale * 0.035, kernel.y - this.scale * 0.02, this.scale * 0.045, this.scale * 0.03, "#ffe0a0");
+          const PROGRESS = Math.max(0, Math.min(1, (f.explosionLife || 0) / 0.5));
+          this.ring(
+            f.x,
+            f.y,
+            (f.popcornConfig?.radius || 0.3) * (0.25 + 0.75 * PROGRESS),
+            `rgba(224,111,54,${0.68 * (1 - PROGRESS)})`,
+            0.12
+          );
+        } else {
+          this.ring(f.x, f.y, 0.2 + 0.2 * (1 - FUSE), `rgba(238,181,83,${0.45 + 0.4 * (1 - FUSE)})`, 0.045);
+        }
+        const KERNEL = this.project(f.x, f.y, 0.12);
+        this.ellipse(
+          KERNEL.x,
+          KERNEL.y,
+          this.scale * 0.13,
+          this.scale * 0.08,
+          f.exploded ? "#e37f42" : "#d4a347",
+          0.2
+        );
+        this.ellipse(
+          KERNEL.x - this.scale * 0.035,
+          KERNEL.y - this.scale * 0.02,
+          this.scale * 0.045,
+          this.scale * 0.03,
+          "#ffe0a0"
+        );
       } else if (f.projectileKind === "chestnut-spike") {
-        const angle = Math.atan2(f.path.to.y - f.path.from.y, f.path.to.x - f.path.from.x), tip = { x: p.x + Math.cos(angle) * this.scale * 0.22, y: p.y - 0.62 * Math.sin(angle) * this.scale * 0.22 };
-        this.line(this.project(tail.x, tail.y, tail.z), p, 0.055, "#778f4c88");
-        this.line(p, tip, 0.105, "#79964e");
-        this.ellipse(tip.x, tip.y, this.scale * 0.045, this.scale * 0.035, "#d5df9d", angle);
+        const ANGLE = Math.atan2(f.path.to.y - f.path.from.y, f.path.to.x - f.path.from.x), TIP = {
+          x: P.x + Math.cos(ANGLE) * this.scale * 0.22,
+          y: P.y - 0.62 * Math.sin(ANGLE) * this.scale * 0.22
+        };
+        this.line(this.project(TAIL.x, TAIL.y, TAIL.z), P, 0.055, "#778f4c88");
+        this.line(P, TIP, 0.105, "#79964e");
+        this.ellipse(TIP.x, TIP.y, this.scale * 0.045, this.scale * 0.035, "#d5df9d", ANGLE);
       } else {
-        this.line(this.project(tail.x, tail.y, tail.z), p, 0.07, "#ba964a80");
-        this.ellipse(p.x, p.y, this.scale * 0.14, this.scale * 0.2, "#cfa957", 0.3);
-        this.ellipse(p.x - this.scale * 0.03, p.y - this.scale * 0.05, this.scale * 0.05, this.scale * 0.08, "#fff0ae");
+        this.line(this.project(TAIL.x, TAIL.y, TAIL.z), P, 0.07, "#ba964a80");
+        this.ellipse(P.x, P.y, this.scale * 0.14, this.scale * 0.2, "#cfa957", 0.3);
+        this.ellipse(
+          P.x - this.scale * 0.03,
+          P.y - this.scale * 0.05,
+          this.scale * 0.05,
+          this.scale * 0.08,
+          "#fff0ae"
+        );
       }
     }
     render(sim2, feel = null, now = performance.now()) {
       this.feel = feel;
       this.displayTimeMs = now;
       this.configure(sim2.scene);
-      const c = this.ctx, joyEffects = this.joyEffects;
-      joyEffects.length = 0;
+      const C = this.ctx, JOY_EFFECTS = this.joyEffects;
+      JOY_EFFECTS.length = 0;
       if (sim2.scene === "farm") {
-        for (const e of sim2.effects) if (e.life < 0.85 && (e.kind === "eat" || e.kind === "birth" || e.kind === "merge")) joyEffects.push(e);
+        for (const E of sim2.effects) {
+          if (E.life < 0.85 && (E.kind === "eat" || E.kind === "birth" || E.kind === "merge")) {
+            JOY_EFFECTS.push(E);
+          }
+        }
       }
-      c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
+      C.beginFrame({
+        width: this.canvas.width,
+        height: this.canvas.height,
+        clearColor: [0.9, 0.92, 0.87, 1]
+      });
       this.terrain(sim2);
-      for (const u of sim2.units) {
-        const a = clamp3(0.22 / (1 + u.z * 0.3), 0.045, 0.22), shadow = u.size * 0.66 / (1 + u.z * 0.65);
-        this.groundEllipse(u.x, u.y, shadow, shadow * 0.62, `rgba(42,61,35,${a})`);
+      for (const U of sim2.units) {
+        const A = CLAMP2(0.22 / (1 + U.z * 0.3), 0.045, 0.22), SHADOW = U.size * 0.66 / (1 + U.z * 0.65);
+        this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
       }
-      const farmBossVisible = sim2.scene === "farm" && sim2.farmBossEvent?.phase !== "idle";
-      if (sim2.scene === "raid" || farmBossVisible) {
+      const FARM_BOSS_VISIBLE = sim2.scene === "farm" && sim2.farmBossEvent?.phase !== "idle";
+      if (sim2.scene === "raid" || FARM_BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
       }
-      const hiddenMergeResultId = sim2.scene === "farm" && sim2.mode === "merge" && sim2.mergeTask?.phase === "animation" ? sim2.mergeTask.resultId : 0;
-      const actors = this.actors;
-      actors.length = 0;
-      for (const u of sim2.units) if (u.id !== hiddenMergeResultId) this.addActor("unit", u, 0.785 * u.y - 0.62 * u.z, u.id, this.vectorAssets.has(u.species));
-      if (sim2.scene === "raid" || farmBossVisible) this.addActor("boss", sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
-      if (sim2.scene === "farm") for (const f of sim2.food) this.addActor("food", f, 0.785 * f.y - 0.62 * f.z, -1);
-      if (sim2.scene === "raid" || farmBossVisible) for (const f of sim2.projectiles) this.addActor("projectile", f, 0.785 * f.y - 0.62 * f.z, -f.id);
-      actors.sort(compareActors);
+      const HIDDEN_MERGE_RESULT_ID = sim2.scene === "farm" && sim2.mode === "merge" && sim2.mergeTask?.phase === "animation" ? sim2.mergeTask.resultId : 0;
+      const ACTORS = this.actors;
+      ACTORS.length = 0;
+      for (const U of sim2.units) {
+        if (U.id !== HIDDEN_MERGE_RESULT_ID) {
+          this.addActor("unit", U, 0.785 * U.y - 0.62 * U.z, U.id, this.vectorAssets.has(U.species));
+        }
+      }
+      if (sim2.scene === "raid" || FARM_BOSS_VISIBLE) {
+        this.addActor("boss", sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
+      }
+      if (sim2.scene === "farm") {
+        for (const F of sim2.food) {
+          this.addActor("food", F, 0.785 * F.y - 0.62 * F.z, -1);
+        }
+      }
+      if (sim2.scene === "raid" || FARM_BOSS_VISIBLE) {
+        for (const F of sim2.projectiles) {
+          this.addActor("projectile", F, 0.785 * F.y - 0.62 * F.z, -F.id);
+        }
+      }
+      ACTORS.sort(COMPARE_ACTORS);
       let vectorRun = false;
-      for (const actor of actors) {
-        if (actor.vector && !vectorRun) {
-          c.flush();
+      for (const ACTOR of ACTORS) {
+        if (ACTOR.vector && !vectorRun) {
+          C.flush();
           vectorRun = true;
-        } else if (!actor.vector && vectorRun) {
-          c.flush();
+        } else if (!ACTOR.vector && vectorRun) {
+          C.flush();
           vectorRun = false;
         }
-        if (actor.kind === "unit") this.drawFarmUnitActor(actor.source, sim2);
-        else if (actor.kind === "boss") this.drawBoss(sim2);
-        else if (actor.kind === "food") this.drawFood(actor.source);
-        else this.drawProjectile(actor.source);
-        actor.source = null;
+        if (ACTOR.kind === "unit") {
+          this.drawFarmUnitActor(ACTOR.source, sim2);
+        } else if (ACTOR.kind === "boss") {
+          this.drawBoss(sim2);
+        } else if (ACTOR.kind === "food") {
+          this.drawFood(ACTOR.source);
+        } else {
+          this.drawProjectile(ACTOR.source);
+        }
+        ACTOR.source = null;
       }
-      if (vectorRun) c.flush();
-      const liveUnitIds = this.liveUnitIds;
-      liveUnitIds.clear();
-      for (const u of sim2.units) liveUnitIds.add(u.id);
-      for (const [id, player] of this.vectorPlayers) if (!liveUnitIds.has(id)) {
-        player.dispose();
-        this.vectorPlayers.delete(id);
+      if (vectorRun) {
+        C.flush();
+      }
+      const LIVE_UNIT_IDS = this.liveUnitIds;
+      LIVE_UNIT_IDS.clear();
+      for (const U of sim2.units) {
+        LIVE_UNIT_IDS.add(U.id);
+      }
+      for (const [ID, PLAYER] of this.vectorPlayers) {
+        if (!LIVE_UNIT_IDS.has(ID)) {
+          PLAYER.dispose();
+          this.vectorPlayers.delete(ID);
+        }
       }
       feel?.draw(this, this.displayTimeMs);
-      for (const e of sim2.effects) {
-        const delay = Number.isFinite(e.delay) ? e.delay : 0, span = Number.isFinite(e.span) ? e.span : 1;
-        if (e.life < delay) continue;
-        const q = Number.isFinite(e.span) ? clamp3((e.life - delay) / span, 0, 1) : e.life;
-        if (e.kind === "feed") this.ring(e.x, e.y, 0.15 + q * 0.35, `rgba(166,121,59,${(1 - q) * 0.6})`, 0.035);
-        else if (e.kind === "food-land") {
-          const t = Math.min(1, q / 0.35);
-          this.ring(e.x, e.y, 0.1 + t * 0.42, `rgba(194,145,62,${(1 - t) * 0.85})`, 0.055);
-          for (let i = 0; i < 3 && t < 1; i++) {
-            const a = i * Math.PI * 2 / 3, p = this.project(e.x + Math.cos(a) * t * 0.4, e.y + Math.sin(a) * t * 0.4, 0.08 + Math.sin(t * Math.PI) * 0.2);
-            this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.035, `rgba(245,213,133,${1 - t})`);
+      for (const E of sim2.effects) {
+        const DELAY = Number.isFinite(E.delay) ? E.delay : 0, SPAN = Number.isFinite(E.span) ? E.span : 1;
+        if (E.life < DELAY) {
+          continue;
+        }
+        const Q = Number.isFinite(E.span) ? CLAMP2((E.life - DELAY) / SPAN, 0, 1) : E.life;
+        if (E.kind === "feed") {
+          this.ring(E.x, E.y, 0.15 + Q * 0.35, `rgba(166,121,59,${(1 - Q) * 0.6})`, 0.035);
+        } else if (E.kind === "food-land") {
+          const T = Math.min(1, Q / 0.35);
+          this.ring(E.x, E.y, 0.1 + T * 0.42, `rgba(194,145,62,${(1 - T) * 0.85})`, 0.055);
+          for (let i = 0; i < 3 && T < 1; i++) {
+            const A = i * Math.PI * 2 / 3, P = this.project(
+              E.x + Math.cos(A) * T * 0.4,
+              E.y + Math.sin(A) * T * 0.4,
+              0.08 + Math.sin(T * Math.PI) * 0.2
+            );
+            this.ellipse(P.x, P.y, this.scale * 0.045, this.scale * 0.035, `rgba(245,213,133,${1 - T})`);
           }
-        } else if (e.kind === "land" || e.kind === "impact") this.ring(e.x, e.y, 0.1 + q * 0.8, `rgba(146,131,78,${(1 - q) * 0.65})`);
-        else if (e.kind === "landing-shockwave" || e.kind === "walnut-shockwave") {
-          const progress = clamp3(q / (e.duration || 0.55), 0, 1), radius = Math.max(0.08, e.radius) * (0.2 + 0.8 * progress);
-          this.groundEllipse(e.x, e.y, radius, radius, `rgba(225,190,103,${0.12 * (1 - progress)})`);
-          this.ring(e.x, e.y, radius, `rgba(234,194,104,${0.82 * (1 - progress)})`, 0.12 * (1 - progress) + 0.025);
-          this.ring(e.x, e.y, Math.max(0.05, radius - 0.12), `rgba(250,225,158,${0.55 * (1 - progress)})`, 0.045);
-        } else if (e.kind === "popcorn-explosion") {
-          const progress = clamp3(q / (e.duration || 0.5), 0, 1), radius = Math.max(0.08, e.radius) * (0.18 + 0.82 * progress);
-          this.groundEllipse(e.x, e.y, radius, radius, `rgba(235,143,63,${0.18 * (1 - progress)})`);
-          this.ring(e.x, e.y, radius, `rgba(233,115,49,${0.88 * (1 - progress)})`, 0.1 * (1 - progress) + 0.025);
-          this.ring(e.x, e.y, Math.max(0.05, radius * 0.72), `rgba(255,206,101,${0.7 * (1 - progress)})`, 0.055);
+        } else if (E.kind === "land" || E.kind === "impact") {
+          this.ring(E.x, E.y, 0.1 + Q * 0.8, `rgba(146,131,78,${(1 - Q) * 0.65})`);
+        } else if (E.kind === "landing-shockwave" || E.kind === "walnut-shockwave") {
+          const PROGRESS = CLAMP2(Q / (E.duration || 0.55), 0, 1), RADIUS = Math.max(0.08, E.radius) * (0.2 + 0.8 * PROGRESS);
+          this.groundEllipse(E.x, E.y, RADIUS, RADIUS, `rgba(225,190,103,${0.12 * (1 - PROGRESS)})`);
+          this.ring(
+            E.x,
+            E.y,
+            RADIUS,
+            `rgba(234,194,104,${0.82 * (1 - PROGRESS)})`,
+            0.12 * (1 - PROGRESS) + 0.025
+          );
+          this.ring(E.x, E.y, Math.max(0.05, RADIUS - 0.12), `rgba(250,225,158,${0.55 * (1 - PROGRESS)})`, 0.045);
+        } else if (E.kind === "popcorn-explosion") {
+          const PROGRESS = CLAMP2(Q / (E.duration || 0.5), 0, 1), RADIUS = Math.max(0.08, E.radius) * (0.18 + 0.82 * PROGRESS);
+          this.groundEllipse(E.x, E.y, RADIUS, RADIUS, `rgba(235,143,63,${0.18 * (1 - PROGRESS)})`);
+          this.ring(E.x, E.y, RADIUS, `rgba(233,115,49,${0.88 * (1 - PROGRESS)})`, 0.1 * (1 - PROGRESS) + 0.025);
+          this.ring(E.x, E.y, Math.max(0.05, RADIUS * 0.72), `rgba(255,206,101,${0.7 * (1 - PROGRESS)})`, 0.055);
           for (let i = 0; i < 5; i++) {
-            const a = i * Math.PI * 2 / 5 + progress * 0.8, d = radius * (0.55 + 0.3 * progress), p = this.project(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, 0.08 * (1 - progress));
-            this.ellipse(p.x, p.y, this.scale * 0.045 * (1 - progress), this.scale * 0.03 * (1 - progress), `rgba(255,216,119,${1 - progress})`, a);
+            const A = i * Math.PI * 2 / 5 + PROGRESS * 0.8, D = RADIUS * (0.55 + 0.3 * PROGRESS), P = this.project(E.x + Math.cos(A) * D, E.y + Math.sin(A) * D, 0.08 * (1 - PROGRESS));
+            this.ellipse(
+              P.x,
+              P.y,
+              this.scale * 0.045 * (1 - PROGRESS),
+              this.scale * 0.03 * (1 - PROGRESS),
+              `rgba(255,216,119,${1 - PROGRESS})`,
+              A
+            );
           }
-        } else if (e.kind === "popcorn-kernel-impact") {
-          const progress = clamp3(q / (e.duration || 0.25), 0, 1);
-          this.ring(e.x, e.y, 0.08 + progress * (e.radius || 0.1) * 1.6, `rgba(225,150,72,${0.65 * (1 - progress)})`, 0.045);
-        } else if (e.kind === "drop-dust") {
-          const t = Math.min(1, q / 0.28);
-          this.ring(e.x, e.y, 0.12 + t * 0.4, `rgba(126,126,99,${(1 - t) * 0.42})`, 0.045);
+        } else if (E.kind === "popcorn-kernel-impact") {
+          const PROGRESS = CLAMP2(Q / (E.duration || 0.25), 0, 1);
+          this.ring(
+            E.x,
+            E.y,
+            0.08 + PROGRESS * (E.radius || 0.1) * 1.6,
+            `rgba(225,150,72,${0.65 * (1 - PROGRESS)})`,
+            0.045
+          );
+        } else if (E.kind === "drop-dust") {
+          const T = Math.min(1, Q / 0.28);
+          this.ring(E.x, E.y, 0.12 + T * 0.4, `rgba(126,126,99,${(1 - T) * 0.42})`, 0.045);
           for (let i = 0; i < 4; i++) {
-            const a = i * Math.PI / 2 + t * 0.35, p = this.project(e.x + Math.cos(a) * t * 0.33, e.y + Math.sin(a) * t * 0.22, 0.025 + Math.sin(t * Math.PI) * 0.1);
-            this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.03, `rgba(179,169,137,${1 - t})`);
+            const A = i * Math.PI / 2 + T * 0.35, P = this.project(
+              E.x + Math.cos(A) * T * 0.33,
+              E.y + Math.sin(A) * T * 0.22,
+              0.025 + Math.sin(T * Math.PI) * 0.1
+            );
+            this.ellipse(P.x, P.y, this.scale * 0.045, this.scale * 0.03, `rgba(179,169,137,${1 - T})`);
           }
-        } else if (e.kind === "merge-material") {
-          const t = clamp3(q, 0, 1), x = e.x + (e.targetX - e.x) * t, y = e.y + (e.targetY - e.y) * t, z = (e.z || 0) + Math.sin(Math.PI * t) * 0.55;
-          const start2 = this.project(e.x, e.y, e.z || 0), point3 = this.project(x, y, z);
-          this.line(start2, point3, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - t)})`);
-          this.ellipse(point3.x, point3.y, this.scale * 0.12 * (1 - 0.4 * t), this.scale * 0.09 * (1 - 0.4 * t), `rgba(88,185,187,${1 - 0.35 * t})`, t * Math.PI);
-        } else if (e.kind === "birth" || e.kind === "merge") {
-          const birth = e.kind === "birth", color = birth ? "#df87a4" : "#58b9bb";
-          this.ring(e.x, e.y, birth ? 0.35 + q * 1.5 : 1.8 * (1 - q) + 0.15, color, 0.07);
+        } else if (E.kind === "merge-material") {
+          const T = CLAMP2(Q, 0, 1), X = E.x + (E.targetX - E.x) * T, Y = E.y + (E.targetY - E.y) * T, Z = (E.z || 0) + Math.sin(Math.PI * T) * 0.55;
+          const START = this.project(E.x, E.y, E.z || 0), POINT2 = this.project(X, Y, Z);
+          this.line(START, POINT2, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - T)})`);
+          this.ellipse(
+            POINT2.x,
+            POINT2.y,
+            this.scale * 0.12 * (1 - 0.4 * T),
+            this.scale * 0.09 * (1 - 0.4 * T),
+            `rgba(88,185,187,${1 - 0.35 * T})`,
+            T * Math.PI
+          );
+        } else if (E.kind === "birth" || E.kind === "merge") {
+          const BIRTH = E.kind === "birth", COLOR = BIRTH ? "#df87a4" : "#58b9bb";
+          this.ring(E.x, E.y, BIRTH ? 0.35 + Q * 1.5 : 1.8 * (1 - Q) + 0.15, COLOR, 0.07);
           for (let i = 0; i < 6; i++) {
-            const a = i * Math.PI / 3 + q * (birth ? 0.3 : 2), spread = birth ? 0.4 + q * 1.3 : 1.8 * (1 - q);
-            const p = this.project(e.x + Math.cos(a) * spread, e.y + Math.sin(a) * spread, e.z + q * 0.9);
-            const r = this.scale * 0.14;
-            c.fillStyle = color;
-            if (birth) {
-              this.ellipse(p.x - r * 0.44, p.y - r * 0.25, r * 0.6, r * 0.6, color);
-              this.ellipse(p.x + r * 0.44, p.y - r * 0.25, r * 0.6, r * 0.6, color);
-              c.beginPath();
-              c.moveTo(p.x - r, p.y);
-              c.lineTo(p.x, p.y + r);
-              c.lineTo(p.x + r, p.y);
-              c.closePath();
-              c.fill();
+            const A = i * Math.PI / 3 + Q * (BIRTH ? 0.3 : 2), SPREAD = BIRTH ? 0.4 + Q * 1.3 : 1.8 * (1 - Q);
+            const P = this.project(E.x + Math.cos(A) * SPREAD, E.y + Math.sin(A) * SPREAD, E.z + Q * 0.9);
+            const R2 = this.scale * 0.14;
+            C.fillStyle = COLOR;
+            if (BIRTH) {
+              this.ellipse(P.x - R2 * 0.44, P.y - R2 * 0.25, R2 * 0.6, R2 * 0.6, COLOR);
+              this.ellipse(P.x + R2 * 0.44, P.y - R2 * 0.25, R2 * 0.6, R2 * 0.6, COLOR);
+              C.beginPath();
+              C.moveTo(P.x - R2, P.y);
+              C.lineTo(P.x, P.y + R2);
+              C.lineTo(P.x + R2, P.y);
+              C.closePath();
+              C.fill();
             } else {
-              c.beginPath();
-              c.moveTo(p.x, p.y - r * 1.5);
-              c.lineTo(p.x + r, p.y);
-              c.lineTo(p.x, p.y + r * 1.5);
-              c.lineTo(p.x - r, p.y);
-              c.closePath();
-              c.fill();
+              C.beginPath();
+              C.moveTo(P.x, P.y - R2 * 1.5);
+              C.lineTo(P.x + R2, P.y);
+              C.lineTo(P.x, P.y + R2 * 1.5);
+              C.lineTo(P.x - R2, P.y);
+              C.closePath();
+              C.fill();
             }
           }
-        } else if (e.kind === "eat") {
+        } else if (E.kind === "eat") {
           for (let i = 0; i < 3; i++) {
-            const a = i * Math.PI * 2 / 3, t = Math.min(1, q / 0.45), p = this.project(e.x + Math.cos(a) * t * 0.35, e.y + Math.sin(a) * t * 0.35, e.z + t * 0.6);
-            this.ellipse(p.x, p.y, this.scale * 0.05, this.scale * 0.075, `rgba(255,235,160,${Math.max(0, 1 - q / 0.45)})`, a);
+            const A = i * Math.PI * 2 / 3, T = Math.min(1, Q / 0.45), P = this.project(E.x + Math.cos(A) * T * 0.35, E.y + Math.sin(A) * T * 0.35, E.z + T * 0.6);
+            this.ellipse(
+              P.x,
+              P.y,
+              this.scale * 0.05,
+              this.scale * 0.075,
+              `rgba(255,235,160,${Math.max(0, 1 - Q / 0.45)})`,
+              A
+            );
           }
         }
       }
       this.drawLocalScatter(sim2.localScatter);
-      this.stats = c.endFrame();
+      this.stats = C.endFrame();
     }
     dispose() {
-      for (const species of this.vectorAssets.keys()) unbindBossSocketAsset(species, this.bossAssets.get(species === 3 ? "chestnut" : `species-${species}`));
-      for (const player of this.vectorPlayers.values()) player.dispose();
+      for (const SPECIES of this.vectorAssets.keys()) {
+        unbindBossSocketAsset(SPECIES, this.bossAssets.get(SPECIES === 3 ? "chestnut" : `species-${SPECIES}`));
+      }
+      for (const PLAYER of this.vectorPlayers.values()) {
+        PLAYER.dispose();
+      }
       this.vectorPlayers.clear();
-      for (const record of this.vectorAssets.values()) record.asset.dispose();
+      for (const RECORD of this.vectorAssets.values()) {
+        RECORD.asset.dispose();
+      }
       this.vectorAssets.clear();
-      for (const { player } of this.bossPlayers.values()) player.dispose();
+      for (const { player: PLAYER } of this.bossPlayers.values()) {
+        PLAYER.dispose();
+      }
       this.bossPlayers.clear();
       this.bossPlayer = null;
-      for (const record of this.bossAssets?.values() || []) record.asset.dispose();
+      for (const RECORD of this.bossAssets?.values() || []) {
+        RECORD.asset.dispose();
+      }
       this.bossAssets?.clear();
       this.actors.length = 0;
       this.actorPool.length = 0;
@@ -6689,14 +11099,21 @@
   // src/farm-session.js
   init_farm_model();
   init_unit_stats();
-  var { PresentationRuntime, RenderObject } = globalThis.BloomGamekitInterpolation;
-  var R = RenderObject;
+  var { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
+  var R = RENDER_OBJECT;
   var PRESENTATION_STEP_MS = 50;
-  var LOCAL_PROFILE = Object.freeze({ tickRate: 20, maxCatchupSteps: 4 });
+  var LOCAL_PROFILE = Object.freeze({
+    tickRate: 20,
+    maxCatchupSteps: 4
+  });
   var LOCAL_INPUT = new Uint8Array(0);
-  var ADVANCED = Object.freeze({ status: "advanced" });
-  var CLOSED = Object.freeze({ status: "closed" });
-  var UnitRender = class extends RenderObject {
+  var ADVANCED = Object.freeze({
+    status: "advanced"
+  });
+  var CLOSED = Object.freeze({
+    status: "closed"
+  });
+  var UnitRender = class extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
       id: R.STEP,
       x: R.POSITION_X,
@@ -6772,7 +11189,7 @@
       this.isBattleOnlySummon = u.isBattleOnlySummon;
     }
   };
-  var BossRender = class extends RenderObject {
+  var BossRender = class extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
       x: R.POSITION_X,
       y: R.POSITION_Y,
@@ -6809,14 +11226,14 @@
       summonMouthZ: R.STEP
     });
     update(b, world) {
-      const action = b.patternRuntime.active, event = world.farmBossEvent, target = action?.target || null, start2 = action?.start || null, mouth = b.summonMouth || {}, ended = world.scene === "raid" && !b.active ? world.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat") : null;
+      const ACTION = b.patternRuntime.active, EVENT = world.farmBossEvent, TARGET = ACTION?.target || null, START = ACTION?.start || null, MOUTH = b.summonMouth || {}, ENDED = world.scene === "raid" && !b.active ? world.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat") : null;
       this.x = b.x;
       this.y = b.y;
       this.z = b.z;
       this.angle = b.angle;
       this.startAngle = b.startAngle;
-      this.phase = action?.phase || (!b.active || event?.phase === "dropping" ? "resting" : "chase");
-      this.clock = action?.phaseElapsed ?? (event.phase === "celebrating" || event.phase === "fading" ? event.elapsed : ended?.bossPatternElapsed || 0);
+      this.phase = ACTION?.phase || (!b.active || EVENT?.phase === "dropping" ? "resting" : "chase");
+      this.clock = ACTION?.phaseElapsed ?? (EVENT.phase === "celebrating" || EVENT.phase === "fading" ? EVENT.elapsed : ENDED?.bossPatternElapsed || 0);
       this.travel = b.travel || 0;
       this.hp = b.hp;
       this.maxHp = b.maxHp;
@@ -6825,27 +11242,27 @@
       this.flash = b.flash;
       this.species = b.species ?? 3;
       this.stage = b.stage ?? 0;
-      this.patternId = action?.id || "";
-      this.patternPhase = action?.phase || "idle";
-      this.patternPhaseElapsed = action?.phaseElapsed || 0;
-      this.patternAim = action?.aim ?? b.angle;
-      this.patternLocked = !!action?.locked;
-      this.patternTargetId = action?.targetId || 0;
-      this.patternTargetX = target?.x ?? b.x;
-      this.patternTargetY = target?.y ?? b.y;
-      this.patternTargetZ = target?.z ?? 0;
-      this.patternStartX = start2?.x ?? b.x;
-      this.patternStartY = start2?.y ?? b.y;
-      this.patternStartZ = start2?.z ?? b.z;
-      this.patternVolleyCount = action?.volleyCount || 0;
-      this.patternReleased = action?.released || 0;
-      this.patternTraveled = action?.traveled || 0;
-      this.summonMouthX = mouth.x ?? b.x;
-      this.summonMouthY = mouth.y ?? b.y;
-      this.summonMouthZ = mouth.z ?? b.z;
+      this.patternId = ACTION?.id || "";
+      this.patternPhase = ACTION?.phase || "idle";
+      this.patternPhaseElapsed = ACTION?.phaseElapsed || 0;
+      this.patternAim = ACTION?.aim ?? b.angle;
+      this.patternLocked = !!ACTION?.locked;
+      this.patternTargetId = ACTION?.targetId || 0;
+      this.patternTargetX = TARGET?.x ?? b.x;
+      this.patternTargetY = TARGET?.y ?? b.y;
+      this.patternTargetZ = TARGET?.z ?? 0;
+      this.patternStartX = START?.x ?? b.x;
+      this.patternStartY = START?.y ?? b.y;
+      this.patternStartZ = START?.z ?? b.z;
+      this.patternVolleyCount = ACTION?.volleyCount || 0;
+      this.patternReleased = ACTION?.released || 0;
+      this.patternTraveled = ACTION?.traveled || 0;
+      this.summonMouthX = MOUTH.x ?? b.x;
+      this.summonMouthY = MOUTH.y ?? b.y;
+      this.summonMouthZ = MOUTH.z ?? b.z;
     }
   };
-  var FoodRender = class extends RenderObject {
+  var FoodRender = class extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
       x: R.POSITION_X,
       y: R.POSITION_Y,
@@ -6871,7 +11288,7 @@
       this.seed = f.seed ?? 0;
     }
   };
-  var ProjectileRender = class extends RenderObject {
+  var ProjectileRender = class extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
       id: R.STEP,
       x: R.POSITION_X,
@@ -6904,7 +11321,10 @@
     constructor() {
       super();
       this.popcornConfig = {};
-      this.path = { from: {}, to: {} };
+      this.path = {
+        from: {},
+        to: {}
+      };
     }
     update(p) {
       this.id = p.id;
@@ -6936,8 +11356,17 @@
       this.path.duration = p.path.duration;
     }
   };
-  var EffectRender = class extends RenderObject {
-    static renderSchema = Object.freeze({ x: R.POSITION_X, y: R.POSITION_Y, z: R.POSITION_Z, life: R.LINEAR, kind: R.STATE_KEY, radius: R.STEP, duration: R.STEP, owner: R.STEP });
+  var EffectRender = class extends RENDER_OBJECT {
+    static renderSchema = Object.freeze({
+      x: R.POSITION_X,
+      y: R.POSITION_Y,
+      z: R.POSITION_Z,
+      life: R.LINEAR,
+      kind: R.STATE_KEY,
+      radius: R.STEP,
+      duration: R.STEP,
+      owner: R.STEP
+    });
     update(e) {
       this.x = e.x;
       this.y = e.y;
@@ -6950,7 +11379,11 @@
     }
   };
   var DelayedEffectRender = class extends EffectRender {
-    static renderSchema = Object.freeze({ ...EffectRender.renderSchema, delay: R.STEP, span: R.STEP });
+    static renderSchema = Object.freeze({
+      ...EffectRender.renderSchema,
+      delay: R.STEP,
+      span: R.STEP
+    });
     update(e) {
       super.update(e);
       this.delay = e.delay;
@@ -6958,7 +11391,13 @@
     }
   };
   var MergeMaterialRender = class extends DelayedEffectRender {
-    static renderSchema = Object.freeze({ ...DelayedEffectRender.renderSchema, targetX: R.STEP, targetY: R.STEP, sequenceIndex: R.STEP, sequenceCount: R.STEP });
+    static renderSchema = Object.freeze({
+      ...DelayedEffectRender.renderSchema,
+      targetX: R.STEP,
+      targetY: R.STEP,
+      sequenceIndex: R.STEP,
+      sequenceCount: R.STEP
+    });
     update(e) {
       super.update(e);
       this.targetX = e.targetX;
@@ -6967,15 +11406,17 @@
       this.sequenceCount = e.sequenceCount;
     }
   };
-  var GameClockRender = class extends RenderObject {
-    static renderSchema = Object.freeze({ gameTimeMs: R.LINEAR });
+  var GameClockRender = class extends RENDER_OBJECT {
+    static renderSchema = Object.freeze({
+      gameTimeMs: R.LINEAR
+    });
     constructor(gameTimeMs) {
       super();
       this.gameTimeMs = gameTimeMs;
     }
   };
   var FarmSession = class {
-    constructor(world = new Garden(), { onError = console.error, onWorldStep: onWorldStep2 = () => {
+    constructor(world = new GARDEN(), { onError = console.error, onWorldStep: onWorldStep2 = () => {
     } } = {}) {
       this.world = world;
       this.onWorldStep = onWorldStep2;
@@ -6993,10 +11434,18 @@
       this.presentationRevision = 0;
       this.presentationSequence = 0;
       this.pendingPresentationMode = null;
-      this.presentationRuntime = new PresentationRuntime({ stepMs: PRESENTATION_STEP_MS, delayMs: PRESENTATION_STEP_MS, snapDistance: 12 });
+      this.presentationRuntime = new PRESENTATION_RUNTIME({
+        stepMs: PRESENTATION_STEP_MS,
+        delayMs: PRESENTATION_STEP_MS,
+        snapDistance: 12
+      });
       this.presentationAdapters = /* @__PURE__ */ new WeakMap();
       this.captureEntities = [];
-      this.clockEntity = { id: "clock", generation: 0, source: new GameClockRender(0) };
+      this.clockEntity = {
+        id: "clock",
+        generation: 0,
+        source: new GameClockRender(0)
+      };
       this.presentationIds = /* @__PURE__ */ new WeakMap();
       this.nextPresentationId = 1;
       this.previousCaptureTimeMs = null;
@@ -7013,8 +11462,11 @@
           this.pendingPresentationMode = "reset";
         },
         onAdvance: (result) => {
-          if (this.pendingPresentationMode) this.capturePresentation(this.pendingPresentationMode);
-          else if (result.status === "advanced" && !this.paused) this.capturePresentation("continuous");
+          if (this.pendingPresentationMode) {
+            this.capturePresentation(this.pendingPresentationMode);
+          } else if (result.status === "advanced" && !this.paused) {
+            this.capturePresentation("continuous");
+          }
         }
       });
       this.capturePresentation("reset");
@@ -7023,82 +11475,121 @@
     poll() {
     }
     queue(type, args = {}) {
-      if (this.closed || this.pending.length >= 64) return false;
-      this.pending.push(structuredClone({ type, ...args }));
+      if (this.closed || this.pending.length >= 64) {
+        return false;
+      }
+      this.pending.push(
+        structuredClone({
+          type,
+          ...args
+        })
+      );
       return true;
     }
     deployNext() {
-      const w = this.world, roster2 = w.scene === "raid" && w.raidRoster(this.localPlayerId);
-      if (!roster2 || this.closed || this.paused || ["victory", "defeat"].includes(w.encounter.outcome)) return false;
-      this.localDeploySequence = Math.max(this.localDeploySequence, roster2.lastDeploySequence);
-      if (this.localDeploySequence - roster2.lastDeploySequence >= w.raidRemaining(this.localPlayerId)) return false;
-      const sequence = this.localDeploySequence + 1;
-      if (!this.queue("deploy", { sequence })) return false;
-      this.localDeploySequence = sequence;
+      const W = this.world, ROSTER2 = W.scene === "raid" && W.raidRoster(this.localPlayerId);
+      if (!ROSTER2 || this.closed || this.paused || ["victory", "defeat"].includes(W.encounter.outcome)) {
+        return false;
+      }
+      this.localDeploySequence = Math.max(this.localDeploySequence, ROSTER2.lastDeploySequence);
+      if (this.localDeploySequence - ROSTER2.lastDeploySequence >= W.raidRemaining(this.localPlayerId)) {
+        return false;
+      }
+      const SEQUENCE = this.localDeploySequence + 1;
+      if (!this.queue("deploy", {
+        sequence: SEQUENCE
+      })) {
+        return false;
+      }
+      this.localDeploySequence = SEQUENCE;
       return true;
     }
     advance() {
-      if (this.closed) return CLOSED;
-      const commandChangedWorld = this.applyPendingCommands(32);
+      if (this.closed) {
+        return CLOSED;
+      }
+      const COMMAND_CHANGED_WORLD = this.applyPendingCommands(32);
       if (this.paused) {
         this.tick++;
-        if (commandChangedWorld) this.onWorldStep(this.world);
+        if (COMMAND_CHANGED_WORLD) {
+          this.onWorldStep(this.world);
+        }
         return ADVANCED;
       }
-      const w = this.world, startTime = w.time, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
-      bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3) / 1e3);
-      if (w.scene === "farm") w.advanceAutoTaps(0.05);
-      for (let i = 0; i < 6; i++) w.step(CONFIG.physics.fixedStep);
+      const W = this.world, START_TIME = W.time, LOOP_START = this.loop?.simulationTimeMs, START_CLOCK = this.adjustedWallTime(
+        Number.isFinite(LOOP_START) ? LOOP_START : this.pulseTimestamp ?? globalThis.performance.now()
+      ), PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
+      bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1e3) / 1e3);
+      if (W.scene === "farm") {
+        W.advanceAutoTaps(0.05);
+      }
+      for (let i = 0; i < 6; i++) {
+        W.step(CONFIG.physics.fixedStep);
+      }
       this.tick++;
       this.presentationTick++;
-      this.onWorldStep(w);
+      this.onWorldStep(W);
       return ADVANCED;
     }
     applyPendingCommands(limit) {
-      if (!this.pending.length) return false;
+      if (!this.pending.length) {
+        return false;
+      }
       let changed = false;
-      for (const command of this.pending.splice(0, limit)) {
+      for (const COMMAND of this.pending.splice(0, limit)) {
         try {
-          changed = this.command(command) || changed;
+          changed = this.command(COMMAND) || changed;
         } catch {
         }
       }
       return changed;
     }
     flushQueuedCommands() {
-      if (this.closed || this.world.scene !== "farm") return false;
-      const changed = this.applyPendingCommands(this.pending.length);
-      if (changed) this.onWorldStep(this.world);
-      return changed;
+      if (this.closed || this.world.scene !== "farm") {
+        return false;
+      }
+      const CHANGED = this.applyPendingCommands(this.pending.length);
+      if (CHANGED) {
+        this.onWorldStep(this.world);
+      }
+      return CHANGED;
     }
     command(c, ownerId = this.localPlayerId) {
-      const w = this.world;
+      const W = this.world;
       switch (c.type) {
         case "feed":
-          return w.scene === "farm" && w.tapFood("manual");
+          return W.scene === "farm" && W.tapFood("manual");
         case "mode":
-          if (w.scene === "farm" && ["breed", "merge"].includes(c.value)) {
-            const changed = w.mode !== c.value || c.value !== "merge" && w.mergeTask !== null;
-            if (c.value !== "merge") w.mergeTask = null;
-            w.mode = c.value;
-            if (changed) w.markProgressChanged();
-            return changed;
+          if (W.scene === "farm" && ["breed", "merge"].includes(c.value)) {
+            const CHANGED = W.mode !== c.value || c.value !== "merge" && W.mergeTask !== null;
+            if (c.value !== "merge") {
+              W.mergeTask = null;
+            }
+            W.mode = c.value;
+            if (CHANGED) {
+              W.markProgressChanged();
+            }
+            return CHANGED;
           }
           return false;
         case "progression-invest":
-          if (w.scene === "farm" && typeof c.nodeId === "string" && c.nodeId.length < 64) {
-            if (c.scope === "farm") return w.investFarmUpgrade(c.nodeId).ok;
-            if (c.scope === "ability" && typeof c.abilityId === "string" && c.abilityId.length < 64) return w.investAbilityNode(c.abilityId, c.nodeId).ok;
+          if (W.scene === "farm" && typeof c.nodeId === "string" && c.nodeId.length < 64) {
+            if (c.scope === "farm") {
+              return W.investFarmUpgrade(c.nodeId).ok;
+            }
+            if (c.scope === "ability" && typeof c.abilityId === "string" && c.abilityId.length < 64) {
+              return W.investAbilityNode(c.abilityId, c.nodeId).ok;
+            }
           }
           return false;
         case "ability-reset":
-          return w.scene === "farm" && w.resetAbilityTree().ok;
+          return W.scene === "farm" && W.resetAbilityTree().ok;
         case "register-roster":
-          return Array.isArray(c.entries) && w.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null);
+          return Array.isArray(c.entries) && W.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null);
         case "deploy":
-          return Number.isSafeInteger(c.sequence) && w.deployNextRaidUnit(ownerId, c.sequence);
+          return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence);
         case "buff":
-          return w.useRaidBuff(ownerId);
+          return W.useRaidBuff(ownerId);
       }
       return false;
     }
@@ -7112,10 +11603,14 @@
     }
     // GameKit capture copies declared fields synchronously. Reuse only its input
     // adapters, keyed weakly by the live actor; captured history stays SDK-owned.
-    presentationEntity(id, source, Type) {
+    presentationEntity(id, source, typeLocal) {
       let entity = this.presentationAdapters.get(source);
-      if (!entity || entity.source.constructor !== Type) {
-        entity = { id, generation: 0, source: new Type() };
+      if (!entity || entity.source.constructor !== typeLocal) {
+        entity = {
+          id,
+          generation: 0,
+          source: new typeLocal()
+        };
         this.presentationAdapters.set(source, entity);
       }
       entity.id = id;
@@ -7127,12 +11622,17 @@
     }
     set paused(value) {
       value = !!value;
-      if (value) this.world.clearLocalScatter();
-      if (value === this._paused) return;
-      const now = globalThis.performance.now();
-      if (value) this.pauseStartedAt = now;
-      else if (this.pauseStartedAt !== null) {
-        this.pausedDurationMs += now - this.pauseStartedAt;
+      if (value) {
+        this.world.clearLocalScatter();
+      }
+      if (value === this._paused) {
+        return;
+      }
+      const NOW = globalThis.performance.now();
+      if (value) {
+        this.pauseStartedAt = NOW;
+      } else if (this.pauseStartedAt !== null) {
+        this.pausedDurationMs += NOW - this.pauseStartedAt;
         this.pauseStartedAt = null;
       }
       this._paused = value;
@@ -7141,79 +11641,114 @@
       return now - this.pausedDurationMs - (this._paused && this.pauseStartedAt !== null ? now - this.pauseStartedAt : 0);
     }
     capturePresentation(mode = "continuous") {
-      if (mode !== "continuous" && this.presentationSequence > 0) this.presentationRevision++;
-      const world = this.world, receiptNowMs = this.captureClock(), timeMs = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, receiptNowMs - this.presentationOriginWallMs), entities = this.captureEntities;
-      entities.length = 0;
-      if (this.presentationOriginWallMs === null) this.presentationOriginWallMs = receiptNowMs;
-      for (const u of world.units) entities.push(this.presentationEntity("unit:" + u.id, u, UnitRender));
-      entities.push(this.presentationEntity("boss", world.boss, BossRender));
-      for (const f of world.food) entities.push(this.presentationEntity(this.presentationIdentity("food", f), f, FoodRender));
-      for (const p of world.projectiles) entities.push(this.presentationEntity("projectile:" + p.id, p, ProjectileRender));
-      for (const e of world.effects) {
-        const Type = e.kind === "merge-material" ? MergeMaterialRender : Number.isFinite(e.delay) && Number.isFinite(e.span) ? DelayedEffectRender : EffectRender;
-        entities.push(this.presentationEntity(this.presentationIdentity("effect", e), e, Type));
+      if (mode !== "continuous" && this.presentationSequence > 0) {
+        this.presentationRevision++;
       }
-      this.clockEntity.source.gameTimeMs = world.time * 1e3;
-      entities.push(this.clockEntity);
-      const captureMode = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
-      if (captureMode === "continuous") this.previousCaptureTimeMs = this.latestCaptureTimeMs;
-      else this.previousCaptureTimeMs = null;
-      const accepted = this.presentationRuntime.capture({ revision: this.presentationRevision, sequence: ++this.presentationSequence, timeMs, mode: captureMode, entities }, receiptNowMs);
-      if (accepted) {
-        this.latestCaptureTimeMs = timeMs;
-        this.lastCaptureClockMs = receiptNowMs;
+      const WORLD = this.world, RECEIPT_NOW_MS = this.captureClock(), TIME_MS = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, RECEIPT_NOW_MS - this.presentationOriginWallMs), ENTITIES = this.captureEntities;
+      ENTITIES.length = 0;
+      if (this.presentationOriginWallMs === null) {
+        this.presentationOriginWallMs = RECEIPT_NOW_MS;
+      }
+      for (const U of WORLD.units) {
+        ENTITIES.push(this.presentationEntity("unit:" + U.id, U, UnitRender));
+      }
+      ENTITIES.push(this.presentationEntity("boss", WORLD.boss, BossRender));
+      for (const F of WORLD.food) {
+        ENTITIES.push(this.presentationEntity(this.presentationIdentity("food", F), F, FoodRender));
+      }
+      for (const P of WORLD.projectiles) {
+        ENTITIES.push(this.presentationEntity("projectile:" + P.id, P, ProjectileRender));
+      }
+      for (const E of WORLD.effects) {
+        const TYPE = E.kind === "merge-material" ? MergeMaterialRender : Number.isFinite(E.delay) && Number.isFinite(E.span) ? DelayedEffectRender : EffectRender;
+        ENTITIES.push(this.presentationEntity(this.presentationIdentity("effect", E), E, TYPE));
+      }
+      this.clockEntity.source.gameTimeMs = WORLD.time * 1e3;
+      ENTITIES.push(this.clockEntity);
+      const CAPTURE_MODE = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
+      if (CAPTURE_MODE === "continuous") {
+        this.previousCaptureTimeMs = this.latestCaptureTimeMs;
+      } else {
+        this.previousCaptureTimeMs = null;
+      }
+      const ACCEPTED = this.presentationRuntime.capture(
+        {
+          revision: this.presentationRevision,
+          sequence: ++this.presentationSequence,
+          timeMs: TIME_MS,
+          mode: CAPTURE_MODE,
+          entities: ENTITIES
+        },
+        RECEIPT_NOW_MS
+      );
+      if (ACCEPTED) {
+        this.latestCaptureTimeMs = TIME_MS;
+        this.lastCaptureClockMs = RECEIPT_NOW_MS;
         this.pendingPresentationMode = null;
       }
-      return accepted;
+      return ACCEPTED;
     }
     captureClock() {
-      const now = this.pulseTimestamp ?? globalThis.performance.now(), boundary = this.loop?.simulationTimeMs;
-      const candidate = this.adjustedWallTime(Number.isFinite(boundary) ? boundary : now);
-      const receipt = Math.max(candidate, this.lastCaptureClockMs, this.lastFrameClockMs ?? 0);
-      this.lastCaptureClockMs = receipt;
-      return receipt;
+      const NOW = this.pulseTimestamp ?? globalThis.performance.now(), BOUNDARY = this.loop?.simulationTimeMs;
+      const CANDIDATE = this.adjustedWallTime(Number.isFinite(BOUNDARY) ? BOUNDARY : NOW);
+      const RECEIPT = Math.max(CANDIDATE, this.lastCaptureClockMs, this.lastFrameClockMs ?? 0);
+      this.lastCaptureClockMs = RECEIPT;
+      return RECEIPT;
     }
     frameClock(now) {
-      const clock = Math.max(this.lastFrameClockMs ?? 0, this.lastCaptureClockMs, this.adjustedWallTime(now));
-      this.lastFrameClockMs = clock;
-      return clock;
+      const CLOCK = Math.max(this.lastFrameClockMs ?? 0, this.lastCaptureClockMs, this.adjustedWallTime(now));
+      this.lastFrameClockMs = CLOCK;
+      return CLOCK;
     }
     presentation(now) {
-      const frame2 = this.presentationRuntime.frame(this.frameClock(now)), world = this.world;
-      if (!this.presentationView || Object.getPrototypeOf(this.presentationView) !== world) {
-        const view2 = this.presentationView = Object.assign(Object.create(world), { units: [], food: [], projectiles: [], effects: [], presentationDiagnostics: {} });
+      const FRAME = this.presentationRuntime.frame(this.frameClock(now)), WORLD = this.world;
+      if (!this.presentationView || Object.getPrototypeOf(this.presentationView) !== WORLD) {
+        const VIEW2 = this.presentationView = Object.assign(Object.create(WORLD), {
+          units: [],
+          food: [],
+          projectiles: [],
+          effects: [],
+          presentationDiagnostics: {}
+        });
         this.collectPresentationModel = (model, id) => {
-          if (id.startsWith("unit:")) view2.units.push(model);
-          else if (id.startsWith("food:")) view2.food.push(model);
-          else if (id.startsWith("projectile:")) view2.projectiles.push(model);
-          else if (id.startsWith("effect:")) view2.effects.push(model);
+          if (id.startsWith("unit:")) {
+            VIEW2.units.push(model);
+          } else if (id.startsWith("food:")) {
+            VIEW2.food.push(model);
+          } else if (id.startsWith("projectile:")) {
+            VIEW2.projectiles.push(model);
+          } else if (id.startsWith("effect:")) {
+            VIEW2.effects.push(model);
+          }
         };
       }
-      const view = this.presentationView;
-      view.units.length = 0;
-      view.food.length = 0;
-      view.projectiles.length = 0;
-      view.effects.length = 0;
-      frame2.forEach(this.collectPresentationModel);
-      view.time = (frame2.sample("clock", 0)?.gameTimeMs ?? world.time * 1e3) / 1e3;
-      view.boss = frame2.sample("boss", 0) || this.presentationEntity("boss", world.boss, BossRender).source;
-      view.displayTimeMs = frame2.timeMs;
-      view.presentationRevision = this.presentationRevision;
-      const previous = this.previousCaptureTimeMs, latest = this.latestCaptureTimeMs, span = latest - previous, diagnostics = view.presentationDiagnostics;
-      diagnostics.timeMs = frame2.timeMs;
-      diagnostics.latestSnapshotTimeMs = latest;
-      diagnostics.previousSnapshotTimeMs = previous;
-      diagnostics.intervalMs = span;
-      diagnostics.sampleAgeMs = latest - frame2.timeMs;
-      diagnostics.renderFraction = previous === null || span <= 0 ? null : Math.max(0, Math.min(1, (frame2.timeMs - previous) / span));
-      diagnostics.captureSequence = this.presentationSequence;
-      diagnostics.revision = this.presentationRevision;
-      this.latestPresentationDiagnostics = diagnostics;
-      return view;
+      const VIEW = this.presentationView;
+      VIEW.units.length = 0;
+      VIEW.food.length = 0;
+      VIEW.projectiles.length = 0;
+      VIEW.effects.length = 0;
+      FRAME.forEach(this.collectPresentationModel);
+      VIEW.time = (FRAME.sample("clock", 0)?.gameTimeMs ?? WORLD.time * 1e3) / 1e3;
+      VIEW.boss = FRAME.sample("boss", 0) || this.presentationEntity("boss", WORLD.boss, BossRender).source;
+      VIEW.displayTimeMs = FRAME.timeMs;
+      VIEW.presentationRevision = this.presentationRevision;
+      const PREVIOUS = this.previousCaptureTimeMs, LATEST = this.latestCaptureTimeMs, SPAN = LATEST - PREVIOUS, DIAGNOSTICS = VIEW.presentationDiagnostics;
+      DIAGNOSTICS.timeMs = FRAME.timeMs;
+      DIAGNOSTICS.latestSnapshotTimeMs = LATEST;
+      DIAGNOSTICS.previousSnapshotTimeMs = PREVIOUS;
+      DIAGNOSTICS.intervalMs = SPAN;
+      DIAGNOSTICS.sampleAgeMs = LATEST - FRAME.timeMs;
+      DIAGNOSTICS.renderFraction = PREVIOUS === null || SPAN <= 0 ? null : Math.max(0, Math.min(1, (FRAME.timeMs - PREVIOUS) / SPAN));
+      DIAGNOSTICS.captureSequence = this.presentationSequence;
+      DIAGNOSTICS.revision = this.presentationRevision;
+      this.latestPresentationDiagnostics = DIAGNOSTICS;
+      return VIEW;
     }
     pulse(now) {
       this.pulseTimestamp = now;
-      this.loop.pulse(now, { render: false });
+      this.loop.pulse(now, {
+        render: false
+      });
     }
     dispose() {
       this.world.clearLocalScatter();
@@ -7232,7 +11767,13 @@
   var FARM_AUTOSAVE_DEBOUNCE_MS = 1e3;
   var FARM_AUTOSAVE_MAX_WAIT_MS = 1e4;
   var FarmAutosave = class {
-    constructor(save, { debounceMs = FARM_AUTOSAVE_DEBOUNCE_MS, maxWaitMs = FARM_AUTOSAVE_MAX_WAIT_MS, now = () => globalThis.performance.now(), setTimer = (fn, delay) => globalThis.setTimeout(fn, delay), clearTimer = (id) => globalThis.clearTimeout(id) } = {}) {
+    constructor(save, {
+      debounceMs = FARM_AUTOSAVE_DEBOUNCE_MS,
+      maxWaitMs = FARM_AUTOSAVE_MAX_WAIT_MS,
+      now = () => globalThis.performance.now(),
+      setTimer = (fn, delay) => globalThis.setTimeout(fn, delay),
+      clearTimer = (id) => globalThis.clearTimeout(id)
+    } = {}) {
       this.save = save;
       this.debounceMs = debounceMs;
       this.maxWaitMs = maxWaitMs;
@@ -7246,35 +11787,43 @@
       this.timerDeadline = 0;
       this.onTimer = () => {
         this.timer = null;
-        const remaining = this.deadline - this.now();
-        if (remaining > 0) this.schedule(remaining);
-        else this.flush();
+        const REMAINING = this.deadline - this.now();
+        if (REMAINING > 0) {
+          this.schedule(REMAINING);
+        } else {
+          this.flush();
+        }
       };
     }
     markDirty() {
-      const now = this.now();
+      const NOW = this.now();
       if (!this.dirty) {
         this.dirty = true;
-        this.dirtySince = now;
+        this.dirtySince = NOW;
       }
-      const remaining = Math.max(0, this.maxWaitMs - (now - this.dirtySince));
-      this.deadline = now + Math.min(this.debounceMs, remaining);
+      const REMAINING = Math.max(0, this.maxWaitMs - (NOW - this.dirtySince));
+      this.deadline = NOW + Math.min(this.debounceMs, REMAINING);
       if (this.timer === null || this.deadline < this.timerDeadline) {
         this.cancelTimer();
-        this.schedule(Math.max(0, this.deadline - now));
+        this.schedule(Math.max(0, this.deadline - NOW));
       }
     }
     flush() {
       this.cancelTimer();
-      if (!this.dirty) return true;
-      let saved = false;
+      if (!this.dirty) {
+        return true;
+      }
+      let saved;
       try {
         saved = this.save() !== false;
       } catch {
         saved = false;
       }
-      if (saved) this.reset();
-      else this.dirtySince = this.now();
+      if (saved) {
+        this.reset();
+      } else {
+        this.dirtySince = this.now();
+      }
       return saved;
     }
     schedule(delay) {
@@ -7301,10 +11850,10 @@
   init_version();
 
   // src/food-feel.js
-  var $ = (id) => document.getElementById(id);
+  var DOLLAR = (id) => document.getElementById(id);
   var FoodFeel = class {
     constructor(requestFeed2) {
-      this.button = $("feed");
+      this.button = DOLLAR("feed");
       this.pips = [...this.button.querySelectorAll(".tap-pip")];
       this.completeUntil = 0;
       this.pulseUntil = 0;
@@ -7315,14 +11864,20 @@
       this.soundFrame = {};
       this.muted = false;
       this.peakVoices = 0;
-      this.counts = { manual: 0, auto: 0, complete: 0, land: 0, eat: 0 };
+      this.counts = {
+        manual: 0,
+        auto: 0,
+        complete: 0,
+        land: 0,
+        eat: 0
+      };
       this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
       try {
         this.muted = localStorage.getItem("budmori.food.muted") === "true";
       } catch {
       }
       this.updateSoundButton();
-      $("sound").onclick = () => {
+      DOLLAR("sound").onclick = () => {
         this.muted = !this.muted;
         this.unlock();
         this.silence();
@@ -7332,51 +11887,74 @@
         }
         this.updateSoundButton();
       };
-      const pointers = /* @__PURE__ */ new Set();
+      const POINTERS = /* @__PURE__ */ new Set();
       this.button.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0) {
+          return;
+        }
         e.preventDefault();
         this.unlock();
-        pointers.add(e.pointerId);
+        POINTERS.add(e.pointerId);
         this.button.setPointerCapture(e.pointerId);
-        this.animate(this.button, [{ transform: "scale(1)" }, { transform: this.reduced ? "scale(1)" : "scale(1.035,.94)" }], 75);
+        this.animate(
+          this.button,
+          [
+            {
+              transform: "scale(1)"
+            },
+            {
+              transform: this.reduced ? "scale(1)" : "scale(1.035,.94)"
+            }
+          ],
+          75
+        );
       });
       this.button.addEventListener("pointerup", (e) => {
-        if (!pointers.delete(e.pointerId)) return;
+        if (!POINTERS.delete(e.pointerId)) {
+          return;
+        }
         e.preventDefault();
-        const r = this.button.getBoundingClientRect();
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) requestFeed2();
-        if (this.button.hasPointerCapture(e.pointerId)) this.button.releasePointerCapture(e.pointerId);
+        const R2 = this.button.getBoundingClientRect();
+        if (e.clientX >= R2.left && e.clientX <= R2.right && e.clientY >= R2.top && e.clientY <= R2.bottom) {
+          requestFeed2();
+        }
+        if (this.button.hasPointerCapture(e.pointerId)) {
+          this.button.releasePointerCapture(e.pointerId);
+        }
       });
-      const cancel = (e) => pointers.delete(e.pointerId);
-      this.button.addEventListener("pointercancel", cancel);
-      this.button.addEventListener("lostpointercapture", cancel);
+      const CANCEL = (e) => POINTERS.delete(e.pointerId);
+      this.button.addEventListener("pointercancel", CANCEL);
+      this.button.addEventListener("lostpointercapture", CANCEL);
       window.addEventListener("blur", () => {
-        pointers.clear();
+        POINTERS.clear();
         this.silence();
       });
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-          pointers.clear();
+          POINTERS.clear();
           this.silence();
         }
       });
       window.addEventListener("pagehide", () => {
         this.silence();
-        for (const a of this.animations.values()) a.cancel();
+        for (const A of this.animations.values()) {
+          A.cancel();
+        }
         this.animations.clear();
         this.audio?.close().catch(() => {
         });
       });
     }
     updateSoundButton() {
-      const b = $("sound");
-      $("soundState").textContent = this.muted ? "꺼짐" : "켜짐";
-      b.setAttribute("aria-pressed", String(!this.muted));
-      b.setAttribute("aria-label", this.muted ? "효과음 켜기" : "효과음 끄기");
+      const B = DOLLAR("sound");
+      DOLLAR("soundState").textContent = this.muted ? "꺼짐" : "켜짐";
+      B.setAttribute("aria-pressed", String(!this.muted));
+      B.setAttribute("aria-label", this.muted ? "효과음 켜기" : "효과음 끄기");
     }
     unlock() {
-      if (this.muted) return;
+      if (this.muted) {
+        return;
+      }
       try {
         if (!this.audio) {
           this.audio = new AudioContext();
@@ -7384,87 +11962,152 @@
           this.master.gain.value = 0.22;
           this.master.connect(this.audio.destination);
         }
-        if (this.audio.state === "suspended") this.audio.resume().catch(() => {
-        });
+        if (this.audio.state === "suspended") {
+          this.audio.resume().catch(() => {
+          });
+        }
       } catch {
       }
     }
     silence() {
-      for (const v of this.voices) {
+      for (const V of this.voices) {
         try {
-          v.o.stop();
+          V.o.stop();
         } catch {
         }
       }
     }
     sound(kind, step = 0) {
-      if (this.muted || !this.audio || this.audio.state !== "running" || document.hidden) return;
-      const now = this.audio.currentTime, gap = kind === "tap" ? 0.025 : kind === "complete" ? 0.055 : 0.09;
-      if (this.soundFrame[kind] === this.frameId || now - (this.lastSound[kind] ?? -99) < gap || this.voices.size >= 4) return;
+      if (this.muted || !this.audio || this.audio.state !== "running" || document.hidden) {
+        return;
+      }
+      const NOW = this.audio.currentTime, GAP = kind === "tap" ? 0.025 : kind === "complete" ? 0.055 : 0.09;
+      if (this.soundFrame[kind] === this.frameId || NOW - (this.lastSound[kind] ?? -99) < GAP || this.voices.size >= 4) {
+        return;
+      }
       this.soundFrame[kind] = this.frameId;
-      this.lastSound[kind] = now;
-      const defs = { tap: [340 + step * 65, 420 + step * 65, 0.055, 0.14], complete: [520, 1040, 0.12, 0.2], land: [240, 150, 0.065, 0.1], eat: [740, 990, 0.09, 0.09], strike: [180, 80, 0.075, 0.16], heavy: [95, 42, 0.16, 0.22], launch: [290, 145, 0.06, 0.07] }, [hz, end, duration, gain] = defs[kind];
-      const o = this.audio.createOscillator(), g = this.audio.createGain(), v = { o, g };
-      o.type = kind === "land" ? "sine" : "triangle";
-      o.frequency.setValueAtTime(hz, now);
-      o.frequency.exponentialRampToValueAtTime(end, now + duration);
-      g.gain.setValueAtTime(0, now);
-      g.gain.linearRampToValueAtTime(gain, now + 4e-3);
-      g.gain.exponentialRampToValueAtTime(1e-4, now + duration);
-      o.connect(g);
-      g.connect(this.master);
-      this.voices.add(v);
-      this.peakVoices = Math.max(this.peakVoices, this.voices.size);
-      o.onended = () => {
-        o.disconnect();
-        g.disconnect();
-        this.voices.delete(v);
+      this.lastSound[kind] = NOW;
+      const DEFS = {
+        tap: [340 + step * 65, 420 + step * 65, 0.055, 0.14],
+        complete: [520, 1040, 0.12, 0.2],
+        land: [240, 150, 0.065, 0.1],
+        eat: [740, 990, 0.09, 0.09],
+        strike: [180, 80, 0.075, 0.16],
+        heavy: [95, 42, 0.16, 0.22],
+        launch: [290, 145, 0.06, 0.07]
+      }, [HZ, END, DURATION, GAIN] = DEFS[kind];
+      const O = this.audio.createOscillator(), G = this.audio.createGain(), V = {
+        o: O,
+        g: G
       };
-      o.start(now);
-      o.stop(now + duration + 0.01);
+      O.type = kind === "land" ? "sine" : "triangle";
+      O.frequency.setValueAtTime(HZ, NOW);
+      O.frequency.exponentialRampToValueAtTime(END, NOW + DURATION);
+      G.gain.setValueAtTime(0, NOW);
+      G.gain.linearRampToValueAtTime(GAIN, NOW + 4e-3);
+      G.gain.exponentialRampToValueAtTime(1e-4, NOW + DURATION);
+      O.connect(G);
+      G.connect(this.master);
+      this.voices.add(V);
+      this.peakVoices = Math.max(this.peakVoices, this.voices.size);
+      O.onended = () => {
+        O.disconnect();
+        G.disconnect();
+        this.voices.delete(V);
+      };
+      O.start(NOW);
+      O.stop(NOW + DURATION + 0.01);
     }
     animate(el, frames, duration) {
       this.animations.get(el)?.cancel();
-      const a = el.animate(frames, { duration, easing: "ease-out" });
-      this.animations.set(el, a);
-      a.onfinish = () => {
-        if (this.animations.get(el) === a) this.animations.delete(el);
+      const A = el.animate(frames, {
+        duration,
+        easing: "ease-out"
+      });
+      this.animations.set(el, A);
+      A.onfinish = () => {
+        if (this.animations.get(el) === A) {
+          this.animations.delete(el);
+        }
       };
     }
     tap(source, complete, remainder) {
       this.counts[source]++;
-      const now = performance.now(), manual = source === "manual";
+      const NOW = performance.now(), MANUAL = source === "manual";
       if (complete) {
         this.counts.complete++;
-        this.completeUntil = now + (manual ? 190 : 100);
+        this.completeUntil = NOW + (MANUAL ? 190 : 100);
       }
-      if (manual || now > this.pulseUntil) {
-        this.pulseUntil = now + (manual ? 150 : 55);
-        this.button.dataset.impact = complete && manual ? "complete" : manual ? "manual" : "auto";
-        this.animate(this.button, [{ transform: this.reduced || !manual ? "scale(1)" : complete ? "translateY(3px) scale(1.06,.90)" : "scale(1.025,.95)", filter: manual ? "brightness(1.16)" : "brightness(1.035)" }, { transform: "translateY(0) scale(1)", filter: "brightness(1)" }], manual ? complete ? 210 : 125 : 70);
+      if (MANUAL || NOW > this.pulseUntil) {
+        this.pulseUntil = NOW + (MANUAL ? 150 : 55);
+        this.button.dataset.impact = complete && MANUAL ? "complete" : MANUAL ? "manual" : "auto";
+        this.animate(
+          this.button,
+          [
+            {
+              transform: this.reduced || !MANUAL ? "scale(1)" : complete ? "translateY(3px) scale(1.06,.90)" : "scale(1.025,.95)",
+              filter: MANUAL ? "brightness(1.16)" : "brightness(1.035)"
+            },
+            {
+              transform: "translateY(0) scale(1)",
+              filter: "brightness(1)"
+            }
+          ],
+          MANUAL ? complete ? 210 : 125 : 70
+        );
       }
-      const pip = this.pips[complete ? 4 : remainder - 1];
-      this.animate(pip, [{ transform: this.reduced ? "scale(1)" : "scaleY(1.8)", background: "#fffbea" }, { transform: "scaleY(1)", background: complete ? "#fff1b9" : "#fff1b9" }], manual ? 160 : 70);
-      for (let i = 0; i < 5; i++) this.pips[i].classList.toggle("filled", complete || i < remainder);
-      if (manual) this.sound(complete ? "complete" : "tap", remainder);
+      const PIP = this.pips[complete ? 4 : remainder - 1];
+      this.animate(
+        PIP,
+        [
+          {
+            transform: this.reduced ? "scale(1)" : "scaleY(1.8)",
+            background: "#fffbea"
+          },
+          {
+            transform: "scaleY(1)",
+            background: complete ? "#fff1b9" : "#fff1b9"
+          }
+        ],
+        MANUAL ? 160 : 70
+      );
+      for (let i = 0; i < 5; i++) {
+        this.pips[i].classList.toggle("filled", complete || i < remainder);
+      }
+      if (MANUAL) {
+        this.sound(complete ? "complete" : "tap", remainder);
+      }
     }
     event(kind) {
       if (kind === "food-land" || kind === "eat") {
-        const key = kind === "eat" ? "eat" : "land";
-        this.counts[key]++;
-        this.sound(key);
+        const KEY2 = kind === "eat" ? "eat" : "land";
+        this.counts[KEY2]++;
+        this.sound(KEY2);
       }
     }
     frame(now) {
       this.frameId++;
-      if (now > this.pulseUntil && this.button.dataset.impact !== "") this.button.dataset.impact = "";
+      if (now > this.pulseUntil && this.button.dataset.impact !== "") {
+        this.button.dataset.impact = "";
+      }
     }
   };
 
   // src/combat-feel.js
   init_farm_model();
-  var { ObjectPool } = globalThis.BloomGamekitObjectPool;
-  var createLandingEffect = () => ({ sequence: 0, kind: "unit-land", time: 0, unit: null, x: 0, y: 0, z: 0, strength: 0, at: 0, heard: false });
+  var { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
+  var CREATE_LANDING_EFFECT = () => ({
+    sequence: 0,
+    kind: "unit-land",
+    time: 0,
+    unit: null,
+    x: 0,
+    y: 0,
+    z: 0,
+    strength: 0,
+    at: 0,
+    heard: false
+  });
   function resetLandingEffect(e) {
     e.sequence = e.time = e.x = e.y = e.z = e.strength = e.at = 0;
     e.unit = null;
@@ -7477,108 +12120,178 @@
       this.revision = null;
       this.sequence = 0;
       this.effects = [];
-      this.landingPool = new ObjectPool(createLandingEffect, resetLandingEffect, 48);
+      this.landingPool = new OBJECT_POOL(CREATE_LANDING_EFFECT, resetLandingEffect, 48);
       this.poses = /* @__PURE__ */ new Map();
       this.bossHit = null;
       this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this.counts = { hits: 0, landings: 0 };
+      this.counts = {
+        hits: 0,
+        landings: 0
+      };
     }
     acquireLandingEffect(e, at) {
-      const event = this.landingPool.acquire();
-      event.sequence = e.sequence;
-      event.time = e.time;
-      event.unit = e.unit;
-      event.x = e.x;
-      event.y = e.y;
-      event.z = e.z;
-      event.strength = e.strength;
-      event.at = at;
-      event.heard = false;
-      return event;
+      const EVENT = this.landingPool.acquire();
+      EVENT.sequence = e.sequence;
+      EVENT.time = e.time;
+      EVENT.unit = e.unit;
+      EVENT.x = e.x;
+      EVENT.y = e.y;
+      EVENT.z = e.z;
+      EVENT.strength = e.strength;
+      EVENT.at = at;
+      EVENT.heard = false;
+      return EVENT;
     }
     releaseEffect(event) {
-      if (event.kind === "unit-land") this.landingPool.release(event);
+      if (event.kind === "unit-land") {
+        this.landingPool.release(event);
+      }
     }
     observe(world, displayTimeMs, revision = 0) {
       if (this.world !== world || this.revision !== revision) {
         this.world = world;
         this.revision = revision;
         this.sequence = world.eventSequence;
-        for (const e of this.effects) this.releaseEffect(e);
+        for (const E of this.effects) {
+          this.releaseEffect(E);
+        }
         this.effects.length = 0;
         this.poses.clear();
         this.bossHit = null;
         return;
       }
-      for (const e of world.notices) {
-        if (e.sequence <= this.sequence) continue;
-        if (["boss-hit", "unit-hit", "unit-land", "attack-launch", "boss-launch"].includes(e.kind)) {
-          const at = presentationEventTimeMs(e), event = e.kind === "unit-land" ? this.acquireLandingEffect(e, at) : { ...e, at, heard: false };
-          this.effects.push(event);
-          if (this.effects.length > 48) this.releaseEffect(this.effects.shift());
-          if (e.kind === "boss-hit") {
-            this.counts.hits++;
-            this.bossHit = event;
+      for (const E of world.notices) {
+        if (E.sequence <= this.sequence) {
+          continue;
+        }
+        if (["boss-hit", "unit-hit", "unit-land", "attack-launch", "boss-launch"].includes(E.kind)) {
+          const AT = presentationEventTimeMs(E), EVENT = E.kind === "unit-land" ? this.acquireLandingEffect(E, AT) : {
+            ...E,
+            at: AT,
+            heard: false
+          };
+          this.effects.push(EVENT);
+          if (this.effects.length > 48) {
+            this.releaseEffect(this.effects.shift());
           }
-          if (e.kind === "unit-hit") {
-            this.poses.set(e.unit, { at, until: at + 180, strength: e.strength });
+          if (E.kind === "boss-hit") {
+            this.counts.hits++;
+            this.bossHit = EVENT;
+          }
+          if (E.kind === "unit-hit") {
+            this.poses.set(E.unit, {
+              at: AT,
+              until: AT + 180,
+              strength: E.strength
+            });
             this.counts.hits++;
           }
-          if (e.kind === "unit-land") this.counts.landings++;
+          if (E.kind === "unit-land") {
+            this.counts.landings++;
+          }
         }
       }
       this.sequence = world.eventSequence;
       let retained = 0;
-      for (const e of this.effects) if (displayTimeMs - e.at < 430) this.effects[retained++] = e;
-      else this.releaseEffect(e);
+      for (const E of this.effects) {
+        if (displayTimeMs - E.at < 430) {
+          this.effects[retained++] = E;
+        } else {
+          this.releaseEffect(E);
+        }
+      }
       this.effects.length = retained;
-      for (const [id, p] of this.poses) if (displayTimeMs > p.until) this.poses.delete(id);
+      for (const [ID, P] of this.poses) {
+        if (displayTimeMs > P.until) {
+          this.poses.delete(ID);
+        }
+      }
     }
     squash(id, displayTimeMs) {
-      const p = this.poses.get(id);
-      return !p || this.reduced ? 0 : Math.sin(Math.min(1, (displayTimeMs - p.at) / 180) * Math.PI) * Math.min(0.2, p.strength * 0.12);
+      const P = this.poses.get(id);
+      return !P || this.reduced ? 0 : Math.sin(Math.min(1, (displayTimeMs - P.at) / 180) * Math.PI) * Math.min(0.2, P.strength * 0.12);
     }
     boss(displayTimeMs) {
-      const e = this.bossHit;
-      if (!e || this.reduced) return { x: 0, y: 0, squash: 0 };
-      const q = Math.max(0, Math.min(1, (displayTimeMs - e.at) / 160)), k = Math.sin(q * Math.PI) * (1 - q);
-      return { x: -e.nx * k * 0.1, y: -e.ny * k * 0.1, squash: k * 0.035 };
+      const E = this.bossHit;
+      if (!E || this.reduced) {
+        return {
+          x: 0,
+          y: 0,
+          squash: 0
+        };
+      }
+      const Q = Math.max(0, Math.min(1, (displayTimeMs - E.at) / 160)), K = Math.sin(Q * Math.PI) * (1 - Q);
+      return {
+        x: -E.nx * K * 0.1,
+        y: -E.ny * K * 0.1,
+        squash: K * 0.035
+      };
     }
     sound(event) {
-      if (event.kind === "boss-hit") this.audio.sound("strike", event.species || 0);
-      else if (event.kind === "unit-hit") this.audio.sound(event.attackKind === "sweep" ? "heavy" : "strike");
-      else if (event.kind === "unit-land" && event.strength > 0.2) this.audio.sound("land");
-      else if (event.kind === "boss-launch") this.audio.sound("launch");
+      if (event.kind === "boss-hit") {
+        this.audio.sound("strike", event.species || 0);
+      } else if (event.kind === "unit-hit") {
+        this.audio.sound(event.attackKind === "sweep" ? "heavy" : "strike");
+      } else if (event.kind === "unit-land" && event.strength > 0.2) {
+        this.audio.sound("land");
+      } else if (event.kind === "boss-launch") {
+        this.audio.sound("launch");
+      }
     }
     draw(r, displayTimeMs) {
-      for (const e of this.effects) {
-        const age = displayTimeMs - e.at;
-        if (age < 0 || age > 430) continue;
-        if (!e.heard) {
-          e.heard = true;
-          this.sound(e);
-        }
-        const q = age / 430, heavy = e.attackKind === "sweep", impact = e.kind === "unit-hit" || e.kind === "boss-hit", landing = e.kind === "unit-land";
-        if (e.kind === "attack-launch") {
-          const t2 = Math.min(1, q / 0.35), p = r.project(e.x, e.y, e.z + 0.2);
-          if (t2 < 1) r.ellipse(p.x, p.y, r.scale * 0.12 * (1 - t2), r.scale * 0.2 * (1 - t2), "#ffe7a6");
+      for (const E of this.effects) {
+        const AGE = displayTimeMs - E.at;
+        if (AGE < 0 || AGE > 430) {
           continue;
         }
-        if (!impact && !landing) continue;
-        const t = Math.min(1, q / (landing ? 0.9 : 0.7)), alpha = 1 - t;
-        if (alpha <= 0) continue;
-        const size = landing ? 0.7 : heavy ? 1.15 : 0.6, color = landing ? "157,142,107" : e.kind === "boss-hit" ? "245,199,102" : "231,147,83";
-        r.ring(e.x, e.y, 0.15 + t * size, `rgba(${color},${alpha * 0.8})`, landing ? 0.045 : 0.075);
-        const center = r.project(e.x, e.y, e.z || 0.1), n = landing ? 5 : 6;
-        for (let i = 0; i < n; i++) {
-          const a = i * Math.PI * 2 / n + e.sequence % 11 * 0.19, d = (0.12 + t * size) * (landing ? 1.2 : 1), p = r.project(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, (e.z || 0.1) + (landing ? 0.12 : Math.sin(t * Math.PI) * 0.5));
-          if (landing) r.ellipse(p.x, p.y, r.scale * 0.09 * (1 - t), r.scale * 0.045 * (1 - t), `rgba(${color},${alpha * 0.65})`, a);
-          else {
-            const inner = { x: center.x + (p.x - center.x) * 0.55, y: center.y + (p.y - center.y) * 0.55 };
-            r.line(inner, p, 0.055, `rgba(255,242,190,${alpha})`);
+        if (!E.heard) {
+          E.heard = true;
+          this.sound(E);
+        }
+        const Q = AGE / 430, HEAVY = E.attackKind === "sweep", IMPACT = E.kind === "unit-hit" || E.kind === "boss-hit", LANDING = E.kind === "unit-land";
+        if (E.kind === "attack-launch") {
+          const T2 = Math.min(1, Q / 0.35), P = r.project(E.x, E.y, E.z + 0.2);
+          if (T2 < 1) {
+            r.ellipse(P.x, P.y, r.scale * 0.12 * (1 - T2), r.scale * 0.2 * (1 - T2), "#ffe7a6");
+          }
+          continue;
+        }
+        if (!IMPACT && !LANDING) {
+          continue;
+        }
+        const T = Math.min(1, Q / (LANDING ? 0.9 : 0.7)), ALPHA = 1 - T;
+        if (ALPHA <= 0) {
+          continue;
+        }
+        const SIZE = LANDING ? 0.7 : HEAVY ? 1.15 : 0.6, COLOR = LANDING ? "157,142,107" : E.kind === "boss-hit" ? "245,199,102" : "231,147,83";
+        r.ring(E.x, E.y, 0.15 + T * SIZE, `rgba(${COLOR},${ALPHA * 0.8})`, LANDING ? 0.045 : 0.075);
+        const CENTER = r.project(E.x, E.y, E.z || 0.1), N = LANDING ? 5 : 6;
+        for (let i = 0; i < N; i++) {
+          const A = i * Math.PI * 2 / N + E.sequence % 11 * 0.19, D = (0.12 + T * SIZE) * (LANDING ? 1.2 : 1), P = r.project(
+            E.x + Math.cos(A) * D,
+            E.y + Math.sin(A) * D,
+            (E.z || 0.1) + (LANDING ? 0.12 : Math.sin(T * Math.PI) * 0.5)
+          );
+          if (LANDING) {
+            r.ellipse(
+              P.x,
+              P.y,
+              r.scale * 0.09 * (1 - T),
+              r.scale * 0.045 * (1 - T),
+              `rgba(${COLOR},${ALPHA * 0.65})`,
+              A
+            );
+          } else {
+            const INNER = {
+              x: CENTER.x + (P.x - CENTER.x) * 0.55,
+              y: CENTER.y + (P.y - CENTER.y) * 0.55
+            };
+            r.line(INNER, P, 0.055, `rgba(255,242,190,${ALPHA})`);
           }
         }
-        if (impact && t < 0.28) r.ellipse(center.x, center.y, r.scale * 0.18 * (1 - t), r.scale * 0.12 * (1 - t), "#fff4d6");
+        if (IMPACT && T < 0.28) {
+          r.ellipse(CENTER.x, CENTER.y, r.scale * 0.18 * (1 - T), r.scale * 0.12 * (1 - T), "#fff4d6");
+        }
       }
     }
   };
@@ -7586,11 +12299,17 @@
   // src/raid-roster.js
   init_factions();
   function raidRosterEntries(units, limit = 100) {
-    if (!Array.isArray(units) || !Number.isSafeInteger(limit) || limit < 0) return [];
-    return units.filter((unit2) => unit2?.hp > 0 && unit2.down <= 0 && hasFaction(unit2, FACTION_CONFIG.PLAYER) && !unit2.isBattleOnlySummon && unit2.countsTowardPermanentRoster !== false && unit2.eligibleForRaidDeployment !== false).slice(0, limit).map((unit2) => [unit2.id, unit2.species, unit2.tier]);
+    if (!Array.isArray(units) || !Number.isSafeInteger(limit) || limit < 0) {
+      return [];
+    }
+    return units.filter(
+      (unit) => unit?.hp > 0 && unit.down <= 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false
+    ).slice(0, limit).map((unit) => [unit.id, unit.species, unit.tier]);
   }
   function hasRaidRosterEntries(units) {
-    return Array.isArray(units) && units.some((unit2) => unit2?.hp > 0 && unit2.down <= 0 && hasFaction(unit2, FACTION_CONFIG.PLAYER) && !unit2.isBattleOnlySummon && unit2.countsTowardPermanentRoster !== false && unit2.eligibleForRaidDeployment !== false);
+    return Array.isArray(units) && units.some(
+      (unit) => unit?.hp > 0 && unit.down <= 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false
+    );
   }
 
   // src/farm-app.js
@@ -7604,140 +12323,186 @@
   init_player_progression();
   init_farm_upgrades();
   init_ability_progression();
-  var definitionById3 = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
+  var DEFINITION_BY_ID3 = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
   function renderFarmUpgradeTreeMarkup(state, { location: location2 = "farm", inCombat = false } = {}) {
-    if (!isValidPlayerProgressionState(state)) throw new TypeError("Cannot render invalid player progression state");
-    const nodes = FARM_UPGRADE_NODES.map((node) => {
-      const level = state.farmUpgrades[node.id];
-      const check = canPurchaseFarmUpgrade(state, node.id, { location: location2, inCombat });
-      return `<article class="tree-node" data-ready="${check.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${level}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(level)}${level < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(level + 1)}</span>` : ""}</div><small>${level === FARM_UPGRADE_MAX_LEVELS[node.id] ? "완료" : check.reason ? farmUpgradeReasonLabel(check.reason) : "공용 포인트 1개"}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!check.allowed}" ${check.allowed ? "" : "disabled"}>${level === FARM_UPGRADE_MAX_LEVELS[node.id] ? "✓" : "+"}<span class="sr-only">${node.name} 투자</span></button></article>`;
+    if (!isValidPlayerProgressionState(state)) {
+      throw new TypeError("Cannot render invalid player progression state");
+    }
+    const NODES = FARM_UPGRADE_NODES.map((node) => {
+      const LEVEL = state.farmUpgrades[node.id];
+      const CHECK = canPurchaseFarmUpgrade(state, node.id, {
+        location: location2,
+        inCombat
+      });
+      return `<article class="tree-node" data-ready="${CHECK.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${LEVEL}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(LEVEL)}${LEVEL < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(LEVEL + 1)}</span>` : ""}</div><small>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? "완료" : CHECK.reason ? farmUpgradeReasonLabel(CHECK.reason) : "공용 포인트 1개"}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!CHECK.allowed}" ${CHECK.allowed ? "" : "disabled"}>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? "✓" : "+"}<span class="sr-only">${node.name} 투자</span></button></article>`;
     }).join("");
-    return `<section class="farm-upgrade-tree" aria-label="일반 정원 강화"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 XP 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${nodes}</div></section>`;
+    return `<section class="farm-upgrade-tree" aria-label="일반 정원 강화"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 XP 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
   }
   function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
-    return SPECIES_CATALOG.map((species) => `<button type="button" data-ability-species="${species.id}" aria-pressed="${species.id === selectedSpecies}">${species.name}</button>`).join("");
+    return SPECIES_CATALOG.map(
+      (species) => `<button type="button" data-ability-species="${species.id}" aria-pressed="${species.id === selectedSpecies}">${species.name}</button>`
+    ).join("");
   }
-  function renderAbilityTreeMarkup(state, {
-    highestSpeciesTier = {},
-    location: location2 = "farm",
-    inCombat = false,
-    selectedSpecies = null
-  } = {}) {
-    if (!isValidAbilityProgressionState(state)) throw new TypeError("Cannot render invalid ability progression state");
-    const invested = getInvestedPointCount(state);
-    const context = { highestSpeciesTier, location: location2, inCombat };
-    const resetCheck = canResetAbilityProgression(state, context);
-    const visibleDefinitions = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
-    const cards = visibleDefinitions.map((definition) => renderAbilityCard(state, definition, context)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const levelMarkup = renderPlayerProgressMarkup(state);
+  function renderAbilityTreeMarkup(state, { highestSpeciesTier = {}, location: location2 = "farm", inCombat = false, selectedSpecies = null } = {}) {
+    if (!isValidAbilityProgressionState(state)) {
+      throw new TypeError("Cannot render invalid ability progression state");
+    }
+    const INVESTED = getInvestedPointCount(state);
+    const CONTEXT = {
+      highestSpeciesTier,
+      location: location2,
+      inCombat
+    };
+    const RESET_CHECK = canResetAbilityProgression(state, CONTEXT);
+    const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
+    const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
+    const LEVEL_MARKUP = renderPlayerProgressMarkup(state);
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">특수 능력</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
     <p class="ability-tree__note">능력마다 Rare(T3)에서 해금할 수 있고, 강화와 적용 등급 완화에 같은 포인트를 씁니다. 사용하지 않은 포인트는 보존됩니다.</p>
-    ${levelMarkup}
+    ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
       <p class="ability-tree__lock-note" role="status">${inCombat ? "전투 중에는 투자와 초기화가 잠깁니다." : location2 !== "farm" ? "농장에서 투자하거나 초기화할 수 있습니다." : "농장에서 무료로 초기화할 수 있습니다."}</p>
-      <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!resetCheck.allowed}">무료 초기화</button>
-      <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(resetCheck.reason, invested)}</span>
+      <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!RESET_CHECK.allowed}">무료 초기화</button>
+      <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(RESET_CHECK.reason, INVESTED)}</span>
     </div>
-    <div class="ability-tree__cards">${cards}</div>
+    <div class="ability-tree__cards">${CARDS}</div>
   </section>`;
   }
   function renderPlayerProgressMarkup(state) {
-    if (!Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0) return "";
-    const nextLevelXp = experienceForNextLevel(state.level);
-    if (!Number.isFinite(nextLevelXp) || state.experience >= nextLevelXp) return "";
-    const label = `플레이어 레벨 ${state.level} 경험치`;
+    if (!Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0) {
+      return "";
+    }
+    const NEXT_LEVEL_XP = experienceForNextLevel(state.level);
+    if (!Number.isFinite(NEXT_LEVEL_XP) || state.experience >= NEXT_LEVEL_XP) {
+      return "";
+    }
+    const LABEL = `플레이어 레벨 ${state.level} 경험치`;
     return `<div class="ability-tree__progress" aria-live="polite">
-    <div><strong>플레이어 Lv. ${state.level}</strong><span>${formatXpForDisplay(state.experience)} / ${formatXpForDisplay(nextLevelXp)} XP</span></div>
-    <progress max="${nextLevelXp}" value="${state.experience}" aria-label="${label}"></progress>
+    <div><strong>플레이어 Lv. ${state.level}</strong><span>${formatXpForDisplay(state.experience)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
+    <progress max="${NEXT_LEVEL_XP}" value="${state.experience}" aria-label="${LABEL}"></progress>
   </div>`;
   }
   function renderAbilityCard(state, definition, context) {
-    const investment = state.abilities[definition.id];
-    const powerNodes = definition.powerValues.slice(1).map((value, index) => {
-      const level = index + 1;
-      const label = powerLabel(definition.id, value, level);
-      return renderNode(state, definition, `power-${level}`, powerTitle(definition.id, value), label, context);
+    const INVESTMENT = state.abilities[definition.id];
+    const POWER_NODES = definition.powerValues.slice(1).map((value, index) => {
+      const LEVEL = index + 1;
+      const LABEL = powerLabel(definition.id, value, LEVEL);
+      return renderNode(state, definition, `power-${LEVEL}`, powerTitle(definition.id, value), LABEL, context);
     }).join("");
-    const gradeNodes = definition.gradeThresholds.slice(1).map((tier, index) => {
-      const level = index + 1;
-      const grade = tier === 2 ? "Uncommon (T2)" : "Common (T1)";
-      return renderNode(state, definition, `grade-${level}`, `${grade}까지`, `최소 적용 등급 ${grade}`, context);
+    const GRADE_NODES = definition.gradeThresholds.slice(1).map((tier, index) => {
+      const LEVEL = index + 1;
+      const GRADE = tier === 2 ? "Uncommon (T2)" : "Common (T1)";
+      return renderNode(state, definition, `grade-${LEVEL}`, `${GRADE}까지`, `최소 적용 등급 ${GRADE}`, context);
     }).join("");
-    const minimumTier = getMinimumApplicableTier(state, definition.id);
-    const rootStatus = getAbilityNodeStatus(state, definition, "root", context);
-    const speciesName = speciesById(definition.species).name;
+    const MINIMUM_TIER = getMinimumApplicableTier(state, definition.id);
+    const ROOT_STATUS = getAbilityNodeStatus(state, definition, "root", context);
+    const SPECIES_NAME = speciesById(definition.species).name;
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
-    <header class="ability-card__header"><div><p class="ability-card__species">${speciesName}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${investment.rootUnlocked ? `최소 T${minimumTier}` : "Rare · T3 해금"}</span></header>
+    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${INVESTMENT.rootUnlocked ? `최소 T${MINIMUM_TIER}` : "Rare · T3 해금"}</span></header>
     <p class="ability-card__description">${definition.description}</p>
     <div class="ability-card__root">
       <span class="ability-node__branch-label">능력 루트</span>
-      ${renderNode(state, definition, "root", "능력 해금", `Rare (T${definition.rootTier}) 개체 필요`, context, rootStatus)}
+      ${renderNode(state, definition, "root", "능력 해금", `Rare (T${definition.rootTier}) 개체 필요`, context, ROOT_STATUS)}
       <p class="ability-card__base-effect">기본 효과: ${powerLabel(definition.id, definition.powerValues[0], 0)}</p>
     </div>
     <div class="ability-card__branches">
-      <section class="ability-branch" aria-label="능력 강화 경로"><h4>능력 강화</h4><div class="ability-branch__nodes">${powerNodes}</div></section>
-      <section class="ability-branch" aria-label="적용 등급 완화 경로"><h4>적용 등급 완화</h4><div class="ability-branch__nodes">${gradeNodes}</div></section>
+      <section class="ability-branch" aria-label="능력 강화 경로"><h4>능력 강화</h4><div class="ability-branch__nodes">${POWER_NODES}</div></section>
+      <section class="ability-branch" aria-label="적용 등급 완화 경로"><h4>적용 등급 완화</h4><div class="ability-branch__nodes">${GRADE_NODES}</div></section>
     </div>
   </article>`;
   }
   function renderNode(state, definition, nodeId, title, effect, context, knownStatus = null) {
-    const status = knownStatus || getAbilityNodeStatus(state, definition, nodeId, context);
-    const hintId = `ability-help-${definition.id}-${nodeId.replace(/[^a-z0-9-]/gi, "-")}`;
-    const statusText = status.purchased ? "투자 완료" : nodeReasonLabel(status.reason, definition, context);
-    const attr = nodeId === "root" ? `${definition.id}:root` : `${definition.id}:${nodeId.replace(/-(\d+)$/, ":$1")}`;
-    return `<div class="ability-node ${status.purchased ? "is-purchased" : ""} ${status.ready ? "is-ready" : "is-locked"}">
-    <button type="button" class="ability-node__button" data-ability-node="${attr}" aria-describedby="${hintId}" aria-disabled="${!status.ready}">
-      <span class="ability-node__title">${title}</span><span class="ability-node__effect">${effect}</span><span class="ability-node__cost">${status.purchased ? "완료" : "1 포인트"}</span>
+    const STATUS = knownStatus || getAbilityNodeStatus(state, definition, nodeId, context);
+    const HINT_ID = `ability-help-${definition.id}-${nodeId.replace(/[^a-z0-9-]/gi, "-")}`;
+    const STATUS_TEXT = STATUS.purchased ? "투자 완료" : nodeReasonLabel(STATUS.reason, definition, context);
+    const ATTR = nodeId === "root" ? `${definition.id}:root` : `${definition.id}:${nodeId.replace(/-(\d+)$/, ":$1")}`;
+    return `<div class="ability-node ${STATUS.purchased ? "is-purchased" : ""} ${STATUS.ready ? "is-ready" : "is-locked"}">
+    <button type="button" class="ability-node__button" data-ability-node="${ATTR}" aria-describedby="${HINT_ID}" aria-disabled="${!STATUS.ready}">
+      <span class="ability-node__title">${title}</span><span class="ability-node__effect">${effect}</span><span class="ability-node__cost">${STATUS.purchased ? "완료" : "1 포인트"}</span>
     </button>
-    <span class="ability-node__status" id="${hintId}">${statusText}</span>
+    <span class="ability-node__status" id="${HINT_ID}">${STATUS_TEXT}</span>
   </div>`;
   }
   function powerLabel(abilityId, value, level) {
-    if (abilityId === "pea-death-split") return `전투 사망 시 같은 종 T1 ${value}마리 생성`;
+    if (abilityId === "pea-death-split") {
+      return `전투 사망 시 같은 종 T1 ${value}마리 생성`;
+    }
     if (abilityId === "corn-burst-fire") {
-      const share = definitionById3.get(abilityId).projectileAttackShare;
-      return `한 공격 주기 · 발사 ${value}발 · 발당 ATK ×${abilityProfile(1).skillMultiplier * share}`;
+      const SHARE = DEFINITION_BY_ID3.get(abilityId).projectileAttackShare;
+      return `한 공격 주기 · 발사 ${value}발 · 발당 ATK ×${abilityProfile(1).skillMultiplier * SHARE}`;
     }
     if (abilityId === "corn-popcorn-chain") {
-      const definition = definitionById3.get(abilityId);
-      const radiusMultiplier = definition.radiusMultipliers[level] || definition.radiusMultipliers[0];
-      return `착탄 ${definition.fuseSeconds}초 후 · 팝콘 접촉 즉시 연쇄 · 피해 ATK ×${value} · 반경 기본 사거리 ×${definition.baseRangeFraction} ×${radiusMultiplier}`;
+      const DEFINITION = DEFINITION_BY_ID3.get(abilityId);
+      const RADIUS_MULTIPLIER = DEFINITION.radiusMultipliers[level] || DEFINITION.radiusMultipliers[0];
+      return `착탄 ${DEFINITION.fuseSeconds}초 후 · 팝콘 접촉 즉시 연쇄 · 피해 ATK ×${value} · 반경 기본 사거리 ×${DEFINITION.baseRangeFraction} ×${RADIUS_MULTIPLIER}`;
     }
     if (abilityId === "chestnut-spike-fan") {
-      const definition = definitionById3.get(abilityId);
-      return `목표 방향 부채꼴 90° ${value}발 · 발당 ATK ×${definition.projectileAttackMultiplier} · 기본 공격 ${definition.intervalBasicCycles}주기마다`;
+      const DEFINITION = DEFINITION_BY_ID3.get(abilityId);
+      return `목표 방향 부채꼴 90° ${value}발 · 발당 ATK ×${DEFINITION.projectileAttackMultiplier} · 기본 공격 ${DEFINITION.intervalBasicCycles}주기마다`;
     }
-    if (abilityId === "kidney-continuous-leap") return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
-    if (abilityId === "kidney-landing-shockwave") return `충격파 피해·반경 ${value}×`;
-    if (abilityId === "peanut-separated-assault") return `한 공격 주기 ${value}타 · 타격당 ATK ×${definitionById3.get(abilityId).strikeAttackMultiplier} · 넓은 협공 궤적`;
+    if (abilityId === "kidney-continuous-leap") {
+      return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
+    }
+    if (abilityId === "kidney-landing-shockwave") {
+      return `충격파 피해·반경 ${value}×`;
+    }
+    if (abilityId === "peanut-separated-assault") {
+      return `한 공격 주기 ${value}타 · 타격당 ATK ×${DEFINITION_BY_ID3.get(abilityId).strikeAttackMultiplier} · 넓은 협공 궤적`;
+    }
     if (abilityId === "walnut-guard-slam") {
-      const definition = definitionById3.get(abilityId);
-      return `첫 방어 피격 피해 −${Math.round((1 - definition.receivedDamageMultiplier) * 100)}%·넉백 −${Math.round((1 - definition.receivedKnockbackMultiplier) * 100)}% · 다음 공격 ATK ×${value} · 충격파 반경 기본 사거리 ×${definition.radiusBaseRangeFraction * definition.radiusMultipliers[level]}`;
+      const DEFINITION = DEFINITION_BY_ID3.get(abilityId);
+      return `첫 방어 피격 피해 −${Math.round((1 - DEFINITION.receivedDamageMultiplier) * 100)}%·넉백 −${Math.round((1 - DEFINITION.receivedKnockbackMultiplier) * 100)}% · 다음 공격 ATK ×${value} · 충격파 반경 기본 사거리 ×${DEFINITION.radiusBaseRangeFraction * DEFINITION.radiusMultipliers[level]}`;
     }
-    if (abilityId === "rice-low-health-harvest") return `HP ${Math.round(definitionById3.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
+    if (abilityId === "rice-low-health-harvest") {
+      return `HP ${Math.round(DEFINITION_BY_ID3.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
+    }
     if (abilityId === "wheat-command-crit") {
-      const definition = definitionById3.get(abilityId);
-      return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${definition.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${definition.durationSeconds}초`;
+      const DEFINITION = DEFINITION_BY_ID3.get(abilityId);
+      return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${DEFINITION.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${DEFINITION.durationSeconds}초`;
     }
-    if (abilityId === "barley-armor-break") return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · 5초`;
+    if (abilityId === "barley-armor-break") {
+      return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · 5초`;
+    }
     return `강화 ${level}`;
   }
   function powerTitle(abilityId, value) {
-    if (abilityId === "pea-death-split") return `T1 ${value}마리 생성`;
-    if (abilityId === "corn-burst-fire") return `${value}발 연사`;
-    if (abilityId === "corn-popcorn-chain") return `ATK ×${value} 폭발`;
-    if (abilityId === "chestnut-spike-fan") return `가시 ${value}발`;
-    if (abilityId === "kidney-continuous-leap") return `초기화 ${Math.round(value * 100)}%`;
-    if (abilityId === "kidney-landing-shockwave") return `충격파 ×${value}`;
-    if (abilityId === "peanut-separated-assault") return `협공 ${value}타`;
-    if (abilityId === "walnut-guard-slam") return `반격 피해 ×${value}`;
-    if (abilityId === "rice-low-health-harvest") return `수확 피해 ×${value}`;
-    if (abilityId === "wheat-command-crit") return `치명타 +${Math.round(value * 100)}%p`;
-    if (abilityId === "barley-armor-break") return `방어도 ${Math.round(value * 100)}% 감소`;
+    if (abilityId === "pea-death-split") {
+      return `T1 ${value}마리 생성`;
+    }
+    if (abilityId === "corn-burst-fire") {
+      return `${value}발 연사`;
+    }
+    if (abilityId === "corn-popcorn-chain") {
+      return `ATK ×${value} 폭발`;
+    }
+    if (abilityId === "chestnut-spike-fan") {
+      return `가시 ${value}발`;
+    }
+    if (abilityId === "kidney-continuous-leap") {
+      return `초기화 ${Math.round(value * 100)}%`;
+    }
+    if (abilityId === "kidney-landing-shockwave") {
+      return `충격파 ×${value}`;
+    }
+    if (abilityId === "peanut-separated-assault") {
+      return `협공 ${value}타`;
+    }
+    if (abilityId === "walnut-guard-slam") {
+      return `반격 피해 ×${value}`;
+    }
+    if (abilityId === "rice-low-health-harvest") {
+      return `수확 피해 ×${value}`;
+    }
+    if (abilityId === "wheat-command-crit") {
+      return `치명타 +${Math.round(value * 100)}%p`;
+    }
+    if (abilityId === "barley-armor-break") {
+      return `방어도 ${Math.round(value * 100)}% 감소`;
+    }
     return "능력 강화";
   }
   function nodeReasonLabel(reason, definition, context) {
@@ -7765,10 +12530,18 @@
     }
   }
   function resetReasonLabel(reason, invested) {
-    if (reason === "nothing-invested") return "투자한 포인트가 없습니다.";
-    if (reason === "combat-lock") return "전투 중에는 초기화할 수 없습니다.";
-    if (reason === "farm-only") return "농장에서만 초기화할 수 있습니다.";
-    if (reason === "invalid-state") return "성장 데이터가 유효하지 않습니다.";
+    if (reason === "nothing-invested") {
+      return "투자한 포인트가 없습니다.";
+    }
+    if (reason === "combat-lock") {
+      return "전투 중에는 초기화할 수 없습니다.";
+    }
+    if (reason === "farm-only") {
+      return "농장에서만 초기화할 수 있습니다.";
+    }
+    if (reason === "invalid-state") {
+      return "성장 데이터가 유효하지 않습니다.";
+    }
     return `투자 ${invested}개를 무료로 돌려받습니다.`;
   }
   function farmUpgradeReasonLabel(reason) {
@@ -7793,9 +12566,9 @@
   init_boss_rewards();
   init_farm_boss_stages();
   init_species_catalog();
-  var $2 = (id) => document.getElementById(id);
-  var storage = new FarmStorage();
-  $2("abilitySpeciesTabs").innerHTML = renderAbilitySpeciesTabsMarkup();
+  var DOLLAR2 = (id) => document.getElementById(id);
+  var STORAGE = new FarmStorage();
+  DOLLAR2("abilitySpeciesTabs").innerHTML = renderAbilitySpeciesTabsMarkup();
   var observedWorld = null;
   var imported = null;
   var importedLegacy = false;
@@ -7819,208 +12592,288 @@
   var bossSwipe = null;
   var bossPauseBeforeOpen = null;
   var lastAutoSettledRunKey = null;
-  var renderer = new Diorama($2("world"));
-  var measuredFrames = [];
+  var RENDERER = new DIORAMA(DOLLAR2("world"));
+  var MEASURED_FRAMES = [];
   var lastFrameTimestamp = null;
   var frameCount = 0;
   function measureFrame(now) {
     if (lastFrameTimestamp !== null) {
-      measuredFrames.push(now - lastFrameTimestamp);
-      if (measuredFrames.length > 240) measuredFrames.shift();
+      MEASURED_FRAMES.push(now - lastFrameTimestamp);
+      if (MEASURED_FRAMES.length > 240) {
+        MEASURED_FRAMES.shift();
+      }
     }
     lastFrameTimestamp = now;
     frameCount++;
   }
   function frameRate() {
-    const sorted = [...measuredFrames].sort((a, b) => a - b), sum = measuredFrames.reduce((a, b) => a + b, 0);
-    return { frames: frameCount, fps: sum ? measuredFrames.length * 1e3 / sum : 0, frametimeMs: { p50: sorted[Math.floor((sorted.length - 1) * 0.5)] || 0, p95: sorted[Math.floor((sorted.length - 1) * 0.95)] || 0, max: Math.max(0, ...measuredFrames) } };
+    const SORTED = [...MEASURED_FRAMES].sort((a, b) => a - b), SUM = MEASURED_FRAMES.reduce((a, b) => a + b, 0);
+    return {
+      frames: frameCount,
+      fps: SUM ? MEASURED_FRAMES.length * 1e3 / SUM : 0,
+      frametimeMs: {
+        p50: SORTED[Math.floor((SORTED.length - 1) * 0.5)] || 0,
+        p95: SORTED[Math.floor((SORTED.length - 1) * 0.95)] || 0,
+        max: Math.max(0, ...MEASURED_FRAMES)
+      }
+    };
   }
-  var fail3 = (error) => {
-    $2("error").hidden = false;
-    $2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
+  var FAIL3 = (error) => {
+    DOLLAR2("error").hidden = false;
+    DOLLAR2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
     console.error(error);
-    if (active) active.paused = true;
-  };
-  var bossPreviewSources = /* @__PURE__ */ new Map();
-  var bossPreviewVersions = /* @__PURE__ */ new WeakMap();
-  function bossPreviewSource(asset) {
-    if (bossPreviewSources.has(asset)) {
-      const cached = bossPreviewSources.get(asset);
-      bossPreviewSources.delete(asset);
-      bossPreviewSources.set(asset, cached);
-      return cached;
+    if (active) {
+      active.paused = true;
     }
-    const source = fetch(new URL(asset, document.baseURI), { credentials: "same-origin" }).then((response) => {
-      if (!response.ok) throw Error(`Boss preview source failed: ${response.status}`);
+  };
+  var BOSS_PREVIEW_SOURCES = /* @__PURE__ */ new Map();
+  var BOSS_PREVIEW_VERSIONS = /* @__PURE__ */ new WeakMap();
+  function bossPreviewSource(asset) {
+    if (BOSS_PREVIEW_SOURCES.has(asset)) {
+      const CACHED = BOSS_PREVIEW_SOURCES.get(asset);
+      BOSS_PREVIEW_SOURCES.delete(asset);
+      BOSS_PREVIEW_SOURCES.set(asset, CACHED);
+      return CACHED;
+    }
+    const SOURCE = fetch(new URL(asset, document.baseURI), {
+      credentials: "same-origin"
+    }).then((response) => {
+      if (!response.ok) {
+        throw Error(`Boss preview source failed: ${response.status}`);
+      }
       return response.text();
     });
-    bossPreviewSources.set(asset, source);
-    if (bossPreviewSources.size > 16) bossPreviewSources.delete(bossPreviewSources.keys().next().value);
-    source.catch(() => {
-      if (bossPreviewSources.get(asset) === source) bossPreviewSources.delete(asset);
+    BOSS_PREVIEW_SOURCES.set(asset, SOURCE);
+    if (BOSS_PREVIEW_SOURCES.size > 16) {
+      BOSS_PREVIEW_SOURCES.delete(BOSS_PREVIEW_SOURCES.keys().next().value);
+    }
+    SOURCE.catch(() => {
+      if (BOSS_PREVIEW_SOURCES.get(asset) === SOURCE) {
+        BOSS_PREVIEW_SOURCES.delete(asset);
+      }
     });
-    return source;
+    return SOURCE;
   }
   async function createNeutralBossPreview(species, asset) {
-    const compiled = globalThis.BudmoriVectorResources?.troops?.[species], expressions = compiled?.metadata?.expressions, neutral = expressions?.neutral;
-    if (!neutral) throw Error(`Species ${species} is missing the neutral GameKit expression`);
-    const documentSvg = new DOMParser().parseFromString(await bossPreviewSource(`./assets/troops/${asset}`), "image/svg+xml");
-    if (documentSvg.getElementsByTagName("parsererror").length || documentSvg.documentElement.localName !== "svg") throw Error(`Invalid SVG preview source: ${asset}`);
-    const svg = documentSvg.documentElement, nodesById = new Map([...svg.querySelectorAll("[id]")].map((node) => [node.getAttribute("id"), node]));
-    const expressionParts = new Set(Object.values(expressions).flatMap((variant) => [...variant.show, ...variant.hide])), visible = new Set(neutral.show);
-    for (const id of neutral.hide) visible.delete(id);
-    for (const id of expressionParts) {
-      const node = nodesById.get(id);
-      if (!node) throw Error(`SVG preview is missing GameKit expression part: ${id}`);
-      node.style.setProperty("display", visible.has(id) ? "inline" : "none");
+    const COMPILED = globalThis.BudmoriVectorResources?.troops?.[species], EXPRESSIONS = COMPILED?.metadata?.expressions, NEUTRAL = EXPRESSIONS?.neutral;
+    if (!NEUTRAL) {
+      throw Error(`Species ${species} is missing the neutral GameKit expression`);
     }
-    const idlePose = compiled.metadata.clips.idle.keyframes[0].parts;
-    for (const [id, pose] of Object.entries(idlePose)) if (pose.opacity !== void 0) {
-      const node = nodesById.get(id);
-      if (!node) throw Error(`SVG preview is missing idle part: ${id}`);
-      node.style.setProperty("opacity", String(pose.opacity));
+    const DOCUMENT_SVG = new DOMParser().parseFromString(
+      await bossPreviewSource(`./assets/troops/${asset}`),
+      "image/svg+xml"
+    );
+    if (DOCUMENT_SVG.getElementsByTagName("parsererror").length || DOCUMENT_SVG.documentElement.localName !== "svg") {
+      throw Error(`Invalid SVG preview source: ${asset}`);
     }
-    return document.importNode(svg, true);
+    const SVG = DOCUMENT_SVG.documentElement, NODES_BY_ID = new Map([...SVG.querySelectorAll("[id]")].map((node) => [node.getAttribute("id"), node]));
+    const EXPRESSION_PARTS = new Set(
+      Object.values(EXPRESSIONS).flatMap((variant) => [...variant.show, ...variant.hide])
+    ), VISIBLE = new Set(NEUTRAL.show);
+    for (const ID of NEUTRAL.hide) {
+      VISIBLE.delete(ID);
+    }
+    for (const ID of EXPRESSION_PARTS) {
+      const NODE = NODES_BY_ID.get(ID);
+      if (!NODE) {
+        throw Error(`SVG preview is missing GameKit expression part: ${ID}`);
+      }
+      NODE.style.setProperty("display", VISIBLE.has(ID) ? "inline" : "none");
+    }
+    const IDLE_POSE = COMPILED.metadata.clips.idle.keyframes[0].parts;
+    for (const [ID, POSE] of Object.entries(IDLE_POSE)) {
+      if (POSE.opacity !== void 0) {
+        const NODE = NODES_BY_ID.get(ID);
+        if (!NODE) {
+          throw Error(`SVG preview is missing idle part: ${ID}`);
+        }
+        NODE.style.setProperty("opacity", String(POSE.opacity));
+      }
+    }
+    return document.importNode(SVG, true);
   }
   async function renderNeutralBossPreview(target, species, asset, label = "") {
-    const version = (bossPreviewVersions.get(target) || 0) + 1;
-    bossPreviewVersions.set(target, version);
+    const VERSION = (BOSS_PREVIEW_VERSIONS.get(target) || 0) + 1;
+    BOSS_PREVIEW_VERSIONS.set(target, VERSION);
     target.setAttribute("aria-busy", "true");
     try {
-      const svg = await createNeutralBossPreview(species, asset);
-      if (bossPreviewVersions.get(target) !== version || !target.isConnected) return;
-      svg.id = target.id;
-      svg.setAttribute("class", target.getAttribute("class") || "");
-      svg.removeAttribute("hidden");
-      svg.setAttribute("aria-busy", "false");
-      if (label) {
-        svg.setAttribute("role", "img");
-        svg.setAttribute("aria-label", label);
-      } else {
-        svg.setAttribute("aria-hidden", "true");
-        svg.removeAttribute("role");
-        svg.removeAttribute("aria-label");
+      const SVG = await createNeutralBossPreview(species, asset);
+      if (BOSS_PREVIEW_VERSIONS.get(target) !== VERSION || !target.isConnected) {
+        return;
       }
-      target.replaceWith(svg);
-      bossPreviewVersions.set(svg, version);
+      SVG.id = target.id;
+      SVG.setAttribute("class", target.getAttribute("class") || "");
+      SVG.removeAttribute("hidden");
+      SVG.setAttribute("aria-busy", "false");
+      if (label) {
+        SVG.setAttribute("role", "img");
+        SVG.setAttribute("aria-label", label);
+      } else {
+        SVG.setAttribute("aria-hidden", "true");
+        SVG.removeAttribute("role");
+        SVG.removeAttribute("aria-label");
+      }
+      target.replaceWith(SVG);
+      BOSS_PREVIEW_VERSIONS.set(SVG, VERSION);
     } catch (error) {
-      if (bossPreviewVersions.get(target) !== version) return;
+      if (BOSS_PREVIEW_VERSIONS.get(target) !== VERSION) {
+        return;
+      }
       target.hidden = true;
       target.setAttribute("aria-busy", "false");
       console.error("Unable to render neutral boss preview", error);
     }
   }
   function writeCheckpoint(world = personalGarden) {
-    if (!world) return false;
-    const ok = storage.save(world);
-    $2("saveNotice").textContent = ok ? "" : storage.error;
-    $2("treeStorage").hidden = ok;
-    return ok;
+    if (!world) {
+      return false;
+    }
+    const OK = STORAGE.save(world);
+    DOLLAR2("saveNotice").textContent = OK ? "" : STORAGE.error;
+    DOLLAR2("treeStorage").hidden = OK;
+    return OK;
   }
-  var autosave = new FarmAutosave(() => writeCheckpoint());
+  var AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
   function saveImmediate(world = personalGarden) {
-    const ok = writeCheckpoint(world);
-    if (ok) autosave.reset();
-    return ok;
+    const OK = writeCheckpoint(world);
+    if (OK) {
+      AUTOSAVE.reset();
+    }
+    return OK;
   }
-  var observedProgressRevisions = /* @__PURE__ */ new WeakMap();
+  var OBSERVED_PROGRESS_REVISIONS = /* @__PURE__ */ new WeakMap();
   function markPersistentChange(world) {
-    if (world !== personalGarden || observedProgressRevisions.get(world) === world.progressRevision) return;
-    observedProgressRevisions.set(world, world.progressRevision);
-    autosave.markDirty();
+    if (world !== personalGarden || OBSERVED_PROGRESS_REVISIONS.get(world) === world.progressRevision) {
+      return;
+    }
+    OBSERVED_PROGRESS_REVISIONS.set(world, world.progressRevision);
+    AUTOSAVE.markDirty();
   }
   function onWorldStep(world) {
     markPersistentChange(world);
-    if (world?.scene !== "raid" || !["victory", "defeat"].includes(world.encounter?.outcome) || !personalGarden || personalGarden.activeRaidRunSequence === null) return;
-    const ownerId = active?.localPlayerId, run = { sessionId: personalGarden.activeRaidSessionId, runSequence: personalGarden.activeRaidRunSequence };
-    if (!ownerId || !run.sessionId || !run.runSequence) return;
-    const runKey = `${run.sessionId}:${run.runSequence}`;
-    if (lastAutoSettledRunKey === runKey) return;
-    lastAutoSettledRunKey = runKey;
+    if (world?.scene !== "raid" || !["victory", "defeat"].includes(world.encounter?.outcome) || !personalGarden || personalGarden.activeRaidRunSequence === null) {
+      return;
+    }
+    const OWNER_ID = active?.localPlayerId, RUN = {
+      sessionId: personalGarden.activeRaidSessionId,
+      runSequence: personalGarden.activeRaidRunSequence
+    };
+    if (!OWNER_ID || !RUN.sessionId || !RUN.runSequence) {
+      return;
+    }
+    const RUN_KEY = `${RUN.sessionId}:${RUN.runSequence}`;
+    if (lastAutoSettledRunKey === RUN_KEY) {
+      return;
+    }
+    lastAutoSettledRunKey = RUN_KEY;
     try {
-      persistRaidSettlement(localSettlementRoster(world, ownerId, run), ownerId);
+      persistRaidSettlement(localSettlementRoster(world, OWNER_ID, RUN), OWNER_ID);
     } catch (error) {
-      fail3(error);
+      FAIL3(error);
     }
   }
   function persist() {
-    if (active?.world === personalGarden) active.flushQueuedCommands();
-    if (personalGarden?.hasProgressTimers()) autosave.markDirty();
-    return autosave.flush();
+    if (active?.world === personalGarden) {
+      active.flushQueuedCommands();
+    }
+    if (personalGarden?.hasProgressTimers()) {
+      AUTOSAVE.markDirty();
+    }
+    return AUTOSAVE.flush();
   }
-  var foodFeel = new FoodFeel(requestFeed);
-  var combatFeel = new CombatFeel(foodFeel);
+  var FOOD_FEEL = new FoodFeel(requestFeed);
+  var COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
   function requestFeed() {
     if (!home && active && !active.paused) {
-      foodFeel.unlock();
+      FOOD_FEEL.unlock();
       active.queue("feed");
     }
   }
   function install(world) {
-    if (active) stopWorldInput();
+    if (active) {
+      stopWorldInput();
+    }
     active?.dispose();
-    renderer.resetPan();
-    active = new FarmSession(world, { onError: fail3, onWorldStep });
+    RENDERER.resetPan();
+    active = new FarmSession(world, {
+      onError: FAIL3,
+      onWorldStep
+    });
     noticeSequence = world.eventSequence;
     observedWorld = world;
     return active;
   }
-  install(new Garden());
+  install(new GARDEN());
   active.paused = true;
   function showBossEncounterMessage(text) {
-    const message = $2("bossEncounterMessage");
-    message.textContent = text;
-    message.hidden = !text;
+    const MESSAGE = DOLLAR2("bossEncounterMessage");
+    MESSAGE.textContent = text;
+    MESSAGE.hidden = !text;
     if (text) {
       clearTimeout(showBossEncounterMessage.timer);
       showBossEncounterMessage.timer = setTimeout(() => {
-        message.hidden = true;
+        MESSAGE.hidden = true;
       }, 1800);
     }
   }
   function renderBossEncounterStage(stage) {
-    if (!personalGarden || active?.world?.scene === "raid") return null;
-    const progress = personalGarden.farmBossProgress, wasSelected = progress.selections.some((entry) => entry.stage === stage), previousStage = progress.currentStage;
-    const selection = selectFarmBossStage(progress, stage);
-    if (!wasSelected || previousStage !== stage) {
+    if (!personalGarden || active?.world?.scene === "raid") {
+      return null;
+    }
+    const PROGRESS = personalGarden.farmBossProgress, WAS_SELECTED = PROGRESS.selections.some((entry) => entry.stage === stage), PREVIOUS_STAGE = PROGRESS.currentStage;
+    const SELECTION = selectFarmBossStage(PROGRESS, stage);
+    if (!WAS_SELECTED || PREVIOUS_STAGE !== stage) {
       personalGarden.markProgressChanged();
       saveImmediate(personalGarden);
     }
-    const species = selection.species, catalogEntry = speciesById(species), rewardName = speciesRewardName(species), encounterName = giantSpeciesName(species), rolls = selection.rolls;
-    $2("bossStageCounter").textContent = `${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
-    $2("bossStageLabel").textContent = `STAGE ${selection.stage}`;
-    renderNeutralBossPreview($2("bossPreview"), species, catalogEntry.asset, `${encounterName} 미리보기`);
-    $2("bossStageName").textContent = encounterName;
-    $2("bossStageHp").textContent = `HP ${Math.round(selection.hp).toLocaleString("ko-KR")}`;
-    $2("bossStageAttack").textContent = `공격력 ${Number(selection.attackPower.toPrecision(3)).toLocaleString("ko-KR")}`;
-    $2("bossStageXp").textContent = `+${selection.xp.toLocaleString("ko-KR")} XP`;
-    $2("bossStageDrop").hidden = rolls === 0;
-    $2("bossStageDrop").replaceChildren();
-    if (rolls > 0) {
-      const icon = document.createElement("img");
-      icon.draggable = false;
-      const label = document.createElement("span"), title = document.createElement("strong"), details = document.createElement("small");
-      title.textContent = rewardName;
-      details.textContent = `${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리`;
-      label.append(title, details);
-      $2("bossStageDrop").append(icon, label);
-      renderNeutralBossPreview(icon, species, catalogEntry.asset);
-      $2("bossStageNotice").textContent = "";
-    } else $2("bossStageNotice").textContent = "종 보상은 없어요 · 5스테이지부터 1회 추첨";
-    $2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.units) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null;
-    $2("bossEncounterChallenge").title = $2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요." : "";
-    return selection;
+    const SPECIES = SELECTION.species, CATALOG_ENTRY = speciesById(SPECIES), REWARD_NAME = speciesRewardName(SPECIES), ENCOUNTER_NAME = giantSpeciesName(SPECIES), ROLLS = SELECTION.rolls;
+    DOLLAR2("bossStageCounter").textContent = `${SELECTION.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
+    DOLLAR2("bossStageLabel").textContent = `STAGE ${SELECTION.stage}`;
+    renderNeutralBossPreview(DOLLAR2("bossPreview"), SPECIES, CATALOG_ENTRY.asset, `${ENCOUNTER_NAME} 미리보기`);
+    DOLLAR2("bossStageName").textContent = ENCOUNTER_NAME;
+    DOLLAR2("bossStageHp").textContent = `HP ${Math.round(SELECTION.hp).toLocaleString("ko-KR")}`;
+    DOLLAR2("bossStageAttack").textContent = `공격력 ${Number(SELECTION.attackPower.toPrecision(3)).toLocaleString("ko-KR")}`;
+    DOLLAR2("bossStageXp").textContent = `+${SELECTION.xp.toLocaleString("ko-KR")} XP`;
+    DOLLAR2("bossStageDrop").hidden = ROLLS === 0;
+    DOLLAR2("bossStageDrop").replaceChildren();
+    if (ROLLS > 0) {
+      const ICON = document.createElement("img");
+      ICON.draggable = false;
+      const LABEL = document.createElement("span"), TITLE = document.createElement("strong"), DETAILS = document.createElement("small");
+      TITLE.textContent = REWARD_NAME;
+      DETAILS.textContent = `${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${ROLLS}회 개별 추첨 · 성공마다 T1 1마리`;
+      LABEL.append(TITLE, DETAILS);
+      DOLLAR2("bossStageDrop").append(ICON, LABEL);
+      renderNeutralBossPreview(ICON, SPECIES, CATALOG_ENTRY.asset);
+      DOLLAR2("bossStageNotice").textContent = "";
+    } else {
+      DOLLAR2("bossStageNotice").textContent = "종 보상은 없어요 · 5스테이지부터 1회 추첨";
+    }
+    DOLLAR2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.units) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null;
+    DOLLAR2("bossEncounterChallenge").title = DOLLAR2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요." : "";
+    return SELECTION;
   }
   function openBossEncounter(push = true) {
     stopWorldInput();
-    if (active?.world?.scene === "raid") return false;
-    if (!personalGarden) {
-      if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)), false);
-      else return false;
+    if (active?.world?.scene === "raid") {
+      return false;
     }
-    if (personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null) return false;
-    if (!persist()) return false;
-    if (menuOpen) closeMenu(false);
+    if (!personalGarden) {
+      if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
+        start(restore(snapshot(STORAGE.world)), false);
+      } else {
+        return false;
+      }
+    }
+    if (personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null) {
+      return false;
+    }
+    if (!persist()) {
+      return false;
+    }
+    if (menuOpen) {
+      closeMenu(false);
+    }
     bossPauseBeforeOpen = active?.paused ?? true;
     if (active && !bossPauseBeforeOpen) {
       active.paused = true;
@@ -8028,23 +12881,27 @@
     }
     bossEncounterOpen = true;
     document.body.dataset.bossScreen = "true";
-    $2("bossEncounterScreen").hidden = false;
+    DOLLAR2("bossEncounterScreen").hidden = false;
     renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
-    if (push) history.pushState(null, "", "#/boss");
-    $2("bossEncounterBack").focus();
+    if (push) {
+      history.pushState(null, "", "#/boss");
+    }
+    DOLLAR2("bossEncounterBack").focus();
     return true;
   }
   function closeBossEncounter(push = true) {
-    if (!bossEncounterOpen) return;
+    if (!bossEncounterOpen) {
+      return;
+    }
     bossEncounterOpen = false;
     document.body.dataset.bossScreen = "false";
-    $2("bossEncounterScreen").hidden = true;
+    DOLLAR2("bossEncounterScreen").hidden = true;
     bossSwipe = null;
-    for (const id of ["bossPreview"]) {
-      const preview = $2(id);
-      if (preview) {
-        bossPreviewVersions.set(preview, (bossPreviewVersions.get(preview) || 0) + 1);
-        preview.hidden = true;
+    for (const ID of ["bossPreview"]) {
+      const PREVIEW = DOLLAR2(ID);
+      if (PREVIEW) {
+        BOSS_PREVIEW_VERSIONS.set(PREVIEW, (BOSS_PREVIEW_VERSIONS.get(PREVIEW) || 0) + 1);
+        PREVIEW.hidden = true;
       }
     }
     if (active && bossPauseBeforeOpen !== null) {
@@ -8052,42 +12909,51 @@
       bossPauseBeforeOpen = null;
       active.loop.resetTiming();
     }
-    if (push) history.pushState(null, "", "#/farm");
+    if (push) {
+      history.pushState(null, "", "#/farm");
+    }
   }
   function refreshStart() {
-    const hasReservedRaid = storage.hasReservedRaid, liveRaid = active?.world?.scene === "raid", staleRaid = hasReservedRaid && !liveRaid;
-    $2("continueGame").disabled = !storage.hasWorld || staleRaid;
-    $2("startBossEncounter").disabled = !storage.hasWorld || staleRaid;
-    $2("staleRaidNotice").hidden = !staleRaid;
-    $2("continueLegacyGame").disabled = !storage.legacyCompatible;
-    $2("legacySaveNotice").hidden = !storage.legacyCompatible;
-    $2("exportSave").disabled = !(storage.raw || storage.legacyRaw);
-    $2("exportLegacySave").hidden = !storage.legacyBackup;
-    $2("exportLegacySave").disabled = !storage.legacyBackup;
-    $2("saveNotice").textContent = [storage.migrationNotice, storage.error].filter(Boolean).join(" ");
+    const HAS_RESERVED_RAID = STORAGE.hasReservedRaid, LIVE_RAID = active?.world?.scene === "raid", STALE_RAID = HAS_RESERVED_RAID && !LIVE_RAID;
+    DOLLAR2("continueGame").disabled = !STORAGE.hasWorld || STALE_RAID;
+    DOLLAR2("startBossEncounter").disabled = !STORAGE.hasWorld || STALE_RAID;
+    DOLLAR2("staleRaidNotice").hidden = !STALE_RAID;
+    DOLLAR2("continueLegacyGame").disabled = !STORAGE.legacyCompatible;
+    DOLLAR2("legacySaveNotice").hidden = !STORAGE.legacyCompatible;
+    DOLLAR2("exportSave").disabled = !(STORAGE.raw || STORAGE.legacyRaw);
+    DOLLAR2("exportLegacySave").hidden = !STORAGE.legacyBackup;
+    DOLLAR2("exportLegacySave").disabled = !STORAGE.legacyBackup;
+    DOLLAR2("saveNotice").textContent = [STORAGE.migrationNotice, STORAGE.error].filter(Boolean).join(" ");
   }
   function setHome(value, push = true) {
     stopWorldInput();
     if (value) {
       persist();
-      if (menuOpen) closeMenu(false);
-      if (bossEncounterOpen) closeBossEncounter(false);
+      if (menuOpen) {
+        closeMenu(false);
+      }
+      if (bossEncounterOpen) {
+        closeBossEncounter(false);
+      }
     }
     home = value;
     document.body.dataset.home = String(value);
-    $2("startScreen").hidden = !value;
+    DOLLAR2("startScreen").hidden = !value;
     active.paused = value;
-    if (push) history.pushState(null, "", value ? "#/" : active.world.scene === "raid" ? "#/raid" : "#/farm");
+    if (push) {
+      history.pushState(null, "", value ? "#/" : active.world.scene === "raid" ? "#/raid" : "#/farm");
+    }
     refreshStart();
-    if (value) $2("continueGame").focus();
-    else if (!scatterHintShown) {
+    if (value) {
+      DOLLAR2("continueGame").focus();
+    } else if (!scatterHintShown) {
       scatterHintShown = true;
       scatterHintUntil = performance.now() + 6e3;
     }
   }
   function start(world, push = true) {
-    autosave.reset();
-    foodFeel.unlock();
+    AUTOSAVE.reset();
+    FOOD_FEEL.unlock();
     personalGarden = world;
     install(world);
     setHome(false, push);
@@ -8095,74 +12961,173 @@
   function reservePersonalRaidRun(sessionId = null) {
     let reserved;
     try {
-      reserved = reserveRaidRun(snapshot(personalGarden), { sessionId });
+      reserved = reserveRaidRun(snapshot(personalGarden), {
+        sessionId
+      });
     } catch (error) {
-      fail3(error);
+      FAIL3(error);
       return null;
     }
-    const candidate = restore(reserved.farm);
-    if (!saveImmediate(candidate)) {
-      fail3(Error(storage.error || "농장 원정 예약을 저장하지 못했어요."));
+    const CANDIDATE = restore(reserved.farm);
+    if (!saveImmediate(CANDIDATE)) {
+      FAIL3(Error(STORAGE.error || "농장 원정 예약을 저장하지 못했어요."));
       return null;
     }
-    personalGarden = storage.world;
+    personalGarden = STORAGE.world;
     return reserved;
   }
   function localSettlementRoster(world, ownerId, run) {
-    const current = world.raidRosters?.find((roster2) => roster2.ownerId === ownerId);
-    if (current) {
-      if (current.settlementRunSequence !== run.runSequence || current.settlementSessionId !== run.sessionId || current.settlementEncounterId !== run.runSequence) throw Error("레이드 명단의 정산 예약이 개인 농장 저장과 일치하지 않아요.");
+    const CURRENT = world.raidRosters?.find((roster) => roster.ownerId === ownerId);
+    if (CURRENT) {
+      if (CURRENT.settlementRunSequence !== run.runSequence || CURRENT.settlementSessionId !== run.sessionId || CURRENT.settlementEncounterId !== run.runSequence) {
+        throw Error("레이드 명단의 정산 예약이 개인 농장 저장과 일치하지 않아요.");
+      }
       return world;
     }
-    const entries = raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits).map(([farmId, species, tier]) => ({ farmId, species, tier, deployed: false }));
-    const view = snapshot(world);
-    view.raidExpectedPlayers = [.../* @__PURE__ */ new Set([...view.raidExpectedPlayers, ownerId])];
-    view.raidRosters.push({ ownerId, troops: entries, abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlementSessionId: run.sessionId, settlementRunSequence: run.runSequence, settlementEncounterId: run.runSequence, lastDeploySequence: 0, buffUntil: 0, buffReadyAt: 0 });
-    return view;
+    const ENTRIES = raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits).map(
+      ([farmId, species, tier]) => ({
+        farmId,
+        species,
+        tier,
+        deployed: false
+      })
+    );
+    const VIEW = snapshot(world);
+    VIEW.raidExpectedPlayers = [.../* @__PURE__ */ new Set([...VIEW.raidExpectedPlayers, ownerId])];
+    VIEW.raidRosters.push({
+      ownerId,
+      troops: ENTRIES,
+      abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
+      settlementSessionId: run.sessionId,
+      settlementRunSequence: run.runSequence,
+      settlementEncounterId: run.runSequence,
+      lastDeploySequence: 0,
+      buffUntil: 0,
+      buffReadyAt: 0
+    });
+    return VIEW;
   }
   function persistRaidSettlement(raidWorld, ownerId) {
-    const farmRun = { sessionId: personalGarden.activeRaidSessionId, runSequence: personalGarden.activeRaidRunSequence };
-    if (!farmRun.sessionId || !farmRun.runSequence) return false;
-    const outcome = ["victory", "defeat"].includes(raidWorld.encounter?.outcome) ? raidWorld.encounter.outcome : "aborted";
-    const prepare = (base) => settleRaidOwnerFarm(snapshot(base), { ownerId, sessionId: farmRun.sessionId, encounterId: farmRun.runSequence, runSequence: farmRun.runSequence, outcome, raidWorld, completedAtMs: Date.now(), settleVictory: ({ farm, receiptKey, deploymentMultiplier }) => {
-      const garden = restore(farm), stage = raidWorld.boss.stage || 0, stageReward = stage ? bossStageStats(stage) : null, resolved = settleBossKill(garden, { encounterId: farmRun.runSequence, source: "raid", receiptKey, acquisitionMultiplier: deploymentMultiplier, rollCount: stageReward?.rolls ?? 1, xpAmount: stageReward?.xp, species: raidWorld.boss.species ?? 3, tier: 1, x: raidWorld.boss.x, y: raidWorld.boss.y });
-      const reward2 = resolved.receipt;
-      return { farm: snapshot(garden), summary: { stage, acquisition: { status: reward2.status, chance: reward2.chance, roll: reward2.roll, rollCount: reward2.rollCount, rolls: reward2.drops, unitId: reward2.unitId, receiptKey: reward2.receiptKey }, xp: { status: reward2.xpStatus, amount: reward2.xpAmount, levelsGained: reward2.levelsGained, pointsAwarded: reward2.pointsAwarded, receiptKey: reward2.xpReceiptKey } } };
-    } });
-    let settled = prepare(personalGarden), candidate = restore(settled.farm);
-    if (!saveImmediate(candidate)) {
-      if (!storage.refresh()) throw Error(storage.error || "최신 농장 저장을 다시 읽지 못했어요.");
-      settled = prepare(storage.world);
-      candidate = restore(settled.farm);
-      if (!saveImmediate(candidate)) throw Error(storage.error || "전투 결과 저장에 실패했어요.");
+    const FARM_RUN = {
+      sessionId: personalGarden.activeRaidSessionId,
+      runSequence: personalGarden.activeRaidRunSequence
+    };
+    if (!FARM_RUN.sessionId || !FARM_RUN.runSequence) {
+      return false;
     }
-    personalGarden = storage.world;
+    const OUTCOME = ["victory", "defeat"].includes(raidWorld.encounter?.outcome) ? raidWorld.encounter.outcome : "aborted";
+    const PREPARE = (base) => settleRaidOwnerFarm(snapshot(base), {
+      ownerId,
+      sessionId: FARM_RUN.sessionId,
+      encounterId: FARM_RUN.runSequence,
+      runSequence: FARM_RUN.runSequence,
+      outcome: OUTCOME,
+      raidWorld,
+      completedAtMs: Date.now(),
+      settleVictory: ({ farm, receiptKey, deploymentMultiplier }) => {
+        const GARDEN2 = restore(farm), STAGE = raidWorld.boss.stage || 0, STAGE_REWARD = STAGE ? bossStageStats(STAGE) : null, RESOLVED = settleBossKill(GARDEN2, {
+          encounterId: FARM_RUN.runSequence,
+          source: "raid",
+          receiptKey,
+          acquisitionMultiplier: deploymentMultiplier,
+          rollCount: STAGE_REWARD?.rolls ?? 1,
+          xpAmount: STAGE_REWARD?.xp,
+          species: raidWorld.boss.species ?? 3,
+          tier: 1,
+          x: raidWorld.boss.x,
+          y: raidWorld.boss.y
+        });
+        const REWARD2 = RESOLVED.receipt;
+        return {
+          farm: snapshot(GARDEN2),
+          summary: {
+            stage: STAGE,
+            acquisition: {
+              status: REWARD2.status,
+              chance: REWARD2.chance,
+              roll: REWARD2.roll,
+              rollCount: REWARD2.rollCount,
+              rolls: REWARD2.drops,
+              unitId: REWARD2.unitId,
+              receiptKey: REWARD2.receiptKey
+            },
+            xp: {
+              status: REWARD2.xpStatus,
+              amount: REWARD2.xpAmount,
+              levelsGained: REWARD2.levelsGained,
+              pointsAwarded: REWARD2.pointsAwarded,
+              receiptKey: REWARD2.xpReceiptKey
+            }
+          }
+        };
+      }
+    });
+    let settled = PREPARE(personalGarden);
+    let candidate = restore(settled.farm);
+    if (!saveImmediate(candidate)) {
+      if (!STORAGE.refresh()) {
+        throw Error(STORAGE.error || "최신 농장 저장을 다시 읽지 못했어요.");
+      }
+      settled = PREPARE(STORAGE.world);
+      candidate = restore(settled.farm);
+      if (!saveImmediate(candidate)) {
+        throw Error(STORAGE.error || "전투 결과 저장에 실패했어요.");
+      }
+    }
+    personalGarden = STORAGE.world;
     return settled;
   }
   function beginRaid(push = true) {
-    if (!personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) return;
-    if (!persist()) return;
-    const bossStage = renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
-    if (!bossStage || !persist()) return;
-    const reserved = reservePersonalRaidRun();
-    if (!reserved) return;
+    if (!personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.units, 1).length) {
+      return;
+    }
+    if (!persist()) {
+      return;
+    }
+    const BOSS_STAGE = renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
+    if (!BOSS_STAGE || !persist()) {
+      return;
+    }
+    const RESERVED = reservePersonalRaidRun();
+    if (!RESERVED) {
+      return;
+    }
     closeBossEncounter(false);
-    const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"], bossStage);
-    install(battle);
-    active.queue("register-roster", { entries: raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits), abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlement: { sessionId: reserved.sessionId, runSequence: reserved.runSequence, encounterId: reserved.runSequence } });
+    const BATTLE = GARDEN.createRaidBattle(
+      personalGarden.seed + Math.floor(performance.now()) >>> 0,
+      ["solo"],
+      BOSS_STAGE
+    );
+    install(BATTLE);
+    active.queue("register-roster", {
+      entries: raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits),
+      abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
+      settlement: {
+        sessionId: RESERVED.sessionId,
+        runSequence: RESERVED.runSequence,
+        encounterId: RESERVED.runSequence
+      }
+    });
     setHome(false, push);
   }
   async function returnToFarm(push = true) {
     stopWorldInput();
-    if (bossEncounterOpen) closeBossEncounter(false);
-    if (!personalGarden) return;
-    const raidWorld = active?.world?.scene === "raid" ? snapshot(active.world) : null;
-    if (raidWorld && personalGarden.activeRaidRunSequence !== null) {
-      const ownerId = active.localPlayerId, run = { sessionId: personalGarden.activeRaidSessionId, runSequence: personalGarden.activeRaidRunSequence };
+    if (bossEncounterOpen) {
+      closeBossEncounter(false);
+    }
+    if (!personalGarden) {
+      return;
+    }
+    const RAID_WORLD = active?.world?.scene === "raid" ? snapshot(active.world) : null;
+    if (RAID_WORLD && personalGarden.activeRaidRunSequence !== null) {
+      const OWNER_ID = active.localPlayerId, RUN = {
+        sessionId: personalGarden.activeRaidSessionId,
+        runSequence: personalGarden.activeRaidRunSequence
+      };
       try {
-        persistRaidSettlement(localSettlementRoster(raidWorld, ownerId, run), ownerId);
+        persistRaidSettlement(localSettlementRoster(RAID_WORLD, OWNER_ID, RUN), OWNER_ID);
       } catch (error) {
-        fail3(error);
+        FAIL3(error);
         return false;
       }
     }
@@ -8170,245 +13135,335 @@
     setHome(false, push);
     return true;
   }
-  $2("continueGame").onclick = () => {
+  DOLLAR2("continueGame").onclick = () => {
     if (active?.world?.scene === "raid") {
       setHome(false);
       return;
     }
-    if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)));
+    if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
+      start(restore(snapshot(STORAGE.world)));
+    }
   };
-  $2("startBossEncounter").onclick = () => {
-    if (!storage.world || storage.world.activeRaidRunSequence !== null) return;
-    start(restore(snapshot(storage.world)), false);
+  DOLLAR2("startBossEncounter").onclick = () => {
+    if (!STORAGE.world || STORAGE.world.activeRaidRunSequence !== null) {
+      return;
+    }
+    start(restore(snapshot(STORAGE.world)), false);
     openBossEncounter();
   };
-  $2("menuBossEncounter").onclick = () => {
+  DOLLAR2("menuBossEncounter").onclick = () => {
     closeMenu(false);
     openBossEncounter();
   };
-  $2("bossEncounterBack").onclick = () => closeBossEncounter();
-  $2("bossEncounterChallenge").onclick = () => {
-    if ($2("bossEncounterChallenge").disabled) return;
+  DOLLAR2("bossEncounterBack").onclick = () => closeBossEncounter();
+  DOLLAR2("bossEncounterChallenge").onclick = () => {
+    if (DOLLAR2("bossEncounterChallenge").disabled) {
+      return;
+    }
     closeBossEncounter(false);
     beginRaid(true);
   };
-  $2("bossEncounterScreen").addEventListener("pointerdown", (e) => {
-    if (!bossEncounterOpen || e.button > 0 || e.target.closest("button")) return;
-    const viewport = $2("bossEncounterViewport"), card = $2("bossEncounterCard");
-    bossSwipe = { pointerId: e.pointerId, y: e.clientY };
-    card.style.transition = "none";
-    viewport.setPointerCapture?.(e.pointerId);
+  DOLLAR2("bossEncounterScreen").addEventListener("pointerdown", (e) => {
+    if (!bossEncounterOpen || e.button > 0 || e.target.closest("button")) {
+      return;
+    }
+    const VIEWPORT = DOLLAR2("bossEncounterViewport"), CARD = DOLLAR2("bossEncounterCard");
+    bossSwipe = {
+      pointerId: e.pointerId,
+      y: e.clientY
+    };
+    CARD.style.transition = "none";
+    VIEWPORT.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
-  $2("bossEncounterScreen").addEventListener("pointermove", (e) => {
-    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) return;
-    const delta = Math.max(-120, Math.min(120, e.clientY - bossSwipe.y));
-    $2("bossEncounterCard").style.transform = `translateY(${delta * 0.55}px)`;
+  DOLLAR2("bossEncounterScreen").addEventListener("pointermove", (e) => {
+    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) {
+      return;
+    }
+    const DELTA = Math.max(-120, Math.min(120, e.clientY - bossSwipe.y));
+    DOLLAR2("bossEncounterCard").style.transform = `translateY(${DELTA * 0.55}px)`;
     e.preventDefault();
   });
-  $2("bossEncounterScreen").addEventListener("pointerup", (e) => {
-    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) return;
-    const delta = e.clientY - bossSwipe.y, card = $2("bossEncounterCard");
+  DOLLAR2("bossEncounterScreen").addEventListener("pointerup", (e) => {
+    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) {
+      return;
+    }
+    const DELTA = e.clientY - bossSwipe.y, CARD = DOLLAR2("bossEncounterCard");
     bossSwipe = null;
-    if (Math.abs(delta) < 42) {
-      card.style.transition = "transform .18s ease-out";
-      card.style.transform = "translateY(0)";
+    if (Math.abs(DELTA) < 42) {
+      CARD.style.transition = "transform .18s ease-out";
+      CARD.style.transform = "translateY(0)";
       setTimeout(() => {
-        card.style.transition = "";
-        card.style.transform = "";
+        CARD.style.transition = "";
+        CARD.style.transform = "";
       }, 200);
       return;
     }
-    const current = personalGarden?.farmBossProgress?.currentStage || 1, next = delta < 0 ? Math.min(BOSS_REWARD_SETTINGS.maxStage, current + 1) : Math.max(1, current - 1);
-    if (next === current) {
-      showBossEncounterMessage(delta < 0 ? `현재 스테이지 상한 ${BOSS_REWARD_SETTINGS.maxStage}예요` : "첫 스테이지예요");
+    const CURRENT = personalGarden?.farmBossProgress?.currentStage || 1, NEXT = DELTA < 0 ? Math.min(BOSS_REWARD_SETTINGS.maxStage, CURRENT + 1) : Math.max(1, CURRENT - 1);
+    if (NEXT === CURRENT) {
+      showBossEncounterMessage(
+        DELTA < 0 ? `현재 스테이지 상한 ${BOSS_REWARD_SETTINGS.maxStage}예요` : "첫 스테이지예요"
+      );
       return;
     }
-    card.style.transform = "";
-    card.style.transition = "";
-    card.style.animation = "none";
-    void card.offsetWidth;
-    card.style.animation = "";
-    renderBossEncounterStage(next);
+    CARD.style.transform = "";
+    CARD.style.transition = "";
+    CARD.style.animation = "none";
+    void CARD.offsetWidth;
+    CARD.style.animation = "";
+    renderBossEncounterStage(NEXT);
   });
-  $2("bossEncounterScreen").addEventListener("pointercancel", (e) => {
+  DOLLAR2("bossEncounterScreen").addEventListener("pointercancel", (e) => {
     if (bossSwipe?.pointerId === e.pointerId) {
       bossSwipe = null;
-      const card = $2("bossEncounterCard");
-      card.style.transition = "transform .18s ease-out";
-      card.style.transform = "translateY(0)";
+      const CARD = DOLLAR2("bossEncounterCard");
+      CARD.style.transition = "transform .18s ease-out";
+      CARD.style.transform = "translateY(0)";
       setTimeout(() => {
-        card.style.transition = "";
-        card.style.transform = "";
+        CARD.style.transition = "";
+        CARD.style.transform = "";
       }, 200);
     }
   });
-  $2("abortRaidRun").onclick = () => {
-    if (active?.world?.scene === "raid") return;
-    const world = storage.world;
-    if (!world || world.activeRaidRunSequence === null) return refreshStart();
-    try {
-      const result = abortReservedRaidRun(snapshot(world), { completedAtMs: Date.now() });
-      if (!result.applied) return refreshStart();
-      if (!saveImmediate(restore(result.farm))) {
-        $2("saveNotice").textContent = storage.error;
-        return;
-      }
-      personalGarden = storage.world;
-      refreshStart();
-      $2("saveNotice").textContent = "이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.";
-    } catch (error) {
-      fail3(error);
-    }
-  };
-  $2("newGame").onclick = () => {
-    if ((storage.raw || storage.legacyRaw) && !$2("newConfirm").hidden) return;
-    if (storage.raw || storage.legacyRaw) {
-      $2("newConfirmText").textContent = storage.raw ? "현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요." : "새 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.";
-      $2("newConfirm").hidden = false;
+  DOLLAR2("abortRaidRun").onclick = () => {
+    if (active?.world?.scene === "raid") {
       return;
     }
-    const world = new Garden();
-    if (storage.replace(world)) {
-      autosave.reset();
-      start(world);
-    } else refreshStart();
-  };
-  $2("confirmNew").onclick = () => {
-    const world = new Garden();
-    if (storage.replace(world)) {
-      autosave.reset();
-      $2("newConfirm").hidden = true;
-      start(world);
-    } else refreshStart();
-  };
-  $2("cancelNew").onclick = () => {
-    $2("newConfirm").hidden = true;
-  };
-  $2("exportSave").onclick = () => {
-    const raw = storage.raw || storage.legacyRaw;
-    if (!raw) return;
-    const url = URL.createObjectURL(new Blob([raw], { type: "application/json" })), a = document.createElement("a");
-    a.href = url;
-    a.download = "budmori-save-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1e3);
-  };
-  $2("exportLegacySave").onclick = () => {
-    const raw = storage.legacyBackup?.raw;
-    if (!raw) return;
-    const url = URL.createObjectURL(new Blob([raw], { type: "application/json" })), a = document.createElement("a");
-    a.href = url;
-    a.download = "budmori-legacy-save-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1e3);
-  };
-  $2("importSave").onclick = () => $2("saveFile").click();
-  $2("continueLegacyGame").onclick = async () => {
-    if (!storage.legacyRaw) return;
+    const WORLD = STORAGE.world;
+    if (!WORLD || WORLD.activeRaidRunSequence === null) {
+      return refreshStart();
+    }
     try {
-      const { validateSave: validateSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
-      validateSave2(storage.legacyRaw);
-      imported = storage.legacyRaw;
+      const RESULT = abortReservedRaidRun(snapshot(WORLD), {
+        completedAtMs: Date.now()
+      });
+      if (!RESULT.applied) {
+        return refreshStart();
+      }
+      if (!saveImmediate(restore(RESULT.farm))) {
+        DOLLAR2("saveNotice").textContent = STORAGE.error;
+        return;
+      }
+      personalGarden = STORAGE.world;
+      refreshStart();
+      DOLLAR2("saveNotice").textContent = "이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.";
+    } catch (error) {
+      FAIL3(error);
+    }
+  };
+  DOLLAR2("newGame").onclick = () => {
+    if ((STORAGE.raw || STORAGE.legacyRaw) && !DOLLAR2("newConfirm").hidden) {
+      return;
+    }
+    if (STORAGE.raw || STORAGE.legacyRaw) {
+      DOLLAR2("newConfirmText").textContent = STORAGE.raw ? "현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요." : "새 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.";
+      DOLLAR2("newConfirm").hidden = false;
+      return;
+    }
+    const WORLD = new GARDEN();
+    if (STORAGE.replace(WORLD)) {
+      AUTOSAVE.reset();
+      start(WORLD);
+    } else {
+      refreshStart();
+    }
+  };
+  DOLLAR2("confirmNew").onclick = () => {
+    const WORLD = new GARDEN();
+    if (STORAGE.replace(WORLD)) {
+      AUTOSAVE.reset();
+      DOLLAR2("newConfirm").hidden = true;
+      start(WORLD);
+    } else {
+      refreshStart();
+    }
+  };
+  DOLLAR2("cancelNew").onclick = () => {
+    DOLLAR2("newConfirm").hidden = true;
+  };
+  DOLLAR2("exportSave").onclick = () => {
+    const RAW = STORAGE.raw || STORAGE.legacyRaw;
+    if (!RAW) {
+      return;
+    }
+    const URL_LOCAL = URL.createObjectURL(
+      new Blob([RAW], {
+        type: "application/json"
+      })
+    ), A = document.createElement("a");
+    A.href = URL_LOCAL;
+    A.download = "budmori-save-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
+    A.click();
+    setTimeout(() => URL.revokeObjectURL(URL_LOCAL), 1e3);
+  };
+  DOLLAR2("exportLegacySave").onclick = () => {
+    const RAW = STORAGE.legacyBackup?.raw;
+    if (!RAW) {
+      return;
+    }
+    const URL_LOCAL = URL.createObjectURL(
+      new Blob([RAW], {
+        type: "application/json"
+      })
+    ), A = document.createElement("a");
+    A.href = URL_LOCAL;
+    A.download = "budmori-legacy-save-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
+    A.click();
+    setTimeout(() => URL.revokeObjectURL(URL_LOCAL), 1e3);
+  };
+  DOLLAR2("importSave").onclick = () => DOLLAR2("saveFile").click();
+  DOLLAR2("continueLegacyGame").onclick = async () => {
+    if (!STORAGE.legacyRaw) {
+      return;
+    }
+    try {
+      const { validateSave: VALIDATE_SAVE } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
+      VALIDATE_SAVE(STORAGE.legacyRaw);
+      imported = STORAGE.legacyRaw;
       importedLegacy = true;
-      $2("importConfirmText").textContent = saveHasLegacyFarmProgress(storage.legacyRaw) ? "이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화되고, 원본을 먼저 백업합니다. 이어갈까요?" : "0.4 원본 저장은 그대로 두고 새 저장 키에 복사해 이어갈까요?";
-      $2("confirmImport").textContent = "원본을 보존하고 이어가기";
-      $2("importConfirm").hidden = false;
+      DOLLAR2("importConfirmText").textContent = saveHasLegacyFarmProgress(STORAGE.legacyRaw) ? "이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화되고, 원본을 먼저 백업합니다. 이어갈까요?" : "0.4 원본 저장은 그대로 두고 새 저장 키에 복사해 이어갈까요?";
+      DOLLAR2("confirmImport").textContent = "원본을 보존하고 이어가기";
+      DOLLAR2("importConfirm").hidden = false;
     } catch (e) {
-      $2("saveNotice").textContent = e.message;
+      DOLLAR2("saveNotice").textContent = e.message;
     }
   };
-  $2("saveFile").onchange = async () => {
-    const file = $2("saveFile").files[0];
-    if (!file) return;
+  DOLLAR2("saveFile").onchange = async () => {
+    const FILE = DOLLAR2("saveFile").files[0];
+    if (!FILE) {
+      return;
+    }
     try {
-      if (file.size > 2 * 1024 * 1024) throw Error("저장 파일이 너무 큽니다.");
-      const text = await file.text();
-      const { validateSave: validateSave2 } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
-      validateSave2(text);
-      imported = text;
+      if (FILE.size > 2 * 1024 * 1024) {
+        throw Error("저장 파일이 너무 큽니다.");
+      }
+      const TEXT = await FILE.text();
+      const { validateSave: VALIDATE_SAVE } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
+      VALIDATE_SAVE(TEXT);
+      imported = TEXT;
       importedLegacy = false;
-      $2("importConfirmText").textContent = saveHasLegacyFarmProgress(text) ? "이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화됩니다. 원본을 먼저 백업한 뒤 이 저장을 불러올까요?" : "선택한 파일로 개인 저장을 바꿀까요?";
-      $2("confirmImport").textContent = "이 저장 불러오기";
-      $2("importConfirm").hidden = false;
+      DOLLAR2("importConfirmText").textContent = saveHasLegacyFarmProgress(TEXT) ? "이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화됩니다. 원본을 먼저 백업한 뒤 이 저장을 불러올까요?" : "선택한 파일로 개인 저장을 바꿀까요?";
+      DOLLAR2("confirmImport").textContent = "이 저장 불러오기";
+      DOLLAR2("importConfirm").hidden = false;
     } catch (e) {
-      $2("saveNotice").textContent = e.message;
+      DOLLAR2("saveNotice").textContent = e.message;
     } finally {
-      $2("saveFile").value = "";
+      DOLLAR2("saveFile").value = "";
     }
   };
-  $2("cancelImport").onclick = () => {
+  DOLLAR2("cancelImport").onclick = () => {
     imported = null;
     importedLegacy = false;
-    $2("importConfirm").hidden = true;
+    DOLLAR2("importConfirm").hidden = true;
   };
-  $2("confirmImport").onclick = () => {
+  DOLLAR2("confirmImport").onclick = () => {
     try {
       if (imported) {
-        const legacy = importedLegacy, world = storage.import(imported);
-        autosave.reset();
-        if (legacy) start(world);
-        else {
-          personalGarden = world;
-          install(world);
+        const LEGACY = importedLegacy, WORLD = STORAGE.import(imported);
+        AUTOSAVE.reset();
+        if (LEGACY) {
+          start(WORLD);
+        } else {
+          personalGarden = WORLD;
+          install(WORLD);
           active.paused = true;
         }
       }
       imported = null;
       importedLegacy = false;
-      $2("importConfirm").hidden = true;
+      DOLLAR2("importConfirm").hidden = true;
       refreshStart();
     } catch (e) {
-      $2("saveNotice").textContent = e.message;
+      DOLLAR2("saveNotice").textContent = e.message;
     }
   };
-  $2("farm").onclick = () => returnToFarm();
-  $2("raid").onclick = () => openBossEncounter();
-  $2("return").onclick = () => returnToFarm();
-  for (const value of ["breed", "merge"]) $2(value).onclick = () => active.queue("mode", { value });
-  $2("feed").addEventListener("keydown", (e) => {
-    if (e.repeat && ["Enter", " "].includes(e.key)) e.preventDefault();
+  DOLLAR2("farm").onclick = () => returnToFarm();
+  DOLLAR2("raid").onclick = () => openBossEncounter();
+  DOLLAR2("return").onclick = () => returnToFarm();
+  for (const VALUE of ["breed", "merge"]) {
+    DOLLAR2(VALUE).onclick = () => active.queue("mode", {
+      value: VALUE
+    });
+  }
+  DOLLAR2("feed").addEventListener("keydown", (e) => {
+    if (e.repeat && ["Enter", " "].includes(e.key)) {
+      e.preventDefault();
+    }
   });
-  $2("feed").onclick = (e) => {
-    if (e.detail === 0 && !e.pointerType) requestFeed();
+  DOLLAR2("feed").onclick = (e) => {
+    if (e.detail === 0 && !e.pointerType) {
+      requestFeed();
+    }
   };
-  $2("pause").onclick = () => {
+  DOLLAR2("pause").onclick = () => {
     menuPauseChanged = true;
     active.paused = !active.paused;
-    if (active.paused) persist();
-    else if (menuOpen) closeMenu();
+    if (active.paused) {
+      persist();
+    } else if (menuOpen) {
+      closeMenu();
+    }
   };
   function drawTree() {
-    const w = personalGarden || active.world, inCombat = w.running || w.farmBossEvent?.phase !== "idle";
-    $2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(w.playerProgression, { location: w.scene, inCombat });
+    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
+    DOLLAR2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
+      location: W.scene,
+      inCombat: IN_COMBAT
+    });
   }
   function drawAbilityTree() {
-    const w = personalGarden || active.world, inCombat = w.running || w.farmBossEvent?.phase !== "idle";
-    const selectedSpecies = Number($2("abilityPanel").dataset.selectedSpecies || 0);
-    $2("abilityPoints").textContent = String(w.playerProgression.availablePoints);
-    for (const button of $2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) button.setAttribute("aria-pressed", String(Number(button.dataset.abilitySpecies) === selectedSpecies));
-    $2("abilityNodes").innerHTML = renderAbilityTreeMarkup(w.playerProgression, { highestSpeciesTier: w.highestSpeciesTiers(), location: w.scene, inCombat, selectedSpecies });
+    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
+    const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
+    DOLLAR2("abilityPoints").textContent = String(W.playerProgression.availablePoints);
+    for (const BUTTON of DOLLAR2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) {
+      BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.abilitySpecies) === SELECTED_SPECIES));
+    }
+    DOLLAR2("abilityNodes").innerHTML = renderAbilityTreeMarkup(W.playerProgression, {
+      highestSpeciesTier: W.highestSpeciesTiers(),
+      location: W.scene,
+      inCombat: IN_COMBAT,
+      selectedSpecies: SELECTED_SPECIES
+    });
   }
-  var menuRoutes = { play: "#/menu", growth: "#/growth", abilities: "#/abilities", help: "#/help" };
-  var routeMenuTab = (route2) => route2 === "#/growth" ? "growth" : route2 === "#/abilities" ? "abilities" : route2 === "#/help" ? "help" : "play";
+  var MENU_ROUTES = {
+    play: "#/menu",
+    growth: "#/growth",
+    abilities: "#/abilities",
+    help: "#/help"
+  };
+  var ROUTE_MENU_TAB = (route2) => route2 === "#/growth" ? "growth" : route2 === "#/abilities" ? "abilities" : route2 === "#/help" ? "help" : "play";
   function applyMenuTab(tab) {
     menuTab = tab;
-    for (const button of $2("gameMenuTabs").querySelectorAll("[data-menu-tab]")) {
-      const selected = button.dataset.menuTab === tab;
-      button.setAttribute("aria-selected", String(selected));
-      button.tabIndex = selected ? 0 : -1;
+    for (const BUTTON of DOLLAR2("gameMenuTabs").querySelectorAll("[data-menu-tab]")) {
+      const SELECTED = BUTTON.dataset.menuTab === tab;
+      BUTTON.setAttribute("aria-selected", String(SELECTED));
+      BUTTON.tabIndex = SELECTED ? 0 : -1;
     }
-    for (const [name, id] of [["play", "menuPlayPanel"], ["growth", "treePanel"], ["abilities", "abilityPanel"], ["help", "helpPanel"]]) $2(id).hidden = name !== tab;
-    if (tab === "growth") drawTree();
-    else if (tab === "abilities") drawAbilityTree();
+    for (const [NAME, ID] of [
+      ["play", "menuPlayPanel"],
+      ["growth", "treePanel"],
+      ["abilities", "abilityPanel"],
+      ["help", "helpPanel"]
+    ]) {
+      DOLLAR2(ID).hidden = NAME !== tab;
+    }
+    if (tab === "growth") {
+      drawTree();
+    } else if (tab === "abilities") {
+      drawAbilityTree();
+    }
   }
   function syncMenuPause(tab) {
     if (tab === "play") {
-      if (menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
+      if (menuAutoPaused && !menuPauseChanged) {
+        active.paused = menuWasPaused;
+      }
       menuAutoPaused = false;
       return;
     }
-    if (!menuAutoPaused) menuWasPaused = active.paused;
+    if (!menuAutoPaused) {
+      menuWasPaused = active.paused;
+    }
     menuAutoPaused = true;
     if (!active.paused) {
       active.paused = true;
@@ -8422,210 +13477,315 @@
       menuPauseChanged = false;
       menuAutoPaused = false;
       menuOpen = true;
-      $2("gameMenuOverlay").hidden = false;
-      $2("gameMenu").setAttribute("aria-expanded", "true");
+      DOLLAR2("gameMenuOverlay").hidden = false;
+      DOLLAR2("gameMenu").setAttribute("aria-expanded", "true");
     }
     syncMenuPause(tab);
     applyMenuTab(tab);
-    if (push) history.pushState(null, "", menuRoutes[tab] || menuRoutes.play);
-    $2("gameMenuTabs").querySelector(`[data-menu-tab="${tab}"]`)?.focus();
+    if (push) {
+      history.pushState(null, "", MENU_ROUTES[tab] || MENU_ROUTES.play);
+    }
+    DOLLAR2("gameMenuTabs").querySelector(`[data-menu-tab="${tab}"]`)?.focus();
   }
   function switchMenuTab(tab, push = true) {
-    if (!["play", "growth", "abilities", "help"].includes(tab)) return;
+    if (!["play", "growth", "abilities", "help"].includes(tab)) {
+      return;
+    }
     if (!menuOpen) {
       openMenu(tab, push);
       return;
     }
-    if (menuTab === tab) return;
+    if (menuTab === tab) {
+      return;
+    }
     syncMenuPause(tab);
     applyMenuTab(tab);
-    if (push) history.pushState(null, "", menuRoutes[tab]);
+    if (push) {
+      history.pushState(null, "", MENU_ROUTES[tab]);
+    }
   }
   function closeMenu(push = true) {
-    if (!menuOpen) return;
+    if (!menuOpen) {
+      return;
+    }
     menuOpen = false;
-    $2("gameMenuOverlay").hidden = true;
-    $2("gameMenu").setAttribute("aria-expanded", "false");
-    if (menuAutoPaused && !menuPauseChanged) active.paused = menuWasPaused;
+    DOLLAR2("gameMenuOverlay").hidden = true;
+    DOLLAR2("gameMenu").setAttribute("aria-expanded", "false");
+    if (menuAutoPaused && !menuPauseChanged) {
+      active.paused = menuWasPaused;
+    }
     menuPauseChanged = false;
     menuAutoPaused = false;
-    if (push) history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
-    $2("gameMenu").focus();
+    if (push) {
+      history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
+    }
+    DOLLAR2("gameMenu").focus();
   }
-  $2("gameMenu").onclick = () => menuOpen ? closeMenu() : openMenu();
-  $2("gameMenuClose").onclick = () => closeMenu();
-  $2("menuHome").onclick = () => {
+  DOLLAR2("gameMenu").onclick = () => menuOpen ? closeMenu() : openMenu();
+  DOLLAR2("gameMenuClose").onclick = () => closeMenu();
+  DOLLAR2("menuHome").onclick = () => {
     closeMenu(false);
     setHome(true);
   };
-  $2("gameMenuTabs").onclick = (e) => {
-    const button = e.target.closest("[data-menu-tab]");
-    if (button && !button.disabled) switchMenuTab(button.dataset.menuTab);
+  DOLLAR2("gameMenuTabs").onclick = (e) => {
+    const BUTTON = e.target.closest("[data-menu-tab]");
+    if (BUTTON && !BUTTON.disabled) {
+      switchMenuTab(BUTTON.dataset.menuTab);
+    }
   };
-  $2("gameMenuTabs").onkeydown = (e) => {
-    const buttons = [...$2("gameMenuTabs").querySelectorAll('[role="tab"]:not(:disabled)')], index = buttons.indexOf(document.activeElement);
-    let next = index;
-    if (e.key === "ArrowRight") next = (index + 1) % buttons.length;
-    else if (e.key === "ArrowLeft") next = (index - 1 + buttons.length) % buttons.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = buttons.length - 1;
-    else return;
+  DOLLAR2("gameMenuTabs").onkeydown = (e) => {
+    const BUTTONS = [...DOLLAR2("gameMenuTabs").querySelectorAll('[role="tab"]:not(:disabled)')], INDEX = BUTTONS.indexOf(document.activeElement);
+    let next;
+    if (e.key === "ArrowRight") {
+      next = (INDEX + 1) % BUTTONS.length;
+    } else if (e.key === "ArrowLeft") {
+      next = (INDEX - 1 + BUTTONS.length) % BUTTONS.length;
+    } else if (e.key === "Home") {
+      next = 0;
+    } else if (e.key === "End") {
+      next = BUTTONS.length - 1;
+    } else {
+      return;
+    }
     e.preventDefault();
-    buttons[next]?.focus();
-    if (buttons[next]) switchMenuTab(buttons[next].dataset.menuTab);
+    BUTTONS[next]?.focus();
+    if (BUTTONS[next]) {
+      switchMenuTab(BUTTONS[next].dataset.menuTab);
+    }
   };
-  var gameMenuOverlay = $2("gameMenuOverlay");
-  var closeMenuFromBackdrop = (e) => {
-    if (e.target === gameMenuOverlay) closeMenu();
+  var GAME_MENU_OVERLAY = DOLLAR2("gameMenuOverlay");
+  var CLOSE_MENU_FROM_BACKDROP = (e) => {
+    if (e.target === GAME_MENU_OVERLAY) {
+      closeMenu();
+    }
   };
-  gameMenuOverlay.addEventListener("pointerdown", closeMenuFromBackdrop);
-  gameMenuOverlay.addEventListener("click", closeMenuFromBackdrop);
-  $2("treeNodes").onclick = (e) => {
-    const b = e.target.closest("[data-progression-farm-node]");
-    if (b) {
-      active.queue("progression-invest", { scope: "farm", nodeId: b.dataset.progressionFarmNode });
+  GAME_MENU_OVERLAY.addEventListener("pointerdown", CLOSE_MENU_FROM_BACKDROP);
+  GAME_MENU_OVERLAY.addEventListener("click", CLOSE_MENU_FROM_BACKDROP);
+  DOLLAR2("treeNodes").onclick = (e) => {
+    const B = e.target.closest("[data-progression-farm-node]");
+    if (B) {
+      active.queue("progression-invest", {
+        scope: "farm",
+        nodeId: B.dataset.progressionFarmNode
+      });
       setTimeout(drawTree, 180);
     }
   };
-  $2("abilitySpeciesTabs").onclick = (e) => {
-    const button = e.target.closest("[data-ability-species]");
-    if (!button) return;
-    $2("abilityPanel").dataset.selectedSpecies = button.dataset.abilitySpecies;
+  DOLLAR2("abilitySpeciesTabs").onclick = (e) => {
+    const BUTTON = e.target.closest("[data-ability-species]");
+    if (!BUTTON) {
+      return;
+    }
+    DOLLAR2("abilityPanel").dataset.selectedSpecies = BUTTON.dataset.abilitySpecies;
     drawAbilityTree();
   };
-  $2("abilityNodes").onclick = (e) => {
-    const button = e.target.closest("button[data-ability-action],button[data-ability-node]");
-    if (!button || button.getAttribute("aria-disabled") === "true") return;
-    if (button.dataset.abilityAction === "reset") active.queue("ability-reset");
-    else if (button.dataset.abilityNode) {
-      const [abilityId, kind, level] = button.dataset.abilityNode.split(":");
-      const nodeId = kind === "root" ? "root" : `${kind}-${level}`;
-      active.queue("progression-invest", { scope: "ability", abilityId, nodeId });
+  DOLLAR2("abilityNodes").onclick = (e) => {
+    const BUTTON = e.target.closest("button[data-ability-action],button[data-ability-node]");
+    if (!BUTTON || BUTTON.getAttribute("aria-disabled") === "true") {
+      return;
+    }
+    if (BUTTON.dataset.abilityAction === "reset") {
+      active.queue("ability-reset");
+    } else if (BUTTON.dataset.abilityNode) {
+      const [ABILITY_ID, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(":");
+      const NODE_ID = KIND === "root" ? "root" : `${KIND}-${LEVEL}`;
+      active.queue("progression-invest", {
+        scope: "ability",
+        abilityId: ABILITY_ID,
+        nodeId: NODE_ID
+      });
     }
     setTimeout(drawAbilityTree, 180);
   };
   function focusableMenuButtons() {
-    return [...$2("gameMenuPanel").querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter((button) => button.getClientRects().length > 0);
+    return [...DOLLAR2("gameMenuPanel").querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter(
+      (button) => button.getClientRects().length > 0
+    );
   }
-  $2("gameMenuPanel").onkeydown = (e) => {
+  DOLLAR2("gameMenuPanel").onkeydown = (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       closeMenu();
       return;
     }
-    if (e.key !== "Tab") return;
-    const buttons = focusableMenuButtons();
-    if (!buttons.length) return;
-    const first = buttons[0], last = buttons.at(-1);
-    if (e.shiftKey && document.activeElement === first) {
+    if (e.key !== "Tab") {
+      return;
+    }
+    const BUTTONS = focusableMenuButtons();
+    if (!BUTTONS.length) {
+      return;
+    }
+    const FIRST = BUTTONS[0], LAST = BUTTONS.at(-1);
+    if (e.shiftKey && document.activeElement === FIRST) {
       e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
+      LAST.focus();
+    } else if (!e.shiftKey && document.activeElement === LAST) {
       e.preventDefault();
-      first.focus();
+      FIRST.focus();
     }
   };
-  var canvas = $2("world");
+  var CANVAS = DOLLAR2("world");
   function syncText(id, value) {
-    const node = $2(id), text = String(value);
-    if (node.textContent !== text) node.textContent = text;
+    const NODE = DOLLAR2(id), TEXT = String(value);
+    if (NODE.textContent !== TEXT) {
+      NODE.textContent = TEXT;
+    }
   }
   function syncFlag(id, key, value) {
-    const node = $2(id), flag = !!value;
-    if (node[key] !== flag) node[key] = flag;
+    const NODE = DOLLAR2(id), FLAG = !!value;
+    if (NODE[key] !== FLAG) {
+      NODE[key] = FLAG;
+    }
   }
   function syncAttribute(id, key, value) {
-    const node = $2(id), text = String(value);
-    if (node.getAttribute(key) !== text) node.setAttribute(key, text);
+    const NODE = DOLLAR2(id), TEXT = String(value);
+    if (NODE.getAttribute(key) !== TEXT) {
+      NODE.setAttribute(key, TEXT);
+    }
   }
-  var hudWidths = /* @__PURE__ */ new Map();
+  var HUD_WIDTHS = /* @__PURE__ */ new Map();
   function syncWidth(id, value) {
-    const node = $2(id);
-    let previous = hudWidths.get(id);
-    if (previous?.value === value && previous.applied === node.style.width) return;
-    if (node.style.width !== value) node.style.width = value;
+    const NODE = DOLLAR2(id);
+    let previous = HUD_WIDTHS.get(id);
+    if (previous?.value === value && previous.applied === NODE.style.width) {
+      return;
+    }
+    if (NODE.style.width !== value) {
+      NODE.style.width = value;
+    }
     if (!previous) {
       previous = {};
-      hudWidths.set(id, previous);
+      HUD_WIDTHS.set(id, previous);
     }
     previous.value = value;
-    previous.applied = node.style.width;
+    previous.applied = NODE.style.width;
   }
   function syncData(id, key, value) {
-    const node = $2(id), text = String(value);
-    if (node.dataset[key] !== text) node.dataset[key] = text;
+    const NODE = DOLLAR2(id), TEXT = String(value);
+    if (NODE.dataset[key] !== TEXT) {
+      NODE.dataset[key] = TEXT;
+    }
   }
   function deploymentHud() {
-    const w = active.world, roster2 = w.raidRoster(active.localPlayerId), remaining = roster2 ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster2 ? Math.max(0, active.localDeploySequence - roster2.lastDeploySequence) : 0;
-    syncText("raidRemaining", !roster2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 약한 병력부터 · 맵 가장자리 전방위 투입`);
-    syncFlag("deployTroops", "disabled", !roster2 || remaining - queued <= 0 || active.paused || ["victory", "defeat"].includes(w.encounter.outcome));
+    const W = active.world, ROSTER2 = W.raidRoster(active.localPlayerId), REMAINING = ROSTER2 ? W.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, QUEUED = ROSTER2 ? Math.max(0, active.localDeploySequence - ROSTER2.lastDeploySequence) : 0;
+    syncText(
+      "raidRemaining",
+      !ROSTER2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, REMAINING - QUEUED)} · 약한 병력부터 · 맵 가장자리 전방위 투입`
+    );
+    syncFlag(
+      "deployTroops",
+      "disabled",
+      !ROSTER2 || REMAINING - QUEUED <= 0 || active.paused || ["victory", "defeat"].includes(W.encounter.outcome)
+    );
     let deployed = 0;
-    if (roster2) {
-      for (const troop of roster2.troops) if (troop.deployed) deployed++;
+    if (ROSTER2) {
+      for (const TROOP of ROSTER2.troops) {
+        if (TROOP.deployed) {
+          deployed++;
+        }
+      }
     }
-    const stage = w.boss.stage || 0;
-    if (stage) {
-      const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: roster2?.troops.length || 0, originalUnitsDeployed: deployed }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
-      syncText("raidRewardChance", stageReward.rolls ? `${speciesRewardName(w.boss.species)} · ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "종 추첨 없음");
-    } else syncText("raidRewardChance", "");
+    const STAGE = W.boss.stage || 0;
+    if (STAGE) {
+      const STAGE_REWARD = bossStageStats(STAGE), MULTIPLIER = raidDeploymentRewardMultiplier({
+        availableAtStart: ROSTER2?.troops.length || 0,
+        originalUnitsDeployed: deployed
+      }), CHANCE = Math.round(
+        bossAcquisitionChance({
+          acquisitionMultiplier: MULTIPLIER
+        }) * 100
+      );
+      syncText(
+        "raidRewardChance",
+        STAGE_REWARD.rolls ? `${speciesRewardName(W.boss.species)} · ${CHANCE}%씩 · ${STAGE_REWARD.rolls}회 개별 추첨` : "종 추첨 없음"
+      );
+    } else {
+      syncText("raidRewardChance", "");
+    }
   }
   function canUseWorldInput() {
     return !home && !menuOpen && !bossEncounterOpen && !active.paused;
   }
   function deployTroop() {
-    if (!canUseWorldInput() || active.world.scene !== "raid") return false;
+    if (!canUseWorldInput() || active.world.scene !== "raid") {
+      return false;
+    }
     return active.deployNext();
   }
   function stopDrop(e) {
-    if (e && dropPointer !== null && e.pointerId !== dropPointer) return;
-    const id = dropPointer;
+    if (e && dropPointer !== null && e.pointerId !== dropPointer) {
+      return;
+    }
+    const ID = dropPointer;
     dropPointer = null;
-    if (dropTimer !== null) clearInterval(dropTimer);
+    if (dropTimer !== null) {
+      clearInterval(dropTimer);
+    }
     dropTimer = null;
-    const button = $2("deployTroops");
-    button.setAttribute("aria-pressed", "false");
-    if (typeof id === "number" && button.hasPointerCapture?.(id)) button.releasePointerCapture(id);
+    const BUTTON = DOLLAR2("deployTroops");
+    BUTTON.setAttribute("aria-pressed", "false");
+    if (typeof ID === "number" && BUTTON.hasPointerCapture?.(ID)) {
+      BUTTON.releasePointerCapture(ID);
+    }
   }
   function beginDrop(id) {
-    if (dropPointer !== null || scatterPointer || panPointer || !deployTroop()) return false;
+    if (dropPointer !== null || scatterPointer || panPointer || !deployTroop()) {
+      return false;
+    }
     dropPointer = id;
-    $2("deployTroops").setAttribute("aria-pressed", "true");
+    DOLLAR2("deployTroops").setAttribute("aria-pressed", "true");
     dropTimer = setInterval(() => {
-      if (dropPointer !== null && !deployTroop()) stopDrop();
+      if (dropPointer !== null && !deployTroop()) {
+        stopDrop();
+      }
     }, 100);
     return true;
   }
-  $2("deployTroops").addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || !beginDrop(e.pointerId)) return;
-    foodFeel.unlock();
-    $2("deployTroops").setPointerCapture?.(e.pointerId);
+  DOLLAR2("deployTroops").addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || !beginDrop(e.pointerId)) {
+      return;
+    }
+    FOOD_FEEL.unlock();
+    DOLLAR2("deployTroops").setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
-  $2("deployTroops").addEventListener("lostpointercapture", stopDrop);
-  $2("deployTroops").addEventListener("keydown", (e) => {
-    if (!["Enter", " "].includes(e.key)) return;
+  DOLLAR2("deployTroops").addEventListener("lostpointercapture", stopDrop);
+  DOLLAR2("deployTroops").addEventListener("keydown", (e) => {
+    if (!["Enter", " "].includes(e.key)) {
+      return;
+    }
     e.preventDefault();
-    if (!e.repeat) beginDrop("keyboard");
+    if (!e.repeat) {
+      beginDrop("keyboard");
+    }
   });
-  $2("deployTroops").addEventListener("keyup", (e) => {
+  DOLLAR2("deployTroops").addEventListener("keyup", (e) => {
     if (["Enter", " "].includes(e.key)) {
       e.preventDefault();
       stopDrop();
     }
   });
-  $2("deployTroops").addEventListener("blur", () => stopDrop());
+  DOLLAR2("deployTroops").addEventListener("blur", () => stopDrop());
   function stopScatter(e) {
-    if (e && scatterPointer && e.pointerId !== scatterPointer.id) return;
-    const id = scatterPointer?.id;
+    if (e && scatterPointer && e.pointerId !== scatterPointer.id) {
+      return;
+    }
+    const ID = scatterPointer?.id;
     scatterPointer = null;
     active?.world.clearLocalScatter();
-    if (id !== void 0 && canvas.hasPointerCapture?.(id)) canvas.releasePointerCapture(id);
+    if (ID !== void 0 && CANVAS.hasPointerCapture?.(ID)) {
+      CANVAS.releasePointerCapture(ID);
+    }
   }
   function stopPan(e) {
-    if (e && panPointer && e.pointerId !== panPointer.id) return;
-    const id = panPointer?.id;
+    if (e && panPointer && e.pointerId !== panPointer.id) {
+      return;
+    }
+    const ID = panPointer?.id;
     panPointer = null;
-    if (id !== void 0 && canvas.hasPointerCapture?.(id)) canvas.releasePointerCapture(id);
+    if (ID !== void 0 && CANVAS.hasPointerCapture?.(ID)) {
+      CANVAS.releasePointerCapture(ID);
+    }
   }
   function stopWorldInput(e) {
     stopDrop(e);
@@ -8635,50 +13795,73 @@
   function selectWorldInputMode(mode) {
     stopWorldInput();
     worldInputMode = mode;
-    $2("scatterMode").setAttribute("aria-pressed", String(mode === "scatter"));
-    $2("panMode").setAttribute("aria-pressed", String(mode === "pan"));
-    canvas.setAttribute("aria-label", mode === "pan" ? "드래그해 정원 시야 이동" : "지면을 누르고 드래그해 아군 산개 범위 조절");
+    DOLLAR2("scatterMode").setAttribute("aria-pressed", String(mode === "scatter"));
+    DOLLAR2("panMode").setAttribute("aria-pressed", String(mode === "pan"));
+    CANVAS.setAttribute(
+      "aria-label",
+      mode === "pan" ? "드래그해 정원 시야 이동" : "지면을 누르고 드래그해 아군 산개 범위 조절"
+    );
   }
-  $2("scatterMode").onclick = () => selectWorldInputMode("scatter");
-  $2("panMode").onclick = () => selectWorldInputMode("pan");
-  canvas.addEventListener("pointerdown", (e) => {
-    foodFeel.unlock();
-    if (e.button !== 0 || !canUseWorldInput() || scatterPointer || panPointer || dropPointer !== null) return;
+  DOLLAR2("scatterMode").onclick = () => selectWorldInputMode("scatter");
+  DOLLAR2("panMode").onclick = () => selectWorldInputMode("pan");
+  CANVAS.addEventListener("pointerdown", (e) => {
+    FOOD_FEEL.unlock();
+    if (e.button !== 0 || !canUseWorldInput() || scatterPointer || panPointer || dropPointer !== null) {
+      return;
+    }
     if (worldInputMode === "pan") {
-      panPointer = { id: e.pointerId, x: e.clientX, y: e.clientY };
-      canvas.setPointerCapture?.(e.pointerId);
+      panPointer = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY
+      };
+      CANVAS.setPointerCapture?.(e.pointerId);
       e.preventDefault();
       return;
     }
-    const p = renderer.screenToWorld(e.clientX, e.clientY);
-    if (!ArenaGeometry.inside(p, active.world.scene)) return;
-    scatterPointer = { id: e.pointerId, x: p.x, y: p.y };
-    active.world.setLocalScatter(p.x, p.y);
-    canvas.setPointerCapture?.(e.pointerId);
+    const P = RENDERER.screenToWorld(e.clientX, e.clientY);
+    if (!ARENA_GEOMETRY.inside(P, active.world.scene)) {
+      return;
+    }
+    scatterPointer = {
+      id: e.pointerId,
+      x: P.x,
+      y: P.y
+    };
+    active.world.setLocalScatter(P.x, P.y);
+    CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
-  canvas.addEventListener("pointermove", (e) => {
+  CANVAS.addEventListener("pointermove", (e) => {
     if (panPointer && e.pointerId === panPointer.id) {
       if (!canUseWorldInput()) {
         stopPan();
         return;
       }
-      renderer.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
+      RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
       panPointer.x = e.clientX;
       panPointer.y = e.clientY;
       e.preventDefault();
       return;
     }
-    if (!scatterPointer || e.pointerId !== scatterPointer.id) return;
+    if (!scatterPointer || e.pointerId !== scatterPointer.id) {
+      return;
+    }
     if (!canUseWorldInput()) {
       stopScatter();
       return;
     }
-    const p = renderer.screenToWorld(e.clientX, e.clientY), dx = p.x - scatterPointer.x, dy = p.y - scatterPointer.y, d = Math.hypot(dx, dy), r = Math.max(CONFIG.scatter.minRadius, Math.min(CONFIG.scatter.maxRadius, d)), angle = d > 1e-6 ? Math.atan2(dy, dx) : 0;
-    active.world.setLocalScatter(scatterPointer.x, scatterPointer.y, r, scatterPointer.x + Math.cos(angle) * r, scatterPointer.y + Math.sin(angle) * r);
+    const P = RENDERER.screenToWorld(e.clientX, e.clientY), DX = P.x - scatterPointer.x, DY = P.y - scatterPointer.y, D = Math.hypot(DX, DY), R2 = Math.max(CONFIG.scatter.minRadius, Math.min(CONFIG.scatter.maxRadius, D)), ANGLE = D > 1e-6 ? Math.atan2(DY, DX) : 0;
+    active.world.setLocalScatter(
+      scatterPointer.x,
+      scatterPointer.y,
+      R2,
+      scatterPointer.x + Math.cos(ANGLE) * R2,
+      scatterPointer.y + Math.sin(ANGLE) * R2
+    );
     e.preventDefault();
   });
-  canvas.addEventListener("lostpointercapture", (e) => {
+  CANVAS.addEventListener("lostpointercapture", (e) => {
     stopScatter(e);
     stopPan(e);
   });
@@ -8704,169 +13887,251 @@
       closeMenu();
     } else if (bossEncounterOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
-      const current = personalGarden?.farmBossProgress?.currentStage || 1, next = e.key === "ArrowUp" ? Math.min(BOSS_REWARD_SETTINGS.maxStage, current + 1) : Math.max(1, current - 1);
-      renderBossEncounterStage(next);
+      const CURRENT = personalGarden?.farmBossProgress?.currentStage || 1, NEXT = e.key === "ArrowUp" ? Math.min(BOSS_REWARD_SETTINGS.maxStage, CURRENT + 1) : Math.max(1, CURRENT - 1);
+      renderBossEncounterStage(NEXT);
     }
   });
   window.addEventListener("pageshow", (e) => {
-    if (e.persisted) location.reload();
+    if (e.persisted) {
+      location.reload();
+    }
   });
   window.addEventListener("resize", () => {
     stopWorldInput();
-    renderer.resize();
+    RENDERER.resize();
   });
   window.addEventListener("pagehide", () => {
     stopWorldInput();
     persist();
     active.dispose();
-    renderer.dispose();
+    RENDERER.dispose();
   });
-  canvas.addEventListener("webglcontextlost", (e) => {
+  CANVAS.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
     stopWorldInput();
     persist();
-    fail3(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
+    FAIL3(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
   });
   function route() {
     stopWorldInput();
-    const r = location.hash;
-    if (r === "#/" || !r) {
-      if (menuOpen) closeMenu(false);
+    const R2 = location.hash;
+    if (R2 === "#/" || !R2) {
+      if (menuOpen) {
+        closeMenu(false);
+      }
       setHome(true, false);
       return;
     }
-    if (storage.hasReservedRaid && active.world.scene !== "raid") {
-      if (menuOpen) closeMenu(false);
+    if (STORAGE.hasReservedRaid && active.world.scene !== "raid") {
+      if (menuOpen) {
+        closeMenu(false);
+      }
       setHome(true, false);
       history.replaceState(null, "", "#/");
       return;
     }
     if (home) {
-      if (storage.error && !storage.hasWorld) {
+      if (STORAGE.error && !STORAGE.hasWorld) {
         setHome(true, false);
         history.replaceState(null, "", "#/");
         return;
       }
-      if (storage.hasWorld) start(restore(snapshot(storage.world)), false);
-      else start(new Garden(), false);
+      if (STORAGE.hasWorld) {
+        start(restore(snapshot(STORAGE.world)), false);
+      } else {
+        start(new GARDEN(), false);
+      }
     }
-    if (r === "#/boss") {
-      if (!openBossEncounter(false)) history.replaceState(null, "", "#/farm");
+    if (R2 === "#/boss") {
+      if (!openBossEncounter(false)) {
+        history.replaceState(null, "", "#/farm");
+      }
       return;
     }
-    if (r === "#/help" || r === "#/growth" || r === "#/abilities" || r === "#/menu") {
-      const raid = active.world.scene === "raid", farmEventActive = !raid && personalGarden?.farmBossEvent?.phase !== "idle";
-      const restricted = r === "#/growth" && (raid || farmEventActive) || r === "#/abilities" && (raid || !personalGarden);
-      if (restricted) {
-        if (menuOpen) closeMenu(false);
-        history.replaceState(null, "", raid ? "#/raid" : "#/farm");
+    if (R2 === "#/help" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/menu") {
+      const RAID = active.world.scene === "raid", FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== "idle";
+      const RESTRICTED = R2 === "#/growth" && (RAID || FARM_EVENT_ACTIVE) || R2 === "#/abilities" && (RAID || !personalGarden);
+      if (RESTRICTED) {
+        if (menuOpen) {
+          closeMenu(false);
+        }
+        history.replaceState(null, "", RAID ? "#/raid" : "#/farm");
         return;
       }
-      openMenu(routeMenuTab(r), false);
+      openMenu(ROUTE_MENU_TAB(R2), false);
       return;
     }
-    if (menuOpen) closeMenu(false);
-    if (bossEncounterOpen && r !== "#/boss") closeBossEncounter(false);
-    if (r === "#/raid") {
+    if (menuOpen) {
+      closeMenu(false);
+    }
+    if (bossEncounterOpen && R2 !== "#/boss") {
+      closeBossEncounter(false);
+    }
+    if (R2 === "#/raid") {
       if (personalGarden?.farmBossEvent?.phase !== "idle") {
         history.replaceState(null, "", "#/farm");
-      } else openBossEncounter(false);
-    } else if (r === "#/farm" && active.world.scene === "raid") returnToFarm(false);
+      } else {
+        openBossEncounter(false);
+      }
+    } else if (R2 === "#/farm" && active.world.scene === "raid") {
+      returnToFarm(false);
+    }
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
-    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingReward2 = rewardWorld.bossRewardReceipts.find((reward2) => reward2.status === "pending");
+    const W = active.world, RAID = display.scene === "raid", FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = !RAID && FARM_EVENT?.phase !== "idle", BATTLE_HUD = RAID || FARM_EVENT_ACTIVE, HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, REWARD_WORLD = personalGarden || W, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => reward.status === "pending");
     syncFlag("worldInputControls", "hidden", home || bossEncounterOpen);
     syncFlag("scatterHint", "hidden", home || menuOpen || bossEncounterOpen || now >= scatterHintUntil);
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || scatterPointer || panPointer)) stopWorldInput();
-    syncAttribute("farm", "aria-pressed", !raid && !bossEncounterOpen);
-    syncAttribute("raid", "aria-pressed", raid || bossEncounterOpen);
-    syncAttribute("breed", "aria-pressed", w.mode === "breed");
-    syncAttribute("merge", "aria-pressed", w.mode === "merge");
-    let displayedCount = 0, worldCount = 0, armyCurrent = 0, armyMax = 0, armyLiving = 0, armyTotal = 0;
-    for (const unit2 of display.units) {
-      if (!unit2.isBattleOnlySummon) displayedCount++;
-      if (unit2.faction === CONFIG.factions.PLAYER) {
-        armyCurrent += Math.max(0, Math.min(unit2.maxHp, unit2.hp));
-        armyMax += unit2.maxHp;
-        armyLiving += unit2.hp > 0 ? 1 : 0;
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || scatterPointer || panPointer)) {
+      stopWorldInput();
+    }
+    syncAttribute("farm", "aria-pressed", !RAID && !bossEncounterOpen);
+    syncAttribute("raid", "aria-pressed", RAID || bossEncounterOpen);
+    syncAttribute("breed", "aria-pressed", W.mode === "breed");
+    syncAttribute("merge", "aria-pressed", W.mode === "merge");
+    let displayedCount = 0;
+    let worldCount = 0;
+    let armyCurrent = 0;
+    let armyMax = 0;
+    let armyLiving = 0;
+    let armyTotal = 0;
+    for (const UNIT3 of display.units) {
+      if (!UNIT3.isBattleOnlySummon) {
+        displayedCount++;
+      }
+      if (UNIT3.faction === CONFIG.factions.PLAYER) {
+        armyCurrent += Math.max(0, Math.min(UNIT3.maxHp, UNIT3.hp));
+        armyMax += UNIT3.maxHp;
+        armyLiving += UNIT3.hp > 0 ? 1 : 0;
         armyTotal++;
       }
     }
-    if (!raid) {
-      for (const unit2 of w.units) if (!unit2.isBattleOnlySummon) worldCount++;
+    if (!RAID) {
+      for (const UNIT3 of W.units) {
+        if (!UNIT3.isBattleOnlySummon) {
+          worldCount++;
+        }
+      }
     }
     syncFlag("bossEncounterScreen", "hidden", home || !bossEncounterOpen);
-    syncFlag("farmControls", "hidden", raid || farmEventActive || home || bossEncounterOpen);
-    syncFlag("raidControls", "hidden", !raid || home);
-    syncFlag("bossbar", "hidden", !battleHud || home);
-    syncText("count", raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount);
+    syncFlag("farmControls", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("raidControls", "hidden", !RAID || home);
+    syncFlag("bossbar", "hidden", !BATTLE_HUD || home);
+    syncText(
+      "count",
+      RAID ? W.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount
+    );
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
-    syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingReward2 ? `${speciesRewardName(pendingReward2.species)} 보상 대기 · 공간이 생기면 합류해요` : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
+    syncText(
+      "starter",
+      RAID ? `${W.units.length} deployed in raid` : PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= W.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요"
+    );
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
-    syncText("allyHealthText", Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존");
-    const boss2 = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss2.stage ? `STAGE ${boss2.stage}` : "", rewardName = speciesRewardName(boss2.species), encounterName = giantSpeciesName(boss2.species);
-    syncText("bossName", encounterName);
-    syncAttribute("bossHealth", "aria-label", `${encounterName} 체력`);
-    syncText("bossHealthText", Math.ceil(boss2.hp) + " / " + boss2.maxHp + " HP");
-    syncText("bossHealthNote", farmEventActive ? "상대 능력치 고정" : "전사자 포함 최대 HP");
+    syncText(
+      "allyHealthText",
+      Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존"
+    );
+    const BOSS2 = display.boss, BATTLE_OUTCOME = RAID ? W.encounter.outcome : FARM_EVENT?.outcome, SETTLED_RUN_SEQUENCE = RAID ? personalGarden?.activeRaidRunSequence ?? W.boss.encounterId : null, SETTLED_REWARD = RAID && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === SETTLED_RUN_SEQUENCE)?.reward, STAGE_NAME = RAID && BOSS2.stage ? `STAGE ${BOSS2.stage}` : "", REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
+    syncText("bossName", ENCOUNTER_NAME);
+    syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
+    syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
+    syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "전사자 포함 최대 HP");
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
     syncAttribute("allyHealth", "aria-valuemax", armyMax);
-    syncAttribute("bossHealth", "aria-valuenow", boss2.hp);
-    syncAttribute("bossHealth", "aria-valuemax", boss2.maxHp);
-    syncWidth("bossHealth", boss2.maxHp ? boss2.hp / boss2.maxHp * 100 + "%" : "0%");
-    syncText("battleOutcome", raid ? battleOutcome === "victory" ? `${stageName} · ${encounterName} · 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss2.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · ${rewardName} ${settledReward.acquisition.rolls?.filter((drop2) => drop2.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 종 추첨 없음" : bossStageStats(boss2.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} · ${encounterName} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `${encounterName} 격파 · ${rewardName} 획득 · 정원에 합류했어요` : farmEvent.rewardStatus === "pending" ? `${encounterName} 격파 · ${rewardName} 획득 대기 · 공간이 생기면 합류해요` : `${encounterName} 격파` : battleOutcome === "defeat" ? `${encounterName} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요` : "");
-    syncFlag("battleOutcome", "hidden", home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle");
-    syncFlag("bossEncounterChallenge", "disabled", !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null);
-    syncFlag("menuTabGrowth", "disabled", raid || farmEventActive || bossEncounterOpen);
-    syncFlag("menuTabAbilities", "disabled", raid || !personalGarden);
-    syncFlag("raid", "disabled", raid || farmEventActive || !personalGarden);
+    syncAttribute("bossHealth", "aria-valuenow", BOSS2.hp);
+    syncAttribute("bossHealth", "aria-valuemax", BOSS2.maxHp);
+    syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
+    syncText(
+      "battleOutcome",
+      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 승리 · ${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP${SETTLED_REWARD?.acquisition?.rollCount ? ` · ${REWARD_NAME} ${SETTLED_REWARD.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${SETTLED_REWARD.acquisition.rollCount}회 성공` : SETTLED_REWARD ? " · 종 추첨 없음" : bossStageStats(BOSS2.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} 획득 · 정원에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} 획득 대기 · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요` : ""
+    );
+    syncFlag(
+      "battleOutcome",
+      "hidden",
+      home || !BATTLE_HUD || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
+    );
+    syncFlag(
+      "bossEncounterChallenge",
+      "disabled",
+      !personalGarden || !HAS_READY_TROOPS || FARM_EVENT_ACTIVE || personalGarden?.activeRaidRunSequence !== null
+    );
+    syncFlag("menuTabGrowth", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag("menuTabAbilities", "disabled", RAID || !personalGarden);
+    syncFlag("raid", "disabled", RAID || FARM_EVENT_ACTIVE || !personalGarden);
     syncText("pause", active.paused ? "▶" : "Ⅱ");
-    syncAttribute("feed", "aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
-    syncData("feed", "state", w.food.length >= 140 ? "full" : "ready");
-    syncData("feed", "produced", now < foodFeel.completeUntil);
+    syncAttribute("feed", "aria-label", `먹이 탭, 5회 중 ${W.foodTaps.remainder}회`);
+    syncData("feed", "state", W.food.length >= 140 ? "full" : "ready");
+    syncData("feed", "produced", now < FOOD_FEEL.completeUntil);
     for (let i = 0; i < 5; i++) {
-      const pip = foodFeel.pips[i], filled = now < foodFeel.completeUntil || i < w.foodTaps.remainder;
-      if (pip.classList.contains("filled") !== filled) pip.classList.toggle("filled", filled);
+      const PIP = FOOD_FEEL.pips[i], FILLED = now < FOOD_FEEL.completeUntil || i < W.foodTaps.remainder;
+      if (PIP.classList.contains("filled") !== FILLED) {
+        PIP.classList.toggle("filled", FILLED);
+      }
     }
-    if (observedWorld !== w) {
-      observedWorld = w;
-      noticeSequence = w.eventSequence;
+    if (observedWorld !== W) {
+      observedWorld = W;
+      noticeSequence = W.eventSequence;
     }
-    for (const e of w.notices) if (e.sequence > noticeSequence) {
-      if (e.kind === "food-tap") foodFeel.tap(e.source, e.completed, e.remainder);
-      else foodFeel.event(e.kind);
+    for (const E of W.notices) {
+      if (E.sequence > noticeSequence) {
+        if (E.kind === "food-tap") {
+          FOOD_FEEL.tap(E.source, E.completed, E.remainder);
+        } else {
+          FOOD_FEEL.event(E.kind);
+        }
+      }
     }
-    noticeSequence = w.eventSequence;
-    foodFeel.frame(now);
+    noticeSequence = W.eventSequence;
+    FOOD_FEEL.frame(now);
     deploymentHud();
   }
   function frame(now) {
     try {
       measureFrame(now);
-      if (!home && !document.hidden) active.pulse(now);
-      const display = active.presentation(now);
-      combatFeel.observe(active.world, display.displayTimeMs, display.presentationRevision);
-      renderer.render(display, combatFeel, display.displayTimeMs);
-      sync(display, now);
+      if (!home && !document.hidden) {
+        active.pulse(now);
+      }
+      const DISPLAY = active.presentation(now);
+      COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision);
+      RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
+      sync(DISPLAY, now);
       requestAnimationFrame(frame);
     } catch (error) {
-      if (typeof globalThis.BloomReportRuntimeFatal === "function") globalThis.BloomReportRuntimeFatal(error);
-      else console.error("Farm render loop stopped", error);
+      if (typeof globalThis.BloomReportRuntimeFatal === "function") {
+        globalThis.BloomReportRuntimeFatal(error);
+      } else {
+        console.error("Farm render loop stopped", error);
+      }
     }
   }
-  $2("productVersion").textContent = PRODUCT_VERSION;
-  $2("startVersion").textContent = PRODUCT_VERSION + " · 여섯 등급과 합체 확장";
+  DOLLAR2("productVersion").textContent = PRODUCT_VERSION;
+  DOLLAR2("startVersion").textContent = PRODUCT_VERSION + " · 여섯 등급과 합체 확장";
   setHome(true, false);
-  if (location.hash && location.hash !== "#/") route();
+  if (location.hash && location.hash !== "#/") {
+    route();
+  }
   requestAnimationFrame(frame);
-  globalThis.BUDMORI = { get sim() {
-    return active.world;
-  }, get runtime() {
-    return active;
-  }, get renderMetrics() {
-    return frameRate();
-  }, get presentationDiagnostics() {
-    return active.latestPresentationDiagnostics;
-  }, renderer, storage, foodFeel, combatFeel, CONFIG, ATTACK_TYPES: UNIT_ABILITY_PROFILES, Ballistics, ArenaGeometry, version: PRODUCT_VERSION };
+  globalThis.BUDMORI = {
+    get sim() {
+      return active.world;
+    },
+    get runtime() {
+      return active;
+    },
+    get renderMetrics() {
+      return frameRate();
+    },
+    get presentationDiagnostics() {
+      return active.latestPresentationDiagnostics;
+    },
+    renderer: RENDERER,
+    storage: STORAGE,
+    foodFeel: FOOD_FEEL,
+    combatFeel: COMBAT_FEEL,
+    CONFIG,
+    ATTACK_TYPES: UNIT_ABILITY_PROFILES,
+    Ballistics: BALLISTICS,
+    ArenaGeometry: ARENA_GEOMETRY,
+    version: PRODUCT_VERSION
+  };
 })();

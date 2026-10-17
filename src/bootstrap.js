@@ -5,316 +5,491 @@ let initStage = 'bootstrap';
 let debugTools = null;
 let diagnosticRing = null;
 let gameScriptAttempted = false;
-
-const loading = document.createElement('div');
-loading.id = 'bloom-module-loading';
-loading.setAttribute('role', 'status');
-loading.style.cssText = 'position:fixed;inset:0;z-index:1000;display:grid;place-content:center;gap:16px;text-align:center;background:#183225;color:#ecf4d5;font:600 16px system-ui';
-const label = document.createElement('span');
-const retry = document.createElement('button');
-label.textContent = '게임을 준비하고 있어요';
-retry.textContent = '다시 시도';
-retry.hidden = true;
-loading.append(label, retry);
-document.body.append(loading);
-
-const errorPopup = document.createElement('div');
-errorPopup.id = 'bloom-error-popup';
-errorPopup.hidden = true;
-errorPopup.setAttribute('role', 'alertdialog');
-errorPopup.setAttribute('aria-modal', 'true');
-errorPopup.setAttribute('aria-labelledby', 'bloom-error-title');
-errorPopup.style.cssText = 'position:fixed;inset:0;z-index:2000;display:none;place-items:center;padding:20px;background:#101b18cc;font:16px system-ui;color:#183225';
-const errorPanel = document.createElement('section');
-errorPanel.style.cssText = 'width:min(100%,420px);max-height:90dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:#f9faee;box-shadow:0 12px 40px #0006';
-const errorTitle = document.createElement('h2');
-errorTitle.id = 'bloom-error-title';
-errorTitle.textContent = '게임이 오류로 중단됐어요';
-const errorMessage = document.createElement('p');
-errorMessage.textContent = '진단 정보를 복사해 알려 주시거나 새로고침해 주세요.';
-const diagnosticButton = document.createElement('button');
-diagnosticButton.id = 'bloom-diagnostic-copy';
-diagnosticButton.type = 'button';
-diagnosticButton.textContent = '진단 복사';
-diagnosticButton.style.cssText = 'min-height:48px;padding:0 16px;border:0;border-radius:12px;background:#315b40;color:#fff;font:600 16px system-ui;touch-action:manipulation';
-const reloadButton = document.createElement('button');
-reloadButton.type = 'button';
-reloadButton.textContent = '새로고침';
-reloadButton.style.cssText = 'min-height:48px;margin-left:8px;padding:0 16px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#183225;font:600 16px system-ui;touch-action:manipulation';
-const diagnosticText = document.createElement('textarea');
-diagnosticText.id = 'bloom-diagnostic-text';
-diagnosticText.readOnly = true;
-diagnosticText.setAttribute('aria-label', '진단 정보 복사 결과');
-diagnosticText.hidden = true;
-diagnosticText.style.cssText = 'display:block;box-sizing:border-box;width:100%;height:30vh;margin-top:12px;padding:10px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#111;font:12px/1.4 ui-monospace,monospace';
-const diagnosticStatus = document.createElement('span');
-diagnosticStatus.id = 'bloom-diagnostic-status';
-diagnosticStatus.setAttribute('role', 'status');
-diagnosticStatus.setAttribute('aria-live', 'polite');
-diagnosticStatus.style.cssText = 'display:block;margin-top:10px;font:14px system-ui;color:#183225';
-diagnosticStatus.hidden = true;
-const errorActions = document.createElement('div');
-errorActions.append(diagnosticButton, reloadButton);
-errorPanel.append(errorTitle, errorMessage, errorActions, diagnosticStatus, diagnosticText);
-errorPopup.append(errorPanel);
-document.body.append(errorPopup);
-
+const LOADING = document.createElement('div');
+LOADING.id = 'bloom-module-loading';
+LOADING.setAttribute('role', 'status');
+LOADING.style.cssText =
+    'position:fixed;inset:0;z-index:1000;display:grid;place-content:center;gap:16px;text-align:center;background:#183225;color:#ecf4d5;font:600 16px system-ui';
+const LABEL = document.createElement('span');
+const RETRY = document.createElement('button');
+LABEL.textContent = '게임을 준비하고 있어요';
+RETRY.textContent = '다시 시도';
+RETRY.hidden = true;
+LOADING.append(LABEL, RETRY);
+document.body.append(LOADING);
+const ERROR_POPUP = document.createElement('div');
+ERROR_POPUP.id = 'bloom-error-popup';
+ERROR_POPUP.hidden = true;
+ERROR_POPUP.setAttribute('role', 'alertdialog');
+ERROR_POPUP.setAttribute('aria-modal', 'true');
+ERROR_POPUP.setAttribute('aria-labelledby', 'bloom-error-title');
+ERROR_POPUP.style.cssText =
+    'position:fixed;inset:0;z-index:2000;display:none;place-items:center;padding:20px;background:#101b18cc;font:16px system-ui;color:#183225';
+const ERROR_PANEL = document.createElement('section');
+ERROR_PANEL.style.cssText =
+    'width:min(100%,420px);max-height:90dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:#f9faee;box-shadow:0 12px 40px #0006';
+const ERROR_TITLE = document.createElement('h2');
+ERROR_TITLE.id = 'bloom-error-title';
+ERROR_TITLE.textContent = '게임이 오류로 중단됐어요';
+const ERROR_MESSAGE = document.createElement('p');
+ERROR_MESSAGE.textContent = '진단 정보를 복사해 알려 주시거나 새로고침해 주세요.';
+const DIAGNOSTIC_BUTTON = document.createElement('button');
+DIAGNOSTIC_BUTTON.id = 'bloom-diagnostic-copy';
+DIAGNOSTIC_BUTTON.type = 'button';
+DIAGNOSTIC_BUTTON.textContent = '진단 복사';
+DIAGNOSTIC_BUTTON.style.cssText =
+    'min-height:48px;padding:0 16px;border:0;border-radius:12px;background:#315b40;color:#fff;font:600 16px system-ui;touch-action:manipulation';
+const RELOAD_BUTTON = document.createElement('button');
+RELOAD_BUTTON.type = 'button';
+RELOAD_BUTTON.textContent = '새로고침';
+RELOAD_BUTTON.style.cssText =
+    'min-height:48px;margin-left:8px;padding:0 16px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#183225;font:600 16px system-ui;touch-action:manipulation';
+const DIAGNOSTIC_TEXT = document.createElement('textarea');
+DIAGNOSTIC_TEXT.id = 'bloom-diagnostic-text';
+DIAGNOSTIC_TEXT.readOnly = true;
+DIAGNOSTIC_TEXT.setAttribute('aria-label', '진단 정보 복사 결과');
+DIAGNOSTIC_TEXT.hidden = true;
+DIAGNOSTIC_TEXT.style.cssText =
+    'display:block;box-sizing:border-box;width:100%;height:30vh;margin-top:12px;padding:10px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#111;font:12px/1.4 ui-monospace,monospace';
+const DIAGNOSTIC_STATUS = document.createElement('span');
+DIAGNOSTIC_STATUS.id = 'bloom-diagnostic-status';
+DIAGNOSTIC_STATUS.setAttribute('role', 'status');
+DIAGNOSTIC_STATUS.setAttribute('aria-live', 'polite');
+DIAGNOSTIC_STATUS.style.cssText = 'display:block;margin-top:10px;font:14px system-ui;color:#183225';
+DIAGNOSTIC_STATUS.hidden = true;
+const ERROR_ACTIONS = document.createElement('div');
+ERROR_ACTIONS.append(DIAGNOSTIC_BUTTON, RELOAD_BUTTON);
+ERROR_PANEL.append(ERROR_TITLE, ERROR_MESSAGE, ERROR_ACTIONS, DIAGNOSTIC_STATUS, DIAGNOSTIC_TEXT);
+ERROR_POPUP.append(ERROR_PANEL);
+document.body.append(ERROR_POPUP);
 function showErrorPopup(message) {
-  if (message) errorMessage.textContent = message;
-  errorPopup.style.display = 'grid';
-  errorPopup.hidden = false;
-  diagnosticButton.focus();
+    if (message) {
+        ERROR_MESSAGE.textContent = message;
+    }
+    ERROR_POPUP.style.display = 'grid';
+    ERROR_POPUP.hidden = false;
+    DIAGNOSTIC_BUTTON.focus();
 }
-reloadButton.addEventListener('click', () => location.reload());
-
-const earlyErrors = [];
-const recentInputs = [];
+RELOAD_BUTTON.addEventListener('click', () => location.reload());
+const EARLY_ERRORS = [];
+const RECENT_INPUTS = [];
 const INPUT_CAPACITY = 24;
 const ERROR_CAPACITY = 16;
 function fallbackText(value, limit = 500) {
-  const raw = typeof value === 'string' ? value : value?.message || 'Non-text error omitted';
-  return String(raw)
-    .replace(/(?:password|token|api[_-]?key|authorization|secret|cookie)\s*[=:]\s*[^\s,;]+/gi, '[redacted]')
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
-    .replace(/(?:https?|blob|file):[^\s)]+/gi, '[source]')
-    .replace(/\s+/g, ' ').slice(0, limit);
+    const RAW = typeof value === 'string' ? value : value?.message || 'Non-text error omitted';
+    return String(RAW)
+        .replace(/(?:password|token|api[_-]?key|authorization|secret|cookie)\s*[=:]\s*[^\s,;]+/gi, '[redacted]')
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+        .replace(/(?:https?|blob|file):[^\s)]+/gi, '[source]')
+        .replace(/\s+/g, ' ')
+        .slice(0, limit);
 }
 function sourceName(value) {
-  try { return new URL(value, location.href).pathname.split('/').filter(Boolean).at(-1)?.slice(0, 80) || ''; }
-  catch { return ''; }
+    try {
+        return new URL(value, location.href).pathname.split('/').filter(Boolean).at(-1)?.slice(0, 80) || '';
+    } catch {
+        return '';
+    }
 }
 function recordDiagnostic(error, kind = 'startup-error', details = {}) {
-  const source = sourceName(details.source || '');
-  if (diagnosticRing) {
-    diagnosticRing.report(error, {
-      kind, origin: 'bootstrap', source,
-      line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
-      column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
-      cause: `stage=${initStage}`, fatal: details.fatal === true
+    const SOURCE = sourceName(details.source || '');
+    if (diagnosticRing) {
+        diagnosticRing.report(error, {
+            kind,
+            origin: 'bootstrap',
+            source: SOURCE,
+            line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
+            column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
+            cause: `stage=${initStage}`,
+            fatal: details.fatal === true,
+        });
+        return;
+    }
+    if (EARLY_ERRORS.length === ERROR_CAPACITY) {
+        EARLY_ERRORS.shift();
+    }
+    EARLY_ERRORS.push({
+        kind: fallbackText(kind, 64),
+        message: fallbackText(error),
+        source: SOURCE,
+        line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
+        column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
+        stage: initStage,
+        atMs: Math.round(performance.now()),
     });
-    return;
-  }
-  if (earlyErrors.length === ERROR_CAPACITY) earlyErrors.shift();
-  earlyErrors.push({
-    kind: fallbackText(kind, 64), message: fallbackText(error), source,
-    line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
-    column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
-    stage: initStage, atMs: Math.round(performance.now())
-  });
 }
 function earlyError(event) {
-  recordDiagnostic(event.error ?? event.message ?? 'Global error', 'global-error', {
-    source: event.filename, line: event.lineno, column: event.colno
-  });
-  if (initStage !== 'ready') showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+    recordDiagnostic(event.error ?? event.message ?? 'Global error', 'global-error', {
+        source: event.filename,
+        line: event.lineno,
+        column: event.colno,
+    });
+    if (initStage !== 'ready') {
+        showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+    }
 }
 function earlyRejection(event) {
-  recordDiagnostic(event.reason ?? 'Unhandled promise rejection', 'unhandled-rejection');
-  if (initStage !== 'ready') showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+    recordDiagnostic(event.reason ?? 'Unhandled promise rejection', 'unhandled-rejection');
+    if (initStage !== 'ready') {
+        showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+    }
 }
 window.addEventListener('error', earlyError, true);
 window.addEventListener('unhandledrejection', earlyRejection);
 function removeEarlyDiagnostics() {
-  window.removeEventListener('error', earlyError, true);
-  window.removeEventListener('unhandledrejection', earlyRejection);
+    window.removeEventListener('error', earlyError, true);
+    window.removeEventListener('unhandledrejection', earlyRejection);
 }
-
 function recordInput(event) {
-  const target = event.target instanceof Element ? event.target : null;
-  const control = target?.closest('button,canvas,[role="button"]') || null;
-  const entry = {
-    atMs: Math.round(performance.now()), type: event.type,
-    target: control ? { tag: control.tagName.toLowerCase(), id: String(control.id || '').slice(0, 48) } : null
-  };
-  if (event.type === 'pointerdown' && ['mouse', 'touch', 'pen'].includes(event.pointerType)) entry.pointer = event.pointerType;
-  if (event.type === 'keydown' && ['Enter', ' ', 'Escape'].includes(event.key)) entry.key = event.key === ' ' ? 'Space' : event.key;
-  if (recentInputs.length === INPUT_CAPACITY) recentInputs.shift();
-  recentInputs.push(entry);
+    const TARGET = event.target instanceof Element ? event.target : null;
+    const CONTROL = TARGET?.closest('button,canvas,[role="button"]') || null;
+    const ENTRY = {
+        atMs: Math.round(performance.now()),
+        type: event.type,
+        target: CONTROL
+            ? {
+                  tag: CONTROL.tagName.toLowerCase(),
+                  id: String(CONTROL.id || '').slice(0, 48),
+              }
+            : null,
+    };
+    if (event.type === 'pointerdown' && ['mouse', 'touch', 'pen'].includes(event.pointerType)) {
+        ENTRY.pointer = event.pointerType;
+    }
+    if (event.type === 'keydown' && ['Enter', ' ', 'Escape'].includes(event.key)) {
+        ENTRY.key = event.key === ' ' ? 'Space' : event.key;
+    }
+    if (RECENT_INPUTS.length === INPUT_CAPACITY) {
+        RECENT_INPUTS.shift();
+    }
+    RECENT_INPUTS.push(ENTRY);
 }
-for (const type of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown']) {
-  document.addEventListener(type, recordInput, true);
+for (const TYPE of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown']) {
+    document.addEventListener(TYPE, recordInput, true);
 }
-
 function appVersion() {
-  return String(config?.productVersion || document.getElementById('startVersion')?.textContent || document.getElementById('productVersion')?.textContent || 'unknown').trim().slice(0, 80);
+    return String(
+        config?.productVersion ||
+            document.getElementById('startVersion')?.textContent ||
+            document.getElementById('productVersion')?.textContent ||
+            'unknown',
+    )
+        .trim()
+        .slice(0, 80);
 }
 function diagnosticSnapshot() {
-  const errors = diagnosticRing ? diagnosticRing.snapshot() : {
-    format: 'bootstrap fallback diagnostics v1', release: appVersion(), total: earlyErrors.length,
-    dropped: 0, errors: earlyErrors.map(record => ({ ...record }))
-  };
-  return JSON.stringify({
-    format: 'budmori startup diagnostics v1',
-    app: { version: appVersion(), gameBundleSha256: config?.game?.sha256 || null },
-    browser: String(navigator.userAgent || 'unknown').slice(0, 240),
-    initStage,
-    recentInputs: recentInputs.map(record => ({ ...record })),
-    diagnostics: errors
-  }, null, 2);
+    const ERRORS = diagnosticRing
+        ? diagnosticRing.snapshot()
+        : {
+              format: 'bootstrap fallback diagnostics v1',
+              release: appVersion(),
+              total: EARLY_ERRORS.length,
+              dropped: 0,
+              errors: EARLY_ERRORS.map((record) => ({
+                  ...record,
+              })),
+          };
+    return JSON.stringify(
+        {
+            format: 'budmori startup diagnostics v1',
+            app: {
+                version: appVersion(),
+                gameBundleSha256: config?.game?.sha256 || null,
+            },
+            browser: String(navigator.userAgent || 'unknown').slice(0, 240),
+            initStage,
+            recentInputs: RECENT_INPUTS.map((record) => ({
+                ...record,
+            })),
+            diagnostics: ERRORS,
+        },
+        null,
+        2,
+    );
 }
-diagnosticButton.addEventListener('click', async () => {
-  diagnosticStatus.hidden = false;
-  diagnosticText.hidden = true;
-  const text = diagnosticSnapshot();
-  try {
-    const result = debugTools?.copyDiagnostic
-      ? await debugTools.copyDiagnostic(text, { clipboard: navigator.clipboard, textarea: diagnosticText })
-      : await (async () => {
-          try {
-            if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return { copied: true }; }
-          } catch (error) { recordDiagnostic(error, 'clipboard-copy-error'); }
-          return { copied: false };
-        })();
-    if (result.copied) {
-      diagnosticText.hidden = true;
-      diagnosticStatus.textContent = '진단 정보가 복사됐어요';
-    } else {
-      diagnosticText.value = result.text || text;
-      diagnosticText.hidden = false;
-      diagnosticText.focus(); diagnosticText.select();
-      diagnosticStatus.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
+DIAGNOSTIC_BUTTON.addEventListener('click', async () => {
+    DIAGNOSTIC_STATUS.hidden = false;
+    DIAGNOSTIC_TEXT.hidden = true;
+    const TEXT = diagnosticSnapshot();
+    try {
+        const RESULT = debugTools?.copyDiagnostic
+            ? await debugTools.copyDiagnostic(TEXT, {
+                  clipboard: navigator.clipboard,
+                  textarea: DIAGNOSTIC_TEXT,
+              })
+            : await (async () => {
+                  try {
+                      if (navigator.clipboard?.writeText) {
+                          await navigator.clipboard.writeText(TEXT);
+                          return {
+                              copied: true,
+                          };
+                      }
+                  } catch (error) {
+                      recordDiagnostic(error, 'clipboard-copy-error');
+                  }
+                  return {
+                      copied: false,
+                  };
+              })();
+        if (RESULT.copied) {
+            DIAGNOSTIC_TEXT.hidden = true;
+            DIAGNOSTIC_STATUS.textContent = '진단 정보가 복사됐어요';
+        } else {
+            DIAGNOSTIC_TEXT.value = RESULT.text || TEXT;
+            DIAGNOSTIC_TEXT.hidden = false;
+            DIAGNOSTIC_TEXT.focus();
+            DIAGNOSTIC_TEXT.select();
+            DIAGNOSTIC_STATUS.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
+        }
+    } catch (error) {
+        recordDiagnostic(error, 'diagnostic-copy-error');
+        console.error('Diagnostic copy failed', error);
+        DIAGNOSTIC_TEXT.value = diagnosticSnapshot();
+        DIAGNOSTIC_TEXT.hidden = false;
+        DIAGNOSTIC_TEXT.focus();
+        DIAGNOSTIC_TEXT.select();
+        DIAGNOSTIC_STATUS.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
     }
-  } catch (error) {
-    recordDiagnostic(error, 'diagnostic-copy-error');
-    console.error('Diagnostic copy failed', error);
-    diagnosticText.value = diagnosticSnapshot(); diagnosticText.hidden = false;
-    diagnosticText.focus(); diagnosticText.select();
-    diagnosticStatus.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
-  }
 });
-
 try {
-  const manifest = document.getElementById('bloom-runtime-manifest');
-  if (!manifest) throw new Error('Runtime manifest is missing');
-  config = JSON.parse(manifest.textContent);
+    const MANIFEST = document.getElementById('bloom-runtime-manifest');
+    if (!MANIFEST) {
+        throw new Error('Runtime manifest is missing');
+    }
+    config = JSON.parse(MANIFEST.textContent);
 } catch (error) {
-  initStage = 'manifest';
-  recordDiagnostic(error, 'manifest-error');
-  label.textContent = '게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요';
-  retry.textContent = '다시 불러오기';
-  retry.hidden = false;
-  showErrorPopup('게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요.');
-  console.error('Game manifest failed to initialize', error);
+    initStage = 'manifest';
+    recordDiagnostic(error, 'manifest-error');
+    LABEL.textContent = '게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요';
+    RETRY.textContent = '다시 불러오기';
+    RETRY.hidden = false;
+    showErrorPopup('게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요.');
+    console.error('Game manifest failed to initialize', error);
 }
-
-const ready = new Map();
+const READY = new Map();
 let pending = false;
 let started = false;
 let vectorLoader = null;
-const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
+const DIGEST = async (bytes) =>
+    Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>
+        b.toString(16).padStart(2, '0'),
+    ).join('');
 async function namespace(entry) {
-  if (ready.has(entry.name)) return ready.get(entry.name);
-  const response = await fetch(entry.url, { cache: 'force-cache' });
-  if (!response.ok) throw new Error('Module request failed: ' + response.status + ' (' + entry.name + ')');
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength !== entry.bytes || await digest(bytes) !== entry.sha256) throw new Error('Module integrity failed: ' + entry.name);
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'text/javascript' }));
-  try {
-    const exports = await import(url), record = { exports, verifiedImportURL: url };
-    ready.set(entry.name, record);
-    return record;
-  } catch (error) {
-    URL.revokeObjectURL(url);
-    throw error;
-  }
+    if (READY.has(entry.name)) {
+        return READY.get(entry.name);
+    }
+    const RESPONSE = await fetch(entry.url, {
+        cache: 'force-cache',
+    });
+    if (!RESPONSE.ok) {
+        throw new Error('Module request failed: ' + RESPONSE.status + ' (' + entry.name + ')');
+    }
+    const BYTES = await RESPONSE.arrayBuffer();
+    if (BYTES.byteLength !== entry.bytes || (await DIGEST(BYTES)) !== entry.sha256) {
+        throw new Error('Module integrity failed: ' + entry.name);
+    }
+    const URL_LOCAL = URL.createObjectURL(
+        new Blob([BYTES], {
+            type: 'text/javascript',
+        }),
+    );
+    try {
+        const EXPORTS = await import(URL_LOCAL),
+            RECORD = {
+                exports: EXPORTS,
+                verifiedImportURL: URL_LOCAL,
+            };
+        READY.set(entry.name, RECORD);
+        return RECORD;
+    } catch (error) {
+        URL.revokeObjectURL(URL_LOCAL);
+        throw error;
+    }
 }
 async function enableGamekitDiagnostics(record) {
-  const api = record?.exports;
-  if (typeof api?.DiagnosticRing !== 'function' || typeof api?.copyDiagnostic !== 'function') {
-    throw new Error('Required gamekit diagnostics API is unavailable');
-  }
-  const ring = new api.DiagnosticRing({ capacity: ERROR_CAPACITY, release: appVersion() });
-  for (const prior of earlyErrors) ring.report(prior.message, {
-    kind: prior.kind, origin: 'bootstrap', source: prior.source, line: prior.line, column: prior.column,
-    cause: `stage=${prior.stage}`
-  });
-  diagnosticRing = ring;
-  debugTools = api;
-  ring.installGlobal(window, { onReport: () => {
-    if (initStage !== 'ready') showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
-  } });
-  removeEarlyDiagnostics();
-  earlyErrors.length = 0;
+    const API = record?.exports;
+    if (typeof API?.DiagnosticRing !== 'function' || typeof API?.copyDiagnostic !== 'function') {
+        throw new Error('Required gamekit diagnostics API is unavailable');
+    }
+    const RING = new API.DiagnosticRing({
+        capacity: ERROR_CAPACITY,
+        release: appVersion(),
+    });
+    for (const PRIOR of EARLY_ERRORS) {
+        RING.report(PRIOR.message, {
+            kind: PRIOR.kind,
+            origin: 'bootstrap',
+            source: PRIOR.source,
+            line: PRIOR.line,
+            column: PRIOR.column,
+            cause: `stage=${PRIOR.stage}`,
+        });
+    }
+    diagnosticRing = RING;
+    debugTools = API;
+    RING.installGlobal(window, {
+        onReport: () => {
+            if (initStage !== 'ready') {
+                showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+            }
+        },
+    });
+    removeEarlyDiagnostics();
+    EARLY_ERRORS.length = 0;
 }
 async function loadDiagnostics() {
-  const entry = config.modules.find(module => module.name === 'debug-tools');
-  if (!entry) throw new Error('Required gamekit debug-tools module is missing from the manifest');
-  initStage = 'loading-debug-tools';
-  await enableGamekitDiagnostics(await namespace(entry));
+    const ENTRY = config.modules.find((module) => module.name === 'debug-tools');
+    if (!ENTRY) {
+        throw new Error('Required gamekit debug-tools module is missing from the manifest');
+    }
+    initStage = 'loading-debug-tools';
+    await enableGamekitDiagnostics(await namespace(ENTRY));
 }
 async function launch() {
-  if (pending || started || !config) return;
-  pending = true;
-  retry.hidden = true;
-  label.textContent = '게임을 준비하고 있어요';
-  try {
-    if (!debugTools) await loadDiagnostics();
-    initStage = 'loading-modules';
-    const modules = await Promise.all(config.modules.map(async entry => ({ entry, record: await namespace(entry) })));
-    for (const { entry, record } of modules) globalThis[entry.globalName] = record.exports;
-    initStage = 'loading-vector-assets';
-    label.textContent = '캐릭터를 준비하고 있어요';
-    // Keep troop and giant variants in separate quality-keyed startup cache entries.
-    vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({ maxEntries: config.vectorAssets.length });
-    const troops = {}, bosses = {};
-    const records = await Promise.all(config.vectorAssets.map(async spec => {
-      const url = new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href;
-      const preset = globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[spec.qualityPreset];
-      if (!preset) throw new Error('Unknown shared SVG quality preset: ' + spec.qualityPreset);
-      const compiled = await vectorLoader.load(url, { ...preset, sourcePath: spec.file, expectedSha256: spec.sha256, maxBytes: spec.bytes });
-      if (compiled.sourceSha256 !== spec.sha256) throw new Error('Vector source integrity failed: ' + spec.file);
-      return { spec, compiled };
-    }));
-    for (const { spec, compiled } of records) (spec.kind === 'troop' ? troops : bosses)[spec.id] = compiled;
-    globalThis.BudmoriVectorResources = Object.freeze({ troops: Object.freeze(troops), bosses: Object.freeze(bosses) });
-    let scope = null;
-    if (config.scope) {
-      const entry = { ...config.scope, name: 'app-simulation-scope', url: new URL(config.scope.file + '?version=' + config.scope.sha256, document.baseURI).href };
-      const record = await namespace(entry);
-      globalThis.BloomSimulationScopeModule = record.exports;
-      scope = Object.freeze({ ...entry, verifiedImportURL: record.verifiedImportURL });
+    if (pending || started || !config) {
+        return;
     }
-    globalThis.BloomModuleReferences = Object.freeze({ sourceCommit: config.sourceCommit, distCommit: config.distCommit, scope,
-      modules: Object.freeze(modules.map(({ entry, record }) => Object.freeze({ ...entry, verifiedImportURL: record.verifiedImportURL }))),
-      dispose() { for (const record of ready.values()) URL.revokeObjectURL(record.verifiedImportURL); ready.clear(); }
-    });
-    initStage = 'loading-game-script';
-    const script = document.createElement('script'), asset = config.game;
-    script.src = new URL(asset.file + '?version=' + asset.sha256, document.baseURI).href;
-    script.integrity = 'sha256-' + btoa(String.fromCharCode(...Uint8Array.from(asset.sha256.match(/../g), b => parseInt(b, 16))));
-    script.crossOrigin = 'anonymous';
-    globalThis.BloomGameSourceURL = script.src;
-    globalThis.BloomGameSourceIntegrity = script.integrity;
-    gameScriptAttempted = true;
-    await new Promise((resolve, reject) => {
-      script.onload = resolve;
-      script.onerror = () => { gameScriptAttempted = false; reject(new Error('Game source loading failed')); };
-      document.body.append(script);
-    });
-    initStage = 'verifying-game-init';
-    if (!globalThis.BUDMORI) throw new Error('Game script loaded but app initialization did not complete');
-    started = true;
-    initStage = 'ready';
-    loading.remove();
-  } catch (error) {
-    recordDiagnostic(error, 'startup-error');
-    label.textContent = '게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요';
-    retry.textContent = gameScriptAttempted && !globalThis.BUDMORI ? '다시 불러오기' : '다시 시도';
-    retry.hidden = false;
-    console.error('Game startup failed at ' + initStage, error);
-    showErrorPopup('게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요.');
-  } finally {
-    pending = false;
-  }
+    pending = true;
+    RETRY.hidden = true;
+    LABEL.textContent = '게임을 준비하고 있어요';
+    try {
+        if (!debugTools) {
+            await loadDiagnostics();
+        }
+        initStage = 'loading-modules';
+        const MODULES = await Promise.all(
+            config.modules.map(async (entry) => ({
+                entry,
+                record: await namespace(entry),
+            })),
+        );
+        for (const { entry: ENTRY, record: RECORD } of MODULES) {
+            globalThis[ENTRY.globalName] = RECORD.exports;
+        }
+        initStage = 'loading-vector-assets';
+        LABEL.textContent = '캐릭터를 준비하고 있어요';
+        // Keep troop and giant variants in separate quality-keyed startup cache entries.
+        vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({
+            maxEntries: config.vectorAssets.length,
+        });
+        const TROOPS = {},
+            BOSSES = {};
+        const RECORDS = await Promise.all(
+            config.vectorAssets.map(async (spec) => {
+                const URL_LOCAL = new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href;
+                const PRESET =
+                    globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[spec.qualityPreset];
+                if (!PRESET) {
+                    throw new Error('Unknown shared SVG quality preset: ' + spec.qualityPreset);
+                }
+                const COMPILED = await vectorLoader.load(URL_LOCAL, {
+                    ...PRESET,
+                    sourcePath: spec.file,
+                    expectedSha256: spec.sha256,
+                    maxBytes: spec.bytes,
+                });
+                if (COMPILED.sourceSha256 !== spec.sha256) {
+                    throw new Error('Vector source integrity failed: ' + spec.file);
+                }
+                return {
+                    spec,
+                    compiled: COMPILED,
+                };
+            }),
+        );
+        for (const { spec: SPEC, compiled: COMPILED } of RECORDS) {
+            (SPEC.kind === 'troop' ? TROOPS : BOSSES)[SPEC.id] = COMPILED;
+        }
+        globalThis.BudmoriVectorResources = Object.freeze({
+            troops: Object.freeze(TROOPS),
+            bosses: Object.freeze(BOSSES),
+        });
+        let scope = null;
+        if (config.scope) {
+            const ENTRY = {
+                ...config.scope,
+                name: 'app-simulation-scope',
+                url: new URL(config.scope.file + '?version=' + config.scope.sha256, document.baseURI).href,
+            };
+            const RECORD = await namespace(ENTRY);
+            globalThis.BloomSimulationScopeModule = RECORD.exports;
+            scope = Object.freeze({
+                ...ENTRY,
+                verifiedImportURL: RECORD.verifiedImportURL,
+            });
+        }
+        globalThis.BloomModuleReferences = Object.freeze({
+            sourceCommit: config.sourceCommit,
+            distCommit: config.distCommit,
+            scope,
+            modules: Object.freeze(
+                MODULES.map(({ entry, record }) =>
+                    Object.freeze({
+                        ...entry,
+                        verifiedImportURL: record.verifiedImportURL,
+                    }),
+                ),
+            ),
+            dispose() {
+                for (const RECORD of READY.values()) {
+                    URL.revokeObjectURL(RECORD.verifiedImportURL);
+                }
+                READY.clear();
+            },
+        });
+        initStage = 'loading-game-script';
+        const SCRIPT = document.createElement('script'),
+            ASSET = config.game;
+        SCRIPT.src = new URL(ASSET.file + '?version=' + ASSET.sha256, document.baseURI).href;
+        SCRIPT.integrity =
+            'sha256-' +
+            btoa(String.fromCharCode(...Uint8Array.from(ASSET.sha256.match(/../g), (b) => parseInt(b, 16))));
+        SCRIPT.crossOrigin = 'anonymous';
+        globalThis.BloomGameSourceURL = SCRIPT.src;
+        globalThis.BloomGameSourceIntegrity = SCRIPT.integrity;
+        gameScriptAttempted = true;
+        await new Promise((resolve, reject) => {
+            SCRIPT.onload = resolve;
+            SCRIPT.onerror = () => {
+                gameScriptAttempted = false;
+                reject(new Error('Game source loading failed'));
+            };
+            document.body.append(SCRIPT);
+        });
+        initStage = 'verifying-game-init';
+        if (!globalThis.BUDMORI) {
+            throw new Error('Game script loaded but app initialization did not complete');
+        }
+        started = true;
+        initStage = 'ready';
+        LOADING.remove();
+    } catch (error) {
+        recordDiagnostic(error, 'startup-error');
+        LABEL.textContent = '게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요';
+        RETRY.textContent = gameScriptAttempted && !globalThis.BUDMORI ? '다시 불러오기' : '다시 시도';
+        RETRY.hidden = false;
+        console.error('Game startup failed at ' + initStage, error);
+        showErrorPopup('게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요.');
+    } finally {
+        pending = false;
+    }
 }
-globalThis.BloomReportRuntimeFatal = error => {
-  initStage = 'runtime-frame';
-  recordDiagnostic(error, 'runtime-fatal', { fatal: true });
-  console.error('Farm render loop stopped', error);
-  showErrorPopup('게임이 오류로 중단됐어요. 진단 정보를 복사해 알려 주세요.');
+globalThis.BloomReportRuntimeFatal = (error) => {
+    initStage = 'runtime-frame';
+    recordDiagnostic(error, 'runtime-fatal', {
+        fatal: true,
+    });
+    console.error('Farm render loop stopped', error);
+    showErrorPopup('게임이 오류로 중단됐어요. 진단 정보를 복사해 알려 주세요.');
 };
-retry.addEventListener('click', () => {
-  if (!config || gameScriptAttempted && !globalThis.BUDMORI) location.reload();
-  else void launch();
+RETRY.addEventListener('click', () => {
+    if (!config || (gameScriptAttempted && !globalThis.BUDMORI)) {
+        location.reload();
+    } else {
+        void launch();
+    }
 });
-if (config) void launch();
+if (config) {
+    void launch();
+}

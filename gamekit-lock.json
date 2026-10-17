@@ -1,67 +1,67 @@
 {
-  "schemaVersion": 3,
-  "repository": "byh-playground/bloom-gamekit",
-  "sourceCommit": "55338e6591b8a0d60a106d21a2bd3d06c1c2cfe6",
-  "distCommit": "fd95f8be720f0e8e159fa78c4d65e87d064a2b01",
-  "status": "verified immutable distribution",
-  "esbuild": "0.28.2",
-  "modules": [
-    {
-      "name": "presentation-events",
-      "bundleSHA256": "469a820e22730cdff9a0e4cd37fcbbfa4ffc9af3e39eab6d9a784e1d544caf84"
-    },
-    {
-      "name": "camera",
-      "bundleSHA256": "3fd1c8a61b49e22b50606dbf472495775419640a8487f3a0ec079cb4d3522cb7"
-    },
-    {
-      "name": "deterministic",
-      "bundleSHA256": "688178b889e7bd3f19c1bc504c91c03f896a9a7bd832fd2c0fc958b2feadce55"
-    },
-    {
-      "name": "simloop",
-      "bundleSHA256": "f1d348b2f6a80b69c867b9bd45fc359f6d0b238885d85edfe0e9b73d03f043f4"
-    },
-    {
-      "name": "interpolation",
-      "bundleSHA256": "193c0e00bd60b89ea59a74be5badb898420ffbd350eb9cd3b7f6b56600d33a74"
-    },
-    {
-      "name": "hud",
-      "bundleSHA256": "acec30fdab522ef151ab582113f26058aabb48a1d8d11cfe0ea640e1b61c86df"
-    },
-    {
-      "name": "rendering",
-      "bundleSHA256": "5ec22f1b4c3689b11cd0d4c14acc017b94ce5c11afc859df399898645976e227"
-    },
-    {
-      "name": "vector-assets",
-      "bundleSHA256": "d5f4f51b8695dee6c9d7bf4993912bc07890486c0535f3dbaacca55ef35a276e"
-    },
-    {
-      "name": "vector-assets-loader",
-      "bundleSHA256": "c400c60c1fd52c96e02f445347a7a2596d8cda6073c069bf7e69c8edb78eb371"
-    },
-    {
-      "name": "input",
-      "bundleSHA256": "ae84399953c7e54c8d96408c97208f42b2246a8ac27ef5265053cb0beb306168"
-    },
-    {
-      "name": "debug-tools",
-      "bundleSHA256": "72260336a6c3f2ee0357a303fa8943dd8cfa4f7deea5d9517d311d4cd8796a71"
-    },
-    {
-      "name": "object-pool",
-      "bundleSHA256": "ec7fb6d4ac5dc3e6079014e81d966780e424343839e69b94315da96329bccaab"
-    }
-  ],
-  "manifestSHA256": "3dd359a8e0b284a49280c3c91bff475fcb8466e34f455f678b6a98ec5a3e73da",
-  "assets": [
-    {
-      "file": "assets/fonts/noto-sans-kr-700-v1.json",
-      "version": "noto-sans-kr-700-v1",
-      "bytes": 514988,
-      "sha256": "d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310"
-    }
-  ]
+    "schemaVersion": 3,
+    "repository": "byh-playground/bloom-gamekit",
+    "sourceCommit": "55338e6591b8a0d60a106d21a2bd3d06c1c2cfe6",
+    "distCommit": "fd95f8be720f0e8e159fa78c4d65e87d064a2b01",
+    "status": "verified immutable distribution",
+    "esbuild": "0.28.2",
+    "modules": [
+        {
+            "name": "presentation-events",
+            "bundleSHA256": "469a820e22730cdff9a0e4cd37fcbbfa4ffc9af3e39eab6d9a784e1d544caf84"
+        },
+        {
+            "name": "camera",
+            "bundleSHA256": "3fd1c8a61b49e22b50606dbf472495775419640a8487f3a0ec079cb4d3522cb7"
+        },
+        {
+            "name": "deterministic",
+            "bundleSHA256": "688178b889e7bd3f19c1bc504c91c03f896a9a7bd832fd2c0fc958b2feadce55"
+        },
+        {
+            "name": "simloop",
+            "bundleSHA256": "f1d348b2f6a80b69c867b9bd45fc359f6d0b238885d85edfe0e9b73d03f043f4"
+        },
+        {
+            "name": "interpolation",
+            "bundleSHA256": "193c0e00bd60b89ea59a74be5badb898420ffbd350eb9cd3b7f6b56600d33a74"
+        },
+        {
+            "name": "hud",
+            "bundleSHA256": "acec30fdab522ef151ab582113f26058aabb48a1d8d11cfe0ea640e1b61c86df"
+        },
+        {
+            "name": "rendering",
+            "bundleSHA256": "5ec22f1b4c3689b11cd0d4c14acc017b94ce5c11afc859df399898645976e227"
+        },
+        {
+            "name": "vector-assets",
+            "bundleSHA256": "d5f4f51b8695dee6c9d7bf4993912bc07890486c0535f3dbaacca55ef35a276e"
+        },
+        {
+            "name": "vector-assets-loader",
+            "bundleSHA256": "c400c60c1fd52c96e02f445347a7a2596d8cda6073c069bf7e69c8edb78eb371"
+        },
+        {
+            "name": "input",
+            "bundleSHA256": "ae84399953c7e54c8d96408c97208f42b2246a8ac27ef5265053cb0beb306168"
+        },
+        {
+            "name": "debug-tools",
+            "bundleSHA256": "72260336a6c3f2ee0357a303fa8943dd8cfa4f7deea5d9517d311d4cd8796a71"
+        },
+        {
+            "name": "object-pool",
+            "bundleSHA256": "ec7fb6d4ac5dc3e6079014e81d966780e424343839e69b94315da96329bccaab"
+        }
+    ],
+    "manifestSHA256": "3dd359a8e0b284a49280c3c91bff475fcb8466e34f455f678b6a98ec5a3e73da",
+    "assets": [
+        {
+            "file": "assets/fonts/noto-sans-kr-700-v1.json",
+            "version": "noto-sans-kr-700-v1",
+            "bytes": 514988,
+            "sha256": "d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310"
+        }
+    ]
 }

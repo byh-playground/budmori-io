@@ -7,47 +7,63 @@
  * that makes the settlement receipt, sleeping units, and rewards atomic.
  */
 
-import {isValidUnitTier} from './unit-grades.js';
-import {FACTION_CONFIG,hasFaction} from './factions.js';
-import {SPECIES_COUNT} from './species-catalog.js';
-import {advanceFarmBossEncounterEpoch} from './farm-boss-stages.js';
-
+import { isValidUnitTier } from './unit-grades.js';
+import { FACTION_CONFIG, hasFaction } from './factions.js';
+import { SPECIES_COUNT } from './species-catalog.js';
+import { advanceFarmBossEncounterEpoch } from './farm-boss-stages.js';
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
-
-const fail = (message) => { throw new TypeError(message); };
-const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
-const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
-
+const FAIL = (message) => {
+    throw new TypeError(message);
+};
+const IS_NON_EMPTY_STRING = (value) => typeof value === 'string' && value.trim().length > 0;
+const IS_COUNT = (value) => Number.isSafeInteger(value) && value >= 0;
 function ledgerState(farm) {
-  const nextSequence = farm.nextRaidRunSequence ?? 0;
-  const watermark = farm.raidSettlementWatermark ?? 0;
-  const activeSequence = farm.activeRaidRunSequence ?? null;
-  const activeSessionId = farm.activeRaidSessionId ?? null;
-  const receipts = farm.raidSettlementReceipts ?? [];
-  if (!isCount(nextSequence) || !isCount(watermark) || watermark > nextSequence ||
-      activeSequence !== null && (!Number.isSafeInteger(activeSequence) || activeSequence < 1) ||
-      activeSessionId !== null && !isNonEmptyString(activeSessionId) ||
-      !Array.isArray(receipts) || (activeSequence === null) !== (activeSessionId === null)) {
-    fail('Private Farm Raid settlement ledger is invalid');
-  }
-  if (activeSequence === null && nextSequence !== watermark ||
-      activeSequence !== null && (activeSequence !== nextSequence || activeSequence !== watermark + 1)) {
-    fail('Private Farm Raid run sequence is inconsistent');
-  }
-  return { nextSequence, watermark, activeSequence, activeSessionId, receipts };
+    const NEXT_SEQUENCE = farm.nextRaidRunSequence ?? 0;
+    const WATERMARK = farm.raidSettlementWatermark ?? 0;
+    const ACTIVE_SEQUENCE = farm.activeRaidRunSequence ?? null;
+    const ACTIVE_SESSION_ID = farm.activeRaidSessionId ?? null;
+    const RECEIPTS = farm.raidSettlementReceipts ?? [];
+    if (
+        !IS_COUNT(NEXT_SEQUENCE) ||
+        !IS_COUNT(WATERMARK) ||
+        WATERMARK > NEXT_SEQUENCE ||
+        (ACTIVE_SEQUENCE !== null && (!Number.isSafeInteger(ACTIVE_SEQUENCE) || ACTIVE_SEQUENCE < 1)) ||
+        (ACTIVE_SESSION_ID !== null && !IS_NON_EMPTY_STRING(ACTIVE_SESSION_ID)) ||
+        !Array.isArray(RECEIPTS) ||
+        (ACTIVE_SEQUENCE === null) !== (ACTIVE_SESSION_ID === null)
+    ) {
+        FAIL('Private Farm Raid settlement ledger is invalid');
+    }
+    if (
+        (ACTIVE_SEQUENCE === null && NEXT_SEQUENCE !== WATERMARK) ||
+        (ACTIVE_SEQUENCE !== null && (ACTIVE_SEQUENCE !== NEXT_SEQUENCE || ACTIVE_SEQUENCE !== WATERMARK + 1))
+    ) {
+        FAIL('Private Farm Raid run sequence is inconsistent');
+    }
+    return {
+        nextSequence: NEXT_SEQUENCE,
+        watermark: WATERMARK,
+        activeSequence: ACTIVE_SEQUENCE,
+        activeSessionId: ACTIVE_SESSION_ID,
+        receipts: RECEIPTS,
+    };
 }
-
 function ownerRoster(raidWorld, ownerId) {
-  if (!raidWorld || typeof raidWorld !== 'object' || !Array.isArray(raidWorld.raidRosters) ||
-      !Array.isArray(raidWorld.units) || !isNonEmptyString(ownerId)) {
-    fail('A Raid world, roster array, unit array, and owner ID are required');
-  }
-  const ownerRosters = raidWorld.raidRosters.filter(roster => roster?.ownerId === ownerId);
-  if (ownerRosters.length !== 1 || !Array.isArray(ownerRosters[0].troops)) {
-    fail('The Raid must contain exactly one roster for this owner');
-  }
-  return ownerRosters[0];
+    if (
+        !raidWorld ||
+        typeof raidWorld !== 'object' ||
+        !Array.isArray(raidWorld.raidRosters) ||
+        !Array.isArray(raidWorld.units) ||
+        !IS_NON_EMPTY_STRING(ownerId)
+    ) {
+        FAIL('A Raid world, roster array, unit array, and owner ID are required');
+    }
+    const OWNER_ROSTERS = raidWorld.raidRosters.filter((roster) => roster?.ownerId === ownerId);
+    if (OWNER_ROSTERS.length !== 1 || !Array.isArray(OWNER_ROSTERS[0].troops)) {
+        FAIL('The Raid must contain exactly one roster for this owner');
+    }
+    return OWNER_ROSTERS[0];
 }
 
 /**
@@ -56,20 +72,24 @@ function ownerRoster(raidWorld, ownerId) {
  * identifiers. JSON tuple encoding avoids delimiter collisions in user ids.
  */
 export function raidSettlementKey({ ownerId, sessionId, encounterId } = {}) {
-  if (!isNonEmptyString(ownerId) || !isNonEmptyString(sessionId) ||
-      !(isNonEmptyString(encounterId) || Number.isSafeInteger(encounterId) && encounterId > 0)) {
-    fail('A Raid owner, stable session ID, and encounter ID are required');
-  }
-  return `raid:${JSON.stringify([ownerId, sessionId, encounterId])}`;
+    if (
+        !IS_NON_EMPTY_STRING(ownerId) ||
+        !IS_NON_EMPTY_STRING(sessionId) ||
+        !(IS_NON_EMPTY_STRING(encounterId) || (Number.isSafeInteger(encounterId) && encounterId > 0))
+    ) {
+        FAIL('A Raid owner, stable session ID, and encounter ID are required');
+    }
+    return `raid:${JSON.stringify([ownerId, sessionId, encounterId])}`;
 }
-
 function isBattleOnlySummon(unit) {
-  // Farm normalization intentionally writes empty/zero defaults on permanent
-  // units. Only treat non-default marker values as a summon candidate; partial
-  // non-default markers are still rejected by the strict pea-split validator.
-  return unit?.isBattleOnlySummon === true ||
-    unit?.battleSummonKind !== undefined && unit.battleSummonKind !== '' ||
-    unit?.battleSummonParentId !== undefined && unit.battleSummonParentId !== 0;
+    // Farm normalization intentionally writes empty/zero defaults on permanent
+    // units. Only treat non-default marker values as a summon candidate; partial
+    // non-default markers are still rejected by the strict pea-split validator.
+    return (
+        unit?.isBattleOnlySummon === true ||
+        (unit?.battleSummonKind !== undefined && unit.battleSummonKind !== '') ||
+        (unit?.battleSummonParentId !== undefined && unit.battleSummonParentId !== 0)
+    );
 }
 
 /**
@@ -79,72 +99,103 @@ function isBattleOnlySummon(unit) {
  * then excluded from original Farm casualty/deployment counts.
  */
 function raidOwnerManifest(raidWorld, ownerId) {
-  const roster = ownerRoster(raidWorld, ownerId);
-  const manifest = new Map();
-  for (const troop of roster.troops) {
-    if (!troop || !Number.isSafeInteger(troop.farmId) || troop.farmId < 1 ||
-        !Number.isInteger(troop.species) || troop.species < 0 || troop.species >= SPECIES_COUNT ||
-        !isValidUnitTier(troop.tier) ||
-        typeof troop.deployed !== 'boolean' || manifest.has(troop.farmId)) {
-      fail('The owner Raid roster must have unique Farm IDs and valid deployed entries');
+    const ROSTER = ownerRoster(raidWorld, ownerId);
+    const MANIFEST = new Map();
+    for (const TROOP of ROSTER.troops) {
+        if (
+            !TROOP ||
+            !Number.isSafeInteger(TROOP.farmId) ||
+            TROOP.farmId < 1 ||
+            !Number.isInteger(TROOP.species) ||
+            TROOP.species < 0 ||
+            TROOP.species >= SPECIES_COUNT ||
+            !isValidUnitTier(TROOP.tier) ||
+            typeof TROOP.deployed !== 'boolean' ||
+            MANIFEST.has(TROOP.farmId)
+        ) {
+            FAIL('The owner Raid roster must have unique Farm IDs and valid deployed entries');
+        }
+        MANIFEST.set(TROOP.farmId, TROOP);
     }
-    manifest.set(troop.farmId, troop);
-  }
-
-  const ownerUnits = raidWorld.units.filter(unit => unit?.ownerId === ownerId);
-  if (ownerUnits.some(unit => !hasFaction(unit, FACTION_CONFIG.PLAYER))) fail('An enemy-faction actor cannot enter an owner’s Farm settlement');
-  const ownerUnitsById = new Map();
-  for (const unit of ownerUnits) {
-    if (!Number.isSafeInteger(unit.id) || unit.id < 1 || ownerUnitsById.has(unit.id) ||
-        !Number.isFinite(unit.hp) || unit.hp < 0) {
-      fail('The owner Raid units must have unique IDs and valid health');
+    const OWNER_UNITS = raidWorld.units.filter((unit) => unit?.ownerId === ownerId);
+    if (OWNER_UNITS.some((unit) => !hasFaction(unit, FACTION_CONFIG.PLAYER))) {
+        FAIL('An enemy-faction actor cannot enter an owner’s Farm settlement');
     }
-    ownerUnitsById.set(unit.id, unit);
-  }
-
-  const originalUnitsByFarmId = new Map();
-  const deadFarmUnitIds = [];
-  for (const unit of ownerUnits) {
-    if (isBattleOnlySummon(unit)) {
-      const parent = ownerUnitsById.get(unit.battleSummonParentId);
-      const parentTroop = parent && manifest.get(parent.farmId);
-      const validSplit = hasFaction(unit, FACTION_CONFIG.PLAYER) && unit.isBattleOnlySummon === true &&
-        unit.battleSummonKind === 'pea-death-split' &&
-        Number.isSafeInteger(unit.battleSummonParentId) && unit.battleSummonParentId > 0 &&
-        parent && parent.ownerId === ownerId && !isBattleOnlySummon(parent) && parent.hp <= 0 &&
-        parentTroop?.deployed === true && parent.farmId === unit.farmId &&
-        parent.species === 0 && unit.species === 0 && unit.tier === 1 &&
-        unit.canSplit === false && unit.countsTowardPermanentRoster === false &&
-        unit.eligibleForRaidDeployment === false && unit.breedingEligible === false &&
-        unit.mergeEligible === false && unit.usesPersistentSleep === false;
-      if (!validSplit) fail('A battle-only Raid split is missing its validated origin marker');
-      continue;
+    const OWNER_UNITS_BY_ID = new Map();
+    for (const UNIT of OWNER_UNITS) {
+        if (
+            !Number.isSafeInteger(UNIT.id) ||
+            UNIT.id < 1 ||
+            OWNER_UNITS_BY_ID.has(UNIT.id) ||
+            !Number.isFinite(UNIT.hp) ||
+            UNIT.hp < 0
+        ) {
+            FAIL('The owner Raid units must have unique IDs and valid health');
+        }
+        OWNER_UNITS_BY_ID.set(UNIT.id, UNIT);
     }
-    const troop = manifest.get(unit.farmId);
-    if (!troop || !troop.deployed || troop.species !== unit.species || troop.tier !== unit.tier ||
-        originalUnitsByFarmId.has(unit.farmId)) {
-      fail('A Raid unit does not match this owner’s deployed roster');
+    const ORIGINAL_UNITS_BY_FARM_ID = new Map();
+    const DEAD_FARM_UNIT_IDS = [];
+    for (const UNIT of OWNER_UNITS) {
+        if (isBattleOnlySummon(UNIT)) {
+            const PARENT = OWNER_UNITS_BY_ID.get(UNIT.battleSummonParentId);
+            const PARENT_TROOP = PARENT && MANIFEST.get(PARENT.farmId);
+            const VALID_SPLIT =
+                hasFaction(UNIT, FACTION_CONFIG.PLAYER) &&
+                UNIT.isBattleOnlySummon === true &&
+                UNIT.battleSummonKind === 'pea-death-split' &&
+                Number.isSafeInteger(UNIT.battleSummonParentId) &&
+                UNIT.battleSummonParentId > 0 &&
+                PARENT &&
+                PARENT.ownerId === ownerId &&
+                !isBattleOnlySummon(PARENT) &&
+                PARENT.hp <= 0 &&
+                PARENT_TROOP?.deployed === true &&
+                PARENT.farmId === UNIT.farmId &&
+                PARENT.species === 0 &&
+                UNIT.species === 0 &&
+                UNIT.tier === 1 &&
+                UNIT.canSplit === false &&
+                UNIT.countsTowardPermanentRoster === false &&
+                UNIT.eligibleForRaidDeployment === false &&
+                UNIT.breedingEligible === false &&
+                UNIT.mergeEligible === false &&
+                UNIT.usesPersistentSleep === false;
+            if (!VALID_SPLIT) {
+                FAIL('A battle-only Raid split is missing its validated origin marker');
+            }
+            continue;
+        }
+        const TROOP = MANIFEST.get(UNIT.farmId);
+        if (
+            !TROOP ||
+            !TROOP.deployed ||
+            TROOP.species !== UNIT.species ||
+            TROOP.tier !== UNIT.tier ||
+            ORIGINAL_UNITS_BY_FARM_ID.has(UNIT.farmId)
+        ) {
+            FAIL('A Raid unit does not match this owner’s deployed roster');
+        }
+        ORIGINAL_UNITS_BY_FARM_ID.set(UNIT.farmId, UNIT);
+        if (UNIT.hp <= 0) {
+            DEAD_FARM_UNIT_IDS.push(UNIT.farmId);
+        }
     }
-    originalUnitsByFarmId.set(unit.farmId, unit);
-    if (unit.hp <= 0) deadFarmUnitIds.push(unit.farmId);
-  }
-
-  for (const [farmId, troop] of manifest) {
-    if (troop.deployed && !originalUnitsByFarmId.has(farmId)) {
-      fail('A deployed original Farm unit is missing from this owner’s Raid world');
+    for (const [FARM_ID, TROOP] of MANIFEST) {
+        if (TROOP.deployed && !ORIGINAL_UNITS_BY_FARM_ID.has(FARM_ID)) {
+            FAIL('A deployed original Farm unit is missing from this owner’s Raid world');
+        }
     }
-  }
-  return {
-    roster,
-    manifest,
-    deadFarmUnitIds: deadFarmUnitIds.sort((a, b) => a - b),
-    availableAtStart: roster.troops.length,
-    originalUnitsDeployed: roster.troops.filter(troop => troop.deployed).length
-  };
+    return {
+        roster: ROSTER,
+        manifest: MANIFEST,
+        deadFarmUnitIds: DEAD_FARM_UNIT_IDS.sort((a, b) => a - b),
+        availableAtStart: ROSTER.troops.length,
+        originalUnitsDeployed: ROSTER.troops.filter((troop) => troop.deployed).length,
+    };
 }
-
 export function raidDeadFarmUnitIds(raidWorld, ownerId) {
-  return raidOwnerManifest(raidWorld, ownerId).deadFarmUnitIds;
+    return raidOwnerManifest(raidWorld, ownerId).deadFarmUnitIds;
 }
 
 /**
@@ -159,42 +210,46 @@ export function raidDeadFarmUnitIds(raidWorld, ownerId) {
  * Return 0 when nobody was deployed so an empty raid cannot earn loot.
  */
 export function raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed } = {}) {
-  if (!isCount(availableAtStart) || !isCount(originalUnitsDeployed) || originalUnitsDeployed > availableAtStart) {
-    fail('Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster');
-  }
-  if (availableAtStart === 0 || originalUnitsDeployed === 0) return 0;
-  return Math.min(2, Math.max(1, 1 + (availableAtStart - originalUnitsDeployed) / availableAtStart));
+    if (!IS_COUNT(availableAtStart) || !IS_COUNT(originalUnitsDeployed) || originalUnitsDeployed > availableAtStart) {
+        FAIL(
+            'Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster',
+        );
+    }
+    if (availableAtStart === 0 || originalUnitsDeployed === 0) {
+        return 0;
+    }
+    return Math.min(2, Math.max(1, 1 + (availableAtStart - originalUnitsDeployed) / availableAtStart));
 }
-
 function clone(value) {
-  if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+    if (typeof structuredClone === 'function') {
+        return structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value));
 }
-
 function validateReturnedPrivateFarm(sourceFarm, resultFarm, sleptFarmUnitIds) {
-  if (sourceFarm.ownerId !== undefined && resultFarm.ownerId !== sourceFarm.ownerId) {
-    fail('The Raid victory resolver returned a different owner Farm');
-  }
-  const originalUnits = new Map(sourceFarm.units.map(unit => [unit.id, unit]));
-  const resultUnits = new Map();
-  for (const unit of resultFarm.units) {
-    if (!unit || !Number.isSafeInteger(unit.id) || unit.id < 1 || resultUnits.has(unit.id)) {
-      fail('The Raid victory resolver returned invalid or duplicate private Farm units');
+    if (sourceFarm.ownerId !== undefined && resultFarm.ownerId !== sourceFarm.ownerId) {
+        FAIL('The Raid victory resolver returned a different owner Farm');
     }
-    resultUnits.set(unit.id, unit);
-  }
-  for (const [unitId, original] of originalUnits) {
-    const result = resultUnits.get(unitId);
-    if (!result || result.species !== original.species || result.tier !== original.tier) {
-      fail('The Raid victory resolver did not preserve the owner’s Farm roster');
+    const ORIGINAL_UNITS = new Map(sourceFarm.units.map((unit) => [unit.id, unit]));
+    const RESULT_UNITS = new Map();
+    for (const UNIT of resultFarm.units) {
+        if (!UNIT || !Number.isSafeInteger(UNIT.id) || UNIT.id < 1 || RESULT_UNITS.has(UNIT.id)) {
+            FAIL('The Raid victory resolver returned invalid or duplicate private Farm units');
+        }
+        RESULT_UNITS.set(UNIT.id, UNIT);
     }
-  }
-  for (const unitId of sleptFarmUnitIds) {
-    const unit = resultUnits.get(unitId);
-    if (!unit || unit.hp !== 0 || unit.down !== RAID_SLEEP_SECONDS) {
-      fail('The Raid victory resolver must preserve the owner Farm’s casualty sleep');
+    for (const [UNIT_ID, ORIGINAL] of ORIGINAL_UNITS) {
+        const RESULT = RESULT_UNITS.get(UNIT_ID);
+        if (!RESULT || RESULT.species !== ORIGINAL.species || RESULT.tier !== ORIGINAL.tier) {
+            FAIL('The Raid victory resolver did not preserve the owner’s Farm roster');
+        }
     }
-  }
+    for (const UNIT_ID of sleptFarmUnitIds) {
+        const UNIT = RESULT_UNITS.get(UNIT_ID);
+        if (!UNIT || UNIT.hp !== 0 || UNIT.down !== RAID_SLEEP_SECONDS) {
+            FAIL('The Raid victory resolver must preserve the owner Farm’s casualty sleep');
+        }
+    }
 }
 
 /**
@@ -204,26 +259,38 @@ function validateReturnedPrivateFarm(sourceFarm, resultFarm, sleptFarmUnitIds) {
  * until the active one has settled.
  */
 export function reserveRaidRun(farm, { sessionId = null } = {}) {
-  if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
-    fail('A private Farm snapshot with a units array is required');
-  }
-  const ledger = ledgerState(farm);
-  if (ledger.activeSequence !== null) {
-    if (sessionId !== null && sessionId !== ledger.activeSessionId) {
-      fail('This Farm already has a different active Raid; reconnect to it or settle it first');
+    if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
+        FAIL('A private Farm snapshot with a units array is required');
     }
-    return { farm, runSequence: ledger.activeSequence, sessionId: ledger.activeSessionId, resumed: true };
-  }
-  if (sessionId !== null && !isNonEmptyString(sessionId)) fail('Raid session ID must be a non-empty string');
-  const runSequence = ledger.nextSequence + 1;
-  const stableSessionId = sessionId ?? `farm-raid-${runSequence}`;
-  const nextFarm = clone(farm);
-  nextFarm.nextRaidRunSequence = runSequence;
-  nextFarm.activeRaidRunSequence = runSequence;
-  nextFarm.activeRaidSessionId = stableSessionId;
-  nextFarm.raidSettlementWatermark = ledger.watermark;
-  nextFarm.raidSettlementReceipts = [...ledger.receipts];
-  return { farm: nextFarm, runSequence, sessionId: stableSessionId, resumed: false };
+    const LEDGER = ledgerState(farm);
+    if (LEDGER.activeSequence !== null) {
+        if (sessionId !== null && sessionId !== LEDGER.activeSessionId) {
+            FAIL('This Farm already has a different active Raid; reconnect to it or settle it first');
+        }
+        return {
+            farm,
+            runSequence: LEDGER.activeSequence,
+            sessionId: LEDGER.activeSessionId,
+            resumed: true,
+        };
+    }
+    if (sessionId !== null && !IS_NON_EMPTY_STRING(sessionId)) {
+        FAIL('Raid session ID must be a non-empty string');
+    }
+    const RUN_SEQUENCE = LEDGER.nextSequence + 1;
+    const STABLE_SESSION_ID = sessionId ?? `farm-raid-${RUN_SEQUENCE}`;
+    const NEXT_FARM = clone(farm);
+    NEXT_FARM.nextRaidRunSequence = RUN_SEQUENCE;
+    NEXT_FARM.activeRaidRunSequence = RUN_SEQUENCE;
+    NEXT_FARM.activeRaidSessionId = STABLE_SESSION_ID;
+    NEXT_FARM.raidSettlementWatermark = LEDGER.watermark;
+    NEXT_FARM.raidSettlementReceipts = [...LEDGER.receipts];
+    return {
+        farm: NEXT_FARM,
+        runSequence: RUN_SEQUENCE,
+        sessionId: STABLE_SESSION_ID,
+        resumed: false,
+    };
 }
 
 /**
@@ -233,38 +300,51 @@ export function reserveRaidRun(farm, { sessionId = null } = {}) {
  * the receipt distinct from any live owner's normal settlement key.
  */
 export function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
-  if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
-    fail('A private Farm snapshot with a units array is required');
-  }
-  if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-    fail('Settlement timestamp must be a non-negative finite number');
-  }
-  const ledger = ledgerState(farm);
-  if (ledger.activeSequence === null) return { farm, receipt: null, applied: false };
-
-  const ownerId = 'recovery-abort';
-  const { activeSequence: runSequence, activeSessionId: sessionId } = ledger;
-  const receipt = {
-    key: raidSettlementKey({ ownerId, sessionId, encounterId: runSequence }),
-    ownerId,
-    sessionId,
-    encounterId: runSequence,
-    runSequence,
-    outcome: 'aborted',
-    status: 'settled',
-    completedAtMs,
-    sleptFarmUnitIds: [],
-    availableAtStart: 0,
-    originalUnitsDeployed: 0,
-    deploymentMultiplier: 0,
-    reward: null
-  };
-  const nextFarm = clone(farm);
-  nextFarm.activeRaidRunSequence = null;
-  nextFarm.activeRaidSessionId = null;
-  nextFarm.raidSettlementWatermark = runSequence;
-  nextFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
-  return { farm: nextFarm, receipt: clone(receipt), applied: true };
+    if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
+        FAIL('A private Farm snapshot with a units array is required');
+    }
+    if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
+        FAIL('Settlement timestamp must be a non-negative finite number');
+    }
+    const LEDGER = ledgerState(farm);
+    if (LEDGER.activeSequence === null) {
+        return {
+            farm,
+            receipt: null,
+            applied: false,
+        };
+    }
+    const OWNER_ID = 'recovery-abort';
+    const { activeSequence: RUN_SEQUENCE, activeSessionId: SESSION_ID } = LEDGER;
+    const RECEIPT = {
+        key: raidSettlementKey({
+            ownerId: OWNER_ID,
+            sessionId: SESSION_ID,
+            encounterId: RUN_SEQUENCE,
+        }),
+        ownerId: OWNER_ID,
+        sessionId: SESSION_ID,
+        encounterId: RUN_SEQUENCE,
+        runSequence: RUN_SEQUENCE,
+        outcome: 'aborted',
+        status: 'settled',
+        completedAtMs,
+        sleptFarmUnitIds: [],
+        availableAtStart: 0,
+        originalUnitsDeployed: 0,
+        deploymentMultiplier: 0,
+        reward: null,
+    };
+    const NEXT_FARM = clone(farm);
+    NEXT_FARM.activeRaidRunSequence = null;
+    NEXT_FARM.activeRaidSessionId = null;
+    NEXT_FARM.raidSettlementWatermark = RUN_SEQUENCE;
+    NEXT_FARM.raidSettlementReceipts = [...LEDGER.receipts, RECEIPT].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
+    return {
+        farm: NEXT_FARM,
+        receipt: clone(RECEIPT),
+        applied: true,
+    };
 }
 
 /**
@@ -281,133 +361,168 @@ export function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
  * Returns { farm, receipt, applied }. The receipt is stored inside that Farm,
  * so a duplicate return after reload or rollback cannot reapply deaths/rewards.
  */
-export function settleRaidOwnerFarm(farm, {
-  ownerId,
-  sessionId,
-  encounterId,
-  runSequence,
-  outcome,
-  raidWorld,
-  completedAtMs,
-  settleVictory = null
-} = {}) {
-  if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
-    fail('A private Farm snapshot with a units array is required');
-  }
-  const key = raidSettlementKey({ ownerId, sessionId, encounterId });
-  if (!['victory', 'defeat', 'aborted'].includes(outcome)) fail('Raid outcome must be victory, defeat, or aborted');
-  if (!Number.isSafeInteger(runSequence) || runSequence < 1) fail('A positive Farm-local Raid run sequence is required');
-  if (settleVictory !== null && typeof settleVictory !== 'function') fail('settleVictory must be a function');
-  if (completedAtMs !== undefined && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-    fail('Settlement timestamp must be a non-negative finite number');
-  }
-
-  const ledger = ledgerState(farm);
-  if (runSequence <= ledger.watermark) {
-    const previous = ledger.receipts.find(receipt => receipt?.key === key);
-    return {
-      farm,
-      receipt: clone(previous || {
-        key, ownerId, sessionId, encounterId, runSequence, outcome: 'already-settled',
-        status: 'compacted', sleptFarmUnitIds: [], availableAtStart: 0,
-        originalUnitsDeployed: 0, deploymentMultiplier: 0, reward: null
-      }),
-      applied: false
-    };
-  }
-  if (runSequence !== ledger.watermark + 1 || ledger.activeSequence !== runSequence ||
-      ledger.activeSessionId !== sessionId) {
-    fail('Raid settlement does not match the active Farm-local run');
-  }
-
-  const raidOwner = raidOwnerManifest(raidWorld, ownerId);
-  const {manifest, deadFarmUnitIds, availableAtStart, originalUnitsDeployed} = raidOwner;
-
-  const unitsByFarmId = new Map();
-  for (const unit of farm.units) {
-    if (!unit || !Number.isSafeInteger(unit.id) || unit.id < 1 || unitsByFarmId.has(unit.id)) {
-      fail('Private Farm units must have unique positive IDs');
+export function settleRaidOwnerFarm(
+    farm,
+    { ownerId, sessionId, encounterId, runSequence, outcome, raidWorld, completedAtMs, settleVictory = null } = {},
+) {
+    if (!farm || typeof farm !== 'object' || Array.isArray(farm) || !Array.isArray(farm.units)) {
+        FAIL('A private Farm snapshot with a units array is required');
     }
-    unitsByFarmId.set(unit.id, unit);
-  }
-  for (const [farmUnitId, troop] of manifest) {
-    const farmUnit = unitsByFarmId.get(farmUnitId);
-    if (!farmUnit || farmUnit.species !== troop.species || farmUnit.tier !== troop.tier) {
-      fail('The Raid roster no longer matches this owner’s private Farm units');
-    }
-  }
-  for (const farmUnitId of deadFarmUnitIds) {
-    if (!unitsByFarmId.has(farmUnitId)) fail('A dead Raid unit does not belong to this owner Farm');
-  }
-
-  let privateFarm = clone(farm);
-  privateFarm.raidSettlementReceipts = Array.isArray(privateFarm.raidSettlementReceipts)
-    ? privateFarm.raidSettlementReceipts
-    : [];
-  const deadSet = new Set(deadFarmUnitIds);
-  for (const unit of privateFarm.units) {
-    if (!deadSet.has(unit.id)) continue;
-    // Farm's existing recovery clock uses hp=0 + down=60 as retained sleep.
-    // Units stay in the owner's roster and become unavailable until it elapses.
-    unit.hp = 0;
-    unit.down = RAID_SLEEP_SECONDS;
-  }
-
-  let rewardSummary = null;
-  let deploymentMultiplier = 0;
-  if (outcome === 'victory') {
-    // The registered roster is the encounter-start denominator. Its deployed
-    // flags count unique original troops used at any time, including casualties;
-    // summoned Raid units are not entries and cannot affect this ratio.
-    deploymentMultiplier = raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed });
-    if (deploymentMultiplier > 0) {
-      if (settleVictory === null) fail('A reward-capable Raid victory needs the common reward/progression resolver');
-      const resolution = settleVictory({
-        farm: privateFarm,
+    const KEY = raidSettlementKey({
         ownerId,
         sessionId,
         encounterId,
-        receiptKey: key,
-        source: 'raid',
-        deploymentMultiplier
-      });
-      if (!resolution || !resolution.farm || typeof resolution.farm !== 'object' ||
-          Array.isArray(resolution.farm) || !Array.isArray(resolution.farm.units)) {
-        fail('The Raid victory resolver must return a private Farm snapshot and summary');
-      }
-      validateReturnedPrivateFarm(farm, resolution.farm, deadFarmUnitIds);
-      privateFarm = clone(resolution.farm);
-      rewardSummary = resolution.summary ?? null;
+    });
+    if (!['victory', 'defeat', 'aborted'].includes(outcome)) {
+        FAIL('Raid outcome must be victory, defeat, or aborted');
     }
-  }
+    if (!Number.isSafeInteger(runSequence) || runSequence < 1) {
+        FAIL('A positive Farm-local Raid run sequence is required');
+    }
+    if (settleVictory !== null && typeof settleVictory !== 'function') {
+        FAIL('settleVictory must be a function');
+    }
+    if (completedAtMs !== undefined && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
+        FAIL('Settlement timestamp must be a non-negative finite number');
+    }
+    const LEDGER = ledgerState(farm);
+    if (runSequence <= LEDGER.watermark) {
+        const PREVIOUS = LEDGER.receipts.find((receipt) => receipt?.key === KEY);
+        return {
+            farm,
+            receipt: clone(
+                PREVIOUS || {
+                    key: KEY,
+                    ownerId,
+                    sessionId,
+                    encounterId,
+                    runSequence,
+                    outcome: 'already-settled',
+                    status: 'compacted',
+                    sleptFarmUnitIds: [],
+                    availableAtStart: 0,
+                    originalUnitsDeployed: 0,
+                    deploymentMultiplier: 0,
+                    reward: null,
+                },
+            ),
+            applied: false,
+        };
+    }
+    if (
+        runSequence !== LEDGER.watermark + 1 ||
+        LEDGER.activeSequence !== runSequence ||
+        LEDGER.activeSessionId !== sessionId
+    ) {
+        FAIL('Raid settlement does not match the active Farm-local run');
+    }
+    const RAID_OWNER = raidOwnerManifest(raidWorld, ownerId);
+    const {
+        manifest: MANIFEST,
+        deadFarmUnitIds: DEAD_FARM_UNIT_IDS,
+        availableAtStart: AVAILABLE_AT_START,
+        originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED,
+    } = RAID_OWNER;
+    const UNITS_BY_FARM_ID = new Map();
+    for (const UNIT of farm.units) {
+        if (!UNIT || !Number.isSafeInteger(UNIT.id) || UNIT.id < 1 || UNITS_BY_FARM_ID.has(UNIT.id)) {
+            FAIL('Private Farm units must have unique positive IDs');
+        }
+        UNITS_BY_FARM_ID.set(UNIT.id, UNIT);
+    }
+    for (const [FARM_UNIT_ID, TROOP] of MANIFEST) {
+        const FARM_UNIT = UNITS_BY_FARM_ID.get(FARM_UNIT_ID);
+        if (!FARM_UNIT || FARM_UNIT.species !== TROOP.species || FARM_UNIT.tier !== TROOP.tier) {
+            FAIL('The Raid roster no longer matches this owner’s private Farm units');
+        }
+    }
+    for (const FARM_UNIT_ID of DEAD_FARM_UNIT_IDS) {
+        if (!UNITS_BY_FARM_ID.has(FARM_UNIT_ID)) {
+            FAIL('A dead Raid unit does not belong to this owner Farm');
+        }
+    }
+    let privateFarm = clone(farm);
+    privateFarm.raidSettlementReceipts = Array.isArray(privateFarm.raidSettlementReceipts)
+        ? privateFarm.raidSettlementReceipts
+        : [];
+    const DEAD_SET = new Set(DEAD_FARM_UNIT_IDS);
+    for (const UNIT of privateFarm.units) {
+        if (!DEAD_SET.has(UNIT.id)) {
+            continue;
+        }
+        // Farm's existing recovery clock uses hp=0 + down=60 as retained sleep.
+        // Units stay in the owner's roster and become unavailable until it elapses.
+        UNIT.hp = 0;
+        UNIT.down = RAID_SLEEP_SECONDS;
+    }
+    let rewardSummary = null;
+    let deploymentMultiplier = 0;
+    if (outcome === 'victory') {
+        // The registered roster is the encounter-start denominator. Its deployed
+        // flags count unique original troops used at any time, including casualties;
+        // summoned Raid units are not entries and cannot affect this ratio.
+        deploymentMultiplier = raidDeploymentRewardMultiplier({
+            availableAtStart: AVAILABLE_AT_START,
+            originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED,
+        });
+        if (deploymentMultiplier > 0) {
+            if (settleVictory === null) {
+                FAIL('A reward-capable Raid victory needs the common reward/progression resolver');
+            }
+            const RESOLUTION = settleVictory({
+                farm: privateFarm,
+                ownerId,
+                sessionId,
+                encounterId,
+                receiptKey: KEY,
+                source: 'raid',
+                deploymentMultiplier,
+            });
+            if (
+                !RESOLUTION ||
+                !RESOLUTION.farm ||
+                typeof RESOLUTION.farm !== 'object' ||
+                Array.isArray(RESOLUTION.farm) ||
+                !Array.isArray(RESOLUTION.farm.units)
+            ) {
+                FAIL('The Raid victory resolver must return a private Farm snapshot and summary');
+            }
+            validateReturnedPrivateFarm(farm, RESOLUTION.farm, DEAD_FARM_UNIT_IDS);
+            privateFarm = clone(RESOLUTION.farm);
+            rewardSummary = RESOLUTION.summary ?? null;
+        }
+    }
 
-  // A result closes this encounter generation exactly once, in the same
-  // private-Farm snapshot as its settlement receipt. Abandoned runs and
-  // duplicate callbacks never advance the epoch.
-  if (outcome === 'victory' || outcome === 'defeat') {
-    advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
-  }
-
-  const receipt = {
-    key,
-    ownerId,
-    sessionId,
-    encounterId,
-    runSequence,
-    outcome,
-    status: 'settled',
-    completedAtMs: completedAtMs ?? null,
-    sleptFarmUnitIds: [...deadFarmUnitIds].sort((a, b) => a - b),
-    availableAtStart,
-    originalUnitsDeployed,
-    deploymentMultiplier,
-    reward: rewardSummary === null ? null : clone(rewardSummary)
-  };
-  // The resolver cannot erase or rewrite the bounded idempotency ledger.
-  privateFarm.nextRaidRunSequence = ledger.nextSequence;
-  privateFarm.activeRaidRunSequence = null;
-  privateFarm.activeRaidSessionId = null;
-  privateFarm.raidSettlementWatermark = runSequence;
-  privateFarm.raidSettlementReceipts = [...ledger.receipts, receipt].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
-  return { farm: privateFarm, receipt: clone(receipt), applied: true };
+    // A result closes this encounter generation exactly once, in the same
+    // private-Farm snapshot as its settlement receipt. Abandoned runs and
+    // duplicate callbacks never advance the epoch.
+    if (outcome === 'victory' || outcome === 'defeat') {
+        advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
+    }
+    const RECEIPT = {
+        key: KEY,
+        ownerId,
+        sessionId,
+        encounterId,
+        runSequence,
+        outcome,
+        status: 'settled',
+        completedAtMs: completedAtMs ?? null,
+        sleptFarmUnitIds: [...DEAD_FARM_UNIT_IDS].sort((a, b) => a - b),
+        availableAtStart: AVAILABLE_AT_START,
+        originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED,
+        deploymentMultiplier,
+        reward: rewardSummary === null ? null : clone(rewardSummary),
+    };
+    // The resolver cannot erase or rewrite the bounded idempotency ledger.
+    privateFarm.nextRaidRunSequence = LEDGER.nextSequence;
+    privateFarm.activeRaidRunSequence = null;
+    privateFarm.activeRaidSessionId = null;
+    privateFarm.raidSettlementWatermark = runSequence;
+    privateFarm.raidSettlementReceipts = [...LEDGER.receipts, RECEIPT].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
+    return {
+        farm: privateFarm,
+        receipt: clone(RECEIPT),
+        applied: true,
+    };
 }
