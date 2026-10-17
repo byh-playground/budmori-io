@@ -2648,10 +2648,24 @@ async function save() {
     const BEFORE_LEGACY = await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
         PRIOR = await P.evaluate(async () => {
             const { snapshot: SNAPSHOT } = await import('/src/farm-state.js');
+            const WORLD = new BUDMORI.sim.constructor(667);
+            WORLD.playerProgression.level = 6;
+            WORLD.playerProgression.experience = 37;
+            WORLD.playerProgression.farmUpgrades.capacity = 5;
+            while (WORLD.units.length < 100) {
+                const UNIT = WORLD.spawn(0, 1, 0, 0);
+                UNIT.growthDuration = WORLD.breedGrowthDuration();
+                UNIT.growthElapsed = UNIT.growthDuration;
+                UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            }
+            // Old free-capacity progression may leave an owned roster above
+            // today's cap. Import must preserve it and still permit merging.
+            WORLD.playerProgression.farmUpgrades.capacity = 0;
+            WORLD.playerProgression.availablePoints = 5;
             return {
                 schema: 'budmori-farm',
                 productVersion: '0.4.0',
-                world: SNAPSHOT(new BUDMORI.sim.constructor(667)),
+                world: SNAPSHOT(WORLD),
             };
         });
     await P.locator('#saveFile').setInputFiles({
@@ -2686,6 +2700,25 @@ async function save() {
         PRODUCT_VERSION,
     );
     CHECK('Compatible 0.4.0 save resumes as compact progress under ' + PRODUCT_VERSION);
+    await P.evaluate(() => {
+        BUDMORI.runtime.paused = false;
+    });
+    await P.locator('#merge').click();
+    await P.waitForFunction(() => BUDMORI.sim.metrics.merges > 0);
+    await goHome(P);
+    const AFTER_MERGE = await P.evaluate(() => JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).progress);
+    assert.equal(AFTER_MERGE.player.experience, 37);
+    assert.equal(AFTER_MERGE.player.availablePoints, 5);
+    assert.equal(
+        AFTER_MERGE.roster.reduce((total, row) => total + row.count * [0, 1, 2, 4, 12, 48, 240][row.tier], 0),
+        100,
+        'merging consumes only its materials and preserves all other owned units',
+    );
+    await P.reload();
+    await P.waitForFunction(() => window.BUDMORI);
+    await P.locator('#continueGame').click();
+    await P.waitForFunction(() => BUDMORI.runtime.tick > 3);
+    CHECK('Above-capacity legacy roster merges, saves and continues from compact progress without losing XP or units');
     await clean(P);
     CHECK('Malformed import and cancelled compact/legacy imports preserve save; explicit valid import resumes');
     await C.close();
