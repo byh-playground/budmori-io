@@ -9,7 +9,7 @@ export { ABILITY_TREE_SCHEMA_VERSION, createAbilityProgressionState, isValidAbil
 export const SHARED_ABILITY_POINT_COST = 1;
 
 const definitionById = new Map(SPECIES_ABILITY_DEFINITIONS.map(definition => [definition.id, definition]));
-const speciesNames = new Map([[0, "완두콩"], [1, "옥수수"], [2, "팥"], [3, "밤톨"]]);
+const speciesNames = new Map([[0, "완두콩"], [1, "옥수수"], [2, "팥"], [3, "밤톨"], [6, "쌀"], [7, "밀"], [8, "보리"]]);
 
 export function abilityStateFor(state, abilityId) {
   if (!definitionById.has(abilityId) || !state?.abilities?.[abilityId]) return null;
@@ -290,6 +290,12 @@ function powerLabel(abilityId, value, level) {
   }
   if (abilityId === "kidney-continuous-leap") return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
   if (abilityId === "kidney-landing-shockwave") return `충격파 피해·반경 ${value}×`;
+  if (abilityId === "rice-low-health-harvest") return `HP ${Math.round(definitionById.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
+  if (abilityId === "wheat-command-crit") {
+    const definition = definitionById.get(abilityId);
+    return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${definition.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${definition.durationSeconds}초`;
+  }
+  if (abilityId === "barley-armor-break") return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · 5초`;
   return `강화 ${level}`;
 }
 
@@ -300,6 +306,9 @@ function powerTitle(abilityId, value) {
   if (abilityId === "chestnut-spike-fan") return `가시 ${value}발`;
   if (abilityId === "kidney-continuous-leap") return `초기화 ${Math.round(value * 100)}%`;
   if (abilityId === "kidney-landing-shockwave") return `충격파 ×${value}`;
+  if (abilityId === "rice-low-health-harvest") return `수확 피해 ×${value}`;
+  if (abilityId === "wheat-command-crit") return `치명타 +${Math.round(value * 100)}%p`;
+  if (abilityId === "barley-armor-break") return `방어도 ${Math.round(value * 100)}% 감소`;
   return "능력 강화";
 }
 

@@ -51,7 +51,10 @@
         Object.freeze({ id: 2, name: "강낭콩", asset: "kidney-bean.svg", bossWeight: 1 }),
         Object.freeze({ id: 3, name: "밤톨", asset: "chestnut.svg", bossWeight: 1 }),
         Object.freeze({ id: 4, name: "땅콩", asset: "peanut.svg", bossWeight: 1 }),
-        Object.freeze({ id: 5, name: "호두", asset: "walnut.svg", bossWeight: 1 })
+        Object.freeze({ id: 5, name: "호두", asset: "walnut.svg", bossWeight: 1 }),
+        Object.freeze({ id: 6, name: "쌀", asset: "rice.svg", bossWeight: 1 }),
+        Object.freeze({ id: 7, name: "밀", asset: "wheat.svg", bossWeight: 1 }),
+        Object.freeze({ id: 8, name: "보리", asset: "barley.svg", bossWeight: 1 })
       ]);
       SPECIES_COUNT = SPECIES_CATALOG.length;
       BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
@@ -205,7 +208,10 @@
         4: Object.freeze({ kind: "peanut-dual-strike", windup: 0.25, active: 0.5, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
         // Walnut's base hammer is a single hit; its guard skill is being held for
         // the follow-up ability-tree implementation.
-        5: Object.freeze({ kind: "walnut-hammer", windup: 0.5, active: 0.25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
+        5: Object.freeze({ kind: "walnut-hammer", windup: 0.5, active: 0.25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        6: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        7: Object.freeze({ kind: "punch", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        8: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
       });
     }
   });
@@ -274,6 +280,37 @@
           description: "도약 착지 지점에서 기본 공격력과 사거리 기준의 충격파를 냅니다.",
           rootTier: 3,
           powerValues: Object.freeze([1, 1.5, 2]),
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "rice-low-health-harvest",
+          species: 6,
+          name: "수확 낫",
+          description: "낫 기본 공격이 체력이 절반 이하인 적에게 더 큰 피해를 줍니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([1.5, 1.75, 2]),
+          targetHpThreshold: 0.5,
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "wheat-command-crit",
+          species: 7,
+          name: "로마 군단장의 지휘",
+          description: "기본 공격 적중 시 자신과 가까운 생존 아군의 치명타 확률을 5초 동안 높입니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([0.1, 0.25, 0.5]),
+          durationSeconds: 5,
+          radiusRangeRatio: 2,
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "barley-armor-break",
+          species: 8,
+          name: "도리깨 갑주 파쇄",
+          description: "도리깨 기본 공격 적중 시 적의 방어도를 낮춰 5초 동안 피해를 더 받게 합니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([0.25, 0.5, 0.75]),
+          durationSeconds: 5,
           gradeThresholds: Object.freeze([3, 2, 1])
         })
       ]);
@@ -905,6 +942,12 @@
     }
     if (abilityId === "kidney-continuous-leap") return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
     if (abilityId === "kidney-landing-shockwave") return `충격파 피해·반경 ${value}×`;
+    if (abilityId === "rice-low-health-harvest") return `HP ${Math.round(definitionById.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
+    if (abilityId === "wheat-command-crit") {
+      const definition = definitionById.get(abilityId);
+      return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${definition.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${definition.durationSeconds}초`;
+    }
+    if (abilityId === "barley-armor-break") return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · 5초`;
     return `강화 ${level}`;
   }
   function powerTitle(abilityId, value) {
@@ -914,6 +957,9 @@
     if (abilityId === "chestnut-spike-fan") return `가시 ${value}발`;
     if (abilityId === "kidney-continuous-leap") return `초기화 ${Math.round(value * 100)}%`;
     if (abilityId === "kidney-landing-shockwave") return `충격파 ×${value}`;
+    if (abilityId === "rice-low-health-harvest") return `수확 피해 ×${value}`;
+    if (abilityId === "wheat-command-crit") return `치명타 +${Math.round(value * 100)}%p`;
+    if (abilityId === "barley-armor-break") return `방어도 ${Math.round(value * 100)}% 감소`;
     return "능력 강화";
   }
   function nodeReasonLabel(reason, definition, context) {
@@ -987,7 +1033,7 @@
       init_ability_state();
       SHARED_ABILITY_POINT_COST = 1;
       definitionById = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
-      speciesNames = /* @__PURE__ */ new Map([[0, "완두콩"], [1, "옥수수"], [2, "팥"], [3, "밤톨"]]);
+      speciesNames = /* @__PURE__ */ new Map([[0, "완두콩"], [1, "옥수수"], [2, "팥"], [3, "밤톨"], [6, "쌀"], [7, "밀"], [8, "보리"]]);
     }
   });
 
@@ -1116,6 +1162,53 @@
       // causes another leap to occur; this module invents no timing or loop.
       repeatedAfterCooldownReset: isAbilityActive(progression, "kidney-continuous-leap", tier)
     };
+  }
+  function getRiceHarvestMultiplier(progression, tier, targetHp, targetMaxHp) {
+    const definition = definitionFor("rice-low-health-harvest");
+    if (!isAbilityActive(progression, definition.id, tier) || !Number.isFinite(targetHp) || !Number.isFinite(targetMaxHp) || targetMaxHp <= 0 || targetHp / targetMaxHp > definition.targetHpThreshold) return 1;
+    const level = powerLevelFor(progression, definition.id);
+    return definition.powerValues[level] || definition.powerValues[0];
+  }
+  function getWheatCommandConfig(progression, tier) {
+    const definition = definitionFor("wheat-command-crit");
+    if (!isAbilityActive(progression, definition.id, tier)) return null;
+    const level = powerLevelFor(progression, definition.id);
+    return {
+      critBonus: definition.powerValues[level] || definition.powerValues[0],
+      durationSeconds: definition.durationSeconds,
+      radius: abilityProfile(definition.species).range * definition.radiusRangeRatio,
+      radiusRangeRatio: definition.radiusRangeRatio
+    };
+  }
+  function refreshWheatCommandBuff(source, config, now, durationSeconds = config?.durationSeconds) {
+    if (!source || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) return false;
+    const currentUntil = Number.isFinite(source.wheatCommandUntil) ? source.wheatCommandUntil : 0;
+    const currentBonus = Number.isFinite(source.wheatCommandCritBonus) ? source.wheatCommandCritBonus : 0;
+    source.wheatCommandUntil = now + durationSeconds;
+    source.wheatCommandCritBonus = Math.max(currentUntil > now ? currentBonus : 0, config.critBonus);
+    return true;
+  }
+  function getBarleyArmorBreakConfig(progression, tier) {
+    const definition = definitionFor("barley-armor-break");
+    if (!isAbilityActive(progression, definition.id, tier)) return null;
+    const level = powerLevelFor(progression, definition.id);
+    return {
+      armorReduction: definition.powerValues[level] || definition.powerValues[0],
+      durationSeconds: definition.durationSeconds
+    };
+  }
+  function refreshBarleyArmorBreak(target, config, now, durationSeconds = config?.durationSeconds) {
+    if (!target || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) return false;
+    const currentUntil = Number.isFinite(target.barleyArmorBreakUntil) ? target.barleyArmorBreakUntil : 0;
+    const currentReduction = Number.isFinite(target.barleyArmorBreakReduction) ? target.barleyArmorBreakReduction : 0;
+    const activeReduction = currentUntil > now ? currentReduction : 0;
+    target.barleyArmorBreakUntil = now + durationSeconds;
+    target.barleyArmorBreakReduction = Math.max(activeReduction, config.armorReduction);
+    return true;
+  }
+  function effectiveBarleyArmor(target, baselineArmor, now) {
+    const reduction = target && Number.isFinite(target.barleyArmorBreakUntil) && target.barleyArmorBreakUntil > now && Number.isFinite(target.barleyArmorBreakReduction) ? Math.max(0, Math.min(1, target.barleyArmorBreakReduction)) : 0;
+    return Math.max(0, Number.isFinite(baselineArmor) ? baselineArmor : 0) * (1 - reduction);
   }
   var definitionById2, MAX_BEAN_SPLIT_CHILDREN;
   var init_species_abilities = __esm({
@@ -1626,7 +1719,11 @@
             usesPersistentSleep: true,
             lifetime: "",
             chestnutBasicCycles: 0,
-            landingRecovery: 0
+            landingRecovery: 0,
+            wheatCommandUntil: 0,
+            wheatCommandCritBonus: 0,
+            barleyArmorBreakUntil: 0,
+            barleyArmorBreakReduction: 0
           });
         }
         get radius() {
@@ -1991,7 +2088,7 @@
         }
         createBoss(species = 3) {
           const hp = 2e3;
-          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp2(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, phase: "resting", clock: 0, angle: 0, facing: 0, flash: 0, hit: /* @__PURE__ */ new Set(), swings: 0, basicCount: 0, attackId: 0, targetId: 0, sweepClock: 0, attackKind: "attack.sweep-360", startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
         }
         configureBossStage(stage, species = this.boss.species) {
           const stats2 = bossStageStats(stage);
@@ -2498,20 +2595,50 @@
             }
           }
         }
+        wheatCommandCritBonusFor(attacker) {
+          if (!attacker || attacker.hp <= 0) return 0;
+          let strongest = 0;
+          for (const source of this.units) {
+            if (source.species !== 7 || source.hp <= 0 || !hasFaction(source, attacker.faction) || source.wheatCommandUntil <= this.time) continue;
+            const config = getWheatCommandConfig(this.abilityProgressionFor(source), source.tier);
+            if (!config || Math.hypot(source.x - attacker.x, source.y - attacker.y) > config.radius) continue;
+            strongest = Math.max(strongest, Number.isFinite(source.wheatCommandCritBonus) ? source.wheatCommandCritBonus : 0);
+          }
+          return Math.max(0, Math.min(1, strongest));
+        }
+        riceHarvestMultiplier(u, target, kind, hpBefore = target?.hp, maxHp = target?.maxHp) {
+          if (kind !== abilityProfile(u.species).kind) return 1;
+          const progression = this.abilityProgressionFor(u);
+          return getRiceHarvestMultiplier(progression, u.tier, hpBefore, maxHp);
+        }
+        applyGrainOnBasicHit(u, target, kind) {
+          if (!hasFaction(u, FACTION_CONFIG.PLAYER) || kind !== abilityProfile(u.species).kind) return;
+          const progression = this.abilityProgressionFor(u);
+          if (u.species === 7) {
+            const config = getWheatCommandConfig(progression, u.tier);
+            if (config) refreshWheatCommandBuff(u, config, this.time, resolveStatusDuration(config.durationSeconds, u, null));
+          } else if (u.species === 8) {
+            const config = getBarleyArmorBreakConfig(progression, u.tier);
+            if (config) refreshBarleyArmorBreak(target, config, this.time, resolveStatusDuration(config.durationSeconds, u, target));
+          }
+        }
         damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null, strikeIndex = null } = {}) {
           if (!hasFaction(u, FACTION_CONFIG.PLAYER) || !areOpposingFactions(u, this.boss) || action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
           const hpBefore = this.boss.hp, maxHp = this.boss.maxHp;
           const hpRatio = Number.isFinite(hpBefore) && Number.isFinite(maxHp) && maxHp > 0 ? clamp2(hpBefore / maxHp, 0, 1) : 1;
-          const armor = (1 - hpRatio) * 100;
+          const baselineArmor = (1 - hpRatio) * 100, armor = effectiveBarleyArmor(this.boss, baselineArmor, this.time);
           const attackerStats = stats(u.tier, u.species);
           const damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier, kind = attackKind || spec.kind;
-          const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1);
-          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, armorForTarget: () => armor, roll: () => this.random() });
+          const harvestMultiplier = this.riceHarvestMultiplier(u, this.boss, kind, hpBefore, maxHp);
+          const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier;
+          const sourceStatOverrides = { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) };
+          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, sourceStatOverrides, armorForTarget: () => armor, roll: () => this.random() });
+          this.applyGrainOnBasicHit(u, this.boss, kind);
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp2(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * (damage.critical ? attackerStats.critMultiplier : 1) });
+          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp2(point.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength: damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier * (damage.critical ? attackerStats.critMultiplier : 1) });
           this.combatEvent("damage", u, action);
           return true;
         }
@@ -2522,8 +2649,12 @@
         damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null } = {}) {
           if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit) return false;
           action.hit = true;
-          const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier;
-          const damage = applyDamageToTargets(null, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1), sourceKind: "enemy" });
+          const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier, kind = attackKind || spec.kind;
+          const targetMaxHp = stats(target.tier, target.species).maxHp, harvestMultiplier = this.riceHarvestMultiplier(u, target, kind, target.hp, targetMaxHp);
+          const baselineArmor = stats(target.tier, target.species).armor, armor = effectiveBarleyArmor(target, baselineArmor, this.time);
+          const sourceStatOverrides = { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) };
+          const damage = applyDamageToTargets(u, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier, sourceKind: "enemy", sourceStatOverrides, armorForTarget: () => armor });
+          this.applyGrainOnBasicHit(u, target, kind);
           const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
           target.knock(dx / n, dy / n, 5, 2.4, u);
           if (target.hp === 0) {
@@ -2532,7 +2663,7 @@
           }
           this.metrics.directHits++;
           this.metrics.basicHits++;
-          this.combat("unit-hit", { attackKind: attackKind || spec.kind, attackId: action.id, strikeIndex, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point.x, y: point.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength: damageMultiplier * (damage?.critical ? attackerStats.critMultiplier : 1) });
+          this.combat("unit-hit", { attackKind: kind, attackId: action.id, strikeIndex, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point.x, y: point.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength: damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier * (damage?.critical ? attackerStats.critMultiplier : 1) });
           return true;
         }
         damageCombatTarget(u, action, target, point, options = {}) {
@@ -3422,12 +3553,14 @@
       if (!Object.hasOwn(r, "settlementRunSequence")) r.settlementRunSequence = 0;
       if (!Object.hasOwn(r, "settlementEncounterId")) r.settlementEncounterId = 0;
     }
-    const unitDefaults = { isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, battleSummonEncounterId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0, landingRecovery: 0 };
+    const unitDefaults = { wheatCommandUntil: 0, wheatCommandCritBonus: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, battleSummonEncounterId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0, landingRecovery: 0 };
     for (const u of raw.units || []) {
       for (const [key, value] of Object.entries(unitDefaults)) if (!Object.hasOwn(u, key)) u[key] = value;
       if (!Object.hasOwn(u, "faction")) u.faction = legacyUnitFaction(u);
     }
     if (!Object.hasOwn(raw.boss, "faction")) raw.boss.faction = FACTION_CONFIG.ENEMY;
+    if (!Object.hasOwn(raw.boss, "barleyArmorBreakUntil")) raw.boss.barleyArmorBreakUntil = 0;
+    if (!Object.hasOwn(raw.boss, "barleyArmorBreakReduction")) raw.boss.barleyArmorBreakReduction = 0;
     for (const p of raw.projectiles || []) {
       if (!Object.hasOwn(p, "attackMultiplier")) p.attackMultiplier = abilityProfile(p.species).skillMultiplier;
       if (!Object.hasOwn(p, "shotIndex")) p.shotIndex = 0;
@@ -3636,7 +3769,7 @@
     const unitsById = /* @__PURE__ */ new Map(), summonsByParent = /* @__PURE__ */ new Map();
     for (const u of raw.units) {
       shape(u, UNIT_SHAPE);
-      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9);
+      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
       assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
       else assert(u.down === 0);
@@ -3707,7 +3840,7 @@
       }
     }
     assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
-    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && ["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind));
+    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && ["chase", "windup", "active", "recover", "resting"].includes(raw.boss.phase) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && BOSS_PATTERN_IDS.includes(raw.boss.attackKind) && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
     if (raw.boss.stage === 0) assert(raw.boss.attackPower === 4);
     else {
       const stageStats = bossStageStats(raw.boss.stage);
@@ -3766,7 +3899,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.7";
+      PRODUCT_VERSION = "0.7.8";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

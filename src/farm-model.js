@@ -8,7 +8,7 @@ import {createPlayerProgressionState} from './player-progression.js';
 import {purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression} from './ability-tree.js';
 import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './ability-state.js';
 import {FARM_UPGRADE_NODES, farmUpgradeRate, getAutoTapSeconds, getBreedCooldownSeconds, getFarmCapacity, getMergeCooldownSeconds} from './farm-upgrades.js';
-import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig} from './species-abilities.js';
+import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig, getRiceHarvestMultiplier, getWheatCommandConfig, refreshWheatCommandBuff, getBarleyArmorBreakConfig, refreshBarleyArmorBreak, effectiveBarleyArmor} from './species-abilities.js';
 import {MAX_BEAN_SPLIT_CHILDREN} from './species-abilities.js';
 import {createPeanutStrikeSchedule,resolveStrikeMask} from './unit-combat-patterns.js';
 import {MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier} from './unit-grades.js';
@@ -191,7 +191,7 @@ const AttackingBody=Base=>class extends Base{
     constructor(id, species, tier, x, y) {
       super(x, y);
       Object.assign(this, { id, species, tier, faction:FACTION_CONFIG.PLAYER, meals: 0, growth: 0, growthElapsed: 0, growthDuration: CONFIG.breedGrowthSeconds, age: 0, cooldown: 0, cooldownDuration:0, mateId:0, perceptionRange:CONFIG.raid.perceptionRange, home: { x, y }, hp: stats(tier,species).maxHp, down: 0, seed: id * 2.39996,ownerId:'',farmId:0,dropLanded:true,
-        isBattleOnlySummon:false,battleSummonKind:'',battleSummonParentId:0,battleSummonEncounterId:0,countsTowardPermanentRoster:true,eligibleForRaidDeployment:true,breedingEligible:true,mergeEligible:true,canSplit:true,splitUsedThisBattle:false,deathSplitHandled:false,usesPersistentSleep:true,lifetime:'',chestnutBasicCycles:0,landingRecovery:0 });
+        isBattleOnlySummon:false,battleSummonKind:'',battleSummonParentId:0,battleSummonEncounterId:0,countsTowardPermanentRoster:true,eligibleForRaidDeployment:true,breedingEligible:true,mergeEligible:true,canSplit:true,splitUsedThisBattle:false,deathSplitHandled:false,usesPersistentSleep:true,lifetime:'',chestnutBasicCycles:0,landingRecovery:0,wheatCommandUntil:0,wheatCommandCritBonus:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0 });
     }
     get radius() {
       return unitRadiusForTier(this.tier) * (this.mature ? 1 : 0.8);
@@ -438,7 +438,7 @@ const AttackingBody=Base=>class extends Base{
       return true;
     }
     getBossAcquisitionChance({farmEvent=false}={}){return bossAcquisitionChance({farmEvent})}
-    createBoss(species=3){const hp=2000;return {x:0,y:0,faction:FACTION_CONFIG.ENEMY,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp,maxHp:hp,species:clamp(species,0,CONFIG.maxSpecies-1),attackPower:4,stage:0,moveSpeed:CONFIG.raid.chaseSpeed,encounterId:0,active:false,phase:'resting',clock:0,angle:0,facing:0,flash:0,hit:new Set(),swings:0,basicCount:0,attackId:0,targetId:0,sweepClock:0,attackKind:'attack.sweep-360',startAngle:0,travel:0,patternRuntime:createBossPatternRuntime(),airborneRecovery:0,summonMouth:{x:0,y:0,z:0}}}
+    createBoss(species=3){const hp=2000;return {x:0,y:0,faction:FACTION_CONFIG.ENEMY,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp,maxHp:hp,species:clamp(species,0,CONFIG.maxSpecies-1),attackPower:4,stage:0,moveSpeed:CONFIG.raid.chaseSpeed,encounterId:0,active:false,phase:'resting',clock:0,angle:0,facing:0,flash:0,hit:new Set(),swings:0,basicCount:0,attackId:0,targetId:0,sweepClock:0,attackKind:'attack.sweep-360',startAngle:0,travel:0,patternRuntime:createBossPatternRuntime(),airborneRecovery:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0,summonMouth:{x:0,y:0,z:0}}}
     configureBossStage(stage,species=this.boss.species){const stats=bossStageStats(stage);this.boss.species=clamp(species,0,CONFIG.maxSpecies-1);this.boss.stage=stats.stage;this.boss.hp=this.boss.maxHp=stats.hp;this.boss.attackPower=stats.attackPower;return this.boss}
     setScene(scene){
       if(scene===this.scene)return;
@@ -754,19 +754,48 @@ const AttackingBody=Base=>class extends Base{
         if(u.species===3){const config=getChestnutSpikeConfig(this.abilityProgressionFor(u),u.tier);if(config)this.spawnChestnutSpikes(u,action,config)}
       }
     }
+    wheatCommandCritBonusFor(attacker){
+      if(!attacker||attacker.hp<=0)return 0;let strongest=0;
+      for(const source of this.units){
+        if(source.species!==7||source.hp<=0||!hasFaction(source,attacker.faction)||source.wheatCommandUntil<=this.time)continue;
+        const config=getWheatCommandConfig(this.abilityProgressionFor(source),source.tier);
+        if(!config||Math.hypot(source.x-attacker.x,source.y-attacker.y)>config.radius)continue;
+        strongest=Math.max(strongest,Number.isFinite(source.wheatCommandCritBonus)?source.wheatCommandCritBonus:0);
+      }
+      return Math.max(0,Math.min(1,strongest));
+    }
+    riceHarvestMultiplier(u,target,kind,hpBefore=target?.hp,maxHp=target?.maxHp){
+      if(kind!==abilityProfile(u.species).kind)return 1;
+      const progression=this.abilityProgressionFor(u);
+      return getRiceHarvestMultiplier(progression,u.tier,hpBefore,maxHp);
+    }
+    applyGrainOnBasicHit(u,target,kind){
+      if(!hasFaction(u,FACTION_CONFIG.PLAYER)||kind!==abilityProfile(u.species).kind)return;
+      const progression=this.abilityProgressionFor(u);
+      if(u.species===7){
+        const config=getWheatCommandConfig(progression,u.tier);
+        if(config)refreshWheatCommandBuff(u,config,this.time,resolveStatusDuration(config.durationSeconds,u,null));
+      }else if(u.species===8){
+        const config=getBarleyArmorBreakConfig(progression,u.tier);
+        if(config)refreshBarleyArmorBreak(target,config,this.time,resolveStatusDuration(config.durationSeconds,u,target));
+      }
+    }
     damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null}={}){
       if(!hasFaction(u,FACTION_CONFIG.PLAYER)||!areOpposingFactions(u,this.boss)||action.hit||this.boss.hp<=0)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
       const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
       const hpRatio=Number.isFinite(hpBefore)&&Number.isFinite(maxHp)&&maxHp>0?clamp(hpBefore/maxHp,0,1):1;
-      const armor=(1-hpRatio)*100;
+      const baselineArmor=(1-hpRatio)*100,armor=effectiveBarleyArmor(this.boss,baselineArmor,this.time);
       const attackerStats=stats(u.tier,u.species);
       const damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind=attackKind||spec.kind;
-      const rawDamage=attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1);
-      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,armorForTarget:()=>armor,roll:()=>this.random()});
+      const harvestMultiplier=this.riceHarvestMultiplier(u,this.boss,kind,hpBefore,maxHp);
+      const rawDamage=attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier;
+      const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
+      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,sourceStatOverrides,armorForTarget:()=>armor,roll:()=>this.random()});
+      this.applyGrainOnBasicHit(u,this.boss,kind);
       this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
-      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackId:action.id,strikeIndex,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*(damage.critical?attackerStats.critMultiplier:1)});
+      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackId:action.id,strikeIndex,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(damage.critical?attackerStats.critMultiplier:1)});
       this.combatEvent('damage',u,action);return true;
     }
     attackTarget(unit,action){
@@ -775,12 +804,16 @@ const AttackingBody=Base=>class extends Base{
     }
     damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null}={}){
       if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit)return false;action.hit=true;
-      const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil,attackerStats=stats(u.tier,u.species),damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier;
-      const damage=applyDamageToTargets(null,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1),sourceKind:'enemy'});
+      const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil,attackerStats=stats(u.tier,u.species),damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind=attackKind||spec.kind;
+      const targetMaxHp=stats(target.tier,target.species).maxHp,harvestMultiplier=this.riceHarvestMultiplier(u,target,kind,target.hp,targetMaxHp);
+      const baselineArmor=stats(target.tier,target.species).armor,armor=effectiveBarleyArmor(target,baselineArmor,this.time);
+      const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
+      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier,sourceKind:'enemy',sourceStatOverrides,armorForTarget:()=>armor});
+      this.applyGrainOnBasicHit(u,target,kind);
       const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5,2.4,u);
       if(target.hp===0){target.down=target.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(target)}
       this.metrics.directHits++;this.metrics.basicHits++;
-      this.combat('unit-hit',{attackKind:attackKind||spec.kind,attackId:action.id,strikeIndex,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength:damageMultiplier*(damage?.critical?attackerStats.critMultiplier:1)});
+      this.combat('unit-hit',{attackKind:kind,attackId:action.id,strikeIndex,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(damage?.critical?attackerStats.critMultiplier:1)});
       return true;
     }
     damageCombatTarget(u,action,target,point,options={}){return target===this.boss?this.damageBoss(u,action,point,options):this.damageUnitTarget(u,action,target,point,options)}
