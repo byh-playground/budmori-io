@@ -2,7 +2,7 @@ export const FARM_AUTOSAVE_DEBOUNCE_MS=1000;
 export const FARM_AUTOSAVE_MAX_WAIT_MS=10000;
 
 // Farm-specific trailing debounce with a bounded checkpoint interval. It only
-// writes when the simulation has marked authoritative Farm state as changed.
+// writes when a progress event (not a movement/display tick) marks the Farm.
 export class FarmAutosave{
  constructor(save,{debounceMs=FARM_AUTOSAVE_DEBOUNCE_MS,maxWaitMs=FARM_AUTOSAVE_MAX_WAIT_MS,now=()=>globalThis.performance.now(),setTimer=(fn,delay)=>globalThis.setTimeout(fn,delay),clearTimer=id=>globalThis.clearTimeout(id)}={}){
   this.save=save;this.debounceMs=debounceMs;this.maxWaitMs=maxWaitMs;this.now=now;this.setTimer=setTimer;this.clearTimer=clearTimer;this.timer=null;this.dirty=false;this.dirtySince=0;this.deadline=0;this.timerDeadline=0;

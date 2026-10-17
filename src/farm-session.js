@@ -123,7 +123,7 @@ export class FarmSession{
  command(c,ownerId=this.localPlayerId){const w=this.world;
   switch(c.type){
    case 'feed':return w.scene==='farm'&&w.tapFood('manual');
-   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){const changed=w.mode!==c.value||c.value!=='merge'&&w.mergeTask!==null;if(c.value!=='merge')w.mergeTask=null;w.mode=c.value;return changed}return false;
+   case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){const changed=w.mode!==c.value||c.value!=='merge'&&w.mergeTask!==null;if(c.value!=='merge')w.mergeTask=null;w.mode=c.value;if(changed)w.markProgressChanged();return changed}return false;
    case 'progression-invest':if(w.scene==='farm'&&typeof c.nodeId==='string'&&c.nodeId.length<64){if(c.scope==='farm')return w.investFarmUpgrade(c.nodeId).ok;if(c.scope==='ability'&&typeof c.abilityId==='string'&&c.abilityId.length<64)return w.investAbilityNode(c.abilityId,c.nodeId).ok}return false;
    case 'ability-reset':return w.scene==='farm'&&w.resetAbilityTree().ok;
    case 'register-roster':return Array.isArray(c.entries)&&w.registerRaidRoster(ownerId,c.entries,c.abilitySnapshot,c.settlement||null);

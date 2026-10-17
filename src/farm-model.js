@@ -261,7 +261,7 @@ const AttackingBody=Base=>class extends Base{
       this._bossGridUnits=[];this._bossGroundUnits=[];this._bossQueryCandidates=[];this._bossHitCandidates=[];
       this._mergeNearestScratch=[];this._mergeMaterialsScratch=[];this._mergeIdScratch=[];this._spatialStepActive=false;this._spatialQueryDepth=0;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
       for(const key of ['unitSpatial','foodSpatial','_unitById','_unitStepOrder','_unitAliveState','_liveFactionCounts','_foodOrder','_speciesGroups','_speciesTierGroups','_mergeEligibleGroups','_ownedSpeciesCounts','_stepUnits','_unitCandidates','_foodCandidates','_groundedFoods','_groundedFoodCount','_contactPending','_contactExtra','_contactQuery','_contactSeen','_contactGeneration','_bossGridUnits','_bossGroundUnits','_bossQueryCandidates','_bossHitCandidates','_mergeNearestScratch','_mergeMaterialsScratch','_mergeIdScratch','_spatialStepActive','_spatialQueryDepth','_unitSpatialDirty','_foodSpatialDirty'])Object.defineProperty(this,key,{enumerable:false});
-      Object.defineProperties(this,{localScatter:{value:{active:false,x:0,y:0,radius:CONFIG.scatter.minRadius,handleX:0,handleY:0,generation:0}},_scatterStates:{value:new WeakMap()}});
+      Object.defineProperties(this,{progressRevision:{value:0,writable:true},_progressTimerCheckpoint:{value:0,writable:true},localScatter:{value:{active:false,x:0,y:0,radius:CONFIG.scatter.minRadius,handleX:0,handleY:0,generation:0}},_scatterStates:{value:new WeakMap()}});
       this.reset();
     }
     _rebuildUnitSpatialIndex(stepUnits=this.units){
@@ -352,6 +352,7 @@ const AttackingBody=Base=>class extends Base{
     }
     reset() {
       this.clearLocalScatter();
+      this.progressRevision=0;this._progressTimerCheckpoint=0;
       this.mergeTask=null;this._stepUnits.length=0;
       this.corpseRecoveryVersion=1;
       this.rng = new SeededPRNG(this.seed);
@@ -391,15 +392,17 @@ const AttackingBody=Base=>class extends Base{
         u.growthElapsed=u.growthDuration;
       }
     }
+    markProgressChanged(){if(this.scene==='farm')this.progressRevision++}
+    hasProgressTimers(){return this.units.some(unit=>!unit.isBattleOnlySummon&&(unit.down>0||unit.cooldown>0||!unit.mature))}
     get armyHealth(){return this.units.filter(u=>hasFaction(u,FACTION_CONFIG.PLAYER)).reduce((sum,u)=>{const maxHp=stats(u.tier,u.species).maxHp;return {current:sum.current+Math.max(0,Math.min(maxHp,u.hp)),max:sum.max+maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}},{current:0,max:0,living:0,total:0})}
     get capacity(){return getFarmCapacity(this.playerProgression?.farmUpgrades)}
     breedCooldownDuration(){return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades,CONFIG.farm.breeding.cooldownSeconds)}
     breedGrowthDuration(){return this.breedCooldownDuration()/2}
   abilityProgressionFor(unit){if(hasFaction(unit,FACTION_CONFIG.ENEMY))return null;return this.scene==='raid'?this.raidRoster(unit?.ownerId)?.abilitySnapshot||null:this.playerProgression}
     highestSpeciesTiers(){const tiers=Array(CONFIG.unit.speciesCount).fill(0);for(const unit of this.units)if(!unit.isBattleOnlySummon)tiers[unit.species]=Math.max(tiers[unit.species],unit.tier);return tiers}
-    investAbilityNode(abilityId,nodeId){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=purchaseAbilityNode(this.playerProgression,abilityId,nodeId,{location:this.scene,inCombat,highestSpeciesTier:this.highestSpeciesTiers()});if(result.ok)this.playerProgression=result.state;return result}
-    investFarmUpgrade(nodeId){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=purchaseFarmUpgrade(this.playerProgression,nodeId,{location:this.scene,inCombat});if(result.ok)this.playerProgression=result.state;return result}
-    resetAbilityTree(){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=resetAbilityProgression(this.playerProgression,{location:this.scene,inCombat});if(result.ok)this.playerProgression=result.state;return result}
+    investAbilityNode(abilityId,nodeId){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=purchaseAbilityNode(this.playerProgression,abilityId,nodeId,{location:this.scene,inCombat,highestSpeciesTier:this.highestSpeciesTiers()});if(result.ok){this.playerProgression=result.state;this.markProgressChanged()}return result}
+    investFarmUpgrade(nodeId){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=purchaseFarmUpgrade(this.playerProgression,nodeId,{location:this.scene,inCombat});if(result.ok){this.playerProgression=result.state;this.markProgressChanged()}return result}
+    resetAbilityTree(){const inCombat=this.running||this.farmBossEvent?.phase!=='idle';const result=resetAbilityProgression(this.playerProgression,{location:this.scene,inCombat});if(result.ok){this.playerProgression=result.state;this.markProgressChanged()}return result}
     spawnLobProjectile(unit,action,shot,popcornConfig=null){
       if(this.projectiles.length>=CONFIG.raid.capacity.projectiles)return null;
       const id=++this.projectileSerial;
@@ -421,6 +424,7 @@ const AttackingBody=Base=>class extends Base{
       if(!unit)return false;unit.ability.resetCombatEffects?.();if(unit.deathSplitHandled)return false;
       this._syncUnitAliveCount(unit);
       unit.deathSplitHandled=true;
+      if(!unit.isBattleOnlySummon)this.markProgressChanged();
       if(unit.isBattleOnlySummon){unit.down=0;this._trackUnitRemoved(unit,{keepStepSnapshot:true});this.units=this.units.filter(candidate=>candidate!==unit);return false}
       const inBattle=this.scene==='raid'?this.running:this.farmBossEvent?.phase==='fighting';
       const descriptors=unit.ability.deathSplitDescriptors?.(this,inBattle)||[];
@@ -514,7 +518,7 @@ const AttackingBody=Base=>class extends Base{
     spawn(species, tier, x, y) {
       if (this.units.length >= (this.scene==='farm'?this.capacity:CONFIG.raid.capacity.units)) return null;
       const u = new Unit(this.nextId++, species, clamp(tier, 1, CONFIG.unit.maxTier), x, y);
-      this.units.push(u);this._trackUnitAdded(u);
+      this.units.push(u);this._trackUnitAdded(u);this.markProgressChanged();
       return u;
     }
     notice(kind,detail={}){const event={sequence:++this.eventSequence,kind,...detail};this.notices.push(event);if(this.notices.length>512)this.notices.shift();return event}
@@ -537,7 +541,7 @@ const AttackingBody=Base=>class extends Base{
         this.scatter((this.random()-.5)*CONFIG.farm.arena.radiusX*1.5,(this.random()-.5)*CONFIG.farm.arena.radiusY*1.35,1);
         this.foodTaps.produced++;
       }
-      this.notice("food-tap",{source,completed,remainder:this.foodTaps.remainder});
+      this.notice("food-tap",{source,completed,remainder:this.foodTaps.remainder});this.markProgressChanged();
       return true;
     }
     advanceAutoTaps(elapsed) {
@@ -559,7 +563,7 @@ const AttackingBody=Base=>class extends Base{
         const angle=this.random()*Math.PI*2, sx=Math.cos(angle)*(CONFIG.farm.arena.radiusX+.7), sy=Math.sin(angle)*(CONFIG.farm.arena.radiusY+.2);
         const duration=.85+this.random()*.25, z=.3;
       const food={x:sx,y:sy,z,vx:(tx-sx)/duration,vy:(ty-sy)/duration,vz:6*duration-z/duration,seed:this.random(),phase:"flight",tx,ty};this.food.push(food);this._trackFoodAdded(food);
-        this.emit("feed",tx,ty);
+        this.emit("feed",tx,ty);this.markProgressChanged();
       }
     }
     tryStartFarmBossEvent(x,y){
@@ -567,7 +571,7 @@ const AttackingBody=Base=>class extends Base{
       for(const unit of this.units)if(!unit.isBattleOnlySummon){unit.splitUsedThisBattle=false;unit.deathSplitHandled=false;unit.chestnutBasicCycles=0}
       this.boss=this.createBoss(this.randomBossSpecies());Object.assign(this.boss,{x,y,z:CONFIG.raid.dropHeight,active:true});
       this.farmBossEvent={phase:'dropping',elapsed:0,outcome:'fighting',encounterId:this.nextBossEncounterId++,rewardStatus:'unresolved',rewardChance:0,rewardRoll:0,rewardUnitId:0};this.boss.encounterId=this.farmBossEvent.encounterId;this.boss.patternRuntime=createBossPatternRuntime();
-      this.combat('farm-boss-drop',{x,y,z:this.boss.z});
+      this.combat('farm-boss-drop',{x,y,z:this.boss.z});this.markProgressChanged();
       return true;
     }
     getBossAcquisitionChance({farmEvent=false}={}){return bossAcquisitionChance({farmEvent})}
@@ -743,7 +747,7 @@ const AttackingBody=Base=>class extends Base{
     }
     step(dt) {
       this._spatialStepActive=true;this._spatialQueryDepth=0;
-      this.time += dt;
+      this.time += dt;let progressTimersAdvanced=false;
       grantPendingBossAcquisitions(this);
       // Keep the original step membership/order; spawns join indexes now but
       // are first advanced by the next physics step, just like the prior copy.
@@ -770,7 +774,7 @@ const AttackingBody=Base=>class extends Base{
           if(!u.deathSplitHandled)this.handleUnitDeath(u);
           if(u.isBattleOnlySummon){u.down=0;continue}
           if(u.down<=0){u.down=CONFIG.unit.corpseRecoverySeconds;u.ability.interrupt()}
-          if(this.scene==='farm'){u.down=Math.max(0,u.down-dt);if(u.down<1e-9)u.down=0}
+          if(this.scene==='farm'){progressTimersAdvanced=true;u.down=Math.max(0,u.down-dt);if(u.down<1e-9)u.down=0}
           const oldZ=u.z;u.integrate(dt);
           if(this.scene==='raid'&&this.running&&u.z===0&&u.vz===0)u.vx=u.vy=0;
           if(oldZ>0&&u.z===0){
@@ -779,7 +783,7 @@ const AttackingBody=Base=>class extends Base{
             else if(Math.hypot(u.vx,u.vy)>1)this.emit('land',u.x,u.y);
           }
           if(this.scene==='farm'&&u.down===0){
-            const maxHp=stats(u.tier,u.species).maxHp;this.releaseMate(u);Object.assign(u,{hp:maxHp,down:0,z:0,vx:0,vy:0,vz:0,stun:0,flash:0,bounce:0,angle:0,deathSplitHandled:false});this._syncUnitAliveCount(u);u.ability=createUnitAttackCycle(u);this.combat('unit-recover',{unit:u.id,x:u.x,y:u.y});
+            const maxHp=stats(u.tier,u.species).maxHp;this.releaseMate(u);Object.assign(u,{hp:maxHp,down:0,z:0,vx:0,vy:0,vz:0,stun:0,flash:0,bounce:0,angle:0,deathSplitHandled:false});this._syncUnitAliveCount(u);u.ability=createUnitAttackCycle(u);this.combat('unit-recover',{unit:u.id,x:u.x,y:u.y});this.markProgressChanged();
           }
           this.unitSpatial.update(u);
           continue;
@@ -787,8 +791,10 @@ const AttackingBody=Base=>class extends Base{
         u.age += dt;
         const unitStats=stats(u.tier,u.species);
         if(u.hp>0&&unitStats.regen>0)applyHealing(u,unitStats.regen*dt,unitStats);
-        if(!u.mature){u.growthElapsed=Math.min(u.growthDuration,u.growthElapsed+dt);u.growth=Math.min(CONFIG.farm.breeding.matureMeals,Math.floor(CONFIG.farm.breeding.matureMeals*u.growthElapsed/u.growthDuration+1e-9))}
+        if(!u.mature){progressTimersAdvanced=true;u.growthElapsed=Math.min(u.growthDuration,u.growthElapsed+dt);u.growth=Math.min(CONFIG.farm.breeding.matureMeals,Math.floor(CONFIG.farm.breeding.matureMeals*u.growthElapsed/u.growthDuration+1e-9));if(u.mature)this.markProgressChanged()}
 
+        if(u.cooldown>0)progressTimersAdvanced=true;
+        if(u.cooldown>0&&u.cooldown<=dt+1e-9)this.markProgressChanged();
         u.cooldown = Math.max(0, u.cooldown - dt);
         if(u.cooldown<1e-9){u.cooldown=0;u.cooldownDuration=0;}
 
@@ -813,6 +819,9 @@ const AttackingBody=Base=>class extends Base{
         this.unitSpatial.update(u);
 
       }
+      // Timed growth/rest is real progress, but movement is not. Checkpoint
+      // advancing timers at a coarse cadence, never once per physics tick.
+      if(this.scene==='farm'&&progressTimersAdvanced){this._progressTimerCheckpoint+=dt;if(this._progressTimerCheckpoint>=5){this._progressTimerCheckpoint=0;this.markProgressChanged()}}
       this.resolveContacts(units);
       if (this.scene === "farm") {
         if(this.mode==="breed"){
@@ -1019,7 +1028,7 @@ const AttackingBody=Base=>class extends Base{
         target=this.findNearestGroundFood(u.x,u.y);if(target)best=Math.hypot(target.x-u.x,target.y-u.y);
         if (target && best < 0.42) {
           this.food.splice(this.food.indexOf(target), 1);this.foodSpatial.remove(target);this._foodOrder.delete(target);this._removeGroupItem(this._groundedFoods,target);this._groundedFoodCount=Math.max(0,this._groundedFoodCount-1);
-          u.meals = 1;
+          u.meals = 1;this.markProgressChanged();
           u.vz = 2;
           this.emit("eat", u.x, u.y, 0.5);
           target = null;
@@ -1216,7 +1225,7 @@ const AttackingBody=Base=>class extends Base{
         this.combat('farm-boss-xp',{encounterId,xp:settlement.xpAwarded,levelsGained:settlement.levelsGained,pointsAwarded:settlement.pointsAwarded});
         this.combat('farm-boss-reward',{acquired:reward.status==='granted',pending:reward.status==='pending',species:reward.species,tier:reward.tier,chance:reward.chance,roll:reward.roll,encounterId});
       }
-      this.combat(outcome==='victory'?'farm-boss-victory':'farm-boss-defeat',{x:this.boss.x,y:this.boss.y,z:0});
+      this.markProgressChanged();this.combat(outcome==='victory'?'farm-boss-victory':'farm-boss-defeat',{x:this.boss.x,y:this.boss.y,z:0});
       return true;
     }
     bossAttackArea(unitRadius=0){return bossAttackArea(this.boss,unitRadius,this.scene)}

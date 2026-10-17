@@ -59,7 +59,8 @@ async function renderNeutralBossPreview(target,species,asset,label=''){
 function writeCheckpoint(world=personalGarden){if(!world)return false;const ok=storage.save(world);$('saveNotice').textContent=ok?'':storage.error;$('treeStorage').hidden=ok;return ok}
 const autosave=new FarmAutosave(()=>writeCheckpoint());
 function saveImmediate(world=personalGarden){const ok=writeCheckpoint(world);if(ok)autosave.reset();return ok}
-function markPersistentChange(world){if(world===personalGarden)autosave.markDirty()}
+const observedProgressRevisions=new WeakMap();
+function markPersistentChange(world){if(world!==personalGarden||observedProgressRevisions.get(world)===world.progressRevision)return;observedProgressRevisions.set(world,world.progressRevision);autosave.markDirty()}
 function onWorldStep(world){
  markPersistentChange(world);
  if(world?.scene!=='raid'||!['victory','defeat'].includes(world.encounter?.outcome)||!personalGarden||personalGarden.activeRaidRunSequence===null)return;
@@ -68,7 +69,7 @@ function onWorldStep(world){
  const runKey=`${run.sessionId}:${run.runSequence}`;if(lastAutoSettledRunKey===runKey)return;lastAutoSettledRunKey=runKey;
  try{persistRaidSettlement(localSettlementRoster(world,ownerId,run),ownerId)}catch(error){fail(error)}
 }
-function persist(){if(active?.world===personalGarden)active.flushQueuedCommands();return autosave.flush()}
+function persist(){if(active?.world===personalGarden)active.flushQueuedCommands();if(personalGarden?.hasProgressTimers())autosave.markDirty();return autosave.flush()}
 const foodFeel=new FoodFeel(requestFeed);
 const combatFeel=new CombatFeel(foodFeel);
 function requestFeed(){if(!home&&active&&!active.paused){foodFeel.unlock();active.queue('feed')}}
@@ -79,7 +80,7 @@ function renderBossEncounterStage(stage){
  if(!personalGarden||active?.world?.scene==='raid')return null;
  const progress=personalGarden.farmBossProgress,wasSelected=progress.selections.some(entry=>entry.stage===stage),previousStage=progress.currentStage;
  const selection=selectFarmBossStage(progress,stage);
- if(!wasSelected||previousStage!==stage)saveImmediate(personalGarden);
+ if(!wasSelected||previousStage!==stage){personalGarden.markProgressChanged();saveImmediate(personalGarden)}
  const species=selection.species,catalogEntry=speciesById(species),rewardName=speciesRewardName(species),encounterName=giantSpeciesName(species),rolls=selection.rolls;
  $('bossStageCounter').textContent=`${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
  $('bossStageLabel').textContent=`STAGE ${selection.stage}`;
@@ -182,7 +183,7 @@ $('abortRaidRun').onclick=()=>{
 $('newGame').onclick=()=>{
  // Overwriting an existing save is a separate, explicit user action.
  if((storage.raw||storage.legacyRaw)&&!$('newConfirm').hidden)return;
- if(storage.raw||storage.legacyRaw){$('newConfirmText').textContent=storage.raw?'현재 0.5 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.':'새 0.5 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.';$('newConfirm').hidden=false;return}
+ if(storage.raw||storage.legacyRaw){$('newConfirmText').textContent=storage.raw?'현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.':'새 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.';$('newConfirm').hidden=false;return}
  const world=new Garden();if(storage.replace(world)){autosave.reset();start(world)}else refreshStart();
 };
 $('confirmNew').onclick=()=>{const world=new Garden();if(storage.replace(world)){autosave.reset();$('newConfirm').hidden=true;start(world)}else refreshStart()};
@@ -194,7 +195,7 @@ $('continueLegacyGame').onclick=async()=>{if(!storage.legacyRaw)return;try{const
 
 $('saveFile').onchange=async()=>{const file=$('saveFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('저장 파일이 너무 큽니다.');const text=await file.text();const {validateSave}=await import('./farm-storage.js');validateSave(text);imported=text;importedLegacy=false;$('importConfirmText').textContent=saveHasLegacyFarmProgress(text)?'이전 활동 기반 강화는 종료되고 경험치 포인트로 통합돼요. 기존 무료 강화는 초기화됩니다. 원본을 먼저 백업한 뒤 이 저장을 불러올까요?':'선택한 파일로 개인 저장을 바꿀까요?';$('confirmImport').textContent='이 저장 불러오기';$('importConfirm').hidden=false}catch(e){$('saveNotice').textContent=e.message}finally{$('saveFile').value=''}};
 $('cancelImport').onclick=()=>{imported=null;importedLegacy=false;$('importConfirm').hidden=true};
- $('confirmImport').onclick=()=>{try{if(imported){const legacy=importedLegacy,world=storage.import(imported);autosave.reset();if(legacy)start(world)}imported=null;importedLegacy=false;$('importConfirm').hidden=true;refreshStart()}catch(e){$('saveNotice').textContent=e.message}};
+ $('confirmImport').onclick=()=>{try{if(imported){const legacy=importedLegacy,world=storage.import(imported);autosave.reset();if(legacy)start(world);else{personalGarden=world;install(world);active.paused=true}}imported=null;importedLegacy=false;$('importConfirm').hidden=true;refreshStart()}catch(e){$('saveNotice').textContent=e.message}};
 $('farm').onclick=()=>returnToFarm();$('raid').onclick=()=>openBossEncounter();$('return').onclick=()=>returnToFarm();
 for(const value of ['breed','merge'])$(value).onclick=()=>active.queue('mode',{value});
 $('feed').addEventListener('keydown',e=>{if(e.repeat&&['Enter',' '].includes(e.key))e.preventDefault()});
