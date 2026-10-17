@@ -17,7 +17,7 @@ import {speciesById} from './species-catalog.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
 let networkTimer=null,observedWorld=null;
 let imported=null,importedLegacy=false;
-let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,menuOpen=false,menuTab='play',menuWasPaused=true,menuPauseChanged=false,menuAutoPaused=false,dropPointer=null,dropTimer=null,bossEncounterOpen=false,bossSwipe=null,bossPauseBeforeOpen=null;
+let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,menuOpen=false,menuTab='play',menuWasPaused=true,menuPauseChanged=false,menuAutoPaused=false,dropPointer=null,dropTimer=null,bossEncounterOpen=false,bossSwipe=null,bossPauseBeforeOpen=null,lastAutoSettledRunKey=null;
 const renderer=new Diorama($('world'));
 const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
 function measureFrame(now){if(lastFrameTimestamp!==null){measuredFrames.push(now-lastFrameTimestamp);if(measuredFrames.length>240)measuredFrames.shift()}lastFrameTimestamp=now;frameCount++}
@@ -56,11 +56,19 @@ function writeCheckpoint(world=personalGarden){if(!world)return false;const ok=s
 const autosave=new FarmAutosave(()=>writeCheckpoint());
 function saveImmediate(world=personalGarden){const ok=writeCheckpoint(world);if(ok)autosave.reset();return ok}
 function markPersistentChange(world){if(world===personalGarden)autosave.markDirty()}
+function onWorldStep(world){
+ markPersistentChange(world);
+ if(world?.scene!=='raid'||!['victory','defeat'].includes(world.encounter?.outcome)||!personalGarden||personalGarden.activeRaidRunSequence===null)return;
+ const ownerId=active?.localPlayerId,run={sessionId:personalGarden.activeRaidSessionId,runSequence:personalGarden.activeRaidRunSequence};
+ if(!ownerId||!run.sessionId||!run.runSequence)return;
+ const runKey=`${run.sessionId}:${run.runSequence}`;if(lastAutoSettledRunKey===runKey)return;lastAutoSettledRunKey=runKey;
+ try{persistRaidSettlement(localSettlementRoster(world,ownerId,run),ownerId)}catch(error){fail(error)}
+}
 function persist(){if(active?.world===personalGarden&&!room)active.flushQueuedCommands();return autosave.flush()}
 const foodFeel=new FoodFeel(requestFeed);
 const combatFeel=new CombatFeel(foodFeel);
 function requestFeed(){if(!home&&active&&!active.paused){foodFeel.unlock();active.queue('feed')}}
-function install(world,options={}){clearInterval(networkTimer);active?.dispose();active=new FarmSession(world,{...options,onError:fail,onWorldStep:markPersistentChange});noticeSequence=world.eventSequence;observedWorld=world;if(options.room)networkTimer=setInterval(()=>active.pulse(performance.now()),50);return active}
+function install(world,options={}){clearInterval(networkTimer);active?.dispose();active=new FarmSession(world,{...options,onError:fail,onWorldStep});noticeSequence=world.eventSequence;observedWorld=world;if(options.room)networkTimer=setInterval(()=>active.pulse(performance.now()),50);return active}
 install(new Garden());active.paused=true;
 function showBossEncounterMessage(text){const message=$('bossEncounterMessage');message.textContent=text;message.hidden=!text;if(text){clearTimeout(showBossEncounterMessage.timer);showBossEncounterMessage.timer=setTimeout(()=>{message.hidden=true},1800)}}
 function renderBossEncounterStage(stage){
@@ -324,7 +332,7 @@ function sync(display,now){
  const army=display.units.filter(u=>u.faction===CONFIG.factions.PLAYER).reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(u.maxHp,u.hp)),max:sum.max+u.maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0});
  $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
  $('allyHealthText').textContent=Math.ceil(army.current)+' / '+Math.ceil(army.max)+' HP · '+army.living+'/'+army.total+' 생존';
-const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome,settledReward=raid&&personalGarden?.raidSettlementReceipts?.find(receipt=>receipt.runSequence===personalGarden.activeRaidRunSequence)?.reward,stageName=raid&&boss.stage?`STAGE ${boss.stage}`:'',speciesName=speciesById(boss.species).name;
+const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome,settledRunSequence=raid?(personalGarden?.activeRaidRunSequence??w.boss.encounterId):null,settledReward=raid&&personalGarden?.raidSettlementReceipts?.find(receipt=>receipt.runSequence===settledRunSequence)?.reward,stageName=raid&&boss.stage?`STAGE ${boss.stage}`:'',speciesName=speciesById(boss.species).name;
  $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';$('bossHealthNote').textContent=farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP';
  for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
  $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?`${stageName} 승리 · ${settledReward?.xp?.amount??bossStageStats(boss.stage||1).xp} XP${settledReward?.acquisition?.rollCount?` · 보스 종 ${settledReward.acquisition.rolls?.filter(drop=>drop.status==='granted').length||0}/${settledReward.acquisition.rollCount}회 성공`:settledReward?' · 보스 종 추첨 없음':bossStageStats(boss.stage||1).rolls?' · 정원 복귀 후 보상 정산':' · 보스 종 추첨 없음'} · 모두 정원으로 돌아갈 수 있어요`:battleOutcome==='defeat'?`${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요`:''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?`보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요`:farmEvent.rewardStatus==='pending'?`${speciesName} 획득 대기 · 공간이 생기면 합류해요`:'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('bossEncounterChallenge').disabled=!personalGarden||!hasReadyTroops||farmEventActive||personalGarden?.activeRaidRunSequence!==null||room; $('menuTabGrowth').disabled=raid||farmEventActive||bossEncounterOpen;$('menuTabAbilities').disabled=raid||!personalGarden;$('raid').disabled=raid||farmEventActive||room||!personalGarden;$('pause').textContent=active.paused?'▶':'Ⅱ';

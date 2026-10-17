@@ -692,12 +692,14 @@
     return {
       currentStage: 1,
       encounterSeed: (clampUint32(seed) ^ 2738958700) >>> 0,
+      encounterEpoch: 0,
       nextSelectionId: 1,
       selections: []
     };
   }
-  function selectionRandom(seed, selectionId, stage) {
-    let state = (seed ^ Math.imul(selectionId, 2654435769) ^ Math.imul(stage, 2246822507)) >>> 0;
+  function selectionRandom(seed, selectionId, stage, encounterEpoch = 0) {
+    const epochSalt = Math.imul(encounterEpoch >>> 0, 668265261);
+    let state = (seed ^ Math.imul(selectionId, 2654435769) ^ Math.imul(stage, 2246822507) ^ epochSalt) >>> 0;
     return () => {
       state = state + 1831565813 >>> 0;
       let value = state;
@@ -706,12 +708,20 @@
       return ((value ^ value >>> 14) >>> 0) / 4294967296;
     };
   }
+  function advanceFarmBossEncounterEpoch(progress) {
+    if (!progress || typeof progress !== "object" || Array.isArray(progress) || !Number.isSafeInteger(progress.encounterEpoch ?? 0) || (progress.encounterEpoch ?? 0) < 0 || (progress.encounterEpoch ?? 0) >= 1e12 || !Array.isArray(progress.selections)) {
+      throw new TypeError("Farm boss encounter progress is invalid");
+    }
+    progress.encounterEpoch = (progress.encounterEpoch ?? 0) + 1;
+    progress.selections = [];
+    return progress.encounterEpoch;
+  }
   function selectFarmBossStage(progress, stage) {
     if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) throw new RangeError("Boss stage is outside the supported range");
     let selection = progress.selections.find((entry) => entry.stage === stage);
     if (!selection) {
       const selectionId = progress.nextSelectionId;
-      const random = selectionRandom(progress.encounterSeed, selectionId, stage);
+      const random = selectionRandom(progress.encounterSeed, selectionId, stage, progress.encounterEpoch ?? 0);
       selection = { stage, species: chooseBossSpecies(random), selectionId };
       progress.selections.push(selection);
       progress.nextSelectionId += 1;
@@ -3487,6 +3497,9 @@
         rewardSummary = resolution.summary ?? null;
       }
     }
+    if (outcome === "victory" || outcome === "defeat") {
+      advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
+    }
     const receipt = {
       key,
       ownerId,
@@ -3515,6 +3528,7 @@
       init_unit_grades();
       init_factions();
       init_species_catalog();
+      init_farm_boss_stages();
       RAID_SLEEP_SECONDS = 60;
       RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
       fail = (message) => {
@@ -3726,7 +3740,7 @@
       if (reward.source === "farm" && reward.status === "granted") assert(reward.unitId < raw.nextId);
     }
     const stageProgress = raw.farmBossProgress;
-    assert(stageProgress && integer(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stageProgress.encounterSeed, 0, 4294967295) && integer(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
+    assert(stageProgress && integer(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stageProgress.encounterSeed, 0, 4294967295) && integer(stageProgress.encounterEpoch, 0, 1e12) && integer(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
     const stageIds = /* @__PURE__ */ new Set(), selectionIds = /* @__PURE__ */ new Set();
     for (const selection of stageProgress.selections) {
       assert(selection && integer(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(selection.species, 0, CONFIG.maxSpecies - 1) && integer(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
@@ -3899,7 +3913,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.10";
+      PRODUCT_VERSION = "0.7.11";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -5181,10 +5195,10 @@
   };
   var FarmSession = class {
     constructor(world = new Garden(), { room: room2 = null, onError = console.error, onEvent = () => {
-    }, onWorldStep = () => {
+    }, onWorldStep: onWorldStep2 = () => {
     } } = {}) {
       this.world = world;
-      this.onWorldStep = onWorldStep;
+      this.onWorldStep = onWorldStep2;
       this.tick = 0;
       this.presentationTick = 0;
       this.epoch = 0;
@@ -5811,6 +5825,7 @@
   var bossEncounterOpen = false;
   var bossSwipe = null;
   var bossPauseBeforeOpen = null;
+  var lastAutoSettledRunKey = null;
   var renderer = new Diorama($2("world"));
   var measuredFrames = [];
   var lastFrameTimestamp = null;
@@ -5912,6 +5927,20 @@
   function markPersistentChange(world) {
     if (world === personalGarden) autosave.markDirty();
   }
+  function onWorldStep(world) {
+    markPersistentChange(world);
+    if (world?.scene !== "raid" || !["victory", "defeat"].includes(world.encounter?.outcome) || !personalGarden || personalGarden.activeRaidRunSequence === null) return;
+    const ownerId = active?.localPlayerId, run = { sessionId: personalGarden.activeRaidSessionId, runSequence: personalGarden.activeRaidRunSequence };
+    if (!ownerId || !run.sessionId || !run.runSequence) return;
+    const runKey = `${run.sessionId}:${run.runSequence}`;
+    if (lastAutoSettledRunKey === runKey) return;
+    lastAutoSettledRunKey = runKey;
+    try {
+      persistRaidSettlement(localSettlementRoster(world, ownerId, run), ownerId);
+    } catch (error) {
+      fail2(error);
+    }
+  }
   function persist() {
     if (active?.world === personalGarden && !room) active.flushQueuedCommands();
     return autosave.flush();
@@ -5927,7 +5956,7 @@
   function install(world, options = {}) {
     clearInterval(networkTimer);
     active?.dispose();
-    active = new FarmSession(world, { ...options, onError: fail2, onWorldStep: markPersistentChange });
+    active = new FarmSession(world, { ...options, onError: fail2, onWorldStep });
     noticeSequence = world.eventSequence;
     observedWorld = world;
     if (options.room) networkTimer = setInterval(() => active.pulse(performance.now()), 50);
@@ -6721,7 +6750,7 @@
     const army = display.units.filter((u) => u.faction === CONFIG.factions.PLAYER).reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
     $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
     $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
-    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === personalGarden.activeRaidRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", speciesName = speciesById(boss.species).name;
+    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", speciesName = speciesById(boss.species).name;
     $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
     $2("bossHealthNote").textContent = farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP";
     for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
