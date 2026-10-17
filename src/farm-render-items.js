@@ -53,8 +53,8 @@ export class ProjectilePresentation {
                 projectile.path,
                 Math.max(0, (projectile.elapsed - 0.04) / projectile.path.duration),
             );
-        RENDERER.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, '#55452433');
         const PRESENTATION = PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
+        PRESENTATION.drawShadow(RENDERER, projectile);
         PRESENTATION.draw(RENDERER, projectile, P, TAIL);
     }
 }

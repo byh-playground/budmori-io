@@ -4,6 +4,9 @@ export class SpikeProjectilePresentation {
     constructor() {
         this.id = FEATURE.id;
     }
+    drawShadow(renderer, projectile) {
+        renderer.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, '#55452433');
+    }
     draw(renderer, projectile, point, tail) {
         const F = projectile,
             P = point,

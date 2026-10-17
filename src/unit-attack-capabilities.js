@@ -83,7 +83,7 @@ export function composeUnitAttackCycles(
                     return;
                 }
                 const AREA_RADIUS = scaleAttackArea(U.radius, U),
-                    HIT = !A.hit && arenaGeometry.sweep(old, U, AREA_RADIUS, 0.65, TARGET);
+                    HIT = !A.hit && arenaGeometry.sweep(old, U, AREA_RADIUS, U.height, TARGET);
                 if (HIT) {
                     this.resolveAttackHit(sim, A, TARGET, HIT, {
                         attackMultiplier: this.spec.skillMultiplier,
@@ -128,7 +128,7 @@ export function composeUnitAttackCycles(
                             y: U.y,
                             z: 0,
                             radius: scaleAttackArea(U.radius + 0.35, U),
-                            height: 0.65,
+                            height: U.height,
                         },
                         target,
                     )

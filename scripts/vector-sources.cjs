@@ -5,6 +5,7 @@ const FS = require('node:fs'),
     CRYPTO = require('node:crypto');
 const { DOMParser: DOM_PARSER } = require('@xmldom/xmldom');
 const { readVectorSockets: READ_VECTOR_SOCKETS } = require('../src/vector-sockets.cjs');
+const { validateUnitBodySource: VALIDATE_UNIT_BODY_SOURCE } = require('../src/features/unit-body/definition.cjs');
 const SVG_SHAPE_ELEMENTS = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon']);
 function validatePaintedShapeIds(bytes, file) {
     const ERRORS = [];
@@ -97,11 +98,15 @@ function validateVectorSources(root) {
             throw Error('SVG source size outside supported bounds');
         }
         validatePaintedShapeIds(BYTES, spec.file);
-        return {
+        const SOURCE = {
             ...spec,
             bytes: BYTES.length,
             sha256: CRYPTO.createHash('sha256').update(BYTES).digest('hex'),
         };
+        if (spec.kind === 'troop') {
+            VALIDATE_UNIT_BODY_SOURCE(spec.id, SOURCE);
+        }
+        return SOURCE;
     });
 }
 module.exports = {

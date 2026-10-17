@@ -91,6 +91,377 @@
     }
   });
 
+  // src/vector-sockets.cjs
+  var require_vector_sockets = __commonJS({
+    "src/vector-sockets.cjs"(exports, module) {
+      "use strict";
+      function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
+        const FAIL4 = (message) => {
+          throw new Error(`Vector socket contract (${label}): ${message}`);
+        };
+        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
+          FAIL4("a finite SVG viewBox is required");
+        }
+        const PARTS = new Map((metadata?.parts || []).map((part) => [part.id, part]));
+        const ANCHORS = {};
+        for (const NAME of ["mouth", "ground"]) {
+          const SOCKET = metadata?.sockets?.[NAME];
+          if (!SOCKET || !PARTS.has(SOCKET.part)) {
+            FAIL4(`${NAME} must name an authored part`);
+          }
+          if (!Array.isArray(SOCKET.point) || SOCKET.point.length !== 2 || !SOCKET.point.every(Number.isFinite)) {
+            FAIL4(`${NAME} must contain two finite canvas coordinates`);
+          }
+          const [X, Y] = SOCKET.point;
+          if (X < viewBox[0] || X > viewBox[0] + viewBox[2] || Y < viewBox[1] || Y > viewBox[1] + viewBox[3]) {
+            FAIL4(`${NAME} lies outside the SVG canvas`);
+          }
+          ANCHORS[NAME] = Object.freeze({
+            part: SOCKET.part,
+            x: X,
+            y: Y
+          });
+        }
+        if (ANCHORS.ground.part !== "body") {
+          FAIL4("ground must belong to body");
+        }
+        if (ANCHORS.mouth.y >= ANCHORS.ground.y) {
+          FAIL4("mouth must be above the authored ground baseline");
+        }
+        return Object.freeze(ANCHORS);
+      }
+      var BOSS_VECTOR_DIAMETER = 220;
+      var BOSS_VECTOR_RADIUS_SCALE = 1.16;
+      var WORLD_HEIGHT_PROJECTION4 = 0.785;
+      var WORLD_DEPTH_PROJECTION3 = 0.62;
+      function bossVectorScale3(radius) {
+        return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
+      }
+      function socketWorldPoint2(boss, socket, ground) {
+        const SCALE = bossVectorScale3(boss.radius);
+        return {
+          x: boss.x + (socket.x - ground.x) * SCALE,
+          y: boss.y,
+          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION4
+        };
+      }
+      module.exports = {
+        readVectorSockets: readVectorSockets3,
+        bossVectorScale: bossVectorScale3,
+        socketWorldPoint: socketWorldPoint2,
+        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4,
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
+      };
+    }
+  });
+
+  // src/features/unit-body/definition.cjs
+  var require_definition = __commonJS({
+    "src/features/unit-body/definition.cjs"(exports, module) {
+      "use strict";
+      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4 } = require_vector_sockets();
+      var AUTHORED_BODIES = [
+        {
+          species: 0,
+          asset: "assets/troops/pea.svg",
+          shapeId: "body-outline",
+          sourceSha256: "ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 57.00453577435779,
+            top: 103.16243270259355,
+            right: 278.93153243769814,
+            bottom: 312.75
+          },
+          ground: {
+            x: 160,
+            y: 350
+          },
+          mouth: {
+            x: 176,
+            y: 211.76175
+          }
+        },
+        {
+          species: 1,
+          asset: "assets/troops/corn-kernel.svg",
+          shapeId: "corn-body-outline",
+          sourceSha256: "ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f",
+          viewBox: [0, 0, 285, 295],
+          bounds: {
+            left: 23.038415422304524,
+            top: 7.394271983516546,
+            right: 258.5,
+            bottom: 243.25
+          },
+          ground: {
+            x: 142.5,
+            y: 295
+          },
+          mouth: {
+            x: 140,
+            y: 113.6965
+          }
+        },
+        {
+          species: 2,
+          asset: "assets/troops/kidney-bean.svg",
+          shapeId: "bean-body-outline",
+          sourceSha256: "2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684",
+          viewBox: [0, 0, 260, 320],
+          bounds: {
+            left: 35.860000000000014,
+            top: 12.298798725449615,
+            right: 223.18548295320454,
+            bottom: 279.2683248982993
+          },
+          ground: {
+            x: 130,
+            y: 320
+          },
+          mouth: {
+            x: 119,
+            y: 110.4355
+          }
+        },
+        {
+          species: 3,
+          asset: "assets/troops/chestnut.svg",
+          shapeId: "chestnut-shell",
+          sourceSha256: "b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a",
+          viewBox: [0, 0, 320, 300],
+          bounds: {
+            left: 38.666666666666664,
+            top: 19,
+            right: 281.3333333333333,
+            bottom: 233
+          },
+          ground: {
+            x: 160,
+            y: 261
+          },
+          mouth: {
+            x: 160,
+            y: 140
+          }
+        },
+        {
+          species: 4,
+          asset: "assets/troops/peanut.svg",
+          shapeId: "peanut-pod-outline",
+          sourceSha256: "8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15",
+          viewBox: [0, 0, 320, 300],
+          bounds: {
+            left: 101.3125,
+            top: 63.5,
+            right: 215.25,
+            bottom: 252.4375
+          },
+          ground: {
+            x: 160,
+            y: 269
+          },
+          mouth: {
+            x: 160,
+            y: 139.42
+          }
+        },
+        {
+          species: 5,
+          asset: "assets/troops/walnut.svg",
+          shapeId: "walnut-body-outline",
+          sourceSha256: "01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df",
+          viewBox: [0, 0, 320, 300],
+          bounds: {
+            left: 83.5,
+            top: 71,
+            right: 247.75,
+            bottom: 252.75
+          },
+          ground: {
+            x: 160,
+            y: 273
+          },
+          mouth: {
+            x: 160,
+            y: 161
+          }
+        },
+        {
+          species: 6,
+          asset: "assets/troops/rice.svg",
+          shapeId: "rice-body-outline",
+          sourceSha256: "bf3e3cb568c274a5d0a1d9c92b0ffcdb1fecb8ddf0f4bf50ef8e0883b64cdbf4",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 70.60885389809643,
+            top: 80.465,
+            right: 244.56002549222026,
+            bottom: 308.5244145408352
+          },
+          ground: {
+            x: 160,
+            y: 320
+          },
+          mouth: {
+            x: 159,
+            y: 181
+          }
+        },
+        {
+          species: 7,
+          asset: "assets/troops/wheat.svg",
+          shapeId: "wheat-grain-outline",
+          sourceSha256: "1307b9ccb40a3ad86eb21a092e0325afc8d857e27561437aecfdf353c28eeec6",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 85.19999999999996,
+            top: 41.26666666666667,
+            right: 221.6,
+            bottom: 303.6
+          },
+          ground: {
+            x: 160,
+            y: 320
+          },
+          mouth: {
+            x: 153,
+            y: 173
+          }
+        },
+        {
+          species: 8,
+          asset: "assets/troops/barley.svg",
+          shapeId: "barley-seed-outline",
+          sourceSha256: "23a1dbe97aa53f240881c05e7f5162b0757df90b6e7c5706aa50bd7ef58e76f1",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 69.30899999999998,
+            top: 101.629,
+            right: 252.47099999999998,
+            bottom: 297.4735
+          },
+          ground: {
+            x: 160,
+            y: 320
+          },
+          mouth: {
+            x: 160,
+            y: 171.85
+          }
+        }
+      ];
+      var UNIT_BODIES = Object.freeze(
+        AUTHORED_BODIES.map(
+          (body) => Object.freeze({
+            ...body,
+            viewBox: Object.freeze(body.viewBox),
+            bounds: Object.freeze(body.bounds),
+            ground: Object.freeze(body.ground),
+            mouth: Object.freeze(body.mouth)
+          })
+        )
+      );
+      var UNIT_BODY_CONFIG = Object.freeze({
+        baseSize: 0.55,
+        sizePerTier: 0.1,
+        birthScale: 0.5,
+        vectorRadiusScale: 0.78
+      });
+      function unitBodyDefinition3(species) {
+        const BODY2 = UNIT_BODIES[species];
+        if (!BODY2) {
+          throw new RangeError("Missing authored unit body for species " + species);
+        }
+        return BODY2;
+      }
+      function unitVisualSize2(unit) {
+        const MATURE = unit.growthElapsed >= unit.growthDuration - 1e-9, GROWTH = MATURE || !(unit.growthDuration > 0) ? 1 : Math.max(0, Math.min(1, unit.growthElapsed / unit.growthDuration));
+        return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
+      }
+      function unitVectorScale2(unit) {
+        const BODY2 = unitBodyDefinition3(unit.species);
+        return unitVisualSize2(unit) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
+      }
+      function bodyRadiusAtScale(body, scale) {
+        return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
+      }
+      function unitBodyRadius2(unit) {
+        return bodyRadiusAtScale(unitBodyDefinition3(unit.species), unitVectorScale2(unit));
+      }
+      function unitBodyHeight2(unit) {
+        const BODY2 = unitBodyDefinition3(unit.species);
+        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
+      }
+      function unitTorsoHeight2(unit) {
+        const BODY2 = unitBodyDefinition3(unit.species);
+        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
+      }
+      function maximumUnitRadius2(tier) {
+        return Math.max(
+          ...UNIT_BODIES.map(
+            (body) => unitBodyRadius2({
+              species: body.species,
+              tier,
+              growthElapsed: 1,
+              growthDuration: 1
+            })
+          )
+        );
+      }
+      function unitDisplayScale3(body, vectorScale, pixelsPerWorldUnit, minimumRadiusPixels) {
+        return Math.max(
+          vectorScale * pixelsPerWorldUnit,
+          2 * minimumRadiusPixels / Math.max(body.viewBox[2], body.viewBox[3])
+        );
+      }
+      function validateUnitBodySource(species, source) {
+        const BODY2 = unitBodyDefinition3(species);
+        if (source.sha256 !== BODY2.sourceSha256 || source.file !== BODY2.asset) {
+          throw new Error("Authored unit body must be remeasured after SVG changes: " + BODY2.asset);
+        }
+      }
+      module.exports = {
+        UNIT_BODIES,
+        UNIT_BODY_CONFIG,
+        unitBodyDefinition: unitBodyDefinition3,
+        unitVisualSize: unitVisualSize2,
+        unitVectorScale: unitVectorScale2,
+        unitBodyRadius: unitBodyRadius2,
+        unitBodyHeight: unitBodyHeight2,
+        unitTorsoHeight: unitTorsoHeight2,
+        maximumUnitRadius: maximumUnitRadius2,
+        unitDisplayScale: unitDisplayScale3,
+        validateUnitBodySource
+      };
+    }
+  });
+
+  // src/features/projectiles/seed/definition.js
+  function seedEllipseRadii(projectile) {
+    const Y = projectile.height * import_vector_sockets.WORLD_HEIGHT_PROJECTION * 0.5 / VERTICAL_EXTENT;
+    return { x: Y * FEATURE.widthToHeight, y: Y };
+  }
+  function seedProjectileDimensions(unit) {
+    const HEIGHT = unit.bodyHeight * FEATURE.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
+    return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
+  }
+  var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
+  var init_definition = __esm({
+    "src/features/projectiles/seed/definition.js"() {
+      import_vector_sockets = __toESM(require_vector_sockets(), 1);
+      FEATURE = Object.freeze({
+        id: "seed",
+        landingEffect: "shell-land",
+        bodyHeightFraction: 0.2,
+        widthToHeight: 0.7,
+        rotation: 0.3
+      });
+      VERTICAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.sin(FEATURE.rotation), Math.cos(FEATURE.rotation));
+      HORIZONTAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.cos(FEATURE.rotation), Math.sin(FEATURE.rotation));
+    }
+  });
+
   // src/mutation-notifications.js
   var MutationNotifications;
   var init_mutation_notifications = __esm({
@@ -220,7 +591,6 @@
           }
           this.subscriptions.delete(unit);
           this.world._trackUnitRemoved(unit, options);
-          this.world._scatterStates.delete(unit);
           unit.dispose();
           if (this.world._spatialStepActive) {
             this.retiredDuringStep.push(unit);
@@ -458,10 +828,10 @@
   });
 
   // src/features/scenes/farm/definition.js
-  var FEATURE;
-  var init_definition = __esm({
+  var FEATURE2;
+  var init_definition2 = __esm({
     "src/features/scenes/farm/definition.js"() {
-      FEATURE = Object.freeze({ id: "farm" });
+      FEATURE2 = Object.freeze({ id: "farm" });
     }
   });
 
@@ -470,12 +840,12 @@
   var init_model = __esm({
     "src/features/scenes/farm/model.js"() {
       init_model_base();
-      init_definition();
+      init_definition2();
       FarmSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
           const { CONFIG: CONFIG2 } = dependencies;
           super(dependencies);
-          this.feature = FEATURE;
+          this.feature = FEATURE2;
           this.dropLandingEvent = "boss-add-land";
           this.battleCapacity = CONFIG2.farm.capacity.battleUnits;
         }
@@ -569,10 +939,10 @@
   });
 
   // src/features/scenes/raid/definition.js
-  var FEATURE2;
-  var init_definition2 = __esm({
+  var FEATURE3;
+  var init_definition3 = __esm({
     "src/features/scenes/raid/definition.js"() {
-      FEATURE2 = Object.freeze({ id: "raid" });
+      FEATURE3 = Object.freeze({ id: "raid" });
     }
   });
 
@@ -1303,7 +1673,7 @@
   var init_model2 = __esm({
     "src/features/scenes/raid/model.js"() {
       init_model_base();
-      init_definition2();
+      init_definition3();
       init_boss_patterns();
       init_ability_state();
       init_factions();
@@ -1311,7 +1681,7 @@
         constructor(dependencies) {
           const { CONFIG: CONFIG2 } = dependencies;
           super(dependencies);
-          this.feature = FEATURE2;
+          this.feature = FEATURE3;
           this.dropLandingEvent = "drop-land";
           this.battleCapacity = CONFIG2.raid.capacity.battleUnits;
         }
@@ -1502,23 +1872,15 @@
     }
   });
 
-  // src/features/projectiles/seed/definition.js
-  var FEATURE3;
-  var init_definition3 = __esm({
-    "src/features/projectiles/seed/definition.js"() {
-      FEATURE3 = Object.freeze({ id: "seed", landingEffect: "shell-land" });
-    }
-  });
-
   // src/features/projectiles/seed/model.js
   var SeedProjectile;
   var init_model3 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
-      init_definition3();
+      init_definition();
       SeedProjectile = class extends DamageProjectile {
         constructor(dependencies) {
-          super(FEATURE3, dependencies);
+          super(FEATURE, dependencies);
         }
       };
     }
@@ -1624,11 +1986,11 @@
     return projectileFlightFeature(projectile);
   }
   function projectileFlightFeature(projectile) {
-    return projectile.projectileKind === "chestnut-spike" ? FEATURE4 : FEATURE3;
+    return projectile.projectileKind === "chestnut-spike" ? FEATURE4 : FEATURE;
   }
   var init_definition6 = __esm({
     "src/features/projectiles/definition.js"() {
-      init_definition3();
+      init_definition();
       init_definition4();
       init_definition5();
     }
@@ -2177,9 +2539,6 @@
           }
         }
         pair(world, a, b, priorityResolved) {
-          if (world.localScatter.active && (world.scatterInside(a) || world.scatterInside(b))) {
-            return false;
-          }
           if (!a || !b || a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !world.units.includes(a) || !world.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || world.senseEnemy(a) || world.senseEnemy(b)) {
             return false;
           }
@@ -2825,74 +3184,10 @@
     }
   });
 
-  // src/vector-sockets.cjs
-  var require_vector_sockets = __commonJS({
-    "src/vector-sockets.cjs"(exports, module) {
-      "use strict";
-      function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
-        const FAIL4 = (message) => {
-          throw new Error(`Vector socket contract (${label}): ${message}`);
-        };
-        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
-          FAIL4("a finite SVG viewBox is required");
-        }
-        const PARTS = new Map((metadata?.parts || []).map((part) => [part.id, part]));
-        const ANCHORS = {};
-        for (const NAME of ["mouth", "ground"]) {
-          const SOCKET = metadata?.sockets?.[NAME];
-          if (!SOCKET || !PARTS.has(SOCKET.part)) {
-            FAIL4(`${NAME} must name an authored part`);
-          }
-          if (!Array.isArray(SOCKET.point) || SOCKET.point.length !== 2 || !SOCKET.point.every(Number.isFinite)) {
-            FAIL4(`${NAME} must contain two finite canvas coordinates`);
-          }
-          const [X, Y] = SOCKET.point;
-          if (X < viewBox[0] || X > viewBox[0] + viewBox[2] || Y < viewBox[1] || Y > viewBox[1] + viewBox[3]) {
-            FAIL4(`${NAME} lies outside the SVG canvas`);
-          }
-          ANCHORS[NAME] = Object.freeze({
-            part: SOCKET.part,
-            x: X,
-            y: Y
-          });
-        }
-        if (ANCHORS.ground.part !== "body") {
-          FAIL4("ground must belong to body");
-        }
-        if (ANCHORS.mouth.y >= ANCHORS.ground.y) {
-          FAIL4("mouth must be above the authored ground baseline");
-        }
-        return Object.freeze(ANCHORS);
-      }
-      var BOSS_VECTOR_DIAMETER = 220;
-      var BOSS_VECTOR_RADIUS_SCALE = 1.16;
-      var WORLD_HEIGHT_PROJECTION2 = 0.785;
-      var WORLD_DEPTH_PROJECTION3 = 0.62;
-      function bossVectorScale3(radius) {
-        return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
-      }
-      function socketWorldPoint2(boss, socket, ground) {
-        const SCALE = bossVectorScale3(boss.radius);
-        return {
-          x: boss.x + (socket.x - ground.x) * SCALE,
-          y: boss.y,
-          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION2
-        };
-      }
-      module.exports = {
-        readVectorSockets: readVectorSockets3,
-        bossVectorScale: bossVectorScale3,
-        socketWorldPoint: socketWorldPoint2,
-        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION2,
-        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
-      };
-    }
-  });
-
   // src/boss-vector-sockets.js
   function bindBossSocketAsset(species, record) {
     const LABEL = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
-    const ANCHORS = (0, import_vector_sockets.readVectorSockets)(record.compiled, LABEL);
+    const ANCHORS = (0, import_vector_sockets2.readVectorSockets)(record.compiled, LABEL);
     BOSS_ASSETS.get(species)?.player?.dispose();
     BOSS_ASSETS.set(species, {
       record,
@@ -2912,7 +3207,7 @@
   function bossSummonPose(b, parts = /* @__PURE__ */ new Set()) {
     const CONFIG2 = BOSS_PATTERN_CONFIG["summon.mouth-t1"], PHASE = b.patternPhase, ELAPSED = Math.max(0, b.patternPhaseElapsed || 0);
     const AIM = Math.atan2(
-      -import_vector_sockets.WORLD_DEPTH_PROJECTION * Math.sin(b.patternAim ?? b.angle),
+      -import_vector_sockets2.WORLD_DEPTH_PROJECTION * Math.sin(b.patternAim ?? b.angle),
       Math.cos(b.patternAim ?? b.angle)
     );
     const BODY2 = {
@@ -2994,13 +3289,13 @@
       patternPhaseElapsed: ACTION.phaseElapsed,
       patternReleased: released ?? ACTION.released
     });
-    return (0, import_vector_sockets.socketWorldPoint)(boss, ENTRY.player.getSocket("mouth"), ANCHORS.ground);
+    return (0, import_vector_sockets2.socketWorldPoint)(boss, ENTRY.player.getSocket("mouth"), ANCHORS.ground);
   }
-  var import_vector_sockets, CLAMP, BOSS_ASSETS;
+  var import_vector_sockets2, CLAMP, BOSS_ASSETS;
   var init_boss_vector_sockets = __esm({
     "src/boss-vector-sockets.js"() {
       init_boss_patterns();
-      import_vector_sockets = __toESM(require_vector_sockets(), 1);
+      import_vector_sockets2 = __toESM(require_vector_sockets(), 1);
       CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
       BOSS_ASSETS = /* @__PURE__ */ new Map();
     }
@@ -4475,7 +4770,7 @@
           this.interrupt();
           return;
         }
-        const AREA_RADIUS = scaleAttackArea(U.radius, U), HIT = !A.hit && arenaGeometry.sweep(old, U, AREA_RADIUS, 0.65, TARGET);
+        const AREA_RADIUS = scaleAttackArea(U.radius, U), HIT = !A.hit && arenaGeometry.sweep(old, U, AREA_RADIUS, U.height, TARGET);
         if (HIT) {
           this.resolveAttackHit(sim, A, TARGET, HIT, {
             attackMultiplier: this.spec.skillMultiplier,
@@ -4516,7 +4811,7 @@
             y: U.y,
             z: 0,
             radius: scaleAttackArea(U.radius + 0.35, U),
-            height: 0.65
+            height: U.height
           },
           target
         )) {
@@ -4970,7 +5265,7 @@
   }
   function contact(a, b) {
     const DX = b.x - a.x, DY = b.y - a.y, D_LOCAL = Math.hypot(DX, DY), R_LOCAL = a.radius + b.radius;
-    if (Math.abs(a.z - b.z) > 0.65) {
+    if (a.z > b.z + b.height || b.z > a.z + a.height) {
       return false;
     }
     if (D_LOCAL >= R_LOCAL) {
@@ -5005,10 +5300,12 @@
     }
     return true;
   }
-  var SEEDED_PRNG, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, UNIT_RADIUS_FOR_TIER, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition22, SEEDED_PRNG, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_signal();
+      import_definition22 = __toESM(require_definition(), 1);
+      init_definition();
       init_mutation_notifications();
       init_unit_collection();
       init_simulation_scenes();
@@ -5046,7 +5343,6 @@
         radiusX: 23,
         radiusY: 17
       });
-      UNIT_RADIUS_FOR_TIER = (tier) => 0.25 + 0.055 * tier;
       CONFIG = Object.freeze({
         factions: FACTION_CONFIG,
         farm: Object.freeze({
@@ -5093,16 +5389,10 @@
             damage: 1.25
           })
         }),
-        scatter: Object.freeze({
-          minRadius: UNIT_RADIUS_FOR_TIER(1) * 4,
-          maxRadius: UNIT_RADIUS_FOR_TIER(1) * 10,
-          bodyMargin: 0.08,
-          hysteresis: 0.18
-        }),
         unit: Object.freeze({
           speciesCount: SPECIES_COUNT,
           maxTier: MAX_UNIT_TIER,
-          maxRadius: UNIT_RADIUS_FOR_TIER(MAX_UNIT_TIER),
+          maxRadius: (0, import_definition22.maximumUnitRadius)(MAX_UNIT_TIER),
           perceptionRange: 18,
           corpseRecoverySeconds: 60
         }),
@@ -5311,16 +5601,6 @@
           sim.combatEvent("prepare", U, this.action);
           return true;
         }
-        cancelForScatter() {
-          if (this.action?.pendingShots) {
-            this.action.pendingShots.length = 0;
-          }
-          if (this.phase === "windup" || this.phase === "active") {
-            this.phase = "recover";
-            this.elapsed = 0;
-            this.owner.vx = this.owner.vy = 0;
-          }
-        }
         interrupt() {
           if (this.phase !== "idle") {
             this.phase = "recover";
@@ -5500,7 +5780,7 @@
           this.onDied.scope = this.onRevived.scope = this.onHealthChanged.scope = null;
         }
         get radius() {
-          return UNIT_RADIUS_FOR_TIER(this.tier) * (this.mature ? 1 : 0.8);
+          return (0, import_definition22.unitBodyRadius)(this);
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -5509,8 +5789,16 @@
           return this.meals >= 1;
         }
         get size() {
-          const GROWTH = this.mature ? 1 : this.growthDuration > 0 ? CLAMP2(this.growthElapsed / this.growthDuration, 0, 1) : 1;
-          return (0.55 + 0.1 * this.tier) * (0.5 + 0.5 * GROWTH);
+          return (0, import_definition22.unitVisualSize)(this);
+        }
+        get bodyScale() {
+          return (0, import_definition22.unitVectorScale)(this);
+        }
+        get height() {
+          return (0, import_definition22.unitBodyHeight)(this);
+        }
+        get bodyHeight() {
+          return (0, import_definition22.unitTorsoHeight)(this);
         }
       };
       GARDEN = class Garden {
@@ -5626,20 +5914,6 @@
             _progressTimerCheckpoint: {
               value: 0,
               writable: true
-            },
-            localScatter: {
-              value: {
-                active: false,
-                x: 0,
-                y: 0,
-                radius: CONFIG.scatter.minRadius,
-                handleX: 0,
-                handleY: 0,
-                generation: 0
-              }
-            },
-            _scatterStates: {
-              value: /* @__PURE__ */ new WeakMap()
             }
           });
           this.reset();
@@ -5886,7 +6160,6 @@
           return this.mutateUnits(this._reset);
         }
         _reset() {
-          this.clearLocalScatter();
           this.progressRevision = 0;
           this._progressTimerCheckpoint = 0;
           this.mergeTask = null;
@@ -6077,8 +6350,7 @@
             x: unit.x,
             y: unit.y,
             z: 0.45,
-            radius: scaleAttackArea(0.12, unit),
-            height: 0.24,
+            ...seedProjectileDimensions(unit),
             hit: false,
             attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
             shotIndex: shot.shotIndex ?? 0
@@ -6468,7 +6740,7 @@
           if (this.units.some((u) => u.id === ID)) {
             return false;
           }
-          const ANGLE = this.random() * Math.PI * 2, MARGIN = UNIT_RADIUS_FOR_TIER(TROOP.tier) + 0.05, BOUNDS = ARENA_GEOMETRY.bounds("raid", MARGIN), X = Math.cos(ANGLE) * BOUNDS.x, Y = Math.sin(ANGLE) * BOUNDS.y;
+          const ANGLE = this.random() * Math.PI * 2, MARGIN = (0, import_definition22.unitBodyRadius)({ species: TROOP.species, tier: TROOP.tier, growthElapsed: 1, growthDuration: 1 }) + 0.05, BOUNDS = ARENA_GEOMETRY.bounds("raid", MARGIN), X = Math.cos(ANGLE) * BOUNDS.x, Y = Math.sin(ANGLE) * BOUNDS.y;
           const U = new UNIT(ID, TROOP.species, TROOP.tier, X, Y), GROWTH_DURATION = this.breedGrowthDuration();
           Object.assign(U, {
             ownerId,
@@ -6597,7 +6869,7 @@
           this.foodTaps.revision++;
           if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.scatter(
+            this.spawnFood(
               (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
               (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
               1
@@ -6623,7 +6895,7 @@
             this.tapFood("auto");
           }
         }
-        scatter(x, y, count = 1) {
+        spawnFood(x, y, count = 1) {
           for (let i = 0; i < count && this.food.length < 140; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5, RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
             let tx = CLAMP2(x, -RADIUS_X, RADIUS_X);
@@ -6927,9 +7199,6 @@
             }
             const IDS = /* @__PURE__ */ new Set();
             for (const UNIT_LOCAL of materials) {
-              if (this.localScatter.active && this.scatterInside(UNIT_LOCAL)) {
-                return false;
-              }
               if (!UNIT_LOCAL || IDS.has(UNIT_LOCAL.id) || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.mergeEligible === false || UNIT_LOCAL.species !== FIRST.species || UNIT_LOCAL.tier !== FIRST.tier || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || !UNIT_LOCAL.mature || UNIT_LOCAL.cooldown > 0 || !this._unitIsActive(UNIT_LOCAL)) {
                 return false;
               }
@@ -7301,7 +7570,6 @@
               y: U.y,
               z: U.z
             };
-            this.limitScatterVelocity(U, dt);
             U.integrate(dt);
             SCENE.afterLivingIntegration(this, U);
             if (ENEMY_LOCAL) {
@@ -7345,9 +7613,6 @@
           this._foodSpatialDirty = true;
         }
         updateUnitIntent(unit, dt, enemy, scene) {
-          if (this.updateLocalScatter(unit, dt, enemy)) {
-            return;
-          }
           if (enemy) {
             this.raidUnit(unit, dt, enemy);
             return;
@@ -7364,199 +7629,7 @@
           }
           scene.updateUnoccupied(this, unit, dt);
         }
-        setLocalScatter(x, y, radius = CONFIG.scatter.minRadius, handleX = x + radius, handleY = y) {
-          if (![x, y, radius, handleX, handleY].every(Number.isFinite)) {
-            return false;
-          }
-          const C_LOCAL = this.localScatter;
-          if (!C_LOCAL.active || C_LOCAL.x !== x || C_LOCAL.y !== y) {
-            C_LOCAL.generation++;
-          }
-          C_LOCAL.active = true;
-          C_LOCAL.x = x;
-          C_LOCAL.y = y;
-          C_LOCAL.radius = CLAMP2(radius, CONFIG.scatter.minRadius, CONFIG.scatter.maxRadius);
-          C_LOCAL.handleX = handleX;
-          C_LOCAL.handleY = handleY;
-          return true;
-        }
-        clearLocalScatter() {
-          this.localScatter.active = false;
-        }
-        scatterApplies(u) {
-          return this.localScatter.active && hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.down <= 0 && u.dropLanded && u.z <= 1e-9 && u.vz <= 0;
-        }
-        scatterInside(u) {
-          if (!u) {
-            return false;
-          }
-          const C_LOCAL = this.localScatter;
-          return Math.hypot(u.x - C_LOCAL.x, u.y - C_LOCAL.y) < C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin;
-        }
-        scatterSegmentBlocked(x, y, tx, ty, radius) {
-          const C_LOCAL = this.localScatter;
-          return ARENA_GEOMETRY.segmentInsideCircle(x, y, tx, ty, C_LOCAL.x, C_LOCAL.y, radius);
-        }
-        scatterBossBlocks(u, x, y) {
-          const B_LOCAL = this.boss;
-          if (!B_LOCAL.active || B_LOCAL.hp <= 0 || !areOpposingFactions(u, B_LOCAL) || B_LOCAL.z > u.z + 0.65) {
-            return false;
-          }
-          const RADIUS = Math.min(
-            B_LOCAL.radius + u.radius + 0.015,
-            Math.max(0, Math.hypot(u.x - B_LOCAL.x, u.y - B_LOCAL.y) - 2e-3)
-          );
-          return ARENA_GEOMETRY.segmentInsideCircle(u.x, u.y, x, y, B_LOCAL.x, B_LOCAL.y, RADIUS);
-        }
-        updateLocalScatter(u, dt, enemy) {
-          if (!this.scatterApplies(u) || u.stun > 0 || u.landingRecovery > 0) {
-            return false;
-          }
-          const C_LOCAL = this.localScatter, R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin, D_LOCAL = Math.hypot(u.x - C_LOCAL.x, u.y - C_LOCAL.y);
-          let state = this._scatterStates.get(u);
-          if (!state) {
-            state = {
-              generation: 0,
-              escaping: false,
-              radius: 0,
-              x: 0,
-              y: 0,
-              waypoint: false,
-              bossX: 0,
-              bossY: 0
-            };
-            this._scatterStates.set(u, state);
-          }
-          if (state.generation !== C_LOCAL.generation) {
-            state.generation = C_LOCAL.generation;
-            state.escaping = false;
-            state.radius = 0;
-          }
-          if (D_LOCAL < R_LOCAL) {
-            state.escaping = true;
-          }
-          if (state.escaping && D_LOCAL >= R_LOCAL + CONFIG.scatter.hysteresis) {
-            state.escaping = false;
-            u.vx = u.vy = 0;
-          }
-          const CYCLE = u.ability;
-          const ATTACK_BLOCKED = unitCapabilityComposition(u.species).attack === "contact" && CYCLE.action && (CYCLE.phase === "windup" || CYCLE.phase === "active") && this.scatterSegmentBlocked(u.x, u.y, CYCLE.action.target.x, CYCLE.action.target.y, R_LOCAL);
-          if (!state.escaping && !ATTACK_BLOCKED) {
-            return false;
-          }
-          CYCLE.cancelForScatter();
-          CYCLE.update(this, dt);
-          if (!state.escaping) {
-            return true;
-          }
-          if (state.radius !== R_LOCAL || this.scatterBossBlocks(u, state.x, state.y) || state.waypoint && (Math.hypot(state.x - u.x, state.y - u.y) < 0.14 || state.bossX !== this.boss.x || state.bossY !== this.boss.y)) {
-            state.radius = R_LOCAL;
-            const GOAL_RADIUS = R_LOCAL + CONFIG.scatter.hysteresis + 0.12, BEARING = D_LOCAL > 1e-8 ? Math.atan2(u.y - C_LOCAL.y, u.x - C_LOCAL.x) : u.seed, BOUNDS = ARENA_GEOMETRY.bounds(this.scene, u.radius + 0.02);
-            let best = Infinity;
-            state.x = u.x;
-            state.y = u.y;
-            state.waypoint = false;
-            state.bossX = this.boss.x;
-            state.bossY = this.boss.y;
-            for (let i = 0; i < 33; i++) {
-              const ANGLE = BEARING + (i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 16), X = C_LOCAL.x + Math.cos(ANGLE) * GOAL_RADIUS, Y = C_LOCAL.y + Math.sin(ANGLE) * GOAL_RADIUS;
-              if (X * X / (BOUNDS.x * BOUNDS.x) + Y * Y / (BOUNDS.y * BOUNDS.y) > 1 || this.scatterBossBlocks(u, X, Y)) {
-                continue;
-              }
-              const DISTANCE = (X - u.x) ** 2 + (Y - u.y) ** 2;
-              if (DISTANCE < best - 1e-9) {
-                best = DISTANCE;
-                state.x = X;
-                state.y = Y;
-                if (i === 0) {
-                  break;
-                }
-              }
-            }
-            if (!Number.isFinite(best)) {
-              state.waypoint = true;
-              let score = -Infinity;
-              for (let step = 0.55; step > 0.1 && !Number.isFinite(score); step *= 0.5) {
-                for (let i = 0; i < 34; i++) {
-                  const ANGLE = i < 32 ? BEARING + i * Math.PI / 16 : Math.atan2(u.y - this.boss.y, u.x - this.boss.x) + (i === 32 ? 1 : -1) * Math.PI / 2, X = u.x + Math.cos(ANGLE) * step, Y = u.y + Math.sin(ANGLE) * step;
-                  if (X * X / (BOUNDS.x * BOUNDS.x) + Y * Y / (BOUNDS.y * BOUNDS.y) > 1 || this.scatterBossBlocks(u, X, Y)) {
-                    continue;
-                  }
-                  const DISTANCE = (X - C_LOCAL.x) ** 2 + (Y - C_LOCAL.y) ** 2;
-                  if (DISTANCE > score + 1e-9) {
-                    score = DISTANCE;
-                    state.x = X;
-                    state.y = Y;
-                  }
-                }
-              }
-              if (!Number.isFinite(score)) {
-                state.radius = 0;
-              }
-            }
-          }
-          const DX = u.x - C_LOCAL.x, DY = u.y - C_LOCAL.y, RADIAL = D_LOCAL > 1e-8 ? (u.vx * DX + u.vy * DY) / D_LOCAL : 0;
-          if (RADIAL < 0) {
-            u.vx -= RADIAL * DX / D_LOCAL;
-            u.vy -= RADIAL * DY / D_LOCAL;
-          }
-          this.steer(u, state.x, state.y, dt, scaleMoveSpeed(enemy ? 4.1 : 2.2, u));
-          return true;
-        }
-        limitScatterVelocity(u, dt) {
-          if (!this.scatterApplies(u) || u.stun > 0) {
-            return;
-          }
-          const C_LOCAL = this.localScatter, R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin, DX = u.x - C_LOCAL.x, DY = u.y - C_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
-          if (D_LOCAL < R_LOCAL - 1e-8) {
-            return;
-          }
-          const MX = u.vx * dt, MY = u.vy * dt, A_LOCAL = MX * MX + MY * MY, B_LOCAL = 2 * (DX * MX + DY * MY), OUTSIDE = DX * DX + DY * DY - R_LOCAL * R_LOCAL, DISC = B_LOCAL * B_LOCAL - 4 * A_LOCAL * OUTSIDE;
-          if (A_LOCAL < 1e-14 || B_LOCAL >= 0 || DISC <= 0) {
-            return;
-          }
-          const HIT = (-B_LOCAL - Math.sqrt(DISC)) / (2 * A_LOCAL);
-          if (HIT < 0 || HIT > 1) {
-            return;
-          }
-          const FRACTION = Math.max(0, HIT - 1e-3);
-          u.vx *= FRACTION;
-          u.vy *= FRACTION;
-        }
         steer(u, x, y, dt, speed2) {
-          if (this.scatterApplies(u) && !this.scatterInside(u)) {
-            const C_LOCAL = this.localScatter, R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin + 0.12;
-            if (this.scatterSegmentBlocked(u.x, u.y, x, y, R_LOCAL)) {
-              const DX2 = u.x - C_LOCAL.x, DY2 = u.y - C_LOCAL.y, D_LOCAL2 = Math.hypot(DX2, DY2), BEARING = D_LOCAL2 > 1e-8 ? Math.atan2(DY2, DX2) : u.seed;
-              const TX = x - C_LOCAL.x, TY = y - C_LOCAL.y;
-              if (Math.hypot(TX, TY) <= R_LOCAL) {
-                x = C_LOCAL.x + Math.cos(BEARING) * (R_LOCAL + 0.06);
-                y = C_LOCAL.y + Math.sin(BEARING) * (R_LOCAL + 0.06);
-              } else {
-                const DELTA = Math.atan2(
-                  Math.sin(Math.atan2(TY, TX) - BEARING),
-                  Math.cos(Math.atan2(TY, TX) - BEARING)
-                ), SIDE = DELTA === 0 ? u.id % 2 ? 1 : -1 : Math.sign(DELTA);
-                const TURN = Math.min(
-                  0.5,
-                  Math.max(0.2, Math.acos(Math.min(1, R_LOCAL / Math.max(R_LOCAL, D_LOCAL2))) * 0.8)
-                ), DISTANCE = R_LOCAL / Math.cos(TURN) + 0.08;
-                const BOUNDS = ARENA_GEOMETRY.bounds(this.scene, u.radius);
-                let angle = BEARING + SIDE * TURN;
-                x = C_LOCAL.x + Math.cos(angle) * DISTANCE;
-                y = C_LOCAL.y + Math.sin(angle) * DISTANCE;
-                if (x * x / (BOUNDS.x * BOUNDS.x) + y * y / (BOUNDS.y * BOUNDS.y) > 1) {
-                  angle = BEARING - SIDE * TURN;
-                  x = C_LOCAL.x + Math.cos(angle) * DISTANCE;
-                  y = C_LOCAL.y + Math.sin(angle) * DISTANCE;
-                  if (x * x / (BOUNDS.x * BOUNDS.x) + y * y / (BOUNDS.y * BOUNDS.y) > 1) {
-                    u.vx = u.vy = 0;
-                    return;
-                  }
-                }
-              }
-            }
-          }
           const DX = x - u.x, DY = y - u.y, D_LOCAL = Math.hypot(DX, DY);
           if (D_LOCAL > 0.08) {
             const RATE = 1 - Math.exp(-dt * 3);
@@ -8138,15 +8211,6 @@
             x: B_LOCAL.x + DX / N * (B_LOCAL.radius + u.radius - 0.16),
             y: B_LOCAL.y + DY / N * (B_LOCAL.radius + u.radius - 0.16)
           };
-          if (this.scatterApplies(u) && BEHAVIOR.attack === "contact" && this.scatterSegmentBlocked(
-            u.x,
-            u.y,
-            TARGET.x,
-            TARGET.y,
-            this.localScatter.radius + u.radius + CONFIG.scatter.bodyMargin
-          )) {
-            return;
-          }
           u.ability.begin(this, TARGET);
         }
         finish(outcome) {
@@ -8669,7 +8733,7 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = UNIT_RADIUS_FOR_TIER(1);
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition22.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
           for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
               x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
@@ -9249,7 +9313,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.1";
+      PRODUCT_VERSION = "0.8.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -11129,7 +11193,7 @@
   init_farm_model();
 
   // src/features/scenes/farm/presentation.js
-  init_definition();
+  init_definition2();
 
   // src/features/farm-modes/presentation-base.js
   var CelebrationEffect = class {
@@ -11216,6 +11280,36 @@
     }
   };
 
+  // src/features/projectiles/seed/presentation.js
+  init_definition();
+  var import_definition25 = __toESM(require_definition(), 1);
+  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  function seedDisplayMultiplier(renderer, projectile) {
+    const BODY2 = (0, import_definition25.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition25.unitDisplayScale)(
+      BODY2,
+      OWNER_VECTOR_SCALE,
+      renderer.scale,
+      renderer.scenePresentation.minimumUnitPixels * renderer.pixelRatio
+    );
+    return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
+  }
+  var SeedProjectilePresentation = class {
+    constructor() {
+      this.id = FEATURE.id;
+    }
+    drawShadow(renderer, projectile) {
+      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
+    }
+    draw(renderer, projectile, point2, tail) {
+      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
+      TAIL.y -= HEIGHT * 0.5;
+      renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
+      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
+      renderer.ellipse(P.x - Y * 0.15, P.y - Y * 0.25, Y * 0.25, Y * 0.4, "#fff0ae");
+    }
+  };
+
   // src/features/projectiles/popcorn/presentation.js
   init_farm_model();
   init_definition5();
@@ -11224,14 +11318,27 @@
       this.id = FEATURE5.id;
       this.flightPresentation = flightPresentation2;
     }
+    drawShadow(renderer, projectile) {
+      if (!projectile.landed) {
+        this.flightPresentation(projectile).drawShadow(renderer, projectile);
+        return;
+      }
+      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
+      renderer.groundEllipse(
+        projectile.x,
+        projectile.y,
+        RADIUS,
+        RADIUS * 0.75,
+        projectile.exploded ? "#d86c3b55" : "#c78a4366"
+      );
+    }
     draw(renderer, projectile, point2, tail) {
       if (!projectile.landed) {
         this.flightPresentation(projectile).draw(renderer, projectile, point2, tail);
         return;
       }
-      const F = projectile;
+      const F = projectile, SCALE = seedDisplayMultiplier(renderer, F);
       const FUSE = Math.max(0, Math.min(1, F.fuseRemaining || 0));
-      renderer.groundEllipse(F.x, F.y, 0.16, 0.12, F.exploded ? "#d86c3b55" : "#c78a4366");
       if (!F.exploded && F.popcornConfig?.radius > 0) {
         renderer.ring(F.x, F.y, F.popcornConfig.radius, "rgba(190,111,52,.18)", 0.035);
       }
@@ -11247,22 +11354,10 @@
       } else {
         renderer.ring(F.x, F.y, 0.2 + 0.2 * (1 - FUSE), `rgba(238,181,83,${0.45 + 0.4 * (1 - FUSE)})`, 0.045);
       }
-      const KERNEL = renderer.project(F.x, F.y, 0.12);
-      renderer.ellipse(
-        KERNEL.x,
-        KERNEL.y,
-        renderer.scale * 0.13,
-        renderer.scale * 0.08,
-        F.exploded ? "#e37f42" : "#d4a347",
-        0.2
-      );
-      renderer.ellipse(
-        KERNEL.x - renderer.scale * 0.035,
-        KERNEL.y - renderer.scale * 0.02,
-        renderer.scale * 0.045,
-        renderer.scale * 0.03,
-        "#ffe0a0"
-      );
+      const ROTATION = 0.2, ASPECT = 8 / 13, X = F.radius * SCALE / Math.hypot(Math.cos(ROTATION), ASPECT * Math.sin(ROTATION)), Y = X * ASPECT, HALF_HEIGHT = Math.hypot(X * Math.sin(ROTATION), Y * Math.cos(ROTATION)), KERNEL = renderer.project(F.x, F.y, 0);
+      KERNEL.y -= HALF_HEIGHT;
+      renderer.ellipse(KERNEL.x, KERNEL.y, X, Y, F.exploded ? "#e37f42" : "#d4a347", ROTATION);
+      renderer.ellipse(KERNEL.x - X * 0.27, KERNEL.y - Y * 0.25, X * 0.35, Y * 0.375, "#ffe0a0");
     }
   };
   var PopcornExplosionEffect = class {
@@ -11405,7 +11500,7 @@
   // src/features/scenes/farm/presentation.js
   var FarmScenePresentation = class {
     constructor() {
-      this.id = FEATURE.id;
+      this.id = FEATURE2.id;
       this.groundColor = "#d1d8b8";
       this.surfaceColor = "#d9dfc2";
       this.minimumUnitPixels = 11;
@@ -11454,11 +11549,11 @@
   };
 
   // src/features/scenes/raid/presentation.js
-  init_definition2();
+  init_definition3();
   init_farm_model();
   var RaidScenePresentation = class {
     constructor() {
-      this.id = FEATURE2.id;
+      this.id = FEATURE3.id;
       this.groundColor = "#cecfb3";
       this.surfaceColor = "#d7d8bf";
       this.minimumUnitPixels = 4.5;
@@ -11510,31 +11605,14 @@
     return PRESENTATION;
   }
 
-  // src/features/projectiles/seed/presentation.js
-  init_definition3();
-  var SeedProjectilePresentation = class {
-    constructor() {
-      this.id = FEATURE3.id;
-    }
-    draw(renderer, _projectile, point2, tail) {
-      const P = point2, TAIL = tail;
-      renderer.line(renderer.project(TAIL.x, TAIL.y, TAIL.z), P, 0.07, "#ba964a80");
-      renderer.ellipse(P.x, P.y, renderer.scale * 0.14, renderer.scale * 0.2, "#cfa957", 0.3);
-      renderer.ellipse(
-        P.x - renderer.scale * 0.03,
-        P.y - renderer.scale * 0.05,
-        renderer.scale * 0.05,
-        renderer.scale * 0.08,
-        "#fff0ae"
-      );
-    }
-  };
-
   // src/features/projectiles/spike/presentation.js
   init_definition4();
   var SpikeProjectilePresentation = class {
     constructor() {
       this.id = FEATURE4.id;
+    }
+    drawShadow(renderer, projectile) {
+      renderer.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, "#55452433");
     }
     draw(renderer, projectile, point2, tail) {
       const F = projectile, P = point2, TAIL = tail;
@@ -11595,11 +11673,14 @@
         projectile.path,
         Math.max(0, (projectile.elapsed - 0.04) / projectile.path.duration)
       );
-      RENDERER2.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, "#55452433");
       const PRESENTATION = PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
+      PRESENTATION.drawShadow(RENDERER2, projectile);
       PRESENTATION.draw(RENDERER2, projectile, P, TAIL);
     }
   };
+
+  // src/farm-render-units.js
+  var import_definition33 = __toESM(require_definition(), 1);
 
   // src/features/unit-attacks/presentation-base.js
   var UnitAttackPresentation = class {
@@ -11878,8 +11959,8 @@
         player.setExpression(EXPRESSION);
       }
       player.seek(rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs);
-      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, SCALE = 2 * r / Math.max(WIDTH, HEIGHT), CENTER_Y = p.y - r * 0.79;
-      const MATRIX = [SCALE, 0, 0, SCALE, p.x - WIDTH * SCALE * 0.5, CENTER_Y - HEIGHT * SCALE * 0.5];
+      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition33.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT), CENTER_Y = p.y + (HEIGHT * 0.5 - GROUND.y) * SCALE;
+      const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
       this.renderer.ctx.vector.flush();
       const OUTLINE = TIER_OUTLINE_COLORS[u.tier - 1];
       if (OUTLINE) {
@@ -11911,10 +11992,12 @@
     }
     drawUnit(u, sim, rest) {
       const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0, P = this.renderer.project(u.x, u.y, u.z + BOB);
-      const R2 = Math.max(
-        u.size * this.renderer.scale * 0.78,
+      const BODY2 = (0, import_definition33.unitBodyDefinition)(u.species), SCALE = (0, import_definition33.unitDisplayScale)(
+        BODY2,
+        u.bodyScale,
+        this.renderer.scale,
         this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio
-      );
+      ), R2 = SCALE * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]) * 0.5;
       this.drawVectorUnit(u, sim, P, R2, rest);
       return {
         p: P,
@@ -11932,11 +12015,11 @@
   };
 
   // src/farm-renderer.js
-  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
   init_boss_vector_sockets();
 
   // src/farm-render-boss.js
-  var import_vector_sockets2 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
 
   // src/features/boss-patterns/presentation-base.js
@@ -12350,7 +12433,7 @@
         PLAYER.setExpression(SAFE_EXPRESSION);
       }
       PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
-      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets2.bossVectorScale)(B.radius), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets4.bossVectorScale)(B.radius), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
       const DEFEAT_BOUNCE = EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? Math.max(0, Math.sin(EVENT.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
       const FADE = EVENT?.phase === "fading" ? CLAMP2(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
       const PARTS = RECORD.parts, POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose);
@@ -12531,7 +12614,7 @@
         this.vectorAssets.set(Number(SPECIES), {
           compiled: COMPILED,
           asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
-          anchors: (0, import_vector_sockets3.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
+          anchors: (0, import_vector_sockets5.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
           parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
           faceParts: COMPILED.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id)
         });
@@ -12604,14 +12687,14 @@
     project(x, y, z = 0) {
       return {
         x: (x + this.offset[0] + this.view[0]) * this.scale,
-        y: (this.view[1] - (import_vector_sockets3.WORLD_DEPTH_PROJECTION * y + import_vector_sockets3.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
+        y: (this.view[1] - (import_vector_sockets5.WORLD_DEPTH_PROJECTION * y + import_vector_sockets5.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
       };
     }
     screenToWorld(clientX, clientY) {
       const R2 = this.canvas.getBoundingClientRect(), PX = (clientX - R2.left) * this.pixelRatio, PY = (clientY - R2.top) * this.pixelRatio;
       return {
         x: PX / this.scale - this.offset[0] - this.view[0],
-        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets3.WORLD_DEPTH_PROJECTION
+        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets5.WORLD_DEPTH_PROJECTION
       };
     }
     configure(scene, force = false) {
@@ -12633,10 +12716,10 @@
       const BOUNDS = {
         left: -RX - 1.3,
         right: RX + 1.3,
-        bottom: -(RY + 1.3) * import_vector_sockets3.WORLD_DEPTH_PROJECTION,
-        top: (RY + 1.3) * import_vector_sockets3.WORLD_DEPTH_PROJECTION
+        bottom: -(RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION,
+        top: (RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION
       };
-      const BOSS_SCALE = (0, import_vector_sockets3.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX - CONFIG.boss.radius, BOSS_Y = (RY - CONFIG.boss.radius) * import_vector_sockets3.WORLD_DEPTH_PROJECTION;
+      const BOSS_SCALE = (0, import_vector_sockets5.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX - CONFIG.boss.radius, BOSS_Y = (RY - CONFIG.boss.radius) * import_vector_sockets5.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
         BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
@@ -12644,7 +12727,7 @@
         BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
         BOUNDS.top = Math.max(
           BOUNDS.top,
-          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.raid.dropHeight * import_vector_sockets3.WORLD_HEIGHT_PROJECTION
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.raid.dropHeight * import_vector_sockets5.WORLD_HEIGHT_PROJECTION
         );
       };
       for (const RECORD of this.bossAssets.values()) {
@@ -12747,7 +12830,7 @@
       const S = this.scale, OX = this.offset[0] + this.view[0], OY = this.view[1] - this.offset[1], ALPHA = C.globalAlpha;
       C.beginPath();
       for (let i = 0; i < COUNT; i++) {
-        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets3.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
+        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets5.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
         if (i === 0) {
           C.moveTo(X, Y);
         } else {
@@ -12765,64 +12848,6 @@
       C.lineJoin = "round";
       C.stroke();
       C.globalAlpha = ALPHA;
-    }
-    drawLocalScatter(scatter) {
-      if (!scatter?.active || !Number.isFinite(scatter.x) || !Number.isFinite(scatter.y) || !(scatter.radius > 0)) {
-        return;
-      }
-      const C = this.ctx, S = this.scale, R2 = scatter.radius, P = this.project(scatter.x, scatter.y), RY = R2 * S * import_vector_sockets3.WORLD_DEPTH_PROJECTION;
-      const SEGMENTS = Math.max(8, Math.min(24, Math.round(Math.PI * 2 * R2 * S / (10 * this.pixelRatio)))), STEP = Math.PI * 2 / SEGMENTS;
-      C.beginPath();
-      for (let i = 0; i < SEGMENTS; i++) {
-        for (let j = 0; j <= 4; j++) {
-          const A = i * STEP + j / 4 * STEP * 0.58, X = P.x + Math.cos(A) * R2 * S, Y = P.y - Math.sin(A) * RY;
-          if (j === 0) {
-            C.moveTo(X, Y);
-          } else {
-            C.lineTo(X, Y);
-          }
-        }
-      }
-      C.strokeStyle = "#145967";
-      C.lineWidth = 3.4 * this.pixelRatio;
-      C.lineCap = "round";
-      C.stroke();
-      C.strokeStyle = "#50e3ed";
-      C.lineWidth = 1.7 * this.pixelRatio;
-      C.stroke();
-      C.beginPath();
-      const ARROW = Math.max(0.25, 3.5 * this.pixelRatio / S), TIP = R2 + ARROW * 0.9;
-      for (let i = 0; i < 4; i++) {
-        const A = Math.PI / 4 + i * Math.PI / 2, DX = Math.cos(A), DY = Math.sin(A), TX = P.x + DX * TIP * S, TY = P.y - DY * TIP * S * import_vector_sockets3.WORLD_DEPTH_PROJECTION;
-        C.moveTo(P.x + DX * (R2 - ARROW * 0.55) * S, P.y - DY * (R2 - ARROW * 0.55) * S * import_vector_sockets3.WORLD_DEPTH_PROJECTION);
-        C.lineTo(TX, TY);
-        C.moveTo(
-          P.x + (DX * (TIP - ARROW) - DY * ARROW * 0.55) * S,
-          P.y - (DY * (TIP - ARROW) + DX * ARROW * 0.55) * S * import_vector_sockets3.WORLD_DEPTH_PROJECTION
-        );
-        C.lineTo(TX, TY);
-        C.lineTo(
-          P.x + (DX * (TIP - ARROW) + DY * ARROW * 0.55) * S,
-          P.y - (DY * (TIP - ARROW) - DX * ARROW * 0.55) * S * import_vector_sockets3.WORLD_DEPTH_PROJECTION
-        );
-      }
-      const CENTER = 2.8 * this.pixelRatio;
-      C.moveTo(P.x - CENTER, P.y);
-      C.lineTo(P.x + CENTER, P.y);
-      C.moveTo(P.x, P.y - CENTER);
-      C.lineTo(P.x, P.y + CENTER);
-      const HANDLE = this.project(
-        Number.isFinite(scatter.handleX) ? scatter.handleX : scatter.x,
-        Number.isFinite(scatter.handleY) ? scatter.handleY : scatter.y
-      ), HR = 3.5 * this.pixelRatio;
-      C.moveTo(HANDLE.x + HR, HANDLE.y);
-      C.ellipse(HANDLE.x, HANDLE.y, HR, HR, 0, 0, Math.PI * 2);
-      C.strokeStyle = "#145967";
-      C.lineWidth = 3.5 * this.pixelRatio;
-      C.stroke();
-      C.strokeStyle = "#7df5fb";
-      C.lineWidth = 1.7 * this.pixelRatio;
-      C.stroke();
     }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
       const C = this.ctx, P = this.project(x, y);
@@ -12954,7 +12979,6 @@
       for (const E of sim2.effects) {
         drawEffect(this, E);
       }
-      this.drawLocalScatter(sim2.localScatter);
       this.stats = C.endFrame();
     }
     dispose() {
@@ -13031,6 +13055,8 @@
       tier: R.STEP,
       seed: R.STEP,
       size: R.LINEAR,
+      bodyScale: R.LINEAR,
+      height: R.LINEAR,
       radius: R.LINEAR,
       maxHp: R.STEP,
       fed: R.STEP,
@@ -13070,6 +13096,8 @@
       this.tier = u.tier;
       this.seed = u.seed;
       this.size = u.size;
+      this.bodyScale = u.bodyScale;
+      this.height = u.height;
       this.radius = u.radius;
       this.maxHp = baseUnitStatsFor(u.tier, u.species).maxHp;
       this.fed = u.fed;
@@ -13533,9 +13561,6 @@
     }
     set paused(value) {
       value = !!value;
-      if (value) {
-        this.world.clearLocalScatter();
-      }
       if (value === this._paused) {
         return;
       }
@@ -13669,7 +13694,6 @@
       });
     }
     dispose() {
-      this.world.clearLocalScatter();
       this.closed = true;
       this.unsubscribeNotices?.();
       this.unsubscribeNotices = null;
@@ -14486,11 +14510,7 @@
   var menuAutoPaused = false;
   var dropPointer = null;
   var dropTimer = null;
-  var scatterPointer = null;
   var panPointer = null;
-  var worldInputMode = "scatter";
-  var scatterHintShown = false;
-  var scatterHintUntil = 0;
   var bossEncounterOpen = false;
   var bossSwipe = null;
   var bossPauseBeforeOpen = null;
@@ -14843,9 +14863,6 @@
     refreshStart();
     if (value) {
       DOLLAR2("continueGame").focus();
-    } else if (!scatterHintShown) {
-      scatterHintShown = true;
-      scatterHintUntil = performance.now() + 6e3;
     }
   }
   function start(world, push = true) {
@@ -15626,7 +15643,7 @@
     }
   }
   function beginDrop(id) {
-    if (dropPointer !== null || scatterPointer || panPointer || !deployTroop()) {
+    if (dropPointer !== null || panPointer || !deployTroop()) {
       return false;
     }
     dropPointer = id;
@@ -15663,17 +15680,6 @@
     }
   });
   DOLLAR2("deployTroops").addEventListener("blur", () => stopDrop());
-  function stopScatter(e) {
-    if (e && scatterPointer && e.pointerId !== scatterPointer.id) {
-      return;
-    }
-    const ID = scatterPointer?.id;
-    scatterPointer = null;
-    active?.world.clearLocalScatter();
-    if (ID !== void 0 && CANVAS.hasPointerCapture?.(ID)) {
-      CANVAS.releasePointerCapture(ID);
-    }
-  }
   function stopPan(e) {
     if (e && panPointer && e.pointerId !== panPointer.id) {
       return;
@@ -15686,82 +15692,35 @@
   }
   function stopWorldInput(e) {
     stopDrop(e);
-    stopScatter(e);
     stopPan(e);
   }
-  function selectWorldInputMode(mode) {
-    stopWorldInput();
-    worldInputMode = mode;
-    DOLLAR2("scatterMode").setAttribute("aria-pressed", String(mode === "scatter"));
-    DOLLAR2("panMode").setAttribute("aria-pressed", String(mode === "pan"));
-    CANVAS.setAttribute(
-      "aria-label",
-      mode === "pan" ? "드래그해 정원 시야 이동" : "지면을 누르고 드래그해 아군 산개 범위 조절"
-    );
-  }
-  DOLLAR2("scatterMode").onclick = () => selectWorldInputMode("scatter");
-  DOLLAR2("panMode").onclick = () => selectWorldInputMode("pan");
   CANVAS.addEventListener("pointerdown", (e) => {
     FOOD_FEEL.unlock();
-    if (e.button !== 0 || !canUseWorldInput() || scatterPointer || panPointer || dropPointer !== null) {
+    if (e.button !== 0 || !canUseWorldInput() || panPointer || dropPointer !== null) {
       return;
     }
-    if (worldInputMode === "pan") {
-      panPointer = {
-        id: e.pointerId,
-        x: e.clientX,
-        y: e.clientY
-      };
-      CANVAS.setPointerCapture?.(e.pointerId);
-      e.preventDefault();
-      return;
-    }
-    const P = RENDERER.screenToWorld(e.clientX, e.clientY);
-    if (!ARENA_GEOMETRY.inside(P, active.world.scene)) {
-      return;
-    }
-    scatterPointer = {
+    panPointer = {
       id: e.pointerId,
-      x: P.x,
-      y: P.y
+      x: e.clientX,
+      y: e.clientY
     };
-    active.world.setLocalScatter(P.x, P.y);
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
   CANVAS.addEventListener("pointermove", (e) => {
-    if (panPointer && e.pointerId === panPointer.id) {
-      if (!canUseWorldInput()) {
-        stopPan();
-        return;
-      }
-      RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
-      panPointer.x = e.clientX;
-      panPointer.y = e.clientY;
-      e.preventDefault();
-      return;
-    }
-    if (!scatterPointer || e.pointerId !== scatterPointer.id) {
+    if (!panPointer || e.pointerId !== panPointer.id) {
       return;
     }
     if (!canUseWorldInput()) {
-      stopScatter();
+      stopPan();
       return;
     }
-    const P = RENDERER.screenToWorld(e.clientX, e.clientY), DX = P.x - scatterPointer.x, DY = P.y - scatterPointer.y, D = Math.hypot(DX, DY), R2 = Math.max(CONFIG.scatter.minRadius, Math.min(CONFIG.scatter.maxRadius, D)), ANGLE = D > 1e-6 ? Math.atan2(DY, DX) : 0;
-    active.world.setLocalScatter(
-      scatterPointer.x,
-      scatterPointer.y,
-      R2,
-      scatterPointer.x + Math.cos(ANGLE) * R2,
-      scatterPointer.y + Math.sin(ANGLE) * R2
-    );
+    RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
+    panPointer.x = e.clientX;
+    panPointer.y = e.clientY;
     e.preventDefault();
   });
-  CANVAS.addEventListener("lostpointercapture", (e) => {
-    stopScatter(e);
-    stopPan(e);
-  });
+  CANVAS.addEventListener("lostpointercapture", stopPan);
   window.addEventListener("pointerup", stopWorldInput, true);
   window.addEventListener("pointercancel", stopWorldInput, true);
   window.addEventListener("blur", () => {
@@ -15879,9 +15838,7 @@
   window.addEventListener("popstate", route);
   function sync(display, now, notices) {
     const W = active.world, RAID = display.scene === "raid", FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = !RAID && FARM_EVENT?.phase !== "idle", BATTLE_HUD = RAID || FARM_EVENT_ACTIVE, HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, REWARD_WORLD = personalGarden || W, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => reward.status === "pending");
-    syncFlag("worldInputControls", "hidden", home || bossEncounterOpen);
-    syncFlag("scatterHint", "hidden", home || menuOpen || bossEncounterOpen || now >= scatterHintUntil);
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || scatterPointer || panPointer)) {
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || panPointer)) {
       stopWorldInput();
     }
     syncAttribute("farm", "aria-pressed", !RAID && !bossEncounterOpen);

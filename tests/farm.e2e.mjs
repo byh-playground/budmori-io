@@ -218,6 +218,18 @@ async function worldClient(p, x, y) {
         },
     );
 }
+async function cameraSnapshot(p) {
+    return p.evaluate(() => {
+        const R = BUDMORI.renderer;
+        return {
+            pan: R.cameraPan,
+            limits: { ...R.panLimits },
+            projection: R.project(0, 0),
+            scale: R.scale,
+            pixelRatio: R.pixelRatio,
+        };
+    });
+}
 async function holdDeployButton(p, { hold = 0, touch = false, cancel = false } = {}) {
     const BUTTON = p.locator('#deployTroops');
     await BUTTON.waitFor({
@@ -239,6 +251,10 @@ async function holdDeployButton(p, { hold = 0, touch = false, cancel = false } =
                         y: Y,
                     },
                 ],
+            });
+            await CDP.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [{ id: 11, x: X + 6, y: Y + 4 }],
             });
             if (hold) {
                 await p.waitForTimeout(hold);
@@ -264,6 +280,7 @@ async function holdDeployButton(p, { hold = 0, touch = false, cancel = false } =
         );
         await p.mouse.move(X, Y);
         await p.mouse.down();
+        await p.mouse.move(X + 6, Y + 4);
         if (hold) {
             await p.waitForTimeout(hold);
         }
@@ -327,6 +344,7 @@ async function buttonDeployment(p, pointerType) {
             })),
             dropHeight: BUDMORI.CONFIG.raid.dropHeight,
             arena: BUDMORI.CONFIG.raid.arena,
+            camera: BUDMORI.renderer.cameraPan,
         };
     });
     try {
@@ -385,7 +403,7 @@ async function buttonDeployment(p, pointerType) {
             submitted: globalThis.deployProbe.submitted,
             remaining: BUDMORI.sim.raidRemaining('solo'),
             sequence: BUDMORI.sim.raidRoster('solo').lastDeploySequence,
-            scatter: BUDMORI.sim.localScatter.active,
+            camera: BUDMORI.renderer.cameraPan,
         }));
         assert.equal(
             EVIDENCE.created.length,
@@ -424,7 +442,7 @@ async function buttonDeployment(p, pointerType) {
             new Set(EVIDENCE.created.map((u) => `${u.x.toFixed(4)},${u.y.toFixed(4)}`)).size > 1,
             'separate deployments receive different perimeter positions',
         );
-        assert.equal(EVIDENCE.scatter, false, 'pressing the deployment control does not create a canvas circle');
+        assert.deepEqual(EVIDENCE.camera, INITIAL.camera, 'deployment button holds never pan the world');
         REPORT.deployments ??= [];
         REPORT.deployments.push({
             pointerType,
@@ -445,8 +463,14 @@ async function buttonDeployment(p, pointerType) {
 }
 async function returnFromHeldInput(p, pointerType) {
     await p.evaluate(() => {
-        window.returnInputWorld = BUDMORI.sim;
         BUDMORI.renderer.panByScreen(48, 20);
+        document.querySelector('canvas').addEventListener(
+            'pointerdown',
+            (event) => {
+                window.returnPointerId = event.pointerId;
+            },
+            { once: true },
+        );
     });
     const POINT = await worldClient(p, 0, 0),
         CDP = pointerType === 'touch' ? await p.context().newCDPSession(p) : null;
@@ -454,37 +478,43 @@ async function returnFromHeldInput(p, pointerType) {
         if (CDP) {
             await CDP.send('Input.dispatchTouchEvent', {
                 type: 'touchStart',
-                touchPoints: [
-                    {
-                        id: 11,
-                        ...POINT,
-                    },
-                ],
+                touchPoints: [{ id: 11, ...POINT }],
             });
         } else {
             await p.mouse.move(POINT.x, POINT.y);
             await p.mouse.down();
         }
-        await p.waitForFunction(() => BUDMORI.sim.localScatter.active);
+        await p.waitForFunction(() => document.querySelector('canvas').hasPointerCapture(globalThis.returnPointerId));
         await p.locator('#return').press('Enter');
-        await p.waitForFunction(() => BUDMORI.sim.scene === 'farm');
+        await p.waitForFunction(() => BUDMORI.sim.scene === 'farm' && BUDMORI.renderer.scene === 'farm');
+        const RETURNED = await cameraSnapshot(p);
+        if (CDP) {
+            await CDP.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [{ id: 11, x: POINT.x + 40, y: POINT.y + 25 }],
+            });
+        } else {
+            await p.mouse.move(POINT.x + 40, POINT.y + 25);
+        }
+        assert.deepEqual(
+            await cameraSnapshot(p),
+            RETURNED,
+            'return cancels the outgoing pan before restoring the Farm',
+        );
         assert.equal(
-            await p.evaluate(() => globalThis.returnInputWorld.localScatter.active || BUDMORI.sim.localScatter.active),
+            await p.evaluate(() => document.querySelector('canvas').hasPointerCapture(globalThis.returnPointerId)),
             false,
-            'return cancels the outgoing hold and restores an inactive Farm',
+            'Raid return releases the world pointer capture',
         );
     } finally {
         if (CDP) {
-            await CDP.send('Input.dispatchTouchEvent', {
-                type: 'touchEnd',
-                touchPoints: [],
-            });
+            await CDP.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
             await CDP.detach();
         } else {
             await p.mouse.up();
         }
         await p.evaluate(() => {
-            delete window.returnInputWorld;
+            delete window.returnPointerId;
         });
     }
 }
@@ -727,8 +757,6 @@ async function core() {
             'feed',
             'raidControls',
             'deployTroops',
-            'scatterMode',
-            'panMode',
             'raidRemaining',
             'bossbar',
             'allyHealth',
@@ -790,11 +818,18 @@ async function core() {
     );
     CHECK('One gear entry with four Korean tabs; Escape restores the prior play state');
     await unlockAbilityFlow(P);
-    const BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual);
-    for (let i = 0; i < 15; i++) {
+    const BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual),
+        FEED_CAMERA = await cameraSnapshot(P),
+        FEED_BOX = await P.locator('#feed').boundingBox();
+    await P.mouse.move(FEED_BOX.x + FEED_BOX.width / 2, FEED_BOX.y + FEED_BOX.height / 2);
+    await P.mouse.down();
+    await P.mouse.move(FEED_BOX.x + FEED_BOX.width / 2 + 6, FEED_BOX.y + FEED_BOX.height / 2 + 4);
+    await P.mouse.up();
+    for (let i = 1; i < 15; i++) {
         await P.locator('#feed').click();
     }
     await P.waitForFunction((n) => BUDMORI.foodFeel.counts.manual === n + 15, BEFORE);
+    assert.deepEqual(await cameraSnapshot(P), FEED_CAMERA, 'feeding button presses and drags never pan the world');
     CHECK('Start → farm; native manual taps delivered once per release');
     await P.waitForFunction(
         () => BUDMORI.sim.metrics.births > 0,
@@ -858,7 +893,7 @@ async function core() {
     // Synthetic Raid outcomes must not borrow the later real Raid reservation.
     await combatScenarios(P);
     await seedScenarios(P, 'pc');
-    await scatterInput(P, 'mouse');
+    await panInput(P, 'mouse');
     await P.locator('#raid').click();
     assert(await P.locator('#bossEncounterScreen').isVisible(), 'Raid opens the vertical stage selector');
     assert.equal(await P.locator('#bossStageCounter').textContent(), '1 / 61');
@@ -991,7 +1026,7 @@ async function core() {
         ORDER.first.every((entry, i) => !i || entry[1] >= ORDER.first[i - 1][1]),
         'lower tiers deploy before higher tiers',
     );
-    await scatterInput(P, 'mouse');
+    await panInput(P, 'mouse');
     await buttonDeployment(P, 'mouse');
     await P.waitForFunction(
         () => BUDMORI.sim.units.some((u) => u.dropLanded),
@@ -1018,15 +1053,10 @@ async function core() {
     await render(P, 'pc-battle');
     await armyScenarios(P);
     await returnFromHeldInput(P, 'mouse');
-    assert.equal(
-        await P.evaluate(() => BUDMORI.sim.localScatter.active),
-        false,
-        'Raid return leaves no held circle in the Farm',
-    );
     await P.waitForFunction(() => BUDMORI.renderer.scene === 'farm');
     assert.deepEqual(
         await P.evaluate(() => BUDMORI.renderer.project(0, 0)),
-        REPORT.scatter.find((s) => s.pointerType === 'mouse' && s.scene === 'farm').camera.initial,
+        REPORT.pan.find((s) => s.pointerType === 'mouse' && s.scene === 'farm').camera.initial.projection,
         'Raid return restores the Farm camera center',
     );
     await goHome(P);
@@ -1077,8 +1107,10 @@ async function core() {
         }),
         M = await open(MOBILE);
     await M.locator('#newGame').tap();
+    const MOBILE_FEED_CAMERA = await cameraSnapshot(M);
     await M.locator('#feed').tap();
-    await scatterInput(M, 'touch');
+    assert.deepEqual(await cameraSnapshot(M), MOBILE_FEED_CAMERA, 'touch feeding never pans the world');
+    await panInput(M, 'touch');
     await M.evaluate(() => {
         BUDMORI.runtime.paused = true;
         const W = BUDMORI.sim;
@@ -1151,7 +1183,7 @@ async function core() {
         'mobile deployment uses only units present in the Farm',
     );
     await M.evaluate(() => (BUDMORI.runtime.paused = false));
-    await scatterInput(M, 'touch');
+    await panInput(M, 'touch');
     await buttonDeployment(M, 'touch');
     await M.waitForFunction(
         () => BUDMORI.sim.notices.some((e) => e.kind === 'drop-land'),
@@ -1170,15 +1202,10 @@ async function core() {
     await render(M, 'mobile-battle');
     await seedScenarios(M, 'mobile');
     await returnFromHeldInput(M, 'touch');
-    assert.equal(
-        await M.evaluate(() => BUDMORI.sim.localScatter.active),
-        false,
-        'touch Raid return leaves no held circle in the Farm',
-    );
     await M.waitForFunction(() => BUDMORI.renderer.scene === 'farm');
     assert.deepEqual(
         await M.evaluate(() => BUDMORI.renderer.project(0, 0)),
-        REPORT.scatter.find((s) => s.pointerType === 'touch' && s.scene === 'farm').camera.initial,
+        REPORT.pan.find((s) => s.pointerType === 'touch' && s.scene === 'farm').camera.initial.projection,
         'touch Raid return restores the Farm camera center',
     );
     await openMenuTab(M, 'growth');
@@ -1193,93 +1220,101 @@ async function core() {
     await closeMenu(M);
     await clean(M);
     CHECK(
-        '390px native touch with held local scatter, dedicated deployment, airborne landing, growth, short viewport help and real GPU render',
+        '390px native touch with default world panning, dedicated deployment, airborne landing, growth, short viewport help and real GPU render',
     );
     await MOBILE.close();
 }
-async function scatterInput(p, pointerType) {
+async function panInput(p, pointerType) {
     await p.waitForFunction(() => !BUDMORI.runtime.pending.length);
     await p.evaluate(() => new Promise(requestAnimationFrame));
     assert.equal(
-        await p.locator('#scatterMode').getAttribute('aria-pressed'),
-        'true',
-        'single-pointer scatter is the selected default mode',
+        await p.locator('#scatterMode, #panMode, #scatterHint, #worldInputControls').count(),
+        0,
+        'world dragging needs no mode controls or scatter hint',
     );
     const SCENE = await p.evaluate(() => BUDMORI.sim.scene),
         CENTER = await worldClient(p, -2, 0),
-        NEAR = await worldClient(p, -1.9, 0),
-        MIDDLE = await worldClient(p, 0.2, 0),
-        FAR = await worldClient(p, 4, 0),
-        SECONDARY = await worldClient(p, 3, -2);
-    const BEFORE = await p.evaluate(() => {
-        const RUNTIME = BUDMORI.runtime;
-        window.scatterProbe = {
-            queue: RUNTIME.queue,
-            commands: [],
-            pointerId: null,
-        };
-        RUNTIME.queue = function (type, args) {
-            globalThis.scatterProbe.commands.push(type);
-            return globalThis.scatterProbe.queue.call(this, type, args);
-        };
-        document.querySelector('canvas').addEventListener(
-            'pointerdown',
-            (event) => {
-                globalThis.scatterProbe.pointerId = event.pointerId;
-            },
-            {
-                once: true,
-            },
-        );
-        return {
-            manual: BUDMORI.foodFeel.counts.manual,
-            remaining: BUDMORI.sim.raidRemaining('solo'),
-            min: BUDMORI.CONFIG.scatter.minRadius,
-            max: BUDMORI.CONFIG.scatter.maxRadius,
-        };
-    });
-    assert(
-        Math.abs(BEFORE.min - 1.22) < 1e-8 && Math.abs(BEFORE.max - 3.05) < 1e-8,
-        'held-circle size is clamped to the approved 1.22–3.05 world-unit range',
+        END_POINT = { x: CENTER.x + 72, y: CENTER.y + 40 },
+        SECONDARY = { x: CENTER.x + 35, y: CENTER.y - 45 },
+        BEFORE = await p.evaluate(() => {
+            const RUNTIME = BUDMORI.runtime,
+                R = BUDMORI.renderer;
+            window.panProbe = {
+                queue: RUNTIME.queue,
+                commands: [],
+                pointerId: null,
+            };
+            RUNTIME.queue = function (type, args) {
+                globalThis.panProbe.commands.push(type);
+                return globalThis.panProbe.queue.call(this, type, args);
+            };
+            return {
+                manual: BUDMORI.foodFeel.counts.manual,
+                remaining: BUDMORI.sim.raidRemaining('solo'),
+                arena: BUDMORI.CONFIG.farm.arena,
+                view: [...R.view],
+                aspect: R.aspect,
+                removed:
+                    !('scatter' in BUDMORI.CONFIG) &&
+                    ![
+                        'localScatter',
+                        '_scatterStates',
+                        'setLocalScatter',
+                        'clearLocalScatter',
+                        'scatterApplies',
+                        'scatterInside',
+                        'scatterSegmentBlocked',
+                        'scatterBossBlocks',
+                        'updateLocalScatter',
+                        'limitScatterVelocity',
+                    ].some((key) => key in BUDMORI.sim),
+            };
+        }),
+        CAMERA = { initial: await cameraSnapshot(p) },
+        CDP = pointerType === 'touch' ? await p.context().newCDPSession(p) : null;
+    assert(BEFORE.removed, 'held local scatter has no runtime configuration, state or methods');
+    assert.deepEqual(BEFORE.arena, { radiusX: 23, radiusY: 17 }, 'the enlarged Farm dimensions are retained');
+    assert.deepEqual(
+        BEFORE.view,
+        SCENE === 'farm'
+            ? BEFORE.aspect > 1.2
+                ? [Math.max(12, 9 * BEFORE.aspect), 9]
+                : [11.7, 11.7 / BEFORE.aspect]
+            : BEFORE.aspect > 1.2
+              ? [Math.max(26.5, 17 * BEFORE.aspect), 17]
+              : [26.5, 26.5 / BEFORE.aspect],
+        'default panning retains the authored scene zoom',
     );
-    const CDP = pointerType === 'touch' ? await p.context().newCDPSession(p) : null;
     let touchActive = false;
-    const START = async () => {
+    const START = async (point = CENTER) => {
+        await p.evaluate(() => {
+            document.querySelector('canvas').addEventListener(
+                'pointerdown',
+                (event) => {
+                    globalThis.panProbe.pointerId = event.pointerId;
+                },
+                { once: true },
+            );
+        });
         if (CDP) {
             await CDP.send('Input.dispatchTouchEvent', {
                 type: 'touchStart',
-                touchPoints: [
-                    {
-                        id: 11,
-                        ...CENTER,
-                    },
-                ],
+                touchPoints: [{ id: 11, ...point }],
             });
             touchActive = true;
         } else {
-            await p.mouse.move(CENTER.x, CENTER.y);
+            await p.mouse.move(point.x, point.y);
             await p.mouse.down();
         }
-        await p.waitForFunction(() => BUDMORI.sim.localScatter.active);
+        await p.waitForFunction(() =>
+            document.querySelector('canvas').hasPointerCapture(globalThis.panProbe.pointerId),
+        );
     };
-    const MOVE = async (point, extra = false) => {
+    const MOVE = async (point) => {
         if (CDP) {
             await CDP.send('Input.dispatchTouchEvent', {
                 type: 'touchMove',
-                touchPoints: [
-                    {
-                        id: 11,
-                        ...point,
-                    },
-                    ...(extra
-                        ? [
-                              {
-                                  id: 22,
-                                  ...SECONDARY,
-                              },
-                          ]
-                        : []),
-                ],
+                touchPoints: [{ id: 11, ...point }],
             });
         } else {
             await p.mouse.move(point.x, point.y);
@@ -1287,260 +1322,218 @@ async function scatterInput(p, pointerType) {
     };
     const END = async () => {
         if (CDP) {
-            await CDP.send('Input.dispatchTouchEvent', {
-                type: 'touchEnd',
-                touchPoints: [],
-            });
+            await CDP.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
             touchActive = false;
         } else {
             await p.mouse.up();
         }
-        await p.waitForFunction(() => !BUDMORI.sim.localScatter.active);
+        assert.equal(
+            await p.evaluate(() => document.querySelector('canvas').hasPointerCapture(globalThis.panProbe.pointerId)),
+            false,
+            'released world pointer no longer captures input',
+        );
     };
-    const STATE = () =>
-        p.evaluate(() => ({
-            ...BUDMORI.sim.localScatter,
-        }));
+    const SEND_MOVE = (point) =>
+        p.evaluate(
+            ({ point, pointerType }) => {
+                document.querySelector('canvas').dispatchEvent(
+                    new PointerEvent('pointermove', {
+                        pointerId: globalThis.panProbe.pointerId,
+                        pointerType,
+                        clientX: point.x,
+                        clientY: point.y,
+                        buttons: 1,
+                        bubbles: true,
+                    }),
+                );
+            },
+            { point, pointerType },
+        );
+    const ASSERT_STOPPED = async (message) => {
+        const STOPPED = await cameraSnapshot(p);
+        await SEND_MOVE({ x: CENTER.x - 60, y: CENTER.y - 30 });
+        assert.deepEqual(await cameraSnapshot(p), STOPPED, message);
+    };
     try {
         await START();
-        const INITIAL = await STATE();
-        assert.equal(INITIAL.radius, BEFORE.min);
-        assert(Math.hypot(INITIAL.x + 2, INITIAL.y) < 0.08, 'the circle starts at the actual canvas press');
-        await MOVE(NEAR);
-        assert.equal((await STATE()).radius, BEFORE.min, 'a short drag retains the minimum radius');
+        assert.deepEqual(await cameraSnapshot(p), CAMERA.initial, 'a world press alone does not move the camera');
+        await MOVE(END_POINT);
+        CAMERA.moved = await cameraSnapshot(p);
+        const EXPECTED = {
+            x: Math.max(
+                CAMERA.initial.limits.minX,
+                Math.min(
+                    CAMERA.initial.limits.maxX,
+                    CAMERA.initial.pan.x + (72 * CAMERA.initial.pixelRatio) / CAMERA.initial.scale,
+                ),
+            ),
+            y: Math.max(
+                CAMERA.initial.limits.minY,
+                Math.min(
+                    CAMERA.initial.limits.maxY,
+                    CAMERA.initial.pan.y - (40 * CAMERA.initial.pixelRatio) / CAMERA.initial.scale,
+                ),
+            ),
+        };
+        const POINTER_TOLERANCE = CAMERA.initial.pixelRatio / CAMERA.initial.scale;
+        assert(
+            Math.abs(CAMERA.moved.pan.x - EXPECTED.x) <= POINTER_TOLERANCE,
+            'horizontal pan follows pointer displacement',
+        );
+        assert(
+            Math.abs(CAMERA.moved.pan.y - EXPECTED.y) <= POINTER_TOLERANCE,
+            'vertical pan follows pointer displacement',
+        );
+        assert.equal(CAMERA.moved.scale, CAMERA.initial.scale, 'dragging never changes zoom');
+        if (SCENE === 'farm') {
+            assert.notDeepEqual(
+                CAMERA.moved.projection,
+                CAMERA.initial.projection,
+                'one pointer immediately pans the Farm',
+            );
+        }
+        const ROUND_TRIP = await p.evaluate(() => {
+            const R = BUDMORI.renderer,
+                PT = R.project(3, -2, 0),
+                BOX = R.canvas.getBoundingClientRect();
+            return R.screenToWorld(BOX.left + PT.x / R.pixelRatio, BOX.top + PT.y / R.pixelRatio);
+        });
+        assert(Math.hypot(ROUND_TRIP.x - 3, ROUND_TRIP.y + 2) < 1e-8, 'panned projection still inverts accurately');
+        await render(p, pointerType + '-' + SCENE + '-pan-held');
         if (CDP) {
             await CDP.send('Input.dispatchTouchEvent', {
                 type: 'touchStart',
                 touchPoints: [
-                    {
-                        id: 11,
-                        ...NEAR,
-                    },
-                    {
-                        id: 22,
-                        ...SECONDARY,
-                    },
+                    { id: 11, ...END_POINT },
+                    { id: 22, ...SECONDARY },
                 ],
             });
-            const EXTRA = await STATE();
-            assert.equal(EXTRA.x, INITIAL.x);
-            assert.equal(EXTRA.y, INITIAL.y);
-            assert.equal(EXTRA.generation, INITIAL.generation, 'a second finger cannot own or recreate the circle');
-        }
-        await MOVE(MIDDLE, !!CDP);
-        const EXPANDED = await STATE();
-        assert(Math.abs(EXPANDED.radius - 2.2) < 0.1, 'drag distance grows the radius in world units');
-        await MOVE(FAR, !!CDP);
-        const MAXIMUM = await STATE();
-        assert.equal(MAXIMUM.x, INITIAL.x, 'dragging keeps the initial center fixed');
-        assert.equal(MAXIMUM.y, INITIAL.y);
-        assert.equal(MAXIMUM.radius, BEFORE.max, 'a long drag clamps at the maximum radius');
-        assert(
-            Math.abs(Math.hypot(MAXIMUM.handleX - MAXIMUM.x, MAXIMUM.handleY - MAXIMUM.y) - BEFORE.max) < 0.01,
-            'the drag handle stays on the clamped edge',
-        );
-        await render(p, pointerType + '-' + SCENE + '-scatter-held');
-        if (CDP) {
-            await CDP.send('Input.dispatchTouchEvent', {
-                type: 'touchEnd',
-                touchPoints: [
-                    {
-                        id: 22,
-                        ...SECONDARY,
-                    },
-                ],
-            });
-            await p.waitForFunction(() => !BUDMORI.sim.localScatter.active);
             await CDP.send('Input.dispatchTouchEvent', {
                 type: 'touchMove',
                 touchPoints: [
-                    {
-                        id: 22,
-                        x: SECONDARY.x + 12,
-                        y: SECONDARY.y,
-                    },
+                    { id: 11, ...END_POINT },
+                    { id: 22, x: SECONDARY.x + 20, y: SECONDARY.y },
                 ],
             });
-            assert.equal(
-                (await STATE()).active,
-                false,
-                'remaining secondary touch cannot take over after the owner releases',
-            );
+            assert.deepEqual(await cameraSnapshot(p), CAMERA.moved, 'a second finger cannot take over the held pan');
+            await CDP.send('Input.dispatchTouchEvent', {
+                type: 'touchEnd',
+                touchPoints: [{ id: 22, x: SECONDARY.x + 20, y: SECONDARY.y }],
+            });
+            await CDP.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [{ id: 22, x: SECONDARY.x + 35, y: SECONDARY.y + 10 }],
+            });
+            assert.deepEqual(await cameraSnapshot(p), CAMERA.moved, 'remaining touch cannot inherit the released pan');
         }
         await END();
+        await ASSERT_STOPPED('release requires a fresh press before panning again');
+        await p.evaluate(() => BUDMORI.renderer.resetPan());
         await START();
+        await SEND_MOVE({ x: CENTER.x + 100000, y: CENTER.y + 100000 });
+        const MAXIMUM = await cameraSnapshot(p);
+        assert.deepEqual(
+            MAXIMUM.pan,
+            { x: MAXIMUM.limits.maxX, y: MAXIMUM.limits.minY },
+            'large drag clamps at the far bounds',
+        );
+        await SEND_MOVE({ x: CENTER.x - 100000, y: CENTER.y - 100000 });
+        const MINIMUM = await cameraSnapshot(p);
+        assert.deepEqual(
+            MINIMUM.pan,
+            { x: MINIMUM.limits.minX, y: MINIMUM.limits.maxY },
+            'reverse drag clamps at the opposite bounds',
+        );
+        assert(
+            [MINIMUM.projection.x, MINIMUM.projection.y, MAXIMUM.projection.x, MAXIMUM.projection.y].every(
+                Number.isFinite,
+            ),
+        );
+        await END();
+        await p.evaluate(() => BUDMORI.renderer.resetPan());
+        await START();
+        await MOVE(END_POINT);
         if (CDP) {
-            await CDP.send('Input.dispatchTouchEvent', {
-                type: 'touchCancel',
-                touchPoints: [],
-            });
+            await CDP.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
             touchActive = false;
         } else {
             await p.evaluate(() =>
                 document.querySelector('canvas').dispatchEvent(
                     new PointerEvent('pointercancel', {
-                        pointerId: globalThis.scatterProbe.pointerId,
+                        pointerId: globalThis.panProbe.pointerId,
                         bubbles: true,
                     }),
                 ),
             );
         }
-        await p.waitForFunction(() => !BUDMORI.sim.localScatter.active);
+        await ASSERT_STOPPED('pointer cancellation discards the held pan');
         if (!CDP) {
             await p.mouse.up();
         }
-        if (!CDP) {
-            await START();
-            await p.evaluate(() =>
-                document.querySelector('canvas').releasePointerCapture(globalThis.scatterProbe.pointerId),
-            );
-            await p.mouse.move(NEAR.x, NEAR.y);
-            await p.waitForFunction(() => !BUDMORI.sim.localScatter.active);
-            await p.mouse.up();
-            await START();
-            await p.evaluate(() => window.dispatchEvent(new Event('blur')));
-            await p.waitForFunction(() => !BUDMORI.sim.localScatter.active);
-            await p.mouse.up();
-            await START();
-            await p.locator('#gameMenu').press('Enter');
-            await p.locator('#gameMenuOverlay').waitFor({
-                state: 'visible',
-            });
-            assert.equal((await STATE()).active, false, 'opening settings immediately clears the held circle');
-            await p.mouse.up();
-            await closeMenu(p);
-            assert.equal((await STATE()).active, false, 'closing settings does not restore a stale hold');
-        }
-        await START();
-        await p.locator('#panMode').press('Enter');
-        assert.equal((await STATE()).active, false, 'changing to view movement clears the current scatter gesture');
-        await END();
-        assert.equal(await p.locator('#panMode').getAttribute('aria-pressed'), 'true');
-        assert.equal(await p.locator('#scatterMode').getAttribute('aria-pressed'), 'false');
-        const CAMERA = await p.evaluate(() => ({
-                initial: BUDMORI.renderer.project(0, 0),
-                scale: BUDMORI.renderer.scale,
-            })),
-            PAN_END = {
-                x: CENTER.x + 72,
-                y: CENTER.y + 40,
-            };
-        if (CDP) {
-            await CDP.send('Input.dispatchTouchEvent', {
-                type: 'touchStart',
-                touchPoints: [
-                    {
-                        id: 11,
-                        ...CENTER,
-                    },
-                ],
-            });
-            touchActive = true;
-            await CDP.send('Input.dispatchTouchEvent', {
-                type: 'touchMove',
-                touchPoints: [
-                    {
-                        id: 11,
-                        ...PAN_END,
-                    },
-                ],
-            });
-        } else {
-            await p.mouse.move(CENTER.x, CENTER.y);
-            await p.mouse.down();
-            await p.mouse.move(PAN_END.x, PAN_END.y, {
-                steps: 4,
-            });
-        }
-        CAMERA.moved = await p.evaluate(() => BUDMORI.renderer.project(0, 0));
-        const PAN = await p.evaluate(() => ({
-            position: BUDMORI.renderer.cameraPan,
-            limits: BUDMORI.renderer.panLimits,
-        }));
-        assert(
-            PAN.position.x >= PAN.limits.minX &&
-                PAN.position.x <= PAN.limits.maxX &&
-                PAN.position.y >= PAN.limits.minY &&
-                PAN.position.y <= PAN.limits.maxY,
-            'dragged camera stays within the content bounds',
-        );
-        assert([CAMERA.moved.x, CAMERA.moved.y].every(Number.isFinite), 'view dragging keeps projection finite');
-        if (SCENE === 'farm') {
-            assert(
-                Math.hypot(CAMERA.moved.x - CAMERA.initial.x, CAMERA.moved.y - CAMERA.initial.y) > 1,
-                'view mode actually pans the expanded Farm',
-            );
-        }
-        assert.equal(
-            await p.evaluate(() => BUDMORI.renderer.scale),
-            CAMERA.scale,
-            'panning preserves the authored scene zoom',
-        );
-        assert.equal((await STATE()).active, false, 'view movement never creates a scatter circle');
-        await p.locator('#scatterMode').press('Enter');
-        assert.equal(await p.locator('#scatterMode').getAttribute('aria-pressed'), 'true');
-        await MOVE({
-            x: PAN_END.x + 20,
-            y: PAN_END.y + 10,
-        });
-        assert.deepEqual(
-            await p.evaluate(() => BUDMORI.renderer.project(0, 0)),
-            CAMERA.moved,
-            'changing back to scatter cancels the prior pan pointer',
-        );
-        assert.equal((await STATE()).active, false, 'switching modes requires a fresh press before scattering');
-        await END();
         await p.evaluate(() => BUDMORI.renderer.resetPan());
+        await START();
+        await p.evaluate(() => document.querySelector('canvas').releasePointerCapture(globalThis.panProbe.pointerId));
+        await MOVE(END_POINT);
+        assert.deepEqual(await cameraSnapshot(p), CAMERA.initial, 'lost capture discards the held pan');
+        await END();
+        await START();
+        await p.evaluate(() => window.dispatchEvent(new Event('blur')));
+        await MOVE(END_POINT);
+        assert.deepEqual(await cameraSnapshot(p), CAMERA.initial, 'window blur discards the held pan');
+        await END();
+        await START();
+        await p.locator('#gameMenu').press('Enter');
+        await p.locator('#gameMenuOverlay').waitFor({ state: 'visible' });
+        await MOVE(END_POINT);
+        assert.deepEqual(await cameraSnapshot(p), CAMERA.initial, 'opening settings immediately cancels panning');
+        await closeMenu(p);
+        await MOVE({ x: END_POINT.x - 25, y: END_POINT.y - 15 });
         assert.deepEqual(
-            await p.evaluate(() => BUDMORI.renderer.project(0, 0)),
+            await cameraSnapshot(p),
             CAMERA.initial,
-            'resetPan restores the authored center',
+            'closing settings cannot restore a stale held pointer',
+        );
+        await END();
+        assert.deepEqual(
+            await cameraSnapshot(p),
+            CAMERA.initial,
+            'reset and released input restore the authored camera center',
         );
         const AFTER = await p.evaluate(() => ({
-            commands: globalThis.scatterProbe.commands,
+            commands: globalThis.panProbe.commands,
             manual: BUDMORI.foodFeel.counts.manual,
             remaining: BUDMORI.sim.raidRemaining('solo'),
-            legacy: ['cast', 'moveTarget', 'aim'].some((k) => Object.hasOwn(BUDMORI.sim, k)),
+            legacy: ['cast', 'moveTarget', 'aim'].some((key) => Object.hasOwn(BUDMORI.sim, key)),
         }));
         assert.deepEqual(
             AFTER.commands,
             [],
-            'the local circle does not queue deployment, feeding, or persistent movement commands',
+            'world presses and drags queue no deployment, feeding or movement commands',
         );
         assert.equal(AFTER.manual, BEFORE.manual, 'canvas holds never trigger manual feeding');
-        assert.equal(AFTER.remaining, BEFORE.remaining, 'canvas holds do not consume the Raid roster');
+        assert.equal(AFTER.remaining, BEFORE.remaining, 'canvas holds never consume the Raid roster');
         assert.equal(AFTER.legacy, false);
-        REPORT.scatter ??= [];
-        REPORT.scatter.push({
-            pointerType,
-            scene: SCENE,
-            initial: INITIAL,
-            expanded: EXPANDED,
-            maximum: MAXIMUM,
-            camera: CAMERA,
-        });
+        REPORT.pan ??= [];
+        REPORT.pan.push({ pointerType, scene: SCENE, camera: CAMERA, minimum: MINIMUM, maximum: MAXIMUM });
         CHECK(
             pointerType +
                 ' ' +
                 SCENE +
-                ' held circle and view modes: fixed center, clamped drag radius, unchanged zoom, mode-switch cleanup, release and cancellation' +
-                (!CDP ? ', lost capture, blur and menu clearing' : ''),
+                ' default pan: bounded camera, preserved zoom and projection, release/cancel/lost capture/blur/menu cleanup, no world deployment',
         );
     } finally {
         if (CDP) {
             if (touchActive) {
-                await CDP.send('Input.dispatchTouchEvent', {
-                    type: 'touchCancel',
-                    touchPoints: [],
-                });
+                await CDP.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
             }
             await CDP.detach();
         } else {
             await p.mouse.up();
         }
         await p.evaluate(() => {
-            BUDMORI.runtime.queue = globalThis.scatterProbe.queue;
-            delete window.scatterProbe;
+            BUDMORI.runtime.queue = globalThis.panProbe.queue;
+            BUDMORI.renderer.resetPan();
+            delete window.panProbe;
         });
     }
 }

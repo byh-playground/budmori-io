@@ -61,9 +61,6 @@ export class BreedFarmMode extends FarmMode {
         }
     }
     pair(world, a, b, priorityResolved) {
-        if (world.localScatter.active && (world.scatterInside(a) || world.scatterInside(b))) {
-            return false;
-        }
         if (
             !a ||
             !b ||

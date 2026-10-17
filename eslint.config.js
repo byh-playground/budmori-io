@@ -82,6 +82,7 @@ const MODEL_FILES = [
     'src/features/scenes/model-base.js',
     'src/features/scenes/raid/definition.js',
     'src/features/scenes/raid/model.js',
+    'src/features/unit-body/definition.cjs',
     'src/features/unit-attacks/dual-strike/definition.js',
     'src/features/unit-attacks/dual-strike/model.js',
     'src/features/unit-attacks/lob/definition.js',
