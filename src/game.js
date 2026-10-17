@@ -4103,10 +4103,9 @@
           }
           if (unit.isBattleOnlySummon) {
             unit.down = 0;
-            this._trackUnitRemoved(unit, {
+            this.removeUnit(unit, {
               keepStepSnapshot: true
             });
-            this.units = this.units.filter((candidate) => candidate !== unit);
             return false;
           }
           const IN_BATTLE = this.scene === "raid" ? this.running : this.farmBossEvent?.phase === "fighting";
@@ -4464,10 +4463,43 @@
             return null;
           }
           const U = new UNIT(this.nextId++, species, CLAMP2(tier, 1, CONFIG.unit.maxTier), x, y);
-          this.units.push(U);
-          this._trackUnitAdded(U);
-          this.markProgressChanged();
+          this.addUnit(U);
           return U;
+        }
+        addUnit(unit) {
+          this.units.push(unit);
+          this._trackUnitAdded(unit);
+          if (!unit.isBattleOnlySummon) {
+            this.markProgressChanged();
+          }
+        }
+        removeUnit(unit, options = {}) {
+          if (!this.units.includes(unit)) {
+            return false;
+          }
+          this.releaseMate(unit);
+          this._trackUnitRemoved(unit, options);
+          this.units = this.units.filter((candidate) => candidate !== unit);
+          if (!unit.isBattleOnlySummon) {
+            this.markProgressChanged();
+          }
+          return true;
+        }
+        replaceUnitGroup(materials, result) {
+          const CONSUMED = new Set(materials);
+          if (CONSUMED.size < 2 || CONSUMED.size !== materials.length || !materials.every((unit) => this.units.includes(unit)) || !(result instanceof UNIT) || this.units.some((unit) => unit === result || unit.id === result.id)) {
+            return false;
+          }
+          const REMAINING = this.units.filter((unit) => !CONSUMED.has(unit));
+          REMAINING.push(result);
+          for (const MATERIAL of CONSUMED) {
+            this.releaseMate(MATERIAL);
+            this._trackUnitRemoved(MATERIAL);
+          }
+          this.units = REMAINING;
+          this._trackUnitAdded(result);
+          this.markProgressChanged();
+          return true;
         }
         notice(kind, detail = {}) {
           const EVENT = {
@@ -5121,21 +5153,18 @@
           })) {
             return false;
           }
-          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), CONSUMED = new Set(MATERIAL_IDS), X = ORDERED.reduce((sum, unit) => sum + unit.x, 0) / ORDERED.length, Y = ORDERED.reduce((sum, unit) => sum + unit.y, 0) / ORDERED.length;
-          for (const UNIT_LOCAL of ORDERED) {
-            this.releaseMate(UNIT_LOCAL);
-          }
-          for (const UNIT_LOCAL of ORDERED) {
-            this._trackUnitRemoved(UNIT_LOCAL);
-          }
-          this.units = this.units.filter((unit) => !CONSUMED.has(unit.id));
-          const RESULT = this.spawn(FIRST.species, FIRST.tier + 1, X, Y);
+          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), X = ORDERED.reduce((sum, unit) => sum + unit.x, 0) / ORDERED.length, Y = ORDERED.reduce((sum, unit) => sum + unit.y, 0) / ORDERED.length;
+          const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
           RESULT.meals = 1;
           RESULT.growth = CONFIG.farm.breeding.matureMeals;
           RESULT.growthDuration = this.breedGrowthDuration();
           RESULT.growthElapsed = RESULT.growthDuration;
           RESULT.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
           RESULT.cooldownDuration = RESULT.cooldown;
+          if (!this.replaceUnitGroup(ORDERED, RESULT)) {
+            return false;
+          }
+          this.nextId++;
           this.mergeTask = {
             phase: "animation",
             aId: 0,
@@ -7737,7 +7766,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.0";
+      PRODUCT_VERSION = "0.8.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

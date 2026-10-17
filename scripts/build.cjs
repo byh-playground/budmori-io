@@ -28,6 +28,20 @@ async function verifyStartupPresentation() {
     } finally {
         STARTER.dispose();
     }
+    const { encodeFarmSave: ENCODE_SAVE, parseSave: PARSE_SAVE } = await LOAD('src/farm-save-codec.js'),
+        { snapshot: SNAPSHOT } = await LOAD('src/farm-state.js'),
+        SAVE_WORLD = new GARDEN();
+    for (const TEXT of [
+        ENCODE_SAVE(SAVE_WORLD).text,
+        JSON.stringify({ schema: 'budmori-farm', productVersion: '0.7.29', world: SNAPSHOT(SAVE_WORLD) }),
+    ]) {
+        const RESUMED = new FARM_SESSION(PARSE_SAVE(TEXT));
+        try {
+            ASSERT.equal(RESUMED.presentation(performance.now()).units.length, 2);
+        } finally {
+            RESUMED.dispose();
+        }
+    }
     const WORLD = new GARDEN(),
         UNITS = SPECIES_CATALOG.map(({ id }) => WORLD.spawn(id, 3, 0, 0)),
         SESSION = new FARM_SESSION(WORLD);
@@ -73,6 +87,7 @@ async function verifyStartupPresentation() {
     }
     return {
         starterUnits: 2,
+        savedStartup: 'compact and legacy FarmSession presentation checked',
         species: SPECIES_CATALOG.length,
         walnutGuard: 'active, read-only, consumed and idle checked',
     };
