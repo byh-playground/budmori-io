@@ -410,14 +410,20 @@ class FarmSession {
         this.lastFrameClockMs = null;
         this.lastCaptureClockMs = 0;
         this.pulseTimestamp = null;
+        this.lastLoopPulseTimestamp = null;
+        this.currentPulsePriorAccumulatorMs = 0;
         // FarmSession owns local command order; the shared loop owns timing/backlog.
         // No room, transport, rollback history or input-submission pipeline is created.
         this.loop = globalThis.BloomGamekitSimloop.createLoop({
             session: this,
             getInput: () => LOCAL_INPUT,
             onError,
-            onBacklogDrop: () => {
+            onBacklogDrop: (details) => {
                 this.profiler?.count('backlogDrops');
+                this.profiler?.count(
+                    'backlogDroppedMs',
+                    Math.max(0, details?.elapsedMs || 0) + this.currentPulsePriorAccumulatorMs,
+                );
                 this.pendingPresentationMode = 'reset';
             },
             onAdvance: (result) => {
@@ -521,7 +527,12 @@ class FarmSession {
         W.step(1 / LOCAL_PROFILE.tickRate);
         this.tick++;
         this.presentationTick++;
-        this.onWorldStep(W);
+        const WORLD_STEP_FOLLOWUP_START = this.profiler?.start();
+        try {
+            this.onWorldStep(W);
+        } finally {
+            this.profiler?.end('worldStepFollowup', WORLD_STEP_FOLLOWUP_START);
+        }
         return ADVANCED;
     }
     applyPendingCommands(limit) {
@@ -632,6 +643,15 @@ class FarmSession {
         );
     }
     capturePresentation(mode = 'continuous') {
+        const START = this.profiler?.start();
+        this.profiler?.count('presentationCaptures');
+        try {
+            return this.capturePresentationSnapshot(mode);
+        } finally {
+            this.profiler?.end('presentationCapture', START);
+        }
+    }
+    capturePresentationSnapshot(mode) {
         if (mode !== 'continuous' && this.presentationSequence > 0) {
             this.presentationRevision++;
             // The combat consumer discards the prior epoch. Unconsumed food
@@ -654,6 +674,11 @@ class FarmSession {
         }
         ENTITIES.push(this.presentationEntity('boss', WORLD.boss, BossRender));
         for (const F of WORLD.food) {
+            // Settled food has no movement or animated fields. Keep it in the
+            // live view; snapshot only flight/bounce food that needs interpolation.
+            if (mode === 'continuous' && F.phase === 'grounded') {
+                continue;
+            }
             ENTITIES.push(this.presentationEntity(this.presentationIdentity('food', F), F, FoodRender));
         }
         for (const P of WORLD.projectiles) {
@@ -673,6 +698,7 @@ class FarmSession {
         }
         this.clockEntity.source.gameTimeMs = WORLD.time * 1000;
         ENTITIES.push(this.clockEntity);
+        this.profiler?.count('presentationEntities', ENTITIES.length);
         const CAPTURE_MODE =
             mode === 'continuous'
                 ? 'continuous'
@@ -686,22 +712,28 @@ class FarmSession {
         } else {
             this.previousCaptureTimeMs = null;
         }
-        const ACCEPTED = this.presentationRuntime.capture(
-            {
-                revision: this.presentationRevision,
-                sequence: ++this.presentationSequence,
-                timeMs: TIME_MS,
-                mode: CAPTURE_MODE,
-                entities: ENTITIES,
-            },
-            RECEIPT_NOW_MS,
-        );
-        if (ACCEPTED) {
+        const RUNTIME_START = this.profiler?.start();
+        let accepted;
+        try {
+            accepted = this.presentationRuntime.capture(
+                {
+                    revision: this.presentationRevision,
+                    sequence: ++this.presentationSequence,
+                    timeMs: TIME_MS,
+                    mode: CAPTURE_MODE,
+                    entities: ENTITIES,
+                },
+                RECEIPT_NOW_MS,
+            );
+        } finally {
+            this.profiler?.end('runtimeCapture', RUNTIME_START);
+        }
+        if (accepted) {
             this.latestCaptureTimeMs = TIME_MS;
             this.lastCaptureClockMs = RECEIPT_NOW_MS;
             this.pendingPresentationMode = null;
         }
-        return ACCEPTED;
+        return accepted;
     }
     captureClock() {
         const NOW = this.pulseTimestamp ?? globalThis.performance.now(),
@@ -728,6 +760,7 @@ class FarmSession {
                 }),
                 {
                     food: [],
+                    presentationFoodIds: new Set(),
                     projectiles: [],
                     effects: [],
                     formationEffects: [],
@@ -743,6 +776,7 @@ class FarmSession {
                     VIEW.units.push(model);
                 } else if (id.startsWith('food:')) {
                     VIEW.food.push(model);
+                    VIEW.presentationFoodIds.add(id);
                 } else if (id.startsWith('projectile:')) {
                     VIEW.projectiles.push(model);
                 } else if (id.startsWith('effect:')) {
@@ -753,11 +787,20 @@ class FarmSession {
         const VIEW = this.presentationView;
         VIEW.units.length = 0;
         VIEW.food.length = 0;
+        VIEW.presentationFoodIds.clear();
         VIEW.projectiles.length = 0;
         VIEW.effects.length = 0;
         VIEW.formationEffects.length = 0;
         VIEW.formationSlots = WORLD.formationRuntime.slots;
         FRAME.forEach(this.collectPresentationModel);
+        for (const FOOD of WORLD.food) {
+            if (FOOD.phase === 'grounded') {
+                const ID = this.presentationIdentity('food', FOOD);
+                if (!VIEW.presentationFoodIds.has(ID)) {
+                    VIEW.food.push(FOOD);
+                }
+            }
+        }
         VIEW.time = (FRAME.sample('clock', 0)?.gameTimeMs ?? WORLD.time * 1000) / 1000;
         VIEW.boss = FRAME.sample('boss', 0) || this.presentationEntity('boss', WORLD.boss, BossRender).source;
         VIEW.displayTimeMs = FRAME.timeMs;
@@ -779,6 +822,36 @@ class FarmSession {
         return VIEW;
     }
     pulse(now) {
+        // Mirror the pinned GameKit loop's 250ms input and 4 × 50ms accumulator
+        // limits for diagnostics only; the loop itself remains the timekeeper.
+        const PREVIOUS_PULSE = this.lastLoopPulseTimestamp,
+            PREVIOUS_SIMULATION_TIME = this.loop.simulationTimeMs;
+        this.currentPulsePriorAccumulatorMs =
+            Number.isFinite(PREVIOUS_PULSE) && Number.isFinite(PREVIOUS_SIMULATION_TIME)
+                ? Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME)
+                : 0;
+        if (
+            Number.isFinite(PREVIOUS_PULSE) &&
+            Number.isFinite(PREVIOUS_SIMULATION_TIME) &&
+            now >= PREVIOUS_PULSE &&
+            now - PREVIOUS_PULSE <= 400
+        ) {
+            const ELAPSED = now - PREVIOUS_PULSE,
+                PRIOR_ACCUMULATOR = Math.max(0, PREVIOUS_PULSE - PREVIOUS_SIMULATION_TIME),
+                ELAPSED_AFTER_INPUT_CAP = Math.min(250, ELAPSED),
+                ACCUMULATOR_AFTER_CAP = Math.min(
+                    PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP,
+                    PRESENTATION_STEP_MS * LOCAL_PROFILE.maxCatchupSteps,
+                ),
+                CLIPPED_MS =
+                    Math.max(0, ELAPSED - ELAPSED_AFTER_INPUT_CAP) +
+                    Math.max(0, PRIOR_ACCUMULATOR + ELAPSED_AFTER_INPUT_CAP - ACCUMULATOR_AFTER_CAP);
+            if (CLIPPED_MS > 0) {
+                this.profiler?.count('backlogCappedFrames');
+                this.profiler?.count('backlogClippedMs', CLIPPED_MS);
+            }
+        }
+        this.lastLoopPulseTimestamp = now;
         this.pulseTimestamp = now;
         const PREVIOUS_TICK = this.tick;
         this.loop.pulse(now, {
