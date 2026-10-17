@@ -21,7 +21,7 @@ class UnitRender extends RenderObject {
  update(u,world){
   this.id=u.id;this.x=u.x;this.y=u.y;this.z=u.z;this.angle=u.angle;this.vx=u.vx;this.vy=u.vy;this.hp=u.hp;this.down=u.down;this.stun=u.stun;this.flash=u.flash;this.bounce=u.bounce;
   this.ability.phase=u.ability.phase;this.ability.elapsed=u.ability.elapsed;this.ability.peanutStrikeCount=u.ability.action?.peanutStrikeCount||2;
-  this.walnutGuarding=!!world.walnutGuardConfigFor(u);this.cooldown=u.cooldown;this.cooldownDuration=u.cooldownDuration;this.meals=u.meals;this.species=u.species;this.tier=u.tier;this.seed=u.seed;this.size=u.size;this.radius=u.radius;
+  this.walnutGuarding=!!u.ability.guardConfig?.(world);this.cooldown=u.cooldown;this.cooldownDuration=u.cooldownDuration;this.meals=u.meals;this.species=u.species;this.tier=u.tier;this.seed=u.seed;this.size=u.size;this.radius=u.radius;
   this.maxHp=baseUnitStatsFor(u.tier,u.species).maxHp;this.fed=u.fed;this.ownerId=u.ownerId;this.faction=u.faction;this.farmId=u.farmId;this.dropLanded=u.dropLanded;this.buffed=world.time<(world.raidRoster(u.ownerId)?.buffUntil||0);this.isBattleOnlySummon=u.isBattleOnlySummon;
  }
 }

@@ -5057,7 +5057,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.26";
+      PRODUCT_VERSION = "0.7.27";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -6224,7 +6224,7 @@
       this.ability.phase = u.ability.phase;
       this.ability.elapsed = u.ability.elapsed;
       this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
-      this.walnutGuarding = !!world.walnutGuardConfigFor(u);
+      this.walnutGuarding = !!u.ability.guardConfig?.(world);
       this.cooldown = u.cooldown;
       this.cooldownDuration = u.cooldownDuration;
       this.meals = u.meals;
@@ -8000,18 +8000,15 @@
     if (node.dataset[key] !== text) node.dataset[key] = text;
   }
   function deploymentHud() {
-    const w = active.world, raid = w.scene === "raid", roster2 = w.raidRoster(active.localPlayerId), remaining = roster2 ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster2 ? Math.max(0, active.localDeploySequence - roster2.lastDeploySequence) : 0;
+    const w = active.world, roster2 = w.raidRoster(active.localPlayerId), remaining = roster2 ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster2 ? Math.max(0, active.localDeploySequence - roster2.lastDeploySequence) : 0;
     syncText("raidRemaining", !roster2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`);
-    const own = w.raidRoster(active.localPlayerId), cooldown = own ? Math.max(0, own.buffReadyAt - w.time) : 0;
-    syncFlag("buff", "disabled", !raid || !w.running || !own || cooldown > 0);
-    syncText("buff", cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화");
     let deployed = 0;
-    if (own) {
-      for (const troop of own.troops) if (troop.deployed) deployed++;
+    if (roster2) {
+      for (const troop of roster2.troops) if (troop.deployed) deployed++;
     }
     const stage = w.boss.stage || 0;
     if (stage) {
-      const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: own?.troops.length || 0, originalUnitsDeployed: deployed }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
+      const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: roster2?.troops.length || 0, originalUnitsDeployed: deployed }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
       syncText("raidRewardChance", stageReward.rolls ? `${speciesRewardName(w.boss.species)} · ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "종 추첨 없음");
     } else syncText("raidRewardChance", "");
   }
@@ -8058,7 +8055,6 @@
   canvas.addEventListener("lostpointercapture", (e) => stopDrop(e));
   window.addEventListener("pointerup", (e) => stopDrop(e), true);
   window.addEventListener("pointercancel", (e) => stopDrop(e), true);
-  $2("buff").onclick = () => active.queue("buff");
   window.addEventListener("blur", () => {
     stopDrop();
     persist();
