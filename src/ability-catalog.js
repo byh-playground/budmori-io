@@ -61,5 +61,36 @@ export const SPECIES_ABILITY_DEFINITIONS = Object.freeze([
     rootTier: 3,
     powerValues: Object.freeze([1, 1.5, 2]),
     gradeThresholds: Object.freeze([3, 2, 1])
+  }),
+  Object.freeze({
+    id: "rice-low-health-harvest",
+    species: 6,
+    name: "수확 낫",
+    description: "낫 기본 공격이 체력이 절반 이하인 적에게 더 큰 피해를 줍니다.",
+    rootTier: 3,
+    powerValues: Object.freeze([1.5, 1.75, 2]),
+    targetHpThreshold: 0.5,
+    gradeThresholds: Object.freeze([3, 2, 1])
+  }),
+  Object.freeze({
+    id: "wheat-command-crit",
+    species: 7,
+    name: "로마 군단장의 지휘",
+    description: "기본 공격 적중 시 자신과 가까운 생존 아군의 치명타 확률을 5초 동안 높입니다.",
+    rootTier: 3,
+    powerValues: Object.freeze([0.1, 0.25, 0.5]),
+    durationSeconds: 5,
+    radiusRangeRatio: 2,
+    gradeThresholds: Object.freeze([3, 2, 1])
+  }),
+  Object.freeze({
+    id: "barley-armor-break",
+    species: 8,
+    name: "도리깨 갑주 파쇄",
+    description: "도리깨 기본 공격 적중 시 적의 방어도를 낮춰 5초 동안 피해를 더 받게 합니다.",
+    rootTier: 3,
+    powerValues: Object.freeze([0.25, 0.5, 0.75]),
+    durationSeconds: 5,
+    gradeThresholds: Object.freeze([3, 2, 1])
   })
 ]);

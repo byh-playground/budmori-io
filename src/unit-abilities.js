@@ -1,5 +1,5 @@
 // Species-specific attack behavior stays separate from common unit stats.
-// Values preserve the existing combat profiles at the neutral stat baseline.
+// This ID-keyed object is the single profile lookup for all catalogued species.
 export const UNIT_ABILITY_PROFILES = Object.freeze({
   0: Object.freeze({ kind: "ram", windup: .28, recovery: .65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
   1: Object.freeze({ kind: "lob", windup: .38, recovery: 1.25, range: 4.1, skillMultiplier: 1.6, projectileCount: 1, bounces: 0 }),
@@ -10,7 +10,10 @@ export const UNIT_ABILITY_PROFILES = Object.freeze({
   4: Object.freeze({ kind: "peanut-dual-strike", windup: .25, active: .5, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
   // Walnut's base hammer is a single hit; its guard skill is being held for
   // the follow-up ability-tree implementation.
-  5: Object.freeze({ kind: "walnut-hammer", windup: .5, active: .25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
+  5: Object.freeze({ kind: "walnut-hammer", windup: .5, active: .25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+  6: Object.freeze({ kind: "ram", windup: .28, recovery: .65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+  7: Object.freeze({ kind: "punch", windup: .28, recovery: .65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+  8: Object.freeze({ kind: "ram", windup: .28, recovery: .65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
 });
 
 export function abilityProfile(species) {

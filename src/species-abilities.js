@@ -190,3 +190,58 @@ export function abilitiesForSpecies(species) {
   return SPECIES_ABILITY_DEFINITIONS.filter(definition => definition.species === species);
 }
 
+
+export function getRiceHarvestMultiplier(progression, tier, targetHp, targetMaxHp) {
+  const definition = definitionFor("rice-low-health-harvest");
+  if (!isAbilityActive(progression, definition.id, tier) || !Number.isFinite(targetHp) ||
+      !Number.isFinite(targetMaxHp) || targetMaxHp <= 0 || targetHp / targetMaxHp > definition.targetHpThreshold) return 1;
+  const level = powerLevelFor(progression, definition.id);
+  return definition.powerValues[level] || definition.powerValues[0];
+}
+
+export function getWheatCommandConfig(progression, tier) {
+  const definition = definitionFor("wheat-command-crit");
+  if (!isAbilityActive(progression, definition.id, tier)) return null;
+  const level = powerLevelFor(progression, definition.id);
+  return {
+    critBonus: definition.powerValues[level] || definition.powerValues[0],
+    durationSeconds: definition.durationSeconds,
+    radius: abilityProfile(definition.species).range * definition.radiusRangeRatio,
+    radiusRangeRatio: definition.radiusRangeRatio
+  };
+}
+
+export function refreshWheatCommandBuff(source, config, now, durationSeconds = config?.durationSeconds) {
+  if (!source || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) return false;
+  const currentUntil = Number.isFinite(source.wheatCommandUntil) ? source.wheatCommandUntil : 0;
+  const currentBonus = Number.isFinite(source.wheatCommandCritBonus) ? source.wheatCommandCritBonus : 0;
+  source.wheatCommandUntil = now + durationSeconds;
+  source.wheatCommandCritBonus = Math.max(currentUntil > now ? currentBonus : 0, config.critBonus);
+  return true;
+}
+
+export function getBarleyArmorBreakConfig(progression, tier) {
+  const definition = definitionFor("barley-armor-break");
+  if (!isAbilityActive(progression, definition.id, tier)) return null;
+  const level = powerLevelFor(progression, definition.id);
+  return {
+    armorReduction: definition.powerValues[level] || definition.powerValues[0],
+    durationSeconds: definition.durationSeconds
+  };
+}
+
+export function refreshBarleyArmorBreak(target, config, now, durationSeconds = config?.durationSeconds) {
+  if (!target || !config || !Number.isFinite(now) || !Number.isFinite(durationSeconds) || durationSeconds < 0) return false;
+  const currentUntil = Number.isFinite(target.barleyArmorBreakUntil) ? target.barleyArmorBreakUntil : 0;
+  const currentReduction = Number.isFinite(target.barleyArmorBreakReduction) ? target.barleyArmorBreakReduction : 0;
+  const activeReduction = currentUntil > now ? currentReduction : 0;
+  target.barleyArmorBreakUntil = now + durationSeconds;
+  target.barleyArmorBreakReduction = Math.max(activeReduction, config.armorReduction);
+  return true;
+}
+
+export function effectiveBarleyArmor(target, baselineArmor, now) {
+  const reduction = target && Number.isFinite(target.barleyArmorBreakUntil) && target.barleyArmorBreakUntil > now &&
+    Number.isFinite(target.barleyArmorBreakReduction) ? Math.max(0, Math.min(1, target.barleyArmorBreakReduction)) : 0;
+  return Math.max(0, Number.isFinite(baselineArmor) ? baselineArmor : 0) * (1 - reduction);
+}
