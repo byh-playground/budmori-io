@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SUITES = {
     core: ['core'],
+    upgrades: ['upgrades'],
+    formation: ['formation'],
     save: ['save'],
     migration: ['migration'],
     event: ['event'],

@@ -16,7 +16,7 @@ export const WALNUT_GUARD_SLAM_FEATURE = Object.freeze({
         species: 5,
         name: '웅크리기 반격',
         description:
-            '일반 공격 회복 후반에 웅크려 첫 피격을 줄이고, 다음 망치 공격을 충격파로 강화합니다. 수치는 초기 밸런스 초안입니다.',
+            '공격 회복 후반에 웅크려 첫 피격의 자기 피해와 넉백을 줄입니다. 방어 성공 후 다음 내려찍기를 한 번 강화합니다.',
         rootTier: 3,
         powerValues: Object.freeze([1.5, 1.75, 2]),
         receivedDamageMultiplier: 0.75,

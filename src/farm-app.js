@@ -911,15 +911,15 @@ DOLLAR('pause').onclick = () => {
 };
 function drawTree() {
     const W = personalGarden || active.world,
-        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = active.world.scene === 'raid' || W.running || W.farmBossEvent?.phase !== 'idle';
     DOLLAR('treeNodes').innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
-        location: W.scene,
+        location: active.world.scene,
         inCombat: IN_COMBAT,
     });
 }
 function drawAbilityTree() {
     const W = personalGarden || active.world,
-        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = active.world.scene === 'raid' || W.running || W.farmBossEvent?.phase !== 'idle';
     const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
     DOLLAR('abilityPoints').textContent = String(W.playerProgression.availablePoints);
     for (const BUTTON of DOLLAR('abilitySpeciesTabs').querySelectorAll('[data-ability-species]')) {
@@ -927,7 +927,7 @@ function drawAbilityTree() {
     }
     DOLLAR('abilityNodes').innerHTML = renderAbilityTreeMarkup(W.playerProgression, {
         highestSpeciesTier: W.highestSpeciesTiers(),
-        location: W.scene,
+        location: active.world.scene,
         inCombat: IN_COMBAT,
         selectedSpecies: SELECTED_SPECIES,
     });
@@ -937,11 +937,22 @@ const MENU_ROUTES = {
     growth: '#/growth',
     abilities: '#/abilities',
     help: '#/help',
+    formation: '#/formation',
 };
-const ROUTE_MENU_TAB = (route) =>
-    route === '#/growth' ? 'growth' : route === '#/abilities' ? 'abilities' : route === '#/help' ? 'help' : 'play';
+const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route) || 'play';
 function applyMenuTab(tab) {
     menuTab = tab;
+    const UPGRADES = ['growth', 'abilities', 'formation'].includes(tab);
+    DOLLAR('gameMenuTabs').hidden = !UPGRADES;
+    DOLLAR('gameMenuTitle').textContent = UPGRADES ? '업그레이드' : tab === 'help' ? '도움말' : '설정';
+    DOLLAR('gameMenuClose').setAttribute('aria-label', `${DOLLAR('gameMenuTitle').textContent} 닫기`);
+    for (const [ID, SELECTED] of [
+        ['gameMenu', tab === 'play'],
+        ['upgradeMenu', UPGRADES],
+        ['helpMenu', tab === 'help'],
+    ]) {
+        DOLLAR(ID).setAttribute('aria-expanded', String(menuOpen && SELECTED));
+    }
     for (const BUTTON of DOLLAR('gameMenuTabs').querySelectorAll('[data-menu-tab]')) {
         const SELECTED = BUTTON.dataset.menuTab === tab;
         BUTTON.setAttribute('aria-selected', String(SELECTED));
@@ -952,6 +963,7 @@ function applyMenuTab(tab) {
         ['growth', 'treePanel'],
         ['abilities', 'abilityPanel'],
         ['help', 'helpPanel'],
+        ['formation', 'formationPanel'],
     ]) {
         DOLLAR(ID).hidden = NAME !== tab;
     }
@@ -993,10 +1005,10 @@ function openMenu(tab = 'play', push = true) {
     if (push) {
         history.pushState(null, '', MENU_ROUTES[tab] || MENU_ROUTES.play);
     }
-    DOLLAR('gameMenuTabs').querySelector(`[data-menu-tab="${tab}"]`)?.focus();
+    (DOLLAR('gameMenuTabs').querySelector(`[data-menu-tab="${tab}"]`) || DOLLAR('gameMenuClose')).focus();
 }
 function switchMenuTab(tab, push = true) {
-    if (!['play', 'growth', 'abilities', 'help'].includes(tab)) {
+    if (!Object.hasOwn(MENU_ROUTES, tab)) {
         return;
     }
     if (!menuOpen) {
@@ -1018,7 +1030,9 @@ function closeMenu(push = true) {
     }
     menuOpen = false;
     DOLLAR('gameMenuOverlay').hidden = true;
-    DOLLAR('gameMenu').setAttribute('aria-expanded', 'false');
+    for (const ID of ['gameMenu', 'upgradeMenu', 'helpMenu']) {
+        DOLLAR(ID).setAttribute('aria-expanded', 'false');
+    }
     if (menuAutoPaused && !menuPauseChanged) {
         active.paused = menuWasPaused;
     }
@@ -1027,9 +1041,18 @@ function closeMenu(push = true) {
     if (push) {
         history.pushState(null, '', active.world.scene === 'raid' ? '#/raid' : '#/farm');
     }
-    DOLLAR('gameMenu').focus();
+    DOLLAR(
+        ['growth', 'abilities', 'formation'].includes(menuTab)
+            ? 'upgradeMenu'
+            : menuTab === 'help'
+              ? 'helpMenu'
+              : 'gameMenu',
+    ).focus();
 }
-DOLLAR('gameMenu').onclick = () => (menuOpen ? closeMenu() : openMenu());
+DOLLAR('gameMenu').onclick = () => (menuOpen && menuTab === 'play' ? closeMenu() : openMenu());
+DOLLAR('upgradeMenu').onclick = () =>
+    openMenu(active.world.scene === 'raid' || personalGarden?.farmBossEvent?.phase !== 'idle' ? 'formation' : 'growth');
+DOLLAR('helpMenu').onclick = () => openMenu('help');
 DOLLAR('gameMenuClose').onclick = () => closeMenu();
 DOLLAR('menuHome').onclick = () => {
     closeMenu(false);
@@ -1228,7 +1251,7 @@ function deploymentHud() {
     }
 }
 function canUseWorldInput() {
-    return !home && !menuOpen && !bossEncounterOpen && !FORMATION_UI.dialog.open && !active.paused;
+    return !home && !menuOpen && !bossEncounterOpen && !active.paused;
 }
 function deployTroop() {
     if (!canUseWorldInput() || active.world.scene !== 'raid') {
@@ -1418,15 +1441,13 @@ function route() {
         }
         return;
     }
-    if (R === '#/help' || R === '#/growth' || R === '#/abilities' || R === '#/menu') {
+    if (R === '#/help' || R === '#/growth' || R === '#/abilities' || R === '#/formation' || R === '#/menu') {
         const RAID = active.world.scene === 'raid',
             FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== 'idle';
         const RESTRICTED =
             (R === '#/growth' && (RAID || FARM_EVENT_ACTIVE)) || (R === '#/abilities' && (RAID || !personalGarden));
         if (RESTRICTED) {
-            if (menuOpen) {
-                closeMenu(false);
-            }
+            closeMenu(false);
             history.replaceState(null, '', RAID ? '#/raid' : '#/farm');
             return;
         }
@@ -1569,6 +1590,8 @@ function sync(display, now, notices) {
     syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
     syncFlag('raid', 'disabled', RAID || FARM_EVENT_ACTIVE || !personalGarden);
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
+    syncAttribute('pause', 'aria-label', active.paused ? '게임 계속' : '게임 일시 정지');
+    syncAttribute('pause', 'title', active.paused ? '게임 계속' : '일시 정지');
     syncAttribute('feed', 'aria-label', `먹이 탭, 5회 중 ${W.foodTaps.remainder}회`);
     syncData('feed', 'state', W.food.length >= 140 ? 'full' : 'ready');
     syncData('feed', 'produced', now < FOOD_FEEL.completeUntil);

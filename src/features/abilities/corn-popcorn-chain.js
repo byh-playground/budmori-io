@@ -15,7 +15,7 @@ export const CORN_POPCORN_CHAIN_FEATURE = Object.freeze({
         id: 'corn-popcorn-chain',
         species: 1,
         name: '팝콘 연쇄 폭발',
-        description: '착탄한 알갱이가 1초 뒤 폭발하고, 주변 팝콘과 닿으면 즉시 연쇄 폭발합니다.',
+        description: '착탄한 알갱이가 잠시 뒤 폭발하고, 주변 팝콘과 닿으면 즉시 연쇄 폭발합니다.',
         rootTier: 3,
         powerValues: Object.freeze([0.5, 1, 1.5]),
         radiusMultipliers: Object.freeze([1, 1.5, 2]),
