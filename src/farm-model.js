@@ -442,7 +442,7 @@ const AttackingBody=Base=>class extends Base{
     triggerLandingShockwave(unit,action,config){
       const range=abilityProfile(unit.species).range*config.radiusMultiplier,point={x:unit.x,y:unit.y,z:0},distance=Math.hypot(unit.x-this.boss.x,unit.y-this.boss.y);
       this.effects.push({kind:'landing-shockwave',x:unit.x,y:unit.y,z:0,life:0,duration:.55,radius:range,owner:unit.id});
-      if(this.boss.hp>0&&distance<=range+this.boss.radius){const blast={id:action.id,hit:false,attackKind:'kidney-shockwave'};this.damageBoss(unit,blast,point,{attackMultiplier:config.damageMultiplier,attackKind:'kidney-shockwave',area:true});}
+      if(this.boss.hp>0&&distance<=range+this.boss.radius){const blast={id:action.id,hit:false,attackKind:'kidney-shockwave'};this.damageCombatTarget(unit,blast,this.boss,point,{attackMultiplier:config.damageMultiplier,attackKind:'kidney-shockwave',area:true});}
       this.combat('kidney-shockwave',{unit:unit.id,ownerId:unit.ownerId,species:2,x:unit.x,y:unit.y,radius:range,damageMultiplier:config.damageMultiplier});
     }
     walnutGuardConfigFor(unit){
@@ -460,8 +460,9 @@ const AttackingBody=Base=>class extends Base{
       const targets=[primaryTarget];
       if(primaryTarget!==this.boss&&this.boss.hp>0&&areOpposingFactions(unit,this.boss)&&Math.hypot(this.boss.x-point.x,this.boss.y-point.y)<=config.radius+this.boss.radius)targets.push(this.boss);
       for(const target of this.units)if(target!==primaryTarget&&target.hp>0&&areOpposingFactions(unit,target)&&Math.hypot(target.x-point.x,target.y-point.y)<=config.radius+target.radius)targets.push(target);
-      const criticalRoll=stats(unit.tier,unit.species).critChance+this.wheatCommandCritBonusFor(unit)>0?this.random():1;
-      for(const target of targets)this.damageCombatTarget(unit,{id:action.id,hit:false},target,point,{attackMultiplier:config.damageMultiplier,attackKind:'walnut-empowered-slam',area:true,criticalRoll});
+      const attackContext=this.createAttackContext(unit,{attackMultiplier:config.damageMultiplier,attackKind:'walnut-empowered-slam',area:true});
+      attackContext.criticalRoll=attackContext.sourceStatOverrides.critChance>0?this.random():1;
+      for(const target of targets)this.damageCombatTarget(unit,{id:action.id,hit:false},target,point,{attackContext});
       this.effects.push({kind:'walnut-shockwave',x:point.x,y:point.y,z:0,life:0,duration:.5,radius:config.radius,owner:unit.id});
       this.combat('walnut-slam',{unit:unit.id,attackId:action.id,x:point.x,y:point.y,z:0,radius:config.radius});return true;
     }
@@ -1001,44 +1002,54 @@ const AttackingBody=Base=>class extends Base{
         if(config)refreshBarleyArmorBreak(target,config,this.time,resolveStatusDuration(config.durationSeconds,u,target));
       }
     }
-    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null,area=false,criticalRoll=null}={}){
-      if(!hasFaction(u,FACTION_CONFIG.PLAYER)||!areOpposingFactions(u,this.boss)||action.hit||this.boss.hp<=0)return false;action.hit=true;
-      const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
-      const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
-      const hpRatio=Number.isFinite(hpBefore)&&Number.isFinite(maxHp)&&maxHp>0?clamp(hpBefore/maxHp,0,1):1;
-      const baselineArmor=(1-hpRatio)*100,armor=effectiveBarleyArmor(this.boss,baselineArmor,this.time);
-      const attackerStats=stats(u.tier,u.species);
-      const damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind=attackKind||spec.kind;
-      const harvestMultiplier=this.riceHarvestMultiplier(u,this.boss,kind,hpBefore,maxHp);
-      const rawDamage=attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier;
-      const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,area,sourceStatOverrides,armorForTarget:()=>armor,roll:()=>criticalRoll??this.random()});
-      this.applyGrainOnBasicHit(u,this.boss,kind);
-      this.boss.flash=.13;
-      const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
-      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackId:action.id,strikeIndex,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(damage.critical?attackerStats.critMultiplier:1)});
-      this.combatEvent('damage',u,action);return true;
-    }
     attackTarget(unit,action){
       if(action?.targetId==='boss'||!action?.targetId)return areOpposingFactions(unit,this.boss)?this.boss:null;
       const target=this._unitForId(action.targetId);
       return target?.hp>0&&areOpposingFactions(unit,target)?target:null;
     }
-    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null,area=false,criticalRoll=null}={}){
-      if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit)return false;action.hit=true;
-      const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil,attackerStats=stats(u.tier,u.species),damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind=attackKind||spec.kind;
-      const targetMaxHp=stats(target.tier,target.species).maxHp,harvestMultiplier=this.riceHarvestMultiplier(u,target,kind,target.hp,targetMaxHp);
-      const baselineArmor=stats(target.tier,target.species).armor,armor=effectiveBarleyArmor(target,baselineArmor,this.time),guard=this.receiveWalnutGuard(target);
-      const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(guard?.receivedDamageMultiplier??1),area,sourceKind:hasFaction(u,FACTION_CONFIG.PLAYER)?'direct':'enemy',sourceStatOverrides,armorForTarget:()=>armor,roll:()=>criticalRoll??this.random()});this._syncUnitAliveCount(target);
-      this.applyGrainOnBasicHit(u,target,kind);
+    createAttackContext(u,{attackMultiplier=null,attackKind=null,strikeIndex=null,area=false,criticalRoll=null}={}){
+      const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),attackerStats=stats(u.tier,u.species);
+      return {source:u,sourceKind:hasFaction(u,FACTION_CONFIG.PLAYER)?'direct':'enemy',attackerStats,
+        damageMultiplier:Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind:attackKind||spec.kind,
+        buffed:!!roster&&this.time<roster.buffUntil,strikeIndex,area,criticalRoll,hitTargets:area?new Set():null,
+        sourceStatOverrides:{critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)}};
+    }
+    combatTargetDefense(target){
+      if(target!==this.boss){const targetStats=stats(target.tier,target.species);return {maxHp:targetStats.maxHp,armor:effectiveBarleyArmor(target,targetStats.armor,this.time)}}
+      const hpRatio=Number.isFinite(target.hp)&&Number.isFinite(target.maxHp)&&target.maxHp>0?clamp(target.hp/target.maxHp,0,1):1;
+      return {maxHp:target.maxHp,armor:effectiveBarleyArmor(target,(1-hpRatio)*100,this.time)};
+    }
+    damageCombatTarget(u,action,target,point,options={}){
+      const isBoss=target===this.boss;
+      if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit||isBoss&&!hasFaction(u,FACTION_CONFIG.PLAYER)||options.attackContext?.hitTargets?.has(target))return false;
+      action.hit=true;
+      const context=options.attackContext||this.createAttackContext(u,options),{source,attackerStats,damageMultiplier,kind,buffed}=context;
+      context.hitTargets?.add(target);
+      const defense=this.combatTargetDefense(target),harvestMultiplier=this.riceHarvestMultiplier(source,target,kind,target.hp,defense.maxHp);
+      const guard=isBoss?null:this.receiveWalnutGuard(target);
+      const rawDamage=attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(guard?.receivedDamageMultiplier??1);
+      // The context belongs to one attack, so a mixed boss/unit area hit shares
+      // one lazy roll while each target retains its own armor and actual HP loss.
+      const damage=applyDamageToTargets(source,[target],{rawDamage,area:context.area,sourceKind:context.sourceKind,sourceStatOverrides:context.sourceStatOverrides,armorForTarget:()=>defense.armor,roll:()=>context.criticalRoll??(context.criticalRoll=this.random())});
+      if(!isBoss)this._syncUnitAliveCount(target);
+      this.applyGrainOnBasicHit(source,target,kind);
+      const strength=damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(damage.critical?attackerStats.critMultiplier:1);
+      if(isBoss)this.finishBossHit(source,action,point,context,damage,strength);
+      else this.finishUnitHit(source,action,target,point,context,damage,strength,guard);
+      return true;
+    }
+    finishBossHit(u,action,point,{kind,strikeIndex,buffed},damage,strength){
+      this.boss.flash=.13;
+      const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
+      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackId:action.id,strikeIndex,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength});
+      this.combatEvent('damage',u,action);
+    }
+    finishUnitHit(u,action,target,point,{kind,strikeIndex},damage,strength,guard){
       const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5*(guard?.receivedKnockbackMultiplier??1),2.4*(guard?.receivedKnockbackMultiplier??1),u);
       if(target.hp===0){target.down=target.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(target)}
       this.metrics.directHits++;this.metrics.basicHits++;
-      this.combat('unit-hit',{attackKind:kind,attackId:action.id,strikeIndex,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(damage?.critical?attackerStats.critMultiplier:1)});
-      return true;
+      this.combat('unit-hit',{attackKind:kind,attackId:action.id,strikeIndex,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength});
     }
-    damageCombatTarget(u,action,target,point,options={}){return target===this.boss?this.damageBoss(u,action,point,options):this.damageUnitTarget(u,action,target,point,options)}
 
     explodePopcorn(kernel){
       if(!kernel?.isPopcorn||kernel.exploded)return false;
@@ -1054,9 +1065,10 @@ const AttackingBody=Base=>class extends Base{
         const targets=[];
         if(areOpposingFactions(owner,this.boss)&&!current.damagedTargetIds.includes('boss')&&Math.hypot(current.x-this.boss.x,current.y-this.boss.y)<=range+this.boss.radius)targets.push(this.boss);
         for(const target of this.units)if(target.hp>0&&areOpposingFactions(owner,target)&&!current.damagedTargetIds.includes(target.id)&&Math.hypot(current.x-target.x,current.y-target.y)<=range+target.radius)targets.push(target);
+        const attackContext=this.createAttackContext(owner,{attackMultiplier:config.damageMultiplier,attackKind:'corn-popcorn-explosion',area:true});
         for(const target of targets){
           const action={id:current.id,hit:false,attackKind:'corn-popcorn-explosion'};
-          const applied=target===this.boss?this.damageBoss(owner,action,center,{attackMultiplier:config.damageMultiplier,attackKind:action.attackKind,area:true}):this.damageUnitTarget(owner,action,target,center,{attackMultiplier:config.damageMultiplier,attackKind:action.attackKind,area:true});
+          const applied=this.damageCombatTarget(owner,action,target,center,{attackContext});
           if(applied)current.damagedTargetIds.push(target===this.boss?'boss':target.id);
         }
         for(const other of this.projectiles){if(other===current||!other.isPopcorn||other.exploded||!other.landed||queued.has(other.id))continue;if(Math.hypot(other.x-current.x,other.y-current.y)<=range+other.radius)queue.push(other)}
@@ -1079,7 +1091,7 @@ const AttackingBody=Base=>class extends Base{
           if(hit)Object.assign(p,{x:hit.x,y:hit.y,z:0});else p.z=0;
           p.landed=true;p.fuseRemaining=p.popcornConfig.fuseSeconds;
           this.effects.push({kind:'popcorn-kernel-impact',x:p.x,y:p.y,z:0,life:0,duration:.25,radius:p.radius,owner:p.owner});
-        }else if(hit){Object.assign(p,{x:hit.x,y:hit.y,z:hit.z});const source=this._unitForId(p.owner),impactUnit=source||{id:p.owner,ownerId:p.ownerId||'',faction:p.faction,species:p.species,tier:p.tier,x:p.x,y:p.y,z:p.z};if(target===this.boss)this.damageBoss(impactUnit,p,hit,{lifestealSource:source||impactUnit,attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'});else this.damageUnitTarget(impactUnit,p,target,hit,{attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'})}
+        }else if(hit){Object.assign(p,{x:hit.x,y:hit.y,z:hit.z});const source=this._unitForId(p.owner),impactUnit=source||{id:p.owner,ownerId:p.ownerId||'',faction:p.faction,species:p.species,tier:p.tier,x:p.x,y:p.y,z:p.z};this.damageCombatTarget(impactUnit,p,target,hit,{attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'})}
         else if(p.elapsed>=p.path.duration){p.z=0;this.emit(p.projectileKind==='chestnut-spike'?'spike-land':'shell-land',p.x,p.y)}
       }
       for(const p of this.projectiles){
