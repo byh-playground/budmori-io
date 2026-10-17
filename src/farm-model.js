@@ -1,7 +1,9 @@
 const {SeededPRNG}=globalThis.BloomGamekitDeterministic;
 import {resolveUnitStats,applyDamageToTargets,applyHealing,resolveStatusDuration,resolveKnockback,scaleMoveSpeed,scaleAttackRecovery,scaleAttackArea} from './unit-stats.js';
 import {UNIT_ABILITY_PROFILES as ATTACK_TYPES,abilityProfile} from './unit-abilities.js';
-import {bossAcquisitionChance, settleBossKill, grantPendingBossAcquisitions} from './boss-rewards.js';
+import {bossAcquisitionChance, bossStageStats, settleBossKill, grantPendingBossAcquisitions} from './boss-rewards.js';
+import {createFarmBossProgress} from './farm-boss-stages.js';
+import {SPECIES_COUNT} from './species-catalog.js';
 import {createPlayerProgressionState} from './player-progression.js';
 import {purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression} from './ability-tree.js';
 import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './ability-state.js';
@@ -18,7 +20,7 @@ export function bindPresentationClock(world,clock){if(clock)presentationClocks.s
   // sim.js
   const BREED_COOLDOWN_SECONDS=10;
   const unitRadiusForTier=tier=>.25+.055*tier;
-  var CONFIG = Object.freeze({ factions:FACTION_CONFIG, cap: 50, maxFarmCap:100, maxFarmBattleUnits:100*(1+MAX_BEAN_SPLIT_CHILDREN)+10, maxFarmUnitId:999999999, maxRaidPlayerUnits:100, maxRaidPlayers:4, raidPlayerIdStride:1000000, maxRaidUnits:400, maxRaidBattleUnits:400*(1+MAX_BEAN_SPLIT_CHILDREN)+10, maxRaidProjectiles:400*(1+MAX_BEAN_SPLIT_CHILDREN)*4+40, raidSummonIdBase:4000000+100+1, bossSummonIdBase:5000000, maxSpecies:4, maxBossSummons:10, maxUnitRadius:unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials:MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS/2, mergeAnimationSeconds:.85, matureMeals: 3, corpseRecoverySeconds:60, farmBossEvent:Object.freeze({spawnChance:.01,fadeSeconds:.5,celebrationSeconds:1}), gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,perceptionRange:18,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
+  var CONFIG = Object.freeze({ factions:FACTION_CONFIG, cap: 50, maxFarmCap:100, maxFarmBattleUnits:100*(1+MAX_BEAN_SPLIT_CHILDREN)+10, maxFarmUnitId:999999999, maxRaidPlayerUnits:100, maxRaidPlayers:4, raidPlayerIdStride:1000000, maxRaidUnits:400, maxRaidBattleUnits:400*(1+MAX_BEAN_SPLIT_CHILDREN)+10, maxRaidProjectiles:400*(1+MAX_BEAN_SPLIT_CHILDREN)*4+40, raidSummonIdBase:4000000+100+1, bossSummonIdBase:5000000, maxSpecies:SPECIES_COUNT, maxBossSummons:10, maxUnitRadius:unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials:MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS/2, mergeAnimationSeconds:.85, matureMeals: 3, corpseRecoverySeconds:60, farmBossEvent:Object.freeze({spawnChance:.01,fadeSeconds:.5,celebrationSeconds:1}), gravity: 19, fixedStep: 1 / 120, raid:Object.freeze({radiusX:23,radiusY:17,perceptionRange:18,bossRadius:4.4,bossHeight:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65,dropHeight:3,buffDuration:3,buffCooldown:12,buffDamage:1.25}) });
 function bossAttackArea(boss,unitRadius=0){
   const action=boss.patternRuntime?.active;if(!action)return null;
   const config=BOSS_PATTERN_CONFIG[action.id];if(!config)return null;
@@ -204,8 +206,9 @@ const AttackingBody=Base=>class extends Base{
       this.seed = seed;this.notices=[];this.eventSequence=0;this.mergeTask=null;
       this.reset();
     }
-    static createRaidBattle(seed=731,expectedPlayers=['solo']){
-      const w=new Garden(seed);w.units=[];w.food=[];w.scene='raid';w.running=false;w.boss=w.createBoss(w.randomBossSpecies());w.boss.phase='resting';
+    static createRaidBattle(seed=731,expectedPlayers=['solo'],bossStage=null){
+      const w=new Garden(seed);w.units=[];w.food=[];w.scene='raid';w.running=false;w.boss=w.createBoss(bossStage?.species??w.randomBossSpecies());w.boss.phase='resting';
+      if(bossStage?.stage!==undefined)w.configureBossStage(bossStage.stage,bossStage.species);
       w.encounter={outcome:'idle',elapsed:0};w.raidExpectedPlayers=[...expectedPlayers];w.raidRosters=[];w.raidDeploymentStarted=false;w.nextId=1;w.starter=0;return w;
     }
     reset() {
@@ -231,6 +234,7 @@ const AttackingBody=Base=>class extends Base{
       this.notices=[];this.eventSequence=0;
       this.foodTaps = { remainder: 0, autoClock: 0, produced: 0, revision: 0 };
       this.projectiles=[];this.attackSerial=0;this.projectileSerial=0;this.raidSummonSerial=0;this.bossSummonSerial=0;this.combatLog=[];
+      this.farmBossProgress=createFarmBossProgress(this.seed);
       this.mode = "breed";
       this.scene = "farm";
       this.running = false;
@@ -401,7 +405,8 @@ const AttackingBody=Base=>class extends Base{
       return true;
     }
     getBossAcquisitionChance({farmEvent=false}={}){return bossAcquisitionChance({farmEvent})}
-    createBoss(species=3){const hp=2000;return {x:0,y:0,faction:FACTION_CONFIG.ENEMY,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp,maxHp:hp,species:clamp(species,0,CONFIG.maxSpecies-1),attackPower:4,moveSpeed:CONFIG.raid.chaseSpeed,encounterId:0,active:false,phase:'resting',clock:0,angle:0,facing:0,flash:0,hit:new Set(),swings:0,basicCount:0,attackId:0,targetId:0,sweepClock:0,attackKind:'attack.sweep-360',startAngle:0,travel:0,patternRuntime:createBossPatternRuntime(),airborneRecovery:0,summonMouth:{x:0,y:0,z:0}}}
+    createBoss(species=3){const hp=2000;return {x:0,y:0,faction:FACTION_CONFIG.ENEMY,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp,maxHp:hp,species:clamp(species,0,CONFIG.maxSpecies-1),attackPower:4,stage:0,moveSpeed:CONFIG.raid.chaseSpeed,encounterId:0,active:false,phase:'resting',clock:0,angle:0,facing:0,flash:0,hit:new Set(),swings:0,basicCount:0,attackId:0,targetId:0,sweepClock:0,attackKind:'attack.sweep-360',startAngle:0,travel:0,patternRuntime:createBossPatternRuntime(),airborneRecovery:0,summonMouth:{x:0,y:0,z:0}}}
+    configureBossStage(stage,species=this.boss.species){const stats=bossStageStats(stage);this.boss.species=clamp(species,0,CONFIG.maxSpecies-1);this.boss.stage=stats.stage;this.boss.hp=this.boss.maxHp=stats.hp;this.boss.attackPower=stats.attackPower;return this.boss}
     setScene(scene){
       if(scene===this.scene)return;
       this.mergeTask=null;this.projectiles=[];this.scene=scene;this.running=scene==='raid';this.encounter={outcome:this.running?'fighting':'idle',elapsed:0};this.farmBossEvent={phase:'idle',elapsed:0,outcome:'idle',encounterId:0,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};this.boss=this.createBoss(this.running?this.randomBossSpecies():3);

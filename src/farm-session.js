@@ -28,13 +28,13 @@ class BossRender extends RenderObject {
   x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,startAngle:R.ANGLE,
   phase:R.STATE_KEY,clock:R.LINEAR,travel:R.LINEAR,hp:R.LINEAR,maxHp:R.STEP,radius:R.STEP,height:R.STEP,flash:R.LINEAR,species:R.STEP,
   patternId:R.STATE_KEY,patternPhase:R.STATE_KEY,patternPhaseElapsed:R.LINEAR,patternAim:R.ANGLE,patternLocked:R.STEP,patternTargetId:R.STEP,
-  patternTargetX:R.STEP,patternTargetY:R.STEP,patternTargetZ:R.STEP,
+  patternTargetX:R.STEP,patternTargetY:R.STEP,patternTargetZ:R.STEP,stage:R.STEP,
   patternStartX:R.STEP,patternStartY:R.STEP,patternStartZ:R.STEP,
   patternVolleyCount:R.STEP,patternReleased:R.STEP,patternTraveled:R.LINEAR,
   summonMouthX:R.STEP,summonMouthY:R.STEP,summonMouthZ:R.STEP
  });
  constructor(b){super();const action=b.patternRuntime?.active||null,target=action?.target||null,start=action?.start||null,mouth=b.summonMouth||{};Object.assign(this,{
-  x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash,species:b.species??3,
+  x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash,species:b.species??3,stage:b.stage??0,
   patternId:action?.id||'',patternPhase:action?.phase||'idle',patternPhaseElapsed:action?.phaseElapsed||0,patternAim:action?.aim??b.angle,patternLocked:!!action?.locked,patternTargetId:action?.targetId||0,
   patternTargetX:target?.x??b.x,patternTargetY:target?.y??b.y,patternTargetZ:target?.z??0,
   patternStartX:start?.x??b.x,patternStartY:start?.y??b.y,patternStartZ:start?.z??b.z,

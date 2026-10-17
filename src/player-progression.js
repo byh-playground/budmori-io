@@ -21,19 +21,22 @@ export function createPlayerProgressionState() {
 // XP is the remainder toward the next level, so it naturally carries over
 // across level-ups. receiptKey makes this helper idempotent if a caller retries
 // the same persisted boss-kill receipt.
-export function awardBossKillXp(state, receiptKey) {
+export function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
   if (!isValidPlayerProgressionState(state)) {
     return { state, awarded: false, reason: "invalid-state", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
   }
   if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
     return { state, awarded: false, reason: "invalid-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
   }
+  if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
+    return { state, awarded: false, reason: "invalid-xp", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
+  }
   if (state.processedBossKillReceipts.includes(receiptKey)) {
     return { state, awarded: false, reason: "duplicate-receipt", xpAwarded: 0, levelsGained: 0, pointsAwarded: 0 };
   }
 
   let level = state.level;
-  let experience = state.experience + BOSS_KILL_XP;
+  let experience = state.experience + xpAmount;
   let levelsGained = 0;
   while (experience >= experienceForNextLevel(level)) {
     experience -= experienceForNextLevel(level);
@@ -49,7 +52,7 @@ export function awardBossKillXp(state, receiptKey) {
     abilities: Object.fromEntries(Object.entries(state.abilities).map(([id, value]) => [id, { ...value }])),
     processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
   };
-  return { state: nextState, awarded: true, reason: null, xpAwarded: BOSS_KILL_XP, levelsGained, pointsAwarded };
+  return { state: nextState, awarded: true, reason: null, xpAwarded: xpAmount, levelsGained, pointsAwarded };
 }
 
 export function experienceForNextLevel(level) {

@@ -10,13 +10,14 @@ import {CombatFeel} from './combat-feel.js';
 import {raidRosterEntries,hasRaidRosterEntries} from './raid-roster.js';
 import {createAbilityRuntimeSnapshot} from './ability-state.js';
 import {renderAbilityTreeMarkup,renderFarmUpgradeTreeMarkup} from './ability-tree.js';
-import {abortReservedRaidRun,reserveRaidRun,settleRaidOwnerFarm} from './raid-settlement.js';
-import {settleBossKill} from './boss-rewards.js';
+import {abortReservedRaidRun,reserveRaidRun,settleRaidOwnerFarm,raidDeploymentRewardMultiplier} from './raid-settlement.js';
+import {BOSS_REWARD_SETTINGS,bossAcquisitionChance,bossStageStats,settleBossKill} from './boss-rewards.js';
+import {selectFarmBossStage} from './farm-boss-stages.js';
+import {speciesById} from './species-catalog.js';
 const $=id=>document.getElementById(id),storage=new FarmStorage();
-const BOSS_SPECIES_NAMES=['콩','옥수수','강낭콩','밤톨'];
 let networkTimer=null,observedWorld=null;
 let imported=null,importedLegacy=false;
-let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,menuOpen=false,menuTab='play',menuWasPaused=true,menuPauseChanged=false,menuAutoPaused=false,dropPointer=null,dropTimer=null;
+let active=null,home=true,attempt=null,room=null,solo=null,personalGarden=null,noticeSequence=0,menuOpen=false,menuTab='play',menuWasPaused=true,menuPauseChanged=false,menuAutoPaused=false,dropPointer=null,dropTimer=null,bossEncounterOpen=false,bossSwipe=null,bossPauseBeforeOpen=null;
 const renderer=new Diorama($('world'));
 const measuredFrames=[];let lastFrameTimestamp=null,frameCount=0;
 function measureFrame(now){if(lastFrameTimestamp!==null){measuredFrames.push(now-lastFrameTimestamp);if(measuredFrames.length>240)measuredFrames.shift()}lastFrameTimestamp=now;frameCount++}
@@ -32,17 +33,51 @@ const combatFeel=new CombatFeel(foodFeel);
 function requestFeed(){if(!home&&active&&!active.paused){foodFeel.unlock();active.queue('feed')}}
 function install(world,options={}){clearInterval(networkTimer);active?.dispose();active=new FarmSession(world,{...options,onError:fail,onWorldStep:markPersistentChange});noticeSequence=world.eventSequence;observedWorld=world;if(options.room)networkTimer=setInterval(()=>active.pulse(performance.now()),50);return active}
 install(new Garden());active.paused=true;
+function showBossEncounterMessage(text){const message=$('bossEncounterMessage');message.textContent=text;message.hidden=!text;if(text){clearTimeout(showBossEncounterMessage.timer);showBossEncounterMessage.timer=setTimeout(()=>{message.hidden=true},1800)}}
+function renderBossEncounterStage(stage){
+ if(!personalGarden||room||active?.world?.scene==='raid')return null;
+ const progress=personalGarden.farmBossProgress,wasSelected=progress.selections.some(entry=>entry.stage===stage),previousStage=progress.currentStage;
+ const selection=selectFarmBossStage(progress,stage);
+ if(!wasSelected||previousStage!==stage)saveImmediate(personalGarden);
+ const species=selection.species,catalogEntry=speciesById(species),name=catalogEntry.name,rolls=selection.rolls;
+ $('bossStageCounter').textContent=`${selection.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
+ $('bossStageLabel').textContent=`STAGE ${selection.stage}`;
+ $('bossPreview').src=`./assets/troops/${catalogEntry.asset}`;
+ $('bossPreview').alt=`${name} 보스 미리보기`;
+ $('bossStageName').textContent=`${name} 보스`;
+ $('bossStageHp').textContent=`HP ${Math.round(selection.hp).toLocaleString('ko-KR')}`;
+ $('bossStageAttack').textContent=`공격력 ${Number(selection.attackPower.toPrecision(3)).toLocaleString('ko-KR')}`;
+ $('bossStageXp').textContent=`+${selection.xp.toLocaleString('ko-KR')} XP`;
+ $('bossStageDrop').hidden=rolls===0;
+ if(rolls>0){$('bossStageDrop').innerHTML=`<img src="./assets/troops/${catalogEntry.asset}" alt=""><span><strong>${name} 보스 종</strong><small>${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance*100)}%씩 · ${rolls}회 개별 추첨 · 성공마다 T1 1마리</small></span>`;$('bossStageNotice').textContent='';}
+ else $('bossStageNotice').textContent='보스 종 보상은 없어요 · 5스테이지부터 1회 추첨';
+ $('bossEncounterChallenge').disabled=!hasRaidRosterEntries(personalGarden.units)||personalGarden.farmBossEvent?.phase!=='idle'||personalGarden.activeRaidRunSequence!==null;
+ $('bossEncounterChallenge').title=$('bossEncounterChallenge').disabled?'전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요.':'';
+ return selection;
+}
+function openBossEncounter(push=true){
+ if(room||attempt||active?.world?.scene==='raid')return false;
+ if(!personalGarden){if(storage.world&&storage.world.activeRaidRunSequence===null)start(restore(snapshot(storage.world)),false);else return false}
+ if(personalGarden.farmBossEvent?.phase!=='idle'||personalGarden.activeRaidRunSequence!==null)return false;
+ if(!persist())return false;
+ if(menuOpen)closeMenu(false);
+ bossPauseBeforeOpen=active?.paused??true;if(active&&!bossPauseBeforeOpen){active.paused=true;active.loop.resetTiming()}bossEncounterOpen=true;document.body.dataset.bossScreen='true';$('bossEncounterScreen').hidden=false;
+ renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
+ if(push)history.pushState(null,'','#/boss');
+ $('bossEncounterBack').focus();return true;
+}
+function closeBossEncounter(push=true){if(!bossEncounterOpen)return;bossEncounterOpen=false;document.body.dataset.bossScreen='false';$('bossEncounterScreen').hidden=true;bossSwipe=null;if(active&&bossPauseBeforeOpen!==null){active.paused=bossPauseBeforeOpen;bossPauseBeforeOpen=null;active.loop.resetTiming()}if(push)history.pushState(null,'','#/farm')}
 function refreshStart(){
  if(room||attempt){$('newConfirm').hidden=true;$('importConfirm').hidden=true;imported=null}
  const hasReservedRaid=storage.hasReservedRaid,liveRaid=active?.world?.scene==='raid'||!!room,staleRaid=hasReservedRaid&&!liveRaid;
- $('continueGame').disabled=!storage.hasWorld||staleRaid;$('staleRaidNotice').hidden=!staleRaid||!!attempt;$('onlineGame').disabled=hasReservedRaid;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);$('exportLegacySave').hidden=!storage.legacyBackup;$('exportLegacySave').disabled=!storage.legacyBackup;
+ $('continueGame').disabled=!storage.hasWorld||staleRaid;$('startBossEncounter').disabled=!storage.hasWorld||staleRaid||!!room||!!attempt;$('staleRaidNotice').hidden=!staleRaid||!!attempt;$('onlineGame').disabled=hasReservedRaid;$('continueLegacyGame').disabled=!!room||!!attempt||!storage.legacyCompatible;$('legacySaveNotice').hidden=!storage.legacyCompatible;$('exportSave').disabled=!(storage.raw||storage.legacyRaw);$('exportLegacySave').hidden=!storage.legacyBackup;$('exportLegacySave').disabled=!storage.legacyBackup;
  $('saveNotice').textContent=[storage.migrationNotice,storage.error].filter(Boolean).join(' ');$('newGame').hidden=!!room;
  $('continueGame').hidden=!!room;$('onlineGame').hidden=!!room||!!attempt;
  $('cancelOnline').hidden=!attempt;$('leaveOnline').hidden=!room;
  $('importSave').disabled=!!room||!!attempt;$('newGame').disabled=!!attempt;
 }
 function setHome(value,push=true){
- if(value){persist();if(menuOpen)closeMenu(false)}home=value;document.body.dataset.home=String(value);$('startScreen').hidden=!value;
+ if(value){persist();if(menuOpen)closeMenu(false);if(bossEncounterOpen)closeBossEncounter(false)}home=value;document.body.dataset.home=String(value);$('startScreen').hidden=!value;
  if(!room)active.paused=value;
  if(push)history.pushState(null,'',value?'#/':active.world.scene==='raid'?'#/raid':'#/farm');
  refreshStart();if(value)$('continueGame').focus();
@@ -58,8 +93,8 @@ function persistRaidSettlement(raidWorld,ownerId){
  const farmRun={sessionId:personalGarden.activeRaidSessionId,runSequence:personalGarden.activeRaidRunSequence};if(!farmRun.sessionId||!farmRun.runSequence)return false;
  const outcome=['victory','defeat'].includes(raidWorld.encounter?.outcome)?raidWorld.encounter.outcome:'aborted';
  const prepare=base=>settleRaidOwnerFarm(snapshot(base),{ownerId,sessionId:farmRun.sessionId,encounterId:farmRun.runSequence,runSequence:farmRun.runSequence,outcome,raidWorld,completedAtMs:Date.now(),settleVictory:({farm,receiptKey,deploymentMultiplier})=>{
-   const garden=restore(farm),resolved=settleBossKill(garden,{encounterId:farmRun.runSequence,source:'raid',receiptKey,acquisitionMultiplier:deploymentMultiplier,species:raidWorld.boss.species??3,tier:1,x:raidWorld.boss.x,y:raidWorld.boss.y});
-   const reward=resolved.receipt;return{farm:snapshot(garden),summary:{acquisition:{status:reward.status,chance:reward.chance,roll:reward.roll,unitId:reward.unitId,receiptKey:reward.receiptKey},xp:{status:reward.xpStatus,amount:reward.xpAmount,levelsGained:reward.levelsGained,pointsAwarded:reward.pointsAwarded,receiptKey:reward.xpReceiptKey}}};
+   const garden=restore(farm),stage=raidWorld.boss.stage||0,stageReward=stage?bossStageStats(stage):null,resolved=settleBossKill(garden,{encounterId:farmRun.runSequence,source:'raid',receiptKey,acquisitionMultiplier:deploymentMultiplier,rollCount:stageReward?.rolls??1,xpAmount:stageReward?.xp,species:raidWorld.boss.species??3,tier:1,x:raidWorld.boss.x,y:raidWorld.boss.y});
+   const reward=resolved.receipt;return{farm:snapshot(garden),summary:{stage,acquisition:{status:reward.status,chance:reward.chance,roll:reward.roll,rollCount:reward.rollCount,rolls:reward.drops,unitId:reward.unitId,receiptKey:reward.receiptKey},xp:{status:reward.xpStatus,amount:reward.xpAmount,levelsGained:reward.levelsGained,pointsAwarded:reward.pointsAwarded,receiptKey:reward.xpReceiptKey}}};
  }});
  let settled=prepare(personalGarden),candidate=restore(settled.farm);
  if(!saveImmediate(candidate)){
@@ -69,9 +104,9 @@ function persistRaidSettlement(raidWorld,ownerId){
  }
  personalGarden=storage.world;return settled;
 }
-function beginRaid(push=true){if(room||!personalGarden||active.world.scene==='raid'||personalGarden.activeRaidRunSequence!==null||personalGarden.farmBossEvent?.phase!=='idle'||!raidRosterEntries(personalGarden.units,1).length)return;if(!persist())return;const reserved=reservePersonalRaidRun();if(!reserved)return;renderer.dropTarget=null;const battle=Garden.createRaidBattle((personalGarden.seed+Math.floor(performance.now()))>>>0,['solo']);install(battle);active.queue('register-roster',{entries:raidRosterEntries(personalGarden.units,CONFIG.maxRaidPlayerUnits),abilitySnapshot:createAbilityRuntimeSnapshot(personalGarden.playerProgression),settlement:{sessionId:reserved.sessionId,runSequence:reserved.runSequence,encounterId:reserved.runSequence}});setHome(false,push)}
+function beginRaid(push=true){if(room||!personalGarden||active.world.scene==='raid'||personalGarden.activeRaidRunSequence!==null||personalGarden.farmBossEvent?.phase!=='idle'||!raidRosterEntries(personalGarden.units,1).length)return;if(!persist())return;const bossStage=renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);if(!bossStage||!persist())return;const reserved=reservePersonalRaidRun();if(!reserved)return;renderer.dropTarget=null;closeBossEncounter(false);const battle=Garden.createRaidBattle((personalGarden.seed+Math.floor(performance.now()))>>>0,['solo'],bossStage);install(battle);active.queue('register-roster',{entries:raidRosterEntries(personalGarden.units,CONFIG.maxRaidPlayerUnits),abilitySnapshot:createAbilityRuntimeSnapshot(personalGarden.playerProgression),settlement:{sessionId:reserved.sessionId,runSequence:reserved.runSequence,encounterId:reserved.runSequence}});setHome(false,push)}
 async function returnToFarm(push=true){
- stopDrop();if(!personalGarden)return;
+ stopDrop();if(bossEncounterOpen)closeBossEncounter(false);if(!personalGarden)return;
  const raidWorld=active?.world?.scene==='raid'?snapshot(active.world):null;
  if(raidWorld&&personalGarden.activeRaidRunSequence!==null){
   const ownerId=active.localPlayerId,run={sessionId:personalGarden.activeRaidSessionId,runSequence:personalGarden.activeRaidRunSequence};
@@ -81,6 +116,23 @@ async function returnToFarm(push=true){
  renderer.dropTarget=null;install(personalGarden);setHome(false,push);return true;
 }
 $('continueGame').onclick=()=>{if(room||active?.world?.scene==='raid'){setHome(false);return}if(storage.world&&storage.world.activeRaidRunSequence===null)start(restore(snapshot(storage.world)))};
+$('startBossEncounter').onclick=()=>{if(room||attempt||!storage.world||storage.world.activeRaidRunSequence!==null)return;start(restore(snapshot(storage.world)),false);openBossEncounter()};
+$('menuBossEncounter').onclick=()=>{closeMenu(false);openBossEncounter()};
+$('bossEncounterBack').onclick=()=>closeBossEncounter();
+$('bossEncounterChallenge').onclick=()=>{if($('bossEncounterChallenge').disabled)return;closeBossEncounter(false);beginRaid(true)};
+$('bossEncounterScreen').addEventListener('pointerdown',e=>{
+ if(!bossEncounterOpen||e.button>0||e.target.closest('button'))return;
+ const viewport=$('bossEncounterViewport'),card=$('bossEncounterCard');bossSwipe={pointerId:e.pointerId,y:e.clientY};card.style.transition='none';viewport.setPointerCapture?.(e.pointerId);e.preventDefault();
+});
+$('bossEncounterScreen').addEventListener('pointermove',e=>{if(!bossSwipe||e.pointerId!==bossSwipe.pointerId)return;const delta=Math.max(-120,Math.min(120,e.clientY-bossSwipe.y));$('bossEncounterCard').style.transform=`translateY(${delta*.55}px)`;e.preventDefault()});
+$('bossEncounterScreen').addEventListener('pointerup',e=>{
+ if(!bossSwipe||e.pointerId!==bossSwipe.pointerId)return;
+ const delta=e.clientY-bossSwipe.y,card=$('bossEncounterCard');bossSwipe=null;if(Math.abs(delta)<42){card.style.transition='transform .18s ease-out';card.style.transform='translateY(0)';setTimeout(()=>{card.style.transition='';card.style.transform=''},200);return}
+ const current=personalGarden?.farmBossProgress?.currentStage||1,next=delta<0?Math.min(BOSS_REWARD_SETTINGS.maxStage,current+1):Math.max(1,current-1);
+ if(next===current){showBossEncounterMessage(delta<0?`현재 스테이지 상한 ${BOSS_REWARD_SETTINGS.maxStage}예요`:'첫 스테이지예요');return}
+ card.style.transform='';card.style.transition='';card.style.animation='none';void card.offsetWidth;card.style.animation='';renderBossEncounterStage(next);
+});
+$('bossEncounterScreen').addEventListener('pointercancel',e=>{if(bossSwipe?.pointerId===e.pointerId){bossSwipe=null;const card=$('bossEncounterCard');card.style.transition='transform .18s ease-out';card.style.transform='translateY(0)';setTimeout(()=>{card.style.transition='';card.style.transform=''},200)}});
 $('abortRaidRun').onclick=()=>{
  if(room||active?.world?.scene==='raid')return;
  const world=storage.world;if(!world||world.activeRaidRunSequence===null)return refreshStart();
@@ -116,7 +168,7 @@ $('onlineGame').onclick=async()=>{
 };
 $('cancelOnline').onclick=()=>{attempt?.abort();attempt=null;$('sessionNotice').textContent='연결을 취소했어요.';refreshStart()};
 $('leaveOnline').onclick=async()=>{if(!room)return;$('leaveOnline').disabled=true;try{if(await returnToFarm(false))setHome(true)}finally{$('leaveOnline').disabled=false}};
-$('farm').onclick=()=>returnToFarm();$('raid').onclick=()=>beginRaid();$('return').onclick=()=>returnToFarm();
+$('farm').onclick=()=>returnToFarm();$('raid').onclick=()=>openBossEncounter();$('return').onclick=()=>returnToFarm();
 for(const value of ['breed','merge'])$(value).onclick=()=>active.queue('mode',{value});
 $('feed').addEventListener('keydown',e=>{if(e.repeat&&['Enter',' '].includes(e.key))e.preventDefault()});
 $('feed').onclick=e=>{if(e.detail===0&&!e.pointerType)requestFeed()};
@@ -207,6 +259,7 @@ const canvas=$('world');
 function deploymentHud(){const w=active.world,raid=w.scene==='raid',roster=w.raidRoster(active.localPlayerId),registered=w.raidRosters.length,expected=w.raidExpectedPlayers.length,remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,queued=roster?Math.max(0,active.localDeploySequence-roster.lastDeploySequence):0;
  $('raidRemaining').textContent=room&&active.players.length<2?'동료가 들어오기를 기다리는 중…':!roster||registered<expected?`병력 명단 동기화 중 · ${registered}/${expected}명`:`남은 병력 ${Math.max(0,remaining-queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`;
  const own=w.raidRoster(active.localPlayerId),cooldown=own?Math.max(0,own.buffReadyAt-w.time):0;$('buff').disabled=!raid||!w.running||!own||cooldown>0;$('buff').textContent=cooldown>0?`강화 ${cooldown.toFixed(1)}초`:'팀 강화';
+ const stage=w.boss.stage||0;if(stage){const stageReward=bossStageStats(stage),multiplier=raidDeploymentRewardMultiplier({availableAtStart:own?.troops.length||0,originalUnitsDeployed:own?.troops.filter(t=>t.deployed).length||0}),chance=Math.round(bossAcquisitionChance({acquisitionMultiplier:multiplier})*100);$('raidRewardChance').textContent=stageReward.rolls?`보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨`:'보스 종 추첨 없음';}else $('raidRewardChance').textContent='';
 }
 function deployAt(p){if(home||active.world.scene!=='raid'||room&&active.players.length<2||!active.world.raidExpectedPlayers.every(id=>active.world.raidRoster(id)))return false;const valid=ArenaGeometry.inside(p,'raid',.5);renderer.dropTarget={...p,valid};return valid&&active.deployNext(Math.round(p.x*100)/100,Math.round(p.y*100)/100)}
 function updateDropPointer(e){if(!dropPointer||e.pointerId!==dropPointer.id)return;const p=renderer.screenToWorld(e.clientX,e.clientY);dropPointer.x=Math.round(p.x*100)/100;dropPointer.y=Math.round(p.y*100)/100;renderer.dropTarget={x:dropPointer.x,y:dropPointer.y,valid:ArenaGeometry.inside(p,'raid',.5)}}
@@ -216,7 +269,7 @@ canvas.addEventListener('pointermove',updateDropPointer);canvas.addEventListener
 window.addEventListener('pointerup',e=>stopDrop(e),true);window.addEventListener('pointercancel',e=>stopDrop(e),true);
 $('buff').onclick=()=>active.queue('buff');
 window.addEventListener('blur',()=>{stopDrop();persist()});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopDrop();persist();active.loop.resetTiming()}});
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&menuOpen){e.preventDefault();closeMenu()}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&bossEncounterOpen){e.preventDefault();closeBossEncounter()}else if(e.key==='Escape'&&menuOpen){e.preventDefault();closeMenu()}else if(bossEncounterOpen&&(e.key==='ArrowUp'||e.key==='ArrowDown')){e.preventDefault();const current=personalGarden?.farmBossProgress?.currentStage||1,next=e.key==='ArrowUp'?Math.min(BOSS_REWARD_SETTINGS.maxStage,current+1):Math.max(1,current-1);renderBossEncounterStage(next)}});
 window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});
 window.addEventListener('resize',()=>renderer.resize());window.addEventListener('pagehide',()=>{persist();clearInterval(networkTimer);attempt?.abort();room?.close();active.dispose();renderer.dispose()});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();persist();fail(Error('그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요.'))});
@@ -225,27 +278,28 @@ function route(){
  if(r==='#/'||!r){if(menuOpen)closeMenu(false);setHome(true,false);return}
  if(!room&&storage.hasReservedRaid&&active.world.scene!=='raid'){if(menuOpen)closeMenu(false);setHome(true,false);history.replaceState(null,'','#/');return}
  if(home){if(!room&&storage.error&&!storage.hasWorld){setHome(true,false);history.replaceState(null,'','#/');return}if(room)setHome(false,false);else if(storage.hasWorld)start(restore(snapshot(storage.world)),false);else start(new Garden(),false)}
+ if(r==='#/boss'){if(!openBossEncounter(false))history.replaceState(null,'','#/farm');return}
  if(r==='#/help'||r==='#/growth'||r==='#/abilities'||r==='#/menu'){
   const raid=active.world.scene==='raid',farmEventActive=!raid&&personalGarden?.farmBossEvent?.phase!=='idle';
   const restricted=r==='#/growth'&&(raid||farmEventActive)||r==='#/abilities'&&(raid||!personalGarden);
   if(restricted){if(menuOpen)closeMenu(false);history.replaceState(null,'',raid?'#/raid':'#/farm');return}
   openMenu(routeMenuTab(r),false);return
  }
- if(menuOpen)closeMenu(false);
- if(r==='#/raid'){if(!room&&personalGarden?.farmBossEvent?.phase!=='idle'){history.replaceState(null,'','#/farm')}else if(!room)beginRaid(false)}else if(r==='#/farm'&&active.world.scene==='raid'&&!room)returnToFarm(false)
+ if(menuOpen)closeMenu(false);if(bossEncounterOpen&&r!=='#/boss')closeBossEncounter(false);
+ if(r==='#/raid'){if(!room&&personalGarden?.farmBossEvent?.phase!=='idle'){history.replaceState(null,'','#/farm')}else if(!room)openBossEncounter(false)}else if(r==='#/farm'&&active.world.scene==='raid'&&!room)returnToFarm(false)
 }
 window.addEventListener('popstate',route);
 function sync(display,now){
- const w=active.world,raid=display.scene==='raid',farmEvent=display.farmBossEvent,farmEventActive=!raid&&farmEvent?.phase!=='idle',battleHud=raid||farmEventActive,hasReadyTroops=personalGarden?hasRaidRosterEntries(personalGarden.units):false,rewardWorld=personalGarden||w,pendingRewardCount=rewardWorld.bossRewardReceipts.filter(reward=>reward.status==='pending').length;for(const [id,value]of [['farm',!raid],['raid',raid],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
- $('farmControls').hidden=raid||farmEventActive||home;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!battleHud||home;$('raid').disabled=farmEventActive;
+ const w=active.world,raid=display.scene==='raid',farmEvent=display.farmBossEvent,farmEventActive=!raid&&farmEvent?.phase!=='idle',battleHud=raid||farmEventActive,hasReadyTroops=personalGarden?hasRaidRosterEntries(personalGarden.units):false,rewardWorld=personalGarden||w,pendingRewardCount=rewardWorld.bossRewardReceipts.filter(reward=>reward.status==='pending').length;for(const [id,value]of [['farm',!raid&&!bossEncounterOpen],['raid',raid||bossEncounterOpen],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
+ $('bossEncounterScreen').hidden=home||!bossEncounterOpen;$('farmControls').hidden=raid||farmEventActive||home||bossEncounterOpen;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!battleHud||home;$('raid').disabled=farmEventActive;
  $('count').textContent=raid?(w.raidRoster(active.localPlayerId)?.troops.length??personalGarden?.units.length??0):display.units.filter(unit=>!unit.isBattleOnlySummon).length;$('capacity').textContent=personalGarden?.capacity??CONFIG.cap;$('starter').textContent=raid?`${w.units.length} deployed in raid`:pendingRewardCount?'밤톨 보상 대기 · 공간이 생기면 합류해요':!hasReadyTroops?'모두 휴식 중 · 회복까지 기다려 주세요':w.units.filter(unit=>!unit.isBattleOnlySummon).length>=w.capacity?'정원이 가득 찼어요':'번식으로 식구를 늘려요';
  const army=display.units.filter(u=>u.faction===CONFIG.factions.PLAYER).reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(u.maxHp,u.hp)),max:sum.max+u.maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0});
  $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
  $('allyHealthText').textContent=Math.ceil(army.current)+' / '+Math.ceil(army.max)+' HP · '+army.living+'/'+army.total+' 생존';
- const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome;
+const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome,settledReward=raid&&personalGarden?.raidSettlementReceipts?.find(receipt=>receipt.runSequence===personalGarden.activeRaidRunSequence)?.reward,stageName=raid&&boss.stage?`STAGE ${boss.stage}`:'',speciesName=speciesById(boss.species).name;
  $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';$('bossHealthNote').textContent=farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP';
  for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
- $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';const speciesName=BOSS_SPECIES_NAMES[boss.species]||BOSS_SPECIES_NAMES[3];$('battleOutcome').textContent=raid?(battleOutcome==='victory'?'승리 · 모두 정원으로 돌아갈 수 있어요':battleOutcome==='defeat'?'휴식이 필요해요 · 정원에서 다시 준비해요':''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?`보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요`:farmEvent.rewardStatus==='pending'?`${speciesName} 획득 대기 · 공간이 생기면 합류해요`:'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('menuTabGrowth').disabled=raid||farmEventActive;$('menuTabAbilities').disabled=raid||!personalGarden;$('raid').disabled=farmEventActive||(!raid&&!hasReadyTroops);$('pause').textContent=active.paused?'▶':'Ⅱ';
+ $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?`${stageName} 승리 · ${settledReward?.xp?.amount??bossStageStats(boss.stage||1).xp} XP${settledReward?.acquisition?.rollCount?` · 보스 종 ${settledReward.acquisition.rolls?.filter(drop=>drop.status==='granted').length||0}/${settledReward.acquisition.rollCount}회 성공`:settledReward?' · 보스 종 추첨 없음':bossStageStats(boss.stage||1).rolls?' · 정원 복귀 후 보상 정산':' · 보스 종 추첨 없음'} · 모두 정원으로 돌아갈 수 있어요`:battleOutcome==='defeat'?`${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요`:''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?`보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요`:farmEvent.rewardStatus==='pending'?`${speciesName} 획득 대기 · 공간이 생기면 합류해요`:'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('pause').disabled=!!room;$('bossEncounterChallenge').disabled=!personalGarden||!hasReadyTroops||farmEventActive||personalGarden?.activeRaidRunSequence!==null||room; $('menuTabGrowth').disabled=raid||farmEventActive||bossEncounterOpen;$('menuTabAbilities').disabled=raid||!personalGarden;$('raid').disabled=raid||farmEventActive||room||!personalGarden;$('pause').textContent=active.paused?'▶':'Ⅱ';
  $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;
  for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
  if(observedWorld!==w){observedWorld=w;noticeSequence=w.eventSequence}
