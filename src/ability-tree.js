@@ -1,3 +1,4 @@
+import { unitGradeLabel } from './unit-grades.js';
 import { SPECIES_ABILITY_DEFINITIONS, abilityPresentationFor } from './ability-catalog.js';
 import { SPECIES_CATALOG, speciesById } from './species-catalog.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
@@ -34,7 +35,7 @@ const INVESTMENT_REASON_LABELS = new Map([
 ]);
 const NODE_REASON_LABELS = new Map([
     ...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text]),
-    ['requires-rare-tier', (definition) => `이 종의 Rare (T${definition.rootTier}) 이상 개체가 필요합니다.`],
+    ['requires-rare-tier', (definition) => `이 종의 ${unitGradeLabel(definition.rootTier)} 이상 개체가 필요합니다.`],
 ]);
 const RESET_REASON_LABELS = new Map([
     ['nothing-invested', '투자한 포인트가 없습니다.'],
@@ -92,7 +93,7 @@ export function renderAbilityTreeMarkup(
     const LEVEL_MARKUP = renderPlayerProgressMarkup(state);
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
-      <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">특수 능력</h2></div>
+      <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
     <p class="ability-tree__note">능력마다 Rare(T3)에서 해금할 수 있고, 강화와 적용 등급 완화에 같은 포인트를 씁니다. 사용하지 않은 포인트는 보존됩니다.</p>
@@ -178,7 +179,7 @@ function renderAbilityCard(state, definition, context) {
         .slice(1)
         .map((tier, index) => {
             const LEVEL = index + 1;
-            const GRADE = tier === 2 ? 'Uncommon (T2)' : 'Common (T1)';
+            const GRADE = unitGradeLabel(tier);
             return renderNode(state, definition, `grade-${LEVEL}`, `${GRADE}까지`, `최소 적용 등급 ${GRADE}`, context);
         })
         .join('');
@@ -186,11 +187,12 @@ function renderAbilityCard(state, definition, context) {
     const ROOT_STATUS = getAbilityNodeStatus(state, definition, 'root', context);
     const SPECIES_NAME = speciesById(definition.species).name;
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
-    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${INVESTMENT.rootUnlocked ? `최소 T${MINIMUM_TIER}` : 'Rare · T3 해금'}</span></header>
+    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${INVESTMENT.rootUnlocked ? `최소 ${unitGradeLabel(MINIMUM_TIER)}` : `${unitGradeLabel(definition.rootTier)} 해금`}</span></header>
     <p class="ability-card__description">${definition.description}</p>
+    <p class="ability-card__current-effect">${INVESTMENT.rootUnlocked ? '현재 효과' : '해금 시 효과'}: ${powerLabel(definition, definition.powerValues[INVESTMENT.powerLevel], INVESTMENT.powerLevel)}</p>
     <div class="ability-card__root">
       <span class="ability-node__branch-label">능력 루트</span>
-      ${renderNode(state, definition, 'root', '능력 해금', `Rare (T${definition.rootTier}) 개체 필요`, context, ROOT_STATUS)}
+      ${renderNode(state, definition, 'root', '능력 해금', `${unitGradeLabel(definition.rootTier)} 개체 필요`, context, ROOT_STATUS)}
       <p class="ability-card__base-effect">기본 효과: ${powerLabel(definition, definition.powerValues[0], 0)}</p>
     </div>
     <div class="ability-card__branches">

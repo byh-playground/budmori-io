@@ -295,6 +295,10 @@
   function isValidUnitTier(tier) {
     return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
   }
+  function unitGradeLabel(tier) {
+    const GRADE = UNIT_GRADES.find((grade) => grade.tier === tier);
+    return GRADE ? `${GRADE.name} (T${GRADE.tier})` : "";
+  }
   var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
   var init_unit_grades = __esm({
     "src/unit-grades.js"() {
@@ -2596,7 +2600,7 @@
           id: "pea-death-split",
           species: 0,
           name: "콩 분열",
-          description: "전투에서 쓰러지면 같은 종의 T1 개체를 생성해 전투를 이어갑니다.",
+          description: "전투에서 쓰러지면 전투 한정 콩을 생성합니다. 생성된 콩은 다시 분열하지 않으며 전투 종료 시 제거됩니다.",
           rootTier: 3,
           powerValues: Object.freeze([2, 3, 4]),
           gradeThresholds: Object.freeze([3, 2, 1])
@@ -2652,7 +2656,7 @@
           id: "corn-popcorn-chain",
           species: 1,
           name: "팝콘 연쇄 폭발",
-          description: "착탄한 알갱이가 1초 뒤 폭발하고, 주변 팝콘과 닿으면 즉시 연쇄 폭발합니다.",
+          description: "착탄한 알갱이가 잠시 뒤 폭발하고, 주변 팝콘과 닿으면 즉시 연쇄 폭발합니다.",
           rootTier: 3,
           powerValues: Object.freeze([0.5, 1, 1.5]),
           radiusMultipliers: Object.freeze([1, 1.5, 2]),
@@ -2712,7 +2716,7 @@
           id: "kidney-continuous-leap",
           species: 2,
           name: "연속 도약",
-          description: "착지 후 확률적으로 도약 재사용 대기시간을 초기화합니다.",
+          description: "가까운 적에게도 준비되면 도약합니다. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화합니다.",
           rootTier: 3,
           powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65]),
           gradeThresholds: Object.freeze([3, 2, 1])
@@ -2728,7 +2732,7 @@
     "src/features/abilities/kidney-landing-shockwave.js"() {
       KidneyLandingShockwavePresentation = class {
         label(_definition, value) {
-          return `충격파 피해·반경 ${value}×`;
+          return `충격파 피해 ATK ×${value} · 반경 기본 사거리 ×${value}`;
         }
         title(value) {
           return `충격파 ×${value}`;
@@ -2766,7 +2770,7 @@
           id: "peanut-separated-assault",
           species: 4,
           name: "분리 협공",
-          description: "한 땅콩의 두 알이 넓게 벌어져 번갈아 공격합니다. 수치는 초기 밸런스 초안입니다.",
+          description: "하나의 본체와 체력을 공유하는 두 알이 정해진 시점에 번갈아 타격합니다. 기절·사망·전투 종료 시 공격을 중단합니다.",
           rootTier: 3,
           powerValues: Object.freeze([3, 4, 5]),
           strikeAttackMultiplier: 0.5,
@@ -2795,7 +2799,7 @@
           id: "walnut-guard-slam",
           species: 5,
           name: "웅크리기 반격",
-          description: "일반 공격 회복 후반에 웅크려 첫 피격을 줄이고, 다음 망치 공격을 충격파로 강화합니다. 수치는 초기 밸런스 초안입니다.",
+          description: "공격 회복 후반에 웅크려 첫 피격의 자기 피해와 넉백을 줄입니다. 방어 성공 후 다음 내려찍기를 한 번 강화합니다.",
           rootTier: 3,
           powerValues: Object.freeze([1.5, 1.75, 2]),
           receivedDamageMultiplier: 0.75,
@@ -2815,8 +2819,8 @@
   var init_rice_low_health_harvest = __esm({
     "src/features/abilities/rice-low-health-harvest.js"() {
       RiceLowHealthHarvestPresentation = class {
-        label(definition, value) {
-          return `HP ${Math.round(definition.targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
+        label(definition, value, _level, profile) {
+          return `HP ${Math.round(definition.targetHpThreshold * 100)}% 이하 대상에게 낫 공격 ATK ×${profile.skillMultiplier * value}`;
         }
         title(value) {
           return `수확 피해 ×${value}`;
@@ -2827,7 +2831,7 @@
           id: "rice-low-health-harvest",
           species: 6,
           name: "수확 낫",
-          description: "낫 기본 공격이 체력이 절반 이하인 적에게 더 큰 피해를 줍니다.",
+          description: "낫으로 베는 근접형입니다. 체력이 낮은 적에게 수확 추가 피해를 줍니다.",
           rootTier: 3,
           powerValues: Object.freeze([1.5, 1.75, 2]),
           targetHpThreshold: 0.5,
@@ -2842,9 +2846,10 @@
   var WheatCommandCritPresentation, WHEAT_COMMAND_CRIT_FEATURE;
   var init_wheat_command_crit = __esm({
     "src/features/abilities/wheat-command-crit.js"() {
+      init_unit_stats();
       WheatCommandCritPresentation = class {
         label(definition, value) {
-          return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${definition.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${definition.durationSeconds}초`;
+          return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${definition.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${definition.durationSeconds}초 · 치명타 피해 ×${COMMON_UNIT_STAT_DEFAULTS.critMultiplier} · 중첩 시 가장 강한 효과`;
         }
         title(value) {
           return `치명타 +${Math.round(value * 100)}%p`;
@@ -2855,7 +2860,7 @@
           id: "wheat-command-crit",
           species: 7,
           name: "로마 군단장의 지휘",
-          description: "기본 공격 적중 시 자신과 가까운 생존 아군의 치명타 확률을 5초 동안 높입니다.",
+          description: "로마 군단장처럼 주변 아군을 지휘합니다. 기본 공격 적중 후 주변 아군의 치명타 확률을 높입니다.",
           rootTier: 3,
           powerValues: Object.freeze([0.1, 0.25, 0.5]),
           durationSeconds: 5,
@@ -2873,7 +2878,7 @@
     "src/features/abilities/barley-armor-break.js"() {
       BarleyArmorBreakPresentation = class {
         label(definition, value) {
-          return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · ${definition.durationSeconds}초`;
+          return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · ${definition.durationSeconds}초 · 중첩 시 가장 강한 감소율`;
         }
         title(value) {
           return `방어도 ${Math.round(value * 100)}% 감소`;
@@ -2884,7 +2889,7 @@
           id: "barley-armor-break",
           species: 8,
           name: "도리깨 갑주 파쇄",
-          description: "도리깨 기본 공격 적중 시 적의 방어도를 낮춰 5초 동안 피해를 더 받게 합니다.",
+          description: "도리깨 기본 공격이 적중하면 적의 방어도를 낮춰 아군의 공격을 돕습니다.",
           rootTier: 3,
           powerValues: Object.freeze([0.25, 0.5, 0.75]),
           durationSeconds: 5,
@@ -10360,7 +10365,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.3";
+      PRODUCT_VERSION = "0.8.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12303,26 +12308,18 @@
       this.root = document.createElement("section");
       this.root.className = "formation-dock";
       this.root.setAttribute("aria-label", "편성 스킬");
-      this.root.innerHTML = '<button class="formation-open" type="button">편성 스킬</button><div class="formation-slots"></div>';
-      this.dialog = document.createElement("dialog");
-      this.dialog.className = "formation-dialog";
-      this.dialog.setAttribute("aria-labelledby", "formation-title");
-      this.dialog.innerHTML = '<header><div><small>FORMATION</small><h2 id="formation-title">편성 스킬</h2></div><button type="button" data-formation-close aria-label="편성 닫기">×</button></header><div class="formation-content"></div>';
-      document.body.append(this.root, this.dialog);
-      this.content = this.dialog.querySelector(".formation-content");
+      this.root.innerHTML = '<div class="formation-slots"></div>';
+      document.querySelector("#gameplayDock").prepend(this.root);
+      this.content = document.querySelector("#formationContent");
       this.slotHost = this.root.querySelector(".formation-slots");
-      this.root.querySelector("button").onclick = () => this.dialog.showModal();
-      this.dialog.onclick = (event) => this.click(event);
-      this.dialog.addEventListener("close", () => this.root.querySelector("button").focus());
+      this.content.onclick = (event) => this.click(event);
     }
     click(event) {
       const BUTTON = event.target.closest("button");
       if (!BUTTON || BUTTON.disabled) {
         return;
       }
-      if (BUTTON.hasAttribute("data-formation-close")) {
-        this.dialog.close();
-      } else if (BUTTON.hasAttribute("data-formation-buy-slot")) {
+      if (BUTTON.hasAttribute("data-formation-buy-slot")) {
         this.command("formation-slot", {});
       } else if (BUTTON.dataset.formationPurchase) {
         this.command("formation-purchase", { id: BUTTON.dataset.formationPurchase });
@@ -12337,9 +12334,6 @@
     }
     update(world, display, visible, ownerId = "") {
       this.root.hidden = !visible;
-      if (!visible && this.dialog.open) {
-        this.dialog.close();
-      }
       const PLAYER = world.scene === "raid" ? world.raidRoster(ownerId)?.abilitySnapshot : world.playerProgression, STATE = PLAYER?.formationSkills;
       if (!STATE) {
         return;
@@ -12358,7 +12352,7 @@
                     <div class="formation-icon" title="${ESCAPE(DEFINITION10?.name || "빈 슬롯")}">
                     <span>${ICONS[DEFINITION10?.id] || "+"}</span><i class="formation-clock"></i></div>
                     <div class="formation-readout"><strong>${ESCAPE(DEFINITION10?.name || "빈 슬롯")}</strong>
-                    <div class="formation-charge"><i></i></div><small></small></div></div>`;
+                    <div class="formation-charge"><i></i></div><small><b></b><span></span></small></div></div>`;
         }).join("");
       }
       const SLOTS = display.formationSlots || world.formationSkills?.slots || [];
@@ -12369,7 +12363,8 @@
           `${COOLDOWN / FORMATION_COOLDOWN_SECONDS * 360}deg`
         );
         ELEMENT.querySelector(".formation-charge i").style.width = `${CHARGE / REQUIRED * 100}%`;
-        ELEMENT.querySelector("small").textContent = DEFINITION10 ? `${NUMBER(CHARGE)}/${NUMBER(REQUIRED)} ${CONDITION_LABELS[DEFINITION10.condition] || ""}` : "농장에서 장착";
+        ELEMENT.querySelector("small b").textContent = DEFINITION10 ? `${NUMBER(CHARGE)}/${NUMBER(REQUIRED)}` : "";
+        ELEMENT.querySelector("small span").textContent = DEFINITION10 ? CONDITION_LABELS[DEFINITION10.condition] || "" : "장착 가능";
         ELEMENT.dataset.ready = String(READY);
         ELEMENT.querySelector(".formation-icon").setAttribute(
           "aria-label",
@@ -12392,7 +12387,7 @@
                 <h3>${ESCAPE(definition.name)}</h3><small>${LEVEL ? `Lv.${LEVEL}` : "미습득"}</small></div>
                 <p>${ESCAPE(definition.description || "")}</p>
                 <div class="formation-rule">${CONDITION_LABELS[definition.condition] || ""} ${definition.required}
-                <span>재사용 5초</span></div>
+                <span>재사용 ${FORMATION_COOLDOWN_SECONDS}초</span></div>
                 <small class="formation-axis">강화: ${ESCAPE(definition.upgradeAxis || "")}<br>${NUMBER(formationUpgradeValue(definition, LEVEL))}${ESCAPE(definition.upgradeUnit)}${LEVEL > 0 && LEVEL < FORMATION_MAX_LEVEL ? " → " + NUMBER(formationUpgradeValue(definition, LEVEL + 1)) + ESCAPE(definition.upgradeUnit) : ""}</small>
                 <div class="formation-card-actions"><button type="button" data-formation-purchase="${definition.id}"
                 ${BUY_DISABLED ? "disabled" : ""}>${LEVEL ? "강화" : "습득"} · 1 포인트</button>
@@ -15920,6 +15915,7 @@
   init_ability_state();
 
   // src/ability-tree.js
+  init_unit_grades();
   init_ability_catalog();
   init_species_catalog();
   init_ability_state();
@@ -15947,7 +15943,7 @@
   ]);
   var NODE_REASON_LABELS = new Map([
     ...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text]),
-    ["requires-rare-tier", (definition) => `이 종의 Rare (T${definition.rootTier}) 이상 개체가 필요합니다.`]
+    ["requires-rare-tier", (definition) => `이 종의 ${unitGradeLabel(definition.rootTier)} 이상 개체가 필요합니다.`]
   ]);
   var RESET_REASON_LABELS = /* @__PURE__ */ new Map([
     ["nothing-invested", "투자한 포인트가 없습니다."],
@@ -15997,7 +15993,7 @@
     const LEVEL_MARKUP = renderPlayerProgressMarkup(state);
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
-      <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">특수 능력</h2></div>
+      <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
     <p class="ability-tree__note">능력마다 Rare(T3)에서 해금할 수 있고, 강화와 적용 등급 완화에 같은 포인트를 씁니다. 사용하지 않은 포인트는 보존됩니다.</p>
@@ -16033,18 +16029,19 @@
     }).join("");
     const GRADE_NODES = definition.gradeThresholds.slice(1).map((tier, index) => {
       const LEVEL = index + 1;
-      const GRADE = tier === 2 ? "Uncommon (T2)" : "Common (T1)";
+      const GRADE = unitGradeLabel(tier);
       return renderNode(state, definition, `grade-${LEVEL}`, `${GRADE}까지`, `최소 적용 등급 ${GRADE}`, context);
     }).join("");
     const MINIMUM_TIER = getMinimumApplicableTier(state, definition.id);
     const ROOT_STATUS = getAbilityNodeStatus(state, definition, "root", context);
     const SPECIES_NAME = speciesById(definition.species).name;
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
-    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${INVESTMENT.rootUnlocked ? `최소 T${MINIMUM_TIER}` : "Rare · T3 해금"}</span></header>
+    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${INVESTMENT.rootUnlocked ? `최소 ${unitGradeLabel(MINIMUM_TIER)}` : `${unitGradeLabel(definition.rootTier)} 해금`}</span></header>
     <p class="ability-card__description">${definition.description}</p>
+    <p class="ability-card__current-effect">${INVESTMENT.rootUnlocked ? "현재 효과" : "해금 시 효과"}: ${powerLabel(definition, definition.powerValues[INVESTMENT.powerLevel], INVESTMENT.powerLevel)}</p>
     <div class="ability-card__root">
       <span class="ability-node__branch-label">능력 루트</span>
-      ${renderNode(state, definition, "root", "능력 해금", `Rare (T${definition.rootTier}) 개체 필요`, context, ROOT_STATUS)}
+      ${renderNode(state, definition, "root", "능력 해금", `${unitGradeLabel(definition.rootTier)} 개체 필요`, context, ROOT_STATUS)}
       <p class="ability-card__base-effect">기본 효과: ${powerLabel(definition, definition.powerValues[0], 0)}</p>
     </div>
     <div class="ability-card__branches">
@@ -16917,14 +16914,14 @@
     }
   };
   function drawTree() {
-    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
+    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle";
     DOLLAR2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
-      location: W.scene,
+      location: active.world.scene,
       inCombat: IN_COMBAT
     });
   }
   function drawAbilityTree() {
-    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
+    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle";
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
     DOLLAR2("abilityPoints").textContent = String(W.playerProgression.availablePoints);
     for (const BUTTON of DOLLAR2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) {
@@ -16932,7 +16929,7 @@
     }
     DOLLAR2("abilityNodes").innerHTML = renderAbilityTreeMarkup(W.playerProgression, {
       highestSpeciesTier: W.highestSpeciesTiers(),
-      location: W.scene,
+      location: active.world.scene,
       inCombat: IN_COMBAT,
       selectedSpecies: SELECTED_SPECIES
     });
@@ -16941,11 +16938,23 @@
     play: "#/menu",
     growth: "#/growth",
     abilities: "#/abilities",
-    help: "#/help"
+    help: "#/help",
+    formation: "#/formation"
   };
-  var ROUTE_MENU_TAB = (route2) => route2 === "#/growth" ? "growth" : route2 === "#/abilities" ? "abilities" : route2 === "#/help" ? "help" : "play";
+  var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
     menuTab = tab;
+    const UPGRADES = ["growth", "abilities", "formation"].includes(tab);
+    DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
+    DOLLAR2("gameMenuTitle").textContent = UPGRADES ? "업그레이드" : tab === "help" ? "도움말" : "설정";
+    DOLLAR2("gameMenuClose").setAttribute("aria-label", `${DOLLAR2("gameMenuTitle").textContent} 닫기`);
+    for (const [ID, SELECTED] of [
+      ["gameMenu", tab === "play"],
+      ["upgradeMenu", UPGRADES],
+      ["helpMenu", tab === "help"]
+    ]) {
+      DOLLAR2(ID).setAttribute("aria-expanded", String(menuOpen && SELECTED));
+    }
     for (const BUTTON of DOLLAR2("gameMenuTabs").querySelectorAll("[data-menu-tab]")) {
       const SELECTED = BUTTON.dataset.menuTab === tab;
       BUTTON.setAttribute("aria-selected", String(SELECTED));
@@ -16955,7 +16964,8 @@
       ["play", "menuPlayPanel"],
       ["growth", "treePanel"],
       ["abilities", "abilityPanel"],
-      ["help", "helpPanel"]
+      ["help", "helpPanel"],
+      ["formation", "formationPanel"]
     ]) {
       DOLLAR2(ID).hidden = NAME !== tab;
     }
@@ -16997,10 +17007,10 @@
     if (push) {
       history.pushState(null, "", MENU_ROUTES[tab] || MENU_ROUTES.play);
     }
-    DOLLAR2("gameMenuTabs").querySelector(`[data-menu-tab="${tab}"]`)?.focus();
+    (DOLLAR2("gameMenuTabs").querySelector(`[data-menu-tab="${tab}"]`) || DOLLAR2("gameMenuClose")).focus();
   }
   function switchMenuTab(tab, push = true) {
-    if (!["play", "growth", "abilities", "help"].includes(tab)) {
+    if (!Object.hasOwn(MENU_ROUTES, tab)) {
       return;
     }
     if (!menuOpen) {
@@ -17022,7 +17032,9 @@
     }
     menuOpen = false;
     DOLLAR2("gameMenuOverlay").hidden = true;
-    DOLLAR2("gameMenu").setAttribute("aria-expanded", "false");
+    for (const ID of ["gameMenu", "upgradeMenu", "helpMenu"]) {
+      DOLLAR2(ID).setAttribute("aria-expanded", "false");
+    }
     if (menuAutoPaused && !menuPauseChanged) {
       active.paused = menuWasPaused;
     }
@@ -17031,9 +17043,13 @@
     if (push) {
       history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
     }
-    DOLLAR2("gameMenu").focus();
+    DOLLAR2(
+      ["growth", "abilities", "formation"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
+    ).focus();
   }
-  DOLLAR2("gameMenu").onclick = () => menuOpen ? closeMenu() : openMenu();
+  DOLLAR2("gameMenu").onclick = () => menuOpen && menuTab === "play" ? closeMenu() : openMenu();
+  DOLLAR2("upgradeMenu").onclick = () => openMenu(active.world.scene === "raid" || personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "growth");
+  DOLLAR2("helpMenu").onclick = () => openMenu("help");
   DOLLAR2("gameMenuClose").onclick = () => closeMenu();
   DOLLAR2("menuHome").onclick = () => {
     closeMenu(false);
@@ -17216,7 +17232,7 @@
     }
   }
   function canUseWorldInput() {
-    return !home && !menuOpen && !bossEncounterOpen && !FORMATION_UI.dialog.open && !active.paused;
+    return !home && !menuOpen && !bossEncounterOpen && !active.paused;
   }
   function deployTroop() {
     if (!canUseWorldInput() || active.world.scene !== "raid") {
@@ -17404,13 +17420,11 @@
       }
       return;
     }
-    if (R2 === "#/help" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/menu") {
+    if (R2 === "#/help" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
       const RAID = active.world.scene === "raid", FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== "idle";
       const RESTRICTED = R2 === "#/growth" && (RAID || FARM_EVENT_ACTIVE) || R2 === "#/abilities" && (RAID || !personalGarden);
       if (RESTRICTED) {
-        if (menuOpen) {
-          closeMenu(false);
-        }
+        closeMenu(false);
         history.replaceState(null, "", RAID ? "#/raid" : "#/farm");
         return;
       }
@@ -17513,6 +17527,8 @@
     syncFlag("menuTabAbilities", "disabled", RAID || !personalGarden);
     syncFlag("raid", "disabled", RAID || FARM_EVENT_ACTIVE || !personalGarden);
     syncText("pause", active.paused ? "▶" : "Ⅱ");
+    syncAttribute("pause", "aria-label", active.paused ? "게임 계속" : "게임 일시 정지");
+    syncAttribute("pause", "title", active.paused ? "게임 계속" : "일시 정지");
     syncAttribute("feed", "aria-label", `먹이 탭, 5회 중 ${W.foodTaps.remainder}회`);
     syncData("feed", "state", W.food.length >= 140 ? "full" : "ready");
     syncData("feed", "produced", now < FOOD_FEEL.completeUntil);

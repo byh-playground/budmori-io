@@ -102,12 +102,11 @@ async function clean(p) {
     assert.deepEqual(REPORT.errors, []);
 }
 async function openMenuTab(p, tab = 'play') {
-    if (!(await p.locator('#gameMenuOverlay').isVisible())) {
-        await p.locator('#gameMenu').click();
-    }
-    const BUTTON = p.locator(`[data-menu-tab="${tab}"]`);
-    if ((await BUTTON.getAttribute('aria-selected')) !== 'true') {
-        await BUTTON.click();
+    const ENTRY = tab === 'play' ? '#gameMenu' : tab === 'help' ? '#helpMenu' : '#upgradeMenu';
+    await closeMenu(p);
+    await p.locator(ENTRY).click();
+    if (!['play', 'help', 'growth'].includes(tab)) {
+        await p.locator(`[data-menu-tab="${tab}"]`).click();
     }
 }
 async function closeMenu(p) {
@@ -116,7 +115,7 @@ async function closeMenu(p) {
     }
 }
 async function goHome(p) {
-    await openMenuTab(p, 'play');
+    await closeMenu(p);
     await p.locator('#menuHome').click();
 }
 async function render(p, label) {
@@ -567,6 +566,7 @@ async function unlockAbilityFlow(p) {
         U.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
         U.growthDuration = W.breedGrowthDuration();
         U.growthElapsed = U.growthDuration;
+        W.playerProgression.level = 2;
         W.playerProgression.availablePoints = 1;
         W.playerProgression.abilities['corn-burst-fire'] = {
             rootUnlocked: false,
@@ -712,7 +712,7 @@ async function nutAttackCycles(p) {
     );
 }
 async function formationBrowserUI() {
-    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true }),
         P = await open(C);
     await P.locator('#newGame').click();
     await P.evaluate(() => {
@@ -720,7 +720,7 @@ async function formationBrowserUI() {
         BUDMORI.sim.playerProgression.availablePoints = 100;
         BUDMORI.sim.markProgressChanged();
     });
-    await P.locator('.formation-open').click();
+    await openMenuTab(P, 'formation');
     await P.locator('[data-formation-purchase="giant"]').click();
     await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.levels.giant === 1);
     await P.locator('[data-formation-equip="giant"]').click();
@@ -736,15 +736,15 @@ async function formationBrowserUI() {
     await P.setViewportSize({ width: 390, height: 844 });
     assert(
         await P.evaluate(() => {
-            const D = document.querySelector('.formation-dialog');
+            const D = document.querySelector('#formationPanel');
             return D.scrollWidth <= D.clientWidth + 1;
         }),
         'mobile dialog has no horizontal overflow',
     );
     await P.screenshot({ path: path.join(OUT, 'formation-mobile.png') });
-    await P.locator('[data-formation-close]').click();
+    await closeMenu(P);
     await P.screenshot({ path: path.join(OUT, 'formation-mobile-slots.png') });
-    await openMenuTab(P, 'play');
+    await closeMenu(P);
     await P.locator('#menuHome').click();
     await P.reload();
     await P.waitForFunction(() => window.BUDMORI);
@@ -800,7 +800,7 @@ async function formationBrowserUI() {
             W.formationSkills.update(0.06);
             BUDMORI.runtime.capturePresentation('reset');
         }, GROUPS[index]);
-        await P.waitForFunction(() => !document.querySelector('.formation-dialog').open);
+        await closeMenu(P);
         await P.waitForTimeout(80);
         await clean(P);
         await P.screenshot({ path: path.join(OUT, 'formation-effects-' + index + '.png') });
@@ -831,12 +831,207 @@ async function formationBrowserUI() {
             await P.screenshot({ path: path.join(OUT, 'formation-sky-beams.png') });
         }
     }
-    await P.locator('.formation-open').click();
+    await openMenuTab(P, 'formation');
     assert.equal(await P.locator('[data-formation-equip="giant"]').isDisabled(), true);
     await C.close();
     CHECK(
         'Formation UI: real purchase/upgrade/equip/slot commands, 390px layout, combat lock and all nine GPU effects',
     );
+}
+async function upgradeMenuFlow() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await openMenuTab(P, 'play');
+    assert.equal(await P.locator('#gameMenuTitle').textContent(), '설정');
+    assert.equal(await P.locator('#gameMenuTabs').isVisible(), false);
+    assert.equal(await P.locator('#menuPlayPanel button').count(), 1);
+    await P.locator('#sound').click();
+    await P.locator('#sound').click();
+    await closeMenu(P);
+    await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        W.playerProgression.level = 101;
+        W.playerProgression.availablePoints = 100;
+        for (const SPECIES of [6, 7, 8]) {
+            W.spawn(SPECIES, 3, 0, 0);
+        }
+        W.markProgressChanged();
+    });
+    await openMenuTab(P, 'abilities');
+    for (const [SPECIES, ID, ROLE] of [
+        [6, 'rice-low-health-harvest', '수확'],
+        [7, 'wheat-command-crit', '치명타'],
+        [8, 'barley-armor-break', '방어도'],
+    ]) {
+        await P.locator(`[data-ability-species="${SPECIES}"]`).click();
+        const CARD = P.locator(`[data-ability="${ID}"]`);
+        assert((await CARD.textContent()).includes(ROLE));
+        await CARD.locator(`[data-ability-node="${ID}:root"]`).click();
+        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.abilities[id].rootUnlocked, ID);
+        await CARD.locator(`[data-ability-node="${ID}:power:1"]`).click();
+        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.abilities[id].powerLevel === 1, ID);
+        await P.waitForTimeout(220);
+        assert((await CARD.locator('.ability-card__current-effect').textContent()).includes('현재 효과'));
+        assert((await CARD.locator('.ability-card__grade').textContent()).includes('Rare'));
+        await P.locator('#abilityNodes').evaluate((element) => {
+            element.scrollTop = 0;
+        });
+        await P.screenshot({ path: path.join(OUT, 'upgrade-species-' + SPECIES + '.png') });
+    }
+    await P.setViewportSize({ width: 390, height: 844 });
+    await openMenuTab(P, 'formation');
+    await P.locator('[data-formation-purchase="giant"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.levels.giant === 1);
+    await P.locator('[data-formation-equip="giant"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.equipped[0] === 'giant');
+    assert.equal(await P.locator('.formation-open, .formation-dialog').count(), 0);
+    assert(await P.locator('#formationPanel').evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
+    await P.locator('[data-skill="storm-cloud"]').scrollIntoViewIfNeeded();
+    await P.screenshot({ path: path.join(OUT, 'upgrade-mobile-formation.png') });
+    await P.locator('#menuTabGrowth').click();
+    await P.locator('#menuTabAbilities').click();
+    await P.locator('#menuTabAbilities').press('ArrowRight');
+    assert.equal(await P.locator('#menuTabFormation').getAttribute('aria-selected'), 'true');
+    await closeMenu(P);
+    assert.equal(await P.locator('.formation-slot').count(), 1);
+    await P.evaluate(() => {
+        BUDMORI.sim.farmBossEvent.phase = 'fighting';
+    });
+    await openMenuTab(P, 'formation');
+    assert.equal(await P.locator('[data-formation-unequip="0"]').isDisabled(), true);
+    assert.equal(await P.locator('[data-formation-purchase="giant"]').isDisabled(), true);
+    await P.locator('#menuTabAbilities').click();
+    assert.equal(await P.locator('[data-ability-node][aria-disabled="false"]').count(), 0);
+    assert.equal(await P.locator('#menuTabGrowth').isDisabled(), true);
+    await closeMenu(P);
+    await P.evaluate(() => {
+        BUDMORI.sim.farmBossEvent.phase = 'idle';
+    });
+    await P.screenshot({ path: path.join(OUT, 'upgrade-mobile-toolbar.png') });
+    await P.locator('#menuHome').click();
+    await P.reload();
+    await P.waitForFunction(() => window.BUDMORI);
+    await P.locator('#continueGame').click();
+    await openMenuTab(P, 'abilities');
+    await P.locator('[data-ability-species="6"]').click();
+    assert((await P.locator('.ability-card__current-effect').textContent()).includes('1.75'));
+    await clean(P);
+    await C.close();
+    CHECK(
+        'Separate settings and upgrades; Rice/Wheat/Barley real investments, current effects, mobile tabs/scroll, combat lock and reload',
+    );
+}
+async function formationHudFlow() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await P.evaluate(() => {
+        BUDMORI.sim.playerProgression.level = 101;
+        BUDMORI.sim.playerProgression.availablePoints = 100;
+        BUDMORI.sim.markProgressChanged();
+    });
+    await openMenuTab(P, 'formation');
+    for (const [INDEX, ID] of ['giant', 'lightning', 'meteor'].entries()) {
+        if (INDEX > 0) {
+            await P.locator('[data-formation-buy-slot]').click();
+            await P.waitForFunction(
+                (count) => BUDMORI.sim.playerProgression.formationSkills.slots === count,
+                INDEX + 1,
+            );
+        }
+        await P.locator(`[data-formation-purchase="${ID}"]`).click();
+        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.formationSkills.levels[id] === 1, ID);
+        await P.locator(`[data-formation-equip="${ID}"]`).click();
+        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.formationSkills.equipped.includes(id), ID);
+    }
+    await closeMenu(P);
+    const VIEWPORTS = [
+        { width: 1280, height: 800 },
+        { width: 390, height: 844 },
+        { width: 320, height: 568 },
+        { width: 844, height: 390 },
+    ];
+    const VERIFY_HUD = async (scene) => {
+        for (const VIEWPORT of VIEWPORTS) {
+            await P.setViewportSize(VIEWPORT);
+            await P.waitForTimeout(80);
+            const GEOMETRY = await P.evaluate(() => {
+                const HUD = document.querySelector('.formation-dock'),
+                    BOX = HUD.getBoundingClientRect(),
+                    INTERSECTS = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top,
+                    OBSTACLES = [
+                        ...document.querySelectorAll(
+                            '.controls:not([hidden]), .raid-panel:not([hidden]), .utility, #bossbar:not([hidden])',
+                        ),
+                    ]
+                        .filter((element) => element.getClientRects().length)
+                        .map((element) => element.getBoundingClientRect());
+                return {
+                    centered: Math.abs((BOX.left + BOX.right) / 2 - innerWidth / 2) < 1,
+                    inside: BOX.left >= 0 && BOX.right <= innerWidth && BOX.top >= 0 && BOX.bottom <= innerHeight,
+                    overlaps: OBSTACLES.some((box) => INTERSECTS(BOX, box)),
+                    controlsInside: OBSTACLES.every((box) => box.left >= 0 && box.right <= innerWidth),
+                    readable: [...HUD.querySelectorAll('small b, small span')].every(
+                        (element) => element.scrollWidth <= element.clientWidth + 1,
+                    ),
+                    inputPasses:
+                        document.elementFromPoint((BOX.left + BOX.right) / 2, (BOX.top + BOX.bottom) / 2)?.id ===
+                        'world',
+                    pageOverflow: document.documentElement.scrollWidth > innerWidth,
+                };
+            });
+            assert.deepEqual(
+                GEOMETRY,
+                {
+                    centered: true,
+                    inside: true,
+                    overlaps: false,
+                    controlsInside: true,
+                    readable: true,
+                    inputPasses: true,
+                    pageOverflow: false,
+                },
+                scene + ' HUD ' + VIEWPORT.width + 'x' + VIEWPORT.height,
+            );
+            await P.screenshot({ path: path.join(OUT, 'formation-hud-' + scene + '-' + VIEWPORT.width + '.png') });
+        }
+    };
+    await P.evaluate(() => {
+        BUDMORI.runtime.paused = true;
+        BUDMORI.sim.farmBossEvent.phase = 'fighting';
+        BUDMORI.sim.boss.active = true;
+    });
+    await VERIFY_HUD('farm-event');
+    await P.evaluate(() => {
+        BUDMORI.sim.farmBossEvent.phase = 'idle';
+        BUDMORI.sim.boss.active = false;
+        BUDMORI.runtime.paused = false;
+    });
+    await P.setViewportSize({ width: 390, height: 844 });
+    const BOX = await P.locator('.formation-dock').boundingBox(),
+        BEFORE = await cameraSnapshot(P);
+    await P.mouse.move(BOX.x + BOX.width / 2, BOX.y + BOX.height / 2);
+    await P.mouse.down();
+    await P.mouse.move(BOX.x + BOX.width / 2 + 40, BOX.y + BOX.height / 2 - 30, { steps: 3 });
+    await P.mouse.up();
+    assert.notDeepEqual((await cameraSnapshot(P)).pan, BEFORE.pan, 'HUD does not intercept native map drag');
+    await P.locator('#raid').tap();
+    await P.locator('#bossEncounterChallenge').tap();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'raid');
+    await P.evaluate(() => {
+        BUDMORI.runtime.paused = true;
+    });
+    await VERIFY_HUD('raid');
+    await clean(P);
+    await C.close();
+    CHECK(
+        'Three skill slots stay centered and separate from actions in Farm events/Raid at desktop, 390px, 320px and landscape; native map drag passes through HUD',
+    );
+}
+async function upgrades() {
+    await upgradeMenuFlow();
+    await formationHudFlow();
 }
 async function core() {
     const C = await browser.newContext({
@@ -902,6 +1097,7 @@ async function core() {
     });
     await P.waitForFunction(() => BUDMORI.runtime.tick > 5);
     assert.equal(await P.locator('#startScreen').isVisible(), false);
+    await upgrades();
     await nutAttackCycles(P);
     await formationBrowserUI();
     const MENU_CONTRACT = await P.evaluate(() => ({
@@ -921,11 +1117,11 @@ async function core() {
     }));
     assert.deepEqual(
         MENU_CONTRACT.utility,
-        ['gameMenu'],
-        'only one conventional gear button remains in the utility menu',
+        ['gameMenu', 'upgradeMenu', 'helpMenu', 'pause', 'menuHome'],
+        'settings, upgrades and gameplay navigation have distinct controls',
     );
     assert.equal(MENU_CONTRACT.label, '게임 설정 열기');
-    assert.deepEqual(MENU_CONTRACT.tabs, ['플레이', '성장', '특수 능력', '도움말']);
+    assert.deepEqual(MENU_CONTRACT.tabs, ['공통 스탯', '병종 특성', '편성 스킬']);
     assert.equal(MENU_CONTRACT.roles, false, 'troop-role explainer is removed from the battle map');
     assert(MENU_CONTRACT.essentials, 'feed, deploy status and both HP indicators remain available');
     const WAS_PAUSED = await P.evaluate(() => BUDMORI.runtime.paused);
@@ -934,22 +1130,18 @@ async function core() {
         path: path.join(OUT, 'pc-game-menu.png'),
         animations: 'disabled',
     });
+    await closeMenu(P);
     if (!WAS_PAUSED) {
         assert.equal((await P.locator('#pause').textContent()).trim(), 'Ⅱ');
         await P.locator('#pause').click();
         await P.waitForFunction(() => BUDMORI.runtime.paused);
-        assert.equal(
-            await P.locator('#gameMenuOverlay').isVisible(),
-            true,
-            'Pause can be selected while the menu is open',
-        );
+        assert.equal(await P.locator('#gameMenuOverlay').isVisible(), false, 'Pause is a separate gameplay control');
         await closeMenu(P);
         assert.equal(
             await P.evaluate(() => BUDMORI.runtime.paused),
             true,
             'closing settings keeps an explicitly selected paused state',
         );
-        await openMenuTab(P, 'play');
         assert.equal((await P.locator('#pause').textContent()).trim(), '▶');
         await P.locator('#pause').click();
         await P.locator('#gameMenuOverlay').waitFor({
@@ -972,7 +1164,7 @@ async function core() {
         WAS_PAUSED,
         'Escape closes the menu and restores the previous play state',
     );
-    CHECK('One gear entry with four Korean tabs; Escape restores the prior play state');
+    CHECK('Separate settings/upgrades, three upgrade tabs; Escape restores the prior play state');
     await unlockAbilityFlow(P);
     const BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual),
         FEED_CAMERA = await cameraSnapshot(P),
@@ -1293,8 +1485,7 @@ async function core() {
         units: BUDMORI.sim.units.length,
         remaining: BUDMORI.sim.raidRemaining('solo'),
     }));
-    await M.locator('#gameMenu').tap();
-    await M.locator('#menuTabHelp').tap();
+    await openMenuTab(M, 'help');
     await M.locator('#helpPanel').waitFor({
         state: 'visible',
     });
@@ -1319,8 +1510,7 @@ async function core() {
         MENU_BEFORE,
         'tapping outside settings closes it without a pass-through Raid deployment',
     );
-    await M.locator('#gameMenu').tap();
-    await M.locator('#menuTabHelp').tap();
+    await openMenuTab(M, 'help');
     await M.locator('#gameMenuClose').tap();
     await M.locator('#gameMenuOverlay').waitFor({
         state: 'hidden',
@@ -3103,6 +3293,8 @@ try {
     await (
         {
             core,
+            upgrades,
+            formation: formationBrowserUI,
             save,
             migration,
             event,

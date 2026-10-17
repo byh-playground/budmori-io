@@ -49,3 +49,8 @@ export function mergeMaterialCostForTier(resultTier) {
 export function isValidUnitTier(tier) {
     return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
 }
+
+export function unitGradeLabel(tier) {
+    const GRADE = UNIT_GRADES.find((grade) => grade.tier === tier);
+    return GRADE ? `${GRADE.name} (T${GRADE.tier})` : '';
+}

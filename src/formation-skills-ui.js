@@ -47,30 +47,18 @@ export class FormationSkillsUI {
         this.root = document.createElement('section');
         this.root.className = 'formation-dock';
         this.root.setAttribute('aria-label', '편성 스킬');
-        this.root.innerHTML =
-            '<button class="formation-open" type="button">편성 스킬</button>' + '<div class="formation-slots"></div>';
-        this.dialog = document.createElement('dialog');
-        this.dialog.className = 'formation-dialog';
-        this.dialog.setAttribute('aria-labelledby', 'formation-title');
-        this.dialog.innerHTML =
-            '<header><div><small>FORMATION</small><h2 id="formation-title">편성 스킬</h2></div>' +
-            '<button type="button" data-formation-close aria-label="편성 닫기">×</button></header>' +
-            '<div class="formation-content"></div>';
-        document.body.append(this.root, this.dialog);
-        this.content = this.dialog.querySelector('.formation-content');
+        this.root.innerHTML = '<div class="formation-slots"></div>';
+        document.querySelector('#gameplayDock').prepend(this.root);
+        this.content = document.querySelector('#formationContent');
         this.slotHost = this.root.querySelector('.formation-slots');
-        this.root.querySelector('button').onclick = () => this.dialog.showModal();
-        this.dialog.onclick = (event) => this.click(event);
-        this.dialog.addEventListener('close', () => this.root.querySelector('button').focus());
+        this.content.onclick = (event) => this.click(event);
     }
     click(event) {
         const BUTTON = event.target.closest('button');
         if (!BUTTON || BUTTON.disabled) {
             return;
         }
-        if (BUTTON.hasAttribute('data-formation-close')) {
-            this.dialog.close();
-        } else if (BUTTON.hasAttribute('data-formation-buy-slot')) {
+        if (BUTTON.hasAttribute('data-formation-buy-slot')) {
             this.command('formation-slot', {});
         } else if (BUTTON.dataset.formationPurchase) {
             this.command('formation-purchase', { id: BUTTON.dataset.formationPurchase });
@@ -85,9 +73,6 @@ export class FormationSkillsUI {
     }
     update(world, display, visible, ownerId = '') {
         this.root.hidden = !visible;
-        if (!visible && this.dialog.open) {
-            this.dialog.close();
-        }
         const PLAYER = world.scene === 'raid' ? world.raidRoster(ownerId)?.abilitySnapshot : world.playerProgression,
             STATE = PLAYER?.formationSkills;
         if (!STATE) {
@@ -109,7 +94,7 @@ export class FormationSkillsUI {
                     <div class="formation-icon" title="${ESCAPE(DEFINITION?.name || '빈 슬롯')}">
                     <span>${ICONS[DEFINITION?.id] || '+'}</span><i class="formation-clock"></i></div>
                     <div class="formation-readout"><strong>${ESCAPE(DEFINITION?.name || '빈 슬롯')}</strong>
-                    <div class="formation-charge"><i></i></div><small></small></div></div>`;
+                    <div class="formation-charge"><i></i></div><small><b></b><span></span></small></div></div>`;
             }).join('');
         }
         const SLOTS = display.formationSlots || world.formationSkills?.slots || [];
@@ -127,9 +112,10 @@ export class FormationSkillsUI {
                 `${(COOLDOWN / FORMATION_COOLDOWN_SECONDS) * 360}deg`,
             );
             ELEMENT.querySelector('.formation-charge i').style.width = `${(CHARGE / REQUIRED) * 100}%`;
-            ELEMENT.querySelector('small').textContent = DEFINITION
-                ? `${NUMBER(CHARGE)}/${NUMBER(REQUIRED)} ${CONDITION_LABELS[DEFINITION.condition] || ''}`
-                : '농장에서 장착';
+            ELEMENT.querySelector('small b').textContent = DEFINITION ? `${NUMBER(CHARGE)}/${NUMBER(REQUIRED)}` : '';
+            ELEMENT.querySelector('small span').textContent = DEFINITION
+                ? CONDITION_LABELS[DEFINITION.condition] || ''
+                : '장착 가능';
             ELEMENT.dataset.ready = String(READY);
             ELEMENT.querySelector('.formation-icon').setAttribute(
                 'aria-label',
@@ -156,7 +142,7 @@ export class FormationSkillsUI {
                 <h3>${ESCAPE(definition.name)}</h3><small>${LEVEL ? `Lv.${LEVEL}` : '미습득'}</small></div>
                 <p>${ESCAPE(definition.description || '')}</p>
                 <div class="formation-rule">${CONDITION_LABELS[definition.condition] || ''} ${definition.required}
-                <span>재사용 5초</span></div>
+                <span>재사용 ${FORMATION_COOLDOWN_SECONDS}초</span></div>
                 <small class="formation-axis">강화: ${ESCAPE(definition.upgradeAxis || '')}<br>${NUMBER(formationUpgradeValue(definition, LEVEL))}${ESCAPE(definition.upgradeUnit)}${LEVEL > 0 && LEVEL < FORMATION_MAX_LEVEL ? ' → ' + NUMBER(formationUpgradeValue(definition, LEVEL + 1)) + ESCAPE(definition.upgradeUnit) : ''}</small>
                 <div class="formation-card-actions"><button type="button" data-formation-purchase="${definition.id}"
                 ${BUY_DISABLED ? 'disabled' : ''}>${LEVEL ? '강화' : '습득'} · 1 포인트</button>

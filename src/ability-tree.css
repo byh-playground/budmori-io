@@ -491,3 +491,11 @@
         padding: 0.6rem 0.7rem 0.85rem;
     }
 }
+
+.ability-card__current-effect {
+    padding: 10px 12px;
+    background: #e7eddd;
+    border-radius: 10px;
+    line-height: 1.7;
+    font-size: 13px;
+}

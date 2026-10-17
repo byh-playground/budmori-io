@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "npm run format:check && npm run lint && node scripts/build.cjs",
+        "build": "npm run format:check && npm run lint && node scripts/ability-reference.mjs --check && node scripts/build.cjs",
         "test": "node scripts/test-scenarios.mjs",
         "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
         "vector-assets:validate": "node scripts/vector-sources.cjs",

@@ -15,7 +15,8 @@ export const PEANUT_SEPARATED_ASSAULT_FEATURE = Object.freeze({
         id: 'peanut-separated-assault',
         species: 4,
         name: '분리 협공',
-        description: '한 땅콩의 두 알이 넓게 벌어져 번갈아 공격합니다. 수치는 초기 밸런스 초안입니다.',
+        description:
+            '하나의 본체와 체력을 공유하는 두 알이 정해진 시점에 번갈아 타격합니다. 기절·사망·전투 종료 시 공격을 중단합니다.',
         rootTier: 3,
         powerValues: Object.freeze([3, 4, 5]),
         strikeAttackMultiplier: 0.5,
