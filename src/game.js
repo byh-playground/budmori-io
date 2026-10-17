@@ -1465,6 +1465,7 @@
       HealingRainSkill = class extends FormationSkill {
         constructor() {
           super(DEFINITION6);
+          this.injuredScratch = [];
         }
         cast(owner, slot) {
           if (owner.injuredAllies().length === 0) {
@@ -1482,15 +1483,24 @@
           const SPAN = Math.min(dt, Math.max(0, effect.duration - effect.age));
           effect.age += dt;
           let amount = effect.total * SPAN / effect.duration;
-          let injured = owner.injuredAllies();
-          while (amount > 1e-9 && injured.length) {
-            const SHARE = amount / injured.length;
+          const INJURED = owner.injuredAllies(this.injuredScratch);
+          let injuredCount = INJURED.length;
+          while (amount > 1e-9 && injuredCount) {
+            const SHARE = amount / injuredCount;
             let spent = 0;
-            for (const UNIT3 of injured) {
+            for (let i = 0; i < injuredCount; i++) {
+              const UNIT3 = INJURED[i];
               spent += applyHealing(UNIT3, SHARE, { ...resolveUnitStats(UNIT3), healingReceivedMultiplier: 1 });
             }
             amount -= spent;
-            injured = injured.filter((unit) => unit.hp < resolveUnitStats(unit).maxHp - 1e-9);
+            let remaining = 0;
+            for (let i = 0; i < injuredCount; i++) {
+              const UNIT3 = INJURED[i];
+              if (UNIT3.hp < resolveUnitStats(UNIT3).maxHp - 1e-9) {
+                INJURED[remaining++] = UNIT3;
+              }
+            }
+            injuredCount = remaining;
             if (spent < 1e-9) {
               break;
             }
@@ -1654,8 +1664,12 @@
             this.trackHealth(UNIT3);
           }
         }
-        injuredAllies() {
-          return [...this.injured];
+        injuredAllies(out = []) {
+          out.length = 0;
+          for (const UNIT3 of this.injured) {
+            out.push(UNIT3);
+          }
+          return out;
         }
         includeBuild(ownerId, state) {
           if (!this.runtime.active || this.slots.some((slot) => slot.ownerId === ownerId)) {
@@ -10891,7 +10905,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.10";
+      PRODUCT_VERSION = "0.8.11";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
