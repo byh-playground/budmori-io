@@ -10,6 +10,7 @@ import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './abi
 import {FARM_UPGRADE_NODES, farmUpgradeRate, getAutoTapSeconds, getBreedCooldownSeconds, getFarmCapacity, getMergeCooldownSeconds} from './farm-upgrades.js';
 import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig} from './species-abilities.js';
 import {MAX_BEAN_SPLIT_CHILDREN} from './species-abilities.js';
+import {createPeanutStrikeSchedule,resolveStrikeMask} from './unit-combat-patterns.js';
 import {MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier} from './unit-grades.js';
 import {BOSS_PATTERN_IDS,BOSS_PATTERN_CONFIG,BOSS_AIM_TURN_RATE,createBossPatternRuntime,chooseBossPattern} from './boss-patterns.js';
 import {FACTION_CONFIG,hasFaction,areOpposingFactions} from './factions.js';
@@ -96,6 +97,7 @@ class AttackCycle {
     begin(sim,target){
     const u=this.owner;if(this.phase!=="idle"||u.down>0||u.stun>0||u.z>.1||u.landingRecovery>0)return false;
     this.phase="windup";this.elapsed=0;this.action={id:++sim.attackSerial,target:{...target},targetId:target.id??'boss',hit:false,path:null};
+    if(this.spec.kind==='peanut-dual-strike')Object.assign(this.action,{resolvedMask:0,hitMask:0});
     u.angle=Math.atan2(target.y-u.y,target.x-u.x);u.vx=u.vy=0;
     sim.combatEvent("prepare",u,this.action);return true;
   }
@@ -109,7 +111,14 @@ class AttackCycle {
     if(this.phase==="windup"){
       u.vx*=Math.exp(-dt*18);u.vy*=Math.exp(-dt*18);
       if(this.elapsed>=this.spec.windup){
-        this.elapsed=0;this.phase="active";const a=this.action;a.path=Ballistics.create(u,a.target,this.spec.kind);sim.combatEvent("launch",u,a);
+        this.elapsed=0;this.phase="active";const a=this.action;
+        if(this.spec.kind==='peanut-dual-strike'){
+          a.path={from:{x:u.x,y:u.y,z:0},to:{x:u.x,y:u.y,z:0},height:0,duration:this.spec.active};
+        }else{
+          a.path=Ballistics.create(u,a.target,this.spec.kind);
+          if(this.spec.kind==='walnut-hammer')a.path.duration=this.spec.active;
+        }
+        sim.combatEvent("launch",u,a);
         if(this.spec.kind==="lob"){
           const burst=getCornBurstConfig(sim.abilityProgressionFor(u),u.tier);
           const popcorn=getPopcornExplosionConfig(sim.abilityProgressionFor(u),u.tier);
@@ -135,7 +144,31 @@ class AttackCycle {
     const p=Ballistics.sample(a.path,this.elapsed/a.path.duration);u.vx=(p.x-u.x)/dt;u.vy=(p.y-u.y)/dt;u.vz=(p.z-u.z)/dt;u.x=p.x;u.y=p.y;u.z=p.z;u.flash=Math.max(0,u.flash-dt);u.bounce=Math.max(0,u.bounce-dt);return true;
   }
   afterMove(sim,old){
-    const a=this.action,u=this.owner,target=sim.attackTarget(u,a);if(this.phase!=="active"||!a?.path||!target)return;
+    const a=this.action,u=this.owner;
+    if(this.spec.kind==='peanut-dual-strike'){
+      if(this.phase!=='active'||!a?.path)return;
+      const schedule=createPeanutStrikeSchedule({activeSeconds:this.spec.active});
+      for(const slot of schedule){
+        if(this.elapsed+1e-9<slot.dueSeconds||((a.resolvedMask||0)&(1<<slot.strikeIndex))!==0)continue;
+        const target=sim.attackTarget(u,a);
+        let hit=null;
+        if(target&&target.hp>0){
+          const distance=Math.hypot(target.x-u.x,target.y-u.y),reach=target.radius+u.radius+this.spec.range;
+          if(distance<=reach){
+            const aim=Math.atan2(target.y-u.y,target.x-u.x),side=slot.angleOffsetRadians;
+            const from={x:u.x+Math.cos(aim+side)*u.radius*.45,y:u.y+Math.sin(aim+side)*u.radius*.45,z:0};
+            const to={x:target.x-Math.cos(aim)*target.radius*.9,y:target.y-Math.sin(aim)*target.radius*.9,z:0};
+            hit=ArenaGeometry.sweep(from,to,Math.max(.06,u.radius*.2),.24,target);
+          }
+        }
+        const strikeAction={...a,hit:false,strikeIndex:slot.strikeIndex};
+        const didHit=!!hit&&sim.damageCombatTarget(u,strikeAction,target,hit,{attackMultiplier:slot.attackMultiplier,attackKind:this.spec.kind,strikeIndex:slot.strikeIndex});
+        const masks=resolveStrikeMask(a,slot.strikeIndex,didHit);if(masks)Object.assign(a,masks);
+      }
+      if(this.elapsed>=this.spec.active-1e-9){u.z=0;u.vz=0;this.recover(sim,false)}
+      return;
+    }
+    const target=sim.attackTarget(u,a);if(this.phase!=="active"||!a?.path||!target)return;
     const areaRadius=scaleAttackArea(u.radius,u);
     const hit=!a.hit&&ArenaGeometry.sweep(old,u,areaRadius,.65,target);
     if(hit){sim.damageCombatTarget(u,a,target,hit,{attackMultiplier:this.spec.skillMultiplier,attackKind:this.spec.kind});if(this.spec.kind==="ram"||this.spec.kind==="punch"){u.x=hit.x;u.y=hit.y;u.z=hit.z;this.recover(sim,true);return}}
@@ -721,7 +754,7 @@ const AttackingBody=Base=>class extends Base{
         if(u.species===3){const config=getChestnutSpikeConfig(this.abilityProgressionFor(u),u.tier);if(config)this.spawnChestnutSpikes(u,action,config)}
       }
     }
-    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null}={}){
+    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null}={}){
       if(!hasFaction(u,FACTION_CONFIG.PLAYER)||!areOpposingFactions(u,this.boss)||action.hit||this.boss.hp<=0)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
       const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
@@ -733,21 +766,21 @@ const AttackingBody=Base=>class extends Base{
       const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,armorForTarget:()=>armor,roll:()=>this.random()});
       this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
-      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*(damage.critical?attackerStats.critMultiplier:1)});
+      this.combat('boss-hit',{unit:u.id,ownerId:u.ownerId,species:u.species,attackId:action.id,strikeIndex,attackKind:kind,buffed,critical:damage.critical,x:this.boss.x+dx/d*this.boss.radius,y:this.boss.y+dy/d*this.boss.radius,z:clamp(point.z+.2,.2,this.boss.height),nx:dx/d,ny:dy/d,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*(damage.critical?attackerStats.critMultiplier:1)});
       this.combatEvent('damage',u,action);return true;
     }
     attackTarget(unit,action){
       if(action?.targetId==='boss'||!action?.targetId)return areOpposingFactions(unit,this.boss)?this.boss:null;
       return this.units.find(candidate=>candidate.id===action.targetId&&candidate.hp>0&&areOpposingFactions(unit,candidate))||null;
     }
-    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null}={}){
+    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null}={}){
       if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil,attackerStats=stats(u.tier,u.species),damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier;
       const damage=applyDamageToTargets(null,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1),sourceKind:'enemy'});
       const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5,2.4,u);
       if(target.hp===0){target.down=target.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(target)}
       this.metrics.directHits++;this.metrics.basicHits++;
-      this.combat('unit-hit',{attackKind:attackKind||spec.kind,attackId:action.id,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength:damageMultiplier*(damage?.critical?attackerStats.critMultiplier:1)});
+      this.combat('unit-hit',{attackKind:attackKind||spec.kind,attackId:action.id,strikeIndex,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength:damageMultiplier*(damage?.critical?attackerStats.critMultiplier:1)});
       return true;
     }
     damageCombatTarget(u,action,target,point,options={}){return target===this.boss?this.damageBoss(u,action,point,options):this.damageUnitTarget(u,action,target,point,options)}
@@ -805,7 +838,7 @@ const AttackingBody=Base=>class extends Base{
       const b=enemy,spec=abilityProfile(u.species),dx=u.x-b.x,dy=u.y-b.y,n=Math.hypot(dx,dy)||1,targetId=enemy===this.boss?'boss':enemy.id;
       // Hold the current firing bearing. Ranged troops retreat from a boss that closes in;
       // they never follow a rotating slot through its body to reach the opposite side.
-      const stand=b.radius+spec.range+(u.tier-1)*.12,min=stand-.55,max=stand+.55;
+      const stand=b.radius+spec.range+(u.tier-1)*.12,min=stand-.55,max=stand+(spec.kind==='peanut-dual-strike'?0:.55);
       if(n>max||(spec.kind==='lob'&&n<min)){
         const slot=ArenaGeometry.clamp({x:b.x+dx/n*stand,y:b.y+dy/n*stand},this.scene,u.radius);
         this.steer(u,slot.x,slot.y,dt,scaleMoveSpeed(4.1,u));return;
@@ -937,7 +970,7 @@ const AttackingBody=Base=>class extends Base{
       // Chestnut uses the dedicated boss SVG socket instead. Map the socket's
       // local horizontal displacement along the boss's facing plane and its
       // vertical displacement onto the existing 2.5D height axis.
-      const anchors=[[176,210,160,350],[140,112,142.5,295],[119,109,130,320],[160,145,160,261]][this.boss.species],b=this.boss,scale=2*b.radius*1.16/220,forward=(anchors[0]-anchors[2])*scale,vertical=Math.max(0,(anchors[3]-anchors[1])*scale/.785);
+      const anchors=[[176,210,160,350],[140,112,142.5,295],[119,109,130,320],[160,145,160,261],[160,164,160,267],[160,165,160,266]][this.boss.species]||[160,165,160,266],b=this.boss,scale=2*b.radius*1.16/220,forward=(anchors[0]-anchors[2])*scale,vertical=Math.max(0,(anchors[3]-anchors[1])*scale/.785);
       return{x:b.x+Math.cos(b.angle)*forward,y:b.y+Math.sin(b.angle)*forward,z:vertical};
     }
     bossSummonLanding(angle,action=null){

@@ -49,6 +49,33 @@ async function unlockAbilityFlow(p){
  await root.click();await p.waitForFunction(()=>BUDMORI.sim.playerProgression.abilities['corn-burst-fire'].rootUnlocked);await p.waitForFunction(()=>document.querySelector('#abilityPoints')?.textContent.trim()==='0');
  assert.equal(await p.evaluate(()=>BUDMORI.sim.playerProgression.availablePoints),0);await closeMenu(p);check('Ability menu selects Corn, unlocks its rare ability, and spends one shared XP point');
 }
+async function nutAttackCycles(p){
+ const result=await p.evaluate(async()=>{
+  const Garden=BUDMORI.sim.constructor,{snapshot,restore,validateSnapshot}=await import('/src/farm-state.js');
+  const targetPoint=x=>({id:'boss',x,y:0});
+  const tick=(world,unit,count,other=null)=>{for(let i=0;i<count;i++){const dt=1/120;unit.ability.update(world,dt);const old={x:unit.x,y:unit.y,z:unit.z};unit.integrate(dt);unit.ability.afterMove(world,old);if(other)other.integrate(dt);world.time+=dt}};
+  const peanutWorld=new Garden(1204);peanutWorld.boss.x=5.7;peanutWorld.boss.y=0;peanutWorld.boss.hp=peanutWorld.boss.maxHp=1000;
+  const peanut=peanutWorld.spawn(4,1,0,0);peanut.ability.begin(peanutWorld,targetPoint(1.44));tick(peanutWorld,peanut,46);
+  const first=peanutWorld.notices.filter(event=>event.kind==='boss-hit');
+  if(first.length!==1||first[0].strikeIndex!==0||peanut.ability.action?.resolvedMask!==1||peanut.ability.action?.hitMask!==1)throw Error('Peanut first fixed strike slot was not recorded');
+  const midpoint=snapshot(peanutWorld);if(!validateSnapshot(midpoint))throw Error('Peanut mid-cycle snapshot did not validate');const replay=restore(midpoint);
+  const replayPeanut=replay.units.find(unit=>unit.species===4);tick(peanutWorld,peanut,30);tick(replay,replayPeanut,30);
+  const hashes=world=>BloomGamekitDeterministic.hashBytes(BloomGamekitDeterministic.binaryCodec.encode(snapshot(world)));
+  const peanutHits=peanutWorld.notices.filter(event=>event.kind==='boss-hit');
+  if(peanutHits.length!==2||peanutHits[1].strikeIndex!==1||peanutHits[0].attackId!==peanutHits[1].attackId||peanut.ability.action?.hitMask!==3||hashes(peanutWorld)!==hashes(replay))throw Error('Peanut slot replay or per-strike damage diverged');
+  const walnutWorld=new Garden(1205);walnutWorld.boss.x=5.7;walnutWorld.boss.y=0;walnutWorld.boss.hp=walnutWorld.boss.maxHp=1000;
+  const walnut=walnutWorld.spawn(5,1,0,0);walnut.ability.begin(walnutWorld,targetPoint(1.44));tick(walnutWorld,walnut,100);
+  const walnutHits=walnutWorld.notices.filter(event=>event.kind==='boss-hit');
+  if(walnutHits.length!==1||walnutHits[0].attackKind!=='walnut-hammer')throw Error('Walnut hammer did not resolve exactly once');
+  const unitWorld=new Garden(1206),attacker=unitWorld.spawn(4,1,0,0),target=unitWorld.spawn(5,1,.5,0);target.faction=BUDMORI.CONFIG.factions.ENEMY;target.ownerId='boss';target.hp=100;
+  attacker.ability.begin(unitWorld,{id:target.id,x:target.x,y:target.y});tick(unitWorld,attacker,100,target);
+  const unitHits=unitWorld.notices.filter(event=>event.kind==='unit-hit');
+  if(unitHits.length!==2||unitHits.some(event=>event.attackKind!=='peanut-dual-strike')||unitHits[0].attackId!==unitHits[1].attackId||unitHits[0].strikeIndex!==0||unitHits[1].strikeIndex!==1||target.hp>=100)throw Error('Peanut did not route both strikes through the normal opposing-unit damage path');
+  return{peanutHitCount:peanutHits.length,peanutStrikeIndexes:peanutHits.map(event=>event.strikeIndex),replayMatched:true,walnutHitCount:walnutHits.length,opposingUnitHitCount:unitHits.length,opposingUnitDamaged:target.hp<100};
+ });
+ assert.deepEqual(result,{peanutHitCount:2,peanutStrikeIndexes:[0,1],replayMatched:true,walnutHitCount:1,opposingUnitHitCount:2,opposingUnitDamaged:true});
+ check('Peanut two-slot hits and Walnut hammer use the common damage path; a mid-cycle save/replay preserves the slot masks');
+}
 async function core(){
  const c=await browser.newContext({viewport:{width:1280,height:800}}),p=await open(c);
  await p.waitForFunction(()=>!document.getElementById('bloom-module-loading'));
@@ -65,7 +92,7 @@ async function core(){
  assert(startupDiagnostics.diagnostics.errors.some(error=>error.kind==='global-error'&&error.message==='diagnostic-probe'),'GameKit global diagnostics retain the startup/global error');
  assert(startupDiagnostics.recentInputs.some(input=>input.type==='click'&&input.target?.id==='bloom-diagnostic-copy'),'bounded input trace records the diagnostic button tap without form data');
  check('Startup diagnostics use the pinned GameKit error ring and copy a redacted bounded input trace');
- await p.locator('#newGame').click();await p.evaluate(()=>{const seed=4463;BUDMORI.sim.seed=seed;BUDMORI.sim.rng=new BloomGamekitDeterministic.SeededPRNG(seed)});await p.waitForFunction(()=>BUDMORI.runtime.tick>5);assert.equal(await p.locator('#startScreen').isVisible(),false);
+ await p.locator('#newGame').click();await p.evaluate(()=>{const seed=4463;BUDMORI.sim.seed=seed;BUDMORI.sim.rng=new BloomGamekitDeterministic.SeededPRNG(seed)});await p.waitForFunction(()=>BUDMORI.runtime.tick>5);assert.equal(await p.locator('#startScreen').isVisible(),false);await nutAttackCycles(p);
  const menuContract=await p.evaluate(()=>({utility:[...document.querySelectorAll('.utility button')].map(button=>button.id),label:document.querySelector('#gameMenu')?.getAttribute('aria-label'),tabs:[...document.querySelectorAll('#gameMenuTabs [role="tab"]')].map(button=>button.textContent.trim()),roles:!!document.querySelector('#roles'),essentials:['feed','raidControls','raidRemaining','bossbar','allyHealth','bossHealth'].every(id=>!!document.getElementById(id))}));
  assert.deepEqual(menuContract.utility,['gameMenu'],'only one conventional gear button remains in the utility menu');assert.equal(menuContract.label,'게임 설정 열기');assert.deepEqual(menuContract.tabs,['플레이','성장','특수 능력','도움말']);assert.equal(menuContract.roles,false,'troop-role explainer is removed from the battle map');assert(menuContract.essentials,'feed, deploy status and both HP indicators remain available');
  const wasPaused=await p.evaluate(()=>BUDMORI.runtime.paused);await openMenuTab(p,'play');await p.screenshot({path:path.join(out,'pc-game-menu.png'),animations:'disabled'});if(!wasPaused){assert.equal((await p.locator('#pause').textContent()).trim(),'일시 정지');await p.locator('#pause').click();await p.waitForFunction(()=>BUDMORI.runtime.paused);assert.equal(await p.locator('#gameMenuOverlay').isVisible(),true,'Pause can be selected while the menu is open');await closeMenu(p);assert.equal(await p.evaluate(()=>BUDMORI.runtime.paused),true,'closing settings keeps an explicitly selected paused state');await openMenuTab(p,'play');assert.equal((await p.locator('#pause').textContent()).trim(),'계속하기');await p.locator('#pause').click();await p.locator('#gameMenuOverlay').waitFor({state:'hidden'});assert.equal(await p.evaluate(()=>BUDMORI.runtime.paused),false,'Continue closes the menu and resumes the Farm')}await openMenuTab(p,'help');await p.keyboard.press('Escape');await p.locator('#gameMenuOverlay').waitFor({state:'hidden'});assert.equal(await p.locator('#gameMenu').getAttribute('aria-expanded'),'false');assert.equal(await p.evaluate(()=>BUDMORI.runtime.paused),wasPaused,'Escape closes the menu and restores the previous play state');
@@ -144,19 +171,20 @@ async function combatScenarios(p){
 }
 async function seedScenarios(p,label){
  const poses=['idle','windup','active','recover'];
+ const speciesCount=await p.evaluate(()=>BUDMORI.CONFIG.maxSpecies);
  const assets=await p.evaluate(()=>[...BUDMORI.renderer.vectorAssets].map(([species,record])=>({species,clips:Object.keys(record.compiled.metadata.clips),expressions:Object.keys(record.compiled.metadata.expressions)})));
- assert.equal(assets.length,4,'all troop species use compiled SVG assets');assert(assets.every(a=>['idle','walk','windup','fire','recover','hit','airborne','landing','death','victory'].every(name=>a.clips.includes(name))&&['neutral','happy','focused','attack','surprised','hurt','hungry','dead'].every(name=>a.expressions.includes(name))));
+ assert.equal(assets.length,speciesCount,'all registered troop species use compiled SVG assets');assert.deepEqual(assets.map(a=>a.species),Array.from({length:speciesCount},(_,index)=>index),'every persistent species ID has one source vector asset');assert(assets.every(a=>['idle','walk','windup','fire','recover','hit','airborne','landing','death','victory'].every(name=>a.clips.includes(name))&&['neutral','happy','focused','attack','surprised','hurt','hungry','dead'].every(name=>a.expressions.includes(name))));
  report.vectorSpecies=assets;
  await p.evaluate(()=>{globalThis.seedOriginal={world:BUDMORI.runtime.world,paused:BUDMORI.runtime.paused};BUDMORI.runtime.paused=true;});
  try{
   for(const scene of ['farm','raid']){
    await p.evaluate(scene=>{const r=BUDMORI.runtime,w=new r.world.constructor(623);w.units=[];w.food=[];w.effects=[];w.projectiles=[];w.setScene(scene);w.time=1.25;w.boss.phase='resting';if(scene==='raid'){w.boss.x=14;w.boss.y=8;}
-    for(let species=0;species<4;species++)for(let tier=1;tier<=6;tier++){const u=w.spawn(species,tier,(tier-3.5)*2.3,(species-1.5)*3);Object.assign(u,{meals:3,growth:3,angle:Math.PI*.15,z:0,vx:0,vy:0,vz:0});}
+    for(let species=0;species<BUDMORI.CONFIG.maxSpecies;species++)for(let tier=1;tier<=6;tier++){const u=w.spawn(species,tier,(tier-3.5)*2.3,(species-(BUDMORI.CONFIG.maxSpecies-1)/2)*2);Object.assign(u,{meals:3,growth:3,angle:Math.PI*.15,z:0,vx:0,vy:0,vz:0});}
     r.world=w;r.capturePresentation('reset');
    },scene);
    for(const phase of poses){
     await p.evaluate(phase=>{for(const u of BUDMORI.sim.units){u.ability.phase=phase;u.ability.elapsed=phase==='idle'?0:.12;}BUDMORI.runtime.capturePresentation('reset')},phase);
-    await p.evaluate(()=>new Promise(requestAnimationFrame));await render(p,label+'-seed-'+scene+'-'+phase);const native=await p.evaluate(()=>({players:BUDMORI.renderer.vectorPlayers.size,clips:[...BUDMORI.renderer.vectorPlayers.values()].map(v=>v.currentClip),time:BUDMORI.renderer.displayTimeMs}));assert.equal(native.players,24,'all 24 species/tier combinations render through native vector players');assert(native.clips.every(clip=>clip===({idle:'idle',windup:'windup',active:'fire',recover:'recover'})[phase]));assert(native.time>0);
+    await p.evaluate(()=>new Promise(requestAnimationFrame));await render(p,label+'-seed-'+scene+'-'+phase);const native=await p.evaluate(()=>({players:BUDMORI.renderer.vectorPlayers.size,clips:[...BUDMORI.renderer.vectorPlayers.values()].map(v=>v.currentClip),time:BUDMORI.renderer.displayTimeMs}));assert.equal(native.players,speciesCount*6,'all registered species/tier combinations render through native vector players');assert(native.clips.every(clip=>clip===({idle:'idle',windup:'windup',active:'fire',recover:'recover'})[phase]));assert(native.time>0);
     const visible=await p.evaluate(()=>{const r=BUDMORI.renderer;return BUDMORI.sim.units.map(u=>{const q=r.project(u.x,u.y,u.z),d=r.pixelRatio;return {species:u.species,tier:u.tier,radius:u.radius,x:q.x/d,y:q.y/d,visible:q.x>=0&&q.y>=0&&q.x<r.canvas.width&&q.y<r.canvas.height};});});
     assert(visible.every(u=>u.visible),'seed grid inside actual '+scene+' viewport');report.seedGrid??=[];report.seedGrid.push({label,scene,phase,units:visible});
    }
@@ -192,14 +220,14 @@ async function seedScenarios(p,label){
    }
   }
  }finally{await p.evaluate(()=>{const r=BUDMORI.runtime;r.world=seedOriginal.world;r.paused=seedOriginal.paused;r.capturePresentation('reset');});}
- check(label+' four seed species × tiers1–6 × four attack poses plus five-material Mythic animation');
+ check(label+' '+speciesCount+' registered species × tiers1–6 × four attack poses plus five-material Mythic animation');
 }
 async function armyScenarios(p){
  const evidence=await p.evaluate(()=>{
   const Garden=BUDMORI.sim.constructor,specs=BUDMORI.ATTACK_TYPES;
   const target=(species,x)=>{const w=new Garden(501);w.units=[];w.spawn(species,1,x,0);w.setScene('raid');Object.assign(w.units[0],{x,y:0,z:0,vx:0,vy:0,vz:0});w.boss.phase='resting';w.boss.hp=w.boss.maxHp=1e6;return w;};
   const ranges=[];
-  for(let species=0;species<4;species++){
+  for(let species=0;species<BUDMORI.CONFIG.maxSpecies;species++){
    const initial=4.4+specs[species].range+3,w=target(species,initial),u=w.units[0];let prepare=null;
    for(let i=0;i<1800&&!prepare;i++){w.step(1/120);prepare=w.combatLog.find(e=>e.kind==='prepare');}
    const distance=prepare?Math.hypot(prepare.x-w.boss.x,prepare.y-w.boss.y):null;let minDistance=Math.hypot(u.x,u.y),lateral=0;

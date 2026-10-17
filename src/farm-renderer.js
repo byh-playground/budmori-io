@@ -100,7 +100,7 @@ function bossAttackPose(b,parts){
   return{body,arms,extras,impact,releasePulse:0};
 }
   // render.js
-  const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c','#9a6947'];
+  const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c','#9a6947','#d7914f','#a86b32'];
   var Diorama = class {
     constructor(canvas) {
       this.canvas = canvas;
@@ -108,7 +108,7 @@ function bossAttackPose(b,parts){
       this.ctx = new VectorContext(this.device);
       this.vectorAssets=new Map();this.vectorPlayers=new Map();
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
-      if(entries.length!==4||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
+      if(entries.length!==CONFIG.maxSpecies||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
       for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
@@ -229,7 +229,7 @@ function bossAttackPose(b,parts){
     unitRingEffects(u,world){
       const effects=[],a=u.ability,s=ATTACK_TYPES[u.species];
       if(u.buffed&&u.hp>0)effects.push({radius:u.radius+.16,color:'#eacb72',width:.055,progress:1});
-      if(a.phase==='windup'&&s)effects.push({radius:u.radius+.1,color:ATTACK_ACCENTS[u.species],width:.065,progress:Math.min(1,a.elapsed/s.windup)});
+      if(a.phase==='windup'&&s)effects.push({radius:u.radius+.1,color:ATTACK_ACCENTS[u.species]||ATTACK_ACCENTS[0],width:.065,progress:Math.min(1,a.elapsed/s.windup)});
       const breeding=farmBreedingCooldown(u,world,CONFIG.breedCooldownSeconds);
       if(breeding&&breeding.progress>0)effects.push({radius:u.radius+.085,color:'#8fac68',width:.035,progress:breeding.progress});
       return effects;

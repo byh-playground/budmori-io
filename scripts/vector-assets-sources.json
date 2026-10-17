@@ -7,6 +7,8 @@
     { "species": 0, "file": "assets/troops/pea.svg", "qualityPreset": "smallAsset" },
     { "species": 1, "file": "assets/troops/corn-kernel.svg", "qualityPreset": "smallAsset" },
     { "species": 2, "file": "assets/troops/kidney-bean.svg", "qualityPreset": "smallAsset" },
-    { "species": 3, "file": "assets/troops/chestnut.svg", "qualityPreset": "smallAsset" }
+    { "species": 3, "file": "assets/troops/chestnut.svg", "qualityPreset": "smallAsset" },
+    { "species": 4, "file": "assets/troops/peanut.svg", "qualityPreset": "smallAsset" },
+    { "species": 5, "file": "assets/troops/walnut.svg", "qualityPreset": "smallAsset" }
   ]
 }
