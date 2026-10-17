@@ -3505,7 +3505,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.4";
+      PRODUCT_VERSION = "0.7.5";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -3852,6 +3852,154 @@
       target: { x: boss.patternTargetX, y: boss.patternTargetY, z: boss.patternTargetZ }
     } } }, unitRadius);
   }
+  function bossAttackPose(b, parts) {
+    const id = b.patternId, config = BOSS_PATTERN_CONFIG[id], phase = b.patternPhase, elapsed = Math.max(0, b.patternPhaseElapsed || 0), aim = Math.atan2(-0.62 * Math.sin(b.patternAim ?? b.angle), Math.cos(b.patternAim ?? b.angle));
+    const body = { y: 0, rotation: 0, scaleX: 1, scaleY: 1 }, arms = { "arm-left": 0, "arm-right": 0 }, extras = {};
+    for (const part of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) if (parts.has(part)) extras[part] = { x: 0, y: 0, rotation: 0 };
+    if (!config || !parts.has("body")) return { body, arms, extras, impact: false, releasePulse: 0 };
+    const wind = phase === "windup" ? clamp2(elapsed / config.windup, 0, 1) : 0, windEase = wind * wind * (3 - 2 * wind);
+    const recovering = phase === "recover", recover = recovering ? clamp2(elapsed / config.recover, 0, 1) : 0, recoverEase = recover * recover * (3 - 2 * recover);
+    const instantImpact = recovering && ["attack.sweep-360", "attack.front-slam"].includes(id) && elapsed < 0.14;
+    const leapImpact = recovering && id === "attack.leap-slam" && elapsed < 0.18;
+    const active2 = phase === "active", recoverImpact = instantImpact || leapImpact;
+    const impact = active2 || recoverImpact;
+    const lead = Math.cos(aim) >= 0 ? "arm-right" : "arm-left", trail = lead === "arm-right" ? "arm-left" : "arm-right";
+    const strikeAngle = clamp2(aim, -1.2, 1.2);
+    const arm = (key, value) => {
+      if (parts.has(key)) arms[key] = value;
+    };
+    const windup = () => {
+      body.y = 4 * windEase;
+      body.scaleX = 1 - 0.035 * windEase;
+      body.scaleY = 1 + 0.06 * windEase;
+      body.rotation = aim * 0.045 * windEase;
+      arm(lead, -0.72 + strikeAngle * 0.22);
+      arm(trail, 0.28 - strikeAngle * 0.12);
+    };
+    const settle = () => {
+      body.y = 3 * (1 - recoverEase);
+      body.scaleX = 1 + 0.045 * (1 - recoverEase);
+      body.scaleY = 1 - 0.065 * (1 - recoverEase);
+      body.rotation = aim * 0.025 * (1 - recoverEase);
+      arm(lead, 0.35 * (1 - recoverEase) + strikeAngle * 0.16);
+      arm(trail, -0.12 * (1 - recoverEase));
+    };
+    const strike = () => {
+      body.y = -3;
+      body.scaleX = 1.075;
+      body.scaleY = 0.91;
+      body.rotation = aim * 0.09;
+      arm(lead, 0.95 + strikeAngle * 0.55);
+      arm(trail, -0.42 - strikeAngle * 0.18);
+    };
+    switch (id) {
+      case "attack.front-slam":
+        if (phase === "windup") windup();
+        else if (impact) strike();
+        else if (recovering) settle();
+        break;
+      case "attack.sweep-360": {
+        if (phase === "windup") {
+          windup();
+          arm("arm-left", -0.72);
+          arm("arm-right", 0.72);
+        } else if (impact) {
+          const q = instantImpact ? 1 : clamp2(elapsed / Math.max(config.active, 1e-3), 0, 1), sweep = 2 * Math.PI * q;
+          body.rotation = 0.12 * Math.sin(sweep);
+          body.scaleX = 1.055;
+          body.scaleY = 0.94;
+          arm("arm-left", -0.78 - 0.55 * Math.sin(sweep));
+          arm("arm-right", 0.78 + 0.55 * Math.sin(sweep));
+        } else if (recovering) settle();
+        break;
+      }
+      case "attack.charge":
+        if (phase === "windup") windup();
+        else if (active2) {
+          const stride = Math.sin((b.patternTraveled || 0) * 3.1), lift = Math.max(0, stride);
+          body.y = -1.5 - Math.abs(stride) * 1.2;
+          body.scaleX = 1.055;
+          body.scaleY = 0.965;
+          body.rotation = aim * 0.11;
+          arm(lead, -0.72 + strikeAngle * 0.3 + stride * 0.12);
+          arm(trail, 0.46 - stride * 0.18);
+          extras["foot-left"] = { x: -stride * 4, y: -lift * 5, rotation: -stride * 0.12 };
+          extras["foot-right"] = { x: stride * 4, y: -Math.max(0, -stride) * 5, rotation: stride * 0.12 };
+          if (parts.has("leaf")) extras.leaf = { rotation: stride * 0.14 };
+        } else if (recovering) settle();
+        break;
+      case "attack.leap-slam":
+        if (phase === "windup") {
+          windup();
+          body.y = 5 * windEase;
+          body.scaleX = 1 - 0.05 * windEase;
+          body.scaleY = 1 + 0.09 * windEase;
+          arm(lead, -0.9);
+          arm(trail, -0.45);
+        } else if (active2) {
+          const lift = clamp2((b.z || 0) / Math.max(1, b.height || 1), 0, 1);
+          body.rotation = aim * 0.06;
+          body.scaleX = 1 + 0.045 * lift;
+          body.scaleY = 1 - 0.035 * lift;
+          arm("arm-left", -0.28);
+          arm("arm-right", 0.28);
+          extras["foot-left"] = { y: -4 * lift, rotation: -0.08 * lift };
+          extras["foot-right"] = { y: -4 * lift, rotation: 0.08 * lift };
+          if (parts.has("leaf")) extras.leaf = { rotation: -0.12 * lift };
+        } else if (leapImpact) {
+          body.y = 5;
+          body.scaleX = 1.12;
+          body.scaleY = 0.8;
+          body.rotation = aim * 0.08;
+          arm("arm-left", -0.65);
+          arm("arm-right", 0.65);
+          extras["foot-left"] = { x: -5, y: 2, rotation: -0.14 };
+          extras["foot-right"] = { x: 5, y: 2, rotation: 0.14 };
+        } else if (recovering) settle();
+        break;
+      case "attack.fan-sweep":
+        if (phase === "windup") windup();
+        else if (active2) {
+          const q = clamp2(elapsed / config.active, 0, 1), arc = aim - config.sector / 2 + config.sector * q, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
+          body.rotation = 0.1 * Math.sin(projected - aim);
+          body.scaleX = 1.035;
+          body.scaleY = 0.97;
+          arm(lead, 0.4 + clamp2(projected, -1.1, 1.1) * 0.58);
+          arm(trail, -0.3 - clamp2(projected, -1.1, 1.1) * 0.2);
+          if (parts.has("leaf")) extras.leaf = { rotation: 0.12 * Math.sin(q * Math.PI) };
+        } else if (recovering && elapsed < 0.12) {
+          const arc = aim + config.sector / 2, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
+          body.rotation = 0.08 * Math.sin(projected - aim);
+          body.scaleX = 1.05;
+          arm(lead, 0.4 + projected * 0.5);
+        } else if (recovering) settle();
+        break;
+      case "summon.mouth-t1": {
+        if (phase === "windup") {
+          body.y = 2 * windEase;
+          body.scaleX = 1 + 0.025 * windEase;
+          body.scaleY = 1 - 0.035 * windEase;
+          arm("arm-left", -0.34 * windEase);
+          arm("arm-right", 0.34 * windEase);
+        } else if (active2 || recovering) {
+          const interval = config.releaseInterval || 0.25, last = (b.patternReleased || 0) - 1, age = last < 0 ? 1 : active2 ? Math.max(0, elapsed - last * interval) : elapsed;
+          const pulse = clamp2(1 - age / 0.16, 0, 1);
+          body.scaleX = 1 + 0.025 * pulse;
+          body.scaleY = 1 - 0.018 * pulse;
+          body.rotation = aim * 0.02;
+          arm("arm-left", -0.3);
+          arm("arm-right", 0.3);
+          if (parts.has("leaf")) extras.leaf = { rotation: 0.08 * pulse };
+          return { body, arms, extras, impact: false, releasePulse: pulse };
+        }
+        break;
+      }
+    }
+    if (recovering && !recoverImpact && !["attack.front-slam", "attack.sweep-360", "attack.charge", "attack.leap-slam", "attack.fan-sweep"].includes(id)) settle();
+    if (parts.has("kernel-mark") && id === "attack.charge") extras["kernel-mark"] = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
+    if (parts.has("hilum") && id === "attack.charge") extras.hilum = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
+    return { body, arms, extras, impact, releasePulse: 0 };
+  }
   var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c", "#9a6947"];
   var Diorama = class {
     constructor(canvas2) {
@@ -4147,7 +4295,12 @@
         if (b.patternId === "summon.mouth-t1") return "fire";
         return "strike";
       }
-      if (b.patternPhase === "recover") return "recover";
+      if (b.patternPhase === "recover") {
+        if (b.patternId === "attack.sweep-360" && (b.patternPhaseElapsed || 0) < 0.14) return "sweep";
+        if (["attack.front-slam", "attack.leap-slam"].includes(b.patternId) && (b.patternPhaseElapsed || 0) < 0.18) return "strike";
+        if (b.patternId === "attack.fan-sweep" && (b.patternPhaseElapsed || 0) < 0.12) return "sweep";
+        return "recover";
+      }
       return b.phase === "chase" ? "walk" : "idle";
     }
     drawBoss(world) {
@@ -4174,26 +4327,17 @@
       if (player.currentExpression !== safeExpression) player.setExpression(safeExpression);
       player.seek(this.displayTimeMs);
       const [, , width, height] = record.compiled.viewBox, s = 2 * r / 220, ground = metadata.sockets?.ground?.point || [width / 2, height], anchorX = ground[0], anchorY = ground[1], matrix = [s, 0, 0, s, p.x - anchorX * s, p.y - anchorY * s];
-      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0, summonConfig = BOSS_PATTERN_CONFIG["summon.mouth-t1"], summonSquash = b.patternId === "summon.mouth-t1" && b.patternPhase === "windup" ? 0.12 * Math.sin(Math.PI * clamp2((b.patternPhaseElapsed || 0) / summonConfig.windup, 0, 1)) : 0;
+      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0;
       const fade = event?.phase === "fading" ? clamp2(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
-      player.setBasePose("body", { y: -18 * defeatBounce, scaleX: (1 + (k.squash || 0) + summonSquash) * (1 - 0.04 * defeatBounce), scaleY: (1 - (k.squash || 0) - summonSquash * 0.65) * (1 + 0.06 * defeatBounce), opacity: fade });
-      const parts = new Set(metadata.parts.map((part) => part.id)), aiming = b.patternId && b.patternPhase !== "idle", target = Math.atan2(-0.62 * Math.sin(b.patternAim), Math.cos(b.patternAim));
-      if (parts.has("arm-right") && parts.has("arm-left")) {
-        if (aiming && b.patternId === "summon.mouth-t1" && b.patternPhase === "active") {
-          player.setBasePose("arm-right", { rotation: 0.42 });
-          player.setBasePose("arm-left", { rotation: -0.42 });
-        } else if (aiming) {
-          player.setBasePose("arm-right", { rotation: target - 0.504 });
-          player.setBasePose("arm-left", { rotation: target + Math.PI - 2.637 });
-        } else {
-          player.setBasePose("arm-right", { rotation: 0 });
-          player.setBasePose("arm-left", { rotation: 0 });
-        }
-      }
+      const parts = new Set(metadata.parts.map((part) => part.id)), pose = bossAttackPose(b, parts);
+      player.setBasePose("body", { x: 0, y: pose.body.y - 18 * defeatBounce, rotation: pose.body.rotation, scaleX: pose.body.scaleX * (1 + (k.squash || 0)) * (1 - 0.04 * defeatBounce), scaleY: pose.body.scaleY * (1 - (k.squash || 0)) * (1 + 0.06 * defeatBounce), opacity: fade });
+      for (const [part, rotation] of Object.entries(pose.arms)) if (parts.has(part)) player.setBasePose(part, { rotation });
+      for (const [part, partPose] of Object.entries(pose.extras)) if (parts.has(part)) player.setBasePose(part, partPose);
+      const mouthSocket = metadata.sockets?.mouth ? player.getSocket("mouth") : null, mouthScreen = mouthSocket ? { x: mouthSocket.x * s + matrix[4], y: mouthSocket.y * s + matrix[5] } : null;
       player.draw({ projection: this.ctx.vector.projection, matrix });
-      if (b.patternId === "summon.mouth-t1" && b.patternPhase === "active" && b.patternReleased > 0) {
+      if (b.patternId === "summon.mouth-t1" && b.patternReleased > 0 && pose.releasePulse > 0 && mouthScreen) {
         this.ctx.flush();
-        const mouth = this.project(b.summonMouthX, b.summonMouthY, b.summonMouthZ), pulse = 0.55 + 0.45 * Math.sin((b.patternPhaseElapsed || 0) * Math.PI * 8);
+        const mouth = mouthScreen, pulse = 0.55 + 0.45 * pose.releasePulse, target = Math.atan2(-0.62 * Math.sin(b.patternAim), Math.cos(b.patternAim));
         this.ellipse(mouth.x, mouth.y, this.scale * 0.18 * pulse, this.scale * 0.12 * pulse, "rgba(255,210,113,.72)");
         this.ellipse(mouth.x + Math.cos(target) * this.scale * 0.16, mouth.y + Math.sin(target) * this.scale * 0.1, this.scale * 0.065, this.scale * 0.08, "#fff1ad");
       }
