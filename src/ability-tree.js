@@ -295,6 +295,11 @@ function powerLabel(abilityId, value, level) {
   }
   if (abilityId === "kidney-continuous-leap") return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
   if (abilityId === "kidney-landing-shockwave") return `충격파 피해·반경 ${value}×`;
+  if (abilityId === "peanut-separated-assault") return `한 공격 주기 ${value}타 · 타격당 ATK ×${definitionById.get(abilityId).strikeAttackMultiplier} · 넓은 협공 궤적`;
+  if (abilityId === "walnut-guard-slam") {
+    const definition = definitionById.get(abilityId);
+    return `첫 방어 피격 피해 −${Math.round((1-definition.receivedDamageMultiplier)*100)}%·넉백 −${Math.round((1-definition.receivedKnockbackMultiplier)*100)}% · 다음 공격 ATK ×${value} · 충격파 반경 기본 사거리 ×${definition.radiusBaseRangeFraction * definition.radiusMultipliers[level]}`;
+  }
   if (abilityId === "rice-low-health-harvest") return `HP ${Math.round(definitionById.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
   if (abilityId === "wheat-command-crit") {
     const definition = definitionById.get(abilityId);
@@ -311,6 +316,8 @@ function powerTitle(abilityId, value) {
   if (abilityId === "chestnut-spike-fan") return `가시 ${value}발`;
   if (abilityId === "kidney-continuous-leap") return `초기화 ${Math.round(value * 100)}%`;
   if (abilityId === "kidney-landing-shockwave") return `충격파 ×${value}`;
+  if (abilityId === "peanut-separated-assault") return `협공 ${value}타`;
+  if (abilityId === "walnut-guard-slam") return `반격 피해 ×${value}`;
   if (abilityId === "rice-low-health-harvest") return `수확 피해 ×${value}`;
   if (abilityId === "wheat-command-crit") return `치명타 +${Math.round(value * 100)}%p`;
   if (abilityId === "barley-armor-break") return `방어도 ${Math.round(value * 100)}% 감소`;

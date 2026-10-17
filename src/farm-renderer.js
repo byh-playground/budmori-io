@@ -16,13 +16,13 @@ function unitMotion(u,sim){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.1,phase=u.ability?.phase||'idle';
   const moving=Math.hypot(u.vx||0,u.vy||0)>.18,kind=ATTACK_TYPES[u.species]?.kind;
   if(dead)return 'death';if(sim.scene==='raid'&&sim.encounter?.outcome==='victory')return 'victory';if(airborne)return 'airborne';if(u.stun>0)return 'hit';if(u.bounce>.04)return 'landing';
-  if(phase==='windup')return 'windup';if(phase==='active')return 'fire';
+  if(phase==='windup')return 'windup';if(phase==='active')return kind==='peanut-dual-strike'&&u.ability.peanutStrikeCount>2?`fire-${u.ability.peanutStrikeCount}`:'fire';
   if(phase==='recover')return kind==='lob'&&u.ability?.action?.path&&u.ability.elapsed<.12?'fire':'recover';
   return moving?'walk':'idle';
 }
 function motionElapsedMs(u,name,clip){
   if(name==='idle'||name==='walk'||name==='airborne')return ((u.seed||0)*80)%clip.durationMs;
-  if(name==='windup'||name==='fire'||name==='recover')return clamp((u.ability?.elapsed||0)*1000,0,clip.durationMs);
+  if(name==='windup'||name==='fire'||name.startsWith('fire-')||name==='recover')return clamp((u.ability?.elapsed||0)*1000,0,clip.durationMs);
   if(name==='hit')return clip.durationMs*(1-clamp((u.stun||0)/.5,0,1));
   if(name==='landing')return clip.durationMs*(1-clamp((u.bounce||0)/.22,0,1));
   if(name==='victory')return ((Math.abs(u.seed||0)*97.531)%clip.durationMs);
@@ -34,7 +34,7 @@ function unitExpression(u,sim,joyEffects){
   const phase=u.ability?.phase;
   const restingCooldown=sim.scene==='farm'&&u.cooldown>0&&phase==='idle';
   if(dead)return 'dead';if(sim.scene==='raid'&&sim.encounter?.outcome==='victory')return 'happy';
-  if(u.stun>0)return 'hurt';if(airborne)return 'surprised';if(phase==='windup')return 'focused';if(phase==='active')return 'attack';if(restingCooldown)return 'neutral';
+  if(u.stun>0)return 'hurt';if(airborne)return 'surprised';if(u.walnutGuarding)return 'guard';if(phase==='windup')return 'focused';if(phase==='active')return 'attack';if(restingCooldown)return 'neutral';
   if(sim.scene==='farm'){
     for(const e of joyEffects)if(Math.hypot(e.x-u.x,e.y-u.y)<1.2)return 'happy';
     if(!u.fed)return 'hungry';
@@ -470,7 +470,7 @@ function bossAttackPose(b,parts){
           for(let i=0;i<3&&t<1;i++){const a=i*Math.PI*2/3,p=this.project(e.x+Math.cos(a)*t*.4,e.y+Math.sin(a)*t*.4,.08+Math.sin(t*Math.PI)*.2);this.ellipse(p.x,p.y,this.scale*.045,this.scale*.035,`rgba(245,213,133,${1-t})`);}
         }
         else if (e.kind === "land" || e.kind === "impact") this.ring(e.x, e.y, 0.1 + q * 0.8, `rgba(146,131,78,${(1 - q) * 0.65})`);
-        else if(e.kind==='landing-shockwave'){
+        else if(e.kind==='landing-shockwave'||e.kind==='walnut-shockwave'){
           const progress=clamp(q/(e.duration||.55),0,1),radius=Math.max(.08,e.radius)*(.2+.8*progress);
           this.groundEllipse(e.x,e.y,radius,radius,`rgba(225,190,103,${.12*(1-progress)})`);
           this.ring(e.x,e.y,radius,`rgba(234,194,104,${.82*(1-progress)})`,.12*(1-progress)+.025);

@@ -62,6 +62,33 @@ export const SPECIES_ABILITY_DEFINITIONS = Object.freeze([
     powerValues: Object.freeze([1, 1.5, 2]),
     gradeThresholds: Object.freeze([3, 2, 1])
   }),
+  // Initial implementation values from the Peanut/Walnut design draft.
+  // These are adjustable balance defaults, not final user-approved numbers.
+  Object.freeze({
+    id: "peanut-separated-assault",
+    species: 4,
+    name: "분리 협공",
+    description: "한 땅콩의 두 알이 넓게 벌어져 번갈아 공격합니다. 수치는 초기 밸런스 초안입니다.",
+    rootTier: 3,
+    powerValues: Object.freeze([3, 4, 5]),
+    strikeAttackMultiplier: 0.5,
+    spreadRadians: Math.PI / 6,
+    gradeThresholds: Object.freeze([3, 2, 1])
+  }),
+  Object.freeze({
+    id: "walnut-guard-slam",
+    species: 5,
+    name: "웅크리기 반격",
+    description: "일반 공격 회복 후반에 웅크려 첫 피격을 줄이고, 다음 망치 공격을 충격파로 강화합니다. 수치는 초기 밸런스 초안입니다.",
+    rootTier: 3,
+    powerValues: Object.freeze([1.5, 1.75, 2]),
+    receivedDamageMultiplier: 0.75,
+    receivedKnockbackMultiplier: 0.5,
+    guardRecoveryStartFraction: 0.5,
+    radiusBaseRangeFraction: 0.5,
+    radiusMultipliers: Object.freeze([1, 1.25, 1.5]),
+    gradeThresholds: Object.freeze([3, 2, 1])
+  }),
   Object.freeze({
     id: "rice-low-health-harvest",
     species: 6,

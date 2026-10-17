@@ -109,3 +109,14 @@
 - [Bloom Reference: stats](https://github.com/byh-playground/bloom-reference/blob/main/rules/stats.html)
 - [Bloom Reference: AI development](https://github.com/byh-playground/bloom-reference/blob/main/rules/ai-development.html)
 - [Bloom Reference PR #17: 미지정 수치 초안 정규화와 기준값 파생 (merge `35ba4379dc3f763893d44e60b2afef63024bf2d3`)](https://github.com/byh-playground/bloom-reference/pull/17)
+
+
+## 땅콩·호두 특성 구현 초안
+
+기본 공격 한 사이클 뒤 특성을 연결하는 기존 구현 명세를 적용한다. 아래 값은 구현·밸런스 검증을 위한 **초기 초안값**이며 사용자 확정 수치로 기록하지 않는다. 조정 가능한 단일 수치 원본은 `src/ability-catalog.js`다.
+
+- 땅콩 `분리 협공`: 기본은 한 개체·두 알·2타다. Rare root 해금 시 3타, 강화 시 4타·5타이며 타격당 ATK ×0.5다. 총 공격 시간은 기본과 같은 0.5초, 각 타격은 `(index + 0.5) / count`에 한 번만 판정한다. 궤적은 기본 ±15°에서 ±30°로 넓히며 SVG에 3·4·5타 클립을 둔다. HP·위치·타겟·인구는 여전히 하나다.
+- 호두 `웅크리기 반격`: root가 열린 아군만 일반 공격 회복 구간의 마지막 50%에 방어한다. 첫 유효 피격의 피해는 0.75배, 넉백은 0.5배이며 다음 기본 공격 1회를 강화한다. 피격 기절은 그대로 받지만 강화 대기는 기절로 지워지지 않는다. 다음 공격 시작 시 대기를 한 번 소비하며, 그 강화 공격의 회복 구간에는 방어하지 않는다. 사망·수면·전투 종료에는 강화 대기를 지운다.
+- 강화 내려찍기의 피해는 ATK ×1.5 → ×1.75 → ×2다. 충격파 반경은 기본 사거리 ×0.5에 ×1 → ×1.25 → ×1.5를 적용한다. 망치와 충격파는 같은 공격 이벤트이며, 기본타와 추가 피해를 중복 적용하지 않는다. 반경 내 적만 대상당 한 번 적중하고 치명타 판정 1회를 공유하며 실제 피해 합계의 흡혈률 ×1/3만 회복한다.
+- 두 특성 모두 독립 Rare root, 능력 강화, 최소 등급 T3→T2→T1 완화 경로를 사용하고 각 노드는 공용 XP 포인트 1개다. 보스와 적 소환병에는 플레이어 특성을 적용하지 않는다.
+- 구 저장은 두 새 능력 키와 방어 대기·타격 슬롯 필드만 기본값으로 보충한다. 기존 투자·미사용 포인트·플레이어 XP·현재 타격 mask를 보존하고, 알 수 없는 키나 잘못된 투자는 검증에서 거부한다. Raid의 owner별 능력 snapshot도 같은 additive migration을 적용한다.

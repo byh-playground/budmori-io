@@ -212,8 +212,8 @@
         // One Peanut remains one world unit; its two kernels are presentation-only
         // and the two deterministic strike slots share the same active window.
         4: Object.freeze({ kind: "peanut-dual-strike", windup: 0.25, active: 0.5, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-        // Walnut's base hammer is a single hit; its guard skill is being held for
-        // the follow-up ability-tree implementation.
+        // Walnut's base hammer is a single hit; the separate guard trait empowers
+        // one subsequent basic cycle without adding an attack queue or timer.
         5: Object.freeze({ kind: "walnut-hammer", windup: 0.5, active: 0.25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
         6: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
         7: Object.freeze({ kind: "punch", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
@@ -286,6 +286,33 @@
           description: "도약 착지 지점에서 기본 공격력과 사거리 기준의 충격파를 냅니다.",
           rootTier: 3,
           powerValues: Object.freeze([1, 1.5, 2]),
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        // Initial implementation values from the Peanut/Walnut design draft.
+        // These are adjustable balance defaults, not final user-approved numbers.
+        Object.freeze({
+          id: "peanut-separated-assault",
+          species: 4,
+          name: "분리 협공",
+          description: "한 땅콩의 두 알이 넓게 벌어져 번갈아 공격합니다. 수치는 초기 밸런스 초안입니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([3, 4, 5]),
+          strikeAttackMultiplier: 0.5,
+          spreadRadians: Math.PI / 6,
+          gradeThresholds: Object.freeze([3, 2, 1])
+        }),
+        Object.freeze({
+          id: "walnut-guard-slam",
+          species: 5,
+          name: "웅크리기 반격",
+          description: "일반 공격 회복 후반에 웅크려 첫 피격을 줄이고, 다음 망치 공격을 충격파로 강화합니다. 수치는 초기 밸런스 초안입니다.",
+          rootTier: 3,
+          powerValues: Object.freeze([1.5, 1.75, 2]),
+          receivedDamageMultiplier: 0.75,
+          receivedKnockbackMultiplier: 0.5,
+          guardRecoveryStartFraction: 0.5,
+          radiusBaseRangeFraction: 0.5,
+          radiusMultipliers: Object.freeze([1, 1.25, 1.5]),
           gradeThresholds: Object.freeze([3, 2, 1])
         }),
         Object.freeze({
@@ -961,6 +988,11 @@
     }
     if (abilityId === "kidney-continuous-leap") return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
     if (abilityId === "kidney-landing-shockwave") return `충격파 피해·반경 ${value}×`;
+    if (abilityId === "peanut-separated-assault") return `한 공격 주기 ${value}타 · 타격당 ATK ×${definitionById.get(abilityId).strikeAttackMultiplier} · 넓은 협공 궤적`;
+    if (abilityId === "walnut-guard-slam") {
+      const definition = definitionById.get(abilityId);
+      return `첫 방어 피격 피해 −${Math.round((1 - definition.receivedDamageMultiplier) * 100)}%·넉백 −${Math.round((1 - definition.receivedKnockbackMultiplier) * 100)}% · 다음 공격 ATK ×${value} · 충격파 반경 기본 사거리 ×${definition.radiusBaseRangeFraction * definition.radiusMultipliers[level]}`;
+    }
     if (abilityId === "rice-low-health-harvest") return `HP ${Math.round(definitionById.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
     if (abilityId === "wheat-command-crit") {
       const definition = definitionById.get(abilityId);
@@ -976,6 +1008,8 @@
     if (abilityId === "chestnut-spike-fan") return `가시 ${value}발`;
     if (abilityId === "kidney-continuous-leap") return `초기화 ${Math.round(value * 100)}%`;
     if (abilityId === "kidney-landing-shockwave") return `충격파 ×${value}`;
+    if (abilityId === "peanut-separated-assault") return `협공 ${value}타`;
+    if (abilityId === "walnut-guard-slam") return `반격 피해 ×${value}`;
     if (abilityId === "rice-low-health-harvest") return `수확 피해 ×${value}`;
     if (abilityId === "wheat-command-crit") return `치명타 +${Math.round(value * 100)}%p`;
     if (abilityId === "barley-armor-break") return `방어도 ${Math.round(value * 100)}% 감소`;
@@ -1228,6 +1262,30 @@
   function effectiveBarleyArmor(target, baselineArmor, now) {
     const reduction = target && Number.isFinite(target.barleyArmorBreakUntil) && target.barleyArmorBreakUntil > now && Number.isFinite(target.barleyArmorBreakReduction) ? Math.max(0, Math.min(1, target.barleyArmorBreakReduction)) : 0;
     return Math.max(0, Number.isFinite(baselineArmor) ? baselineArmor : 0) * (1 - reduction);
+  }
+  function getPeanutAssaultConfig(progression, tier) {
+    const definition = definitionFor("peanut-separated-assault");
+    if (!isAbilityActive(progression, definition.id, tier)) return null;
+    return {
+      strikeCount: definition.powerValues[powerLevelFor(progression, definition.id)],
+      attackMultiplier: definition.strikeAttackMultiplier,
+      spreadRadians: definition.spreadRadians
+    };
+  }
+  function getWalnutGuardConfig(progression, tier) {
+    const definition = definitionFor("walnut-guard-slam");
+    if (!isAbilityActive(progression, definition.id, tier)) return null;
+    const level = powerLevelFor(progression, definition.id);
+    return {
+      damageMultiplier: definition.powerValues[level],
+      receivedDamageMultiplier: definition.receivedDamageMultiplier,
+      receivedKnockbackMultiplier: definition.receivedKnockbackMultiplier,
+      guardRecoveryStartFraction: definition.guardRecoveryStartFraction,
+      radius: abilityProfile(definition.species).range * definition.radiusBaseRangeFraction * definition.radiusMultipliers[level]
+    };
+  }
+  function isWalnutGuardActive(unit, config, recoverySeconds) {
+    return !!config && unit?.species === 5 && unit.hp > 0 && unit.down <= 0 && unit.stun <= 0 && unit.z <= 0.1 && unit.ability?.phase === "recover" && !!unit.ability.action && !unit.ability.action.walnutEmpowered && !unit.ability.action.walnutGuardUsed && unit.ability.elapsed >= recoverySeconds * config.guardRecoveryStartFraction && unit.ability.elapsed < recoverySeconds;
   }
   var definitionById2, MAX_BEAN_SPLIT_CHILDREN;
   var init_species_abilities = __esm({
@@ -1701,7 +1759,15 @@
           this.phase = "windup";
           this.elapsed = 0;
           this.action = { id: ++sim.attackSerial, target: { ...target }, targetId: target.id ?? "boss", hit: false, path: null };
-          if (this.spec.kind === "peanut-dual-strike") Object.assign(this.action, { resolvedMask: 0, hitMask: 0 });
+          if (this.spec.kind === "peanut-dual-strike") {
+            const assault = getPeanutAssaultConfig(sim.abilityProgressionFor(u), u.tier);
+            Object.assign(this.action, { resolvedMask: 0, hitMask: 0, peanutStrikeCount: assault?.strikeCount || PEANUT_BASE_STRIKE.count, peanutAttackMultiplier: assault?.attackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier, peanutSpreadRadians: assault?.spreadRadians ?? PEANUT_BASE_STRIKE.spreadRadians });
+          }
+          if (this.spec.kind === "walnut-hammer") {
+            const guard = getWalnutGuardConfig(sim.abilityProgressionFor(u), u.tier);
+            Object.assign(this.action, { walnutEmpowered: !!guard && u.walnutEmpoweredNextBasic, walnutGuardUsed: false });
+            u.walnutEmpoweredNextBasic = false;
+          }
           u.angle = Math.atan2(target.y - u.y, target.x - u.x);
           u.vx = u.vy = 0;
           sim.combatEvent("prepare", u, this.action);
@@ -1727,6 +1793,10 @@
         update(sim, dt) {
           const u = this.owner;
           if (u.stun > 0 || u.down > 0) {
+            this.interrupt();
+            return true;
+          }
+          if (this.action && (this.phase === "windup" || this.phase === "active") && !(sim.attackTarget(u, this.action)?.hp > 0)) {
             this.interrupt();
             return true;
           }
@@ -1789,7 +1859,7 @@
           const a = this.action, u = this.owner;
           if (this.spec.kind === "peanut-dual-strike") {
             if (this.phase !== "active" || !a?.path) return;
-            const schedule = createPeanutStrikeSchedule({ activeSeconds: this.spec.active });
+            const schedule = createPeanutStrikeSchedule({ strikeCount: a.peanutStrikeCount || 2, attackMultiplier: a.peanutAttackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier, spreadRadians: a.peanutSpreadRadians ?? Math.PI / 12, activeSeconds: this.spec.active });
             for (const slot of schedule) {
               if (this.elapsed + 1e-9 < slot.dueSeconds || ((a.resolvedMask || 0) & 1 << slot.strikeIndex) !== 0) continue;
               const target2 = sim.attackTarget(u, a);
@@ -1816,11 +1886,16 @@
             return;
           }
           const target = sim.attackTarget(u, a);
-          if (this.phase !== "active" || !a?.path || !target) return;
+          if (this.phase !== "active" || !a?.path) return;
+          if (!target || target.hp <= 0) {
+            this.interrupt();
+            return;
+          }
           const areaRadius = scaleAttackArea(u.radius, u);
           const hit = !a.hit && ArenaGeometry.sweep(old, u, areaRadius, 0.65, target);
           if (hit) {
-            sim.damageCombatTarget(u, a, target, hit, { attackMultiplier: this.spec.skillMultiplier, attackKind: this.spec.kind });
+            if (a.walnutEmpowered) sim.triggerWalnutSlam(u, a, target, hit);
+            else sim.damageCombatTarget(u, a, target, hit, { attackMultiplier: this.spec.skillMultiplier, attackKind: this.spec.kind });
             if (this.spec.kind === "ram" || this.spec.kind === "punch") {
               u.x = hit.x;
               u.y = hit.y;
@@ -1903,6 +1978,7 @@
             lifetime: "",
             chestnutBasicCycles: 0,
             landingRecovery: 0,
+            walnutEmpoweredNextBasic: false,
             wheatCommandUntil: 0,
             wheatCommandCritBonus: 0,
             barleyArmorBreakUntil: 0,
@@ -2257,7 +2333,9 @@
           return true;
         }
         handleUnitDeath(unit) {
-          if (!unit || unit.deathSplitHandled) return false;
+          if (!unit) return false;
+          unit.walnutEmpoweredNextBasic = false;
+          if (unit.deathSplitHandled) return false;
           this._syncUnitAliveCount(unit);
           unit.deathSplitHandled = true;
           if (unit.isBattleOnlySummon) {
@@ -2283,6 +2361,7 @@
           return true;
         }
         cleanupBattleSummons() {
+          for (const unit of this.units) unit.walnutEmpoweredNextBasic = false;
           for (const unit of this.units) if (unit.isBattleOnlySummon) this._trackUnitRemoved(unit);
           this.units = this.units.filter((unit) => !unit.isBattleOnlySummon);
           this.projectiles = [];
@@ -2296,6 +2375,33 @@
             this.damageBoss(unit, blast, point, { attackMultiplier: config.damageMultiplier, attackKind: "kidney-shockwave", area: true });
           }
           this.combat("kidney-shockwave", { unit: unit.id, ownerId: unit.ownerId, species: 2, x: unit.x, y: unit.y, radius: range, damageMultiplier: config.damageMultiplier });
+        }
+        walnutGuardConfigFor(unit) {
+          if (unit.species !== 5) return null;
+          const config = getWalnutGuardConfig(this.abilityProgressionFor(unit), unit.tier);
+          return isWalnutGuardActive(unit, config, scaleAttackRecovery(abilityProfile(unit.species).recovery, unit)) ? config : null;
+        }
+        receiveWalnutGuard(unit) {
+          const config = this.walnutGuardConfigFor(unit);
+          if (!config) return null;
+          unit.ability.action.walnutGuardUsed = true;
+          unit.walnutEmpoweredNextBasic = true;
+          this.combat("walnut-guard", { unit: unit.id, x: unit.x, y: unit.y, z: unit.z });
+          return config;
+        }
+        triggerWalnutSlam(unit, action, primaryTarget, point) {
+          if (action.hit || !primaryTarget || primaryTarget.hp <= 0 || !areOpposingFactions(unit, primaryTarget)) return false;
+          const config = getWalnutGuardConfig(this.abilityProgressionFor(unit), unit.tier);
+          if (!config) return false;
+          action.hit = true;
+          const targets = [primaryTarget];
+          if (primaryTarget !== this.boss && this.boss.hp > 0 && areOpposingFactions(unit, this.boss) && Math.hypot(this.boss.x - point.x, this.boss.y - point.y) <= config.radius + this.boss.radius) targets.push(this.boss);
+          for (const target of this.units) if (target !== primaryTarget && target.hp > 0 && areOpposingFactions(unit, target) && Math.hypot(target.x - point.x, target.y - point.y) <= config.radius + target.radius) targets.push(target);
+          const criticalRoll = stats(unit.tier, unit.species).critChance + this.wheatCommandCritBonusFor(unit) > 0 ? this.random() : 1;
+          for (const target of targets) this.damageCombatTarget(unit, { id: action.id, hit: false }, target, point, { attackMultiplier: config.damageMultiplier, attackKind: "walnut-empowered-slam", area: true, criticalRoll });
+          this.effects.push({ kind: "walnut-shockwave", x: point.x, y: point.y, z: 0, life: 0, duration: 0.5, radius: config.radius, owner: unit.id });
+          this.combat("walnut-slam", { unit: unit.id, attackId: action.id, x: point.x, y: point.y, z: 0, radius: config.radius });
+          return true;
         }
         senseEnemy(unit) {
           if (unit.hp <= 0 || !unit.dropLanded) return null;
@@ -2532,6 +2638,7 @@
             }
             u.mateId = idMap.get(oldMateId) || 0;
             u.ability = new AttackCycle(u);
+            u.walnutEmpoweredNextBasic = false;
             Object.assign(u, { z: 0, vx: 0, vy: 0, vz: 0, stun: 0, down: 0, hp: stats(u.tier, u.species).maxHp });
           }
           if (this.running) {
@@ -3187,7 +3294,7 @@
             if (config) refreshBarleyArmorBreak(target, config, this.time, resolveStatusDuration(config.durationSeconds, u, target));
           }
         }
-        damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null, strikeIndex = null, area = false } = {}) {
+        damageBoss(u, action, point, { lifestealSource = u, attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {}) {
           if (!hasFaction(u, FACTION_CONFIG.PLAYER) || !areOpposingFactions(u, this.boss) || action.hit || this.boss.hp <= 0) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil;
@@ -3199,7 +3306,7 @@
           const harvestMultiplier = this.riceHarvestMultiplier(u, this.boss, kind, hpBefore, maxHp);
           const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier;
           const sourceStatOverrides = { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) };
-          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, area, sourceStatOverrides, armorForTarget: () => armor, roll: () => this.random() });
+          const damage = applyDamageToTargets(lifestealSource, [this.boss], { rawDamage, area, sourceStatOverrides, armorForTarget: () => armor, roll: () => criticalRoll ?? this.random() });
           this.applyGrainOnBasicHit(u, this.boss, kind);
           this.boss.flash = 0.13;
           const dx = point.x - this.boss.x, dy = point.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
@@ -3211,18 +3318,18 @@
           if (action?.targetId === "boss" || !action?.targetId) return areOpposingFactions(unit, this.boss) ? this.boss : null;
           return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0 && areOpposingFactions(unit, candidate)) || null;
         }
-        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false } = {}) {
+        damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {}) {
           if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit) return false;
           action.hit = true;
           const spec = abilityProfile(u.species), roster = this.raidRoster(u.ownerId), buffed = !!roster && this.time < roster.buffUntil, attackerStats = stats(u.tier, u.species), damageMultiplier = Number.isFinite(attackMultiplier) ? attackMultiplier : spec.skillMultiplier, kind = attackKind || spec.kind;
           const targetMaxHp = stats(target.tier, target.species).maxHp, harvestMultiplier = this.riceHarvestMultiplier(u, target, kind, target.hp, targetMaxHp);
-          const baselineArmor = stats(target.tier, target.species).armor, armor = effectiveBarleyArmor(target, baselineArmor, this.time);
+          const baselineArmor = stats(target.tier, target.species).armor, armor = effectiveBarleyArmor(target, baselineArmor, this.time), guard = this.receiveWalnutGuard(target);
           const sourceStatOverrides = { critChance: clamp2(attackerStats.critChance + this.wheatCommandCritBonusFor(u), 0, 1) };
-          const damage = applyDamageToTargets(u, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier, area, sourceKind: hasFaction(u, FACTION_CONFIG.PLAYER) ? "direct" : "enemy", sourceStatOverrides, armorForTarget: () => armor });
+          const damage = applyDamageToTargets(u, [target], { rawDamage: attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier * (guard?.receivedDamageMultiplier ?? 1), area, sourceKind: hasFaction(u, FACTION_CONFIG.PLAYER) ? "direct" : "enemy", sourceStatOverrides, armorForTarget: () => armor, roll: () => criticalRoll ?? this.random() });
           this._syncUnitAliveCount(target);
           this.applyGrainOnBasicHit(u, target, kind);
           const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
-          target.knock(dx / n, dy / n, 5, 2.4, u);
+          target.knock(dx / n, dy / n, 5 * (guard?.receivedKnockbackMultiplier ?? 1), 2.4 * (guard?.receivedKnockbackMultiplier ?? 1), u);
           if (target.hp === 0) {
             target.down = target.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
             this.handleUnitDeath(target);
@@ -3495,9 +3602,10 @@
           b.hit.add(unit.id);
           action.hitIds.push(unit.id);
           const dx = normal?.x ?? unit.x - b.x, dy = normal?.y ?? unit.y - b.y, n = Math.hypot(dx, dy) || 1;
-          unit.knock(dx / n, dy / n, config.knockback, config.lift, b);
+          const guard = this.receiveWalnutGuard(unit), knockbackMultiplier = guard?.receivedKnockbackMultiplier ?? 1;
+          unit.knock(dx / n, dy / n, config.knockback * knockbackMultiplier, config.lift * knockbackMultiplier, b);
           if (!hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit)) return false;
-          applyDamageToTargets(null, [unit], { rawDamage: b.attackPower * config.damageMultiplier, sourceKind: "enemy" });
+          applyDamageToTargets(null, [unit], { rawDamage: b.attackPower * config.damageMultiplier * (guard?.receivedDamageMultiplier ?? 1), sourceKind: "enemy" });
           this._syncUnitAliveCount(unit);
           if (unit.hp === 0) {
             unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
@@ -3810,7 +3918,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.21";
+      PRODUCT_VERSION = "0.7.22";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4148,14 +4256,27 @@
     for (const r of raw.raidRosters || []) {
       if (!Object.hasOwn(r, "abilitySnapshot")) r.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());
       else if (!Object.hasOwn(r.abilitySnapshot, "farmUpgrades")) r.abilitySnapshot.farmUpgrades = structuredClone(createPlayerProgressionState().farmUpgrades);
+      if (r.abilitySnapshot?.abilities && typeof r.abilitySnapshot.abilities === "object" && !Array.isArray(r.abilitySnapshot.abilities)) {
+        for (const [id, value] of Object.entries(base.playerProgression.abilities)) if (!Object.hasOwn(r.abilitySnapshot.abilities, id)) r.abilitySnapshot.abilities[id] = structuredClone(value);
+      }
       if (!Object.hasOwn(r, "settlementSessionId")) r.settlementSessionId = "";
       if (!Object.hasOwn(r, "settlementRunSequence")) r.settlementRunSequence = 0;
       if (!Object.hasOwn(r, "settlementEncounterId")) r.settlementEncounterId = 0;
     }
-    const unitDefaults = { wheatCommandUntil: 0, wheatCommandCritBonus: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, battleSummonEncounterId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0, landingRecovery: 0 };
+    const unitDefaults = { walnutEmpoweredNextBasic: false, wheatCommandUntil: 0, wheatCommandCritBonus: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, isBattleOnlySummon: false, battleSummonKind: "", battleSummonParentId: 0, battleSummonEncounterId: 0, countsTowardPermanentRoster: true, eligibleForRaidDeployment: true, breedingEligible: true, mergeEligible: true, canSplit: true, splitUsedThisBattle: false, deathSplitHandled: false, usesPersistentSleep: true, lifetime: "", chestnutBasicCycles: 0, landingRecovery: 0 };
     for (const u of raw.units || []) {
       for (const [key, value] of Object.entries(unitDefaults)) if (!Object.hasOwn(u, key)) u[key] = value;
       if (!Object.hasOwn(u, "faction")) u.faction = legacyUnitFaction(u);
+      const action = u.ability?.action;
+      if (action && u.species === 4) {
+        if (!Object.hasOwn(action, "peanutStrikeCount")) action.peanutStrikeCount = 2;
+        if (!Object.hasOwn(action, "peanutAttackMultiplier")) action.peanutAttackMultiplier = 0.5;
+        if (!Object.hasOwn(action, "peanutSpreadRadians")) action.peanutSpreadRadians = Math.PI / 12;
+      }
+      if (action && u.species === 5) {
+        if (!Object.hasOwn(action, "walnutEmpowered")) action.walnutEmpowered = false;
+        if (!Object.hasOwn(action, "walnutGuardUsed")) action.walnutGuardUsed = false;
+      }
     }
     if (!Object.hasOwn(raw.boss, "faction")) raw.boss.faction = FACTION_CONFIG.ENEMY;
     if (!Object.hasOwn(raw.boss, "barleyArmorBreakUntil")) raw.boss.barleyArmorBreakUntil = 0;
@@ -4369,7 +4490,7 @@
     for (const u of raw.units) {
       shape(u, UNIT_SHAPE);
       assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
-      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
+      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && typeof u.walnutEmpoweredNextBasic === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
       else assert(u.down === 0);
       if (hasFaction(u, FACTION_CONFIG.ENEMY)) assert(u.isBattleOnlySummon && u.battleSummonKind === "boss-mouth-t1" && u.ownerId === "boss" && u.farmId === 0);
@@ -4402,7 +4523,12 @@
       if (u.ability.action) {
         const a = u.ability.action;
         assert(integer(a.id, 1, raw.attackSerial) && typeof a.hit === "boolean" && a.target && Number.isFinite(a.target.x) && Number.isFinite(a.target.y));
-        if (u.species === 4) assert(integer(a.resolvedMask, 0, 3) && integer(a.hitMask, 0, 3) && (a.hitMask & ~a.resolvedMask) === 0);
+        if (u.species === 4) {
+          assert(integer(a.peanutStrikeCount, 2, 5) && Number.isFinite(a.peanutAttackMultiplier) && a.peanutAttackMultiplier > 0 && a.peanutAttackMultiplier <= 10 && Number.isFinite(a.peanutSpreadRadians) && a.peanutSpreadRadians >= 0 && a.peanutSpreadRadians <= Math.PI / 6);
+          const mask = (1 << a.peanutStrikeCount) - 1;
+          assert(integer(a.resolvedMask, 0, mask) && integer(a.hitMask, 0, mask) && (a.hitMask & ~a.resolvedMask) === 0);
+        }
+        if (u.species === 5) assert(typeof a.walnutEmpowered === "boolean" && typeof a.walnutGuardUsed === "boolean");
         if (a.path) validatePath(a.path);
         if (a.pendingShots !== void 0) {
           assert(Array.isArray(a.pendingShots) && a.pendingShots.length <= 3 && a.pendingShots.every((shot) => integer(shot.shotIndex, 1, 4) && Number.isFinite(shot.delaySeconds) && shot.delaySeconds >= 0 && Number.isFinite(shot.attackMultiplier) && shot.attackMultiplier > 0 && shot.attackMultiplier <= 10));
@@ -4801,13 +4927,13 @@
     if (u.stun > 0) return "hit";
     if (u.bounce > 0.04) return "landing";
     if (phase === "windup") return "windup";
-    if (phase === "active") return "fire";
+    if (phase === "active") return kind === "peanut-dual-strike" && u.ability.peanutStrikeCount > 2 ? `fire-${u.ability.peanutStrikeCount}` : "fire";
     if (phase === "recover") return kind === "lob" && u.ability?.action?.path && u.ability.elapsed < 0.12 ? "fire" : "recover";
     return moving ? "walk" : "idle";
   }
   function motionElapsedMs(u, name, clip) {
     if (name === "idle" || name === "walk" || name === "airborne") return (u.seed || 0) * 80 % clip.durationMs;
-    if (name === "windup" || name === "fire" || name === "recover") return clamp2((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
+    if (name === "windup" || name === "fire" || name.startsWith("fire-") || name === "recover") return clamp2((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
     if (name === "hit") return clip.durationMs * (1 - clamp2((u.stun || 0) / 0.5, 0, 1));
     if (name === "landing") return clip.durationMs * (1 - clamp2((u.bounce || 0) / 0.22, 0, 1));
     if (name === "victory") return Math.abs(u.seed || 0) * 97.531 % clip.durationMs;
@@ -4821,6 +4947,7 @@
     if (sim.scene === "raid" && sim.encounter?.outcome === "victory") return "happy";
     if (u.stun > 0) return "hurt";
     if (airborne) return "surprised";
+    if (u.walnutGuarding) return "guard";
     if (phase === "windup") return "focused";
     if (phase === "active") return "attack";
     if (restingCooldown) return "neutral";
@@ -5501,7 +5628,7 @@
             this.ellipse(p.x, p.y, this.scale * 0.045, this.scale * 0.035, `rgba(245,213,133,${1 - t})`);
           }
         } else if (e.kind === "land" || e.kind === "impact") this.ring(e.x, e.y, 0.1 + q * 0.8, `rgba(146,131,78,${(1 - q) * 0.65})`);
-        else if (e.kind === "landing-shockwave") {
+        else if (e.kind === "landing-shockwave" || e.kind === "walnut-shockwave") {
           const progress = clamp2(q / (e.duration || 0.55), 0, 1), radius = Math.max(0.08, e.radius) * (0.2 + 0.8 * progress);
           this.groundEllipse(e.x, e.y, radius, radius, `rgba(225,190,103,${0.12 * (1 - progress)})`);
           this.ring(e.x, e.y, radius, `rgba(234,194,104,${0.82 * (1 - progress)})`, 0.12 * (1 - progress) + 0.025);
@@ -5611,6 +5738,8 @@
       bounce: R.LINEAR,
       "ability.phase": R.STATE_KEY,
       "ability.elapsed": R.LINEAR,
+      "ability.peanutStrikeCount": R.STEP,
+      walnutGuarding: R.STEP,
       cooldown: R.LINEAR,
       cooldownDuration: R.STEP,
       meals: R.STEP,
@@ -5643,7 +5772,8 @@
         stun: u.stun,
         flash: u.flash,
         bounce: u.bounce,
-        ability: { phase: u.ability.phase, elapsed: u.ability.elapsed },
+        ability: { phase: u.ability.phase, elapsed: u.ability.elapsed, peanutStrikeCount: u.ability.action?.peanutStrikeCount || 2 },
+        walnutGuarding: !!world.walnutGuardConfigFor(u),
         cooldown: u.cooldown,
         cooldownDuration: u.cooldownDuration,
         meals: u.meals,
