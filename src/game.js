@@ -3781,7 +3781,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.24";
+      PRODUCT_VERSION = "0.7.25";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4105,6 +4105,7 @@
     const resetLegacyCorpseTimers = !Object.hasOwn(raw, "corpseRecoveryVersion"), hasRewardWatermarks = Object.hasOwn(raw, "bossRewardWatermarks");
     if (clone2) raw = structuredClone(raw);
     delete raw.progress;
+    if (raw.speed === 1 || raw.speed === 4) delete raw.speed;
     if (resetLegacyCorpseTimers) raw.corpseRecoveryVersion = 1;
     if (!Object.hasOwn(raw, "farmBossProgress")) raw.farmBossProgress = createFarmBossProgress(raw.seed);
     for (const u of raw.units || []) if (!Object.hasOwn(u, "cooldownDuration")) u.cooldownDuration = Math.max(0, Number.isFinite(u.cooldown) ? u.cooldown : 0);
@@ -5844,7 +5845,6 @@
       this.profile = LOCAL_PROFILE;
       this.pace = 1;
       this.closed = false;
-      this.speed = 1;
       this._paused = false;
       this.pauseStartedAt = null;
       this.pausedDurationMs = 0;
@@ -5903,10 +5903,10 @@
         if (commandChangedWorld) this.onWorldStep(this.world);
         return ADVANCED;
       }
-      const w = this.world, startTime = w.time, speed = this.speed, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
-      bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3 / speed) / 1e3);
+      const w = this.world, startTime = w.time, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
+      bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3) / 1e3);
       if (w.scene === "farm") w.advanceAutoTaps(0.05);
-      for (let i = 0; i < 6 * speed; i++) w.step(CONFIG.fixedStep);
+      for (let i = 0; i < 6; i++) w.step(CONFIG.fixedStep);
       this.tick++;
       this.presentationTick++;
       this.onWorldStep(w);
@@ -5941,9 +5941,6 @@
             w.mode = c.value;
             return changed;
           }
-          return false;
-        case "speed":
-          if ([1, 4].includes(c.value)) this.speed = c.value;
           return false;
         case "progression-invest":
           if (w.scene === "farm" && typeof c.nodeId === "string" && c.nodeId.length < 64) {
@@ -7151,7 +7148,6 @@
   $2("feed").onclick = (e) => {
     if (e.detail === 0 && !e.pointerType) requestFeed();
   };
-  $2("speed").onclick = () => active.queue("speed", { value: active.speed === 1 ? 4 : 1 });
   $2("pause").onclick = () => {
     menuPauseChanged = true;
     active.paused = !active.paused;
@@ -7518,7 +7514,6 @@
     syncWidth("bossHealth", boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%");
     syncText("battleOutcome", raid ? battleOutcome === "victory" ? `${stageName} · ${encounterName} · 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · ${rewardName} ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} · ${encounterName} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `${encounterName} 격파 · ${rewardName} 획득 · 정원에 합류했어요` : farmEvent.rewardStatus === "pending" ? `${encounterName} 격파 · ${rewardName} 획득 대기 · 공간이 생기면 합류해요` : `${encounterName} 격파` : battleOutcome === "defeat" ? `${encounterName} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요` : "");
     syncFlag("battleOutcome", "hidden", home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle");
-    syncText("speed", active.speed + "×");
     syncFlag("bossEncounterChallenge", "disabled", !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null);
     syncFlag("menuTabGrowth", "disabled", raid || farmEventActive || bossEncounterOpen);
     syncFlag("menuTabAbilities", "disabled", raid || !personalGarden);

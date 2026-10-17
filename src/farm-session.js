@@ -91,7 +91,7 @@ class GameClockRender extends RenderObject {
 
 export class FarmSession{
  constructor(world=new Garden(),{onError=console.error,onWorldStep=()=>{}}={}){
-  this.world=world;this.onWorldStep=onWorldStep;this.tick=0;this.presentationTick=0;this.profile=LOCAL_PROFILE;this.pace=1;this.closed=false;this.speed=1;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.localPlayerId='solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
+  this.world=world;this.onWorldStep=onWorldStep;this.tick=0;this.presentationTick=0;this.profile=LOCAL_PROFILE;this.pace=1;this.closed=false;this._paused=false;this.pauseStartedAt=null;this.pausedDurationMs=0;this.pending=[];this.localPlayerId='solo';this.localDeploySequence=world.raidRoster(this.localPlayerId)?.lastDeploySequence||0;
   this.presentationRevision=0;this.presentationSequence=0;this.pendingPresentationMode=null;this.presentationRuntime=new PresentationRuntime({stepMs:PRESENTATION_STEP_MS,delayMs:PRESENTATION_STEP_MS,snapDistance:12});
   this.presentationIds=new WeakMap();this.nextPresentationId=1;this.previousCaptureTimeMs=null;this.latestCaptureTimeMs=0;this.presentationOriginWallMs=null;this.lastFrameClockMs=null;this.lastCaptureClockMs=0;this.pulseTimestamp=null;
   // FarmSession owns local command order; the shared loop owns timing/backlog.
@@ -108,8 +108,8 @@ export class FarmSession{
   if(this.closed)return CLOSED;
   const commandChangedWorld=this.applyPendingCommands(32);
   if(this.paused){this.tick++;if(commandChangedWorld)this.onWorldStep(this.world);return ADVANCED}
-  const w=this.world,startTime=w.time,speed=this.speed,loopStart=this.loop?.simulationTimeMs,startClock=this.adjustedWallTime(Number.isFinite(loopStart)?loopStart:this.pulseTimestamp??globalThis.performance.now()),presentationStartMs=Math.max(0,startClock-(this.presentationOriginWallMs??startClock));bindPresentationClock(w,time=>(presentationStartMs+(time-startTime)*1000/speed)/1000);
-  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6*speed;i++)w.step(CONFIG.fixedStep);this.tick++;this.presentationTick++;this.onWorldStep(w);return ADVANCED;
+  const w=this.world,startTime=w.time,loopStart=this.loop?.simulationTimeMs,startClock=this.adjustedWallTime(Number.isFinite(loopStart)?loopStart:this.pulseTimestamp??globalThis.performance.now()),presentationStartMs=Math.max(0,startClock-(this.presentationOriginWallMs??startClock));bindPresentationClock(w,time=>(presentationStartMs+(time-startTime)*1000)/1000);
+  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6;i++)w.step(CONFIG.fixedStep);this.tick++;this.presentationTick++;this.onWorldStep(w);return ADVANCED;
  }
  applyPendingCommands(limit){
   if(!this.pending.length)return false;
@@ -120,7 +120,6 @@ export class FarmSession{
   switch(c.type){
    case 'feed':return w.scene==='farm'&&w.tapFood('manual');
    case 'mode':if(w.scene==='farm'&&['breed','merge'].includes(c.value)){const changed=w.mode!==c.value||c.value!=='merge'&&w.mergeTask!==null;if(c.value!=='merge')w.mergeTask=null;w.mode=c.value;return changed}return false;
-   case 'speed':if([1,4].includes(c.value))this.speed=c.value;return false;
    case 'progression-invest':if(w.scene==='farm'&&typeof c.nodeId==='string'&&c.nodeId.length<64){if(c.scope==='farm')return w.investFarmUpgrade(c.nodeId).ok;if(c.scope==='ability'&&typeof c.abilityId==='string'&&c.abilityId.length<64)return w.investAbilityNode(c.abilityId,c.nodeId).ok}return false;
    case 'ability-reset':return w.scene==='farm'&&w.resetAbilityTree().ok;
    case 'register-roster':return Array.isArray(c.entries)&&w.registerRaidRoster(ownerId,c.entries,c.abilitySnapshot,c.settlement||null);
