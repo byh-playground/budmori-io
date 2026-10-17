@@ -113,13 +113,13 @@ function bossAttackPose(b,parts){
       this.canvas = canvas;
       this.device = new WebGLDevice(canvas, { alpha: false, depth: false, stencil: false, antialias: true });
       this.ctx = new VectorContext(this.device);
-      this.vectorAssets=new Map();this.vectorPlayers=new Map();
+      this.vectorAssets=new Map();this.vectorPlayers=new Map();this.vectorPlayerAssets=new WeakMap();
       this.actors=[];this.actorPool=[];this.liveUnitIds=new Set();this.joyEffects=[];
       this.unitRings=[];this.unitRingPool=[{},{},{}];this.breedingIndicator={};
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
       if(entries.length!==CONFIG.maxSpecies||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
-      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))});
+      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id)),faceParts:compiled.metadata.parts.filter(part=>part.id.startsWith('face-')).map(part=>part.id)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))}]));
       this.bossPlayer=null;this.bossPlayerAsset=null;this.bossPlayers=new Map();this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
       this.ctx.isBloomWebGL = true;
@@ -280,20 +280,26 @@ function bossAttackPose(b,parts){
     drawVectorUnit(u,sim,p,r){
       const record=this.vectorAssets.get(u.species);if(!record)throw new Error('Missing required troop vector asset for species '+u.species);
       let player=this.vectorPlayers.get(u.id);
+      if(player&&this.vectorPlayerAssets.get(player)!==record){player.dispose();this.vectorPlayers.delete(u.id);player=null}
       const metadata=record.compiled.metadata,motionName=unitMotion(u,sim),clip=metadata.clips[motionName]||metadata.clips.idle;
       const clipStartAtMs=this.displayTimeMs-motionElapsedMs(u,motionName,clip);
-      if(!player){player=record.asset.createPlayer({clip:motionName,startedAtMs:clipStartAtMs});this.vectorPlayers.set(u.id,player)}
+      if(!player){player=record.asset.createPlayer({clip:motionName,startedAtMs:clipStartAtMs});this.vectorPlayers.set(u.id,player);this.vectorPlayerAssets.set(player,record)}
       else if(player.currentClip!==motionName)player.play(motionName,clipStartAtMs);
       const expression=unitExpression(u,sim,this.joyEffects);if(expression!==player.currentExpression)player.setExpression(expression);
       player.seek(this.displayTimeMs);
       const [, ,width,height]=record.compiled.viewBox,scale=2*r/Math.max(width,height),centerY=p.y-r*.79;
       const matrix=[scale,0,0,scale,p.x-width*scale*.5,centerY-height*scale*.5];
+      // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
+      this.ctx.vector.flush();
       const outline=TIER_OUTLINE_COLORS[u.tier-1];
       if(outline){
         // One enlarged silhouette pass, never eight full asset redraws.
         const border=1.5*this.pixelRatio,factor=1+border/Math.max(r,1);
         const outlineMatrix=[scale*factor,0,0,scale*factor,p.x-width*scale*factor*.5,centerY-height*scale*factor*.5];
+        // Faces are interior details, never part of the enlarged silhouette.
+        for(const part of record.faceParts)player.setPartVisible(part,false);
         player.draw({projection:this.ctx.vector.projection,matrix:outlineMatrix,color:outline,forceColor:true});
+        player.setExpression(expression);
       }
       player.draw({projection:this.ctx.vector.projection,matrix});
       return true;
@@ -358,6 +364,7 @@ function bossAttackPose(b,parts){
       for(const [part,rotation] of Object.entries(pose.arms))if(parts.has(part))player.setBasePose(part,{rotation});
       for(const [part,partPose] of Object.entries(pose.extras))if(parts.has(part))player.setBasePose(part,partPose);
       const mouthSocket=metadata.sockets?.mouth?player.getSocket('mouth'):null,mouthScreen=mouthSocket?{x:mouthSocket.x*s+matrix[4],y:mouthSocket.y*s+matrix[5]}:null;
+      this.ctx.vector.flush();
       player.draw({projection:this.ctx.vector.projection,matrix});
       if(b.patternId==='summon.mouth-t1'&&b.patternReleased>0&&pose.releasePulse>0&&mouthScreen){
         this.ctx.flush();const mouth=mouthScreen,pulse=.55+.45*pose.releasePulse,target=Math.atan2(-.62*Math.sin(b.patternAim),Math.cos(b.patternAim));

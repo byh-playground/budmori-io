@@ -3810,7 +3810,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.20";
+      PRODUCT_VERSION = "0.7.21";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4999,6 +4999,7 @@
       this.ctx = new VectorContext(this.device);
       this.vectorAssets = /* @__PURE__ */ new Map();
       this.vectorPlayers = /* @__PURE__ */ new Map();
+      this.vectorPlayerAssets = /* @__PURE__ */ new WeakMap();
       this.actors = [];
       this.actorPool = [];
       this.liveUnitIds = /* @__PURE__ */ new Set();
@@ -5010,7 +5011,7 @@
       if (entries.length !== CONFIG.maxSpecies || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
       this.meshes = new MeshRenderer(this.device);
       this.ctx.meshRenderer = this.meshes;
-      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) });
+      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)), faceParts: compiled.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id) });
       this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) }]));
       this.bossPlayer = null;
       this.bossPlayerAsset = null;
@@ -5262,22 +5263,31 @@
       const record = this.vectorAssets.get(u.species);
       if (!record) throw new Error("Missing required troop vector asset for species " + u.species);
       let player = this.vectorPlayers.get(u.id);
+      if (player && this.vectorPlayerAssets.get(player) !== record) {
+        player.dispose();
+        this.vectorPlayers.delete(u.id);
+        player = null;
+      }
       const metadata = record.compiled.metadata, motionName = unitMotion(u, sim), clip = metadata.clips[motionName] || metadata.clips.idle;
       const clipStartAtMs = this.displayTimeMs - motionElapsedMs(u, motionName, clip);
       if (!player) {
         player = record.asset.createPlayer({ clip: motionName, startedAtMs: clipStartAtMs });
         this.vectorPlayers.set(u.id, player);
+        this.vectorPlayerAssets.set(player, record);
       } else if (player.currentClip !== motionName) player.play(motionName, clipStartAtMs);
       const expression = unitExpression(u, sim, this.joyEffects);
       if (expression !== player.currentExpression) player.setExpression(expression);
       player.seek(this.displayTimeMs);
       const [, , width, height] = record.compiled.viewBox, scale = 2 * r / Math.max(width, height), centerY = p.y - r * 0.79;
       const matrix = [scale, 0, 0, scale, p.x - width * scale * 0.5, centerY - height * scale * 0.5];
+      this.ctx.vector.flush();
       const outline = TIER_OUTLINE_COLORS[u.tier - 1];
       if (outline) {
         const border = 1.5 * this.pixelRatio, factor = 1 + border / Math.max(r, 1);
         const outlineMatrix = [scale * factor, 0, 0, scale * factor, p.x - width * scale * factor * 0.5, centerY - height * scale * factor * 0.5];
+        for (const part of record.faceParts) player.setPartVisible(part, false);
         player.draw({ projection: this.ctx.vector.projection, matrix: outlineMatrix, color: outline, forceColor: true });
+        player.setExpression(expression);
       }
       player.draw({ projection: this.ctx.vector.projection, matrix });
       return true;
@@ -5351,6 +5361,7 @@
       for (const [part, rotation] of Object.entries(pose.arms)) if (parts.has(part)) player.setBasePose(part, { rotation });
       for (const [part, partPose] of Object.entries(pose.extras)) if (parts.has(part)) player.setBasePose(part, partPose);
       const mouthSocket = metadata.sockets?.mouth ? player.getSocket("mouth") : null, mouthScreen = mouthSocket ? { x: mouthSocket.x * s + matrix[4], y: mouthSocket.y * s + matrix[5] } : null;
+      this.ctx.vector.flush();
       player.draw({ projection: this.ctx.vector.projection, matrix });
       if (b.patternId === "summon.mouth-t1" && b.patternReleased > 0 && pose.releasePulse > 0 && mouthScreen) {
         this.ctx.flush();
@@ -6473,6 +6484,12 @@
       const node = nodesById.get(id);
       if (!node) throw Error(`SVG preview is missing GameKit expression part: ${id}`);
       node.style.setProperty("display", visible.has(id) ? "inline" : "none");
+    }
+    const idlePose = compiled.metadata.clips.idle.keyframes[0].parts;
+    for (const [id, pose] of Object.entries(idlePose)) if (pose.opacity !== void 0) {
+      const node = nodesById.get(id);
+      if (!node) throw Error(`SVG preview is missing idle part: ${id}`);
+      node.style.setProperty("opacity", String(pose.opacity));
     }
     return document.importNode(svg, true);
   }

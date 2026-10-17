@@ -34,24 +34,24 @@
     <path id="peanut-pod-lobe-shade" d="M 83 169 Q 89 186 102 193 Q 113 199 126 199 Q 110 200 96 192 Q 85 185 83 169 Z" fill="#d4b47a" opacity=".22"/>
   </g>
 
-  <g id="shell-left" opacity="0" transform="translate(160 0) scale(.86 1) translate(-160 0)">
+  <g id="shell-left" transform="translate(160 0) scale(.86 1) translate(-160 0)">
     <path id="peanut-open-shell-left" d="M160 35 C148 45 134 48 120 54 C102 61 92 75 90 93 C88 106 93 117 99 128 C104 139 102 148 93 159 C82 172 79 184 86 198 C92 211 105 222 121 230 C136 238 149 242 160 242 Z" fill="#e5bd84" stroke="#4b3526" stroke-width="4.1" stroke-linejoin="round"/>
     <path id="peanut-open-shell-left-cut-edge" d="M160 56 C157 96 159 125 160 157 C158 187 159 216 160 238" fill="none" stroke="#c2975b" stroke-width="3.2" stroke-linecap="round"/>
     <path id="peanut-open-shell-left-ridges" d="M123 67 Q112 79 111 93 M100 115 Q105 127 112 133 M103 174 Q112 184 114 196 M132 204 Q137 217 145 222" fill="none" stroke="#c99e61" stroke-width="3.2" stroke-linecap="round"/>
     <path id="peanut-open-shell-left-lights" d="M99 84 Q95 93 98 102 M91 188 Q96 203 106 210" fill="none" stroke="#f5dfb0" stroke-width="2.6" stroke-linecap="round"/>
   </g>
-  <g id="shell-right" opacity="0" transform="translate(160 0) scale(.86 1) translate(-160 0)">
+  <g id="shell-right" transform="translate(160 0) scale(.86 1) translate(-160 0)">
     <path id="peanut-open-shell-right" d="M160 35 C172 45 186 48 200 54 C218 61 228 75 230 93 C232 106 227 117 221 128 C216 139 218 148 227 159 C238 172 241 184 234 198 C228 211 215 222 199 230 C184 238 171 242 160 242 Z" fill="#e5bd84" stroke="#4b3526" stroke-width="4.1" stroke-linejoin="round"/>
     <path id="peanut-open-shell-right-cut-edge" d="M160 56 C163 96 161 125 160 157 C162 187 161 216 160 238" fill="none" stroke="#c2975b" stroke-width="3.2" stroke-linecap="round"/>
     <path id="peanut-open-shell-right-ridges" d="M197 67 Q208 79 209 93 M220 115 Q215 127 208 133 M217 174 Q208 184 206 196 M188 204 Q183 217 175 222" fill="none" stroke="#c99e61" stroke-width="3.2" stroke-linecap="round"/>
     <path id="peanut-open-shell-right-lights" d="M221 84 Q225 93 222 102 M229 188 Q224 203 214 210" fill="none" stroke="#f5dfb0" stroke-width="2.6" stroke-linecap="round"/>
   </g>
 
-  <g id="kernel-left" opacity="0">
+  <g id="kernel-left">
     <path id="peanut-kernel-left-shape" d="M143 93 C130 91 119 102 118 120 C116 141 126 165 141 177 C151 185 161 177 162 161 C164 139 159 105 143 93 Z" fill="#e8a96e" stroke="#56372a" stroke-width="4.5" stroke-linejoin="round"/>
     <path id="peanut-kernel-left-sheen" d="M133 104 Q124 117 127 131 M134 151 Q137 162 143 168" fill="none" stroke="#f4cb93" stroke-width="3" stroke-linecap="round"/>
   </g>
-  <g id="kernel-right" opacity="0">
+  <g id="kernel-right">
     <path id="peanut-kernel-right-shape" d="M177 93 C190 91 201 102 202 120 C204 141 194 165 179 177 C169 185 159 177 158 161 C156 139 161 105 177 93 Z" fill="#e8a96e" stroke="#56372a" stroke-width="4.5" stroke-linejoin="round"/>
     <path id="peanut-kernel-right-sheen" d="M187 104 Q196 117 193 131 M186 151 Q183 162 177 168" fill="none" stroke="#f4cb93" stroke-width="3" stroke-linecap="round"/>
   </g>
