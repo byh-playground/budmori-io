@@ -68,8 +68,7 @@
   });
 
   // src/unit-stats.js
-  function resolveUnitStats(unit, overrides = {}) {
-    const tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(unit?.tier) ? unit.tier : 1));
+  function createBaseStats(tier, speciesProfile) {
     let maxHp = TIER_HP;
     let attackPower = TIER_ATTACK;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
@@ -77,14 +76,18 @@
       maxHp *= TIER_HP_SCALE * transitionMultiplier;
       attackPower *= TIER_ATTACK_SCALE * transitionMultiplier;
     }
-    const speciesProfile = COMMON_UNIT_STAT_PROFILES[unit?.species] || COMMON_UNIT_STAT_DEFAULTS;
-    return {
-      maxHp,
-      attackPower,
-      ...COMMON_UNIT_STAT_DEFAULTS,
-      ...speciesProfile,
-      ...overrides
-    };
+    return Object.freeze({ maxHp, attackPower, ...COMMON_UNIT_STAT_DEFAULTS, ...speciesProfile });
+  }
+  function baseUnitStatsFor(tier, species) {
+    tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
+    const profile = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
+    return BASE_STATS_BY_PROFILE.get(profile)?.[tier - 1] || createBaseStats(tier, profile);
+  }
+  function resolveUnitStats(unit, overrides) {
+    return { ...baseUnitStatsFor(unit?.tier, unit?.species), ...overrides };
+  }
+  function combatStats(unit, overrides) {
+    return overrides === void 0 ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
   }
   function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
     const raw = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
@@ -98,14 +101,14 @@
     const chance = clamp(Number.isFinite(stats2?.critChance) ? stats2.critChance : 0, 0, 1);
     return chance > 0 && roll < chance;
   }
-  function scaleMoveSpeed(baseSpeed, unit, overrides = {}) {
-    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, resolveUnitStats(unit, overrides).moveSpeed);
+  function scaleMoveSpeed(baseSpeed, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit, overrides).moveSpeed);
   }
-  function scaleAttackRecovery(baseRecovery, unit, overrides = {}) {
-    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, resolveUnitStats(unit, overrides).attackSpeed);
+  function scaleAttackRecovery(baseRecovery, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit, overrides).attackSpeed);
   }
-  function scaleAttackArea(baseArea, unit, overrides = {}) {
-    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, resolveUnitStats(unit, overrides).attackArea);
+  function scaleAttackArea(baseArea, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit, overrides).attackArea);
   }
   function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier } = {}) {
     if (!target || !Number.isFinite(target.hp)) return { actualLoss: 0, ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier) };
@@ -114,7 +117,7 @@
     target.hp = Math.max(0, target.hp - actualLoss);
     return { ...resolved, actualLoss };
   }
-  function applyHealing(target, amount, receiverStats = resolveUnitStats(target)) {
+  function applyHealing(target, amount, receiverStats = combatStats(target)) {
     if (!target || !Number.isFinite(target.hp) || target.hp <= 0) return 0;
     const maxHp = Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
     const received = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
@@ -127,11 +130,11 @@
     rawDamage,
     area = false,
     sourceKind = "direct",
-    sourceStatOverrides = {},
-    armorForTarget = (target) => resolveUnitStats(target).armor,
+    sourceStatOverrides,
+    armorForTarget = (target) => combatStats(target).armor,
     roll = () => 1
   } = {}) {
-    const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : null;
+    const sourceStats = source ? combatStats(source, sourceStatOverrides) : null;
     const critical = !!sourceStats && sourceStats.critChance > 0 && resolveCritical(sourceStats, roll());
     const hits = [];
     let totalActualLoss = 0;
@@ -150,16 +153,16 @@
     const healed = source && healRate > 0 ? applyHealing(source, totalActualLoss * healRate, sourceStats) : 0;
     return { hits, totalActualLoss, healed, critical };
   }
-  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides = {}, targetStatOverrides = {} } = {}) {
-    const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const targetStats = target ? resolveUnitStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+    const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
     const durationScale = Number.isFinite(sourceStats.statusDuration) ? Math.max(0, sourceStats.statusDuration) : 1;
     const resistance = clamp(Number.isFinite(targetStats.statusResistance) ? targetStats.statusResistance : 0, 0, 1);
     return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * durationScale * (1 - resistance);
   }
-  function resolveKnockback(basePower, source, target, { sourceStatOverrides = {}, targetStatOverrides = {} } = {}) {
-    const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const targetStats = target ? resolveUnitStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+  function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+    const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
     const power = Number.isFinite(sourceStats.knockbackPower) ? Math.max(0, sourceStats.knockbackPower) : 1;
     const resistance = clamp(Number.isFinite(targetStats.knockbackResistance) ? targetStats.knockbackResistance : 0, 0, 1);
     return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * power * (1 - resistance);
@@ -167,7 +170,7 @@
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
-  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES;
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
   var init_unit_stats = __esm({
     "src/unit-stats.js"() {
       init_unit_grades();
@@ -194,6 +197,10 @@
         statusResistance: 0
       });
       COMMON_UNIT_STAT_PROFILES = Object.freeze(Array.from({ length: SPECIES_COUNT }, () => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
+      BASE_STATS_BY_PROFILE = new Map([COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
+        profile,
+        Array.from({ length: MAX_UNIT_TIER }, (_, index) => createBaseStats(index + 1, profile))
+      ]));
     }
   });
 
@@ -1476,7 +1483,7 @@
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
       CONFIG = Object.freeze({ factions: FACTION_CONFIG, cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: SPECIES_COUNT, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
       clamp2 = (x, a, b) => Math.max(a, Math.min(b, x));
-      stats = (tier, species) => resolveUnitStats({ tier, species });
+      stats = baseUnitStatsFor;
       Body = class {
         constructor(x, y) {
           Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, angle: 0, stun: 0, flash: 0, bounce: 0 });
@@ -1916,7 +1923,7 @@
           }
         }
         _trackUnitAdded(unit) {
-          if (!this._spatialStepActive) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
           }
@@ -1933,7 +1940,7 @@
           this._unitAliveState.set(unit, unit.hp > 0);
         }
         _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
-          if (!this._spatialStepActive) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
           }
@@ -1968,6 +1975,10 @@
           if (!this._unitAliveState) this._unitAliveState = /* @__PURE__ */ new Map();
           this._unitAliveState.set(unit, isAlive);
           if (typeof unit.faction === "string") this._adjustFactionCount(unit.faction, isAlive ? 1 : -1);
+        }
+        _unitForId(id) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
+          return this._unitById.get(id);
         }
         _unitIsActive(unit) {
           return this._unitById.get(unit?.id) === unit;
@@ -3092,7 +3103,8 @@
         wheatCommandCritBonusFor(attacker) {
           if (!attacker || attacker.hp <= 0) return 0;
           let strongest = 0;
-          for (const source of this.units) {
+          if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
+          for (const source of this._speciesGroups[7]) {
             if (source.species !== 7 || source.hp <= 0 || !hasFaction(source, attacker.faction) || source.wheatCommandUntil <= this.time) continue;
             const config = getWheatCommandConfig(this.abilityProgressionFor(source), source.tier);
             if (!config || Math.hypot(source.x - attacker.x, source.y - attacker.y) > config.radius) continue;
@@ -3138,7 +3150,8 @@
         }
         attackTarget(unit, action) {
           if (action?.targetId === "boss" || !action?.targetId) return areOpposingFactions(unit, this.boss) ? this.boss : null;
-          return this.units.find((candidate) => candidate.id === action.targetId && candidate.hp > 0 && areOpposingFactions(unit, candidate)) || null;
+          const target = this._unitForId(action.targetId);
+          return target?.hp > 0 && areOpposingFactions(unit, target) ? target : null;
         }
         damageUnitTarget(u, action, target, point, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {}) {
           if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit) return false;
@@ -3166,71 +3179,84 @@
         }
         explodePopcorn(kernel) {
           if (!kernel?.isPopcorn || kernel.exploded) return false;
-          const queue = [kernel], queued = /* @__PURE__ */ new Set();
-          let triggered = false;
-          while (queue.length) {
-            const current = queue.shift();
-            if (!current?.isPopcorn || current.exploded || queued.has(current.id)) continue;
-            queued.add(current.id);
-            current.exploded = true;
-            current.explosionLife = 0;
-            current.hit = true;
-            triggered = true;
-            const config = current.popcornConfig, center = { x: current.x, y: current.y, z: 0 }, range = config.radius;
-            this.effects.push({ kind: "popcorn-explosion", x: current.x, y: current.y, z: 0, life: 0, duration: 0.5, radius: range, owner: current.owner });
-            const owner = this.units.find((candidate) => candidate.id === current.owner) || { id: current.owner, ownerId: current.ownerId || "", faction: current.faction, species: current.species, tier: current.tier, x: current.x, y: current.y, z: 0 };
-            const targets = [];
-            if (areOpposingFactions(owner, this.boss) && !current.damagedTargetIds.includes("boss") && Math.hypot(current.x - this.boss.x, current.y - this.boss.y) <= range + this.boss.radius) targets.push(this.boss);
-            for (const target of this.units) if (target.hp > 0 && areOpposingFactions(owner, target) && !current.damagedTargetIds.includes(target.id) && Math.hypot(current.x - target.x, current.y - target.y) <= range + target.radius) targets.push(target);
-            for (const target of targets) {
-              const action = { id: current.id, hit: false, attackKind: "corn-popcorn-explosion" };
-              const applied = target === this.boss ? this.damageBoss(owner, action, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind, area: true }) : this.damageUnitTarget(owner, action, target, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind, area: true });
-              if (applied) current.damagedTargetIds.push(target === this.boss ? "boss" : target.id);
+          const batch = !this._spatialStepActive;
+          if (batch) this._beginSpatialQueryBatch();
+          try {
+            const queue = [kernel], queued = /* @__PURE__ */ new Set();
+            let triggered = false;
+            while (queue.length) {
+              const current = queue.shift();
+              if (!current?.isPopcorn || current.exploded || queued.has(current.id)) continue;
+              queued.add(current.id);
+              current.exploded = true;
+              current.explosionLife = 0;
+              current.hit = true;
+              triggered = true;
+              const config = current.popcornConfig, center = { x: current.x, y: current.y, z: 0 }, range = config.radius;
+              this.effects.push({ kind: "popcorn-explosion", x: current.x, y: current.y, z: 0, life: 0, duration: 0.5, radius: range, owner: current.owner });
+              const owner = this._unitForId(current.owner) || { id: current.owner, ownerId: current.ownerId || "", faction: current.faction, species: current.species, tier: current.tier, x: current.x, y: current.y, z: 0 };
+              const targets = [];
+              if (areOpposingFactions(owner, this.boss) && !current.damagedTargetIds.includes("boss") && Math.hypot(current.x - this.boss.x, current.y - this.boss.y) <= range + this.boss.radius) targets.push(this.boss);
+              for (const target of this.units) if (target.hp > 0 && areOpposingFactions(owner, target) && !current.damagedTargetIds.includes(target.id) && Math.hypot(current.x - target.x, current.y - target.y) <= range + target.radius) targets.push(target);
+              for (const target of targets) {
+                const action = { id: current.id, hit: false, attackKind: "corn-popcorn-explosion" };
+                const applied = target === this.boss ? this.damageBoss(owner, action, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind, area: true }) : this.damageUnitTarget(owner, action, target, center, { attackMultiplier: config.damageMultiplier, attackKind: action.attackKind, area: true });
+                if (applied) current.damagedTargetIds.push(target === this.boss ? "boss" : target.id);
+              }
+              for (const other of this.projectiles) {
+                if (other === current || !other.isPopcorn || other.exploded || !other.landed || queued.has(other.id)) continue;
+                if (Math.hypot(other.x - current.x, other.y - current.y) <= range + other.radius) queue.push(other);
+              }
+              this.combat("popcorn-explosion", { unit: current.owner, ownerId: current.ownerId || "", species: 1, x: current.x, y: current.y, radius: range });
             }
-            for (const other of this.projectiles) {
-              if (other === current || !other.isPopcorn || other.exploded || !other.landed || queued.has(other.id)) continue;
-              if (Math.hypot(other.x - current.x, other.y - current.y) <= range + other.radius) queue.push(other);
-            }
-            this.combat("popcorn-explosion", { unit: current.owner, ownerId: current.ownerId || "", species: 1, x: current.x, y: current.y, radius: range });
+            return triggered;
+          } finally {
+            if (batch) this._endSpatialQueryBatch();
           }
-          return triggered;
         }
         updateProjectiles(dt) {
-          for (const p of this.projectiles) {
-            if (p.isPopcorn && p.landed) {
-              if (!p.exploded) p.fuseRemaining = Math.max(0, p.fuseRemaining - dt);
-              else p.explosionLife = (p.explosionLife || 0) + dt;
-              continue;
+          const batch = !this._spatialStepActive;
+          if (batch) this._beginSpatialQueryBatch();
+          try {
+            for (const p of this.projectiles) {
+              if (p.isPopcorn && p.landed) {
+                if (!p.exploded) p.fuseRemaining = Math.max(0, p.fuseRemaining - dt);
+                else p.explosionLife = (p.explosionLife || 0) + dt;
+                continue;
+              }
+              const old = { x: p.x, y: p.y, z: p.z };
+              p.elapsed += dt;
+              Object.assign(p, Ballistics.sample(p.path, p.elapsed / p.path.duration));
+              const candidate = p.targetId && p.targetId !== "boss" ? this._unitForId(p.targetId) : this.boss;
+              const target = candidate === this.boss || candidate?.hp > 0 ? candidate : null;
+              const hit = target ? ArenaGeometry.sweep(old, p, p.radius, p.height, target) : null;
+              if (p.isPopcorn && (hit || p.elapsed >= p.path.duration)) {
+                if (hit) Object.assign(p, { x: hit.x, y: hit.y, z: 0 });
+                else p.z = 0;
+                p.landed = true;
+                p.fuseRemaining = p.popcornConfig.fuseSeconds;
+                this.effects.push({ kind: "popcorn-kernel-impact", x: p.x, y: p.y, z: 0, life: 0, duration: 0.25, radius: p.radius, owner: p.owner });
+              } else if (hit) {
+                Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
+                const source = this._unitForId(p.owner), impactUnit = source || { id: p.owner, ownerId: p.ownerId || "", faction: p.faction, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
+                if (target === this.boss) this.damageBoss(impactUnit, p, hit, { lifestealSource: source || impactUnit, attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
+                else this.damageUnitTarget(impactUnit, p, target, hit, { attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
+              } else if (p.elapsed >= p.path.duration) {
+                p.z = 0;
+                this.emit(p.projectileKind === "chestnut-spike" ? "spike-land" : "shell-land", p.x, p.y);
+              }
             }
-            const old = { x: p.x, y: p.y, z: p.z };
-            p.elapsed += dt;
-            Object.assign(p, Ballistics.sample(p.path, p.elapsed / p.path.duration));
-            const target = p.targetId && p.targetId !== "boss" ? this.units.find((u) => u.id === p.targetId && u.hp > 0) : this.boss;
-            const hit = target ? ArenaGeometry.sweep(old, p, p.radius, p.height, target) : null;
-            if (p.isPopcorn && (hit || p.elapsed >= p.path.duration)) {
-              if (hit) Object.assign(p, { x: hit.x, y: hit.y, z: 0 });
-              else p.z = 0;
-              p.landed = true;
-              p.fuseRemaining = p.popcornConfig.fuseSeconds;
-              this.effects.push({ kind: "popcorn-kernel-impact", x: p.x, y: p.y, z: 0, life: 0, duration: 0.25, radius: p.radius, owner: p.owner });
-            } else if (hit) {
-              Object.assign(p, { x: hit.x, y: hit.y, z: hit.z });
-              const source = this.units.find((u) => u.id === p.owner), impactUnit = source || { id: p.owner, ownerId: p.ownerId || "", faction: p.faction, species: p.species, tier: p.tier, x: p.x, y: p.y, z: p.z };
-              if (target === this.boss) this.damageBoss(impactUnit, p, hit, { lifestealSource: source || impactUnit, attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
-              else this.damageUnitTarget(impactUnit, p, target, hit, { attackMultiplier: p.attackMultiplier, attackKind: p.projectileKind || "lob" });
-            } else if (p.elapsed >= p.path.duration) {
-              p.z = 0;
-              this.emit(p.projectileKind === "chestnut-spike" ? "spike-land" : "shell-land", p.x, p.y);
+            for (const p of this.projectiles) {
+              if (!p.isPopcorn || !p.landed || p.exploded) continue;
+              const touching = this.projectiles.some((other) => other !== p && other.isPopcorn && other.landed && !other.exploded && Math.hypot(other.x - p.x, other.y - p.y) <= other.radius + p.radius);
+              if (p.fuseRemaining > 0 && !touching) continue;
+              this.explodePopcorn(p);
             }
+            this.projectiles = this.projectiles.filter((p) => p.isPopcorn ? !p.exploded || p.explosionLife < 0.5 : !p.hit && p.elapsed < p.path.duration);
+            this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
+          } finally {
+            if (batch) this._endSpatialQueryBatch();
           }
-          for (const p of this.projectiles) {
-            if (!p.isPopcorn || !p.landed || p.exploded) continue;
-            const touching = this.projectiles.some((other) => other !== p && other.isPopcorn && other.landed && !other.exploded && Math.hypot(other.x - p.x, other.y - p.y) <= other.radius + p.radius);
-            if (p.fuseRemaining > 0 && !touching) continue;
-            this.explodePopcorn(p);
-          }
-          this.projectiles = this.projectiles.filter((p) => p.isPopcorn ? !p.exploded || p.explosionLife < 0.5 : !p.hit && p.elapsed < p.path.duration);
-          this.boss.flash = Math.max(0, (this.boss.flash || 0) - dt);
         }
         raidUnit(u, dt, enemy = this.boss) {
           if (!u.dropLanded || !areOpposingFactions(u, enemy)) return;
@@ -5604,7 +5630,7 @@
         seed: u.seed,
         size: u.size,
         radius: u.radius,
-        maxHp: resolveUnitStats(u).maxHp,
+        maxHp: baseUnitStatsFor(u.tier, u.species).maxHp,
         fed: u.fed,
         ownerId: u.ownerId,
         faction: u.faction,

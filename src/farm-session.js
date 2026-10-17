@@ -1,5 +1,5 @@
 import {Garden,CONFIG,bindPresentationClock} from './farm-model.js';
-import {resolveUnitStats} from './unit-stats.js';
+import {baseUnitStatsFor} from './unit-stats.js';
 
 const {PresentationRuntime,RenderObject}=globalThis.BloomGamekitInterpolation;
 const R=RenderObject;
@@ -20,7 +20,7 @@ class UnitRender extends RenderObject {
  constructor(u,world){
   super();Object.assign(this,{id:u.id,x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
    ability:{phase:u.ability.phase,elapsed:u.ability.elapsed,peanutStrikeCount:u.ability.action?.peanutStrikeCount||2},walnutGuarding:!!world.walnutGuardConfigFor(u),cooldown:u.cooldown,cooldownDuration:u.cooldownDuration,meals:u.meals,species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
-   maxHp:resolveUnitStats(u).maxHp,fed:u.fed,ownerId:u.ownerId,faction:u.faction,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0),isBattleOnlySummon:u.isBattleOnlySummon});
+   maxHp:baseUnitStatsFor(u.tier,u.species).maxHp,fed:u.fed,ownerId:u.ownerId,faction:u.faction,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0),isBattleOnlySummon:u.isBattleOnlySummon});
  }
 }
 
