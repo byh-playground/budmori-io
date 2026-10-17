@@ -38,3 +38,21 @@
 `cpuMs`는 callback에서 관찰한 CPU 시간이고 `intervalMs`는 다음 callback까지의 RAF 간격입니다. 외부 이벤트 대기나 GPU 완료 시간은 이 CPU 구간으로 주장하지 않습니다. GPU 완료 시간은 현재 수집하지 않으므로 `gpuMs`는 `null`입니다. 이 값만으로 실제 모바일 기기의 개선 배율을 주장하지 않습니다.
 
 상세 출력은 창 단위의 횟수·시간 요약과 제한된 느린 프레임 표본을 제공합니다. 기본 복사 텍스트는 짧은 한국어 요약이고, JSON 상세 데이터는 설정의 명시적 내보내기로 확인합니다. WebGL 장치 카운터는 매 프레임 실제 카운터 초기화 지점에서 읽습니다.
+
+## 성능 후속 작업 상태 (Farm 0.8.12)
+
+기준은 Farm 0.8.12, main commit `10c0504` (2026-10-17)입니다. 아래 상태에 따라 우선순위를 유지하고, 새 측정 근거 없이 범위가 큰 성능 구조 변경은 시작하지 않습니다.
+
+### 시뮬레이션 시간 분해 — 원인 미확정
+
+제공된 34 RAF 구간에서 simulation span 평균은 274.1ms/frame이고 logic과 physics stage 합계는 각각 2.7ms/frame, 3.5ms/frame입니다. `FrameMetrics.stage()`는 프레임 내 반복 호출을 합산하고, Farm의 simulation span은 `active.pulse(now)` 전체를 감쌉니다. 따라서 약 267.9ms/frame은 아직 하위 단계에 귀속되지 않았습니다. `FarmSession.capturePresentation`과 첫 사용 runtime/schema compilation 및 이후 cached capture, mutation notifications, `onWorldStep`, `resolveLifeContacts`와 event callbacks를 별도로 계측해야 합니다. 현재 변경으로 이 simulation 병목을 해결했다고 보지 않습니다.
+
+### 지형 retained geometry — 이번 최적화 미적용으로 종료
+
+측정된 지형은 프레임당 primitive 143개와 인스턴스 데이터 9,152바이트를 추가하지만, primitive 제출은 기존 단일 인스턴스 업로드에 묶이고 draw call도 늘지 않습니다. 지형 primitive 생성 메서드 CPU 평균은 0.202ms, terrain on/off 렌더 평균 차이는 약 0.256ms였습니다. 현재 측정으로 retained geometry의 순이득을 입증할 수 없어 이번 최적화는 미적용으로 종료하며, 추가 연구는 진행하지 않습니다.
+
+### outline/body pose 공유 — GameKit API 인계 대기
+
+Farm 0.8.12는 표현식 메타데이터로 윤곽선 패스의 불필요한 얼굴 visibility mutation을 줄였습니다. 보이는 얼굴이 있는 표현식은 복구용 `setExpression`이 pose revision을 무효화하므로 두 draw의 pose 계산은 아직 공유하지 않습니다. 이를 해결하려면 GameKit의 호출별 필터 API `draw({ excludeParts: ReadonlySet<string> })`가 필요합니다. GameKit 담당자의 API 전달 후 Farm에서 mutation 호출을 draw 필터로 바꾸고 핀 통합 및 렌더를 검증합니다.
+
+그 밖의 낮은 우선순위 항목은 현재 근거와 우선순위를 유지하며, 실측 전에는 구조를 크게 바꾸지 않습니다.
