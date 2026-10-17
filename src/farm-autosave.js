@@ -5,13 +5,16 @@ export const FARM_AUTOSAVE_MAX_WAIT_MS=10000;
 // writes when the simulation has marked authoritative Farm state as changed.
 export class FarmAutosave{
  constructor(save,{debounceMs=FARM_AUTOSAVE_DEBOUNCE_MS,maxWaitMs=FARM_AUTOSAVE_MAX_WAIT_MS,now=()=>globalThis.performance.now(),setTimer=(fn,delay)=>globalThis.setTimeout(fn,delay),clearTimer=id=>globalThis.clearTimeout(id)}={}){
-  this.save=save;this.debounceMs=debounceMs;this.maxWaitMs=maxWaitMs;this.now=now;this.setTimer=setTimer;this.clearTimer=clearTimer;this.timer=null;this.dirty=false;this.dirtySince=0;
+  this.save=save;this.debounceMs=debounceMs;this.maxWaitMs=maxWaitMs;this.now=now;this.setTimer=setTimer;this.clearTimer=clearTimer;this.timer=null;this.dirty=false;this.dirtySince=0;this.deadline=0;this.timerDeadline=0;
+  this.onTimer=()=>{this.timer=null;const remaining=this.deadline-this.now();if(remaining>0)this.schedule(remaining);else this.flush()};
  }
  markDirty(){
   const now=this.now();if(!this.dirty){this.dirty=true;this.dirtySince=now}
-  if(this.timer!==null)this.clearTimer(this.timer);
   const remaining=Math.max(0,this.maxWaitMs-(now-this.dirtySince));
-  this.timer=this.setTimer(()=>{this.timer=null;this.flush()},Math.min(this.debounceMs,remaining));
+  this.deadline=now+Math.min(this.debounceMs,remaining);
+  // Keep the existing wake-up while changes extend the trailing deadline.
+  // It checks the latest deadline instead of replacing a timer every sim tick.
+  if(this.timer===null||this.deadline<this.timerDeadline){this.cancelTimer();this.schedule(Math.max(0,this.deadline-now))}
  }
  flush(){
   this.cancelTimer();if(!this.dirty)return true;
@@ -19,6 +22,7 @@ export class FarmAutosave{
   if(saved)this.reset();else this.dirtySince=this.now();
   return saved;
  }
- reset(){this.cancelTimer();this.dirty=false;this.dirtySince=0}
+ schedule(delay){this.timerDeadline=this.now()+delay;this.timer=this.setTimer(this.onTimer,delay)}
+ reset(){this.cancelTimer();this.dirty=false;this.dirtySince=0;this.deadline=0;this.timerDeadline=0}
  cancelTimer(){if(this.timer!==null){this.clearTimer(this.timer);this.timer=null}}
 }
