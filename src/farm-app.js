@@ -276,10 +276,23 @@ $('gameMenuPanel').onkeydown=e=>{
  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 };
 const canvas=$('world');
+// Compare with the actual DOM so event handlers and route changes remain authoritative.
+function syncText(id,value){const node=$(id),text=String(value);if(node.textContent!==text)node.textContent=text}
+function syncFlag(id,key,value){const node=$(id),flag=!!value;if(node[key]!==flag)node[key]=flag}
+function syncAttribute(id,key,value){const node=$(id),text=String(value);if(node.getAttribute(key)!==text)node.setAttribute(key,text)}
+const hudWidths=new Map();
+function syncWidth(id,value){
+ const node=$(id);let previous=hudWidths.get(id);
+ if(previous?.value===value&&previous.applied===node.style.width)return;
+ if(node.style.width!==value)node.style.width=value;
+ if(!previous){previous={};hudWidths.set(id,previous)}previous.value=value;previous.applied=node.style.width;
+}
+function syncData(id,key,value){const node=$(id),text=String(value);if(node.dataset[key]!==text)node.dataset[key]=text}
 function deploymentHud(){const w=active.world,raid=w.scene==='raid',roster=w.raidRoster(active.localPlayerId),remaining=roster?w.raidRemaining(active.localPlayerId):personalGarden?.units.length||0,queued=roster?Math.max(0,active.localDeploySequence-roster.lastDeploySequence):0;
- $('raidRemaining').textContent=!roster?'출전 병력을 준비하고 있어요…':`남은 병력 ${Math.max(0,remaining-queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`;
- const own=w.raidRoster(active.localPlayerId),cooldown=own?Math.max(0,own.buffReadyAt-w.time):0;$('buff').disabled=!raid||!w.running||!own||cooldown>0;$('buff').textContent=cooldown>0?`강화 ${cooldown.toFixed(1)}초`:'팀 강화';
- const stage=w.boss.stage||0;if(stage){const stageReward=bossStageStats(stage),multiplier=raidDeploymentRewardMultiplier({availableAtStart:own?.troops.length||0,originalUnitsDeployed:own?.troops.filter(t=>t.deployed).length||0}),chance=Math.round(bossAcquisitionChance({acquisitionMultiplier:multiplier})*100);$('raidRewardChance').textContent=stageReward.rolls?`보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨`:'보스 종 추첨 없음';}else $('raidRewardChance').textContent='';
+ syncText('raidRemaining',!roster?'출전 병력을 준비하고 있어요…':`남은 병력 ${Math.max(0,remaining-queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`);
+ const own=w.raidRoster(active.localPlayerId),cooldown=own?Math.max(0,own.buffReadyAt-w.time):0;syncFlag('buff','disabled',!raid||!w.running||!own||cooldown>0);syncText('buff',cooldown>0?`강화 ${cooldown.toFixed(1)}초`:'팀 강화');
+ let deployed=0;if(own)for(const troop of own.troops)if(troop.deployed)deployed++;
+ const stage=w.boss.stage||0;if(stage){const stageReward=bossStageStats(stage),multiplier=raidDeploymentRewardMultiplier({availableAtStart:own?.troops.length||0,originalUnitsDeployed:deployed}),chance=Math.round(bossAcquisitionChance({acquisitionMultiplier:multiplier})*100);syncText('raidRewardChance',stageReward.rolls?`보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨`:'보스 종 추첨 없음');}else syncText('raidRewardChance','');
 }
 function deployAt(p){if(home||active.world.scene!=='raid'||!active.world.raidExpectedPlayers.every(id=>active.world.raidRoster(id)))return false;const valid=ArenaGeometry.inside(p,'raid',.5);renderer.dropTarget={...p,valid};return valid&&active.deployNext(Math.round(p.x*100)/100,Math.round(p.y*100)/100)}
 function updateDropPointer(e){if(!dropPointer||e.pointerId!==dropPointer.id)return;const p=renderer.screenToWorld(e.clientX,e.clientY);dropPointer.x=Math.round(p.x*100)/100;dropPointer.y=Math.round(p.y*100)/100;renderer.dropTarget={x:dropPointer.x,y:dropPointer.y,valid:ArenaGeometry.inside(p,'raid',.5)}}
@@ -310,18 +323,26 @@ function route(){
 }
 window.addEventListener('popstate',route);
 function sync(display,now){
- const w=active.world,raid=display.scene==='raid',farmEvent=display.farmBossEvent,farmEventActive=!raid&&farmEvent?.phase!=='idle',battleHud=raid||farmEventActive,hasReadyTroops=personalGarden?hasRaidRosterEntries(personalGarden.units):false,rewardWorld=personalGarden||w,pendingRewardCount=rewardWorld.bossRewardReceipts.filter(reward=>reward.status==='pending').length;for(const [id,value]of [['farm',!raid&&!bossEncounterOpen],['raid',raid||bossEncounterOpen],['breed',w.mode==='breed'],['merge',w.mode==='merge']])$(id).setAttribute('aria-pressed',value);
- $('bossEncounterScreen').hidden=home||!bossEncounterOpen;$('farmControls').hidden=raid||farmEventActive||home||bossEncounterOpen;$('raidControls').hidden=!raid||home;$('bossbar').hidden=!battleHud||home;$('raid').disabled=farmEventActive;
- $('count').textContent=raid?(w.raidRoster(active.localPlayerId)?.troops.length??personalGarden?.units.length??0):display.units.filter(unit=>!unit.isBattleOnlySummon).length;$('capacity').textContent=personalGarden?.capacity??CONFIG.cap;$('starter').textContent=raid?`${w.units.length} deployed in raid`:pendingRewardCount?'밤톨 보상 대기 · 공간이 생기면 합류해요':!hasReadyTroops?'모두 휴식 중 · 회복까지 기다려 주세요':w.units.filter(unit=>!unit.isBattleOnlySummon).length>=w.capacity?'정원이 가득 찼어요':'번식으로 식구를 늘려요';
- const army=display.units.filter(u=>u.faction===CONFIG.factions.PLAYER).reduce((sum,u)=>({current:sum.current+Math.max(0,Math.min(u.maxHp,u.hp)),max:sum.max+u.maxHp,living:sum.living+(u.hp>0?1:0),total:sum.total+1}),{current:0,max:0,living:0,total:0});
- $('allyHealth').style.width=(army.max?army.current/army.max*100:0)+'%';
- $('allyHealthText').textContent=Math.ceil(army.current)+' / '+Math.ceil(army.max)+' HP · '+army.living+'/'+army.total+' 생존';
+ const w=active.world,raid=display.scene==='raid',farmEvent=display.farmBossEvent,farmEventActive=!raid&&farmEvent?.phase!=='idle',battleHud=raid||farmEventActive,hasReadyTroops=personalGarden?hasRaidRosterEntries(personalGarden.units):false,rewardWorld=personalGarden||w,pendingRewardCount=rewardWorld.bossRewardReceipts.some(reward=>reward.status==='pending');
+ syncAttribute('farm','aria-pressed',!raid&&!bossEncounterOpen);syncAttribute('raid','aria-pressed',raid||bossEncounterOpen);
+ syncAttribute('breed','aria-pressed',w.mode==='breed');syncAttribute('merge','aria-pressed',w.mode==='merge');
+ let displayedCount=0,worldCount=0,armyCurrent=0,armyMax=0,armyLiving=0,armyTotal=0;
+ for(const unit of display.units){
+  if(!unit.isBattleOnlySummon)displayedCount++;
+  if(unit.faction===CONFIG.factions.PLAYER){armyCurrent+=Math.max(0,Math.min(unit.maxHp,unit.hp));armyMax+=unit.maxHp;armyLiving+=unit.hp>0?1:0;armyTotal++}
+ }
+ if(!raid)for(const unit of w.units)if(!unit.isBattleOnlySummon)worldCount++;
+ syncFlag('bossEncounterScreen','hidden',home||!bossEncounterOpen);syncFlag('farmControls','hidden',raid||farmEventActive||home||bossEncounterOpen);syncFlag('raidControls','hidden',!raid||home);syncFlag('bossbar','hidden',!battleHud||home);
+ syncText('count',raid?(w.raidRoster(active.localPlayerId)?.troops.length??personalGarden?.units.length??0):displayedCount);syncText('capacity',personalGarden?.capacity??CONFIG.cap);syncText('starter',raid?`${w.units.length} deployed in raid`:pendingRewardCount?'밤톨 보상 대기 · 공간이 생기면 합류해요':!hasReadyTroops?'모두 휴식 중 · 회복까지 기다려 주세요':worldCount>=w.capacity?'정원이 가득 찼어요':'번식으로 식구를 늘려요');
+ syncWidth('allyHealth',(armyMax?armyCurrent/armyMax*100:0)+'%');
+ syncText('allyHealthText',Math.ceil(armyCurrent)+' / '+Math.ceil(armyMax)+' HP · '+armyLiving+'/'+armyTotal+' 생존');
 const boss=display.boss,battleOutcome=raid?w.encounter.outcome:farmEvent?.outcome,settledRunSequence=raid?(personalGarden?.activeRaidRunSequence??w.boss.encounterId):null,settledReward=raid&&personalGarden?.raidSettlementReceipts?.find(receipt=>receipt.runSequence===settledRunSequence)?.reward,stageName=raid&&boss.stage?`STAGE ${boss.stage}`:'',speciesName=speciesById(boss.species).name;
- $('bossHealthText').textContent=Math.ceil(boss.hp)+' / '+boss.maxHp+' HP';$('bossHealthNote').textContent=farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP';
- for(const [id,value,max]of [['allyHealth',army.current,army.max],['bossHealth',boss.hp,boss.maxHp]]){const el=$(id);el.setAttribute('aria-valuenow',value);el.setAttribute('aria-valuemax',max)}
- $('bossHealth').style.width=boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%';$('battleOutcome').textContent=raid?(battleOutcome==='victory'?`${stageName} 승리 · ${settledReward?.xp?.amount??bossStageStats(boss.stage||1).xp} XP${settledReward?.acquisition?.rollCount?` · 보스 종 ${settledReward.acquisition.rolls?.filter(drop=>drop.status==='granted').length||0}/${settledReward.acquisition.rollCount}회 성공`:settledReward?' · 보스 종 추첨 없음':bossStageStats(boss.stage||1).rolls?' · 정원 복귀 후 보상 정산':' · 보스 종 추첨 없음'} · 모두 정원으로 돌아갈 수 있어요`:battleOutcome==='defeat'?`${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요`:''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?`보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요`:farmEvent.rewardStatus==='pending'?`${speciesName} 획득 대기 · 공간이 생기면 합류해요`:'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':'');$('battleOutcome').hidden=home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle';$('speed').textContent=active.speed+'×';$('bossEncounterChallenge').disabled=!personalGarden||!hasReadyTroops||farmEventActive||personalGarden?.activeRaidRunSequence!==null; $('menuTabGrowth').disabled=raid||farmEventActive||bossEncounterOpen;$('menuTabAbilities').disabled=raid||!personalGarden;$('raid').disabled=raid||farmEventActive||!personalGarden;$('pause').textContent=active.paused?'▶':'Ⅱ';
- $('feed').setAttribute('aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);$('feed').dataset.state=w.food.length>=140?'full':'ready';$('feed').dataset.produced=now<foodFeel.completeUntil;
- for(let i=0;i<5;i++)foodFeel.pips[i].classList.toggle('filled',now<foodFeel.completeUntil||i<w.foodTaps.remainder);
+ syncText('bossHealthText',Math.ceil(boss.hp)+' / '+boss.maxHp+' HP');syncText('bossHealthNote',farmEventActive?'보스 능력치 고정':'전사자 포함 최대 HP');
+ syncAttribute('allyHealth','aria-valuenow',armyCurrent);syncAttribute('allyHealth','aria-valuemax',armyMax);
+ syncAttribute('bossHealth','aria-valuenow',boss.hp);syncAttribute('bossHealth','aria-valuemax',boss.maxHp);
+ syncWidth('bossHealth',boss.maxHp?boss.hp/boss.maxHp*100+'%':'0%');syncText('battleOutcome',raid?(battleOutcome==='victory'?`${stageName} 승리 · ${settledReward?.xp?.amount??bossStageStats(boss.stage||1).xp} XP${settledReward?.acquisition?.rollCount?` · 보스 종 ${settledReward.acquisition.rolls?.filter(drop=>drop.status==='granted').length||0}/${settledReward.acquisition.rollCount}회 성공`:settledReward?' · 보스 종 추첨 없음':bossStageStats(boss.stage||1).rolls?' · 정원 복귀 후 보상 정산':' · 보스 종 추첨 없음'} · 모두 정원으로 돌아갈 수 있어요`:battleOutcome==='defeat'?`${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요`:''):(battleOutcome==='victory'?farmEvent.rewardStatus==='granted'?`보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요`:farmEvent.rewardStatus==='pending'?`${speciesName} 획득 대기 · 공간이 생기면 합류해요`:'보스가 쓰러졌어요':battleOutcome==='defeat'?'동료들이 다시 일어날 때까지 기다려요':''));syncFlag('battleOutcome','hidden',home||!battleHud||battleOutcome==='fighting'||battleOutcome==='idle');syncText('speed',active.speed+'×');syncFlag('bossEncounterChallenge','disabled',!personalGarden||!hasReadyTroops||farmEventActive||personalGarden?.activeRaidRunSequence!==null); syncFlag('menuTabGrowth','disabled',raid||farmEventActive||bossEncounterOpen);syncFlag('menuTabAbilities','disabled',raid||!personalGarden);syncFlag('raid','disabled',raid||farmEventActive||!personalGarden);syncText('pause',active.paused?'▶':'Ⅱ');
+ syncAttribute('feed','aria-label',`먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);syncData('feed','state',w.food.length>=140?'full':'ready');syncData('feed','produced',now<foodFeel.completeUntil);
+ for(let i=0;i<5;i++){const pip=foodFeel.pips[i],filled=now<foodFeel.completeUntil||i<w.foodTaps.remainder;if(pip.classList.contains('filled')!==filled)pip.classList.toggle('filled',filled)}
  if(observedWorld!==w){observedWorld=w;noticeSequence=w.eventSequence}
  for(const e of w.notices)if(e.sequence>noticeSequence){if(e.kind==='food-tap')foodFeel.tap(e.source,e.completed,e.remainder);else foodFeel.event(e.kind)}noticeSequence=w.eventSequence;foodFeel.frame(now);
  deploymentHud();
