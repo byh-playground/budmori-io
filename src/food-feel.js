@@ -36,5 +36,5 @@ const $=id=>document.getElementById(id);
       if(manual)this.sound(complete?"complete":"tap",remainder);
     }
     event(kind){if(kind==="food-land"||kind==="eat"){const key=kind==="eat"?"eat":"land";this.counts[key]++;this.sound(key)}}
-    frame(now){this.frameId++;if(now>this.pulseUntil)this.button.dataset.impact=""}
+    frame(now){this.frameId++;if(now>this.pulseUntil&&this.button.dataset.impact!=="")this.button.dataset.impact=""}
   }

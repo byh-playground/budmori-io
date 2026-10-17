@@ -3801,7 +3801,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.17";
+      PRODUCT_VERSION = "0.7.18";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -4709,22 +4709,18 @@
   init_farm_model();
 
   // src/farm-indicators.js
-  function farmBreedingCooldown(unit, world, defaultDuration = 10) {
+  function farmBreedingCooldown(unit, world, defaultDuration = 10, result = {}) {
     if (world?.scene !== "farm" || unit?.hp <= 0 || unit?.down > 0 || unit?.cooldown <= 0 || unit?.meals !== 0) return null;
     const duration = unit.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
     const remaining = Math.max(0, unit.cooldown);
-    return { remaining, duration, progress: Math.max(0, Math.min(1, 1 - remaining / duration)) };
+    result.remaining = remaining;
+    result.duration = duration;
+    result.progress = Math.max(0, Math.min(1, 1 - remaining / duration));
+    return result;
   }
   function farmSleepSeconds(unit, scene) {
     if (scene !== "farm" || unit?.hp > 0 || !Number.isFinite(unit?.down) || unit.down <= 0) return 0;
     return Math.ceil(unit.down);
-  }
-  function splitArcProgress(progress) {
-    const sweep = Math.PI * 2 * Math.max(0, Math.min(1, Number(progress) || 0));
-    return {
-      rear: sweep > 0 ? [0, Math.min(Math.PI, sweep)] : null,
-      front: sweep > Math.PI ? [Math.PI, sweep] : null
-    };
   }
   function sevenSegmentDigitLines(digit, x, y, size) {
     const segments = {
@@ -4808,12 +4804,22 @@
     if (name === "victory") return Math.abs(u.seed || 0) * 97.531 % clip.durationMs;
     return clip.durationMs;
   }
-  function unitExpression(u, sim) {
+  function unitExpression(u, sim, joyEffects) {
     const dead = u.hp <= 0 || u.down > 0, airborne = !u.dropLanded || u.z > 0.5;
-    const joy = sim.scene === "farm" && sim.effects.some((e) => ["eat", "birth", "merge"].includes(e.kind) && e.life < 0.85 && Math.hypot(e.x - u.x, e.y - u.y) < 1.2);
     const phase = u.ability?.phase;
     const restingCooldown = sim.scene === "farm" && u.cooldown > 0 && phase === "idle";
-    return dead ? "dead" : sim.scene === "raid" && sim.encounter?.outcome === "victory" ? "happy" : u.stun > 0 ? "hurt" : airborne ? "surprised" : phase === "windup" ? "focused" : phase === "active" ? "attack" : restingCooldown ? "neutral" : joy ? "happy" : sim.scene === "farm" && !u.fed ? "hungry" : "neutral";
+    if (dead) return "dead";
+    if (sim.scene === "raid" && sim.encounter?.outcome === "victory") return "happy";
+    if (u.stun > 0) return "hurt";
+    if (airborne) return "surprised";
+    if (phase === "windup") return "focused";
+    if (phase === "active") return "attack";
+    if (restingCooldown) return "neutral";
+    if (sim.scene === "farm") {
+      for (const e of joyEffects) if (Math.hypot(e.x - u.x, e.y - u.y) < 1.2) return "happy";
+      if (!u.fed) return "hungry";
+    }
+    return "neutral";
   }
   function renderedBossAttackArea(boss, unitRadius = 0) {
     if (!boss?.patternId || boss.patternPhase === "recover") return null;
@@ -4975,6 +4981,7 @@
     if (parts.has("hilum") && id === "attack.charge") extras.hilum = { rotation: active2 ? 0.08 * Math.sin((b.patternTraveled || 0) * 3.1) : 0 };
     return { body, arms, extras, impact, releasePulse: 0 };
   }
+  var compareActors = (a, b) => b.depth - a.depth || a.id - b.id;
   var ATTACK_ACCENTS = ["#8fac68", "#dbb76b", "#b58b9c", "#9a6947", "#d7914f", "#a86b32"];
   var Diorama = class {
     constructor(canvas2) {
@@ -4983,12 +4990,19 @@
       this.ctx = new VectorContext(this.device);
       this.vectorAssets = /* @__PURE__ */ new Map();
       this.vectorPlayers = /* @__PURE__ */ new Map();
+      this.actors = [];
+      this.actorPool = [];
+      this.liveUnitIds = /* @__PURE__ */ new Set();
+      this.joyEffects = [];
+      this.unitRings = [];
+      this.unitRingPool = [{}, {}, {}];
+      this.breedingIndicator = {};
       const entries = Object.entries(TROOP_VECTOR_ASSETS);
       if (entries.length !== CONFIG.maxSpecies || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
       this.meshes = new MeshRenderer(this.device);
       this.ctx.meshRenderer = this.meshes;
-      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled) });
-      this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled) }]));
+      for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) });
+      this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) }]));
       this.bossPlayer = null;
       this.bossPlayerAsset = null;
       this.bossPlayers = /* @__PURE__ */ new Map();
@@ -5038,6 +5052,15 @@
       else this.view = a > 1.2 ? [Math.max(12, 9 * a), 9] : [11.7, 11.7 / a];
       this.offset = [0, a < 0.8 ? 1.1 : -0.3];
       this.scale = this.canvas.width / (2 * this.view[0]);
+      const rx = scene === "raid" ? CONFIG.raid.radiusX : 9.5, ry = scene === "raid" ? CONFIG.raid.radiusY : 6.8;
+      this.terrainDots = Array.from({ length: 92 }, (_, i) => {
+        const angle = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92);
+        return this.project(Math.cos(angle) * (rx + 0.3) * rad, Math.sin(angle) * (ry + 0.3) * rad);
+      });
+      this.terrainLeaves = Array.from({ length: 24 }, (_, i) => {
+        const angle = i * 2.39996;
+        return { ...this.project(Math.cos(angle) * (rx + 0.55), Math.sin(angle) * (ry + 0.55)), angle };
+      });
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const c = this.ctx;
@@ -5173,18 +5196,28 @@
       c.lineTo(b.x, b.y);
       c.stroke();
     }
+    addUnitRing(radius, color, width, progress) {
+      const effect = this.unitRingPool[this.unitRings.length];
+      effect.radius = radius;
+      effect.color = color;
+      effect.width = width;
+      effect.progress = progress;
+      this.unitRings.push(effect);
+    }
     unitRingEffects(u, world) {
-      const effects = [], a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
-      if (u.buffed && u.hp > 0) effects.push({ radius: u.radius + 0.16, color: "#eacb72", width: 0.055, progress: 1 });
-      if (a.phase === "windup" && s) effects.push({ radius: u.radius + 0.1, color: ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0], width: 0.065, progress: Math.min(1, a.elapsed / s.windup) });
-      const breeding = farmBreedingCooldown(u, world, CONFIG.breedCooldownSeconds);
-      if (breeding && breeding.progress > 0) effects.push({ radius: u.radius + 0.085, color: "#8fac68", width: 0.035, progress: breeding.progress });
+      const effects = this.unitRings, a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
+      effects.length = 0;
+      if (u.buffed && u.hp > 0) this.addUnitRing(u.radius + 0.16, "#eacb72", 0.055, 1);
+      if (a.phase === "windup" && s) this.addUnitRing(u.radius + 0.1, ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0], 0.065, Math.min(1, a.elapsed / s.windup));
+      const breeding = farmBreedingCooldown(u, world, CONFIG.breedCooldownSeconds, this.breedingIndicator);
+      if (breeding && breeding.progress > 0) this.addUnitRing(u.radius + 0.085, "#8fac68", 0.035, breeding.progress);
       return effects;
     }
     drawUnitRingLayer(u, effects, side) {
       for (const effect of effects) {
-        const arc = splitArcProgress(effect.progress)[side];
-        if (arc) this.ring(u.x, u.y, effect.radius, effect.color, effect.width, arc[0], arc[1]);
+        const sweep = Math.PI * 2 * Math.max(0, Math.min(1, Number(effect.progress) || 0));
+        if (side === "rear" && sweep > 0) this.ring(u.x, u.y, effect.radius, effect.color, effect.width, 0, Math.min(Math.PI, sweep));
+        else if (side === "front" && sweep > Math.PI) this.ring(u.x, u.y, effect.radius, effect.color, effect.width, Math.PI, sweep);
       }
     }
     drawSevenSegmentDigit(digit, x, y, size, color) {
@@ -5226,7 +5259,7 @@
         player = record.asset.createPlayer({ clip: motionName, startedAtMs: clipStartAtMs });
         this.vectorPlayers.set(u.id, player);
       } else if (player.currentClip !== motionName) player.play(motionName, clipStartAtMs);
-      const expression = unitExpression(u, sim);
+      const expression = unitExpression(u, sim, this.joyEffects);
       if (expression !== player.currentExpression) player.setExpression(expression);
       player.seek(this.displayTimeMs);
       const [, , width, height] = record.compiled.viewBox, scale = 2 * r / Math.max(width, height), centerY = p.y - r * 0.79;
@@ -5304,7 +5337,7 @@
       const [, , width, height] = record.compiled.viewBox, s = 2 * r / 220, ground = metadata.sockets?.ground?.point || [width / 2, height], anchorX = ground[0], anchorY = ground[1], matrix = [s, 0, 0, s, p.x - anchorX * s, p.y - anchorY * s];
       const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0;
       const fade = event?.phase === "fading" ? clamp2(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
-      const parts = new Set(metadata.parts.map((part) => part.id)), pose = bossAttackPose(b, parts);
+      const parts = record.parts, pose = bossAttackPose(b, parts);
       player.setBasePose("body", { x: 0, y: pose.body.y - 18 * defeatBounce, rotation: pose.body.rotation, scaleX: pose.body.scaleX * (1 + (k.squash || 0)) * (1 - 0.04 * defeatBounce), scaleY: pose.body.scaleY * (1 - (k.squash || 0)) * (1 + 0.06 * defeatBounce), opacity: fade });
       for (const [part, rotation] of Object.entries(pose.arms)) if (parts.has(part)) player.setBasePose(part, { rotation });
       for (const [part, partPose] of Object.entries(pose.extras)) if (parts.has(part)) player.setBasePose(part, partPose);
@@ -5322,14 +5355,10 @@
       this.groundEllipse(0, -0.2, rx + 1.3, ry + 1.1, "#bcc7a6");
       this.groundEllipse(0, 0, rx + 1.2, ry + 1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
       this.groundEllipse(0, 0.15, rx + 0.3, ry + 0.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
-      for (let i = 0; i < 92; i++) {
-        const a = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92), x = Math.cos(a) * (rx + 0.3) * rad, y = Math.sin(a) * (ry + 0.3) * rad, p = this.project(x, y);
-        this.ellipse(p.x, p.y, S * 0.026, S * 0.02, "#a7b58b80");
-      }
-      for (let i = 0; i < 24; i++) {
-        const a = i * 2.39996, x = Math.cos(a) * (rx + 0.55), y = Math.sin(a) * (ry + 0.55), p = this.project(x, y);
-        this.ellipse(p.x, p.y, 0.25 * S, 0.11 * S, "#94a577", a);
-        this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", a + 0.7);
+      for (const p of this.terrainDots) this.ellipse(p.x, p.y, S * 0.026, S * 0.02, "#a7b58b80");
+      for (const p of this.terrainLeaves) {
+        this.ellipse(p.x, p.y, 0.25 * S, 0.11 * S, "#94a577", p.angle);
+        this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", p.angle + 0.7);
       }
       if (raid) {
         this.strokeGroundEllipse(0, 0, CONFIG.raid.radiusX - 0.5, CONFIG.raid.radiusY - 0.5, "#728e61a8", 0.075);
@@ -5343,11 +5372,59 @@
       this.bossTelegraph = area;
       if (area) this.drawBossTelegraph(area);
     }
+    addActor(kind, source, depth, id, vector = false) {
+      const index = this.actors.length, actor = this.actorPool[index] || (this.actorPool[index] = {});
+      actor.kind = kind;
+      actor.source = source;
+      actor.depth = depth;
+      actor.id = id;
+      actor.vector = vector;
+      this.actors.push(actor);
+    }
+    drawFood(f) {
+      this.groundEllipse(f.x, f.y, 0.1, 0.07, "#55452433");
+      if (f.phase === "flight") {
+        const tail = this.project(f.x - f.vx * 0.045, f.y - f.vy * 0.045, Math.max(0, f.z - f.vz * 0.045) + 0.1), head = this.project(f.x, f.y, f.z + 0.1);
+        this.line(tail, head, 0.055, "#e6bd7480");
+      }
+      const p = this.project(f.x, f.y, f.z + 0.1);
+      this.ellipse(p.x, p.y, this.scale * 0.09, this.scale * 0.12, "#c78a43", 0.4);
+      this.ellipse(p.x - 0.025 * this.scale, p.y - 0.08 * this.scale, this.scale * 0.036, this.scale * 0.05, "#e7bf72");
+    }
+    drawProjectile(f) {
+      const p = this.project(f.x, f.y, f.z), tail = Ballistics.sample(f.path, Math.max(0, (f.elapsed - 0.04) / f.path.duration));
+      this.groundEllipse(f.x, f.y, 0.14, 0.1, "#55452433");
+      if (f.isPopcorn && f.landed) {
+        const fuse = Math.max(0, Math.min(1, f.fuseRemaining || 0));
+        this.groundEllipse(f.x, f.y, 0.16, 0.12, f.exploded ? "#d86c3b55" : "#c78a4366");
+        if (!f.exploded && f.popcornConfig?.radius > 0) this.ring(f.x, f.y, f.popcornConfig.radius, "rgba(190,111,52,.18)", 0.035);
+        if (f.exploded) {
+          const progress = Math.max(0, Math.min(1, (f.explosionLife || 0) / 0.5));
+          this.ring(f.x, f.y, (f.popcornConfig?.radius || 0.3) * (0.25 + 0.75 * progress), `rgba(224,111,54,${0.68 * (1 - progress)})`, 0.12);
+        } else this.ring(f.x, f.y, 0.2 + 0.2 * (1 - fuse), `rgba(238,181,83,${0.45 + 0.4 * (1 - fuse)})`, 0.045);
+        const kernel = this.project(f.x, f.y, 0.12);
+        this.ellipse(kernel.x, kernel.y, this.scale * 0.13, this.scale * 0.08, f.exploded ? "#e37f42" : "#d4a347", 0.2);
+        this.ellipse(kernel.x - this.scale * 0.035, kernel.y - this.scale * 0.02, this.scale * 0.045, this.scale * 0.03, "#ffe0a0");
+      } else if (f.projectileKind === "chestnut-spike") {
+        const angle = Math.atan2(f.path.to.y - f.path.from.y, f.path.to.x - f.path.from.x), tip = { x: p.x + Math.cos(angle) * this.scale * 0.22, y: p.y - 0.62 * Math.sin(angle) * this.scale * 0.22 };
+        this.line(this.project(tail.x, tail.y, tail.z), p, 0.055, "#778f4c88");
+        this.line(p, tip, 0.105, "#79964e");
+        this.ellipse(tip.x, tip.y, this.scale * 0.045, this.scale * 0.035, "#d5df9d", angle);
+      } else {
+        this.line(this.project(tail.x, tail.y, tail.z), p, 0.07, "#ba964a80");
+        this.ellipse(p.x, p.y, this.scale * 0.14, this.scale * 0.2, "#cfa957", 0.3);
+        this.ellipse(p.x - this.scale * 0.03, p.y - this.scale * 0.05, this.scale * 0.05, this.scale * 0.08, "#fff0ae");
+      }
+    }
     render(sim2, feel = null, now = performance.now()) {
       this.feel = feel;
       this.displayTimeMs = now;
       this.configure(sim2.scene);
-      const c = this.ctx;
+      const c = this.ctx, joyEffects = this.joyEffects;
+      joyEffects.length = 0;
+      if (sim2.scene === "farm") {
+        for (const e of sim2.effects) if (e.life < 0.85 && (e.kind === "eat" || e.kind === "birth" || e.kind === "merge")) joyEffects.push(e);
+      }
       c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
       this.terrain(sim2);
       for (const u of sim2.units) {
@@ -5360,44 +5437,13 @@
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
       }
       const hiddenMergeResultId = sim2.scene === "farm" && sim2.mode === "merge" && sim2.mergeTask?.phase === "animation" ? sim2.mergeTask.resultId : 0;
-      const actors = sim2.units.filter((unit) => unit.id !== hiddenMergeResultId).map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector: this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
-      if (sim2.scene === "raid" || farmBossVisible) actors.push({ depth: 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), id: 0, vector: true, draw: () => this.drawBoss(sim2) });
-      if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
-        this.groundEllipse(f.x, f.y, 0.1, 0.07, "#55452433");
-        if (f.phase === "flight") {
-          const tail = this.project(f.x - f.vx * 0.045, f.y - f.vy * 0.045, Math.max(0, f.z - f.vz * 0.045) + 0.1), head = this.project(f.x, f.y, f.z + 0.1);
-          this.line(tail, head, 0.055, "#e6bd7480");
-        }
-        const p = this.project(f.x, f.y, f.z + 0.1);
-        this.ellipse(p.x, p.y, this.scale * 0.09, this.scale * 0.12, "#c78a43", 0.4);
-        this.ellipse(p.x - 0.025 * this.scale, p.y - 0.08 * this.scale, this.scale * 0.036, this.scale * 0.05, "#e7bf72");
-      } });
-      if (sim2.scene === "raid" || farmBossVisible) for (const f of sim2.projectiles) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -f.id, draw: () => {
-        const p = this.project(f.x, f.y, f.z), tail = Ballistics.sample(f.path, Math.max(0, (f.elapsed - 0.04) / f.path.duration));
-        this.groundEllipse(f.x, f.y, 0.14, 0.1, "#55452433");
-        if (f.isPopcorn && f.landed) {
-          const fuse = Math.max(0, Math.min(1, f.fuseRemaining || 0));
-          this.groundEllipse(f.x, f.y, 0.16, 0.12, f.exploded ? "#d86c3b55" : "#c78a4366");
-          if (!f.exploded && f.popcornConfig?.radius > 0) this.ring(f.x, f.y, f.popcornConfig.radius, "rgba(190,111,52,.18)", 0.035);
-          if (f.exploded) {
-            const progress = Math.max(0, Math.min(1, (f.explosionLife || 0) / 0.5));
-            this.ring(f.x, f.y, (f.popcornConfig?.radius || 0.3) * (0.25 + 0.75 * progress), `rgba(224,111,54,${0.68 * (1 - progress)})`, 0.12);
-          } else this.ring(f.x, f.y, 0.2 + 0.2 * (1 - fuse), `rgba(238,181,83,${0.45 + 0.4 * (1 - fuse)})`, 0.045);
-          const kernel = this.project(f.x, f.y, 0.12);
-          this.ellipse(kernel.x, kernel.y, this.scale * 0.13, this.scale * 0.08, f.exploded ? "#e37f42" : "#d4a347", 0.2);
-          this.ellipse(kernel.x - this.scale * 0.035, kernel.y - this.scale * 0.02, this.scale * 0.045, this.scale * 0.03, "#ffe0a0");
-        } else if (f.projectileKind === "chestnut-spike") {
-          const angle = Math.atan2(f.path.to.y - f.path.from.y, f.path.to.x - f.path.from.x), tip = { x: p.x + Math.cos(angle) * this.scale * 0.22, y: p.y - 0.62 * Math.sin(angle) * this.scale * 0.22 };
-          this.line(this.project(tail.x, tail.y, tail.z), p, 0.055, "#778f4c88");
-          this.line(p, tip, 0.105, "#79964e");
-          this.ellipse(tip.x, tip.y, this.scale * 0.045, this.scale * 0.035, "#d5df9d", angle);
-        } else {
-          this.line(this.project(tail.x, tail.y, tail.z), p, 0.07, "#ba964a80");
-          this.ellipse(p.x, p.y, this.scale * 0.14, this.scale * 0.2, "#cfa957", 0.3);
-          this.ellipse(p.x - this.scale * 0.03, p.y - this.scale * 0.05, this.scale * 0.05, this.scale * 0.08, "#fff0ae");
-        }
-      } });
-      actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
+      const actors = this.actors;
+      actors.length = 0;
+      for (const u of sim2.units) if (u.id !== hiddenMergeResultId) this.addActor("unit", u, 0.785 * u.y - 0.62 * u.z, u.id, this.vectorAssets.has(u.species));
+      if (sim2.scene === "raid" || farmBossVisible) this.addActor("boss", sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
+      if (sim2.scene === "farm") for (const f of sim2.food) this.addActor("food", f, 0.785 * f.y - 0.62 * f.z, -1);
+      if (sim2.scene === "raid" || farmBossVisible) for (const f of sim2.projectiles) this.addActor("projectile", f, 0.785 * f.y - 0.62 * f.z, -f.id);
+      actors.sort(compareActors);
       let vectorRun = false;
       for (const actor of actors) {
         if (actor.vector && !vectorRun) {
@@ -5407,10 +5453,16 @@
           c.flush();
           vectorRun = false;
         }
-        actor.draw();
+        if (actor.kind === "unit") this.drawFarmUnitActor(actor.source, sim2);
+        else if (actor.kind === "boss") this.drawBoss(sim2);
+        else if (actor.kind === "food") this.drawFood(actor.source);
+        else this.drawProjectile(actor.source);
+        actor.source = null;
       }
       if (vectorRun) c.flush();
-      const liveUnitIds = new Set(sim2.units.map((unit) => unit.id));
+      const liveUnitIds = this.liveUnitIds;
+      liveUnitIds.clear();
+      for (const u of sim2.units) liveUnitIds.add(u.id);
       for (const [id, player] of this.vectorPlayers) if (!liveUnitIds.has(id)) {
         player.dispose();
         this.vectorPlayers.delete(id);
@@ -5504,6 +5556,10 @@
       this.bossPlayer = null;
       for (const record of this.bossAssets?.values() || []) record.asset.dispose();
       this.bossAssets?.clear();
+      this.actors.length = 0;
+      this.actorPool.length = 0;
+      this.liveUnitIds.clear();
+      this.joyEffects.length = 0;
       this.ctx.dispose();
       this.device.dispose();
     }
@@ -5521,6 +5577,7 @@
   var CLOSED = Object.freeze({ status: "closed" });
   var UnitRender = class extends RenderObject {
     static renderSchema = Object.freeze({
+      id: R.STEP,
       x: R.POSITION_X,
       y: R.POSITION_Y,
       z: R.POSITION_Z,
@@ -5554,6 +5611,7 @@
     constructor(u, world) {
       super();
       Object.assign(this, {
+        id: u.id,
         x: u.x,
         y: u.y,
         z: u.z,
@@ -5681,6 +5739,7 @@
   };
   var ProjectileRender = class extends RenderObject {
     static renderSchema = Object.freeze({
+      id: R.STEP,
       x: R.POSITION_X,
       y: R.POSITION_Y,
       z: R.POSITION_Z,
@@ -5711,6 +5770,7 @@
     constructor(p) {
       super();
       Object.assign(this, {
+        id: p.id,
         x: p.x,
         y: p.y,
         z: p.z,
@@ -5951,33 +6011,36 @@
       return clock;
     }
     presentation(now) {
-      const frame2 = this.presentationRuntime.frame(this.frameClock(now)), world = this.world, view = Object.create(world), units = [], food = [], projectiles = [], effects = [];
-      frame2.forEach((model, id) => {
-        if (id.startsWith("unit:")) units.push(Object.assign({ id: Number(id.slice(5)) }, model));
-        else if (id.startsWith("food:")) food.push(model);
-        else if (id.startsWith("projectile:")) projectiles.push(Object.assign({ id: Number(id.slice(11)) }, model));
-        else if (id.startsWith("effect:")) effects.push(model);
-      });
+      const frame2 = this.presentationRuntime.frame(this.frameClock(now)), world = this.world;
+      if (!this.presentationView || Object.getPrototypeOf(this.presentationView) !== world) {
+        const view2 = this.presentationView = Object.assign(Object.create(world), { units: [], food: [], projectiles: [], effects: [], presentationDiagnostics: {} });
+        this.collectPresentationModel = (model, id) => {
+          if (id.startsWith("unit:")) view2.units.push(model);
+          else if (id.startsWith("food:")) view2.food.push(model);
+          else if (id.startsWith("projectile:")) view2.projectiles.push(model);
+          else if (id.startsWith("effect:")) view2.effects.push(model);
+        };
+      }
+      const view = this.presentationView;
+      view.units.length = 0;
+      view.food.length = 0;
+      view.projectiles.length = 0;
+      view.effects.length = 0;
+      frame2.forEach(this.collectPresentationModel);
       view.time = (frame2.sample("clock", 0)?.gameTimeMs ?? world.time * 1e3) / 1e3;
-      view.units = units;
       view.boss = frame2.sample("boss", 0) || new BossRender(world.boss);
-      view.food = food;
-      view.projectiles = projectiles;
-      view.effects = effects;
       view.displayTimeMs = frame2.timeMs;
       view.presentationRevision = this.presentationRevision;
-      const previous = this.previousCaptureTimeMs, latest = this.latestCaptureTimeMs, span = latest - previous;
-      view.presentationDiagnostics = {
-        timeMs: frame2.timeMs,
-        latestSnapshotTimeMs: latest,
-        previousSnapshotTimeMs: previous,
-        intervalMs: span,
-        sampleAgeMs: latest - frame2.timeMs,
-        renderFraction: previous === null || span <= 0 ? null : Math.max(0, Math.min(1, (frame2.timeMs - previous) / span)),
-        captureSequence: this.presentationSequence,
-        revision: this.presentationRevision
-      };
-      this.latestPresentationDiagnostics = view.presentationDiagnostics;
+      const previous = this.previousCaptureTimeMs, latest = this.latestCaptureTimeMs, span = latest - previous, diagnostics = view.presentationDiagnostics;
+      diagnostics.timeMs = frame2.timeMs;
+      diagnostics.latestSnapshotTimeMs = latest;
+      diagnostics.previousSnapshotTimeMs = previous;
+      diagnostics.intervalMs = span;
+      diagnostics.sampleAgeMs = latest - frame2.timeMs;
+      diagnostics.renderFraction = previous === null || span <= 0 ? null : Math.max(0, Math.min(1, (frame2.timeMs - previous) / span));
+      diagnostics.captureSequence = this.presentationSequence;
+      diagnostics.revision = this.presentationRevision;
+      this.latestPresentationDiagnostics = diagnostics;
       return view;
     }
     pulse(now) {
@@ -6209,7 +6272,7 @@
     }
     frame(now) {
       this.frameId++;
-      if (now > this.pulseUntil) this.button.dataset.impact = "";
+      if (now > this.pulseUntil && this.button.dataset.impact !== "") this.button.dataset.impact = "";
     }
   };
 
@@ -6255,7 +6318,9 @@
         }
       }
       this.sequence = world.eventSequence;
-      this.effects = this.effects.filter((e) => displayTimeMs - e.at < 430);
+      let retained = 0;
+      for (const e of this.effects) if (displayTimeMs - e.at < 430) this.effects[retained++] = e;
+      this.effects.length = retained;
       for (const [id, p] of this.poses) if (displayTimeMs > p.until) this.poses.delete(id);
     }
     squash(id, displayTimeMs) {
@@ -7027,17 +7092,50 @@
     }
   };
   var canvas = $2("world");
+  function syncText(id, value) {
+    const node = $2(id), text = String(value);
+    if (node.textContent !== text) node.textContent = text;
+  }
+  function syncFlag(id, key, value) {
+    const node = $2(id), flag = !!value;
+    if (node[key] !== flag) node[key] = flag;
+  }
+  function syncAttribute(id, key, value) {
+    const node = $2(id), text = String(value);
+    if (node.getAttribute(key) !== text) node.setAttribute(key, text);
+  }
+  var hudWidths = /* @__PURE__ */ new Map();
+  function syncWidth(id, value) {
+    const node = $2(id);
+    let previous = hudWidths.get(id);
+    if (previous?.value === value && previous.applied === node.style.width) return;
+    if (node.style.width !== value) node.style.width = value;
+    if (!previous) {
+      previous = {};
+      hudWidths.set(id, previous);
+    }
+    previous.value = value;
+    previous.applied = node.style.width;
+  }
+  function syncData(id, key, value) {
+    const node = $2(id), text = String(value);
+    if (node.dataset[key] !== text) node.dataset[key] = text;
+  }
   function deploymentHud() {
     const w = active.world, raid = w.scene === "raid", roster = w.raidRoster(active.localPlayerId), remaining = roster ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster ? Math.max(0, active.localDeploySequence - roster.lastDeploySequence) : 0;
-    $2("raidRemaining").textContent = !roster ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`;
+    syncText("raidRemaining", !roster ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`);
     const own = w.raidRoster(active.localPlayerId), cooldown = own ? Math.max(0, own.buffReadyAt - w.time) : 0;
-    $2("buff").disabled = !raid || !w.running || !own || cooldown > 0;
-    $2("buff").textContent = cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화";
+    syncFlag("buff", "disabled", !raid || !w.running || !own || cooldown > 0);
+    syncText("buff", cooldown > 0 ? `강화 ${cooldown.toFixed(1)}초` : "팀 강화");
+    let deployed = 0;
+    if (own) {
+      for (const troop of own.troops) if (troop.deployed) deployed++;
+    }
     const stage = w.boss.stage || 0;
     if (stage) {
-      const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: own?.troops.length || 0, originalUnitsDeployed: own?.troops.filter((t) => t.deployed).length || 0 }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
-      $2("raidRewardChance").textContent = stageReward.rolls ? `보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "보스 종 추첨 없음";
-    } else $2("raidRewardChance").textContent = "";
+      const stageReward = bossStageStats(stage), multiplier = raidDeploymentRewardMultiplier({ availableAtStart: own?.troops.length || 0, originalUnitsDeployed: deployed }), chance = Math.round(bossAcquisitionChance({ acquisitionMultiplier: multiplier }) * 100);
+      syncText("raidRewardChance", stageReward.rolls ? `보스 종 ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "보스 종 추첨 없음");
+    } else syncText("raidRewardChance", "");
   }
   function deployAt(p) {
     if (home || active.world.scene !== "raid" || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
@@ -7168,40 +7266,56 @@
   }
   window.addEventListener("popstate", route);
   function sync(display, now) {
-    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingRewardCount = rewardWorld.bossRewardReceipts.filter((reward) => reward.status === "pending").length;
-    for (const [id, value] of [["farm", !raid && !bossEncounterOpen], ["raid", raid || bossEncounterOpen], ["breed", w.mode === "breed"], ["merge", w.mode === "merge"]]) $2(id).setAttribute("aria-pressed", value);
-    $2("bossEncounterScreen").hidden = home || !bossEncounterOpen;
-    $2("farmControls").hidden = raid || farmEventActive || home || bossEncounterOpen;
-    $2("raidControls").hidden = !raid || home;
-    $2("bossbar").hidden = !battleHud || home;
-    $2("raid").disabled = farmEventActive;
-    $2("count").textContent = raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : display.units.filter((unit) => !unit.isBattleOnlySummon).length;
-    $2("capacity").textContent = personalGarden?.capacity ?? CONFIG.cap;
-    $2("starter").textContent = raid ? `${w.units.length} deployed in raid` : pendingRewardCount ? "밤톨 보상 대기 · 공간이 생기면 합류해요" : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : w.units.filter((unit) => !unit.isBattleOnlySummon).length >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요";
-    const army = display.units.filter((u) => u.faction === CONFIG.factions.PLAYER).reduce((sum, u) => ({ current: sum.current + Math.max(0, Math.min(u.maxHp, u.hp)), max: sum.max + u.maxHp, living: sum.living + (u.hp > 0 ? 1 : 0), total: sum.total + 1 }), { current: 0, max: 0, living: 0, total: 0 });
-    $2("allyHealth").style.width = (army.max ? army.current / army.max * 100 : 0) + "%";
-    $2("allyHealthText").textContent = Math.ceil(army.current) + " / " + Math.ceil(army.max) + " HP · " + army.living + "/" + army.total + " 생존";
-    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", speciesName = speciesById(boss.species).name;
-    $2("bossHealthText").textContent = Math.ceil(boss.hp) + " / " + boss.maxHp + " HP";
-    $2("bossHealthNote").textContent = farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP";
-    for (const [id, value, max] of [["allyHealth", army.current, army.max], ["bossHealth", boss.hp, boss.maxHp]]) {
-      const el = $2(id);
-      el.setAttribute("aria-valuenow", value);
-      el.setAttribute("aria-valuemax", max);
+    const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingRewardCount = rewardWorld.bossRewardReceipts.some((reward) => reward.status === "pending");
+    syncAttribute("farm", "aria-pressed", !raid && !bossEncounterOpen);
+    syncAttribute("raid", "aria-pressed", raid || bossEncounterOpen);
+    syncAttribute("breed", "aria-pressed", w.mode === "breed");
+    syncAttribute("merge", "aria-pressed", w.mode === "merge");
+    let displayedCount = 0, worldCount = 0, armyCurrent = 0, armyMax = 0, armyLiving = 0, armyTotal = 0;
+    for (const unit of display.units) {
+      if (!unit.isBattleOnlySummon) displayedCount++;
+      if (unit.faction === CONFIG.factions.PLAYER) {
+        armyCurrent += Math.max(0, Math.min(unit.maxHp, unit.hp));
+        armyMax += unit.maxHp;
+        armyLiving += unit.hp > 0 ? 1 : 0;
+        armyTotal++;
+      }
     }
-    $2("bossHealth").style.width = boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%";
-    $2("battleOutcome").textContent = raid ? battleOutcome === "victory" ? `${stageName} 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · 보스 종 ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 보스 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 보스 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "";
-    $2("battleOutcome").hidden = home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle";
-    $2("speed").textContent = active.speed + "×";
-    $2("bossEncounterChallenge").disabled = !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null;
-    $2("menuTabGrowth").disabled = raid || farmEventActive || bossEncounterOpen;
-    $2("menuTabAbilities").disabled = raid || !personalGarden;
-    $2("raid").disabled = raid || farmEventActive || !personalGarden;
-    $2("pause").textContent = active.paused ? "▶" : "Ⅱ";
-    $2("feed").setAttribute("aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
-    $2("feed").dataset.state = w.food.length >= 140 ? "full" : "ready";
-    $2("feed").dataset.produced = now < foodFeel.completeUntil;
-    for (let i = 0; i < 5; i++) foodFeel.pips[i].classList.toggle("filled", now < foodFeel.completeUntil || i < w.foodTaps.remainder);
+    if (!raid) {
+      for (const unit of w.units) if (!unit.isBattleOnlySummon) worldCount++;
+    }
+    syncFlag("bossEncounterScreen", "hidden", home || !bossEncounterOpen);
+    syncFlag("farmControls", "hidden", raid || farmEventActive || home || bossEncounterOpen);
+    syncFlag("raidControls", "hidden", !raid || home);
+    syncFlag("bossbar", "hidden", !battleHud || home);
+    syncText("count", raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount);
+    syncText("capacity", personalGarden?.capacity ?? CONFIG.cap);
+    syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingRewardCount ? "밤톨 보상 대기 · 공간이 생기면 합류해요" : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
+    syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
+    syncText("allyHealthText", Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존");
+    const boss = display.boss, battleOutcome = raid ? w.encounter.outcome : farmEvent?.outcome, settledRunSequence = raid ? personalGarden?.activeRaidRunSequence ?? w.boss.encounterId : null, settledReward = raid && personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === settledRunSequence)?.reward, stageName = raid && boss.stage ? `STAGE ${boss.stage}` : "", speciesName = speciesById(boss.species).name;
+    syncText("bossHealthText", Math.ceil(boss.hp) + " / " + boss.maxHp + " HP");
+    syncText("bossHealthNote", farmEventActive ? "보스 능력치 고정" : "전사자 포함 최대 HP");
+    syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
+    syncAttribute("allyHealth", "aria-valuemax", armyMax);
+    syncAttribute("bossHealth", "aria-valuenow", boss.hp);
+    syncAttribute("bossHealth", "aria-valuemax", boss.maxHp);
+    syncWidth("bossHealth", boss.maxHp ? boss.hp / boss.maxHp * 100 + "%" : "0%");
+    syncText("battleOutcome", raid ? battleOutcome === "victory" ? `${stageName} 승리 · ${settledReward?.xp?.amount ?? bossStageStats(boss.stage || 1).xp} XP${settledReward?.acquisition?.rollCount ? ` · 보스 종 ${settledReward.acquisition.rolls?.filter((drop) => drop.status === "granted").length || 0}/${settledReward.acquisition.rollCount}회 성공` : settledReward ? " · 보스 종 추첨 없음" : bossStageStats(boss.stage || 1).rolls ? " · 정원 복귀 후 보상 정산" : " · 보스 종 추첨 없음"} · 모두 정원으로 돌아갈 수 있어요` : battleOutcome === "defeat" ? `${stageName} 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : battleOutcome === "victory" ? farmEvent.rewardStatus === "granted" ? `보스가 쓰러졌어요 · ${speciesName}이(가) 합류했어요` : farmEvent.rewardStatus === "pending" ? `${speciesName} 획득 대기 · 공간이 생기면 합류해요` : "보스가 쓰러졌어요" : battleOutcome === "defeat" ? "동료들이 다시 일어날 때까지 기다려요" : "");
+    syncFlag("battleOutcome", "hidden", home || !battleHud || battleOutcome === "fighting" || battleOutcome === "idle");
+    syncText("speed", active.speed + "×");
+    syncFlag("bossEncounterChallenge", "disabled", !personalGarden || !hasReadyTroops || farmEventActive || personalGarden?.activeRaidRunSequence !== null);
+    syncFlag("menuTabGrowth", "disabled", raid || farmEventActive || bossEncounterOpen);
+    syncFlag("menuTabAbilities", "disabled", raid || !personalGarden);
+    syncFlag("raid", "disabled", raid || farmEventActive || !personalGarden);
+    syncText("pause", active.paused ? "▶" : "Ⅱ");
+    syncAttribute("feed", "aria-label", `먹이 탭, 5회 중 ${w.foodTaps.remainder}회`);
+    syncData("feed", "state", w.food.length >= 140 ? "full" : "ready");
+    syncData("feed", "produced", now < foodFeel.completeUntil);
+    for (let i = 0; i < 5; i++) {
+      const pip = foodFeel.pips[i], filled = now < foodFeel.completeUntil || i < w.foodTaps.remainder;
+      if (pip.classList.contains("filled") !== filled) pip.classList.toggle("filled", filled);
+    }
     if (observedWorld !== w) {
       observedWorld = w;
       noticeSequence = w.eventSequence;

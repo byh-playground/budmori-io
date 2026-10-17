@@ -11,14 +11,14 @@ const CLOSED=Object.freeze({status:'closed'});
 
 class UnitRender extends RenderObject {
  static renderSchema=Object.freeze({
-  x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,
+  id:R.STEP,x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,angle:R.ANGLE,
   vx:R.LINEAR,vy:R.LINEAR,hp:R.LINEAR,down:R.LINEAR,stun:R.LINEAR,flash:R.LINEAR,bounce:R.LINEAR,
   'ability.phase':R.STATE_KEY,'ability.elapsed':R.LINEAR,
   cooldown:R.LINEAR,cooldownDuration:R.STEP,meals:R.STEP,
   species:R.STEP,tier:R.STEP,seed:R.STEP,size:R.LINEAR,radius:R.LINEAR,maxHp:R.STEP,fed:R.STEP,ownerId:R.STATE_KEY,faction:R.STEP,farmId:R.STEP,dropLanded:R.STEP,buffed:R.STEP,isBattleOnlySummon:R.STEP
  });
  constructor(u,world){
-  super();Object.assign(this,{x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
+  super();Object.assign(this,{id:u.id,x:u.x,y:u.y,z:u.z,angle:u.angle,vx:u.vx,vy:u.vy,hp:u.hp,down:u.down,stun:u.stun,flash:u.flash,bounce:u.bounce,
    ability:{phase:u.ability.phase,elapsed:u.ability.elapsed},cooldown:u.cooldown,cooldownDuration:u.cooldownDuration,meals:u.meals,species:u.species,tier:u.tier,seed:u.seed,size:u.size,radius:u.radius,
    maxHp:resolveUnitStats(u).maxHp,fed:u.fed,ownerId:u.ownerId,faction:u.faction,farmId:u.farmId,dropLanded:u.dropLanded,buffed:world.time<(world.raidRoster(u.ownerId)?.buffUntil||0),isBattleOnlySummon:u.isBattleOnlySummon});
  }
@@ -54,7 +54,7 @@ class FoodRender extends RenderObject {
 
 class ProjectileRender extends RenderObject {
  static renderSchema=Object.freeze({
-  x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,elapsed:R.LINEAR,
+  id:R.STEP,x:R.POSITION_X,y:R.POSITION_Y,z:R.POSITION_Z,elapsed:R.LINEAR,
   owner:R.STEP,species:R.STEP,tier:R.STEP,radius:R.STEP,height:R.STEP,
   projectileKind:R.STATE_KEY,isPopcorn:R.STEP,landed:R.STEP,exploded:R.STEP,
   fuseRemaining:R.LINEAR,explosionLife:R.LINEAR,shotIndex:R.STEP,fanIndex:R.STEP,
@@ -63,7 +63,7 @@ class ProjectileRender extends RenderObject {
   'path.to.x':R.STEP,'path.to.y':R.STEP,'path.to.z':R.STEP,
   'path.height':R.STEP,'path.duration':R.STEP
  });
- constructor(p){super();Object.assign(this,{x:p.x,y:p.y,z:p.z,elapsed:p.elapsed,owner:p.owner,species:p.species,tier:p.tier,radius:p.radius,height:p.height,
+ constructor(p){super();Object.assign(this,{id:p.id,x:p.x,y:p.y,z:p.z,elapsed:p.elapsed,owner:p.owner,species:p.species,tier:p.tier,radius:p.radius,height:p.height,
   projectileKind:p.projectileKind||'',isPopcorn:!!p.isPopcorn,landed:!!p.landed,exploded:!!p.exploded,fuseRemaining:p.fuseRemaining||0,
   explosionLife:p.explosionLife||0,shotIndex:p.shotIndex||0,fanIndex:p.fanIndex||0,popcornConfig:{radius:p.popcornConfig?.radius||0},
   path:{from:{...p.path.from},to:{...p.path.to},height:p.path.height,duration:p.path.duration}})}
@@ -162,19 +162,27 @@ export class FarmSession{
   this.lastFrameClockMs=clock;return clock;
  }
  presentation(now){
-  const frame=this.presentationRuntime.frame(this.frameClock(now)),world=this.world,view=Object.create(world),units=[],food=[],projectiles=[],effects=[];
-  frame.forEach((model,id)=>{
-   if(id.startsWith('unit:'))units.push(Object.assign({id:Number(id.slice(5))},model));
-   else if(id.startsWith('food:'))food.push(model);
-   else if(id.startsWith('projectile:'))projectiles.push(Object.assign({id:Number(id.slice(11))},model));
-   else if(id.startsWith('effect:'))effects.push(model);
-  });
-  view.time=(frame.sample('clock',0)?.gameTimeMs??world.time*1000)/1000;view.units=units;view.boss=frame.sample('boss',0)||new BossRender(world.boss);view.food=food;view.projectiles=projectiles;view.effects=effects;
+  const frame=this.presentationRuntime.frame(this.frameClock(now)),world=this.world;
+  if(!this.presentationView||Object.getPrototypeOf(this.presentationView)!==world){
+   const view=this.presentationView=Object.assign(Object.create(world),{units:[],food:[],projectiles:[],effects:[],presentationDiagnostics:{}});
+   // Only consume these models synchronously in this frame. GameKit owns and
+   // reuses their fields; the app reuses the collection containers, not snapshots.
+   this.collectPresentationModel=(model,id)=>{
+    if(id.startsWith('unit:'))view.units.push(model);
+    else if(id.startsWith('food:'))view.food.push(model);
+    else if(id.startsWith('projectile:'))view.projectiles.push(model);
+    else if(id.startsWith('effect:'))view.effects.push(model);
+   };
+  }
+  const view=this.presentationView;
+  view.units.length=0;view.food.length=0;view.projectiles.length=0;view.effects.length=0;
+  frame.forEach(this.collectPresentationModel);
+  view.time=(frame.sample('clock',0)?.gameTimeMs??world.time*1000)/1000;view.boss=frame.sample('boss',0)||new BossRender(world.boss);
   view.displayTimeMs=frame.timeMs;view.presentationRevision=this.presentationRevision;
-  const previous=this.previousCaptureTimeMs,latest=this.latestCaptureTimeMs,span=latest-previous;
-  view.presentationDiagnostics={timeMs:frame.timeMs,latestSnapshotTimeMs:latest,previousSnapshotTimeMs:previous,intervalMs:span,
-   sampleAgeMs:latest-frame.timeMs,renderFraction:previous===null||span<=0?null:Math.max(0,Math.min(1,(frame.timeMs-previous)/span)),captureSequence:this.presentationSequence,revision:this.presentationRevision};
-  this.latestPresentationDiagnostics=view.presentationDiagnostics;
+  const previous=this.previousCaptureTimeMs,latest=this.latestCaptureTimeMs,span=latest-previous,diagnostics=view.presentationDiagnostics;
+  diagnostics.timeMs=frame.timeMs;diagnostics.latestSnapshotTimeMs=latest;diagnostics.previousSnapshotTimeMs=previous;diagnostics.intervalMs=span;
+  diagnostics.sampleAgeMs=latest-frame.timeMs;diagnostics.renderFraction=previous===null||span<=0?null:Math.max(0,Math.min(1,(frame.timeMs-previous)/span));
+  diagnostics.captureSequence=this.presentationSequence;diagnostics.revision=this.presentationRevision;this.latestPresentationDiagnostics=diagnostics;
   return view;
  }
  pulse(now){this.pulseTimestamp=now;this.loop.pulse(now,{render:false})}

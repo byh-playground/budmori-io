@@ -1,5 +1,5 @@
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
-import {farmBreedingCooldown,farmSleepSeconds,splitArcProgress,sevenSegmentDigitLines} from './farm-indicators.js';
+import {farmBreedingCooldown,farmSleepSeconds,sevenSegmentDigitLines} from './farm-indicators.js';
 import {UNIT_GRADES} from './unit-grades.js';
 import {capsuleContourPoints} from './attack-telegraph.js';
 import {BOSS_PATTERN_CONFIG} from './boss-patterns.js';
@@ -28,12 +28,18 @@ function motionElapsedMs(u,name,clip){
   if(name==='victory')return ((Math.abs(u.seed||0)*97.531)%clip.durationMs);
   return clip.durationMs;
 }
-function unitExpression(u,sim){
+function unitExpression(u,sim,joyEffects){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.5;
-  const joy=sim.scene==='farm'&&sim.effects.some(e=>['eat','birth','merge'].includes(e.kind)&&e.life<.85&&Math.hypot(e.x-u.x,e.y-u.y)<1.2);
+
   const phase=u.ability?.phase;
   const restingCooldown=sim.scene==='farm'&&u.cooldown>0&&phase==='idle';
-  return dead?'dead':sim.scene==='raid'&&sim.encounter?.outcome==='victory'?'happy':u.stun>0?'hurt':airborne?'surprised':phase==='windup'?'focused':phase==='active'?'attack':restingCooldown?'neutral':joy?'happy':sim.scene==='farm'&&!u.fed?'hungry':'neutral';
+  if(dead)return 'dead';if(sim.scene==='raid'&&sim.encounter?.outcome==='victory')return 'happy';
+  if(u.stun>0)return 'hurt';if(airborne)return 'surprised';if(phase==='windup')return 'focused';if(phase==='active')return 'attack';if(restingCooldown)return 'neutral';
+  if(sim.scene==='farm'){
+    for(const e of joyEffects)if(Math.hypot(e.x-u.x,e.y-u.y)<1.2)return 'happy';
+    if(!u.fed)return 'hungry';
+  }
+  return 'neutral';
 }
 function renderedBossAttackArea(boss,unitRadius=0){
   if(!boss?.patternId||boss.patternPhase==='recover')return null;
@@ -100,6 +106,7 @@ function bossAttackPose(b,parts){
   return{body,arms,extras,impact,releasePulse:0};
 }
   // render.js
+  const compareActors=(a,b)=>b.depth-a.depth||a.id-b.id;
   const ATTACK_ACCENTS=['#8fac68','#dbb76b','#b58b9c','#9a6947','#d7914f','#a86b32'];
   var Diorama = class {
     constructor(canvas) {
@@ -107,11 +114,13 @@ function bossAttackPose(b,parts){
       this.device = new WebGLDevice(canvas, { alpha: false, depth: false, stencil: false, antialias: true });
       this.ctx = new VectorContext(this.device);
       this.vectorAssets=new Map();this.vectorPlayers=new Map();
+      this.actors=[];this.actorPool=[];this.liveUnitIds=new Set();this.joyEffects=[];
+      this.unitRings=[];this.unitRingPool=[{},{},{}];this.breedingIndicator={};
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
       if(entries.length!==CONFIG.maxSpecies||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
-      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled)});
-      this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled)}]));
+      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))});
+      this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))}]));
       this.bossPlayer=null;this.bossPlayerAsset=null;this.bossPlayers=new Map();this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
@@ -141,6 +150,9 @@ function bossAttackPose(b,parts){
       if(scene==='raid')this.view=a>1.2?[Math.max(26.5,17*a),17]:[26.5,26.5/a];
       else this.view=a>1.2?[Math.max(12,9*a),9]:[11.7,11.7/a];
       this.offset=[0,a<.8?1.1:-.3];this.scale=this.canvas.width/(2*this.view[0]);
+      const rx=scene==='raid'?CONFIG.raid.radiusX:9.5,ry=scene==='raid'?CONFIG.raid.radiusY:6.8;
+      this.terrainDots=Array.from({length:92},(_,i)=>{const angle=i*2.39996,rad=Math.sqrt((i+.5)/92);return this.project(Math.cos(angle)*(rx+.3)*rad,Math.sin(angle)*(ry+.3)*rad)});
+      this.terrainLeaves=Array.from({length:24},(_,i)=>{const angle=i*2.39996;return{...this.project(Math.cos(angle)*(rx+.55),Math.sin(angle)*(ry+.55)),angle}});
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const c = this.ctx;
@@ -226,18 +238,22 @@ function bossAttackPose(b,parts){
     pixelLine(a,b,width,color2){
       const c=this.ctx;c.strokeStyle=color2;c.lineWidth=width;c.lineCap='round';c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();
     }
+    addUnitRing(radius,color,width,progress){
+      const effect=this.unitRingPool[this.unitRings.length];effect.radius=radius;effect.color=color;effect.width=width;effect.progress=progress;this.unitRings.push(effect);
+    }
     unitRingEffects(u,world){
-      const effects=[],a=u.ability,s=ATTACK_TYPES[u.species];
-      if(u.buffed&&u.hp>0)effects.push({radius:u.radius+.16,color:'#eacb72',width:.055,progress:1});
-      if(a.phase==='windup'&&s)effects.push({radius:u.radius+.1,color:ATTACK_ACCENTS[u.species]||ATTACK_ACCENTS[0],width:.065,progress:Math.min(1,a.elapsed/s.windup)});
-      const breeding=farmBreedingCooldown(u,world,CONFIG.breedCooldownSeconds);
-      if(breeding&&breeding.progress>0)effects.push({radius:u.radius+.085,color:'#8fac68',width:.035,progress:breeding.progress});
+      const effects=this.unitRings,a=u.ability,s=ATTACK_TYPES[u.species];effects.length=0;
+      if(u.buffed&&u.hp>0)this.addUnitRing(u.radius+.16,'#eacb72',.055,1);
+      if(a.phase==='windup'&&s)this.addUnitRing(u.radius+.1,ATTACK_ACCENTS[u.species]||ATTACK_ACCENTS[0],.065,Math.min(1,a.elapsed/s.windup));
+      const breeding=farmBreedingCooldown(u,world,CONFIG.breedCooldownSeconds,this.breedingIndicator);
+      if(breeding&&breeding.progress>0)this.addUnitRing(u.radius+.085,'#8fac68',.035,breeding.progress);
       return effects;
     }
     drawUnitRingLayer(u,effects,side){
       for(const effect of effects){
-        const arc=splitArcProgress(effect.progress)[side];
-        if(arc)this.ring(u.x,u.y,effect.radius,effect.color,effect.width,arc[0],arc[1]);
+        const sweep=Math.PI*2*Math.max(0,Math.min(1,Number(effect.progress)||0));
+        if(side==='rear'&&sweep>0)this.ring(u.x,u.y,effect.radius,effect.color,effect.width,0,Math.min(Math.PI,sweep));
+        else if(side==='front'&&sweep>Math.PI)this.ring(u.x,u.y,effect.radius,effect.color,effect.width,Math.PI,sweep);
       }
     }
     drawSevenSegmentDigit(digit,x,y,size,color){
@@ -268,7 +284,7 @@ function bossAttackPose(b,parts){
       const clipStartAtMs=this.displayTimeMs-motionElapsedMs(u,motionName,clip);
       if(!player){player=record.asset.createPlayer({clip:motionName,startedAtMs:clipStartAtMs});this.vectorPlayers.set(u.id,player)}
       else if(player.currentClip!==motionName)player.play(motionName,clipStartAtMs);
-      const expression=unitExpression(u,sim);if(expression!==player.currentExpression)player.setExpression(expression);
+      const expression=unitExpression(u,sim,this.joyEffects);if(expression!==player.currentExpression)player.setExpression(expression);
       player.seek(this.displayTimeMs);
       const [, ,width,height]=record.compiled.viewBox,scale=2*r/Math.max(width,height),centerY=p.y-r*.79;
       const matrix=[scale,0,0,scale,p.x-width*scale*.5,centerY-height*scale*.5];
@@ -337,7 +353,7 @@ function bossAttackPose(b,parts){
       const [, ,width,height]=record.compiled.viewBox,s=2*r/220,ground=metadata.sockets?.ground?.point||[width/2,height],anchorX=ground[0],anchorY=ground[1],matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];
       const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farmBossEvent.celebrationSeconds*2)):0;
       const fade=event?.phase==='fading'?clamp(1-event.elapsed/CONFIG.farmBossEvent.fadeSeconds,0,1):1;
-      const parts=new Set(metadata.parts.map(part=>part.id)),pose=bossAttackPose(b,parts);
+      const parts=record.parts,pose=bossAttackPose(b,parts);
       player.setBasePose('body',{x:0,y:pose.body.y-18*defeatBounce,rotation:pose.body.rotation,scaleX:pose.body.scaleX*(1+(k.squash||0))*(1-.04*defeatBounce),scaleY:pose.body.scaleY*(1-(k.squash||0))*(1+.06*defeatBounce),opacity:fade});
       for(const [part,rotation] of Object.entries(pose.arms))if(parts.has(part))player.setBasePose(part,{rotation});
       for(const [part,partPose] of Object.entries(pose.extras))if(parts.has(part))player.setBasePose(part,partPose);
@@ -354,14 +370,10 @@ function bossAttackPose(b,parts){
       this.groundEllipse(0, -0.2, rx+1.3, ry+1.1, "#bcc7a6");
       this.groundEllipse(0, 0, rx+1.2, ry+1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
       this.groundEllipse(0, 0.15, rx+.3, ry+.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
-      for (let i = 0; i < 92; i++) {
-        const a = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92), x = Math.cos(a) * (rx+.3) * rad, y = Math.sin(a) * (ry+.3) * rad, p = this.project(x, y);
-        this.ellipse(p.x, p.y, S * 0.026, S * 0.02, "#a7b58b80");
-      }
-      for (let i = 0; i < 24; i++) {
-        const a = i * 2.39996, x = Math.cos(a) * (rx+.55), y = Math.sin(a) * (ry+.55), p = this.project(x, y);
-        this.ellipse(p.x, p.y, 0.25 * S, 0.11 * S, "#94a577", a);
-        this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", a + 0.7);
+      for(const p of this.terrainDots)this.ellipse(p.x,p.y,S*.026,S*.02,'#a7b58b80');
+      for(const p of this.terrainLeaves){
+        this.ellipse(p.x,p.y,.25*S,.11*S,'#94a577',p.angle);
+        this.ellipse(p.x+.1*S,p.y-.09*S,.19*S,.075*S,'#a8b78a',p.angle+.7);
       }
       if(raid){
         this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
@@ -371,22 +383,11 @@ function bossAttackPose(b,parts){
       if(area)this.drawBossTelegraph(area);
     }
 
-    render(sim2,feel=null,now=performance.now()) {
-      this.feel=feel;this.displayTimeMs=now;this.configure(sim2.scene);
-      const c = this.ctx;
-      c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
-      this.terrain(sim2);
-      for (const u of sim2.units) {
-        const a = clamp(0.22 / (1 + u.z * .3), 0.045, 0.22),shadow=u.size*.66/(1+u.z*.65);
-        this.groundEllipse(u.x, u.y, shadow, shadow * .62, `rgba(42,61,35,${a})`);
-        if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
-      }
-      const farmBossVisible=sim2.scene==='farm'&&sim2.farmBossEvent?.phase!=='idle';
-      if(sim2.scene==='raid'||farmBossVisible){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
-      const hiddenMergeResultId=sim2.scene==='farm'&&sim2.mode==='merge'&&sim2.mergeTask?.phase==='animation'?sim2.mergeTask.resultId:0;
-      const actors = sim2.units.filter(unit=>unit.id!==hiddenMergeResultId).map((u) => ({ depth: 0.785 * u.y - 0.62 * u.z, id: u.id, vector:this.vectorAssets.has(u.species), draw: () => this.drawFarmUnitActor(u, sim2) }));
-      if (sim2.scene === "raid"||farmBossVisible) actors.push({ depth: 0.785 * sim2.boss.y - .62*(sim2.boss.z||0), id: 0, vector:true, draw: () => this.drawBoss(sim2) });
-      if (sim2.scene === "farm") for (const f of sim2.food) actors.push({ depth: 0.785 * f.y - 0.62 * f.z, id: -1, draw: () => {
+    addActor(kind,source,depth,id,vector=false){
+      const index=this.actors.length,actor=this.actorPool[index]||(this.actorPool[index]={});
+      actor.kind=kind;actor.source=source;actor.depth=depth;actor.id=id;actor.vector=vector;this.actors.push(actor);
+    }
+    drawFood(f){
         this.groundEllipse(f.x,f.y,.10,.07,"#55452433");
         if(f.phase === "flight") {
           const tail=this.project(f.x-f.vx*.045,f.y-f.vy*.045,Math.max(0,f.z-f.vz*.045)+.1),head=this.project(f.x,f.y,f.z+.1);
@@ -395,8 +396,8 @@ function bossAttackPose(b,parts){
         const p = this.project(f.x, f.y, f.z + 0.1);
         this.ellipse(p.x, p.y, this.scale * 0.09, this.scale * 0.12, "#c78a43", 0.4);
         this.ellipse(p.x - 0.025 * this.scale, p.y - 0.08 * this.scale, this.scale * 0.036, this.scale * 0.05, "#e7bf72");
-      } });
-      if(sim2.scene==="raid"||farmBossVisible)for(const f of sim2.projectiles)actors.push({depth:.785*f.y-.62*f.z,id:-f.id,draw:()=>{
+    }
+    drawProjectile(f){
         const p=this.project(f.x,f.y,f.z),tail=Ballistics.sample(f.path,Math.max(0,(f.elapsed-.04)/f.path.duration));
         this.groundEllipse(f.x,f.y,.14,.10,"#55452433");
         if(f.isPopcorn&&f.landed){
@@ -416,16 +417,40 @@ function bossAttackPose(b,parts){
           this.ellipse(p.x,p.y,this.scale*.14,this.scale*.2,"#cfa957",.3);
           this.ellipse(p.x-this.scale*.03,p.y-this.scale*.05,this.scale*.05,this.scale*.08,"#fff0ae");
         }
-      }});
-      actors.sort((a, b) => b.depth - a.depth || a.id - b.id);
+    }
+    render(sim2,feel=null,now=performance.now()) {
+      this.feel=feel;this.displayTimeMs=now;this.configure(sim2.scene);
+      const c = this.ctx,joyEffects=this.joyEffects;joyEffects.length=0;
+      if(sim2.scene==='farm')for(const e of sim2.effects)if(e.life<.85&&(e.kind==='eat'||e.kind==='birth'||e.kind==='merge'))joyEffects.push(e);
+      c.beginFrame({ width: this.canvas.width, height: this.canvas.height, clearColor: [0.9, 0.92, 0.87, 1] });
+      this.terrain(sim2);
+      for (const u of sim2.units) {
+        const a = clamp(0.22 / (1 + u.z * .3), 0.045, 0.22),shadow=u.size*.66/(1+u.z*.65);
+        this.groundEllipse(u.x, u.y, shadow, shadow * .62, `rgba(42,61,35,${a})`);
+        if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
+      }
+      const farmBossVisible=sim2.scene==='farm'&&sim2.farmBossEvent?.phase!=='idle';
+      if(sim2.scene==='raid'||farmBossVisible){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
+      const hiddenMergeResultId=sim2.scene==='farm'&&sim2.mode==='merge'&&sim2.mergeTask?.phase==='animation'?sim2.mergeTask.resultId:0;
+      const actors=this.actors;actors.length=0;
+      for(const u of sim2.units)if(u.id!==hiddenMergeResultId)this.addActor('unit',u,.785*u.y-.62*u.z,u.id,this.vectorAssets.has(u.species));
+      if(sim2.scene==='raid'||farmBossVisible)this.addActor('boss',sim2.boss,.785*sim2.boss.y-.62*(sim2.boss.z||0),0,true);
+      if(sim2.scene==='farm')for(const f of sim2.food)this.addActor('food',f,.785*f.y-.62*f.z,-1);
+      if(sim2.scene==='raid'||farmBossVisible)for(const f of sim2.projectiles)this.addActor('projectile',f,.785*f.y-.62*f.z,-f.id);
+      // Preserve stable source order for equal depth/id and every vector flush boundary.
+      actors.sort(compareActors);
       let vectorRun=false;
       for (const actor of actors) {
         if(actor.vector&&!vectorRun){c.flush();vectorRun=true}
         else if(!actor.vector&&vectorRun){c.flush();vectorRun=false}
-        actor.draw();
+        if(actor.kind==='unit')this.drawFarmUnitActor(actor.source,sim2);
+        else if(actor.kind==='boss')this.drawBoss(sim2);
+        else if(actor.kind==='food')this.drawFood(actor.source);
+        else this.drawProjectile(actor.source);
+        actor.source=null;
       }
       if(vectorRun)c.flush();
-      const liveUnitIds=new Set(sim2.units.map(unit=>unit.id));
+      const liveUnitIds=this.liveUnitIds;liveUnitIds.clear();for(const u of sim2.units)liveUnitIds.add(u.id);
       for(const [id,player] of this.vectorPlayers)if(!liveUnitIds.has(id)){player.dispose();this.vectorPlayers.delete(id)}
       feel?.draw(this,this.displayTimeMs);
       for (const e of sim2.effects) {
@@ -489,6 +514,7 @@ function bossAttackPose(b,parts){
       for(const player of this.vectorPlayers.values())player.dispose();this.vectorPlayers.clear();
       for(const record of this.vectorAssets.values())record.asset.dispose();this.vectorAssets.clear();
       for(const {player} of this.bossPlayers.values())player.dispose();this.bossPlayers.clear();this.bossPlayer=null;for(const record of this.bossAssets?.values()||[])record.asset.dispose();this.bossAssets?.clear();
+      this.actors.length=0;this.actorPool.length=0;this.liveUnitIds.clear();this.joyEffects.length=0;
       this.ctx.dispose();this.device.dispose();
     }
   };

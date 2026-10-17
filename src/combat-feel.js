@@ -16,7 +16,9 @@ export class CombatFeel {
     if(e.kind==='unit-land')this.counts.landings++;
    }
   }
-  this.sequence=world.eventSequence;this.effects=this.effects.filter(e=>displayTimeMs-e.at<430);for(const [id,p]of this.poses)if(displayTimeMs>p.until)this.poses.delete(id);
+  this.sequence=world.eventSequence;
+  let retained=0;for(const e of this.effects)if(displayTimeMs-e.at<430)this.effects[retained++]=e;this.effects.length=retained;
+  for(const [id,p]of this.poses)if(displayTimeMs>p.until)this.poses.delete(id);
  }
  squash(id,displayTimeMs){const p=this.poses.get(id);return !p||this.reduced?0:Math.sin(Math.min(1,(displayTimeMs-p.at)/180)*Math.PI)*Math.min(.2,p.strength*.12)}
  boss(displayTimeMs){const e=this.bossHit;if(!e||this.reduced)return {x:0,y:0,squash:0};const q=Math.max(0,Math.min(1,(displayTimeMs-e.at)/160)),k=Math.sin(q*Math.PI)*(1-q);return{x:-e.nx*k*.1,y:-e.ny*k*.1,squash:k*.035}}
