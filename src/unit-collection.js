@@ -1,0 +1,240 @@
+import { Signal } from './signal.js';
+
+// The sole owner of roster membership and permanent removal. Callers may read
+// items, but additions, removals and hydration must use this transaction boundary.
+export class UnitCollection {
+    constructor(world, unitType, notifications) {
+        this.world = world;
+        this.unitType = unitType;
+        this.items = [];
+        this.subscriptions = new Map();
+        this.retiredDuringStep = [];
+        this.onAdded = new Signal(notifications);
+        this.onRemoved = new Signal(notifications);
+        this.onReplaced = new Signal(notifications);
+        this.onReset = new Signal(notifications);
+    }
+    has(unit) {
+        return this.items.includes(unit);
+    }
+    attach(unit) {
+        for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
+            SIGNAL.scope = this.world.mutationNotifications;
+            // Domain lifecycle reactions remain synchronous. Observer failures
+            // are reported only once the enclosing command is fully committed.
+            SIGNAL.immediate = true;
+        }
+        const OFF_DIED = unit.onDied.on(() => {
+                if (this.has(unit)) {
+                    this.world.processUnitDeath(unit);
+                }
+            }),
+            OFF_REVIVED = unit.onRevived.on(() => {
+                if (this.has(unit)) {
+                    this.world.processUnitRevival(unit);
+                }
+            });
+        const OFF_HEALTH = unit.onHealthChanged.on(() => {
+            if (this.has(unit)) {
+                this.world._syncUnitAliveCount(unit);
+            }
+        });
+        this.subscriptions.set(unit, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
+    }
+    retire(unit, options) {
+        this.world.releaseMate(unit);
+        const TASK = this.world.mergeTask;
+        if (TASK && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
+            this.world.mergeTask = null;
+        }
+        for (const OFF of this.subscriptions.get(unit) || []) {
+            OFF();
+        }
+        this.subscriptions.delete(unit);
+        this.world._trackUnitRemoved(unit, options);
+        this.world._scatterStates.delete(unit);
+        unit.dispose();
+        if (this.world._spatialStepActive) {
+            this.retiredDuringStep.push(unit);
+        } else {
+            this.releaseReferences(unit);
+            this.clearBorrowedReferences();
+        }
+    }
+    releaseReferences(unit) {
+        this.world.unitSpatial.remove(unit);
+        this.world._unitStepOrder.delete(unit);
+        this.world._unitAliveState.delete(unit);
+    }
+    clearBorrowedReferences() {
+        for (const GROUP of this.world._mergeEligibleGroups) {
+            GROUP.length = 0;
+        }
+        for (const KEY of [
+            '_stepUnits',
+            '_unitCandidates',
+            '_contactQuery',
+            '_bossGridUnits',
+            '_bossGroundUnits',
+            '_bossQueryCandidates',
+            '_bossHitCandidates',
+            '_mergeNearestScratch',
+            '_mergeMaterialsScratch',
+        ]) {
+            if (this.world._spatialStepActive) {
+                this.world[KEY].length = 0;
+            } else {
+                // An out-of-step caller may still be iterating its borrowed
+                // snapshot. Drop the owner's reference without truncating it.
+                this.world[KEY] = [];
+            }
+        }
+    }
+    releaseStepReferences() {
+        if (!this.retiredDuringStep.length) {
+            return;
+        }
+        for (const UNIT of this.retiredDuringStep) {
+            this.releaseReferences(UNIT);
+        }
+        this.retiredDuringStep.length = 0;
+        this.clearBorrowedReferences();
+    }
+    add(unit, { markProgress = true } = {}) {
+        if (!(unit instanceof this.unitType) || this.items.some((owned) => owned === unit || owned.id === unit.id)) {
+            return false;
+        }
+        this.world._beginSpatialQueryBatch();
+        try {
+            this.items.push(unit);
+            this.attach(unit);
+            this.world._trackUnitAdded(unit);
+        } finally {
+            this.world._endSpatialQueryBatch();
+        }
+        this.publishChange(this.onAdded, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
+        return true;
+    }
+    remove(unit, { markProgress = true, ...options } = {}) {
+        if (!this.has(unit)) {
+            return false;
+        }
+        const REMAINING = this.items.filter((owned) => owned !== unit);
+        this.world._beginSpatialQueryBatch();
+        try {
+            this.retire(unit, options);
+            this.items = REMAINING;
+        } finally {
+            this.world._endSpatialQueryBatch();
+        }
+        this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
+        return true;
+    }
+    replace(materials, result, complete) {
+        const CONSUMED = new Set(materials);
+        if (
+            CONSUMED.size < 2 ||
+            CONSUMED.size !== materials.length ||
+            !materials.every((unit) => this.has(unit)) ||
+            !(result instanceof this.unitType) ||
+            this.items.some((unit) => unit === result || unit.id === result.id)
+        ) {
+            return false;
+        }
+        // Replacement decreases existing ownership, so a migrated roster above
+        // today's spawn cap is valid. Prepare everything before consuming it.
+        const REMAINING = this.items.filter((unit) => !CONSUMED.has(unit));
+        REMAINING.push(result);
+        this.world._beginSpatialQueryBatch();
+        try {
+            for (const UNIT of CONSUMED) {
+                this.retire(UNIT);
+            }
+            this.items = REMAINING;
+            this.attach(result);
+            this.world._trackUnitAdded(result);
+            // The feature completes IDs/task/effect state before any observer
+            // can see the committed replacement or request a save checkpoint.
+            complete?.();
+        } finally {
+            this.world._endSpatialQueryBatch();
+        }
+        this.publishChange(
+            this.onReplaced,
+            { materialIds: materials.map((unit) => unit.id), resultId: result.id },
+            true,
+        );
+        return true;
+    }
+    publishChange(signal, event, markProgress) {
+        return this.world.mutationNotifications.run(this._publishChange, this, signal, event, markProgress);
+    }
+    _publishChange(signal, event, markProgress) {
+        const ERRORS = [];
+        if (markProgress) {
+            try {
+                this.world.markProgressChanged();
+            } catch (error) {
+                ERRORS.push(error);
+            }
+        }
+        try {
+            signal.emit(event);
+        } catch (error) {
+            ERRORS.push(error);
+        }
+        if (ERRORS.length) {
+            throw ERRORS.length === 1 ? ERRORS[0] : new AggregateError(ERRORS, 'Unit collection observers failed.');
+        }
+    }
+    reset(units = []) {
+        const NEXT = [...units],
+            IDS = new Set();
+        for (const UNIT of NEXT) {
+            if (!(UNIT instanceof this.unitType) || IDS.has(UNIT.id)) {
+                throw new TypeError('A roster requires distinct owned Unit instances.');
+            }
+            IDS.add(UNIT.id);
+        }
+        const RETAINED = new Set(NEXT);
+        this.world._beginSpatialQueryBatch();
+        try {
+            for (const UNIT of this.items) {
+                if (!RETAINED.has(UNIT)) {
+                    this.retire(UNIT);
+                }
+            }
+            this.items = NEXT;
+            for (const UNIT of NEXT) {
+                if (!this.subscriptions.has(UNIT)) {
+                    this.attach(UNIT);
+                }
+            }
+            this.world._rebuildUnitSpatialIndex();
+        } finally {
+            this.world._endSpatialQueryBatch();
+        }
+        this.onReset.emit({ unitIds: NEXT.map((unit) => unit.id) });
+    }
+    removeWhere(predicate, options) {
+        let index = 0;
+        while (index < this.items.length) {
+            const UNIT = this.items[index];
+            if (predicate(UNIT)) {
+                this.remove(UNIT, options);
+            } else {
+                index++;
+            }
+        }
+    }
+    dispose() {
+        try {
+            this.reset();
+        } finally {
+            this.onAdded.clear();
+            this.onRemoved.clear();
+            this.onReplaced.clear();
+            this.onReset.clear();
+        }
+    }
+}

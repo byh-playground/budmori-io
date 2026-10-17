@@ -1,6 +1,9 @@
+import { createDualStrikeMixin } from './features/unit-attacks/dual-strike/model.js';
+import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
+import { createLobAttackMixin } from './features/unit-attacks/lob/model.js';
+import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
 import { UNIT_CAPABILITY_COMPOSITIONS, unitCapabilityComposition } from './unit-abilities.js';
 import { scaleAttackRecovery, scaleAttackArea, resolveStatusDuration } from './unit-stats.js';
-import { createPeanutStrikeSchedule, resolveStrikeMask, PEANUT_BASE_STRIKE } from './unit-combat-patterns.js';
 import {
     createBeanSplitDescriptors,
     getCornBurstConfig,
@@ -105,141 +108,8 @@ export function composeUnitAttackCycles(
                 }
             }
         };
-    const REPEATED_STRIKE = (base) =>
-        class extends PATH_MOTION(base) {
-            get strikeDuration() {
-                return this.spec.timing.active ?? PEANUT_BASE_STRIKE.activeSeconds;
-            }
-            prepareAttack(sim) {
-                super.prepareAttack?.(sim);
-                const ASSAULT_LOCAL = this.strikeConfig?.(sim);
-                Object.assign(this.action, {
-                    resolvedMask: 0,
-                    hitMask: 0,
-                    peanutStrikeCount: ASSAULT_LOCAL?.strikeCount || PEANUT_BASE_STRIKE.count,
-                    peanutAttackMultiplier: ASSAULT_LOCAL?.attackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier,
-                    peanutSpreadRadians: ASSAULT_LOCAL?.spreadRadians ?? PEANUT_BASE_STRIKE.spreadRadians,
-                });
-            }
-            createAttackPath() {
-                const U = this.owner;
-                this.action.path = {
-                    from: {
-                        x: U.x,
-                        y: U.y,
-                        z: 0,
-                    },
-                    to: {
-                        x: U.x,
-                        y: U.y,
-                        z: 0,
-                    },
-                    height: 0,
-                    duration: this.strikeDuration,
-                };
-            }
-            afterMove(sim) {
-                const A = this.action,
-                    U = this.owner;
-                if (this.phase !== 'active' || !A?.path) {
-                    return;
-                }
-                const SCHEDULE = createPeanutStrikeSchedule({
-                    strikeCount: A.peanutStrikeCount || 2,
-                    attackMultiplier: A.peanutAttackMultiplier ?? PEANUT_BASE_STRIKE.attackMultiplier,
-                    spreadRadians: A.peanutSpreadRadians ?? Math.PI / 12,
-                    activeSeconds: this.strikeDuration,
-                });
-                for (const SLOT of SCHEDULE) {
-                    if (
-                        this.elapsed + 1e-9 < SLOT.dueSeconds ||
-                        ((A.resolvedMask || 0) & (1 << SLOT.strikeIndex)) !== 0
-                    ) {
-                        continue;
-                    }
-                    const TARGET = sim.attackTarget(U, A);
-                    let hit = null;
-                    if (TARGET && TARGET.hp > 0) {
-                        const DISTANCE = Math.hypot(TARGET.x - U.x, TARGET.y - U.y),
-                            REACH = TARGET.radius + U.radius + this.spec.range;
-                        if (DISTANCE <= REACH) {
-                            const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x),
-                                SIDE = SLOT.angleOffsetRadians;
-                            const FROM = {
-                                x: U.x + Math.cos(AIM + SIDE) * U.radius * 0.45,
-                                y: U.y + Math.sin(AIM + SIDE) * U.radius * 0.45,
-                                z: 0,
-                            };
-                            const TO = {
-                                x: TARGET.x - Math.cos(AIM) * TARGET.radius * 0.9,
-                                y: TARGET.y - Math.sin(AIM) * TARGET.radius * 0.9,
-                                z: 0,
-                            };
-                            hit = arenaGeometry.sweep(FROM, TO, Math.max(0.06, U.radius * 0.2), 0.24, TARGET);
-                        }
-                    }
-                    const STRIKE_ACTION = {
-                        ...A,
-                        hit: false,
-                        strikeIndex: SLOT.strikeIndex,
-                    };
-                    const DID_HIT =
-                        !!hit &&
-                        this.resolveAttackHit(sim, STRIKE_ACTION, TARGET, hit, {
-                            attackMultiplier: SLOT.attackMultiplier,
-                            attackKind: this.spec.kind,
-                            strikeIndex: SLOT.strikeIndex,
-                        });
-                    const MASKS = resolveStrikeMask(A, SLOT.strikeIndex, DID_HIT);
-                    if (MASKS) {
-                        Object.assign(A, MASKS);
-                    }
-                }
-                if (this.elapsed >= this.strikeDuration - 1e-9) {
-                    U.z = 0;
-                    U.vz = 0;
-                    this.recover(sim, false);
-                }
-            }
-        };
-    const PROJECTILE_ATTACK = (base) =>
-        class extends PATH_MOTION(base) {
-            projectileShots() {
-                return [
-                    {
-                        shotIndex: 0,
-                        delaySeconds: 0,
-                        attackMultiplier: this.spec.skillMultiplier,
-                    },
-                ];
-            }
-            launchAttack(sim) {
-                super.launchAttack?.(sim);
-                const U = this.owner,
-                    A = this.action,
-                    POPCORN_LOCAL = this.projectileEffect?.(sim) || null,
-                    SHOTS = this.projectileShots(sim);
-                A.pendingShots = SHOTS.slice(1);
-                A.projectileAbility = {
-                    popcorn: POPCORN_LOCAL,
-                };
-                sim.spawnLobProjectile(U, A, SHOTS[0], POPCORN_LOCAL);
-                this.recover(sim, true);
-            }
-            updateRecovery(sim) {
-                super.updateRecovery?.(sim);
-                const PENDING = this.action?.pendingShots || [];
-                while (PENDING.length && PENDING[0].delaySeconds <= this.elapsed + 1e-9) {
-                    const SHOT = PENDING.shift();
-                    sim.spawnLobProjectile(
-                        this.owner,
-                        this.action,
-                        SHOT,
-                        this.action.projectileAbility?.popcorn || null,
-                    );
-                }
-            }
-        };
+    const REPEATED_STRIKE = createDualStrikeMixin(PATH_MOTION, arenaGeometry);
+    const PROJECTILE_ATTACK = createLobAttackMixin(PATH_MOTION);
     const LANDING = (base) =>
         class extends base {
             landAttack(sim, target) {
@@ -449,8 +319,8 @@ export function composeUnitAttackCycles(
         };
     const ATTACKS = {
         contact: CONTACT_ATTACK,
-        projectile: PROJECTILE_ATTACK,
-        repeatedStrike: REPEATED_STRIKE,
+        [LOB_FEATURE.modelKey]: PROJECTILE_ATTACK,
+        [DUAL_STRIKE_FEATURE.modelKey]: REPEATED_STRIKE,
     };
     const TRAITS = {
         landing: LANDING,

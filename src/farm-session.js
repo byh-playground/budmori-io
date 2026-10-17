@@ -344,6 +344,10 @@ class FarmSession {
         this.pauseStartedAt = null;
         this.pausedDurationMs = 0;
         this.pending = [];
+        this.pendingNotices = [];
+        this.presentationNotices = [];
+        this.unsubscribeNotices = null;
+        this.noticeWorld = null;
         this.localPlayerId = 'solo';
         this.localDeploySequence = world.raidRoster(this.localPlayerId)?.lastDeploySequence || 0;
         this.presentationRevision = 0;
@@ -386,7 +390,37 @@ class FarmSession {
                 }
             },
         });
+        this.bindNoticeJournal();
         this.capturePresentation('reset');
+    }
+    bindNoticeJournal() {
+        this.unsubscribeNotices?.();
+        this.unsubscribeNotices = null;
+        if (this.noticeWorld !== this.world) {
+            this.pendingNotices.length = 0;
+            this.presentationNotices.length = 0;
+        }
+        this.noticeWorld = this.world;
+        if (this.closed) {
+            return;
+        }
+        // Signals only enqueue committed facts. Effects and audio wait for the
+        // presentation frame and its interpolated clock, including while paused.
+        this.unsubscribeNotices = this.world.onNotice.on((notice) => {
+            this.pendingNotices.push(notice);
+            if (this.pendingNotices.length > 512) {
+                this.pendingNotices.shift();
+            }
+        });
+    }
+    takePresentationNotices() {
+        // The returned batch is borrowed until the next call. Both presentation
+        // consumers finish synchronously; no retained history is scanned again.
+        const EMPTY = this.presentationNotices;
+        EMPTY.length = 0;
+        this.presentationNotices = this.pendingNotices;
+        this.pendingNotices = EMPTY;
+        return this.presentationNotices;
     }
     // Required by the shared loop; a local session has no incoming work to poll.
     poll() {}
@@ -484,18 +518,7 @@ class FarmSession {
             case 'feed':
                 return W.scene === 'farm' && W.tapFood('manual');
             case 'mode':
-                if (W.scene === 'farm' && ['breed', 'merge'].includes(c.value)) {
-                    const CHANGED = W.mode !== c.value || (c.value !== 'merge' && W.mergeTask !== null);
-                    if (c.value !== 'merge') {
-                        W.mergeTask = null;
-                    }
-                    W.mode = c.value;
-                    if (CHANGED) {
-                        W.markProgressChanged();
-                    }
-                    return CHANGED;
-                }
-                return false;
+                return W.setFarmMode(c.value);
             case 'progression-invest':
                 if (W.scene === 'farm' && typeof c.nodeId === 'string' && c.nodeId.length < 64) {
                     if (c.scope === 'farm') {
@@ -572,6 +595,9 @@ class FarmSession {
     capturePresentation(mode = 'continuous') {
         if (mode !== 'continuous' && this.presentationSequence > 0) {
             this.presentationRevision++;
+            // The combat consumer discards the prior epoch. Unconsumed food
+            // input edges still reach the HUD once, as they did before a reset.
+            this.bindNoticeJournal();
         }
         const WORLD = this.world,
             RECEIPT_NOW_MS = this.captureClock(),
@@ -652,13 +678,19 @@ class FarmSession {
         const FRAME = this.presentationRuntime.frame(this.frameClock(now)),
             WORLD = this.world;
         if (!this.presentationView || Object.getPrototypeOf(this.presentationView) !== WORLD) {
-            const VIEW = (this.presentationView = Object.assign(Object.create(WORLD), {
-                units: [],
-                food: [],
-                projectiles: [],
-                effects: [],
-                presentationDiagnostics: {},
-            }));
+            const VIEW = (this.presentationView = Object.assign(
+                Object.create(WORLD, {
+                    // Shadow the model's collection accessor without invoking
+                    // its setter: presentation owns only this borrowed buffer.
+                    units: { value: [], writable: true, enumerable: true, configurable: true },
+                }),
+                {
+                    food: [],
+                    projectiles: [],
+                    effects: [],
+                    presentationDiagnostics: {},
+                },
+            ));
             // Only consume these models synchronously in this frame. GameKit owns and
             // reuses their fields; the app reuses the collection containers, not snapshots.
             this.collectPresentationModel = (model, id) => {
@@ -708,6 +740,11 @@ class FarmSession {
     dispose() {
         this.world.clearLocalScatter();
         this.closed = true;
+        this.unsubscribeNotices?.();
+        this.unsubscribeNotices = null;
+        this.noticeWorld = null;
+        this.pendingNotices.length = 0;
+        this.presentationNotices.length = 0;
         this.loop.stop();
         this.pending.length = 0;
         this.captureEntities.length = 0;

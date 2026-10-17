@@ -102,7 +102,12 @@ export function decideBossAcquisition({
         unitId: 0,
     };
 }
-export function grantPendingBossAcquisitions(world, { grantUnit = null } = {}) {
+export function grantPendingBossAcquisitions(world, options) {
+    return typeof world.mutateUnits === 'function'
+        ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world, options)
+        : grantPendingBossAcquisitionsCommitted(world, options);
+}
+function grantPendingBossAcquisitionsCommitted(world, { grantUnit = null } = {}) {
     const GRANTED = [];
     for (const REWARD of world.bossRewardReceipts || []) {
         if (REWARD.status !== 'pending') {
@@ -153,6 +158,11 @@ export function grantPendingBossAcquisitions(world, { grantUnit = null } = {}) {
     return GRANTED;
 }
 export function resolveBossAcquisition(world, options) {
+    return typeof world.mutateUnits === 'function'
+        ? world.mutateUnits(resolveBossAcquisitionCommitted, world, options)
+        : resolveBossAcquisitionCommitted(world, options);
+}
+function resolveBossAcquisitionCommitted(world, options) {
     const { encounterId: ENCOUNTER_ID, source: SOURCE = 'raid' } = options || {};
     const REQUESTED_RECEIPT_KEY = options?.receiptKey;
     if (
@@ -280,6 +290,11 @@ export function resolveBossAcquisition(world, options) {
 // Callers may supply an owner-scoped progression wallet for future Raid use;
 // Farm encounters use the saved wallet on the Garden itself.
 export function settleBossKill(world, options) {
+    return typeof world.mutateUnits === 'function'
+        ? world.mutateUnits(settleBossKillCommitted, world, options)
+        : settleBossKillCommitted(world, options);
+}
+function settleBossKillCommitted(world, options) {
     const RECEIPT = resolveBossAcquisition(world, options);
     const PROGRESSION_OWNER = options?.progressionOwner || world;
     const WALLET = options?.playerProgression || PROGRESSION_OWNER.playerProgression;
