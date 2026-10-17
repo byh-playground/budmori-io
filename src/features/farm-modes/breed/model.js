@@ -7,13 +7,21 @@ export class BreedFarmMode extends FarmMode {
     constructor(config) {
         super(FEATURE, config);
     }
-    enter(world) {
-        world.mergeTask = null;
-    }
-    changed(world) {
-        return world.mode !== this.feature.id || world.mergeTask !== null;
-    }
     updateReady(world, u, dt) {
+        const TASK = world.mergeTask;
+        if (TASK?.phase === 'approach' && TASK.materialIds?.includes(u.id)) {
+            const ANCHOR = world._unitById.get(TASK.materialIds[0]);
+            if (ANCHOR && u.cooldown <= 0) {
+                world.steer(
+                    u,
+                    u.id === ANCHOR.id ? u.x : ANCHOR.x,
+                    u.id === ANCHOR.id ? u.y : ANCHOR.y,
+                    dt,
+                    scaleMoveSpeed(2.2, u),
+                );
+            }
+            return;
+        }
         let target = null;
         if (!u.fed) {
             target = world.findNearestGroundFood(u.x, u.y);
@@ -59,6 +67,7 @@ export class BreedFarmMode extends FarmMode {
         if (!world.hasEligibleSameTierBreedPair()) {
             world.resolveFarmContactPairs(units, false);
         }
+        world.resolveMergeTaskAfterMovement();
     }
     pair(world, a, b, priorityResolved) {
         if (
@@ -85,16 +94,18 @@ export class BreedFarmMode extends FarmMode {
         if (a.isBattleOnlySummon || b.isBattleOnlySummon) {
             return false;
         }
+        const OWNER = world.breedingReservationOwner(a, b);
+        if (
+            !world.canBreedPair(a, b, true) ||
+            world.units.length >= world.capacity ||
+            (a.mateId && a.mateId !== b.id) ||
+            (b.mateId && b.mateId !== a.id) ||
+            (!priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair()) ||
+            !world.unitCollection.reserve(OWNER, [a, b])
+        ) {
+            return false;
+        }
         {
-            if (
-                !world.canBreedPair(a, b, true) ||
-                world.units.length >= world.capacity ||
-                (a.mateId && a.mateId !== b.id) ||
-                (b.mateId && b.mateId !== a.id) ||
-                (!priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair())
-            ) {
-                return false;
-            }
             a.mateId = b.id;
             b.mateId = a.id;
             const CHILD = world.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);

@@ -22,6 +22,9 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
     if (clone) {
         raw = structuredClone(raw);
     }
+    // Farm no longer has a user-selectable breeding/fusion mode. Older saves
+    // persisted it, but it has no effect on the current behavior.
+    delete raw.mode;
     delete raw.progress;
     if (raw.speed === 1 || raw.speed === 4) {
         delete raw.speed;

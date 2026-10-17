@@ -3,12 +3,12 @@ import { FlyingSkill } from '../model-base.js';
 export class UfoSkill extends FlyingSkill {
     constructor() {
         super(DEFINITION);
-        this.interval = 0.5;
     }
-    strike(owner, effect, _target) {
+    onPulse(owner, effect) {
         const TARGET = owner.verticalTarget(effect.x, effect.y);
         if (TARGET) {
-            owner.damage(TARGET, 10);
+            owner.damage(TARGET, this.definition.pulseDamage);
         }
+        effect.beamTargetZ = TARGET?.z ?? 0;
     }
 }

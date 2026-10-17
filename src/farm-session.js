@@ -324,6 +324,8 @@ class FormationEffectRender extends RENDER_OBJECT {
         targetY: R.LINEAR,
         targetZ: R.LINEAR,
         lastPulse: R.STEP,
+        pulse: R.STEP,
+        beamTargetZ: R.LINEAR,
     });
     update(effect) {
         for (const KEY of Object.keys(FormationEffectRender.renderSchema)) {
@@ -564,8 +566,8 @@ class FarmSession {
         switch (c.type) {
             case 'feed':
                 return W.scene === 'farm' && W.tapFood('manual');
-            case 'mode':
-                return W.setFarmMode(c.value);
+            case 'merge':
+                return W.scene === 'farm' && W.startManualMerge();
             case 'progression-invest':
                 if (W.scene === 'farm' && typeof c.nodeId === 'string' && c.nodeId.length < 64) {
                     if (c.scope === 'farm') {

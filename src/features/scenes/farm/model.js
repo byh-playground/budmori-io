@@ -76,7 +76,7 @@ export class FarmSimulationScene extends SimulationScene {
     }
     resolveLifeContacts(world, units) {
         const { FARM_MODES } = this.dependencies;
-        FARM_MODES[world.mode].resolveContacts(world, units);
+        FARM_MODES.breed.resolveContacts(world, units);
     }
     updateBossPhase(world, dt) {
         const { BOSS_EVENT_PHASES } = this.dependencies;

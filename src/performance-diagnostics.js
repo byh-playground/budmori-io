@@ -117,7 +117,7 @@ export class PerformanceDiagnostics {
                     : '미측정';
             };
         const LINES = [
-            `상태 ${world.scene}/${world.mode} ${paused ? '정지' : '실행'} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
+            `상태 ${world.scene} ${paused ? '정지' : '실행'} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
             `창 ${NUMBER(SAMPLE.windowMs / 1000, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? '켜짐' : '꺼짐'} · ${SAMPLE.retainedFrames > 1 ? '유효' : '표본 부족'}`,
             `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
             `창 합계: 논리 ${COUNT('logicTicks')} · 물리 ${COUNT('physicsSteps')} · 추가 catchup ${COUNT('catchupTicks')} · backlog drop ${COUNT('backlogDrops')}회/${NUMBER(COUNT('backlogDroppedMs'), 0)}ms · cap ${COUNT('backlogCappedFrames')}프레임/${NUMBER(COUNT('backlogClippedMs'), 0)}ms`,

@@ -35,7 +35,13 @@ import {
     unitCapabilityComposition,
     speciesWithCapability,
 } from './unit-abilities.js';
-import { bossAcquisitionChance, bossStageStats, settleBossKill, grantPendingBossAcquisitions } from './boss-rewards.js';
+import {
+    BOSS_REWARD_SETTINGS,
+    bossAcquisitionChance,
+    bossStageStats,
+    settleBossKill,
+    grantPendingBossAcquisitions,
+} from './boss-rewards.js';
 import { createFarmBossProgress } from './farm-boss-stages.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { createPlayerProgressionState } from './player-progression.js';
@@ -73,6 +79,8 @@ export function bindPresentationClock(world, clock) {
 }
 // sim.js
 const BREED_COOLDOWN_SECONDS = 10;
+const BREED_RESERVATION_OWNER = (aId, bId) => `breed:${Math.min(aId, bId)}:${Math.max(aId, bId)}`;
+const MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) => a - b).join(':')}`;
 const FARM_MAX_UNITS = 100,
     RAID_PLAYER_UNITS = 100,
     RAID_MAX_PLAYERS = 4,
@@ -1034,7 +1042,7 @@ const GARDEN = class Garden {
         this.formationRuntime = createFormationRuntime();
         this.progressRevision = 0;
         this._progressTimerCheckpoint = 0;
-        this.mergeTask = null;
+        this.cancelMergeTask();
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
@@ -1072,7 +1080,6 @@ const GARDEN = class Garden {
         this.bossSummonSerial = 0;
         this.combatLog = [];
         this.farmBossProgress = createFarmBossProgress(this.seed);
-        this.mode = 'breed';
         this.scene = 'farm';
         this.running = false;
         this.encounter = {
@@ -1971,7 +1978,10 @@ const GARDEN = class Garden {
                 UNIT_LOCAL.chestnutBasicCycles = 0;
             }
         }
-        this.boss = this.createBoss(this.randomBossSpecies());
+        const SPECIES = this.randomBossSpecies(),
+            EVENT_STAGE = this.playerProgression.farmBossEventStage;
+        this.boss = this.createBoss(SPECIES);
+        this.configureBossStage(EVENT_STAGE, SPECIES);
         Object.assign(this.boss, {
             x,
             y,
@@ -2059,7 +2069,10 @@ const GARDEN = class Garden {
             return;
         }
         this.formationSkills.end();
-        this.mergeTask = null;
+        this.cancelMergeTask();
+        for (const UNIT_LOCAL of this.units) {
+            this.releaseMate(UNIT_LOCAL);
+        }
         this.projectiles = [];
         this.scene = scene;
         this.running = scene === 'raid';
@@ -2106,7 +2119,12 @@ const GARDEN = class Garden {
             this._beginSpatialQueryBatch();
         }
         try {
+            const OWNER = this.breedingReservationOwner(a, b),
+                RESERVATIONS_AVAILABLE =
+                    this.unitCollection.reservationOwner(a) === null ||
+                    this.unitCollection.reservationOwner(a) === OWNER;
             return (
+                this.scene === 'farm' &&
                 a !== b &&
                 !a.isBattleOnlySummon &&
                 !b.isBattleOnlySummon &&
@@ -2123,6 +2141,9 @@ const GARDEN = class Garden {
                 b.cooldown <= 0 &&
                 this._unitIsActive(a) &&
                 this._unitIsActive(b) &&
+                RESERVATIONS_AVAILABLE &&
+                (this.unitCollection.reservationOwner(b) === null ||
+                    this.unitCollection.reservationOwner(b) === OWNER) &&
                 (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2)
             );
         } finally {
@@ -2130,6 +2151,9 @@ const GARDEN = class Garden {
                 this._endSpatialQueryBatch();
             }
         }
+    }
+    breedingReservationOwner(a, b) {
+        return BREED_RESERVATION_OWNER(a.id, b.id);
     }
     releaseMate(unit) {
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
@@ -2140,6 +2164,10 @@ const GARDEN = class Garden {
         if (MATE && MATE.mateId === unit.id) {
             MATE.mateId = 0;
         }
+        const OWNER = this.unitCollection.reservationOwner(unit);
+        if (OWNER?.startsWith('breed:')) {
+            this.unitCollection.releaseReservations(OWNER);
+        }
     }
     reconcileMateReservations() {
         const BATCH = !this._spatialStepActive;
@@ -2147,16 +2175,37 @@ const GARDEN = class Garden {
             this._beginSpatialQueryBatch();
         }
         try {
+            if (this.scene !== 'farm') {
+                for (const UNIT_LOCAL of this.units) {
+                    this.releaseMate(UNIT_LOCAL);
+                }
+                return;
+            }
+            const TASK = this.mergeTask;
+            if (TASK?.phase === 'approach') {
+                const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
+                    OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+                if (
+                    !this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) ||
+                    !this.unitCollection.reserve(OWNER, MATERIALS)
+                ) {
+                    this.cancelMergeTask();
+                }
+            }
             for (const UNIT_LOCAL of this.units) {
                 if (!UNIT_LOCAL.mateId) {
+                    const OWNER = this.unitCollection.reservationOwner(UNIT_LOCAL);
+                    if (OWNER?.startsWith('breed:')) {
+                        this.unitCollection.releaseReservations(OWNER);
+                    }
                     continue;
                 }
                 const MATE = this._unitById.get(UNIT_LOCAL.mateId);
                 if (
-                    this.mode !== 'breed' ||
                     !MATE ||
                     MATE.mateId !== UNIT_LOCAL.id ||
-                    !this.canBreedPair(UNIT_LOCAL, MATE)
+                    !this.canBreedPair(UNIT_LOCAL, MATE) ||
+                    !this.unitCollection.reserve(this.breedingReservationOwner(UNIT_LOCAL, MATE), [UNIT_LOCAL, MATE])
                 ) {
                     this.releaseMate(UNIT_LOCAL);
                 }
@@ -2174,7 +2223,7 @@ const GARDEN = class Garden {
         }
         try {
             if (
-                this.mode !== 'breed' ||
+                this.scene !== 'farm' ||
                 !unit.mature ||
                 !unit.fed ||
                 unit.cooldown > 0 ||
@@ -2214,6 +2263,9 @@ const GARDEN = class Garden {
             if (!mate) {
                 return null;
             }
+            if (!this.unitCollection.reserve(this.breedingReservationOwner(unit, mate), [unit, mate])) {
+                return null;
+            }
             unit.mateId = mate.id;
             mate.mateId = unit.id;
             return mate;
@@ -2224,7 +2276,7 @@ const GARDEN = class Garden {
         }
     }
     hasEligibleSameTierBreedPair() {
-        if (this.mode !== 'breed' || this.units.length >= this.capacity) {
+        if (this.scene !== 'farm' || this.units.length >= this.capacity) {
             return false;
         }
         const BATCH = !this._spatialStepActive;
@@ -2246,7 +2298,7 @@ const GARDEN = class Garden {
                     ) {
                         continue;
                     }
-                    if (!UNIT_LOCAL.mateId) {
+                    if (!UNIT_LOCAL.mateId && !this.unitCollection.reservationOwner(UNIT_LOCAL)) {
                         if (++unreserved >= 2) {
                             return true;
                         }
@@ -2255,6 +2307,8 @@ const GARDEN = class Garden {
                     const MATE = this._unitById.get(UNIT_LOCAL.mateId);
                     if (
                         MATE?.mateId === UNIT_LOCAL.id &&
+                        this.unitCollection.reservationOwner(UNIT_LOCAL) ===
+                            this.breedingReservationOwner(UNIT_LOCAL, MATE) &&
                         MATE.species === UNIT_LOCAL.species &&
                         MATE.tier === UNIT_LOCAL.tier &&
                         MATE.hp > 0 &&
@@ -2275,7 +2329,7 @@ const GARDEN = class Garden {
         }
         return false;
     }
-    canMergeGroup(materials, { requireContact = false, requireNoEnemy = false } = {}) {
+    canMergeGroup(materials, { requireContact = false, requireNoEnemy = false, reservationOwner = null } = {}) {
         const BATCH = !this._spatialStepActive;
         if (BATCH) {
             this._beginSpatialQueryBatch();
@@ -2303,6 +2357,8 @@ const GARDEN = class Garden {
                     UNIT_LOCAL.down > 0 ||
                     !UNIT_LOCAL.mature ||
                     UNIT_LOCAL.cooldown > 0 ||
+                    (this.unitCollection.reservationOwner(UNIT_LOCAL) &&
+                        this.unitCollection.reservationOwner(UNIT_LOCAL) !== reservationOwner) ||
                     !this._unitIsActive(UNIT_LOCAL)
                 ) {
                     return false;
@@ -2339,9 +2395,9 @@ const GARDEN = class Garden {
     canMergePair(a, b, options = {}) {
         return this.canMergeGroup([a, b], options);
     }
-    selectMergeTask() {
-        if (this.mode !== 'merge' || this.scene !== 'farm' || this.mergeTask) {
-            return;
+    selectMergeMaterials() {
+        if (this.scene !== 'farm' || this.mergeTask) {
+            return null;
         }
         const BATCH = !this._spatialStepActive;
         if (BATCH) {
@@ -2361,6 +2417,7 @@ const GARDEN = class Garden {
                         UNIT_LOCAL.mature &&
                         UNIT_LOCAL.cooldown <= 0 &&
                         UNIT_LOCAL.tier < CONFIG.unit.maxTier &&
+                        !this.unitCollection.reservationOwner(UNIT_LOCAL) &&
                         !this.senseEnemy(UNIT_LOCAL)
                     ) {
                         this._mergeEligibleGroups[
@@ -2474,45 +2531,94 @@ const GARDEN = class Garden {
                     }
                 }
             }
-            if (bestMaterialIds) {
-                this.mergeTask = {
-                    phase: 'approach',
-                    aId: bestMaterialIds[0],
-                    bId: bestMaterialIds[1],
-                    materialIds: bestMaterialIds,
-                    elapsed: 0,
-                    duration: CONFIG.farm.merge.animationSeconds,
-                };
-            }
+            return bestMaterialIds ? bestMaterialIds.map((id) => this._unitById.get(id)) : null;
         } finally {
             if (BATCH) {
                 this._endSpatialQueryBatch();
             }
         }
     }
+    mergeAvailability() {
+        if (this.scene !== 'farm') {
+            return { available: false, reason: '정원에서만 합성할 수 있어요.' };
+        }
+        if (this.farmBossEvent?.phase !== 'idle') {
+            return { available: false, reason: '전투가 끝난 뒤 합성할 수 있어요.' };
+        }
+        if (this.mergeTask) {
+            return { available: false, reason: '합성이 진행 중이에요.' };
+        }
+        const MATERIALS = this.selectMergeMaterials();
+        if (!MATERIALS) {
+            return { available: false, reason: '같은 종·티어 성체 재료가 필요해요.' };
+        }
+        return {
+            available: true,
+            tier: MATERIALS[0].tier + 1,
+            materialCount: MATERIALS.length,
+            reason: `T${MATERIALS[0].tier + 1} · 재료 ${MATERIALS.length}마리`,
+        };
+    }
+    startManualMerge() {
+        return this.mutateUnits(this._startManualMerge);
+    }
+    _startManualMerge() {
+        if (this.scene !== 'farm' || this.farmBossEvent?.phase !== 'idle' || this.mergeTask) {
+            return false;
+        }
+        const MATERIALS = this.selectMergeMaterials();
+        if (!MATERIALS) {
+            return false;
+        }
+        const MATERIAL_IDS = MATERIALS.map((unit) => unit.id),
+            OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS);
+        if (!this.unitCollection.reserve(OWNER, MATERIALS)) {
+            return false;
+        }
+        this.mergeTask = {
+            phase: 'approach',
+            aId: MATERIAL_IDS[0],
+            bId: MATERIAL_IDS[1],
+            materialIds: MATERIAL_IDS,
+            elapsed: 0,
+            duration: CONFIG.farm.merge.animationSeconds,
+        };
+        return true;
+    }
+    cancelMergeTask() {
+        const TASK = this.mergeTask;
+        if (!TASK) {
+            return false;
+        }
+        if (TASK.materialIds?.length) {
+            this.unitCollection.releaseReservations(MERGE_RESERVATION_OWNER(TASK.materialIds));
+        }
+        this.mergeTask = null;
+        return true;
+    }
     advanceMergeTask(dt) {
-        if (this.mode !== 'merge' || this.scene !== 'farm') {
-            this.mergeTask = null;
+        if (this.scene !== 'farm') {
+            this.cancelMergeTask();
             return;
         }
         if (this.mergeTask?.phase === 'animation') {
             this.mergeTask.elapsed = Math.min(this.mergeTask.duration, this.mergeTask.elapsed + dt);
             if (this.mergeTask.elapsed >= this.mergeTask.duration - 1e-9) {
-                this.mergeTask = null;
+                this.cancelMergeTask();
             }
             return;
         }
         if (this.mergeTask?.phase === 'approach') {
-            const MATERIALS = (this.mergeTask.materialIds || [this.mergeTask.aId, this.mergeTask.bId]).map((id) =>
-                this._unitById.get(id),
-            );
+            const TASK = this.mergeTask,
+                MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
+                OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
             // Combat pauses an otherwise valid group; death, invalid tiers, or removed units cancel it.
-            if (!this.canMergeGroup(MATERIALS)) {
-                this.mergeTask = null;
+            if (
+                !this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) ||
+                !this.unitCollection.reserve(OWNER, MATERIALS)
+            ) {
+                this.cancelMergeTask();
             }
-        }
-        if (!this.mergeTask) {
-            this.selectMergeTask();
         }
     }
     resolveMergeTaskAfterMovement() {
@@ -2520,11 +2626,13 @@ const GARDEN = class Garden {
         if (TASK?.phase !== 'approach') {
             return false;
         }
-        const MATERIALS = (TASK.materialIds || [TASK.aId, TASK.bId]).map((id) => this._unitById.get(id));
+        const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
+            OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
         if (
             !this.canMergeGroup(MATERIALS, {
                 requireContact: true,
                 requireNoEnemy: true,
+                reservationOwner: OWNER,
             })
         ) {
             return false;
@@ -2533,35 +2641,28 @@ const GARDEN = class Garden {
             priorityResolved: true,
         });
     }
-    setFarmMode(value) {
-        if (this.scene !== 'farm' || typeof value !== 'string' || !Object.hasOwn(FARM_MODES, value)) {
-            return false;
-        }
-        const MODE = FARM_MODES[value],
-            CHANGED = MODE.changed(this);
-        MODE.enter(this);
-        this.mode = value;
-        if (CHANGED) {
-            this.markProgressChanged();
-        }
-        return CHANGED;
-    }
     pair(a, b, priorityResolved = false) {
         return this.mutateUnits(this._pair, a, b, priorityResolved);
     }
     _pair(a, b, priorityResolved = false) {
-        return FARM_MODES[this.mode].pair(this, a, b, priorityResolved);
+        return FARM_MODES.breed.pair(this, a, b, priorityResolved);
     }
     mergeGroup(materials, options) {
         return this.mutateUnits(this._mergeGroup, materials, options);
     }
-    _mergeGroup(materials, { priorityResolved: _priorityResolved = false } = {}) {
+    _mergeGroup(materials) {
+        const TASK = this.mergeTask,
+            OWNER = TASK?.materialIds ? MERGE_RESERVATION_OWNER(TASK.materialIds) : null;
         if (
-            this.mode !== 'merge' ||
+            TASK?.phase !== 'approach' ||
             this.scene !== 'farm' ||
+            !OWNER ||
+            TASK.materialIds.length !== materials.length ||
+            !TASK.materialIds.every((id, index) => materials[index]?.id === id) ||
             !this.canMergeGroup(materials, {
                 requireContact: true,
                 requireNoEnemy: true,
+                reservationOwner: OWNER,
             })
         ) {
             return false;
@@ -3102,7 +3203,7 @@ const GARDEN = class Garden {
         return nearest;
     }
     farmUnit(u, dt) {
-        FARM_MODES[this.mode].update(this, u, dt);
+        FARM_MODES.breed.update(this, u, dt);
     }
     combat(kind, detail) {
         this.notice(kind, { time: this.time, ...detail });
@@ -3643,6 +3744,8 @@ const GARDEN = class Garden {
             }
         }
         if (outcome === 'victory') {
+            const EVENT_STAGE = this.boss.stage,
+                STAGE_STATS = bossStageStats(EVENT_STAGE);
             const SETTLEMENT = settleBossKill(this, {
                 encounterId: ENCOUNTER_ID,
                 source: 'farm',
@@ -3650,7 +3753,10 @@ const GARDEN = class Garden {
                 tier: 1,
                 x: this.boss.x,
                 y: this.boss.y,
+                rollBudget: STAGE_STATS.rollBudget,
+                xpAmount: STAGE_STATS.xp,
             });
+            this.playerProgression.farmBossEventStage = Math.min(EVENT_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
             const REWARD = SETTLEMENT.receipt;
             this.combat('farm-boss-xp', {
                 encounterId: ENCOUNTER_ID,
@@ -3659,8 +3765,10 @@ const GARDEN = class Garden {
                 pointsAwarded: SETTLEMENT.pointsAwarded,
             });
             this.combat('farm-boss-reward', {
-                acquired: REWARD.status === 'granted',
+                acquired: REWARD.grantedCount > 0,
                 pending: REWARD.status === 'pending',
+                successCount: REWARD.successCount,
+                grantedCount: REWARD.grantedCount,
                 species: REWARD.species,
                 tier: REWARD.tier,
                 chance: REWARD.chance,

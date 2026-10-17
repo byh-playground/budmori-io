@@ -1,4 +1,18 @@
 import { FormationPresentation, stroke } from '../presentation-base.js';
+const BEAM_POINTS = new WeakMap();
+
+function beamPointsFor(effect) {
+    let points = BEAM_POINTS.get(effect);
+    if (!points) {
+        points = [
+            [0, 0, 0],
+            [0, 0, 0],
+        ];
+        BEAM_POINTS.set(effect, points);
+    }
+    return points;
+}
+
 export class UfoPresentation extends FormationPresentation {
     draw(renderer, effect) {
         const ENTER = Math.min(1, effect.age / 0.5),
@@ -19,10 +33,13 @@ export class UfoPresentation extends FormationPresentation {
             renderer.ellipse(P.x, P.y + S * 0.15, S * (0.1 + 0.05 * Math.sin(effect.age * 12)), S * 0.07, '#afffeb88');
         }
         if (PULSE_AGE >= 0 && PULSE_AGE < 0.13 && effect.age > 0.5 && EXIT === 0) {
-            const POINTS = [
-                [effect.x, effect.y, Z - 0.15],
-                [effect.x, effect.y, 0],
-            ];
+            const POINTS = beamPointsFor(effect);
+            POINTS[0][0] = effect.x;
+            POINTS[0][1] = effect.y;
+            POINTS[0][2] = Z - 0.15;
+            POINTS[1][0] = effect.x;
+            POINTS[1][1] = effect.y;
+            POINTS[1][2] = effect.beamTargetZ;
             stroke(renderer, POINTS, '#74f5db44', 0.33);
             stroke(renderer, POINTS, '#afffe6cc', 0.11);
             stroke(renderer, POINTS, '#f4fff3', 0.035);

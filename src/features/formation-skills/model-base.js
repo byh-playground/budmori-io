@@ -1,5 +1,15 @@
-import { unitBodyRadius } from '../unit-body/definition.cjs';
+import { unitBodyHeight, unitBodyRadius } from '../unit-body/definition.cjs';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+
+function targetTop(owner, target) {
+    const BODY_HEIGHT =
+            target === owner.world.boss
+                ? target.height
+                : unitBodyHeight(target) * (target.giantUntil > owner.world.time ? 1.5 : 1),
+        MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
+    return target.z + BODY_HEIGHT * 0.84 + MARGIN;
+}
+
 export class FormationSkill {
     constructor(definition) {
         this.definition = definition;
@@ -53,21 +63,28 @@ export class FlyingSkill extends FormationSkill {
         if (!TARGET) {
             return false;
         }
-        const ANGLE = owner.world.random() * Math.PI * 2;
-        owner.addEffect(this.definition.id, {
-            x: TARGET.x + Math.cos(ANGLE) * 0.6,
-            y: TARGET.y + Math.sin(ANGLE) * 0.6,
-            z: TARGET.height + 2,
-            targetId: owner.targetId(TARGET),
+        const ANGLE = owner.world.random() * Math.PI * 2,
+            STATE = this.effectState(owner, TARGET, slot, ANGLE);
+        owner.addEffect(this.definition.id, STATE);
+        return true;
+    }
+    effectState(owner, target, slot, angle) {
+        const TARGET_Z = targetTop(owner, target);
+        return {
+            x: target.x + Math.cos(angle) * 0.6,
+            y: target.y + Math.sin(angle) * 0.6,
+            z: TARGET_Z + 2,
+            targetId: owner.targetId(target),
             duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
             pulse: 0,
             lastPulse: -10,
-            targetX: TARGET.x,
-            targetY: TARGET.y,
-            targetZ: TARGET.height,
-        });
-        return true;
+            targetX: target.x,
+            targetY: target.y,
+            targetZ: TARGET_Z,
+        };
     }
+    onPulse(_owner, _effect, _target) {}
+    strike(_owner, _effect, _target) {}
     update(owner, effect, dt) {
         effect.age += dt;
         const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
@@ -75,26 +92,28 @@ export class FlyingSkill extends FormationSkill {
             effect.targetId = owner.targetId(TARGET);
             const DX = TARGET.x - effect.x,
                 DY = TARGET.y - effect.y,
-                DISTANCE = Math.hypot(DX, DY),
-                RATE = Math.min(1, (dt * 6) / Math.max(DISTANCE, 0.01));
+                TARGET_Z = targetTop(owner, TARGET),
+                RATE = 1 - Math.exp(-dt * 6);
             effect.x += DX * RATE;
             effect.y += DY * RATE;
-            effect.z = TARGET.z + TARGET.height + 2;
+            effect.z += (TARGET_Z + 2 - effect.z) * RATE;
             effect.targetX = TARGET.x;
             effect.targetY = TARGET.y;
-            effect.targetZ = TARGET.z + TARGET.height * 0.6;
+            effect.targetZ = TARGET_Z;
         }
         owner.separateAir(effect, dt);
         const ACTIVE_AGE = effect.age - 0.5;
-        if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / this.interval)) {
+        const INTERVAL = this.definition.pulseInterval;
+        if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / INTERVAL)) {
             const DUE = Math.min(
-                Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / this.interval),
-                Math.floor((effect.duration + 1e-9) / this.interval),
+                Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / INTERVAL),
+                Math.floor((effect.duration + 1e-9) / INTERVAL),
             );
             while (effect.pulse < DUE) {
                 effect.pulse++;
+                effect.lastPulse = effect.age;
+                this.onPulse(owner, effect, TARGET);
                 if (TARGET && Math.hypot(TARGET.x - effect.x, TARGET.y - effect.y) <= 18) {
-                    effect.lastPulse = effect.age;
                     this.strike(owner, effect, TARGET);
                 }
             }

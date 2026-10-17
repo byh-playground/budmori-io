@@ -8,6 +8,7 @@ export class UnitCollection {
         this.unitType = unitType;
         this.items = [];
         this.subscriptions = new Map();
+        this.reservations = new Map();
         this.retiredDuringStep = [];
         this.onAdded = new Signal(notifications);
         this.onRemoved = new Signal(notifications);
@@ -17,6 +18,43 @@ export class UnitCollection {
     }
     has(unit) {
         return this.items.includes(unit);
+    }
+    reservationOwner(unitOrId) {
+        return this.reservations.get(typeof unitOrId === 'object' ? unitOrId?.id : unitOrId) || null;
+    }
+    reserve(owner, units) {
+        if (typeof owner !== 'string' || !owner || !Array.isArray(units) || units.length < 2) {
+            return false;
+        }
+        const IDS = new Set();
+        if (
+            units.some((unit) => {
+                if (!this.has(unit) || IDS.has(unit.id) || (this.reservationOwner(unit.id) || owner) !== owner) {
+                    return true;
+                }
+                IDS.add(unit.id);
+                return false;
+            })
+        ) {
+            return false;
+        }
+        for (const ID of IDS) {
+            this.reservations.set(ID, owner);
+        }
+        return true;
+    }
+    releaseReservations(owner) {
+        let released = 0;
+        for (const [ID, CURRENT_OWNER] of this.reservations) {
+            if (CURRENT_OWNER === owner) {
+                this.reservations.delete(ID);
+                released++;
+            }
+        }
+        return released;
+    }
+    releaseUnitReservation(unitOrId) {
+        return this.reservations.delete(typeof unitOrId === 'object' ? unitOrId?.id : unitOrId);
     }
     attach(unit) {
         for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
@@ -47,8 +85,9 @@ export class UnitCollection {
         this.world.releaseMate(unit);
         const TASK = this.world.mergeTask;
         if (TASK && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
-            this.world.mergeTask = null;
+            this.world.cancelMergeTask();
         }
+        this.releaseUnitReservation(unit.id);
         for (const OFF of this.subscriptions.get(unit) || []) {
             OFF();
         }
@@ -206,6 +245,7 @@ export class UnitCollection {
                 }
             }
             this.items = NEXT;
+            this.reservations.clear();
             for (const UNIT of NEXT) {
                 if (!this.subscriptions.has(UNIT)) {
                     this.attach(UNIT);

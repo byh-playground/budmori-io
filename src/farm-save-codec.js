@@ -37,7 +37,7 @@ export function decodeFarmSave(text) {
         // Only additive fields may be defaulted. An incomplete source must never
         // turn into a fresh Farm that can overwrite an existing save.
         if (
-            !['seed', 'rng', 'units', 'food', 'time', 'nextId', 'mode', 'scene', 'metrics'].every((key) =>
+            !['seed', 'rng', 'units', 'food', 'time', 'nextId', 'scene', 'metrics'].every((key) =>
                 Object.hasOwn(PARSED.world, key),
             )
         ) {
