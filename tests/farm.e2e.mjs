@@ -1350,6 +1350,10 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.counts.logicTicks.total <= Math.ceil((PERFORMANCE.windowMs / 1000) * 20) + 3);
     assert(PERFORMANCE.counts.physicsSteps.total >= PERFORMANCE.counts.logicTicks.total * 3);
     assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
+    assert(
+        PERFORMANCE.counts.presentationCaptures.total < PERFORMANCE.counts.logicTicks.total,
+        'catch-up ticks are coalesced into one presentation capture per RAF pulse',
+    );
     assert.equal(
         PERFORMANCE.counts.backlogDrops.total,
         PERFORMANCE.counts.clockGapDrops.total + PERFORMANCE.counts.dropPolicyDrops.total,

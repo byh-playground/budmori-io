@@ -15634,6 +15634,7 @@
       this.presentationRevision = 0;
       this.presentationSequence = 0;
       this.pendingPresentationMode = null;
+      this.pendingPulsePresentationMode = null;
       this.presentationRuntime = new PRESENTATION_RUNTIME({
         stepMs: PRESENTATION_STEP_MS,
         delayMs: PRESENTATION_STEP_MS,
@@ -15685,9 +15686,9 @@
         },
         onAdvance: (result) => {
           if (this.pendingPresentationMode) {
-            this.capturePresentation(this.pendingPresentationMode);
+            this.pendingPulsePresentationMode = "reset";
           } else if (result.status === "advanced" && !this.paused) {
-            this.capturePresentation("continuous");
+            this.pendingPulsePresentationMode ||= "continuous";
           }
         }
       });
@@ -16037,11 +16038,17 @@
     pulse(now) {
       this.pulseTimestamp = now;
       this.currentPulseCapped = false;
+      this.pendingPulsePresentationMode = null;
       const PREVIOUS_TICK = this.tick;
       this.loop.pulse(now, {
         render: false
       });
       this.currentPulseCapped = false;
+      const CAPTURE_MODE = this.pendingPulsePresentationMode;
+      this.pendingPulsePresentationMode = null;
+      if (CAPTURE_MODE) {
+        this.capturePresentation(CAPTURE_MODE);
+      }
       this.profiler?.count("catchupTicks", Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {
