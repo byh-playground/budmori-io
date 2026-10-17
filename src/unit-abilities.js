@@ -8,8 +8,8 @@ export const UNIT_ABILITY_PROFILES = Object.freeze({
   // One Peanut remains one world unit; its two kernels are presentation-only
   // and the two deterministic strike slots share the same active window.
   4: Object.freeze({ kind: "peanut-dual-strike", windup: .25, active: .5, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-  // Walnut's base hammer is a single hit; its guard skill is being held for
-  // the follow-up ability-tree implementation.
+  // Walnut's base hammer is a single hit; the separate guard trait empowers
+  // one subsequent basic cycle without adding an attack queue or timer.
   5: Object.freeze({ kind: "walnut-hammer", windup: .5, active: .25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
   6: Object.freeze({ kind: "ram", windup: .28, recovery: .65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
   7: Object.freeze({ kind: "punch", windup: .28, recovery: .65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),

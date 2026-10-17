@@ -245,3 +245,35 @@ export function effectiveBarleyArmor(target, baselineArmor, now) {
     Number.isFinite(target.barleyArmorBreakReduction) ? Math.max(0, Math.min(1, target.barleyArmorBreakReduction)) : 0;
   return Math.max(0, Number.isFinite(baselineArmor) ? baselineArmor : 0) * (1 - reduction);
 }
+
+
+// Keep draft balance values in the catalog and derive runtime effects here.
+export function getPeanutAssaultConfig(progression, tier) {
+  const definition = definitionFor("peanut-separated-assault");
+  if (!isAbilityActive(progression, definition.id, tier)) return null;
+  return {
+    strikeCount: definition.powerValues[powerLevelFor(progression, definition.id)],
+    attackMultiplier: definition.strikeAttackMultiplier,
+    spreadRadians: definition.spreadRadians
+  };
+}
+
+export function getWalnutGuardConfig(progression, tier) {
+  const definition = definitionFor("walnut-guard-slam");
+  if (!isAbilityActive(progression, definition.id, tier)) return null;
+  const level = powerLevelFor(progression, definition.id);
+  return {
+    damageMultiplier: definition.powerValues[level],
+    receivedDamageMultiplier: definition.receivedDamageMultiplier,
+    receivedKnockbackMultiplier: definition.receivedKnockbackMultiplier,
+    guardRecoveryStartFraction: definition.guardRecoveryStartFraction,
+    radius: abilityProfile(definition.species).range * definition.radiusBaseRangeFraction * definition.radiusMultipliers[level]
+  };
+}
+
+export function isWalnutGuardActive(unit, config, recoverySeconds) {
+  return !!config && unit?.species === 5 && unit.hp > 0 && unit.down <= 0 &&
+    unit.stun <= 0 && unit.z <= 0.1 && unit.ability?.phase === "recover" &&
+    !!unit.ability.action && !unit.ability.action.walnutEmpowered && !unit.ability.action.walnutGuardUsed &&
+    unit.ability.elapsed >= recoverySeconds * config.guardRecoveryStartFraction && unit.ability.elapsed < recoverySeconds;
+}

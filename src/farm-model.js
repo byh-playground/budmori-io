@@ -9,8 +9,8 @@ import {purchaseAbilityNode, purchaseFarmUpgrade, resetAbilityProgression} from 
 import {createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot} from './ability-state.js';
 import {FARM_UPGRADE_NODES, farmUpgradeRate, getAutoTapSeconds, getBreedCooldownSeconds, getFarmCapacity, getMergeCooldownSeconds} from './farm-upgrades.js';
 import {createBeanSplitDescriptors, getCornBurstConfig, createCornBurstShotSchedule, getPopcornExplosionConfig, getChestnutSpikeConfig, getChestnutSpikeFanAngles, getChestnutSpikeIntervalSeconds, getContinuousLeapConfig, shouldResetLeapCooldown, getLandingShockwaveConfig, getRiceHarvestMultiplier, getWheatCommandConfig, refreshWheatCommandBuff, getBarleyArmorBreakConfig, refreshBarleyArmorBreak, effectiveBarleyArmor} from './species-abilities.js';
-import {MAX_BEAN_SPLIT_CHILDREN} from './species-abilities.js';
-import {createPeanutStrikeSchedule,resolveStrikeMask} from './unit-combat-patterns.js';
+import {MAX_BEAN_SPLIT_CHILDREN,getPeanutAssaultConfig,getWalnutGuardConfig,isWalnutGuardActive} from './species-abilities.js';
+import {createPeanutStrikeSchedule,resolveStrikeMask,PEANUT_BASE_STRIKE} from './unit-combat-patterns.js';
 import {MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier} from './unit-grades.js';
 import {BOSS_PATTERN_IDS,BOSS_PATTERN_CONFIG,BOSS_AIM_TURN_RATE,createBossPatternRuntime,chooseBossPattern} from './boss-patterns.js';
 import {FACTION_CONFIG,hasFaction,areOpposingFactions} from './factions.js';
@@ -98,7 +98,15 @@ class AttackCycle {
     begin(sim,target){
     const u=this.owner;if(this.phase!=="idle"||u.down>0||u.stun>0||u.z>.1||u.landingRecovery>0)return false;
     this.phase="windup";this.elapsed=0;this.action={id:++sim.attackSerial,target:{...target},targetId:target.id??'boss',hit:false,path:null};
-    if(this.spec.kind==='peanut-dual-strike')Object.assign(this.action,{resolvedMask:0,hitMask:0});
+    if(this.spec.kind==='peanut-dual-strike'){
+      const assault=getPeanutAssaultConfig(sim.abilityProgressionFor(u),u.tier);
+      Object.assign(this.action,{resolvedMask:0,hitMask:0,peanutStrikeCount:assault?.strikeCount||PEANUT_BASE_STRIKE.count,peanutAttackMultiplier:assault?.attackMultiplier??PEANUT_BASE_STRIKE.attackMultiplier,peanutSpreadRadians:assault?.spreadRadians??PEANUT_BASE_STRIKE.spreadRadians});
+    }
+    if(this.spec.kind==='walnut-hammer'){
+      const guard=getWalnutGuardConfig(sim.abilityProgressionFor(u),u.tier);
+      Object.assign(this.action,{walnutEmpowered:!!guard&&u.walnutEmpoweredNextBasic,walnutGuardUsed:false});
+      u.walnutEmpoweredNextBasic=false;
+    }
     u.angle=Math.atan2(target.y-u.y,target.x-u.x);u.vx=u.vy=0;
     sim.combatEvent("prepare",u,this.action);return true;
   }
@@ -107,6 +115,7 @@ class AttackCycle {
   update(sim,dt){
     const u=this.owner;
     if(u.stun>0||u.down>0){this.interrupt();return true}
+    if(this.action&&(this.phase==="windup"||this.phase==="active")&&!(sim.attackTarget(u,this.action)?.hp>0)){this.interrupt();return true}
     if(this.phase==="idle")return false;
     this.elapsed+=dt;
     if(this.phase==="windup"){
@@ -148,7 +157,7 @@ class AttackCycle {
     const a=this.action,u=this.owner;
     if(this.spec.kind==='peanut-dual-strike'){
       if(this.phase!=='active'||!a?.path)return;
-      const schedule=createPeanutStrikeSchedule({activeSeconds:this.spec.active});
+      const schedule=createPeanutStrikeSchedule({strikeCount:a.peanutStrikeCount||2,attackMultiplier:a.peanutAttackMultiplier??PEANUT_BASE_STRIKE.attackMultiplier,spreadRadians:a.peanutSpreadRadians??Math.PI/12,activeSeconds:this.spec.active});
       for(const slot of schedule){
         if(this.elapsed+1e-9<slot.dueSeconds||((a.resolvedMask||0)&(1<<slot.strikeIndex))!==0)continue;
         const target=sim.attackTarget(u,a);
@@ -169,10 +178,12 @@ class AttackCycle {
       if(this.elapsed>=this.spec.active-1e-9){u.z=0;u.vz=0;this.recover(sim,false)}
       return;
     }
-    const target=sim.attackTarget(u,a);if(this.phase!=="active"||!a?.path||!target)return;
+    const target=sim.attackTarget(u,a);if(this.phase!=="active"||!a?.path)return;if(!target||target.hp<=0){this.interrupt();return}
     const areaRadius=scaleAttackArea(u.radius,u);
     const hit=!a.hit&&ArenaGeometry.sweep(old,u,areaRadius,.65,target);
-    if(hit){sim.damageCombatTarget(u,a,target,hit,{attackMultiplier:this.spec.skillMultiplier,attackKind:this.spec.kind});if(this.spec.kind==="ram"||this.spec.kind==="punch"){u.x=hit.x;u.y=hit.y;u.z=hit.z;this.recover(sim,true);return}}
+    if(hit){
+      if(a.walnutEmpowered)sim.triggerWalnutSlam(u,a,target,hit);
+      else sim.damageCombatTarget(u,a,target,hit,{attackMultiplier:this.spec.skillMultiplier,attackKind:this.spec.kind});if(this.spec.kind==="ram"||this.spec.kind==="punch"){u.x=hit.x;u.y=hit.y;u.z=hit.z;this.recover(sim,true);return}}
     if(this.elapsed>=a.path.duration){u.z=0;u.vz=0;u.vx=u.vy=0;if(this.spec.kind==="leap"){
       u.bounce=.2;sim.combatEvent("land-attack",u,a);
       if(!a.hit&&ArenaGeometry.overlaps({x:u.x,y:u.y,z:0,radius:scaleAttackArea(u.radius+.35,u),height:.65},target))sim.damageCombatTarget(u,a,target,u,{attackMultiplier:this.spec.skillMultiplier,attackKind:this.spec.kind});
@@ -192,7 +203,7 @@ const AttackingBody=Base=>class extends Base{
     constructor(id, species, tier, x, y) {
       super(x, y);
       Object.assign(this, { id, species, tier, faction:FACTION_CONFIG.PLAYER, meals: 0, growth: 0, growthElapsed: 0, growthDuration: CONFIG.breedGrowthSeconds, age: 0, cooldown: 0, cooldownDuration:0, mateId:0, perceptionRange:CONFIG.raid.perceptionRange, home: { x, y }, hp: stats(tier,species).maxHp, down: 0, seed: id * 2.39996,ownerId:'',farmId:0,dropLanded:true,
-        isBattleOnlySummon:false,battleSummonKind:'',battleSummonParentId:0,battleSummonEncounterId:0,countsTowardPermanentRoster:true,eligibleForRaidDeployment:true,breedingEligible:true,mergeEligible:true,canSplit:true,splitUsedThisBattle:false,deathSplitHandled:false,usesPersistentSleep:true,lifetime:'',chestnutBasicCycles:0,landingRecovery:0,wheatCommandUntil:0,wheatCommandCritBonus:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0 });
+        isBattleOnlySummon:false,battleSummonKind:'',battleSummonParentId:0,battleSummonEncounterId:0,countsTowardPermanentRoster:true,eligibleForRaidDeployment:true,breedingEligible:true,mergeEligible:true,canSplit:true,splitUsedThisBattle:false,deathSplitHandled:false,usesPersistentSleep:true,lifetime:'',chestnutBasicCycles:0,landingRecovery:0,walnutEmpoweredNextBasic:false,wheatCommandUntil:0,wheatCommandCritBonus:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0 });
     }
     get radius() {
       return unitRadiusForTier(this.tier) * (this.mature ? 1 : 0.8);
@@ -401,7 +412,7 @@ const AttackingBody=Base=>class extends Base{
       return true;
     }
     handleUnitDeath(unit){
-      if(!unit||unit.deathSplitHandled)return false;
+      if(!unit)return false;unit.walnutEmpoweredNextBasic=false;if(unit.deathSplitHandled)return false;
       this._syncUnitAliveCount(unit);
       unit.deathSplitHandled=true;
       if(unit.isBattleOnlySummon){unit.down=0;this._trackUnitRemoved(unit,{keepStepSnapshot:true});this.units=this.units.filter(candidate=>candidate!==unit);return false}
@@ -420,12 +431,32 @@ const AttackingBody=Base=>class extends Base{
       this.combat('pea-split',{unit:unit.id,ownerId:unit.ownerId,species:0,count:descriptors.length,x:unit.x,y:unit.y});
       return true;
     }
-    cleanupBattleSummons(){for(const unit of this.units)if(unit.isBattleOnlySummon)this._trackUnitRemoved(unit);this.units=this.units.filter(unit=>!unit.isBattleOnlySummon);this.projectiles=[];return true}
+    cleanupBattleSummons(){for(const unit of this.units)unit.walnutEmpoweredNextBasic=false;for(const unit of this.units)if(unit.isBattleOnlySummon)this._trackUnitRemoved(unit);this.units=this.units.filter(unit=>!unit.isBattleOnlySummon);this.projectiles=[];return true}
     triggerLandingShockwave(unit,action,config){
       const range=abilityProfile(unit.species).range*config.radiusMultiplier,point={x:unit.x,y:unit.y,z:0},distance=Math.hypot(unit.x-this.boss.x,unit.y-this.boss.y);
       this.effects.push({kind:'landing-shockwave',x:unit.x,y:unit.y,z:0,life:0,duration:.55,radius:range,owner:unit.id});
       if(this.boss.hp>0&&distance<=range+this.boss.radius){const blast={id:action.id,hit:false,attackKind:'kidney-shockwave'};this.damageBoss(unit,blast,point,{attackMultiplier:config.damageMultiplier,attackKind:'kidney-shockwave',area:true});}
       this.combat('kidney-shockwave',{unit:unit.id,ownerId:unit.ownerId,species:2,x:unit.x,y:unit.y,radius:range,damageMultiplier:config.damageMultiplier});
+    }
+    walnutGuardConfigFor(unit){
+      if(unit.species!==5)return null;const config=getWalnutGuardConfig(this.abilityProgressionFor(unit),unit.tier);
+      return isWalnutGuardActive(unit,config,scaleAttackRecovery(abilityProfile(unit.species).recovery,unit))?config:null;
+    }
+    receiveWalnutGuard(unit){
+      const config=this.walnutGuardConfigFor(unit);if(!config)return null;
+      unit.ability.action.walnutGuardUsed=true;unit.walnutEmpoweredNextBasic=true;
+      this.combat('walnut-guard',{unit:unit.id,x:unit.x,y:unit.y,z:unit.z});return config;
+    }
+    triggerWalnutSlam(unit,action,primaryTarget,point){
+      if(action.hit||!primaryTarget||primaryTarget.hp<=0||!areOpposingFactions(unit,primaryTarget))return false;const config=getWalnutGuardConfig(this.abilityProgressionFor(unit),unit.tier);if(!config)return false;
+      action.hit=true;
+      const targets=[primaryTarget];
+      if(primaryTarget!==this.boss&&this.boss.hp>0&&areOpposingFactions(unit,this.boss)&&Math.hypot(this.boss.x-point.x,this.boss.y-point.y)<=config.radius+this.boss.radius)targets.push(this.boss);
+      for(const target of this.units)if(target!==primaryTarget&&target.hp>0&&areOpposingFactions(unit,target)&&Math.hypot(target.x-point.x,target.y-point.y)<=config.radius+target.radius)targets.push(target);
+      const criticalRoll=stats(unit.tier,unit.species).critChance+this.wheatCommandCritBonusFor(unit)>0?this.random():1;
+      for(const target of targets)this.damageCombatTarget(unit,{id:action.id,hit:false},target,point,{attackMultiplier:config.damageMultiplier,attackKind:'walnut-empowered-slam',area:true,criticalRoll});
+      this.effects.push({kind:'walnut-shockwave',x:point.x,y:point.y,z:0,life:0,duration:.5,radius:config.radius,owner:unit.id});
+      this.combat('walnut-slam',{unit:unit.id,attackId:action.id,x:point.x,y:point.y,z:0,radius:config.radius});return true;
     }
     senseEnemy(unit){
       if(unit.hp<=0||!unit.dropLanded)return null;
@@ -546,7 +577,7 @@ const AttackingBody=Base=>class extends Base{
       const idMap=new Map(this.units.map((u,index)=>[u.id,scene==='raid'?1000000+index+1:(u.farmId||u.id)]));
       for(let i=0;i<this.units.length;i++){
         const u=this.units[i],oldMateId=u.mateId;if(scene==='raid'){u.home={x:u.x,y:u.y};u.farmId=u.farmId||u.id;u.ownerId='solo';u.id=1000000+i+1;u.dropLanded=true;const angle=i*2.3999632297,rad=10.5+(i%3)*.9;Object.assign(u,{x:Math.cos(angle)*rad,y:Math.sin(angle)*rad*.84})}else{u.id=u.farmId||u.id;u.ownerId='';u.farmId=0;u.dropLanded=true;Object.assign(u,u.home)}u.mateId=idMap.get(oldMateId)||0;
-        u.ability=new AttackCycle(u);Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier,u.species).maxHp});
+        u.ability=new AttackCycle(u);u.walnutEmpoweredNextBasic=false;Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier,u.species).maxHp});
       }
       if(this.running){this.boss.active=true;this.boss.phase='chase';this.boss.encounterId=this.activeRaidRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime();this.raidExpectedPlayers=['solo'];this.raidRosters=[{ownerId:'solo',troops:this.units.filter(u=>!u.isBattleOnlySummon).map(u=>({farmId:u.farmId,species:u.species,tier:u.tier,deployed:true})),abilitySnapshot:createAbilityRuntimeSnapshot(this.playerProgression),buffUntil:0,buffReadyAt:0}];this.raidDeploymentStarted=true}else{this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false}
       this._unitSpatialDirty=true;
@@ -960,7 +991,7 @@ const AttackingBody=Base=>class extends Base{
         if(config)refreshBarleyArmorBreak(target,config,this.time,resolveStatusDuration(config.durationSeconds,u,target));
       }
     }
-    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null,area=false}={}){
+    damageBoss(u,action,point,{lifestealSource=u,attackMultiplier=null,attackKind=null,strikeIndex=null,area=false,criticalRoll=null}={}){
       if(!hasFaction(u,FACTION_CONFIG.PLAYER)||!areOpposingFactions(u,this.boss)||action.hit||this.boss.hp<=0)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil;
       const hpBefore=this.boss.hp,maxHp=this.boss.maxHp;
@@ -971,7 +1002,7 @@ const AttackingBody=Base=>class extends Base{
       const harvestMultiplier=this.riceHarvestMultiplier(u,this.boss,kind,hpBefore,maxHp);
       const rawDamage=attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier;
       const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,area,sourceStatOverrides,armorForTarget:()=>armor,roll:()=>this.random()});
+      const damage=applyDamageToTargets(lifestealSource,[this.boss],{rawDamage,area,sourceStatOverrides,armorForTarget:()=>armor,roll:()=>criticalRoll??this.random()});
       this.applyGrainOnBasicHit(u,this.boss,kind);
       this.boss.flash=.13;
       const dx=point.x-this.boss.x,dy=point.y-this.boss.y,d=Math.hypot(dx,dy)||1;
@@ -982,15 +1013,15 @@ const AttackingBody=Base=>class extends Base{
       if(action?.targetId==='boss'||!action?.targetId)return areOpposingFactions(unit,this.boss)?this.boss:null;
       return this.units.find(candidate=>candidate.id===action.targetId&&candidate.hp>0&&areOpposingFactions(unit,candidate))||null;
     }
-    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null,area=false}={}){
+    damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null,area=false,criticalRoll=null}={}){
       if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit)return false;action.hit=true;
       const spec=abilityProfile(u.species),roster=this.raidRoster(u.ownerId),buffed=!!roster&&this.time<roster.buffUntil,attackerStats=stats(u.tier,u.species),damageMultiplier=Number.isFinite(attackMultiplier)?attackMultiplier:spec.skillMultiplier,kind=attackKind||spec.kind;
       const targetMaxHp=stats(target.tier,target.species).maxHp,harvestMultiplier=this.riceHarvestMultiplier(u,target,kind,target.hp,targetMaxHp);
-      const baselineArmor=stats(target.tier,target.species).armor,armor=effectiveBarleyArmor(target,baselineArmor,this.time);
+      const baselineArmor=stats(target.tier,target.species).armor,armor=effectiveBarleyArmor(target,baselineArmor,this.time),guard=this.receiveWalnutGuard(target);
       const sourceStatOverrides={critChance:clamp(attackerStats.critChance+this.wheatCommandCritBonusFor(u),0,1)};
-      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier,area,sourceKind:hasFaction(u,FACTION_CONFIG.PLAYER)?'direct':'enemy',sourceStatOverrides,armorForTarget:()=>armor});this._syncUnitAliveCount(target);
+      const damage=applyDamageToTargets(u,[target],{rawDamage:attackerStats.attackPower*damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(guard?.receivedDamageMultiplier??1),area,sourceKind:hasFaction(u,FACTION_CONFIG.PLAYER)?'direct':'enemy',sourceStatOverrides,armorForTarget:()=>armor,roll:()=>criticalRoll??this.random()});this._syncUnitAliveCount(target);
       this.applyGrainOnBasicHit(u,target,kind);
-      const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5,2.4,u);
+      const dx=target.x-u.x,dy=target.y-u.y,n=Math.hypot(dx,dy)||1;target.knock(dx/n,dy/n,5*(guard?.receivedKnockbackMultiplier??1),2.4*(guard?.receivedKnockbackMultiplier??1),u);
       if(target.hp===0){target.down=target.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(target)}
       this.metrics.directHits++;this.metrics.basicHits++;
       this.combat('unit-hit',{attackKind:kind,attackId:action.id,strikeIndex,unit:target.id,sourceUnit:u.id,damage:damage?.damage||0,x:point.x,y:point.y,z:Math.max(.15,target.z+.25),nx:dx/n,ny:dy/n,strength:damageMultiplier*(buffed?CONFIG.raid.buffDamage:1)*harvestMultiplier*(damage?.critical?attackerStats.critMultiplier:1)});
@@ -1156,9 +1187,10 @@ const AttackingBody=Base=>class extends Base{
       if(config.groundOnly&&unit.z>.1)return false;
       b.hit.add(unit.id);action.hitIds.push(unit.id);
       const dx=normal?.x??unit.x-b.x,dy=normal?.y??unit.y-b.y,n=Math.hypot(dx,dy)||1;
-      unit.knock(dx/n,dy/n,config.knockback,config.lift,b);
+      const guard=this.receiveWalnutGuard(unit),knockbackMultiplier=guard?.receivedKnockbackMultiplier??1;
+      unit.knock(dx/n,dy/n,config.knockback*knockbackMultiplier,config.lift*knockbackMultiplier,b);
       if(!hasFaction(unit,FACTION_CONFIG.PLAYER)||!areOpposingFactions(b,unit))return false;
-      applyDamageToTargets(null,[unit],{rawDamage:b.attackPower*config.damageMultiplier,sourceKind:'enemy'});this._syncUnitAliveCount(unit);
+      applyDamageToTargets(null,[unit],{rawDamage:b.attackPower*config.damageMultiplier*(guard?.receivedDamageMultiplier??1),sourceKind:'enemy'});this._syncUnitAliveCount(unit);
       if(unit.hp===0){unit.down=unit.isBattleOnlySummon?0:CONFIG.corpseRecoverySeconds;this.handleUnitDeath(unit)}
       const isSweep=patternId==='attack.sweep-360'||patternId==='attack.fan-sweep';this.metrics.directHits++;this.metrics[isSweep?'sweepHits':'basicHits']++;
       this.combat('unit-hit',{attackKind:patternId,attackId:b.attackId,unit:unit.id,x:point.x,y:point.y,z:Math.max(.15,unit.z+.25),nx:dx/n,ny:dy/n,strength:config.damageMultiplier});return true;
