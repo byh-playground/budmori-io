@@ -1,4 +1,4 @@
-import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
+import { SPECIES_ABILITY_DEFINITIONS, abilityPresentationFor } from './ability-catalog.js';
 import { SPECIES_CATALOG, speciesById } from './species-catalog.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { abilityProfile } from './unit-abilities.js';
@@ -13,7 +13,42 @@ import {
     purchaseAbilityNode,
     resetAbilityProgression,
 } from './ability-progression.js';
-const DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
+
+const DEFAULT_ABILITY_PRESENTATION = {
+    label(_definition, _value, level) {
+        return `강화 ${level}`;
+    },
+    title() {
+        return '능력 강화';
+    },
+};
+const INVESTMENT_REASON_LABELS = new Map([
+    ['already-invested', '이미 투자한 노드입니다.'],
+    ['root-required', '먼저 능력 루트를 해금하세요.'],
+    ['prerequisite-required', '이전 단계에 먼저 투자하세요.'],
+    ['insufficient-points', '공용 포인트가 필요합니다.'],
+    ['combat-lock', '전투 중에는 투자할 수 없습니다.'],
+    ['farm-only', '농장에서만 투자할 수 있습니다.'],
+    ['max-level', '최대 강화 단계입니다.'],
+    ['invalid-state', '성장 데이터가 유효하지 않습니다.'],
+]);
+const NODE_REASON_LABELS = new Map([
+    ...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text]),
+    ['requires-rare-tier', (definition) => `이 종의 Rare (T${definition.rootTier}) 이상 개체가 필요합니다.`],
+]);
+const RESET_REASON_LABELS = new Map([
+    ['nothing-invested', '투자한 포인트가 없습니다.'],
+    ['combat-lock', '전투 중에는 초기화할 수 없습니다.'],
+    ['farm-only', '농장에서만 초기화할 수 있습니다.'],
+    ['invalid-state', INVESTMENT_REASON_LABELS.get('invalid-state')],
+]);
+const FARM_UPGRADE_REASON_LABELS = new Map([
+    ...['combat-lock', 'farm-only', 'max-level', 'invalid-state'].map((reason) => [
+        reason,
+        INVESTMENT_REASON_LABELS.get(reason),
+    ]),
+    ['insufficient-points', '공용 XP 포인트가 필요합니다.'],
+]);
 export function renderFarmUpgradeTreeMarkup(state, { location = 'farm', inCombat = false } = {}) {
     if (!isValidPlayerProgressionState(state)) {
         throw new TypeError('Cannot render invalid player progression state');
@@ -135,8 +170,8 @@ function renderAbilityCard(state, definition, context) {
         .slice(1)
         .map((value, index) => {
             const LEVEL = index + 1;
-            const LABEL = powerLabel(definition.id, value, LEVEL);
-            return renderNode(state, definition, `power-${LEVEL}`, powerTitle(definition.id, value), LABEL, context);
+            const LABEL = powerLabel(definition, value, LEVEL);
+            return renderNode(state, definition, `power-${LEVEL}`, powerTitle(definition, value), LABEL, context);
         })
         .join('');
     const GRADE_NODES = definition.gradeThresholds
@@ -156,7 +191,7 @@ function renderAbilityCard(state, definition, context) {
     <div class="ability-card__root">
       <span class="ability-node__branch-label">능력 루트</span>
       ${renderNode(state, definition, 'root', '능력 해금', `Rare (T${definition.rootTier}) 개체 필요`, context, ROOT_STATUS)}
-      <p class="ability-card__base-effect">기본 효과: ${powerLabel(definition.id, definition.powerValues[0], 0)}</p>
+      <p class="ability-card__base-effect">기본 효과: ${powerLabel(definition, definition.powerValues[0], 0)}</p>
     </div>
     <div class="ability-card__branches">
       <section class="ability-branch" aria-label="능력 강화 경로"><h4>능력 강화</h4><div class="ability-branch__nodes">${POWER_NODES}</div></section>
@@ -176,136 +211,26 @@ function renderNode(state, definition, nodeId, title, effect, context, knownStat
     <span class="ability-node__status" id="${HINT_ID}">${STATUS_TEXT}</span>
   </div>`;
 }
-function powerLabel(abilityId, value, level) {
-    if (abilityId === 'pea-death-split') {
-        return `전투 사망 시 같은 종 T1 ${value}마리 생성`;
-    }
-    if (abilityId === 'corn-burst-fire') {
-        const SHARE = DEFINITION_BY_ID.get(abilityId).projectileAttackShare;
-        return `한 공격 주기 · 발사 ${value}발 · 발당 ATK ×${abilityProfile(1).skillMultiplier * SHARE}`;
-    }
-    if (abilityId === 'corn-popcorn-chain') {
-        const DEFINITION = DEFINITION_BY_ID.get(abilityId);
-        const RADIUS_MULTIPLIER = DEFINITION.radiusMultipliers[level] || DEFINITION.radiusMultipliers[0];
-        return `착탄 ${DEFINITION.fuseSeconds}초 후 · 팝콘 접촉 즉시 연쇄 · 피해 ATK ×${value} · 반경 기본 사거리 ×${DEFINITION.baseRangeFraction} ×${RADIUS_MULTIPLIER}`;
-    }
-    if (abilityId === 'chestnut-spike-fan') {
-        const DEFINITION = DEFINITION_BY_ID.get(abilityId);
-        return `목표 방향 부채꼴 90° ${value}발 · 발당 ATK ×${DEFINITION.projectileAttackMultiplier} · 기본 공격 ${DEFINITION.intervalBasicCycles}주기마다`;
-    }
-    if (abilityId === 'kidney-continuous-leap') {
-        return `착지 후 도약 쿨다운 초기화 ${Math.round(value * 100)}%`;
-    }
-    if (abilityId === 'kidney-landing-shockwave') {
-        return `충격파 피해·반경 ${value}×`;
-    }
-    if (abilityId === 'peanut-separated-assault') {
-        return `한 공격 주기 ${value}타 · 타격당 ATK ×${DEFINITION_BY_ID.get(abilityId).strikeAttackMultiplier} · 넓은 협공 궤적`;
-    }
-    if (abilityId === 'walnut-guard-slam') {
-        const DEFINITION = DEFINITION_BY_ID.get(abilityId);
-        return `첫 방어 피격 피해 −${Math.round((1 - DEFINITION.receivedDamageMultiplier) * 100)}%·넉백 −${Math.round((1 - DEFINITION.receivedKnockbackMultiplier) * 100)}% · 다음 공격 ATK ×${value} · 충격파 반경 기본 사거리 ×${DEFINITION.radiusBaseRangeFraction * DEFINITION.radiusMultipliers[level]}`;
-    }
-    if (abilityId === 'rice-low-health-harvest') {
-        return `HP ${Math.round(DEFINITION_BY_ID.get(abilityId).targetHpThreshold * 100)}% 이하 대상에게 기본 피해 총 ${value}×`;
-    }
-    if (abilityId === 'wheat-command-crit') {
-        const DEFINITION = DEFINITION_BY_ID.get(abilityId);
-        return `기본 공격 적중 시 자신 포함 반경 기본 사거리 ×${DEFINITION.radiusRangeRatio} 안의 생존 아군 치명타 +${Math.round(value * 100)}%p · ${DEFINITION.durationSeconds}초`;
-    }
-    if (abilityId === 'barley-armor-break') {
-        return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · 5초`;
-    }
-    return `강화 ${level}`;
+function powerLabel(definition, value, level) {
+    return (abilityPresentationFor(definition.id) || DEFAULT_ABILITY_PRESENTATION).label(
+        definition,
+        value,
+        level,
+        abilityProfile(definition.species),
+    );
 }
-function powerTitle(abilityId, value) {
-    if (abilityId === 'pea-death-split') {
-        return `T1 ${value}마리 생성`;
-    }
-    if (abilityId === 'corn-burst-fire') {
-        return `${value}발 연사`;
-    }
-    if (abilityId === 'corn-popcorn-chain') {
-        return `ATK ×${value} 폭발`;
-    }
-    if (abilityId === 'chestnut-spike-fan') {
-        return `가시 ${value}발`;
-    }
-    if (abilityId === 'kidney-continuous-leap') {
-        return `초기화 ${Math.round(value * 100)}%`;
-    }
-    if (abilityId === 'kidney-landing-shockwave') {
-        return `충격파 ×${value}`;
-    }
-    if (abilityId === 'peanut-separated-assault') {
-        return `협공 ${value}타`;
-    }
-    if (abilityId === 'walnut-guard-slam') {
-        return `반격 피해 ×${value}`;
-    }
-    if (abilityId === 'rice-low-health-harvest') {
-        return `수확 피해 ×${value}`;
-    }
-    if (abilityId === 'wheat-command-crit') {
-        return `치명타 +${Math.round(value * 100)}%p`;
-    }
-    if (abilityId === 'barley-armor-break') {
-        return `방어도 ${Math.round(value * 100)}% 감소`;
-    }
-    return '능력 강화';
+function powerTitle(definition, value) {
+    return (abilityPresentationFor(definition.id) || DEFAULT_ABILITY_PRESENTATION).title(value);
 }
 function nodeReasonLabel(reason, definition, context) {
-    switch (reason) {
-        case 'already-invested':
-            return '이미 투자한 노드입니다.';
-        case 'root-required':
-            return '먼저 능력 루트를 해금하세요.';
-        case 'prerequisite-required':
-            return '이전 단계에 먼저 투자하세요.';
-        case 'insufficient-points':
-            return '공용 포인트가 필요합니다.';
-        case 'requires-rare-tier':
-            return `이 종의 Rare (T${definition.rootTier}) 이상 개체가 필요합니다.`;
-        case 'combat-lock':
-            return '전투 중에는 투자할 수 없습니다.';
-        case 'farm-only':
-            return '농장에서만 투자할 수 있습니다.';
-        case 'max-level':
-            return '최대 강화 단계입니다.';
-        case 'invalid-state':
-            return '성장 데이터가 유효하지 않습니다.';
-        default:
-            return context.location === 'farm' ? '사용할 수 없는 노드입니다.' : '농장에서 사용할 수 있습니다.';
-    }
+    return (
+        NODE_REASON_LABELS.get(reason)?.(definition) ??
+        (context.location === 'farm' ? '사용할 수 없는 노드입니다.' : '농장에서 사용할 수 있습니다.')
+    );
 }
 function resetReasonLabel(reason, invested) {
-    if (reason === 'nothing-invested') {
-        return '투자한 포인트가 없습니다.';
-    }
-    if (reason === 'combat-lock') {
-        return '전투 중에는 초기화할 수 없습니다.';
-    }
-    if (reason === 'farm-only') {
-        return '농장에서만 초기화할 수 있습니다.';
-    }
-    if (reason === 'invalid-state') {
-        return '성장 데이터가 유효하지 않습니다.';
-    }
-    return `투자 ${invested}개를 무료로 돌려받습니다.`;
+    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받습니다.`;
 }
 function farmUpgradeReasonLabel(reason) {
-    switch (reason) {
-        case 'insufficient-points':
-            return '공용 XP 포인트가 필요합니다.';
-        case 'combat-lock':
-            return '전투 중에는 투자할 수 없습니다.';
-        case 'farm-only':
-            return '농장에서만 투자할 수 있습니다.';
-        case 'max-level':
-            return '최대 강화 단계입니다.';
-        case 'invalid-state':
-            return '성장 데이터가 유효하지 않습니다.';
-        default:
-            return '사용할 수 없는 노드입니다.';
-    }
+    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? '사용할 수 없는 노드입니다.';
 }

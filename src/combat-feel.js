@@ -20,6 +20,143 @@ function resetLandingEffect(e) {
     e.heard = false;
 }
 
+// Each notice presentation owns its sound, drawing, and queue-lifetime hooks.
+// The shared burst base is a genuine common drawing algorithm; event-specific
+// parameters and particle shapes belong to the concrete presentation class.
+class BurstPresentation {
+    draw(renderer, event, progress) {
+        const T = Math.min(1, progress / this.durationFraction),
+            ALPHA = 1 - T;
+        if (ALPHA <= 0) {
+            return;
+        }
+        const SIZE = this.size(event),
+            COLOR = this.color;
+        renderer.ring(event.x, event.y, 0.15 + T * SIZE, `rgba(${COLOR},${ALPHA * 0.8})`, this.ringWidth);
+        const CENTER = renderer.project(event.x, event.y, event.z || 0.1),
+            N = this.particleCount;
+        for (let i = 0; i < N; i++) {
+            const ANGLE = (i * Math.PI * 2) / N + (event.sequence % 11) * 0.19,
+                DISTANCE = (0.12 + T * SIZE) * this.distanceMultiplier,
+                POINT = renderer.project(
+                    event.x + Math.cos(ANGLE) * DISTANCE,
+                    event.y + Math.sin(ANGLE) * DISTANCE,
+                    (event.z || 0.1) + this.elevation(T),
+                );
+            this.drawParticle(renderer, POINT, CENTER, ANGLE, ALPHA, COLOR, T);
+        }
+        this.drawFlash?.(renderer, CENTER, T);
+    }
+}
+class HitPresentation extends BurstPresentation {
+    durationFraction = 0.7;
+    ringWidth = 0.075;
+    particleCount = 6;
+    distanceMultiplier = 1;
+    size(event) {
+        return event.attackKind === 'sweep' ? 1.15 : 0.6;
+    }
+    elevation(progress) {
+        return Math.sin(progress * Math.PI) * 0.5;
+    }
+    drawParticle(renderer, point, center, _angle, alpha) {
+        const INNER = {
+            x: center.x + (point.x - center.x) * 0.55,
+            y: center.y + (point.y - center.y) * 0.55,
+        };
+        renderer.line(INNER, point, 0.055, `rgba(255,242,190,${alpha})`);
+    }
+    drawFlash(renderer, center, progress) {
+        if (progress < 0.28) {
+            renderer.ellipse(
+                center.x,
+                center.y,
+                renderer.scale * 0.18 * (1 - progress),
+                renderer.scale * 0.12 * (1 - progress),
+                '#fff4d6',
+            );
+        }
+    }
+}
+class BossHitPresentation extends HitPresentation {
+    color = '245,199,102';
+    observe(feel, _event, displayEvent) {
+        feel.counts.hits++;
+        feel.bossHit = displayEvent;
+    }
+    sound(audio, event) {
+        audio.sound('strike', event.species || 0);
+    }
+}
+class UnitHitPresentation extends HitPresentation {
+    color = '231,147,83';
+    observe(feel, event, _displayEvent, at) {
+        feel.poses.set(event.unit, { at, until: at + 180, strength: event.strength });
+        feel.counts.hits++;
+    }
+    sound(audio, event) {
+        audio.sound(event.attackKind === 'sweep' ? 'heavy' : 'strike');
+    }
+}
+class UnitLandingPresentation extends BurstPresentation {
+    durationFraction = 0.9;
+    color = '157,142,107';
+    ringWidth = 0.045;
+    particleCount = 5;
+    distanceMultiplier = 1.2;
+    acquire(feel, event, at) {
+        return feel.acquireLandingEffect(event, at);
+    }
+    release(feel, event) {
+        feel.landingPool.release(event);
+    }
+    observe(feel) {
+        feel.counts.landings++;
+    }
+    sound(audio, event) {
+        if (event.strength > 0.2) {
+            audio.sound('land');
+        }
+    }
+    size() {
+        return 0.7;
+    }
+    elevation() {
+        return 0.12;
+    }
+    drawParticle(renderer, point, _center, angle, alpha, color, progress) {
+        renderer.ellipse(
+            point.x,
+            point.y,
+            renderer.scale * 0.09 * (1 - progress),
+            renderer.scale * 0.045 * (1 - progress),
+            `rgba(${color},${alpha * 0.65})`,
+            angle,
+        );
+    }
+}
+class AttackLaunchPresentation {
+    draw(renderer, event, progress) {
+        const T = Math.min(1, progress / 0.35),
+            P = renderer.project(event.x, event.y, event.z + 0.2);
+        if (T < 1) {
+            renderer.ellipse(P.x, P.y, renderer.scale * 0.12 * (1 - T), renderer.scale * 0.2 * (1 - T), '#ffe7a6');
+        }
+    }
+}
+class BossLaunchPresentation {
+    sound(audio) {
+        audio.sound('launch');
+    }
+}
+const COMBAT_EFFECT_PRESENTATIONS = new Map([
+    ['boss-hit', Object.freeze(new BossHitPresentation())],
+    ['unit-hit', Object.freeze(new UnitHitPresentation())],
+    ['unit-land', Object.freeze(new UnitLandingPresentation())],
+    ['attack-launch', Object.freeze(new AttackLaunchPresentation())],
+    ['boss-launch', Object.freeze(new BossLaunchPresentation())],
+]);
+
 // Presentation reads committed combat notices. It never pauses or writes simulation state.
 class CombatFeel {
     constructor(audio) {
@@ -51,9 +188,7 @@ class CombatFeel {
         return EVENT;
     }
     releaseEffect(event) {
-        if (event.kind === 'unit-land') {
-            this.landingPool.release(event);
-        }
+        COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.release?.(this, event);
     }
     observe(world, displayTimeMs, revision = 0) {
         if (this.world !== world || this.revision !== revision) {
@@ -72,36 +207,17 @@ class CombatFeel {
             if (E.sequence <= this.sequence) {
                 continue;
             }
-            if (['boss-hit', 'unit-hit', 'unit-land', 'attack-launch', 'boss-launch'].includes(E.kind)) {
-                const AT = presentationEventTimeMs(E),
-                    EVENT =
-                        E.kind === 'unit-land'
-                            ? this.acquireLandingEffect(E, AT)
-                            : {
-                                  ...E,
-                                  at: AT,
-                                  heard: false,
-                              };
-                this.effects.push(EVENT);
-                if (this.effects.length > 48) {
-                    this.releaseEffect(this.effects.shift());
-                }
-                if (E.kind === 'boss-hit') {
-                    this.counts.hits++;
-                    this.bossHit = EVENT;
-                }
-                if (E.kind === 'unit-hit') {
-                    this.poses.set(E.unit, {
-                        at: AT,
-                        until: AT + 180,
-                        strength: E.strength,
-                    });
-                    this.counts.hits++;
-                }
-                if (E.kind === 'unit-land') {
-                    this.counts.landings++;
-                }
+            const PRESENTATION = COMBAT_EFFECT_PRESENTATIONS.get(E.kind);
+            if (!PRESENTATION) {
+                continue;
             }
+            const AT = presentationEventTimeMs(E),
+                EVENT = PRESENTATION.acquire?.(this, E, AT) ?? { ...E, at: AT, heard: false };
+            this.effects.push(EVENT);
+            if (this.effects.length > 48) {
+                this.releaseEffect(this.effects.shift());
+            }
+            PRESENTATION.observe?.(this, E, EVENT, AT);
         }
         this.sequence = world.eventSequence;
         // Finish compaction before the next acquire; no released queue slot is read again.
@@ -144,15 +260,7 @@ class CombatFeel {
         };
     }
     sound(event) {
-        if (event.kind === 'boss-hit') {
-            this.audio.sound('strike', event.species || 0);
-        } else if (event.kind === 'unit-hit') {
-            this.audio.sound(event.attackKind === 'sweep' ? 'heavy' : 'strike');
-        } else if (event.kind === 'unit-land' && event.strength > 0.2) {
-            this.audio.sound('land');
-        } else if (event.kind === 'boss-launch') {
-            this.audio.sound('launch');
-        }
+        COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.sound?.(this.audio, event);
     }
     draw(r, displayTimeMs) {
         for (const E of this.effects) {
@@ -164,59 +272,8 @@ class CombatFeel {
                 E.heard = true;
                 this.sound(E);
             }
-            const Q = AGE / 430,
-                HEAVY = E.attackKind === 'sweep',
-                IMPACT = E.kind === 'unit-hit' || E.kind === 'boss-hit',
-                LANDING = E.kind === 'unit-land';
-            if (E.kind === 'attack-launch') {
-                const T = Math.min(1, Q / 0.35),
-                    P = r.project(E.x, E.y, E.z + 0.2);
-                if (T < 1) {
-                    r.ellipse(P.x, P.y, r.scale * 0.12 * (1 - T), r.scale * 0.2 * (1 - T), '#ffe7a6');
-                }
-                continue;
-            }
-            if (!IMPACT && !LANDING) {
-                continue;
-            }
-            const T = Math.min(1, Q / (LANDING ? 0.9 : 0.7)),
-                ALPHA = 1 - T;
-            if (ALPHA <= 0) {
-                continue;
-            }
-            const SIZE = LANDING ? 0.7 : HEAVY ? 1.15 : 0.6,
-                COLOR = LANDING ? '157,142,107' : E.kind === 'boss-hit' ? '245,199,102' : '231,147,83';
-            r.ring(E.x, E.y, 0.15 + T * SIZE, `rgba(${COLOR},${ALPHA * 0.8})`, LANDING ? 0.045 : 0.075);
-            const CENTER = r.project(E.x, E.y, E.z || 0.1),
-                N = LANDING ? 5 : 6;
-            for (let i = 0; i < N; i++) {
-                const A = (i * Math.PI * 2) / N + (E.sequence % 11) * 0.19,
-                    D = (0.12 + T * SIZE) * (LANDING ? 1.2 : 1),
-                    P = r.project(
-                        E.x + Math.cos(A) * D,
-                        E.y + Math.sin(A) * D,
-                        (E.z || 0.1) + (LANDING ? 0.12 : Math.sin(T * Math.PI) * 0.5),
-                    );
-                if (LANDING) {
-                    r.ellipse(
-                        P.x,
-                        P.y,
-                        r.scale * 0.09 * (1 - T),
-                        r.scale * 0.045 * (1 - T),
-                        `rgba(${COLOR},${ALPHA * 0.65})`,
-                        A,
-                    );
-                } else {
-                    const INNER = {
-                        x: CENTER.x + (P.x - CENTER.x) * 0.55,
-                        y: CENTER.y + (P.y - CENTER.y) * 0.55,
-                    };
-                    r.line(INNER, P, 0.055, `rgba(255,242,190,${ALPHA})`);
-                }
-            }
-            if (IMPACT && T < 0.28) {
-                r.ellipse(CENTER.x, CENTER.y, r.scale * 0.18 * (1 - T), r.scale * 0.12 * (1 - T), '#fff4d6');
-            }
+            const PRESENTATION = COMBAT_EFFECT_PRESENTATIONS.get(E.kind);
+            PRESENTATION?.draw?.(r, E, AGE / 430);
         }
     }
 }

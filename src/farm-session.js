@@ -484,18 +484,7 @@ class FarmSession {
             case 'feed':
                 return W.scene === 'farm' && W.tapFood('manual');
             case 'mode':
-                if (W.scene === 'farm' && ['breed', 'merge'].includes(c.value)) {
-                    const CHANGED = W.mode !== c.value || (c.value !== 'merge' && W.mergeTask !== null);
-                    if (c.value !== 'merge') {
-                        W.mergeTask = null;
-                    }
-                    W.mode = c.value;
-                    if (CHANGED) {
-                        W.markProgressChanged();
-                    }
-                    return CHANGED;
-                }
-                return false;
+                return W.setFarmMode(c.value);
             case 'progression-invest':
                 if (W.scene === 'farm' && typeof c.nodeId === 'string' && c.nodeId.length < 64) {
                     if (c.scope === 'farm') {
