@@ -367,7 +367,7 @@ function position(index, count, seed, scale) {
 export function restoreFarmProgress(data) {
     validateFarmProgress(data);
     const WORLD = new Garden(data.seed);
-    WORLD.units = [];
+    WORLD.resetUnits();
     WORLD.food = [];
     WORLD.nextId = 1;
     WORLD.mode = data.mode;
@@ -392,7 +392,7 @@ export function restoreFarmProgress(data) {
                 UNIT.down = ROW.rest;
                 UNIT.deathSplitHandled = true;
             }
-            WORLD.units.push(UNIT);
+            WORLD.addUnit(UNIT, { markProgress: false });
         }
     }
     for (let i = 0; i < data.food.count; i++) {

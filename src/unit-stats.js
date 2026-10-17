@@ -139,7 +139,7 @@ export function applyDamage(
     }
     const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
     const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
-    target.hp = Math.max(0, target.hp - ACTUAL_LOSS);
+    setHealth(target, Math.max(0, target.hp - ACTUAL_LOSS));
     return {
         ...RESOLVED,
         actualLoss: ACTUAL_LOSS,
@@ -155,7 +155,7 @@ export function applyHealing(target, amount, receiverStats = combatStats(target)
         : 1;
     const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
     const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
-    target.hp += HEALED;
+    setHealth(target, target.hp + HEALED);
     return HEALED;
 }
 
@@ -217,4 +217,13 @@ export function resolveKnockback(basePower, source, target, { sourceStatOverride
 }
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+}
+
+function setHealth(target, value) {
+    if (typeof target.setHealth === 'function') {
+        target.setHealth(value);
+    } else {
+        // Plain boss/checkpoint records use the same numeric helper contract.
+        target.hp = value;
+    }
 }

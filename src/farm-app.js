@@ -26,13 +26,12 @@ import { speciesById, giantSpeciesName, speciesRewardName } from './species-cata
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
 DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
-let observedWorld = null;
 let imported = null;
 let importedLegacy = false;
 let active = null;
 let home = true;
 let personalGarden = null;
-let noticeSequence = 0;
+let unsubscribeProgress = null;
 let menuOpen = false;
 let menuTab = 'play';
 let menuWasPaused = true;
@@ -204,16 +203,13 @@ function saveImmediate(world = personalGarden) {
     }
     return OK;
 }
-const OBSERVED_PROGRESS_REVISIONS = new WeakMap();
-function markPersistentChange(world) {
-    if (world !== personalGarden || OBSERVED_PROGRESS_REVISIONS.get(world) === world.progressRevision) {
-        return;
-    }
-    OBSERVED_PROGRESS_REVISIONS.set(world, world.progressRevision);
-    AUTOSAVE.markDirty();
+function replacePersonalGarden(world) {
+    unsubscribeProgress?.();
+    personalGarden = world;
+    // The saved garden remains an owner while a separate raid session is active.
+    unsubscribeProgress = world?.onProgressChanged.on(() => AUTOSAVE.markDirty()) ?? null;
 }
 function onWorldStep(world) {
-    markPersistentChange(world);
     if (
         world?.scene !== 'raid' ||
         !['victory', 'defeat'].includes(world.encounter?.outcome) ||
@@ -268,8 +264,6 @@ function install(world) {
         onError: FAIL,
         onWorldStep,
     });
-    noticeSequence = world.eventSequence;
-    observedWorld = world;
     return active;
 }
 install(new Garden());
@@ -439,7 +433,7 @@ function setHome(value, push = true) {
 function start(world, push = true) {
     AUTOSAVE.reset();
     FOOD_FEEL.unlock();
-    personalGarden = world;
+    replacePersonalGarden(world);
     install(world);
     setHome(false, push);
 }
@@ -458,7 +452,7 @@ function reservePersonalRaidRun(sessionId = null) {
         FAIL(Error(STORAGE.error || '농장 원정 예약을 저장하지 못했어요.'));
         return null;
     }
-    personalGarden = STORAGE.world;
+    replacePersonalGarden(STORAGE.world);
     return reserved;
 }
 function localSettlementRoster(world, ownerId, run) {
@@ -569,7 +563,7 @@ function persistRaidSettlement(raidWorld, ownerId) {
             throw Error(STORAGE.error || '전투 결과 저장에 실패했어요.');
         }
     }
-    personalGarden = STORAGE.world;
+    replacePersonalGarden(STORAGE.world);
     return settled;
 }
 function beginRaid(push = true) {
@@ -749,7 +743,7 @@ DOLLAR('abortRaidRun').onclick = () => {
             DOLLAR('saveNotice').textContent = STORAGE.error;
             return;
         }
-        personalGarden = STORAGE.world;
+        replacePersonalGarden(STORAGE.world);
         refreshStart();
         DOLLAR('saveNotice').textContent = '이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.';
     } catch (error) {
@@ -879,7 +873,7 @@ DOLLAR('confirmImport').onclick = () => {
             if (LEGACY) {
                 start(WORLD);
             } else {
-                personalGarden = WORLD;
+                replacePersonalGarden(WORLD);
                 install(WORLD);
                 active.paused = true;
             }
@@ -1446,6 +1440,8 @@ window.addEventListener('pagehide', () => {
     stopWorldInput();
     persist();
     active.dispose();
+    unsubscribeProgress?.();
+    unsubscribeProgress = null;
     RENDERER.dispose();
 });
 CANVAS.addEventListener('webglcontextlost', (e) => {
@@ -1522,7 +1518,7 @@ function route() {
     }
 }
 window.addEventListener('popstate', route);
-function sync(display, now) {
+function sync(display, now, notices) {
     const W = active.world,
         RAID = display.scene === 'raid',
         FARM_EVENT = display.farmBossEvent,
@@ -1656,20 +1652,13 @@ function sync(display, now) {
             PIP.classList.toggle('filled', FILLED);
         }
     }
-    if (observedWorld !== W) {
-        observedWorld = W;
-        noticeSequence = W.eventSequence;
-    }
-    for (const E of W.notices) {
-        if (E.sequence > noticeSequence) {
-            if (E.kind === 'food-tap') {
-                FOOD_FEEL.tap(E.source, E.completed, E.remainder);
-            } else {
-                FOOD_FEEL.event(E.kind);
-            }
+    for (const E of notices) {
+        if (E.kind === 'food-tap') {
+            FOOD_FEEL.tap(E.source, E.completed, E.remainder);
+        } else {
+            FOOD_FEEL.event(E.kind);
         }
     }
-    noticeSequence = W.eventSequence;
     FOOD_FEEL.frame(now);
     deploymentHud();
 }
@@ -1679,10 +1668,11 @@ function frame(now) {
         if (!home && !document.hidden) {
             active.pulse(now);
         }
-        const DISPLAY = active.presentation(now);
-        COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision);
+        const DISPLAY = active.presentation(now),
+            NOTICES = active.takePresentationNotices();
+        COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
         RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
-        sync(DISPLAY, now);
+        sync(DISPLAY, now, NOTICES);
         requestAnimationFrame(frame);
     } catch (error) {
         if (typeof globalThis.BloomReportRuntimeFatal === 'function') {

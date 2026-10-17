@@ -133,3 +133,9 @@ asset/player는 세션 runtime에만 보관하고 저장에 넣지 않습니다.
 ## 코드 규약 확인
 
 [코드 규약](docs/code-conventions.md)을 따릅니다. `npm run format`은 직접 작성한 소스·스크립트·기존 E2E·문서의 포맷을 적용하고, `npm run format:check`와 `npm run lint`는 파일을 고치지 않고 위반을 검사합니다. `npm run build`는 두 검사를 통과해야 기존 시작 검증·SVG 검증·번들을 생성합니다. vendor와 생성된 `src/game.js`는 직접 포맷하지 않습니다. 이 내부 이름·포맷 정리는 제품·저장 계약을 바꾸지 않아 버전 `0.8.0`을 유지합니다.
+
+## 기능별 구조
+
+[기능별 클래스와 분기 점검](docs/feature-architecture.md)에 모델·렌더 관점의 배치, 상태 소유권,
+전체 분기 점검 범위와 이번 동작 보존 검증을 정리했습니다. `features/` 아래에서 같은 기능의 구체
+모델·표현 클래스를 함께 관리하며, 모델이 렌더/DOM을 의존하지 않는 경계는 유지합니다.

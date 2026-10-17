@@ -12,16 +12,20 @@ export function restore(raw, { migrateLegacyRaid = false } = {}) {
     });
     validateSnapshot(raw);
     const G = new Garden();
-    Object.assign(G, structuredClone(raw));
+    const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);
+    G.resetUnits();
+    Object.assign(G, WORLD_DATA);
     G.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
     if (G.boss.patternRuntime.active) {
         G.boss.patternRuntime.active.hitIds = new Set(raw.boss.patternRuntime.active.hitIds);
     }
-    G.units = raw.units.map((data) => {
-        const U = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
-        U.ability = Object.assign(createUnitAttackCycle(U), structuredClone(data.ability));
-        return U;
-    });
+    G.resetUnits(
+        UNIT_DATA.map((data) => {
+            const U = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
+            U.ability = Object.assign(createUnitAttackCycle(U), structuredClone(data.ability));
+            return U;
+        }),
+    );
     G.reconcileMateReservations();
     return G;
 }

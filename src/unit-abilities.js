@@ -1,3 +1,5 @@
+import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
+import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
 // Species-specific attack behavior stays separate from common unit stats.
 // This ID-keyed object is the single profile lookup for all catalogued species.
 const ATTACK_DEFAULTS = Object.freeze({
@@ -27,7 +29,7 @@ function attackProfile(kind, { timing, ...overrides } = {}) {
 }
 export const UNIT_ABILITY_PROFILES = Object.freeze({
     0: attackProfile('ram'),
-    1: attackProfile('lob', {
+    1: attackProfile(LOB_FEATURE.id, {
         timing: {
             windup: 0.38,
             recovery: 1.25,
@@ -47,7 +49,7 @@ export const UNIT_ABILITY_PROFILES = Object.freeze({
     3: attackProfile('punch'),
     // One Peanut remains one world unit; its two kernels are presentation-only
     // and the two deterministic strike slots share the same active window.
-    4: attackProfile('peanut-dual-strike', {
+    4: attackProfile(DUAL_STRIKE_FEATURE.id, {
         timing: {
             windup: 0.25,
             active: 0.5,
@@ -89,7 +91,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
     0: COMPOSITION('contact', ['deathSplit'], {
         contactRecoil: true,
     }),
-    1: COMPOSITION('projectile', ['burstFire', 'popcorn'], {
+    1: COMPOSITION(LOB_FEATURE.modelKey, ['burstFire', 'popcorn'], {
         retreatWithinRange: true,
         aimAtCenter: true,
     }),
@@ -97,7 +99,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
     3: COMPOSITION('contact', ['launchFan'], {
         contactRecoil: true,
     }),
-    4: COMPOSITION('repeatedStrike', ['assault'], {
+    4: COMPOSITION(DUAL_STRIKE_FEATURE.modelKey, ['assault'], {
         useActiveDuration: true,
         outerRangeSlack: 0,
     }),

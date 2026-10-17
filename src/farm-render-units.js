@@ -1,0 +1,291 @@
+import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
+import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
+import { DualStrikePresentation } from './features/unit-attacks/dual-strike/presentation.js';
+import { ATTACK_TYPES, CONFIG, clamp } from './farm-model.js';
+import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js';
+import { UNIT_GRADES } from './unit-grades.js';
+import { scenePresentation } from './farm-render-scenes.js';
+
+const DEFAULT_ATTACK = new UnitAttackPresentation();
+const ATTACK_PRESENTATIONS = new Map(
+    [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
+);
+function unitAttackPresentation(unit) {
+    return ATTACK_PRESENTATIONS.get(ATTACK_TYPES[unit.species]?.kind) || DEFAULT_ATTACK;
+}
+
+// Historical Budmori grade outline colors come from the shared grade catalog.
+const TIER_OUTLINE_COLORS = UNIT_GRADES.map(({ outlineColor }) => {
+    const RGB = outlineColor
+        .match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+        .slice(1)
+        .map((value) => parseInt(value, 16) / 255);
+    return [...RGB, 1];
+});
+function unitMotion(u, sim, rest) {
+    const DEAD = u.hp <= 0 || u.down > 0,
+        AIRBORNE = !u.dropLanded || u.z > 0.1,
+        PHASE = u.ability?.phase || 'idle';
+    const MOVING = Math.hypot(u.vx || 0, u.vy || 0) > 0.18;
+    if (rest) {
+        return rest.phase;
+    }
+    if (DEAD) {
+        return 'death';
+    }
+    if (scenePresentation(sim.scene).victorious(sim)) {
+        return 'victory';
+    }
+    if (AIRBORNE) {
+        return 'airborne';
+    }
+    if (u.stun > 0) {
+        return 'hit';
+    }
+    if (u.bounce > 0.04) {
+        return 'landing';
+    }
+    if (PHASE === 'windup') {
+        return 'windup';
+    }
+    if (PHASE === 'active') {
+        return unitAttackPresentation(u).activeMotion(u);
+    }
+    if (PHASE === 'recover') {
+        return unitAttackPresentation(u).recoverMotion(u);
+    }
+    return MOVING ? 'walk' : 'idle';
+}
+function motionElapsedMs(u, name, clip) {
+    if (name === 'idle' || name === 'walk' || name === 'airborne') {
+        return ((u.seed || 0) * 80) % clip.durationMs;
+    }
+    if (name === 'windup' || name === 'fire' || name.startsWith('fire-') || name === 'recover') {
+        return clamp((u.ability?.elapsed || 0) * 1000, 0, clip.durationMs);
+    }
+    if (name === 'hit') {
+        return clip.durationMs * (1 - clamp((u.stun || 0) / 0.5, 0, 1));
+    }
+    if (name === 'landing') {
+        return clip.durationMs * (1 - clamp((u.bounce || 0) / 0.22, 0, 1));
+    }
+    if (name === 'victory') {
+        return (Math.abs(u.seed || 0) * 97.531) % clip.durationMs;
+    }
+    return clip.durationMs;
+}
+function unitExpression(u, sim, joyEffects, rest) {
+    const DEAD = u.hp <= 0 || u.down > 0,
+        AIRBORNE = !u.dropLanded || u.z > 0.5;
+    const PHASE = u.ability?.phase;
+    if (rest) {
+        return rest.phase === 'defeat' ? 'dead' : rest.phase === 'wake' ? 'neutral' : 'sleep';
+    }
+    if (DEAD) {
+        return 'dead';
+    }
+    if (scenePresentation(sim.scene).victorious(sim)) {
+        return 'happy';
+    }
+    if (u.stun > 0) {
+        return 'hurt';
+    }
+    if (AIRBORNE) {
+        return 'surprised';
+    }
+    if (u.walnutGuarding) {
+        return 'guard';
+    }
+    if (PHASE === 'windup') {
+        return 'focused';
+    }
+    if (PHASE === 'active') {
+        return 'attack';
+    }
+    return scenePresentation(sim.scene).unitMood(u, joyEffects);
+}
+const ATTACK_ACCENTS = ['#8fac68', '#dbb76b', '#b58b9c', '#9a6947', '#d7914f', '#a86b32'];
+
+// The unit presentation owns its reusable indicator scratch and the ordering of
+// rear rings, native vector passes, front rings, and sleep feedback.
+export class UnitPresentation {
+    constructor(renderer) {
+        this.renderer = renderer;
+        this.unitRings = [];
+        this.unitRingPool = [{}, {}, {}];
+        this.breedingIndicator = {};
+        this.restIndicator = {};
+    }
+    addUnitRing(radius, color, width, progress) {
+        const EFFECT = this.unitRingPool[this.unitRings.length];
+        EFFECT.radius = radius;
+        EFFECT.color = color;
+        EFFECT.width = width;
+        EFFECT.progress = progress;
+        this.unitRings.push(EFFECT);
+    }
+    unitRingEffects(u, world) {
+        const EFFECTS = this.unitRings,
+            A = u.ability,
+            S_LOCAL = ATTACK_TYPES[u.species];
+        EFFECTS.length = 0;
+        if (u.buffed && u.hp > 0) {
+            this.addUnitRing(u.radius + 0.16, '#eacb72', 0.055, 1);
+        }
+        if (A.phase === 'windup' && S_LOCAL) {
+            this.addUnitRing(
+                u.radius + 0.1,
+                ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0],
+                0.065,
+                Math.min(1, A.elapsed / S_LOCAL.timing.windup),
+            );
+        }
+        const BREEDING = farmBreedingCooldown(u, world, CONFIG.farm.breeding.cooldownSeconds, this.breedingIndicator);
+        if (BREEDING && BREEDING.progress > 0) {
+            this.addUnitRing(u.radius + 0.085, '#8fac68', 0.035, BREEDING.progress);
+        }
+        return EFFECTS;
+    }
+    drawUnitRingLayer(u, effects, side) {
+        for (const EFFECT of effects) {
+            const SWEEP = Math.PI * 2 * Math.max(0, Math.min(1, Number(EFFECT.progress) || 0));
+            if (side === 'rear' && SWEEP > 0) {
+                this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, 0, Math.min(Math.PI, SWEEP));
+            } else if (side === 'front' && SWEEP > Math.PI) {
+                this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, Math.PI, SWEEP);
+            }
+        }
+    }
+    drawSleepIndicator(rest, pose) {
+        if (!rest || rest.phase === 'defeat') {
+            return;
+        }
+        const C = this.renderer.ctx,
+            D = this.renderer.pixelRatio,
+            P = pose.p,
+            R = pose.r;
+        // Short lavender elapsed bar BELOW the body. No HP colors, grade outline,
+        // overhead numeric badge, or countdown for Raid's non-advancing recovery.
+        if (rest.progress >= 0) {
+            const W = Math.max(18 * D, Math.min(30 * D, R * 1.6)),
+                H = 3 * D,
+                X = P.x - W / 2,
+                Y = P.y + R * 0.35 + 3 * D;
+            C.fillStyle = '#494257';
+            C.beginPath();
+            C.roundRect(X - D, Y - D, W + 2 * D, H + 2 * D, 2.5 * D);
+            C.fill();
+            C.fillStyle = '#c2b2e8';
+            C.beginPath();
+            C.roundRect(X, Y, W * rest.progress, H, 1.5 * D);
+            C.fill();
+        }
+        if (rest.phase === 'sleep') {
+            const SIZE = 2.4 * D,
+                X = P.x + R * 0.9,
+                Y = P.y - R * 0.9;
+            C.strokeStyle = '#494257';
+            C.lineWidth = 2.2 * D;
+            C.lineCap = 'round';
+            C.beginPath();
+            C.moveTo(X, Y - SIZE);
+            C.lineTo(X + SIZE * 1.5, Y - SIZE);
+            C.lineTo(X, Y + SIZE);
+            C.lineTo(X + SIZE * 1.5, Y + SIZE);
+            C.stroke();
+            C.strokeStyle = '#ded3f5';
+            C.lineWidth = D;
+            C.stroke();
+        }
+    }
+    drawVectorUnit(u, sim, p, r, rest) {
+        const RECORD = this.renderer.vectorAssets.get(u.species);
+        if (!RECORD) {
+            throw new Error('Missing required troop vector asset for species ' + u.species);
+        }
+        let player = this.renderer.vectorPlayers.get(u.id);
+        if (player && this.renderer.vectorPlayerAssets.get(player) !== RECORD) {
+            player.dispose();
+            this.renderer.vectorPlayers.delete(u.id);
+            player = null;
+        }
+        const METADATA = RECORD.compiled.metadata,
+            MOTION_NAME = unitMotion(u, sim, rest),
+            CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
+        const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - motionElapsedMs(u, MOTION_NAME, CLIP);
+        if (!player) {
+            player = RECORD.asset.createPlayer({
+                clip: MOTION_NAME,
+                startedAtMs: CLIP_START_AT_MS,
+            });
+            this.renderer.vectorPlayers.set(u.id, player);
+            this.renderer.vectorPlayerAssets.set(player, RECORD);
+        } else if (player.currentClip !== MOTION_NAME) {
+            player.play(MOTION_NAME, CLIP_START_AT_MS);
+        }
+        const EXPRESSION = unitExpression(u, sim, this.renderer.joyEffects, rest);
+        if (EXPRESSION !== player.currentExpression) {
+            player.setExpression(EXPRESSION);
+        }
+        player.seek(rest ? rest.elapsed * 1000 : this.renderer.displayTimeMs);
+        const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
+            SCALE = (2 * r) / Math.max(WIDTH, HEIGHT),
+            CENTER_Y = p.y - r * 0.79;
+        const MATRIX = [SCALE, 0, 0, SCALE, p.x - WIDTH * SCALE * 0.5, CENTER_Y - HEIGHT * SCALE * 0.5];
+        // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
+        this.renderer.ctx.vector.flush();
+        const OUTLINE = TIER_OUTLINE_COLORS[u.tier - 1];
+        if (OUTLINE) {
+            // One enlarged silhouette pass, never eight full asset redraws.
+            const BORDER = 1.5 * this.renderer.pixelRatio,
+                FACTOR = 1 + BORDER / Math.max(r, 1);
+            const OUTLINE_MATRIX = [
+                SCALE * FACTOR,
+                0,
+                0,
+                SCALE * FACTOR,
+                p.x - WIDTH * SCALE * FACTOR * 0.5,
+                CENTER_Y - HEIGHT * SCALE * FACTOR * 0.5,
+            ];
+            // Faces are interior details, never part of the enlarged silhouette.
+            for (const PART of RECORD.faceParts) {
+                player.setPartVisible(PART, false);
+            }
+            player.draw({
+                projection: this.renderer.ctx.vector.projection,
+                matrix: OUTLINE_MATRIX,
+                color: OUTLINE,
+                forceColor: true,
+            });
+            player.setExpression(EXPRESSION);
+        }
+        player.draw({
+            projection: this.renderer.ctx.vector.projection,
+            matrix: MATRIX,
+        });
+        return true;
+    }
+    drawUnit(u, sim, rest) {
+        const DEAD = u.hp <= 0,
+            WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)),
+            BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0,
+            P = this.renderer.project(u.x, u.y, u.z + BOB);
+        const R = Math.max(
+            u.size * this.renderer.scale * 0.78,
+            this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio,
+        );
+        this.drawVectorUnit(u, sim, P, R, rest);
+        return {
+            p: P,
+            r: R,
+        };
+    }
+    draw(u, sim) {
+        const EFFECTS = this.unitRingEffects(u, sim);
+        this.drawUnitRingLayer(u, EFFECTS, 'rear');
+        const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        const POSE = this.drawUnit(u, sim, REST);
+        this.drawUnitRingLayer(u, EFFECTS, 'front');
+        this.drawSleepIndicator(REST, POSE);
+    }
+}
