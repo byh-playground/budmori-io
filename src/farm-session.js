@@ -393,6 +393,7 @@ class FarmSession {
         this.presentationRevision = 0;
         this.presentationSequence = 0;
         this.pendingPresentationMode = null;
+        this.pendingPulsePresentationMode = null;
         this.presentationRuntime = new PRESENTATION_RUNTIME({
             stepMs: PRESENTATION_STEP_MS,
             delayMs: PRESENTATION_STEP_MS,
@@ -447,9 +448,19 @@ class FarmSession {
             },
             onAdvance: (result) => {
                 if (this.pendingPresentationMode) {
-                    this.capturePresentation(this.pendingPresentationMode);
+                    this.pendingPulsePresentationMode = 'reset';
                 } else if (result.status === 'advanced' && !this.paused) {
-                    this.capturePresentation('continuous');
+                    this.pendingPulsePresentationMode ||= 'continuous';
+                    const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs,
+                        STEP_MS = (1000 / LOCAL_PROFILE.tickRate) * this.pace,
+                        EPSILON_MS = 1e-7,
+                        HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS,
+                        HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
+                    if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
+                        // Preserve the exact penultimate/current pair for the delayed
+                        // presentation sample; intermediate catch-up states are never drawn.
+                        this.capturePresentation('continuous');
+                    }
                 }
             },
         });
@@ -847,11 +858,17 @@ class FarmSession {
         // limits for diagnostics only; the loop itself remains the timekeeper.
         this.pulseTimestamp = now;
         this.currentPulseCapped = false;
+        this.pendingPulsePresentationMode = null;
         const PREVIOUS_TICK = this.tick;
         this.loop.pulse(now, {
             render: false,
         });
         this.currentPulseCapped = false;
+        const CAPTURE_MODE = this.pendingPulsePresentationMode;
+        this.pendingPulsePresentationMode = null;
+        if (CAPTURE_MODE) {
+            this.capturePresentation(CAPTURE_MODE);
+        }
         this.profiler?.count('catchupTicks', Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {

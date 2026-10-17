@@ -10841,7 +10841,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.8";
+      PRODUCT_VERSION = "0.8.9";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15634,6 +15634,7 @@
       this.presentationRevision = 0;
       this.presentationSequence = 0;
       this.pendingPresentationMode = null;
+      this.pendingPulsePresentationMode = null;
       this.presentationRuntime = new PRESENTATION_RUNTIME({
         stepMs: PRESENTATION_STEP_MS,
         delayMs: PRESENTATION_STEP_MS,
@@ -15685,9 +15686,13 @@
         },
         onAdvance: (result) => {
           if (this.pendingPresentationMode) {
-            this.capturePresentation(this.pendingPresentationMode);
+            this.pendingPulsePresentationMode = "reset";
           } else if (result.status === "advanced" && !this.paused) {
-            this.capturePresentation("continuous");
+            this.pendingPulsePresentationMode ||= "continuous";
+            const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs, STEP_MS = 1e3 / LOCAL_PROFILE.tickRate * this.pace, EPSILON_MS = 1e-7, HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS, HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
+            if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
+              this.capturePresentation("continuous");
+            }
           }
         }
       });
@@ -16037,11 +16042,17 @@
     pulse(now) {
       this.pulseTimestamp = now;
       this.currentPulseCapped = false;
+      this.pendingPulsePresentationMode = null;
       const PREVIOUS_TICK = this.tick;
       this.loop.pulse(now, {
         render: false
       });
       this.currentPulseCapped = false;
+      const CAPTURE_MODE = this.pendingPulsePresentationMode;
+      this.pendingPulsePresentationMode = null;
+      if (CAPTURE_MODE) {
+        this.capturePresentation(CAPTURE_MODE);
+      }
       this.profiler?.count("catchupTicks", Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {
