@@ -78,7 +78,7 @@
 
 <g id="arm-right"><g transform="translate(-415 10) scale(1.25)">
 <path id="walnut-arm-right-shape" d="M 514 131 C 520 130 527 134 532 139 C 538 145 541 152 539 158 C 538 164 533 169 529 171 C 523 172 520 168 518 162 C 516 157 514 153 511 150 C 509 146 510 140 512 136 C 513 134 514 132 514 131 Z" fill="#d99325"/>
-  <path id="walnut-arm-right-outline" d="M 514 131 C 520 130 527 134 532 139 C 538 145 541 152 539 158 C 538 164 533 169 529 171" fill="none" stroke="#39281f" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path id="walnut-arm-right-outline" d="M 514 131 C 520 130 527 134 532 139 C 538 145 541 152 539 158 C 538 164 533 169 529 171 C 526 173 522 172 520 168 C 519 166 518 164 518 162" fill="none" stroke="#39281f" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
   <path id="walnut-arm-right-crease" d="M530 153 Q526 157 520 156" fill="none" stroke="#b77920" stroke-width="1.7" stroke-linecap="round"/>
 </g></g>
 <g id="guard-form" transform="translate(160 0) scale(.92 .88) translate(-160 0)">
