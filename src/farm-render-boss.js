@@ -187,6 +187,6 @@ export class BossPresentation {
             matrix: MATRIX,
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
-        PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE);
+        PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
     }
 }

@@ -2,6 +2,10 @@ import { BossAttackPresentation } from '../presentation-base.js';
 import { FEATURE } from './definition.js';
 import { clamp } from '../../../farm-model.js';
 
+const SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET = Object.freeze({
+    'budmori-chestnut-boss': 'fist-right',
+});
+
 export class CircleSweepPresentation extends BossAttackPresentation {
     constructor() {
         super(FEATURE, 'sweep', 0.14, 0.14);
@@ -42,14 +46,18 @@ export class CircleSweepPresentation extends BossAttackPresentation {
         renderer.ring(area.x, area.y, area.reach + area.width + 0.12, '#dfad65', 0.14, START, END);
         CTX.globalAlpha = ALPHA;
     }
-    drawWeapon(renderer, boss, player, matrix, pose) {
+    drawWeapon(renderer, boss, player, matrix, pose, record) {
         if (boss.patternPhase !== 'active') {
             return;
         }
-        const SOCKET = player.getSocket('fist-right');
-        if (!SOCKET) {
+        // Only the chestnut boss asset authors the right-fist socket used by
+        // this weapon flourish. Other species share the physical sweep pattern,
+        // but their SVGs do not claim a compatible swing-origin socket.
+        const SOCKET_ID = SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET[record.compiled.metadata.id];
+        if (!SOCKET_ID) {
             return;
         }
+        const SOCKET = player.getSocket(SOCKET_ID);
         const BASE = {
                 x: matrix[0] * SOCKET.x + matrix[4],
                 y: matrix[3] * SOCKET.y + matrix[5],

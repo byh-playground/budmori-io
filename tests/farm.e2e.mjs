@@ -2700,6 +2700,43 @@ async function combatScenarios(p) {
     );
     REPORT.sweep360 = SWEEP;
     CHECK('Chestnut 360 sweep: delayed capsule hits the ring once; safe interior and annular telegraph stay clear');
+    const ALL_SPECIES_SWEEP = await p.evaluate(() => {
+        const WORLD = new BUDMORI.sim.constructor(775),
+            RENDERER = BUDMORI.renderer;
+        WORLD.setScene('raid');
+        WORLD.boss.hp = WORLD.boss.maxHp = 1e6;
+        WORLD.boss.x = 0;
+        WORLD.boss.y = 0;
+        const TARGET = WORLD.units[0];
+        WORLD.beginBossPattern('attack.sweep-360', TARGET);
+        const ACTION = WORLD.boss.patternRuntime.active;
+        ACTION.aim = 0;
+        WORLD.activateBossPattern(ACTION);
+        WORLD.boss.patternPhaseElapsed = 0.5;
+        const RENDERED = [];
+        for (let species = 0; species < BUDMORI.CONFIG.unit.speciesCount; species++) {
+            WORLD.boss.species = species;
+            RENDERER.render(WORLD, null, performance.now());
+            RENDERED.push(species);
+        }
+        return {
+            rendered: RENDERED,
+            chestnutAssetId: RENDERER.bossSpeciesAssets.get(3).compiled.metadata.id,
+            chestnutSocket: RENDERER.bossSpeciesAssets.get(3).compiled.metadata.sockets['fist-right']?.part,
+            nonChestnutSockets: Array.from(RENDERER.bossSpeciesAssets.entries())
+                .filter(([species]) => species !== 3)
+                .map(([, record]) => record.compiled.metadata.sockets['fist-right'] || null),
+        };
+    });
+    assert.deepEqual(
+        ALL_SPECIES_SWEEP.rendered,
+        Array.from({ length: 9 }, (_, index) => index),
+    );
+    assert.equal(ALL_SPECIES_SWEEP.chestnutAssetId, 'budmori-chestnut-boss');
+    assert.equal(ALL_SPECIES_SWEEP.chestnutSocket, 'arm-right');
+    assert(ALL_SPECIES_SWEEP.nonChestnutSockets.every((socket) => socket === null));
+    REPORT.allSpeciesSweep = ALL_SPECIES_SWEEP;
+    CHECK('All nine boss species render an active 360 sweep using only authored compatible weapon sockets');
     const WALL = await p.evaluate(() => {
         const W = new BUDMORI.sim.constructor(773),
             G = BUDMORI.ArenaGeometry;

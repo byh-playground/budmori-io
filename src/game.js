@@ -10905,7 +10905,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.12";
+      PRODUCT_VERSION = "0.8.13";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14457,6 +14457,9 @@
   // src/features/boss-patterns/sweep-360/presentation.js
   init_definition17();
   init_farm_model();
+  var SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET = Object.freeze({
+    "budmori-chestnut-boss": "fist-right"
+  });
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE7, "sweep", 0.14, 0.14);
@@ -14492,14 +14495,15 @@
       renderer.ring(area.x, area.y, area.reach + area.width + 0.12, "#dfad65", 0.14, START, END);
       CTX.globalAlpha = ALPHA;
     }
-    drawWeapon(renderer, boss, player, matrix, pose) {
+    drawWeapon(renderer, boss, player, matrix, pose, record) {
       if (boss.patternPhase !== "active") {
         return;
       }
-      const SOCKET = player.getSocket("fist-right");
-      if (!SOCKET) {
+      const SOCKET_ID = SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET[record.compiled.metadata.id];
+      if (!SOCKET_ID) {
         return;
       }
+      const SOCKET = player.getSocket(SOCKET_ID);
       const BASE = {
         x: matrix[0] * SOCKET.x + matrix[4],
         y: matrix[3] * SOCKET.y + matrix[5]
@@ -14819,7 +14823,7 @@
         matrix: MATRIX
       });
       PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
-      PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE);
+      PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
     }
   };
 
