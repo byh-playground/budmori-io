@@ -1418,8 +1418,8 @@
   // src/unit-attack-capabilities.js
   function composeUnitAttackCycles(Cycle, { ArenaGeometry: ArenaGeometry2, Ballistics: Ballistics2, CONFIG: CONFIG2 }) {
     const PathMotion = (Base) => class extends Base {
-      resolveAttackHit(sim, action, target, point2, options) {
-        return sim.damageCombatTarget(this.owner, action, target, point2, options);
+      resolveAttackHit(sim, action, target, point3, options) {
+        return sim.damageCombatTarget(this.owner, action, target, point3, options);
       }
       createAttackPath() {
         const u = this.owner, a = this.action;
@@ -1600,8 +1600,8 @@
         sim.combat("walnut-guard", { unit: u.id, x: u.x, y: u.y, z: u.z });
         return config;
       }
-      resolveAttackHit(sim, action, target, point2, options) {
-        return action.walnutEmpowered ? sim.triggerWalnutSlam(this.owner, action, target, point2) : super.resolveAttackHit(sim, action, target, point2, options);
+      resolveAttackHit(sim, action, target, point3, options) {
+        return action.walnutEmpowered ? sim.triggerWalnutSlam(this.owner, action, target, point3) : super.resolveAttackHit(sim, action, target, point3, options);
       }
     };
     const LaunchFan = (Base) => class extends Base {
@@ -1851,18 +1851,68 @@
     if (clock) presentationClocks.set(world, clock);
     else presentationClocks.delete(world);
   }
-  function bossAttackArea(boss2, unitRadius = 0) {
-    const action = boss2.patternRuntime?.active;
-    if (!action) return null;
-    const config = BOSS_PATTERN_CONFIG[action.id];
+  function bossAttackArea(boss2, unitRadius = 0, scene = "raid", area = {}) {
+    const action = boss2.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[action?.id];
     if (!config) return null;
-    const progress = clamp3(action.phaseElapsed / (action.phase === "windup" ? config.windup : config.active || 1), 0, 1), locked = !!action.locked;
-    if (action.id === "attack.sweep-360") return { kind: "sweep", x: boss2.x, y: boss2.y, width: CONFIG.boss.weaponRadius + Math.max(0, unitRadius), sweepRadius: config.reach, outerRadius: config.reach + CONFIG.boss.weaponRadius, startAngle: 0, progress: action.phase === "windup" ? 1 : 1, active: action.phase === "active", patternId: action.id, locked };
-    if (action.id === "attack.front-slam") return { kind: "sector", x: boss2.x, y: boss2.y, angle: action.aim ?? boss2.angle, reach: config.reach, sector: config.sector, progress, active: action.phase === "active", patternId: action.id, locked };
-    if (action.id === "attack.charge") return { kind: "charge", x: action.start?.x ?? boss2.x, y: action.start?.y ?? boss2.y, endX: boss2.x, endY: boss2.y, angle: action.aim ?? boss2.angle, reach: config.reach, width: boss2.radius, progress, active: action.phase === "active", patternId: action.id, locked };
-    if (action.id === "attack.leap-slam") return { kind: "leap", x: boss2.x, y: boss2.y, targetX: action.target?.x ?? boss2.x, targetY: action.target?.y ?? boss2.y, reach: config.landingRadius, progress, active: action.phase === "active", patternId: action.id, locked };
-    if (action.id === "attack.fan-sweep") return { kind: "fan", x: boss2.x, y: boss2.y, angle: action.aim ?? boss2.angle, reach: config.reach, width: config.width, sector: config.sector, progress, active: action.phase === "active", patternId: action.id, locked };
-    return action.id === "summon.mouth-t1" ? { kind: "summon", x: boss2.x, y: boss2.y, angle: action.aim ?? boss2.angle, progress, active: action.phase === "active", patternId: action.id, locked } : null;
+    const phase = action.phase, pad = Math.max(0, unitRadius), elapsed = Math.max(0, action.phaseElapsed || 0);
+    area.x = boss2.x;
+    area.y = boss2.y;
+    area.angle = action.aim ?? boss2.angle;
+    area.patternId = action.id;
+    area.phase = phase;
+    area.elapsed = elapsed;
+    area.active = phase === "active";
+    area.locked = !!action.locked;
+    area.progress = phase === "recover" ? 1 : clamp3(elapsed / (phase === "windup" ? config.windup : config.active || 1), 0, 1);
+    if (action.id === "attack.sweep-360") {
+      area.kind = "sweep";
+      area.reach = config.reach + pad;
+    } else if (action.id === "attack.front-slam") {
+      area.kind = "sector";
+      area.reach = config.reach + pad;
+      area.sector = config.sector;
+    } else if (action.id === "attack.charge") {
+      area.kind = "charge";
+      area.width = boss2.radius + pad;
+      const sx = action.start?.x ?? boss2.x, sy = action.start?.y ?? boss2.y, dx = Math.cos(area.angle), dy = Math.sin(area.angle);
+      const rx = CONFIG[scene].arena.radiusX - boss2.radius - 0.25, ry = CONFIG[scene].arena.radiusY - boss2.radius - 0.25;
+      const a = dx * dx / (rx * rx) + dy * dy / (ry * ry), b = 2 * (sx * dx / (rx * rx) + sy * dy / (ry * ry)), c = sx * sx / (rx * rx) + sy * sy / (ry * ry) - 1;
+      const exit = Math.max(0, (-b + Math.sqrt(Math.max(0, b * b - 4 * a * c))) / (2 * a)), step = config.speed * CONFIG.physics.fixedStep;
+      const distance = exit < config.reach ? Math.min(config.reach, (Math.floor(exit / step + 1e-8) + 1) * step) : config.reach;
+      const ex = sx + dx * distance, ey = sy + dy * distance, k = Math.max(1, Math.hypot(ex / rx, ey / ry));
+      area.endX = phase === "recover" ? boss2.x : ex / k;
+      area.endY = phase === "recover" ? boss2.y : ey / k;
+      area.x = sx;
+      area.y = sy;
+    } else if (action.id === "attack.leap-slam") {
+      area.kind = "leap";
+      area.width = boss2.radius + pad;
+      area.reach = config.landingRadius + pad;
+      let x = action.target?.x ?? boss2.x, y = action.target?.y ?? boss2.y;
+      if (phase === "windup") {
+        const dx = x - boss2.x, dy = y - boss2.y, d = Math.hypot(dx, dy);
+        if (d > config.reach) {
+          x = boss2.x + dx / d * config.reach;
+          y = boss2.y + dy / d * config.reach;
+        }
+        const rx = CONFIG[scene].arena.radiusX - boss2.radius - 0.25, ry = CONFIG[scene].arena.radiusY - boss2.radius - 0.25, k = Math.max(1, Math.hypot(x / rx, y / ry));
+        x /= k;
+        y /= k;
+      }
+      area.targetX = x;
+      area.targetY = y;
+      const sx = action.start?.x ?? boss2.x, sy = action.start?.y ?? boss2.y;
+      area.x = sx;
+      area.y = sy;
+      if (phase === "active" && action.path) area.progress = clamp3(elapsed / action.path.duration, 0, 1);
+    } else if (action.id === "attack.fan-sweep") {
+      area.kind = "fan";
+      area.reach = config.reach;
+      area.width = config.width + pad;
+      area.sector = config.sector;
+    } else if (action.id === "summon.mouth-t1") area.kind = "summon";
+    else return null;
+    return area;
   }
   function contact(a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), r = a.radius + b.radius;
@@ -1899,7 +1949,7 @@
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, unitRadiusForTier, CONFIG, clamp3, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, createUnitAttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, unitRadiusForTier, CONFIG, clamp3, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, createUnitAttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_boss_vector_sockets();
@@ -1928,10 +1978,12 @@
       RAID_PLAYER_ID_STRIDE = 1e6;
       MAX_BOSS_SUMMONS = 10;
       RAID_MAX_UNITS = RAID_PLAYER_UNITS * RAID_MAX_PLAYERS;
+      WORLD_ARENA = Object.freeze({ radiusX: 23, radiusY: 17 });
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
       CONFIG = Object.freeze({
         factions: FACTION_CONFIG,
         farm: Object.freeze({
+          arena: WORLD_ARENA,
           capacity: Object.freeze({ base: 50, max: FARM_MAX_UNITS, battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS }),
           maxUnitId: 999999999,
           starterSeconds: 60,
@@ -1942,10 +1994,11 @@
         raid: Object.freeze({
           capacity: Object.freeze({ playerUnits: RAID_PLAYER_UNITS, players: RAID_MAX_PLAYERS, units: RAID_MAX_UNITS, battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS, projectiles: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40 }),
           ids: Object.freeze({ playerStride: RAID_PLAYER_ID_STRIDE, summonBase: RAID_MAX_PLAYERS * RAID_PLAYER_ID_STRIDE + RAID_PLAYER_UNITS + 1 }),
-          arena: Object.freeze({ radiusX: 23, radiusY: 17 }),
+          arena: WORLD_ARENA,
           dropHeight: 3,
           buff: Object.freeze({ duration: 3, cooldown: 12, damage: 1.25 })
         }),
+        scatter: Object.freeze({ minRadius: unitRadiusForTier(1) * 4, maxRadius: unitRadiusForTier(1) * 10, bodyMargin: 0.08, hysteresis: 0.18 }),
         unit: Object.freeze({ speciesCount: SPECIES_COUNT, maxTier: MAX_UNIT_TIER, maxRadius: unitRadiusForTier(MAX_UNIT_TIER), perceptionRange: 18, corpseRecoverySeconds: 60 }),
         boss: Object.freeze({ maxSummons: MAX_BOSS_SUMMONS, summonIdBase: 5e6, radius: 4.4, height: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65 }),
         physics: Object.freeze({ gravity: 19, fixedStep: 1 / 120 })
@@ -1990,7 +2043,8 @@
       };
       ArenaGeometry = {
         bounds(scene = "raid", margin = 0) {
-          return scene === "raid" ? { x: CONFIG.raid.arena.radiusX - margin, y: CONFIG.raid.arena.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
+          const arena = CONFIG[scene].arena;
+          return { x: arena.radiusX - margin, y: arena.radiusY - margin };
         },
         inside(p, scene = "raid", margin = 0) {
           const r = this.bounds(scene, margin);
@@ -1999,6 +2053,10 @@
         clamp(p, scene = "raid", margin = 0) {
           const r = this.bounds(scene, margin), k = Math.max(1, Math.hypot(p.x / r.x, p.y / r.y));
           return { x: p.x / k, y: p.y / k };
+        },
+        segmentInsideCircle(x, y, tx, ty, cx, cy, radius) {
+          const dx = tx - x, dy = ty - y, length = dx * dx + dy * dy, q = length > 1e-12 ? clamp3(((cx - x) * dx + (cy - y) * dy) / length, 0, 1) : 0;
+          return (x + dx * q - cx) ** 2 + (y + dy * q - cy) ** 2 < radius * radius - 1e-10;
         },
         overlaps(a, b) {
           return a.z <= b.z + b.height && a.z + a.height >= b.z && Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius;
@@ -2064,6 +2122,14 @@
           u.vx = u.vy = 0;
           sim.combatEvent("prepare", u, this.action);
           return true;
+        }
+        cancelForScatter() {
+          if (this.action?.pendingShots) this.action.pendingShots.length = 0;
+          if (this.phase === "windup" || this.phase === "active") {
+            this.phase = "recover";
+            this.elapsed = 0;
+            this.owner.vx = this.owner.vy = 0;
+          }
         }
         interrupt() {
           if (this.phase !== "idle") {
@@ -2231,6 +2297,7 @@
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
           for (const key of ["unitSpatial", "foodSpatial", "_unitById", "_unitStepOrder", "_unitAliveState", "_liveFactionCounts", "_foodOrder", "_speciesGroups", "_speciesTierGroups", "_mergeEligibleGroups", "_ownedSpeciesCounts", "_stepUnits", "_unitCandidates", "_foodCandidates", "_groundedFoods", "_groundedFoodCount", "_contactPending", "_contactExtra", "_contactQuery", "_contactSeen", "_contactGeneration", "_bossGridUnits", "_bossGroundUnits", "_bossQueryCandidates", "_bossHitCandidates", "_mergeNearestScratch", "_mergeMaterialsScratch", "_mergeIdScratch", "_spatialStepActive", "_spatialQueryDepth", "_unitSpatialDirty", "_foodSpatialDirty"]) Object.defineProperty(this, key, { enumerable: false });
+          Object.defineProperties(this, { localScatter: { value: { active: false, x: 0, y: 0, radius: CONFIG.scatter.minRadius, handleX: 0, handleY: 0, generation: 0 } }, _scatterStates: { value: /* @__PURE__ */ new WeakMap() } });
           this.reset();
         }
         _rebuildUnitSpatialIndex(stepUnits = this.units) {
@@ -2415,6 +2482,7 @@
           return w;
         }
         reset() {
+          this.clearLocalScatter();
           this.mergeTask = null;
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
@@ -2562,27 +2630,27 @@
           return true;
         }
         triggerLandingShockwave(unit2, action, config) {
-          const range = abilityProfile(unit2.species).range * config.radiusMultiplier, point2 = { x: unit2.x, y: unit2.y, z: 0 }, distance = Math.hypot(unit2.x - this.boss.x, unit2.y - this.boss.y);
+          const range = abilityProfile(unit2.species).range * config.radiusMultiplier, point3 = { x: unit2.x, y: unit2.y, z: 0 }, distance = Math.hypot(unit2.x - this.boss.x, unit2.y - this.boss.y);
           this.effects.push({ kind: "landing-shockwave", x: unit2.x, y: unit2.y, z: 0, life: 0, duration: 0.55, radius: range, owner: unit2.id });
           if (this.boss.hp > 0 && distance <= range + this.boss.radius) {
             const blast = { id: action.id, hit: false, attackKind: "kidney-shockwave" };
-            this.damageCombatTarget(unit2, blast, this.boss, point2, { attackMultiplier: config.damageMultiplier, attackKind: "kidney-shockwave", area: true });
+            this.damageCombatTarget(unit2, blast, this.boss, point3, { attackMultiplier: config.damageMultiplier, attackKind: "kidney-shockwave", area: true });
           }
           this.combat("kidney-shockwave", { unit: unit2.id, ownerId: unit2.ownerId, species: unit2.species, x: unit2.x, y: unit2.y, radius: range, damageMultiplier: config.damageMultiplier });
         }
-        triggerWalnutSlam(unit2, action, primaryTarget, point2) {
+        triggerWalnutSlam(unit2, action, primaryTarget, point3) {
           if (action.hit || !primaryTarget || primaryTarget.hp <= 0 || !areOpposingFactions(unit2, primaryTarget)) return false;
           const config = getWalnutGuardConfig(this.abilityProgressionFor(unit2), unit2.tier);
           if (!config) return false;
           action.hit = true;
           const targets = [primaryTarget];
-          if (primaryTarget !== this.boss && this.boss.hp > 0 && areOpposingFactions(unit2, this.boss) && Math.hypot(this.boss.x - point2.x, this.boss.y - point2.y) <= config.radius + this.boss.radius) targets.push(this.boss);
-          for (const target of this.units) if (target !== primaryTarget && target.hp > 0 && areOpposingFactions(unit2, target) && Math.hypot(target.x - point2.x, target.y - point2.y) <= config.radius + target.radius) targets.push(target);
+          if (primaryTarget !== this.boss && this.boss.hp > 0 && areOpposingFactions(unit2, this.boss) && Math.hypot(this.boss.x - point3.x, this.boss.y - point3.y) <= config.radius + this.boss.radius) targets.push(this.boss);
+          for (const target of this.units) if (target !== primaryTarget && target.hp > 0 && areOpposingFactions(unit2, target) && Math.hypot(target.x - point3.x, target.y - point3.y) <= config.radius + target.radius) targets.push(target);
           const attackContext = this.createAttackContext(unit2, { attackMultiplier: config.damageMultiplier, attackKind: "walnut-empowered-slam", area: true });
           attackContext.criticalRoll = attackContext.sourceStatOverrides.critChance > 0 ? this.random() : 1;
-          for (const target of targets) this.damageCombatTarget(unit2, { id: action.id, hit: false }, target, point2, { attackContext });
-          this.effects.push({ kind: "walnut-shockwave", x: point2.x, y: point2.y, z: 0, life: 0, duration: 0.5, radius: config.radius, owner: unit2.id });
-          this.combat("walnut-slam", { unit: unit2.id, attackId: action.id, x: point2.x, y: point2.y, z: 0, radius: config.radius });
+          for (const target of targets) this.damageCombatTarget(unit2, { id: action.id, hit: false }, target, point3, { attackContext });
+          this.effects.push({ kind: "walnut-shockwave", x: point3.x, y: point3.y, z: 0, life: 0, duration: 0.5, radius: config.radius, owner: unit2.id });
+          this.combat("walnut-slam", { unit: unit2.id, attackId: action.id, x: point3.x, y: point3.y, z: 0, radius: config.radius });
           return true;
         }
         senseEnemy(unit2) {
@@ -2657,17 +2725,18 @@
             h ^= h >>> 16;
             return h >>> 0;
           };
-          troops.sort((a, b) => orderKey(a.farmId) - orderKey(b.farmId) || a.farmId - b.farmId);
+          troops.sort((a, b) => a.tier - b.tier || orderKey(a.farmId) - orderKey(b.farmId) || a.farmId - b.farmId);
           this.raidRosters.push({ ownerId, troops, abilitySnapshot: structuredClone(abilitySnapshot), settlementSessionId: hasSettlement ? settlement2.sessionId : "", settlementRunSequence: hasSettlement ? settlement2.runSequence : 0, settlementEncounterId: hasSettlement ? settlement2.encounterId : 0, lastDeploySequence: 0, buffUntil: 0, buffReadyAt: 0 });
           this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
           return true;
         }
-        deployNextRaidUnit(ownerId, sequence, x, y) {
-          if (this.scene !== "raid" || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+        deployNextRaidUnit(ownerId, sequence) {
+          if (this.scene !== "raid" || ["victory", "defeat"].includes(this.encounter.outcome) || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence)) return false;
           const roster2 = this.raidRoster(ownerId), troop = roster2?.troops.find((t) => !t.deployed);
-          if (!roster2 || sequence !== roster2.lastDeploySequence + 1 || !troop || !ArenaGeometry.inside({ x, y }, "raid", 0.5)) return false;
+          if (!roster2 || sequence !== roster2.lastDeploySequence + 1 || !troop) return false;
           const farmId = troop.farmId, slot = this.raidExpectedPlayers.indexOf(ownerId), troopIndex = roster2.troops.indexOf(troop), id = (slot + 1) * CONFIG.raid.ids.playerStride + troopIndex + 1;
           if (this.units.some((u2) => u2.id === id)) return false;
+          const angle = this.random() * Math.PI * 2, margin = unitRadiusForTier(troop.tier) + 0.05, bounds = ArenaGeometry.bounds("raid", margin), x = Math.cos(angle) * bounds.x, y = Math.sin(angle) * bounds.y;
           const u = new Unit(id, troop.species, troop.tier, x, y), growthDuration = this.breedGrowthDuration();
           Object.assign(u, { ownerId, farmId, z: CONFIG.raid.dropHeight, vz: 0, dropLanded: false, meals: 1, growth: CONFIG.farm.breeding.matureMeals, growthDuration, growthElapsed: growthDuration });
           troop.deployed = true;
@@ -2728,7 +2797,7 @@
           this.foodTaps.revision++;
           if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.scatter((this.random() - 0.5) * 14, (this.random() - 0.5) * 9, 1);
+            this.scatter((this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5, (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35, 1);
             this.foodTaps.produced++;
           }
           this.notice("food-tap", { source, completed, remainder: this.foodTaps.remainder });
@@ -2745,14 +2814,15 @@
         }
         scatter(x, y, count = 1) {
           for (let i = 0; i < count && this.food.length < 140; i++) {
-            let tx = clamp3(x, -8, 8), ty = clamp3(y, -5.7, 5.7);
-            const boundary = Math.hypot(tx / 8, ty / 5.7);
+            const radiusX = CONFIG.farm.arena.radiusX - 1.5, radiusY = CONFIG.farm.arena.radiusY - 1.1;
+            let tx = clamp3(x, -radiusX, radiusX), ty = clamp3(y, -radiusY, radiusY);
+            const boundary = Math.hypot(tx / radiusX, ty / radiusY);
             if (boundary > 1) {
               tx /= boundary;
               ty /= boundary;
             }
             if (this.tryStartFarmBossEvent(tx, ty)) continue;
-            const angle = this.random() * Math.PI * 2, sx = Math.cos(angle) * 10.2, sy = Math.sin(angle) * 7;
+            const angle = this.random() * Math.PI * 2, sx = Math.cos(angle) * (CONFIG.farm.arena.radiusX + 0.7), sy = Math.sin(angle) * (CONFIG.farm.arena.radiusY + 0.2);
             const duration = 0.85 + this.random() * 0.25, z = 0.3;
             const food = { x: sx, y: sy, z, vx: (tx - sx) / duration, vy: (ty - sy) / duration, vz: 6 * duration - z / duration, seed: this.random(), phase: "flight", tx, ty };
             this.food.push(food);
@@ -2926,6 +2996,7 @@
             if (materialCount < 2 || materials.length !== materialCount || first.tier >= CONFIG.unit.maxTier) return false;
             const ids = /* @__PURE__ */ new Set();
             for (const unit2 of materials) {
+              if (this.localScatter.active && this.scatterInside(unit2)) return false;
               if (!unit2 || ids.has(unit2.id) || unit2.isBattleOnlySummon || unit2.mergeEligible === false || unit2.species !== first.species || unit2.tier !== first.tier || unit2.hp <= 0 || unit2.down > 0 || !unit2.mature || unit2.cooldown > 0 || !this._unitIsActive(unit2)) return false;
               ids.add(unit2.id);
             }
@@ -3037,6 +3108,7 @@
           if (this.mode === "merge") {
             return this.mergeGroup([a, b], { priorityResolved });
           }
+          if (this.localScatter.active && (this.scatterInside(a) || this.scatterInside(b))) return false;
           if (!a || !b || a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !this.units.includes(a) || !this.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || this.senseEnemy(a) || this.senseEnemy(b)) return false;
           if (a.isBattleOnlySummon || b.isBattleOnlySummon) return false;
           {
@@ -3158,16 +3230,18 @@
               u.cooldown = 0;
               u.cooldownDuration = 0;
             }
-            const enemy = this.senseEnemy(u);
-            if (enemy) this.raidUnit(u, dt, enemy);
+            const enemy = this.senseEnemy(u) || (this.scene === "raid" && this.running && hasFaction(u, FACTION_CONFIG.PLAYER) && this.boss.hp > 0 ? this.boss : null), scattering = this.updateLocalScatter(u, dt, enemy);
+            if (scattering) {
+            } else if (enemy) this.raidUnit(u, dt, enemy);
             else if (u.hp > 0 && hasFaction(u, FACTION_CONFIG.PLAYER) && !u.isBattleOnlySummon) {
               if (u.ability.phase !== "idle") {
-                u.ability.interrupt();
+                if (u.ability.phase !== "recover") u.ability.interrupt();
                 u.ability.update(this, dt);
               }
               this.farmUnit(u, dt);
             } else if (this.scene === "raid" && this.running) this.raidUnit(u, dt, null);
             const oldZ = u.z, oldPosition = { x: u.x, y: u.y, z: u.z };
+            this.limitScatterVelocity(u, dt);
             u.integrate(dt);
             if (this.scene === "raid" && u.hp <= 0 && u.z === 0 && u.vz === 0) {
               u.vx = u.vy = 0;
@@ -3216,7 +3290,147 @@
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
         }
+        setLocalScatter(x, y, radius = CONFIG.scatter.minRadius, handleX = x + radius, handleY = y) {
+          if (![x, y, radius, handleX, handleY].every(Number.isFinite)) return false;
+          const c = this.localScatter;
+          if (!c.active || c.x !== x || c.y !== y) c.generation++;
+          c.active = true;
+          c.x = x;
+          c.y = y;
+          c.radius = clamp3(radius, CONFIG.scatter.minRadius, CONFIG.scatter.maxRadius);
+          c.handleX = handleX;
+          c.handleY = handleY;
+          return true;
+        }
+        clearLocalScatter() {
+          this.localScatter.active = false;
+        }
+        scatterApplies(u) {
+          return this.localScatter.active && hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.down <= 0 && u.dropLanded && u.z <= 1e-9 && u.vz <= 0;
+        }
+        scatterInside(u) {
+          if (!u) return false;
+          const c = this.localScatter;
+          return Math.hypot(u.x - c.x, u.y - c.y) < c.radius + u.radius + CONFIG.scatter.bodyMargin;
+        }
+        scatterSegmentBlocked(x, y, tx, ty, radius) {
+          const c = this.localScatter;
+          return ArenaGeometry.segmentInsideCircle(x, y, tx, ty, c.x, c.y, radius);
+        }
+        scatterBossBlocks(u, x, y) {
+          const b = this.boss;
+          if (!b.active || b.hp <= 0 || !areOpposingFactions(u, b) || b.z > u.z + 0.65) return false;
+          const radius = Math.min(b.radius + u.radius + 0.015, Math.max(0, Math.hypot(u.x - b.x, u.y - b.y) - 2e-3));
+          return ArenaGeometry.segmentInsideCircle(u.x, u.y, x, y, b.x, b.y, radius);
+        }
+        updateLocalScatter(u, dt, enemy) {
+          if (!this.scatterApplies(u) || u.stun > 0 || u.landingRecovery > 0) return false;
+          const c = this.localScatter, r = c.radius + u.radius + CONFIG.scatter.bodyMargin, d = Math.hypot(u.x - c.x, u.y - c.y);
+          let state = this._scatterStates.get(u);
+          if (!state) {
+            state = { generation: 0, escaping: false, radius: 0, x: 0, y: 0, waypoint: false, bossX: 0, bossY: 0 };
+            this._scatterStates.set(u, state);
+          }
+          if (state.generation !== c.generation) {
+            state.generation = c.generation;
+            state.escaping = false;
+            state.radius = 0;
+          }
+          if (d < r) state.escaping = true;
+          if (state.escaping && d >= r + CONFIG.scatter.hysteresis) {
+            state.escaping = false;
+            u.vx = u.vy = 0;
+          }
+          const cycle = u.ability;
+          const attackBlocked = unitCapabilityComposition(u.species).attack === "contact" && cycle.action && (cycle.phase === "windup" || cycle.phase === "active") && this.scatterSegmentBlocked(u.x, u.y, cycle.action.target.x, cycle.action.target.y, r);
+          if (!state.escaping && !attackBlocked) return false;
+          cycle.cancelForScatter();
+          cycle.update(this, dt);
+          if (!state.escaping) return true;
+          if (state.radius !== r || this.scatterBossBlocks(u, state.x, state.y) || state.waypoint && (Math.hypot(state.x - u.x, state.y - u.y) < 0.14 || state.bossX !== this.boss.x || state.bossY !== this.boss.y)) {
+            state.radius = r;
+            const goalRadius = r + CONFIG.scatter.hysteresis + 0.12, bearing = d > 1e-8 ? Math.atan2(u.y - c.y, u.x - c.x) : u.seed, bounds = ArenaGeometry.bounds(this.scene, u.radius + 0.02);
+            let best = Infinity;
+            state.x = u.x;
+            state.y = u.y;
+            state.waypoint = false;
+            state.bossX = this.boss.x;
+            state.bossY = this.boss.y;
+            for (let i = 0; i < 33; i++) {
+              const angle = bearing + (i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 16), x = c.x + Math.cos(angle) * goalRadius, y = c.y + Math.sin(angle) * goalRadius;
+              if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1 || this.scatterBossBlocks(u, x, y)) continue;
+              const distance = (x - u.x) ** 2 + (y - u.y) ** 2;
+              if (distance < best - 1e-9) {
+                best = distance;
+                state.x = x;
+                state.y = y;
+                if (i === 0) break;
+              }
+            }
+            if (!Number.isFinite(best)) {
+              state.waypoint = true;
+              let score = -Infinity;
+              for (let step = 0.55; step > 0.1 && !Number.isFinite(score); step *= 0.5) for (let i = 0; i < 34; i++) {
+                const angle = i < 32 ? bearing + i * Math.PI / 16 : Math.atan2(u.y - this.boss.y, u.x - this.boss.x) + (i === 32 ? 1 : -1) * Math.PI / 2, x = u.x + Math.cos(angle) * step, y = u.y + Math.sin(angle) * step;
+                if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1 || this.scatterBossBlocks(u, x, y)) continue;
+                const distance = (x - c.x) ** 2 + (y - c.y) ** 2;
+                if (distance > score + 1e-9) {
+                  score = distance;
+                  state.x = x;
+                  state.y = y;
+                }
+              }
+              if (!Number.isFinite(score)) state.radius = 0;
+            }
+          }
+          const dx = u.x - c.x, dy = u.y - c.y, radial = d > 1e-8 ? (u.vx * dx + u.vy * dy) / d : 0;
+          if (radial < 0) {
+            u.vx -= radial * dx / d;
+            u.vy -= radial * dy / d;
+          }
+          this.steer(u, state.x, state.y, dt, scaleMoveSpeed(enemy ? 4.1 : 2.2, u));
+          return true;
+        }
+        limitScatterVelocity(u, dt) {
+          if (!this.scatterApplies(u) || u.stun > 0) return;
+          const c = this.localScatter, r = c.radius + u.radius + CONFIG.scatter.bodyMargin, dx = u.x - c.x, dy = u.y - c.y, d = Math.hypot(dx, dy);
+          if (d < r - 1e-8) return;
+          const mx = u.vx * dt, my = u.vy * dt, a = mx * mx + my * my, b = 2 * (dx * mx + dy * my), outside = dx * dx + dy * dy - r * r, disc = b * b - 4 * a * outside;
+          if (a < 1e-14 || b >= 0 || disc <= 0) return;
+          const hit = (-b - Math.sqrt(disc)) / (2 * a);
+          if (hit < 0 || hit > 1) return;
+          const fraction = Math.max(0, hit - 1e-3);
+          u.vx *= fraction;
+          u.vy *= fraction;
+        }
         steer(u, x, y, dt, speed2) {
+          if (this.scatterApplies(u) && !this.scatterInside(u)) {
+            const c = this.localScatter, r = c.radius + u.radius + CONFIG.scatter.bodyMargin + 0.12;
+            if (this.scatterSegmentBlocked(u.x, u.y, x, y, r)) {
+              const dx2 = u.x - c.x, dy2 = u.y - c.y, d2 = Math.hypot(dx2, dy2), bearing = d2 > 1e-8 ? Math.atan2(dy2, dx2) : u.seed;
+              const tx = x - c.x, ty = y - c.y;
+              if (Math.hypot(tx, ty) <= r) {
+                x = c.x + Math.cos(bearing) * (r + 0.06);
+                y = c.y + Math.sin(bearing) * (r + 0.06);
+              } else {
+                const delta = Math.atan2(Math.sin(Math.atan2(ty, tx) - bearing), Math.cos(Math.atan2(ty, tx) - bearing)), side = delta === 0 ? u.id % 2 ? 1 : -1 : Math.sign(delta);
+                const turn = Math.min(0.5, Math.max(0.2, Math.acos(Math.min(1, r / Math.max(r, d2))) * 0.8)), distance = r / Math.cos(turn) + 0.08;
+                const bounds = ArenaGeometry.bounds(this.scene, u.radius);
+                let angle = bearing + side * turn;
+                x = c.x + Math.cos(angle) * distance;
+                y = c.y + Math.sin(angle) * distance;
+                if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1) {
+                  angle = bearing - side * turn;
+                  x = c.x + Math.cos(angle) * distance;
+                  y = c.y + Math.sin(angle) * distance;
+                  if (x * x / (bounds.x * bounds.x) + y * y / (bounds.y * bounds.y) > 1) {
+                    u.vx = u.vy = 0;
+                    return;
+                  }
+                }
+              }
+            }
+          }
           const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);
           if (d > 0.08) {
             const rate = 1 - Math.exp(-dt * 3);
@@ -3308,8 +3522,8 @@
             }
           }
           const awayX = pushX / magnitude, awayY = pushY / magnitude;
-          let desiredX = Math.sin(this.time * 0.18 + u.seed) * 7.4 - u.x;
-          let desiredY = Math.cos(this.time * 0.16 + u.seed) * 5.3 - u.y;
+          let desiredX = Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78) - u.x;
+          let desiredY = Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78) - u.y;
           const desiredLength = Math.hypot(desiredX, desiredY) || 1;
           desiredX /= desiredLength;
           desiredY /= desiredLength;
@@ -3364,7 +3578,7 @@
         farmUnit(u, dt) {
           if (u.stun > 0 || u.z > 0.1) return;
           if (!u.mature || u.cooldown > 0) {
-            if (!this.avoidNearbyFood(u, dt)) this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75, u));
+            if (!this.avoidNearbyFood(u, dt)) this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78), dt, scaleMoveSpeed(0.75, u));
             return;
           }
           if (this.mode === "merge") {
@@ -3374,7 +3588,7 @@
               if (anchor && u.cooldown <= 0) this.steer(u, u.id === anchor.id ? u.x : anchor.x, u.id === anchor.id ? u.y : anchor.y, dt, scaleMoveSpeed(2.2, u));
               return;
             }
-            this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75, u));
+            this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78), dt, scaleMoveSpeed(0.75, u));
             return;
           }
           let target = null, best = Infinity;
@@ -3406,7 +3620,7 @@
           const hasDesignatedMate = this.mode === "breed" && u.fed && target && this.units.includes(target);
           if (this.mode === "breed" && u.fed && !hasDesignatedMate && this.avoidNearbyFood(u, dt)) return;
           if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? farmUpgradeRate(this.playerProgression?.farmUpgrades, "growth") : 1), u));
-          else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75, u));
+          else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX * 0.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY * 0.78), dt, scaleMoveSpeed(0.75, u));
         }
         combat(kind, detail) {
           const event = this.notice(kind, { time: this.time, ...detail }), toPresentationTime = presentationClocks.get(this);
@@ -3496,7 +3710,7 @@
           const hpRatio = Number.isFinite(target.hp) && Number.isFinite(target.maxHp) && target.maxHp > 0 ? clamp3(target.hp / target.maxHp, 0, 1) : 1;
           return { maxHp: target.maxHp, armor: effectiveBarleyArmor(target, (1 - hpRatio) * 100, this.time) };
         }
-        damageCombatTarget(u, action, target, point2, options = {}) {
+        damageCombatTarget(u, action, target, point3, options = {}) {
           const isBoss = target === this.boss;
           if (!target || target.hp <= 0 || !areOpposingFactions(u, target) || action.hit || isBoss && !hasFaction(u, FACTION_CONFIG.PLAYER) || options.attackContext?.hitTargets?.has(target)) return false;
           action.hit = true;
@@ -3509,17 +3723,17 @@
           if (!isBoss) this._syncUnitAliveCount(target);
           this.applyGrainOnBasicHit(source, target, kind);
           const strength = damageMultiplier * (buffed ? CONFIG.raid.buff.damage : 1) * harvestMultiplier * (damage.critical ? attackerStats.critMultiplier : 1);
-          if (isBoss) this.finishBossHit(source, action, point2, context, damage, strength);
-          else this.finishUnitHit(source, action, target, point2, context, damage, strength, guard);
+          if (isBoss) this.finishBossHit(source, action, point3, context, damage, strength);
+          else this.finishUnitHit(source, action, target, point3, context, damage, strength, guard);
           return true;
         }
-        finishBossHit(u, action, point2, { kind, strikeIndex, buffed }, damage, strength) {
+        finishBossHit(u, action, point3, { kind, strikeIndex, buffed }, damage, strength) {
           this.boss.flash = 0.13;
-          const dx = point2.x - this.boss.x, dy = point2.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
-          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp3(point2.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength });
+          const dx = point3.x - this.boss.x, dy = point3.y - this.boss.y, d = Math.hypot(dx, dy) || 1;
+          this.combat("boss-hit", { unit: u.id, ownerId: u.ownerId, species: u.species, attackId: action.id, strikeIndex, attackKind: kind, buffed, critical: damage.critical, x: this.boss.x + dx / d * this.boss.radius, y: this.boss.y + dy / d * this.boss.radius, z: clamp3(point3.z + 0.2, 0.2, this.boss.height), nx: dx / d, ny: dy / d, strength });
           this.combatEvent("damage", u, action);
         }
-        finishUnitHit(u, action, target, point2, { kind, strikeIndex }, damage, strength, guard) {
+        finishUnitHit(u, action, target, point3, { kind, strikeIndex }, damage, strength, guard) {
           const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
           target.knock(dx / n, dy / n, 5 * (guard?.receivedKnockbackMultiplier ?? 1), 2.4 * (guard?.receivedKnockbackMultiplier ?? 1), u);
           if (target.hp === 0) {
@@ -3528,7 +3742,7 @@
           }
           this.metrics.directHits++;
           this.metrics.basicHits++;
-          this.combat("unit-hit", { attackKind: kind, attackId: action.id, strikeIndex, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point2.x, y: point2.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength });
+          this.combat("unit-hit", { attackKind: kind, attackId: action.id, strikeIndex, unit: target.id, sourceUnit: u.id, damage: damage?.damage || 0, x: point3.x, y: point3.y, z: Math.max(0.15, target.z + 0.25), nx: dx / n, ny: dy / n, strength });
         }
         explodePopcorn(kernel) {
           if (!kernel?.isPopcorn || kernel.exploded) return false;
@@ -3629,6 +3843,7 @@
           }
           u.vx = u.vy = 0;
           const target = behavior.aimAtCenter ? { id: targetId, x: b.x, y: b.y } : { id: targetId, x: b.x + dx / n * (b.radius + u.radius - 0.16), y: b.y + dy / n * (b.radius + u.radius - 0.16) };
+          if (this.scatterApplies(u) && behavior.attack === "contact" && this.scatterSegmentBlocked(u.x, u.y, target.x, target.y, this.localScatter.radius + u.radius + CONFIG.scatter.bodyMargin)) return;
           u.ability.begin(this, target);
         }
         finish(outcome) {
@@ -3662,7 +3877,7 @@
           return true;
         }
         bossAttackArea(unitRadius = 0) {
-          return bossAttackArea(this.boss, unitRadius);
+          return bossAttackArea(this.boss, unitRadius, this.scene);
         }
         bossWeaponPoint(q = 0) {
           const b = this.boss, a = b.patternRuntime?.active, config = BOSS_PATTERN_CONFIG[a?.id];
@@ -3741,8 +3956,8 @@
               dx *= config.reach / d;
               dy *= config.reach / d;
             }
-            const point2 = ArenaGeometry.clamp({ x: b.x + dx, y: b.y + dy }, this.scene, b.radius + 0.25), cellX = Math.floor(point2.x / size), cellY = Math.floor(point2.y / size), key = (cellY + 64) * 128 + (cellX + 64), distance = Math.hypot(unit2.x - b.x, unit2.y - b.y), current = candidates.get(key);
-            if (!current || distance < current.distance - 1e-9 || Math.abs(distance - current.distance) <= 1e-9 && unit2.id < current.unit.id) candidates.set(key, { unit: unit2, distance, point: point2 });
+            const point3 = ArenaGeometry.clamp({ x: b.x + dx, y: b.y + dy }, this.scene, b.radius + 0.25), cellX = Math.floor(point3.x / size), cellY = Math.floor(point3.y / size), key = (cellY + 64) * 128 + (cellX + 64), distance = Math.hypot(unit2.x - b.x, unit2.y - b.y), current = candidates.get(key);
+            if (!current || distance < current.distance - 1e-9 || Math.abs(distance - current.distance) <= 1e-9 && unit2.id < current.unit.id) candidates.set(key, { unit: unit2, distance, point: point3 });
           }
           let best = null;
           for (const candidate of candidates.values()) {
@@ -3789,7 +4004,7 @@
           this.combat("boss-pattern-prepare", { patternId: id, attackKind: id, x: b.x, y: b.y, z: b.z, angle: aim, targetId: runtime.active.targetId });
           return true;
         }
-        hitBossPatternUnit(unit2, patternId, point2, normal = null) {
+        hitBossPatternUnit(unit2, patternId, point3, normal = null) {
           const b = this.boss, action = b.patternRuntime.active, config = BOSS_PATTERN_CONFIG[patternId];
           if (!action || !config || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(b, unit2) || unit2.hp <= 0 || !unit2.dropLanded || action.hitIds.has(unit2.id)) return false;
           if (config.groundOnly && unit2.z > 0.1) return false;
@@ -3807,7 +4022,7 @@
           const isSweep = patternId === "attack.sweep-360" || patternId === "attack.fan-sweep";
           this.metrics.directHits++;
           this.metrics[isSweep ? "sweepHits" : "basicHits"]++;
-          this.combat("unit-hit", { attackKind: patternId, attackId: b.attackId, unit: unit2.id, x: point2.x, y: point2.y, z: Math.max(0.15, unit2.z + 0.25), nx: dx / n, ny: dy / n, strength: config.damageMultiplier });
+          this.combat("unit-hit", { attackKind: patternId, attackId: b.attackId, unit: unit2.id, x: point3.x, y: point3.y, z: Math.max(0.15, unit2.z + 0.25), nx: dx / n, ny: dy / n, strength: config.damageMultiplier });
           return true;
         }
         resolveBossSector(action, patternId, range, sector) {
@@ -3866,7 +4081,7 @@
           for (let i = 0; i < 16; i++) {
             const offset = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, a = angle + offset, candidate = { x: b.x + Math.cos(a) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius, y: b.y + Math.sin(a) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius };
             if (!ArenaGeometry.inside(candidate, scene, radius)) continue;
-            const blocked = this.units.some((unit2) => unit2.hp > 0 && Math.hypot(unit2.x - candidate.x, unit2.y - candidate.y) < radius + unit2.radius + 0.08) || (action?.landingPoints || []).some((point2) => Math.hypot(point2.x - candidate.x, point2.y - candidate.y) < radius * 2 + 0.08);
+            const blocked = this.units.some((unit2) => unit2.hp > 0 && Math.hypot(unit2.x - candidate.x, unit2.y - candidate.y) < radius + unit2.radius + 0.08) || (action?.landingPoints || []).some((point3) => Math.hypot(point3.x - candidate.x, point3.y - candidate.y) < radius * 2 + 0.08);
             if (!blocked) return candidate;
           }
           return null;
@@ -4125,7 +4340,7 @@
   function snapshot(world) {
     return copyFields(world, SNAPSHOT_FIELDS);
   }
-  var UNIT_SNAPSHOT_SHAPE, legacyStarter, patternValues, abilityInvestments, FARM_SNAPSHOT_SHAPE, LEGACY_UNIT_DEFAULT_KEYS, fields, point, path, popcorn, attack, unit, bossAction, boss, drop, reward, jsonPayload, settlement, progression, runtimeProgression, roster, projectile, SNAPSHOT_FIELDS;
+  var UNIT_SNAPSHOT_SHAPE, legacyStarter, patternValues, abilityInvestments, FARM_SNAPSHOT_SHAPE, LEGACY_UNIT_DEFAULT_KEYS, fields, point2, path, popcorn, attack, unit, bossAction, boss, drop, reward, jsonPayload, settlement, progression, runtimeProgression, roster, projectile, SNAPSHOT_FIELDS;
   var init_farm_snapshot = __esm({
     "src/farm-snapshot.js"() {
       UNIT_SNAPSHOT_SHAPE = {
@@ -4284,22 +4499,22 @@
         "dropLanded"
       ]);
       fields = (names, nested = {}) => ({ ...Object.fromEntries(names.split(" ").filter(Boolean).map((key) => [key, true])), ...nested });
-      point = fields("x y z id");
-      path = fields("height duration", { from: point, to: point });
+      point2 = fields("x y z id");
+      path = fields("height duration", { from: point2, to: point2 });
       popcorn = fields("species fuseSeconds chainOnPopcornContact triggersOncePerProjectile eachTargetAtMostOncePerProjectile damageMultiplier radiusBaseRangeFraction radiusMultiplier radius");
       attack = fields("id targetId hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians walnutEmpowered walnutGuardUsed", {
-        target: point,
+        target: point2,
         path,
         pendingShots: [fields("shotIndex delaySeconds attackMultiplier")],
         projectileAbility: { popcorn }
       });
       unit = shapeFields(UNIT_SNAPSHOT_SHAPE, { ability: { phase: true, elapsed: true, action: attack } });
       bossAction = fields("id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease", {
-        target: point,
-        start: point,
+        target: point2,
+        start: point2,
         path,
         hitIds: [true],
-        landingPoints: [point]
+        landingPoints: [point2]
       });
       boss = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
         patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, { active: bossAction })
@@ -5057,7 +5272,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.7.27";
+      PRODUCT_VERSION = "0.7.28";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -5342,27 +5557,55 @@
   init_unit_grades();
 
   // src/attack-telegraph.js
-  function capsuleContourPoints(area, segments = 12) {
-    const { x, y, width, startRadius, endRadius, angle } = area || {};
-    if (![x, y, width, startRadius, endRadius, angle].every(Number.isFinite) || width <= 0 || startRadius < 0 || endRadius < startRadius) {
-      throw new TypeError("A finite capsule attack area is required");
+  var TAU = Math.PI * 2;
+  var ARC_STEP = Math.PI / 36;
+  function point(out, count, x, y) {
+    out[count * 2] = x;
+    out[count * 2 + 1] = y;
+    return count + 1;
+  }
+  function arc(out, count, x, y, r, start2, end) {
+    const segments = Math.max(1, Math.ceil(Math.abs(end - start2) / ARC_STEP));
+    for (let i = 0; i <= segments; i++) {
+      const a = start2 + (end - start2) * i / segments;
+      count = point(out, count, x + Math.cos(a) * r, y + Math.sin(a) * r);
     }
-    if (!Number.isSafeInteger(segments) || segments < 4 || segments > 64) {
-      throw new RangeError("Capsule arc segments must be an integer from 4 through 64");
+    return count;
+  }
+  function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
+    const dx = endX - x, dy = endY - y, d = Math.hypot(dx, dy), angle = Math.atan2(dy, dx), R2 = Math.max(r, landingRadius);
+    if (d <= R2 - r + 1e-9) return arc(out, 0, endX, endY, R2, 0, TAU);
+    const join = Math.sqrt(Math.max(0, R2 * R2 - r * r));
+    let n = 0;
+    if (d >= join) {
+      const a = Math.acos(-join / R2);
+      n = arc(out, n, x, y, r, angle - Math.PI / 2, angle - Math.PI * 1.5);
+      n = arc(out, n, endX, endY, R2, angle + a, angle - a);
+    } else {
+      const cross = (r * r - R2 * R2 + d * d) / (2 * d), height = Math.sqrt(Math.max(0, r * r - cross * cross));
+      const small = Math.atan2(height, cross), large = Math.atan2(height, cross - d);
+      n = arc(out, n, x, y, r, angle - small, angle + small - TAU);
+      n = arc(out, n, endX, endY, R2, angle + large, angle - large);
     }
-    const forward = { x: Math.cos(angle), y: Math.sin(angle) };
-    const side = { x: -forward.y, y: forward.x };
-    const start2 = { x: x + forward.x * startRadius, y: y + forward.y * startRadius };
-    const end = { x: x + forward.x * endRadius, y: y + forward.y * endRadius };
-    const arcPoint = (center, theta) => ({
-      x: center.x + width * (forward.x * Math.cos(theta) + side.x * Math.sin(theta)),
-      y: center.y + width * (forward.y * Math.cos(theta) + side.y * Math.sin(theta))
-    });
-    const points = [arcPoint(start2, Math.PI / 2), arcPoint(end, Math.PI / 2)];
-    for (let i = 1; i <= segments; i++) points.push(arcPoint(end, Math.PI / 2 - Math.PI * i / segments));
-    points.push(arcPoint(start2, -Math.PI / 2));
-    for (let i = 1; i < segments; i++) points.push(arcPoint(start2, -Math.PI / 2 - Math.PI * i / segments));
-    return points;
+    return n;
+  }
+  function bossDangerContour(area, out) {
+    let n = 0;
+    if (area.kind === "sweep") return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
+    if (area.kind === "sector") {
+      n = point(out, n, area.x, area.y);
+      return arc(out, n, area.x, area.y, area.reach, area.angle - area.sector / 2, area.angle + area.sector / 2);
+    }
+    if (area.kind === "charge") return bodyLandingContour(out, area.x, area.y, area.endX, area.endY, area.width, area.width);
+    if (area.kind === "leap") return bodyLandingContour(out, area.x, area.y, area.targetX, area.targetY, area.width, area.reach);
+    if (area.kind === "fan") {
+      const start2 = area.angle - area.sector / 2, end = area.angle + area.sector / 2, r = area.reach, w = area.width;
+      n = arc(out, n, area.x, area.y, r + w, start2, end);
+      n = arc(out, n, area.x + Math.cos(end) * r, area.y + Math.sin(end) * r, w, end, end + Math.PI);
+      n = arc(out, n, area.x, area.y, Math.max(0, r - w), end, start2);
+      return arc(out, n, area.x + Math.cos(start2) * r, area.y + Math.sin(start2) * r, w, start2 + Math.PI, start2 + TAU);
+    }
+    return 0;
   }
 
   // src/farm-renderer.js
@@ -5413,17 +5656,27 @@
     }
     return "neutral";
   }
-  function renderedBossAttackArea(boss2, unitRadius = 0) {
-    if (!boss2?.patternId || boss2.patternPhase === "recover") return null;
-    return bossAttackArea({ ...boss2, patternRuntime: { active: {
-      id: boss2.patternId,
-      phase: boss2.patternPhase,
-      phaseElapsed: boss2.patternPhaseElapsed,
-      aim: boss2.patternAim,
-      locked: boss2.patternLocked,
-      start: { x: boss2.patternStartX, y: boss2.patternStartY, z: boss2.patternStartZ },
-      target: { x: boss2.patternTargetX, y: boss2.patternTargetY, z: boss2.patternTargetZ }
-    } } }, unitRadius);
+  function renderedBossAttackArea(boss2, scene, scratch, area) {
+    if (!boss2?.patternId || boss2.hp <= 0 || boss2.patternPhase === "recover" && (boss2.patternPhaseElapsed || 0) >= 0.14) return null;
+    const action = scratch.patternRuntime.active;
+    scratch.x = boss2.x;
+    scratch.y = boss2.y;
+    scratch.z = boss2.z;
+    scratch.angle = boss2.angle;
+    scratch.radius = boss2.radius;
+    scratch.height = boss2.height;
+    action.id = boss2.patternId;
+    action.phase = boss2.patternPhase;
+    action.phaseElapsed = boss2.patternPhaseElapsed;
+    action.aim = boss2.patternAim;
+    action.locked = boss2.patternLocked;
+    action.start.x = boss2.patternStartX;
+    action.start.y = boss2.patternStartY;
+    action.start.z = boss2.patternStartZ;
+    action.target.x = boss2.patternTargetX;
+    action.target.y = boss2.patternTargetY;
+    action.target.z = boss2.patternTargetZ;
+    return bossAttackArea(scratch, 0, scene, area);
   }
   function bossAttackPose(b, parts) {
     const id = b.patternId, config = BOSS_PATTERN_CONFIG[id], phase = b.patternPhase, elapsed = Math.max(0, b.patternPhaseElapsed || 0), aim = Math.atan2(-0.62 * Math.sin(b.patternAim ?? b.angle), Math.cos(b.patternAim ?? b.angle));
@@ -5533,7 +5786,7 @@
       case "attack.fan-sweep":
         if (phase === "windup") windup();
         else if (active2) {
-          const q = clamp3(elapsed / config.active, 0, 1), arc = aim - config.sector / 2 + config.sector * q, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
+          const q = clamp3(elapsed / config.active, 0, 1), arc2 = aim - config.sector / 2 + config.sector * q, projected = Math.atan2(-0.62 * Math.sin(arc2), Math.cos(arc2));
           body.rotation = 0.1 * Math.sin(projected - aim);
           body.scaleX = 1.035;
           body.scaleY = 0.97;
@@ -5541,7 +5794,7 @@
           arm(trail, -0.3 - clamp3(projected, -1.1, 1.1) * 0.2);
           if (parts.has("leaf")) extras.leaf = { rotation: 0.12 * Math.sin(q * Math.PI) };
         } else if (recovering && elapsed < 0.12) {
-          const arc = aim + config.sector / 2, projected = Math.atan2(-0.62 * Math.sin(arc), Math.cos(arc));
+          const arc2 = aim + config.sector / 2, projected = Math.atan2(-0.62 * Math.sin(arc2), Math.cos(arc2));
           body.rotation = 0.08 * Math.sin(projected - aim);
           body.scaleX = 1.05;
           arm(lead, 0.4 + projected * 0.5);
@@ -5572,14 +5825,17 @@
       this.unitRings = [];
       this.unitRingPool = [{}, {}, {}];
       this.breedingIndicator = {};
+      this.dangerContour = new Float64Array(512);
+      this.dangerArea = {};
+      this.telegraphBoss = { patternRuntime: { active: { start: {}, target: {} } } };
       const entries = Object.entries(TROOP_VECTOR_ASSETS);
       if (entries.length !== CONFIG.unit.speciesCount || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
       this.meshes = new MeshRenderer(this.device);
       this.ctx.meshRenderer = this.meshes;
       for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), anchors: (0, import_vector_sockets2.readVectorSockets)(compiled, `species ${species}, ${compiled.sourcePath}`), parts: new Set(compiled.metadata.parts.map((part) => part.id)), faceParts: compiled.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id) });
       this.bossAssets = new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [id, { compiled, asset: createVectorAsset(this.meshes, compiled), parts: new Set(compiled.metadata.parts.map((part) => part.id)) }]));
-      for (const [species, troop] of this.vectorAssets) {
-        const record = species === 3 ? this.bossAssets.get("chestnut") : troop;
+      for (const species of this.vectorAssets.keys()) {
+        const record = this.bossAssets.get(species === 3 ? "chestnut" : `species-${species}`);
         if (!record) throw new Error("Missing required boss vector asset for species " + species);
         record.anchors = bindBossSocketAsset(species, record);
       }
@@ -5610,29 +5866,40 @@
       this.canvas.width = Math.round(r.width * d);
       this.pixelRatio = d;
       this.canvas.height = Math.round(r.height * d);
-      const aspect = r.width / r.height;
-      this.aspect = aspect;
-      this.scene = null;
-      this.view = aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
-      this.offset = [0, aspect < 0.8 ? 1.1 : -0.3];
-      this.scale = this.canvas.width / (2 * this.view[0]);
+      this.aspect = r.width / r.height;
+      this.configure(this.scene || "farm", true);
     }
     project(x, y, z = 0) {
       return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (import_vector_sockets2.WORLD_DEPTH_PROJECTION * y + import_vector_sockets2.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale };
     }
     screenToWorld(clientX, clientY) {
       const r = this.canvas.getBoundingClientRect(), px = (clientX - r.left) * this.pixelRatio, py = (clientY - r.top) * this.pixelRatio;
-      return { x: px / this.scale - this.offset[0] - this.view[0], y: (this.view[1] - py / this.scale - this.offset[1]) / 0.62 };
+      return { x: px / this.scale - this.offset[0] - this.view[0], y: (this.view[1] - py / this.scale - this.offset[1]) / import_vector_sockets2.WORLD_DEPTH_PROJECTION };
     }
-    configure(scene) {
-      if (this.scene === scene) return;
+    configure(scene, force = false) {
+      if (this.scene === scene && !force) return;
+      if (this.scene !== scene) this.pan = { x: 0, y: 0 };
       this.scene = scene;
       const a = this.aspect;
       if (scene === "raid") this.view = a > 1.2 ? [Math.max(26.5, 17 * a), 17] : [26.5, 26.5 / a];
       else this.view = a > 1.2 ? [Math.max(12, 9 * a), 9] : [11.7, 11.7 / a];
-      this.offset = [0, a < 0.8 ? 1.1 : -0.3];
       this.scale = this.canvas.width / (2 * this.view[0]);
-      const rx = scene === "raid" ? CONFIG.raid.arena.radiusX : 9.5, ry = scene === "raid" ? CONFIG.raid.arena.radiusY : 6.8;
+      const { radiusX: rx, radiusY: ry } = CONFIG[scene].arena;
+      const bounds = { left: -rx - 1.3, right: rx + 1.3, bottom: -(ry + 1.3) * import_vector_sockets2.WORLD_DEPTH_PROJECTION, top: (ry + 1.3) * import_vector_sockets2.WORLD_DEPTH_PROJECTION };
+      const bossScale = (0, import_vector_sockets2.bossVectorScale)(CONFIG.boss.radius), bossX = rx - CONFIG.boss.radius, bossY = (ry - CONFIG.boss.radius) * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
+      const includeBoss = (record) => {
+        const [x, y, w, h] = record.compiled.viewBox, g = record.anchors.ground;
+        bounds.left = Math.min(bounds.left, -bossX - (g.x - x) * bossScale);
+        bounds.right = Math.max(bounds.right, bossX + (x + w - g.x) * bossScale);
+        bounds.bottom = Math.min(bounds.bottom, -bossY - (y + h - g.y) * bossScale);
+        bounds.top = Math.max(bounds.top, bossY + (g.y - y) * bossScale + CONFIG.raid.dropHeight * import_vector_sockets2.WORLD_HEIGHT_PROJECTION);
+      };
+      for (const record of this.bossAssets.values()) includeBoss(record);
+      const baseY = a < 0.8 ? 1.1 : -0.3, top = this.view[1] - baseY, bottom = top - this.canvas.height / this.scale;
+      this.panLimits = { minX: Math.min(0, this.view[0] - bounds.right), maxX: Math.max(0, -this.view[0] - bounds.left), minY: Math.min(0, top - bounds.top), maxY: Math.max(0, bottom - bounds.bottom) };
+      this.pan.x = clamp3(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
+      this.pan.y = clamp3(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
+      this.offset = [this.pan.x, baseY + this.pan.y];
       this.terrainDots = Array.from({ length: 92 }, (_, i) => {
         const angle = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92);
         return this.project(Math.cos(angle) * (rx + 0.3) * rad, Math.sin(angle) * (ry + 0.3) * rad);
@@ -5641,6 +5908,29 @@
         const angle = i * 2.39996;
         return { ...this.project(Math.cos(angle) * (rx + 0.55), Math.sin(angle) * (ry + 0.55)), angle };
       });
+    }
+    get cameraPan() {
+      return { x: this.pan.x, y: this.pan.y };
+    }
+    setPan(x, y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+      const b = this.panLimits, nextX = clamp3(x, b.minX, b.maxX), nextY = clamp3(y, b.minY, b.maxY), dx = nextX - this.pan.x, dy = nextY - this.pan.y;
+      if (dx === 0 && dy === 0) return false;
+      this.pan.x = nextX;
+      this.pan.y = nextY;
+      this.offset[0] = nextX;
+      this.offset[1] = (this.aspect < 0.8 ? 1.1 : -0.3) + nextY;
+      for (const points of [this.terrainDots, this.terrainLeaves]) for (const point3 of points) {
+        point3.x += dx * this.scale;
+        point3.y -= dy * this.scale;
+      }
+      return true;
+    }
+    panByScreen(dx, dy) {
+      return this.setPan(this.pan.x + dx * this.pixelRatio / this.scale, this.pan.y - dy * this.pixelRatio / this.scale);
+    }
+    resetPan() {
+      return this.setPan(0, 0);
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const c = this.ctx;
@@ -5661,92 +5951,75 @@
       c.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, 0, 0, Math.PI * 2);
       c.stroke();
     }
-    strokeGroundCapsule(area, color2, width = 0.08) {
-      const c = this.ctx, points = capsuleContourPoints(area).map((point2) => this.project(point2.x, point2.y));
-      c.strokeStyle = color2;
-      c.lineWidth = width * this.scale;
-      c.beginPath();
-      c.moveTo(points[0].x, points[0].y);
-      for (const point2 of points.slice(1)) c.lineTo(point2.x, point2.y);
-      c.closePath();
-      c.stroke();
-    }
-    groundPolygon(points, fill, stroke = null, width = 0.055) {
-      if (!points.length) return;
-      const c = this.ctx, projected = points.map((point2) => this.project(point2.x, point2.y));
-      c.beginPath();
-      c.moveTo(projected[0].x, projected[0].y);
-      for (const point2 of projected.slice(1)) c.lineTo(point2.x, point2.y);
-      c.closePath();
-      if (fill) {
-        c.fillStyle = fill;
-        c.fill();
-      }
-      if (stroke) {
-        c.strokeStyle = stroke;
-        c.lineWidth = width * this.scale;
-        c.stroke();
-      }
-    }
-    groundSector(x, y, angle, sector, outerRadius, innerRadius = 0, fill = "#b46c4530", stroke = "#b46c45") {
-      const points = [], segments = Math.max(12, Math.ceil(sector / (Math.PI / 48))), start2 = angle - sector / 2, end = angle + sector / 2;
-      if (innerRadius <= 0) points.push({ x, y });
-      for (let i = 0; i <= segments; i++) {
-        const a = start2 + (end - start2) * i / segments;
-        points.push({ x: x + Math.cos(a) * outerRadius, y: y + Math.sin(a) * outerRadius });
-      }
-      if (innerRadius > 0) for (let i = segments; i >= 0; i--) {
-        const a = start2 + (end - start2) * i / segments;
-        points.push({ x: x + Math.cos(a) * innerRadius, y: y + Math.sin(a) * innerRadius });
-      }
-      this.groundPolygon(points, fill, stroke, 0.045);
-      if (innerRadius <= 0) {
-        const c = this.ctx, center = this.project(x, y), left = this.project(x + Math.cos(start2) * outerRadius, y + Math.sin(start2) * outerRadius), right = this.project(x + Math.cos(end) * outerRadius, y + Math.sin(end) * outerRadius);
-        this.line(center, left, 0.035, stroke);
-        this.line(center, right, 0.035, stroke);
-      }
-    }
     drawBossTelegraph(area) {
-      const color = area.active ? "#bd6648" : area.locked ? "#d09852" : "#a8755c", soft = area.active ? "rgba(195,91,62,.2)" : "rgba(199,147,77,.15)";
-      if (area.kind === "sweep") {
-        this.strokeGroundEllipse(area.x, area.y, Math.max(0, area.sweepRadius - area.width), Math.max(0, area.sweepRadius - area.width), color, area.active ? 0.075 : 0.12);
-        const progress = area.active ? area.progress : 1;
-        this.ring(area.x, area.y, area.outerRadius, color, 0.1, area.startAngle, area.startAngle + progress * Math.PI * 2);
-        this.ring(area.x, area.y, area.sweepRadius, "rgba(216,159,84,.25)", 0.045);
-      } else if (area.kind === "sector") {
-        this.groundSector(area.x, area.y, area.angle, area.sector, area.reach, 0, soft, color);
-      } else if (area.kind === "fan") {
-        const inner = Math.max(0, area.reach - area.width), outer = area.reach + area.width;
-        this.groundSector(area.x, area.y, area.angle, area.sector, outer, inner, soft, color);
-        const q = area.active ? clamp3(area.progress, 0, 1) : 0, a = area.angle - area.sector / 2 + q * area.sector;
-        const from = this.project(area.x + Math.cos(a) * inner, area.y + Math.sin(a) * inner), to = this.project(area.x + Math.cos(a) * outer, area.y + Math.sin(a) * outer);
-        this.line(from, to, 0.12, area.active ? "#f0c27b" : "#d8ae70");
-      } else if (area.kind === "charge") {
-        const endRadius = area.active ? Math.hypot(area.endX - area.x, area.endY - area.y) : area.reach;
-        this.strokeGroundCapsule({ x: area.x, y: area.y, angle: area.angle, width: area.width, startRadius: 0, endRadius: Math.max(0.04, endRadius) }, soft);
-        const end = this.project(area.x + Math.cos(area.angle) * endRadius, area.y + Math.sin(area.angle) * endRadius), start2 = this.project(area.x, area.y);
-        this.line(start2, end, 0.045, color);
-      } else if (area.kind === "leap") {
-        const radius = area.reach, progress = area.progress || 0, x = area.targetX, y = area.targetY;
-        this.groundEllipse(x, y, radius, radius, soft);
-        this.strokeGroundEllipse(x, y, radius, radius, color, area.active ? 0.09 : 0.12);
-        this.strokeGroundEllipse(x, y, 0.46, 0.46, "#ead59b", 0.06);
-        const from = this.project(area.x, area.y), to = this.project(x, y);
-        this.line(from, to, 0.055, "rgba(184,110,69,.58)");
-        const head = this.project(x - Math.cos(Math.atan2(y - area.y, x - area.x)) * 0.56, y - Math.sin(Math.atan2(y - area.y, x - area.x)) * 0.56);
-        this.line(head, to, 0.1, color);
-        if (area.active) {
-          const r = radius * (1 - 0.2 * progress);
-          this.strokeGroundEllipse(x, y, r, r, "rgba(247,207,128,.7)", 0.045);
-        }
-      } else if (area.kind === "summon") {
-        const config = BOSS_PATTERN_CONFIG[area.patternId], reach = config?.landingRadius || 4.8, angle = area.angle, target = { x: area.x + Math.cos(angle) * reach, y: area.y + Math.sin(angle) * reach };
-        this.groundSector(area.x, area.y, angle, Math.PI / 7, reach, 0.25, "rgba(183,125,73,.11)", "rgba(178,129,76,.55)");
-        this.line(this.project(area.x, area.y), this.project(target.x, target.y), 0.05, "rgba(167,123,74,.62)");
-        this.groundEllipse(target.x, target.y, 0.65, 0.48, soft);
-        this.strokeGroundEllipse(target.x, target.y, 0.65, 0.48, color, 0.085);
-        this.ring(target.x, target.y, 0.28, "#f1d391", 0.045, 0, Math.PI * 1.8);
+      if (area.kind === "summon") {
+        const reach = BOSS_PATTERN_CONFIG[area.patternId].landingRadius, x = area.x + Math.cos(area.angle) * reach, y = area.y + Math.sin(area.angle) * reach;
+        this.strokeGroundEllipse(x, y, 0.65, 0.48, "#bd915d", 0.085);
+        this.ring(x, y, 0.28, "#f1d391", 0.045, 0, Math.PI * 1.8);
+        return;
       }
+      const c = this.ctx, points = this.dangerContour, count = bossDangerContour(area, points);
+      if (!count) return;
+      const S = this.scale, ox = this.offset[0] + this.view[0], oy = this.view[1] - this.offset[1], alpha = c.globalAlpha;
+      c.beginPath();
+      for (let i = 0; i < count; i++) {
+        const x = (points[i * 2] + ox) * S, y = (oy - import_vector_sockets2.WORLD_DEPTH_PROJECTION * points[i * 2 + 1]) * S;
+        if (i === 0) c.moveTo(x, y);
+        else c.lineTo(x, y);
+      }
+      c.closePath();
+      const flash = area.phase === "recover", fade = flash ? Math.max(0, 1 - area.elapsed / 0.14) : 1, progress = clamp3(area.progress, 0, 1);
+      c.fillStyle = "#e63744";
+      c.globalAlpha = alpha * (flash ? 0.38 * fade : area.active ? 0.25 : 0.08 + 0.18 * progress * progress);
+      c.fill();
+      c.strokeStyle = flash ? "#ff7377" : area.locked || area.active ? "#e43d49" : "#c93240";
+      c.lineWidth = Math.max(1.6 * this.pixelRatio, (flash ? 0.13 : 0.095) * S);
+      c.globalAlpha = alpha * (flash ? fade : 0.9);
+      c.lineJoin = "round";
+      c.stroke();
+      c.globalAlpha = alpha;
+    }
+    drawLocalScatter(scatter) {
+      if (!scatter?.active || !Number.isFinite(scatter.x) || !Number.isFinite(scatter.y) || !(scatter.radius > 0)) return;
+      const c = this.ctx, S = this.scale, r = scatter.radius, p = this.project(scatter.x, scatter.y), ry = r * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
+      const segments = Math.max(8, Math.min(24, Math.round(Math.PI * 2 * r * S / (10 * this.pixelRatio)))), step = Math.PI * 2 / segments;
+      c.beginPath();
+      for (let i = 0; i < segments; i++) for (let j = 0; j <= 4; j++) {
+        const a = i * step + j / 4 * step * 0.58, x = p.x + Math.cos(a) * r * S, y = p.y - Math.sin(a) * ry;
+        if (j === 0) c.moveTo(x, y);
+        else c.lineTo(x, y);
+      }
+      c.strokeStyle = "#145967";
+      c.lineWidth = 3.4 * this.pixelRatio;
+      c.lineCap = "round";
+      c.stroke();
+      c.strokeStyle = "#50e3ed";
+      c.lineWidth = 1.7 * this.pixelRatio;
+      c.stroke();
+      c.beginPath();
+      const arrow = Math.max(0.25, 3.5 * this.pixelRatio / S), tip = r + arrow * 0.9;
+      for (let i = 0; i < 4; i++) {
+        const a = Math.PI / 4 + i * Math.PI / 2, dx = Math.cos(a), dy = Math.sin(a), tx = p.x + dx * tip * S, ty = p.y - dy * tip * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION;
+        c.moveTo(p.x + dx * (r - arrow * 0.55) * S, p.y - dy * (r - arrow * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
+        c.lineTo(tx, ty);
+        c.moveTo(p.x + (dx * (tip - arrow) - dy * arrow * 0.55) * S, p.y - (dy * (tip - arrow) + dx * arrow * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
+        c.lineTo(tx, ty);
+        c.lineTo(p.x + (dx * (tip - arrow) + dy * arrow * 0.55) * S, p.y - (dy * (tip - arrow) - dx * arrow * 0.55) * S * import_vector_sockets2.WORLD_DEPTH_PROJECTION);
+      }
+      const center = 2.8 * this.pixelRatio;
+      c.moveTo(p.x - center, p.y);
+      c.lineTo(p.x + center, p.y);
+      c.moveTo(p.x, p.y - center);
+      c.lineTo(p.x, p.y + center);
+      const handle = this.project(Number.isFinite(scatter.handleX) ? scatter.handleX : scatter.x, Number.isFinite(scatter.handleY) ? scatter.handleY : scatter.y), hr = 3.5 * this.pixelRatio;
+      c.moveTo(handle.x + hr, handle.y);
+      c.ellipse(handle.x, handle.y, hr, hr, 0, 0, Math.PI * 2);
+      c.strokeStyle = "#145967";
+      c.lineWidth = 3.5 * this.pixelRatio;
+      c.stroke();
+      c.strokeStyle = "#7df5fb";
+      c.lineWidth = 1.7 * this.pixelRatio;
+      c.stroke();
     }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
@@ -5902,7 +6175,7 @@
     }
     drawBoss(world) {
       const { b, p, r, k } = this.bossPose(world), event = world.farmBossEvent, species = b.species;
-      const record = species === 3 ? this.bossAssets.get("chestnut") : this.vectorAssets.get(species);
+      const record = this.bossAssets.get(species === 3 ? "chestnut" : `species-${species}`);
       if (!record) throw new Error("Missing required boss vector asset for species " + species);
       let instance = this.bossPlayers.get(species);
       if (!instance) {
@@ -5944,7 +6217,7 @@
       }
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", rx = raid ? CONFIG.raid.arena.radiusX : 9.5, ry = raid ? CONFIG.raid.arena.radiusY : 6.8;
+      const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", { radiusX: rx, radiusY: ry } = CONFIG[sim2.scene].arena;
       this.groundEllipse(0, -0.2, rx + 1.3, ry + 1.1, "#bcc7a6");
       this.groundEllipse(0, 0, rx + 1.2, ry + 1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
       this.groundEllipse(0, 0.15, rx + 0.3, ry + 0.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
@@ -5955,13 +6228,8 @@
       }
       if (raid) {
         this.strokeGroundEllipse(0, 0, CONFIG.raid.arena.radiusX - 0.5, CONFIG.raid.arena.radiusY - 0.5, "#728e61a8", 0.075);
-        if (this.dropTarget) {
-          const t = this.dropTarget;
-          this.groundEllipse(t.x, t.y, 0.32, 0.22, t.valid ? "#f3d58a55" : "#b56d6266");
-          this.strokeGroundEllipse(t.x, t.y, 0.36, 0.25, t.valid ? "#f4e0a0" : "#b36359", 0.055);
-        }
       }
-      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, CONFIG.unit.maxRadius) : null;
+      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
       this.bossTelegraph = area;
       if (area) this.drawBossTelegraph(area);
     }
@@ -6100,9 +6368,9 @@
           }
         } else if (e.kind === "merge-material") {
           const t = clamp3(q, 0, 1), x = e.x + (e.targetX - e.x) * t, y = e.y + (e.targetY - e.y) * t, z = (e.z || 0) + Math.sin(Math.PI * t) * 0.55;
-          const start2 = this.project(e.x, e.y, e.z || 0), point2 = this.project(x, y, z);
-          this.line(start2, point2, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - t)})`);
-          this.ellipse(point2.x, point2.y, this.scale * 0.12 * (1 - 0.4 * t), this.scale * 0.09 * (1 - 0.4 * t), `rgba(88,185,187,${1 - 0.35 * t})`, t * Math.PI);
+          const start2 = this.project(e.x, e.y, e.z || 0), point3 = this.project(x, y, z);
+          this.line(start2, point3, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - t)})`);
+          this.ellipse(point3.x, point3.y, this.scale * 0.12 * (1 - 0.4 * t), this.scale * 0.09 * (1 - 0.4 * t), `rgba(88,185,187,${1 - 0.35 * t})`, t * Math.PI);
         } else if (e.kind === "birth" || e.kind === "merge") {
           const birth = e.kind === "birth", color = birth ? "#df87a4" : "#58b9bb";
           this.ring(e.x, e.y, birth ? 0.35 + q * 1.5 : 1.8 * (1 - q) + 0.15, color, 0.07);
@@ -6137,10 +6405,11 @@
           }
         }
       }
+      this.drawLocalScatter(sim2.localScatter);
       this.stats = c.endFrame();
     }
     dispose() {
-      for (const [species, troop] of this.vectorAssets) unbindBossSocketAsset(species, species === 3 ? this.bossAssets.get("chestnut") : troop);
+      for (const species of this.vectorAssets.keys()) unbindBossSocketAsset(species, this.bossAssets.get(species === 3 ? "chestnut" : `species-${species}`));
       for (const player of this.vectorPlayers.values()) player.dispose();
       this.vectorPlayers.clear();
       for (const record of this.vectorAssets.values()) record.asset.dispose();
@@ -6498,13 +6767,13 @@
       this.pending.push(structuredClone({ type, ...args }));
       return true;
     }
-    deployNext(x, y) {
+    deployNext() {
       const w = this.world, roster2 = w.scene === "raid" && w.raidRoster(this.localPlayerId);
-      if (!roster2 || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+      if (!roster2 || this.closed || this.paused || ["victory", "defeat"].includes(w.encounter.outcome)) return false;
       this.localDeploySequence = Math.max(this.localDeploySequence, roster2.lastDeploySequence);
       if (this.localDeploySequence - roster2.lastDeploySequence >= w.raidRemaining(this.localPlayerId)) return false;
       const sequence = this.localDeploySequence + 1;
-      if (!this.queue("deploy", { sequence, x, y })) return false;
+      if (!this.queue("deploy", { sequence })) return false;
       this.localDeploySequence = sequence;
       return true;
     }
@@ -6566,7 +6835,7 @@
         case "register-roster":
           return Array.isArray(c.entries) && w.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null);
         case "deploy":
-          return Number.isSafeInteger(c.sequence) && Number.isFinite(c.x) && Number.isFinite(c.y) && w.deployNextRaidUnit(ownerId, c.sequence, c.x, c.y);
+          return Number.isSafeInteger(c.sequence) && w.deployNextRaidUnit(ownerId, c.sequence);
         case "buff":
           return w.useRaidBuff(ownerId);
       }
@@ -6597,6 +6866,7 @@
     }
     set paused(value) {
       value = !!value;
+      if (value) this.world.clearLocalScatter();
       if (value === this._paused) return;
       const now = globalThis.performance.now();
       if (value) this.pauseStartedAt = now;
@@ -6685,6 +6955,7 @@
       this.loop.pulse(now, { render: false });
     }
     dispose() {
+      this.world.clearLocalScatter();
       this.closed = true;
       this.loop.stop();
       this.pending.length = 0;
@@ -7278,6 +7549,11 @@
   var menuAutoPaused = false;
   var dropPointer = null;
   var dropTimer = null;
+  var scatterPointer = null;
+  var panPointer = null;
+  var worldInputMode = "scatter";
+  var scatterHintShown = false;
+  var scatterHintUntil = 0;
   var bossEncounterOpen = false;
   var bossSwipe = null;
   var bossPauseBeforeOpen = null;
@@ -7416,7 +7692,9 @@
     }
   }
   function install(world) {
+    if (active) stopWorldInput();
     active?.dispose();
+    renderer.resetPan();
     active = new FarmSession(world, { onError: fail2, onWorldStep });
     noticeSequence = world.eventSequence;
     observedWorld = world;
@@ -7466,6 +7744,7 @@
     return selection;
   }
   function openBossEncounter(push = true) {
+    stopWorldInput();
     if (active?.world?.scene === "raid") return false;
     if (!personalGarden) {
       if (storage.world && storage.world.activeRaidRunSequence === null) start(restore(snapshot(storage.world)), false);
@@ -7520,6 +7799,7 @@
     $2("saveNotice").textContent = [storage.migrationNotice, storage.error].filter(Boolean).join(" ");
   }
   function setHome(value, push = true) {
+    stopWorldInput();
     if (value) {
       persist();
       if (menuOpen) closeMenu(false);
@@ -7532,6 +7812,10 @@
     if (push) history.pushState(null, "", value ? "#/" : active.world.scene === "raid" ? "#/raid" : "#/farm");
     refreshStart();
     if (value) $2("continueGame").focus();
+    else if (!scatterHintShown) {
+      scatterHintShown = true;
+      scatterHintUntil = performance.now() + 6e3;
+    }
   }
   function start(world, push = true) {
     autosave.reset();
@@ -7594,7 +7878,6 @@
     if (!bossStage || !persist()) return;
     const reserved = reservePersonalRaidRun();
     if (!reserved) return;
-    renderer.dropTarget = null;
     closeBossEncounter(false);
     const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"], bossStage);
     install(battle);
@@ -7602,7 +7885,7 @@
     setHome(false, push);
   }
   async function returnToFarm(push = true) {
-    stopDrop();
+    stopWorldInput();
     if (bossEncounterOpen) closeBossEncounter(false);
     if (!personalGarden) return;
     const raidWorld = active?.world?.scene === "raid" ? snapshot(active.world) : null;
@@ -7615,7 +7898,6 @@
         return false;
       }
     }
-    renderer.dropTarget = null;
     install(personalGarden);
     setHome(false, push);
     return true;
@@ -7861,6 +8143,7 @@
     }
   }
   function openMenu(tab = "play", push = true) {
+    stopWorldInput();
     if (!menuOpen) {
       menuWasPaused = active.paused;
       menuPauseChanged = false;
@@ -8001,7 +8284,8 @@
   }
   function deploymentHud() {
     const w = active.world, roster2 = w.raidRoster(active.localPlayerId), remaining = roster2 ? w.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, queued = roster2 ? Math.max(0, active.localDeploySequence - roster2.lastDeploySequence) : 0;
-    syncText("raidRemaining", !roster2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 전장을 탭해 투입 · 누르고 있으면 100ms마다 한 마리`);
+    syncText("raidRemaining", !roster2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, remaining - queued)} · 약한 병력부터 · 맵 가장자리 전방위 투입`);
+    syncFlag("deployTroops", "disabled", !roster2 || remaining - queued <= 0 || active.paused || ["victory", "defeat"].includes(w.encounter.outcome));
     let deployed = 0;
     if (roster2) {
       for (const troop of roster2.troops) if (troop.deployed) deployed++;
@@ -8012,56 +8296,128 @@
       syncText("raidRewardChance", stageReward.rolls ? `${speciesRewardName(w.boss.species)} · ${chance}%씩 · ${stageReward.rolls}회 개별 추첨` : "종 추첨 없음");
     } else syncText("raidRewardChance", "");
   }
-  function deployAt(p) {
-    if (home || active.world.scene !== "raid" || !active.world.raidExpectedPlayers.every((id) => active.world.raidRoster(id))) return false;
-    const valid = ArenaGeometry.inside(p, "raid", 0.5);
-    renderer.dropTarget = { ...p, valid };
-    return valid && active.deployNext(Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100);
+  function canUseWorldInput() {
+    return !home && !menuOpen && !bossEncounterOpen && !active.paused;
   }
-  function updateDropPointer(e) {
-    if (!dropPointer || e.pointerId !== dropPointer.id) return;
-    const p = renderer.screenToWorld(e.clientX, e.clientY);
-    dropPointer.x = Math.round(p.x * 100) / 100;
-    dropPointer.y = Math.round(p.y * 100) / 100;
-    renderer.dropTarget = { x: dropPointer.x, y: dropPointer.y, valid: ArenaGeometry.inside(p, "raid", 0.5) };
+  function deployTroop() {
+    if (!canUseWorldInput() || active.world.scene !== "raid") return false;
+    return active.deployNext();
   }
   function stopDrop(e) {
-    if (e && dropPointer && e.pointerId !== dropPointer.id) return;
-    const id = dropPointer?.id;
+    if (e && dropPointer !== null && e.pointerId !== dropPointer) return;
+    const id = dropPointer;
     dropPointer = null;
     if (dropTimer !== null) clearInterval(dropTimer);
     dropTimer = null;
-    if (id !== void 0 && canvas.hasPointerCapture?.(id)) canvas.releasePointerCapture(id);
+    const button = $2("deployTroops");
+    button.setAttribute("aria-pressed", "false");
+    if (typeof id === "number" && button.hasPointerCapture?.(id)) button.releasePointerCapture(id);
   }
-  canvas.addEventListener("pointerdown", (e) => {
-    foodFeel.unlock();
-    if (home || active.world.scene !== "raid" || dropPointer) return;
-    const p = renderer.screenToWorld(e.clientX, e.clientY);
-    if (!ArenaGeometry.inside(p, "raid", 0.5)) {
-      renderer.dropTarget = { ...p, valid: false };
-      return;
-    }
-    canvas.setPointerCapture?.(e.pointerId);
-    dropPointer = { id: e.pointerId, x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
-    deployAt(dropPointer);
+  function beginDrop(id) {
+    if (dropPointer !== null || scatterPointer || panPointer || !deployTroop()) return false;
+    dropPointer = id;
+    $2("deployTroops").setAttribute("aria-pressed", "true");
     dropTimer = setInterval(() => {
-      if (dropPointer) deployAt(dropPointer);
+      if (dropPointer !== null && !deployTroop()) stopDrop();
     }, 100);
+    return true;
+  }
+  $2("deployTroops").addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || !beginDrop(e.pointerId)) return;
+    foodFeel.unlock();
+    $2("deployTroops").setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
-  canvas.addEventListener("pointermove", updateDropPointer);
-  canvas.addEventListener("pointerup", (e) => stopDrop(e));
-  canvas.addEventListener("pointercancel", (e) => stopDrop(e));
-  canvas.addEventListener("lostpointercapture", (e) => stopDrop(e));
-  window.addEventListener("pointerup", (e) => stopDrop(e), true);
-  window.addEventListener("pointercancel", (e) => stopDrop(e), true);
+  $2("deployTroops").addEventListener("lostpointercapture", stopDrop);
+  $2("deployTroops").addEventListener("keydown", (e) => {
+    if (!["Enter", " "].includes(e.key)) return;
+    e.preventDefault();
+    if (!e.repeat) beginDrop("keyboard");
+  });
+  $2("deployTroops").addEventListener("keyup", (e) => {
+    if (["Enter", " "].includes(e.key)) {
+      e.preventDefault();
+      stopDrop();
+    }
+  });
+  $2("deployTroops").addEventListener("blur", () => stopDrop());
+  function stopScatter(e) {
+    if (e && scatterPointer && e.pointerId !== scatterPointer.id) return;
+    const id = scatterPointer?.id;
+    scatterPointer = null;
+    active?.world.clearLocalScatter();
+    if (id !== void 0 && canvas.hasPointerCapture?.(id)) canvas.releasePointerCapture(id);
+  }
+  function stopPan(e) {
+    if (e && panPointer && e.pointerId !== panPointer.id) return;
+    const id = panPointer?.id;
+    panPointer = null;
+    if (id !== void 0 && canvas.hasPointerCapture?.(id)) canvas.releasePointerCapture(id);
+  }
+  function stopWorldInput(e) {
+    stopDrop(e);
+    stopScatter(e);
+    stopPan(e);
+  }
+  function selectWorldInputMode(mode) {
+    stopWorldInput();
+    worldInputMode = mode;
+    $2("scatterMode").setAttribute("aria-pressed", String(mode === "scatter"));
+    $2("panMode").setAttribute("aria-pressed", String(mode === "pan"));
+    canvas.setAttribute("aria-label", mode === "pan" ? "드래그해 정원 시야 이동" : "지면을 누르고 드래그해 아군 산개 범위 조절");
+  }
+  $2("scatterMode").onclick = () => selectWorldInputMode("scatter");
+  $2("panMode").onclick = () => selectWorldInputMode("pan");
+  canvas.addEventListener("pointerdown", (e) => {
+    foodFeel.unlock();
+    if (e.button !== 0 || !canUseWorldInput() || scatterPointer || panPointer || dropPointer !== null) return;
+    if (worldInputMode === "pan") {
+      panPointer = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      canvas.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    const p = renderer.screenToWorld(e.clientX, e.clientY);
+    if (!ArenaGeometry.inside(p, active.world.scene)) return;
+    scatterPointer = { id: e.pointerId, x: p.x, y: p.y };
+    active.world.setLocalScatter(p.x, p.y);
+    canvas.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (panPointer && e.pointerId === panPointer.id) {
+      if (!canUseWorldInput()) {
+        stopPan();
+        return;
+      }
+      renderer.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
+      panPointer.x = e.clientX;
+      panPointer.y = e.clientY;
+      e.preventDefault();
+      return;
+    }
+    if (!scatterPointer || e.pointerId !== scatterPointer.id) return;
+    if (!canUseWorldInput()) {
+      stopScatter();
+      return;
+    }
+    const p = renderer.screenToWorld(e.clientX, e.clientY), dx = p.x - scatterPointer.x, dy = p.y - scatterPointer.y, d = Math.hypot(dx, dy), r = Math.max(CONFIG.scatter.minRadius, Math.min(CONFIG.scatter.maxRadius, d)), angle = d > 1e-6 ? Math.atan2(dy, dx) : 0;
+    active.world.setLocalScatter(scatterPointer.x, scatterPointer.y, r, scatterPointer.x + Math.cos(angle) * r, scatterPointer.y + Math.sin(angle) * r);
+    e.preventDefault();
+  });
+  canvas.addEventListener("lostpointercapture", (e) => {
+    stopScatter(e);
+    stopPan(e);
+  });
+  window.addEventListener("pointerup", stopWorldInput, true);
+  window.addEventListener("pointercancel", stopWorldInput, true);
   window.addEventListener("blur", () => {
-    stopDrop();
+    stopWorldInput();
     persist();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      stopDrop();
+      stopWorldInput();
       persist();
       active.loop.resetTiming();
     }
@@ -8082,18 +8438,24 @@
   window.addEventListener("pageshow", (e) => {
     if (e.persisted) location.reload();
   });
-  window.addEventListener("resize", () => renderer.resize());
+  window.addEventListener("resize", () => {
+    stopWorldInput();
+    renderer.resize();
+  });
   window.addEventListener("pagehide", () => {
+    stopWorldInput();
     persist();
     active.dispose();
     renderer.dispose();
   });
   canvas.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
+    stopWorldInput();
     persist();
     fail2(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
   });
   function route() {
+    stopWorldInput();
     const r = location.hash;
     if (r === "#/" || !r) {
       if (menuOpen) closeMenu(false);
@@ -8141,6 +8503,9 @@
   window.addEventListener("popstate", route);
   function sync(display, now) {
     const w = active.world, raid = display.scene === "raid", farmEvent = display.farmBossEvent, farmEventActive = !raid && farmEvent?.phase !== "idle", battleHud = raid || farmEventActive, hasReadyTroops = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, rewardWorld = personalGarden || w, pendingReward = rewardWorld.bossRewardReceipts.find((reward2) => reward2.status === "pending");
+    syncFlag("worldInputControls", "hidden", home || bossEncounterOpen);
+    syncFlag("scatterHint", "hidden", home || menuOpen || bossEncounterOpen || now >= scatterHintUntil);
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || scatterPointer || panPointer)) stopWorldInput();
     syncAttribute("farm", "aria-pressed", !raid && !bossEncounterOpen);
     syncAttribute("raid", "aria-pressed", raid || bossEncounterOpen);
     syncAttribute("breed", "aria-pressed", w.mode === "breed");

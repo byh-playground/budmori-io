@@ -23,12 +23,14 @@ export function bindPresentationClock(world,clock){if(clock)presentationClocks.s
   const BREED_COOLDOWN_SECONDS=10;
   const FARM_MAX_UNITS=100,RAID_PLAYER_UNITS=100,RAID_MAX_PLAYERS=4,RAID_PLAYER_ID_STRIDE=1000000,MAX_BOSS_SUMMONS=10;
   const RAID_MAX_UNITS=RAID_PLAYER_UNITS*RAID_MAX_PLAYERS;
+  const WORLD_ARENA=Object.freeze({radiusX:23,radiusY:17});
   const unitRadiusForTier=tier=>.25+.055*tier;
   // Runtime configuration is separate from saved world fields and their import
   // migration. Only already-established capacity/growth relations are derived.
   const CONFIG = Object.freeze({
     factions: FACTION_CONFIG,
     farm: Object.freeze({
+      arena:WORLD_ARENA,
       capacity: Object.freeze({base:50,max:FARM_MAX_UNITS,battleUnits:FARM_MAX_UNITS*(1+MAX_BEAN_SPLIT_CHILDREN)+MAX_BOSS_SUMMONS}),
       maxUnitId:999999999,
       starterSeconds:60,
@@ -39,24 +41,54 @@ export function bindPresentationClock(world,clock){if(clock)presentationClocks.s
     raid: Object.freeze({
       capacity:Object.freeze({playerUnits:RAID_PLAYER_UNITS,players:RAID_MAX_PLAYERS,units:RAID_MAX_UNITS,battleUnits:RAID_MAX_UNITS*(1+MAX_BEAN_SPLIT_CHILDREN)+MAX_BOSS_SUMMONS,projectiles:RAID_MAX_UNITS*(1+MAX_BEAN_SPLIT_CHILDREN)*4+40}),
       ids:Object.freeze({playerStride:RAID_PLAYER_ID_STRIDE,summonBase:RAID_MAX_PLAYERS*RAID_PLAYER_ID_STRIDE+RAID_PLAYER_UNITS+1}),
-      arena:Object.freeze({radiusX:23,radiusY:17}),
+      arena:WORLD_ARENA,
       dropHeight:3,
       buff:Object.freeze({duration:3,cooldown:12,damage:1.25})
     }),
+    scatter:Object.freeze({minRadius:unitRadiusForTier(1)*4,maxRadius:unitRadiusForTier(1)*10,bodyMargin:.08,hysteresis:.18}),
     unit:Object.freeze({speciesCount:SPECIES_COUNT,maxTier:MAX_UNIT_TIER,maxRadius:unitRadiusForTier(MAX_UNIT_TIER),perceptionRange:18,corpseRecoverySeconds:60}),
     boss:Object.freeze({maxSummons:MAX_BOSS_SUMMONS,summonIdBase:5000000,radius:4.4,height:5.2,basicReach:6.2,sweepReach:6.5,weaponRadius:.85,chaseSpeed:2.65}),
     physics:Object.freeze({gravity:19,fixedStep:1/120})
   });
-function bossAttackArea(boss,unitRadius=0){
-  const action=boss.patternRuntime?.active;if(!action)return null;
-  const config=BOSS_PATTERN_CONFIG[action.id];if(!config)return null;
-  const progress=clamp(action.phaseElapsed/(action.phase==='windup'?config.windup:config.active||1),0,1),locked=!!action.locked;
-  if(action.id==='attack.sweep-360')return {kind:'sweep',x:boss.x,y:boss.y,width:CONFIG.boss.weaponRadius+Math.max(0,unitRadius),sweepRadius:config.reach,outerRadius:config.reach+CONFIG.boss.weaponRadius,startAngle:0,progress:action.phase==='windup'?1:1,active:action.phase==='active',patternId:action.id,locked};
-  if(action.id==='attack.front-slam')return {kind:'sector',x:boss.x,y:boss.y,angle:action.aim??boss.angle,reach:config.reach,sector:config.sector,progress,active:action.phase==='active',patternId:action.id,locked};
-  if(action.id==='attack.charge')return {kind:'charge',x:action.start?.x??boss.x,y:action.start?.y??boss.y,endX:boss.x,endY:boss.y,angle:action.aim??boss.angle,reach:config.reach,width:boss.radius,progress,active:action.phase==='active',patternId:action.id,locked};
-  if(action.id==='attack.leap-slam')return {kind:'leap',x:boss.x,y:boss.y,targetX:action.target?.x??boss.x,targetY:action.target?.y??boss.y,reach:config.landingRadius,progress,active:action.phase==='active',patternId:action.id,locked};
-  if(action.id==='attack.fan-sweep')return {kind:'fan',x:boss.x,y:boss.y,angle:action.aim??boss.angle,reach:config.reach,width:config.width,sector:config.sector,progress,active:action.phase==='active',patternId:action.id,locked};
-  return action.id==='summon.mouth-t1'?{kind:'summon',x:boss.x,y:boss.y,angle:action.aim??boss.angle,progress,active:action.phase==='active',patternId:action.id,locked}:null;
+function bossAttackArea(boss,unitRadius=0,scene='raid',area={}){
+  const action=boss.patternRuntime?.active,config=BOSS_PATTERN_CONFIG[action?.id];if(!config)return null;
+  const phase=action.phase,pad=Math.max(0,unitRadius),elapsed=Math.max(0,action.phaseElapsed||0);
+  area.x=boss.x;area.y=boss.y;area.angle=action.aim??boss.angle;area.patternId=action.id;area.phase=phase;area.elapsed=elapsed;
+  area.active=phase==='active';area.locked=!!action.locked;
+  area.progress=phase==='recover'?1:clamp(elapsed/(phase==='windup'?config.windup:config.active||1),0,1);
+  if(action.id==='attack.sweep-360'){
+    // resolveBossCircle hits the whole disk, not a ring around the weapon tip.
+    area.kind='sweep';area.reach=config.reach+pad;
+  }else if(action.id==='attack.front-slam'){
+    area.kind='sector';area.reach=config.reach+pad;area.sector=config.sector;
+  }else if(action.id==='attack.charge'){
+    area.kind='charge';area.width=boss.radius+pad;
+    const sx=action.start?.x??boss.x,sy=action.start?.y??boss.y,dx=Math.cos(area.angle),dy=Math.sin(area.angle);
+    // The last physical substep is radially clamped, rather than clamping the
+    // requested full reach (which can rotate and greatly overstate the lane).
+    const rx=CONFIG[scene].arena.radiusX-boss.radius-.25,ry=CONFIG[scene].arena.radiusY-boss.radius-.25;
+    const a=dx*dx/(rx*rx)+dy*dy/(ry*ry),b=2*(sx*dx/(rx*rx)+sy*dy/(ry*ry)),c=sx*sx/(rx*rx)+sy*sy/(ry*ry)-1;
+    const exit=Math.max(0,(-b+Math.sqrt(Math.max(0,b*b-4*a*c)))/(2*a)),step=config.speed*CONFIG.physics.fixedStep;
+    const distance=exit<config.reach?Math.min(config.reach,(Math.floor(exit/step+1e-8)+1)*step):config.reach;
+    const ex=sx+dx*distance,ey=sy+dy*distance,k=Math.max(1,Math.hypot(ex/rx,ey/ry));
+    area.endX=phase==='recover'?boss.x:ex/k;area.endY=phase==='recover'?boss.y:ey/k;
+    area.x=sx;area.y=sy;
+  }else if(action.id==='attack.leap-slam'){
+    area.kind='leap';area.width=boss.radius+pad;area.reach=config.landingRadius+pad;
+    let x=action.target?.x??boss.x,y=action.target?.y??boss.y;
+    if(phase==='windup'){
+      const dx=x-boss.x,dy=y-boss.y,d=Math.hypot(dx,dy);if(d>config.reach){x=boss.x+dx/d*config.reach;y=boss.y+dy/d*config.reach;}
+      const rx=CONFIG[scene].arena.radiusX-boss.radius-.25,ry=CONFIG[scene].arena.radiusY-boss.radius-.25,k=Math.max(1,Math.hypot(x/rx,y/ry));x/=k;y/=k;
+    }
+    area.targetX=x;area.targetY=y;
+    const sx=action.start?.x??boss.x,sy=action.start?.y??boss.y;
+    area.x=sx;area.y=sy;
+    if(phase==='active'&&action.path)area.progress=clamp(elapsed/action.path.duration,0,1);
+  }else if(action.id==='attack.fan-sweep'){
+    area.kind='fan';area.reach=config.reach;area.width=config.width+pad;area.sector=config.sector;
+  }else if(action.id==='summon.mouth-t1')area.kind='summon';
+  else return null;
+  return area;
 }
   var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   var stats = baseUnitStatsFor;
@@ -100,9 +132,10 @@ function bossAttackArea(boss,unitRadius=0){
 
 // Simulation types are independent of the renderer skin mapping.
 const ArenaGeometry = {
-  bounds(scene='raid',margin=0){return scene==='raid'?{x:CONFIG.raid.arena.radiusX-margin,y:CONFIG.raid.arena.radiusY-margin}:{x:9.5-margin,y:6.8-margin}},
+  bounds(scene='raid',margin=0){const arena=CONFIG[scene].arena;return {x:arena.radiusX-margin,y:arena.radiusY-margin}},
   inside(p,scene='raid',margin=0){const r=this.bounds(scene,margin);return p.x*p.x/(r.x*r.x)+p.y*p.y/(r.y*r.y)<=1},
   clamp(p,scene='raid',margin=0){const r=this.bounds(scene,margin),k=Math.max(1,Math.hypot(p.x/r.x,p.y/r.y));return {x:p.x/k,y:p.y/k}},
+  segmentInsideCircle(x,y,tx,ty,cx,cy,radius){const dx=tx-x,dy=ty-y,length=dx*dx+dy*dy,q=length>1e-12?clamp(((cx-x)*dx+(cy-y)*dy)/length,0,1):0;return (x+dx*q-cx)**2+(y+dy*q-cy)**2<radius*radius-1e-10},
   overlaps(a,b){return a.z<=b.z+b.height && a.z+a.height>=b.z && Math.hypot(a.x-b.x,a.y-b.y)<=a.radius+b.radius},
   // Swept XY cylinder versus finite Z interval; includes entity radii, never center-only.
   sweep(a,b,r,h,target){
@@ -129,6 +162,12 @@ class AttackCycle {
     this.prepareAttack?.(sim);
     u.angle=Math.atan2(target.y-u.y,target.x-u.x);u.vx=u.vy=0;
     sim.combatEvent("prepare",u,this.action);return true;
+  }
+  cancelForScatter(){
+    // Keep resolved hit masks and already launched projectiles. Cancel only the
+    // remaining motion/strikes; recovery is paid once, never reset by each hold.
+    if(this.action?.pendingShots)this.action.pendingShots.length=0;
+    if(this.phase==='windup'||this.phase==='active'){this.phase='recover';this.elapsed=0;this.owner.vx=this.owner.vy=0}
   }
   interrupt(){if(this.phase!=="idle"){this.phase="recover";this.elapsed=0;this.action=null}}
   recover(sim,recoil=false){this.phase="recover";this.elapsed=0;const u=this.owner;if(recoil){u.vx=-Math.cos(u.angle)*2.2;u.vy=-Math.sin(u.angle)*2.2}sim.combatEvent("recover",u,this.action)}
@@ -222,6 +261,7 @@ const AttackingBody=Base=>class extends Base{
       this._bossGridUnits=[];this._bossGroundUnits=[];this._bossQueryCandidates=[];this._bossHitCandidates=[];
       this._mergeNearestScratch=[];this._mergeMaterialsScratch=[];this._mergeIdScratch=[];this._spatialStepActive=false;this._spatialQueryDepth=0;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
       for(const key of ['unitSpatial','foodSpatial','_unitById','_unitStepOrder','_unitAliveState','_liveFactionCounts','_foodOrder','_speciesGroups','_speciesTierGroups','_mergeEligibleGroups','_ownedSpeciesCounts','_stepUnits','_unitCandidates','_foodCandidates','_groundedFoods','_groundedFoodCount','_contactPending','_contactExtra','_contactQuery','_contactSeen','_contactGeneration','_bossGridUnits','_bossGroundUnits','_bossQueryCandidates','_bossHitCandidates','_mergeNearestScratch','_mergeMaterialsScratch','_mergeIdScratch','_spatialStepActive','_spatialQueryDepth','_unitSpatialDirty','_foodSpatialDirty'])Object.defineProperty(this,key,{enumerable:false});
+      Object.defineProperties(this,{localScatter:{value:{active:false,x:0,y:0,radius:CONFIG.scatter.minRadius,handleX:0,handleY:0,generation:0}},_scatterStates:{value:new WeakMap()}});
       this.reset();
     }
     _rebuildUnitSpatialIndex(stepUnits=this.units){
@@ -311,6 +351,7 @@ const AttackingBody=Base=>class extends Base{
       w.encounter={outcome:'idle',elapsed:0};w.raidExpectedPlayers=[...expectedPlayers];w.raidRosters=[];w.raidDeploymentStarted=false;w.nextId=1;w.starter=0;return w;
     }
     reset() {
+      this.clearLocalScatter();
       this.mergeTask=null;this._stepUnits.length=0;
       this.corpseRecoveryVersion=1;
       this.rng = new SeededPRNG(this.seed);
@@ -451,13 +492,16 @@ const AttackingBody=Base=>class extends Base{
       if(hasSettlement&&(!settlement||typeof settlement!=='object'||typeof settlement.sessionId!=='string'||!settlement.sessionId.trim()||settlement.sessionId.length>128||!Number.isSafeInteger(settlement.runSequence)||settlement.runSequence<1||settlement.runSequence>1e12||settlement.encounterId!==settlement.runSequence))return false;
       const ids=new Set(),troops=[];for(const e of entries){if(!Array.isArray(e)||e.length!==3||!Number.isSafeInteger(e[0])||e[0]<1||e[0]>CONFIG.farm.maxUnitId||!Number.isInteger(e[1])||e[1]<0||e[1]>=CONFIG.unit.speciesCount||!Number.isInteger(e[2])||e[2]<1||e[2]>CONFIG.unit.maxTier||ids.has(e[0]))return false;ids.add(e[0]);troops.push({farmId:e[0],species:e[1],tier:e[2],deployed:false})}
       const orderKey=farmId=>{let h=(this.seed^Math.imul(farmId,0x9e3779b9))>>>0;for(let i=0;i<ownerId.length;i++){h^=ownerId.charCodeAt(i);h=Math.imul(h,0x01000193)}h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;h=Math.imul(h,0x846ca68b);h^=h>>>16;return h>>>0};
-      troops.sort((a,b)=>orderKey(a.farmId)-orderKey(b.farmId)||a.farmId-b.farmId);
+      troops.sort((a,b)=>a.tier-b.tier||orderKey(a.farmId)-orderKey(b.farmId)||a.farmId-b.farmId);
       this.raidRosters.push({ownerId,troops,abilitySnapshot:structuredClone(abilitySnapshot),settlementSessionId:hasSettlement?settlement.sessionId:'',settlementRunSequence:hasSettlement?settlement.runSequence:0,settlementEncounterId:hasSettlement?settlement.encounterId:0,lastDeploySequence:0,buffUntil:0,buffReadyAt:0});this.raidRosters.sort((a,b)=>this.raidExpectedPlayers.indexOf(a.ownerId)-this.raidExpectedPlayers.indexOf(b.ownerId));return true;
     }
-    deployNextRaidUnit(ownerId,sequence,x,y){
-      if(this.scene!=='raid'||!this.raidExpectedPlayers.every(id=>this.raidRoster(id))||this.units.length>=CONFIG.raid.capacity.battleUnits||!Number.isSafeInteger(sequence)||!Number.isFinite(x)||!Number.isFinite(y))return false;
-      const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>!t.deployed);if(!roster||sequence!==roster.lastDeploySequence+1||!troop||!ArenaGeometry.inside({x,y},'raid',.5))return false;
+    deployNextRaidUnit(ownerId,sequence){
+      if(this.scene!=='raid'||['victory','defeat'].includes(this.encounter.outcome)||!this.raidExpectedPlayers.every(id=>this.raidRoster(id))||this.units.length>=CONFIG.raid.capacity.battleUnits||!Number.isSafeInteger(sequence))return false;
+      const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>!t.deployed);if(!roster||sequence!==roster.lastDeploySequence+1||!troop)return false;
       const farmId=troop.farmId,slot=this.raidExpectedPlayers.indexOf(ownerId),troopIndex=roster.troops.indexOf(troop),id=(slot+1)*CONFIG.raid.ids.playerStride+troopIndex+1;if(this.units.some(u=>u.id===id))return false;
+      // Uniform random bearing covers the entire outside ellipse. Inset by the
+      // deployed body's radius, so every original falling animation lands on ground.
+      const angle=this.random()*Math.PI*2,margin=unitRadiusForTier(troop.tier)+.05,bounds=ArenaGeometry.bounds('raid',margin),x=Math.cos(angle)*bounds.x,y=Math.sin(angle)*bounds.y;
       const u=new Unit(id,troop.species,troop.tier,x,y),growthDuration=this.breedGrowthDuration();Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:1,growth:CONFIG.farm.breeding.matureMeals,growthDuration,growthElapsed:growthDuration});troop.deployed=true;roster.lastDeploySequence=sequence;this.units.push(u);this._trackUnitAdded(u);
       if(!this.raidDeploymentStarted){this.raidDeploymentStarted=true;this.running=true;this.encounter={outcome:'fighting',elapsed:0};this.boss.active=true;this.boss.encounterId=this.raidRosters[0]?.settlementRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime()}
       this.combat('unit-drop',{unit:id,ownerId,x,y,z:u.z});return true;
@@ -490,7 +534,7 @@ const AttackingBody=Base=>class extends Base{
       this.foodTaps.revision++;
       if (this.foodTaps.remainder >= 5) {
         this.foodTaps.remainder -= 5;
-        this.scatter((this.random() - .5) * 14, (this.random() - .5) * 9, 1);
+        this.scatter((this.random()-.5)*CONFIG.farm.arena.radiusX*1.5,(this.random()-.5)*CONFIG.farm.arena.radiusY*1.35,1);
         this.foodTaps.produced++;
       }
       this.notice("food-tap",{source,completed,remainder:this.foodTaps.remainder});
@@ -508,10 +552,11 @@ const AttackingBody=Base=>class extends Base{
     }
     scatter(x, y, count = 1) {
       for (let i = 0; i < count && this.food.length < 140; i++) {
-        let tx=clamp(x,-8,8),ty=clamp(y,-5.7,5.7);
-        const boundary=Math.hypot(tx/8,ty/5.7); if(boundary>1){tx/=boundary;ty/=boundary;}
+        const radiusX=CONFIG.farm.arena.radiusX-1.5,radiusY=CONFIG.farm.arena.radiusY-1.1;
+        let tx=clamp(x,-radiusX,radiusX),ty=clamp(y,-radiusY,radiusY);
+        const boundary=Math.hypot(tx/radiusX,ty/radiusY); if(boundary>1){tx/=boundary;ty/=boundary;}
         if(this.tryStartFarmBossEvent(tx,ty))continue;
-        const angle=this.random()*Math.PI*2, sx=Math.cos(angle)*10.2, sy=Math.sin(angle)*7.0;
+        const angle=this.random()*Math.PI*2, sx=Math.cos(angle)*(CONFIG.farm.arena.radiusX+.7), sy=Math.sin(angle)*(CONFIG.farm.arena.radiusY+.2);
         const duration=.85+this.random()*.25, z=.3;
       const food={x:sx,y:sy,z,vx:(tx-sx)/duration,vy:(ty-sy)/duration,vz:6*duration-z/duration,seed:this.random(),phase:"flight",tx,ty};this.food.push(food);this._trackFoodAdded(food);
         this.emit("feed",tx,ty);
@@ -591,6 +636,7 @@ const AttackingBody=Base=>class extends Base{
         if(materialCount<2||materials.length!==materialCount||first.tier>=CONFIG.unit.maxTier)return false;
         const ids=new Set();
         for(const unit of materials){
+          if(this.localScatter.active&&this.scatterInside(unit))return false;
           if(!unit||ids.has(unit.id)||unit.isBattleOnlySummon||unit.mergeEligible===false||unit.species!==first.species||unit.tier!==first.tier||unit.hp<=0||unit.down>0||!unit.mature||unit.cooldown>0||!this._unitIsActive(unit))return false;
           ids.add(unit.id);
         }
@@ -663,6 +709,7 @@ const AttackingBody=Base=>class extends Base{
       if (this.mode === "merge") {
         return this.mergeGroup([a,b],{priorityResolved});
       }
+      if(this.localScatter.active&&(this.scatterInside(a)||this.scatterInside(b)))return false;
       if(!a||!b||a===b||a.hp<=0||b.hp<=0||a.down>0||b.down>0||a.species!==b.species||!a.mature||!b.mature||a.cooldown>0||b.cooldown>0||!this.units.includes(a)||!this.units.includes(b)||Math.hypot(a.x-b.x,a.y-b.y)>a.radius+b.radius+.2||this.senseEnemy(a)||this.senseEnemy(b))return false;
       if(a.isBattleOnlySummon||b.isBattleOnlySummon)return false;
       {
@@ -745,11 +792,13 @@ const AttackingBody=Base=>class extends Base{
         u.cooldown = Math.max(0, u.cooldown - dt);
         if(u.cooldown<1e-9){u.cooldown=0;u.cooldownDuration=0;}
 
-        const enemy=this.senseEnemy(u);
-        if(enemy)this.raidUnit(u,dt,enemy);
-        else if(u.hp>0&&hasFaction(u,FACTION_CONFIG.PLAYER)&&!u.isBattleOnlySummon){if(u.ability.phase!=='idle'){u.ability.interrupt();u.ability.update(this,dt)}this.farmUnit(u,dt)}
+        const enemy=this.senseEnemy(u)||(this.scene==='raid'&&this.running&&hasFaction(u,FACTION_CONFIG.PLAYER)&&this.boss.hp>0?this.boss:null),scattering=this.updateLocalScatter(u,dt,enemy);
+        if(scattering){/* Movement command has priority over attacks and Farm life. */}
+        else if(enemy)this.raidUnit(u,dt,enemy);
+        else if(u.hp>0&&hasFaction(u,FACTION_CONFIG.PLAYER)&&!u.isBattleOnlySummon){if(u.ability.phase!=='idle'){if(u.ability.phase!=='recover')u.ability.interrupt();u.ability.update(this,dt)}this.farmUnit(u,dt)}
         else if(this.scene==='raid'&&this.running)this.raidUnit(u,dt,null);
         const oldZ = u.z,oldPosition={x:u.x,y:u.y,z:u.z};
+        this.limitScatterVelocity(u,dt);
         u.integrate(dt);
         if(this.scene==="raid"&&u.hp<=0&&u.z===0&&u.vz===0){u.vx=u.vy=0;}
         if(enemy)u.ability.afterMove?.(this,oldPosition);
@@ -779,7 +828,92 @@ const AttackingBody=Base=>class extends Base{
       this.units=this.units.filter(unit=>!unit.isBattleOnlySummon||unit.hp>0);
       units.length=0;this._spatialStepActive=false;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
     }
+    setLocalScatter(x,y,radius=CONFIG.scatter.minRadius,handleX=x+radius,handleY=y){
+      if(![x,y,radius,handleX,handleY].every(Number.isFinite))return false;
+      const c=this.localScatter;
+      if(!c.active||c.x!==x||c.y!==y)c.generation++;
+      c.active=true;c.x=x;c.y=y;c.radius=clamp(radius,CONFIG.scatter.minRadius,CONFIG.scatter.maxRadius);c.handleX=handleX;c.handleY=handleY;return true;
+    }
+    clearLocalScatter(){this.localScatter.active=false}
+    scatterApplies(u){return this.localScatter.active&&hasFaction(u,FACTION_CONFIG.PLAYER)&&u.hp>0&&u.down<=0&&u.dropLanded&&u.z<=1e-9&&u.vz<=0}
+    scatterInside(u){if(!u)return false;const c=this.localScatter;return Math.hypot(u.x-c.x,u.y-c.y)<c.radius+u.radius+CONFIG.scatter.bodyMargin}
+    scatterSegmentBlocked(x,y,tx,ty,radius){const c=this.localScatter;return ArenaGeometry.segmentInsideCircle(x,y,tx,ty,c.x,c.y,radius)}
+    scatterBossBlocks(u,x,y){
+      const b=this.boss;if(!b.active||b.hp<=0||!areOpposingFactions(u,b)||b.z>u.z+.65)return false;
+      const radius=Math.min(b.radius+u.radius+.015,Math.max(0,Math.hypot(u.x-b.x,u.y-b.y)-.002));
+      return ArenaGeometry.segmentInsideCircle(u.x,u.y,x,y,b.x,b.y,radius);
+    }
+    updateLocalScatter(u,dt,enemy){
+      if(!this.scatterApplies(u)||u.stun>0||u.landingRecovery>0)return false;
+      const c=this.localScatter,r=c.radius+u.radius+CONFIG.scatter.bodyMargin,d=Math.hypot(u.x-c.x,u.y-c.y);
+      let state=this._scatterStates.get(u);
+      if(!state){state={generation:0,escaping:false,radius:0,x:0,y:0,waypoint:false,bossX:0,bossY:0};this._scatterStates.set(u,state)}
+      if(state.generation!==c.generation){state.generation=c.generation;state.escaping=false;state.radius=0}
+      if(d<r)state.escaping=true;
+      if(state.escaping&&d>=r+CONFIG.scatter.hysteresis){state.escaping=false;u.vx=u.vy=0}
+      const cycle=u.ability;
+      // Contact attacks move their body through the path; ranged shots are safe
+      // to keep firing from a stopped position outside the evacuation circle.
+      const attackBlocked=unitCapabilityComposition(u.species).attack==='contact'&&cycle.action&&(cycle.phase==='windup'||cycle.phase==='active')&&this.scatterSegmentBlocked(u.x,u.y,cycle.action.target.x,cycle.action.target.y,r);
+      if(!state.escaping&&!attackBlocked)return false;
+      cycle.cancelForScatter();cycle.update(this,dt);
+      if(!state.escaping)return true;
+      if(state.radius!==r||this.scatterBossBlocks(u,state.x,state.y)||state.waypoint&&(Math.hypot(state.x-u.x,state.y-u.y)<.14||state.bossX!==this.boss.x||state.bossY!==this.boss.y)){
+        state.radius=r;const goalRadius=r+CONFIG.scatter.hysteresis+.12,bearing=d>1e-8?Math.atan2(u.y-c.y,u.x-c.x):u.seed,bounds=ArenaGeometry.bounds(this.scene,u.radius+.02);
+        let best=Infinity;state.x=u.x;state.y=u.y;state.waypoint=false;state.bossX=this.boss.x;state.bossY=this.boss.y;
+        // Usually the first radial exit is valid. At a boundary choose the
+        // closest reachable tangent-side exit, with a stable tie break.
+        for(let i=0;i<33;i++){
+          const angle=bearing+(i===0?0:(i%2?1:-1)*Math.ceil(i/2)*Math.PI/16),x=c.x+Math.cos(angle)*goalRadius,y=c.y+Math.sin(angle)*goalRadius;
+          if(x*x/(bounds.x*bounds.x)+y*y/(bounds.y*bounds.y)>1||this.scatterBossBlocks(u,x,y))continue;
+          const distance=(x-u.x)**2+(y-u.y)**2;if(distance<best-1e-9){best=distance;state.x=x;state.y=y;if(i===0)break}
+        }
+        if(!Number.isFinite(best)){
+          // A boss against the arena edge can leave only a curved crescent.
+          // Take a short valid tangent step, then retry the normal radial exit.
+          state.waypoint=true;let score=-Infinity;
+          for(let step=.55;step>.1&&!Number.isFinite(score);step*=.5)for(let i=0;i<34;i++){
+            // Exact boss tangents and shorter retries cover narrow edge gaps
+            // without making the exit depend on the unit's seeded angle grid.
+            const angle=i<32?bearing+i*Math.PI/16:Math.atan2(u.y-this.boss.y,u.x-this.boss.x)+(i===32?1:-1)*Math.PI/2,x=u.x+Math.cos(angle)*step,y=u.y+Math.sin(angle)*step;
+            if(x*x/(bounds.x*bounds.x)+y*y/(bounds.y*bounds.y)>1||this.scatterBossBlocks(u,x,y))continue;
+            const distance=(x-c.x)**2+(y-c.y)**2;
+            if(distance>score+1e-9){score=distance;state.x=x;state.y=y}
+          }
+          if(!Number.isFinite(score))state.radius=0;
+        }
+      }
+      const dx=u.x-c.x,dy=u.y-c.y,radial=d>1e-8?(u.vx*dx+u.vy*dy)/d:0;
+      if(radial<0){u.vx-=radial*dx/d;u.vy-=radial*dy/d}
+      this.steer(u,state.x,state.y,dt,scaleMoveSpeed(enemy?4.1:2.2,u));return true;
+    }
+    limitScatterVelocity(u,dt){
+      if(!this.scatterApplies(u)||u.stun>0)return;
+      const c=this.localScatter,r=c.radius+u.radius+CONFIG.scatter.bodyMargin,dx=u.x-c.x,dy=u.y-c.y,d=Math.hypot(dx,dy);
+      if(d<r-1e-8)return;
+      const mx=u.vx*dt,my=u.vy*dt,a=mx*mx+my*my,b=2*(dx*mx+dy*my),outside=dx*dx+dy*dy-r*r,disc=b*b-4*a*outside;
+      if(a<1e-14||b>=0||disc<=0)return;
+      const hit=(-b-Math.sqrt(disc))/(2*a);if(hit<0||hit>1)return;
+      // Trim this step before entry rather than projecting/teleporting the body.
+      const fraction=Math.max(0,hit-.001);u.vx*=fraction;u.vy*=fraction;
+    }
     steer(u, x, y, dt, speed2) {
+      if(this.scatterApplies(u)&&!this.scatterInside(u)){
+        const c=this.localScatter,r=c.radius+u.radius+CONFIG.scatter.bodyMargin+.12;
+        if(this.scatterSegmentBlocked(u.x,u.y,x,y,r)){
+          const dx=u.x-c.x,dy=u.y-c.y,d=Math.hypot(dx,dy),bearing=d>1e-8?Math.atan2(dy,dx):u.seed;
+          const tx=x-c.x,ty=y-c.y;
+          if(Math.hypot(tx,ty)<=r){x=c.x+Math.cos(bearing)*(r+.06);y=c.y+Math.sin(bearing)*(r+.06)}
+          else{
+            const delta=Math.atan2(Math.sin(Math.atan2(ty,tx)-bearing),Math.cos(Math.atan2(ty,tx)-bearing)),side=delta===0?(u.id%2?1:-1):Math.sign(delta);
+            const turn=Math.min(.5,Math.max(.2,Math.acos(Math.min(1,r/Math.max(r,d)))*.8)),distance=r/Math.cos(turn)+.08;
+            const bounds=ArenaGeometry.bounds(this.scene,u.radius);
+            let angle=bearing+side*turn;x=c.x+Math.cos(angle)*distance;y=c.y+Math.sin(angle)*distance;
+            if(x*x/(bounds.x*bounds.x)+y*y/(bounds.y*bounds.y)>1){angle=bearing-side*turn;x=c.x+Math.cos(angle)*distance;y=c.y+Math.sin(angle)*distance;
+              if(x*x/(bounds.x*bounds.x)+y*y/(bounds.y*bounds.y)>1){u.vx=u.vy=0;return}}
+          }
+        }
+      }
       const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);
       if (d > 0.08) {
         const rate = 1 - Math.exp(-dt * 3);
@@ -845,8 +979,8 @@ const AttackingBody=Base=>class extends Base{
         else{const angle=(u.seed+(nearest.seed||0))*2.3999632297;pushX=Math.cos(angle);pushY=Math.sin(angle);magnitude=1}
       }
       const awayX=pushX/magnitude,awayY=pushY/magnitude;
-      let desiredX=Math.sin(this.time*.18+u.seed)*7.4-u.x;
-      let desiredY=Math.cos(this.time*.16+u.seed)*5.3-u.y;
+      let desiredX=Math.sin(this.time*.18+u.seed)*(CONFIG.farm.arena.radiusX*.78)-u.x;
+      let desiredY=Math.cos(this.time*.16+u.seed)*(CONFIG.farm.arena.radiusY*.78)-u.y;
       const desiredLength=Math.hypot(desiredX,desiredY)||1;
       desiredX/=desiredLength;desiredY/=desiredLength;
       const towardFood=desiredX*awayX+desiredY*awayY;
@@ -874,11 +1008,11 @@ const AttackingBody=Base=>class extends Base{
     }
     farmUnit(u, dt) {
       if (u.stun > 0 || u.z > 0.1) return;
-      if(!u.mature||u.cooldown>0){if(!this.avoidNearbyFood(u,dt))this.steer(u,Math.sin(this.time*.18+u.seed)*7.4,Math.cos(this.time*.16+u.seed)*5.3,dt,scaleMoveSpeed(.75,u));return}
+      if(!u.mature||u.cooldown>0){if(!this.avoidNearbyFood(u,dt))this.steer(u,Math.sin(this.time*.18+u.seed)*(CONFIG.farm.arena.radiusX*.78),Math.cos(this.time*.16+u.seed)*(CONFIG.farm.arena.radiusY*.78),dt,scaleMoveSpeed(.75,u));return}
       if(this.mode==="merge") {
         const task=this.mergeTask;
         if(task?.phase==="approach"&&task.materialIds?.includes(u.id)){const anchor=this._unitById.get(task.materialIds[0]);if(anchor&&u.cooldown<=0)this.steer(u,u.id===anchor.id?u.x:anchor.x,u.id===anchor.id?u.y:anchor.y,dt,scaleMoveSpeed(2.2,u));return}
-        this.steer(u,Math.sin(this.time*.18+u.seed)*7.4,Math.cos(this.time*.16+u.seed)*5.3,dt,scaleMoveSpeed(.75,u));return;
+        this.steer(u,Math.sin(this.time*.18+u.seed)*(CONFIG.farm.arena.radiusX*.78),Math.cos(this.time*.16+u.seed)*(CONFIG.farm.arena.radiusY*.78),dt,scaleMoveSpeed(.75,u));return;
       }
       let target = null, best = Infinity;
       if (this.mode === "breed" && !u.fed) {
@@ -904,7 +1038,7 @@ const AttackingBody=Base=>class extends Base{
       const hasDesignatedMate=this.mode==="breed"&&u.fed&&target&&this.units.includes(target);
       if(this.mode==="breed"&&u.fed&&!hasDesignatedMate&&this.avoidNearbyFood(u,dt))return;
       if (target) this.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2 * (target.phase === "grounded" ? farmUpgradeRate(this.playerProgression?.farmUpgrades,"growth") : 1),u));
-      else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * 7.4, Math.cos(this.time * 0.16 + u.seed) * 5.3, dt, scaleMoveSpeed(0.75,u));
+      else this.steer(u, Math.sin(this.time * 0.18 + u.seed) * (CONFIG.farm.arena.radiusX*.78), Math.cos(this.time * 0.16 + u.seed) * (CONFIG.farm.arena.radiusY*.78), dt, scaleMoveSpeed(0.75,u));
     }
     combat(kind,detail){const event=this.notice(kind,{time:this.time,...detail}),toPresentationTime=presentationClocks.get(this);if(toPresentationTime)presentationEventTimes.set(event,toPresentationTime(this.time))}
     boundBody(body,scene,margin){
@@ -1062,6 +1196,7 @@ const AttackingBody=Base=>class extends Base{
       }
       u.vx=u.vy=0;
       const target=behavior.aimAtCenter?{id:targetId,x:b.x,y:b.y}:{id:targetId,x:b.x+dx/n*(b.radius+u.radius-.16),y:b.y+dy/n*(b.radius+u.radius-.16)};
+      if(this.scatterApplies(u)&&behavior.attack==='contact'&&this.scatterSegmentBlocked(u.x,u.y,target.x,target.y,this.localScatter.radius+u.radius+CONFIG.scatter.bodyMargin))return;
       u.ability.begin(this,target);
     }
     finish(outcome){
@@ -1084,7 +1219,7 @@ const AttackingBody=Base=>class extends Base{
       this.combat(outcome==='victory'?'farm-boss-victory':'farm-boss-defeat',{x:this.boss.x,y:this.boss.y,z:0});
       return true;
     }
-    bossAttackArea(unitRadius=0){return bossAttackArea(this.boss,unitRadius)}
+    bossAttackArea(unitRadius=0){return bossAttackArea(this.boss,unitRadius,this.scene)}
     bossWeaponPoint(q=0){
       const b=this.boss,a=b.patternRuntime?.active,config=BOSS_PATTERN_CONFIG[a?.id];
       if(a?.id==='attack.fan-sweep'){const angle=a.aim-config.sector/2+config.sector*clamp(q,0,1);return{x:b.x+Math.cos(angle)*config.reach,y:b.y+Math.sin(angle)*config.reach,z:b.z+.2}}

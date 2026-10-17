@@ -105,7 +105,7 @@ export class FarmSession{
  // Required by the shared loop; a local session has no incoming work to poll.
  poll(){}
  queue(type,args={}){if(this.closed||this.pending.length>=64)return false;this.pending.push(structuredClone({type,...args}));return true}
- deployNext(x,y){const w=this.world,roster=w.scene==='raid'&&w.raidRoster(this.localPlayerId);if(!roster||!Number.isFinite(x)||!Number.isFinite(y))return false;this.localDeploySequence=Math.max(this.localDeploySequence,roster.lastDeploySequence);if(this.localDeploySequence-roster.lastDeploySequence>=w.raidRemaining(this.localPlayerId))return false;const sequence=this.localDeploySequence+1;if(!this.queue('deploy',{sequence,x,y}))return false;this.localDeploySequence=sequence;return true}
+ deployNext(){const w=this.world,roster=w.scene==='raid'&&w.raidRoster(this.localPlayerId);if(!roster||this.closed||this.paused||['victory','defeat'].includes(w.encounter.outcome))return false;this.localDeploySequence=Math.max(this.localDeploySequence,roster.lastDeploySequence);if(this.localDeploySequence-roster.lastDeploySequence>=w.raidRemaining(this.localPlayerId))return false;const sequence=this.localDeploySequence+1;if(!this.queue('deploy',{sequence}))return false;this.localDeploySequence=sequence;return true}
  advance(){
   if(this.closed)return CLOSED;
   const commandChangedWorld=this.applyPendingCommands(32);
@@ -125,7 +125,7 @@ export class FarmSession{
    case 'progression-invest':if(w.scene==='farm'&&typeof c.nodeId==='string'&&c.nodeId.length<64){if(c.scope==='farm')return w.investFarmUpgrade(c.nodeId).ok;if(c.scope==='ability'&&typeof c.abilityId==='string'&&c.abilityId.length<64)return w.investAbilityNode(c.abilityId,c.nodeId).ok}return false;
    case 'ability-reset':return w.scene==='farm'&&w.resetAbilityTree().ok;
    case 'register-roster':return Array.isArray(c.entries)&&w.registerRaidRoster(ownerId,c.entries,c.abilitySnapshot,c.settlement||null);
-   case 'deploy':return Number.isSafeInteger(c.sequence)&&Number.isFinite(c.x)&&Number.isFinite(c.y)&&w.deployNextRaidUnit(ownerId,c.sequence,c.x,c.y);
+   case 'deploy':return Number.isSafeInteger(c.sequence)&&w.deployNextRaidUnit(ownerId,c.sequence);
    case 'buff':return w.useRaidBuff(ownerId);
   }
   return false;
@@ -139,7 +139,7 @@ export class FarmSession{
   entity.id=id;entity.source.update(source,this.world);return entity;
  }
  get paused(){return this._paused}
- set paused(value){value=!!value;if(value===this._paused)return;const now=globalThis.performance.now();if(value)this.pauseStartedAt=now;else if(this.pauseStartedAt!==null){this.pausedDurationMs+=now-this.pauseStartedAt;this.pauseStartedAt=null}this._paused=value}
+ set paused(value){value=!!value;if(value)this.world.clearLocalScatter();if(value===this._paused)return;const now=globalThis.performance.now();if(value)this.pauseStartedAt=now;else if(this.pauseStartedAt!==null){this.pausedDurationMs+=now-this.pauseStartedAt;this.pauseStartedAt=null}this._paused=value}
  adjustedWallTime(now){return now-this.pausedDurationMs-(this._paused&&this.pauseStartedAt!==null?now-this.pauseStartedAt:0)}
  capturePresentation(mode='continuous'){
   if(mode!=='continuous'&&this.presentationSequence>0)this.presentationRevision++;
@@ -194,5 +194,5 @@ export class FarmSession{
   return view;
  }
  pulse(now){this.pulseTimestamp=now;this.loop.pulse(now,{render:false})}
- dispose(){this.closed=true;this.loop.stop();this.pending.length=0;this.captureEntities.length=0;this.presentationAdapters=new WeakMap()}
+ dispose(){this.world.clearLocalScatter();this.closed=true;this.loop.stop();this.pending.length=0;this.captureEntities.length=0;this.presentationAdapters=new WeakMap()}
 }
