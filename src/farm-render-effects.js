@@ -1,3 +1,4 @@
+import { CopyDissolvePresentation } from './features/formation-skills/copy/presentation.js';
 import { BirthEffect } from './features/farm-modes/breed/presentation.js';
 import { MergeEffect, MergeMaterialEffect } from './features/farm-modes/merge/presentation.js';
 import { PopcornExplosionEffect, PopcornImpactEffect } from './features/projectiles/popcorn/presentation.js';
@@ -98,6 +99,7 @@ class EatingEffect {
 const IMPACT = new ImpactEffect();
 const SHOCKWAVE = new ShockwaveEffect();
 const EFFECT_PRESENTATIONS = new Map([
+    ['formation-copy-death', new CopyDissolvePresentation()],
     ['feed', new FeedEffect()],
     ['food-land', new FoodLandingEffect()],
     ['land', IMPACT],

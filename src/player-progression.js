@@ -1,4 +1,9 @@
 import { createAbilityProgressionState, isValidAbilityProgressionState } from './ability-state.js';
+import {
+    createFormationSkillState,
+    isValidFormationSkillState,
+    formationInvestedPoints,
+} from './formation-skill-state.js';
 import { getFarmUpgradeInvestedCount } from './farm-upgrades.js';
 
 // One base value anchors both confirmed progression numbers. The next-level
@@ -11,6 +16,7 @@ export const SHARED_POINTS_PER_LEVEL = 1;
 export function createPlayerProgressionState() {
     return {
         ...createAbilityProgressionState(),
+        formationSkills: createFormationSkillState(),
         level: 1,
         experience: 0,
         processedBossKillReceipts: [],
@@ -109,6 +115,7 @@ export function formatXpForDisplay(experience) {
 export function isValidPlayerProgressionState(state) {
     if (
         !isValidAbilityProgressionState(state) ||
+        (state.formationSkills !== undefined && !isValidFormationSkillState(state.formationSkills)) ||
         !Number.isSafeInteger(state.level) ||
         state.level < 1 ||
         !Number.isFinite(state.experience) ||
@@ -125,6 +132,10 @@ export function isValidPlayerProgressionState(state) {
         0,
     );
     return (
-        INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1
+        INVESTED_POINTS +
+            getFarmUpgradeInvestedCount(state.farmUpgrades) +
+            formationInvestedPoints(state.formationSkills) +
+            state.availablePoints ===
+        state.level - 1
     );
 }

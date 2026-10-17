@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { build as BUILD } from 'esbuild';
 import { PRODUCT_VERSION } from '../src/version.js';
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -19,6 +20,7 @@ const REPORT = {
     errors: [],
     renders: [],
 };
+const BROWSER_MODULES = new Map();
 const SERVER = createServer(async (q, r) => {
     const URL_LOCAL = new URL(q.url, 'http://localhost');
     if (URL_LOCAL.pathname === '/favicon.ico') {
@@ -36,13 +38,37 @@ const SERVER = createServer(async (q, r) => {
         return;
     }
     try {
-        const BODY = await readFile(F);
+        let body = await readFile(F);
+        // Browser scenario imports use the same bundler as production, including authored CJS geometry.
+        if (
+            F.includes(path.sep + 'src' + path.sep) &&
+            F.endsWith('.js') &&
+            !['game.js', 'bootstrap.js'].includes(path.basename(F))
+        ) {
+            if (!BROWSER_MODULES.has(F)) {
+                const RESULT = await BUILD({
+                    entryPoints: [F],
+                    bundle: true,
+                    write: false,
+                    format: 'esm',
+                    platform: 'browser',
+                    target: 'es2022',
+                });
+                BROWSER_MODULES.set(F, RESULT.outputFiles[0].contents);
+            }
+            body = BROWSER_MODULES.get(F);
+        }
+        const BODY = body;
         r.writeHead(200, {
             'Content-Type': F.endsWith('.html')
                 ? 'text/html;charset=utf-8'
-                : F.endsWith('.json')
-                  ? 'application/json'
-                  : 'text/javascript;charset=utf-8',
+                : F.endsWith('.css')
+                  ? 'text/css;charset=utf-8'
+                  : F.endsWith('.svg')
+                    ? 'image/svg+xml'
+                    : F.endsWith('.json')
+                      ? 'application/json'
+                      : 'text/javascript;charset=utf-8',
         });
         r.end(BODY);
     } catch {
@@ -685,6 +711,133 @@ async function nutAttackCycles(p) {
         'Peanut two-slot hits and Walnut hammer use the common damage path; a mid-cycle save/replay preserves the slot masks',
     );
 }
+async function formationBrowserUI() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await P.evaluate(() => {
+        BUDMORI.sim.playerProgression.level = 101;
+        BUDMORI.sim.playerProgression.availablePoints = 100;
+        BUDMORI.sim.markProgressChanged();
+    });
+    await P.locator('.formation-open').click();
+    await P.locator('[data-formation-purchase="giant"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.levels.giant === 1);
+    await P.locator('[data-formation-equip="giant"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.equipped[0] === 'giant');
+    await P.locator('[data-formation-purchase="giant"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.levels.giant === 2);
+    await P.locator('[data-formation-buy-slot]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.slots === 2);
+    await P.locator('[data-formation-buy-slot]').click();
+    await P.waitForFunction(() => BUDMORI.sim.playerProgression.formationSkills.slots === 3);
+    assert.equal(await P.locator('.formation-card').count(), 9);
+    await P.screenshot({ path: path.join(OUT, 'formation-desktop.png') });
+    await P.setViewportSize({ width: 390, height: 844 });
+    assert(
+        await P.evaluate(() => {
+            const D = document.querySelector('.formation-dialog');
+            return D.scrollWidth <= D.clientWidth + 1;
+        }),
+        'mobile dialog has no horizontal overflow',
+    );
+    await P.screenshot({ path: path.join(OUT, 'formation-mobile.png') });
+    await P.locator('[data-formation-close]').click();
+    await P.screenshot({ path: path.join(OUT, 'formation-mobile-slots.png') });
+    await openMenuTab(P, 'play');
+    await P.locator('#menuHome').click();
+    await P.reload();
+    await P.waitForFunction(() => window.BUDMORI);
+    await P.locator('#continueGame').click();
+    await P.waitForFunction(() => {
+        const STATE = BUDMORI.sim.playerProgression.formationSkills;
+        return STATE.slots === 3 && STATE.levels.giant === 2 && STATE.equipped[0] === 'giant';
+    });
+    CHECK('Formation progress survives native Home, reload and Continue without battle entities');
+    await P.setViewportSize({ width: 1280, height: 800 });
+    const GROUPS = [
+        ['giant', 'lightning', 'meteor'],
+        ['meteor-shower', 'copy', 'healing-rain'],
+        ['hammer', 'ufo', 'storm-cloud'],
+    ];
+    for (let index = 0; index < GROUPS.length; index++) {
+        await P.evaluate((ids) => {
+            const W = BUDMORI.sim;
+            BUDMORI.runtime.paused = true;
+            W.formationSkills.end();
+            W.farmBossEvent.phase = 'idle';
+            W.boss.active = false;
+            for (const ID of ids) {
+                if (!W.playerProgression.formationSkills.levels[ID]) {
+                    W.formationSkills.purchase(ID);
+                }
+            }
+            for (let i = 0; i < 3; i++) {
+                W.formationSkills.equip(i, null);
+            }
+            ids.forEach((id, slot) => W.formationSkills.equip(slot, id));
+            W.boss.active = true;
+            W.boss.hp = W.boss.maxHp = 10000;
+            W.boss.x = 0;
+            W.boss.y = 0;
+            W.boss.z = 0;
+            W.farmBossEvent.phase = 'fighting';
+            W.units.forEach((unit, i) => {
+                unit.x = 1 + i * 0.5;
+                unit.y = 0;
+                unit.hp = 20;
+            });
+            W.formationSkills.synchronize();
+            W.onCombatResolved.emit({
+                hits: 1000,
+                critHits: 100,
+                damageDealt: 1000,
+                damageTaken: 1000,
+                allyDeaths: 10,
+            });
+            W.formationSkills.update(0);
+            W.time += 0.06;
+            W.formationSkills.update(0.06);
+            BUDMORI.runtime.capturePresentation('reset');
+        }, GROUPS[index]);
+        await P.waitForFunction(() => !document.querySelector('.formation-dialog').open);
+        await P.waitForTimeout(80);
+        await clean(P);
+        await P.screenshot({ path: path.join(OUT, 'formation-effects-' + index + '.png') });
+        if (index === 0) {
+            await P.evaluate(() => {
+                const W = BUDMORI.sim;
+                for (let i = 0; i < 90; i++) {
+                    W.time += 1 / 120;
+                    W.formationSkills.update(1 / 120);
+                }
+                BUDMORI.runtime.capturePresentation('reset');
+            });
+            await P.waitForTimeout(80);
+            await clean(P);
+            await P.screenshot({ path: path.join(OUT, 'formation-meteor-impact.png') });
+        }
+        if (index === 2) {
+            await P.evaluate(() => {
+                const W = BUDMORI.sim;
+                for (let i = 0; i < 176; i++) {
+                    W.time += 1 / 120;
+                    W.formationSkills.update(1 / 120);
+                }
+                BUDMORI.runtime.capturePresentation('reset');
+            });
+            await P.waitForTimeout(80);
+            await clean(P);
+            await P.screenshot({ path: path.join(OUT, 'formation-sky-beams.png') });
+        }
+    }
+    await P.locator('.formation-open').click();
+    assert.equal(await P.locator('[data-formation-equip="giant"]').isDisabled(), true);
+    await C.close();
+    CHECK(
+        'Formation UI: real purchase/upgrade/equip/slot commands, 390px layout, combat lock and all nine GPU effects',
+    );
+}
 async function core() {
     const C = await browser.newContext({
             viewport: {
@@ -739,6 +892,8 @@ async function core() {
         'bounded input trace records the diagnostic button tap without form data',
     );
     CHECK('Startup diagnostics use the pinned GameKit error ring and copy a redacted bounded input trace');
+    await P.reload();
+    await P.waitForFunction(() => window.BUDMORI);
     await P.locator('#newGame').click();
     await P.evaluate(() => {
         const SEED = 4463;
@@ -748,6 +903,7 @@ async function core() {
     await P.waitForFunction(() => BUDMORI.runtime.tick > 5);
     assert.equal(await P.locator('#startScreen').isVisible(), false);
     await nutAttackCycles(P);
+    await formationBrowserUI();
     const MENU_CONTRACT = await P.evaluate(() => ({
         utility: [...document.querySelectorAll('.utility button')].map((button) => button.id),
         label: document.querySelector('#gameMenu')?.getAttribute('aria-label'),
@@ -779,7 +935,7 @@ async function core() {
         animations: 'disabled',
     });
     if (!WAS_PAUSED) {
-        assert.equal((await P.locator('#pause').textContent()).trim(), '일시 정지');
+        assert.equal((await P.locator('#pause').textContent()).trim(), 'Ⅱ');
         await P.locator('#pause').click();
         await P.waitForFunction(() => BUDMORI.runtime.paused);
         assert.equal(
@@ -794,7 +950,7 @@ async function core() {
             'closing settings keeps an explicitly selected paused state',
         );
         await openMenuTab(P, 'play');
-        assert.equal((await P.locator('#pause').textContent()).trim(), '계속하기');
+        assert.equal((await P.locator('#pause').textContent()).trim(), '▶');
         await P.locator('#pause').click();
         await P.locator('#gameMenuOverlay').waitFor({
             state: 'hidden',
@@ -848,7 +1004,7 @@ async function core() {
     );
     CHECK('Farm breeding and same-tier merging continue without passive unit production');
     await P.evaluate(() => {
-        BUDMORI.sim.playerProgression.level = 8;
+        BUDMORI.sim.playerProgression.level = 9;
         BUDMORI.sim.playerProgression.availablePoints = 7;
     });
     await openMenuTab(P, 'growth');
@@ -882,7 +1038,7 @@ async function core() {
             U.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
             U.growthDuration = W.breedGrowthDuration();
             U.growthElapsed = U.growthDuration;
-            U.cooldown = 999;
+            U.cooldown = U.cooldownDuration = 999;
         }
         W.units.forEach((u, i) => (u.id = 101 + i));
         W.nextId = 101 + W.units.length;
@@ -1472,6 +1628,9 @@ async function panInput(p, pointerType) {
         }
         await p.evaluate(() => BUDMORI.renderer.resetPan());
         await START();
+        // Commit pending native capture with a move before testing actual capture loss.
+        await MOVE({ x: CENTER.x + 1, y: CENTER.y + 1 });
+        await p.evaluate(() => BUDMORI.renderer.resetPan());
         await p.evaluate(() => document.querySelector('canvas').releasePointerCapture(globalThis.panProbe.pointerId));
         await MOVE(END_POINT);
         assert.deepEqual(await cameraSnapshot(p), CAMERA.initial, 'lost capture discards the held pan');
@@ -1771,8 +1930,8 @@ async function combatScenarios(p) {
                         .filter((u) => u.hp <= 0)
                         .every(
                             (u) =>
-                                R.vectorPlayers.get(u.id)?.currentClip === 'death' &&
-                                R.vectorPlayers.get(u.id)?.currentExpression === 'dead',
+                                R.vectorPlayers.get(u.id)?.currentClip === 'sleep' &&
+                                R.vectorPlayers.get(u.id)?.currentExpression === 'sleep',
                         )
                 );
             });
@@ -1790,7 +1949,7 @@ async function combatScenarios(p) {
                 VICTORY.living.length >= 2 && new Set(VICTORY.living.map((pose) => JSON.stringify(pose))).size > 1,
                 'living winners use per-unit staggered SVG bounce phases',
             );
-            assert.deepEqual(VICTORY.dead, ['death'], 'dead troop keeps its death clip after victory');
+            assert.deepEqual(VICTORY.dead, ['sleep'], 'downed troop keeps its sleep clip after victory');
             REPORT.victoryAnimation = VICTORY;
         }
         await p.locator('#return').click();
@@ -1900,6 +2059,8 @@ async function seedScenarios(p, label) {
                 W.food = [];
                 W.effects = [];
                 W.projectiles = [];
+                W.playerProgression.level = 6;
+                W.playerProgression.farmUpgrades.capacity = 5;
                 W.setScene(scene);
                 W.time = 1.25;
                 if (scene === 'raid') {

@@ -1,3 +1,4 @@
+import { createFormationSkillState } from './formation-skill-state.js';
 import { Garden, Unit, CONFIG } from './farm-model.js';
 import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
@@ -20,6 +21,7 @@ function keys(value, required, optional = []) {
 function copyPlayer(player) {
     return {
         schemaVersion: player.schemaVersion,
+        formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
         level: player.level,
         experience: player.experience,
         availablePoints: player.availablePoints,
@@ -191,7 +193,11 @@ export function validateFarmProgress(data) {
     );
     const PLAYER = data.player,
         DEFAULTS = createPlayerProgressionState();
-    keys(PLAYER, Object.keys(DEFAULTS));
+    keys(
+        PLAYER,
+        Object.keys(DEFAULTS).filter((key) => key !== 'formationSkills'),
+        ['formationSkills'],
+    );
     keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const BUILD of Object.values(PLAYER.abilities)) {

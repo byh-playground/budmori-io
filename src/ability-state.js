@@ -1,3 +1,8 @@
+import {
+    createFormationSkillState,
+    formationInvestedPoints,
+    isValidFormationSkillState,
+} from './formation-skill-state.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { createFarmUpgradeState, getFarmUpgradeInvestedCount, isValidFarmUpgradeState } from './farm-upgrades.js';
 export const ABILITY_TREE_SCHEMA_VERSION = 1;
@@ -68,6 +73,7 @@ export function createAbilityRuntimeSnapshot(state) {
     return {
         schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
         level: state.level,
+        formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
         availablePoints: state.availablePoints,
         farmUpgrades: {
             ...state.farmUpgrades,
@@ -94,6 +100,7 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
     }
     const STATE = {
         schemaVersion: snapshot.schemaVersion,
+        formationSkills: snapshot.formationSkills,
         level: snapshot.level,
         experience: 0,
         availablePoints: snapshot.availablePoints,
@@ -101,14 +108,23 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
         abilities: snapshot.abilities,
         processedBossKillReceipts: [],
     };
-    if (!isValidAbilityProgressionState(STATE)) {
+    if (
+        !isValidAbilityProgressionState(STATE) ||
+        (STATE.formationSkills !== undefined && !isValidFormationSkillState(STATE.formationSkills))
+    ) {
         return false;
     }
     const INVESTED = Object.values(STATE.abilities).reduce(
         (total, investment) => total + Number(investment.rootUnlocked) + investment.powerLevel + investment.gradeLevel,
         0,
     );
-    return INVESTED + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
+    return (
+        INVESTED +
+            formationInvestedPoints(STATE.formationSkills) +
+            getFarmUpgradeInvestedCount(STATE.farmUpgrades) +
+            STATE.availablePoints ===
+        STATE.level - 1
+    );
 }
 function isValidPlayerLikeAbilityState(state) {
     const ABILITY_STATE = {
@@ -125,7 +141,11 @@ function isValidPlayerLikeAbilityState(state) {
         0,
     );
     return (
-        INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1
+        INVESTED_POINTS +
+            formationInvestedPoints(state.formationSkills) +
+            getFarmUpgradeInvestedCount(state.farmUpgrades) +
+            state.availablePoints ===
+        state.level - 1
     );
 }
 function isNonNegativeInteger(value) {

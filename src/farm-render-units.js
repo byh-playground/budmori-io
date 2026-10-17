@@ -224,7 +224,11 @@ export class UnitPresentation {
         } else if (player.currentClip !== MOTION_NAME) {
             player.play(MOTION_NAME, CLIP_START_AT_MS);
         }
-        const EXPRESSION = unitExpression(u, sim, this.renderer.joyEffects, rest);
+        const ORIGINAL =
+                u.isFormationClone && sim.time - u.cloneBornAt < 0.5
+                    ? sim.units.find((unit) => unit.id === u.cloneParentId)
+                    : null,
+            EXPRESSION = unitExpression(ORIGINAL || u, sim, this.renderer.joyEffects, rest);
         if (EXPRESSION !== player.currentExpression) {
             player.setExpression(EXPRESSION);
         }
@@ -256,7 +260,7 @@ export class UnitPresentation {
             player.draw({
                 projection: this.renderer.ctx.vector.projection,
                 matrix: OUTLINE_MATRIX,
-                color: OUTLINE,
+                color: u.isFormationClone ? [0.45, 0.75, 1, 0.35] : OUTLINE,
                 forceColor: true,
             });
             player.setExpression(EXPRESSION);
@@ -264,6 +268,8 @@ export class UnitPresentation {
         player.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
+            alpha: u.isFormationClone ? 0.52 : 1,
+            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         });
         return true;
     }
@@ -271,7 +277,11 @@ export class UnitPresentation {
         const DEAD = u.hp <= 0,
             WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)),
             BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0,
-            P = this.renderer.project(u.x, u.y, u.z + BOB);
+            P = this.renderer.project(
+                u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),
+                u.y,
+                u.z + BOB,
+            );
         const BODY = unitBodyDefinition(u.species),
             SCALE = unitDisplayScale(
                 BODY,
@@ -279,7 +289,16 @@ export class UnitPresentation {
                 this.renderer.scale,
                 this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio,
             ),
-            R = SCALE * Math.max(BODY.viewBox[2], BODY.viewBox[3]) * 0.5;
+            R =
+                SCALE *
+                Math.max(BODY.viewBox[2], BODY.viewBox[3]) *
+                0.5 *
+                (u.giantUntil > sim.time
+                    ? 1.5
+                    : 1 +
+                      Math.sin((sim.time - u.giantEndedAt) * 30) *
+                          0.12 *
+                          Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
         this.drawVectorUnit(u, sim, P, R, rest);
         return {
             p: P,

@@ -1,3 +1,4 @@
+import { FormationSkillsUI } from './formation-skills-ui.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession } from './farm-session.js';
@@ -45,6 +46,7 @@ let bossSwipe = null;
 let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
 const RENDERER = new Diorama(DOLLAR('world'));
+const FORMATION_UI = new FormationSkillsUI((kind, payload) => active?.queue(kind, payload));
 const MEASURED_FRAMES = [];
 let lastFrameTimestamp = null;
 let frameCount = 0;
@@ -1226,7 +1228,7 @@ function deploymentHud() {
     }
 }
 function canUseWorldInput() {
-    return !home && !menuOpen && !bossEncounterOpen && !active.paused;
+    return !home && !menuOpen && !bossEncounterOpen && !FORMATION_UI.dialog.open && !active.paused;
 }
 function deployTroop() {
     if (!canUseWorldInput() || active.world.scene !== 'raid') {
@@ -1598,6 +1600,7 @@ function frame(now) {
         COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
         RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
         sync(DISPLAY, now, NOTICES);
+        FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
         requestAnimationFrame(frame);
     } catch (error) {
         if (typeof globalThis.BloomReportRuntimeFatal === 'function') {
@@ -1608,7 +1611,7 @@ function frame(now) {
     }
 }
 DOLLAR('productVersion').textContent = PRODUCT_VERSION;
-DOLLAR('startVersion').textContent = PRODUCT_VERSION + ' · 여섯 등급과 합체 확장';
+DOLLAR('startVersion').textContent = PRODUCT_VERSION + ' · 자동 편성 스킬 9종';
 setHome(true, false);
 if (location.hash && location.hash !== '#/') {
     route();

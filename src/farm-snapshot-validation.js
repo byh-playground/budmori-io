@@ -1,3 +1,4 @@
+import { isValidFormationRuntime } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 import { isValidAbilityRuntimeSnapshot } from './ability-state.js';
@@ -69,6 +70,7 @@ function shape(v, t) {
 export function validateSnapshot(raw) {
     finiteTree(raw);
     shape(raw, GARDEN_SHAPE);
+    ASSERT(isValidFormationRuntime(raw.formationRuntime));
     ASSERT(INTEGER(raw.seed, 0, 0xffffffff) && INTEGER(raw.rng.state, 0, 0xffffffff));
     ASSERT(['farm', 'raid'].includes(raw.scene) && ['breed', 'merge'].includes(raw.mode));
     if (raw.mergeTask !== null) {
@@ -486,7 +488,23 @@ export function validateSnapshot(raw) {
         IDS.add(U.id);
         UNITS_BY_ID.set(U.id, U);
         if (U.isBattleOnlySummon) {
-            if (hasFaction(U, FACTION_CONFIG.PLAYER) && U.battleSummonKind === 'pea-death-split') {
+            if (U.isFormationClone) {
+                ASSERT(
+                    U.battleSummonKind === 'formation-copy' &&
+                        U.faction === 'player' &&
+                        U.hp > 0 &&
+                        U.hp <= 1 &&
+                        U.canSplit === false &&
+                        U.countsTowardPermanentRoster === false &&
+                        U.eligibleForRaidDeployment === false &&
+                        U.breedingEligible === false &&
+                        U.mergeEligible === false &&
+                        U.usesPersistentSleep === false &&
+                        U.lifetime === 'until-death-or-battle-end' &&
+                        INTEGER(U.battleSummonParentId, 1, 1e12),
+                );
+                ASSERT(raw.scene === 'raid' ? raw.running : raw.farmBossEvent.phase === 'fighting');
+            } else if (hasFaction(U, FACTION_CONFIG.PLAYER) && U.battleSummonKind === 'pea-death-split') {
                 ASSERT(
                     ['farm', 'raid'].includes(raw.scene) &&
                         INTEGER(U.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) &&

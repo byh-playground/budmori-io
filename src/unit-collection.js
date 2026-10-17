@@ -13,6 +13,7 @@ export class UnitCollection {
         this.onRemoved = new Signal(notifications);
         this.onReplaced = new Signal(notifications);
         this.onReset = new Signal(notifications);
+        this.onHealthChanged = new Signal(notifications, true);
     }
     has(unit) {
         return this.items.includes(unit);
@@ -34,9 +35,10 @@ export class UnitCollection {
                     this.world.processUnitRevival(unit);
                 }
             });
-        const OFF_HEALTH = unit.onHealthChanged.on(() => {
+        const OFF_HEALTH = unit.onHealthChanged.on((event) => {
             if (this.has(unit)) {
                 this.world._syncUnitAliveCount(unit);
+                this.onHealthChanged.emit(event);
             }
         });
         this.subscriptions.set(unit, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
@@ -234,6 +236,7 @@ export class UnitCollection {
             this.onRemoved.clear();
             this.onReplaced.clear();
             this.onReset.clear();
+            this.onHealthChanged.clear();
         }
     }
 }

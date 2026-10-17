@@ -1,0 +1,305 @@
+.formation-dock {
+    position: fixed;
+    z-index: 12;
+    left: 16px;
+    bottom: 96px;
+    display: grid;
+    gap: 7px;
+    pointer-events: none;
+}
+.formation-dock[hidden] {
+    display: none;
+}
+.formation-open {
+    pointer-events: auto;
+    justify-self: start;
+    color: #3c563c;
+    background: #fcf8eaef;
+    border: 1px solid #b7c6a6;
+    border-radius: 10px;
+    padding: 7px 12px;
+    font-weight: 750;
+    cursor: pointer;
+}
+.formation-slots {
+    display: flex;
+    gap: 9px;
+}
+.formation-slot {
+    display: grid;
+    grid-template-columns: 42px minmax(70px, 1fr);
+    gap: 7px;
+    padding: 6px;
+    background: #fcf8eaf0;
+    border: 1px solid #bcc9ae;
+    border-radius: 12px;
+    align-items: center;
+    min-width: 124px;
+    box-shadow: 0 2px 8px #2139250c;
+}
+.formation-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 8px;
+    background: #597357;
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+    color: #fff5cb;
+    font-size: 28px;
+}
+.formation-clock {
+    position: absolute;
+    inset: 0;
+    background: conic-gradient(#14282dcc 0deg, #14282dcc var(--cooldown, 0deg), transparent var(--cooldown, 0deg));
+}
+.formation-readout {
+    display: contents;
+}
+.formation-readout strong {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 11px;
+    color: #344834;
+}
+.formation-readout small {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 9px;
+    text-align: right;
+    white-space: nowrap;
+    color: #53614c;
+    font-variant-numeric: tabular-nums;
+}
+.formation-charge {
+    grid-column: 1;
+    grid-row: 2;
+    background: #d9dfca;
+    height: 5px;
+    overflow: hidden;
+    border-radius: 5px;
+}
+.formation-charge i {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: #7c9b58;
+}
+.formation-slot[data-ready='true'] {
+    border-color: #6cbca7;
+    box-shadow: 0 0 10px #65dfbe66;
+}
+.formation-dialog {
+    color: #2d3e31;
+    background: #fbf8ef;
+    border: 1px solid #b9c6ac;
+    border-radius: 20px;
+    padding: 0;
+    width: min(800px, calc(100vw - 24px));
+    max-height: min(88vh, 960px);
+    box-shadow: 0 20px 100px #172c3555;
+}
+.formation-dialog::backdrop {
+    background: #182b286b;
+}
+.formation-dialog > header {
+    position: sticky;
+    top: 0;
+    left: auto;
+    right: auto;
+    z-index: 2;
+    pointer-events: auto;
+    flex-wrap: nowrap;
+    background: #fbf8ef;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid #dfe3d3;
+}
+.formation-dialog h2 {
+    margin: 2px 0 0;
+    font-size: 23px;
+}
+.formation-dialog header small {
+    color: #729165;
+    letter-spacing: 0.14em;
+    font-size: 10px;
+}
+.formation-dialog header button {
+    font-size: 26px;
+    border: 0;
+    background: none;
+    color: #68785d;
+    cursor: pointer;
+}
+.formation-content {
+    padding: 0 24px 24px;
+}
+.formation-intro {
+    font-size: 12px;
+    line-height: 1.7;
+    color: #718065;
+}
+.formation-wallet {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    font-size: 13px;
+}
+.formation-wallet strong {
+    font-size: 25px;
+    color: #548373;
+}
+.formation-wallet > span {
+    margin-left: auto;
+    font-size: 11px;
+    color: #778369;
+}
+.formation-equipment {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+.formation-equipped {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #cfd9c3;
+    padding: 8px;
+    border-radius: 10px;
+    font-size: 12px;
+}
+.formation-equipped b {
+    color: #8ba079;
+}
+.formation-equipped button {
+    margin-left: auto;
+}
+.formation-dialog button {
+    font-family: inherit;
+}
+.formation-dialog button:disabled {
+    opacity: 0.42;
+    cursor: default;
+}
+.formation-equipped button,
+.formation-card button,
+.formation-add-slot {
+    border: 1px solid #b7c6a7;
+    border-radius: 7px;
+    padding: 7px 10px;
+    background: #f4f4e6;
+    color: #42583e;
+    cursor: pointer;
+    font-size: 11px;
+}
+.formation-add-slot {
+    margin: 10px 0 16px;
+}
+.formation-catalog {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+.formation-card {
+    background: #fffdf6;
+    border: 1px solid #d7dfcb;
+    border-radius: 12px;
+    padding: 13px;
+}
+.formation-card-heading {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+}
+.formation-card-heading h3 {
+    margin: 0;
+    font-size: 14px;
+}
+.formation-card-heading small {
+    margin-left: auto;
+    font-size: 10px;
+    color: #7c8b6d;
+    white-space: nowrap;
+}
+.formation-card-icon {
+    font-size: 24px;
+    color: #639584;
+}
+.formation-card p {
+    font-size: 11px;
+    line-height: 1.7;
+    min-height: 55px;
+    color: #718065;
+}
+.formation-rule {
+    font-size: 11px;
+    font-weight: 650;
+}
+.formation-rule span {
+    float: right;
+    font-weight: 400;
+    color: #7d876e;
+}
+.formation-axis {
+    display: block;
+    color: #7b886e;
+    font-size: 10px;
+    margin: 8px 0 13px;
+}
+.formation-card-actions {
+    display: flex;
+    gap: 6px;
+}
+.formation-card-actions button:first-child {
+    flex: 1;
+    background: #e3ecda;
+}
+@media (max-width: 620px) {
+    .formation-dock {
+        left: 8px;
+        bottom: 88px;
+        gap: 4px;
+    }
+    .formation-slot {
+        grid-template-columns: 32px minmax(63px, 1fr);
+        min-width: 0;
+        gap: 4px;
+        padding: 4px;
+    }
+    .formation-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 23px;
+    }
+    .formation-readout {
+        min-width: 63px;
+    }
+    .formation-slots {
+        gap: 4px;
+    }
+    .formation-content {
+        padding: 0 14px 16px;
+    }
+    .formation-dialog > header {
+        padding: 16px;
+    }
+    .formation-catalog {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .formation-equipment {
+        grid-template-columns: 1fr;
+    }
+    .formation-card {
+        padding: 10px;
+    }
+    .formation-card-actions {
+        flex-wrap: wrap;
+    }
+    .formation-wallet > span {
+        max-width: 135px;
+        text-align: right;
+    }
+}

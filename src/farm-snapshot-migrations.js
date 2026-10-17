@@ -1,3 +1,4 @@
+import { createFormationSkillState } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
 import { resolveUnitStats } from './unit-stats.js';
 import { createPlayerProgressionState } from './player-progression.js';
@@ -59,6 +60,9 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
         raw.mergeTask = null;
     }
     for (const R of raw.raidRosters || []) {
+        if (R.abilitySnapshot && !Object.hasOwn(R.abilitySnapshot, 'formationSkills')) {
+            R.abilitySnapshot.formationSkills = createFormationSkillState();
+        }
         if (!Object.hasOwn(R, 'abilitySnapshot')) {
             R.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());
         } else if (!Object.hasOwn(R.abilitySnapshot, 'farmUpgrades')) {

@@ -1,3 +1,4 @@
+import { drawFormationEffects } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
@@ -496,6 +497,7 @@ const DIORAMA = class Diorama {
         for (const E of sim2.effects) {
             drawEffect(this, E);
         }
+        drawFormationEffects(this, sim2);
         this.stats = C.endFrame();
     }
     dispose() {

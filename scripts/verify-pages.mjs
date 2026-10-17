@@ -9,7 +9,14 @@ const MANIFEST = JSON.parse(
         /<script id="bloom-runtime-manifest" type="application\/json">([\s\S]*?)<\/script>/,
     )?.[1] || 'null',
 );
+const STYLE_FILES = await Promise.all(
+    [...HTML.toString('utf8').matchAll(/<link\s+rel="stylesheet"\s+href="\.\/([^"]+)"/g)].map(async (match) => {
+        const BYTES = CANONICAL_TEXT(await readFile(new URL('../' + match[1], import.meta.url)));
+        return { file: match[1], bytes: BYTES.length, sha256: HASH(BYTES) };
+    }),
+);
 const FILES = [
+    ...STYLE_FILES,
     {
         file: 'index.html',
         sha256: EXPECTED,

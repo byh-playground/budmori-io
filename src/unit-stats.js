@@ -78,11 +78,14 @@ export function baseUnitStatsFor(tier, species) {
 export function resolveUnitStats(unit, overrides) {
     return {
         ...baseUnitStatsFor(unit?.tier, unit?.species),
+        ...(unit?.isFormationClone ? { maxHp: 1 } : {}),
         ...overrides,
     };
 }
 function combatStats(unit, overrides) {
-    return overrides === undefined ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
+    return overrides === undefined && !unit?.isFormationClone
+        ? baseUnitStatsFor(unit?.tier, unit?.species)
+        : resolveUnitStats(unit, overrides);
 }
 export function resolveDamage(
     rawDamage,
@@ -149,7 +152,7 @@ export function applyHealing(target, amount, receiverStats = combatStats(target)
     if (!target || !Number.isFinite(target.hp) || target.hp <= 0) {
         return 0;
     }
-    const MAX_HP = Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
+    const MAX_HP = target.isFormationClone ? 1 : Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
     const RECEIVED = Number.isFinite(receiverStats?.healingReceivedMultiplier)
         ? Math.max(0, receiverStats.healingReceivedMultiplier)
         : 1;
