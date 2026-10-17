@@ -1,3 +1,5 @@
+import {readVectorSockets,bossVectorScale,WORLD_HEIGHT_PROJECTION,WORLD_DEPTH_PROJECTION} from './vector-sockets.cjs';
+import {bindBossSocketAsset,unbindBossSocketAsset,bossSummonPose,sampleBossSummon} from './boss-vector-sockets.js';
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
 import {farmBreedingCooldown,farmSleepSeconds,sevenSegmentDigitLines} from './farm-indicators.js';
 import {UNIT_GRADES} from './unit-grades.js';
@@ -94,11 +96,7 @@ function bossAttackPose(b,parts){
       else if(recovering&&elapsed<.12){const arc=aim+config.sector/2,projected=Math.atan2(-.62*Math.sin(arc),Math.cos(arc));body.rotation=.08*Math.sin(projected-aim);body.scaleX=1.05;arm(lead,.4+projected*.5)}
       else if(recovering)settle();
       break;
-    case 'summon.mouth-t1': {
-      if(phase==='windup'){body.y=2*windEase;body.scaleX=1+.025*windEase;body.scaleY=1-.035*windEase;arm('arm-left',-.34*windEase);arm('arm-right',.34*windEase)}
-      else if(active||recovering){const interval=config.releaseInterval||.25,last=(b.patternReleased||0)-1,age=last<0?1:active?Math.max(0,elapsed-last*interval):elapsed;const pulse=clamp(1-age/.16,0,1);body.scaleX=1+.025*pulse;body.scaleY=1-.018*pulse;body.rotation=aim*.02;arm('arm-left',-.3);arm('arm-right',.3);if(parts.has('leaf'))extras.leaf={rotation:.08*pulse};return{body,arms,extras,impact:false,releasePulse:pulse};}
-      break;
-    }
+    case 'summon.mouth-t1': return bossSummonPose(b,parts);
   }
   if(recovering&&!recoverImpact&&!['attack.front-slam','attack.sweep-360','attack.charge','attack.leap-slam','attack.fan-sweep'].includes(id))settle();
   if(parts.has('kernel-mark')&&id==='attack.charge')extras['kernel-mark']={rotation:active?.08*Math.sin((b.patternTraveled||0)*3.1):0};
@@ -119,8 +117,9 @@ function bossAttackPose(b,parts){
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
       if(entries.length!==CONFIG.maxSpecies||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
-      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id)),faceParts:compiled.metadata.parts.filter(part=>part.id.startsWith('face-')).map(part=>part.id)});
+      for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),anchors:readVectorSockets(compiled,`species ${species}, ${compiled.sourcePath}`),parts:new Set(compiled.metadata.parts.map(part=>part.id)),faceParts:compiled.metadata.parts.filter(part=>part.id.startsWith('face-')).map(part=>part.id)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))}]));
+      for(const [species,troop] of this.vectorAssets){const record=species===3?this.bossAssets.get('chestnut'):troop;if(!record)throw new Error('Missing required boss vector asset for species '+species);record.anchors=bindBossSocketAsset(species,record)}
       this.bossPlayer=null;this.bossPlayerAsset=null;this.bossPlayers=new Map();this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
@@ -142,7 +141,7 @@ function bossAttackPose(b,parts){
       this.scale = this.canvas.width / (2 * this.view[0]);
     }
     project(x, y, z = 0) {
-      return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (0.62 * y + 0.785 * z + this.offset[1])) * this.scale };
+      return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (WORLD_DEPTH_PROJECTION * y + WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale };
     }
     screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect(),px=(clientX-r.left)*this.pixelRatio,py=(clientY-r.top)*this.pixelRatio;return{x:px/this.scale-this.offset[0]-this.view[0],y:(this.view[1]-py/this.scale-this.offset[1])/.62}}
     configure(scene){
@@ -318,7 +317,7 @@ function bossAttackPose(b,parts){
       this.drawSleepBadge(u,sim,pose);
     }
     bossPose(world){
-      const b=world.boss,k=this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0},ground=this.project(b.x+k.x,b.y+k.y,0),p=this.project(b.x+k.x,b.y+k.y,b.z||0),r=this.scale*b.radius*1.16;
+      const b=world.boss,k=b.patternId==='summon.mouth-t1'?{x:0,y:0,squash:0}:this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0},ground=this.project(b.x+k.x,b.y+k.y,0),p=this.project(b.x+k.x,b.y+k.y,b.z||0),r=this.scale*b.radius*1.16;
       return {b,p,ground,r,k};
     }
     bossMotion(b,world){
@@ -343,27 +342,30 @@ function bossAttackPose(b,parts){
       return b.phase==='chase'?'walk':'idle';
     }
     drawBoss(world){
-      const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,species=Number.isInteger(b.species)?b.species:3;
+      const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,species=b.species;
       const record=species===3?this.bossAssets.get('chestnut'):this.vectorAssets.get(species);if(!record)throw new Error('Missing required boss vector asset for species '+species);
       let instance=this.bossPlayers.get(species);if(!instance){const player=record.asset.createPlayer({clip:'idle',startedAtMs:this.displayTimeMs});instance={record,player};this.bossPlayers.set(species,instance)}
       const player=instance.player;this.bossPlayer=player;this.bossPlayerAsset=record;
       const metadata=record.compiled.metadata,name=this.bossMotion(b,world),fallbackClip=name==='airborne'?(metadata.clips.strike?'strike':metadata.clips.fire?'fire':'idle'):['strike','sweep','fire'].includes(name)&&!metadata.clips[name]?(metadata.clips.fire?'fire':'idle'):'idle',clipName=metadata.clips[name]?name:fallbackClip,clip=metadata.clips[clipName];
       const timed=['windup','strike','sweep','recover','hit','death','fire','airborne'].includes(name),elapsed=b.patternId?b.patternPhaseElapsed:b.clock;
       const clipStartAtMs=timed?this.displayTimeMs-Math.min(clip.durationMs,Math.max(0,elapsed||0)*1000):name==='walk'?this.displayTimeMs-Math.max(0,b.travel||0)*110:this.displayTimeMs-((b.travel||0)*37%clip.durationMs);
-      if(player.currentClip!==clipName)player.transitionTo(clipName,clipStartAtMs,70);
+      const summoning=b.patternId==='summon.mouth-t1';
+      if(summoning)sampleBossSummon(player,metadata,b);
+      else if(instance.summoning||player.currentClip!==clipName)player.transitionTo(clipName,clipStartAtMs,70);
+      instance.summoning=summoning;
       const summonOpen=b.patternId==='summon.mouth-t1'&&(b.patternPhase==='active'||b.patternPhase==='windup'&&b.patternPhaseElapsed>=BOSS_PATTERN_CONFIG['summon.mouth-t1'].windup*.5);
       const expression=b.hp<=0?'dead':event?.phase==='celebrating'&&event.outcome==='defeat'?'happy':summonOpen?'attack':b.patternPhase==='windup'?'focused':b.patternPhase==='active'?'attack':b.flash>.07?'hurt':'neutral';
       if(!metadata.expressions?.[expression]&&!metadata.expressions?.neutral)throw new Error('Boss asset is missing a supported expression');
       const safeExpression=metadata.expressions?.[expression]?expression:'neutral';if(player.currentExpression!==safeExpression)player.setExpression(safeExpression);
-      player.seek(this.displayTimeMs);
-      const [, ,width,height]=record.compiled.viewBox,s=2*r/220,ground=metadata.sockets?.ground?.point||[width/2,height],anchorX=ground[0],anchorY=ground[1],matrix=[s,0,0,s,p.x-anchorX*s,p.y-anchorY*s];
+      if(b.patternId!=='summon.mouth-t1')player.seek(this.displayTimeMs);
+      const s=this.scale*bossVectorScale(b.radius),ground=record.anchors.ground,matrix=[s,0,0,s,p.x-ground.x*s,p.y-ground.y*s];
       const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farmBossEvent.celebrationSeconds*2)):0;
       const fade=event?.phase==='fading'?clamp(1-event.elapsed/CONFIG.farmBossEvent.fadeSeconds,0,1):1;
       const parts=record.parts,pose=bossAttackPose(b,parts);
       player.setBasePose('body',{x:0,y:pose.body.y-18*defeatBounce,rotation:pose.body.rotation,scaleX:pose.body.scaleX*(1+(k.squash||0))*(1-.04*defeatBounce),scaleY:pose.body.scaleY*(1-(k.squash||0))*(1+.06*defeatBounce),opacity:fade});
       for(const [part,rotation] of Object.entries(pose.arms))if(parts.has(part))player.setBasePose(part,{rotation});
       for(const [part,partPose] of Object.entries(pose.extras))if(parts.has(part))player.setBasePose(part,partPose);
-      const mouthSocket=metadata.sockets?.mouth?player.getSocket('mouth'):null,mouthScreen=mouthSocket?{x:mouthSocket.x*s+matrix[4],y:mouthSocket.y*s+matrix[5]}:null;
+      const mouthSocket=player.getSocket('mouth'),mouthScreen={x:mouthSocket.x*s+matrix[4],y:mouthSocket.y*s+matrix[5]};
       this.ctx.vector.flush();
       player.draw({projection:this.ctx.vector.projection,matrix});
       if(b.patternId==='summon.mouth-t1'&&b.patternReleased>0&&pose.releasePulse>0&&mouthScreen){
@@ -518,6 +520,7 @@ function bossAttackPose(b,parts){
       this.stats = c.endFrame();
     }
     dispose(){
+      for(const [species,troop] of this.vectorAssets)unbindBossSocketAsset(species,species===3?this.bossAssets.get('chestnut'):troop);
       for(const player of this.vectorPlayers.values())player.dispose();this.vectorPlayers.clear();
       for(const record of this.vectorAssets.values())record.asset.dispose();this.vectorAssets.clear();
       for(const {player} of this.bossPlayers.values())player.dispose();this.bossPlayers.clear();this.bossPlayer=null;for(const record of this.bossAssets?.values()||[])record.asset.dispose();this.bossAssets?.clear();

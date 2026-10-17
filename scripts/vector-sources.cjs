@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {DOMParser}=require('@xmldom/xmldom');
+const {readVectorSockets}=require('../src/vector-sockets.cjs');
 const SVG_SHAPE_ELEMENTS=new Set(['path','rect','circle','ellipse','line','polyline','polygon']);
 function validatePaintedShapeIds(bytes,file){
   const errors=[];
@@ -19,6 +20,9 @@ function validatePaintedShapeIds(bytes,file){
   };
   visit(document.documentElement);
   if(!shapeCount)throw new Error(`No supported painted SVG shapes found in ${file}`);
+  const metadataNode=document.getElementsByTagName('metadata').item(0);
+  if(!metadataNode||metadataNode.getAttribute('id')!=='vector-asset')throw new Error(`Missing vector metadata in ${file}`);
+  readVectorSockets({metadata:JSON.parse(metadataNode.textContent),viewBox:document.documentElement.getAttribute('viewBox').trim().split(/[ ,]+/).map(Number),sourcePath:file});
   return shapeCount;
 }
 function validateVectorSources(root){

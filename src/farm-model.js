@@ -1,3 +1,4 @@
+import {bossMouthWorldPoint} from './boss-vector-sockets.js';
 const {SeededPRNG}=globalThis.BloomGamekitDeterministic;
 import {baseUnitStatsFor,applyDamageToTargets,applyHealing,resolveStatusDuration,resolveKnockback,scaleMoveSpeed,scaleAttackRecovery,scaleAttackArea} from './unit-stats.js';
 import {UNIT_ABILITY_PROFILES as ATTACK_TYPES,abilityProfile} from './unit-abilities.js';
@@ -1244,14 +1245,7 @@ const AttackingBody=Base=>class extends Base{
       const from={x:b.x+Math.cos(fromAngle)*config.reach,y:b.y+Math.sin(fromAngle)*config.reach,z:.2},to={x:b.x+Math.cos(toAngle)*config.reach,y:b.y+Math.sin(toAngle)*config.reach,z:.2};
       const extent=config.reach+config.width+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(action.hitIds.has(unit.id))continue;const hit=ArenaGeometry.sweep(from,to,config.width,1.4,unit);if(hit){const dx=unit.x-b.x,dy=unit.y-b.y,n=Math.hypot(dx,dy)||1;this.hitBossPatternUnit(unit,action.id,hit,{x:dx/n,y:dy/n})}}
     }
-    bossMouthPoint(){
-      // Local coordinates are taken from each troop SVG's authored mouth socket;
-      // Chestnut uses the dedicated boss SVG socket instead. Map the socket's
-      // local horizontal displacement along the boss's facing plane and its
-      // vertical displacement onto the existing 2.5D height axis.
-      const anchors=[[176,210,160,350],[140,112,142.5,295],[119,109,130,320],[160,145,160,261],[160,164,160,267],[160,165,160,266]][this.boss.species]||[160,165,160,266],b=this.boss,scale=2*b.radius*1.16/220,forward=(anchors[0]-anchors[2])*scale,vertical=Math.max(0,(anchors[3]-anchors[1])*scale/.785);
-      return{x:b.x+Math.cos(b.angle)*forward,y:b.y+Math.sin(b.angle)*forward,z:vertical};
-    }
+    bossMouthPoint(released){return bossMouthWorldPoint(this.boss,released)}
     bossSummonLanding(angle,action=null){
       const b=this.boss,scene=this.scene,radius=unitRadiusForTier(1);
       for(let i=0;i<16;i++){const offset=i===0?0:(i%2?1:-1)*Math.ceil(i/2)*Math.PI/8,a=angle+offset,candidate={x:b.x+Math.cos(a)*BOSS_PATTERN_CONFIG['summon.mouth-t1'].landingRadius,y:b.y+Math.sin(a)*BOSS_PATTERN_CONFIG['summon.mouth-t1'].landingRadius};if(!ArenaGeometry.inside(candidate,scene,radius))continue;const blocked=this.units.some(unit=>unit.hp>0&&Math.hypot(unit.x-candidate.x,unit.y-candidate.y)<radius+unit.radius+.08)||(action?.landingPoints||[]).some(point=>Math.hypot(point.x-candidate.x,point.y-candidate.y)<radius*2+.08);if(!blocked)return candidate}
@@ -1259,7 +1253,8 @@ const AttackingBody=Base=>class extends Base{
     }
     spawnBossMouthUnit(action){
       if(action.released>=action.volleyCount)return false;
-      const b=this.boss,landing=this.bossSummonLanding(action.aim,action),mouth=this.bossMouthPoint();if(!landing)return false;
+      const b=this.boss,landing=this.bossSummonLanding(action.aim,action);if(!landing)return false;
+      const mouth=this.bossMouthPoint(action.released+1);
       const id=CONFIG.bossSummonIdBase+ ++this.bossSummonSerial,unit=new Unit(id,b.species,1,mouth.x,mouth.y),angle=Math.atan2(landing.y-mouth.y,landing.x-mouth.x),flightSeconds=Math.sqrt(2*mouth.z/CONFIG.gravity),horizontalDistance=Math.hypot(landing.x-mouth.x,landing.y-mouth.y),drag=.8,speed=horizontalDistance*drag/(1-Math.exp(-drag*flightSeconds));
       Object.assign(unit,{ownerId:'boss',farmId:0,faction:FACTION_CONFIG.ENEMY,home:{x:mouth.x,y:mouth.y},hp:stats(1,b.species).maxHp,down:0,isBattleOnlySummon:true,battleSummonKind:'boss-mouth-t1',battleSummonParentId:0,battleSummonEncounterId:b.encounterId||1,countsTowardPermanentRoster:false,eligibleForRaidDeployment:false,breedingEligible:false,mergeEligible:false,canSplit:false,usesPersistentSleep:false,lifetime:'until-death-or-battle-end',growthElapsed:unit.growthDuration,growth:CONFIG.matureMeals,meals:1,deathSplitHandled:false,splitUsedThisBattle:true,dropLanded:false,z:mouth.z,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,vz:0,landingRecovery:0,seed:id*2.39996});
       this.units.push(unit);this._trackUnitAdded(unit);action.released++;action.landingPoints||=[];action.landingPoints.push(landing);this.boss.summonMouth=mouth;

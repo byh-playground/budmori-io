@@ -101,3 +101,11 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 메시와 애니메이션은 세션 캐시에서 재사용하며 장면 전환·매 프레임에 다시 컴파일하지 않습니다.
 생성 정점 배열/base64 메시를 `game.js` 또는 HTML에 내장하거나 생성 캐릭터 파일을 배포하지 않습니다.
 리소스 로딩 실패 시 시작을 막고 재시도 UI를 제공합니다. `npm run build`는 SVG 원본과 제품 manifest를 검증하며, 기본 Farm E2E는 실제 브라우저에서 게임 리소스가 로드되는 시작 흐름을 확인합니다.
+
+### SVG 입·지면 좌표 계약
+
+모든 병종과 보스 SVG는 `mouth`와 `ground` socket을 명시합니다. `mouth`는 공격 표정의 입 중앙이며 `face-attack` part를 따르고, `ground`는 몸통이 움직여도 월드 그림자 기준을 고정하는 정적 canvas 좌표입니다. 원본 SVG transform은 컴파일 geometry에 이미 반영되므로 socket에 다시 적용하지 않습니다. 누락·잘못된 좌표는 빌드와 시작 시 asset/species를 포함한 오류로 중단하며 다른 병종이나 viewBox 값으로 대체하지 않습니다.
+
+시작에 한 번 읽은 compiled metadata와 native GameKit asset에서 모델·렌더가 같은 socket 계약을 사용합니다. 모델은 소환을 실제로 방출할 때만 별도 runtime player를 phase seek하여 애니메이션된 입을 읽습니다. 렌더의 소환도 동일 phase seek와 몸통 pose를 사용하며 이전 프레임의 crossfade나 피격 장식 변형에 의존하지 않습니다. 화면을 향한 보스 SVG의 가로축은 월드 x, 세로축은 기존 0.785 높이 투영으로 바꾸고 현재 보스 높이를 더합니다. 지면 기준은 애니메이션된 ground socket으로 흔들지 않습니다.
+
+asset/player는 세션 runtime에만 보관하고 저장에 넣지 않습니다. 저장 복원은 기존 패턴 phase·elapsed·released로 다음 방출 좌표를 다시 계산합니다. 소환 간격·개수·전투 스탯과 저장 schema는 그대로입니다.
