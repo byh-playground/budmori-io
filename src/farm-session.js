@@ -43,6 +43,8 @@ class UnitRender extends RENDER_OBJECT {
         tier: R.STEP,
         seed: R.STEP,
         size: R.LINEAR,
+        bodyScale: R.LINEAR,
+        height: R.LINEAR,
         radius: R.LINEAR,
         maxHp: R.STEP,
         fed: R.STEP,
@@ -82,6 +84,8 @@ class UnitRender extends RENDER_OBJECT {
         this.tier = u.tier;
         this.seed = u.seed;
         this.size = u.size;
+        this.bodyScale = u.bodyScale;
+        this.height = u.height;
         this.radius = u.radius;
         this.maxHp = baseUnitStatsFor(u.tier, u.species).maxHp;
         this.fed = u.fed;
@@ -572,9 +576,6 @@ class FarmSession {
     }
     set paused(value) {
         value = !!value;
-        if (value) {
-            this.world.clearLocalScatter();
-        }
         if (value === this._paused) {
             return;
         }
@@ -738,7 +739,6 @@ class FarmSession {
         });
     }
     dispose() {
-        this.world.clearLocalScatter();
         this.closed = true;
         this.unsubscribeNotices?.();
         this.unsubscribeNotices = null;

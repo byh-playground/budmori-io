@@ -1,4 +1,13 @@
 import { Signal } from './signal.js';
+import {
+    unitVisualSize,
+    unitVectorScale,
+    unitBodyRadius,
+    unitBodyHeight,
+    unitTorsoHeight,
+    maximumUnitRadius,
+} from './features/unit-body/definition.cjs';
+import { seedProjectileDimensions } from './features/projectiles/seed/definition.js';
 import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { createSimulationScenes } from './simulation-scenes.js';
@@ -72,7 +81,6 @@ const WORLD_ARENA = Object.freeze({
     radiusX: 23,
     radiusY: 17,
 });
-const UNIT_RADIUS_FOR_TIER = (tier) => 0.25 + 0.055 * tier;
 // Runtime configuration is separate from saved world fields and their import
 // migration. Only already-established capacity/growth relations are derived.
 const CONFIG = Object.freeze({
@@ -121,16 +129,10 @@ const CONFIG = Object.freeze({
             damage: 1.25,
         }),
     }),
-    scatter: Object.freeze({
-        minRadius: UNIT_RADIUS_FOR_TIER(1) * 4,
-        maxRadius: UNIT_RADIUS_FOR_TIER(1) * 10,
-        bodyMargin: 0.08,
-        hysteresis: 0.18,
-    }),
     unit: Object.freeze({
         speciesCount: SPECIES_COUNT,
         maxTier: MAX_UNIT_TIER,
-        maxRadius: UNIT_RADIUS_FOR_TIER(MAX_UNIT_TIER),
+        maxRadius: maximumUnitRadius(MAX_UNIT_TIER),
         perceptionRange: 18,
         corpseRecoverySeconds: 60,
     }),
@@ -384,18 +386,6 @@ class AttackCycle {
         sim.combatEvent('prepare', U, this.action);
         return true;
     }
-    cancelForScatter() {
-        // Keep resolved hit masks and already launched projectiles. Cancel only the
-        // remaining motion/strikes; recovery is paid once, never reset by each hold.
-        if (this.action?.pendingShots) {
-            this.action.pendingShots.length = 0;
-        }
-        if (this.phase === 'windup' || this.phase === 'active') {
-            this.phase = 'recover';
-            this.elapsed = 0;
-            this.owner.vx = this.owner.vy = 0;
-        }
-    }
     interrupt() {
         if (this.phase !== 'idle') {
             this.phase = 'recover';
@@ -579,7 +569,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.onDied.scope = this.onRevived.scope = this.onHealthChanged.scope = null;
     }
     get radius() {
-        return UNIT_RADIUS_FOR_TIER(this.tier) * (this.mature ? 1 : 0.8);
+        return unitBodyRadius(this);
     }
     get mature() {
         return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -588,12 +578,16 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.meals >= 1;
     }
     get size() {
-        const GROWTH = this.mature
-            ? 1
-            : this.growthDuration > 0
-              ? CLAMP(this.growthElapsed / this.growthDuration, 0, 1)
-              : 1;
-        return (0.55 + 0.1 * this.tier) * (0.5 + 0.5 * GROWTH);
+        return unitVisualSize(this);
+    }
+    get bodyScale() {
+        return unitVectorScale(this);
+    }
+    get height() {
+        return unitBodyHeight(this);
+    }
+    get bodyHeight() {
+        return unitTorsoHeight(this);
     }
 };
 function contact(a, b) {
@@ -601,7 +595,7 @@ function contact(a, b) {
         DY = b.y - a.y,
         D_LOCAL = Math.hypot(DX, DY),
         R_LOCAL = a.radius + b.radius;
-    if (Math.abs(a.z - b.z) > 0.65) {
+    if (a.z > b.z + b.height || b.z > a.z + a.height) {
         return false;
     }
     if (D_LOCAL >= R_LOCAL) {
@@ -758,20 +752,6 @@ const GARDEN = class Garden {
             _progressTimerCheckpoint: {
                 value: 0,
                 writable: true,
-            },
-            localScatter: {
-                value: {
-                    active: false,
-                    x: 0,
-                    y: 0,
-                    radius: CONFIG.scatter.minRadius,
-                    handleX: 0,
-                    handleY: 0,
-                    generation: 0,
-                },
-            },
-            _scatterStates: {
-                value: new WeakMap(),
             },
         });
         this.reset();
@@ -1026,7 +1006,6 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._reset);
     }
     _reset() {
-        this.clearLocalScatter();
         this.progressRevision = 0;
         this._progressTimerCheckpoint = 0;
         this.mergeTask = null;
@@ -1219,8 +1198,7 @@ const GARDEN = class Garden {
             x: unit.x,
             y: unit.y,
             z: 0.45,
-            radius: scaleAttackArea(0.12, unit),
-            height: 0.24,
+            ...seedProjectileDimensions(unit),
             hit: false,
             attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
             shotIndex: shot.shotIndex ?? 0,
@@ -1708,7 +1686,9 @@ const GARDEN = class Garden {
         // Uniform random bearing covers the entire outside ellipse. Inset by the
         // deployed body's radius, so every original falling animation lands on ground.
         const ANGLE = this.random() * Math.PI * 2,
-            MARGIN = UNIT_RADIUS_FOR_TIER(TROOP.tier) + 0.05,
+            MARGIN =
+                unitBodyRadius({ species: TROOP.species, tier: TROOP.tier, growthElapsed: 1, growthDuration: 1 }) +
+                0.05,
             BOUNDS = ARENA_GEOMETRY.bounds('raid', MARGIN),
             X = Math.cos(ANGLE) * BOUNDS.x,
             Y = Math.sin(ANGLE) * BOUNDS.y;
@@ -1845,7 +1825,7 @@ const GARDEN = class Garden {
         this.foodTaps.revision++;
         if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.scatter(
+            this.spawnFood(
                 (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
                 (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
                 1,
@@ -1872,7 +1852,7 @@ const GARDEN = class Garden {
             this.tapFood('auto');
         }
     }
-    scatter(x, y, count = 1) {
+    spawnFood(x, y, count = 1) {
         for (let i = 0; i < count && this.food.length < 140; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5,
                 RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
@@ -2242,9 +2222,6 @@ const GARDEN = class Garden {
             }
             const IDS = new Set();
             for (const UNIT_LOCAL of materials) {
-                if (this.localScatter.active && this.scatterInside(UNIT_LOCAL)) {
-                    return false;
-                }
                 if (
                     !UNIT_LOCAL ||
                     IDS.has(UNIT_LOCAL.id) ||
@@ -2680,7 +2657,6 @@ const GARDEN = class Garden {
                     y: U.y,
                     z: U.z,
                 };
-            this.limitScatterVelocity(U, dt);
             U.integrate(dt);
             SCENE.afterLivingIntegration(this, U);
             if (ENEMY_LOCAL) {
@@ -2726,9 +2702,6 @@ const GARDEN = class Garden {
         this._foodSpatialDirty = true;
     }
     updateUnitIntent(unit, dt, enemy, scene) {
-        if (this.updateLocalScatter(unit, dt, enemy)) {
-            return;
-        }
         if (enemy) {
             this.raidUnit(unit, dt, enemy);
             return;
@@ -2745,263 +2718,7 @@ const GARDEN = class Garden {
         }
         scene.updateUnoccupied(this, unit, dt);
     }
-    setLocalScatter(x, y, radius = CONFIG.scatter.minRadius, handleX = x + radius, handleY = y) {
-        if (![x, y, radius, handleX, handleY].every(Number.isFinite)) {
-            return false;
-        }
-        const C_LOCAL = this.localScatter;
-        if (!C_LOCAL.active || C_LOCAL.x !== x || C_LOCAL.y !== y) {
-            C_LOCAL.generation++;
-        }
-        C_LOCAL.active = true;
-        C_LOCAL.x = x;
-        C_LOCAL.y = y;
-        C_LOCAL.radius = CLAMP(radius, CONFIG.scatter.minRadius, CONFIG.scatter.maxRadius);
-        C_LOCAL.handleX = handleX;
-        C_LOCAL.handleY = handleY;
-        return true;
-    }
-    clearLocalScatter() {
-        this.localScatter.active = false;
-    }
-    scatterApplies(u) {
-        return (
-            this.localScatter.active &&
-            hasFaction(u, FACTION_CONFIG.PLAYER) &&
-            u.hp > 0 &&
-            u.down <= 0 &&
-            u.dropLanded &&
-            u.z <= 1e-9 &&
-            u.vz <= 0
-        );
-    }
-    scatterInside(u) {
-        if (!u) {
-            return false;
-        }
-        const C_LOCAL = this.localScatter;
-        return Math.hypot(u.x - C_LOCAL.x, u.y - C_LOCAL.y) < C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin;
-    }
-    scatterSegmentBlocked(x, y, tx, ty, radius) {
-        const C_LOCAL = this.localScatter;
-        return ARENA_GEOMETRY.segmentInsideCircle(x, y, tx, ty, C_LOCAL.x, C_LOCAL.y, radius);
-    }
-    scatterBossBlocks(u, x, y) {
-        const B_LOCAL = this.boss;
-        if (!B_LOCAL.active || B_LOCAL.hp <= 0 || !areOpposingFactions(u, B_LOCAL) || B_LOCAL.z > u.z + 0.65) {
-            return false;
-        }
-        const RADIUS = Math.min(
-            B_LOCAL.radius + u.radius + 0.015,
-            Math.max(0, Math.hypot(u.x - B_LOCAL.x, u.y - B_LOCAL.y) - 0.002),
-        );
-        return ARENA_GEOMETRY.segmentInsideCircle(u.x, u.y, x, y, B_LOCAL.x, B_LOCAL.y, RADIUS);
-    }
-    updateLocalScatter(u, dt, enemy) {
-        if (!this.scatterApplies(u) || u.stun > 0 || u.landingRecovery > 0) {
-            return false;
-        }
-        const C_LOCAL = this.localScatter,
-            R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin,
-            D_LOCAL = Math.hypot(u.x - C_LOCAL.x, u.y - C_LOCAL.y);
-        let state = this._scatterStates.get(u);
-        if (!state) {
-            state = {
-                generation: 0,
-                escaping: false,
-                radius: 0,
-                x: 0,
-                y: 0,
-                waypoint: false,
-                bossX: 0,
-                bossY: 0,
-            };
-            this._scatterStates.set(u, state);
-        }
-        if (state.generation !== C_LOCAL.generation) {
-            state.generation = C_LOCAL.generation;
-            state.escaping = false;
-            state.radius = 0;
-        }
-        if (D_LOCAL < R_LOCAL) {
-            state.escaping = true;
-        }
-        if (state.escaping && D_LOCAL >= R_LOCAL + CONFIG.scatter.hysteresis) {
-            state.escaping = false;
-            u.vx = u.vy = 0;
-        }
-        const CYCLE = u.ability;
-        // Contact attacks move their body through the path; ranged shots are safe
-        // to keep firing from a stopped position outside the evacuation circle.
-        const ATTACK_BLOCKED =
-            unitCapabilityComposition(u.species).attack === 'contact' &&
-            CYCLE.action &&
-            (CYCLE.phase === 'windup' || CYCLE.phase === 'active') &&
-            this.scatterSegmentBlocked(u.x, u.y, CYCLE.action.target.x, CYCLE.action.target.y, R_LOCAL);
-        if (!state.escaping && !ATTACK_BLOCKED) {
-            return false;
-        }
-        CYCLE.cancelForScatter();
-        CYCLE.update(this, dt);
-        if (!state.escaping) {
-            return true;
-        }
-        if (
-            state.radius !== R_LOCAL ||
-            this.scatterBossBlocks(u, state.x, state.y) ||
-            (state.waypoint &&
-                (Math.hypot(state.x - u.x, state.y - u.y) < 0.14 ||
-                    state.bossX !== this.boss.x ||
-                    state.bossY !== this.boss.y))
-        ) {
-            state.radius = R_LOCAL;
-            const GOAL_RADIUS = R_LOCAL + CONFIG.scatter.hysteresis + 0.12,
-                BEARING = D_LOCAL > 1e-8 ? Math.atan2(u.y - C_LOCAL.y, u.x - C_LOCAL.x) : u.seed,
-                BOUNDS = ARENA_GEOMETRY.bounds(this.scene, u.radius + 0.02);
-            let best = Infinity;
-            state.x = u.x;
-            state.y = u.y;
-            state.waypoint = false;
-            state.bossX = this.boss.x;
-            state.bossY = this.boss.y;
-            // Usually the first radial exit is valid. At a boundary choose the
-            // closest reachable tangent-side exit, with a stable tie break.
-            for (let i = 0; i < 33; i++) {
-                const ANGLE = BEARING + (i === 0 ? 0 : ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI) / 16),
-                    X = C_LOCAL.x + Math.cos(ANGLE) * GOAL_RADIUS,
-                    Y = C_LOCAL.y + Math.sin(ANGLE) * GOAL_RADIUS;
-                if (
-                    (X * X) / (BOUNDS.x * BOUNDS.x) + (Y * Y) / (BOUNDS.y * BOUNDS.y) > 1 ||
-                    this.scatterBossBlocks(u, X, Y)
-                ) {
-                    continue;
-                }
-                const DISTANCE = (X - u.x) ** 2 + (Y - u.y) ** 2;
-                if (DISTANCE < best - 1e-9) {
-                    best = DISTANCE;
-                    state.x = X;
-                    state.y = Y;
-                    if (i === 0) {
-                        break;
-                    }
-                }
-            }
-            if (!Number.isFinite(best)) {
-                // A boss against the arena edge can leave only a curved crescent.
-                // Take a short valid tangent step, then retry the normal radial exit.
-                state.waypoint = true;
-                let score = -Infinity;
-                for (let step = 0.55; step > 0.1 && !Number.isFinite(score); step *= 0.5) {
-                    for (let i = 0; i < 34; i++) {
-                        // Exact boss tangents and shorter retries cover narrow edge gaps
-                        // without making the exit depend on the unit's seeded angle grid.
-                        const ANGLE =
-                                i < 32
-                                    ? BEARING + (i * Math.PI) / 16
-                                    : Math.atan2(u.y - this.boss.y, u.x - this.boss.x) +
-                                      ((i === 32 ? 1 : -1) * Math.PI) / 2,
-                            X = u.x + Math.cos(ANGLE) * step,
-                            Y = u.y + Math.sin(ANGLE) * step;
-                        if (
-                            (X * X) / (BOUNDS.x * BOUNDS.x) + (Y * Y) / (BOUNDS.y * BOUNDS.y) > 1 ||
-                            this.scatterBossBlocks(u, X, Y)
-                        ) {
-                            continue;
-                        }
-                        const DISTANCE = (X - C_LOCAL.x) ** 2 + (Y - C_LOCAL.y) ** 2;
-                        if (DISTANCE > score + 1e-9) {
-                            score = DISTANCE;
-                            state.x = X;
-                            state.y = Y;
-                        }
-                    }
-                }
-                if (!Number.isFinite(score)) {
-                    state.radius = 0;
-                }
-            }
-        }
-        const DX = u.x - C_LOCAL.x,
-            DY = u.y - C_LOCAL.y,
-            RADIAL = D_LOCAL > 1e-8 ? (u.vx * DX + u.vy * DY) / D_LOCAL : 0;
-        if (RADIAL < 0) {
-            u.vx -= (RADIAL * DX) / D_LOCAL;
-            u.vy -= (RADIAL * DY) / D_LOCAL;
-        }
-        this.steer(u, state.x, state.y, dt, scaleMoveSpeed(enemy ? 4.1 : 2.2, u));
-        return true;
-    }
-    limitScatterVelocity(u, dt) {
-        if (!this.scatterApplies(u) || u.stun > 0) {
-            return;
-        }
-        const C_LOCAL = this.localScatter,
-            R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin,
-            DX = u.x - C_LOCAL.x,
-            DY = u.y - C_LOCAL.y,
-            D_LOCAL = Math.hypot(DX, DY);
-        if (D_LOCAL < R_LOCAL - 1e-8) {
-            return;
-        }
-        const MX = u.vx * dt,
-            MY = u.vy * dt,
-            A_LOCAL = MX * MX + MY * MY,
-            B_LOCAL = 2 * (DX * MX + DY * MY),
-            OUTSIDE = DX * DX + DY * DY - R_LOCAL * R_LOCAL,
-            DISC = B_LOCAL * B_LOCAL - 4 * A_LOCAL * OUTSIDE;
-        if (A_LOCAL < 1e-14 || B_LOCAL >= 0 || DISC <= 0) {
-            return;
-        }
-        const HIT = (-B_LOCAL - Math.sqrt(DISC)) / (2 * A_LOCAL);
-        if (HIT < 0 || HIT > 1) {
-            return;
-        }
-        // Trim this step before entry rather than projecting/teleporting the body.
-        const FRACTION = Math.max(0, HIT - 0.001);
-        u.vx *= FRACTION;
-        u.vy *= FRACTION;
-    }
     steer(u, x, y, dt, speed2) {
-        if (this.scatterApplies(u) && !this.scatterInside(u)) {
-            const C_LOCAL = this.localScatter,
-                R_LOCAL = C_LOCAL.radius + u.radius + CONFIG.scatter.bodyMargin + 0.12;
-            if (this.scatterSegmentBlocked(u.x, u.y, x, y, R_LOCAL)) {
-                const DX = u.x - C_LOCAL.x,
-                    DY = u.y - C_LOCAL.y,
-                    D_LOCAL = Math.hypot(DX, DY),
-                    BEARING = D_LOCAL > 1e-8 ? Math.atan2(DY, DX) : u.seed;
-                const TX = x - C_LOCAL.x,
-                    TY = y - C_LOCAL.y;
-                if (Math.hypot(TX, TY) <= R_LOCAL) {
-                    x = C_LOCAL.x + Math.cos(BEARING) * (R_LOCAL + 0.06);
-                    y = C_LOCAL.y + Math.sin(BEARING) * (R_LOCAL + 0.06);
-                } else {
-                    const DELTA = Math.atan2(
-                            Math.sin(Math.atan2(TY, TX) - BEARING),
-                            Math.cos(Math.atan2(TY, TX) - BEARING),
-                        ),
-                        SIDE = DELTA === 0 ? (u.id % 2 ? 1 : -1) : Math.sign(DELTA);
-                    const TURN = Math.min(
-                            0.5,
-                            Math.max(0.2, Math.acos(Math.min(1, R_LOCAL / Math.max(R_LOCAL, D_LOCAL))) * 0.8),
-                        ),
-                        DISTANCE = R_LOCAL / Math.cos(TURN) + 0.08;
-                    const BOUNDS = ARENA_GEOMETRY.bounds(this.scene, u.radius);
-                    let angle = BEARING + SIDE * TURN;
-                    x = C_LOCAL.x + Math.cos(angle) * DISTANCE;
-                    y = C_LOCAL.y + Math.sin(angle) * DISTANCE;
-                    if ((x * x) / (BOUNDS.x * BOUNDS.x) + (y * y) / (BOUNDS.y * BOUNDS.y) > 1) {
-                        angle = BEARING - SIDE * TURN;
-                        x = C_LOCAL.x + Math.cos(angle) * DISTANCE;
-                        y = C_LOCAL.y + Math.sin(angle) * DISTANCE;
-                        if ((x * x) / (BOUNDS.x * BOUNDS.x) + (y * y) / (BOUNDS.y * BOUNDS.y) > 1) {
-                            u.vx = u.vy = 0;
-                            return;
-                        }
-                    }
-                }
-            }
-        }
         const DX = x - u.x,
             DY = y - u.y,
             D_LOCAL = Math.hypot(DX, DY);
@@ -3681,19 +3398,6 @@ const GARDEN = class Garden {
                   x: B_LOCAL.x + (DX / N) * (B_LOCAL.radius + u.radius - 0.16),
                   y: B_LOCAL.y + (DY / N) * (B_LOCAL.radius + u.radius - 0.16),
               };
-        if (
-            this.scatterApplies(u) &&
-            BEHAVIOR.attack === 'contact' &&
-            this.scatterSegmentBlocked(
-                u.x,
-                u.y,
-                TARGET.x,
-                TARGET.y,
-                this.localScatter.radius + u.radius + CONFIG.scatter.bodyMargin,
-            )
-        ) {
-            return;
-        }
         u.ability.begin(this, TARGET);
     }
     finish(outcome) {
@@ -4328,7 +4032,7 @@ const GARDEN = class Garden {
     bossSummonLanding(angle, action = null) {
         const B_LOCAL = this.boss,
             SCENE = this.scene,
-            RADIUS = UNIT_RADIUS_FOR_TIER(1);
+            RADIUS = unitBodyRadius({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
         for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI) / 8,
                 A_LOCAL = angle + OFFSET,

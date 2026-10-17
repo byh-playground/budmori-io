@@ -52,7 +52,6 @@ export class UnitCollection {
         }
         this.subscriptions.delete(unit);
         this.world._trackUnitRemoved(unit, options);
-        this.world._scatterStates.delete(unit);
         unit.dispose();
         if (this.world._spatialStepActive) {
             this.retiredDuringStep.push(unit);

@@ -39,11 +39,7 @@ let menuPauseChanged = false;
 let menuAutoPaused = false;
 let dropPointer = null;
 let dropTimer = null;
-let scatterPointer = null;
 let panPointer = null;
-let worldInputMode = 'scatter';
-let scatterHintShown = false;
-let scatterHintUntil = 0;
 let bossEncounterOpen = false;
 let bossSwipe = null;
 let bossPauseBeforeOpen = null;
@@ -425,9 +421,6 @@ function setHome(value, push = true) {
     refreshStart();
     if (value) {
         DOLLAR('continueGame').focus();
-    } else if (!scatterHintShown) {
-        scatterHintShown = true;
-        scatterHintUntil = performance.now() + 6000;
     }
 }
 function start(world, push = true) {
@@ -1258,7 +1251,7 @@ function stopDrop(e) {
     }
 }
 function beginDrop(id) {
-    if (dropPointer !== null || scatterPointer || panPointer || !deployTroop()) {
+    if (dropPointer !== null || panPointer || !deployTroop()) {
         return false;
     }
     dropPointer = id;
@@ -1295,17 +1288,6 @@ DOLLAR('deployTroops').addEventListener('keyup', (e) => {
     }
 });
 DOLLAR('deployTroops').addEventListener('blur', () => stopDrop());
-function stopScatter(e) {
-    if (e && scatterPointer && e.pointerId !== scatterPointer.id) {
-        return;
-    }
-    const ID = scatterPointer?.id;
-    scatterPointer = null;
-    active?.world.clearLocalScatter();
-    if (ID !== undefined && CANVAS.hasPointerCapture?.(ID)) {
-        CANVAS.releasePointerCapture(ID);
-    }
-}
 function stopPan(e) {
     if (e && panPointer && e.pointerId !== panPointer.id) {
         return;
@@ -1318,87 +1300,35 @@ function stopPan(e) {
 }
 function stopWorldInput(e) {
     stopDrop(e);
-    stopScatter(e);
     stopPan(e);
 }
-function selectWorldInputMode(mode) {
-    stopWorldInput();
-    worldInputMode = mode;
-    DOLLAR('scatterMode').setAttribute('aria-pressed', String(mode === 'scatter'));
-    DOLLAR('panMode').setAttribute('aria-pressed', String(mode === 'pan'));
-    CANVAS.setAttribute(
-        'aria-label',
-        mode === 'pan' ? '드래그해 정원 시야 이동' : '지면을 누르고 드래그해 아군 산개 범위 조절',
-    );
-}
-DOLLAR('scatterMode').onclick = () => selectWorldInputMode('scatter');
-DOLLAR('panMode').onclick = () => selectWorldInputMode('pan');
 CANVAS.addEventListener('pointerdown', (e) => {
     FOOD_FEEL.unlock();
-    if (e.button !== 0 || !canUseWorldInput() || scatterPointer || panPointer || dropPointer !== null) {
+    if (e.button !== 0 || !canUseWorldInput() || panPointer || dropPointer !== null) {
         return;
     }
-    if (worldInputMode === 'pan') {
-        panPointer = {
-            id: e.pointerId,
-            x: e.clientX,
-            y: e.clientY,
-        };
-        CANVAS.setPointerCapture?.(e.pointerId);
-        e.preventDefault();
-        return;
-    }
-    const P = RENDERER.screenToWorld(e.clientX, e.clientY);
-    if (!ArenaGeometry.inside(P, active.world.scene)) {
-        return;
-    }
-    scatterPointer = {
+    panPointer = {
         id: e.pointerId,
-        x: P.x,
-        y: P.y,
+        x: e.clientX,
+        y: e.clientY,
     };
-    active.world.setLocalScatter(P.x, P.y);
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
 });
 CANVAS.addEventListener('pointermove', (e) => {
-    if (panPointer && e.pointerId === panPointer.id) {
-        if (!canUseWorldInput()) {
-            stopPan();
-            return;
-        }
-        RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
-        panPointer.x = e.clientX;
-        panPointer.y = e.clientY;
-        e.preventDefault();
-        return;
-    }
-    if (!scatterPointer || e.pointerId !== scatterPointer.id) {
+    if (!panPointer || e.pointerId !== panPointer.id) {
         return;
     }
     if (!canUseWorldInput()) {
-        stopScatter();
+        stopPan();
         return;
     }
-    const P = RENDERER.screenToWorld(e.clientX, e.clientY),
-        DX = P.x - scatterPointer.x,
-        DY = P.y - scatterPointer.y,
-        D = Math.hypot(DX, DY),
-        R = Math.max(CONFIG.scatter.minRadius, Math.min(CONFIG.scatter.maxRadius, D)),
-        ANGLE = D > 1e-6 ? Math.atan2(DY, DX) : 0;
-    active.world.setLocalScatter(
-        scatterPointer.x,
-        scatterPointer.y,
-        R,
-        scatterPointer.x + Math.cos(ANGLE) * R,
-        scatterPointer.y + Math.sin(ANGLE) * R,
-    );
+    RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
+    panPointer.x = e.clientX;
+    panPointer.y = e.clientY;
     e.preventDefault();
 });
-CANVAS.addEventListener('lostpointercapture', (e) => {
-    stopScatter(e);
-    stopPan(e);
-});
+CANVAS.addEventListener('lostpointercapture', stopPan);
 window.addEventListener('pointerup', stopWorldInput, true);
 window.addEventListener('pointercancel', stopWorldInput, true);
 window.addEventListener('blur', () => {
@@ -1527,12 +1457,7 @@ function sync(display, now, notices) {
         HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false,
         REWARD_WORLD = personalGarden || W,
         PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => reward.status === 'pending');
-    syncFlag('worldInputControls', 'hidden', home || bossEncounterOpen);
-    syncFlag('scatterHint', 'hidden', home || menuOpen || bossEncounterOpen || now >= scatterHintUntil);
-    if (
-        (home || menuOpen || bossEncounterOpen || active.paused) &&
-        (dropPointer !== null || scatterPointer || panPointer)
-    ) {
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || panPointer)) {
         stopWorldInput();
     }
     syncAttribute('farm', 'aria-pressed', !RAID && !bossEncounterOpen);

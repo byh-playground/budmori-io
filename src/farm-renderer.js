@@ -357,79 +357,6 @@ const DIORAMA = class Diorama {
         C.stroke();
         C.globalAlpha = ALPHA;
     }
-    drawLocalScatter(scatter) {
-        if (!scatter?.active || !Number.isFinite(scatter.x) || !Number.isFinite(scatter.y) || !(scatter.radius > 0)) {
-            return;
-        }
-        const C = this.ctx,
-            S = this.scale,
-            R = scatter.radius,
-            P = this.project(scatter.x, scatter.y),
-            RY = R * S * WORLD_DEPTH_PROJECTION;
-        const SEGMENTS = Math.max(8, Math.min(24, Math.round((Math.PI * 2 * R * S) / (10 * this.pixelRatio)))),
-            STEP = (Math.PI * 2) / SEGMENTS;
-        C.beginPath();
-        // Explicit separated arc segments keep the circle hollow and avoid any
-        // dash state leaking into enemy outlines or later character drawing.
-        for (let i = 0; i < SEGMENTS; i++) {
-            for (let j = 0; j <= 4; j++) {
-                const A = i * STEP + (j / 4) * STEP * 0.58,
-                    X = P.x + Math.cos(A) * R * S,
-                    Y = P.y - Math.sin(A) * RY;
-                if (j === 0) {
-                    C.moveTo(X, Y);
-                } else {
-                    C.lineTo(X, Y);
-                }
-            }
-        }
-        C.strokeStyle = '#145967';
-        C.lineWidth = 3.4 * this.pixelRatio;
-        C.lineCap = 'round';
-        C.stroke();
-        C.strokeStyle = '#50e3ed';
-        C.lineWidth = 1.7 * this.pixelRatio;
-        C.stroke();
-        C.beginPath();
-        const ARROW = Math.max(0.25, (3.5 * this.pixelRatio) / S),
-            TIP = R + ARROW * 0.9;
-        for (let i = 0; i < 4; i++) {
-            const A = Math.PI / 4 + (i * Math.PI) / 2,
-                DX = Math.cos(A),
-                DY = Math.sin(A),
-                TX = P.x + DX * TIP * S,
-                TY = P.y - DY * TIP * S * WORLD_DEPTH_PROJECTION;
-            C.moveTo(P.x + DX * (R - ARROW * 0.55) * S, P.y - DY * (R - ARROW * 0.55) * S * WORLD_DEPTH_PROJECTION);
-            C.lineTo(TX, TY);
-            C.moveTo(
-                P.x + (DX * (TIP - ARROW) - DY * ARROW * 0.55) * S,
-                P.y - (DY * (TIP - ARROW) + DX * ARROW * 0.55) * S * WORLD_DEPTH_PROJECTION,
-            );
-            C.lineTo(TX, TY);
-            C.lineTo(
-                P.x + (DX * (TIP - ARROW) + DY * ARROW * 0.55) * S,
-                P.y - (DY * (TIP - ARROW) - DX * ARROW * 0.55) * S * WORLD_DEPTH_PROJECTION,
-            );
-        }
-        const CENTER = 2.8 * this.pixelRatio;
-        C.moveTo(P.x - CENTER, P.y);
-        C.lineTo(P.x + CENTER, P.y);
-        C.moveTo(P.x, P.y - CENTER);
-        C.lineTo(P.x, P.y + CENTER);
-        const HANDLE = this.project(
-                Number.isFinite(scatter.handleX) ? scatter.handleX : scatter.x,
-                Number.isFinite(scatter.handleY) ? scatter.handleY : scatter.y,
-            ),
-            HR = 3.5 * this.pixelRatio;
-        C.moveTo(HANDLE.x + HR, HANDLE.y);
-        C.ellipse(HANDLE.x, HANDLE.y, HR, HR, 0, 0, Math.PI * 2);
-        C.strokeStyle = '#145967';
-        C.lineWidth = 3.5 * this.pixelRatio;
-        C.stroke();
-        C.strokeStyle = '#7df5fb';
-        C.lineWidth = 1.7 * this.pixelRatio;
-        C.stroke();
-    }
     ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
         const C = this.ctx,
             P = this.project(x, y);
@@ -569,7 +496,6 @@ const DIORAMA = class Diorama {
         for (const E of sim2.effects) {
             drawEffect(this, E);
         }
-        this.drawLocalScatter(sim2.localScatter);
         this.stats = C.endFrame();
     }
     dispose() {

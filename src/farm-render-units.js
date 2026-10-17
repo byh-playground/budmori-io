@@ -1,3 +1,4 @@
+import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
 import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
 import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
 import { DualStrikePresentation } from './features/unit-attacks/dual-strike/presentation.js';
@@ -229,9 +230,10 @@ export class UnitPresentation {
         }
         player.seek(rest ? rest.elapsed * 1000 : this.renderer.displayTimeMs);
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
+            GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT),
-            CENTER_Y = p.y - r * 0.79;
-        const MATRIX = [SCALE, 0, 0, SCALE, p.x - WIDTH * SCALE * 0.5, CENTER_Y - HEIGHT * SCALE * 0.5];
+            CENTER_Y = p.y + (HEIGHT * 0.5 - GROUND.y) * SCALE;
+        const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
         const OUTLINE = TIER_OUTLINE_COLORS[u.tier - 1];
@@ -270,10 +272,14 @@ export class UnitPresentation {
             WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)),
             BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0,
             P = this.renderer.project(u.x, u.y, u.z + BOB);
-        const R = Math.max(
-            u.size * this.renderer.scale * 0.78,
-            this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio,
-        );
+        const BODY = unitBodyDefinition(u.species),
+            SCALE = unitDisplayScale(
+                BODY,
+                u.bodyScale,
+                this.renderer.scale,
+                this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio,
+            ),
+            R = SCALE * Math.max(BODY.viewBox[2], BODY.viewBox[3]) * 0.5;
         this.drawVectorUnit(u, sim, P, R, rest);
         return {
             p: P,

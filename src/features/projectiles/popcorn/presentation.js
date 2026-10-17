@@ -1,3 +1,4 @@
+import { seedDisplayMultiplier } from '../seed/presentation.js';
 import { clamp } from '../../../farm-model.js';
 import { FEATURE } from './definition.js';
 
@@ -6,15 +7,29 @@ export class PopcornProjectilePresentation {
         this.id = FEATURE.id;
         this.flightPresentation = flightPresentation;
     }
+    drawShadow(renderer, projectile) {
+        if (!projectile.landed) {
+            this.flightPresentation(projectile).drawShadow(renderer, projectile);
+            return;
+        }
+        const RADIUS = (projectile.radius * seedDisplayMultiplier(renderer, projectile)) / renderer.scale;
+        renderer.groundEllipse(
+            projectile.x,
+            projectile.y,
+            RADIUS,
+            RADIUS * 0.75,
+            projectile.exploded ? '#d86c3b55' : '#c78a4366',
+        );
+    }
     draw(renderer, projectile, point, tail) {
         if (!projectile.landed) {
             this.flightPresentation(projectile).draw(renderer, projectile, point, tail);
             return;
         }
-        const F = projectile;
+        const F = projectile,
+            SCALE = seedDisplayMultiplier(renderer, F);
 
         const FUSE = Math.max(0, Math.min(1, F.fuseRemaining || 0));
-        renderer.groundEllipse(F.x, F.y, 0.16, 0.12, F.exploded ? '#d86c3b55' : '#c78a4366');
         if (!F.exploded && F.popcornConfig?.radius > 0) {
             renderer.ring(F.x, F.y, F.popcornConfig.radius, 'rgba(190,111,52,.18)', 0.035);
         }
@@ -30,22 +45,17 @@ export class PopcornProjectilePresentation {
         } else {
             renderer.ring(F.x, F.y, 0.2 + 0.2 * (1 - FUSE), `rgba(238,181,83,${0.45 + 0.4 * (1 - FUSE)})`, 0.045);
         }
-        const KERNEL = renderer.project(F.x, F.y, 0.12);
-        renderer.ellipse(
-            KERNEL.x,
-            KERNEL.y,
-            renderer.scale * 0.13,
-            renderer.scale * 0.08,
-            F.exploded ? '#e37f42' : '#d4a347',
-            0.2,
-        );
-        renderer.ellipse(
-            KERNEL.x - renderer.scale * 0.035,
-            KERNEL.y - renderer.scale * 0.02,
-            renderer.scale * 0.045,
-            renderer.scale * 0.03,
-            '#ffe0a0',
-        );
+        // The landed pose flattens the kernel, but its horizontal footprint
+        // remains the snapshotted collision radius used by popcorn contacts.
+        const ROTATION = 0.2,
+            ASPECT = 8 / 13,
+            X = (F.radius * SCALE) / Math.hypot(Math.cos(ROTATION), ASPECT * Math.sin(ROTATION)),
+            Y = X * ASPECT,
+            HALF_HEIGHT = Math.hypot(X * Math.sin(ROTATION), Y * Math.cos(ROTATION)),
+            KERNEL = renderer.project(F.x, F.y, 0);
+        KERNEL.y -= HALF_HEIGHT;
+        renderer.ellipse(KERNEL.x, KERNEL.y, X, Y, F.exploded ? '#e37f42' : '#d4a347', ROTATION);
+        renderer.ellipse(KERNEL.x - X * 0.27, KERNEL.y - Y * 0.25, X * 0.35, Y * 0.375, '#ffe0a0');
     }
 }
 
