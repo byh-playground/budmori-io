@@ -10905,7 +10905,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.11";
+      PRODUCT_VERSION = "0.8.12";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14270,7 +14270,8 @@
           p.x - WIDTH * SCALE * FACTOR * 0.5,
           CENTER_Y - HEIGHT * SCALE * FACTOR * 0.5
         ];
-        for (const PART of RECORD.faceParts) {
+        const OUTLINE_FACE_PARTS = RECORD.visibleFacePartsByExpression?.get(EXPRESSION) ?? RECORD.faceParts;
+        for (const PART of OUTLINE_FACE_PARTS) {
           player.setPartVisible(PART, false);
         }
         player.draw({
@@ -14279,7 +14280,9 @@
           color: u.isFormationClone ? [0.45, 0.75, 1, 0.35] : OUTLINE,
           forceColor: true
         });
-        player.setExpression(EXPRESSION);
+        if (OUTLINE_FACE_PARTS.length) {
+          player.setExpression(EXPRESSION);
+        }
       }
       player.draw({
         projection: this.renderer.ctx.vector.projection,
@@ -14901,6 +14904,23 @@
     MeshRenderer: MESH_RENDERER
   } = globalThis.BloomGamekitRendering;
   var { createVectorAsset: CREATE_VECTOR_ASSET } = globalThis.BloomGamekitVectorAssets;
+  function expressionVisibleFaceParts(compiled, faceParts) {
+    const EXPRESSIONS = compiled.metadata.expressions || {}, CONTROLLED = /* @__PURE__ */ new Set();
+    for (const EXPRESSION of Object.values(EXPRESSIONS)) {
+      for (const PART of [...EXPRESSION.show || [], ...EXPRESSION.hide || []]) {
+        CONTROLLED.add(PART);
+      }
+    }
+    if (faceParts.some((part) => !CONTROLLED.has(part))) {
+      return null;
+    }
+    return new Map(
+      Object.entries(EXPRESSIONS).map(([name, expression]) => {
+        const SHOW = new Set(expression.show || []), HIDE = new Set(expression.hide || []);
+        return [name, faceParts.filter((part) => SHOW.has(part) && !HIDE.has(part))];
+      })
+    );
+  }
   function renderedBossAttackArea(boss, scene, scratch, area) {
     if (!boss?.patternId || boss.hp <= 0 || boss.patternPhase === "recover" && (boss.patternPhaseElapsed || 0) >= 0.14) {
       return null;
@@ -14963,12 +14983,14 @@
       this.meshes = new MESH_RENDERER(this.device);
       this.ctx.meshRenderer = this.meshes;
       for (const [SPECIES, COMPILED] of ENTRIES) {
+        const FACE_PARTS = COMPILED.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id);
         this.vectorAssets.set(Number(SPECIES), {
           compiled: COMPILED,
           asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
           anchors: (0, import_vector_sockets5.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
           parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
-          faceParts: COMPILED.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id)
+          faceParts: FACE_PARTS,
+          visibleFacePartsByExpression: expressionVisibleFaceParts(COMPILED, FACE_PARTS)
         });
       }
       this.bossAssets = new Map(
