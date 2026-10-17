@@ -254,7 +254,8 @@ async function launch() {
     for (const { entry, record } of modules) globalThis[entry.globalName] = record.exports;
     initStage = 'loading-vector-assets';
     label.textContent = '캐릭터를 준비하고 있어요';
-    vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({ maxEntries: 16 });
+    // Keep troop and giant variants in separate quality-keyed startup cache entries.
+    vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({ maxEntries: config.vectorAssets.length });
     const troops = {}, bosses = {};
     const records = await Promise.all(config.vectorAssets.map(async spec => {
       const url = new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href;

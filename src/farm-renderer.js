@@ -3,7 +3,7 @@ import {bindBossSocketAsset,unbindBossSocketAsset,bossSummonPose,sampleBossSummo
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
 import {farmBreedingCooldown,farmSleepSeconds,sevenSegmentDigitLines} from './farm-indicators.js';
 import {UNIT_GRADES} from './unit-grades.js';
-import {capsuleContourPoints} from './attack-telegraph.js';
+import {bossDangerContour} from './attack-telegraph.js';
 import {BOSS_PATTERN_CONFIG} from './boss-patterns.js';
 const {bosses:BOSS_VECTOR_ASSETS,troops:TROOP_VECTOR_ASSETS}=globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -43,12 +43,14 @@ function unitExpression(u,sim,joyEffects){
   }
   return 'neutral';
 }
-function renderedBossAttackArea(boss,unitRadius=0){
-  if(!boss?.patternId||boss.patternPhase==='recover')return null;
-  return bossAttackArea({...boss,patternRuntime:{active:{
-    id:boss.patternId,phase:boss.patternPhase,phaseElapsed:boss.patternPhaseElapsed,aim:boss.patternAim,locked:boss.patternLocked,
-    start:{x:boss.patternStartX,y:boss.patternStartY,z:boss.patternStartZ},target:{x:boss.patternTargetX,y:boss.patternTargetY,z:boss.patternTargetZ}
-  }}},unitRadius);
+function renderedBossAttackArea(boss,scene,scratch,area){
+  if(!boss?.patternId||boss.hp<=0||boss.patternPhase==='recover'&&(boss.patternPhaseElapsed||0)>=.14)return null;
+  const action=scratch.patternRuntime.active;
+  scratch.x=boss.x;scratch.y=boss.y;scratch.z=boss.z;scratch.angle=boss.angle;scratch.radius=boss.radius;scratch.height=boss.height;
+  action.id=boss.patternId;action.phase=boss.patternPhase;action.phaseElapsed=boss.patternPhaseElapsed;action.aim=boss.patternAim;action.locked=boss.patternLocked;
+  action.start.x=boss.patternStartX;action.start.y=boss.patternStartY;action.start.z=boss.patternStartZ;
+  action.target.x=boss.patternTargetX;action.target.y=boss.patternTargetY;action.target.z=boss.patternTargetZ;
+  return bossAttackArea(scratch,0,scene,area);
 }
 function bossAttackPose(b,parts){
   const id=b.patternId,config=BOSS_PATTERN_CONFIG[id],phase=b.patternPhase,elapsed=Math.max(0,b.patternPhaseElapsed||0),aim=Math.atan2(-.62*Math.sin(b.patternAim??b.angle),Math.cos(b.patternAim??b.angle));
@@ -114,12 +116,14 @@ function bossAttackPose(b,parts){
       this.vectorAssets=new Map();this.vectorPlayers=new Map();this.vectorPlayerAssets=new WeakMap();
       this.actors=[];this.actorPool=[];this.liveUnitIds=new Set();this.joyEffects=[];
       this.unitRings=[];this.unitRingPool=[{},{},{}];this.breedingIndicator={};
+      this.dangerContour=new Float64Array(512);this.dangerArea={};
+      this.telegraphBoss={patternRuntime:{active:{start:{},target:{}}}};
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
       if(entries.length!==CONFIG.unit.speciesCount||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
       for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),anchors:readVectorSockets(compiled,`species ${species}, ${compiled.sourcePath}`),parts:new Set(compiled.metadata.parts.map(part=>part.id)),faceParts:compiled.metadata.parts.filter(part=>part.id.startsWith('face-')).map(part=>part.id)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))}]));
-      for(const [species,troop] of this.vectorAssets){const record=species===3?this.bossAssets.get('chestnut'):troop;if(!record)throw new Error('Missing required boss vector asset for species '+species);record.anchors=bindBossSocketAsset(species,record)}
+      for(const species of this.vectorAssets.keys()){const record=this.bossAssets.get(species===3?'chestnut':`species-${species}`);if(!record)throw new Error('Missing required boss vector asset for species '+species);record.anchors=bindBossSocketAsset(species,record)}
       this.bossPlayer=null;this.bossPlayerAsset=null;this.bossPlayers=new Map();this.assetsReady=false;this.prewarmStats=null;this.prewarmDurationMs=0;this.bossTelegraph=null;
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
@@ -135,24 +139,44 @@ function bossAttackPose(b,parts){
       this.canvas.width = Math.round(r.width * d);
       this.pixelRatio = d;
       this.canvas.height = Math.round(r.height * d);
-      const aspect = r.width / r.height;this.aspect=aspect;this.scene=null;
-      this.view = aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
-      this.offset = [0, aspect < 0.8 ? 1.1 : -0.3];
-      this.scale = this.canvas.width / (2 * this.view[0]);
+      this.aspect=r.width/r.height;
+      this.configure(this.scene||'farm',true);
     }
     project(x, y, z = 0) {
       return { x: (x + this.offset[0] + this.view[0]) * this.scale, y: (this.view[1] - (WORLD_DEPTH_PROJECTION * y + WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale };
     }
-    screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect(),px=(clientX-r.left)*this.pixelRatio,py=(clientY-r.top)*this.pixelRatio;return{x:px/this.scale-this.offset[0]-this.view[0],y:(this.view[1]-py/this.scale-this.offset[1])/.62}}
-    configure(scene){
-      if(this.scene===scene)return;this.scene=scene;const a=this.aspect;
+    screenToWorld(clientX,clientY){const r=this.canvas.getBoundingClientRect(),px=(clientX-r.left)*this.pixelRatio,py=(clientY-r.top)*this.pixelRatio;return{x:px/this.scale-this.offset[0]-this.view[0],y:(this.view[1]-py/this.scale-this.offset[1])/WORLD_DEPTH_PROJECTION}}
+    configure(scene,force=false){
+      if(this.scene===scene&&!force)return;if(this.scene!==scene)this.pan={x:0,y:0};this.scene=scene;const a=this.aspect;
       if(scene==='raid')this.view=a>1.2?[Math.max(26.5,17*a),17]:[26.5,26.5/a];
       else this.view=a>1.2?[Math.max(12,9*a),9]:[11.7,11.7/a];
-      this.offset=[0,a<.8?1.1:-.3];this.scale=this.canvas.width/(2*this.view[0]);
-      const rx=scene==='raid'?CONFIG.raid.arena.radiusX:9.5,ry=scene==='raid'?CONFIG.raid.arena.radiusY:6.8;
+      this.scale=this.canvas.width/(2*this.view[0]);
+      const {radiusX:rx,radiusY:ry}=CONFIG[scene].arena;
+      // Keep the authored zoom. Pan only far enough to inspect the terrain and
+      // tall boss art at its edge; never move simulation bodies or saved points.
+      const bounds={left:-rx-1.3,right:rx+1.3,bottom:-(ry+1.3)*WORLD_DEPTH_PROJECTION,top:(ry+1.3)*WORLD_DEPTH_PROJECTION};
+      const bossScale=bossVectorScale(CONFIG.boss.radius),bossX=rx-CONFIG.boss.radius,bossY=(ry-CONFIG.boss.radius)*WORLD_DEPTH_PROJECTION;
+      const includeBoss=record=>{const [x,y,w,h]=record.compiled.viewBox,g=record.anchors.ground;bounds.left=Math.min(bounds.left,-bossX-(g.x-x)*bossScale);bounds.right=Math.max(bounds.right,bossX+(x+w-g.x)*bossScale);bounds.bottom=Math.min(bounds.bottom,-bossY-(y+h-g.y)*bossScale);bounds.top=Math.max(bounds.top,bossY+(g.y-y)*bossScale+CONFIG.raid.dropHeight*WORLD_HEIGHT_PROJECTION)};
+      for(const record of this.bossAssets.values())includeBoss(record);
+      const baseY=a<.8?1.1:-.3,top=this.view[1]-baseY,bottom=top-this.canvas.height/this.scale;
+      this.panLimits={minX:Math.min(0,this.view[0]-bounds.right),maxX:Math.max(0,-this.view[0]-bounds.left),minY:Math.min(0,top-bounds.top),maxY:Math.max(0,bottom-bounds.bottom)};
+      this.pan.x=clamp(this.pan.x,this.panLimits.minX,this.panLimits.maxX);this.pan.y=clamp(this.pan.y,this.panLimits.minY,this.panLimits.maxY);
+      this.offset=[this.pan.x,baseY+this.pan.y];
       this.terrainDots=Array.from({length:92},(_,i)=>{const angle=i*2.39996,rad=Math.sqrt((i+.5)/92);return this.project(Math.cos(angle)*(rx+.3)*rad,Math.sin(angle)*(ry+.3)*rad)});
       this.terrainLeaves=Array.from({length:24},(_,i)=>{const angle=i*2.39996;return{...this.project(Math.cos(angle)*(rx+.55),Math.sin(angle)*(ry+.55)),angle}});
     }
+    get cameraPan(){return{x:this.pan.x,y:this.pan.y}}
+    setPan(x,y){
+      if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+      const b=this.panLimits,nextX=clamp(x,b.minX,b.maxX),nextY=clamp(y,b.minY,b.maxY),dx=nextX-this.pan.x,dy=nextY-this.pan.y;
+      if(dx===0&&dy===0)return false;this.pan.x=nextX;this.pan.y=nextY;this.offset[0]=nextX;this.offset[1]=(this.aspect<.8?1.1:-.3)+nextY;
+      // Cached terrain decoration follows the same camera delta without being
+      // regenerated on every pointer move.
+      for(const points of [this.terrainDots,this.terrainLeaves])for(const point of points){point.x+=dx*this.scale;point.y-=dy*this.scale}
+      return true;
+    }
+    panByScreen(dx,dy){return this.setPan(this.pan.x+dx*this.pixelRatio/this.scale,this.pan.y-dy*this.pixelRatio/this.scale)}
+    resetPan(){return this.setPan(0,0)}
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const c = this.ctx;
       c.fillStyle = color2;
@@ -165,56 +189,53 @@ function bossAttackPose(b,parts){
       this.ellipse(p.x, p.y, rx * this.scale, ry * this.scale * 0.62, color2);
     }
     strokeGroundEllipse(x,y,rx,ry,color2,width=.08){const c=this.ctx,p=this.project(x,y);c.strokeStyle=color2;c.lineWidth=width*this.scale;c.beginPath();c.ellipse(p.x,p.y,rx*this.scale,ry*this.scale*.62,0,0,Math.PI*2);c.stroke()}
-    strokeGroundCapsule(area,color2,width=.08){
-      const c=this.ctx,points=capsuleContourPoints(area).map(point=>this.project(point.x,point.y));
-      c.strokeStyle=color2;c.lineWidth=width*this.scale;c.beginPath();c.moveTo(points[0].x,points[0].y);
-      for(const point of points.slice(1))c.lineTo(point.x,point.y);
-      c.closePath();c.stroke();
-    }
-    groundPolygon(points,fill,stroke=null,width=.055){
-      if(!points.length)return;const c=this.ctx,projected=points.map(point=>this.project(point.x,point.y));
-      c.beginPath();c.moveTo(projected[0].x,projected[0].y);for(const point of projected.slice(1))c.lineTo(point.x,point.y);c.closePath();
-      if(fill){c.fillStyle=fill;c.fill()}if(stroke){c.strokeStyle=stroke;c.lineWidth=width*this.scale;c.stroke()}
-    }
-    groundSector(x,y,angle,sector,outerRadius,innerRadius=0,fill='#b46c4530',stroke='#b46c45'){
-      const points=[],segments=Math.max(12,Math.ceil(sector/(Math.PI/48))),start=angle-sector/2,end=angle+sector/2;
-      if(innerRadius<=0)points.push({x,y});
-      for(let i=0;i<=segments;i++){const a=start+(end-start)*i/segments;points.push({x:x+Math.cos(a)*outerRadius,y:y+Math.sin(a)*outerRadius})}
-      if(innerRadius>0)for(let i=segments;i>=0;i--){const a=start+(end-start)*i/segments;points.push({x:x+Math.cos(a)*innerRadius,y:y+Math.sin(a)*innerRadius})}
-      this.groundPolygon(points,fill,stroke,.045);
-      if(innerRadius<=0){const c=this.ctx,center=this.project(x,y),left=this.project(x+Math.cos(start)*outerRadius,y+Math.sin(start)*outerRadius),right=this.project(x+Math.cos(end)*outerRadius,y+Math.sin(end)*outerRadius);this.line(center,left,.035,stroke);this.line(center,right,.035,stroke)}
-    }
     drawBossTelegraph(area){
-      const color=area.active?'#bd6648':area.locked?'#d09852':'#a8755c',soft=area.active?'rgba(195,91,62,.2)':'rgba(199,147,77,.15)';
-      if(area.kind==='sweep'){
-        this.strokeGroundEllipse(area.x,area.y,Math.max(0,area.sweepRadius-area.width),Math.max(0,area.sweepRadius-area.width),color,area.active?.075:.12);
-        const progress=area.active?area.progress:1;this.ring(area.x,area.y,area.outerRadius,color,.1,area.startAngle,area.startAngle+progress*Math.PI*2);
-        this.ring(area.x,area.y,area.sweepRadius,'rgba(216,159,84,.25)',.045);
-      }else if(area.kind==='sector'){
-        this.groundSector(area.x,area.y,area.angle,area.sector,area.reach,0,soft,color);
-      }else if(area.kind==='fan'){
-        const inner=Math.max(0,area.reach-area.width),outer=area.reach+area.width;
-        this.groundSector(area.x,area.y,area.angle,area.sector,outer,inner,soft,color);
-        const q=area.active?clamp(area.progress,0,1):0,a=area.angle-area.sector/2+q*area.sector;
-        const from=this.project(area.x+Math.cos(a)*inner,area.y+Math.sin(a)*inner),to=this.project(area.x+Math.cos(a)*outer,area.y+Math.sin(a)*outer);this.line(from,to,.12,area.active?'#f0c27b':'#d8ae70');
-      }else if(area.kind==='charge'){
-        const endRadius=area.active?Math.hypot(area.endX-area.x,area.endY-area.y):area.reach;
-        this.strokeGroundCapsule({x:area.x,y:area.y,angle:area.angle,width:area.width,startRadius:0,endRadius:Math.max(.04,endRadius)},soft);
-        const end=this.project(area.x+Math.cos(area.angle)*endRadius,area.y+Math.sin(area.angle)*endRadius),start=this.project(area.x,area.y);this.line(start,end,.045,color);
-      }else if(area.kind==='leap'){
-        const radius=area.reach,progress=area.progress||0,x=area.targetX,y=area.targetY;
-        this.groundEllipse(x,y,radius,radius,soft);this.strokeGroundEllipse(x,y,radius,radius,color,area.active?.09:.12);
-        this.strokeGroundEllipse(x,y,.46,.46,'#ead59b',.06);
-        const from=this.project(area.x,area.y),to=this.project(x,y);this.line(from,to,.055,'rgba(184,110,69,.58)');
-        const head=this.project(x-Math.cos(Math.atan2(y-area.y,x-area.x))*.56,y-Math.sin(Math.atan2(y-area.y,x-area.x))*.56);this.line(head,to,.10,color);
-        if(area.active){const r=radius*(1-.2*progress);this.strokeGroundEllipse(x,y,r,r,'rgba(247,207,128,.7)',.045)}
-      }else if(area.kind==='summon'){
-        const config=BOSS_PATTERN_CONFIG[area.patternId],reach=config?.landingRadius||4.8,angle=area.angle,target={x:area.x+Math.cos(angle)*reach,y:area.y+Math.sin(angle)*reach};
-        this.groundSector(area.x,area.y,angle,Math.PI/7,reach,.25,'rgba(183,125,73,.11)','rgba(178,129,76,.55)');
-        this.line(this.project(area.x,area.y),this.project(target.x,target.y),.05,'rgba(167,123,74,.62)');
-        this.groundEllipse(target.x,target.y,.65,.48,soft);this.strokeGroundEllipse(target.x,target.y,.65,.48,color,.085);
-        this.ring(target.x,target.y,.28,'#f1d391',.045,0,Math.PI*1.8);
+      if(area.kind==='summon'){
+        // A summon has no direct damage. Keep its arrival cue separate from red
+        // attack danger, rather than painting a fictitious damaging wedge.
+        const reach=BOSS_PATTERN_CONFIG[area.patternId].landingRadius,x=area.x+Math.cos(area.angle)*reach,y=area.y+Math.sin(area.angle)*reach;
+        this.strokeGroundEllipse(x,y,.65,.48,'#bd915d',.085);
+        this.ring(x,y,.28,'#f1d391',.045,0,Math.PI*1.8);return;
       }
+      const c=this.ctx,points=this.dangerContour,count=bossDangerContour(area,points);if(!count)return;
+      const S=this.scale,ox=this.offset[0]+this.view[0],oy=this.view[1]-this.offset[1],alpha=c.globalAlpha;
+      c.beginPath();
+      for(let i=0;i<count;i++){
+        const x=(points[i*2]+ox)*S,y=(oy-WORLD_DEPTH_PROJECTION*points[i*2+1])*S;
+        if(i===0)c.moveTo(x,y);else c.lineTo(x,y);
+      }
+      c.closePath();
+      const flash=area.phase==='recover',fade=flash?Math.max(0,1-area.elapsed/.14):1,progress=clamp(area.progress,0,1);
+      c.fillStyle='#e63744';c.globalAlpha=alpha*(flash?.38*fade:area.active?.25:.08+.18*progress*progress);c.fill();
+      c.strokeStyle=flash?'#ff7377':area.locked||area.active?'#e43d49':'#c93240';
+      c.lineWidth=Math.max(1.6*this.pixelRatio,(flash?.13:.095)*S);c.globalAlpha=alpha*(flash?fade:.9);c.lineJoin='round';c.stroke();c.globalAlpha=alpha;
+    }
+    drawLocalScatter(scatter){
+      if(!scatter?.active||!Number.isFinite(scatter.x)||!Number.isFinite(scatter.y)||!(scatter.radius>0))return;
+      const c=this.ctx,S=this.scale,r=scatter.radius,p=this.project(scatter.x,scatter.y),ry=r*S*WORLD_DEPTH_PROJECTION;
+      const segments=Math.max(8,Math.min(24,Math.round(Math.PI*2*r*S/(10*this.pixelRatio)))),step=Math.PI*2/segments;
+      c.beginPath();
+      // Explicit separated arc segments keep the circle hollow and avoid any
+      // dash state leaking into enemy outlines or later character drawing.
+      for(let i=0;i<segments;i++)for(let j=0;j<=4;j++){
+        const a=i*step+j/4*step*.58,x=p.x+Math.cos(a)*r*S,y=p.y-Math.sin(a)*ry;
+        if(j===0)c.moveTo(x,y);else c.lineTo(x,y);
+      }
+      c.strokeStyle='#145967';c.lineWidth=3.4*this.pixelRatio;c.lineCap='round';c.stroke();
+      c.strokeStyle='#50e3ed';c.lineWidth=1.7*this.pixelRatio;c.stroke();
+      c.beginPath();
+      const arrow=Math.max(.25,3.5*this.pixelRatio/S),tip=r+arrow*.9;
+      for(let i=0;i<4;i++){
+        const a=Math.PI/4+i*Math.PI/2,dx=Math.cos(a),dy=Math.sin(a),tx=p.x+dx*tip*S,ty=p.y-dy*tip*S*WORLD_DEPTH_PROJECTION;
+        c.moveTo(p.x+dx*(r-arrow*.55)*S,p.y-dy*(r-arrow*.55)*S*WORLD_DEPTH_PROJECTION);c.lineTo(tx,ty);
+        c.moveTo(p.x+(dx*(tip-arrow)-dy*arrow*.55)*S,p.y-(dy*(tip-arrow)+dx*arrow*.55)*S*WORLD_DEPTH_PROJECTION);c.lineTo(tx,ty);
+        c.lineTo(p.x+(dx*(tip-arrow)+dy*arrow*.55)*S,p.y-(dy*(tip-arrow)-dx*arrow*.55)*S*WORLD_DEPTH_PROJECTION);
+      }
+      const center=2.8*this.pixelRatio;
+      c.moveTo(p.x-center,p.y);c.lineTo(p.x+center,p.y);c.moveTo(p.x,p.y-center);c.lineTo(p.x,p.y+center);
+      const handle=this.project(Number.isFinite(scatter.handleX)?scatter.handleX:scatter.x,Number.isFinite(scatter.handleY)?scatter.handleY:scatter.y),hr=3.5*this.pixelRatio;
+      c.moveTo(handle.x+hr,handle.y);c.ellipse(handle.x,handle.y,hr,hr,0,0,Math.PI*2);
+      c.strokeStyle='#145967';c.lineWidth=3.5*this.pixelRatio;c.stroke();c.strokeStyle='#7df5fb';c.lineWidth=1.7*this.pixelRatio;c.stroke();
     }
     ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
       const c = this.ctx, p = this.project(x, y);
@@ -343,7 +364,7 @@ function bossAttackPose(b,parts){
     }
     drawBoss(world){
       const {b,p,r,k}=this.bossPose(world),event=world.farmBossEvent,species=b.species;
-      const record=species===3?this.bossAssets.get('chestnut'):this.vectorAssets.get(species);if(!record)throw new Error('Missing required boss vector asset for species '+species);
+      const record=this.bossAssets.get(species===3?'chestnut':`species-${species}`);if(!record)throw new Error('Missing required boss vector asset for species '+species);
       let instance=this.bossPlayers.get(species);if(!instance){const player=record.asset.createPlayer({clip:'idle',startedAtMs:this.displayTimeMs});instance={record,player};this.bossPlayers.set(species,instance)}
       const player=instance.player;this.bossPlayer=player;this.bossPlayerAsset=record;
       const metadata=record.compiled.metadata,name=this.bossMotion(b,world),fallbackClip=name==='airborne'?(metadata.clips.strike?'strike':metadata.clips.fire?'fire':'idle'):['strike','sweep','fire'].includes(name)&&!metadata.clips[name]?(metadata.clips.fire?'fire':'idle'):'idle',clipName=metadata.clips[name]?name:fallbackClip,clip=metadata.clips[clipName];
@@ -375,7 +396,7 @@ function bossAttackPose(b,parts){
       }
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',rx=raid?CONFIG.raid.arena.radiusX:9.5,ry=raid?CONFIG.raid.arena.radiusY:6.8;
+      const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',{radiusX:rx,radiusY:ry}=CONFIG[sim2.scene].arena;
       this.groundEllipse(0, -0.2, rx+1.3, ry+1.1, "#bcc7a6");
       this.groundEllipse(0, 0, rx+1.2, ry+1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
       this.groundEllipse(0, 0.15, rx+.3, ry+.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
@@ -386,9 +407,8 @@ function bossAttackPose(b,parts){
       }
       if(raid){
         this.strokeGroundEllipse(0,0,CONFIG.raid.arena.radiusX-.5,CONFIG.raid.arena.radiusY-.5,'#728e61a8',.075);
-        if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
       }
-      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?renderedBossAttackArea(sim2.boss,CONFIG.unit.maxRadius):null;this.bossTelegraph=area;
+      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?renderedBossAttackArea(sim2.boss,sim2.scene,this.telegraphBoss,this.dangerArea):null;this.bossTelegraph=area;
       if(area)this.drawBossTelegraph(area);
     }
 
@@ -517,10 +537,11 @@ function bossAttackPose(b,parts){
           }
         }
       }
+      this.drawLocalScatter(sim2.localScatter);
       this.stats = c.endFrame();
     }
     dispose(){
-      for(const [species,troop] of this.vectorAssets)unbindBossSocketAsset(species,species===3?this.bossAssets.get('chestnut'):troop);
+      for(const species of this.vectorAssets.keys())unbindBossSocketAsset(species,this.bossAssets.get(species===3?'chestnut':`species-${species}`));
       for(const player of this.vectorPlayers.values())player.dispose();this.vectorPlayers.clear();
       for(const record of this.vectorAssets.values())record.asset.dispose();this.vectorAssets.clear();
       for(const {player} of this.bossPlayers.values())player.dispose();this.bossPlayers.clear();this.bossPlayer=null;for(const record of this.bossAssets?.values()||[])record.asset.dispose();this.bossAssets?.clear();
