@@ -18,7 +18,7 @@ export function composeUnitAttackCycles(Cycle,{ArenaGeometry,Ballistics,CONFIG})
     createAttackPath(){
       const u=this.owner,a=this.action;
       a.path=Ballistics.create(u,a.target,this.spec.kind);
-      if(this.composition.useActiveDuration)a.path.duration=this.spec.active??a.path.duration;
+      if(this.composition.useActiveDuration)a.path.duration=this.spec.timing.active??a.path.duration;
     }
     integrate(dt){
       const u=this.owner,a=this.action;
@@ -46,7 +46,7 @@ export function composeUnitAttackCycles(Cycle,{ArenaGeometry,Ballistics,CONFIG})
     }
   };
   const RepeatedStrike=Base=>class extends PathMotion(Base) {
-    get strikeDuration(){return this.spec.active??PEANUT_BASE_STRIKE.activeSeconds}
+    get strikeDuration(){return this.spec.timing.active??PEANUT_BASE_STRIKE.activeSeconds}
     prepareAttack(sim){
       super.prepareAttack?.(sim);
       const assault=this.strikeConfig?.(sim);
@@ -126,7 +126,7 @@ export function composeUnitAttackCycles(Cycle,{ArenaGeometry,Ballistics,CONFIG})
   const BurstFire=Base=>class extends Base {
     projectileShots(sim){
       const u=this.owner,config=getCornBurstConfig(sim.abilityProgressionFor(u),u.tier);
-      return config?createCornBurstShotSchedule(config,{activeSeconds:0,recoverySeconds:scaleAttackRecovery(this.spec.recovery,u)}):super.projectileShots(sim);
+      return config?createCornBurstShotSchedule(config,{activeSeconds:0,recoverySeconds:scaleAttackRecovery(this.spec.timing.recovery,u)}):super.projectileShots(sim);
     }
   };
   const Popcorn=Base=>class extends Base {
@@ -142,7 +142,7 @@ export function composeUnitAttackCycles(Cycle,{ArenaGeometry,Ballistics,CONFIG})
     }
     guardConfig(sim){
       const u=this.owner,config=getWalnutGuardConfig(sim.abilityProgressionFor(u),u.tier);
-      return isWalnutGuardActive(u,config,scaleAttackRecovery(this.spec.recovery,u))?config:null;
+      return isWalnutGuardActive(u,config,scaleAttackRecovery(this.spec.timing.recovery,u))?config:null;
     }
     receiveGuard(sim){
       const config=this.guardConfig(sim);if(!config)return null;
@@ -157,8 +157,8 @@ export function composeUnitAttackCycles(Cycle,{ArenaGeometry,Ballistics,CONFIG})
     onLaunch(sim,action){
       super.onLaunch?.(sim,action);
       const u=this.owner,config=getChestnutSpikeConfig(sim.abilityProgressionFor(u),u.tier);
-      if(!config||sim.projectiles.length+config.projectileCount>CONFIG.maxRaidProjectiles)return;
-      const cycleSeconds=this.spec.windup+scaleAttackRecovery(this.spec.recovery,u),interval=getChestnutSpikeIntervalSeconds(config,cycleSeconds);
+      if(!config||sim.projectiles.length+config.projectileCount>CONFIG.raid.capacity.projectiles)return;
+      const cycleSeconds=this.spec.timing.windup+scaleAttackRecovery(this.spec.timing.recovery,u),interval=getChestnutSpikeIntervalSeconds(config,cycleSeconds);
       if(!Number.isFinite(interval)||interval<=0)return;
       u.chestnutBasicCycles++;
       if(u.chestnutBasicCycles%config.intervalBasicCycles===0)sim.spawnChestnutSpikes(u,action,config);

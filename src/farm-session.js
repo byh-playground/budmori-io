@@ -111,7 +111,7 @@ export class FarmSession{
   const commandChangedWorld=this.applyPendingCommands(32);
   if(this.paused){this.tick++;if(commandChangedWorld)this.onWorldStep(this.world);return ADVANCED}
   const w=this.world,startTime=w.time,loopStart=this.loop?.simulationTimeMs,startClock=this.adjustedWallTime(Number.isFinite(loopStart)?loopStart:this.pulseTimestamp??globalThis.performance.now()),presentationStartMs=Math.max(0,startClock-(this.presentationOriginWallMs??startClock));bindPresentationClock(w,time=>(presentationStartMs+(time-startTime)*1000)/1000);
-  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6;i++)w.step(CONFIG.fixedStep);this.tick++;this.presentationTick++;this.onWorldStep(w);return ADVANCED;
+  if(w.scene==='farm')w.advanceAutoTaps(.05);for(let i=0;i<6;i++)w.step(CONFIG.physics.fixedStep);this.tick++;this.presentationTick++;this.onWorldStep(w);return ADVANCED;
  }
  applyPendingCommands(limit){
   if(!this.pending.length)return false;

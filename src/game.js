@@ -394,6 +394,14 @@
   });
 
   // src/unit-abilities.js
+  function attackProfile(kind, { timing, ...overrides } = {}) {
+    return Object.freeze({
+      kind,
+      ...ATTACK_DEFAULTS,
+      ...overrides,
+      timing: timing ? Object.freeze({ ...ATTACK_DEFAULTS.timing, ...timing }) : ATTACK_DEFAULTS.timing
+    });
+  }
   function abilityProfile(species) {
     return UNIT_ABILITY_PROFILES[species] || UNIT_ABILITY_PROFILES[0];
   }
@@ -407,23 +415,30 @@
   function speciesWithCapability(capability) {
     return capabilitySpecies.get(capability) || NO_SPECIES;
   }
-  var UNIT_ABILITY_PROFILES, composition, UNIT_CAPABILITY_COMPOSITIONS, capabilitySpecies, NO_SPECIES;
+  var ATTACK_DEFAULTS, UNIT_ABILITY_PROFILES, composition, UNIT_CAPABILITY_COMPOSITIONS, capabilitySpecies, NO_SPECIES;
   var init_unit_abilities = __esm({
     "src/unit-abilities.js"() {
+      ATTACK_DEFAULTS = Object.freeze({
+        timing: Object.freeze({ windup: 0.28, recovery: 0.65 }),
+        range: 1.45,
+        skillMultiplier: 1,
+        projectileCount: 0,
+        bounces: 0
+      });
       UNIT_ABILITY_PROFILES = Object.freeze({
-        0: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-        1: Object.freeze({ kind: "lob", windup: 0.38, recovery: 1.25, range: 4.1, skillMultiplier: 1.6, projectileCount: 1, bounces: 0 }),
-        2: Object.freeze({ kind: "leap", windup: 0.32, recovery: 0.9, range: 2.5, skillMultiplier: 1.3, projectileCount: 0, bounces: 0 }),
-        3: Object.freeze({ kind: "punch", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        0: attackProfile("ram"),
+        1: attackProfile("lob", { timing: { windup: 0.38, recovery: 1.25 }, range: 4.1, skillMultiplier: 1.6, projectileCount: 1 }),
+        2: attackProfile("leap", { timing: { windup: 0.32, recovery: 0.9 }, range: 2.5, skillMultiplier: 1.3 }),
+        3: attackProfile("punch"),
         // One Peanut remains one world unit; its two kernels are presentation-only
         // and the two deterministic strike slots share the same active window.
-        4: Object.freeze({ kind: "peanut-dual-strike", windup: 0.25, active: 0.5, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
+        4: attackProfile("peanut-dual-strike", { timing: { windup: 0.25, active: 0.5, recovery: 1 } }),
         // Walnut's base hammer is a single hit; the separate guard trait empowers
         // one subsequent basic cycle without adding an attack queue or timer.
-        5: Object.freeze({ kind: "walnut-hammer", windup: 0.5, active: 0.25, recovery: 1, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-        6: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-        7: Object.freeze({ kind: "punch", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 }),
-        8: Object.freeze({ kind: "ram", windup: 0.28, recovery: 0.65, range: 1.45, skillMultiplier: 1, projectileCount: 0, bounces: 0 })
+        5: attackProfile("walnut-hammer", { timing: { windup: 0.5, active: 0.25, recovery: 1 } }),
+        6: attackProfile("ram"),
+        7: attackProfile("punch"),
+        8: attackProfile("ram")
       });
       composition = (attack, traits = [], options = {}) => Object.freeze({
         attack,
@@ -1409,7 +1424,7 @@
       createAttackPath() {
         const u = this.owner, a = this.action;
         a.path = Ballistics2.create(u, a.target, this.spec.kind);
-        if (this.composition.useActiveDuration) a.path.duration = this.spec.active ?? a.path.duration;
+        if (this.composition.useActiveDuration) a.path.duration = this.spec.timing.active ?? a.path.duration;
       }
       integrate(dt) {
         const u = this.owner, a = this.action;
@@ -1456,7 +1471,7 @@
     };
     const RepeatedStrike = (Base) => class extends PathMotion(Base) {
       get strikeDuration() {
-        return this.spec.active ?? PEANUT_BASE_STRIKE.activeSeconds;
+        return this.spec.timing.active ?? PEANUT_BASE_STRIKE.activeSeconds;
       }
       prepareAttack(sim) {
         super.prepareAttack?.(sim);
@@ -1553,7 +1568,7 @@
     const BurstFire = (Base) => class extends Base {
       projectileShots(sim) {
         const u = this.owner, config = getCornBurstConfig(sim.abilityProgressionFor(u), u.tier);
-        return config ? createCornBurstShotSchedule(config, { activeSeconds: 0, recoverySeconds: scaleAttackRecovery(this.spec.recovery, u) }) : super.projectileShots(sim);
+        return config ? createCornBurstShotSchedule(config, { activeSeconds: 0, recoverySeconds: scaleAttackRecovery(this.spec.timing.recovery, u) }) : super.projectileShots(sim);
       }
     };
     const Popcorn = (Base) => class extends Base {
@@ -1574,7 +1589,7 @@
       }
       guardConfig(sim) {
         const u = this.owner, config = getWalnutGuardConfig(sim.abilityProgressionFor(u), u.tier);
-        return isWalnutGuardActive(u, config, scaleAttackRecovery(this.spec.recovery, u)) ? config : null;
+        return isWalnutGuardActive(u, config, scaleAttackRecovery(this.spec.timing.recovery, u)) ? config : null;
       }
       receiveGuard(sim) {
         const config = this.guardConfig(sim);
@@ -1593,8 +1608,8 @@
       onLaunch(sim, action) {
         super.onLaunch?.(sim, action);
         const u = this.owner, config = getChestnutSpikeConfig(sim.abilityProgressionFor(u), u.tier);
-        if (!config || sim.projectiles.length + config.projectileCount > CONFIG2.maxRaidProjectiles) return;
-        const cycleSeconds = this.spec.windup + scaleAttackRecovery(this.spec.recovery, u), interval = getChestnutSpikeIntervalSeconds(config, cycleSeconds);
+        if (!config || sim.projectiles.length + config.projectileCount > CONFIG2.raid.capacity.projectiles) return;
+        const cycleSeconds = this.spec.timing.windup + scaleAttackRecovery(this.spec.timing.recovery, u), interval = getChestnutSpikeIntervalSeconds(config, cycleSeconds);
         if (!Number.isFinite(interval) || interval <= 0) return;
         u.chestnutBasicCycles++;
         if (u.chestnutBasicCycles % config.intervalBasicCycles === 0) sim.spawnChestnutSpikes(u, action, config);
@@ -1842,7 +1857,7 @@
     const config = BOSS_PATTERN_CONFIG[action.id];
     if (!config) return null;
     const progress = clamp3(action.phaseElapsed / (action.phase === "windup" ? config.windup : config.active || 1), 0, 1), locked = !!action.locked;
-    if (action.id === "attack.sweep-360") return { kind: "sweep", x: boss.x, y: boss.y, width: CONFIG.raid.weaponRadius + Math.max(0, unitRadius), sweepRadius: config.reach, outerRadius: config.reach + CONFIG.raid.weaponRadius, startAngle: 0, progress: action.phase === "windup" ? 1 : 1, active: action.phase === "active", patternId: action.id, locked };
+    if (action.id === "attack.sweep-360") return { kind: "sweep", x: boss.x, y: boss.y, width: CONFIG.boss.weaponRadius + Math.max(0, unitRadius), sweepRadius: config.reach, outerRadius: config.reach + CONFIG.boss.weaponRadius, startAngle: 0, progress: action.phase === "windup" ? 1 : 1, active: action.phase === "active", patternId: action.id, locked };
     if (action.id === "attack.front-slam") return { kind: "sector", x: boss.x, y: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, sector: config.sector, progress, active: action.phase === "active", patternId: action.id, locked };
     if (action.id === "attack.charge") return { kind: "charge", x: action.start?.x ?? boss.x, y: action.start?.y ?? boss.y, endX: boss.x, endY: boss.y, angle: action.aim ?? boss.angle, reach: config.reach, width: boss.radius, progress, active: action.phase === "active", patternId: action.id, locked };
     if (action.id === "attack.leap-slam") return { kind: "leap", x: boss.x, y: boss.y, targetX: action.target?.x ?? boss.x, targetY: action.target?.y ?? boss.y, reach: config.landingRadius, progress, active: action.phase === "active", patternId: action.id, locked };
@@ -1884,7 +1899,7 @@
     }
     return true;
   }
-  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, unitRadiusForTier, CONFIG, clamp3, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, createUnitAttackCycle, AttackingBody, Unit, Garden;
+  var SeededPRNG, presentationClocks, presentationEventTimes, BREED_COOLDOWN_SECONDS, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, unitRadiusForTier, CONFIG, clamp3, stats, Body, Knockable, ArenaGeometry, Ballistics, AttackCycle, createUnitAttackCycle, AttackingBody, Unit, Garden;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_boss_vector_sockets();
@@ -1907,8 +1922,34 @@
       presentationClocks = /* @__PURE__ */ new WeakMap();
       presentationEventTimes = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
+      FARM_MAX_UNITS = 100;
+      RAID_PLAYER_UNITS = 100;
+      RAID_MAX_PLAYERS = 4;
+      RAID_PLAYER_ID_STRIDE = 1e6;
+      MAX_BOSS_SUMMONS = 10;
+      RAID_MAX_UNITS = RAID_PLAYER_UNITS * RAID_MAX_PLAYERS;
       unitRadiusForTier = (tier) => 0.25 + 0.055 * tier;
-      CONFIG = Object.freeze({ factions: FACTION_CONFIG, cap: 50, maxFarmCap: 100, maxFarmBattleUnits: 100 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxFarmUnitId: 999999999, maxRaidPlayerUnits: 100, maxRaidPlayers: 4, raidPlayerIdStride: 1e6, maxRaidUnits: 400, maxRaidBattleUnits: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) + 10, maxRaidProjectiles: 400 * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40, raidSummonIdBase: 4e6 + 100 + 1, bossSummonIdBase: 5e6, maxSpecies: SPECIES_COUNT, maxBossSummons: 10, maxUnitRadius: unitRadiusForTier(MAX_UNIT_TIER), maxTier: MAX_UNIT_TIER, maxMergeMaterials: MAX_GRADE_MATERIAL_COUNT, starterSeconds: 60, breedCooldownSeconds: BREED_COOLDOWN_SECONDS, breedGrowthSeconds: BREED_COOLDOWN_SECONDS / 2, mergeAnimationSeconds: 0.85, matureMeals: 3, corpseRecoverySeconds: 60, farmBossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 }), gravity: 19, fixedStep: 1 / 120, raid: Object.freeze({ radiusX: 23, radiusY: 17, perceptionRange: 18, bossRadius: 4.4, bossHeight: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65, dropHeight: 3, buffDuration: 3, buffCooldown: 12, buffDamage: 1.25 }) });
+      CONFIG = Object.freeze({
+        factions: FACTION_CONFIG,
+        farm: Object.freeze({
+          capacity: Object.freeze({ base: 50, max: FARM_MAX_UNITS, battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS }),
+          maxUnitId: 999999999,
+          starterSeconds: 60,
+          breeding: Object.freeze({ cooldownSeconds: BREED_COOLDOWN_SECONDS, growthSeconds: BREED_COOLDOWN_SECONDS / 2, matureMeals: 3 }),
+          merge: Object.freeze({ animationSeconds: 0.85, maxMaterials: MAX_GRADE_MATERIAL_COUNT }),
+          bossEvent: Object.freeze({ spawnChance: 0.01, fadeSeconds: 0.5, celebrationSeconds: 1 })
+        }),
+        raid: Object.freeze({
+          capacity: Object.freeze({ playerUnits: RAID_PLAYER_UNITS, players: RAID_MAX_PLAYERS, units: RAID_MAX_UNITS, battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS, projectiles: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40 }),
+          ids: Object.freeze({ playerStride: RAID_PLAYER_ID_STRIDE, summonBase: RAID_MAX_PLAYERS * RAID_PLAYER_ID_STRIDE + RAID_PLAYER_UNITS + 1 }),
+          arena: Object.freeze({ radiusX: 23, radiusY: 17 }),
+          dropHeight: 3,
+          buff: Object.freeze({ duration: 3, cooldown: 12, damage: 1.25 })
+        }),
+        unit: Object.freeze({ speciesCount: SPECIES_COUNT, maxTier: MAX_UNIT_TIER, maxRadius: unitRadiusForTier(MAX_UNIT_TIER), perceptionRange: 18, corpseRecoverySeconds: 60 }),
+        boss: Object.freeze({ maxSummons: MAX_BOSS_SUMMONS, summonIdBase: 5e6, radius: 4.4, height: 5.2, basicReach: 6.2, sweepReach: 6.5, weaponRadius: 0.85, chaseSpeed: 2.65 }),
+        physics: Object.freeze({ gravity: 19, fixedStep: 1 / 120 })
+      });
       clamp3 = (x, a, b) => Math.max(a, Math.min(b, x));
       stats = baseUnitStatsFor;
       Body = class {
@@ -1929,7 +1970,7 @@
           this.x += this.vx * dt;
           this.y += this.vy * dt;
           if (this.z > 0 || this.vz > 0) {
-            this.vz -= CONFIG.gravity * dt;
+            this.vz -= CONFIG.physics.gravity * dt;
             this.z += this.vz * dt;
             if (this.z < 0) {
               this.z = 0;
@@ -1949,7 +1990,7 @@
       };
       ArenaGeometry = {
         bounds(scene = "raid", margin = 0) {
-          return scene === "raid" ? { x: CONFIG.raid.radiusX - margin, y: CONFIG.raid.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
+          return scene === "raid" ? { x: CONFIG.raid.arena.radiusX - margin, y: CONFIG.raid.arena.radiusY - margin } : { x: 9.5 - margin, y: 6.8 - margin };
         },
         inside(p, scene = "raid", margin = 0) {
           const r = this.bounds(scene, margin);
@@ -2061,7 +2102,7 @@
           if (this.phase === "windup") {
             u.vx *= Math.exp(-dt * 18);
             u.vy *= Math.exp(-dt * 18);
-            if (this.elapsed >= this.spec.windup) {
+            if (this.elapsed >= this.spec.timing.windup) {
               this.elapsed = 0;
               this.phase = "active";
               this.createAttackPath();
@@ -2070,7 +2111,7 @@
             }
           } else if (this.phase === "recover") {
             this.updateRecovery?.(sim);
-            if (this.elapsed >= scaleAttackRecovery(this.spec.recovery, u)) this.ready();
+            if (this.elapsed >= scaleAttackRecovery(this.spec.timing.recovery, u)) this.ready();
           }
           return true;
         }
@@ -2101,12 +2142,12 @@
             meals: 0,
             growth: 0,
             growthElapsed: 0,
-            growthDuration: CONFIG.breedGrowthSeconds,
+            growthDuration: CONFIG.farm.breeding.growthSeconds,
             age: 0,
             cooldown: 0,
             cooldownDuration: 0,
             mateId: 0,
-            perceptionRange: CONFIG.raid.perceptionRange,
+            perceptionRange: CONFIG.unit.perceptionRange,
             home: { x, y },
             hp: stats(tier, species).maxHp,
             down: 0,
@@ -2164,10 +2205,10 @@
           this._unitAliveState = /* @__PURE__ */ new Map();
           this._liveFactionCounts = /* @__PURE__ */ new Map();
           this._foodOrder = /* @__PURE__ */ new Map();
-          this._speciesGroups = Array.from({ length: CONFIG.maxSpecies }, () => []);
-          this._speciesTierGroups = Array.from({ length: CONFIG.maxSpecies * (CONFIG.maxTier + 1) }, () => []);
-          this._mergeEligibleGroups = Array.from({ length: CONFIG.maxSpecies * (CONFIG.maxTier + 1) }, () => []);
-          this._ownedSpeciesCounts = new Int32Array(CONFIG.maxSpecies);
+          this._speciesGroups = Array.from({ length: CONFIG.unit.speciesCount }, () => []);
+          this._speciesTierGroups = Array.from({ length: CONFIG.unit.speciesCount * (CONFIG.unit.maxTier + 1) }, () => []);
+          this._mergeEligibleGroups = Array.from({ length: CONFIG.unit.speciesCount * (CONFIG.unit.maxTier + 1) }, () => []);
+          this._ownedSpeciesCounts = new Int32Array(CONFIG.unit.speciesCount);
           this._stepUnits = [];
           this._unitCandidates = [];
           this._foodCandidates = [];
@@ -2205,11 +2246,11 @@
           for (const unit of this.units) {
             grid.insert(unit);
             this._unitById.set(unit.id, unit);
-            if (unit.species >= 0 && unit.species < CONFIG.maxSpecies) {
+            if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
               this._speciesGroups[unit.species].push(unit);
               this._ownedSpeciesCounts[unit.species] += unit.isBattleOnlySummon ? 0 : 1;
-              const tier = Math.max(0, Math.min(CONFIG.maxTier, unit.tier | 0));
-              this._speciesTierGroups[unit.species * (CONFIG.maxTier + 1) + tier].push(unit);
+              const tier = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
+              this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + tier].push(unit);
             }
             if (unit.hp > 0 && typeof unit.faction === "string") this._liveFactionCounts.set(unit.faction, (this._liveFactionCounts.get(unit.faction) || 0) + 1);
             this._unitAliveState.set(unit, unit.hp > 0);
@@ -2254,11 +2295,11 @@
           this.unitSpatial.insert(unit);
           this._unitById.set(unit.id, unit);
           this._unitStepOrder.set(unit, -1);
-          if (unit.species >= 0 && unit.species < CONFIG.maxSpecies) {
+          if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
             this._speciesGroups[unit.species].push(unit);
             this._ownedSpeciesCounts[unit.species] += unit.isBattleOnlySummon ? 0 : 1;
-            const tier = Math.max(0, Math.min(CONFIG.maxTier, unit.tier | 0));
-            this._speciesTierGroups[unit.species * (CONFIG.maxTier + 1) + tier].push(unit);
+            const tier = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
+            this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + tier].push(unit);
           }
           if (unit.hp > 0 && typeof unit.faction === "string") this._liveFactionCounts.set(unit.faction, (this._liveFactionCounts.get(unit.faction) || 0) + 1);
           this._unitAliveState.set(unit, unit.hp > 0);
@@ -2272,10 +2313,10 @@
           this._syncUnitAliveCount(unit);
           if (unit.hp > 0 && typeof unit.faction === "string") this._adjustFactionCount(unit.faction, -1);
           this._unitAliveState.set(unit, false);
-          if (unit.species >= 0 && unit.species < CONFIG.maxSpecies) {
+          if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
             this._removeGroupItem(this._speciesGroups[unit.species], unit);
-            const tier = Math.max(0, Math.min(CONFIG.maxTier, unit.tier | 0));
-            this._removeGroupItem(this._speciesTierGroups[unit.species * (CONFIG.maxTier + 1) + tier], unit);
+            const tier = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
+            this._removeGroupItem(this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + tier], unit);
             if (!unit.isBattleOnlySummon) this._ownedSpeciesCounts[unit.species] = Math.max(0, this._ownedSpeciesCounts[unit.species] - 1);
           }
           if (!keepStepSnapshot || !this._unitStepOrder.has(unit) || this._unitStepOrder.get(unit) < 0) {
@@ -2315,7 +2356,7 @@
           this._spatialQueryDepth = Math.max(0, this._spatialQueryDepth - 1);
         }
         _collectContactOrders(unit, minimumOrder, maximumOrder, out) {
-          const radius = unit.radius + CONFIG.maxUnitRadius + 0.22;
+          const radius = unit.radius + CONFIG.unit.maxRadius + 0.22;
           this.unitSpatial.queryAABB(unit.x - radius, unit.y - radius, unit.x + radius, unit.y + radius, this._contactQuery);
           out.length = 0;
           for (const candidate of this._contactQuery) {
@@ -2417,7 +2458,7 @@
           for (let i = 0; i < 2; i++) {
             const u = this.spawn(0, 1, (this.random() - 0.5) * 4, (this.random() - 0.5) * 3);
             u.meals = 0;
-            u.growth = CONFIG.matureMeals;
+            u.growth = CONFIG.farm.breeding.matureMeals;
             u.growthDuration = this.breedGrowthDuration();
             u.growthElapsed = u.growthDuration;
           }
@@ -2432,7 +2473,7 @@
           return getFarmCapacity(this.playerProgression?.farmUpgrades);
         }
         breedCooldownDuration() {
-          return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades, CONFIG.breedCooldownSeconds);
+          return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades, CONFIG.farm.breeding.cooldownSeconds);
         }
         breedGrowthDuration() {
           return this.breedCooldownDuration() / 2;
@@ -2442,7 +2483,7 @@
           return this.scene === "raid" ? this.raidRoster(unit?.ownerId)?.abilitySnapshot || null : this.playerProgression;
         }
         highestSpeciesTiers() {
-          const tiers = Array(CONFIG.maxSpecies).fill(0);
+          const tiers = Array(CONFIG.unit.speciesCount).fill(0);
           for (const unit of this.units) if (!unit.isBattleOnlySummon) tiers[unit.species] = Math.max(tiers[unit.species], unit.tier);
           return tiers;
         }
@@ -2465,7 +2506,7 @@
           return result;
         }
         spawnLobProjectile(unit, action, shot, popcornConfig = null) {
-          if (this.projectiles.length >= CONFIG.maxRaidProjectiles) return null;
+          if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) return null;
           const id = ++this.projectileSerial;
           const projectile = { id, owner: unit.id, targetId: action.targetId || "boss", faction: unit.faction, ownerId: unit.ownerId, species: unit.species, tier: unit.tier, path: structuredClone(action.path), elapsed: 0, x: unit.x, y: unit.y, z: 0.45, radius: scaleAttackArea(0.12, unit), height: 0.24, hit: false, attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit), shotIndex: shot.shotIndex ?? 0 };
           if (popcornConfig) Object.assign(projectile, { isPopcorn: true, popcornConfig: structuredClone(popcornConfig), landed: false, exploded: false, fuseRemaining: popcornConfig.fuseSeconds, damagedTargetIds: [] });
@@ -2476,7 +2517,7 @@
           return abilityProfile(unit.species).skillMultiplier;
         }
         spawnChestnutSpikes(unit, action, config) {
-          if (this.projectiles.length + config.projectileCount > CONFIG.maxRaidProjectiles) return false;
+          if (this.projectiles.length + config.projectileCount > CONFIG.raid.capacity.projectiles) return false;
           const angle = Math.atan2(action.target.y - unit.y, action.target.x - unit.x), angles = getChestnutSpikeFanAngles(config, angle), distance = Math.hypot(action.target.x - unit.x, action.target.y - unit.y), length = Math.max(abilityProfile(unit.species).range, distance) + this.boss.radius;
           for (let index = 0; index < angles.length; index++) {
             const a = angles[index], target = { x: unit.x + Math.cos(a) * length, y: unit.y + Math.sin(a) * length, z: 0 }, path = Ballistics.create({ x: unit.x, y: unit.y, z: 0 }, target, "punch");
@@ -2500,13 +2541,13 @@
           const inBattle = this.scene === "raid" ? this.running : this.farmBossEvent?.phase === "fighting";
           const descriptors = unit.ability.deathSplitDescriptors?.(this, inBattle) || [];
           if (!descriptors.length) return false;
-          if (this.units.length + descriptors.length > (this.scene === "raid" ? CONFIG.maxRaidBattleUnits : CONFIG.maxFarmBattleUnits)) return false;
+          if (this.units.length + descriptors.length > (this.scene === "raid" ? CONFIG.raid.capacity.battleUnits : CONFIG.farm.capacity.battleUnits)) return false;
           unit.splitUsedThisBattle = true;
-          unit.down = CONFIG.corpseRecoverySeconds;
+          unit.down = CONFIG.unit.corpseRecoverySeconds;
           for (let index = 0; index < descriptors.length; index++) {
-            const desc = descriptors[index], angle = (index + 0.5) * Math.PI * 2 / descriptors.length, id = this.scene === "raid" ? CONFIG.raidSummonIdBase + ++this.raidSummonSerial : this.nextId++;
+            const desc = descriptors[index], angle = (index + 0.5) * Math.PI * 2 / descriptors.length, id = this.scene === "raid" ? CONFIG.raid.ids.summonBase + ++this.raidSummonSerial : this.nextId++;
             const x = unit.x + Math.cos(angle) * 0.38, y = unit.y + Math.sin(angle) * 0.38, child = new Unit(id, desc.species, desc.tier, x, y);
-            Object.assign(child, desc, { ownerId: unit.ownerId, farmId: unit.farmId, home: { x, y }, hp: stats(desc.tier, desc.species).maxHp, down: 0, growthElapsed: child.growthDuration, growth: CONFIG.matureMeals, meals: 1, dropLanded: true, deathSplitHandled: false });
+            Object.assign(child, desc, { ownerId: unit.ownerId, farmId: unit.farmId, home: { x, y }, hp: stats(desc.tier, desc.species).maxHp, down: 0, growthElapsed: child.growthDuration, growth: CONFIG.farm.breeding.matureMeals, meals: 1, dropLanded: true, deathSplitHandled: false });
             this.units.push(child);
             this._trackUnitAdded(child);
           }
@@ -2567,7 +2608,7 @@
           };
           consider(bossTarget);
           if (hasUnitEnemy) {
-            const extent = Math.max(0, unit.perceptionRange + CONFIG.maxUnitRadius + 1e-9);
+            const extent = Math.max(0, unit.perceptionRange + CONFIG.unit.maxRadius + 1e-9);
             this.unitSpatial.queryAABB(unit.x - extent, unit.y - extent, unit.x + extent, unit.y + extent, this._unitCandidates);
             for (const candidate of this._unitCandidates) if (candidate !== unit && this._unitIsActive(candidate) && candidate.hp > 0 && candidate.dropLanded && areOpposingFactions(unit, candidate)) consider(candidate);
           }
@@ -2577,9 +2618,9 @@
           return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
         }
         setRaidPlayers(players) {
-          if (this.scene !== "raid" || !Array.isArray(players) || players.length < 1 || players.length > CONFIG.maxRaidPlayers || players.some((p) => typeof p !== "string" || !p) || new Set(players).size !== players.length) return false;
+          if (this.scene !== "raid" || !Array.isArray(players) || players.length < 1 || players.length > CONFIG.raid.capacity.players || players.some((p) => typeof p !== "string" || !p) || new Set(players).size !== players.length) return false;
           const live = [...players], ordered = this.raidDeploymentStarted ? [...this.raidExpectedPlayers, ...live.filter((id) => !this.raidExpectedPlayers.includes(id))] : live;
-          if (ordered.length > CONFIG.maxRaidPlayers) return false;
+          if (ordered.length > CONFIG.raid.capacity.players) return false;
           this.raidExpectedPlayers = ordered;
           if (!this.raidDeploymentStarted) this.raidRosters = this.raidRosters.filter((r) => live.includes(r.ownerId));
           this.raidRosters.sort((a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId));
@@ -2593,13 +2634,13 @@
           return r ? r.troops.reduce((n, t) => n + (!t.deployed ? 1 : 0), 0) : 0;
         }
         registerRaidRoster(ownerId, entries, abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()), settlement = null) {
-          if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.maxRaidPlayerUnits || this.raidTotal() + entries.length > CONFIG.maxRaidUnits) return false;
+          if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.raid.capacity.playerUnits || this.raidTotal() + entries.length > CONFIG.raid.capacity.units) return false;
           if (!isValidAbilityRuntimeSnapshot(abilitySnapshot)) return false;
           const hasSettlement = settlement !== null;
           if (hasSettlement && (!settlement || typeof settlement !== "object" || typeof settlement.sessionId !== "string" || !settlement.sessionId.trim() || settlement.sessionId.length > 128 || !Number.isSafeInteger(settlement.runSequence) || settlement.runSequence < 1 || settlement.runSequence > 1e12 || settlement.encounterId !== settlement.runSequence)) return false;
           const ids = /* @__PURE__ */ new Set(), troops = [];
           for (const e of entries) {
-            if (!Array.isArray(e) || e.length !== 3 || !Number.isSafeInteger(e[0]) || e[0] < 1 || e[0] > CONFIG.maxFarmUnitId || !Number.isInteger(e[1]) || e[1] < 0 || e[1] >= CONFIG.maxSpecies || !Number.isInteger(e[2]) || e[2] < 1 || e[2] > CONFIG.maxTier || ids.has(e[0])) return false;
+            if (!Array.isArray(e) || e.length !== 3 || !Number.isSafeInteger(e[0]) || e[0] < 1 || e[0] > CONFIG.farm.maxUnitId || !Number.isInteger(e[1]) || e[1] < 0 || e[1] >= CONFIG.unit.speciesCount || !Number.isInteger(e[2]) || e[2] < 1 || e[2] > CONFIG.unit.maxTier || ids.has(e[0])) return false;
             ids.add(e[0]);
             troops.push({ farmId: e[0], species: e[1], tier: e[2], deployed: false });
           }
@@ -2622,13 +2663,13 @@
           return true;
         }
         deployNextRaidUnit(ownerId, sequence, x, y) {
-          if (this.scene !== "raid" || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.maxRaidBattleUnits || !Number.isSafeInteger(sequence) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+          if (this.scene !== "raid" || !this.raidExpectedPlayers.every((id2) => this.raidRoster(id2)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
           const roster = this.raidRoster(ownerId), troop = roster?.troops.find((t) => !t.deployed);
           if (!roster || sequence !== roster.lastDeploySequence + 1 || !troop || !ArenaGeometry.inside({ x, y }, "raid", 0.5)) return false;
-          const farmId = troop.farmId, slot = this.raidExpectedPlayers.indexOf(ownerId), troopIndex = roster.troops.indexOf(troop), id = (slot + 1) * CONFIG.raidPlayerIdStride + troopIndex + 1;
+          const farmId = troop.farmId, slot = this.raidExpectedPlayers.indexOf(ownerId), troopIndex = roster.troops.indexOf(troop), id = (slot + 1) * CONFIG.raid.ids.playerStride + troopIndex + 1;
           if (this.units.some((u2) => u2.id === id)) return false;
           const u = new Unit(id, troop.species, troop.tier, x, y), growthDuration = this.breedGrowthDuration();
-          Object.assign(u, { ownerId, farmId, z: CONFIG.raid.dropHeight, vz: 0, dropLanded: false, meals: 1, growth: CONFIG.matureMeals, growthDuration, growthElapsed: growthDuration });
+          Object.assign(u, { ownerId, farmId, z: CONFIG.raid.dropHeight, vz: 0, dropLanded: false, meals: 1, growth: CONFIG.farm.breeding.matureMeals, growthDuration, growthElapsed: growthDuration });
           troop.deployed = true;
           roster.lastDeploySequence = sequence;
           this.units.push(u);
@@ -2647,8 +2688,8 @@
         useRaidBuff(ownerId) {
           const r = this.raidRoster(ownerId);
           if (!this.running || !r || this.time < r.buffReadyAt) return false;
-          r.buffUntil = this.time + CONFIG.raid.buffDuration;
-          r.buffReadyAt = this.time + CONFIG.raid.buffCooldown;
+          r.buffUntil = this.time + CONFIG.raid.buff.duration;
+          r.buffReadyAt = this.time + CONFIG.raid.buff.cooldown;
           this.combat("buff", { ownerId, until: r.buffUntil });
           return true;
         }
@@ -2656,11 +2697,11 @@
           return this.rng.nextUint32() / 4294967296;
         }
         randomBossSpecies() {
-          return Math.min(CONFIG.maxSpecies - 1, Math.floor(this.random() * CONFIG.maxSpecies));
+          return Math.min(CONFIG.unit.speciesCount - 1, Math.floor(this.random() * CONFIG.unit.speciesCount));
         }
         spawn(species, tier, x, y) {
-          if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.maxRaidUnits)) return null;
-          const u = new Unit(this.nextId++, species, clamp3(tier, 1, CONFIG.maxTier), x, y);
+          if (this.units.length >= (this.scene === "farm" ? this.capacity : CONFIG.raid.capacity.units)) return null;
+          const u = new Unit(this.nextId++, species, clamp3(tier, 1, CONFIG.unit.maxTier), x, y);
           this.units.push(u);
           this._trackUnitAdded(u);
           return u;
@@ -2720,7 +2761,7 @@
           }
         }
         tryStartFarmBossEvent(x, y) {
-          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.random() >= CONFIG.farmBossEvent.spawnChance) return false;
+          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.random() >= CONFIG.farm.bossEvent.spawnChance) return false;
           for (const unit of this.units) if (!unit.isBattleOnlySummon) {
             unit.splitUsedThisBattle = false;
             unit.deathSplitHandled = false;
@@ -2739,11 +2780,11 @@
         }
         createBoss(species = 3) {
           const hp = 2e3;
-          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.raid.bossRadius, height: CONFIG.raid.bossHeight, hp, maxHp: hp, species: clamp3(species, 0, CONFIG.maxSpecies - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.raid.chaseSpeed, encounterId: 0, active: false, angle: 0, facing: 0, flash: 0, swings: 0, basicCount: 0, attackId: 0, sweepClock: 0, startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
+          return { x: 0, y: 0, faction: FACTION_CONFIG.ENEMY, z: 0, radius: CONFIG.boss.radius, height: CONFIG.boss.height, hp, maxHp: hp, species: clamp3(species, 0, CONFIG.unit.speciesCount - 1), attackPower: 4, stage: 0, moveSpeed: CONFIG.boss.chaseSpeed, encounterId: 0, active: false, angle: 0, facing: 0, flash: 0, swings: 0, basicCount: 0, attackId: 0, sweepClock: 0, startAngle: 0, travel: 0, patternRuntime: createBossPatternRuntime(), airborneRecovery: 0, barleyArmorBreakUntil: 0, barleyArmorBreakReduction: 0, summonMouth: { x: 0, y: 0, z: 0 } };
         }
         configureBossStage(stage, species = this.boss.species) {
           const stats2 = bossStageStats(stage);
-          this.boss.species = clamp3(species, 0, CONFIG.maxSpecies - 1);
+          this.boss.species = clamp3(species, 0, CONFIG.unit.speciesCount - 1);
           this.boss.stage = stats2.stage;
           this.boss.hp = this.boss.maxHp = stats2.hp;
           this.boss.attackPower = stats2.attackPower;
@@ -2882,7 +2923,7 @@
           try {
             if (!Array.isArray(materials) || materials.length < 2) return false;
             const first = materials[0], resultTier = first?.tier + 1, materialCount = mergeMaterialCostForTier(resultTier);
-            if (materialCount < 2 || materials.length !== materialCount || first.tier >= CONFIG.maxTier) return false;
+            if (materialCount < 2 || materials.length !== materialCount || first.tier >= CONFIG.unit.maxTier) return false;
             const ids = /* @__PURE__ */ new Set();
             for (const unit of materials) {
               if (!unit || ids.has(unit.id) || unit.isBattleOnlySummon || unit.mergeEligible === false || unit.species !== first.species || unit.tier !== first.tier || unit.hp <= 0 || unit.down > 0 || !unit.mature || unit.cooldown > 0 || !this._unitIsActive(unit)) return false;
@@ -2912,7 +2953,7 @@
           try {
             for (const group of this._mergeEligibleGroups) group.length = 0;
             for (const group of this._speciesTierGroups) {
-              for (const unit of group) if (!unit.isBattleOnlySummon && unit.mergeEligible !== false && unit.hp > 0 && unit.down <= 0 && unit.mature && unit.cooldown <= 0 && unit.tier < CONFIG.maxTier && !this.senseEnemy(unit)) this._mergeEligibleGroups[unit.species * (CONFIG.maxTier + 1) + unit.tier].push(unit);
+              for (const unit of group) if (!unit.isBattleOnlySummon && unit.mergeEligible !== false && unit.hp > 0 && unit.down <= 0 && unit.mature && unit.cooldown <= 0 && unit.tier < CONFIG.unit.maxTier && !this.senseEnemy(unit)) this._mergeEligibleGroups[unit.species * (CONFIG.unit.maxTier + 1) + unit.tier].push(unit);
             }
             const compareIds = (left, right) => {
               for (let index = 0; index < left.length; index++) if (left[index] !== right[index]) return left[index] - right[index];
@@ -2920,11 +2961,11 @@
             };
             let bestTier = Infinity, bestDistance = Infinity, bestAnchorId = Infinity, bestMaterialIds = null, bestSortedIds = null;
             const nearest = this._mergeNearestScratch, materials = this._mergeMaterialsScratch, sortedIds = this._mergeIdScratch;
-            for (let tier = 1; tier < CONFIG.maxTier; tier++) {
+            for (let tier = 1; tier < CONFIG.unit.maxTier; tier++) {
               const materialCount = mergeMaterialCostForTier(tier + 1), nearestCount = materialCount - 1;
               if (materialCount < 2) continue;
-              for (let species = 0; species < CONFIG.maxSpecies; species++) {
-                const group = this._mergeEligibleGroups[species * (CONFIG.maxTier + 1) + tier];
+              for (let species = 0; species < CONFIG.unit.speciesCount; species++) {
+                const group = this._mergeEligibleGroups[species * (CONFIG.unit.maxTier + 1) + tier];
                 if (group.length < materialCount || this._ownedSpeciesCounts[species] - materialCount + 1 < 2) continue;
                 for (const anchor of group) {
                   nearest.length = 0;
@@ -2964,7 +3005,7 @@
                 }
               }
             }
-            if (bestMaterialIds) this.mergeTask = { phase: "approach", aId: bestMaterialIds[0], bId: bestMaterialIds[1], materialIds: bestMaterialIds, elapsed: 0, duration: CONFIG.mergeAnimationSeconds };
+            if (bestMaterialIds) this.mergeTask = { phase: "approach", aId: bestMaterialIds[0], bId: bestMaterialIds[1], materialIds: bestMaterialIds, elapsed: 0, duration: CONFIG.farm.merge.animationSeconds };
           } finally {
             if (batch) this._endSpatialQueryBatch();
           }
@@ -3022,16 +3063,16 @@
           this.units = this.units.filter((unit) => !consumed.has(unit.id));
           const result = this.spawn(first.species, first.tier + 1, x, y);
           result.meals = 1;
-          result.growth = CONFIG.matureMeals;
+          result.growth = CONFIG.farm.breeding.matureMeals;
           result.growthDuration = this.breedGrowthDuration();
           result.growthElapsed = result.growthDuration;
           result.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
           result.cooldownDuration = result.cooldown;
-          this.mergeTask = { phase: "animation", aId: 0, bId: 0, materialIds, resultId: result.id, sourceSpecies: first.species, sourceTier: first.tier, elapsed: 0, duration: CONFIG.mergeAnimationSeconds };
-          const sequenceWindow = CONFIG.mergeAnimationSeconds * 0.72, step = sequenceWindow / ordered.length;
+          this.mergeTask = { phase: "animation", aId: 0, bId: 0, materialIds, resultId: result.id, sourceSpecies: first.species, sourceTier: first.tier, elapsed: 0, duration: CONFIG.farm.merge.animationSeconds };
+          const sequenceWindow = CONFIG.farm.merge.animationSeconds * 0.72, step = sequenceWindow / ordered.length;
           ordered.forEach((unit, index) => this.effects.push({ kind: "merge-material", x: unit.x, y: unit.y, z: 0.2, targetX: x, targetY: y, life: 0, delay: index * step, span: step, duration: (index + 1) * step, sequenceIndex: index, sequenceCount: ordered.length }));
           this.metrics.merges++;
-          this.emit("merge", x, y, 1, { delay: sequenceWindow, span: CONFIG.mergeAnimationSeconds - sequenceWindow });
+          this.emit("merge", x, y, 1, { delay: sequenceWindow, span: CONFIG.farm.merge.animationSeconds - sequenceWindow });
           return true;
         }
         step(dt) {
@@ -3079,7 +3120,7 @@
                 continue;
               }
               if (u.down <= 0) {
-                u.down = CONFIG.corpseRecoverySeconds;
+                u.down = CONFIG.unit.corpseRecoverySeconds;
                 u.ability.interrupt();
               }
               if (this.scene === "farm") {
@@ -3110,7 +3151,7 @@
             if (u.hp > 0 && unitStats.regen > 0) applyHealing(u, unitStats.regen * dt, unitStats);
             if (!u.mature) {
               u.growthElapsed = Math.min(u.growthDuration, u.growthElapsed + dt);
-              u.growth = Math.min(CONFIG.matureMeals, Math.floor(CONFIG.matureMeals * u.growthElapsed / u.growthDuration + 1e-9));
+              u.growth = Math.min(CONFIG.farm.breeding.matureMeals, Math.floor(CONFIG.farm.breeding.matureMeals * u.growthElapsed / u.growthDuration + 1e-9));
             }
             u.cooldown = Math.max(0, u.cooldown - dt);
             if (u.cooldown < 1e-9) {
@@ -3354,7 +3395,7 @@
           } else if (this.mode === "breed" && u.cooldown === 0) target = this.findOrReserveMate(u);
           else if (u.cooldown === 0) {
             for (const p of this._speciesGroups[u.species] || []) {
-              if (p === u || p.hp <= 0 || p.down > 0 || !p.mature || p.cooldown > 0 || this.mode === "breed" && !p.fed || this.mode === "merge" && !(p.tier === u.tier && u.tier < CONFIG.maxTier)) continue;
+              if (p === u || p.hp <= 0 || p.down > 0 || !p.mature || p.cooldown > 0 || this.mode === "breed" && !p.fed || this.mode === "merge" && !(p.tier === u.tier && u.tier < CONFIG.unit.maxTier)) continue;
               const d = Math.hypot(p.x - u.x, p.y - u.y);
               if (d < best) {
                 best = d;
@@ -3463,11 +3504,11 @@
           context.hitTargets?.add(target);
           const defense = this.combatTargetDefense(target), harvestMultiplier = this.riceHarvestMultiplier(source, target, kind, target.hp, defense.maxHp);
           const guard = isBoss ? null : target.ability.receiveGuard?.(this);
-          const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier * (guard?.receivedDamageMultiplier ?? 1);
+          const rawDamage = attackerStats.attackPower * damageMultiplier * (buffed ? CONFIG.raid.buff.damage : 1) * harvestMultiplier * (guard?.receivedDamageMultiplier ?? 1);
           const damage = applyDamageToTargets(source, [target], { rawDamage, area: context.area, sourceKind: context.sourceKind, sourceStatOverrides: context.sourceStatOverrides, armorForTarget: () => defense.armor, roll: () => context.criticalRoll ?? (context.criticalRoll = this.random()) });
           if (!isBoss) this._syncUnitAliveCount(target);
           this.applyGrainOnBasicHit(source, target, kind);
-          const strength = damageMultiplier * (buffed ? CONFIG.raid.buffDamage : 1) * harvestMultiplier * (damage.critical ? attackerStats.critMultiplier : 1);
+          const strength = damageMultiplier * (buffed ? CONFIG.raid.buff.damage : 1) * harvestMultiplier * (damage.critical ? attackerStats.critMultiplier : 1);
           if (isBoss) this.finishBossHit(source, action, point, context, damage, strength);
           else this.finishUnitHit(source, action, target, point, context, damage, strength, guard);
           return true;
@@ -3482,7 +3523,7 @@
           const dx = target.x - u.x, dy = target.y - u.y, n = Math.hypot(dx, dy) || 1;
           target.knock(dx / n, dy / n, 5 * (guard?.receivedKnockbackMultiplier ?? 1), 2.4 * (guard?.receivedKnockbackMultiplier ?? 1), u);
           if (target.hp === 0) {
-            target.down = target.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
+            target.down = target.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
             this.handleUnitDeath(target);
           }
           this.metrics.directHits++;
@@ -3573,7 +3614,7 @@
         raidUnit(u, dt, enemy = this.boss) {
           if (!u.dropLanded || !areOpposingFactions(u, enemy)) return;
           if (u.hp <= 0) {
-            u.down = CONFIG.corpseRecoverySeconds;
+            u.down = CONFIG.unit.corpseRecoverySeconds;
             u.ability.interrupt();
             return;
           }
@@ -3629,7 +3670,7 @@
             const angle = a.aim - config.sector / 2 + config.sector * clamp3(q, 0, 1);
             return { x: b.x + Math.cos(angle) * config.reach, y: b.y + Math.sin(angle) * config.reach, z: b.z + 0.2 };
           }
-          const reach = b.radius - 0.25 + (CONFIG.raid.sweepReach - b.radius + 0.25) * Math.sin(Math.PI * clamp3(q, 0, 1));
+          const reach = b.radius - 0.25 + (CONFIG.boss.sweepReach - b.radius + 0.25) * Math.sin(Math.PI * clamp3(q, 0, 1));
           return { x: b.x + Math.cos(b.angle) * reach, y: b.y + Math.sin(b.angle) * reach, z: b.z + 0.2 };
         }
         livingBossTargets() {
@@ -3650,7 +3691,7 @@
         }
         bossTargetGrid(living) {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) this._rebuildUnitSpatialIndex(this.units);
-          const b = this.boss, range = CONFIG.raid.perceptionRange, extent = range + CONFIG.maxUnitRadius, units = this._bossGridUnits, groundUnits = this._bossGroundUnits;
+          const b = this.boss, range = CONFIG.unit.perceptionRange, extent = range + CONFIG.unit.maxRadius, units = this._bossGridUnits, groundUnits = this._bossGroundUnits;
           units.length = 0;
           groundUnits.length = 0;
           this.unitSpatial.queryAABB(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossQueryCandidates);
@@ -3681,7 +3722,7 @@
           }
           let best = null;
           for (const candidate of candidates.values()) {
-            const end = ArenaGeometry.clamp({ x: b.x + Math.cos(candidate.angle) * config.reach, y: b.y + Math.sin(candidate.angle) * config.reach }, this.scene, b.radius + 0.25), from = { x: b.x, y: b.y, z: b.z }, to = { x: end.x, y: end.y, z: b.z }, extent = b.radius + CONFIG.maxUnitRadius;
+            const end = ArenaGeometry.clamp({ x: b.x + Math.cos(candidate.angle) * config.reach, y: b.y + Math.sin(candidate.angle) * config.reach }, this.scene, b.radius + 0.25), from = { x: b.x, y: b.y, z: b.z }, to = { x: end.x, y: end.y, z: b.z }, extent = b.radius + CONFIG.unit.maxRadius;
             let score = 0;
             this.eachBossGridUnit(grid, Math.min(from.x, to.x) - extent, Math.min(from.y, to.y) - extent, Math.max(from.x, to.x) + extent, Math.max(from.y, to.y) + extent, (unit) => {
               if (ArenaGeometry.sweep(from, to, b.radius, b.height, unit)) score++;
@@ -3706,7 +3747,7 @@
           let best = null;
           for (const candidate of candidates.values()) {
             let score = 0;
-            const extent = config.landingRadius + CONFIG.maxUnitRadius;
+            const extent = config.landingRadius + CONFIG.unit.maxRadius;
             this.eachBossGridUnit(grid, candidate.point.x - extent, candidate.point.y - extent, candidate.point.x + extent, candidate.point.y + extent, (unit) => {
               if (Math.hypot(unit.x - candidate.point.x, unit.y - candidate.point.y) <= config.landingRadius + unit.radius) score++;
             }, true);
@@ -3728,7 +3769,7 @@
           for (const id of BOSS_PATTERN_IDS) {
             if (runtime.cooldowns[id] > 1e-9) continue;
             if (id === "summon.mouth-t1") {
-              if (runtime.encounterElapsed + 1e-9 >= BOSS_PATTERN_CONFIG[id].firstEligible && aliveAdds < CONFIG.maxBossSummons) eligible.push(id);
+              if (runtime.encounterElapsed + 1e-9 >= BOSS_PATTERN_CONFIG[id].firstEligible && aliveAdds < CONFIG.boss.maxSummons) eligible.push(id);
               continue;
             }
             const target = id === "attack.charge" ? targets.charge : id === "attack.leap-slam" ? targets.leap : targets.nearest;
@@ -3760,7 +3801,7 @@
           applyDamageToTargets(null, [unit], { rawDamage: b.attackPower * config.damageMultiplier * (guard?.receivedDamageMultiplier ?? 1), sourceKind: "enemy" });
           this._syncUnitAliveCount(unit);
           if (unit.hp === 0) {
-            unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.corpseRecoverySeconds;
+            unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
             this.handleUnitDeath(unit);
           }
           const isSweep = patternId === "attack.sweep-360" || patternId === "attack.fan-sweep";
@@ -3772,7 +3813,7 @@
         resolveBossSector(action, patternId, range, sector) {
           const b = this.boss, aim = action.aim, half = sector / 2;
           let hits = 0;
-          const extent = range + CONFIG.maxUnitRadius;
+          const extent = range + CONFIG.unit.maxRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
             if (action.hitIds.has(unit.id) || unit.z > 0.1) continue;
             const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
@@ -3787,7 +3828,7 @@
         resolveBossCircle(action, patternId, range) {
           const b = this.boss;
           let hits = 0;
-          const extent = range + CONFIG.maxUnitRadius;
+          const extent = range + CONFIG.unit.maxRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
             if (action.hitIds.has(unit.id)) continue;
             const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
@@ -3797,7 +3838,7 @@
           return hits;
         }
         sweepBossBody(old, patternId) {
-          const b = this.boss, action = b.patternRuntime.active, extent = b.radius + CONFIG.maxUnitRadius;
+          const b = this.boss, action = b.patternRuntime.active, extent = b.radius + CONFIG.unit.maxRadius;
           for (const unit of this._collectBossTargets(Math.min(old.x, b.x) - extent, Math.min(old.y, b.y) - extent, Math.max(old.x, b.x) + extent, Math.max(old.y, b.y) + extent, this._bossHitCandidates)) {
             if (action.hitIds.has(unit.id)) continue;
             const hit = ArenaGeometry.sweep(old, b, b.radius, b.height, unit);
@@ -3807,7 +3848,7 @@
         fanBossWeapon(action, q0, q1) {
           const config = BOSS_PATTERN_CONFIG[action.id], span = config.sector, fromAngle = action.aim - span / 2 + span * clamp3(q0, 0, 1), toAngle = action.aim - span / 2 + span * clamp3(q1, 0, 1), b = this.boss;
           const from = { x: b.x + Math.cos(fromAngle) * config.reach, y: b.y + Math.sin(fromAngle) * config.reach, z: 0.2 }, to = { x: b.x + Math.cos(toAngle) * config.reach, y: b.y + Math.sin(toAngle) * config.reach, z: 0.2 };
-          const extent = config.reach + config.width + CONFIG.maxUnitRadius;
+          const extent = config.reach + config.width + CONFIG.unit.maxRadius;
           for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
             if (action.hitIds.has(unit.id)) continue;
             const hit = ArenaGeometry.sweep(from, to, config.width, 1.4, unit);
@@ -3835,8 +3876,8 @@
           const b = this.boss, landing = this.bossSummonLanding(action.aim, action);
           if (!landing) return false;
           const mouth = this.bossMouthPoint(action.released + 1);
-          const id = CONFIG.bossSummonIdBase + ++this.bossSummonSerial, unit = new Unit(id, b.species, 1, mouth.x, mouth.y), angle = Math.atan2(landing.y - mouth.y, landing.x - mouth.x), flightSeconds = Math.sqrt(2 * mouth.z / CONFIG.gravity), horizontalDistance = Math.hypot(landing.x - mouth.x, landing.y - mouth.y), drag = 0.8, speed = horizontalDistance * drag / (1 - Math.exp(-drag * flightSeconds));
-          Object.assign(unit, { ownerId: "boss", farmId: 0, faction: FACTION_CONFIG.ENEMY, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit.growthDuration, growth: CONFIG.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
+          const id = CONFIG.boss.summonIdBase + ++this.bossSummonSerial, unit = new Unit(id, b.species, 1, mouth.x, mouth.y), angle = Math.atan2(landing.y - mouth.y, landing.x - mouth.x), flightSeconds = Math.sqrt(2 * mouth.z / CONFIG.physics.gravity), horizontalDistance = Math.hypot(landing.x - mouth.x, landing.y - mouth.y), drag = 0.8, speed = horizontalDistance * drag / (1 - Math.exp(-drag * flightSeconds));
+          Object.assign(unit, { ownerId: "boss", farmId: 0, faction: FACTION_CONFIG.ENEMY, home: { x: mouth.x, y: mouth.y }, hp: stats(1, b.species).maxHp, down: 0, isBattleOnlySummon: true, battleSummonKind: "boss-mouth-t1", battleSummonParentId: 0, battleSummonEncounterId: b.encounterId || 1, countsTowardPermanentRoster: false, eligibleForRaidDeployment: false, breedingEligible: false, mergeEligible: false, canSplit: false, usesPersistentSleep: false, lifetime: "until-death-or-battle-end", growthElapsed: unit.growthDuration, growth: CONFIG.farm.breeding.matureMeals, meals: 1, deathSplitHandled: false, splitUsedThisBattle: true, dropLanded: false, z: mouth.z, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0, landingRecovery: 0, seed: id * 2.39996 });
           this.units.push(unit);
           this._trackUnitAdded(unit);
           action.released++;
@@ -3883,7 +3924,7 @@
           if (action.id === "summon.mouth-t1") {
             runtime.cooldowns[action.id] = config.cooldown;
             const alive = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0);
-            action.volleyCount = Math.min(config.volleyCount, Math.max(0, CONFIG.maxBossSummons - alive));
+            action.volleyCount = Math.min(config.volleyCount, Math.max(0, CONFIG.boss.maxSummons - alive));
             action.nextRelease = 0;
             this.spawnBossMouthUnit(action);
             action.nextRelease = config.releaseInterval;
@@ -3963,7 +4004,7 @@
                 b.x = action.path.to.x;
                 b.y = action.path.to.y;
                 b.z = 0;
-                const extent = config.landingRadius + CONFIG.maxUnitRadius;
+                const extent = config.landingRadius + CONFIG.unit.maxRadius;
                 for (const unit of this._collectBossTargets(b.x - extent, b.y - extent, b.x + extent, b.y + extent, this._bossHitCandidates, true)) {
                   if (action.hitIds.has(unit.id)) continue;
                   const dx = unit.x - b.x, dy = unit.y - b.y, d = Math.hypot(dx, dy);
@@ -3993,7 +4034,7 @@
             const event = this.farmBossEvent;
             if (event.phase === "dropping") {
               event.elapsed += dt;
-              b.z = Math.max(0, CONFIG.raid.dropHeight - 0.5 * CONFIG.gravity * event.elapsed * event.elapsed);
+              b.z = Math.max(0, CONFIG.raid.dropHeight - 0.5 * CONFIG.physics.gravity * event.elapsed * event.elapsed);
               if (b.z === 0) {
                 event.phase = "fighting";
                 event.elapsed = 0;
@@ -4013,7 +4054,7 @@
               }
             } else if (event.phase === "celebrating") {
               event.elapsed += dt;
-              const duration = event.outcome === "defeat" ? CONFIG.farmBossEvent.celebrationSeconds : CONFIG.farmBossEvent.fadeSeconds;
+              const duration = event.outcome === "defeat" ? CONFIG.farm.bossEvent.celebrationSeconds : CONFIG.farm.bossEvent.fadeSeconds;
               if (event.elapsed >= duration) {
                 event.phase = "fading";
                 event.elapsed = 0;
@@ -4021,7 +4062,7 @@
               return;
             } else if (event.phase === "fading") {
               event.elapsed += dt;
-              if (event.elapsed >= CONFIG.farmBossEvent.fadeSeconds) {
+              if (event.elapsed >= CONFIG.farm.bossEvent.fadeSeconds) {
                 this.farmBossEvent = { phase: "idle", elapsed: 0, outcome: "idle", encounterId: 0, rewardStatus: "none", rewardChance: 0, rewardRoll: 0, rewardUnitId: 0 };
                 this.boss = this.createBoss();
               }
@@ -4421,10 +4462,10 @@
       if (!Object.hasOwn(p, "attackMultiplier")) p.attackMultiplier = abilityProfile(p.species).skillMultiplier;
       if (!Object.hasOwn(p, "shotIndex")) p.shotIndex = 0;
       if (!Object.hasOwn(p, "ownerId")) p.ownerId = raw.units.find((u) => u.id === p.owner)?.ownerId || "";
-      if (!Object.hasOwn(p, "faction")) p.faction = p.ownerId === "boss" || p.owner >= CONFIG.bossSummonIdBase ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
+      if (!Object.hasOwn(p, "faction")) p.faction = p.ownerId === "boss" || p.owner >= CONFIG.boss.summonIdBase ? FACTION_CONFIG.ENEMY : FACTION_CONFIG.PLAYER;
     }
     raw.projectileSerial = Math.max(Number.isSafeInteger(raw.projectileSerial) ? raw.projectileSerial : 0, ...(raw.projectiles || []).map((p) => Number.isSafeInteger(p?.id) ? p.id : 0));
-    raw.raidSummonSerial = Number.isSafeInteger(raw.raidSummonSerial) ? raw.raidSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.raidSummonIdBase ? u.id - CONFIG.raidSummonIdBase + 1 : 0));
+    raw.raidSummonSerial = Number.isSafeInteger(raw.raidSummonSerial) ? raw.raidSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.raid.ids.summonBase ? u.id - CONFIG.raid.ids.summonBase + 1 : 0));
     if (raw.farmBossEvent.phase !== "idle" && raw.farmBossEvent.encounterId === 0) {
       const encounterId = raw.nextBossEncounterId++;
       raw.farmBossEvent.encounterId = encounterId;
@@ -4439,8 +4480,8 @@
     if (!Object.hasOwn(raw.boss, "species")) raw.boss.species = 3;
     if (!Object.hasOwn(raw.boss, "encounterId")) raw.boss.encounterId = raw.scene === "raid" && raw.running ? 1 : raw.farmBossEvent?.encounterId || 0;
     if (!Object.hasOwn(raw.boss, "attackPower")) raw.boss.attackPower = 4;
-    if (!Object.hasOwn(raw.boss, "moveSpeed")) raw.boss.moveSpeed = CONFIG.raid.chaseSpeed;
-    raw.bossSummonSerial = Number.isSafeInteger(raw.bossSummonSerial) ? raw.bossSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.bossSummonIdBase ? u.id - CONFIG.bossSummonIdBase : 0));
+    if (!Object.hasOwn(raw.boss, "moveSpeed")) raw.boss.moveSpeed = CONFIG.boss.chaseSpeed;
+    raw.bossSummonSerial = Number.isSafeInteger(raw.bossSummonSerial) ? raw.bossSummonSerial : Math.max(0, ...(raw.units || []).map((u) => Number.isSafeInteger(u?.id) && u.id >= CONFIG.boss.summonIdBase ? u.id - CONFIG.boss.summonIdBase : 0));
     if (raw.scene === "raid" && !raw.boss.active && Number.isFinite(raw.boss.clock)) {
       const ended = raw.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat");
       if (ended && !Object.hasOwn(ended, "bossPatternElapsed")) ended.bossPatternElapsed = raw.boss.clock;
@@ -4450,19 +4491,19 @@
     raw.raidSettlementWatermark = Math.max(raw.raidSettlementWatermark || 0, raw.bossRewardWatermarks.raid || 0);
     for (const u of raw.units) {
       if (!Number.isFinite(u.cooldownDuration) || u.cooldownDuration < (Number.isFinite(u.cooldown) ? u.cooldown : 0)) u.cooldownDuration = Math.max(0, Number.isFinite(u.cooldown) ? u.cooldown : 0);
-      if (!Object.hasOwn(u, "growthDuration")) u.growthDuration = CONFIG.breedGrowthSeconds;
+      if (!Object.hasOwn(u, "growthDuration")) u.growthDuration = CONFIG.farm.breeding.growthSeconds;
       if (!Object.hasOwn(u, "growthElapsed")) {
-        const progress = Number.isFinite(u.growth) ? Math.max(0, Math.min(CONFIG.matureMeals, u.growth)) : 0;
-        u.growthElapsed = u.growthDuration * progress / CONFIG.matureMeals;
+        const progress = Number.isFinite(u.growth) ? Math.max(0, Math.min(CONFIG.farm.breeding.matureMeals, u.growth)) : 0;
+        u.growthElapsed = u.growthDuration * progress / CONFIG.farm.breeding.matureMeals;
       }
       if (!Object.hasOwn(u, "mateId")) u.mateId = 0;
-      if (!Object.hasOwn(u, "perceptionRange")) u.perceptionRange = CONFIG.raid.perceptionRange;
+      if (!Object.hasOwn(u, "perceptionRange")) u.perceptionRange = CONFIG.unit.perceptionRange;
       if (!Object.hasOwn(u, "ownerId")) u.ownerId = "";
       if (!Object.hasOwn(u, "farmId")) u.farmId = 0;
       if (!Object.hasOwn(u, "dropLanded")) u.dropLanded = true;
       if (u.hp <= 0) {
-        if (resetLegacyCorpseTimers || !Number.isFinite(u.down) || u.down <= 0) u.down = CONFIG.corpseRecoverySeconds;
-        else u.down = Math.min(CONFIG.corpseRecoverySeconds, u.down);
+        if (resetLegacyCorpseTimers || !Number.isFinite(u.down) || u.down <= 0) u.down = CONFIG.unit.corpseRecoverySeconds;
+        else u.down = Math.min(CONFIG.unit.corpseRecoverySeconds, u.down);
       } else u.down = 0;
     }
     if (migrateLegacyRaid && raw.scene === "raid") {
@@ -4488,7 +4529,7 @@
     if (Object.hasOwn(boss, "clock")) assert(Number.isFinite(boss.clock));
     if (Object.hasOwn(boss, "targetId")) assert(Number.isFinite(boss.targetId));
     if (Object.hasOwn(boss, "attackKind")) assert(["basic", "sweep", ...BOSS_PATTERN_IDS].includes(boss.attackKind));
-    if (Object.hasOwn(boss, "hit")) assert(Array.isArray(boss.hit) && boss.hit.length <= CONFIG.maxRaidBattleUnits && boss.hit.every((id) => validBattleUnitId(id, bossSummonSerial)) && new Set(boss.hit).size === boss.hit.length);
+    if (Object.hasOwn(boss, "hit")) assert(Array.isArray(boss.hit) && boss.hit.length <= CONFIG.raid.capacity.battleUnits && boss.hit.every((id) => validBattleUnitId(id, bossSummonSerial)) && new Set(boss.hit).size === boss.hit.length);
     if (!boss.patternRuntime || boss.patternRuntime.active === void 0) boss.patternRuntime = structuredClone(baseRuntime);
     if (["strike-windup", "strike", "sweep-windup", "sweep"].includes(boss.phase)) boss.patternRuntime.active = null;
     const action = boss.patternRuntime.active;
@@ -4504,7 +4545,7 @@
     assert(depth < 18);
     if (typeof v === "number") assert(Number.isFinite(v) && Math.abs(v) < 1e13);
     else if (Array.isArray(v)) {
-      const max = key === "units" ? CONFIG.maxRaidBattleUnits : key === "projectiles" ? CONFIG.maxRaidProjectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
+      const max = key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
       assert(v.length <= max);
       v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === "object") {
@@ -4550,16 +4591,16 @@
     assert(["farm", "raid"].includes(raw.scene) && ["breed", "merge"].includes(raw.mode));
     if (raw.mergeTask !== null) {
       const t = raw.mergeTask;
-      assert(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.mergeAnimationSeconds + 1e-9 && Array.isArray(t.materialIds) && t.materialIds.length >= 2 && t.materialIds.length <= CONFIG.maxMergeMaterials && new Set(t.materialIds).size === t.materialIds.length && t.materialIds.every((id) => integer(id, 1, CONFIG.maxFarmUnitId)));
+      assert(raw.scene === "farm" && raw.mode === "merge" && t && ["approach", "animation"].includes(t.phase) && Number.isFinite(t.elapsed) && t.elapsed >= 0 && Number.isFinite(t.duration) && t.duration > 0 && t.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && Array.isArray(t.materialIds) && t.materialIds.length >= 2 && t.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(t.materialIds).size === t.materialIds.length && t.materialIds.every((id) => integer(id, 1, CONFIG.farm.maxUnitId)));
       if (t.phase === "approach") {
         const materials = t.materialIds.map((id) => raw.units.find((u) => u.id === id)), first = materials[0], cost = mergeMaterialCostForTier(first?.tier + 1), sameSpeciesCount = raw.units.filter((u) => !u.isBattleOnlySummon && u.species === first?.species).length;
-        assert(integer(t.aId, 1, CONFIG.maxFarmUnitId) && integer(t.bId, 1, CONFIG.maxFarmUnitId) && t.aId === t.materialIds[0] && t.bId === t.materialIds[1] && cost === materials.length && first && materials.every((u) => u && u.tier === first.tier && u.species === first.species) && sameSpeciesCount - materials.length + 1 >= 2);
+        assert(integer(t.aId, 1, CONFIG.farm.maxUnitId) && integer(t.bId, 1, CONFIG.farm.maxUnitId) && t.aId === t.materialIds[0] && t.bId === t.materialIds[1] && cost === materials.length && first && materials.every((u) => u && u.tier === first.tier && u.species === first.species) && sameSpeciesCount - materials.length + 1 >= 2);
       } else {
         const result = raw.units.find((u) => u.id === t.resultId);
-        assert(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9 && integer(t.resultId, 1, CONFIG.maxFarmUnitId) && result && integer(t.sourceSpecies, 0, CONFIG.maxSpecies - 1) && integer(t.sourceTier, 1, CONFIG.maxTier - 1) && result.species === t.sourceSpecies && result.tier === t.sourceTier + 1 && t.materialIds.length === mergeMaterialCostForTier(result.tier));
+        assert(t.aId === 0 && t.bId === 0 && t.elapsed <= t.duration + 1e-9 && integer(t.resultId, 1, CONFIG.farm.maxUnitId) && result && integer(t.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && integer(t.sourceTier, 1, CONFIG.unit.maxTier - 1) && result.species === t.sourceSpecies && result.tier === t.sourceTier + 1 && t.materialIds.length === mergeMaterialCostForTier(result.tier));
       }
     }
-    assert(raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.maxFarmCap : CONFIG.maxFarmBattleUnits : CONFIG.maxRaidBattleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.maxRaidProjectiles);
+    assert(raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : CONFIG.raid.capacity.battleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.raid.capacity.projectiles);
     assert(raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0);
     assert(integer(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
     assert(isValidPlayerProgressionState(raw.playerProgression));
@@ -4576,14 +4617,14 @@
     assert(raw.bossRewardWatermarks && integer(raw.bossRewardWatermarks.farm, 0, 1e12) && integer(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm);
     const rewardIds = /* @__PURE__ */ new Set();
     for (const reward of raw.bossRewardReceipts) {
-      assert(reward && integer(reward.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward.source) && reward.encounterId <= raw.bossRewardWatermarks[reward.source] && integer(reward.species, 0, CONFIG.maxSpecies - 1) && integer(reward.tier, 1, CONFIG.maxTier) && Number.isFinite(reward.x) && Number.isFinite(reward.y) && Number.isFinite(reward.chance) && reward.chance >= 0 && reward.chance <= 1 && Number.isFinite(reward.roll) && reward.roll >= 0 && reward.roll < 1 && ["pending", "missed", "granted"].includes(reward.status) && integer(reward.unitId, 0, CONFIG.maxFarmUnitId));
+      assert(reward && integer(reward.encounterId, 1, 1e12) && ["farm", "raid"].includes(reward.source) && reward.encounterId <= raw.bossRewardWatermarks[reward.source] && integer(reward.species, 0, CONFIG.unit.speciesCount - 1) && integer(reward.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(reward.x) && Number.isFinite(reward.y) && Number.isFinite(reward.chance) && reward.chance >= 0 && reward.chance <= 1 && Number.isFinite(reward.roll) && reward.roll >= 0 && reward.roll < 1 && ["pending", "missed", "granted"].includes(reward.status) && integer(reward.unitId, 0, CONFIG.farm.maxUnitId));
       const key = reward.receiptKey || reward.source + ":" + reward.encounterId;
       assert(!rewardIds.has(key));
       rewardIds.add(key);
       assert(reward.status === "granted" === reward.unitId > 0);
       if (reward.drops !== void 0) {
         assert(Array.isArray(reward.drops) && reward.drops.length <= BOSS_REWARD_SETTINGS.maxStage && integer(reward.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && reward.drops.length === reward.rollCount);
-        for (const drop of reward.drops) assert(drop && Number.isFinite(drop.roll) && drop.roll >= 0 && drop.roll < 1 && ["pending", "missed", "granted"].includes(drop.status) && integer(drop.unitId, 0, CONFIG.maxFarmUnitId) && drop.status === "granted" === drop.unitId > 0);
+        for (const drop of reward.drops) assert(drop && Number.isFinite(drop.roll) && drop.roll >= 0 && drop.roll < 1 && ["pending", "missed", "granted"].includes(drop.status) && integer(drop.unitId, 0, CONFIG.farm.maxUnitId) && drop.status === "granted" === drop.unitId > 0);
         assert(reward.status === (reward.drops.some((drop) => drop.status === "pending") ? "pending" : reward.drops.some((drop) => drop.status === "granted") ? "granted" : "missed"));
       }
       if (reward.receiptKey !== void 0) assert(typeof reward.receiptKey === "string" && reward.receiptKey.length > 0 && reward.receiptKey.length < 256);
@@ -4594,7 +4635,7 @@
     assert(stageProgress && integer(stageProgress.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(stageProgress.encounterSeed, 0, 4294967295) && integer(stageProgress.encounterEpoch, 0, 1e12) && integer(stageProgress.nextSelectionId, 1, 1e12) && Array.isArray(stageProgress.selections) && stageProgress.selections.length <= BOSS_REWARD_SETTINGS.maxStage);
     const stageIds = /* @__PURE__ */ new Set(), selectionIds = /* @__PURE__ */ new Set();
     for (const selection of stageProgress.selections) {
-      assert(selection && integer(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(selection.species, 0, CONFIG.maxSpecies - 1) && integer(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
+      assert(selection && integer(selection.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && integer(selection.species, 0, CONFIG.unit.speciesCount - 1) && integer(selection.selectionId, 1, stageProgress.nextSelectionId - 1) && !stageIds.has(selection.stage) && !selectionIds.has(selection.selectionId));
       stageIds.add(selection.stage);
       selectionIds.add(selection.selectionId);
     }
@@ -4606,7 +4647,7 @@
     const raidReceiptKeys = /* @__PURE__ */ new Set();
     for (const receipt of raw.raidSettlementReceipts) {
       assert(receipt && typeof receipt.ownerId === "string" && receipt.ownerId.length > 0 && typeof receipt.sessionId === "string" && receipt.sessionId.length > 0 && integer(receipt.encounterId, 1, 1e12) && integer(receipt.runSequence, 1, raw.raidSettlementWatermark) && ["victory", "defeat", "aborted"].includes(receipt.outcome));
-      assert(receipt.status === "settled" && receipt.key === raidSettlementKey({ ownerId: receipt.ownerId, sessionId: receipt.sessionId, encounterId: receipt.encounterId }) && !raidReceiptKeys.has(receipt.key) && receipt.runSequence <= raw.raidSettlementWatermark && Array.isArray(receipt.sleptFarmUnitIds) && receipt.sleptFarmUnitIds.every((id) => integer(id, 1, CONFIG.maxFarmUnitId)) && new Set(receipt.sleptFarmUnitIds).size === receipt.sleptFarmUnitIds.length && integer(receipt.availableAtStart, 0, CONFIG.maxRaidPlayerUnits) && integer(receipt.originalUnitsDeployed, 0, receipt.availableAtStart) && Number.isFinite(receipt.deploymentMultiplier) && receipt.deploymentMultiplier >= 0 && receipt.deploymentMultiplier <= 2 && (receipt.completedAtMs === null || Number.isFinite(receipt.completedAtMs) && receipt.completedAtMs >= 0) && (receipt.reward === null || receipt.reward && typeof receipt.reward === "object" && !Array.isArray(receipt.reward)));
+      assert(receipt.status === "settled" && receipt.key === raidSettlementKey({ ownerId: receipt.ownerId, sessionId: receipt.sessionId, encounterId: receipt.encounterId }) && !raidReceiptKeys.has(receipt.key) && receipt.runSequence <= raw.raidSettlementWatermark && Array.isArray(receipt.sleptFarmUnitIds) && receipt.sleptFarmUnitIds.every((id) => integer(id, 1, CONFIG.farm.maxUnitId)) && new Set(receipt.sleptFarmUnitIds).size === receipt.sleptFarmUnitIds.length && integer(receipt.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) && integer(receipt.originalUnitsDeployed, 0, receipt.availableAtStart) && Number.isFinite(receipt.deploymentMultiplier) && receipt.deploymentMultiplier >= 0 && receipt.deploymentMultiplier <= 2 && (receipt.completedAtMs === null || Number.isFinite(receipt.completedAtMs) && receipt.completedAtMs >= 0) && (receipt.reward === null || receipt.reward && typeof receipt.reward === "object" && !Array.isArray(receipt.reward)));
       raidReceiptKeys.add(receipt.key);
     }
     if (farmEvent.outcome === "victory" && farmEvent.phase !== "idle") {
@@ -4614,28 +4655,28 @@
       assert(receipt && receipt.status === farmEvent.rewardStatus && receipt.chance === farmEvent.rewardChance && receipt.roll === farmEvent.rewardRoll && receipt.unitId === farmEvent.rewardUnitId);
     }
     assert(raw.corpseRecoveryVersion === 1 && integer(raw.nextId, 1, 1e9) && integer(raw.bossSummonSerial, 0, 1e12) && integer(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51);
-    assert(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.maxRaidPlayers && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
+    assert(Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters));
     const rosterOwners = /* @__PURE__ */ new Set(), manifest = /* @__PURE__ */ new Set();
     for (const r of raw.raidRosters) {
-      assert(raw.raidExpectedPlayers.includes(r.ownerId) && !rosterOwners.has(r.ownerId) && Array.isArray(r.troops) && r.troops.length <= CONFIG.maxRaidPlayerUnits && isValidAbilityRuntimeSnapshot(r.abilitySnapshot));
+      assert(raw.raidExpectedPlayers.includes(r.ownerId) && !rosterOwners.has(r.ownerId) && Array.isArray(r.troops) && r.troops.length <= CONFIG.raid.capacity.playerUnits && isValidAbilityRuntimeSnapshot(r.abilitySnapshot));
       assert(typeof r.settlementSessionId === "string" && r.settlementSessionId.length <= 128 && integer(r.settlementRunSequence, 0, 1e12) && integer(r.settlementEncounterId, 0, 1e12));
       assert(r.settlementRunSequence === 0 ? r.settlementSessionId === "" && r.settlementEncounterId === 0 : r.settlementSessionId.trim().length > 0 && r.settlementEncounterId === r.settlementRunSequence);
       rosterOwners.add(r.ownerId);
       const ids2 = /* @__PURE__ */ new Set();
       for (const t of r.troops) {
-        assert(integer(t.farmId, 1, CONFIG.maxFarmUnitId) && integer(t.species, 0, CONFIG.maxSpecies - 1) && integer(t.tier, 1, CONFIG.maxTier) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
+        assert(integer(t.farmId, 1, CONFIG.farm.maxUnitId) && integer(t.species, 0, CONFIG.unit.speciesCount - 1) && integer(t.tier, 1, CONFIG.unit.maxTier) && typeof t.deployed === "boolean" && !ids2.has(t.farmId));
         ids2.add(t.farmId);
         manifest.add(r.ownerId + ":" + t.farmId);
       }
       assert(integer(r.lastDeploySequence, 0, r.troops.length) && r.lastDeploySequence === r.troops.filter((t) => t.deployed).length && Number.isFinite(r.buffUntil) && Number.isFinite(r.buffReadyAt) && r.buffUntil >= 0 && r.buffReadyAt >= 0);
     }
-    assert(manifest.size <= CONFIG.maxRaidUnits);
-    const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set(), mateIdLimit = raw.scene === "raid" ? CONFIG.maxRaidPlayers * CONFIG.raidPlayerIdStride + CONFIG.maxRaidPlayerUnits : CONFIG.maxFarmUnitId;
+    assert(manifest.size <= CONFIG.raid.capacity.units);
+    const ids = /* @__PURE__ */ new Set(), deployed = /* @__PURE__ */ new Set(), mateIdLimit = raw.scene === "raid" ? CONFIG.raid.capacity.players * CONFIG.raid.ids.playerStride + CONFIG.raid.capacity.playerUnits : CONFIG.farm.maxUnitId;
     const unitsById = /* @__PURE__ */ new Map(), summonsByParent = /* @__PURE__ */ new Map();
     for (const u of raw.units) {
       shape(u, UNIT_SHAPE);
-      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
-      assert(integer(u.species, 0, CONFIG.maxSpecies - 1) && integer(u.tier, 1, CONFIG.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && typeof u.walnutEmpoweredNextBasic === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
+      assert(Number.isFinite(u.growthElapsed) && u.growthElapsed >= 0 && Number.isFinite(u.growthDuration) && u.growthDuration > 0 && u.growthElapsed <= u.growthDuration + 1e-9 && Number.isFinite(u.cooldown) && u.cooldown >= 0 && Number.isFinite(u.cooldownDuration) && u.cooldownDuration >= u.cooldown - 1e-9 && u.cooldownDuration <= 1e5 && integer(u.mateId, 0, mateIdLimit) && Number.isFinite(u.perceptionRange) && u.perceptionRange > 0 && u.perceptionRange <= 100 && Number.isFinite(u.down) && u.down >= 0 && u.down <= CONFIG.unit.corpseRecoverySeconds && integer(u.battleSummonEncounterId, 0, 1e12) && Number.isFinite(u.landingRecovery) && u.landingRecovery >= 0 && u.landingRecovery <= 0.25 + 1e-9 && Number.isFinite(u.wheatCommandUntil) && u.wheatCommandUntil >= 0 && u.wheatCommandUntil <= 1e12 && Number.isFinite(u.wheatCommandCritBonus) && u.wheatCommandCritBonus >= 0 && u.wheatCommandCritBonus <= 0.5 && Number.isFinite(u.barleyArmorBreakUntil) && u.barleyArmorBreakUntil >= 0 && u.barleyArmorBreakUntil <= 1e12 && Number.isFinite(u.barleyArmorBreakReduction) && u.barleyArmorBreakReduction >= 0 && u.barleyArmorBreakReduction <= 0.75);
+      assert(integer(u.species, 0, CONFIG.unit.speciesCount - 1) && integer(u.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(u.ability.phase) && typeof u.ownerId === "string" && Number.isSafeInteger(u.farmId) && Object.values(FACTION_CONFIG).includes(u.faction) && typeof u.dropLanded === "boolean" && typeof u.isBattleOnlySummon === "boolean" && typeof u.splitUsedThisBattle === "boolean" && typeof u.deathSplitHandled === "boolean" && typeof u.walnutEmpoweredNextBasic === "boolean" && integer(u.chestnutBasicCycles, 0, 1e12));
       if (u.hp <= 0) assert(u.down > 0 && !u.isBattleOnlySummon);
       else assert(u.down === 0);
       if (hasFaction(u, FACTION_CONFIG.ENEMY)) assert(u.isBattleOnlySummon && u.battleSummonKind === "boss-mouth-t1" && u.ownerId === "boss" && u.farmId === 0);
@@ -4651,17 +4692,17 @@
           const list = summonsByParent.get(parent.id) || [];
           list.push(u);
           summonsByParent.set(parent.id, list);
-          if (raw.scene === "raid") assert(u.id >= CONFIG.raidSummonIdBase && u.id < CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.maxFarmUnitId));
+          if (raw.scene === "raid") assert(u.id >= CONFIG.raid.ids.summonBase && u.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits && raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.farm.maxUnitId));
           else assert(integer(u.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
         } else {
-          assert(u.battleSummonKind === "boss-mouth-t1" && u.battleSummonParentId === 0 && integer(u.battleSummonEncounterId, 1, 1e12) && u.battleSummonEncounterId === raw.boss.encounterId && u.species === raw.boss.species && u.tier === 1 && u.ownerId === "boss" && u.farmId === 0 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0 && u.battleSummonEncounterId > 0 && u.id >= CONFIG.bossSummonIdBase && u.id <= CONFIG.bossSummonIdBase + raw.bossSummonSerial);
+          assert(u.battleSummonKind === "boss-mouth-t1" && u.battleSummonParentId === 0 && integer(u.battleSummonEncounterId, 1, 1e12) && u.battleSummonEncounterId === raw.boss.encounterId && u.species === raw.boss.species && u.tier === 1 && u.ownerId === "boss" && u.farmId === 0 && u.canSplit === false && u.countsTowardPermanentRoster === false && u.eligibleForRaidDeployment === false && u.breedingEligible === false && u.mergeEligible === false && u.usesPersistentSleep === false && u.lifetime === "until-death-or-battle-end" && u.deathSplitHandled === false && u.splitUsedThisBattle === true && u.hp > 0 && u.battleSummonEncounterId > 0 && u.id >= CONFIG.boss.summonIdBase && u.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial);
           assert(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
         }
       } else {
         assert(u.battleSummonKind === "" && u.battleSummonParentId === 0 && u.battleSummonEncounterId === 0 && u.countsTowardPermanentRoster === true && u.eligibleForRaidDeployment === true && u.breedingEligible === true && u.mergeEligible === true && u.canSplit === true && u.usesPersistentSleep === true && u.lifetime === "");
         if (raw.scene === "raid") {
-          const roster = raw.raidRosters.find((r) => r.ownerId === u.ownerId), troopIndex = roster?.troops.findIndex((t) => t.farmId === u.farmId) ?? -1, slot = raw.raidExpectedPlayers.indexOf(u.ownerId), currentId = (slot + 1) * CONFIG.raidPlayerIdStride + troopIndex + 1, legacyId = (slot + 1) * CONFIG.raidPlayerIdStride + u.farmId;
-          assert(raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.maxFarmUnitId) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId) && (u.id === currentId || u.farmId <= CONFIG.maxFarmCap && u.id === legacyId));
+          const roster = raw.raidRosters.find((r) => r.ownerId === u.ownerId), troopIndex = roster?.troops.findIndex((t) => t.farmId === u.farmId) ?? -1, slot = raw.raidExpectedPlayers.indexOf(u.ownerId), currentId = (slot + 1) * CONFIG.raid.ids.playerStride + troopIndex + 1, legacyId = (slot + 1) * CONFIG.raid.ids.playerStride + u.farmId;
+          assert(raw.raidExpectedPlayers.includes(u.ownerId) && integer(u.farmId, 1, CONFIG.farm.maxUnitId) && manifest.has(u.ownerId + ":" + u.farmId) && !deployed.has(u.ownerId + ":" + u.farmId) && (u.id === currentId || u.farmId <= CONFIG.farm.capacity.max && u.id === legacyId));
           deployed.add(u.ownerId + ":" + u.farmId);
         } else assert(integer(u.id, 1, raw.nextId - 1));
       }
@@ -4700,17 +4741,17 @@
       validatePath(p.path);
       assert(integer(p.id, 1, raw.projectileSerial) && !projectileIds.has(p.id));
       projectileIds.add(p.id);
-      assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raidSummonIdBase + CONFIG.maxRaidBattleUnits - 1 : raw.nextId - 1) || integer(p.owner, CONFIG.bossSummonIdBase + 1, CONFIG.bossSummonIdBase + raw.bossSummonSerial));
+      assert(integer(p.owner, 1, raw.scene === "raid" ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1 : raw.nextId - 1) || integer(p.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial));
       assert(p.targetId === void 0 || p.targetId === "boss" || validBattleUnitId(p.targetId, raw.bossSummonSerial));
-      assert(Object.values(FACTION_CONFIG).includes(p.faction) && typeof p.ownerId === "string" && integer(p.species, 0, CONFIG.maxSpecies - 1) && integer(p.tier, 1, CONFIG.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
+      assert(Object.values(FACTION_CONFIG).includes(p.faction) && typeof p.ownerId === "string" && integer(p.species, 0, CONFIG.unit.speciesCount - 1) && integer(p.tier, 1, CONFIG.unit.maxTier) && typeof p.hit === "boolean" && Number.isFinite(p.attackMultiplier) && p.attackMultiplier > 0 && p.attackMultiplier <= 10 && integer(p.shotIndex, 0, 4));
       if (p.isPopcorn) {
-        assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.length <= CONFIG.maxRaidBattleUnits + 1 && p.damagedTargetIds.every((id) => id === "boss" || validBattleUnitId(id, raw.bossSummonSerial)) && new Set(p.damagedTargetIds).size === p.damagedTargetIds.length && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
+        assert(typeof p.landed === "boolean" && typeof p.exploded === "boolean" && Array.isArray(p.damagedTargetIds) && p.damagedTargetIds.length <= CONFIG.raid.capacity.battleUnits + 1 && p.damagedTargetIds.every((id) => id === "boss" || validBattleUnitId(id, raw.bossSummonSerial)) && new Set(p.damagedTargetIds).size === p.damagedTargetIds.length && Number.isFinite(p.fuseRemaining) && p.fuseRemaining >= 0 && p.fuseRemaining <= 1.01);
         validatePopcornConfig(p.popcornConfig);
         if (p.exploded) assert(Number.isFinite(p.explosionLife) && p.explosionLife >= 0 && p.explosionLife < 0.5 + 1e-9);
       }
     }
-    assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.maxRaidBattleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
-    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.maxSpecies - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.raid.bossRadius && raw.boss.height === CONFIG.raid.bossHeight && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
+    assert(integer(raw.projectileSerial, 0, 1e12) && integer(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) && integer(raw.bossSummonSerial, 0, 1e12));
+    assert(hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && integer(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && integer(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && integer(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75);
     if (raw.boss.stage === 0) assert(raw.boss.attackPower === 4);
     else {
       const stageStats = bossStageStats(raw.boss.stage);
@@ -4724,7 +4765,7 @@
     assert(Object.keys(runtime.weights).length === BOSS_PATTERN_IDS.length && Object.keys(runtime.cooldowns).length === BOSS_PATTERN_IDS.length);
     if (runtime.active) {
       const a = runtime.active;
-      assert(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.maxRaidBattleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && integer(a.released, 0, 4) && integer(a.volleyCount, 0, 4));
+      assert(BOSS_PATTERN_IDS.includes(a.id) && ["windup", "active", "recover"].includes(a.phase) && Number.isFinite(a.phaseElapsed) && a.phaseElapsed >= 0 && Number.isFinite(a.aim) && (a.targetId === 0 || validBattleUnitId(a.targetId, raw.bossSummonSerial)) && typeof a.locked === "boolean" && Array.isArray(a.hitIds) && a.hitIds.length <= CONFIG.raid.capacity.battleUnits && a.hitIds.every((id) => validBattleUnitId(id, raw.bossSummonSerial)) && new Set(a.hitIds).size === a.hitIds.length && integer(a.released, 0, 4) && integer(a.volleyCount, 0, 4));
       if (a.target) assert(Number.isFinite(a.target.x) && Number.isFinite(a.target.y) && Number.isFinite(a.target.z));
       if (a.path) validatePath(a.path);
     }
@@ -4760,7 +4801,7 @@
       GARDEN_SHAPE = snapshot(new Garden());
       UNIT_SHAPE = snapshot(new Unit(1, 0, 1, 0, 0));
       integer = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
-      validBattleUnitId = (id, bossSummonSerial) => integer(id, 1, CONFIG.maxFarmUnitId) || integer(id, CONFIG.bossSummonIdBase + 1, CONFIG.bossSummonIdBase + bossSummonSerial);
+      validBattleUnitId = (id, bossSummonSerial) => integer(id, 1, CONFIG.farm.maxUnitId) || integer(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
     }
   });
 
@@ -5263,7 +5304,7 @@
       this.unitRingPool = [{}, {}, {}];
       this.breedingIndicator = {};
       const entries = Object.entries(TROOP_VECTOR_ASSETS);
-      if (entries.length !== CONFIG.maxSpecies || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
+      if (entries.length !== CONFIG.unit.speciesCount || entries.some(([species], index) => Number(species) !== index) || typeof createVectorAsset !== "function") throw new Error("All pinned GameKit troop and vector-assets sources are required");
       this.meshes = new MeshRenderer(this.device);
       this.ctx.meshRenderer = this.meshes;
       for (const [species, compiled] of entries) this.vectorAssets.set(Number(species), { compiled, asset: createVectorAsset(this.meshes, compiled), anchors: (0, import_vector_sockets2.readVectorSockets)(compiled, `species ${species}, ${compiled.sourcePath}`), parts: new Set(compiled.metadata.parts.map((part) => part.id)), faceParts: compiled.metadata.parts.filter((part) => part.id.startsWith("face-")).map((part) => part.id) });
@@ -5322,7 +5363,7 @@
       else this.view = a > 1.2 ? [Math.max(12, 9 * a), 9] : [11.7, 11.7 / a];
       this.offset = [0, a < 0.8 ? 1.1 : -0.3];
       this.scale = this.canvas.width / (2 * this.view[0]);
-      const rx = scene === "raid" ? CONFIG.raid.radiusX : 9.5, ry = scene === "raid" ? CONFIG.raid.radiusY : 6.8;
+      const rx = scene === "raid" ? CONFIG.raid.arena.radiusX : 9.5, ry = scene === "raid" ? CONFIG.raid.arena.radiusY : 6.8;
       this.terrainDots = Array.from({ length: 92 }, (_, i) => {
         const angle = i * 2.39996, rad = Math.sqrt((i + 0.5) / 92);
         return this.project(Math.cos(angle) * (rx + 0.3) * rad, Math.sin(angle) * (ry + 0.3) * rad);
@@ -5478,8 +5519,8 @@
       const effects = this.unitRings, a = u.ability, s = UNIT_ABILITY_PROFILES[u.species];
       effects.length = 0;
       if (u.buffed && u.hp > 0) this.addUnitRing(u.radius + 0.16, "#eacb72", 0.055, 1);
-      if (a.phase === "windup" && s) this.addUnitRing(u.radius + 0.1, ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0], 0.065, Math.min(1, a.elapsed / s.windup));
-      const breeding = farmBreedingCooldown(u, world, CONFIG.breedCooldownSeconds, this.breedingIndicator);
+      if (a.phase === "windup" && s) this.addUnitRing(u.radius + 0.1, ATTACK_ACCENTS[u.species] || ATTACK_ACCENTS[0], 0.065, Math.min(1, a.elapsed / s.timing.windup));
+      const breeding = farmBreedingCooldown(u, world, CONFIG.farm.breeding.cooldownSeconds, this.breedingIndicator);
       if (breeding && breeding.progress > 0) this.addUnitRing(u.radius + 0.085, "#8fac68", 0.035, breeding.progress);
       return effects;
     }
@@ -5617,8 +5658,8 @@
       if (player.currentExpression !== safeExpression) player.setExpression(safeExpression);
       if (b.patternId !== "summon.mouth-t1") player.seek(this.displayTimeMs);
       const s = this.scale * (0, import_vector_sockets2.bossVectorScale)(b.radius), ground = record.anchors.ground, matrix = [s, 0, 0, s, p.x - ground.x * s, p.y - ground.y * s];
-      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farmBossEvent.celebrationSeconds * 2)) : 0;
-      const fade = event?.phase === "fading" ? clamp3(1 - event.elapsed / CONFIG.farmBossEvent.fadeSeconds, 0, 1) : 1;
+      const defeatBounce = event?.phase === "celebrating" && event.outcome === "defeat" ? Math.max(0, Math.sin(event.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
+      const fade = event?.phase === "fading" ? clamp3(1 - event.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
       const parts = record.parts, pose = bossAttackPose(b, parts);
       player.setBasePose("body", { x: 0, y: pose.body.y - 18 * defeatBounce, rotation: pose.body.rotation, scaleX: pose.body.scaleX * (1 + (k.squash || 0)) * (1 - 0.04 * defeatBounce), scaleY: pose.body.scaleY * (1 - (k.squash || 0)) * (1 + 0.06 * defeatBounce), opacity: fade });
       for (const [part, rotation] of Object.entries(pose.arms)) if (parts.has(part)) player.setBasePose(part, { rotation });
@@ -5634,7 +5675,7 @@
       }
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", rx = raid ? CONFIG.raid.radiusX : 9.5, ry = raid ? CONFIG.raid.radiusY : 6.8;
+      const c = this.ctx, S = this.scale, raid = sim2.scene === "raid", rx = raid ? CONFIG.raid.arena.radiusX : 9.5, ry = raid ? CONFIG.raid.arena.radiusY : 6.8;
       this.groundEllipse(0, -0.2, rx + 1.3, ry + 1.1, "#bcc7a6");
       this.groundEllipse(0, 0, rx + 1.2, ry + 1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
       this.groundEllipse(0, 0.15, rx + 0.3, ry + 0.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
@@ -5644,14 +5685,14 @@
         this.ellipse(p.x + 0.1 * S, p.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", p.angle + 0.7);
       }
       if (raid) {
-        this.strokeGroundEllipse(0, 0, CONFIG.raid.radiusX - 0.5, CONFIG.raid.radiusY - 0.5, "#728e61a8", 0.075);
+        this.strokeGroundEllipse(0, 0, CONFIG.raid.arena.radiusX - 0.5, CONFIG.raid.arena.radiusY - 0.5, "#728e61a8", 0.075);
         if (this.dropTarget) {
           const t = this.dropTarget;
           this.groundEllipse(t.x, t.y, 0.32, 0.22, t.valid ? "#f3d58a55" : "#b56d6266");
           this.strokeGroundEllipse(t.x, t.y, 0.36, 0.25, t.valid ? "#f4e0a0" : "#b36359", 0.055);
         }
       }
-      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, CONFIG.maxUnitRadius) : null;
+      const event = sim2.farmBossEvent, area = raid || sim2.scene === "farm" && event?.phase === "fighting" ? renderedBossAttackArea(sim2.boss, CONFIG.unit.maxRadius) : null;
       this.bossTelegraph = area;
       if (area) this.drawBossTelegraph(area);
     }
@@ -6209,7 +6250,7 @@
       const w = this.world, startTime = w.time, loopStart = this.loop?.simulationTimeMs, startClock = this.adjustedWallTime(Number.isFinite(loopStart) ? loopStart : this.pulseTimestamp ?? globalThis.performance.now()), presentationStartMs = Math.max(0, startClock - (this.presentationOriginWallMs ?? startClock));
       bindPresentationClock(w, (time) => (presentationStartMs + (time - startTime) * 1e3) / 1e3);
       if (w.scene === "farm") w.advanceAutoTaps(0.05);
-      for (let i = 0; i < 6; i++) w.step(CONFIG.fixedStep);
+      for (let i = 0; i < 6; i++) w.step(CONFIG.physics.fixedStep);
       this.tick++;
       this.presentationTick++;
       this.onWorldStep(w);
@@ -7226,7 +7267,7 @@
       if (current.settlementRunSequence !== run.runSequence || current.settlementSessionId !== run.sessionId || current.settlementEncounterId !== run.runSequence) throw Error("레이드 명단의 정산 예약이 개인 농장 저장과 일치하지 않아요.");
       return world;
     }
-    const entries = raidRosterEntries(personalGarden.units, CONFIG.maxRaidPlayerUnits).map(([farmId, species, tier]) => ({ farmId, species, tier, deployed: false }));
+    const entries = raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits).map(([farmId, species, tier]) => ({ farmId, species, tier, deployed: false }));
     const view = snapshot(world);
     view.raidExpectedPlayers = [.../* @__PURE__ */ new Set([...view.raidExpectedPlayers, ownerId])];
     view.raidRosters.push({ ownerId, troops: entries, abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlementSessionId: run.sessionId, settlementRunSequence: run.runSequence, settlementEncounterId: run.runSequence, lastDeploySequence: 0, buffUntil: 0, buffReadyAt: 0 });
@@ -7262,7 +7303,7 @@
     closeBossEncounter(false);
     const battle = Garden.createRaidBattle(personalGarden.seed + Math.floor(performance.now()) >>> 0, ["solo"], bossStage);
     install(battle);
-    active.queue("register-roster", { entries: raidRosterEntries(personalGarden.units, CONFIG.maxRaidPlayerUnits), abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlement: { sessionId: reserved.sessionId, runSequence: reserved.runSequence, encounterId: reserved.runSequence } });
+    active.queue("register-roster", { entries: raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits), abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression), settlement: { sessionId: reserved.sessionId, runSequence: reserved.runSequence, encounterId: reserved.runSequence } });
     setHome(false, push);
   }
   async function returnToFarm(push = true) {
@@ -7831,7 +7872,7 @@
     syncFlag("raidControls", "hidden", !raid || home);
     syncFlag("bossbar", "hidden", !battleHud || home);
     syncText("count", raid ? w.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount);
-    syncText("capacity", personalGarden?.capacity ?? CONFIG.cap);
+    syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText("starter", raid ? `${w.units.length} deployed in raid` : pendingReward ? `${speciesRewardName(pendingReward.species)} 보상 대기 · 공간이 생기면 합류해요` : !hasReadyTroops ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= w.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요");
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText("allyHealthText", Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존");

@@ -115,7 +115,7 @@ function bossAttackPose(b,parts){
       this.actors=[];this.actorPool=[];this.liveUnitIds=new Set();this.joyEffects=[];
       this.unitRings=[];this.unitRingPool=[{},{},{}];this.breedingIndicator={};
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
-      if(entries.length!==CONFIG.maxSpecies||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
+      if(entries.length!==CONFIG.unit.speciesCount||entries.some(([species],index)=>Number(species)!==index)||typeof createVectorAsset!=='function')throw new Error('All pinned GameKit troop and vector-assets sources are required');
       this.meshes=new MeshRenderer(this.device);this.ctx.meshRenderer=this.meshes;
       for(const [species,compiled] of entries)this.vectorAssets.set(Number(species),{compiled,asset:createVectorAsset(this.meshes,compiled),anchors:readVectorSockets(compiled,`species ${species}, ${compiled.sourcePath}`),parts:new Set(compiled.metadata.parts.map(part=>part.id)),faceParts:compiled.metadata.parts.filter(part=>part.id.startsWith('face-')).map(part=>part.id)});
       this.bossAssets=new Map(Object.entries(BOSS_VECTOR_ASSETS).map(([id,compiled])=>[id,{compiled,asset:createVectorAsset(this.meshes,compiled),parts:new Set(compiled.metadata.parts.map(part=>part.id))}]));
@@ -149,7 +149,7 @@ function bossAttackPose(b,parts){
       if(scene==='raid')this.view=a>1.2?[Math.max(26.5,17*a),17]:[26.5,26.5/a];
       else this.view=a>1.2?[Math.max(12,9*a),9]:[11.7,11.7/a];
       this.offset=[0,a<.8?1.1:-.3];this.scale=this.canvas.width/(2*this.view[0]);
-      const rx=scene==='raid'?CONFIG.raid.radiusX:9.5,ry=scene==='raid'?CONFIG.raid.radiusY:6.8;
+      const rx=scene==='raid'?CONFIG.raid.arena.radiusX:9.5,ry=scene==='raid'?CONFIG.raid.arena.radiusY:6.8;
       this.terrainDots=Array.from({length:92},(_,i)=>{const angle=i*2.39996,rad=Math.sqrt((i+.5)/92);return this.project(Math.cos(angle)*(rx+.3)*rad,Math.sin(angle)*(ry+.3)*rad)});
       this.terrainLeaves=Array.from({length:24},(_,i)=>{const angle=i*2.39996;return{...this.project(Math.cos(angle)*(rx+.55),Math.sin(angle)*(ry+.55)),angle}});
     }
@@ -243,8 +243,8 @@ function bossAttackPose(b,parts){
     unitRingEffects(u,world){
       const effects=this.unitRings,a=u.ability,s=ATTACK_TYPES[u.species];effects.length=0;
       if(u.buffed&&u.hp>0)this.addUnitRing(u.radius+.16,'#eacb72',.055,1);
-      if(a.phase==='windup'&&s)this.addUnitRing(u.radius+.1,ATTACK_ACCENTS[u.species]||ATTACK_ACCENTS[0],.065,Math.min(1,a.elapsed/s.windup));
-      const breeding=farmBreedingCooldown(u,world,CONFIG.breedCooldownSeconds,this.breedingIndicator);
+      if(a.phase==='windup'&&s)this.addUnitRing(u.radius+.1,ATTACK_ACCENTS[u.species]||ATTACK_ACCENTS[0],.065,Math.min(1,a.elapsed/s.timing.windup));
+      const breeding=farmBreedingCooldown(u,world,CONFIG.farm.breeding.cooldownSeconds,this.breedingIndicator);
       if(breeding&&breeding.progress>0)this.addUnitRing(u.radius+.085,'#8fac68',.035,breeding.progress);
       return effects;
     }
@@ -359,8 +359,8 @@ function bossAttackPose(b,parts){
       const safeExpression=metadata.expressions?.[expression]?expression:'neutral';if(player.currentExpression!==safeExpression)player.setExpression(safeExpression);
       if(b.patternId!=='summon.mouth-t1')player.seek(this.displayTimeMs);
       const s=this.scale*bossVectorScale(b.radius),ground=record.anchors.ground,matrix=[s,0,0,s,p.x-ground.x*s,p.y-ground.y*s];
-      const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farmBossEvent.celebrationSeconds*2)):0;
-      const fade=event?.phase==='fading'?clamp(1-event.elapsed/CONFIG.farmBossEvent.fadeSeconds,0,1):1;
+      const defeatBounce=event?.phase==='celebrating'&&event.outcome==='defeat'?Math.max(0,Math.sin(event.elapsed*Math.PI*2/CONFIG.farm.bossEvent.celebrationSeconds*2)):0;
+      const fade=event?.phase==='fading'?clamp(1-event.elapsed/CONFIG.farm.bossEvent.fadeSeconds,0,1):1;
       const parts=record.parts,pose=bossAttackPose(b,parts);
       player.setBasePose('body',{x:0,y:pose.body.y-18*defeatBounce,rotation:pose.body.rotation,scaleX:pose.body.scaleX*(1+(k.squash||0))*(1-.04*defeatBounce),scaleY:pose.body.scaleY*(1-(k.squash||0))*(1+.06*defeatBounce),opacity:fade});
       for(const [part,rotation] of Object.entries(pose.arms))if(parts.has(part))player.setBasePose(part,{rotation});
@@ -375,7 +375,7 @@ function bossAttackPose(b,parts){
       }
     }
     terrain(sim2) {
-      const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',rx=raid?CONFIG.raid.radiusX:9.5,ry=raid?CONFIG.raid.radiusY:6.8;
+      const c = this.ctx, S = this.scale, raid=sim2.scene==='raid',rx=raid?CONFIG.raid.arena.radiusX:9.5,ry=raid?CONFIG.raid.arena.radiusY:6.8;
       this.groundEllipse(0, -0.2, rx+1.3, ry+1.1, "#bcc7a6");
       this.groundEllipse(0, 0, rx+1.2, ry+1.1, sim2.scene === "farm" ? "#d1d8b8" : "#cecfb3");
       this.groundEllipse(0, 0.15, rx+.3, ry+.3, sim2.scene === "farm" ? "#d9dfc2" : "#d7d8bf");
@@ -385,10 +385,10 @@ function bossAttackPose(b,parts){
         this.ellipse(p.x+.1*S,p.y-.09*S,.19*S,.075*S,'#a8b78a',p.angle+.7);
       }
       if(raid){
-        this.strokeGroundEllipse(0,0,CONFIG.raid.radiusX-.5,CONFIG.raid.radiusY-.5,'#728e61a8',.075);
+        this.strokeGroundEllipse(0,0,CONFIG.raid.arena.radiusX-.5,CONFIG.raid.arena.radiusY-.5,'#728e61a8',.075);
         if(this.dropTarget){const t=this.dropTarget;this.groundEllipse(t.x,t.y,.32,.22,t.valid?'#f3d58a55':'#b56d6266');this.strokeGroundEllipse(t.x,t.y,.36,.25,t.valid?'#f4e0a0':'#b36359',.055)}
       }
-      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?renderedBossAttackArea(sim2.boss,CONFIG.maxUnitRadius):null;this.bossTelegraph=area;
+      const event=sim2.farmBossEvent,area=(raid||sim2.scene==='farm'&&event?.phase==='fighting')?renderedBossAttackArea(sim2.boss,CONFIG.unit.maxRadius):null;this.bossTelegraph=area;
       if(area)this.drawBossTelegraph(area);
     }
 
