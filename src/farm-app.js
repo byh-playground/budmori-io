@@ -22,7 +22,7 @@ import {
     settleRaidOwnerFarm,
     raidDeploymentRewardMultiplier,
 } from './raid-settlement.js';
-import { BOSS_REWARD_SETTINGS, bossAcquisitionChance, bossStageStats, settleBossKill } from './boss-rewards.js';
+import { BOSS_REWARD_SETTINGS, bossRewardRollDescription, bossStageStats, settleBossKill } from './boss-rewards.js';
 import { selectFarmBossStage } from './farm-boss-stages.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 const DOLLAR = (id) => document.getElementById(id),
@@ -46,12 +46,45 @@ let bossEncounterOpen = false;
 let bossSwipe = null;
 let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
+let mergeStatusCache = {
+    world: null,
+    task: null,
+    updatedAt: -Infinity,
+    value: null,
+};
 const RENDERER = new Diorama(DOLLAR('world'));
 const FORMATION_UI = new FormationSkillsUI((kind, payload) => active?.queue(kind, payload));
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
 STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
 function frameRate() {
     return PERFORMANCE_DIAGNOSTICS.frameRate();
+}
+function mergeAvailability(world, now) {
+    if (
+        mergeStatusCache.world !== world ||
+        mergeStatusCache.task !== world.mergeTask ||
+        now - mergeStatusCache.updatedAt >= 250
+    ) {
+        mergeStatusCache = {
+            world,
+            task: world.mergeTask,
+            updatedAt: now,
+            value: world.mergeAvailability(),
+        };
+    }
+    return mergeStatusCache.value;
+}
+function rewardReceiptSummary(reward) {
+    if (!reward) {
+        return '보상 정산 중';
+    }
+    const ROLLS = reward.drops || reward.rolls || [],
+        SUCCESS_COUNT = reward.successCount ?? ROLLS.filter((drop) => drop.status !== 'missed').length,
+        GRANTED_COUNT = reward.grantedCount ?? ROLLS.filter((drop) => drop.status === 'granted').length;
+    if (SUCCESS_COUNT === 0) {
+        return reward.rollCount ? '추첨 완료 · 획득 없음' : '종 추첨 없음';
+    }
+    return `${GRANTED_COUNT}/${SUCCESS_COUNT}마리 획득${reward.status === 'pending' ? ' · 빈 자리 대기' : ''}`;
 }
 globalThis.BudmoriPerformanceDiagnostics = {
     summary: () => (active ? PERFORMANCE_DIAGNOSTICS.summary(active.world, active.paused) : []),
@@ -311,13 +344,13 @@ function renderBossEncounterStage(stage) {
             TITLE = document.createElement('strong'),
             DETAILS = document.createElement('small');
         TITLE.textContent = REWARD_NAME;
-        DETAILS.textContent = `${Math.round(BOSS_REWARD_SETTINGS.acquisitionChance * 100)}%씩 · ${ROLLS}회 개별 추첨 · 성공마다 T1 1마리`;
+        DETAILS.textContent = bossRewardRollDescription(SELECTION.stage);
         LABEL.append(TITLE, DETAILS);
         DOLLAR('bossStageDrop').append(ICON, LABEL);
         renderNeutralBossPreview(ICON, SPECIES, CATALOG_ENTRY.asset);
         DOLLAR('bossStageNotice').textContent = '';
     } else {
-        DOLLAR('bossStageNotice').textContent = '종 보상은 없어요 · 5스테이지부터 1회 추첨';
+        DOLLAR('bossStageNotice').textContent = '';
     }
     DOLLAR('bossEncounterChallenge').disabled =
         !hasRaidRosterEntries(personalGarden.units) ||
@@ -514,7 +547,7 @@ function persistRaidSettlement(raidWorld, ownerId) {
                         source: 'raid',
                         receiptKey,
                         acquisitionMultiplier: deploymentMultiplier,
-                        rollCount: STAGE_REWARD?.rolls ?? 1,
+                        rollBudget: STAGE_REWARD?.rollBudget ?? 1,
                         xpAmount: STAGE_REWARD?.xp,
                         species: raidWorld.boss.species ?? 3,
                         tier: 1,
@@ -531,7 +564,11 @@ function persistRaidSettlement(raidWorld, ownerId) {
                             chance: REWARD.chance,
                             roll: REWARD.roll,
                             rollCount: REWARD.rollCount,
-                            rolls: REWARD.drops,
+                            rollBudget: REWARD.rollBudget,
+                            bonusRollChance: REWARD.bonusRollChance,
+                            successCount: REWARD.successCount,
+                            grantedCount: REWARD.grantedCount,
+                            rolls: REWARD.drops || [],
                             unitId: REWARD.unitId,
                             receiptKey: REWARD.receiptKey,
                         },
@@ -884,12 +921,7 @@ DOLLAR('confirmImport').onclick = () => {
 DOLLAR('farm').onclick = () => returnToFarm();
 DOLLAR('raid').onclick = () => openBossEncounter();
 DOLLAR('return').onclick = () => returnToFarm();
-for (const VALUE of ['breed', 'merge']) {
-    DOLLAR(VALUE).onclick = () =>
-        active.queue('mode', {
-            value: VALUE,
-        });
-}
+DOLLAR('merge').onclick = () => active?.queue('merge');
 DOLLAR('feed').addEventListener('keydown', (e) => {
     if (e.repeat && ['Enter', ' '].includes(e.key)) {
         e.preventDefault();
@@ -1230,21 +1262,13 @@ function deploymentHud() {
     }
     const STAGE = W.boss.stage || 0;
     if (STAGE) {
-        const STAGE_REWARD = bossStageStats(STAGE),
-            MULTIPLIER = raidDeploymentRewardMultiplier({
-                availableAtStart: ROSTER?.troops.length || 0,
-                originalUnitsDeployed: deployed,
-            }),
-            CHANCE = Math.round(
-                bossAcquisitionChance({
-                    acquisitionMultiplier: MULTIPLIER,
-                }) * 100,
-            );
+        const MULTIPLIER = raidDeploymentRewardMultiplier({
+            availableAtStart: ROSTER?.troops.length || 0,
+            originalUnitsDeployed: deployed,
+        });
         syncText(
             'raidRewardChance',
-            STAGE_REWARD.rolls
-                ? `${speciesRewardName(W.boss.species)} · ${CHANCE}%씩 · ${STAGE_REWARD.rolls}회 개별 추첨`
-                : '종 추첨 없음',
+            `${speciesRewardName(W.boss.species)} · ${bossRewardRollDescription(STAGE, { acquisitionMultiplier: MULTIPLIER })}`,
         );
     } else {
         syncText('raidRewardChance', '');
@@ -1479,14 +1503,17 @@ function sync(display, now, notices) {
         BATTLE_HUD = RAID || FARM_EVENT_ACTIVE,
         HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false,
         REWARD_WORLD = personalGarden || W,
-        PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => reward.status === 'pending');
+        PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => reward.status === 'pending'),
+        MERGE_STATUS = mergeAvailability(W, now);
     if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || panPointer)) {
         stopWorldInput();
     }
     syncAttribute('farm', 'aria-pressed', !RAID && !bossEncounterOpen);
     syncAttribute('raid', 'aria-pressed', RAID || bossEncounterOpen);
-    syncAttribute('breed', 'aria-pressed', W.mode === 'breed');
-    syncAttribute('merge', 'aria-pressed', W.mode === 'merge');
+    syncFlag('merge', 'disabled', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncFlag('mergeNotice', 'hidden', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
+    syncText('mergeNotice', MERGE_STATUS.reason);
     let displayedCount = 0;
     let worldCount = 0;
     let armyCurrent = 0;
@@ -1546,6 +1573,12 @@ function sync(display, now, notices) {
             RAID &&
             personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === SETTLED_RUN_SEQUENCE)
                 ?.reward,
+        FARM_REWARD =
+            !RAID && FARM_EVENT?.outcome === 'victory'
+                ? W.bossRewardReceipts.find(
+                      (reward) => reward.source === 'farm' && reward.encounterId === FARM_EVENT.encounterId,
+                  )
+                : null,
         STAGE_NAME = RAID && BOSS.stage ? `STAGE ${BOSS.stage}` : '',
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
@@ -1562,15 +1595,15 @@ function sync(display, now, notices) {
         'battleOutcome',
         RAID
             ? BATTLE_OUTCOME === 'victory'
-                ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 승리 · ${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS.stage || 1).xp} XP${SETTLED_REWARD?.acquisition?.rollCount ? ` · ${REWARD_NAME} ${SETTLED_REWARD.acquisition.rolls?.filter((drop) => drop.status === 'granted').length || 0}/${SETTLED_REWARD.acquisition.rollCount}회 성공` : SETTLED_REWARD ? ' · 종 추첨 없음' : bossStageStats(BOSS.stage || 1).rolls ? ' · 정원 복귀 후 보상 정산' : ' · 종 추첨 없음'} · 모두 정원으로 돌아갈 수 있어요`
+                ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 승리 · ${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD.acquisition) : '정원 복귀 후 보상 정산'} · 모두 정원으로 돌아갈 수 있어요`
                 : BATTLE_OUTCOME === 'defeat'
                   ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요`
                   : ''
             : BATTLE_OUTCOME === 'victory'
               ? FARM_EVENT.rewardStatus === 'granted'
-                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} 획득 · 정원에 합류했어요`
+                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 정원에 합류했어요`
                   : FARM_EVENT.rewardStatus === 'pending'
-                    ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} 획득 대기 · 공간이 생기면 합류해요`
+                    ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                     : `${ENCOUNTER_NAME} 격파`
               : BATTLE_OUTCOME === 'defeat'
                 ? `${ENCOUNTER_NAME} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요`

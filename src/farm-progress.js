@@ -44,6 +44,12 @@ function copyPlayer(player) {
 }
 const REWARD_EXTRAS = [
     'acquisitionMultiplier',
+    'rollBudget',
+    'bonusRollChance',
+    'rollCount',
+    'successCount',
+    'grantedCount',
+    'unitId',
     'xpReceiptKey',
     'xpStatus',
     'xpAmount',
@@ -51,18 +57,30 @@ const REWARD_EXTRAS = [
     'pointsAwarded',
 ];
 function pendingReward(reward) {
-    const ROLLS = reward.drops
-        ? reward.drops.filter((drop) => drop.status === 'pending').map((drop) => drop.roll)
-        : [reward.roll];
-    const RESULT = {
-        encounterId: reward.encounterId,
-        source: reward.source,
-        receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
-        species: reward.species,
-        tier: reward.tier,
-        chance: reward.chance,
-        rolls: ROLLS,
-    };
+    const RESULT = Array.isArray(reward.drops)
+        ? {
+              encounterId: reward.encounterId,
+              source: reward.source,
+              receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
+              species: reward.species,
+              tier: reward.tier,
+              chance: reward.chance,
+              rolls: reward.drops.filter((drop) => drop.status === 'pending').map((drop) => drop.roll),
+          }
+        : {
+              encounterId: reward.encounterId,
+              source: reward.source,
+              receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
+              species: reward.species,
+              tier: 1,
+              chance: reward.chance,
+              rollBudget: reward.rollBudget,
+              bonusRollChance: reward.bonusRollChance,
+              rollCount: reward.rollCount,
+              successCount: reward.successCount,
+              grantedCount: reward.grantedCount,
+              unitId: reward.unitId,
+          };
     for (const KEY of REWARD_EXTRAS) {
         if (reward[KEY] !== undefined) {
             RESULT[KEY] = reward[KEY];
@@ -138,7 +156,6 @@ export function captureFarmProgress(world) {
     return {
         seed: world.seed,
         rngState: world.rng.state,
-        mode: world.mode,
         player: copyPlayer(world.playerProgression),
         roster: ROSTER,
         food: {
@@ -186,11 +203,11 @@ export function captureFarmProgress(world) {
     };
 }
 export function validateFarmProgress(data) {
-    keys(data, ['seed', 'rngState', 'mode', 'player', 'roster', 'food', 'totals', 'bossStages', 'ledger']);
+    keys(data, ['seed', 'rngState', 'player', 'roster', 'food', 'totals', 'bossStages', 'ledger'], ['mode']);
     ASSERT(
         INTEGER(data.seed, 0, 0xffffffff) &&
             INTEGER(data.rngState, 0, 0xffffffff) &&
-            ['breed', 'merge'].includes(data.mode),
+            (data.mode === undefined || ['breed', 'merge'].includes(data.mode)),
     );
     const PLAYER = data.player,
         PLAYER_WITH_DEFAULTS = {
@@ -314,7 +331,8 @@ export function validateFarmProgress(data) {
     const RECEIPTS = new Set(),
         ENCOUNTERS = new Set();
     for (const REWARD of BOSS.pendingRewards) {
-        keys(REWARD, ['encounterId', 'source', 'receiptKey', 'species', 'tier', 'chance', 'rolls'], REWARD_EXTRAS);
+        const BASE_KEYS = ['encounterId', 'source', 'receiptKey', 'species', 'tier', 'chance'];
+        keys(REWARD, BASE_KEYS, [...REWARD_EXTRAS, 'rolls']);
         ASSERT(
             ['farm', 'raid'].includes(REWARD.source) &&
                 INTEGER(REWARD.encounterId, 1, BOSS.settledThrough[REWARD.source]) &&
@@ -328,12 +346,27 @@ export function validateFarmProgress(data) {
         const ENCOUNTER = `${REWARD.source}:${REWARD.encounterId}`;
         ASSERT(!ENCOUNTERS.has(ENCOUNTER));
         ENCOUNTERS.add(ENCOUNTER);
-        ASSERT(
-            Array.isArray(REWARD.rolls) &&
-                REWARD.rolls.length > 0 &&
-                REWARD.rolls.length <= BOSS_REWARD_SETTINGS.maxStage &&
-                REWARD.rolls.every((roll) => NUMBER(roll, 0, 1) && roll < REWARD.chance),
-        );
+        if (Object.hasOwn(REWARD, 'rolls')) {
+            ASSERT(
+                Array.isArray(REWARD.rolls) &&
+                    REWARD.rolls.length > 0 &&
+                    REWARD.rolls.length <= BOSS_REWARD_SETTINGS.maxStage &&
+                    REWARD.rolls.every((roll) => NUMBER(roll, 0, 1) && roll < REWARD.chance),
+            );
+        } else {
+            ASSERT(
+                INTEGER(REWARD.rollCount, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
+                    NUMBER(REWARD.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
+                    NUMBER(REWARD.bonusRollChance, 0, 1) &&
+                    REWARD.bonusRollChance < 1 &&
+                    REWARD.bonusRollChance === REWARD.rollBudget - Math.floor(REWARD.rollBudget) &&
+                    INTEGER(REWARD.successCount, 1, REWARD.rollCount) &&
+                    INTEGER(REWARD.grantedCount, 0, REWARD.successCount - 1) &&
+                    INTEGER(REWARD.unitId, 0, CONFIG.farm.maxUnitId) &&
+                    REWARD.grantedCount > 0 === REWARD.unitId > 0 &&
+                    REWARD.tier === 1,
+            );
+        }
         if (REWARD.acquisitionMultiplier !== undefined) {
             ASSERT(NUMBER(REWARD.acquisitionMultiplier, 0, 2));
         }
@@ -381,7 +414,6 @@ export function restoreFarmProgress(data) {
     WORLD.resetUnits();
     WORLD.food = [];
     WORLD.nextId = 1;
-    WORLD.mode = data.mode;
     WORLD.playerProgression = copyPlayer(data.player);
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
@@ -436,6 +468,15 @@ export function restoreFarmProgress(data) {
         raidSettlementWatermark: RAID.settledThrough,
     });
     WORLD.bossRewardReceipts = BOSS.pendingRewards.map((reward) => {
+        if (!Object.hasOwn(reward, 'rolls')) {
+            return {
+                ...reward,
+                x: 0,
+                y: 0,
+                roll: 0,
+                status: 'pending',
+            };
+        }
         const { rolls: ROLLS, ...FIELDS } = reward;
         return {
             ...FIELDS,
@@ -445,11 +486,7 @@ export function restoreFarmProgress(data) {
             status: 'pending',
             unitId: 0,
             rollCount: ROLLS.length,
-            drops: ROLLS.map((roll) => ({
-                roll,
-                status: 'pending',
-                unitId: 0,
-            })),
+            drops: ROLLS.map((roll) => ({ roll, status: 'pending', unitId: 0 })),
         };
     });
     WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);

@@ -186,7 +186,6 @@ export const FARM_SNAPSHOT_SHAPE = {
         nextSelectionId: 1,
         selections: [],
     },
-    mode: 'breed',
     scene: 'farm',
     running: false,
     encounter: {
@@ -355,7 +354,7 @@ const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
 });
 const DROP = FIELDS('roll status unitId');
 const REWARD = FIELDS(
-    'encounterId source receiptKey acquisitionMultiplier species tier x y chance roll status unitId rollCount xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
+    'encounterId source receiptKey acquisitionMultiplier species tier x y chance roll status unitId rollBudget bonusRollChance rollCount successCount grantedCount xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
     {
         drops: [DROP],
     },

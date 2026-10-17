@@ -72,12 +72,11 @@ export function validateSnapshot(raw) {
     shape(raw, GARDEN_SHAPE);
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
     ASSERT(INTEGER(raw.seed, 0, 0xffffffff) && INTEGER(raw.rng.state, 0, 0xffffffff));
-    ASSERT(['farm', 'raid'].includes(raw.scene) && ['breed', 'merge'].includes(raw.mode));
+    ASSERT(['farm', 'raid'].includes(raw.scene));
     if (raw.mergeTask !== null) {
         const T = raw.mergeTask;
         ASSERT(
             raw.scene === 'farm' &&
-                raw.mode === 'merge' &&
                 T &&
                 ['approach', 'animation'].includes(T.phase) &&
                 Number.isFinite(T.elapsed) &&
@@ -211,8 +210,8 @@ export function validateSnapshot(raw) {
         const KEY = REWARD.receiptKey || REWARD.source + ':' + REWARD.encounterId;
         ASSERT(!REWARD_IDS.has(KEY));
         REWARD_IDS.add(KEY);
-        ASSERT((REWARD.status === 'granted') === REWARD.unitId > 0);
         if (REWARD.drops !== undefined) {
+            ASSERT((REWARD.status === 'granted') === REWARD.unitId > 0);
             ASSERT(
                 Array.isArray(REWARD.drops) &&
                     REWARD.drops.length <= BOSS_REWARD_SETTINGS.maxStage &&
@@ -238,6 +237,31 @@ export function validateSnapshot(raw) {
                           ? 'granted'
                           : 'missed'),
             );
+        } else {
+            const BASE_ROLL_COUNT = Math.floor(REWARD.rollBudget),
+                EXPECTED_STATUS =
+                    REWARD.successCount === 0
+                        ? 'missed'
+                        : REWARD.grantedCount === REWARD.successCount
+                          ? 'granted'
+                          : 'pending';
+            ASSERT(
+                Number.isFinite(REWARD.rollBudget) &&
+                    REWARD.rollBudget >= 1 &&
+                    REWARD.rollBudget <= BOSS_REWARD_SETTINGS.maxRollCount &&
+                    Number.isFinite(REWARD.bonusRollChance) &&
+                    REWARD.bonusRollChance >= 0 &&
+                    REWARD.bonusRollChance < 1 &&
+                    REWARD.bonusRollChance === REWARD.rollBudget - BASE_ROLL_COUNT &&
+                    INTEGER(REWARD.rollCount, BASE_ROLL_COUNT, BOSS_REWARD_SETTINGS.maxRollCount) &&
+                    (REWARD.rollCount === BASE_ROLL_COUNT ||
+                        (REWARD.bonusRollChance > 0 && REWARD.rollCount === BASE_ROLL_COUNT + 1)) &&
+                    INTEGER(REWARD.successCount, 0, REWARD.rollCount) &&
+                    INTEGER(REWARD.grantedCount, 0, REWARD.successCount) &&
+                    REWARD.grantedCount > 0 === REWARD.unitId > 0 &&
+                    REWARD.tier === 1 &&
+                    REWARD.status === EXPECTED_STATUS,
+            );
         }
         if (REWARD.receiptKey !== undefined) {
             ASSERT(
@@ -251,7 +275,7 @@ export function validateSnapshot(raw) {
                     REWARD.acquisitionMultiplier <= 2,
             );
         }
-        if (REWARD.source === 'farm' && REWARD.status === 'granted') {
+        if (REWARD.source === 'farm' && REWARD.unitId > 0) {
             ASSERT(REWARD.unitId < raw.nextId);
         }
     }

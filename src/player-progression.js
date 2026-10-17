@@ -6,10 +6,9 @@ import {
 } from './formation-skill-state.js';
 import { getFarmUpgradeInvestedCount } from './farm-upgrades.js';
 
-// One base value anchors both confirmed progression numbers. The next-level
-// increment is derived, not tuned independently.
+// Level thresholds and boss-kill rewards use separate confirmed base values.
 export const PLAYER_PROGRESS_BASE_XP = 100;
-export const BOSS_KILL_XP = PLAYER_PROGRESS_BASE_XP;
+export const BOSS_KILL_XP = 20;
 export const FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
 export const LEVEL_XP_MULTIPLIER = 1.2;
 export const SHARED_POINTS_PER_LEVEL = 1;

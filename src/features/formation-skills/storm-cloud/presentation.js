@@ -1,4 +1,19 @@
 import { FormationPresentation, cloud, stroke } from '../presentation-base.js';
+const POINT_BUFFERS = new WeakMap();
+
+function pointBuffersFor(effect) {
+    let buffers = POINT_BUFFERS.get(effect);
+    if (!buffers) {
+        const POINT = () => [0, 0, 0];
+        buffers = {
+            arc: Array.from({ length: 13 }, POINT),
+            intro: Array.from({ length: 4 }, POINT),
+            branches: Array.from({ length: 3 }, () => Array.from({ length: 3 }, POINT)),
+        };
+        POINT_BUFFERS.set(effect, buffers);
+    }
+    return buffers;
+}
 
 function visualOffset(effect, index, salt) {
     const VALUE = Math.sin(effect.id * 127.1 + effect.pulse * 311.7 + index * 74.7 + salt * 41.3) * 43758.5453;
@@ -23,7 +38,7 @@ export class StormCloudPresentation extends FormationPresentation {
             );
         }
         if (ENTER < 1 && effect.age > 0.15) {
-            const INTRO_POINTS = effect.introPoints;
+            const INTRO_POINTS = pointBuffersFor(effect).intro;
             INTRO_POINTS[0][0] = effect.x - 0.3;
             INTRO_POINTS[0][1] = effect.y;
             INTRO_POINTS[0][2] = Z;
@@ -39,8 +54,9 @@ export class StormCloudPresentation extends FormationPresentation {
             stroke(renderer, INTRO_POINTS, '#b7e8f0aa', 0.035);
         }
         if (effect.pulse > 0 && effect.age > 0.5 && EXIT === 0) {
-            const POINTS = effect.arcPoints,
-                BRANCHES = effect.branchPoints;
+            const BUFFERS = pointBuffersFor(effect),
+                POINTS = BUFFERS.arc,
+                BRANCHES = BUFFERS.branches;
             for (let index = 0; index < POINTS.length; index++) {
                 const T = index / (POINTS.length - 1),
                     BEND = visualOffset(effect, index, 0) * Math.sin(T * Math.PI),

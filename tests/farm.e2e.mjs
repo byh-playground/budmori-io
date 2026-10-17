@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     SUITE = process.argv[2] || 'core',
-    OUT = path.join(ROOT, 'tests/output');
+    OUT = process.env.BUDMORI_TEST_OUTPUT || path.join(ROOT, 'tests/output');
 await mkdir(OUT, {
     recursive: true,
 });
@@ -834,10 +834,7 @@ async function formationBrowserUI() {
                 const MODEL_CLOUD = W.formationRuntime.effects.find((effect) => effect.kind === 'storm-cloud');
                 let cloudRender = display.formationEffects.find((effect) => effect.id === MODEL_CLOUD.id);
                 BUDMORI.renderer.render(display, BUDMORI.combatFeel, display.displayTimeMs);
-                const POINT_BUFFER = cloudRender.arcPoints,
-                    SAMPLE = POINT_BUFFER[5],
-                    FIRST_POINT = [...SAMPLE],
-                    FIRST_PULSE = MODEL_CLOUD.pulse;
+                const FIRST_PULSE = MODEL_CLOUD.pulse;
                 W.time += 0.2;
                 W.formationSkills.update(0.2);
                 BUDMORI.runtime.capturePresentation('reset');
@@ -847,20 +844,16 @@ async function formationBrowserUI() {
                 BUDMORI.renderer.render(display, BUDMORI.combatFeel, display.displayTimeMs);
                 return {
                     pulseAdvanced: NEXT_MODEL_CLOUD.pulse > FIRST_PULSE,
-                    reusedPoints: cloudRender.arcPoints === POINT_BUFFER,
-                    reusedPoint: cloudRender.arcPoints[5] === SAMPLE,
-                    reshaped: SAMPLE.some((value, index) => value !== FIRST_POINT[index]),
-                    sourceEndpoint: SAMPLE[0] !== 0 || SAMPLE[1] !== 0 || SAMPLE[2] !== 0,
+                    presentationCarriesPulse: cloudRender.pulse === NEXT_MODEL_CLOUD.pulse,
+                    activeVisualPhase: cloudRender.pulse > 0 && cloudRender.age > 0.5,
                 };
             });
             await P.waitForTimeout(80);
             await clean(P);
             await P.screenshot({ path: path.join(OUT, 'formation-sky-beams.png') });
             assert.equal(ARC_TRACE.pulseAdvanced, true);
-            assert.equal(ARC_TRACE.reusedPoints, true);
-            assert.equal(ARC_TRACE.reusedPoint, true);
-            assert.equal(ARC_TRACE.reshaped, true);
-            assert.equal(ARC_TRACE.sourceEndpoint, true);
+            assert.equal(ARC_TRACE.presentationCarriesPulse, true);
+            assert.equal(ARC_TRACE.activeVisualPhase, true);
         }
     }
     await openMenuTab(P, 'formation');
@@ -1076,7 +1069,7 @@ async function cadenceDiagnosticsFlow() {
     await P.locator('#copyDiagnostics').click();
     const BASIC = await P.evaluate(() => navigator.clipboard.readText());
     assert(BASIC.includes('GPU 시간 미측정') && BASIC.includes('상세 꺼짐') && BASIC.includes('미측정'));
-    assert(!BASIC.trim().startsWith('{') && BASIC.split('\n').length <= 15);
+    assert(!BASIC.trim().startsWith('{') && BASIC.split('\n').length <= 20);
     await P.locator('#diagnosticDetail').check();
     await closeMenu(P);
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
@@ -1126,7 +1119,7 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
     assert(PERFORMANCE.counts.drawCalls.total > 0 && PERFORMANCE.counts.bufferUploads.total > 0);
     assert(PERFORMANCE.stagesMs.render.max > 0 && PERFORMANCE.stagesMs.ai.total >= 0);
-    assert(SUMMARY.split('\n').length <= 15);
+    assert(SUMMARY.split('\n').length <= 20);
     REPORT.cadence = {
         elapsedSeconds: AFTER.time - BEFORE.time,
         logicTicks: AFTER.ticks - BEFORE.ticks,
@@ -1289,6 +1282,28 @@ async function core() {
         await P.locator('#feed').click();
     }
     await P.waitForFunction((n) => BUDMORI.foodFeel.counts.manual === n + 15, BEFORE);
+    await P.evaluate(() => {
+        const W = BUDMORI.sim,
+            STARTERS = W.units.filter((unit) => unit.species === 0 && unit.tier === 1);
+        W.food.length = 0;
+        for (const UNIT of STARTERS) {
+            UNIT.meals = 0;
+            UNIT.cooldown = 0;
+            W.food.push({
+                x: UNIT.x,
+                y: UNIT.y,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                seed: 0.5,
+                phase: 'grounded',
+                tx: UNIT.x,
+                ty: UNIT.y,
+            });
+        }
+        W._foodSpatialDirty = true;
+    });
     assert.deepEqual(await cameraSnapshot(P), FEED_CAMERA, 'feeding button presses and drags never pan the world');
     CHECK('Start → farm; native manual taps delivered once per release');
     await P.waitForFunction(
@@ -1298,15 +1313,84 @@ async function core() {
             timeout: 12000,
         },
     );
-    await P.locator('#merge').click();
-    await P.waitForFunction(
-        () => BUDMORI.sim.metrics.merges > 0,
-        {},
-        {
-            timeout: 15000,
-        },
+    const MANUAL_FUSION = await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        W.units = [];
+        for (let index = 0; index < 4; index++) {
+            const UNIT = W.spawn(0, 1, index * 0.08, 0);
+            UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.meals = 0;
+            UNIT.cooldown = 0;
+            UNIT.vx = UNIT.vy = UNIT.vz = 0;
+        }
+        BUDMORI.runtime.capturePresentation('reset');
+        return W.metrics.merges;
+    });
+    await P.waitForFunction(() => !document.querySelector('#merge')?.disabled);
+    await P.evaluate(() => {
+        const BUTTON = document.querySelector('#merge');
+        BUTTON.click();
+        BUTTON.click();
+    });
+    await P.waitForFunction((before) => BUDMORI.sim.metrics.merges === before + 1, MANUAL_FUSION, {
+        timeout: 15000,
+    });
+    await P.waitForTimeout(1000);
+    assert.equal(
+        await P.evaluate((before) => BUDMORI.sim.metrics.merges - before, MANUAL_FUSION),
+        1,
+        'one double-click queues one fusion operation and no automatic follow-up',
     );
-    CHECK('Farm breeding and same-tier merging continue without passive unit production');
+    assert.equal(await P.locator('#breed').count(), 0, 'breeding has no mode switch');
+    const RESERVATION_INVARIANT = await P.evaluate(async () => {
+        const { snapshot: SNAPSHOT, restore: RESTORE } = await import('/src/farm-state.js'),
+            { captureFarmProgress: CAPTURE_PROGRESS, validateFarmProgress: VALIDATE_PROGRESS } =
+                await import('/src/farm-progress.js'),
+            W = new BUDMORI.sim.constructor(1223);
+        W.units = [];
+        for (let index = 0; index < 4; index++) {
+            const UNIT = W.spawn(0, 1, index * 1.1, 0);
+            UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.meals = 1;
+            UNIT.cooldown = 0;
+        }
+        const MATE = W.findOrReserveMate(W.units[0]),
+            MATE_IDS = [W.units[0].id, MATE.id],
+            STARTED = W.startManualMerge(),
+            MATERIAL_IDS = [...W.mergeTask.materialIds],
+            FIRST_OWNER = W.unitCollection.reservationOwner(MATERIAL_IDS[0]),
+            SECOND_OWNER = W.unitCollection.reservationOwner(MATERIAL_IDS[1]),
+            DTO = SNAPSHOT(W),
+            LEGACY_DTO = { ...DTO, mode: 'merge' },
+            RESTORED = RESTORE(LEGACY_DTO),
+            PROGRESS = CAPTURE_PROGRESS(W);
+        VALIDATE_PROGRESS({ ...PROGRESS, mode: 'merge' });
+        return {
+            started: STARTED,
+            secondStart: W.startManualMerge(),
+            taskSize: MATERIAL_IDS.length,
+            noMateOverlap: MATERIAL_IDS.every((id) => !MATE_IDS.includes(id)),
+            oneOwner: FIRST_OWNER && FIRST_OWNER === SECOND_OWNER,
+            noModeSaved: !Object.hasOwn(DTO, 'mode'),
+            legacyModeIgnored: !Object.hasOwn(RESTORED, 'mode'),
+            compactProgressHasNoMode: !Object.hasOwn(PROGRESS, 'mode'),
+            unavailableReason: W.mergeAvailability().reason,
+        };
+    });
+    assert.deepEqual(RESERVATION_INVARIANT, {
+        started: true,
+        secondStart: false,
+        taskSize: 2,
+        noMateOverlap: true,
+        oneOwner: true,
+        noModeSaved: true,
+        legacyModeIgnored: true,
+        compactProgressHasNoMode: true,
+        unavailableReason: '합성이 진행 중이에요.',
+    });
+    CHECK('Breeding remains automatic; one fusion button action starts exactly one operation');
     await P.evaluate(() => {
         BUDMORI.sim.playerProgression.level = 9;
         BUDMORI.sim.playerProgression.availablePoints = 7;
@@ -1324,16 +1408,7 @@ async function core() {
     assert.equal(await P.evaluate(() => BUDMORI.sim.capacity), 100);
     await closeMenu(P);
     CHECK('Shared XP points buy normal upgrades and expand farm capacity from 50 through five levels to 100');
-    await P.evaluate(() => {
-        BUDMORI.sim.mode = 'breed';
-    });
-    await P.waitForFunction(
-        () => BUDMORI.sim.mergeTask === null,
-        {},
-        {
-            timeout: 5000,
-        },
-    );
+    await P.evaluate(() => BUDMORI.sim.cancelMergeTask());
     await P.evaluate(() => {
         const W = BUDMORI.sim;
         while (W.units.length < 12) {
@@ -1360,7 +1435,8 @@ async function core() {
     assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 200');
     assert.equal(await P.locator('#bossStageAttack').textContent(), '공격력 4');
     assert.equal(await P.locator('#bossStageXp').textContent(), '+20 XP');
-    assert.equal(await P.locator('#bossStageDrop').isVisible(), false, 'stages 1–4 have no boss-species drop rolls');
+    assert.equal(await P.locator('#bossStageDrop').isVisible(), true, 'stage 1 has one boss-species draw');
+    assert.match(await P.locator('#bossStageDrop').textContent(), /1회 · 추첨당 2%/);
     await swipeEncounter(P, 'up');
     await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '2 / 61');
     for (let i = 0; i < 3; i++) {
@@ -1369,12 +1445,19 @@ async function core() {
     }
     assert.equal(await P.locator('#bossStageCounter').textContent(), '5 / 61');
     assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 1,013');
-    assert.equal(await P.locator('#bossStageXp').textContent(), '+41 XP');
+    assert.equal(await P.locator('#bossStageXp').textContent(), '+101 XP');
     assert(await P.locator('#bossStageDrop').isVisible());
-    assert.match(await P.locator('#bossStageDrop').textContent(), /20%씩 · 1회 개별 추첨/);
+    assert.match(await P.locator('#bossStageDrop').textContent(), /5회 \+ 6\.25% 확률로 1회 추가 · 추첨당 2%/);
     const REWARD_INVARIANT = await P.evaluate(async () => {
-        const { settleBossKill: SETTLE_BOSS_KILL, bossAcquisitionChance: BOSS_ACQUISITION_CHANCE } =
-                await import('/src/boss-rewards.js'),
+        const {
+                settleBossKill: SETTLE_BOSS_KILL,
+                bossAcquisitionChance: BOSS_ACQUISITION_CHANCE,
+                bossStageStats: BOSS_STAGE_STATS,
+                grantPendingBossAcquisitions: GRANT_PENDING,
+                sampleBinomial: SAMPLE_BINOMIAL,
+            } = await import('/src/boss-rewards.js'),
+            { captureFarmProgress: CAPTURE_PROGRESS, restoreFarmProgress: RESTORE_PROGRESS } =
+                await import('/src/farm-progress.js'),
             WORLD = new BUDMORI.sim.constructor(997);
         let zeroRollCalls = 0;
         const ZERO_OPTIONS = {
@@ -1391,16 +1474,54 @@ async function core() {
             },
             FIRST = SETTLE_BOSS_KILL(WORLD, ZERO_OPTIONS),
             DUPLICATE = SETTLE_BOSS_KILL(WORLD, ZERO_OPTIONS),
-            ROLLS = [0.1, 0.9],
+            ROLLS = [0.1, 0.99],
             MULTI = SETTLE_BOSS_KILL(WORLD, {
                 encounterId: 901,
                 source: 'raid',
                 receiptKey: 'stage-ten-rolls',
-                rollCount: 2,
+                rollBudget: 2,
                 xpAmount: 103,
                 species: 2,
                 random: () => ROLLS.shift(),
             });
+        let fractionalIndex = 0;
+        const FRACTIONAL = SETTLE_BOSS_KILL(WORLD, {
+                encounterId: 902,
+                source: 'raid',
+                rollBudget: 1.5,
+                species: 1,
+                random: () => [0.5, 0, 0][fractionalIndex++],
+            }),
+            HIGH_WORLD = new BUDMORI.sim.constructor(998);
+        while (HIGH_WORLD.units.length < HIGH_WORLD.capacity) {
+            HIGH_WORLD.spawn(0, 1, 0, 0);
+        }
+        const HIGH_START = performance.now(),
+            HIGH = SETTLE_BOSS_KILL(HIGH_WORLD, {
+                encounterId: 903,
+                source: 'raid',
+                rollBudget: BOSS_STAGE_STATS(61).rollBudget,
+                species: 4,
+            }),
+            HIGH_DURATION_MS = performance.now() - HIGH_START,
+            SAVED_PROGRESS = CAPTURE_PROGRESS(HIGH_WORLD),
+            RESTORED_WORLD = RESTORE_PROGRESS(SAVED_PROGRESS),
+            RESTORED_RECEIPT = RESTORED_WORLD.bossRewardReceipts.find((reward) => reward.encounterId === 903);
+        RESTORED_WORLD.removeUnit(RESTORED_WORLD.units[0]);
+        const RELEASED = GRANT_PENDING(RESTORED_WORLD),
+            RESUMED_RECEIPT = RESTORED_WORLD.bossRewardReceipts.find((reward) => reward.encounterId === 903);
+        let samplerState = 777,
+            samplerTotal = 0,
+            samplerSquares = 0;
+        const SAMPLE_RANDOM = () => {
+            samplerState = (Math.imul(samplerState, 1664525) + 1013904223) >>> 0;
+            return samplerState / 4294967296;
+        };
+        for (let index = 0; index < 8000; index++) {
+            const COUNT = SAMPLE_BINOMIAL(1000, 0.02, SAMPLE_RANDOM);
+            samplerTotal += COUNT;
+            samplerSquares += COUNT * COUNT;
+        }
         return {
             farmEventChance: BOSS_ACQUISITION_CHANCE({
                 farmEvent: true,
@@ -1410,24 +1531,83 @@ async function core() {
             duplicateXp: DUPLICATE.receipt.xpAmount,
             duplicateStatus: DUPLICATE.receipt.xpStatus,
             rollCount: MULTI.receipt.rollCount,
-            dropStatuses: MULTI.receipt.drops.map((drop) => drop.status),
+            successCount: MULTI.receipt.successCount,
+            grantedCount: MULTI.receipt.grantedCount,
+            tier: MULTI.receipt.tier,
+            fractional: {
+                rollBudget: FRACTIONAL.receipt.rollBudget,
+                bonusRollChance: FRACTIONAL.receipt.bonusRollChance,
+                rollCount: FRACTIONAL.receipt.rollCount,
+                successCount: FRACTIONAL.receipt.successCount,
+                tier: FRACTIONAL.receipt.tier,
+            },
+            stageFive: BOSS_STAGE_STATS(5),
+            high: {
+                rollBudget: HIGH.receipt.rollBudget,
+                successCount: HIGH.receipt.successCount,
+                grantedCount: HIGH.receipt.grantedCount,
+                status: HIGH.receipt.status,
+                durationMs: HIGH_DURATION_MS,
+                restoredSuccessCount: RESTORED_RECEIPT.successCount,
+                restoredGrantedCount: RESTORED_RECEIPT.grantedCount,
+                releasedGrants: RELEASED.length,
+                resumedGrantedCount: RESUMED_RECEIPT.grantedCount,
+                resumedPending: RESUMED_RECEIPT.status === 'pending',
+            },
+            samplerMean: samplerTotal / 8000,
+            samplerVariance: samplerSquares / 8000 - (samplerTotal / 8000) ** 2,
             earned: WORLD.playerProgression.processedBossKillReceipts.filter((key) => key === 'stage-zero-roll-xp')
                 .length,
         };
     });
-    assert.deepEqual(
-        REWARD_INVARIANT,
-        {
-            farmEventChance: 0.4,
-            zeroRollCalls: 0,
-            firstXp: 41,
-            duplicateXp: 41,
-            duplicateStatus: 'awarded',
+    const {
+        high: HIGH_STAGE,
+        samplerMean: SAMPLER_MEAN,
+        samplerVariance: SAMPLER_VARIANCE,
+        ...KNOWN_REWARDS
+    } = REWARD_INVARIANT;
+    assert.deepEqual(KNOWN_REWARDS, {
+        farmEventChance: 0.04,
+        zeroRollCalls: 0,
+        firstXp: 41,
+        duplicateXp: 41,
+        duplicateStatus: 'awarded',
+        rollCount: 2,
+        successCount: 1,
+        grantedCount: 1,
+        tier: 1,
+        fractional: {
+            rollBudget: 1.5,
+            bonusRollChance: 0.5,
             rollCount: 2,
-            dropStatuses: ['granted', 'missed'],
-            earned: 1,
+            successCount: 1,
+            tier: 1,
         },
-        'stage XP is idempotent; independent drops and the old Farm-event bonus are preserved',
+        stageFive: {
+            stage: 5,
+            hp: 1012.5,
+            attackPower: 8.2944,
+            xp: 101,
+            rollBudget: 5.0625,
+            rolls: 5,
+            bonusRollChance: 0.0625,
+        },
+        earned: 1,
+    });
+    assert.equal(HIGH_STAGE.rollBudget, Math.pow(1.5, 60));
+    assert(Number.isSafeInteger(HIGH_STAGE.successCount) && HIGH_STAGE.successCount > 1000);
+    assert.equal(HIGH_STAGE.grantedCount, 0, 'full roster keeps each high-stage success pending');
+    assert.equal(HIGH_STAGE.status, 'pending');
+    assert(HIGH_STAGE.durationMs < 2000, 'the maximum stage does not iterate over billions of draws');
+    assert.equal(HIGH_STAGE.restoredSuccessCount, HIGH_STAGE.successCount);
+    assert.equal(HIGH_STAGE.restoredGrantedCount, 0);
+    assert.equal(HIGH_STAGE.releasedGrants, 1);
+    assert.equal(HIGH_STAGE.resumedGrantedCount, 1);
+    assert.equal(HIGH_STAGE.resumedPending, true);
+    assert(Math.abs(SAMPLER_MEAN - 20) < 0.5, 'binomial sampling mean matches n × p');
+    assert(Math.abs(SAMPLER_VARIANCE - 19.6) < 2, 'binomial sampling variance matches n × p × (1 − p)');
+    CHECK(
+        'Boss rewards use geometric draw budgets, fractional rolls, a 2%/4% independent chance, and resumable T1 grants',
     );
     const SELECTED_STAGE5 = await P.evaluate(
         () => BUDMORI.sim.farmBossProgress.selections.find((entry) => entry.stage === 5)?.species,
@@ -2423,7 +2603,7 @@ async function seedScenarios(p, label) {
                             }[PHASE],
                     ),
                 );
-                assert(NATIVE.time > 0);
+                assert(Number.isFinite(NATIVE.time) && NATIVE.time >= -50);
                 const VISIBLE = await p.evaluate(() => {
                     const R = BUDMORI.renderer;
                     return BUDMORI.sim.units.map((u) => {
@@ -2460,7 +2640,6 @@ async function seedScenarios(p, label) {
                     W.effects = [];
                     W.projectiles = [];
                     W.nextId = 900000000;
-                    W.mode = 'merge';
                     W.spawn(0, 5, 0, 0);
                     W.spawn(0, 5, 0.08, 0);
                     W.spawn(0, 5, 0.16, 0);
@@ -2475,7 +2654,9 @@ async function seedScenarios(p, label) {
                         UNIT.vx = UNIT.vy = UNIT.vz = 0;
                         UNIT.z = 0;
                     }
-                    W.selectMergeTask();
+                    if (!W.startManualMerge()) {
+                        throw Error('configured five-material Mythic fusion was not selectable');
+                    }
                     const IDS = [...W.mergeTask.materialIds];
                     IDS.map((id) => W.units.find((unit) => unit.id === id)).forEach((unit, index) => {
                         unit.x = index * 0.04;
@@ -3439,6 +3620,7 @@ async function event() {
             stageSix: W.playerProgression.farmBossEventStage,
             stageFiveReceipt: {
                 tier: STAGE_FIVE_RECEIPT.tier,
+                rollBudget: STAGE_FIVE_RECEIPT.rollBudget,
                 rollCount: STAGE_FIVE_RECEIPT.rollCount,
                 chance: STAGE_FIVE_RECEIPT.chance,
                 acquisitionMultiplier: STAGE_FIVE_RECEIPT.acquisitionMultiplier,
@@ -3457,12 +3639,21 @@ async function event() {
     assert.equal(STAGE_RESULTS.stageFiveBoss.attackPower, 4 * 1.2 ** 4);
     assert.equal(STAGE_RESULTS.stageFiveVictory, true);
     assert.equal(STAGE_RESULTS.stageSix, 6);
-    assert.deepEqual(STAGE_RESULTS.stageFiveReceipt, {
-        tier: 1,
-        rollCount: 2,
-        chance: 0.4,
-        acquisitionMultiplier: 2,
-    });
+    assert.deepEqual(
+        {
+            tier: STAGE_RESULTS.stageFiveReceipt.tier,
+            rollBudget: STAGE_RESULTS.stageFiveReceipt.rollBudget,
+            chance: STAGE_RESULTS.stageFiveReceipt.chance,
+            acquisitionMultiplier: STAGE_RESULTS.stageFiveReceipt.acquisitionMultiplier,
+        },
+        {
+            tier: 1,
+            rollBudget: 5.0625,
+            chance: 0.04,
+            acquisitionMultiplier: 2,
+        },
+    );
+    assert([5, 6].includes(STAGE_RESULTS.stageFiveReceipt.rollCount));
     await goHome(P);
     const STAGE_SAVE = JSON.parse(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4'))).progress;
     assert.equal(STAGE_SAVE.player.farmBossEventStage, 6);

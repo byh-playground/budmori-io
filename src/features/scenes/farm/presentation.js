@@ -18,7 +18,7 @@ export class FarmScenePresentation {
         return world.farmBossEvent?.phase === 'fighting';
     }
     hiddenUnitId(world) {
-        return world.mode === 'merge' && world.mergeTask?.phase === 'animation' ? world.mergeTask.resultId : 0;
+        return world.mergeTask?.phase === 'animation' ? world.mergeTask.resultId : 0;
     }
     victorious() {
         return false;
