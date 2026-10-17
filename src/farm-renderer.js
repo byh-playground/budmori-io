@@ -1,7 +1,7 @@
 import {readVectorSockets,bossVectorScale,WORLD_HEIGHT_PROJECTION,WORLD_DEPTH_PROJECTION} from './vector-sockets.cjs';
 import {bindBossSocketAsset,unbindBossSocketAsset,bossSummonPose,sampleBossSummon} from './boss-vector-sockets.js';
 import {ATTACK_TYPES,Ballistics,CONFIG,clamp,bossAttackArea} from './farm-model.js';
-import {farmBreedingCooldown,farmSleepSeconds,sevenSegmentDigitLines} from './farm-indicators.js';
+import {farmBreedingCooldown,unitRestPresentation} from './farm-indicators.js';
 import {UNIT_GRADES} from './unit-grades.js';
 import {bossDangerContour} from './attack-telegraph.js';
 import {BOSS_PATTERN_CONFIG} from './boss-patterns.js';
@@ -14,9 +14,10 @@ const TIER_OUTLINE_COLORS=UNIT_GRADES.map(({outlineColor})=>{
   const rgb=outlineColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i).slice(1).map(value=>parseInt(value,16)/255);
   return [...rgb,1];
 });
-function unitMotion(u,sim){
+function unitMotion(u,sim,rest){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.1,phase=u.ability?.phase||'idle';
   const moving=Math.hypot(u.vx||0,u.vy||0)>.18,kind=ATTACK_TYPES[u.species]?.kind;
+  if(rest)return rest.phase;
   if(dead)return 'death';if(sim.scene==='raid'&&sim.encounter?.outcome==='victory')return 'victory';if(airborne)return 'airborne';if(u.stun>0)return 'hit';if(u.bounce>.04)return 'landing';
   if(phase==='windup')return 'windup';if(phase==='active')return kind==='peanut-dual-strike'&&u.ability.peanutStrikeCount>2?`fire-${u.ability.peanutStrikeCount}`:'fire';
   if(phase==='recover')return kind==='lob'&&u.ability?.action?.path&&u.ability.elapsed<.12?'fire':'recover';
@@ -30,11 +31,12 @@ function motionElapsedMs(u,name,clip){
   if(name==='victory')return ((Math.abs(u.seed||0)*97.531)%clip.durationMs);
   return clip.durationMs;
 }
-function unitExpression(u,sim,joyEffects){
+function unitExpression(u,sim,joyEffects,rest){
   const dead=u.hp<=0||u.down>0,airborne=!u.dropLanded||u.z>.5;
 
   const phase=u.ability?.phase;
   const restingCooldown=sim.scene==='farm'&&u.cooldown>0&&phase==='idle';
+  if(rest)return rest.phase==='defeat'?'dead':rest.phase==='wake'?'neutral':'sleep';
   if(dead)return 'dead';if(sim.scene==='raid'&&sim.encounter?.outcome==='victory')return 'happy';
   if(u.stun>0)return 'hurt';if(airborne)return 'surprised';if(u.walnutGuarding)return 'guard';if(phase==='windup')return 'focused';if(phase==='active')return 'attack';if(restingCooldown)return 'neutral';
   if(sim.scene==='farm'){
@@ -115,7 +117,7 @@ function bossAttackPose(b,parts){
       this.ctx = new VectorContext(this.device);
       this.vectorAssets=new Map();this.vectorPlayers=new Map();this.vectorPlayerAssets=new WeakMap();
       this.actors=[];this.actorPool=[];this.liveUnitIds=new Set();this.joyEffects=[];
-      this.unitRings=[];this.unitRingPool=[{},{},{}];this.breedingIndicator={};
+      this.unitRings=[];this.unitRingPool=[{},{},{}];this.breedingIndicator={};this.restIndicator={};
       this.dangerContour=new Float64Array(512);this.dangerArea={};
       this.telegraphBoss={patternRuntime:{active:{start:{},target:{}}}};
       const entries=Object.entries(TROOP_VECTOR_ASSETS);
@@ -276,37 +278,33 @@ function bossAttackPose(b,parts){
         else if(side==='front'&&sweep>Math.PI)this.ring(u.x,u.y,effect.radius,effect.color,effect.width,Math.PI,sweep);
       }
     }
-    drawSevenSegmentDigit(digit,x,y,size,color){
-      for(const [from,to] of sevenSegmentDigitLines(digit,x,y,size))this.pixelLine(from,to,size*.7,color);
+    drawSleepIndicator(rest,pose){
+      if(!rest||rest.phase==='defeat')return;
+      const c=this.ctx,d=this.pixelRatio,p=pose.p,r=pose.r;
+      // Short lavender elapsed bar BELOW the body. No HP colors, grade outline,
+      // overhead numeric badge, or countdown for Raid's non-advancing recovery.
+      if(rest.progress>=0){
+        const w=Math.max(18*d,Math.min(30*d,r*1.6)),h=3*d,x=p.x-w/2,y=p.y+r*.35+3*d;
+        c.fillStyle='#494257';c.beginPath();c.roundRect(x-d,y-d,w+2*d,h+2*d,2.5*d);c.fill();
+        c.fillStyle='#c2b2e8';c.beginPath();c.roundRect(x,y,w*rest.progress,h,1.5*d);c.fill();
+      }
+      if(rest.phase==='sleep'){
+        const size=2.4*d,x=p.x+r*.9,y=p.y-r*.9;
+        c.strokeStyle='#494257';c.lineWidth=2.2*d;c.lineCap='round';
+        c.beginPath();c.moveTo(x,y-size);c.lineTo(x+size*1.5,y-size);c.lineTo(x,y+size);c.lineTo(x+size*1.5,y+size);c.stroke();
+        c.strokeStyle='#ded3f5';c.lineWidth=d;c.stroke();
+      }
     }
-    drawSleepZ(x,y,size,color){
-      const stroke=size*.32;
-      this.pixelLine({x,y:y-size},{x:x+size,y:y-size},stroke,color);
-      this.pixelLine({x:x+size,y:y-size},{x,y:y+size},stroke,color);
-      this.pixelLine({x,y:y+size},{x:x+size,y:y+size},stroke,color);
-    }
-    drawSleepBadge(u,sim,pose){
-      const seconds=farmSleepSeconds(u,sim.scene);if(!seconds)return;
-      const d=this.pixelRatio,scale=1.75*d,w=43*d,h=16*d,x=pose.p.x-w/2,y=pose.p.y-pose.r*1.92-h/2;
-      const c=this.ctx;
-      c.fillStyle='#35473df0';c.beginPath();c.roundRect(x,y,w,h,h/2);c.fill();
-      c.strokeStyle='#f3edcf';c.lineWidth=d;c.beginPath();c.roundRect(x,y,w,h,h/2);c.stroke();
-      this.drawSleepZ(x+5.8*d,y+8*d,2.3*d,'#f3edcf');
-      this.drawSleepZ(x+10.4*d,y+5.2*d,1.75*d,'#f3edcf');
-      const label=String(Math.min(99,seconds)).padStart(2,'0');
-      this.drawSevenSegmentDigit(Number(label[0]),x+24*d,y+8*d,scale,'#fff7db');
-      this.drawSevenSegmentDigit(Number(label[1]),x+34*d,y+8*d,scale,'#fff7db');
-    }
-    drawVectorUnit(u,sim,p,r){
+    drawVectorUnit(u,sim,p,r,rest){
       const record=this.vectorAssets.get(u.species);if(!record)throw new Error('Missing required troop vector asset for species '+u.species);
       let player=this.vectorPlayers.get(u.id);
       if(player&&this.vectorPlayerAssets.get(player)!==record){player.dispose();this.vectorPlayers.delete(u.id);player=null}
-      const metadata=record.compiled.metadata,motionName=unitMotion(u,sim),clip=metadata.clips[motionName]||metadata.clips.idle;
-      const clipStartAtMs=this.displayTimeMs-motionElapsedMs(u,motionName,clip);
+      const metadata=record.compiled.metadata,motionName=unitMotion(u,sim,rest),clip=metadata.clips[motionName]||metadata.clips.idle;
+      const clipStartAtMs=rest?0:this.displayTimeMs-motionElapsedMs(u,motionName,clip);
       if(!player){player=record.asset.createPlayer({clip:motionName,startedAtMs:clipStartAtMs});this.vectorPlayers.set(u.id,player);this.vectorPlayerAssets.set(player,record)}
       else if(player.currentClip!==motionName)player.play(motionName,clipStartAtMs);
-      const expression=unitExpression(u,sim,this.joyEffects);if(expression!==player.currentExpression)player.setExpression(expression);
-      player.seek(this.displayTimeMs);
+      const expression=unitExpression(u,sim,this.joyEffects,rest);if(expression!==player.currentExpression)player.setExpression(expression);
+      player.seek(rest?rest.elapsed*1000:this.displayTimeMs);
       const [, ,width,height]=record.compiled.viewBox,scale=2*r/Math.max(width,height),centerY=p.y-r*.79;
       const matrix=[scale,0,0,scale,p.x-width*scale*.5,centerY-height*scale*.5];
       // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
@@ -324,18 +322,19 @@ function bossAttackPose(b,parts){
       player.draw({projection:this.ctx.vector.projection,matrix});
       return true;
     }
-    drawUnit(u,sim){
+    drawUnit(u,sim,rest){
       const dead=u.hp<=0,walk=dead?0:Math.min(1,Math.hypot(u.vx,u.vy)),bob=u.z===0?Math.abs(Math.sin(sim.time*9+u.seed))*.10*walk:0,p=this.project(u.x,u.y,u.z+bob);
       const r=Math.max(u.size*this.scale*.78,(sim.scene==='raid'?4.5:11)*this.pixelRatio);
-      this.drawVectorUnit(u,sim,p,r);
+      this.drawVectorUnit(u,sim,p,r,rest);
       return {p,r};
     }
     drawFarmUnitActor(u,sim){
       const effects=this.unitRingEffects(u,sim);
       this.drawUnitRingLayer(u,effects,'rear');
-      const pose=this.drawUnit(u,sim);
+      const rest=unitRestPresentation(u,sim,CONFIG.unit.corpseRecoverySeconds,this.restIndicator);
+      const pose=this.drawUnit(u,sim,rest);
       this.drawUnitRingLayer(u,effects,'front');
-      this.drawSleepBadge(u,sim,pose);
+      this.drawSleepIndicator(rest,pose);
     }
     bossPose(world){
       const b=world.boss,k=b.patternId==='summon.mouth-t1'?{x:0,y:0,squash:0}:this.feel?.boss(this.displayTimeMs)||{x:0,y:0,squash:0},ground=this.project(b.x+k.x,b.y+k.y,0),p=this.project(b.x+k.x,b.y+k.y,b.z||0),r=this.scale*b.radius*1.16;
@@ -456,7 +455,6 @@ function bossAttackPose(b,parts){
       for (const u of sim2.units) {
         const a = clamp(0.22 / (1 + u.z * .3), 0.045, 0.22),shadow=u.size*.66/(1+u.z*.65);
         this.groundEllipse(u.x, u.y, shadow, shadow * .62, `rgba(42,61,35,${a})`);
-        if (u.down > 0) this.ring(u.x, u.y, 0.45, "#aa9a60");
       }
       const farmBossVisible=sim2.scene==='farm'&&sim2.farmBossEvent?.phase!=='idle';
       if(sim2.scene==='raid'||farmBossVisible){this.groundEllipse(sim2.boss.x,sim2.boss.y,sim2.boss.radius*1.05,sim2.boss.radius*.75,'#38472c33')}
