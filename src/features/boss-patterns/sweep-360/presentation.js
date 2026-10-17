@@ -27,4 +27,56 @@ export class CircleSweepPresentation extends BossAttackPresentation {
         }
         super.recover(boss, pose);
     }
+    drawTelegraph(renderer, area) {
+        const CTX = renderer.ctx,
+            ALPHA = CTX.globalAlpha,
+            FADE = area.phase === 'recover' ? Math.max(0, 1 - area.elapsed / 0.14) : 1,
+            START = area.angle,
+            END = START + Math.PI * 2 * clamp(area.progress, 0, 1);
+        if (!FADE) {
+            return;
+        }
+        CTX.globalAlpha = ALPHA * FADE;
+        renderer.ring(area.x, area.y, area.reach + area.width, '#b46c45', area.active ? 0.05 : 0.09);
+        renderer.ring(area.x, area.y, area.reach - area.width, '#c59b7288', 0.045);
+        renderer.ring(area.x, area.y, area.reach + area.width + 0.12, '#dfad65', 0.14, START, END);
+        CTX.globalAlpha = ALPHA;
+    }
+    drawWeapon(renderer, boss, player, matrix, pose) {
+        if (boss.patternPhase !== 'active') {
+            return;
+        }
+        const SOCKET = player.getSocket('fist-right');
+        if (!SOCKET) {
+            return;
+        }
+        const BASE = {
+                x: matrix[0] * SOCKET.x + matrix[4],
+                y: matrix[3] * SOCKET.y + matrix[5],
+            },
+            Q = clamp(pose.elapsed / this.config.active, 0, 1),
+            ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + Math.PI * 2 * Q,
+            TIP = renderer.project(
+                boss.x + Math.cos(ANGLE) * this.config.reach,
+                boss.y + Math.sin(ANGLE) * this.config.reach,
+                (boss.z || 0) + 0.2,
+            ),
+            TAIL = renderer.project(
+                boss.x + Math.cos(ANGLE - 0.18) * this.config.reach,
+                boss.y + Math.sin(ANGLE - 0.18) * this.config.reach,
+                (boss.z || 0) + 0.35,
+            );
+        renderer.ctx.flush();
+        renderer.line(BASE, TIP, 0.26, '#684632');
+        renderer.line(BASE, TIP, 0.13, '#f0c77c');
+        renderer.ellipse(
+            TIP.x,
+            TIP.y,
+            this.config.width * renderer.scale * 0.48,
+            this.config.width * renderer.scale * 0.3,
+            '#dfad79',
+            Math.atan2(-0.62 * Math.sin(ANGLE), Math.cos(ANGLE)),
+        );
+        renderer.line(TAIL, TIP, 0.26, '#e6cf7b99');
+    }
 }

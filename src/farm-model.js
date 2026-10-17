@@ -4328,6 +4328,47 @@ const GARDEN = class Garden {
             }
         }
     }
+    sweepBossWeapon(action, q0, q1) {
+        const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id],
+            START_ANGLE = action.startAngle ?? action.aim - Math.PI / 2,
+            FROM_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP(q0, 0, 1),
+            TO_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP(q1, 0, 1),
+            B_LOCAL = this.boss,
+            FROM = {
+                x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
+                y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
+                z: 0.2,
+            },
+            TO = {
+                x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
+                y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
+                z: 0.2,
+            },
+            EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
+        for (const UNIT_LOCAL of this._collectBossTargets(
+            B_LOCAL.x - EXTENT,
+            B_LOCAL.y - EXTENT,
+            B_LOCAL.x + EXTENT,
+            B_LOCAL.y + EXTENT,
+            this._bossHitCandidates,
+            true,
+        )) {
+            if (action.hitIds.has(UNIT_LOCAL.id)) {
+                continue;
+            }
+            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
+            if (!HIT) {
+                continue;
+            }
+            const DX = UNIT_LOCAL.x - B_LOCAL.x,
+                DY = UNIT_LOCAL.y - B_LOCAL.y,
+                N = Math.hypot(DX, DY) || 1;
+            this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
+                x: DX / N,
+                y: DY / N,
+            });
+        }
+    }
     bossMouthPoint(released) {
         return bossMouthWorldPoint(this.boss, released);
     }

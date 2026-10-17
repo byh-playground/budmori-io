@@ -48,7 +48,10 @@ function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
 export function bossDangerContour(area, out) {
     let n = 0;
     if (area.kind === 'sweep') {
-        return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
+        const OUTER = area.reach + area.width,
+            INNER = Math.max(0, area.reach - area.width);
+        n = arc(out, 0, area.x, area.y, OUTER, 0, TAU);
+        return arc(out, n, area.x, area.y, INNER, TAU, 0);
     }
     if (area.kind === 'sector') {
         n = point(out, n, area.x, area.y);
