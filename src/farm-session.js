@@ -34,8 +34,8 @@ class BossRender extends RenderObject {
   patternVolleyCount:R.STEP,patternReleased:R.STEP,patternTraveled:R.LINEAR,
   summonMouthX:R.STEP,summonMouthY:R.STEP,summonMouthZ:R.STEP
  });
- constructor(b){super();const action=b.patternRuntime?.active||null,target=action?.target||null,start=action?.start||null,mouth=b.summonMouth||{};Object.assign(this,{
-  x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:b.phase,clock:b.clock,travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash,species:b.species??3,stage:b.stage??0,
+ constructor(b,world){super();const action=b.patternRuntime.active,event=world.farmBossEvent,target=action?.target||null,start=action?.start||null,mouth=b.summonMouth||{},ended=world.scene==='raid'&&!b.active?world.notices.findLast(e=>e.kind==='victory'||e.kind==='defeat'):null;Object.assign(this,{
+  x:b.x,y:b.y,z:b.z,angle:b.angle,startAngle:b.startAngle,phase:action?.phase||(!b.active||event?.phase==='dropping'?'resting':'chase'),clock:action?.phaseElapsed??(event.phase==='celebrating'||event.phase==='fading'?event.elapsed:ended?.bossPatternElapsed||0),travel:b.travel||0,hp:b.hp,maxHp:b.maxHp,radius:b.radius,height:b.height,flash:b.flash,species:b.species??3,stage:b.stage??0,
   patternId:action?.id||'',patternPhase:action?.phase||'idle',patternPhaseElapsed:action?.phaseElapsed||0,patternAim:action?.aim??b.angle,patternLocked:!!action?.locked,patternTargetId:action?.targetId||0,
   patternTargetX:target?.x??b.x,patternTargetY:target?.y??b.y,patternTargetZ:target?.z??0,
   patternStartX:start?.x??b.x,patternStartY:start?.y??b.y,patternStartZ:start?.z??b.z,
@@ -137,7 +137,7 @@ export class FarmSession{
   const world=this.world,receiptNowMs=this.captureClock(),timeMs=this.presentationOriginWallMs===null?0:Math.max(this.latestCaptureTimeMs,receiptNowMs-this.presentationOriginWallMs),entities=[];
   if(this.presentationOriginWallMs===null)this.presentationOriginWallMs=receiptNowMs;
   for(const u of world.units)entities.push({id:'unit:'+u.id,generation:0,source:new UnitRender(u,world)});
-  entities.push({id:'boss',generation:0,source:new BossRender(world.boss)});
+  entities.push({id:'boss',generation:0,source:new BossRender(world.boss,world)});
   for(const f of world.food)entities.push({id:this.presentationIdentity('food',f),generation:0,source:new FoodRender(f)});
   for(const p of world.projectiles)entities.push({id:'projectile:'+p.id,generation:0,source:new ProjectileRender(p)});
   for(const e of world.effects){
@@ -176,7 +176,7 @@ export class FarmSession{
   const view=this.presentationView;
   view.units.length=0;view.food.length=0;view.projectiles.length=0;view.effects.length=0;
   frame.forEach(this.collectPresentationModel);
-  view.time=(frame.sample('clock',0)?.gameTimeMs??world.time*1000)/1000;view.boss=frame.sample('boss',0)||new BossRender(world.boss);
+  view.time=(frame.sample('clock',0)?.gameTimeMs??world.time*1000)/1000;view.boss=frame.sample('boss',0)||new BossRender(world.boss,world);
   view.displayTimeMs=frame.timeMs;view.presentationRevision=this.presentationRevision;
   const previous=this.previousCaptureTimeMs,latest=this.latestCaptureTimeMs,span=latest-previous,diagnostics=view.presentationDiagnostics;
   diagnostics.timeMs=frame.timeMs;diagnostics.latestSnapshotTimeMs=latest;diagnostics.previousSnapshotTimeMs=previous;diagnostics.intervalMs=span;

@@ -344,7 +344,7 @@ const AttackingBody=Base=>class extends Base{
       out.length=length;out.sort((a,b)=>a.id-b.id);return out;
     }
     static createRaidBattle(seed=731,expectedPlayers=['solo'],bossStage=null){
-      const w=new Garden(seed);w.units=[];w.food=[];w.scene='raid';w.running=false;w.boss=w.createBoss(bossStage?.species??w.randomBossSpecies());w.boss.phase='resting';
+      const w=new Garden(seed);w.units=[];w.food=[];w.scene='raid';w.running=false;w.boss=w.createBoss(bossStage?.species??w.randomBossSpecies());
       if(bossStage?.stage!==undefined)w.configureBossStage(bossStage.stage,bossStage.species);
       w.encounter={outcome:'idle',elapsed:0};w.raidExpectedPlayers=[...expectedPlayers];w.raidRosters=[];w.raidDeploymentStarted=false;w.nextId=1;w.starter=0;return w;
     }
@@ -510,7 +510,7 @@ const AttackingBody=Base=>class extends Base{
       const roster=this.raidRoster(ownerId),troop=roster?.troops.find(t=>!t.deployed);if(!roster||sequence!==roster.lastDeploySequence+1||!troop||!ArenaGeometry.inside({x,y},'raid',.5))return false;
       const farmId=troop.farmId,slot=this.raidExpectedPlayers.indexOf(ownerId),troopIndex=roster.troops.indexOf(troop),id=(slot+1)*CONFIG.raidPlayerIdStride+troopIndex+1;if(this.units.some(u=>u.id===id))return false;
       const u=new Unit(id,troop.species,troop.tier,x,y),growthDuration=this.breedGrowthDuration();Object.assign(u,{ownerId,farmId,z:CONFIG.raid.dropHeight,vz:0,dropLanded:false,meals:1,growth:CONFIG.matureMeals,growthDuration,growthElapsed:growthDuration});troop.deployed=true;roster.lastDeploySequence=sequence;this.units.push(u);this._trackUnitAdded(u);
-      if(!this.raidDeploymentStarted){this.raidDeploymentStarted=true;this.running=true;this.encounter={outcome:'fighting',elapsed:0};this.boss.active=true;this.boss.encounterId=this.raidRosters[0]?.settlementRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime();this.boss.phase='chase'}
+      if(!this.raidDeploymentStarted){this.raidDeploymentStarted=true;this.running=true;this.encounter={outcome:'fighting',elapsed:0};this.boss.active=true;this.boss.encounterId=this.raidRosters[0]?.settlementRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime()}
       this.combat('unit-drop',{unit:id,ownerId,x,y,z:u.z});return true;
     }
     useRaidBuff(ownerId){const r=this.raidRoster(ownerId);if(!this.running||!r||this.time<r.buffReadyAt)return false;r.buffUntil=this.time+CONFIG.raid.buffDuration;r.buffReadyAt=this.time+CONFIG.raid.buffCooldown;this.combat('buff',{ownerId,until:r.buffUntil});return true}
@@ -577,7 +577,7 @@ const AttackingBody=Base=>class extends Base{
       return true;
     }
     getBossAcquisitionChance({farmEvent=false}={}){return bossAcquisitionChance({farmEvent})}
-    createBoss(species=3){const hp=2000;return {x:0,y:0,faction:FACTION_CONFIG.ENEMY,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp,maxHp:hp,species:clamp(species,0,CONFIG.maxSpecies-1),attackPower:4,stage:0,moveSpeed:CONFIG.raid.chaseSpeed,encounterId:0,active:false,phase:'resting',clock:0,angle:0,facing:0,flash:0,hit:new Set(),swings:0,basicCount:0,attackId:0,targetId:0,sweepClock:0,attackKind:'attack.sweep-360',startAngle:0,travel:0,patternRuntime:createBossPatternRuntime(),airborneRecovery:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0,summonMouth:{x:0,y:0,z:0}}}
+    createBoss(species=3){const hp=2000;return {x:0,y:0,faction:FACTION_CONFIG.ENEMY,z:0,radius:CONFIG.raid.bossRadius,height:CONFIG.raid.bossHeight,hp,maxHp:hp,species:clamp(species,0,CONFIG.maxSpecies-1),attackPower:4,stage:0,moveSpeed:CONFIG.raid.chaseSpeed,encounterId:0,active:false,angle:0,facing:0,flash:0,swings:0,basicCount:0,attackId:0,sweepClock:0,startAngle:0,travel:0,patternRuntime:createBossPatternRuntime(),airborneRecovery:0,barleyArmorBreakUntil:0,barleyArmorBreakReduction:0,summonMouth:{x:0,y:0,z:0}}}
     configureBossStage(stage,species=this.boss.species){const stats=bossStageStats(stage);this.boss.species=clamp(species,0,CONFIG.maxSpecies-1);this.boss.stage=stats.stage;this.boss.hp=this.boss.maxHp=stats.hp;this.boss.attackPower=stats.attackPower;return this.boss}
     setScene(scene){
       if(scene===this.scene)return;
@@ -587,7 +587,7 @@ const AttackingBody=Base=>class extends Base{
         const u=this.units[i],oldMateId=u.mateId;if(scene==='raid'){u.home={x:u.x,y:u.y};u.farmId=u.farmId||u.id;u.ownerId='solo';u.id=1000000+i+1;u.dropLanded=true;const angle=i*2.3999632297,rad=10.5+(i%3)*.9;Object.assign(u,{x:Math.cos(angle)*rad,y:Math.sin(angle)*rad*.84})}else{u.id=u.farmId||u.id;u.ownerId='';u.farmId=0;u.dropLanded=true;Object.assign(u,u.home)}u.mateId=idMap.get(oldMateId)||0;
         u.ability=new AttackCycle(u);u.walnutEmpoweredNextBasic=false;Object.assign(u,{z:0,vx:0,vy:0,vz:0,stun:0,down:0,hp:stats(u.tier,u.species).maxHp});
       }
-      if(this.running){this.boss.active=true;this.boss.phase='chase';this.boss.encounterId=this.activeRaidRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime();this.raidExpectedPlayers=['solo'];this.raidRosters=[{ownerId:'solo',troops:this.units.filter(u=>!u.isBattleOnlySummon).map(u=>({farmId:u.farmId,species:u.species,tier:u.tier,deployed:true})),abilitySnapshot:createAbilityRuntimeSnapshot(this.playerProgression),buffUntil:0,buffReadyAt:0}];this.raidDeploymentStarted=true}else{this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false}
+      if(this.running){this.boss.active=true;this.boss.encounterId=this.activeRaidRunSequence||this.nextRaidRunSequence||1;this.boss.patternRuntime=createBossPatternRuntime();this.raidExpectedPlayers=['solo'];this.raidRosters=[{ownerId:'solo',troops:this.units.filter(u=>!u.isBattleOnlySummon).map(u=>({farmId:u.farmId,species:u.species,tier:u.tier,deployed:true})),abilitySnapshot:createAbilityRuntimeSnapshot(this.playerProgression),buffUntil:0,buffReadyAt:0}];this.raidDeploymentStarted=true}else{this.raidExpectedPlayers=['solo'];this.raidRosters=[];this.raidDeploymentStarted=false}
       this._unitSpatialDirty=true;
     }
     canBreedPair(a,b,requireContact=false){
@@ -1122,13 +1122,13 @@ const AttackingBody=Base=>class extends Base{
       u.ability.begin(this,target);
     }
     finish(outcome){
-      if(!this.running)return;this.running=false;this.boss.active=false;this.encounter.outcome=outcome;this.projectiles=[];this.boss.phase='resting';if(this.boss.patternRuntime)this.boss.patternRuntime.active=null;
-      for(const u of this.units)u.ability.interrupt();this.cleanupBattleSummons();this.combat(outcome,{x:this.boss.x,y:this.boss.y,z:0});
+      if(!this.running)return;const bossPatternElapsed=this.boss.patternRuntime.active?.phaseElapsed||0;this.running=false;this.boss.active=false;this.encounter.outcome=outcome;this.projectiles=[];this.boss.patternRuntime.active=null;
+      for(const u of this.units)u.ability.interrupt();this.cleanupBattleSummons();this.combat(outcome,{x:this.boss.x,y:this.boss.y,z:0,bossPatternElapsed});
     }
     finishFarmBossEvent(outcome){
       if(this.scene!=='farm'||this.farmBossEvent.phase!=='fighting')return false;
       this.cleanupBattleSummons();
-      this.boss.active=false;this.boss.phase='resting';this.boss.clock=0;if(this.boss.patternRuntime)this.boss.patternRuntime.active=null;this.projectiles=[];
+      this.boss.active=false;if(this.boss.patternRuntime)this.boss.patternRuntime.active=null;this.projectiles=[];
       const encounterId=this.farmBossEvent.encounterId;
       this.farmBossEvent={phase:'celebrating',elapsed:0,outcome,encounterId,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};
       for(const u of this.units)if(u.hp>0)u.ability.interrupt();
@@ -1142,7 +1142,7 @@ const AttackingBody=Base=>class extends Base{
       return true;
     }
     bossAttackArea(unitRadius=0){return bossAttackArea(this.boss,unitRadius)}
-    bossWeaponPoint(phase=this.boss.phase,q=0){
+    bossWeaponPoint(q=0){
       const b=this.boss,a=b.patternRuntime?.active,config=BOSS_PATTERN_CONFIG[a?.id];
       if(a?.id==='attack.fan-sweep'){const angle=a.aim-config.sector/2+config.sector*clamp(q,0,1);return{x:b.x+Math.cos(angle)*config.reach,y:b.y+Math.sin(angle)*config.reach,z:b.z+.2}}
       const reach=b.radius-.25+(CONFIG.raid.sweepReach-b.radius+.25)*Math.sin(Math.PI*clamp(q,0,1));return {x:b.x+Math.cos(b.angle)*reach,y:b.y+Math.sin(b.angle)*reach,z:b.z+.2};
@@ -1208,14 +1208,14 @@ const AttackingBody=Base=>class extends Base{
     beginBossPattern(id,target){
       const b=this.boss,runtime=b.patternRuntime,config=BOSS_PATTERN_CONFIG[id];if(!config)return false;
       const targetPoint=target?{x:target.x,y:target.y,z:target.z||0}:null,aim=targetPoint?Math.atan2(targetPoint.y-b.y,targetPoint.x-b.x):b.angle;
-      runtime.active={id,phase:'windup',phaseElapsed:0,targetId:target?.id??0,target:targetPoint,aim,locked:false,start:{x:b.x,y:b.y,z:b.z},traveled:0,hitIds:[],volleyCount:0,released:0,nextRelease:0,path:null};
-      b.phase='windup';b.clock=0;b.attackKind=id;b.angle=aim;b.facing=aim;b.targetId=target?.id??0;b.hit.clear();
-      this.combat('boss-pattern-prepare',{patternId:id,attackKind:id,x:b.x,y:b.y,z:b.z,angle:aim,targetId:b.targetId||0});return true;
+      runtime.active={id,phase:'windup',phaseElapsed:0,targetId:target?.id??0,target:targetPoint,aim,locked:false,start:{x:b.x,y:b.y,z:b.z},traveled:0,hitIds:new Set(),volleyCount:0,released:0,nextRelease:0,path:null};
+      b.angle=aim;b.facing=aim;
+      this.combat('boss-pattern-prepare',{patternId:id,attackKind:id,x:b.x,y:b.y,z:b.z,angle:aim,targetId:runtime.active.targetId});return true;
     }
     hitBossPatternUnit(unit,patternId,point,normal=null){
-      const b=this.boss,action=b.patternRuntime.active,config=BOSS_PATTERN_CONFIG[patternId];if(!action||!config||!hasFaction(unit,FACTION_CONFIG.PLAYER)||!areOpposingFactions(b,unit)||unit.hp<=0||!unit.dropLanded||b.hit.has(unit.id))return false;
+      const b=this.boss,action=b.patternRuntime.active,config=BOSS_PATTERN_CONFIG[patternId];if(!action||!config||!hasFaction(unit,FACTION_CONFIG.PLAYER)||!areOpposingFactions(b,unit)||unit.hp<=0||!unit.dropLanded||action.hitIds.has(unit.id))return false;
       if(config.groundOnly&&unit.z>.1)return false;
-      b.hit.add(unit.id);action.hitIds.push(unit.id);
+      action.hitIds.add(unit.id);
       const dx=normal?.x??unit.x-b.x,dy=normal?.y??unit.y-b.y,n=Math.hypot(dx,dy)||1;
       const guard=this.receiveWalnutGuard(unit),knockbackMultiplier=guard?.receivedKnockbackMultiplier??1;
       unit.knock(dx/n,dy/n,config.knockback*knockbackMultiplier,config.lift*knockbackMultiplier,b);
@@ -1228,21 +1228,21 @@ const AttackingBody=Base=>class extends Base{
     resolveBossSector(action,patternId,range,sector){
       const b=this.boss,aim=action.aim,half=sector/2;let hits=0;
       const extent=range+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){
-        if(b.hit.has(unit.id)||unit.z>.1)continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;
+        if(action.hitIds.has(unit.id)||unit.z>.1)continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;
         const offset=Math.atan2(Math.sin(Math.atan2(dy,dx)-aim),Math.cos(Math.atan2(dy,dx)-aim)),pad=d<=unit.radius?Math.PI:Math.asin(Math.min(1,unit.radius/Math.max(d,1e-6)));if(Math.abs(offset)>half+pad)continue;
         const n=d||1;if(this.hitBossPatternUnit(unit,patternId,{x:unit.x,y:unit.y,z:0},{x:dx/n,y:dy/n}))hits++;
       }return hits;
     }
     resolveBossCircle(action,patternId,range){
-      const b=this.boss;let hits=0;const extent=range+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(b.hit.has(unit.id))continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;if(this.hitBossPatternUnit(unit,patternId,{x:b.x+dx/(d||1)*Math.min(d,range),y:b.y+dy/(d||1)*Math.min(d,range),z:0},{x:dx/(d||1),y:dy/(d||1)}))hits++}return hits;
+      const b=this.boss;let hits=0;const extent=range+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(action.hitIds.has(unit.id))continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d>range+unit.radius)continue;if(this.hitBossPatternUnit(unit,patternId,{x:b.x+dx/(d||1)*Math.min(d,range),y:b.y+dy/(d||1)*Math.min(d,range),z:0},{x:dx/(d||1),y:dy/(d||1)}))hits++}return hits;
     }
     sweepBossBody(old,patternId){
-      const b=this.boss,extent=b.radius+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(Math.min(old.x,b.x)-extent,Math.min(old.y,b.y)-extent,Math.max(old.x,b.x)+extent,Math.max(old.y,b.y)+extent,this._bossHitCandidates)){if(b.hit.has(unit.id))continue;const hit=ArenaGeometry.sweep(old,b,b.radius,b.height,unit);if(hit)this.hitBossPatternUnit(unit,patternId,hit,patternId==='attack.charge'?{x:Math.cos(b.patternRuntime.active.aim),y:Math.sin(b.patternRuntime.active.aim)}:null)}
+      const b=this.boss,action=b.patternRuntime.active,extent=b.radius+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(Math.min(old.x,b.x)-extent,Math.min(old.y,b.y)-extent,Math.max(old.x,b.x)+extent,Math.max(old.y,b.y)+extent,this._bossHitCandidates)){if(action.hitIds.has(unit.id))continue;const hit=ArenaGeometry.sweep(old,b,b.radius,b.height,unit);if(hit)this.hitBossPatternUnit(unit,patternId,hit,patternId==='attack.charge'?{x:Math.cos(b.patternRuntime.active.aim),y:Math.sin(b.patternRuntime.active.aim)}:null)}
     }
     fanBossWeapon(action,q0,q1){
       const config=BOSS_PATTERN_CONFIG[action.id],span=config.sector,fromAngle=action.aim-span/2+span*clamp(q0,0,1),toAngle=action.aim-span/2+span*clamp(q1,0,1),b=this.boss;
       const from={x:b.x+Math.cos(fromAngle)*config.reach,y:b.y+Math.sin(fromAngle)*config.reach,z:.2},to={x:b.x+Math.cos(toAngle)*config.reach,y:b.y+Math.sin(toAngle)*config.reach,z:.2};
-      const extent=config.reach+config.width+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(b.hit.has(unit.id))continue;const hit=ArenaGeometry.sweep(from,to,config.width,1.4,unit);if(hit){const dx=unit.x-b.x,dy=unit.y-b.y,n=Math.hypot(dx,dy)||1;this.hitBossPatternUnit(unit,action.id,hit,{x:dx/n,y:dy/n})}}
+      const extent=config.reach+config.width+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(action.hitIds.has(unit.id))continue;const hit=ArenaGeometry.sweep(from,to,config.width,1.4,unit);if(hit){const dx=unit.x-b.x,dy=unit.y-b.y,n=Math.hypot(dx,dy)||1;this.hitBossPatternUnit(unit,action.id,hit,{x:dx/n,y:dy/n})}}
     }
     bossMouthPoint(){
       // Local coordinates are taken from each troop SVG's authored mouth socket;
@@ -1266,7 +1266,7 @@ const AttackingBody=Base=>class extends Base{
       this.combat('boss-mouth-spit',{patternId:action.id,unit:id,species:b.species,x:mouth.x,y:mouth.y,z:mouth.z,landingX:landing.x,landingY:landing.y,sequence:action.released});return true;
     }
     activateBossPattern(action){
-      const b=this.boss,runtime=b.patternRuntime,config=BOSS_PATTERN_CONFIG[action.id];action.phase='active';action.phaseElapsed=0;b.phase='active';b.clock=0;b.attackId=++this.attackSerial;b.hit.clear();runtime.cooldowns[action.id]=config.cooldown;
+      const b=this.boss,runtime=b.patternRuntime,config=BOSS_PATTERN_CONFIG[action.id];action.phase='active';action.phaseElapsed=0;b.attackId=++this.attackSerial;action.hitIds.clear();runtime.cooldowns[action.id]=config.cooldown;
       this.combat('boss-pattern-launch',{patternId:action.id,attackKind:action.id,attackId:b.attackId,x:b.x,y:b.y,z:b.z,angle:action.aim,targetId:action.targetId||0});
       if(action.id==='attack.sweep-360'){this.resolveBossCircle(action,action.id,config.reach);this.enterBossPatternRecovery(action);return}
       if(action.id==='attack.front-slam'){this.resolveBossSector(action,action.id,config.reach,config.sector);this.enterBossPatternRecovery(action);return}
@@ -1278,16 +1278,16 @@ const AttackingBody=Base=>class extends Base{
         runtime.cooldowns[action.id]=config.cooldown;const alive=this.units.reduce((n,u)=>n+(hasFaction(u,FACTION_CONFIG.ENEMY)&&u.hp>0?1:0),0);action.volleyCount=Math.min(config.volleyCount,Math.max(0,CONFIG.maxBossSummons-alive));action.nextRelease=0;this.spawnBossMouthUnit(action);action.nextRelease=config.releaseInterval;return;
       }
     }
-    enterBossPatternRecovery(action){action.phase='recover';action.phaseElapsed=0;this.boss.phase='recover';this.boss.clock=0}
+    enterBossPatternRecovery(action){action.phase='recover';action.phaseElapsed=0}
     updateBossPattern(dt,living){
       const b=this.boss,runtime=b.patternRuntime;runtime.encounterElapsed+=dt;for(const id of BOSS_PATTERN_IDS)runtime.cooldowns[id]=Math.max(0,(runtime.cooldowns[id]||0)-dt);
       let action=runtime.active;
       if(!action){const targets=this.bossPatternTargets(living),target=targets.nearest||this.nearestBossTarget(living),eligible=this.eligibleBossPatterns(living,targets),selected=chooseBossPattern(runtime,eligible,()=>this.random());if(selected){const pick=selected==='summon.mouth-t1'?target:selected==='attack.charge'?targets.charge:selected==='attack.leap-slam'?targets.leap:targets.nearest;this.beginBossPattern(selected,pick);action=runtime.active;if(selected==='summon.mouth-t1')runtime.cooldowns[selected]=BOSS_PATTERN_CONFIG[selected].cooldown}else{if(target){const dx=target.x-b.x,dy=target.y-b.y,d=Math.hypot(dx,dy)||1;b.angle=b.facing=Math.atan2(dy,dx);const contact=b.radius+target.radius+.2;if(d>contact){const amount=Math.min(b.moveSpeed*dt,d-contact),next={x:b.x+dx/d*amount,y:b.y+dy/d*amount},bounded=ArenaGeometry.clamp(next,this.scene,b.radius+.25),old={x:b.x,y:b.y,z:b.z};b.x=bounded.x;b.y=bounded.y;b.travel+=Math.hypot(b.x-old.x,b.y-old.y)}}return}}
       if(!action)return;
-      action.phaseElapsed+=dt;b.clock=action.phaseElapsed;b.phase=action.phase;
+      action.phaseElapsed+=dt;
       if(action.phase==='windup'){
         const config=BOSS_PATTERN_CONFIG[action.id],remaining=config.windup-action.phaseElapsed;
-        if(!action.locked){const target=this.bossTargetForPattern(action.id,living);if(target){action.targetId=target.id;action.target={x:target.x,y:target.y,z:target.z||0};const desired=Math.atan2(target.y-b.y,target.x-b.x),delta=Math.atan2(Math.sin(desired-action.aim),Math.cos(desired-action.aim));action.aim+=clamp(delta,-BOSS_AIM_TURN_RATE*dt,BOSS_AIM_TURN_RATE*dt);b.angle=b.facing=action.aim;b.targetId=target.id}
+        if(!action.locked){const target=this.bossTargetForPattern(action.id,living);if(target){action.targetId=target.id;action.target={x:target.x,y:target.y,z:target.z||0};const desired=Math.atan2(target.y-b.y,target.x-b.x),delta=Math.atan2(Math.sin(desired-action.aim),Math.cos(desired-action.aim));action.aim+=clamp(delta,-BOSS_AIM_TURN_RATE*dt,BOSS_AIM_TURN_RATE*dt);b.angle=b.facing=action.aim}
           if(remaining<=.25+1e-9){action.locked=true;this.combat('boss-pattern-lock',{patternId:action.id,attackId:b.attackId+1,targetId:action.targetId||0,x:action.target?.x??b.x,y:action.target?.y??b.y,angle:action.aim})}}
         if(action.phaseElapsed>=config.windup-1e-9)this.activateBossPattern(action);return;
       }
@@ -1297,27 +1297,27 @@ const AttackingBody=Base=>class extends Base{
           const direction={x:Math.cos(action.aim),y:Math.sin(action.aim)},remaining=Math.max(0,config.reach-action.traveled),distance=Math.min(config.speed*dt,remaining),old={x:b.x,y:b.y,z:b.z},candidate={x:b.x+direction.x*distance,y:b.y+direction.y*distance},bounded=ArenaGeometry.clamp(candidate,this.scene,b.radius+.25),hitBoundary=Math.hypot(candidate.x-bounded.x,candidate.y-bounded.y)>1e-8;b.x=bounded.x;b.y=bounded.y;const moved=Math.hypot(b.x-old.x,b.y-old.y);action.traveled+=moved;b.travel+=moved;this.sweepBossBody(old,action.id);if(hitBoundary||action.traveled>=config.reach-1e-8||moved<1e-8)this.enterBossPatternRecovery(action);
         }else if(action.id==='attack.leap-slam'){
           const old={x:b.x,y:b.y,z:b.z},p=Ballistics.sample(action.path,action.phaseElapsed/action.path.duration);b.x=p.x;b.y=p.y;b.z=p.z;this.sweepBossBody(old,action.id);
-          if(action.phaseElapsed>=action.path.duration){b.x=action.path.to.x;b.y=action.path.to.y;b.z=0;const extent=config.landingRadius+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(b.hit.has(unit.id))continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d<=config.landingRadius+unit.radius)this.hitBossPatternUnit(unit,action.id,{x:unit.x,y:unit.y,z:0},{x:dx/(d||1),y:dy/(d||1)})}this.combat('boss-pattern-land',{patternId:action.id,attackId:b.attackId,x:b.x,y:b.y,z:0});this.enterBossPatternRecovery(action)}
+          if(action.phaseElapsed>=action.path.duration){b.x=action.path.to.x;b.y=action.path.to.y;b.z=0;const extent=config.landingRadius+CONFIG.maxUnitRadius;for(const unit of this._collectBossTargets(b.x-extent,b.y-extent,b.x+extent,b.y+extent,this._bossHitCandidates,true)){if(action.hitIds.has(unit.id))continue;const dx=unit.x-b.x,dy=unit.y-b.y,d=Math.hypot(dx,dy);if(d<=config.landingRadius+unit.radius)this.hitBossPatternUnit(unit,action.id,{x:unit.x,y:unit.y,z:0},{x:dx/(d||1),y:dy/(d||1)})}this.combat('boss-pattern-land',{patternId:action.id,attackId:b.attackId,x:b.x,y:b.y,z:0});this.enterBossPatternRecovery(action)}
         }else if(action.id==='attack.fan-sweep'){
           const q0=Math.max(0,(action.phaseElapsed-dt)/config.active),q1=Math.min(1,action.phaseElapsed/config.active);this.fanBossWeapon(action,q0,q1);if(action.phaseElapsed>=config.active)this.enterBossPatternRecovery(action);
         }else if(action.id==='summon.mouth-t1'){
           while(action.released<action.volleyCount&&action.phaseElapsed+1e-9>=action.nextRelease){if(!this.spawnBossMouthUnit(action))break;action.nextRelease+=config.releaseInterval}if(action.phaseElapsed>=config.active)this.enterBossPatternRecovery(action);
         }return;
       }
-      if(action.phase==='recover'&&action.phaseElapsed>=config.recover){runtime.active=null;b.phase='chase';b.clock=0;b.targetId=0}
+      if(action.phase==='recover'&&action.phaseElapsed>=config.recover)runtime.active=null;
     }
     updateBoss(dt){
       const b=this.boss;
       if(this.scene==='farm'&&this.farmBossEvent.phase!=='idle'){
         const event=this.farmBossEvent;
-        if(event.phase==='dropping'){event.elapsed+=dt;b.z=Math.max(0,CONFIG.raid.dropHeight-.5*CONFIG.gravity*event.elapsed*event.elapsed);if(b.z===0){event.phase='fighting';event.elapsed=0;b.phase='chase';this.combat('farm-boss-land',{x:b.x,y:b.y,z:0})}return}
+        if(event.phase==='dropping'){event.elapsed+=dt;b.z=Math.max(0,CONFIG.raid.dropHeight-.5*CONFIG.gravity*event.elapsed*event.elapsed);if(b.z===0){event.phase='fighting';event.elapsed=0;this.combat('farm-boss-land',{x:b.x,y:b.y,z:0})}return}
         if(event.phase==='fighting'){event.elapsed+=dt;if(b.hp<=0){this.finishFarmBossEvent('victory');return}if(!this.units.some(u=>hasFaction(u,FACTION_CONFIG.PLAYER)&&u.hp>0&&u.dropLanded)){this.finishFarmBossEvent('defeat');return}}
-        else if(event.phase==='celebrating'){event.elapsed+=dt;b.clock=event.elapsed;const duration=event.outcome==='defeat'?CONFIG.farmBossEvent.celebrationSeconds:CONFIG.farmBossEvent.fadeSeconds;if(event.elapsed>=duration){event.phase='fading';event.elapsed=0;b.clock=0}return}
-        else if(event.phase==='fading'){event.elapsed+=dt;b.clock=event.elapsed;if(event.elapsed>=CONFIG.farmBossEvent.fadeSeconds){this.farmBossEvent={phase:'idle',elapsed:0,outcome:'idle',encounterId:0,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};this.boss=this.createBoss()}return}
+        else if(event.phase==='celebrating'){event.elapsed+=dt;const duration=event.outcome==='defeat'?CONFIG.farmBossEvent.celebrationSeconds:CONFIG.farmBossEvent.fadeSeconds;if(event.elapsed>=duration){event.phase='fading';event.elapsed=0}return}
+        else if(event.phase==='fading'){event.elapsed+=dt;if(event.elapsed>=CONFIG.farmBossEvent.fadeSeconds){this.farmBossEvent={phase:'idle',elapsed:0,outcome:'idle',encounterId:0,rewardStatus:'none',rewardChance:0,rewardRoll:0,rewardUnitId:0};this.boss=this.createBoss()}return}
       }
-      if(!b.active)return;if(b.hp<=0){if(this.running)this.finish('victory');else{b.active=false;b.phase='resting'}return}
+      if(!b.active)return;if(b.hp<=0){if(this.running)this.finish('victory');else{b.active=false;b.patternRuntime.active=null}return}
       if(this.running&&this.raidRosters.length&&this.raidRosters.every(r=>r.troops.every(t=>t.deployed))&&!this.units.some(u=>hasFaction(u,FACTION_CONFIG.PLAYER)&&u.hp>0)){this.finish('defeat');return}
-      const living=this.livingBossTargets();if(!living.length)return;if(b.phase==='resting')b.phase='chase';this.updateBossPattern(dt,living);
+      const living=this.livingBossTargets();if(!living.length)return;this.updateBossPattern(dt,living);
     }
 
   };
