@@ -2601,6 +2601,105 @@ async function combatScenarios(p) {
     }
     REPORT.combat = EVIDENCE;
     CHECK('Four world quadrants: boss chase, telegraph, real contact, airborne landing and periodic sweep');
+    const SWEEP = await p.evaluate(async () => {
+        const { bossDangerContour: BOSS_DANGER_CONTOUR } = await import('/src/attack-telegraph.js'),
+            W = new BUDMORI.sim.constructor(774);
+        W.setScene('raid');
+        W.units = W.units.slice(0, 2);
+        const [CENTER, RING] = W.units;
+        W.boss.x = 0;
+        W.boss.y = 0;
+        W.boss.hp = W.boss.maxHp = 1e6;
+        Object.assign(CENTER, {
+            x: 0,
+            y: 0,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            hp: 10000,
+            stun: 100,
+            dropLanded: true,
+        });
+        Object.assign(RING, {
+            x: 6.5,
+            y: 0,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            hp: 10000,
+            stun: 100,
+            dropLanded: true,
+        });
+        W._rebuildUnitSpatialIndex();
+        W.beginBossPattern('attack.sweep-360', RING);
+        const ACTION = W.boss.patternRuntime.active;
+        ACTION.aim = 0;
+        W.activateBossPattern(ACTION);
+        const IMMEDIATE_HITS = ACTION.hitIds.size,
+            INITIAL_CENTER_HP = CENTER.hp,
+            INITIAL_RING_HP = RING.hp,
+            AREA = W.bossAttackArea(0),
+            CONTOUR = new Float64Array(512),
+            COUNT = BOSS_DANGER_CONTOUR(AREA, CONTOUR),
+            RADII = Array.from({ length: COUNT }, (_, index) =>
+                Math.hypot(CONTOUR[index * 2] - AREA.x, CONTOUR[index * 2 + 1] - AREA.y),
+            ),
+            CONTAINS = (x, y) => {
+                let inside = false;
+                for (let i = 0, j = COUNT - 1; i < COUNT; j = i++) {
+                    const XI = CONTOUR[i * 2],
+                        YI = CONTOUR[i * 2 + 1],
+                        XJ = CONTOUR[j * 2],
+                        YJ = CONTOUR[j * 2 + 1];
+                    if (YI > y !== YJ > y && x < ((XJ - XI) * (y - YI)) / (YJ - YI) + XI) {
+                        inside = !inside;
+                    }
+                }
+                return inside;
+            },
+            CENTER_IN_TELEGRAPH = CONTAINS(AREA.x, AREA.y),
+            RING_IN_TELEGRAPH = CONTAINS(AREA.x + AREA.reach * Math.cos(0.4), AREA.y + AREA.reach * Math.sin(0.4));
+        let activeSteps = 0;
+        while (ACTION.phase === 'active' && activeSteps < 64) {
+            W.step(1 / 60);
+            activeSteps++;
+        }
+        return {
+            phase: ACTION.phase,
+            activeDuration: activeSteps / 60,
+            immediateHits: IMMEDIATE_HITS,
+            centerHpLoss: INITIAL_CENTER_HP - CENTER.hp,
+            ringHpLoss: INITIAL_RING_HP - RING.hp,
+            centerHit: ACTION.hitIds.has(CENTER.id),
+            ringHit: ACTION.hitIds.has(RING.id),
+            centerInTelegraph: CENTER_IN_TELEGRAPH,
+            ringInTelegraph: RING_IN_TELEGRAPH,
+            minTelegraphRadius: Math.min(...RADII),
+            maxTelegraphRadius: Math.max(...RADII),
+            reach: AREA.reach,
+            width: AREA.width,
+            sweepHits: W.metrics.sweepHits,
+        };
+    });
+    assert.equal(SWEEP.immediateHits, 0, 'sweep does not hit the entire disk at activation');
+    assert.equal(SWEEP.centerHit, false, 'the sweep leaves the safe interior clear');
+    assert(SWEEP.ringHit && SWEEP.ringHpLoss > 0, 'the moving weapon capsule hits the outer ring');
+    assert.equal(SWEEP.phase, 'recover', 'the 1.05 second physical sweep enters recovery after one full turn');
+    assert(Math.abs(SWEEP.activeDuration - 1.05) < 1e-9, 'the full circle takes the configured 1.05 seconds');
+    assert.equal(SWEEP.reach, 6.5, 'the weapon tip follows the authored radius');
+    assert.equal(SWEEP.width, 0.85, 'the weapon uses the authored capsule radius');
+    assert.equal(SWEEP.sweepHits, 1, 'the passing weapon damages a target no more than once per activation');
+    assert.equal(SWEEP.centerInTelegraph, false, 'the warning contour excludes the boss-centered disk');
+    assert.equal(SWEEP.ringInTelegraph, true, 'the warning contour covers the weapon radius');
+    assert(
+        Math.abs(SWEEP.minTelegraphRadius - (SWEEP.reach - SWEEP.width)) < 1e-6 &&
+            Math.abs(SWEEP.maxTelegraphRadius - (SWEEP.reach + SWEEP.width)) < 1e-6,
+        'the telegraph contour is a thin annulus around the weapon path',
+    );
+    REPORT.sweep360 = SWEEP;
+    CHECK('Chestnut 360 sweep: delayed capsule hits the ring once; safe interior and annular telegraph stay clear');
     const WALL = await p.evaluate(() => {
         const W = new BUDMORI.sim.constructor(773),
             G = BUDMORI.ArenaGeometry;

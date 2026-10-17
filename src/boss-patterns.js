@@ -15,10 +15,11 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     'attack.sweep-360': Object.freeze({
         kind: 'sweep-360',
         windup: 1.05,
-        active: 0,
+        active: 1.05,
         recover: 1.05,
         cooldown: 10,
         reach: 6.5,
+        width: 0.85,
         damageMultiplier: 2.5,
         knockback: 13,
         lift: 10.2,

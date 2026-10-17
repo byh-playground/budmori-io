@@ -2559,10 +2559,11 @@
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
           windup: 1.05,
-          active: 0,
+          active: 1.05,
           recover: 1.05,
           cooldown: 10,
           reach: 6.5,
+          width: 0.85,
           damageMultiplier: 2.5,
           knockback: 13,
           lift: 10.2,
@@ -3893,23 +3894,40 @@
   });
 
   // src/features/boss-patterns/sweep-360/model.js
-  var SweepBossPattern;
+  var TAU, SweepBossPattern;
   var init_model16 = __esm({
     "src/features/boss-patterns/sweep-360/model.js"() {
       init_model_base5();
       init_definition17();
+      TAU = Math.PI * 2;
       SweepBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE7, dependencies);
+          this.physicalActive = true;
         }
-        writeArea(_boss, _action, _scene, pad, area) {
+        writeArea(_boss, action, _scene, pad, area) {
           area.kind = "sweep";
-          area.reach = this.config.reach + pad;
+          area.reach = this.config.reach;
+          area.width = this.config.width + pad;
+          area.angle = action.startAngle ?? action.aim - Math.PI / 2;
         }
-        activate(world, action) {
-          world.resolveBossCircle(action, action.id, this.config.reach);
-          world.enterBossPatternRecovery(action);
-          return;
+        activate(_world, action) {
+          action.startAngle = action.aim - Math.PI / 2;
+        }
+        updateActive(world, action, dt) {
+          const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active);
+          world.sweepBossWeapon(action, Q0, Q1);
+          if (action.phaseElapsed >= this.config.active - 1e-9) {
+            world.enterBossPatternRecovery(action);
+          }
+        }
+        weaponPoint(boss, q) {
+          const { CLAMP: CLAMP3 } = this.dependencies, ACTION = boss.patternRuntime?.active, AIM = ACTION?.aim ?? boss.patternAim ?? boss.angle, START_ANGLE = ACTION?.startAngle ?? AIM - Math.PI / 2, ANGLE = START_ANGLE + TAU * CLAMP3(q, 0, 1);
+          return {
+            x: boss.x + Math.cos(ANGLE) * this.config.reach,
+            y: boss.y + Math.sin(ANGLE) * this.config.reach,
+            z: (boss.z || 0) + 0.2
+          };
         }
         get hitMetric() {
           return "sweepHits";
@@ -10178,6 +10196,38 @@
             }
           }
         }
+        sweepBossWeapon(action, q0, q1) {
+          const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id], START_ANGLE = action.startAngle ?? action.aim - Math.PI / 2, FROM_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP2(q0, 0, 1), TO_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP2(q1, 0, 1), B_LOCAL = this.boss, FROM = {
+            x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
+            y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
+            z: 0.2
+          }, TO = {
+            x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
+            y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
+            z: 0.2
+          }, EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
+          for (const UNIT_LOCAL of this._collectBossTargets(
+            B_LOCAL.x - EXTENT,
+            B_LOCAL.y - EXTENT,
+            B_LOCAL.x + EXTENT,
+            B_LOCAL.y + EXTENT,
+            this._bossHitCandidates,
+            true
+          )) {
+            if (action.hitIds.has(UNIT_LOCAL.id)) {
+              continue;
+            }
+            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
+            if (!HIT) {
+              continue;
+            }
+            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
+            this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
+              x: DX / N,
+              y: DY / N
+            });
+          }
+        }
         bossMouthPoint(released) {
           return bossMouthWorldPoint(this.boss, released);
         }
@@ -10841,7 +10891,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.9";
+      PRODUCT_VERSION = "0.8.10";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14365,6 +14415,8 @@
     }
     drawRelease() {
     }
+    drawWeapon() {
+    }
     drawTelegraph(renderer, area) {
       renderer.drawBossDanger(area);
     }
@@ -14411,6 +14463,50 @@
         return;
       }
       super.recover(boss, pose);
+    }
+    drawTelegraph(renderer, area) {
+      const CTX = renderer.ctx, ALPHA = CTX.globalAlpha, FADE = area.phase === "recover" ? Math.max(0, 1 - area.elapsed / 0.14) : 1, START = area.angle, END = START + Math.PI * 2 * CLAMP2(area.progress, 0, 1);
+      if (!FADE) {
+        return;
+      }
+      CTX.globalAlpha = ALPHA * FADE;
+      renderer.ring(area.x, area.y, area.reach + area.width, "#b46c45", area.active ? 0.05 : 0.09);
+      renderer.ring(area.x, area.y, area.reach - area.width, "#c59b7288", 0.045);
+      renderer.ring(area.x, area.y, area.reach + area.width + 0.12, "#dfad65", 0.14, START, END);
+      CTX.globalAlpha = ALPHA;
+    }
+    drawWeapon(renderer, boss, player, matrix, pose) {
+      if (boss.patternPhase !== "active") {
+        return;
+      }
+      const SOCKET = player.getSocket("fist-right");
+      if (!SOCKET) {
+        return;
+      }
+      const BASE = {
+        x: matrix[0] * SOCKET.x + matrix[4],
+        y: matrix[3] * SOCKET.y + matrix[5]
+      }, Q = CLAMP2(pose.elapsed / this.config.active, 0, 1), ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + Math.PI * 2 * Q, TIP = renderer.project(
+        boss.x + Math.cos(ANGLE) * this.config.reach,
+        boss.y + Math.sin(ANGLE) * this.config.reach,
+        (boss.z || 0) + 0.2
+      ), TAIL = renderer.project(
+        boss.x + Math.cos(ANGLE - 0.18) * this.config.reach,
+        boss.y + Math.sin(ANGLE - 0.18) * this.config.reach,
+        (boss.z || 0) + 0.35
+      );
+      renderer.ctx.flush();
+      renderer.line(BASE, TIP, 0.26, "#684632");
+      renderer.line(BASE, TIP, 0.13, "#f0c77c");
+      renderer.ellipse(
+        TIP.x,
+        TIP.y,
+        this.config.width * renderer.scale * 0.48,
+        this.config.width * renderer.scale * 0.3,
+        "#dfad79",
+        Math.atan2(-0.62 * Math.sin(ANGLE), Math.cos(ANGLE))
+      );
+      renderer.line(TAIL, TIP, 0.26, "#e6cf7b99");
     }
   };
 
@@ -14706,6 +14802,7 @@
         matrix: MATRIX
       });
       PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
+      PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE);
     }
   };
 
@@ -14713,7 +14810,7 @@
   init_farm_model();
 
   // src/attack-telegraph.js
-  var TAU = Math.PI * 2;
+  var TAU2 = Math.PI * 2;
   var ARC_STEP = Math.PI / 36;
   function point(out, count, x, y) {
     out[count * 2] = x;
@@ -14731,7 +14828,7 @@
   function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
     const DX = endX - x, DY = endY - y, D = Math.hypot(DX, DY), ANGLE = Math.atan2(DY, DX), R2 = Math.max(r, landingRadius);
     if (D <= R2 - r + 1e-9) {
-      return arc(out, 0, endX, endY, R2, 0, TAU);
+      return arc(out, 0, endX, endY, R2, 0, TAU2);
     }
     const JOIN = Math.sqrt(Math.max(0, R2 * R2 - r * r));
     let n = 0;
@@ -14742,7 +14839,7 @@
     } else {
       const CROSS = (r * r - R2 * R2 + D * D) / (2 * D), HEIGHT = Math.sqrt(Math.max(0, r * r - CROSS * CROSS));
       const SMALL = Math.atan2(HEIGHT, CROSS), LARGE = Math.atan2(HEIGHT, CROSS - D);
-      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU);
+      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU2);
       n = arc(out, n, endX, endY, R2, ANGLE + LARGE, ANGLE - LARGE);
     }
     return n;
@@ -14750,7 +14847,9 @@
   function bossDangerContour(area, out) {
     let n = 0;
     if (area.kind === "sweep") {
-      return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
+      const OUTER = area.reach + area.width, INNER = Math.max(0, area.reach - area.width);
+      n = arc(out, 0, area.x, area.y, OUTER, 0, TAU2);
+      return arc(out, n, area.x, area.y, INNER, TAU2, 0);
     }
     if (area.kind === "sector") {
       n = point(out, n, area.x, area.y);
@@ -14774,7 +14873,7 @@
         area.y + Math.sin(START) * R_LOCAL,
         W,
         START + Math.PI,
-        START + TAU
+        START + TAU2
       );
     }
     return 0;

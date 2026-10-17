@@ -106,6 +106,9 @@ export class BossAttackPresentation {
     drawRelease() {
         // Ordinary attacks have no mouth-release paint.
     }
+    drawWeapon() {
+        // Ordinary attacks have no articulated weapon pass.
+    }
     drawTelegraph(renderer, area) {
         renderer.drawBossDanger(area);
     }
