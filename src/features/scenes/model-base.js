@@ -33,31 +33,30 @@ export class SimulationScene {
         return false;
     }
     advanceDownedUnit(world, unit, dt) {
-        const ADVANCED = this.advanceRest(world, unit, dt),
-            OLD_Z = unit.z;
+        const ADVANCED = this.advanceRest(world, unit, dt);
+        this.restoreUnit(world, unit);
+        return ADVANCED;
+    }
+    advanceDownedPhysics(world, unit, dt) {
+        const OLD_Z = unit.z;
         unit.integrate(dt);
         this.afterDownedIntegration(world, unit);
         if (OLD_Z > 0 && unit.z === 0) {
             world.metrics.landings++;
             this.landUnit(world, unit);
         }
-        this.restoreUnit(world, unit);
-        world.unitSpatial.update(unit);
-        return ADVANCED;
+        world.updateUnitSpatial(unit);
     }
     separateBossUnits(world) {
         for (const UNIT of world.units) {
             world.separateBoss(UNIT);
-            world.unitSpatial.update(UNIT);
+            world.updateUnitSpatial(UNIT);
         }
     }
     updateBattle(world, dt) {
         if (!world.boss.active) {
             return;
         }
-        world.updateProjectiles(dt);
         world.updateBoss(dt);
-        // Preserve the pre-update active decision for ordinary encounters.
-        this.separateBossUnits(world);
     }
 }

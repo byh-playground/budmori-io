@@ -845,7 +845,7 @@ async function upgradeMenuFlow() {
     await openMenuTab(P, 'play');
     assert.equal(await P.locator('#gameMenuTitle').textContent(), '설정');
     assert.equal(await P.locator('#gameMenuTabs').isVisible(), false);
-    assert.equal(await P.locator('#menuPlayPanel button').count(), 1);
+    assert.equal(await P.locator('#menuPlayPanel button').count(), 3);
     await P.locator('#sound').click();
     await P.locator('#sound').click();
     await closeMenu(P);
@@ -1033,6 +1033,82 @@ async function upgrades() {
     await upgradeMenuFlow();
     await formationHudFlow();
 }
+async function cadenceDiagnosticsFlow() {
+    const C = await browser.newContext({
+            viewport: { width: 390, height: 844 },
+            permissions: ['clipboard-read', 'clipboard-write'],
+        }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await openMenuTab(P, 'play');
+    await P.locator('#copyDiagnostics').click();
+    const BASIC = await P.evaluate(() => navigator.clipboard.readText());
+    assert(BASIC.includes('GPU 시간 미측정') && BASIC.includes('상세 꺼짐') && BASIC.includes('미측정'));
+    assert(!BASIC.trim().startsWith('{') && BASIC.split('\n').length <= 15);
+    await P.locator('#diagnosticDetail').check();
+    await closeMenu(P);
+    const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
+    for (let index = 0; index < 5; index++) {
+        await P.locator('#feed').click();
+    }
+    await P.waitForFunction((tick) => BUDMORI.sim.metrics.logicTicks >= tick + 30, BEFORE.ticks);
+    await P.evaluate(() => {
+        const END = performance.now() + 260;
+        while (performance.now() < END) {
+            // A stalled tab must expose bounded catchup, never repeat a whole world per physics step.
+        }
+    });
+    await P.waitForTimeout(100);
+    await P.evaluate(() => {
+        const END = performance.now() + 460;
+        while (performance.now() < END) {
+            // A gap beyond the module backlog limit is dropped and reported.
+        }
+    });
+    await P.waitForTimeout(100);
+    await P.locator('#pause').click();
+    const AFTER = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
+    assert(
+        Math.abs(AFTER.time - BEFORE.time - (AFTER.ticks - BEFORE.ticks) * 0.05) < 1e-8,
+        'logical ticks preserve full elapsed seconds',
+    );
+    await openMenuTab(P, 'play');
+    await P.locator('#copyDiagnostics').click();
+    const SUMMARY = await P.evaluate(() => navigator.clipboard.readText());
+    assert(
+        SUMMARY.includes('상세 켜짐') &&
+            SUMMARY.includes('논리') &&
+            SUMMARY.includes('물리') &&
+            SUMMARY.includes('fill 재테셀'),
+    );
+    await P.locator('summary').filter({ hasText: '상세 진단 옵션' }).click();
+    await P.locator('#exportDiagnostics').click();
+    const DETAIL = JSON.parse(await P.locator('#settingsDiagnosticText').inputValue()),
+        PERFORMANCE = DETAIL.performance;
+    assert.equal(PERFORMANCE.format, 'bloom numeric frame metrics v1');
+    assert.equal(PERFORMANCE.gpuMs, null);
+    assert(PERFORMANCE.retainedFrames <= 240 && PERFORMANCE.windowMs > 1000);
+    assert(PERFORMANCE.counts.logicTicks.total >= 20);
+    assert(PERFORMANCE.counts.logicTicks.total <= Math.ceil((PERFORMANCE.windowMs / 1000) * 20) + 3);
+    assert(PERFORMANCE.counts.physicsSteps.total >= PERFORMANCE.counts.logicTicks.total * 3);
+    assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
+    assert(PERFORMANCE.counts.drawCalls.total > 0 && PERFORMANCE.counts.bufferUploads.total > 0);
+    assert(PERFORMANCE.stagesMs.render.max > 0 && PERFORMANCE.stagesMs.ai.total >= 0);
+    assert(SUMMARY.split('\n').length <= 15);
+    REPORT.cadence = {
+        elapsedSeconds: AFTER.time - BEFORE.time,
+        logicTicks: AFTER.ticks - BEFORE.ticks,
+        physicsSteps: PERFORMANCE.counts.physicsSteps.total,
+        windowMs: PERFORMANCE.windowMs,
+        summary: SUMMARY,
+    };
+    await P.screenshot({ path: path.join(OUT, 'cadence-diagnostics-mobile.png') });
+    await clean(P);
+    await C.close();
+    CHECK(
+        'Settings short diagnostic copy through real browser clipboard; opt-in detailed numeric window, 20Hz time preservation and actual WebGL counters',
+    );
+}
 async function core() {
     const C = await browser.newContext({
             viewport: {
@@ -1071,8 +1147,11 @@ async function core() {
     );
     await P.locator('#bloom-diagnostic-copy').click();
     await P.waitForFunction(() => typeof window.__startupDiagnostics === 'string');
-    const STARTUP_DIAGNOSTICS = JSON.parse(await P.evaluate(() => window.__startupDiagnostics));
-    assert.equal(STARTUP_DIAGNOSTICS.format, 'budmori startup diagnostics v1');
+    const SHORT_DIAGNOSTICS = await P.evaluate(() => window.__startupDiagnostics);
+    assert(SHORT_DIAGNOSTICS.includes('diagnostic-probe'));
+    assert(!SHORT_DIAGNOSTICS.trim().startsWith('{'));
+    const STARTUP_DIAGNOSTICS = await P.evaluate(() => JSON.parse(globalThis.BloomDiagnostics.detail()));
+    assert.equal(STARTUP_DIAGNOSTICS.format, 'budmori startup diagnostics v2');
     assert.equal(STARTUP_DIAGNOSTICS.app.version.split(' ')[0], PRODUCT_VERSION);
     assert(
         STARTUP_DIAGNOSTICS.diagnostics.errors.some(
@@ -1097,6 +1176,7 @@ async function core() {
     });
     await P.waitForFunction(() => BUDMORI.runtime.tick > 5);
     assert.equal(await P.locator('#startScreen').isVisible(), false);
+    await cadenceDiagnosticsFlow();
     await upgrades();
     await nutAttackCycles(P);
     await formationBrowserUI();
@@ -3196,7 +3276,7 @@ async function event() {
     );
     assert.equal(await P.locator('#bossbar').isVisible(), true);
     assert.equal(await P.locator('#farmControls').isVisible(), false);
-    assert.equal(await P.locator('#bossHealthNote').textContent(), '보스 능력치 고정');
+    assert.equal(await P.locator('#bossHealthNote').textContent(), '상대 능력치 고정');
     await P.evaluate(() =>
         BUDMORI.sim.units.forEach((unit) => {
             unit.hp = 0;
@@ -3294,6 +3374,7 @@ try {
         {
             core,
             upgrades,
+            cadence: cadenceDiagnosticsFlow,
             formation: formationBrowserUI,
             save,
             migration,

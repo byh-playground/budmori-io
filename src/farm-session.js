@@ -1,4 +1,4 @@
-import { Garden, CONFIG, bindPresentationClock } from './farm-model.js';
+import { Garden, bindPresentationClock } from './farm-model.js';
 import { baseUnitStatsFor } from './unit-stats.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
 const R = RENDER_OBJECT;
@@ -417,6 +417,7 @@ class FarmSession {
             getInput: () => LOCAL_INPUT,
             onError,
             onBacklogDrop: () => {
+                this.profiler?.count('backlogDrops');
                 this.pendingPresentationMode = 'reset';
             },
             onAdvance: (result) => {
@@ -515,11 +516,9 @@ class FarmSession {
             PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
         bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1000) / 1000);
         if (W.scene === 'farm') {
-            W.advanceAutoTaps(0.05);
+            W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
         }
-        for (let i = 0; i < 6; i++) {
-            W.step(CONFIG.physics.fixedStep);
-        }
+        W.step(1 / LOCAL_PROFILE.tickRate);
         this.tick++;
         this.presentationTick++;
         this.onWorldStep(W);
@@ -781,9 +780,11 @@ class FarmSession {
     }
     pulse(now) {
         this.pulseTimestamp = now;
+        const PREVIOUS_TICK = this.tick;
         this.loop.pulse(now, {
             render: false,
         });
+        this.profiler?.count('catchupTicks', Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
     dispose() {
         this.closed = true;

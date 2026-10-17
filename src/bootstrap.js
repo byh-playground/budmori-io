@@ -177,7 +177,7 @@ function appVersion() {
         .trim()
         .slice(0, 80);
 }
-function diagnosticSnapshot() {
+function detailedDiagnosticSnapshot() {
     const ERRORS = diagnosticRing
         ? diagnosticRing.snapshot()
         : {
@@ -191,7 +191,8 @@ function diagnosticSnapshot() {
           };
     return JSON.stringify(
         {
-            format: 'budmori startup diagnostics v1',
+            format: 'budmori startup diagnostics v2',
+            performance: globalThis.BudmoriPerformanceDiagnostics?.snapshot() || null,
             app: {
                 version: appVersion(),
                 gameBundleSha256: config?.game?.sha256 || null,
@@ -207,6 +208,49 @@ function diagnosticSnapshot() {
         2,
     );
 }
+function diagnosticSnapshot() {
+    const ERRORS = diagnosticRing?.snapshot() || { total: EARLY_ERRORS.length, errors: EARLY_ERRORS },
+        LINES = [
+            `budmori ${appVersion()} · build ${config?.game?.sha256?.slice(0, 12) || '미확인'} · SDK source ${config?.sourceCommit?.slice(0, 12) || '미확인'}`,
+        ];
+    LINES.push(...(globalThis.BudmoriPerformanceDiagnostics?.summary() || ['성능 미측정 · 시작 단계 ' + initStage]));
+    LINES.push(
+        `오류 ${ERRORS.total || 0} · 단계 ${initStage} · 최근 입력 ${
+            RECENT_INPUTS.slice(-3)
+                .map((input) => `${input.type || 'input'}:${input.target?.id || input.target?.tag || ''}`)
+                .join(', ') || '없음'
+        }`,
+    );
+    for (const ERROR of (ERRORS.errors || []).slice(-1)) {
+        LINES.push(`[${ERROR.kind || 'error'} / ${ERROR.visibility || 'blocking'}] ${ERROR.message || '오류'}`);
+        if (ERROR.stack) {
+            LINES.push(ERROR.stack.split('\n').slice(0, 4).join(' ← '));
+        }
+        if (ERROR.source || ERROR.line || ERROR.column || ERROR.cause) {
+            LINES.push(
+                `위치 ${ERROR.source || ''}:${ERROR.line || 0}:${ERROR.column || 0} · 원인 ${ERROR.cause || '미제공'}`,
+            );
+        }
+    }
+    return LINES.join('\n');
+}
+globalThis.BloomDiagnostics = Object.freeze({
+    summary: diagnosticSnapshot,
+    detail: detailedDiagnosticSnapshot,
+    async copy({ textarea } = {}) {
+        const TEXT = diagnosticSnapshot();
+        const RESULT = debugTools?.copyDiagnostic
+            ? await debugTools.copyDiagnostic(TEXT, { clipboard: navigator.clipboard, textarea })
+            : { copied: false, text: TEXT };
+        if (!RESULT.copied && textarea) {
+            textarea.hidden = false;
+            textarea.value = TEXT;
+            textarea.focus();
+            textarea.select();
+        }
+        return RESULT;
+    },
+});
 DIAGNOSTIC_BUTTON.addEventListener('click', async () => {
     DIAGNOSTIC_STATUS.hidden = false;
     DIAGNOSTIC_TEXT.hidden = true;

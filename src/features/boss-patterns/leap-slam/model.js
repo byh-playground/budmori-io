@@ -4,6 +4,7 @@ import { FEATURE } from './definition.js';
 export class LeapBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
+        this.physicalActive = true;
     }
     writeArea(boss, action, scene, pad, area) {
         const { CONFIG, CLAMP } = this.dependencies;

@@ -4,6 +4,7 @@ import { FEATURE } from './definition.js';
 export class FanBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
+        this.physicalActive = true;
     }
     writeArea(_boss, _action, _scene, pad, area) {
         area.kind = 'fan';

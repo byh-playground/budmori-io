@@ -2,12 +2,23 @@ export class BallisticProjectile {
     constructor(feature, dependencies) {
         this.feature = feature;
         this.dependencies = dependencies;
+        this.oldPoint = { x: 0, y: 0, z: 0 };
+        this.motionPoint = { x: 0, y: 0, z: 0 };
+    }
+    advanceLifecycle(_world, _projectile, _dt) {
+        /* Plain damage projectiles have only a physical flight clock. */
     }
     update(world, projectile, dt) {
         const { Ballistics: BALLISTICS, ArenaGeometry: ARENA_GEOMETRY } = this.dependencies;
-        const OLD = { x: projectile.x, y: projectile.y, z: projectile.z };
+        const OLD = this.oldPoint;
+        OLD.x = projectile.x;
+        OLD.y = projectile.y;
+        OLD.z = projectile.z;
         projectile.elapsed += dt;
-        Object.assign(projectile, BALLISTICS.sample(projectile.path, projectile.elapsed / projectile.path.duration));
+        Object.assign(
+            projectile,
+            BALLISTICS.sample(projectile.path, projectile.elapsed / projectile.path.duration, this.motionPoint),
+        );
         const CANDIDATE =
             projectile.targetId && projectile.targetId !== 'boss' ? world._unitForId(projectile.targetId) : world.boss;
         const TARGET = CANDIDATE === world.boss || CANDIDATE?.hp > 0 ? CANDIDATE : null;
