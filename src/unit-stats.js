@@ -31,8 +31,7 @@ export const COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
 // exercise the shared math without changing live balance.
 export const COMMON_UNIT_STAT_PROFILES = Object.freeze(Array.from({ length: SPECIES_COUNT }, () => Object.freeze({ ...COMMON_UNIT_STAT_DEFAULTS })));
 
-export function resolveUnitStats(unit, overrides = {}) {
-  const tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(unit?.tier) ? unit.tier : 1));
+function createBaseStats(tier, speciesProfile) {
   let maxHp = TIER_HP;
   let attackPower = TIER_ATTACK;
   for (let resultTier = 2; resultTier <= tier; resultTier++) {
@@ -40,14 +39,28 @@ export function resolveUnitStats(unit, overrides = {}) {
     maxHp *= TIER_HP_SCALE * transitionMultiplier;
     attackPower *= TIER_ATTACK_SCALE * transitionMultiplier;
   }
-  const speciesProfile = COMMON_UNIT_STAT_PROFILES[unit?.species] || COMMON_UNIT_STAT_DEFAULTS;
-  return {
-    maxHp,
-    attackPower,
-    ...COMMON_UNIT_STAT_DEFAULTS,
-    ...speciesProfile,
-    ...overrides
-  };
+  return Object.freeze({ maxHp, attackPower, ...COMMON_UNIT_STAT_DEFAULTS, ...speciesProfile });
+}
+
+// Only frozen definition inputs are cached. Unit state and caller overrides are
+// read anew, so tier/species changes, buffs, and restored objects cannot go stale.
+const BASE_STATS_BY_PROFILE = new Map([COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map(profile => [
+  profile, Array.from({ length: MAX_UNIT_TIER }, (_, index) => createBaseStats(index + 1, profile))
+]));
+
+export function baseUnitStatsFor(tier, species) {
+  tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
+  const profile = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
+  return BASE_STATS_BY_PROFILE.get(profile)?.[tier - 1] || createBaseStats(tier, profile);
+}
+
+// Preserve the public mutable-result contract; callers never receive the cache.
+export function resolveUnitStats(unit, overrides) {
+  return { ...baseUnitStatsFor(unit?.tier, unit?.species), ...overrides };
+}
+
+function combatStats(unit, overrides) {
+  return overrides === undefined ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
 }
 
 export function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
@@ -64,16 +77,16 @@ export function resolveCritical(stats, roll = 1) {
   return chance > 0 && roll < chance;
 }
 
-export function scaleMoveSpeed(baseSpeed, unit, overrides = {}) {
-  return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, resolveUnitStats(unit, overrides).moveSpeed);
+export function scaleMoveSpeed(baseSpeed, unit, overrides) {
+  return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit, overrides).moveSpeed);
 }
 
-export function scaleAttackRecovery(baseRecovery, unit, overrides = {}) {
-  return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(.05, resolveUnitStats(unit, overrides).attackSpeed);
+export function scaleAttackRecovery(baseRecovery, unit, overrides) {
+  return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(.05, combatStats(unit, overrides).attackSpeed);
 }
 
-export function scaleAttackArea(baseArea, unit, overrides = {}) {
-  return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, resolveUnitStats(unit, overrides).attackArea);
+export function scaleAttackArea(baseArea, unit, overrides) {
+  return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit, overrides).attackArea);
 }
 
 export function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier } = {}) {
@@ -84,7 +97,7 @@ export function applyDamage(target, rawDamage, { armor = 0, armorPenetration = 0
   return { ...resolved, actualLoss };
 }
 
-export function applyHealing(target, amount, receiverStats = resolveUnitStats(target)) {
+export function applyHealing(target, amount, receiverStats = combatStats(target)) {
   if (!target || !Number.isFinite(target.hp) || target.hp <= 0) return 0;
   const maxHp = Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
   const received = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
@@ -100,11 +113,11 @@ export function applyDamageToTargets(source, targets, {
   rawDamage,
   area = false,
   sourceKind = "direct",
-  sourceStatOverrides = {},
-  armorForTarget = target => resolveUnitStats(target).armor,
+  sourceStatOverrides,
+  armorForTarget = target => combatStats(target).armor,
   roll = () => 1
 } = {}) {
-  const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : null;
+  const sourceStats = source ? combatStats(source, sourceStatOverrides) : null;
   const critical = !!sourceStats && sourceStats.critChance > 0 && resolveCritical(sourceStats, roll());
   const hits = [];
   let totalActualLoss = 0;
@@ -124,17 +137,17 @@ export function applyDamageToTargets(source, targets, {
   return { hits, totalActualLoss, healed, critical };
 }
 
-export function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides = {}, targetStatOverrides = {} } = {}) {
-  const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-  const targetStats = target ? resolveUnitStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+export function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+  const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+  const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
   const durationScale = Number.isFinite(sourceStats.statusDuration) ? Math.max(0, sourceStats.statusDuration) : 1;
   const resistance = clamp(Number.isFinite(targetStats.statusResistance) ? targetStats.statusResistance : 0, 0, 1);
   return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * durationScale * (1 - resistance);
 }
 
-export function resolveKnockback(basePower, source, target, { sourceStatOverrides = {}, targetStatOverrides = {} } = {}) {
-  const sourceStats = source ? resolveUnitStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-  const targetStats = target ? resolveUnitStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+export function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+  const sourceStats = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+  const targetStats = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
   const power = Number.isFinite(sourceStats.knockbackPower) ? Math.max(0, sourceStats.knockbackPower) : 1;
   const resistance = clamp(Number.isFinite(targetStats.knockbackResistance) ? targetStats.knockbackResistance : 0, 0, 1);
   return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * power * (1 - resistance);

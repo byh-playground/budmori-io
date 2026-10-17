@@ -1,5 +1,5 @@
 const {SeededPRNG}=globalThis.BloomGamekitDeterministic;
-import {resolveUnitStats,applyDamageToTargets,applyHealing,resolveStatusDuration,resolveKnockback,scaleMoveSpeed,scaleAttackRecovery,scaleAttackArea} from './unit-stats.js';
+import {baseUnitStatsFor,applyDamageToTargets,applyHealing,resolveStatusDuration,resolveKnockback,scaleMoveSpeed,scaleAttackRecovery,scaleAttackArea} from './unit-stats.js';
 import {UNIT_ABILITY_PROFILES as ATTACK_TYPES,abilityProfile} from './unit-abilities.js';
 import {bossAcquisitionChance, bossStageStats, settleBossKill, grantPendingBossAcquisitions} from './boss-rewards.js';
 import {createFarmBossProgress} from './farm-boss-stages.js';
@@ -35,7 +35,8 @@ function bossAttackArea(boss,unitRadius=0){
   return action.id==='summon.mouth-t1'?{kind:'summon',x:boss.x,y:boss.y,angle:action.aim??boss.angle,progress,active:action.phase==='active',patternId:action.id,locked}:null;
 }
   var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-  var stats = (tier,species) => resolveUnitStats({tier,species});
+  var stats = baseUnitStatsFor;
+  const mutableStats = (tier,species) => ({...stats(tier,species)});
   var Body = class {
     constructor(x, y) {
       Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, angle: 0, stun: 0, flash: 0, bounce: 0 });
@@ -286,7 +287,7 @@ const AttackingBody=Base=>class extends Base{
       if(food.phase==='grounded'){this.foodSpatial.insert(food);this._groundedFoods.push(food);this._groundedFoodCount=(this._groundedFoodCount||0)+1}
     }
     _trackUnitAdded(unit){
-      if(!this._spatialStepActive){this._unitSpatialDirty=true;return}
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0){this._unitSpatialDirty=true;return}
       this.unitSpatial.insert(unit);this._unitById.set(unit.id,unit);this._unitStepOrder.set(unit,-1);
       if(unit.species>=0&&unit.species<CONFIG.maxSpecies){this._speciesGroups[unit.species].push(unit);this._ownedSpeciesCounts[unit.species]+=unit.isBattleOnlySummon?0:1;
         const tier=Math.max(0,Math.min(CONFIG.maxTier,unit.tier|0));this._speciesTierGroups[unit.species*(CONFIG.maxTier+1)+tier].push(unit)}
@@ -294,7 +295,7 @@ const AttackingBody=Base=>class extends Base{
       this._unitAliveState.set(unit,unit.hp>0);
     }
     _trackUnitRemoved(unit,{keepStepSnapshot=false}={}){
-      if(!this._spatialStepActive){this._unitSpatialDirty=true;return}
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0){this._unitSpatialDirty=true;return}
       this._unitById.delete(unit.id);
       this._syncUnitAliveCount(unit);if(unit.hp>0&&typeof unit.faction==='string')this._adjustFactionCount(unit.faction,-1);
       this._unitAliveState.set(unit,false);
@@ -309,6 +310,12 @@ const AttackingBody=Base=>class extends Base{
       const wasAlive=this._unitAliveState?.get(unit);const isAlive=unit.hp>0;if(wasAlive===isAlive)return;
       if(!this._unitAliveState)this._unitAliveState=new Map();this._unitAliveState.set(unit,isAlive);
       if(typeof unit.faction==='string')this._adjustFactionCount(unit.faction,isAlive?1:-1);
+    }
+    _unitForId(id){
+      // Outside a controlled step/batch, public callers may have replaced units
+      // or edited their IDs directly. Rebuild rather than trusting a dirty bit.
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);
+      return this._unitById.get(id);
     }
     _unitIsActive(unit){return this._unitById.get(unit?.id)===unit}
     _beginSpatialQueryBatch(){if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);this._spatialQueryDepth++}
@@ -967,7 +974,10 @@ const AttackingBody=Base=>class extends Base{
     }
     wheatCommandCritBonusFor(attacker){
       if(!attacker||attacker.hp<=0)return 0;let strongest=0;
-      for(const source of this.units){
+      if(!this._spatialStepActive&&this._spatialQueryDepth===0)this._rebuildUnitSpatialIndex(this.units);
+      // The existing species group keeps live references, including movement
+      // before this unit's grid cell is updated. Buff lifetime stays hit-time.
+      for(const source of this._speciesGroups[7]){
         if(source.species!==7||source.hp<=0||!hasFaction(source,attacker.faction)||source.wheatCommandUntil<=this.time)continue;
         const config=getWheatCommandConfig(this.abilityProgressionFor(source),source.tier);
         if(!config||Math.hypot(source.x-attacker.x,source.y-attacker.y)>config.radius)continue;
@@ -1011,7 +1021,8 @@ const AttackingBody=Base=>class extends Base{
     }
     attackTarget(unit,action){
       if(action?.targetId==='boss'||!action?.targetId)return areOpposingFactions(unit,this.boss)?this.boss:null;
-      return this.units.find(candidate=>candidate.id===action.targetId&&candidate.hp>0&&areOpposingFactions(unit,candidate))||null;
+      const target=this._unitForId(action.targetId);
+      return target?.hp>0&&areOpposingFactions(unit,target)?target:null;
     }
     damageUnitTarget(u,action,target,point,{attackMultiplier=null,attackKind=null,strikeIndex=null,area=false,criticalRoll=null}={}){
       if(!target||target.hp<=0||!areOpposingFactions(u,target)||action.hit)return false;action.hit=true;
@@ -1031,13 +1042,15 @@ const AttackingBody=Base=>class extends Base{
 
     explodePopcorn(kernel){
       if(!kernel?.isPopcorn||kernel.exploded)return false;
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{
       const queue=[kernel],queued=new Set();let triggered=false;
       while(queue.length){
         const current=queue.shift();if(!current?.isPopcorn||current.exploded||queued.has(current.id))continue;
         queued.add(current.id);current.exploded=true;current.explosionLife=0;current.hit=true;triggered=true;
         const config=current.popcornConfig,center={x:current.x,y:current.y,z:0},range=config.radius;
         this.effects.push({kind:'popcorn-explosion',x:current.x,y:current.y,z:0,life:0,duration:.5,radius:range,owner:current.owner});
-        const owner=this.units.find(candidate=>candidate.id===current.owner)||{id:current.owner,ownerId:current.ownerId||'',faction:current.faction,species:current.species,tier:current.tier,x:current.x,y:current.y,z:0};
+        const owner=this._unitForId(current.owner)||{id:current.owner,ownerId:current.ownerId||'',faction:current.faction,species:current.species,tier:current.tier,x:current.x,y:current.y,z:0};
         const targets=[];
         if(areOpposingFactions(owner,this.boss)&&!current.damagedTargetIds.includes('boss')&&Math.hypot(current.x-this.boss.x,current.y-this.boss.y)<=range+this.boss.radius)targets.push(this.boss);
         for(const target of this.units)if(target.hp>0&&areOpposingFactions(owner,target)&&!current.damagedTargetIds.includes(target.id)&&Math.hypot(current.x-target.x,current.y-target.y)<=range+target.radius)targets.push(target);
@@ -1050,19 +1063,23 @@ const AttackingBody=Base=>class extends Base{
         this.combat('popcorn-explosion',{unit:current.owner,ownerId:current.ownerId||'',species:1,x:current.x,y:current.y,radius:range});
       }
       return triggered;
+      }finally{if(batch)this._endSpatialQueryBatch()}
     }
 
     updateProjectiles(dt){
+      const batch=!this._spatialStepActive;if(batch)this._beginSpatialQueryBatch();
+      try{
       for(const p of this.projectiles){
         if(p.isPopcorn&&p.landed){if(!p.exploded)p.fuseRemaining=Math.max(0,p.fuseRemaining-dt);else p.explosionLife=(p.explosionLife||0)+dt;continue}
         const old={x:p.x,y:p.y,z:p.z};p.elapsed+=dt;Object.assign(p,Ballistics.sample(p.path,p.elapsed/p.path.duration));
-        const target=p.targetId&&p.targetId!=='boss'?this.units.find(u=>u.id===p.targetId&&u.hp>0):this.boss;
+        const candidate=p.targetId&&p.targetId!=='boss'?this._unitForId(p.targetId):this.boss;
+        const target=candidate===this.boss||candidate?.hp>0?candidate:null;
         const hit=target?ArenaGeometry.sweep(old,p,p.radius,p.height,target):null;
         if(p.isPopcorn&&(hit||p.elapsed>=p.path.duration)){
           if(hit)Object.assign(p,{x:hit.x,y:hit.y,z:0});else p.z=0;
           p.landed=true;p.fuseRemaining=p.popcornConfig.fuseSeconds;
           this.effects.push({kind:'popcorn-kernel-impact',x:p.x,y:p.y,z:0,life:0,duration:.25,radius:p.radius,owner:p.owner});
-        }else if(hit){Object.assign(p,{x:hit.x,y:hit.y,z:hit.z});const source=this.units.find(u=>u.id===p.owner),impactUnit=source||{id:p.owner,ownerId:p.ownerId||'',faction:p.faction,species:p.species,tier:p.tier,x:p.x,y:p.y,z:p.z};if(target===this.boss)this.damageBoss(impactUnit,p,hit,{lifestealSource:source||impactUnit,attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'});else this.damageUnitTarget(impactUnit,p,target,hit,{attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'})}
+        }else if(hit){Object.assign(p,{x:hit.x,y:hit.y,z:hit.z});const source=this._unitForId(p.owner),impactUnit=source||{id:p.owner,ownerId:p.ownerId||'',faction:p.faction,species:p.species,tier:p.tier,x:p.x,y:p.y,z:p.z};if(target===this.boss)this.damageBoss(impactUnit,p,hit,{lifestealSource:source||impactUnit,attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'});else this.damageUnitTarget(impactUnit,p,target,hit,{attackMultiplier:p.attackMultiplier,attackKind:p.projectileKind||'lob'})}
         else if(p.elapsed>=p.path.duration){p.z=0;this.emit(p.projectileKind==='chestnut-spike'?'spike-land':'shell-land',p.x,p.y)}
       }
       for(const p of this.projectiles){
@@ -1072,6 +1089,7 @@ const AttackingBody=Base=>class extends Base{
         this.explodePopcorn(p);
       }
       this.projectiles=this.projectiles.filter(p=>p.isPopcorn?!p.exploded||p.explosionLife<.5:!p.hit&&p.elapsed<p.path.duration);this.boss.flash=Math.max(0,(this.boss.flash||0)-dt);
+      }finally{if(batch)this._endSpatialQueryBatch()}
     }
 
     raidUnit(u,dt,enemy=this.boss){
@@ -1293,4 +1311,4 @@ const AttackingBody=Base=>class extends Base{
   };
 
 
-export {Garden,Unit,AttackCycle,FARM_UPGRADE_NODES,ATTACK_TYPES,ArenaGeometry,Ballistics,CONFIG,clamp,stats,bossAttackArea};
+export {Garden,Unit,AttackCycle,FARM_UPGRADE_NODES,ATTACK_TYPES,ArenaGeometry,Ballistics,CONFIG,clamp,mutableStats as stats,bossAttackArea};
