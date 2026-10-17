@@ -55,6 +55,7 @@ try {
             'audio.js',
             'navigation.js',
             'scenario.js',
+            'object-pool.js',
         ],
         'fixed distribution module order',
     );
@@ -149,12 +150,13 @@ try {
         .split(PREVIOUS.distCommit)
         .join(DIST_COMMIT);
     FS.writeFileSync(PATH.join(STAGED, 'index.html'), html);
-    FS.writeFileSync(PATH.join(STAGED, 'gamekit-lock.json'), JSON.stringify(LOCK, null, 2) + '\n');
+    FS.writeFileSync(PATH.join(STAGED, 'gamekit-lock.json'), JSON.stringify(LOCK, null, 4) + '\n');
     FS.mkdirSync(PATH.join(STAGED, 'src'), {
         recursive: true,
     });
     FS.writeFileSync(PATH.join(STAGED, 'src/game.js'), GAME);
     FS.copyFileSync(PATH.join(ROOT, 'src/bootstrap.js'), PATH.join(STAGED, 'src/bootstrap.js'));
+    FS.copyFileSync(PATH.join(ROOT, 'src/version.js'), PATH.join(STAGED, 'src/version.js'));
     if (FS.existsSync(PATH.join(ROOT, 'src/scope.js'))) {
         FS.copyFileSync(PATH.join(ROOT, 'src/scope.js'), PATH.join(STAGED, 'src/scope.js'));
     }
