@@ -257,10 +257,10 @@ const AttackingBody=Base=>class extends Base{
       this._speciesTierGroups=Array.from({length:CONFIG.maxSpecies*(CONFIG.maxTier+1)},()=>[]);
       this._mergeEligibleGroups=Array.from({length:CONFIG.maxSpecies*(CONFIG.maxTier+1)},()=>[]);
       this._ownedSpeciesCounts=new Int32Array(CONFIG.maxSpecies);
-      this._unitCandidates=[];this._foodCandidates=[];this._groundedFoods=[];this._groundedFoodCount=0;this._contactPending=[];this._contactExtra=[];this._contactQuery=[];this._contactSeen=new Uint32Array(0);this._contactGeneration=0;
+      this._stepUnits=[];this._unitCandidates=[];this._foodCandidates=[];this._groundedFoods=[];this._groundedFoodCount=0;this._contactPending=[];this._contactExtra=[];this._contactQuery=[];this._contactSeen=new Uint32Array(0);this._contactGeneration=0;
       this._bossGridUnits=[];this._bossGroundUnits=[];this._bossQueryCandidates=[];this._bossHitCandidates=[];
       this._mergeNearestScratch=[];this._mergeMaterialsScratch=[];this._mergeIdScratch=[];this._spatialStepActive=false;this._spatialQueryDepth=0;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
-      for(const key of ['unitSpatial','foodSpatial','_unitById','_unitStepOrder','_unitAliveState','_liveFactionCounts','_foodOrder','_speciesGroups','_speciesTierGroups','_mergeEligibleGroups','_ownedSpeciesCounts','_unitCandidates','_foodCandidates','_groundedFoods','_groundedFoodCount','_contactPending','_contactExtra','_contactQuery','_contactSeen','_contactGeneration','_bossGridUnits','_bossGroundUnits','_bossQueryCandidates','_bossHitCandidates','_mergeNearestScratch','_mergeMaterialsScratch','_mergeIdScratch','_spatialStepActive','_spatialQueryDepth','_unitSpatialDirty','_foodSpatialDirty'])Object.defineProperty(this,key,{enumerable:false});
+      for(const key of ['unitSpatial','foodSpatial','_unitById','_unitStepOrder','_unitAliveState','_liveFactionCounts','_foodOrder','_speciesGroups','_speciesTierGroups','_mergeEligibleGroups','_ownedSpeciesCounts','_stepUnits','_unitCandidates','_foodCandidates','_groundedFoods','_groundedFoodCount','_contactPending','_contactExtra','_contactQuery','_contactSeen','_contactGeneration','_bossGridUnits','_bossGroundUnits','_bossQueryCandidates','_bossHitCandidates','_mergeNearestScratch','_mergeMaterialsScratch','_mergeIdScratch','_spatialStepActive','_spatialQueryDepth','_unitSpatialDirty','_foodSpatialDirty'])Object.defineProperty(this,key,{enumerable:false});
       this.reset();
     }
     _rebuildUnitSpatialIndex(stepUnits=this.units){
@@ -350,7 +350,7 @@ const AttackingBody=Base=>class extends Base{
       w.encounter={outcome:'idle',elapsed:0};w.raidExpectedPlayers=[...expectedPlayers];w.raidRosters=[];w.raidDeploymentStarted=false;w.nextId=1;w.starter=0;return w;
     }
     reset() {
-      this.mergeTask=null;
+      this.mergeTask=null;this._stepUnits.length=0;
       this.corpseRecoveryVersion=1;
       this.rng = new SeededPRNG(this.seed);
       this.units = [];
@@ -750,7 +750,9 @@ const AttackingBody=Base=>class extends Base{
       this._spatialStepActive=true;this._spatialQueryDepth=0;
       this.time += dt;
       grantPendingBossAcquisitions(this);
-      const units=[...this.units];this._rebuildUnitSpatialIndex(units);
+      // Keep the original step membership/order; spawns join indexes now but
+      // are first advanced by the next physics step, just like the prior copy.
+      const units=this._stepUnits;units.length=0;for(const unit of this.units)units.push(unit);this._rebuildUnitSpatialIndex(units);
       if(this.scene==='raid'&&this.running)this.encounter.elapsed+=dt;
       this.advanceMergeTask(dt);
       this.effects = this.effects.filter((e) => (e.life += dt) < (Number.isFinite(e.duration)?e.duration:1));
@@ -827,7 +829,7 @@ const AttackingBody=Base=>class extends Base{
         if(this.boss.active)for(const u of this.units){this.separateBoss(u);this.unitSpatial.update(u)}
       }else if(this.boss.active){this.updateProjectiles(dt);this.updateBoss(dt);for(const u of this.units){this.separateBoss(u);this.unitSpatial.update(u)}}
       this.units=this.units.filter(unit=>!unit.isBattleOnlySummon||unit.hp>0);
-      this._spatialStepActive=false;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
+      units.length=0;this._spatialStepActive=false;this._unitSpatialDirty=true;this._foodSpatialDirty=true;
     }
     steer(u, x, y, dt, speed2) {
       const dx = x - u.x, dy = y - u.y, d = Math.hypot(dx, dy);

@@ -1985,6 +1985,7 @@
           this._speciesTierGroups = Array.from({ length: CONFIG.maxSpecies * (CONFIG.maxTier + 1) }, () => []);
           this._mergeEligibleGroups = Array.from({ length: CONFIG.maxSpecies * (CONFIG.maxTier + 1) }, () => []);
           this._ownedSpeciesCounts = new Int32Array(CONFIG.maxSpecies);
+          this._stepUnits = [];
           this._unitCandidates = [];
           this._foodCandidates = [];
           this._groundedFoods = [];
@@ -2005,7 +2006,7 @@
           this._spatialQueryDepth = 0;
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
-          for (const key of ["unitSpatial", "foodSpatial", "_unitById", "_unitStepOrder", "_unitAliveState", "_liveFactionCounts", "_foodOrder", "_speciesGroups", "_speciesTierGroups", "_mergeEligibleGroups", "_ownedSpeciesCounts", "_unitCandidates", "_foodCandidates", "_groundedFoods", "_groundedFoodCount", "_contactPending", "_contactExtra", "_contactQuery", "_contactSeen", "_contactGeneration", "_bossGridUnits", "_bossGroundUnits", "_bossQueryCandidates", "_bossHitCandidates", "_mergeNearestScratch", "_mergeMaterialsScratch", "_mergeIdScratch", "_spatialStepActive", "_spatialQueryDepth", "_unitSpatialDirty", "_foodSpatialDirty"]) Object.defineProperty(this, key, { enumerable: false });
+          for (const key of ["unitSpatial", "foodSpatial", "_unitById", "_unitStepOrder", "_unitAliveState", "_liveFactionCounts", "_foodOrder", "_speciesGroups", "_speciesTierGroups", "_mergeEligibleGroups", "_ownedSpeciesCounts", "_stepUnits", "_unitCandidates", "_foodCandidates", "_groundedFoods", "_groundedFoodCount", "_contactPending", "_contactExtra", "_contactQuery", "_contactSeen", "_contactGeneration", "_bossGridUnits", "_bossGroundUnits", "_bossQueryCandidates", "_bossHitCandidates", "_mergeNearestScratch", "_mergeMaterialsScratch", "_mergeIdScratch", "_spatialStepActive", "_spatialQueryDepth", "_unitSpatialDirty", "_foodSpatialDirty"]) Object.defineProperty(this, key, { enumerable: false });
           this.reset();
         }
         _rebuildUnitSpatialIndex(stepUnits = this.units) {
@@ -2191,6 +2192,7 @@
         }
         reset() {
           this.mergeTask = null;
+          this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
           this.rng = new SeededPRNG(this.seed);
           this.units = [];
@@ -2871,7 +2873,9 @@
           this._spatialQueryDepth = 0;
           this.time += dt;
           grantPendingBossAcquisitions(this);
-          const units = [...this.units];
+          const units = this._stepUnits;
+          units.length = 0;
+          for (const unit of this.units) units.push(unit);
           this._rebuildUnitSpatialIndex(units);
           if (this.scene === "raid" && this.running) this.encounter.elapsed += dt;
           this.advanceMergeTask(dt);
@@ -3000,6 +3004,7 @@
             }
           }
           this.units = this.units.filter((unit) => !unit.isBattleOnlySummon || unit.hp > 0);
+          units.length = 0;
           this._spatialStepActive = false;
           this._unitSpatialDirty = true;
           this._foodSpatialDirty = true;
@@ -5734,40 +5739,43 @@
       buffed: R.STEP,
       isBattleOnlySummon: R.STEP
     });
-    constructor(u, world) {
+    constructor() {
       super();
-      Object.assign(this, {
-        id: u.id,
-        x: u.x,
-        y: u.y,
-        z: u.z,
-        angle: u.angle,
-        vx: u.vx,
-        vy: u.vy,
-        hp: u.hp,
-        down: u.down,
-        stun: u.stun,
-        flash: u.flash,
-        bounce: u.bounce,
-        ability: { phase: u.ability.phase, elapsed: u.ability.elapsed, peanutStrikeCount: u.ability.action?.peanutStrikeCount || 2 },
-        walnutGuarding: !!world.walnutGuardConfigFor(u),
-        cooldown: u.cooldown,
-        cooldownDuration: u.cooldownDuration,
-        meals: u.meals,
-        species: u.species,
-        tier: u.tier,
-        seed: u.seed,
-        size: u.size,
-        radius: u.radius,
-        maxHp: baseUnitStatsFor(u.tier, u.species).maxHp,
-        fed: u.fed,
-        ownerId: u.ownerId,
-        faction: u.faction,
-        farmId: u.farmId,
-        dropLanded: u.dropLanded,
-        buffed: world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0),
-        isBattleOnlySummon: u.isBattleOnlySummon
-      });
+      this.ability = {};
+    }
+    update(u, world) {
+      this.id = u.id;
+      this.x = u.x;
+      this.y = u.y;
+      this.z = u.z;
+      this.angle = u.angle;
+      this.vx = u.vx;
+      this.vy = u.vy;
+      this.hp = u.hp;
+      this.down = u.down;
+      this.stun = u.stun;
+      this.flash = u.flash;
+      this.bounce = u.bounce;
+      this.ability.phase = u.ability.phase;
+      this.ability.elapsed = u.ability.elapsed;
+      this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+      this.walnutGuarding = !!world.walnutGuardConfigFor(u);
+      this.cooldown = u.cooldown;
+      this.cooldownDuration = u.cooldownDuration;
+      this.meals = u.meals;
+      this.species = u.species;
+      this.tier = u.tier;
+      this.seed = u.seed;
+      this.size = u.size;
+      this.radius = u.radius;
+      this.maxHp = baseUnitStatsFor(u.tier, u.species).maxHp;
+      this.fed = u.fed;
+      this.ownerId = u.ownerId;
+      this.faction = u.faction;
+      this.farmId = u.farmId;
+      this.dropLanded = u.dropLanded;
+      this.buffed = world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0);
+      this.isBattleOnlySummon = u.isBattleOnlySummon;
     }
   };
   var BossRender = class extends RenderObject {
@@ -5806,44 +5814,41 @@
       summonMouthY: R.STEP,
       summonMouthZ: R.STEP
     });
-    constructor(b, world) {
-      super();
+    update(b, world) {
       const action = b.patternRuntime.active, event = world.farmBossEvent, target = action?.target || null, start2 = action?.start || null, mouth = b.summonMouth || {}, ended = world.scene === "raid" && !b.active ? world.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat") : null;
-      Object.assign(this, {
-        x: b.x,
-        y: b.y,
-        z: b.z,
-        angle: b.angle,
-        startAngle: b.startAngle,
-        phase: action?.phase || (!b.active || event?.phase === "dropping" ? "resting" : "chase"),
-        clock: action?.phaseElapsed ?? (event.phase === "celebrating" || event.phase === "fading" ? event.elapsed : ended?.bossPatternElapsed || 0),
-        travel: b.travel || 0,
-        hp: b.hp,
-        maxHp: b.maxHp,
-        radius: b.radius,
-        height: b.height,
-        flash: b.flash,
-        species: b.species ?? 3,
-        stage: b.stage ?? 0,
-        patternId: action?.id || "",
-        patternPhase: action?.phase || "idle",
-        patternPhaseElapsed: action?.phaseElapsed || 0,
-        patternAim: action?.aim ?? b.angle,
-        patternLocked: !!action?.locked,
-        patternTargetId: action?.targetId || 0,
-        patternTargetX: target?.x ?? b.x,
-        patternTargetY: target?.y ?? b.y,
-        patternTargetZ: target?.z ?? 0,
-        patternStartX: start2?.x ?? b.x,
-        patternStartY: start2?.y ?? b.y,
-        patternStartZ: start2?.z ?? b.z,
-        patternVolleyCount: action?.volleyCount || 0,
-        patternReleased: action?.released || 0,
-        patternTraveled: action?.traveled || 0,
-        summonMouthX: mouth.x ?? b.x,
-        summonMouthY: mouth.y ?? b.y,
-        summonMouthZ: mouth.z ?? b.z
-      });
+      this.x = b.x;
+      this.y = b.y;
+      this.z = b.z;
+      this.angle = b.angle;
+      this.startAngle = b.startAngle;
+      this.phase = action?.phase || (!b.active || event?.phase === "dropping" ? "resting" : "chase");
+      this.clock = action?.phaseElapsed ?? (event.phase === "celebrating" || event.phase === "fading" ? event.elapsed : ended?.bossPatternElapsed || 0);
+      this.travel = b.travel || 0;
+      this.hp = b.hp;
+      this.maxHp = b.maxHp;
+      this.radius = b.radius;
+      this.height = b.height;
+      this.flash = b.flash;
+      this.species = b.species ?? 3;
+      this.stage = b.stage ?? 0;
+      this.patternId = action?.id || "";
+      this.patternPhase = action?.phase || "idle";
+      this.patternPhaseElapsed = action?.phaseElapsed || 0;
+      this.patternAim = action?.aim ?? b.angle;
+      this.patternLocked = !!action?.locked;
+      this.patternTargetId = action?.targetId || 0;
+      this.patternTargetX = target?.x ?? b.x;
+      this.patternTargetY = target?.y ?? b.y;
+      this.patternTargetZ = target?.z ?? 0;
+      this.patternStartX = start2?.x ?? b.x;
+      this.patternStartY = start2?.y ?? b.y;
+      this.patternStartZ = start2?.z ?? b.z;
+      this.patternVolleyCount = action?.volleyCount || 0;
+      this.patternReleased = action?.released || 0;
+      this.patternTraveled = action?.traveled || 0;
+      this.summonMouthX = mouth.x ?? b.x;
+      this.summonMouthY = mouth.y ?? b.y;
+      this.summonMouthZ = mouth.z ?? b.z;
     }
   };
   var FoodRender = class extends RenderObject {
@@ -5859,9 +5864,17 @@
       ty: R.STEP,
       seed: R.STEP
     });
-    constructor(f) {
-      super();
-      Object.assign(this, { x: f.x, y: f.y, z: f.z, vx: f.vx, vy: f.vy, vz: f.vz, phase: f.phase, tx: f.tx ?? 0, ty: f.ty ?? 0, seed: f.seed ?? 0 });
+    update(f) {
+      this.x = f.x;
+      this.y = f.y;
+      this.z = f.z;
+      this.vx = f.vx;
+      this.vy = f.vy;
+      this.vz = f.vz;
+      this.phase = f.phase;
+      this.tx = f.tx ?? 0;
+      this.ty = f.ty ?? 0;
+      this.seed = f.seed ?? 0;
     }
   };
   var ProjectileRender = class extends RenderObject {
@@ -5894,51 +5907,70 @@
       "path.height": R.STEP,
       "path.duration": R.STEP
     });
-    constructor(p) {
+    constructor() {
       super();
-      Object.assign(this, {
-        id: p.id,
-        x: p.x,
-        y: p.y,
-        z: p.z,
-        elapsed: p.elapsed,
-        owner: p.owner,
-        species: p.species,
-        tier: p.tier,
-        radius: p.radius,
-        height: p.height,
-        projectileKind: p.projectileKind || "",
-        isPopcorn: !!p.isPopcorn,
-        landed: !!p.landed,
-        exploded: !!p.exploded,
-        fuseRemaining: p.fuseRemaining || 0,
-        explosionLife: p.explosionLife || 0,
-        shotIndex: p.shotIndex || 0,
-        fanIndex: p.fanIndex || 0,
-        popcornConfig: { radius: p.popcornConfig?.radius || 0 },
-        path: { from: { ...p.path.from }, to: { ...p.path.to }, height: p.path.height, duration: p.path.duration }
-      });
+      this.popcornConfig = {};
+      this.path = { from: {}, to: {} };
+    }
+    update(p) {
+      this.id = p.id;
+      this.x = p.x;
+      this.y = p.y;
+      this.z = p.z;
+      this.elapsed = p.elapsed;
+      this.owner = p.owner;
+      this.species = p.species;
+      this.tier = p.tier;
+      this.radius = p.radius;
+      this.height = p.height;
+      this.projectileKind = p.projectileKind || "";
+      this.isPopcorn = !!p.isPopcorn;
+      this.landed = !!p.landed;
+      this.exploded = !!p.exploded;
+      this.fuseRemaining = p.fuseRemaining || 0;
+      this.explosionLife = p.explosionLife || 0;
+      this.shotIndex = p.shotIndex || 0;
+      this.fanIndex = p.fanIndex || 0;
+      this.popcornConfig.radius = p.popcornConfig?.radius || 0;
+      this.path.from.x = p.path.from.x;
+      this.path.from.y = p.path.from.y;
+      this.path.from.z = p.path.from.z;
+      this.path.to.x = p.path.to.x;
+      this.path.to.y = p.path.to.y;
+      this.path.to.z = p.path.to.z;
+      this.path.height = p.path.height;
+      this.path.duration = p.path.duration;
     }
   };
   var EffectRender = class extends RenderObject {
     static renderSchema = Object.freeze({ x: R.POSITION_X, y: R.POSITION_Y, z: R.POSITION_Z, life: R.LINEAR, kind: R.STATE_KEY, radius: R.STEP, duration: R.STEP, owner: R.STEP });
-    constructor(e) {
-      super();
-      Object.assign(this, { x: e.x, y: e.y, z: e.z, life: e.life, kind: e.kind, radius: e.radius || 0, duration: e.duration || 0, owner: e.owner || 0 });
+    update(e) {
+      this.x = e.x;
+      this.y = e.y;
+      this.z = e.z;
+      this.life = e.life;
+      this.kind = e.kind;
+      this.radius = e.radius || 0;
+      this.duration = e.duration || 0;
+      this.owner = e.owner || 0;
     }
   };
   var DelayedEffectRender = class extends EffectRender {
     static renderSchema = Object.freeze({ ...EffectRender.renderSchema, delay: R.STEP, span: R.STEP });
-    constructor(e) {
-      super(e);
-      Object.assign(this, { delay: e.delay, span: e.span });
+    update(e) {
+      super.update(e);
+      this.delay = e.delay;
+      this.span = e.span;
     }
   };
   var MergeMaterialRender = class extends DelayedEffectRender {
     static renderSchema = Object.freeze({ ...DelayedEffectRender.renderSchema, targetX: R.STEP, targetY: R.STEP, sequenceIndex: R.STEP, sequenceCount: R.STEP });
-    constructor(e) {
-      super(e);
-      Object.assign(this, { targetX: e.targetX, targetY: e.targetY, sequenceIndex: e.sequenceIndex, sequenceCount: e.sequenceCount });
+    update(e) {
+      super.update(e);
+      this.targetX = e.targetX;
+      this.targetY = e.targetY;
+      this.sequenceIndex = e.sequenceIndex;
+      this.sequenceCount = e.sequenceCount;
     }
   };
   var GameClockRender = class extends RenderObject {
@@ -5968,6 +6000,9 @@
       this.presentationSequence = 0;
       this.pendingPresentationMode = null;
       this.presentationRuntime = new PresentationRuntime({ stepMs: PRESENTATION_STEP_MS, delayMs: PRESENTATION_STEP_MS, snapDistance: 12 });
+      this.presentationAdapters = /* @__PURE__ */ new WeakMap();
+      this.captureEntities = [];
+      this.clockEntity = { id: "clock", generation: 0, source: new GameClockRender(0) };
       this.presentationIds = /* @__PURE__ */ new WeakMap();
       this.nextPresentationId = 1;
       this.previousCaptureTimeMs = null;
@@ -6080,6 +6115,18 @@
       }
       return kind + ":" + id;
     }
+    // GameKit capture copies declared fields synchronously. Reuse only its input
+    // adapters, keyed weakly by the live actor; captured history stays SDK-owned.
+    presentationEntity(id, source, Type) {
+      let entity = this.presentationAdapters.get(source);
+      if (!entity || entity.source.constructor !== Type) {
+        entity = { id, generation: 0, source: new Type() };
+        this.presentationAdapters.set(source, entity);
+      }
+      entity.id = id;
+      entity.source.update(source, this.world);
+      return entity;
+    }
     get paused() {
       return this._paused;
     }
@@ -6099,17 +6146,19 @@
     }
     capturePresentation(mode = "continuous") {
       if (mode !== "continuous" && this.presentationSequence > 0) this.presentationRevision++;
-      const world = this.world, receiptNowMs = this.captureClock(), timeMs = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, receiptNowMs - this.presentationOriginWallMs), entities = [];
+      const world = this.world, receiptNowMs = this.captureClock(), timeMs = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, receiptNowMs - this.presentationOriginWallMs), entities = this.captureEntities;
+      entities.length = 0;
       if (this.presentationOriginWallMs === null) this.presentationOriginWallMs = receiptNowMs;
-      for (const u of world.units) entities.push({ id: "unit:" + u.id, generation: 0, source: new UnitRender(u, world) });
-      entities.push({ id: "boss", generation: 0, source: new BossRender(world.boss, world) });
-      for (const f of world.food) entities.push({ id: this.presentationIdentity("food", f), generation: 0, source: new FoodRender(f) });
-      for (const p of world.projectiles) entities.push({ id: "projectile:" + p.id, generation: 0, source: new ProjectileRender(p) });
+      for (const u of world.units) entities.push(this.presentationEntity("unit:" + u.id, u, UnitRender));
+      entities.push(this.presentationEntity("boss", world.boss, BossRender));
+      for (const f of world.food) entities.push(this.presentationEntity(this.presentationIdentity("food", f), f, FoodRender));
+      for (const p of world.projectiles) entities.push(this.presentationEntity("projectile:" + p.id, p, ProjectileRender));
       for (const e of world.effects) {
-        const source = e.kind === "merge-material" ? new MergeMaterialRender(e) : Number.isFinite(e.delay) && Number.isFinite(e.span) ? new DelayedEffectRender(e) : new EffectRender(e);
-        entities.push({ id: this.presentationIdentity("effect", e), generation: 0, source });
+        const Type = e.kind === "merge-material" ? MergeMaterialRender : Number.isFinite(e.delay) && Number.isFinite(e.span) ? DelayedEffectRender : EffectRender;
+        entities.push(this.presentationEntity(this.presentationIdentity("effect", e), e, Type));
       }
-      entities.push({ id: "clock", generation: 0, source: new GameClockRender(world.time * 1e3) });
+      this.clockEntity.source.gameTimeMs = world.time * 1e3;
+      entities.push(this.clockEntity);
       const captureMode = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
       if (captureMode === "continuous") this.previousCaptureTimeMs = this.latestCaptureTimeMs;
       else this.previousCaptureTimeMs = null;
@@ -6151,7 +6200,7 @@
       view.effects.length = 0;
       frame2.forEach(this.collectPresentationModel);
       view.time = (frame2.sample("clock", 0)?.gameTimeMs ?? world.time * 1e3) / 1e3;
-      view.boss = frame2.sample("boss", 0) || new BossRender(world.boss, world);
+      view.boss = frame2.sample("boss", 0) || this.presentationEntity("boss", world.boss, BossRender).source;
       view.displayTimeMs = frame2.timeMs;
       view.presentationRevision = this.presentationRevision;
       const previous = this.previousCaptureTimeMs, latest = this.latestCaptureTimeMs, span = latest - previous, diagnostics = view.presentationDiagnostics;
@@ -6174,6 +6223,8 @@
       this.closed = true;
       this.loop.stop();
       this.pending.length = 0;
+      this.captureEntities.length = 0;
+      this.presentationAdapters = /* @__PURE__ */ new WeakMap();
     }
   };
 
@@ -6194,6 +6245,14 @@
       this.timer = null;
       this.dirty = false;
       this.dirtySince = 0;
+      this.deadline = 0;
+      this.timerDeadline = 0;
+      this.onTimer = () => {
+        this.timer = null;
+        const remaining = this.deadline - this.now();
+        if (remaining > 0) this.schedule(remaining);
+        else this.flush();
+      };
     }
     markDirty() {
       const now = this.now();
@@ -6201,12 +6260,12 @@
         this.dirty = true;
         this.dirtySince = now;
       }
-      if (this.timer !== null) this.clearTimer(this.timer);
       const remaining = Math.max(0, this.maxWaitMs - (now - this.dirtySince));
-      this.timer = this.setTimer(() => {
-        this.timer = null;
-        this.flush();
-      }, Math.min(this.debounceMs, remaining));
+      this.deadline = now + Math.min(this.debounceMs, remaining);
+      if (this.timer === null || this.deadline < this.timerDeadline) {
+        this.cancelTimer();
+        this.schedule(Math.max(0, this.deadline - now));
+      }
     }
     flush() {
       this.cancelTimer();
@@ -6221,10 +6280,16 @@
       else this.dirtySince = this.now();
       return saved;
     }
+    schedule(delay) {
+      this.timerDeadline = this.now() + delay;
+      this.timer = this.setTimer(this.onTimer, delay);
+    }
     reset() {
       this.cancelTimer();
       this.dirty = false;
       this.dirtySince = 0;
+      this.deadline = 0;
+      this.timerDeadline = 0;
     }
     cancelTimer() {
       if (this.timer !== null) {
