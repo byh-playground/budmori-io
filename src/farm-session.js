@@ -54,6 +54,11 @@ class UnitRender extends RENDER_OBJECT {
         dropLanded: R.STEP,
         buffed: R.STEP,
         isBattleOnlySummon: R.STEP,
+        isFormationClone: R.STEP,
+        giantUntil: R.STEP,
+        giantEndedAt: R.STEP,
+        cloneParentId: R.STEP,
+        cloneBornAt: R.STEP,
     });
     constructor() {
         super();
@@ -87,7 +92,7 @@ class UnitRender extends RENDER_OBJECT {
         this.bodyScale = u.bodyScale;
         this.height = u.height;
         this.radius = u.radius;
-        this.maxHp = baseUnitStatsFor(u.tier, u.species).maxHp;
+        this.maxHp = u.isFormationClone ? 1 : baseUnitStatsFor(u.tier, u.species).maxHp;
         this.fed = u.fed;
         this.ownerId = u.ownerId;
         this.faction = u.faction;
@@ -95,6 +100,11 @@ class UnitRender extends RENDER_OBJECT {
         this.dropLanded = u.dropLanded;
         this.buffed = world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0);
         this.isBattleOnlySummon = u.isBattleOnlySummon;
+        this.isFormationClone = u.isFormationClone;
+        this.giantUntil = u.giantUntil;
+        this.giantEndedAt = u.giantEndedAt;
+        this.cloneParentId = u.battleSummonParentId;
+        this.cloneBornAt = u.cloneBornAt;
     }
 }
 class BossRender extends RENDER_OBJECT {
@@ -296,6 +306,29 @@ class EffectRender extends RENDER_OBJECT {
         this.radius = e.radius || 0;
         this.duration = e.duration || 0;
         this.owner = e.owner || 0;
+    }
+}
+class FormationEffectRender extends RENDER_OBJECT {
+    static renderSchema = Object.freeze({
+        id: R.STEP,
+        kind: R.STATE_KEY,
+        x: R.POSITION_X,
+        y: R.POSITION_Y,
+        z: R.POSITION_Z,
+        age: R.LINEAR,
+        duration: R.STEP,
+        delay: R.STEP,
+        radius: R.STEP,
+        unitId: R.STEP,
+        targetX: R.LINEAR,
+        targetY: R.LINEAR,
+        targetZ: R.LINEAR,
+        lastPulse: R.STEP,
+    });
+    update(effect) {
+        for (const KEY of Object.keys(FormationEffectRender.renderSchema)) {
+            this[KEY] = effect[KEY] ?? (KEY === 'kind' ? '' : 0);
+        }
     }
 }
 class DelayedEffectRender extends EffectRender {
@@ -533,6 +566,12 @@ class FarmSession {
                     }
                 }
                 return false;
+            case 'formation-purchase':
+                return W.formationSkills.purchase(c.id);
+            case 'formation-slot':
+                return W.formationSkills.buySlot();
+            case 'formation-equip':
+                return W.formationSkills.equip(c.slot, c.id);
             case 'ability-reset':
                 return W.scene === 'farm' && W.resetAbilityTree().ok;
             case 'register-roster':
@@ -630,6 +669,9 @@ class FarmSession {
                       : EffectRender;
             ENTITIES.push(this.presentationEntity(this.presentationIdentity('effect', E), E, TYPE));
         }
+        for (const EFFECT of WORLD.formationRuntime.effects) {
+            ENTITIES.push(this.presentationEntity('formation:' + EFFECT.id, EFFECT, FormationEffectRender));
+        }
         this.clockEntity.source.gameTimeMs = WORLD.time * 1000;
         ENTITIES.push(this.clockEntity);
         const CAPTURE_MODE =
@@ -689,13 +731,16 @@ class FarmSession {
                     food: [],
                     projectiles: [],
                     effects: [],
+                    formationEffects: [],
                     presentationDiagnostics: {},
                 },
             ));
             // Only consume these models synchronously in this frame. GameKit owns and
             // reuses their fields; the app reuses the collection containers, not snapshots.
             this.collectPresentationModel = (model, id) => {
-                if (id.startsWith('unit:')) {
+                if (id.startsWith('formation:')) {
+                    VIEW.formationEffects.push(model);
+                } else if (id.startsWith('unit:')) {
                     VIEW.units.push(model);
                 } else if (id.startsWith('food:')) {
                     VIEW.food.push(model);
@@ -711,6 +756,8 @@ class FarmSession {
         VIEW.food.length = 0;
         VIEW.projectiles.length = 0;
         VIEW.effects.length = 0;
+        VIEW.formationEffects.length = 0;
+        VIEW.formationSlots = WORLD.formationRuntime.slots;
         FRAME.forEach(this.collectPresentationModel);
         VIEW.time = (FRAME.sample('clock', 0)?.gameTimeMs ?? WORLD.time * 1000) / 1000;
         VIEW.boss = FRAME.sample('boss', 0) || this.presentationEntity('boss', WORLD.boss, BossRender).source;

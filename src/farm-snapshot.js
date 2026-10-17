@@ -1,3 +1,4 @@
+import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
 // Internal checkpoint shapes and import defaults for supported 0.4–0.7 saves.
 // Disk writes use farm-progress.js; these runtime values are never exported.
 // These are not live entity defaults. Changing a runtime constructor must not
@@ -61,6 +62,10 @@ export const UNIT_SNAPSHOT_SHAPE = {
     wheatCommandCritBonus: 0,
     barleyArmorBreakUntil: 0,
     barleyArmorBreakReduction: 0,
+    giantUntil: 0,
+    giantEndedAt: -10,
+    isFormationClone: false,
+    cloneBornAt: -10,
 };
 const LEGACY_STARTER = (id, x, y) => ({
     ...UNIT_SNAPSHOT_SHAPE,
@@ -143,7 +148,9 @@ export const FARM_SNAPSHOT_SHAPE = {
     activeRaidSessionId: null,
     raidSettlementWatermark: 0,
     raidSettlementReceipts: [],
+    formationRuntime: createFormationRuntime(),
     playerProgression: {
+        formationSkills: createFormationSkillState(),
         schemaVersion: 1,
         availablePoints: 0,
         farmUpgrades: {
@@ -225,6 +232,9 @@ export const FARM_SNAPSHOT_SHAPE = {
             active: null,
             encounterElapsed: 0,
         },
+        stun: 0,
+        knockVx: 0,
+        knockVy: 0,
         airborneRecovery: 0,
         barleyArmorBreakUntil: 0,
         barleyArmorBreakReduction: 0,
@@ -251,6 +261,10 @@ export const FARM_SNAPSHOT_SHAPE = {
 // Only these later-added Unit fields have a constant legacy fallback. Required
 // original fields still fail validation instead of being silently fabricated.
 export const LEGACY_UNIT_DEFAULT_KEYS = Object.freeze([
+    'cloneBornAt',
+    'giantUntil',
+    'giantEndedAt',
+    'isFormationClone',
     'walnutEmpoweredNextBasic',
     'wheatCommandUntil',
     'wheatCommandCritBonus',
@@ -361,6 +375,7 @@ const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression);
 const RUNTIME_PROGRESSION = FIELDS('schemaVersion level availablePoints', {
     farmUpgrades: PROGRESSION.farmUpgrades,
     abilities: PROGRESSION.abilities,
+    formationSkills: PROGRESSION.formationSkills,
 });
 const ROSTER = FIELDS(
     'ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt',
@@ -370,7 +385,7 @@ const ROSTER = FIELDS(
     },
 );
 const PROJECTILE = FIELDS(
-    'id owner targetId faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex isPopcorn landed exploded fuseRemaining explosionLife',
+    'isFormationClone id owner targetId faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex isPopcorn landed exploded fuseRemaining explosionLife',
     {
         path: PATH,
         popcornConfig: POPCORN,
@@ -378,6 +393,7 @@ const PROJECTILE = FIELDS(
     },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
+    formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
     boss: BOSS,
     playerProgression: PROGRESSION,

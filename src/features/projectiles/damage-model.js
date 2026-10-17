@@ -13,6 +13,7 @@ export class DamageProjectile extends BallisticProjectile {
                     id: projectile.owner,
                     ownerId: projectile.ownerId || '',
                     faction: projectile.faction,
+                    isFormationClone: !!projectile.isFormationClone,
                     species: projectile.species,
                     tier: projectile.tier,
                     x: projectile.x,

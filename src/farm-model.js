@@ -1,3 +1,5 @@
+import { FormationSkills } from './formation-skills.js';
+import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
 import { Signal } from './signal.js';
 import {
     unitVisualSize,
@@ -90,7 +92,7 @@ const CONFIG = Object.freeze({
         capacity: Object.freeze({
             base: 50,
             max: FARM_MAX_UNITS,
-            battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS,
+            battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
         }),
         maxUnitId: 999999999,
         starterSeconds: 60,
@@ -114,7 +116,7 @@ const CONFIG = Object.freeze({
             playerUnits: RAID_PLAYER_UNITS,
             players: RAID_MAX_PLAYERS,
             units: RAID_MAX_UNITS,
-            battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS,
+            battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
             projectiles: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40,
         }),
         ids: Object.freeze({
@@ -520,6 +522,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             wheatCommandCritBonus: 0,
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0,
+            giantUntil: 0,
+            giantEndedAt: -10,
+            isFormationClone: false,
+            cloneBornAt: -10,
         });
         this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
         Object.defineProperties(this, {
@@ -736,6 +742,7 @@ const GARDEN = class Garden {
             unitCollection: { value: new UnitCollection(this, UNIT, NOTIFICATIONS) },
             onProgressChanged: { value: new Signal(NOTIFICATIONS) },
             onNotice: { value: new Signal(NOTIFICATIONS) },
+            onCombatResolved: { value: new Signal(NOTIFICATIONS, true) },
             units: {
                 enumerable: true,
                 get: () => this.unitCollection.items,
@@ -755,6 +762,7 @@ const GARDEN = class Garden {
             },
         });
         this.reset();
+        Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
     }
     _rebuildUnitSpatialIndex(stepUnits = this.units) {
         const GRID = this.unitSpatial;
@@ -1006,6 +1014,8 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._reset);
     }
     _reset() {
+        this.formationSkills?.end();
+        this.formationRuntime = createFormationRuntime();
         this.progressRevision = 0;
         this._progressTimerCheckpoint = 0;
         this.mergeTask = null;
@@ -1103,7 +1113,7 @@ const GARDEN = class Garden {
             .filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER))
             .reduce(
                 (sum, u) => {
-                    const MAX_HP = STATS(u.tier, u.species).maxHp;
+                    const MAX_HP = u.isFormationClone ? 1 : STATS(u.tier, u.species).maxHp;
                     return {
                         current: sum.current + Math.max(0, Math.min(MAX_HP, u.hp)),
                         max: sum.max + MAX_HP,
@@ -1118,6 +1128,9 @@ const GARDEN = class Garden {
                     total: 0,
                 },
             );
+    }
+    get battleCapacity() {
+        return SIMULATION_SCENES[this.scene].battleCapacity;
     }
     get capacity() {
         return getFarmCapacity(this.playerProgression?.farmUpgrades);
@@ -1190,6 +1203,7 @@ const GARDEN = class Garden {
             owner: unit.id,
             targetId: action.targetId || 'boss',
             faction: unit.faction,
+            isFormationClone: unit.isFormationClone,
             ownerId: unit.ownerId,
             species: unit.species,
             tier: unit.tier,
@@ -1261,10 +1275,41 @@ const GARDEN = class Garden {
                 hit: false,
                 attackMultiplier: config.projectileAttackMultiplier,
                 projectileKind: 'chestnut-spike',
+                isFormationClone: unit.isFormationClone,
                 fanIndex: index,
             });
         }
         return true;
+    }
+    createFormationClone(original) {
+        const ID = this.scene === 'raid' ? CONFIG.raid.ids.summonBase + ++this.raidSummonSerial : this.nextId++,
+            CLONE = new UNIT(ID, original.species, original.tier, original.x + 0.3, original.y + 0.1);
+        Object.assign(CLONE, {
+            growthElapsed: original.growthElapsed,
+            growthDuration: original.growthDuration,
+            cloneBornAt: this.time,
+            hp: 1,
+            seed: original.seed,
+            faction: 'player',
+            ownerId: original.ownerId,
+            farmId: original.farmId,
+            isFormationClone: true,
+            isBattleOnlySummon: true,
+            battleSummonKind: 'formation-copy',
+            battleSummonParentId: original.id,
+            countsTowardPermanentRoster: false,
+            eligibleForRaidDeployment: false,
+            breedingEligible: false,
+            mergeEligible: false,
+            canSplit: false,
+            splitUsedThisBattle: true,
+            usesPersistentSleep: false,
+            lifetime: 'until-death-or-battle-end',
+            growth: original.growth,
+            meals: 1,
+        });
+        this.addUnit(CLONE, { markProgress: false });
+        return CLONE;
     }
     handleUnitDeath(unit) {
         return this.mutateUnits(this._handleUnitDeath, unit);
@@ -1281,11 +1326,15 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._processUnitDeath, unit);
     }
     _processUnitDeath(unit) {
+        this.onCombatResolved.emit({ allyDeaths: unit.faction === 'player' && !unit.isFormationClone ? 1 : 0 });
         this._syncUnitAliveCount(unit);
         if (!unit.isBattleOnlySummon) {
             this.markProgressChanged();
         }
         if (unit.isBattleOnlySummon) {
+            if (unit.isFormationClone) {
+                this.emit('formation-copy-death', unit.x, unit.y, unit.z, { duration: 0.6 });
+            }
             unit.down = 0;
             this.removeUnit(unit, { keepStepSnapshot: true });
             return false;
@@ -1642,6 +1691,7 @@ const GARDEN = class Garden {
             return h >>> 0;
         };
         TROOPS.sort((a, b) => a.tier - b.tier || ORDER_KEY(a.farmId) - ORDER_KEY(b.farmId) || a.farmId - b.farmId);
+        this.formationSkills.includeBuild(ownerId, abilitySnapshot.formationSkills || createFormationSkillState());
         this.raidRosters.push({
             ownerId,
             troops: TROOPS,
@@ -1964,6 +2014,9 @@ const GARDEN = class Garden {
             startAngle: 0,
             travel: 0,
             patternRuntime: createBossPatternRuntime(),
+            stun: 0,
+            knockVx: 0,
+            knockVy: 0,
             airborneRecovery: 0,
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0,
@@ -1989,6 +2042,7 @@ const GARDEN = class Garden {
         if (scene === this.scene) {
             return;
         }
+        this.formationSkills.end();
         this.mergeTask = null;
         this.projectiles = [];
         this.scene = scene;
@@ -2577,6 +2631,7 @@ const GARDEN = class Garden {
             UNITS.push(UNIT_LOCAL);
         }
         this._rebuildUnitSpatialIndex(UNITS);
+        this.formationSkills.update(dt);
         const SCENE = SIMULATION_SCENES[this.scene];
         SCENE.advanceClock(this, dt);
         this.advanceMergeTask(dt);
@@ -3081,8 +3136,10 @@ const GARDEN = class Garden {
         if (target !== this.boss) {
             const TARGET_STATS = STATS(target.tier, target.species);
             return {
-                maxHp: TARGET_STATS.maxHp,
-                armor: effectiveBarleyArmor(target, TARGET_STATS.armor, this.time),
+                maxHp: target.isFormationClone ? 1 : TARGET_STATS.maxHp,
+                armor:
+                    effectiveBarleyArmor(target, TARGET_STATS.armor, this.time) +
+                    (target.giantUntil > this.time ? 100 : 0),
             };
         }
         const HP_RATIO =
@@ -3124,6 +3181,7 @@ const GARDEN = class Garden {
         const GUARD = IS_BOSS ? null : target.ability.receiveGuard?.(this);
         const RAW_DAMAGE =
             ATTACKER_STATS.attackPower *
+            (SOURCE.giantUntil > this.time ? 3 : 1) *
             DAMAGE_MULTIPLIER *
             (BUFFED ? CONFIG.raid.buff.damage : 1) *
             HARVEST_MULTIPLIER *
@@ -3141,6 +3199,17 @@ const GARDEN = class Garden {
         if (!IS_BOSS) {
             this._syncUnitAliveCount(target);
         }
+        this.onCombatResolved.emit({
+            excluded: SOURCE.isFormationClone,
+            damageDealt:
+                SOURCE.faction === 'player'
+                    ? DAMAGE.totalActualLoss /
+                      ((SOURCE.giantUntil > this.time ? 3 : 1) * (BUFFED ? CONFIG.raid.buff.damage : 1))
+                    : 0,
+            damageTaken: target.faction === 'player' && !target.isFormationClone ? DAMAGE.totalActualLoss : 0,
+            hits: SOURCE.faction === 'player' ? 1 : 0,
+            critHits: SOURCE.faction === 'player' && DAMAGE.critical ? 1 : 0,
+        });
         this.applyGrainOnBasicHit(SOURCE, target, KIND);
         const STRENGTH =
             DAMAGE_MULTIPLIER *
@@ -3252,6 +3321,7 @@ const GARDEN = class Garden {
                     id: CURRENT.owner,
                     ownerId: CURRENT.ownerId || '',
                     faction: CURRENT.faction,
+                    isFormationClone: !!CURRENT.isFormationClone,
                     species: CURRENT.species,
                     tier: CURRENT.tier,
                     x: CURRENT.x,
@@ -3416,6 +3486,7 @@ const GARDEN = class Garden {
         for (const U of this.units) {
             U.ability.interrupt();
         }
+        this.formationSkills.end();
         this.cleanupBattleSummons();
         this.combat(outcome, {
             x: this.boss.x,
@@ -3431,6 +3502,7 @@ const GARDEN = class Garden {
         if (this.scene !== 'farm' || this.farmBossEvent.phase !== 'fighting') {
             return false;
         }
+        this.formationSkills.end();
         this.cleanupBattleSummons();
         this.boss.active = false;
         if (this.boss.patternRuntime) {
@@ -3844,10 +3916,12 @@ const GARDEN = class Garden {
         if (!hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit)) {
             return false;
         }
-        applyDamageToTargets(null, [unit], {
+        const RECEIVED = applyDamageToTargets(null, [unit], {
+            armorForTarget: () => this.combatTargetDefense(unit).armor,
             rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (GUARD?.receivedDamageMultiplier ?? 1),
             sourceKind: 'enemy',
         });
+        this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit.isFormationClone });
         this._syncUnitAliveCount(unit);
         if (unit.hp === 0) {
             unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
@@ -4207,6 +4281,23 @@ const GARDEN = class Garden {
         action.phaseElapsed += dt;
         BOSS_BEHAVIORS.update(this, action, dt, living);
     }
+    integrateBossKnockback(dt) {
+        const BOSS = this.boss;
+        if (Math.hypot(BOSS.knockVx, BOSS.knockVy) < 1e-6) {
+            return;
+        }
+        BOSS.x += BOSS.knockVx * dt;
+        BOSS.y += BOSS.knockVy * dt;
+        const RX = CONFIG.raid.arena.radiusX - BOSS.radius,
+            RY = CONFIG.raid.arena.radiusY - BOSS.radius,
+            EDGE = Math.hypot(BOSS.x / RX, BOSS.y / RY);
+        if (EDGE > 1) {
+            BOSS.x /= EDGE;
+            BOSS.y /= EDGE;
+        }
+        BOSS.knockVx *= Math.exp(-dt * 6);
+        BOSS.knockVy *= Math.exp(-dt * 6);
+    }
     updateBoss(dt) {
         const B_LOCAL = this.boss;
         if (SIMULATION_SCENES[this.scene].updateBossPhase(this, dt)) {
@@ -4233,6 +4324,11 @@ const GARDEN = class Garden {
             this.finish('defeat');
             return;
         }
+        if (B_LOCAL.stun > 0) {
+            B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
+            return;
+        }
+        this.integrateBossKnockback(dt);
         const LIVING = this.livingBossTargets();
         if (!LIVING.length) {
             return;
