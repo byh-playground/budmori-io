@@ -832,7 +832,7 @@ async function formationBrowserUI() {
                 BUDMORI.runtime.capturePresentation('reset');
                 let display = BUDMORI.runtime.presentation(performance.now());
                 const MODEL_CLOUD = W.formationRuntime.effects.find((effect) => effect.kind === 'storm-cloud');
-                let cloudRender = display.formationEffects.find((effect) => effect.id === MODEL_CLOUD.id);
+
                 BUDMORI.renderer.render(display, BUDMORI.combatFeel, display.displayTimeMs);
                 const FIRST_PULSE = MODEL_CLOUD.pulse;
                 W.time += 0.2;
@@ -840,12 +840,12 @@ async function formationBrowserUI() {
                 BUDMORI.runtime.capturePresentation('reset');
                 display = BUDMORI.runtime.presentation(performance.now());
                 const NEXT_MODEL_CLOUD = W.formationRuntime.effects.find((effect) => effect.kind === 'storm-cloud');
-                cloudRender = display.formationEffects.find((effect) => effect.id === NEXT_MODEL_CLOUD.id);
+                const CLOUD_RENDER = display.formationEffects.find((effect) => effect.id === NEXT_MODEL_CLOUD.id);
                 BUDMORI.renderer.render(display, BUDMORI.combatFeel, display.displayTimeMs);
                 return {
                     pulseAdvanced: NEXT_MODEL_CLOUD.pulse > FIRST_PULSE,
-                    presentationCarriesPulse: cloudRender.pulse === NEXT_MODEL_CLOUD.pulse,
-                    activeVisualPhase: cloudRender.pulse > 0 && cloudRender.age > 0.5,
+                    presentationCarriesPulse: CLOUD_RENDER.pulse === NEXT_MODEL_CLOUD.pulse,
+                    activeVisualPhase: CLOUD_RENDER.pulse > 0 && CLOUD_RENDER.age > 0.5,
                 };
             });
             await P.waitForTimeout(80);
@@ -1454,8 +1454,8 @@ async function core() {
                 bossAcquisitionChance: BOSS_ACQUISITION_CHANCE,
                 bossStageStats: BOSS_STAGE_STATS,
                 grantPendingBossAcquisitions: GRANT_PENDING,
-                sampleBinomial: SAMPLE_BINOMIAL,
             } = await import('/src/boss-rewards.js'),
+            { sampleBinomial: SAMPLE_BINOMIAL } = await import('/src/binomial-sampler.js'),
             { captureFarmProgress: CAPTURE_PROGRESS, restoreFarmProgress: RESTORE_PROGRESS } =
                 await import('/src/farm-progress.js'),
             WORLD = new BUDMORI.sim.constructor(997);
@@ -1503,8 +1503,11 @@ async function core() {
                 rollBudget: BOSS_STAGE_STATS(61).rollBudget,
                 species: 4,
             }),
-            HIGH_DURATION_MS = performance.now() - HIGH_START,
-            SAVED_PROGRESS = CAPTURE_PROGRESS(HIGH_WORLD),
+            HIGH_DURATION_MS = performance.now() - HIGH_START;
+        // Model the Raid settlement transaction before validating this Farm snapshot.
+        HIGH_WORLD.nextRaidRunSequence = 903;
+        HIGH_WORLD.raidSettlementWatermark = 903;
+        const SAVED_PROGRESS = CAPTURE_PROGRESS(HIGH_WORLD),
             RESTORED_WORLD = RESTORE_PROGRESS(SAVED_PROGRESS),
             RESTORED_RECEIPT = RESTORED_WORLD.bossRewardReceipts.find((reward) => reward.encounterId === 903);
         RESTORED_WORLD.removeUnit(RESTORED_WORLD.units[0]);
@@ -1549,7 +1552,9 @@ async function core() {
                 status: HIGH.receipt.status,
                 durationMs: HIGH_DURATION_MS,
                 restoredSuccessCount: RESTORED_RECEIPT.successCount,
-                restoredGrantedCount: RESTORED_RECEIPT.grantedCount,
+                restoredGrantedCount: SAVED_PROGRESS.ledger.boss.pendingRewards.find(
+                    (reward) => reward.encounterId === 903,
+                ).grantedCount,
                 releasedGrants: RELEASED.length,
                 resumedGrantedCount: RESUMED_RECEIPT.grantedCount,
                 resumedPending: RESUMED_RECEIPT.status === 'pending',
