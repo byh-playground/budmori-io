@@ -14,6 +14,8 @@ import {
 import { seedProjectileDimensions } from './features/projectiles/seed/definition.js';
 import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
+import { FarmingRoster } from './farm-roster.js';
+import { FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
@@ -54,9 +56,9 @@ import { purchaseAbilityNode, purchaseFarmUpgrade, resetPlayerProgression } from
 import { createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot } from './ability-state.js';
 import {
     FARM_UPGRADE_NODES,
+    farmUpgradeRate,
     getAutoTapSeconds,
     getBreedCooldownSeconds,
-    getFarmCapacity,
     getMergeCooldownSeconds,
 } from './farm-upgrades.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
@@ -80,7 +82,7 @@ export function bindPresentationClock(world, clock) {
 const BREED_COOLDOWN_SECONDS = 10;
 const BREED_RESERVATION_OWNER = (aId, bId) => `breed:${Math.min(aId, bId)}:${Math.max(aId, bId)}`;
 const MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) => a - b).join(':')}`;
-const FARM_MAX_UNITS = 100,
+const FARM_MAX_UNITS = 200,
     RAID_PLAYER_UNITS = 100,
     RAID_MAX_PLAYERS = 4,
     RAID_PLAYER_ID_STRIDE = 1000000,
@@ -417,7 +419,9 @@ class AttackCycle {
                 ...target,
             },
             targetId: target.id ?? 'boss',
-            targetGeneration: target.generation ?? (target.id === 'boss' ? sim.boss.generation : 0),
+            targetGeneration:
+                target.generation ??
+                (target.id === 'boss' ? sim.boss.generation : (sim._unitForId(target.id)?.generation ?? 0)),
             hit: false,
             path: null,
         };
@@ -563,6 +567,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             seed: id * 2.39996,
             ownerId: '',
             farmId: 0,
+            plotId: INITIAL_FARM_PLOT_ID,
             dropLanded: true,
             isBattleOnlySummon: false,
             battleSummonKind: '',
@@ -771,6 +776,7 @@ const GARDEN = class Garden {
         this._groundedFoodCount = 0;
         this._groundedFoodRevision = 0;
         this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: new Map() };
+        this._inactiveFoodClaims = new Map();
         this._foodSearchStates = new WeakMap();
         this._foodSearchJobSequence = 0;
         this._foodSearchScheduler = null;
@@ -842,12 +848,16 @@ const GARDEN = class Garden {
         Object.defineProperties(this, {
             mutationNotifications: { value: NOTIFICATIONS },
             unitCollection: { value: new UnitCollection(this, UNIT, NOTIFICATIONS) },
+            roster: { value: null, writable: true },
             onProgressChanged: { value: new Signal(NOTIFICATIONS) },
             onNotice: { value: new Signal(NOTIFICATIONS) },
             onCombatResolved: { value: new Signal(NOTIFICATIONS, true) },
             units: {
                 enumerable: true,
-                get: () => this.unitCollection.items,
+                get: () =>
+                    this.scene === 'farm'
+                        ? this.unitCollection.unitsInPlot(this.activePlotId)
+                        : this.unitCollection.items,
                 // Retain the public assignment API, with owner validation and
                 // cleanup rather than replacing a borrowed array directly.
                 set: (units) => {
@@ -871,6 +881,7 @@ const GARDEN = class Garden {
                 writable: true,
             },
         });
+        this.roster = new FarmingRoster(this.unitCollection);
         this.reset();
         Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
         Object.defineProperty(this, 'raidDeploymentCards', { value: new RaidDeploymentCards(this) });
@@ -929,6 +940,7 @@ const GARDEN = class Garden {
             }
             this._unitAliveState.set(UNIT_LOCAL, UNIT_LOCAL.hp > 0);
         }
+        this._syncOwnedSpeciesCounts();
         for (let index = 0; index < stepUnits.length; index++) {
             this._unitStepOrder.set(stepUnits[index], index);
         }
@@ -1024,7 +1036,7 @@ const GARDEN = class Garden {
         this._unitStepOrder.set(unit, -1);
         if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
             this._speciesGroups[unit.species].push(unit);
-            this._ownedSpeciesCounts[unit.species] += unit.isBattleOnlySummon ? 0 : 1;
+            this._ownedSpeciesCounts[unit.species] = this.unitCollection.residentCountsBySpecies.get(unit.species) || 0;
             const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
             this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER].push(unit);
         }
@@ -1051,7 +1063,8 @@ const GARDEN = class Garden {
             const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
             this._removeGroupItem(this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER], unit);
             if (!unit.isBattleOnlySummon) {
-                this._ownedSpeciesCounts[unit.species] = Math.max(0, this._ownedSpeciesCounts[unit.species] - 1);
+                this._ownedSpeciesCounts[unit.species] =
+                    this.unitCollection.residentCountsBySpecies.get(unit.species) || 0;
             }
         }
         if (!keepStepSnapshot || !this._unitStepOrder.has(unit) || this._unitStepOrder.get(unit) < 0) {
@@ -1200,6 +1213,10 @@ const GARDEN = class Garden {
         this.progressRevision = 0;
         this._progressTimerCheckpoint = 0;
         this.cancelMergeTasks();
+        this.cancelBreedPlans();
+        this._breedPlans = new Map();
+        this._activeBreedReservations = new Map();
+        this._breedPlotReservations = new Map();
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
@@ -1225,6 +1242,12 @@ const GARDEN = class Garden {
         this.raidSettlementWatermark = 0;
         this.raidSettlementReceipts = [];
         this.playerProgression = createPlayerProgressionState();
+        this.activePlotId = this.playerProgression.farmPlots.currentPlotId;
+        this.farmPlots = new Map(
+            this.playerProgression.farmPlots.plots.map((state) => [state.id, new FarmPlot(state)]),
+        );
+        this.food = this.activeFarmPlot.food;
+        this.warehouseFood = 0;
         this.starter = 0;
         this.notices = [];
         this.eventSequence = 0;
@@ -1290,9 +1313,15 @@ const GARDEN = class Garden {
         }
     }
     hasProgressTimers() {
-        return this.units.some(
-            (unit) => !unit.isBattleOnlySummon && (unit.down > 0 || unit.cooldown > 0 || !unit.mature),
-        );
+        return this.roster.residents().some((unit) => unit.down > 0 || unit.cooldown > 0 || !unit.mature);
+    }
+    _syncOwnedSpeciesCounts() {
+        this._ownedSpeciesCounts.fill(0);
+        for (const [SPECIES_ID, COUNT] of this.unitCollection.residentCountsBySpecies) {
+            if (Number.isSafeInteger(SPECIES_ID) && SPECIES_ID >= 0 && SPECIES_ID < this._ownedSpeciesCounts.length) {
+                this._ownedSpeciesCounts[SPECIES_ID] = COUNT;
+            }
+        }
     }
     get armyHealth() {
         return this.units
@@ -1319,7 +1348,351 @@ const GARDEN = class Garden {
         return SIMULATION_SCENES[this.scene].battleCapacity;
     }
     get capacity() {
-        return getFarmCapacity(this.playerProgression?.farmUpgrades);
+        return this.activeFarmPlot?.capacity ?? CONFIG.farm.capacity.base;
+    }
+    get activeFarmPlot() {
+        return this.farmPlots?.get(this.activePlotId) || null;
+    }
+    get ownedPopulation() {
+        return this.roster.ownedPopulation();
+    }
+    get birthReservations() {
+        return (this._breedPlans?.size || 0) + (this._activeBreedReservations?.size || 0);
+    }
+    get totalFarmCapacity() {
+        let capacity = 0;
+        for (const PLOT of this.farmPlots.values()) {
+            capacity += PLOT.capacity;
+        }
+        return capacity;
+    }
+    get placedPopulation() {
+        return this.roster.placedPopulation(this.activePlotId);
+    }
+    bindFarmPlotProgressionStates() {
+        for (const PLOT of this.farmPlots.values()) {
+            const STATE = this.playerProgression.farmPlots.plots.find((plot) => plot.id === PLOT.id);
+            if (STATE) {
+                PLOT.state = STATE;
+            }
+        }
+    }
+    get reservedPopulation() {
+        return this.roster.placedPopulation(RESERVE_PLOT_ID);
+    }
+    get pendingRewardPopulation() {
+        return (this.bossRewardReceipts || []).reduce(
+            (total, receipt) => total + (Number.isSafeInteger(receipt.queuedCount) ? receipt.queuedCount : 0),
+            0,
+        );
+    }
+    get farmTargets() {
+        return this.playerProgression.farmPlots.targetBasisPoints;
+    }
+    canFarmPopulationAdvance(speciesId, options) {
+        const RESERVATIONS = [
+            ...[...(this._breedPlans?.values() || [])].map((plan) => plan.reservation),
+            ...[...(this._activeBreedReservations?.values() || [])].map((plan) => plan.reservation),
+        ];
+        return this.roster.canSpeciesAdvance(speciesId, this.farmTargets[speciesId] || 0, {
+            includeReservations: RESERVATIONS,
+            excludeReservation: options?.excludeReservation ?? null,
+        });
+    }
+    clearInactiveForageAttempt(unit) {
+        const ATTEMPT = unit?.inactiveForageAttempt;
+        if (!ATTEMPT) {
+            return false;
+        }
+        if (this._inactiveFoodClaims.get(ATTEMPT.food) === unit.id) {
+            this._inactiveFoodClaims.delete(ATTEMPT.food);
+        }
+        unit.inactiveForageAttempt = null;
+        return true;
+    }
+    startInactiveForageAttempt(unit, dt) {
+        const PLOT = this.farmPlots.get(unit.plotId);
+        if (!PLOT || PLOT.food.length === 0 || !this.canFarmPopulationAdvance(unit.species)) {
+            return false;
+        }
+        let nearest = null,
+            nearestDistance = Infinity;
+        for (const FOOD of PLOT.food) {
+            if (this._inactiveFoodClaims.has(FOOD) || FOOD.phase !== 'grounded') {
+                continue;
+            }
+            const DISTANCE = Math.hypot(FOOD.x - unit.x, FOOD.y - unit.y);
+            if (DISTANCE < nearestDistance) {
+                nearest = FOOD;
+                nearestDistance = DISTANCE;
+            }
+        }
+        if (!nearest) {
+            return false;
+        }
+        const SPEED = Math.max(
+                0.01,
+                scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, 'growth'), unit),
+            ),
+            TICKS = Math.max(1, Math.ceil(nearestDistance / SPEED / Math.max(dt, 1e-9)));
+        unit.inactiveForageAttempt = {
+            plotId: PLOT.id,
+            food: nearest,
+            dueTick: this.simulationTick + TICKS,
+        };
+        this._inactiveFoodClaims.set(nearest, unit.id);
+        return true;
+    }
+    advanceInactiveForage(unit, dt) {
+        if (
+            unit.hp <= 0 ||
+            unit.fed ||
+            unit.plotId === RESERVE_PLOT_ID ||
+            unit.plotId === this.activePlotId ||
+            !this.canFarmPopulationAdvance(unit.species)
+        ) {
+            this.clearInactiveForageAttempt(unit);
+            return false;
+        }
+        let attempt = unit.inactiveForageAttempt;
+        if (!attempt) {
+            this.startInactiveForageAttempt(unit, dt);
+            attempt = unit.inactiveForageAttempt;
+        }
+        if (!attempt || this.simulationTick < attempt.dueTick) {
+            return false;
+        }
+        const PLOT = this.farmPlots.get(attempt.plotId),
+            FOOD_INDEX = PLOT?.food.indexOf(attempt.food) ?? -1;
+        if (
+            !PLOT ||
+            unit.plotId !== PLOT.id ||
+            FOOD_INDEX < 0 ||
+            this._inactiveFoodClaims.get(attempt.food) !== unit.id ||
+            !this.canFarmPopulationAdvance(unit.species)
+        ) {
+            this.clearInactiveForageAttempt(unit);
+            return false;
+        }
+        PLOT.food.splice(FOOD_INDEX, 1);
+        this.clearInactiveForageAttempt(unit);
+        unit.meals = 1;
+        this.markProgressChanged();
+        return true;
+    }
+    availableFarmPlot(plotId = this.activePlotId) {
+        const PLOT = this.farmPlots.get(plotId);
+        return !!PLOT && this.roster.placedPopulation(plotId) < PLOT.capacity;
+    }
+    availableFarmPlotFor(species, preferredPlotId = this.activePlotId) {
+        const RESIDENTS = this.roster.residents(),
+            MATCHING_PLOTS = new Set(RESIDENTS.filter((unit) => unit.species === species).map((unit) => unit.plotId)),
+            OCCUPANCY = new Map(
+                [...this.farmPlots.keys()].map((id) => [
+                    id,
+                    this.roster.placedPopulation(id) + (this._breedPlotReservations?.get(id) || 0),
+                ]),
+            ),
+            PLOTS = [...this.farmPlots.values()];
+        PLOTS.sort((a, b) => {
+            const A_COUNT = OCCUPANCY.get(a.id),
+                B_COUNT = OCCUPANCY.get(b.id),
+                A_MATCH = MATCHING_PLOTS.has(a.id),
+                B_MATCH = MATCHING_PLOTS.has(b.id);
+            return (
+                Number(B_MATCH) - Number(A_MATCH) ||
+                Number(b.id === preferredPlotId) - Number(a.id === preferredPlotId) ||
+                A_COUNT - B_COUNT ||
+                a.id.localeCompare(b.id)
+            );
+        });
+        return PLOTS.find((plot) => OCCUPANCY.get(plot.id) < plot.capacity) || null;
+    }
+    switchFarmPlot(plotId) {
+        if (
+            this.scene !== 'farm' ||
+            this.running ||
+            this.farmBossEvent?.phase !== 'idle' ||
+            !this.farmPlots.has(plotId)
+        ) {
+            return false;
+        }
+        if (plotId === this.activePlotId) {
+            return true;
+        }
+        for (const UNIT_LOCAL of this.unitCollection.unitsInPlot(this.activePlotId)) {
+            if (UNIT_LOCAL.mateId && !this.breedPlanFor(UNIT_LOCAL)) {
+                this.releaseMate(UNIT_LOCAL);
+            }
+            this.clearFoodTargetSearch(UNIT_LOCAL);
+        }
+        this.activePlotId = plotId;
+        for (const UNIT_LOCAL of this.unitCollection.unitsInPlot(plotId)) {
+            this.clearInactiveForageAttempt(UNIT_LOCAL);
+        }
+        this.playerProgression.farmPlots.currentPlotId = plotId;
+        this.food = this.activeFarmPlot.food;
+        this._unitSpatialDirty = true;
+        this._foodSpatialDirty = true;
+        this._rebuildUnitSpatialIndex(this.units);
+        this.markProgressChanged();
+        return true;
+    }
+    unlockFarmPlot() {
+        if (
+            this.scene !== 'farm' ||
+            this.running ||
+            this.farmBossEvent?.phase !== 'idle' ||
+            this.playerProgression.availablePoints < 2
+        ) {
+            return { ok: false, reason: this.playerProgression.availablePoints < 2 ? 'insufficient-points' : 'locked' };
+        }
+        const STATE = this.playerProgression.farmPlots,
+            ID = `plot-${STATE.nextPlotNumber}`,
+            PLOT_STATE = { id: ID, capacityLevel: 0 };
+        STATE.plots.push(PLOT_STATE);
+        STATE.nextPlotNumber++;
+        this.playerProgression.availablePoints -= 2;
+        this.farmPlots.set(ID, new FarmPlot(PLOT_STATE));
+        this.restoreReservePopulation();
+        this.markProgressChanged();
+        return { ok: true, plotId: ID };
+    }
+    expandFarmPlot(plotId = this.activePlotId) {
+        const PLOT = this.farmPlots.get(plotId);
+        if (
+            this.scene !== 'farm' ||
+            this.running ||
+            this.farmBossEvent?.phase !== 'idle' ||
+            !PLOT ||
+            !PLOT.canExpand() ||
+            this.playerProgression.availablePoints < 1
+        ) {
+            return { ok: false, reason: !PLOT?.canExpand() ? 'max-level' : 'locked' };
+        }
+        PLOT.expand();
+        this.playerProgression.availablePoints--;
+        this.restoreReservePopulation();
+        this.markProgressChanged();
+        return { ok: true, capacity: PLOT.capacity };
+    }
+    restoreReservePopulation() {
+        const RESERVE = this.roster.residents().filter((unit) => unit.plotId === RESERVE_PLOT_ID);
+        if (!RESERVE.length) {
+            return 0;
+        }
+        RESERVE.sort((a, b) => b.tier - a.tier || Number(b.mature) - Number(a.mature) || a.id - b.id);
+        const OCCUPANCY = new Map(
+                [...this.farmPlots.values()].map((plot) => [plot.id, this.roster.placedPopulation(plot.id)]),
+            ),
+            SPECIES_BY_PLOT = new Map(
+                [...this.farmPlots.keys()].map((plotId) => [
+                    plotId,
+                    new Set(
+                        this.roster
+                            .residents()
+                            .filter((unit) => unit.plotId === plotId)
+                            .map((unit) => unit.species),
+                    ),
+                ]),
+            ),
+            ASSIGNMENTS = [];
+        for (const UNIT_LOCAL of RESERVE) {
+            const CANDIDATES = [...this.farmPlots.values()]
+                .filter((plot) => (OCCUPANCY.get(plot.id) || 0) < plot.capacity)
+                .sort(
+                    (a, b) =>
+                        Number(SPECIES_BY_PLOT.get(b.id).has(UNIT_LOCAL.species)) -
+                            Number(SPECIES_BY_PLOT.get(a.id).has(UNIT_LOCAL.species)) ||
+                        (OCCUPANCY.get(a.id) || 0) - (OCCUPANCY.get(b.id) || 0) ||
+                        a.id.localeCompare(b.id),
+                );
+            const PLOT = CANDIDATES[0];
+            if (!PLOT) {
+                break;
+            }
+            ASSIGNMENTS.push({ unitId: UNIT_LOCAL.id, plotId: PLOT.id });
+            OCCUPANCY.set(PLOT.id, OCCUPANCY.get(PLOT.id) + 1);
+            SPECIES_BY_PLOT.get(PLOT.id).add(UNIT_LOCAL.species);
+        }
+        return this.unitCollection.moveUnitsToPlots(ASSIGNMENTS) ? ASSIGNMENTS.length : 0;
+    }
+    setSpeciesTarget(speciesId, basisPoints) {
+        if (
+            !Number.isSafeInteger(speciesId) ||
+            speciesId < 0 ||
+            speciesId >= CONFIG.unit.speciesCount ||
+            !Number.isSafeInteger(basisPoints) ||
+            basisPoints < 0 ||
+            basisPoints > 10000
+        ) {
+            return false;
+        }
+        const CURRENT = new Map(this.farmTargets.map((value, index) => [index, value])),
+            NEXT = FarmingRoster.normalizeTargetBasisPoints(
+                CURRENT,
+                Array.from({ length: CONFIG.unit.speciesCount }, (_, id) => id),
+                speciesId,
+                basisPoints,
+            );
+        if (!NEXT) {
+            return false;
+        }
+        this.playerProgression.farmPlots.targetBasisPoints = Array.from(
+            { length: CONFIG.unit.speciesCount },
+            (_, id) => NEXT.get(id) || 0,
+        );
+        this.markProgressChanged();
+        return true;
+    }
+    sortActiveFarm(order = 'mixed') {
+        if (
+            this.scene !== 'farm' ||
+            this.running ||
+            this.farmBossEvent?.phase !== 'idle' ||
+            this._breedPlans.size > 0 ||
+            !['species', 'tier-high', 'tier-low'].includes(order)
+        ) {
+            return false;
+        }
+        const UNITS = this.unitCollection.residentsInPlot(this.activePlotId);
+        for (const UNIT_LOCAL of UNITS) {
+            if (this.unitCollection.reservationOwner(UNIT_LOCAL)?.startsWith('merge:')) {
+                return false;
+            }
+            if (UNIT_LOCAL.mateId) {
+                this.releaseMate(UNIT_LOCAL);
+            }
+        }
+        UNITS.sort((a, b) => {
+            if (order === 'species') {
+                return a.species - b.species || a.tier - b.tier || a.id - b.id;
+            }
+            if (order === 'tier-high') {
+                return b.tier - a.tier || a.species - b.species || a.id - b.id;
+            }
+            if (order === 'tier-low') {
+                return a.tier - b.tier || a.species - b.species || a.id - b.id;
+            }
+            return a.id - b.id;
+        });
+        if (
+            !this.unitCollection.reorderWithinPlot(
+                this.activePlotId,
+                UNITS.map((unit) => unit.id),
+            )
+        ) {
+            return false;
+        }
+        UNITS.forEach((unitLocal, index) => {
+            const ANGLE = index * 2.399963229728653 + ((this.seed >>> 0) % 6283) / 1000,
+                RADIUS = Math.sqrt((index + 0.5) / Math.max(1, UNITS.length)) * 0.7;
+            unitLocal.x = Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS;
+            unitLocal.y = Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS;
+            unitLocal.vx = unitLocal.vy = 0;
+        });
+        this._rebuildUnitSpatialIndex(this.units);
+        return true;
     }
     breedCooldownDuration() {
         return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades, CONFIG.farm.breeding.cooldownSeconds);
@@ -1335,10 +1708,8 @@ const GARDEN = class Garden {
     }
     highestSpeciesTiers() {
         const TIERS = Array(CONFIG.unit.speciesCount).fill(0);
-        for (const UNIT_LOCAL of this.units) {
-            if (!UNIT_LOCAL.isBattleOnlySummon) {
-                TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
-            }
+        for (const UNIT_LOCAL of this.roster.residents()) {
+            TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
         }
         return TIERS;
     }
@@ -1351,6 +1722,7 @@ const GARDEN = class Garden {
         });
         if (RESULT.ok) {
             this.playerProgression = RESULT.state;
+            this.bindFarmPlotProgressionStates();
             this.markProgressChanged();
         }
         return RESULT;
@@ -1363,6 +1735,7 @@ const GARDEN = class Garden {
         });
         if (RESULT.ok) {
             this.playerProgression = RESULT.state;
+            this.bindFarmPlotProgressionStates();
             this.markProgressChanged();
         }
         return RESULT;
@@ -1374,7 +1747,51 @@ const GARDEN = class Garden {
             inCombat: IN_COMBAT,
         });
         if (RESULT.ok) {
-            this.playerProgression = RESULT.state;
+            const RESET_FARMS = scope?.type === 'farm' || scope?.type === 'all' || scope === 'farm' || scope === 'all';
+            if (RESET_FARMS) {
+                const FIRST_FOOD = this.farmPlots.get(INITIAL_FARM_PLOT_ID)?.food || [],
+                    RETURNED_FOOD = [...this.farmPlots.values()]
+                        .filter((plot) => plot.id !== INITIAL_FARM_PLOT_ID)
+                        .reduce((total, plot) => total + plot.food.length, 0);
+                this.warehouseFood = Math.min(Number.MAX_SAFE_INTEGER, this.warehouseFood + RETURNED_FOOD);
+                this.cancelMergeTasks();
+                for (const UNIT_LOCAL of this.unitCollection.items) {
+                    this.clearInactiveForageAttempt(UNIT_LOCAL);
+                    if (UNIT_LOCAL.mateId) {
+                        this.releaseMate(UNIT_LOCAL);
+                    }
+                }
+                this.playerProgression = RESULT.state;
+                const FIRST_STATE = this.playerProgression.farmPlots.plots[0];
+                this.farmPlots = new Map([[FIRST_STATE.id, new FarmPlot(FIRST_STATE, FIRST_FOOD)]]);
+                this.activePlotId = FIRST_STATE.id;
+                this.playerProgression.farmPlots.currentPlotId = FIRST_STATE.id;
+                this.food = FIRST_FOOD;
+                const OLD_PLOT_ORDER = new Map(
+                        [...this.unitCollection.items].map((unit) => [unit.id, unit.plotId || RESERVE_PLOT_ID]),
+                    ),
+                    RESIDENTS = this.roster
+                        .residents()
+                        .sort(
+                            (a, b) =>
+                                b.tier - a.tier ||
+                                Number(b.mature) - Number(a.mature) ||
+                                String(OLD_PLOT_ORDER.get(a.id)).localeCompare(String(OLD_PLOT_ORDER.get(b.id))) ||
+                                a.id - b.id,
+                        ),
+                    FIRST_CAPACITY = this.farmPlots.get(FIRST_STATE.id).capacity,
+                    ASSIGNMENTS = RESIDENTS.map((unit, index) => ({
+                        unitId: unit.id,
+                        plotId: index < FIRST_CAPACITY ? FIRST_STATE.id : RESERVE_PLOT_ID,
+                    }));
+                this.unitCollection.moveUnitsToPlots(ASSIGNMENTS);
+                this._rebuildUnitSpatialIndex(this.units);
+                this._unitSpatialDirty = true;
+                this._foodSpatialDirty = true;
+            } else {
+                this.playerProgression = RESULT.state;
+                this.bindFarmPlotProgressionStates();
+            }
             this.markProgressChanged();
         }
         return RESULT;
@@ -1542,6 +1959,7 @@ const GARDEN = class Garden {
         if (!this.unitCollection.has(unit)) {
             return false;
         }
+        this.clearInactiveForageAttempt(unit);
         const SPLIT_BEFORE = unit.splitUsedThisBattle,
             DIED = unit.die();
         return DIED && !SPLIT_BEFORE && unit.splitUsedThisBattle;
@@ -1956,15 +2374,39 @@ const GARDEN = class Garden {
     randomBossSpecies() {
         return Math.min(CONFIG.unit.speciesCount - 1, Math.floor(this.random() * CONFIG.unit.speciesCount));
     }
-    spawn(species, tier, x, y) {
-        if (this.units.length >= SIMULATION_SCENES[this.scene].capacity(this)) {
+    spawn(species, tier, x, y, { birthReservationOwner = null } = {}) {
+        const FARM_RESIDENT = this.scene === 'farm';
+        let plot = null;
+        if (FARM_RESIDENT) {
+            const HAS_BIRTH_RESERVATION =
+                birthReservationOwner &&
+                (this._activeBreedReservations?.has(birthReservationOwner) ||
+                    this._breedPlans?.has(birthReservationOwner));
+            if (
+                this.ownedPopulation + this.birthReservations - Number(!!HAS_BIRTH_RESERVATION) >=
+                this.totalFarmCapacity
+            ) {
+                return null;
+            }
+            const BREED_RESERVATION = this._activeBreedReservations?.get(birthReservationOwner);
+            plot = BREED_RESERVATION
+                ? this.farmPlots.get(BREED_RESERVATION.plotId)
+                : this.availableFarmPlotFor(species);
+            if (!plot) {
+                return null;
+            }
+        } else if (this.units.length >= SIMULATION_SCENES[this.scene].capacity(this)) {
             return null;
         }
         const U = new UNIT(this.nextId++, species, CLAMP(tier, 1, CONFIG.unit.maxTier), x, y);
+        U.plotId = plot?.id || this.activePlotId || INITIAL_FARM_PLOT_ID;
         this.addUnit(U);
         return U;
     }
     addUnit(unit, options) {
+        if (this.scene === 'farm' && this.unitCollection.isResident(unit) && !unit.plotId) {
+            unit.plotId = this.activePlotId;
+        }
         if (!Number.isSafeInteger(unit.generation) || unit.generation <= 0) {
             unit.generation = ++this.entityGenerationSerial;
         } else {
@@ -1973,9 +2415,15 @@ const GARDEN = class Garden {
         return this.unitCollection.add(unit, options);
     }
     removeUnit(unit, options) {
+        this.clearInactiveForageAttempt(unit);
         return this.unitCollection.remove(unit, options);
     }
     replaceUnitGroup(materials, result, complete, preserveMergeTask = null) {
+        if (!Number.isSafeInteger(result.generation) || result.generation <= 0) {
+            result.generation = ++this.entityGenerationSerial;
+        } else {
+            this.entityGenerationSerial = Math.max(this.entityGenerationSerial, result.generation);
+        }
         return this.unitCollection.replace(materials, result, complete, preserveMergeTask);
     }
     resetUnits(units = []) {
@@ -2037,7 +2485,8 @@ const GARDEN = class Garden {
         if (
             (source !== 'auto' && source !== 'manual') ||
             (source === 'manual' && this.scene !== 'farm') ||
-            this.food.length >= 140
+            (source === 'manual' && this.food.length >= 140) ||
+            (source === 'auto' && this.warehouseFood >= Number.MAX_SAFE_INTEGER)
         ) {
             return false;
         }
@@ -2046,18 +2495,42 @@ const GARDEN = class Garden {
         this.foodTaps.revision++;
         if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.spawnFood(
-                (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
-                (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
-                1,
-            );
-            this.foodTaps.produced++;
+            let scattered = false;
+            if (source === 'auto') {
+                this.warehouseFood++;
+            } else if (this.warehouseFood > 0) {
+                scattered = this.scatterFood(
+                    (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
+                    (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
+                );
+            }
+            if (source === 'auto' || scattered) {
+                this.foodTaps.produced++;
+            }
         }
         this.notice('food-tap', {
             source,
             completed: COMPLETED,
             remainder: this.foodTaps.remainder,
         });
+        this.markProgressChanged();
+        return true;
+    }
+    scatterFood(x, y) {
+        if (
+            this.scene !== 'farm' ||
+            !Number.isFinite(x) ||
+            !Number.isFinite(y) ||
+            this.warehouseFood <= 0 ||
+            this.food.length >= 140
+        ) {
+            return false;
+        }
+        this.warehouseFood--;
+        const EVENT = this.tryStartFarmBossEvent(x, y);
+        if (!EVENT) {
+            this.spawnFood(x, y, 1, { allowBossEvent: false });
+        }
         this.markProgressChanged();
         return true;
     }
@@ -2073,7 +2546,8 @@ const GARDEN = class Garden {
             this.tapFood('auto');
         }
     }
-    spawnFood(x, y, count = 1) {
+    spawnFood(x, y, count = 1, { allowBossEvent = true } = {}) {
+        let spawned = 0;
         for (let i = 0; i < count && this.food.length < 140; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5,
                 RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
@@ -2084,7 +2558,7 @@ const GARDEN = class Garden {
                 tx /= BOUNDARY;
                 ty /= BOUNDARY;
             }
-            if (this.tryStartFarmBossEvent(tx, ty)) {
+            if (allowBossEvent && this.tryStartFarmBossEvent(tx, ty)) {
                 continue;
             }
             const ANGLE = this.random() * Math.PI * 2,
@@ -2108,7 +2582,9 @@ const GARDEN = class Garden {
             this._trackFoodAdded(FOOD);
             this.emit('feed', tx, ty);
             this.markProgressChanged();
+            spawned++;
         }
+        return spawned;
     }
     tryStartFarmBossEvent(x, y) {
         if (
@@ -2264,6 +2740,7 @@ const GARDEN = class Garden {
                 hp: STATS(U.tier, U.species).maxHp,
             });
         }
+        this.unitCollection.refreshIndexes();
         SCENE.setupRoster(this);
         this._unitSpatialDirty = true;
     }
@@ -2274,6 +2751,7 @@ const GARDEN = class Garden {
         }
         try {
             const OWNER = this.breedingReservationOwner(a, b),
+                BIRTH_RESERVATION = this._activeBreedReservations?.get(OWNER) || null,
                 RESERVATIONS_AVAILABLE =
                     this.unitCollection.reservationOwner(a) === null ||
                     this.unitCollection.reservationOwner(a) === OWNER;
@@ -2293,6 +2771,15 @@ const GARDEN = class Garden {
                 b.fed &&
                 a.cooldown <= 0 &&
                 b.cooldown <= 0 &&
+                this.canFarmPopulationAdvance(a.species, {
+                    excludeReservation: BIRTH_RESERVATION?.reservation || null,
+                }) &&
+                this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.totalFarmCapacity &&
+                (BIRTH_RESERVATION
+                    ? this.roster.placedPopulation(BIRTH_RESERVATION.plotId) +
+                          (this._breedPlotReservations.get(BIRTH_RESERVATION.plotId) || 0) <=
+                      this.farmPlots.get(BIRTH_RESERVATION.plotId)?.capacity
+                    : !!this.availableFarmPlotFor(a.species)) &&
                 this._unitIsActive(a) &&
                 this._unitIsActive(b) &&
                 RESERVATIONS_AVAILABLE &&
@@ -2308,6 +2795,506 @@ const GARDEN = class Garden {
     }
     breedingReservationOwner(a, b) {
         return BREED_RESERVATION_OWNER(a.id, b.id);
+    }
+    breedPlanFor(unit) {
+        return [...(this._breedPlans?.values() || [])].find((plan) => plan.parentIds.includes(unit?.id)) || null;
+    }
+    canStartCrossPlotBreed(a, b, { allowSamePlot = false } = {}) {
+        return !!(
+            this.scene === 'farm' &&
+            this.farmBossEvent?.phase === 'idle' &&
+            a &&
+            b &&
+            a !== b &&
+            (allowSamePlot || a.plotId !== b.plotId) &&
+            a.plotId !== RESERVE_PLOT_ID &&
+            b.plotId !== RESERVE_PLOT_ID &&
+            a.species === b.species &&
+            a.hp > 0 &&
+            b.hp > 0 &&
+            a.down <= 0 &&
+            b.down <= 0 &&
+            a.mature &&
+            b.mature &&
+            a.fed &&
+            b.fed &&
+            a.cooldown <= 0 &&
+            b.cooldown <= 0 &&
+            a.breedingEligible !== false &&
+            b.breedingEligible !== false &&
+            !this.senseEnemy(a) &&
+            !this.senseEnemy(b) &&
+            this.canFarmPopulationAdvance(a.species) &&
+            this.ownedPopulation + this.birthReservations < this.totalFarmCapacity &&
+            !this.unitCollection.reservationOwner(a) &&
+            !this.unitCollection.reservationOwner(b)
+        );
+    }
+    reserveCrossPlotBreed(a, b, { allowSamePlot = false, durationTicks = 10 } = {}) {
+        if (
+            !this.canStartCrossPlotBreed(a, b, { allowSamePlot }) ||
+            !Number.isSafeInteger(durationTicks) ||
+            durationTicks < 1
+        ) {
+            return false;
+        }
+        const PARENT_IDS = [a.id, b.id],
+            PARENTS_BY_SOURCE = new Map();
+        for (const PARENT of [a, b]) {
+            PARENTS_BY_SOURCE.set(PARENT.plotId, (PARENTS_BY_SOURCE.get(PARENT.plotId) || 0) + 1);
+        }
+        const IDLE_RESIDENTS = this.roster
+                .residents()
+                .filter(
+                    (unit) =>
+                        unit.plotId !== RESERVE_PLOT_ID &&
+                        unit.id !== a.id &&
+                        unit.id !== b.id &&
+                        !this.unitCollection.reservationOwner(unit) &&
+                        !unit.mateId &&
+                        unit.hp > 0 &&
+                        unit.down <= 0 &&
+                        unit.stun <= 0 &&
+                        unit.ability?.phase === 'idle' &&
+                        (!unit.specialAbility || unit.specialAbility.phase === 'idle') &&
+                        !this.senseEnemy(unit),
+                )
+                .sort((left, right) => left.plotId.localeCompare(right.plotId) || left.id - right.id),
+            CANDIDATES = [...this.farmPlots.values()]
+                .map((plot) => {
+                    const PARENTS_HERE = PARENT_IDS.filter(
+                            (id) => this.unitCollection.unitById(id)?.plotId === plot.id,
+                        ).length,
+                        MOVED = 2 - PARENTS_HERE,
+                        ADDED = MOVED + 1,
+                        OCCUPANCY =
+                            this.roster.placedPopulation(plot.id) + (this._breedPlotReservations.get(plot.id) || 0),
+                        NEEDED_EXCHANGES = Math.max(0, OCCUPANCY + ADDED - plot.capacity),
+                        EXCHANGES = [];
+                    if (NEEDED_EXCHANGES > 2 || NEEDED_EXCHANGES > MOVED) {
+                        return null;
+                    }
+                    for (const [SOURCE_PLOT_ID, PARENT_COUNT] of PARENTS_BY_SOURCE) {
+                        if (SOURCE_PLOT_ID === plot.id) {
+                            continue;
+                        }
+                        for (const RESIDENT of IDLE_RESIDENTS) {
+                            if (
+                                EXCHANGES.length >= NEEDED_EXCHANGES ||
+                                EXCHANGES.some((exchange) => exchange.unitId === RESIDENT.id) ||
+                                RESIDENT.plotId !== plot.id
+                            ) {
+                                continue;
+                            }
+                            const USED_AT_SOURCE = EXCHANGES.filter(
+                                (exchange) => exchange.plotId === SOURCE_PLOT_ID,
+                            ).length;
+                            if (USED_AT_SOURCE < PARENT_COUNT) {
+                                EXCHANGES.push({ unitId: RESIDENT.id, plotId: SOURCE_PLOT_ID });
+                                break;
+                            }
+                        }
+                    }
+                    if (EXCHANGES.length !== NEEDED_EXCHANGES) {
+                        return null;
+                    }
+                    const OCCUPANCY_DELTA = new Map([[plot.id, ADDED - EXCHANGES.length]]);
+                    for (const [SOURCE_PLOT_ID, PARENT_COUNT] of PARENTS_BY_SOURCE) {
+                        if (SOURCE_PLOT_ID !== plot.id) {
+                            OCCUPANCY_DELTA.set(
+                                SOURCE_PLOT_ID,
+                                (OCCUPANCY_DELTA.get(SOURCE_PLOT_ID) || 0) -
+                                    PARENT_COUNT +
+                                    EXCHANGES.filter((exchange) => exchange.plotId === SOURCE_PLOT_ID).length,
+                            );
+                        }
+                    }
+                    const FINAL_OCCUPANCY_FITS = [...this.farmPlots.values()].every(
+                        (candidatePlot) =>
+                            this.roster.placedPopulation(candidatePlot.id) +
+                                (this._breedPlotReservations.get(candidatePlot.id) || 0) +
+                                Math.max(0, OCCUPANCY_DELTA.get(candidatePlot.id) || 0) <=
+                            candidatePlot.capacity,
+                    );
+                    const PLOT_RESERVATION_DELTAS = new Map([...OCCUPANCY_DELTA].filter(([, delta]) => delta > 0));
+                    return FINAL_OCCUPANCY_FITS
+                        ? {
+                              plot,
+                              parentsHere: PARENTS_HERE,
+                              moved: MOVED,
+                              added: ADDED,
+                              occupancy: OCCUPANCY,
+                              exchanges: EXCHANGES,
+                              occupancyDelta: OCCUPANCY_DELTA,
+                              plotReservationDeltas: PLOT_RESERVATION_DELTAS,
+                          }
+                        : null;
+                })
+                .filter(Boolean)
+                .sort(
+                    (left, right) =>
+                        right.parentsHere - left.parentsHere ||
+                        left.moved - right.moved ||
+                        left.occupancy - right.occupancy ||
+                        left.plot.id.localeCompare(right.plot.id),
+                ),
+            DESTINATION = CANDIDATES[0];
+        if (!DESTINATION) {
+            return false;
+        }
+        const OWNER = this.breedingReservationOwner(a, b),
+            RESERVATION = { species: a.species, owner: OWNER },
+            ASSIGNMENTS = [
+                { unitId: a.id, plotId: DESTINATION.plot.id },
+                { unitId: b.id, plotId: DESTINATION.plot.id },
+                ...DESTINATION.exchanges,
+            ],
+            ORIGINAL_ASSIGNMENTS = ASSIGNMENTS.map(({ unitId }) => ({
+                unitId,
+                plotId: this.unitCollection.unitById(unitId).plotId,
+            }));
+        if (
+            !this.unitCollection.reserve(OWNER, [
+                a,
+                b,
+                ...DESTINATION.exchanges.map(({ unitId }) => this.unitCollection.unitById(unitId)),
+            ])
+        ) {
+            return false;
+        }
+        a.mateId = b.id;
+        b.mateId = a.id;
+        this._breedPlans.set(OWNER, {
+            owner: OWNER,
+            parentIds: PARENT_IDS,
+            originalPlotIds: [a.plotId, b.plotId],
+            originalPositions: [
+                { x: a.x, y: a.y, vx: a.vx, vy: a.vy },
+                { x: b.x, y: b.y, vx: b.vx, vy: b.vy },
+            ],
+            assignments: ASSIGNMENTS,
+            originalAssignments: ORIGINAL_ASSIGNMENTS,
+            exchangeUnitIds: DESTINATION.exchanges.map(({ unitId }) => unitId),
+            destinationPlotId: DESTINATION.plot.id,
+            dueTick: this.simulationTick + durationTicks,
+            expiresTick: this.simulationTick + 100,
+            targetSnapshot: [...this.farmTargets],
+            reservation: RESERVATION,
+            plotReservationDeltas: Object.fromEntries(DESTINATION.plotReservationDeltas),
+        });
+        for (const [PLOT_ID, DELTA] of DESTINATION.plotReservationDeltas) {
+            this._breedPlotReservations.set(PLOT_ID, (this._breedPlotReservations.get(PLOT_ID) || 0) + DELTA);
+        }
+        return true;
+    }
+    cancelBreedPlan(plan) {
+        if (!plan || this._breedPlans?.get(plan.owner) !== plan) {
+            return false;
+        }
+        this._breedPlans.delete(plan.owner);
+        this.releaseBreedPlotReservations(plan);
+        this.unitCollection.releaseReservations(plan.owner);
+        for (const ID of plan.parentIds) {
+            const UNIT_LOCAL = this.unitCollection.unitById(ID);
+            if (UNIT_LOCAL?.mateId === plan.parentIds.find((otherId) => otherId !== ID)) {
+                UNIT_LOCAL.mateId = 0;
+            }
+        }
+        return true;
+    }
+    releaseBreedPlotReservations(plan) {
+        for (const [PLOT_ID, DELTA] of Object.entries(plan?.plotReservationDeltas || {})) {
+            const RESERVED = (this._breedPlotReservations.get(PLOT_ID) || 0) - DELTA;
+            if (RESERVED) {
+                this._breedPlotReservations.set(PLOT_ID, RESERVED);
+            } else {
+                this._breedPlotReservations.delete(PLOT_ID);
+            }
+        }
+    }
+    cancelBreedPlans() {
+        for (const PLAN of [...(this._breedPlans?.values() || [])]) {
+            this.cancelBreedPlan(PLAN);
+        }
+        for (const OWNER of [...(this._activeBreedReservations?.keys() || [])]) {
+            this.releaseActiveBreedReservation(OWNER);
+        }
+        this._breedPlans?.clear();
+        this._activeBreedReservations?.clear();
+        this._breedPlotReservations?.clear();
+    }
+    reserveActiveBreedPair(a, b) {
+        const OWNER = this.breedingReservationOwner(a, b),
+            EXISTING = this._activeBreedReservations.get(OWNER);
+        if (EXISTING) {
+            return EXISTING.parentIds.includes(a.id) && EXISTING.parentIds.includes(b.id);
+        }
+        if (
+            !a ||
+            !b ||
+            a.plotId !== b.plotId ||
+            a.plotId === RESERVE_PLOT_ID ||
+            !this.canBreedPair(a, b) ||
+            a.down > 0 ||
+            b.down > 0 ||
+            (a.mateId && a.mateId !== b.id) ||
+            (b.mateId && b.mateId !== a.id) ||
+            this.roster.placedPopulation(a.plotId) + (this._breedPlotReservations.get(a.plotId) || 0) >=
+                this.farmPlots.get(a.plotId)?.capacity
+        ) {
+            return false;
+        }
+        const RESERVATION = { species: a.species, owner: OWNER };
+        if (!this.unitCollection.reserve(OWNER, [a, b])) {
+            return false;
+        }
+        this._activeBreedReservations.set(OWNER, {
+            owner: OWNER,
+            parentIds: [a.id, b.id],
+            plotId: a.plotId,
+            reservation: RESERVATION,
+        });
+        this._breedPlotReservations.set(a.plotId, (this._breedPlotReservations.get(a.plotId) || 0) + 1);
+        a.mateId = b.id;
+        b.mateId = a.id;
+        return true;
+    }
+    releaseActiveBreedReservation(owner) {
+        const RESERVATION = this._activeBreedReservations?.get(owner);
+        if (!RESERVATION) {
+            return false;
+        }
+        this._activeBreedReservations.delete(owner);
+        const RESERVED = Math.max(0, (this._breedPlotReservations.get(RESERVATION.plotId) || 0) - 1);
+        if (RESERVED) {
+            this._breedPlotReservations.set(RESERVATION.plotId, RESERVED);
+        } else {
+            this._breedPlotReservations.delete(RESERVATION.plotId);
+        }
+        this.unitCollection.releaseReservations(owner);
+        for (const ID of RESERVATION.parentIds) {
+            const UNIT_LOCAL = this.unitCollection.unitById(ID);
+            if (UNIT_LOCAL?.mateId === RESERVATION.parentIds.find((otherId) => otherId !== ID)) {
+                UNIT_LOCAL.mateId = 0;
+            }
+        }
+        return true;
+    }
+    advanceBreedPlans() {
+        for (const PLAN of [...this._breedPlans.values()].sort(
+            (a, b) => a.dueTick - b.dueTick || a.owner.localeCompare(b.owner),
+        )) {
+            if (this.simulationTick > PLAN.expiresTick) {
+                this.cancelBreedPlan(PLAN);
+                continue;
+            }
+            const [A, B] = PLAN.parentIds.map((id) => this.unitCollection.unitById(id));
+            if (
+                this.scene !== 'farm' ||
+                this.farmBossEvent?.phase !== 'idle' ||
+                !A ||
+                !B ||
+                A.mateId !== B.id ||
+                B.mateId !== A.id ||
+                A.hp <= 0 ||
+                B.hp <= 0 ||
+                A.down > 0 ||
+                B.down > 0 ||
+                !A.mature ||
+                !B.mature ||
+                !A.fed ||
+                !B.fed ||
+                A.cooldown > 0 ||
+                B.cooldown > 0 ||
+                A.breedingEligible === false ||
+                B.breedingEligible === false ||
+                A.species !== B.species ||
+                this.senseEnemy(A) ||
+                this.senseEnemy(B) ||
+                PLAN.targetSnapshot.some((value, index) => value !== this.farmTargets[index]) ||
+                !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })
+            ) {
+                this.cancelBreedPlan(PLAN);
+                continue;
+            }
+            if (this.simulationTick < PLAN.dueTick) {
+                continue;
+            }
+            const DESTINATION = this.farmPlots.get(PLAN.destinationPlotId),
+                ASSIGNMENTS_VALID = PLAN.assignments.every(({ unitId }) => {
+                    const UNIT_ID = unitId;
+                    const RESIDENT = this.unitCollection.unitById(UNIT_ID);
+                    return (
+                        RESIDENT &&
+                        RESIDENT.plotId === PLAN.originalAssignments.find((row) => row.unitId === UNIT_ID)?.plotId
+                    );
+                });
+            const FINAL_OCCUPANCY_FITS = [...this.farmPlots.values()].every((plot) => {
+                return (
+                    this.roster.placedPopulation(plot.id) + (this._breedPlotReservations.get(plot.id) || 0) <=
+                    plot.capacity
+                );
+            });
+            if (
+                !DESTINATION ||
+                !ASSIGNMENTS_VALID ||
+                !FINAL_OCCUPANCY_FITS ||
+                PLAN.assignments.some(({ unitId }) => {
+                    const UNIT_ID = unitId;
+                    const RESIDENT = this.unitCollection.unitById(UNIT_ID);
+                    if (!RESIDENT || this.unitCollection.reservationOwner(RESIDENT) !== PLAN.owner) {
+                        return true;
+                    }
+                    return (
+                        PLAN.exchangeUnitIds.includes(UNIT_ID) &&
+                        (RESIDENT.hp <= 0 ||
+                            RESIDENT.down > 0 ||
+                            RESIDENT.ability?.phase !== 'idle' ||
+                            (RESIDENT.specialAbility && RESIDENT.specialAbility.phase !== 'idle') ||
+                            this.senseEnemy(RESIDENT))
+                    );
+                }) ||
+                this.ownedPopulation + this.birthReservations > this.totalFarmCapacity ||
+                !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })
+            ) {
+                this.cancelBreedPlan(PLAN);
+                continue;
+            }
+            this.unitCollection.releaseReservations(PLAN.owner);
+            A.mateId = 0;
+            B.mateId = 0;
+            for (const UNIT_ID of PLAN.exchangeUnitIds) {
+                this.clearInactiveForageAttempt(this.unitCollection.unitById(UNIT_ID));
+            }
+            if (!this.unitCollection.moveUnitsToPlots(PLAN.assignments)) {
+                this.cancelBreedPlan(PLAN);
+                continue;
+            }
+            this._breedPlans.delete(PLAN.owner);
+            this.releaseBreedPlotReservations(PLAN);
+            A.x = -0.22;
+            A.y = 0;
+            A.vx = A.vy = 0;
+            B.x = 0.22;
+            B.y = 0;
+            B.vx = B.vy = 0;
+            this._rebuildUnitSpatialIndex(this.units);
+            const COMMITTED =
+                DESTINATION.id === this.activePlotId
+                    ? FARM_MODES.breed.pair(this, A, B, true)
+                    : this.commitInactiveBreedBirth(A, B, DESTINATION.id);
+            if (!COMMITTED) {
+                this.unitCollection.moveUnitsToPlots(PLAN.originalAssignments);
+                [A, B].forEach((unit, index) => Object.assign(unit, PLAN.originalPositions[index]));
+                for (const UNIT_ID of PLAN.exchangeUnitIds) {
+                    const RESIDENT = this.unitCollection.unitById(UNIT_ID);
+                    RESIDENT && (RESIDENT.mateId = 0);
+                }
+                this._rebuildUnitSpatialIndex(this.units);
+            }
+        }
+    }
+    commitInactiveBreedBirth(a, b, plotId) {
+        if (
+            this.scene !== 'farm' ||
+            !a ||
+            !b ||
+            a === b ||
+            a.plotId !== plotId ||
+            b.plotId !== plotId ||
+            a.hp <= 0 ||
+            b.hp <= 0 ||
+            a.down > 0 ||
+            b.down > 0 ||
+            !a.mature ||
+            !b.mature ||
+            !a.fed ||
+            !b.fed ||
+            a.cooldown > 0 ||
+            b.cooldown > 0 ||
+            a.species !== b.species ||
+            !this.canFarmPopulationAdvance(a.species) ||
+            this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity ||
+            !this.availableFarmPlot(plotId)
+        ) {
+            return false;
+        }
+        const OWNER = this.breedingReservationOwner(a, b);
+        if (!this.unitCollection.reserve(OWNER, [a, b])) {
+            return false;
+        }
+        a.mateId = b.id;
+        b.mateId = a.id;
+        const CHILD = new UNIT(this.nextId++, a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
+        CHILD.plotId = plotId;
+        CHILD.growthDuration = this.breedGrowthDuration();
+        if (!this.unitCollection.add(CHILD)) {
+            this.releaseMate(a);
+            return false;
+        }
+        a.meals = b.meals = 0;
+        a.cooldown = b.cooldown = this.breedCooldownDuration();
+        a.cooldownDuration = b.cooldownDuration = a.cooldown;
+        a.cooldownSetAtTick = b.cooldownSetAtTick = this.simulationTick;
+        this.releaseMate(a);
+        this.metrics.births++;
+        this.markProgressChanged();
+        return true;
+    }
+    planInactiveBreed(unit, dt) {
+        if (
+            this.scene !== 'farm' ||
+            unit.plotId === this.activePlotId ||
+            unit.plotId === RESERVE_PLOT_ID ||
+            this.simulationTick < (unit.nextMateSearchTick || 0) ||
+            unit.mateId ||
+            this.unitCollection.reservationOwner(unit) ||
+            !unit.mature ||
+            !unit.fed ||
+            unit.cooldown > 0 ||
+            unit.hp <= 0 ||
+            !this.canFarmPopulationAdvance(unit.species) ||
+            this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity
+        ) {
+            return false;
+        }
+        const CANDIDATES = this.roster
+            .residentsOfSpecies(unit.species)
+            .filter(
+                (candidate) =>
+                    candidate !== unit &&
+                    candidate.plotId !== this.activePlotId &&
+                    candidate.plotId !== RESERVE_PLOT_ID &&
+                    !candidate.mateId &&
+                    !this.unitCollection.reservationOwner(candidate) &&
+                    candidate.hp > 0 &&
+                    candidate.down <= 0 &&
+                    candidate.mature &&
+                    candidate.fed &&
+                    candidate.cooldown <= 0 &&
+                    candidate.breedingEligible !== false,
+            )
+            .sort(
+                (a, b) =>
+                    Number(a.plotId !== unit.plotId) - Number(b.plotId !== unit.plotId) ||
+                    Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) ||
+                    Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) ||
+                    a.id - b.id,
+            );
+        for (const MATE of CANDIDATES) {
+            const DISTANCE = Math.hypot(MATE.x - unit.x, MATE.y - unit.y),
+                SPEED = Math.max(
+                    0.01,
+                    scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, 'growth'), unit),
+                ),
+                TICKS = Math.min(100, Math.max(1, Math.ceil(DISTANCE / SPEED / Math.max(dt, 1e-9))));
+            if (this.reserveCrossPlotBreed(unit, MATE, { allowSamePlot: true, durationTicks: TICKS })) {
+                unit.nextMateSearchTick = MATE.nextMateSearchTick = this.simulationTick + 10;
+                return true;
+            }
+        }
+        unit.nextMateSearchTick = this.simulationTick + 10;
+        return false;
     }
     _isValidBreedReservation(unit, owner) {
         if (!owner?.startsWith('breed:')) {
@@ -2329,6 +3316,18 @@ const GARDEN = class Garden {
             this._rebuildUnitSpatialIndex(this.units);
         }
         const MATE = this._unitById.get(unit.mateId);
+        const PLAN = this.breedPlanFor(unit);
+        if (PLAN) {
+            return this.cancelBreedPlan(PLAN);
+        }
+        if (
+            unit.mateId &&
+            this.releaseActiveBreedReservation(
+                this.breedingReservationOwner(unit, this.unitCollection.unitById(unit.mateId)),
+            )
+        ) {
+            return true;
+        }
         unit.mateId = 0;
         if (MATE && MATE.mateId === unit.id) {
             MATE.mateId = 0;
@@ -2364,6 +3363,9 @@ const GARDEN = class Garden {
                 }
             }
             for (const UNIT_LOCAL of this.units) {
+                if (this.breedPlanFor(UNIT_LOCAL)) {
+                    continue;
+                }
                 if (!UNIT_LOCAL.mateId) {
                     const OWNER = this.unitCollection.reservationOwner(UNIT_LOCAL);
                     if (OWNER?.startsWith('breed:')) {
@@ -2393,6 +3395,10 @@ const GARDEN = class Garden {
             this._beginSpatialQueryBatch();
         }
         try {
+            const ACTIVE_PLAN = this.breedPlanFor(unit);
+            if (ACTIVE_PLAN) {
+                return this.unitCollection.unitById(ACTIVE_PLAN.parentIds.find((id) => id !== unit.id)) || null;
+            }
             if (
                 this.scene !== 'farm' ||
                 !unit.mature ||
@@ -2404,6 +3410,13 @@ const GARDEN = class Garden {
                 this.releaseMate(unit);
                 return null;
             }
+            if (
+                !this.canFarmPopulationAdvance(unit.species) ||
+                this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity
+            ) {
+                this.releaseMate(unit);
+                return null;
+            }
             if (unit.mateId) {
                 const CURRENT = this._unitById.get(unit.mateId);
                 if (CURRENT && CURRENT.mateId === unit.id && this.canBreedPair(unit, CURRENT)) {
@@ -2411,35 +3424,62 @@ const GARDEN = class Garden {
                 }
                 this.releaseMate(unit);
             }
-            let mate = null;
-            let bestRank = Infinity;
-            let bestDistance = Infinity;
-            for (const CANDIDATE of this._speciesGroups[unit.species] || []) {
+            if (this.simulationTick < (unit.nextMateSearchTick || 0)) {
+                return null;
+            }
+            const CANDIDATES = [];
+            for (const CANDIDATE of this.roster.residentsOfSpecies(unit.species)) {
                 if (
                     CANDIDATE === unit ||
                     CANDIDATE.mateId ||
-                    !this.canBreedPair(unit, CANDIDATE) ||
-                    this.senseEnemy(CANDIDATE)
+                    CANDIDATE.plotId === RESERVE_PLOT_ID ||
+                    CANDIDATE.hp <= 0 ||
+                    CANDIDATE.down > 0 ||
+                    !CANDIDATE.mature ||
+                    !CANDIDATE.fed ||
+                    CANDIDATE.cooldown > 0 ||
+                    CANDIDATE.breedingEligible === false ||
+                    this.unitCollection.reservationOwner(CANDIDATE) ||
+                    (CANDIDATE.plotId === unit.plotId
+                        ? !this.canBreedPair(unit, CANDIDATE)
+                        : !this.canStartCrossPlotBreed(unit, CANDIDATE))
                 ) {
                     continue;
                 }
-                const RANK = CANDIDATE.tier === unit.tier ? 0 : 1,
-                    DISTANCE = Math.hypot(CANDIDATE.x - unit.x, CANDIDATE.y - unit.y);
-                if (RANK < bestRank || (RANK === bestRank && DISTANCE < bestDistance)) {
-                    mate = CANDIDATE;
-                    bestRank = RANK;
-                    bestDistance = DISTANCE;
+                CANDIDATES.push(CANDIDATE);
+            }
+            CANDIDATES.sort(
+                (a, b) =>
+                    Number(a.plotId !== unit.plotId) - Number(b.plotId !== unit.plotId) ||
+                    Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) ||
+                    Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) ||
+                    a.id - b.id,
+            );
+            for (const MATE of CANDIDATES) {
+                if (MATE.plotId !== unit.plotId) {
+                    const DISTANCE = Math.hypot(MATE.x - unit.x, MATE.y - unit.y),
+                        SPEED = Math.max(
+                            0.01,
+                            scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, 'growth'), unit),
+                        ),
+                        TICKS = Math.min(100, Math.max(1, Math.ceil(DISTANCE / SPEED / 0.05)));
+                    if (this.reserveCrossPlotBreed(unit, MATE, { durationTicks: TICKS })) {
+                        unit.nextMateSearchTick = this.simulationTick + 10;
+                        return MATE;
+                    }
+                    continue;
                 }
+                if (!this.reserveActiveBreedPair(unit, MATE)) {
+                    continue;
+                }
+                unit.nextMateSearchTick = this.simulationTick + 10;
+                return MATE;
             }
-            if (!mate) {
+            unit.nextMateSearchTick = this.simulationTick + 10;
+            if (!CANDIDATES.length) {
                 return null;
             }
-            if (!this.unitCollection.reserve(this.breedingReservationOwner(unit, mate), [unit, mate])) {
-                return null;
-            }
-            unit.mateId = mate.id;
-            mate.mateId = unit.id;
-            return mate;
+            return null;
         } finally {
             if (BATCH) {
                 this._endSpatialQueryBatch();
@@ -2447,7 +3487,7 @@ const GARDEN = class Garden {
         }
     }
     hasEligibleSameTierBreedPair() {
-        if (this.scene !== 'farm' || this.units.length >= this.capacity) {
+        if (this.scene !== 'farm' || this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity) {
             return false;
         }
         const BATCH = !this._spatialStepActive;
@@ -2465,6 +3505,7 @@ const GARDEN = class Garden {
                         !UNIT_LOCAL.mature ||
                         !UNIT_LOCAL.fed ||
                         UNIT_LOCAL.cooldown > 0 ||
+                        !this.canFarmPopulationAdvance(UNIT_LOCAL.species) ||
                         !this._unitIsActive(UNIT_LOCAL)
                     ) {
                         continue;
@@ -3082,12 +4123,15 @@ const GARDEN = class Garden {
         let progressTimersAdvanced = false;
         advanceBossRewardCalculations(this);
         grantPendingBossAcquisitions(this);
+        this.advanceBreedPlans();
         // Keep the original step membership/order; spawns join indexes now but
         // are first advanced by the next logical tick.
         const UNITS = this._stepUnits;
         UNITS.length = 0;
         for (const UNIT_LOCAL of this.units) {
-            UNITS.push(UNIT_LOCAL);
+            if (UNIT_LOCAL.spawnedAtSimulationTick !== this.simulationTick) {
+                UNITS.push(UNIT_LOCAL);
+            }
         }
         this._rebuildUnitSpatialIndex(UNITS);
         this.formationSkills.update(dt);
@@ -3137,6 +4181,7 @@ const GARDEN = class Garden {
         }
         this.profiler?.end('workScheduler', WORK_START);
         this.reconcileMateReservations();
+        const ACTIVE_UNIT_SET = new Set(UNITS);
         for (const U of UNITS) {
             U.moveControlActive = false;
             U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
@@ -3176,19 +4221,79 @@ const GARDEN = class Garden {
             if (U.cooldown > 0) {
                 progressTimersAdvanced = true;
             }
-            if (U.cooldown > 0 && U.cooldown <= dt + 1e-9) {
+            if (U.cooldown > 0 && U.cooldownSetAtTick !== this.simulationTick && U.cooldown <= dt + 1e-9) {
                 this.markProgressChanged();
                 this._markMergeAvailabilityChanged();
             }
-            U.cooldown = Math.max(0, U.cooldown - dt);
-            if (U.cooldown < 1e-9) {
-                U.cooldown = 0;
-                U.cooldownDuration = 0;
+            if (U.cooldownSetAtTick !== this.simulationTick) {
+                U.cooldown = Math.max(0, U.cooldown - dt);
+                if (U.cooldown < 1e-9) {
+                    U.cooldown = 0;
+                    U.cooldownDuration = 0;
+                }
             }
             const AI_START = this.profiler?.start();
             const ENEMY_LOCAL = this.senseEnemy(U) || SCENE.fallbackEnemy(this, U);
             this.updateUnitIntent(U, dt, ENEMY_LOCAL, SCENE);
             this.profiler?.end('ai', AI_START);
+        }
+        // Inactive plots keep only persistent lifecycle timers. They do not
+        // enter AI, spatial queries, contacts, or physics.
+        if (this.scene === 'farm') {
+            for (const U of this.unitCollection.items) {
+                if (
+                    !this.unitCollection.isResident(U) ||
+                    ACTIVE_UNIT_SET.has(U) ||
+                    U.plotId === this.activePlotId ||
+                    U.spawnedAtSimulationTick === this.simulationTick
+                ) {
+                    continue;
+                }
+                U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
+                if (U.hp <= 0) {
+                    if (!U.deathSplitHandled) {
+                        this.handleUnitDeath(U);
+                    }
+                    if (U.down <= 0) {
+                        U.down = CONFIG.unit.corpseRecoverySeconds;
+                        U.ability.interrupt();
+                        U.specialAbility?.interrupt();
+                    }
+                    this.clearPeaRecoveryBoost(U);
+                    progressTimersAdvanced = SCENE.advanceDownedUnit(this, U, dt) || progressTimersAdvanced;
+                    continue;
+                }
+                U.age += dt;
+                const UNIT_STATS = STATS(U.tier, U.species);
+                if (UNIT_STATS.regen > 0) {
+                    applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
+                }
+                if (!U.mature) {
+                    progressTimersAdvanced = true;
+                    U.growthElapsed = Math.min(U.growthDuration, U.growthElapsed + dt);
+                    U.growth = Math.min(
+                        CONFIG.farm.breeding.matureMeals,
+                        Math.floor((CONFIG.farm.breeding.matureMeals * U.growthElapsed) / U.growthDuration + 1e-9),
+                    );
+                }
+                if (U.cooldown > 0) {
+                    progressTimersAdvanced = true;
+                }
+                if (U.cooldown > 0 && U.cooldownSetAtTick !== this.simulationTick) {
+                    if (U.cooldown <= dt + 1e-9) {
+                        this._markMergeAvailabilityChanged();
+                    }
+                    U.cooldown = Math.max(0, U.cooldown - dt);
+                    if (U.cooldown < 1e-9) {
+                        U.cooldown = 0;
+                        U.cooldownDuration = 0;
+                    }
+                }
+                if (this.advanceInactiveForage(U, dt)) {
+                    progressTimersAdvanced = true;
+                }
+                this.planInactiveBreed(U, dt);
+            }
         }
         // Timed growth/rest is real progress, but movement is not. Checkpoint
         // advancing timers at a coarse cadence, never once per physics tick.
@@ -3919,7 +5024,14 @@ const GARDEN = class Garden {
         if (!this._spatialStepActive) {
             this._rebuildFoodSpatialIndex();
         }
-        if (!unit || this.scene !== 'farm' || unit.hp <= 0 || unit.fed || !this._groundedFoodCount) {
+        if (
+            !unit ||
+            this.scene !== 'farm' ||
+            unit.hp <= 0 ||
+            unit.fed ||
+            !this.canFarmPopulationAdvance(unit.species) ||
+            !this._groundedFoodCount
+        ) {
             this._cancelFoodTargetSearch(unit);
             return null;
         }

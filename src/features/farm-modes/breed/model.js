@@ -11,7 +11,12 @@ export class BreedFarmMode extends FarmMode {
         let target = null;
         if (!u.fed) {
             target = world.requestGroundFoodTarget(u);
-            if (target && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target)) {
+            if (
+                target &&
+                world.canFarmPopulationAdvance(u.species) &&
+                Math.hypot(target.x - u.x, target.y - u.y) < 0.42 &&
+                world.consumeGroundFood(target)
+            ) {
                 world.clearFoodTargetSearch(u);
                 u.meals = 1;
                 world.markProgressChanged();
@@ -79,23 +84,30 @@ export class BreedFarmMode extends FarmMode {
         const OWNER = world.breedingReservationOwner(a, b);
         if (
             !world.canBreedPair(a, b, true) ||
-            world.units.length >= world.capacity ||
+            world.ownedPopulation >= world.totalFarmCapacity ||
             (a.mateId && a.mateId !== b.id) ||
             (b.mateId && b.mateId !== a.id) ||
             (!priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair()) ||
-            !world.unitCollection.reserve(OWNER, [a, b])
+            !world.reserveActiveBreedPair(a, b)
         ) {
             return false;
         }
         {
             a.mateId = b.id;
             b.mateId = a.id;
-            const CHILD = world.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
+            const CHILD = world.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2, {
+                birthReservationOwner: OWNER,
+            });
+            if (!CHILD) {
+                world.releaseMate(a);
+                return false;
+            }
             CHILD.growthDuration = world.breedGrowthDuration();
             CHILD.vz = 3;
             a.meals = b.meals = 0;
             a.cooldown = b.cooldown = world.breedCooldownDuration();
             a.cooldownDuration = b.cooldownDuration = a.cooldown;
+            a.cooldownSetAtTick = b.cooldownSetAtTick = world.simulationTick;
             world.releaseMate(a);
             world.metrics.births++;
             world.emit('birth', CHILD.x, CHILD.y, 0.7);

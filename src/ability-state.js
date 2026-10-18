@@ -5,6 +5,7 @@ import {
 } from './formation-skill-state.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 import { createFarmUpgradeState, getFarmUpgradeInvestedCount, isValidFarmUpgradeState } from './farm-upgrades.js';
+import { getFarmPlotInvestedCount } from './farm-plot.js';
 import {
     createRaidDeploymentCardsState,
     isValidRaidDeploymentCardsState,
@@ -90,6 +91,7 @@ export function createAbilityRuntimeSnapshot(state) {
     return {
         schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
         level: state.level,
+        farmPlotInvestedPoints: getFarmPlotInvestedCount(state.farmPlots),
         formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
         raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
         availablePoints: state.availablePoints,
@@ -122,7 +124,8 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
         typeof snapshot !== 'object' ||
         snapshot.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION ||
         !Number.isSafeInteger(snapshot.level) ||
-        snapshot.level < 1
+        snapshot.level < 1 ||
+        !isNonNegativeInteger(snapshot.farmPlotInvestedPoints)
     ) {
         return false;
     }
@@ -158,6 +161,7 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
             formationInvestedPoints(STATE.formationSkills) +
             raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) +
             getFarmUpgradeInvestedCount(STATE.farmUpgrades) +
+            snapshot.farmPlotInvestedPoints +
             STATE.availablePoints ===
         STATE.level - 1
     );
@@ -191,6 +195,7 @@ function isValidPlayerLikeAbilityState(state) {
             formationInvestedPoints(state.formationSkills) +
             raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) +
             getFarmUpgradeInvestedCount(state.farmUpgrades) +
+            getFarmPlotInvestedCount(state.farmPlots) +
             state.availablePoints ===
         state.level - 1
     );

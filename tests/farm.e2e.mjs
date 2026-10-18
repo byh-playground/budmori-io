@@ -261,7 +261,7 @@ async function cameraSnapshot(p) {
     });
 }
 async function holdDeployButton(p, { hold = 0, touch = false, cancel = false } = {}) {
-    const BUTTON = p.locator('#deployTroops');
+    const BUTTON = p.locator('#deploymentCards .deployment-card').first();
     await BUTTON.waitFor({
         state: 'visible',
     });
@@ -424,7 +424,7 @@ async function buttonDeployment(p, pointerType) {
             'pointer cancellation stops deployment repeats',
         );
         assert.equal(
-            await p.locator('#deployTroops').getAttribute('aria-pressed'),
+            await p.locator('#deploymentCards .deployment-card').first().getAttribute('aria-pressed'),
             'false',
             'the released/cancelled button is no longer pressed',
         );
@@ -481,7 +481,7 @@ async function buttonDeployment(p, pointerType) {
         });
         CHECK(
             pointerType +
-                ' dedicated button: one immediate troop, 100ms holds, weakest-tier-first perimeter drops, release and cancel',
+                ' deployment card: one immediate troop, 100ms holds, weakest-tier-first perimeter drops, release and cancel',
         );
     } finally {
         await p.evaluate(() => {
@@ -562,7 +562,7 @@ async function swipeEncounter(p, direction = 'up') {
     await p.mouse.up();
 }
 async function unlockAbilityFlow(p) {
-    await p.evaluate(() => {
+    await p.evaluate(async () => {
         const W = BUDMORI.sim,
             U = W.spawn(1, 3, -4, 1);
         if (!U) {
@@ -571,27 +571,60 @@ async function unlockAbilityFlow(p) {
         U.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
         U.growthDuration = W.breedGrowthDuration();
         U.growthElapsed = U.growthDuration;
-        W.playerProgression.level = 2;
-        W.playerProgression.availablePoints = 1;
-        W.playerProgression.abilities['corn-burst-fire'] = {
-            rootUnlocked: false,
-            powerLevel: 0,
-            gradeLevel: 0,
-        };
+        const STATE = W.playerProgression,
+            ABILITY_SPENT = Object.values(STATE.abilities).reduce(
+                (total, ability) =>
+                    total +
+                    ability.powerLevel +
+                    Object.values(ability.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
+                0,
+            ),
+            UPGRADE_SPENT = Object.values(STATE.farmUpgrades).reduce((total, level) => total + level, 0),
+            PLOT_SPENT =
+                (STATE.farmPlots.plots.length - 1) * 2 +
+                STATE.farmPlots.plots.reduce((total, plot) => total + plot.capacityLevel, 0),
+            FORMATION_SPENT =
+                STATE.formationSkills.slots -
+                1 +
+                Object.values(STATE.formationSkills.levels).reduce((total, level) => total + level, 0),
+            DEPLOYMENT_SPENT = STATE.raidDeploymentCards.unlockedSlots - 1;
+        STATE.level = ABILITY_SPENT + UPGRADE_SPENT + PLOT_SPENT + FORMATION_SPENT + DEPLOYMENT_SPENT + 2;
+        STATE.availablePoints = 1;
+        STATE.experience = 0;
+        const { isValidPlayerProgressionState: IS_VALID } = await import('/src/player-progression.js');
+        if (!IS_VALID(STATE)) {
+            throw Error(
+                'invalid ability test progression fixture ' +
+                    JSON.stringify({
+                        level: STATE.level,
+                        availablePoints: STATE.availablePoints,
+                        abilitySpent: ABILITY_SPENT,
+                        upgradeSpent: UPGRADE_SPENT,
+                        plotSpent: PLOT_SPENT,
+                        formationSpent: FORMATION_SPENT,
+                        deploymentSpent: DEPLOYMENT_SPENT,
+                        farmPlots: STATE.farmPlots,
+                    }),
+            );
+        }
     });
     await openMenuTab(p, 'abilities');
     await p.locator('[data-ability-species="1"]').click();
-    const ROOT = p.locator('[data-ability="corn-burst-fire"] [data-ability-node="corn-burst-fire:root"]');
-    await ROOT.waitFor({
+    const POWER = p.locator('[data-ability="corn-kernel-chain"] [data-ability-node="corn-kernel-chain:power:1"]');
+    await POWER.waitFor({
         state: 'visible',
     });
-    assert.equal(await ROOT.getAttribute('aria-disabled'), 'false', 'the selected species unlock is available');
-    await ROOT.click();
-    await p.waitForFunction(() => BUDMORI.sim.playerProgression.abilities['corn-burst-fire'].rootUnlocked);
+    assert.equal(
+        await POWER.getAttribute('aria-disabled'),
+        'false',
+        'the selected species ability upgrade is available',
+    );
+    await POWER.click();
+    await p.waitForFunction(() => BUDMORI.sim.playerProgression.abilities['corn-kernel-chain'].powerLevel === 1);
     await p.waitForFunction(() => document.querySelector('#abilityPoints')?.textContent.trim() === '0');
     assert.equal(await p.evaluate(() => BUDMORI.sim.playerProgression.availablePoints), 0);
     await closeMenu(p);
-    CHECK('Ability menu selects Corn, unlocks its rare ability, and spends one shared XP point');
+    CHECK('Ability menu selects Corn, purchases its first power upgrade, and spends one shared XP point');
 }
 async function nutAttackCycles(p) {
     const RESULT = await p.evaluate(async () => {
@@ -1159,6 +1192,7 @@ async function upgradeMenuFlow() {
         await CARD.locator(`[data-ability-node="${ID}:power:1"]`).click();
         await P.waitForFunction((id) => BUDMORI.sim.playerProgression.abilities[id].powerLevel === 1, ID);
         if (ID === 'wheat-command-crit') {
+            await P.waitForTimeout(220);
             const RANGE_NODE = CARD.locator(`[data-ability-node="${ID}:branch-range:1"]`);
             await RANGE_NODE.scrollIntoViewIfNeeded();
             await RANGE_NODE.click();
@@ -2640,7 +2674,7 @@ async function progressionResetFlow() {
         STATE.level = 15;
         STATE.availablePoints = 14;
         STATE.farmUpgrades.food = 2;
-        STATE.farmUpgrades.capacity = 1;
+        STATE.farmPlots.plots[0].capacityLevel = 1;
         STATE.availablePoints -= 3;
         WORLD.markProgressChanged();
     });
@@ -2652,7 +2686,11 @@ async function progressionResetFlow() {
     await P.locator('#progressionResetCurrent').click();
     await P.waitForFunction(() => {
         const STATE = BUDMORI.sim.playerProgression;
-        return STATE.farmUpgrades.food === 0 && STATE.farmUpgrades.capacity === 0 && STATE.availablePoints === 14;
+        return (
+            STATE.farmUpgrades.food === 0 &&
+            STATE.farmPlots.plots[0].capacityLevel === 0 &&
+            STATE.availablePoints === 14
+        );
     });
     await P.waitForFunction(() => document.querySelector('#progressionResetCurrent').disabled);
     assert.equal(await P.locator('#progressionResetCurrent').isDisabled(), true);
@@ -2844,7 +2882,7 @@ async function cadenceDiagnosticsFlow() {
         for (const UNIT of [...WORLD.units]) {
             WORLD.unitCollection.remove(UNIT, { markProgress: false });
         }
-        WORLD.playerProgression.farmUpgrades.capacity = 5;
+        WORLD.playerProgression.farmPlots.plots[0].capacityLevel = 4;
         for (let index = 0; index < 10; index++) {
             if (!WORLD.spawn(0, 1, index, 0)) {
                 throw Error('failed to create Giant target fixture');
@@ -2960,20 +2998,19 @@ async function cadenceDiagnosticsFlow() {
     REPORT.physicsSolver = { ...PHYSICS_CADENCE, jacobiIterations: JACOBI_ORDERING.forward.iterations };
     const PERFORMANCE_REPRO = await P.evaluate(() => {
         const WORLD = BUDMORI.sim;
-        while (WORLD.units.length < 41) {
-            const INDEX = WORLD.units.length,
-                UNIT = WORLD.spawn(
-                    INDEX % BUDMORI.CONFIG.unit.speciesCount,
-                    1,
-                    ((INDEX % 8) - 3.5) * 2.1,
-                    (Math.floor(INDEX / 8) - 2.5) * 1.9,
-                );
+        WORLD.units = [];
+        WORLD.playerProgression.farmPlots.targetBasisPoints = [10000, 0, 0, 0, 0, 0, 0, 0, 0];
+        for (let index = 0; index < 41; index++) {
+            const UNIT = WORLD.spawn(0, 1, ((index % 8) - 3.5) * 2.1, (Math.floor(index / 8) - 2.5) * 1.9);
+            if (!UNIT) {
+                throw Error('could not seed 41 cadence test residents');
+            }
             UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
             UNIT.growthElapsed = UNIT.growthDuration;
             UNIT.meals = 0;
             UNIT.cooldown = UNIT.cooldownDuration = 999;
         }
-        WORLD.food = Array.from({ length: 140 }, (_, index) => {
+        const FOOD = Array.from({ length: 140 }, (_, index) => {
             const X = ((index % 14) - 6.5) * 1.5,
                 Y = (Math.floor(index / 14) - 5) * 1.4;
             return {
@@ -2989,14 +3026,29 @@ async function cadenceDiagnosticsFlow() {
                 ty: Y,
             };
         });
+        WORLD.activeFarmPlot.food = FOOD;
+        WORLD.food = FOOD;
         WORLD._rebuildUnitSpatialIndex(WORLD.units);
         WORLD._rebuildFoodSpatialIndex();
+        for (const UNIT of WORLD.units) {
+            WORLD.requestGroundFoodTarget(UNIT);
+        }
+        if (WORLD._foodSearchScheduler.metrics.queueDepth === 0) {
+            throw Error('the cadence fixture did not enqueue any eligible food searches');
+        }
         BUDMORI.runtime.capturePresentation('reset');
         return { units: WORLD.units.length, food: WORLD.food.length };
     });
     assert.deepEqual(PERFORMANCE_REPRO, { units: 41, food: 140 });
     REPORT.performanceReproduction = PERFORMANCE_REPRO;
     await P.waitForTimeout(220);
+    await P.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        for (const UNIT of WORLD.units) {
+            WORLD.clearFoodTargetSearch(UNIT);
+            WORLD.requestGroundFoodTarget(UNIT);
+        }
+    });
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
     for (let index = 0; index < 5; index++) {
         await P.locator('#feed').click();
@@ -3048,7 +3100,7 @@ async function cadenceDiagnosticsFlow() {
         PERFORMANCE.counts.foodSearchCandidateChecks.total + PERFORMANCE.counts.foodSearchCellVisits.total,
     );
     assert(
-        PERFORMANCE.counts.workSchedulerJobsQueued.total > 0,
+        PERFORMANCE.counts.workSchedulerQueueDepth.total > 0,
         JSON.stringify({
             queued: PERFORMANCE.counts.workSchedulerJobsQueued,
             completed: PERFORMANCE.counts.workSchedulerJobsCompleted,
@@ -3098,7 +3150,7 @@ async function cadenceDiagnosticsFlow() {
         for (const UNIT of [...WORLD.units]) {
             WORLD.unitCollection.remove(UNIT, { markProgress: false });
         }
-        WORLD.playerProgression.farmUpgrades.capacity = 5;
+        WORLD.playerProgression.farmPlots.plots[0].capacityLevel = 4;
         WORLD.random = () => 0.5;
         for (let index = 0; index < 41; index++) {
             const UNIT = WORLD.spawn(0, 1, ((index % 9) - 4) * 1.6, (Math.floor(index / 9) - 2) * 1.4);
@@ -3215,7 +3267,7 @@ async function mergePolicyRegression() {
         for (const UNIT of [...GIANT_WORLD.units]) {
             GIANT_WORLD.unitCollection.remove(UNIT, { markProgress: false });
         }
-        GIANT_WORLD.playerProgression.farmUpgrades.capacity = 5;
+        GIANT_WORLD.playerProgression.farmPlots.plots[0].capacityLevel = 4;
         for (let index = 0; index < 10; index++) {
             if (!GIANT_WORLD.spawn(0, 1, index, 0)) {
                 throw Error('failed to create Giant target fixture');
@@ -3249,7 +3301,7 @@ async function mergePolicyRegression() {
         for (const UNIT of [...WORLD.units]) {
             WORLD.unitCollection.remove(UNIT, { markProgress: false });
         }
-        WORLD.playerProgression.farmUpgrades.capacity = 5;
+        WORLD.playerProgression.farmPlots.plots[0].capacityLevel = 4;
         WORLD.random = () => 0.5;
         while (WORLD.units.length < 53) {
             const UNIT = WORLD.spawn(0, 1, 0, 0);
@@ -3396,12 +3448,12 @@ async function core() {
     const MENU_CONTRACT = await P.evaluate(() => ({
         utility: [...document.querySelectorAll('.utility button')].map((button) => button.id),
         label: document.querySelector('#gameMenu')?.getAttribute('aria-label'),
-        tabs: [...document.querySelectorAll('#gameMenuTabs [role="tab"]')].map((button) => button.textContent.trim()),
+        tabs: [...document.querySelectorAll('#gameMenuTabs [role="tab"]')].map((button) => button.id),
         roles: !!document.querySelector('#roles'),
         essentials: [
             'feed',
             'raidControls',
-            'deployTroops',
+            'deploymentCards',
             'raidRemaining',
             'bossbar',
             'allyHealth',
@@ -3414,7 +3466,13 @@ async function core() {
         'settings, upgrades and gameplay navigation have distinct controls',
     );
     assert.equal(MENU_CONTRACT.label, '게임 설정 열기');
-    assert.deepEqual(MENU_CONTRACT.tabs, ['공통 스탯', '병종 특성', '편성 스킬']);
+    assert.deepEqual(MENU_CONTRACT.tabs, [
+        'menuTabFarms',
+        'menuTabGrowth',
+        'menuTabAbilities',
+        'menuTabDeployment',
+        'menuTabFormation',
+    ]);
     assert.equal(MENU_CONTRACT.roles, false, 'troop-role explainer is removed from the battle map');
     assert(MENU_CONTRACT.essentials, 'feed, deploy status and both HP indicators remain available');
     const WAS_PAUSED = await P.evaluate(() => BUDMORI.runtime.paused);
@@ -3470,6 +3528,29 @@ async function core() {
         await P.locator('#feed').click();
     }
     await P.waitForFunction((n) => BUDMORI.foodFeel.counts.manual === n + 15, BEFORE);
+    const WAS_PAUSED_FOR_FEED = await P.evaluate(() => BUDMORI.runtime.paused);
+    if (WAS_PAUSED_FOR_FEED) {
+        await P.locator('#pause').click();
+        await P.waitForFunction(() => !BUDMORI.runtime.paused);
+    }
+    await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        W.food.length = 0;
+        W.warehouseFood = 2;
+        W._foodSpatialDirty = true;
+    });
+    const CANVAS_BOX = await P.locator('#world').boundingBox(),
+        FOOD_CAMERA = await cameraSnapshot(P);
+    await P.mouse.move(CANVAS_BOX.x + CANVAS_BOX.width / 2, CANVAS_BOX.y + CANVAS_BOX.height / 2);
+    await P.mouse.down();
+    await P.waitForTimeout(230);
+    await P.mouse.up();
+    await P.waitForFunction(() => BUDMORI.sim.food.length >= 1 && BUDMORI.sim.warehouseFood <= 1);
+    assert.deepEqual(await cameraSnapshot(P), FOOD_CAMERA, 'held floor feeding stays fixed to the pointer-down point');
+    if (WAS_PAUSED_FOR_FEED) {
+        await P.locator('#pause').click();
+        await P.waitForFunction(() => BUDMORI.runtime.paused);
+    }
     await P.evaluate(() => {
         const W = BUDMORI.sim,
             STARTERS = W.units.filter((unit) => unit.species === 0 && unit.tier === 1);
@@ -3605,8 +3686,7 @@ async function core() {
             TASKS = W.mergeTasks.map((task) => [...task.materialIds]),
             TASK_OWNERS = TASKS.map((ids) => W.unitCollection.reservationOwner(ids[0])),
             MATERIAL_IDS = TASKS.flat(),
-            DTO = SNAPSHOT(W),
-            LEGACY_DTO = structuredClone(DTO);
+            DTO = SNAPSHOT(W);
         const MERGED_IDS = new Set(TASKS.flat()),
             BREED_PAIR_SELECTED = MATE_IDS.some((id) => MERGED_IDS.has(id)),
             BREED_RESERVATION_SAFE = MATE_IDS.every((id) => {
@@ -3625,16 +3705,9 @@ async function core() {
                     W._isValidBreedReservation(UNIT, OWNER)
                 );
             });
-        for (const TASK of LEGACY_DTO.mergeTasks) {
-            delete TASK.centerX;
-            delete TASK.centerY;
-            delete TASK.centerZ;
-            delete TASK.startPositions;
-        }
-        LEGACY_DTO.mode = 'merge';
-        const RESTORED = RESTORE(LEGACY_DTO),
+        const RESTORED = RESTORE(DTO),
             PROGRESS = CAPTURE_PROGRESS(W);
-        VALIDATE_PROGRESS({ ...PROGRESS, mode: 'merge' });
+        VALIDATE_PROGRESS(PROGRESS);
         return {
             started: FIRST_START,
             secondStart: SECOND_START,
@@ -3659,7 +3732,7 @@ async function core() {
                 ),
             ),
             noModeSaved: !Object.hasOwn(DTO, 'mode'),
-            legacyModeIgnored: !Object.hasOwn(RESTORED, 'mode'),
+            noModeRestored: !Object.hasOwn(RESTORED, 'mode'),
             compactProgressHasNoMode: !Object.hasOwn(PROGRESS, 'mode'),
             availabilityTracksRemainingMaterials: W.mergeAvailability().available === true,
         };
@@ -3676,7 +3749,7 @@ async function core() {
         restoredSuctionState: true,
         restoredReservations: true,
         noModeSaved: true,
-        legacyModeIgnored: true,
+        noModeRestored: true,
         compactProgressHasNoMode: true,
         availabilityTracksRemainingMaterials: true,
     });
@@ -3684,8 +3757,8 @@ async function core() {
         'Concurrent fusion tasks reserve disjoint units, restore from snapshots, and keep breeding reservations separate',
     );
     await P.evaluate(() => {
-        BUDMORI.sim.playerProgression.level = 9;
-        BUDMORI.sim.playerProgression.availablePoints = 7;
+        BUDMORI.sim.playerProgression.level = 10;
+        BUDMORI.sim.playerProgression.availablePoints = 8;
     });
     await openMenuTab(P, 'growth');
     assert.equal(new URL(P.url()).hash, '#/growth');
@@ -3693,26 +3766,329 @@ async function core() {
     await P.waitForFunction(() => BUDMORI.sim.playerProgression.farmUpgrades.food === 1);
     await P.locator('[data-progression-farm-node="growth"]').click();
     await P.waitForFunction(() => BUDMORI.sim.playerProgression.farmUpgrades.growth === 1);
-    for (let level = 1; level <= 5; level++) {
-        await P.locator('[data-progression-farm-node="capacity"]').click();
-        await P.waitForFunction((n) => BUDMORI.sim.playerProgression.farmUpgrades.capacity === n, level);
+    await openMenuTab(P, 'farms');
+    await P.evaluate(() => {
+        BUDMORI.sim.playerProgression.availablePoints = 6;
+        BUDMORI.sim.markProgressChanged();
+    });
+    for (const CAPACITY of [75, 100, 150, 200]) {
+        await P.locator('#farmExpand').click();
+        await P.waitForFunction((value) => BUDMORI.sim.capacity === value, CAPACITY);
     }
-    assert.equal(await P.evaluate(() => BUDMORI.sim.capacity), 100);
+    assert.equal(await P.evaluate(() => BUDMORI.sim.playerProgression.farmPlots.plots[0].capacityLevel), 4);
+    await P.locator('#farmUnlock').click();
+    await P.waitForFunction(() => BUDMORI.sim.farmPlots.size === 2);
+    assert.equal(await P.evaluate(() => BUDMORI.sim.totalFarmCapacity), 250);
+    await P.locator('[data-farm-plot="plot-2"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.activePlotId === 'plot-2');
+    assert.equal(await P.evaluate(() => BUDMORI.sim.capacity), 50);
+    await P.evaluate(() => {
+        const INPUT = document.querySelector('[data-farm-target="1"]');
+        INPUT.value = '1250';
+        INPUT.dispatchEvent(new Event('input', { bubbles: true }));
+        INPUT.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await P.waitForFunction(() => BUDMORI.sim.farmTargets[1] === 1250);
+    assert.equal(await P.evaluate(() => BUDMORI.sim.farmTargets.reduce((sum, value) => sum + value, 0)), 10000);
     await closeMenu(P);
-    CHECK('Shared XP points buy normal upgrades and expand farm capacity from 50 through five levels to 100');
+    CHECK(
+        'Per-plot 50/75/100/150/200 capacity, two-point farm unlock, stable plot switching, and integer target-share redistribution',
+    );
+    const MULTIFARM_POLICY = await P.evaluate(async () => {
+        const { snapshot: MAKE_SNAPSHOT, validateSnapshot: VALIDATE_SNAPSHOT } = await import('/src/farm-state.js'),
+            { captureFarmProgress: CAPTURE, restoreFarmProgress: RESTORE_PROGRESS } =
+                await import('/src/farm-progress.js'),
+            { raidRosterEntries: RAID_ENTRIES } = await import('/src/raid-roster.js'),
+            GARDEN = BUDMORI.sim.constructor,
+            SWAP_WORLD = new GARDEN(9271);
+        SWAP_WORLD.resetUnits();
+        SWAP_WORLD.playerProgression.level = 4;
+        SWAP_WORLD.playerProgression.availablePoints = 3;
+        if (!SWAP_WORLD.unlockFarmPlot().ok || !SWAP_WORLD.expandFarmPlot('plot-1').ok) {
+            throw Error('failed to create the two-plot exchange fixture');
+        }
+        SWAP_WORLD.playerProgression.farmPlots.targetBasisPoints = [10000, 0, 0, 0, 0, 0, 0, 0, 0];
+        for (let index = 0; index < 75; index++) {
+            if (!SWAP_WORLD.spawn(0, 1, -4 + (index % 10) * 0.8, -3 + Math.floor(index / 10) * 0.8)) {
+                throw Error('failed to fill the expanded first plot');
+            }
+        }
+        const FIRST_PARENT = SWAP_WORLD.unitCollection.unitsInPlot('plot-1')[0],
+            EXCHANGE_IDS = SWAP_WORLD.unitCollection
+                .unitsInPlot('plot-1')
+                .filter((unit) => unit.id !== FIRST_PARENT.id)
+                .slice(0, 24)
+                .map((unit) => ({ unitId: unit.id, plotId: 'plot-2' }));
+        if (!SWAP_WORLD.unitCollection.moveUnitsToPlots(EXCHANGE_IDS) || !SWAP_WORLD.switchFarmPlot('plot-2')) {
+            throw Error('failed to prepare the cross-plot parent fixtures');
+        }
+        for (let index = 0; index < 25; index++) {
+            if (!SWAP_WORLD.spawn(1, 1, -4 + (index % 8), -3 + Math.floor(index / 8))) {
+                throw Error('failed to fill the second plot for its exchange');
+            }
+        }
+        const SECOND_PARENT = SWAP_WORLD.unitCollection.unitsInPlot('plot-2').find((unit) => unit.species === 0);
+        for (const PARENT of [FIRST_PARENT, SECOND_PARENT]) {
+            PARENT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            PARENT.growthElapsed = PARENT.growthDuration = SWAP_WORLD.breedGrowthDuration();
+            PARENT.meals = 1;
+            PARENT.cooldown = 0;
+        }
+        const RESERVED = SWAP_WORLD.reserveCrossPlotBreed(FIRST_PARENT, SECOND_PARENT, { durationTicks: 1 }),
+            PLAN = [...SWAP_WORLD._breedPlans.values()][0],
+            EXCHANGED_ID = PLAN?.exchangeUnitIds[0] || 0;
+        if (RESERVED) {
+            SWAP_WORLD.simulationTick = PLAN.dueTick;
+            SWAP_WORLD.advanceBreedPlans();
+        }
+        const SNAPSHOT = MAKE_SNAPSHOT(SWAP_WORLD),
+            SNAPSHOT_VALID = VALIDATE_SNAPSHOT(SNAPSHOT),
+            PROGRESS = CAPTURE(SWAP_WORLD),
+            RESTORED = RESTORE_PROGRESS(PROGRESS),
+            RAID = RAID_ENTRIES(RESTORED.roster.residents(), 100),
+            RATIO_WORLD = new GARDEN(9272);
+        RATIO_WORLD.resetUnits();
+        const RATIO_UNITS = [
+            RATIO_WORLD.spawn(0, 1, 0, 0),
+            RATIO_WORLD.spawn(0, 1, 0.5, 0),
+            RATIO_WORLD.spawn(1, 1, 1, 0),
+            RATIO_WORLD.spawn(1, 1, 1.5, 0),
+        ];
+        RATIO_WORLD.playerProgression.farmPlots.targetBasisPoints = [5000, 5000, 0, 0, 0, 0, 0, 0, 0];
+        const EVEN_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
+        for (const PARENT of RATIO_UNITS.slice(0, 2)) {
+            PARENT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            PARENT.growthElapsed = PARENT.growthDuration;
+            PARENT.meals = 1;
+        }
+        const ACTIVE_RESERVED = RATIO_WORLD.reserveActiveBreedPair(RATIO_UNITS[0], RATIO_UNITS[1]),
+            RESERVED_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
+        RATIO_WORLD.releaseActiveBreedReservation(RATIO_WORLD.breedingReservationOwner(RATIO_UNITS[0], RATIO_UNITS[1]));
+        const EXTRA_A = RATIO_WORLD.spawn(0, 1, 2, 0);
+        const THIRTY_TWO_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
+        RATIO_WORLD.removeUnit(EXTRA_A);
+        RATIO_WORLD.playerProgression.farmPlots.targetBasisPoints = [5100, 4900, 0, 0, 0, 0, 0, 0, 0];
+        const FIFTY_ONE_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
+        RATIO_WORLD.playerProgression.farmPlots.targetBasisPoints[1] = 0;
+        const ZERO_ALLOWED = RATIO_WORLD.canFarmPopulationAdvance(1);
+        return {
+            exchangeReserved: RESERVED,
+            exchangeCount: PLAN?.exchangeUnitIds.length || 0,
+            exchangeCommitted:
+                SWAP_WORLD.unitCollection.unitById(EXCHANGED_ID)?.plotId === 'plot-1' &&
+                SWAP_WORLD.roster.placedPopulation('plot-2') === 50 &&
+                SWAP_WORLD.ownedPopulation === 101 &&
+                SWAP_WORLD._breedPlans.size === 0,
+            currentPlotUnits: SWAP_WORLD.units.length,
+            savedFullRoster: SNAPSHOT.units.length === 101 && SNAPSHOT.units.some((unit) => unit.plotId === 'plot-1'),
+            snapshotValid: SNAPSHOT_VALID,
+            restoredPlots: [...RESTORED.farmPlots.keys()],
+            restoredRoster: RESTORED.ownedPopulation,
+            globalRaidCandidates:
+                RAID.length === 100 && RAID.some(([id]) => RESTORED.roster.residentById(id)?.plotId === 'plot-1'),
+            evenAllowed: EVEN_ALLOWED,
+            activeReservation: ACTIVE_RESERVED,
+            reservedAllowed: RESERVED_ALLOWED,
+            threeToTwoAllowed: THIRTY_TWO_ALLOWED,
+            fiftyOneFortyNineAllowed: FIFTY_ONE_ALLOWED,
+            zeroTargetAllowed: ZERO_ALLOWED,
+        };
+    });
+    assert.deepEqual(MULTIFARM_POLICY, {
+        exchangeReserved: true,
+        exchangeCount: 1,
+        exchangeCommitted: true,
+        currentPlotUnits: 50,
+        savedFullRoster: true,
+        snapshotValid: true,
+        restoredPlots: ['plot-1', 'plot-2'],
+        restoredRoster: 101,
+        globalRaidCandidates: true,
+        evenAllowed: [true, true],
+        activeReservation: true,
+        reservedAllowed: [false, true],
+        threeToTwoAllowed: [false, true],
+        fiftyOneFortyNineAllowed: [true, false],
+        zeroTargetAllowed: false,
+    });
+    const FARM_PERFORMANCE = await P.evaluate(async () => {
+        const RUNTIME = BUDMORI.runtime,
+            ORIGINAL = { world: RUNTIME.world, paused: RUNTIME.paused },
+            HEAP_BEFORE = performance.memory?.usedJSHeapSize ?? null,
+            RESULTS = [];
+        try {
+            RUNTIME.paused = true;
+            for (const ACTIVE_COUNT of [50, 100, 200]) {
+                const WORLD = new BUDMORI.sim.constructor(8800 + ACTIVE_COUNT),
+                    PLOT_IDS = ['plot-1'];
+                const UNIT_CLASS = WORLD.units[0].constructor;
+                WORLD.resetUnits();
+                WORLD.playerProgression.level = 99;
+                WORLD.playerProgression.availablePoints = 1000;
+                for (let level = 0; level < 4; level++) {
+                    if (!WORLD.expandFarmPlot('plot-1').ok) {
+                        throw Error('performance fixture could not expand its active plot');
+                    }
+                }
+                for (let plotIndex = 0; plotIndex < 4; plotIndex++) {
+                    const UNLOCKED = WORLD.unlockFarmPlot();
+                    if (!UNLOCKED.ok) {
+                        throw Error('performance fixture could not unlock an inactive plot');
+                    }
+                    PLOT_IDS.push(UNLOCKED.plotId);
+                    for (let level = 0; level < 4; level++) {
+                        if (!WORLD.expandFarmPlot(UNLOCKED.plotId).ok) {
+                            throw Error('performance fixture could not expand an inactive plot');
+                        }
+                    }
+                }
+                for (const [PLOT_INDEX, PLOT_ID] of PLOT_IDS.entries()) {
+                    if (WORLD.activePlotId !== PLOT_ID && !WORLD.switchFarmPlot(PLOT_ID)) {
+                        throw Error('performance fixture could not switch plots');
+                    }
+                    const COUNT = PLOT_INDEX === 0 ? ACTIVE_COUNT : 50;
+                    for (let index = 0; index < COUNT; index++) {
+                        const UNIT = new UNIT_CLASS(
+                            WORLD.nextId++,
+                            0,
+                            1,
+                            ((index % 10) - 4.5) * 0.45,
+                            (Math.floor(index / 10) - Math.ceil(COUNT / 10) / 2) * 0.45,
+                        );
+                        UNIT.plotId = PLOT_ID;
+                        if (!WORLD.addUnit(UNIT)) {
+                            throw Error('performance fixture could not attach a resident to its assigned plot');
+                        }
+                        UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+                        UNIT.growthDuration = WORLD.breedGrowthDuration();
+                        UNIT.growthElapsed = UNIT.growthDuration;
+                        UNIT.cooldown = UNIT.cooldownDuration = 10000;
+                        UNIT.meals = PLOT_INDEX > 0 && index < 2 ? 1 : 0;
+                    }
+                    const PLOT = WORLD.farmPlots.get(PLOT_ID);
+                    for (let index = 0; index < 12; index++) {
+                        const X = ((index % 4) - 1.5) * 0.8,
+                            Y = (Math.floor(index / 4) - 1) * 0.8;
+                        PLOT.food.push({
+                            x: X,
+                            y: Y,
+                            z: 0,
+                            vx: 0,
+                            vy: 0,
+                            vz: 0,
+                            seed: (index * 0.61803398875) % 1,
+                            phase: 'grounded',
+                            tx: X,
+                            ty: Y,
+                        });
+                    }
+                }
+                if (WORLD.activePlotId !== 'plot-1' && !WORLD.switchFarmPlot('plot-1')) {
+                    throw Error('performance fixture could not return to the active plot');
+                }
+                WORLD._foodSpatialDirty = true;
+                const SUBSCRIPTIONS_BEFORE = WORLD.unitCollection.subscriptions.size,
+                    PHYSICS_BEFORE = WORLD.metrics.physicsSteps || 0,
+                    SAMPLES = [],
+                    TICKS = 60;
+                const SORTS = ['species', 'tier-high', 'tier-low'];
+                for (let index = 0; index < 20; index++) {
+                    const PLOT_ID = PLOT_IDS[(index % (PLOT_IDS.length - 1)) + 1];
+                    if (!WORLD.switchFarmPlot(PLOT_ID)) {
+                        throw Error(`performance fixture could not switch to ${PLOT_ID} from ${WORLD.activePlotId}`);
+                    }
+                    if (!WORLD.sortActiveFarm(SORTS[index % SORTS.length])) {
+                        throw Error(
+                            `performance fixture could not sort ${PLOT_ID}: ${JSON.stringify({ scene: WORLD.scene, running: WORLD.running, phase: WORLD.farmBossEvent?.phase, plans: WORLD._breedPlans.size, residents: WORLD.roster.placedPopulation(PLOT_ID) })}`,
+                        );
+                    }
+                }
+                WORLD.switchFarmPlot('plot-1');
+                for (let tick = 0; tick < TICKS; tick++) {
+                    const START = performance.now();
+                    WORLD.step(1 / 20);
+                    SAMPLES.push(performance.now() - START);
+                }
+                RUNTIME.world = WORLD;
+                RUNTIME.capturePresentation('reset');
+                await new Promise(requestAnimationFrame);
+                await new Promise(requestAnimationFrame);
+                const SORTED = [...SAMPLES].sort((a, b) => a - b),
+                    P95_INDEX = Math.floor((SORTED.length - 1) * 0.95),
+                    PHYSICS_AFTER = WORLD.metrics.physicsSteps || 0,
+                    SUBSCRIPTIONS_AFTER = WORLD.unitCollection.subscriptions.size;
+                RESULTS.push({
+                    activeResidents: WORLD.units.length,
+                    inactivePlots: PLOT_IDS.length - 1,
+                    inactiveResidents: WORLD.ownedPopulation - WORLD.units.length,
+                    floorFoods: [...WORLD.farmPlots.values()].reduce((sum, plot) => sum + plot.food.length, 0),
+                    ticks: TICKS,
+                    physicsSteps: PHYSICS_AFTER - PHYSICS_BEFORE,
+                    stepCpuP95Ms: SORTED[P95_INDEX],
+                    activeRenderers: BUDMORI.renderer.vectorPlayers.size,
+                    subscriptionsBefore: SUBSCRIPTIONS_BEFORE,
+                    subscriptionsAfter: SUBSCRIPTIONS_AFTER,
+                    forageAttempts: WORLD.unitCollection.items.filter((unit) => unit.inactiveForageAttempt).length,
+                    breedPlans: WORLD._breedPlans.size,
+                    breedReservations: WORLD._activeBreedReservations.size,
+                    mergeTasks: WORLD.mergeTasks.length,
+                });
+            }
+            return {
+                browser: navigator.userAgent,
+                hardwareConcurrency: navigator.hardwareConcurrency || null,
+                memoryBeforeBytes: HEAP_BEFORE,
+                memoryAfterBytes: performance.memory?.usedJSHeapSize ?? null,
+                scenarios: RESULTS,
+            };
+        } finally {
+            RUNTIME.world = ORIGINAL.world;
+            RUNTIME.paused = ORIGINAL.paused;
+            RUNTIME.capturePresentation('reset');
+        }
+    });
+    assert.deepEqual(
+        FARM_PERFORMANCE.scenarios.map((result) => [
+            result.activeResidents,
+            result.inactivePlots,
+            result.inactiveResidents,
+            result.ticks,
+            result.physicsSteps,
+            result.activeRenderers,
+            result.subscriptionsBefore,
+            result.subscriptionsAfter,
+        ]),
+        [
+            [50, 4, 200, 60, 60, 50, 250, 250],
+            [100, 4, 200, 60, 60, 100, 300, 300],
+            [200, 4, 200, 60, 60, 200, 400, 400],
+        ],
+        'inactive plots do not multiply active physics or renderer counts, and sorting/switching does not leak unit subscriptions',
+    );
+    assert(FARM_PERFORMANCE.scenarios.every((result) => Number.isFinite(result.stepCpuP95Ms)));
+    REPORT.farmPerformance = FARM_PERFORMANCE;
+    CHECK(
+        'Exact integer target ratios, same-plot birth reservations, cross-plot exchange commits, complete farm save/restore snapshots, and global raid candidates',
+    );
     await P.evaluate(() => BUDMORI.sim.cancelMergeTask());
     await P.evaluate(() => {
         const W = BUDMORI.sim;
-        while (W.units.length < 12) {
-            const I = W.units.length,
+        W.nextId = Math.max(W.nextId, 101);
+        const STARTING_POPULATION = W.ownedPopulation;
+        while (W.ownedPopulation < STARTING_POPULATION + 12) {
+            const I = W.ownedPopulation - STARTING_POPULATION,
                 U = W.spawn(I % 3, 1, -4 + (I % 4) * 2, -3 + Math.floor(I / 4) * 2);
+            if (!U) {
+                throw Error('could not seed high-ID farm residents');
+            }
             U.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
             U.growthDuration = W.breedGrowthDuration();
             U.growthElapsed = U.growthDuration;
             U.cooldown = U.cooldownDuration = 999;
         }
-        W.units.forEach((u, i) => (u.id = 101 + i));
-        W.nextId = 101 + W.units.length;
+        if (!W.roster.residents().some((unit) => unit.id >= 101)) {
+            throw Error('high resident IDs were not allocated through the roster owner');
+        }
         if (!BUDMORI.storage.save(W)) {
             throw Error('could not save farm with lifetime-grown unit IDs: ' + BUDMORI.storage.error);
         }
@@ -3734,7 +4110,7 @@ async function core() {
     assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 300');
     assert.equal(await P.locator('#bossStageXp').textContent(), '+30 XP');
     assert(await P.locator('#bossStageDrop').isVisible());
-    assert.match(await P.locator('#bossStageDrop').textContent(), /2.*15%/);
+    assert.match(await P.locator('#bossStageDrop').textContent(), /1.*15%/);
     assert.equal(
         await P.locator('#bossEncounterChallenge').isDisabled(),
         true,
@@ -3818,7 +4194,7 @@ async function core() {
             BEFORE_ACQUIRED = RESTORED.acquiredCount;
         OPEN_ALL(RESTORED_WORLD, RESTORED.receiptKey);
         const OPENED_WITHOUT_REROLL =
-            RESTORED.status === 'opened' &&
+            RESTORED.status === 'ready' &&
             RESTORED.revealedCount === RESTORED.boxCount &&
             RESTORED.acquiredCount === BEFORE_ACQUIRED &&
             JSON.stringify(RESTORED.boxes) === BEFORE_BOXES;
@@ -3927,50 +4303,69 @@ async function core() {
     assert(HIGH_STAGE.calculationResumed, 'saved PRD work resumes after restore');
     assert(HIGH_STAGE.checkpointProcessedTrials > 0, 'the saved calculation contains resumable work');
     assert.equal(HIGH_STAGE.openedWithoutReroll, true, 'open-all only reveals the committed result');
-    assert.equal(HIGH_STAGE.status, 'opened');
+    assert.equal(HIGH_STAGE.status, 'ready', 'opening boxes only changes presentation state');
     assert.equal(QUEUE_STAGE.queuedBeforeSpace, 1, 'a full Farm holds the acquired unit in the queue');
     assert.equal(QUEUE_STAGE.releasedGrants, 1);
     assert.equal(QUEUE_STAGE.placedAfterSpace, 1);
     assert.equal(QUEUE_STAGE.queuedAfterSpace, 0);
     assert.equal(QUEUE_STAGE.status, 'ready');
-    assert.match(await P.locator('#bossStageDrop').textContent(), /5.*2%/);
     CHECK(
         'Boss reward boxes split integer payouts exactly, preserve deterministic PRD work across budgets and save restore, and queue full-roster grants',
     );
-    const SELECTED_STAGE5 = await P.evaluate(
-        () => BUDMORI.sim.farmBossProgress.selections.find((entry) => entry.stage === 5)?.species,
+    const SELECTED_STAGE2 = await P.evaluate(
+        () => BUDMORI.sim.farmBossProgress.selections.find((entry) => entry.stage === 2)?.species,
     );
     await swipeEncounter(P, 'down');
-    await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '4 / 61');
+    await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '1 / 61');
     await P.locator('#bossEncounterBack').click();
-    assert.equal(await P.evaluate(() => BUDMORI.sim.farmBossProgress.currentStage), 4);
+    assert.equal(await P.evaluate(() => BUDMORI.sim.farmBossProgress.currentStage), 1);
     await P.locator('#raid').click();
     assert.equal(
         await P.locator('#bossStageCounter').textContent(),
-        '4 / 61',
+        '1 / 61',
         'the selected page is restored when reopening',
     );
-    for (let i = 0; i < 4; i++) {
-        await swipeEncounter(P, 'up');
-        await P.waitForFunction((n) => document.querySelector('#bossStageCounter')?.textContent === `${n} / 61`, 5 + i);
-    }
+    await swipeEncounter(P, 'up');
+    await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '2 / 61');
+    await swipeEncounter(P, 'up');
     assert.equal(
-        await P.evaluate(() => BUDMORI.sim.farmBossProgress.selections.find((entry) => entry.stage === 5)?.species),
-        SELECTED_STAGE5,
+        await P.locator('#bossStageCounter').textContent(),
+        '2 / 61',
+        'the next locked stage remains the preview limit',
+    );
+    assert.equal(
+        await P.evaluate(() => BUDMORI.sim.farmBossProgress.selections.find((entry) => entry.stage === 2)?.species),
+        SELECTED_STAGE2,
         'visited boss species remains stable',
     );
-    for (let i = 0; i < 4; i++) {
-        await swipeEncounter(P, 'down');
-        await P.waitForFunction((n) => document.querySelector('#bossStageCounter')?.textContent === `${n} / 61`, 7 - i);
-    }
+    await swipeEncounter(P, 'down');
+    await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '1 / 61');
+    assert(
+        await P.evaluate(() =>
+            BUDMORI.sim.units.every((unit) => Number.isSafeInteger(unit.generation) && unit.generation > 0),
+        ),
+        'merge results keep positive generations before raid save',
+    );
     await P.locator('#bossEncounterChallenge').click();
-    await P.waitForFunction(() => BUDMORI.sim.scene === 'raid' && BUDMORI.sim.raidRosters.length === 1);
+    await P.waitForFunction(
+        () => BUDMORI.sim.scene === 'raid' || !document.querySelector('#error')?.hidden,
+        {},
+        { timeout: 10000 },
+    );
+    const RAID_START_STATE = await P.evaluate(() => ({
+        scene: BUDMORI.sim.scene,
+        storageError: BUDMORI.storage.error,
+        storageNotice: BUDMORI.storage.notice,
+        saveNotice: document.querySelector('#saveNotice')?.textContent,
+    }));
+    assert.equal(RAID_START_STATE.scene, 'raid', JSON.stringify(RAID_START_STATE));
+    await P.waitForFunction(() => BUDMORI.sim.raidRosters.length === 1);
     assert.equal(
         await P.evaluate(() => BUDMORI.runtime.presentation(performance.now()).boss.stage),
-        4,
+        1,
         'the pinned FarmSession render capture carries the selected stage',
     );
-    assert.equal(await P.locator('#deploymentCards').count(), 0, 'troop selection cards are removed');
+    assert.equal(await P.locator('#deploymentCards').isVisible(), true, 'Raid deployment cards are available');
     await P.evaluate(() => {
         history.pushState(null, '', '#/abilities');
         dispatchEvent(new PopStateEvent('popstate'));
@@ -4474,10 +4869,9 @@ async function panInput(p, pointerType) {
             remaining: BUDMORI.sim.raidRemaining('solo'),
             legacy: ['cast', 'moveTarget', 'aim'].some((key) => Object.hasOwn(BUDMORI.sim, key)),
         }));
-        assert.deepEqual(
-            AFTER.commands,
-            [],
-            'world presses and drags queue no deployment, feeding or movement commands',
+        assert(
+            AFTER.commands.every((type) => type === 'scatter-food'),
+            'world presses and drags queue no deployment or movement commands',
         );
         assert.equal(AFTER.manual, BEFORE.manual, 'canvas holds never trigger manual feeding');
         assert.equal(AFTER.remaining, BEFORE.remaining, 'canvas holds never consume the Raid roster');
@@ -5170,8 +5564,13 @@ async function seedScenarios(p, label) {
                 W.food = [];
                 W.effects = [];
                 W.projectiles = [];
-                W.playerProgression.level = 6;
-                W.playerProgression.farmUpgrades.capacity = 5;
+                W.playerProgression.level = 5;
+                W.playerProgression.availablePoints = 4;
+                for (let level = 0; level < 4; level++) {
+                    if (!W.expandFarmPlot().ok) {
+                        throw Error('could not expand the plot for vector seed coverage');
+                    }
+                }
                 W.setScene(scene);
                 W.time = 1.25;
                 if (scene === 'raid') {
@@ -5333,7 +5732,13 @@ async function seedScenarios(p, label) {
                     for (const UNIT of [...W.units]) {
                         W.unitCollection.remove(UNIT, { markProgress: false });
                     }
-                    W.playerProgression.farmUpgrades.capacity = 5;
+                    W.playerProgression.level = 5;
+                    W.playerProgression.availablePoints = 4;
+                    for (let level = 0; level < 4; level++) {
+                        if (!W.expandFarmPlot().ok) {
+                            throw Error('could not expand the plot for the merge policy fixture');
+                        }
+                    }
                     while (W.units.length < 53) {
                         const UNIT = W.spawn(0, 1, 0, 0);
                         if (!UNIT) {
@@ -5683,6 +6088,7 @@ async function armyScenarios(p) {
                 species,
                 distance: DISTANCE,
                 stand: W.boss.radius + SPECS[species].range,
+                contactStand: W.boss.radius + U.radius,
                 minDistance,
                 lateral,
                 damaged: W.boss.hp < W.boss.maxHp,
@@ -5799,8 +6205,8 @@ async function armyScenarios(p) {
     });
     for (const R of EVIDENCE.ranges) {
         assert(
-            R.distance !== null && Math.abs(R.distance - R.stand) <= 0.65,
-            'species ' + R.species + ' attacks within own range',
+            R.distance !== null && Math.abs(R.distance - (R.species === 5 ? R.contactStand : R.stand)) <= 0.65,
+            'species ' + R.species + ' attacks within its configured range',
         );
         assert(R.damaged, 'species ' + R.species + ' real impact');
         assert(R.lateral < 0.15, 'species ' + R.species + ' has no forced rotating slot');

@@ -3,8 +3,8 @@ export const FARM_UPGRADE_MAX_LEVELS = Object.freeze({
     growth: 4,
     breed: 4,
     merge: 4,
-    capacity: 5,
 });
+export const FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
 export const FARM_UPGRADE_NODES = Object.freeze([
     {
         id: 'food',
@@ -33,13 +33,6 @@ export const FARM_UPGRADE_NODES = Object.freeze([
         icon: '◇',
         description: '합체 후 대기시간을 단계마다 10% 줄입니다.',
         value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`,
-    },
-    {
-        id: 'capacity',
-        name: '정원 확장',
-        icon: '＋',
-        description: '정원 인원 상한을 단계마다 10명 늘립니다.',
-        value: (level) => `${Math.min(100, 50 + 10 * level)}명`,
     },
 ]);
 const FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
@@ -73,8 +66,8 @@ export function getFarmUpgradeInvestedCount(state) {
 export function farmUpgradeRate(state, id) {
     return 1 + 0.1 * getFarmUpgradeLevel(state, id);
 }
-export function getFarmCapacity(state) {
-    return Math.min(100, 50 + 10 * getFarmUpgradeLevel(state, 'capacity'));
+export function getFarmCapacity(capacityLevel = 0) {
+    return FARM_CAPACITY_STEPS[Number.isSafeInteger(capacityLevel) ? capacityLevel : 0] ?? FARM_CAPACITY_STEPS[0];
 }
 export function getAutoTapSeconds(state) {
     return 0.5 / farmUpgradeRate(state, 'food');
