@@ -38,9 +38,9 @@ import { selectFarmBossStage } from './farm-boss-stages.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
+STORAGE.initializeIncompatible(new Garden());
 DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
 let imported = null;
-let importedLegacy = false;
 let active = null;
 let home = true;
 let personalGarden = null;
@@ -135,7 +135,7 @@ function bossRewardSummary(reward) {
         QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
     return ACQUIRED + ' acquired · ' + PLACED + ' placed' + (QUEUED ? ' · ' + QUEUED + ' waiting for space' : '');
 }
-function persistBossRewardReveal(world) {
+function persistBossRewardSettlement(world) {
     if (!saveImmediate(world)) {
         DOLLAR('bossRewardSummary').textContent = 'Could not save reward progress: ' + STORAGE.error;
         return false;
@@ -147,6 +147,7 @@ function renderBossRewardBoxes(receipt) {
         COUNT = receipt.boxCount || 0,
         REVEALED = receipt.revealedCount || 0,
         BOXES = receipt.boxes || [],
+        HAS_PRESENTATION = BOXES.length === COUNT,
         PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout),
         MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0,
         MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0,
@@ -169,17 +170,21 @@ function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardSummary').textContent =
         receipt.status === 'calculating'
             ? '상자 ' + COUNT + '개의 획득 여부를 계산하고 있어요. 결과는 저장되며 계산이 끝나면 열 수 있어요.'
-            : COUNT +
-              '개 상자 · 상자당 ' +
-              MIN +
-              (MIN === MAX ? '' : '–' + MAX) +
-              '마리 · 획득 확률 ' +
-              Math.round(receipt.chance * 10000) / 100 +
-              '%';
+            : HAS_PRESENTATION
+              ? COUNT +
+                '개 상자 · 상자당 ' +
+                MIN +
+                (MIN === MAX ? '' : '–' + MAX) +
+                '마리 · 획득 확률 ' +
+                Math.round(receipt.chance * 10000) / 100 +
+                '%'
+              : '이미 정산된 보상 요약';
     DOLLAR('bossRewardTotals').textContent =
         receipt.status === 'calculating'
             ? bossRewardSummary(receipt)
-            : REVEALED + '/' + COUNT + '개 공개 · ' + bossRewardSummary(receipt);
+            : HAS_PRESENTATION
+              ? REVEALED + '/' + COUNT + '개 공개 · ' + bossRewardSummary(receipt)
+              : bossRewardSummary(receipt);
     if (bossRewardRenderedSignature === SIGNATURE) {
         return;
     }
@@ -208,8 +213,8 @@ function renderBossRewardBoxes(receipt) {
         BUTTON.append(NUMBER, RESULT);
         GRID.append(BUTTON);
     });
-    DOLLAR('bossRewardOpenAll').disabled = receipt.status !== 'ready';
-    DOLLAR('bossRewardClose').hidden = receipt.status !== 'opened';
+    DOLLAR('bossRewardOpenAll').disabled = receipt.status !== 'ready' || !HAS_PRESENTATION || REVEALED >= COUNT;
+    DOLLAR('bossRewardClose').hidden = receipt.status !== 'ready' || REVEALED < COUNT;
 }
 function revealBossRewardBatch() {
     const WORLD = personalGarden || active?.world,
@@ -220,9 +225,8 @@ function revealBossRewardBatch() {
         return;
     }
     advanceBossRewardReveal(WORLD, RECEIPT.receiptKey, 10);
-    persistBossRewardReveal(WORLD);
     renderBossRewardBoxes(RECEIPT);
-    if (RECEIPT.status === 'opened') {
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
         clearInterval(bossRewardRevealTimer);
         bossRewardRevealTimer = null;
     }
@@ -241,14 +245,14 @@ function advanceRaidRewardCalculation() {
     advanceBossRewardCalculations(WORLD);
     if (RECEIPT.status !== 'calculating') {
         stopBossRewardCalculation();
-        persistBossRewardReveal(WORLD);
+        persistBossRewardSettlement(WORLD);
     }
     if (!DOLLAR('bossRewardDialog').hidden) {
         renderBossRewardBoxes(RECEIPT);
     }
 }
 function showBossRewardDialog(receipt, { auto = false } = {}) {
-    if (!receipt || !['calculating', 'ready', 'opened'].includes(receipt.status)) {
+    if (!receipt || !['calculating', 'ready'].includes(receipt.status)) {
         return;
     }
     const DIALOG = DOLLAR('bossRewardDialog'),
@@ -261,11 +265,14 @@ function showBossRewardDialog(receipt, { auto = false } = {}) {
     if (auto && receipt.status === 'ready' && !AUTO_OPENED_BOSS_REWARDS.has(receipt.receiptKey)) {
         AUTO_OPENED_BOSS_REWARDS.add(receipt.receiptKey);
         advanceBossRewardReveal(WORLD, receipt.receiptKey, 10);
-        persistBossRewardReveal(WORLD);
         renderBossRewardBoxes(receipt);
     }
     clearInterval(bossRewardRevealTimer);
-    if (receipt.status === 'ready' && receipt.revealedCount < receipt.boxCount) {
+    if (
+        receipt.status === 'ready' &&
+        receipt.boxes?.length === receipt.boxCount &&
+        receipt.revealedCount < receipt.boxCount
+    ) {
         bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
     }
 }
@@ -283,7 +290,8 @@ function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } 
         stopBossRewardCalculation();
         return;
     }
-    BUTTON.hidden = !RECEIPT || RECEIPT.status === 'opened' || !DIALOG.hidden;
+    BUTTON.hidden =
+        !RECEIPT || (RECEIPT.status === 'ready' && RECEIPT.revealedCount >= RECEIPT.boxCount) || !DIALOG.hidden;
     BUTTON.disabled = RECEIPT?.status === 'calculating';
     if (!RECEIPT) {
         stopBossRewardCalculation();
@@ -314,7 +322,7 @@ function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } 
 function closeBossRewardDialog() {
     const WORLD = personalGarden || active?.world,
         RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-    if (RECEIPT?.status !== 'opened') {
+    if (RECEIPT?.status !== 'ready' || RECEIPT.revealedCount < RECEIPT.boxCount) {
         return;
     }
     DOLLAR('bossRewardDialog').hidden = true;
@@ -345,7 +353,6 @@ function attachBossRewardHandlers() {
             return;
         }
         openAllBossRewardBoxes(WORLD, RECEIPT.receiptKey);
-        persistBossRewardReveal(WORLD);
         renderBossRewardBoxes(RECEIPT);
         clearInterval(bossRewardRevealTimer);
         bossRewardRevealTimer = null;
@@ -694,12 +701,8 @@ function refreshStart() {
     DOLLAR('continueGame').disabled = !STORAGE.hasWorld || STALE_RAID;
     DOLLAR('startBossEncounter').disabled = !STORAGE.hasWorld || STALE_RAID;
     DOLLAR('staleRaidNotice').hidden = !STALE_RAID;
-    DOLLAR('continueLegacyGame').disabled = !STORAGE.legacyCompatible;
-    DOLLAR('legacySaveNotice').hidden = !STORAGE.legacyCompatible;
-    DOLLAR('exportSave').disabled = !(STORAGE.raw || STORAGE.legacyRaw);
-    DOLLAR('exportLegacySave').hidden = !STORAGE.legacyBackup;
-    DOLLAR('exportLegacySave').disabled = !STORAGE.legacyBackup;
-    DOLLAR('saveNotice').textContent = STORAGE.error;
+    DOLLAR('exportSave').disabled = !STORAGE.raw;
+    DOLLAR('saveNotice').textContent = STORAGE.error || STORAGE.notice;
 }
 function setHome(value, push = true) {
     stopWorldInput();
@@ -1050,13 +1053,11 @@ DOLLAR('abortRaidRun').onclick = () => {
 };
 DOLLAR('newGame').onclick = () => {
     // Overwriting an existing save is a separate, explicit user action.
-    if ((STORAGE.raw || STORAGE.legacyRaw) && !DOLLAR('newConfirm').hidden) {
+    if (STORAGE.raw && !DOLLAR('newConfirm').hidden) {
         return;
     }
-    if (STORAGE.raw || STORAGE.legacyRaw) {
-        DOLLAR('newConfirmText').textContent = STORAGE.raw
-            ? '현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.'
-            : '새 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.';
+    if (STORAGE.raw) {
+        DOLLAR('newConfirmText').textContent = '현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.';
         DOLLAR('newConfirm').hidden = false;
         return;
     }
@@ -1082,7 +1083,7 @@ DOLLAR('cancelNew').onclick = () => {
     DOLLAR('newConfirm').hidden = true;
 };
 DOLLAR('exportSave').onclick = () => {
-    const RAW = STORAGE.raw || STORAGE.legacyRaw;
+    const RAW = STORAGE.raw;
     if (!RAW) {
         return;
     }
@@ -1097,39 +1098,7 @@ DOLLAR('exportSave').onclick = () => {
     A.click();
     setTimeout(() => URL.revokeObjectURL(URL_LOCAL), 1000);
 };
-DOLLAR('exportLegacySave').onclick = () => {
-    const RAW = STORAGE.legacyBackup?.raw;
-    if (!RAW) {
-        return;
-    }
-    const URL_LOCAL = URL.createObjectURL(
-            new Blob([RAW], {
-                type: 'application/json',
-            }),
-        ),
-        A = document.createElement('a');
-    A.href = URL_LOCAL;
-    A.download = 'budmori-legacy-save-' + new Date().toISOString().slice(0, 10) + '.json';
-    A.click();
-    setTimeout(() => URL.revokeObjectURL(URL_LOCAL), 1000);
-};
 DOLLAR('importSave').onclick = () => DOLLAR('saveFile').click();
-DOLLAR('continueLegacyGame').onclick = async () => {
-    if (!STORAGE.legacyRaw) {
-        return;
-    }
-    try {
-        const { validateSave: VALIDATE_SAVE } = await import('./farm-storage.js');
-        VALIDATE_SAVE(STORAGE.legacyRaw);
-        imported = STORAGE.legacyRaw;
-        importedLegacy = true;
-        DOLLAR('importConfirmText').textContent = '현재 형식의 저장을 이어서 불러올까요?';
-        DOLLAR('confirmImport').textContent = '원본을 보존하고 이어가기';
-        DOLLAR('importConfirm').hidden = false;
-    } catch (e) {
-        DOLLAR('saveNotice').textContent = e.message;
-    }
-};
 DOLLAR('saveFile').onchange = async () => {
     const FILE = DOLLAR('saveFile').files[0];
     if (!FILE) {
@@ -1143,7 +1112,6 @@ DOLLAR('saveFile').onchange = async () => {
         const { validateSave: VALIDATE_SAVE } = await import('./farm-storage.js');
         VALIDATE_SAVE(TEXT);
         imported = TEXT;
-        importedLegacy = false;
         DOLLAR('importConfirmText').textContent = '현재 형식의 저장 데이터로 진행 상태를 바꿀까요?';
         DOLLAR('confirmImport').textContent = '이 저장 불러오기';
         DOLLAR('importConfirm').hidden = false;
@@ -1155,25 +1123,18 @@ DOLLAR('saveFile').onchange = async () => {
 };
 DOLLAR('cancelImport').onclick = () => {
     imported = null;
-    importedLegacy = false;
     DOLLAR('importConfirm').hidden = true;
 };
 DOLLAR('confirmImport').onclick = () => {
     try {
         if (imported) {
-            const LEGACY = importedLegacy,
-                WORLD = STORAGE.import(imported);
+            const WORLD = STORAGE.import(imported);
             AUTOSAVE.reset();
-            if (LEGACY) {
-                start(WORLD);
-            } else {
-                replacePersonalGarden(WORLD);
-                install(WORLD);
-                active.paused = true;
-            }
+            replacePersonalGarden(WORLD);
+            install(WORLD);
+            active.paused = true;
         }
         imported = null;
-        importedLegacy = false;
         DOLLAR('importConfirm').hidden = true;
         refreshStart();
     } catch (e) {
@@ -1789,7 +1750,7 @@ function sync(display, now, notices) {
               )
             : null,
         PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
-            (reward) => ['pending', 'calculating', 'ready', 'legacy'].includes(reward.status) || reward.queuedCount > 0,
+            (reward) => ['calculating', 'ready'].includes(reward.status) || reward.queuedCount > 0,
         ),
         MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD, {

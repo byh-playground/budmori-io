@@ -13,6 +13,11 @@ export function restore(raw) {
     const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
+    G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
+        ...reward,
+        boxes: [],
+        revealedCount: reward.status === 'ready' ? reward.boxCount : 0,
+    }));
     G.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
     if (G.boss.patternRuntime.active) {
         G.boss.patternRuntime.active.hitIds = new Set(raw.boss.patternRuntime.active.hitIds);

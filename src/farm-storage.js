@@ -1,17 +1,7 @@
 import { captureFarmProgress, restoreFarmProgress, sameFarmProgress } from './farm-progress.js';
-import {
-    readFarmSave,
-    decodeFarmSave,
-    encodeFarmSave,
-    isReadableCompatibility,
-    validateSave,
-    parseSave,
-} from './farm-save-codec.js';
+import { decodeFarmSave, encodeFarmSave, validateSave, parseSave } from './farm-save-codec.js';
 export { validateSave, parseSave };
 const KEY = 'bloom-weapon-cards-v4',
-    LEGACY_KEY = 'bloom-weapon-cards-v3';
-const BACKUP_PREFIX = 'bloom-weapon-cards-legacy-backup-',
-    BACKUP_LATEST = 'bloom-weapon-cards-legacy-backup-latest',
     SAVE_FAILURE_LABELS = Object.freeze({
         'storage-read': '브라우저 저장소 읽기',
         'progress-capture': '농장 진행 데이터 수집',
@@ -37,64 +27,28 @@ function saveFailureMessage(error, operation) {
     const LABEL = SAVE_FAILURE_LABELS[operation] || '저장 처리';
     return `${LABEL} 단계에서 오류가 발생했어요. 기존 저장은 보존했어요. 저장 내보내기로 보관한 뒤 진단 정보를 복사해 주세요.`;
 }
-function readLegacyBackup() {
-    try {
-        const PREFERRED = localStorage.getItem(BACKUP_LATEST);
-        if (PREFERRED?.startsWith(BACKUP_PREFIX)) {
-            const RAW = localStorage.getItem(PREFERRED);
-            if (RAW) {
-                return {
-                    key: PREFERRED,
-                    raw: RAW,
-                };
-            }
-        }
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-            const KEY_LOCAL = localStorage.key(i);
-            if (KEY_LOCAL?.startsWith(BACKUP_PREFIX)) {
-                const RAW = localStorage.getItem(KEY_LOCAL);
-                if (RAW) {
-                    return {
-                        key: KEY_LOCAL,
-                        raw: RAW,
-                    };
-                }
-            }
-        }
-    } catch {
-        // Backup discovery is optional when browser storage is unavailable; the caller keeps recovery blocked.
-    }
-    return null;
-}
 class FarmStorage {
     constructor() {
         this.raw = null;
         this._world = null;
         this.savedProgress = null;
         this.error = '';
+        this.notice = '';
         this.writable = false;
-        this.legacyRaw = null;
-        this.legacyCompatible = false;
-        this.legacyBackup = readLegacyBackup();
+        this.incompatible = false;
         try {
             this.raw = localStorage.getItem(KEY);
-            this.legacyRaw = localStorage.getItem(LEGACY_KEY);
             if (this.raw) {
-                if (!isReadableCompatibility(readFarmSave(this.raw).productVersion)) {
-                    throw Error('현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.');
-                }
-                this.savedProgress = decodeFarmSave(this.raw);
-            } else if (this.legacyRaw) {
                 try {
-                    validateSave(this.legacyRaw);
-                    this.legacyCompatible = true;
-                } catch (e) {
-                    this.error = e.message;
+                    this.savedProgress = decodeFarmSave(this.raw);
+                } catch (error) {
+                    this.incompatible = true;
+                    this.error = error.message;
                 }
             }
             this.writable = true;
-        } catch (e) {
-            this.error = e.message;
+        } catch (error) {
+            this.error = error.message;
         }
     }
     get world() {
@@ -105,6 +59,36 @@ class FarmStorage {
     }
     get hasWorld() {
         return !!(this._world || this.savedProgress);
+    }
+    initializeIncompatible(world) {
+        if (!this.incompatible || !world) {
+            return false;
+        }
+        try {
+            if (localStorage.getItem(KEY) !== this.raw) {
+                if (this.refresh() && this.hasWorld) {
+                    return true;
+                }
+                throw Error('The saved farm changed in another tab. Refresh before starting a new farm.');
+            }
+            const { data: DATA, text: TEXT } = this.serializeCheckpoint(world);
+            localStorage.setItem(KEY, TEXT);
+            this.raw = TEXT;
+            this.savedProgress = DATA;
+            this._world = world;
+            this.incompatible = false;
+            this.error = '';
+            this.notice = 'An incompatible prelaunch save was reset to the current farm format.';
+            this.writable = true;
+            return true;
+        } catch (error) {
+            this._world = world;
+            this.savedProgress = null;
+            this.error = error.message || 'Could not save the fresh farm.';
+            this.notice = 'A fresh farm is available in memory, but browser storage is not writable.';
+            this.writable = false;
+            return false;
+        }
     }
     get hasReservedRaid() {
         const RUN = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
@@ -141,7 +125,9 @@ class FarmStorage {
             this.raw = TEXT;
             this.savedProgress = DATA;
             this._world = null;
+            this.incompatible = false;
             this.error = '';
+            this.notice = '';
             return true;
         } catch (e) {
             this.error = e.message || '저장을 다시 읽지 못했어요.';
@@ -179,6 +165,7 @@ class FarmStorage {
             if (sameFarmProgress(data, this.savedProgress)) {
                 this._world = world;
                 this.error = '';
+                this.notice = '';
                 return true;
             }
             operation = 'progress-validate-encode';
@@ -193,7 +180,9 @@ class FarmStorage {
             this.raw = TEXT;
             this.savedProgress = data;
             this._world = world;
+            this.incompatible = false;
             this.error = '';
+            this.notice = '';
             return true;
         } catch (error) {
             reportSaveFailure(error, operation);
@@ -221,8 +210,10 @@ class FarmStorage {
         this.raw = NORMALIZED;
         this.savedProgress = DATA;
         this._world = WORLD;
+        this.incompatible = false;
         this.writable = true;
         this.error = '';
+        this.notice = '';
         return WORLD;
     }
 }

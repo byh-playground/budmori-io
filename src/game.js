@@ -6444,10 +6444,10 @@
     const KEEP = /* @__PURE__ */ new Set();
     let completed = 0;
     for (let index = world.bossRewardReceipts.length - 1; index >= 0; index -= 1) {
-      const RECEIPT = world.bossRewardReceipts[index], NEEDS_PRESENTATION = RECEIPT.status === "calculating" || Number.isSafeInteger(RECEIPT.revealedCount) && Number.isSafeInteger(RECEIPT.boxCount) && RECEIPT.revealedCount < RECEIPT.boxCount || Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0;
-      if (NEEDS_PRESENTATION || RECEIPT.status === "opened" && completed < 8) {
+      const RECEIPT = world.bossRewardReceipts[index], NEEDS_PRESENTATION = RECEIPT.status === "calculating" || Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0;
+      if (NEEDS_PRESENTATION || RECEIPT.status === "ready" && completed < 8) {
         KEEP.add(RECEIPT);
-        if (RECEIPT.status === "opened") {
+        if (RECEIPT.status === "ready") {
           completed += 1;
         }
       }
@@ -6523,38 +6523,22 @@
     }
     ensureWorldRewardState(world);
     const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || !["ready", "opened"].includes(RECEIPT.status)) {
+    if (!RECEIPT || RECEIPT.status !== "ready") {
       return null;
     }
-    if (RECEIPT.status === "opened") {
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
       return RECEIPT;
     }
     RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
-    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
-      RECEIPT.status = "opened";
-      if (RECEIPT.source === "farm" && world.farmBossEvent?.encounterId === RECEIPT.encounterId) {
-        world.farmBossEvent.rewardStatus = "opened";
-      }
-    }
-    trimRewardReceipts(world);
-    world.markProgressChanged?.();
     return RECEIPT;
   }
   function openAllBossRewardBoxes(world, receiptKey) {
     ensureWorldRewardState(world);
     const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || !["ready", "opened"].includes(RECEIPT.status)) {
+    if (!RECEIPT || RECEIPT.status !== "ready") {
       return null;
     }
-    if (RECEIPT.status === "ready") {
-      RECEIPT.revealedCount = RECEIPT.boxCount;
-      RECEIPT.status = "opened";
-      if (RECEIPT.source === "farm" && world.farmBossEvent?.encounterId === RECEIPT.encounterId) {
-        world.farmBossEvent.rewardStatus = "opened";
-      }
-      trimRewardReceipts(world);
-      world.markProgressChanged?.();
-    }
+    RECEIPT.revealedCount = RECEIPT.boxCount;
     return RECEIPT;
   }
   function settleBossKill(world, options) {
@@ -11791,35 +11775,12 @@
     };
   }
   function pendingReward(reward) {
-    if (["calculating", "ready", "opened", "legacy"].includes(reward.status)) {
-      return structuredClone(reward);
-    }
-    const RESULT = Array.isArray(reward.drops) ? {
-      encounterId: reward.encounterId,
-      source: reward.source,
-      receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
-      species: reward.species,
-      tier: reward.tier,
-      chance: reward.chance,
-      rolls: reward.drops.filter((drop) => drop.status === "pending").map((drop) => drop.roll)
-    } : {
-      encounterId: reward.encounterId,
-      source: reward.source,
-      receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
-      species: reward.species,
-      tier: 1,
-      chance: reward.chance,
-      rollBudget: reward.rollBudget,
-      bonusRollChance: reward.bonusRollChance,
-      rollCount: reward.rollCount,
-      successCount: reward.successCount,
-      grantedCount: reward.grantedCount,
-      unitId: reward.unitId
-    };
-    for (const KEY2 of REWARD_EXTRAS) {
-      if (reward[KEY2] !== void 0) {
-        RESULT[KEY2] = reward[KEY2];
+    const RESULT = {};
+    for (const [KEY2, VALUE] of Object.entries(reward)) {
+      if (KEY2 === "boxes" || KEY2 === "revealedCount") {
+        continue;
       }
+      RESULT[KEY2] = structuredClone(VALUE);
     }
     return RESULT;
   }
@@ -11837,8 +11798,8 @@
   }
   function captureFarmProgress(world) {
     ASSERT(world.scene === "farm");
-    const GROUPS = /* @__PURE__ */ new Map(), RECENTLY_OPENED = new Set(
-      (world.bossRewardReceipts || []).filter((reward) => reward.status === "opened").slice(-8)
+    const GROUPS = /* @__PURE__ */ new Map(), RECENTLY_SETTLED = new Set(
+      (world.bossRewardReceipts || []).filter((reward) => reward.status === "ready").slice(-8)
     );
     for (const UNIT3 of world.units) {
       if (UNIT3.isBattleOnlySummon || UNIT3.countsTowardPermanentRoster === false || UNIT3.faction !== "player") {
@@ -11918,7 +11879,7 @@
             ...world.bossRewardWatermarks
           },
           pendingRewards: world.bossRewardReceipts.filter(
-            (reward) => ["calculating", "legacy"].includes(reward.status) || Number.isSafeInteger(reward.queuedCount) && reward.queuedCount > 0 || ["ready", "opened"].includes(reward.status) && reward.revealedCount < reward.boxCount || RECENTLY_OPENED.has(reward)
+            (reward) => reward.status === "calculating" || Number.isSafeInteger(reward.queuedCount) && reward.queuedCount > 0 || RECENTLY_SETTLED.has(reward)
           ).map(pendingReward),
           rewardStreams: structuredClone(world.bossRewardStreams),
           queuedRewards: world.bossRewardInventory.filter((entry) => entry.count > 0).map(({ species, tier, count }) => ({ species, tier, count }))
@@ -12078,7 +12039,7 @@
       const ENCOUNTER = `${REWARD2.source}:${REWARD2.encounterId}`;
       ASSERT(!ENCOUNTERS.has(ENCOUNTER));
       ENCOUNTERS.add(ENCOUNTER);
-      if (["calculating", "ready", "opened", "legacy"].includes(REWARD2.status)) {
+      if (["calculating", "ready"].includes(REWARD2.status)) {
         ASSERT(
           REWARD2.tier === 1 && SAFE_INTEGER(REWARD2.acquiredCount) && SAFE_INTEGER(REWARD2.placedCount) && SAFE_INTEGER(REWARD2.queuedCount) && REWARD2.placedCount + REWARD2.queuedCount === REWARD2.acquiredCount && REWARD2.grantedCount === REWARD2.placedCount
         );
@@ -12087,63 +12048,33 @@
           ASSERT(Number.isSafeInteger(QUEUED));
           QUEUED_BY_GROUP.set(GROUP_KEY, QUEUED);
         }
-        if (REWARD2.status === "legacy") {
+        ASSERT(
+          REWARD2.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance && SAFE_INTEGER(REWARD2.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) && INTEGER(REWARD2.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.boxCount === Math.min(REWARD2.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.rollCount === REWARD2.boxCount && INTEGER(REWARD2.successCount, 0, REWARD2.boxCount)
+        );
+        if (REWARD2.status === "calculating") {
+          const CALC = REWARD2.calculation;
+          keys(CALC, ["version", "payouts", "hits", "payoutRngStateAfter", "jobState"]);
           ASSERT(
-            REWARD2.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance && INTEGER(REWARD2.boxCount, 0, 0) && INTEGER(REWARD2.rollCount, 0, 0) && Array.isArray(REWARD2.boxes) && REWARD2.boxes.length === 0 && REWARD2.calculation === null && INTEGER(REWARD2.revealedCount, 0, 0)
+            CALC.version === 1 && Array.isArray(CALC.payouts) && CALC.payouts.length === REWARD2.boxCount && Array.isArray(CALC.hits) && CALC.hits.length <= REWARD2.boxCount && CALC.hits.every(
+              (index, i) => INTEGER(index, 0, REWARD2.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index)
+            ) && INTEGER(CALC.payoutRngStateAfter, 0, 4294967295) && (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD2.boxCount)) && REWARD2.successCount === 0 && REWARD2.acquiredCount === 0 && REWARD2.queuedCount === 0
           );
-        } else {
+          const BASE = Math.floor(REWARD2.rollBudget / REWARD2.boxCount), EXTRA = REWARD2.rollBudget % REWARD2.boxCount;
           ASSERT(
-            REWARD2.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance && SAFE_INTEGER(REWARD2.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) && INTEGER(REWARD2.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.boxCount === Math.min(REWARD2.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.rollCount === REWARD2.boxCount && INTEGER(REWARD2.successCount, 0, REWARD2.boxCount) && INTEGER(REWARD2.revealedCount, 0, REWARD2.boxCount)
+            CALC.payouts.every((payout) => INTEGER(payout, BASE, BASE + (EXTRA > 0 ? 1 : 0))) && CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD2.rollBudget && CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA
           );
-          if (REWARD2.status === "calculating") {
-            const CALC = REWARD2.calculation;
-            keys(CALC, ["version", "payouts", "hits", "payoutRngStateAfter", "jobState"]);
+          if (CALC.jobState) {
             ASSERT(
-              CALC.version === 1 && Array.isArray(CALC.payouts) && CALC.payouts.length === REWARD2.boxCount && Array.isArray(CALC.hits) && CALC.hits.length <= REWARD2.boxCount && CALC.hits.every(
-                (index, i) => INTEGER(index, 0, REWARD2.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index)
-              ) && INTEGER(CALC.payoutRngStateAfter, 0, 4294967295) && (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD2.boxCount)) && Array.isArray(REWARD2.boxes) && REWARD2.boxes.length === 0 && REWARD2.revealedCount === 0 && REWARD2.acquiredCount === 0 && REWARD2.queuedCount === 0
-            );
-            const BASE = Math.floor(REWARD2.rollBudget / REWARD2.boxCount), EXTRA = REWARD2.rollBudget % REWARD2.boxCount;
-            ASSERT(
-              CALC.payouts.every((payout) => INTEGER(payout, BASE, BASE + (EXTRA > 0 ? 1 : 0))) && CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD2.rollBudget && CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA
-            );
-            if (CALC.jobState) {
-              ASSERT(
-                CALC.hits.every((index) => index < CALC.jobState.processedTrials) && CALC.jobState.successes === CALC.hits.length
-              );
-            }
-          } else {
-            ASSERT(
-              REWARD2.calculation === null && Array.isArray(REWARD2.boxes) && REWARD2.boxes.length === REWARD2.boxCount && (REWARD2.status !== "ready" || REWARD2.revealedCount < REWARD2.boxCount) && (REWARD2.status !== "opened" || REWARD2.revealedCount === REWARD2.boxCount)
-            );
-            let acquired = 0, hits = 0;
-            for (const BOX of REWARD2.boxes) {
-              keys(BOX, ["payout", "hit"]);
-              ASSERT((BOX.hit === true || BOX.hit === false) && INTEGER(BOX.payout, 1));
-              if (BOX.hit) {
-                acquired += BOX.payout;
-                hits += 1;
-                ASSERT(Number.isSafeInteger(acquired));
-              }
-            }
-            ASSERT(
-              hits === REWARD2.successCount && acquired === REWARD2.acquiredCount && REWARD2.boxes.reduce((sum, box) => sum + box.payout, 0) === REWARD2.rollBudget
+              CALC.hits.every((index) => index < CALC.jobState.processedTrials) && CALC.jobState.successes === CALC.hits.length
             );
           }
-        }
-      } else {
-        ASSERT(
-          ["pending", "missed", "granted"].includes(REWARD2.status) && INTEGER(REWARD2.unitId, 0, CONFIG.farm.maxUnitId)
-        );
-        if (Object.hasOwn(REWARD2, "rolls")) {
-          ASSERT(
-            Array.isArray(REWARD2.rolls) && REWARD2.rolls.length > 0 && REWARD2.rolls.length <= BOSS_REWARD_SETTINGS.maxStage && REWARD2.rolls.every((roll) => NUMBER3(roll, 0, 1) && roll < REWARD2.chance)
-          );
         } else {
           ASSERT(
-            INTEGER(REWARD2.rollCount, 1, BOSS_REWARD_SETTINGS.maxRollCount) && NUMBER3(REWARD2.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) && NUMBER3(REWARD2.bonusRollChance, 0, 1) && REWARD2.bonusRollChance < 1 && REWARD2.bonusRollChance === REWARD2.rollBudget - Math.floor(REWARD2.rollBudget) && INTEGER(REWARD2.successCount, 1, REWARD2.rollCount) && INTEGER(REWARD2.grantedCount, 0, REWARD2.successCount - 1) && INTEGER(REWARD2.unitId, 0, CONFIG.farm.maxUnitId) && REWARD2.grantedCount > 0 === REWARD2.unitId > 0 && REWARD2.tier === 1
+            REWARD2.calculation === null && SAFE_INTEGER(REWARD2.acquiredCount, 0, REWARD2.rollBudget) && REWARD2.successCount <= REWARD2.acquiredCount && REWARD2.successCount === 0 === (REWARD2.acquiredCount === 0)
           );
         }
+      } else {
+        FAIL();
       }
       if (REWARD2.acquisitionMultiplier !== void 0) {
         ASSERT(NUMBER3(REWARD2.acquisitionMultiplier, 0, 2));
@@ -12245,7 +12176,9 @@
     WORLD.bossRewardReceipts = BOSS2.pendingRewards.map((reward) => ({
       ...reward,
       x: Number.isFinite(reward.x) ? reward.x : 0,
-      y: Number.isFinite(reward.y) ? reward.y : 0
+      y: Number.isFinite(reward.y) ? reward.y : 0,
+      boxes: [],
+      revealedCount: reward.status === "ready" ? reward.boxCount : 0
     }));
     WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
     WORLD.reconcileMateReservations();
@@ -12284,9 +12217,7 @@
         "grantedCount",
         "placedCount",
         "queuedCount",
-        "revealedCount",
         "status",
-        "boxes",
         "calculation",
         "unitId",
         "xpReceiptKey",
@@ -12302,7 +12233,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.24";
+      PRODUCT_VERSION = "0.8.26";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12383,43 +12314,12 @@
     const LABEL = SAVE_FAILURE_LABELS[operation] || "저장 처리";
     return `${LABEL} 단계에서 오류가 발생했어요. 기존 저장은 보존했어요. 저장 내보내기로 보관한 뒤 진단 정보를 복사해 주세요.`;
   }
-  function readLegacyBackup() {
-    try {
-      const PREFERRED = localStorage.getItem(BACKUP_LATEST);
-      if (PREFERRED?.startsWith(BACKUP_PREFIX)) {
-        const RAW = localStorage.getItem(PREFERRED);
-        if (RAW) {
-          return {
-            key: PREFERRED,
-            raw: RAW
-          };
-        }
-      }
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const KEY_LOCAL = localStorage.key(i);
-        if (KEY_LOCAL?.startsWith(BACKUP_PREFIX)) {
-          const RAW = localStorage.getItem(KEY_LOCAL);
-          if (RAW) {
-            return {
-              key: KEY_LOCAL,
-              raw: RAW
-            };
-          }
-        }
-      }
-    } catch {
-    }
-    return null;
-  }
-  var KEY, LEGACY_KEY, BACKUP_PREFIX, BACKUP_LATEST, SAVE_FAILURE_LABELS, FarmStorage;
+  var KEY, SAVE_FAILURE_LABELS, FarmStorage;
   var init_farm_storage = __esm({
     "src/farm-storage.js"() {
       init_farm_progress();
       init_farm_save_codec();
       KEY = "bloom-weapon-cards-v4";
-      LEGACY_KEY = "bloom-weapon-cards-v3";
-      BACKUP_PREFIX = "bloom-weapon-cards-legacy-backup-";
-      BACKUP_LATEST = "bloom-weapon-cards-legacy-backup-latest";
       SAVE_FAILURE_LABELS = Object.freeze({
         "storage-read": "브라우저 저장소 읽기",
         "progress-capture": "농장 진행 데이터 수집",
@@ -12433,29 +12333,22 @@
           this._world = null;
           this.savedProgress = null;
           this.error = "";
+          this.notice = "";
           this.writable = false;
-          this.legacyRaw = null;
-          this.legacyCompatible = false;
-          this.legacyBackup = readLegacyBackup();
+          this.incompatible = false;
           try {
             this.raw = localStorage.getItem(KEY);
-            this.legacyRaw = localStorage.getItem(LEGACY_KEY);
             if (this.raw) {
-              if (!IS_READABLE_COMPATIBILITY(readFarmSave(this.raw).productVersion)) {
-                throw Error("현재 저장은 호환되지 않는 버전입니다. 원본 키는 그대로 보존했어요.");
-              }
-              this.savedProgress = decodeFarmSave(this.raw);
-            } else if (this.legacyRaw) {
               try {
-                validateSave(this.legacyRaw);
-                this.legacyCompatible = true;
-              } catch (e) {
-                this.error = e.message;
+                this.savedProgress = decodeFarmSave(this.raw);
+              } catch (error) {
+                this.incompatible = true;
+                this.error = error.message;
               }
             }
             this.writable = true;
-          } catch (e) {
-            this.error = e.message;
+          } catch (error) {
+            this.error = error.message;
           }
         }
         get world() {
@@ -12466,6 +12359,36 @@
         }
         get hasWorld() {
           return !!(this._world || this.savedProgress);
+        }
+        initializeIncompatible(world) {
+          if (!this.incompatible || !world) {
+            return false;
+          }
+          try {
+            if (localStorage.getItem(KEY) !== this.raw) {
+              if (this.refresh() && this.hasWorld) {
+                return true;
+              }
+              throw Error("The saved farm changed in another tab. Refresh before starting a new farm.");
+            }
+            const { data: DATA, text: TEXT } = this.serializeCheckpoint(world);
+            localStorage.setItem(KEY, TEXT);
+            this.raw = TEXT;
+            this.savedProgress = DATA;
+            this._world = world;
+            this.incompatible = false;
+            this.error = "";
+            this.notice = "An incompatible prelaunch save was reset to the current farm format.";
+            this.writable = true;
+            return true;
+          } catch (error) {
+            this._world = world;
+            this.savedProgress = null;
+            this.error = error.message || "Could not save the fresh farm.";
+            this.notice = "A fresh farm is available in memory, but browser storage is not writable.";
+            this.writable = false;
+            return false;
+          }
         }
         get hasReservedRaid() {
           const RUN = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
@@ -12502,7 +12425,9 @@
             this.raw = TEXT;
             this.savedProgress = DATA;
             this._world = null;
+            this.incompatible = false;
             this.error = "";
+            this.notice = "";
             return true;
           } catch (e) {
             this.error = e.message || "저장을 다시 읽지 못했어요.";
@@ -12540,6 +12465,7 @@
             if (sameFarmProgress(data, this.savedProgress)) {
               this._world = world;
               this.error = "";
+              this.notice = "";
               return true;
             }
             operation = "progress-validate-encode";
@@ -12554,7 +12480,9 @@
             this.raw = TEXT;
             this.savedProgress = data;
             this._world = world;
+            this.incompatible = false;
             this.error = "";
+            this.notice = "";
             return true;
           } catch (error) {
             reportSaveFailure(error, operation);
@@ -12581,8 +12509,10 @@
           this.raw = NORMALIZED;
           this.savedProgress = DATA;
           this._world = WORLD;
+          this.incompatible = false;
           this.writable = true;
           this.error = "";
+          this.notice = "";
           return WORLD;
         }
       };
@@ -13316,7 +13246,7 @@
   // src/features/formation-skills/hammer/presentation.js
   var HammerPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_HEIGHT = Math.max(BODY_RADIUS * 2, effect.bodyHeight || BODY_RADIUS * 2), TELEGRAPH_END = 0.14, IMPACT_TIME = 0.42, DROP2 = Math.max(0, Math.min(1, (effect.age - TELEGRAPH_END) / (IMPACT_TIME - TELEGRAPH_END))), FALL = DROP2 ** 2.2, START_Z = effect.z + BODY_HEIGHT + BODY_RADIUS * 3.2, IMPACT_Z = effect.z + BODY_HEIGHT * 0.55, Z = START_Z + (IMPACT_Z - START_Z) * FALL, HEAD_WIDTH = BODY_RADIUS * 6, HEAD_HEIGHT = BODY_RADIUS * 1.8, P = renderer.project(effect.x, effect.y, Z), S = renderer.scale, C = renderer.ctx, FADE = Math.max(0, 1 - Math.max(0, effect.age - IMPACT_TIME) / 0.28);
+      const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_HEIGHT = Math.max(BODY_RADIUS * 2, effect.bodyHeight || BODY_RADIUS * 2), TELEGRAPH_END = 0.14, IMPACT_TIME = 0.42, DROP = Math.max(0, Math.min(1, (effect.age - TELEGRAPH_END) / (IMPACT_TIME - TELEGRAPH_END))), FALL = DROP ** 2.2, START_Z = effect.z + BODY_HEIGHT + BODY_RADIUS * 3.2, IMPACT_Z = effect.z + BODY_HEIGHT * 0.55, Z = START_Z + (IMPACT_Z - START_Z) * FALL, HEAD_WIDTH = BODY_RADIUS * 6, HEAD_HEIGHT = BODY_RADIUS * 1.8, P = renderer.project(effect.x, effect.y, Z), S = renderer.scale, C = renderer.ctx, FADE = Math.max(0, 1 - Math.max(0, effect.age - IMPACT_TIME) / 0.28);
       if (effect.age < TELEGRAPH_END) {
         const TELEGRAPH = 1 - effect.age / TELEGRAPH_END, AIM = renderer.project(effect.x, effect.y, IMPACT_Z);
         renderer.ellipse(
@@ -17048,12 +16978,9 @@
     }),
     barleyArmorShredBuckets: [FIELDS("expiresAtTick amount")]
   });
-  var DROP = FIELDS("roll status unitId");
   var REWARD = FIELDS(
-    "encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount revealedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded",
+    "encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded",
     {
-      drops: [DROP],
-      boxes: [FIELDS("payout hit")],
       calculation: JSON_PAYLOAD
     }
   );
@@ -17332,9 +17259,7 @@
       );
       ASSERT2(FARM_EVENT.outcome === "victory" ? raw.boss.hp === 0 : raw.boss.hp > 0);
       ASSERT2(
-        FARM_EVENT.outcome === "victory" ? ["calculating", "ready", "opened", "legacy", "missed", "pending", "granted"].includes(
-          FARM_EVENT.rewardStatus
-        ) : FARM_EVENT.rewardStatus === "none"
+        FARM_EVENT.outcome === "victory" ? ["calculating", "ready"].includes(FARM_EVENT.rewardStatus) : FARM_EVENT.rewardStatus === "none"
       );
     }
     ASSERT2(
@@ -17365,7 +17290,7 @@
       const KEY2 = REWARD2.receiptKey || REWARD2.source + ":" + REWARD2.encounterId;
       ASSERT2(!REWARD_IDS.has(KEY2));
       REWARD_IDS.add(KEY2);
-      if (["calculating", "ready", "opened", "legacy"].includes(REWARD2.status)) {
+      if (["calculating", "ready"].includes(REWARD2.status)) {
         ASSERT2(
           REWARD2.tier === 1 && REWARD2.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance && Number.isSafeInteger(REWARD2.acquiredCount) && REWARD2.acquiredCount >= 0 && Number.isSafeInteger(REWARD2.placedCount) && REWARD2.placedCount >= 0 && Number.isSafeInteger(REWARD2.queuedCount) && REWARD2.queuedCount >= 0 && REWARD2.placedCount + REWARD2.queuedCount === REWARD2.acquiredCount && REWARD2.grantedCount === REWARD2.placedCount
         );
@@ -17374,75 +17299,34 @@
           ASSERT2(Number.isSafeInteger(QUEUED));
           QUEUED_BY_GROUP.set(GROUP_KEY, QUEUED);
         }
-        if (REWARD2.status === "legacy") {
+        ASSERT2(
+          INTEGER2(REWARD2.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) && INTEGER2(REWARD2.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.boxCount === Math.min(REWARD2.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.rollCount === REWARD2.boxCount && INTEGER2(REWARD2.successCount, 0, REWARD2.boxCount)
+        );
+        if (REWARD2.status === "calculating") {
+          const CALC = REWARD2.calculation;
           ASSERT2(
-            REWARD2.boxCount === 0 && REWARD2.rollCount === 0 && Array.isArray(REWARD2.boxes) && REWARD2.boxes.length === 0 && REWARD2.calculation === null && REWARD2.revealedCount === 0
+            CALC && CALC.version === 1 && Array.isArray(CALC.payouts) && CALC.payouts.length === REWARD2.boxCount && Array.isArray(CALC.hits) && CALC.hits.length <= REWARD2.boxCount && CALC.hits.every(
+              (index, i) => INTEGER2(index, 0, REWARD2.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index)
+            ) && INTEGER2(CALC.payoutRngStateAfter, 0, 4294967295) && (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD2.boxCount)) && REWARD2.successCount === 0 && REWARD2.acquiredCount === 0 && REWARD2.queuedCount === 0
           );
-        } else {
+          const BASE = Math.floor(REWARD2.rollBudget / REWARD2.boxCount), EXTRA = REWARD2.rollBudget % REWARD2.boxCount;
           ASSERT2(
-            INTEGER2(REWARD2.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) && INTEGER2(REWARD2.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.boxCount === Math.min(REWARD2.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) && REWARD2.rollCount === REWARD2.boxCount && INTEGER2(REWARD2.successCount, 0, REWARD2.boxCount) && INTEGER2(REWARD2.revealedCount, 0, REWARD2.boxCount)
+            CALC.payouts.every(
+              (payout) => Number.isSafeInteger(payout) && payout >= BASE && payout <= BASE + (EXTRA ? 1 : 0)
+            ) && CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD2.rollBudget && CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA
           );
-          if (REWARD2.status === "calculating") {
-            const CALC = REWARD2.calculation;
+          if (CALC.jobState) {
             ASSERT2(
-              CALC && CALC.version === 1 && Array.isArray(CALC.payouts) && CALC.payouts.length === REWARD2.boxCount && Array.isArray(CALC.hits) && CALC.hits.length <= REWARD2.boxCount && CALC.hits.every(
-                (index, i) => INTEGER2(index, 0, REWARD2.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index)
-              ) && INTEGER2(CALC.payoutRngStateAfter, 0, 4294967295) && (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD2.boxCount)) && Array.isArray(REWARD2.boxes) && REWARD2.boxes.length === 0 && REWARD2.revealedCount === 0 && REWARD2.acquiredCount === 0 && REWARD2.queuedCount === 0
-            );
-            const BASE = Math.floor(REWARD2.rollBudget / REWARD2.boxCount), EXTRA = REWARD2.rollBudget % REWARD2.boxCount;
-            ASSERT2(
-              CALC.payouts.every(
-                (payout) => Number.isSafeInteger(payout) && payout >= BASE && payout <= BASE + (EXTRA ? 1 : 0)
-              ) && CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD2.rollBudget && CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA
-            );
-            if (CALC.jobState) {
-              ASSERT2(
-                CALC.jobState.successes === CALC.hits.length && CALC.hits.every((index) => index < CALC.jobState.processedTrials)
-              );
-            }
-          } else {
-            ASSERT2(
-              REWARD2.calculation === null && Array.isArray(REWARD2.boxes) && REWARD2.boxes.length === REWARD2.boxCount && (REWARD2.status !== "ready" || REWARD2.revealedCount < REWARD2.boxCount) && (REWARD2.status !== "opened" || REWARD2.revealedCount === REWARD2.boxCount)
-            );
-            let acquired = 0, hits = 0;
-            for (const BOX of REWARD2.boxes) {
-              ASSERT2(
-                BOX && Object.keys(BOX).length === 2 && Number.isSafeInteger(BOX.payout) && BOX.payout >= 1 && (BOX.hit === true || BOX.hit === false)
-              );
-              if (BOX.hit) {
-                acquired += BOX.payout;
-                hits += 1;
-                ASSERT2(Number.isSafeInteger(acquired));
-              }
-            }
-            ASSERT2(
-              hits === REWARD2.successCount && acquired === REWARD2.acquiredCount && REWARD2.boxes.reduce((sum, box) => sum + box.payout, 0) === REWARD2.rollBudget
+              CALC.jobState.successes === CALC.hits.length && CALC.hits.every((index) => index < CALC.jobState.processedTrials)
             );
           }
+        } else {
+          ASSERT2(
+            REWARD2.calculation === null && Number.isSafeInteger(REWARD2.acquiredCount) && REWARD2.acquiredCount >= 0 && REWARD2.acquiredCount <= REWARD2.rollBudget && REWARD2.successCount <= REWARD2.acquiredCount && REWARD2.successCount === 0 === (REWARD2.acquiredCount === 0)
+          );
         }
       } else {
-        ASSERT2(
-          ["pending", "missed", "granted"].includes(REWARD2.status) && INTEGER2(REWARD2.unitId, 0, CONFIG.farm.maxUnitId)
-        );
-        if (REWARD2.drops !== void 0) {
-          ASSERT2(REWARD2.status === "granted" === REWARD2.unitId > 0);
-          ASSERT2(
-            Array.isArray(REWARD2.drops) && REWARD2.drops.length <= BOSS_REWARD_SETTINGS.maxStage && INTEGER2(REWARD2.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) && REWARD2.drops.length === REWARD2.rollCount
-          );
-          for (const DROP2 of REWARD2.drops) {
-            ASSERT2(
-              DROP2 && Number.isFinite(DROP2.roll) && DROP2.roll >= 0 && DROP2.roll < 1 && ["pending", "missed", "granted"].includes(DROP2.status) && INTEGER2(DROP2.unitId, 0, CONFIG.farm.maxUnitId) && DROP2.status === "granted" === DROP2.unitId > 0
-            );
-          }
-          ASSERT2(
-            REWARD2.status === (REWARD2.drops.some((drop) => drop.status === "pending") ? "pending" : REWARD2.drops.some((drop) => drop.status === "granted") ? "granted" : "missed")
-          );
-        } else {
-          const BASE_ROLL_COUNT = Math.floor(REWARD2.rollBudget), EXPECTED_STATUS = REWARD2.successCount === 0 ? "missed" : REWARD2.grantedCount === REWARD2.successCount ? "granted" : "pending";
-          ASSERT2(
-            Number.isFinite(REWARD2.rollBudget) && REWARD2.rollBudget >= 1 && REWARD2.rollBudget <= BOSS_REWARD_SETTINGS.maxRollCount && Number.isFinite(REWARD2.bonusRollChance) && REWARD2.bonusRollChance >= 0 && REWARD2.bonusRollChance < 1 && REWARD2.bonusRollChance === REWARD2.rollBudget - BASE_ROLL_COUNT && INTEGER2(REWARD2.rollCount, BASE_ROLL_COUNT, BOSS_REWARD_SETTINGS.maxRollCount) && INTEGER2(REWARD2.successCount, 0, REWARD2.rollCount) && INTEGER2(REWARD2.grantedCount, 0, REWARD2.successCount) && REWARD2.grantedCount > 0 === REWARD2.unitId > 0 && REWARD2.tier === 1 && REWARD2.status === EXPECTED_STATUS
-          );
-        }
+        ASSERT2(false);
       }
       if (REWARD2.acquisitionMultiplier !== void 0) {
         ASSERT2(
@@ -17797,6 +17681,11 @@
     const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
+    G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
+      ...reward,
+      boxes: [],
+      revealedCount: reward.status === "ready" ? reward.boxCount : 0
+    }));
     G.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
     if (G.boss.patternRuntime.active) {
       G.boss.patternRuntime.active.hitIds = new Set(raw.boss.patternRuntime.active.hitIds);
@@ -18571,9 +18460,9 @@
   init_species_catalog();
   var DOLLAR2 = (id) => document.getElementById(id);
   var STORAGE = new FarmStorage();
+  STORAGE.initializeIncompatible(new GARDEN());
   DOLLAR2("abilitySpeciesTabs").innerHTML = renderAbilitySpeciesTabsMarkup();
   var imported = null;
-  var importedLegacy = false;
   var active = null;
   var home = true;
   var personalGarden = null;
@@ -18658,7 +18547,7 @@
     const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0, PLACED = reward.placedCount ?? reward.grantedCount ?? 0, QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
     return ACQUIRED + " acquired · " + PLACED + " placed" + (QUEUED ? " · " + QUEUED + " waiting for space" : "");
   }
-  function persistBossRewardReveal(world) {
+  function persistBossRewardSettlement(world) {
     if (!saveImmediate(world)) {
       DOLLAR2("bossRewardSummary").textContent = "Could not save reward progress: " + STORAGE.error;
       return false;
@@ -18666,7 +18555,7 @@
     return true;
   }
   function renderBossRewardBoxes(receipt) {
-    const GRID = DOLLAR2("bossRewardBoxes"), COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, SIGNATURE = [
+    const GRID = DOLLAR2("bossRewardBoxes"), COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, SIGNATURE = [
       receipt.receiptKey,
       receipt.status,
       receipt.successCount,
@@ -18678,8 +18567,8 @@
     ].join(":");
     DOLLAR2("bossRewardStage").textContent = receipt.stage ? "STAGE " + receipt.stage : receipt.source === "farm" ? "농장 보스" : "레이드 보스";
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 상자 준비 중" : "보상 상자";
-    DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 획득 여부를 계산하고 있어요. 결과는 저장되며 계산이 끝나면 열 수 있어요." : COUNT + "개 상자 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · 획득 확률 " + Math.round(receipt.chance * 1e4) / 100 + "%";
-    DOLLAR2("bossRewardTotals").textContent = receipt.status === "calculating" ? bossRewardSummary(receipt) : REVEALED + "/" + COUNT + "개 공개 · " + bossRewardSummary(receipt);
+    DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 획득 여부를 계산하고 있어요. 결과는 저장되며 계산이 끝나면 열 수 있어요." : HAS_PRESENTATION ? COUNT + "개 상자 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · 획득 확률 " + Math.round(receipt.chance * 1e4) / 100 + "%" : "이미 정산된 보상 요약";
+    DOLLAR2("bossRewardTotals").textContent = receipt.status === "calculating" ? bossRewardSummary(receipt) : HAS_PRESENTATION ? REVEALED + "/" + COUNT + "개 공개 · " + bossRewardSummary(receipt) : bossRewardSummary(receipt);
     if (bossRewardRenderedSignature === SIGNATURE) {
       return;
     }
@@ -18702,8 +18591,8 @@
       BUTTON.append(NUMBER4, RESULT);
       GRID.append(BUTTON);
     });
-    DOLLAR2("bossRewardOpenAll").disabled = receipt.status !== "ready";
-    DOLLAR2("bossRewardClose").hidden = receipt.status !== "opened";
+    DOLLAR2("bossRewardOpenAll").disabled = receipt.status !== "ready" || !HAS_PRESENTATION || REVEALED >= COUNT;
+    DOLLAR2("bossRewardClose").hidden = receipt.status !== "ready" || REVEALED < COUNT;
   }
   function revealBossRewardBatch() {
     const WORLD = personalGarden || active?.world, RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
@@ -18713,9 +18602,8 @@
       return;
     }
     advanceBossRewardReveal(WORLD, RECEIPT.receiptKey, 10);
-    persistBossRewardReveal(WORLD);
     renderBossRewardBoxes(RECEIPT);
-    if (RECEIPT.status === "opened") {
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
       clearInterval(bossRewardRevealTimer);
       bossRewardRevealTimer = null;
     }
@@ -18733,14 +18621,14 @@
     advanceBossRewardCalculations(WORLD);
     if (RECEIPT.status !== "calculating") {
       stopBossRewardCalculation();
-      persistBossRewardReveal(WORLD);
+      persistBossRewardSettlement(WORLD);
     }
     if (!DOLLAR2("bossRewardDialog").hidden) {
       renderBossRewardBoxes(RECEIPT);
     }
   }
   function showBossRewardDialog(receipt, { auto = false } = {}) {
-    if (!receipt || !["calculating", "ready", "opened"].includes(receipt.status)) {
+    if (!receipt || !["calculating", "ready"].includes(receipt.status)) {
       return;
     }
     const DIALOG = DOLLAR2("bossRewardDialog"), WORLD = personalGarden || active?.world;
@@ -18752,11 +18640,10 @@
     if (auto && receipt.status === "ready" && !AUTO_OPENED_BOSS_REWARDS.has(receipt.receiptKey)) {
       AUTO_OPENED_BOSS_REWARDS.add(receipt.receiptKey);
       advanceBossRewardReveal(WORLD, receipt.receiptKey, 10);
-      persistBossRewardReveal(WORLD);
       renderBossRewardBoxes(receipt);
     }
     clearInterval(bossRewardRevealTimer);
-    if (receipt.status === "ready" && receipt.revealedCount < receipt.boxCount) {
+    if (receipt.status === "ready" && receipt.boxes?.length === receipt.boxCount && receipt.revealedCount < receipt.boxCount) {
       bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
     }
   }
@@ -18770,7 +18657,7 @@
       stopBossRewardCalculation();
       return;
     }
-    BUTTON.hidden = !RECEIPT || RECEIPT.status === "opened" || !DIALOG.hidden;
+    BUTTON.hidden = !RECEIPT || RECEIPT.status === "ready" && RECEIPT.revealedCount >= RECEIPT.boxCount || !DIALOG.hidden;
     BUTTON.disabled = RECEIPT?.status === "calculating";
     if (!RECEIPT) {
       stopBossRewardCalculation();
@@ -18795,7 +18682,7 @@
   }
   function closeBossRewardDialog() {
     const WORLD = personalGarden || active?.world, RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-    if (RECEIPT?.status !== "opened") {
+    if (RECEIPT?.status !== "ready" || RECEIPT.revealedCount < RECEIPT.boxCount) {
       return;
     }
     DOLLAR2("bossRewardDialog").hidden = true;
@@ -18824,7 +18711,6 @@
         return;
       }
       openAllBossRewardBoxes(WORLD, RECEIPT.receiptKey);
-      persistBossRewardReveal(WORLD);
       renderBossRewardBoxes(RECEIPT);
       clearInterval(bossRewardRevealTimer);
       bossRewardRevealTimer = null;
@@ -19143,12 +19029,8 @@
     DOLLAR2("continueGame").disabled = !STORAGE.hasWorld || STALE_RAID;
     DOLLAR2("startBossEncounter").disabled = !STORAGE.hasWorld || STALE_RAID;
     DOLLAR2("staleRaidNotice").hidden = !STALE_RAID;
-    DOLLAR2("continueLegacyGame").disabled = !STORAGE.legacyCompatible;
-    DOLLAR2("legacySaveNotice").hidden = !STORAGE.legacyCompatible;
-    DOLLAR2("exportSave").disabled = !(STORAGE.raw || STORAGE.legacyRaw);
-    DOLLAR2("exportLegacySave").hidden = !STORAGE.legacyBackup;
-    DOLLAR2("exportLegacySave").disabled = !STORAGE.legacyBackup;
-    DOLLAR2("saveNotice").textContent = STORAGE.error;
+    DOLLAR2("exportSave").disabled = !STORAGE.raw;
+    DOLLAR2("saveNotice").textContent = STORAGE.error || STORAGE.notice;
   }
   function setHome(value, push = true) {
     stopWorldInput();
@@ -19478,11 +19360,11 @@
     }
   };
   DOLLAR2("newGame").onclick = () => {
-    if ((STORAGE.raw || STORAGE.legacyRaw) && !DOLLAR2("newConfirm").hidden) {
+    if (STORAGE.raw && !DOLLAR2("newConfirm").hidden) {
       return;
     }
-    if (STORAGE.raw || STORAGE.legacyRaw) {
-      DOLLAR2("newConfirmText").textContent = STORAGE.raw ? "현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요." : "새 정원을 시작할까요? 기존 원본 저장은 별도 키에 그대로 남아요.";
+    if (STORAGE.raw) {
+      DOLLAR2("newConfirmText").textContent = "현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.";
       DOLLAR2("newConfirm").hidden = false;
       return;
     }
@@ -19508,7 +19390,7 @@
     DOLLAR2("newConfirm").hidden = true;
   };
   DOLLAR2("exportSave").onclick = () => {
-    const RAW = STORAGE.raw || STORAGE.legacyRaw;
+    const RAW = STORAGE.raw;
     if (!RAW) {
       return;
     }
@@ -19522,38 +19404,7 @@
     A.click();
     setTimeout(() => URL.revokeObjectURL(URL_LOCAL), 1e3);
   };
-  DOLLAR2("exportLegacySave").onclick = () => {
-    const RAW = STORAGE.legacyBackup?.raw;
-    if (!RAW) {
-      return;
-    }
-    const URL_LOCAL = URL.createObjectURL(
-      new Blob([RAW], {
-        type: "application/json"
-      })
-    ), A = document.createElement("a");
-    A.href = URL_LOCAL;
-    A.download = "budmori-legacy-save-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".json";
-    A.click();
-    setTimeout(() => URL.revokeObjectURL(URL_LOCAL), 1e3);
-  };
   DOLLAR2("importSave").onclick = () => DOLLAR2("saveFile").click();
-  DOLLAR2("continueLegacyGame").onclick = async () => {
-    if (!STORAGE.legacyRaw) {
-      return;
-    }
-    try {
-      const { validateSave: VALIDATE_SAVE } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
-      VALIDATE_SAVE(STORAGE.legacyRaw);
-      imported = STORAGE.legacyRaw;
-      importedLegacy = true;
-      DOLLAR2("importConfirmText").textContent = "현재 형식의 저장을 이어서 불러올까요?";
-      DOLLAR2("confirmImport").textContent = "원본을 보존하고 이어가기";
-      DOLLAR2("importConfirm").hidden = false;
-    } catch (e) {
-      DOLLAR2("saveNotice").textContent = e.message;
-    }
-  };
   DOLLAR2("saveFile").onchange = async () => {
     const FILE = DOLLAR2("saveFile").files[0];
     if (!FILE) {
@@ -19567,7 +19418,6 @@
       const { validateSave: VALIDATE_SAVE } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
       VALIDATE_SAVE(TEXT);
       imported = TEXT;
-      importedLegacy = false;
       DOLLAR2("importConfirmText").textContent = "현재 형식의 저장 데이터로 진행 상태를 바꿀까요?";
       DOLLAR2("confirmImport").textContent = "이 저장 불러오기";
       DOLLAR2("importConfirm").hidden = false;
@@ -19579,24 +19429,18 @@
   };
   DOLLAR2("cancelImport").onclick = () => {
     imported = null;
-    importedLegacy = false;
     DOLLAR2("importConfirm").hidden = true;
   };
   DOLLAR2("confirmImport").onclick = () => {
     try {
       if (imported) {
-        const LEGACY = importedLegacy, WORLD = STORAGE.import(imported);
+        const WORLD = STORAGE.import(imported);
         AUTOSAVE.reset();
-        if (LEGACY) {
-          start(WORLD);
-        } else {
-          replacePersonalGarden(WORLD);
-          install(WORLD);
-          active.paused = true;
-        }
+        replacePersonalGarden(WORLD);
+        install(WORLD);
+        active.paused = true;
       }
       imported = null;
-      importedLegacy = false;
       DOLLAR2("importConfirm").hidden = true;
       refreshStart();
     } catch (e) {
@@ -20158,7 +20002,7 @@
     const W = active.world, RAID = display.scene === "raid", FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = !RAID && FARM_EVENT?.phase !== "idle", BATTLE_HUD = RAID || FARM_EVENT_ACTIVE, BATTLE_OUTCOME = RAID ? W.encounter.outcome : FARM_EVENT?.outcome, HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false, REWARD_WORLD = personalGarden || W, SETTLED_RUN_SEQUENCE = RAID ? personalGarden?.activeRaidRunSequence ?? W.boss.encounterId : null, SETTLED_REWARD = RAID ? personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === SETTLED_RUN_SEQUENCE)?.reward : null, SETTLED_REWARD_RECEIPT = SETTLED_REWARD?.acquisition?.receiptKey ? REWARD_WORLD.bossRewardReceipts.find(
       (reward) => reward.receiptKey === SETTLED_REWARD.acquisition.receiptKey
     ) : null, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
-      (reward) => ["pending", "calculating", "ready", "legacy"].includes(reward.status) || reward.queuedCount > 0
+      (reward) => ["calculating", "ready"].includes(reward.status) || reward.queuedCount > 0
     ), MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD, {
       receiptKey: BATTLE_OUTCOME === "victory" ? SETTLED_REWARD_RECEIPT?.receiptKey || null : null,

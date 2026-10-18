@@ -418,13 +418,10 @@ function trimRewardReceipts(world) {
         const RECEIPT = world.bossRewardReceipts[index],
             NEEDS_PRESENTATION =
                 RECEIPT.status === 'calculating' ||
-                (Number.isSafeInteger(RECEIPT.revealedCount) &&
-                    Number.isSafeInteger(RECEIPT.boxCount) &&
-                    RECEIPT.revealedCount < RECEIPT.boxCount) ||
                 (Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0);
-        if (NEEDS_PRESENTATION || (RECEIPT.status === 'opened' && completed < 8)) {
+        if (NEEDS_PRESENTATION || (RECEIPT.status === 'ready' && completed < 8)) {
             KEEP.add(RECEIPT);
-            if (RECEIPT.status === 'opened') {
+            if (RECEIPT.status === 'ready') {
                 completed += 1;
             }
         }
@@ -507,39 +504,23 @@ export function advanceBossRewardReveal(world, receiptKey, maxBoxes = 10) {
     }
     ensureWorldRewardState(world);
     const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || !['ready', 'opened'].includes(RECEIPT.status)) {
+    if (!RECEIPT || RECEIPT.status !== 'ready') {
         return null;
     }
-    if (RECEIPT.status === 'opened') {
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
         return RECEIPT;
     }
     RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
-    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
-        RECEIPT.status = 'opened';
-        if (RECEIPT.source === 'farm' && world.farmBossEvent?.encounterId === RECEIPT.encounterId) {
-            world.farmBossEvent.rewardStatus = 'opened';
-        }
-    }
-    trimRewardReceipts(world);
-    world.markProgressChanged?.();
     return RECEIPT;
 }
 
 export function openAllBossRewardBoxes(world, receiptKey) {
     ensureWorldRewardState(world);
     const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || !['ready', 'opened'].includes(RECEIPT.status)) {
+    if (!RECEIPT || RECEIPT.status !== 'ready') {
         return null;
     }
-    if (RECEIPT.status === 'ready') {
-        RECEIPT.revealedCount = RECEIPT.boxCount;
-        RECEIPT.status = 'opened';
-        if (RECEIPT.source === 'farm' && world.farmBossEvent?.encounterId === RECEIPT.encounterId) {
-            world.farmBossEvent.rewardStatus = 'opened';
-        }
-        trimRewardReceipts(world);
-        world.markProgressChanged?.();
-    }
+    RECEIPT.revealedCount = RECEIPT.boxCount;
     return RECEIPT;
 }
 

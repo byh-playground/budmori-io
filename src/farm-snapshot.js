@@ -331,12 +331,9 @@ const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
     }),
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
-const DROP = FIELDS('roll status unitId');
 const REWARD = FIELDS(
-    'encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount revealedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
+    'encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
     {
-        drops: [DROP],
-        boxes: [FIELDS('payout hit')],
         calculation: JSON_PAYLOAD,
     },
 );

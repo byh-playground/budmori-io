@@ -1192,6 +1192,8 @@ async function upgradeMenuFlow() {
     await P.locator('#menuTabGrowth').click();
     await P.locator('#menuTabAbilities').click();
     await P.locator('#menuTabAbilities').press('ArrowRight');
+    assert.equal(await P.locator('#menuTabDeployment').getAttribute('aria-selected'), 'true');
+    await P.locator('#menuTabDeployment').press('ArrowRight');
     assert.equal(await P.locator('#menuTabFormation').getAttribute('aria-selected'), 'true');
     await closeMenu(P);
     assert.equal(await P.locator('.formation-slot').count(), 1);
@@ -6312,7 +6314,7 @@ async function bossRewards() {
         };
     });
     assert.equal(RAID_RESULT.activeScene, 'raid', 'the reward finishes before returning to Farm');
-    assert.equal(RAID_RESULT.receiptStatus, 'opened');
+    assert.equal(RAID_RESULT.receiptStatus, 'ready');
     assert.equal(RAID_RESULT.boxCount, 1);
     assert.equal(typeof RAID_RESULT.acquired, 'number');
     assert.equal(typeof RAID_RESULT.queued, 'number');
@@ -6373,7 +6375,7 @@ async function bossRewards() {
     assert.equal(AUTO_REVEAL.revealedBoxes, 10);
     await P.locator('#bossRewardOpenAll').click();
     await P.waitForFunction(
-        () => BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77')?.status === 'opened',
+        () => BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77')?.revealedCount === 12,
     );
     const OPENED = await P.evaluate(() => {
         const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
@@ -6389,7 +6391,7 @@ async function bossRewards() {
         };
     });
     assert.deepEqual(OPENED, {
-        status: 'opened',
+        status: 'ready',
         count: 12,
         revealed: 12,
         acquired: 12,
@@ -6397,6 +6399,30 @@ async function bossRewards() {
         queued: 0,
         hits: 12,
         totalPayout: 12,
+    });
+    const SETTLED_SAVE = await P.evaluate(() => {
+        if (!BUDMORI.storage.save(BUDMORI.sim)) {
+            throw Error(BUDMORI.storage.error || 'Could not save settled reward');
+        }
+        const REWARD = BUDMORI.storage.savedProgress.ledger.boss.pendingRewards.find(
+            (item) => item.receiptKey === 'ui-boss-box-77',
+        );
+        return {
+            hasBoxes: Object.hasOwn(REWARD, 'boxes'),
+            hasRevealCursor: Object.hasOwn(REWARD, 'revealedCount'),
+            status: REWARD.status,
+            acquired: REWARD.acquiredCount,
+            placed: REWARD.placedCount,
+            queued: REWARD.queuedCount,
+        };
+    });
+    assert.deepEqual(SETTLED_SAVE, {
+        hasBoxes: false,
+        hasRevealCursor: false,
+        status: 'ready',
+        acquired: 12,
+        placed: 12,
+        queued: 0,
     });
     await P.locator('#bossRewardClose').click();
     assert.equal(await P.locator('#bossRewardOpen').isVisible(), false);
@@ -6432,7 +6458,7 @@ async function bossRewards() {
             acquired: REWARD?.acquiredCount,
         };
     });
-    assert.deepEqual(RESTORED, { status: 'opened', revealed: 12, boxes: 12, acquired: 12 });
+    assert.deepEqual(RESTORED, { status: 'ready', revealed: 12, boxes: 0, acquired: 12 });
     const RAID_RESERVATION_SAVE = await P.evaluate(async () => {
         const { captureFarmProgress: CAPTURE, validateFarmProgress: VALIDATE } = await import('/src/farm-progress.js');
         const { encodeFarmSave: ENCODE, decodeFarmSave: DECODE } = await import('/src/farm-save-codec.js');
@@ -6472,7 +6498,7 @@ async function bossRewards() {
         RAID_RESERVATION_SAVE,
         {
             stage: 'saved',
-            receiptStatus: 'opened',
+            receiptStatus: 'ready',
             receiptHasRoll: false,
             activeRun: {
                 sequence: 78,
@@ -6485,10 +6511,149 @@ async function bossRewards() {
     );
     await clean(P);
     CHECK(
-        'Raid victory auto-settles and reveals before Farm return; full save validates and completed boxes cannot be reopened',
+        'Raid victory auto-settles and reveals before Farm return; saved receipts omit box outcomes and reveal cursors',
     );
-    CHECK('Mobile reward result opens remaining boxes immediately and saves the committed reward');
+    CHECK('Mobile reward result opens the remaining boxes without persisting presentation state');
     await C.close();
+    const FARM_CONTEXT = await browser.newContext({
+            viewport: { width: 390, height: 844 },
+            deviceScaleFactor: 3,
+            isMobile: true,
+            hasTouch: true,
+        }),
+        FARM_PAGE = await open(FARM_CONTEXT);
+    await FARM_PAGE.locator('#newGame').click();
+    await FARM_PAGE.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.runtime.tick > 5);
+    await FARM_PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        WORLD.playerProgression.farmBossEventStage = 8;
+        WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(118);
+        WORLD.foodTaps.remainder = 4;
+        WORLD.foodTaps.autoClock = 0;
+        if (!WORLD.tapFood('manual')) {
+            throw Error('manual food did not start the farm boss event');
+        }
+    });
+    await FARM_PAGE.waitForFunction(() => BUDMORI.sim.farmBossEvent.phase === 'fighting', {}, { timeout: 10000 });
+    const FARM_SETTLEMENT = await FARM_PAGE.evaluate(async () => {
+        const WORLD = BUDMORI.sim;
+        BUDMORI.runtime.paused = true;
+        WORLD.boss.hp = 0;
+        WORLD.step(1 / 20);
+        const RECEIPT = WORLD.bossRewardReceipts.find(
+            (item) => item.source === 'farm' && item.encounterId === WORLD.farmBossEvent.encounterId,
+        );
+        if (!RECEIPT) {
+            throw Error('actual farm boss death did not settle a reward receipt');
+        }
+        RECEIPT.chance = 1;
+        const { advanceBossRewardCalculations: ADVANCE } = await import('/src/boss-rewards.js');
+        let steps = 0;
+        while (RECEIPT.status === 'calculating' && steps < 100) {
+            ADVANCE(WORLD, { maxUnitsPerReward: 10 });
+            steps += 1;
+        }
+        if (RECEIPT.status !== 'ready') {
+            throw Error('farm boss reward calculation did not finish');
+        }
+        if (!BUDMORI.storage.save(WORLD)) {
+            throw Error(BUDMORI.storage.error || 'could not checkpoint the actual farm reward');
+        }
+        const SAVED = BUDMORI.storage.savedProgress.ledger.boss.pendingRewards.find(
+            (item) => item.receiptKey === RECEIPT.receiptKey,
+        );
+        return {
+            outcome: WORLD.farmBossEvent.outcome,
+            phase: WORLD.farmBossEvent.phase,
+            stage: RECEIPT.stage,
+            boxCount: RECEIPT.boxCount,
+            acquired: RECEIPT.acquiredCount,
+            placed: RECEIPT.placedCount,
+            queued: RECEIPT.queuedCount,
+            storedAcquired: SAVED?.acquiredCount,
+            storedQueued: SAVED?.queuedCount,
+            storesBoxes: Object.hasOwn(SAVED, 'boxes'),
+            storesRevealCursor: Object.hasOwn(SAVED, 'revealedCount'),
+        };
+    });
+    assert.deepEqual(FARM_SETTLEMENT, {
+        outcome: 'victory',
+        phase: 'celebrating',
+        stage: 8,
+        boxCount: 17,
+        acquired: 17,
+        placed: 0,
+        queued: 17,
+        storedAcquired: 17,
+        storedQueued: 17,
+        storesBoxes: false,
+        storesRevealCursor: false,
+    });
+    const RAW_AT_SETTLEMENT = await FARM_PAGE.evaluate(() => BUDMORI.storage.raw);
+    await FARM_PAGE.waitForFunction(
+        () =>
+            document.querySelector('#bossRewardDialog')?.hidden === false &&
+            document.querySelectorAll('#bossRewardBoxes .boss-reward-box').length === 17 &&
+            document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length === 10,
+        {},
+        { timeout: 10000 },
+    );
+    await FARM_PAGE.waitForFunction(
+        () => document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length === 17,
+        {},
+        { timeout: 5000 },
+    );
+    const FARM_REVEAL = await FARM_PAGE.evaluate(() => ({
+        totals: document.querySelector('#bossRewardTotals')?.textContent || '',
+        opened: document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length,
+    }));
+    assert.equal(FARM_REVEAL.opened, 17);
+    assert(FARM_REVEAL.totals.includes('17 acquired'));
+    await FARM_PAGE.locator('#bossRewardClose').click();
+    await FARM_PAGE.reload();
+    await FARM_PAGE.waitForFunction(() => window.BUDMORI);
+    assert.equal(
+        await FARM_PAGE.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
+        RAW_AT_SETTLEMENT,
+        'a valid settled payout remains byte-identical on startup before resuming play',
+    );
+    if (await FARM_PAGE.locator('#continueGame').isVisible()) {
+        await FARM_PAGE.locator('#continueGame').tap();
+    }
+    await FARM_PAGE.waitForFunction(
+        () => BUDMORI.sim?.scene === 'farm' && document.querySelector('#startScreen').hidden,
+    );
+    await FARM_PAGE.evaluate(() => {
+        BUDMORI.runtime.paused = true;
+    });
+    await FARM_PAGE.waitForFunction(
+        () => document.querySelector('#bossRewardDialog')?.hidden === false,
+        {},
+        { timeout: 10000 },
+    );
+    const FARM_RESTORED = await FARM_PAGE.evaluate(() => {
+        const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.source === 'farm');
+        return {
+            acquired: REWARD?.acquiredCount,
+            queued: REWARD?.queuedCount,
+            boxes: REWARD?.boxes.length,
+            status: REWARD?.status,
+            screenTotal: document.querySelector('#bossRewardTotals')?.textContent || '',
+            stored: JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).progress.ledger.boss.pendingRewards.find(
+                (item) => item.source === 'farm',
+            ),
+        };
+    });
+    assert.equal(FARM_RESTORED.acquired, 17, 'the actual payout survives a reload without rerolling');
+    assert.equal(FARM_RESTORED.boxes, 0, 'the restored result does not persist a chest list');
+    assert.equal(FARM_RESTORED.status, 'ready');
+    assert(FARM_RESTORED.screenTotal.includes('17 acquired'));
+    assert.equal(Object.hasOwn(FARM_RESTORED.stored, 'revealedCount'), false);
+    await clean(FARM_PAGE);
+    await FARM_CONTEXT.close();
+    CHECK(
+        'Actual Farm boss death settles 17 rewards, reveals 10 then 7, and reload preserves totals without boxes or cursor',
+    );
 }
 async function victory() {
     const C = await browser.newContext({
@@ -6630,76 +6795,27 @@ async function victory() {
     );
 }
 async function save() {
-    const C = await browser.newContext({
-        viewport: {
-            width: 1280,
-            height: 800,
-        },
-    });
-    await C.addInitScript(() =>
-        localStorage.setItem(
-            'bloom-weapon-cards-v3',
-            JSON.stringify({
-                productVersion: '0.3.0',
-                compatibility: '0.3',
-                world: {
-                    army: ['preserve-me'],
-                    cast: null,
-                    moveTarget: null,
-                },
-            }),
-        ),
-    );
-    const P = await open(C),
-        OLD = await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3'));
-    assert(await P.locator('#continueGame').isDisabled());
-    assert((await P.locator('#saveNotice').textContent()).includes('호환'));
-    await P.waitForTimeout(500);
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')), OLD);
-    await P.goto(BASE + '/#/raid');
-    await P.waitForFunction(() => window.BUDMORI);
-    assert(await P.locator('#startScreen').isVisible());
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')), OLD);
-    CHECK('Incompatible save with direct raid route redirects home and retains original bytes');
-    const DOWNLOAD = P.waitForEvent('download');
-    await P.locator('#exportSave').click();
-    const D = await DOWNLOAD,
-        RAW = await readFile(await D.path(), 'utf8');
-    assert.equal(RAW, OLD);
-    CHECK('Incompatible existing save is retained unchanged and exported byte-for-byte');
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
     await P.locator('#newGame').click();
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')), OLD);
-    await P.locator('#cancelNew').click();
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')), OLD);
-    await P.locator('#newGame').click();
-    await P.locator('#confirmNew').click();
-    await P.evaluate(() => {
-        const SEED = 4463;
-        BUDMORI.sim.seed = SEED;
-        BUDMORI.sim.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(SEED);
-    });
     await P.waitForFunction(() => BUDMORI.runtime.tick > 3);
     await goHome(P);
     const VALID = await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4'));
     assert.equal(JSON.parse(VALID).productVersion, PRODUCT_VERSION);
-    CHECK('Only explicit new-garden confirmation replaces the incompatible save');
+    const DOWNLOAD = P.waitForEvent('download');
+    await P.locator('#exportSave').click();
+    const EXPORTED = await DOWNLOAD,
+        EXPORTED_RAW = await readFile(await EXPORTED.path(), 'utf8');
+    assert.equal(EXPORTED_RAW, VALID, 'current save export preserves the supported envelope');
     await P.locator('#saveFile').setInputFiles({
         name: 'invalid.json',
         mimeType: 'application/json',
         buffer: Buffer.from('{"progress":{}}'),
     });
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')), VALID);
-    const MALFORMED = JSON.parse(VALID);
-    MALFORMED.progress.roster[0].count = -1;
-    await P.locator('#saveFile').setInputFiles({
-        name: 'invalid-progress.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(MALFORMED)),
-    });
     assert.equal(
         await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
         VALID,
-        'invalid compact progress cannot overwrite a valid save',
+        'invalid import cannot overwrite the current save',
     );
     await P.locator('#saveFile').setInputFiles({
         name: 'valid.json',
@@ -6715,163 +6831,74 @@ async function save() {
     });
     await P.locator('#confirmImport').click();
     await P.locator('#continueGame').click();
+    await P.waitForFunction(() => BUDMORI.runtime.tick > 3);
     await goHome(P);
-    CHECK('Compact save import/export retains the supported progress envelope');
-    const BEFORE_LEGACY = await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
-        PRIOR = await P.evaluate(async () => {
-            const { snapshot: SNAPSHOT } = await import('/src/farm-state.js');
-            const WORLD = new BUDMORI.sim.constructor(667);
-            WORLD.playerProgression.level = 6;
-            WORLD.playerProgression.experience = 37;
-            WORLD.playerProgression.farmUpgrades.capacity = 5;
-            while (WORLD.units.length < 100) {
-                const UNIT = WORLD.spawn(0, 1, 0, 0);
-                UNIT.growthDuration = WORLD.breedGrowthDuration();
-                UNIT.growthElapsed = UNIT.growthDuration;
-                UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
-            }
-            // Old free-capacity progression may leave an owned roster above
-            // today's cap. Import must preserve it and still permit merging.
-            WORLD.playerProgression.farmUpgrades.capacity = 0;
-            WORLD.playerProgression.availablePoints = 5;
-            return {
-                schema: 'budmori-farm',
-                productVersion: '0.4.0',
-                world: SNAPSHOT(WORLD),
-            };
-        });
-    await P.locator('#saveFile').setInputFiles({
-        name: 'prior-0.4.0.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(PRIOR)),
-    });
-    await P.locator('#cancelImport').click();
-    assert.equal(
-        await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
-        BEFORE_LEGACY,
-        'cancelled legacy migration keeps the compact source save',
-    );
-    await P.locator('#saveFile').setInputFiles({
-        name: 'prior-0.4.0.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(PRIOR)),
-    });
-    await P.locator('#confirmImport').click();
-    await P.locator('#continueGame').click();
-    const RESUMED = await P.evaluate(() => {
-        BUDMORI.runtime.paused = true;
-        return BUDMORI.sim.units.map((u) => [u.species, u.tier]);
-    });
-    assert.deepEqual(
-        RESUMED.sort(),
-        PRIOR.world.units.map((u) => [u.species, u.tier]).sort(),
-        'compatible legacy import preserves the species/tier roster',
-    );
-    assert.equal(
-        await P.evaluate(() => JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion),
-        PRODUCT_VERSION,
-    );
-    CHECK('Compatible 0.4.0 save resumes as compact progress under ' + PRODUCT_VERSION);
-    await P.evaluate(() => {
-        BUDMORI.runtime.paused = false;
-    });
-    await P.locator('#merge').click();
-    await P.waitForFunction(() => BUDMORI.sim.metrics.merges > 0);
-    await goHome(P);
-    const AFTER_MERGE = await P.evaluate(() => JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).progress);
-    assert.equal(AFTER_MERGE.player.experience, 37);
-    assert.equal(AFTER_MERGE.player.availablePoints, 5);
-    assert.equal(
-        AFTER_MERGE.roster.reduce((total, row) => total + row.count * [0, 1, 2, 4, 12, 48, 240][row.tier], 0),
-        100,
-        'merging consumes only its materials and preserves all other owned units',
-    );
     await P.reload();
     await P.waitForFunction(() => window.BUDMORI);
+    assert.equal(
+        await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
+        VALID,
+        'a valid current-format save is not rewritten during startup',
+    );
     await P.locator('#continueGame').click();
     await P.waitForFunction(() => BUDMORI.runtime.tick > 3);
-    CHECK('Above-capacity legacy roster merges, saves and continues from compact progress without losing XP or units');
     await clean(P);
-    CHECK('Malformed import and cancelled compact/legacy imports preserve save; explicit valid import resumes');
+    CHECK(
+        'Current-format save export/import and reload preserve supported progress; invalid imports leave it unchanged',
+    );
     await C.close();
 }
 async function migration() {
     const C = await browser.newContext({
-            viewport: {
-                width: 390,
-                height: 844,
-            },
-            deviceScaleFactor: 3,
-            isMobile: true,
-            hasTouch: true,
-        }),
-        P = await open(C);
-    await P.evaluate(async () => {
-        const { snapshot: SNAPSHOT } = await import('/src/farm-state.js'),
-            OLD = {
-                schema: 'budmori-farm',
-                productVersion: '0.4.7',
-                world: SNAPSHOT(new BUDMORI.sim.constructor()),
-            };
-        for (const KEY of [
-            'farmBossEvent',
-            'nextBossEncounterId',
-            'bossRewardReceipts',
-            'bossRewardWatermarks',
-            'playerProgression',
-        ]) {
-            delete OLD.world[KEY];
-        }
-        const RAW = JSON.stringify(OLD);
-        localStorage.setItem('bloom-weapon-cards-v3', RAW);
-        localStorage.removeItem('bloom-weapon-cards-v4');
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
     });
-    await P.reload();
-    await P.waitForFunction(() => window.BUDMORI);
-    const OLD = await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3'));
-    assert.equal(await P.locator('#continueGame').isDisabled(), true);
-    assert.equal(await P.locator('#legacySaveNotice').isVisible(), true);
-    assert.equal(await P.locator('#continueLegacyGame').isEnabled(), true);
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')), null);
-    const OLD_UNITS = JSON.parse(OLD)
-        .world.units.map((unit) => [unit.species, unit.tier])
-        .sort();
-    await P.locator('#continueLegacyGame').tap();
-    assert.equal(await P.locator('#importConfirm').isVisible(), true);
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')), OLD);
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')), null);
-    await P.locator('#cancelImport').tap();
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')), null);
-    await P.locator('#continueLegacyGame').tap();
-    await P.locator('#confirmImport').tap();
+    await C.addInitScript((raw) => {
+        localStorage.setItem('bloom-weapon-cards-v4', raw);
+        localStorage.setItem(
+            'bloom-weapon-cards-v3',
+            JSON.stringify({ productVersion: '0.4.7', sentinel: 'untouched' }),
+        );
+    }, 'incompatible-prelaunch-save');
+    const P = await open(C);
+    await P.waitForFunction(
+        () => window.BUDMORI && localStorage.getItem('bloom-weapon-cards-v4') !== 'incompatible-prelaunch-save',
+    );
+    const INITIAL = await P.evaluate(() => ({
+        currentRaw: localStorage.getItem('bloom-weapon-cards-v4'),
+        legacyRaw: localStorage.getItem('bloom-weapon-cards-v3'),
+        continueDisabled: document.querySelector('#continueGame').disabled,
+        legacyControls: document.querySelectorAll('#continueLegacyGame, #legacySaveNotice').length,
+        notice: document.querySelector('#saveNotice').textContent,
+    }));
+    assert.equal(JSON.parse(INITIAL.currentRaw).productVersion, PRODUCT_VERSION);
+    assert.equal(INITIAL.continueDisabled, false, 'an incompatible prelaunch save initializes a playable current farm');
+    assert.equal(INITIAL.legacyControls, 0, 'legacy conversion controls are not exposed');
+    assert.equal(INITIAL.legacyRaw, JSON.stringify({ productVersion: '0.4.7', sentinel: 'untouched' }));
+    await P.locator('#continueGame').tap();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'farm' && document.querySelector('#startScreen').hidden);
-    assert.equal(
-        await P.evaluate(() => JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')).productVersion),
-        PRODUCT_VERSION,
-    );
-    assert.equal(
-        await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')),
-        OLD,
-        'the original legacy bytes remain untouched',
-    );
-    let roster = await P.evaluate(() => BUDMORI.sim.units.map((unit) => [unit.species, unit.tier]));
-    assert.deepEqual(roster.sort(), OLD_UNITS, 'explicit legacy import preserves the species/tier roster');
-    assert.equal(
-        await P.evaluate(() => Object.hasOwn(JSON.parse(localStorage.getItem('bloom-weapon-cards-v4')), 'world')),
-        false,
-    );
+    const ROSTER = await P.evaluate(() => BUDMORI.sim.units.map((unit) => [unit.species, unit.tier]));
+    assert(ROSTER.length > 0, 'the reset farm starts with its normal roster');
     await goHome(P);
     await P.reload();
     await P.waitForFunction(() => window.BUDMORI);
+    assert.equal(
+        await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4')),
+        INITIAL.currentRaw,
+        'the new valid save remains byte-stable on reload before play resumes',
+    );
+    assert.equal(
+        await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')),
+        INITIAL.legacyRaw,
+        'the ignored legacy key is not imported or changed',
+    );
     await P.locator('#continueGame').tap();
-    roster = await P.evaluate(() => BUDMORI.sim.units.map((unit) => [unit.species, unit.tier]));
-    assert.deepEqual(roster.sort(), OLD_UNITS);
-    const IDS = await P.evaluate(() => BUDMORI.sim.units.map((unit) => unit.id));
-    assert.equal(new Set(IDS).size, IDS.length, 'rehydrated runtime units have unique regenerated IDs');
-    assert.equal(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v3')), OLD);
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'farm');
     await clean(P);
     CHECK(
-        'Mobile 0.4 save is detected without writes; explicit confirm creates compact progress; old bytes and species/tier roster survive reload',
+        'Incompatible prelaunch current save resets once to a fresh playable format; legacy key is ignored and untouched',
     );
     await C.close();
 }

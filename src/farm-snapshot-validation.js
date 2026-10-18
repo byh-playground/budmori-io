@@ -274,9 +274,7 @@ export function validateSnapshot(raw) {
         ASSERT(FARM_EVENT.outcome === 'victory' ? raw.boss.hp === 0 : raw.boss.hp > 0);
         ASSERT(
             FARM_EVENT.outcome === 'victory'
-                ? ['calculating', 'ready', 'opened', 'legacy', 'missed', 'pending', 'granted'].includes(
-                      FARM_EVENT.rewardStatus,
-                  )
+                ? ['calculating', 'ready'].includes(FARM_EVENT.rewardStatus)
                 : FARM_EVENT.rewardStatus === 'none',
         );
     }
@@ -355,7 +353,7 @@ export function validateSnapshot(raw) {
         const KEY = REWARD.receiptKey || REWARD.source + ':' + REWARD.encounterId;
         ASSERT(!REWARD_IDS.has(KEY));
         REWARD_IDS.add(KEY);
-        if (['calculating', 'ready', 'opened', 'legacy'].includes(REWARD.status)) {
+        if (['calculating', 'ready'].includes(REWARD.status)) {
             ASSERT(
                 REWARD.tier === 1 &&
                     REWARD.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance &&
@@ -374,148 +372,59 @@ export function validateSnapshot(raw) {
                 ASSERT(Number.isSafeInteger(QUEUED));
                 QUEUED_BY_GROUP.set(GROUP_KEY, QUEUED);
             }
-            if (REWARD.status === 'legacy') {
+            ASSERT(
+                INTEGER(REWARD.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
+                    INTEGER(REWARD.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) &&
+                    REWARD.boxCount === Math.min(REWARD.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) &&
+                    REWARD.rollCount === REWARD.boxCount &&
+                    INTEGER(REWARD.successCount, 0, REWARD.boxCount),
+            );
+            if (REWARD.status === 'calculating') {
+                const CALC = REWARD.calculation;
                 ASSERT(
-                    REWARD.boxCount === 0 &&
-                        REWARD.rollCount === 0 &&
-                        Array.isArray(REWARD.boxes) &&
-                        REWARD.boxes.length === 0 &&
-                        REWARD.calculation === null &&
-                        REWARD.revealedCount === 0,
-                );
-            } else {
-                ASSERT(
-                    INTEGER(REWARD.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
-                        INTEGER(REWARD.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) &&
-                        REWARD.boxCount === Math.min(REWARD.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) &&
-                        REWARD.rollCount === REWARD.boxCount &&
-                        INTEGER(REWARD.successCount, 0, REWARD.boxCount) &&
-                        INTEGER(REWARD.revealedCount, 0, REWARD.boxCount),
-                );
-                if (REWARD.status === 'calculating') {
-                    const CALC = REWARD.calculation;
-                    ASSERT(
-                        CALC &&
-                            CALC.version === 1 &&
-                            Array.isArray(CALC.payouts) &&
-                            CALC.payouts.length === REWARD.boxCount &&
-                            Array.isArray(CALC.hits) &&
-                            CALC.hits.length <= REWARD.boxCount &&
-                            CALC.hits.every(
-                                (index, i) =>
-                                    INTEGER(index, 0, REWARD.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index),
-                            ) &&
-                            INTEGER(CALC.payoutRngStateAfter, 0, 0xffffffff) &&
-                            (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD.boxCount)) &&
-                            Array.isArray(REWARD.boxes) &&
-                            REWARD.boxes.length === 0 &&
-                            REWARD.revealedCount === 0 &&
-                            REWARD.acquiredCount === 0 &&
-                            REWARD.queuedCount === 0,
-                    );
-                    const BASE = Math.floor(REWARD.rollBudget / REWARD.boxCount),
-                        EXTRA = REWARD.rollBudget % REWARD.boxCount;
-                    ASSERT(
-                        CALC.payouts.every(
-                            (payout) =>
-                                Number.isSafeInteger(payout) && payout >= BASE && payout <= BASE + (EXTRA ? 1 : 0),
+                    CALC &&
+                        CALC.version === 1 &&
+                        Array.isArray(CALC.payouts) &&
+                        CALC.payouts.length === REWARD.boxCount &&
+                        Array.isArray(CALC.hits) &&
+                        CALC.hits.length <= REWARD.boxCount &&
+                        CALC.hits.every(
+                            (index, i) =>
+                                INTEGER(index, 0, REWARD.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index),
                         ) &&
-                            CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD.rollBudget &&
-                            CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA,
-                    );
-                    if (CALC.jobState) {
-                        ASSERT(
-                            CALC.jobState.successes === CALC.hits.length &&
-                                CALC.hits.every((index) => index < CALC.jobState.processedTrials),
-                        );
-                    }
-                } else {
+                        INTEGER(CALC.payoutRngStateAfter, 0, 0xffffffff) &&
+                        (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD.boxCount)) &&
+                        REWARD.successCount === 0 &&
+                        REWARD.acquiredCount === 0 &&
+                        REWARD.queuedCount === 0,
+                );
+                const BASE = Math.floor(REWARD.rollBudget / REWARD.boxCount),
+                    EXTRA = REWARD.rollBudget % REWARD.boxCount;
+                ASSERT(
+                    CALC.payouts.every(
+                        (payout) => Number.isSafeInteger(payout) && payout >= BASE && payout <= BASE + (EXTRA ? 1 : 0),
+                    ) &&
+                        CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD.rollBudget &&
+                        CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA,
+                );
+                if (CALC.jobState) {
                     ASSERT(
-                        REWARD.calculation === null &&
-                            Array.isArray(REWARD.boxes) &&
-                            REWARD.boxes.length === REWARD.boxCount &&
-                            (REWARD.status !== 'ready' || REWARD.revealedCount < REWARD.boxCount) &&
-                            (REWARD.status !== 'opened' || REWARD.revealedCount === REWARD.boxCount),
-                    );
-                    let acquired = 0,
-                        hits = 0;
-                    for (const BOX of REWARD.boxes) {
-                        ASSERT(
-                            BOX &&
-                                Object.keys(BOX).length === 2 &&
-                                Number.isSafeInteger(BOX.payout) &&
-                                BOX.payout >= 1 &&
-                                (BOX.hit === true || BOX.hit === false),
-                        );
-                        if (BOX.hit) {
-                            acquired += BOX.payout;
-                            hits += 1;
-                            ASSERT(Number.isSafeInteger(acquired));
-                        }
-                    }
-                    ASSERT(
-                        hits === REWARD.successCount &&
-                            acquired === REWARD.acquiredCount &&
-                            REWARD.boxes.reduce((sum, box) => sum + box.payout, 0) === REWARD.rollBudget,
+                        CALC.jobState.successes === CALC.hits.length &&
+                            CALC.hits.every((index) => index < CALC.jobState.processedTrials),
                     );
                 }
+            } else {
+                ASSERT(
+                    REWARD.calculation === null &&
+                        Number.isSafeInteger(REWARD.acquiredCount) &&
+                        REWARD.acquiredCount >= 0 &&
+                        REWARD.acquiredCount <= REWARD.rollBudget &&
+                        REWARD.successCount <= REWARD.acquiredCount &&
+                        (REWARD.successCount === 0) === (REWARD.acquiredCount === 0),
+                );
             }
         } else {
-            ASSERT(
-                ['pending', 'missed', 'granted'].includes(REWARD.status) &&
-                    INTEGER(REWARD.unitId, 0, CONFIG.farm.maxUnitId),
-            );
-            if (REWARD.drops !== undefined) {
-                ASSERT((REWARD.status === 'granted') === REWARD.unitId > 0);
-                ASSERT(
-                    Array.isArray(REWARD.drops) &&
-                        REWARD.drops.length <= BOSS_REWARD_SETTINGS.maxStage &&
-                        INTEGER(REWARD.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) &&
-                        REWARD.drops.length === REWARD.rollCount,
-                );
-                for (const DROP of REWARD.drops) {
-                    ASSERT(
-                        DROP &&
-                            Number.isFinite(DROP.roll) &&
-                            DROP.roll >= 0 &&
-                            DROP.roll < 1 &&
-                            ['pending', 'missed', 'granted'].includes(DROP.status) &&
-                            INTEGER(DROP.unitId, 0, CONFIG.farm.maxUnitId) &&
-                            (DROP.status === 'granted') === DROP.unitId > 0,
-                    );
-                }
-                ASSERT(
-                    REWARD.status ===
-                        (REWARD.drops.some((drop) => drop.status === 'pending')
-                            ? 'pending'
-                            : REWARD.drops.some((drop) => drop.status === 'granted')
-                              ? 'granted'
-                              : 'missed'),
-                );
-            } else {
-                const BASE_ROLL_COUNT = Math.floor(REWARD.rollBudget),
-                    EXPECTED_STATUS =
-                        REWARD.successCount === 0
-                            ? 'missed'
-                            : REWARD.grantedCount === REWARD.successCount
-                              ? 'granted'
-                              : 'pending';
-                ASSERT(
-                    Number.isFinite(REWARD.rollBudget) &&
-                        REWARD.rollBudget >= 1 &&
-                        REWARD.rollBudget <= BOSS_REWARD_SETTINGS.maxRollCount &&
-                        Number.isFinite(REWARD.bonusRollChance) &&
-                        REWARD.bonusRollChance >= 0 &&
-                        REWARD.bonusRollChance < 1 &&
-                        REWARD.bonusRollChance === REWARD.rollBudget - BASE_ROLL_COUNT &&
-                        INTEGER(REWARD.rollCount, BASE_ROLL_COUNT, BOSS_REWARD_SETTINGS.maxRollCount) &&
-                        INTEGER(REWARD.successCount, 0, REWARD.rollCount) &&
-                        INTEGER(REWARD.grantedCount, 0, REWARD.successCount) &&
-                        REWARD.grantedCount > 0 === REWARD.unitId > 0 &&
-                        REWARD.tier === 1 &&
-                        REWARD.status === EXPECTED_STATUS,
-                );
-            }
+            ASSERT(false);
         }
         if (REWARD.acquisitionMultiplier !== undefined) {
             ASSERT(
