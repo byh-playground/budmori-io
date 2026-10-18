@@ -2,7 +2,7 @@ import { createFormationSkillState } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
 import { resolveUnitStats } from './unit-stats.js';
 import { createPlayerProgressionState } from './player-progression.js';
-import { createAbilityRuntimeSnapshot } from './ability-state.js';
+import { createAbilityRuntimeSnapshot, migrateBaselineAbilityInvestments } from './ability-state.js';
 import { abilityProfile, hasUnitCapability } from './unit-abilities.js';
 import { createFarmBossProgress } from './farm-boss-stages.js';
 import { BOSS_PATTERN_IDS } from './boss-patterns.js';
@@ -21,6 +21,10 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
         HAS_REWARD_WATERMARKS = Object.hasOwn(raw, 'bossRewardWatermarks');
     if (clone) {
         raw = structuredClone(raw);
+    }
+    migrateBaselineAbilityInvestments(raw.playerProgression);
+    for (const R of raw.raidRosters || []) {
+        migrateBaselineAbilityInvestments(R.abilitySnapshot);
     }
     // Farm no longer has a user-selectable breeding/fusion mode. Older saves
     // persisted it, but it has no effect on the current behavior.
@@ -116,6 +120,7 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
         };
     FILL(raw, BASE);
     for (const R of raw.raidRosters || []) {
+        migrateBaselineAbilityInvestments(R.abilitySnapshot);
         if (R.abilitySnapshot && !Object.hasOwn(R.abilitySnapshot, 'formationSkills')) {
             R.abilitySnapshot.formationSkills = createFormationSkillState();
         }
@@ -132,6 +137,8 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
             for (const [ID, VALUE] of Object.entries(BASE.playerProgression.abilities)) {
                 if (!Object.hasOwn(R.abilitySnapshot.abilities, ID)) {
                     R.abilitySnapshot.abilities[ID] = structuredClone(VALUE);
+                } else {
+                    FILL(R.abilitySnapshot.abilities[ID], VALUE);
                 }
             }
         }
@@ -148,7 +155,7 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
     for (const U of raw.units || []) {
         for (const KEY of LEGACY_UNIT_DEFAULT_KEYS) {
             if (!Object.hasOwn(U, KEY)) {
-                U[KEY] = UNIT_SNAPSHOT_SHAPE[KEY];
+                U[KEY] = structuredClone(UNIT_SNAPSHOT_SHAPE[KEY]);
             }
         }
         if (!Object.hasOwn(U, 'faction')) {

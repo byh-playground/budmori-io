@@ -1,24 +1,12 @@
-// This feature owns its catalog definition and pure text presentation.
-// Formatting receives domain values; it imports no DOM or renderer adapters.
-class RiceLowHealthHarvestPresentation {
-    label(definition, value, _level, profile) {
-        return `HP ${Math.round(definition.targetHpThreshold * 100)}% 이하 대상에게 낫 공격 ATK ×${profile.skillMultiplier * value}`;
-    }
-    title(value) {
-        return `수확 피해 ×${value}`;
-    }
-}
-
 export const RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
     definition: Object.freeze({
         id: 'rice-low-health-harvest',
         species: 6,
+        defaultUnlocked: true,
         name: '수확 낫',
-        description: '낫으로 베는 근접형입니다. 체력이 낮은 적에게 수확 추가 피해를 줍니다.',
-        rootTier: 3,
-        powerValues: Object.freeze([1.5, 1.75, 2]),
-        targetHpThreshold: 0.5,
-        gradeThresholds: Object.freeze([3, 2, 1]),
+        description: '적이 체력을 잃을수록 쌀의 치명타 확률이 높아집니다. 치명타 피해 배율은 공통 2배입니다.',
+        rootTier: 1,
+        powerValues: Object.freeze([0.35, 0.55, 0.75]),
+        gradeThresholds: Object.freeze([1]),
     }),
-    presentation: Object.freeze(new RiceLowHealthHarvestPresentation()),
 });

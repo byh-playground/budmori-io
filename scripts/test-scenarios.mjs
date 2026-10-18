@@ -6,6 +6,7 @@ const SUITES = {
     cadence: ['cadence'],
     mergePolicy: ['mergePolicy'],
     upgrades: ['upgrades'],
+    grain: ['grain'],
     reset: ['reset'],
     formation: ['formation'],
     save: ['save'],

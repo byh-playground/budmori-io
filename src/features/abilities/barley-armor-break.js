@@ -1,24 +1,13 @@
-// This feature owns its catalog definition and pure text presentation.
-// Formatting receives domain values; it imports no DOM or renderer adapters.
-class BarleyArmorBreakPresentation {
-    label(definition, value) {
-        return `기본 공격 적중 시 방어도 ${Math.round(value * 100)}% 감소 · ${definition.durationSeconds}초 · 중첩 시 가장 강한 감소율`;
-    }
-    title(value) {
-        return `방어도 ${Math.round(value * 100)}% 감소`;
-    }
-}
-
 export const BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
     definition: Object.freeze({
         id: 'barley-armor-break',
         species: 8,
+        defaultUnlocked: true,
         name: '도리깨 갑주 파쇄',
-        description: '도리깨 기본 공격이 적중하면 적의 방어도를 낮춰 아군의 공격을 돕습니다.',
-        rootTier: 3,
-        powerValues: Object.freeze([0.25, 0.5, 0.75]),
-        durationSeconds: 5,
-        gradeThresholds: Object.freeze([3, 2, 1]),
+        description: '도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춥니다. 각 적중의 감소가 따로 만료됩니다.',
+        rootTier: 1,
+        powerValues: Object.freeze([1, 2, 3]),
+        durationTicks: 60,
+        gradeThresholds: Object.freeze([1]),
     }),
-    presentation: Object.freeze(new BarleyArmorBreakPresentation()),
 });

@@ -1,10 +1,12 @@
 import { createFormationSkillState } from './formation-skill-state.js';
 import { Garden, Unit, CONFIG } from './farm-model.js';
 import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
+import { migrateBaselineAbilityInvestments } from './ability-state.js';
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아닙니다.');
 };
+const DEFAULT_ABILITY_INVESTMENTS = createPlayerProgressionState().abilities;
 const ASSERT = (value) => {
     if (!value) {
         FAIL();
@@ -21,6 +23,7 @@ function keys(value, required, optional = []) {
 function copyPlayer(player) {
     return {
         schemaVersion: player.schemaVersion,
+        baselineAbilityMigrationVersion: player.baselineAbilityMigrationVersion,
         formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
         level: player.level,
         experience: player.experience,
@@ -33,9 +36,15 @@ function copyPlayer(player) {
             Object.entries(player.abilities).map(([id, build]) => [
                 id,
                 {
-                    rootUnlocked: build.rootUnlocked,
-                    powerLevel: build.powerLevel,
-                    gradeLevel: build.gradeLevel,
+                    ...build,
+                    ...(DEFAULT_ABILITY_INVESTMENTS[id].branchLevels
+                        ? {
+                              branchLevels: {
+                                  ...DEFAULT_ABILITY_INVESTMENTS[id].branchLevels,
+                                  ...build.branchLevels,
+                              },
+                          }
+                        : {}),
                 },
             ]),
         ),
@@ -222,8 +231,12 @@ export function validateFarmProgress(data) {
     );
     keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
-    for (const BUILD of Object.values(PLAYER.abilities)) {
-        keys(BUILD, ['rootUnlocked', 'powerLevel', 'gradeLevel']);
+    for (const [ABILITY_ID, BUILD] of Object.entries(PLAYER.abilities)) {
+        const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID].branchLevels || {});
+        keys(BUILD, ['rootUnlocked', 'powerLevel', 'gradeLevel'], BRANCH_KEYS.length ? ['branchLevels'] : []);
+        if (Object.hasOwn(BUILD, 'branchLevels')) {
+            keys(BUILD.branchLevels, BRANCH_KEYS);
+        }
     }
     ASSERT(
         isValidPlayerProgressionState(PLAYER_WITH_DEFAULTS) &&
@@ -409,6 +422,7 @@ function position(index, count, seed, scale) {
     };
 }
 export function restoreFarmProgress(data) {
+    migrateBaselineAbilityInvestments(data?.player);
     validateFarmProgress(data);
     const WORLD = new Garden(data.seed);
     WORLD.resetUnits();

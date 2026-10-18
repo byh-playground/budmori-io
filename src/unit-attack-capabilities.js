@@ -3,7 +3,10 @@ import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-str
 import { createLobAttackMixin } from './features/unit-attacks/lob/model.js';
 import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
 import { UNIT_CAPABILITY_COMPOSITIONS, unitCapabilityComposition } from './unit-abilities.js';
-import { scaleAttackRecovery, scaleAttackArea, resolveStatusDuration } from './unit-stats.js';
+import { scaleAttackArea } from './unit-stats.js';
+import { RiceCriticalModel } from './features/abilities/rice-critical/model.js';
+import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
+import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
 import {
     createBeanSplitDescriptors,
     getCornBurstConfig,
@@ -17,11 +20,6 @@ import {
     getPeanutAssaultConfig,
     getWalnutGuardConfig,
     isWalnutGuardActive,
-    getRiceHarvestMultiplier,
-    getWheatCommandConfig,
-    refreshWheatCommandBuff,
-    getBarleyArmorBreakConfig,
-    refreshBarleyArmorBreak,
 } from './species-abilities.js';
 
 // One-time subclass composition exposes flat cycle methods. Each capability
@@ -190,7 +188,7 @@ export function composeUnitAttackCycles(
                 return CONFIG_LOCAL
                     ? createCornBurstShotSchedule(CONFIG_LOCAL, {
                           activeSeconds: 0,
-                          recoverySeconds: scaleAttackRecovery(this.spec.timing.recovery, U),
+                          recoverySeconds: this.attackRecoverySeconds(sim),
                       })
                     : super.projectileShots(sim);
             }
@@ -220,9 +218,7 @@ export function composeUnitAttackCycles(
             guardConfig(sim) {
                 const U = this.owner,
                     CONFIG_LOCAL = getWalnutGuardConfig(sim.abilityProgressionFor(U), U.tier);
-                return isWalnutGuardActive(U, CONFIG_LOCAL, scaleAttackRecovery(this.spec.timing.recovery, U))
-                    ? CONFIG_LOCAL
-                    : null;
+                return isWalnutGuardActive(U, CONFIG_LOCAL, this.attackRecoverySeconds(sim)) ? CONFIG_LOCAL : null;
             }
             receiveGuard(sim) {
                 const CONFIG_LOCAL = this.guardConfig(sim);
@@ -258,7 +254,7 @@ export function composeUnitAttackCycles(
                 ) {
                     return;
                 }
-                const CYCLE_SECONDS = this.spec.timing.windup + scaleAttackRecovery(this.spec.timing.recovery, U),
+                const CYCLE_SECONDS = this.spec.timing.windup + this.attackRecoverySeconds(sim),
                     INTERVAL = getChestnutSpikeIntervalSeconds(CONFIG_LOCAL, CYCLE_SECONDS);
                 if (!Number.isFinite(INTERVAL) || INTERVAL <= 0) {
                     return;
@@ -279,28 +275,22 @@ export function composeUnitAttackCycles(
                 });
             }
         };
-    const HARVEST = (base) =>
+    const RICE_CRITICAL = (base) =>
         class extends base {
-            harvestMultiplier(sim, hp, maxHp) {
-                return getRiceHarvestMultiplier(sim.abilityProgressionFor(this.owner), this.owner.tier, hp, maxHp);
+            criticalChanceBonus(sim, hp, maxHp) {
+                return RiceCriticalModel.chanceBonus(sim.abilityProgressionFor(this.owner), this.owner.tier, hp, maxHp);
             }
         };
     const COMMAND_AURA = (base) =>
         class extends base {
             commandAuraConfig(sim) {
-                return getWheatCommandConfig(sim.abilityProgressionFor(this.owner), this.owner.tier);
+                return WheatCommandModel.config(sim.abilityProgressionFor(this.owner), this.owner.tier);
             }
-            onBasicHit(sim, target) {
-                super.onBasicHit?.(sim, target);
-                const U = this.owner,
-                    CONFIG_LOCAL = this.commandAuraConfig(sim);
-                if (CONFIG_LOCAL) {
-                    refreshWheatCommandBuff(
-                        U,
-                        CONFIG_LOCAL,
-                        sim.time,
-                        resolveStatusDuration(CONFIG_LOCAL.durationSeconds, U, null),
-                    );
+            onLaunch(sim, action) {
+                super.onLaunch?.(sim, action);
+                const CONFIG_LOCAL = this.commandAuraConfig(sim);
+                if (CONFIG_LOCAL && !action.wheatCommandResolved) {
+                    WheatCommandModel.trigger(sim, this.owner, action, CONFIG_LOCAL);
                 }
             }
         };
@@ -309,14 +299,19 @@ export function composeUnitAttackCycles(
             onBasicHit(sim, target) {
                 super.onBasicHit?.(sim, target);
                 const U = this.owner,
-                    CONFIG_LOCAL = getBarleyArmorBreakConfig(sim.abilityProgressionFor(U), U.tier);
-                if (CONFIG_LOCAL) {
-                    refreshBarleyArmorBreak(
-                        target,
-                        CONFIG_LOCAL,
-                        sim.time,
-                        resolveStatusDuration(CONFIG_LOCAL.durationSeconds, U, target),
-                    );
+                    CONFIG_LOCAL = BarleyArmorShredModel.config(sim.abilityProgressionFor(U), U.tier);
+                if (CONFIG_LOCAL && target.hp > 0) {
+                    const RESULT = BarleyArmorShredModel.applyHit(target, CONFIG_LOCAL.amount, sim.simulationTick);
+                    if (RESULT) {
+                        sim.combat('barley-shred', {
+                            sourceUnit: U.id,
+                            unit: target === sim.boss ? 'boss' : target.id,
+                            amount: RESULT.amount,
+                            x: target.x,
+                            y: target.y,
+                            z: target.z || 0,
+                        });
+                    }
                 }
             }
         };
@@ -335,7 +330,7 @@ export function composeUnitAttackCycles(
         guard: GUARD,
         launchFan: LAUNCH_FAN,
         deathSplit: DEATH_SPLIT,
-        harvest: HARVEST,
+        riceCritical: RICE_CRITICAL,
         commandAura: COMMAND_AURA,
         armorBreak: ARMOR_BREAK,
     };

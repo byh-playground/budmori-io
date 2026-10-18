@@ -1,5 +1,6 @@
 import { Garden, bindPresentationClock } from './farm-model.js';
 import { baseUnitStatsFor } from './unit-stats.js';
+import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
 const R = RENDER_OBJECT;
 const PRESENTATION_STEP_MS = 50;
@@ -59,6 +60,7 @@ class UnitRender extends RENDER_OBJECT {
         giantEndedAt: R.STEP,
         cloneParentId: R.STEP,
         cloneBornAt: R.STEP,
+        barleyArmorShredTotal: R.STEP,
     });
     constructor() {
         super();
@@ -105,6 +107,7 @@ class UnitRender extends RENDER_OBJECT {
         this.giantEndedAt = u.giantEndedAt;
         this.cloneParentId = u.battleSummonParentId;
         this.cloneBornAt = u.cloneBornAt;
+        this.barleyArmorShredTotal = BarleyArmorShredModel.total(u, world.simulationTick);
     }
 }
 class BossRender extends RENDER_OBJECT {
@@ -142,6 +145,7 @@ class BossRender extends RENDER_OBJECT {
         summonMouthX: R.STEP,
         summonMouthY: R.STEP,
         summonMouthZ: R.STEP,
+        barleyArmorShredTotal: R.STEP,
     });
     update(b, world) {
         const ACTION = b.patternRuntime.active,
@@ -190,6 +194,7 @@ class BossRender extends RENDER_OBJECT {
         this.summonMouthX = MOUTH.x ?? b.x;
         this.summonMouthY = MOUTH.y ?? b.y;
         this.summonMouthZ = MOUTH.z ?? b.z;
+        this.barleyArmorShredTotal = BarleyArmorShredModel.total(b, world.simulationTick);
     }
 }
 class FoodRender extends RENDER_OBJECT {

@@ -67,11 +67,46 @@ function shape(v, t) {
         }
     }
 }
+function validWheatCommandBuffs(buffs) {
+    return (
+        Array.isArray(buffs) &&
+        buffs.length <= 3 &&
+        buffs.every(
+            (buff) =>
+                buff &&
+                Number.isSafeInteger(buff.level) &&
+                buff.level >= 0 &&
+                buff.level <= 2 &&
+                INTEGER(buff.expiresAtTick, 1, 1e12),
+        ) &&
+        new Set(buffs.map((buff) => buff.level)).size === buffs.length
+    );
+}
+function validBarleyArmorShredBuckets(buckets) {
+    return (
+        Array.isArray(buckets) &&
+        buckets.length === 60 &&
+        buckets.every(
+            (bucket, index) =>
+                bucket &&
+                INTEGER(bucket.expiresAtTick, 0, 1e12) &&
+                Number.isFinite(bucket.amount) &&
+                bucket.amount >= 0 &&
+                (bucket.expiresAtTick === 0
+                    ? bucket.amount === 0
+                    : bucket.amount > 0 && bucket.expiresAtTick % 60 === index),
+        )
+    );
+}
 export function validateSnapshot(raw) {
     finiteTree(raw);
     shape(raw, GARDEN_SHAPE);
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
-    ASSERT(INTEGER(raw.seed, 0, 0xffffffff) && INTEGER(raw.rng.state, 0, 0xffffffff));
+    ASSERT(
+        INTEGER(raw.seed, 0, 0xffffffff) &&
+            INTEGER(raw.rng.state, 0, 0xffffffff) &&
+            INTEGER(raw.simulationTick, 0, 1e12),
+    );
     ASSERT(['farm', 'raid'].includes(raw.scene));
     ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
     const MERGE_TASK_UNIT_IDS = new Set(),
@@ -505,7 +540,9 @@ export function validateSnapshot(raw) {
                 U.barleyArmorBreakUntil <= 1e12 &&
                 Number.isFinite(U.barleyArmorBreakReduction) &&
                 U.barleyArmorBreakReduction >= 0 &&
-                U.barleyArmorBreakReduction <= 0.75,
+                U.barleyArmorBreakReduction <= 0.75 &&
+                validWheatCommandBuffs(U.wheatCommandBuffs) &&
+                validBarleyArmorShredBuckets(U.barleyArmorShredBuckets),
         );
         ASSERT(
             INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1) &&
@@ -798,7 +835,8 @@ export function validateSnapshot(raw) {
             raw.boss.barleyArmorBreakUntil <= 1e12 &&
             Number.isFinite(raw.boss.barleyArmorBreakReduction) &&
             raw.boss.barleyArmorBreakReduction >= 0 &&
-            raw.boss.barleyArmorBreakReduction <= 0.75,
+            raw.boss.barleyArmorBreakReduction <= 0.75 &&
+            validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets),
     );
     if (raw.boss.stage === 0) {
         ASSERT(raw.boss.attackPower === 4);

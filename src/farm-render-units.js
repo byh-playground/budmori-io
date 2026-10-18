@@ -1,4 +1,5 @@
 import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
+import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
 import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
 import { DualStrikePresentation } from './features/unit-attacks/dual-strike/presentation.js';
@@ -8,6 +9,7 @@ import { UNIT_GRADES } from './unit-grades.js';
 import { scenePresentation } from './farm-render-scenes.js';
 
 const DEFAULT_ATTACK = new UnitAttackPresentation();
+const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
@@ -309,5 +311,6 @@ export class UnitPresentation {
         const POSE = this.drawUnit(u, sim, REST);
         this.drawUnitRingLayer(u, EFFECTS, 'front');
         this.drawSleepIndicator(REST, POSE);
+        BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u, u.barleyArmorShredTotal || 0);
     }
 }

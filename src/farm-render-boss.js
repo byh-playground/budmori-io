@@ -7,8 +7,10 @@ import { ChargePresentation } from './features/boss-patterns/charge/presentation
 import { LeapSlamPresentation } from './features/boss-patterns/leap-slam/presentation.js';
 import { FanSweepPresentation } from './features/boss-patterns/fan-sweep/presentation.js';
 import { MouthSummonPresentation } from './features/boss-patterns/mouth-summon/presentation.js';
+import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 
 const IDLE_PRESENTATION = new BossAttackPresentation();
+const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const BOSS_PRESENTATIONS = new Map(
     [
         new FrontSlamPresentation(),
@@ -188,5 +190,6 @@ export class BossPresentation {
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
+        BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B, B.barleyArmorShredTotal || 0);
     }
 }

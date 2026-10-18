@@ -18,6 +18,8 @@ import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-pha
 import { createFarmModeBehaviors } from './farm-mode-behaviors.js';
 import { createBossPatternBehaviors } from './boss-pattern-behaviors.js';
 import { bossMouthWorldPoint } from './boss-vector-sockets.js';
+import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
+import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
 const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
 const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
@@ -31,12 +33,7 @@ import {
     scaleAttackRecovery,
     scaleAttackArea,
 } from './unit-stats.js';
-import {
-    UNIT_ABILITY_PROFILES as ATTACK_TYPES,
-    abilityProfile,
-    unitCapabilityComposition,
-    speciesWithCapability,
-} from './unit-abilities.js';
+import { UNIT_ABILITY_PROFILES as ATTACK_TYPES, abilityProfile, unitCapabilityComposition } from './unit-abilities.js';
 import {
     BOSS_REWARD_SETTINGS,
     bossAcquisitionChance,
@@ -56,12 +53,7 @@ import {
     getFarmCapacity,
     getMergeCooldownSeconds,
 } from './farm-upgrades.js';
-import {
-    MAX_BEAN_SPLIT_CHILDREN,
-    getChestnutSpikeFanAngles,
-    getWalnutGuardConfig,
-    effectiveBarleyArmor,
-} from './species-abilities.js';
+import { MAX_BEAN_SPLIT_CHILDREN, getChestnutSpikeFanAngles, getWalnutGuardConfig } from './species-abilities.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
 import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, createBossPatternRuntime, chooseBossPattern } from './boss-patterns.js';
@@ -373,12 +365,38 @@ class AttackCycle {
         this.phase = 'idle';
         this.elapsed = 0;
         this.action = null;
+        this._attackSpeedMultiplier = 1;
     }
     get spec() {
         return abilityProfile(this.owner.species);
     }
     get composition() {
         return unitCapabilityComposition(this.owner.species);
+    }
+    attackSpeedMultiplier(sim) {
+        return WheatCommandModel.attackSpeedMultiplier(this.owner, sim.simulationTick);
+    }
+    attackRecoverySecondsFor(multiplier) {
+        const U = this.owner,
+            BASE_ATTACK_SPEED = baseUnitStatsFor(U.tier, U.species).attackSpeed;
+        return scaleAttackRecovery(this.spec.timing.recovery, U, {
+            attackSpeed: BASE_ATTACK_SPEED * multiplier,
+        });
+    }
+    attackRecoverySeconds(sim) {
+        return this.attackRecoverySecondsFor(this.attackSpeedMultiplier(sim));
+    }
+    syncAttackSpeedMultiplier(tick) {
+        const NEXT_MULTIPLIER = WheatCommandModel.attackSpeedMultiplier(this.owner, tick),
+            PREVIOUS_MULTIPLIER = this._attackSpeedMultiplier;
+        if (this.phase === 'recover' && NEXT_MULTIPLIER !== PREVIOUS_MULTIPLIER) {
+            const PREVIOUS_RECOVERY = this.attackRecoverySecondsFor(PREVIOUS_MULTIPLIER),
+                NEXT_RECOVERY = this.attackRecoverySecondsFor(NEXT_MULTIPLIER);
+            if (PREVIOUS_RECOVERY > 0) {
+                this.elapsed = Math.min(NEXT_RECOVERY, (this.elapsed * NEXT_RECOVERY) / PREVIOUS_RECOVERY);
+            }
+        }
+        this._attackSpeedMultiplier = NEXT_MULTIPLIER;
     }
     begin(sim, target) {
         const U = this.owner;
@@ -410,6 +428,7 @@ class AttackCycle {
         }
     }
     recover(sim, recoil = false) {
+        this.syncAttackSpeedMultiplier(sim.simulationTick);
         this.phase = 'recover';
         this.elapsed = 0;
         const U = this.owner;
@@ -438,6 +457,9 @@ class AttackCycle {
             this.interrupt();
             return true;
         }
+        if (this.phase === 'recover') {
+            this.syncAttackSpeedMultiplier(sim.simulationTick);
+        }
         if (this.phase === 'idle') {
             return false;
         }
@@ -457,7 +479,7 @@ class AttackCycle {
             }
         } else if (this.phase === 'recover') {
             this.updateRecovery?.(sim);
-            if (this.elapsed >= scaleAttackRecovery(this.spec.timing.recovery, U)) {
+            if (this.elapsed >= this.attackRecoverySeconds(sim)) {
                 this.ready();
             }
         }
@@ -542,8 +564,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             walnutEmpoweredNextBasic: false,
             wheatCommandUntil: 0,
             wheatCommandCritBonus: 0,
+            wheatCommandBuffs: [],
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0,
+            barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
             giantUntil: 0,
             giantEndedAt: -10,
             isFormationClone: false,
@@ -1150,6 +1174,7 @@ const GARDEN = class Garden {
         this.effects = [];
         this.events = [];
         this.time = 0;
+        this.simulationTick = 0;
         this.nextId = 1;
         this.nextBossEncounterId = 1;
         this.bossRewardReceipts = [];
@@ -2149,6 +2174,7 @@ const GARDEN = class Garden {
             airborneRecovery: 0,
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0,
+            barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
             summonMouth: {
                 x: 0,
                 y: 0,
@@ -3026,6 +3052,7 @@ const GARDEN = class Garden {
     }
     _step(dt) {
         const LOGIC_START = this.profiler?.start();
+        this.simulationTick = (this.simulationTick || 0) + 1;
         this._spatialStepActive = true;
         this._spatialQueryDepth = 0;
         this.time += dt;
@@ -3889,38 +3916,8 @@ const GARDEN = class Garden {
             u.ability.onLaunch?.(this, action);
         }
     }
-    wheatCommandCritBonusFor(attacker) {
-        if (!attacker || attacker.hp <= 0) {
-            return 0;
-        }
-        let strongest = 0;
-        if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
-            this._rebuildUnitSpatialIndex(this.units);
-        }
-        // Reuse only groups assigned the aura capability. Membership is compiled
-        // once from the registry; buff lifetime and positions stay hit-time.
-        for (const SPECIES of speciesWithCapability('commandAura')) {
-            for (const SOURCE of this._speciesGroups[SPECIES]) {
-                if (SOURCE.hp <= 0 || !hasFaction(SOURCE, attacker.faction) || SOURCE.wheatCommandUntil <= this.time) {
-                    continue;
-                }
-                const CONFIG_LOCAL = SOURCE.ability.commandAuraConfig?.(this);
-                if (!CONFIG_LOCAL || Math.hypot(SOURCE.x - attacker.x, SOURCE.y - attacker.y) > CONFIG_LOCAL.radius) {
-                    continue;
-                }
-                strongest = Math.max(
-                    strongest,
-                    Number.isFinite(SOURCE.wheatCommandCritBonus) ? SOURCE.wheatCommandCritBonus : 0,
-                );
-            }
-        }
-        return Math.max(0, Math.min(1, strongest));
-    }
-    riceHarvestMultiplier(u, target, kind, hpBefore = target?.hp, maxHp = target?.maxHp) {
-        if (kind !== abilityProfile(u.species).kind) {
-            return 1;
-        }
-        return (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).harvestMultiplier?.(this, hpBefore, maxHp) ?? 1;
+    riceCriticalChanceBonus(u, hpBefore, maxHp) {
+        return (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).criticalChanceBonus?.(this, hpBefore, maxHp) ?? 0;
     }
     applyGrainOnBasicHit(u, target, kind) {
         if (!hasFaction(u, FACTION_CONFIG.PLAYER) || kind !== abilityProfile(u.species).kind) {
@@ -3954,7 +3951,7 @@ const GARDEN = class Garden {
             criticalRoll,
             hitTargets: area ? new Set() : null,
             sourceStatOverrides: {
-                critChance: CLAMP(ATTACKER_STATS.critChance + this.wheatCommandCritBonusFor(u), 0, 1),
+                critChance: ATTACKER_STATS.critChance,
             },
         };
     }
@@ -3963,9 +3960,12 @@ const GARDEN = class Garden {
             const TARGET_STATS = STATS(target.tier, target.species);
             return {
                 maxHp: target.isFormationClone ? 1 : TARGET_STATS.maxHp,
-                armor:
-                    effectiveBarleyArmor(target, TARGET_STATS.armor, this.time) +
-                    (target.giantUntil > this.time ? 100 : 0),
+                armor: BarleyArmorShredModel.effectiveArmor(
+                    target,
+                    TARGET_STATS.armor,
+                    target.giantUntil > this.time ? 100 : 0,
+                    this.simulationTick,
+                ),
             };
         }
         const HP_RATIO =
@@ -3974,7 +3974,7 @@ const GARDEN = class Garden {
                 : 1;
         return {
             maxHp: target.maxHp,
-            armor: effectiveBarleyArmor(target, (1 - HP_RATIO) * 100, this.time),
+            armor: BarleyArmorShredModel.effectiveArmor(target, (1 - HP_RATIO) * 100, 0, this.simulationTick),
         };
     }
     damageCombatTarget(u, action, target, point, options = {}) {
@@ -4003,14 +4003,20 @@ const GARDEN = class Garden {
             } = CONTEXT;
         CONTEXT.hitTargets?.add(target);
         const DEFENSE = this.combatTargetDefense(target),
-            HARVEST_MULTIPLIER = this.riceHarvestMultiplier(SOURCE, target, KIND, target.hp, DEFENSE.maxHp);
+            CRITICAL_BONUS =
+                KIND === abilityProfile(SOURCE.species).kind
+                    ? this.riceCriticalChanceBonus(SOURCE, target.hp, DEFENSE.maxHp)
+                    : 0,
+            SOURCE_STAT_OVERRIDES = {
+                ...CONTEXT.sourceStatOverrides,
+                critChance: CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
+            };
         const GUARD = IS_BOSS ? null : target.ability.receiveGuard?.(this);
         const RAW_DAMAGE =
             ATTACKER_STATS.attackPower *
             (SOURCE.giantUntil > this.time ? 3 : 1) *
             DAMAGE_MULTIPLIER *
             (BUFFED ? CONFIG.raid.buff.damage : 1) *
-            HARVEST_MULTIPLIER *
             (GUARD?.receivedDamageMultiplier ?? 1);
         // The context belongs to one attack, so a mixed boss/unit area hit shares
         // one lazy roll while each target retains its own armor and actual HP loss.
@@ -4018,7 +4024,7 @@ const GARDEN = class Garden {
             rawDamage: RAW_DAMAGE,
             area: CONTEXT.area,
             sourceKind: CONTEXT.sourceKind,
-            sourceStatOverrides: CONTEXT.sourceStatOverrides,
+            sourceStatOverrides: SOURCE_STAT_OVERRIDES,
             armorForTarget: () => DEFENSE.armor,
             roll: () => CONTEXT.criticalRoll ?? (CONTEXT.criticalRoll = this.random()),
         });
@@ -4040,7 +4046,6 @@ const GARDEN = class Garden {
         const STRENGTH =
             DAMAGE_MULTIPLIER *
             (BUFFED ? CONFIG.raid.buff.damage : 1) *
-            HARVEST_MULTIPLIER *
             (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
         if (IS_BOSS) {
             this.finishBossHit(SOURCE, action, point, CONTEXT, DAMAGE, STRENGTH);
@@ -4096,6 +4101,7 @@ const GARDEN = class Garden {
             unit: target.id,
             sourceUnit: u.id,
             damage: damage?.damage || 0,
+            critical: !!damage?.critical,
             x: point.x,
             y: point.y,
             z: Math.max(0.15, target.z + 0.25),

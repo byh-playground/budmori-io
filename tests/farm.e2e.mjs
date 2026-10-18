@@ -1144,6 +1144,8 @@ async function upgradeMenuFlow() {
         W.markProgressChanged();
     });
     await openMenuTab(P, 'abilities');
+    const ABILITY_NOTE = await P.locator('.ability-tree__note').textContent();
+    assert(ABILITY_NOTE.includes('Common') && ABILITY_NOTE.includes('Rare(T3)'));
     for (const [SPECIES, ID, ROLE] of [
         [6, 'rice-low-health-harvest', '수확'],
         [7, 'wheat-command-crit', '치명타'],
@@ -1151,14 +1153,29 @@ async function upgradeMenuFlow() {
     ]) {
         await P.locator(`[data-ability-species="${SPECIES}"]`).click();
         const CARD = P.locator(`[data-ability="${ID}"]`);
-        assert((await CARD.textContent()).includes(ROLE));
-        await CARD.locator(`[data-ability-node="${ID}:root"]`).click();
-        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.abilities[id].rootUnlocked, ID);
+        const CARD_TEXT = await CARD.textContent();
+        assert(ID === 'wheat-command-crit' ? CARD_TEXT.includes('공격 속도') : CARD_TEXT.includes(ROLE));
+        assert.equal(await CARD.locator(`[data-ability-node="${ID}:root"]`).count(), 0);
         await CARD.locator(`[data-ability-node="${ID}:power:1"]`).click();
         await P.waitForFunction((id) => BUDMORI.sim.playerProgression.abilities[id].powerLevel === 1, ID);
+        if (ID === 'wheat-command-crit') {
+            const RANGE_NODE = CARD.locator(`[data-ability-node="${ID}:branch-range:1"]`);
+            await RANGE_NODE.scrollIntoViewIfNeeded();
+            await RANGE_NODE.click();
+            await P.waitForFunction((id) => BUDMORI.sim.playerProgression.abilities[id].branchLevels.range === 1, ID);
+            await P.waitForFunction(
+                (id) =>
+                    document
+                        .querySelector(`[data-ability="${id}"] .ability-card__current-effect`)
+                        ?.textContent.includes('×3'),
+                ID,
+            );
+        }
         await P.waitForTimeout(220);
-        assert((await CARD.locator('.ability-card__current-effect').textContent()).includes('현재 효과'));
-        assert((await CARD.locator('.ability-card__grade').textContent()).includes('Rare'));
+        assert(
+            (await CARD.locator('.ability-card__current-effect').textContent()).includes('\uAE30\uBCF8 \uB2A5\uB825'),
+        );
+        assert((await CARD.locator('.ability-card__grade').textContent()).includes('\uACF5\uD1B5'));
         await P.locator('#abilityNodes').evaluate((element) => {
             element.scrollTop = 0;
         });
@@ -1200,7 +1217,7 @@ async function upgradeMenuFlow() {
     await P.locator('#continueGame').click();
     await openMenuTab(P, 'abilities');
     await P.locator('[data-ability-species="6"]').click();
-    assert((await P.locator('.ability-card__current-effect').textContent()).includes('1.75'));
+    assert((await P.locator('.ability-card__current-effect').textContent()).includes('55%p'));
     await clean(P);
     await C.close();
     CHECK(
@@ -1317,6 +1334,458 @@ async function formationHudFlow() {
 async function upgrades() {
     await upgradeMenuFlow();
     await formationHudFlow();
+}
+async function grainMechanicsFlow() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    const RESULT = await P.evaluate(async () => {
+        const [
+                { RiceCriticalModel: RICE },
+                { WheatCommandModel: WHEAT },
+                { BarleyArmorShredModel: BARLEY, createBarleyArmorShredBuckets: CREATE_SHRED_BUCKETS },
+                { createPlayerProgressionState: CREATE_PROGRESS },
+                { captureFarmProgress: CAPTURE_PROGRESS, restoreFarmProgress: RESTORE_PROGRESS },
+                { snapshot: SNAPSHOT, restore: RESTORE, normalizeSnapshot: NORMALIZE, validateSnapshot: VALIDATE },
+                { Garden: GARDEN },
+                { baseUnitStatsFor: BASE_STATS },
+                {
+                    purchaseAbilityNode: PURCHASE_NODE,
+                    resetAbilityProgression: RESET_ABILITIES,
+                    resetPlayerProgression: RESET_PLAYER_PROGRESS,
+                },
+            ] = await Promise.all([
+                import('/src/features/abilities/rice-critical/model.js'),
+                import('/src/features/abilities/wheat-command/model.js'),
+                import('/src/features/abilities/barley-shred/model.js'),
+                import('/src/player-progression.js'),
+                import('/src/farm-progress.js'),
+                import('/src/farm-state.js'),
+                import('/src/farm-model.js'),
+                import('/src/unit-stats.js'),
+                import('/src/ability-progression.js'),
+            ]),
+            WHEAT_ID = 'wheat-command-crit',
+            RICE_ID = 'rice-low-health-harvest',
+            PROGRESSION = CREATE_PROGRESS();
+        PROGRESSION.level = 2;
+        PROGRESSION.availablePoints = 0;
+        PROGRESSION.abilities[WHEAT_ID] = {
+            rootUnlocked: false,
+            powerLevel: 1,
+            gradeLevel: 0,
+            branchLevels: { range: 0 },
+        };
+        const RICE_STATE = { abilities: { [RICE_ID]: { rootUnlocked: false, powerLevel: 0, gradeLevel: 0 } } };
+        const RICE_BONUS = [
+            RICE.chanceBonus(RICE_STATE, 3, 100, 100),
+            RICE.chanceBonus(RICE_STATE, 3, 50, 100),
+            RICE.chanceBonus(RICE_STATE, 3, 1, 100),
+            RICE.chanceBonus(RICE_STATE, 3, 0, 100),
+            RICE.chanceBonus(RICE_STATE, 3, 0, 0),
+        ];
+        const BASELINE_ACCESS = {
+            riceBonus: RICE.chanceBonus(RICE_STATE, 1, 50, 100),
+            wheatSpeedValue: WHEAT.config(CREATE_PROGRESS(), 1)?.speedValue,
+            barleyAmount: BARLEY.config(CREATE_PROGRESS(), 1)?.amount,
+        };
+        const W = new GARDEN(999),
+            SOURCE = W.spawn(7, 3, 0, 0),
+            ALLY = W.spawn(0, 1, 1, 0),
+            EDGE = W.spawn(0, 1, 2.89, 0),
+            OUTSIDE = W.spawn(0, 1, 2.91, 0),
+            DEAD = W.spawn(0, 1, 0.25, 0);
+        W.playerProgression = PROGRESSION;
+        W.simulationTick = 10;
+        let randomCalls = 0;
+        W.random = () => (randomCalls++, 0);
+        DEAD.hp = 0;
+        DEAD.down = 60;
+        const ACTION = { id: 1 };
+        const COMMAND_CONFIG = SOURCE.ability.commandAuraConfig?.(W),
+            HAS_ON_LAUNCH = typeof SOURCE.ability.onLaunch === 'function';
+        W.combatEvent('launch', SOURCE, ACTION);
+        W.combatEvent('launch', SOURCE, ACTION);
+        const WHEAT_TRIGGER = {
+            source: SOURCE.wheatCommandBuffs,
+            ally: ALLY.wheatCommandBuffs,
+            edge: EDGE.wheatCommandBuffs,
+            outside: OUTSIDE.wheatCommandBuffs,
+            dead: DEAD.wheatCommandBuffs,
+            randomCalls,
+            commandConfig: COMMAND_CONFIG,
+            hasOnLaunch: HAS_ON_LAUNCH,
+            resolved: ACTION.wheatCommandResolved,
+        };
+        ALLY.x = 10;
+        WHEAT.refreshBuff(ALLY, 2, 20);
+        WHEAT.refreshBuff(ALLY, 0, 25);
+        const WHEAT_STRENGTH = {
+            strongest: WHEAT.activeBuff(ALLY, 25)?.level,
+            strongExpiry: ALLY.wheatCommandBuffs.find((buff) => buff.level === 2)?.expiresAtTick,
+            fallsBack: WHEAT.activeBuff(ALLY, 81)?.level,
+            expires: WHEAT.activeBuff(ALLY, 85),
+        };
+        const SHRED = { hp: 100, barleyArmorShredBuckets: CREATE_SHRED_BUCKETS() };
+        BARLEY.applyHit(SHRED, 1, 10);
+        const SAME_TICK = BARLEY.applyHit(SHRED, 2, 10);
+        BARLEY.applyHit(SHRED, 2, 11);
+        const BARLEY_TIMING = {
+            sameTickTotal: SAME_TICK.total,
+            totalAt60: BARLEY.total(SHRED, 60),
+            armorAt60: BARLEY.effectiveArmor(SHRED, 4, 0, 60),
+            totalAt70: BARLEY.total(SHRED, 70),
+            totalAt71: BARLEY.total(SHRED, 71),
+            slotCount: SHRED.barleyArmorShredBuckets.length,
+        };
+        const UPGRADE_STATE = CREATE_PROGRESS();
+        UPGRADE_STATE.level = 6;
+        UPGRADE_STATE.availablePoints = 5;
+        const CONTEXT = { highestSpeciesTier: { 7: 3 }, location: 'farm', inCombat: false };
+        let next = PURCHASE_NODE(UPGRADE_STATE, WHEAT_ID, 'power-1', CONTEXT).state;
+        next = PURCHASE_NODE(next, WHEAT_ID, 'branch-range-1', CONTEXT).state;
+        const RESET = RESET_ABILITIES(next, CONTEXT, 7),
+            FULL_RESET = RESET_PLAYER_PROGRESS(next, { type: 'all' }, CONTEXT);
+        const WHEAT_UPGRADE = {
+            rangeLevel: next.abilities[WHEAT_ID].branchLevels.range,
+            invested: next.availablePoints,
+            refund: RESET.state.availablePoints,
+            rangeAfterReset: RESET.state.abilities[WHEAT_ID].branchLevels.range,
+            fullRefund: FULL_RESET.state.availablePoints,
+            rangeAfterFullReset: FULL_RESET.state.abilities[WHEAT_ID].branchLevels.range,
+        };
+        const LEGACY_ABILITY_PLAYER = CREATE_PROGRESS();
+        LEGACY_ABILITY_PLAYER.level = 6;
+        LEGACY_ABILITY_PLAYER.availablePoints = 0;
+        LEGACY_ABILITY_PLAYER.abilities[WHEAT_ID] = {
+            rootUnlocked: true,
+            powerLevel: 1,
+            gradeLevel: 2,
+            branchLevels: { range: 1 },
+        };
+        const RAW = SNAPSHOT(W);
+        RAW.units[1].barleyArmorShredBuckets[22] = { expiresAtTick: 82, amount: 4 };
+        let validCurrent;
+        try {
+            VALIDATE(RAW);
+            validCurrent = true;
+        } catch (error) {
+            validCurrent = error.message;
+        }
+        const LEGACY = structuredClone(RAW);
+        LEGACY.playerProgression = structuredClone(LEGACY_ABILITY_PLAYER);
+        delete LEGACY.playerProgression.baselineAbilityMigrationVersion;
+        delete LEGACY.simulationTick;
+        for (const UNIT of LEGACY.units) {
+            delete UNIT.wheatCommandBuffs;
+            delete UNIT.barleyArmorShredBuckets;
+        }
+        delete LEGACY.boss.barleyArmorShredBuckets;
+        for (const [ID, BUILD] of Object.entries(LEGACY.playerProgression.abilities)) {
+            if (ID !== WHEAT_ID) {
+                delete BUILD.branchLevels;
+            }
+        }
+        const NORMALIZED = NORMALIZE(LEGACY),
+            RESTORED = RESTORE(NORMALIZED),
+            LEGACY_SNAPSHOT = {
+                valid: VALIDATE(NORMALIZED),
+                simulationTick: RESTORED.simulationTick,
+                wheatRangeLevel: RESTORED.playerProgression.abilities[WHEAT_ID].branchLevels.range,
+                wheatRootUnlocked: RESTORED.playerProgression.abilities[WHEAT_ID].rootUnlocked,
+                wheatGradeLevel: RESTORED.playerProgression.abilities[WHEAT_ID].gradeLevel,
+                wheatRefundedPoints: RESTORED.playerProgression.availablePoints,
+                wheatBuffs: RESTORED.units[0].wheatCommandBuffs.length,
+                shredSlots: RESTORED.units[1].barleyArmorShredBuckets.length,
+            };
+        const FARM_PROGRESS = CAPTURE_PROGRESS(W);
+        delete FARM_PROGRESS.player.abilities[WHEAT_ID].branchLevels;
+        const RESTORED_PROGRESS = RESTORE_PROGRESS(FARM_PROGRESS);
+        const LEGACY_FARM_PROGRESS = structuredClone(FARM_PROGRESS);
+        LEGACY_FARM_PROGRESS.player = structuredClone(LEGACY_ABILITY_PLAYER);
+        delete LEGACY_FARM_PROGRESS.player.baselineAbilityMigrationVersion;
+        const LEGACY_PROGRESS_FIRST = RESTORE_PROGRESS(LEGACY_FARM_PROGRESS),
+            LEGACY_PROGRESS_SECOND = RESTORE_PROGRESS(LEGACY_FARM_PROGRESS),
+            NO_PURCHASE_PROGRESS = structuredClone(FARM_PROGRESS);
+        NO_PURCHASE_PROGRESS.player = CREATE_PROGRESS();
+        NO_PURCHASE_PROGRESS.player.level = 4;
+        NO_PURCHASE_PROGRESS.player.availablePoints = 3;
+        delete NO_PURCHASE_PROGRESS.player.baselineAbilityMigrationVersion;
+        const NO_PURCHASE_RESTORE = RESTORE_PROGRESS(NO_PURCHASE_PROGRESS);
+        const COMBAT = new GARDEN(321),
+            RICE_ATTACKER = COMBAT.spawn(6, 3, -8, 0),
+            RICE_TARGET = COMBAT.spawn(0, 3, -6, 0);
+        COMBAT.playerProgression.level = 3;
+        COMBAT.playerProgression.availablePoints = 0;
+        RICE_TARGET.faction = 'enemy';
+        RICE_TARGET.hp = BASE_STATS(3, 0).maxHp / 2;
+        COMBAT.random = () => 0;
+        COMBAT.damageCombatTarget(RICE_ATTACKER, { id: 991, hit: false }, RICE_TARGET, { x: -6, y: 0, z: 0 });
+        const RICE_HITS = COMBAT.notices.filter(
+                (event) => event.kind === 'unit-hit' && event.sourceUnit === RICE_ATTACKER.id,
+            ),
+            BARLEY_ATTACKER = COMBAT.spawn(8, 3, 5, 3),
+            BARLEY_TARGET = COMBAT.spawn(0, 3, 7, 3);
+        BARLEY_TARGET.faction = 'enemy';
+        BARLEY_TARGET.giantUntil = COMBAT.time + 1;
+        COMBAT.random = () => 0.99;
+        const BARLEY_ARMOR_BEFORE = COMBAT.combatTargetDefense(BARLEY_TARGET).armor,
+            BARLEY_HP_BEFORE = BARLEY_TARGET.hp;
+        COMBAT.damageCombatTarget(BARLEY_ATTACKER, { id: 992, hit: false }, BARLEY_TARGET, { x: 7, y: 3, z: 0 });
+        const BARLEY_HITS = COMBAT.notices.filter(
+                (event) => event.kind === 'unit-hit' && event.sourceUnit === BARLEY_ATTACKER.id,
+            ),
+            COMBAT_INTEGRATION = {
+                riceCritical: RICE_HITS[0]?.critical,
+                riceHitCount: RICE_HITS.length,
+                barleyArmorBefore: BARLEY_ARMOR_BEFORE,
+                barleyArmorAfter: COMBAT.combatTargetDefense(BARLEY_TARGET).armor,
+                barleyHitDamage: BARLEY_HP_BEFORE - BARLEY_TARGET.hp,
+                barleyDamageAtPreHitArmor: (BASE_STATS(3, 8).attackPower * 100) / 200,
+                barleyHitCount: BARLEY_HITS.length,
+                barleyApplied: COMBAT.notices.some(
+                    (event) => event.kind === 'barley-shred' && event.unit === BARLEY_TARGET.id,
+                ),
+            };
+        const RUN_ATTACK_WINDOW = (buffLevel) => {
+            const ATTACK_SIM = new GARDEN(800 + (buffLevel ?? -1)),
+                ATTACKER = ATTACK_SIM.spawn(5, 1, 0, 0),
+                TARGET = ATTACK_SIM.spawn(0, 1, 1, 0),
+                STEP = 1 / 120,
+                TARGET_POINT = {
+                    id: TARGET.id,
+                    x: TARGET.x - (TARGET.radius + ATTACKER.radius - 0.16),
+                    y: TARGET.y,
+                };
+            TARGET.faction = 'enemy';
+            TARGET.hp = 1_000_000;
+            TARGET.maxHp = TARGET.hp;
+            ATTACKER.dropLanded = TARGET.dropLanded = true;
+            if (buffLevel !== null) {
+                WHEAT.refreshBuff(ATTACKER, buffLevel, ATTACK_SIM.simulationTick);
+                ATTACKER.wheatCommandBuffs.find((buff) => buff.level === buffLevel).expiresAtTick = 10000;
+            }
+            const ADVANCE = () => {
+                ATTACK_SIM.time += STEP;
+                ATTACK_SIM.simulationTick++;
+                const OLD = { x: ATTACKER.x, y: ATTACKER.y, z: ATTACKER.z },
+                    BUSY = ATTACKER.ability.update(ATTACK_SIM, STEP);
+                if (!BUSY && ATTACKER.ability.phase === 'idle') {
+                    ATTACKER.x = ATTACKER.y = ATTACKER.vx = ATTACKER.vy = 0;
+                    ATTACKER.ability.begin(ATTACK_SIM, TARGET_POINT);
+                }
+                ATTACKER.integrate(STEP);
+                if (ATTACKER.ability.phase === 'active') {
+                    ATTACKER.ability.afterMove(ATTACK_SIM, OLD);
+                }
+            };
+            ATTACKER.ability.begin(ATTACK_SIM, TARGET_POINT);
+            for (let index = 0; index < 2400; index++) {
+                ADVANCE();
+            }
+            const EVENTS = ATTACK_SIM.combatLog.filter((event) => event.unit === ATTACKER.id),
+                RECOVERY_INTERVALS = [];
+            for (let index = 0; index < EVENTS.length; index++) {
+                if (EVENTS[index].kind === 'recover') {
+                    const NEXT_PREPARE = EVENTS.slice(index + 1).find((event) => event.kind === 'prepare');
+                    if (NEXT_PREPARE) {
+                        RECOVERY_INTERVALS.push(NEXT_PREPARE.time - EVENTS[index].time);
+                    }
+                }
+            }
+            return {
+                hitCount: ATTACK_SIM.notices.filter(
+                    (event) => event.kind === 'unit-hit' && event.sourceUnit === ATTACKER.id,
+                ).length,
+                recoveryIntervals: RECOVERY_INTERVALS.slice(0, 8),
+            };
+        };
+        const RUN_PROGRESS_PRESERVATION = () => {
+            const ATTACK_SIM = new GARDEN(811),
+                ATTACKER = ATTACK_SIM.spawn(5, 1, 0, 0),
+                TARGET = ATTACK_SIM.spawn(0, 1, 1, 0),
+                STEP = 0.05,
+                TARGET_POINT = {
+                    id: TARGET.id,
+                    x: TARGET.x - (TARGET.radius + ATTACKER.radius - 0.16),
+                    y: TARGET.y,
+                };
+            TARGET.faction = 'enemy';
+            TARGET.hp = 1_000_000;
+            TARGET.maxHp = TARGET.hp;
+            ATTACKER.dropLanded = TARGET.dropLanded = true;
+            const ADVANCE = () => {
+                ATTACK_SIM.time += STEP;
+                ATTACK_SIM.simulationTick++;
+                const OLD = { x: ATTACKER.x, y: ATTACKER.y, z: ATTACKER.z },
+                    BUSY = ATTACKER.ability.update(ATTACK_SIM, STEP);
+                if (!BUSY && ATTACKER.ability.phase === 'idle') {
+                    ATTACKER.x = ATTACKER.y = ATTACKER.vx = ATTACKER.vy = 0;
+                    ATTACKER.ability.begin(ATTACK_SIM, TARGET_POINT);
+                }
+                ATTACKER.integrate(STEP);
+                if (ATTACKER.ability.phase === 'active') {
+                    ATTACKER.ability.afterMove(ATTACK_SIM, OLD);
+                }
+            };
+            ATTACKER.ability.begin(ATTACK_SIM, TARGET_POINT);
+            while (ATTACKER.ability.phase !== 'recover') {
+                ADVANCE();
+            }
+            const RECOVERY_TIME = ATTACK_SIM.combatLog.findLast(
+                (event) => event.unit === ATTACKER.id && event.kind === 'recover',
+            ).time;
+            while (ATTACKER.ability.phase === 'recover' && ATTACKER.ability.elapsed < 0.4 - 1e-9) {
+                ADVANCE();
+            }
+            const APPLIED_AT = ATTACK_SIM.simulationTick;
+            WHEAT.refreshBuff(ATTACKER, 2, APPLIED_AT);
+            ATTACKER.wheatCommandBuffs.find((buff) => buff.level === 2).expiresAtTick = APPLIED_AT + 3;
+            const PREPARES_BEFORE = ATTACK_SIM.combatLog.filter(
+                (event) => event.unit === ATTACKER.id && event.kind === 'prepare',
+            ).length;
+            for (let index = 0; index < 30; index++) {
+                ADVANCE();
+                if (
+                    ATTACK_SIM.combatLog.filter((event) => event.unit === ATTACKER.id && event.kind === 'prepare')
+                        .length > PREPARES_BEFORE
+                ) {
+                    break;
+                }
+            }
+            const NEXT_PREPARE = ATTACK_SIM.combatLog.findLast(
+                (event) => event.unit === ATTACKER.id && event.kind === 'prepare',
+            );
+            return {
+                interval: NEXT_PREPARE.time - RECOVERY_TIME,
+                hitCount: ATTACK_SIM.notices.filter(
+                    (event) => event.kind === 'unit-hit' && event.sourceUnit === ATTACKER.id,
+                ).length,
+                expiredMultiplier: WHEAT.attackSpeedMultiplier(ATTACKER, ATTACK_SIM.simulationTick),
+            };
+        };
+        const WHEAT_ATTACK_WINDOWS = [null, 0, 1, 2].map(RUN_ATTACK_WINDOW),
+            WHEAT_PROGRESS_PRESERVATION = RUN_PROGRESS_PRESERVATION();
+        return {
+            riceBonus: RICE_BONUS,
+            baselineAccess: BASELINE_ACCESS,
+            wheatTrigger: WHEAT_TRIGGER,
+            wheatStrength: WHEAT_STRENGTH,
+            barleyTiming: BARLEY_TIMING,
+            wheatUpgrade: WHEAT_UPGRADE,
+            validCurrentSnapshot: validCurrent,
+            legacySnapshot: LEGACY_SNAPSHOT,
+            legacyProgressRange: RESTORED_PROGRESS.playerProgression.abilities[WHEAT_ID].branchLevels.range,
+            legacyFarmMigration: {
+                first: LEGACY_PROGRESS_FIRST.playerProgression.availablePoints,
+                second: LEGACY_PROGRESS_SECOND.playerProgression.availablePoints,
+                rootUnlocked: LEGACY_PROGRESS_SECOND.playerProgression.abilities[WHEAT_ID].rootUnlocked,
+                gradeLevel: LEGACY_PROGRESS_SECOND.playerProgression.abilities[WHEAT_ID].gradeLevel,
+                rangeLevel: LEGACY_PROGRESS_SECOND.playerProgression.abilities[WHEAT_ID].branchLevels.range,
+                marker: LEGACY_FARM_PROGRESS.player.baselineAbilityMigrationVersion,
+            },
+            noPurchaseRefund: NO_PURCHASE_RESTORE.playerProgression.availablePoints,
+            combatIntegration: COMBAT_INTEGRATION,
+            wheatAttackWindows: WHEAT_ATTACK_WINDOWS,
+            wheatProgressPreservation: WHEAT_PROGRESS_PRESERVATION,
+        };
+    });
+    assert.deepEqual(RESULT.riceBonus, [0, 0.175, 0.3465, 0, 0]);
+    assert.deepEqual(RESULT.baselineAccess, { riceBonus: 0.175, wheatSpeedValue: 0.5, barleyAmount: 1 });
+    assert.equal(RESULT.wheatTrigger.source.length, 1, JSON.stringify(RESULT.wheatTrigger));
+    assert.equal(RESULT.wheatTrigger.ally.length, 1);
+    assert.equal(RESULT.wheatTrigger.edge.length, 1);
+    assert.equal(RESULT.wheatTrigger.outside.length, 0);
+    assert.equal(RESULT.wheatTrigger.dead.length, 0);
+    assert.equal(RESULT.wheatTrigger.randomCalls, 1);
+    assert.deepEqual(RESULT.wheatStrength, { strongest: 2, strongExpiry: 80, fallsBack: 0, expires: null });
+    assert.deepEqual(RESULT.barleyTiming, {
+        sameTickTotal: 3,
+        totalAt60: 5,
+        armorAt60: 0,
+        totalAt70: 2,
+        totalAt71: 0,
+        slotCount: 60,
+    });
+    assert.deepEqual(RESULT.wheatUpgrade, {
+        rangeLevel: 1,
+        invested: 3,
+        refund: 5,
+        rangeAfterReset: 0,
+        fullRefund: 5,
+        rangeAfterFullReset: 0,
+    });
+    assert.equal(RESULT.validCurrentSnapshot, true, JSON.stringify(RESULT));
+    assert.deepEqual(RESULT.legacySnapshot, {
+        valid: true,
+        simulationTick: 0,
+        wheatRangeLevel: 1,
+        wheatRootUnlocked: false,
+        wheatGradeLevel: 0,
+        wheatRefundedPoints: 3,
+        wheatBuffs: 0,
+        shredSlots: 60,
+    });
+    assert.equal(RESULT.legacyProgressRange, 0);
+    assert.deepEqual(RESULT.legacyFarmMigration, {
+        first: 3,
+        second: 3,
+        rootUnlocked: false,
+        gradeLevel: 0,
+        rangeLevel: 1,
+        marker: 1,
+    });
+    assert.equal(RESULT.noPurchaseRefund, 3);
+    const EXPECTED_RECOVERIES = [1, 2 / 3, 1 / 1.75, 1 / 2.125];
+    RESULT.wheatAttackWindows.forEach((window, index) => {
+        assert(window.hitCount >= 5, JSON.stringify(RESULT.wheatAttackWindows));
+        assert(window.recoveryIntervals.length >= 5, JSON.stringify(RESULT.wheatAttackWindows));
+        assert(
+            window.recoveryIntervals.every((interval) => Math.abs(interval - EXPECTED_RECOVERIES[index]) <= 0.051),
+            JSON.stringify({ index, expected: EXPECTED_RECOVERIES[index], window }),
+        );
+    });
+    assert(
+        RESULT.wheatAttackWindows[0].hitCount < RESULT.wheatAttackWindows[1].hitCount &&
+            RESULT.wheatAttackWindows[1].hitCount <= RESULT.wheatAttackWindows[2].hitCount &&
+            RESULT.wheatAttackWindows[2].hitCount <= RESULT.wheatAttackWindows[3].hitCount,
+        JSON.stringify(RESULT.wheatAttackWindows),
+    );
+    assert(
+        RESULT.wheatProgressPreservation.interval >= 0.85 && RESULT.wheatProgressPreservation.interval <= 1,
+        JSON.stringify(RESULT.wheatProgressPreservation),
+    );
+    assert(RESULT.wheatProgressPreservation.hitCount >= 1, JSON.stringify(RESULT.wheatProgressPreservation));
+    assert.equal(RESULT.wheatProgressPreservation.expiredMultiplier, 1);
+    assert.deepEqual(
+        {
+            riceCritical: RESULT.combatIntegration.riceCritical,
+            riceHitCount: RESULT.combatIntegration.riceHitCount,
+            barleyArmorBefore: RESULT.combatIntegration.barleyArmorBefore,
+            barleyArmorAfter: RESULT.combatIntegration.barleyArmorAfter,
+            barleyHitCount: RESULT.combatIntegration.barleyHitCount,
+            barleyApplied: RESULT.combatIntegration.barleyApplied,
+        },
+        {
+            riceCritical: true,
+            riceHitCount: 1,
+            barleyArmorBefore: 100,
+            barleyArmorAfter: 99,
+            barleyHitCount: 1,
+            barleyApplied: true,
+        },
+    );
+    assert(
+        Math.abs(RESULT.combatIntegration.barleyHitDamage - RESULT.combatIntegration.barleyDamageAtPreHitArmor) < 1e-9,
+    );
+    const ATTACK_REPORT = RESULT.wheatAttackWindows
+        .map((window) => `${window.recoveryIntervals[0].toFixed(3)}s/${window.hitCount} hits`)
+        .join(', ');
+    await clean(P);
+    await C.close();
+    CHECK(
+        `Rice critical, Barley shred, Common baseline saves; actual 1s-base recover-to-attack intervals (base/+50%/+75%/+112.5%): ${ATTACK_REPORT}; mixed-buff expiry interval ${RESULT.wheatProgressPreservation.interval.toFixed(3)}s (returns to 1.0x)`,
+    );
 }
 async function progressionResetFlow() {
     const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
@@ -5177,6 +5646,7 @@ try {
             core,
             mergePolicy: mergePolicyRegression,
             upgrades,
+            grain: grainMechanicsFlow,
             reset: progressionResetFlow,
             cadence: cadenceDiagnosticsFlow,
             formation: formationBrowserUI,
