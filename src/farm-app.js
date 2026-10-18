@@ -133,16 +133,16 @@ function bossRewardSummary(reward) {
     }
     if (reward.status === 'calculating') {
         const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
-        return 'Calculating reward boxes (' + DONE + '/' + reward.boxCount + ')';
+        return '보상 상자 계산 중 (' + DONE + '/' + reward.boxCount + ')';
     }
     const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
         PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
         QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
-    return ACQUIRED + ' acquired · ' + PLACED + ' placed' + (QUEUED ? ' · ' + QUEUED + ' waiting for space' : '');
+    return ACQUIRED + '개 획득 · ' + PLACED + '개 배치' + (QUEUED ? ' · 공간 대기 ' + QUEUED + '개' : '');
 }
 function persistBossRewardSettlement(world) {
     if (!saveImmediate(world)) {
-        DOLLAR('bossRewardSummary').textContent = 'Could not save reward progress: ' + STORAGE.error;
+        DOLLAR('bossRewardSummary').textContent = '보상 진행 상황을 저장하지 못했습니다: ' + STORAGE.error;
         return false;
     }
     return true;
