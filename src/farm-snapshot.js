@@ -123,7 +123,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     seed: 731,
     notices: [],
     eventSequence: 0,
-    mergeTask: null,
+    mergeTasks: [],
     corpseRecoveryVersion: 1,
     rng: {
         state: 3031296687,
@@ -409,9 +409,11 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     farmBossProgress: shapeFields(FARM_SNAPSHOT_SHAPE.farmBossProgress, {
         selections: [FIELDS('stage species selectionId')],
     }),
-    mergeTask: FIELDS('phase aId bId elapsed duration resultId sourceSpecies sourceTier', {
-        materialIds: [true],
-    }),
+    mergeTasks: [
+        FIELDS('phase aId bId elapsed duration resultId sourceSpecies sourceTier', {
+            materialIds: [true],
+        }),
+    ],
 });
 function copyJsonPayload(value, depth = 0) {
     if (depth >= 18) {

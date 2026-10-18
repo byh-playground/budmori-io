@@ -14,8 +14,8 @@ export class ChargeBossPattern extends BossPattern {
             SY = action.start?.y ?? boss.y,
             DX = Math.cos(area.angle),
             DY = Math.sin(area.angle);
-        // The last physical substep is radially clamped, rather than clamping the
-        // requested full reach (which can rotate and greatly overstate the lane).
+        // The 50ms motion is clamped to the arena boundary; the telegraph follows
+        // that same swept lane without splitting the fixed tick.
         const RX = CONFIG[scene].arena.radiusX - boss.radius - 0.25,
             RY = CONFIG[scene].arena.radiusY - boss.radius - 0.25;
         const A_LOCAL = (DX * DX) / (RX * RX) + (DY * DY) / (RY * RY),

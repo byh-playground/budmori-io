@@ -1355,6 +1355,130 @@ async function cadenceDiagnosticsFlow() {
         Math.abs(CATCHUP_PAIR.presentedX - CATCHUP_PAIR.previousSnapshotX) < 1e-6,
         'the rendered unit position is the preserved penultimate snapshot',
     );
+    const PHYSICS_CADENCE = await P.evaluate(() => {
+        const WORLD = new BUDMORI.sim.constructor(980),
+            BEFORE_LOGIC = WORLD.metrics.logicTicks || 0,
+            BEFORE_PHYSICS = WORLD.metrics.physicsSteps || 0;
+        WORLD.step(1 / 20);
+        return {
+            logicTicks: WORLD.metrics.logicTicks - BEFORE_LOGIC,
+            physicsSteps: WORLD.metrics.physicsSteps - BEFORE_PHYSICS,
+        };
+    });
+    assert.deepEqual(PHYSICS_CADENCE, { logicTicks: 1, physicsSteps: 1 });
+    const JACOBI_ORDERING = await P.evaluate(() => {
+        const SIMULATE = (reverse) => {
+            const WORLD = new BUDMORI.sim.constructor(981);
+            WORLD.units = [];
+            for (let index = 0; index < 6; index++) {
+                const UNIT = WORLD.spawn(0, 1, 0, 0);
+                UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+                UNIT.growthElapsed = UNIT.growthDuration;
+                UNIT.cooldown = 0;
+                UNIT.vx = UNIT.vy = 0;
+            }
+            if (reverse) {
+                WORLD.units = [...WORLD.units].reverse();
+            }
+            WORLD._rebuildUnitSpatialIndex(WORLD.units);
+            WORLD.resolveFarmContacts(WORLD.units, 1 / 20);
+            return {
+                positions: WORLD.units.map(({ id, x, y }) => ({ id, x, y })).sort((a, b) => a.id - b.id),
+                iterations: WORLD.metrics.physicsSolverIterations,
+            };
+        };
+        return { forward: SIMULATE(false), reverse: SIMULATE(true) };
+    });
+    assert(JACOBI_ORDERING.forward.iterations > 0, 'overlap invokes the separate contact solver counter');
+    assert(
+        JACOBI_ORDERING.forward.positions.every((unit, index) => {
+            const OTHER = JACOBI_ORDERING.reverse.positions[index];
+            return unit.id === OTHER.id && Math.hypot(unit.x - OTHER.x, unit.y - OTHER.y) < 1e-8;
+        }),
+        'dense overlap resolution is independent of roster iteration order',
+    );
+    const JACOBI_CONSTRAINTS = await P.evaluate(() => {
+        const CREATE_PAIR = () => {
+            const WORLD = new BUDMORI.sim.constructor(982);
+            WORLD.units = [];
+            const A = WORLD.spawn(0, 1, -0.2, 0),
+                B = WORLD.spawn(0, 1, 0.2, 0);
+            A.growth = B.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            A.growthElapsed = A.growthDuration;
+            B.growthElapsed = B.growthDuration;
+            WORLD._rebuildUnitSpatialIndex(WORLD.units);
+            return { world: WORLD, a: A, b: B };
+        };
+        const FIXED_CASE = CREATE_PAIR(),
+            FIXED_POSITION = { x: FIXED_CASE.a.x, y: FIXED_CASE.a.y };
+        FIXED_CASE.a.fixed = true;
+        FIXED_CASE.world.resolveFarmContacts(FIXED_CASE.world.units, 1 / 20);
+        const FIXED_BODY_UNCHANGED = FIXED_CASE.a.x === FIXED_POSITION.x && FIXED_CASE.a.y === FIXED_POSITION.y,
+            DYNAMIC_BODY_MOVED = Math.hypot(FIXED_CASE.b.x - 0.2, FIXED_CASE.b.y) > 1e-4;
+        const MASS_CASE = CREATE_PAIR();
+        MASS_CASE.a.mass = 2;
+        MASS_CASE.b.mass = 1;
+        const BEFORE_A = { x: MASS_CASE.a.x, y: MASS_CASE.a.y },
+            BEFORE_B = { x: MASS_CASE.b.x, y: MASS_CASE.b.y };
+        MASS_CASE.world.resolveFarmContacts(MASS_CASE.world.units, 1 / 20);
+        const DELTA_A = Math.hypot(MASS_CASE.a.x - BEFORE_A.x, MASS_CASE.a.y - BEFORE_A.y),
+            DELTA_B = Math.hypot(MASS_CASE.b.x - BEFORE_B.x, MASS_CASE.b.y - BEFORE_B.y),
+            SCRATCH = MASS_CASE.world._contactCorrectionX;
+        MASS_CASE.world.resolveFarmContacts(MASS_CASE.world.units, 1 / 20);
+        return {
+            fixedBodyUnchanged: FIXED_BODY_UNCHANGED,
+            dynamicBodyMoved: DYNAMIC_BODY_MOVED,
+            contactPairs: FIXED_CASE.world.metrics.contacts,
+            inverseMassDisplacementRatio: DELTA_B / DELTA_A,
+            correctionScratchReused: SCRATCH === MASS_CASE.world._contactCorrectionX,
+        };
+    });
+    assert.equal(JACOBI_CONSTRAINTS.fixedBodyUnchanged, true);
+    assert.equal(JACOBI_CONSTRAINTS.dynamicBodyMoved, true);
+    assert.equal(JACOBI_CONSTRAINTS.contactPairs, 1, 'each fixed/dynamic pair is resolved once');
+    assert(
+        Math.abs(JACOBI_CONSTRAINTS.inverseMassDisplacementRatio - 2) < 1e-6,
+        'position corrections follow inverse mass',
+    );
+    assert.equal(JACOBI_CONSTRAINTS.correctionScratchReused, true);
+    REPORT.physicsSolver = { ...PHYSICS_CADENCE, jacobiIterations: JACOBI_ORDERING.forward.iterations };
+    const PERFORMANCE_REPRO = await P.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        while (WORLD.units.length < 41) {
+            const INDEX = WORLD.units.length,
+                UNIT = WORLD.spawn(
+                    INDEX % BUDMORI.CONFIG.unit.speciesCount,
+                    1,
+                    ((INDEX % 8) - 3.5) * 2.1,
+                    (Math.floor(INDEX / 8) - 2.5) * 1.9,
+                );
+            UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.cooldown = UNIT.cooldownDuration = 999;
+        }
+        WORLD.food = Array.from({ length: 140 }, (_, index) => {
+            const X = ((index % 14) - 6.5) * 1.5,
+                Y = (Math.floor(index / 14) - 5) * 1.4;
+            return {
+                x: X,
+                y: Y,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                seed: index,
+                phase: 'grounded',
+                tx: X,
+                ty: Y,
+            };
+        });
+        WORLD._rebuildUnitSpatialIndex(WORLD.units);
+        WORLD._rebuildFoodSpatialIndex();
+        BUDMORI.runtime.capturePresentation('reset');
+        return { units: WORLD.units.length, food: WORLD.food.length };
+    });
+    assert.deepEqual(PERFORMANCE_REPRO, { units: 41, food: 140 });
+    REPORT.performanceReproduction = PERFORMANCE_REPRO;
     await P.waitForTimeout(220);
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
     for (let index = 0; index < 5; index++) {
@@ -1399,7 +1523,8 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.retainedFrames <= 240 && PERFORMANCE.windowMs > 1000);
     assert(PERFORMANCE.counts.logicTicks.total >= 20);
     assert(PERFORMANCE.counts.logicTicks.total <= Math.ceil((PERFORMANCE.windowMs / 1000) * 20) + 3);
-    assert(PERFORMANCE.counts.physicsSteps.total >= PERFORMANCE.counts.logicTicks.total * 3);
+    assert.equal(PERFORMANCE.counts.physicsSteps.total, PERFORMANCE.counts.logicTicks.total);
+    assert(PERFORMANCE.counts.physicsSolverIterations.total >= 0);
     assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
     assert(
         PERFORMANCE.counts.presentationCaptures.total < PERFORMANCE.counts.logicTicks.total,
@@ -1430,9 +1555,10 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.stagesMs.render.max > 0 && PERFORMANCE.stagesMs.ai.total >= 0);
     assert(SUMMARY.split('\n').length <= 20);
     REPORT.cadence = {
-        elapsedSeconds: AFTER.time - BEFORE.time,
-        logicTicks: AFTER.ticks - BEFORE.ticks,
+        elapsedSeconds: PERFORMANCE.windowMs / 1000,
+        logicTicks: PERFORMANCE.counts.logicTicks.total,
         physicsSteps: PERFORMANCE.counts.physicsSteps.total,
+        solverIterations: PERFORMANCE.counts.physicsSolverIterations.total,
         windowMs: PERFORMANCE.windowMs,
         summary: SUMMARY,
     };
@@ -1642,14 +1768,14 @@ async function core() {
         BUTTON.click();
         BUTTON.click();
     });
-    await P.waitForFunction((before) => BUDMORI.sim.metrics.merges === before + 1, MANUAL_FUSION, {
+    await P.waitForFunction((before) => BUDMORI.sim.metrics.merges === before + 2, MANUAL_FUSION, {
         timeout: 15000,
     });
     await P.waitForTimeout(1000);
     assert.equal(
         await P.evaluate((before) => BUDMORI.sim.metrics.merges - before, MANUAL_FUSION),
-        1,
-        'one double-click queues one fusion operation and no automatic follow-up',
+        2,
+        'each press queues exactly one fusion and both disjoint tasks may resolve together',
     );
     assert.equal(await P.locator('#breed').count(), 0, 'breeding has no mode switch');
     const RESERVATION_INVARIANT = await P.evaluate(async () => {
@@ -1658,7 +1784,7 @@ async function core() {
                 await import('/src/farm-progress.js'),
             W = new BUDMORI.sim.constructor(1223);
         W.units = [];
-        for (let index = 0; index < 4; index++) {
+        for (let index = 0; index < 6; index++) {
             const UNIT = W.spawn(0, 1, index * 1.1, 0);
             UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
             UNIT.growthElapsed = UNIT.growthDuration;
@@ -1667,39 +1793,56 @@ async function core() {
         }
         const MATE = W.findOrReserveMate(W.units[0]),
             MATE_IDS = [W.units[0].id, MATE.id],
-            STARTED = W.startManualMerge(),
-            MATERIAL_IDS = [...W.mergeTask.materialIds],
-            FIRST_OWNER = W.unitCollection.reservationOwner(MATERIAL_IDS[0]),
-            SECOND_OWNER = W.unitCollection.reservationOwner(MATERIAL_IDS[1]),
+            FIRST_START = W.startManualMerge(),
+            SECOND_START = W.startManualMerge(),
+            TASKS = W.mergeTasks.map((task) => [...task.materialIds]),
+            TASK_OWNERS = TASKS.map((ids) => W.unitCollection.reservationOwner(ids[0])),
+            MATERIAL_IDS = TASKS.flat(),
             DTO = SNAPSHOT(W),
             LEGACY_DTO = { ...DTO, mode: 'merge' },
             RESTORED = RESTORE(LEGACY_DTO),
             PROGRESS = CAPTURE_PROGRESS(W);
         VALIDATE_PROGRESS({ ...PROGRESS, mode: 'merge' });
         return {
-            started: STARTED,
-            secondStart: W.startManualMerge(),
-            taskSize: MATERIAL_IDS.length,
+            started: FIRST_START,
+            secondStart: SECOND_START,
+            taskCount: TASKS.length,
+            taskSizes: TASKS.map((ids) => ids.length),
+            disjointTasks: new Set(MATERIAL_IDS).size === MATERIAL_IDS.length,
             noMateOverlap: MATERIAL_IDS.every((id) => !MATE_IDS.includes(id)),
-            oneOwner: FIRST_OWNER && FIRST_OWNER === SECOND_OWNER,
+            uniqueOwners: new Set(TASK_OWNERS).size === TASK_OWNERS.length,
+            restoredTasks: RESTORED.mergeTasks.length,
+            restoredReservations: RESTORED.mergeTasks.every((task) =>
+                task.materialIds.every(
+                    (id) =>
+                        RESTORED.unitCollection.reservationOwner(id) ===
+                        RESTORED.unitCollection.reservationOwner(task.materialIds[0]),
+                ),
+            ),
             noModeSaved: !Object.hasOwn(DTO, 'mode'),
             legacyModeIgnored: !Object.hasOwn(RESTORED, 'mode'),
             compactProgressHasNoMode: !Object.hasOwn(PROGRESS, 'mode'),
-            unavailableReason: W.mergeAvailability().reason,
+            availabilityTracksRemainingMaterials: W.mergeAvailability().available === false,
         };
     });
     assert.deepEqual(RESERVATION_INVARIANT, {
         started: true,
-        secondStart: false,
-        taskSize: 2,
+        secondStart: true,
+        taskCount: 2,
+        taskSizes: [2, 2],
+        disjointTasks: true,
         noMateOverlap: true,
-        oneOwner: true,
+        uniqueOwners: true,
+        restoredTasks: 2,
+        restoredReservations: true,
         noModeSaved: true,
         legacyModeIgnored: true,
         compactProgressHasNoMode: true,
-        unavailableReason: '합성이 진행 중이에요.',
+        availabilityTracksRemainingMaterials: true,
     });
-    CHECK('Breeding remains automatic; one fusion button action starts exactly one operation');
+    CHECK(
+        'Concurrent fusion tasks reserve disjoint units, restore from snapshots, and keep breeding reservations separate',
+    );
     await P.evaluate(() => {
         BUDMORI.sim.playerProgression.level = 9;
         BUDMORI.sim.playerProgression.availablePoints = 7;
@@ -2712,15 +2855,32 @@ async function combatScenarios(p) {
         const ACTION = WORLD.boss.patternRuntime.active;
         ACTION.aim = 0;
         WORLD.activateBossPattern(ACTION);
+        // The renderer receives the interpolated presentation view, where the
+        // runtime action is projected onto these fields. Keep this direct
+        // model fixture equivalent to that render input.
+        WORLD.boss.patternId = ACTION.id;
+        WORLD.boss.patternPhase = ACTION.phase;
         WORLD.boss.patternPhaseElapsed = 0.5;
-        const RENDERED = [];
+        WORLD.boss.patternAim = ACTION.aim;
+        const RENDERED = [],
+            TRAIL_COUNTS = [],
+            ORIGINAL_LINE = RENDERER.line.bind(RENDERER);
+        let lineCount = 0;
+        RENDERER.line = (...args) => {
+            lineCount++;
+            return ORIGINAL_LINE(...args);
+        };
         for (let species = 0; species < BUDMORI.CONFIG.unit.speciesCount; species++) {
             WORLD.boss.species = species;
+            const BEFORE = lineCount;
             RENDERER.render(WORLD, null, performance.now());
             RENDERED.push(species);
+            TRAIL_COUNTS.push(lineCount - BEFORE);
         }
+        RENDERER.line = ORIGINAL_LINE;
         return {
             rendered: RENDERED,
+            weaponTrailLines: TRAIL_COUNTS,
             chestnutAssetId: RENDERER.bossSpeciesAssets.get(3).compiled.metadata.id,
             chestnutSocket: RENDERER.bossSpeciesAssets.get(3).compiled.metadata.sockets['fist-right']?.part,
             nonChestnutSockets: Array.from(RENDERER.bossSpeciesAssets.entries())
@@ -2735,8 +2895,95 @@ async function combatScenarios(p) {
     assert.equal(ALL_SPECIES_SWEEP.chestnutAssetId, 'budmori-chestnut-boss');
     assert.equal(ALL_SPECIES_SWEEP.chestnutSocket, 'arm-right');
     assert(ALL_SPECIES_SWEEP.nonChestnutSockets.every((socket) => socket === null));
+    assert(
+        ALL_SPECIES_SWEEP.weaponTrailLines.every((count) => count >= 3),
+        'all species render the shared active sweep trail without requiring an absent socket',
+    );
     REPORT.allSpeciesSweep = ALL_SPECIES_SWEEP;
-    CHECK('All nine boss species render an active 360 sweep using only authored compatible weapon sockets');
+    CHECK('All nine boss species render active 360 sweep trails; only the authored chestnut socket is queried');
+    const OUTLINE_MASK = await p.evaluate(() => {
+        const WORLD = new BUDMORI.sim.constructor(776),
+            UNIT = WORLD.units[0],
+            RENDERER = BUDMORI.renderer,
+            DISPLAY_TIME = performance.now();
+        UNIT.id = 2000000001;
+        WORLD.units = [UNIT];
+        RENDERER.render(WORLD, null, DISPLAY_TIME);
+        const PLAYER = RENDERER.vectorPlayers.get(UNIT.id),
+            RECORD = RENDERER.vectorAssets.get(UNIT.species),
+            DRAW_OPTIONS = [],
+            ORIGINAL_DRAW = PLAYER.draw,
+            ORIGINAL_SET_VISIBLE = PLAYER.setPartVisible,
+            ORIGINAL_SET_EXPRESSION = PLAYER.setExpression,
+            PROXY = new Proxy(Object.create(null), {
+                get(_target, property) {
+                    if (property === 'draw') {
+                        return (options) => {
+                            DRAW_OPTIONS.push(options);
+                            return ORIGINAL_DRAW(options);
+                        };
+                    }
+                    if (property === 'setPartVisible') {
+                        return (...args) => {
+                            visibilityWrites++;
+                            return ORIGINAL_SET_VISIBLE(...args);
+                        };
+                    }
+                    if (property === 'setExpression') {
+                        return (...args) => {
+                            expressionWrites++;
+                            return ORIGINAL_SET_EXPRESSION(...args);
+                        };
+                    }
+                    const VALUE = Reflect.get(PLAYER, property, PLAYER);
+                    return typeof VALUE === 'function' ? VALUE.bind(PLAYER) : VALUE;
+                },
+            });
+        let visibilityWrites = 0,
+            expressionWrites = 0;
+        const PART_STATE = () => Array.from(RECORD.faceParts, (part) => [part, PLAYER.getPartPose(part).visible]),
+            PART_TRANSFORMS = () => PLAYER.partPoses().map((pose) => Array.from(pose.transform)),
+            BEFORE_STATE = PART_STATE(),
+            BEFORE_TRANSFORMS = PART_TRANSFORMS(),
+            EXPRESSION = PLAYER.currentExpression;
+        RENDERER.vectorPlayers.set(UNIT.id, PROXY);
+        RENDERER.vectorPlayerAssets.set(PROXY, RECORD);
+        try {
+            RENDERER.render(WORLD, null, DISPLAY_TIME);
+        } finally {
+            RENDERER.vectorPlayers.set(UNIT.id, PLAYER);
+            RENDERER.vectorPlayerAssets.set(PLAYER, RECORD);
+        }
+        const OUTLINE = DRAW_OPTIONS[0],
+            BODY = DRAW_OPTIONS[1];
+        return {
+            sameCachedFaceSet: OUTLINE?.excludeParts === RECORD.faceParts,
+            excludesAuthoredFaceParts: [...(OUTLINE?.excludeParts || [])].every((part) =>
+                RECORD.compiled.metadata.parts.some(
+                    (metadataPart) => metadataPart.id === part && part.startsWith('face-'),
+                ),
+            ),
+            facePartCount: RECORD.faceParts.size,
+            bodyHasNoMask: !BODY?.excludeParts,
+            visibilityWrites,
+            expressionWrites,
+            expressionUnchanged: PLAYER.currentExpression === EXPRESSION,
+            faceVisibilityUnchanged: JSON.stringify(PART_STATE()) === JSON.stringify(BEFORE_STATE),
+            partTransformsUnchanged: JSON.stringify(PART_TRANSFORMS()) === JSON.stringify(BEFORE_TRANSFORMS),
+        };
+    });
+    assert(OUTLINE_MASK.sameCachedFaceSet, 'outline draw uses the per-species cached face Set');
+    assert(
+        OUTLINE_MASK.excludesAuthoredFaceParts && OUTLINE_MASK.facePartCount > 0,
+        'outline excludes only known face-part ids',
+    );
+    assert(OUTLINE_MASK.bodyHasNoMask, 'normal character draw retains every expression part');
+    assert.equal(OUTLINE_MASK.visibilityWrites, 0, 'outline masking never mutates per-part visibility');
+    assert.equal(OUTLINE_MASK.expressionWrites, 0, 'outline masking never restores the expression after drawing');
+    assert(OUTLINE_MASK.expressionUnchanged && OUTLINE_MASK.faceVisibilityUnchanged);
+    assert(OUTLINE_MASK.partTransformsUnchanged, 'outline and body passes retain the same cached pose transforms');
+    REPORT.outlineMask = OUTLINE_MASK;
+    CHECK('Tier outline uses the cached excludeParts Set without mutating expression, visibility or pose matrices');
     const WALL = await p.evaluate(() => {
         const W = new BUDMORI.sim.constructor(773),
             G = BUDMORI.ArenaGeometry;

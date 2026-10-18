@@ -253,20 +253,15 @@ export class UnitPresentation {
                 p.x - WIDTH * SCALE * FACTOR * 0.5,
                 CENTER_Y - HEIGHT * SCALE * FACTOR * 0.5,
             ];
-            // Faces are interior details, never part of the enlarged silhouette.
-            const OUTLINE_FACE_PARTS = RECORD.visibleFacePartsByExpression?.get(EXPRESSION) ?? RECORD.faceParts;
-            for (const PART of OUTLINE_FACE_PARTS) {
-                player.setPartVisible(PART, false);
-            }
+            // Keep the face out of the enlarged silhouette through a per-draw
+            // mask, leaving the player's pose revision and cached matrices intact.
             player.draw({
                 projection: this.renderer.ctx.vector.projection,
                 matrix: OUTLINE_MATRIX,
                 color: u.isFormationClone ? [0.45, 0.75, 1, 0.35] : OUTLINE,
                 forceColor: true,
+                excludeParts: RECORD.faceParts,
             });
-            if (OUTLINE_FACE_PARTS.length) {
-                player.setExpression(EXPRESSION);
-            }
         }
         player.draw({
             projection: this.renderer.ctx.vector.projection,

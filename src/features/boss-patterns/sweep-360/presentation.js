@@ -50,20 +50,21 @@ export class CircleSweepPresentation extends BossAttackPresentation {
         if (boss.patternPhase !== 'active') {
             return;
         }
-        // Only the chestnut boss asset authors the right-fist socket used by
-        // this weapon flourish. Other species share the physical sweep pattern,
-        // but their SVGs do not claim a compatible swing-origin socket.
         const SOCKET_ID = SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET[record.compiled.metadata.id];
-        if (!SOCKET_ID) {
-            return;
-        }
-        const SOCKET = player.getSocket(SOCKET_ID);
-        const BASE = {
-                x: matrix[0] * SOCKET.x + matrix[4],
-                y: matrix[3] * SOCKET.y + matrix[5],
-            },
-            Q = clamp(pose.elapsed / this.config.active, 0, 1),
+        const Q = clamp(pose.elapsed / this.config.active, 0, 1),
             ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + Math.PI * 2 * Q,
+            // The chestnut SVG explicitly authors a fist socket. The other
+            // species use the shared pattern origin instead of querying a
+            // socket their assets do not define.
+            BASE = SOCKET_ID
+                ? (() => {
+                      const SOCKET = player.getSocket(SOCKET_ID);
+                      return {
+                          x: matrix[0] * SOCKET.x + matrix[4],
+                          y: matrix[3] * SOCKET.y + matrix[5],
+                      };
+                  })()
+                : renderer.project(boss.x, boss.y, (boss.z || 0) + 0.35),
             TIP = renderer.project(
                 boss.x + Math.cos(ANGLE) * this.config.reach,
                 boss.y + Math.sin(ANGLE) * this.config.reach,

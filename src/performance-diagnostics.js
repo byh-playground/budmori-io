@@ -23,7 +23,7 @@ const STAGES = Object.freeze([
 const COUNTERS = Object.freeze([
     'logicTicks',
     'physicsSteps',
-    'physicsAdaptiveExtraSteps',
+    'physicsSolverIterations',
     'catchupTicks',
     'backlogDrops',
     'backlogDroppedMs',
@@ -129,10 +129,10 @@ export class PerformanceDiagnostics {
             `상태 ${world.scene} ${paused ? '정지' : '실행'} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
             `창 ${NUMBER(SAMPLE.windowMs / 1000, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? '켜짐' : '꺼짐'} · ${SAMPLE.retainedFrames > 1 ? '유효' : '표본 부족'}`,
             `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
-            `창 합계: 논리 ${COUNT('logicTicks')} · 물리 ${COUNT('physicsSteps')} · 추가 catchup ${COUNT('catchupTicks')} · backlog drop ${COUNT('backlogDrops')}회/${NUMBER(COUNT('backlogDroppedMs'), 0)}ms · cap ${COUNT('backlogCappedFrames')}프레임/${NUMBER(COUNT('backlogClippedMs'), 0)}ms`,
+            `창 합계: 논리 ${COUNT('logicTicks')} · 물리 ${COUNT('physicsSteps')} · solver 반복 ${COUNT('physicsSolverIterations')} · 추가 catchup ${COUNT('catchupTicks')} · backlog drop ${COUNT('backlogDrops')}회/${NUMBER(COUNT('backlogDroppedMs'), 0)}ms · cap ${COUNT('backlogCappedFrames')}프레임/${NUMBER(COUNT('backlogClippedMs'), 0)}ms`,
             `CPU 평균/p95/최대(ms, 부모·자식 합산 금지): sim ${TIME('simulation')} · 논리 ${TIME('logic')} · 물리 ${TIME('physics')}`,
             `CPU 월드 후처리 ${TIME('worldPostStep')} · 변경 신호 발행 ${TIME('mutationDispatch')} · 보간 스냅샷 ${TIME('presentationCapture')} / SDK 캡처 ${TIME('runtimeCapture')}`,
-            `프레임 평균: 프레젠테이션 캡처 ${PER_FRAME('presentationCaptures')}회 / 엔티티 ${PER_FRAME('presentationEntities')} · 적응 물리 추가 단계 ${PER_FRAME('physicsAdaptiveExtraSteps')}`,
+            `프레임 평균: 프레젠테이션 캡처 ${PER_FRAME('presentationCaptures')}회 / 엔티티 ${PER_FRAME('presentationEntities')} · solver 반복 ${PER_FRAME('physicsSolverIterations')}`,
             `CPU AI ${TIME('ai')} · 인덱스 재구축/갱신 ${TIME('spatial')} · 충돌 ${TIME('collision')}`,
             `CPU 보간 ${TIME('presentation')} · WebGL 제출 ${TIME('render')} · UI ${TIME('ui')}`,
             `저장 ${COUNT('saveCalls')}회 · CPU 전체 ${TIME('save')} / 캡처 ${TIME('saveCapture')} / 인코딩 ${TIME('saveEncode')} / IO ${TIME('saveIO')}`,
@@ -142,7 +142,7 @@ export class PerformanceDiagnostics {
         ];
         for (const FRAME of SAMPLE.slowFrames.slice(0, 1)) {
             LINES.push(
-                `느린 구간 #${FRAME.sequence} RAF ${NUMBER(FRAME.intervalMs)}ms/콜백 CPU ${NUMBER(FRAME.cpuMs)}ms · sim ${NUMBER(FRAME.stagesMs.simulation)} render ${NUMBER(FRAME.stagesMs.render)} save ${NUMBER(FRAME.stagesMs.save)} · tick/substep ${FRAME.counts.logicTicks}/${FRAME.counts.physicsSteps} draw ${FRAME.counts.drawCalls}${this.detailed ? '' : ' · 상세 시간 미측정'}`,
+                `느린 구간 #${FRAME.sequence} RAF ${NUMBER(FRAME.intervalMs)}ms/콜백 CPU ${NUMBER(FRAME.cpuMs)}ms · sim ${NUMBER(FRAME.stagesMs.simulation)} render ${NUMBER(FRAME.stagesMs.render)} save ${NUMBER(FRAME.stagesMs.save)} · tick/solver ${FRAME.counts.logicTicks}/${FRAME.counts.physicsSolverIterations} draw ${FRAME.counts.drawCalls}${this.detailed ? '' : ' · 상세 시간 미측정'}`,
             );
         }
         return LINES;

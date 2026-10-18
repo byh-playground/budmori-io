@@ -1,5 +1,6 @@
 import { FEATURE } from './definition.js';
 import { isJoyEffect } from '../../../farm-render-effects.js';
+import { drawMergeBlackHoles } from '../../farm-modes/merge/presentation.js';
 
 export class FarmScenePresentation {
     constructor() {
@@ -7,6 +8,7 @@ export class FarmScenePresentation {
         this.groundColor = '#d1d8b8';
         this.surfaceColor = '#d9dfc2';
         this.minimumUnitPixels = 11;
+        this.mergeResultIds = new Set();
     }
     cameraView(aspect) {
         return aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
@@ -17,8 +19,17 @@ export class FarmScenePresentation {
     dangerVisible(world) {
         return world.farmBossEvent?.phase === 'fighting';
     }
-    hiddenUnitId(world) {
-        return world.mergeTask?.phase === 'animation' ? world.mergeTask.resultId : 0;
+    hiddenUnitIds(world) {
+        this.mergeResultIds.clear();
+        for (const TASK of world.mergeTasks) {
+            if (TASK.phase === 'animation') {
+                this.mergeResultIds.add(TASK.resultId);
+            }
+        }
+        return this.mergeResultIds;
+    }
+    drawMergeBlackHoles(renderer, world) {
+        drawMergeBlackHoles(renderer, world);
     }
     victorious() {
         return false;

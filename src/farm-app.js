@@ -49,7 +49,7 @@ let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
 let mergeStatusCache = {
     world: null,
-    task: null,
+    revision: -1,
     updatedAt: -Infinity,
     value: null,
 };
@@ -67,12 +67,12 @@ function frameRate() {
 function mergeAvailability(world, now) {
     if (
         mergeStatusCache.world !== world ||
-        mergeStatusCache.task !== world.mergeTask ||
+        mergeStatusCache.revision !== world.mergeTaskRevision ||
         now - mergeStatusCache.updatedAt >= 250
     ) {
         mergeStatusCache = {
             world,
-            task: world.mergeTask,
+            revision: world.mergeTaskRevision,
             updatedAt: now,
             value: world.mergeAvailability(),
         };
@@ -927,6 +927,11 @@ DOLLAR('farm').onclick = () => returnToFarm();
 DOLLAR('raid').onclick = () => openBossEncounter();
 DOLLAR('return').onclick = () => returnToFarm();
 DOLLAR('merge').onclick = () => active?.queue('merge');
+DOLLAR('merge').addEventListener('keydown', (e) => {
+    if (e.repeat && ['Enter', ' '].includes(e.key)) {
+        e.preventDefault();
+    }
+});
 DOLLAR('feed').addEventListener('keydown', (e) => {
     if (e.repeat && ['Enter', ' '].includes(e.key)) {
         e.preventDefault();

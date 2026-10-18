@@ -158,9 +158,8 @@ const CONFIG = Object.freeze({
     }),
     physics: Object.freeze({
         gravity: 19,
-        maxStep: 1 / 60,
-        // Relative body travel is bounded by the smallest body radius per substep.
-        travelRadiusRatio: 0.5,
+        separationIterations: 4,
+        separationRelaxation: 0.8,
         softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
@@ -615,7 +614,14 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return unitTorsoHeight(this);
     }
 };
-function contact(a, b, dt) {
+function inverseBodyMass(body) {
+    if (body.fixed === true) {
+        return 0;
+    }
+    const MASS = Number.isFinite(body.mass) ? body.mass : 1;
+    return MASS > 0 ? 1 / MASS : 0;
+}
+function contact(a, b) {
     const DX = b.x - a.x,
         DY = b.y - a.y,
         D_LOCAL = Math.hypot(DX, DY),
@@ -624,40 +630,37 @@ function contact(a, b, dt) {
         return false;
     }
     if (D_LOCAL >= R_LOCAL) {
-        if (
-            D_LOCAL < R_LOCAL + 0.22 &&
-            a.z < 0.1 &&
-            b.z < 0.1 &&
-            a.ability.phase === 'idle' &&
-            b.ability.phase === 'idle'
-        ) {
-            const K =
-                ((R_LOCAL + 0.22 - D_LOCAL) * (1 - Math.exp(-CONFIG.physics.softSeparationRate * dt))) / (D_LOCAL || 1);
-            a.x -= DX * K;
-            a.y -= DY * K;
-            b.x += DX * K;
-            b.y += DY * K;
-        }
         return false;
     }
     const NX = D_LOCAL > 1e-6 ? DX / D_LOCAL : 1,
         NY = D_LOCAL > 1e-6 ? DY / D_LOCAL : 0,
-        OVERLAP = R_LOCAL - D_LOCAL;
-    a.x -= NX * OVERLAP * 0.5;
-    a.y -= NY * OVERLAP * 0.5;
-    b.x += NX * OVERLAP * 0.5;
-    b.y += NY * OVERLAP * 0.5;
+        INVERSE_MASS_A = inverseBodyMass(a),
+        INVERSE_MASS_B = inverseBodyMass(b),
+        INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
     const CLOSING = (a.vx - b.vx) * NX + (a.vy - b.vy) * NY;
-    if (CLOSING > 0) {
-        const IMPULSE = CLOSING * 0.57;
-        const IMPULSE_A = resolveKnockback(IMPULSE, b, a),
-            IMPULSE_B = resolveKnockback(IMPULSE, a, b);
-        a.vx -= NX * IMPULSE_A;
-        a.vy -= NY * IMPULSE_A;
-        b.vx += NX * IMPULSE_B;
-        b.vy += NY * IMPULSE_B;
+    if (CLOSING > 0 && INVERSE_MASS_SUM > 0) {
+        // Preserve the previous 0.57 velocity change per body at equal mass
+        // while weighting the resulting impulse by inverse mass.
+        const IMPULSE = (CLOSING * 1.14) / INVERSE_MASS_SUM;
+        if (INVERSE_MASS_A > 0) {
+            const IMPULSE_A = resolveKnockback(IMPULSE, b, a) * INVERSE_MASS_A;
+            a.vx -= NX * IMPULSE_A;
+            a.vy -= NY * IMPULSE_A;
+        }
+        if (INVERSE_MASS_B > 0) {
+            const IMPULSE_B = resolveKnockback(IMPULSE, a, b) * INVERSE_MASS_B;
+            b.vx += NX * IMPULSE_B;
+            b.vy += NY * IMPULSE_B;
+        }
         if (CLOSING > 2) {
-            const RECEIVER = Math.hypot(a.vx, a.vy) > Math.hypot(b.vx, b.vy) ? a : b;
+            const RECEIVER =
+                INVERSE_MASS_A === 0
+                    ? b
+                    : INVERSE_MASS_B === 0
+                      ? a
+                      : Math.hypot(a.vx, a.vy) > Math.hypot(b.vx, b.vy)
+                        ? a
+                        : b;
             RECEIVER.vz = Math.max(RECEIVER.vz, Math.min(4, CLOSING * 0.2));
             RECEIVER.stun = Math.max(RECEIVER.stun, resolveStatusDuration(0.3, RECEIVER === a ? b : a, RECEIVER));
             RECEIVER.flash = 0.1;
@@ -670,7 +673,7 @@ const GARDEN = class Garden {
         this.seed = seed;
         this.notices = [];
         this.eventSequence = 0;
-        this.mergeTask = null;
+        this.mergeTasks = [];
         this.unitSpatial = new FixedSpatialGrid();
         this.foodSpatial = new FixedSpatialGrid();
         this._unitById = new Map();
@@ -703,10 +706,10 @@ const GARDEN = class Garden {
         this._groundedFoods = [];
         this._groundedFoodCount = 0;
         this._contactPending = [];
-        this._contactExtra = [];
         this._contactQuery = [];
-        this._contactSeen = new Uint32Array(0);
-        this._contactGeneration = 0;
+        this._contactCorrectionX = new Float64Array(0);
+        this._contactCorrectionY = new Float64Array(0);
+        this._contactCorrectionCount = new Uint32Array(0);
         this._bossGridUnits = [];
         this._bossGroundUnits = [];
         this._bossQueryCandidates = [];
@@ -736,10 +739,10 @@ const GARDEN = class Garden {
             '_groundedFoods',
             '_groundedFoodCount',
             '_contactPending',
-            '_contactExtra',
             '_contactQuery',
-            '_contactSeen',
-            '_contactGeneration',
+            '_contactCorrectionX',
+            '_contactCorrectionY',
+            '_contactCorrectionCount',
             '_bossGridUnits',
             '_bossGroundUnits',
             '_bossQueryCandidates',
@@ -780,9 +783,28 @@ const GARDEN = class Garden {
                 value: 0,
                 writable: true,
             },
+            mergeTaskRevision: {
+                value: 0,
+                writable: true,
+            },
         });
         this.reset();
         Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
+    }
+    get mergeTask() {
+        return this.mergeTasks[0] || null;
+    }
+    _markMergeTasksChanged() {
+        this.mergeTaskRevision++;
+    }
+    _pendingMergeCost(species, excludedTask = null) {
+        let cost = 0;
+        for (const TASK of this.mergeTasks) {
+            if (TASK !== excludedTask && TASK.phase === 'approach' && TASK.sourceSpecies === species) {
+                cost += TASK.materialIds.length - 1;
+            }
+        }
+        return cost;
     }
     _rebuildUnitSpatialIndex(stepUnits = this.units) {
         const SPATIAL_START = this.profiler?.start();
@@ -963,34 +985,6 @@ const GARDEN = class Garden {
         out.sort((a, b) => a - b);
         return out;
     }
-    _nextContactGeneration(length) {
-        if (this._contactSeen.length < length) {
-            this._contactSeen = new Uint32Array(Math.max(length, this._contactSeen.length * 2, 16));
-        }
-        this._contactGeneration = (this._contactGeneration + 1) >>> 0;
-        if (this._contactGeneration === 0) {
-            this._contactSeen.fill(0);
-            this._contactGeneration = 1;
-        }
-        return this._contactGeneration;
-    }
-    _insertContactOrder(order, lastOrder, pending, generation) {
-        if (order <= lastOrder || this._contactSeen[order] === generation) {
-            return;
-        }
-        this._contactSeen[order] = generation;
-        let low = 0;
-        let high = pending.length;
-        while (low < high) {
-            const MIDDLE = (low + high) >>> 1;
-            if (pending[MIDDLE] < order) {
-                low = MIDDLE + 1;
-            } else {
-                high = MIDDLE;
-            }
-        }
-        pending.splice(low, 0, order);
-    }
     _collectBossTargets(minX, minY, maxX, maxY, out, groundOnly = false) {
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._rebuildUnitSpatialIndex(this.units);
@@ -1042,7 +1036,7 @@ const GARDEN = class Garden {
         this.formationRuntime = createFormationRuntime();
         this.progressRevision = 0;
         this._progressTimerCheckpoint = 0;
-        this.cancelMergeTask();
+        this.cancelMergeTasks();
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
@@ -1105,6 +1099,7 @@ const GARDEN = class Garden {
             merges: 0,
             directHits: 0,
             contacts: 0,
+            physicsSolverIterations: 0,
             landings: 0,
             basicHits: 0,
             sweepHits: 0,
@@ -1837,8 +1832,8 @@ const GARDEN = class Garden {
     removeUnit(unit, options) {
         return this.unitCollection.remove(unit, options);
     }
-    replaceUnitGroup(materials, result, complete) {
-        return this.unitCollection.replace(materials, result, complete);
+    replaceUnitGroup(materials, result, complete, preserveMergeTask = null) {
+        return this.unitCollection.replace(materials, result, complete, preserveMergeTask);
     }
     resetUnits(units = []) {
         this.unitCollection.reset(units);
@@ -2072,7 +2067,7 @@ const GARDEN = class Garden {
             return;
         }
         this.formationSkills.end();
-        this.cancelMergeTask();
+        this.cancelMergeTasks();
         for (const UNIT_LOCAL of this.units) {
             this.releaseMate(UNIT_LOCAL);
         }
@@ -2184,15 +2179,17 @@ const GARDEN = class Garden {
                 }
                 return;
             }
-            const TASK = this.mergeTask;
-            if (TASK?.phase === 'approach') {
+            for (const TASK of [...this.mergeTasks]) {
+                if (TASK.phase !== 'approach') {
+                    continue;
+                }
                 const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
                     OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
                 if (
                     !this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) ||
                     !this.unitCollection.reserve(OWNER, MATERIALS)
                 ) {
-                    this.cancelMergeTask();
+                    this.cancelMergeTask(TASK);
                 }
             }
             for (const UNIT_LOCAL of this.units) {
@@ -2370,7 +2367,16 @@ const GARDEN = class Garden {
             }
             // Sleeping owned units count toward the minimum roster, but cannot be
             // consumed. The resulting same-species count must remain at least two.
-            if (this._ownedSpeciesCounts[FIRST.species] - MATERIAL_COUNT + 1 < 2) {
+            const EXCLUDED_TASK = reservationOwner
+                ? this.mergeTasks.find((task) => MERGE_RESERVATION_OWNER(task.materialIds || []) === reservationOwner)
+                : null;
+            if (
+                this._ownedSpeciesCounts[FIRST.species] -
+                    this._pendingMergeCost(FIRST.species, EXCLUDED_TASK) -
+                    MATERIAL_COUNT +
+                    1 <
+                2
+            ) {
                 return false;
             }
             if (requireNoEnemy && materials.some((unit) => this.senseEnemy(unit))) {
@@ -2399,7 +2405,7 @@ const GARDEN = class Garden {
         return this.canMergeGroup([a, b], options);
     }
     selectMergeMaterials() {
-        if (this.scene !== 'farm' || this.mergeTask) {
+        if (this.scene !== 'farm') {
             return null;
         }
         const BATCH = !this._spatialStepActive;
@@ -2453,7 +2459,10 @@ const GARDEN = class Garden {
                 }
                 for (let species = 0; species < CONFIG.unit.speciesCount; species++) {
                     const GROUP = this._mergeEligibleGroups[species * (CONFIG.unit.maxTier + 1) + tier];
-                    if (GROUP.length < MATERIAL_COUNT || this._ownedSpeciesCounts[species] - MATERIAL_COUNT + 1 < 2) {
+                    if (
+                        GROUP.length < MATERIAL_COUNT ||
+                        this._ownedSpeciesCounts[species] - this._pendingMergeCost(species) - MATERIAL_COUNT + 1 < 2
+                    ) {
                         continue;
                     }
                     for (const ANCHOR of GROUP) {
@@ -2548,9 +2557,6 @@ const GARDEN = class Garden {
         if (this.farmBossEvent?.phase !== 'idle') {
             return { available: false, reason: '전투가 끝난 뒤 합성할 수 있어요.' };
         }
-        if (this.mergeTask) {
-            return { available: false, reason: '합성이 진행 중이에요.' };
-        }
         const MATERIALS = this.selectMergeMaterials();
         if (!MATERIALS) {
             return { available: false, reason: '같은 종·티어 성체 재료가 필요해요.' };
@@ -2566,7 +2572,7 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._startManualMerge);
     }
     _startManualMerge() {
-        if (this.scene !== 'farm' || this.farmBossEvent?.phase !== 'idle' || this.mergeTask) {
+        if (this.scene !== 'farm' || this.farmBossEvent?.phase !== 'idle') {
             return false;
         }
         const MATERIALS = this.selectMergeMaterials();
@@ -2578,71 +2584,85 @@ const GARDEN = class Garden {
         if (!this.unitCollection.reserve(OWNER, MATERIALS)) {
             return false;
         }
-        this.mergeTask = {
+        this.mergeTasks.push({
             phase: 'approach',
             aId: MATERIAL_IDS[0],
             bId: MATERIAL_IDS[1],
             materialIds: MATERIAL_IDS,
+            sourceSpecies: MATERIALS[0].species,
+            sourceTier: MATERIALS[0].tier,
             elapsed: 0,
             duration: CONFIG.farm.merge.animationSeconds,
-        };
+        });
+        this._markMergeTasksChanged();
         return true;
     }
-    cancelMergeTask() {
-        const TASK = this.mergeTask;
-        if (!TASK) {
+    cancelMergeTask(task = this.mergeTask) {
+        const TASK = task,
+            INDEX = this.mergeTasks.indexOf(TASK);
+        if (INDEX < 0) {
             return false;
         }
         if (TASK.materialIds?.length) {
             this.unitCollection.releaseReservations(MERGE_RESERVATION_OWNER(TASK.materialIds));
         }
-        this.mergeTask = null;
+        this.mergeTasks.splice(INDEX, 1);
+        this._markMergeTasksChanged();
         return true;
+    }
+    cancelMergeTasks() {
+        const TASKS = [...this.mergeTasks];
+        for (const TASK of TASKS) {
+            this.cancelMergeTask(TASK);
+        }
+        return TASKS.length > 0;
     }
     advanceMergeTask(dt) {
         if (this.scene !== 'farm') {
-            this.cancelMergeTask();
+            this.cancelMergeTasks();
             return;
         }
-        if (this.mergeTask?.phase === 'animation') {
-            this.mergeTask.elapsed = Math.min(this.mergeTask.duration, this.mergeTask.elapsed + dt);
-            if (this.mergeTask.elapsed >= this.mergeTask.duration - 1e-9) {
-                this.cancelMergeTask();
+        for (const TASK of [...this.mergeTasks]) {
+            if (TASK.phase === 'animation') {
+                TASK.elapsed = Math.min(TASK.duration, TASK.elapsed + dt);
+                if (TASK.elapsed >= TASK.duration - 1e-9) {
+                    this.cancelMergeTask(TASK);
+                }
+                continue;
             }
-            return;
-        }
-        if (this.mergeTask?.phase === 'approach') {
-            const TASK = this.mergeTask,
-                MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
-                OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
-            // Combat pauses an otherwise valid group; death, invalid tiers, or removed units cancel it.
-            if (
-                !this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) ||
-                !this.unitCollection.reserve(OWNER, MATERIALS)
-            ) {
-                this.cancelMergeTask();
+            if (TASK.phase === 'approach') {
+                const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
+                    OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+                // Combat pauses an otherwise valid group; death, invalid tiers, or removed units cancel it.
+                if (
+                    !this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) ||
+                    !this.unitCollection.reserve(OWNER, MATERIALS)
+                ) {
+                    this.cancelMergeTask(TASK);
+                }
             }
         }
     }
     resolveMergeTaskAfterMovement() {
-        const TASK = this.mergeTask;
-        if (TASK?.phase !== 'approach') {
-            return false;
+        let resolved = false;
+        for (const TASK of [...this.mergeTasks]) {
+            if (TASK.phase !== 'approach') {
+                continue;
+            }
+            const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
+                OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+            if (
+                this.canMergeGroup(MATERIALS, {
+                    requireContact: true,
+                    requireNoEnemy: true,
+                    reservationOwner: OWNER,
+                }) &&
+                this.mergeGroup(MATERIALS, { task: TASK })
+            ) {
+                resolved = true;
+            }
         }
-        const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
-            OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
-        if (
-            !this.canMergeGroup(MATERIALS, {
-                requireContact: true,
-                requireNoEnemy: true,
-                reservationOwner: OWNER,
-            })
-        ) {
-            return false;
-        }
-        return this.mergeGroup(MATERIALS, {
-            priorityResolved: true,
-        });
+        return resolved;
     }
     pair(a, b, priorityResolved = false) {
         return this.mutateUnits(this._pair, a, b, priorityResolved);
@@ -2653,10 +2673,12 @@ const GARDEN = class Garden {
     mergeGroup(materials, options) {
         return this.mutateUnits(this._mergeGroup, materials, options);
     }
-    _mergeGroup(materials) {
-        const TASK = this.mergeTask,
+    _mergeGroup(materials, { task: taskParam } = {}) {
+        const TASK = taskParam;
+        const TASK_INDEX = this.mergeTasks.indexOf(TASK),
             OWNER = TASK?.materialIds ? MERGE_RESERVATION_OWNER(TASK.materialIds) : null;
         if (
+            TASK_INDEX < 0 ||
             TASK?.phase !== 'approach' ||
             this.scene !== 'farm' ||
             !OWNER ||
@@ -2687,37 +2709,41 @@ const GARDEN = class Garden {
         const SEQUENCE_WINDOW = CONFIG.farm.merge.animationSeconds * 0.72,
             STEP = SEQUENCE_WINDOW / ORDERED.length;
         if (
-            !this.replaceUnitGroup(ORDERED, RESULT, () => {
-                this.nextId++;
-                this.mergeTask = {
-                    phase: 'animation',
-                    aId: 0,
-                    bId: 0,
-                    materialIds: MATERIAL_IDS,
-                    resultId: RESULT.id,
-                    sourceSpecies: FIRST.species,
-                    sourceTier: FIRST.tier,
-                    elapsed: 0,
-                    duration: CONFIG.farm.merge.animationSeconds,
-                };
-                ORDERED.forEach((unit, index) =>
-                    this.effects.push({
-                        kind: 'merge-material',
-                        x: unit.x,
-                        y: unit.y,
-                        z: 0.2,
-                        targetX: X,
-                        targetY: Y,
-                        life: 0,
-                        delay: index * STEP,
-                        span: STEP,
-                        duration: (index + 1) * STEP,
-                        sequenceIndex: index,
-                        sequenceCount: ORDERED.length,
-                    }),
-                );
-                this.metrics.merges++;
-            })
+            !this.replaceUnitGroup(
+                ORDERED,
+                RESULT,
+                () => {
+                    this.nextId++;
+                    TASK.phase = 'animation';
+                    TASK.aId = 0;
+                    TASK.bId = 0;
+                    TASK.materialIds = MATERIAL_IDS;
+                    TASK.resultId = RESULT.id;
+                    TASK.sourceSpecies = FIRST.species;
+                    TASK.sourceTier = FIRST.tier;
+                    TASK.elapsed = 0;
+                    TASK.duration = CONFIG.farm.merge.animationSeconds;
+                    this._markMergeTasksChanged();
+                    ORDERED.forEach((unit, index) =>
+                        this.effects.push({
+                            kind: 'merge-material',
+                            x: unit.x,
+                            y: unit.y,
+                            z: 0.2,
+                            targetX: X,
+                            targetY: Y,
+                            life: 0,
+                            delay: index * STEP,
+                            span: STEP,
+                            duration: (index + 1) * STEP,
+                            sequenceIndex: index,
+                            sequenceCount: ORDERED.length,
+                        }),
+                    );
+                    this.metrics.merges++;
+                },
+                TASK,
+            )
         ) {
             return false;
         }
@@ -2834,15 +2860,7 @@ const GARDEN = class Garden {
         this.profiler?.count('logicTicks');
         this.profiler?.end('logic', LOGIC_START);
         const PHYSICS_START = this.profiler?.start();
-        const SUBSTEPS = this.physicsSubsteps(dt, UNITS),
-            PHYSICS_DT = dt / SUBSTEPS;
-        this.profiler?.count(
-            'physicsAdaptiveExtraSteps',
-            Math.max(0, SUBSTEPS - Math.ceil(dt / CONFIG.physics.maxStep)),
-        );
-        for (let index = 0; index < SUBSTEPS; index++) {
-            this.advancePhysics(PHYSICS_DT, UNITS, SCENE);
-        }
+        this.advancePhysics(dt, UNITS, SCENE);
         this.profiler?.end('physics', PHYSICS_START);
         const POST_STEP_START = this.profiler?.start();
         SCENE.resolveLifeContacts(this, UNITS);
@@ -2870,26 +2888,6 @@ const GARDEN = class Garden {
         const START = this.profiler?.start();
         this.foodSpatial.update(food);
         this.profiler?.end('spatial', START);
-    }
-    physicsSubsteps(dt, units) {
-        if (dt <= 0) {
-            return 1;
-        }
-        let minimumRadius = Infinity;
-        let maximumSpeed = 0;
-        for (const UNIT of units) {
-            minimumRadius = Math.min(minimumRadius, UNIT.radius);
-            // Active authored paths already use swept attack contact. Free bodies need the travel bound.
-            if (UNIT.ability.phase !== 'active') {
-                maximumSpeed = Math.max(
-                    maximumSpeed,
-                    Math.hypot(UNIT.vx, UNIT.vy),
-                    UNIT.moveControlActive ? Math.hypot(UNIT.moveControlVx, UNIT.moveControlVy) : 0,
-                );
-            }
-        }
-        const TRAVEL_STEP = maximumSpeed > 0 ? (minimumRadius * CONFIG.physics.travelRadiusRatio) / maximumSpeed : dt;
-        return Math.max(1, Math.ceil(dt / Math.min(CONFIG.physics.maxStep, TRAVEL_STEP)));
     }
     advancePhysics(dt, units, scene) {
         this.metrics.physicsSteps = (this.metrics.physicsSteps || 0) + 1;
@@ -2965,14 +2963,14 @@ const GARDEN = class Garden {
             this.boundBody(U, this.scene, U.radius);
             this.updateUnitSpatial(U);
         }
-        const COLLISION_START = this.profiler?.start();
-        this.resolveContacts(units, dt);
-        this.profiler?.end('collision', COLLISION_START);
         this.integrateBossMotion(dt);
         if (this.boss.active) {
             this.updateProjectiles(dt);
-            scene.separateBossUnits(this);
+            scene.separateBossUnits(this, units);
         }
+        const COLLISION_START = this.profiler?.start();
+        this.resolveContacts(units, dt);
+        this.profiler?.end('collision', COLLISION_START);
     }
     updateUnitIntent(unit, dt, enemy, scene) {
         if (enemy) {
@@ -3002,74 +3000,212 @@ const GARDEN = class Garden {
             u.angle = Math.atan2(DY, DX);
         }
     }
-    raidContacts(units, dt = CONFIG.physics.maxStep) {
+    _ensureContactSolverBuffers(length) {
+        if (this._contactCorrectionX.length >= length) {
+            return;
+        }
+        const CAPACITY = Math.max(length, this._contactCorrectionX.length * 2, 16);
+        this._contactCorrectionX = new Float64Array(CAPACITY);
+        this._contactCorrectionY = new Float64Array(CAPACITY);
+        this._contactCorrectionCount = new Uint32Array(CAPACITY);
+    }
+    solveContactSeparations(units, dt, raidOnly = false) {
+        this._ensureContactSolverBuffers(units.length);
+        const CORRECTION_X = this._contactCorrectionX,
+            CORRECTION_Y = this._contactCorrectionY,
+            CORRECTION_COUNT = this._contactCorrectionCount,
+            ITERATIONS = CONFIG.physics.separationIterations,
+            SOFT_FACTOR = 1 - Math.exp((-CONFIG.physics.softSeparationRate * dt) / ITERATIONS);
+        for (let iteration = 0; iteration < ITERATIONS; iteration++) {
+            CORRECTION_X.fill(0, 0, units.length);
+            CORRECTION_Y.fill(0, 0, units.length);
+            CORRECTION_COUNT.fill(0, 0, units.length);
+            let correctionCount = 0;
+            for (let i = 0; i < units.length; i++) {
+                const UNIT_LOCAL = units[i];
+                if (raidOnly && (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded)) {
+                    continue;
+                }
+                const INVERSE_MASS_A = inverseBodyMass(UNIT_LOCAL);
+                const PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+                for (const J of PENDING) {
+                    const OTHER = units[J];
+                    if (raidOnly && (OTHER.hp <= 0 || !OTHER.dropLanded)) {
+                        continue;
+                    }
+                    if (UNIT_LOCAL.z > OTHER.z + OTHER.height || OTHER.z > UNIT_LOCAL.z + UNIT_LOCAL.height) {
+                        continue;
+                    }
+                    const DX = OTHER.x - UNIT_LOCAL.x,
+                        DY = OTHER.y - UNIT_LOCAL.y,
+                        DISTANCE = Math.hypot(DX, DY),
+                        RADIUS = UNIT_LOCAL.radius + OTHER.radius,
+                        INVERSE_MASS_B = inverseBodyMass(OTHER),
+                        INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
+                    if (INVERSE_MASS_SUM <= 0) {
+                        continue;
+                    }
+                    const SOFT =
+                            DISTANCE >= RADIUS &&
+                            DISTANCE < RADIUS + 0.22 &&
+                            UNIT_LOCAL.z < 0.1 &&
+                            OTHER.z < 0.1 &&
+                            UNIT_LOCAL.ability.phase === 'idle' &&
+                            OTHER.ability.phase === 'idle',
+                        TARGET_DISTANCE = SOFT ? RADIUS + 0.22 : RADIUS;
+                    if (DISTANCE >= TARGET_DISTANCE) {
+                        continue;
+                    }
+                    const ANGLE =
+                            ((Math.min(UNIT_LOCAL.id, OTHER.id) * 0.61803398875 +
+                                Math.max(UNIT_LOCAL.id, OTHER.id) * 0.38196601125) %
+                                1) *
+                            Math.PI *
+                            2,
+                        NORMAL_SIGN = UNIT_LOCAL.id < OTHER.id ? 1 : -1,
+                        NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE) * NORMAL_SIGN,
+                        NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE) * NORMAL_SIGN,
+                        RELAXATION = SOFT ? SOFT_FACTOR : CONFIG.physics.separationRelaxation,
+                        PENETRATION = (TARGET_DISTANCE - DISTANCE) * RELAXATION,
+                        SHARE_A = INVERSE_MASS_A / INVERSE_MASS_SUM,
+                        SHARE_B = INVERSE_MASS_B / INVERSE_MASS_SUM;
+                    CORRECTION_X[i] -= NORMAL_X * PENETRATION * SHARE_A;
+                    CORRECTION_Y[i] -= NORMAL_Y * PENETRATION * SHARE_A;
+                    CORRECTION_COUNT[i] += SHARE_A > 0 ? 1 : 0;
+                    CORRECTION_X[J] += NORMAL_X * PENETRATION * SHARE_B;
+                    CORRECTION_Y[J] += NORMAL_Y * PENETRATION * SHARE_B;
+                    CORRECTION_COUNT[J] += SHARE_B > 0 ? 1 : 0;
+                    correctionCount++;
+                }
+            }
+            if (!correctionCount) {
+                break;
+            }
+            for (let i = 0; i < units.length; i++) {
+                const UNIT_LOCAL = units[i],
+                    COUNT = CORRECTION_COUNT[i];
+                if (!COUNT) {
+                    continue;
+                }
+                let deltaX = CORRECTION_X[i] / COUNT,
+                    deltaY = CORRECTION_Y[i] / COUNT;
+                const LENGTH = Math.hypot(deltaX, deltaY),
+                    MAX_CORRECTION = Math.max(0.05, UNIT_LOCAL.radius * 1.25);
+                if (LENGTH > MAX_CORRECTION) {
+                    const SCALE = MAX_CORRECTION / LENGTH;
+                    deltaX *= SCALE;
+                    deltaY *= SCALE;
+                }
+                UNIT_LOCAL.x += deltaX;
+                UNIT_LOCAL.y += deltaY;
+                this.boundBody(UNIT_LOCAL, this.scene, UNIT_LOCAL.radius);
+            }
+            for (const UNIT_LOCAL of units) {
+                if (CORRECTION_COUNT[this._unitStepOrder.get(UNIT_LOCAL)] > 0) {
+                    this.updateUnitSpatial(UNIT_LOCAL);
+                }
+            }
+            this.metrics.physicsSolverIterations++;
+            this.profiler?.count('physicsSolverIterations');
+        }
+    }
+    separateBossUnitsJacobi(units) {
+        const BOSS = this.boss;
+        if (!BOSS.active || !units.length) {
+            return;
+        }
+        this._ensureContactSolverBuffers(units.length);
+        const CORRECTION_X = this._contactCorrectionX,
+            CORRECTION_Y = this._contactCorrectionY,
+            CORRECTION_COUNT = this._contactCorrectionCount;
+        CORRECTION_X.fill(0, 0, units.length);
+        CORRECTION_Y.fill(0, 0, units.length);
+        CORRECTION_COUNT.fill(0, 0, units.length);
+        let correctionCount = 0;
+        for (let i = 0; i < units.length; i++) {
+            const UNIT_LOCAL = units[i];
+            if (
+                !areOpposingFactions(UNIT_LOCAL, BOSS) ||
+                UNIT_LOCAL.hp <= 0 ||
+                !UNIT_LOCAL.dropLanded ||
+                UNIT_LOCAL.z > BOSS.height ||
+                inverseBodyMass(UNIT_LOCAL) <= 0
+            ) {
+                continue;
+            }
+            const DX = UNIT_LOCAL.x - BOSS.x,
+                DY = UNIT_LOCAL.y - BOSS.y,
+                DISTANCE = Math.hypot(DX, DY),
+                RADIUS = BOSS.radius + UNIT_LOCAL.radius;
+            if (DISTANCE >= RADIUS) {
+                continue;
+            }
+            const ANGLE = DISTANCE > 1e-6 ? 0 : UNIT_LOCAL.seed,
+                NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE),
+                NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE),
+                INDEX = this._unitStepOrder.get(UNIT_LOCAL),
+                OVERLAP = RADIUS - DISTANCE,
+                INWARD = UNIT_LOCAL.vx * NORMAL_X + UNIT_LOCAL.vy * NORMAL_Y;
+            CORRECTION_X[INDEX] += NORMAL_X * OVERLAP;
+            CORRECTION_Y[INDEX] += NORMAL_Y * OVERLAP;
+            CORRECTION_COUNT[INDEX]++;
+            correctionCount++;
+            if (INWARD < 0) {
+                UNIT_LOCAL.vx -= INWARD * NORMAL_X;
+                UNIT_LOCAL.vy -= INWARD * NORMAL_Y;
+            }
+        }
+        if (!correctionCount) {
+            return;
+        }
+        for (let i = 0; i < units.length; i++) {
+            const UNIT_LOCAL = units[i],
+                COUNT = CORRECTION_COUNT[i];
+            if (!COUNT) {
+                continue;
+            }
+            UNIT_LOCAL.x += CORRECTION_X[i] / COUNT;
+            UNIT_LOCAL.y += CORRECTION_Y[i] / COUNT;
+            this.boundBody(UNIT_LOCAL, this.scene, UNIT_LOCAL.radius);
+        }
+        for (const UNIT_LOCAL of units) {
+            if (CORRECTION_COUNT[this._unitStepOrder.get(UNIT_LOCAL)] > 0) {
+                this.updateUnitSpatial(UNIT_LOCAL);
+            }
+        }
+        this.metrics.physicsSolverIterations++;
+        this.profiler?.count('physicsSolverIterations');
+    }
+    raidContacts(units, dt = 1 / 20) {
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
             if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded) {
                 continue;
             }
-            const PENDING = this._collectContactOrders(UNIT_LOCAL, 0, i - 1, this._contactPending);
+            const PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
             for (const J of PENDING) {
                 const OTHER = units[J];
-                if (OTHER.hp <= 0 || !OTHER.dropLanded) {
-                    continue;
-                }
-                const AX = OTHER.x,
-                    AY = OTHER.y,
-                    BX = UNIT_LOCAL.x,
-                    BY = UNIT_LOCAL.y,
-                    DID_CONTACT = contact(OTHER, UNIT_LOCAL, dt);
-                if (DID_CONTACT) {
+                if (OTHER.hp > 0 && OTHER.dropLanded && contact(UNIT_LOCAL, OTHER)) {
                     this.metrics.contacts++;
-                }
-                if (AX !== OTHER.x || AY !== OTHER.y) {
-                    this.updateUnitSpatial(OTHER);
-                }
-                if (BX !== UNIT_LOCAL.x || BY !== UNIT_LOCAL.y) {
-                    this.updateUnitSpatial(UNIT_LOCAL);
                 }
             }
         }
+        this.solveContactSeparations(units, dt, true);
     }
-    resolveContacts(units, dt = CONFIG.physics.maxStep) {
+    resolveContacts(units, dt = 1 / 20) {
         SIMULATION_SCENES[this.scene].resolveContacts(this, units, dt);
     }
-    resolveFarmContacts(units, dt = CONFIG.physics.maxStep) {
+    resolveFarmContacts(units, dt = 1 / 20) {
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i],
-                GENERATION = this._nextContactGeneration(units.length),
                 PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
-            for (const ORDER of PENDING) {
-                this._contactSeen[ORDER] = GENERATION;
-            }
-            let cursor = 0;
-            while (cursor < PENDING.length) {
-                const J = PENDING[cursor++],
-                    OTHER = units[J],
-                    AX = UNIT_LOCAL.x,
-                    AY = UNIT_LOCAL.y,
-                    BX = OTHER.x,
-                    BY = OTHER.y,
-                    DID_CONTACT = contact(UNIT_LOCAL, OTHER, dt);
-                if (DID_CONTACT) {
+            for (const J of PENDING) {
+                if (contact(UNIT_LOCAL, units[J])) {
                     this.metrics.contacts++;
-                }
-                const UNIT_MOVED = AX !== UNIT_LOCAL.x || AY !== UNIT_LOCAL.y,
-                    OTHER_MOVED = BX !== OTHER.x || BY !== OTHER.y;
-                if (UNIT_MOVED) {
-                    this.updateUnitSpatial(UNIT_LOCAL);
-                }
-                if (OTHER_MOVED) {
-                    this.updateUnitSpatial(OTHER);
-                }
-                if (UNIT_MOVED) {
-                    const EXTRAS = this._collectContactOrders(UNIT_LOCAL, J + 1, units.length - 1, this._contactExtra);
-                    for (const ORDER of EXTRAS) {
-                        this._insertContactOrder(ORDER, J, PENDING, GENERATION);
-                    }
                 }
             }
         }
+        this.solveContactSeparations(units, dt);
     }
     resolveFarmContactPairs(units, sameTier) {
         for (let i = 0; i < units.length; i++) {
@@ -3229,30 +3365,6 @@ const GARDEN = class Garden {
             body.vx -= (NX / LENGTH) * OUTWARD * 1.3;
             body.vy -= (NY / LENGTH) * OUTWARD * 1.3;
         }
-    }
-    separateBoss(u) {
-        const B_LOCAL = this.boss;
-        if (!areOpposingFactions(u, B_LOCAL) || u.hp <= 0 || !u.dropLanded || u.z > B_LOCAL.height) {
-            return;
-        }
-        const DX = u.x - B_LOCAL.x,
-            DY = u.y - B_LOCAL.y,
-            D_LOCAL = Math.hypot(DX, DY),
-            R_LOCAL = B_LOCAL.radius + u.radius;
-        if (D_LOCAL >= R_LOCAL) {
-            return;
-        }
-        const A_LOCAL = D_LOCAL > 1e-6 ? Math.atan2(DY, DX) : u.seed,
-            NX = Math.cos(A_LOCAL),
-            NY = Math.sin(A_LOCAL);
-        u.x = B_LOCAL.x + NX * R_LOCAL;
-        u.y = B_LOCAL.y + NY * R_LOCAL;
-        const INWARD = u.vx * NX + u.vy * NY;
-        if (INWARD < 0) {
-            u.vx -= INWARD * NX;
-            u.vy -= INWARD * NY;
-        }
-        this.boundBody(u, this.scene, u.radius);
     }
     combatEvent(kind, u, action) {
         this.combatLog.push({
