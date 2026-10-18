@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "cd588ab5b1cd72f8ebba81e91883d874917ea1f2",
-    "distCommit": "33d0d9e4a1f1067e939c12d49518c89fdd46370e",
+    "sourceCommit": "60f51187809728ef427a394df20120a4577445db",
+    "distCommit": "09ceefb4b88f47b44c7b593255f404675cb345b5",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -21,6 +21,10 @@
         {
             "name": "simloop",
             "bundleSHA256": "c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"
+        },
+        {
+            "name": "work-scheduler",
+            "bundleSHA256": "d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"
         },
         {
             "name": "interpolation",
@@ -55,7 +59,7 @@
             "bundleSHA256": "4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"
         }
     ],
-    "manifestSHA256": "52f818a6e28028fbf5b0e773a7481ba1aa7b80a6bf48cf28ed63864d96a57225",
+    "manifestSHA256": "abb55c84793b731e147491cb745ab01a871d8433ee9725bedd5e2000054ae87a",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",

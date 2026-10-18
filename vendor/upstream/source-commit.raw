@@ -1,26 +1,26 @@
-tree 609a0f20491222a060fbecbcc2b097da58bf8526
-parent 67d23ea0c36fe87b0e10ab7a521ecd167f0274b6
-parent 5820d77020754021a557003750a333ca42762a1a
-author byh020907 <byh020907@naver.com> 1792278366 +0900
-committer GitHub <noreply@github.com> 1792278366 +0900
+tree 46ee12a68f7820183cd594f43410e6fce53df7e8
+parent cd588ab5b1cd72f8ebba81e91883d874917ea1f2
+parent 252550d9e191e66525a6271fd02742af3c01af29
+author byh020907 <byh020907@naver.com> 1792284170 +0900
+committer GitHub <noreply@github.com> 1792284170 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq0/9eCRC1aQ7uu5UhlAAAhSwQAEdPMsqPGRLTcMnkyPihseef
- NMrNFsrCq3nHn3j9N7N54xw+dqj85EDaQOInSRkKOU8lI74geGyKl0lP6/APAsKo
- TvpbqFbe0bAG3r1OySm59z4gj3FQVOM41XHRX5gSdcaAa5oOWABModweg5kW1HFl
- y49PndjXl+SXKN6i2vrvlTQo8nyWRv96jOygFOo4s1GyT4dsQJ/ZWtUHktzAI+sQ
- FE5McD6Qx0DP1JyE9OtNxztrhsJ/p+oV2ON5yZ/LDCbBjiGyOZkVv8pZzLilio47
- D9IBnMxQ372ujk31cCCBa+g3aeZ3oo4Cwz5/dUgir9Vv4xjZIx5TSPjtjS1JzaKG
- abC677stYqxByek0lPblURxrRzcHVbtqZfxQfdkW4f8t+ZGJi1YsijBzB7MvJwIU
- 3lYeveUA0W+zBZusqgGf1EKdgvqZNr3f3Yc1nbkPlWW0wWuIrVsqmAslD6x5RjoR
- i6U9kBeZ3lK3M2Qer7GUm1mWmU1fawciUohMH/hVp/aF3V1nbYNQWPcHT6A0O+VH
- F3ec52Ji0YPArIi1oJUG3N+WBjqhihOre/CHezHXYPZ/O15F/6PwpQhQvpsxZer/
- MYLQJBI1fw7oW0AqJgF/neNlbnAdT/dJl64PQe/T//uA1ejrqvmtrJaX4uwsDUr0
- orCZf5dBNuSBTWyZIYq/
- =cbkj
+ wsFcBAABCAAQBQJq1BYKCRC1aQ7uu5UhlAAAHJ4QAFiUEveMhUwrT6/1Oz5mu5dR
+ hgrtHQFoXN05q6I1Pglp5H/Bhc8JzYD82gFTIvfgBYaQTT3OQuUM1xuwib+Dh17+
+ UT8t+03xv1ho7LBC2zOj3SG3tE+QvO5bjlnGWdcbnXeH3vI2vAFAvqY14jaHFQQ4
+ TrVqalagDzplRD4yoQet0Ir8H85KjkvT/2m+BmTsle0B8Em7TVksCVsFxKv4YKuV
+ EOw16Fv2Rw4dO3EVV41uvQ01cG7l4AO9N2eBbI9Se5Qp5ylf38vsDJixdJ0a0MeJ
+ jb+RxsPDDi40CBEZVDU4w2AfkKHDxEthAObCzJ/hx40YuQjRBPa9SNK9B6Ph+Gi3
+ a7icRd0BSdedkdNsX2WL4eRVrdA41sWeWN5Ddi0Pu5oHSHcpVbV9fTvsNbS0FdVS
+ yJt2eZ/qsofr+3S57NGsBGyWblS/zpYEHehKbiWJpzI/PFlouz13gUiLgqp3FAL/
+ gMlFbcXAujRxbM4hc8KekxMLnmFxdatXdJlOhD2L7PzblcB617l6ASUrzY8Vnp5G
+ dRMryZTXsYirmtazd7TiRNwYUHBNlMajgQmcIdFegFKtvhgMFxpFuaha1/unIz+v
+ YBxQfAg3MGYJ1P56mTBBcqhYNqCq4B0jaHgs4/i0PzCaV4aagAXCxAerWhiFtLTz
+ 6B2r7Sg4um9yuI+TNWeW
+ =84uL
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #89 from byh-playground/codex/vector-player-exclude-parts
+Merge pull request #90 from byh-playground/codex/budgeted-work-scheduler
 
-[feature] Vector player draw 호출별 part 제외
+비긴급 작업용 budgeted scheduler 추가

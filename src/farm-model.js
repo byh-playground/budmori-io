@@ -19,6 +19,8 @@ import { createFarmModeBehaviors } from './farm-mode-behaviors.js';
 import { createBossPatternBehaviors } from './boss-pattern-behaviors.js';
 import { bossMouthWorldPoint } from './boss-vector-sockets.js';
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
+const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
+const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
 import {
     baseUnitStatsFor,
     applyDamageToTargets,
@@ -706,7 +708,15 @@ const GARDEN = class Garden {
         this._unitCandidates = [];
         this._foodCandidates = [];
         this._groundedFoods = [];
+        this._groundedFoodsScratch = [];
         this._groundedFoodCount = 0;
+        this._groundedFoodRevision = 0;
+        this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: new Map() };
+        this._foodSearchStates = new WeakMap();
+        this._foodSearchJobSequence = 0;
+        this._foodSearchScheduler = null;
+        this._foodSearchWork = { candidateChecks: 0, cellVisits: 0 };
+        this._lastFoodSearchSchedulerMetrics = null;
         this._contactPending = [];
         this._contactQuery = [];
         this._contactCorrectionX = new Float64Array(0);
@@ -739,7 +749,15 @@ const GARDEN = class Garden {
             '_unitCandidates',
             '_foodCandidates',
             '_groundedFoods',
+            '_groundedFoodsScratch',
             '_groundedFoodCount',
+            '_groundedFoodRevision',
+            '_foodSearchSnapshot',
+            '_foodSearchStates',
+            '_foodSearchJobSequence',
+            '_foodSearchScheduler',
+            '_foodSearchWork',
+            '_lastFoodSearchSchedulerMetrics',
             '_contactPending',
             '_contactQuery',
             '_contactCorrectionX',
@@ -857,36 +875,84 @@ const GARDEN = class Garden {
         this._unitSpatialDirty = false;
         this.profiler?.end('spatial', SPATIAL_START);
     }
+    _refreshFoodSearchSnapshot() {
+        const CELLS = new Map();
+        for (const KEY of this.foodSpatial.usedCells) {
+            const BUCKET = this.foodSpatial.cells[KEY];
+            if (BUCKET?.length) {
+                CELLS.set(KEY, BUCKET.slice());
+            }
+        }
+        this._foodSearchSnapshot = {
+            revision: this._groundedFoodRevision,
+            foods: this._groundedFoods,
+            cells: CELLS,
+        };
+    }
     _rebuildFoodSpatialIndex() {
-        const SPATIAL_START = this.profiler?.start();
+        const SPATIAL_START = this.profiler?.start(),
+            PREVIOUS_FOODS = this._groundedFoods,
+            NEXT_FOODS = this._groundedFoodsScratch;
         this.foodSpatial.clear();
         this._foodOrder.clear();
+        NEXT_FOODS.length = 0;
         let grounded = 0;
-        this._groundedFoods.length = 0;
         for (let index = 0; index < this.food.length; index++) {
             const FOOD = this.food[index];
             this._foodOrder.set(FOOD, index);
             if (FOOD.phase === 'grounded') {
                 this.foodSpatial.insert(FOOD);
-                this._groundedFoods.push(FOOD);
+                NEXT_FOODS.push(FOOD);
                 grounded++;
             }
         }
+        const CHANGED =
+            NEXT_FOODS.length !== PREVIOUS_FOODS.length ||
+            NEXT_FOODS.some((food, index) => food !== PREVIOUS_FOODS[index]);
         this._groundedFoodCount = grounded;
+        if (CHANGED) {
+            this._groundedFoodRevision++;
+            this._groundedFoods = NEXT_FOODS;
+            // Search jobs retain the prior immutable snapshot until their result is discarded.
+            this._groundedFoodsScratch = [];
+        } else {
+            NEXT_FOODS.length = 0;
+        }
+        if (this._foodSearchSnapshot.revision !== this._groundedFoodRevision) {
+            this._refreshFoodSearchSnapshot();
+        }
         this._foodSpatialDirty = false;
         this.profiler?.end('spatial', SPATIAL_START);
     }
     _trackFoodAdded(food) {
         if (!this._spatialStepActive) {
             this._foodSpatialDirty = true;
+            if (food.phase === 'grounded') {
+                this._groundedFoodRevision++;
+            }
             return;
         }
         this._foodOrder.set(food, this.food.length - 1);
         if (food.phase === 'grounded') {
             this.foodSpatial.insert(food);
-            this._groundedFoods.push(food);
             this._groundedFoodCount = (this._groundedFoodCount || 0) + 1;
+            this._groundedFoodRevision++;
         }
+    }
+    consumeGroundFood(food) {
+        if (food?.phase !== 'grounded' || !this.foodSpatial.itemCells.has(food)) {
+            return false;
+        }
+        const INDEX = this.food.indexOf(food);
+        if (INDEX < 0) {
+            return false;
+        }
+        this.food.splice(INDEX, 1);
+        this.foodSpatial.remove(food);
+        this._foodOrder.delete(food);
+        this._groundedFoodCount = Math.max(0, this._groundedFoodCount - 1);
+        this._groundedFoodRevision++;
+        return true;
     }
     _trackUnitAdded(unit) {
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
@@ -908,6 +974,7 @@ const GARDEN = class Garden {
         this._unitAliveState.set(unit, unit.hp > 0);
     }
     _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
+        this._cancelFoodTargetSearch(unit);
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
@@ -930,6 +997,17 @@ const GARDEN = class Garden {
             this.unitSpatial.remove(unit);
             this._unitStepOrder.delete(unit);
         }
+    }
+    _cancelFoodTargetSearch(unit) {
+        const STATE = this._foodSearchStates?.get(unit);
+        if (!STATE) {
+            return false;
+        }
+        this._foodSearchStates.delete(unit);
+        return this._foodSearchScheduler?.cancel(STATE.key) ?? false;
+    }
+    clearFoodTargetSearch(unit) {
+        this._cancelFoodTargetSearch(unit);
     }
     _removeGroupItem(group, item) {
         const INDEX = group.indexOf(item);
@@ -1045,6 +1123,17 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._reset);
     }
     _reset() {
+        this._foodSearchScheduler?.dispose();
+        this._foodSearchScheduler = CREATE_BUDGETED_SCHEDULER({ unitsPerTick: 24, quantumUnits: 1 });
+        this._lastFoodSearchSchedulerMetrics = this._foodSearchScheduler.metrics;
+        this._foodSearchStates = new WeakMap();
+        this._foodSearchJobSequence = 0;
+        this._foodSearchWork = { candidateChecks: 0, cellVisits: 0 };
+        this._groundedFoods = [];
+        this._groundedFoodsScratch = [];
+        this._groundedFoodCount = 0;
+        this._groundedFoodRevision = 0;
+        this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: new Map() };
         this.formationSkills?.end();
         this.formationRuntime = createFormationRuntime();
         this.progressRevision = 0;
@@ -2081,6 +2170,8 @@ const GARDEN = class Garden {
         }
         this.formationSkills.end();
         this.cancelMergeTasks();
+        this._foodSearchScheduler.cancelOwner(this);
+        this._foodSearchStates = new WeakMap();
         for (const UNIT_LOCAL of this.units) {
             this.releaseMate(UNIT_LOCAL);
         }
@@ -2897,6 +2988,33 @@ const GARDEN = class Garden {
             PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).advanceLifecycle(this, PROJECTILE, dt);
         }
         this._rebuildFoodSpatialIndex();
+        const WORK_START = this.profiler?.start(),
+            PREVIOUS_WORK = this._lastFoodSearchSchedulerMetrics,
+            CANDIDATES_BEFORE = this._foodSearchWork.candidateChecks,
+            CELLS_BEFORE = this._foodSearchWork.cellVisits,
+            WORK_UNITS = this._foodSearchScheduler.tick((this.metrics.logicTicks || 0) + 1),
+            CURRENT_WORK = this._foodSearchScheduler.metrics;
+        this._lastFoodSearchSchedulerMetrics = CURRENT_WORK;
+        if (this.profiler) {
+            this.profiler.count('workSchedulerTicks');
+            this.profiler.count('workSchedulerUnits', WORK_UNITS);
+            this.profiler.count('foodSearchCandidateChecks', this._foodSearchWork.candidateChecks - CANDIDATES_BEFORE);
+            this.profiler.count('foodSearchCellVisits', this._foodSearchWork.cellVisits - CELLS_BEFORE);
+            this.profiler.count('workSchedulerQueueDepth', CURRENT_WORK.queueDepth);
+            this.profiler.count('workSchedulerJobsQueued', CURRENT_WORK.jobsQueued - (PREVIOUS_WORK?.jobsQueued || 0));
+            this.profiler.count(
+                'workSchedulerJobsCompleted',
+                CURRENT_WORK.jobsCompleted - (PREVIOUS_WORK?.jobsCompleted || 0),
+            );
+            this.profiler.count(
+                'workSchedulerJobsCancelled',
+                CURRENT_WORK.jobsCancelled - (PREVIOUS_WORK?.jobsCancelled || 0),
+            );
+            this.profiler.count('workSchedulerWaitedJobs', CURRENT_WORK.lastTickWaitedJobs);
+            this.profiler.count('workSchedulerWaitingTicks', CURRENT_WORK.lastTickWaitingTicks);
+            this.profiler.count('workSchedulerBudgetExhaustions', Number(CURRENT_WORK.lastTickBudgetExhausted));
+        }
+        this.profiler?.end('workScheduler', WORK_START);
         this.reconcileMateReservations();
         for (const U of UNITS) {
             U.moveControlActive = false;
@@ -3437,6 +3555,9 @@ const GARDEN = class Garden {
         for (let ring = 0; ring <= MAX_RING; ring++) {
             GRID.queryCellRing(CX, CY, ring, this._foodCandidates);
             for (const FOOD of this._foodCandidates) {
+                if (!this._isCurrentGroundedFood(FOOD)) {
+                    continue;
+                }
                 const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y),
                     ORDER = this._foodOrder.get(FOOD) ?? Infinity;
                 if (DISTANCE < nearestDistance || (DISTANCE === nearestDistance && ORDER < nearestOrder)) {
@@ -3451,17 +3572,201 @@ const GARDEN = class Garden {
             if ((2 * ring + 1) * (2 * ring + 1) > this._groundedFoodCount) {
                 nearest = null;
                 nearestDistance = Infinity;
+                nearestOrder = Infinity;
                 for (const FOOD of this._groundedFoods) {
-                    const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y);
-                    if (DISTANCE < nearestDistance) {
+                    if (!this._isCurrentGroundedFood(FOOD)) {
+                        continue;
+                    }
+                    const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y),
+                        ORDER = this._foodOrder.get(FOOD) ?? Infinity;
+                    if (DISTANCE < nearestDistance || (DISTANCE === nearestDistance && ORDER < nearestOrder)) {
                         nearest = FOOD;
                         nearestDistance = DISTANCE;
+                        nearestOrder = ORDER;
                     }
                 }
                 break;
             }
         }
         return nearest;
+    }
+    _isCurrentGroundedFood(food) {
+        return !!food && food.phase === 'grounded' && this.foodSpatial.itemCells.has(food);
+    }
+    _startFoodTargetSearch(unit) {
+        const GRID = this.foodSpatial,
+            CX = GRID.cellX(unit.x),
+            CY = GRID.cellY(unit.y);
+        if (CX < 0 || CY < 0 || CX >= GRID.cellCount || CY >= GRID.cellCount) {
+            return null;
+        }
+        const STATE = {
+            key: `food-target:${unit.id}:${++this._foodSearchJobSequence}`,
+            unit,
+            snapshot: this._foodSearchSnapshot,
+            revision: this._foodSearchSnapshot.revision,
+            x: unit.x,
+            y: unit.y,
+            centerX: CX,
+            centerY: CY,
+            maxRing: Math.max(CX, CY, GRID.cellCount - 1 - CX, GRID.cellCount - 1 - CY),
+            ring: 0,
+            ringCellIndex: 0,
+            bucket: EMPTY_FOOD_SEARCH_BUCKET,
+            bucketIndex: 0,
+            phase: 'rings',
+            fallbackIndex: 0,
+            nearest: null,
+            nearestDistance: Infinity,
+            nearestOrder: Infinity,
+            status: 'searching',
+            target: null,
+        };
+        this._foodSearchStates.set(unit, STATE);
+        this._foodSearchScheduler.enqueue({
+            key: STATE.key,
+            owner: this,
+            priority: 1,
+            isValid: () =>
+                this.scene === 'farm' &&
+                this._foodSearchStates.get(unit) === STATE &&
+                this._unitById.get(unit.id) === unit &&
+                unit.hp > 0 &&
+                !unit.fed,
+            step: ({ maxUnits }) => this._stepFoodTargetSearch(STATE, maxUnits),
+            onComplete: ({ result }) => {
+                if (this._foodSearchStates.get(unit) !== STATE) {
+                    return;
+                }
+                if (result && this._isCurrentGroundedFood(result)) {
+                    // Candidate selection is advisory until the authoritative tick validates it.
+                    STATE.target = result;
+                    STATE.status = 'ready';
+                    return;
+                }
+                if (STATE.revision !== this._groundedFoodRevision) {
+                    this._foodSearchStates.delete(unit);
+                    if (this.scene === 'farm' && this._unitById.get(unit.id) === unit && unit.hp > 0 && !unit.fed) {
+                        this._startFoodTargetSearch(unit);
+                    }
+                    return;
+                }
+                STATE.status = 'empty';
+            },
+        });
+        return null;
+    }
+    _stepFoodTargetSearch(state, maxUnits) {
+        const GRID = this.foodSpatial,
+            SNAPSHOT = state.snapshot;
+        let unitsUsed = 0;
+        while (true) {
+            if (state.phase === 'fallback' && state.fallbackIndex >= SNAPSHOT.foods.length) {
+                return { done: true, unitsUsed, result: state.nearest };
+            }
+            if (state.phase === 'rings') {
+                const RING_CELLS = state.ring === 0 ? 1 : 8 * state.ring,
+                    RING_COMPLETE = state.ringCellIndex >= RING_CELLS && state.bucketIndex >= state.bucket.length;
+                if (RING_COMPLETE) {
+                    if (
+                        state.nearest &&
+                        state.nearestDistance <
+                            GRID.distanceToOutsideRing(state.x, state.y, state.centerX, state.centerY, state.ring)
+                    ) {
+                        return { done: true, unitsUsed, result: state.nearest };
+                    }
+                    if ((2 * state.ring + 1) ** 2 > this._groundedFoodCount) {
+                        state.phase = 'fallback';
+                        state.fallbackIndex = 0;
+                        state.nearest = null;
+                        state.nearestDistance = Infinity;
+                        state.nearestOrder = Infinity;
+                        continue;
+                    }
+                    state.ring++;
+                    state.ringCellIndex = 0;
+                    state.bucket = EMPTY_FOOD_SEARCH_BUCKET;
+                    state.bucketIndex = 0;
+                }
+            }
+            if (unitsUsed >= maxUnits) {
+                return { done: false, unitsUsed };
+            }
+            if (state.phase === 'fallback') {
+                const FOOD = SNAPSHOT.foods[state.fallbackIndex++];
+                if (this._isCurrentGroundedFood(FOOD)) {
+                    this._considerFoodTarget(state, FOOD);
+                }
+                this._foodSearchWork.candidateChecks++;
+                unitsUsed++;
+                continue;
+            }
+            if (state.bucketIndex < state.bucket.length) {
+                const FOOD = state.bucket[state.bucketIndex++];
+                if (this._isCurrentGroundedFood(FOOD)) {
+                    this._considerFoodTarget(state, FOOD);
+                }
+                this._foodSearchWork.candidateChecks++;
+                unitsUsed++;
+                continue;
+            }
+            const RING = state.ring,
+                INDEX = state.ringCellIndex++,
+                EDGE_COUNT = RING === 0 ? 1 : 2 * (2 * RING + 1);
+            let cellX, cellY;
+            if (RING === 0) {
+                cellX = state.centerX;
+                cellY = state.centerY;
+            } else if (INDEX < EDGE_COUNT) {
+                cellX = state.centerX - RING + Math.floor(INDEX / 2);
+                cellY = INDEX % 2 === 0 ? state.centerY - RING : state.centerY + RING;
+            } else {
+                const INNER_INDEX = INDEX - EDGE_COUNT;
+                cellX = INNER_INDEX % 2 === 0 ? state.centerX - RING : state.centerX + RING;
+                cellY = state.centerY - RING + 1 + Math.floor(INNER_INDEX / 2);
+            }
+            const CELL_KEY =
+                cellX >= 0 && cellY >= 0 && cellX < GRID.cellCount && cellY < GRID.cellCount
+                    ? cellY * GRID.cellCount + cellX
+                    : -1;
+            state.bucket =
+                CELL_KEY < 0 ? EMPTY_FOOD_SEARCH_BUCKET : SNAPSHOT.cells.get(CELL_KEY) || EMPTY_FOOD_SEARCH_BUCKET;
+            state.bucketIndex = 0;
+            this._foodSearchWork.cellVisits++;
+            unitsUsed++;
+        }
+    }
+    _considerFoodTarget(state, food) {
+        const DISTANCE = Math.hypot(food.x - state.x, food.y - state.y),
+            ORDER = this._foodOrder.get(food) ?? Infinity;
+        if (DISTANCE < state.nearestDistance || (DISTANCE === state.nearestDistance && ORDER < state.nearestOrder)) {
+            state.nearest = food;
+            state.nearestDistance = DISTANCE;
+            state.nearestOrder = ORDER;
+        }
+    }
+    requestGroundFoodTarget(unit) {
+        if (!this._spatialStepActive) {
+            this._rebuildFoodSpatialIndex();
+        }
+        if (!unit || this.scene !== 'farm' || unit.hp <= 0 || unit.fed || !this._groundedFoodCount) {
+            this._cancelFoodTargetSearch(unit);
+            return null;
+        }
+        const STATE = this._foodSearchStates.get(unit);
+        if (STATE?.status === 'ready' && this._isCurrentGroundedFood(STATE.target)) {
+            return STATE.target;
+        }
+        if (STATE?.status === 'searching') {
+            return null;
+        }
+        if (STATE?.status === 'empty' && STATE.revision === this._foodSearchSnapshot.revision) {
+            return null;
+        }
+        if (STATE) {
+            this._cancelFoodTargetSearch(unit);
+        }
+        return this._startFoodTargetSearch(unit);
     }
     farmUnit(u, dt) {
         FARM_MODES.breed.update(this, u, dt);

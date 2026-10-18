@@ -9,6 +9,7 @@ const STAGES = Object.freeze([
     'worldPostStep',
     'mutationDispatch',
     'worldStepFollowup',
+    'workScheduler',
     'presentationCapture',
     'runtimeCapture',
     'presentation',
@@ -22,6 +23,17 @@ const STAGES = Object.freeze([
 ]);
 const COUNTERS = Object.freeze([
     'logicTicks',
+    'workSchedulerTicks',
+    'workSchedulerUnits',
+    'foodSearchCandidateChecks',
+    'foodSearchCellVisits',
+    'workSchedulerQueueDepth',
+    'workSchedulerJobsQueued',
+    'workSchedulerJobsCompleted',
+    'workSchedulerJobsCancelled',
+    'workSchedulerWaitedJobs',
+    'workSchedulerWaitingTicks',
+    'workSchedulerBudgetExhaustions',
     'physicsSteps',
     'physicsSolverIterations',
     'catchupTicks',
@@ -98,7 +110,7 @@ export class PerformanceDiagnostics {
             gpuMs: null,
             units: 'milliseconds and counts; no GPU completion timing',
             timingHierarchy:
-                'callback CPU contains simulation/presentation/render/ui; simulation contains worldStep, presentationCapture and save; worldStep contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; presentationCapture contains runtimeCapture; save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU.',
+                'callback CPU contains simulation/presentation/render/ui; simulation contains worldStep, presentationCapture and save; worldStep contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler; scheduler work units are deterministic cell visits or food-candidate checks, not milliseconds; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; presentationCapture contains runtimeCapture; save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU.',
         };
     }
     frameRate() {
@@ -118,6 +130,10 @@ export class PerformanceDiagnostics {
             COUNT = (name) => SAMPLE.counts[name]?.total || 0,
             FRAME_COUNT = Math.max(1, SAMPLE.retainedFrames),
             PER_FRAME = (name) => NUMBER(COUNT(name) / FRAME_COUNT),
+            PER_LOGIC_TICK = (name) => NUMBER(COUNT(name) / Math.max(1, COUNT('logicTicks'))),
+            AVG_SEARCH_WAIT = NUMBER(
+                COUNT('workSchedulerWaitingTicks') / Math.max(1, COUNT('workSchedulerWaitedJobs')),
+            ),
             TIME = (name) => {
                 const VALUE = SAMPLE.stagesMs[name];
                 return this.detailed && SAMPLE.retainedFrames > 1
@@ -125,6 +141,7 @@ export class PerformanceDiagnostics {
                     : '미측정';
             };
         const LINES = [
+            `work scheduler: ${TIME('workScheduler')} / ${PER_LOGIC_TICK('workSchedulerUnits')} units per logic tick / ${PER_LOGIC_TICK('foodSearchCandidateChecks')} candidate and ${PER_LOGIC_TICK('foodSearchCellVisits')} cell visits / ${COUNT('workSchedulerJobsCompleted')} complete / queue ${PER_LOGIC_TICK('workSchedulerQueueDepth')} / first-service wait ${AVG_SEARCH_WAIT} ticks per job`,
             `SDK loss ms: clock-gap ${NUMBER(COUNT('clockGapDroppedMs'), 0)} / input clamp ${NUMBER(COUNT('inputDtClampedMs'), 0)} / backlog overflow ${NUMBER(COUNT('backlogOverflowMs'), 0)} / drop-policy ${NUMBER(COUNT('dropPolicyDroppedMs'), 0)}`,
             `상태 ${world.scene} ${paused ? '정지' : '실행'} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
             `창 ${NUMBER(SAMPLE.windowMs / 1000, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? '켜짐' : '꺼짐'} · ${SAMPLE.retainedFrames > 1 ? '유효' : '표본 부족'}`,

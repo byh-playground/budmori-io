@@ -13,6 +13,7 @@ async function verifyStartupPresentation() {
         ['BloomGamekitDeterministic', 'deterministic'],
         ['BloomGamekitInterpolation', 'interpolation'],
         ['BloomGamekitSimloop', 'simloop'],
+        ['BloomGamekitWorkScheduler', 'work-scheduler'],
     ]) {
         globalThis[NAME] = await LOAD(`vendor/upstream/${FILE}.js`);
     }
