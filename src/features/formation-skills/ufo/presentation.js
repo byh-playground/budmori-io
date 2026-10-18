@@ -19,7 +19,9 @@ export class UfoPresentation extends FormationPresentation {
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
             Z = effect.z + (1 - ENTER) * (1 - ENTER) * 4 + EXIT * 4 + Math.sin(effect.age * 5) * 0.08,
             P = renderer.project(effect.x, effect.y, Z),
-            S = renderer.scale * Math.max(0.08, ENTER) * (1 - Math.min(1, EXIT)),
+            BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3),
+            BODY_SCALE = Math.max(1, BODY_RADIUS * 2.6),
+            S = renderer.scale * BODY_SCALE * Math.max(0.08, ENTER) * (1 - Math.min(1, EXIT)),
             C = renderer.ctx;
         renderer.ellipse(P.x, P.y, S * 0.72, S * 0.19, '#718695');
         renderer.ellipse(P.x, P.y - S * 0.13, S * 0.34, S * 0.25, '#b9e6e2bb');

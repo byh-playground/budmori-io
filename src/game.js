@@ -1193,9 +1193,18 @@
   });
 
   // src/features/formation-skills/model-base.js
+  function targetBodyDimensions(target) {
+    const BODY_HEIGHT = Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
+    return {
+      z: BASE_Z,
+      bodyHeight: BODY_HEIGHT,
+      bodyRadius: BODY_RADIUS,
+      topZ: BASE_Z + BODY_HEIGHT
+    };
+  }
   function targetTop(_owner, target) {
-    const BODY_HEIGHT = target.height, MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
-    return target.z + BODY_HEIGHT * 0.84 + MARGIN;
+    const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
+    return BODY2.topZ + MARGIN;
   }
   var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
   var init_model_base = __esm({
@@ -1259,11 +1268,13 @@
           return true;
         }
         effectState(owner, target, slot, angle) {
-          const TARGET_Z = targetTop(owner, target);
+          const BODY2 = targetBodyDimensions(target), TARGET_Z = targetTop(owner, target);
           return {
             x: target.x + Math.cos(angle) * 0.6,
             y: target.y + Math.sin(angle) * 0.6,
             z: TARGET_Z + 2,
+            bodyHeight: BODY2.bodyHeight,
+            bodyRadius: BODY2.bodyRadius,
             targetId: owner.targetId(target),
             duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
             pulse: 0,
@@ -1281,6 +1292,7 @@
           effect.age += dt;
           const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
           if (TARGET) {
+            const BODY2 = targetBodyDimensions(TARGET);
             effect.targetId = owner.targetId(TARGET);
             const DX = TARGET.x - effect.x, DY = TARGET.y - effect.y, TARGET_Z = targetTop(owner, TARGET), RATE = 1 - Math.exp(-dt * 6);
             effect.x += DX * RATE;
@@ -1289,6 +1301,8 @@
             effect.targetX = TARGET.x;
             effect.targetY = TARGET.y;
             effect.targetZ = TARGET_Z;
+            effect.bodyHeight = BODY2.bodyHeight;
+            effect.bodyRadius = BODY2.bodyRadius;
           }
           owner.separateAir(effect, dt);
           const ACTIVE_AGE = effect.age - 0.5;
@@ -1380,7 +1394,15 @@
           if (!TARGET) {
             return false;
           }
-          owner.addEffect(DEFINITION2.id, { x: TARGET.x, y: TARGET.y, z: TARGET.z, duration: 0.65 });
+          const BODY2 = targetBodyDimensions(TARGET);
+          owner.addEffect(DEFINITION2.id, {
+            x: TARGET.x,
+            y: TARGET.y,
+            z: BODY2.z,
+            bodyHeight: BODY2.bodyHeight,
+            bodyRadius: BODY2.bodyRadius,
+            duration: 0.65
+          });
           owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
           return true;
         }
@@ -1536,7 +1558,15 @@
           if (!TARGET) {
             return false;
           }
-          owner.addEffect(DEFINITION7.id, { x: TARGET.x, y: TARGET.y, z: TARGET.z, duration: 0.7 });
+          const BODY2 = targetBodyDimensions(TARGET);
+          owner.addEffect(DEFINITION7.id, {
+            x: TARGET.x,
+            y: TARGET.y,
+            z: BODY2.z,
+            bodyHeight: BODY2.bodyHeight,
+            bodyRadius: BODY2.bodyRadius,
+            duration: 0.7
+          });
           owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
           TARGET.stun = Math.max(TARGET.stun || 0, 1);
           return true;
@@ -1560,12 +1590,12 @@
           if (TARGET) {
             owner.damage(TARGET, this.definition.pulseDamage);
           }
-          effect.beamTargetZ = TARGET?.z ?? 0;
+          effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
         }
         update(owner, effect, dt) {
           const ALIVE = super.update(owner, effect, dt), TARGET = owner.verticalTarget(effect.x, effect.y);
           effect.beamTarget = !!TARGET;
-          effect.beamTargetZ = TARGET?.z ?? 0;
+          effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
           return ALIVE;
         }
       };
@@ -6605,7 +6635,7 @@
           merge: Object.freeze({
             animationSeconds: 0.85,
             centerHeight: 1.8,
-            resultPopVelocity: 4.2,
+            resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
           }),
           bossEvent: Object.freeze({
@@ -9023,13 +9053,13 @@
           }
           const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ;
           const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
-          RESULT.z = Z;
-          RESULT.vz = CONFIG.farm.merge.resultPopVelocity;
           RESULT.dropLanded = false;
           RESULT.meals = 1;
           RESULT.growth = CONFIG.farm.breeding.matureMeals;
           RESULT.growthDuration = this.breedGrowthDuration();
           RESULT.growthElapsed = RESULT.growthDuration;
+          RESULT.z = Math.max(0, Z - RESULT.height * 0.85);
+          RESULT.vz = -CONFIG.farm.merge.resultFallVelocity;
           RESULT.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
           RESULT.cooldownDuration = RESULT.cooldown;
           const SEQUENCE_WINDOW = CONFIG.farm.merge.animationSeconds * 0.72, STEP = SEQUENCE_WINDOW / ORDERED.length;
@@ -11419,7 +11449,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.17";
+      PRODUCT_VERSION = "0.8.18";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13738,23 +13768,24 @@
     C.lineJoin = "round";
     C.stroke();
   }
-  function bolt(renderer, x, y, z, height, age, seed = 0) {
+  function bolt(renderer, x, y, z, height, age, seed = 0, radius = 0.3) {
     const FADE = Math.max(0, 1 - age / 0.65);
     if (FADE <= 0) {
       return;
     }
+    const BODY_SCALE = Math.max(0.6, radius / 0.3);
     const POINTS = [];
     for (let i = 0; i <= 9; i++) {
       POINTS.push([
-        x + (i === 9 ? 0 : Math.sin(i * 13.17 + seed) * 0.32),
-        y + (i === 9 ? 0 : Math.cos(i * 5.7 + seed) * 0.12),
+        x + (i === 9 ? 0 : Math.sin(i * 13.17 + seed) * 0.32 * BODY_SCALE),
+        y + (i === 9 ? 0 : Math.cos(i * 5.7 + seed) * 0.12 * BODY_SCALE),
         z + height * (1 - i / 9)
       ]);
     }
     if (age < 0.12) {
-      stroke(renderer, POINTS, `rgba(51,121,255,${FADE * 0.2})`, 0.5);
-      stroke(renderer, POINTS, `rgba(99,181,255,${FADE * 0.65})`, 0.19);
-      stroke(renderer, POINTS, `rgba(236,251,255,${FADE})`, 0.11);
+      stroke(renderer, POINTS, `rgba(51,121,255,${FADE * 0.2})`, 0.5 * BODY_SCALE);
+      stroke(renderer, POINTS, `rgba(99,181,255,${FADE * 0.65})`, 0.19 * BODY_SCALE);
+      stroke(renderer, POINTS, `rgba(236,251,255,${FADE})`, 0.11 * BODY_SCALE);
     } else {
       for (let i = 0; i < POINTS.length - 1; i++) {
         const FRAGMENT = Math.max(0, 1 - (age - 0.12 - i % 3 * 0.035) / 0.35);
@@ -13762,14 +13793,14 @@
           continue;
         }
         const SEGMENT = POINTS.slice(i, i + 2);
-        stroke(renderer, SEGMENT, `rgba(84,169,255,${FRAGMENT * 0.55})`, 0.16);
-        stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035);
+        stroke(renderer, SEGMENT, `rgba(84,169,255,${FRAGMENT * 0.55})`, 0.16 * BODY_SCALE);
+        stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035 * BODY_SCALE);
       }
     }
-    renderer.ring(x, y, 0.3 + age * 3, `rgba(157,212,255,${FADE * 0.8})`, 0.09);
+    renderer.ring(x, y, radius + age * radius * 10, `rgba(157,212,255,${FADE * 0.8})`, 0.09 * BODY_SCALE);
     if (age < 0.09) {
       const P = renderer.project(x, y, z + 0.15);
-      renderer.ellipse(P.x, P.y, renderer.scale * 0.65, renderer.scale * 0.42, "#effcffdd");
+      renderer.ellipse(P.x, P.y, renderer.scale * radius * 2.17, renderer.scale * radius * 1.4, "#effcffdd");
     }
   }
   function cloud(renderer, x, y, z, size, alpha = 1) {
@@ -13809,7 +13840,17 @@
   // src/features/formation-skills/lightning/presentation.js
   var LightningPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      bolt(renderer, effect.x, effect.y, effect.z, 11, effect.age, effect.id);
+      const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7), BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3);
+      bolt(
+        renderer,
+        effect.x,
+        effect.y,
+        effect.z + BODY_HEIGHT,
+        BODY_HEIGHT * 2.4,
+        effect.age,
+        effect.id,
+        BODY_RADIUS
+      );
     }
   };
 
@@ -13926,26 +13967,54 @@
   // src/features/formation-skills/hammer/presentation.js
   var HammerPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const Q = Math.min(1, effect.age / 0.18), Z = effect.z + 1 + (1 - Q) * 5, P = renderer.project(effect.x, effect.y, Z), S = renderer.scale, C = renderer.ctx, FADE = Math.max(0, 1 - (effect.age - 0.2) / 0.5);
+      const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_HEIGHT = Math.max(BODY_RADIUS * 2, effect.bodyHeight || BODY_RADIUS * 2), TELEGRAPH_END = 0.14, IMPACT_TIME = 0.42, DROP2 = Math.max(0, Math.min(1, (effect.age - TELEGRAPH_END) / (IMPACT_TIME - TELEGRAPH_END))), FALL = DROP2 ** 2.2, START_Z = effect.z + BODY_HEIGHT + BODY_RADIUS * 3.2, IMPACT_Z = effect.z + BODY_HEIGHT * 0.55, Z = START_Z + (IMPACT_Z - START_Z) * FALL, HEAD_WIDTH = BODY_RADIUS * 6, HEAD_HEIGHT = BODY_RADIUS * 1.8, P = renderer.project(effect.x, effect.y, Z), S = renderer.scale, C = renderer.ctx, FADE = Math.max(0, 1 - Math.max(0, effect.age - IMPACT_TIME) / 0.28);
+      if (effect.age < TELEGRAPH_END) {
+        const TELEGRAPH = 1 - effect.age / TELEGRAPH_END, AIM = renderer.project(effect.x, effect.y, IMPACT_Z);
+        renderer.ellipse(
+          AIM.x,
+          AIM.y,
+          S * BODY_RADIUS * (1.8 + (1 - TELEGRAPH) * 0.8),
+          S * BODY_RADIUS * 0.52,
+          `rgba(233,218,146,${0.32 + TELEGRAPH * 0.42})`
+        );
+      }
       stroke(
         renderer,
         [
-          [effect.x - 0.3, effect.y, Z - 1.7],
+          [effect.x, effect.y, Z + HEAD_HEIGHT * 0.9],
           [effect.x, effect.y, Z]
         ],
         `rgba(130,90,65,${FADE})`,
-        0.2
+        BODY_RADIUS * 0.7
       );
       C.fillStyle = `rgba(132,153,172,${FADE})`;
       C.beginPath();
-      C.roundRect(P.x - S * 0.9, P.y - S * 0.4, S * 1.8, S * 0.8, S * 0.12);
+      C.roundRect(
+        P.x - S * HEAD_WIDTH / 2,
+        P.y - S * HEAD_HEIGHT / 2,
+        S * HEAD_WIDTH,
+        S * HEAD_HEIGHT,
+        S * BODY_RADIUS * 0.3
+      );
       C.fill();
       C.fillStyle = `rgba(216,229,234,${FADE})`;
       C.beginPath();
-      C.roundRect(P.x - S * 0.85, P.y - S * 0.35, S * 1.7, S * 0.13, S * 0.04);
+      C.roundRect(
+        P.x - S * HEAD_WIDTH / 2.1,
+        P.y - S * HEAD_HEIGHT / 2,
+        S * HEAD_WIDTH / 1.05,
+        S * HEAD_HEIGHT * 0.16,
+        S * BODY_RADIUS * 0.1
+      );
       C.fill();
-      if (effect.age > 0.18) {
-        renderer.ring(effect.x, effect.y, (effect.age - 0.18) * 4, `rgba(233,218,146,${FADE})`, 0.1);
+      if (effect.age > IMPACT_TIME) {
+        renderer.ring(
+          effect.x,
+          effect.y,
+          BODY_RADIUS * (1.1 + (effect.age - IMPACT_TIME) * 5),
+          `rgba(233,218,146,${FADE})`,
+          BODY_RADIUS * 0.3
+        );
       }
     }
   };
@@ -13965,7 +14034,7 @@
   }
   var UfoPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + (1 - ENTER) * (1 - ENTER) * 4 + EXIT * 4 + Math.sin(effect.age * 5) * 0.08, P = renderer.project(effect.x, effect.y, Z), S = renderer.scale * Math.max(0.08, ENTER) * (1 - Math.min(1, EXIT)), C = renderer.ctx;
+      const ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + (1 - ENTER) * (1 - ENTER) * 4 + EXIT * 4 + Math.sin(effect.age * 5) * 0.08, P = renderer.project(effect.x, effect.y, Z), BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_SCALE = Math.max(1, BODY_RADIUS * 2.6), S = renderer.scale * BODY_SCALE * Math.max(0.08, ENTER) * (1 - Math.min(1, EXIT)), C = renderer.ctx;
       renderer.ellipse(P.x, P.y, S * 0.72, S * 0.19, "#718695");
       renderer.ellipse(P.x, P.y - S * 0.13, S * 0.34, S * 0.25, "#b9e6e2bb");
       renderer.ellipse(P.x, P.y + S * 0.12, S * 0.26, S * 0.065, "#a0f8e4");
@@ -14003,7 +14072,7 @@
     if (!buffers) {
       const POINT2 = () => [0, 0, 0];
       buffers = {
-        arc: Array.from({ length: 13 }, POINT2),
+        arcs: Array.from({ length: 3 }, () => Array.from({ length: 13 }, POINT2)),
         intro: Array.from({ length: 4 }, POINT2),
         branches: Array.from({ length: 3 }, () => Array.from({ length: 3 }, POINT2))
       };
@@ -14017,7 +14086,7 @@
   }
   var StormCloudPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * 0.1, SPREAD = (1 - ENTER + EXIT) * 1.2;
+      const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_SCALE = Math.min(3.5, Math.max(1, BODY_RADIUS / 0.3)), CLOUD_SIZE = BODY_RADIUS * 4, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
@@ -14025,7 +14094,7 @@
           effect.x + Math.cos(ANGLE) * SPREAD,
           effect.y + Math.sin(ANGLE) * SPREAD,
           Z,
-          0.7,
+          CLOUD_SIZE,
           Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8)
         );
       }
@@ -14046,31 +14115,30 @@
         stroke(renderer, INTRO_POINTS, "#b7e8f0aa", 0.035);
       }
       if (effect.pulse > 0 && effect.age > 0.5 && EXIT === 0) {
-        const BUFFERS = pointBuffersFor(effect), POINTS = BUFFERS.arc, BRANCHES = BUFFERS.branches;
-        for (let index = 0; index < POINTS.length; index++) {
-          const T = index / (POINTS.length - 1), BEND = visualOffset(effect, index, 0) * Math.sin(T * Math.PI), POINT2 = POINTS[index];
-          POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55;
-          POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22;
-          POINT2[2] = Z + (effect.targetZ - Z) * T + Math.sin(T * Math.PI) * 0.28 + BEND * 0.16;
-        }
-        for (let index = 0; index < BRANCHES.length; index++) {
-          const T = 0.24 + index * 0.24 + visualOffset(effect, index, 1) * 0.08, ROOT = POINTS[Math.round(T * (POINTS.length - 1))], DX = visualOffset(effect, index, 2) * 0.72, DY = visualOffset(effect, index, 3) * 0.58, BRANCH = BRANCHES[index];
+        const BUFFERS = pointBuffersFor(effect), ARCS = BUFFERS.arcs, BRANCHES = BUFFERS.branches;
+        for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
+          const POINTS = ARCS[arcIndex];
+          for (let index = 0; index < POINTS.length; index++) {
+            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
+            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
+            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
+            POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
+          }
+          const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
           BRANCH[0][0] = ROOT[0];
           BRANCH[0][1] = ROOT[1];
           BRANCH[0][2] = ROOT[2];
           BRANCH[1][0] = ROOT[0] + DX * 0.55;
           BRANCH[1][1] = ROOT[1] + DY * 0.55;
-          BRANCH[1][2] = ROOT[2] + 0.16;
+          BRANCH[1][2] = ROOT[2] + BODY_RADIUS * 0.45;
           BRANCH[2][0] = ROOT[0] + DX;
           BRANCH[2][1] = ROOT[1] + DY;
-          BRANCH[2][2] = ROOT[2] + 0.08;
-        }
-        stroke(renderer, POINTS, "#408bff99", 0.3);
-        stroke(renderer, POINTS, "#8bd4ff", 0.13);
-        stroke(renderer, POINTS, "#f3fdff", 0.045);
-        for (const BRANCH of BRANCHES) {
-          stroke(renderer, BRANCH, "#408bff88", 0.18);
-          stroke(renderer, BRANCH, "#d9f5ff", 0.045);
+          BRANCH[2][2] = ROOT[2] + BODY_RADIUS * 0.2;
+          stroke(renderer, POINTS, "#408bff99", 0.3 * BODY_SCALE);
+          stroke(renderer, POINTS, "#8bd4ff", 0.13 * BODY_SCALE);
+          stroke(renderer, POINTS, "#f3fdff", 0.045 * BODY_SCALE);
+          stroke(renderer, BRANCH, "#408bff88", 0.18 * BODY_SCALE);
+          stroke(renderer, BRANCH, "#d9f5ff", 0.045 * BODY_SCALE);
         }
       }
     }
@@ -14202,7 +14270,7 @@
     return {
       x: effect.x + (effect.targetX - effect.x) * T,
       y: effect.y + (effect.targetY - effect.y) * T,
-      z: (effect.z || 0) + ((effect.targetZ ?? effect.z ?? 0) - (effect.z || 0)) * T + Math.sin(Math.PI * T) * 0.55
+      z: (effect.z || 0) + ((effect.targetZ ?? effect.z ?? 0) - (effect.z || 0)) * T
     };
   }
   var MergeEffect = class extends CelebrationEffect {
@@ -14469,6 +14537,7 @@
       this.groundColor = "#d1d8b8";
       this.surfaceColor = "#d9dfc2";
       this.minimumUnitPixels = 11;
+      this.hiddenMergeUnitIds = /* @__PURE__ */ new Set();
     }
     cameraView(aspect) {
       return aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
@@ -14481,6 +14550,25 @@
     }
     drawMergeBlackHoles(renderer, world) {
       drawMergeBlackHoles(renderer, world);
+    }
+    hiddenUnitIds(world) {
+      const IDS = this.hiddenMergeUnitIds;
+      IDS.clear();
+      for (const TASK of world.mergeTasks || []) {
+        if (TASK.phase !== "approach" || !(TASK.duration > 0) || TASK.elapsed / TASK.duration < 0.82) {
+          continue;
+        }
+        for (const UNIT3 of world.units) {
+          if (!TASK.materialIds.includes(UNIT3.id)) {
+            continue;
+          }
+          const BODY_HEIGHT = Number.isFinite(UNIT3.height) ? UNIT3.height : 0, BODY_RADIUS = Number.isFinite(UNIT3.radius) ? UNIT3.radius : 0, IN_APERTURE = Math.hypot(UNIT3.x - TASK.centerX, UNIT3.y - TASK.centerY) <= Math.max(0.55, BODY_RADIUS * 0.48), INSIDE_DEPTH = UNIT3.z >= TASK.centerZ - BODY_HEIGHT * 0.68 && UNIT3.z + BODY_HEIGHT >= TASK.centerZ + 0.12;
+          if (IN_APERTURE && INSIDE_DEPTH) {
+            IDS.add(UNIT3.id);
+          }
+        }
+      }
+      return IDS;
     }
     victorious() {
       return false;

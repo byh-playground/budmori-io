@@ -1,10 +1,22 @@
 import { unitBodyRadius } from '../unit-body/definition.cjs';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
 
+export function targetBodyDimensions(target) {
+    const BODY_HEIGHT = Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7,
+        BODY_RADIUS = Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5,
+        BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
+    return {
+        z: BASE_Z,
+        bodyHeight: BODY_HEIGHT,
+        bodyRadius: BODY_RADIUS,
+        topZ: BASE_Z + BODY_HEIGHT,
+    };
+}
+
 function targetTop(_owner, target) {
-    const BODY_HEIGHT = target.height,
-        MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
-    return target.z + BODY_HEIGHT * 0.84 + MARGIN;
+    const BODY = targetBodyDimensions(target),
+        MARGIN = Math.max(T1_DIAMETER * 0.12, BODY.bodyHeight * 0.06);
+    return BODY.topZ + MARGIN;
 }
 
 export class FormationSkill {
@@ -66,11 +78,14 @@ export class FlyingSkill extends FormationSkill {
         return true;
     }
     effectState(owner, target, slot, angle) {
-        const TARGET_Z = targetTop(owner, target);
+        const BODY = targetBodyDimensions(target),
+            TARGET_Z = targetTop(owner, target);
         return {
             x: target.x + Math.cos(angle) * 0.6,
             y: target.y + Math.sin(angle) * 0.6,
             z: TARGET_Z + 2,
+            bodyHeight: BODY.bodyHeight,
+            bodyRadius: BODY.bodyRadius,
             targetId: owner.targetId(target),
             duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
             pulse: 0,
@@ -86,6 +101,7 @@ export class FlyingSkill extends FormationSkill {
         effect.age += dt;
         const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
         if (TARGET) {
+            const BODY = targetBodyDimensions(TARGET);
             effect.targetId = owner.targetId(TARGET);
             const DX = TARGET.x - effect.x,
                 DY = TARGET.y - effect.y,
@@ -97,6 +113,8 @@ export class FlyingSkill extends FormationSkill {
             effect.targetX = TARGET.x;
             effect.targetY = TARGET.y;
             effect.targetZ = TARGET_Z;
+            effect.bodyHeight = BODY.bodyHeight;
+            effect.bodyRadius = BODY.bodyRadius;
         }
         owner.separateAir(effect, dt);
         const ACTIVE_AGE = effect.age - 0.5;

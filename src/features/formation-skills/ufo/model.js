@@ -1,5 +1,5 @@
 import { DEFINITION } from './definition.js';
-import { FlyingSkill } from '../model-base.js';
+import { FlyingSkill, targetBodyDimensions } from '../model-base.js';
 export class UfoSkill extends FlyingSkill {
     constructor() {
         super(DEFINITION);
@@ -9,13 +9,13 @@ export class UfoSkill extends FlyingSkill {
         if (TARGET) {
             owner.damage(TARGET, this.definition.pulseDamage);
         }
-        effect.beamTargetZ = TARGET?.z ?? 0;
+        effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
     }
     update(owner, effect, dt) {
         const ALIVE = super.update(owner, effect, dt),
             TARGET = owner.verticalTarget(effect.x, effect.y);
         effect.beamTarget = !!TARGET;
-        effect.beamTargetZ = TARGET?.z ?? 0;
+        effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
         return ALIVE;
     }
 }

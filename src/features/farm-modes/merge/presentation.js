@@ -72,7 +72,7 @@ export function mergeMaterialPosition(effect, progress) {
     return {
         x: effect.x + (effect.targetX - effect.x) * T,
         y: effect.y + (effect.targetY - effect.y) * T,
-        z: (effect.z || 0) + ((effect.targetZ ?? effect.z ?? 0) - (effect.z || 0)) * T + Math.sin(Math.PI * T) * 0.55,
+        z: (effect.z || 0) + ((effect.targetZ ?? effect.z ?? 0) - (effect.z || 0)) * T,
     };
 }
 

@@ -1,5 +1,5 @@
 import { DEFINITION } from './definition.js';
-import { FormationSkill } from '../model-base.js';
+import { FormationSkill, targetBodyDimensions } from '../model-base.js';
 export class LightningSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);
@@ -9,7 +9,15 @@ export class LightningSkill extends FormationSkill {
         if (!TARGET) {
             return false;
         }
-        owner.addEffect(DEFINITION.id, { x: TARGET.x, y: TARGET.y, z: TARGET.z, duration: 0.65 });
+        const BODY = targetBodyDimensions(TARGET);
+        owner.addEffect(DEFINITION.id, {
+            x: TARGET.x,
+            y: TARGET.y,
+            z: BODY.z,
+            bodyHeight: BODY.bodyHeight,
+            bodyRadius: BODY.bodyRadius,
+            duration: 0.65,
+        });
         owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
         return true;
     }

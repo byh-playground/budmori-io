@@ -114,7 +114,7 @@ const CONFIG = Object.freeze({
         merge: Object.freeze({
             animationSeconds: 0.85,
             centerHeight: 1.8,
-            resultPopVelocity: 4.2,
+            resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
         bossEvent: Object.freeze({
@@ -2951,13 +2951,13 @@ const GARDEN = class Garden {
         // Prepare the complete result before the collection owner commits the
         // replacement. A failed preparation never consumes existing units.
         const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
-        RESULT.z = Z;
-        RESULT.vz = CONFIG.farm.merge.resultPopVelocity;
         RESULT.dropLanded = false;
         RESULT.meals = 1;
         RESULT.growth = CONFIG.farm.breeding.matureMeals;
         RESULT.growthDuration = this.breedGrowthDuration();
         RESULT.growthElapsed = RESULT.growthDuration;
+        RESULT.z = Math.max(0, Z - RESULT.height * 0.85);
+        RESULT.vz = -CONFIG.farm.merge.resultFallVelocity;
         RESULT.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
         RESULT.cooldownDuration = RESULT.cooldown;
         const SEQUENCE_WINDOW = CONFIG.farm.merge.animationSeconds * 0.72,

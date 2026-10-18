@@ -848,12 +848,64 @@ async function formationBrowserUI() {
                     activeVisualPhase: CLOUD_RENDER.pulse > 0 && CLOUD_RENDER.age > 0.5,
                 };
             });
+            const ARC_SHAPE_TRACE = await P.evaluate(async () => {
+                const { StormCloudPresentation: CLOUD_PRESENTATION } =
+                        await import('/src/features/formation-skills/storm-cloud/presentation.js'),
+                    PATHS_FOR = (pulse) => {
+                        const PATHS = [];
+                        let activePath = null;
+                        const CTX = {
+                                beginPath() {
+                                    activePath = [];
+                                    PATHS.push(activePath);
+                                },
+                                moveTo(x, y) {
+                                    activePath.push([x, y]);
+                                },
+                                lineTo(x, y) {
+                                    activePath.push([x, y]);
+                                },
+                                stroke() {},
+                            },
+                            RENDERER = {
+                                ctx: CTX,
+                                scale: 1,
+                                pixelRatio: 1,
+                                project: (x, y, z) => ({ x, y: y - z }),
+                                ellipse() {},
+                            };
+                        new CLOUD_PRESENTATION().draw(RENDERER, {
+                            id: 31415,
+                            x: 0,
+                            y: 0,
+                            z: 4,
+                            targetX: 0,
+                            targetY: 0,
+                            targetZ: 2,
+                            bodyRadius: 1,
+                            age: 0.8,
+                            duration: 5,
+                            pulse,
+                        });
+                        return PATHS;
+                    },
+                    FIRST_ARCS = PATHS_FOR(1).filter((path) => path.length === 13),
+                    NEXT_ARCS = PATHS_FOR(2).filter((path) => path.length === 13),
+                    FIRST_SHAPES = [...new Set(FIRST_ARCS.map((path) => JSON.stringify(path)))],
+                    NEXT_SHAPES = [...new Set(NEXT_ARCS.map((path) => JSON.stringify(path)))];
+                return {
+                    simultaneousArcs: FIRST_SHAPES.length,
+                    attacksVary: JSON.stringify(FIRST_SHAPES) !== JSON.stringify(NEXT_SHAPES),
+                };
+            });
             await P.waitForTimeout(80);
             await clean(P);
             await P.screenshot({ path: path.join(OUT, 'formation-sky-beams.png') });
             assert.equal(ARC_TRACE.pulseAdvanced, true);
             assert.equal(ARC_TRACE.presentationCarriesPulse, true);
             assert.equal(ARC_TRACE.activeVisualPhase, true);
+            assert.equal(ARC_SHAPE_TRACE.simultaneousArcs, 3);
+            assert.equal(ARC_SHAPE_TRACE.attacksVary, true);
         }
     }
     await openMenuTab(P, 'formation');
@@ -863,10 +915,22 @@ async function formationBrowserUI() {
                 import('/src/features/formation-skills/ufo/model.js'),
                 import('/src/features/formation-skills/ufo/presentation.js'),
             ]),
-            TARGET = { id: 7, x: 0, y: 0, z: 0, height: 2, giantUntil: 0, hp: 100, faction: 'enemy' };
+            TARGET = {
+                id: 7,
+                x: 0,
+                y: 0,
+                z: 0,
+                height: 2.4,
+                radius: 0.9,
+                giantScale: 3,
+                giantUntil: 0,
+                hp: 100,
+                faction: 'enemy',
+            };
         let damageCount = 0,
             strokeCount = 0,
             ringCount = 0;
+        const ELLIPSE_WIDTHS = [];
         const OWNER = {
                 world: { boss: TARGET, time: 0 },
                 target: () => TARGET,
@@ -909,7 +973,9 @@ async function formationBrowserUI() {
                 scale: 1,
                 pixelRatio: 1,
                 project: (x, y) => ({ x, y }),
-                ellipse() {},
+                ellipse(_x, _y, width) {
+                    ELLIPSE_WIDTHS.push(width);
+                },
                 ring() {
                     ringCount++;
                 },
@@ -920,6 +986,16 @@ async function formationBrowserUI() {
             GAP_RINGS = ringCount;
         PRESENTATION.draw(RENDERER, { ...EFFECT, age: 0.95, lastPulse: 0.8, beamTarget: false });
         const NO_TARGET_STROKES = strokeCount;
+        const LARGE_UFO_WIDTH = Math.max(...ELLIPSE_WIDTHS);
+        ELLIPSE_WIDTHS.length = 0;
+        PRESENTATION.draw(RENDERER, {
+            ...EFFECT,
+            age: 0.95,
+            lastPulse: 0.8,
+            bodyRadius: TARGET.radius / 2,
+            beamTarget: false,
+        });
+        const HALF_RADIUS_UFO_WIDTH = Math.max(...ELLIPSE_WIDTHS);
         const CADENCE_EFFECT = { ...EFFECT, age: 0.8, pulse: 1, lastPulse: 0.7 },
             DAMAGE_BY_STEP = [];
         for (let i = 0; i < 6; i++) {
@@ -954,6 +1030,10 @@ async function formationBrowserUI() {
             noTargetStrokes: NO_TARGET_STROKES,
             damageByStep: DAMAGE_BY_STEP,
             capturedBeamTarget,
+            beamTargetZ: EFFECT.beamTargetZ,
+            bodyHeight: EFFECT.bodyHeight,
+            bodyRadius: EFFECT.bodyRadius,
+            largeToHalfRadiusWidth: LARGE_UFO_WIDTH / HALF_RADIUS_UFO_WIDTH,
         };
     });
     assert.deepEqual(UFO_TRACE, {
@@ -963,10 +1043,84 @@ async function formationBrowserUI() {
         noTargetStrokes: 3,
         damageByStep: [0, 1, 1, 1, 1, 2],
         capturedBeamTarget: true,
+        beamTargetZ: 2.4,
+        bodyHeight: 2.4,
+        bodyRadius: 0.9,
+        largeToHalfRadiusWidth: 2,
     });
+    const HAMMER_TRACE = await P.evaluate(async () => {
+        const [{ HammerSkill: HAMMER_SKILL }, { HammerPresentation: HAMMER_PRESENTATION }] = await Promise.all([
+                import('/src/features/formation-skills/hammer/model.js'),
+                import('/src/features/formation-skills/hammer/presentation.js'),
+            ]),
+            TARGET = { id: 8, x: 1, y: 2, z: 0.3, height: 2.4, radius: 0.9, giantScale: 3, stun: 0 };
+        let effect = null,
+            damage = 0;
+        const SKILL = new HAMMER_SKILL();
+        SKILL.cast(
+            {
+                enemy: () => TARGET,
+                addEffect(_id, createdEffect) {
+                    effect = createdEffect;
+                },
+                damage(_target, amount) {
+                    damage += amount;
+                },
+            },
+            { level: 1 },
+        );
+        const PROJECTED = (age) => {
+            let head = null;
+            const CTX = {
+                    globalAlpha: 1,
+                    beginPath() {},
+                    moveTo() {},
+                    lineTo() {},
+                    stroke() {},
+                    fill() {},
+                    roundRect(_x, y, width, height) {
+                        if (!head) {
+                            head = { y: y + height / 2, width };
+                        }
+                    },
+                },
+                RENDERER = {
+                    ctx: CTX,
+                    scale: 1,
+                    pixelRatio: 1,
+                    project: (x, _y, z) => ({ x, y: -z }),
+                    ellipse() {},
+                    ring() {},
+                };
+            new HAMMER_PRESENTATION().draw(RENDERER, { ...effect, age });
+            return head;
+        };
+        return {
+            bodyHeight: effect.bodyHeight,
+            bodyRadius: effect.bodyRadius,
+            effectZ: effect.z,
+            damage,
+            stun: TARGET.stun,
+            start: PROJECTED(0),
+            early: PROJECTED(0.2),
+            middle: PROJECTED(0.3),
+            late: PROJECTED(0.4),
+        };
+    });
+    assert.equal(HAMMER_TRACE.bodyHeight, 2.4);
+    assert.equal(HAMMER_TRACE.bodyRadius, 0.9);
+    assert.equal(HAMMER_TRACE.effectZ, 0.3);
+    assert.equal(HAMMER_TRACE.damage, 50);
+    assert.equal(HAMMER_TRACE.stun, 1);
+    assert(HAMMER_TRACE.start.width > 0.9 * 4, 'the giant hammer scales from the target body radius');
+    assert(
+        HAMMER_TRACE.start.y < HAMMER_TRACE.early.y &&
+            HAMMER_TRACE.middle.y - HAMMER_TRACE.early.y < HAMMER_TRACE.late.y - HAMMER_TRACE.middle.y,
+        'the hammer telegraphs above the head and accelerates into impact',
+    );
     await C.close();
     CHECK(
-        'Formation UI and all nine effects; UFO beam stays visible between pulses, schema captures its target, and damage remains on the 0.2s pulse',
+        'Formation visuals share target body dimensions; storm arcs vary in groups, hammer descends from above the head, and damage cadence stays unchanged',
     );
 }
 async function upgradeMenuFlow() {
@@ -4006,32 +4160,82 @@ async function seedScenarios(p, label) {
                 );
                 assert.equal(MIDDLE.aiSteering, false, 'normal Farm AI does not steer absorbed units');
                 await p.evaluate(() => {
-                    for (let index = 0; index < 5; index++) {
+                    for (let index = 0; index < 4; index++) {
                         BUDMORI.sim.step(1 / 20);
                     }
                     BUDMORI.runtime.capturePresentation('reset');
                 });
+                const OCCLUSION = await p.evaluate(async () => {
+                    const [{ FarmScenePresentation: FARM_PRESENTATION }, { mergeMaterialPosition: MATERIAL_POSITION }] =
+                            await Promise.all([
+                                import('/src/features/scenes/farm/presentation.js'),
+                                import('/src/features/farm-modes/merge/presentation.js'),
+                            ]),
+                        DISPLAY = BUDMORI.runtime.presentation(performance.now()),
+                        SCENE = new FARM_PRESENTATION(),
+                        TASK = DISPLAY.mergeTasks[0],
+                        START = TASK.startPositions[0],
+                        MATERIAL = {
+                            x: START.x,
+                            y: START.y,
+                            z: START.z,
+                            targetX: TASK.centerX,
+                            targetY: TASK.centerY,
+                            targetZ: TASK.centerZ,
+                        },
+                        END = MATERIAL_POSITION(MATERIAL, 1);
+                    return {
+                        hiddenMaterials: SCENE.hiddenUnitIds(DISPLAY).size,
+                        materialCount: TASK.materialIds.length,
+                        materialEndZ: END.z,
+                        frontLipZ: TASK.centerZ + 0.32,
+                    };
+                });
+                assert.equal(
+                    OCCLUSION.hiddenMaterials,
+                    OCCLUSION.materialCount,
+                    'all materials disappear behind the black-hole aperture at the end of suction',
+                );
+                assert(
+                    OCCLUSION.materialEndZ < OCCLUSION.frontLipZ,
+                    'the material path ends behind the front rim instead of rising in front of it',
+                );
+                await render(p, label + '-grade-merge-occlusion');
+                await p.evaluate(() => {
+                    BUDMORI.sim.step(1 / 20);
+                    BUDMORI.runtime.capturePresentation('reset');
+                });
                 const MERGE_OUTPUT = await p.evaluate((id) => {
                     const UNIT = BUDMORI.sim.units.find((unit) => unit.id === id);
+                    const TASK = BUDMORI.sim.mergeTask,
+                        RESULT_TOP_POINT = BUDMORI.renderer.project(UNIT.x, UNIT.y, UNIT.z + UNIT.height),
+                        HOLE_POINT = BUDMORI.renderer.project(TASK.centerX, TASK.centerY, TASK.centerZ + 0.32);
                     return (
                         UNIT && {
                             phase: BUDMORI.sim.mergeTask?.phase,
                             tier: UNIT.tier,
+                            height: UNIT.height,
                             x: UNIT.x,
                             y: UNIT.y,
                             z: UNIT.z,
                             vz: UNIT.vz,
                             dropLanded: UNIT.dropLanded,
+                            belowHole: RESULT_TOP_POINT.y > HOLE_POINT.y,
                         }
                     );
                 }, MERGE_SETUP.resultId);
                 assert.equal(MERGE_OUTPUT.tier, 6);
                 assert.equal(MERGE_OUTPUT.phase, 'animation');
                 assert(
-                    Math.abs(MERGE_OUTPUT.z - MERGE_SETUP.centerZ) < 1e-9,
-                    'the result spawns at the shared aerial point',
+                    Math.abs(MERGE_OUTPUT.z - Math.max(0, MERGE_SETUP.centerZ - MERGE_OUTPUT.height * 0.85)) < 1e-9 &&
+                        MERGE_OUTPUT.z + MERGE_OUTPUT.height < MERGE_SETUP.centerZ + 0.32 &&
+                        MERGE_OUTPUT.belowHole,
+                    'the whole result body emerges below the shared aperture',
                 );
-                assert(MERGE_OUTPUT.vz > 0 && !MERGE_OUTPUT.dropLanded, 'the result pops upward before falling');
+                assert(
+                    MERGE_OUTPUT.vz < 0 && !MERGE_OUTPUT.dropLanded,
+                    'the result starts moving downward as it emerges',
+                );
                 await p.evaluate(() => new Promise(requestAnimationFrame));
                 await render(p, label + '-grade-merge-pop');
                 assert(
@@ -4039,17 +4243,15 @@ async function seedScenarios(p, label) {
                     'the aerial result is visible immediately after the pop',
                 );
                 await p.evaluate(() => {
-                    for (let index = 0; index < 12; index++) {
-                        BUDMORI.sim.step(1 / 20);
-                    }
+                    BUDMORI.sim.step(1 / 20);
                 });
                 const FALLING = await p.evaluate((id) => {
                     const UNIT = BUDMORI.sim.units.find((unit) => unit.id === id);
                     return { z: UNIT.z, vz: UNIT.vz, dropLanded: UNIT.dropLanded };
                 }, MERGE_SETUP.resultId);
                 assert(
-                    FALLING.z > 0 && FALLING.vz < 0 && !FALLING.dropLanded,
-                    'gravity turns the pop into a visible fall',
+                    FALLING.z < MERGE_OUTPUT.z && FALLING.z > 0 && FALLING.vz < 0 && !FALLING.dropLanded,
+                    'the downward emergence continues into a gravity-driven fall',
                 );
                 await p.evaluate(() => {
                     for (let index = 0; index < 20; index++) {
@@ -4064,7 +4266,7 @@ async function seedScenarios(p, label) {
                     true,
                 );
                 CHECK(
-                    'Merge materials rise into the aerial vortex without AI/contact steering; the result pops out and lands',
+                    'Merge materials rise behind the aperture without AI/contact steering; the result emerges below it, falls, and lands',
                 );
             }
             if (SCENE === 'raid') {

@@ -6,7 +6,7 @@ function pointBuffersFor(effect) {
     if (!buffers) {
         const POINT = () => [0, 0, 0];
         buffers = {
-            arc: Array.from({ length: 13 }, POINT),
+            arcs: Array.from({ length: 3 }, () => Array.from({ length: 13 }, POINT)),
             intro: Array.from({ length: 4 }, POINT),
             branches: Array.from({ length: 3 }, () => Array.from({ length: 3 }, POINT)),
         };
@@ -22,10 +22,13 @@ function visualOffset(effect, index, salt) {
 
 export class StormCloudPresentation extends FormationPresentation {
     draw(renderer, effect) {
-        const ENTER = Math.min(1, effect.age / 0.5),
+        const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3),
+            BODY_SCALE = Math.min(3.5, Math.max(1, BODY_RADIUS / 0.3)),
+            CLOUD_SIZE = BODY_RADIUS * 4,
+            ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
-            Z = effect.z + Math.sin(effect.age * 3) * 0.1,
-            SPREAD = (1 - ENTER + EXIT) * 1.2;
+            Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
+            SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
         for (let index = 0; index < 3; index++) {
             const ANGLE = (index * Math.PI * 2) / 3;
             cloud(
@@ -33,7 +36,7 @@ export class StormCloudPresentation extends FormationPresentation {
                 effect.x + Math.cos(ANGLE) * SPREAD,
                 effect.y + Math.sin(ANGLE) * SPREAD,
                 Z,
-                0.7,
+                CLOUD_SIZE,
                 Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8),
             );
         }
@@ -55,38 +58,40 @@ export class StormCloudPresentation extends FormationPresentation {
         }
         if (effect.pulse > 0 && effect.age > 0.5 && EXIT === 0) {
             const BUFFERS = pointBuffersFor(effect),
-                POINTS = BUFFERS.arc,
+                ARCS = BUFFERS.arcs,
                 BRANCHES = BUFFERS.branches;
-            for (let index = 0; index < POINTS.length; index++) {
-                const T = index / (POINTS.length - 1),
-                    BEND = visualOffset(effect, index, 0) * Math.sin(T * Math.PI),
-                    POINT = POINTS[index];
-                POINT[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55;
-                POINT[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22;
-                POINT[2] = Z + (effect.targetZ - Z) * T + Math.sin(T * Math.PI) * 0.28 + BEND * 0.16;
-            }
-            for (let index = 0; index < BRANCHES.length; index++) {
-                const T = 0.24 + index * 0.24 + visualOffset(effect, index, 1) * 0.08,
-                    ROOT = POINTS[Math.round(T * (POINTS.length - 1))],
-                    DX = visualOffset(effect, index, 2) * 0.72,
-                    DY = visualOffset(effect, index, 3) * 0.58,
-                    BRANCH = BRANCHES[index];
+            for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
+                const POINTS = ARCS[arcIndex];
+                for (let index = 0; index < POINTS.length; index++) {
+                    const T = index / (POINTS.length - 1),
+                        CURVE = Math.sin(T * Math.PI),
+                        SEED = arcIndex * 17,
+                        BEND = visualOffset(effect, index, SEED) * CURVE,
+                        SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE,
+                        POINT = POINTS[index];
+                    POINT[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
+                    POINT[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
+                    POINT[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
+                }
+                const BRANCH = BRANCHES[arcIndex],
+                    ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08,
+                    ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))],
+                    DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4,
+                    DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
                 BRANCH[0][0] = ROOT[0];
                 BRANCH[0][1] = ROOT[1];
                 BRANCH[0][2] = ROOT[2];
                 BRANCH[1][0] = ROOT[0] + DX * 0.55;
                 BRANCH[1][1] = ROOT[1] + DY * 0.55;
-                BRANCH[1][2] = ROOT[2] + 0.16;
+                BRANCH[1][2] = ROOT[2] + BODY_RADIUS * 0.45;
                 BRANCH[2][0] = ROOT[0] + DX;
                 BRANCH[2][1] = ROOT[1] + DY;
-                BRANCH[2][2] = ROOT[2] + 0.08;
-            }
-            stroke(renderer, POINTS, '#408bff99', 0.3);
-            stroke(renderer, POINTS, '#8bd4ff', 0.13);
-            stroke(renderer, POINTS, '#f3fdff', 0.045);
-            for (const BRANCH of BRANCHES) {
-                stroke(renderer, BRANCH, '#408bff88', 0.18);
-                stroke(renderer, BRANCH, '#d9f5ff', 0.045);
+                BRANCH[2][2] = ROOT[2] + BODY_RADIUS * 0.2;
+                stroke(renderer, POINTS, '#408bff99', 0.3 * BODY_SCALE);
+                stroke(renderer, POINTS, '#8bd4ff', 0.13 * BODY_SCALE);
+                stroke(renderer, POINTS, '#f3fdff', 0.045 * BODY_SCALE);
+                stroke(renderer, BRANCH, '#408bff88', 0.18 * BODY_SCALE);
+                stroke(renderer, BRANCH, '#d9f5ff', 0.045 * BODY_SCALE);
             }
         }
     }
