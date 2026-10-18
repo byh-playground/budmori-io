@@ -1337,6 +1337,45 @@ async function raidDeploymentCardsFlow() {
     const C = await browser.newContext({ viewport: { width: 1680, height: 893 }, hasTouch: true }),
         P = await open(C);
     await P.locator('#newGame').click();
+    const SAVE_FAILURE = await P.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            STORAGE = BUDMORI.storage,
+            KEY = 'bloom-weapon-cards-v4';
+        if (!STORAGE.save(WORLD)) {
+            throw Error('could not prepare the Farm checkpoint for failure diagnostics');
+        }
+        const RAW = localStorage.getItem(KEY),
+            SAVED_PROGRESS = JSON.stringify(STORAGE.savedProgress),
+            PRODUCED = WORLD.foodTaps.produced;
+        STORAGE.serializeCheckpoint = () => {
+            throw new TypeError('synthetic Farm encode failure');
+        };
+        WORLD.foodTaps.produced++;
+        let saved;
+        try {
+            saved = STORAGE.save(WORLD);
+        } finally {
+            WORLD.foodTaps.produced = PRODUCED;
+            delete STORAGE.serializeCheckpoint;
+        }
+        const DIAGNOSTIC = JSON.parse(globalThis.BloomDiagnostics.detail()).diagnostics.errors.at(-1);
+        return {
+            saved,
+            rawPreserved: localStorage.getItem(KEY) === RAW && STORAGE.raw === RAW,
+            progressPreserved: JSON.stringify(STORAGE.savedProgress) === SAVED_PROGRESS,
+            error: STORAGE.error,
+            diagnostic: DIAGNOSTIC,
+            rawIncludedInDiagnostic: JSON.stringify(DIAGNOSTIC).includes(RAW),
+        };
+    });
+    assert.equal(SAVE_FAILURE.saved, false, 'an encoding failure blocks the checkpoint');
+    assert.equal(SAVE_FAILURE.rawPreserved, true, 'a failed checkpoint keeps the original storage string');
+    assert.equal(SAVE_FAILURE.progressPreserved, true, 'a failed checkpoint keeps the last valid progress');
+    assert.match(SAVE_FAILURE.error, /검증·인코딩/);
+    assert.match(SAVE_FAILURE.diagnostic.message, /TypeError: synthetic Farm encode failure/);
+    assert.match(SAVE_FAILURE.diagnostic.cause, /operation=progress-validate-encode/);
+    assert.equal(SAVE_FAILURE.diagnostic.origin, 'farm-storage');
+    assert.equal(SAVE_FAILURE.rawIncludedInDiagnostic, false, 'save contents are excluded from diagnostics');
     await P.evaluate(() => {
         const W = BUDMORI.sim;
         W.playerProgression.level = 101;
@@ -1495,6 +1534,19 @@ async function raidDeploymentCardsFlow() {
     await P.locator('#raid').click();
     await P.locator('#bossEncounterChallenge').click();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'raid' && BUDMORI.sim.raidRosters.length === 1);
+    const RAID_RESERVATION = await P.evaluate(async () => {
+        const { validateFarmProgress: VALIDATE_FARM_PROGRESS } = await import('/src/farm-progress.js');
+        const PROGRESS = BUDMORI.storage.savedProgress,
+            RAID = PROGRESS.ledger.raid;
+        VALIDATE_FARM_PROGRESS(PROGRESS);
+        return {
+            activeSequence: RAID.activeRun?.sequence,
+            nextSequence: RAID.nextRunSequence,
+            settledThrough: RAID.settledThrough,
+        };
+    });
+    assert.equal(RAID_RESERVATION.activeSequence, RAID_RESERVATION.nextSequence);
+    assert.equal(RAID_RESERVATION.activeSequence, RAID_RESERVATION.settledThrough + 1);
     await P.evaluate(() => {
         BUDMORI.runtime.paused = false;
         BUDMORI.sim.boss.hp = BUDMORI.sim.boss.maxHp = 1e9;

@@ -92,15 +92,18 @@ function sourceName(value) {
     }
 }
 function recordDiagnostic(error, kind = 'startup-error', details = {}) {
-    const SOURCE = sourceName(details.source || '');
+    const SOURCE = sourceName(details.source || ''),
+        CAUSE = details.operation
+            ? `stage=${initStage};operation=${fallbackText(details.operation, 64)}`
+            : `stage=${initStage}`;
     if (diagnosticRing) {
         diagnosticRing.report(error, {
             kind,
-            origin: 'bootstrap',
+            origin: details.origin || 'bootstrap',
             source: SOURCE,
             line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
             column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
-            cause: `stage=${initStage}`,
+            cause: CAUSE,
             fatal: details.fatal === true,
         });
         return;
@@ -111,11 +114,25 @@ function recordDiagnostic(error, kind = 'startup-error', details = {}) {
     EARLY_ERRORS.push({
         kind: fallbackText(kind, 64),
         message: fallbackText(error),
+        origin: fallbackText(details.origin || 'bootstrap', 64),
         source: SOURCE,
         line: Number.isSafeInteger(details.line) && details.line >= 0 ? details.line : 0,
         column: Number.isSafeInteger(details.column) && details.column >= 0 ? details.column : 0,
+        cause: CAUSE,
         stage: initStage,
         atMs: Math.round(performance.now()),
+    });
+}
+function reportRuntimeDiagnostic(error, kind = 'runtime-error', details = {}) {
+    const NAME = typeof error?.name === 'string' && error.name ? error.name : 'Error',
+        MESSAGE = typeof error?.message === 'string' ? error.message : 'Non-text error omitted',
+        DIAGNOSTIC_ERROR = {
+            message: `${NAME}: ${MESSAGE}`.slice(0, 500),
+            stack: typeof error?.stack === 'string' ? error.stack : '',
+        };
+    recordDiagnostic(DIAGNOSTIC_ERROR, kind, {
+        ...details,
+        origin: details.origin || 'app',
     });
 }
 function earlyError(event) {
@@ -237,6 +254,7 @@ function diagnosticSnapshot() {
 globalThis.BloomDiagnostics = Object.freeze({
     summary: diagnosticSnapshot,
     detail: detailedDiagnosticSnapshot,
+    report: reportRuntimeDiagnostic,
     async copy({ textarea } = {}) {
         const TEXT = diagnosticSnapshot();
         const RESULT = debugTools?.copyDiagnostic
