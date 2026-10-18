@@ -1586,6 +1586,7 @@ function sync(display, now, notices) {
     syncAttribute('farm', 'aria-pressed', !RAID && !bossEncounterOpen);
     syncAttribute('raid', 'aria-pressed', RAID || bossEncounterOpen);
     syncFlag('merge', 'disabled', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncData('merge', 'availability', MERGE_STATUS.code || 'unavailable');
     syncFlag('mergeNotice', 'hidden', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);

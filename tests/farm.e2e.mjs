@@ -1366,6 +1366,57 @@ async function cadenceDiagnosticsFlow() {
         };
     });
     assert.deepEqual(PHYSICS_CADENCE, { logicTicks: 1, physicsSteps: 1 });
+    const GIANT_PROGRESS = await P.evaluate(async () => {
+        const { GiantSkill: GIANT_SKILL } = await import('/src/features/formation-skills/giant/model.js'),
+            WORLD = new BUDMORI.sim.constructor(984),
+            EFFECTS = [],
+            SKILL = new GIANT_SKILL(),
+            OWNER = {
+                world: WORLD,
+                allies: () => WORLD.units,
+                addEffect: (_kind, effect) => EFFECTS.push({ ...effect, age: 0 }),
+            };
+        for (const UNIT of [...WORLD.units]) {
+            WORLD.unitCollection.remove(UNIT, { markProgress: false });
+        }
+        WORLD.playerProgression.farmUpgrades.capacity = 5;
+        for (let index = 0; index < 10; index++) {
+            if (!WORLD.spawn(0, 1, index, 0)) {
+                throw Error('failed to create Giant target fixture');
+            }
+        }
+        const BASE = WORLD.units[0],
+            BASE_STATS = { radius: BASE.radius, height: BASE.height, bodyScale: BASE.bodyScale },
+            TARGETS = [];
+        for (const LEVEL of [1, 2, 3, 10]) {
+            for (const UNIT of WORLD.units) {
+                UNIT.giantUntil = 0;
+            }
+            EFFECTS.length = 0;
+            if (!SKILL.cast(OWNER, { level: LEVEL })) {
+                throw Error('Giant cast failed at level ' + LEVEL);
+            }
+            TARGETS.push(WORLD.units.filter((unit) => unit.giantUntil > WORLD.time).length);
+        }
+        const ACTIVE = WORLD._unitForId(EFFECTS[0].unitId),
+            SIZE = {
+                radius: ACTIVE.radius / BASE_STATS.radius,
+                height: ACTIVE.height / BASE_STATS.height,
+                bodyScale: ACTIVE.bodyScale / BASE_STATS.bodyScale,
+                duration: EFFECTS[0].duration,
+                until: ACTIVE.giantUntil,
+            };
+        WORLD.time = 20;
+        SKILL.update(OWNER, EFFECTS[0], 20);
+        return {
+            targets: TARGETS,
+            size: SIZE,
+            expiresAtTime20: ACTIVE.giantScale === 1 && ACTIVE.giantUntil === 0,
+        };
+    });
+    assert.deepEqual(GIANT_PROGRESS.targets, [3, 5, 8, 8]);
+    assert.deepEqual(GIANT_PROGRESS.size, { radius: 3, height: 3, bodyScale: 3, duration: 20, until: 20 });
+    assert.equal(GIANT_PROGRESS.expiresAtTime20, true);
     const JACOBI_ORDERING = await P.evaluate(() => {
         const SIMULATE = (reverse) => {
             const WORLD = new BUDMORI.sim.constructor(981);
@@ -1531,7 +1582,17 @@ async function cadenceDiagnosticsFlow() {
         PERFORMANCE.counts.workSchedulerUnits.total,
         PERFORMANCE.counts.foodSearchCandidateChecks.total + PERFORMANCE.counts.foodSearchCellVisits.total,
     );
-    assert(PERFORMANCE.counts.workSchedulerJobsQueued.total > 0);
+    assert(
+        PERFORMANCE.counts.workSchedulerJobsQueued.total > 0,
+        JSON.stringify({
+            queued: PERFORMANCE.counts.workSchedulerJobsQueued,
+            completed: PERFORMANCE.counts.workSchedulerJobsCompleted,
+            waiting: PERFORMANCE.counts.workSchedulerWaitedJobs,
+            queueDepth: PERFORMANCE.counts.workSchedulerQueueDepth,
+            logic: PERFORMANCE.counts.logicTicks,
+            foods: PERFORMANCE.counts.foodSearchCandidateChecks,
+        }),
+    );
     assert(PERFORMANCE.counts.workSchedulerJobsCompleted.total > 0);
     assert(PERFORMANCE.counts.workSchedulerWaitedJobs.total > 0);
     assert(PERFORMANCE.counts.workSchedulerWaitingTicks.total >= 0);
@@ -1565,6 +1626,88 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.counts.drawCalls.total > 0 && PERFORMANCE.counts.bufferUploads.total > 0);
     assert(PERFORMANCE.stagesMs.render.max > 0 && PERFORMANCE.stagesMs.ai.total >= 0);
     assert(SUMMARY.split('\n').length <= 20);
+    const LOAD_SETUP = await P.evaluate(() => {
+        const SESSION = BUDMORI.runtime,
+            WORLD = SESSION.world;
+        SESSION.paused = true;
+        for (const UNIT of [...WORLD.units]) {
+            WORLD.unitCollection.remove(UNIT, { markProgress: false });
+        }
+        WORLD.playerProgression.farmUpgrades.capacity = 5;
+        WORLD.random = () => 0.5;
+        for (let index = 0; index < 41; index++) {
+            const UNIT = WORLD.spawn(0, 1, ((index % 9) - 4) * 1.6, (Math.floor(index / 9) - 2) * 1.4);
+            if (!UNIT) {
+                throw Error('failed to create 41-unit performance fixture');
+            }
+            UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.cooldown = UNIT.cooldownDuration = 10;
+            UNIT.down = 0;
+        }
+        WORLD.food = [];
+        for (let index = 0; index < 140; index++) {
+            WORLD.spawnFood(((index % 14) - 6.5) * 0.9, (Math.floor(index / 14) - 5) * 0.7);
+        }
+        for (const FOOD of WORLD.food) {
+            FOOD.phase = 'grounded';
+            FOOD.z = 0;
+            FOOD.vx = FOOD.vy = FOOD.vz = 0;
+        }
+        WORLD._rebuildUnitSpatialIndex();
+        WORLD._rebuildFoodSpatialIndex();
+        SESSION.capturePresentation('reset');
+        const DETAIL = document.querySelector('#diagnosticDetail');
+        DETAIL.checked = false;
+        DETAIL.dispatchEvent(new Event('change', { bubbles: true }));
+        DETAIL.checked = true;
+        DETAIL.dispatchEvent(new Event('change', { bubbles: true }));
+        SESSION.loop.resetTiming();
+        SESSION.paused = false;
+        return { units: WORLD.units.length, food: WORLD.food.length };
+    });
+    assert.deepEqual(LOAD_SETUP, { units: 41, food: 140 });
+    await P.waitForTimeout(2800);
+    const LOAD_PROFILE = await P.evaluate(() => {
+        const METRICS = globalThis.BudmoriPerformanceDiagnostics.snapshot(),
+            SUMMARY = globalThis.BudmoriPerformanceDiagnostics.summary(),
+            STAGES = METRICS.stagesMs,
+            AVG = (name) => STAGES[name]?.mean ?? null;
+        return {
+            units: BUDMORI.sim.units.length,
+            food: BUDMORI.sim.food.length,
+            retainedFrames: METRICS.retainedFrames,
+            windowMs: METRICS.windowMs,
+            logicTicks: METRICS.counts.logicTicks.total,
+            physicsCalls: METRICS.counts.physicsSteps.total,
+            logicTicksPerRaf: METRICS.counts.logicTicks.total / Math.max(1, METRICS.retainedFrames),
+            physicsCallsPerLogicTick: METRICS.counts.physicsSteps.total / Math.max(1, METRICS.counts.logicTicks.total),
+            solverIterations: METRICS.counts.physicsSolverIterations.total,
+            solverIterationsPerPhysicsCall:
+                METRICS.counts.physicsSolverIterations.total / Math.max(1, METRICS.counts.physicsSteps.total),
+            catchupTicks: METRICS.counts.catchupTicks.total,
+            captures: METRICS.counts.presentationCaptures.total,
+            capturesPerFrame: METRICS.counts.presentationCaptures.total / Math.max(1, METRICS.retainedFrames),
+            capturedEntitiesPerRaf: METRICS.counts.presentationEntities.total / Math.max(1, METRICS.retainedFrames),
+            schedulerMaxWaitTicksPerRaf: METRICS.counts.workSchedulerMaxWaitTicks.max,
+            parentSimulationMs: AVG('simulation'),
+            stepLoopMs: AVG('stepLoop'),
+            pulseCaptureMs: AVG('pulseCapture'),
+            onAdvanceMs: AVG('onAdvance'),
+            logicMs: AVG('logic'),
+            physicsMs: AVG('physics'),
+            snapshotPrepMs: AVG('presentationSnapshot'),
+            runtimeCaptureMs: AVG('runtimeCapture'),
+            renderMs: AVG('render'),
+            unattributedSimulationMs: Math.max(0, AVG('simulation') - AVG('stepLoop') - AVG('pulseCapture')),
+            summary: SUMMARY,
+        };
+    });
+    assert.equal(LOAD_PROFILE.units, 41);
+    assert.equal(LOAD_PROFILE.food, 140);
+    assert(LOAD_PROFILE.retainedFrames > 1);
+    assert.equal(LOAD_PROFILE.physicsCalls, LOAD_PROFILE.logicTicks);
+    REPORT.loadReproduction = LOAD_PROFILE;
     REPORT.cadence = {
         elapsedSeconds: PERFORMANCE.windowMs / 1000,
         logicTicks: PERFORMANCE.counts.logicTicks.total,
@@ -1589,6 +1732,130 @@ async function cadenceDiagnosticsFlow() {
     CHECK(
         'Settings short diagnostic copy through real browser clipboard; opt-in detailed numeric window, 20Hz time preservation and actual WebGL counters',
     );
+}
+async function mergePolicyRegression() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
+    await P.waitForFunction(() => window.BUDMORI);
+    const RESULT = await P.evaluate(async () => {
+        const { GiantSkill: GIANT_SKILL } = await import('/src/features/formation-skills/giant/model.js'),
+            GIANT_WORLD = new BUDMORI.sim.constructor(984),
+            GIANT_EFFECTS = [],
+            GIANT = new GIANT_SKILL(),
+            GIANT_OWNER = {
+                world: GIANT_WORLD,
+                allies: () => GIANT_WORLD.units,
+                addEffect: (_kind, effect) => GIANT_EFFECTS.push({ ...effect, age: 0 }),
+            };
+        for (const UNIT of [...GIANT_WORLD.units]) {
+            GIANT_WORLD.unitCollection.remove(UNIT, { markProgress: false });
+        }
+        GIANT_WORLD.playerProgression.farmUpgrades.capacity = 5;
+        for (let index = 0; index < 10; index++) {
+            if (!GIANT_WORLD.spawn(0, 1, index, 0)) {
+                throw Error('failed to create Giant target fixture');
+            }
+        }
+        const BASE = GIANT_WORLD.units[0],
+            BASE_STATS = { radius: BASE.radius, height: BASE.height, bodyScale: BASE.bodyScale },
+            TARGETS = [];
+        for (const LEVEL of [1, 2, 3, 10]) {
+            for (const UNIT of GIANT_WORLD.units) {
+                UNIT.giantUntil = 0;
+            }
+            GIANT_EFFECTS.length = 0;
+            if (!GIANT.cast(GIANT_OWNER, { level: LEVEL })) {
+                throw Error('Giant cast failed at level ' + LEVEL);
+            }
+            TARGETS.push(GIANT_WORLD.units.filter((unit) => unit.giantUntil > GIANT_WORLD.time).length);
+        }
+        const GIANT_ACTIVE = GIANT_WORLD._unitForId(GIANT_EFFECTS[0].unitId),
+            SIZE = {
+                radius: GIANT_ACTIVE.radius / BASE_STATS.radius,
+                height: GIANT_ACTIVE.height / BASE_STATS.height,
+                bodyScale: GIANT_ACTIVE.bodyScale / BASE_STATS.bodyScale,
+                duration: GIANT_EFFECTS[0].duration,
+                until: GIANT_ACTIVE.giantUntil,
+            };
+        GIANT_WORLD.time = 20;
+        GIANT.update(GIANT_OWNER, GIANT_EFFECTS[0], 20);
+
+        const WORLD = new BUDMORI.sim.constructor(965);
+        for (const UNIT of [...WORLD.units]) {
+            WORLD.unitCollection.remove(UNIT, { markProgress: false });
+        }
+        WORLD.playerProgression.farmUpgrades.capacity = 5;
+        WORLD.random = () => 0.5;
+        while (WORLD.units.length < 53) {
+            const UNIT = WORLD.spawn(0, 1, 0, 0);
+            if (!UNIT) {
+                throw Error('failed to create the over-capacity merge fixture');
+            }
+            UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.meals = 1;
+            UNIT.cooldown = 0;
+            UNIT.down = 0;
+        }
+        for (const UNIT of WORLD.units) {
+            UNIT.x = UNIT.y = UNIT.z = 0;
+        }
+        Object.defineProperty(WORLD, 'capacity', { configurable: true, value: 50 });
+        const ROSTER_BEFORE_MERGE = WORLD.units.length;
+        const [A, B] = WORLD.units;
+        A.mateId = B.id;
+        B.mateId = A.id;
+        const BREED_OWNER = WORLD.breedingReservationOwner(A, B);
+        if (!WORLD.unitCollection.reserve(BREED_OWNER, [A, B])) {
+            throw Error('failed to reserve the reciprocal breeding pair');
+        }
+        WORLD._rebuildUnitSpatialIndex();
+        const AVAILABILITY = WORLD.mergeAvailability(),
+            STARTED = WORLD.startManualMerge(),
+            TASK = WORLD.mergeTasks[0],
+            SELECTED_MATE_PAIR = TASK?.materialIds.some((id) => id === A.id || id === B.id),
+            BREED_LINKS_CLEARED = A.mateId === 0 && B.mateId === 0,
+            BREED_OWNER_RELEASED =
+                !WORLD.unitCollection.reservationOwner(A)?.startsWith('breed:') &&
+                !WORLD.unitCollection.reservationOwner(B)?.startsWith('breed:');
+        if (!STARTED || !TASK) {
+            throw Error('manual merge did not start above capacity');
+        }
+        TASK.elapsed = TASK.duration;
+        const COMPLETED = WORLD.resolveMergeTaskAfterMovement();
+        return {
+            giantTargets: TARGETS,
+            giantSize: SIZE,
+            giantExpiresAt20: GIANT_ACTIVE.giantScale === 1 && GIANT_ACTIVE.giantUntil === 0,
+            roster: ROSTER_BEFORE_MERGE,
+            capacity: WORLD.capacity,
+            availabilityCode: AVAILABILITY.code,
+            started: STARTED,
+            selectedMatePair: SELECTED_MATE_PAIR,
+            breedLinksCleared: BREED_LINKS_CLEARED,
+            breedOwnerReleased: BREED_OWNER_RELEASED,
+            completed: COMPLETED,
+            afterMerge: WORLD.units.length,
+            minimumSpeciesCount: WORLD.units.filter((unit) => unit.species === 0).length >= 2,
+        };
+    });
+    assert.deepEqual(RESULT.giantTargets, [3, 5, 8, 8]);
+    assert.deepEqual(RESULT.giantSize, { radius: 3, height: 3, bodyScale: 3, duration: 20, until: 20 });
+    assert.equal(RESULT.giantExpiresAt20, true);
+    assert.equal(RESULT.roster, 53);
+    assert.equal(RESULT.capacity, 50);
+    assert.equal(RESULT.availabilityCode, 'ready');
+    assert.equal(RESULT.started, true);
+    assert.equal(RESULT.selectedMatePair, true);
+    assert.equal(RESULT.breedLinksCleared, true);
+    assert.equal(RESULT.breedOwnerReleased, true);
+    assert.equal(RESULT.completed, true);
+    assert.equal(RESULT.afterMerge, 52);
+    assert.equal(RESULT.minimumSpeciesCount, true);
+    CHECK(
+        'Giant 3/5/8 target counts, 3× dimensions and 20s duration; 53/50 merge atomically takes over a valid breed pair',
+    );
+    await C.close();
 }
 async function core() {
     const C = await browser.newContext({
@@ -1875,6 +2142,24 @@ async function core() {
             MATERIAL_IDS = TASKS.flat(),
             DTO = SNAPSHOT(W),
             LEGACY_DTO = structuredClone(DTO);
+        const MERGED_IDS = new Set(TASKS.flat()),
+            BREED_PAIR_SELECTED = MATE_IDS.some((id) => MERGED_IDS.has(id)),
+            BREED_RESERVATION_SAFE = MATE_IDS.every((id) => {
+                const UNIT = W.units.find((unit) => unit.id === id),
+                    OWNER = W.unitCollection.reservationOwner(id);
+                if (BREED_PAIR_SELECTED) {
+                    return UNIT?.mateId === 0 && (MERGED_IDS.has(id) ? OWNER?.startsWith('merge:') : OWNER === null);
+                }
+                return (
+                    UNIT?.mateId === MATE_IDS.find((mateId) => mateId !== id) &&
+                    OWNER ===
+                        W.breedingReservationOwner(
+                            W.units.find((unit) => unit.id === MATE_IDS[0]),
+                            W.units.find((unit) => unit.id === MATE_IDS[1]),
+                        ) &&
+                    W._isValidBreedReservation(UNIT, OWNER)
+                );
+            });
         for (const TASK of LEGACY_DTO.mergeTasks) {
             delete TASK.centerX;
             delete TASK.centerY;
@@ -1891,7 +2176,7 @@ async function core() {
             taskCount: TASKS.length,
             taskSizes: TASKS.map((ids) => ids.length),
             disjointTasks: new Set(MATERIAL_IDS).size === MATERIAL_IDS.length,
-            noMateOverlap: MATERIAL_IDS.every((id) => !MATE_IDS.includes(id)),
+            breedReservationSafe: BREED_RESERVATION_SAFE,
             uniqueOwners: new Set(TASK_OWNERS).size === TASK_OWNERS.length,
             restoredTasks: RESTORED.mergeTasks.length,
             restoredSuctionState: RESTORED.mergeTasks.every(
@@ -1911,7 +2196,7 @@ async function core() {
             noModeSaved: !Object.hasOwn(DTO, 'mode'),
             legacyModeIgnored: !Object.hasOwn(RESTORED, 'mode'),
             compactProgressHasNoMode: !Object.hasOwn(PROGRESS, 'mode'),
-            availabilityTracksRemainingMaterials: W.mergeAvailability().available === false,
+            availabilityTracksRemainingMaterials: W.mergeAvailability().available === true,
         };
     });
     assert.deepEqual(RESERVATION_INVARIANT, {
@@ -1920,7 +2205,7 @@ async function core() {
         taskCount: 2,
         taskSizes: [2, 2],
         disjointTasks: true,
-        noMateOverlap: true,
+        breedReservationSafe: true,
         uniqueOwners: true,
         restoredTasks: 2,
         restoredSuctionState: true,
@@ -3547,6 +3832,70 @@ async function seedScenarios(p, label) {
                         MERGE_SETUP.delays[3] < MERGE_SETUP.delays[4],
                     'five suction trails are staggered in source order',
                 );
+                const MERGE_POLICY = await p.evaluate(() => {
+                    const W = new BUDMORI.sim.constructor(965);
+                    for (const UNIT of [...W.units]) {
+                        W.unitCollection.remove(UNIT, { markProgress: false });
+                    }
+                    W.playerProgression.farmUpgrades.capacity = 5;
+                    while (W.units.length < 53) {
+                        const UNIT = W.spawn(0, 1, 0, 0);
+                        if (!UNIT) {
+                            throw Error('failed to create the over-capacity merge fixture');
+                        }
+                        UNIT.growth = 3;
+                        UNIT.growthElapsed = UNIT.growthDuration;
+                        UNIT.meals = 1;
+                        UNIT.cooldown = 0;
+                        UNIT.down = 0;
+                    }
+                    for (const UNIT of W.units) {
+                        UNIT.x = 0;
+                        UNIT.y = 0;
+                        UNIT.z = 0;
+                    }
+                    Object.defineProperty(W, 'capacity', { configurable: true, value: 50 });
+                    const ROSTER_BEFORE_MERGE = W.units.length;
+                    const [A, B] = W.units;
+                    A.mateId = B.id;
+                    B.mateId = A.id;
+                    const BREED_OWNER = W.breedingReservationOwner(A, B);
+                    if (!W.unitCollection.reserve(BREED_OWNER, [A, B])) {
+                        throw Error('failed to reserve the reciprocal breeding pair');
+                    }
+                    W._rebuildUnitSpatialIndex();
+                    const STATUS = W.mergeAvailability(),
+                        STARTED = W.startManualMerge(),
+                        TASK = W.mergeTasks[0],
+                        MERGE_OWNER = W.unitCollection.reservationOwner(A);
+                    if (!STARTED || !TASK) {
+                        throw Error('manual merge did not start above capacity');
+                    }
+                    TASK.elapsed = TASK.duration;
+                    const COMPLETED = W.resolveMergeTaskAfterMovement();
+                    return {
+                        roster: ROSTER_BEFORE_MERGE,
+                        capacity: W.capacity,
+                        available: STATUS.available,
+                        availabilityCode: STATUS.code,
+                        started: STARTED,
+                        completed: COMPLETED,
+                        pairLinksCleared: A.mateId === 0 && B.mateId === 0,
+                        reservationTakenOver: MERGE_OWNER?.startsWith('merge:') === true,
+                        afterMerge: W.units.length,
+                        sameSpeciesMinimum: W.units.filter((unit) => unit.species === 0).length >= 2,
+                    };
+                });
+                assert.equal(MERGE_POLICY.roster, 53);
+                assert.equal(MERGE_POLICY.capacity, 50);
+                assert.equal(MERGE_POLICY.available, true);
+                assert.equal(MERGE_POLICY.availabilityCode, 'ready');
+                assert.equal(MERGE_POLICY.started, true);
+                assert.equal(MERGE_POLICY.completed, true);
+                assert.equal(MERGE_POLICY.pairLinksCleared, true);
+                assert.equal(MERGE_POLICY.reservationTakenOver, true);
+                assert.equal(MERGE_POLICY.afterMerge, 52);
+                assert.equal(MERGE_POLICY.sameSpeciesMinimum, true);
                 const PRESENTED_SEQUENCE = await p.evaluate(() => {
                     const VIEW = BUDMORI.runtime.presentation(performance.now());
                     const MATERIALS = VIEW.effects
@@ -4624,6 +4973,7 @@ try {
     await (
         {
             core,
+            mergePolicy: mergePolicyRegression,
             upgrades,
             reset: progressionResetFlow,
             cadence: cadenceDiagnosticsFlow,

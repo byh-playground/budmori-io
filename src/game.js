@@ -50,12 +50,10 @@
         name: "거대화",
         condition: "damageDealt",
         required: 200,
-        description: "무작위 아군 3명에게 7.5초 동안 공격력 3배·방어력 +100.",
-        upgradeAxis: "대상 +1명",
-        upgradeBase: 3,
-        upgradeFactor: 1,
-        upgradeStep: 1,
-        upgradeUnit: "명"
+        description: "아군 몸집 3배 · 20초 지속 · 공격력 3배 · 방어력 +100.",
+        upgradeAxis: "대상 수 3 → 5 → 8 (4레벨부터 8명)",
+        upgradeValues: Object.freeze([3, 5, 8]),
+        durationSeconds: 20
       });
     }
   });
@@ -225,6 +223,9 @@
   // src/formation-skill-state.js
   function formationUpgradeValue(definition, level) {
     const LEVEL = Math.max(1, level);
+    if (Array.isArray(definition.upgradeValues) && definition.upgradeValues.length) {
+      return definition.upgradeValues[Math.min(LEVEL - 1, definition.upgradeValues.length - 1)];
+    }
     return definition.upgradeBase * definition.upgradeFactor ** (LEVEL - 1) + definition.upgradeStep * (LEVEL - 1);
   }
   function createFormationSkillState() {
@@ -1143,7 +1144,7 @@
       function unitBodyRadius3(unit) {
         return bodyRadiusAtScale(unitBodyDefinition3(unit.species), unitVectorScale2(unit));
       }
-      function unitBodyHeight3(unit) {
+      function unitBodyHeight2(unit) {
         const BODY2 = unitBodyDefinition3(unit.species);
         return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
       }
@@ -1182,7 +1183,7 @@
         unitVisualSize: unitVisualSize2,
         unitVectorScale: unitVectorScale2,
         unitBodyRadius: unitBodyRadius3,
-        unitBodyHeight: unitBodyHeight3,
+        unitBodyHeight: unitBodyHeight2,
         unitTorsoHeight: unitTorsoHeight2,
         maximumUnitRadius: maximumUnitRadius2,
         unitDisplayScale: unitDisplayScale3,
@@ -1192,8 +1193,8 @@
   });
 
   // src/features/formation-skills/model-base.js
-  function targetTop(owner, target) {
-    const BODY_HEIGHT = target === owner.world.boss ? target.height : (0, import_definition10.unitBodyHeight)(target) * (target.giantUntil > owner.world.time ? 1.5 : 1), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
+  function targetTop(_owner, target) {
+    const BODY_HEIGHT = target.height, MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
     return target.z + BODY_HEIGHT * 0.84 + MARGIN;
   }
   var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
@@ -1318,6 +1319,7 @@
     "src/features/formation-skills/giant/model.js"() {
       init_definition();
       init_model_base();
+      init_formation_skill_state();
       GiantSkill = class extends FormationSkill {
         constructor() {
           super(DEFINITION);
@@ -1327,12 +1329,19 @@
           if (!CANDIDATES.length) {
             return false;
           }
-          for (let i = 0; i < Math.min(CANDIDATES.length, this.definition.upgradeBase + slot.level - 1); i++) {
+          const TARGET_COUNT = Math.min(CANDIDATES.length, formationUpgradeValue(this.definition, slot.level));
+          for (let i = 0; i < TARGET_COUNT; i++) {
             const J = i + Math.floor(owner.world.random() * (CANDIDATES.length - i)), UNIT3 = CANDIDATES[J];
             CANDIDATES[J] = CANDIDATES[i];
             CANDIDATES[i] = UNIT3;
-            UNIT3.giantUntil = owner.world.time + 7.5;
-            owner.addEffect(DEFINITION.id, { x: UNIT3.x, y: UNIT3.y, unitId: UNIT3.id, duration: 7.5 });
+            UNIT3.giantUntil = owner.world.time + this.definition.durationSeconds;
+            owner.addEffect(DEFINITION.id, {
+              x: UNIT3.x,
+              y: UNIT3.y,
+              radius: UNIT3.radius,
+              unitId: UNIT3.id,
+              duration: this.definition.durationSeconds
+            });
           }
           return true;
         }
@@ -1344,6 +1353,7 @@
           }
           effect.x = UNIT3.x;
           effect.y = UNIT3.y;
+          effect.radius = UNIT3.radius;
           if (effect.age >= effect.duration) {
             UNIT3.giantUntil = 0;
             UNIT3.giantEndedAt = owner.world.time;
@@ -2102,19 +2112,29 @@
         reservationOwner(unitOrId) {
           return this.reservations.get(typeof unitOrId === "object" ? unitOrId?.id : unitOrId) || null;
         }
-        reserve(owner, units) {
-          if (typeof owner !== "string" || !owner || !Array.isArray(units) || units.length < 2) {
+        reserve(owner, units, { replaceOwners = [] } = {}) {
+          if (typeof owner !== "string" || !owner || !Array.isArray(units) || units.length < 2 || !Array.isArray(replaceOwners)) {
             return false;
           }
-          const IDS = /* @__PURE__ */ new Set();
+          const IDS = /* @__PURE__ */ new Set(), ALLOWED_OWNERS = new Set(replaceOwners), REPLACED_OWNERS = /* @__PURE__ */ new Set();
           if (units.some((unit) => {
-            if (!this.has(unit) || IDS.has(unit.id) || (this.reservationOwner(unit.id) || owner) !== owner) {
+            if (!this.has(unit) || IDS.has(unit.id)) {
               return true;
+            }
+            const CURRENT_OWNER = this.reservationOwner(unit.id);
+            if (CURRENT_OWNER && CURRENT_OWNER !== owner) {
+              if (!ALLOWED_OWNERS.has(CURRENT_OWNER)) {
+                return true;
+              }
+              REPLACED_OWNERS.add(CURRENT_OWNER);
             }
             IDS.add(unit.id);
             return false;
           })) {
             return false;
+          }
+          for (const REPLACED_OWNER of REPLACED_OWNERS) {
+            this.releaseReservations(REPLACED_OWNER);
           }
           for (const ID of IDS) {
             this.reservations.set(ID, owner);
@@ -2135,6 +2155,11 @@
           return this.reservations.delete(typeof unitOrId === "object" ? unitOrId?.id : unitOrId);
         }
         attach(unit) {
+          Object.defineProperty(unit, "_world", {
+            value: this.world,
+            writable: true,
+            configurable: true
+          });
           for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
             SIGNAL.scope = this.world.mutationNotifications;
             SIGNAL.immediate = true;
@@ -7013,8 +7038,11 @@
           this.onHealthChanged.clear();
           this.onDied.scope = this.onRevived.scope = this.onHealthChanged.scope = null;
         }
+        get giantScale() {
+          return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
+        }
         get radius() {
-          return (0, import_definition40.unitBodyRadius)(this);
+          return (0, import_definition40.unitBodyRadius)(this) * this.giantScale;
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -7023,16 +7051,16 @@
           return this.meals >= 1;
         }
         get size() {
-          return (0, import_definition40.unitVisualSize)(this);
+          return (0, import_definition40.unitVisualSize)(this) * this.giantScale;
         }
         get bodyScale() {
-          return (0, import_definition40.unitVectorScale)(this);
+          return (0, import_definition40.unitVectorScale)(this) * this.giantScale;
         }
         get height() {
-          return (0, import_definition40.unitBodyHeight)(this);
+          return (0, import_definition40.unitBodyHeight)(this) * this.giantScale;
         }
         get bodyHeight() {
-          return (0, import_definition40.unitTorsoHeight)(this);
+          return (0, import_definition40.unitTorsoHeight)(this) * this.giantScale;
         }
       };
       GARDEN = class Garden {
@@ -8459,6 +8487,13 @@
         breedingReservationOwner(a, b) {
           return BREED_RESERVATION_OWNER(a.id, b.id);
         }
+        _isValidBreedReservation(unit, owner) {
+          if (!owner?.startsWith("breed:")) {
+            return false;
+          }
+          const MATE = this._unitById.get(unit.mateId);
+          return !!(MATE && MATE.mateId === unit.id && this.unitCollection.reservationOwner(MATE) === owner && this.breedingReservationOwner(unit, MATE) === owner && this.canBreedPair(unit, MATE) && !this.senseEnemy(unit) && !this.senseEnemy(MATE));
+        }
         releaseMate(unit) {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._rebuildUnitSpatialIndex(this.units);
@@ -8608,7 +8643,10 @@
             }
             const IDS = /* @__PURE__ */ new Set();
             for (const UNIT_LOCAL of materials) {
-              if (!UNIT_LOCAL || IDS.has(UNIT_LOCAL.id) || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.mergeEligible === false || UNIT_LOCAL.species !== FIRST.species || UNIT_LOCAL.tier !== FIRST.tier || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || !UNIT_LOCAL.mature || UNIT_LOCAL.cooldown > 0 || this.unitCollection.reservationOwner(UNIT_LOCAL) && this.unitCollection.reservationOwner(UNIT_LOCAL) !== reservationOwner || !this._unitIsActive(UNIT_LOCAL)) {
+              if (!UNIT_LOCAL || IDS.has(UNIT_LOCAL.id) || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.mergeEligible === false || UNIT_LOCAL.species !== FIRST.species || UNIT_LOCAL.tier !== FIRST.tier || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || !UNIT_LOCAL.mature || UNIT_LOCAL.cooldown > 0 || this.unitCollection.reservationOwner(UNIT_LOCAL) && this.unitCollection.reservationOwner(UNIT_LOCAL) !== reservationOwner && (reservationOwner || !this._isValidBreedReservation(
+                UNIT_LOCAL,
+                this.unitCollection.reservationOwner(UNIT_LOCAL)
+              )) || !this._unitIsActive(UNIT_LOCAL)) {
                 return false;
               }
               IDS.add(UNIT_LOCAL.id);
@@ -8653,7 +8691,10 @@
             }
             for (const GROUP of this._speciesTierGroups) {
               for (const UNIT_LOCAL of GROUP) {
-                if (!UNIT_LOCAL.isBattleOnlySummon && UNIT_LOCAL.mergeEligible !== false && UNIT_LOCAL.hp > 0 && UNIT_LOCAL.down <= 0 && UNIT_LOCAL.mature && UNIT_LOCAL.cooldown <= 0 && UNIT_LOCAL.tier < CONFIG.unit.maxTier && !this.unitCollection.reservationOwner(UNIT_LOCAL) && !this.senseEnemy(UNIT_LOCAL)) {
+                if (!UNIT_LOCAL.isBattleOnlySummon && UNIT_LOCAL.mergeEligible !== false && UNIT_LOCAL.hp > 0 && UNIT_LOCAL.down <= 0 && UNIT_LOCAL.mature && UNIT_LOCAL.cooldown <= 0 && UNIT_LOCAL.tier < CONFIG.unit.maxTier && (!this.unitCollection.reservationOwner(UNIT_LOCAL) || this._isValidBreedReservation(
+                  UNIT_LOCAL,
+                  this.unitCollection.reservationOwner(UNIT_LOCAL)
+                )) && !this.senseEnemy(UNIT_LOCAL)) {
                   this._mergeEligibleGroups[UNIT_LOCAL.species * (CONFIG.unit.maxTier + 1) + UNIT_LOCAL.tier].push(UNIT_LOCAL);
                 }
               }
@@ -8754,38 +8795,76 @@
             }
           }
         }
-        mergeAvailability() {
+        mergeDecision() {
           if (this.scene !== "farm") {
-            return { available: false, reason: "정원에서만 합성할 수 있어요." };
+            return {
+              available: false,
+              code: "wrong-scene",
+              reason: "농장 화면에서만 합성할 수 있어요."
+            };
           }
           if (this.farmBossEvent?.phase !== "idle") {
-            return { available: false, reason: "전투가 끝난 뒤 합성할 수 있어요." };
+            return {
+              available: false,
+              code: "boss-event",
+              reason: "보스 이벤트 중에는 합성할 수 없어요."
+            };
           }
           const MATERIALS = this.selectMergeMaterials();
           if (!MATERIALS) {
-            return { available: false, reason: "같은 종·티어 성체 재료가 필요해요." };
+            return {
+              available: false,
+              code: "no-eligible-materials",
+              reason: "합성 가능한 동종 개체가 부족해요."
+            };
           }
           return {
             available: true,
+            code: "ready",
             tier: MATERIALS[0].tier + 1,
             materialCount: MATERIALS.length,
-            reason: `T${MATERIALS[0].tier + 1} · 재료 ${MATERIALS.length}마리`
+            materials: MATERIALS,
+            reason: "T" + (MATERIALS[0].tier + 1) + " 합성 " + MATERIALS.length + "개"
+          };
+        }
+        mergeAvailability() {
+          const DECISION = this.mergeDecision();
+          return {
+            available: DECISION.available,
+            code: DECISION.code,
+            reason: DECISION.reason,
+            ...DECISION.available ? {
+              tier: DECISION.tier,
+              materialCount: DECISION.materialCount
+            } : {}
           };
         }
         startManualMerge() {
           return this.mutateUnits(this._startManualMerge);
         }
         _startManualMerge() {
-          if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle") {
+          const DECISION = this.mergeDecision();
+          if (!DECISION.available) {
             return false;
           }
-          const MATERIALS = this.selectMergeMaterials();
-          if (!MATERIALS) {
-            return false;
-          }
+          const MATERIALS = DECISION.materials;
           const MATERIAL_IDS = MATERIALS.map((unit) => unit.id), OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS), CENTER_X = MATERIALS.reduce((sum, unit) => sum + unit.x, 0) / MATERIALS.length, CENTER_Y = MATERIALS.reduce((sum, unit) => sum + unit.y, 0) / MATERIALS.length, DURATION3 = CONFIG.farm.merge.animationSeconds, SEQUENCE_WINDOW = DURATION3 * 0.72, STEP = SEQUENCE_WINDOW / MATERIALS.length;
-          if (!this.unitCollection.reserve(OWNER, MATERIALS)) {
+          const REPLACE_OWNERS = [
+            ...new Set(
+              MATERIALS.map((unit) => this.unitCollection.reservationOwner(unit)).filter(
+                (owner) => owner?.startsWith("breed:")
+              )
+            )
+          ];
+          if (!this.unitCollection.reserve(OWNER, MATERIALS, { replaceOwners: REPLACE_OWNERS })) {
             return false;
+          }
+          for (const UNIT_LOCAL of MATERIALS) {
+            const MATE = this._unitById.get(UNIT_LOCAL.mateId);
+            UNIT_LOCAL.mateId = 0;
+            if (MATE?.mateId === UNIT_LOCAL.id) {
+              MATE.mateId = 0;
+            }
           }
           const TASK = {
             phase: "approach",
@@ -9030,7 +9109,9 @@
           this.formationSkills.update(dt);
           const SCENE = SIMULATION_SCENES[this.scene];
           SCENE.advanceClock(this, dt);
+          const MERGE_TASK_START = this.profiler?.start();
           this.advanceMergeTask(dt);
+          this.profiler?.end("mergeTask", MERGE_TASK_START);
           let effectWrite = 0;
           for (const EFFECT of this.effects) {
             EFFECT.life += dt;
@@ -9062,6 +9143,7 @@
             );
             this.profiler.count("workSchedulerWaitedJobs", CURRENT_WORK.lastTickWaitedJobs);
             this.profiler.count("workSchedulerWaitingTicks", CURRENT_WORK.lastTickWaitingTicks);
+            this.profiler.maximum("workSchedulerMaxWaitTicks", CURRENT_WORK.lastTickMaxWaitTicks);
             this.profiler.count("workSchedulerBudgetExhaustions", Number(CURRENT_WORK.lastTickBudgetExhausted));
           }
           this.profiler?.end("workScheduler", WORK_START);
@@ -11337,7 +11419,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.16";
+      PRODUCT_VERSION = "0.8.17";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13322,7 +13404,13 @@
   // src/performance-diagnostics.js
   var STAGES = Object.freeze([
     "simulation",
+    "stepLoop",
+    "commandQueue",
+    "autoTaps",
+    "onAdvance",
+    "pulseCapture",
     "logic",
+    "mergeTask",
     "ai",
     "spatial",
     "physics",
@@ -13333,6 +13421,7 @@
     "worldStepFollowup",
     "workScheduler",
     "presentationCapture",
+    "presentationSnapshot",
     "runtimeCapture",
     "presentation",
     "render",
@@ -13355,6 +13444,7 @@
     "workSchedulerJobsCancelled",
     "workSchedulerWaitedJobs",
     "workSchedulerWaitingTicks",
+    "workSchedulerMaxWaitTicks",
     "workSchedulerBudgetExhaustions",
     "physicsSteps",
     "physicsSolverIterations",
@@ -13383,6 +13473,7 @@
     "bufferUploads",
     "bufferBytes"
   ]);
+  var FRAME_MAX_COUNTERS = Object.freeze(["workSchedulerMaxWaitTicks"]);
   var NUMBER = (value, digits = 1) => Number.isFinite(value) ? value.toFixed(digits) : "미측정";
   var PerformanceDiagnostics = class {
     constructor() {
@@ -13392,9 +13483,11 @@
         counters: COUNTERS
       });
       this.detailed = false;
+      this.frameMaximums = /* @__PURE__ */ Object.create(null);
     }
     setDetailed(enabled) {
       this.detailed = !!enabled;
+      this.frameMaximums = /* @__PURE__ */ Object.create(null);
       this.meter.clear();
     }
     start() {
@@ -13411,7 +13504,14 @@
     count(name, amount = 1) {
       this.meter.count(name, amount);
     }
+    maximum(name, amount = 0) {
+      if (!Number.isFinite(amount) || amount < 0) {
+        return;
+      }
+      this.frameMaximums[name] = Math.max(this.frameMaximums[name] || 0, amount);
+    }
     beginFrame(now) {
+      this.frameMaximums = /* @__PURE__ */ Object.create(null);
       this.meter.beginFrame(now);
     }
     endFrame(renderer) {
@@ -13420,6 +13520,10 @@
           this.count(NAME, renderer.device.stats[NAME]);
         }
       }
+      for (const NAME of FRAME_MAX_COUNTERS) {
+        this.count(NAME, this.frameMaximums[NAME] || 0);
+      }
+      this.frameMaximums = /* @__PURE__ */ Object.create(null);
       this.meter.endFrame();
     }
     snapshot(limit = 0) {
@@ -13428,7 +13532,7 @@
         detailed: this.detailed,
         gpuMs: null,
         units: "milliseconds and counts; no GPU completion timing",
-        timingHierarchy: "callback CPU contains simulation/presentation/render/ui; simulation contains worldStep, presentationCapture and save; worldStep contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler; scheduler work units are deterministic cell visits or food-candidate checks, not milliseconds; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; presentationCapture contains runtimeCapture; save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU."
+        timingHierarchy: "callback CPU contains simulation/presentation/render/ui; simulation contains stepLoop and pulseCapture; stepLoop contains FarmSession.advance, onAdvance callbacks and any presentation captures requested there; Garden.step contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler/mergeTask; presentationCapture contains snapshot preparation and runtimeCapture (SDK schema plans are cached by render type); save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU."
       };
     }
     frameRate() {
@@ -13446,19 +13550,19 @@
     summary(world, paused) {
       const SAMPLE = this.snapshot(), COUNT = (name) => SAMPLE.counts[name]?.total || 0, FRAME_COUNT = Math.max(1, SAMPLE.retainedFrames), PER_FRAME = (name) => NUMBER(COUNT(name) / FRAME_COUNT), PER_LOGIC_TICK = (name) => NUMBER(COUNT(name) / Math.max(1, COUNT("logicTicks"))), AVG_SEARCH_WAIT = NUMBER(
         COUNT("workSchedulerWaitingTicks") / Math.max(1, COUNT("workSchedulerWaitedJobs"))
-      ), TIME = (name) => {
+      ), MAX_SEARCH_WAIT = NUMBER(SAMPLE.counts.workSchedulerMaxWaitTicks?.max || 0, 0), TIME = (name) => {
         const VALUE = SAMPLE.stagesMs[name];
         return this.detailed && SAMPLE.retainedFrames > 1 ? `${NUMBER(VALUE.mean)}/${NUMBER(VALUE.p95)}/${NUMBER(VALUE.max)}` : "미측정";
       };
       const LINES = [
-        `work scheduler: ${TIME("workScheduler")} / ${PER_LOGIC_TICK("workSchedulerUnits")} units per logic tick / ${PER_LOGIC_TICK("foodSearchCandidateChecks")} candidate and ${PER_LOGIC_TICK("foodSearchCellVisits")} cell visits / ${COUNT("workSchedulerJobsCompleted")} complete / queue ${PER_LOGIC_TICK("workSchedulerQueueDepth")} / first-service wait ${AVG_SEARCH_WAIT} ticks per job`,
+        `work scheduler (food-target scans only): ${TIME("workScheduler")} / ${PER_LOGIC_TICK("workSchedulerUnits")} of 24 deterministic candidate/cell units per logic tick / ${PER_LOGIC_TICK("foodSearchCandidateChecks")} candidates and ${PER_LOGIC_TICK("foodSearchCellVisits")} cell visits / ${COUNT("workSchedulerJobsCompleted")} complete / queue ${PER_LOGIC_TICK("workSchedulerQueueDepth")} / first-service wait ${AVG_SEARCH_WAIT} ticks/job, max ${MAX_SEARCH_WAIT} ticks/RAF`,
         `SDK loss ms: clock-gap ${NUMBER(COUNT("clockGapDroppedMs"), 0)} / input clamp ${NUMBER(COUNT("inputDtClampedMs"), 0)} / backlog overflow ${NUMBER(COUNT("backlogOverflowMs"), 0)} / drop-policy ${NUMBER(COUNT("dropPolicyDroppedMs"), 0)}`,
         `상태 ${world.scene} ${paused ? "정지" : "실행"} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
         `창 ${NUMBER(SAMPLE.windowMs / 1e3, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? "켜짐" : "꺼짐"} · ${SAMPLE.retainedFrames > 1 ? "유효" : "표본 부족"}`,
         `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
-        `창 합계: 논리 ${COUNT("logicTicks")} · 물리 ${COUNT("physicsSteps")} · solver 반복 ${COUNT("physicsSolverIterations")} · 추가 catchup ${COUNT("catchupTicks")} · backlog drop ${COUNT("backlogDrops")}회/${NUMBER(COUNT("backlogDroppedMs"), 0)}ms · cap ${COUNT("backlogCappedFrames")}프레임/${NUMBER(COUNT("backlogClippedMs"), 0)}ms`,
-        `CPU 평균/p95/최대(ms, 부모·자식 합산 금지): sim ${TIME("simulation")} · 논리 ${TIME("logic")} · 물리 ${TIME("physics")}`,
-        `CPU 월드 후처리 ${TIME("worldPostStep")} · 변경 신호 발행 ${TIME("mutationDispatch")} · 보간 스냅샷 ${TIME("presentationCapture")} / SDK 캡처 ${TIME("runtimeCapture")}`,
+        `창 합계: 논리 ${COUNT("logicTicks")} (${PER_FRAME("logicTicks")}/RAF) · advancePhysics 호출 ${COUNT("physicsSteps")} (${PER_FRAME("physicsSteps")}/RAF) · solver 반복 ${COUNT("physicsSolverIterations")} · 추가 catchup ${COUNT("catchupTicks")} · backlog drop ${COUNT("backlogDrops")}회/${NUMBER(COUNT("backlogDroppedMs"), 0)}ms · cap ${COUNT("backlogCappedFrames")}프레임/${NUMBER(COUNT("backlogClippedMs"), 0)}ms`,
+        `CPU 평균/p95/최대(부모·자식 합산 금지): ${TIME("simulation")} · loop ${TIME("stepLoop")} · 명령 ${TIME("commandQueue")} · 자동 먹이 ${TIME("autoTaps")} · 논리 ${TIME("logic")} (합성 접근 ${TIME("mergeTask")}) · 물리 ${TIME("physics")}`,
+        `CPU post-step ${TIME("worldPostStep")} · event dispatch ${TIME("mutationDispatch")} · world-step follow-up ${TIME("worldStepFollowup")} · capture ${TIME("presentationCapture")} (snapshot prep ${TIME("presentationSnapshot")} / SDK ${TIME("runtimeCapture")})`,
         `프레임 평균: 프레젠테이션 캡처 ${PER_FRAME("presentationCaptures")}회 / 엔티티 ${PER_FRAME("presentationEntities")} · solver 반복 ${PER_FRAME("physicsSolverIterations")}`,
         `CPU AI ${TIME("ai")} · 인덱스 재구축/갱신 ${TIME("spatial")} · 충돌 ${TIME("collision")}`,
         `CPU 보간 ${TIME("presentation")} · WebGL 제출 ${TIME("render")} · UI ${TIME("ui")}`,
@@ -13688,13 +13792,13 @@
   // src/features/formation-skills/giant/presentation.js
   var GiantPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15;
-      renderer.ring(effect.x, effect.y, 0.9 * PULSE, "#b3d875aa", 0.07);
-      renderer.ring(effect.x, effect.y, 1.1 * PULSE, "#e6f3b344", 0.04);
+      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS = Math.max(0.3, effect.radius || 0.3);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875aa", 0.07);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b344", 0.04);
       for (let i = 0; i < 5; i++) {
         const A = i * Math.PI * 2 / 5 + effect.age, P = renderer.project(
-          effect.x + Math.cos(A) * 0.7,
-          effect.y + Math.sin(A) * 0.7,
+          effect.x + Math.cos(A) * RADIUS * 1.25,
+          effect.y + Math.sin(A) * RADIUS * 1.25,
           (effect.age * 1.3 + i * 0.4) % 2
         );
         renderer.ellipse(P.x, P.y, renderer.scale * 0.025, renderer.scale * 0.055, "#e2f7a9aa");
@@ -14038,21 +14142,68 @@
 
   // src/features/farm-modes/merge/presentation.js
   init_farm_model();
+  function mergeHolePulse(renderer, task) {
+    const PROGRESS = task.phase === "approach" ? CLAMP2(task.elapsed / task.duration, 0, 1) : 1, PULSE = 0.5 + 0.5 * Math.sin(renderer.displayTimeMs * 6e-3 + task.materialIds[0] * 0.17);
+    return { progress: PROGRESS, pulse: PULSE, radius: renderer.scale * (0.2 + PULSE * 0.035 + PROGRESS * 0.055) };
+  }
+  function drawMergeBlackHoleBack(renderer, task) {
+    const { pulse: PULSE, radius: RADIUS } = mergeHolePulse(renderer, task), CENTER = renderer.project(task.centerX, task.centerY, task.centerZ - 0.16);
+    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 3.1, RADIUS * 1.8, "#9274d944");
+    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 2.25, RADIUS * 1.35, "#7b58bd88");
+    for (let index = 0; index < 2; index++) {
+      const ANGLE = renderer.displayTimeMs * 4e-3 * (index ? -1 : 1) + index * Math.PI, POINT2 = renderer.project(
+        task.centerX + Math.cos(ANGLE) * 0.43,
+        task.centerY + Math.sin(ANGLE) * 0.32,
+        task.centerZ - 0.12
+      ), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
+      renderer.ellipse(POINT2.x, POINT2.y, PARTICLE_RADIUS, PARTICLE_RADIUS * 0.72, "#e0c4ff99");
+    }
+  }
+  function drawMergeBlackHoleFront(renderer, task) {
+    const { pulse: PULSE, radius: RADIUS } = mergeHolePulse(renderer, task), Z = task.centerZ + 0.32, CENTER = renderer.project(task.centerX, task.centerY, Z);
+    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 1.55, RADIUS * 0.95, "#21182e");
+    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 1.18, RADIUS * 0.7, "#100d18");
+    for (let index = 0; index < 2; index++) {
+      const ANGLE = renderer.displayTimeMs * 4e-3 * (index ? 1 : -1) + (index + 2) * Math.PI / 2, POINT2 = renderer.project(
+        task.centerX + Math.cos(ANGLE) * 0.43,
+        task.centerY + Math.sin(ANGLE) * 0.32,
+        Z + 0.04
+      ), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
+      renderer.ellipse(POINT2.x, POINT2.y, PARTICLE_RADIUS, PARTICLE_RADIUS * 0.72, "#e0c4ff");
+    }
+  }
   function drawMergeBlackHoles(renderer, world) {
     for (const TASK of world.mergeTasks) {
       if (!Number.isFinite(TASK.centerX) || !Number.isFinite(TASK.centerY) || !Number.isFinite(TASK.centerZ)) {
         continue;
       }
-      const PROGRESS = TASK.phase === "approach" ? CLAMP2(TASK.elapsed / TASK.duration, 0, 1) : 1, PULSE = 0.5 + 0.5 * Math.sin(renderer.displayTimeMs * 6e-3 + TASK.materialIds[0] * 0.17), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ, CENTER = renderer.project(X, Y, Z), RADIUS = renderer.scale * (0.2 + PULSE * 0.035 + PROGRESS * 0.055);
-      renderer.strokeGroundEllipse(X, Y, 0.52 + PULSE * 0.08, 0.4 + PULSE * 0.06, "#7650a888", 0.04);
-      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 3.1, RADIUS * 1.8, "#9274d944");
-      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 2.25, RADIUS * 1.35, "#7b58bd88");
-      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 1.55, RADIUS * 0.95, "#21182e");
-      for (let index = 0; index < 4; index++) {
-        const ANGLE = renderer.displayTimeMs * 4e-3 * (index % 2 ? -1 : 1) + index * Math.PI * 2 / 4, POINT2 = renderer.project(X + Math.cos(ANGLE) * 0.43, Y + Math.sin(ANGLE) * 0.32, Z + 0.07), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
-        renderer.ellipse(POINT2.x, POINT2.y, PARTICLE_RADIUS, PARTICLE_RADIUS * 0.72, "#e0c4ff");
-      }
+      const { pulse: PULSE } = mergeHolePulse(renderer, TASK), ID = Number.isFinite(TASK.materialIds?.[0]) ? TASK.materialIds[0] : 0, DEPTH = 0.785 * TASK.centerY - 0.62 * TASK.centerZ;
+      renderer.strokeGroundEllipse(
+        TASK.centerX,
+        TASK.centerY,
+        0.52 + PULSE * 0.08,
+        0.4 + PULSE * 0.06,
+        "#7650a888",
+        0.04
+      );
+      renderer.addActor(renderer.mergeHoleBackPresentation, TASK, DEPTH + 0.62 * 0.16, -2e9 + ID);
+      renderer.addActor(renderer.mergeHoleFrontPresentation, TASK, DEPTH - 0.62 * 0.32, 2e9 + ID);
     }
+  }
+  function mergeMaterialProgress(effect) {
+    const DELAY = Number.isFinite(effect.delay) ? effect.delay : 0, SPAN = Number.isFinite(effect.span) ? effect.span : 1;
+    if (effect.life < DELAY) {
+      return null;
+    }
+    return Number.isFinite(effect.span) ? CLAMP2((effect.life - DELAY) / SPAN, 0, 1) : effect.life;
+  }
+  function mergeMaterialPosition(effect, progress) {
+    const T = CLAMP2(progress, 0, 1);
+    return {
+      x: effect.x + (effect.targetX - effect.x) * T,
+      y: effect.y + (effect.targetY - effect.y) * T,
+      z: (effect.z || 0) + ((effect.targetZ ?? effect.z ?? 0) - (effect.z || 0)) * T + Math.sin(Math.PI * T) * 0.55
+    };
   }
   var MergeEffect = class extends CelebrationEffect {
     constructor() {
@@ -14080,8 +14231,7 @@
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
       const E = effect, Q = progress;
-      const T = CLAMP2(Q, 0, 1), X = E.x + (E.targetX - E.x) * T, Y = E.y + (E.targetY - E.y) * T, Z = (E.z || 0) + ((E.targetZ ?? E.z ?? 0) - (E.z || 0)) * T + Math.sin(Math.PI * T) * 0.55;
-      const START = renderer.project(E.x, E.y, E.z || 0), POINT2 = renderer.project(X, Y, Z);
+      const T = CLAMP2(Q, 0, 1), POINT_POSITION = mergeMaterialPosition(E, T), START = renderer.project(E.x, E.y, E.z || 0), POINT2 = renderer.project(POINT_POSITION.x, POINT_POSITION.y, POINT_POSITION.z);
       renderer.line(START, POINT2, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - T)})`);
       renderer.ellipse(
         POINT2.x,
@@ -14810,12 +14960,12 @@
         u.y,
         u.z + BOB
       );
-      const BODY2 = (0, import_definition51.unitBodyDefinition)(u.species), SCALE = (0, import_definition51.unitDisplayScale)(
+      const BODY2 = (0, import_definition51.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition51.unitDisplayScale)(
         BODY2,
         u.bodyScale,
         this.renderer.scale,
-        this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio
-      ), R2 = SCALE * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]) * 0.5 * (u.giantUntil > sim.time ? 1.5 : 1 + Math.sin((sim.time - u.giantEndedAt) * 30) * 0.12 * Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
+        this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio * GIANT_SCALE
+      ), R2 = SCALE * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]) * 0.5 * (1 + Math.sin((sim.time - u.giantEndedAt) * 30) * 0.12 * Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
       this.drawVectorUnit(u, sim, P, R2, rest);
       return {
         p: P,
@@ -15435,6 +15585,9 @@
       this.liveUnitIds = /* @__PURE__ */ new Set();
       this.joyEffects = [];
       this.unitPresentation = new UnitPresentation(this);
+      this.mergeHoleBackPresentation = { draw: (task) => drawMergeBlackHoleBack(this, task) };
+      this.mergeHoleFrontPresentation = { draw: (task) => drawMergeBlackHoleFront(this, task) };
+      this.mergeMaterialPresentation = { draw: (effect) => drawEffect(this, effect) };
       this.foodPresentation = new FoodPresentation(this);
       this.projectilePresentation = new ProjectilePresentation(this);
       this.dangerContour = new Float64Array(512);
@@ -15771,10 +15924,9 @@
       if (BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
       }
-      const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS;
-      PRESENTATION.drawMergeBlackHoles?.(this, sim2);
-      const ACTORS = this.actors;
+      const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS, ACTORS = this.actors;
       ACTORS.length = 0;
+      PRESENTATION.drawMergeBlackHoles?.(this, sim2);
       for (const U of sim2.units) {
         if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
           this.addActor(
@@ -15794,6 +15946,23 @@
         for (const F of sim2.projectiles) {
           this.addActor(this.projectilePresentation, F, 0.785 * F.y - 0.62 * F.z, -F.id);
         }
+      }
+      for (let index = 0; index < sim2.effects.length; index++) {
+        const EFFECT = sim2.effects[index];
+        if (EFFECT.kind !== "merge-material") {
+          continue;
+        }
+        const PROGRESS = mergeMaterialProgress(EFFECT);
+        if (PROGRESS === null) {
+          continue;
+        }
+        const POSITION = mergeMaterialPosition(EFFECT, PROGRESS);
+        this.addActor(
+          this.mergeMaterialPresentation,
+          EFFECT,
+          0.785 * POSITION.y - 0.62 * POSITION.z,
+          -1e6 - index
+        );
       }
       ACTORS.sort(COMPARE_ACTORS);
       let vectorRun = false;
@@ -15824,7 +15993,9 @@
       }
       feel?.draw(this, this.displayTimeMs);
       for (const E of sim2.effects) {
-        drawEffect(this, E);
+        if (E.kind !== "merge-material") {
+          drawEffect(this, E);
+        }
       }
       drawFormationEffects(this, sim2);
       this.stats = C.endFrame();
@@ -16295,14 +16466,19 @@
           this.pendingPresentationMode = "reset";
         },
         onAdvance: (result) => {
-          if (this.pendingPresentationMode) {
-            this.pendingPulsePresentationMode = "reset";
-          } else if (result.status === "advanced" && !this.paused) {
-            this.pendingPulsePresentationMode ||= "continuous";
-            const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs, STEP_MS = 1e3 / LOCAL_PROFILE.tickRate * this.pace, EPSILON_MS = 1e-7, HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS, HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
-            if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
-              this.capturePresentation("continuous");
+          const ON_ADVANCE_START = this.profiler?.start();
+          try {
+            if (this.pendingPresentationMode) {
+              this.pendingPulsePresentationMode = "reset";
+            } else if (result.status === "advanced" && !this.paused) {
+              this.pendingPulsePresentationMode ||= "continuous";
+              const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs, STEP_MS = 1e3 / LOCAL_PROFILE.tickRate * this.pace, EPSILON_MS = 1e-7, HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS, HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
+              if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
+                this.capturePresentation("continuous");
+              }
             }
+          } finally {
+            this.profiler?.end("onAdvance", ON_ADVANCE_START);
           }
         }
       });
@@ -16371,7 +16547,9 @@
       if (this.closed) {
         return CLOSED;
       }
+      const COMMAND_START = this.profiler?.start();
       const COMMAND_CHANGED_WORLD = this.applyPendingCommands(32);
+      this.profiler?.end("commandQueue", COMMAND_START);
       if (this.paused) {
         this.tick++;
         if (COMMAND_CHANGED_WORLD) {
@@ -16384,7 +16562,12 @@
       ), PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
       bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1e3) / 1e3);
       if (W.scene === "farm") {
-        W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
+        const AUTO_TAPS_START = this.profiler?.start();
+        try {
+          W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
+        } finally {
+          this.profiler?.end("autoTaps", AUTO_TAPS_START);
+        }
       }
       W.step(1 / LOCAL_PROFILE.tickRate);
       this.tick++;
@@ -16514,7 +16697,7 @@
         this.presentationRevision++;
         this.bindNoticeJournal();
       }
-      const WORLD = this.world, RECEIPT_NOW_MS = this.captureClock(), TIME_MS = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, RECEIPT_NOW_MS - this.presentationOriginWallMs), ENTITIES = this.captureEntities;
+      const WORLD = this.world, SNAPSHOT_START = this.profiler?.start(), RECEIPT_NOW_MS = this.captureClock(), TIME_MS = this.presentationOriginWallMs === null ? 0 : Math.max(this.latestCaptureTimeMs, RECEIPT_NOW_MS - this.presentationOriginWallMs), ENTITIES = this.captureEntities;
       ENTITIES.length = 0;
       if (this.presentationOriginWallMs === null) {
         this.presentationOriginWallMs = RECEIPT_NOW_MS;
@@ -16542,6 +16725,7 @@
       this.clockEntity.source.gameTimeMs = WORLD.time * 1e3;
       ENTITIES.push(this.clockEntity);
       this.profiler?.count("presentationEntities", ENTITIES.length);
+      this.profiler?.end("presentationSnapshot", SNAPSHOT_START);
       const CAPTURE_MODE = mode === "continuous" ? "continuous" : mode === "load" ? "load" : mode === "rollback" ? "rollback" : "reset";
       if (CAPTURE_MODE === "continuous") {
         this.previousCaptureTimeMs = this.latestCaptureTimeMs;
@@ -16653,15 +16837,24 @@
       this.pulseTimestamp = now;
       this.currentPulseCapped = false;
       this.pendingPulsePresentationMode = null;
-      const PREVIOUS_TICK = this.tick;
-      this.loop.pulse(now, {
-        render: false
-      });
+      const PREVIOUS_TICK = this.tick, STEP_LOOP_START = this.profiler?.start();
+      try {
+        this.loop.pulse(now, {
+          render: false
+        });
+      } finally {
+        this.profiler?.end("stepLoop", STEP_LOOP_START);
+      }
       this.currentPulseCapped = false;
       const CAPTURE_MODE = this.pendingPulsePresentationMode;
       this.pendingPulsePresentationMode = null;
       if (CAPTURE_MODE) {
-        this.capturePresentation(CAPTURE_MODE);
+        const PULSE_CAPTURE_START = this.profiler?.start();
+        try {
+          this.capturePresentation(CAPTURE_MODE);
+        } finally {
+          this.profiler?.end("pulseCapture", PULSE_CAPTURE_START);
+        }
       }
       this.profiler?.count("catchupTicks", Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }
@@ -18923,6 +19116,7 @@
     syncAttribute("farm", "aria-pressed", !RAID && !bossEncounterOpen);
     syncAttribute("raid", "aria-pressed", RAID || bossEncounterOpen);
     syncFlag("merge", "disabled", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncData("merge", "availability", MERGE_STATUS.code || "unavailable");
     syncFlag("mergeNotice", "hidden", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncAttribute("merge", "aria-label", `합성${MERGE_STATUS.available ? "" : " 불가"} · ${MERGE_STATUS.reason}`);
     syncText("mergeNotice", MERGE_STATUS.reason);

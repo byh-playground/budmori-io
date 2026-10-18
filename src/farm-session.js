@@ -449,20 +449,25 @@ class FarmSession {
                 this.pendingPresentationMode = 'reset';
             },
             onAdvance: (result) => {
-                if (this.pendingPresentationMode) {
-                    this.pendingPulsePresentationMode = 'reset';
-                } else if (result.status === 'advanced' && !this.paused) {
-                    this.pendingPulsePresentationMode ||= 'continuous';
-                    const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs,
-                        STEP_MS = (1000 / LOCAL_PROFILE.tickRate) * this.pace,
-                        EPSILON_MS = 1e-7,
-                        HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS,
-                        HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
-                    if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
-                        // Preserve the exact penultimate/current pair for the delayed
-                        // presentation sample; intermediate catch-up states are never drawn.
-                        this.capturePresentation('continuous');
+                const ON_ADVANCE_START = this.profiler?.start();
+                try {
+                    if (this.pendingPresentationMode) {
+                        this.pendingPulsePresentationMode = 'reset';
+                    } else if (result.status === 'advanced' && !this.paused) {
+                        this.pendingPulsePresentationMode ||= 'continuous';
+                        const REMAINING_MS = this.pulseTimestamp - this.loop.simulationTimeMs,
+                            STEP_MS = (1000 / LOCAL_PROFILE.tickRate) * this.pace,
+                            EPSILON_MS = 1e-7,
+                            HAS_NEXT_STEP = REMAINING_MS + EPSILON_MS >= STEP_MS,
+                            HAS_STEP_AFTER_NEXT = REMAINING_MS - STEP_MS + EPSILON_MS >= STEP_MS;
+                        if (HAS_NEXT_STEP && !HAS_STEP_AFTER_NEXT) {
+                            // Preserve the exact penultimate/current pair for the delayed
+                            // presentation sample; intermediate catch-up states are never drawn.
+                            this.capturePresentation('continuous');
+                        }
                     }
+                } finally {
+                    this.profiler?.end('onAdvance', ON_ADVANCE_START);
                 }
             },
         });
@@ -537,7 +542,9 @@ class FarmSession {
         if (this.closed) {
             return CLOSED;
         }
+        const COMMAND_START = this.profiler?.start();
         const COMMAND_CHANGED_WORLD = this.applyPendingCommands(32);
+        this.profiler?.end('commandQueue', COMMAND_START);
         if (this.paused) {
             this.tick++;
             if (COMMAND_CHANGED_WORLD) {
@@ -554,7 +561,12 @@ class FarmSession {
             PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
         bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1000) / 1000);
         if (W.scene === 'farm') {
-            W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
+            const AUTO_TAPS_START = this.profiler?.start();
+            try {
+                W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
+            } finally {
+                this.profiler?.end('autoTaps', AUTO_TAPS_START);
+            }
         }
         W.step(1 / LOCAL_PROFILE.tickRate);
         this.tick++;
@@ -693,6 +705,7 @@ class FarmSession {
             this.bindNoticeJournal();
         }
         const WORLD = this.world,
+            SNAPSHOT_START = this.profiler?.start(),
             RECEIPT_NOW_MS = this.captureClock(),
             TIME_MS =
                 this.presentationOriginWallMs === null
@@ -733,6 +746,7 @@ class FarmSession {
         this.clockEntity.source.gameTimeMs = WORLD.time * 1000;
         ENTITIES.push(this.clockEntity);
         this.profiler?.count('presentationEntities', ENTITIES.length);
+        this.profiler?.end('presentationSnapshot', SNAPSHOT_START);
         const CAPTURE_MODE =
             mode === 'continuous'
                 ? 'continuous'
@@ -861,15 +875,25 @@ class FarmSession {
         this.pulseTimestamp = now;
         this.currentPulseCapped = false;
         this.pendingPulsePresentationMode = null;
-        const PREVIOUS_TICK = this.tick;
-        this.loop.pulse(now, {
-            render: false,
-        });
+        const PREVIOUS_TICK = this.tick,
+            STEP_LOOP_START = this.profiler?.start();
+        try {
+            this.loop.pulse(now, {
+                render: false,
+            });
+        } finally {
+            this.profiler?.end('stepLoop', STEP_LOOP_START);
+        }
         this.currentPulseCapped = false;
         const CAPTURE_MODE = this.pendingPulsePresentationMode;
         this.pendingPulsePresentationMode = null;
         if (CAPTURE_MODE) {
-            this.capturePresentation(CAPTURE_MODE);
+            const PULSE_CAPTURE_START = this.profiler?.start();
+            try {
+                this.capturePresentation(CAPTURE_MODE);
+            } finally {
+                this.profiler?.end('pulseCapture', PULSE_CAPTURE_START);
+            }
         }
         this.profiler?.count('catchupTicks', Math.max(0, this.tick - PREVIOUS_TICK - 1));
     }

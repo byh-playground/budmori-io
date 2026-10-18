@@ -22,6 +22,9 @@ export const FORMATION_MAX_LEVEL = 10;
 export const FORMATION_COOLDOWN_SECONDS = 5;
 export function formationUpgradeValue(definition, level) {
     const LEVEL = Math.max(1, level);
+    if (Array.isArray(definition.upgradeValues) && definition.upgradeValues.length) {
+        return definition.upgradeValues[Math.min(LEVEL - 1, definition.upgradeValues.length - 1)];
+    }
     return definition.upgradeBase * definition.upgradeFactor ** (LEVEL - 1) + definition.upgradeStep * (LEVEL - 1);
 }
 export function createFormationSkillState() {
