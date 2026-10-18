@@ -8,20 +8,6 @@ export class BreedFarmMode extends FarmMode {
         super(FEATURE, config);
     }
     updateReady(world, u, dt) {
-        const TASK = world.mergeTasks.find((task) => task.phase === 'approach' && task.materialIds?.includes(u.id));
-        if (TASK?.phase === 'approach' && TASK.materialIds?.includes(u.id)) {
-            const ANCHOR = world._unitById.get(TASK.materialIds[0]);
-            if (ANCHOR && u.cooldown <= 0) {
-                world.steer(
-                    u,
-                    u.id === ANCHOR.id ? u.x : ANCHOR.x,
-                    u.id === ANCHOR.id ? u.y : ANCHOR.y,
-                    dt,
-                    scaleMoveSpeed(2.2, u),
-                );
-            }
-            return;
-        }
         let target = null;
         if (!u.fed) {
             target = world.findNearestGroundFood(u.x, u.y);

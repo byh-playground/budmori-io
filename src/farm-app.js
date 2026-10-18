@@ -67,12 +67,12 @@ function frameRate() {
 function mergeAvailability(world, now) {
     if (
         mergeStatusCache.world !== world ||
-        mergeStatusCache.revision !== world.mergeTaskRevision ||
+        mergeStatusCache.revision !== world.mergeAvailabilityRevision ||
         now - mergeStatusCache.updatedAt >= 250
     ) {
         mergeStatusCache = {
             world,
-            revision: world.mergeTaskRevision,
+            revision: world.mergeAvailabilityRevision,
             updatedAt: now,
             value: world.mergeAvailability(),
         };

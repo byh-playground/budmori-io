@@ -410,8 +410,9 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
         selections: [FIELDS('stage species selectionId')],
     }),
     mergeTasks: [
-        FIELDS('phase aId bId elapsed duration resultId sourceSpecies sourceTier', {
+        FIELDS('phase aId bId elapsed duration resultId sourceSpecies sourceTier centerX centerY centerZ', {
             materialIds: [true],
+            startPositions: [FIELDS('id x y z')],
         }),
     ],
 });

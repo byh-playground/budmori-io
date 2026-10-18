@@ -153,6 +153,7 @@ export class UnitCollection {
         } finally {
             this.world._endSpatialQueryBatch();
         }
+        this.world._markMergeAvailabilityChanged();
         this.publishChange(this.onAdded, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
         return true;
     }
@@ -168,6 +169,7 @@ export class UnitCollection {
         } finally {
             this.world._endSpatialQueryBatch();
         }
+        this.world._markMergeAvailabilityChanged();
         this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
         return true;
     }
@@ -200,6 +202,7 @@ export class UnitCollection {
         } finally {
             this.world._endSpatialQueryBatch();
         }
+        this.world._markMergeAvailabilityChanged();
         this.publishChange(
             this.onReplaced,
             { materialIds: materials.map((unit) => unit.id), resultId: result.id },
@@ -256,6 +259,7 @@ export class UnitCollection {
         } finally {
             this.world._endSpatialQueryBatch();
         }
+        this.world._markMergeAvailabilityChanged();
         this.onReset.emit({ unitIds: NEXT.map((unit) => unit.id) });
     }
     removeWhere(predicate, options) {

@@ -351,6 +351,7 @@ class MergeMaterialRender extends DelayedEffectRender {
         ...DelayedEffectRender.renderSchema,
         targetX: R.STEP,
         targetY: R.STEP,
+        targetZ: R.STEP,
         sequenceIndex: R.STEP,
         sequenceCount: R.STEP,
     });
@@ -358,6 +359,7 @@ class MergeMaterialRender extends DelayedEffectRender {
         super.update(e);
         this.targetX = e.targetX;
         this.targetY = e.targetY;
+        this.targetZ = e.targetZ;
         this.sequenceIndex = e.sequenceIndex;
         this.sequenceCount = e.sequenceCount;
     }

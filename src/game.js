@@ -2226,6 +2226,7 @@
           } finally {
             this.world._endSpatialQueryBatch();
           }
+          this.world._markMergeAvailabilityChanged();
           this.publishChange(this.onAdded, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
           return true;
         }
@@ -2241,6 +2242,7 @@
           } finally {
             this.world._endSpatialQueryBatch();
           }
+          this.world._markMergeAvailabilityChanged();
           this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
           return true;
         }
@@ -2263,6 +2265,7 @@
           } finally {
             this.world._endSpatialQueryBatch();
           }
+          this.world._markMergeAvailabilityChanged();
           this.publishChange(
             this.onReplaced,
             { materialIds: materials.map((unit) => unit.id), resultId: result.id },
@@ -2318,6 +2321,7 @@
           } finally {
             this.world._endSpatialQueryBatch();
           }
+          this.world._markMergeAvailabilityChanged();
           this.onReset.emit({ unitIds: NEXT.map((unit) => unit.id) });
         }
         removeWhere(predicate, options) {
@@ -3755,20 +3759,6 @@
           super(FEATURE6, config);
         }
         updateReady(world, u, dt) {
-          const TASK = world.mergeTasks.find((task) => task.phase === "approach" && task.materialIds?.includes(u.id));
-          if (TASK?.phase === "approach" && TASK.materialIds?.includes(u.id)) {
-            const ANCHOR = world._unitById.get(TASK.materialIds[0]);
-            if (ANCHOR && u.cooldown <= 0) {
-              world.steer(
-                u,
-                u.id === ANCHOR.id ? u.x : ANCHOR.x,
-                u.id === ANCHOR.id ? u.y : ANCHOR.y,
-                dt,
-                scaleMoveSpeed(2.2, u)
-              );
-            }
-            return;
-          }
           let target = null;
           if (!u.fed) {
             target = world.findNearestGroundFood(u.x, u.y);
@@ -6591,6 +6581,8 @@
           }),
           merge: Object.freeze({
             animationSeconds: 0.85,
+            centerHeight: 1.8,
+            resultPopVelocity: 4.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
           }),
           bossEvent: Object.freeze({
@@ -7163,6 +7155,10 @@
             mergeTaskRevision: {
               value: 0,
               writable: true
+            },
+            mergeAvailabilityRevision: {
+              value: 0,
+              writable: true
             }
           });
           this.reset();
@@ -7173,6 +7169,13 @@
         }
         _markMergeTasksChanged() {
           this.mergeTaskRevision++;
+          this._markMergeAvailabilityChanged();
+        }
+        _markMergeAvailabilityChanged() {
+          this.mergeAvailabilityRevision++;
+        }
+        isMergeTaskMaterial(unit) {
+          return this.unitCollection.reservationOwner(unit)?.startsWith("merge:") || false;
         }
         _pendingMergeCost(species, excludedTask = null) {
           let cost = 0;
@@ -8698,20 +8701,43 @@
           if (!MATERIALS) {
             return false;
           }
-          const MATERIAL_IDS = MATERIALS.map((unit) => unit.id), OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS);
+          const MATERIAL_IDS = MATERIALS.map((unit) => unit.id), OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS), CENTER_X = MATERIALS.reduce((sum, unit) => sum + unit.x, 0) / MATERIALS.length, CENTER_Y = MATERIALS.reduce((sum, unit) => sum + unit.y, 0) / MATERIALS.length, DURATION3 = CONFIG.farm.merge.animationSeconds, SEQUENCE_WINDOW = DURATION3 * 0.72, STEP = SEQUENCE_WINDOW / MATERIALS.length;
           if (!this.unitCollection.reserve(OWNER, MATERIALS)) {
             return false;
           }
-          this.mergeTasks.push({
+          const TASK = {
             phase: "approach",
             aId: MATERIAL_IDS[0],
             bId: MATERIAL_IDS[1],
             materialIds: MATERIAL_IDS,
+            startPositions: MATERIALS.map(({ id, x, y, z }) => ({ id, x, y, z })),
+            centerX: CENTER_X,
+            centerY: CENTER_Y,
+            centerZ: CONFIG.farm.merge.centerHeight,
             sourceSpecies: MATERIALS[0].species,
             sourceTier: MATERIALS[0].tier,
             elapsed: 0,
-            duration: CONFIG.farm.merge.animationSeconds
-          });
+            duration: DURATION3
+          };
+          this.mergeTasks.push(TASK);
+          MATERIALS.forEach(
+            (unit, index) => this.effects.push({
+              kind: "merge-material",
+              taskKey: OWNER,
+              x: unit.x,
+              y: unit.y,
+              z: unit.z,
+              targetX: CENTER_X,
+              targetY: CENTER_Y,
+              targetZ: TASK.centerZ,
+              life: 0,
+              delay: index * STEP,
+              span: STEP,
+              duration: (index + 1) * STEP,
+              sequenceIndex: index,
+              sequenceCount: MATERIALS.length
+            })
+          );
           this._markMergeTasksChanged();
           return true;
         }
@@ -8721,7 +8747,25 @@
             return false;
           }
           if (TASK.materialIds?.length) {
-            this.unitCollection.releaseReservations(MERGE_RESERVATION_OWNER(TASK.materialIds));
+            const OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+            if (TASK.phase === "approach") {
+              for (const ID of TASK.materialIds) {
+                const UNIT_LOCAL = this._unitById.get(ID);
+                if (UNIT_LOCAL && this.unitCollection.has(UNIT_LOCAL) && UNIT_LOCAL.hp > 0) {
+                  UNIT_LOCAL.z = 0;
+                  UNIT_LOCAL.vx = UNIT_LOCAL.vy = UNIT_LOCAL.vz = 0;
+                  UNIT_LOCAL.moveControlActive = false;
+                  UNIT_LOCAL.dropLanded = true;
+                  this.updateUnitSpatial(UNIT_LOCAL);
+                }
+              }
+              for (let index = this.effects.length - 1; index >= 0; index--) {
+                if (this.effects[index].taskKey === OWNER) {
+                  this.effects.splice(index, 1);
+                }
+              }
+            }
+            this.unitCollection.releaseReservations(OWNER);
           }
           this.mergeTasks.splice(INDEX, 1);
           this._markMergeTasksChanged();
@@ -8739,6 +8783,10 @@
             this.cancelMergeTasks();
             return;
           }
+          if (this.farmBossEvent?.phase !== "idle") {
+            this.cancelMergeTasks();
+            return;
+          }
           for (const TASK of [...this.mergeTasks]) {
             if (TASK.phase === "animation") {
               TASK.elapsed = Math.min(TASK.duration, TASK.elapsed + dt);
@@ -8749,8 +8797,26 @@
             }
             if (TASK.phase === "approach") {
               const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)), OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
-              if (!this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) || !this.unitCollection.reserve(OWNER, MATERIALS)) {
+              if (!this.canMergeGroup(MATERIALS, {
+                requireNoEnemy: true,
+                reservationOwner: OWNER
+              }) || !this.unitCollection.reserve(OWNER, MATERIALS)) {
                 this.cancelMergeTask(TASK);
+                continue;
+              }
+              TASK.elapsed = Math.min(TASK.duration, TASK.elapsed + dt);
+              const PROGRESS = CLAMP2(TASK.elapsed / TASK.duration, 0, 1), EASE_IN = PROGRESS ** 2.25, MOVE_DT = Math.max(dt, 1e-6);
+              for (const [INDEX, UNIT_LOCAL] of MATERIALS.entries()) {
+                const START = TASK.startPositions[INDEX], OLD_X = UNIT_LOCAL.x, OLD_Y = UNIT_LOCAL.y, OLD_Z = UNIT_LOCAL.z, NEXT_X = START.x + (TASK.centerX - START.x) * EASE_IN, NEXT_Y = START.y + (TASK.centerY - START.y) * EASE_IN, NEXT_Z = START.z + (TASK.centerZ - START.z) * EASE_IN;
+                UNIT_LOCAL.x = NEXT_X;
+                UNIT_LOCAL.y = NEXT_Y;
+                UNIT_LOCAL.z = NEXT_Z;
+                UNIT_LOCAL.vx = (NEXT_X - OLD_X) / MOVE_DT;
+                UNIT_LOCAL.vy = (NEXT_Y - OLD_Y) / MOVE_DT;
+                UNIT_LOCAL.vz = (NEXT_Z - OLD_Z) / MOVE_DT;
+                UNIT_LOCAL.moveControlActive = false;
+                UNIT_LOCAL.angle = Math.atan2(TASK.centerY - NEXT_Y, TASK.centerX - NEXT_X);
+                this.updateUnitSpatial(UNIT_LOCAL);
               }
             }
           }
@@ -8762,12 +8828,16 @@
               continue;
             }
             const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)), OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+            if (TASK.elapsed < TASK.duration - 1e-9) {
+              continue;
+            }
             if (this.canMergeGroup(MATERIALS, {
-              requireContact: true,
               requireNoEnemy: true,
               reservationOwner: OWNER
             }) && this.mergeGroup(MATERIALS, { task: TASK })) {
               resolved = true;
+            } else {
+              this.cancelMergeTask(TASK);
             }
           }
           return resolved;
@@ -8784,15 +8854,17 @@
         _mergeGroup(materials, { task: taskParam } = {}) {
           const TASK = taskParam;
           const TASK_INDEX = this.mergeTasks.indexOf(TASK), OWNER = TASK?.materialIds ? MERGE_RESERVATION_OWNER(TASK.materialIds) : null;
-          if (TASK_INDEX < 0 || TASK?.phase !== "approach" || this.scene !== "farm" || !OWNER || TASK.materialIds.length !== materials.length || !TASK.materialIds.every((id, index) => materials[index]?.id === id) || !this.canMergeGroup(materials, {
-            requireContact: true,
+          if (TASK_INDEX < 0 || TASK?.phase !== "approach" || this.scene !== "farm" || !OWNER || TASK.materialIds.length !== materials.length || !TASK.materialIds.every((id, index) => materials[index]?.id === id) || TASK.elapsed < TASK.duration - 1e-9 || !this.canMergeGroup(materials, {
             requireNoEnemy: true,
             reservationOwner: OWNER
           })) {
             return false;
           }
-          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), X = ORDERED.reduce((sum, unit) => sum + unit.x, 0) / ORDERED.length, Y = ORDERED.reduce((sum, unit) => sum + unit.y, 0) / ORDERED.length;
+          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ;
           const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
+          RESULT.z = Z;
+          RESULT.vz = CONFIG.farm.merge.resultPopVelocity;
+          RESULT.dropLanded = false;
           RESULT.meals = 1;
           RESULT.growth = CONFIG.farm.breeding.matureMeals;
           RESULT.growthDuration = this.breedGrowthDuration();
@@ -8929,6 +9001,7 @@
             }
             if (U.cooldown > 0 && U.cooldown <= dt + 1e-9) {
               this.markProgressChanged();
+              this._markMergeAvailabilityChanged();
             }
             U.cooldown = Math.max(0, U.cooldown - dt);
             if (U.cooldown < 1e-9) {
@@ -9009,6 +9082,10 @@
               }
               continue;
             }
+            if (this.isMergeTaskMaterial(U)) {
+              this.updateUnitSpatial(U);
+              continue;
+            }
             const OLD_Z = U.z, OLD_POSITION = this._oldStepPosition;
             OLD_POSITION.x = U.x;
             OLD_POSITION.y = U.y;
@@ -9057,6 +9134,9 @@
           this.profiler?.end("collision", COLLISION_START);
         }
         updateUnitIntent(unit, dt, enemy, scene) {
+          if (this.isMergeTaskMaterial(unit)) {
+            return;
+          }
           if (enemy) {
             this.raidUnit(unit, dt, enemy);
             return;
@@ -9101,6 +9181,9 @@
             let correctionCount = 0;
             for (let i = 0; i < units.length; i++) {
               const UNIT_LOCAL = units[i];
+              if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+                continue;
+              }
               if (raidOnly && (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded)) {
                 continue;
               }
@@ -9108,6 +9191,9 @@
               const PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
               for (const J of PENDING) {
                 const OTHER = units[J];
+                if (this.isMergeTaskMaterial(OTHER)) {
+                  continue;
+                }
                 if (raidOnly && (OTHER.hp <= 0 || !OTHER.dropLanded)) {
                   continue;
                 }
@@ -9232,7 +9318,13 @@
         resolveFarmContacts(units, dt = 1 / 20) {
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i], PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+            if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+              continue;
+            }
             for (const J of PENDING) {
+              if (this.isMergeTaskMaterial(units[J])) {
+                continue;
+              }
               if (contact(UNIT_LOCAL, units[J])) {
                 this.metrics.contacts++;
               }
@@ -9243,8 +9335,14 @@
         resolveFarmContactPairs(units, sameTier) {
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i], PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+            if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+              continue;
+            }
             for (const J of PENDING) {
               const OTHER = units[J];
+              if (this.isMergeTaskMaterial(OTHER)) {
+                continue;
+              }
               if (UNIT_LOCAL.tier === OTHER.tier !== sameTier) {
                 continue;
               }
@@ -10970,7 +11068,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.14";
+      PRODUCT_VERSION = "0.8.15";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -11426,8 +11524,9 @@
           selections: [FIELDS("stage species selectionId")]
         }),
         mergeTasks: [
-          FIELDS("phase aId bId elapsed duration resultId sourceSpecies sourceTier", {
-            materialIds: [true]
+          FIELDS("phase aId bId elapsed duration resultId sourceSpecies sourceTier centerX centerY centerZ", {
+            materialIds: [true],
+            startPositions: [FIELDS("id x y z")]
           })
         ]
       });
@@ -11860,7 +11959,7 @@
     const MERGE_TASK_UNIT_IDS = /* @__PURE__ */ new Set(), PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
     for (const T of raw.mergeTasks) {
       ASSERT2(
-        raw.scene === "farm" && T && ["approach", "animation"].includes(T.phase) && Number.isFinite(T.elapsed) && T.elapsed >= 0 && Number.isFinite(T.duration) && T.duration > 0 && T.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && T.elapsed <= T.duration + 1e-9 && Array.isArray(T.materialIds) && T.materialIds.length >= 2 && T.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(T.materialIds).size === T.materialIds.length && T.materialIds.every((id) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) && !MERGE_TASK_UNIT_IDS.has(id))
+        raw.scene === "farm" && T && ["approach", "animation"].includes(T.phase) && Number.isFinite(T.elapsed) && T.elapsed >= 0 && Number.isFinite(T.duration) && T.duration > 0 && T.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 && T.elapsed <= T.duration + 1e-9 && Array.isArray(T.materialIds) && T.materialIds.length >= 2 && T.materialIds.length <= CONFIG.farm.merge.maxMaterials && new Set(T.materialIds).size === T.materialIds.length && T.materialIds.every((id) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) && !MERGE_TASK_UNIT_IDS.has(id)) && Number.isFinite(T.centerX) && Number.isFinite(T.centerY) && Number.isFinite(T.centerZ) && T.centerZ >= 0 && Array.isArray(T.startPositions)
       );
       for (const ID of T.materialIds) {
         MERGE_TASK_UNIT_IDS.add(ID);
@@ -11868,7 +11967,9 @@
       if (T.phase === "approach") {
         const MATERIALS = T.materialIds.map((id) => raw.units.find((u) => u.id === id)), FIRST = MATERIALS[0], COST = mergeMaterialCostForTier(FIRST?.tier + 1);
         ASSERT2(
-          INTEGER2(T.aId, 1, CONFIG.farm.maxUnitId) && INTEGER2(T.bId, 1, CONFIG.farm.maxUnitId) && T.aId === T.materialIds[0] && T.bId === T.materialIds[1] && COST === MATERIALS.length && FIRST && INTEGER2(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(T.sourceTier, 1, CONFIG.unit.maxTier - 1) && T.sourceSpecies === FIRST.species && T.sourceTier === FIRST.tier && MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species)
+          INTEGER2(T.aId, 1, CONFIG.farm.maxUnitId) && INTEGER2(T.bId, 1, CONFIG.farm.maxUnitId) && T.aId === T.materialIds[0] && T.bId === T.materialIds[1] && COST === MATERIALS.length && FIRST && INTEGER2(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(T.sourceTier, 1, CONFIG.unit.maxTier - 1) && T.sourceSpecies === FIRST.species && T.sourceTier === FIRST.tier && MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species) && T.startPositions.length === MATERIALS.length && T.startPositions.every(
+            (position2, index) => position2?.id === MATERIALS[index].id && Number.isFinite(position2.x) && Number.isFinite(position2.y) && Number.isFinite(position2.z) && position2.z >= 0
+          )
         );
         PENDING_MERGE_COST[FIRST.species] += MATERIALS.length - 1;
       } else {
@@ -12284,13 +12385,29 @@
         return false;
       }
       if (task.phase === "approach") {
-        const FIRST = raw.units?.find((unit) => unit.id === task.materialIds[0]);
-        if (!FIRST) {
+        const MATERIALS = task.materialIds.map((id) => raw.units?.find((unit) => unit.id === id)), FIRST = MATERIALS[0];
+        if (!FIRST || MATERIALS.some((unit) => !unit)) {
           return false;
         }
         task.sourceSpecies = FIRST.species;
         task.sourceTier = FIRST.tier;
-        return task.materialIds.every((id) => raw.units?.some((unit) => unit.id === id));
+        if (!Array.isArray(task.startPositions) || task.startPositions.length !== MATERIALS.length || task.startPositions.some((position2, index) => position2?.id !== MATERIALS[index].id)) {
+          task.startPositions = MATERIALS.map(({ id, x, y, z }) => ({ id, x, y, z }));
+          task.elapsed = 0;
+        }
+        if (!Number.isFinite(task.centerX)) {
+          task.centerX = task.startPositions.reduce((sum, position2) => sum + position2.x, 0) / MATERIALS.length;
+        }
+        if (!Number.isFinite(task.centerY)) {
+          task.centerY = task.startPositions.reduce((sum, position2) => sum + position2.y, 0) / MATERIALS.length;
+        }
+        if (!Number.isFinite(task.centerZ)) {
+          task.centerZ = CONFIG.farm.merge.centerHeight;
+        }
+        if (!Number.isFinite(task.duration) || task.duration <= 0 || task.duration > CONFIG.farm.merge.animationSeconds) {
+          task.duration = CONFIG.farm.merge.animationSeconds;
+        }
+        return true;
       }
       const RESULT = raw.units?.find((unit) => unit.id === task.resultId);
       if (!Number.isSafeInteger(task.resultId) || !RESULT) {
@@ -12298,6 +12415,10 @@
       }
       task.sourceSpecies = RESULT.species;
       task.sourceTier = RESULT.tier - 1;
+      task.centerX = Number.isFinite(task.centerX) ? task.centerX : RESULT.x;
+      task.centerY = Number.isFinite(task.centerY) ? task.centerY : RESULT.y;
+      task.centerZ = Number.isFinite(task.centerZ) ? task.centerZ : RESULT.z;
+      task.startPositions = Array.isArray(task.startPositions) ? task.startPositions : [];
       return true;
     });
     const BASE = FARM_SNAPSHOT_SHAPE, FILL = (v, d) => {
@@ -13635,35 +13756,16 @@
   init_farm_model();
   function drawMergeBlackHoles(renderer, world) {
     for (const TASK of world.mergeTasks) {
-      let x = 0, y = 0, count = 0;
-      if (TASK.phase === "approach") {
-        for (const ID of TASK.materialIds) {
-          const UNIT3 = world._unitById.get(ID);
-          if (UNIT3) {
-            x += UNIT3.x;
-            y += UNIT3.y;
-            count++;
-          }
-        }
-      } else if (TASK.phase === "animation") {
-        const RESULT = world._unitById.get(TASK.resultId);
-        if (RESULT) {
-          x = RESULT.x;
-          y = RESULT.y;
-          count = 1;
-        }
-      }
-      if (!count) {
+      if (!Number.isFinite(TASK.centerX) || !Number.isFinite(TASK.centerY) || !Number.isFinite(TASK.centerZ)) {
         continue;
       }
-      x /= count;
-      y /= count;
-      const PULSE = 0.5 + 0.5 * Math.sin(renderer.displayTimeMs * 6e-3 + (TASK.resultId || TASK.aId) * 0.17), CENTER = renderer.project(x, y, 0.3), RADIUS = renderer.scale * (0.13 + PULSE * 0.025);
-      renderer.strokeGroundEllipse(x, y, 0.42 + PULSE * 0.08, 0.34 + PULSE * 0.06, "#7650aacc", 0.055);
-      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 2.15, RADIUS * 1.5, "#7b58bd66");
-      renderer.ellipse(CENTER.x, CENTER.y, RADIUS, RADIUS * 0.72, "#21182e");
-      for (let index = 0; index < 3; index++) {
-        const ANGLE = renderer.displayTimeMs * 4e-3 * (index % 2 ? -1 : 1) + index * Math.PI * 2 / 3, POINT2 = renderer.project(x + Math.cos(ANGLE) * 0.36, y + Math.sin(ANGLE) * 0.28, 0.38), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
+      const PROGRESS = TASK.phase === "approach" ? CLAMP2(TASK.elapsed / TASK.duration, 0, 1) : 1, PULSE = 0.5 + 0.5 * Math.sin(renderer.displayTimeMs * 6e-3 + TASK.materialIds[0] * 0.17), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ, CENTER = renderer.project(X, Y, Z), RADIUS = renderer.scale * (0.2 + PULSE * 0.035 + PROGRESS * 0.055);
+      renderer.strokeGroundEllipse(X, Y, 0.52 + PULSE * 0.08, 0.4 + PULSE * 0.06, "#7650a888", 0.04);
+      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 3.1, RADIUS * 1.8, "#9274d944");
+      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 2.25, RADIUS * 1.35, "#7b58bd88");
+      renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 1.55, RADIUS * 0.95, "#21182e");
+      for (let index = 0; index < 4; index++) {
+        const ANGLE = renderer.displayTimeMs * 4e-3 * (index % 2 ? -1 : 1) + index * Math.PI * 2 / 4, POINT2 = renderer.project(X + Math.cos(ANGLE) * 0.43, Y + Math.sin(ANGLE) * 0.32, Z + 0.07), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
         renderer.ellipse(POINT2.x, POINT2.y, PARTICLE_RADIUS, PARTICLE_RADIUS * 0.72, "#e0c4ff");
       }
     }
@@ -13694,7 +13796,7 @@
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
       const E = effect, Q = progress;
-      const T = CLAMP2(Q, 0, 1), X = E.x + (E.targetX - E.x) * T, Y = E.y + (E.targetY - E.y) * T, Z = (E.z || 0) + Math.sin(Math.PI * T) * 0.55;
+      const T = CLAMP2(Q, 0, 1), X = E.x + (E.targetX - E.x) * T, Y = E.y + (E.targetY - E.y) * T, Z = (E.z || 0) + ((E.targetZ ?? E.z ?? 0) - (E.z || 0)) * T + Math.sin(Math.PI * T) * 0.55;
       const START = renderer.project(E.x, E.y, E.z || 0), POINT2 = renderer.project(X, Y, Z);
       renderer.line(START, POINT2, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - T)})`);
       renderer.ellipse(
@@ -13933,7 +14035,6 @@
       this.groundColor = "#d1d8b8";
       this.surfaceColor = "#d9dfc2";
       this.minimumUnitPixels = 11;
-      this.mergeResultIds = /* @__PURE__ */ new Set();
     }
     cameraView(aspect) {
       return aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
@@ -13943,15 +14044,6 @@
     }
     dangerVisible(world) {
       return world.farmBossEvent?.phase === "fighting";
-    }
-    hiddenUnitIds(world) {
-      this.mergeResultIds.clear();
-      for (const TASK of world.mergeTasks) {
-        if (TASK.phase === "animation") {
-          this.mergeResultIds.add(TASK.resultId);
-        }
-      }
-      return this.mergeResultIds;
     }
     drawMergeBlackHoles(renderer, world) {
       drawMergeBlackHoles(renderer, world);
@@ -14593,9 +14685,7 @@
   // src/features/boss-patterns/sweep-360/presentation.js
   init_definition17();
   init_farm_model();
-  var SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET = Object.freeze({
-    "budmori-chestnut-boss": "fist-right"
-  });
+  var TAU2 = Math.PI * 2;
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE7, "sweep", 0.14, 0.14);
@@ -14606,12 +14696,10 @@
       pose.arm("arm-right", 0.72);
     }
     active(_boss, pose) {
-      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWEEP = 2 * Math.PI * Q;
-      pose.body.rotation = 0.12 * Math.sin(SWEEP);
-      pose.body.scaleX = 1.055;
-      pose.body.scaleY = 0.94;
-      pose.arm("arm-left", -0.78 - 0.55 * Math.sin(SWEEP));
-      pose.arm("arm-right", 0.78 + 0.55 * Math.sin(SWEEP));
+      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWEEP = TAU2 * Q, ARM_SWAY = Math.sin(SWEEP) * 0.48;
+      pose.body.rotation = 0.06 * Math.sin(SWEEP);
+      pose.arm("arm-left", -0.72 - ARM_SWAY);
+      pose.arm("arm-right", 0.72 + ARM_SWAY);
     }
     recover(boss, pose) {
       if (pose.recoverImpact) {
@@ -14631,38 +14719,14 @@
       renderer.ring(area.x, area.y, area.reach + area.width + 0.12, "#dfad65", 0.14, START, END);
       CTX.globalAlpha = ALPHA;
     }
-    drawWeapon(renderer, boss, player, matrix, pose, record) {
+    drawWeapon(renderer, boss, _player, _matrix, _pose) {
       if (boss.patternPhase !== "active") {
         return;
       }
-      const SOCKET_ID = SWEEP_WEAPON_SOCKET_BY_BOSS_ASSET[record.compiled.metadata.id];
-      const Q = CLAMP2(pose.elapsed / this.config.active, 0, 1), ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + Math.PI * 2 * Q, BASE = SOCKET_ID ? (() => {
-        const SOCKET = player.getSocket(SOCKET_ID);
-        return {
-          x: matrix[0] * SOCKET.x + matrix[4],
-          y: matrix[3] * SOCKET.y + matrix[5]
-        };
-      })() : renderer.project(boss.x, boss.y, (boss.z || 0) + 0.35), TIP = renderer.project(
-        boss.x + Math.cos(ANGLE) * this.config.reach,
-        boss.y + Math.sin(ANGLE) * this.config.reach,
-        (boss.z || 0) + 0.2
-      ), TAIL = renderer.project(
-        boss.x + Math.cos(ANGLE - 0.18) * this.config.reach,
-        boss.y + Math.sin(ANGLE - 0.18) * this.config.reach,
-        (boss.z || 0) + 0.35
-      );
+      const Q = CLAMP2((boss.patternPhaseElapsed || 0) / Math.max(this.config.active, 1e-3), 0, 1), ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + TAU2 * Q, TANGENT_X = -Math.sin(ANGLE) * this.config.width * 0.7, TANGENT_Y = Math.cos(ANGLE) * this.config.width * 0.7, RADIUS_X = Math.cos(ANGLE) * this.config.reach, RADIUS_Y = Math.sin(ANGLE) * this.config.reach, FROM = renderer.project(boss.x + RADIUS_X - TANGENT_X, boss.y + RADIUS_Y - TANGENT_Y, (boss.z || 0) + 0.2), TO = renderer.project(boss.x + RADIUS_X + TANGENT_X, boss.y + RADIUS_Y + TANGENT_Y, (boss.z || 0) + 0.2);
       renderer.ctx.flush();
-      renderer.line(BASE, TIP, 0.26, "#684632");
-      renderer.line(BASE, TIP, 0.13, "#f0c77c");
-      renderer.ellipse(
-        TIP.x,
-        TIP.y,
-        this.config.width * renderer.scale * 0.48,
-        this.config.width * renderer.scale * 0.3,
-        "#dfad79",
-        Math.atan2(-0.62 * Math.sin(ANGLE), Math.cos(ANGLE))
-      );
-      renderer.line(TAIL, TIP, 0.26, "#e6cf7b99");
+      renderer.line(FROM, TO, 0.2, "#68463299");
+      renderer.line(FROM, TO, 0.085, "#f0c77c");
     }
   };
 
@@ -14966,7 +15030,7 @@
   init_farm_model();
 
   // src/attack-telegraph.js
-  var TAU2 = Math.PI * 2;
+  var TAU3 = Math.PI * 2;
   var ARC_STEP = Math.PI / 36;
   function point(out, count, x, y) {
     out[count * 2] = x;
@@ -14984,7 +15048,7 @@
   function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
     const DX = endX - x, DY = endY - y, D = Math.hypot(DX, DY), ANGLE = Math.atan2(DY, DX), R2 = Math.max(r, landingRadius);
     if (D <= R2 - r + 1e-9) {
-      return arc(out, 0, endX, endY, R2, 0, TAU2);
+      return arc(out, 0, endX, endY, R2, 0, TAU3);
     }
     const JOIN = Math.sqrt(Math.max(0, R2 * R2 - r * r));
     let n = 0;
@@ -14995,7 +15059,7 @@
     } else {
       const CROSS = (r * r - R2 * R2 + D * D) / (2 * D), HEIGHT = Math.sqrt(Math.max(0, r * r - CROSS * CROSS));
       const SMALL = Math.atan2(HEIGHT, CROSS), LARGE = Math.atan2(HEIGHT, CROSS - D);
-      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU2);
+      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU3);
       n = arc(out, n, endX, endY, R2, ANGLE + LARGE, ANGLE - LARGE);
     }
     return n;
@@ -15004,8 +15068,8 @@
     let n = 0;
     if (area.kind === "sweep") {
       const OUTER = area.reach + area.width, INNER = Math.max(0, area.reach - area.width);
-      n = arc(out, 0, area.x, area.y, OUTER, 0, TAU2);
-      return arc(out, n, area.x, area.y, INNER, TAU2, 0);
+      n = arc(out, 0, area.x, area.y, OUTER, 0, TAU3);
+      return arc(out, n, area.x, area.y, INNER, TAU3, 0);
     }
     if (area.kind === "sector") {
       n = point(out, n, area.x, area.y);
@@ -15029,7 +15093,7 @@
         area.y + Math.sin(START) * R_LOCAL,
         W,
         START + Math.PI,
-        START + TAU2
+        START + TAU3
       );
     }
     return 0;
@@ -15851,6 +15915,7 @@
       ...DelayedEffectRender.renderSchema,
       targetX: R.STEP,
       targetY: R.STEP,
+      targetZ: R.STEP,
       sequenceIndex: R.STEP,
       sequenceCount: R.STEP
     });
@@ -15858,6 +15923,7 @@
       super.update(e);
       this.targetX = e.targetX;
       this.targetY = e.targetY;
+      this.targetZ = e.targetZ;
       this.sequenceIndex = e.sequenceIndex;
       this.sequenceCount = e.sequenceCount;
     }
@@ -17162,10 +17228,10 @@
     return PERFORMANCE_DIAGNOSTICS.frameRate();
   }
   function mergeAvailability(world, now) {
-    if (mergeStatusCache.world !== world || mergeStatusCache.revision !== world.mergeTaskRevision || now - mergeStatusCache.updatedAt >= 250) {
+    if (mergeStatusCache.world !== world || mergeStatusCache.revision !== world.mergeAvailabilityRevision || now - mergeStatusCache.updatedAt >= 250) {
       mergeStatusCache = {
         world,
-        revision: world.mergeTaskRevision,
+        revision: world.mergeAvailabilityRevision,
         updatedAt: now,
         value: world.mergeAvailability()
       };
