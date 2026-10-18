@@ -12400,7 +12400,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.23";
+      PRODUCT_VERSION = "0.8.24";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14320,6 +14320,24 @@
   function migrationNotice(text) {
     return saveHasLegacyFarmProgress(text) ? "이전 무료 강화가 종료됐어요. 경험치·유닛 진행은 이어지고 원본은 별도 백업했어요." : "진행도 중심 저장으로 바꿨어요. 경험치·유닛 수·성장·휴식은 이어지고, 위치와 전투 장면은 새로 만들어요. 이전 원본은 별도 백업했어요.";
   }
+  function reportSaveFailure(error, operation) {
+    try {
+      globalThis.BloomDiagnostics?.report?.(error, "farm-save-failure", {
+        origin: "farm-storage",
+        source: "farm-storage.js",
+        operation
+      });
+    } catch (diagnosticError) {
+      console.error("Unable to record Farm save failure diagnostics", diagnosticError);
+    }
+  }
+  function saveFailureMessage(error, operation) {
+    if (operation === "storage-write" && error?.name === "QuotaExceededError") {
+      return "브라우저 저장 공간이 부족해 저장하지 못했어요. 기존 저장은 보존했어요. 저장 내보내기로 보관해 주세요.";
+    }
+    const LABEL = SAVE_FAILURE_LABELS[operation] || "저장 처리";
+    return `${LABEL} 단계에서 오류가 발생했어요. 기존 저장은 보존했어요. 저장 내보내기로 보관한 뒤 진단 정보를 복사해 주세요.`;
+  }
   function readLegacyBackup() {
     try {
       const PREFERRED = localStorage.getItem(BACKUP_LATEST);
@@ -14368,7 +14386,7 @@
       raw: text
     };
   }
-  var KEY, LEGACY_KEY, BACKUP_PREFIX, BACKUP_LATEST, FarmStorage;
+  var KEY, LEGACY_KEY, BACKUP_PREFIX, BACKUP_LATEST, SAVE_FAILURE_LABELS, FarmStorage;
   var init_farm_storage = __esm({
     "src/farm-storage.js"() {
       init_farm_progress();
@@ -14377,6 +14395,13 @@
       LEGACY_KEY = "bloom-weapon-cards-v3";
       BACKUP_PREFIX = "bloom-weapon-cards-legacy-backup-";
       BACKUP_LATEST = "bloom-weapon-cards-legacy-backup-latest";
+      SAVE_FAILURE_LABELS = Object.freeze({
+        "storage-read": "브라우저 저장소 읽기",
+        "progress-capture": "농장 진행 데이터 수집",
+        "progress-compare": "농장 진행 데이터 비교",
+        "progress-validate-encode": "저장 데이터 검증·인코딩",
+        "storage-write": "브라우저 저장소 쓰기"
+      });
       FarmStorage = class {
         constructor() {
           this.raw = null;
@@ -14496,31 +14521,44 @@
           if (!this.writable || this.legacyBackupRequired) {
             return false;
           }
+          let operation = "storage-read";
           try {
             if (localStorage.getItem(KEY) !== this.raw) {
               this.error = "저장 내용이 다른 탭에서 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.";
               return false;
             }
+            operation = "progress-capture";
             const CAPTURE_START = this.profiler?.start();
-            const DATA = captureFarmProgress(world);
-            this.profiler?.end("saveCapture", CAPTURE_START);
-            if (!this.migrationPending && sameFarmProgress(DATA, this.savedProgress)) {
+            let data;
+            try {
+              data = captureFarmProgress(world);
+            } finally {
+              this.profiler?.end("saveCapture", CAPTURE_START);
+            }
+            operation = "progress-compare";
+            if (!this.migrationPending && sameFarmProgress(data, this.savedProgress)) {
               this._world = world;
               this.error = "";
               return true;
             }
-            const { text: TEXT } = this.serializeCheckpoint(world, DATA);
+            operation = "progress-validate-encode";
+            const { text: TEXT } = this.serializeCheckpoint(world, data);
+            operation = "storage-write";
             const IO_START = this.profiler?.start();
-            localStorage.setItem(KEY, TEXT);
-            this.profiler?.end("saveIO", IO_START);
+            try {
+              localStorage.setItem(KEY, TEXT);
+            } finally {
+              this.profiler?.end("saveIO", IO_START);
+            }
             this.raw = TEXT;
-            this.savedProgress = DATA;
+            this.savedProgress = data;
             this.migrationPending = false;
             this._world = world;
             this.error = "";
             return true;
-          } catch {
-            this.error = "저장 공간을 사용할 수 없어요. 기존 저장은 보존했어요. 저장 내보내기로 보관해 주세요.";
+          } catch (error) {
+            reportSaveFailure(error, operation);
+            this.error = saveFailureMessage(error, operation);
             return false;
           }
         }
