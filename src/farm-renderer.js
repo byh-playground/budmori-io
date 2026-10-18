@@ -21,25 +21,6 @@ const {
     MeshRenderer: MESH_RENDERER,
 } = globalThis.BloomGamekitRendering;
 const { createVectorAsset: CREATE_VECTOR_ASSET } = globalThis.BloomGamekitVectorAssets;
-function expressionVisibleFaceParts(compiled, faceParts) {
-    const EXPRESSIONS = compiled.metadata.expressions || {},
-        CONTROLLED = new Set();
-    for (const EXPRESSION of Object.values(EXPRESSIONS)) {
-        for (const PART of [...(EXPRESSION.show || []), ...(EXPRESSION.hide || [])]) {
-            CONTROLLED.add(PART);
-        }
-    }
-    if (faceParts.some((part) => !CONTROLLED.has(part))) {
-        return null;
-    }
-    return new Map(
-        Object.entries(EXPRESSIONS).map(([name, expression]) => {
-            const SHOW = new Set(expression.show || []),
-                HIDE = new Set(expression.hide || []);
-            return [name, faceParts.filter((part) => SHOW.has(part) && !HIDE.has(part))];
-        }),
-    );
-}
 function renderedBossAttackArea(boss, scene, scratch, area) {
     if (
         !boss?.patternId ||
@@ -70,6 +51,7 @@ function renderedBossAttackArea(boss, scene, scratch, area) {
 }
 // render.js
 const COMPARE_ACTORS = (a, b) => b.depth - a.depth || a.id - b.id;
+const EMPTY_UNIT_IDS = new Set();
 const DIORAMA = class Diorama {
     constructor(canvas) {
         this.canvas = canvas;
@@ -111,16 +93,15 @@ const DIORAMA = class Diorama {
         this.meshes = new MESH_RENDERER(this.device);
         this.ctx.meshRenderer = this.meshes;
         for (const [SPECIES, COMPILED] of ENTRIES) {
-            const FACE_PARTS = COMPILED.metadata.parts
-                .filter((part) => part.id.startsWith('face-'))
-                .map((part) => part.id);
+            const FACE_PARTS = new Set(
+                COMPILED.metadata.parts.filter((part) => part.id.startsWith('face-')).map((part) => part.id),
+            );
             this.vectorAssets.set(Number(SPECIES), {
                 compiled: COMPILED,
                 asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
                 anchors: readVectorSockets(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
                 parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
                 faceParts: FACE_PARTS,
-                visibleFacePartsByExpression: expressionVisibleFaceParts(COMPILED, FACE_PARTS),
             });
         }
         this.bossAssets = new Map(
@@ -465,11 +446,12 @@ const DIORAMA = class Diorama {
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
         }
-        const HIDDEN_MERGE_RESULT_ID = PRESENTATION.hiddenUnitId(sim2);
+        const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS;
+        PRESENTATION.drawMergeBlackHoles?.(this, sim2);
         const ACTORS = this.actors;
         ACTORS.length = 0;
         for (const U of sim2.units) {
-            if (U.id !== HIDDEN_MERGE_RESULT_ID) {
+            if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                 this.addActor(
                     this.unitPresentation,
                     U,

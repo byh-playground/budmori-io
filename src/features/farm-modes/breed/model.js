@@ -8,7 +8,7 @@ export class BreedFarmMode extends FarmMode {
         super(FEATURE, config);
     }
     updateReady(world, u, dt) {
-        const TASK = world.mergeTask;
+        const TASK = world.mergeTasks.find((task) => task.phase === 'approach' && task.materialIds?.includes(u.id));
         if (TASK?.phase === 'approach' && TASK.materialIds?.includes(u.id)) {
             const ANCHOR = world._unitById.get(TASK.materialIds[0]);
             if (ANCHOR && u.cooldown <= 0) {

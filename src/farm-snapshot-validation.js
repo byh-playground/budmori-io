@@ -73,8 +73,10 @@ export function validateSnapshot(raw) {
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
     ASSERT(INTEGER(raw.seed, 0, 0xffffffff) && INTEGER(raw.rng.state, 0, 0xffffffff));
     ASSERT(['farm', 'raid'].includes(raw.scene));
-    if (raw.mergeTask !== null) {
-        const T = raw.mergeTask;
+    ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
+    const MERGE_TASK_UNIT_IDS = new Set(),
+        PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
+    for (const T of raw.mergeTasks) {
         ASSERT(
             raw.scene === 'farm' &&
                 T &&
@@ -84,19 +86,20 @@ export function validateSnapshot(raw) {
                 Number.isFinite(T.duration) &&
                 T.duration > 0 &&
                 T.duration <= CONFIG.farm.merge.animationSeconds + 1e-9 &&
+                T.elapsed <= T.duration + 1e-9 &&
                 Array.isArray(T.materialIds) &&
                 T.materialIds.length >= 2 &&
                 T.materialIds.length <= CONFIG.farm.merge.maxMaterials &&
                 new Set(T.materialIds).size === T.materialIds.length &&
-                T.materialIds.every((id) => INTEGER(id, 1, CONFIG.farm.maxUnitId)),
+                T.materialIds.every((id) => INTEGER(id, 1, CONFIG.farm.maxUnitId) && !MERGE_TASK_UNIT_IDS.has(id)),
         );
+        for (const ID of T.materialIds) {
+            MERGE_TASK_UNIT_IDS.add(ID);
+        }
         if (T.phase === 'approach') {
             const MATERIALS = T.materialIds.map((id) => raw.units.find((u) => u.id === id)),
                 FIRST = MATERIALS[0],
-                COST = mergeMaterialCostForTier(FIRST?.tier + 1),
-                SAME_SPECIES_COUNT = raw.units.filter(
-                    (u) => !u.isBattleOnlySummon && u.species === FIRST?.species,
-                ).length;
+                COST = mergeMaterialCostForTier(FIRST?.tier + 1);
             ASSERT(
                 INTEGER(T.aId, 1, CONFIG.farm.maxUnitId) &&
                     INTEGER(T.bId, 1, CONFIG.farm.maxUnitId) &&
@@ -104,16 +107,20 @@ export function validateSnapshot(raw) {
                     T.bId === T.materialIds[1] &&
                     COST === MATERIALS.length &&
                     FIRST &&
-                    MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species) &&
-                    SAME_SPECIES_COUNT - MATERIALS.length + 1 >= 2,
+                    INTEGER(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) &&
+                    INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier - 1) &&
+                    T.sourceSpecies === FIRST.species &&
+                    T.sourceTier === FIRST.tier &&
+                    MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species),
             );
+            PENDING_MERGE_COST[FIRST.species] += MATERIALS.length - 1;
         } else {
             const RESULT = raw.units.find((u) => u.id === T.resultId);
             ASSERT(
                 T.aId === 0 &&
                     T.bId === 0 &&
-                    T.elapsed <= T.duration + 1e-9 &&
                     INTEGER(T.resultId, 1, CONFIG.farm.maxUnitId) &&
+                    !MERGE_TASK_UNIT_IDS.has(T.resultId) &&
                     RESULT &&
                     INTEGER(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) &&
                     INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier - 1) &&
@@ -121,6 +128,13 @@ export function validateSnapshot(raw) {
                     RESULT.tier === T.sourceTier + 1 &&
                     T.materialIds.length === mergeMaterialCostForTier(RESULT.tier),
             );
+            MERGE_TASK_UNIT_IDS.add(T.resultId);
+        }
+    }
+    for (let species = 0; species < CONFIG.unit.speciesCount; species++) {
+        if (PENDING_MERGE_COST[species] > 0) {
+            const OWNED_COUNT = raw.units.filter((u) => !u.isBattleOnlySummon && u.species === species).length;
+            ASSERT(OWNED_COUNT - PENDING_MERGE_COST[species] >= 2);
         }
     }
     ASSERT(

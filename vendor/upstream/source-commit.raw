@@ -1,25 +1,26 @@
-tree d89671f74e2346f4674b7e409b78370ebd0f7696
-parent 352127aa93e95e91c2fcd2f9646f0961538da6e0
-author byh020907 <byh020907@naver.com> 1792257307 +0900
-committer GitHub <noreply@github.com> 1792257307 +0900
+tree 609a0f20491222a060fbecbcc2b097da58bf8526
+parent 67d23ea0c36fe87b0e10ab7a521ecd167f0274b6
+parent 5820d77020754021a557003750a333ca42762a1a
+author byh020907 <byh020907@naver.com> 1792278366 +0900
+committer GitHub <noreply@github.com> 1792278366 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq060cCRC1aQ7uu5UhlAAATTsQAIQXgnxyxW2UkTanrofN++25
- RNPs6FfWcSgUoExzu0l1ZCFTkyPawHloC/2KhlDUx5/V0gUd0cCpwqKklBGO70Qi
- i9M51RU4AjzO+HG1ZQSaeLeDdTJGj0J8RRLLX28i4VZt3BCchJBopeh2JQuql88K
- UfEOTsckaYmiTh+wyDMEk281PX+cDt3jfrdR1kq3xGCh4KLLWJ+K6jVXkb944ZW6
- a3Ujcf5pUPXAeQVv1uN+w11QI9fdqw2nAxPXOB+sOjlT5Q5CTT92gcM6laMvc8X4
- hU/RSTfIGw/2ao430pBa5DQzsCEpsMeI2SEinf2vU6l78soiBeA/JbX7mfbpN4Cx
- KwxtVswx7gNFFI5p9k2KfhqKB27oI619jtcHdtMrQJt3pxRJNXyQkodUC+cbkwoa
- /0HV9HN/XoOHbil44p6nu5zNis+gkQpcya8FLseSWUBMAezfmYDQYvXfK7hMgnqp
- KtutariHJF2lPrnlrlw8MJaHw7x9lIpR2zbkDJhpdYDkwwcrJB6hpbM+MqsSLIYL
- vQqPte0Lr+RMhweYopbxhr5UPSkgvdRD9MrBc21nT0hO6H8IlIQwxMlkOMe3vFMz
- 1NNqKhBI4hnWTVLmw7dqlfteNQxEfuc8vSgwOXgpDbusLMPfjd6meSE9lK6BbE6q
- DmXsFvXzo2ugKkiP4cWd
- =9f7r
+ wsFcBAABCAAQBQJq0/9eCRC1aQ7uu5UhlAAAhSwQAEdPMsqPGRLTcMnkyPihseef
+ NMrNFsrCq3nHn3j9N7N54xw+dqj85EDaQOInSRkKOU8lI74geGyKl0lP6/APAsKo
+ TvpbqFbe0bAG3r1OySm59z4gj3FQVOM41XHRX5gSdcaAa5oOWABModweg5kW1HFl
+ y49PndjXl+SXKN6i2vrvlTQo8nyWRv96jOygFOo4s1GyT4dsQJ/ZWtUHktzAI+sQ
+ FE5McD6Qx0DP1JyE9OtNxztrhsJ/p+oV2ON5yZ/LDCbBjiGyOZkVv8pZzLilio47
+ D9IBnMxQ372ujk31cCCBa+g3aeZ3oo4Cwz5/dUgir9Vv4xjZIx5TSPjtjS1JzaKG
+ abC677stYqxByek0lPblURxrRzcHVbtqZfxQfdkW4f8t+ZGJi1YsijBzB7MvJwIU
+ 3lYeveUA0W+zBZusqgGf1EKdgvqZNr3f3Yc1nbkPlWW0wWuIrVsqmAslD6x5RjoR
+ i6U9kBeZ3lK3M2Qer7GUm1mWmU1fawciUohMH/hVp/aF3V1nbYNQWPcHT6A0O+VH
+ F3ec52Ji0YPArIi1oJUG3N+WBjqhihOre/CHezHXYPZ/O15F/6PwpQhQvpsxZer/
+ MYLQJBI1fw7oW0AqJgF/neNlbnAdT/dJl64PQe/T//uA1ejrqvmtrJaX4uwsDUr0
+ orCZf5dBNuSBTWyZIYq/
+ =cbkj
  -----END PGP SIGNATURE-----
  
 
-Reduce capture churn and report dropped simulation time (#88)
+Merge pull request #89 from byh-playground/codex/vector-player-exclude-parts
 
-Reuse capture and pose data, and report exact dropped simulation time.
+[feature] Vector player draw 호출별 part 제외

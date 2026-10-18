@@ -81,11 +81,12 @@ export class UnitCollection {
         });
         this.subscriptions.set(unit, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
     }
-    retire(unit, options) {
+    retire(unit, options, preserveMergeTask = null) {
         this.world.releaseMate(unit);
-        const TASK = this.world.mergeTask;
-        if (TASK && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
-            this.world.cancelMergeTask();
+        for (const TASK of [...this.world.mergeTasks]) {
+            if (TASK !== preserveMergeTask && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
+                this.world.cancelMergeTask(TASK);
+            }
         }
         this.releaseUnitReservation(unit.id);
         for (const OFF of this.subscriptions.get(unit) || []) {
@@ -170,7 +171,7 @@ export class UnitCollection {
         this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
         return true;
     }
-    replace(materials, result, complete) {
+    replace(materials, result, complete, preserveMergeTask = null) {
         const CONSUMED = new Set(materials);
         if (
             CONSUMED.size < 2 ||
@@ -188,7 +189,7 @@ export class UnitCollection {
         this.world._beginSpatialQueryBatch();
         try {
             for (const UNIT of CONSUMED) {
-                this.retire(UNIT);
+                this.retire(UNIT, undefined, preserveMergeTask);
             }
             this.items = REMAINING;
             this.attach(result);

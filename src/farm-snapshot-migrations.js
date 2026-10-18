@@ -35,6 +35,39 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
     if (!Object.hasOwn(raw, 'farmBossProgress')) {
         raw.farmBossProgress = createFarmBossProgress(raw.seed);
     }
+    // Older saves store one transient merge as `mergeTask`; promote it to the
+    // concurrent task list. Invalid transient work is discarded while the
+    // durable roster remains untouched.
+    const LEGACY_MERGE_TASK = raw.mergeTask,
+        MERGE_TASKS = Array.isArray(raw.mergeTasks) ? raw.mergeTasks : LEGACY_MERGE_TASK ? [LEGACY_MERGE_TASK] : [];
+    delete raw.mergeTask;
+    raw.mergeTasks = MERGE_TASKS.filter((task) => {
+        if (
+            !task ||
+            !['approach', 'animation'].includes(task.phase) ||
+            !Array.isArray(task.materialIds) ||
+            task.materialIds.length < 2 ||
+            task.materialIds.length > CONFIG.farm.merge.maxMaterials
+        ) {
+            return false;
+        }
+        if (task.phase === 'approach') {
+            const FIRST = raw.units?.find((unit) => unit.id === task.materialIds[0]);
+            if (!FIRST) {
+                return false;
+            }
+            task.sourceSpecies = FIRST.species;
+            task.sourceTier = FIRST.tier;
+            return task.materialIds.every((id) => raw.units?.some((unit) => unit.id === id));
+        }
+        const RESULT = raw.units?.find((unit) => unit.id === task.resultId);
+        if (!Number.isSafeInteger(task.resultId) || !RESULT) {
+            return false;
+        }
+        task.sourceSpecies = RESULT.species;
+        task.sourceTier = RESULT.tier - 1;
+        return true;
+    });
     const BASE = FARM_SNAPSHOT_SHAPE,
         FILL = (v, d) => {
             for (const [K, X] of Object.entries(d)) {
@@ -53,15 +86,6 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
             }
         };
     FILL(raw, BASE);
-    // Merge tasks are transient. Discard pre-expansion pair tasks and older
-    // animation records that cannot represent the material count/output actor.
-    if (
-        raw.mergeTask &&
-        (!Array.isArray(raw.mergeTask.materialIds) ||
-            (raw.mergeTask.phase === 'animation' && !Number.isSafeInteger(raw.mergeTask.resultId)))
-    ) {
-        raw.mergeTask = null;
-    }
     for (const R of raw.raidRosters || []) {
         if (R.abilitySnapshot && !Object.hasOwn(R.abilitySnapshot, 'formationSkills')) {
             R.abilitySnapshot.formationSkills = createFormationSkillState();

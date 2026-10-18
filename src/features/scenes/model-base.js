@@ -47,11 +47,8 @@ export class SimulationScene {
         }
         world.updateUnitSpatial(unit);
     }
-    separateBossUnits(world) {
-        for (const UNIT of world.units) {
-            world.separateBoss(UNIT);
-            world.updateUnitSpatial(UNIT);
-        }
+    separateBossUnits(world, units) {
+        world.separateBossUnitsJacobi(units);
     }
     updateBattle(world, dt) {
         if (!world.boss.active) {
