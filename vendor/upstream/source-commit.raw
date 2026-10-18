@@ -1,26 +1,25 @@
-tree 46ee12a68f7820183cd594f43410e6fce53df7e8
-parent cd588ab5b1cd72f8ebba81e91883d874917ea1f2
-parent 252550d9e191e66525a6271fd02742af3c01af29
-author byh020907 <byh020907@naver.com> 1792284170 +0900
-committer GitHub <noreply@github.com> 1792284170 +0900
+tree 8dbf9a1bebe377175e218a5da03d73752b367906
+parent a9f57cb4ae4454afe4547608316f989754a11cd8
+author byh020907 <byh020907@naver.com> 1792290388 +0900
+committer GitHub <noreply@github.com> 1792290388 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq1BYKCRC1aQ7uu5UhlAAAHJ4QAFiUEveMhUwrT6/1Oz5mu5dR
- hgrtHQFoXN05q6I1Pglp5H/Bhc8JzYD82gFTIvfgBYaQTT3OQuUM1xuwib+Dh17+
- UT8t+03xv1ho7LBC2zOj3SG3tE+QvO5bjlnGWdcbnXeH3vI2vAFAvqY14jaHFQQ4
- TrVqalagDzplRD4yoQet0Ir8H85KjkvT/2m+BmTsle0B8Em7TVksCVsFxKv4YKuV
- EOw16Fv2Rw4dO3EVV41uvQ01cG7l4AO9N2eBbI9Se5Qp5ylf38vsDJixdJ0a0MeJ
- jb+RxsPDDi40CBEZVDU4w2AfkKHDxEthAObCzJ/hx40YuQjRBPa9SNK9B6Ph+Gi3
- a7icRd0BSdedkdNsX2WL4eRVrdA41sWeWN5Ddi0Pu5oHSHcpVbV9fTvsNbS0FdVS
- yJt2eZ/qsofr+3S57NGsBGyWblS/zpYEHehKbiWJpzI/PFlouz13gUiLgqp3FAL/
- gMlFbcXAujRxbM4hc8KekxMLnmFxdatXdJlOhD2L7PzblcB617l6ASUrzY8Vnp5G
- dRMryZTXsYirmtazd7TiRNwYUHBNlMajgQmcIdFegFKtvhgMFxpFuaha1/unIz+v
- YBxQfAg3MGYJ1P56mTBBcqhYNqCq4B0jaHgs4/i0PzCaV4aagAXCxAerWhiFtLTz
- 6B2r7Sg4um9yuI+TNWeW
- =84uL
+ wsFcBAABCAAQBQJq1C5UCRC1aQ7uu5UhlAAAUTsQAIcOUKJFWJ1m+ahWtt/cKQy6
+ 38fkvKZ5lS6L1d+uQI578zjHk7n8DQib0WdlAtL/xKL4IeUqVY/gXBlbU8yEvMm/
+ 3zWsiNMxMX5VNYEF3rdWMv6fJkl8LDVdBalHm10eC7uHHpbSE653+jZog9mrbTE5
+ iwMQjHOHh+UXGiNUR3HWqxggVXhPtbJhMGxaGx+HDPAB3B8Aapu2MHKFidpMOaQF
+ b3oUS8OqrtH0ns0ODq5NHY3LI98XZlWOhizemrYYvgVp/248rznJg7bo5vQX0jLG
+ 7taXqrMgukdwVh73pHmbt+0kApVvUMi5OYmJoOGL8wIhRK3g35nb9xy28P6iuDEU
+ u3oaQH5uCFNa69SW2RvnbldQ2/d3tXYqaE/CuXwyDsJQLlIF77VWZZWZesBXTaD9
+ U9rVQ34q+vECXhVsynuyxf+oyFTYQ+r9LuiOD8mOvWooQoRariQ1I7w/uNhk43be
+ NuI4D8p3HRsU2N1PKHnqfwWs9DWRr2KwpZqG1dQPEvRqmn/aNjyUe1A8RZIHZtGt
+ /8uOOk0vx6JLoq4Yv5T+D7rGWurtRVHCBZQBvhgUBsq6fnLgijbCl2d3xT+uoEQo
+ F4PmogDOMk4kKpe/8pdcj4YnL+oB6TCmLZnRK82XEFQ44guE0RzyQcrN39vUUsdo
+ JNAiEjNhtPif+C18cMUd
+ =9AeM
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #90 from byh-playground/codex/budgeted-work-scheduler
+feat: PRD 대량 추첨 재개 API 추가
 
-비긴급 작업용 budgeted scheduler 추가
+성공 간격 예산으로 대량 PRD 배치를 나누고 PRD·SeededPRNG·trial cursor·누적 성공 수를 함께 저장하고 복원합니다. 기존 rollMany 경로와 분포를 유지하고 고정 예산 재개 시나리오와 전체 PR CI를 통과했습니다.

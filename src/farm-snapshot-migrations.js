@@ -6,6 +6,7 @@ import { createAbilityRuntimeSnapshot, migrateBaselineAbilityInvestments } from 
 import { abilityProfile, hasUnitCapability } from './unit-abilities.js';
 import { createFarmBossProgress } from './farm-boss-stages.js';
 import { BOSS_PATTERN_IDS } from './boss-patterns.js';
+import { createBossRewardStreams } from './boss-rewards.js';
 import { FACTION_CONFIG, legacyUnitFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE, UNIT_SNAPSHOT_SHAPE, LEGACY_UNIT_DEFAULT_KEYS } from './farm-snapshot.js';
 import { assertSnapshot as assert, validBattleUnitId } from './farm-snapshot-validation.js';
@@ -18,7 +19,8 @@ import { assertSnapshot as assert, validBattleUnitId } from './farm-snapshot-val
 export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true } = {}) {
     // Internal checkpoint serialization can skip the copy because `snapshot()` already returned an owned plain-data graph.
     const RESET_LEGACY_CORPSE_TIMERS = !Object.hasOwn(raw, 'corpseRecoveryVersion'),
-        HAS_REWARD_WATERMARKS = Object.hasOwn(raw, 'bossRewardWatermarks');
+        HAS_REWARD_WATERMARKS = Object.hasOwn(raw, 'bossRewardWatermarks'),
+        HAS_REWARD_STREAMS = Object.hasOwn(raw, 'bossRewardStreams');
     if (clone) {
         raw = structuredClone(raw);
     }
@@ -119,6 +121,9 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
             }
         };
     FILL(raw, BASE);
+    if (!HAS_REWARD_STREAMS) {
+        raw.bossRewardStreams = createBossRewardStreams(raw.seed >>> 0);
+    }
     for (const R of raw.raidRosters || []) {
         migrateBaselineAbilityInvestments(R.abilitySnapshot);
         if (R.abilitySnapshot && !Object.hasOwn(R.abilitySnapshot, 'formationSkills')) {
@@ -153,6 +158,17 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
         }
     }
     for (const U of raw.units || []) {
+        if (U.species === 2 && !Object.hasOwn(U, 'specialAbility')) {
+            const PREVIOUS_ATTACK = U.ability || { phase: 'idle', elapsed: 0, action: null },
+                COMMITTED =
+                    PREVIOUS_ATTACK.phase === 'active' ||
+                    (PREVIOUS_ATTACK.phase === 'recover' && !!PREVIOUS_ATTACK.action),
+                TICK = Number.isSafeInteger(raw.simulationTick) ? raw.simulationTick : 0;
+            U.specialAbility = structuredClone(PREVIOUS_ATTACK);
+            U.ability = { phase: 'idle', elapsed: 0, action: null };
+            U.kidneyLeapReadyTick = COMMITTED ? TICK + 60 : 0;
+            U.kidneyLeapLastUseTick = COMMITTED ? TICK : 0;
+        }
         for (const KEY of LEGACY_UNIT_DEFAULT_KEYS) {
             if (!Object.hasOwn(U, KEY)) {
                 U[KEY] = structuredClone(UNIT_SNAPSHOT_SHAPE[KEY]);

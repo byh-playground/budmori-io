@@ -10,7 +10,7 @@ import { BOSS_PATTERN_IDS } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
-const INTEGER = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
+const INTEGER = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
 const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
     INTEGER(id, 1, CONFIG.farm.maxUnitId) ||
     INTEGER(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
@@ -25,7 +25,26 @@ export { assertSnapshot };
 function finiteTree(v, depth = 0, key = '') {
     ASSERT(depth < 18);
     if (typeof v === 'number') {
-        ASSERT(Number.isFinite(v) && Math.abs(v) < 1e13);
+        const SAFE_COUNTERS = new Set([
+            'count',
+            'queuedCount',
+            'acquiredCount',
+            'placedCount',
+            'rollBudget',
+            'rngState',
+            'payoutRngState',
+            'totalTrials',
+            'processedTrials',
+            'remainingTrials',
+            'successes',
+            'consecutiveFailures',
+            'pendingTrials',
+        ]);
+        ASSERT(
+            SAFE_COUNTERS.has(key)
+                ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER
+                : Number.isFinite(v) && Math.abs(v) < 1e13,
+        );
     } else if (Array.isArray(v)) {
         const MAX =
             key === 'units'
@@ -240,7 +259,9 @@ export function validateSnapshot(raw) {
         ASSERT(FARM_EVENT.outcome === 'victory' ? raw.boss.hp === 0 : raw.boss.hp > 0);
         ASSERT(
             FARM_EVENT.outcome === 'victory'
-                ? ['missed', 'pending', 'granted'].includes(FARM_EVENT.rewardStatus)
+                ? ['calculating', 'ready', 'opened', 'legacy', 'missed', 'pending', 'granted'].includes(
+                      FARM_EVENT.rewardStatus,
+                  )
                 : FARM_EVENT.rewardStatus === 'none',
         );
     }
@@ -250,7 +271,58 @@ export function validateSnapshot(raw) {
             INTEGER(raw.bossRewardWatermarks.raid, 0, 1e12) &&
             raw.nextBossEncounterId > raw.bossRewardWatermarks.farm,
     );
-    const REWARD_IDS = new Set();
+    ASSERT(
+        raw.bossRewardStreams &&
+            typeof raw.bossRewardStreams === 'object' &&
+            Object.keys(raw.bossRewardStreams).length === 2 &&
+            ['normal', 'event'].every((key) => Object.hasOwn(raw.bossRewardStreams, key)),
+    );
+    const VALID_DISTRIBUTION = (state) =>
+            state &&
+            typeof state === 'object' &&
+            !Array.isArray(state) &&
+            Object.keys(state).length === 4 &&
+            state.version === 1 &&
+            Number.isFinite(state.probability) &&
+            state.probability >= 0 &&
+            state.probability <= 1 &&
+            INTEGER(state.consecutiveFailures) &&
+            INTEGER(state.pendingTrials),
+        VALID_JOB = (state, count) =>
+            state &&
+            typeof state === 'object' &&
+            !Array.isArray(state) &&
+            Object.keys(state).length === 7 &&
+            state.version === 1 &&
+            state.totalTrials === count &&
+            INTEGER(state.processedTrials, 0, count) &&
+            INTEGER(state.remainingTrials, 0, count) &&
+            state.processedTrials + state.remainingTrials === count &&
+            INTEGER(state.successes, 0, state.processedTrials) &&
+            INTEGER(state.rngState, 0, 0xffffffff) &&
+            VALID_DISTRIBUTION(state.distributionState);
+    for (const STREAM of Object.values(raw.bossRewardStreams)) {
+        ASSERT(
+            STREAM &&
+                INTEGER(STREAM.rngState, 0, 0xffffffff) &&
+                INTEGER(STREAM.payoutRngState, 0, 0xffffffff) &&
+                (STREAM.distributionState === null || VALID_DISTRIBUTION(STREAM.distributionState)),
+        );
+    }
+    ASSERT(Array.isArray(raw.bossRewardInventory) && raw.bossRewardInventory.length <= CONFIG.unit.speciesCount);
+    const INVENTORY = new Map();
+    for (const GROUP of raw.bossRewardInventory) {
+        ASSERT(
+            GROUP &&
+                INTEGER(GROUP.species, 0, CONFIG.unit.speciesCount - 1) &&
+                GROUP.tier === 1 &&
+                INTEGER(GROUP.count, 1) &&
+                !INVENTORY.has(`${GROUP.species}:${GROUP.tier}`),
+        );
+        INVENTORY.set(`${GROUP.species}:${GROUP.tier}`, GROUP.count);
+    }
+    const REWARD_IDS = new Set(),
+        QUEUED_BY_GROUP = new Map();
     for (const REWARD of raw.bossRewardReceipts) {
         ASSERT(
             REWARD &&
@@ -263,73 +335,172 @@ export function validateSnapshot(raw) {
                 Number.isFinite(REWARD.y) &&
                 Number.isFinite(REWARD.chance) &&
                 REWARD.chance >= 0 &&
-                REWARD.chance <= 1 &&
-                Number.isFinite(REWARD.roll) &&
-                REWARD.roll >= 0 &&
-                REWARD.roll < 1 &&
-                ['pending', 'missed', 'granted'].includes(REWARD.status) &&
-                INTEGER(REWARD.unitId, 0, CONFIG.farm.maxUnitId),
+                REWARD.chance <= 1,
         );
         const KEY = REWARD.receiptKey || REWARD.source + ':' + REWARD.encounterId;
         ASSERT(!REWARD_IDS.has(KEY));
         REWARD_IDS.add(KEY);
-        if (REWARD.drops !== undefined) {
-            ASSERT((REWARD.status === 'granted') === REWARD.unitId > 0);
+        if (['calculating', 'ready', 'opened', 'legacy'].includes(REWARD.status)) {
             ASSERT(
-                Array.isArray(REWARD.drops) &&
-                    REWARD.drops.length <= BOSS_REWARD_SETTINGS.maxStage &&
-                    INTEGER(REWARD.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) &&
-                    REWARD.drops.length === REWARD.rollCount,
+                REWARD.tier === 1 &&
+                    REWARD.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance &&
+                    Number.isSafeInteger(REWARD.acquiredCount) &&
+                    REWARD.acquiredCount >= 0 &&
+                    Number.isSafeInteger(REWARD.placedCount) &&
+                    REWARD.placedCount >= 0 &&
+                    Number.isSafeInteger(REWARD.queuedCount) &&
+                    REWARD.queuedCount >= 0 &&
+                    REWARD.placedCount + REWARD.queuedCount === REWARD.acquiredCount &&
+                    REWARD.grantedCount === REWARD.placedCount,
             );
-            for (const DROP of REWARD.drops) {
+            if (REWARD.queuedCount > 0) {
+                const GROUP_KEY = `${REWARD.species}:${REWARD.tier}`,
+                    QUEUED = (QUEUED_BY_GROUP.get(GROUP_KEY) || 0) + REWARD.queuedCount;
+                ASSERT(Number.isSafeInteger(QUEUED));
+                QUEUED_BY_GROUP.set(GROUP_KEY, QUEUED);
+            }
+            if (REWARD.status === 'legacy') {
                 ASSERT(
-                    DROP &&
-                        Number.isFinite(DROP.roll) &&
-                        DROP.roll >= 0 &&
-                        DROP.roll < 1 &&
-                        ['pending', 'missed', 'granted'].includes(DROP.status) &&
-                        INTEGER(DROP.unitId, 0, CONFIG.farm.maxUnitId) &&
-                        (DROP.status === 'granted') === DROP.unitId > 0,
+                    REWARD.boxCount === 0 &&
+                        REWARD.rollCount === 0 &&
+                        Array.isArray(REWARD.boxes) &&
+                        REWARD.boxes.length === 0 &&
+                        REWARD.calculation === null &&
+                        REWARD.revealedCount === 0,
+                );
+            } else {
+                ASSERT(
+                    INTEGER(REWARD.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
+                        INTEGER(REWARD.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) &&
+                        REWARD.boxCount === Math.min(REWARD.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) &&
+                        REWARD.rollCount === REWARD.boxCount &&
+                        INTEGER(REWARD.successCount, 0, REWARD.boxCount) &&
+                        INTEGER(REWARD.revealedCount, 0, REWARD.boxCount),
+                );
+                if (REWARD.status === 'calculating') {
+                    const CALC = REWARD.calculation;
+                    ASSERT(
+                        CALC &&
+                            CALC.version === 1 &&
+                            Array.isArray(CALC.payouts) &&
+                            CALC.payouts.length === REWARD.boxCount &&
+                            Array.isArray(CALC.hits) &&
+                            CALC.hits.length <= REWARD.boxCount &&
+                            CALC.hits.every(
+                                (index, i) =>
+                                    INTEGER(index, 0, REWARD.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index),
+                            ) &&
+                            INTEGER(CALC.payoutRngStateAfter, 0, 0xffffffff) &&
+                            (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD.boxCount)) &&
+                            Array.isArray(REWARD.boxes) &&
+                            REWARD.boxes.length === 0 &&
+                            REWARD.revealedCount === 0 &&
+                            REWARD.acquiredCount === 0 &&
+                            REWARD.queuedCount === 0,
+                    );
+                    const BASE = Math.floor(REWARD.rollBudget / REWARD.boxCount),
+                        EXTRA = REWARD.rollBudget % REWARD.boxCount;
+                    ASSERT(
+                        CALC.payouts.every(
+                            (payout) =>
+                                Number.isSafeInteger(payout) && payout >= BASE && payout <= BASE + (EXTRA ? 1 : 0),
+                        ) &&
+                            CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD.rollBudget &&
+                            CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA,
+                    );
+                    if (CALC.jobState) {
+                        ASSERT(
+                            CALC.jobState.successes === CALC.hits.length &&
+                                CALC.hits.every((index) => index < CALC.jobState.processedTrials),
+                        );
+                    }
+                } else {
+                    ASSERT(
+                        REWARD.calculation === null &&
+                            Array.isArray(REWARD.boxes) &&
+                            REWARD.boxes.length === REWARD.boxCount &&
+                            (REWARD.status !== 'ready' || REWARD.revealedCount < REWARD.boxCount) &&
+                            (REWARD.status !== 'opened' || REWARD.revealedCount === REWARD.boxCount),
+                    );
+                    let acquired = 0,
+                        hits = 0;
+                    for (const BOX of REWARD.boxes) {
+                        ASSERT(
+                            BOX &&
+                                Object.keys(BOX).length === 2 &&
+                                Number.isSafeInteger(BOX.payout) &&
+                                BOX.payout >= 1 &&
+                                (BOX.hit === true || BOX.hit === false),
+                        );
+                        if (BOX.hit) {
+                            acquired += BOX.payout;
+                            hits += 1;
+                            ASSERT(Number.isSafeInteger(acquired));
+                        }
+                    }
+                    ASSERT(
+                        hits === REWARD.successCount &&
+                            acquired === REWARD.acquiredCount &&
+                            REWARD.boxes.reduce((sum, box) => sum + box.payout, 0) === REWARD.rollBudget,
+                    );
+                }
+            }
+        } else {
+            ASSERT(
+                ['pending', 'missed', 'granted'].includes(REWARD.status) &&
+                    INTEGER(REWARD.unitId, 0, CONFIG.farm.maxUnitId),
+            );
+            if (REWARD.drops !== undefined) {
+                ASSERT((REWARD.status === 'granted') === REWARD.unitId > 0);
+                ASSERT(
+                    Array.isArray(REWARD.drops) &&
+                        REWARD.drops.length <= BOSS_REWARD_SETTINGS.maxStage &&
+                        INTEGER(REWARD.rollCount, 0, BOSS_REWARD_SETTINGS.maxStage) &&
+                        REWARD.drops.length === REWARD.rollCount,
+                );
+                for (const DROP of REWARD.drops) {
+                    ASSERT(
+                        DROP &&
+                            Number.isFinite(DROP.roll) &&
+                            DROP.roll >= 0 &&
+                            DROP.roll < 1 &&
+                            ['pending', 'missed', 'granted'].includes(DROP.status) &&
+                            INTEGER(DROP.unitId, 0, CONFIG.farm.maxUnitId) &&
+                            (DROP.status === 'granted') === DROP.unitId > 0,
+                    );
+                }
+                ASSERT(
+                    REWARD.status ===
+                        (REWARD.drops.some((drop) => drop.status === 'pending')
+                            ? 'pending'
+                            : REWARD.drops.some((drop) => drop.status === 'granted')
+                              ? 'granted'
+                              : 'missed'),
+                );
+            } else {
+                const BASE_ROLL_COUNT = Math.floor(REWARD.rollBudget),
+                    EXPECTED_STATUS =
+                        REWARD.successCount === 0
+                            ? 'missed'
+                            : REWARD.grantedCount === REWARD.successCount
+                              ? 'granted'
+                              : 'pending';
+                ASSERT(
+                    Number.isFinite(REWARD.rollBudget) &&
+                        REWARD.rollBudget >= 1 &&
+                        REWARD.rollBudget <= BOSS_REWARD_SETTINGS.maxRollCount &&
+                        Number.isFinite(REWARD.bonusRollChance) &&
+                        REWARD.bonusRollChance >= 0 &&
+                        REWARD.bonusRollChance < 1 &&
+                        REWARD.bonusRollChance === REWARD.rollBudget - BASE_ROLL_COUNT &&
+                        INTEGER(REWARD.rollCount, BASE_ROLL_COUNT, BOSS_REWARD_SETTINGS.maxRollCount) &&
+                        INTEGER(REWARD.successCount, 0, REWARD.rollCount) &&
+                        INTEGER(REWARD.grantedCount, 0, REWARD.successCount) &&
+                        REWARD.grantedCount > 0 === REWARD.unitId > 0 &&
+                        REWARD.tier === 1 &&
+                        REWARD.status === EXPECTED_STATUS,
                 );
             }
-            ASSERT(
-                REWARD.status ===
-                    (REWARD.drops.some((drop) => drop.status === 'pending')
-                        ? 'pending'
-                        : REWARD.drops.some((drop) => drop.status === 'granted')
-                          ? 'granted'
-                          : 'missed'),
-            );
-        } else {
-            const BASE_ROLL_COUNT = Math.floor(REWARD.rollBudget),
-                EXPECTED_STATUS =
-                    REWARD.successCount === 0
-                        ? 'missed'
-                        : REWARD.grantedCount === REWARD.successCount
-                          ? 'granted'
-                          : 'pending';
-            ASSERT(
-                Number.isFinite(REWARD.rollBudget) &&
-                    REWARD.rollBudget >= 1 &&
-                    REWARD.rollBudget <= BOSS_REWARD_SETTINGS.maxRollCount &&
-                    Number.isFinite(REWARD.bonusRollChance) &&
-                    REWARD.bonusRollChance >= 0 &&
-                    REWARD.bonusRollChance < 1 &&
-                    REWARD.bonusRollChance === REWARD.rollBudget - BASE_ROLL_COUNT &&
-                    INTEGER(REWARD.rollCount, BASE_ROLL_COUNT, BOSS_REWARD_SETTINGS.maxRollCount) &&
-                    (REWARD.rollCount === BASE_ROLL_COUNT ||
-                        (REWARD.bonusRollChance > 0 && REWARD.rollCount === BASE_ROLL_COUNT + 1)) &&
-                    INTEGER(REWARD.successCount, 0, REWARD.rollCount) &&
-                    INTEGER(REWARD.grantedCount, 0, REWARD.successCount) &&
-                    REWARD.grantedCount > 0 === REWARD.unitId > 0 &&
-                    REWARD.tier === 1 &&
-                    REWARD.status === EXPECTED_STATUS,
-            );
-        }
-        if (REWARD.receiptKey !== undefined) {
-            ASSERT(
-                typeof REWARD.receiptKey === 'string' && REWARD.receiptKey.length > 0 && REWARD.receiptKey.length < 256,
-            );
         }
         if (REWARD.acquisitionMultiplier !== undefined) {
             ASSERT(
@@ -338,10 +509,12 @@ export function validateSnapshot(raw) {
                     REWARD.acquisitionMultiplier <= 2,
             );
         }
-        if (REWARD.source === 'farm' && REWARD.unitId > 0) {
-            ASSERT(REWARD.unitId < raw.nextId);
-        }
     }
+    ASSERT(
+        INVENTORY.size === QUEUED_BY_GROUP.size &&
+            [...INVENTORY].every(([key, quantity]) => QUEUED_BY_GROUP.get(key) === quantity),
+    );
+
     const STAGE_PROGRESS = raw.farmBossProgress;
     ASSERT(
         STAGE_PROGRESS &&
@@ -541,6 +714,13 @@ export function validateSnapshot(raw) {
                 Number.isFinite(U.barleyArmorBreakReduction) &&
                 U.barleyArmorBreakReduction >= 0 &&
                 U.barleyArmorBreakReduction <= 0.75 &&
+                INTEGER(U.kidneyLeapReadyTick, 0, 1e12) &&
+                INTEGER(U.kidneyLeapLastUseTick, 0, 1e12) &&
+                typeof U.peaRecoveryPending === 'boolean' &&
+                INTEGER(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) &&
+                Number.isFinite(U.peaRecoveryBoostMultiplier) &&
+                U.peaRecoveryBoostMultiplier >= 0 &&
+                U.peaRecoveryBoostMultiplier <= 2 &&
                 validWheatCommandBuffs(U.wheatCommandBuffs) &&
                 validBarleyArmorShredBuckets(U.barleyArmorShredBuckets),
         );
@@ -558,6 +738,38 @@ export function validateSnapshot(raw) {
                 typeof U.walnutEmpoweredNextBasic === 'boolean' &&
                 INTEGER(U.chestnutBasicCycles, 0, 1e12),
         );
+        ASSERT((U.species === 2) === (U.specialAbility !== null));
+        if (U.specialAbility) {
+            ASSERT(
+                ['idle', 'windup', 'active', 'recover'].includes(U.specialAbility.phase) &&
+                    Number.isFinite(U.specialAbility.elapsed) &&
+                    U.specialAbility.elapsed >= 0,
+            );
+            if (U.specialAbility.action) {
+                ASSERT(
+                    INTEGER(U.specialAbility.action.id, 1, raw.attackSerial) &&
+                        typeof U.specialAbility.action.hit === 'boolean' &&
+                        U.specialAbility.action.target &&
+                        Number.isFinite(U.specialAbility.action.target.x) &&
+                        Number.isFinite(U.specialAbility.action.target.y),
+                );
+                if (U.specialAbility.action.leapDepartureCommitted !== undefined) {
+                    ASSERT(typeof U.specialAbility.action.leapDepartureCommitted === 'boolean');
+                }
+                if (U.specialAbility.action.leapCooldownResetApplied !== undefined) {
+                    ASSERT(typeof U.specialAbility.action.leapCooldownResetApplied === 'boolean');
+                }
+                if (U.specialAbility.action.path) {
+                    validatePath(U.specialAbility.action.path);
+                }
+            }
+            if (['active', 'windup'].includes(U.specialAbility.phase)) {
+                ASSERT(U.specialAbility.action !== null);
+            }
+            if (U.specialAbility.phase === 'active') {
+                validatePath(U.specialAbility.action.path);
+            }
+        }
         if (U.hp <= 0) {
             ASSERT(U.down > 0 && !U.isBattleOnlySummon);
         } else {

@@ -1,5 +1,6 @@
 import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
+import { KIDNEY_CONTINUOUS_LEAP_FEATURE } from './features/abilities/kidney-continuous-leap.js';
 // Species-specific attack behavior stays separate from common unit stats.
 // This ID-keyed object is the single profile lookup for all catalogued species.
 const ATTACK_DEFAULTS = Object.freeze({
@@ -38,14 +39,7 @@ export const UNIT_ABILITY_PROFILES = Object.freeze({
         skillMultiplier: 1.6,
         projectileCount: 1,
     }),
-    2: attackProfile('leap', {
-        timing: {
-            windup: 0.32,
-            recovery: 0.9,
-        },
-        range: 2.5,
-        skillMultiplier: 1.3,
-    }),
+    2: attackProfile('ram'),
     3: attackProfile('punch'),
     // One Peanut remains one world unit; its two kernels are presentation-only
     // and the two deterministic strike slots share the same active window.
@@ -85,17 +79,18 @@ const COMPOSITION = (attack, traits = [], options = {}) =>
         retreatWithinRange: false,
         aimAtCenter: false,
         outerRangeSlack: 0.55,
+        specialAbility: null,
         ...options,
     });
 export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
-    0: COMPOSITION('contact', ['deathSplit'], {
+    0: COMPOSITION('contact', ['deathSplit', 'recoveryHaste'], {
         contactRecoil: true,
     }),
     1: COMPOSITION(LOB_FEATURE.modelKey, ['burstFire', 'popcorn'], {
         retreatWithinRange: true,
         aimAtCenter: true,
     }),
-    2: COMPOSITION('contact', ['landing', 'landingShockwave', 'leapReset']),
+    2: COMPOSITION('contact', [], { specialAbility: 'kidneyLeap' }),
     3: COMPOSITION('contact', ['launchFan'], {
         contactRecoil: true,
     }),
@@ -116,19 +111,51 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
         contactRecoil: true,
     }),
 });
+export const UNIT_SPECIAL_ABILITY_COMPOSITIONS = Object.freeze({
+    kidneyLeap: Object.freeze({
+        definition: KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
+        profile: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.specialAttackProfile,
+        cooldownTicks: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.cooldownTicks,
+        attack: 'contact',
+        traits: Object.freeze(['landing', 'landingShockwave', 'leapReset', 'kidneyLeap']),
+        composition: Object.freeze({
+            attack: 'contact',
+            traits: Object.freeze(['landing', 'landingShockwave', 'leapReset', 'kidneyLeap']),
+            contactRecoil: false,
+            useActiveDuration: false,
+            retreatWithinRange: false,
+            aimAtCenter: false,
+            outerRangeSlack: 0.55,
+            specialAbility: null,
+        }),
+    }),
+});
 export function unitCapabilityComposition(species) {
     return UNIT_CAPABILITY_COMPOSITIONS[species] || UNIT_CAPABILITY_COMPOSITIONS[0];
 }
+export function specialAbilityCompositionFor(species) {
+    const NAME = unitCapabilityComposition(species).specialAbility;
+    return NAME ? UNIT_SPECIAL_ABILITY_COMPOSITIONS[NAME] || null : null;
+}
 export function hasUnitCapability(species, capability) {
     const DEFINITION = UNIT_CAPABILITY_COMPOSITIONS[species];
-    return !!DEFINITION && (DEFINITION.attack === capability || DEFINITION.traits.includes(capability));
+    return (
+        !!DEFINITION &&
+        (DEFINITION.attack === capability ||
+            DEFINITION.traits.includes(capability) ||
+            DEFINITION.specialAbility === capability)
+    );
 }
 
 // Reuse existing species indexes for capability queries without re-scanning the
 // whole roster or a component list. Runtime iteration visits equipped groups.
 const CAPABILITY_SPECIES = new Map();
 for (const [SPECIES, DEFINITION] of Object.entries(UNIT_CAPABILITY_COMPOSITIONS)) {
-    for (const CAPABILITY of new Set([DEFINITION.attack, ...DEFINITION.traits])) {
+    for (const CAPABILITY of new Set([
+        DEFINITION.attack,
+        ...DEFINITION.traits,
+        ...(DEFINITION.specialAbility ? [DEFINITION.specialAbility] : []),
+    ])) {
         if (!CAPABILITY_SPECIES.has(CAPABILITY)) {
             CAPABILITY_SPECIES.set(CAPABILITY, []);
         }

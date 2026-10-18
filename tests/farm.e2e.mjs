@@ -1345,6 +1345,13 @@ async function grainMechanicsFlow() {
                 { WheatCommandModel: WHEAT },
                 { BarleyArmorShredModel: BARLEY, createBarleyArmorShredBuckets: CREATE_SHRED_BUCKETS },
                 { createPlayerProgressionState: CREATE_PROGRESS },
+                {
+                    getContinuousLeapConfig: GET_KIDNEY_LEAP,
+                    getBeanSplitCount: GET_BEAN_SPLIT_COUNT,
+                    getPeaRecoveryBoostConfig: GET_PEA_RECOVERY_BOOST,
+                },
+                { migrateBaselineAbilityInvestments: MIGRATE_BASELINE_ABILITIES },
+                { abilityProfile: ABILITY_PROFILE },
                 { captureFarmProgress: CAPTURE_PROGRESS, restoreFarmProgress: RESTORE_PROGRESS },
                 { snapshot: SNAPSHOT, restore: RESTORE, normalizeSnapshot: NORMALIZE, validateSnapshot: VALIDATE },
                 { Garden: GARDEN },
@@ -1359,6 +1366,9 @@ async function grainMechanicsFlow() {
                 import('/src/features/abilities/wheat-command/model.js'),
                 import('/src/features/abilities/barley-shred/model.js'),
                 import('/src/player-progression.js'),
+                import('/src/species-abilities.js'),
+                import('/src/ability-state.js'),
+                import('/src/unit-abilities.js'),
                 import('/src/farm-progress.js'),
                 import('/src/farm-state.js'),
                 import('/src/farm-model.js'),
@@ -1505,7 +1515,7 @@ async function grainMechanicsFlow() {
         LEGACY_FARM_PROGRESS.player = structuredClone(LEGACY_ABILITY_PLAYER);
         delete LEGACY_FARM_PROGRESS.player.baselineAbilityMigrationVersion;
         const LEGACY_PROGRESS_FIRST = RESTORE_PROGRESS(LEGACY_FARM_PROGRESS),
-            LEGACY_PROGRESS_SECOND = RESTORE_PROGRESS(LEGACY_FARM_PROGRESS),
+            LEGACY_PROGRESS_SECOND = RESTORE_PROGRESS(CAPTURE_PROGRESS(LEGACY_PROGRESS_FIRST)),
             NO_PURCHASE_PROGRESS = structuredClone(FARM_PROGRESS);
         NO_PURCHASE_PROGRESS.player = CREATE_PROGRESS();
         NO_PURCHASE_PROGRESS.player.level = 4;
@@ -1666,6 +1676,202 @@ async function grainMechanicsFlow() {
         };
         const WHEAT_ATTACK_WINDOWS = [null, 0, 1, 2].map(RUN_ATTACK_WINDOW),
             WHEAT_PROGRESS_PRESERVATION = RUN_PROGRESS_PRESERVATION();
+        const COMMON_WORLD = new GARDEN(4450),
+            KIDNEY_A = COMMON_WORLD.spawn(2, 3, -1, 0),
+            KIDNEY_B = COMMON_WORLD.spawn(2, 3, 1, 0),
+            KIDNEY_C = COMMON_WORLD.spawn(2, 3, 3, 0);
+        COMMON_WORLD.simulationTick = 10;
+        KIDNEY_A.kidneyLeapReadyTick = 70;
+        const KIDNEY_INDEPENDENT = {
+            basicKind: ABILITY_PROFILE(2).kind,
+            cooldownTicks: GET_KIDNEY_LEAP(COMMON_WORLD.playerProgression, 3)?.cooldownTicks,
+            firstReady: KIDNEY_A.specialAbility.canBegin(COMMON_WORLD),
+            secondReady: KIDNEY_B.specialAbility.canBegin(COMMON_WORLD),
+        };
+        KIDNEY_A.ability.phase = 'recover';
+        KIDNEY_A.ability.elapsed = 0.42;
+        KIDNEY_A.specialAbility.phase = 'active';
+        KIDNEY_A.specialAbility.action = { leapCooldownResetApplied: false };
+        COMMON_WORLD.random = () => 0;
+        const RESET_SUCCEEDED = KIDNEY_A.specialAbility.resolveLandingEffects(COMMON_WORLD),
+            RESET_TIMER = {
+                phase: KIDNEY_A.ability.phase,
+                elapsed: KIDNEY_A.ability.elapsed,
+                readyTick: KIDNEY_A.kidneyLeapReadyTick,
+                sameTickCanLeap: KIDNEY_A.specialAbility.canBegin(COMMON_WORLD),
+            };
+        COMMON_WORLD.simulationTick++;
+        const NEXT_TICK_CAN_LEAP = KIDNEY_A.specialAbility.canBegin(COMMON_WORLD);
+        KIDNEY_A.specialAbility.phase = 'windup';
+        KIDNEY_A.specialAbility.action = { leapDepartureCommitted: false };
+        KIDNEY_A.specialAbility.interrupt();
+        const PREDEPARTURE_CANCEL = {
+            phase: KIDNEY_A.specialAbility.phase,
+            readyTick: KIDNEY_A.kidneyLeapReadyTick,
+        };
+        COMMON_WORLD.simulationTick = 20;
+        KIDNEY_B.specialAbility.phase = 'windup';
+        KIDNEY_B.specialAbility.action = {
+            id: 1,
+            targetId: 'boss',
+            target: { x: 0, y: 0, z: 0, id: 'boss' },
+            hit: false,
+            path: null,
+            leapDepartureCommitted: false,
+        };
+        COMMON_WORLD.combatEvent('launch', KIDNEY_B, KIDNEY_B.specialAbility.action, KIDNEY_B.specialAbility);
+        KIDNEY_B.specialAbility.phase = 'active';
+        KIDNEY_B.specialAbility.interrupt();
+        const POSTDEPARTURE = {
+            readyTick: KIDNEY_B.kidneyLeapReadyTick,
+            phase: KIDNEY_B.specialAbility.phase,
+            cooldownAt79: (() => {
+                COMMON_WORLD.simulationTick = 79;
+                return KIDNEY_B.specialAbility.canBegin(COMMON_WORLD);
+            })(),
+            cooldownAt80: (() => {
+                KIDNEY_B.specialAbility.ready();
+                COMMON_WORLD.simulationTick = 80;
+                return KIDNEY_B.specialAbility.canBegin(COMMON_WORLD);
+            })(),
+        };
+        COMMON_WORLD.simulationTick = 20;
+        KIDNEY_C.kidneyLeapReadyTick = 100;
+        const BASIC_DURING_LEAP_COOLDOWN = {
+            specialReady: KIDNEY_C.specialAbility.canBegin(COMMON_WORLD),
+            basicStarted: KIDNEY_C.ability.begin(COMMON_WORLD, { id: 'boss', x: 0, y: 0 }),
+            basicKind: KIDNEY_C.ability.spec.kind,
+        };
+
+        const PEA = COMMON_WORLD.spawn(0, 1, -4, 0),
+            ENEMY = COMMON_WORLD.spawn(0, 1, -2, 0),
+            OTHER_PLAYER = COMMON_WORLD.spawn(0, 1, -6, 0);
+        ENEMY.faction = 'enemy';
+        PEA.vx = 1.25;
+        PEA.knock(1, 0, 5, 2, ENEMY);
+        PEA.stun = 0;
+        PEA.z = 0;
+        PEA.vz = 0;
+        PEA.down = 0;
+        PEA.landingRecovery = 0;
+        PEA.dropLanded = true;
+        COMMON_WORLD.simulationTick = 30;
+        const ATTACK_RECOVERY_BEFORE = PEA.ability.attackRecoverySecondsFor(1);
+        COMMON_WORLD.resolvePeaRecoveryBoosts([PEA]);
+        COMMON_WORLD.steer(PEA, -3, 0, 0.05, 2);
+        const PEA_FIRST_RECOVERY = {
+            armedByEnemy: !PEA.peaRecoveryPending,
+            expiresAtTick: PEA.peaRecoveryBoostExpiresAtTick,
+            speedMultiplier: PEA.peaRecoveryBoostMultiplier,
+            moveSpeed: Math.hypot(PEA.moveControlVx, PEA.moveControlVy),
+            attackRecoveryUnchanged: PEA.ability.attackRecoverySecondsFor(1) === ATTACK_RECOVERY_BEFORE,
+        };
+        PEA.knock(1, 0, 5, 2, ENEMY);
+        PEA.stun = 0;
+        PEA.z = 0;
+        PEA.vz = 0;
+        PEA.down = 0;
+        PEA.landingRecovery = 0;
+        PEA.dropLanded = true;
+        COMMON_WORLD.simulationTick = 31;
+        COMMON_WORLD.resolvePeaRecoveryBoosts([PEA]);
+        const PEA_REFRESHED = {
+            expiresAtTick: PEA.peaRecoveryBoostExpiresAtTick,
+            speedMultiplier: PEA.peaRecoveryBoostMultiplier,
+        };
+        COMMON_WORLD.simulationTick = 71;
+        COMMON_WORLD.steer(PEA, -3, 0, 0.05, 2);
+        const PEA_LAST_ACTIVE_SPEED = Math.hypot(PEA.moveControlVx, PEA.moveControlVy);
+        COMMON_WORLD.simulationTick = 72;
+        COMMON_WORLD.resolvePeaRecoveryBoosts([PEA]);
+        COMMON_WORLD.steer(PEA, -3, 0, 0.05, 2);
+        const PEA_EXPIRED_SPEED = Math.hypot(PEA.moveControlVx, PEA.moveControlVy);
+        const NO_HOSTILE = COMMON_WORLD.spawn(0, 1, -8, 0);
+        NO_HOSTILE.knock(1, 0, 5, 2, OTHER_PLAYER);
+        const NO_HOSTILE_TRIGGER = NO_HOSTILE.peaRecoveryPending;
+        const DEAD_PEA = COMMON_WORLD.spawn(0, 1, -10, 0);
+        DEAD_PEA.peaRecoveryPending = true;
+        DEAD_PEA.peaRecoveryBoostExpiresAtTick = 100;
+        DEAD_PEA.peaRecoveryBoostMultiplier = 1.25;
+        DEAD_PEA.hp = 0;
+        COMMON_WORLD.handleUnitDeath(DEAD_PEA);
+        const DEATH_CLEARED = {
+            pending: DEAD_PEA.peaRecoveryPending,
+            expiresAtTick: DEAD_PEA.peaRecoveryBoostExpiresAtTick,
+            multiplier: DEAD_PEA.peaRecoveryBoostMultiplier,
+        };
+        const DESTROYED_PEA = COMMON_WORLD.spawn(0, 1, -12, 0);
+        DESTROYED_PEA.peaRecoveryPending = true;
+        DESTROYED_PEA.peaRecoveryBoostExpiresAtTick = 100;
+        DESTROYED_PEA.peaRecoveryBoostMultiplier = 1.25;
+        COMMON_WORLD.removeUnit(DESTROYED_PEA);
+        const DESTRUCTION_CLEARED = {
+            pending: DESTROYED_PEA.peaRecoveryPending,
+            expiresAtTick: DESTROYED_PEA.peaRecoveryBoostExpiresAtTick,
+            multiplier: DESTROYED_PEA.peaRecoveryBoostMultiplier,
+        };
+        const END_WORLD = new GARDEN(4452),
+            END_PEA = END_WORLD.spawn(0, 1, 0, 0);
+        END_PEA.peaRecoveryPending = true;
+        END_PEA.peaRecoveryBoostExpiresAtTick = 100;
+        END_PEA.peaRecoveryBoostMultiplier = 1.25;
+        END_WORLD.farmBossEvent.phase = 'fighting';
+        END_WORLD.finishFarmBossEvent('defeat');
+        const COMBAT_END_CLEARED = {
+            pending: END_PEA.peaRecoveryPending,
+            expiresAtTick: END_PEA.peaRecoveryBoostExpiresAtTick,
+            multiplier: END_PEA.peaRecoveryBoostMultiplier,
+        };
+        const PEA_POWER_VALUES = [0, 1, 2].map((level) => {
+            const STATE = CREATE_PROGRESS();
+            STATE.abilities['pea-recovery-boost'].powerLevel = level;
+            return GET_PEA_RECOVERY_BOOST(STATE, 1).speedMultiplier;
+        });
+        const NO_FREE_SPLIT = GET_BEAN_SPLIT_COUNT(CREATE_PROGRESS(), 3);
+        const LEGACY_COMMON_PROGRESS = CREATE_PROGRESS();
+        LEGACY_COMMON_PROGRESS.baselineAbilityMigrationVersion = 1;
+        LEGACY_COMMON_PROGRESS.level = 5;
+        LEGACY_COMMON_PROGRESS.availablePoints = 0;
+        LEGACY_COMMON_PROGRESS.abilities['kidney-continuous-leap'] = {
+            rootUnlocked: true,
+            powerLevel: 1,
+            gradeLevel: 2,
+        };
+        const REFUND_FIRST = MIGRATE_BASELINE_ABILITIES(LEGACY_COMMON_PROGRESS),
+            REFUND_SECOND = MIGRATE_BASELINE_ABILITIES(LEGACY_COMMON_PROGRESS),
+            LEGACY_COMMON_REFUND = {
+                first: REFUND_FIRST,
+                second: REFUND_SECOND,
+                availablePoints: LEGACY_COMMON_PROGRESS.availablePoints,
+                rootUnlocked: LEGACY_COMMON_PROGRESS.abilities['kidney-continuous-leap'].rootUnlocked,
+                gradeLevel: LEGACY_COMMON_PROGRESS.abilities['kidney-continuous-leap'].gradeLevel,
+                powerLevel: LEGACY_COMMON_PROGRESS.abilities['kidney-continuous-leap'].powerLevel,
+                migrationVersion: LEGACY_COMMON_PROGRESS.baselineAbilityMigrationVersion,
+            };
+        const KIDNEY_SAVE_WORLD = new GARDEN(4451),
+            KIDNEY_SAVE_UNIT = KIDNEY_SAVE_WORLD.spawn(2, 3, 0, 0);
+        KIDNEY_SAVE_WORLD.simulationTick = 12;
+        KIDNEY_SAVE_WORLD.attackSerial = 1;
+        KIDNEY_SAVE_UNIT.kidneyLeapReadyTick = 72;
+        KIDNEY_SAVE_UNIT.kidneyLeapLastUseTick = 12;
+        KIDNEY_SAVE_UNIT.specialAbility.phase = 'windup';
+        KIDNEY_SAVE_UNIT.specialAbility.elapsed = 0.1;
+        KIDNEY_SAVE_UNIT.specialAbility.action = {
+            id: 1,
+            targetId: 'boss',
+            target: { x: 2, y: 0, z: 0, id: 'boss' },
+            hit: false,
+            path: null,
+        };
+        const KIDNEY_SNAPSHOT = SNAPSHOT(KIDNEY_SAVE_WORLD),
+            KIDNEY_RESTORED = RESTORE(KIDNEY_SNAPSHOT).units.find((unitLocal) => unitLocal.species === 2),
+            KIDNEY_RUNTIME_RESTORE = {
+                valid: VALIDATE(KIDNEY_SNAPSHOT),
+                phase: KIDNEY_RESTORED.specialAbility.phase,
+                elapsed: KIDNEY_RESTORED.specialAbility.elapsed,
+                readyTick: KIDNEY_RESTORED.kidneyLeapReadyTick,
+                lastUseTick: KIDNEY_RESTORED.kidneyLeapLastUseTick,
+            };
         return {
             riceBonus: RICE_BONUS,
             baselineAccess: BASELINE_ACCESS,
@@ -1682,12 +1888,33 @@ async function grainMechanicsFlow() {
                 rootUnlocked: LEGACY_PROGRESS_SECOND.playerProgression.abilities[WHEAT_ID].rootUnlocked,
                 gradeLevel: LEGACY_PROGRESS_SECOND.playerProgression.abilities[WHEAT_ID].gradeLevel,
                 rangeLevel: LEGACY_PROGRESS_SECOND.playerProgression.abilities[WHEAT_ID].branchLevels.range,
-                marker: LEGACY_FARM_PROGRESS.player.baselineAbilityMigrationVersion,
+                marker: LEGACY_PROGRESS_SECOND.playerProgression.baselineAbilityMigrationVersion,
             },
             noPurchaseRefund: NO_PURCHASE_RESTORE.playerProgression.availablePoints,
             combatIntegration: COMBAT_INTEGRATION,
             wheatAttackWindows: WHEAT_ATTACK_WINDOWS,
             wheatProgressPreservation: WHEAT_PROGRESS_PRESERVATION,
+            commonAbilities: {
+                kidneyIndependent: KIDNEY_INDEPENDENT,
+                kidneyResetSucceeded: RESET_SUCCEEDED,
+                kidneyResetTimer: RESET_TIMER,
+                kidneyNextTickCanLeap: NEXT_TICK_CAN_LEAP,
+                kidneyPredepartureCancel: PREDEPARTURE_CANCEL,
+                kidneyPostdeparture: POSTDEPARTURE,
+                kidneyBasicDuringCooldown: BASIC_DURING_LEAP_COOLDOWN,
+                peaFirstRecovery: PEA_FIRST_RECOVERY,
+                peaRefreshed: PEA_REFRESHED,
+                peaLastActiveSpeed: PEA_LAST_ACTIVE_SPEED,
+                peaExpiredSpeed: PEA_EXPIRED_SPEED,
+                nonHostileTrigger: NO_HOSTILE_TRIGGER,
+                deathCleared: DEATH_CLEARED,
+                destructionCleared: DESTRUCTION_CLEARED,
+                combatEndCleared: COMBAT_END_CLEARED,
+                peaPowerValues: PEA_POWER_VALUES,
+                freeSplitCount: NO_FREE_SPLIT,
+                legacyRefund: LEGACY_COMMON_REFUND,
+                kidneyRuntimeRestore: KIDNEY_RUNTIME_RESTORE,
+            },
         };
     });
     assert.deepEqual(RESULT.riceBonus, [0, 0.175, 0.3465, 0, 0]);
@@ -1733,7 +1960,7 @@ async function grainMechanicsFlow() {
         rootUnlocked: false,
         gradeLevel: 0,
         rangeLevel: 1,
-        marker: 1,
+        marker: 2,
     });
     assert.equal(RESULT.noPurchaseRefund, 3);
     const EXPECTED_RECOVERIES = [1, 2 / 3, 1 / 1.75, 1 / 2.125];
@@ -1757,6 +1984,68 @@ async function grainMechanicsFlow() {
     );
     assert(RESULT.wheatProgressPreservation.hitCount >= 1, JSON.stringify(RESULT.wheatProgressPreservation));
     assert.equal(RESULT.wheatProgressPreservation.expiredMultiplier, 1);
+    assert.deepEqual(RESULT.commonAbilities.kidneyIndependent, {
+        basicKind: 'ram',
+        cooldownTicks: 60,
+        firstReady: false,
+        secondReady: true,
+    });
+    assert.equal(RESULT.commonAbilities.kidneyResetSucceeded, true);
+    assert.deepEqual(RESULT.commonAbilities.kidneyResetTimer, {
+        phase: 'recover',
+        elapsed: 0.42,
+        readyTick: 10,
+        sameTickCanLeap: false,
+    });
+    assert.equal(RESULT.commonAbilities.kidneyNextTickCanLeap, true);
+    assert.deepEqual(RESULT.commonAbilities.kidneyPredepartureCancel, { phase: 'idle', readyTick: 10 });
+    assert.deepEqual(RESULT.commonAbilities.kidneyPostdeparture, {
+        readyTick: 80,
+        phase: 'recover',
+        cooldownAt79: false,
+        cooldownAt80: true,
+    });
+    assert.deepEqual(RESULT.commonAbilities.kidneyBasicDuringCooldown, {
+        specialReady: false,
+        basicStarted: true,
+        basicKind: 'ram',
+    });
+    assert.deepEqual(RESULT.commonAbilities.peaFirstRecovery, {
+        armedByEnemy: true,
+        expiresAtTick: 70,
+        speedMultiplier: 1.25,
+        moveSpeed: 2.5,
+        attackRecoveryUnchanged: true,
+    });
+    assert.deepEqual(RESULT.commonAbilities.peaRefreshed, { expiresAtTick: 71, speedMultiplier: 1.25 });
+    assert.equal(RESULT.commonAbilities.peaLastActiveSpeed, 2.5);
+    assert.equal(RESULT.commonAbilities.peaExpiredSpeed, 2);
+    assert.equal(RESULT.commonAbilities.nonHostileTrigger, false);
+    for (const [NAME, STATE] of Object.entries({
+        death: RESULT.commonAbilities.deathCleared,
+        destruction: RESULT.commonAbilities.destructionCleared,
+        combatEnd: RESULT.commonAbilities.combatEndCleared,
+    })) {
+        assert.deepEqual(STATE, { pending: false, expiresAtTick: 0, multiplier: 0 }, NAME);
+    }
+    assert.deepEqual(RESULT.commonAbilities.peaPowerValues, [1.25, 1.35, 1.55]);
+    assert.equal(RESULT.commonAbilities.freeSplitCount, 0);
+    assert.deepEqual(RESULT.commonAbilities.legacyRefund, {
+        first: 3,
+        second: 0,
+        availablePoints: 3,
+        rootUnlocked: false,
+        gradeLevel: 0,
+        powerLevel: 1,
+        migrationVersion: 2,
+    });
+    assert.deepEqual(RESULT.commonAbilities.kidneyRuntimeRestore, {
+        valid: true,
+        phase: 'windup',
+        elapsed: 0.1,
+        readyTick: 72,
+        lastUseTick: 12,
+    });
     assert.deepEqual(
         {
             riceCritical: RESULT.combatIntegration.riceCritical,
@@ -2886,7 +3175,7 @@ async function core() {
     assert.equal(await P.locator('#bossStageAttack').textContent(), '공격력 4');
     assert.equal(await P.locator('#bossStageXp').textContent(), '+20 XP');
     assert.equal(await P.locator('#bossStageDrop').isVisible(), true, 'stage 1 has one boss-species draw');
-    assert.match(await P.locator('#bossStageDrop').textContent(), /1회 · 추첨당 2%/);
+    assert.match(await P.locator('#bossStageDrop').textContent(), /1.*2%/);
     await swipeEncounter(P, 'up');
     await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '2 / 61');
     for (let i = 0; i < 3; i++) {
@@ -2897,172 +3186,193 @@ async function core() {
     assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 1,013');
     assert.equal(await P.locator('#bossStageXp').textContent(), '+101 XP');
     assert(await P.locator('#bossStageDrop').isVisible());
-    assert.match(await P.locator('#bossStageDrop').textContent(), /5회 \+ 6\.25% 확률로 1회 추가 · 추첨당 2%/);
+    assert.match(await P.locator('#bossStageDrop').textContent(), /5.*2%/);
     const REWARD_INVARIANT = await P.evaluate(async () => {
         const {
-                settleBossKill: SETTLE_BOSS_KILL,
-                bossAcquisitionChance: BOSS_ACQUISITION_CHANCE,
-                bossStageStats: BOSS_STAGE_STATS,
+                settleBossKill: SETTLE,
+                bossAcquisitionChance: ACQUISITION_CHANCE,
+                bossStageStats: STAGE_STATS,
+                bossRewardBoxPayouts: BOX_PAYOUTS,
+                advanceBossRewardCalculations: ADVANCE,
+                openAllBossRewardBoxes: OPEN_ALL,
                 grantPendingBossAcquisitions: GRANT_PENDING,
             } = await import('/src/boss-rewards.js'),
-            { sampleBinomial: SAMPLE_BINOMIAL } = await import('/src/binomial-sampler.js'),
             { captureFarmProgress: CAPTURE_PROGRESS, restoreFarmProgress: RESTORE_PROGRESS } =
-                await import('/src/farm-progress.js'),
-            WORLD = new BUDMORI.sim.constructor(997);
-        let zeroRollCalls = 0;
-        const ZERO_OPTIONS = {
+                await import('/src/farm-progress.js');
+        const COMPLETE = (world, receipt, maxUnits = 10) => {
+            let ticks = 0;
+            while (receipt.status === 'calculating' && ticks < 10000) {
+                ADVANCE(world, { maxUnitsPerReward: maxUnits });
+                ticks++;
+            }
+            if (receipt.status === 'calculating') {
+                throw Error('boss reward calculation failed to finish');
+            }
+            return ticks;
+        };
+        const WORLD = new BUDMORI.sim.constructor(997),
+            FIRST = SETTLE(WORLD, {
                 encounterId: 900,
                 source: 'raid',
-                receiptKey: 'stage-zero-roll-xp',
-                rollCount: 0,
+                receiptKey: 'boss-box-xp',
+                rollBudget: 1,
                 xpAmount: 41,
                 species: 0,
-                random: () => {
-                    zeroRollCalls++;
-                    return 0.1;
-                },
-            },
-            FIRST = SETTLE_BOSS_KILL(WORLD, ZERO_OPTIONS),
-            DUPLICATE = SETTLE_BOSS_KILL(WORLD, ZERO_OPTIONS),
-            ROLLS = [0.1, 0.99],
-            MULTI = SETTLE_BOSS_KILL(WORLD, {
-                encounterId: 901,
-                source: 'raid',
-                receiptKey: 'stage-ten-rolls',
-                rollBudget: 2,
-                xpAmount: 103,
-                species: 2,
-                random: () => ROLLS.shift(),
-            });
-        let fractionalIndex = 0;
-        const FRACTIONAL = SETTLE_BOSS_KILL(WORLD, {
-                encounterId: 902,
-                source: 'raid',
-                rollBudget: 1.5,
-                species: 1,
-                random: () => [0.5, 0, 0][fractionalIndex++],
             }),
-            HIGH_WORLD = new BUDMORI.sim.constructor(998);
+            DUPLICATE = SETTLE(WORLD, {
+                encounterId: 900,
+                source: 'raid',
+                receiptKey: 'boss-box-xp',
+                rollBudget: 1,
+                xpAmount: 41,
+                species: 0,
+            });
+        COMPLETE(WORLD, FIRST.receipt, 1);
+        const BOX_WORLD = new BUDMORI.sim.constructor(123),
+            BOX_REWARD = SETTLE(BOX_WORLD, { encounterId: 1, source: 'raid', rollBudget: 38, species: 2 }).receipt,
+            BUDGET_ONE = new BUDMORI.sim.constructor(123),
+            ONE_REWARD = SETTLE(BUDGET_ONE, { encounterId: 1, source: 'raid', rollBudget: 38, species: 2 }).receipt,
+            ONE_TICKS = COMPLETE(BUDGET_ONE, ONE_REWARD, 1),
+            TEN_TICKS = COMPLETE(BOX_WORLD, BOX_REWARD, 10);
+        const HIGH_WORLD = new BUDMORI.sim.constructor(998);
         while (HIGH_WORLD.units.length < HIGH_WORLD.capacity) {
             HIGH_WORLD.spawn(0, 1, 0, 0);
         }
-        const HIGH_START = performance.now(),
-            HIGH = SETTLE_BOSS_KILL(HIGH_WORLD, {
-                encounterId: 903,
-                source: 'raid',
-                rollBudget: BOSS_STAGE_STATS(61).rollBudget,
-                species: 4,
-            }),
-            HIGH_DURATION_MS = performance.now() - HIGH_START;
-        // Model the Raid settlement transaction before validating this Farm snapshot.
         HIGH_WORLD.nextRaidRunSequence = 903;
         HIGH_WORLD.raidSettlementWatermark = 903;
-        const SAVED_PROGRESS = CAPTURE_PROGRESS(HIGH_WORLD),
-            RESTORED_WORLD = RESTORE_PROGRESS(SAVED_PROGRESS),
-            RESTORED_RECEIPT = RESTORED_WORLD.bossRewardReceipts.find((reward) => reward.encounterId === 903);
-        RESTORED_WORLD.removeUnit(RESTORED_WORLD.units[0]);
-        const RELEASED = GRANT_PENDING(RESTORED_WORLD),
-            RESUMED_RECEIPT = RESTORED_WORLD.bossRewardReceipts.find((reward) => reward.encounterId === 903);
-        let samplerState = 777,
-            samplerTotal = 0,
-            samplerSquares = 0;
-        const SAMPLE_RANDOM = () => {
-            samplerState = (Math.imul(samplerState, 1664525) + 1013904223) >>> 0;
-            return samplerState / 4294967296;
-        };
-        for (let index = 0; index < 8000; index++) {
-            const COUNT = SAMPLE_BINOMIAL(1000, 0.02, SAMPLE_RANDOM);
-            samplerTotal += COUNT;
-            samplerSquares += COUNT * COUNT;
+        const HIGH = SETTLE(HIGH_WORLD, {
+            encounterId: 903,
+            source: 'raid',
+            rollBudget: STAGE_STATS(61).rollBudget,
+            species: 4,
+        }).receipt;
+        HIGH.chance = 0.5;
+        ADVANCE(HIGH_WORLD, { maxUnitsPerReward: 1 });
+        const CHECKPOINT = CAPTURE_PROGRESS(HIGH_WORLD),
+            RESTORED_WORLD = RESTORE_PROGRESS(CHECKPOINT),
+            RESTORED = RESTORED_WORLD.bossRewardReceipts.find((reward) => reward.encounterId === 903),
+            RESUMED = RESTORED.status === 'calculating' && !!RESTORED.calculation.jobState;
+        COMPLETE(RESTORED_WORLD, RESTORED, 10);
+        const BEFORE_BOXES = JSON.stringify(RESTORED.boxes),
+            BEFORE_ACQUIRED = RESTORED.acquiredCount;
+        OPEN_ALL(RESTORED_WORLD, RESTORED.receiptKey);
+        const OPENED_WITHOUT_REROLL =
+            RESTORED.status === 'opened' &&
+            RESTORED.revealedCount === RESTORED.boxCount &&
+            RESTORED.acquiredCount === BEFORE_ACQUIRED &&
+            JSON.stringify(RESTORED.boxes) === BEFORE_BOXES;
+        const QUEUE_WORLD = new BUDMORI.sim.constructor(314);
+        while (QUEUE_WORLD.units.length < QUEUE_WORLD.capacity) {
+            QUEUE_WORLD.spawn(0, 1, 0, 0);
         }
+        const QUEUED = SETTLE(QUEUE_WORLD, { encounterId: 1, source: 'raid', rollBudget: 1, species: 3 }).receipt;
+        QUEUED.chance = 1;
+        COMPLETE(QUEUE_WORLD, QUEUED, 10);
+        const QUEUED_BEFORE_SPACE = QUEUED.queuedCount;
+        QUEUE_WORLD.removeUnit(QUEUE_WORLD.units[0]);
+        const RELEASED = GRANT_PENDING(QUEUE_WORLD),
+            PAYOUT_TOTALS = [1, 38, 100, 101, 250, 2216].map((total) => {
+                const PAYOUTS = BOX_PAYOUTS(total);
+                return {
+                    total,
+                    boxCount: PAYOUTS.length,
+                    sum: PAYOUTS.reduce((sum, value) => sum + value, 0),
+                    minimum: Math.min(...PAYOUTS),
+                    maximum: Math.max(...PAYOUTS),
+                };
+            });
         return {
-            farmEventChance: BOSS_ACQUISITION_CHANCE({
-                farmEvent: true,
-            }),
-            zeroRollCalls,
-            firstXp: FIRST.receipt.xpAmount,
-            duplicateXp: DUPLICATE.receipt.xpAmount,
+            farmEventChance: ACQUISITION_CHANCE({ farmEvent: true }),
+            firstXp: FIRST.xpAwarded,
+            duplicateXp: DUPLICATE.xpAwarded,
             duplicateStatus: DUPLICATE.receipt.xpStatus,
-            rollCount: MULTI.receipt.rollCount,
-            successCount: MULTI.receipt.successCount,
-            grantedCount: MULTI.receipt.grantedCount,
-            tier: MULTI.receipt.tier,
-            fractional: {
-                rollBudget: FRACTIONAL.receipt.rollBudget,
-                bonusRollChance: FRACTIONAL.receipt.bonusRollChance,
-                rollCount: FRACTIONAL.receipt.rollCount,
-                successCount: FRACTIONAL.receipt.successCount,
-                tier: FRACTIONAL.receipt.tier,
-            },
-            stageFive: BOSS_STAGE_STATS(5),
+            rollCount: BOX_REWARD.rollCount,
+            rollBudget: BOX_REWARD.rollBudget,
+            tier: BOX_REWARD.tier,
+            duplicateReceipt: FIRST.receipt === DUPLICATE.receipt,
+            quantumEquivalent: JSON.stringify(BOX_REWARD.boxes) === JSON.stringify(ONE_REWARD.boxes),
+            streamEquivalent:
+                JSON.stringify(BOX_WORLD.bossRewardStreams.normal) ===
+                JSON.stringify(BUDGET_ONE.bossRewardStreams.normal),
+            quantumTicks: { one: ONE_TICKS, ten: TEN_TICKS },
+            payouts: PAYOUT_TOTALS,
+            stageFive: STAGE_STATS(5),
             high: {
-                rollBudget: HIGH.receipt.rollBudget,
-                successCount: HIGH.receipt.successCount,
-                grantedCount: HIGH.receipt.grantedCount,
-                status: HIGH.receipt.status,
-                durationMs: HIGH_DURATION_MS,
-                restoredSuccessCount: RESTORED_RECEIPT.successCount,
-                restoredGrantedCount: SAVED_PROGRESS.ledger.boss.pendingRewards.find(
+                rollBudget: HIGH.rollBudget,
+                boxCount: HIGH.boxCount,
+                successCount: RESTORED.successCount,
+                status: RESTORED.status,
+                calculationResumed: RESUMED,
+                checkpointProcessedTrials: CHECKPOINT.ledger.boss.pendingRewards.find(
                     (reward) => reward.encounterId === 903,
-                ).grantedCount,
-                releasedGrants: RELEASED.length,
-                resumedGrantedCount: RESUMED_RECEIPT.grantedCount,
-                resumedPending: RESUMED_RECEIPT.status === 'pending',
+                ).calculation.jobState.processedTrials,
+                openedWithoutReroll: OPENED_WITHOUT_REROLL,
             },
-            samplerMean: samplerTotal / 8000,
-            samplerVariance: samplerSquares / 8000 - (samplerTotal / 8000) ** 2,
-            earned: WORLD.playerProgression.processedBossKillReceipts.filter((key) => key === 'stage-zero-roll-xp')
-                .length,
+            queue: {
+                queuedBeforeSpace: QUEUED_BEFORE_SPACE,
+                releasedGrants: RELEASED.length,
+                placedAfterSpace: QUEUED.placedCount,
+                queuedAfterSpace: QUEUED.queuedCount,
+                status: QUEUED.status,
+            },
+            earned: WORLD.playerProgression.processedBossKillReceipts.filter((key) => key === 'boss-box-xp').length,
         };
     });
     const {
+        payouts: PAYOUT_TOTALS,
         high: HIGH_STAGE,
-        samplerMean: SAMPLER_MEAN,
-        samplerVariance: SAMPLER_VARIANCE,
+        queue: QUEUE_STAGE,
+        quantumTicks: QUANTUM_TICKS,
         ...KNOWN_REWARDS
     } = REWARD_INVARIANT;
     assert.deepEqual(KNOWN_REWARDS, {
-        farmEventChance: 0.04,
-        zeroRollCalls: 0,
+        farmEventChance: 0.1,
         firstXp: 41,
         duplicateXp: 41,
         duplicateStatus: 'awarded',
-        rollCount: 2,
-        successCount: 1,
-        grantedCount: 1,
+        rollCount: 38,
+        rollBudget: 38,
         tier: 1,
-        fractional: {
-            rollBudget: 1.5,
-            bonusRollChance: 0.5,
-            rollCount: 2,
-            successCount: 1,
-            tier: 1,
-        },
+        duplicateReceipt: true,
+        quantumEquivalent: true,
+        streamEquivalent: true,
+        earned: 1,
         stageFive: {
             stage: 5,
             hp: 1012.5,
             attackPower: 8.2944,
             xp: 101,
-            rollBudget: 5.0625,
+            rollBudget: 5,
             rolls: 5,
-            bonusRollChance: 0.0625,
+            boxCount: 5,
+            boxPayouts: [1, 1, 1, 1, 1],
+            bonusRollChance: 0,
         },
-        earned: 1,
     });
-    assert.equal(HIGH_STAGE.rollBudget, Math.pow(1.5, 60));
-    assert(Number.isSafeInteger(HIGH_STAGE.successCount) && HIGH_STAGE.successCount > 1000);
-    assert.equal(HIGH_STAGE.grantedCount, 0, 'full roster keeps each high-stage success pending');
-    assert.equal(HIGH_STAGE.status, 'pending');
-    assert(HIGH_STAGE.durationMs < 2000, 'the maximum stage does not iterate over billions of draws');
-    assert.equal(HIGH_STAGE.restoredSuccessCount, HIGH_STAGE.successCount);
-    assert.equal(HIGH_STAGE.restoredGrantedCount, 0);
-    assert.equal(HIGH_STAGE.releasedGrants, 1);
-    assert.equal(HIGH_STAGE.resumedGrantedCount, 1);
-    assert.equal(HIGH_STAGE.resumedPending, true);
-    assert(Math.abs(SAMPLER_MEAN - 20) < 0.5, 'binomial sampling mean matches n × p');
-    assert(Math.abs(SAMPLER_VARIANCE - 19.6) < 2, 'binomial sampling variance matches n × p × (1 − p)');
+    assert.deepEqual(PAYOUT_TOTALS, [
+        { total: 1, boxCount: 1, sum: 1, minimum: 1, maximum: 1 },
+        { total: 38, boxCount: 38, sum: 38, minimum: 1, maximum: 1 },
+        { total: 100, boxCount: 100, sum: 100, minimum: 1, maximum: 1 },
+        { total: 101, boxCount: 100, sum: 101, minimum: 1, maximum: 2 },
+        { total: 250, boxCount: 100, sum: 250, minimum: 2, maximum: 3 },
+        { total: 2216, boxCount: 100, sum: 2216, minimum: 22, maximum: 23 },
+    ]);
+    assert(QUANTUM_TICKS.one >= QUANTUM_TICKS.ten, 'smaller work budgets take additional logical ticks');
+    assert.equal(HIGH_STAGE.rollBudget, Math.floor(Math.pow(1.5, 60)));
+    assert.equal(HIGH_STAGE.boxCount, 100);
+    assert(Number.isSafeInteger(HIGH_STAGE.successCount) && HIGH_STAGE.successCount <= 100);
+    assert(HIGH_STAGE.calculationResumed, 'saved PRD work resumes after restore');
+    assert(HIGH_STAGE.checkpointProcessedTrials > 0, 'the saved calculation contains resumable work');
+    assert.equal(HIGH_STAGE.openedWithoutReroll, true, 'open-all only reveals the committed result');
+    assert.equal(HIGH_STAGE.status, 'opened');
+    assert.equal(QUEUE_STAGE.queuedBeforeSpace, 1, 'a full Farm holds the acquired unit in the queue');
+    assert.equal(QUEUE_STAGE.releasedGrants, 1);
+    assert.equal(QUEUE_STAGE.placedAfterSpace, 1);
+    assert.equal(QUEUE_STAGE.queuedAfterSpace, 0);
+    assert.equal(QUEUE_STAGE.status, 'ready');
+    assert.match(await P.locator('#bossStageDrop').textContent(), /5.*2%/);
     CHECK(
-        'Boss rewards use geometric draw budgets, fractional rolls, a 2%/4% independent chance, and resumable T1 grants',
+        'Boss reward boxes split integer payouts exactly, preserve deterministic PRD work across budgets and save restore, and queue full-roster grants',
     );
     const SELECTED_STAGE5 = await P.evaluate(
         () => BUDMORI.sim.farmBossProgress.selections.find((entry) => entry.stage === 5)?.species,
@@ -5022,6 +5332,138 @@ async function armyScenarios(p) {
         'Species hold actual firing range; corpses land, stay nonblocking, leave targets and recover; health HUD matches the same sampled display time, distinct from live simulation health',
     );
 }
+async function bossRewards() {
+    const C = await browser.newContext({
+            viewport: {
+                width: 390,
+                height: 844,
+            },
+            deviceScaleFactor: 3,
+            isMobile: true,
+            hasTouch: true,
+        }),
+        P = await open(C);
+    await P.waitForFunction(() => !document.getElementById('bloom-module-loading'));
+    await P.locator('#newGame').click();
+    await P.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.runtime.tick > 5);
+    const CREATED = await P.evaluate(async () => {
+        const {
+                settleBossKill: SETTLE,
+                advanceBossRewardCalculations: ADVANCE,
+                grantPendingBossAcquisitions: GRANT_PENDING,
+            } = await import('/src/boss-rewards.js'),
+            WORLD = BUDMORI.sim;
+        WORLD.nextRaidRunSequence = 77;
+        WORLD.raidSettlementWatermark = 77;
+        const RECEIPT = SETTLE(WORLD, {
+            encounterId: 77,
+            source: 'raid',
+            receiptKey: 'ui-boss-box-77',
+            rollBudget: 12,
+            species: 2,
+        }).receipt;
+        RECEIPT.chance = 1;
+        ADVANCE(WORLD, { maxUnitsPerReward: 10 });
+        GRANT_PENDING(WORLD);
+        return {
+            receiptKey: RECEIPT.receiptKey,
+            boxCount: RECEIPT.boxCount,
+            status: RECEIPT.status,
+            acquiredCount: RECEIPT.acquiredCount,
+            placedCount: RECEIPT.placedCount,
+        };
+    });
+    assert.deepEqual(CREATED, {
+        receiptKey: 'ui-boss-box-77',
+        boxCount: 12,
+        status: 'ready',
+        acquiredCount: 12,
+        placedCount: 12,
+    });
+    await P.waitForFunction(
+        () =>
+            document.querySelector('#bossRewardDialog')?.hidden === false &&
+            document.querySelectorAll('#bossRewardBoxes .boss-reward-box').length === 12,
+    );
+    const AUTO_REVEAL = await P.evaluate(() => {
+        const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
+        return {
+            revealedCount: REWARD.revealedCount,
+            revealedBoxes: document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length,
+            mobileViewport: matchMedia('(max-width: 500px)').matches,
+        };
+    });
+    assert.equal(AUTO_REVEAL.mobileViewport, true);
+    assert.equal(AUTO_REVEAL.revealedCount, 10);
+    assert.equal(AUTO_REVEAL.revealedBoxes, 10);
+    await P.locator('#bossRewardOpenAll').click();
+    await P.waitForFunction(
+        () => BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77')?.status === 'opened',
+    );
+    const OPENED = await P.evaluate(() => {
+        const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
+        return {
+            status: REWARD.status,
+            count: REWARD.boxCount,
+            revealed: REWARD.revealedCount,
+            acquired: REWARD.acquiredCount,
+            placed: REWARD.placedCount,
+            queued: REWARD.queuedCount,
+            hits: REWARD.boxes.filter((box) => box.hit).length,
+            totalPayout: REWARD.boxes.reduce((sum, box) => sum + box.payout, 0),
+        };
+    });
+    assert.deepEqual(OPENED, {
+        status: 'opened',
+        count: 12,
+        revealed: 12,
+        acquired: 12,
+        placed: 12,
+        queued: 0,
+        hits: 12,
+        totalPayout: 12,
+    });
+    await P.locator('#bossRewardClose').click();
+    assert(await P.locator('#bossRewardOpen').isVisible());
+    await P.locator('#bossRewardOpen').click();
+    assert(await P.locator('#bossRewardDialog').isVisible());
+    const SNAPSHOT_DIAGNOSTIC = await P.evaluate(async () => {
+        const { snapshot: SNAPSHOT } = await import('/src/farm-state.js'),
+            { validateSnapshot: VALIDATE } = await import('/src/farm-snapshot-validation.js'),
+            RAW = SNAPSHOT(BUDMORI.sim),
+            RECEIPTS = RAW.bossRewardReceipts.map(({ receiptKey, status, source, encounterId }) => ({
+                receiptKey,
+                status,
+                source,
+                encounterId,
+            }));
+        try {
+            return { valid: VALIDATE(RAW), receipts: RECEIPTS };
+        } catch (error) {
+            return { valid: false, receipts: RECEIPTS, error: error.message };
+        }
+    });
+    assert(SNAPSHOT_DIAGNOSTIC.valid, JSON.stringify(SNAPSHOT_DIAGNOSTIC));
+    await P.reload();
+    await P.waitForFunction(() => window.BUDMORI?.sim && document.querySelector('#continueGame'));
+    if (await P.locator('#continueGame').isVisible()) {
+        await P.locator('#continueGame').click();
+    }
+    await P.waitForFunction(() => document.querySelector('#startScreen')?.hidden === true);
+    const RESTORED = await P.evaluate(() => {
+        const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
+        return {
+            status: REWARD?.status,
+            revealed: REWARD?.revealedCount,
+            boxes: REWARD?.boxes.length,
+            acquired: REWARD?.acquiredCount,
+        };
+    });
+    assert.deepEqual(RESTORED, { status: 'opened', revealed: 12, boxes: 12, acquired: 12 });
+    await clean(P);
+    CHECK('Mobile boss reward dialog opens, reveals and saves committed box results across reload');
+    await C.close();
+}
 async function victory() {
     const C = await browser.newContext({
             viewport: {
@@ -5615,12 +6057,12 @@ async function event() {
         },
         {
             tier: 1,
-            rollBudget: 5.0625,
-            chance: 0.04,
+            rollBudget: 5,
+            chance: 0.1,
             acquisitionMultiplier: 2,
         },
     );
-    assert([5, 6].includes(STAGE_RESULTS.stageFiveReceipt.rollCount));
+    assert.equal(STAGE_RESULTS.stageFiveReceipt.rollCount, 5);
     await goHome(P);
     const STAGE_SAVE = JSON.parse(await P.evaluate(() => localStorage.getItem('bloom-weapon-cards-v4'))).progress;
     assert.equal(STAGE_SAVE.player.farmBossEventStage, 6);
@@ -5653,6 +6095,7 @@ try {
             save,
             migration,
             event,
+            bossRewards,
             victory,
         }[SUITE] || core
     )();

@@ -1,24 +1,24 @@
-tree 18e9af8ae285c756305caadcb2c74c15a9bbb0aa
-parent 33d0d9e4a1f1067e939c12d49518c89fdd46370e
-author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792284258 +0000
-committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792284258 +0000
+tree 74a354f1a90ccba33d7423dd3254b7559e750a6e
+parent 5024cc2249ad86e6d962d776f55dcba9f17a5026
+author github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792290493 +0000
+committer github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com> 1792290493 +0000
 
 [chore] 독립 모듈 배포물 갱신
 
-SDK-Version: 0.12.0
-Source-Commit: 60f51187809728ef427a394df20120a4577445db
-Manifest-SHA256: abb55c84793b731e147491cb745ab01a871d8433ee9725bedd5e2000054ae87a
+SDK-Version: 0.12.2
+Source-Commit: 945227dfb022aac9de4bca13bf83ffb919a129ea
+Manifest-SHA256: 9aabc31c1ae6f10d46a56631879dd363746639a5a7370cac84de83eb267d7c56
 Bundle-SHA256: interpolation.js 061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8
 Bundle-SHA256: rendering.js 5233499a02ebf6881cc49c941823dd193f20ed0c5f8af9440afa7d10677e9be7
 Bundle-SHA256: vector-assets.js 288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a
 Bundle-SHA256: vector-assets-loader.js 56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2
 Bundle-SHA256: input.js a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f
-Bundle-SHA256: deterministic.js 11859c9a6acb2033b8df5c38458a2feeb4335f28c052eaa169fe59fe8070ce35
+Bundle-SHA256: deterministic.js a6c381346a263a724719733762c5b7d02caf7385ac74e06cb4ef96e1fd7f9210
 Bundle-SHA256: simloop.js c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8
 Bundle-SHA256: work-scheduler.js d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25
 Bundle-SHA256: transport.js f4fc7d3eab8d77ad4437ca3de37948ce2e1c313c3525ab2ee00a28000ece41b2
 Bundle-SHA256: replay.js 775668958524b272d8e3c4822c4a1d851c127848661a5944cfac2be2c8e87334
-Bundle-SHA256: rollback.js 207a4cd98355b8065af2d4581d3042c6f5fcdfcd8d5573cc8822e5367ea7468b
+Bundle-SHA256: rollback.js 6277879afa9ff7723bbc91805b40d4740ad9026cfe46cbbc4c67bb67ca9511a9
 Bundle-SHA256: camera.js c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0
 Bundle-SHA256: presentation-events.js f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55
 Bundle-SHA256: hud.js bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2

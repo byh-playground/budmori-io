@@ -1,4 +1,4 @@
-import { Garden, Unit, createUnitAttackCycle } from './farm-model.js';
+import { Garden, Unit, createUnitAttackCycle, CREATE_UNIT_SPECIAL_ABILITY } from './farm-model.js';
 import { normalizeSnapshot } from './farm-snapshot-migrations.js';
 import { validateSnapshot } from './farm-snapshot-validation.js';
 export { snapshot } from './farm-snapshot.js';
@@ -23,6 +23,8 @@ export function restore(raw, { migrateLegacyRaid = false } = {}) {
         UNIT_DATA.map((data) => {
             const U = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
             U.ability = Object.assign(createUnitAttackCycle(U), structuredClone(data.ability));
+            const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(U);
+            U.specialAbility = SPECIAL ? Object.assign(SPECIAL, structuredClone(data.specialAbility || {})) : null;
             return U;
         }),
     );

@@ -6,7 +6,7 @@ import {
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { createFarmUpgradeState, getFarmUpgradeInvestedCount, isValidFarmUpgradeState } from './farm-upgrades.js';
 export const ABILITY_TREE_SCHEMA_VERSION = 1;
-export const BASELINE_ABILITY_MIGRATION_VERSION = 1;
+export const BASELINE_ABILITY_MIGRATION_VERSION = 2;
 export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     if (!isNonNegativeInteger(availablePoints)) {
         throw new TypeError('availablePoints must be a non-negative integer');
@@ -221,7 +221,7 @@ function investedAbilityPoints(investment, definition) {
     );
 }
 
-// Older saves paid for these three root unlocks and grade reductions. Return
+// Older saves paid for default ability roots and grade reductions. Return
 // only those recorded investments, preserve power/range upgrades, and stamp
 // the state so loading or normalizing it again cannot refund twice.
 export function migrateBaselineAbilityInvestments(state) {

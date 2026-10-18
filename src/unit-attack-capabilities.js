@@ -2,7 +2,11 @@ import { createDualStrikeMixin } from './features/unit-attacks/dual-strike/model
 import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
 import { createLobAttackMixin } from './features/unit-attacks/lob/model.js';
 import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
-import { UNIT_CAPABILITY_COMPOSITIONS, unitCapabilityComposition } from './unit-abilities.js';
+import {
+    UNIT_CAPABILITY_COMPOSITIONS,
+    unitCapabilityComposition,
+    specialAbilityCompositionFor,
+} from './unit-abilities.js';
 import { scaleAttackArea } from './unit-stats.js';
 import { RiceCriticalModel } from './features/abilities/rice-critical/model.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
@@ -20,6 +24,7 @@ import {
     getPeanutAssaultConfig,
     getWalnutGuardConfig,
     isWalnutGuardActive,
+    getPeaRecoveryBoostConfig,
 } from './species-abilities.js';
 
 // One-time subclass composition exposes flat cycle methods. Each capability
@@ -162,16 +167,56 @@ export function composeUnitAttackCycles(
                 }
                 const U = this.owner,
                     CONFIG_LOCAL = getContinuousLeapConfig(sim.abilityProgressionFor(U), U.tier);
-                if (!CONFIG_LOCAL || !shouldResetLeapCooldown(CONFIG_LOCAL, sim.random())) {
+                if (
+                    !CONFIG_LOCAL ||
+                    this.action.leapCooldownResetApplied ||
+                    !shouldResetLeapCooldown(CONFIG_LOCAL, sim.random())
+                ) {
                     return false;
                 }
+                this.action.leapCooldownResetApplied = true;
                 this.ready();
+                U.kidneyLeapReadyTick = sim.simulationTick;
+                U.kidneyLeapLastUseTick = sim.simulationTick;
                 sim.combat('leap-cooldown-reset', {
                     unit: U.id,
                     ownerId: U.ownerId,
                     species: U.species,
                 });
                 return true;
+            }
+        };
+    const KIDNEY_LEAP = (base) =>
+        class extends base {
+            get spec() {
+                return specialAbilityCompositionFor(this.owner.species).profile;
+            }
+            get composition() {
+                return specialAbilityCompositionFor(this.owner.species).composition;
+            }
+            canBegin(sim) {
+                return (
+                    !!getContinuousLeapConfig(sim.abilityProgressionFor(this.owner), this.owner.tier) &&
+                    sim.simulationTick >= this.owner.kidneyLeapReadyTick &&
+                    this.owner.kidneyLeapLastUseTick !== sim.simulationTick
+                );
+            }
+            onLaunch(sim, action) {
+                super.onLaunch?.(sim, action);
+                if (action.leapDepartureCommitted) {
+                    return;
+                }
+                action.leapDepartureCommitted = true;
+                this.owner.kidneyLeapReadyTick =
+                    sim.simulationTick + specialAbilityCompositionFor(this.owner.species).cooldownTicks;
+                this.owner.kidneyLeapLastUseTick = sim.simulationTick;
+            }
+            interrupt() {
+                if (this.phase === 'windup' && !this.action?.leapDepartureCommitted) {
+                    this.ready();
+                    return;
+                }
+                super.interrupt();
             }
         };
     const ASSAULT = (base) =>
@@ -275,6 +320,13 @@ export function composeUnitAttackCycles(
                 });
             }
         };
+    const RECOVERY_HASTE = (base) =>
+        class extends base {
+            recoveryHasteConfig(sim) {
+                const U = this.owner;
+                return getPeaRecoveryBoostConfig(sim.abilityProgressionFor(U), U.tier);
+            }
+        };
     const RICE_CRITICAL = (base) =>
         class extends base {
             criticalChanceBonus(sim, hp, maxHp) {
@@ -333,6 +385,8 @@ export function composeUnitAttackCycles(
         riceCritical: RICE_CRITICAL,
         commandAura: COMMAND_AURA,
         armorBreak: ARMOR_BREAK,
+        recoveryHaste: RECOVERY_HASTE,
+        kidneyLeap: KIDNEY_LEAP,
     };
     const MIXIN = (base, ...capabilities) => {
         for (const CAPABILITY of new Set(capabilities)) {
@@ -348,5 +402,19 @@ export function composeUnitAttackCycles(
             MIXIN(cycle, ATTACKS[DEFINITION.attack], ...DEFINITION.traits.map((name) => TRAITS[name])),
         );
     }
-    return (owner) => new (CLASSES.get(unitCapabilityComposition(owner.species)))(owner);
+    const CREATE = (owner) => new (CLASSES.get(unitCapabilityComposition(owner.species)))(owner),
+        SPECIAL_CLASSES = new Map();
+    CREATE.createSpecial = (owner) => {
+        const DEFINITION = specialAbilityCompositionFor(owner.species);
+        if (!DEFINITION) {
+            return null;
+        }
+        let specialClass = SPECIAL_CLASSES.get(DEFINITION);
+        if (!specialClass) {
+            specialClass = MIXIN(cycle, ATTACKS[DEFINITION.attack], ...DEFINITION.traits.map((name) => TRAITS[name]));
+            SPECIAL_CLASSES.set(DEFINITION, specialClass);
+        }
+        return new specialClass(owner);
+    };
+    return CREATE;
 }

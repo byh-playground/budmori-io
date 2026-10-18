@@ -40,6 +40,8 @@ import {
     bossStageStats,
     settleBossKill,
     grantPendingBossAcquisitions,
+    advanceBossRewardCalculations,
+    createBossRewardStreams,
 } from './boss-rewards.js';
 import { createFarmBossProgress } from './farm-boss-stages.js';
 import { SPECIES_COUNT } from './species-catalog.js';
@@ -417,7 +419,7 @@ class AttackCycle {
         this.prepareAttack?.(sim);
         U.angle = Math.atan2(target.y - U.y, target.x - U.x);
         U.vx = U.vy = 0;
-        sim.combatEvent('prepare', U, this.action);
+        sim.combatEvent('prepare', U, this.action, this);
         return true;
     }
     interrupt() {
@@ -436,7 +438,7 @@ class AttackCycle {
             U.vx = -Math.cos(U.angle) * 2.2;
             U.vy = -Math.sin(U.angle) * 2.2;
         }
-        sim.combatEvent('recover', U, this.action);
+        sim.combatEvent('recover', U, this.action, this);
     }
     ready() {
         this.phase = 'idle';
@@ -474,7 +476,7 @@ class AttackCycle {
                 this.elapsed = 0;
                 this.phase = 'active';
                 this.createAttackPath();
-                sim.combatEvent('launch', U, this.action);
+                sim.combatEvent('launch', U, this.action, this);
                 this.launchAttack?.(sim);
             }
         } else if (this.phase === 'recover') {
@@ -491,6 +493,7 @@ const CREATE_UNIT_ATTACK_CYCLE = composeUnitAttackCycles(AttackCycle, {
     Ballistics: BALLISTICS,
     CONFIG,
 });
+export const CREATE_UNIT_SPECIAL_ABILITY = (owner) => CREATE_UNIT_ATTACK_CYCLE.createSpecial(owner);
 const SIMULATION_SCENES = createSimulationScenes({
     config: CONFIG,
     stats: STATS,
@@ -505,8 +508,13 @@ const ATTACKING_BODY = (baseLocal) =>
             this.ability = null;
         } // Assigned after the unit profile is known.
         knock(...args) {
+            const SOURCE = args[4] || null;
             this.ability.interrupt();
+            this.specialAbility?.interrupt();
             super.knock(...args);
+            if (SOURCE && areOpposingFactions(SOURCE, this) && hasFaction(SOURCE, FACTION_CONFIG.ENEMY)) {
+                this.peaRecoveryPending = true;
+            }
         }
         integrate(dt) {
             if (this.moveControlActive && this.stun <= 0 && this.down <= 0) {
@@ -514,7 +522,9 @@ const ATTACKING_BODY = (baseLocal) =>
                 this.vx += (this.moveControlVx - this.vx) * RATE;
                 this.vy += (this.moveControlVy - this.vy) * RATE;
             }
-            if (!this.ability.integrate(dt)) {
+            const ATTACK =
+                this.specialAbility && this.specialAbility.phase !== 'idle' ? this.specialAbility : this.ability;
+            if (!ATTACK.integrate(dt)) {
                 super.integrate(dt);
             }
         }
@@ -561,6 +571,12 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             lifetime: '',
             chestnutBasicCycles: 0,
             landingRecovery: 0,
+            specialAbility: null,
+            kidneyLeapReadyTick: 0,
+            kidneyLeapLastUseTick: 0,
+            peaRecoveryPending: false,
+            peaRecoveryBoostExpiresAtTick: 0,
+            peaRecoveryBoostMultiplier: 0,
             walnutEmpoweredNextBasic: false,
             wheatCommandUntil: 0,
             wheatCommandCritBonus: 0,
@@ -574,6 +590,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             cloneBornAt: -10,
         });
         this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
+        this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
         Object.defineProperties(this, {
             onDied: { value: new Signal() },
             onRevived: { value: new Signal() },
@@ -611,6 +628,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             deathSplitHandled: false,
         });
         this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
+        this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
+        this.peaRecoveryPending = false;
+        this.peaRecoveryBoostExpiresAtTick = 0;
+        this.peaRecoveryBoostMultiplier = 0;
         this.onRevived.emit({ unitId: this.id, x: this.x, y: this.y, hp: this.hp });
     }
     dispose() {
@@ -1002,6 +1023,7 @@ const GARDEN = class Garden {
     }
     _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
         this._cancelFoodTargetSearch(unit);
+        this.clearPeaRecoveryBoost(unit);
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
@@ -1178,6 +1200,8 @@ const GARDEN = class Garden {
         this.nextId = 1;
         this.nextBossEncounterId = 1;
         this.bossRewardReceipts = [];
+        this.bossRewardStreams = createBossRewardStreams(this.seed >>> 0);
+        this.bossRewardInventory = [];
         this.bossRewardWatermarks = {
             farm: 0,
             raid: 0,
@@ -1477,6 +1501,9 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._processUnitDeath, unit);
     }
     _processUnitDeath(unit) {
+        unit.ability.interrupt();
+        unit.specialAbility?.interrupt();
+        this.clearPeaRecoveryBoost(unit);
         this.onCombatResolved.emit({ allyDeaths: unit.faction === 'player' && !unit.isFormationClone ? 1 : 0 });
         this._syncUnitAliveCount(unit);
         if (!unit.isBattleOnlySummon) {
@@ -2230,6 +2257,7 @@ const GARDEN = class Garden {
             SCENE.enterUnit(this, U, i);
             U.mateId = ID_MAP.get(OLD_MATE_ID) || 0;
             U.ability = CREATE_UNIT_ATTACK_CYCLE(U);
+            U.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(U);
             U.walnutEmpoweredNextBasic = false;
             Object.assign(U, {
                 z: 0,
@@ -3057,6 +3085,7 @@ const GARDEN = class Garden {
         this._spatialQueryDepth = 0;
         this.time += dt;
         let progressTimersAdvanced = false;
+        advanceBossRewardCalculations(this);
         grantPendingBossAcquisitions(this);
         // Keep the original step membership/order; spawns join indexes now but
         // are first advanced by the next logical tick.
@@ -3127,7 +3156,9 @@ const GARDEN = class Garden {
                 if (U.down <= 0) {
                     U.down = CONFIG.unit.corpseRecoverySeconds;
                     U.ability.interrupt();
+                    U.specialAbility?.interrupt();
                 }
+                this.clearPeaRecoveryBoost(U);
                 progressTimersAdvanced = SCENE.advanceDownedUnit(this, U, dt) || progressTimersAdvanced;
                 continue;
             }
@@ -3176,6 +3207,7 @@ const GARDEN = class Garden {
         this.profiler?.end('physics', PHYSICS_START);
         const POST_STEP_START = this.profiler?.start();
         SCENE.resolveLifeContacts(this, UNITS);
+        this.resolvePeaRecoveryBoosts(UNITS);
         let projectileWrite = 0;
         for (const PROJECTILE of this.projectiles) {
             if (PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).isAlive(PROJECTILE)) {
@@ -3248,10 +3280,14 @@ const GARDEN = class Garden {
             if (U.stun > 0 && U.ability.phase !== 'idle') {
                 U.ability.interrupt();
             }
+            if (U.stun > 0 && U.specialAbility && U.specialAbility.phase !== 'idle') {
+                U.specialAbility.interrupt();
+            }
             U.integrate(dt);
             scene.afterLivingIntegration(this, U);
-            if (U.ability.phase === 'active') {
-                U.ability.afterMove?.(this, OLD_POSITION);
+            const ACTIVE_ATTACK = U.specialAbility && U.specialAbility.phase !== 'idle' ? U.specialAbility : U.ability;
+            if (ACTIVE_ATTACK.phase === 'active') {
+                ACTIVE_ATTACK.afterMove?.(this, OLD_POSITION);
             }
             if (OLD_Z > 0 && U.z === 0) {
                 U.landingRecovery = 0.25;
@@ -3297,16 +3333,53 @@ const GARDEN = class Garden {
             return;
         }
         if (unit.hp > 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon) {
-            if (unit.ability.phase !== 'idle') {
-                if (unit.ability.phase !== 'recover') {
-                    unit.ability.interrupt();
+            const ACTIVE_ATTACK =
+                unit.specialAbility && unit.specialAbility.phase !== 'idle' ? unit.specialAbility : unit.ability;
+            if (ACTIVE_ATTACK.phase !== 'idle') {
+                if (ACTIVE_ATTACK.phase !== 'recover') {
+                    ACTIVE_ATTACK.interrupt();
                 }
-                unit.ability.update(this, dt);
+                ACTIVE_ATTACK.update(this, dt);
             }
             this.farmUnit(unit, dt);
             return;
         }
         scene.updateUnoccupied(this, unit, dt);
+    }
+    clearPeaRecoveryBoost(unit) {
+        unit.peaRecoveryPending = false;
+        unit.peaRecoveryBoostExpiresAtTick = 0;
+        unit.peaRecoveryBoostMultiplier = 0;
+    }
+    resolvePeaRecoveryBoosts(units) {
+        for (const UNIT_LOCAL of units) {
+            if (UNIT_LOCAL.hp <= 0) {
+                this.clearPeaRecoveryBoost(UNIT_LOCAL);
+                continue;
+            }
+            if (UNIT_LOCAL.peaRecoveryBoostExpiresAtTick < this.simulationTick) {
+                UNIT_LOCAL.peaRecoveryBoostExpiresAtTick = 0;
+                UNIT_LOCAL.peaRecoveryBoostMultiplier = 0;
+            }
+            if (
+                !UNIT_LOCAL.peaRecoveryPending ||
+                UNIT_LOCAL.down > 0 ||
+                UNIT_LOCAL.stun > 0 ||
+                UNIT_LOCAL.z > 0.1 ||
+                UNIT_LOCAL.landingRecovery > 0 ||
+                !UNIT_LOCAL.dropLanded ||
+                UNIT_LOCAL.ability.phase !== 'idle' ||
+                (UNIT_LOCAL.specialAbility && UNIT_LOCAL.specialAbility.phase !== 'idle')
+            ) {
+                continue;
+            }
+            UNIT_LOCAL.peaRecoveryPending = false;
+            const CONFIG_LOCAL = UNIT_LOCAL.ability.recoveryHasteConfig?.(this);
+            if (CONFIG_LOCAL) {
+                UNIT_LOCAL.peaRecoveryBoostExpiresAtTick = this.simulationTick + CONFIG_LOCAL.durationTicks;
+                UNIT_LOCAL.peaRecoveryBoostMultiplier = CONFIG_LOCAL.speedMultiplier;
+            }
+        }
     }
     steer(u, x, y, _dt, speed2) {
         const DX = x - u.x,
@@ -3314,8 +3387,12 @@ const GARDEN = class Garden {
             D_LOCAL = Math.hypot(DX, DY);
         if (D_LOCAL > 0.08) {
             u.moveControlActive = true;
-            u.moveControlVx = (DX / D_LOCAL) * speed2;
-            u.moveControlVy = (DY / D_LOCAL) * speed2;
+            const RECOVERY_HASTE =
+                u.peaRecoveryBoostExpiresAtTick > 0 && u.peaRecoveryBoostExpiresAtTick >= this.simulationTick
+                    ? u.peaRecoveryBoostMultiplier
+                    : 1;
+            u.moveControlVx = (DX / D_LOCAL) * speed2 * RECOVERY_HASTE;
+            u.moveControlVy = (DY / D_LOCAL) * speed2 * RECOVERY_HASTE;
             u.angle = Math.atan2(DY, DX);
         }
     }
@@ -3890,7 +3967,7 @@ const GARDEN = class Garden {
             body.vy -= (NY / LENGTH) * OUTWARD * 1.3;
         }
     }
-    combatEvent(kind, u, action) {
+    combatEvent(kind, u, action, cycle = u.ability) {
         this.combatLog.push({
             kind,
             id: action?.id ?? 0,
@@ -3911,9 +3988,9 @@ const GARDEN = class Garden {
                 x: u.x,
                 y: u.y,
                 z: u.z,
-                attackKind: abilityProfile(u.species).kind,
+                attackKind: cycle?.spec?.kind || abilityProfile(u.species).kind,
             });
-            u.ability.onLaunch?.(this, action);
+            cycle?.onLaunch?.(this, action);
         }
     }
     riceCriticalChanceBonus(u, hpBefore, maxHp) {
@@ -4260,9 +4337,12 @@ const GARDEN = class Garden {
         if (u.hp <= 0) {
             u.down = CONFIG.unit.corpseRecoverySeconds;
             u.ability.interrupt();
+            u.specialAbility?.interrupt();
+            this.clearPeaRecoveryBoost(u);
             return;
         }
-        if (u.ability.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
+        const ACTIVE_ATTACK = u.specialAbility && u.specialAbility.phase !== 'idle' ? u.specialAbility : u.ability;
+        if (ACTIVE_ATTACK.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
             return;
         }
         if (!enemy) {
@@ -4304,6 +4384,11 @@ const GARDEN = class Garden {
                   x: B_LOCAL.x + (DX / N) * (B_LOCAL.radius + u.radius - 0.16),
                   y: B_LOCAL.y + (DY / N) * (B_LOCAL.radius + u.radius - 0.16),
               };
+        const LEAP = u.specialAbility;
+        if (LEAP?.canBegin?.(this) && N <= B_LOCAL.radius + LEAP.spec.range + (u.tier - 1) * 0.12) {
+            LEAP.begin(this, TARGET);
+            return;
+        }
         u.ability.begin(this, TARGET);
     }
     finish(outcome) {
@@ -4321,6 +4406,8 @@ const GARDEN = class Garden {
         this.boss.patternRuntime.active = null;
         for (const U of this.units) {
             U.ability.interrupt();
+            U.specialAbility?.interrupt();
+            this.clearPeaRecoveryBoost(U);
         }
         this.formationSkills.end();
         this.cleanupBattleSummons();
@@ -4357,6 +4444,8 @@ const GARDEN = class Garden {
             rewardUnitId: 0,
         };
         for (const U of this.units) {
+            U.specialAbility?.interrupt();
+            this.clearPeaRecoveryBoost(U);
             if (U.hp > 0) {
                 U.ability.interrupt();
             }
@@ -4367,6 +4456,7 @@ const GARDEN = class Garden {
             const SETTLEMENT = settleBossKill(this, {
                 encounterId: ENCOUNTER_ID,
                 source: 'farm',
+                stage: EVENT_STAGE,
                 species: this.boss.species,
                 tier: 1,
                 x: this.boss.x,
