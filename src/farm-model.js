@@ -22,11 +22,13 @@ import { createBossPatternBehaviors } from './boss-pattern-behaviors.js';
 import { bossMouthWorldPoint } from './boss-vector-sockets.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
 import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
+import { CornAttachmentModel } from './features/abilities/corn-attachment/model.js';
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
 const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
 const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
 import {
     baseUnitStatsFor,
+    resolveUnitStats,
     applyDamageToTargets,
     applyHealing,
     resolveStatusDuration,
@@ -57,7 +59,6 @@ import {
     getFarmCapacity,
     getMergeCooldownSeconds,
 } from './farm-upgrades.js';
-import { MAX_BEAN_SPLIT_CHILDREN, getChestnutSpikeFanAngles, getWalnutGuardConfig } from './species-abilities.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
 import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, createBossPatternRuntime, chooseBossPattern } from './boss-patterns.js';
@@ -83,6 +84,7 @@ const FARM_MAX_UNITS = 100,
     RAID_PLAYER_UNITS = 100,
     RAID_MAX_PLAYERS = 4,
     RAID_PLAYER_ID_STRIDE = 1000000,
+    MAX_PEANUT_SPLIT_CHILDREN = 2,
     MAX_BOSS_SUMMONS = 10;
 const RAID_MAX_UNITS = RAID_PLAYER_UNITS * RAID_MAX_PLAYERS;
 const WORLD_ARENA = Object.freeze({
@@ -98,7 +100,7 @@ const CONFIG = Object.freeze({
         capacity: Object.freeze({
             base: 50,
             max: FARM_MAX_UNITS,
-            battleUnits: FARM_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
+            battleUnits: FARM_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
         }),
         maxUnitId: 999999999,
         starterSeconds: 60,
@@ -124,8 +126,8 @@ const CONFIG = Object.freeze({
             playerUnits: RAID_PLAYER_UNITS,
             players: RAID_MAX_PLAYERS,
             units: RAID_MAX_UNITS,
-            battleUnits: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
-            projectiles: RAID_MAX_UNITS * (1 + MAX_BEAN_SPLIT_CHILDREN) * 4 + 40,
+            battleUnits: RAID_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
+            projectiles: RAID_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40,
         }),
         ids: Object.freeze({
             playerStride: RAID_PLAYER_ID_STRIDE,
@@ -415,6 +417,7 @@ class AttackCycle {
                 ...target,
             },
             targetId: target.id ?? 'boss',
+            targetGeneration: target.generation ?? (target.id === 'boss' ? sim.boss.generation : 0),
             hit: false,
             path: null,
         };
@@ -479,6 +482,7 @@ class AttackCycle {
                 this.phase = 'active';
                 this.createAttackPath();
                 sim.combatEvent('launch', U, this.action, this);
+                this.onLaunch?.(sim, this.action);
                 this.launchAttack?.(sim);
             }
         } else if (this.phase === 'recover') {
@@ -536,8 +540,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         super(x, y);
         Object.assign(this, {
             id,
+            generation: 0,
             species,
             tier,
+            permanentStatMultiplier: 1,
             faction: FACTION_CONFIG.PLAYER,
             meals: 0,
             growth: 0,
@@ -561,6 +567,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             isBattleOnlySummon: false,
             battleSummonKind: '',
             battleSummonParentId: 0,
+            battleSummonParentGeneration: 0,
             battleSummonEncounterId: 0,
             countsTowardPermanentRoster: true,
             eligibleForRaidDeployment: true,
@@ -571,7 +578,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             deathSplitHandled: false,
             usesPersistentSleep: true,
             lifetime: '',
-            chestnutBasicCycles: 0,
+            chestnutNextThornTick: 0,
             landingRecovery: 0,
             specialAbility: null,
             kidneyLeapReadyTick: 0,
@@ -579,7 +586,9 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             peaRecoveryPending: false,
             peaRecoveryBoostExpiresAtTick: 0,
             peaRecoveryBoostMultiplier: 0,
-            walnutEmpoweredNextBasic: false,
+            walnutNextGuardTick: 0,
+            walnutGuardUntilTick: 0,
+            walnutStoredRawDamage: 0,
             wheatCommandUntil: 0,
             wheatCommandCritBonus: 0,
             wheatCommandBuffs: [],
@@ -1201,6 +1210,7 @@ const GARDEN = class Garden {
         this.time = 0;
         this.simulationTick = 0;
         this.nextId = 1;
+        this.entityGenerationSerial = 0;
         this.nextBossEncounterId = 1;
         this.bossRewardReceipts = [];
         this.bossRewardStreams = createBossRewardStreams(this.seed >>> 0);
@@ -1225,6 +1235,7 @@ const GARDEN = class Garden {
             revision: 0,
         };
         this.projectiles = [];
+        this.cornAttachments = CornAttachmentModel.createManager();
         this.attackSerial = 0;
         this.projectileSerial = 0;
         this.raidSummonSerial = 0;
@@ -1371,15 +1382,21 @@ const GARDEN = class Garden {
     resetAbilityTree() {
         return this.resetProgression({ type: 'abilities' });
     }
-    spawnLobProjectile(unit, action, shot, popcornConfig = null) {
+    spawnLobProjectile(unit, action, shot, projectileEffect = null) {
         if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
             return null;
         }
-        const ID = ++this.projectileSerial;
+        const ID = ++this.projectileSerial,
+            ATTACK_CONTEXT = this.createAttackContext(unit, {
+                attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
+                attackKind: abilityProfile(unit.species).kind,
+            });
         const PROJECTILE = {
             id: ID,
             owner: unit.id,
+            ownerGeneration: unit.generation,
             targetId: action.targetId || 'boss',
+            targetGeneration: action.targetGeneration || 0,
             faction: unit.faction,
             isFormationClone: unit.isFormationClone,
             ownerId: unit.ownerId,
@@ -1394,69 +1411,97 @@ const GARDEN = class Garden {
             hit: false,
             attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
             shotIndex: shot.shotIndex ?? 0,
+            attackPayload: {
+                sourceKind: ATTACK_CONTEXT.sourceKind,
+                attackerStats: structuredClone(ATTACK_CONTEXT.attackerStats),
+                damageMultiplier: ATTACK_CONTEXT.damageMultiplier,
+                attackPowerMultiplier: ATTACK_CONTEXT.attackPowerMultiplier,
+                kind: ATTACK_CONTEXT.kind,
+                buffed: ATTACK_CONTEXT.buffed,
+                sourceStatOverrides: { ...ATTACK_CONTEXT.sourceStatOverrides },
+            },
+            ...(projectileEffect?.abilityId === 'corn-kernel-chain'
+                ? {
+                      cornPayload: {
+                          ownerId: unit.ownerId,
+                          faction: unit.faction,
+                          isFormationClone: unit.isFormationClone,
+                          species: unit.species,
+                          tier: unit.tier,
+                          x: unit.x,
+                          y: unit.y,
+                          z: unit.z || 0,
+                          attackerStats: structuredClone(ATTACK_CONTEXT.attackerStats),
+                          attackPowerMultiplier: ATTACK_CONTEXT.attackPowerMultiplier,
+                          buffed: ATTACK_CONTEXT.buffed,
+                      },
+                  }
+                : {}),
+            abilityEffect: projectileEffect ? structuredClone(projectileEffect) : null,
         };
-        if (popcornConfig) {
-            Object.assign(PROJECTILE, {
-                isPopcorn: true,
-                popcornConfig: structuredClone(popcornConfig),
-                landed: false,
-                exploded: false,
-                fuseRemaining: popcornConfig.fuseSeconds,
-                damagedTargetIds: [],
-            });
-        }
         this.projectiles.push(PROJECTILE);
         return PROJECTILE;
     }
     speciesAbilityDamageMultiplier(unit) {
         return abilityProfile(unit.species).skillMultiplier;
     }
-    spawnChestnutSpikes(unit, action, config) {
-        if (this.projectiles.length + config.projectileCount > CONFIG.raid.capacity.projectiles) {
+    spawnChestnutThorn(unit, action, config, shotIndex) {
+        if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
             return false;
         }
-        const ANGLE = Math.atan2(action.target.y - unit.y, action.target.x - unit.x),
-            ANGLES = getChestnutSpikeFanAngles(config, ANGLE),
-            DISTANCE = Math.hypot(action.target.x - unit.x, action.target.y - unit.y),
-            LENGTH = Math.max(abilityProfile(unit.species).range, DISTANCE) + this.boss.radius;
-        for (let index = 0; index < ANGLES.length; index++) {
-            const A_LOCAL = ANGLES[index],
-                TARGET = {
-                    x: unit.x + Math.cos(A_LOCAL) * LENGTH,
-                    y: unit.y + Math.sin(A_LOCAL) * LENGTH,
-                    z: 0,
-                },
-                PATH = BALLISTICS.create(
-                    {
-                        x: unit.x,
-                        y: unit.y,
-                        z: 0,
-                    },
-                    TARGET,
-                    'punch',
-                );
-            PATH.height = 0.7;
-            this.projectiles.push({
-                id: ++this.projectileSerial,
-                owner: unit.id,
-                faction: unit.faction,
-                ownerId: unit.ownerId,
-                species: unit.species,
-                tier: unit.tier,
-                path: PATH,
-                elapsed: 0,
-                x: unit.x,
-                y: unit.y,
-                z: 0,
-                radius: scaleAttackArea(0.08, unit),
-                height: 0.22,
-                hit: false,
-                attackMultiplier: config.projectileAttackMultiplier,
-                projectileKind: 'chestnut-spike',
-                isFormationClone: unit.isFormationClone,
-                fanIndex: index,
-            });
+        const TARGET = action.thornTargetId === 'boss' ? this.boss : this._unitForId(action.thornTargetId);
+        if (!TARGET || TARGET.hp <= 0) {
+            return false;
         }
+        if (TARGET.generation !== action.thornTargetGeneration) {
+            return false;
+        }
+        const ATTACK_CONTEXT = this.createAttackContext(unit, {
+                attackMultiplier: config.attackMultiplier,
+                attackKind: 'chestnut-thorns',
+            }),
+            PATH = BALLISTICS.create(
+                {
+                    x: unit.x,
+                    y: unit.y,
+                    z: unit.z || 0,
+                },
+                action.target,
+                'punch',
+            );
+        PATH.height = 0.7;
+        this.projectiles.push({
+            id: ++this.projectileSerial,
+            owner: unit.id,
+            ownerGeneration: unit.generation,
+            targetId: action.thornTargetId,
+            targetGeneration: action.thornTargetGeneration,
+            faction: unit.faction,
+            ownerId: unit.ownerId,
+            species: unit.species,
+            tier: unit.tier,
+            path: PATH,
+            elapsed: 0,
+            x: unit.x,
+            y: unit.y,
+            z: unit.z || 0,
+            radius: scaleAttackArea(0.08, unit),
+            height: 0.22,
+            hit: false,
+            attackMultiplier: config.attackMultiplier,
+            attackPayload: {
+                sourceKind: ATTACK_CONTEXT.sourceKind,
+                attackerStats: structuredClone(ATTACK_CONTEXT.attackerStats),
+                damageMultiplier: ATTACK_CONTEXT.damageMultiplier,
+                attackPowerMultiplier: ATTACK_CONTEXT.attackPowerMultiplier,
+                kind: ATTACK_CONTEXT.kind,
+                buffed: ATTACK_CONTEXT.buffed,
+                sourceStatOverrides: { ...ATTACK_CONTEXT.sourceStatOverrides },
+            },
+            projectileKind: 'chestnut-spike',
+            isFormationClone: unit.isFormationClone,
+            fanIndex: shotIndex,
+        });
         return true;
     }
     createFormationClone(original) {
@@ -1475,6 +1520,7 @@ const GARDEN = class Garden {
             isBattleOnlySummon: true,
             battleSummonKind: 'formation-copy',
             battleSummonParentId: original.id,
+            battleSummonParentGeneration: original.generation,
             countsTowardPermanentRoster: false,
             eligibleForRaidDeployment: false,
             breedingEligible: false,
@@ -1506,6 +1552,7 @@ const GARDEN = class Garden {
     _processUnitDeath(unit) {
         unit.ability.interrupt();
         unit.specialAbility?.interrupt();
+        unit.ability.resetCombatEffects?.();
         this.clearPeaRecoveryBoost(unit);
         this.onCombatResolved.emit({ allyDeaths: unit.faction === 'player' && !unit.isFormationClone ? 1 : 0 });
         this._syncUnitAliveCount(unit);
@@ -1525,9 +1572,6 @@ const GARDEN = class Garden {
         if (!DESCRIPTORS.length) {
             return false;
         }
-        if (this.units.length + DESCRIPTORS.length > SIMULATION_SCENES[this.scene].battleCapacity) {
-            return false;
-        }
         unit.splitUsedThisBattle = true;
         unit.down = CONFIG.unit.corpseRecoverySeconds;
         for (let index = 0; index < DESCRIPTORS.length; index++) {
@@ -1544,17 +1588,32 @@ const GARDEN = class Garden {
                     x: X,
                     y: Y,
                 },
-                hp: STATS(DESC.tier, DESC.species).maxHp,
                 down: 0,
+                generation: ++this.entityGenerationSerial,
                 growthElapsed: CHILD.growthDuration,
                 growth: CONFIG.farm.breeding.matureMeals,
                 meals: 1,
                 dropLanded: true,
                 deathSplitHandled: false,
             });
+            CHILD.hp = resolveUnitStats(CHILD).maxHp;
             this.addUnit(CHILD, { markProgress: false });
         }
-        this.combat('pea-split', {
+        const EFFECT_ID = ++this.eventSequence;
+        this.effects.push({
+            kind: 'peanut-split',
+            eventId: EFFECT_ID,
+            owner: unit.id,
+            ownerGeneration: unit.generation,
+            species: unit.species,
+            x: unit.x,
+            y: unit.y,
+            z: 0,
+            life: 0,
+            duration: 0.7,
+        });
+        this.combat('peanut-split', {
+            effectId: EFFECT_ID,
             unit: unit.id,
             ownerId: unit.ownerId,
             species: unit.species,
@@ -1583,114 +1642,7 @@ const GARDEN = class Garden {
         }
         this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon);
         this.projectiles = [];
-        return true;
-    }
-    triggerLandingShockwave(unit, action, config) {
-        const RANGE = abilityProfile(unit.species).range * config.radiusMultiplier,
-            POINT = {
-                x: unit.x,
-                y: unit.y,
-                z: 0,
-            },
-            DISTANCE = Math.hypot(unit.x - this.boss.x, unit.y - this.boss.y);
-        this.effects.push({
-            kind: 'landing-shockwave',
-            x: unit.x,
-            y: unit.y,
-            z: 0,
-            life: 0,
-            duration: 0.55,
-            radius: RANGE,
-            owner: unit.id,
-        });
-        if (this.boss.hp > 0 && DISTANCE <= RANGE + this.boss.radius) {
-            const BLAST = {
-                id: action.id,
-                hit: false,
-                attackKind: 'kidney-shockwave',
-            };
-            this.damageCombatTarget(unit, BLAST, this.boss, POINT, {
-                attackMultiplier: config.damageMultiplier,
-                attackKind: 'kidney-shockwave',
-                area: true,
-            });
-        }
-        this.combat('kidney-shockwave', {
-            unit: unit.id,
-            ownerId: unit.ownerId,
-            species: unit.species,
-            x: unit.x,
-            y: unit.y,
-            radius: RANGE,
-            damageMultiplier: config.damageMultiplier,
-        });
-    }
-    triggerWalnutSlam(unit, action, primaryTarget, point) {
-        if (action.hit || !primaryTarget || primaryTarget.hp <= 0 || !areOpposingFactions(unit, primaryTarget)) {
-            return false;
-        }
-        const CONFIG_LOCAL = getWalnutGuardConfig(this.abilityProgressionFor(unit), unit.tier);
-        if (!CONFIG_LOCAL) {
-            return false;
-        }
-        action.hit = true;
-        const TARGETS = [primaryTarget];
-        if (
-            primaryTarget !== this.boss &&
-            this.boss.hp > 0 &&
-            areOpposingFactions(unit, this.boss) &&
-            Math.hypot(this.boss.x - point.x, this.boss.y - point.y) <= CONFIG_LOCAL.radius + this.boss.radius
-        ) {
-            TARGETS.push(this.boss);
-        }
-        for (const TARGET of this.units) {
-            if (
-                TARGET !== primaryTarget &&
-                TARGET.hp > 0 &&
-                areOpposingFactions(unit, TARGET) &&
-                Math.hypot(TARGET.x - point.x, TARGET.y - point.y) <= CONFIG_LOCAL.radius + TARGET.radius
-            ) {
-                TARGETS.push(TARGET);
-            }
-        }
-        const ATTACK_CONTEXT = this.createAttackContext(unit, {
-            attackMultiplier: CONFIG_LOCAL.damageMultiplier,
-            attackKind: 'walnut-empowered-slam',
-            area: true,
-        });
-        ATTACK_CONTEXT.criticalRoll = ATTACK_CONTEXT.sourceStatOverrides.critChance > 0 ? this.random() : 1;
-        for (const TARGET of TARGETS) {
-            this.damageCombatTarget(
-                unit,
-                {
-                    id: action.id,
-                    hit: false,
-                },
-                TARGET,
-                point,
-                {
-                    attackContext: ATTACK_CONTEXT,
-                },
-            );
-        }
-        this.effects.push({
-            kind: 'walnut-shockwave',
-            x: point.x,
-            y: point.y,
-            z: 0,
-            life: 0,
-            duration: 0.5,
-            radius: CONFIG_LOCAL.radius,
-            owner: unit.id,
-        });
-        this.combat('walnut-slam', {
-            unit: unit.id,
-            attackId: action.id,
-            x: point.x,
-            y: point.y,
-            z: 0,
-            radius: CONFIG_LOCAL.radius,
-        });
+        this.cornAttachments = CornAttachmentModel.createManager();
         return true;
     }
     senseEnemy(unit) {
@@ -2013,6 +1965,11 @@ const GARDEN = class Garden {
         return U;
     }
     addUnit(unit, options) {
+        if (!Number.isSafeInteger(unit.generation) || unit.generation <= 0) {
+            unit.generation = ++this.entityGenerationSerial;
+        } else {
+            this.entityGenerationSerial = Math.max(this.entityGenerationSerial, unit.generation);
+        }
         return this.unitCollection.add(unit, options);
     }
     removeUnit(unit, options) {
@@ -2022,6 +1979,13 @@ const GARDEN = class Garden {
         return this.unitCollection.replace(materials, result, complete, preserveMergeTask);
     }
     resetUnits(units = []) {
+        for (const UNIT_LOCAL of units) {
+            if (!Number.isSafeInteger(UNIT_LOCAL.generation) || UNIT_LOCAL.generation <= 0) {
+                UNIT_LOCAL.generation = ++this.entityGenerationSerial;
+            } else {
+                this.entityGenerationSerial = Math.max(this.entityGenerationSerial, UNIT_LOCAL.generation);
+            }
+        }
         this.unitCollection.reset(units);
     }
     notice(kind, detail = {}) {
@@ -2159,7 +2123,7 @@ const GARDEN = class Garden {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
                 UNIT_LOCAL.splitUsedThisBattle = false;
                 UNIT_LOCAL.deathSplitHandled = false;
-                UNIT_LOCAL.chestnutBasicCycles = 0;
+                UNIT_LOCAL.chestnutNextThornTick = 0;
             }
         }
         const SPECIES = this.randomBossSpecies(),
@@ -2204,6 +2168,7 @@ const GARDEN = class Garden {
             y: 0,
             faction: FACTION_CONFIG.ENEMY,
             z: 0,
+            generation: ++this.entityGenerationSerial,
             radius: CONFIG.boss.radius,
             height: CONFIG.boss.height,
             hp: HP,
@@ -2240,6 +2205,7 @@ const GARDEN = class Garden {
     }
     configureBossStage(stage, species = this.boss.species) {
         const STATS = bossStageStats(stage);
+        this.boss.generation = ++this.entityGenerationSerial;
         this.boss.species = CLAMP(species, 0, CONFIG.unit.speciesCount - 1);
         this.boss.stage = STATS.stage;
         this.boss.hp = this.boss.maxHp = STATS.hp;
@@ -2287,7 +2253,7 @@ const GARDEN = class Garden {
             U.mateId = ID_MAP.get(OLD_MATE_ID) || 0;
             U.ability = CREATE_UNIT_ATTACK_CYCLE(U);
             U.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(U);
-            U.walnutEmpoweredNextBasic = false;
+            U.ability.resetCombatEffects?.();
             Object.assign(U, {
                 z: 0,
                 vx: 0,
@@ -3234,6 +3200,7 @@ const GARDEN = class Garden {
         const PHYSICS_START = this.profiler?.start();
         this.advancePhysics(dt, UNITS, SCENE);
         this.profiler?.end('physics', PHYSICS_START);
+        CornAttachmentModel.advance(this);
         const POST_STEP_START = this.profiler?.start();
         SCENE.resolveLifeContacts(this, UNITS);
         this.resolvePeaRecoveryBoosts(UNITS);
@@ -4033,10 +4000,14 @@ const GARDEN = class Garden {
     }
     attackTarget(unit, action) {
         if (action?.targetId === 'boss' || !action?.targetId) {
-            return areOpposingFactions(unit, this.boss) ? this.boss : null;
+            return this.boss.generation === action?.targetGeneration && areOpposingFactions(unit, this.boss)
+                ? this.boss
+                : null;
         }
         const TARGET = this._unitForId(action.targetId);
-        return TARGET?.hp > 0 && areOpposingFactions(unit, TARGET) ? TARGET : null;
+        return TARGET?.generation === action.targetGeneration && TARGET.hp > 0 && areOpposingFactions(unit, TARGET)
+            ? TARGET
+            : null;
     }
     createAttackContext(
         u,
@@ -4044,7 +4015,7 @@ const GARDEN = class Garden {
     ) {
         const SPEC = abilityProfile(u.species),
             ROSTER = this.raidRoster(u.ownerId),
-            ATTACKER_STATS = STATS(u.tier, u.species);
+            ATTACKER_STATS = resolveUnitStats(u);
         return {
             source: u,
             sourceKind: hasFaction(u, FACTION_CONFIG.PLAYER) ? 'direct' : 'enemy',
@@ -4052,6 +4023,7 @@ const GARDEN = class Garden {
             damageMultiplier: Number.isFinite(attackMultiplier) ? attackMultiplier : SPEC.skillMultiplier,
             kind: attackKind || SPEC.kind,
             buffed: !!ROSTER && this.time < ROSTER.buffUntil,
+            attackPowerMultiplier: u.giantUntil > this.time ? 3 : 1,
             strikeIndex,
             area,
             criticalRoll,
@@ -4061,15 +4033,19 @@ const GARDEN = class Garden {
             },
         };
     }
+    unitStatsFor(unit) {
+        return resolveUnitStats(unit);
+    }
     combatTargetDefense(target) {
         if (target !== this.boss) {
-            const TARGET_STATS = STATS(target.tier, target.species);
+            const TARGET_STATS = resolveUnitStats(target),
+                ABILITY_ARMOR = target.ability?.armorModifier?.(this, this.simulationTick) || 0;
             return {
-                maxHp: target.isFormationClone ? 1 : TARGET_STATS.maxHp,
+                maxHp: TARGET_STATS.maxHp,
                 armor: BarleyArmorShredModel.effectiveArmor(
                     target,
                     TARGET_STATS.armor,
-                    target.giantUntil > this.time ? 100 : 0,
+                    (target.giantUntil > this.time ? 100 : 0) + ABILITY_ARMOR,
                     this.simulationTick,
                 ),
             };
@@ -4117,13 +4093,12 @@ const GARDEN = class Garden {
                 ...CONTEXT.sourceStatOverrides,
                 critChance: CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
             };
-        const GUARD = IS_BOSS ? null : target.ability.receiveGuard?.(this);
-        const RAW_DAMAGE =
-            ATTACKER_STATS.attackPower *
-            (SOURCE.giantUntil > this.time ? 3 : 1) *
-            DAMAGE_MULTIPLIER *
-            (BUFFED ? CONFIG.raid.buff.damage : 1) *
-            (GUARD?.receivedDamageMultiplier ?? 1);
+        const RAW_BASE_DAMAGE =
+                ATTACKER_STATS.attackPower *
+                (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
+                DAMAGE_MULTIPLIER *
+                (BUFFED ? CONFIG.raid.buff.damage : 1),
+            RAW_DAMAGE = RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0);
         // The context belongs to one attack, so a mixed boss/unit area hit shares
         // one lazy roll while each target retains its own armor and actual HP loss.
         const DAMAGE = applyDamageToTargets(SOURCE, [target], {
@@ -4134,6 +4109,12 @@ const GARDEN = class Garden {
             armorForTarget: () => DEFENSE.armor,
             roll: () => CONTEXT.criticalRoll ?? (CONTEXT.criticalRoll = this.random()),
         });
+        if (!IS_BOSS) {
+            const CRITICAL_RAW_DAMAGE =
+                RAW_DAMAGE *
+                (DAMAGE.critical ? (SOURCE_STAT_OVERRIDES.critMultiplier ?? ATTACKER_STATS.critMultiplier ?? 1) : 1);
+            target.ability?.receiveRawDamage?.(this, CRITICAL_RAW_DAMAGE, SOURCE, action);
+        }
         if (!IS_BOSS) {
             this._syncUnitAliveCount(target);
         }
@@ -4149,6 +4130,7 @@ const GARDEN = class Garden {
             critHits: SOURCE.faction === 'player' && DAMAGE.critical ? 1 : 0,
         });
         this.applyGrainOnBasicHit(SOURCE, target, KIND);
+        SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
         const STRENGTH =
             DAMAGE_MULTIPLIER *
             (BUFFED ? CONFIG.raid.buff.damage : 1) *
@@ -4156,7 +4138,7 @@ const GARDEN = class Garden {
         if (IS_BOSS) {
             this.finishBossHit(SOURCE, action, point, CONTEXT, DAMAGE, STRENGTH);
         } else {
-            this.finishUnitHit(SOURCE, action, target, point, CONTEXT, DAMAGE, STRENGTH, GUARD);
+            this.finishUnitHit(SOURCE, action, target, point, CONTEXT, DAMAGE, STRENGTH);
         }
         return true;
     }
@@ -4183,17 +4165,11 @@ const GARDEN = class Garden {
         });
         this.combatEvent('damage', u, action);
     }
-    finishUnitHit(u, action, target, point, { kind, strikeIndex }, damage, strength, guard) {
+    finishUnitHit(u, action, target, point, { kind, strikeIndex }, damage, strength) {
         const DX = target.x - u.x,
             DY = target.y - u.y,
             N = Math.hypot(DX, DY) || 1;
-        target.knock(
-            DX / N,
-            DY / N,
-            5 * (guard?.receivedKnockbackMultiplier ?? 1),
-            2.4 * (guard?.receivedKnockbackMultiplier ?? 1),
-            u,
-        );
+        target.knock(DX / N, DY / N, 5, 2.4, u);
         if (target.hp === 0) {
             target.down = target.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
             this.handleUnitDeath(target);
@@ -4215,122 +4191,6 @@ const GARDEN = class Garden {
             ny: DY / N,
             strength,
         });
-    }
-    explodePopcorn(kernel) {
-        if (!kernel?.isPopcorn || kernel.exploded) {
-            return false;
-        }
-        const BATCH = !this._spatialStepActive;
-        if (BATCH) {
-            this._beginSpatialQueryBatch();
-        }
-        try {
-            const QUEUE = [kernel],
-                QUEUED = new Set();
-            let triggered = false;
-            while (QUEUE.length) {
-                const CURRENT = QUEUE.shift();
-                if (!CURRENT?.isPopcorn || CURRENT.exploded || QUEUED.has(CURRENT.id)) {
-                    continue;
-                }
-                QUEUED.add(CURRENT.id);
-                CURRENT.exploded = true;
-                CURRENT.explosionLife = 0;
-                CURRENT.hit = true;
-                triggered = true;
-                const CONFIG_LOCAL = CURRENT.popcornConfig,
-                    CENTER = {
-                        x: CURRENT.x,
-                        y: CURRENT.y,
-                        z: 0,
-                    },
-                    RANGE = CONFIG_LOCAL.radius;
-                this.effects.push({
-                    kind: 'popcorn-explosion',
-                    x: CURRENT.x,
-                    y: CURRENT.y,
-                    z: 0,
-                    life: 0,
-                    duration: 0.5,
-                    radius: RANGE,
-                    owner: CURRENT.owner,
-                });
-                const OWNER = this._unitForId(CURRENT.owner) || {
-                    id: CURRENT.owner,
-                    ownerId: CURRENT.ownerId || '',
-                    faction: CURRENT.faction,
-                    isFormationClone: !!CURRENT.isFormationClone,
-                    species: CURRENT.species,
-                    tier: CURRENT.tier,
-                    x: CURRENT.x,
-                    y: CURRENT.y,
-                    z: 0,
-                };
-                const TARGETS = [];
-                if (
-                    areOpposingFactions(OWNER, this.boss) &&
-                    !CURRENT.damagedTargetIds.includes('boss') &&
-                    Math.hypot(CURRENT.x - this.boss.x, CURRENT.y - this.boss.y) <= RANGE + this.boss.radius
-                ) {
-                    TARGETS.push(this.boss);
-                }
-                for (const TARGET of this.units) {
-                    if (
-                        TARGET.hp > 0 &&
-                        areOpposingFactions(OWNER, TARGET) &&
-                        !CURRENT.damagedTargetIds.includes(TARGET.id) &&
-                        Math.hypot(CURRENT.x - TARGET.x, CURRENT.y - TARGET.y) <= RANGE + TARGET.radius
-                    ) {
-                        TARGETS.push(TARGET);
-                    }
-                }
-                const ATTACK_CONTEXT = this.createAttackContext(OWNER, {
-                    attackMultiplier: CONFIG_LOCAL.damageMultiplier,
-                    attackKind: 'corn-popcorn-explosion',
-                    area: true,
-                });
-                for (const TARGET of TARGETS) {
-                    const ACTION = {
-                        id: CURRENT.id,
-                        hit: false,
-                        attackKind: 'corn-popcorn-explosion',
-                    };
-                    const APPLIED = this.damageCombatTarget(OWNER, ACTION, TARGET, CENTER, {
-                        attackContext: ATTACK_CONTEXT,
-                    });
-                    if (APPLIED) {
-                        CURRENT.damagedTargetIds.push(TARGET === this.boss ? 'boss' : TARGET.id);
-                    }
-                }
-                for (const OTHER of this.projectiles) {
-                    if (
-                        OTHER === CURRENT ||
-                        !OTHER.isPopcorn ||
-                        OTHER.exploded ||
-                        !OTHER.landed ||
-                        QUEUED.has(OTHER.id)
-                    ) {
-                        continue;
-                    }
-                    if (Math.hypot(OTHER.x - CURRENT.x, OTHER.y - CURRENT.y) <= RANGE + OTHER.radius) {
-                        QUEUE.push(OTHER);
-                    }
-                }
-                this.combat('popcorn-explosion', {
-                    unit: CURRENT.owner,
-                    ownerId: CURRENT.ownerId || '',
-                    species: CURRENT.species,
-                    x: CURRENT.x,
-                    y: CURRENT.y,
-                    radius: RANGE,
-                });
-            }
-            return triggered;
-        } finally {
-            if (BATCH) {
-                this._endSpatialQueryBatch();
-            }
-        }
     }
     updateProjectiles(dt) {
         const BATCH = !this._spatialStepActive;
@@ -4374,6 +4234,9 @@ const GARDEN = class Garden {
         if (ACTIVE_ATTACK.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
             return;
         }
+        if (u.ability.isGuarding?.(this.simulationTick)) {
+            return;
+        }
         if (!enemy) {
             return;
         }
@@ -4405,17 +4268,25 @@ const GARDEN = class Garden {
         const TARGET = BEHAVIOR.aimAtCenter
             ? {
                   id: TARGET_ID,
+                  generation: B_LOCAL.generation,
                   x: B_LOCAL.x,
                   y: B_LOCAL.y,
               }
             : {
                   id: TARGET_ID,
+                  generation: B_LOCAL.generation,
                   x: B_LOCAL.x + (DX / N) * (B_LOCAL.radius + u.radius - 0.16),
                   y: B_LOCAL.y + (DY / N) * (B_LOCAL.radius + u.radius - 0.16),
               };
-        const LEAP = u.specialAbility;
-        if (LEAP?.canBegin?.(this) && N <= B_LOCAL.radius + LEAP.spec.range + (u.tier - 1) * 0.12) {
-            LEAP.begin(this, TARGET);
+        const SPECIAL_ABILITY = u.specialAbility;
+        if (
+            SPECIAL_ABILITY?.canBegin?.(this) &&
+            N <= B_LOCAL.radius + SPECIAL_ABILITY.spec.range + (u.tier - 1) * 0.12
+        ) {
+            SPECIAL_ABILITY.begin(this, TARGET);
+            return;
+        }
+        if (u.ability.tryStartGuard?.(this, TARGET)) {
             return;
         }
         u.ability.begin(this, TARGET);
@@ -5168,6 +5039,7 @@ const GARDEN = class Garden {
             isBattleOnlySummon: true,
             battleSummonKind: 'boss-mouth-t1',
             battleSummonParentId: 0,
+            battleSummonParentGeneration: 0,
             battleSummonEncounterId: B_LOCAL.encounterId || 1,
             countsTowardPermanentRoster: false,
             eligibleForRaidDeployment: false,

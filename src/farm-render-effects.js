@@ -1,7 +1,7 @@
 import { CopyDissolvePresentation } from './features/formation-skills/copy/presentation.js';
 import { BirthEffect } from './features/farm-modes/breed/presentation.js';
 import { MergeEffect, MergeMaterialEffect } from './features/farm-modes/merge/presentation.js';
-import { PopcornExplosionEffect, PopcornImpactEffect } from './features/projectiles/popcorn/presentation.js';
+import { PeanutDeathSplitPresentation } from './features/abilities/peanut-death-split/presentation.js';
 import { clamp } from './farm-model.js';
 
 // Stateless presentations are shared for the renderer lifetime. They consume model
@@ -98,6 +98,7 @@ class EatingEffect {
 
 const IMPACT = new ImpactEffect();
 const SHOCKWAVE = new ShockwaveEffect();
+const PEANUT_SPLIT = new PeanutDeathSplitPresentation();
 const EFFECT_PRESENTATIONS = new Map([
     ['formation-copy-death', new CopyDissolvePresentation()],
     ['feed', new FeedEffect()],
@@ -106,8 +107,7 @@ const EFFECT_PRESENTATIONS = new Map([
     ['impact', IMPACT],
     ['landing-shockwave', SHOCKWAVE],
     ['walnut-shockwave', SHOCKWAVE],
-    ['popcorn-explosion', new PopcornExplosionEffect()],
-    ['popcorn-kernel-impact', new PopcornImpactEffect()],
+    ['peanut-split', PEANUT_SPLIT],
     ['drop-dust', new DropDustEffect()],
     ['merge-material', new MergeMaterialEffect()],
     ['birth', new BirthEffect()],
@@ -131,4 +131,9 @@ export function drawEffect(renderer, effect) {
     }
     const PROGRESS = Number.isFinite(effect.span) ? clamp((effect.life - DELAY) / SPAN, 0, 1) : effect.life;
     PRESENTATION.draw(renderer, effect, PROGRESS);
+}
+export function disposeEffectPresentations(renderer) {
+    for (const PRESENTATION of EFFECT_PRESENTATIONS.values()) {
+        PRESENTATION.dispose?.(renderer);
+    }
 }

@@ -1,13 +1,9 @@
-import { createFormationSkillState } from './formation-skill-state.js';
-import { createRaidDeploymentCardsState, migrateRaidDeploymentCardsState } from './raid-deployment-cards.js';
 import { Garden, Unit, CONFIG } from './farm-model.js';
 import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
-import { migrateBaselineAbilityInvestments } from './ability-state.js';
-import { BOSS_REWARD_SETTINGS, createBossRewardStreams } from './boss-rewards.js';
+import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아닙니다.');
 };
-const DEFAULT_ABILITY_INVESTMENTS = createPlayerProgressionState().abilities;
 const ASSERT = (value) => {
     if (!value) {
         FAIL();
@@ -26,12 +22,11 @@ function keys(value, required, optional = []) {
 function copyPlayer(player) {
     return {
         schemaVersion: player.schemaVersion,
-        baselineAbilityMigrationVersion: player.baselineAbilityMigrationVersion,
-        formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
-        raidDeploymentCards: structuredClone(player.raidDeploymentCards || createRaidDeploymentCardsState()),
+        formationSkills: structuredClone(player.formationSkills),
+        raidDeploymentCards: structuredClone(player.raidDeploymentCards),
         level: player.level,
         experience: player.experience,
-        farmBossEventStage: Object.hasOwn(player, 'farmBossEventStage') ? player.farmBossEventStage : 1,
+        farmBossEventStage: player.farmBossEventStage,
         availablePoints: player.availablePoints,
         farmUpgrades: {
             ...player.farmUpgrades,
@@ -41,14 +36,7 @@ function copyPlayer(player) {
                 id,
                 {
                     ...build,
-                    ...(DEFAULT_ABILITY_INVESTMENTS[id].branchLevels
-                        ? {
-                              branchLevels: {
-                                  ...DEFAULT_ABILITY_INVESTMENTS[id].branchLevels,
-                                  ...build.branchLevels,
-                              },
-                          }
-                        : {}),
+                    ...(build.branchLevels ? { branchLevels: { ...build.branchLevels } } : {}),
                 },
             ]),
         ),
@@ -224,8 +212,8 @@ export function captureFarmProgress(world) {
                             RECENTLY_OPENED.has(reward),
                     )
                     .map(pendingReward),
-                rewardStreams: structuredClone(world.bossRewardStreams || createBossRewardStreams(world.seed >>> 0)),
-                queuedRewards: (world.bossRewardInventory || [])
+                rewardStreams: structuredClone(world.bossRewardStreams),
+                queuedRewards: world.bossRewardInventory
                     .filter((entry) => entry.count > 0)
                     .map(({ species, tier, count }) => ({ species, tier, count })),
             },
@@ -243,91 +231,6 @@ export function captureFarmProgress(world) {
         },
     };
 }
-function migrateLegacyRewardReceipt(reward) {
-    if (['calculating', 'ready', 'opened', 'legacy'].includes(reward.status)) {
-        return reward;
-    }
-    const SUCCESSFUL_DROPS = Array.isArray(reward.drops)
-            ? reward.drops.filter((drop) => drop.status === 'granted' || drop.status === 'pending').length
-            : Array.isArray(reward.rolls)
-              ? reward.rolls.length + (reward.grantedCount || 0)
-              : reward.successCount || 0,
-        PLACED = Array.isArray(reward.drops)
-            ? reward.drops.filter((drop) => drop.status === 'granted').length
-            : reward.grantedCount || 0,
-        QUEUED = Math.max(0, SUCCESSFUL_DROPS - PLACED);
-    return {
-        ...reward,
-        receiptKey: reward.receiptKey || `${reward.source}:${reward.encounterId}`,
-        tier: 1,
-        baselineChance: BOSS_REWARD_SETTINGS.acquisitionChance,
-        boxCount: 0,
-        rollCount: 0,
-        boxes: [],
-        calculation: null,
-        revealedCount: 0,
-        successCount: SUCCESSFUL_DROPS,
-        acquiredCount: SUCCESSFUL_DROPS,
-        grantedCount: PLACED,
-        placedCount: PLACED,
-        queuedCount: QUEUED,
-        unitId: 0,
-        status: 'legacy',
-    };
-}
-
-export function migrateBossRewardProgress(progress) {
-    const DATA = structuredClone(progress),
-        BOSS = DATA?.ledger?.boss;
-    if (DATA?.player?.abilities && typeof DATA.player.abilities === 'object') {
-        for (const [ABILITY_ID, DEFAULT_BUILD] of Object.entries(DEFAULT_ABILITY_INVESTMENTS)) {
-            const BUILD = DATA.player.abilities[ABILITY_ID];
-            if (!BUILD) {
-                DATA.player.abilities[ABILITY_ID] = structuredClone(DEFAULT_BUILD);
-            } else if (DEFAULT_BUILD.branchLevels && !Object.hasOwn(BUILD, 'branchLevels')) {
-                BUILD.branchLevels = structuredClone(DEFAULT_BUILD.branchLevels);
-            }
-        }
-    }
-    if (DATA?.player) {
-        DATA.player.raidDeploymentCards = migrateRaidDeploymentCardsState(
-            DATA.player.raidDeploymentCards,
-            (DATA.roster || []).map((row) => row.species),
-        );
-    }
-    if (!BOSS || !DATA.ledger) {
-        return DATA;
-    }
-    BOSS.pendingRewards = (Array.isArray(BOSS.pendingRewards) ? BOSS.pendingRewards : []).map(
-        migrateLegacyRewardReceipt,
-    );
-    if (!Object.hasOwn(BOSS, 'rewardStreams')) {
-        BOSS.rewardStreams = createBossRewardStreams(DATA.seed >>> 0);
-    }
-    if (!Object.hasOwn(BOSS, 'queuedRewards')) {
-        const QUEUE = new Map();
-        for (const REWARD of BOSS.pendingRewards) {
-            const COUNT = REWARD.queuedCount || 0;
-            if (!COUNT) {
-                continue;
-            }
-            const KEY = `${REWARD.species}:${REWARD.tier}`,
-                ENTRY = QUEUE.get(KEY);
-            if (ENTRY) {
-                const NEXT = ENTRY.count + COUNT;
-                if (!Number.isSafeInteger(NEXT)) {
-                    throw new RangeError('Legacy queued boss rewards exceed the safe integer range');
-                }
-                ENTRY.count = NEXT;
-            } else {
-                QUEUE.set(KEY, { species: REWARD.species, tier: REWARD.tier, count: COUNT });
-            }
-        }
-        BOSS.queuedRewards = [...QUEUE.values()];
-    }
-    return DATA;
-}
-
 export function validateFarmProgress(data) {
     keys(data, ['seed', 'rngState', 'player', 'roster', 'food', 'totals', 'bossStages', 'ledger'], ['mode']);
     ASSERT(
@@ -336,27 +239,19 @@ export function validateFarmProgress(data) {
             (data.mode === undefined || ['breed', 'merge'].includes(data.mode)),
     );
     const PLAYER = data.player,
-        PLAYER_WITH_DEFAULTS = {
-            ...PLAYER,
-            farmBossEventStage: Object.hasOwn(PLAYER, 'farmBossEventStage') ? PLAYER.farmBossEventStage : 1,
-        },
         DEFAULTS = createPlayerProgressionState();
-    keys(
-        PLAYER,
-        Object.keys(DEFAULTS).filter((key) => key !== 'formationSkills' && key !== 'farmBossEventStage'),
-        ['formationSkills', 'farmBossEventStage'],
-    );
+    keys(PLAYER, Object.keys(DEFAULTS));
     keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const [ABILITY_ID, BUILD] of Object.entries(PLAYER.abilities)) {
         const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID].branchLevels || {});
-        keys(BUILD, ['rootUnlocked', 'powerLevel', 'gradeLevel'], BRANCH_KEYS.length ? ['branchLevels'] : []);
+        keys(BUILD, ['powerLevel'], BRANCH_KEYS.length ? ['branchLevels'] : []);
         if (Object.hasOwn(BUILD, 'branchLevels')) {
             keys(BUILD.branchLevels, BRANCH_KEYS);
         }
     }
     ASSERT(
-        isValidPlayerProgressionState(PLAYER_WITH_DEFAULTS) &&
+        isValidPlayerProgressionState(PLAYER) &&
             INTEGER(PLAYER.level, 1) &&
             NUMBER(PLAYER.experience) &&
             Array.isArray(PLAYER.processedBossKillReceipts) &&
@@ -717,8 +612,6 @@ function position(index, count, seed, scale) {
     };
 }
 export function restoreFarmProgress(data) {
-    data = migrateBossRewardProgress(data);
-    migrateBaselineAbilityInvestments(data?.player);
     validateFarmProgress(data);
     const WORLD = new Garden(data.seed);
     WORLD.resetUnits();

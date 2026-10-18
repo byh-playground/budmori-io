@@ -6,10 +6,8 @@ export { normalizeSnapshot, validateSnapshot };
 
 // Only hydration constructs runtime owners. DTO shapes and validation do not
 // inspect constructors or copy caches back into the persisted field contract.
-export function restore(raw, { migrateLegacyRaid = false } = {}) {
-    raw = normalizeSnapshot(raw, {
-        migrateLegacyRaid,
-    });
+export function restore(raw) {
+    raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new Garden();
     const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);

@@ -11,29 +11,17 @@ import { scaleAttackArea } from './unit-stats.js';
 import { RiceCriticalModel } from './features/abilities/rice-critical/model.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
 import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
-import {
-    createBeanSplitDescriptors,
-    getCornBurstConfig,
-    createCornBurstShotSchedule,
-    getPopcornExplosionConfig,
-    getChestnutSpikeConfig,
-    getChestnutSpikeIntervalSeconds,
-    getContinuousLeapConfig,
-    shouldResetLeapCooldown,
-    getLandingShockwaveConfig,
-    getPeanutAssaultConfig,
-    getWalnutGuardConfig,
-    isWalnutGuardActive,
-    getPeaRecoveryBoostConfig,
-} from './species-abilities.js';
+import { PeaRecoveryBoostModel } from './features/abilities/pea-recovery-boost/model.js';
+import { KidneyLeapModel } from './features/abilities/kidney-leap/model.js';
+import { ChestnutThornsModel } from './features/abilities/chestnut-thorns/model.js';
+import { PeanutDeathSplitModel } from './features/abilities/peanut-death-split/model.js';
+import { WalnutRawGuardModel } from './features/abilities/walnut-raw-guard/model.js';
+import { CornAttachmentModel } from './features/abilities/corn-attachment/model.js';
 
 // One-time subclass composition exposes flat cycle methods. Each capability
 // owns its state transitions; the historical action/unit field names are the
 // save contract, not a second copy or another component hierarchy.
-export function composeUnitAttackCycles(
-    cycle,
-    { ArenaGeometry: arenaGeometry, Ballistics: ballistics, CONFIG: configLocal },
-) {
+export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, Ballistics: ballistics }) {
     const PATH_MOTION = (base) =>
         class extends base {
             resolveAttackHit(sim, action, target, point, options) {
@@ -147,18 +135,6 @@ export function composeUnitAttackCycles(
                 return this.resolveLandingEffects?.(sim) || false;
             }
         };
-    const LANDING_SHOCKWAVE = (base) =>
-        class extends base {
-            resolveLandingEffects(sim) {
-                const RESET = super.resolveLandingEffects?.(sim),
-                    U = this.owner;
-                const CONFIG_LOCAL = getLandingShockwaveConfig(sim.abilityProgressionFor(U), U.tier);
-                if (CONFIG_LOCAL) {
-                    sim.triggerLandingShockwave(U, this.action, CONFIG_LOCAL);
-                }
-                return RESET;
-            }
-        };
     const LEAP_RESET = (base) =>
         class extends base {
             resolveLandingEffects(sim) {
@@ -166,11 +142,11 @@ export function composeUnitAttackCycles(
                     return true;
                 }
                 const U = this.owner,
-                    CONFIG_LOCAL = getContinuousLeapConfig(sim.abilityProgressionFor(U), U.tier);
+                    CONFIG_LOCAL = KidneyLeapModel.config(sim.abilityProgressionFor(U), U.tier);
                 if (
                     !CONFIG_LOCAL ||
                     this.action.leapCooldownResetApplied ||
-                    !shouldResetLeapCooldown(CONFIG_LOCAL, sim.random())
+                    !KidneyLeapModel.shouldResetCooldown(CONFIG_LOCAL, sim.random())
                 ) {
                     return false;
                 }
@@ -196,7 +172,7 @@ export function composeUnitAttackCycles(
             }
             canBegin(sim) {
                 return (
-                    !!getContinuousLeapConfig(sim.abilityProgressionFor(this.owner), this.owner.tier) &&
+                    !!KidneyLeapModel.config(sim.abilityProgressionFor(this.owner), this.owner.tier) &&
                     sim.simulationTick >= this.owner.kidneyLeapReadyTick &&
                     this.owner.kidneyLeapLastUseTick !== sim.simulationTick
                 );
@@ -219,101 +195,128 @@ export function composeUnitAttackCycles(
                 super.interrupt();
             }
         };
-    const ASSAULT = (base) =>
-        class extends base {
-            strikeConfig(sim) {
-                return getPeanutAssaultConfig(sim.abilityProgressionFor(this.owner), this.owner.tier);
-            }
-        };
-    const BURST_FIRE = (base) =>
-        class extends base {
-            projectileShots(sim) {
-                const U = this.owner,
-                    CONFIG_LOCAL = getCornBurstConfig(sim.abilityProgressionFor(U), U.tier);
-                return CONFIG_LOCAL
-                    ? createCornBurstShotSchedule(CONFIG_LOCAL, {
-                          activeSeconds: 0,
-                          recoverySeconds: this.attackRecoverySeconds(sim),
-                      })
-                    : super.projectileShots(sim);
-            }
-        };
-    const POPCORN = (base) =>
+    const CORN_ATTACHMENT = (base) =>
         class extends base {
             projectileEffect(sim) {
-                return getPopcornExplosionConfig(sim.abilityProgressionFor(this.owner), this.owner.tier);
+                return CornAttachmentModel.projectileEffect(sim.abilityProgressionFor(this.owner), this.owner.tier);
             }
         };
     const GUARD = (base) =>
         class extends base {
             resetCombatEffects() {
                 super.resetCombatEffects?.();
-                this.owner.walnutEmpoweredNextBasic = false;
+                WalnutRawGuardModel.clear(this.owner);
             }
-            prepareAttack(sim) {
-                super.prepareAttack?.(sim);
+            tryStartGuard(sim) {
                 const U = this.owner,
-                    GUARD_LOCAL = getWalnutGuardConfig(sim.abilityProgressionFor(U), U.tier);
-                Object.assign(this.action, {
-                    walnutEmpowered: !!GUARD_LOCAL && U.walnutEmpoweredNextBasic,
-                    walnutGuardUsed: false,
-                });
-                U.walnutEmpoweredNextBasic = false;
-            }
-            guardConfig(sim) {
-                const U = this.owner,
-                    CONFIG_LOCAL = getWalnutGuardConfig(sim.abilityProgressionFor(U), U.tier);
-                return isWalnutGuardActive(U, CONFIG_LOCAL, this.attackRecoverySeconds(sim)) ? CONFIG_LOCAL : null;
-            }
-            receiveGuard(sim) {
-                const CONFIG_LOCAL = this.guardConfig(sim);
-                if (!CONFIG_LOCAL) {
-                    return null;
+                    CONFIG_LOCAL = WalnutRawGuardModel.config(sim.abilityProgressionFor(U), U.tier);
+                if (!WalnutRawGuardModel.start(U, sim.simulationTick, CONFIG_LOCAL)) {
+                    return false;
                 }
-                this.action.walnutGuardUsed = true;
-                this.owner.walnutEmpoweredNextBasic = true;
-                const U = this.owner;
-                sim.combat('walnut-guard', {
+                sim.combat('walnut-guard-start', {
                     unit: U.id,
                     x: U.x,
                     y: U.y,
-                    z: U.z,
+                    z: U.z || 0,
+                    endsAtTick: U.walnutGuardUntilTick,
                 });
-                return CONFIG_LOCAL;
+                return true;
             }
-            resolveAttackHit(sim, action, target, point, options) {
-                return action.walnutEmpowered
-                    ? sim.triggerWalnutSlam(this.owner, action, target, point)
-                    : super.resolveAttackHit(sim, action, target, point, options);
+            isGuarding(simulationTick) {
+                return WalnutRawGuardModel.isGuarding(this.owner, simulationTick);
+            }
+            armorModifier(sim, simulationTick) {
+                const U = this.owner,
+                    CONFIG_LOCAL = WalnutRawGuardModel.config(sim.abilityProgressionFor(U), U.tier);
+                return WalnutRawGuardModel.armorBonus(U, simulationTick, CONFIG_LOCAL);
+            }
+            rawDamageBonus(sim, action, kind) {
+                if (action !== this.action || kind !== this.spec.kind) {
+                    return 0;
+                }
+                const U = this.owner,
+                    CONFIG_LOCAL = WalnutRawGuardModel.config(sim.abilityProgressionFor(U), U.tier);
+                return WalnutRawGuardModel.nextHammerBonus(U, sim.unitStatsFor(U).attackPower, CONFIG_LOCAL);
+            }
+            afterSuccessfulAttack(_sim, action) {
+                if (action === this.action) {
+                    WalnutRawGuardModel.consume(this.owner);
+                }
+            }
+            receiveRawDamage(sim, rawDamage) {
+                const U = this.owner,
+                    CONFIG_LOCAL = WalnutRawGuardModel.config(sim.abilityProgressionFor(U), U.tier);
+                WalnutRawGuardModel.accumulate(U, rawDamage, sim.simulationTick, CONFIG_LOCAL);
             }
         };
-    const LAUNCH_FAN = (base) =>
+    const CHESTNUT_THORNS = (base) =>
         class extends base {
-            onLaunch(sim, action) {
-                super.onLaunch?.(sim, action);
+            get spec() {
+                return specialAbilityCompositionFor(this.owner.species).profile;
+            }
+            canBegin(sim) {
                 const U = this.owner,
-                    CONFIG_LOCAL = getChestnutSpikeConfig(sim.abilityProgressionFor(U), U.tier);
-                if (
-                    !CONFIG_LOCAL ||
-                    sim.projectiles.length + CONFIG_LOCAL.projectileCount > configLocal.raid.capacity.projectiles
-                ) {
+                    CONFIG_LOCAL = ChestnutThornsModel.config(sim.abilityProgressionFor(U), U.tier);
+                return !!CONFIG_LOCAL && sim.simulationTick >= (U.chestnutNextThornTick || 0);
+            }
+            createAttackPath() {
+                this.action.path = null;
+            }
+            onLaunch(sim, action) {
+                if (action.thornShotsRemaining !== undefined) {
                     return;
                 }
-                const CYCLE_SECONDS = this.spec.timing.windup + this.attackRecoverySeconds(sim),
-                    INTERVAL = getChestnutSpikeIntervalSeconds(CONFIG_LOCAL, CYCLE_SECONDS);
-                if (!Number.isFinite(INTERVAL) || INTERVAL <= 0) {
+                const U = this.owner,
+                    CONFIG_LOCAL = ChestnutThornsModel.config(sim.abilityProgressionFor(U), U.tier),
+                    TARGET = sim.attackTarget(U, action);
+                if (!CONFIG_LOCAL || !TARGET || TARGET.hp <= 0) {
                     return;
                 }
-                U.chestnutBasicCycles++;
-                if (U.chestnutBasicCycles % CONFIG_LOCAL.intervalBasicCycles === 0) {
-                    sim.spawnChestnutSpikes(U, action, CONFIG_LOCAL);
+                Object.assign(action, {
+                    thornTargetId: action.targetId,
+                    thornTargetGeneration: TARGET.generation,
+                    thornConfig: CONFIG_LOCAL,
+                    thornShotsRemaining: CONFIG_LOCAL.projectileCount - 1,
+                    thornNextShotTick: sim.simulationTick + CONFIG_LOCAL.spacingTicks,
+                    thornShotIndex: 0,
+                });
+                if (sim.spawnChestnutThorn(U, action, CONFIG_LOCAL, action.thornShotIndex)) {
+                    U.chestnutNextThornTick = sim.simulationTick + CONFIG_LOCAL.cooldownTicks;
+                } else {
+                    action.thornShotsRemaining = 0;
                 }
+            }
+            launchAttack(sim) {
+                super.launchAttack?.(sim);
+                this.recover(sim, false);
+            }
+            updateRecovery(sim) {
+                const ACTION = this.action;
+                if (!ACTION || ACTION.thornShotsRemaining <= 0 || sim.simulationTick < ACTION.thornNextShotTick) {
+                    return;
+                }
+                const TARGET = ChestnutThornsModel.resolveTarget(
+                    sim,
+                    ACTION.thornTargetId,
+                    ACTION.thornTargetGeneration,
+                );
+                if (!TARGET || TARGET.hp <= 0) {
+                    ACTION.thornShotsRemaining = 0;
+                    return;
+                }
+                ACTION.thornShotIndex += 1;
+                if (sim.spawnChestnutThorn(this.owner, ACTION, ACTION.thornConfig, ACTION.thornShotIndex)) {
+                    ACTION.thornShotsRemaining -= 1;
+                } else {
+                    ACTION.thornShotsRemaining = 0;
+                }
+                ACTION.thornNextShotTick += ACTION.thornConfig.spacingTicks;
             }
         };
     const DEATH_SPLIT = (base) =>
         class extends base {
             deathSplitDescriptors(sim, inBattle) {
-                return createBeanSplitDescriptors({
+                return PeanutDeathSplitModel.descriptors({
                     unit: this.owner,
                     progression: sim.abilityProgressionFor(this.owner),
                     inBattle,
@@ -324,7 +327,7 @@ export function composeUnitAttackCycles(
         class extends base {
             recoveryHasteConfig(sim) {
                 const U = this.owner;
-                return getPeaRecoveryBoostConfig(sim.abilityProgressionFor(U), U.tier);
+                return PeaRecoveryBoostModel.config(sim.abilityProgressionFor(U), U.tier);
             }
         };
     const RICE_CRITICAL = (base) =>
@@ -374,13 +377,10 @@ export function composeUnitAttackCycles(
     };
     const TRAITS = {
         landing: LANDING,
-        landingShockwave: LANDING_SHOCKWAVE,
         leapReset: LEAP_RESET,
-        assault: ASSAULT,
-        burstFire: BURST_FIRE,
-        popcorn: POPCORN,
         guard: GUARD,
-        launchFan: LAUNCH_FAN,
+        chestnutThorns: CHESTNUT_THORNS,
+        cornAttachment: CORN_ATTACHMENT,
         deathSplit: DEATH_SPLIT,
         riceCritical: RICE_CRITICAL,
         commandAura: COMMAND_AURA,

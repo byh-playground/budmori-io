@@ -1145,7 +1145,7 @@ async function upgradeMenuFlow() {
     });
     await openMenuTab(P, 'abilities');
     const ABILITY_NOTE = await P.locator('.ability-tree__note').textContent();
-    assert(ABILITY_NOTE.includes('Common') && ABILITY_NOTE.includes('Rare(T3)'));
+    assert(ABILITY_NOTE.includes('Common(T1)') && !ABILITY_NOTE.includes('Rare(T3)'));
     for (const [SPECIES, ID, ROLE] of [
         [6, 'rice-low-health-harvest', '수확'],
         [7, 'wheat-command-crit', '치명타'],
@@ -1172,10 +1172,8 @@ async function upgradeMenuFlow() {
             );
         }
         await P.waitForTimeout(220);
-        assert(
-            (await CARD.locator('.ability-card__current-effect').textContent()).includes('\uAE30\uBCF8 \uB2A5\uB825'),
-        );
-        assert((await CARD.locator('.ability-card__grade').textContent()).includes('\uACF5\uD1B5'));
+        assert((await CARD.locator('.ability-card__current-effect').textContent()).trim().length > 0);
+        assert((await CARD.locator('.ability-card__grade').textContent()).includes('Common(T1)'));
         await P.locator('#abilityNodes').evaluate((element) => {
             element.scrollTop = 0;
         });
@@ -5815,6 +5813,438 @@ async function armyScenarios(p) {
         'Species hold actual firing range; corpses land, stay nonblocking, leave targets and recover; health HUD matches the same sampled display time, distinct from live simulation health',
     );
 }
+async function representativeAbilitiesFlow() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 } }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await P.waitForFunction(() => BUDMORI.sim?.scene === 'farm');
+    const RESULTS = await P.evaluate(async () => {
+        const [
+                {
+                    SPECIES_ABILITY_DEFINITIONS: DEFINITIONS,
+                    abilityFeatureFor: FEATURE_FOR,
+                    abilityPresentationFor: PRESENTATION_FOR,
+                },
+                { createPlayerProgressionState: CREATE_PROGRESS, isValidPlayerProgressionState: VALID_PROGRESS },
+                {
+                    getAbilityEffects: EFFECTS_FOR,
+                    canPurchaseAbilityNode: CAN_PURCHASE,
+                    resetAbilityProgression: RESET_ABILITY,
+                    resetPlayerProgression: RESET_PLAYER,
+                },
+                { renderAbilityTreeMarkup: RENDER_TREE },
+                { Garden: GARDEN },
+                { CornAttachmentModel: CORN },
+                { snapshot: SNAPSHOT, validateSnapshot: VALIDATE_SNAPSHOT },
+                { captureFarmProgress: CAPTURE_PROGRESS, restoreFarmProgress: RESTORE_PROGRESS },
+                { encodeFarmSave: ENCODE_SAVE, decodeFarmSave: DECODE_SAVE, readFarmSave: READ_SAVE },
+                { baseUnitStatsFor: BASE_STATS, resolveUnitStats: RESOLVE_STATS },
+            ] = await Promise.all([
+                import('/src/ability-catalog.js'),
+                import('/src/player-progression.js'),
+                import('/src/ability-progression.js'),
+                import('/src/ability-tree.js'),
+                import('/src/farm-model.js'),
+                import('/src/features/abilities/corn-attachment/model.js'),
+                import('/src/farm-state.js'),
+                import('/src/farm-progress.js'),
+                import('/src/farm-save-codec.js'),
+                import('/src/unit-stats.js'),
+            ]),
+            BASE_STATE = CREATE_PROGRESS(),
+            TREE = RENDER_TREE(BASE_STATE, { location: 'farm', inCombat: false }),
+            BASELINE = DEFINITIONS.map((definition) => ({
+                id: definition.id,
+                value: EFFECTS_FOR(BASE_STATE, definition.id, 1)?.value,
+                hasModel: !!FEATURE_FOR(definition.id)?.model,
+                hasPresentation: !!PRESENTATION_FOR(definition.id),
+                default: definition.availableByDefault && definition.minimumTier <= 1,
+            })),
+            ROOT_PURCHASE = CAN_PURCHASE(BASE_STATE, DEFINITIONS[0].id, 'root', {
+                location: 'farm',
+                inCombat: false,
+            });
+        if (DEFINITIONS.length !== 9 || BASELINE.some((ability) => !ability.default || ability.value === undefined)) {
+            throw Error('A representative ability is missing a free Common(T1) effect.');
+        }
+        if (BASELINE.some((ability) => !ability.hasModel || !ability.hasPresentation)) {
+            throw Error('A representative ability is missing its feature-owned model or presentation.');
+        }
+
+        const ABILITY_IDS = {
+                chestnut: 'chestnut-target-thorns',
+                peanut: 'peanut-death-split',
+                walnut: 'walnut-raw-guard',
+                corn: 'corn-kernel-chain',
+            },
+            RUN_THORNS = (level) => {
+                const WORLD = new GARDEN(700 + level),
+                    UNIT = WORLD.spawn(3, 1, -4, 0);
+                WORLD.playerProgression.abilities[ABILITY_IDS.chestnut].powerLevel = level;
+                UNIT.z = 0;
+                UNIT.dropLanded = true;
+                UNIT.ownerId = 'solo';
+                UNIT.farmId = 30 + level;
+                WORLD.boss.active = true;
+                WORLD.simulationTick = 100;
+                const CYCLE = UNIT.specialAbility,
+                    TARGET = { id: 'boss', generation: WORLD.boss.generation, x: 0, y: 0 },
+                    STARTED = CYCLE.begin(WORLD, TARGET),
+                    SHOT_TICKS = [];
+                CYCLE.update(WORLD, 1 / 120);
+                if (WORLD.projectiles.length) {
+                    SHOT_TICKS.push(WORLD.simulationTick);
+                }
+                for (let offset = 1; offset <= 6; offset++) {
+                    WORLD.simulationTick = 100 + offset;
+                    const BEFORE = WORLD.projectiles.length;
+                    CYCLE.update(WORLD, 1 / 120);
+                    if (WORLD.projectiles.length > BEFORE) {
+                        SHOT_TICKS.push(WORLD.simulationTick);
+                    }
+                }
+                WORLD.simulationTick = 159;
+                const READY_BEFORE = CYCLE.canBegin(WORLD);
+                WORLD.simulationTick = 160;
+                return {
+                    started: STARTED,
+                    fanIndices: WORLD.projectiles.map((projectile) => projectile.fanIndex),
+                    shotTicks: SHOT_TICKS,
+                    nextThornTick: UNIT.chestnutNextThornTick,
+                    readyBefore60: READY_BEFORE,
+                    readyAt60: CYCLE.canBegin(WORLD),
+                };
+            },
+            THORNS = [RUN_THORNS(0), RUN_THORNS(1), RUN_THORNS(2)],
+            CANCEL_WORLD = new GARDEN(705),
+            CANCEL_UNIT = CANCEL_WORLD.spawn(3, 1, -4, 0);
+        CANCEL_UNIT.z = 0;
+        CANCEL_UNIT.dropLanded = true;
+        CANCEL_WORLD.playerProgression.abilities[ABILITY_IDS.chestnut].powerLevel = 2;
+        CANCEL_WORLD.boss.active = true;
+        CANCEL_WORLD.simulationTick = 200;
+        CANCEL_UNIT.specialAbility.begin(CANCEL_WORLD, {
+            id: 'boss',
+            generation: CANCEL_WORLD.boss.generation,
+            x: 0,
+            y: 0,
+        });
+        CANCEL_UNIT.specialAbility.update(CANCEL_WORLD, 1 / 120);
+        CANCEL_WORLD.boss.generation = ++CANCEL_WORLD.entityGenerationSerial;
+        CANCEL_WORLD.simulationTick = 202;
+        CANCEL_UNIT.specialAbility.update(CANCEL_WORLD, 1 / 120);
+        const THORN_CANCELLATION = {
+            count: CANCEL_WORLD.projectiles.length,
+            remaining: CANCEL_UNIT.specialAbility.action?.thornShotsRemaining,
+        };
+
+        const DEATH_SPLITS = [];
+        for (let level = 0; level <= 2; level++) {
+            const WORLD = new GARDEN(800 + level);
+            WORLD.resetUnits([]);
+            WORLD.playerProgression.level = level + 1;
+            WORLD.playerProgression.abilities[ABILITY_IDS.peanut].powerLevel = level;
+            WORLD.farmBossEvent = {
+                phase: 'fighting',
+                elapsed: 0,
+                outcome: 'fighting',
+                encounterId: 1,
+                rewardStatus: 'unresolved',
+                rewardChance: 0,
+                rewardRoll: 0,
+                rewardUnitId: 0,
+            };
+            WORLD.nextBossEncounterId = 2;
+            WORLD.boss.encounterId = 1;
+            WORLD.boss.active = true;
+            const PARENT = WORLD.spawn(4, 3, 0, 0);
+            PARENT.ownerId = 'solo';
+            PARENT.farmId = 11;
+            PARENT.giantUntil = 100;
+            PARENT.hp = 0;
+            WORLD.step(1 / 120);
+            const CHILDREN = WORLD.units.filter((unit) => unit.battleSummonKind === 'peanut-death-split'),
+                EXPECTED_MULTIPLIER = [1, 1.5, 2.25][level];
+            WORLD.handleUnitDeath(PARENT);
+            const CHILDREN_AFTER_RETRY = WORLD.units.filter(
+                (unit) => unit.battleSummonKind === 'peanut-death-split',
+            ).length;
+            VALIDATE_SNAPSHOT(SNAPSHOT(WORLD));
+            const CHILD_STATS = CHILDREN[0] ? RESOLVE_STATS(CHILDREN[0]) : null;
+            WORLD.finishFarmBossEvent('defeat');
+            DEATH_SPLITS.push({
+                count: CHILDREN.length,
+                tier: CHILDREN[0]?.tier,
+                multiplier: CHILDREN[0]?.permanentStatMultiplier,
+                childHp: CHILDREN[0]?.hp,
+                childAttack: CHILD_STATS?.attackPower,
+                expectedMultiplier: EXPECTED_MULTIPLIER,
+                giantInherited: !!CHILDREN[0] && CHILDREN[0].giantUntil > WORLD.time,
+                retryCount: CHILDREN_AFTER_RETRY,
+                cleaned: WORLD.units.every((unit) => !unit.isBattleOnlySummon),
+                effect: WORLD.effects.some((effect) => effect.kind === 'peanut-split'),
+            });
+        }
+
+        const WALNUT_LEVELS = [];
+        for (let level = 0; level <= 2; level++) {
+            const WORLD = new GARDEN(900 + level),
+                WALNUT_UNIT = WORLD.spawn(5, 1, 0, 0),
+                ATTACKER = WORLD.spawn(0, 1, 1, 0);
+            WORLD.playerProgression.abilities[ABILITY_IDS.walnut].powerLevel = level;
+            ATTACKER.faction = 'enemy';
+            WORLD.simulationTick = 0;
+            const STARTED = WALNUT_UNIT.ability.tryStartGuard(WORLD),
+                ARMOR_DURING = WORLD.combatTargetDefense(WALNUT_UNIT).armor;
+            WORLD.simulationTick = 10;
+            WORLD.damageCombatTarget(ATTACKER, { id: 1, hit: false }, WALNUT_UNIT, {
+                x: WALNUT_UNIT.x,
+                y: WALNUT_UNIT.y,
+                z: 0,
+            });
+            const STORED_RAW = WALNUT_UNIT.walnutStoredRawDamage,
+                HP_LOSS = BASE_STATS(1, 5).maxHp - WALNUT_UNIT.hp;
+            WORLD.simulationTick = 40;
+            const ARMOR_AFTER = WORLD.combatTargetDefense(WALNUT_UNIT).armor,
+                HAMMER = { id: 2, hit: false };
+            WORLD.simulationTick = 100;
+            const NEXT_GUARD_WITH_STORED = WALNUT_UNIT.ability.tryStartGuard(WORLD);
+            WORLD.simulationTick = 40;
+            WALNUT_UNIT.ability.action = HAMMER;
+            const BOSS_HP = WORLD.boss.hp;
+            WORLD.damageCombatTarget(
+                WALNUT_UNIT,
+                HAMMER,
+                WORLD.boss,
+                { x: 0, y: 0, z: 0 },
+                {
+                    attackContext: WORLD.createAttackContext(WALNUT_UNIT, {
+                        attackKind: 'walnut-hammer',
+                        criticalRoll: 1,
+                    }),
+                },
+            );
+            WALNUT_LEVELS.push({
+                started: STARTED,
+                armorDuring: ARMOR_DURING,
+                armorAfter: ARMOR_AFTER,
+                storedRaw: STORED_RAW,
+                actualLossDuringGuard: HP_LOSS,
+                expectedLossDuringGuard: 4 * (100 / 150),
+                hammerDamage: BOSS_HP - WORLD.boss.hp,
+                storedAfterHammer: WALNUT_UNIT.walnutStoredRawDamage,
+                nextGuardAt100: NEXT_GUARD_WITH_STORED,
+            });
+        }
+
+        const CORN_WORLD = new GARDEN(1001),
+            CORN_CONFIG = CORN.config(CORN_WORLD.playerProgression, 1),
+            CORN_A = CORN_WORLD.spawn(1, 1, -1, 0),
+            CORN_B = CORN_WORLD.spawn(1, 1, 1, 0);
+        CORN_A.permanentStatMultiplier = 1;
+        CORN_B.permanentStatMultiplier = 1.5;
+        const PROJECTILE_FOR = (owner) => ({
+            owner: owner.id,
+            ownerGeneration: owner.generation,
+            cornPayload: {
+                ownerId: 'solo',
+                faction: 'player',
+                isFormationClone: false,
+                species: 1,
+                tier: owner.tier,
+                x: owner.x,
+                y: owner.y,
+                z: owner.z,
+                attackerStats: RESOLVE_STATS(owner),
+                attackPowerMultiplier: 1,
+                buffed: false,
+            },
+        });
+        CORN.onProjectileHit(CORN_WORLD, CORN_WORLD.boss, PROJECTILE_FOR(CORN_A), CORN_CONFIG);
+        CORN_WORLD.simulationTick = 1;
+        CORN.onProjectileHit(CORN_WORLD, CORN_WORLD.boss, PROJECTILE_FOR(CORN_B), CORN_CONFIG);
+        const FIRST_GROUP = CORN_WORLD.cornAttachments.groups[0];
+        CORN_WORLD.simulationTick = CORN_CONFIG.attachDelayTicks;
+        const BOSS_HP_AT_CLOSE = CORN_WORLD.boss.hp;
+        CORN.advance(CORN_WORLD);
+        const FIRST_LOSS = BOSS_HP_AT_CLOSE - CORN_WORLD.boss.hp;
+        CORN_WORLD.simulationTick += 1;
+        CORN.onProjectileHit(CORN_WORLD, CORN_WORLD.boss, PROJECTILE_FOR(CORN_A), CORN_CONFIG);
+        const GROUP_COUNT_WHILE_OVERLAPPING = CORN_WORLD.cornAttachments.groups.length;
+        CORN_WORLD.simulationTick += 1;
+        CORN.advance(CORN_WORLD);
+        const SECOND_LOSS = BOSS_HP_AT_CLOSE - CORN_WORLD.boss.hp;
+        CORN_WORLD.simulationTick = CORN_CONFIG.attachDelayTicks * 2 + 1;
+        const BOSS_HP_BEFORE_OVERLAP = CORN_WORLD.boss.hp;
+        CORN.advance(CORN_WORLD);
+        const OVERLAP_LOSS = BOSS_HP_BEFORE_OVERLAP - CORN_WORLD.boss.hp,
+            CORN_RESULT = {
+                sameFirstGroup: FIRST_GROUP.attachments.length,
+                ownersInFirstGroup: FIRST_GROUP.attachments.map((attachment) => attachment.ownerId),
+                firstDamage: FIRST_LOSS,
+                laterDamage: SECOND_LOSS,
+                overlapGroups: GROUP_COUNT_WHILE_OVERLAPPING,
+                overlapDamage: OVERLAP_LOSS,
+                allDamageByAttachment: FIRST_LOSS + (BOSS_HP_AT_CLOSE - FIRST_LOSS - CORN_WORLD.boss.hp),
+            };
+        const TARGET_WORLD = new GARDEN(1002),
+            TARGET = TARGET_WORLD.spawn(0, 1, 2, 2),
+            TARGET_OWNER = TARGET_WORLD.spawn(1, 1, 0, 0);
+        TARGET.faction = 'enemy';
+        TARGET_WORLD.simulationTick = 5;
+        const TARGET_GROUP = CORN.onProjectileHit(
+            TARGET_WORLD,
+            TARGET,
+            PROJECTILE_FOR(TARGET_OWNER),
+            CORN_CONFIG,
+        ).groupId;
+        TARGET_WORLD.removeUnit(TARGET);
+        TARGET_WORLD.nextId = TARGET.id;
+        const REUSED_TARGET = TARGET_WORLD.spawn(0, 1, 2, 2);
+        REUSED_TARGET.faction = 'enemy';
+        const REUSED_TARGET_HP = REUSED_TARGET.hp;
+        TARGET_WORLD.simulationTick = 25;
+        CORN.advance(TARGET_WORLD);
+        const DEAD_TARGET_CANCELLED = {
+            hpUnchanged: REUSED_TARGET.hp === REUSED_TARGET_HP,
+            status: TARGET_WORLD.cornAttachments.groups.find((group) => group.id === TARGET_GROUP)?.status,
+        };
+
+        const SAVE_WORLD = new GARDEN(1100);
+        SAVE_WORLD.playerProgression.level = 2;
+        SAVE_WORLD.playerProgression.availablePoints = 0;
+        SAVE_WORLD.playerProgression.abilities[ABILITY_IDS.corn].powerLevel = 1;
+        if (!VALID_PROGRESS(SAVE_WORLD.playerProgression)) {
+            throw Error('Current progression point invariant is invalid before saving.');
+        }
+        let progress = CAPTURE_PROGRESS(SAVE_WORLD);
+        for (let load = 0; load < 3; load++) {
+            progress = CAPTURE_PROGRESS(RESTORE_PROGRESS(progress));
+        }
+        const CURRENT_SAVE = ENCODE_SAVE(SAVE_WORLD, progress).text,
+            DECODED = DECODE_SAVE(CURRENT_SAVE),
+            SPECIES_RESET = RESET_ABILITY(SAVE_WORLD.playerProgression, { location: 'farm' }, 1),
+            FULL_RESET = RESET_PLAYER(SAVE_WORLD.playerProgression, { type: 'all' }, { location: 'farm' });
+        let incompatibleRejected = false;
+        try {
+            READ_SAVE(
+                JSON.stringify({
+                    schema: 'budmori-farm',
+                    productVersion: JSON.parse(CURRENT_SAVE).productVersion,
+                    world: {},
+                }),
+            );
+        } catch {
+            incompatibleRejected = true;
+        }
+        const INCOMPATIBLE_ABILITY_SAVE = JSON.parse(CURRENT_SAVE);
+        delete INCOMPATIBLE_ABILITY_SAVE.progress.player.abilities[ABILITY_IDS.corn];
+        let missingAbilityRejected = false;
+        try {
+            DECODE_SAVE(JSON.stringify(INCOMPATIBLE_ABILITY_SAVE));
+        } catch {
+            missingAbilityRejected = true;
+        }
+        return {
+            abilityCount: DEFINITIONS.length,
+            baseline: BASELINE,
+            modelAndPresentationCount: BASELINE.filter((ability) => ability.hasModel && ability.hasPresentation).length,
+            commonCards: (TREE.match(/class="ability-card__grade">Common\(T1\)<\/span>/g) || []).length,
+            rootNodePresent: /data-ability-node="[^"]*:root/.test(TREE),
+            rootPurchaseReason: ROOT_PURCHASE.reason,
+            thornCounts: THORNS.map((result) => result.fanIndices.length),
+            thornStarted: THORNS.map((result) => result.started),
+            thornTicks: THORNS[2].shotTicks,
+            thornReadyBefore60: THORNS[0].readyBefore60,
+            thornReadyAt60: THORNS[0].readyAt60,
+            thornTargetCancellation: THORN_CANCELLATION,
+            deathSplits: DEATH_SPLITS,
+            walnut: WALNUT_LEVELS,
+            corn: CORN_RESULT,
+            deadTargetCancelled: DEAD_TARGET_CANCELLED,
+            save: {
+                valid: VALID_PROGRESS(DECODED.player),
+                currentAbilityLevel: DECODED.player.abilities[ABILITY_IDS.corn].powerLevel,
+                currentAvailablePoints: DECODED.player.availablePoints,
+                speciesResetRefund: SPECIES_RESET.refunded,
+                speciesResetPoints: SPECIES_RESET.state.availablePoints,
+                fullResetRefund: FULL_RESET.refunded,
+                fullResetPoints: FULL_RESET.state.availablePoints,
+                incompatibleRejected,
+                missingAbilityRejected,
+            },
+        };
+    });
+    assert.equal(RESULTS.abilityCount, 9);
+    assert.equal(RESULTS.modelAndPresentationCount, 9);
+    assert.equal(RESULTS.commonCards, 9);
+    assert.equal(RESULTS.rootNodePresent, false);
+    assert.equal(RESULTS.rootPurchaseReason, 'unknown-node');
+    assert.deepEqual(RESULTS.thornStarted, [true, true, true]);
+    assert.deepEqual(RESULTS.thornCounts, [1, 2, 3]);
+    assert.deepEqual(RESULTS.thornTicks, [100, 102, 104]);
+    assert.equal(RESULTS.thornReadyBefore60, false);
+    assert.equal(RESULTS.thornReadyAt60, true);
+    assert.deepEqual(RESULTS.thornTargetCancellation, { count: 1, remaining: 0 });
+    assert.deepEqual(
+        RESULTS.deathSplits.map((split) => ({
+            count: split.count,
+            tier: split.tier,
+            multiplier: split.multiplier,
+            childHp: split.childHp,
+            childAttack: split.childAttack,
+            giantInherited: split.giantInherited,
+            retryCount: split.retryCount,
+            cleaned: split.cleaned,
+            effect: split.effect,
+        })),
+        [1, 1.5, 2.25].map((multiplier) => ({
+            count: 2,
+            tier: 1,
+            multiplier,
+            childHp: 40 * multiplier,
+            childAttack: 4 * multiplier,
+            giantInherited: false,
+            retryCount: 2,
+            cleaned: true,
+            effect: true,
+        })),
+    );
+    for (const [INDEX, WALNUT] of RESULTS.walnut.entries()) {
+        assert.equal(WALNUT.started, true);
+        assert.equal(WALNUT.armorDuring, 50);
+        assert.equal(WALNUT.armorAfter, 0);
+        assert.equal(WALNUT.storedRaw, 4);
+        assert(Math.abs(WALNUT.actualLossDuringGuard - WALNUT.expectedLossDuringGuard) < 1e-9);
+        assert.equal(WALNUT.hammerDamage, [8, 10, 13][INDEX]);
+        assert.equal(WALNUT.storedAfterHammer, 0);
+        assert.equal(WALNUT.nextGuardAt100, false);
+    }
+    assert.deepEqual(RESULTS.corn.ownersInFirstGroup.length, 2);
+    assert.equal(RESULTS.corn.sameFirstGroup, 2);
+    assert.equal(RESULTS.corn.firstDamage, 2);
+    assert.equal(RESULTS.corn.overlapGroups, 2);
+    assert(RESULTS.corn.overlapDamage > 1.9 && RESULTS.corn.overlapDamage <= 2);
+    assert.deepEqual(RESULTS.deadTargetCancelled, { hpUnchanged: true, status: 'cancelled' });
+    assert.equal(RESULTS.save.valid, true);
+    assert.equal(RESULTS.save.currentAbilityLevel, 1);
+    assert.equal(RESULTS.save.currentAvailablePoints, 0);
+    assert.equal(RESULTS.save.speciesResetRefund, 1);
+    assert.equal(RESULTS.save.speciesResetPoints, 1);
+    assert.equal(RESULTS.save.fullResetRefund, 1);
+    assert.equal(RESULTS.save.fullResetPoints, 1);
+    assert.equal(RESULTS.save.incompatibleRejected, true);
+    assert.equal(RESULTS.save.missingAbilityRejected, true);
+    await clean(P);
+    CHECK(
+        'All nine Common(T1) abilities render and activate without unlock nodes; current-schema load/reset preserves points',
+    );
+    CHECK('Chestnut thorns fire 1/2/3 at 2-tick intervals with a 60-tick cooldown and no target retargeting');
+    CHECK('Peanut death splits once into T1 units at 1/1.5/2.25 scaling and battle cleanup removes them');
+    CHECK('Walnut accumulates RAW damage under +50 armor and consumes 100/150/225% on the next hammer');
+    CHECK('Corn attachments group multiple owners, overlap closed chains, and cancel on a reused target ID');
+    await C.close();
+}
 async function bossRewards() {
     const C = await browser.newContext({
             viewport: {
@@ -5829,6 +6259,68 @@ async function bossRewards() {
     await P.waitForFunction(() => !document.getElementById('bloom-module-loading'));
     await P.locator('#newGame').click();
     await P.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.runtime.tick > 5);
+    await P.locator('#raid').click();
+    await P.waitForFunction(() => document.querySelector('#bossEncounterScreen')?.hidden === false);
+    await P.locator('#bossEncounterChallenge').click();
+    await P.waitForFunction(() => BUDMORI.sim?.scene === 'raid' && !!BUDMORI.sim.raidRoster('solo'));
+    const RAID_RUN = await P.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            ROSTER = WORLD.raidRoster('solo'),
+            TROOP = ROSTER.troops[0],
+            SEQUENCE = ROSTER.lastDeploySequence + 1;
+        if (!WORLD.deployNextRaidUnit('solo', SEQUENCE, TROOP.species)) {
+            throw Error('could not deploy the first Raid casualty');
+        }
+        const DEPLOYED = WORLD.units.find((unit) => unit.farmId === TROOP.farmId);
+        if (!DEPLOYED) {
+            throw Error('deployed Raid unit is missing from the active world');
+        }
+        DEPLOYED.hp = 0;
+        WORLD.step(1 / 120);
+        WORLD.finish('victory');
+        return {
+            sequence: ROSTER.settlementRunSequence,
+            deployed: ROSTER.troops.filter((troop) => troop.deployed).length,
+            casualtyHandled: DEPLOYED.deathSplitHandled,
+        };
+    });
+    assert.equal(RAID_RUN.deployed, 1);
+    assert.equal(RAID_RUN.casualtyHandled, true);
+    await P.waitForFunction(
+        () =>
+            BUDMORI.sim.scene === 'raid' &&
+            document.querySelector('#bossRewardDialog')?.hidden === false &&
+            document.querySelectorAll('#bossRewardBoxes .boss-reward-box').length === 1 &&
+            document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length === 1,
+        {},
+        { timeout: 15000 },
+    );
+    const RAID_RESULT = await P.evaluate(async () => {
+        const { validateFarmProgress: VALIDATE_PROGRESS } = await import('/src/farm-progress.js'),
+            PROGRESS = BUDMORI.storage.savedProgress,
+            REWARD = PROGRESS?.ledger?.boss?.pendingRewards?.find(
+                (item) => item.source === 'raid' && item.encounterId === BUDMORI.sim.boss.encounterId,
+            );
+        VALIDATE_PROGRESS(PROGRESS);
+        return {
+            activeScene: BUDMORI.sim.scene,
+            resultText: document.querySelector('#bossRewardTotals')?.textContent || '',
+            receiptStatus: REWARD?.status,
+            acquired: REWARD?.acquiredCount,
+            queued: REWARD?.queuedCount,
+            boxCount: REWARD?.boxCount,
+        };
+    });
+    assert.equal(RAID_RESULT.activeScene, 'raid', 'the reward finishes before returning to Farm');
+    assert.equal(RAID_RESULT.receiptStatus, 'opened');
+    assert.equal(RAID_RESULT.boxCount, 1);
+    assert.equal(typeof RAID_RESULT.acquired, 'number');
+    assert.equal(typeof RAID_RESULT.queued, 'number');
+    assert(!RAID_RESULT.resultText.includes('undefined'));
+    await P.locator('#bossRewardClose').click();
+    assert.equal(await P.locator('#bossRewardOpen').isVisible(), false, 'completed boxes cannot be reopened later');
+    await P.locator('#return').click();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'farm');
     const CREATED = await P.evaluate(async () => {
         const {
                 settleBossKill: SETTLE,
@@ -5907,9 +6399,7 @@ async function bossRewards() {
         totalPayout: 12,
     });
     await P.locator('#bossRewardClose').click();
-    assert(await P.locator('#bossRewardOpen').isVisible());
-    await P.locator('#bossRewardOpen').click();
-    assert(await P.locator('#bossRewardDialog').isVisible());
+    assert.equal(await P.locator('#bossRewardOpen').isVisible(), false);
     const SNAPSHOT_DIAGNOSTIC = await P.evaluate(async () => {
         const { snapshot: SNAPSHOT } = await import('/src/farm-state.js'),
             { validateSnapshot: VALIDATE } = await import('/src/farm-snapshot-validation.js'),
@@ -5994,7 +6484,10 @@ async function bossRewards() {
         'a restored reward receipt can be encoded and the next Raid reservation can be saved',
     );
     await clean(P);
-    CHECK('Mobile boss reward dialog opens, reveals and saves committed box results across reload');
+    CHECK(
+        'Raid victory auto-settles and reveals before Farm return; full save validates and completed boxes cannot be reopened',
+    );
+    CHECK('Mobile reward result opens remaining boxes immediately and saves the committed reward');
     await C.close();
 }
 async function victory() {
@@ -6626,6 +7119,7 @@ try {
             cadence: cadenceDiagnosticsFlow,
             formation: formationBrowserUI,
             raidDeploymentCards: raidDeploymentCardsFlow,
+            representativeAbilities: representativeAbilitiesFlow,
             save,
             migration,
             event,

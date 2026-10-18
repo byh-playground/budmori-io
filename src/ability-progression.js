@@ -1,4 +1,4 @@
-import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
+import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 import { createFormationSkillState, formationInvestedPoints } from './formation-skill-state.js';
@@ -23,29 +23,20 @@ export function abilityStateFor(state, abilityId) {
 export function getAbilityPowerLevel(state, abilityId) {
     return abilityStateFor(state, abilityId)?.powerLevel || 0;
 }
-export function getAbilityGradeLevel(state, abilityId) {
-    return abilityStateFor(state, abilityId)?.gradeLevel || 0;
-}
 export function getAbilityBranchLevel(state, abilityId, branchId) {
     return abilityStateFor(state, abilityId)?.branchLevels?.[branchId] || 0;
 }
-export function getMinimumApplicableTier(state, abilityId) {
+export function getMinimumApplicableTier(_state, abilityId) {
     const DEFINITION = DEFINITION_BY_ID.get(abilityId);
     if (!DEFINITION) {
         return null;
     }
-    const GRADE_LEVEL = getAbilityGradeLevel(state, abilityId);
-    return DEFINITION.gradeThresholds[Math.min(GRADE_LEVEL, DEFINITION.gradeThresholds.length - 1)];
+    return DEFINITION.minimumTier || 1;
 }
 export function isAbilityActive(state, abilityId, unitTier) {
-    const INVESTMENT = abilityStateFor(state, abilityId);
     const DEFINITION = DEFINITION_BY_ID.get(abilityId),
         MINIMUM_TIER = getMinimumApplicableTier(state, abilityId);
-    return (
-        (!!INVESTMENT?.rootUnlocked || DEFINITION?.defaultUnlocked === true) &&
-        Number.isInteger(unitTier) &&
-        unitTier >= MINIMUM_TIER
-    );
+    return DEFINITION?.availableByDefault === true && Number.isInteger(unitTier) && unitTier >= MINIMUM_TIER;
 }
 export function powerLevelFor(state, abilityId) {
     return getAbilityPowerLevel(state, abilityId);
@@ -85,9 +76,7 @@ export function getInvestedAbilityPointCount(state, speciesId = null) {
         const INVESTMENT = state.abilities[definition.id];
         return (
             total +
-            Number(INVESTMENT.rootUnlocked && !definition.defaultUnlocked) +
             INVESTMENT.powerLevel +
-            INVESTMENT.gradeLevel +
             Object.values(INVESTMENT.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0)
         );
     }, 0);
@@ -115,75 +104,40 @@ export function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
     }
     const INVESTMENT = state.abilities[abilityId];
     const NODE = parseNodeId(nodeId);
-    if (!NODE) {
+    if (!NODE || !['power', 'branch'].includes(NODE.kind)) {
         return {
             allowed: false,
             reason: 'unknown-node',
         };
     }
-    if (NODE.kind === 'root') {
-        if (DEFINITION.defaultUnlocked) {
-            return {
-                allowed: false,
-                reason: 'default-ability',
-            };
-        }
-        if (INVESTMENT.rootUnlocked) {
-            return {
-                allowed: false,
-                reason: 'already-invested',
-            };
-        }
-        const HIGHEST_TIER = context.highestSpeciesTier?.[DEFINITION.species] ?? context.highestSpeciesTier ?? 0;
-        if (!Number.isInteger(HIGHEST_TIER) || HIGHEST_TIER < DEFINITION.rootTier) {
-            return {
-                allowed: false,
-                reason: 'requires-rare-tier',
-            };
-        }
-    } else {
-        if (!INVESTMENT.rootUnlocked && !DEFINITION.defaultUnlocked) {
-            return {
-                allowed: false,
-                reason: 'root-required',
-            };
-        }
-        if (NODE.kind === 'branch' && !DEFINITION.branches?.[NODE.branch]) {
-            return {
-                allowed: false,
-                reason: 'unknown-node',
-            };
-        }
-        const CURRENT_LEVEL =
-                NODE.kind === 'power'
-                    ? INVESTMENT.powerLevel
-                    : NODE.kind === 'grade'
-                      ? INVESTMENT.gradeLevel
-                      : INVESTMENT.branchLevels?.[NODE.branch] || 0,
-            MAX_LEVEL =
-                NODE.kind === 'power'
-                    ? DEFINITION.powerValues.length - 1
-                    : NODE.kind === 'grade'
-                      ? DEFINITION.gradeThresholds.length - 1
-                      : DEFINITION.branches[NODE.branch].values.length - 1;
-        if (NODE.level <= CURRENT_LEVEL) {
-            return {
-                allowed: false,
-                reason: 'already-invested',
-            };
-        }
-        if (NODE.level !== CURRENT_LEVEL + 1) {
-            return {
-                allowed: false,
-                reason: 'prerequisite-required',
-            };
-        }
-        if (NODE.level > MAX_LEVEL) {
-            return {
-                allowed: false,
-                reason: 'max-level',
-            };
-        }
+    if (NODE.kind === 'branch' && !DEFINITION.branches?.[NODE.branch]) {
+        return {
+            allowed: false,
+            reason: 'unknown-node',
+        };
+    }
+    const CURRENT_LEVEL = NODE.kind === 'power' ? INVESTMENT.powerLevel : INVESTMENT.branchLevels?.[NODE.branch] || 0,
+        MAX_LEVEL =
+            NODE.kind === 'power'
+                ? DEFINITION.powerValues.length - 1
+                : DEFINITION.branches[NODE.branch].values.length - 1;
+    if (NODE.level <= CURRENT_LEVEL) {
+        return {
+            allowed: false,
+            reason: 'already-invested',
+        };
+    }
+    if (NODE.level !== CURRENT_LEVEL + 1) {
+        return {
+            allowed: false,
+            reason: 'prerequisite-required',
+        };
+    }
+    if (NODE.level > MAX_LEVEL) {
+        return {
+            allowed: false,
+            reason: 'max-level',
+        };
     }
     if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
         return {
@@ -208,12 +162,8 @@ export function purchaseAbilityNode(state, abilityId, nodeId, context = {}) {
     const NODE = parseNodeId(nodeId);
     const NEXT = cloneState(state);
     NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
-    if (NODE.kind === 'root') {
-        NEXT.abilities[abilityId].rootUnlocked = true;
-    } else if (NODE.kind === 'power') {
+    if (NODE.kind === 'power') {
         NEXT.abilities[abilityId].powerLevel = NODE.level;
-    } else if (NODE.kind === 'grade') {
-        NEXT.abilities[abilityId].gradeLevel = NODE.level;
     } else {
         NEXT.abilities[abilityId].branchLevels[NODE.branch] = NODE.level;
     }
@@ -442,26 +392,8 @@ export function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
             reason: 'unknown-node',
         };
     }
-    const INVESTMENT = state?.abilities?.[definition.id] || {
-        rootUnlocked: false,
-        powerLevel: 0,
-        gradeLevel: 0,
-    };
-    if (NODE.kind === 'root' && (INVESTMENT.rootUnlocked || definition.defaultUnlocked)) {
-        return {
-            purchased: true,
-            ready: false,
-            reason: 'already-invested',
-        };
-    }
+    const INVESTMENT = state?.abilities?.[definition.id] || { powerLevel: 0 };
     if (NODE.kind === 'power' && NODE.level <= INVESTMENT.powerLevel) {
-        return {
-            purchased: true,
-            ready: false,
-            reason: 'already-invested',
-        };
-    }
-    if (NODE.kind === 'grade' && NODE.level <= INVESTMENT.gradeLevel) {
         return {
             purchased: true,
             ready: false,
@@ -483,13 +415,7 @@ export function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
     };
 }
 function parseNodeId(nodeId) {
-    if (nodeId === 'root') {
-        return {
-            kind: 'root',
-            level: 0,
-        };
-    }
-    const MATCH = /^(power|grade|branch-[a-z0-9-]+)-(\d+)$/.exec(String(nodeId || ''));
+    const MATCH = /^(power|branch-[a-z0-9-]+)-(\d+)$/.exec(String(nodeId || ''));
     if (!MATCH) {
         return null;
     }
@@ -544,9 +470,7 @@ function cloneState(state) {
 }
 function emptyAbilityInvestment(definition) {
     return {
-        rootUnlocked: false,
         powerLevel: 0,
-        gradeLevel: 0,
         ...(definition.branches
             ? {
                   branchLevels: Object.fromEntries(Object.keys(definition.branches).map((branchId) => [branchId, 0])),

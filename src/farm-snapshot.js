@@ -1,10 +1,8 @@
 import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
 import { createAbilityProgressionState } from './ability-state.js';
 import { createRaidDeploymentCardsState } from './raid-deployment-cards.js';
-// Internal checkpoint shapes and import defaults for supported 0.4–0.7 saves.
-// Disk writes use farm-progress.js; these runtime values are never exported.
-// These are not live entity defaults. Changing a runtime constructor must not
-// change either the save field set or how an older save fills missing fields.
+// Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
+// runtime values are not exported as user saves.
 export const UNIT_SNAPSHOT_SHAPE = {
     x: 0,
     y: 0,
@@ -28,8 +26,10 @@ export const UNIT_SNAPSHOT_SHAPE = {
     peaRecoveryBoostExpiresAtTick: 0,
     peaRecoveryBoostMultiplier: 0,
     id: 1,
+    generation: 1,
     species: 0,
     tier: 1,
+    permanentStatMultiplier: 1,
     faction: 'player',
     meals: 0,
     growth: 0,
@@ -53,6 +53,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     isBattleOnlySummon: false,
     battleSummonKind: '',
     battleSummonParentId: 0,
+    battleSummonParentGeneration: 0,
     battleSummonEncounterId: 0,
     countsTowardPermanentRoster: true,
     eligibleForRaidDeployment: true,
@@ -63,9 +64,11 @@ export const UNIT_SNAPSHOT_SHAPE = {
     deathSplitHandled: false,
     usesPersistentSleep: true,
     lifetime: '',
-    chestnutBasicCycles: 0,
+    chestnutNextThornTick: 0,
     landingRecovery: 0,
-    walnutEmpoweredNextBasic: false,
+    walnutNextGuardTick: 0,
+    walnutGuardUntilTick: 0,
+    walnutStoredRawDamage: 0,
     wheatCommandUntil: 0,
     wheatCommandCritBonus: 0,
     wheatCommandBuffs: [],
@@ -77,9 +80,10 @@ export const UNIT_SNAPSHOT_SHAPE = {
     isFormationClone: false,
     cloneBornAt: -10,
 };
-const LEGACY_STARTER = (id, x, y) => ({
+const STARTER_UNIT = (id, x, y) => ({
     ...UNIT_SNAPSHOT_SHAPE,
     id,
+    generation: id,
     x,
     y,
     home: {
@@ -117,8 +121,8 @@ export const FARM_SNAPSHOT_SHAPE = {
         state: 3031296687,
     },
     units: [
-        LEGACY_STARTER(1, 1.7868577390909195, -0.7556014072615653),
-        LEGACY_STARTER(2, -1.5288560669869184, -0.5486694728024304),
+        STARTER_UNIT(1, 1.7868577390909195, -0.7556014072615653),
+        STARTER_UNIT(2, -1.5288560669869184, -0.5486694728024304),
     ],
     food: [],
     effects: [],
@@ -146,8 +150,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     playerProgression: {
         formationSkills: createFormationSkillState(),
         raidDeploymentCards: createRaidDeploymentCardsState({ firstSpecies: null }),
-        schemaVersion: 1,
-        baselineAbilityMigrationVersion: 2,
+        schemaVersion: 2,
         availablePoints: 0,
         farmUpgrades: {
             food: 0,
@@ -170,6 +173,12 @@ export const FARM_SNAPSHOT_SHAPE = {
         revision: 0,
     },
     projectiles: [],
+    entityGenerationSerial: 2,
+    cornAttachments: {
+        nextGroupId: 1,
+        nextAttachmentId: 1,
+        groups: [],
+    },
     attackSerial: 0,
     projectileSerial: 0,
     raidSummonSerial: 0,
@@ -203,6 +212,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         y: 0,
         faction: 'enemy',
         z: 0,
+        generation: 3,
         radius: 4.4,
         height: 5.2,
         hp: 2000,
@@ -255,49 +265,6 @@ export const FARM_SNAPSHOT_SHAPE = {
     },
 };
 
-// Only these later-added Unit fields have a constant legacy fallback. Required
-// original fields still fail validation instead of being silently fabricated.
-export const LEGACY_UNIT_DEFAULT_KEYS = Object.freeze([
-    'cloneBornAt',
-    'giantUntil',
-    'giantEndedAt',
-    'isFormationClone',
-    'walnutEmpoweredNextBasic',
-    'wheatCommandUntil',
-    'wheatCommandCritBonus',
-    'wheatCommandBuffs',
-    'barleyArmorBreakUntil',
-    'barleyArmorBreakReduction',
-    'barleyArmorShredBuckets',
-    'isBattleOnlySummon',
-    'battleSummonKind',
-    'battleSummonParentId',
-    'battleSummonEncounterId',
-    'countsTowardPermanentRoster',
-    'eligibleForRaidDeployment',
-    'breedingEligible',
-    'mergeEligible',
-    'canSplit',
-    'splitUsedThisBattle',
-    'deathSplitHandled',
-    'usesPersistentSleep',
-    'lifetime',
-    'chestnutBasicCycles',
-    'landingRecovery',
-    'specialAbility',
-    'kidneyLeapReadyTick',
-    'kidneyLeapLastUseTick',
-    'peaRecoveryPending',
-    'peaRecoveryBoostExpiresAtTick',
-    'peaRecoveryBoostMultiplier',
-    'growthDuration',
-    'mateId',
-    'perceptionRange',
-    'ownerId',
-    'farmId',
-    'dropLanded',
-]);
-
 // A recipe selects internal checkpoint fields even when an entity gains enumerable
 // caches, backreferences, or rendering helpers. Nullable/optional records and
 // arrays have explicit recipes too; no runtime object is JSON-stringified.
@@ -319,23 +286,22 @@ function shapeFields(shape, nested = {}) {
         ]),
     );
 }
-const POINT = FIELDS('x y z id');
+const POINT = FIELDS('x y z id generation');
 const PATH = FIELDS('height duration', {
     from: POINT,
     to: POINT,
 });
-const POPCORN = FIELDS(
-    'species fuseSeconds chainOnPopcornContact triggersOncePerProjectile eachTargetAtMostOncePerProjectile damageMultiplier radiusBaseRangeFraction radiusMultiplier radius',
-);
+const JSON_PAYLOAD = Symbol('json-payload');
 const ATTACK = FIELDS(
-    'id targetId hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians walnutEmpowered walnutGuardUsed leapDepartureCommitted leapCooldownResetApplied',
+    'id targetId targetGeneration hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians leapDepartureCommitted leapCooldownResetApplied thornTargetId thornTargetGeneration thornShotsRemaining thornNextShotTick thornShotIndex',
     {
         target: POINT,
         path: PATH,
         pendingShots: [FIELDS('shotIndex delaySeconds attackMultiplier')],
         projectileAbility: {
-            popcorn: POPCORN,
+            effect: FIELDS('abilityId', { config: JSON_PAYLOAD }),
         },
+        thornConfig: JSON_PAYLOAD,
     },
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -365,7 +331,6 @@ const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
     }),
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
-const JSON_PAYLOAD = Symbol('json-payload');
 const DROP = FIELDS('roll status unitId');
 const REWARD = FIELDS(
     'encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount revealedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
@@ -387,7 +352,7 @@ const SETTLEMENT = FIELDS(
     },
 );
 const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression);
-const RUNTIME_PROGRESSION = FIELDS('schemaVersion baselineAbilityMigrationVersion level availablePoints', {
+const RUNTIME_PROGRESSION = FIELDS('schemaVersion level availablePoints', {
     farmUpgrades: PROGRESSION.farmUpgrades,
     abilities: PROGRESSION.abilities,
     formationSkills: PROGRESSION.formationSkills,
@@ -402,12 +367,21 @@ const ROSTER = FIELDS(
     },
 );
 const PROJECTILE = FIELDS(
-    'isFormationClone id owner targetId faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex isPopcorn landed exploded fuseRemaining explosionLife',
+    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex',
     {
         path: PATH,
-        popcornConfig: POPCORN,
-        damagedTargetIds: [true],
+        attackPayload: JSON_PAYLOAD,
+        cornPayload: JSON_PAYLOAD,
+        abilityEffect: JSON_PAYLOAD,
     },
+);
+const CORN_ATTACHMENT = FIELDS(
+    'id groupId targetId targetGeneration ownerId ownerGeneration damageMultiplier status fadeTicks angle offsetX offsetY',
+    { payload: JSON_PAYLOAD },
+);
+const CORN_GROUP = FIELDS(
+    'id targetId targetGeneration targetX targetY targetZ firstAttachTick closeAtTick nextExplosionTick status',
+    { attachments: [CORN_ATTACHMENT] },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     formationRuntime: JSON_PAYLOAD,
@@ -416,6 +390,7 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     playerProgression: PROGRESSION,
     raidRosters: [ROSTER],
     projectiles: [PROJECTILE],
+    cornAttachments: FIELDS('nextGroupId nextAttachmentId', { groups: [CORN_GROUP] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS('species tier count')],

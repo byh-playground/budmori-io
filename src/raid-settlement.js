@@ -84,7 +84,7 @@ export function raidSettlementKey({ ownerId, sessionId, encounterId } = {}) {
 function isBattleOnlySummon(unit) {
     // Farm normalization intentionally writes empty/zero defaults on permanent
     // units. Only treat non-default marker values as a summon candidate; partial
-    // non-default markers are still rejected by the strict pea-split validator.
+    // non-default markers are still rejected by the strict Peanut split validator.
     return (
         unit?.isBattleOnlySummon === true ||
         (unit?.battleSummonKind !== undefined && unit.battleSummonKind !== '') ||
@@ -143,17 +143,20 @@ function raidOwnerManifest(raidWorld, ownerId) {
             const VALID_SPLIT =
                 hasFaction(UNIT, FACTION_CONFIG.PLAYER) &&
                 UNIT.isBattleOnlySummon === true &&
-                UNIT.battleSummonKind === 'pea-death-split' &&
+                UNIT.battleSummonKind === 'peanut-death-split' &&
                 Number.isSafeInteger(UNIT.battleSummonParentId) &&
                 UNIT.battleSummonParentId > 0 &&
+                Number.isSafeInteger(UNIT.battleSummonParentGeneration) &&
+                UNIT.battleSummonParentGeneration > 0 &&
                 PARENT &&
                 PARENT.ownerId === ownerId &&
                 !isBattleOnlySummon(PARENT) &&
                 PARENT.hp <= 0 &&
                 PARENT_TROOP?.deployed === true &&
                 PARENT.farmId === UNIT.farmId &&
-                PARENT.species === 0 &&
-                UNIT.species === 0 &&
+                PARENT.generation === UNIT.battleSummonParentGeneration &&
+                PARENT.species === 4 &&
+                UNIT.species === 4 &&
                 UNIT.tier === 1 &&
                 UNIT.canSplit === false &&
                 UNIT.countsTowardPermanentRoster === false &&

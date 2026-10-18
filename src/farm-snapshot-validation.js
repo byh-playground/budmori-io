@@ -2,14 +2,14 @@ import { isValidFormationRuntime } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 import { isValidAbilityRuntimeSnapshot } from './ability-state.js';
-import { MAX_BEAN_SPLIT_CHILDREN } from './species-abilities.js';
-import { hasUnitCapability } from './unit-abilities.js';
+import { hasUnitCapability, specialAbilityCompositionFor } from './unit-abilities.js';
 import { raidSettlementKey } from './raid-settlement.js';
 import { mergeMaterialCostForTier } from './unit-grades.js';
 import { BOSS_PATTERN_IDS } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
+import { CORN_ATTACHMENT_FEATURE } from './features/abilities/corn-attachment/definition.js';
 const INTEGER = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
 const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
     INTEGER(id, 1, CONFIG.farm.maxUnitId) ||
@@ -21,6 +21,7 @@ function assertSnapshot(ok) {
     }
 }
 const ASSERT = assertSnapshot;
+const MAX_PEANUT_SPLIT_CHILDREN = 2;
 export { assertSnapshot };
 function finiteTree(v, depth = 0, key = '') {
     ASSERT(depth < 18);
@@ -67,22 +68,36 @@ function finiteTree(v, depth = 0, key = '') {
         ASSERT(v === null || typeof v === 'boolean' || (typeof v === 'string' && v.length < 256));
     }
 }
-function shape(v, t) {
-    ASSERT(v !== null && typeof v === 'object' && !Array.isArray(v));
-    ASSERT(Object.keys(v).length === Object.keys(t).length);
+function shape(v, t, path = 'snapshot') {
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) {
+        throw new TypeError(`Invalid farm snapshot object at ${path}.`);
+    }
+    if (Object.keys(v).length !== Object.keys(t).length) {
+        const EXPECTED = Object.keys(t),
+            RECEIVED = Object.keys(v);
+        throw new TypeError(
+            `Invalid farm snapshot fields at ${path}: expected [${EXPECTED.join(', ')}], received [${RECEIVED.join(', ')}].`,
+        );
+    }
     for (const [K, X] of Object.entries(t)) {
-        ASSERT(Object.hasOwn(v, K));
+        if (!Object.hasOwn(v, K)) {
+            throw new TypeError(`Missing farm snapshot field: ${path}.${K}.`);
+        }
         if (X === null) {
             continue;
         }
         if (Array.isArray(X)) {
-            ASSERT(Array.isArray(v[K]));
+            if (!Array.isArray(v[K])) {
+                throw new TypeError(`Invalid farm snapshot list: ${path}.${K}.`);
+            }
             continue;
         }
         if (typeof X === 'object') {
-            shape(v[K], X);
+            shape(v[K], X, `${path}.${K}`);
         } else {
-            ASSERT(typeof v[K] === typeof X);
+            if (typeof v[K] !== typeof X) {
+                throw new TypeError(`Invalid farm snapshot field: ${path}.${K}.`);
+            }
         }
     }
 }
@@ -706,6 +721,14 @@ export function validateSnapshot(raw) {
                 Number.isFinite(U.landingRecovery) &&
                 U.landingRecovery >= 0 &&
                 U.landingRecovery <= 0.25 + 1e-9 &&
+                INTEGER(U.generation, 1, 1e12) &&
+                Number.isFinite(U.permanentStatMultiplier) &&
+                U.permanentStatMultiplier >= 1 &&
+                U.permanentStatMultiplier <= 2.25 &&
+                INTEGER(U.walnutNextGuardTick, 0, 1e12) &&
+                INTEGER(U.walnutGuardUntilTick, 0, 1e12) &&
+                Number.isFinite(U.walnutStoredRawDamage) &&
+                U.walnutStoredRawDamage >= 0 &&
                 Number.isFinite(U.wheatCommandUntil) &&
                 U.wheatCommandUntil >= 0 &&
                 U.wheatCommandUntil <= 1e12 &&
@@ -739,10 +762,10 @@ export function validateSnapshot(raw) {
                 typeof U.isBattleOnlySummon === 'boolean' &&
                 typeof U.splitUsedThisBattle === 'boolean' &&
                 typeof U.deathSplitHandled === 'boolean' &&
-                typeof U.walnutEmpoweredNextBasic === 'boolean' &&
-                INTEGER(U.chestnutBasicCycles, 0, 1e12),
+                INTEGER(U.battleSummonParentGeneration, 0, 1e12) &&
+                INTEGER(U.chestnutNextThornTick, 0, 1e12),
         );
-        ASSERT((U.species === 2) === (U.specialAbility !== null));
+        ASSERT(!!specialAbilityCompositionFor(U.species) === (U.specialAbility !== null));
         if (U.specialAbility) {
             ASSERT(
                 ['idle', 'windup', 'active', 'recover'].includes(U.specialAbility.phase) &&
@@ -809,13 +832,16 @@ export function validateSnapshot(raw) {
                         INTEGER(U.battleSummonParentId, 1, 1e12),
                 );
                 ASSERT(raw.scene === 'raid' ? raw.running : raw.farmBossEvent.phase === 'fighting');
-            } else if (hasFaction(U, FACTION_CONFIG.PLAYER) && U.battleSummonKind === 'pea-death-split') {
+            } else if (U.battleSummonKind === 'peanut-death-split') {
                 ASSERT(
                     ['farm', 'raid'].includes(raw.scene) &&
                         INTEGER(U.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) &&
+                        INTEGER(U.battleSummonParentGeneration, 1, 1e12) &&
                         U.battleSummonEncounterId === 0 &&
+                        U.species === 4 &&
                         hasUnitCapability(U.species, 'deathSplit') &&
                         U.tier === 1 &&
+                        U.permanentStatMultiplier <= 2.25 &&
                         U.canSplit === false &&
                         U.countsTowardPermanentRoster === false &&
                         U.eligibleForRaidDeployment === false &&
@@ -833,9 +859,11 @@ export function validateSnapshot(raw) {
                         hasFaction(PARENT, FACTION_CONFIG.PLAYER) &&
                         PARENT.isBattleOnlySummon === false &&
                         PARENT.hp <= 0 &&
+                        PARENT.generation === U.battleSummonParentGeneration &&
                         hasUnitCapability(PARENT.species, 'deathSplit') &&
-                        PARENT.species === U.species &&
+                        PARENT.species === 4 &&
                         PARENT.splitUsedThisBattle &&
+                        PARENT.faction === U.faction &&
                         PARENT.ownerId === U.ownerId &&
                         PARENT.farmId === U.farmId,
                 );
@@ -913,6 +941,7 @@ export function validateSnapshot(raw) {
             const A = U.ability.action;
             ASSERT(
                 INTEGER(A.id, 1, raw.attackSerial) &&
+                    INTEGER(A.targetGeneration, 1, 1e12) &&
                     typeof A.hit === 'boolean' &&
                     A.target &&
                     Number.isFinite(A.target.x) &&
@@ -935,8 +964,16 @@ export function validateSnapshot(raw) {
                         (A.hitMask & ~A.resolvedMask) === 0,
                 );
             }
-            if (hasUnitCapability(U.species, 'guard')) {
-                ASSERT(typeof A.walnutEmpowered === 'boolean' && typeof A.walnutGuardUsed === 'boolean');
+            if (U.species === 3 && A.thornShotsRemaining !== undefined) {
+                ASSERT(
+                    INTEGER(A.thornTargetGeneration, 1, 1e12) &&
+                        (A.thornTargetId === 'boss' || VALID_BATTLE_UNIT_ID(A.thornTargetId, raw.bossSummonSerial)) &&
+                        INTEGER(A.thornShotsRemaining, 0, 2) &&
+                        INTEGER(A.thornNextShotTick, 0, 1e12) &&
+                        INTEGER(A.thornShotIndex, 0, 2) &&
+                        A.thornConfig?.projectileCount >= 1 &&
+                        A.thornConfig.projectileCount <= 3,
+                );
             }
             if (A.path) {
                 validatePath(A.path);
@@ -957,9 +994,14 @@ export function validateSnapshot(raw) {
                 );
             }
             if (A.projectileAbility !== undefined) {
-                ASSERT(A.projectileAbility && Object.hasOwn(A.projectileAbility, 'popcorn'));
-                if (A.projectileAbility.popcorn) {
-                    validatePopcornConfig(A.projectileAbility.popcorn);
+                ASSERT(A.projectileAbility && Object.hasOwn(A.projectileAbility, 'effect'));
+                if (A.projectileAbility.effect) {
+                    ASSERT(
+                        A.projectileAbility.effect.abilityId === 'corn-kernel-chain' &&
+                            Number.isFinite(A.projectileAbility.effect.config.damageMultiplier) &&
+                            A.projectileAbility.effect.config.damageMultiplier >= 0.5 &&
+                            A.projectileAbility.effect.config.damageMultiplier <= 1,
+                    );
                 }
             }
         }
@@ -971,10 +1013,20 @@ export function validateSnapshot(raw) {
         }
     }
     for (const [PARENT_ID, CHILDREN] of SUMMONS_BY_PARENT) {
-        ASSERT(CHILDREN.length <= MAX_BEAN_SPLIT_CHILDREN);
+        ASSERT(CHILDREN.length <= MAX_PEANUT_SPLIT_CHILDREN);
         const PARENT = UNITS_BY_ID.get(PARENT_ID);
         ASSERT(PARENT && PARENT.ownerId === CHILDREN[0].ownerId && PARENT.farmId === CHILDREN[0].farmId);
     }
+    const GENERATIONS = new Set();
+    for (const U of raw.units) {
+        ASSERT(!GENERATIONS.has(U.generation));
+        GENERATIONS.add(U.generation);
+    }
+    ASSERT(
+        INTEGER(raw.entityGenerationSerial, 1, 1e12) &&
+            raw.entityGenerationSerial >= raw.boss.generation &&
+            raw.units.every((unit) => unit.generation <= raw.entityGenerationSerial),
+    );
     for (const F of raw.food) {
         ASSERT(['flight', 'bounce', 'grounded'].includes(F.phase));
         for (const K of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'tx', 'ty']) {
@@ -1009,22 +1061,73 @@ export function validateSnapshot(raw) {
                 P.attackMultiplier <= 10 &&
                 INTEGER(P.shotIndex, 0, 4),
         );
-        if (P.isPopcorn) {
+        ASSERT(
+            INTEGER(P.ownerGeneration, 1, 1e12) &&
+                INTEGER(P.targetGeneration, 1, 1e12) &&
+                P.attackPayload &&
+                Number.isFinite(P.attackPayload.attackerStats?.attackPower) &&
+                Number.isFinite(P.attackPayload.damageMultiplier) &&
+                P.attackPayload.damageMultiplier > 0 &&
+                P.attackPayload.damageMultiplier <= 10,
+        );
+        if (P.cornPayload) {
             ASSERT(
-                typeof P.landed === 'boolean' &&
-                    typeof P.exploded === 'boolean' &&
-                    Array.isArray(P.damagedTargetIds) &&
-                    P.damagedTargetIds.length <= CONFIG.raid.capacity.battleUnits + 1 &&
-                    P.damagedTargetIds.every((id) => id === 'boss' || VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial)) &&
-                    new Set(P.damagedTargetIds).size === P.damagedTargetIds.length &&
-                    Number.isFinite(P.fuseRemaining) &&
-                    P.fuseRemaining >= 0 &&
-                    P.fuseRemaining <= 1.01,
+                P.species === 1 &&
+                    Number.isFinite(P.cornPayload.attackerStats?.attackPower) &&
+                    Number.isFinite(P.cornPayload.attackPowerMultiplier) &&
+                    typeof P.cornPayload.ownerId === 'string' &&
+                    Object.values(FACTION_CONFIG).includes(P.cornPayload.faction),
             );
-            validatePopcornConfig(P.popcornConfig);
-            if (P.exploded) {
-                ASSERT(Number.isFinite(P.explosionLife) && P.explosionLife >= 0 && P.explosionLife < 0.5 + 1e-9);
-            }
+        }
+    }
+    const ATTACHMENTS = new Set(),
+        CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
+    ASSERT(
+        INTEGER(raw.cornAttachments.nextGroupId, 1, 1e12) &&
+            INTEGER(raw.cornAttachments.nextAttachmentId, 1, 1e12) &&
+            Array.isArray(raw.cornAttachments.groups) &&
+            raw.cornAttachments.groups.length <= CONFIG.raid.capacity.projectiles,
+    );
+    for (const GROUP of raw.cornAttachments.groups) {
+        ASSERT(
+            INTEGER(GROUP.id, 1, raw.cornAttachments.nextGroupId - 1) &&
+                INTEGER(GROUP.targetGeneration, 1, 1e12) &&
+                (GROUP.targetId === 'boss' || VALID_BATTLE_UNIT_ID(GROUP.targetId, raw.bossSummonSerial)) &&
+                ['collecting', 'exploding', 'complete', 'cancelled'].includes(GROUP.status) &&
+                Number.isFinite(GROUP.targetX) &&
+                Number.isFinite(GROUP.targetY) &&
+                Number.isFinite(GROUP.targetZ) &&
+                INTEGER(GROUP.firstAttachTick, 0, raw.simulationTick) &&
+                GROUP.closeAtTick === GROUP.firstAttachTick + CORN_DEFINITION.attachDelayTicks &&
+                (GROUP.nextExplosionTick === null || INTEGER(GROUP.nextExplosionTick, 0, 1e12)) &&
+                Array.isArray(GROUP.attachments) &&
+                GROUP.attachments.length > 0 &&
+                GROUP.attachments.length <= CONFIG.raid.capacity.projectiles,
+        );
+        for (const ATTACHMENT of GROUP.attachments) {
+            ASSERT(
+                INTEGER(ATTACHMENT.id, 1, raw.cornAttachments.nextAttachmentId - 1) &&
+                    !ATTACHMENTS.has(ATTACHMENT.id) &&
+                    ATTACHMENT.groupId === GROUP.id &&
+                    ATTACHMENT.targetId === GROUP.targetId &&
+                    ATTACHMENT.targetGeneration === GROUP.targetGeneration &&
+                    INTEGER(ATTACHMENT.ownerId, 1, 1e12) &&
+                    INTEGER(ATTACHMENT.ownerGeneration, 1, 1e12) &&
+                    Number.isFinite(ATTACHMENT.damageMultiplier) &&
+                    ATTACHMENT.damageMultiplier >= 0.5 &&
+                    ATTACHMENT.damageMultiplier <= 1 &&
+                    ['attached', 'fading', 'removed'].includes(ATTACHMENT.status) &&
+                    INTEGER(ATTACHMENT.fadeTicks, 0, CORN_DEFINITION.fadeTicks) &&
+                    Number.isFinite(ATTACHMENT.angle) &&
+                    Number.isFinite(ATTACHMENT.offsetX) &&
+                    Number.isFinite(ATTACHMENT.offsetY) &&
+                    ATTACHMENT.payload &&
+                    Number.isFinite(ATTACHMENT.payload.attackerStats?.attackPower) &&
+                    Number.isFinite(ATTACHMENT.payload.attackPowerMultiplier) &&
+                    typeof ATTACHMENT.payload.ownerId === 'string' &&
+                    Object.values(FACTION_CONFIG).includes(ATTACHMENT.payload.faction),
+            );
+            ATTACHMENTS.add(ATTACHMENT.id);
         }
     }
     ASSERT(
@@ -1034,6 +1137,7 @@ export function validateSnapshot(raw) {
     );
     ASSERT(
         hasFaction(raw.boss, FACTION_CONFIG.ENEMY) &&
+            INTEGER(raw.boss.generation, 1, 1e12) &&
             raw.boss.hp >= 0 &&
             raw.boss.hp <= raw.boss.maxHp &&
             INTEGER(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) &&
@@ -1120,24 +1224,4 @@ function validatePath(p) {
         ASSERT(Number.isFinite(p.from[K]) && Number.isFinite(p.to[K]));
     }
     ASSERT(Number.isFinite(p.from.z));
-}
-function validatePopcornConfig(c) {
-    ASSERT(
-        c &&
-            c.species === 1 &&
-            c.fuseSeconds === 1 &&
-            c.chainOnPopcornContact === true &&
-            c.triggersOncePerProjectile === true &&
-            c.eachTargetAtMostOncePerProjectile === true &&
-            Number.isFinite(c.damageMultiplier) &&
-            c.damageMultiplier >= 0.5 &&
-            c.damageMultiplier <= 1.5 &&
-            c.radiusBaseRangeFraction === 0.25 &&
-            Number.isFinite(c.radiusMultiplier) &&
-            c.radiusMultiplier >= 1 &&
-            c.radiusMultiplier <= 2 &&
-            Number.isFinite(c.radius) &&
-            c.radius > 0 &&
-            c.radius <= 10,
-    );
 }

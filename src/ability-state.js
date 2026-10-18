@@ -3,31 +3,27 @@ import {
     formationInvestedPoints,
     isValidFormationSkillState,
 } from './formation-skill-state.js';
-import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
+import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 import { createFarmUpgradeState, getFarmUpgradeInvestedCount, isValidFarmUpgradeState } from './farm-upgrades.js';
 import {
     createRaidDeploymentCardsState,
     isValidRaidDeploymentCardsState,
     raidDeploymentCardsInvestedPoints,
 } from './raid-deployment-cards.js';
-export const ABILITY_TREE_SCHEMA_VERSION = 1;
-export const BASELINE_ABILITY_MIGRATION_VERSION = 2;
+export const ABILITY_TREE_SCHEMA_VERSION = 2;
 export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     if (!isNonNegativeInteger(availablePoints)) {
         throw new TypeError('availablePoints must be a non-negative integer');
     }
     return {
         schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-        baselineAbilityMigrationVersion: BASELINE_ABILITY_MIGRATION_VERSION,
         availablePoints,
         farmUpgrades: createFarmUpgradeState(),
         abilities: Object.fromEntries(
             SPECIES_ABILITY_DEFINITIONS.map((definition) => [
                 definition.id,
                 {
-                    rootUnlocked: false,
                     powerLevel: 0,
-                    gradeLevel: 0,
                     ...(definition.branches
                         ? {
                               branchLevels: Object.fromEntries(
@@ -41,12 +37,7 @@ export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     };
 }
 export function isValidAbilityProgressionState(state) {
-    if (
-        !state ||
-        typeof state !== 'object' ||
-        state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION ||
-        state.baselineAbilityMigrationVersion !== BASELINE_ABILITY_MIGRATION_VERSION
-    ) {
+    if (!state || typeof state !== 'object' || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
         return false;
     }
     if (
@@ -62,16 +53,10 @@ export function isValidAbilityProgressionState(state) {
     }
     for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
         const INVESTMENT = state.abilities[DEFINITION.id];
-        if (!INVESTMENT || typeof INVESTMENT.rootUnlocked !== 'boolean') {
+        if (!INVESTMENT || !isNonNegativeInteger(INVESTMENT.powerLevel)) {
             return false;
         }
-        if (!isNonNegativeInteger(INVESTMENT.powerLevel) || INVESTMENT.powerLevel > DEFINITION.powerValues.length - 1) {
-            return false;
-        }
-        if (
-            !isNonNegativeInteger(INVESTMENT.gradeLevel) ||
-            INVESTMENT.gradeLevel > DEFINITION.gradeThresholds.length - 1
-        ) {
+        if (INVESTMENT.powerLevel > DEFINITION.powerValues.length - 1) {
             return false;
         }
         const BRANCHES = DEFINITION.branches || {},
@@ -90,16 +75,6 @@ export function isValidAbilityProgressionState(state) {
                 return false;
             }
         }
-        if (
-            (DEFINITION.defaultUnlocked && INVESTMENT.rootUnlocked) ||
-            (!DEFINITION.defaultUnlocked &&
-                !INVESTMENT.rootUnlocked &&
-                (INVESTMENT.powerLevel !== 0 ||
-                    INVESTMENT.gradeLevel !== 0 ||
-                    Object.values(BRANCH_LEVELS).some((level) => level !== 0)))
-        ) {
-            return false;
-        }
     }
     return Object.keys(state.abilities).every((abilityId) =>
         SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId),
@@ -114,7 +89,6 @@ export function createAbilityRuntimeSnapshot(state) {
     }
     return {
         schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-        baselineAbilityMigrationVersion: BASELINE_ABILITY_MIGRATION_VERSION,
         level: state.level,
         formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
         raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
@@ -147,7 +121,6 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
         !snapshot ||
         typeof snapshot !== 'object' ||
         snapshot.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION ||
-        snapshot.baselineAbilityMigrationVersion !== BASELINE_ABILITY_MIGRATION_VERSION ||
         !Number.isSafeInteger(snapshot.level) ||
         snapshot.level < 1
     ) {
@@ -155,7 +128,6 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
     }
     const STATE = {
         schemaVersion: snapshot.schemaVersion,
-        baselineAbilityMigrationVersion: snapshot.baselineAbilityMigrationVersion,
         formationSkills: snapshot.formationSkills,
         raidDeploymentCards: snapshot.raidDeploymentCards || createRaidDeploymentCardsState(),
         level: snapshot.level,
@@ -193,7 +165,6 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
 function isValidPlayerLikeAbilityState(state) {
     const ABILITY_STATE = {
         schemaVersion: state?.schemaVersion,
-        baselineAbilityMigrationVersion: state?.baselineAbilityMigrationVersion,
         availablePoints: state?.availablePoints,
         farmUpgrades: state?.farmUpgrades,
         abilities: state?.abilities,
@@ -227,43 +198,8 @@ function isValidPlayerLikeAbilityState(state) {
 function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
 }
-function investedAbilityPoints(investment, definition) {
+function investedAbilityPoints(investment) {
     return (
-        Number(investment.rootUnlocked && !definition?.defaultUnlocked) +
-        investment.powerLevel +
-        investment.gradeLevel +
-        Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0)
+        investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0)
     );
-}
-
-// Older saves paid for default ability roots and grade reductions. Return
-// only those recorded investments, preserve power/range upgrades, and stamp
-// the state so loading or normalizing it again cannot refund twice.
-export function migrateBaselineAbilityInvestments(state) {
-    if (
-        !state ||
-        typeof state !== 'object' ||
-        state.baselineAbilityMigrationVersion === BASELINE_ABILITY_MIGRATION_VERSION
-    ) {
-        return 0;
-    }
-    let refund = 0;
-    for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
-        if (!DEFINITION.defaultUnlocked) {
-            continue;
-        }
-        const BUILD = state.abilities?.[DEFINITION.id];
-        if (!BUILD) {
-            continue;
-        }
-        refund += Number(BUILD.rootUnlocked === true);
-        refund += Number.isSafeInteger(BUILD.gradeLevel) && BUILD.gradeLevel > 0 ? BUILD.gradeLevel : 0;
-        BUILD.rootUnlocked = false;
-        BUILD.gradeLevel = 0;
-    }
-    const POINTS =
-        Number.isSafeInteger(state.availablePoints) && state.availablePoints >= 0 ? state.availablePoints : 0;
-    state.availablePoints = POINTS + refund;
-    state.baselineAbilityMigrationVersion = BASELINE_ABILITY_MIGRATION_VERSION;
-    return refund;
 }

@@ -1,6 +1,7 @@
 import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
 import { KIDNEY_CONTINUOUS_LEAP_FEATURE } from './features/abilities/kidney-continuous-leap.js';
+import { CHESTNUT_THORNS_FEATURE } from './features/abilities/chestnut-thorns/definition.js';
 // Species-specific attack behavior stays separate from common unit stats.
 // This ID-keyed object is the single profile lookup for all catalogued species.
 const ATTACK_DEFAULTS = Object.freeze({
@@ -83,18 +84,19 @@ const COMPOSITION = (attack, traits = [], options = {}) =>
         ...options,
     });
 export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
-    0: COMPOSITION('contact', ['deathSplit', 'recoveryHaste'], {
+    0: COMPOSITION('contact', ['recoveryHaste'], {
         contactRecoil: true,
     }),
-    1: COMPOSITION(LOB_FEATURE.modelKey, ['burstFire', 'popcorn'], {
+    1: COMPOSITION(LOB_FEATURE.modelKey, ['cornAttachment'], {
         retreatWithinRange: true,
         aimAtCenter: true,
     }),
     2: COMPOSITION('contact', [], { specialAbility: 'kidneyLeap' }),
-    3: COMPOSITION('contact', ['launchFan'], {
+    3: COMPOSITION('contact', [], {
         contactRecoil: true,
+        specialAbility: 'chestnutThorns',
     }),
-    4: COMPOSITION(DUAL_STRIKE_FEATURE.modelKey, ['assault'], {
+    4: COMPOSITION(DUAL_STRIKE_FEATURE.modelKey, ['deathSplit'], {
         useActiveDuration: true,
         outerRangeSlack: 0,
     }),
@@ -112,15 +114,32 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
     }),
 });
 export const UNIT_SPECIAL_ABILITY_COMPOSITIONS = Object.freeze({
+    chestnutThorns: Object.freeze({
+        definition: CHESTNUT_THORNS_FEATURE.definition,
+        profile: CHESTNUT_THORNS_FEATURE.definition.attackProfile,
+        cooldownTicks: CHESTNUT_THORNS_FEATURE.definition.cooldownTicks,
+        attack: 'contact',
+        traits: Object.freeze(['chestnutThorns']),
+        composition: Object.freeze({
+            attack: 'contact',
+            traits: Object.freeze(['chestnutThorns']),
+            contactRecoil: false,
+            useActiveDuration: false,
+            retreatWithinRange: false,
+            aimAtCenter: false,
+            outerRangeSlack: 0.55,
+            specialAbility: null,
+        }),
+    }),
     kidneyLeap: Object.freeze({
         definition: KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
         profile: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.specialAttackProfile,
         cooldownTicks: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.cooldownTicks,
         attack: 'contact',
-        traits: Object.freeze(['landing', 'landingShockwave', 'leapReset', 'kidneyLeap']),
+        traits: Object.freeze(['landing', 'leapReset', 'kidneyLeap']),
         composition: Object.freeze({
             attack: 'contact',
-            traits: Object.freeze(['landing', 'landingShockwave', 'leapReset', 'kidneyLeap']),
+            traits: Object.freeze(['landing', 'leapReset', 'kidneyLeap']),
             contactRecoil: false,
             useActiveDuration: false,
             retreatWithinRange: false,

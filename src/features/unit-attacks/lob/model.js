@@ -15,13 +15,13 @@ export function createLobAttackMixin(pathMotion) {
                 super.launchAttack?.(sim);
                 const U = this.owner,
                     A = this.action,
-                    POPCORN_LOCAL = this.projectileEffect?.(sim) || null,
+                    PROJECTILE_EFFECT = this.projectileEffect?.(sim) || null,
                     SHOTS = this.projectileShots(sim);
                 A.pendingShots = SHOTS.slice(1);
                 A.projectileAbility = {
-                    popcorn: POPCORN_LOCAL,
+                    effect: PROJECTILE_EFFECT,
                 };
-                sim.spawnLobProjectile(U, A, SHOTS[0], POPCORN_LOCAL);
+                sim.spawnLobProjectile(U, A, SHOTS[0], PROJECTILE_EFFECT);
                 this.recover(sim, true);
             }
             updateRecovery(sim) {
@@ -33,7 +33,7 @@ export function createLobAttackMixin(pathMotion) {
                         this.owner,
                         this.action,
                         SHOT,
-                        this.action.projectileAbility?.popcorn || null,
+                        this.action.projectileAbility?.effect || null,
                     );
                 }
             }

@@ -21,7 +21,12 @@ export class BallisticProjectile {
         );
         const CANDIDATE =
             projectile.targetId && projectile.targetId !== 'boss' ? world._unitForId(projectile.targetId) : world.boss;
-        const TARGET = CANDIDATE === world.boss || CANDIDATE?.hp > 0 ? CANDIDATE : null;
+        const TARGET =
+            CANDIDATE &&
+            CANDIDATE.generation === projectile.targetGeneration &&
+            (CANDIDATE === world.boss || CANDIDATE.hp > 0)
+                ? CANDIDATE
+                : null;
         const HIT = TARGET ? ARENA_GEOMETRY.sweep(OLD, projectile, projectile.radius, projectile.height, TARGET) : null;
         this.impact(world, projectile, TARGET, HIT);
     }

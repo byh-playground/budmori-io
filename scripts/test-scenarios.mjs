@@ -8,7 +8,7 @@ const SUITES = {
     upgrades: ['upgrades'],
     raidDeploymentCards: ['raidDeploymentCards'],
     grain: ['grain'],
-    integration: ['grain', 'bossRewards'],
+    integration: ['representativeAbilities', 'bossRewards'],
     reset: ['reset'],
     formation: ['formation'],
     save: ['save'],

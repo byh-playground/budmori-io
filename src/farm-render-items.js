@@ -1,7 +1,6 @@
 import { SeedProjectilePresentation } from './features/projectiles/seed/presentation.js';
 import { SpikeProjectilePresentation } from './features/projectiles/spike/presentation.js';
-import { PopcornProjectilePresentation } from './features/projectiles/popcorn/presentation.js';
-import { projectileFeature, projectileFlightFeature } from './features/projectiles/definition.js';
+import { projectileFeature } from './features/projectiles/definition.js';
 import { Ballistics } from './farm-model.js';
 
 export class FoodPresentation {
@@ -31,15 +30,11 @@ export class FoodPresentation {
     }
 }
 
-const SEED_PRESENTATION = new SeedProjectilePresentation();
-const SPIKE_PRESENTATION = new SpikeProjectilePresentation();
-function flightPresentation(projectile) {
-    return PROJECTILE_PRESENTATIONS.get(projectileFlightFeature(projectile).id);
-}
 const PROJECTILE_PRESENTATIONS = new Map(
-    [SEED_PRESENTATION, SPIKE_PRESENTATION, new PopcornProjectilePresentation(flightPresentation)].map(
-        (presentation) => [presentation.id, presentation],
-    ),
+    [new SeedProjectilePresentation(), new SpikeProjectilePresentation()].map((presentation) => [
+        presentation.id,
+        presentation,
+    ]),
 );
 
 export class ProjectilePresentation {

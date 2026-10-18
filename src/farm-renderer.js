@@ -2,7 +2,8 @@ import { drawFormationEffects } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
-import { drawEffect } from './farm-render-effects.js';
+import { CornAttachmentPresentation } from './features/abilities/corn-attachment/presentation.js';
+import { disposeEffectPresentations, drawEffect } from './farm-render-effects.js';
 import {
     drawMergeBlackHoleBack,
     drawMergeBlackHoleFront,
@@ -58,6 +59,7 @@ function renderedBossAttackArea(boss, scene, scratch, area) {
 // render.js
 const COMPARE_ACTORS = (a, b) => b.depth - a.depth || a.id - b.id;
 const EMPTY_UNIT_IDS = new Set();
+const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
 const DIORAMA = class Diorama {
     constructor(canvas) {
         this.canvas = canvas;
@@ -525,6 +527,13 @@ const DIORAMA = class Diorama {
             }
         }
         feel?.draw(this, this.displayTimeMs);
+        for (const GROUP of sim2.cornAttachments?.groups || []) {
+            for (const ATTACHMENT of GROUP.attachments) {
+                if (ATTACHMENT.status === 'attached' || ATTACHMENT.status === 'fading') {
+                    CORN_ATTACHMENT_PRESENTATION.drawAttachment(this, ATTACHMENT, GROUP);
+                }
+            }
+        }
         for (const E of sim2.effects) {
             if (E.kind !== 'merge-material') {
                 drawEffect(this, E);
@@ -534,6 +543,7 @@ const DIORAMA = class Diorama {
         this.stats = C.endFrame();
     }
     dispose() {
+        disposeEffectPresentations(this);
         for (const SPECIES of this.vectorAssets.keys()) {
             unbindBossSocketAsset(SPECIES, this.bossSpeciesAssets.get(SPECIES));
         }

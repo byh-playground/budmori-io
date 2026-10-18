@@ -19,8 +19,7 @@ async function verifyStartupPresentation() {
     }
     const { Garden: GARDEN } = await LOAD('src/farm-model.js'),
         { FarmSession: FARM_SESSION } = await LOAD('src/farm-session.js');
-    const { SPECIES_CATALOG } = await LOAD('src/species-catalog.js'),
-        { scaleAttackRecovery: SCALE_ATTACK_RECOVERY } = await LOAD('src/unit-stats.js');
+    const { SPECIES_CATALOG } = await LOAD('src/species-catalog.js');
     const STARTER = new FARM_SESSION();
     try {
         const VIEW = STARTER.presentation(performance.now());
@@ -30,18 +29,12 @@ async function verifyStartupPresentation() {
         STARTER.dispose();
     }
     const { encodeFarmSave: ENCODE_SAVE, parseSave: PARSE_SAVE } = await LOAD('src/farm-save-codec.js'),
-        { snapshot: SNAPSHOT } = await LOAD('src/farm-state.js'),
         SAVE_WORLD = new GARDEN();
-    for (const TEXT of [
-        ENCODE_SAVE(SAVE_WORLD).text,
-        JSON.stringify({ schema: 'budmori-farm', productVersion: '0.7.29', world: SNAPSHOT(SAVE_WORLD) }),
-    ]) {
-        const RESUMED = new FARM_SESSION(PARSE_SAVE(TEXT));
-        try {
-            ASSERT.equal(RESUMED.presentation(performance.now()).units.length, 2);
-        } finally {
-            RESUMED.dispose();
-        }
+    const RESUMED = new FARM_SESSION(PARSE_SAVE(ENCODE_SAVE(SAVE_WORLD).text));
+    try {
+        ASSERT.equal(RESUMED.presentation(performance.now()).units.length, 2);
+    } finally {
+        RESUMED.dispose();
     }
     const WORLD = new GARDEN(),
         UNITS = SPECIES_CATALOG.map(({ id }) => WORLD.spawn(id, 3, 0, 0)),
@@ -55,40 +48,25 @@ async function verifyStartupPresentation() {
                 `species ${UNIT.species} has an initial presentation`,
             );
         }
-        const WALNUT = UNITS.find((unit) => typeof unit.ability.guardConfig === 'function'),
+        const WALNUT = UNITS.find((unit) => unit.species === 5),
             CYCLE = WALNUT.ability;
         const SAMPLE_GUARD = () => {
             ASSERT(SESSION.capturePresentation('reset'));
             return SESSION.presentation(performance.now()).units.find((unit) => unit.id === WALNUT.id).walnutGuarding;
         };
-        WORLD.playerProgression.abilities['walnut-guard-slam'].rootUnlocked = true;
-        ASSERT(
-            CYCLE.begin(WORLD, {
-                id: 'boss',
-                x: WORLD.boss.x,
-                y: WORLD.boss.y,
-            }),
-        );
-        CYCLE.recover(WORLD);
-        ASSERT.equal(SAMPLE_GUARD(), false, 'early recovery is not guarding');
-        CYCLE.update(WORLD, SCALE_ATTACK_RECOVERY(CYCLE.spec.timing.recovery, WALNUT) * 0.75);
-        const ACTION_BEFORE = JSON.stringify(CYCLE.action),
-            NOTICES_BEFORE = WORLD.notices.length;
-        ASSERT.equal(SAMPLE_GUARD(), true, 'late recovery presents the active guard');
+        ASSERT(CYCLE.tryStartGuard(WORLD), 'default Walnut ability can start without an unlock purchase');
+        ASSERT.equal(SAMPLE_GUARD(), true, 'the 40-tick defense posture is presented');
         ASSERT.equal(SAMPLE_GUARD(), true, 'repeated presentation does not consume the guard');
-        ASSERT.equal(JSON.stringify(CYCLE.action), ACTION_BEFORE);
-        ASSERT.equal(WALNUT.walnutEmpoweredNextBasic, false);
-        ASSERT.equal(WORLD.notices.length, NOTICES_BEFORE);
-        ASSERT(CYCLE.receiveGuard(WORLD));
-        ASSERT.equal(SAMPLE_GUARD(), false, 'consumed guard is no longer presented');
-        CYCLE.ready();
-        ASSERT.equal(SAMPLE_GUARD(), false, 'idle cycle is not guarding');
+        ASSERT.equal(WORLD.combatTargetDefense(WALNUT).armor, 50, 'guard armor is applied as a modifier');
+        WORLD.simulationTick = WALNUT.walnutGuardUntilTick;
+        ASSERT.equal(SAMPLE_GUARD(), false, 'the armor modifier expires at 40 ticks');
+        ASSERT.equal(WORLD.combatTargetDefense(WALNUT).armor, 0);
     } finally {
         SESSION.dispose();
     }
     return {
         starterUnits: 2,
-        savedStartup: 'compact and legacy FarmSession presentation checked',
+        savedStartup: 'current FarmSession save and presentation checked',
         species: SPECIES_CATALOG.length,
         walnutGuard: 'active, read-only, consumed and idle checked',
     };

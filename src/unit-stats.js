@@ -76,8 +76,12 @@ export function baseUnitStatsFor(tier, species) {
 
 // Preserve the public mutable-result contract; callers never receive the cache.
 export function resolveUnitStats(unit, overrides) {
+    const BASE = baseUnitStatsFor(unit?.tier, unit?.species),
+        MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
     return {
-        ...baseUnitStatsFor(unit?.tier, unit?.species),
+        ...BASE,
+        maxHp: BASE.maxHp * MULTIPLIER,
+        attackPower: BASE.attackPower * MULTIPLIER,
         ...(unit?.isFormationClone ? { maxHp: 1 } : {}),
         ...overrides,
     };

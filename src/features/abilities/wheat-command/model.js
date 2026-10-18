@@ -1,10 +1,9 @@
 import { getAbilityEffects } from '../../../ability-progression.js';
 import { abilityProfile } from '../../../unit-abilities.js';
+import { WHEAT_COMMAND_CRIT_FEATURE } from '../wheat-command-crit.js';
 
-const ABILITY_ID = 'wheat-command-crit';
-const BUFF_DURATION_TICKS = 60;
-const TRIGGER_CHANCE = 0.35;
-const ATTACK_SPEED_BONUSES = Object.freeze([0.5, 0.75, 1.125]);
+const DEFINITION = WHEAT_COMMAND_CRIT_FEATURE.definition;
+const ABILITY_ID = DEFINITION.id;
 
 export class WheatCommandModel {
     static config(progression, tier) {
@@ -13,7 +12,7 @@ export class WheatCommandModel {
             return null;
         }
         const RANGE_LEVEL = EFFECT.branchLevels.range || 0,
-            RANGE_MULTIPLIER = [2, 3, 4.5][RANGE_LEVEL];
+            RANGE_MULTIPLIER = DEFINITION.branches.range.values[RANGE_LEVEL];
         return {
             level: EFFECT.powerLevel,
             speedValue: EFFECT.value,
@@ -34,7 +33,7 @@ export class WheatCommandModel {
             return false;
         }
         action.wheatCommandResolved = true;
-        if (sim.random() >= TRIGGER_CHANCE) {
+        if (sim.random() >= DEFINITION.triggerChance) {
             return false;
         }
         const RADIUS_SQUARED = config.radius * config.radius,
@@ -77,7 +76,7 @@ export class WheatCommandModel {
             : [];
         unit.wheatCommandBuffs = BUFFS;
         const EXISTING = BUFFS.find((buff) => buff.level === level),
-            EXPIRES_AT_TICK = tick + BUFF_DURATION_TICKS;
+            EXPIRES_AT_TICK = tick + DEFINITION.durationTicks;
         if (EXISTING) {
             EXISTING.expiresAtTick = Math.max(EXISTING.expiresAtTick, EXPIRES_AT_TICK);
         } else {
@@ -99,6 +98,6 @@ export class WheatCommandModel {
     }
     static attackSpeedMultiplier(unit, tick) {
         const ACTIVE = this.activeBuff(unit, tick);
-        return ACTIVE ? 1 + ATTACK_SPEED_BONUSES[ACTIVE.level] : 1;
+        return ACTIVE ? 1 + DEFINITION.powerValues[ACTIVE.level] : 1;
     }
 }

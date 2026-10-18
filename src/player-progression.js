@@ -1,5 +1,4 @@
 import { createAbilityProgressionState, isValidAbilityProgressionState } from './ability-state.js';
-import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import {
     createFormationSkillState,
     isValidFormationSkillState,
@@ -140,14 +139,9 @@ export function isValidPlayerProgressionState(state) {
         return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-        (total, [abilityId, investment]) =>
+        (total, [, investment]) =>
             total +
-            Number(
-                investment.rootUnlocked &&
-                    !SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.id === abilityId)?.defaultUnlocked,
-            ) +
             investment.powerLevel +
-            investment.gradeLevel +
             Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
         0,
     );

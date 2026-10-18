@@ -1,4 +1,3 @@
-import { unitGradeLabel } from './unit-grades.js';
 import { SPECIES_ABILITY_DEFINITIONS, abilityPresentationFor } from './ability-catalog.js';
 import { SPECIES_CATALOG, speciesById } from './species-catalog.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
@@ -10,7 +9,6 @@ import {
     canResetAbilityProgression,
     getAbilityNodeStatus,
     getInvestedAbilityPointCount,
-    getMinimumApplicableTier,
     purchaseAbilityNode,
     resetAbilityProgression,
 } from './ability-progression.js';
@@ -25,7 +23,6 @@ const DEFAULT_ABILITY_PRESENTATION = {
 };
 const INVESTMENT_REASON_LABELS = new Map([
     ['already-invested', '이미 투자한 노드입니다.'],
-    ['root-required', '먼저 능력 루트를 해금하세요.'],
     ['prerequisite-required', '이전 단계에 먼저 투자하세요.'],
     ['insufficient-points', '공용 포인트가 필요합니다.'],
     ['combat-lock', '전투 중에는 투자할 수 없습니다.'],
@@ -33,10 +30,7 @@ const INVESTMENT_REASON_LABELS = new Map([
     ['max-level', '최대 강화 단계입니다.'],
     ['invalid-state', '성장 데이터가 유효하지 않습니다.'],
 ]);
-const NODE_REASON_LABELS = new Map([
-    ...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text]),
-    ['requires-rare-tier', (definition) => `이 종의 ${unitGradeLabel(definition.rootTier)} 이상 개체가 필요합니다.`],
-]);
+const NODE_REASON_LABELS = new Map([...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text])]);
 const RESET_REASON_LABELS = new Map([
     ['nothing-invested', '투자한 포인트가 없습니다.'],
     ['combat-lock', '전투 중에는 초기화할 수 없습니다.'],
@@ -95,24 +89,8 @@ export function renderAbilityTreeMarkup(
         VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join('') ||
         `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
     const LEVEL_MARKUP = renderPlayerProgressMarkup(state),
-        DEFAULT_SPECIES = [
-            ...new Set(
-                SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.defaultUnlocked).map(
-                    (definition) => definition.species,
-                ),
-            ),
-        ].map((speciesId) => speciesById(speciesId).name),
-        LOCKED_THRESHOLDS = [
-            ...new Set(
-                SPECIES_ABILITY_DEFINITIONS.filter((definition) => !definition.defaultUnlocked).map(
-                    (definition) => definition.rootTier,
-                ),
-            ),
-        ]
-            .sort((a, b) => a - b)
-            .map((tier) => `${unitGradeLabel(tier)}(T${tier})`)
-            .join(', '),
-        DEFAULTS_NOTE = `${DEFAULT_SPECIES.join('·')} \uBCD1\uC885\uC758 \uAE30\uBCF8 \uB2A5\uB825\uC740 Common(T1)\uBD80\uD130 \uBB34\uB8CC\uB85C \uC801\uC6A9\uB429\uB2C8\uB2E4. \uADF8 \uBC16\uC758 \uB2A5\uB825\uC740 \uC815\uC758\uB41C \uC885\uBCC4 ${LOCKED_THRESHOLDS}\uBD80\uD130 \uD574\uAE08\uB418\uBA70, \uD6A8\uACFC \uAC15\uD654\uC5D0\uB294 \uACF5\uC6A9 \uD3EC\uC778\uD2B8\uB97C \uC0AC\uC6A9\uD569\uB2C8\uB2E4.`;
+        DEFAULTS_NOTE =
+            '\uBAA8\uB4E0 \uC77C\uBC18 \uBCD1\uC885\uC758 \uB300\uD45C \uB2A5\uB825\uC740 Common(T1)\uBD80\uD130 \uBB34\uB8CC\uB85C \uC801\uC6A9\uB429\uB2C8\uB2E4. \uACF5\uC6A9 \uD3EC\uC778\uD2B8\uB85C \uB2A5\uB825 \uD6A8\uACFC\uB97C \uAC15\uD654\uD560 \uC218 \uC788\uC5B4\uC694.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
@@ -201,14 +179,6 @@ function renderAbilityCard(state, definition, context) {
             return renderNode(state, definition, `power-${LEVEL}`, powerTitle(definition, value), LABEL, context);
         })
         .join('');
-    const GRADE_NODES = definition.gradeThresholds
-        .slice(1)
-        .map((tier, index) => {
-            const LEVEL = index + 1;
-            const GRADE = unitGradeLabel(tier);
-            return renderNode(state, definition, `grade-${LEVEL}`, `${GRADE}까지`, `최소 적용 등급 ${GRADE}`, context);
-        })
-        .join('');
     const BRANCH_SECTIONS = Object.entries(definition.branches || {})
         .map(([branchId, branch]) => {
             const NODES = branch.values
@@ -245,35 +215,16 @@ function renderAbilityCard(state, definition, context) {
             branchLabel(definition, branchId, branch.values[0], 0),
         ),
     ].join(' · ');
-    const MINIMUM_TIER = getMinimumApplicableTier(state, definition.id),
-        DEFAULT_UNLOCKED = definition.defaultUnlocked === true,
-        ROOT_STATUS = getAbilityNodeStatus(state, definition, 'root', context),
-        SPECIES_NAME = speciesById(definition.species).name,
-        GRADE_LABEL = DEFAULT_UNLOCKED
-            ? '\uACF5\uD1B5 \uAE30\uBCF8 \uB2A5\uB825'
-            : INVESTMENT.rootUnlocked
-              ? `\uCD5C\uC18C ${unitGradeLabel(MINIMUM_TIER)}`
-              : `${unitGradeLabel(definition.rootTier)} \uD574\uAE08`,
-        CURRENT_LABEL = DEFAULT_UNLOCKED
-            ? '\uAE30\uBCF8 \uB2A5\uB825'
-            : INVESTMENT.rootUnlocked
-              ? '\uD604\uC7AC \uD6A8\uACFC'
-              : '\uD574\uAE08 \uD6C4 \uD6A8\uACFC',
-        GRADE_SECTION = DEFAULT_UNLOCKED
-            ? ''
-            : `<section class="ability-branch" aria-label="\uB4F1\uAE09 \uC644\uD654 \uB178\uB4DC"><h4>\uB4F1\uAE09 \uC644\uD654</h4><div class="ability-branch__nodes">${GRADE_NODES}</div></section>`,
-        ROOT_SECTION = DEFAULT_UNLOCKED
-            ? `<div class="ability-card__root"><p class="ability-card__base-effect">\uAE30\uBCF8 \uB2A5\uB825: ${BASE_EFFECT}</p></div>`
-            : `<div class="ability-card__root"><span class="ability-node__branch-label">\uB2A5\uB825 \uD2B8\uB9AC</span>${renderNode(state, definition, 'root', '\uB2A5\uB825 \uD574\uAE08', `${unitGradeLabel(definition.rootTier)} \uD2F0\uC5B4 \uD544\uC694`, context, ROOT_STATUS)}<p class="ability-card__base-effect">\uAE30\uBCF8 \uD6A8\uACFC: ${BASE_EFFECT}</p></div>`;
+    const SPECIES_NAME = speciesById(definition.species).name,
+        CURRENT_LABEL = '\uD604\uC7AC \uD6A8\uACFC';
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
-    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${GRADE_LABEL}</span></header>
+    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">Common(T1)</span></header>
     <p class="ability-card__description">${definition.description}</p>
     <p class="ability-card__current-effect">${CURRENT_LABEL}: ${CURRENT_EFFECT}</p>
-    ${ROOT_SECTION}
+    <div class="ability-card__root"><p class="ability-card__base-effect">Common: ${BASE_EFFECT}</p></div>
     <div class="ability-card__branches">
       <section class="ability-branch" aria-label="능력 강화 경로"><h4>능력 강화</h4><div class="ability-branch__nodes">${POWER_NODES}</div></section>
       ${BRANCH_SECTIONS}
-      ${GRADE_SECTION}
     </div>
   </article>`;
 }
@@ -281,7 +232,7 @@ function renderNode(state, definition, nodeId, title, effect, context, knownStat
     const STATUS = knownStatus || getAbilityNodeStatus(state, definition, nodeId, context);
     const HINT_ID = `ability-help-${definition.id}-${nodeId.replace(/[^a-z0-9-]/gi, '-')}`;
     const STATUS_TEXT = STATUS.purchased ? '투자 완료' : nodeReasonLabel(STATUS.reason, definition, context);
-    const ATTR = nodeId === 'root' ? `${definition.id}:root` : `${definition.id}:${nodeId.replace(/-(\d+)$/, ':$1')}`;
+    const ATTR = `${definition.id}:${nodeId.replace(/-(\d+)$/, ':$1')}`;
     return `<div class="ability-node ${STATUS.purchased ? 'is-purchased' : ''} ${STATUS.ready ? 'is-ready' : 'is-locked'}">
     <button type="button" class="ability-node__button" data-ability-node="${ATTR}" aria-describedby="${HINT_ID}" aria-disabled="${!STATUS.ready}">
       <span class="ability-node__title">${title}</span><span class="ability-node__effect">${effect}</span><span class="ability-node__cost">${STATUS.purchased ? '완료' : '1 포인트'}</span>

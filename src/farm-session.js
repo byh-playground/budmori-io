@@ -83,7 +83,7 @@ class UnitRender extends RENDER_OBJECT {
         this.ability.phase = u.ability.phase;
         this.ability.elapsed = u.ability.elapsed;
         this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
-        this.walnutGuarding = !!u.ability.guardConfig?.(world);
+        this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
         this.cooldown = u.cooldown;
         this.cooldownDuration = u.cooldownDuration;
         this.meals = u.meals;
@@ -236,14 +236,8 @@ class ProjectileRender extends RENDER_OBJECT {
         radius: R.STEP,
         height: R.STEP,
         projectileKind: R.STATE_KEY,
-        isPopcorn: R.STEP,
-        landed: R.STEP,
-        exploded: R.STEP,
-        fuseRemaining: R.LINEAR,
-        explosionLife: R.LINEAR,
         shotIndex: R.STEP,
         fanIndex: R.STEP,
-        'popcornConfig.radius': R.STEP,
         'path.from.x': R.STEP,
         'path.from.y': R.STEP,
         'path.from.z': R.STEP,
@@ -255,7 +249,6 @@ class ProjectileRender extends RENDER_OBJECT {
     });
     constructor() {
         super();
-        this.popcornConfig = {};
         this.path = {
             from: {},
             to: {},
@@ -273,14 +266,8 @@ class ProjectileRender extends RENDER_OBJECT {
         this.radius = p.radius;
         this.height = p.height;
         this.projectileKind = p.projectileKind || '';
-        this.isPopcorn = !!p.isPopcorn;
-        this.landed = !!p.landed;
-        this.exploded = !!p.exploded;
-        this.fuseRemaining = p.fuseRemaining || 0;
-        this.explosionLife = p.explosionLife || 0;
         this.shotIndex = p.shotIndex || 0;
         this.fanIndex = p.fanIndex || 0;
-        this.popcornConfig.radius = p.popcornConfig?.radius || 0;
         this.path.from.x = p.path.from.x;
         this.path.from.y = p.path.from.y;
         this.path.from.z = p.path.from.z;
