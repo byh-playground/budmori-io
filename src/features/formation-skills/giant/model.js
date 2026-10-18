@@ -1,5 +1,6 @@
 import { DEFINITION } from './definition.js';
 import { FormationSkill } from '../model-base.js';
+import { formationUpgradeValue } from '../../../formation-skill-state.js';
 export class GiantSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);
@@ -9,13 +10,20 @@ export class GiantSkill extends FormationSkill {
         if (!CANDIDATES.length) {
             return false;
         }
-        for (let i = 0; i < Math.min(CANDIDATES.length, this.definition.upgradeBase + slot.level - 1); i++) {
+        const TARGET_COUNT = Math.min(CANDIDATES.length, formationUpgradeValue(this.definition, slot.level));
+        for (let i = 0; i < TARGET_COUNT; i++) {
             const J = i + Math.floor(owner.world.random() * (CANDIDATES.length - i)),
                 UNIT = CANDIDATES[J];
             CANDIDATES[J] = CANDIDATES[i];
             CANDIDATES[i] = UNIT;
-            UNIT.giantUntil = owner.world.time + 7.5;
-            owner.addEffect(DEFINITION.id, { x: UNIT.x, y: UNIT.y, unitId: UNIT.id, duration: 7.5 });
+            UNIT.giantUntil = owner.world.time + this.definition.durationSeconds;
+            owner.addEffect(DEFINITION.id, {
+                x: UNIT.x,
+                y: UNIT.y,
+                radius: UNIT.radius,
+                unitId: UNIT.id,
+                duration: this.definition.durationSeconds,
+            });
         }
         return true;
     }
@@ -27,6 +35,7 @@ export class GiantSkill extends FormationSkill {
         }
         effect.x = UNIT.x;
         effect.y = UNIT.y;
+        effect.radius = UNIT.radius;
         if (effect.age >= effect.duration) {
             UNIT.giantUntil = 0;
             UNIT.giantEndedAt = owner.world.time;

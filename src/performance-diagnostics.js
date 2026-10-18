@@ -1,6 +1,12 @@
 const STAGES = Object.freeze([
     'simulation',
+    'stepLoop',
+    'commandQueue',
+    'autoTaps',
+    'onAdvance',
+    'pulseCapture',
     'logic',
+    'mergeTask',
     'ai',
     'spatial',
     'physics',
@@ -11,6 +17,7 @@ const STAGES = Object.freeze([
     'worldStepFollowup',
     'workScheduler',
     'presentationCapture',
+    'presentationSnapshot',
     'runtimeCapture',
     'presentation',
     'render',
@@ -33,6 +40,7 @@ const COUNTERS = Object.freeze([
     'workSchedulerJobsCancelled',
     'workSchedulerWaitedJobs',
     'workSchedulerWaitingTicks',
+    'workSchedulerMaxWaitTicks',
     'workSchedulerBudgetExhaustions',
     'physicsSteps',
     'physicsSolverIterations',
@@ -61,6 +69,7 @@ const COUNTERS = Object.freeze([
     'bufferUploads',
     'bufferBytes',
 ]);
+const FRAME_MAX_COUNTERS = Object.freeze(['workSchedulerMaxWaitTicks']);
 const NUMBER = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits) : '미측정');
 
 // Owns local diagnostic policy and text. GameKit owns the bounded numeric ring.
@@ -72,9 +81,11 @@ export class PerformanceDiagnostics {
             counters: COUNTERS,
         });
         this.detailed = false;
+        this.frameMaximums = Object.create(null);
     }
     setDetailed(enabled) {
         this.detailed = !!enabled;
+        this.frameMaximums = Object.create(null);
         this.meter.clear();
     }
     start() {
@@ -92,7 +103,14 @@ export class PerformanceDiagnostics {
     count(name, amount = 1) {
         this.meter.count(name, amount);
     }
+    maximum(name, amount = 0) {
+        if (!Number.isFinite(amount) || amount < 0) {
+            return;
+        }
+        this.frameMaximums[name] = Math.max(this.frameMaximums[name] || 0, amount);
+    }
     beginFrame(now) {
+        this.frameMaximums = Object.create(null);
         this.meter.beginFrame(now);
     }
     endFrame(renderer) {
@@ -101,6 +119,10 @@ export class PerformanceDiagnostics {
                 this.count(NAME, renderer.device.stats[NAME]);
             }
         }
+        for (const NAME of FRAME_MAX_COUNTERS) {
+            this.count(NAME, this.frameMaximums[NAME] || 0);
+        }
+        this.frameMaximums = Object.create(null);
         this.meter.endFrame();
     }
     snapshot(limit = 0) {
@@ -110,7 +132,7 @@ export class PerformanceDiagnostics {
             gpuMs: null,
             units: 'milliseconds and counts; no GPU completion timing',
             timingHierarchy:
-                'callback CPU contains simulation/presentation/render/ui; simulation contains worldStep, presentationCapture and save; worldStep contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler; scheduler work units are deterministic cell visits or food-candidate checks, not milliseconds; queries belong to AI/collision, spatial measures rebuild/movement updates; physics contains collision/spatial; presentationCapture contains runtimeCapture; save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU.',
+                'callback CPU contains simulation/presentation/render/ui; simulation contains stepLoop and pulseCapture; stepLoop contains FarmSession.advance, onAdvance callbacks and any presentation captures requested there; Garden.step contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler/mergeTask; presentationCapture contains snapshot preparation and runtimeCapture (SDK schema plans are cached by render type); save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU.',
         };
     }
     frameRate() {
@@ -134,6 +156,7 @@ export class PerformanceDiagnostics {
             AVG_SEARCH_WAIT = NUMBER(
                 COUNT('workSchedulerWaitingTicks') / Math.max(1, COUNT('workSchedulerWaitedJobs')),
             ),
+            MAX_SEARCH_WAIT = NUMBER(SAMPLE.counts.workSchedulerMaxWaitTicks?.max || 0, 0),
             TIME = (name) => {
                 const VALUE = SAMPLE.stagesMs[name];
                 return this.detailed && SAMPLE.retainedFrames > 1
@@ -141,14 +164,14 @@ export class PerformanceDiagnostics {
                     : '미측정';
             };
         const LINES = [
-            `work scheduler: ${TIME('workScheduler')} / ${PER_LOGIC_TICK('workSchedulerUnits')} units per logic tick / ${PER_LOGIC_TICK('foodSearchCandidateChecks')} candidate and ${PER_LOGIC_TICK('foodSearchCellVisits')} cell visits / ${COUNT('workSchedulerJobsCompleted')} complete / queue ${PER_LOGIC_TICK('workSchedulerQueueDepth')} / first-service wait ${AVG_SEARCH_WAIT} ticks per job`,
+            `work scheduler (food-target scans only): ${TIME('workScheduler')} / ${PER_LOGIC_TICK('workSchedulerUnits')} of 24 deterministic candidate/cell units per logic tick / ${PER_LOGIC_TICK('foodSearchCandidateChecks')} candidates and ${PER_LOGIC_TICK('foodSearchCellVisits')} cell visits / ${COUNT('workSchedulerJobsCompleted')} complete / queue ${PER_LOGIC_TICK('workSchedulerQueueDepth')} / first-service wait ${AVG_SEARCH_WAIT} ticks/job, max ${MAX_SEARCH_WAIT} ticks/RAF`,
             `SDK loss ms: clock-gap ${NUMBER(COUNT('clockGapDroppedMs'), 0)} / input clamp ${NUMBER(COUNT('inputDtClampedMs'), 0)} / backlog overflow ${NUMBER(COUNT('backlogOverflowMs'), 0)} / drop-policy ${NUMBER(COUNT('dropPolicyDroppedMs'), 0)}`,
             `상태 ${world.scene} ${paused ? '정지' : '실행'} · 병력 ${world.units.length} · 먹이 ${world.food.length}`,
             `창 ${NUMBER(SAMPLE.windowMs / 1000, 2)}s/${SAMPLE.retainedFrames}프레임 · 상세 ${this.detailed ? '켜짐' : '꺼짐'} · ${SAMPLE.retainedFrames > 1 ? '유효' : '표본 부족'}`,
             `RAF FPS ${NUMBER(SAMPLE.fps)} · 간격 평균/p95/최대 ${NUMBER(SAMPLE.intervalMs.mean)}/${NUMBER(SAMPLE.intervalMs.p95)}/${NUMBER(SAMPLE.intervalMs.max)}ms · CPU ${NUMBER(SAMPLE.cpuMs.mean)}/${NUMBER(SAMPLE.cpuMs.p95)}/${NUMBER(SAMPLE.cpuMs.max)}ms`,
-            `창 합계: 논리 ${COUNT('logicTicks')} · 물리 ${COUNT('physicsSteps')} · solver 반복 ${COUNT('physicsSolverIterations')} · 추가 catchup ${COUNT('catchupTicks')} · backlog drop ${COUNT('backlogDrops')}회/${NUMBER(COUNT('backlogDroppedMs'), 0)}ms · cap ${COUNT('backlogCappedFrames')}프레임/${NUMBER(COUNT('backlogClippedMs'), 0)}ms`,
-            `CPU 평균/p95/최대(ms, 부모·자식 합산 금지): sim ${TIME('simulation')} · 논리 ${TIME('logic')} · 물리 ${TIME('physics')}`,
-            `CPU 월드 후처리 ${TIME('worldPostStep')} · 변경 신호 발행 ${TIME('mutationDispatch')} · 보간 스냅샷 ${TIME('presentationCapture')} / SDK 캡처 ${TIME('runtimeCapture')}`,
+            `창 합계: 논리 ${COUNT('logicTicks')} (${PER_FRAME('logicTicks')}/RAF) · advancePhysics 호출 ${COUNT('physicsSteps')} (${PER_FRAME('physicsSteps')}/RAF) · solver 반복 ${COUNT('physicsSolverIterations')} · 추가 catchup ${COUNT('catchupTicks')} · backlog drop ${COUNT('backlogDrops')}회/${NUMBER(COUNT('backlogDroppedMs'), 0)}ms · cap ${COUNT('backlogCappedFrames')}프레임/${NUMBER(COUNT('backlogClippedMs'), 0)}ms`,
+            `CPU 평균/p95/최대(부모·자식 합산 금지): ${TIME('simulation')} · loop ${TIME('stepLoop')} · 명령 ${TIME('commandQueue')} · 자동 먹이 ${TIME('autoTaps')} · 논리 ${TIME('logic')} (합성 접근 ${TIME('mergeTask')}) · 물리 ${TIME('physics')}`,
+            `CPU post-step ${TIME('worldPostStep')} · event dispatch ${TIME('mutationDispatch')} · world-step follow-up ${TIME('worldStepFollowup')} · capture ${TIME('presentationCapture')} (snapshot prep ${TIME('presentationSnapshot')} / SDK ${TIME('runtimeCapture')})`,
             `프레임 평균: 프레젠테이션 캡처 ${PER_FRAME('presentationCaptures')}회 / 엔티티 ${PER_FRAME('presentationEntities')} · solver 반복 ${PER_FRAME('physicsSolverIterations')}`,
             `CPU AI ${TIME('ai')} · 인덱스 재구축/갱신 ${TIME('spatial')} · 충돌 ${TIME('collision')}`,
             `CPU 보간 ${TIME('presentation')} · WebGL 제출 ${TIME('render')} · UI ${TIME('ui')}`,

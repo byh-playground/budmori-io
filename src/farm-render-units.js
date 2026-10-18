@@ -281,22 +281,21 @@ export class UnitPresentation {
                 u.z + BOB,
             );
         const BODY = unitBodyDefinition(u.species),
+            GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1,
             SCALE = unitDisplayScale(
                 BODY,
                 u.bodyScale,
                 this.renderer.scale,
-                this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio,
+                this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio * GIANT_SCALE,
             ),
             R =
                 SCALE *
                 Math.max(BODY.viewBox[2], BODY.viewBox[3]) *
                 0.5 *
-                (u.giantUntil > sim.time
-                    ? 1.5
-                    : 1 +
-                      Math.sin((sim.time - u.giantEndedAt) * 30) *
-                          0.12 *
-                          Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
+                (1 +
+                    Math.sin((sim.time - u.giantEndedAt) * 30) *
+                        0.12 *
+                        Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
         this.drawVectorUnit(u, sim, P, R, rest);
         return {
             p: P,

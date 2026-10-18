@@ -596,8 +596,11 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.onHealthChanged.clear();
         this.onDied.scope = this.onRevived.scope = this.onHealthChanged.scope = null;
     }
+    get giantScale() {
+        return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
+    }
     get radius() {
-        return unitBodyRadius(this);
+        return unitBodyRadius(this) * this.giantScale;
     }
     get mature() {
         return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -606,16 +609,16 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.meals >= 1;
     }
     get size() {
-        return unitVisualSize(this);
+        return unitVisualSize(this) * this.giantScale;
     }
     get bodyScale() {
-        return unitVectorScale(this);
+        return unitVectorScale(this) * this.giantScale;
     }
     get height() {
-        return unitBodyHeight(this);
+        return unitBodyHeight(this) * this.giantScale;
     }
     get bodyHeight() {
-        return unitTorsoHeight(this);
+        return unitTorsoHeight(this) * this.giantScale;
     }
 };
 function inverseBodyMass(body) {
@@ -2257,6 +2260,21 @@ const GARDEN = class Garden {
     breedingReservationOwner(a, b) {
         return BREED_RESERVATION_OWNER(a.id, b.id);
     }
+    _isValidBreedReservation(unit, owner) {
+        if (!owner?.startsWith('breed:')) {
+            return false;
+        }
+        const MATE = this._unitById.get(unit.mateId);
+        return !!(
+            MATE &&
+            MATE.mateId === unit.id &&
+            this.unitCollection.reservationOwner(MATE) === owner &&
+            this.breedingReservationOwner(unit, MATE) === owner &&
+            this.canBreedPair(unit, MATE) &&
+            !this.senseEnemy(unit) &&
+            !this.senseEnemy(MATE)
+        );
+    }
     releaseMate(unit) {
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._rebuildUnitSpatialIndex(this.units);
@@ -2462,7 +2480,12 @@ const GARDEN = class Garden {
                     !UNIT_LOCAL.mature ||
                     UNIT_LOCAL.cooldown > 0 ||
                     (this.unitCollection.reservationOwner(UNIT_LOCAL) &&
-                        this.unitCollection.reservationOwner(UNIT_LOCAL) !== reservationOwner) ||
+                        this.unitCollection.reservationOwner(UNIT_LOCAL) !== reservationOwner &&
+                        (reservationOwner ||
+                            !this._isValidBreedReservation(
+                                UNIT_LOCAL,
+                                this.unitCollection.reservationOwner(UNIT_LOCAL),
+                            ))) ||
                     !this._unitIsActive(UNIT_LOCAL)
                 ) {
                     return false;
@@ -2530,7 +2553,11 @@ const GARDEN = class Garden {
                         UNIT_LOCAL.mature &&
                         UNIT_LOCAL.cooldown <= 0 &&
                         UNIT_LOCAL.tier < CONFIG.unit.maxTier &&
-                        !this.unitCollection.reservationOwner(UNIT_LOCAL) &&
+                        (!this.unitCollection.reservationOwner(UNIT_LOCAL) ||
+                            this._isValidBreedReservation(
+                                UNIT_LOCAL,
+                                this.unitCollection.reservationOwner(UNIT_LOCAL),
+                            )) &&
                         !this.senseEnemy(UNIT_LOCAL)
                     ) {
                         this._mergeEligibleGroups[
@@ -2654,35 +2681,61 @@ const GARDEN = class Garden {
             }
         }
     }
-    mergeAvailability() {
+    mergeDecision() {
         if (this.scene !== 'farm') {
-            return { available: false, reason: '정원에서만 합성할 수 있어요.' };
+            return {
+                available: false,
+                code: 'wrong-scene',
+                reason: '\ub18d\uc7a5 \ud654\uba74\uc5d0\uc11c\ub9cc \ud569\uc131\ud560 \uc218 \uc788\uc5b4\uc694.',
+            };
         }
         if (this.farmBossEvent?.phase !== 'idle') {
-            return { available: false, reason: '전투가 끝난 뒤 합성할 수 있어요.' };
+            return {
+                available: false,
+                code: 'boss-event',
+                reason: '\ubcf4\uc2a4 \uc774\ubca4\ud2b8 \uc911\uc5d0\ub294 \ud569\uc131\ud560 \uc218 \uc5c6\uc5b4\uc694.',
+            };
         }
         const MATERIALS = this.selectMergeMaterials();
         if (!MATERIALS) {
-            return { available: false, reason: '같은 종·티어 성체 재료가 필요해요.' };
+            return {
+                available: false,
+                code: 'no-eligible-materials',
+                reason: '\ud569\uc131 \uac00\ub2a5\ud55c \ub3d9\uc885 \uac1c\uccb4\uac00 \ubd80\uc871\ud574\uc694.',
+            };
         }
         return {
             available: true,
+            code: 'ready',
             tier: MATERIALS[0].tier + 1,
             materialCount: MATERIALS.length,
-            reason: `T${MATERIALS[0].tier + 1} · 재료 ${MATERIALS.length}마리`,
+            materials: MATERIALS,
+            reason: 'T' + (MATERIALS[0].tier + 1) + ' \ud569\uc131 ' + MATERIALS.length + '\uac1c',
+        };
+    }
+    mergeAvailability() {
+        const DECISION = this.mergeDecision();
+        return {
+            available: DECISION.available,
+            code: DECISION.code,
+            reason: DECISION.reason,
+            ...(DECISION.available
+                ? {
+                      tier: DECISION.tier,
+                      materialCount: DECISION.materialCount,
+                  }
+                : {}),
         };
     }
     startManualMerge() {
         return this.mutateUnits(this._startManualMerge);
     }
     _startManualMerge() {
-        if (this.scene !== 'farm' || this.farmBossEvent?.phase !== 'idle') {
+        const DECISION = this.mergeDecision();
+        if (!DECISION.available) {
             return false;
         }
-        const MATERIALS = this.selectMergeMaterials();
-        if (!MATERIALS) {
-            return false;
-        }
+        const MATERIALS = DECISION.materials;
         const MATERIAL_IDS = MATERIALS.map((unit) => unit.id),
             OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS),
             CENTER_X = MATERIALS.reduce((sum, unit) => sum + unit.x, 0) / MATERIALS.length,
@@ -2690,8 +2743,22 @@ const GARDEN = class Garden {
             DURATION = CONFIG.farm.merge.animationSeconds,
             SEQUENCE_WINDOW = DURATION * 0.72,
             STEP = SEQUENCE_WINDOW / MATERIALS.length;
-        if (!this.unitCollection.reserve(OWNER, MATERIALS)) {
+        const REPLACE_OWNERS = [
+            ...new Set(
+                MATERIALS.map((unit) => this.unitCollection.reservationOwner(unit)).filter((owner) =>
+                    owner?.startsWith('breed:'),
+                ),
+            ),
+        ];
+        if (!this.unitCollection.reserve(OWNER, MATERIALS, { replaceOwners: REPLACE_OWNERS })) {
             return false;
+        }
+        for (const UNIT_LOCAL of MATERIALS) {
+            const MATE = this._unitById.get(UNIT_LOCAL.mateId);
+            UNIT_LOCAL.mateId = 0;
+            if (MATE?.mateId === UNIT_LOCAL.id) {
+                MATE.mateId = 0;
+            }
         }
         const TASK = {
             phase: 'approach',
@@ -2975,7 +3042,9 @@ const GARDEN = class Garden {
         this.formationSkills.update(dt);
         const SCENE = SIMULATION_SCENES[this.scene];
         SCENE.advanceClock(this, dt);
+        const MERGE_TASK_START = this.profiler?.start();
         this.advanceMergeTask(dt);
+        this.profiler?.end('mergeTask', MERGE_TASK_START);
         let effectWrite = 0;
         for (const EFFECT of this.effects) {
             EFFECT.life += dt;
@@ -3012,6 +3081,7 @@ const GARDEN = class Garden {
             );
             this.profiler.count('workSchedulerWaitedJobs', CURRENT_WORK.lastTickWaitedJobs);
             this.profiler.count('workSchedulerWaitingTicks', CURRENT_WORK.lastTickWaitingTicks);
+            this.profiler.maximum('workSchedulerMaxWaitTicks', CURRENT_WORK.lastTickMaxWaitTicks);
             this.profiler.count('workSchedulerBudgetExhaustions', Number(CURRENT_WORK.lastTickBudgetExhausted));
         }
         this.profiler?.end('workScheduler', WORK_START);

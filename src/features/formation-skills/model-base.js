@@ -1,11 +1,8 @@
-import { unitBodyHeight, unitBodyRadius } from '../unit-body/definition.cjs';
+import { unitBodyRadius } from '../unit-body/definition.cjs';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
 
-function targetTop(owner, target) {
-    const BODY_HEIGHT =
-            target === owner.world.boss
-                ? target.height
-                : unitBodyHeight(target) * (target.giantUntil > owner.world.time ? 1.5 : 1),
+function targetTop(_owner, target) {
+    const BODY_HEIGHT = target.height,
         MARGIN = Math.max(T1_DIAMETER * 0.12, BODY_HEIGHT * 0.06);
     return target.z + BODY_HEIGHT * 0.84 + MARGIN;
 }

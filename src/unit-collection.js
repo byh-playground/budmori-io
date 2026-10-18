@@ -22,21 +22,39 @@ export class UnitCollection {
     reservationOwner(unitOrId) {
         return this.reservations.get(typeof unitOrId === 'object' ? unitOrId?.id : unitOrId) || null;
     }
-    reserve(owner, units) {
-        if (typeof owner !== 'string' || !owner || !Array.isArray(units) || units.length < 2) {
+    reserve(owner, units, { replaceOwners = [] } = {}) {
+        if (
+            typeof owner !== 'string' ||
+            !owner ||
+            !Array.isArray(units) ||
+            units.length < 2 ||
+            !Array.isArray(replaceOwners)
+        ) {
             return false;
         }
-        const IDS = new Set();
+        const IDS = new Set(),
+            ALLOWED_OWNERS = new Set(replaceOwners),
+            REPLACED_OWNERS = new Set();
         if (
             units.some((unit) => {
-                if (!this.has(unit) || IDS.has(unit.id) || (this.reservationOwner(unit.id) || owner) !== owner) {
+                if (!this.has(unit) || IDS.has(unit.id)) {
                     return true;
+                }
+                const CURRENT_OWNER = this.reservationOwner(unit.id);
+                if (CURRENT_OWNER && CURRENT_OWNER !== owner) {
+                    if (!ALLOWED_OWNERS.has(CURRENT_OWNER)) {
+                        return true;
+                    }
+                    REPLACED_OWNERS.add(CURRENT_OWNER);
                 }
                 IDS.add(unit.id);
                 return false;
             })
         ) {
             return false;
+        }
+        for (const REPLACED_OWNER of REPLACED_OWNERS) {
+            this.releaseReservations(REPLACED_OWNER);
         }
         for (const ID of IDS) {
             this.reservations.set(ID, owner);
@@ -57,6 +75,11 @@ export class UnitCollection {
         return this.reservations.delete(typeof unitOrId === 'object' ? unitOrId?.id : unitOrId);
     }
     attach(unit) {
+        Object.defineProperty(unit, '_world', {
+            value: this.world,
+            writable: true,
+            configurable: true,
+        });
         for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
             SIGNAL.scope = this.world.mutationNotifications;
             // Domain lifecycle reactions remain synchronous. Observer failures

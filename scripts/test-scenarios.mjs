@@ -4,6 +4,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SUITES = {
     core: ['core'],
     cadence: ['cadence'],
+    mergePolicy: ['mergePolicy'],
     upgrades: ['upgrades'],
     reset: ['reset'],
     formation: ['formation'],

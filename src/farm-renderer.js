@@ -4,6 +4,12 @@ import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js
 import { UnitPresentation } from './farm-render-units.js';
 import { drawEffect } from './farm-render-effects.js';
 import {
+    drawMergeBlackHoleBack,
+    drawMergeBlackHoleFront,
+    mergeMaterialPosition,
+    mergeMaterialProgress,
+} from './features/farm-modes/merge/presentation.js';
+import {
     readVectorSockets,
     bossVectorScale,
     WORLD_HEIGHT_PROJECTION,
@@ -70,6 +76,9 @@ const DIORAMA = class Diorama {
         this.liveUnitIds = new Set();
         this.joyEffects = [];
         this.unitPresentation = new UnitPresentation(this);
+        this.mergeHoleBackPresentation = { draw: (task) => drawMergeBlackHoleBack(this, task) };
+        this.mergeHoleFrontPresentation = { draw: (task) => drawMergeBlackHoleFront(this, task) };
+        this.mergeMaterialPresentation = { draw: (effect) => drawEffect(this, effect) };
         this.foodPresentation = new FoodPresentation(this);
         this.projectilePresentation = new ProjectilePresentation(this);
         this.dangerContour = new Float64Array(512);
@@ -446,10 +455,10 @@ const DIORAMA = class Diorama {
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
         }
-        const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS;
-        PRESENTATION.drawMergeBlackHoles?.(this, sim2);
-        const ACTORS = this.actors;
+        const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
+            ACTORS = this.actors;
         ACTORS.length = 0;
+        PRESENTATION.drawMergeBlackHoles?.(this, sim2);
         for (const U of sim2.units) {
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                 this.addActor(
@@ -469,6 +478,23 @@ const DIORAMA = class Diorama {
             for (const F of sim2.projectiles) {
                 this.addActor(this.projectilePresentation, F, 0.785 * F.y - 0.62 * F.z, -F.id);
             }
+        }
+        for (let index = 0; index < sim2.effects.length; index++) {
+            const EFFECT = sim2.effects[index];
+            if (EFFECT.kind !== 'merge-material') {
+                continue;
+            }
+            const PROGRESS = mergeMaterialProgress(EFFECT);
+            if (PROGRESS === null) {
+                continue;
+            }
+            const POSITION = mergeMaterialPosition(EFFECT, PROGRESS);
+            this.addActor(
+                this.mergeMaterialPresentation,
+                EFFECT,
+                0.785 * POSITION.y - 0.62 * POSITION.z,
+                -1000000 - index,
+            );
         }
         // Preserve stable source order for equal depth/id and every vector flush boundary.
         ACTORS.sort(COMPARE_ACTORS);
@@ -500,7 +526,9 @@ const DIORAMA = class Diorama {
         }
         feel?.draw(this, this.displayTimeMs);
         for (const E of sim2.effects) {
-            drawEffect(this, E);
+            if (E.kind !== 'merge-material') {
+                drawEffect(this, E);
+            }
         }
         drawFormationEffects(this, sim2);
         this.stats = C.endFrame();
