@@ -522,20 +522,33 @@ class FarmSession {
         );
         return true;
     }
-    deployNext() {
+    deployNext(speciesId) {
         const W = this.world,
             ROSTER = W.scene === 'raid' && W.raidRoster(this.localPlayerId);
         if (!ROSTER || this.closed || this.paused || ['victory', 'defeat'].includes(W.encounter.outcome)) {
+            return false;
+        }
+        if (
+            speciesId !== undefined &&
+            (!ROSTER.deploymentCardSpecies.includes(speciesId) || W.raidRemaining(this.localPlayerId, speciesId) <= 0)
+        ) {
             return false;
         }
         this.localDeploySequence = Math.max(this.localDeploySequence, ROSTER.lastDeploySequence);
         if (this.localDeploySequence - ROSTER.lastDeploySequence >= W.raidRemaining(this.localPlayerId)) {
             return false;
         }
+        const QUEUED_FOR_SPECIES = this.pending.filter(
+            (command) => command.type === 'deploy' && command.speciesId === speciesId,
+        ).length;
+        if (speciesId !== undefined && QUEUED_FOR_SPECIES >= W.raidRemaining(this.localPlayerId, speciesId)) {
+            return false;
+        }
         const SEQUENCE = this.localDeploySequence + 1;
         if (
             !this.queue('deploy', {
                 sequence: SEQUENCE,
+                ...(speciesId === undefined ? {} : { speciesId }),
             })
         ) {
             return false;
@@ -631,6 +644,10 @@ class FarmSession {
                 return W.formationSkills.buySlot();
             case 'formation-equip':
                 return W.formationSkills.equip(c.slot, c.id);
+            case 'deployment-card-buy-slot':
+                return W.raidDeploymentCards.buySlot();
+            case 'deployment-card-select':
+                return W.raidDeploymentCards.select(c.slot, c.speciesId);
             case 'progression-reset':
                 return W.scene === 'farm' && W.resetProgression(c.scope).ok;
             case 'ability-reset':
@@ -638,10 +655,16 @@ class FarmSession {
             case 'register-roster':
                 return (
                     Array.isArray(c.entries) &&
-                    W.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null)
+                    W.registerRaidRoster(
+                        ownerId,
+                        c.entries,
+                        c.abilitySnapshot,
+                        c.settlement || null,
+                        Array.isArray(c.deploymentCardSpecies) ? c.deploymentCardSpecies : null,
+                    )
                 );
             case 'deploy':
-                return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence);
+                return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence, c.speciesId);
             case 'buff':
                 return W.useRaidBuff(ownerId);
         }

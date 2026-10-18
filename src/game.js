@@ -296,66 +296,6 @@
     }
   });
 
-  // src/unit-grades.js
-  function mergeMaterialCostForTier(resultTier) {
-    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
-      return 0;
-    }
-    return UNIT_GRADES[resultTier - 1].materialCost;
-  }
-  function isValidUnitTier(tier) {
-    return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
-  }
-  function unitGradeLabel(tier) {
-    const GRADE = UNIT_GRADES.find((grade) => grade.tier === tier);
-    return GRADE ? `${GRADE.name} (T${GRADE.tier})` : "";
-  }
-  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
-  var init_unit_grades = __esm({
-    "src/unit-grades.js"() {
-      UNIT_GRADES = Object.freeze([
-        Object.freeze({
-          tier: 1,
-          name: "Common",
-          materialCost: 0,
-          outlineColor: "#d8d4bd"
-        }),
-        Object.freeze({
-          tier: 2,
-          name: "Uncommon",
-          materialCost: 2,
-          outlineColor: "#83ce76"
-        }),
-        Object.freeze({
-          tier: 3,
-          name: "Rare",
-          materialCost: 2,
-          outlineColor: "#78b9ff"
-        }),
-        Object.freeze({
-          tier: 4,
-          name: "Epic",
-          materialCost: 3,
-          outlineColor: "#bd8cff"
-        }),
-        Object.freeze({
-          tier: 5,
-          name: "Legendary",
-          materialCost: 4,
-          outlineColor: "#ffb354"
-        }),
-        Object.freeze({
-          tier: 6,
-          name: "Mythic",
-          materialCost: 5,
-          outlineColor: "#ff7086"
-        })
-      ]);
-      MAX_UNIT_TIER = UNIT_GRADES.length;
-      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
-    }
-  });
-
   // src/species-catalog.js
   function speciesById(id) {
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
@@ -427,6 +367,168 @@
       ]);
       SPECIES_COUNT = SPECIES_CATALOG.length;
       BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
+    }
+  });
+
+  // src/raid-deployment-cards.js
+  function createRaidDeploymentCardsState({ firstSpecies = 0 } = {}) {
+    if (firstSpecies !== null && !isSpeciesId(firstSpecies)) {
+      throw new TypeError("firstSpecies must be an owned catalog species or null");
+    }
+    return {
+      schemaVersion: RAID_DEPLOYMENT_CARD_SCHEMA_VERSION,
+      unlockedSlots: 1,
+      speciesBySlot: [firstSpecies, null, null, null]
+    };
+  }
+  function isValidRaidDeploymentCardsState(state) {
+    if (!state || typeof state !== "object" || state.schemaVersion !== RAID_DEPLOYMENT_CARD_SCHEMA_VERSION || !Number.isSafeInteger(state.unlockedSlots) || state.unlockedSlots < 1 || state.unlockedSlots > RAID_DEPLOYMENT_CARD_LIMIT || !Array.isArray(state.speciesBySlot) || state.speciesBySlot.length !== RAID_DEPLOYMENT_CARD_LIMIT || state.speciesBySlot.some(
+      (speciesId, index) => index >= state.unlockedSlots ? speciesId !== null : speciesId !== null && !isSpeciesId(speciesId)
+    )) {
+      return false;
+    }
+    const SELECTED = state.speciesBySlot.filter((speciesId) => speciesId !== null);
+    return new Set(SELECTED).size === SELECTED.length;
+  }
+  function raidDeploymentCardsInvestedPoints(state) {
+    return isValidRaidDeploymentCardsState(state) ? state.unlockedSlots - 1 : 0;
+  }
+  function migrateRaidDeploymentCardsState(state, ownedSpecies) {
+    if (state !== void 0) {
+      return state;
+    }
+    const OWNED = new Set((Array.isArray(ownedSpecies) ? ownedSpecies : []).filter(isSpeciesId).sort((a, b) => a - b));
+    const FIRST = OWNED.has(0) ? 0 : SPECIES_CATALOG.find(({ id }) => OWNED.has(id))?.id ?? null;
+    return createRaidDeploymentCardsState({ firstSpecies: FIRST });
+  }
+  function resetRaidDeploymentCardsState(state) {
+    if (!isValidRaidDeploymentCardsState(state)) {
+      return null;
+    }
+    return {
+      schemaVersion: RAID_DEPLOYMENT_CARD_SCHEMA_VERSION,
+      unlockedSlots: 1,
+      speciesBySlot: [state.speciesBySlot[0], null, null, null]
+    };
+  }
+  function raidDeploymentCardSpecies(state) {
+    return isValidRaidDeploymentCardsState(state) ? state.speciesBySlot.slice(0, state.unlockedSlots).filter((speciesId) => speciesId !== null) : [];
+  }
+  function isSpeciesId(value) {
+    return Number.isSafeInteger(value) && SPECIES_CATALOG.some((species) => species.id === value);
+  }
+  var RAID_DEPLOYMENT_CARD_LIMIT, RAID_DEPLOYMENT_CARD_SLOT_COST, RAID_DEPLOYMENT_CARD_SCHEMA_VERSION, RaidDeploymentCards;
+  var init_raid_deployment_cards = __esm({
+    "src/raid-deployment-cards.js"() {
+      init_species_catalog();
+      RAID_DEPLOYMENT_CARD_LIMIT = 4;
+      RAID_DEPLOYMENT_CARD_SLOT_COST = 1;
+      RAID_DEPLOYMENT_CARD_SCHEMA_VERSION = 1;
+      RaidDeploymentCards = class {
+        constructor(world) {
+          this.world = world;
+        }
+        editable() {
+          return this.world.scene === "farm" && !this.world.running && this.world.farmBossEvent?.phase === "idle";
+        }
+        buySlot() {
+          return this.world.mutationNotifications.run(() => {
+            const PLAYER = this.world.playerProgression, STATE = PLAYER.raidDeploymentCards;
+            if (!this.editable() || !isValidRaidDeploymentCardsState(STATE) || STATE.unlockedSlots >= RAID_DEPLOYMENT_CARD_LIMIT || PLAYER.availablePoints < RAID_DEPLOYMENT_CARD_SLOT_COST) {
+              return false;
+            }
+            STATE.unlockedSlots++;
+            PLAYER.availablePoints -= RAID_DEPLOYMENT_CARD_SLOT_COST;
+            this.world.markProgressChanged();
+            return true;
+          });
+        }
+        select(slot, speciesId) {
+          return this.world.mutationNotifications.run(() => {
+            const STATE = this.world.playerProgression.raidDeploymentCards, OWNED = new Set(
+              this.world.units.filter((unit) => unit.countsTowardPermanentRoster !== false).map((unit) => unit.species)
+            );
+            if (!this.editable() || !isValidRaidDeploymentCardsState(STATE) || !Number.isSafeInteger(slot) || slot < 0 || slot >= STATE.unlockedSlots || speciesId !== null && (!isSpeciesId(speciesId) || !OWNED.has(speciesId) || STATE.speciesBySlot.includes(speciesId))) {
+              return false;
+            }
+            STATE.speciesBySlot[slot] = speciesId;
+            this.world.markProgressChanged();
+            return true;
+          });
+        }
+        reset() {
+          return this.world.mutationNotifications.run(() => {
+            const PLAYER = this.world.playerProgression, STATE = PLAYER.raidDeploymentCards, REFUNDED = raidDeploymentCardsInvestedPoints(STATE), NEXT = resetRaidDeploymentCardsState(STATE);
+            if (!this.editable() || !NEXT || REFUNDED === 0) {
+              return false;
+            }
+            PLAYER.availablePoints += REFUNDED;
+            PLAYER.raidDeploymentCards = NEXT;
+            this.world.markProgressChanged();
+            return true;
+          });
+        }
+      };
+    }
+  });
+
+  // src/unit-grades.js
+  function mergeMaterialCostForTier(resultTier) {
+    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
+      return 0;
+    }
+    return UNIT_GRADES[resultTier - 1].materialCost;
+  }
+  function isValidUnitTier(tier) {
+    return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
+  }
+  function unitGradeLabel(tier) {
+    const GRADE = UNIT_GRADES.find((grade) => grade.tier === tier);
+    return GRADE ? `${GRADE.name} (T${GRADE.tier})` : "";
+  }
+  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
+  var init_unit_grades = __esm({
+    "src/unit-grades.js"() {
+      UNIT_GRADES = Object.freeze([
+        Object.freeze({
+          tier: 1,
+          name: "Common",
+          materialCost: 0,
+          outlineColor: "#d8d4bd"
+        }),
+        Object.freeze({
+          tier: 2,
+          name: "Uncommon",
+          materialCost: 2,
+          outlineColor: "#83ce76"
+        }),
+        Object.freeze({
+          tier: 3,
+          name: "Rare",
+          materialCost: 2,
+          outlineColor: "#78b9ff"
+        }),
+        Object.freeze({
+          tier: 4,
+          name: "Epic",
+          materialCost: 3,
+          outlineColor: "#bd8cff"
+        }),
+        Object.freeze({
+          tier: 5,
+          name: "Legendary",
+          materialCost: 4,
+          outlineColor: "#ffb354"
+        }),
+        Object.freeze({
+          tier: 6,
+          name: "Mythic",
+          materialCost: 5,
+          outlineColor: "#ff7086"
+        })
+      ]);
+      MAX_UNIT_TIER = UNIT_GRADES.length;
+      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
     }
   });
 
@@ -2886,9 +2988,9 @@
           defaultUnlocked: true,
           name: "연속 도약",
           description: "가까운 적에게도 준비되면 도약합니다. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화합니다.",
-          rootTier: 3,
+          rootTier: 1,
           powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65]),
-          gradeThresholds: Object.freeze([3, 2, 1])
+          gradeThresholds: Object.freeze([1])
         }),
         model: Object.freeze({
           specialAttackProfile: Object.freeze({
@@ -3380,6 +3482,7 @@
       baselineAbilityMigrationVersion: BASELINE_ABILITY_MIGRATION_VERSION,
       level: state.level,
       formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
+      raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
       availablePoints: state.availablePoints,
       farmUpgrades: {
         ...state.farmUpgrades
@@ -3410,6 +3513,7 @@
       schemaVersion: snapshot2.schemaVersion,
       baselineAbilityMigrationVersion: snapshot2.baselineAbilityMigrationVersion,
       formationSkills: snapshot2.formationSkills,
+      raidDeploymentCards: snapshot2.raidDeploymentCards || createRaidDeploymentCardsState(),
       level: snapshot2.level,
       experience: 0,
       availablePoints: snapshot2.availablePoints,
@@ -3417,7 +3521,7 @@
       abilities: snapshot2.abilities,
       processedBossKillReceipts: []
     };
-    if (!isValidAbilityProgressionState(STATE) || STATE.formationSkills !== void 0 && !isValidFormationSkillState(STATE.formationSkills)) {
+    if (!isValidAbilityProgressionState(STATE) || STATE.formationSkills !== void 0 && !isValidFormationSkillState(STATE.formationSkills) || !isValidRaidDeploymentCardsState(STATE.raidDeploymentCards)) {
       return false;
     }
     const INVESTED = Object.entries(STATE.abilities).reduce(
@@ -3427,7 +3531,7 @@
       ),
       0
     );
-    return INVESTED + formationInvestedPoints(STATE.formationSkills) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
+    return INVESTED + formationInvestedPoints(STATE.formationSkills) + raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
   }
   function isValidPlayerLikeAbilityState(state) {
     const ABILITY_STATE = {
@@ -3437,7 +3541,7 @@
       farmUpgrades: state?.farmUpgrades,
       abilities: state?.abilities
     };
-    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1) {
+    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1 || !isValidRaidDeploymentCardsState(state?.raidDeploymentCards)) {
       return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
@@ -3447,7 +3551,7 @@
       ),
       0
     );
-    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
   }
   function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
@@ -3484,6 +3588,7 @@
       init_formation_skill_state();
       init_ability_catalog();
       init_farm_upgrades();
+      init_raid_deployment_cards();
       ABILITY_TREE_SCHEMA_VERSION = 1;
       BASELINE_ABILITY_MIGRATION_VERSION = 2;
     }
@@ -3517,6 +3622,7 @@
       init_definition12();
       init_boss_patterns();
       init_ability_state();
+      init_raid_deployment_cards();
       init_factions();
       RaidSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
@@ -3569,6 +3675,7 @@
           world.raidRosters = [
             {
               ownerId: "solo",
+              deploymentCardSpecies: raidDeploymentCardSpecies(world.playerProgression.raidDeploymentCards),
               troops: world.units.filter((u) => !u.isBattleOnlySummon).map((u) => ({
                 farmId: u.farmId,
                 species: u.species,
@@ -4790,6 +4897,7 @@
     return {
       ...createAbilityProgressionState(),
       formationSkills: createFormationSkillState(),
+      raidDeploymentCards: createRaidDeploymentCardsState(),
       level: 1,
       experience: 0,
       farmBossEventStage: 1,
@@ -4883,7 +4991,7 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidRaidDeploymentCardsState(state.raidDeploymentCards) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
       return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
@@ -4892,7 +5000,7 @@
       ) + investment.powerLevel + investment.gradeLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
       0
     );
-    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + state.availablePoints === state.level - 1;
   }
   var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
   var init_player_progression = __esm({
@@ -4901,6 +5009,7 @@
       init_ability_catalog();
       init_formation_skill_state();
       init_farm_upgrades();
+      init_raid_deployment_cards();
       PLAYER_PROGRESS_BASE_XP = 100;
       BOSS_KILL_XP = 20;
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
@@ -5166,18 +5275,23 @@
     if (TYPE === "all" || TYPE === "formation") {
       NEXT.formationSkills = createFormationSkillState();
     }
+    if (TYPE === "all" || TYPE === "deployment-cards") {
+      NEXT.raidDeploymentCards = resetRaidDeploymentCardsState(NEXT.raidDeploymentCards);
+    }
     return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
   }
   function progressionResetInvestment(state, scope) {
     switch (scope.type) {
       case "all":
-        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills);
+        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
       case "farm":
         return getFarmUpgradeInvestedCount(state.farmUpgrades);
       case "abilities":
         return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
       case "formation":
         return formationInvestedPoints(state.formationSkills);
+      case "deployment-cards":
+        return raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
       default:
         return 0;
     }
@@ -5187,7 +5301,7 @@
     if (!NORMALIZED || typeof NORMALIZED !== "object" || Array.isArray(NORMALIZED)) {
       return null;
     }
-    if (NORMALIZED.type === "all" || NORMALIZED.type === "farm" || NORMALIZED.type === "formation") {
+    if (NORMALIZED.type === "all" || NORMALIZED.type === "farm" || NORMALIZED.type === "formation" || NORMALIZED.type === "deployment-cards") {
       return NORMALIZED;
     }
     if (NORMALIZED.type === "abilities") {
@@ -5348,6 +5462,12 @@
           levels: { ...state.formationSkills.levels },
           equipped: [...state.formationSkills.equipped]
         }
+      } : {},
+      ...state.raidDeploymentCards ? {
+        raidDeploymentCards: {
+          ...state.raidDeploymentCards,
+          speciesBySlot: [...state.raidDeploymentCards.speciesBySlot]
+        }
       } : {}
     };
   }
@@ -5374,6 +5494,7 @@
       init_ability_state();
       init_player_progression();
       init_formation_skill_state();
+      init_raid_deployment_cards();
       init_farm_upgrades();
       SHARED_ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
@@ -7102,6 +7223,8 @@
     "src/farm-model.js"() {
       init_formation_skills();
       init_formation_skill_state();
+      init_raid_deployment_cards();
+      init_raid_deployment_cards();
       init_signal();
       import_definition40 = __toESM(require_definition(), 1);
       init_definition10();
@@ -7814,6 +7937,7 @@
           });
           this.reset();
           Object.defineProperty(this, "formationSkills", { value: new FormationSkills(this) });
+          Object.defineProperty(this, "raidDeploymentCards", { value: new RaidDeploymentCards(this) });
         }
         get mergeTask() {
           return this.mergeTasks[0] || null;
@@ -8678,11 +8802,14 @@
         raidTotal() {
           return this.raidRosters.reduce((n, r) => n + r.troops.length, 0);
         }
-        raidRemaining(ownerId) {
+        raidRemaining(ownerId, speciesId = null) {
           const R_LOCAL = this.raidRoster(ownerId);
-          return R_LOCAL ? R_LOCAL.troops.reduce((n, t) => n + (!t.deployed ? 1 : 0), 0) : 0;
+          return R_LOCAL ? R_LOCAL.troops.reduce(
+            (n, troop) => n + (!troop.deployed && (speciesId === null || troop.species === speciesId) ? 1 : 0),
+            0
+          ) : 0;
         }
-        registerRaidRoster(ownerId, entries, abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()), settlement = null) {
+        registerRaidRoster(ownerId, entries, abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()), settlement = null, deploymentCardSpecies = null) {
           if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.raid.capacity.playerUnits || this.raidTotal() + entries.length > CONFIG.raid.capacity.units) {
             return false;
           }
@@ -8706,6 +8833,10 @@
               deployed: false
             });
           }
+          const CARD_SPECIES = deploymentCardSpecies === null ? [...new Set(TROOPS.map((troop) => troop.species))].slice(0, 4) : deploymentCardSpecies;
+          if (!Array.isArray(CARD_SPECIES) || CARD_SPECIES.length > 4 || CARD_SPECIES.some((speciesId) => !isSpeciesId(speciesId)) || new Set(CARD_SPECIES).size !== CARD_SPECIES.length) {
+            return false;
+          }
           const ORDER_KEY = (farmId) => {
             let h = (this.seed ^ Math.imul(farmId, 2654435769)) >>> 0;
             for (let i = 0; i < ownerId.length; i++) {
@@ -8724,6 +8855,7 @@
           this.raidRosters.push({
             ownerId,
             troops: TROOPS,
+            deploymentCardSpecies: [...CARD_SPECIES],
             abilitySnapshot: structuredClone(abilitySnapshot),
             settlementSessionId: HAS_SETTLEMENT ? settlement.sessionId : "",
             settlementRunSequence: HAS_SETTLEMENT ? settlement.runSequence : 0,
@@ -8737,15 +8869,17 @@
           );
           return true;
         }
-        deployNextRaidUnit(ownerId, sequence) {
-          return this.mutateUnits(this._deployNextRaidUnit, ownerId, sequence);
+        deployNextRaidUnit(ownerId, sequence, speciesId) {
+          return this.mutateUnits(this._deployNextRaidUnit, ownerId, sequence, speciesId);
         }
-        _deployNextRaidUnit(ownerId, sequence) {
+        _deployNextRaidUnit(ownerId, sequence, speciesId) {
           if (this.scene !== "raid" || ["victory", "defeat"].includes(this.encounter.outcome) || !this.raidExpectedPlayers.every((id) => this.raidRoster(id)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence)) {
             return false;
           }
-          const ROSTER2 = this.raidRoster(ownerId), TROOP = ROSTER2?.troops.find((t) => !t.deployed);
-          if (!ROSTER2 || sequence !== ROSTER2.lastDeploySequence + 1 || !TROOP) {
+          const ROSTER2 = this.raidRoster(ownerId), TROOP = ROSTER2?.troops.find(
+            (troop) => !troop.deployed && (speciesId === void 0 || troop.species === speciesId)
+          );
+          if (!ROSTER2 || sequence !== ROSTER2.lastDeploySequence + 1 || !TROOP || speciesId !== void 0 && (!isSpeciesId(speciesId) || !ROSTER2.deploymentCardSpecies.includes(speciesId))) {
             return false;
           }
           const FARM_ID = TROOP.farmId, SLOT = this.raidExpectedPlayers.indexOf(ownerId), TROOP_INDEX = ROSTER2.troops.indexOf(TROOP), ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1;
@@ -11642,6 +11776,7 @@
       schemaVersion: player.schemaVersion,
       baselineAbilityMigrationVersion: player.baselineAbilityMigrationVersion,
       formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
+      raidDeploymentCards: structuredClone(player.raidDeploymentCards || createRaidDeploymentCardsState()),
       level: player.level,
       experience: player.experience,
       farmBossEventStage: Object.hasOwn(player, "farmBossEventStage") ? player.farmBossEventStage : 1,
@@ -11845,6 +11980,12 @@
           BUILD.branchLevels = structuredClone(DEFAULT_BUILD.branchLevels);
         }
       }
+    }
+    if (DATA?.player) {
+      DATA.player.raidDeploymentCards = migrateRaidDeploymentCardsState(
+        DATA.player.raidDeploymentCards,
+        (DATA.roster || []).map((row) => row.species)
+      );
     }
     if (!BOSS2 || !DATA.ledger) {
       return DATA;
@@ -12208,6 +12349,7 @@
   var init_farm_progress = __esm({
     "src/farm-progress.js"() {
       init_formation_skill_state();
+      init_raid_deployment_cards();
       init_farm_model();
       init_player_progression();
       init_ability_state();
@@ -12258,7 +12400,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.8.22";
+      PRODUCT_VERSION = "0.8.23";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12333,6 +12475,7 @@
     "src/farm-snapshot.js"() {
       init_formation_skill_state();
       init_ability_state();
+      init_raid_deployment_cards();
       UNIT_SNAPSHOT_SHAPE = {
         x: 0,
         y: 0,
@@ -12472,6 +12615,7 @@
         formationRuntime: createFormationRuntime(),
         playerProgression: {
           formationSkills: createFormationSkillState(),
+          raidDeploymentCards: createRaidDeploymentCardsState({ firstSpecies: null }),
           schemaVersion: 1,
           baselineAbilityMigrationVersion: 2,
           availablePoints: 0,
@@ -12693,12 +12837,14 @@
       RUNTIME_PROGRESSION = FIELDS("schemaVersion level availablePoints", {
         farmUpgrades: PROGRESSION.farmUpgrades,
         abilities: PROGRESSION.abilities,
-        formationSkills: PROGRESSION.formationSkills
+        formationSkills: PROGRESSION.formationSkills,
+        raidDeploymentCards: PROGRESSION.raidDeploymentCards
       });
       ROSTER = FIELDS(
         "ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt",
         {
           troops: [FIELDS("farmId species tier deployed")],
+          deploymentCardSpecies: [true],
           abilitySnapshot: RUNTIME_PROGRESSION
         }
       );
@@ -13423,7 +13569,7 @@
     const ROSTER_OWNERS = /* @__PURE__ */ new Set(), MANIFEST = /* @__PURE__ */ new Set();
     for (const R2 of raw.raidRosters) {
       ASSERT2(
-        raw.raidExpectedPlayers.includes(R2.ownerId) && !ROSTER_OWNERS.has(R2.ownerId) && Array.isArray(R2.troops) && R2.troops.length <= CONFIG.raid.capacity.playerUnits && isValidAbilityRuntimeSnapshot(R2.abilitySnapshot)
+        raw.raidExpectedPlayers.includes(R2.ownerId) && !ROSTER_OWNERS.has(R2.ownerId) && Array.isArray(R2.troops) && R2.troops.length <= CONFIG.raid.capacity.playerUnits && Array.isArray(R2.deploymentCardSpecies) && R2.deploymentCardSpecies.length <= 4 && R2.deploymentCardSpecies.every((speciesId) => INTEGER2(speciesId, 0, CONFIG.unit.speciesCount - 1)) && new Set(R2.deploymentCardSpecies).size === R2.deploymentCardSpecies.length && isValidAbilityRuntimeSnapshot(R2.abilitySnapshot)
       );
       ASSERT2(
         typeof R2.settlementSessionId === "string" && R2.settlementSessionId.length <= 128 && INTEGER2(R2.settlementRunSequence, 0, 1e12) && INTEGER2(R2.settlementEncounterId, 0, 1e12)
@@ -13704,6 +13850,9 @@
     }
     migrateBaselineAbilityInvestments(raw.playerProgression);
     for (const R2 of raw.raidRosters || []) {
+      if (!Object.hasOwn(R2, "deploymentCardSpecies")) {
+        R2.deploymentCardSpecies = [...new Set((R2.troops || []).map((troop) => troop.species))].slice(0, 4);
+      }
       migrateBaselineAbilityInvestments(R2.abilitySnapshot);
     }
     delete raw.mode;
@@ -13716,6 +13865,13 @@
     }
     if (!Object.hasOwn(raw, "farmBossProgress")) {
       raw.farmBossProgress = createFarmBossProgress(raw.seed);
+    }
+    if (!raw.playerProgression || !Object.hasOwn(raw.playerProgression, "raidDeploymentCards")) {
+      const BASE_PLAYER = raw.playerProgression || {}, OWNED_SPECIES = (raw.units || []).filter((unit) => unit?.countsTowardPermanentRoster !== false).map((unit) => unit.species);
+      raw.playerProgression = {
+        ...BASE_PLAYER,
+        raidDeploymentCards: migrateRaidDeploymentCardsState(void 0, OWNED_SPECIES)
+      };
     }
     const LEGACY_MERGE_TASK = raw.mergeTask, MERGE_TASKS = Array.isArray(raw.mergeTasks) ? raw.mergeTasks : LEGACY_MERGE_TASK ? [LEGACY_MERGE_TASK] : [];
     delete raw.mergeTask;
@@ -13777,6 +13933,9 @@
       migrateBaselineAbilityInvestments(R2.abilitySnapshot);
       if (R2.abilitySnapshot && !Object.hasOwn(R2.abilitySnapshot, "formationSkills")) {
         R2.abilitySnapshot.formationSkills = createFormationSkillState();
+      }
+      if (R2.abilitySnapshot && !Object.hasOwn(R2.abilitySnapshot, "raidDeploymentCards")) {
+        R2.abilitySnapshot.raidDeploymentCards = createRaidDeploymentCardsState({ firstSpecies: null });
       }
       if (!Object.hasOwn(R2, "abilitySnapshot")) {
         R2.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());
@@ -14016,6 +14175,7 @@
   var init_farm_snapshot_migrations = __esm({
     "src/farm-snapshot-migrations.js"() {
       init_formation_skill_state();
+      init_raid_deployment_cards();
       init_farm_model();
       init_unit_stats();
       init_player_progression();
@@ -14724,7 +14884,198 @@
     }
   };
 
+  // src/raid-deployment-cards-ui.js
+  init_species_catalog();
+  init_raid_deployment_cards();
+  var ESCAPE2 = (value) => String(value).replace(
+    /[&<>"']/g,
+    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]
+  );
+  var RaidDeploymentCardsUI = class {
+    constructor({ command, deploy, canDeploy }) {
+      this.command = command;
+      this.deploy = deploy;
+      this.canDeploy = canDeploy;
+      this.editorFingerprint = "";
+      this.raidFingerprint = "";
+      this.hold = null;
+      this.timer = null;
+      this.root = document.querySelector("#deploymentCards");
+      this.row = this.root.querySelector(".deployment-card-row");
+      this.content = document.querySelector("#deploymentCardContent");
+      this.content.addEventListener("change", (event) => this.change(event));
+      this.content.addEventListener("click", (event) => this.click(event));
+      this.row.addEventListener("pointerdown", (event) => this.pointerDown(event));
+      this.row.addEventListener("pointerup", (event) => this.stopHold(event));
+      this.row.addEventListener("pointercancel", (event) => this.stopHold(event));
+      this.row.addEventListener("lostpointercapture", (event) => this.stopHold(event));
+      this.row.addEventListener("click", (event) => event.preventDefault());
+      this.row.addEventListener("keydown", (event) => this.keyDown(event));
+      this.row.addEventListener("keyup", (event) => this.keyUp(event));
+      this.row.addEventListener("blur", () => this.stopHold(), true);
+      window.addEventListener("blur", () => this.stopHold());
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          this.stopHold();
+        }
+      });
+    }
+    change(event) {
+      const SELECT = event.target.closest("select[data-deployment-slot]");
+      if (!SELECT || SELECT.disabled) {
+        return;
+      }
+      const VALUE = SELECT.value === "" ? null : Number(SELECT.value);
+      this.command("deployment-card-select", { slot: Number(SELECT.dataset.deploymentSlot), speciesId: VALUE });
+    }
+    click(event) {
+      const BUTTON = event.target.closest("button[data-deployment-buy-slot]");
+      if (BUTTON && !BUTTON.disabled) {
+        this.command("deployment-card-buy-slot", {});
+      }
+    }
+    pointerDown(event) {
+      const BUTTON = event.target.closest("button[data-deploy-species]");
+      if (!BUTTON || event.button !== 0 || BUTTON.disabled || !this.canDeploy() || this.hold) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.beginHold(BUTTON.dataset.deploySpecies, event.pointerId)) {
+        return;
+      }
+      BUTTON.setPointerCapture?.(event.pointerId);
+    }
+    keyDown(event) {
+      const BUTTON = event.target.closest("button[data-deploy-species]");
+      if (!BUTTON || !["Enter", " "].includes(event.key)) {
+        return;
+      }
+      event.preventDefault();
+      if (!event.repeat && !this.hold && !BUTTON.disabled && this.canDeploy()) {
+        this.beginHold(BUTTON.dataset.deploySpecies, "keyboard");
+      }
+    }
+    keyUp(event) {
+      if (["Enter", " "].includes(event.key)) {
+        event.preventDefault();
+        this.stopHold();
+      }
+    }
+    beginHold(speciesId, pointerId) {
+      if (!this.deploy(Number(speciesId))) {
+        return false;
+      }
+      this.hold = { speciesId, pointerId };
+      this.row.querySelector(`[data-deploy-species="${speciesId}"]`)?.setAttribute("aria-pressed", "true");
+      this.timer = setInterval(() => {
+        if (!this.hold || !this.canDeploy() || !this.deploy(Number(this.hold.speciesId))) {
+          this.stopHold();
+        }
+      }, 100);
+      return true;
+    }
+    stopHold(event) {
+      if (event && this.hold?.pointerId !== event.pointerId) {
+        return;
+      }
+      const HOLD = this.hold;
+      this.hold = null;
+      if (this.timer !== null) {
+        clearInterval(this.timer);
+        this.timer = null;
+      }
+      this.row.querySelector(`[data-deploy-species="${HOLD?.speciesId}"]`)?.setAttribute("aria-pressed", "false");
+      if (typeof HOLD?.pointerId === "number") {
+        const BUTTON = [...this.row.querySelectorAll("[data-deploy-species]")].find(
+          (button) => button.dataset.deploySpecies === HOLD.speciesId
+        );
+        if (BUTTON?.hasPointerCapture?.(HOLD.pointerId)) {
+          BUTTON.releasePointerCapture(HOLD.pointerId);
+        }
+      }
+    }
+    update(world, sourceWorld, visible, ownerId = "", canEditLoadout = world.scene === "farm") {
+      const ROSTER2 = world.scene === "raid" && world.raidRoster(ownerId), SHOW_RAID = !!visible && !!ROSTER2;
+      this.root.hidden = !SHOW_RAID;
+      if (!SHOW_RAID) {
+        this.stopHold();
+        this.raidFingerprint = "";
+      } else {
+        if (!this.canDeploy() || ["victory", "defeat"].includes(world.encounter.outcome)) {
+          this.stopHold();
+        }
+        const KEY3 = JSON.stringify(ROSTER2.deploymentCardSpecies);
+        if (KEY3 !== this.raidFingerprint) {
+          this.raidFingerprint = KEY3;
+          this.drawRaidCards(ROSTER2);
+        }
+        this.updateRaidCounts(ROSTER2);
+      }
+      const PLAYER = sourceWorld?.playerProgression, STATE = PLAYER?.raidDeploymentCards;
+      if (!STATE || !isValidRaidDeploymentCardsState(STATE)) {
+        this.content.replaceChildren();
+        this.editorFingerprint = "";
+        return;
+      }
+      const LOCKED = !canEditLoadout || world.scene !== "farm" || sourceWorld.running || sourceWorld.farmBossEvent?.phase !== "idle", OWNED = sourceWorld.units.filter((unit) => unit.countsTowardPermanentRoster !== false).reduce((map, unit) => map.set(unit.species, (map.get(unit.species) || 0) + 1), /* @__PURE__ */ new Map()), KEY2 = JSON.stringify([STATE, PLAYER.availablePoints, LOCKED, [...OWNED]]);
+      if (KEY2 !== this.editorFingerprint) {
+        this.editorFingerprint = KEY2;
+        this.drawEditor(STATE, PLAYER.availablePoints, LOCKED, OWNED);
+      }
+    }
+    drawRaidCards(roster) {
+      const SPECIES = roster.deploymentCardSpecies || [], AVAILABLE = (speciesId) => roster.troops.filter((troop) => troop.species === speciesId && !troop.deployed).length, ACTIVE = (speciesId) => SPECIES.some((candidate) => candidate === speciesId);
+      this.row.innerHTML = SPECIES.map((speciesId, index) => {
+        const SPECIES_INFO = speciesById(speciesId), REMAINING = AVAILABLE(speciesId);
+        return `<button class="deployment-card" type="button" data-deploy-species="${speciesId}"
+                aria-label="${ESCAPE2(SPECIES_INFO.name)} 병력 배치, 남은 ${REMAINING}마리"
+                aria-pressed="false" ${REMAINING === 0 || !ACTIVE(speciesId) ? "disabled" : ""}>
+                <span class="deployment-card__number">${index + 1}</span>
+                <strong>${ESCAPE2(SPECIES_INFO.name)}</strong><small>${REMAINING} 남음</small></button>`;
+      }).join("");
+    }
+    updateRaidCounts(roster) {
+      for (const BUTTON of this.row.querySelectorAll("button[data-deploy-species]")) {
+        const SPECIES_ID = Number(BUTTON.dataset.deploySpecies), REMAINING = roster.troops.filter((troop) => troop.species === SPECIES_ID && !troop.deployed).length;
+        BUTTON.disabled = REMAINING === 0;
+        BUTTON.querySelector("small").textContent = `${REMAINING} 남음`;
+        BUTTON.setAttribute(
+          "aria-label",
+          `${speciesById(SPECIES_ID).name} 병력 배치, 남은 ${REMAINING}마리`
+        );
+      }
+    }
+    drawEditor(state, points, locked, owned) {
+      const UNLOCKED = Array.from({ length: state.unlockedSlots }, (_, slot) => {
+        const CURRENT = state.speciesBySlot[slot], OPTIONS = SPECIES_CATALOG.filter(({ id }) => owned.has(id));
+        return `<article class="deployment-editor-slot">
+                <label for="deploymentSpecies${slot}">슬롯 ${slot + 1}${slot === 0 ? " · 무료" : ""}</label>
+                <select id="deploymentSpecies${slot}" data-deployment-slot="${slot}" ${locked ? "disabled" : ""}>
+                    <option value="">선택 안 함</option>
+                    ${OPTIONS.map(
+          ({ id, name }) => `<option value="${id}" ${CURRENT === id ? "selected" : ""}
+                        ${state.speciesBySlot.some((selected, index) => index !== slot && selected === id) ? "disabled" : ""}>
+                        ${ESCAPE2(name)} (${owned.get(id)})</option>`
+        ).join("")}
+                </select></article>`;
+      }).join("");
+      const LOCKED = Array.from(
+        { length: RAID_DEPLOYMENT_CARD_LIMIT - state.unlockedSlots },
+        (_, index) => state.unlockedSlots + index
+      ).map(
+        (slot) => `<button class="deployment-card-buy" type="button" data-deployment-buy-slot
+            ${locked || points < RAID_DEPLOYMENT_CARD_SLOT_COST ? "disabled" : ""}>
+            슬롯 ${slot + 1} 잠김 · ${RAID_DEPLOYMENT_CARD_SLOT_COST} 포인트로 해금</button>`
+      ).join("");
+      this.content.innerHTML = `<p class="deployment-card-intro">보유한 병종을 최대 4개 편성하고, 카드를 누르거나 길게 눌러 한 마리씩 배치합니다. 편성은 농장에서만 바꿀 수 있습니다.</p>
+            <p class="deployment-card-wallet"><strong>${points}</strong> 공용 포인트</p>
+            <div class="deployment-editor-slots">${UNLOCKED}${LOCKED}</div>`;
+    }
+  };
+
   // src/farm-app.js
+  init_raid_deployment_cards();
   init_farm_model();
 
   // src/features/formation-skills/presentation-base.js
@@ -17601,18 +17952,28 @@
       );
       return true;
     }
-    deployNext() {
+    deployNext(speciesId) {
       const W = this.world, ROSTER2 = W.scene === "raid" && W.raidRoster(this.localPlayerId);
       if (!ROSTER2 || this.closed || this.paused || ["victory", "defeat"].includes(W.encounter.outcome)) {
+        return false;
+      }
+      if (speciesId !== void 0 && (!ROSTER2.deploymentCardSpecies.includes(speciesId) || W.raidRemaining(this.localPlayerId, speciesId) <= 0)) {
         return false;
       }
       this.localDeploySequence = Math.max(this.localDeploySequence, ROSTER2.lastDeploySequence);
       if (this.localDeploySequence - ROSTER2.lastDeploySequence >= W.raidRemaining(this.localPlayerId)) {
         return false;
       }
+      const QUEUED_FOR_SPECIES = this.pending.filter(
+        (command) => command.type === "deploy" && command.speciesId === speciesId
+      ).length;
+      if (speciesId !== void 0 && QUEUED_FOR_SPECIES >= W.raidRemaining(this.localPlayerId, speciesId)) {
+        return false;
+      }
       const SEQUENCE = this.localDeploySequence + 1;
       if (!this.queue("deploy", {
-        sequence: SEQUENCE
+        sequence: SEQUENCE,
+        ...speciesId === void 0 ? {} : { speciesId }
       })) {
         return false;
       }
@@ -17702,14 +18063,24 @@
           return W.formationSkills.buySlot();
         case "formation-equip":
           return W.formationSkills.equip(c.slot, c.id);
+        case "deployment-card-buy-slot":
+          return W.raidDeploymentCards.buySlot();
+        case "deployment-card-select":
+          return W.raidDeploymentCards.select(c.slot, c.speciesId);
         case "progression-reset":
           return W.scene === "farm" && W.resetProgression(c.scope).ok;
         case "ability-reset":
           return W.scene === "farm" && W.resetAbilityTree().ok;
         case "register-roster":
-          return Array.isArray(c.entries) && W.registerRaidRoster(ownerId, c.entries, c.abilitySnapshot, c.settlement || null);
+          return Array.isArray(c.entries) && W.registerRaidRoster(
+            ownerId,
+            c.entries,
+            c.abilitySnapshot,
+            c.settlement || null,
+            Array.isArray(c.deploymentCardSpecies) ? c.deploymentCardSpecies : null
+          );
         case "deploy":
-          return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence);
+          return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence, c.speciesId);
         case "buff":
           return W.useRaidBuff(ownerId);
       }
@@ -18658,13 +19029,25 @@
     );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
     const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const LEVEL_MARKUP = renderPlayerProgressMarkup(state);
+    const LEVEL_MARKUP = renderPlayerProgressMarkup(state), DEFAULT_SPECIES = [
+      ...new Set(
+        SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.defaultUnlocked).map(
+          (definition) => definition.species
+        )
+      )
+    ].map((speciesId) => speciesById(speciesId).name), LOCKED_THRESHOLDS = [
+      ...new Set(
+        SPECIES_ABILITY_DEFINITIONS.filter((definition) => !definition.defaultUnlocked).map(
+          (definition) => definition.rootTier
+        )
+      )
+    ].sort((a, b) => a - b).map((tier) => `${unitGradeLabel(tier)}(T${tier})`).join(", "), DEFAULTS_NOTE = `${DEFAULT_SPECIES.join("·")} 병종의 기본 능력은 Common(T1)부터 무료로 적용됩니다. 그 밖의 능력은 정의된 종별 ${LOCKED_THRESHOLDS}부터 해금되며, 효과 강화에는 공용 포인트를 사용합니다.`;
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
-    <p class="ability-tree__note">쌈·밀·보리 기본 능력은 Common부터 무료로 제공되며, 그 외 능력은 Rare(T3)에서 해금할 수 있습니다. 강화와 등급 완화에는 같은 포인트를 쓰며, 남은 포인트는 보존됩니다.</p>
+    <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
       <p class="ability-tree__lock-note" role="status">${inCombat ? "전투 중에는 투자와 초기화가 잠깁니다." : location2 !== "farm" ? "농장에서 투자하거나 초기화할 수 있습니다." : "농장에서 무료로 초기화할 수 있습니다."}</p>
@@ -18815,8 +19198,6 @@
   var menuWasPaused = true;
   var menuPauseChanged = false;
   var menuAutoPaused = false;
-  var dropPointer = null;
-  var dropTimer = null;
   var panPointer = null;
   var bossEncounterOpen = false;
   var bossSwipe = null;
@@ -18837,6 +19218,15 @@
     const QUEUED = active?.queue(kind, payload) ?? false;
     setTimeout(renderProgressionResetActions, 180);
     return QUEUED;
+  });
+  var RAID_DEPLOYMENT_UI = new RaidDeploymentCardsUI({
+    command: (kind, payload) => {
+      const QUEUED = active?.queue(kind, payload) ?? false;
+      setTimeout(renderProgressionResetActions, 180);
+      return QUEUED;
+    },
+    deploy: (speciesId) => active?.deployNext(speciesId) ?? false,
+    canDeploy: () => canUseWorldInput() && active?.world.scene === "raid" && !panPointer
   });
   var PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
   STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
@@ -19526,6 +19916,7 @@
     active.queue("register-roster", {
       entries: raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits),
       abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
+      deploymentCardSpecies: raidDeploymentCardSpecies(personalGarden.playerProgression.raidDeploymentCards),
       settlement: {
         sessionId: RESERVED.sessionId,
         runSequence: RESERVED.runSequence,
@@ -19862,15 +20253,18 @@
     if (menuTab === "formation") {
       return { type: "formation" };
     }
+    if (menuTab === "deployment") {
+      return { type: "deployment-cards" };
+    }
     return null;
   }
   function renderProgressionResetActions() {
     const HOST = DOLLAR2("progressionResetActions"), CURRENT = DOLLAR2("progressionResetCurrent"), ALL = DOLLAR2("progressionResetAll");
-    if (!active || !menuOpen || !["growth", "abilities", "formation"].includes(menuTab)) {
+    if (!active || !menuOpen || !["growth", "abilities", "formation", "deployment"].includes(menuTab)) {
       HOST.hidden = true;
       return;
     }
-    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
+    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : menuTab === "deployment" ? "병력 편성 초기화" : "이 종 특성 초기화";
     HOST.hidden = false;
     CURRENT.hidden = menuTab === "abilities";
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -19883,12 +20277,13 @@
     growth: "#/growth",
     abilities: "#/abilities",
     help: "#/help",
-    formation: "#/formation"
+    formation: "#/formation",
+    deployment: "#/deployment"
   };
   var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ["growth", "abilities", "formation"].includes(tab);
+    const UPGRADES = ["growth", "abilities", "formation", "deployment"].includes(tab);
     DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
     DOLLAR2("gameMenuTitle").textContent = UPGRADES ? "업그레이드" : tab === "help" ? "도움말" : "설정";
     DOLLAR2("gameMenuClose").setAttribute("aria-label", `${DOLLAR2("gameMenuTitle").textContent} 닫기`);
@@ -19909,7 +20304,8 @@
       ["growth", "treePanel"],
       ["abilities", "abilityPanel"],
       ["help", "helpPanel"],
-      ["formation", "formationPanel"]
+      ["formation", "formationPanel"],
+      ["deployment", "deploymentCardPanel"]
     ]) {
       DOLLAR2(ID).hidden = NAME !== tab;
     }
@@ -19989,7 +20385,7 @@
       history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
     }
     DOLLAR2(
-      ["growth", "abilities", "formation"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
+      ["growth", "abilities", "formation", "deployment"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
     ).focus();
   }
   DOLLAR2("gameMenu").onclick = () => menuOpen && menuTab === "play" ? closeMenu() : openMenu();
@@ -20168,11 +20564,6 @@
       "raidRemaining",
       !ROSTER2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, REMAINING - QUEUED)} · 약한 병력부터 · 맵 가장자리 전방위 투입`
     );
-    syncFlag(
-      "deployTroops",
-      "disabled",
-      !ROSTER2 || REMAINING - QUEUED <= 0 || active.paused || ["victory", "defeat"].includes(W.encounter.outcome)
-    );
     let deployed = 0;
     if (ROSTER2) {
       for (const TROOP of ROSTER2.troops) {
@@ -20198,66 +20589,6 @@
   function canUseWorldInput() {
     return !home && !menuOpen && !bossEncounterOpen && !active.paused;
   }
-  function deployTroop() {
-    if (!canUseWorldInput() || active.world.scene !== "raid") {
-      return false;
-    }
-    return active.deployNext();
-  }
-  function stopDrop(e) {
-    if (e && dropPointer !== null && e.pointerId !== dropPointer) {
-      return;
-    }
-    const ID = dropPointer;
-    dropPointer = null;
-    if (dropTimer !== null) {
-      clearInterval(dropTimer);
-    }
-    dropTimer = null;
-    const BUTTON = DOLLAR2("deployTroops");
-    BUTTON.setAttribute("aria-pressed", "false");
-    if (typeof ID === "number" && BUTTON.hasPointerCapture?.(ID)) {
-      BUTTON.releasePointerCapture(ID);
-    }
-  }
-  function beginDrop(id) {
-    if (dropPointer !== null || panPointer || !deployTroop()) {
-      return false;
-    }
-    dropPointer = id;
-    DOLLAR2("deployTroops").setAttribute("aria-pressed", "true");
-    dropTimer = setInterval(() => {
-      if (dropPointer !== null && !deployTroop()) {
-        stopDrop();
-      }
-    }, 100);
-    return true;
-  }
-  DOLLAR2("deployTroops").addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || !beginDrop(e.pointerId)) {
-      return;
-    }
-    FOOD_FEEL.unlock();
-    DOLLAR2("deployTroops").setPointerCapture?.(e.pointerId);
-    e.preventDefault();
-  });
-  DOLLAR2("deployTroops").addEventListener("lostpointercapture", stopDrop);
-  DOLLAR2("deployTroops").addEventListener("keydown", (e) => {
-    if (!["Enter", " "].includes(e.key)) {
-      return;
-    }
-    e.preventDefault();
-    if (!e.repeat) {
-      beginDrop("keyboard");
-    }
-  });
-  DOLLAR2("deployTroops").addEventListener("keyup", (e) => {
-    if (["Enter", " "].includes(e.key)) {
-      e.preventDefault();
-      stopDrop();
-    }
-  });
-  DOLLAR2("deployTroops").addEventListener("blur", () => stopDrop());
   function stopPan(e) {
     if (e && panPointer && e.pointerId !== panPointer.id) {
       return;
@@ -20269,12 +20600,12 @@
     }
   }
   function stopWorldInput(e) {
-    stopDrop(e);
+    RAID_DEPLOYMENT_UI.stopHold(e);
     stopPan(e);
   }
   CANVAS.addEventListener("pointerdown", (e) => {
     FOOD_FEEL.unlock();
-    if (e.button !== 0 || !canUseWorldInput() || panPointer || dropPointer !== null) {
+    if (e.button !== 0 || !canUseWorldInput() || panPointer || RAID_DEPLOYMENT_UI.hold) {
       return;
     }
     panPointer = {
@@ -20417,7 +20748,7 @@
       (reward) => ["pending", "calculating", "ready", "legacy"].includes(reward.status) || reward.queuedCount > 0
     ), MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD);
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || panPointer)) {
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && (RAID_DEPLOYMENT_UI.hold || panPointer)) {
       stopWorldInput();
     }
     syncAttribute("farm", "aria-pressed", !RAID && !bossEncounterOpen);
@@ -20540,6 +20871,13 @@
       const UI_START = PERFORMANCE_DIAGNOSTICS.start();
       sync(DISPLAY, now, NOTICES);
       FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
+      RAID_DEPLOYMENT_UI.update(
+        active.world,
+        personalGarden || active.world,
+        !home,
+        active.localPlayerId,
+        active.world.scene === "farm" && !active.world.running && active.world.farmBossEvent?.phase === "idle"
+      );
       PERFORMANCE_DIAGNOSTICS.end("ui", UI_START);
       PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
       requestAnimationFrame(frame);

@@ -1,4 +1,5 @@
 import { createFormationSkillState } from './formation-skill-state.js';
+import { createRaidDeploymentCardsState, migrateRaidDeploymentCardsState } from './raid-deployment-cards.js';
 import { CONFIG } from './farm-model.js';
 import { resolveUnitStats } from './unit-stats.js';
 import { createPlayerProgressionState } from './player-progression.js';
@@ -26,6 +27,9 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
     }
     migrateBaselineAbilityInvestments(raw.playerProgression);
     for (const R of raw.raidRosters || []) {
+        if (!Object.hasOwn(R, 'deploymentCardSpecies')) {
+            R.deploymentCardSpecies = [...new Set((R.troops || []).map((troop) => troop.species))].slice(0, 4);
+        }
         migrateBaselineAbilityInvestments(R.abilitySnapshot);
     }
     // Farm no longer has a user-selectable breeding/fusion mode. Older saves
@@ -40,6 +44,16 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
     }
     if (!Object.hasOwn(raw, 'farmBossProgress')) {
         raw.farmBossProgress = createFarmBossProgress(raw.seed);
+    }
+    if (!raw.playerProgression || !Object.hasOwn(raw.playerProgression, 'raidDeploymentCards')) {
+        const BASE_PLAYER = raw.playerProgression || {},
+            OWNED_SPECIES = (raw.units || [])
+                .filter((unit) => unit?.countsTowardPermanentRoster !== false)
+                .map((unit) => unit.species);
+        raw.playerProgression = {
+            ...BASE_PLAYER,
+            raidDeploymentCards: migrateRaidDeploymentCardsState(undefined, OWNED_SPECIES),
+        };
     }
     // Older saves store one transient merge as `mergeTask`; promote it to the
     // concurrent task list. Invalid transient work is discarded while the
@@ -128,6 +142,9 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
         migrateBaselineAbilityInvestments(R.abilitySnapshot);
         if (R.abilitySnapshot && !Object.hasOwn(R.abilitySnapshot, 'formationSkills')) {
             R.abilitySnapshot.formationSkills = createFormationSkillState();
+        }
+        if (R.abilitySnapshot && !Object.hasOwn(R.abilitySnapshot, 'raidDeploymentCards')) {
+            R.abilitySnapshot.raidDeploymentCards = createRaidDeploymentCardsState({ firstSpecies: null });
         }
         if (!Object.hasOwn(R, 'abilitySnapshot')) {
             R.abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState());

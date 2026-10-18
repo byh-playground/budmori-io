@@ -2,6 +2,7 @@ import { SimulationScene } from '../model-base.js';
 import { FEATURE } from './definition.js';
 import { createBossPatternRuntime } from '../../../boss-patterns.js';
 import { createAbilityRuntimeSnapshot } from '../../../ability-state.js';
+import { raidDeploymentCardSpecies } from '../../../raid-deployment-cards.js';
 import { FACTION_CONFIG, hasFaction } from '../../../factions.js';
 
 export class RaidSimulationScene extends SimulationScene {
@@ -56,6 +57,7 @@ export class RaidSimulationScene extends SimulationScene {
         world.raidRosters = [
             {
                 ownerId: 'solo',
+                deploymentCardSpecies: raidDeploymentCardSpecies(world.playerProgression.raidDeploymentCards),
                 troops: world.units
                     .filter((u) => !u.isBattleOnlySummon)
                     .map((u) => ({

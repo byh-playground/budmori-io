@@ -2,6 +2,7 @@ import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 import { createFormationSkillState, formationInvestedPoints } from './formation-skill-state.js';
+import { raidDeploymentCardsInvestedPoints, resetRaidDeploymentCardsState } from './raid-deployment-cards.js';
 import {
     createFarmUpgradeState,
     FARM_UPGRADE_MAX_LEVELS,
@@ -325,6 +326,9 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
     if (TYPE === 'all' || TYPE === 'formation') {
         NEXT.formationSkills = createFormationSkillState();
     }
+    if (TYPE === 'all' || TYPE === 'deployment-cards') {
+        NEXT.raidDeploymentCards = resetRaidDeploymentCardsState(NEXT.raidDeploymentCards);
+    }
     return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
 }
 function progressionResetInvestment(state, scope) {
@@ -333,7 +337,8 @@ function progressionResetInvestment(state, scope) {
             return (
                 getInvestedPointCount(state) +
                 getFarmUpgradeInvestedCount(state.farmUpgrades) +
-                formationInvestedPoints(state.formationSkills)
+                formationInvestedPoints(state.formationSkills) +
+                raidDeploymentCardsInvestedPoints(state.raidDeploymentCards)
             );
         case 'farm':
             return getFarmUpgradeInvestedCount(state.farmUpgrades);
@@ -341,6 +346,8 @@ function progressionResetInvestment(state, scope) {
             return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
         case 'formation':
             return formationInvestedPoints(state.formationSkills);
+        case 'deployment-cards':
+            return raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
         default:
             return 0;
     }
@@ -350,7 +357,12 @@ function normalizeResetScope(scope) {
     if (!NORMALIZED || typeof NORMALIZED !== 'object' || Array.isArray(NORMALIZED)) {
         return null;
     }
-    if (NORMALIZED.type === 'all' || NORMALIZED.type === 'farm' || NORMALIZED.type === 'formation') {
+    if (
+        NORMALIZED.type === 'all' ||
+        NORMALIZED.type === 'farm' ||
+        NORMALIZED.type === 'formation' ||
+        NORMALIZED.type === 'deployment-cards'
+    ) {
         return NORMALIZED;
     }
     if (NORMALIZED.type === 'abilities') {
@@ -517,6 +529,14 @@ function cloneState(state) {
                       ...state.formationSkills,
                       levels: { ...state.formationSkills.levels },
                       equipped: [...state.formationSkills.equipped],
+                  },
+              }
+            : {}),
+        ...(state.raidDeploymentCards
+            ? {
+                  raidDeploymentCards: {
+                      ...state.raidDeploymentCards,
+                      speciesBySlot: [...state.raidDeploymentCards.speciesBySlot],
                   },
               }
             : {}),

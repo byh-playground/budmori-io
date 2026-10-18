@@ -94,13 +94,31 @@ export function renderAbilityTreeMarkup(
     const CARDS =
         VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join('') ||
         `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const LEVEL_MARKUP = renderPlayerProgressMarkup(state);
+    const LEVEL_MARKUP = renderPlayerProgressMarkup(state),
+        DEFAULT_SPECIES = [
+            ...new Set(
+                SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.defaultUnlocked).map(
+                    (definition) => definition.species,
+                ),
+            ),
+        ].map((speciesId) => speciesById(speciesId).name),
+        LOCKED_THRESHOLDS = [
+            ...new Set(
+                SPECIES_ABILITY_DEFINITIONS.filter((definition) => !definition.defaultUnlocked).map(
+                    (definition) => definition.rootTier,
+                ),
+            ),
+        ]
+            .sort((a, b) => a - b)
+            .map((tier) => `${unitGradeLabel(tier)}(T${tier})`)
+            .join(', '),
+        DEFAULTS_NOTE = `${DEFAULT_SPECIES.join('·')} \uBCD1\uC885\uC758 \uAE30\uBCF8 \uB2A5\uB825\uC740 Common(T1)\uBD80\uD130 \uBB34\uB8CC\uB85C \uC801\uC6A9\uB429\uB2C8\uB2E4. \uADF8 \uBC16\uC758 \uB2A5\uB825\uC740 \uC815\uC758\uB41C \uC885\uBCC4 ${LOCKED_THRESHOLDS}\uBD80\uD130 \uD574\uAE08\uB418\uBA70, \uD6A8\uACFC \uAC15\uD654\uC5D0\uB294 \uACF5\uC6A9 \uD3EC\uC778\uD2B8\uB97C \uC0AC\uC6A9\uD569\uB2C8\uB2E4.`;
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
-    <p class="ability-tree__note">쌈·밀·보리 기본 능력은 Common부터 무료로 제공되며, 그 외 능력은 Rare(T3)에서 해금할 수 있습니다. 강화와 등급 완화에는 같은 포인트를 쓰며, 남은 포인트는 보존됩니다.</p>
+    <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
       <p class="ability-tree__lock-note" role="status">${inCombat ? '전투 중에는 투자와 초기화가 잠깁니다.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있습니다.' : '농장에서 무료로 초기화할 수 있습니다.'}</p>
