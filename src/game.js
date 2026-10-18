@@ -9800,7 +9800,7 @@
           return this.mutateUnits(this._tapFood, source);
         }
         _tapFood(source) {
-          if (source !== "auto" && source !== "manual" || source === "manual" && this.scene !== "farm" || source === "manual" && this.food.length >= 140 || source === "auto" && this.warehouseFood >= Number.MAX_SAFE_INTEGER) {
+          if (source !== "auto" || this.warehouseFood >= Number.MAX_SAFE_INTEGER) {
             return false;
           }
           const COMPLETED = this.foodTaps.remainder === 4;
@@ -9808,18 +9808,8 @@
           this.foodTaps.revision++;
           if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            let scattered = false;
-            if (source === "auto") {
-              this.warehouseFood++;
-            } else if (this.warehouseFood > 0) {
-              scattered = this.scatterFood(
-                (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
-                (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35
-              );
-            }
-            if (source === "auto" || scattered) {
-              this.foodTaps.produced++;
-            }
+            this.warehouseFood++;
+            this.foodTaps.produced++;
           }
           this.notice("food-tap", {
             source,
@@ -9828,6 +9818,19 @@
           });
           this.markProgressChanged();
           return true;
+        }
+        scatterFoodAtRandomLocation() {
+          if (this.scene !== "farm" || this.warehouseFood <= 0 || this.food.length >= 140) {
+            return false;
+          }
+          const SCATTERED = this.scatterFood(
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35
+          );
+          if (SCATTERED) {
+            this.notice("manual-feed");
+          }
+          return SCATTERED;
         }
         scatterFood(x, y) {
           if (this.scene !== "farm" || !Number.isFinite(x) || !Number.isFinite(y) || this.warehouseFood <= 0 || this.food.length >= 140) {
@@ -17115,7 +17118,7 @@
       const W = this.world;
       switch (c.type) {
         case "feed":
-          return W.scene === "farm" && W.tapFood("manual");
+          return W.scene === "farm" && W.scatterFoodAtRandomLocation();
         case "scatter-food":
           return W.scene === "farm" && W.scatterFood(c.x, c.y);
         case "farm-plot-switch":
@@ -18978,7 +18981,8 @@
   var FoodFeel = class {
     constructor(requestFeed2) {
       this.button = DOLLAR("feed");
-      this.pips = [...this.button.querySelectorAll(".tap-pip")];
+      this.progress = DOLLAR("warehouseProgress");
+      this.pips = [...this.progress.querySelectorAll(".tap-pip")];
       this.completeUntil = 0;
       this.pulseUntil = 0;
       this.animations = /* @__PURE__ */ new Map();
@@ -19011,55 +19015,83 @@
         }
         this.updateSoundButton();
       };
-      const POINTERS = /* @__PURE__ */ new Set();
+      const POINTERS = /* @__PURE__ */ new Map();
+      const STOP_POINTER = (id, activate = false) => {
+        const POINTER = POINTERS.get(id);
+        if (!POINTER) {
+          return;
+        }
+        clearTimeout(POINTER.timeout);
+        clearInterval(POINTER.interval);
+        POINTERS.delete(id);
+        if (activate && !POINTER.started) {
+          requestFeed2();
+        }
+        if (this.button.hasPointerCapture(id)) {
+          this.button.releasePointerCapture(id);
+        }
+      };
       this.button.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) {
+        if (e.button !== 0 || !e.isPrimary || this.button.disabled) {
           return;
         }
         e.preventDefault();
         this.unlock();
-        POINTERS.add(e.pointerId);
+        const POINTER = { started: false, timeout: 0, interval: 0 };
+        POINTERS.set(e.pointerId, POINTER);
         this.button.setPointerCapture(e.pointerId);
         this.animate(
           this.button,
-          [
-            {
-              transform: "scale(1)"
-            },
-            {
-              transform: this.reduced ? "scale(1)" : "scale(1.035,.94)"
-            }
-          ],
+          [{ transform: "scale(1)" }, { transform: this.reduced ? "scale(1)" : "scale(1.035,.94)" }],
           75
         );
+        POINTER.timeout = setTimeout(() => {
+          if (!POINTERS.has(e.pointerId)) {
+            return;
+          }
+          POINTER.started = true;
+          if (!requestFeed2()) {
+            return;
+          }
+          POINTER.interval = setInterval(() => {
+            if (!requestFeed2()) {
+              clearInterval(POINTER.interval);
+              POINTER.interval = 0;
+            }
+          }, 100);
+        }, 100);
       });
       this.button.addEventListener("pointerup", (e) => {
-        if (!POINTERS.delete(e.pointerId)) {
+        if (!POINTERS.has(e.pointerId)) {
           return;
         }
         e.preventDefault();
         const R2 = this.button.getBoundingClientRect();
-        if (e.clientX >= R2.left && e.clientX <= R2.right && e.clientY >= R2.top && e.clientY <= R2.bottom) {
-          requestFeed2();
-        }
-        if (this.button.hasPointerCapture(e.pointerId)) {
-          this.button.releasePointerCapture(e.pointerId);
-        }
+        STOP_POINTER(
+          e.pointerId,
+          e.clientX >= R2.left && e.clientX <= R2.right && e.clientY >= R2.top && e.clientY <= R2.bottom
+        );
       });
-      const CANCEL = (e) => POINTERS.delete(e.pointerId);
+      const CANCEL = (e) => STOP_POINTER(e.pointerId);
       this.button.addEventListener("pointercancel", CANCEL);
       this.button.addEventListener("lostpointercapture", CANCEL);
+      const CANCEL_ALL = () => {
+        for (const ID of [...POINTERS.keys()]) {
+          STOP_POINTER(ID);
+        }
+      };
       window.addEventListener("blur", () => {
-        POINTERS.clear();
+        CANCEL_ALL();
         this.silence();
       });
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-          POINTERS.clear();
+          CANCEL_ALL();
           this.silence();
         }
       });
       window.addEventListener("pagehide", () => {
+        CANCEL_ALL();
         this.silence();
         for (const A of this.animations.values()) {
           A.cancel();
@@ -19157,16 +19189,17 @@
     }
     tap(source, complete, remainder) {
       this.counts[source]++;
-      const NOW = performance.now(), MANUAL = source === "manual";
+      const NOW = performance.now(), MANUAL = source === "manual", TARGET = MANUAL ? this.button : this.progress;
+      this.impactTarget = TARGET;
       if (complete) {
         this.counts.complete++;
         this.completeUntil = NOW + (MANUAL ? 190 : 100);
       }
       if (MANUAL || NOW > this.pulseUntil) {
         this.pulseUntil = NOW + (MANUAL ? 150 : 55);
-        this.button.dataset.impact = complete && MANUAL ? "complete" : MANUAL ? "manual" : "auto";
+        TARGET.dataset.impact = complete && MANUAL ? "complete" : MANUAL ? "manual" : "auto";
         this.animate(
-          this.button,
+          TARGET,
           [
             {
               transform: this.reduced || !MANUAL ? "scale(1)" : complete ? "translateY(3px) scale(1.06,.90)" : "scale(1.025,.95)",
@@ -19202,6 +19235,21 @@
         this.sound(complete ? "complete" : "tap", remainder);
       }
     }
+    manualScatter() {
+      this.counts.manual++;
+      this.pulseUntil = performance.now() + 150;
+      this.impactTarget = this.button;
+      this.button.dataset.impact = "manual";
+      this.animate(
+        this.button,
+        [
+          { transform: this.reduced ? "scale(1)" : "scale(1.025,.95)", filter: "brightness(1.16)" },
+          { transform: "translateY(0) scale(1)", filter: "brightness(1)" }
+        ],
+        125
+      );
+      this.sound("tap", 0);
+    }
     event(kind) {
       if (kind === "food-land" || kind === "eat") {
         const KEY2 = kind === "eat" ? "eat" : "land";
@@ -19211,8 +19259,9 @@
     }
     frame(now) {
       this.frameId++;
-      if (now > this.pulseUntil && this.button.dataset.impact !== "") {
-        this.button.dataset.impact = "";
+      if (now > this.pulseUntil && this.impactTarget) {
+        this.impactTarget.dataset.impact = "";
+        this.impactTarget = null;
       }
     }
   };
@@ -20247,10 +20296,12 @@
   var FOOD_FEEL = new FoodFeel(requestFeed);
   var COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
   function requestFeed() {
-    if (!home && active && !active.paused) {
+    if (!home && active && !active.paused && active.world.scene === "farm" && active.world.warehouseFood > 0 && active.world.food.length < 140) {
       FOOD_FEEL.unlock();
       active.queue("feed");
+      return true;
     }
+    return false;
   }
   function install(world) {
     if (active) {
@@ -20835,6 +20886,9 @@
     });
     renderProgressionResetActions();
   }
+  function farmPlotDisplayName(plotId) {
+    return `농장 ${String(plotId).match(/^plot-(\d+)$/)?.[1] || plotId}`;
+  }
   function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -20842,23 +20896,23 @@
     }
     farmPanelRevision = W.progressRevision;
     const LOCKED = !!farmSortTransition || active?.world?.scene !== "farm" || W.running || W.farmBossEvent?.phase !== "idle";
-    DOLLAR2("farmPopulationSummary").textContent = `Placed ${W.placedPopulation}/${W.totalFarmCapacity} · Reserve ${W.reservedPopulation} · Rewards waiting ${W.pendingRewardPopulation} · Owned ${W.ownedPopulation}`;
-    DOLLAR2("farmWarehouseSummary").textContent = `Warehouse food: ${W.warehouseFood}`;
+    DOLLAR2("farmPopulationSummary").textContent = `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함합니다)`;
+    DOLLAR2("farmWarehouseSummary").textContent = `먹이 창고: ${W.warehouseFood}개`;
     DOLLAR2("farmPlotList").innerHTML = [...W.farmPlots.values()].map((plot) => {
       const COUNT = W.roster.placedPopulation(plot.id);
-      return `<button type="button" data-farm-plot="${plot.id}" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}>${plot.id} · ${COUNT}/${plot.capacity}</button>`;
+      return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}>${farmPlotDisplayName(plot.id)} · ${COUNT}/${plot.capacity}</button>`;
     }).join("");
     const ACTIVE = W.activeFarmPlot, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    DOLLAR2("farmExpand").textContent = `Expand current plot · ${ACTIVE.capacity} → ${NEXT_CAPACITY} · 1 point`;
+    DOLLAR2("farmExpand").textContent = `현재 농장 확장 · ${ACTIVE.capacity} → ${NEXT_CAPACITY}명 · 공용 포인트 1개`;
     DOLLAR2("farmExpand").disabled = LOCKED || !ACTIVE.canExpand() || W.playerProgression.availablePoints < 1;
-    DOLLAR2("farmUnlock").textContent = `Unlock farm · ${W.playerProgression.availablePoints} points (cost 2)`;
+    DOLLAR2("farmUnlock").textContent = `새 농장 열기 · 공용 포인트 ${W.playerProgression.availablePoints}개 (2개 필요)`;
     DOLLAR2("farmUnlock").disabled = LOCKED || W.playerProgression.availablePoints < 2;
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
     DOLLAR2("farmRatioList").innerHTML = W.farmTargets.map((value, speciesId) => {
       const NAME = speciesById(speciesId).name;
-      return `<label class="farm-ratio"><span>${NAME}</span><output>${(value / 100).toFixed(2)}%</output><input type="range" min="0" max="10000" step="1" value="${value}" aria-label="${NAME} target share" data-farm-target="${speciesId}"${LOCKED ? " disabled" : ""}></label>`;
+      return `<label class="farm-ratio"><span>${NAME}</span><output>${(value / 100).toFixed(2)}%</output><input type="range" min="0" max="10000" step="1" value="${value}" aria-label="${NAME} 목표 비율" data-farm-target="${speciesId}"${LOCKED ? " disabled" : ""}></label>`;
     }).join("");
   }
   function drawAbilityTree() {
@@ -21112,7 +21166,6 @@
       closeMenu();
     }
   };
-  GAME_MENU_OVERLAY.addEventListener("pointerdown", CLOSE_MENU_FROM_BACKDROP);
   GAME_MENU_OVERLAY.addEventListener("click", CLOSE_MENU_FROM_BACKDROP);
   DOLLAR2("treeNodes").onclick = (e) => {
     const B = e.target.closest("[data-progression-farm-node]");
@@ -21470,9 +21523,9 @@
       }
       return;
     }
-    if (R2 === "#/help" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
+    if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
       const RAID = active.world.scene === "raid", FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== "idle";
-      const RESTRICTED = R2 === "#/growth" && (RAID || FARM_EVENT_ACTIVE) || R2 === "#/abilities" && (RAID || !personalGarden);
+      const RESTRICTED = (R2 === "#/farms" || R2 === "#/growth") && (RAID || FARM_EVENT_ACTIVE) || R2 === "#/abilities" && (RAID || !personalGarden);
       if (RESTRICTED) {
         closeMenu(false);
         history.replaceState(null, "", RAID ? "#/raid" : "#/farm");
@@ -21593,14 +21646,22 @@
     syncText("pause", active.paused ? "▶" : "Ⅱ");
     syncAttribute("pause", "aria-label", active.paused ? "게임 계속" : "게임 일시 정지");
     syncAttribute("pause", "title", active.paused ? "게임 계속" : "일시 정지");
-    syncAttribute("feed", "aria-label", `먹이 탭, 5회 중 ${W.foodTaps.remainder}회`);
-    syncData("feed", "state", W.food.length >= 140 ? "full" : "ready");
-    syncText("feedQuantity", `+${W.warehouseFood}`);
-    syncText("warehouseCount", `Food warehouse · ${W.warehouseFood}`);
+    syncAttribute("feed", "aria-label", "현재 농장에 먹이 1개 살포");
+    syncAttribute("feed", "title", "현재 농장에 먹이 1개 살포");
+    syncData("feed", "state", W.warehouseFood <= 0 || W.food.length >= 140 ? "unavailable" : "ready");
+    syncFlag(
+      "feed",
+      "disabled",
+      home || active.paused || W.scene !== "farm" || W.warehouseFood <= 0 || W.food.length >= 140
+    );
+    syncText("warehouseStock", String(W.warehouseFood));
+    syncText("warehouseProgressLabel", `자동 생산 ${W.foodTaps.remainder}/5`);
+    syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
+    syncAttribute("warehouseProgress", "aria-valuetext", `자동 생산 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
     }
-    syncData("feed", "produced", now < FOOD_FEEL.completeUntil);
+    syncData("warehouseProgress", "produced", now < FOOD_FEEL.completeUntil);
     for (let i = 0; i < 5; i++) {
       const PIP = FOOD_FEEL.pips[i], FILLED = now < FOOD_FEEL.completeUntil || i < W.foodTaps.remainder;
       if (PIP.classList.contains("filled") !== FILLED) {
@@ -21610,6 +21671,8 @@
     for (const E of notices) {
       if (E.kind === "food-tap") {
         FOOD_FEEL.tap(E.source, E.completed, E.remainder);
+      } else if (E.kind === "manual-feed") {
+        FOOD_FEEL.manualScatter();
       } else {
         FOOD_FEEL.event(E.kind);
       }
