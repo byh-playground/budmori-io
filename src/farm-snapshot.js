@@ -387,7 +387,7 @@ const SETTLEMENT = FIELDS(
     },
 );
 const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression);
-const RUNTIME_PROGRESSION = FIELDS('schemaVersion level availablePoints', {
+const RUNTIME_PROGRESSION = FIELDS('schemaVersion baselineAbilityMigrationVersion level availablePoints', {
     farmUpgrades: PROGRESSION.farmUpgrades,
     abilities: PROGRESSION.abilities,
     formationSkills: PROGRESSION.formationSkills,

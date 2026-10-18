@@ -12338,8 +12338,7 @@
     WORLD.bossRewardReceipts = BOSS2.pendingRewards.map((reward) => ({
       ...reward,
       x: Number.isFinite(reward.x) ? reward.x : 0,
-      y: Number.isFinite(reward.y) ? reward.y : 0,
-      roll: Number.isFinite(reward.roll) ? reward.roll : 0
+      y: Number.isFinite(reward.y) ? reward.y : 0
     }));
     WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
     WORLD.reconcileMateReservations();
@@ -12834,7 +12833,7 @@
         }
       );
       PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression);
-      RUNTIME_PROGRESSION = FIELDS("schemaVersion level availablePoints", {
+      RUNTIME_PROGRESSION = FIELDS("schemaVersion baselineAbilityMigrationVersion level availablePoints", {
         farmUpgrades: PROGRESSION.farmUpgrades,
         abilities: PROGRESSION.abilities,
         formationSkills: PROGRESSION.formationSkills,
