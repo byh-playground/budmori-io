@@ -91,7 +91,12 @@ export function validateSnapshot(raw) {
                 T.materialIds.length >= 2 &&
                 T.materialIds.length <= CONFIG.farm.merge.maxMaterials &&
                 new Set(T.materialIds).size === T.materialIds.length &&
-                T.materialIds.every((id) => INTEGER(id, 1, CONFIG.farm.maxUnitId) && !MERGE_TASK_UNIT_IDS.has(id)),
+                T.materialIds.every((id) => INTEGER(id, 1, CONFIG.farm.maxUnitId) && !MERGE_TASK_UNIT_IDS.has(id)) &&
+                Number.isFinite(T.centerX) &&
+                Number.isFinite(T.centerY) &&
+                Number.isFinite(T.centerZ) &&
+                T.centerZ >= 0 &&
+                Array.isArray(T.startPositions),
         );
         for (const ID of T.materialIds) {
             MERGE_TASK_UNIT_IDS.add(ID);
@@ -111,7 +116,16 @@ export function validateSnapshot(raw) {
                     INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier - 1) &&
                     T.sourceSpecies === FIRST.species &&
                     T.sourceTier === FIRST.tier &&
-                    MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species),
+                    MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species) &&
+                    T.startPositions.length === MATERIALS.length &&
+                    T.startPositions.every(
+                        (position, index) =>
+                            position?.id === MATERIALS[index].id &&
+                            Number.isFinite(position.x) &&
+                            Number.isFinite(position.y) &&
+                            Number.isFinite(position.z) &&
+                            position.z >= 0,
+                    ),
             );
             PENDING_MERGE_COST[FIRST.species] += MATERIALS.length - 1;
         } else {

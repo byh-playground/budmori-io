@@ -111,6 +111,8 @@ const CONFIG = Object.freeze({
         }),
         merge: Object.freeze({
             animationSeconds: 0.85,
+            centerHeight: 1.8,
+            resultPopVelocity: 4.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
         bossEvent: Object.freeze({
@@ -787,6 +789,10 @@ const GARDEN = class Garden {
                 value: 0,
                 writable: true,
             },
+            mergeAvailabilityRevision: {
+                value: 0,
+                writable: true,
+            },
         });
         this.reset();
         Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
@@ -796,6 +802,13 @@ const GARDEN = class Garden {
     }
     _markMergeTasksChanged() {
         this.mergeTaskRevision++;
+        this._markMergeAvailabilityChanged();
+    }
+    _markMergeAvailabilityChanged() {
+        this.mergeAvailabilityRevision++;
+    }
+    isMergeTaskMaterial(unit) {
+        return this.unitCollection.reservationOwner(unit)?.startsWith('merge:') || false;
     }
     _pendingMergeCost(species, excludedTask = null) {
         let cost = 0;
@@ -2580,20 +2593,48 @@ const GARDEN = class Garden {
             return false;
         }
         const MATERIAL_IDS = MATERIALS.map((unit) => unit.id),
-            OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS);
+            OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS),
+            CENTER_X = MATERIALS.reduce((sum, unit) => sum + unit.x, 0) / MATERIALS.length,
+            CENTER_Y = MATERIALS.reduce((sum, unit) => sum + unit.y, 0) / MATERIALS.length,
+            DURATION = CONFIG.farm.merge.animationSeconds,
+            SEQUENCE_WINDOW = DURATION * 0.72,
+            STEP = SEQUENCE_WINDOW / MATERIALS.length;
         if (!this.unitCollection.reserve(OWNER, MATERIALS)) {
             return false;
         }
-        this.mergeTasks.push({
+        const TASK = {
             phase: 'approach',
             aId: MATERIAL_IDS[0],
             bId: MATERIAL_IDS[1],
             materialIds: MATERIAL_IDS,
+            startPositions: MATERIALS.map(({ id, x, y, z }) => ({ id, x, y, z })),
+            centerX: CENTER_X,
+            centerY: CENTER_Y,
+            centerZ: CONFIG.farm.merge.centerHeight,
             sourceSpecies: MATERIALS[0].species,
             sourceTier: MATERIALS[0].tier,
             elapsed: 0,
-            duration: CONFIG.farm.merge.animationSeconds,
-        });
+            duration: DURATION,
+        };
+        this.mergeTasks.push(TASK);
+        MATERIALS.forEach((unit, index) =>
+            this.effects.push({
+                kind: 'merge-material',
+                taskKey: OWNER,
+                x: unit.x,
+                y: unit.y,
+                z: unit.z,
+                targetX: CENTER_X,
+                targetY: CENTER_Y,
+                targetZ: TASK.centerZ,
+                life: 0,
+                delay: index * STEP,
+                span: STEP,
+                duration: (index + 1) * STEP,
+                sequenceIndex: index,
+                sequenceCount: MATERIALS.length,
+            }),
+        );
         this._markMergeTasksChanged();
         return true;
     }
@@ -2604,7 +2645,25 @@ const GARDEN = class Garden {
             return false;
         }
         if (TASK.materialIds?.length) {
-            this.unitCollection.releaseReservations(MERGE_RESERVATION_OWNER(TASK.materialIds));
+            const OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+            if (TASK.phase === 'approach') {
+                for (const ID of TASK.materialIds) {
+                    const UNIT_LOCAL = this._unitById.get(ID);
+                    if (UNIT_LOCAL && this.unitCollection.has(UNIT_LOCAL) && UNIT_LOCAL.hp > 0) {
+                        UNIT_LOCAL.z = 0;
+                        UNIT_LOCAL.vx = UNIT_LOCAL.vy = UNIT_LOCAL.vz = 0;
+                        UNIT_LOCAL.moveControlActive = false;
+                        UNIT_LOCAL.dropLanded = true;
+                        this.updateUnitSpatial(UNIT_LOCAL);
+                    }
+                }
+                for (let index = this.effects.length - 1; index >= 0; index--) {
+                    if (this.effects[index].taskKey === OWNER) {
+                        this.effects.splice(index, 1);
+                    }
+                }
+            }
+            this.unitCollection.releaseReservations(OWNER);
         }
         this.mergeTasks.splice(INDEX, 1);
         this._markMergeTasksChanged();
@@ -2622,6 +2681,10 @@ const GARDEN = class Garden {
             this.cancelMergeTasks();
             return;
         }
+        if (this.farmBossEvent?.phase !== 'idle') {
+            this.cancelMergeTasks();
+            return;
+        }
         for (const TASK of [...this.mergeTasks]) {
             if (TASK.phase === 'animation') {
                 TASK.elapsed = Math.min(TASK.duration, TASK.elapsed + dt);
@@ -2633,12 +2696,37 @@ const GARDEN = class Garden {
             if (TASK.phase === 'approach') {
                 const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
                     OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
-                // Combat pauses an otherwise valid group; death, invalid tiers, or removed units cancel it.
                 if (
-                    !this.canMergeGroup(MATERIALS, { reservationOwner: OWNER }) ||
+                    !this.canMergeGroup(MATERIALS, {
+                        requireNoEnemy: true,
+                        reservationOwner: OWNER,
+                    }) ||
                     !this.unitCollection.reserve(OWNER, MATERIALS)
                 ) {
                     this.cancelMergeTask(TASK);
+                    continue;
+                }
+                TASK.elapsed = Math.min(TASK.duration, TASK.elapsed + dt);
+                const PROGRESS = CLAMP(TASK.elapsed / TASK.duration, 0, 1),
+                    EASE_IN = PROGRESS ** 2.25,
+                    MOVE_DT = Math.max(dt, 1e-6);
+                for (const [INDEX, UNIT_LOCAL] of MATERIALS.entries()) {
+                    const START = TASK.startPositions[INDEX],
+                        OLD_X = UNIT_LOCAL.x,
+                        OLD_Y = UNIT_LOCAL.y,
+                        OLD_Z = UNIT_LOCAL.z,
+                        NEXT_X = START.x + (TASK.centerX - START.x) * EASE_IN,
+                        NEXT_Y = START.y + (TASK.centerY - START.y) * EASE_IN,
+                        NEXT_Z = START.z + (TASK.centerZ - START.z) * EASE_IN;
+                    UNIT_LOCAL.x = NEXT_X;
+                    UNIT_LOCAL.y = NEXT_Y;
+                    UNIT_LOCAL.z = NEXT_Z;
+                    UNIT_LOCAL.vx = (NEXT_X - OLD_X) / MOVE_DT;
+                    UNIT_LOCAL.vy = (NEXT_Y - OLD_Y) / MOVE_DT;
+                    UNIT_LOCAL.vz = (NEXT_Z - OLD_Z) / MOVE_DT;
+                    UNIT_LOCAL.moveControlActive = false;
+                    UNIT_LOCAL.angle = Math.atan2(TASK.centerY - NEXT_Y, TASK.centerX - NEXT_X);
+                    this.updateUnitSpatial(UNIT_LOCAL);
                 }
             }
         }
@@ -2651,15 +2739,19 @@ const GARDEN = class Garden {
             }
             const MATERIALS = TASK.materialIds.map((id) => this._unitById.get(id)),
                 OWNER = MERGE_RESERVATION_OWNER(TASK.materialIds);
+            if (TASK.elapsed < TASK.duration - 1e-9) {
+                continue;
+            }
             if (
                 this.canMergeGroup(MATERIALS, {
-                    requireContact: true,
                     requireNoEnemy: true,
                     reservationOwner: OWNER,
                 }) &&
                 this.mergeGroup(MATERIALS, { task: TASK })
             ) {
                 resolved = true;
+            } else {
+                this.cancelMergeTask(TASK);
             }
         }
         return resolved;
@@ -2684,8 +2776,8 @@ const GARDEN = class Garden {
             !OWNER ||
             TASK.materialIds.length !== materials.length ||
             !TASK.materialIds.every((id, index) => materials[index]?.id === id) ||
+            TASK.elapsed < TASK.duration - 1e-9 ||
             !this.canMergeGroup(materials, {
-                requireContact: true,
                 requireNoEnemy: true,
                 reservationOwner: OWNER,
             })
@@ -2695,11 +2787,15 @@ const GARDEN = class Garden {
         const ORDERED = [...materials],
             FIRST = ORDERED[0],
             MATERIAL_IDS = ORDERED.map((unit) => unit.id),
-            X = ORDERED.reduce((sum, unit) => sum + unit.x, 0) / ORDERED.length,
-            Y = ORDERED.reduce((sum, unit) => sum + unit.y, 0) / ORDERED.length;
+            X = TASK.centerX,
+            Y = TASK.centerY,
+            Z = TASK.centerZ;
         // Prepare the complete result before the collection owner commits the
         // replacement. A failed preparation never consumes existing units.
         const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
+        RESULT.z = Z;
+        RESULT.vz = CONFIG.farm.merge.resultPopVelocity;
+        RESULT.dropLanded = false;
         RESULT.meals = 1;
         RESULT.growth = CONFIG.farm.breeding.matureMeals;
         RESULT.growthDuration = this.breedGrowthDuration();
@@ -2841,6 +2937,7 @@ const GARDEN = class Garden {
             }
             if (U.cooldown > 0 && U.cooldown <= dt + 1e-9) {
                 this.markProgressChanged();
+                this._markMergeAvailabilityChanged();
             }
             U.cooldown = Math.max(0, U.cooldown - dt);
             if (U.cooldown < 1e-9) {
@@ -2924,6 +3021,10 @@ const GARDEN = class Garden {
                 }
                 continue;
             }
+            if (this.isMergeTaskMaterial(U)) {
+                this.updateUnitSpatial(U);
+                continue;
+            }
             const OLD_Z = U.z,
                 OLD_POSITION = this._oldStepPosition;
             OLD_POSITION.x = U.x;
@@ -2973,6 +3074,9 @@ const GARDEN = class Garden {
         this.profiler?.end('collision', COLLISION_START);
     }
     updateUnitIntent(unit, dt, enemy, scene) {
+        if (this.isMergeTaskMaterial(unit)) {
+            return;
+        }
         if (enemy) {
             this.raidUnit(unit, dt, enemy);
             return;
@@ -3023,6 +3127,9 @@ const GARDEN = class Garden {
             let correctionCount = 0;
             for (let i = 0; i < units.length; i++) {
                 const UNIT_LOCAL = units[i];
+                if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+                    continue;
+                }
                 if (raidOnly && (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded)) {
                     continue;
                 }
@@ -3030,6 +3137,9 @@ const GARDEN = class Garden {
                 const PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
                 for (const J of PENDING) {
                     const OTHER = units[J];
+                    if (this.isMergeTaskMaterial(OTHER)) {
+                        continue;
+                    }
                     if (raidOnly && (OTHER.hp <= 0 || !OTHER.dropLanded)) {
                         continue;
                     }
@@ -3199,7 +3309,13 @@ const GARDEN = class Garden {
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i],
                 PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+            if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+                continue;
+            }
             for (const J of PENDING) {
+                if (this.isMergeTaskMaterial(units[J])) {
+                    continue;
+                }
                 if (contact(UNIT_LOCAL, units[J])) {
                     this.metrics.contacts++;
                 }
@@ -3211,8 +3327,14 @@ const GARDEN = class Garden {
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i],
                 PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+            if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+                continue;
+            }
             for (const J of PENDING) {
                 const OTHER = units[J];
+                if (this.isMergeTaskMaterial(OTHER)) {
+                    continue;
+                }
                 if ((UNIT_LOCAL.tier === OTHER.tier) !== sameTier) {
                     continue;
                 }

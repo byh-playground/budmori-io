@@ -1777,6 +1777,60 @@ async function core() {
         2,
         'each press queues exactly one fusion and both disjoint tasks may resolve together',
     );
+    const MERGE_UNAVAILABLE = await P.evaluate(() => {
+        const BUTTON = document.querySelector('#merge');
+        return {
+            disabled: BUTTON.disabled,
+            label: BUTTON.getAttribute('aria-label'),
+            reason: document.querySelector('#mergeNotice').textContent,
+        };
+    });
+    assert.equal(
+        await P.locator('#merge').isVisible(),
+        true,
+        'Farm keeps the merge button visible without a legal pair',
+    );
+    assert.equal(
+        MERGE_UNAVAILABLE.disabled,
+        true,
+        'the merge button disables when the two-unit reserve prevents a merge',
+    );
+    assert(MERGE_UNAVAILABLE.label.includes('불가') && MERGE_UNAVAILABLE.reason.length > 0);
+    const RECOVERED_MERGE_COUNT = await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        for (let index = 0; index < 2; index++) {
+            const UNIT = W.spawn(0, 2, index * 1.1 - 0.55, 1.2);
+            UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.meals = 1;
+            UNIT.cooldown = 0;
+        }
+        for (const UNIT of W.units) {
+            if (UNIT.species === 0 && UNIT.tier === 2) {
+                UNIT.cooldown = 0;
+                UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+                UNIT.growthElapsed = UNIT.growthDuration;
+                UNIT.meals = 1;
+            }
+        }
+        return W.metrics.merges;
+    });
+    await P.waitForFunction(() => {
+        const BUTTON = document.querySelector('#merge');
+        return BUTTON && !BUTTON.hidden && !BUTTON.disabled;
+    });
+    assert.equal(
+        await P.locator('#merge').isVisible(),
+        true,
+        'the merge button stays visible when eligibility returns',
+    );
+    await P.locator('#merge').click();
+    await P.waitForFunction((before) => BUDMORI.sim.metrics.merges === before + 1, RECOVERED_MERGE_COUNT, {
+        timeout: 15000,
+    });
+    CHECK(
+        'Merge button stays visible with a reason when unavailable and re-enables after new valid materials are added',
+    );
     assert.equal(await P.locator('#breed').count(), 0, 'breeding has no mode switch');
     const RESERVATION_INVARIANT = await P.evaluate(async () => {
         const { snapshot: SNAPSHOT, restore: RESTORE } = await import('/src/farm-state.js'),
@@ -1799,8 +1853,15 @@ async function core() {
             TASK_OWNERS = TASKS.map((ids) => W.unitCollection.reservationOwner(ids[0])),
             MATERIAL_IDS = TASKS.flat(),
             DTO = SNAPSHOT(W),
-            LEGACY_DTO = { ...DTO, mode: 'merge' },
-            RESTORED = RESTORE(LEGACY_DTO),
+            LEGACY_DTO = structuredClone(DTO);
+        for (const TASK of LEGACY_DTO.mergeTasks) {
+            delete TASK.centerX;
+            delete TASK.centerY;
+            delete TASK.centerZ;
+            delete TASK.startPositions;
+        }
+        LEGACY_DTO.mode = 'merge';
+        const RESTORED = RESTORE(LEGACY_DTO),
             PROGRESS = CAPTURE_PROGRESS(W);
         VALIDATE_PROGRESS({ ...PROGRESS, mode: 'merge' });
         return {
@@ -1812,6 +1873,13 @@ async function core() {
             noMateOverlap: MATERIAL_IDS.every((id) => !MATE_IDS.includes(id)),
             uniqueOwners: new Set(TASK_OWNERS).size === TASK_OWNERS.length,
             restoredTasks: RESTORED.mergeTasks.length,
+            restoredSuctionState: RESTORED.mergeTasks.every(
+                (task) =>
+                    Number.isFinite(task.centerX) &&
+                    Number.isFinite(task.centerY) &&
+                    Number.isFinite(task.centerZ) &&
+                    task.startPositions.length === task.materialIds.length,
+            ),
             restoredReservations: RESTORED.mergeTasks.every((task) =>
                 task.materialIds.every(
                     (id) =>
@@ -1834,6 +1902,7 @@ async function core() {
         noMateOverlap: true,
         uniqueOwners: true,
         restoredTasks: 2,
+        restoredSuctionState: true,
         restoredReservations: true,
         noModeSaved: true,
         legacyModeIgnored: true,
@@ -2896,11 +2965,72 @@ async function combatScenarios(p) {
     assert.equal(ALL_SPECIES_SWEEP.chestnutSocket, 'arm-right');
     assert(ALL_SPECIES_SWEEP.nonChestnutSockets.every((socket) => socket === null));
     assert(
-        ALL_SPECIES_SWEEP.weaponTrailLines.every((count) => count >= 3),
-        'all species render the shared active sweep trail without requiring an absent socket',
+        ALL_SPECIES_SWEEP.weaponTrailLines.every((count) => count === 2),
+        'all species render only the shared two-stroke sweep marker, without a long shaft or tip',
     );
     REPORT.allSpeciesSweep = ALL_SPECIES_SWEEP;
-    CHECK('All nine boss species render active 360 sweep trails; only the authored chestnut socket is queried');
+    CHECK('All nine boss species render the shared active sweep marker without querying an asset socket');
+    const SWEEP_MARKER_GEOMETRY = await p.evaluate(async () => {
+        const [PRESENTATION_MODULE, PATTERN_CONFIG_MODULE] = await Promise.all([
+                import('/src/features/boss-patterns/sweep-360/presentation.js'),
+                import('/src/boss-patterns.js'),
+            ]),
+            PRESENTATION_TYPE = PRESENTATION_MODULE.CircleSweepPresentation,
+            SWEEP_CONFIG = PATTERN_CONFIG_MODULE.BOSS_PATTERN_CONFIG['attack.sweep-360'],
+            PRESENTATION = new PRESENTATION_TYPE(),
+            BOSS = {
+                x: 1,
+                y: -2,
+                z: 0,
+                angle: 0,
+                patternAim: 0,
+                patternPhase: 'active',
+                patternPhaseElapsed: SWEEP_CONFIG.active / 2,
+            },
+            RECORD = BUDMORI.renderer.bossSpeciesAssets.get(3),
+            LINES = [],
+            RENDERER = {
+                ctx: { flush() {} },
+                project: (x, y, z) => ({ x, y, z }),
+                line: (...args) => LINES.push(args),
+            },
+            PLAYER = {
+                getSocket() {
+                    throw Error('The shared circle sweep must not look up an optional asset socket.');
+                },
+            },
+            POSE = { elapsed: BOSS.patternPhaseElapsed };
+        PRESENTATION.drawWeapon(RENDERER, BOSS, PLAYER, null, POSE, RECORD);
+        const MARKER = LINES[0],
+            MIDPOINT = {
+                x: (MARKER[0].x + MARKER[1].x) / 2,
+                y: (MARKER[0].y + MARKER[1].y) / 2,
+            };
+        return {
+            lineCount: LINES.length,
+            lineLength: Math.hypot(MARKER[1].x - MARKER[0].x, MARKER[1].y - MARKER[0].y),
+            midpointRadius: Math.hypot(MIDPOINT.x - BOSS.x, MIDPOINT.y - BOSS.y),
+            endpointRadii: MARKER.slice(0, 2).map((point) => Math.hypot(point.x - BOSS.x, point.y - BOSS.y)),
+            reach: SWEEP_CONFIG.reach,
+            width: SWEEP_CONFIG.width,
+        };
+    });
+    assert.equal(SWEEP_MARKER_GEOMETRY.lineCount, 2);
+    assert(
+        SWEEP_MARKER_GEOMETRY.lineLength < SWEEP_MARKER_GEOMETRY.width * 1.5,
+        'the marker is a short moving tangent, not a center shaft',
+    );
+    assert(Math.abs(SWEEP_MARKER_GEOMETRY.midpointRadius - SWEEP_MARKER_GEOMETRY.reach) < 1e-6);
+    assert(
+        SWEEP_MARKER_GEOMETRY.endpointRadii.every(
+            (radius) =>
+                radius >= SWEEP_MARKER_GEOMETRY.reach - SWEEP_MARKER_GEOMETRY.width &&
+                radius <= SWEEP_MARKER_GEOMETRY.reach + SWEEP_MARKER_GEOMETRY.width,
+        ),
+        'the sweep marker stays inside the existing circular annulus at the actual hit radius',
+    );
+    REPORT.sweepMarkerGeometry = SWEEP_MARKER_GEOMETRY;
+    CHECK('The active sweep marker stays on the configured hit radius and inside its circular warning ring');
     const OUTLINE_MASK = await p.evaluate(() => {
         const WORLD = new BUDMORI.sim.constructor(776),
             UNIT = WORLD.units[0],
@@ -3351,25 +3481,28 @@ async function seedScenarios(p, label) {
                         UNIT.vx = UNIT.vy = UNIT.vz = 0;
                         UNIT.z = 0;
                     }
+                    [-4, -2, 0, 2, 4, 8].forEach((x, index) => {
+                        W.units[index].x = x;
+                        W.units[index].y = index % 2 ? 0.8 : -0.8;
+                    });
+                    W._rebuildUnitSpatialIndex();
                     if (!W.startManualMerge()) {
                         throw Error('configured five-material Mythic fusion was not selectable');
                     }
-                    const IDS = [...W.mergeTask.materialIds];
-                    IDS.map((id) => W.units.find((unit) => unit.id === id)).forEach((unit, index) => {
-                        unit.x = index * 0.04;
-                        unit.y = 0;
-                    });
-                    if (!W.resolveMergeTaskAfterMovement()) {
-                        throw Error('configured five-material Mythic grade merge did not begin');
-                    }
-                    const OUTPUT = W.units.find((unit) => unit.tier === 6);
+                    const IDS = [...W.mergeTask.materialIds],
+                        RESULT_ID = W.nextId,
+                        STARTS = W.mergeTask.startPositions.map((position) => ({ ...position }));
                     R.world = W;
                     BUDMORI.renderer.vectorPlayers.clear();
                     R.capturePresentation('reset');
                     return {
-                        resultId: OUTPUT.id,
-                        resultTier: OUTPUT.tier,
+                        resultId: RESULT_ID,
+                        resultTier: W.units.find((unit) => unit.id === IDS[0]).tier + 1,
                         materials: IDS.length,
+                        starts: STARTS,
+                        centerX: W.mergeTask.centerX,
+                        centerY: W.mergeTask.centerY,
+                        centerZ: W.mergeTask.centerZ,
                         delays: W.effects
                             .filter((effect) => effect.kind === 'merge-material')
                             .map((effect) => effect.delay),
@@ -3378,24 +3511,32 @@ async function seedScenarios(p, label) {
                 });
                 assert.equal(MERGE_SETUP.resultTier, 6, 'five T5 materials create a T6 Mythic');
                 assert.equal(MERGE_SETUP.materials, 5);
+                assert.equal(MERGE_SETUP.phase, 'approach');
+                assert(
+                    MERGE_SETUP.starts.some(
+                        (position) =>
+                            Math.hypot(position.x - MERGE_SETUP.centerX, position.y - MERGE_SETUP.centerY) > 1,
+                    ),
+                );
                 assert.equal(MERGE_SETUP.delays.length, 5);
-                assert.equal(MERGE_SETUP.phase, 'animation');
                 assert(
                     MERGE_SETUP.delays[0] < MERGE_SETUP.delays[1] &&
                         MERGE_SETUP.delays[1] < MERGE_SETUP.delays[2] &&
                         MERGE_SETUP.delays[2] < MERGE_SETUP.delays[3] &&
                         MERGE_SETUP.delays[3] < MERGE_SETUP.delays[4],
-                    'five merge particles are staggered in source order',
+                    'five suction trails are staggered in source order',
                 );
                 const PRESENTED_SEQUENCE = await p.evaluate(() => {
                     const VIEW = BUDMORI.runtime.presentation(performance.now());
                     const MATERIALS = VIEW.effects
                         .filter((effect) => effect.kind === 'merge-material')
-                        .map(({ x, y, targetX, targetY, delay, span, sequenceIndex, sequenceCount }) => ({
+                        .map(({ x, y, z, targetX, targetY, targetZ, delay, span, sequenceIndex, sequenceCount }) => ({
                             x,
                             y,
+                            z,
                             targetX,
                             targetY,
+                            targetZ,
                             delay,
                             span,
                             sequenceIndex,
@@ -3404,10 +3545,7 @@ async function seedScenarios(p, label) {
                     const RESULT = VIEW.effects.find((effect) => effect.kind === 'merge');
                     return {
                         materials: MATERIALS,
-                        result: RESULT && {
-                            delay: RESULT.delay,
-                            span: RESULT.span,
-                        },
+                        result: !!RESULT,
                     };
                 });
                 assert.equal(
@@ -3420,52 +3558,143 @@ async function seedScenarios(p, label) {
                         (effect, index) =>
                             Number.isFinite(effect.targetX) &&
                             Number.isFinite(effect.targetY) &&
+                            Number.isFinite(effect.targetZ) &&
                             Number.isFinite(effect.delay) &&
                             Number.isFinite(effect.span) &&
                             effect.span > 0 &&
                             effect.sequenceIndex === index &&
                             effect.sequenceCount === 5,
                     ),
-                    'presentation preserves all five material targets, durations, and sequence indexes',
+                    'presentation preserves all five aerial suction targets, durations, and sequence indexes',
                 );
-                assert(
-                    Number.isFinite(PRESENTED_SEQUENCE.result?.delay) &&
-                        Number.isFinite(PRESENTED_SEQUENCE.result?.span) &&
-                        PRESENTED_SEQUENCE.result.delay > PRESENTED_SEQUENCE.materials.at(-1).delay,
-                    'result burst is delayed until after all material paths',
+                assert.equal(
+                    PRESENTED_SEQUENCE.result,
+                    false,
+                    'the output cannot exist before all material paths reach the center',
                 );
                 await p.evaluate(() => new Promise(requestAnimationFrame));
-                await render(p, label + '-grade-merge-start');
-                const START_HIDDEN = await p.evaluate(
-                    (id) => !BUDMORI.renderer.vectorPlayers.has(id),
+                await render(p, label + '-grade-merge-cloud');
+                const START_STATE = await p.evaluate(
+                    (id) => ({
+                        phase: BUDMORI.sim.mergeTask?.phase,
+                        resultExists: BUDMORI.sim.units.some((unit) => unit.id === id),
+                        cloudVisible: BUDMORI.sim.mergeTasks.length > 0,
+                    }),
                     MERGE_SETUP.resultId,
                 );
-                assert(START_HIDDEN, 'result stays hidden while material travel starts');
+                assert.equal(START_STATE.phase, 'approach');
+                assert.equal(START_STATE.resultExists, false, 'the result waits until the airborne suction finishes');
+                assert(START_STATE.cloudVisible, 'the merge vortex appears above the selected units');
                 await p.evaluate(() => {
-                    BUDMORI.sim.step(0.3);
+                    for (let index = 0; index < 12; index++) {
+                        BUDMORI.sim.step(1 / 20);
+                    }
                     BUDMORI.runtime.capturePresentation('reset');
                 });
-                await render(p, label + '-grade-merge-sequence');
+                await render(p, label + '-grade-merge-suction');
                 const MIDDLE = await p.evaluate(
                     (id) => ({
-                        hidden: !BUDMORI.renderer.vectorPlayers.has(id),
+                        resultExists: BUDMORI.sim.units.some((unit) => unit.id === id),
                         phase: BUDMORI.sim.mergeTask?.phase,
-                        active: BUDMORI.sim.effects.filter((effect) => effect.kind === 'merge-material').length,
+                        maxHeight: Math.max(
+                            ...BUDMORI.sim.mergeTask.materialIds.map(
+                                (materialId) => BUDMORI.sim.units.find((unit) => unit.id === materialId).z,
+                            ),
+                        ),
+                        distanceRemaining: BUDMORI.sim.mergeTask.materialIds.reduce((sum, materialId) => {
+                            const UNIT = BUDMORI.sim.units.find((unit) => unit.id === materialId);
+                            return (
+                                sum +
+                                Math.hypot(
+                                    UNIT.x - BUDMORI.sim.mergeTask.centerX,
+                                    UNIT.y - BUDMORI.sim.mergeTask.centerY,
+                                )
+                            );
+                        }, 0),
+                        startDistance: BUDMORI.sim.mergeTask.startPositions.reduce(
+                            (sum, position) =>
+                                sum +
+                                Math.hypot(
+                                    position.x - BUDMORI.sim.mergeTask.centerX,
+                                    position.y - BUDMORI.sim.mergeTask.centerY,
+                                ),
+                            0,
+                        ),
+                        aiSteering: BUDMORI.sim.mergeTask.materialIds.some(
+                            (materialId) => BUDMORI.sim.units.find((unit) => unit.id === materialId).moveControlActive,
+                        ),
                     }),
                     MERGE_SETUP.resultId,
                 );
                 assert(
-                    MIDDLE.hidden && MIDDLE.phase === 'animation' && MIDDLE.active > 0,
-                    'intermediate material travel renders before the output',
+                    !MIDDLE.resultExists && MIDDLE.phase === 'approach' && MIDDLE.maxHeight > 0.5,
+                    'reserved materials visibly rise toward the aerial point before replacement',
                 );
+                assert(
+                    MIDDLE.distanceRemaining < MIDDLE.startDistance * 0.7,
+                    'the units converge toward the cloud instead of walking into contact',
+                );
+                assert.equal(MIDDLE.aiSteering, false, 'normal Farm AI does not steer absorbed units');
                 await p.evaluate(() => {
-                    BUDMORI.sim.step(0.6);
+                    for (let index = 0; index < 5; index++) {
+                        BUDMORI.sim.step(1 / 20);
+                    }
                     BUDMORI.runtime.capturePresentation('reset');
                 });
-                await render(p, label + '-grade-merge-result');
+                const MERGE_OUTPUT = await p.evaluate((id) => {
+                    const UNIT = BUDMORI.sim.units.find((unit) => unit.id === id);
+                    return (
+                        UNIT && {
+                            phase: BUDMORI.sim.mergeTask?.phase,
+                            tier: UNIT.tier,
+                            x: UNIT.x,
+                            y: UNIT.y,
+                            z: UNIT.z,
+                            vz: UNIT.vz,
+                            dropLanded: UNIT.dropLanded,
+                        }
+                    );
+                }, MERGE_SETUP.resultId);
+                assert.equal(MERGE_OUTPUT.tier, 6);
+                assert.equal(MERGE_OUTPUT.phase, 'animation');
+                assert(
+                    Math.abs(MERGE_OUTPUT.z - MERGE_SETUP.centerZ) < 1e-9,
+                    'the result spawns at the shared aerial point',
+                );
+                assert(MERGE_OUTPUT.vz > 0 && !MERGE_OUTPUT.dropLanded, 'the result pops upward before falling');
+                await p.evaluate(() => new Promise(requestAnimationFrame));
+                await render(p, label + '-grade-merge-pop');
                 assert(
                     await p.evaluate((id) => BUDMORI.renderer.vectorPlayers.has(id), MERGE_SETUP.resultId),
-                    'result unit appears after the sequential merge animation',
+                    'the aerial result is visible immediately after the pop',
+                );
+                await p.evaluate(() => {
+                    for (let index = 0; index < 12; index++) {
+                        BUDMORI.sim.step(1 / 20);
+                    }
+                });
+                const FALLING = await p.evaluate((id) => {
+                    const UNIT = BUDMORI.sim.units.find((unit) => unit.id === id);
+                    return { z: UNIT.z, vz: UNIT.vz, dropLanded: UNIT.dropLanded };
+                }, MERGE_SETUP.resultId);
+                assert(
+                    FALLING.z > 0 && FALLING.vz < 0 && !FALLING.dropLanded,
+                    'gravity turns the pop into a visible fall',
+                );
+                await p.evaluate(() => {
+                    for (let index = 0; index < 20; index++) {
+                        BUDMORI.sim.step(1 / 20);
+                    }
+                });
+                assert.equal(
+                    await p.evaluate(
+                        (id) => BUDMORI.sim.units.find((unit) => unit.id === id).dropLanded,
+                        MERGE_SETUP.resultId,
+                    ),
+                    true,
+                );
+                CHECK(
+                    'Merge materials rise into the aerial vortex without AI/contact steering; the result pops out and lands',
                 );
             }
             if (SCENE === 'raid') {

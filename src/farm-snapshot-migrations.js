@@ -52,13 +52,38 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
             return false;
         }
         if (task.phase === 'approach') {
-            const FIRST = raw.units?.find((unit) => unit.id === task.materialIds[0]);
-            if (!FIRST) {
+            const MATERIALS = task.materialIds.map((id) => raw.units?.find((unit) => unit.id === id)),
+                FIRST = MATERIALS[0];
+            if (!FIRST || MATERIALS.some((unit) => !unit)) {
                 return false;
             }
             task.sourceSpecies = FIRST.species;
             task.sourceTier = FIRST.tier;
-            return task.materialIds.every((id) => raw.units?.some((unit) => unit.id === id));
+            if (
+                !Array.isArray(task.startPositions) ||
+                task.startPositions.length !== MATERIALS.length ||
+                task.startPositions.some((position, index) => position?.id !== MATERIALS[index].id)
+            ) {
+                task.startPositions = MATERIALS.map(({ id, x, y, z }) => ({ id, x, y, z }));
+                task.elapsed = 0;
+            }
+            if (!Number.isFinite(task.centerX)) {
+                task.centerX = task.startPositions.reduce((sum, position) => sum + position.x, 0) / MATERIALS.length;
+            }
+            if (!Number.isFinite(task.centerY)) {
+                task.centerY = task.startPositions.reduce((sum, position) => sum + position.y, 0) / MATERIALS.length;
+            }
+            if (!Number.isFinite(task.centerZ)) {
+                task.centerZ = CONFIG.farm.merge.centerHeight;
+            }
+            if (
+                !Number.isFinite(task.duration) ||
+                task.duration <= 0 ||
+                task.duration > CONFIG.farm.merge.animationSeconds
+            ) {
+                task.duration = CONFIG.farm.merge.animationSeconds;
+            }
+            return true;
         }
         const RESULT = raw.units?.find((unit) => unit.id === task.resultId);
         if (!Number.isSafeInteger(task.resultId) || !RESULT) {
@@ -66,6 +91,10 @@ export function normalizeSnapshot(raw, { migrateLegacyRaid = false, clone = true
         }
         task.sourceSpecies = RESULT.species;
         task.sourceTier = RESULT.tier - 1;
+        task.centerX = Number.isFinite(task.centerX) ? task.centerX : RESULT.x;
+        task.centerY = Number.isFinite(task.centerY) ? task.centerY : RESULT.y;
+        task.centerZ = Number.isFinite(task.centerZ) ? task.centerZ : RESULT.z;
+        task.startPositions = Array.isArray(task.startPositions) ? task.startPositions : [];
         return true;
     });
     const BASE = FARM_SNAPSHOT_SHAPE,
