@@ -239,6 +239,25 @@ export function validateSnapshot(raw) {
     );
     ASSERT(INTEGER(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
     ASSERT(isValidPlayerProgressionState(raw.playerProgression));
+    const PLOT_STATES = raw.playerProgression.farmPlots.plots;
+    ASSERT(
+        Array.isArray(raw.farmPlots) &&
+            raw.farmPlots.length === PLOT_STATES.length &&
+            raw.farmPlots.every(
+                (plot, index) =>
+                    plot &&
+                    typeof plot === 'object' &&
+                    !Array.isArray(plot) &&
+                    Object.keys(plot).length === 2 &&
+                    plot.id === PLOT_STATES[index].id &&
+                    Array.isArray(plot.food) &&
+                    plot.food.length <= 140,
+            ),
+    );
+    const ACTIVE_PLOT_FOOD = raw.farmPlots.find(
+        (plot) => plot.id === raw.playerProgression.farmPlots.currentPlotId,
+    )?.food;
+    ASSERT(ACTIVE_PLOT_FOOD && JSON.stringify(ACTIVE_PLOT_FOOD) === JSON.stringify(raw.food));
     const FARM_EVENT = raw.farmBossEvent;
     if (FARM_EVENT.phase === 'idle') {
         ASSERT(

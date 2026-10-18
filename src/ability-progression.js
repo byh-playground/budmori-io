@@ -9,6 +9,7 @@ import {
     FARM_UPGRADE_NODES,
     getFarmUpgradeInvestedCount,
 } from './farm-upgrades.js';
+import { createFarmPlotsProgression, getFarmPlotInvestedCount } from './farm-plot.js';
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
@@ -259,6 +260,7 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
     NEXT.availablePoints += CHECK.refunded;
     if (TYPE === 'all' || TYPE === 'farm') {
         NEXT.farmUpgrades = createFarmUpgradeState();
+        NEXT.farmPlots = createFarmPlotsProgression();
     }
     if (TYPE === 'all' || TYPE === 'abilities') {
         for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
@@ -287,11 +289,12 @@ function progressionResetInvestment(state, scope) {
             return (
                 getInvestedPointCount(state) +
                 getFarmUpgradeInvestedCount(state.farmUpgrades) +
+                getFarmPlotInvestedCount(state.farmPlots) +
                 formationInvestedPoints(state.formationSkills) +
                 raidDeploymentCardsInvestedPoints(state.raidDeploymentCards)
             );
         case 'farm':
-            return getFarmUpgradeInvestedCount(state.farmUpgrades);
+            return getFarmUpgradeInvestedCount(state.farmUpgrades) + getFarmPlotInvestedCount(state.farmPlots);
         case 'abilities':
             return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
         case 'formation':
@@ -430,6 +433,11 @@ function cloneState(state) {
         ...state,
         farmUpgrades: {
             ...state.farmUpgrades,
+        },
+        farmPlots: {
+            ...state.farmPlots,
+            plots: state.farmPlots.plots.map((plot) => ({ ...plot })),
+            targetBasisPoints: [...state.farmPlots.targetBasisPoints],
         },
         abilities: Object.fromEntries(
             Object.entries(state.abilities).map(([id, value]) => [

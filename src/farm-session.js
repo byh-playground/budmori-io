@@ -613,6 +613,18 @@ class FarmSession {
         switch (c.type) {
             case 'feed':
                 return W.scene === 'farm' && W.tapFood('manual');
+            case 'scatter-food':
+                return W.scene === 'farm' && W.scatterFood(c.x, c.y);
+            case 'farm-plot-switch':
+                return W.scene === 'farm' && W.switchFarmPlot(c.plotId);
+            case 'farm-plot-unlock':
+                return W.scene === 'farm' && W.unlockFarmPlot().ok;
+            case 'farm-plot-expand':
+                return W.scene === 'farm' && W.expandFarmPlot(c.plotId).ok;
+            case 'farm-target':
+                return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
+            case 'farm-sort':
+                return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':
                 return W.scene === 'farm' && W.startManualMerge();
             case 'progression-invest':
