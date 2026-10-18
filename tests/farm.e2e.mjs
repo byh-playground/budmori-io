@@ -1532,21 +1532,79 @@ async function raidDeploymentCardsFlow() {
     });
     await P.locator('#gameMenuClose').click();
     await P.locator('#raid').click();
+    const FARM_PROGRESS_BEFORE_RAID = await P.evaluate(() => structuredClone(BUDMORI.storage.savedProgress));
     await P.locator('#bossEncounterChallenge').click();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'raid' && BUDMORI.sim.raidRosters.length === 1);
-    const RAID_RESERVATION = await P.evaluate(async () => {
+    const RAID_RESERVATION = await P.evaluate(async (beforeProgress) => {
         const { validateFarmProgress: VALIDATE_FARM_PROGRESS } = await import('/src/farm-progress.js');
+        const { snapshot: SNAPSHOT, validateSnapshot: VALIDATE_SNAPSHOT } = await import('/src/farm-state.js');
+        const { encodeFarmSave: ENCODE_FARM_SAVE, decodeFarmSave: DECODE_FARM_SAVE } =
+            await import('/src/farm-save-codec.js');
         const PROGRESS = BUDMORI.storage.savedProgress,
-            RAID = PROGRESS.ledger.raid;
+            RAID = PROGRESS.ledger.raid,
+            EXPECTED = structuredClone(beforeProgress);
+        EXPECTED.ledger.raid = structuredClone(RAID);
+        const DIFFERENCES = (left, right, path = '') => {
+            if (Object.is(left, right)) {
+                return [];
+            }
+            if (
+                !left ||
+                !right ||
+                typeof left !== 'object' ||
+                typeof right !== 'object' ||
+                Array.isArray(left) !== Array.isArray(right)
+            ) {
+                return [{ path, before: left, after: right }];
+            }
+            return [...new Set([...Object.keys(left), ...Object.keys(right)])].flatMap((key) =>
+                DIFFERENCES(left[key], right[key], path ? `${path}.${key}` : key),
+            );
+        };
+        const UNEXPECTED = DIFFERENCES(EXPECTED, PROGRESS);
         VALIDATE_FARM_PROGRESS(PROGRESS);
+        const SAVED = ENCODE_FARM_SAVE(BUDMORI.storage.world, PROGRESS),
+            ROUNDTRIP = DECODE_FARM_SAVE(SAVED.text),
+            RAID_SNAPSHOT = SNAPSHOT(BUDMORI.sim);
+        VALIDATE_FARM_PROGRESS(ROUNDTRIP);
+        VALIDATE_SNAPSHOT(RAID_SNAPSHOT);
         return {
             activeSequence: RAID.activeRun?.sequence,
             nextSequence: RAID.nextRunSequence,
             settledThrough: RAID.settledThrough,
+            roundtripActiveRun: ROUNDTRIP.ledger.raid.activeRun,
+            reservationOnlyProgressChange: UNEXPECTED.length === 0,
+            reservationProgressDifferences: UNEXPECTED,
+            reservationSaveGrowth: JSON.stringify(PROGRESS).length - JSON.stringify(beforeProgress).length,
+            rosterAbilityVersion: RAID_SNAPSHOT.raidRosters[0].abilitySnapshot.baselineAbilityMigrationVersion,
+            rosterDeploymentCards: RAID_SNAPSHOT.raidRosters[0].abilitySnapshot.raidDeploymentCards,
         };
-    });
+    }, FARM_PROGRESS_BEFORE_RAID);
     assert.equal(RAID_RESERVATION.activeSequence, RAID_RESERVATION.nextSequence);
     assert.equal(RAID_RESERVATION.activeSequence, RAID_RESERVATION.settledThrough + 1);
+    assert.equal(
+        RAID_RESERVATION.reservationOnlyProgressChange,
+        true,
+        `Raid reservation changes only the active-run ledger in saved Farm progress: ${JSON.stringify(RAID_RESERVATION.reservationProgressDifferences)}`,
+    );
+    assert.ok(
+        RAID_RESERVATION.reservationSaveGrowth > 0,
+        'Raid reservation adds only its run identifier fields to the progress envelope',
+    );
+    assert.deepEqual(RAID_RESERVATION.roundtripActiveRun, {
+        sequence: RAID_RESERVATION.activeSequence,
+        sessionId: `farm-raid-${RAID_RESERVATION.activeSequence}`,
+    });
+    assert.equal(
+        RAID_RESERVATION.rosterAbilityVersion,
+        2,
+        'Raid roster snapshots retain the validated migration stamp',
+    );
+    assert.equal(
+        RAID_RESERVATION.rosterDeploymentCards.unlockedSlots,
+        4,
+        'Raid roster snapshots retain card investment',
+    );
     await P.evaluate(() => {
         BUDMORI.runtime.paused = false;
         BUDMORI.sim.boss.hp = BUDMORI.sim.boss.maxHp = 1e9;
@@ -5885,6 +5943,56 @@ async function bossRewards() {
         };
     });
     assert.deepEqual(RESTORED, { status: 'opened', revealed: 12, boxes: 12, acquired: 12 });
+    const RAID_RESERVATION_SAVE = await P.evaluate(async () => {
+        const { captureFarmProgress: CAPTURE, validateFarmProgress: VALIDATE } = await import('/src/farm-progress.js');
+        const { encodeFarmSave: ENCODE, decodeFarmSave: DECODE } = await import('/src/farm-save-codec.js');
+        const { snapshot: SNAPSHOT, restore: RESTORE } = await import('/src/farm-state.js');
+        const { reserveRaidRun: RESERVE } = await import('/src/raid-settlement.js');
+        let stage = 'capture';
+        try {
+            const RECEIPT = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
+            const PROGRESS = CAPTURE(BUDMORI.sim);
+            stage = 'encode-restored-progress';
+            const SAVED = ENCODE(BUDMORI.sim, PROGRESS),
+                DECODED = DECODE(SAVED.text);
+            VALIDATE(DECODED);
+            stage = 'reserve-and-restore';
+            const RESERVED = RESERVE(SNAPSHOT(BUDMORI.sim)),
+                CANDIDATE = RESTORE(RESERVED.farm);
+            stage = 'FarmStorage.save';
+            const SAVE_OK = BUDMORI.storage.save(CANDIDATE);
+            if (!SAVE_OK) {
+                return { stage, error: BUDMORI.storage.error };
+            }
+            VALIDATE(BUDMORI.storage.savedProgress);
+            VALIDATE(DECODE(BUDMORI.storage.raw));
+            return {
+                stage: 'saved',
+                receiptStatus: RECEIPT.status,
+                receiptHasRoll: Object.hasOwn(RECEIPT, 'roll'),
+                activeRun: BUDMORI.storage.savedProgress.ledger.raid.activeRun,
+                nextSequence: BUDMORI.storage.savedProgress.ledger.raid.nextRunSequence,
+                settledThrough: BUDMORI.storage.savedProgress.ledger.raid.settledThrough,
+            };
+        } catch (error) {
+            return { stage, error: error.message };
+        }
+    });
+    assert.deepEqual(
+        RAID_RESERVATION_SAVE,
+        {
+            stage: 'saved',
+            receiptStatus: 'opened',
+            receiptHasRoll: false,
+            activeRun: {
+                sequence: 78,
+                sessionId: 'farm-raid-78',
+            },
+            nextSequence: 78,
+            settledThrough: 77,
+        },
+        'a restored reward receipt can be encoded and the next Raid reservation can be saved',
+    );
     await clean(P);
     CHECK('Mobile boss reward dialog opens, reveals and saves committed box results across reload');
     await C.close();

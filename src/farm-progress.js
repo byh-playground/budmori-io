@@ -783,7 +783,6 @@ export function restoreFarmProgress(data) {
         ...reward,
         x: Number.isFinite(reward.x) ? reward.x : 0,
         y: Number.isFinite(reward.y) ? reward.y : 0,
-        roll: Number.isFinite(reward.roll) ? reward.roll : 0,
     }));
     WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
     WORLD.reconcileMateReservations();
