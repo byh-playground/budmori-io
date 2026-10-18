@@ -20,6 +20,12 @@ export const UNIT_SNAPSHOT_SHAPE = {
         elapsed: 0,
         action: null,
     },
+    specialAbility: null,
+    kidneyLeapReadyTick: 0,
+    kidneyLeapLastUseTick: 0,
+    peaRecoveryPending: false,
+    peaRecoveryBoostExpiresAtTick: 0,
+    peaRecoveryBoostMultiplier: 0,
     id: 1,
     species: 0,
     tier: 1,
@@ -121,6 +127,11 @@ export const FARM_SNAPSHOT_SHAPE = {
     nextId: 3,
     nextBossEncounterId: 1,
     bossRewardReceipts: [],
+    bossRewardStreams: {
+        normal: { rngState: 0, distributionState: null, payoutRngState: 0 },
+        event: { rngState: 0, distributionState: null, payoutRngState: 0 },
+    },
+    bossRewardInventory: [],
     bossRewardWatermarks: {
         farm: 0,
         raid: 0,
@@ -134,7 +145,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     playerProgression: {
         formationSkills: createFormationSkillState(),
         schemaVersion: 1,
-        baselineAbilityMigrationVersion: 1,
+        baselineAbilityMigrationVersion: 2,
         availablePoints: 0,
         farmUpgrades: {
             food: 0,
@@ -271,6 +282,12 @@ export const LEGACY_UNIT_DEFAULT_KEYS = Object.freeze([
     'lifetime',
     'chestnutBasicCycles',
     'landingRecovery',
+    'specialAbility',
+    'kidneyLeapReadyTick',
+    'kidneyLeapLastUseTick',
+    'peaRecoveryPending',
+    'peaRecoveryBoostExpiresAtTick',
+    'peaRecoveryBoostMultiplier',
     'growthDuration',
     'mateId',
     'perceptionRange',
@@ -309,7 +326,7 @@ const POPCORN = FIELDS(
     'species fuseSeconds chainOnPopcornContact triggersOncePerProjectile eachTargetAtMostOncePerProjectile damageMultiplier radiusBaseRangeFraction radiusMultiplier radius',
 );
 const ATTACK = FIELDS(
-    'id targetId hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians walnutEmpowered walnutGuardUsed',
+    'id targetId hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians walnutEmpowered walnutGuardUsed leapDepartureCommitted leapCooldownResetApplied',
     {
         target: POINT,
         path: PATH,
@@ -321,6 +338,11 @@ const ATTACK = FIELDS(
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
     ability: {
+        phase: true,
+        elapsed: true,
+        action: ATTACK,
+    },
+    specialAbility: {
         phase: true,
         elapsed: true,
         action: ATTACK,
@@ -341,18 +363,20 @@ const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
     }),
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
+const JSON_PAYLOAD = Symbol('json-payload');
 const DROP = FIELDS('roll status unitId');
 const REWARD = FIELDS(
-    'encounterId source receiptKey acquisitionMultiplier species tier x y chance roll status unitId rollBudget bonusRollChance rollCount successCount grantedCount xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
+    'encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount revealedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
     {
         drops: [DROP],
+        boxes: [FIELDS('payout hit')],
+        calculation: JSON_PAYLOAD,
     },
 );
 // Events, notices, effects and log entries are value payloads, not entities.
 // Their APIs and settlement summaries accept extensible JSON records. Keep
 // that explicit open contract, including old keys, without opening entity,
 // ability or projectile field selection to future runtime caches.
-const JSON_PAYLOAD = Symbol('json-payload');
 const SETTLEMENT = FIELDS(
     'key ownerId sessionId encounterId runSequence outcome status completedAtMs availableAtStart originalUnitsDeployed deploymentMultiplier',
     {
@@ -389,6 +413,8 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     raidRosters: [ROSTER],
     projectiles: [PROJECTILE],
     bossRewardReceipts: [REWARD],
+    bossRewardStreams: JSON_PAYLOAD,
+    bossRewardInventory: [FIELDS('species tier count')],
     raidSettlementReceipts: [SETTLEMENT],
     food: [FIELDS('x y z vx vy vz seed phase tx ty')],
     events: [JSON_PAYLOAD],

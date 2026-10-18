@@ -7,11 +7,13 @@ const SUITES = {
     mergePolicy: ['mergePolicy'],
     upgrades: ['upgrades'],
     grain: ['grain'],
+    integration: ['grain', 'bossRewards'],
     reset: ['reset'],
     formation: ['formation'],
     save: ['save'],
     migration: ['migration'],
     event: ['event'],
+    bossRewards: ['bossRewards'],
     victory: ['victory'],
 };
 const SUITE = process.argv[2] ?? 'core';

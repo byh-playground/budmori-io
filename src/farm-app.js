@@ -23,7 +23,14 @@ import {
     settleRaidOwnerFarm,
     raidDeploymentRewardMultiplier,
 } from './raid-settlement.js';
-import { BOSS_REWARD_SETTINGS, bossRewardRollDescription, bossStageStats, settleBossKill } from './boss-rewards.js';
+import {
+    BOSS_REWARD_SETTINGS,
+    advanceBossRewardReveal,
+    bossRewardRollDescription,
+    bossStageStats,
+    openAllBossRewardBoxes,
+    settleBossKill,
+} from './boss-rewards.js';
 import { selectFarmBossStage } from './farm-boss-stages.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 const DOLLAR = (id) => document.getElementById(id),
@@ -47,6 +54,10 @@ let bossEncounterOpen = false;
 let bossSwipe = null;
 let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
+let bossRewardRevealTimer = null;
+let bossRewardDialogReceiptKey = null;
+let bossRewardRenderedSignature = '';
+const AUTO_OPENED_BOSS_REWARDS = new Set();
 let mergeStatusCache = {
     world: null,
     revision: -1,
@@ -81,16 +92,218 @@ function mergeAvailability(world, now) {
 }
 function rewardReceiptSummary(reward) {
     if (!reward) {
-        return '보상 정산 중';
+        return '보상 없음';
     }
-    const ROLLS = reward.drops || reward.rolls || [],
-        SUCCESS_COUNT = reward.successCount ?? ROLLS.filter((drop) => drop.status !== 'missed').length,
-        GRANTED_COUNT = reward.grantedCount ?? ROLLS.filter((drop) => drop.status === 'granted').length;
-    if (SUCCESS_COUNT === 0) {
-        return reward.rollCount ? '추첨 완료 · 획득 없음' : '종 추첨 없음';
+    if (reward.status === 'calculating') {
+        const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
+        return '보상 상자 계산 중 (' + DONE + '/' + reward.boxCount + ')';
     }
-    return `${GRANTED_COUNT}/${SUCCESS_COUNT}마리 획득${reward.status === 'pending' ? ' · 빈 자리 대기' : ''}`;
+    const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
+        PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
+        QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
+    if (ACQUIRED === 0) {
+        return '이번에는 획득한 모리가 없어요';
+    }
+    return ACQUIRED + '마리 획득 · ' + PLACED + '마리 배치' + (QUEUED ? ' · ' + QUEUED + '마리 자리 대기' : '');
 }
+function latestBossReward(world) {
+    return [...(world?.bossRewardReceipts || [])]
+        .reverse()
+        .find((reward) => ['calculating', 'ready', 'opened'].includes(reward.status));
+}
+function bossRewardSummary(reward) {
+    if (!reward) {
+        return '보상 내역 없음';
+    }
+    if (reward.status === 'calculating') {
+        const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
+        return 'Calculating reward boxes (' + DONE + '/' + reward.boxCount + ')';
+    }
+    const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
+        PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
+        QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
+    return ACQUIRED + ' acquired · ' + PLACED + ' placed' + (QUEUED ? ' · ' + QUEUED + ' waiting for space' : '');
+}
+function persistBossRewardReveal(world) {
+    if (!saveImmediate(world)) {
+        DOLLAR('bossRewardSummary').textContent = 'Could not save reward progress: ' + STORAGE.error;
+        return false;
+    }
+    return true;
+}
+function renderBossRewardBoxes(receipt) {
+    const GRID = DOLLAR('bossRewardBoxes'),
+        COUNT = receipt.boxCount || 0,
+        REVEALED = receipt.revealedCount || 0,
+        BOXES = receipt.boxes || [],
+        PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout),
+        MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0,
+        MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0,
+        SIGNATURE = [
+            receipt.receiptKey,
+            receipt.status,
+            receipt.successCount,
+            receipt.acquiredCount,
+            receipt.placedCount,
+            receipt.queuedCount,
+            REVEALED,
+            receipt.calculation?.jobState?.processedTrials ?? 0,
+        ].join(':');
+    DOLLAR('bossRewardStage').textContent = receipt.stage
+        ? 'STAGE ' + receipt.stage
+        : receipt.source === 'farm'
+          ? '농장 보스'
+          : '레이드 보스';
+    DOLLAR('bossRewardTitle').textContent = receipt.status === 'calculating' ? '보상 상자 준비 중' : '보상 상자';
+    DOLLAR('bossRewardSummary').textContent =
+        receipt.status === 'calculating'
+            ? '상자 ' + COUNT + '개의 획득 여부를 계산하고 있어요. 결과는 저장되며 계산이 끝나면 열 수 있어요.'
+            : COUNT +
+              '개 상자 · 상자당 ' +
+              MIN +
+              (MIN === MAX ? '' : '–' + MAX) +
+              '마리 · 획득 확률 ' +
+              Math.round(receipt.chance * 10000) / 100 +
+              '%';
+    DOLLAR('bossRewardTotals').textContent =
+        receipt.status === 'calculating'
+            ? bossRewardSummary(receipt)
+            : REVEALED + '/' + COUNT + '개 공개 · ' + bossRewardSummary(receipt);
+    if (bossRewardRenderedSignature === SIGNATURE) {
+        return;
+    }
+    bossRewardRenderedSignature = SIGNATURE;
+    GRID.replaceChildren();
+    BOXES.forEach((box, index) => {
+        const BUTTON = document.createElement('button'),
+            OPENED = index < REVEALED,
+            HIT = !!box.hit,
+            NUMBER = document.createElement('span'),
+            RESULT = document.createElement('span');
+        BUTTON.type = 'button';
+        BUTTON.className = 'boss-reward-box' + (OPENED ? ' is-open' : '');
+        BUTTON.dataset.state = OPENED ? (HIT ? 'hit' : 'miss') : 'closed';
+        BUTTON.disabled = receipt.status === 'calculating' || OPENED;
+        BUTTON.setAttribute(
+            'aria-label',
+            OPENED
+                ? '상자 ' + (index + 1) + ': ' + (HIT ? box.payout + '마리 획득' : '획득 없음')
+                : '상자 ' + (index + 1) + ' 열기',
+        );
+        NUMBER.className = 'boss-reward-box__number';
+        NUMBER.textContent = String(index + 1);
+        RESULT.className = 'boss-reward-box__result';
+        RESULT.textContent = OPENED ? (HIT ? box.payout + '마리' : '빈 상자') : '열기';
+        BUTTON.append(NUMBER, RESULT);
+        BUTTON.addEventListener('click', () => {
+            const WORLD = personalGarden || active?.world;
+            if (!WORLD || receipt.status === 'calculating') {
+                return;
+            }
+            advanceBossRewardReveal(WORLD, receipt.receiptKey, Math.min(10, index + 1 - receipt.revealedCount));
+            persistBossRewardReveal(WORLD);
+            renderBossRewardBoxes(receipt);
+        });
+        GRID.append(BUTTON);
+    });
+    DOLLAR('bossRewardOpenAll').disabled = receipt.status === 'calculating' || receipt.status === 'opened';
+}
+function revealBossRewardBatch() {
+    const WORLD = personalGarden || active?.world,
+        RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
+    if (!WORLD || !RECEIPT || RECEIPT.status !== 'ready') {
+        clearInterval(bossRewardRevealTimer);
+        bossRewardRevealTimer = null;
+        return;
+    }
+    advanceBossRewardReveal(WORLD, RECEIPT.receiptKey, 10);
+    persistBossRewardReveal(WORLD);
+    renderBossRewardBoxes(RECEIPT);
+    if (RECEIPT.status === 'opened') {
+        clearInterval(bossRewardRevealTimer);
+        bossRewardRevealTimer = null;
+    }
+}
+function showBossRewardDialog(receipt, { auto = false } = {}) {
+    if (!receipt || !['calculating', 'ready', 'opened'].includes(receipt.status)) {
+        return;
+    }
+    const DIALOG = DOLLAR('bossRewardDialog'),
+        WORLD = personalGarden || active?.world;
+    bossRewardDialogReceiptKey = receipt.receiptKey;
+    bossRewardRenderedSignature = '';
+    DIALOG.hidden = false;
+    DOLLAR('bossRewardOpen').hidden = true;
+    renderBossRewardBoxes(receipt);
+    if (auto && receipt.status === 'ready' && !AUTO_OPENED_BOSS_REWARDS.has(receipt.receiptKey)) {
+        AUTO_OPENED_BOSS_REWARDS.add(receipt.receiptKey);
+        advanceBossRewardReveal(WORLD, receipt.receiptKey, 10);
+        persistBossRewardReveal(WORLD);
+        renderBossRewardBoxes(receipt);
+    }
+    clearInterval(bossRewardRevealTimer);
+    if (receipt.status === 'ready' && receipt.revealedCount < receipt.boxCount) {
+        bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
+    }
+}
+function syncBossRewardDialog(world) {
+    const RECEIPT = latestBossReward(world),
+        BUTTON = DOLLAR('bossRewardOpen'),
+        DIALOG = DOLLAR('bossRewardDialog');
+    if (home) {
+        DIALOG.hidden = true;
+        BUTTON.hidden = true;
+        clearInterval(bossRewardRevealTimer);
+        bossRewardRevealTimer = null;
+        return;
+    }
+    BUTTON.hidden = !RECEIPT || !DIALOG.hidden;
+    BUTTON.disabled = RECEIPT?.status === 'calculating';
+    if (!RECEIPT) {
+        return;
+    }
+    BUTTON.textContent = RECEIPT.status === 'calculating' ? '보상 계산 중…' : '보상 상자 열기';
+    if (RECEIPT.status === 'ready' && !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)) {
+        showBossRewardDialog(RECEIPT, { auto: true });
+    } else if (!DIALOG.hidden && bossRewardDialogReceiptKey === RECEIPT.receiptKey) {
+        renderBossRewardBoxes(RECEIPT);
+    }
+}
+function closeBossRewardDialog() {
+    DOLLAR('bossRewardDialog').hidden = true;
+    DOLLAR('bossRewardOpen').hidden = home || !latestBossReward(personalGarden || active?.world);
+    clearInterval(bossRewardRevealTimer);
+    bossRewardRevealTimer = null;
+}
+function attachBossRewardHandlers() {
+    DOLLAR('bossRewardOpen').addEventListener('click', () => {
+        showBossRewardDialog(latestBossReward(personalGarden || active?.world));
+    });
+    DOLLAR('bossRewardClose').addEventListener('click', closeBossRewardDialog);
+    DOLLAR('bossRewardDialog').addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+            closeBossRewardDialog();
+        }
+    });
+    DOLLAR('bossRewardDialog').addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeBossRewardDialog();
+        }
+    });
+    DOLLAR('bossRewardOpenAll').addEventListener('click', () => {
+        const WORLD = personalGarden || active?.world,
+            RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
+        if (!WORLD || !RECEIPT) {
+            return;
+        }
+        openAllBossRewardBoxes(WORLD, RECEIPT.receiptKey);
+        persistBossRewardReveal(WORLD);
+        renderBossRewardBoxes(RECEIPT);
+        clearInterval(bossRewardRevealTimer);
+        bossRewardRevealTimer = null;
+    });
+}
+attachBossRewardHandlers();
 globalThis.BudmoriPerformanceDiagnostics = {
     summary: () => (active ? PERFORMANCE_DIAGNOSTICS.summary(active.world, active.paused) : []),
     snapshot: () => PERFORMANCE_DIAGNOSTICS.snapshot(30),
@@ -550,6 +763,7 @@ function persistRaidSettlement(raidWorld, ownerId) {
                     RESOLVED = settleBossKill(GARDEN, {
                         encounterId: FARM_RUN.runSequence,
                         source: 'raid',
+                        stage: STAGE,
                         receiptKey,
                         acquisitionMultiplier: deploymentMultiplier,
                         rollBudget: STAGE_REWARD?.rollBudget ?? 1,
@@ -1578,8 +1792,11 @@ function sync(display, now, notices) {
         BATTLE_HUD = RAID || FARM_EVENT_ACTIVE,
         HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.units) : false,
         REWARD_WORLD = personalGarden || W,
-        PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => reward.status === 'pending'),
+        PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
+            (reward) => ['pending', 'calculating', 'ready', 'legacy'].includes(reward.status) || reward.queuedCount > 0,
+        ),
         MERGE_STATUS = mergeAvailability(W, now);
+    syncBossRewardDialog(REWARD_WORLD);
     if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || panPointer)) {
         stopWorldInput();
     }

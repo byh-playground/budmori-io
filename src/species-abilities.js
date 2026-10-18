@@ -1,6 +1,8 @@
 import { isAbilityActive, powerLevelFor } from './ability-progression.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { abilityProfile, hasUnitCapability } from './unit-abilities.js';
+import { KIDNEY_CONTINUOUS_LEAP_FEATURE } from './features/abilities/kidney-continuous-leap.js';
+import { PEA_RECOVERY_BOOST_FEATURE } from './features/abilities/pea-recovery-boost.js';
 
 // These are game-specific contracts, separate from the generic tree/wallet.
 // Values below follow docs/unit-stats.md and the confirmed follow-up decisions.
@@ -225,10 +227,23 @@ export function getContinuousLeapConfig(progression, tier) {
     const LEVEL = powerLevelFor(progression, DEFINITION.id);
     return {
         cooldownResetChance: DEFINITION.powerValues[LEVEL],
+        cooldownTicks: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.cooldownTicks,
         resetCooldownOnSuccessfulRoll: true,
-        usesExistingAttackReadiness: true,
+        usesSeparateLeapReadiness: true,
         leapAtCloseRangeWhenReady: true,
         avoidsGroundSweepWhileAirborne: true,
+    };
+}
+export function getPeaRecoveryBoostConfig(progression, tier) {
+    const DEFINITION = definitionFor('pea-recovery-boost');
+    if (!isAbilityActive(progression, DEFINITION.id, tier)) {
+        return null;
+    }
+    const LEVEL = powerLevelFor(progression, DEFINITION.id),
+        SPEED_BONUS = DEFINITION.powerValues[LEVEL];
+    return {
+        durationTicks: PEA_RECOVERY_BOOST_FEATURE.model.durationTicks,
+        speedMultiplier: PEA_RECOVERY_BOOST_FEATURE.model.multiplierForBonus(SPEED_BONUS),
     };
 }
 export function shouldResetLeapCooldown(config, roll) {

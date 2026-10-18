@@ -1,4 +1,5 @@
 import { PEA_DEATH_SPLIT_FEATURE } from './features/abilities/pea-death-split.js';
+import { PEA_RECOVERY_BOOST_FEATURE } from './features/abilities/pea-recovery-boost.js';
 import { CORN_BURST_FIRE_FEATURE } from './features/abilities/corn-burst-fire.js';
 import { CORN_POPCORN_CHAIN_FEATURE } from './features/abilities/corn-popcorn-chain.js';
 import { CHESTNUT_SPIKE_FAN_FEATURE } from './features/abilities/chestnut-spike-fan.js';
@@ -15,6 +16,7 @@ import { ABILITY_PRESENTATION_OVERRIDES } from './ability-presentations.js';
 // presentation implementation; model consumers receive the unchanged pure data.
 const ABILITY_FEATURES = Object.freeze([
     PEA_DEATH_SPLIT_FEATURE,
+    PEA_RECOVERY_BOOST_FEATURE,
     CORN_BURST_FIRE_FEATURE,
     CORN_POPCORN_CHAIN_FEATURE,
     CHESTNUT_SPIKE_FAN_FEATURE,

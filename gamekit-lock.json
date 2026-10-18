@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "60f51187809728ef427a394df20120a4577445db",
-    "distCommit": "09ceefb4b88f47b44c7b593255f404675cb345b5",
+    "sourceCommit": "945227dfb022aac9de4bca13bf83ffb919a129ea",
+    "distCommit": "9a55c2e7cbea99d62a0c2fb1d467c47311de9c17",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -16,7 +16,7 @@
         },
         {
             "name": "deterministic",
-            "bundleSHA256": "11859c9a6acb2033b8df5c38458a2feeb4335f28c052eaa169fe59fe8070ce35"
+            "bundleSHA256": "a6c381346a263a724719733762c5b7d02caf7385ac74e06cb4ef96e1fd7f9210"
         },
         {
             "name": "simloop",
@@ -59,7 +59,7 @@
             "bundleSHA256": "4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"
         }
     ],
-    "manifestSHA256": "abb55c84793b731e147491cb745ab01a871d8433ee9725bedd5e2000054ae87a",
+    "manifestSHA256": "9aabc31c1ae6f10d46a56631879dd363746639a5a7370cac84de83eb267d7c56",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",

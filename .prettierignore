@@ -3,5 +3,6 @@ vendor/
 src/game.js
 src/vector-assets.generated.js
 tests/output/
+tests/*-report.json
 assets/
 package-lock.json

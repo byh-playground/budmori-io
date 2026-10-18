@@ -1,23 +1,59 @@
-// Shared boss-reward tuning. Farm events use their event multiplier; Raid
-// deployment bonuses affect acquisition chance only, never progression XP.
 import { awardBossKillXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { BOSS_SPECIES_WEIGHTS } from './species-catalog.js';
-import { sampleBinomial } from './binomial-sampler.js';
-const FORMAT_PERCENT = new Intl.NumberFormat('ko-KR', {
-    maximumFractionDigits: 4,
+
+const FORMAT_PERCENT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+const FORMAT_COUNT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
+const PRD_UNITS_PER_TICK = 10;
+const STREAM_DOMAINS = Object.freeze({
+    normal: Object.freeze({ prd: 0x2f6e2b1d, boxes: 0x5c3a9217 }),
+    event: Object.freeze({ prd: 0x739d41e5, boxes: 0x1b8c55a3 }),
 });
-const FORMAT_COUNT = new Intl.NumberFormat('ko-KR', {
-    maximumFractionDigits: 0,
-});
-function readBossRoll(random) {
-    const ROLL = random();
-    if (!Number.isFinite(ROLL) || ROLL < 0 || ROLL >= 1) {
-        throw new RangeError('Boss acquisition roll must be in [0, 1)');
+const STREAM_SOURCE = Object.freeze({ raid: 'normal', farm: 'event' });
+
+function requireSdk() {
+    const SDK = globalThis.BloomGamekitDeterministic;
+    if (!SDK?.SeededPRNG || !SDK?.PseudoRandomDistribution) {
+        throw new Error('GameKit 0.12.2 deterministic PRD API is required');
     }
-    return ROLL;
+    return SDK;
 }
+
+function mixedSeed(seed, domain) {
+    let value = (seed ^ domain) >>> 0;
+    value = Math.imul(value ^ (value >>> 16), 0x7feb352d);
+    value = Math.imul(value ^ (value >>> 15), 0x846ca68b);
+    return (value ^ (value >>> 16)) >>> 0;
+}
+
+function streamFor(source) {
+    return STREAM_SOURCE[source];
+}
+
+function streamSeed(seed, kind, field) {
+    const DOMAIN = STREAM_DOMAINS[kind]?.[field];
+    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff || DOMAIN === undefined) {
+        throw new RangeError('Invalid boss reward stream seed');
+    }
+    return mixedSeed(seed, DOMAIN);
+}
+
+function createStream(seed, kind) {
+    return {
+        rngState: streamSeed(seed, kind, 'prd'),
+        distributionState: null,
+        payoutRngState: streamSeed(seed, kind, 'boxes'),
+    };
+}
+
+export function createBossRewardStreams(seed) {
+    return {
+        normal: createStream(seed, 'normal'),
+        event: createStream(seed, 'event'),
+    };
+}
+
 export const BOSS_REWARD_SETTINGS = Object.freeze({
-    acquisitionChance: 0.02,
+    acquisitionChance: 0.05,
     farmEventAcquisitionMultiplier: 2,
     stageHpBase: 200,
     stageHpMultiplier: 1.5,
@@ -27,39 +63,56 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
     stageXpMultiplier: 1.5,
     stageRollMultiplier: 1.5,
     maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-    maxRollCount: Math.ceil(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
+    maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
+    maxBoxCount: 100,
+    prdUnitsPerTick: PRD_UNITS_PER_TICK,
     speciesWeights: BOSS_SPECIES_WEIGHTS,
 });
+
+export function bossRewardBoxPayouts(total) {
+    if (!Number.isSafeInteger(total) || total < 1) {
+        throw new RangeError('Boss reward quantity must be a positive safe integer');
+    }
+    const BOX_COUNT = Math.min(total, BOSS_REWARD_SETTINGS.maxBoxCount),
+        BASE = Math.floor(total / BOX_COUNT),
+        EXTRA = total % BOX_COUNT;
+    const PAYOUTS = Array.from({ length: BOX_COUNT }, (_, index) => BASE + (index < EXTRA ? 1 : 0));
+    if (PAYOUTS.some((amount) => !Number.isSafeInteger(amount) || amount < 1)) {
+        throw new RangeError('Boss reward box payout is outside the safe integer range');
+    }
+    return PAYOUTS;
+}
+
 export function bossStageStats(stage) {
     if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
         throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
     }
     const EXPONENT = stage - 1,
-        ROLL_BUDGET = BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT,
-        ROLLS = Math.floor(ROLL_BUDGET);
+        TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT),
+        PAYOUTS = bossRewardBoxPayouts(TOTAL);
     return {
         stage,
         hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
         attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
         xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
-        rollBudget: ROLL_BUDGET,
-        rolls: ROLLS,
-        bonusRollChance: ROLL_BUDGET - ROLLS,
+        rollBudget: TOTAL,
+        rolls: PAYOUTS.length,
+        boxCount: PAYOUTS.length,
+        boxPayouts: PAYOUTS,
+        bonusRollChance: 0,
     };
 }
+
 export function bossRewardRollDescription(stage, { farmEvent = false, acquisitionMultiplier = 1 } = {}) {
     const STATS = bossStageStats(stage),
-        CHANCE =
-            bossAcquisitionChance({
-                farmEvent,
-                acquisitionMultiplier,
-            }) * 100,
-        BASE = `${FORMAT_COUNT.format(STATS.rolls)}회`,
-        BONUS = STATS.bonusRollChance
-            ? ` + ${FORMAT_PERCENT.format(STATS.bonusRollChance * 100)}% 확률로 1회 추가`
-            : '';
-    return `${BASE}${BONUS} · 추첨당 ${FORMAT_PERCENT.format(CHANCE)}% · 성공마다 T1 1마리`;
+        CHANCE = bossAcquisitionChance({ farmEvent, acquisitionMultiplier }) * 100,
+        PAYOUTS = STATS.boxPayouts,
+        MIN = Math.min(...PAYOUTS),
+        MAX = Math.max(...PAYOUTS),
+        RANGE = MIN === MAX ? FORMAT_COUNT.format(MIN) : `${FORMAT_COUNT.format(MIN)}–${FORMAT_COUNT.format(MAX)}`;
+    return `${FORMAT_COUNT.format(STATS.boxCount)}개 상자 · 적중 시 ${RANGE}개 · 기본 확률 5% · 적용 ${FORMAT_PERCENT.format(CHANCE)}%`;
 }
+
 export function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
     if (
         typeof random !== 'function' ||
@@ -82,285 +135,425 @@ export function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.species
     }
     return weights.length - 1;
 }
+
 export function bossAcquisitionChance({ farmEvent = false, acquisitionMultiplier = 1 } = {}) {
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
         throw new RangeError('Boss acquisition multiplier must be in [0, 2]');
     }
-    const MULTIPLIER = farmEvent ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier;
-    return Math.min(1, Math.max(0, BOSS_REWARD_SETTINGS.acquisitionChance * MULTIPLIER));
+    return farmEvent
+        ? BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier
+        : Math.min(1, BOSS_REWARD_SETTINGS.acquisitionChance * acquisitionMultiplier);
 }
-export function decideBossAcquisition({
-    encounterId,
-    source = 'raid',
-    random,
-    species = 3,
-    tier = 1,
-    x = 0,
-    y = 0,
-    acquisitionMultiplier = 1,
-    receiptKey = null,
-} = {}) {
-    if (
-        !Number.isSafeInteger(encounterId) ||
-        encounterId < 1 ||
-        !['farm', 'raid'].includes(source) ||
-        typeof random !== 'function'
-    ) {
-        throw new TypeError('A boss encounter ID, source, and random roll are required');
-    }
-    if (receiptKey !== null && (typeof receiptKey !== 'string' || !receiptKey.trim() || receiptKey.length > 255)) {
-        throw new TypeError('Boss receipt key must be a non-empty string');
-    }
-    const CHANCE = bossAcquisitionChance({
-        farmEvent: source === 'farm',
-        acquisitionMultiplier,
-    });
-    const ROLL = readBossRoll(random);
-    return {
-        encounterId,
-        source,
-        receiptKey: receiptKey || `${source}:${encounterId}`,
-        acquisitionMultiplier:
-            source === 'farm' ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : acquisitionMultiplier,
-        species,
-        tier,
-        x,
-        y,
-        chance: CHANCE,
-        roll: ROLL,
-        status: ROLL < CHANCE ? 'pending' : 'missed',
-        unitId: 0,
-    };
+
+function ensureWorldRewardState(world) {
+    world.bossRewardReceipts ||= [];
+    world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
+    world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
+    world.bossRewardInventory ||= [];
+    return world;
 }
-export function grantPendingBossAcquisitions(world, options) {
+
+function shufflePayouts(payouts, seed) {
+    const { SeededPRNG: SEEDED_PRNG } = requireSdk();
+    const RNG = new SEEDED_PRNG(seed);
+    for (let index = payouts.length - 1; index > 0; index -= 1) {
+        const OTHER = RNG.nextInt(index + 1);
+        [payouts[index], payouts[OTHER]] = [payouts[OTHER], payouts[index]];
+    }
+    return { payouts, rngState: RNG.state };
+}
+
+export function getBossRewardQueueCount(world, species, tier = 1) {
+    return (world.bossRewardInventory || [])
+        .filter((entry) => entry.species === species && entry.tier === tier)
+        .reduce((sum, entry) => {
+            const NEXT = sum + entry.count;
+            if (!Number.isSafeInteger(NEXT)) {
+                throw new RangeError('Owned boss reward quantity exceeds the safe integer range');
+            }
+            return NEXT;
+        }, 0);
+}
+
+function allocatePlacedRewards(world, species, tier, quantity) {
+    let remaining = quantity;
+    for (const RECEIPT of world.bossRewardReceipts) {
+        if (
+            remaining === 0 ||
+            RECEIPT.species !== species ||
+            RECEIPT.tier !== tier ||
+            !Number.isSafeInteger(RECEIPT.queuedCount) ||
+            RECEIPT.queuedCount <= 0
+        ) {
+            continue;
+        }
+        const PLACED = Math.min(remaining, RECEIPT.queuedCount);
+        RECEIPT.queuedCount -= PLACED;
+        RECEIPT.placedCount += PLACED;
+        RECEIPT.grantedCount = RECEIPT.placedCount;
+        remaining -= PLACED;
+    }
+    if (remaining !== 0) {
+        throw new Error('Boss reward queue and receipt counts diverged');
+    }
+}
+
+export function grantPendingBossAcquisitions(world) {
     return typeof world.mutateUnits === 'function'
-        ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world, options)
-        : grantPendingBossAcquisitionsCommitted(world, options);
+        ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world)
+        : grantPendingBossAcquisitionsCommitted(world);
 }
-function grantPendingBossAcquisitionsCommitted(world, { grantUnit = null } = {}) {
+
+function grantPendingBossAcquisitionsCommitted(world) {
+    ensureWorldRewardState(world);
+    if (world.scene !== 'farm' || !Array.isArray(world.units) || !world.bossRewardInventory.length) {
+        return [];
+    }
     const GRANTED = [];
-    for (const REWARD of world.bossRewardReceipts || []) {
-        if (REWARD.status !== 'pending') {
-            continue;
+    let capacity = Math.max(0, world.capacity - world.units.length);
+    for (const GROUP of world.bossRewardInventory) {
+        if (capacity <= 0) {
+            break;
         }
-        if (!Array.isArray(REWARD.drops)) {
-            const REMAINING = REWARD.successCount - REWARD.grantedCount;
-            for (let index = 0; index < REMAINING; index++) {
-                if (world.units.length >= world.capacity) {
-                    break;
-                }
-                const UNIT = grantUnit
-                    ? grantUnit({
-                          ...REWARD,
-                          tier: 1,
-                          successIndex: REWARD.grantedCount,
-                      })
-                    : world.spawn(REWARD.species, 1, REWARD.x, REWARD.y);
-                if (!UNIT) {
-                    break;
-                }
-                REWARD.grantedCount++;
-                REWARD.unitId ||= UNIT.id;
-                GRANTED.push({
-                    ...REWARD,
-                    tier: 1,
-                    unitId: UNIT.id,
-                    successIndex: REWARD.grantedCount - 1,
-                });
-            }
-            REWARD.status = REWARD.grantedCount < REWARD.successCount ? 'pending' : 'granted';
-            const EVENT = world.farmBossEvent;
-            if (EVENT?.encounterId === REWARD.encounterId) {
-                EVENT.rewardStatus = REWARD.status;
-                EVENT.rewardUnitId = REWARD.unitId;
-            }
-            continue;
-        }
-        const DROPS = Array.isArray(REWARD.drops)
-            ? REWARD.drops
-            : [
-                  {
-                      roll: REWARD.roll,
-                      status: 'pending',
-                      unitId: 0,
-                  },
-              ];
-        for (const DROP of DROPS) {
-            if (DROP.status !== 'pending') {
-                continue;
-            }
-            const UNIT = grantUnit
-                ? grantUnit({
-                      ...REWARD,
-                      roll: DROP.roll,
-                  })
-                : world.units.length < world.capacity
-                  ? world.spawn(REWARD.species, REWARD.tier, REWARD.x, REWARD.y)
-                  : null;
+        const COUNT = Math.min(capacity, GROUP.count);
+        let placed = 0;
+        while (placed < COUNT) {
+            const INDEX = world.units.length,
+                ANGLE = INDEX * 2.399963229728653 + ((world.seed >>> 0) % 6283) / 1000,
+                RADIUS = Math.sqrt(INDEX + 0.5) * 0.35,
+                UNIT = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
             if (!UNIT) {
-                continue;
+                break;
             }
-            DROP.status = 'granted';
-            DROP.unitId = UNIT.id;
-            GRANTED.push({
-                ...REWARD,
-                roll: DROP.roll,
-                unitId: UNIT.id,
-            });
+            GRANTED.push(UNIT);
+            placed += 1;
         }
-        const PENDING = DROPS.some((drop) => drop.status === 'pending');
-        const SUCCESSFUL = DROPS.filter((drop) => drop.status === 'granted');
-        REWARD.status = PENDING ? 'pending' : SUCCESSFUL.length ? 'granted' : 'missed';
-        REWARD.unitId = PENDING ? 0 : SUCCESSFUL[0]?.unitId || 0;
-        const EVENT = world.farmBossEvent;
-        if (EVENT?.encounterId === REWARD.encounterId) {
-            EVENT.rewardStatus = REWARD.status;
-            EVENT.rewardUnitId = REWARD.unitId;
+        if (placed > 0) {
+            GROUP.count -= placed;
+            capacity -= placed;
+            allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
         }
+    }
+    world.bossRewardInventory = world.bossRewardInventory.filter((entry) => entry.count > 0);
+    if (GRANTED.length) {
+        world.markProgressChanged?.();
     }
     return GRANTED;
 }
-export function resolveBossAcquisition(world, options) {
+
+function findExistingReceipt(world, receiptKey, encounterId, source) {
+    return world.bossRewardReceipts.find(
+        (receipt) =>
+            (receiptKey && receipt.receiptKey === receiptKey) ||
+            (receipt.encounterId === encounterId && receipt.source === source),
+    );
+}
+
+function shuffleForNewReceipt(world, source, total) {
+    const KIND = streamFor(source),
+        STREAM = world.bossRewardStreams[KIND],
+        PAYOUTS = bossRewardBoxPayouts(total),
+        SHUFFLED = shufflePayouts(PAYOUTS, STREAM.payoutRngState);
+    return {
+        payouts: SHUFFLED.payouts,
+        payoutRngStateAfter: SHUFFLED.rngState,
+    };
+}
+
+export function resolveBossAcquisition(world, options = {}) {
     return typeof world.mutateUnits === 'function'
         ? world.mutateUnits(resolveBossAcquisitionCommitted, world, options)
         : resolveBossAcquisitionCommitted(world, options);
 }
-function resolveBossAcquisitionCommitted(world, options) {
-    const { encounterId: ENCOUNTER_ID, source: SOURCE = 'raid' } = options || {};
-    const REQUESTED_RECEIPT_KEY = options?.receiptKey;
-    if (
-        REQUESTED_RECEIPT_KEY !== undefined &&
-        (typeof REQUESTED_RECEIPT_KEY !== 'string' ||
-            !REQUESTED_RECEIPT_KEY.trim() ||
-            REQUESTED_RECEIPT_KEY.length > 255)
-    ) {
-        throw new TypeError('Boss receipt key must be a non-empty string');
-    }
-    world.bossRewardReceipts ||= [];
-    world.bossRewardWatermarks ||= {
-        farm: 0,
-        raid: 0,
-    };
-    const PREVIOUS = world.bossRewardReceipts.find((receipt) =>
-        REQUESTED_RECEIPT_KEY
-            ? receipt.receiptKey === REQUESTED_RECEIPT_KEY
-            : receipt.encounterId === ENCOUNTER_ID && receipt.source === SOURCE,
-    );
-    if (PREVIOUS) {
-        if (PREVIOUS.status === 'pending') {
-            grantPendingBossAcquisitions(world, {
-                grantUnit: options?.grantUnit || null,
-            });
-        }
-        return PREVIOUS;
-    }
+
+function resolveBossAcquisitionCommitted(world, options = {}) {
+    ensureWorldRewardState(world);
+    const ENCOUNTER_ID = options.encounterId,
+        SOURCE = options.source || 'raid',
+        REQUESTED_KEY = options.receiptKey;
     if (
         !['farm', 'raid'].includes(SOURCE) ||
         !Number.isSafeInteger(ENCOUNTER_ID) ||
-        ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)
+        ENCOUNTER_ID < 1 ||
+        (REQUESTED_KEY !== undefined &&
+            (typeof REQUESTED_KEY !== 'string' || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255))
     ) {
+        throw new TypeError('A boss encounter ID, source, and valid receipt key are required');
+    }
+    const RECEIPT_KEY = REQUESTED_KEY || `${SOURCE}:${ENCOUNTER_ID}`,
+        PREVIOUS = findExistingReceipt(world, REQUESTED_KEY, ENCOUNTER_ID, SOURCE);
+    if (PREVIOUS) {
+        return PREVIOUS;
+    }
+    if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
         throw new RangeError('A settled or stale boss encounter cannot be rolled again');
     }
-    const RANDOM = options?.random || (() => world.random()),
-        ROLL_BUDGET = options?.rollBudget ?? options?.rollCount ?? 1;
-    if (
-        !Number.isFinite(ROLL_BUDGET) ||
-        ROLL_BUDGET < 0 ||
-        ROLL_BUDGET > BOSS_REWARD_SETTINGS.maxRollCount ||
-        !Number.isSafeInteger(Math.floor(ROLL_BUDGET))
-    ) {
-        throw new RangeError('Boss drop roll budget is out of range');
+    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
+    if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
+        throw new RangeError('Boss reward quantity is outside the safe integer range');
     }
-    const BASE_ROLL_COUNT = Math.floor(ROLL_BUDGET),
-        BONUS_ROLL_CHANCE = ROLL_BUDGET - BASE_ROLL_COUNT,
+    const SPECIES = options.species ?? 3;
+    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
+        throw new RangeError('Boss reward species is invalid');
+    }
+    const STREAM_KIND = streamFor(SOURCE),
+        STREAM = world.bossRewardStreams[STREAM_KIND],
         CHANCE = bossAcquisitionChance({
             farmEvent: SOURCE === 'farm',
-            acquisitionMultiplier: options?.acquisitionMultiplier ?? 1,
+            acquisitionMultiplier: options.acquisitionMultiplier ?? 1,
         }),
-        DECISION =
-            BASE_ROLL_COUNT > 0
-                ? decideBossAcquisition({
-                      ...options,
-                      tier: 1,
-                      random: RANDOM,
-                  })
-                : {
-                      encounterId: ENCOUNTER_ID,
-                      source: SOURCE,
-                      receiptKey: options?.receiptKey || `${SOURCE}:${ENCOUNTER_ID}`,
-                      acquisitionMultiplier:
-                          SOURCE === 'farm'
-                              ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier
-                              : (options?.acquisitionMultiplier ?? 1),
-                      species: options?.species ?? 3,
-                      tier: 1,
-                      x: options?.x ?? 0,
-                      y: options?.y ?? 0,
-                      chance: CHANCE,
-                      roll: 0,
-                      status: 'missed',
-                      unitId: 0,
-                  };
-    let successCount = DECISION.status === 'pending' ? 1 : 0,
-        rollCount = BASE_ROLL_COUNT;
-    if (BASE_ROLL_COUNT > 1) {
-        successCount += sampleBinomial(BASE_ROLL_COUNT - 1, CHANCE, RANDOM);
+        SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL),
+        BOX_COUNT = SHUFFLED.payouts.length,
+        RECEIPT = {
+            encounterId: ENCOUNTER_ID,
+            source: SOURCE,
+            receiptKey: RECEIPT_KEY,
+            acquisitionMultiplier:
+                SOURCE === 'farm'
+                    ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier
+                    : (options.acquisitionMultiplier ?? 1),
+            stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
+            species: SPECIES,
+            tier: 1,
+            x: Number.isFinite(options.x) ? options.x : 0,
+            y: Number.isFinite(options.y) ? options.y : 0,
+            chance: CHANCE,
+            baselineChance: BOSS_REWARD_SETTINGS.acquisitionChance,
+            rollBudget: TOTAL,
+            rollCount: BOX_COUNT,
+            boxCount: BOX_COUNT,
+            successCount: 0,
+            acquiredCount: 0,
+            grantedCount: 0,
+            placedCount: 0,
+            queuedCount: 0,
+            unitId: 0,
+            revealedCount: 0,
+            boxes: [],
+            calculation: {
+                version: 1,
+                payouts: SHUFFLED.payouts,
+                hits: [],
+                payoutRngStateAfter: SHUFFLED.payoutRngStateAfter,
+                jobState: null,
+            },
+            status: 'calculating',
+        };
+    if (STREAM_SOURCE[SOURCE] !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
+        throw new TypeError('Boss reward streams are not initialized');
     }
-    if (BONUS_ROLL_CHANCE > 0 && readBossRoll(RANDOM) < BONUS_ROLL_CHANCE) {
-        rollCount++;
-        if (readBossRoll(RANDOM) < CHANCE) {
-            successCount++;
-        }
-    }
-    const RECEIPT = {
-        ...DECISION,
-        rollBudget: ROLL_BUDGET,
-        bonusRollChance: BONUS_ROLL_CHANCE,
-        rollCount,
-        successCount,
-        grantedCount: 0,
-        status: successCount > 0 ? 'pending' : 'missed',
-        unitId: 0,
-    };
     world.bossRewardReceipts.push(RECEIPT);
     world.bossRewardWatermarks[SOURCE] = ENCOUNTER_ID;
-    // Retain pending receipts and a small settled history; encounter IDs only move forward.
-    const SETTLED = world.bossRewardReceipts.filter((item) => item.status !== 'pending');
-    if (SETTLED.length > 128) {
-        const REMOVE = new Set(SETTLED.slice(0, SETTLED.length - 128));
-        world.bossRewardReceipts = world.bossRewardReceipts.filter((item) => !REMOVE.has(item));
+    trimRewardReceipts(world);
+    if (SOURCE === 'farm' && world.farmBossEvent?.encounterId === ENCOUNTER_ID) {
+        world.farmBossEvent.rewardStatus = 'calculating';
+        world.farmBossEvent.rewardChance = CHANCE;
+        world.farmBossEvent.rewardRoll = 0;
+        world.farmBossEvent.rewardUnitId = 0;
     }
-    const EVENT = world.farmBossEvent;
-    if (EVENT?.encounterId === ENCOUNTER_ID) {
-        EVENT.rewardStatus = RECEIPT.status;
-        EVENT.rewardChance = RECEIPT.chance;
-        EVENT.rewardRoll = RECEIPT.roll;
-        EVENT.rewardUnitId = RECEIPT.unitId;
+    world.markProgressChanged?.();
+    return RECEIPT;
+}
+
+function copyInventory(world) {
+    return (world.bossRewardInventory || []).map((entry) => ({ ...entry }));
+}
+
+function completeRewardCalculation(world, receipt, jobState) {
+    const CALC = receipt.calculation,
+        HIT_SET = new Set(CALC.hits),
+        BOXES = CALC.payouts.map((payout, index) => ({ payout, hit: HIT_SET.has(index) }));
+    let acquired = 0;
+    for (const BOX of BOXES) {
+        if (BOX.hit) {
+            acquired += BOX.payout;
+            if (!Number.isSafeInteger(acquired)) {
+                throw new RangeError('Owned boss reward quantity exceeds the safe integer range');
+            }
+        }
     }
-    if (RECEIPT.status === 'pending') {
-        grantPendingBossAcquisitions(world, {
-            grantUnit: options?.grantUnit || null,
-        });
+    const KIND = streamFor(receipt.source),
+        NEXT_INVENTORY = copyInventory(world),
+        GROUP = NEXT_INVENTORY.find((entry) => entry.species === receipt.species && entry.tier === receipt.tier);
+    if (acquired > 0) {
+        const CURRENT = GROUP?.count || 0,
+            NEXT = CURRENT + acquired;
+        if (!Number.isSafeInteger(NEXT)) {
+            throw new RangeError('Owned boss reward quantity exceeds the safe integer range');
+        }
+        if (GROUP) {
+            GROUP.count = NEXT;
+        } else {
+            NEXT_INVENTORY.push({ species: receipt.species, tier: receipt.tier, count: acquired });
+        }
+    }
+    const NEXT_STREAM = {
+        rngState: jobState.rngState,
+        distributionState: jobState.distributionState,
+        payoutRngState: CALC.payoutRngStateAfter,
+    };
+
+    // These four assignments are one synchronous settlement commit. Until here,
+    // all PRD and shuffle work exists only on the receipt's resumable working copy.
+    world.bossRewardStreams[KIND] = NEXT_STREAM;
+    world.bossRewardInventory = NEXT_INVENTORY;
+    receipt.boxes = BOXES;
+    receipt.successCount = CALC.hits.length;
+    receipt.acquiredCount = acquired;
+    receipt.placedCount = 0;
+    receipt.queuedCount = acquired;
+    receipt.grantedCount = 0;
+    receipt.revealedCount = 0;
+    receipt.calculation = null;
+    receipt.status = 'ready';
+    if (receipt.source === 'farm' && world.farmBossEvent?.encounterId === receipt.encounterId) {
+        world.farmBossEvent.rewardStatus = 'ready';
+    }
+}
+
+function trimRewardReceipts(world) {
+    const KEEP = new Set();
+    let completed = 0;
+    for (let index = world.bossRewardReceipts.length - 1; index >= 0; index -= 1) {
+        const RECEIPT = world.bossRewardReceipts[index],
+            NEEDS_PRESENTATION =
+                RECEIPT.status === 'calculating' ||
+                (Number.isSafeInteger(RECEIPT.revealedCount) &&
+                    Number.isSafeInteger(RECEIPT.boxCount) &&
+                    RECEIPT.revealedCount < RECEIPT.boxCount) ||
+                (Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0);
+        if (NEEDS_PRESENTATION || (RECEIPT.status === 'opened' && completed < 8)) {
+            KEEP.add(RECEIPT);
+            if (RECEIPT.status === 'opened') {
+                completed += 1;
+            }
+        }
+    }
+    world.bossRewardReceipts = world.bossRewardReceipts.filter((receipt) => KEEP.has(receipt));
+}
+
+export function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_UNITS_PER_TICK } = {}) {
+    if (!Number.isSafeInteger(maxUnitsPerReward) || maxUnitsPerReward < 1 || maxUnitsPerReward > PRD_UNITS_PER_TICK) {
+        throw new RangeError('Boss reward work must be from 1 to 10 units per logical tick');
+    }
+    ensureWorldRewardState(world);
+    if (world.scene !== 'farm') {
+        return false;
+    }
+    let changed = false;
+    for (const SOURCE of ['raid', 'farm']) {
+        const RECEIPT = world.bossRewardReceipts.find(
+                (entry) => entry.source === SOURCE && entry.status === 'calculating',
+            ),
+            CALC = RECEIPT?.calculation;
+        if (!RECEIPT || !CALC) {
+            continue;
+        }
+        const STREAM = world.bossRewardStreams[streamFor(SOURCE)],
+            { SeededPRNG: SEEDED_PRNG, PseudoRandomDistribution: PSEUDO_RANDOM_DISTRIBUTION } = requireSdk(),
+            RNG = new SEEDED_PRNG(STREAM.rngState),
+            PRD = new PSEUDO_RANDOM_DISTRIBUTION({ probability: RECEIPT.chance, rng: RNG });
+        let job = null;
+        try {
+            if (CALC.jobState) {
+                job = PRD.restoreRollJob(CALC.jobState);
+            } else {
+                if (STREAM.distributionState) {
+                    PRD.restore(STREAM.distributionState);
+                }
+                if (PRD.probability !== RECEIPT.chance) {
+                    PRD.setProbability(RECEIPT.chance);
+                }
+                job = PRD.createRollJob(RECEIPT.boxCount);
+            }
+            if (RECEIPT.chance === 1 && CALC.hits.length === 0) {
+                CALC.hits = Array.from({ length: RECEIPT.boxCount }, (_, index) => index);
+            }
+            let units = 0;
+            while (!job.done && units < maxUnitsPerReward) {
+                const PRIOR_SUCCESSES = job.successes,
+                    STEP = job.step(1);
+                units += STEP.unitsUsed;
+                if (RECEIPT.chance !== 1 && STEP.successes > PRIOR_SUCCESSES) {
+                    if (STEP.successes !== PRIOR_SUCCESSES + 1) {
+                        throw new Error('A single PRD interval returned multiple reward successes');
+                    }
+                    CALC.hits.push(STEP.processedTrials - 1);
+                }
+                if (STEP.unitsUsed === 0 && !STEP.done) {
+                    throw new Error('The resumable boss reward job did not advance');
+                }
+            }
+            CALC.jobState = job.capture();
+            changed = true;
+            if (job.done) {
+                completeRewardCalculation(world, RECEIPT, CALC.jobState);
+                trimRewardReceipts(world);
+            }
+        } finally {
+            job?.dispose();
+            PRD.dispose();
+        }
+    }
+    if (changed) {
+        world.markProgressChanged?.();
+    }
+    return changed;
+}
+
+export function advanceBossRewardReveal(world, receiptKey, maxBoxes = 10) {
+    if (!Number.isSafeInteger(maxBoxes) || maxBoxes < 1 || maxBoxes > 10) {
+        throw new RangeError('Boss reward reveal must be from 1 to 10 boxes');
+    }
+    ensureWorldRewardState(world);
+    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
+    if (!RECEIPT || !['ready', 'opened'].includes(RECEIPT.status)) {
+        return null;
+    }
+    if (RECEIPT.status === 'opened') {
+        return RECEIPT;
+    }
+    RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
+        RECEIPT.status = 'opened';
+        if (RECEIPT.source === 'farm' && world.farmBossEvent?.encounterId === RECEIPT.encounterId) {
+            world.farmBossEvent.rewardStatus = 'opened';
+        }
+    }
+    trimRewardReceipts(world);
+    world.markProgressChanged?.();
+    return RECEIPT;
+}
+
+export function openAllBossRewardBoxes(world, receiptKey) {
+    ensureWorldRewardState(world);
+    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
+    if (!RECEIPT || !['ready', 'opened'].includes(RECEIPT.status)) {
+        return null;
+    }
+    if (RECEIPT.status === 'ready') {
+        RECEIPT.revealedCount = RECEIPT.boxCount;
+        RECEIPT.status = 'opened';
+        if (RECEIPT.source === 'farm' && world.farmBossEvent?.encounterId === RECEIPT.encounterId) {
+            world.farmBossEvent.rewardStatus = 'opened';
+        }
+        trimRewardReceipts(world);
+        world.markProgressChanged?.();
     }
     return RECEIPT;
 }
 
-// The encounter receipt is the idempotency key for both parts of a boss kill.
-// Callers may supply an owner-scoped progression wallet for future Raid use;
-// Farm encounters use the saved wallet on the Garden itself.
 export function settleBossKill(world, options) {
     return typeof world.mutateUnits === 'function'
         ? world.mutateUnits(settleBossKillCommitted, world, options)
         : settleBossKillCommitted(world, options);
 }
-function settleBossKillCommitted(world, options) {
-    const RECEIPT = resolveBossAcquisition(world, options);
-    const PROGRESSION_OWNER = options?.progressionOwner || world;
-    const WALLET = options?.playerProgression || PROGRESSION_OWNER.playerProgression;
-    const RECEIPT_KEY =
-        RECEIPT.xpReceiptKey || options?.receiptKey || RECEIPT.receiptKey || `${RECEIPT.source}:${RECEIPT.encounterId}`;
-    // Once XP is recorded on this immutable acquisition receipt, a repeated
-    // settlement must not replace its awarded amount with a duplicate's zero.
+
+function settleBossKillCommitted(world, options = {}) {
+    const RECEIPT = resolveBossAcquisitionCommitted(world, options),
+        PROGRESSION_OWNER = options.progressionOwner || world,
+        WALLET = options.playerProgression || PROGRESSION_OWNER.playerProgression,
+        RECEIPT_KEY = RECEIPT.xpReceiptKey || options.receiptKey || RECEIPT.receiptKey;
     if (RECEIPT.xpReceiptKey && ['awarded', 'already-awarded'].includes(RECEIPT.xpStatus)) {
         return {
             receipt: RECEIPT,
@@ -372,7 +565,7 @@ function settleBossKillCommitted(world, options) {
             pointsAwarded: RECEIPT.pointsAwarded ?? 0,
         };
     }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options?.xpAmount === undefined ? undefined : options.xpAmount);
+    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === undefined ? undefined : options.xpAmount);
     if (RESULT.awarded) {
         PROGRESSION_OWNER.playerProgression = RESULT.state;
     }
@@ -385,6 +578,7 @@ function settleBossKillCommitted(world, options) {
     } else {
         RECEIPT.xpStatus = 'unsettled';
     }
+    world.markProgressChanged?.();
     return {
         receipt: RECEIPT,
         progression: RESULT.state,
