@@ -9,6 +9,7 @@ import { WALNUT_GUARD_SLAM_FEATURE } from './features/abilities/walnut-guard-sla
 import { RICE_LOW_HEALTH_HARVEST_FEATURE } from './features/abilities/rice-low-health-harvest.js';
 import { WHEAT_COMMAND_CRIT_FEATURE } from './features/abilities/wheat-command-crit.js';
 import { BARLEY_ARMOR_BREAK_FEATURE } from './features/abilities/barley-armor-break.js';
+import { ABILITY_PRESENTATION_OVERRIDES } from './ability-presentations.js';
 
 // This is the composition root only. Each feature owns its definition and
 // presentation implementation; model consumers receive the unchanged pure data.
@@ -26,7 +27,12 @@ const ABILITY_FEATURES = Object.freeze([
     BARLEY_ARMOR_BREAK_FEATURE,
 ]);
 export const SPECIES_ABILITY_DEFINITIONS = Object.freeze(ABILITY_FEATURES.map((feature) => feature.definition));
-const ABILITY_FEATURE_BY_ID = new Map(ABILITY_FEATURES.map((feature) => [feature.definition.id, feature]));
+const ABILITY_PRESENTATION_BY_ID = new Map(
+    ABILITY_FEATURES.map((feature) => [
+        feature.definition.id,
+        ABILITY_PRESENTATION_OVERRIDES.get(feature.definition.id) || feature.presentation,
+    ]),
+);
 export function abilityPresentationFor(abilityId) {
-    return ABILITY_FEATURE_BY_ID.get(abilityId)?.presentation;
+    return ABILITY_PRESENTATION_BY_ID.get(abilityId);
 }

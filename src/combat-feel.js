@@ -1,6 +1,10 @@
 import { presentationEventTimeMs } from './farm-model.js';
+import { RiceCriticalPresentation } from './features/abilities/rice-critical/presentation.js';
+import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
+const RICE_CRITICAL_PRESENTATION = new RiceCriticalPresentation();
+const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 // Only these primitive unit-land notice copies are owned by the display queue.
 // Garden notices, interpolation history and the longer-lived bossHit alias are not pooled.
 const CREATE_LANDING_EFFECT = () => ({
@@ -54,6 +58,12 @@ class HitPresentation extends BurstPresentation {
     ringWidth = 0.075;
     particleCount = 6;
     distanceMultiplier = 1;
+    draw(renderer, event, progress) {
+        super.draw(renderer, event, progress);
+        if (event.critical) {
+            RICE_CRITICAL_PRESENTATION.drawCriticalHit(renderer, event, progress);
+        }
+    }
     size(event) {
         return event.attackKind === 'sweep' ? 1.15 : 0.6;
     }
@@ -92,7 +102,11 @@ class BossHitPresentation extends HitPresentation {
 class UnitHitPresentation extends HitPresentation {
     color = '231,147,83';
     observe(feel, event, _displayEvent, at) {
-        feel.poses.set(event.unit, { at, until: at + 180, strength: event.strength });
+        feel.poses.set(event.unit, {
+            at,
+            until: at + 180,
+            strength: event.strength * (event.critical ? 1.4 : 1),
+        });
         feel.counts.hits++;
     }
     sound(audio, event) {
@@ -153,6 +167,7 @@ class BossLaunchPresentation {
 const COMBAT_EFFECT_PRESENTATIONS = new Map([
     ['boss-hit', Object.freeze(new BossHitPresentation())],
     ['unit-hit', Object.freeze(new UnitHitPresentation())],
+    ['barley-shred', Object.freeze(BARLEY_SHRED_PRESENTATION)],
     ['unit-land', Object.freeze(new UnitLandingPresentation())],
     ['attack-launch', Object.freeze(new AttackLaunchPresentation())],
     ['boss-launch', Object.freeze(new BossLaunchPresentation())],
@@ -258,7 +273,7 @@ class CombatFeel {
         return {
             x: -E.nx * K * 0.1,
             y: -E.ny * K * 0.1,
-            squash: K * 0.035,
+            squash: K * 0.035 * (E.critical ? 1.4 : 1),
         };
     }
     sound(event) {

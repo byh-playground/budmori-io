@@ -1,6 +1,7 @@
 import { PRODUCT_VERSION, COMPATIBILITY } from './version.js';
 import { normalizeSnapshot, validateSnapshot } from './farm-state.js';
 import { captureFarmProgress, restoreFarmProgress, validateFarmProgress } from './farm-progress.js';
+import { migrateBaselineAbilityInvestments } from './ability-state.js';
 const MAX_BYTES = 2 * 1024 * 1024;
 const LEGACY_COMPATIBILITIES = new Set(['0.7', '0.6', '0.5', '0.4']);
 const COMPATIBILITY_LOCAL = (version) => (typeof version === 'string' ? version.split('.').slice(0, 2).join('.') : '');
@@ -49,6 +50,7 @@ export function decodeFarmSave(text) {
         validateSnapshot(WORLD);
         progress = captureFarmProgress(WORLD);
     }
+    migrateBaselineAbilityInvestments(progress.player);
     validateFarmProgress(progress);
     return progress;
 }

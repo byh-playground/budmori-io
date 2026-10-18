@@ -1,4 +1,5 @@
 import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
+import { createAbilityProgressionState } from './ability-state.js';
 // Internal checkpoint shapes and import defaults for supported 0.4–0.7 saves.
 // Disk writes use farm-progress.js; these runtime values are never exported.
 // These are not live entity defaults. Changing a runtime constructor must not
@@ -60,8 +61,10 @@ export const UNIT_SNAPSHOT_SHAPE = {
     walnutEmpoweredNextBasic: false,
     wheatCommandUntil: 0,
     wheatCommandCritBonus: 0,
+    wheatCommandBuffs: [],
     barleyArmorBreakUntil: 0,
     barleyArmorBreakReduction: 0,
+    barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
     giantUntil: 0,
     giantEndedAt: -10,
     isFormationClone: false,
@@ -96,29 +99,7 @@ const PATTERN_VALUES = (value) =>
             'summon.mouth-t1',
         ].map((id) => [id, value]),
     );
-const ABILITY_INVESTMENTS = () =>
-    Object.fromEntries(
-        [
-            'pea-death-split',
-            'corn-burst-fire',
-            'corn-popcorn-chain',
-            'chestnut-spike-fan',
-            'kidney-continuous-leap',
-            'kidney-landing-shockwave',
-            'peanut-separated-assault',
-            'walnut-guard-slam',
-            'rice-low-health-harvest',
-            'wheat-command-crit',
-            'barley-armor-break',
-        ].map((id) => [
-            id,
-            {
-                rootUnlocked: false,
-                powerLevel: 0,
-                gradeLevel: 0,
-            },
-        ]),
-    );
+const ABILITY_INVESTMENTS = () => createAbilityProgressionState().abilities;
 export const FARM_SNAPSHOT_SHAPE = {
     seed: 731,
     notices: [],
@@ -136,6 +117,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     effects: [],
     events: [],
     time: 0,
+    simulationTick: 0,
     nextId: 3,
     nextBossEncounterId: 1,
     bossRewardReceipts: [],
@@ -152,6 +134,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     playerProgression: {
         formationSkills: createFormationSkillState(),
         schemaVersion: 1,
+        baselineAbilityMigrationVersion: 1,
         availablePoints: 0,
         farmUpgrades: {
             food: 0,
@@ -238,6 +221,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         airborneRecovery: 0,
         barleyArmorBreakUntil: 0,
         barleyArmorBreakReduction: 0,
+        barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
         summonMouth: {
             x: 0,
             y: 0,
@@ -268,8 +252,10 @@ export const LEGACY_UNIT_DEFAULT_KEYS = Object.freeze([
     'walnutEmpoweredNextBasic',
     'wheatCommandUntil',
     'wheatCommandCritBonus',
+    'wheatCommandBuffs',
     'barleyArmorBreakUntil',
     'barleyArmorBreakReduction',
+    'barleyArmorShredBuckets',
     'isBattleOnlySummon',
     'battleSummonKind',
     'battleSummonParentId',
@@ -339,6 +325,8 @@ const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
         elapsed: true,
         action: ATTACK,
     },
+    wheatCommandBuffs: [FIELDS('level expiresAtTick')],
+    barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
 const BOSS_ACTION = FIELDS('id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease', {
     target: POINT,
@@ -351,6 +339,7 @@ const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
     patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, {
         active: BOSS_ACTION,
     }),
+    barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
 const DROP = FIELDS('roll status unitId');
 const REWARD = FIELDS(

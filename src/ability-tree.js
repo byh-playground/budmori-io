@@ -100,7 +100,7 @@ export function renderAbilityTreeMarkup(
       <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
-    <p class="ability-tree__note">능력마다 Rare(T3)에서 해금할 수 있고, 강화와 적용 등급 완화에 같은 포인트를 씁니다. 사용하지 않은 포인트는 보존됩니다.</p>
+    <p class="ability-tree__note">쌈·밀·보리 기본 능력은 Common부터 무료로 제공되며, 그 외 능력은 Rare(T3)에서 해금할 수 있습니다. 강화와 등급 완화에는 같은 포인트를 쓰며, 남은 포인트는 보존됩니다.</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
       <p class="ability-tree__lock-note" role="status">${inCombat ? '전투 중에는 투자와 초기화가 잠깁니다.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있습니다.' : '농장에서 무료로 초기화할 수 있습니다.'}</p>
@@ -191,21 +191,71 @@ function renderAbilityCard(state, definition, context) {
             return renderNode(state, definition, `grade-${LEVEL}`, `${GRADE}까지`, `최소 적용 등급 ${GRADE}`, context);
         })
         .join('');
-    const MINIMUM_TIER = getMinimumApplicableTier(state, definition.id);
-    const ROOT_STATUS = getAbilityNodeStatus(state, definition, 'root', context);
-    const SPECIES_NAME = speciesById(definition.species).name;
+    const BRANCH_SECTIONS = Object.entries(definition.branches || {})
+        .map(([branchId, branch]) => {
+            const NODES = branch.values
+                .slice(1)
+                .map((value, index) => {
+                    const LEVEL = index + 1;
+                    return renderNode(
+                        state,
+                        definition,
+                        `branch-${branchId}-${LEVEL}`,
+                        branchTitle(definition, branchId, value, LEVEL),
+                        branchLabel(definition, branchId, value, LEVEL),
+                        context,
+                    );
+                })
+                .join('');
+            return `<section class="ability-branch" aria-label="${branch.name}"><h4>${branch.name}</h4><div class="ability-branch__nodes">${NODES}</div></section>`;
+        })
+        .join('');
+    const CURRENT_EFFECT = [
+        powerLabel(definition, definition.powerValues[INVESTMENT.powerLevel], INVESTMENT.powerLevel),
+        ...Object.entries(definition.branches || {}).map(([branchId, branch]) =>
+            branchLabel(
+                definition,
+                branchId,
+                branch.values[INVESTMENT.branchLevels?.[branchId] || 0],
+                INVESTMENT.branchLevels?.[branchId] || 0,
+            ),
+        ),
+    ].join(' · ');
+    const BASE_EFFECT = [
+        powerLabel(definition, definition.powerValues[0], 0),
+        ...Object.entries(definition.branches || {}).map(([branchId, branch]) =>
+            branchLabel(definition, branchId, branch.values[0], 0),
+        ),
+    ].join(' · ');
+    const MINIMUM_TIER = getMinimumApplicableTier(state, definition.id),
+        DEFAULT_UNLOCKED = definition.defaultUnlocked === true,
+        ROOT_STATUS = getAbilityNodeStatus(state, definition, 'root', context),
+        SPECIES_NAME = speciesById(definition.species).name,
+        GRADE_LABEL = DEFAULT_UNLOCKED
+            ? '\uACF5\uD1B5 \uAE30\uBCF8 \uB2A5\uB825'
+            : INVESTMENT.rootUnlocked
+              ? `\uCD5C\uC18C ${unitGradeLabel(MINIMUM_TIER)}`
+              : `${unitGradeLabel(definition.rootTier)} \uD574\uAE08`,
+        CURRENT_LABEL = DEFAULT_UNLOCKED
+            ? '\uAE30\uBCF8 \uB2A5\uB825'
+            : INVESTMENT.rootUnlocked
+              ? '\uD604\uC7AC \uD6A8\uACFC'
+              : '\uD574\uAE08 \uD6C4 \uD6A8\uACFC',
+        GRADE_SECTION = DEFAULT_UNLOCKED
+            ? ''
+            : `<section class="ability-branch" aria-label="\uB4F1\uAE09 \uC644\uD654 \uB178\uB4DC"><h4>\uB4F1\uAE09 \uC644\uD654</h4><div class="ability-branch__nodes">${GRADE_NODES}</div></section>`,
+        ROOT_SECTION = DEFAULT_UNLOCKED
+            ? `<div class="ability-card__root"><p class="ability-card__base-effect">\uAE30\uBCF8 \uB2A5\uB825: ${BASE_EFFECT}</p></div>`
+            : `<div class="ability-card__root"><span class="ability-node__branch-label">\uB2A5\uB825 \uD2B8\uB9AC</span>${renderNode(state, definition, 'root', '\uB2A5\uB825 \uD574\uAE08', `${unitGradeLabel(definition.rootTier)} \uD2F0\uC5B4 \uD544\uC694`, context, ROOT_STATUS)}<p class="ability-card__base-effect">\uAE30\uBCF8 \uD6A8\uACFC: ${BASE_EFFECT}</p></div>`;
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
-    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${INVESTMENT.rootUnlocked ? `최소 ${unitGradeLabel(MINIMUM_TIER)}` : `${unitGradeLabel(definition.rootTier)} 해금`}</span></header>
+    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">${GRADE_LABEL}</span></header>
     <p class="ability-card__description">${definition.description}</p>
-    <p class="ability-card__current-effect">${INVESTMENT.rootUnlocked ? '현재 효과' : '해금 시 효과'}: ${powerLabel(definition, definition.powerValues[INVESTMENT.powerLevel], INVESTMENT.powerLevel)}</p>
-    <div class="ability-card__root">
-      <span class="ability-node__branch-label">능력 루트</span>
-      ${renderNode(state, definition, 'root', '능력 해금', `${unitGradeLabel(definition.rootTier)} 개체 필요`, context, ROOT_STATUS)}
-      <p class="ability-card__base-effect">기본 효과: ${powerLabel(definition, definition.powerValues[0], 0)}</p>
-    </div>
+    <p class="ability-card__current-effect">${CURRENT_LABEL}: ${CURRENT_EFFECT}</p>
+    ${ROOT_SECTION}
     <div class="ability-card__branches">
       <section class="ability-branch" aria-label="능력 강화 경로"><h4>능력 강화</h4><div class="ability-branch__nodes">${POWER_NODES}</div></section>
-      <section class="ability-branch" aria-label="적용 등급 완화 경로"><h4>적용 등급 완화</h4><div class="ability-branch__nodes">${GRADE_NODES}</div></section>
+      ${BRANCH_SECTIONS}
+      ${GRADE_SECTION}
     </div>
   </article>`;
 }
@@ -231,6 +281,28 @@ function powerLabel(definition, value, level) {
 }
 function powerTitle(definition, value) {
     return (abilityPresentationFor(definition.id) || DEFAULT_ABILITY_PRESENTATION).title(value);
+}
+function branchLabel(definition, branchId, value, level) {
+    return (
+        abilityPresentationFor(definition.id)?.branchLabel?.(
+            definition,
+            branchId,
+            value,
+            level,
+            abilityProfile(definition.species),
+        ) ?? `${definition.branches[branchId].name} ${value}`
+    );
+}
+function branchTitle(definition, branchId, value, level) {
+    return (
+        abilityPresentationFor(definition.id)?.branchTitle?.(
+            definition,
+            branchId,
+            value,
+            level,
+            abilityProfile(definition.species),
+        ) ?? `${definition.branches[branchId].name} ${value}`
+    );
 }
 function nodeReasonLabel(reason, definition, context) {
     return (
