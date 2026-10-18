@@ -2482,12 +2482,7 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._tapFood, source);
     }
     _tapFood(source) {
-        if (
-            (source !== 'auto' && source !== 'manual') ||
-            (source === 'manual' && this.scene !== 'farm') ||
-            (source === 'manual' && this.food.length >= 140) ||
-            (source === 'auto' && this.warehouseFood >= Number.MAX_SAFE_INTEGER)
-        ) {
+        if (source !== 'auto' || this.warehouseFood >= Number.MAX_SAFE_INTEGER) {
             return false;
         }
         const COMPLETED = this.foodTaps.remainder === 4;
@@ -2495,18 +2490,8 @@ const GARDEN = class Garden {
         this.foodTaps.revision++;
         if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            let scattered = false;
-            if (source === 'auto') {
-                this.warehouseFood++;
-            } else if (this.warehouseFood > 0) {
-                scattered = this.scatterFood(
-                    (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
-                    (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
-                );
-            }
-            if (source === 'auto' || scattered) {
-                this.foodTaps.produced++;
-            }
+            this.warehouseFood++;
+            this.foodTaps.produced++;
         }
         this.notice('food-tap', {
             source,
@@ -2515,6 +2500,19 @@ const GARDEN = class Garden {
         });
         this.markProgressChanged();
         return true;
+    }
+    scatterFoodAtRandomLocation() {
+        if (this.scene !== 'farm' || this.warehouseFood <= 0 || this.food.length >= 140) {
+            return false;
+        }
+        const SCATTERED = this.scatterFood(
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
+        );
+        if (SCATTERED) {
+            this.notice('manual-feed');
+        }
+        return SCATTERED;
     }
     scatterFood(x, y) {
         if (

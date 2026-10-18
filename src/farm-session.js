@@ -612,7 +612,7 @@ class FarmSession {
         const W = this.world;
         switch (c.type) {
             case 'feed':
-                return W.scene === 'farm' && W.tapFood('manual');
+                return W.scene === 'farm' && W.scatterFoodAtRandomLocation();
             case 'scatter-food':
                 return W.scene === 'farm' && W.scatterFood(c.x, c.y);
             case 'farm-plot-switch':

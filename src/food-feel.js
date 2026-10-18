@@ -2,7 +2,8 @@ const DOLLAR = (id) => document.getElementById(id);
 class FoodFeel {
     constructor(requestFeed) {
         this.button = DOLLAR('feed');
-        this.pips = [...this.button.querySelectorAll('.tap-pip')];
+        this.progress = DOLLAR('warehouseProgress');
+        this.pips = [...this.progress.querySelectorAll('.tap-pip')];
         this.completeUntil = 0;
         this.pulseUntil = 0;
         this.animations = new Map();
@@ -37,55 +38,83 @@ class FoodFeel {
             }
             this.updateSoundButton();
         };
-        const POINTERS = new Set();
+        const POINTERS = new Map();
+        const STOP_POINTER = (id, activate = false) => {
+            const POINTER = POINTERS.get(id);
+            if (!POINTER) {
+                return;
+            }
+            clearTimeout(POINTER.timeout);
+            clearInterval(POINTER.interval);
+            POINTERS.delete(id);
+            if (activate && !POINTER.started) {
+                requestFeed();
+            }
+            if (this.button.hasPointerCapture(id)) {
+                this.button.releasePointerCapture(id);
+            }
+        };
         this.button.addEventListener('pointerdown', (e) => {
-            if (e.button !== 0) {
+            if (e.button !== 0 || !e.isPrimary || this.button.disabled) {
                 return;
             }
             e.preventDefault();
             this.unlock();
-            POINTERS.add(e.pointerId);
+            const POINTER = { started: false, timeout: 0, interval: 0 };
+            POINTERS.set(e.pointerId, POINTER);
             this.button.setPointerCapture(e.pointerId);
             this.animate(
                 this.button,
-                [
-                    {
-                        transform: 'scale(1)',
-                    },
-                    {
-                        transform: this.reduced ? 'scale(1)' : 'scale(1.035,.94)',
-                    },
-                ],
+                [{ transform: 'scale(1)' }, { transform: this.reduced ? 'scale(1)' : 'scale(1.035,.94)' }],
                 75,
             );
+            POINTER.timeout = setTimeout(() => {
+                if (!POINTERS.has(e.pointerId)) {
+                    return;
+                }
+                POINTER.started = true;
+                if (!requestFeed()) {
+                    return;
+                }
+                POINTER.interval = setInterval(() => {
+                    if (!requestFeed()) {
+                        clearInterval(POINTER.interval);
+                        POINTER.interval = 0;
+                    }
+                }, 100);
+            }, 100);
         });
         this.button.addEventListener('pointerup', (e) => {
-            if (!POINTERS.delete(e.pointerId)) {
+            if (!POINTERS.has(e.pointerId)) {
                 return;
             }
             e.preventDefault();
             const R = this.button.getBoundingClientRect();
-            if (e.clientX >= R.left && e.clientX <= R.right && e.clientY >= R.top && e.clientY <= R.bottom) {
-                requestFeed();
-            }
-            if (this.button.hasPointerCapture(e.pointerId)) {
-                this.button.releasePointerCapture(e.pointerId);
-            }
+            STOP_POINTER(
+                e.pointerId,
+                e.clientX >= R.left && e.clientX <= R.right && e.clientY >= R.top && e.clientY <= R.bottom,
+            );
         });
-        const CANCEL = (e) => POINTERS.delete(e.pointerId);
+        const CANCEL = (e) => STOP_POINTER(e.pointerId);
         this.button.addEventListener('pointercancel', CANCEL);
         this.button.addEventListener('lostpointercapture', CANCEL);
+        const CANCEL_ALL = () => {
+            for (const ID of [...POINTERS.keys()]) {
+                STOP_POINTER(ID);
+            }
+        };
         window.addEventListener('blur', () => {
-            POINTERS.clear();
+            CANCEL_ALL();
             this.silence();
         });
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                POINTERS.clear();
+                CANCEL_ALL();
                 this.silence();
             }
         });
         window.addEventListener('pagehide', () => {
+            CANCEL_ALL();
             this.silence();
             for (const A of this.animations.values()) {
                 A.cancel();
@@ -196,7 +225,9 @@ class FoodFeel {
     tap(source, complete, remainder) {
         this.counts[source]++;
         const NOW = performance.now(),
-            MANUAL = source === 'manual';
+            MANUAL = source === 'manual',
+            TARGET = MANUAL ? this.button : this.progress;
+        this.impactTarget = TARGET;
         if (complete) {
             this.counts.complete++;
             this.completeUntil = NOW + (MANUAL ? 190 : 100);
@@ -204,9 +235,9 @@ class FoodFeel {
         // Automatic ticks never replace a stronger active manual response.
         if (MANUAL || NOW > this.pulseUntil) {
             this.pulseUntil = NOW + (MANUAL ? 150 : 55);
-            this.button.dataset.impact = complete && MANUAL ? 'complete' : MANUAL ? 'manual' : 'auto';
+            TARGET.dataset.impact = complete && MANUAL ? 'complete' : MANUAL ? 'manual' : 'auto';
             this.animate(
-                this.button,
+                TARGET,
                 [
                     {
                         transform:
@@ -247,6 +278,21 @@ class FoodFeel {
             this.sound(complete ? 'complete' : 'tap', remainder);
         }
     }
+    manualScatter() {
+        this.counts.manual++;
+        this.pulseUntil = performance.now() + 150;
+        this.impactTarget = this.button;
+        this.button.dataset.impact = 'manual';
+        this.animate(
+            this.button,
+            [
+                { transform: this.reduced ? 'scale(1)' : 'scale(1.025,.95)', filter: 'brightness(1.16)' },
+                { transform: 'translateY(0) scale(1)', filter: 'brightness(1)' },
+            ],
+            125,
+        );
+        this.sound('tap', 0);
+    }
     event(kind) {
         if (kind === 'food-land' || kind === 'eat') {
             const KEY = kind === 'eat' ? 'eat' : 'land';
@@ -256,8 +302,9 @@ class FoodFeel {
     }
     frame(now) {
         this.frameId++;
-        if (now > this.pulseUntil && this.button.dataset.impact !== '') {
-            this.button.dataset.impact = '';
+        if (now > this.pulseUntil && this.impactTarget) {
+            this.impactTarget.dataset.impact = '';
+            this.impactTarget = null;
         }
     }
 }

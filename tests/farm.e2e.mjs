@@ -1167,6 +1167,221 @@ async function upgradeMenuFlow() {
     await P.locator('#sound').click();
     await P.locator('#sound').click();
     await closeMenu(P);
+    await openMenuTab(P, 'farms');
+    assert.equal(await P.evaluate(() => location.hash), '#/farms');
+    const FARM_COPY = await P.evaluate(() => {
+        const PANEL = document.querySelector('#farmPanel'),
+            PLOT = document.querySelector('#farmPlotList button'),
+            FEED = document.querySelector('#feed');
+        return {
+            text: PANEL.innerText,
+            plotText: PLOT.textContent,
+            plotLabel: PLOT.getAttribute('aria-label'),
+            rawIdVisible: PANEL.innerText.includes('plot-1'),
+            feedText: FEED.innerText,
+            feedLabel: FEED.getAttribute('aria-label'),
+            feedPips: FEED.querySelectorAll('.tap-pip').length,
+            warehousePips: document.querySelectorAll('#warehouseProgress .tap-pip').length,
+        };
+    });
+    assert(FARM_COPY.plotText.includes('\uB18D\uC7A5 1') && FARM_COPY.plotLabel.includes('\uB18D\uC7A5 1'));
+    assert.equal(FARM_COPY.rawIdVisible, false, 'stable plot IDs stay out of visible labels');
+    assert(FARM_COPY.feedText.includes('\uBA39\uC774 \uC8FC\uAE30'));
+    assert(FARM_COPY.feedLabel.includes('\uD604\uC7AC \uB18D\uC7A5'));
+    assert.equal(FARM_COPY.feedPips, 0, 'scatter button has no warehouse count or auto progress meter');
+    assert.equal(FARM_COPY.warehousePips, 5, 'auto progress meter is shown in the warehouse');
+    assert(!/Farm plots|Warehouse food|Expand current|Unlock farm|Sort by species|target share/i.test(FARM_COPY.text));
+    for (const VIEWPORT of [
+        { width: 320, height: 568 },
+        { width: 568, height: 320 },
+    ]) {
+        await P.setViewportSize(VIEWPORT);
+        const MENU_GEOMETRY = await P.evaluate(() => {
+            const PANEL = document.querySelector('#farmPanel'),
+                CLOSE = document.querySelector('#gameMenuClose'),
+                CLOSE_BOX = CLOSE.getBoundingClientRect(),
+                SCROLL = getComputedStyle(PANEL).overflowY;
+            PANEL.scrollTop = PANEL.scrollHeight;
+            return {
+                isScrollablePane: SCROLL === 'auto' && PANEL.scrollHeight >= PANEL.clientHeight,
+                closeVisible:
+                    CLOSE.getBoundingClientRect().top >= 0 && CLOSE.getBoundingClientRect().bottom <= innerHeight,
+                closeHitTarget:
+                    document.elementFromPoint(
+                        (CLOSE_BOX.left + CLOSE_BOX.right) / 2,
+                        (CLOSE_BOX.top + CLOSE_BOX.bottom) / 2,
+                    )?.id === 'gameMenuClose',
+                pageOverflow:
+                    document.documentElement.scrollWidth > innerWidth ||
+                    document.documentElement.scrollHeight > innerHeight,
+                plotActionHeight: [...document.querySelectorAll('#farmPlotList button, #farmPlotActions button')].every(
+                    (button) => button.getBoundingClientRect().height >= 44,
+                ),
+            };
+        });
+        assert.deepEqual(
+            MENU_GEOMETRY,
+            {
+                isScrollablePane: true,
+                closeVisible: true,
+                closeHitTarget: true,
+                pageOverflow: false,
+                plotActionHeight: true,
+            },
+            `Farm menu geometry ${VIEWPORT.width}x${VIEWPORT.height}`,
+        );
+    }
+    await P.reload();
+    await P.waitForFunction(
+        () => window.BUDMORI && location.hash === '#/farms' && !document.querySelector('#gameMenuOverlay').hidden,
+    );
+    await P.goBack();
+    await P.waitForFunction(() => location.hash === '#/growth');
+    await P.goForward();
+    await P.waitForFunction(() => location.hash === '#/farms' && !document.querySelector('#farmPanel').hidden);
+    await P.locator('#farmPanel h2').click();
+    assert.equal(
+        await P.locator('#gameMenuOverlay').isVisible(),
+        true,
+        'clicking the panel does not trigger backdrop close',
+    );
+    await P.locator('#gameMenuClose').click();
+    await P.waitForFunction(() => document.querySelector('#gameMenuOverlay').hidden);
+    assert.equal(
+        await P.evaluate(() => document.activeElement.id),
+        'upgradeMenu',
+        'close button restores launcher focus',
+    );
+    await openMenuTab(P, 'farms');
+    await P.keyboard.press('Escape');
+    await P.waitForFunction(() => document.querySelector('#gameMenuOverlay').hidden);
+    assert.equal(await P.evaluate(() => document.activeElement.id), 'upgradeMenu', 'Escape restores launcher focus');
+    await openMenuTab(P, 'farms');
+    await P.locator('#gameMenuOverlay').click({ position: { x: 1, y: 1 } });
+    await P.waitForFunction(() => document.querySelector('#gameMenuOverlay').hidden);
+    assert.equal(
+        await P.evaluate(() => document.activeElement.id),
+        'upgradeMenu',
+        'backdrop close restores launcher focus',
+    );
+    const FEED_PROBE = await P.evaluate(() => {
+        const W = BUDMORI.sim,
+            ORIGINAL_EVENT = W.tryStartFarmBossEvent;
+        W.tryStartFarmBossEvent = () => false;
+        W.food.length = 0;
+        W._foodSpatialDirty = true;
+        W.warehouseFood = 4;
+        W.foodTaps.remainder = 3;
+        const MANUAL_PROGRESS_TAP = W.tapFood('manual'),
+            AFTER_REJECT = { stock: W.warehouseFood, remainder: W.foodTaps.remainder, food: W.food.length };
+        W.tapFood('auto');
+        W.tapFood('auto');
+        const AFTER_AUTO = { stock: W.warehouseFood, remainder: W.foodTaps.remainder, food: W.food.length };
+        const SCATTER_ACCEPTED = W.scatterFoodAtRandomLocation(),
+            AFTER_SCATTER = { stock: W.warehouseFood, remainder: W.foodTaps.remainder, food: W.food.length };
+        W.food.length = 140;
+        W.warehouseFood = 2;
+        const FULL_FLOOR_ACCEPTED = W.scatterFoodAtRandomLocation(),
+            AFTER_FULL_FLOOR = { stock: W.warehouseFood, food: W.food.length };
+        W.food.length = 0;
+        W.warehouseFood = 0;
+        const EMPTY_STOCK_ACCEPTED = W.scatterFoodAtRandomLocation(),
+            AFTER_EMPTY_STOCK = { stock: W.warehouseFood, food: W.food.length };
+        W._foodSpatialDirty = true;
+        W.tryStartFarmBossEvent = ORIGINAL_EVENT;
+        return {
+            manualProgressTap: MANUAL_PROGRESS_TAP,
+            afterReject: AFTER_REJECT,
+            afterAuto: AFTER_AUTO,
+            scatterAccepted: SCATTER_ACCEPTED,
+            afterScatter: AFTER_SCATTER,
+            fullFloorAccepted: FULL_FLOOR_ACCEPTED,
+            afterFullFloor: AFTER_FULL_FLOOR,
+            emptyStockAccepted: EMPTY_STOCK_ACCEPTED,
+            afterEmptyStock: AFTER_EMPTY_STOCK,
+        };
+    });
+    assert.deepEqual(
+        FEED_PROBE,
+        {
+            manualProgressTap: false,
+            afterReject: { stock: 4, remainder: 3, food: 0 },
+            afterAuto: { stock: 5, remainder: 0, food: 0 },
+            scatterAccepted: true,
+            afterScatter: { stock: 4, remainder: 0, food: 1 },
+            fullFloorAccepted: false,
+            afterFullFloor: { stock: 2, food: 140 },
+            emptyStockAccepted: false,
+            afterEmptyStock: { stock: 0, food: 0 },
+        },
+        'warehouse production and manual scatter have independent accounting',
+    );
+    await P.evaluate(() => {
+        const W = BUDMORI.sim,
+            R = BUDMORI.runtime,
+            PROBE = { original: R.queue, commands: [] };
+        R.queue = (...args) => PROBE.commands.push(args);
+        window.__farmFeedProbe = PROBE;
+        W.warehouseFood = 20;
+        W.food.length = 0;
+        W._foodSpatialDirty = true;
+    });
+    await P.waitForFunction(() => !document.querySelector('#feed').disabled);
+    const QUEUED_BEFORE = await P.evaluate(() => window.__farmFeedProbe.commands.length);
+    await P.locator('#feed').click();
+    await P.waitForFunction((count) => window.__farmFeedProbe.commands.length === count + 1, QUEUED_BEFORE);
+    const QUEUED_BEFORE_HOLD = await P.evaluate(() => window.__farmFeedProbe.commands.length),
+        FEED_BOX = await P.locator('#feed').boundingBox();
+    await P.mouse.move(FEED_BOX.x + FEED_BOX.width / 2, FEED_BOX.y + FEED_BOX.height / 2);
+    await P.mouse.down();
+    await P.waitForTimeout(260);
+    await P.mouse.up();
+    await P.waitForFunction((count) => window.__farmFeedProbe.commands.length === count + 2, QUEUED_BEFORE_HOLD);
+    const QUEUED_AFTER_HOLD = await P.evaluate(() => window.__farmFeedProbe.commands.length);
+    await P.waitForTimeout(140);
+    assert.equal(
+        await P.evaluate(() => window.__farmFeedProbe.commands.length),
+        QUEUED_AFTER_HOLD,
+        'release stops repeat feeding',
+    );
+    const QUEUED_BEFORE_CANCEL = await P.evaluate(() => window.__farmFeedProbe.commands.length);
+    await P.evaluate(() => {
+        document.querySelector('#feed').addEventListener(
+            'pointerdown',
+            (event) => {
+                window.__farmFeedPointerId = event.pointerId;
+            },
+            { once: true, capture: true },
+        );
+    });
+    await P.mouse.down();
+    await P.waitForTimeout(30);
+    await P.evaluate(() =>
+        document
+            .querySelector('#feed')
+            .dispatchEvent(new PointerEvent('pointercancel', { pointerId: window.__farmFeedPointerId, bubbles: true })),
+    );
+    await P.mouse.up();
+    await P.waitForTimeout(50);
+    await P.mouse.down();
+    await P.waitForTimeout(30);
+    await P.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await P.mouse.up();
+    await P.waitForTimeout(150);
+    assert.equal(
+        await P.evaluate(() => window.__farmFeedProbe.commands.length),
+        QUEUED_BEFORE_CANCEL,
+        'pointercancel and blur cancel pending input',
+    );
+    await P.evaluate(() => {
+        const { original: ORIGINAL, commands: COMMANDS } = window.__farmFeedProbe;
+        BUDMORI.runtime.queue = ORIGINAL;
+        delete window.__farmFeedProbe;
+        if (!COMMANDS.length) {
+            throw Error('feed button did not enqueue its manual requests');
+        }
+    });
+    await P.setViewportSize({ width: 1280, height: 800 });
     await P.evaluate(() => {
         const W = BUDMORI.sim;
         W.playerProgression.level = 101;
@@ -3517,6 +3732,15 @@ async function core() {
     );
     CHECK('Separate settings/upgrades, three upgrade tabs; Escape restores the prior play state');
     await unlockAbilityFlow(P);
+    await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        window.__manualFeedEventCheck = W.tryStartFarmBossEvent;
+        W.tryStartFarmBossEvent = () => false;
+        W.warehouseFood = 20;
+        W.food.length = 0;
+        W._foodSpatialDirty = true;
+    });
+    await P.waitForFunction(() => !document.querySelector('#feed').disabled);
     const BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual),
         FEED_CAMERA = await cameraSnapshot(P),
         FEED_BOX = await P.locator('#feed').boundingBox();
@@ -3528,6 +3752,10 @@ async function core() {
         await P.locator('#feed').click();
     }
     await P.waitForFunction((n) => BUDMORI.foodFeel.counts.manual === n + 15, BEFORE);
+    await P.evaluate(() => {
+        BUDMORI.sim.tryStartFarmBossEvent = window.__manualFeedEventCheck;
+        delete window.__manualFeedEventCheck;
+    });
     const WAS_PAUSED_FOR_FEED = await P.evaluate(() => BUDMORI.runtime.paused);
     if (WAS_PAUSED_FOR_FEED) {
         await P.locator('#pause').click();
@@ -7190,7 +7418,8 @@ async function bossRewards() {
         WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(118);
         WORLD.foodTaps.remainder = 4;
         WORLD.foodTaps.autoClock = 0;
-        if (!WORLD.tapFood('manual')) {
+        WORLD.warehouseFood = 1;
+        if (!WORLD.scatterFoodAtRandomLocation()) {
             throw Error('manual food did not start the farm boss event');
         }
     });
@@ -7583,7 +7812,8 @@ async function event() {
         W.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(118);
         W.foodTaps.remainder = 4;
         W.foodTaps.autoClock = 0;
-        if (!W.tapFood('manual')) {
+        W.warehouseFood = 1;
+        if (!W.scatterFoodAtRandomLocation()) {
             throw Error('manual food generation was rejected');
         }
         return {

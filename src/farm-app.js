@@ -643,10 +643,19 @@ function persist() {
 const FOOD_FEEL = new FoodFeel(requestFeed);
 const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
 function requestFeed() {
-    if (!home && active && !active.paused) {
+    if (
+        !home &&
+        active &&
+        !active.paused &&
+        active.world.scene === 'farm' &&
+        active.world.warehouseFood > 0 &&
+        active.world.food.length < 140
+    ) {
         FOOD_FEEL.unlock();
         active.queue('feed');
+        return true;
     }
+    return false;
 }
 function install(world) {
     if (active) {
@@ -1279,6 +1288,9 @@ function drawTree() {
     });
     renderProgressionResetActions();
 }
+function farmPlotDisplayName(plotId) {
+    return `농장 ${String(plotId).match(/^plot-(\d+)$/)?.[1] || plotId}`;
+}
 function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -1288,19 +1300,19 @@ function drawFarmPanel() {
     const LOCKED =
         !!farmSortTransition || active?.world?.scene !== 'farm' || W.running || W.farmBossEvent?.phase !== 'idle';
     DOLLAR('farmPopulationSummary').textContent =
-        `Placed ${W.placedPopulation}/${W.totalFarmCapacity} · Reserve ${W.reservedPopulation} · Rewards waiting ${W.pendingRewardPopulation} · Owned ${W.ownedPopulation}`;
-    DOLLAR('farmWarehouseSummary').textContent = `Warehouse food: ${W.warehouseFood}`;
+        `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함합니다)`;
+    DOLLAR('farmWarehouseSummary').textContent = `먹이 창고: ${W.warehouseFood}개`;
     DOLLAR('farmPlotList').innerHTML = [...W.farmPlots.values()]
         .map((plot) => {
             const COUNT = W.roster.placedPopulation(plot.id);
-            return `<button type="button" data-farm-plot="${plot.id}" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}>${plot.id} · ${COUNT}/${plot.capacity}</button>`;
+            return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}>${farmPlotDisplayName(plot.id)} · ${COUNT}/${plot.capacity}</button>`;
         })
         .join('');
     const ACTIVE = W.activeFarmPlot,
         NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    DOLLAR('farmExpand').textContent = `Expand current plot · ${ACTIVE.capacity} → ${NEXT_CAPACITY} · 1 point`;
+    DOLLAR('farmExpand').textContent = `현재 농장 확장 · ${ACTIVE.capacity} → ${NEXT_CAPACITY}명 · 공용 포인트 1개`;
     DOLLAR('farmExpand').disabled = LOCKED || !ACTIVE.canExpand() || W.playerProgression.availablePoints < 1;
-    DOLLAR('farmUnlock').textContent = `Unlock farm · ${W.playerProgression.availablePoints} points (cost 2)`;
+    DOLLAR('farmUnlock').textContent = `새 농장 열기 · 공용 포인트 ${W.playerProgression.availablePoints}개 (2개 필요)`;
     DOLLAR('farmUnlock').disabled = LOCKED || W.playerProgression.availablePoints < 2;
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
@@ -1308,7 +1320,7 @@ function drawFarmPanel() {
     DOLLAR('farmRatioList').innerHTML = W.farmTargets
         .map((value, speciesId) => {
             const NAME = speciesById(speciesId).name;
-            return `<label class="farm-ratio"><span>${NAME}</span><output>${(value / 100).toFixed(2)}%</output><input type="range" min="0" max="10000" step="1" value="${value}" aria-label="${NAME} target share" data-farm-target="${speciesId}"${LOCKED ? ' disabled' : ''}></label>`;
+            return `<label class="farm-ratio"><span>${NAME}</span><output>${(value / 100).toFixed(2)}%</output><input type="range" min="0" max="10000" step="1" value="${value}" aria-label="${NAME} 목표 비율" data-farm-target="${speciesId}"${LOCKED ? ' disabled' : ''}></label>`;
         })
         .join('');
 }
@@ -1585,7 +1597,6 @@ const GAME_MENU_OVERLAY = DOLLAR('gameMenuOverlay'),
             closeMenu();
         }
     };
-GAME_MENU_OVERLAY.addEventListener('pointerdown', CLOSE_MENU_FROM_BACKDROP);
 GAME_MENU_OVERLAY.addEventListener('click', CLOSE_MENU_FROM_BACKDROP);
 DOLLAR('treeNodes').onclick = (e) => {
     const B = e.target.closest('[data-progression-farm-node]');
@@ -1964,11 +1975,19 @@ function route() {
         }
         return;
     }
-    if (R === '#/help' || R === '#/growth' || R === '#/abilities' || R === '#/formation' || R === '#/menu') {
+    if (
+        R === '#/help' ||
+        R === '#/farms' ||
+        R === '#/growth' ||
+        R === '#/abilities' ||
+        R === '#/formation' ||
+        R === '#/menu'
+    ) {
         const RAID = active.world.scene === 'raid',
             FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== 'idle';
         const RESTRICTED =
-            (R === '#/growth' && (RAID || FARM_EVENT_ACTIVE)) || (R === '#/abilities' && (RAID || !personalGarden));
+            ((R === '#/farms' || R === '#/growth') && (RAID || FARM_EVENT_ACTIVE)) ||
+            (R === '#/abilities' && (RAID || !personalGarden));
         if (RESTRICTED) {
             closeMenu(false);
             history.replaceState(null, '', RAID ? '#/raid' : '#/farm');
@@ -2141,14 +2160,22 @@ function sync(display, now, notices) {
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
     syncAttribute('pause', 'aria-label', active.paused ? '게임 계속' : '게임 일시 정지');
     syncAttribute('pause', 'title', active.paused ? '게임 계속' : '일시 정지');
-    syncAttribute('feed', 'aria-label', `먹이 탭, 5회 중 ${W.foodTaps.remainder}회`);
-    syncData('feed', 'state', W.food.length >= 140 ? 'full' : 'ready');
-    syncText('feedQuantity', `+${W.warehouseFood}`);
-    syncText('warehouseCount', `Food warehouse · ${W.warehouseFood}`);
+    syncAttribute('feed', 'aria-label', '현재 농장에 먹이 1개 살포');
+    syncAttribute('feed', 'title', '현재 농장에 먹이 1개 살포');
+    syncData('feed', 'state', W.warehouseFood <= 0 || W.food.length >= 140 ? 'unavailable' : 'ready');
+    syncFlag(
+        'feed',
+        'disabled',
+        home || active.paused || W.scene !== 'farm' || W.warehouseFood <= 0 || W.food.length >= 140,
+    );
+    syncText('warehouseStock', String(W.warehouseFood));
+    syncText('warehouseProgressLabel', `자동 생산 ${W.foodTaps.remainder}/5`);
+    syncAttribute('warehouseProgress', 'aria-valuenow', String(W.foodTaps.remainder));
+    syncAttribute('warehouseProgress', 'aria-valuetext', `자동 생산 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
     }
-    syncData('feed', 'produced', now < FOOD_FEEL.completeUntil);
+    syncData('warehouseProgress', 'produced', now < FOOD_FEEL.completeUntil);
     for (let i = 0; i < 5; i++) {
         const PIP = FOOD_FEEL.pips[i],
             FILLED = now < FOOD_FEEL.completeUntil || i < W.foodTaps.remainder;
@@ -2159,6 +2186,8 @@ function sync(display, now, notices) {
     for (const E of notices) {
         if (E.kind === 'food-tap') {
             FOOD_FEEL.tap(E.source, E.completed, E.remainder);
+        } else if (E.kind === 'manual-feed') {
+            FOOD_FEEL.manualScatter();
         } else {
             FOOD_FEEL.event(E.kind);
         }
