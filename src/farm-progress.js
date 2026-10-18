@@ -1,4 +1,5 @@
 import { createFormationSkillState } from './formation-skill-state.js';
+import { createRaidDeploymentCardsState, migrateRaidDeploymentCardsState } from './raid-deployment-cards.js';
 import { Garden, Unit, CONFIG } from './farm-model.js';
 import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
 import { migrateBaselineAbilityInvestments } from './ability-state.js';
@@ -27,6 +28,7 @@ function copyPlayer(player) {
         schemaVersion: player.schemaVersion,
         baselineAbilityMigrationVersion: player.baselineAbilityMigrationVersion,
         formationSkills: structuredClone(player.formationSkills || createFormationSkillState()),
+        raidDeploymentCards: structuredClone(player.raidDeploymentCards || createRaidDeploymentCardsState()),
         level: player.level,
         experience: player.experience,
         farmBossEventStage: Object.hasOwn(player, 'farmBossEventStage') ? player.farmBossEventStage : 1,
@@ -286,6 +288,12 @@ export function migrateBossRewardProgress(progress) {
                 BUILD.branchLevels = structuredClone(DEFAULT_BUILD.branchLevels);
             }
         }
+    }
+    if (DATA?.player) {
+        DATA.player.raidDeploymentCards = migrateRaidDeploymentCardsState(
+            DATA.player.raidDeploymentCards,
+            (DATA.roster || []).map((row) => row.species),
+        );
     }
     if (!BOSS || !DATA.ledger) {
         return DATA;

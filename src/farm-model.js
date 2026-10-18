@@ -1,5 +1,7 @@
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
+import { RaidDeploymentCards } from './raid-deployment-cards.js';
+import { isSpeciesId } from './raid-deployment-cards.js';
 import { Signal } from './signal.js';
 import {
     unitVisualSize,
@@ -862,6 +864,7 @@ const GARDEN = class Garden {
         });
         this.reset();
         Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
+        Object.defineProperty(this, 'raidDeploymentCards', { value: new RaidDeploymentCards(this) });
     }
     get mergeTask() {
         return this.mergeTasks[0] || null;
@@ -1790,15 +1793,21 @@ const GARDEN = class Garden {
     raidTotal() {
         return this.raidRosters.reduce((n, r) => n + r.troops.length, 0);
     }
-    raidRemaining(ownerId) {
+    raidRemaining(ownerId, speciesId = null) {
         const R_LOCAL = this.raidRoster(ownerId);
-        return R_LOCAL ? R_LOCAL.troops.reduce((n, t) => n + (!t.deployed ? 1 : 0), 0) : 0;
+        return R_LOCAL
+            ? R_LOCAL.troops.reduce(
+                  (n, troop) => n + (!troop.deployed && (speciesId === null || troop.species === speciesId) ? 1 : 0),
+                  0,
+              )
+            : 0;
     }
     registerRaidRoster(
         ownerId,
         entries,
         abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()),
         settlement = null,
+        deploymentCardSpecies = null,
     ) {
         if (
             this.scene !== 'raid' ||
@@ -1855,6 +1864,18 @@ const GARDEN = class Garden {
                 deployed: false,
             });
         }
+        const CARD_SPECIES =
+            deploymentCardSpecies === null
+                ? [...new Set(TROOPS.map((troop) => troop.species))].slice(0, 4)
+                : deploymentCardSpecies;
+        if (
+            !Array.isArray(CARD_SPECIES) ||
+            CARD_SPECIES.length > 4 ||
+            CARD_SPECIES.some((speciesId) => !isSpeciesId(speciesId)) ||
+            new Set(CARD_SPECIES).size !== CARD_SPECIES.length
+        ) {
+            return false;
+        }
         const ORDER_KEY = (farmId) => {
             let h = (this.seed ^ Math.imul(farmId, 0x9e3779b9)) >>> 0;
             for (let i = 0; i < ownerId.length; i++) {
@@ -1873,6 +1894,7 @@ const GARDEN = class Garden {
         this.raidRosters.push({
             ownerId,
             troops: TROOPS,
+            deploymentCardSpecies: [...CARD_SPECIES],
             abilitySnapshot: structuredClone(abilitySnapshot),
             settlementSessionId: HAS_SETTLEMENT ? settlement.sessionId : '',
             settlementRunSequence: HAS_SETTLEMENT ? settlement.runSequence : 0,
@@ -1886,10 +1908,10 @@ const GARDEN = class Garden {
         );
         return true;
     }
-    deployNextRaidUnit(ownerId, sequence) {
-        return this.mutateUnits(this._deployNextRaidUnit, ownerId, sequence);
+    deployNextRaidUnit(ownerId, sequence, speciesId) {
+        return this.mutateUnits(this._deployNextRaidUnit, ownerId, sequence, speciesId);
     }
-    _deployNextRaidUnit(ownerId, sequence) {
+    _deployNextRaidUnit(ownerId, sequence, speciesId) {
         if (
             this.scene !== 'raid' ||
             ['victory', 'defeat'].includes(this.encounter.outcome) ||
@@ -1900,8 +1922,15 @@ const GARDEN = class Garden {
             return false;
         }
         const ROSTER = this.raidRoster(ownerId),
-            TROOP = ROSTER?.troops.find((t) => !t.deployed);
-        if (!ROSTER || sequence !== ROSTER.lastDeploySequence + 1 || !TROOP) {
+            TROOP = ROSTER?.troops.find(
+                (troop) => !troop.deployed && (speciesId === undefined || troop.species === speciesId),
+            );
+        if (
+            !ROSTER ||
+            sequence !== ROSTER.lastDeploySequence + 1 ||
+            !TROOP ||
+            (speciesId !== undefined && (!isSpeciesId(speciesId) || !ROSTER.deploymentCardSpecies.includes(speciesId)))
+        ) {
             return false;
         }
         const FARM_ID = TROOP.farmId,

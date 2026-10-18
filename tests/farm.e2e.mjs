@@ -1270,6 +1270,7 @@ async function formationHudFlow() {
                         .filter((element) => element.getClientRects().length)
                         .map((element) => element.getBoundingClientRect());
                 return {
+                    compact: BOX.height < 100,
                     centered: Math.abs((BOX.left + BOX.right) / 2 - innerWidth / 2) < 1,
                     inside: BOX.left >= 0 && BOX.right <= innerWidth && BOX.top >= 0 && BOX.bottom <= innerHeight,
                     overlaps: OBSTACLES.some((box) => INTERSECTS(BOX, box)),
@@ -1286,6 +1287,7 @@ async function formationHudFlow() {
             assert.deepEqual(
                 GEOMETRY,
                 {
+                    compact: true,
                     centered: true,
                     inside: true,
                     overlaps: false,
@@ -1329,6 +1331,294 @@ async function formationHudFlow() {
     await C.close();
     CHECK(
         'Three skill slots stay centered and separate from actions in Farm events/Raid at desktop, 390px, 320px and landscape; native map drag passes through HUD',
+    );
+}
+async function raidDeploymentCardsFlow() {
+    const C = await browser.newContext({ viewport: { width: 1680, height: 893 }, hasTouch: true }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        W.playerProgression.level = 101;
+        W.playerProgression.availablePoints = 100;
+        for (const [SPECIES, TIER, X, Y] of [
+            [1, 1, -4, -1],
+            [1, 1, -2, -1],
+            [1, 2, 0, -1],
+            [1, 2, 2, -1],
+            [1, 3, 4, -1],
+            [2, 1, -4, 1],
+            [3, 1, -2, 1],
+        ]) {
+            if (!W.spawn(SPECIES, TIER, X, Y)) {
+                throw Error('could not seed the deployment-card roster');
+            }
+        }
+        W.markProgressChanged();
+    });
+    await openMenuTab(P, 'deployment');
+    assert.equal(await P.locator('#deploymentSpecies0').inputValue(), '0', 'fresh saves give slot 1 to Pea');
+    await P.locator('#menuTabAbilities').click();
+    const ABILITY_NOTE = await P.evaluate(async () => {
+        const [{ SPECIES_ABILITY_DEFINITIONS }, { SPECIES_CATALOG }] = await Promise.all([
+            import('/src/ability-catalog.js'),
+            import('/src/species-catalog.js'),
+        ]);
+        return {
+            text: document.querySelector('.ability-tree__note').textContent,
+            defaults: [
+                ...new Set(
+                    SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.defaultUnlocked).map(
+                        (definition) => definition.species,
+                    ),
+                ),
+            ].map((id) => SPECIES_CATALOG.find((species) => species.id === id).name),
+            locked: [
+                ...new Set(
+                    SPECIES_ABILITY_DEFINITIONS.filter((definition) => !definition.defaultUnlocked).map(
+                        (definition) => definition.species,
+                    ),
+                ),
+            ].map((id) => SPECIES_CATALOG.find((species) => species.id === id).name),
+        };
+    });
+    assert(ABILITY_NOTE.text.includes('Common(T1)'), 'the ability panel identifies the common T1 baseline');
+    for (const NAME of ABILITY_NOTE.defaults) {
+        assert(ABILITY_NOTE.text.includes(NAME), `default ability note includes ${NAME}`);
+    }
+    for (const NAME of ABILITY_NOTE.locked.filter(
+        (lockedName) =>
+            !ABILITY_NOTE.defaults.some(
+                (defaultName) => defaultName.includes(lockedName) || lockedName.includes(defaultName),
+            ),
+    )) {
+        assert(!ABILITY_NOTE.text.includes(NAME), `default ability note does not imply ${NAME} is free`);
+    }
+    await P.locator('[data-ability-species="2"]').click();
+    const KIDNEY_CARD = P.locator('[data-ability="kidney-continuous-leap"]');
+    assert((await KIDNEY_CARD.locator('.ability-card__grade').textContent()).includes('공통 기본 능력'));
+    assert.equal(await KIDNEY_CARD.locator('[aria-label="등급 완화 노드"]').count(), 0);
+    assert((await KIDNEY_CARD.locator('.ability-card__current-effect').textContent()).includes('기본 능력'));
+    await P.locator('[data-ability-species="0"]').click();
+    assert(
+        (await P.locator('[data-ability="pea-recovery-boost"] .ability-card__grade').textContent()).includes(
+            '공통 기본 능력',
+        ),
+    );
+    assert.equal(await P.locator('[data-ability-node="pea-death-split:root"]').getAttribute('aria-disabled'), 'true');
+    await P.locator('#menuTabDeployment').click();
+    for (let slot = 2; slot <= 4; slot++) {
+        await P.locator('[data-deployment-buy-slot]').first().click();
+        await P.waitForFunction(
+            (count) => BUDMORI.sim.playerProgression.raidDeploymentCards.unlockedSlots === count,
+            slot,
+        );
+    }
+    for (const [SLOT, SPECIES] of [
+        [1, 1],
+        [2, 2],
+        [3, 3],
+    ]) {
+        await P.locator(`#deploymentSpecies${SLOT}`).selectOption(String(SPECIES));
+        await P.waitForFunction(
+            ([index, id]) => BUDMORI.sim.playerProgression.raidDeploymentCards.speciesBySlot[index] === id,
+            [SLOT, SPECIES],
+        );
+    }
+    assert.equal(
+        await P.locator('#deploymentSpecies1 option[value="0"]').isDisabled(),
+        true,
+        'the editor blocks assigning the same species twice',
+    );
+    assert.equal(
+        await P.evaluate(() => BUDMORI.sim.raidDeploymentCards.select(1, 0)),
+        false,
+        'the model also rejects a duplicated species selection',
+    );
+    const SAVED_CARDS = await P.evaluate(() => structuredClone(BUDMORI.sim.playerProgression.raidDeploymentCards));
+    await closeMenu(P);
+    await P.locator('#menuHome').click();
+    await P.waitForFunction(
+        () => document.querySelector('#continueGame') && !document.querySelector('#continueGame').disabled,
+    );
+    await P.reload();
+    await P.waitForFunction(() => window.BUDMORI);
+    await P.locator('#continueGame').click();
+    await P.waitForFunction(
+        (expected) => JSON.stringify(BUDMORI.sim.playerProgression.raidDeploymentCards) === JSON.stringify(expected),
+        SAVED_CARDS,
+    );
+    await openMenuTab(P, 'deployment');
+    const BEFORE_CARD_RESET = await P.evaluate(() => BUDMORI.sim.playerProgression.availablePoints);
+    await P.locator('#progressionResetCurrent').click();
+    await P.waitForFunction((points) => {
+        const STATE = BUDMORI.sim.playerProgression;
+        return (
+            STATE.availablePoints === points + 3 &&
+            STATE.raidDeploymentCards.unlockedSlots === 1 &&
+            JSON.stringify(STATE.raidDeploymentCards.speciesBySlot) === '[0,null,null,null]'
+        );
+    }, BEFORE_CARD_RESET);
+    for (let slot = 2; slot <= 4; slot++) {
+        await P.locator('[data-deployment-buy-slot]').first().click();
+        await P.waitForFunction(
+            (count) => BUDMORI.sim.playerProgression.raidDeploymentCards.unlockedSlots === count,
+            slot,
+        );
+    }
+    for (const [SLOT, SPECIES] of [
+        [1, 1],
+        [2, 2],
+        [3, 3],
+    ]) {
+        await P.locator(`#deploymentSpecies${SLOT}`).selectOption(String(SPECIES));
+        await P.waitForFunction(
+            ([index, id]) => BUDMORI.sim.playerProgression.raidDeploymentCards.speciesBySlot[index] === id,
+            [SLOT, SPECIES],
+        );
+    }
+    await P.evaluate(() => {
+        const W = BUDMORI.sim;
+        for (let slot = 1; slot < 3; slot++) {
+            if (!W.formationSkills.buySlot()) {
+                throw Error('could not unlock the third formation skill slot');
+            }
+        }
+        for (const [SLOT, ID] of ['giant', 'lightning', 'meteor'].entries()) {
+            if (!W.formationSkills.purchase(ID) || !W.formationSkills.equip(SLOT, ID)) {
+                throw Error('could not prepare three equipped formation skills');
+            }
+        }
+        W.markProgressChanged();
+    });
+    await P.locator('#gameMenuClose').click();
+    await P.locator('#raid').click();
+    await P.locator('#bossEncounterChallenge').click();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'raid' && BUDMORI.sim.raidRosters.length === 1);
+    await P.evaluate(() => {
+        BUDMORI.runtime.paused = false;
+        BUDMORI.sim.boss.hp = BUDMORI.sim.boss.maxHp = 1e9;
+    });
+    await P.waitForFunction(() => document.querySelectorAll('#deploymentCards [data-deploy-species]').length === 4);
+    assert.deepEqual(
+        await P.evaluate(() => BUDMORI.sim.raidRoster('solo').deploymentCardSpecies),
+        [0, 1, 2, 3],
+        'Raid freezes the four selected species in their card order',
+    );
+    const CORN_ENTRIES = await P.evaluate(() =>
+        BUDMORI.sim
+            .raidRoster('solo')
+            .troops.filter((troop) => troop.species === 1)
+            .map((troop) => troop.tier),
+    );
+    assert.deepEqual(CORN_ENTRIES, [1, 1, 2, 2, 3], 'each card retains the existing weakest-tier-first order');
+    await P.locator('[data-deploy-species="1"]').click();
+    await P.waitForFunction(() => BUDMORI.sim.raidRoster('solo').lastDeploySequence === 1);
+    assert.deepEqual(
+        await P.evaluate(() => {
+            const ROSTER = BUDMORI.sim.raidRoster('solo');
+            return ROSTER.troops.filter((troop) => troop.species === 1 && troop.deployed).map((troop) => troop.tier);
+        }),
+        [1],
+        'a single tap deploys exactly one selected Corn, starting at tier 1',
+    );
+    await P.evaluate(() => {
+        window.__deploymentCardBeforeHold = document.querySelector('[data-deploy-species="1"]');
+    });
+    const CORN_CARD = await P.locator('[data-deploy-species="1"]').boundingBox();
+    await P.mouse.move(CORN_CARD.x + CORN_CARD.width / 2, CORN_CARD.y + CORN_CARD.height / 2);
+    await P.mouse.down();
+    await P.waitForTimeout(260);
+    await P.mouse.up();
+    await P.waitForFunction(() => BUDMORI.sim.raidRoster('solo').lastDeploySequence >= 3);
+    const AFTER_HOLD = await P.evaluate(() => BUDMORI.sim.raidRoster('solo').lastDeploySequence);
+    assert(AFTER_HOLD >= 3 && AFTER_HOLD <= 5, 'holding repeats deployments at the 100ms cadence');
+    assert.equal(
+        await P.evaluate(
+            () => window.__deploymentCardBeforeHold === document.querySelector('[data-deploy-species="1"]'),
+        ),
+        true,
+        'count refreshes preserve the held card DOM node and pointer capture',
+    );
+    await P.waitForTimeout(180);
+    assert.equal(
+        await P.evaluate(() => BUDMORI.sim.raidRoster('solo').lastDeploySequence),
+        AFTER_HOLD,
+        'releasing the pointer stops repeated deployment',
+    );
+    await P.locator('[data-deploy-species="0"]').click();
+    await P.waitForFunction(
+        (sequence) => BUDMORI.sim.raidRoster('solo').lastDeploySequence === sequence + 1,
+        AFTER_HOLD,
+    );
+    assert.equal(
+        await P.evaluate(
+            () => BUDMORI.sim.raidRoster('solo').troops.filter((troop) => troop.species === 0 && troop.deployed).length,
+        ),
+        1,
+        'switching cards shares one global deployment sequence',
+    );
+    const VIEWPORTS = [
+        { width: 1680, height: 893 },
+        { width: 1280, height: 800 },
+        { width: 390, height: 844 },
+        { width: 320, height: 568 },
+        { width: 844, height: 390 },
+    ];
+    await P.evaluate(() => {
+        BUDMORI.runtime.paused = true;
+    });
+    for (const VIEWPORT of VIEWPORTS) {
+        await P.setViewportSize(VIEWPORT);
+        const GEOMETRY = await P.evaluate(() => {
+            const CARDS = document.querySelector('#deploymentCards'),
+                ROW = CARDS.getBoundingClientRect(),
+                SKILLS = document.querySelector('.formation-dock').getBoundingClientRect(),
+                PANEL = document.querySelector('#raidControls').getBoundingClientRect(),
+                BOXES = [...CARDS.querySelectorAll('.deployment-card')].map((node) => node.getBoundingClientRect()),
+                OVERLAP = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+            return {
+                count: BOXES.length,
+                cardsInsidePanel: ROW.left >= PANEL.left && ROW.right <= PANEL.right && ROW.top >= PANEL.top,
+                cardOverlap: BOXES.some((box, i) => BOXES.slice(i + 1).some((next) => OVERLAP(box, next))),
+                skillsCompact: SKILLS.height < 100,
+                cardsDoNotOverlapSkills: !OVERLAP(ROW, SKILLS),
+                insideViewport: ROW.left >= 0 && ROW.right <= innerWidth && ROW.bottom <= innerHeight,
+                noPageOverflow: document.documentElement.scrollWidth <= innerWidth,
+            };
+        });
+        assert.deepEqual(
+            GEOMETRY,
+            {
+                count: 4,
+                cardsInsidePanel: true,
+                cardOverlap: false,
+                skillsCompact: true,
+                cardsDoNotOverlapSkills: true,
+                insideViewport: true,
+                noPageOverflow: true,
+            },
+            'Raid cards / skill dock layout at ' + VIEWPORT.width + 'x' + VIEWPORT.height,
+        );
+        await P.screenshot({ path: path.join(OUT, `raid-deployment-${VIEWPORT.width}x${VIEWPORT.height}.png`) });
+    }
+    await P.locator('#return').click();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'farm');
+    await openMenuTab(P, 'deployment');
+    await P.locator('#progressionResetAll').click();
+    await P.waitForFunction(() => {
+        const STATE = BUDMORI.sim.playerProgression;
+        return (
+            STATE.availablePoints === STATE.level - 1 &&
+            STATE.raidDeploymentCards.unlockedSlots === 1 &&
+            STATE.formationSkills.slots === 1 &&
+            STATE.formationSkills.equipped.length === 0
+        );
+    });
+    await clean(P);
+    await C.close();
+    CHECK(
+        'Four Raid deployment cards persist and reset with refunds; unique species, weakest-tier order, single tap, hold/release, shared sequence and desktop/mobile/landscape layout',
     );
 }
 async function upgrades() {
@@ -1677,6 +1967,15 @@ async function grainMechanicsFlow() {
         const WHEAT_ATTACK_WINDOWS = [null, 0, 1, 2].map(RUN_ATTACK_WINDOW),
             WHEAT_PROGRESS_PRESERVATION = RUN_PROGRESS_PRESERVATION();
         const COMMON_WORLD = new GARDEN(4450),
+            KIDNEY_T1 = COMMON_WORLD.spawn(2, 1, -3, 0),
+            KIDNEY_T1_CONFIG = GET_KIDNEY_LEAP(COMMON_WORLD.playerProgression, 1),
+            KIDNEY_T1_STARTED = KIDNEY_T1.specialAbility.begin(COMMON_WORLD, { id: 'boss', x: 0, y: 0 }),
+            KIDNEY_T1_RUNTIME = {
+                ready: KIDNEY_T1.specialAbility.phase === 'windup',
+                tier: KIDNEY_T1.tier,
+                cooldownTicks: KIDNEY_T1_CONFIG?.cooldownTicks,
+                cooldownSecondsAt20Hz: KIDNEY_T1_CONFIG?.cooldownTicks / 20,
+            },
             KIDNEY_A = COMMON_WORLD.spawn(2, 3, -1, 0),
             KIDNEY_B = COMMON_WORLD.spawn(2, 3, 1, 0),
             KIDNEY_C = COMMON_WORLD.spawn(2, 3, 3, 0);
@@ -1786,6 +2085,51 @@ async function grainMechanicsFlow() {
         COMMON_WORLD.resolvePeaRecoveryBoosts([PEA]);
         COMMON_WORLD.steer(PEA, -3, 0, 0.05, 2);
         const PEA_EXPIRED_SPEED = Math.hypot(PEA.moveControlVx, PEA.moveControlVy);
+        const RUN_PEA_RECOVERY = (legacySave) => {
+            const WORLD = new GARDEN(4460 + Number(legacySave)),
+                PROGRESS = CREATE_PROGRESS();
+            if (legacySave) {
+                PROGRESS.baselineAbilityMigrationVersion = 1;
+            }
+            const REFUND = MIGRATE_BASELINE_ABILITIES(PROGRESS);
+            WORLD.playerProgression = PROGRESS;
+            WORLD.setScene('raid');
+            const UNIT = WORLD.spawn(0, 1, -5, 0),
+                ENEMY = WORLD.spawn(1, 1, -3, 0);
+            ENEMY.faction = 'enemy';
+            UNIT.knock(-1, 0, 5, 2, ENEMY);
+            let elapsedTicks = 0;
+            for (; elapsedTicks < 180 && !UNIT.peaRecoveryBoostExpiresAtTick; elapsedTicks++) {
+                WORLD.step(1 / 20);
+            }
+            const TRIGGER = {
+                    triggeredByRealWorldStep: UNIT.peaRecoveryBoostExpiresAtTick > 0 && !UNIT.peaRecoveryPending,
+                    elapsedTicks,
+                    expiresAtTick: UNIT.peaRecoveryBoostExpiresAtTick,
+                    multiplier: UNIT.peaRecoveryBoostMultiplier,
+                    grounded: UNIT.z <= 0.1 && UNIT.dropLanded,
+                    abilityIdle:
+                        UNIT.ability.phase === 'idle' && (!UNIT.specialAbility || UNIT.specialAbility.phase === 'idle'),
+                    migrationRefund: REFUND,
+                    migrationVersion: PROGRESS.baselineAbilityMigrationVersion,
+                },
+                TICK = WORLD.simulationTick;
+            WORLD.steer(UNIT, UNIT.x + 8, UNIT.y, 1 / 20, 2);
+            const ACTIVE_SPEED = Math.hypot(UNIT.moveControlVx, UNIT.moveControlVy);
+            WORLD.simulationTick = UNIT.peaRecoveryBoostExpiresAtTick + 1;
+            WORLD.steer(UNIT, UNIT.x + 8, UNIT.y, 1 / 20, 2);
+            const EXPIRED_SPEED = Math.hypot(UNIT.moveControlVx, UNIT.moveControlVy);
+            return {
+                ...TRIGGER,
+                tickAtCapture: TICK,
+                activeSpeed: ACTIVE_SPEED,
+                expiredSpeed: EXPIRED_SPEED,
+                splitCount: GET_BEAN_SPLIT_COUNT(PROGRESS, 1),
+                effectiveConfig: GET_PEA_RECOVERY_BOOST(PROGRESS, 1),
+            };
+        };
+        const PEA_REAL_RUNTIME = RUN_PEA_RECOVERY(false),
+            PEA_OLD_SAVE_RUNTIME = RUN_PEA_RECOVERY(true);
         const NO_HOSTILE = COMMON_WORLD.spawn(0, 1, -8, 0);
         NO_HOSTILE.knock(1, 0, 5, 2, OTHER_PLAYER);
         const NO_HOSTILE_TRIGGER = NO_HOSTILE.peaRecoveryPending;
@@ -1895,6 +2239,10 @@ async function grainMechanicsFlow() {
             wheatAttackWindows: WHEAT_ATTACK_WINDOWS,
             wheatProgressPreservation: WHEAT_PROGRESS_PRESERVATION,
             commonAbilities: {
+                kidneyCommonT1: {
+                    started: KIDNEY_T1_STARTED,
+                    ...KIDNEY_T1_RUNTIME,
+                },
                 kidneyIndependent: KIDNEY_INDEPENDENT,
                 kidneyResetSucceeded: RESET_SUCCEEDED,
                 kidneyResetTimer: RESET_TIMER,
@@ -1911,6 +2259,8 @@ async function grainMechanicsFlow() {
                 destructionCleared: DESTRUCTION_CLEARED,
                 combatEndCleared: COMBAT_END_CLEARED,
                 peaPowerValues: PEA_POWER_VALUES,
+                peaRealRuntime: PEA_REAL_RUNTIME,
+                peaOldSaveRuntime: PEA_OLD_SAVE_RUNTIME,
                 freeSplitCount: NO_FREE_SPLIT,
                 legacyRefund: LEGACY_COMMON_REFUND,
                 kidneyRuntimeRestore: KIDNEY_RUNTIME_RESTORE,
@@ -1990,6 +2340,13 @@ async function grainMechanicsFlow() {
         firstReady: false,
         secondReady: true,
     });
+    assert.deepEqual(RESULT.commonAbilities.kidneyCommonT1, {
+        started: true,
+        ready: true,
+        tier: 1,
+        cooldownTicks: 60,
+        cooldownSecondsAt20Hz: 3,
+    });
     assert.equal(RESULT.commonAbilities.kidneyResetSucceeded, true);
     assert.deepEqual(RESULT.commonAbilities.kidneyResetTimer, {
         phase: 'recover',
@@ -2030,6 +2387,22 @@ async function grainMechanicsFlow() {
     }
     assert.deepEqual(RESULT.commonAbilities.peaPowerValues, [1.25, 1.35, 1.55]);
     assert.equal(RESULT.commonAbilities.freeSplitCount, 0);
+    for (const [NAME, RUN] of Object.entries({
+        fresh: RESULT.commonAbilities.peaRealRuntime,
+        oldSave: RESULT.commonAbilities.peaOldSaveRuntime,
+    })) {
+        assert.equal(RUN.triggeredByRealWorldStep, true, `${NAME} Pea reaches recovery through Garden.step()`);
+        assert.equal(RUN.grounded, true, `${NAME} Pea is grounded when recovery begins`);
+        assert.equal(RUN.abilityIdle, true, `${NAME} Pea has finished the interrupted attack`);
+        assert.equal(RUN.expiresAtTick, RUN.tickAtCapture + 40, `${NAME} Pea boost lasts 40 logic ticks`);
+        assert.equal(RUN.multiplier, 1.25, `${NAME} Common Pea gets +25% movement speed`);
+        assert.equal(RUN.activeSpeed, 2.5, `${NAME} recovery steering moves at 125% of baseline`);
+        assert.equal(RUN.expiredSpeed, 2, `${NAME} movement returns to baseline after the 40 tick window`);
+        assert.equal(RUN.migrationRefund, 0, `${NAME} baseline migration does not refund uninvested points`);
+        assert.equal(RUN.migrationVersion, 2);
+        assert.equal(RUN.splitCount, 0, 'the paid Rare Pea split remains separate');
+        assert.deepEqual(RUN.effectiveConfig, { durationTicks: 40, speedMultiplier: 1.25 });
+    }
     assert.deepEqual(RESULT.commonAbilities.legacyRefund, {
         first: 3,
         second: 0,
@@ -6092,6 +6465,7 @@ try {
             reset: progressionResetFlow,
             cadence: cadenceDiagnosticsFlow,
             formation: formationBrowserUI,
+            raidDeploymentCards: raidDeploymentCardsFlow,
             save,
             migration,
             event,

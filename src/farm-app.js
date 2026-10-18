@@ -1,5 +1,7 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
 import { FormationSkillsUI } from './formation-skills-ui.js';
+import { RaidDeploymentCardsUI } from './raid-deployment-cards-ui.js';
+import { raidDeploymentCardSpecies } from './raid-deployment-cards.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession } from './farm-session.js';
@@ -47,8 +49,6 @@ let menuTab = 'play';
 let menuWasPaused = true;
 let menuPauseChanged = false;
 let menuAutoPaused = false;
-let dropPointer = null;
-let dropTimer = null;
 let panPointer = null;
 let bossEncounterOpen = false;
 let bossSwipe = null;
@@ -69,6 +69,15 @@ const FORMATION_UI = new FormationSkillsUI((kind, payload) => {
     const QUEUED = active?.queue(kind, payload) ?? false;
     setTimeout(renderProgressionResetActions, 180);
     return QUEUED;
+});
+const RAID_DEPLOYMENT_UI = new RaidDeploymentCardsUI({
+    command: (kind, payload) => {
+        const QUEUED = active?.queue(kind, payload) ?? false;
+        setTimeout(renderProgressionResetActions, 180);
+        return QUEUED;
+    },
+    deploy: (speciesId) => active?.deployNext(speciesId) ?? false,
+    canDeploy: () => canUseWorldInput() && active?.world.scene === 'raid' && !panPointer,
 });
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
 STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
@@ -848,6 +857,7 @@ function beginRaid(push = true) {
     active.queue('register-roster', {
         entries: raidRosterEntries(personalGarden.units, CONFIG.raid.capacity.playerUnits),
         abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
+        deploymentCardSpecies: raidDeploymentCardSpecies(personalGarden.playerProgression.raidDeploymentCards),
         settlement: {
             sessionId: RESERVED.sessionId,
             runSequence: RESERVED.runSequence,
@@ -1200,13 +1210,16 @@ function currentProgressionResetScope() {
     if (menuTab === 'formation') {
         return { type: 'formation' };
     }
+    if (menuTab === 'deployment') {
+        return { type: 'deployment-cards' };
+    }
     return null;
 }
 function renderProgressionResetActions() {
     const HOST = DOLLAR('progressionResetActions'),
         CURRENT = DOLLAR('progressionResetCurrent'),
         ALL = DOLLAR('progressionResetAll');
-    if (!active || !menuOpen || !['growth', 'abilities', 'formation'].includes(menuTab)) {
+    if (!active || !menuOpen || !['growth', 'abilities', 'formation', 'deployment'].includes(menuTab)) {
         HOST.hidden = true;
         return;
     }
@@ -1221,7 +1234,9 @@ function renderProgressionResetActions() {
                 ? '\uc131\uc7a5 \ud56d\ubaa9 \ucd08\uae30\ud654'
                 : menuTab === 'formation'
                   ? '\ud615\uc131 \ub2a5\ub825 \ucd08\uae30\ud654'
-                  : '\uc774 \uc885 \ud2b9\uc131 \ucd08\uae30\ud654';
+                  : menuTab === 'deployment'
+                    ? '\ubcd1\ub825 \ud3b8\uc131 \ucd08\uae30\ud654'
+                    : '\uc774 \uc885 \ud2b9\uc131 \ucd08\uae30\ud654';
     HOST.hidden = false;
     CURRENT.hidden = menuTab === 'abilities';
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -1235,11 +1250,12 @@ const MENU_ROUTES = {
     abilities: '#/abilities',
     help: '#/help',
     formation: '#/formation',
+    deployment: '#/deployment',
 };
 const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route) || 'play';
 function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ['growth', 'abilities', 'formation'].includes(tab);
+    const UPGRADES = ['growth', 'abilities', 'formation', 'deployment'].includes(tab);
     DOLLAR('gameMenuTabs').hidden = !UPGRADES;
     DOLLAR('gameMenuTitle').textContent = UPGRADES ? '업그레이드' : tab === 'help' ? '도움말' : '설정';
     DOLLAR('gameMenuClose').setAttribute('aria-label', `${DOLLAR('gameMenuTitle').textContent} 닫기`);
@@ -1261,6 +1277,7 @@ function applyMenuTab(tab) {
         ['abilities', 'abilityPanel'],
         ['help', 'helpPanel'],
         ['formation', 'formationPanel'],
+        ['deployment', 'deploymentCardPanel'],
     ]) {
         DOLLAR(ID).hidden = NAME !== tab;
     }
@@ -1340,7 +1357,7 @@ function closeMenu(push = true) {
         history.pushState(null, '', active.world.scene === 'raid' ? '#/raid' : '#/farm');
     }
     DOLLAR(
-        ['growth', 'abilities', 'formation'].includes(menuTab)
+        ['growth', 'abilities', 'formation', 'deployment'].includes(menuTab)
             ? 'upgradeMenu'
             : menuTab === 'help'
               ? 'helpMenu'
@@ -1536,11 +1553,6 @@ function deploymentHud() {
             ? '출전 병력을 준비하고 있어요…'
             : `남은 병력 ${Math.max(0, REMAINING - QUEUED)} · 약한 병력부터 · 맵 가장자리 전방위 투입`,
     );
-    syncFlag(
-        'deployTroops',
-        'disabled',
-        !ROSTER || REMAINING - QUEUED <= 0 || active.paused || ['victory', 'defeat'].includes(W.encounter.outcome),
-    );
     let deployed = 0;
     if (ROSTER) {
         for (const TROOP of ROSTER.troops) {
@@ -1566,66 +1578,6 @@ function deploymentHud() {
 function canUseWorldInput() {
     return !home && !menuOpen && !bossEncounterOpen && !active.paused;
 }
-function deployTroop() {
-    if (!canUseWorldInput() || active.world.scene !== 'raid') {
-        return false;
-    }
-    return active.deployNext();
-}
-function stopDrop(e) {
-    if (e && dropPointer !== null && e.pointerId !== dropPointer) {
-        return;
-    }
-    const ID = dropPointer;
-    dropPointer = null;
-    if (dropTimer !== null) {
-        clearInterval(dropTimer);
-    }
-    dropTimer = null;
-    const BUTTON = DOLLAR('deployTroops');
-    BUTTON.setAttribute('aria-pressed', 'false');
-    if (typeof ID === 'number' && BUTTON.hasPointerCapture?.(ID)) {
-        BUTTON.releasePointerCapture(ID);
-    }
-}
-function beginDrop(id) {
-    if (dropPointer !== null || panPointer || !deployTroop()) {
-        return false;
-    }
-    dropPointer = id;
-    DOLLAR('deployTroops').setAttribute('aria-pressed', 'true');
-    dropTimer = setInterval(() => {
-        if (dropPointer !== null && !deployTroop()) {
-            stopDrop();
-        }
-    }, 100);
-    return true;
-}
-DOLLAR('deployTroops').addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || !beginDrop(e.pointerId)) {
-        return;
-    }
-    FOOD_FEEL.unlock();
-    DOLLAR('deployTroops').setPointerCapture?.(e.pointerId);
-    e.preventDefault();
-});
-DOLLAR('deployTroops').addEventListener('lostpointercapture', stopDrop);
-DOLLAR('deployTroops').addEventListener('keydown', (e) => {
-    if (!['Enter', ' '].includes(e.key)) {
-        return;
-    }
-    e.preventDefault();
-    if (!e.repeat) {
-        beginDrop('keyboard');
-    }
-});
-DOLLAR('deployTroops').addEventListener('keyup', (e) => {
-    if (['Enter', ' '].includes(e.key)) {
-        e.preventDefault();
-        stopDrop();
-    }
-});
-DOLLAR('deployTroops').addEventListener('blur', () => stopDrop());
 function stopPan(e) {
     if (e && panPointer && e.pointerId !== panPointer.id) {
         return;
@@ -1637,12 +1589,12 @@ function stopPan(e) {
     }
 }
 function stopWorldInput(e) {
-    stopDrop(e);
+    RAID_DEPLOYMENT_UI.stopHold(e);
     stopPan(e);
 }
 CANVAS.addEventListener('pointerdown', (e) => {
     FOOD_FEEL.unlock();
-    if (e.button !== 0 || !canUseWorldInput() || panPointer || dropPointer !== null) {
+    if (e.button !== 0 || !canUseWorldInput() || panPointer || RAID_DEPLOYMENT_UI.hold) {
         return;
     }
     panPointer = {
@@ -1797,7 +1749,7 @@ function sync(display, now, notices) {
         ),
         MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD);
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && (dropPointer !== null || panPointer)) {
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && (RAID_DEPLOYMENT_UI.hold || panPointer)) {
         stopWorldInput();
     }
     syncAttribute('farm', 'aria-pressed', !RAID && !bossEncounterOpen);
@@ -1959,6 +1911,13 @@ function frame(now) {
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();
         sync(DISPLAY, now, NOTICES);
         FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
+        RAID_DEPLOYMENT_UI.update(
+            active.world,
+            personalGarden || active.world,
+            !home,
+            active.localPlayerId,
+            active.world.scene === 'farm' && !active.world.running && active.world.farmBossEvent?.phase === 'idle',
+        );
         PERFORMANCE_DIAGNOSTICS.end('ui', UI_START);
         PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
         requestAnimationFrame(frame);

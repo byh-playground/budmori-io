@@ -5,6 +5,11 @@ import {
 } from './formation-skill-state.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { createFarmUpgradeState, getFarmUpgradeInvestedCount, isValidFarmUpgradeState } from './farm-upgrades.js';
+import {
+    createRaidDeploymentCardsState,
+    isValidRaidDeploymentCardsState,
+    raidDeploymentCardsInvestedPoints,
+} from './raid-deployment-cards.js';
 export const ABILITY_TREE_SCHEMA_VERSION = 1;
 export const BASELINE_ABILITY_MIGRATION_VERSION = 2;
 export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
@@ -112,6 +117,7 @@ export function createAbilityRuntimeSnapshot(state) {
         baselineAbilityMigrationVersion: BASELINE_ABILITY_MIGRATION_VERSION,
         level: state.level,
         formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
+        raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
         availablePoints: state.availablePoints,
         farmUpgrades: {
             ...state.farmUpgrades,
@@ -151,6 +157,7 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
         schemaVersion: snapshot.schemaVersion,
         baselineAbilityMigrationVersion: snapshot.baselineAbilityMigrationVersion,
         formationSkills: snapshot.formationSkills,
+        raidDeploymentCards: snapshot.raidDeploymentCards || createRaidDeploymentCardsState(),
         level: snapshot.level,
         experience: 0,
         availablePoints: snapshot.availablePoints,
@@ -160,7 +167,8 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
     };
     if (
         !isValidAbilityProgressionState(STATE) ||
-        (STATE.formationSkills !== undefined && !isValidFormationSkillState(STATE.formationSkills))
+        (STATE.formationSkills !== undefined && !isValidFormationSkillState(STATE.formationSkills)) ||
+        !isValidRaidDeploymentCardsState(STATE.raidDeploymentCards)
     ) {
         return false;
     }
@@ -176,6 +184,7 @@ export function isValidAbilityRuntimeSnapshot(snapshot) {
     return (
         INVESTED +
             formationInvestedPoints(STATE.formationSkills) +
+            raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) +
             getFarmUpgradeInvestedCount(STATE.farmUpgrades) +
             STATE.availablePoints ===
         STATE.level - 1
@@ -189,7 +198,12 @@ function isValidPlayerLikeAbilityState(state) {
         farmUpgrades: state?.farmUpgrades,
         abilities: state?.abilities,
     };
-    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1) {
+    if (
+        !isValidAbilityProgressionState(ABILITY_STATE) ||
+        !Number.isSafeInteger(state?.level) ||
+        state.level < 1 ||
+        !isValidRaidDeploymentCardsState(state?.raidDeploymentCards)
+    ) {
         return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
@@ -204,6 +218,7 @@ function isValidPlayerLikeAbilityState(state) {
     return (
         INVESTED_POINTS +
             formationInvestedPoints(state.formationSkills) +
+            raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) +
             getFarmUpgradeInvestedCount(state.farmUpgrades) +
             state.availablePoints ===
         state.level - 1

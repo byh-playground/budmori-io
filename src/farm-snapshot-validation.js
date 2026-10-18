@@ -634,6 +634,10 @@ export function validateSnapshot(raw) {
                 !ROSTER_OWNERS.has(R.ownerId) &&
                 Array.isArray(R.troops) &&
                 R.troops.length <= CONFIG.raid.capacity.playerUnits &&
+                Array.isArray(R.deploymentCardSpecies) &&
+                R.deploymentCardSpecies.length <= 4 &&
+                R.deploymentCardSpecies.every((speciesId) => INTEGER(speciesId, 0, CONFIG.unit.speciesCount - 1)) &&
+                new Set(R.deploymentCardSpecies).size === R.deploymentCardSpecies.length &&
                 isValidAbilityRuntimeSnapshot(R.abilitySnapshot),
         );
         ASSERT(

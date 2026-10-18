@@ -1,5 +1,6 @@
 import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
 import { createAbilityProgressionState } from './ability-state.js';
+import { createRaidDeploymentCardsState } from './raid-deployment-cards.js';
 // Internal checkpoint shapes and import defaults for supported 0.4–0.7 saves.
 // Disk writes use farm-progress.js; these runtime values are never exported.
 // These are not live entity defaults. Changing a runtime constructor must not
@@ -144,6 +145,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     formationRuntime: createFormationRuntime(),
     playerProgression: {
         formationSkills: createFormationSkillState(),
+        raidDeploymentCards: createRaidDeploymentCardsState({ firstSpecies: null }),
         schemaVersion: 1,
         baselineAbilityMigrationVersion: 2,
         availablePoints: 0,
@@ -389,11 +391,13 @@ const RUNTIME_PROGRESSION = FIELDS('schemaVersion level availablePoints', {
     farmUpgrades: PROGRESSION.farmUpgrades,
     abilities: PROGRESSION.abilities,
     formationSkills: PROGRESSION.formationSkills,
+    raidDeploymentCards: PROGRESSION.raidDeploymentCards,
 });
 const ROSTER = FIELDS(
     'ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt',
     {
         troops: [FIELDS('farmId species tier deployed')],
+        deploymentCardSpecies: [true],
         abilitySnapshot: RUNTIME_PROGRESSION,
     },
 );
