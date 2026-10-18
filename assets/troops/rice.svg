@@ -5,8 +5,6 @@
   </g>
   <g id="body">
     <g id="rice-source-character" transform="matrix(1.88 0 0 1.88 -84.4 -59.36)">
-      <ellipse id="rice-ground-shadow-soft" cx="130" cy="209" rx="53" ry="7" fill="#d5c494" opacity=".24"/>
-      <ellipse id="rice-ground-shadow" cx="130" cy="209" rx="48" ry="5.5" fill="#c9b481" opacity=".32"/>
       <path id="rice-arm-left" d="M91 134 C84 138 77 147 72 155 C68 162 70 167 76 166 C83 165 89 158 94 151 Z" fill="#fffdf6" stroke="#33241c" stroke-width="2" stroke-linejoin="round"/>
       <path id="rice-arm-right" d="M169 134 C176 138 183 147 188 155 C192 162 190 167 184 166 C177 165 171 158 166 151 Z" fill="#fffdf6" stroke="#33241c" stroke-width="2" stroke-linejoin="round"/>
       <path id="rice-foot-left" d="M101 187 C102 195 104 204 108 208 C111 211 116 210 119 206 C122 201 122 195 123 190 C117 192 108 190 101 187 Z" fill="#fffdf6" stroke="#33241c" stroke-width="2" stroke-linejoin="round"/>

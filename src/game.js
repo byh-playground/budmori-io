@@ -1139,7 +1139,7 @@
           species: 6,
           asset: "assets/troops/rice.svg",
           shapeId: "rice-body-outline",
-          sourceSha256: "bf3e3cb568c274a5d0a1d9c92b0ffcdb1fecb8ddf0f4bf50ef8e0883b64cdbf4",
+          sourceSha256: "7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71",
           viewBox: [0, 0, 320, 350],
           bounds: {
             left: 70.60885389809643,
@@ -1160,7 +1160,7 @@
           species: 7,
           asset: "assets/troops/wheat.svg",
           shapeId: "wheat-grain-outline",
-          sourceSha256: "1307b9ccb40a3ad86eb21a092e0325afc8d857e27561437aecfdf353c28eeec6",
+          sourceSha256: "758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49",
           viewBox: [0, 0, 320, 350],
           bounds: {
             left: 85.19999999999996,
@@ -1181,7 +1181,7 @@
           species: 8,
           asset: "assets/troops/barley.svg",
           shapeId: "barley-seed-outline",
-          sourceSha256: "23a1dbe97aa53f240881c05e7f5162b0757df90b6e7c5706aa50bd7ef58e76f1",
+          sourceSha256: "bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e",
           viewBox: [0, 0, 320, 350],
           bounds: {
             left: 69.30899999999998,
