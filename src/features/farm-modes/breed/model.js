@@ -10,13 +10,9 @@ export class BreedFarmMode extends FarmMode {
     updateReady(world, u, dt) {
         let target = null;
         if (!u.fed) {
-            target = world.findNearestGroundFood(u.x, u.y);
-            if (target && Math.hypot(target.x - u.x, target.y - u.y) < 0.42) {
-                world.food.splice(world.food.indexOf(target), 1);
-                world.foodSpatial.remove(target);
-                world._foodOrder.delete(target);
-                world._removeGroupItem(world._groundedFoods, target);
-                world._groundedFoodCount = Math.max(0, world._groundedFoodCount - 1);
+            target = world.requestGroundFoodTarget(u);
+            if (target && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target)) {
+                world.clearFoodTargetSearch(u);
                 u.meals = 1;
                 world.markProgressChanged();
                 u.vz = 2;

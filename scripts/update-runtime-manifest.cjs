@@ -28,6 +28,7 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..')) {
         'vector-assets-loader': 'BloomGamekitVectorAssetLoader',
         deterministic: 'BloomGamekitDeterministic',
         simloop: 'BloomGamekitSimloop',
+        'work-scheduler': 'BloomGamekitWorkScheduler',
     };
     const SHA = (bytes) => CRYPTO.createHash('sha256').update(bytes).digest('hex');
     const MODULES = Object.entries(NAMESPACES).map(([name, globalName]) => {

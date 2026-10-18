@@ -1454,6 +1454,7 @@ async function cadenceDiagnosticsFlow() {
                 );
             UNIT.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
             UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.meals = 0;
             UNIT.cooldown = UNIT.cooldownDuration = 999;
         }
         WORLD.food = Array.from({ length: 140 }, (_, index) => {
@@ -1524,6 +1525,16 @@ async function cadenceDiagnosticsFlow() {
     assert(PERFORMANCE.counts.logicTicks.total >= 20);
     assert(PERFORMANCE.counts.logicTicks.total <= Math.ceil((PERFORMANCE.windowMs / 1000) * 20) + 3);
     assert.equal(PERFORMANCE.counts.physicsSteps.total, PERFORMANCE.counts.logicTicks.total);
+    assert.equal(PERFORMANCE.counts.workSchedulerTicks.total, PERFORMANCE.counts.logicTicks.total);
+    assert(PERFORMANCE.counts.workSchedulerUnits.total <= PERFORMANCE.counts.logicTicks.total * 24);
+    assert.equal(
+        PERFORMANCE.counts.workSchedulerUnits.total,
+        PERFORMANCE.counts.foodSearchCandidateChecks.total + PERFORMANCE.counts.foodSearchCellVisits.total,
+    );
+    assert(PERFORMANCE.counts.workSchedulerJobsQueued.total > 0);
+    assert(PERFORMANCE.counts.workSchedulerJobsCompleted.total > 0);
+    assert(PERFORMANCE.counts.workSchedulerWaitedJobs.total > 0);
+    assert(PERFORMANCE.counts.workSchedulerWaitingTicks.total >= 0);
     assert(PERFORMANCE.counts.physicsSolverIterations.total >= 0);
     assert(PERFORMANCE.counts.catchupTicks.total > 0 && PERFORMANCE.counts.backlogDrops.total > 0);
     assert(
@@ -1559,6 +1570,16 @@ async function cadenceDiagnosticsFlow() {
         logicTicks: PERFORMANCE.counts.logicTicks.total,
         physicsSteps: PERFORMANCE.counts.physicsSteps.total,
         solverIterations: PERFORMANCE.counts.physicsSolverIterations.total,
+        workScheduler: {
+            ticks: PERFORMANCE.counts.workSchedulerTicks.total,
+            units: PERFORMANCE.counts.workSchedulerUnits.total,
+            candidates: PERFORMANCE.counts.foodSearchCandidateChecks.total,
+            cells: PERFORMANCE.counts.foodSearchCellVisits.total,
+            queued: PERFORMANCE.counts.workSchedulerJobsQueued.total,
+            completed: PERFORMANCE.counts.workSchedulerJobsCompleted.total,
+            waitingTicks: PERFORMANCE.counts.workSchedulerWaitingTicks.total,
+            budgetExhaustions: PERFORMANCE.counts.workSchedulerBudgetExhaustions.total,
+        },
         windowMs: PERFORMANCE.windowMs,
         summary: SUMMARY,
     };
