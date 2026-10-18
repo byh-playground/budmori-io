@@ -11,6 +11,7 @@ import { isValidUnitTier } from './unit-grades.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { advanceFarmBossEncounterEpoch } from './farm-boss-stages.js';
+import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
 const FAIL = (message) => {
@@ -419,6 +420,19 @@ export function settleRaidOwnerFarm(
     ) {
         FAIL('Raid settlement does not match the active Farm-local run');
     }
+    const RAID_STAGE = raidWorld?.boss?.stage,
+        HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage;
+    if (
+        !Number.isSafeInteger(HIGHEST_CLEARED_STAGE) ||
+        HIGHEST_CLEARED_STAGE < 0 ||
+        HIGHEST_CLEARED_STAGE > BOSS_REWARD_SETTINGS.maxStage ||
+        ((outcome !== 'aborted' || RAID_STAGE !== undefined) &&
+            (!Number.isSafeInteger(RAID_STAGE) || RAID_STAGE < 1 || RAID_STAGE > BOSS_REWARD_SETTINGS.maxStage)) ||
+        (Number.isSafeInteger(RAID_STAGE) && RAID_STAGE > HIGHEST_CLEARED_STAGE + 1)
+    ) {
+        FAIL('Raid stage is locked or the private stage progress is invalid');
+    }
+    const FIRST_CLEAR = outcome === 'victory' && RAID_STAGE > HIGHEST_CLEARED_STAGE;
     const RAID_OWNER = raidOwnerManifest(raidWorld, ownerId);
     const {
         manifest: MANIFEST,
@@ -479,6 +493,8 @@ export function settleRaidOwnerFarm(
                 encounterId,
                 receiptKey: KEY,
                 source: 'raid',
+                stage: RAID_STAGE,
+                firstClear: FIRST_CLEAR,
                 deploymentMultiplier,
             });
             if (
@@ -493,6 +509,10 @@ export function settleRaidOwnerFarm(
             validateReturnedPrivateFarm(farm, RESOLUTION.farm, DEAD_FARM_UNIT_IDS);
             privateFarm = clone(RESOLUTION.farm);
             rewardSummary = RESOLUTION.summary ?? null;
+        }
+        if (RAID_STAGE > privateFarm.farmBossProgress.highestClearedRaidStage) {
+            privateFarm.farmBossProgress.highestClearedRaidStage = RAID_STAGE;
+            privateFarm.farmBossProgress.currentStage = Math.min(RAID_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
         }
     }
 

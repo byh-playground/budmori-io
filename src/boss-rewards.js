@@ -7,6 +7,7 @@ const PRD_UNITS_PER_TICK = 10;
 const STREAM_DOMAINS = Object.freeze({
     normal: Object.freeze({ prd: 0x2f6e2b1d, boxes: 0x5c3a9217 }),
     event: Object.freeze({ prd: 0x739d41e5, boxes: 0x1b8c55a3 }),
+    firstClear: Object.freeze({ prd: 0x4a61c7d3, boxes: 0x2db83f91 }),
 });
 const STREAM_SOURCE = Object.freeze({ raid: 'normal', farm: 'event' });
 
@@ -25,8 +26,8 @@ function mixedSeed(seed, domain) {
     return (value ^ (value >>> 16)) >>> 0;
 }
 
-function streamFor(source) {
-    return STREAM_SOURCE[source];
+function streamFor(source, firstClear = false) {
+    return source === 'raid' && firstClear ? 'firstClear' : STREAM_SOURCE[source];
 }
 
 function streamSeed(seed, kind, field) {
@@ -49,11 +50,13 @@ export function createBossRewardStreams(seed) {
     return {
         normal: createStream(seed, 'normal'),
         event: createStream(seed, 'event'),
+        firstClear: createStream(seed, 'firstClear'),
     };
 }
 
 export const BOSS_REWARD_SETTINGS = Object.freeze({
     acquisitionChance: 0.05,
+    firstClearAcquisitionChance: 0.15,
     farmEventAcquisitionMultiplier: 2,
     stageHpBase: 200,
     stageHpMultiplier: 1.5,
@@ -103,14 +106,18 @@ export function bossStageStats(stage) {
     };
 }
 
-export function bossRewardRollDescription(stage, { farmEvent = false, acquisitionMultiplier = 1 } = {}) {
+export function bossRewardRollDescription(
+    stage,
+    { farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {},
+) {
     const STATS = bossStageStats(stage),
-        CHANCE = bossAcquisitionChance({ farmEvent, acquisitionMultiplier }) * 100,
+        NOMINAL_CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier: 1 }) * 100,
+        CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier }) * 100,
         PAYOUTS = STATS.boxPayouts,
         MIN = Math.min(...PAYOUTS),
         MAX = Math.max(...PAYOUTS),
         RANGE = MIN === MAX ? FORMAT_COUNT.format(MIN) : `${FORMAT_COUNT.format(MIN)}–${FORMAT_COUNT.format(MAX)}`;
-    return `${FORMAT_COUNT.format(STATS.boxCount)}개 상자 · 적중 시 ${RANGE}개 · 기본 확률 5% · 적용 ${FORMAT_PERCENT.format(CHANCE)}%`;
+    return `${FORMAT_COUNT.format(STATS.boxCount)}회 추첨 · 상자당 ${RANGE}마리 · ${firstClear ? '첫 클리어' : '재도전'} 기본 확률 ${FORMAT_PERCENT.format(NOMINAL_CHANCE)}% · 편성 반영 ${FORMAT_PERCENT.format(CHANCE)}%`;
 }
 
 export function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
@@ -136,13 +143,15 @@ export function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.species
     return weights.length - 1;
 }
 
-export function bossAcquisitionChance({ farmEvent = false, acquisitionMultiplier = 1 } = {}) {
+export function bossAcquisitionChance({ farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
         throw new RangeError('Boss acquisition multiplier must be in [0, 2]');
     }
-    return farmEvent
-        ? BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier
-        : Math.min(1, BOSS_REWARD_SETTINGS.acquisitionChance * acquisitionMultiplier);
+    if (farmEvent) {
+        return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
+    }
+    const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
+    return Math.min(1, BASE * acquisitionMultiplier);
 }
 
 function ensureWorldRewardState(world) {
@@ -249,8 +258,8 @@ function findExistingReceipt(world, receiptKey, encounterId, source) {
     );
 }
 
-function shuffleForNewReceipt(world, source, total) {
-    const KIND = streamFor(source),
+function shuffleForNewReceipt(world, source, total, firstClear = false) {
+    const KIND = streamFor(source, firstClear),
         STREAM = world.bossRewardStreams[KIND],
         PAYOUTS = bossRewardBoxPayouts(total),
         SHUFFLED = shufflePayouts(PAYOUTS, STREAM.payoutRngState);
@@ -296,13 +305,15 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
     if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
         throw new RangeError('Boss reward species is invalid');
     }
-    const STREAM_KIND = streamFor(SOURCE),
+    const FIRST_CLEAR = SOURCE === 'raid' && options.firstClear === true,
+        STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR),
         STREAM = world.bossRewardStreams[STREAM_KIND],
         CHANCE = bossAcquisitionChance({
             farmEvent: SOURCE === 'farm',
+            firstClear: FIRST_CLEAR,
             acquisitionMultiplier: options.acquisitionMultiplier ?? 1,
         }),
-        SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL),
+        SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL, FIRST_CLEAR),
         BOX_COUNT = SHUFFLED.payouts.length,
         RECEIPT = {
             encounterId: ENCOUNTER_ID,
@@ -317,8 +328,11 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
             tier: 1,
             x: Number.isFinite(options.x) ? options.x : 0,
             y: Number.isFinite(options.y) ? options.y : 0,
+            firstClear: FIRST_CLEAR,
             chance: CHANCE,
-            baselineChance: BOSS_REWARD_SETTINGS.acquisitionChance,
+            baselineChance: FIRST_CLEAR
+                ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance
+                : BOSS_REWARD_SETTINGS.acquisitionChance,
             rollBudget: TOTAL,
             rollCount: BOX_COUNT,
             boxCount: BOX_COUNT,
@@ -339,7 +353,7 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
             },
             status: 'calculating',
         };
-    if (STREAM_SOURCE[SOURCE] !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
+    if (streamFor(SOURCE, FIRST_CLEAR) !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
         throw new TypeError('Boss reward streams are not initialized');
     }
     world.bossRewardReceipts.push(RECEIPT);
@@ -372,7 +386,7 @@ function completeRewardCalculation(world, receipt, jobState) {
             }
         }
     }
-    const KIND = streamFor(receipt.source),
+    const KIND = streamFor(receipt.source, receipt.firstClear === true),
         NEXT_INVENTORY = copyInventory(world),
         GROUP = NEXT_INVENTORY.find((entry) => entry.species === receipt.species && entry.tier === receipt.tier);
     if (acquired > 0) {
@@ -446,7 +460,8 @@ export function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_U
         if (!RECEIPT || !CALC) {
             continue;
         }
-        const STREAM = world.bossRewardStreams[streamFor(SOURCE)],
+        const STREAM_KIND = streamFor(SOURCE, RECEIPT.firstClear === true),
+            STREAM = world.bossRewardStreams[STREAM_KIND],
             { SeededPRNG: SEEDED_PRNG, PseudoRandomDistribution: PSEUDO_RANDOM_DISTRIBUTION } = requireSdk(),
             RNG = new SEEDED_PRNG(STREAM.rngState),
             PRD = new PSEUDO_RANDOM_DISTRIBUTION({ probability: RECEIPT.chance, rng: RNG });

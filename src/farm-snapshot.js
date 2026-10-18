@@ -135,6 +135,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     bossRewardStreams: {
         normal: { rngState: 0, distributionState: null, payoutRngState: 0 },
         event: { rngState: 0, distributionState: null, payoutRngState: 0 },
+        firstClear: { rngState: 0, distributionState: null, payoutRngState: 0 },
     },
     bossRewardInventory: [],
     bossRewardWatermarks: {
@@ -186,6 +187,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     combatLog: [],
     farmBossProgress: {
         currentStage: 1,
+        highestClearedRaidStage: 0,
         encounterSeed: 2738959287,
         encounterEpoch: 0,
         nextSelectionId: 1,
@@ -332,7 +334,7 @@ const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
 const REWARD = FIELDS(
-    'encounterId source receiptKey acquisitionMultiplier stage species tier x y chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
+    'encounterId source receiptKey acquisitionMultiplier stage species tier x y firstClear chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
     {
         calculation: JSON_PAYLOAD,
     },

@@ -3,6 +3,7 @@ const CLAMP_UINT32 = (value) => (Number.isSafeInteger(value) ? value >>> 0 : 0);
 export function createFarmBossProgress(seed = 731) {
     return {
         currentStage: 1,
+        highestClearedRaidStage: 0,
         encounterSeed: (CLAMP_UINT32(seed) ^ 0xa341316c) >>> 0,
         encounterEpoch: 0,
         nextSelectionId: 1,
@@ -37,7 +38,15 @@ export function advanceFarmBossEncounterEpoch(progress) {
     return progress.encounterEpoch;
 }
 export function selectFarmBossStage(progress, stage) {
-    if (!progress || !Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
+    if (
+        !progress ||
+        !Number.isSafeInteger(progress.highestClearedRaidStage) ||
+        progress.highestClearedRaidStage < 0 ||
+        progress.highestClearedRaidStage > BOSS_REWARD_SETTINGS.maxStage ||
+        !Number.isSafeInteger(stage) ||
+        stage < 1 ||
+        stage > Math.min(BOSS_REWARD_SETTINGS.maxStage, progress.highestClearedRaidStage + 2)
+    ) {
         throw new RangeError('Boss stage is outside the supported range');
     }
     let selection = progress.selections.find((entry) => entry.stage === stage);

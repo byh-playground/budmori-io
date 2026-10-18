@@ -49,6 +49,7 @@ const REWARD_EXTRAS = [
     'acquisitionMultiplier',
     'baselineChance',
     'stage',
+    'firstClear',
     'rollBudget',
     'bonusRollChance',
     'rollCount',
@@ -161,6 +162,7 @@ export function captureFarmProgress(world) {
         },
         bossStages: {
             currentStage: STAGE.currentStage,
+            highestClearedRaidStage: STAGE.highestClearedRaidStage,
             encounterSeed: STAGE.encounterSeed,
             encounterEpoch: STAGE.encounterEpoch,
             nextSelectionId: STAGE.nextSelectionId,
@@ -275,9 +277,17 @@ export function validateFarmProgress(data) {
     keys(data.totals, ['births', 'merges']);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
     const STAGE = data.bossStages;
-    keys(STAGE, ['currentStage', 'encounterSeed', 'encounterEpoch', 'nextSelectionId', 'selections']);
+    keys(STAGE, [
+        'currentStage',
+        'highestClearedRaidStage',
+        'encounterSeed',
+        'encounterEpoch',
+        'nextSelectionId',
+        'selections',
+    ]);
     ASSERT(
         INTEGER(STAGE.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) &&
+            INTEGER(STAGE.highestClearedRaidStage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
             INTEGER(STAGE.encounterSeed, 0, 0xffffffff) &&
             INTEGER(STAGE.encounterEpoch) &&
             INTEGER(STAGE.nextSelectionId, 1) &&
@@ -325,7 +335,7 @@ export function validateFarmProgress(data) {
         );
     }
     const STREAMS = BOSS.rewardStreams;
-    keys(STREAMS, ['normal', 'event']);
+    keys(STREAMS, ['normal', 'event', 'firstClear']);
     for (const STREAM of Object.values(STREAMS)) {
         keys(STREAM, ['rngState', 'distributionState', 'payoutRngState']);
         ASSERT(
@@ -401,7 +411,7 @@ export function validateFarmProgress(data) {
             );
         };
     for (const REWARD of BOSS.pendingRewards) {
-        const BASE_KEYS = ['encounterId', 'source', 'receiptKey', 'species', 'tier', 'chance'];
+        const BASE_KEYS = ['encounterId', 'source', 'receiptKey', 'species', 'tier', 'chance', 'firstClear'];
         keys(REWARD, BASE_KEYS, [...REWARD_EXTRAS, 'rolls']);
         ASSERT(
             ['farm', 'raid'].includes(REWARD.source) &&
@@ -410,7 +420,9 @@ export function validateFarmProgress(data) {
                 !RECEIPTS.has(REWARD.receiptKey) &&
                 INTEGER(REWARD.species, 0, CONFIG.unit.speciesCount - 1) &&
                 INTEGER(REWARD.tier, 1, CONFIG.unit.maxTier) &&
-                NUMBER(REWARD.chance, 0, 1),
+                NUMBER(REWARD.chance, 0, 1) &&
+                typeof REWARD.firstClear === 'boolean' &&
+                (REWARD.source === 'raid' || !REWARD.firstClear),
         );
         RECEIPTS.add(REWARD.receiptKey);
         const ENCOUNTER = `${REWARD.source}:${REWARD.encounterId}`;
@@ -432,7 +444,11 @@ export function validateFarmProgress(data) {
                 QUEUED_BY_GROUP.set(GROUP_KEY, QUEUED);
             }
             ASSERT(
-                REWARD.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance &&
+                REWARD.baselineChance ===
+                    (REWARD.firstClear
+                        ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance
+                        : BOSS_REWARD_SETTINGS.acquisitionChance) &&
+                    REWARD.chance === Math.min(1, REWARD.baselineChance * (REWARD.acquisitionMultiplier ?? 1)) &&
                     SAFE_INTEGER(REWARD.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
                     INTEGER(REWARD.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) &&
                     REWARD.boxCount === Math.min(REWARD.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) &&

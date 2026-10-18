@@ -287,8 +287,8 @@ export function validateSnapshot(raw) {
     ASSERT(
         raw.bossRewardStreams &&
             typeof raw.bossRewardStreams === 'object' &&
-            Object.keys(raw.bossRewardStreams).length === 2 &&
-            ['normal', 'event'].every((key) => Object.hasOwn(raw.bossRewardStreams, key)),
+            Object.keys(raw.bossRewardStreams).length === 3 &&
+            ['normal', 'event', 'firstClear'].every((key) => Object.hasOwn(raw.bossRewardStreams, key)),
     );
     const VALID_DISTRIBUTION = (state) =>
             state &&
@@ -348,7 +348,9 @@ export function validateSnapshot(raw) {
                 Number.isFinite(REWARD.y) &&
                 Number.isFinite(REWARD.chance) &&
                 REWARD.chance >= 0 &&
-                REWARD.chance <= 1,
+                REWARD.chance <= 1 &&
+                typeof REWARD.firstClear === 'boolean' &&
+                (REWARD.source === 'raid' || !REWARD.firstClear),
         );
         const KEY = REWARD.receiptKey || REWARD.source + ':' + REWARD.encounterId;
         ASSERT(!REWARD_IDS.has(KEY));
@@ -356,7 +358,11 @@ export function validateSnapshot(raw) {
         if (['calculating', 'ready'].includes(REWARD.status)) {
             ASSERT(
                 REWARD.tier === 1 &&
-                    REWARD.baselineChance === BOSS_REWARD_SETTINGS.acquisitionChance &&
+                    REWARD.baselineChance ===
+                        (REWARD.firstClear
+                            ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance
+                            : BOSS_REWARD_SETTINGS.acquisitionChance) &&
+                    REWARD.chance === Math.min(1, REWARD.baselineChance * (REWARD.acquisitionMultiplier ?? 1)) &&
                     Number.isSafeInteger(REWARD.acquiredCount) &&
                     REWARD.acquiredCount >= 0 &&
                     Number.isSafeInteger(REWARD.placedCount) &&
@@ -443,6 +449,7 @@ export function validateSnapshot(raw) {
     ASSERT(
         STAGE_PROGRESS &&
             INTEGER(STAGE_PROGRESS.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) &&
+            INTEGER(STAGE_PROGRESS.highestClearedRaidStage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
             INTEGER(STAGE_PROGRESS.encounterSeed, 0, 0xffffffff) &&
             INTEGER(STAGE_PROGRESS.encounterEpoch, 0, 1e12) &&
             INTEGER(STAGE_PROGRESS.nextSelectionId, 1, 1e12) &&

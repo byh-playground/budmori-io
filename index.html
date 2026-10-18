@@ -1782,6 +1782,244 @@
                 }
             }
         </style>
+        <style>
+            .boss-reward-dialog {
+                background: #12271de3;
+                backdrop-filter: blur(3px);
+            }
+            .boss-reward-dialog__card {
+                display: grid;
+                grid-template-rows: auto auto auto minmax(145px, 1fr) auto auto;
+                gap: 8px;
+                width: min(560px, 100%);
+                max-height: min(720px, 92dvh);
+                overflow: hidden;
+                border-color: #dce8c9;
+                background: linear-gradient(150deg, #fbf8e9, #e8eedc);
+            }
+            .boss-reward-dialog__card header {
+                justify-content: flex-start;
+                min-height: 44px;
+            }
+            .boss-reward-dialog__card header > div {
+                min-width: 0;
+                margin-right: auto;
+            }
+            .boss-reward-ribbon {
+                padding: 7px 10px;
+                border-radius: 999px;
+                background: #e0ad48;
+                color: #583d1c;
+                font-size: 11px;
+                white-space: nowrap;
+            }
+            .boss-reward-chest-scene {
+                position: relative;
+                display: grid;
+                min-height: 145px;
+                place-items: center;
+                overflow: hidden;
+                border-radius: 18px;
+                background: radial-gradient(ellipse at center, #f5e9c766 0, #f3f0e000 70%);
+            }
+            .boss-reward-chest {
+                display: block;
+                width: min(42vw, 460px);
+                min-width: 136px;
+                height: auto;
+                overflow: visible;
+                filter: drop-shadow(0 10px 8px #263d2920);
+            }
+            .boss-reward-chest__body,
+            .boss-reward-chest__lid-pivot {
+                transform-box: view-box;
+            }
+            .boss-reward-chest__lid-pivot {
+                transform-origin: 250px 128px;
+                transition: transform 120ms cubic-bezier(0.2, 0.8, 0.25, 1);
+            }
+            .boss-reward-chest__glow {
+                opacity: 0;
+                transition: opacity 120ms ease-out;
+            }
+            .boss-reward-chest__lock {
+                transform-box: view-box;
+                transform-origin: 250px 180px;
+                transition:
+                    opacity 80ms ease-out,
+                    transform 80ms ease-out;
+            }
+            .boss-reward-chest-scene.is-compressing .boss-reward-chest__body {
+                animation: boss-reward-compress 100ms ease-out both;
+            }
+            .boss-reward-chest-scene.is-lid-open .boss-reward-chest__lid-pivot {
+                transform: rotate(-62deg) translateY(-8px);
+            }
+            .boss-reward-chest-scene.is-lid-open .boss-reward-chest__lock {
+                opacity: 0.15;
+                transform: translateY(5px) scale(0.92);
+            }
+            .boss-reward-chest-scene.is-reward .boss-reward-chest__glow {
+                opacity: 1;
+            }
+            .boss-reward-chest-scene.is-empty .boss-reward-chest__body {
+                animation: boss-reward-empty 160ms ease-out both;
+            }
+            .boss-reward-prize {
+                position: absolute;
+                z-index: 2;
+                top: 4px;
+                left: 50%;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                transform: translate(-50%, 8px) scale(0.72);
+                opacity: 0;
+                pointer-events: none;
+            }
+            .boss-reward-prize:not([hidden]) {
+                animation: boss-reward-prize 180ms cubic-bezier(0.18, 0.85, 0.22, 1) both;
+            }
+            .boss-reward-portrait {
+                display: block;
+                width: 54px;
+                height: 54px;
+                border: 3px solid #fff4cf;
+                border-radius: 16px;
+                background: #dce9c8;
+                box-shadow: 0 4px 14px #263d2935;
+                object-fit: contain;
+            }
+            .boss-reward-prize strong {
+                padding: 6px 9px;
+                border-radius: 999px;
+                background: #fff8d7;
+                color: #4c743f;
+                font-size: clamp(18px, 5vw, 27px);
+                font-weight: 950;
+                text-shadow: 0 1px #fff;
+            }
+            .boss-reward-empty,
+            .boss-reward-outcome {
+                position: absolute;
+                z-index: 3;
+                bottom: 4px;
+                left: 50%;
+                margin: 0;
+                padding: 4px 10px;
+                border-radius: 999px;
+                background: #f4f1e4e8;
+                color: #73816d;
+                font-size: 11px;
+                font-weight: 750;
+                transform: translateX(-50%);
+            }
+            .boss-reward-outcome:empty {
+                display: none;
+            }
+            .boss-reward-boxes {
+                display: none !important;
+            }
+            #bossRewardTotals {
+                color: #526e50;
+                font-size: 14px;
+                font-weight: 850;
+                font-variant-numeric: tabular-nums;
+            }
+            #bossRewardRevealCount {
+                color: #71806b;
+                font-size: 12px;
+                font-variant-numeric: tabular-nums;
+            }
+            #bossRewardOpenAll {
+                min-width: 132px;
+                min-height: 46px;
+                padding-inline: 18px;
+                border-radius: 999px;
+                background: #526e50;
+                color: #fffbee;
+                font-size: 14px;
+                font-weight: 850;
+            }
+            #bossRewardClose {
+                min-width: 44px;
+                min-height: 44px;
+                margin-left: 0;
+            }
+            @keyframes boss-reward-compress {
+                0% {
+                    transform: scale(1) rotate(0);
+                }
+                58% {
+                    transform: scale(1.035, 0.94) rotate(-1deg);
+                }
+                100% {
+                    transform: scale(1) rotate(0);
+                }
+            }
+            @keyframes boss-reward-empty {
+                0%,
+                100% {
+                    transform: translateX(0);
+                }
+                30% {
+                    transform: translateX(-5px) rotate(-1deg);
+                }
+                70% {
+                    transform: translateX(4px) rotate(1deg);
+                }
+            }
+            @keyframes boss-reward-prize {
+                0% {
+                    opacity: 0;
+                    transform: translate(-50%, 12px) scale(0.66);
+                }
+                72% {
+                    opacity: 1;
+                    transform: translate(-50%, -5px) scale(1.08);
+                }
+                100% {
+                    opacity: 1;
+                    transform: translate(-50%, 0) scale(1);
+                }
+            }
+            @media (max-width: 500px) {
+                .boss-reward-dialog__card {
+                    padding: 12px;
+                }
+            }
+            @media (max-width: 700px) and (orientation: portrait) {
+                .bossbar {
+                    top: max(128px, calc(env(safe-area-inset-top) + 118px));
+                }
+            }
+            @media (max-height: 500px) {
+                .boss-reward-dialog__card {
+                    grid-template-rows: auto auto auto minmax(112px, 1fr) auto auto;
+                    gap: 5px;
+                    max-height: 94dvh;
+                    padding-block: 8px;
+                }
+                .boss-reward-chest-scene {
+                    min-height: 112px;
+                }
+                .boss-reward-chest {
+                    width: min(32vw, 220px);
+                    min-width: 126px;
+                }
+                .boss-reward-portrait {
+                    width: 44px;
+                    height: 44px;
+                }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .boss-reward-chest-scene *,
+                .boss-reward-prize:not([hidden]) {
+                    animation-duration: 1ms !important;
+                    transition-duration: 1ms !important;
+                }
+            }
+        </style>
     </head>
     <body>
         <canvas id="world" aria-label="드래그해 정원 시야 이동"></canvas>
@@ -1877,10 +2115,121 @@
                         <small id="bossRewardStage"></small>
                         <h2 id="bossRewardTitle">보상 상자</h2>
                     </div>
+                    <strong id="bossRewardRibbon" class="boss-reward-ribbon" hidden>첫 클리어</strong>
                     <button id="bossRewardClose" type="button" aria-label="보상 상자 닫기">×</button>
                 </header>
                 <p id="bossRewardSummary" role="status"></p>
                 <p id="bossRewardTotals"></p>
+                <div id="bossRewardChestScene" class="boss-reward-chest-scene" data-cycle="" aria-live="polite">
+                    <svg
+                        id="bossRewardChest"
+                        class="boss-reward-chest"
+                        viewBox="0 0 500 300"
+                        role="img"
+                        aria-label="나뭇잎 장식 나무 상자"
+                    >
+                        <defs>
+                            <linearGradient id="rewardWood" x2="0" y2="1">
+                                <stop stop-color="#b9793e" />
+                                <stop offset="1" stop-color="#774326" />
+                            </linearGradient>
+                            <linearGradient id="rewardLid" x2="0" y2="1">
+                                <stop stop-color="#d89a57" />
+                                <stop offset="1" stop-color="#8b4d2b" />
+                            </linearGradient>
+                            <radialGradient id="rewardLight">
+                                <stop stop-color="#fff9b5" stop-opacity=".95" />
+                                <stop offset="1" stop-color="#f8cf5a" stop-opacity="0" />
+                            </radialGradient>
+                        </defs>
+                        <ellipse cx="250" cy="258" rx="180" ry="22" fill="#223d2e" opacity=".18" />
+                        <circle class="boss-reward-chest__glow" cx="250" cy="160" r="148" fill="url(#rewardLight)" />
+                        <g class="boss-reward-chest__body">
+                            <path
+                                d="M91 132h318v110a24 24 0 0 1-24 24H115a24 24 0 0 1-24-24z"
+                                fill="url(#rewardWood)"
+                                stroke="#60391f"
+                                stroke-width="9"
+                            />
+                            <path
+                                d="M115 148v92m54-96v115m54-115v115m54-115v115m54-115v115m54-115v96"
+                                fill="none"
+                                stroke="#e1aa67"
+                                stroke-opacity=".55"
+                                stroke-width="9"
+                            />
+                            <path d="M92 175h316M92 221h316" stroke="#63391f" stroke-width="10" opacity=".75" />
+                            <path
+                                d="M91 150h318v21H91zm0 48h318v18H91z"
+                                fill="#d39a56"
+                                stroke="#6a3d21"
+                                stroke-width="5"
+                            />
+                            <g fill="#82a75c" stroke="#547345" stroke-width="3">
+                                <path d="M104 142q-27-22-15-39 22 0 31 24 4-26 26-30 11 19-8 39z" />
+                                <path d="M396 142q27-22 15-39-22 0-31 24-4-26-26-30-11 19 8 39z" />
+                            </g>
+                        </g>
+                        <g class="boss-reward-chest__lid-pivot">
+                            <g class="boss-reward-chest__lid">
+                                <path
+                                    d="M78 128q8-43 42-61h260q34 18 42 61z"
+                                    fill="url(#rewardLid)"
+                                    stroke="#60391f"
+                                    stroke-width="10"
+                                />
+                                <path
+                                    d="M119 84h262M104 111h292"
+                                    fill="none"
+                                    stroke="#edbd75"
+                                    stroke-width="9"
+                                    opacity=".7"
+                                />
+                                <path
+                                    d="M220 73q30-28 60 0l-5 24h-50z"
+                                    fill="#6c8d4d"
+                                    stroke="#42653f"
+                                    stroke-width="4"
+                                />
+                                <path
+                                    d="M250 74q-17-24-34-14 0 19 34 25 16-22 33-16 0 18-33 26"
+                                    fill="#9dbc70"
+                                    stroke="#547345"
+                                    stroke-width="3"
+                                />
+                            </g>
+                        </g>
+                        <g class="boss-reward-chest__lock">
+                            <rect
+                                x="225"
+                                y="156"
+                                width="50"
+                                height="62"
+                                rx="12"
+                                fill="#e5bd63"
+                                stroke="#76542a"
+                                stroke-width="7"
+                            />
+                            <path d="M237 157v-15a13 13 0 0 1 26 0v15" fill="none" stroke="#f2d990" stroke-width="9" />
+                            <circle cx="250" cy="183" r="6" fill="#704824" />
+                            <path d="M250 187v14" stroke="#704824" stroke-width="5" />
+                        </g>
+                    </svg>
+                    <div id="bossRewardPrize" class="boss-reward-prize" hidden>
+                        <svg
+                            id="bossRewardPortrait"
+                            class="boss-reward-portrait"
+                            viewBox="0 0 48 48"
+                            aria-hidden="true"
+                        >
+                            <circle cx="24" cy="24" r="21" fill="#d9e9bf" />
+                            <path d="M13 30c0-11 7-17 22-17 0 12-6 21-17 21z" fill="#6e9d5f" />
+                        </svg>
+                        <strong id="bossRewardPopAmount"></strong>
+                    </div>
+                    <p id="bossRewardEmpty" class="boss-reward-empty" hidden>빈 상자</p>
+                    <p id="bossRewardOutcome" class="boss-reward-outcome"></p>
+                </div>
                 <div id="bossRewardBoxes" class="boss-reward-boxes" aria-live="polite"></div>
                 <footer>
                     <small id="bossRewardRevealCount"></small>
@@ -2206,7 +2555,7 @@
         </section>
         <!-- Generated runtime manifest. -->
         <!-- prettier-ignore -->
-        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":14562,"sha256":"b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":17602,"sha256":"bf3e3cb568c274a5d0a1d9c92b0ffcdb1fecb8ddf0f4bf50ef8e0883b64cdbf4"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":26741,"sha256":"1307b9ccb40a3ad86eb21a092e0325afc8d857e27561437aecfdf353c28eeec6"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":22163,"sha256":"23a1dbe97aa53f240881c05e7f5162b0757df90b6e7c5706aa50bd7ef58e76f1"},{"kind":"boss","id":"chestnut","file":"assets/bosses/chestnut.svg","qualityPreset":"standard","bytes":10366,"sha256":"9bf80e68fa243097d688f06e2af0b93c2cee218b6646be538eeca6d7e537094d"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":17602,"sha256":"bf3e3cb568c274a5d0a1d9c92b0ffcdb1fecb8ddf0f4bf50ef8e0883b64cdbf4"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":26741,"sha256":"1307b9ccb40a3ad86eb21a092e0325afc8d857e27561437aecfdf353c28eeec6"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":22163,"sha256":"23a1dbe97aa53f240881c05e7f5162b0757df90b6e7c5706aa50bd7ef58e76f1"}],"schemaVersion":1,"sourceCommit":"945227dfb022aac9de4bca13bf83ffb919a129ea","distCommit":"9a55c2e7cbea99d62a0c2fb1d467c47311de9c17","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/interpolation.js","bytes":55529,"sha256":"061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/camera.js","bytes":9410,"sha256":"c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/debug-tools.js","bytes":23600,"sha256":"b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/rendering.js","bytes":301192,"sha256":"5233499a02ebf6881cc49c941823dd193f20ed0c5f8af9440afa7d10677e9be7"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/vector-assets.js","bytes":143709,"sha256":"288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/vector-assets-loader.js","bytes":1046299,"sha256":"56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/deterministic.js","bytes":44704,"sha256":"a6c381346a263a724719733762c5b7d02caf7385ac74e06cb4ef96e1fd7f9210"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"}],"game":{"file":"src/game.js","bytes":808612,"sha256":"ec8bb077dc77bed9a6fdf0d49e2b0a33dcaf0e66831755da16bdda053f31f880"},"bootstrap":{"file":"src/bootstrap.js","bytes":22880,"sha256":"36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072"},"productVersion":"0.8.26"}</script>
+        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":14562,"sha256":"b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":17602,"sha256":"bf3e3cb568c274a5d0a1d9c92b0ffcdb1fecb8ddf0f4bf50ef8e0883b64cdbf4"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":26741,"sha256":"1307b9ccb40a3ad86eb21a092e0325afc8d857e27561437aecfdf353c28eeec6"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":22163,"sha256":"23a1dbe97aa53f240881c05e7f5162b0757df90b6e7c5706aa50bd7ef58e76f1"},{"kind":"boss","id":"chestnut","file":"assets/bosses/chestnut.svg","qualityPreset":"standard","bytes":10366,"sha256":"9bf80e68fa243097d688f06e2af0b93c2cee218b6646be538eeca6d7e537094d"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":17602,"sha256":"bf3e3cb568c274a5d0a1d9c92b0ffcdb1fecb8ddf0f4bf50ef8e0883b64cdbf4"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":26741,"sha256":"1307b9ccb40a3ad86eb21a092e0325afc8d857e27561437aecfdf353c28eeec6"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":22163,"sha256":"23a1dbe97aa53f240881c05e7f5162b0757df90b6e7c5706aa50bd7ef58e76f1"}],"schemaVersion":1,"sourceCommit":"945227dfb022aac9de4bca13bf83ffb919a129ea","distCommit":"9a55c2e7cbea99d62a0c2fb1d467c47311de9c17","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/interpolation.js","bytes":55529,"sha256":"061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/camera.js","bytes":9410,"sha256":"c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/debug-tools.js","bytes":23600,"sha256":"b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/rendering.js","bytes":301192,"sha256":"5233499a02ebf6881cc49c941823dd193f20ed0c5f8af9440afa7d10677e9be7"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/vector-assets.js","bytes":143709,"sha256":"288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/vector-assets-loader.js","bytes":1046299,"sha256":"56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/deterministic.js","bytes":44704,"sha256":"a6c381346a263a724719733762c5b7d02caf7385ac74e06cb4ef96e1fd7f9210"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9a55c2e7cbea99d62a0c2fb1d467c47311de9c17/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"}],"game":{"file":"src/game.js","bytes":815595,"sha256":"49b2d45706879a3a67aed424433b51ea4a4534d897c58914c5a07cd477be8660"},"bootstrap":{"file":"src/bootstrap.js","bytes":22880,"sha256":"36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072"},"productVersion":"0.9.0"}</script>
         <!-- Generated bootstrap integrity. -->
         <!-- prettier-ignore -->
         <script type="module" src="./src/bootstrap.js?version=36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072" integrity="sha256-NtRmZ0RU4Txw57LIfTX4VMgp0+JbtdxosMZJtIDt4HI=" crossorigin="anonymous" data-bloom-bootstrap></script>

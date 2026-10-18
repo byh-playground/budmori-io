@@ -1333,6 +1333,76 @@ async function formationHudFlow() {
         'Three skill slots stay centered and separate from actions in Farm events/Raid at desktop, 390px, 320px and landscape; native map drag passes through HUD',
     );
 }
+async function raidHudGeometryOnly() {
+    const C = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true }),
+        P = await open(C);
+    await P.locator('#newGame').click();
+    await P.evaluate(() => {
+        BUDMORI.sim.playerProgression.level = 101;
+        BUDMORI.sim.playerProgression.availablePoints = 100;
+        BUDMORI.sim.markProgressChanged();
+    });
+    await openMenuTab(P, 'formation');
+    for (const [INDEX, ID] of ['giant', 'lightning', 'meteor'].entries()) {
+        if (INDEX > 0) {
+            await P.locator('[data-formation-buy-slot]').click();
+            await P.waitForFunction(
+                (count) => BUDMORI.sim.playerProgression.formationSkills.slots === count,
+                INDEX + 1,
+            );
+        }
+        await P.locator(`[data-formation-purchase="${ID}"]`).click();
+        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.formationSkills.levels[id] === 1, ID);
+        await P.locator(`[data-formation-equip="${ID}"]`).click();
+        await P.waitForFunction((id) => BUDMORI.sim.playerProgression.formationSkills.equipped.includes(id), ID);
+    }
+    await closeMenu(P);
+    await P.locator('#raid').tap();
+    await P.locator('#bossEncounterChallenge').tap();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'raid');
+    await P.evaluate(() => {
+        BUDMORI.runtime.paused = true;
+    });
+    for (const VIEWPORT of [
+        { width: 320, height: 568 },
+        { width: 844, height: 390 },
+    ]) {
+        await P.setViewportSize(VIEWPORT);
+        await P.waitForTimeout(80);
+        const GEOMETRY = await P.evaluate(() => {
+            const HUD = document.querySelector('.formation-dock'),
+                RECT = (box) => ({ left: box.left, right: box.right, top: box.top, bottom: box.bottom }),
+                INTERSECTS = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top,
+                BOX = HUD.getBoundingClientRect(),
+                ELEMENTS = [
+                    ...document.querySelectorAll(
+                        '.controls:not([hidden]), .raid-panel:not([hidden]), .utility, #bossbar:not([hidden])',
+                    ),
+                ]
+                    .filter((element) => element.getClientRects().length)
+                    .map((element) => ({
+                        label: element.id || element.className,
+                        rect: RECT(element.getBoundingClientRect()),
+                    }));
+            return {
+                hud: RECT(BOX),
+                intersections: ELEMENTS.filter(({ rect }) => INTERSECTS(BOX, rect)),
+                elements: ELEMENTS,
+            };
+        });
+        await P.screenshot({
+            path: path.join(OUT, `raid-hud-overlap-probe-${VIEWPORT.width}x${VIEWPORT.height}.png`),
+        });
+        assert.deepEqual(
+            GEOMETRY.intersections,
+            [],
+            VIEWPORT.width + 'x' + VIEWPORT.height + ' ' + JSON.stringify(GEOMETRY),
+        );
+    }
+    await clean(P);
+    await C.close();
+    CHECK('Raid 320x568 skill dock does not overlap deployment or gameplay controls');
+}
 async function raidDeploymentCardsFlow() {
     const C = await browser.newContext({ viewport: { width: 1680, height: 893 }, hasTouch: true }),
         P = await open(C);
@@ -3658,18 +3728,24 @@ async function core() {
     assert.equal(await P.locator('#bossStageAttack').textContent(), '공격력 4');
     assert.equal(await P.locator('#bossStageXp').textContent(), '+20 XP');
     assert.equal(await P.locator('#bossStageDrop').isVisible(), true, 'stage 1 has one boss-species draw');
-    assert.match(await P.locator('#bossStageDrop').textContent(), /1.*2%/);
+    assert.match(await P.locator('#bossStageDrop').textContent(), /1.*15%/);
     await swipeEncounter(P, 'up');
     await P.waitForFunction(() => document.querySelector('#bossStageCounter')?.textContent === '2 / 61');
-    for (let i = 0; i < 3; i++) {
-        await swipeEncounter(P, 'up');
-        await P.waitForFunction((n) => document.querySelector('#bossStageCounter')?.textContent === `${n} / 61`, 3 + i);
-    }
-    assert.equal(await P.locator('#bossStageCounter').textContent(), '5 / 61');
-    assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 1,013');
-    assert.equal(await P.locator('#bossStageXp').textContent(), '+101 XP');
+    assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 300');
+    assert.equal(await P.locator('#bossStageXp').textContent(), '+30 XP');
     assert(await P.locator('#bossStageDrop').isVisible());
-    assert.match(await P.locator('#bossStageDrop').textContent(), /5.*2%/);
+    assert.match(await P.locator('#bossStageDrop').textContent(), /2.*15%/);
+    assert.equal(
+        await P.locator('#bossEncounterChallenge').isDisabled(),
+        true,
+        'the next stage is previewable but locked',
+    );
+    await swipeEncounter(P, 'up');
+    assert.equal(
+        await P.locator('#bossStageCounter').textContent(),
+        '2 / 61',
+        'swiping cannot preview stages beyond the next locked stage',
+    );
     const REWARD_INVARIANT = await P.evaluate(async () => {
         const {
                 settleBossKill: SETTLE,
@@ -3726,10 +3802,12 @@ async function core() {
         const HIGH = SETTLE(HIGH_WORLD, {
             encounterId: 903,
             source: 'raid',
+            firstClear: true,
+            acquisitionMultiplier: 2,
             rollBudget: STAGE_STATS(61).rollBudget,
             species: 4,
         }).receipt;
-        HIGH.chance = 0.5;
+        HIGH.chance = 0.3;
         ADVANCE(HIGH_WORLD, { maxUnitsPerReward: 1 });
         const CHECKPOINT = CAPTURE_PROGRESS(HIGH_WORLD),
             RESTORED_WORLD = RESTORE_PROGRESS(CHECKPOINT),
@@ -3766,6 +3844,7 @@ async function core() {
             });
         return {
             farmEventChance: ACQUISITION_CHANCE({ farmEvent: true }),
+            raidFirstClearChance: ACQUISITION_CHANCE({ firstClear: true }),
             firstXp: FIRST.xpAwarded,
             duplicateXp: DUPLICATE.xpAwarded,
             duplicateStatus: DUPLICATE.receipt.xpStatus,
@@ -3810,6 +3889,7 @@ async function core() {
     } = REWARD_INVARIANT;
     assert.deepEqual(KNOWN_REWARDS, {
         farmEventChance: 0.1,
+        raidFirstClearChance: 0.15,
         firstXp: 41,
         duplicateXp: 41,
         duplicateStatus: 'awarded',
@@ -6292,13 +6372,19 @@ async function bossRewards() {
         () =>
             BUDMORI.sim.scene === 'raid' &&
             document.querySelector('#bossRewardDialog')?.hidden === false &&
-            document.querySelectorAll('#bossRewardBoxes .boss-reward-box').length === 1 &&
-            document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length === 1,
+            document.querySelector('#bossRewardChest')?.getClientRects().length > 0 &&
+            document.querySelector('#bossRewardBoxes')?.getClientRects().length === 0,
         {},
         { timeout: 15000 },
     );
+    await P.waitForFunction(
+        () => document.querySelector('#bossRewardRevealCount')?.textContent.includes('1/1'),
+        {},
+        { timeout: 10000 },
+    );
     const RAID_RESULT = await P.evaluate(async () => {
         const { validateFarmProgress: VALIDATE_PROGRESS } = await import('/src/farm-progress.js'),
+            { bossAcquisitionChance: ACQUISITION_CHANCE } = await import('/src/boss-rewards.js'),
             PROGRESS = BUDMORI.storage.savedProgress,
             REWARD = PROGRESS?.ledger?.boss?.pendingRewards?.find(
                 (item) => item.source === 'raid' && item.encounterId === BUDMORI.sim.boss.encounterId,
@@ -6311,11 +6397,24 @@ async function bossRewards() {
             acquired: REWARD?.acquiredCount,
             queued: REWARD?.queuedCount,
             boxCount: REWARD?.boxCount,
+            firstClear: REWARD?.firstClear,
+            baselineChance: REWARD?.baselineChance,
+            chance: REWARD?.chance,
+            acquisitionMultiplier: REWARD?.acquisitionMultiplier,
+            maximumFirstClearChance: ACQUISITION_CHANCE({ firstClear: true, acquisitionMultiplier: 2 }),
+            highestClearedRaidStage: PROGRESS?.bossStages?.highestClearedRaidStage,
+            currentStage: PROGRESS?.bossStages?.currentStage,
         };
     });
     assert.equal(RAID_RESULT.activeScene, 'raid', 'the reward finishes before returning to Farm');
     assert.equal(RAID_RESULT.receiptStatus, 'ready');
     assert.equal(RAID_RESULT.boxCount, 1);
+    assert.equal(RAID_RESULT.firstClear, true);
+    assert.equal(RAID_RESULT.baselineChance, 0.15);
+    assert.equal(RAID_RESULT.chance, 0.15 * RAID_RESULT.acquisitionMultiplier);
+    assert.equal(RAID_RESULT.maximumFirstClearChance, 0.3);
+    assert.equal(RAID_RESULT.highestClearedRaidStage, 1);
+    assert.equal(RAID_RESULT.currentStage, 2);
     assert.equal(typeof RAID_RESULT.acquired, 'number');
     assert.equal(typeof RAID_RESULT.queued, 'number');
     assert(!RAID_RESULT.resultText.includes('undefined'));
@@ -6323,6 +6422,82 @@ async function bossRewards() {
     assert.equal(await P.locator('#bossRewardOpen').isVisible(), false, 'completed boxes cannot be reopened later');
     await P.locator('#return').click();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'farm');
+    await P.locator('#raid').click();
+    await P.waitForFunction(() => document.querySelector('#bossEncounterScreen')?.hidden === false);
+    assert.equal(
+        await P.locator('#bossStageCounter').textContent(),
+        '2 / 61',
+        'the first clear unlocks exactly the next stage',
+    );
+    assert.match(await P.locator('#bossStageDrop').textContent(), /15%/);
+    assert.equal(await P.locator('#bossEncounterChallenge').isDisabled(), false);
+    await swipeEncounter(P, 'down');
+    assert.equal(await P.locator('#bossStageCounter').textContent(), '1 / 61');
+    assert.match(
+        await P.locator('#bossStageDrop').textContent(),
+        /5%/,
+        'replaying a cleared stage returns to the regular base chance',
+    );
+    assert.equal(await P.locator('#bossEncounterChallenge').isDisabled(), false);
+    await swipeEncounter(P, 'up');
+    await swipeEncounter(P, 'up');
+    assert.equal(await P.locator('#bossStageCounter').textContent(), '3 / 61');
+    assert.equal(
+        await P.locator('#bossEncounterChallenge').isDisabled(),
+        true,
+        'stages beyond the next one stay locked',
+    );
+    await swipeEncounter(P, 'up');
+    assert.equal(
+        await P.locator('#bossStageCounter').textContent(),
+        '3 / 61',
+        'swiping cannot create an unbounded stage preview',
+    );
+    const LOCKED_AND_CANCELLED = await P.evaluate(async () => {
+        const { snapshot: SNAPSHOT } = await import('/src/farm-state.js'),
+            {
+                reserveRaidRun: RESERVE,
+                settleRaidOwnerFarm: SETTLE,
+                abortReservedRaidRun: ABORT,
+            } = await import('/src/raid-settlement.js'),
+            FARM = SNAPSHOT(BUDMORI.sim),
+            RESERVED = RESERVE(FARM, { sessionId: 'boss-stage-lock-e2e' });
+        let blockedStage = false;
+        try {
+            SETTLE(RESERVED.farm, {
+                ownerId: 'solo',
+                sessionId: RESERVED.sessionId,
+                encounterId: RESERVED.runSequence,
+                runSequence: RESERVED.runSequence,
+                outcome: 'victory',
+                raidWorld: { boss: { stage: 4 } },
+            });
+        } catch (error) {
+            blockedStage = /locked/i.test(error.message);
+        }
+        const CANCELLED = ABORT(RESERVED.farm);
+        return {
+            blockedStage,
+            canceled: CANCELLED.applied,
+            highestAfterCancel: CANCELLED.farm.farmBossProgress.highestClearedRaidStage,
+        };
+    });
+    assert.deepEqual(LOCKED_AND_CANCELLED, { blockedStage: true, canceled: true, highestAfterCancel: 1 });
+    await swipeEncounter(P, 'down');
+    assert.equal(await P.locator('#bossStageCounter').textContent(), '2 / 61');
+    await P.locator('#bossEncounterChallenge').click();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'raid');
+    await P.evaluate(() => {
+        BUDMORI.sim.running = true;
+        BUDMORI.sim.finish('defeat');
+    });
+    await P.waitForFunction(() => BUDMORI.sim.encounter.outcome === 'defeat');
+    await P.locator('#return').click();
+    await P.waitForFunction(() => BUDMORI.sim.scene === 'farm');
+    const AFTER_DEFEAT = await P.evaluate(() => BUDMORI.storage.savedProgress.bossStages.highestClearedRaidStage);
+    assert.equal(AFTER_DEFEAT, 1, 'defeat preserves the highest cleared stage');
+    await P.locator('#raid').click();
+    await P.locator('#bossEncounterBack').click();
     const CREATED = await P.evaluate(async () => {
         const {
                 settleBossKill: SETTLE,
@@ -6336,11 +6511,16 @@ async function bossRewards() {
             encounterId: 77,
             source: 'raid',
             receiptKey: 'ui-boss-box-77',
-            rollBudget: 12,
+            rollBudget: 17,
             species: 2,
         }).receipt;
         RECEIPT.chance = 1;
-        ADVANCE(WORLD, { maxUnitsPerReward: 10 });
+        let calculationSteps = 0;
+        while (RECEIPT.status === 'calculating' && calculationSteps < 20) {
+            ADVANCE(WORLD, { maxUnitsPerReward: 10 });
+            calculationSteps += 1;
+        }
+        RECEIPT.chance = 0.05;
         GRANT_PENDING(WORLD);
         return {
             receiptKey: RECEIPT.receiptKey,
@@ -6352,30 +6532,39 @@ async function bossRewards() {
     });
     assert.deepEqual(CREATED, {
         receiptKey: 'ui-boss-box-77',
-        boxCount: 12,
+        boxCount: 17,
         status: 'ready',
-        acquiredCount: 12,
-        placedCount: 12,
+        acquiredCount: 17,
+        placedCount: 17,
     });
     await P.waitForFunction(
         () =>
             document.querySelector('#bossRewardDialog')?.hidden === false &&
-            document.querySelectorAll('#bossRewardBoxes .boss-reward-box').length === 12,
+            document.querySelector('#bossRewardChest')?.getClientRects().length > 0 &&
+            document.querySelector('#bossRewardRevealCount')?.textContent.includes('0/17'),
     );
+    const CLOSED_CHEST = await P.evaluate(() => ({
+        revealed: BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77')?.revealedCount,
+        hasPrize: document.querySelector('#bossRewardPrize')?.hidden === false,
+        chestClosed: !document.querySelector('#bossRewardChestScene')?.classList.contains('is-lid-open'),
+    }));
+    assert.deepEqual(CLOSED_CHEST, { revealed: 0, hasPrize: false, chestClosed: true });
+    await P.waitForFunction(() => document.querySelector('#bossRewardRevealCount')?.textContent.includes('10/17'));
     const AUTO_REVEAL = await P.evaluate(() => {
         const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
         return {
             revealedCount: REWARD.revealedCount,
-            revealedBoxes: document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length,
+            sceneCycle: document.querySelector('#bossRewardChestScene')?.dataset.cycle,
             mobileViewport: matchMedia('(max-width: 500px)').matches,
         };
     });
     assert.equal(AUTO_REVEAL.mobileViewport, true);
     assert.equal(AUTO_REVEAL.revealedCount, 10);
-    assert.equal(AUTO_REVEAL.revealedBoxes, 10);
+    assert(['hit', 'miss'].includes(AUTO_REVEAL.sceneCycle));
     await P.locator('#bossRewardOpenAll').click();
+    await P.evaluate(() => document.querySelector('#bossRewardOpenAll').click());
     await P.waitForFunction(
-        () => BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77')?.revealedCount === 12,
+        () => BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77')?.revealedCount === 17,
     );
     const OPENED = await P.evaluate(() => {
         const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-boss-box-77');
@@ -6392,13 +6581,13 @@ async function bossRewards() {
     });
     assert.deepEqual(OPENED, {
         status: 'ready',
-        count: 12,
-        revealed: 12,
-        acquired: 12,
-        placed: 12,
+        count: 17,
+        revealed: 17,
+        acquired: 17,
+        placed: 17,
         queued: 0,
-        hits: 12,
-        totalPayout: 12,
+        hits: 17,
+        totalPayout: 17,
     });
     const SETTLED_SAVE = await P.evaluate(() => {
         if (!BUDMORI.storage.save(BUDMORI.sim)) {
@@ -6420,8 +6609,8 @@ async function bossRewards() {
         hasBoxes: false,
         hasRevealCursor: false,
         status: 'ready',
-        acquired: 12,
-        placed: 12,
+        acquired: 17,
+        placed: 17,
         queued: 0,
     });
     await P.locator('#bossRewardClose').click();
@@ -6456,9 +6645,74 @@ async function bossRewards() {
             revealed: REWARD?.revealedCount,
             boxes: REWARD?.boxes.length,
             acquired: REWARD?.acquiredCount,
+            highestClearedRaidStage: BUDMORI.sim.farmBossProgress.highestClearedRaidStage,
+            currentStage: BUDMORI.sim.farmBossProgress.currentStage,
         };
     });
-    assert.deepEqual(RESTORED, { status: 'ready', revealed: 12, boxes: 0, acquired: 12 });
+    assert.deepEqual(RESTORED, {
+        status: 'ready',
+        revealed: 17,
+        boxes: 0,
+        acquired: 17,
+        highestClearedRaidStage: 1,
+        currentStage: 2,
+    });
+    const EMPTY_HUNDRED = await P.evaluate(async () => {
+        const { settleBossKill: SETTLE, advanceBossRewardCalculations: ADVANCE } = await import('/src/boss-rewards.js'),
+            WORLD = BUDMORI.sim;
+        WORLD.nextRaidRunSequence = 78;
+        WORLD.raidSettlementWatermark = 78;
+        const RECEIPT = SETTLE(WORLD, {
+            encounterId: 78,
+            source: 'raid',
+            receiptKey: 'ui-empty-box-100',
+            rollBudget: 100,
+            species: 2,
+        }).receipt;
+        RECEIPT.chance = 0;
+        let steps = 0;
+        while (RECEIPT.status === 'calculating' && steps < 100) {
+            ADVANCE(WORLD, { maxUnitsPerReward: 10 });
+            steps += 1;
+        }
+        if (RECEIPT.status !== 'ready') {
+            throw Error('100 empty chest outcomes did not finish calculation');
+        }
+        RECEIPT.chance = 0.05;
+        return {
+            boxCount: RECEIPT.boxCount,
+            hitCount: RECEIPT.boxes.filter((box) => box.hit).length,
+            acquiredCount: RECEIPT.acquiredCount,
+        };
+    });
+    assert.deepEqual(EMPTY_HUNDRED, { boxCount: 100, hitCount: 0, acquiredCount: 0 });
+    await P.waitForFunction(
+        () =>
+            document.querySelector('#bossRewardDialog')?.hidden === false &&
+            document.querySelector('#bossRewardChestScene')?.classList.contains('is-empty'),
+        {},
+        { timeout: 15000 },
+    );
+    const EMPTY_CHEST = await P.evaluate(() => ({
+        isEmpty: document.querySelector('#bossRewardEmpty')?.hidden === false,
+        hasPrize: document.querySelector('#bossRewardPrize')?.hidden === false,
+        revealCount: BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-empty-box-100')
+            ?.revealedCount,
+    }));
+    assert.deepEqual(EMPTY_CHEST, { isEmpty: true, hasPrize: false, revealCount: 0 });
+    await P.waitForFunction(() => document.querySelector('#bossRewardRevealCount')?.textContent.includes('10/100'));
+    await P.locator('#bossRewardOpenAll').click();
+    await P.evaluate(() => document.querySelector('#bossRewardOpenAll').click());
+    const EMPTY_OPENED = await P.evaluate(() => {
+        const REWARD = BUDMORI.sim.bossRewardReceipts.find((item) => item.receiptKey === 'ui-empty-box-100');
+        return {
+            revealed: REWARD.revealedCount,
+            acquired: REWARD.acquiredCount,
+            hits: REWARD.boxes.filter((box) => box.hit).length,
+        };
+    });
+    assert.deepEqual(EMPTY_OPENED, { revealed: 100, acquired: 0, hits: 0 });
+    await P.locator('#bossRewardClose').click();
     const RAID_RESERVATION_SAVE = await P.evaluate(async () => {
         const { captureFarmProgress: CAPTURE, validateFarmProgress: VALIDATE } = await import('/src/farm-progress.js');
         const { encodeFarmSave: ENCODE, decodeFarmSave: DECODE } = await import('/src/farm-save-codec.js');
@@ -6501,11 +6755,11 @@ async function bossRewards() {
             receiptStatus: 'ready',
             receiptHasRoll: false,
             activeRun: {
-                sequence: 78,
-                sessionId: 'farm-raid-78',
+                sequence: 79,
+                sessionId: 'farm-raid-79',
             },
-            nextSequence: 78,
-            settledThrough: 77,
+            nextSequence: 79,
+            settledThrough: 78,
         },
         'a restored reward receipt can be encoded and the next Raid reservation can be saved',
     );
@@ -6556,6 +6810,7 @@ async function bossRewards() {
         if (RECEIPT.status !== 'ready') {
             throw Error('farm boss reward calculation did not finish');
         }
+        RECEIPT.chance = 0.1;
         if (!BUDMORI.storage.save(WORLD)) {
             throw Error(BUDMORI.storage.error || 'could not checkpoint the actual farm reward');
         }
@@ -6593,22 +6848,24 @@ async function bossRewards() {
     await FARM_PAGE.waitForFunction(
         () =>
             document.querySelector('#bossRewardDialog')?.hidden === false &&
-            document.querySelectorAll('#bossRewardBoxes .boss-reward-box').length === 17 &&
-            document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length === 10,
+            document.querySelector('#bossRewardChest')?.getClientRects().length > 0 &&
+            document.querySelector('#bossRewardRevealCount')?.textContent.includes('10/17'),
         {},
         { timeout: 10000 },
     );
     await FARM_PAGE.waitForFunction(
-        () => document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length === 17,
+        () => document.querySelector('#bossRewardRevealCount')?.textContent.includes('17/17'),
         {},
         { timeout: 5000 },
     );
     const FARM_REVEAL = await FARM_PAGE.evaluate(() => ({
         totals: document.querySelector('#bossRewardTotals')?.textContent || '',
-        opened: document.querySelectorAll('#bossRewardBoxes .boss-reward-box.is-open').length,
+        opened: BUDMORI.sim.bossRewardReceipts.find(
+            (item) => item.source === 'farm' && item.encounterId === BUDMORI.sim.farmBossEvent.encounterId,
+        )?.revealedCount,
     }));
     assert.equal(FARM_REVEAL.opened, 17);
-    assert(FARM_REVEAL.totals.includes('17 acquired'));
+    assert(FARM_REVEAL.totals.includes('17'));
     await FARM_PAGE.locator('#bossRewardClose').click();
     await FARM_PAGE.reload();
     await FARM_PAGE.waitForFunction(() => window.BUDMORI);
@@ -7145,6 +7402,7 @@ try {
             reset: progressionResetFlow,
             cadence: cadenceDiagnosticsFlow,
             formation: formationBrowserUI,
+            raidHud: raidHudGeometryOnly,
             raidDeploymentCards: raidDeploymentCardsFlow,
             representativeAbilities: representativeAbilitiesFlow,
             save,
