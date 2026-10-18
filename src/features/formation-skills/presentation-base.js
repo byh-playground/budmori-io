@@ -15,23 +15,24 @@ export function stroke(renderer, points, color, width) {
     C.lineJoin = 'round';
     C.stroke();
 }
-export function bolt(renderer, x, y, z, height, age, seed = 0) {
+export function bolt(renderer, x, y, z, height, age, seed = 0, radius = 0.3) {
     const FADE = Math.max(0, 1 - age / 0.65);
     if (FADE <= 0) {
         return;
     }
+    const BODY_SCALE = Math.max(0.6, radius / 0.3);
     const POINTS = [];
     for (let i = 0; i <= 9; i++) {
         POINTS.push([
-            x + (i === 9 ? 0 : Math.sin(i * 13.17 + seed) * 0.32),
-            y + (i === 9 ? 0 : Math.cos(i * 5.7 + seed) * 0.12),
+            x + (i === 9 ? 0 : Math.sin(i * 13.17 + seed) * 0.32 * BODY_SCALE),
+            y + (i === 9 ? 0 : Math.cos(i * 5.7 + seed) * 0.12 * BODY_SCALE),
             z + height * (1 - i / 9),
         ]);
     }
     if (age < 0.12) {
-        stroke(renderer, POINTS, `rgba(51,121,255,${FADE * 0.2})`, 0.5);
-        stroke(renderer, POINTS, `rgba(99,181,255,${FADE * 0.65})`, 0.19);
-        stroke(renderer, POINTS, `rgba(236,251,255,${FADE})`, 0.11);
+        stroke(renderer, POINTS, `rgba(51,121,255,${FADE * 0.2})`, 0.5 * BODY_SCALE);
+        stroke(renderer, POINTS, `rgba(99,181,255,${FADE * 0.65})`, 0.19 * BODY_SCALE);
+        stroke(renderer, POINTS, `rgba(236,251,255,${FADE})`, 0.11 * BODY_SCALE);
     } else {
         for (let i = 0; i < POINTS.length - 1; i++) {
             const FRAGMENT = Math.max(0, 1 - (age - 0.12 - (i % 3) * 0.035) / 0.35);
@@ -39,14 +40,14 @@ export function bolt(renderer, x, y, z, height, age, seed = 0) {
                 continue;
             }
             const SEGMENT = POINTS.slice(i, i + 2);
-            stroke(renderer, SEGMENT, `rgba(84,169,255,${FRAGMENT * 0.55})`, 0.16);
-            stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035);
+            stroke(renderer, SEGMENT, `rgba(84,169,255,${FRAGMENT * 0.55})`, 0.16 * BODY_SCALE);
+            stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035 * BODY_SCALE);
         }
     }
-    renderer.ring(x, y, 0.3 + age * 3, `rgba(157,212,255,${FADE * 0.8})`, 0.09);
+    renderer.ring(x, y, radius + age * radius * 10, `rgba(157,212,255,${FADE * 0.8})`, 0.09 * BODY_SCALE);
     if (age < 0.09) {
         const P = renderer.project(x, y, z + 0.15);
-        renderer.ellipse(P.x, P.y, renderer.scale * 0.65, renderer.scale * 0.42, '#effcffdd');
+        renderer.ellipse(P.x, P.y, renderer.scale * radius * 2.17, renderer.scale * radius * 1.4, '#effcffdd');
     }
 }
 export function cloud(renderer, x, y, z, size, alpha = 1) {
