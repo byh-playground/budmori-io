@@ -10754,7 +10754,7 @@
             return {
               available: false,
               code: "boss-event",
-              reason: "보스 이벤트 중에는 합성할 수 없어요."
+              reason: "레이드 중에는 합성할 수 없어요."
             };
           }
           const MATERIALS = this.selectMergeMaterials();
@@ -13598,7 +13598,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.12";
+      PRODUCT_VERSION = "0.10.13";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20312,7 +20312,7 @@
   }
   function renderBossRewardBoxes(receipt) {
     const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? (receipt.source === "farm" ? 0.1 : FIRST_CLEAR ? 0.15 : 0.05), CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR2("bossRewardStage").textContent = receipt.stage ? (receipt.source === "raid" ? "승리 · " : "농장 보스 · ") + receipt.stage + "단계" : receipt.source === "farm" ? "농장 보스 승리" : "레이드 보스 승리";
+    DOLLAR2("bossRewardStage").textContent = receipt.stage ? (receipt.source === "raid" ? "승리 · " : "농장 레이드 · ") + receipt.stage + "단계" : receipt.source === "farm" ? "농장 레이드 승리" : "레이드 보스 승리";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
     DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · " + (FIRST_CLEAR ? "첫 클리어 " : "재도전 ") + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
@@ -20911,7 +20911,7 @@
     }
     const CANDIDATE = restore(reserved.farm);
     if (!saveImmediate(CANDIDATE)) {
-      FAIL3(Error(STORAGE.error || "농장 도전 예약을 저장하지 못했어요."));
+      FAIL3(Error(STORAGE.error || "농장 레이드 예약을 저장하지 못했어요."));
       return null;
     }
     replacePersonalGarden(STORAGE.world);
@@ -21192,7 +21192,7 @@
       }
       replacePersonalGarden(STORAGE.world);
       refreshStart();
-      DOLLAR2("saveNotice").textContent = "이전 도전을 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.";
+      DOLLAR2("saveNotice").textContent = "이전 레이드를 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.";
     } catch (error) {
       FAIL3(error);
     }
@@ -22082,7 +22082,7 @@
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText(
       "starter",
-      RAID ? `${W.units.length}마리 출전 중` : PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 휴식 중 · 회복을 기다려요" : worldCount >= W.capacity ? "농장이 가득 찼어요" : "번식으로 식구를 늘려요"
+      RAID ? `${W.units.length}마리 출전 중` : PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 잠자는 중 · 회복을 기다려요" : worldCount >= W.capacity ? "농장이 가득 찼어요" : "번식으로 식구를 늘려요"
     );
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText(
@@ -22092,10 +22092,10 @@
     const BOSS2 = display.boss, FARM_REWARD = !RAID && FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
     ) : null, STAGE_NAME = RAID && BOSS2.stage ? `${BOSS2.stage}단계` : "", REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
-    syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · 이벤트 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
+    syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · 레이드 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
-    syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "전사자 포함 최대 체력");
+    syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "쓰러진 병력 포함 최대 체력");
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
     syncAttribute("allyHealth", "aria-valuemax", armyMax);
     syncAttribute("bossHealth", "aria-valuenow", BOSS2.hp);
@@ -22103,7 +22103,7 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "농장으로 돌아가면 보상을 받아요"}` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배 · 농장에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 도전 종료 · 병력이 회복될 때까지 기다려요` : ""
+      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "농장으로 돌아가면 보상을 받아요"}` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배 · 농장에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 레이드 종료 · 병력이 회복하는 동안 잠자요` : ""
     );
     syncFlag(
       "battleOutcome",
