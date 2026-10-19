@@ -147,7 +147,17 @@ function persistBossRewardSettlement(world) {
     }
     return true;
 }
+const BOSS_REWARD_CHEST_TIERS = ['wood', 'iron', 'gold', 'magic', 'jade'];
+
+function bossRewardChestTier(receipt) {
+    if (receipt.source !== 'raid' || !receipt.stage) {
+        return 'wood';
+    }
+    return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
+}
+
 function renderBossRewardBoxes(receipt) {
+    DOLLAR('bossRewardChest').dataset.tier = bossRewardChestTier(receipt);
     const COUNT = receipt.boxCount || 0,
         REVEALED = receipt.revealedCount || 0,
         BOXES = receipt.boxes || [],
