@@ -417,7 +417,7 @@ const DIORAMA = class Diorama {
         }
         PRESENTATION.drawBoundary(this);
         if (sim2.scene === 'farm') {
-            this.drawWorkStation(sim2);
+            this.drawWorkStation(sim2, this.displayTimeMs);
         }
         const AREA = PRESENTATION.dangerVisible(sim2)
             ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea)
@@ -427,25 +427,24 @@ const DIORAMA = class Diorama {
             this.drawBossTelegraph(AREA);
         }
     }
-    drawWorkStation(sim2) {
-        const STATION = CONFIG.farm.work.station,
+    drawWorkStation(sim2, now) {
+        const NODE = CONFIG.farm.work.node,
             S = this.scale,
-            TOP = this.project(STATION.x, STATION.y, 0.45),
-            BASE = this.project(STATION.x, STATION.y, 0);
-        this.groundEllipse(STATION.x, STATION.y, 1.0, 0.7, '#54452433');
-        this.ellipse(BASE.x, BASE.y - 0.05 * S, 0.62 * S, 0.3 * S, '#a07a45');
-        this.ellipse(TOP.x, TOP.y, 0.7 * S, 0.34 * S, '#c79a5a');
-        this.ellipse(TOP.x, TOP.y - 0.03 * S, 0.58 * S, 0.26 * S, '#d9b274');
-        const COUNT = sim2.foodTaps?.remainder || 0;
-        for (let i = 0; i < 5; i++) {
-            this.ellipse(
-                TOP.x + (i - 2) * 0.2 * S,
-                TOP.y - 0.05 * S,
-                0.065 * S,
-                0.085 * S,
-                i < COUNT ? '#c2913e' : '#b8955f66',
-            );
+            REVISION = sim2.foodTaps?.revision || 0;
+        if (REVISION !== this.nodeRevision) {
+            this.nodeRevision = REVISION;
+            this.nodeHitAt = now;
         }
+        // Each chip from a worker squashes the rock for a moment.
+        const HIT = clamp(1 - (now - (this.nodeHitAt || -1e9)) / 160, 0, 1),
+            BASE = this.project(NODE.x, NODE.y, 0),
+            SQUASH = 1 + HIT * 0.1,
+            LIFT = 1 - HIT * 0.1;
+        this.groundEllipse(NODE.x, NODE.y, 1.05, 0.72, '#54452433');
+        this.ellipse(BASE.x, BASE.y - 0.28 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, '#8f8d80');
+        this.ellipse(BASE.x - 0.05 * S, BASE.y - 0.4 * S * LIFT, 0.62 * S * SQUASH, 0.4 * S * LIFT, '#a9a79a');
+        this.ellipse(BASE.x - 0.2 * S, BASE.y - 0.52 * S * LIFT, 0.26 * S, 0.14 * S, '#c8c6b9');
+        this.ellipse(BASE.x + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, '#7c7a6e');
     }
     addActor(presentation, source, depth, id, vector = false) {
         const INDEX = this.actors.length,

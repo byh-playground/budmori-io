@@ -7766,9 +7766,9 @@
             minBreeders: 2,
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
-            starterFood: 10,
+            starterFood: 0,
             starterUnits: 6,
-            station: { x: -5.5, y: -2.5 }
+            node: { x: -5.5, y: -2.5 }
           }),
           breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -9865,8 +9865,8 @@
           this.foodTaps.revision++;
           if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.warehouseFood++;
             this.foodTaps.produced++;
+            this.throwWorkFood();
           }
           this.notice("food-tap", {
             source,
@@ -9875,6 +9875,16 @@
           });
           this.markProgressChanged();
           return true;
+        }
+        // Workers chip food out of the rock; it flies from the rock to a random spot on the farm.
+        throwWorkFood() {
+          const NODE = CONFIG.farm.work.node;
+          this.spawnFood(
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.6,
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.5,
+            1,
+            { allowBossEvent: false, from: { x: NODE.x, y: NODE.y, z: 0.9 } }
+          );
         }
         scatterFoodAtRandomLocation() {
           if (this.scene !== "farm" || this.warehouseFood <= 0 || this.food.length >= 140) {
@@ -9968,8 +9978,8 @@
           for (const ID of [...NEXT].sort((a, b) => a - b)) {
             const RING = Math.floor(slotIndex / 6), ANGLE = slotIndex % 6 * (Math.PI / 3) + RING * 0.5, RADIUS = 1.5 + RING * 0.65;
             this._workSlots.set(ID, {
-              x: WORK.station.x + Math.cos(ANGLE) * RADIUS,
-              y: WORK.station.y + Math.sin(ANGLE) * RADIUS * 0.75
+              x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
+              y: WORK.node.y + Math.sin(ANGLE) * RADIUS * 0.75
             });
             slotIndex++;
           }
@@ -9977,7 +9987,7 @@
           this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
         }
         get warehouseFull() {
-          return this.warehouseFood >= CONFIG.farm.work.warehouseLimit;
+          return this.food.length >= 140;
         }
         get workerCount() {
           return this._workCount;
@@ -9994,7 +10004,7 @@
             this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
             this.refreshWorkers();
           }
-          if (this.warehouseFood >= CONFIG.farm.work.warehouseLimit) {
+          if (this.food.length >= 140) {
             return;
           }
           this.foodTaps.autoClock += Math.min(elapsed, 0.1) * this._workRate * 2.5;
@@ -10003,7 +10013,7 @@
             this.tapFood("auto");
           }
         }
-        spawnFood(x, y, count = 1, { allowBossEvent = true } = {}) {
+        spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
           let spawned = 0;
           for (let i = 0; i < count && this.food.length < 140; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5, RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
@@ -10017,8 +10027,8 @@
             if (allowBossEvent && this.tryStartFarmBossEvent(tx, ty)) {
               continue;
             }
-            const ANGLE = this.random() * Math.PI * 2, SX = Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7), SY = Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
-            const DURATION3 = 0.85 + this.random() * 0.25, Z = 0.3;
+            const ANGLE = this.random() * Math.PI * 2, SX = from ? from.x : Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7), SY = from ? from.y : Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
+            const DURATION3 = 0.85 + this.random() * 0.25, Z = from ? from.z : 0.3;
             const FOOD2 = {
               x: SX,
               y: SY,
@@ -13715,7 +13725,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.17";
+      PRODUCT_VERSION = "0.10.18";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16943,7 +16953,7 @@
       }
       PRESENTATION.drawBoundary(this);
       if (sim2.scene === "farm") {
-        this.drawWorkStation(sim2);
+        this.drawWorkStation(sim2, this.displayTimeMs);
       }
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
       this.bossTelegraph = AREA;
@@ -16951,22 +16961,18 @@
         this.drawBossTelegraph(AREA);
       }
     }
-    drawWorkStation(sim2) {
-      const STATION = CONFIG.farm.work.station, S = this.scale, TOP = this.project(STATION.x, STATION.y, 0.45), BASE = this.project(STATION.x, STATION.y, 0);
-      this.groundEllipse(STATION.x, STATION.y, 1, 0.7, "#54452433");
-      this.ellipse(BASE.x, BASE.y - 0.05 * S, 0.62 * S, 0.3 * S, "#a07a45");
-      this.ellipse(TOP.x, TOP.y, 0.7 * S, 0.34 * S, "#c79a5a");
-      this.ellipse(TOP.x, TOP.y - 0.03 * S, 0.58 * S, 0.26 * S, "#d9b274");
-      const COUNT = sim2.foodTaps?.remainder || 0;
-      for (let i = 0; i < 5; i++) {
-        this.ellipse(
-          TOP.x + (i - 2) * 0.2 * S,
-          TOP.y - 0.05 * S,
-          0.065 * S,
-          0.085 * S,
-          i < COUNT ? "#c2913e" : "#b8955f66"
-        );
+    drawWorkStation(sim2, now) {
+      const NODE = CONFIG.farm.work.node, S = this.scale, REVISION = sim2.foodTaps?.revision || 0;
+      if (REVISION !== this.nodeRevision) {
+        this.nodeRevision = REVISION;
+        this.nodeHitAt = now;
       }
+      const HIT = CLAMP2(1 - (now - (this.nodeHitAt || -1e9)) / 160, 0, 1), BASE = this.project(NODE.x, NODE.y, 0), SQUASH = 1 + HIT * 0.1, LIFT = 1 - HIT * 0.1;
+      this.groundEllipse(NODE.x, NODE.y, 1.05, 0.72, "#54452433");
+      this.ellipse(BASE.x, BASE.y - 0.28 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, "#8f8d80");
+      this.ellipse(BASE.x - 0.05 * S, BASE.y - 0.4 * S * LIFT, 0.62 * S * SQUASH, 0.4 * S * LIFT, "#a9a79a");
+      this.ellipse(BASE.x - 0.2 * S, BASE.y - 0.52 * S * LIFT, 0.26 * S, 0.14 * S, "#c8c6b9");
+      this.ellipse(BASE.x + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, "#7c7a6e");
     }
     addActor(presentation, source, depth, id, vector = false) {
       const INDEX = this.actors.length, ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
@@ -22316,7 +22322,7 @@
     const WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), PERCENT = Math.round(WORK_WORLD.workBasisPoints / 100);
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;
     if (WORK_WORLD.warehouseFull) {
-      note = "창고가 가득 찼어요 · 일꾼이 쉬어요";
+      note = "농장에 먹이가 가득해요 · 일꾼이 쉬어요";
       warn = true;
     } else if (WORKERS === 0) {
       note = "일꾼이 없어서 먹이가 안 만들어져요";
@@ -22336,9 +22342,9 @@
       BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.workPreset) === PERCENT));
       BUTTON.disabled = !!farmSortTransition;
     }
-    syncText("warehouseProgressLabel", `창고 생산 ${W.foodTaps.remainder}/5`);
+    syncText("warehouseProgressLabel", `바위 캐기 ${W.foodTaps.remainder}/5`);
     syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
-    syncAttribute("warehouseProgress", "aria-valuetext", `창고 생산 ${W.foodTaps.remainder}/5`);
+    syncAttribute("warehouseProgress", "aria-valuetext", `바위 캐기 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
     }

@@ -2275,7 +2275,7 @@ function sync(display, now, notices) {
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`,
         warn = false;
     if (WORK_WORLD.warehouseFull) {
-        note = '창고가 가득 찼어요 · 일꾼이 쉬어요';
+        note = '농장에 먹이가 가득해요 · 일꾼이 쉬어요';
         warn = true;
     } else if (WORKERS === 0) {
         note = '일꾼이 없어서 먹이가 안 만들어져요';
@@ -2295,9 +2295,9 @@ function sync(display, now, notices) {
         BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.workPreset) === PERCENT));
         BUTTON.disabled = !!farmSortTransition;
     }
-    syncText('warehouseProgressLabel', `창고 생산 ${W.foodTaps.remainder}/5`);
+    syncText('warehouseProgressLabel', `바위 캐기 ${W.foodTaps.remainder}/5`);
     syncAttribute('warehouseProgress', 'aria-valuenow', String(W.foodTaps.remainder));
-    syncAttribute('warehouseProgress', 'aria-valuetext', `창고 생산 ${W.foodTaps.remainder}/5`);
+    syncAttribute('warehouseProgress', 'aria-valuetext', `바위 캐기 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
     }

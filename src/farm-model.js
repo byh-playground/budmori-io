@@ -112,9 +112,9 @@ const CONFIG = Object.freeze({
             minBreeders: 2,
             refreshTicks: 20,
             defaultBasisPoints: 4000,
-            starterFood: 10,
+            starterFood: 0,
             starterUnits: 6,
-            station: { x: -5.5, y: -2.5 },
+            node: { x: -5.5, y: -2.5 },
         }),
         breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -2540,8 +2540,8 @@ const GARDEN = class Garden {
         this.foodTaps.revision++;
         if (this.foodTaps.remainder >= 5) {
             this.foodTaps.remainder -= 5;
-            this.warehouseFood++;
             this.foodTaps.produced++;
+            this.throwWorkFood();
         }
         this.notice('food-tap', {
             source,
@@ -2550,6 +2550,16 @@ const GARDEN = class Garden {
         });
         this.markProgressChanged();
         return true;
+    }
+    // Workers chip food out of the rock; it flies from the rock to a random spot on the farm.
+    throwWorkFood() {
+        const NODE = CONFIG.farm.work.node;
+        this.spawnFood(
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.6,
+            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.5,
+            1,
+            { allowBossEvent: false, from: { x: NODE.x, y: NODE.y, z: 0.9 } },
+        );
     }
     scatterFoodAtRandomLocation() {
         if (this.scene !== 'farm' || this.warehouseFood <= 0 || this.food.length >= 140) {
@@ -2660,8 +2670,8 @@ const GARDEN = class Garden {
                 ANGLE = (slotIndex % 6) * (Math.PI / 3) + RING * 0.5,
                 RADIUS = 1.5 + RING * 0.65;
             this._workSlots.set(ID, {
-                x: WORK.station.x + Math.cos(ANGLE) * RADIUS,
-                y: WORK.station.y + Math.sin(ANGLE) * RADIUS * 0.75,
+                x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
+                y: WORK.node.y + Math.sin(ANGLE) * RADIUS * 0.75,
             });
             slotIndex++;
         }
@@ -2669,7 +2679,7 @@ const GARDEN = class Garden {
         this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
     }
     get warehouseFull() {
-        return this.warehouseFood >= CONFIG.farm.work.warehouseLimit;
+        return this.food.length >= 140;
     }
     get workerCount() {
         return this._workCount;
@@ -2687,7 +2697,7 @@ const GARDEN = class Garden {
             this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
             this.refreshWorkers();
         }
-        if (this.warehouseFood >= CONFIG.farm.work.warehouseLimit) {
+        if (this.food.length >= 140) {
             return;
         }
         // One food is five taps and the clock holds half a second per tap, so saved progress stays valid.
@@ -2697,7 +2707,7 @@ const GARDEN = class Garden {
             this.tapFood('auto');
         }
     }
-    spawnFood(x, y, count = 1, { allowBossEvent = true } = {}) {
+    spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
         let spawned = 0;
         for (let i = 0; i < count && this.food.length < 140; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5,
@@ -2713,10 +2723,10 @@ const GARDEN = class Garden {
                 continue;
             }
             const ANGLE = this.random() * Math.PI * 2,
-                SX = Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7),
-                SY = Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
+                SX = from ? from.x : Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7),
+                SY = from ? from.y : Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
             const DURATION = 0.85 + this.random() * 0.25,
-                Z = 0.3;
+                Z = from ? from.z : 0.3;
             const FOOD = {
                 x: SX,
                 y: SY,
