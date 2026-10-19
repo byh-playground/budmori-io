@@ -118,7 +118,6 @@ const CONFIG = Object.freeze({
             maxAttackers: 3,
             defaultResourceBasisPoints: 3000,
             defaultBuildBasisPoints: 1500,
-            rushAttackers: 12,
             facilityMaxLevel: 5,
             levelCostStep: 0.75,
             levelHitsStep: 0.6,
