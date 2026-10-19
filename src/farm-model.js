@@ -119,24 +119,28 @@ const CONFIG = Object.freeze({
             defaultResourceBasisPoints: 3000,
             defaultBuildBasisPoints: 1500,
             rushAttackers: 12,
+            facilityMaxLevel: 5,
+            levelCostStep: 0.75,
+            levelHitsStep: 0.25,
+            levelEffectStep: 0.25,
             facilities: Object.freeze({
                 windmill: Object.freeze({
                     name: '풍차',
                     hits: 24,
                     cost: Object.freeze({ wood: 12, stone: 6 }),
-                    effect: '먹이 일꾼이 25% 빨라져요',
+                    effect: '레벨마다 먹이 일꾼이 25% 빨라져요',
                 }),
                 granary: Object.freeze({
                     name: '곡식 광',
                     hits: 18,
                     cost: Object.freeze({ wood: 16, stone: 0 }),
-                    effect: '곡식 더미가 1개 늘고 더미마다 먹이가 4개 늘어요',
+                    effect: '레벨마다 더미 먹이 +4, 홀수 레벨마다 더미 +1',
                 }),
                 rack: Object.freeze({
                     name: '연장 걸이',
                     hits: 18,
                     cost: Object.freeze({ wood: 8, stone: 8 }),
-                    effect: '자원 일꾼이 25% 빨라져요',
+                    effect: '레벨마다 자원 일꾼이 25% 빨라져요',
                 }),
             }),
             pileKinds: Object.freeze({
@@ -2616,42 +2620,63 @@ const GARDEN = class Garden {
     workSwingOf(id) {
         return this._swings.get(id) || null;
     }
+    facilityLevel(id) {
+        return this.facilities.find((facility) => facility.id === id)?.level ?? 0;
+    }
     facilityBuilt(id) {
-        return this.facilities.some((facility) => facility.id === id);
+        return this.facilityLevel(id) > 0;
+    }
+    // Cost and work of reaching `level`: every level costs more than the one before.
+    facilityCost(id, level) {
+        const WORK = CONFIG.farm.work,
+            SPEC = WORK.facilities[id],
+            FACTOR = 1 + WORK.levelCostStep * (level - 1);
+        return { wood: Math.ceil(SPEC.cost.wood * FACTOR), stone: Math.ceil(SPEC.cost.stone * FACTOR) };
+    }
+    facilityHits(id, level) {
+        const WORK = CONFIG.farm.work;
+        return Math.ceil(WORK.facilities[id].hits * (1 + WORK.levelHitsStep * (level - 1)));
+    }
+    // Speed multiplier a facility gives its workers.
+    facilityBoost(id) {
+        return 1 + CONFIG.farm.work.levelEffectStep * this.facilityLevel(id);
     }
     // Base spec of a pile kind, with the granary's bonus applied.
     pileSpec(kind) {
-        const BASE = CONFIG.farm.work.pileKinds[kind];
-        return kind === 'grain' && this.facilityBuilt('granary')
-            ? { count: BASE.count + 1, amount: BASE.amount + 4 }
-            : BASE;
+        const BASE = CONFIG.farm.work.pileKinds[kind],
+            LEVEL = kind === 'grain' ? this.facilityLevel('granary') : 0;
+        return LEVEL > 0 ? { count: BASE.count + Math.ceil(LEVEL / 2), amount: BASE.amount + 4 * LEVEL } : BASE;
     }
     get buildSite() {
         return activeSite(this);
     }
-    // The cost is paid when the work is done; it can only be started while the materials are on hand.
+    // Builds a facility, or raises it one level. The cost is paid when the work is done, but must be on hand to start.
     startBuild(id) {
-        const SPEC = CONFIG.farm.work.facilities[id];
-        if (
-            this.scene !== 'farm' ||
-            !SPEC ||
-            this.facilityBuilt(id) ||
-            activeSite(this) ||
-            this.materials.wood < SPEC.cost.wood ||
-            this.materials.stone < SPEC.cost.stone
-        ) {
+        const WORK = CONFIG.farm.work,
+            LEVEL = this.facilityLevel(id) + 1;
+        if (this.scene !== 'farm' || !WORK.facilities[id] || LEVEL > WORK.facilityMaxLevel || activeSite(this)) {
             return false;
         }
-        startSite(this, CONFIG, id);
+        const COST = this.facilityCost(id, LEVEL);
+        if (this.materials.wood < COST.wood || this.materials.stone < COST.stone) {
+            return false;
+        }
+        const EXISTING = this.facilities.find((facility) => facility.id === id);
+        startSite(this, CONFIG, id, LEVEL, this.facilityHits(id, LEVEL), EXISTING);
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         return true;
     }
     completeFacility(site) {
-        const SPEC = CONFIG.farm.work.facilities[site.facility];
-        this.materials.wood = Math.max(0, this.materials.wood - SPEC.cost.wood);
-        this.materials.stone = Math.max(0, this.materials.stone - SPEC.cost.stone);
-        this.facilities.push({ id: site.facility, x: site.x, y: site.y });
+        const COST = this.facilityCost(site.facility, site.level),
+            EXISTING = this.facilities.find((facility) => facility.id === site.facility);
+        this.materials.wood = Math.max(0, this.materials.wood - COST.wood);
+        this.materials.stone = Math.max(0, this.materials.stone - COST.stone);
+        if (EXISTING) {
+            EXISTING.level = site.level;
+        } else {
+            this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
+        }
         this.buildRush = false;
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
@@ -2773,8 +2798,8 @@ const GARDEN = class Garden {
         );
         // Facilities speed up their own kind of worker.
         const MULTIPLIER = {
-            food: this.facilityBuilt('windmill') ? 1.25 : 1,
-            resource: this.facilityBuilt('rack') ? 1.25 : 1,
+            food: this.facilityBoost('windmill'),
+            resource: this.facilityBoost('rack'),
         };
         let total = 0;
         for (const [ID, KIND] of this._workerKinds) {

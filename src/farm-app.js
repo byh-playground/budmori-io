@@ -1650,9 +1650,14 @@ DOLLAR('workHud').addEventListener('click', (e) => {
         applyWorkCuts(...BUTTON.dataset.workPreset.split(',').map(Number));
     }
 });
+function syncText2(element, text) {
+    if (element.textContent !== text) {
+        element.textContent = text;
+    }
+}
 function facilityLabel(id) {
     const SPEC = CONFIG.farm.work.facilities[id];
-    return `<span>${SPEC.name}<br /><small>${SPEC.effect}</small></span><small data-cost>목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ''}</small>`;
+    return `<span><b data-name>${SPEC.name}</b><br /><small>${SPEC.effect}</small></span><small data-cost></small>`;
 }
 for (const ID of Object.keys(CONFIG.farm.work.facilities)) {
     const BUTTON = document.createElement('button');
@@ -2345,7 +2350,7 @@ function sync(display, now, notices) {
     }
     if (SITE && WORKERS > 0) {
         const SPEC = CONFIG.farm.work.facilities[SITE.facility];
-        note = `${SPEC.name} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
+        note = `${SPEC.name} Lv.${SITE.level} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
     }
     for (const ID of WORK_CUT_IDS) {
         DOLLAR(ID).disabled = !!farmSortTransition;
@@ -2361,17 +2366,20 @@ function sync(display, now, notices) {
     for (const BUTTON of DOLLAR('facilityList').children) {
         const ID = BUTTON.dataset.facility,
             SPEC = CONFIG.farm.work.facilities[ID],
-            BUILT = WORK_WORLD.facilityBuilt(ID);
+            LEVEL = WORK_WORLD.facilityLevel(ID),
+            MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel,
+            COST = WORK_WORLD.facilityCost(ID, LEVEL + 1);
         BUTTON.disabled =
-            BUILT ||
-            !!SITE ||
-            WORK_WORLD.materials.wood < SPEC.cost.wood ||
-            WORK_WORLD.materials.stone < SPEC.cost.stone;
-        BUTTON.querySelector('[data-cost]').textContent = BUILT
-            ? '완성'
-            : SITE?.facility === ID
-              ? '짓는 중'
-              : `목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ''}`;
+            MAXED || !!SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
+        syncText2(BUTTON.querySelector('[data-name]'), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
+        syncText2(
+            BUTTON.querySelector('[data-cost]'),
+            MAXED
+                ? '최대 레벨'
+                : SITE?.facility === ID
+                  ? '짓는 중'
+                  : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ''}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ''}`,
+        );
     }
     syncText('workHudNote', note);
     syncText('workHudBreed', `번식 ${BREEDERS}`);

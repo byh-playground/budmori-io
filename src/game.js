@@ -499,18 +499,19 @@
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
   }
-  function startSite(world, config, facilityId) {
-    const SPEC = config.farm.work.facilities[facilityId], POSITION = pilePosition(world, config);
+  function startSite(world, config, facilityId, level, hits, existing) {
+    const POSITION = existing ? { x: existing.x, y: existing.y } : pilePosition(world, config);
     world._piles.push({
       id: ++world._pileId,
       kind: "site",
       facility: facilityId,
+      level,
       x: POSITION.x,
       y: POSITION.y,
       food: 1,
       maxFood: 1,
       done: 0,
-      need: SPEC.hits,
+      need: hits,
       stack: 0,
       hitRev: 0,
       big: false
@@ -8089,24 +8090,28 @@
             defaultResourceBasisPoints: 3e3,
             defaultBuildBasisPoints: 1500,
             rushAttackers: 12,
+            facilityMaxLevel: 5,
+            levelCostStep: 0.75,
+            levelHitsStep: 0.25,
+            levelEffectStep: 0.25,
             facilities: Object.freeze({
               windmill: Object.freeze({
                 name: "풍차",
                 hits: 24,
                 cost: Object.freeze({ wood: 12, stone: 6 }),
-                effect: "먹이 일꾼이 25% 빨라져요"
+                effect: "레벨마다 먹이 일꾼이 25% 빨라져요"
               }),
               granary: Object.freeze({
                 name: "곡식 광",
                 hits: 18,
                 cost: Object.freeze({ wood: 16, stone: 0 }),
-                effect: "곡식 더미가 1개 늘고 더미마다 먹이가 4개 늘어요"
+                effect: "레벨마다 더미 먹이 +4, 홀수 레벨마다 더미 +1"
               }),
               rack: Object.freeze({
                 name: "연장 걸이",
                 hits: 18,
                 cost: Object.freeze({ wood: 8, stone: 8 }),
-                effect: "자원 일꾼이 25% 빨라져요"
+                effect: "레벨마다 자원 일꾼이 25% 빨라져요"
               })
             }),
             pileKinds: Object.freeze({
@@ -10251,33 +10256,58 @@
         workSwingOf(id) {
           return this._swings.get(id) || null;
         }
+        facilityLevel(id) {
+          return this.facilities.find((facility) => facility.id === id)?.level ?? 0;
+        }
         facilityBuilt(id) {
-          return this.facilities.some((facility) => facility.id === id);
+          return this.facilityLevel(id) > 0;
+        }
+        // Cost and work of reaching `level`: every level costs more than the one before.
+        facilityCost(id, level) {
+          const WORK = CONFIG.farm.work, SPEC = WORK.facilities[id], FACTOR = 1 + WORK.levelCostStep * (level - 1);
+          return { wood: Math.ceil(SPEC.cost.wood * FACTOR), stone: Math.ceil(SPEC.cost.stone * FACTOR) };
+        }
+        facilityHits(id, level) {
+          const WORK = CONFIG.farm.work;
+          return Math.ceil(WORK.facilities[id].hits * (1 + WORK.levelHitsStep * (level - 1)));
+        }
+        // Speed multiplier a facility gives its workers.
+        facilityBoost(id) {
+          return 1 + CONFIG.farm.work.levelEffectStep * this.facilityLevel(id);
         }
         // Base spec of a pile kind, with the granary's bonus applied.
         pileSpec(kind) {
-          const BASE = CONFIG.farm.work.pileKinds[kind];
-          return kind === "grain" && this.facilityBuilt("granary") ? { count: BASE.count + 1, amount: BASE.amount + 4 } : BASE;
+          const BASE = CONFIG.farm.work.pileKinds[kind], LEVEL = kind === "grain" ? this.facilityLevel("granary") : 0;
+          return LEVEL > 0 ? { count: BASE.count + Math.ceil(LEVEL / 2), amount: BASE.amount + 4 * LEVEL } : BASE;
         }
         get buildSite() {
           return activeSite(this);
         }
-        // The cost is paid when the work is done; it can only be started while the materials are on hand.
+        // Builds a facility, or raises it one level. The cost is paid when the work is done, but must be on hand to start.
         startBuild(id) {
-          const SPEC = CONFIG.farm.work.facilities[id];
-          if (this.scene !== "farm" || !SPEC || this.facilityBuilt(id) || activeSite(this) || this.materials.wood < SPEC.cost.wood || this.materials.stone < SPEC.cost.stone) {
+          const WORK = CONFIG.farm.work, LEVEL = this.facilityLevel(id) + 1;
+          if (this.scene !== "farm" || !WORK.facilities[id] || LEVEL > WORK.facilityMaxLevel || activeSite(this)) {
             return false;
           }
-          startSite(this, CONFIG, id);
+          const COST = this.facilityCost(id, LEVEL);
+          if (this.materials.wood < COST.wood || this.materials.stone < COST.stone) {
+            return false;
+          }
+          const EXISTING = this.facilities.find((facility) => facility.id === id);
+          startSite(this, CONFIG, id, LEVEL, this.facilityHits(id, LEVEL), EXISTING);
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           return true;
         }
         completeFacility(site) {
-          const SPEC = CONFIG.farm.work.facilities[site.facility];
-          this.materials.wood = Math.max(0, this.materials.wood - SPEC.cost.wood);
-          this.materials.stone = Math.max(0, this.materials.stone - SPEC.cost.stone);
-          this.facilities.push({ id: site.facility, x: site.x, y: site.y });
+          const COST = this.facilityCost(site.facility, site.level), EXISTING = this.facilities.find((facility) => facility.id === site.facility);
+          this.materials.wood = Math.max(0, this.materials.wood - COST.wood);
+          this.materials.stone = Math.max(0, this.materials.stone - COST.stone);
+          if (EXISTING) {
+            EXISTING.level = site.level;
+          } else {
+            this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
+          }
           this.buildRush = false;
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
@@ -10366,8 +10396,8 @@
             ])
           );
           const MULTIPLIER = {
-            food: this.facilityBuilt("windmill") ? 1.25 : 1,
-            resource: this.facilityBuilt("rack") ? 1.25 : 1
+            food: this.facilityBoost("windmill"),
+            resource: this.facilityBoost("rack")
           };
           let total = 0;
           for (const [ID, KIND] of this._workerKinds) {
@@ -13709,7 +13739,12 @@
         remainder: world.foodTaps.remainder,
         produced: world.foodTaps.produced,
         materials: { wood: world.materials.wood, stone: world.materials.stone },
-        facilities: world.facilities.map((facility) => ({ id: facility.id, x: facility.x, y: facility.y })),
+        facilities: world.facilities.map((facility) => ({
+          id: facility.id,
+          x: facility.x,
+          y: facility.y,
+          level: facility.level
+        })),
         plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length }))
       },
       totals: {
@@ -13823,7 +13858,8 @@
       ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
       const SEEN = /* @__PURE__ */ new Set();
       for (const FACILITY of data.food.facilities) {
-        keys(FACILITY, ["id", "x", "y"]);
+        keys(FACILITY, ["id", "x", "y"], ["level"]);
+        ASSERT(FACILITY.level === void 0 || INTEGER(FACILITY.level, 1, CONFIG.farm.work.facilityMaxLevel));
         ASSERT(
           Object.hasOwn(CONFIG.farm.work.facilities, FACILITY.id) && !SEEN.has(FACILITY.id) && Number.isFinite(FACILITY.x) && Number.isFinite(FACILITY.y)
         );
@@ -14157,7 +14193,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.30";
+      PRODUCT_VERSION = "0.10.31";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17528,8 +17564,12 @@
       this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, "#f6d36b");
     }
     drawFacilities(sim2) {
+      const UPGRADING = sim2.buildSite?.facility;
       for (const FACILITY of sim2.facilities || []) {
-        const BASE = this.project(FACILITY.x, FACILITY.y, 0), S = this.scale * 2.1, X = BASE.x;
+        if (FACILITY.id === UPGRADING) {
+          continue;
+        }
+        const BASE = this.project(FACILITY.x, FACILITY.y, 0), S = this.scale * (1.9 + 0.12 * FACILITY.level), X = BASE.x;
         this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, "#54452433");
         if (FACILITY.id === "windmill") {
           const SPIN = (this.displayTimeMs || 0) * 2e-3;
@@ -17556,6 +17596,15 @@
           this.ellipse(X, BASE.y - 0.8 * S, 0.62 * S, 0.07 * S, "#9a7442");
           this.ellipse(X - 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, "#8f8d80", 0.4);
           this.ellipse(X + 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, "#7fa77a", -0.4);
+        }
+        for (let pip = 0; pip < FACILITY.level; pip++) {
+          this.ellipse(
+            X + (pip - (FACILITY.level - 1) / 2) * 0.22 * S,
+            BASE.y + 0.18 * S,
+            0.07 * S,
+            0.07 * S,
+            "#f6d36b"
+          );
         }
       }
     }
@@ -22374,9 +22423,14 @@
       applyWorkCuts(...BUTTON.dataset.workPreset.split(",").map(Number));
     }
   });
+  function syncText2(element, text) {
+    if (element.textContent !== text) {
+      element.textContent = text;
+    }
+  }
   function facilityLabel(id) {
     const SPEC = CONFIG.farm.work.facilities[id];
-    return `<span>${SPEC.name}<br /><small>${SPEC.effect}</small></span><small data-cost>목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ""}</small>`;
+    return `<span><b data-name>${SPEC.name}</b><br /><small>${SPEC.effect}</small></span><small data-cost></small>`;
   }
   for (const ID of Object.keys(CONFIG.farm.work.facilities)) {
     const BUTTON = document.createElement("button");
@@ -22973,7 +23027,7 @@
     }
     if (SITE && WORKERS > 0) {
       const SPEC = CONFIG.farm.work.facilities[SITE.facility];
-      note = `${SPEC.name} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? " · 전원 건설" : ""}`;
+      note = `${SPEC.name} Lv.${SITE.level} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? " · 전원 건설" : ""}`;
     }
     for (const ID of WORK_CUT_IDS) {
       DOLLAR2(ID).disabled = !!farmSortTransition;
@@ -22987,9 +23041,13 @@
     DOLLAR2("buildRush").setAttribute("aria-pressed", String(WORK_WORLD.buildRush));
     syncText("buildRush", WORK_WORLD.buildRush ? "전원 건설 중 (끄기)" : "전원 건설");
     for (const BUTTON of DOLLAR2("facilityList").children) {
-      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], BUILT = WORK_WORLD.facilityBuilt(ID);
-      BUTTON.disabled = BUILT || !!SITE || WORK_WORLD.materials.wood < SPEC.cost.wood || WORK_WORLD.materials.stone < SPEC.cost.stone;
-      BUTTON.querySelector("[data-cost]").textContent = BUILT ? "완성" : SITE?.facility === ID ? "짓는 중" : `목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ""}`;
+      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], LEVEL = WORK_WORLD.facilityLevel(ID), MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel, COST = WORK_WORLD.facilityCost(ID, LEVEL + 1);
+      BUTTON.disabled = MAXED || !!SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
+      syncText2(BUTTON.querySelector("[data-name]"), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
+      syncText2(
+        BUTTON.querySelector("[data-cost]"),
+        MAXED ? "최대 레벨" : SITE?.facility === ID ? "짓는 중" : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ""}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ""}`
+      );
     }
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
