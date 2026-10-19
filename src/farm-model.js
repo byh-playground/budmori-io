@@ -3815,7 +3815,7 @@ const GARDEN = class Garden {
             return {
                 available: false,
                 code: 'boss-event',
-                reason: '보스 이벤트 중에는 합성할 수 없어요.',
+                reason: '레이드 중에는 합성할 수 없어요.',
             };
         }
         const MATERIALS = this.selectMergeMaterials();

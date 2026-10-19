@@ -160,9 +160,9 @@ function renderBossRewardBoxes(receipt) {
         CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0),
         PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
     DOLLAR('bossRewardStage').textContent = receipt.stage
-        ? (receipt.source === 'raid' ? '승리 · ' : '농장 보스 · ') + receipt.stage + '단계'
+        ? (receipt.source === 'raid' ? '승리 · ' : '농장 레이드 · ') + receipt.stage + '단계'
         : receipt.source === 'farm'
-          ? '농장 보스 승리'
+          ? '농장 레이드 승리'
           : '레이드 보스 승리';
     DOLLAR('bossRewardRibbon').hidden = !FIRST_CLEAR;
     DOLLAR('bossRewardTitle').textContent = receipt.status === 'calculating' ? '보상 준비 중' : '승리 보상';
@@ -849,7 +849,7 @@ function reservePersonalRaidRun(sessionId = null) {
     }
     const CANDIDATE = restore(reserved.farm);
     if (!saveImmediate(CANDIDATE)) {
-        FAIL(Error(STORAGE.error || '농장 도전 예약을 저장하지 못했어요.'));
+        FAIL(Error(STORAGE.error || '농장 레이드 예약을 저장하지 못했어요.'));
         return null;
     }
     replacePersonalGarden(STORAGE.world);
@@ -1156,7 +1156,7 @@ DOLLAR('abortRaidRun').onclick = () => {
         }
         replacePersonalGarden(STORAGE.world);
         refreshStart();
-        DOLLAR('saveNotice').textContent = '이전 도전을 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.';
+        DOLLAR('saveNotice').textContent = '이전 레이드를 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.';
     } catch (error) {
         FAIL(error);
     }
@@ -2145,7 +2145,7 @@ function sync(display, now, notices) {
             : PENDING_REWARD
               ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요`
               : !HAS_READY_TROOPS
-                ? '모두 휴식 중 · 회복을 기다려요'
+                ? '모두 잠자는 중 · 회복을 기다려요'
                 : worldCount >= W.capacity
                   ? '농장이 가득 찼어요'
                   : '번식으로 식구를 늘려요',
@@ -2165,10 +2165,10 @@ function sync(display, now, notices) {
         STAGE_NAME = RAID && BOSS.stage ? `${BOSS.stage}단계` : '',
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 이벤트 ${BOSS.stage}단계` : ENCOUNTER_NAME);
+    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 레이드 ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
-    syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '전사자 포함 최대 체력');
+    syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '쓰러진 병력 포함 최대 체력');
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
     syncAttribute('allyHealth', 'aria-valuemax', armyMax);
     syncAttribute('bossHealth', 'aria-valuenow', BOSS.hp);
@@ -2189,7 +2189,7 @@ function sync(display, now, notices) {
                     ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                     : `${ENCOUNTER_NAME} 격파`
               : BATTLE_OUTCOME === 'defeat'
-                ? `${ENCOUNTER_NAME} 도전 종료 · 병력이 회복될 때까지 기다려요`
+                ? `${ENCOUNTER_NAME} 레이드 종료 · 병력이 회복하는 동안 잠자요`
                 : '',
     );
     syncFlag(
