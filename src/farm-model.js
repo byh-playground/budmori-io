@@ -1,4 +1,4 @@
-import { activeSite, assignWorkers, resetWork, startSite, stepWork, workOrder } from './farm-work.js';
+import { activeSite, assignWorkers, resetWork, restoreSite, startSite, stepWork, workOrder } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
 import { RaidDeploymentCards } from './raid-deployment-cards.js';
@@ -121,24 +121,28 @@ const CONFIG = Object.freeze({
             rushAttackers: 12,
             facilityMaxLevel: 5,
             levelCostStep: 0.75,
-            levelHitsStep: 0.25,
+            levelHitsStep: 0.6,
+            projects: Object.freeze({
+                expand: Object.freeze({ name: '농장 확장', hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
+                plot: Object.freeze({ name: '새 농장', hits: 300, cost: Object.freeze({ wood: 40, stone: 40 }) }),
+            }),
             levelEffectStep: 0.25,
             facilities: Object.freeze({
                 windmill: Object.freeze({
                     name: '풍차',
-                    hits: 24,
+                    hits: 120,
                     cost: Object.freeze({ wood: 12, stone: 6 }),
                     effect: '레벨마다 먹이 일꾼이 25% 빨라져요',
                 }),
                 granary: Object.freeze({
                     name: '곡식 광',
-                    hits: 18,
+                    hits: 100,
                     cost: Object.freeze({ wood: 16, stone: 0 }),
                     effect: '레벨마다 더미 먹이 +4, 홀수 레벨마다 더미 +1',
                 }),
                 rack: Object.freeze({
                     name: '연장 걸이',
-                    hits: 18,
+                    hits: 100,
                     cost: Object.freeze({ wood: 8, stone: 8 }),
                     effect: '레벨마다 자원 일꾼이 25% 빨라져요',
                 }),
@@ -1642,16 +1646,19 @@ const GARDEN = class Garden {
         ) {
             return { ok: false, reason: this.playerProgression.availablePoints < 2 ? 'insufficient-points' : 'locked' };
         }
+        this.playerProgression.availablePoints -= 2;
+        return { ok: true, plotId: this._addFarmPlot() };
+    }
+    _addFarmPlot() {
         const STATE = this.playerProgression.farmPlots,
             ID = `plot-${STATE.nextPlotNumber}`,
             PLOT_STATE = { id: ID, capacityLevel: 0 };
         STATE.plots.push(PLOT_STATE);
         STATE.nextPlotNumber++;
-        this.playerProgression.availablePoints -= 2;
         this.farmPlots.set(ID, new FarmPlot(PLOT_STATE));
         this.restoreReservePopulation();
         this.markProgressChanged();
-        return { ok: true, plotId: ID };
+        return ID;
     }
     expandFarmPlot(plotId = this.activePlotId) {
         const PLOT = this.farmPlots.get(plotId);
@@ -2626,17 +2633,6 @@ const GARDEN = class Garden {
     facilityBuilt(id) {
         return this.facilityLevel(id) > 0;
     }
-    // Cost and work of reaching `level`: every level costs more than the one before.
-    facilityCost(id, level) {
-        const WORK = CONFIG.farm.work,
-            SPEC = WORK.facilities[id],
-            FACTOR = 1 + WORK.levelCostStep * (level - 1);
-        return { wood: Math.ceil(SPEC.cost.wood * FACTOR), stone: Math.ceil(SPEC.cost.stone * FACTOR) };
-    }
-    facilityHits(id, level) {
-        const WORK = CONFIG.farm.work;
-        return Math.ceil(WORK.facilities[id].hits * (1 + WORK.levelHitsStep * (level - 1)));
-    }
     // Speed multiplier a facility gives its workers.
     facilityBoost(id) {
         return 1 + CONFIG.farm.work.levelEffectStep * this.facilityLevel(id);
@@ -2650,32 +2646,88 @@ const GARDEN = class Garden {
     get buildSite() {
         return activeSite(this);
     }
-    // Builds a facility, or raises it one level. The cost is paid when the work is done, but must be on hand to start.
-    startBuild(id) {
+    // What the next construction of a kind is: facilities level up, a farm grows, or a new farm opens.
+    projectInfo(kind) {
         const WORK = CONFIG.farm.work,
-            LEVEL = this.facilityLevel(id) + 1;
-        if (this.scene !== 'farm' || !WORK.facilities[id] || LEVEL > WORK.facilityMaxLevel || activeSite(this)) {
+            FACILITY = WORK.facilities[kind],
+            PROJECT = WORK.projects[kind];
+        let level;
+        if (FACILITY) {
+            level = this.facilityLevel(kind) + 1;
+            if (level > WORK.facilityMaxLevel) {
+                return null;
+            }
+        } else if (kind === 'expand') {
+            if (!this.activeFarmPlot?.canExpand()) {
+                return null;
+            }
+            level = this.activeFarmPlot.capacityLevel + 1;
+        } else if (kind === 'plot') {
+            level = this.playerProgression.farmPlots.plots.length;
+        } else {
+            return null;
+        }
+        const SPEC = FACILITY || PROJECT,
+            COST_FACTOR = 1 + WORK.levelCostStep * (level - 1),
+            HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1);
+        return {
+            name: SPEC.name,
+            level,
+            cost: { wood: Math.ceil(SPEC.cost.wood * COST_FACTOR), stone: Math.ceil(SPEC.cost.stone * COST_FACTOR) },
+            hits: Math.ceil(SPEC.hits * HITS_FACTOR),
+        };
+    }
+    restoreBuildSite(data) {
+        restoreSite(this, data);
+    }
+    siteName(site) {
+        const SPEC = CONFIG.farm.work.facilities[site.facility] || CONFIG.farm.work.projects[site.facility];
+        return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
+    }
+    // Starts a construction. The materials are paid up front; the work itself is done by the units.
+    startBuild(kind) {
+        const INFO = this.projectInfo(kind);
+        if (
+            this.scene !== 'farm' ||
+            !INFO ||
+            activeSite(this) ||
+            this.running ||
+            this.farmBossEvent?.phase !== 'idle' ||
+            this.materials.wood < INFO.cost.wood ||
+            this.materials.stone < INFO.cost.stone
+        ) {
             return false;
         }
-        const COST = this.facilityCost(id, LEVEL);
-        if (this.materials.wood < COST.wood || this.materials.stone < COST.stone) {
-            return false;
-        }
-        const EXISTING = this.facilities.find((facility) => facility.id === id);
-        startSite(this, CONFIG, id, LEVEL, this.facilityHits(id, LEVEL), EXISTING);
+        this.materials.wood -= INFO.cost.wood;
+        this.materials.stone -= INFO.cost.stone;
+        const EXISTING = this.facilities.find((facility) => facility.id === kind);
+        startSite(
+            this,
+            CONFIG,
+            kind,
+            INFO.level,
+            INFO.hits,
+            EXISTING,
+            kind === 'expand' ? this.activePlotId : undefined,
+        );
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
+        this.markProgressChanged();
         return true;
     }
     completeFacility(site) {
-        const COST = this.facilityCost(site.facility, site.level),
-            EXISTING = this.facilities.find((facility) => facility.id === site.facility);
-        this.materials.wood = Math.max(0, this.materials.wood - COST.wood);
-        this.materials.stone = Math.max(0, this.materials.stone - COST.stone);
-        if (EXISTING) {
-            EXISTING.level = site.level;
+        if (site.facility === 'expand') {
+            this.farmPlots.get(site.plotId)?.expand();
+            this.restoreReservePopulation();
+        } else if (site.facility === 'plot') {
+            this._addFarmPlot();
         } else {
-            this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
+            const EXISTING = this.facilities.find((facility) => facility.id === site.facility);
+            if (EXISTING) {
+                EXISTING.level = site.level;
+            } else {
+                this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
+            }
         }
         this.buildRush = false;
         this._nextWorkerRefreshTick = 0;
@@ -2786,7 +2838,12 @@ const GARDEN = class Garden {
         // Lowest ids work the grain piles, then the material gatherers, then the builders. Stable while the roster is.
         const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b),
             TOTAL = SORTED_WORKERS.length,
-            BUILDERS = this.buildRush ? TOTAL : Math.round((TOTAL * this.buildBasisPoints) / 10000),
+            BUILDERS = this.buildRush
+                ? TOTAL
+                : Math.min(
+                      TOTAL,
+                      Math.max(activeSite(this) ? 1 : 0, Math.round((TOTAL * this.buildBasisPoints) / 10000)),
+                  ),
             GATHERERS = this.buildRush
                 ? 0
                 : Math.min(TOTAL - BUILDERS, Math.round((TOTAL * this.resourceBasisPoints) / 10000));

@@ -170,6 +170,12 @@ export const FARM_SNAPSHOT_SHAPE = {
         processedBossKillReceipts: [],
     },
     starter: 0,
+    materials: {
+        wood: 0,
+        stone: 0,
+    },
+    facilities: [],
+    savedSite: null,
     foodTaps: {
         remainder: 0,
         autoClock: 0,
@@ -393,6 +399,8 @@ const CORN_GROUP = FIELDS(
     { attachments: [CORN_ATTACHMENT] },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
+    facilities: [FIELDS('id x y level')],
+    savedSite: JSON_PAYLOAD,
     farmPlots: [FIELDS('id', { food: [FIELDS('x y z vx vy vz seed phase tx ty')] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
@@ -487,5 +495,22 @@ export function snapshot(world) {
                   ...(world.scene === 'farm' && world.unitCollection ? { units: world.unitCollection.items } : {}),
               }
             : world;
-    return copyFields(SOURCE, SNAPSHOT_FIELDS);
+    const SITE = world?.buildSite;
+    return copyFields(
+        {
+            ...SOURCE,
+            savedSite: SITE
+                ? {
+                      facility: SITE.facility,
+                      level: SITE.level,
+                      x: SITE.x,
+                      y: SITE.y,
+                      done: SITE.done,
+                      need: SITE.need,
+                      ...(SITE.plotId === undefined ? {} : { plotId: SITE.plotId }),
+                  }
+                : null,
+        },
+        SNAPSHOT_FIELDS,
+    );
 }

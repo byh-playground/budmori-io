@@ -11,7 +11,7 @@ export function restore(raw) {
     raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new Garden();
-    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, ...WORLD_DATA } = structuredClone(raw);
+    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, savedSite: SAVED_SITE, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
     G.farmPlots = new Map(
@@ -41,6 +41,9 @@ export function restore(raw) {
             return U;
         }),
     );
+    if (SAVED_SITE) {
+        G.restoreBuildSite(SAVED_SITE);
+    }
     G.reconcileMateReservations();
     return G;
 }

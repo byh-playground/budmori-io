@@ -499,13 +499,14 @@
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
   }
-  function startSite(world, config, facilityId, level, hits, existing) {
+  function startSite(world, config, facilityId, level, hits, existing, plotId) {
     const POSITION = existing ? { x: existing.x, y: existing.y } : pilePosition(world, config);
     world._piles.push({
       id: ++world._pileId,
       kind: "site",
       facility: facilityId,
       level,
+      plotId,
       x: POSITION.x,
       y: POSITION.y,
       food: 1,
@@ -518,6 +519,24 @@
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
     assignWorkers(world, config);
+  }
+  function restoreSite(world, data) {
+    world._piles.push({
+      id: ++world._pileId,
+      kind: "site",
+      facility: data.facility,
+      level: data.level,
+      plotId: data.plotId,
+      x: data.x,
+      y: data.y,
+      food: 1,
+      maxFood: 1,
+      done: data.done,
+      need: data.need,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
   }
   function activeSite(world) {
     return world._piles.find((pile) => pile.kind === "site") || null;
@@ -603,6 +622,9 @@
   function impactSite(world, config, pile) {
     pile.done++;
     pile.hitRev++;
+    if (pile.done % 10 === 0) {
+      world.markProgressChanged();
+    }
     const COMPLETE = pile.done >= pile.need;
     world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
     if (COMPLETE) {
@@ -8092,24 +8114,28 @@
             rushAttackers: 12,
             facilityMaxLevel: 5,
             levelCostStep: 0.75,
-            levelHitsStep: 0.25,
+            levelHitsStep: 0.6,
+            projects: Object.freeze({
+              expand: Object.freeze({ name: "농장 확장", hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
+              plot: Object.freeze({ name: "새 농장", hits: 300, cost: Object.freeze({ wood: 40, stone: 40 }) })
+            }),
             levelEffectStep: 0.25,
             facilities: Object.freeze({
               windmill: Object.freeze({
                 name: "풍차",
-                hits: 24,
+                hits: 120,
                 cost: Object.freeze({ wood: 12, stone: 6 }),
                 effect: "레벨마다 먹이 일꾼이 25% 빨라져요"
               }),
               granary: Object.freeze({
                 name: "곡식 광",
-                hits: 18,
+                hits: 100,
                 cost: Object.freeze({ wood: 16, stone: 0 }),
                 effect: "레벨마다 더미 먹이 +4, 홀수 레벨마다 더미 +1"
               }),
               rack: Object.freeze({
                 name: "연장 걸이",
-                hits: 18,
+                hits: 100,
                 cost: Object.freeze({ wood: 8, stone: 8 }),
                 effect: "레벨마다 자원 일꾼이 25% 빨라져요"
               })
@@ -9449,14 +9475,17 @@
           if (this.scene !== "farm" || this.running || this.farmBossEvent?.phase !== "idle" || this.playerProgression.availablePoints < 2) {
             return { ok: false, reason: this.playerProgression.availablePoints < 2 ? "insufficient-points" : "locked" };
           }
+          this.playerProgression.availablePoints -= 2;
+          return { ok: true, plotId: this._addFarmPlot() };
+        }
+        _addFarmPlot() {
           const STATE = this.playerProgression.farmPlots, ID = `plot-${STATE.nextPlotNumber}`, PLOT_STATE = { id: ID, capacityLevel: 0 };
           STATE.plots.push(PLOT_STATE);
           STATE.nextPlotNumber++;
-          this.playerProgression.availablePoints -= 2;
           this.farmPlots.set(ID, new FarmPlot(PLOT_STATE));
           this.restoreReservePopulation();
           this.markProgressChanged();
-          return { ok: true, plotId: ID };
+          return ID;
         }
         expandFarmPlot(plotId = this.activePlotId) {
           const PLOT = this.farmPlots.get(plotId);
@@ -10262,15 +10291,6 @@
         facilityBuilt(id) {
           return this.facilityLevel(id) > 0;
         }
-        // Cost and work of reaching `level`: every level costs more than the one before.
-        facilityCost(id, level) {
-          const WORK = CONFIG.farm.work, SPEC = WORK.facilities[id], FACTOR = 1 + WORK.levelCostStep * (level - 1);
-          return { wood: Math.ceil(SPEC.cost.wood * FACTOR), stone: Math.ceil(SPEC.cost.stone * FACTOR) };
-        }
-        facilityHits(id, level) {
-          const WORK = CONFIG.farm.work;
-          return Math.ceil(WORK.facilities[id].hits * (1 + WORK.levelHitsStep * (level - 1)));
-        }
         // Speed multiplier a facility gives its workers.
         facilityBoost(id) {
           return 1 + CONFIG.farm.work.levelEffectStep * this.facilityLevel(id);
@@ -10283,30 +10303,76 @@
         get buildSite() {
           return activeSite(this);
         }
-        // Builds a facility, or raises it one level. The cost is paid when the work is done, but must be on hand to start.
-        startBuild(id) {
-          const WORK = CONFIG.farm.work, LEVEL = this.facilityLevel(id) + 1;
-          if (this.scene !== "farm" || !WORK.facilities[id] || LEVEL > WORK.facilityMaxLevel || activeSite(this)) {
+        // What the next construction of a kind is: facilities level up, a farm grows, or a new farm opens.
+        projectInfo(kind) {
+          const WORK = CONFIG.farm.work, FACILITY = WORK.facilities[kind], PROJECT = WORK.projects[kind];
+          let level;
+          if (FACILITY) {
+            level = this.facilityLevel(kind) + 1;
+            if (level > WORK.facilityMaxLevel) {
+              return null;
+            }
+          } else if (kind === "expand") {
+            if (!this.activeFarmPlot?.canExpand()) {
+              return null;
+            }
+            level = this.activeFarmPlot.capacityLevel + 1;
+          } else if (kind === "plot") {
+            level = this.playerProgression.farmPlots.plots.length;
+          } else {
+            return null;
+          }
+          const SPEC = FACILITY || PROJECT, COST_FACTOR = 1 + WORK.levelCostStep * (level - 1), HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1);
+          return {
+            name: SPEC.name,
+            level,
+            cost: { wood: Math.ceil(SPEC.cost.wood * COST_FACTOR), stone: Math.ceil(SPEC.cost.stone * COST_FACTOR) },
+            hits: Math.ceil(SPEC.hits * HITS_FACTOR)
+          };
+        }
+        restoreBuildSite(data) {
+          restoreSite(this, data);
+        }
+        siteName(site) {
+          const SPEC = CONFIG.farm.work.facilities[site.facility] || CONFIG.farm.work.projects[site.facility];
+          return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
+        }
+        // Starts a construction. The materials are paid up front; the work itself is done by the units.
+        startBuild(kind) {
+          const INFO = this.projectInfo(kind);
+          if (this.scene !== "farm" || !INFO || activeSite(this) || this.running || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
             return false;
           }
-          const COST = this.facilityCost(id, LEVEL);
-          if (this.materials.wood < COST.wood || this.materials.stone < COST.stone) {
-            return false;
-          }
-          const EXISTING = this.facilities.find((facility) => facility.id === id);
-          startSite(this, CONFIG, id, LEVEL, this.facilityHits(id, LEVEL), EXISTING);
+          this.materials.wood -= INFO.cost.wood;
+          this.materials.stone -= INFO.cost.stone;
+          const EXISTING = this.facilities.find((facility) => facility.id === kind);
+          startSite(
+            this,
+            CONFIG,
+            kind,
+            INFO.level,
+            INFO.hits,
+            EXISTING,
+            kind === "expand" ? this.activePlotId : void 0
+          );
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
+          this.markProgressChanged();
           return true;
         }
         completeFacility(site) {
-          const COST = this.facilityCost(site.facility, site.level), EXISTING = this.facilities.find((facility) => facility.id === site.facility);
-          this.materials.wood = Math.max(0, this.materials.wood - COST.wood);
-          this.materials.stone = Math.max(0, this.materials.stone - COST.stone);
-          if (EXISTING) {
-            EXISTING.level = site.level;
+          if (site.facility === "expand") {
+            this.farmPlots.get(site.plotId)?.expand();
+            this.restoreReservePopulation();
+          } else if (site.facility === "plot") {
+            this._addFarmPlot();
           } else {
-            this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
+            const EXISTING = this.facilities.find((facility) => facility.id === site.facility);
+            if (EXISTING) {
+              EXISTING.level = site.level;
+            } else {
+              this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
+            }
           }
           this.buildRush = false;
           this._nextWorkerRefreshTick = 0;
@@ -10388,7 +10454,10 @@
           }
           this._workerIds = NEXT;
           this._workerRates = RATES;
-          const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b), TOTAL = SORTED_WORKERS.length, BUILDERS = this.buildRush ? TOTAL : Math.round(TOTAL * this.buildBasisPoints / 1e4), GATHERERS = this.buildRush ? 0 : Math.min(TOTAL - BUILDERS, Math.round(TOTAL * this.resourceBasisPoints / 1e4));
+          const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b), TOTAL = SORTED_WORKERS.length, BUILDERS = this.buildRush ? TOTAL : Math.min(
+            TOTAL,
+            Math.max(activeSite(this) ? 1 : 0, Math.round(TOTAL * this.buildBasisPoints / 1e4))
+          ), GATHERERS = this.buildRush ? 0 : Math.min(TOTAL - BUILDERS, Math.round(TOTAL * this.resourceBasisPoints / 1e4));
           this._workerKinds = new Map(
             SORTED_WORKERS.map((id, index) => [
               id,
@@ -13621,6 +13690,20 @@
   });
 
   // src/farm-progress.js
+  function copySite(site) {
+    const COPY = {
+      facility: site.facility,
+      level: site.level,
+      x: site.x,
+      y: site.y,
+      done: site.done,
+      need: site.need
+    };
+    if (site.plotId !== void 0) {
+      COPY.plotId = site.plotId;
+    }
+    return COPY;
+  }
   function keys(value, required, optional = []) {
     ASSERT(value && typeof value === "object" && !Array.isArray(value));
     ASSERT(required.every((key) => Object.hasOwn(value, key)));
@@ -13727,6 +13810,7 @@
       GROUPS.set(KEY2, ROW);
     }
     const ROSTER2 = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row), STAGE = world.farmBossProgress;
+    const SITE = world.buildSite;
     return {
       seed: world.seed,
       rngState: world.rng.state,
@@ -13745,7 +13829,8 @@
           y: facility.y,
           level: facility.level
         })),
-        plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length }))
+        plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
+        ...SITE ? { site: copySite(SITE) } : {}
       },
       totals: {
         births: world.metrics.births,
@@ -13853,7 +13938,14 @@
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"], ["materials", "facilities"]);
+    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"], ["materials", "facilities", "site"]);
+    if (data.food.site !== void 0) {
+      const SITE = data.food.site;
+      keys(SITE, ["facility", "level", "x", "y", "done", "need"], ["plotId"]);
+      ASSERT(
+        (Object.hasOwn(CONFIG.farm.work.facilities, SITE.facility) || Object.hasOwn(CONFIG.farm.work.projects, SITE.facility)) && INTEGER(SITE.level, 1, 99) && INTEGER(SITE.need, 1, 1e5) && INTEGER(SITE.done, 0, SITE.need - 1) && Number.isFinite(SITE.x) && Number.isFinite(SITE.y) && (SITE.plotId === void 0 || typeof SITE.plotId === "string")
+      );
+    }
     if (data.food.facilities !== void 0) {
       ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
       const SEEN = /* @__PURE__ */ new Set();
@@ -14061,6 +14153,9 @@
       x: facility.x,
       y: facility.y
     }));
+    if (data.food.site) {
+      WORLD.restoreBuildSite(data.food.site);
+    }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
@@ -14193,7 +14288,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.31";
+      PRODUCT_VERSION = "0.10.32";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19278,6 +19373,12 @@
       processedBossKillReceipts: []
     },
     starter: 0,
+    materials: {
+      wood: 0,
+      stone: 0
+    },
+    facilities: [],
+    savedSite: null,
     foodTaps: {
       remainder: 0,
       autoClock: 0,
@@ -19489,6 +19590,8 @@
     { attachments: [CORN_ATTACHMENT] }
   );
   var SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
+    facilities: [FIELDS("id x y level")],
+    savedSite: JSON_PAYLOAD,
     farmPlots: [FIELDS("id", { food: [FIELDS("x y z vx vy vz seed phase tx ty")] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT2],
@@ -19575,7 +19678,22 @@
       farmPlots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, food: plot.food })),
       ...world.scene === "farm" && world.unitCollection ? { units: world.unitCollection.items } : {}
     } : world;
-    return copyFields(SOURCE, SNAPSHOT_FIELDS);
+    const SITE = world?.buildSite;
+    return copyFields(
+      {
+        ...SOURCE,
+        savedSite: SITE ? {
+          facility: SITE.facility,
+          level: SITE.level,
+          x: SITE.x,
+          y: SITE.y,
+          done: SITE.done,
+          need: SITE.need,
+          ...SITE.plotId === void 0 ? {} : { plotId: SITE.plotId }
+        } : null
+      },
+      SNAPSHOT_FIELDS
+    );
   }
 
   // src/farm-snapshot-validation.js
@@ -19669,6 +19787,11 @@
     finiteTree(raw);
     shape(raw, FARM_SNAPSHOT_SHAPE);
     ASSERT2(isValidFormationRuntime(raw.formationRuntime));
+    ASSERT2(
+      INTEGER2(raw.materials.wood, 0, 1e12) && INTEGER2(raw.materials.stone, 0, 1e12) && raw.facilities.length <= 8 && raw.facilities.every(
+        (facility) => Object.hasOwn(CONFIG.farm.work.facilities, facility.id) && INTEGER2(facility.level, 1, CONFIG.farm.work.facilityMaxLevel)
+      )
+    );
     ASSERT2(
       INTEGER2(raw.seed, 0, 4294967295) && INTEGER2(raw.rng.state, 0, 4294967295) && INTEGER2(raw.simulationTick, 0, 1e12)
     );
@@ -20150,6 +20273,9 @@
   // src/farm-snapshot-migrations.js
   function normalizeSnapshot(raw, { clone: clone2 = true } = {}) {
     const SNAPSHOT = clone2 ? structuredClone(raw) : raw;
+    SNAPSHOT.materials ??= { wood: 0, stone: 0 };
+    SNAPSHOT.facilities ??= [];
+    SNAPSHOT.savedSite ??= null;
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }
@@ -20160,7 +20286,7 @@
     raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new GARDEN();
-    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, ...WORLD_DATA } = structuredClone(raw);
+    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, savedSite: SAVED_SITE, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
     G.farmPlots = new Map(
@@ -20190,6 +20316,9 @@
         return U;
       })
     );
+    if (SAVED_SITE) {
+      G.restoreBuildSite(SAVED_SITE);
+    }
     G.reconcileMateReservations();
     return G;
   }
@@ -22174,11 +22303,12 @@
       const COUNT = W.roster.placedPopulation(plot.id), STATUS = W.farmPlotStatus(plot.id);
       return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}마리 / ${plot.capacity}마리" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
     }).join("");
-    const ACTIVE = W.activeFarmPlot, POINTS = W.playerProgression.availablePoints, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    DOLLAR2("farmExpand").innerHTML = ACTIVE.canExpand() ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · 포인트 1개</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
-    DOLLAR2("farmExpand").disabled = LOCKED || !ACTIVE.canExpand() || POINTS < 1;
-    DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 열기</b><small>포인트 ${POINTS} / 2개${POINTS < 2 ? " · 부족해요" : ""}</small>`;
-    DOLLAR2("farmUnlock").disabled = LOCKED || POINTS < 2;
+    const ACTIVE = W.activeFarmPlot, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
+    const EXPAND = W.projectInfo("expand"), PLOT = W.projectInfo("plot"), CAN_PAY = (info) => W.materials.wood >= info.cost.wood && W.materials.stone >= info.cost.stone, COST_TEXT = (info) => `목재 ${info.cost.wood} · 돌 ${info.cost.stone}`;
+    DOLLAR2("farmExpand").innerHTML = EXPAND ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
+    DOLLAR2("farmExpand").disabled = LOCKED || !EXPAND || !!W.buildSite || !CAN_PAY(EXPAND);
+    DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 짓기</b><small>${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? "" : " · 부족해요"}</small>`;
+    DOLLAR2("farmUnlock").disabled = LOCKED || !!W.buildSite || !CAN_PAY(PLOT);
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
@@ -22382,9 +22512,9 @@
   DOLLAR2("plotPrev").onclick = () => switchAdjacentFarmPlot(-1);
   DOLLAR2("plotNext").onclick = () => switchAdjacentFarmPlot(1);
   DOLLAR2("farmExpand").onclick = () => {
-    active.queue("farm-plot-expand", { plotId: (personalGarden || active.world).activePlotId });
+    active.queue("farm-build", { facilityId: "expand" });
   };
-  DOLLAR2("farmUnlock").onclick = () => active.queue("farm-plot-unlock");
+  DOLLAR2("farmUnlock").onclick = () => active.queue("farm-build", { facilityId: "plot" });
   DOLLAR2("farmPlotActions").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-farm-sort]");
     if (BUTTON) {
@@ -23026,8 +23156,7 @@
       warn = true;
     }
     if (SITE && WORKERS > 0) {
-      const SPEC = CONFIG.farm.work.facilities[SITE.facility];
-      note = `${SPEC.name} Lv.${SITE.level} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? " · 전원 건설" : ""}`;
+      note = `${WORK_WORLD.siteName(SITE)} 짓는 중 ${Math.floor(SITE.done / SITE.need * 100)}%${WORK_WORLD.buildRush ? " · 전원 건설" : ""}`;
     }
     for (const ID of WORK_CUT_IDS) {
       DOLLAR2(ID).disabled = !!farmSortTransition;
@@ -23041,7 +23170,7 @@
     DOLLAR2("buildRush").setAttribute("aria-pressed", String(WORK_WORLD.buildRush));
     syncText("buildRush", WORK_WORLD.buildRush ? "전원 건설 중 (끄기)" : "전원 건설");
     for (const BUTTON of DOLLAR2("facilityList").children) {
-      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], LEVEL = WORK_WORLD.facilityLevel(ID), MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel, COST = WORK_WORLD.facilityCost(ID, LEVEL + 1);
+      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], LEVEL = WORK_WORLD.facilityLevel(ID), MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel, INFO = WORK_WORLD.projectInfo(ID), COST = INFO?.cost || { wood: 0, stone: 0 };
       BUTTON.disabled = MAXED || !!SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
       syncText2(BUTTON.querySelector("[data-name]"), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
       syncText2(

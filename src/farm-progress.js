@@ -16,6 +16,20 @@ const SAFE_INTEGER = (value, min = 0, max = Number.MAX_SAFE_INTEGER) =>
     Number.isSafeInteger(value) && value >= min && value <= max;
 const NUMBER = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
 const STRING = (value) => typeof value === 'string' && value.trim().length > 0 && value.length < 256;
+function copySite(site) {
+    const COPY = {
+        facility: site.facility,
+        level: site.level,
+        x: site.x,
+        y: site.y,
+        done: site.done,
+        need: site.need,
+    };
+    if (site.plotId !== undefined) {
+        COPY.plotId = site.plotId;
+    }
+    return COPY;
+}
 function keys(value, required, optional = []) {
     ASSERT(value && typeof value === 'object' && !Array.isArray(value));
     ASSERT(required.every((key) => Object.hasOwn(value, key)));
@@ -152,6 +166,7 @@ export function captureFarmProgress(world) {
     }
     const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row),
         STAGE = world.farmBossProgress;
+    const SITE = world.buildSite;
     return {
         seed: world.seed,
         rngState: world.rng.state,
@@ -171,6 +186,7 @@ export function captureFarmProgress(world) {
                 level: facility.level,
             })),
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
+            ...(SITE ? { site: copySite(SITE) } : {}),
         },
         totals: {
             births: world.metrics.births,
@@ -305,7 +321,21 @@ export function validateFarmProgress(data) {
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials', 'facilities']);
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials', 'facilities', 'site']);
+    if (data.food.site !== undefined) {
+        const SITE = data.food.site;
+        keys(SITE, ['facility', 'level', 'x', 'y', 'done', 'need'], ['plotId']);
+        ASSERT(
+            (Object.hasOwn(CONFIG.farm.work.facilities, SITE.facility) ||
+                Object.hasOwn(CONFIG.farm.work.projects, SITE.facility)) &&
+                INTEGER(SITE.level, 1, 99) &&
+                INTEGER(SITE.need, 1, 100000) &&
+                INTEGER(SITE.done, 0, SITE.need - 1) &&
+                Number.isFinite(SITE.x) &&
+                Number.isFinite(SITE.y) &&
+                (SITE.plotId === undefined || typeof SITE.plotId === 'string'),
+        );
+    }
     if (data.food.facilities !== undefined) {
         ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
         const SEEN = new Set();
@@ -624,6 +654,9 @@ export function restoreFarmProgress(data) {
         x: facility.x,
         y: facility.y,
     }));
+    if (data.food.site) {
+        WORLD.restoreBuildSite(data.food.site);
+    }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = new Map();

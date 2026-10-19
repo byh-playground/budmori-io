@@ -1368,15 +1368,18 @@ function drawFarmPanel() {
         })
         .join('');
     const ACTIVE = W.activeFarmPlot,
-        POINTS = W.playerProgression.availablePoints,
         NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    DOLLAR('farmExpand').innerHTML = ACTIVE.canExpand()
-        ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · 포인트 1개</small>`
+    const EXPAND = W.projectInfo('expand'),
+        PLOT = W.projectInfo('plot'),
+        CAN_PAY = (info) => W.materials.wood >= info.cost.wood && W.materials.stone >= info.cost.stone,
+        COST_TEXT = (info) => `목재 ${info.cost.wood} · 돌 ${info.cost.stone}`;
+    DOLLAR('farmExpand').innerHTML = EXPAND
+        ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>`
         : '<b>농장 확장</b><small>최대 크기예요</small>';
-    DOLLAR('farmExpand').disabled = LOCKED || !ACTIVE.canExpand() || POINTS < 1;
+    DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.buildSite || !CAN_PAY(EXPAND);
     DOLLAR('farmUnlock').innerHTML =
-        `<b>새 농장 열기</b><small>포인트 ${POINTS} / 2개${POINTS < 2 ? ' · 부족해요' : ''}</small>`;
-    DOLLAR('farmUnlock').disabled = LOCKED || POINTS < 2;
+        `<b>새 농장 짓기</b><small>${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? '' : ' · 부족해요'}</small>`;
+    DOLLAR('farmUnlock').disabled = LOCKED || !!W.buildSite || !CAN_PAY(PLOT);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
@@ -1608,9 +1611,9 @@ function switchAdjacentFarmPlot(step) {
 DOLLAR('plotPrev').onclick = () => switchAdjacentFarmPlot(-1);
 DOLLAR('plotNext').onclick = () => switchAdjacentFarmPlot(1);
 DOLLAR('farmExpand').onclick = () => {
-    active.queue('farm-plot-expand', { plotId: (personalGarden || active.world).activePlotId });
+    active.queue('farm-build', { facilityId: 'expand' });
 };
-DOLLAR('farmUnlock').onclick = () => active.queue('farm-plot-unlock');
+DOLLAR('farmUnlock').onclick = () => active.queue('farm-build', { facilityId: 'plot' });
 DOLLAR('farmPlotActions').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-farm-sort]');
     if (BUTTON) {
@@ -2349,8 +2352,7 @@ function sync(display, now, notices) {
         warn = true;
     }
     if (SITE && WORKERS > 0) {
-        const SPEC = CONFIG.farm.work.facilities[SITE.facility];
-        note = `${SPEC.name} Lv.${SITE.level} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
+        note = `${WORK_WORLD.siteName(SITE)} 짓는 중 ${Math.floor((SITE.done / SITE.need) * 100)}%${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
     }
     for (const ID of WORK_CUT_IDS) {
         DOLLAR(ID).disabled = !!farmSortTransition;
@@ -2368,7 +2370,8 @@ function sync(display, now, notices) {
             SPEC = CONFIG.farm.work.facilities[ID],
             LEVEL = WORK_WORLD.facilityLevel(ID),
             MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel,
-            COST = WORK_WORLD.facilityCost(ID, LEVEL + 1);
+            INFO = WORK_WORLD.projectInfo(ID),
+            COST = INFO?.cost || { wood: 0, stone: 0 };
         BUTTON.disabled =
             MAXED || !!SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
         syncText2(BUTTON.querySelector('[data-name]'), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
