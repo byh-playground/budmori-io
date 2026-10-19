@@ -796,6 +796,286 @@
     }
   });
 
+  // src/farm-upgrades.js
+  function createFarmUpgradeState() {
+    return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
+  }
+  function isValidFarmUpgradeState(state) {
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      return false;
+    }
+    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) {
+      return false;
+    }
+    return FARM_UPGRADE_IDS.every(
+      (id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]
+    );
+  }
+  function getFarmUpgradeLevel(state, id) {
+    return Number.isSafeInteger(state?.[id]) ? state[id] : 0;
+  }
+  function getFarmUpgradeInvestedCount(state) {
+    if (!isValidFarmUpgradeState(state)) {
+      return 0;
+    }
+    return FARM_UPGRADE_IDS.reduce((total, id) => total + state[id], 0);
+  }
+  function farmUpgradeRate(state, id) {
+    return 1 + 0.1 * getFarmUpgradeLevel(state, id);
+  }
+  function getBreedCooldownSeconds(state, baseSeconds = 10) {
+    return baseSeconds / farmUpgradeRate(state, "breed");
+  }
+  function getMergeCooldownSeconds(state, baseSeconds = 4) {
+    return baseSeconds / farmUpgradeRate(state, "merge");
+  }
+  var FARM_UPGRADE_MAX_LEVELS, FARM_CAPACITY_STEPS, FARM_UPGRADE_NODES, FARM_UPGRADE_IDS;
+  var init_farm_upgrades = __esm({
+    "src/farm-upgrades.js"() {
+      FARM_UPGRADE_MAX_LEVELS = Object.freeze({
+        food: 4,
+        growth: 4,
+        breed: 4,
+        merge: 4
+      });
+      FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
+      FARM_UPGRADE_NODES = Object.freeze([
+        {
+          id: "food",
+          name: "일꾼 속도",
+          icon: "◒",
+          description: "일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.",
+          value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`
+        },
+        {
+          id: "growth",
+          name: "먹이 찾기",
+          icon: "❧",
+          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높여요.",
+          value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
+        },
+        {
+          id: "breed",
+          name: "번식 회복",
+          icon: "♡",
+          description: "부모의 번식 대기시간을 단계마다 10% 줄여요.",
+          value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
+        },
+        {
+          id: "merge",
+          name: "합성 회복",
+          icon: "◇",
+          description: "합성 후 대기시간을 단계마다 10% 줄여요.",
+          value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
+        }
+      ]);
+      FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
+    }
+  });
+
+  // src/farm-plot.js
+  function createFarmPlotsProgression() {
+    return {
+      plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: 0 }],
+      currentPlotId: INITIAL_FARM_PLOT_ID,
+      nextPlotNumber: 2,
+      targetBasisPoints: Array.from({ length: SPECIES_COUNT }, (_, speciesId) => Number(speciesId === 0) * 1e4)
+    };
+  }
+  function getFarmPlotInvestedCount(state) {
+    if (!isValidFarmPlotsProgression(state)) {
+      return 0;
+    }
+    return (state.plots.length - 1) * 2 + state.plots.reduce((total, plot) => total + plot.capacityLevel, 0);
+  }
+  function isValidFarmPlotsProgression(state) {
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      return false;
+    }
+    const KEYS = Object.keys(state).sort();
+    if (KEYS.join(",") !== "currentPlotId,nextPlotNumber,plots,targetBasisPoints") {
+      return false;
+    }
+    if (!Array.isArray(state.plots) || state.plots.length === 0 || !Number.isSafeInteger(state.nextPlotNumber) || state.nextPlotNumber !== state.plots.length + 1 || !Array.isArray(state.targetBasisPoints) || state.targetBasisPoints.length !== SPECIES_COUNT || !state.targetBasisPoints.every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4) || state.targetBasisPoints.reduce((total, value) => total + value, 0) !== 1e4) {
+      return false;
+    }
+    const IDS = /* @__PURE__ */ new Set();
+    for (let index = 0; index < state.plots.length; index++) {
+      const PLOT = state.plots[index];
+      if (!PLOT || typeof PLOT !== "object" || Array.isArray(PLOT) || Object.keys(PLOT).sort().join(",") !== "capacityLevel,id" || PLOT.id !== `plot-${index + 1}` || !Number.isSafeInteger(PLOT.capacityLevel) || PLOT.capacityLevel < 0 || PLOT.capacityLevel >= FARM_CAPACITY_STEPS.length || IDS.has(PLOT.id)) {
+        return false;
+      }
+      IDS.add(PLOT.id);
+    }
+    return IDS.has(state.currentPlotId);
+  }
+  var INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID, MAX_FARM_FOOD, FarmPlot;
+  var init_farm_plot = __esm({
+    "src/farm-plot.js"() {
+      init_farm_upgrades();
+      init_species_catalog();
+      INITIAL_FARM_PLOT_ID = "plot-1";
+      RESERVE_PLOT_ID = "reserve";
+      MAX_FARM_FOOD = 140;
+      FarmPlot = class _FarmPlot {
+        constructor(state, food = []) {
+          const { id: ID, capacityLevel: CAPACITY_LEVEL } = state || {};
+          if (typeof ID !== "string" || !/^plot-[1-9]\d*$/.test(ID)) {
+            throw new TypeError("A farm plot requires a stable plot id.");
+          }
+          if (!Number.isSafeInteger(CAPACITY_LEVEL) || CAPACITY_LEVEL < 0 || CAPACITY_LEVEL >= FARM_CAPACITY_STEPS.length) {
+            throw new RangeError("A farm plot capacity level is invalid.");
+          }
+          if (!Array.isArray(food) || food.length > MAX_FARM_FOOD) {
+            throw new RangeError("A farm plot food list is invalid.");
+          }
+          this.id = ID;
+          this.state = state;
+          this.food = food;
+        }
+        get capacityLevel() {
+          return this.state.capacityLevel;
+        }
+        get capacity() {
+          return FARM_CAPACITY_STEPS[this.capacityLevel];
+        }
+        get foodCount() {
+          return this.food.length;
+        }
+        canExpand() {
+          return this.capacityLevel < FARM_CAPACITY_STEPS.length - 1;
+        }
+        expand() {
+          if (!this.canExpand()) {
+            return false;
+          }
+          this.state.capacityLevel++;
+          return true;
+        }
+        static fromSave(data, food = []) {
+          if (!data || typeof data !== "object" || Array.isArray(data)) {
+            throw new TypeError("A farm plot save is invalid.");
+          }
+          const KEYS = Object.keys(data).sort().join(",");
+          if (KEYS !== "capacityLevel,id") {
+            throw new TypeError("A farm plot save has an unexpected shape.");
+          }
+          return new _FarmPlot(data, food);
+        }
+      };
+    }
+  });
+
+  // src/farm-offline.js
+  function applyOffline(world, config, rawSeconds) {
+    const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
+    if (world.scene !== "farm" || world.running || world.farmBossEvent?.phase !== "idle") {
+      return null;
+    }
+    const AWAY = Math.min(rawSeconds, OFFLINE.capSeconds);
+    if (!(AWAY >= OFFLINE.minSeconds)) {
+      return null;
+    }
+    const SECONDS = AWAY * OFFLINE.efficiency;
+    world.refreshWorkers();
+    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, site: null, built: null };
+    let foodRate = 0, gatherRate = 0, buildRate = 0;
+    for (const [ID, KIND] of world._workerKinds) {
+      const RATE = world._workerRates.get(ID) || 0;
+      if (KIND === "food") {
+        foodRate += RATE;
+      } else if (KIND === "resource") {
+        gatherRate += RATE;
+      } else {
+        buildRate += RATE;
+      }
+    }
+    const SITE = activeSite(world);
+    if (SITE && buildRate > 0) {
+      const HITS_PER_SECOND = buildRate * STACKS_PER_FOOD2, REMAINING = SITE.need - SITE.done, HITS = HITS_PER_SECOND * SECONDS;
+      if (HITS >= REMAINING) {
+        gatherRate += buildRate * Math.max(0, 1 - REMAINING / HITS);
+        SUMMARY.built = world.siteName(SITE);
+        world._piles.splice(world._piles.indexOf(SITE), 1);
+        world.completeFacility(SITE);
+      } else {
+        SITE.done += Math.floor(HITS);
+        SUMMARY.site = { name: world.siteName(SITE), percent: Math.floor(SITE.done / SITE.need * 100) };
+      }
+    } else if (!SITE) {
+      gatherRate += buildRate;
+    }
+    const MATERIALS = Math.floor(gatherRate * SECONDS), WOOD = Math.ceil(MATERIALS / 2);
+    world.materials.wood += WOOD;
+    world.materials.stone += MATERIALS - WOOD;
+    SUMMARY.wood = WOOD;
+    SUMMARY.stone = MATERIALS - WOOD;
+    let pool = Math.floor(foodRate * SECONDS);
+    SUMMARY.food = pool;
+    const RESIDENTS = world.roster.residents().filter((unit) => unit.plotId !== RESERVE_PLOT_ID);
+    for (const UNIT3 of RESIDENTS) {
+      UNIT3.cooldown = 0;
+      if (UNIT3.down > 0) {
+        UNIT3.down = Math.min(UNIT3.down, 0.05);
+      }
+      if (!UNIT3.mature && pool >= BREEDING.matureMeals) {
+        pool -= BREEDING.matureMeals;
+        UNIT3.growthElapsed = UNIT3.growthDuration;
+      }
+    }
+    const COST = 2 + BREEDING.matureMeals, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(AWAY / ROUND_SECONDS), CAPACITY = world.totalFarmCapacity, SPECIES_COUNT2 = world.farmTargets.length, COUNTS = new Array(SPECIES_COUNT2).fill(0), ADULTS = new Array(SPECIES_COUNT2).fill(0);
+    for (const UNIT3 of world.roster.residents()) {
+      if (UNIT3.plotId === RESERVE_PLOT_ID || UNIT3.isBattleOnlySummon) {
+        continue;
+      }
+      COUNTS[UNIT3.species]++;
+      if (UNIT3.mature && UNIT3.hp > 0 && !world._workerIds.has(UNIT3.id)) {
+        ADULTS[UNIT3.species]++;
+      }
+    }
+    for (let round = 0; round < ROUNDS && pool >= COST; round++) {
+      let progressed = false;
+      for (let species = 0; species < SPECIES_COUNT2; species++) {
+        const TARGET = Math.floor(world.farmTargets[species] / 1e4 * CAPACITY), ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
+        let births = Math.min(
+          Math.floor(ADULTS[species] / 2),
+          TARGET - COUNTS[species],
+          ROOM,
+          Math.floor(pool / COST)
+        );
+        while (births-- > 0) {
+          const CHILD = world.spawn(species, 1, (world.random() - 0.5) * 10, (world.random() - 0.5) * 6);
+          if (!CHILD) {
+            break;
+          }
+          CHILD.growthElapsed = CHILD.growthDuration;
+          pool -= COST;
+          COUNTS[species]++;
+          ADULTS[species]++;
+          SUMMARY.births++;
+          progressed = true;
+        }
+      }
+      if (!progressed) {
+        break;
+      }
+    }
+    world.warehouseFood = Math.min(WORK.warehouseLimit, world.warehouseFood + pool);
+    world.metrics.births += SUMMARY.births;
+    world._nextWorkerRefreshTick = 0;
+    world.refreshWorkers();
+    world.markProgressChanged();
+    return SUMMARY;
+  }
+  var STACKS_PER_FOOD2;
+  var init_farm_offline = __esm({
+    "src/farm-offline.js"() {
+      init_farm_work();
+      init_farm_plot();
+      STACKS_PER_FOOD2 = 5;
+    }
+  });
+
   // src/unit-grades.js
   function mergeMaterialCostForTier(resultTier) {
     if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
@@ -2976,176 +3256,6 @@
             this.onReset.clear();
             this.onHealthChanged.clear();
           }
-        }
-      };
-    }
-  });
-
-  // src/farm-upgrades.js
-  function createFarmUpgradeState() {
-    return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
-  }
-  function isValidFarmUpgradeState(state) {
-    if (!state || typeof state !== "object" || Array.isArray(state)) {
-      return false;
-    }
-    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) {
-      return false;
-    }
-    return FARM_UPGRADE_IDS.every(
-      (id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]
-    );
-  }
-  function getFarmUpgradeLevel(state, id) {
-    return Number.isSafeInteger(state?.[id]) ? state[id] : 0;
-  }
-  function getFarmUpgradeInvestedCount(state) {
-    if (!isValidFarmUpgradeState(state)) {
-      return 0;
-    }
-    return FARM_UPGRADE_IDS.reduce((total, id) => total + state[id], 0);
-  }
-  function farmUpgradeRate(state, id) {
-    return 1 + 0.1 * getFarmUpgradeLevel(state, id);
-  }
-  function getBreedCooldownSeconds(state, baseSeconds = 10) {
-    return baseSeconds / farmUpgradeRate(state, "breed");
-  }
-  function getMergeCooldownSeconds(state, baseSeconds = 4) {
-    return baseSeconds / farmUpgradeRate(state, "merge");
-  }
-  var FARM_UPGRADE_MAX_LEVELS, FARM_CAPACITY_STEPS, FARM_UPGRADE_NODES, FARM_UPGRADE_IDS;
-  var init_farm_upgrades = __esm({
-    "src/farm-upgrades.js"() {
-      FARM_UPGRADE_MAX_LEVELS = Object.freeze({
-        food: 4,
-        growth: 4,
-        breed: 4,
-        merge: 4
-      });
-      FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
-      FARM_UPGRADE_NODES = Object.freeze([
-        {
-          id: "food",
-          name: "일꾼 속도",
-          icon: "◒",
-          description: "일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.",
-          value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`
-        },
-        {
-          id: "growth",
-          name: "먹이 찾기",
-          icon: "❧",
-          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높여요.",
-          value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
-        },
-        {
-          id: "breed",
-          name: "번식 회복",
-          icon: "♡",
-          description: "부모의 번식 대기시간을 단계마다 10% 줄여요.",
-          value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
-        },
-        {
-          id: "merge",
-          name: "합성 회복",
-          icon: "◇",
-          description: "합성 후 대기시간을 단계마다 10% 줄여요.",
-          value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
-        }
-      ]);
-      FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
-    }
-  });
-
-  // src/farm-plot.js
-  function createFarmPlotsProgression() {
-    return {
-      plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: 0 }],
-      currentPlotId: INITIAL_FARM_PLOT_ID,
-      nextPlotNumber: 2,
-      targetBasisPoints: Array.from({ length: SPECIES_COUNT }, (_, speciesId) => Number(speciesId === 0) * 1e4)
-    };
-  }
-  function getFarmPlotInvestedCount(state) {
-    if (!isValidFarmPlotsProgression(state)) {
-      return 0;
-    }
-    return (state.plots.length - 1) * 2 + state.plots.reduce((total, plot) => total + plot.capacityLevel, 0);
-  }
-  function isValidFarmPlotsProgression(state) {
-    if (!state || typeof state !== "object" || Array.isArray(state)) {
-      return false;
-    }
-    const KEYS = Object.keys(state).sort();
-    if (KEYS.join(",") !== "currentPlotId,nextPlotNumber,plots,targetBasisPoints") {
-      return false;
-    }
-    if (!Array.isArray(state.plots) || state.plots.length === 0 || !Number.isSafeInteger(state.nextPlotNumber) || state.nextPlotNumber !== state.plots.length + 1 || !Array.isArray(state.targetBasisPoints) || state.targetBasisPoints.length !== SPECIES_COUNT || !state.targetBasisPoints.every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4) || state.targetBasisPoints.reduce((total, value) => total + value, 0) !== 1e4) {
-      return false;
-    }
-    const IDS = /* @__PURE__ */ new Set();
-    for (let index = 0; index < state.plots.length; index++) {
-      const PLOT = state.plots[index];
-      if (!PLOT || typeof PLOT !== "object" || Array.isArray(PLOT) || Object.keys(PLOT).sort().join(",") !== "capacityLevel,id" || PLOT.id !== `plot-${index + 1}` || !Number.isSafeInteger(PLOT.capacityLevel) || PLOT.capacityLevel < 0 || PLOT.capacityLevel >= FARM_CAPACITY_STEPS.length || IDS.has(PLOT.id)) {
-        return false;
-      }
-      IDS.add(PLOT.id);
-    }
-    return IDS.has(state.currentPlotId);
-  }
-  var INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID, MAX_FARM_FOOD, FarmPlot;
-  var init_farm_plot = __esm({
-    "src/farm-plot.js"() {
-      init_farm_upgrades();
-      init_species_catalog();
-      INITIAL_FARM_PLOT_ID = "plot-1";
-      RESERVE_PLOT_ID = "reserve";
-      MAX_FARM_FOOD = 140;
-      FarmPlot = class _FarmPlot {
-        constructor(state, food = []) {
-          const { id: ID, capacityLevel: CAPACITY_LEVEL } = state || {};
-          if (typeof ID !== "string" || !/^plot-[1-9]\d*$/.test(ID)) {
-            throw new TypeError("A farm plot requires a stable plot id.");
-          }
-          if (!Number.isSafeInteger(CAPACITY_LEVEL) || CAPACITY_LEVEL < 0 || CAPACITY_LEVEL >= FARM_CAPACITY_STEPS.length) {
-            throw new RangeError("A farm plot capacity level is invalid.");
-          }
-          if (!Array.isArray(food) || food.length > MAX_FARM_FOOD) {
-            throw new RangeError("A farm plot food list is invalid.");
-          }
-          this.id = ID;
-          this.state = state;
-          this.food = food;
-        }
-        get capacityLevel() {
-          return this.state.capacityLevel;
-        }
-        get capacity() {
-          return FARM_CAPACITY_STEPS[this.capacityLevel];
-        }
-        get foodCount() {
-          return this.food.length;
-        }
-        canExpand() {
-          return this.capacityLevel < FARM_CAPACITY_STEPS.length - 1;
-        }
-        expand() {
-          if (!this.canExpand()) {
-            return false;
-          }
-          this.state.capacityLevel++;
-          return true;
-        }
-        static fromSave(data, food = []) {
-          if (!data || typeof data !== "object" || Array.isArray(data)) {
-            throw new TypeError("A farm plot save is invalid.");
-          }
-          const KEYS = Object.keys(data).sort().join(",");
-          if (KEYS !== "capacityLevel,id") {
-            throw new TypeError("A farm plot save has an unexpected shape.");
-          }
-          return new _FarmPlot(data, food);
         }
       };
     }
@@ -8034,6 +8144,7 @@
   var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
+      init_farm_offline();
       init_farm_work();
       init_formation_skills();
       init_formation_skill_state();
@@ -8154,6 +8265,12 @@
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
             growthSeconds: BREED_COOLDOWN_SECONDS / 2,
             matureMeals: 3
+          }),
+          offline: Object.freeze({
+            capSeconds: 8 * 3600,
+            minSeconds: 60,
+            // Idle output is a share of what the workers would make while you watch.
+            efficiency: 0.5
           }),
           merge: Object.freeze({
             animationSeconds: 0.85,
@@ -10328,6 +10445,10 @@
             cost: { wood: Math.ceil(SPEC.cost.wood * COST_FACTOR), stone: Math.ceil(SPEC.cost.stone * COST_FACTOR) },
             hits: Math.ceil(SPEC.hits * HITS_FACTOR)
           };
+        }
+        // Settles the time the player was away; returns a summary, or null when nothing applies.
+        settleOffline(seconds) {
+          return applyOffline(this, CONFIG, seconds);
         }
         restoreBuildSite(data) {
           restoreSite(this, data);
@@ -14288,7 +14409,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.34";
+      PRODUCT_VERSION = "0.10.35";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -21874,12 +21995,73 @@
       DOLLAR2("continueGame").focus();
     }
   }
-  function start(world, push = true) {
+  var SEEN_KEY = "budmori.lastSeen";
+  function markSeen() {
+    try {
+      localStorage.setItem(SEEN_KEY, String(Date.now()));
+    } catch {
+    }
+  }
+  function readSeen() {
+    try {
+      const VALUE = Number(localStorage.getItem(SEEN_KEY));
+      return Number.isFinite(VALUE) && VALUE > 0 ? VALUE : 0;
+    } catch {
+      return 0;
+    }
+  }
+  function offlineText(summary) {
+    const MINUTES = Math.floor(summary.seconds / 60), TIME = MINUTES >= 60 ? `${Math.floor(MINUTES / 60)}시간 ${MINUTES % 60}분` : `${MINUTES}분`, PARTS = [];
+    if (summary.births) {
+      PARTS.push(`새 식구 ${summary.births}마리`);
+    }
+    if (summary.food) {
+      PARTS.push(`먹이 ${summary.food}`);
+    }
+    if (summary.wood || summary.stone) {
+      PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
+    }
+    if (summary.built) {
+      PARTS.push(`${summary.built} 완성`);
+    } else if (summary.site) {
+      PARTS.push(`${summary.site.name} ${summary.site.percent}%`);
+    }
+    return `${TIME} 동안 자리를 비웠어요${PARTS.length ? " · " + PARTS.join(" · ") : ""}`;
+  }
+  function settleOffline() {
+    const SEEN = readSeen();
+    markSeen();
+    const WORLD = personalGarden;
+    if (!SEEN || !WORLD || WORLD.scene !== "farm") {
+      return;
+    }
+    const SUMMARY = WORLD.settleOffline((Date.now() - SEEN) / 1e3);
+    if (SUMMARY) {
+      const NOTICE = DOLLAR2("offlineNotice");
+      NOTICE.textContent = offlineText(SUMMARY);
+      NOTICE.hidden = false;
+      clearTimeout(settleOffline.timer);
+      settleOffline.timer = setTimeout(() => {
+        NOTICE.hidden = true;
+      }, 9e3);
+    }
+  }
+  setInterval(() => {
+    if (!document.hidden && !home) {
+      markSeen();
+    }
+  }, 5e3);
+  function start(world, push = true, settle = false) {
     AUTOSAVE.reset();
     FOOD_FEEL.unlock();
     replacePersonalGarden(world);
     install(world);
     setHome(false, push);
+    if (settle) {
+      settleOffline();
+    } else {
+      markSeen();
+    }
   }
   function reservePersonalRaidRun(sessionId = null) {
     let reserved;
@@ -22069,7 +22251,7 @@
       return;
     }
     if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
-      start(restore(snapshot(STORAGE.world)));
+      start(restore(snapshot(STORAGE.world)), true, true);
     }
   };
   DOLLAR2("startBossEncounter").onclick = () => {
@@ -22948,6 +23130,11 @@
       stopWorldInput();
       persist();
       active.loop.resetTiming();
+      if (!home) {
+        markSeen();
+      }
+    } else if (!home) {
+      settleOffline();
     }
   });
   window.addEventListener("keydown", (e) => {
@@ -22975,6 +23162,9 @@
   window.addEventListener("pagehide", () => {
     stopWorldInput();
     persist();
+    if (!home) {
+      markSeen();
+    }
     active.dispose();
     unsubscribeProgress?.();
     unsubscribeProgress = null;

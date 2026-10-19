@@ -1,3 +1,4 @@
+import { applyOffline } from './farm-offline.js';
 import { activeSite, assignWorkers, resetWork, restoreSite, startSite, stepWork, workOrder } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
@@ -161,6 +162,12 @@ const CONFIG = Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
             growthSeconds: BREED_COOLDOWN_SECONDS / 2,
             matureMeals: 3,
+        }),
+        offline: Object.freeze({
+            capSeconds: 8 * 3600,
+            minSeconds: 60,
+            // Idle output is a share of what the workers would make while you watch.
+            efficiency: 0.5,
         }),
         merge: Object.freeze({
             animationSeconds: 0.85,
@@ -2675,6 +2682,10 @@ const GARDEN = class Garden {
             cost: { wood: Math.ceil(SPEC.cost.wood * COST_FACTOR), stone: Math.ceil(SPEC.cost.stone * COST_FACTOR) },
             hits: Math.ceil(SPEC.hits * HITS_FACTOR),
         };
+    }
+    // Settles the time the player was away; returns a summary, or null when nothing applies.
+    settleOffline(seconds) {
+        return applyOffline(this, CONFIG, seconds);
     }
     restoreBuildSite(data) {
         restoreSite(this, data);

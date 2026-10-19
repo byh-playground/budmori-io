@@ -874,12 +874,77 @@ function setHome(value, push = true) {
         DOLLAR('continueGame').focus();
     }
 }
-function start(world, push = true) {
+const SEEN_KEY = 'budmori.lastSeen';
+function markSeen() {
+    try {
+        localStorage.setItem(SEEN_KEY, String(Date.now()));
+    } catch {
+        /* Without a stored time there is simply no idle progress. */
+    }
+}
+function readSeen() {
+    try {
+        const VALUE = Number(localStorage.getItem(SEEN_KEY));
+        return Number.isFinite(VALUE) && VALUE > 0 ? VALUE : 0;
+    } catch {
+        return 0;
+    }
+}
+function offlineText(summary) {
+    const MINUTES = Math.floor(summary.seconds / 60),
+        TIME = MINUTES >= 60 ? `${Math.floor(MINUTES / 60)}시간 ${MINUTES % 60}분` : `${MINUTES}분`,
+        PARTS = [];
+    if (summary.births) {
+        PARTS.push(`새 식구 ${summary.births}마리`);
+    }
+    if (summary.food) {
+        PARTS.push(`먹이 ${summary.food}`);
+    }
+    if (summary.wood || summary.stone) {
+        PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
+    }
+    if (summary.built) {
+        PARTS.push(`${summary.built} 완성`);
+    } else if (summary.site) {
+        PARTS.push(`${summary.site.name} ${summary.site.percent}%`);
+    }
+    return `${TIME} 동안 자리를 비웠어요${PARTS.length ? ' · ' + PARTS.join(' · ') : ''}`;
+}
+// The time spent away is settled by a formula when the farm comes back (see farm-offline.js).
+function settleOffline() {
+    const SEEN = readSeen();
+    markSeen();
+    const WORLD = personalGarden;
+    if (!SEEN || !WORLD || WORLD.scene !== 'farm') {
+        return;
+    }
+    const SUMMARY = WORLD.settleOffline((Date.now() - SEEN) / 1000);
+    if (SUMMARY) {
+        const NOTICE = DOLLAR('offlineNotice');
+        NOTICE.textContent = offlineText(SUMMARY);
+        NOTICE.hidden = false;
+        clearTimeout(settleOffline.timer);
+        settleOffline.timer = setTimeout(() => {
+            NOTICE.hidden = true;
+        }, 9000);
+    }
+}
+setInterval(() => {
+    if (!document.hidden && !home) {
+        markSeen();
+    }
+}, 5000);
+function start(world, push = true, settle = false) {
     AUTOSAVE.reset();
     FOOD_FEEL.unlock();
     replacePersonalGarden(world);
     install(world);
     setHome(false, push);
+    if (settle) {
+        settleOffline();
+    } else {
+        markSeen();
+    }
 }
 function reservePersonalRaidRun(sessionId = null) {
     let reserved;
@@ -1088,7 +1153,7 @@ DOLLAR('continueGame').onclick = () => {
         return;
     }
     if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
-        start(restore(snapshot(STORAGE.world)));
+        start(restore(snapshot(STORAGE.world)), true, true);
     }
 };
 DOLLAR('startBossEncounter').onclick = () => {
@@ -2034,6 +2099,11 @@ document.addEventListener('visibilitychange', () => {
         stopWorldInput();
         persist();
         active.loop.resetTiming();
+        if (!home) {
+            markSeen();
+        }
+    } else if (!home) {
+        settleOffline();
     }
 });
 window.addEventListener('keydown', (e) => {
@@ -2066,6 +2136,9 @@ window.addEventListener('resize', () => {
 window.addEventListener('pagehide', () => {
     stopWorldInput();
     persist();
+    if (!home) {
+        markSeen();
+    }
     active.dispose();
     unsubscribeProgress?.();
     unsubscribeProgress = null;
