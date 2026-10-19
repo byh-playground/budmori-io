@@ -164,7 +164,12 @@ export function captureFarmProgress(world) {
             remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
             materials: { wood: world.materials.wood, stone: world.materials.stone },
-            facilities: world.facilities.map((facility) => ({ id: facility.id, x: facility.x, y: facility.y })),
+            facilities: world.facilities.map((facility) => ({
+                id: facility.id,
+                x: facility.x,
+                y: facility.y,
+                level: facility.level,
+            })),
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
         },
         totals: {
@@ -305,7 +310,8 @@ export function validateFarmProgress(data) {
         ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
         const SEEN = new Set();
         for (const FACILITY of data.food.facilities) {
-            keys(FACILITY, ['id', 'x', 'y']);
+            keys(FACILITY, ['id', 'x', 'y'], ['level']);
+            ASSERT(FACILITY.level === undefined || INTEGER(FACILITY.level, 1, CONFIG.farm.work.facilityMaxLevel));
             ASSERT(
                 Object.hasOwn(CONFIG.farm.work.facilities, FACILITY.id) &&
                     !SEEN.has(FACILITY.id) &&

@@ -49,19 +49,19 @@ function spawnPile(world, config, kind) {
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
 // Starts the construction site for a facility: a solid frame that builders ram until the work is done.
-export function startSite(world, config, facilityId) {
-    const SPEC = config.farm.work.facilities[facilityId],
-        POSITION = pilePosition(world, config);
+export function startSite(world, config, facilityId, level, hits, existing) {
+    const POSITION = existing ? { x: existing.x, y: existing.y } : pilePosition(world, config);
     world._piles.push({
         id: ++world._pileId,
         kind: 'site',
         facility: facilityId,
+        level,
         x: POSITION.x,
         y: POSITION.y,
         food: 1,
         maxFood: 1,
         done: 0,
-        need: SPEC.hits,
+        need: hits,
         stack: 0,
         hitRev: 0,
         big: false,

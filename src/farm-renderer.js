@@ -517,9 +517,13 @@ const DIORAMA = class Diorama {
         this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, '#f6d36b');
     }
     drawFacilities(sim2) {
+        const UPGRADING = sim2.buildSite?.facility;
         for (const FACILITY of sim2.facilities || []) {
+            if (FACILITY.id === UPGRADING) {
+                continue;
+            }
             const BASE = this.project(FACILITY.x, FACILITY.y, 0),
-                S = this.scale * 2.1,
+                S = this.scale * (1.9 + 0.12 * FACILITY.level),
                 X = BASE.x;
             this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, '#54452433');
             if (FACILITY.id === 'windmill') {
@@ -547,6 +551,15 @@ const DIORAMA = class Diorama {
                 this.ellipse(X, BASE.y - 0.8 * S, 0.62 * S, 0.07 * S, '#9a7442');
                 this.ellipse(X - 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, '#8f8d80', 0.4);
                 this.ellipse(X + 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, '#7fa77a', -0.4);
+            }
+            for (let pip = 0; pip < FACILITY.level; pip++) {
+                this.ellipse(
+                    X + (pip - (FACILITY.level - 1) / 2) * 0.22 * S,
+                    BASE.y + 0.18 * S,
+                    0.07 * S,
+                    0.07 * S,
+                    '#f6d36b',
+                );
             }
         }
     }
