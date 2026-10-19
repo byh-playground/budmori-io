@@ -3832,7 +3832,7 @@ const GARDEN = class Garden {
             tier: MATERIALS[0].tier + 1,
             materialCount: MATERIALS.length,
             materials: MATERIALS,
-            reason: 'T' + (MATERIALS[0].tier + 1) + ' 합성 ' + MATERIALS.length + '개',
+            reason: 'T' + MATERIALS[0].tier + ' ' + MATERIALS.length + '마리 → T' + (MATERIALS[0].tier + 1) + ' 합성',
         };
     }
     mergeAvailability() {
