@@ -464,6 +464,174 @@
     }
   });
 
+  // src/farm-work.js
+  function pilePosition(world, config) {
+    const WORK = config.farm.work;
+    let best = null, bestGap = -1;
+    for (let attempt = 0; attempt < 14; attempt++) {
+      const ANGLE = world.random() * Math.PI * 2, REACH = Math.sqrt(world.random()), X = Math.cos(ANGLE) * REACH * WORK.pileRadiusX, Y = Math.sin(ANGLE) * REACH * WORK.pileRadiusY;
+      let gap = Infinity;
+      for (const PILE of world._piles) {
+        gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
+      }
+      if (gap >= WORK.pileGap) {
+        return { x: X, y: Y };
+      }
+      if (gap > bestGap) {
+        bestGap = gap;
+        best = { x: X, y: Y };
+      }
+    }
+    return best || { x: 0, y: 0 };
+  }
+  function spawnPile(world, config) {
+    const POSITION = pilePosition(world, config);
+    world._piles.push({
+      id: ++world._pileId,
+      x: POSITION.x,
+      y: POSITION.y,
+      food: config.farm.work.pileFood,
+      maxFood: config.farm.work.pileFood,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
+    world.emit("drop-dust", POSITION.x, POSITION.y);
+  }
+  function resetWork(world) {
+    world._piles = [];
+    world._pileId = 0;
+    world._pileRespawn = 0;
+    world._workAssign = /* @__PURE__ */ new Map();
+    world._swings = /* @__PURE__ */ new Map();
+  }
+  function assignWorkers(world, config) {
+    const WORK = config.farm.work, FREE = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), ASSIGN = /* @__PURE__ */ new Map();
+    for (const PILE of world._piles) {
+      FREE.sort((a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y));
+      const TAKEN = FREE.splice(0, WORK.maxAttackers);
+      TAKEN.forEach((unit, index) => {
+        const ANGLE = index / WORK.maxAttackers * Math.PI * 2 + 0.9;
+        ASSIGN.set(unit.id, {
+          pile: PILE,
+          attacking: true,
+          x: PILE.x + Math.cos(ANGLE) * 1.9,
+          y: PILE.y + Math.sin(ANGLE) * 1.9 * 0.75
+        });
+      });
+    }
+    for (const UNIT3 of FREE) {
+      let nearest = null, nearestDistance = Infinity;
+      for (const PILE of world._piles) {
+        const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
+        if (D < nearestDistance) {
+          nearestDistance = D;
+          nearest = PILE;
+        }
+      }
+      if (nearest) {
+        const ANGLE = UNIT3.seed * 3.1;
+        ASSIGN.set(UNIT3.id, {
+          pile: nearest,
+          attacking: false,
+          x: nearest.x + Math.cos(ANGLE) * 3.4,
+          y: nearest.y + Math.sin(ANGLE) * 3.4 * 0.75
+        });
+      }
+    }
+    world._workAssign = ASSIGN;
+    for (const ID of [...world._swings.keys()]) {
+      if (!ASSIGN.get(ID)?.attacking) {
+        world._swings.delete(ID);
+      }
+    }
+  }
+  function impact(world, config, pile) {
+    pile.stack++;
+    pile.hitRev++;
+    const COMPLETE = pile.stack >= STACKS_PER_FOOD;
+    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
+    if (!COMPLETE) {
+      return;
+    }
+    pile.stack = 0;
+    pile.food--;
+    world.foodTaps.produced++;
+    world.foodTaps.revision++;
+    world.markProgressChanged();
+    world.spawnFood(
+      (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
+      (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
+      1,
+      { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } }
+    );
+    if (pile.food <= 0) {
+      world._piles.splice(world._piles.indexOf(pile), 1);
+      world.emit("landing-shockwave", pile.x, pile.y);
+      assignWorkers(world, config);
+    }
+  }
+  function stepWork(world, config, dt) {
+    const WORK = config.farm.work;
+    while (world._piles.length < WORK.pileCount) {
+      if (world._piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
+        spawnPile(world, config);
+        world._pileRespawn = 0;
+        assignWorkers(world, config);
+      } else {
+        world._pileRespawn += dt;
+        break;
+      }
+    }
+    const FULL = world.food.length >= WORK.maxFood;
+    for (const [ID, ASSIGN] of world._workAssign) {
+      if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
+        continue;
+      }
+      const UNIT3 = world._unitById.get(ID);
+      if (!UNIT3 || UNIT3.hp <= 0 || Math.hypot(ASSIGN.x - UNIT3.x, ASSIGN.y - UNIT3.y) > 0.35) {
+        world._swings.delete(ID);
+        continue;
+      }
+      let swing = world._swings.get(ID);
+      if (!swing) {
+        swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
+        world._swings.set(ID, swing);
+      }
+      if (swing.phase === "idle") {
+        swing.wait -= dt;
+        if (swing.wait <= 0 && !FULL) {
+          swing.phase = "windup";
+          swing.elapsed = 0;
+        }
+        continue;
+      }
+      swing.elapsed += dt;
+      if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
+        impact(world, config, ASSIGN.pile);
+        swing.phase = "fire";
+        swing.elapsed = 0;
+      } else if (swing.phase === "fire" && swing.elapsed >= SWING_FIRE) {
+        swing.phase = "recover";
+        swing.elapsed = 0;
+      } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
+        const RATE = world._workerRates.get(ID) || 0.1, INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
+        swing.phase = "idle";
+        swing.elapsed = 0;
+        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_FIRE - SWING_RECOVER);
+      }
+    }
+  }
+  var SWING_WINDUP, SWING_FIRE, SWING_RECOVER, STACKS_PER_FOOD;
+  var init_farm_work = __esm({
+    "src/farm-work.js"() {
+      SWING_WINDUP = 0.28;
+      SWING_FIRE = 0.4;
+      SWING_RECOVER = 0.36;
+      STACKS_PER_FOOD = 5;
+    }
+  });
+
   // src/unit-grades.js
   function mergeMaterialCostForTier(resultTier) {
     if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
@@ -5715,8 +5883,7 @@
             if (SLOT) {
               world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
               if (Math.hypot(SLOT.x - unit.x, SLOT.y - unit.y) < 0.3) {
-                const NODE = this.config.farm.work.node;
-                unit.angle = Math.atan2(NODE.y - unit.y, NODE.x - unit.x);
+                unit.angle = Math.atan2(SLOT.fy - unit.y, SLOT.fx - unit.x);
               }
             } else {
               this.wander(world, unit, dt);
@@ -7699,6 +7866,7 @@
   var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
+      init_farm_work();
       init_formation_skills();
       init_formation_skill_state();
       init_raid_deployment_cards();
@@ -7764,7 +7932,7 @@
           maxUnitId: 999999999,
           starterSeconds: 60,
           work: Object.freeze({
-            secondsPerFood: 12,
+            secondsPerFood: 8,
             warehouseLimit: 200,
             tierBonus: 0.5,
             minBreeders: 2,
@@ -7772,9 +7940,14 @@
             defaultBasisPoints: 4e3,
             starterFood: 0,
             maxFood: 50,
-            swingWindupSeconds: 0.28,
-            starterUnits: 6,
-            node: { x: -5.5, y: -2.5 }
+            maxAttackers: 3,
+            pileCount: 3,
+            pileFood: 12,
+            pileGap: 6,
+            pileRadiusX: 8,
+            pileRadiusY: 6,
+            pileRespawnSeconds: 3,
+            starterUnits: 6
           }),
           breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -8816,11 +8989,8 @@
           this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this._workerIds = /* @__PURE__ */ new Set();
-          this._workSlots = /* @__PURE__ */ new Map();
-          this._workerOrder = [];
-          this._swing = null;
-          this._lastSwingerId = null;
-          this._swingCursor = 0;
+          resetWork(this);
+          this._workerRates = /* @__PURE__ */ new Map();
           this._workRate = 0;
           this._workCount = 0;
           this._nextWorkerRefreshTick = 0;
@@ -9866,39 +10036,9 @@
         tapFood(source) {
           return this.mutateUnits(this._tapFood, source);
         }
-        _tapFood(source) {
-          if (source !== "auto" || this.warehouseFood >= Number.MAX_SAFE_INTEGER) {
-            return false;
-          }
-          const COMPLETED = this.foodTaps.remainder === 4;
-          this.foodTaps.remainder++;
-          this.foodTaps.revision++;
-          if (this.foodTaps.remainder >= 5) {
-            this.foodTaps.remainder -= 5;
-            this.foodTaps.produced++;
-            this.throwWorkFood();
-          }
-          this._emit("thresh", CONFIG.farm.work.node.x, CONFIG.farm.work.node.y, 0, {
-            big: COMPLETED,
-            duration: COMPLETED ? 0.9 : 0.55
-          });
-          this.notice("food-tap", {
-            source,
-            completed: COMPLETED,
-            remainder: this.foodTaps.remainder
-          });
-          this.markProgressChanged();
-          return true;
-        }
-        // Workers chip food out of the rock; it flies from the rock to a random spot on the farm.
-        throwWorkFood() {
-          const NODE = CONFIG.farm.work.node;
-          this.spawnFood(
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.6,
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.5,
-            1,
-            { allowBossEvent: false, from: { x: NODE.x, y: NODE.y, z: 0.9 } }
-          );
+        // Food is no longer made by taps: workers fight grain piles instead (see farm-work.js).
+        _tapFood() {
+          return false;
         }
         scatterFoodAtRandomLocation() {
           if (this.scene !== "farm" || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
@@ -9928,15 +10068,16 @@
         isWorker(unit) {
           return this._workerIds.has(unit.id);
         }
-        // A swing in progress ({ id, remaining }) and the worker whose hit landed last; both are transient render hints.
-        get workSwing() {
-          return this._swing;
+        get piles() {
+          return this._piles;
         }
-        get lastSwingerId() {
-          return this._lastSwingerId;
+        workSwingOf(id) {
+          return this._swings.get(id) || null;
         }
+        // Where a worker should stand: its attack spot, or a waiting spot near the closest pile.
         workSlot(unit) {
-          return this._workSlots.get(unit.id) || null;
+          const ASSIGN = this._workAssign.get(unit.id);
+          return ASSIGN ? { x: ASSIGN.x, y: ASSIGN.y, fx: ASSIGN.pile.x, fy: ASSIGN.pile.y } : null;
         }
         canBreedNow(unit) {
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
@@ -9956,7 +10097,7 @@
         // Workers are chosen per farm and per species so every species keeps a breeding pair.
         // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
         refreshWorkers() {
-          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set();
+          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map(), UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
           let rate = 0;
           if (this.scene === "farm") {
             for (const PLOT_ID of this.farmPlots.keys()) {
@@ -9979,7 +10120,9 @@
                 for (let index = 0; index < COUNT; index++) {
                   const WORKER = LIST[index];
                   NEXT.add(WORKER.id);
-                  rate += (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
+                  const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
+                  rate += UNIT_RATE;
+                  RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
                 }
               }
             }
@@ -9994,19 +10137,10 @@
             }
           }
           this._workerIds = NEXT;
-          this._workSlots = /* @__PURE__ */ new Map();
-          this._workerOrder = [...NEXT].sort((a, b) => a - b);
-          let slotIndex = 0;
-          for (const ID of this._workerOrder) {
-            const RING = Math.floor(slotIndex / 6), ANGLE = slotIndex % 6 * (Math.PI / 3) + RING * 0.5, RADIUS = 2.1 + RING * 0.75;
-            this._workSlots.set(ID, {
-              x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
-              y: WORK.node.y + Math.sin(ANGLE) * RADIUS * 0.75
-            });
-            slotIndex++;
-          }
+          this._workerRates = RATES;
           this._workCount = NEXT.size;
           this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
+          assignWorkers(this, CONFIG);
         }
         get warehouseFull() {
           return this.food.length >= CONFIG.farm.work.maxFood;
@@ -10016,7 +10150,11 @@
         }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
-          return this._workRate * 60;
+          let rate = 0;
+          for (const [ID, ASSIGN] of this._workAssign) {
+            rate += ASSIGN.attacking ? this._workerRates.get(ID) || 0 : 0;
+          }
+          return rate * 60;
         }
         advanceAutoTaps(elapsed) {
           if (!Number.isFinite(elapsed) || elapsed <= 0) {
@@ -10026,26 +10164,8 @@
             this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
             this.refreshWorkers();
           }
-          if (this.food.length >= CONFIG.farm.work.maxFood) {
-            return;
-          }
-          const STEP = Math.min(elapsed, 0.1);
-          this.foodTaps.autoClock = Math.min(0.5, this.foodTaps.autoClock + STEP * this._workRate * 2.5);
-          if (!this._swing && this.foodTaps.autoClock + 1e-9 >= 0.5) {
-            const COUNT = this._workerOrder.length;
-            this._swing = {
-              id: COUNT ? this._workerOrder[this._swingCursor++ % COUNT] : null,
-              remaining: CONFIG.farm.work.swingWindupSeconds
-            };
-          }
-          if (this._swing) {
-            this._swing.remaining -= STEP;
-            if (this._swing.remaining <= 0) {
-              this._lastSwingerId = this._swing.id;
-              this._swing = null;
-              this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
-              this.tapFood("auto");
-            }
+          if (this.scene === "farm") {
+            stepWork(this, CONFIG, Math.min(elapsed, 0.1));
           }
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
@@ -13760,7 +13880,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.22";
+      PRODUCT_VERSION = "0.10.23";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15889,24 +16009,16 @@
   function unitAttackPresentation(unit) {
     return ATTACK_PRESENTATIONS.get(UNIT_ABILITY_PROFILES[unit.species]?.kind) || DEFAULT_ATTACK;
   }
-  function workSwing(u, sim, renderer) {
-    const SLOT = sim.workSlot?.(u);
-    if (!SLOT || u.hp <= 0 || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.35) {
+  function workSwing(u, sim) {
+    const SWING = sim.workSwingOf?.(u.id);
+    if (!SWING || SWING.phase === "idle" || u.hp <= 0) {
       return null;
     }
-    const SWING = sim.workSwing;
-    if (SWING?.id === u.id) {
-      if (renderer.swingSeen !== SWING) {
-        renderer.swingSeen = SWING;
-        renderer.swingSeenAt = renderer.displayTimeMs;
-      }
-      return { name: "windup", elapsed: Math.min(279, renderer.displayTimeMs - renderer.swingSeenAt) };
+    const ELAPSED = SWING.elapsed * 1e3;
+    if (SWING.phase === "windup") {
+      return { name: "windup", elapsed: Math.min(279, ELAPSED) };
     }
-    const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
-    if (u.id === sim.lastSwingerId && SINCE >= 0 && SINCE < 760) {
-      return SINCE < 400 ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE } : { name: "recover", elapsed: SINCE - 400 };
-    }
-    return null;
+    return SWING.phase === "fire" ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: ELAPSED } : { name: "recover", elapsed: ELAPSED };
   }
   function unitMotion(u, sim, rest) {
     const DEAD = u.hp <= 0 || u.down > 0, AIRBORNE = !u.dropLanded || u.z > 0.1, PHASE = u.ability?.phase || "idle";
@@ -16080,7 +16192,7 @@
         this.renderer.vectorPlayers.delete(u.id);
         player = null;
       }
-      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim, this.renderer), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
+      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
       const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
       if (!player) {
         player = RECORD.asset.createPlayer({
@@ -17049,7 +17161,7 @@
       }
       PRESENTATION.drawBoundary(this);
       if (sim2.scene === "farm") {
-        this.drawWorkStation(sim2, this.displayTimeMs);
+        this.drawGrainPiles(sim2, this.displayTimeMs);
       }
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
       this.bossTelegraph = AREA;
@@ -17057,27 +17169,49 @@
         this.drawBossTelegraph(AREA);
       }
     }
-    drawWorkStation(sim2, now) {
-      const NODE = CONFIG.farm.work.node, S = this.scale * 1.45, REVISION = sim2.foodTaps?.revision || 0;
-      if (REVISION !== this.nodeRevision) {
-        this.nodeRevision = REVISION;
-        this.nodeHitAt = now;
+    drawGrainPiles(sim2, now) {
+      const SEEN = this.pileHits || (this.pileHits = /* @__PURE__ */ new Map());
+      for (const PILE of sim2.piles || []) {
+        const S = this.scale * (0.95 + 0.5 * (PILE.food / PILE.maxFood));
+        let seen = SEEN.get(PILE.id);
+        if (!seen) {
+          seen = { rev: PILE.hitRev, at: -1e9 };
+          SEEN.set(PILE.id, seen);
+        }
+        if (seen.rev !== PILE.hitRev) {
+          seen.rev = PILE.hitRev;
+          seen.at = now;
+        }
+        const HIT = CLAMP2(1 - (now - seen.at) / 220, 0, 1), BASE = this.project(PILE.x, PILE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
+        this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
+        this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, "#c99f4a");
+        this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, "#dcb85f");
+        this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, "#e6c773");
+        this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, "#f1dc9a");
+        this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, "#a9793b");
+        for (let index = -2; index <= 2; index++) {
+          this.ellipse(
+            X + index * 0.15 * S,
+            BASE.y - 0.24 * S * LIFT,
+            0.025 * S,
+            0.1 * S,
+            "#b98e45",
+            index * 0.25
+          );
+        }
+        for (let index = 0; index < 5; index++) {
+          const SLOT_X = BASE.x + (index - 2) * 0.27 * S, SLOT_Y = BASE.y + 0.14 * S;
+          this.ellipse(SLOT_X, SLOT_Y, 0.115 * S, 0.1 * S, "#6b522a99");
+          this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < PILE.stack ? "#f6d36b" : "#efe3bf");
+        }
       }
-      const HIT = CLAMP2(1 - (now - (this.nodeHitAt || -1e9)) / 220, 0, 1), BASE = this.project(NODE.x, NODE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
-      this.groundEllipse(NODE.x, NODE.y, 1.5, 1, "#54452433");
-      this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, "#c99f4a");
-      this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, "#dcb85f");
-      this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, "#e6c773");
-      this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, "#f1dc9a");
-      this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, "#a9793b");
-      for (let index = -2; index <= 2; index++) {
-        this.ellipse(X + index * 0.15 * S, BASE.y - 0.24 * S * LIFT, 0.025 * S, 0.1 * S, "#b98e45", index * 0.25);
-      }
-      const FILLED = sim2.foodTaps?.remainder || 0;
-      for (let index = 0; index < 5; index++) {
-        const SLOT_X = BASE.x + (index - 2) * 0.27 * S, SLOT_Y = BASE.y + 0.14 * S;
-        this.ellipse(SLOT_X, SLOT_Y, 0.115 * S, 0.1 * S, "#6b522a99");
-        this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < FILLED ? "#f6d36b" : "#efe3bf");
+      if (SEEN.size > 12) {
+        const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
+        for (const ID of SEEN.keys()) {
+          if (!LIVE.has(ID)) {
+            SEEN.delete(ID);
+          }
+        }
       }
     }
     addActor(presentation, source, depth, id, vector = false) {

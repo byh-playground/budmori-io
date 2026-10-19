@@ -417,7 +417,7 @@ const DIORAMA = class Diorama {
         }
         PRESENTATION.drawBoundary(this);
         if (sim2.scene === 'farm') {
-            this.drawWorkStation(sim2, this.displayTimeMs);
+            this.drawGrainPiles(sim2, this.displayTimeMs);
         }
         const AREA = PRESENTATION.dangerVisible(sim2)
             ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea)
@@ -427,36 +427,56 @@ const DIORAMA = class Diorama {
             this.drawBossTelegraph(AREA);
         }
     }
-    drawWorkStation(sim2, now) {
-        const NODE = CONFIG.farm.work.node,
-            S = this.scale * 1.45,
-            REVISION = sim2.foodTaps?.revision || 0;
-        if (REVISION !== this.nodeRevision) {
-            this.nodeRevision = REVISION;
-            this.nodeHitAt = now;
+    drawGrainPiles(sim2, now) {
+        const SEEN = this.pileHits || (this.pileHits = new Map());
+        for (const PILE of sim2.piles || []) {
+            const S = this.scale * (0.95 + 0.5 * (PILE.food / PILE.maxFood));
+            let seen = SEEN.get(PILE.id);
+            if (!seen) {
+                seen = { rev: PILE.hitRev, at: -1e9 };
+                SEEN.set(PILE.id, seen);
+            }
+            if (seen.rev !== PILE.hitRev) {
+                seen.rev = PILE.hitRev;
+                seen.at = now;
+            }
+            // Each hit squashes and shakes the pile.
+            const HIT = clamp(1 - (now - seen.at) / 220, 0, 1),
+                BASE = this.project(PILE.x, PILE.y, 0),
+                X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S,
+                SQUASH = 1 + HIT * 0.14,
+                LIFT = 1 - HIT * 0.16;
+            this.groundEllipse(PILE.x, PILE.y, 1.5, 1.0, '#54452433');
+            this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
+            this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, '#dcb85f');
+            this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, '#e6c773');
+            this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, '#f1dc9a');
+            this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, '#a9793b');
+            for (let index = -2; index <= 2; index++) {
+                this.ellipse(
+                    X + index * 0.15 * S,
+                    BASE.y - 0.24 * S * LIFT,
+                    0.025 * S,
+                    0.1 * S,
+                    '#b98e45',
+                    index * 0.25,
+                );
+            }
+            // Five slots in front of the pile: one fills per hit, all five fill when a grain flies out.
+            for (let index = 0; index < 5; index++) {
+                const SLOT_X = BASE.x + (index - 2) * 0.27 * S,
+                    SLOT_Y = BASE.y + 0.14 * S;
+                this.ellipse(SLOT_X, SLOT_Y, 0.115 * S, 0.1 * S, '#6b522a99');
+                this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < PILE.stack ? '#f6d36b' : '#efe3bf');
+            }
         }
-        // Each hit from a worker squashes and shakes the grain stack.
-        const HIT = clamp(1 - (now - (this.nodeHitAt || -1e9)) / 220, 0, 1),
-            BASE = this.project(NODE.x, NODE.y, 0),
-            X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S,
-            SQUASH = 1 + HIT * 0.14,
-            LIFT = 1 - HIT * 0.16;
-        this.groundEllipse(NODE.x, NODE.y, 1.5, 1.0, '#54452433');
-        this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
-        this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, '#dcb85f');
-        this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, '#e6c773');
-        this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, '#f1dc9a');
-        this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, '#a9793b');
-        for (let index = -2; index <= 2; index++) {
-            this.ellipse(X + index * 0.15 * S, BASE.y - 0.24 * S * LIFT, 0.025 * S, 0.1 * S, '#b98e45', index * 0.25);
-        }
-        // Five slots in front of the stack: one fills per hit, all five fill when a grain flies out.
-        const FILLED = sim2.foodTaps?.remainder || 0;
-        for (let index = 0; index < 5; index++) {
-            const SLOT_X = BASE.x + (index - 2) * 0.27 * S,
-                SLOT_Y = BASE.y + 0.14 * S;
-            this.ellipse(SLOT_X, SLOT_Y, 0.115 * S, 0.1 * S, '#6b522a99');
-            this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < FILLED ? '#f6d36b' : '#efe3bf');
+        if (SEEN.size > 12) {
+            const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
+            for (const ID of SEEN.keys()) {
+                if (!LIVE.has(ID)) {
+                    SEEN.delete(ID);
+                }
+            }
         }
     }
     addActor(presentation, source, depth, id, vector = false) {
