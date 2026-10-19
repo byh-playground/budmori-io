@@ -5,7 +5,7 @@ import {
     formationInvestedPoints,
 } from './formation-skill-state.js';
 import { getFarmUpgradeInvestedCount } from './farm-upgrades.js';
-import { createFarmPlotsProgression, getFarmPlotInvestedCount, isValidFarmPlotsProgression } from './farm-plot.js';
+import { createFarmPlotsProgression, isValidFarmPlotsProgression } from './farm-plot.js';
 import {
     createRaidDeploymentCardsState,
     isValidRaidDeploymentCardsState,
@@ -151,7 +151,6 @@ export function isValidPlayerProgressionState(state) {
     return (
         INVESTED_POINTS +
             getFarmUpgradeInvestedCount(state.farmUpgrades) +
-            getFarmPlotInvestedCount(state.farmPlots) +
             formationInvestedPoints(state.formationSkills) +
             raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) +
             state.availablePoints ===

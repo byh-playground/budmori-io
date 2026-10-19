@@ -580,15 +580,12 @@ async function unlockAbilityFlow(p) {
                 0,
             ),
             UPGRADE_SPENT = Object.values(STATE.farmUpgrades).reduce((total, level) => total + level, 0),
-            PLOT_SPENT =
-                (STATE.farmPlots.plots.length - 1) * 2 +
-                STATE.farmPlots.plots.reduce((total, plot) => total + plot.capacityLevel, 0),
             FORMATION_SPENT =
                 STATE.formationSkills.slots -
                 1 +
                 Object.values(STATE.formationSkills.levels).reduce((total, level) => total + level, 0),
             DEPLOYMENT_SPENT = STATE.raidDeploymentCards.unlockedSlots - 1;
-        STATE.level = ABILITY_SPENT + UPGRADE_SPENT + PLOT_SPENT + FORMATION_SPENT + DEPLOYMENT_SPENT + 2;
+        STATE.level = ABILITY_SPENT + UPGRADE_SPENT + FORMATION_SPENT + DEPLOYMENT_SPENT + 2;
         STATE.availablePoints = 1;
         STATE.experience = 0;
         const { isValidPlayerProgressionState: IS_VALID } = await import('/src/player-progression.js');
@@ -600,7 +597,6 @@ async function unlockAbilityFlow(p) {
                         availablePoints: STATE.availablePoints,
                         abilitySpent: ABILITY_SPENT,
                         upgradeSpent: UPGRADE_SPENT,
-                        plotSpent: PLOT_SPENT,
                         formationSpent: FORMATION_SPENT,
                         deploymentSpent: DEPLOYMENT_SPENT,
                         farmPlots: STATE.farmPlots,
@@ -2840,23 +2836,18 @@ async function progressionResetFlow() {
         STATE.level = 15;
         STATE.availablePoints = 14;
         STATE.farmUpgrades.food = 2;
-        STATE.farmPlots.plots[0].capacityLevel = 1;
-        STATE.availablePoints -= 3;
+        STATE.availablePoints -= 2;
         WORLD.markProgressChanged();
     });
     await P.locator('#menuTabAbilities').click();
     await P.locator('#menuTabGrowth').click();
     assert.equal(await P.locator('#progressionResetCurrent').isEnabled(), true);
     const GROWTH_RESET_LABEL = await P.locator('#progressionResetCurrent').textContent();
-    assert(GROWTH_RESET_LABEL.includes('3P'), GROWTH_RESET_LABEL);
+    assert(GROWTH_RESET_LABEL.includes('2P'), GROWTH_RESET_LABEL);
     await P.locator('#progressionResetCurrent').click();
     await P.waitForFunction(() => {
         const STATE = BUDMORI.sim.playerProgression;
-        return (
-            STATE.farmUpgrades.food === 0 &&
-            STATE.farmPlots.plots[0].capacityLevel === 0 &&
-            STATE.availablePoints === 14
-        );
+        return STATE.farmUpgrades.food === 0 && STATE.availablePoints === 14;
     });
     await P.waitForFunction(() => document.querySelector('#progressionResetCurrent').disabled);
     assert.equal(await P.locator('#progressionResetCurrent').isDisabled(), true);
@@ -3993,7 +3984,8 @@ async function core() {
         SWAP_WORLD.resetUnits();
         SWAP_WORLD.playerProgression.level = 4;
         SWAP_WORLD.playerProgression.availablePoints = 3;
-        if (!SWAP_WORLD.unlockFarmPlot().ok || !SWAP_WORLD.expandFarmPlot('plot-1').ok) {
+        SWAP_WORLD._addFarmPlot();
+        if (!SWAP_WORLD.farmPlots.get('plot-1').expand()) {
             throw Error('failed to create the two-plot exchange fixture');
         }
         SWAP_WORLD.playerProgression.farmPlots.targetBasisPoints = [10000, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -4115,18 +4107,15 @@ async function core() {
                 WORLD.playerProgression.level = 99;
                 WORLD.playerProgression.availablePoints = 1000;
                 for (let level = 0; level < 4; level++) {
-                    if (!WORLD.expandFarmPlot('plot-1').ok) {
+                    if (!WORLD.farmPlots.get('plot-1').expand()) {
                         throw Error('performance fixture could not expand its active plot');
                     }
                 }
                 for (let plotIndex = 0; plotIndex < 4; plotIndex++) {
-                    const UNLOCKED = WORLD.unlockFarmPlot();
-                    if (!UNLOCKED.ok) {
-                        throw Error('performance fixture could not unlock an inactive plot');
-                    }
+                    const UNLOCKED = { plotId: WORLD._addFarmPlot() };
                     PLOT_IDS.push(UNLOCKED.plotId);
                     for (let level = 0; level < 4; level++) {
-                        if (!WORLD.expandFarmPlot(UNLOCKED.plotId).ok) {
+                        if (!WORLD.farmPlots.get(UNLOCKED.plotId).expand()) {
                             throw Error('performance fixture could not expand an inactive plot');
                         }
                     }
@@ -5746,7 +5735,7 @@ async function seedScenarios(p, label) {
                 W.playerProgression.level = 5;
                 W.playerProgression.availablePoints = 4;
                 for (let level = 0; level < 4; level++) {
-                    if (!W.expandFarmPlot().ok) {
+                    if (!W.activeFarmPlot.expand()) {
                         throw Error('could not expand the plot for vector seed coverage');
                     }
                 }
@@ -5914,7 +5903,7 @@ async function seedScenarios(p, label) {
                     W.playerProgression.level = 5;
                     W.playerProgression.availablePoints = 4;
                     for (let level = 0; level < 4; level++) {
-                        if (!W.expandFarmPlot().ok) {
+                        if (!W.activeFarmPlot.expand()) {
                             throw Error('could not expand the plot for the merge policy fixture');
                         }
                     }
