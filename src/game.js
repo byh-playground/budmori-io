@@ -552,9 +552,9 @@
     }
     return KIND === "resource" ? pile.kind === "wood" || pile.kind === "stone" : pile.kind === "grain";
   }
-  function capacity(world, config, pile) {
+  function capacity(config, pile) {
     const WORK = config.farm.work;
-    return pile.kind === "site" && world.buildRush ? WORK.rushAttackers : WORK.maxAttackers;
+    return pile.kind === "site" ? Infinity : WORK.maxAttackers;
   }
   function pileRadius(pile) {
     if (pile.kind === "site") {
@@ -574,7 +574,7 @@
     for (const PILE of world._piles) {
       const MEMBERS = [];
       for (const [ID, OLD] of PREVIOUS) {
-        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < capacity(world, config, PILE)) {
+        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < capacity(config, PILE)) {
           MEMBERS.push(ID);
           TAKEN_IDS.add(ID);
         }
@@ -583,7 +583,7 @@
         (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
       );
       for (const UNIT3 of FREE) {
-        if (MEMBERS.length >= capacity(world, config, PILE)) {
+        if (MEMBERS.length >= capacity(config, PILE)) {
           break;
         }
         MEMBERS.push(UNIT3.id);
@@ -8111,7 +8111,6 @@
             maxAttackers: 3,
             defaultResourceBasisPoints: 3e3,
             defaultBuildBasisPoints: 1500,
-            rushAttackers: 12,
             facilityMaxLevel: 5,
             levelCostStep: 0.75,
             levelHitsStep: 0.6,
@@ -14288,7 +14287,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.32";
+      PRODUCT_VERSION = "0.10.33";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17569,8 +17568,7 @@
       }
       PRESENTATION.drawBoundary(this);
       if (sim2.scene === "farm") {
-        this.drawFacilities(sim2);
-        this.drawGrainPiles(sim2, this.displayTimeMs);
+        this.drawWorkShadows(sim2);
       }
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
       this.bossTelegraph = AREA;
@@ -17578,9 +17576,48 @@
         this.drawBossTelegraph(AREA);
       }
     }
-    drawGrainPiles(sim2, now) {
-      const SEEN = this.pileHits || (this.pileHits = /* @__PURE__ */ new Map());
+    drawWorkShadows(sim2) {
       for (const PILE of sim2.piles || []) {
+        this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
+      }
+      for (const FACILITY of sim2.facilities || []) {
+        this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, "#54452433");
+      }
+    }
+    // Piles, construction sites and facilities stand among the units, so they are sorted with them by depth.
+    addWorkActors(sim2) {
+      const OBJECTS = this.workObjects || (this.workObjects = { draw: (source) => this.drawWorkObject(source) });
+      for (const PILE of sim2.piles || []) {
+        this.addActor(OBJECTS, { pile: PILE, sim: sim2 }, 0.785 * PILE.y, -2e6 - PILE.id);
+      }
+      const UPGRADING = sim2.buildSite?.facility;
+      let index = 0;
+      for (const FACILITY of sim2.facilities || []) {
+        if (FACILITY.id !== UPGRADING) {
+          this.addActor(OBJECTS, { facility: FACILITY, sim: sim2 }, 0.785 * FACILITY.y, -3e6 - index++);
+        }
+      }
+      const SEEN = this.pileHits;
+      if (SEEN && SEEN.size > 12) {
+        const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
+        for (const ID of SEEN.keys()) {
+          if (!LIVE.has(ID)) {
+            SEEN.delete(ID);
+          }
+        }
+      }
+    }
+    drawWorkObject(source) {
+      if (source.facility) {
+        this.drawFacility(source.facility);
+      } else {
+        this.drawPile(source.pile, this.displayTimeMs);
+      }
+    }
+    drawPile(pile, now) {
+      const PILE = pile;
+      const SEEN = this.pileHits || (this.pileHits = /* @__PURE__ */ new Map());
+      {
         const S = this.scale * (0.95 + 0.5 * (PILE.food / PILE.maxFood));
         let seen = SEEN.get(PILE.id);
         if (!seen) {
@@ -17592,10 +17629,9 @@
           seen.at = now;
         }
         const HIT = CLAMP2(1 - (now - seen.at) / 220, 0, 1), BASE = this.project(PILE.x, PILE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
-        this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
         if (PILE.kind === "site") {
           this.drawSite(PILE, BASE, X, S * 1.7, SQUASH, LIFT);
-          continue;
+          return;
         }
         if (PILE.kind === "wood") {
           this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, "#7a5a34");
@@ -17632,14 +17668,6 @@
           this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < PILE.stack ? "#f6d36b" : "#efe3bf");
         }
       }
-      if (SEEN.size > 12) {
-        const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
-        for (const ID of SEEN.keys()) {
-          if (!LIVE.has(ID)) {
-            SEEN.delete(ID);
-          }
-        }
-      }
     }
     // A construction site: a timber frame that fills in with each hit, and a progress bar above it.
     drawSite(site, base, x, s, squash, lift) {
@@ -17658,14 +17686,10 @@
       this.ellipse(x, BAR_Y, 0.8 * s, 0.1 * s, "#4a463699");
       this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, "#f6d36b");
     }
-    drawFacilities(sim2) {
-      const UPGRADING = sim2.buildSite?.facility;
-      for (const FACILITY of sim2.facilities || []) {
-        if (FACILITY.id === UPGRADING) {
-          continue;
-        }
+    drawFacility(facility) {
+      const FACILITY = facility;
+      {
         const BASE = this.project(FACILITY.x, FACILITY.y, 0), S = this.scale * (1.9 + 0.12 * FACILITY.level), X = BASE.x;
-        this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, "#54452433");
         if (FACILITY.id === "windmill") {
           const SPIN = (this.displayTimeMs || 0) * 2e-3;
           this.ellipse(X, BASE.y - 0.4 * S, 0.5 * S, 0.5 * S, "#e8dcc0");
@@ -17753,6 +17777,9 @@
         this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
       }
       PRESENTATION.collectFood(this, sim2);
+      if (sim2.scene === "farm") {
+        this.addWorkActors(sim2);
+      }
       if (BOSS_VISIBLE) {
         for (const F of sim2.projectiles) {
           this.addActor(this.projectilePresentation, F, 0.785 * F.y - 0.62 * F.z, -F.id);

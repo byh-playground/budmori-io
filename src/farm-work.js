@@ -105,9 +105,10 @@ function worksOn(world, unit, pile) {
     }
     return KIND === 'resource' ? pile.kind === 'wood' || pile.kind === 'stone' : pile.kind === 'grain';
 }
-function capacity(world, config, pile) {
+function capacity(config, pile) {
     const WORK = config.farm.work;
-    return pile.kind === 'site' && world.buildRush ? WORK.rushAttackers : WORK.maxAttackers;
+    // A construction site has no cap: every builder adds their own hits, so the speed scales with the head count.
+    return pile.kind === 'site' ? Infinity : WORK.maxAttackers;
 }
 // Piles are solid: the radius shrinks a little as the pile is used up.
 export function pileRadius(pile) {
@@ -139,7 +140,7 @@ export function assignWorkers(world, config) {
                 OLD.attacking &&
                 BY_ID.has(ID) &&
                 worksOn(world, BY_ID.get(ID), PILE) &&
-                MEMBERS.length < capacity(world, config, PILE)
+                MEMBERS.length < capacity(config, PILE)
             ) {
                 MEMBERS.push(ID);
                 TAKEN_IDS.add(ID);
@@ -149,7 +150,7 @@ export function assignWorkers(world, config) {
             (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y),
         );
         for (const UNIT of FREE) {
-            if (MEMBERS.length >= capacity(world, config, PILE)) {
+            if (MEMBERS.length >= capacity(config, PILE)) {
                 break;
             }
             MEMBERS.push(UNIT.id);
