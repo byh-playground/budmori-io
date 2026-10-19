@@ -1,3 +1,4 @@
+import { assignWorkers, resetWork, stepWork } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
 import { RaidDeploymentCards } from './raid-deployment-cards.js';
@@ -106,7 +107,7 @@ const CONFIG = Object.freeze({
         maxUnitId: 999999999,
         starterSeconds: 60,
         work: Object.freeze({
-            secondsPerFood: 12,
+            secondsPerFood: 8,
             warehouseLimit: 200,
             tierBonus: 0.5,
             minBreeders: 2,
@@ -114,9 +115,14 @@ const CONFIG = Object.freeze({
             defaultBasisPoints: 4000,
             starterFood: 0,
             maxFood: 50,
-            swingWindupSeconds: 0.28,
+            maxAttackers: 3,
+            pileCount: 3,
+            pileFood: 12,
+            pileGap: 6,
+            pileRadiusX: 8,
+            pileRadiusY: 6,
+            pileRespawnSeconds: 3,
             starterUnits: 6,
-            node: { x: -5.5, y: -2.5 },
         }),
         breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -1284,11 +1290,8 @@ const GARDEN = class Garden {
         this.warehouseFood = CONFIG.farm.work.starterFood;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this._workerIds = new Set();
-        this._workSlots = new Map();
-        this._workerOrder = [];
-        this._swing = null;
-        this._lastSwingerId = null;
-        this._swingCursor = 0;
+        resetWork(this);
+        this._workerRates = new Map();
         this._workRate = 0;
         this._workCount = 0;
         this._nextWorkerRefreshTick = 0;
@@ -2537,39 +2540,9 @@ const GARDEN = class Garden {
     tapFood(source) {
         return this.mutateUnits(this._tapFood, source);
     }
-    _tapFood(source) {
-        if (source !== 'auto' || this.warehouseFood >= Number.MAX_SAFE_INTEGER) {
-            return false;
-        }
-        const COMPLETED = this.foodTaps.remainder === 4;
-        this.foodTaps.remainder++;
-        this.foodTaps.revision++;
-        if (this.foodTaps.remainder >= 5) {
-            this.foodTaps.remainder -= 5;
-            this.foodTaps.produced++;
-            this.throwWorkFood();
-        }
-        this._emit('thresh', CONFIG.farm.work.node.x, CONFIG.farm.work.node.y, 0, {
-            big: COMPLETED,
-            duration: COMPLETED ? 0.9 : 0.55,
-        });
-        this.notice('food-tap', {
-            source,
-            completed: COMPLETED,
-            remainder: this.foodTaps.remainder,
-        });
-        this.markProgressChanged();
-        return true;
-    }
-    // Workers chip food out of the rock; it flies from the rock to a random spot on the farm.
-    throwWorkFood() {
-        const NODE = CONFIG.farm.work.node;
-        this.spawnFood(
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.6,
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.5,
-            1,
-            { allowBossEvent: false, from: { x: NODE.x, y: NODE.y, z: 0.9 } },
-        );
+    // Food is no longer made by taps: workers fight grain piles instead (see farm-work.js).
+    _tapFood() {
+        return false;
     }
     scatterFoodAtRandomLocation() {
         if (this.scene !== 'farm' || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
@@ -2605,15 +2578,16 @@ const GARDEN = class Garden {
     isWorker(unit) {
         return this._workerIds.has(unit.id);
     }
-    // A swing in progress ({ id, remaining }) and the worker whose hit landed last; both are transient render hints.
-    get workSwing() {
-        return this._swing;
+    get piles() {
+        return this._piles;
     }
-    get lastSwingerId() {
-        return this._lastSwingerId;
+    workSwingOf(id) {
+        return this._swings.get(id) || null;
     }
+    // Where a worker should stand: its attack spot, or a waiting spot near the closest pile.
     workSlot(unit) {
-        return this._workSlots.get(unit.id) || null;
+        const ASSIGN = this._workAssign.get(unit.id);
+        return ASSIGN ? { x: ASSIGN.x, y: ASSIGN.y, fx: ASSIGN.pile.x, fy: ASSIGN.pile.y } : null;
     }
     canBreedNow(unit) {
         return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
@@ -2635,7 +2609,9 @@ const GARDEN = class Garden {
     refreshWorkers() {
         const WORK = CONFIG.farm.work,
             RATIO = this.workBasisPoints / 10000,
-            NEXT = new Set();
+            NEXT = new Set(),
+            RATES = new Map(),
+            UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
         let rate = 0;
         if (this.scene === 'farm') {
             for (const PLOT_ID of this.farmPlots.keys()) {
@@ -2665,7 +2641,9 @@ const GARDEN = class Garden {
                     for (let index = 0; index < COUNT; index++) {
                         const WORKER = LIST[index];
                         NEXT.add(WORKER.id);
-                        rate += (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
+                        const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
+                        rate += UNIT_RATE;
+                        RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
                     }
                 }
             }
@@ -2680,21 +2658,10 @@ const GARDEN = class Garden {
             }
         }
         this._workerIds = NEXT;
-        this._workSlots = new Map();
-        this._workerOrder = [...NEXT].sort((a, b) => a - b);
-        let slotIndex = 0;
-        for (const ID of this._workerOrder) {
-            const RING = Math.floor(slotIndex / 6),
-                ANGLE = (slotIndex % 6) * (Math.PI / 3) + RING * 0.5,
-                RADIUS = 2.1 + RING * 0.75;
-            this._workSlots.set(ID, {
-                x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
-                y: WORK.node.y + Math.sin(ANGLE) * RADIUS * 0.75,
-            });
-            slotIndex++;
-        }
+        this._workerRates = RATES;
         this._workCount = NEXT.size;
         this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
+        assignWorkers(this, CONFIG);
     }
     get warehouseFull() {
         return this.food.length >= CONFIG.farm.work.maxFood;
@@ -2704,7 +2671,11 @@ const GARDEN = class Garden {
     }
     // Food per minute produced by workers right now.
     get workFoodPerMinute() {
-        return this._workRate * 60;
+        let rate = 0;
+        for (const [ID, ASSIGN] of this._workAssign) {
+            rate += ASSIGN.attacking ? this._workerRates.get(ID) || 0 : 0;
+        }
+        return rate * 60;
     }
     advanceAutoTaps(elapsed) {
         // Real elapsed time, independent of demo speed. Do not replay hidden/stalled frames.
@@ -2715,28 +2686,8 @@ const GARDEN = class Garden {
             this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
             this.refreshWorkers();
         }
-        if (this.food.length >= CONFIG.farm.work.maxFood) {
-            return;
-        }
-        // One food is five taps and the clock holds half a second per tap, so saved progress stays valid.
-        // The tap lands when a worker's swing connects, so the animation drives the hit instead of the other way round.
-        const STEP = Math.min(elapsed, 0.1);
-        this.foodTaps.autoClock = Math.min(0.5, this.foodTaps.autoClock + STEP * this._workRate * 2.5);
-        if (!this._swing && this.foodTaps.autoClock + 1e-9 >= 0.5) {
-            const COUNT = this._workerOrder.length;
-            this._swing = {
-                id: COUNT ? this._workerOrder[this._swingCursor++ % COUNT] : null,
-                remaining: CONFIG.farm.work.swingWindupSeconds,
-            };
-        }
-        if (this._swing) {
-            this._swing.remaining -= STEP;
-            if (this._swing.remaining <= 0) {
-                this._lastSwingerId = this._swing.id;
-                this._swing = null;
-                this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
-                this.tapFood('auto');
-            }
+        if (this.scene === 'farm') {
+            stepWork(this, CONFIG, Math.min(elapsed, 0.1));
         }
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {

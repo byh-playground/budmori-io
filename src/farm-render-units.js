@@ -17,26 +17,18 @@ function unitAttackPresentation(unit) {
 }
 
 // A worker at the grain stack reuses its attack clips: wind up, strike on the tap, then recover.
-function workSwing(u, sim, renderer) {
-    const SLOT = sim.workSlot?.(u);
-    if (!SLOT || u.hp <= 0 || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.35) {
+function workSwing(u, sim) {
+    const SWING = sim.workSwingOf?.(u.id);
+    if (!SWING || SWING.phase === 'idle' || u.hp <= 0) {
         return null;
     }
-    const SWING = sim.workSwing;
-    if (SWING?.id === u.id) {
-        if (renderer.swingSeen !== SWING) {
-            renderer.swingSeen = SWING;
-            renderer.swingSeenAt = renderer.displayTimeMs;
-        }
-        return { name: 'windup', elapsed: Math.min(279, renderer.displayTimeMs - renderer.swingSeenAt) };
+    const ELAPSED = SWING.elapsed * 1000;
+    if (SWING.phase === 'windup') {
+        return { name: 'windup', elapsed: Math.min(279, ELAPSED) };
     }
-    const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
-    if (u.id === sim.lastSwingerId && SINCE >= 0 && SINCE < 760) {
-        return SINCE < 400
-            ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE }
-            : { name: 'recover', elapsed: SINCE - 400 };
-    }
-    return null;
+    return SWING.phase === 'fire'
+        ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: ELAPSED }
+        : { name: 'recover', elapsed: ELAPSED };
 }
 function unitMotion(u, sim, rest) {
     const DEAD = u.hp <= 0 || u.down > 0,
@@ -229,7 +221,7 @@ export class UnitPresentation {
             player = null;
         }
         const METADATA = RECORD.compiled.metadata,
-            SWING = rest ? null : workSwing(u, sim, this.renderer),
+            SWING = rest ? null : workSwing(u, sim),
             MOTION_NAME = SWING?.name || unitMotion(u, sim, rest),
             CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
         const CLIP_START_AT_MS = rest
