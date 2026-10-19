@@ -623,6 +623,8 @@ class FarmSession {
                 return W.scene === 'farm' && W.expandFarmPlot(c.plotId).ok;
             case 'farm-target':
                 return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
+            case 'farm-work':
+                return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
             case 'farm-sort':
                 return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':

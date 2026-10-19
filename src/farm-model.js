@@ -57,7 +57,6 @@ import { createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot } from './a
 import {
     FARM_UPGRADE_NODES,
     farmUpgradeRate,
-    getAutoTapSeconds,
     getBreedCooldownSeconds,
     getMergeCooldownSeconds,
 } from './farm-upgrades.js';
@@ -106,6 +105,15 @@ const CONFIG = Object.freeze({
         }),
         maxUnitId: 999999999,
         starterSeconds: 60,
+        work: Object.freeze({
+            secondsPerFood: 20,
+            warehouseLimit: 200,
+            tierBonus: 0.5,
+            minBreeders: 2,
+            refreshTicks: 20,
+            defaultBasisPoints: 4000,
+            starterFood: 6,
+        }),
         breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
             growthSeconds: BREED_COOLDOWN_SECONDS / 2,
@@ -1269,7 +1277,12 @@ const GARDEN = class Garden {
             this.playerProgression.farmPlots.plots.map((state) => [state.id, new FarmPlot(state)]),
         );
         this.food = this.activeFarmPlot.food;
-        this.warehouseFood = 0;
+        this.warehouseFood = CONFIG.farm.work.starterFood;
+        this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
+        this._workerIds = new Set();
+        this._workRate = 0;
+        this._workCount = 0;
+        this._nextWorkerRefreshTick = 0;
         this.starter = 0;
         this.notices = [];
         this.eventSequence = 0;
@@ -2566,15 +2579,103 @@ const GARDEN = class Garden {
         this.markProgressChanged();
         return true;
     }
+    isWorker(unit) {
+        return this._workerIds.has(unit.id);
+    }
+    canBreedNow(unit) {
+        return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
+    }
+    setWorkBasisPoints(basisPoints) {
+        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
+            return false;
+        }
+        if (basisPoints === this.workBasisPoints) {
+            return true;
+        }
+        this.workBasisPoints = basisPoints;
+        this._nextWorkerRefreshTick = 0;
+        this.refreshWorkers();
+        return true;
+    }
+    // Workers are chosen per farm and per species so every species keeps a breeding pair.
+    // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
+    refreshWorkers() {
+        const WORK = CONFIG.farm.work,
+            RATIO = this.workBasisPoints / 10000,
+            NEXT = new Set();
+        let rate = 0;
+        if (this.scene === 'farm') {
+            for (const PLOT_ID of this.farmPlots.keys()) {
+                const BY_SPECIES = new Map();
+                for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(PLOT_ID)) {
+                    if (
+                        !UNIT_LOCAL.mature ||
+                        UNIT_LOCAL.hp <= 0 ||
+                        UNIT_LOCAL.down > 0 ||
+                        UNIT_LOCAL.isBattleOnlySummon ||
+                        UNIT_LOCAL.isFormationClone ||
+                        (!this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL))
+                    ) {
+                        continue;
+                    }
+                    if (!BY_SPECIES.has(UNIT_LOCAL.species)) {
+                        BY_SPECIES.set(UNIT_LOCAL.species, []);
+                    }
+                    BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
+                }
+                for (const LIST of BY_SPECIES.values()) {
+                    LIST.sort((a, b) => a.id - b.id);
+                    const COUNT = Math.min(
+                        Math.floor(RATIO * LIST.length + 1e-9),
+                        Math.max(0, LIST.length - WORK.minBreeders),
+                    );
+                    for (let index = 0; index < COUNT; index++) {
+                        const WORKER = LIST[index];
+                        NEXT.add(WORKER.id);
+                        rate += (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
+                    }
+                }
+            }
+        }
+        for (const ID of NEXT) {
+            if (!this._workerIds.has(ID)) {
+                const UNIT_LOCAL = this._unitById.get(ID);
+                if (UNIT_LOCAL) {
+                    this.releaseMate(UNIT_LOCAL);
+                    this.clearFoodTargetSearch(UNIT_LOCAL);
+                }
+            }
+        }
+        this._workerIds = NEXT;
+        this._workCount = NEXT.size;
+        this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
+    }
+    get warehouseFull() {
+        return this.warehouseFood >= CONFIG.farm.work.warehouseLimit;
+    }
+    get workerCount() {
+        return this._workCount;
+    }
+    // Food per minute produced by workers right now.
+    get workFoodPerMinute() {
+        return this._workRate * 60;
+    }
     advanceAutoTaps(elapsed) {
         // Real elapsed time, independent of demo speed. Do not replay hidden/stalled frames.
         if (!Number.isFinite(elapsed) || elapsed <= 0) {
             return;
         }
-        this.foodTaps.autoClock += Math.min(elapsed, 0.1);
-        const INTERVAL = getAutoTapSeconds(this.playerProgression?.farmUpgrades);
-        while (this.foodTaps.autoClock + 1e-9 >= INTERVAL) {
-            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - INTERVAL);
+        if (this.simulationTick >= this._nextWorkerRefreshTick) {
+            this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
+            this.refreshWorkers();
+        }
+        if (this.warehouseFood >= CONFIG.farm.work.warehouseLimit) {
+            return;
+        }
+        // One food is five taps and the clock holds half a second per tap, so saved progress stays valid.
+        this.foodTaps.autoClock += Math.min(elapsed, 0.1) * this._workRate * 2.5;
+        while (this.foodTaps.autoClock + 1e-9 >= 0.5) {
+            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
             this.tapFood('auto');
         }
     }
@@ -2792,8 +2893,8 @@ const GARDEN = class Garden {
                 a !== b &&
                 !a.isBattleOnlySummon &&
                 !b.isBattleOnlySummon &&
-                a.breedingEligible !== false &&
-                b.breedingEligible !== false &&
+                this.canBreedNow(a) &&
+                this.canBreedNow(b) &&
                 a.hp > 0 &&
                 b.hp > 0 &&
                 a.species === b.species &&
@@ -2852,8 +2953,8 @@ const GARDEN = class Garden {
             b.fed &&
             a.cooldown <= 0 &&
             b.cooldown <= 0 &&
-            a.breedingEligible !== false &&
-            b.breedingEligible !== false &&
+            this.canBreedNow(a) &&
+            this.canBreedNow(b) &&
             !this.senseEnemy(a) &&
             !this.senseEnemy(b) &&
             this.canFarmPopulationAdvance(a.species) &&
@@ -3138,8 +3239,8 @@ const GARDEN = class Garden {
                 !B.fed ||
                 A.cooldown > 0 ||
                 B.cooldown > 0 ||
-                A.breedingEligible === false ||
-                B.breedingEligible === false ||
+                !this.canBreedNow(A) ||
+                !this.canBreedNow(B) ||
                 A.species !== B.species ||
                 this.senseEnemy(A) ||
                 this.senseEnemy(B) ||
@@ -3304,7 +3405,7 @@ const GARDEN = class Garden {
                     candidate.mature &&
                     candidate.fed &&
                     candidate.cooldown <= 0 &&
-                    candidate.breedingEligible !== false,
+                    this.canBreedNow(candidate),
             )
             .sort(
                 (a, b) =>
@@ -3470,7 +3571,7 @@ const GARDEN = class Garden {
                     !CANDIDATE.mature ||
                     !CANDIDATE.fed ||
                     CANDIDATE.cooldown > 0 ||
-                    CANDIDATE.breedingEligible === false ||
+                    !this.canBreedNow(CANDIDATE) ||
                     this.unitCollection.reservationOwner(CANDIDATE) ||
                     (CANDIDATE.plotId === unit.plotId
                         ? !this.canBreedPair(unit, CANDIDATE)
@@ -3532,7 +3633,7 @@ const GARDEN = class Garden {
                 for (const UNIT_LOCAL of GROUP) {
                     if (
                         UNIT_LOCAL.isBattleOnlySummon ||
-                        UNIT_LOCAL.breedingEligible === false ||
+                        !this.canBreedNow(UNIT_LOCAL) ||
                         UNIT_LOCAL.hp <= 0 ||
                         !UNIT_LOCAL.mature ||
                         !UNIT_LOCAL.fed ||
@@ -3559,7 +3660,7 @@ const GARDEN = class Garden {
                         MATE.mature &&
                         MATE.fed &&
                         MATE.cooldown <= 0 &&
-                        MATE.breedingEligible !== false &&
+                        this.canBreedNow(MATE) &&
                         !MATE.isBattleOnlySummon
                     ) {
                         return true;
@@ -4322,6 +4423,9 @@ const GARDEN = class Garden {
                         U.cooldown = 0;
                         U.cooldownDuration = 0;
                     }
+                }
+                if (this.isWorker(U)) {
+                    continue;
                 }
                 if (this.advanceInactiveForage(U, dt)) {
                     progressTimersAdvanced = true;

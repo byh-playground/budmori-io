@@ -2676,9 +2676,6 @@
   function farmUpgradeRate(state, id) {
     return 1 + 0.1 * getFarmUpgradeLevel(state, id);
   }
-  function getAutoTapSeconds(state) {
-    return 0.5 / farmUpgradeRate(state, "food");
-  }
   function getBreedCooldownSeconds(state, baseSeconds = 10) {
     return baseSeconds / farmUpgradeRate(state, "breed");
   }
@@ -2698,10 +2695,10 @@
       FARM_UPGRADE_NODES = Object.freeze([
         {
           id: "food",
-          name: "창고 생산",
+          name: "일꾼 속도",
           icon: "◒",
-          description: "창고에 먹이가 쌓이는 간격을 단계마다 10% 줄여요.",
-          value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 회`
+          description: "일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.",
+          value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`
         },
         {
           id: "growth",
@@ -5713,6 +5710,10 @@
           if (unit.stun > 0 || unit.z > 0.1) {
             return;
           }
+          if (world.isWorker(unit)) {
+            this.wander(world, unit, dt);
+            return;
+          }
           if (!unit.mature || unit.cooldown > 0) {
             if (!world.avoidNearbyFood(unit, dt)) {
               this.wander(world, unit, dt);
@@ -7753,6 +7754,15 @@
           }),
           maxUnitId: 999999999,
           starterSeconds: 60,
+          work: Object.freeze({
+            secondsPerFood: 20,
+            warehouseLimit: 200,
+            tierBonus: 0.5,
+            minBreeders: 2,
+            refreshTicks: 20,
+            defaultBasisPoints: 4e3,
+            starterFood: 6
+          }),
           breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
             growthSeconds: BREED_COOLDOWN_SECONDS / 2,
@@ -8790,7 +8800,12 @@
             this.playerProgression.farmPlots.plots.map((state) => [state.id, new FarmPlot(state)])
           );
           this.food = this.activeFarmPlot.food;
-          this.warehouseFood = 0;
+          this.warehouseFood = CONFIG.farm.work.starterFood;
+          this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
+          this._workerIds = /* @__PURE__ */ new Set();
+          this._workRate = 0;
+          this._workCount = 0;
+          this._nextWorkerRefreshTick = 0;
           this.starter = 0;
           this.notices = [];
           this.eventSequence = 0;
@@ -9878,14 +9893,92 @@
           this.markProgressChanged();
           return true;
         }
+        isWorker(unit) {
+          return this._workerIds.has(unit.id);
+        }
+        canBreedNow(unit) {
+          return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
+        }
+        setWorkBasisPoints(basisPoints) {
+          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
+            return false;
+          }
+          if (basisPoints === this.workBasisPoints) {
+            return true;
+          }
+          this.workBasisPoints = basisPoints;
+          this._nextWorkerRefreshTick = 0;
+          this.refreshWorkers();
+          return true;
+        }
+        // Workers are chosen per farm and per species so every species keeps a breeding pair.
+        // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
+        refreshWorkers() {
+          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set();
+          let rate = 0;
+          if (this.scene === "farm") {
+            for (const PLOT_ID of this.farmPlots.keys()) {
+              const BY_SPECIES = /* @__PURE__ */ new Map();
+              for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(PLOT_ID)) {
+                if (!UNIT_LOCAL.mature || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.isFormationClone || !this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL)) {
+                  continue;
+                }
+                if (!BY_SPECIES.has(UNIT_LOCAL.species)) {
+                  BY_SPECIES.set(UNIT_LOCAL.species, []);
+                }
+                BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
+              }
+              for (const LIST of BY_SPECIES.values()) {
+                LIST.sort((a, b) => a.id - b.id);
+                const COUNT = Math.min(
+                  Math.floor(RATIO * LIST.length + 1e-9),
+                  Math.max(0, LIST.length - WORK.minBreeders)
+                );
+                for (let index = 0; index < COUNT; index++) {
+                  const WORKER = LIST[index];
+                  NEXT.add(WORKER.id);
+                  rate += (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
+                }
+              }
+            }
+          }
+          for (const ID of NEXT) {
+            if (!this._workerIds.has(ID)) {
+              const UNIT_LOCAL = this._unitById.get(ID);
+              if (UNIT_LOCAL) {
+                this.releaseMate(UNIT_LOCAL);
+                this.clearFoodTargetSearch(UNIT_LOCAL);
+              }
+            }
+          }
+          this._workerIds = NEXT;
+          this._workCount = NEXT.size;
+          this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
+        }
+        get warehouseFull() {
+          return this.warehouseFood >= CONFIG.farm.work.warehouseLimit;
+        }
+        get workerCount() {
+          return this._workCount;
+        }
+        // Food per minute produced by workers right now.
+        get workFoodPerMinute() {
+          return this._workRate * 60;
+        }
         advanceAutoTaps(elapsed) {
           if (!Number.isFinite(elapsed) || elapsed <= 0) {
             return;
           }
-          this.foodTaps.autoClock += Math.min(elapsed, 0.1);
-          const INTERVAL = getAutoTapSeconds(this.playerProgression?.farmUpgrades);
-          while (this.foodTaps.autoClock + 1e-9 >= INTERVAL) {
-            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - INTERVAL);
+          if (this.simulationTick >= this._nextWorkerRefreshTick) {
+            this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
+            this.refreshWorkers();
+          }
+          if (this.warehouseFood >= CONFIG.farm.work.warehouseLimit) {
+            return;
+          }
+          this.foodTaps.autoClock += Math.min(elapsed, 0.1) * this._workRate * 2.5;
+          while (this.foodTaps.autoClock + 1e-9 >= 0.5) {
+            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
             this.tapFood("auto");
           }
         }
@@ -10083,7 +10176,7 @@
           }
           try {
             const OWNER = this.breedingReservationOwner(a, b), BIRTH_RESERVATION = this._activeBreedReservations?.get(OWNER) || null, RESERVATIONS_AVAILABLE = this.unitCollection.reservationOwner(a) === null || this.unitCollection.reservationOwner(a) === OWNER;
-            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && a.breedingEligible !== false && b.breedingEligible !== false && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.canFarmPopulationAdvance(a.species, {
+            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && this.canBreedNow(a) && this.canBreedNow(b) && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.canFarmPopulationAdvance(a.species, {
               excludeReservation: BIRTH_RESERVATION?.reservation || null
             }) && this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.totalFarmCapacity && (BIRTH_RESERVATION ? this.roster.placedPopulation(BIRTH_RESERVATION.plotId) + (this._breedPlotReservations.get(BIRTH_RESERVATION.plotId) || 0) <= this.farmPlots.get(BIRTH_RESERVATION.plotId)?.capacity : !!this.availableFarmPlotFor(a.species)) && this._unitIsActive(a) && this._unitIsActive(b) && RESERVATIONS_AVAILABLE && (this.unitCollection.reservationOwner(b) === null || this.unitCollection.reservationOwner(b) === OWNER) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
           } finally {
@@ -10099,7 +10192,7 @@
           return [...this._breedPlans?.values() || []].find((plan) => plan.parentIds.includes(unit?.id)) || null;
         }
         canStartCrossPlotBreed(a, b, { allowSamePlot = false } = {}) {
-          return !!(this.scene === "farm" && this.farmBossEvent?.phase === "idle" && a && b && a !== b && (allowSamePlot || a.plotId !== b.plotId) && a.plotId !== RESERVE_PLOT_ID && b.plotId !== RESERVE_PLOT_ID && a.species === b.species && a.hp > 0 && b.hp > 0 && a.down <= 0 && b.down <= 0 && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && a.breedingEligible !== false && b.breedingEligible !== false && !this.senseEnemy(a) && !this.senseEnemy(b) && this.canFarmPopulationAdvance(a.species) && this.ownedPopulation + this.birthReservations < this.totalFarmCapacity && !this.unitCollection.reservationOwner(a) && !this.unitCollection.reservationOwner(b));
+          return !!(this.scene === "farm" && this.farmBossEvent?.phase === "idle" && a && b && a !== b && (allowSamePlot || a.plotId !== b.plotId) && a.plotId !== RESERVE_PLOT_ID && b.plotId !== RESERVE_PLOT_ID && a.species === b.species && a.hp > 0 && b.hp > 0 && a.down <= 0 && b.down <= 0 && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.canBreedNow(a) && this.canBreedNow(b) && !this.senseEnemy(a) && !this.senseEnemy(b) && this.canFarmPopulationAdvance(a.species) && this.ownedPopulation + this.birthReservations < this.totalFarmCapacity && !this.unitCollection.reservationOwner(a) && !this.unitCollection.reservationOwner(b));
         }
         reserveCrossPlotBreed(a, b, { allowSamePlot = false, durationTicks = 10 } = {}) {
           if (!this.canStartCrossPlotBreed(a, b, { allowSamePlot }) || !Number.isSafeInteger(durationTicks) || durationTicks < 1) {
@@ -10296,7 +10389,7 @@
               continue;
             }
             const [A, B] = PLAN.parentIds.map((id) => this.unitCollection.unitById(id));
-            if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !A || !B || A.mateId !== B.id || B.mateId !== A.id || A.hp <= 0 || B.hp <= 0 || A.down > 0 || B.down > 0 || !A.mature || !B.mature || !A.fed || !B.fed || A.cooldown > 0 || B.cooldown > 0 || A.breedingEligible === false || B.breedingEligible === false || A.species !== B.species || this.senseEnemy(A) || this.senseEnemy(B) || PLAN.targetSnapshot.some((value, index) => value !== this.farmTargets[index]) || !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })) {
+            if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !A || !B || A.mateId !== B.id || B.mateId !== A.id || A.hp <= 0 || B.hp <= 0 || A.down > 0 || B.down > 0 || !A.mature || !B.mature || !A.fed || !B.fed || A.cooldown > 0 || B.cooldown > 0 || !this.canBreedNow(A) || !this.canBreedNow(B) || A.species !== B.species || this.senseEnemy(A) || this.senseEnemy(B) || PLAN.targetSnapshot.some((value, index) => value !== this.farmTargets[index]) || !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })) {
               this.cancelBreedPlan(PLAN);
               continue;
             }
@@ -10384,7 +10477,7 @@
             return false;
           }
           const CANDIDATES = this.roster.residentsOfSpecies(unit.species).filter(
-            (candidate) => candidate !== unit && candidate.plotId !== this.activePlotId && candidate.plotId !== RESERVE_PLOT_ID && !candidate.mateId && !this.unitCollection.reservationOwner(candidate) && candidate.hp > 0 && candidate.down <= 0 && candidate.mature && candidate.fed && candidate.cooldown <= 0 && candidate.breedingEligible !== false
+            (candidate) => candidate !== unit && candidate.plotId !== this.activePlotId && candidate.plotId !== RESERVE_PLOT_ID && !candidate.mateId && !this.unitCollection.reservationOwner(candidate) && candidate.hp > 0 && candidate.down <= 0 && candidate.mature && candidate.fed && candidate.cooldown <= 0 && this.canBreedNow(candidate)
           ).sort(
             (a, b) => Number(a.plotId !== unit.plotId) - Number(b.plotId !== unit.plotId) || Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) || Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
           );
@@ -10504,7 +10597,7 @@
             }
             const CANDIDATES = [];
             for (const CANDIDATE of this.roster.residentsOfSpecies(unit.species)) {
-              if (CANDIDATE === unit || CANDIDATE.mateId || CANDIDATE.plotId === RESERVE_PLOT_ID || CANDIDATE.hp <= 0 || CANDIDATE.down > 0 || !CANDIDATE.mature || !CANDIDATE.fed || CANDIDATE.cooldown > 0 || CANDIDATE.breedingEligible === false || this.unitCollection.reservationOwner(CANDIDATE) || (CANDIDATE.plotId === unit.plotId ? !this.canBreedPair(unit, CANDIDATE) : !this.canStartCrossPlotBreed(unit, CANDIDATE))) {
+              if (CANDIDATE === unit || CANDIDATE.mateId || CANDIDATE.plotId === RESERVE_PLOT_ID || CANDIDATE.hp <= 0 || CANDIDATE.down > 0 || !CANDIDATE.mature || !CANDIDATE.fed || CANDIDATE.cooldown > 0 || !this.canBreedNow(CANDIDATE) || this.unitCollection.reservationOwner(CANDIDATE) || (CANDIDATE.plotId === unit.plotId ? !this.canBreedPair(unit, CANDIDATE) : !this.canStartCrossPlotBreed(unit, CANDIDATE))) {
                 continue;
               }
               CANDIDATES.push(CANDIDATE);
@@ -10553,7 +10646,7 @@
             for (const GROUP of this._speciesTierGroups) {
               let unreserved = 0;
               for (const UNIT_LOCAL of GROUP) {
-                if (UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.breedingEligible === false || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.mature || !UNIT_LOCAL.fed || UNIT_LOCAL.cooldown > 0 || !this.canFarmPopulationAdvance(UNIT_LOCAL.species) || !this._unitIsActive(UNIT_LOCAL)) {
+                if (UNIT_LOCAL.isBattleOnlySummon || !this.canBreedNow(UNIT_LOCAL) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.mature || !UNIT_LOCAL.fed || UNIT_LOCAL.cooldown > 0 || !this.canFarmPopulationAdvance(UNIT_LOCAL.species) || !this._unitIsActive(UNIT_LOCAL)) {
                   continue;
                 }
                 if (!UNIT_LOCAL.mateId && !this.unitCollection.reservationOwner(UNIT_LOCAL)) {
@@ -10563,7 +10656,7 @@
                   continue;
                 }
                 const MATE = this._unitById.get(UNIT_LOCAL.mateId);
-                if (MATE?.mateId === UNIT_LOCAL.id && this.unitCollection.reservationOwner(UNIT_LOCAL) === this.breedingReservationOwner(UNIT_LOCAL, MATE) && MATE.species === UNIT_LOCAL.species && MATE.tier === UNIT_LOCAL.tier && MATE.hp > 0 && MATE.mature && MATE.fed && MATE.cooldown <= 0 && MATE.breedingEligible !== false && !MATE.isBattleOnlySummon) {
+                if (MATE?.mateId === UNIT_LOCAL.id && this.unitCollection.reservationOwner(UNIT_LOCAL) === this.breedingReservationOwner(UNIT_LOCAL, MATE) && MATE.species === UNIT_LOCAL.species && MATE.tier === UNIT_LOCAL.tier && MATE.hp > 0 && MATE.mature && MATE.fed && MATE.cooldown <= 0 && this.canBreedNow(MATE) && !MATE.isBattleOnlySummon) {
                   return true;
                 }
               }
@@ -11202,6 +11295,9 @@
                   U.cooldown = 0;
                   U.cooldownDuration = 0;
                 }
+              }
+              if (this.isWorker(U)) {
+                continue;
               }
               if (this.advanceInactiveForage(U, dt)) {
                 progressTimersAdvanced = true;
@@ -13598,7 +13694,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.13";
+      PRODUCT_VERSION = "0.10.14";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15769,7 +15865,7 @@
     constructor(renderer) {
       this.renderer = renderer;
       this.unitRings = [];
-      this.unitRingPool = [{}, {}, {}];
+      this.unitRingPool = [{}, {}, {}, {}];
       this.breedingIndicator = {};
       this.restIndicator = {};
     }
@@ -15786,6 +15882,9 @@
       EFFECTS.length = 0;
       if (u.buffed && u.hp > 0) {
         this.addUnitRing(u.radius + 0.16, "#eacb72", 0.055, 1);
+      }
+      if (world.isWorker?.(u)) {
+        this.addUnitRing(u.radius + 0.08, "#c2913e", 0.04, 1);
       }
       if (A.phase === "windup" && S_LOCAL) {
         this.addUnitRing(
@@ -17564,6 +17663,8 @@
           return W.scene === "farm" && W.expandFarmPlot(c.plotId).ok;
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
+        case "farm-work":
+          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
         case "farm-sort":
           return W.scene === "farm" && W.sortActiveFarm(c.order);
         case "merge":
@@ -20738,6 +20839,21 @@
     }
     return false;
   }
+  var WORK_STORAGE_KEY = "budmori.work.basisPoints";
+  function loadWorkBasisPoints(fallback) {
+    try {
+      const VALUE = Number(localStorage.getItem(WORK_STORAGE_KEY));
+      return localStorage.getItem(WORK_STORAGE_KEY) !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e4 ? VALUE : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  function saveWorkBasisPoints(value) {
+    try {
+      localStorage.setItem(WORK_STORAGE_KEY, String(value));
+    } catch {
+    }
+  }
   function install(world) {
     if (active) {
       stopWorldInput();
@@ -20749,6 +20865,9 @@
       onError: FAIL3,
       onWorldStep
     });
+    world.setWorkBasisPoints(loadWorkBasisPoints(world.workBasisPoints));
+    DOLLAR2("farmWorkRatio").value = String(Math.round(world.workBasisPoints / 100));
+    DOLLAR2("farmWorkOutput").textContent = `${Math.round(world.workBasisPoints / 100)}%`;
     return active;
   }
   install(new GARDEN());
@@ -21360,6 +21479,7 @@
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
+    DOLLAR2("farmWorkRatio").disabled = LOCKED;
     const COUNTS = W.roster.countsBySpecies(), TOTAL = [...COUNTS.values()].reduce((sum, count) => sum + count, 0);
     DOLLAR2("farmRatioList").innerHTML = W.farmTargets.map((value, speciesId) => {
       const SPECIES = speciesById(speciesId), COUNT = COUNTS.get(speciesId) || 0, CURRENT = TOTAL ? (COUNT / TOTAL * 100).toFixed(0) : "0";
@@ -21568,6 +21688,15 @@
     if (BUTTON) {
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
+  });
+  DOLLAR2("farmWorkRatio").addEventListener("input", (e) => {
+    DOLLAR2("farmWorkOutput").textContent = `${Number(e.target.value)}%`;
+  });
+  DOLLAR2("farmWorkRatio").addEventListener("change", (e) => {
+    const BASIS_POINTS = Number(e.target.value) * 100;
+    saveWorkBasisPoints(BASIS_POINTS);
+    (personalGarden || active.world).setWorkBasisPoints(BASIS_POINTS);
+    active.queue("farm-work", { basisPoints: BASIS_POINTS });
   });
   DOLLAR2("farmRatioList").addEventListener("input", (e) => {
     const INPUT = e.target.closest("[data-farm-target]");
@@ -22131,6 +22260,11 @@
       home || active.paused || W.scene !== "farm" || W.warehouseFood <= 0 || W.food.length >= 140
     );
     syncText("warehouseStock", String(W.warehouseFood));
+    const WORK_WORLD = personalGarden || W;
+    syncText(
+      "farmWorkNote",
+      WORK_WORLD.warehouseFull ? `${WORK_WORLD.workerCount}마리 일하는 중 · 창고가 가득 찼어요` : `${WORK_WORLD.workerCount}마리 일하는 중 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`
+    );
     syncText("warehouseProgressLabel", `창고 생산 ${W.foodTaps.remainder}/5`);
     syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
     syncAttribute("warehouseProgress", "aria-valuetext", `창고 생산 ${W.foodTaps.remainder}/5`);

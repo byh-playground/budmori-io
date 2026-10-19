@@ -545,6 +545,9 @@
     grid-template-columns: 40px 1fr auto;
     column-gap: var(--ui-s3);
 }
+.farm-ratio--work {
+    grid-template-columns: 1fr auto;
+}
 .farm-ratio img {
     grid-row: span 2;
     width: 40px;
