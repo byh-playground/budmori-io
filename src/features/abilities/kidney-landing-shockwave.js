@@ -2,7 +2,7 @@
 // Formatting receives domain values; it imports no DOM or renderer adapters.
 class KidneyLandingShockwavePresentation {
     label(_definition, value) {
-        return `충격파 피해 ATK ×${value} · 반경 기본 사거리 ×${value}`;
+        return `충격파 피해 공격력 ×${value} · 반경 기본 사거리 ×${value}`;
     }
     title(value) {
         return `충격파 ×${value}`;

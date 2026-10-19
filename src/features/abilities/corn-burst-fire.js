@@ -2,7 +2,7 @@
 // Formatting receives domain values; it imports no DOM or renderer adapters.
 class CornBurstFirePresentation {
     label(definition, value, _level, attackProfile) {
-        return `한 공격 주기 · 발사 ${value}발 · 발당 ATK ×${attackProfile.skillMultiplier * definition.projectileAttackShare}`;
+        return `한 공격 주기 · 발사 ${value}발 · 발당 공격력 ×${attackProfile.skillMultiplier * definition.projectileAttackShare}`;
     }
     title(value) {
         return `${value}발 연사`;

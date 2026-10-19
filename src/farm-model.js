@@ -3823,7 +3823,7 @@ const GARDEN = class Garden {
             return {
                 available: false,
                 code: 'no-eligible-materials',
-                reason: '합성 가능한 동종 개체가 부족해요.',
+                reason: '합성할 수 있는 같은 병종이 부족해요.',
             };
         }
         return {

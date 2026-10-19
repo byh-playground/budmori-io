@@ -2698,10 +2698,10 @@
       FARM_UPGRADE_NODES = Object.freeze([
         {
           id: "food",
-          name: "자동 탭",
+          name: "창고 생산",
           icon: "◒",
-          description: "자동 먹이 생성 간격을 단계마다 10% 줄여요.",
-          value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 탭`
+          description: "창고에 먹이가 쌓이는 간격을 단계마다 10% 줄여요.",
+          value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 회`
         },
         {
           id: "growth",
@@ -2719,9 +2719,9 @@
         },
         {
           id: "merge",
-          name: "합체 회복",
+          name: "합성 회복",
           icon: "◇",
-          description: "합체 후 대기시간을 단계마다 10% 줄여요.",
+          description: "합성 후 대기시간을 단계마다 10% 줄여요.",
           value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
         }
       ]);
@@ -5293,7 +5293,7 @@
       init_unit_stats();
       RiceCriticalPresentation = class {
         label(_definition, value) {
-          return `잃은 HP 비율에 따라 치명타 확률 최대 +${Math.round(value * 100)}%p · 치명타 피해 ×${COMMON_UNIT_STAT_DEFAULTS.critMultiplier}`;
+          return `잃은 체력 비율에 따라 치명타 확률 최대 +${Math.round(value * 100)}%p · 치명타 피해 ×${COMMON_UNIT_STAT_DEFAULTS.critMultiplier}`;
         }
         title(value) {
           return `치명타 최대 +${Math.round(value * 100)}%p`;
@@ -10762,7 +10762,7 @@
             return {
               available: false,
               code: "no-eligible-materials",
-              reason: "합성 가능한 동종 개체가 부족해요."
+              reason: "합성할 수 있는 같은 병종이 부족해요."
             };
           }
           return {
@@ -13598,7 +13598,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.11";
+      PRODUCT_VERSION = "0.10.12";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20016,7 +20016,7 @@
   };
   var INVESTMENT_REASON_LABELS = /* @__PURE__ */ new Map([
     ["already-invested", "이미 투자한 노드예요."],
-    ["prerequisite-required", "이전 단계에 먼저 투자하세요."],
+    ["prerequisite-required", "이전 단계에 먼저 투자해야 해요."],
     ["insufficient-points", "공용 포인트가 필요해요."],
     ["combat-lock", "전투 중에는 투자할 수 없어요."],
     ["farm-only", "농장에서만 투자할 수 있어요."],
@@ -20779,7 +20779,7 @@
     DOLLAR2("bossStageLabel").textContent = `${SELECTION.stage}단계`;
     renderNeutralBossPreview(DOLLAR2("bossPreview"), SPECIES, CATALOG_ENTRY.asset, `${ENCOUNTER_NAME} 미리보기`);
     DOLLAR2("bossStageName").textContent = ENCOUNTER_NAME;
-    DOLLAR2("bossStageHp").textContent = `HP ${Math.round(SELECTION.hp).toLocaleString("ko-KR")}`;
+    DOLLAR2("bossStageHp").textContent = `체력 ${Math.round(SELECTION.hp).toLocaleString("ko-KR")}`;
     DOLLAR2("bossStageAttack").textContent = `공격력 ${Number(SELECTION.attackPower.toPrecision(3)).toLocaleString("ko-KR")}`;
     DOLLAR2("bossStageXp").textContent = `+${SELECTION.xp.toLocaleString("ko-KR")} XP`;
     DOLLAR2("bossStageDrop").hidden = ROLLS === 0;
@@ -21350,10 +21350,10 @@
     syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
     DOLLAR2("farmPlotList").innerHTML = [...W.farmPlots.values()].map((plot) => {
       const COUNT = W.roster.placedPopulation(plot.id), STATUS = W.farmPlotStatus(plot.id);
-      return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
+      return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}마리 / ${plot.capacity}마리" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
     }).join("");
     const ACTIVE = W.activeFarmPlot, POINTS = W.playerProgression.availablePoints, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    DOLLAR2("farmExpand").innerHTML = ACTIVE.canExpand() ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}명 · 포인트 1개</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
+    DOLLAR2("farmExpand").innerHTML = ACTIVE.canExpand() ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · 포인트 1개</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
     DOLLAR2("farmExpand").disabled = LOCKED || !ACTIVE.canExpand() || POINTS < 1;
     DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 열기</b><small>포인트 ${POINTS} / 2개${POINTS < 2 ? " · 부족해요" : ""}</small>`;
     DOLLAR2("farmUnlock").disabled = LOCKED || POINTS < 2;
@@ -22087,7 +22087,7 @@
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText(
       "allyHealthText",
-      Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " HP · " + armyLiving + "/" + armyTotal + " 생존"
+      Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " 체력 · " + armyLiving + "/" + armyTotal + " 생존"
     );
     const BOSS2 = display.boss, FARM_REWARD = !RAID && FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
@@ -22095,7 +22095,7 @@
     syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · 이벤트 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
-    syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "전사자 포함 최대 HP");
+    syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "전사자 포함 최대 체력");
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
     syncAttribute("allyHealth", "aria-valuemax", armyMax);
     syncAttribute("bossHealth", "aria-valuenow", BOSS2.hp);
@@ -22131,9 +22131,9 @@
       home || active.paused || W.scene !== "farm" || W.warehouseFood <= 0 || W.food.length >= 140
     );
     syncText("warehouseStock", String(W.warehouseFood));
-    syncText("warehouseProgressLabel", `자동 생산 ${W.foodTaps.remainder}/5`);
+    syncText("warehouseProgressLabel", `창고 생산 ${W.foodTaps.remainder}/5`);
     syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
-    syncAttribute("warehouseProgress", "aria-valuetext", `자동 생산 ${W.foodTaps.remainder}/5`);
+    syncAttribute("warehouseProgress", "aria-valuetext", `창고 생산 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
     }

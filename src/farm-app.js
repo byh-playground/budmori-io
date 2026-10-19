@@ -706,7 +706,7 @@ function renderBossEncounterStage(stage) {
     DOLLAR('bossStageLabel').textContent = `${SELECTION.stage}단계`;
     renderNeutralBossPreview(DOLLAR('bossPreview'), SPECIES, CATALOG_ENTRY.asset, `${ENCOUNTER_NAME} 미리보기`);
     DOLLAR('bossStageName').textContent = ENCOUNTER_NAME;
-    DOLLAR('bossStageHp').textContent = `HP ${Math.round(SELECTION.hp).toLocaleString('ko-KR')}`;
+    DOLLAR('bossStageHp').textContent = `체력 ${Math.round(SELECTION.hp).toLocaleString('ko-KR')}`;
     DOLLAR('bossStageAttack').textContent =
         `공격력 ${Number(SELECTION.attackPower.toPrecision(3)).toLocaleString('ko-KR')}`;
     DOLLAR('bossStageXp').textContent = `+${SELECTION.xp.toLocaleString('ko-KR')} XP`;
@@ -1320,14 +1320,14 @@ function drawFarmPanel() {
         .map((plot) => {
             const COUNT = W.roster.placedPopulation(plot.id),
                 STATUS = W.farmPlotStatus(plot.id);
-            return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
+            return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}마리 / ${plot.capacity}마리" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
         })
         .join('');
     const ACTIVE = W.activeFarmPlot,
         POINTS = W.playerProgression.availablePoints,
         NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
     DOLLAR('farmExpand').innerHTML = ACTIVE.canExpand()
-        ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}명 · 포인트 1개</small>`
+        ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · 포인트 1개</small>`
         : '<b>농장 확장</b><small>최대 크기예요</small>';
     DOLLAR('farmExpand').disabled = LOCKED || !ACTIVE.canExpand() || POINTS < 1;
     DOLLAR('farmUnlock').innerHTML =
@@ -2153,7 +2153,7 @@ function sync(display, now, notices) {
     syncWidth('allyHealth', (armyMax ? (armyCurrent / armyMax) * 100 : 0) + '%');
     syncText(
         'allyHealthText',
-        Math.ceil(armyCurrent) + ' / ' + Math.ceil(armyMax) + ' HP · ' + armyLiving + '/' + armyTotal + ' 생존',
+        Math.ceil(armyCurrent) + ' / ' + Math.ceil(armyMax) + ' 체력 · ' + armyLiving + '/' + armyTotal + ' 생존',
     );
     const BOSS = display.boss,
         FARM_REWARD =
@@ -2168,7 +2168,7 @@ function sync(display, now, notices) {
     syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 이벤트 ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
-    syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '전사자 포함 최대 HP');
+    syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '전사자 포함 최대 체력');
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
     syncAttribute('allyHealth', 'aria-valuemax', armyMax);
     syncAttribute('bossHealth', 'aria-valuenow', BOSS.hp);
@@ -2222,9 +2222,9 @@ function sync(display, now, notices) {
         home || active.paused || W.scene !== 'farm' || W.warehouseFood <= 0 || W.food.length >= 140,
     );
     syncText('warehouseStock', String(W.warehouseFood));
-    syncText('warehouseProgressLabel', `자동 생산 ${W.foodTaps.remainder}/5`);
+    syncText('warehouseProgressLabel', `창고 생산 ${W.foodTaps.remainder}/5`);
     syncAttribute('warehouseProgress', 'aria-valuenow', String(W.foodTaps.remainder));
-    syncAttribute('warehouseProgress', 'aria-valuetext', `자동 생산 ${W.foodTaps.remainder}/5`);
+    syncAttribute('warehouseProgress', 'aria-valuetext', `창고 생산 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
     }

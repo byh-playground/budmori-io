@@ -23,7 +23,7 @@ const DEFAULT_ABILITY_PRESENTATION = {
 };
 const INVESTMENT_REASON_LABELS = new Map([
     ['already-invested', '이미 투자한 노드예요.'],
-    ['prerequisite-required', '이전 단계에 먼저 투자하세요.'],
+    ['prerequisite-required', '이전 단계에 먼저 투자해야 해요.'],
     ['insufficient-points', '공용 포인트가 필요해요.'],
     ['combat-lock', '전투 중에는 투자할 수 없어요.'],
     ['farm-only', '농장에서만 투자할 수 있어요.'],
