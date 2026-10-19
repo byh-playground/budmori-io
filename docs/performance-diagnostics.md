@@ -49,8 +49,19 @@ Boss charge paths and projectiles retain swept collision checks across each 50ms
 
 측정된 지형은 프레임당 primitive 143개와 인스턴스 데이터 9,152바이트를 추가하지만, primitive 제출은 기존 단일 인스턴스 업로드에 묶이고 draw call도 늘지 않습니다. 지형 primitive 생성 메서드 CPU 평균은 0.202ms, terrain on/off 렌더 평균 차이는 약 0.256ms였습니다. 현재 측정으로 retained geometry의 순이득을 입증할 수 없어 이번 최적화는 미적용으로 종료하며, 추가 연구는 진행하지 않습니다.
 
-### outline/body pose 공유 — GameKit API 인계 대기
+### outline/body pose 공유 — 윤곽선 패스 제거로 종료 (0.10.7)
 
-Farm 0.8.12는 표현식 메타데이터로 윤곽선 패스의 불필요한 얼굴 visibility mutation을 줄였습니다. 보이는 얼굴이 있는 표현식은 복구용 `setExpression`이 pose revision을 무효화하므로 두 draw의 pose 계산은 아직 공유하지 않습니다. 이를 해결하려면 GameKit의 호출별 필터 API `draw({ excludeParts: ReadonlySet<string> })`가 필요합니다. GameKit 담당자의 API 전달 후 Farm에서 mutation 호출을 draw 필터로 바꾸고 핀 통합 및 렌더를 검증합니다.
+등급 윤곽선은 유닛마다 실루엣을 한 번 더 그려 draw call이 유닛당 2개였습니다. 0.10.7에서 윤곽선 패스를 없애고 등급을 바닥 링(2등급 이상)으로 표현합니다. 링은 그림자와 같은 배치에 그려서 유닛당 네이티브 벡터 draw는 1개입니다. GameKit의 `excludeParts` 필터 API 인계는 더 이상 필요하지 않습니다.
+
+### 레이드 충돌 비용 (0.10.7)
+
+레이드 장면의 아군 분리를 이웃 목록 한 번 구축 + 반복 3회로 바꿨습니다. 아군끼리는 반지름 합의 20%까지 겹칠 수 있고, 아군 간 부딪힘 충격·기절은 없습니다. 아군-적 충돌과 경계 처리는 그대로입니다. 반지름·높이·질량 getter는 틱마다 한 번만 읽습니다.
+
+헤드리스 Chromium(데스크톱급 CPU), 밀집한 아군 몰림에서 한 틱(`Garden.step`) 시간입니다. 모바일 실기기는 미측정입니다.
+
+| 동시 전투 유닛 | 0.10.6  | 0.10.7  |
+| -------------- | ------- | ------- |
+| 400            | 약 28ms | 약 5ms  |
+| 1000           | 약 86ms | 약 10ms |
 
 그 밖의 낮은 우선순위 항목은 현재 근거와 우선순위를 유지하며, 실측 전에는 구조를 크게 바꾸지 않습니다.

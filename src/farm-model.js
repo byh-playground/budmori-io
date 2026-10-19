@@ -164,6 +164,11 @@ const CONFIG = Object.freeze({
         gravity: 19,
         separationIterations: 4,
         separationRelaxation: 0.8,
+        // Raid battles only: allies may overlap by this fraction of their summed radii, solved on a
+        // neighbor list built once per tick. Opposing sides still separate at full radius.
+        raidSeparationIterations: 3,
+        raidAllyOverlap: 0.2,
+        raidNeighborMargin: 0.4,
         softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
@@ -787,6 +792,14 @@ const GARDEN = class Garden {
         this._contactCorrectionX = new Float64Array(0);
         this._contactCorrectionY = new Float64Array(0);
         this._contactCorrectionCount = new Uint32Array(0);
+        this._raidPairA = new Int32Array(0);
+        this._raidPairB = new Int32Array(0);
+        this._raidPairOpposing = new Uint8Array(0);
+        this._raidPairCount = 0;
+        this._raidMoved = new Uint8Array(0);
+        this._raidRadius = new Float64Array(0);
+        this._raidHeight = new Float64Array(0);
+        this._raidInverseMass = new Float64Array(0);
         this._bossGridUnits = [];
         this._bossGroundUnits = [];
         this._bossQueryCandidates = [];
@@ -828,6 +841,14 @@ const GARDEN = class Garden {
             '_contactCorrectionX',
             '_contactCorrectionY',
             '_contactCorrectionCount',
+            '_raidPairA',
+            '_raidPairB',
+            '_raidPairOpposing',
+            '_raidPairCount',
+            '_raidMoved',
+            '_raidRadius',
+            '_raidHeight',
+            '_raidInverseMass',
             '_bossGridUnits',
             '_bossGroundUnits',
             '_bossQueryCandidates',
@@ -4516,7 +4537,7 @@ const GARDEN = class Garden {
         this._contactCorrectionY = new Float64Array(CAPACITY);
         this._contactCorrectionCount = new Uint32Array(CAPACITY);
     }
-    solveContactSeparations(units, dt, raidOnly = false) {
+    solveContactSeparations(units, dt) {
         this._ensureContactSolverBuffers(units.length);
         const CORRECTION_X = this._contactCorrectionX,
             CORRECTION_Y = this._contactCorrectionY,
@@ -4533,17 +4554,11 @@ const GARDEN = class Garden {
                 if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
                     continue;
                 }
-                if (raidOnly && (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded)) {
-                    continue;
-                }
                 const INVERSE_MASS_A = inverseBodyMass(UNIT_LOCAL);
                 const PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
                 for (const J of PENDING) {
                     const OTHER = units[J];
                     if (this.isMergeTaskMaterial(OTHER)) {
-                        continue;
-                    }
-                    if (raidOnly && (OTHER.hp <= 0 || !OTHER.dropLanded)) {
                         continue;
                     }
                     if (UNIT_LOCAL.z > OTHER.z + OTHER.height || OTHER.z > UNIT_LOCAL.z + UNIT_LOCAL.height) {
@@ -4689,21 +4704,198 @@ const GARDEN = class Garden {
         this.metrics.physicsSolverIterations++;
         this.profiler?.count('physicsSolverIterations');
     }
-    raidContacts(units, dt = 1 / 20) {
+    _pushRaidPair(first, second, opposing) {
+        const COUNT = this._raidPairCount;
+        if (COUNT >= this._raidPairA.length) {
+            const CAPACITY = Math.max(256, this._raidPairA.length * 2),
+                A = new Int32Array(CAPACITY),
+                B = new Int32Array(CAPACITY),
+                O = new Uint8Array(CAPACITY);
+            A.set(this._raidPairA);
+            B.set(this._raidPairB);
+            O.set(this._raidPairOpposing);
+            this._raidPairA = A;
+            this._raidPairB = B;
+            this._raidPairOpposing = O;
+        }
+        this._raidPairA[COUNT] = first;
+        this._raidPairB[COUNT] = second;
+        this._raidPairOpposing[COUNT] = opposing ? 1 : 0;
+        this._raidPairCount = COUNT + 1;
+    }
+    // One spatial pass per tick. The pair list is ordered by (first, second) step order, so the
+    // accumulation order below is deterministic and identical on every peer.
+    // Radius, height and mass are derived getters; read them once per tick instead of per pair.
+    _cacheRaidBodies(units) {
+        if (this._raidRadius.length < units.length) {
+            const CAPACITY = Math.max(units.length, this._raidRadius.length * 2, 16);
+            this._raidRadius = new Float64Array(CAPACITY);
+            this._raidHeight = new Float64Array(CAPACITY);
+            this._raidInverseMass = new Float64Array(CAPACITY);
+        }
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
-            if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded) {
+            this._raidRadius[i] = UNIT_LOCAL.radius;
+            this._raidHeight[i] = UNIT_LOCAL.height;
+            this._raidInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
+        }
+    }
+    _collectRaidPairs(units) {
+        this._raidPairCount = 0;
+        this._cacheRaidBodies(units);
+        const RADIUS = this._raidRadius,
+            HEIGHT = this._raidHeight;
+        const MARGIN = CONFIG.physics.raidNeighborMargin,
+            RESERVED = this.unitCollection.reservations.size > 0;
+        for (let i = 0; i < units.length; i++) {
+            const UNIT_LOCAL = units[i];
+            if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || (RESERVED && this.isMergeTaskMaterial(UNIT_LOCAL))) {
                 continue;
             }
-            const PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
-            for (const J of PENDING) {
-                const OTHER = units[J];
-                if (OTHER.hp > 0 && OTHER.dropLanded && contact(UNIT_LOCAL, OTHER)) {
-                    this.metrics.contacts++;
+            const QUERY_RADIUS = RADIUS[i] + CONFIG.unit.maxRadius + MARGIN,
+                PENDING = this._contactPending;
+            this.unitSpatial.queryAABB(
+                UNIT_LOCAL.x - QUERY_RADIUS,
+                UNIT_LOCAL.y - QUERY_RADIUS,
+                UNIT_LOCAL.x + QUERY_RADIUS,
+                UNIT_LOCAL.y + QUERY_RADIUS,
+                this._contactQuery,
+            );
+            PENDING.length = 0;
+            // Filter before sorting: only real neighbors are ordered, not every grid candidate.
+            for (const OTHER of this._contactQuery) {
+                const J = this._unitStepOrder.get(OTHER);
+                if (
+                    J === undefined ||
+                    J <= i ||
+                    OTHER.hp <= 0 ||
+                    !OTHER.dropLanded ||
+                    (RESERVED && this.isMergeTaskMaterial(OTHER))
+                ) {
+                    continue;
+                }
+                if (UNIT_LOCAL.z > OTHER.z + HEIGHT[J] || OTHER.z > UNIT_LOCAL.z + HEIGHT[i]) {
+                    continue;
+                }
+                const REACH = RADIUS[i] + RADIUS[J] + MARGIN,
+                    DX = OTHER.x - UNIT_LOCAL.x,
+                    DY = OTHER.y - UNIT_LOCAL.y;
+                if (DX * DX + DY * DY < REACH * REACH) {
+                    PENDING.push(J);
                 }
             }
+            PENDING.sort((a, b) => a - b);
+            for (const J of PENDING) {
+                this._pushRaidPair(i, J, areOpposingFactions(UNIT_LOCAL, units[J]));
+            }
         }
-        this.solveContactSeparations(units, dt, true);
+    }
+    raidContacts(units) {
+        this._collectRaidPairs(units);
+        // Bump impulses and stuns only apply between opposing sides. Allies just separate.
+        for (let p = 0; p < this._raidPairCount; p++) {
+            if (this._raidPairOpposing[p] && contact(units[this._raidPairA[p]], units[this._raidPairB[p]])) {
+                this.metrics.contacts++;
+            }
+        }
+        this.solveRaidSeparations(units);
+    }
+    solveRaidSeparations(units) {
+        const COUNT = this._raidPairCount;
+        if (!COUNT) {
+            return;
+        }
+        this._ensureContactSolverBuffers(units.length);
+        if (this._raidMoved.length < units.length) {
+            this._raidMoved = new Uint8Array(this._contactCorrectionX.length);
+        }
+        const CORRECTION_X = this._contactCorrectionX,
+            CORRECTION_Y = this._contactCorrectionY,
+            CORRECTION_COUNT = this._contactCorrectionCount,
+            MOVED = this._raidMoved,
+            PAIR_A = this._raidPairA,
+            PAIR_B = this._raidPairB,
+            PAIR_OPPOSING = this._raidPairOpposing,
+            RADIUS = this._raidRadius,
+            INVERSE_MASS = this._raidInverseMass,
+            ITERATIONS = CONFIG.physics.raidSeparationIterations,
+            RELAXATION = CONFIG.physics.separationRelaxation,
+            ALLY_SCALE = 1 - CONFIG.physics.raidAllyOverlap;
+        MOVED.fill(0, 0, units.length);
+        for (let iteration = 0; iteration < ITERATIONS; iteration++) {
+            CORRECTION_X.fill(0, 0, units.length);
+            CORRECTION_Y.fill(0, 0, units.length);
+            CORRECTION_COUNT.fill(0, 0, units.length);
+            let correctionCount = 0;
+            for (let p = 0; p < COUNT; p++) {
+                const I = PAIR_A[p],
+                    J = PAIR_B[p],
+                    UNIT_LOCAL = units[I],
+                    OTHER = units[J],
+                    INVERSE_MASS_A = INVERSE_MASS[I],
+                    INVERSE_MASS_B = INVERSE_MASS[J],
+                    INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
+                if (INVERSE_MASS_SUM <= 0) {
+                    continue;
+                }
+                const DX = OTHER.x - UNIT_LOCAL.x,
+                    DY = OTHER.y - UNIT_LOCAL.y,
+                    DISTANCE = Math.hypot(DX, DY),
+                    TARGET_DISTANCE = (RADIUS[I] + RADIUS[J]) * (PAIR_OPPOSING[p] ? 1 : ALLY_SCALE);
+                if (DISTANCE >= TARGET_DISTANCE) {
+                    continue;
+                }
+                const ANGLE =
+                        ((Math.min(UNIT_LOCAL.id, OTHER.id) * 0.61803398875 +
+                            Math.max(UNIT_LOCAL.id, OTHER.id) * 0.38196601125) %
+                            1) *
+                        Math.PI *
+                        2,
+                    NORMAL_SIGN = UNIT_LOCAL.id < OTHER.id ? 1 : -1,
+                    NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE) * NORMAL_SIGN,
+                    NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE) * NORMAL_SIGN,
+                    PENETRATION = (TARGET_DISTANCE - DISTANCE) * RELAXATION,
+                    SHARE_A = INVERSE_MASS_A / INVERSE_MASS_SUM,
+                    SHARE_B = INVERSE_MASS_B / INVERSE_MASS_SUM;
+                CORRECTION_X[I] -= NORMAL_X * PENETRATION * SHARE_A;
+                CORRECTION_Y[I] -= NORMAL_Y * PENETRATION * SHARE_A;
+                CORRECTION_COUNT[I] += SHARE_A > 0 ? 1 : 0;
+                CORRECTION_X[J] += NORMAL_X * PENETRATION * SHARE_B;
+                CORRECTION_Y[J] += NORMAL_Y * PENETRATION * SHARE_B;
+                CORRECTION_COUNT[J] += SHARE_B > 0 ? 1 : 0;
+                correctionCount++;
+            }
+            if (!correctionCount) {
+                break;
+            }
+            for (let i = 0; i < units.length; i++) {
+                const UNIT_LOCAL = units[i],
+                    COUNT_LOCAL = CORRECTION_COUNT[i];
+                if (!COUNT_LOCAL) {
+                    continue;
+                }
+                let deltaX = CORRECTION_X[i] / COUNT_LOCAL,
+                    deltaY = CORRECTION_Y[i] / COUNT_LOCAL;
+                const LENGTH = Math.hypot(deltaX, deltaY),
+                    MAX_CORRECTION = Math.max(0.05, RADIUS[i] * 1.25);
+                if (LENGTH > MAX_CORRECTION) {
+                    const SCALE = MAX_CORRECTION / LENGTH;
+                    deltaX *= SCALE;
+                    deltaY *= SCALE;
+                }
+                UNIT_LOCAL.x += deltaX;
+                UNIT_LOCAL.y += deltaY;
+                this.boundBody(UNIT_LOCAL, this.scene, RADIUS[i]);
+                MOVED[i] = 1;
+            }
+            this.metrics.physicsSolverIterations++;
+            this.profiler?.count('physicsSolverIterations');
+        }
+        for (let i = 0; i < units.length; i++) {
+            if (MOVED[i]) {
+                this.updateUnitSpatial(units[i]);
+            }
+        }
     }
     resolveContacts(units, dt = 1 / 20) {
         SIMULATION_SCENES[this.scene].resolveContacts(this, units, dt);
