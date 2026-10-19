@@ -1,8 +1,9 @@
 import { applyOffline } from './farm-offline.js';
 import {
-    activeSite,
     assignWorkers,
     pilesOf,
+    plotHasSite,
+    sitesOf,
     resetWork,
     restoreSite,
     startSite,
@@ -1352,6 +1353,7 @@ const GARDEN = class Garden {
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
+        this._workerPlots = new Map();
         this._workRate = 0;
         this._workCount = 0;
         this._nextWorkerRefreshTick = 0;
@@ -2662,29 +2664,27 @@ const GARDEN = class Garden {
     facilityBuilt(id) {
         return this.facilityLevel(id) > 0;
     }
-    // Speed multiplier a facility gives its workers.
-    facilityBoost(id) {
-        return 1 + CONFIG.farm.work.levelEffectStep * this.facilityLevel(id);
-    }
     // Base spec of a pile kind, with the granary's bonus applied.
     pileSpec(kind) {
         const BASE = CONFIG.farm.work.pileKinds[kind],
             LEVEL = kind === 'grain' ? this.facilityLevel('granary') : 0;
         return LEVEL > 0 ? { count: BASE.count + Math.ceil(LEVEL / 2), amount: BASE.amount + 4 * LEVEL } : BASE;
     }
-    // The site being built in the farm plot on screen.
-    get buildSite() {
-        return activeSite(this);
+    // The constructions going up in the farm plot on screen.
+    get buildSites() {
+        return sitesOf(this);
     }
-    // Only one construction runs at a time, in whichever farm plot it was started.
-    get anyBuildSite() {
-        for (const PILES of this._pilesByPlot.values()) {
-            const SITE = PILES.find((pile) => pile.kind === 'site');
-            if (SITE) {
-                return SITE;
-            }
+    // Every construction in every farm plot.
+    get allBuildSites() {
+        const SITES = [];
+        for (const PLOT_ID of this._pilesByPlot.keys()) {
+            SITES.push(...sitesOf(this, PLOT_ID));
         }
-        return null;
+        return SITES;
+    }
+    // The construction of a kind that is going up in a farm plot, if any.
+    siteOf(kind, plotId = this.activePlotId) {
+        return sitesOf(this, plotId).find((site) => site.facility === kind) || null;
     }
     // What the next construction of a kind is: facilities level up, a farm grows, or a new farm opens.
     projectInfo(kind) {
@@ -2734,7 +2734,7 @@ const GARDEN = class Garden {
         if (
             this.scene !== 'farm' ||
             !INFO ||
-            this.anyBuildSite ||
+            this.siteOf(kind) ||
             this.running ||
             this.farmBossEvent?.phase !== 'idle' ||
             this.materials.wood < INFO.cost.wood ||
@@ -2759,14 +2759,16 @@ const GARDEN = class Garden {
         } else {
             this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
         }
-        this.buildRush = false;
+        if (this.allBuildSites.length === 0) {
+            this.buildRush = false;
+        }
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         this.markProgressChanged();
     }
     // Everyone drops what they are doing and rushes the construction site.
     setBuildRush(on) {
-        const WANT = !!on && !!activeSite(this);
+        const WANT = !!on && this.allBuildSites.length > 0;
         if (WANT === this.buildRush) {
             return WANT === !!on;
         }
@@ -2821,9 +2823,12 @@ const GARDEN = class Garden {
             NEXT = new Set(),
             RATES = new Map(),
             UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
+        const PLOT_WORKERS = new Map();
         if (this.scene === 'farm') {
             for (const PLOT_ID of this.farmPlots.keys()) {
-                const BY_SPECIES = new Map();
+                const BY_SPECIES = new Map(),
+                    RUSHING = this.buildRush && plotHasSite(this, PLOT_ID);
+                PLOT_WORKERS.set(PLOT_ID, []);
                 for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(PLOT_ID)) {
                     if (
                         !UNIT_LOCAL.mature ||
@@ -2842,12 +2847,13 @@ const GARDEN = class Garden {
                 }
                 for (const LIST of BY_SPECIES.values()) {
                     LIST.sort((a, b) => a.id - b.id);
-                    const COUNT = this.buildRush
+                    const COUNT = RUSHING
                         ? LIST.length
                         : Math.min(Math.floor(RATIO * LIST.length + 1e-9), Math.max(0, LIST.length - WORK.minBreeders));
                     for (let index = 0; index < COUNT; index++) {
                         const WORKER = LIST[index];
                         NEXT.add(WORKER.id);
+                        PLOT_WORKERS.get(PLOT_ID).push(WORKER.id);
                         const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
                         RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
                     }
@@ -2865,34 +2871,45 @@ const GARDEN = class Garden {
         }
         this._workerIds = NEXT;
         this._workerRates = RATES;
-        // Lowest ids work the grain piles, then the material gatherers, then the builders. Stable while the roster is.
-        const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b),
-            TOTAL = SORTED_WORKERS.length,
-            BUILDERS = this.buildRush
-                ? TOTAL
-                : Math.min(
-                      TOTAL,
-                      Math.max(activeSite(this) ? 1 : 0, Math.round((TOTAL * this.buildBasisPoints) / 10000)),
-                  ),
-            GATHERERS = this.buildRush
-                ? 0
-                : Math.min(TOTAL - BUILDERS, Math.round((TOTAL * this.resourceBasisPoints) / 10000));
-        this._workerKinds = new Map(
-            SORTED_WORKERS.map((id, index) => [
-                id,
-                index >= TOTAL - BUILDERS ? 'build' : index >= TOTAL - BUILDERS - GATHERERS ? 'resource' : 'food',
-            ]),
-        );
-        // Facilities speed up their own kind of worker.
-        const MULTIPLIER = {
-            food: this.facilityBoost('windmill'),
-            resource: this.facilityBoost('rack'),
-        };
+        // Every farm plot picks its own roles: lowest ids work the grain piles, then the material gatherers,
+        // then the builders. Stable while the roster is. A plot's facilities speed up its own workers.
+        this._workerKinds = new Map();
+        this._workerPlots = new Map();
         let total = 0;
-        for (const [ID, KIND] of this._workerKinds) {
-            const BOOSTED = this._workerRates.get(ID) * (MULTIPLIER[KIND] || 1);
-            this._workerRates.set(ID, BOOSTED);
-            total += BOOSTED;
+        for (const [PLOT_ID, IDS] of PLOT_WORKERS) {
+            const SORTED_WORKERS = IDS.sort((a, b) => a - b),
+                PLOT_TOTAL = SORTED_WORKERS.length,
+                RUSHING = this.buildRush && plotHasSite(this, PLOT_ID),
+                BUILDERS = RUSHING
+                    ? PLOT_TOTAL
+                    : Math.min(
+                          PLOT_TOTAL,
+                          Math.max(
+                              plotHasSite(this, PLOT_ID) ? 1 : 0,
+                              Math.round((PLOT_TOTAL * this.buildBasisPoints) / 10000),
+                          ),
+                      ),
+                GATHERERS = RUSHING
+                    ? 0
+                    : Math.min(PLOT_TOTAL - BUILDERS, Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000)),
+                PLOT = this.farmPlots.get(PLOT_ID),
+                MULTIPLIER = {
+                    food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
+                    resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel('rack'),
+                };
+            SORTED_WORKERS.forEach((id, index) => {
+                const KIND =
+                    index >= PLOT_TOTAL - BUILDERS
+                        ? 'build'
+                        : index >= PLOT_TOTAL - BUILDERS - GATHERERS
+                          ? 'resource'
+                          : 'food';
+                this._workerKinds.set(id, KIND);
+                this._workerPlots.set(id, PLOT_ID);
+                const BOOSTED = this._workerRates.get(id) * (MULTIPLIER[KIND] || 1);
+                this._workerRates.set(id, BOOSTED);
+                total += BOOSTED;
+            });
         }
         this._workCount = NEXT.size;
         this._workRate = total;

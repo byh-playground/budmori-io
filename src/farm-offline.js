@@ -1,6 +1,6 @@
 // Idle progress: when the player was away, the farm is settled with a formula instead of replaying the simulation.
 // Workers keep producing, a construction site keeps getting built, and breeders keep breeding as long as food lasts.
-import { activeSite } from './farm-work.js';
+import { pilesOf, sitesOf } from './farm-work.js';
 import { RESERVE_PLOT_ID } from './farm-plot.js';
 
 const STACKS_PER_FOOD = 5;
@@ -19,10 +19,10 @@ export function applyOffline(world, config, rawSeconds) {
     // Away time is what is shown; production runs for the efficiency share of it.
     const SECONDS = AWAY * OFFLINE.efficiency;
     world.refreshWorkers();
-    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, site: null, built: null };
+    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
     let foodRate = 0,
-        gatherRate = 0,
-        buildRate = 0;
+        gatherRate = 0;
+    const BUILD_RATES = new Map();
     for (const [ID, KIND] of world._workerKinds) {
         const RATE = world._workerRates.get(ID) || 0;
         if (KIND === 'food') {
@@ -30,26 +30,49 @@ export function applyOffline(world, config, rawSeconds) {
         } else if (KIND === 'resource') {
             gatherRate += RATE;
         } else {
-            buildRate += RATE;
+            const PLOT_ID = world._workerPlots.get(ID);
+            BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
         }
     }
-    // Builders: hits on the site, then gathering for whatever time is left once it is done.
-    const SITE = activeSite(world);
-    if (SITE && buildRate > 0) {
-        const HITS_PER_SECOND = buildRate * STACKS_PER_FOOD,
-            REMAINING = SITE.need - SITE.done,
-            HITS = HITS_PER_SECOND * SECONDS;
-        if (HITS >= REMAINING) {
-            gatherRate += buildRate * Math.max(0, 1 - REMAINING / HITS);
-            SUMMARY.built = world.siteName(SITE);
-            world._piles.splice(world._piles.indexOf(SITE), 1);
-            world.completeFacility(SITE);
-        } else {
-            SITE.done += Math.floor(HITS);
-            SUMMARY.site = { name: world.siteName(SITE), percent: Math.floor((SITE.done / SITE.need) * 100) };
+    // Builders of every farm plot: their hits are shared evenly between the sites of the plot, a finished site
+    // hands its share to the others, and whatever is left over goes to gathering.
+    for (const PLOT_ID of [...world._pilesByPlot.keys()]) {
+        const RATE = BUILD_RATES.get(PLOT_ID) || 0,
+            SITES = sitesOf(world, PLOT_ID);
+        if (SITES.length === 0) {
+            gatherRate += RATE;
+            continue;
         }
-    } else if (!SITE) {
-        gatherRate += buildRate;
+        if (!(RATE > 0)) {
+            continue;
+        }
+        const HITS_PER_SECOND = RATE * STACKS_PER_FOOD,
+            HITS = HITS_PER_SECOND * SECONDS;
+        let left = HITS;
+        const OPEN = [...SITES];
+        while (OPEN.length > 0 && left > 0) {
+            const SHARE = left / OPEN.length,
+                DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
+            if (DONE.length === 0) {
+                for (const SITE of OPEN) {
+                    SITE.done += Math.floor(SHARE);
+                }
+                left = 0;
+                break;
+            }
+            for (const SITE of DONE) {
+                left -= SITE.need - SITE.done;
+                SUMMARY.built.push(world.siteName(SITE));
+                const LIST = pilesOf(world, PLOT_ID);
+                LIST.splice(LIST.indexOf(SITE), 1);
+                world.completeFacility(SITE);
+                OPEN.splice(OPEN.indexOf(SITE), 1);
+            }
+        }
+        for (const SITE of OPEN) {
+            SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor((SITE.done / SITE.need) * 100) });
+        }
+        gatherRate += left / (STACKS_PER_FOOD * SECONDS);
     }
     const MATERIALS = Math.floor(gatherRate * SECONDS),
         WOOD = Math.ceil(MATERIALS / 2);

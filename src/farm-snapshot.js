@@ -174,7 +174,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         wood: 0,
         stone: 0,
     },
-    savedSite: null,
+    savedSites: [],
     foodTaps: {
         remainder: 0,
         autoClock: 0,
@@ -398,7 +398,7 @@ const CORN_GROUP = FIELDS(
     { attachments: [CORN_ATTACHMENT] },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
-    savedSite: JSON_PAYLOAD,
+    savedSites: JSON_PAYLOAD,
     farmPlots: [FIELDS('id', { food: [FIELDS('x y z vx vy vz seed phase tx ty')] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
@@ -493,21 +493,19 @@ export function snapshot(world) {
                   ...(world.scene === 'farm' && world.unitCollection ? { units: world.unitCollection.items } : {}),
               }
             : world;
-    const SITE = world?.anyBuildSite;
+    const SITES = world?.allBuildSites ?? [];
     return copyFields(
         {
             ...SOURCE,
-            savedSite: SITE
-                ? {
-                      facility: SITE.facility,
-                      level: SITE.level,
-                      x: SITE.x,
-                      y: SITE.y,
-                      done: SITE.done,
-                      need: SITE.need,
-                      plotId: SITE.plotId,
-                  }
-                : null,
+            savedSites: SITES.map((site) => ({
+                facility: site.facility,
+                level: site.level,
+                x: site.x,
+                y: site.y,
+                done: site.done,
+                need: site.need,
+                plotId: site.plotId,
+            })),
         },
         SNAPSHOT_FIELDS,
     );
