@@ -390,7 +390,7 @@ class FarmSession {
         this.pendingPulsePresentationMode = null;
         this.presentationRuntime = new PRESENTATION_RUNTIME({
             stepMs: PRESENTATION_STEP_MS,
-            delayMs: PRESENTATION_STEP_MS,
+            delayMs: 0,
             snapDistance: 12,
         });
         this.presentationAdapters = new WeakMap();
