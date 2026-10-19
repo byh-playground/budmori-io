@@ -653,6 +653,7 @@ export function restoreFarmProgress(data) {
         id: facility.id,
         x: facility.x,
         y: facility.y,
+        level: facility.level ?? 1,
     }));
     if (data.food.site) {
         WORLD.restoreBuildSite(data.food.site);
