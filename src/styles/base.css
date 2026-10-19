@@ -706,3 +706,21 @@ details summary {
     color: var(--ui-ink-2);
     font-weight: var(--ui-fw-m);
 }
+.plot-bar button {
+    position: relative;
+}
+.plot-bar button[data-alert='true']::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ui-danger);
+    border: 2px solid var(--ui-panel);
+}
+.plot-bar__label small + small {
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
+}

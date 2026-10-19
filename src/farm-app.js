@@ -1288,6 +1288,17 @@ function drawTree() {
     });
     renderProgressionResetActions();
 }
+let plotStatusCache = { at: -Infinity, value: new Map() };
+function farmPlotStatuses(world) {
+    const NOW = performance.now();
+    if (NOW - plotStatusCache.at > 400) {
+        plotStatusCache = {
+            at: NOW,
+            value: new Map([...world.farmPlots.keys()].map((id) => [id, world.farmPlotStatus(id)])),
+        };
+    }
+    return plotStatusCache.value;
+}
 function farmPlotDisplayName(plotId) {
     return `농장 ${String(plotId).match(/^plot-(\d+)$/)?.[1] || plotId}`;
 }
@@ -1307,8 +1318,9 @@ function drawFarmPanel() {
     syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
     DOLLAR('farmPlotList').innerHTML = [...W.farmPlots.values()]
         .map((plot) => {
-            const COUNT = W.roster.placedPopulation(plot.id);
-            return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small></button>`;
+            const COUNT = W.roster.placedPopulation(plot.id),
+                STATUS = W.farmPlotStatus(plot.id);
+            return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
         })
         .join('');
     const ACTIVE = W.activeFarmPlot,
@@ -2073,13 +2085,21 @@ function sync(display, now, notices) {
         PLOT_IDS = PLOT_WORLD.farmPlots ? [...PLOT_WORLD.farmPlots.keys()] : [];
     syncFlag('plotBar', 'hidden', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
     if (PLOT_IDS.length > 1) {
+        const STATUSES = farmPlotStatuses(PLOT_WORLD),
+            CURRENT = STATUSES.get(PLOT_WORLD.activePlotId) ?? { food: 0, hungry: 0 },
+            NEEDS_VISIT = [...STATUSES].some(
+                ([id, status]) => id !== PLOT_WORLD.activePlotId && status.food === 0 && status.hungry > 0,
+            );
         syncText('plotBarName', farmPlotDisplayName(PLOT_WORLD.activePlotId));
         syncText(
             'plotBarCount',
             `${PLOT_WORLD.roster.placedPopulation(PLOT_WORLD.activePlotId)} / ${PLOT_WORLD.activeFarmPlot.capacity}`,
         );
+        syncText('plotBarFood', `먹이 ${CURRENT.food} · 배고픔 ${CURRENT.hungry}`);
         syncFlag('plotPrev', 'disabled', !!farmSortTransition || W.running);
         syncFlag('plotNext', 'disabled', !!farmSortTransition || W.running);
+        syncData('plotPrev', 'alert', String(NEEDS_VISIT));
+        syncData('plotNext', 'alert', String(NEEDS_VISIT));
     }
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
