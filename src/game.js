@@ -509,21 +509,46 @@
     world._swings = /* @__PURE__ */ new Map();
   }
   function assignWorkers(world, config) {
-    const WORK = config.farm.work, FREE = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), ASSIGN = /* @__PURE__ */ new Map();
+    const WORK = config.farm.work, WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set();
     for (const PILE of world._piles) {
-      FREE.sort((a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y));
-      const TAKEN = FREE.splice(0, WORK.maxAttackers);
-      TAKEN.forEach((unit, index) => {
-        const ANGLE = index / WORK.maxAttackers * Math.PI * 2 + 0.9;
-        ASSIGN.set(unit.id, {
+      const MEMBERS = [], USED_SLOTS = /* @__PURE__ */ new Set();
+      for (const [ID, OLD] of PREVIOUS) {
+        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < WORK.maxAttackers) {
+          MEMBERS.push({ id: ID, slot: OLD.slot });
+          USED_SLOTS.add(OLD.slot);
+          TAKEN_IDS.add(ID);
+        }
+      }
+      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
+        (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
+      );
+      for (const UNIT3 of FREE) {
+        if (MEMBERS.length >= WORK.maxAttackers) {
+          break;
+        }
+        let slot = 0;
+        while (USED_SLOTS.has(slot)) {
+          slot++;
+        }
+        USED_SLOTS.add(slot);
+        MEMBERS.push({ id: UNIT3.id, slot });
+        TAKEN_IDS.add(UNIT3.id);
+      }
+      for (const MEMBER of MEMBERS) {
+        const ANGLE = MEMBER.slot / WORK.maxAttackers * Math.PI * 2 + 0.9;
+        ASSIGN.set(MEMBER.id, {
           pile: PILE,
           attacking: true,
+          slot: MEMBER.slot,
           x: PILE.x + Math.cos(ANGLE) * RING_RADIUS,
           y: PILE.y + Math.sin(ANGLE) * RING_RADIUS * 0.75
         });
-      });
+      }
     }
-    for (const UNIT3 of FREE) {
+    for (const UNIT3 of WORKERS) {
+      if (TAKEN_IDS.has(UNIT3.id)) {
+        continue;
+      }
       let nearest = null, nearestDistance = Infinity;
       for (const PILE of world._piles) {
         const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
@@ -537,8 +562,9 @@
         ASSIGN.set(UNIT3.id, {
           pile: nearest,
           attacking: false,
-          x: nearest.x + Math.cos(ANGLE) * 3.4,
-          y: nearest.y + Math.sin(ANGLE) * 3.4 * 0.75
+          slot: -1,
+          x: nearest.x + Math.cos(ANGLE) * 4.6,
+          y: nearest.y + Math.sin(ANGLE) * 4.6 * 0.75
         });
       }
     }
@@ -582,6 +608,10 @@
     const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), ORDER = { x: ASSIGN.x, y: ASSIGN.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
     if (!ASSIGN.attacking || !SWING) {
       return ORDER;
+    }
+    if (SWING.phase === "idle" && Math.hypot(unit.x - PILE.x, unit.y - PILE.y) <= NEAR_PILE) {
+      ORDER.hold = true;
+      ORDER.face = true;
     }
     if (SWING.phase === "fire") {
       ORDER.x = PILE.x;
@@ -643,9 +673,9 @@
         swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
         world._swings.set(ID, swing);
       }
-      const AT_RING = Math.hypot(ASSIGN.x - UNIT3.x, ASSIGN.y - UNIT3.y) < 0.9;
+      const NEAR = Math.hypot(PILE.x - UNIT3.x, PILE.y - UNIT3.y) <= NEAR_PILE;
       if (swing.phase === "idle") {
-        if (!AT_RING) {
+        if (!NEAR) {
           continue;
         }
         swing.wait -= dt;
@@ -680,11 +710,12 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, RING_RADIUS, STACKS_PER_FOOD;
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, RING_RADIUS, STACKS_PER_FOOD;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       SWING_WINDUP = 0.28;
       SWING_RECOVER = 0.36;
+      NEAR_PILE = 4.4;
       CHARGE_SPEED = 18;
       CHARGE_TIMEOUT = 1.6;
       RECOIL_SPEED = 5.5;
@@ -13943,7 +13974,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.24";
+      PRODUCT_VERSION = "0.10.25";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

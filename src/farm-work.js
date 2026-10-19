@@ -3,7 +3,8 @@
 // Piles and swings are transient presentation-adjacent state; they are rebuilt after a load.
 export const SWING_WINDUP = 0.28,
     SWING_RECOVER = 0.36;
-const CHARGE_SPEED = 18,
+const NEAR_PILE = 4.4,
+    CHARGE_SPEED = 18,
     CHARGE_TIMEOUT = 1.6,
     RECOIL_SPEED = 5.5,
     RING_RADIUS = 2.8;
@@ -57,25 +58,56 @@ export function resetWork(world) {
     world._workAssign = new Map();
     world._swings = new Map();
 }
+// Assignments are sticky: a worker keeps its pile and its spot until the pile is gone or the worker stops working,
+// so re-running this never shuffles spots around and makes workers jitter back and forth.
 export function assignWorkers(world, config) {
     const WORK = config.farm.work,
-        FREE = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
-        ASSIGN = new Map();
+        WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
+        BY_ID = new Map(WORKERS.map((u) => [u.id, u])),
+        PREVIOUS = world._workAssign,
+        ASSIGN = new Map(),
+        TAKEN_IDS = new Set();
     for (const PILE of world._piles) {
-        FREE.sort((a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y));
-        const TAKEN = FREE.splice(0, WORK.maxAttackers);
-        TAKEN.forEach((unit, index) => {
-            const ANGLE = (index / WORK.maxAttackers) * Math.PI * 2 + 0.9;
-            ASSIGN.set(unit.id, {
+        const MEMBERS = [],
+            USED_SLOTS = new Set();
+        for (const [ID, OLD] of PREVIOUS) {
+            if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < WORK.maxAttackers) {
+                MEMBERS.push({ id: ID, slot: OLD.slot });
+                USED_SLOTS.add(OLD.slot);
+                TAKEN_IDS.add(ID);
+            }
+        }
+        const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
+            (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y),
+        );
+        for (const UNIT of FREE) {
+            if (MEMBERS.length >= WORK.maxAttackers) {
+                break;
+            }
+            let slot = 0;
+            while (USED_SLOTS.has(slot)) {
+                slot++;
+            }
+            USED_SLOTS.add(slot);
+            MEMBERS.push({ id: UNIT.id, slot });
+            TAKEN_IDS.add(UNIT.id);
+        }
+        for (const MEMBER of MEMBERS) {
+            const ANGLE = (MEMBER.slot / WORK.maxAttackers) * Math.PI * 2 + 0.9;
+            ASSIGN.set(MEMBER.id, {
                 pile: PILE,
                 attacking: true,
+                slot: MEMBER.slot,
                 x: PILE.x + Math.cos(ANGLE) * RING_RADIUS,
                 y: PILE.y + Math.sin(ANGLE) * RING_RADIUS * 0.75,
             });
-        });
+        }
     }
     // Workers beyond the attacker limit wait near the closest pile until a slot opens.
-    for (const UNIT of FREE) {
+    for (const UNIT of WORKERS) {
+        if (TAKEN_IDS.has(UNIT.id)) {
+            continue;
+        }
         let nearest = null,
             nearestDistance = Infinity;
         for (const PILE of world._piles) {
@@ -90,8 +122,9 @@ export function assignWorkers(world, config) {
             ASSIGN.set(UNIT.id, {
                 pile: nearest,
                 attacking: false,
-                x: nearest.x + Math.cos(ANGLE) * 3.4,
-                y: nearest.y + Math.sin(ANGLE) * 3.4 * 0.75,
+                slot: -1,
+                x: nearest.x + Math.cos(ANGLE) * 4.6,
+                y: nearest.y + Math.sin(ANGLE) * 4.6 * 0.75,
             });
         }
     }
@@ -138,6 +171,10 @@ export function workOrder(world, unit) {
         ORDER = { x: ASSIGN.x, y: ASSIGN.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
     if (!ASSIGN.attacking || !SWING) {
         return ORDER;
+    }
+    if (SWING.phase === 'idle' && Math.hypot(unit.x - PILE.x, unit.y - PILE.y) <= NEAR_PILE) {
+        ORDER.hold = true;
+        ORDER.face = true;
     }
     if (SWING.phase === 'fire') {
         ORDER.x = PILE.x;
@@ -203,9 +240,9 @@ export function stepWork(world, config, dt) {
             swing = { phase: 'idle', elapsed: 0, wait: (UNIT.seed * 7) % 0.8 };
             world._swings.set(ID, swing);
         }
-        const AT_RING = Math.hypot(ASSIGN.x - UNIT.x, ASSIGN.y - UNIT.y) < 0.9;
+        const NEAR = Math.hypot(PILE.x - UNIT.x, PILE.y - UNIT.y) <= NEAR_PILE;
         if (swing.phase === 'idle') {
-            if (!AT_RING) {
+            if (!NEAR) {
                 continue;
             }
             swing.wait -= dt;
