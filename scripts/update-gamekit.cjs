@@ -45,6 +45,7 @@ try {
             'input.js',
             'deterministic.js',
             'simloop.js',
+            'work-scheduler.js',
             'transport.js',
             'replay.js',
             'rollback.js',
@@ -56,6 +57,7 @@ try {
             'navigation.js',
             'scenario.js',
             'object-pool.js',
+            'pixel-physics.js',
         ],
         'fixed distribution module order',
     );

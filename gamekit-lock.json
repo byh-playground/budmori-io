@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "dd59a57fcf66409cef16632ffb433c0b760324fa",
-    "distCommit": "418e17c455db56d6ed073d82d115191d9dd8bf04",
+    "sourceCommit": "dc2660d3c50a66c343d18cd5fce6959432284e84",
+    "distCommit": "f898f11a8755ccca25c7b27e5a534fbdc6a8fa94",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -28,7 +28,7 @@
         },
         {
             "name": "interpolation",
-            "bundleSHA256": "061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"
+            "bundleSHA256": "acad7ad93615633609a62e484bff918980fc84282840db9b5cd108e8f5bb133a"
         },
         {
             "name": "hud",
@@ -36,7 +36,7 @@
         },
         {
             "name": "rendering",
-            "bundleSHA256": "021b11f83b49be3e94cfe0a67769dcd248b9463325b6dcc55ea4943a0ea6c18b"
+            "bundleSHA256": "1a3790c3281de93ff361a8720eccfb03b60018b09937a84a8d4da02b3f73c9ba"
         },
         {
             "name": "vector-assets",
@@ -59,7 +59,7 @@
             "bundleSHA256": "4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"
         }
     ],
-    "manifestSHA256": "20244c2beeee33719f407a9baa92c55a4bd55a0e4eb9f094590bb0eed652296e",
+    "manifestSHA256": "916f518691bbff2d041857d6d48bbcea9d6a9f0b3a98327995f481f9bbff96d6",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",
