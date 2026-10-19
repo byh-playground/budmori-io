@@ -90,7 +90,7 @@ export function renderAbilityTreeMarkup(
         `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
     const LEVEL_MARKUP = renderPlayerProgressMarkup(state),
         DEFAULTS_NOTE =
-            '\uBAA8\uB4E0 \uC77C\uBC18 \uBCD1\uC885\uC758 \uB300\uD45C \uB2A5\uB825\uC740 Common(T1)\uBD80\uD130 \uBB34\uB8CC\uB85C \uC801\uC6A9\uB429\uB2C8\uB2E4. \uACF5\uC6A9 \uD3EC\uC778\uD2B8\uB85C \uB2A5\uB825 \uD6A8\uACFC\uB97C \uAC15\uD654\uD560 \uC218 \uC788\uC5B4\uC694.';
+            '모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 공용 포인트로 능력 효과를 강화할 수 있어요.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
@@ -216,7 +216,7 @@ function renderAbilityCard(state, definition, context) {
         ),
     ].join(' · ');
     const SPECIES_NAME = speciesById(definition.species).name,
-        CURRENT_LABEL = '\uD604\uC7AC \uD6A8\uACFC';
+        CURRENT_LABEL = '현재 효과';
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
     <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">Common(T1)</span></header>
     <p class="ability-card__description">${definition.description}</p>

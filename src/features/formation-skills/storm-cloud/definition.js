@@ -6,7 +6,7 @@ export const DEFINITION = Object.freeze({
     name: '뇌운',
     condition: 'hits',
     required: 75,
-    description: `${DURATION}\ucd08 \ub3d9\uc548 ${PULSE_INTERVAL}\ucd08\ub9c8\ub2e4 \uc804\uae30 \uc544\ud06c ${PULSE_DAMAGE} \ud53c\ud574 (${(DURATION / PULSE_INTERVAL) * PULSE_DAMAGE} \ud53c\ud574).`,
+    description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 전기 아크 ${PULSE_DAMAGE} 피해 (${(DURATION / PULSE_INTERVAL) * PULSE_DAMAGE} 피해).`,
     upgradeAxis: '지속시간 +1초',
     pulseInterval: PULSE_INTERVAL,
     pulseDamage: PULSE_DAMAGE,
