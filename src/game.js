@@ -7767,6 +7767,7 @@
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
             starterFood: 0,
+            maxFood: 50,
             starterUnits: 6,
             node: { x: -5.5, y: -2.5 }
           }),
@@ -9887,7 +9888,7 @@
           );
         }
         scatterFoodAtRandomLocation() {
-          if (this.scene !== "farm" || this.warehouseFood <= 0 || this.food.length >= 140) {
+          if (this.scene !== "farm" || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
             return false;
           }
           const SCATTERED = this.scatterFood(
@@ -9900,7 +9901,7 @@
           return SCATTERED;
         }
         scatterFood(x, y) {
-          if (this.scene !== "farm" || !Number.isFinite(x) || !Number.isFinite(y) || this.warehouseFood <= 0 || this.food.length >= 140) {
+          if (this.scene !== "farm" || !Number.isFinite(x) || !Number.isFinite(y) || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
             return false;
           }
           this.warehouseFood--;
@@ -9987,7 +9988,7 @@
           this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
         }
         get warehouseFull() {
-          return this.food.length >= 140;
+          return this.food.length >= CONFIG.farm.work.maxFood;
         }
         get workerCount() {
           return this._workCount;
@@ -10004,7 +10005,7 @@
             this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
             this.refreshWorkers();
           }
-          if (this.food.length >= 140) {
+          if (this.food.length >= CONFIG.farm.work.maxFood) {
             return;
           }
           this.foodTaps.autoClock += Math.min(elapsed, 0.1) * this._workRate * 2.5;
@@ -10015,7 +10016,7 @@
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
           let spawned = 0;
-          for (let i = 0; i < count && this.food.length < 140; i++) {
+          for (let i = 0; i < count && this.food.length < CONFIG.farm.work.maxFood; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5, RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
             let tx = CLAMP2(x, -RADIUS_X, RADIUS_X);
             let ty = CLAMP2(y, -RADIUS_Y, RADIUS_Y);
@@ -13725,7 +13726,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.18";
+      PRODUCT_VERSION = "0.10.19";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20879,7 +20880,7 @@
   var FOOD_FEEL = new FoodFeel(requestFeed);
   var COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
   function requestFeed() {
-    if (!home && active && !active.paused && active.world.scene === "farm" && active.world.warehouseFood > 0 && active.world.food.length < 140) {
+    if (!home && active && !active.paused && active.world.scene === "farm" && active.world.warehouseFood > 0 && active.world.food.length < CONFIG.farm.work.maxFood) {
       FOOD_FEEL.unlock();
       active.queue("feed");
       return true;
@@ -22311,11 +22312,15 @@
     syncAttribute("pause", "title", active.paused ? "계속하기" : "일시정지");
     syncAttribute("feed", "aria-label", "현재 농장에 먹이 1개 살포");
     syncAttribute("feed", "title", "현재 농장에 먹이 1개 살포");
-    syncData("feed", "state", W.warehouseFood <= 0 || W.food.length >= 140 ? "unavailable" : "ready");
+    syncData(
+      "feed",
+      "state",
+      W.warehouseFood <= 0 || W.food.length >= CONFIG.farm.work.maxFood ? "unavailable" : "ready"
+    );
     syncFlag(
       "feed",
       "disabled",
-      home || active.paused || W.scene !== "farm" || W.warehouseFood <= 0 || W.food.length >= 140
+      home || active.paused || W.scene !== "farm" || W.warehouseFood <= 0 || W.food.length >= CONFIG.farm.work.maxFood
     );
     syncText("warehouseStock", String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;

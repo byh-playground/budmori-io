@@ -113,6 +113,7 @@ const CONFIG = Object.freeze({
             refreshTicks: 20,
             defaultBasisPoints: 4000,
             starterFood: 0,
+            maxFood: 50,
             starterUnits: 6,
             node: { x: -5.5, y: -2.5 },
         }),
@@ -2562,7 +2563,7 @@ const GARDEN = class Garden {
         );
     }
     scatterFoodAtRandomLocation() {
-        if (this.scene !== 'farm' || this.warehouseFood <= 0 || this.food.length >= 140) {
+        if (this.scene !== 'farm' || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
             return false;
         }
         const SCATTERED = this.scatterFood(
@@ -2580,7 +2581,7 @@ const GARDEN = class Garden {
             !Number.isFinite(x) ||
             !Number.isFinite(y) ||
             this.warehouseFood <= 0 ||
-            this.food.length >= 140
+            this.food.length >= CONFIG.farm.work.maxFood
         ) {
             return false;
         }
@@ -2679,7 +2680,7 @@ const GARDEN = class Garden {
         this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
     }
     get warehouseFull() {
-        return this.food.length >= 140;
+        return this.food.length >= CONFIG.farm.work.maxFood;
     }
     get workerCount() {
         return this._workCount;
@@ -2697,7 +2698,7 @@ const GARDEN = class Garden {
             this._nextWorkerRefreshTick = this.simulationTick + CONFIG.farm.work.refreshTicks;
             this.refreshWorkers();
         }
-        if (this.food.length >= 140) {
+        if (this.food.length >= CONFIG.farm.work.maxFood) {
             return;
         }
         // One food is five taps and the clock holds half a second per tap, so saved progress stays valid.
@@ -2709,7 +2710,7 @@ const GARDEN = class Garden {
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
         let spawned = 0;
-        for (let i = 0; i < count && this.food.length < 140; i++) {
+        for (let i = 0; i < count && this.food.length < CONFIG.farm.work.maxFood; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5,
                 RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
             let tx = CLAMP(x, -RADIUS_X, RADIUS_X);
