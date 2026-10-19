@@ -11,7 +11,7 @@ export class FarmMode {
             Math.sin(world.time * 0.18 + unit.seed) * (this.config.farm.arena.radiusX * 0.78),
             Math.cos(world.time * 0.16 + unit.seed) * (this.config.farm.arena.radiusY * 0.78),
             dt,
-            scaleMoveSpeed(0.75, unit),
+            scaleMoveSpeed(1.3, unit),
         );
     }
     update(world, unit, dt) {
@@ -22,7 +22,7 @@ export class FarmMode {
             // Workers keep to their job at the work station: no eating, no breeding.
             const SLOT = world.workSlot(unit);
             if (SLOT) {
-                world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(1.2, unit));
+                world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
             } else {
                 this.wander(world, unit, dt);
             }

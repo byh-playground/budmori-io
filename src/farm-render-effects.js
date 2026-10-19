@@ -4,6 +4,7 @@ import { MergeEffect, MergeMaterialEffect } from './features/farm-modes/merge/pr
 import { PeanutDeathSplitPresentation } from './features/abilities/peanut-death-split/presentation.js';
 import {
     DropDustEffect,
+    ThreshEffect,
     EatingEffect,
     FeedEffect,
     FoodLandingEffect,
@@ -25,6 +26,7 @@ const EFFECT_PRESENTATIONS = new Map([
     ['walnut-shockwave', SHOCKWAVE],
     ['peanut-split', PEANUT_SPLIT],
     ['drop-dust', new DropDustEffect()],
+    ['thresh', new ThreshEffect()],
     ['merge-material', new MergeMaterialEffect()],
     ['birth', new BirthEffect()],
     ['merge', new MergeEffect()],

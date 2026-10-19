@@ -2303,9 +2303,9 @@ function sync(display, now, notices) {
         BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.workPreset) === PERCENT));
         BUTTON.disabled = !!farmSortTransition;
     }
-    syncText('warehouseProgressLabel', `바위 캐기 ${W.foodTaps.remainder}/5`);
+    syncText('warehouseProgressLabel', `타작 ${W.foodTaps.remainder}/5`);
     syncAttribute('warehouseProgress', 'aria-valuenow', String(W.foodTaps.remainder));
-    syncAttribute('warehouseProgress', 'aria-valuetext', `바위 캐기 ${W.foodTaps.remainder}/5`);
+    syncAttribute('warehouseProgress', 'aria-valuetext', `타작 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
     }

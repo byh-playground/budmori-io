@@ -251,7 +251,7 @@ export class UnitPresentation {
             BOB =
                 u.z === 0
                     ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK +
-                      (WORKING ? Math.abs(Math.sin(sim.time * 5 + u.seed)) * 0.14 : 0)
+                      (WORKING ? Math.abs(Math.sin(sim.time * 8 + u.seed)) * 0.16 : 0)
                     : 0,
             P = this.renderer.project(
                 u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),

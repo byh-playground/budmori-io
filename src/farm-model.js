@@ -106,7 +106,7 @@ const CONFIG = Object.freeze({
         maxUnitId: 999999999,
         starterSeconds: 60,
         work: Object.freeze({
-            secondsPerFood: 20,
+            secondsPerFood: 12,
             warehouseLimit: 200,
             tierBonus: 0.5,
             minBreeders: 2,
@@ -2544,6 +2544,10 @@ const GARDEN = class Garden {
             this.foodTaps.produced++;
             this.throwWorkFood();
         }
+        this._emit('thresh', CONFIG.farm.work.node.x, CONFIG.farm.work.node.y, 0, {
+            big: COMPLETED,
+            duration: COMPLETED ? 0.9 : 0.55,
+        });
         this.notice('food-tap', {
             source,
             completed: COMPLETED,
@@ -2669,7 +2673,7 @@ const GARDEN = class Garden {
         for (const ID of [...NEXT].sort((a, b) => a - b)) {
             const RING = Math.floor(slotIndex / 6),
                 ANGLE = (slotIndex % 6) * (Math.PI / 3) + RING * 0.5,
-                RADIUS = 1.5 + RING * 0.65;
+                RADIUS = 2.1 + RING * 0.75;
             this._workSlots.set(ID, {
                 x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
                 y: WORK.node.y + Math.sin(ANGLE) * RADIUS * 0.75,
@@ -5145,7 +5149,7 @@ const GARDEN = class Garden {
             moveY = AWAY_Y;
             moveLength = 1;
         }
-        this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(0.75, u));
+        this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(1.3, u));
         return true;
     }
     findNearestGroundFood(x, y) {

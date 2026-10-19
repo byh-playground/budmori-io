@@ -5703,7 +5703,7 @@
             Math.sin(world.time * 0.18 + unit.seed) * (this.config.farm.arena.radiusX * 0.78),
             Math.cos(world.time * 0.16 + unit.seed) * (this.config.farm.arena.radiusY * 0.78),
             dt,
-            scaleMoveSpeed(0.75, unit)
+            scaleMoveSpeed(1.3, unit)
           );
         }
         update(world, unit, dt) {
@@ -5713,7 +5713,7 @@
           if (world.isWorker(unit)) {
             const SLOT = world.workSlot(unit);
             if (SLOT) {
-              world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(1.2, unit));
+              world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
             } else {
               this.wander(world, unit, dt);
             }
@@ -7760,7 +7760,7 @@
           maxUnitId: 999999999,
           starterSeconds: 60,
           work: Object.freeze({
-            secondsPerFood: 20,
+            secondsPerFood: 12,
             warehouseLimit: 200,
             tierBonus: 0.5,
             minBreeders: 2,
@@ -9869,6 +9869,10 @@
             this.foodTaps.produced++;
             this.throwWorkFood();
           }
+          this._emit("thresh", CONFIG.farm.work.node.x, CONFIG.farm.work.node.y, 0, {
+            big: COMPLETED,
+            duration: COMPLETED ? 0.9 : 0.55
+          });
           this.notice("food-tap", {
             source,
             completed: COMPLETED,
@@ -9977,7 +9981,7 @@
           this._workSlots = /* @__PURE__ */ new Map();
           let slotIndex = 0;
           for (const ID of [...NEXT].sort((a, b) => a - b)) {
-            const RING = Math.floor(slotIndex / 6), ANGLE = slotIndex % 6 * (Math.PI / 3) + RING * 0.5, RADIUS = 1.5 + RING * 0.65;
+            const RING = Math.floor(slotIndex / 6), ANGLE = slotIndex % 6 * (Math.PI / 3) + RING * 0.5, RADIUS = 2.1 + RING * 0.75;
             this._workSlots.set(ID, {
               x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
               y: WORK.node.y + Math.sin(ANGLE) * RADIUS * 0.75
@@ -11897,7 +11901,7 @@
             moveY = AWAY_Y;
             moveLength = 1;
           }
-          this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(0.75, u));
+          this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(1.3, u));
           return true;
         }
         findNearestGroundFood(x, y) {
@@ -13726,7 +13730,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.19";
+      PRODUCT_VERSION = "0.10.20";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15451,6 +15455,47 @@
       }
     }
   };
+  var ThreshEffect = class {
+    draw(renderer, effect, progress) {
+      const BIG = effect.big === true, DURATION3 = BIG ? 0.9 : 0.55, P = clamp01(progress / DURATION3);
+      if (P >= 1) {
+        return;
+      }
+      const C = renderer.ctx, COUNT = BIG ? 14 : 7;
+      if (BIG) {
+        renderer.ring(
+          effect.x,
+          effect.y,
+          0.4 + easeOut(P) * 1.3,
+          rgba(GOLD, 0.8 * (1 - P)),
+          0.08 * (1 - P) + 0.012
+        );
+      }
+      C.lineCap = "round";
+      for (let index = 0; index < COUNT; index++) {
+        const ANGLE = index * TAU2 / COUNT + index % 2 * 0.35, REACH = (BIG ? 2.1 : 1.3) * (0.55 + index % 3 * 0.22) * easeOut(P), LIFT = Math.sin(P * Math.PI) * (BIG ? 1.8 : 1.2) * (0.6 + index % 4 * 0.15), FROM = renderer.project(
+          effect.x + Math.cos(ANGLE) * REACH,
+          effect.y + Math.sin(ANGLE) * REACH * 0.7,
+          0.5 + LIFT
+        ), SPIN = ANGLE + P * 7;
+        C.strokeStyle = rgba(index % 2 ? "#e9cf84" : "#c99f4a", 1 - P * P);
+        C.lineWidth = Math.max(1, renderer.scale * 0.06);
+        C.beginPath();
+        C.moveTo(FROM.x - Math.cos(SPIN) * renderer.scale * 0.1, FROM.y - Math.sin(SPIN) * renderer.scale * 0.05);
+        C.lineTo(FROM.x + Math.cos(SPIN) * renderer.scale * 0.1, FROM.y + Math.sin(SPIN) * renderer.scale * 0.05);
+        C.stroke();
+      }
+      for (let index = 0; index < (BIG ? 6 : 3); index++) {
+        const ANGLE = index * 2.1 + 0.7, REACH = (0.4 + easeOut(P) * 0.9) * (BIG ? 1.2 : 0.8), POINT2 = renderer.project(
+          effect.x + Math.cos(ANGLE) * REACH,
+          effect.y + Math.sin(ANGLE) * REACH * 0.7,
+          0.45 + Math.sin(P * Math.PI) * 1
+        );
+        renderer.ellipse(POINT2.x, POINT2.y, renderer.scale * 0.05, renderer.scale * 0.07, rgba(FOOD, 1 - P));
+      }
+      puff(renderer, effect.x, effect.y + 0.05, 0.3 + P * 0.4, 0.3 + P * 0.35, DUST, 0.5 * (1 - P));
+    }
+  };
 
   // src/farm-render-effects.js
   init_farm_model();
@@ -15467,6 +15512,7 @@
     ["walnut-shockwave", SHOCKWAVE],
     ["peanut-split", PEANUT_SPLIT],
     ["drop-dust", new DropDustEffect()],
+    ["thresh", new ThreshEffect()],
     ["merge-material", new MergeMaterialEffect()],
     ["birth", new BirthEffect()],
     ["merge", new MergeEffect()],
@@ -16014,7 +16060,7 @@
       return true;
     }
     drawUnit(u, sim, rest) {
-      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), SLOT = sim.workSlot?.(u), WORKING = !DEAD && SLOT && Math.hypot(SLOT.x - u.x, SLOT.y - u.y) < 0.35, BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK + (WORKING ? Math.abs(Math.sin(sim.time * 5 + u.seed)) * 0.14 : 0) : 0, P = this.renderer.project(
+      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), SLOT = sim.workSlot?.(u), WORKING = !DEAD && SLOT && Math.hypot(SLOT.x - u.x, SLOT.y - u.y) < 0.35, BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK + (WORKING ? Math.abs(Math.sin(sim.time * 8 + u.seed)) * 0.16 : 0) : 0, P = this.renderer.project(
         u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),
         u.y,
         u.z + BOB
@@ -16963,17 +17009,21 @@
       }
     }
     drawWorkStation(sim2, now) {
-      const NODE = CONFIG.farm.work.node, S = this.scale, REVISION = sim2.foodTaps?.revision || 0;
+      const NODE = CONFIG.farm.work.node, S = this.scale * 1.45, REVISION = sim2.foodTaps?.revision || 0;
       if (REVISION !== this.nodeRevision) {
         this.nodeRevision = REVISION;
         this.nodeHitAt = now;
       }
-      const HIT = CLAMP2(1 - (now - (this.nodeHitAt || -1e9)) / 160, 0, 1), BASE = this.project(NODE.x, NODE.y, 0), SQUASH = 1 + HIT * 0.1, LIFT = 1 - HIT * 0.1;
-      this.groundEllipse(NODE.x, NODE.y, 1.05, 0.72, "#54452433");
-      this.ellipse(BASE.x, BASE.y - 0.28 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, "#8f8d80");
-      this.ellipse(BASE.x - 0.05 * S, BASE.y - 0.4 * S * LIFT, 0.62 * S * SQUASH, 0.4 * S * LIFT, "#a9a79a");
-      this.ellipse(BASE.x - 0.2 * S, BASE.y - 0.52 * S * LIFT, 0.26 * S, 0.14 * S, "#c8c6b9");
-      this.ellipse(BASE.x + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, "#7c7a6e");
+      const HIT = CLAMP2(1 - (now - (this.nodeHitAt || -1e9)) / 220, 0, 1), BASE = this.project(NODE.x, NODE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
+      this.groundEllipse(NODE.x, NODE.y, 1.5, 1, "#54452433");
+      this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, "#c99f4a");
+      this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, "#dcb85f");
+      this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, "#e6c773");
+      this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, "#f1dc9a");
+      this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, "#a9793b");
+      for (let index = -2; index <= 2; index++) {
+        this.ellipse(X + index * 0.15 * S, BASE.y - 0.24 * S * LIFT, 0.025 * S, 0.1 * S, "#b98e45", index * 0.25);
+      }
     }
     addActor(presentation, source, depth, id, vector = false) {
       const INDEX = this.actors.length, ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
@@ -22347,9 +22397,9 @@
       BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.workPreset) === PERCENT));
       BUTTON.disabled = !!farmSortTransition;
     }
-    syncText("warehouseProgressLabel", `바위 캐기 ${W.foodTaps.remainder}/5`);
+    syncText("warehouseProgressLabel", `타작 ${W.foodTaps.remainder}/5`);
     syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
-    syncAttribute("warehouseProgress", "aria-valuetext", `바위 캐기 ${W.foodTaps.remainder}/5`);
+    syncAttribute("warehouseProgress", "aria-valuetext", `타작 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
     }
