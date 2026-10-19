@@ -5714,6 +5714,10 @@
             const SLOT = world.workSlot(unit);
             if (SLOT) {
               world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
+              if (Math.hypot(SLOT.x - unit.x, SLOT.y - unit.y) < 0.3) {
+                const NODE = this.config.farm.work.node;
+                unit.angle = Math.atan2(NODE.y - unit.y, NODE.x - unit.x);
+              }
             } else {
               this.wander(world, unit, dt);
             }
@@ -8812,6 +8816,7 @@
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this._workerIds = /* @__PURE__ */ new Set();
           this._workSlots = /* @__PURE__ */ new Map();
+          this._workerOrder = [];
           this._workRate = 0;
           this._workCount = 0;
           this._nextWorkerRefreshTick = 0;
@@ -9919,6 +9924,17 @@
         isWorker(unit) {
           return this._workerIds.has(unit.id);
         }
+        // The worker who lands the next hit, and the one who landed the last, so the swing can be drawn around the tap.
+        workSwinger(offset) {
+          const COUNT = this._workerOrder.length;
+          return COUNT ? this._workerOrder[((this.foodTaps.revision + offset) % COUNT + COUNT) % COUNT] : null;
+        }
+        msUntilNextTap() {
+          if (this._workRate <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
+            return Infinity;
+          }
+          return Math.max(0, (0.5 - this.foodTaps.autoClock) / (this._workRate * 2.5) * 1e3);
+        }
         workSlot(unit) {
           return this._workSlots.get(unit.id) || null;
         }
@@ -9979,8 +9995,9 @@
           }
           this._workerIds = NEXT;
           this._workSlots = /* @__PURE__ */ new Map();
+          this._workerOrder = [...NEXT].sort((a, b) => a - b);
           let slotIndex = 0;
-          for (const ID of [...NEXT].sort((a, b) => a - b)) {
+          for (const ID of this._workerOrder) {
             const RING = Math.floor(slotIndex / 6), ANGLE = slotIndex % 6 * (Math.PI / 3) + RING * 0.5, RADIUS = 2.1 + RING * 0.75;
             this._workSlots.set(ID, {
               x: WORK.node.x + Math.cos(ANGLE) * RADIUS,
@@ -13730,7 +13747,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.20";
+      PRODUCT_VERSION = "0.10.21";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15859,6 +15876,21 @@
   function unitAttackPresentation(unit) {
     return ATTACK_PRESENTATIONS.get(UNIT_ABILITY_PROFILES[unit.species]?.kind) || DEFAULT_ATTACK;
   }
+  function workSwing(u, sim, renderer) {
+    const SLOT = sim.workSlot?.(u);
+    if (!SLOT || u.hp <= 0 || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.35) {
+      return null;
+    }
+    const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
+    if (u.id === sim.workSwinger(-1) && SINCE >= 0 && SINCE < 760) {
+      return SINCE < 400 ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE } : { name: "recover", elapsed: SINCE - 400 };
+    }
+    const UNTIL = sim.msUntilNextTap();
+    if (u.id === sim.workSwinger(0) && UNTIL <= 280) {
+      return { name: "windup", elapsed: 280 - UNTIL };
+    }
+    return null;
+  }
   function unitMotion(u, sim, rest) {
     const DEAD = u.hp <= 0 || u.down > 0, AIRBORNE = !u.dropLanded || u.z > 0.1, PHASE = u.ability?.phase || "idle";
     const MOVING = Math.hypot(u.vx || 0, u.vy || 0) > 0.18;
@@ -16031,8 +16063,8 @@
         this.renderer.vectorPlayers.delete(u.id);
         player = null;
       }
-      const METADATA = RECORD.compiled.metadata, MOTION_NAME = unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
-      const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - motionElapsedMs(u, MOTION_NAME, CLIP);
+      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim, this.renderer), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
+      const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
       if (!player) {
         player = RECORD.asset.createPlayer({
           clip: MOTION_NAME,
@@ -16060,7 +16092,7 @@
       return true;
     }
     drawUnit(u, sim, rest) {
-      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), SLOT = sim.workSlot?.(u), WORKING = !DEAD && SLOT && Math.hypot(SLOT.x - u.x, SLOT.y - u.y) < 0.35, BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK + (WORKING ? Math.abs(Math.sin(sim.time * 8 + u.seed)) * 0.16 : 0) : 0, P = this.renderer.project(
+      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0, P = this.renderer.project(
         u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),
         u.y,
         u.z + BOB
@@ -17023,6 +17055,12 @@
       this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, "#a9793b");
       for (let index = -2; index <= 2; index++) {
         this.ellipse(X + index * 0.15 * S, BASE.y - 0.24 * S * LIFT, 0.025 * S, 0.1 * S, "#b98e45", index * 0.25);
+      }
+      const FILLED = sim2.foodTaps?.remainder || 0;
+      for (let index = 0; index < 5; index++) {
+        const SLOT_X = BASE.x + (index - 2) * 0.27 * S, SLOT_Y = BASE.y + 0.14 * S;
+        this.ellipse(SLOT_X, SLOT_Y, 0.115 * S, 0.1 * S, "#6b522a99");
+        this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < FILLED ? "#f6d36b" : "#efe3bf");
       }
     }
     addActor(presentation, source, depth, id, vector = false) {

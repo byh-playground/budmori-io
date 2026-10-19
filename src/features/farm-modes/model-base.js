@@ -23,6 +23,10 @@ export class FarmMode {
             const SLOT = world.workSlot(unit);
             if (SLOT) {
                 world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
+                if (Math.hypot(SLOT.x - unit.x, SLOT.y - unit.y) < 0.3) {
+                    const NODE = this.config.farm.work.node;
+                    unit.angle = Math.atan2(NODE.y - unit.y, NODE.x - unit.x);
+                }
             } else {
                 this.wander(world, unit, dt);
             }
