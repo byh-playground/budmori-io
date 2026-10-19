@@ -1660,18 +1660,6 @@ const GARDEN = class Garden {
         this.markProgressChanged();
         return true;
     }
-    unlockFarmPlot() {
-        if (
-            this.scene !== 'farm' ||
-            this.running ||
-            this.farmBossEvent?.phase !== 'idle' ||
-            this.playerProgression.availablePoints < 2
-        ) {
-            return { ok: false, reason: this.playerProgression.availablePoints < 2 ? 'insufficient-points' : 'locked' };
-        }
-        this.playerProgression.availablePoints -= 2;
-        return { ok: true, plotId: this._addFarmPlot() };
-    }
     _addFarmPlot() {
         const STATE = this.playerProgression.farmPlots,
             ID = `plot-${STATE.nextPlotNumber}`,
@@ -1682,24 +1670,6 @@ const GARDEN = class Garden {
         this.restoreReservePopulation();
         this.markProgressChanged();
         return ID;
-    }
-    expandFarmPlot(plotId = this.activePlotId) {
-        const PLOT = this.farmPlots.get(plotId);
-        if (
-            this.scene !== 'farm' ||
-            this.running ||
-            this.farmBossEvent?.phase !== 'idle' ||
-            !PLOT ||
-            !PLOT.canExpand() ||
-            this.playerProgression.availablePoints < 1
-        ) {
-            return { ok: false, reason: !PLOT?.canExpand() ? 'max-level' : 'locked' };
-        }
-        PLOT.expand();
-        this.playerProgression.availablePoints--;
-        this.restoreReservePopulation();
-        this.markProgressChanged();
-        return { ok: true, capacity: PLOT.capacity };
     }
     restoreReservePopulation() {
         const RESERVE = this.roster.residents().filter((unit) => unit.plotId === RESERVE_PLOT_ID);

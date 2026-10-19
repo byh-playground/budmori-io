@@ -41,13 +41,6 @@ export function createFarmPlotsProgression() {
     };
 }
 
-export function getFarmPlotInvestedCount(state) {
-    if (!isValidFarmPlotsProgression(state)) {
-        return 0;
-    }
-    return (state.plots.length - 1) * 2 + state.plots.reduce((total, plot) => total + plot.capacityLevel, 0);
-}
-
 export function getFarmPlotsCapacity(state) {
     if (!isValidFarmPlotsProgression(state)) {
         return 0;

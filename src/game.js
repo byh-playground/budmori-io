@@ -563,12 +563,6 @@
       targetBasisPoints: Array.from({ length: SPECIES_COUNT }, (_, speciesId) => Number(speciesId === 0) * 1e4)
     };
   }
-  function getFarmPlotInvestedCount(state) {
-    if (!isValidFarmPlotsProgression(state)) {
-      return 0;
-    }
-    return (state.plots.length - 1) * 2 + state.plots.reduce((total, plot) => total + plot.capacityLevel, 0);
-  }
   function isValidFarmPlotsProgression(state) {
     if (!state || typeof state !== "object" || Array.isArray(state)) {
       return false;
@@ -4069,7 +4063,6 @@
     return {
       schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
       level: state.level,
-      farmPlotInvestedPoints: getFarmPlotInvestedCount(state.farmPlots),
       formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
       raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
       availablePoints: state.availablePoints,
@@ -4095,7 +4088,7 @@
     };
   }
   function isValidAbilityRuntimeSnapshot(snapshot2) {
-    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1 || !isNonNegativeInteger(snapshot2.farmPlotInvestedPoints)) {
+    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1) {
       return false;
     }
     const STATE = {
@@ -4119,7 +4112,7 @@
       ),
       0
     );
-    return INVESTED + formationInvestedPoints(STATE.formationSkills) + raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + snapshot2.farmPlotInvestedPoints + STATE.availablePoints === STATE.level - 1;
+    return INVESTED + formationInvestedPoints(STATE.formationSkills) + raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
   }
   function isValidPlayerLikeAbilityState(state) {
     const ABILITY_STATE = {
@@ -4138,7 +4131,7 @@
       ),
       0
     );
-    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + getFarmUpgradeInvestedCount(state.farmUpgrades) + getFarmPlotInvestedCount(state.farmPlots) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
   }
   function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
@@ -4152,7 +4145,6 @@
       init_formation_skill_state();
       init_ability_definitions();
       init_farm_upgrades();
-      init_farm_plot();
       init_raid_deployment_cards();
       ABILITY_TREE_SCHEMA_VERSION = 2;
     }
@@ -4457,7 +4449,7 @@
       (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
       0
     );
-    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + getFarmPlotInvestedCount(state.farmPlots) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + state.availablePoints === state.level - 1;
   }
   var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
   var init_player_progression = __esm({
@@ -4679,7 +4671,6 @@
     NEXT.availablePoints += CHECK.refunded;
     if (TYPE === "all" || TYPE === "farm") {
       NEXT.farmUpgrades = createFarmUpgradeState();
-      NEXT.farmPlots = createFarmPlotsProgression();
     }
     if (TYPE === "all" || TYPE === "abilities") {
       for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
@@ -4701,9 +4692,9 @@
   function progressionResetInvestment(state, scope) {
     switch (scope.type) {
       case "all":
-        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + getFarmPlotInvestedCount(state.farmPlots) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
+        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
       case "farm":
-        return getFarmUpgradeInvestedCount(state.farmUpgrades) + getFarmPlotInvestedCount(state.farmPlots);
+        return getFarmUpgradeInvestedCount(state.farmUpgrades);
       case "abilities":
         return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
       case "formation":
@@ -4893,7 +4884,6 @@
       init_formation_skill_state();
       init_raid_deployment_cards();
       init_farm_upgrades();
-      init_farm_plot();
       SHARED_ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
@@ -9675,13 +9665,6 @@
           this.markProgressChanged();
           return true;
         }
-        unlockFarmPlot() {
-          if (this.scene !== "farm" || this.running || this.farmBossEvent?.phase !== "idle" || this.playerProgression.availablePoints < 2) {
-            return { ok: false, reason: this.playerProgression.availablePoints < 2 ? "insufficient-points" : "locked" };
-          }
-          this.playerProgression.availablePoints -= 2;
-          return { ok: true, plotId: this._addFarmPlot() };
-        }
         _addFarmPlot() {
           const STATE = this.playerProgression.farmPlots, ID = `plot-${STATE.nextPlotNumber}`, PLOT_STATE = { id: ID, capacityLevel: 0, facilities: [] };
           STATE.plots.push(PLOT_STATE);
@@ -9690,17 +9673,6 @@
           this.restoreReservePopulation();
           this.markProgressChanged();
           return ID;
-        }
-        expandFarmPlot(plotId = this.activePlotId) {
-          const PLOT = this.farmPlots.get(plotId);
-          if (this.scene !== "farm" || this.running || this.farmBossEvent?.phase !== "idle" || !PLOT || !PLOT.canExpand() || this.playerProgression.availablePoints < 1) {
-            return { ok: false, reason: !PLOT?.canExpand() ? "max-level" : "locked" };
-          }
-          PLOT.expand();
-          this.playerProgression.availablePoints--;
-          this.restoreReservePopulation();
-          this.markProgressChanged();
-          return { ok: true, capacity: PLOT.capacity };
         }
         restoreReservePopulation() {
           const RESERVE = this.roster.residents().filter((unit) => unit.plotId === RESERVE_PLOT_ID);
@@ -14484,7 +14456,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.12.0";
+      PRODUCT_VERSION = "0.13.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18661,10 +18633,6 @@
           return W.scene === "farm" && W.scatterFood(c.x, c.y);
         case "farm-plot-switch":
           return W.scene === "farm" && W.switchFarmPlot(c.plotId);
-        case "farm-plot-unlock":
-          return W.scene === "farm" && W.unlockFarmPlot().ok;
-        case "farm-plot-expand":
-          return W.scene === "farm" && W.expandFarmPlot(c.plotId).ok;
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
