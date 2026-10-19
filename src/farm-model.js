@@ -114,6 +114,7 @@ const CONFIG = Object.freeze({
             defaultBasisPoints: 4000,
             starterFood: 10,
             starterUnits: 6,
+            station: { x: -5.5, y: -2.5 },
         }),
         breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -1281,6 +1282,7 @@ const GARDEN = class Garden {
         this.warehouseFood = CONFIG.farm.work.starterFood;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this._workerIds = new Set();
+        this._workSlots = new Map();
         this._workRate = 0;
         this._workCount = 0;
         this._nextWorkerRefreshTick = 0;
@@ -2583,6 +2585,9 @@ const GARDEN = class Garden {
     isWorker(unit) {
         return this._workerIds.has(unit.id);
     }
+    workSlot(unit) {
+        return this._workSlots.get(unit.id) || null;
+    }
     canBreedNow(unit) {
         return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
     }
@@ -2648,6 +2653,18 @@ const GARDEN = class Garden {
             }
         }
         this._workerIds = NEXT;
+        this._workSlots = new Map();
+        let slotIndex = 0;
+        for (const ID of [...NEXT].sort((a, b) => a - b)) {
+            const RING = Math.floor(slotIndex / 6),
+                ANGLE = (slotIndex % 6) * (Math.PI / 3) + RING * 0.5,
+                RADIUS = 1.5 + RING * 0.65;
+            this._workSlots.set(ID, {
+                x: WORK.station.x + Math.cos(ANGLE) * RADIUS,
+                y: WORK.station.y + Math.sin(ANGLE) * RADIUS * 0.75,
+            });
+            slotIndex++;
+        }
         this._workCount = NEXT.size;
         this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
     }

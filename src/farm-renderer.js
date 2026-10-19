@@ -416,12 +416,35 @@ const DIORAMA = class Diorama {
             this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, '#a8b78a', P.angle + 0.7);
         }
         PRESENTATION.drawBoundary(this);
+        if (sim2.scene === 'farm') {
+            this.drawWorkStation(sim2);
+        }
         const AREA = PRESENTATION.dangerVisible(sim2)
             ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea)
             : null;
         this.bossTelegraph = AREA;
         if (AREA) {
             this.drawBossTelegraph(AREA);
+        }
+    }
+    drawWorkStation(sim2) {
+        const STATION = CONFIG.farm.work.station,
+            S = this.scale,
+            TOP = this.project(STATION.x, STATION.y, 0.45),
+            BASE = this.project(STATION.x, STATION.y, 0);
+        this.groundEllipse(STATION.x, STATION.y, 1.0, 0.7, '#54452433');
+        this.ellipse(BASE.x, BASE.y - 0.05 * S, 0.62 * S, 0.3 * S, '#a07a45');
+        this.ellipse(TOP.x, TOP.y, 0.7 * S, 0.34 * S, '#c79a5a');
+        this.ellipse(TOP.x, TOP.y - 0.03 * S, 0.58 * S, 0.26 * S, '#d9b274');
+        const COUNT = sim2.foodTaps?.remainder || 0;
+        for (let i = 0; i < 5; i++) {
+            this.ellipse(
+                TOP.x + (i - 2) * 0.2 * S,
+                TOP.y - 0.05 * S,
+                0.065 * S,
+                0.085 * S,
+                i < COUNT ? '#c2913e' : '#b8955f66',
+            );
         }
     }
     addActor(presentation, source, depth, id, vector = false) {

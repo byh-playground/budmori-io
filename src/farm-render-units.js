@@ -246,7 +246,13 @@ export class UnitPresentation {
     drawUnit(u, sim, rest) {
         const DEAD = u.hp <= 0,
             WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)),
-            BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0,
+            SLOT = sim.workSlot?.(u),
+            WORKING = !DEAD && SLOT && Math.hypot(SLOT.x - u.x, SLOT.y - u.y) < 0.35,
+            BOB =
+                u.z === 0
+                    ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK +
+                      (WORKING ? Math.abs(Math.sin(sim.time * 5 + u.seed)) * 0.14 : 0)
+                    : 0,
             P = this.renderer.project(
                 u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),
                 u.y,

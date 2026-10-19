@@ -1607,6 +1607,11 @@ function applyWorkPercent(percent) {
 DOLLAR('farmWorkRatio').addEventListener('change', (e) => {
     applyWorkPercent(Number(e.target.value));
 });
+DOLLAR('workHudToggle').addEventListener('click', () => {
+    const OPEN = DOLLAR('workHud').dataset.open !== 'true';
+    DOLLAR('workHud').dataset.open = String(OPEN);
+    DOLLAR('workHudToggle').setAttribute('aria-expanded', String(OPEN));
+});
 DOLLAR('workHud').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-work-preset]');
     if (BUTTON && !BUTTON.disabled) {
