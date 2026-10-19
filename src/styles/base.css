@@ -58,34 +58,32 @@ canvas {
 /* 버튼 문법: 면 + 한 단 깊이. 역할은 색으로만 구분합니다. */
 .btn {
     border: 0;
-    border-bottom: var(--ui-edge) solid var(--ui-neutral-edge);
     border-radius: var(--ui-r-m);
     background: var(--ui-neutral);
+    border: var(--ui-bw) solid var(--ui-line);
     color: var(--ui-ink);
     padding: 0 var(--ui-s4);
 }
 .btn:active:not(:disabled) {
-    border-bottom-width: 1px;
-    transform: translateY(3px);
+    filter: brightness(0.92);
 }
 .btn--primary {
     background: var(--ui-primary);
-    border-bottom-color: var(--ui-primary-edge);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-primary-ink);
 }
 .btn--secondary {
     background: var(--ui-secondary);
-    border-bottom-color: var(--ui-secondary-edge);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-secondary-ink);
 }
 .btn--danger {
     background: var(--ui-danger);
-    border-bottom-color: var(--ui-danger-edge);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-danger-ink);
 }
 .btn:disabled {
     background: var(--ui-disabled);
-    border-bottom-color: var(--ui-disabled);
     color: var(--ui-disabled-ink);
 }
 
@@ -117,7 +115,6 @@ body > header {
     padding: 0 var(--ui-s3);
     border-radius: var(--ui-r-pill);
     background: var(--ui-base);
-    border-bottom: 3px solid var(--ui-base-edge);
     color: var(--ui-ink-on-base);
     font-size: var(--ui-fs-1);
     font-weight: var(--ui-fw-b);
@@ -139,6 +136,7 @@ body > header {
     height: 10px;
     border-radius: 50%;
     background: var(--ui-primary);
+    border: var(--ui-bw) solid transparent;
 }
 .hud__note {
     max-width: min(260px, 60vw);
@@ -162,7 +160,7 @@ body > header {
     flex: 1 1 0;
     height: 8px;
     border-radius: 3px;
-    background: #ffffff33;
+    background: var(--ui-gauge-track);
     transition: background-color 70ms ease;
 }
 #warehouseProgress .tap-pip.filled,
@@ -174,7 +172,6 @@ body > header {
     padding: 4px;
     border-radius: var(--ui-r-pill);
     background: var(--ui-panel);
-    border-bottom: 3px solid var(--ui-line);
     pointer-events: auto;
 }
 .switch button {
@@ -186,8 +183,8 @@ body > header {
     color: var(--ui-ink-2);
 }
 .switch button[aria-pressed='true'] {
-    background: var(--ui-base);
-    color: var(--ui-ink-on-base);
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
 }
 .switch button:disabled:not([aria-pressed='true']) {
     color: var(--ui-disabled-ink);
@@ -206,7 +203,6 @@ body > header {
     padding: var(--ui-s2) var(--ui-s3);
     border-radius: var(--ui-r-m);
     background: var(--ui-panel);
-    border-bottom: 3px solid var(--ui-line);
     pointer-events: none;
 }
 .bossbar__row {
@@ -255,7 +251,6 @@ body > header {
     margin: 0;
     padding: var(--ui-s3) var(--ui-s4);
     border-radius: var(--ui-r-m);
-    border-bottom: 3px solid var(--ui-base-edge);
     background: var(--ui-base);
     color: var(--ui-ink-on-base);
     font-size: var(--ui-fs-2);
@@ -320,7 +315,7 @@ body > header {
     opacity: 0.45;
 }
 #feed[data-impact='manual'] {
-    outline: 3px solid var(--ui-primary-edge);
+    outline: 3px solid var(--ui-primary);
     outline-offset: -3px;
 }
 #feed[data-impact='complete'] {
@@ -342,9 +337,6 @@ body > header {
     .fill {
         transition: none;
     }
-    .btn:active:not(:disabled) {
-        transform: none;
-    }
 }
 
 /* 하단 내비게이션 바. 라벨은 title 속성을 그대로 씁니다. */
@@ -360,7 +352,6 @@ body > header {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     background: var(--ui-base);
-    border-top: 3px solid var(--ui-base-edge);
     border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
     pointer-events: auto;
 }
@@ -414,7 +405,6 @@ body > header {
     padding: var(--ui-s2);
     border-radius: var(--ui-r-l);
     background: var(--ui-panel);
-    border-bottom: 3px solid var(--ui-line);
 }
 .deploy-status {
     display: flex;
@@ -444,7 +434,6 @@ body > header {
     gap: 2px;
     padding: var(--ui-s2) var(--ui-s1);
     border-radius: var(--ui-r-m);
-    border-bottom: var(--ui-edge) solid var(--ui-base-edge);
     background: var(--ui-base);
     color: var(--ui-ink-on-base);
     touch-action: none;
@@ -472,12 +461,11 @@ body > header {
 }
 .deployment-card[aria-pressed='true'] {
     background: var(--ui-primary);
-    border-bottom-color: var(--ui-primary-edge);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-primary-ink);
 }
 .deployment-card:disabled {
     background: var(--ui-disabled);
-    border-bottom-color: var(--ui-disabled);
     color: var(--ui-disabled-ink);
 }
 .deploy-status span {
@@ -509,6 +497,7 @@ body > header {
     padding: var(--ui-s3);
     border-radius: var(--ui-r-m);
     background: var(--ui-danger);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-danger-ink);
     font-size: var(--ui-fs-1);
     line-height: 1.6;
@@ -533,7 +522,7 @@ body > header {
     margin: 0;
     font-size: var(--ui-fs-6);
     letter-spacing: -0.04em;
-    color: var(--ui-base);
+    color: var(--ui-ink);
 }
 .product-sheet p {
     margin: 0;
@@ -576,7 +565,6 @@ body > header {
     padding: var(--ui-s3);
     border-radius: var(--ui-r-m);
     background: var(--ui-panel);
-    border-bottom: 3px solid var(--ui-line);
 }
 #newConfirm button,
 #importConfirm button,
@@ -657,7 +645,6 @@ details summary {
     padding: var(--ui-s1);
     border-radius: var(--ui-r-pill);
     background: var(--ui-panel);
-    border-bottom: 3px solid var(--ui-line);
 }
 .plot-bar[hidden] {
     display: none;
@@ -670,16 +657,14 @@ details summary {
     padding: 0;
     border-radius: 50%;
     background: var(--ui-primary);
-    border-bottom: 3px solid var(--ui-primary-edge);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-primary-ink);
 }
 .plot-bar button:active:not(:disabled) {
-    transform: translateY(2px);
-    border-bottom-width: 1px;
+    filter: brightness(0.92);
 }
 .plot-bar button:disabled {
     background: var(--ui-disabled);
-    border-bottom-color: var(--ui-disabled);
     color: var(--ui-disabled-ink);
 }
 .plot-bar svg {
@@ -718,9 +703,27 @@ details summary {
     height: 14px;
     border-radius: 50%;
     background: var(--ui-danger);
+    border: var(--ui-bw) solid transparent;
     border: 2px solid var(--ui-panel);
 }
 .plot-bar__label small + small {
     font-size: var(--ui-fs-1);
     color: var(--ui-ink-2);
+}
+
+.chip,
+.plot-bar,
+.switch,
+.hud__note {
+    border: var(--ui-bw) solid var(--ui-line);
+}
+
+.switch button,
+.plot-bar__label b,
+.plot-bar__label small,
+.chip {
+    white-space: nowrap;
+}
+.switch button {
+    padding: 0 var(--ui-s3);
 }

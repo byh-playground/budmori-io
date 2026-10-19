@@ -83,7 +83,7 @@
     background: #7c9b58;
 }
 .formation-slot[data-ready='true'] {
-    border-color: var(--ui-primary-edge);
+    border-color: var(--ui-primary);
     border-width: var(--ui-bw);
 }
 .formation-content {

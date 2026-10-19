@@ -23,6 +23,7 @@
     padding: 7px 10px;
     border-radius: 999px;
     background: var(--ui-primary);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-primary-ink);
     font-size: var(--ui-fs-1);
     white-space: nowrap;

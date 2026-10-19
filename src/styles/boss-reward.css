@@ -3,7 +3,7 @@
     padding: 0 20px;
     border-radius: var(--ui-r-pill);
     background: var(--ui-primary);
-    border-bottom: 3px solid var(--ui-primary-edge);
+    border: var(--ui-bw) solid transparent;
     color: var(--ui-primary-ink);
     font-weight: var(--ui-fw-b);
 }
@@ -27,7 +27,6 @@
     max-height: min(720px, 92dvh);
     padding: 16px;
     border: var(--ui-bw) solid var(--ui-line);
-    border-bottom-width: var(--ui-edge);
     border-radius: var(--ui-r-l);
     background: var(--ui-panel);
     color: var(--ui-ink);

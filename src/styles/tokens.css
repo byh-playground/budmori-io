@@ -1,45 +1,42 @@
 /*
  * 디자인 토큰 — 화면 스타일의 단일 원본.
  * 방향: 클래시 로얄의 정보 구조(하단 조작, 역할별 색)에 단색 면과 굵은 윤곽만 쓰는 플랫 스타일.
- * 그라디언트·블러·번지는 그림자를 쓰지 않고, 눌림 깊이는 border-bottom 한 단으로만 표현합니다.
- * 색은 역할로만 고릅니다: primary 주요 행동, secondary 확정·진행, danger 위험·알림, base 바탕과 내비게이션.
+ * 그라디언트·블러·그림자·입체 테두리를 쓰지 않고 단색 면과 2px 윤곽선만 씁니다. 눌림은 명도 변화로만 표현합니다.
+ * 색은 원래 팔레트(세이지 그린·크림·잉크)를 따릅니다: primary 주요 행동과 선택, danger 위험, accent 작은 표시.
  */
 :root {
     /* 바탕과 면 */
     --ui-bg: #e3ead6;
-    --ui-panel: #fbfaf0;
-    --ui-card: #eef2e2;
-    --ui-line: #cfdac0;
+    --ui-panel: #f8faef;
+    --ui-card: #e9f0df;
+    --ui-line: #d5dfd0;
     --ui-dim: #1b2b21b8;
 
     /* 글자: 모두 --ui-panel 위에서 4.5:1 이상 */
-    --ui-ink: #28392d;
-    --ui-ink-2: #4c5e49;
-    --ui-ink-3: #5f7059;
-    --ui-ink-on-base: #f6f4e4;
+    --ui-ink: #33483b;
+    --ui-ink-2: #566850;
+    --ui-ink-3: #66765d;
+    --ui-ink-on-base: #33483b;
 
     /* 역할 색: 면, 눌림 깊이(edge), 그 위의 글자 */
-    --ui-primary: #f5b935;
-    --ui-primary-edge: #c58a12;
-    --ui-primary-ink: #3a2800;
-    --ui-secondary: #2f7d3b;
-    --ui-secondary-edge: #1f5a29;
-    --ui-secondary-ink: #ffffff;
-    --ui-danger: #c9453d;
-    --ui-danger-edge: #9a312b;
-    --ui-danger-ink: #ffffff;
-    --ui-base: #34513f;
-    --ui-base-edge: #243a2c;
-    --ui-neutral: #e3e9d6;
-    --ui-neutral-edge: #c2cdb0;
-    --ui-disabled: #d9dfcd;
+    --ui-primary: #526e50;
+    --ui-primary: #526e50;
+    --ui-primary-ink: #fffbee;
+    --ui-secondary: #526e50;
+    --ui-secondary-ink: #fffbee;
+    --ui-danger: #a8483c;
+    --ui-danger: #a8483c;
+    --ui-danger-ink: #fffbee;
+    --ui-base: #f8faef;
+    --ui-neutral: #e5ebdf;
+    --ui-disabled: #e2e7d8;
     --ui-disabled-ink: #7d8a76;
 
     /* 게이지 */
-    --ui-gauge-track: #d4dcc4;
-    --ui-gauge-ally: #3f9a4a;
-    --ui-gauge-enemy: #d9534a;
-    --ui-gauge-xp: #4f8fd6;
+    --ui-gauge-track: #dfe6d3;
+    --ui-gauge-ally: #6f8d58;
+    --ui-gauge-enemy: #c0564a;
+    --ui-gauge-xp: #6b8fbf;
 
     /* 포커스 */
     --ui-focus: #ab633c;
@@ -50,7 +47,6 @@
     --ui-r-l: 20px;
     --ui-r-pill: 999px;
     --ui-bw: 2px;
-    --ui-edge: 4px;
 
     /* 간격 */
     --ui-s1: 4px;
