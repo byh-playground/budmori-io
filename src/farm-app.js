@@ -649,7 +649,7 @@ function requestFeed() {
         !active.paused &&
         active.world.scene === 'farm' &&
         active.world.warehouseFood > 0 &&
-        active.world.food.length < 140
+        active.world.food.length < CONFIG.farm.work.maxFood
     ) {
         FOOD_FEEL.unlock();
         active.queue('feed');
@@ -2261,11 +2261,19 @@ function sync(display, now, notices) {
     syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');
     syncAttribute('feed', 'aria-label', '현재 농장에 먹이 1개 살포');
     syncAttribute('feed', 'title', '현재 농장에 먹이 1개 살포');
-    syncData('feed', 'state', W.warehouseFood <= 0 || W.food.length >= 140 ? 'unavailable' : 'ready');
+    syncData(
+        'feed',
+        'state',
+        W.warehouseFood <= 0 || W.food.length >= CONFIG.farm.work.maxFood ? 'unavailable' : 'ready',
+    );
     syncFlag(
         'feed',
         'disabled',
-        home || active.paused || W.scene !== 'farm' || W.warehouseFood <= 0 || W.food.length >= 140,
+        home ||
+            active.paused ||
+            W.scene !== 'farm' ||
+            W.warehouseFood <= 0 ||
+            W.food.length >= CONFIG.farm.work.maxFood,
     );
     syncText('warehouseStock', String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
