@@ -5,7 +5,6 @@ import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
 import { DualStrikePresentation } from './features/unit-attacks/dual-strike/presentation.js';
 import { ATTACK_TYPES, CONFIG, clamp } from './farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js';
-import { UNIT_GRADES } from './unit-grades.js';
 import { scenePresentation } from './farm-render-scenes.js';
 
 const DEFAULT_ATTACK = new UnitAttackPresentation();
@@ -17,14 +16,6 @@ function unitAttackPresentation(unit) {
     return ATTACK_PRESENTATIONS.get(ATTACK_TYPES[unit.species]?.kind) || DEFAULT_ATTACK;
 }
 
-// Historical Budmori grade outline colors come from the shared grade catalog.
-const TIER_OUTLINE_COLORS = UNIT_GRADES.map(({ outlineColor }) => {
-    const RGB = outlineColor
-        .match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
-        .slice(1)
-        .map((value) => parseInt(value, 16) / 255);
-    return [...RGB, 1];
-});
 function unitMotion(u, sim, rest) {
     const DEAD = u.hp <= 0 || u.down > 0,
         AIRBORNE = !u.dropLanded || u.z > 0.1,
@@ -237,34 +228,10 @@ export class UnitPresentation {
         player.seek(rest ? rest.elapsed * 1000 : this.renderer.displayTimeMs);
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
             GROUND = unitBodyDefinition(u.species).ground,
-            SCALE = (2 * r) / Math.max(WIDTH, HEIGHT),
-            CENTER_Y = p.y + (HEIGHT * 0.5 - GROUND.y) * SCALE;
+            SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
-        const OUTLINE = TIER_OUTLINE_COLORS[u.tier - 1];
-        if (OUTLINE) {
-            // One enlarged silhouette pass, never eight full asset redraws.
-            const BORDER = 1.5 * this.renderer.pixelRatio,
-                FACTOR = 1 + BORDER / Math.max(r, 1);
-            const OUTLINE_MATRIX = [
-                SCALE * FACTOR,
-                0,
-                0,
-                SCALE * FACTOR,
-                p.x - WIDTH * SCALE * FACTOR * 0.5,
-                CENTER_Y - HEIGHT * SCALE * FACTOR * 0.5,
-            ];
-            // Keep the face out of the enlarged silhouette through a per-draw
-            // mask, leaving the player's pose revision and cached matrices intact.
-            player.draw({
-                projection: this.renderer.ctx.vector.projection,
-                matrix: OUTLINE_MATRIX,
-                color: u.isFormationClone ? [0.45, 0.75, 1, 0.35] : OUTLINE,
-                forceColor: true,
-                excludeParts: RECORD.faceParts,
-            });
-        }
         player.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,

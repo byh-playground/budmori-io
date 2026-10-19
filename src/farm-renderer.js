@@ -2,6 +2,7 @@ import { drawFormationEffects } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
+import { UNIT_GRADES } from './unit-grades.js';
 import { CornAttachmentPresentation } from './features/abilities/corn-attachment/presentation.js';
 import { disposeEffectPresentations, drawEffect } from './farm-render-effects.js';
 import {
@@ -59,6 +60,8 @@ function renderedBossAttackArea(boss, scene, scratch, area) {
 // render.js
 const COMPARE_ACTORS = (a, b) => b.depth - a.depth || a.id - b.id;
 const EMPTY_UNIT_IDS = new Set();
+const GRADE_RING_COLORS = UNIT_GRADES.map(({ outlineColor }) => outlineColor);
+const GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2));
 const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
 const DIORAMA = class Diorama {
     constructor(canvas) {
@@ -104,15 +107,11 @@ const DIORAMA = class Diorama {
         this.meshes = new MESH_RENDERER(this.device);
         this.ctx.meshRenderer = this.meshes;
         for (const [SPECIES, COMPILED] of ENTRIES) {
-            const FACE_PARTS = new Set(
-                COMPILED.metadata.parts.filter((part) => part.id.startsWith('face-')).map((part) => part.id),
-            );
             this.vectorAssets.set(Number(SPECIES), {
                 compiled: COMPILED,
                 asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
                 anchors: readVectorSockets(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
                 parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
-                faceParts: FACE_PARTS,
             });
         }
         this.bossAssets = new Map(
@@ -452,6 +451,10 @@ const DIORAMA = class Diorama {
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
             this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
+            // Grade is a ground ring batched with the shadows, so each unit needs one native vector draw.
+            if (U.tier > 1 && !U.isFormationClone) {
+                this.ring(U.x, U.y, SHADOW * 1.12, GRADE_RING_COLORS[U.tier - 1], GRADE_RING_WIDTHS[U.tier - 1]);
+            }
         }
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {

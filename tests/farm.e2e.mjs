@@ -5518,7 +5518,10 @@ async function combatScenarios(p) {
             });
         let visibilityWrites = 0,
             expressionWrites = 0;
-        const PART_STATE = () => Array.from(RECORD.faceParts, (part) => [part, PLAYER.getPartPose(part).visible]),
+        const FACE_IDS = RECORD.compiled.metadata.parts
+                .filter((part) => part.id.startsWith('face-'))
+                .map((part) => part.id),
+            PART_STATE = () => FACE_IDS.map((part) => [part, PLAYER.getPartPose(part).visible]),
             PART_TRANSFORMS = () => PLAYER.partPoses().map((pose) => Array.from(pose.transform)),
             BEFORE_STATE = PART_STATE(),
             BEFORE_TRANSFORMS = PART_TRANSFORMS(),
@@ -5531,17 +5534,9 @@ async function combatScenarios(p) {
             RENDERER.vectorPlayers.set(UNIT.id, PLAYER);
             RENDERER.vectorPlayerAssets.set(PLAYER, RECORD);
         }
-        const OUTLINE = DRAW_OPTIONS[0],
-            BODY = DRAW_OPTIONS[1];
         return {
-            sameCachedFaceSet: OUTLINE?.excludeParts === RECORD.faceParts,
-            excludesAuthoredFaceParts: [...(OUTLINE?.excludeParts || [])].every((part) =>
-                RECORD.compiled.metadata.parts.some(
-                    (metadataPart) => metadataPart.id === part && part.startsWith('face-'),
-                ),
-            ),
-            facePartCount: RECORD.faceParts.size,
-            bodyHasNoMask: !BODY?.excludeParts,
+            drawCount: DRAW_OPTIONS.length,
+            bodyHasNoMask: !DRAW_OPTIONS[0]?.excludeParts,
             visibilityWrites,
             expressionWrites,
             expressionUnchanged: PLAYER.currentExpression === EXPRESSION,
@@ -5549,18 +5544,14 @@ async function combatScenarios(p) {
             partTransformsUnchanged: JSON.stringify(PART_TRANSFORMS()) === JSON.stringify(BEFORE_TRANSFORMS),
         };
     });
-    assert(OUTLINE_MASK.sameCachedFaceSet, 'outline draw uses the per-species cached face Set');
-    assert(
-        OUTLINE_MASK.excludesAuthoredFaceParts && OUTLINE_MASK.facePartCount > 0,
-        'outline excludes only known face-part ids',
-    );
+    assert.equal(OUTLINE_MASK.drawCount, 1, 'each unit needs one native vector draw; grade is a ground ring');
     assert(OUTLINE_MASK.bodyHasNoMask, 'normal character draw retains every expression part');
-    assert.equal(OUTLINE_MASK.visibilityWrites, 0, 'outline masking never mutates per-part visibility');
-    assert.equal(OUTLINE_MASK.expressionWrites, 0, 'outline masking never restores the expression after drawing');
+    assert.equal(OUTLINE_MASK.visibilityWrites, 0, 'drawing never mutates per-part visibility');
+    assert.equal(OUTLINE_MASK.expressionWrites, 0, 'drawing never restores the expression');
     assert(OUTLINE_MASK.expressionUnchanged && OUTLINE_MASK.faceVisibilityUnchanged);
-    assert(OUTLINE_MASK.partTransformsUnchanged, 'outline and body passes retain the same cached pose transforms');
+    assert(OUTLINE_MASK.partTransformsUnchanged, 'drawing retains the cached pose transforms');
     REPORT.outlineMask = OUTLINE_MASK;
-    CHECK('Tier outline uses the cached excludeParts Set without mutating expression, visibility or pose matrices');
+    CHECK('Unit draws once per frame without mutating expression, visibility or pose matrices');
     const WALL = await p.evaluate(() => {
         const W = new BUDMORI.sim.constructor(773),
             G = BUDMORI.ArenaGeometry;
