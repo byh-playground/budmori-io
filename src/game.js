@@ -484,22 +484,26 @@
     }
     return best || { x: 0, y: 0 };
   }
-  function spawnPile(world, config) {
+  function spawnPile(world, config, kind) {
     const POSITION = pilePosition(world, config);
     world._piles.push({
       id: ++world._pileId,
+      kind,
       x: POSITION.x,
       y: POSITION.y,
-      food: config.farm.work.pileFood,
-      maxFood: config.farm.work.pileFood,
+      food: config.farm.work.pileKinds[kind].amount,
+      maxFood: config.farm.work.pileKinds[kind].amount,
       stack: 0,
       hitRev: 0,
       big: false
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
   }
+  function worksOn(world, unit, pile) {
+    return world._workerKinds.get(unit.id) === "resource" === (pile.kind !== "grain");
+  }
   function pileRadius(pile) {
-    return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
+    return (pile.kind === "wood" ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
   }
   function resetWork(world) {
     world._piles = [];
@@ -513,12 +517,12 @@
     for (const PILE of world._piles) {
       const MEMBERS = [];
       for (const [ID, OLD] of PREVIOUS) {
-        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < WORK.maxAttackers) {
+        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < WORK.maxAttackers) {
           MEMBERS.push(ID);
           TAKEN_IDS.add(ID);
         }
       }
-      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
+      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id) && worksOn(world, u, PILE)).sort(
         (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
       );
       for (const UNIT3 of FREE) {
@@ -538,6 +542,9 @@
       }
       let nearest = null, nearestDistance = Infinity;
       for (const PILE of world._piles) {
+        if (!worksOn(world, UNIT3, PILE)) {
+          continue;
+        }
         const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
         if (D < nearestDistance) {
           nearestDistance = D;
@@ -565,15 +572,20 @@
     }
     pile.stack = 0;
     pile.food--;
-    world.foodTaps.produced++;
     world.foodTaps.revision++;
+    if (pile.kind === "grain") {
+      world.foodTaps.produced++;
+      world.spawnFood(
+        (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
+        (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
+        1,
+        { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } }
+      );
+    } else {
+      world.materials[pile.kind]++;
+      world.emit("food-land", pile.x, pile.y);
+    }
     world.markProgressChanged();
-    world.spawnFood(
-      (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
-      (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
-      1,
-      { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } }
-    );
     if (pile.food <= 0) {
       world._piles.splice(world._piles.indexOf(pile), 1);
       world.emit("landing-shockwave", pile.x, pile.y);
@@ -625,17 +637,23 @@
   function stepWork(world, config, dt) {
     const WORK = config.farm.work;
     pushOutOfPiles(world);
-    while (world._piles.length < WORK.pileCount) {
-      if (world._piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
-        spawnPile(world, config);
-        world._pileRespawn = 0;
-        assignWorkers(world, config);
-      } else {
-        world._pileRespawn += dt;
+    let missing = null;
+    for (const [KIND, SPEC] of Object.entries(WORK.pileKinds)) {
+      if (world._piles.filter((pile) => pile.kind === KIND).length < SPEC.count) {
+        missing = KIND;
         break;
       }
     }
-    const FULL = world.food.length >= WORK.maxFood;
+    if (missing) {
+      const EMPTY = world._piles.length === 0;
+      world._pileRespawn += dt;
+      if (EMPTY || world._pileRespawn >= WORK.pileRespawnSeconds) {
+        spawnPile(world, config, missing);
+        world._pileRespawn = 0;
+        assignWorkers(world, config);
+      }
+    }
+    const FOOD_FULL = world.food.length >= WORK.maxFood;
     for (const [ID, ASSIGN] of world._workAssign) {
       if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
         continue;
@@ -657,7 +675,7 @@
           continue;
         }
         swing.wait -= dt;
-        if (swing.wait <= 0 && !FULL) {
+        if (swing.wait <= 0 && !(FOOD_FULL && ASSIGN.pile.kind === "grain")) {
           swing.phase = "windup";
           swing.elapsed = 0;
         }
@@ -8015,8 +8033,12 @@
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            pileCount: 3,
-            pileFood: 12,
+            defaultResourceBasisPoints: 3e3,
+            pileKinds: Object.freeze({
+              grain: Object.freeze({ count: 2, amount: 12 }),
+              wood: Object.freeze({ count: 1, amount: 8 }),
+              stone: Object.freeze({ count: 1, amount: 8 })
+            }),
             pileGap: 6,
             pileRadiusX: 8,
             pileRadiusY: 6,
@@ -9062,6 +9084,9 @@
           this.food = this.activeFarmPlot.food;
           this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
+          this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
+          this.materials = { wood: 0, stone: 0 };
+          this._workerKinds = /* @__PURE__ */ new Map();
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
           this._workerRates = /* @__PURE__ */ new Map();
@@ -10148,20 +10173,26 @@
         workSwingOf(id) {
           return this._swings.get(id) || null;
         }
+        workKind(unit) {
+          return this._workerKinds.get(unit.id) || "food";
+        }
         workOrder(unit) {
           return workOrder(this, unit);
         }
         canBreedNow(unit) {
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
         }
-        setWorkBasisPoints(basisPoints) {
-          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
+        // workers share of the farm, and the share of those workers that gather materials instead of grain.
+        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints) {
+          const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4;
+          if (!VALID(basisPoints) || !VALID(resourceBasisPoints)) {
             return false;
           }
-          if (basisPoints === this.workBasisPoints) {
+          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints) {
             return true;
           }
           this.workBasisPoints = basisPoints;
+          this.resourceBasisPoints = resourceBasisPoints;
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           return true;
@@ -10210,6 +10241,13 @@
           }
           this._workerIds = NEXT;
           this._workerRates = RATES;
+          const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b), RESOURCE_WORKERS = Math.round(SORTED_WORKERS.length * this.resourceBasisPoints / 1e4);
+          this._workerKinds = new Map(
+            SORTED_WORKERS.map((id, index) => [
+              id,
+              index >= SORTED_WORKERS.length - RESOURCE_WORKERS ? "resource" : "food"
+            ])
+          );
           this._workCount = NEXT.size;
           this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
           assignWorkers(this, CONFIG);
@@ -10217,16 +10255,31 @@
         get warehouseFull() {
           return this.food.length >= CONFIG.farm.work.maxFood;
         }
+        get workerKindCounts() {
+          let resource = 0;
+          for (const KIND of this._workerKinds.values()) {
+            resource += KIND === "resource" ? 1 : 0;
+          }
+          return { food: this._workerKinds.size - resource, resource };
+        }
         get workerCount() {
           return this._workCount;
         }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
+          return this._attackRate("food") * 60;
+        }
+        get workResourcePerMinute() {
+          return this._attackRate("resource") * 60;
+        }
+        _attackRate(kind) {
           let rate = 0;
           for (const [ID, ASSIGN] of this._workAssign) {
-            rate += ASSIGN.attacking ? this._workerRates.get(ID) || 0 : 0;
+            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
+              rate += this._workerRates.get(ID) || 0;
+            }
           }
-          return rate * 60;
+          return rate;
         }
         advanceAutoTaps(elapsed) {
           if (!Number.isFinite(elapsed) || elapsed <= 0) {
@@ -13526,6 +13579,7 @@
         autoClock: world.foodTaps.autoClock,
         remainder: world.foodTaps.remainder,
         produced: world.foodTaps.produced,
+        materials: { wood: world.materials.wood, stone: world.materials.stone },
         plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length }))
       },
       totals: {
@@ -13634,7 +13688,11 @@
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"]);
+    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"], ["materials"]);
+    if (data.food.materials !== void 0) {
+      keys(data.food.materials, ["wood", "stone"]);
+      ASSERT(SAFE_INTEGER(data.food.materials.wood) && SAFE_INTEGER(data.food.materials.stone));
+    }
     ASSERT(
       SAFE_INTEGER(data.food.warehouse) && NUMBER3(data.food.autoClock, 0, 0.51) && data.food.autoClock < 0.51 && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced) && Array.isArray(data.food.plots) && data.food.plots.length === PLAYER.farmPlots.plots.length
     );
@@ -13820,6 +13878,7 @@
     WORLD.activePlotId = WORLD.playerProgression.farmPlots.currentPlotId;
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
+    WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
@@ -13952,7 +14011,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.26";
+      PRODUCT_VERSION = "0.10.27";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17256,20 +17315,34 @@
         }
         const HIT = CLAMP2(1 - (now - seen.at) / 220, 0, 1), BASE = this.project(PILE.x, PILE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
         this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
-        this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, "#c99f4a");
-        this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, "#dcb85f");
-        this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, "#e6c773");
-        this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, "#f1dc9a");
-        this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, "#a9793b");
-        for (let index = -2; index <= 2; index++) {
-          this.ellipse(
-            X + index * 0.15 * S,
-            BASE.y - 0.24 * S * LIFT,
-            0.025 * S,
-            0.1 * S,
-            "#b98e45",
-            index * 0.25
-          );
+        if (PILE.kind === "wood") {
+          this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, "#7a5a34");
+          this.ellipse(X, BASE.y - 0.5 * S * LIFT, 0.2 * S * SQUASH, 0.5 * S * LIFT, "#9a7442");
+          this.ellipse(X + 0.06 * S, BASE.y - 0.5 * S * LIFT, 0.07 * S, 0.42 * S * LIFT, "#b48a52");
+          this.ellipse(X, BASE.y - 1.05 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, "#6f9b6f");
+          this.ellipse(X - 0.3 * S, BASE.y - 0.92 * S * LIFT, 0.42 * S, 0.3 * S, "#7fab76");
+          this.ellipse(X + 0.22 * S, BASE.y - 1.2 * S * LIFT, 0.4 * S, 0.28 * S, "#8fb98a");
+        } else if (PILE.kind === "stone") {
+          this.ellipse(X, BASE.y - 0.28 * S * LIFT, 0.8 * S * SQUASH, 0.54 * S * LIFT, "#8f8d80");
+          this.ellipse(X - 0.05 * S, BASE.y - 0.42 * S * LIFT, 0.64 * S * SQUASH, 0.42 * S * LIFT, "#a9a79a");
+          this.ellipse(X - 0.2 * S, BASE.y - 0.54 * S * LIFT, 0.26 * S, 0.14 * S, "#c8c6b9");
+          this.ellipse(X + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, "#7c7a6e");
+        } else {
+          this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, "#c99f4a");
+          this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, "#dcb85f");
+          this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, "#e6c773");
+          this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, "#f1dc9a");
+          this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, "#a9793b");
+          for (let index = -2; index <= 2; index++) {
+            this.ellipse(
+              X + index * 0.15 * S,
+              BASE.y - 0.24 * S * LIFT,
+              0.025 * S,
+              0.1 * S,
+              "#b98e45",
+              index * 0.25
+            );
+          }
         }
         for (let index = 0; index < 5; index++) {
           const SLOT_X = BASE.x + (index - 2) * 0.27 * S, SLOT_Y = BASE.y + 0.14 * S;
@@ -18023,7 +18096,7 @@
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
-          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
+          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints);
         case "farm-sort":
           return W.scene === "farm" && W.sortActiveFarm(c.order);
         case "merge":
@@ -21198,20 +21271,28 @@
     }
     return false;
   }
-  var WORK_STORAGE_KEY = "budmori.work.basisPoints";
-  function loadWorkBasisPoints(fallback) {
+  var WORK_STORAGE_KEYS = { work: "budmori.work.basisPoints", resource: "budmori.work.resourceBasisPoints" };
+  function loadWorkSetting(key, fallback) {
     try {
-      const VALUE = Number(localStorage.getItem(WORK_STORAGE_KEY));
-      return localStorage.getItem(WORK_STORAGE_KEY) !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e4 ? VALUE : fallback;
+      const RAW = localStorage.getItem(key), VALUE = Number(RAW);
+      return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e4 ? VALUE : fallback;
     } catch {
       return fallback;
     }
   }
-  function saveWorkBasisPoints(value) {
+  function saveWorkSetting(key, value) {
     try {
-      localStorage.setItem(WORK_STORAGE_KEY, String(value));
+      localStorage.setItem(key, String(value));
     } catch {
     }
+  }
+  function workCuts(world) {
+    const WORK = world.workBasisPoints / 100, CUT_A = 100 - WORK, CUT_B = 100 - WORK * world.resourceBasisPoints / 1e4;
+    return { a: Math.round(CUT_A / 5) * 5, b: Math.round(CUT_B / 5) * 5 };
+  }
+  function cutsToBasisPoints(a, b) {
+    const WORK = 100 - a;
+    return { work: WORK * 100, resource: WORK > 0 ? Math.round((100 - b) / WORK * 1e4) : 0 };
   }
   function install(world) {
     if (active) {
@@ -21224,8 +21305,10 @@
       onError: FAIL3,
       onWorldStep
     });
-    world.setWorkBasisPoints(loadWorkBasisPoints(world.workBasisPoints));
-    DOLLAR2("farmWorkRatio").value = String(Math.round(world.workBasisPoints / 100));
+    world.setWorkBasisPoints(
+      loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
+      loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints)
+    );
     return active;
   }
   install(new GARDEN());
@@ -22046,16 +22129,20 @@
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
-  function applyWorkPercent(percent) {
-    const BASIS_POINTS = percent * 100;
-    DOLLAR2("farmWorkRatio").value = String(percent);
-    saveWorkBasisPoints(BASIS_POINTS);
-    (personalGarden || active.world).setWorkBasisPoints(BASIS_POINTS);
-    active.queue("farm-work", { basisPoints: BASIS_POINTS });
+  function applyWorkCuts(a, b) {
+    const CUT_A = Math.min(a, b), CUT_B = Math.max(a, b), POINTS = cutsToBasisPoints(CUT_A, CUT_B);
+    DOLLAR2("workCutA").value = String(CUT_A);
+    DOLLAR2("workCutB").value = String(CUT_B);
+    saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
+    saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource);
+    active.queue("farm-work", { basisPoints: POINTS.work, resourceBasisPoints: POINTS.resource });
   }
-  DOLLAR2("farmWorkRatio").addEventListener("change", (e) => {
-    applyWorkPercent(Number(e.target.value));
-  });
+  for (const ID of ["workCutA", "workCutB"]) {
+    DOLLAR2(ID).addEventListener("input", () => {
+      applyWorkCuts(Number(DOLLAR2("workCutA").value), Number(DOLLAR2("workCutB").value));
+    });
+  }
   DOLLAR2("workHudToggle").addEventListener("click", () => {
     const OPEN = DOLLAR2("workHud").dataset.open !== "true";
     DOLLAR2("workHud").dataset.open = String(OPEN);
@@ -22064,7 +22151,8 @@
   DOLLAR2("workHud").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-work-preset]");
     if (BUTTON && !BUTTON.disabled) {
-      applyWorkPercent(Number(BUTTON.dataset.workPreset));
+      const [CUT_A, CUT_B] = BUTTON.dataset.workPreset.split(",").map(Number);
+      applyWorkCuts(CUT_A, CUT_B);
     }
   });
   DOLLAR2("farmRatioList").addEventListener("input", (e) => {
@@ -22635,27 +22723,34 @@
     );
     syncText("warehouseStock", String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
-    const WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), PERCENT = Math.round(WORK_WORLD.workBasisPoints / 100);
-    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;
-    if (WORK_WORLD.warehouseFull) {
+    const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD);
+    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`, warn = false;
+    if (WORKERS === 0) {
+      note = "일꾼이 없어서 먹이와 자원이 안 만들어져요";
+      warn = true;
+    } else if (WORK_WORLD.warehouseFull && KINDS.resource === 0) {
       note = "농장에 먹이가 가득해요 · 일꾼이 쉬어요";
       warn = true;
-    } else if (WORKERS === 0) {
-      note = "일꾼이 없어서 먹이가 안 만들어져요";
-      warn = true;
     }
-    DOLLAR2("farmWorkRatio").disabled = !!farmSortTransition;
-    if (document.activeElement !== DOLLAR2("farmWorkRatio")) {
-      DOLLAR2("farmWorkRatio").value = String(PERCENT);
+    for (const ID of ["workCutA", "workCutB"]) {
+      DOLLAR2(ID).disabled = !!farmSortTransition;
+    }
+    if (document.activeElement !== DOLLAR2("workCutA") && document.activeElement !== DOLLAR2("workCutB")) {
+      DOLLAR2("workCutA").value = String(CUTS.a);
+      DOLLAR2("workCutB").value = String(CUTS.b);
     }
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
-    syncText("workHudWork", `일꾼 ${WORKERS}`);
+    syncText("workHudFood", `먹이 ${KINDS.food}`);
+    syncText("workHudRes", `자원 ${KINDS.resource}`);
+    syncText("materialWood", String(W.materials.wood));
+    syncText("materialStone", String(W.materials.stone));
     syncData("workHud", "warn", warn);
-    DOLLAR2("workHudBreed").style.flex = `${Math.max(1, 100 - PERCENT)} 1 0`;
-    DOLLAR2("workHudWork").style.flex = `${Math.max(1, PERCENT)} 1 0`;
+    DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUTS.a)} 1 0`;
+    DOLLAR2("workHudFood").style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
+    DOLLAR2("workHudRes").style.flex = `${Math.max(1, 100 - CUTS.b)} 1 0`;
     for (const BUTTON of DOLLAR2("workHud").querySelectorAll("[data-work-preset]")) {
-      BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.workPreset) === PERCENT));
+      BUTTON.setAttribute("aria-pressed", String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b}`));
       BUTTON.disabled = !!farmSortTransition;
     }
     syncText("warehouseProgressLabel", `타작 ${W.foodTaps.remainder}/5`);

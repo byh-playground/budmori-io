@@ -360,14 +360,54 @@ body > header {
 #workHudBreed {
     background: #7fa77a;
 }
-#workHudWork {
+#workHudFood {
     background: #c2913e;
+}
+#workHudRes {
+    background: #8b8a7c;
     justify-content: flex-end;
 }
-.work-hud input {
-    accent-color: #c2913e;
+.work-hud__track {
+    position: relative;
+}
+.work-hud__cut {
+    position: absolute;
+    inset: 0;
     width: 100%;
+    height: 100%;
     margin: 0;
+    background: none;
+    pointer-events: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.work-hud__cut::-webkit-slider-runnable-track {
+    background: none;
+}
+.work-hud__cut::-moz-range-track {
+    background: none;
+}
+.work-hud__cut::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    pointer-events: auto;
+    width: 10px;
+    height: 36px;
+    border-radius: 5px;
+    background: #fff;
+    border: 2px solid var(--ui-ink);
+    cursor: ew-resize;
+}
+.work-hud__cut::-moz-range-thumb {
+    pointer-events: auto;
+    width: 6px;
+    height: 32px;
+    border-radius: 5px;
+    background: #fff;
+    border: 2px solid var(--ui-ink);
+    cursor: ew-resize;
+}
+.work-hud[data-open='false'] .work-hud__cut {
+    display: none;
 }
 .work-hud__presets {
     display: grid;
