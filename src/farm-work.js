@@ -113,14 +113,19 @@ export function restoreSite(world, data) {
         big: false,
     });
 }
-export function activeSite(world) {
-    return world._piles.find((pile) => pile.kind === 'site') || null;
+// Construction sites of a farm plot. Every plot can build several things at once, each in its own slot.
+export function sitesOf(world, plotId = world.activePlotId) {
+    return pilesOf(world, plotId).filter((pile) => pile.kind === 'site');
 }
+function plotHasSite(world, plotId = world.activePlotId) {
+    return pilesOf(world, plotId).some((pile) => pile.kind === 'site');
+}
+export { plotHasSite };
 // Food workers fight grain piles, resource workers fight trees and rocks, builders work the construction site.
 // Builders with nothing to build gather materials instead.
 function effectiveKind(world, unit) {
     const KIND = world._workerKinds.get(unit.id) || 'food';
-    return KIND === 'build' && !activeSite(world) ? 'resource' : KIND;
+    return KIND === 'build' && !plotHasSite(world) ? 'resource' : KIND;
 }
 function worksOn(world, unit, pile) {
     const KIND = effectiveKind(world, unit);
@@ -129,10 +134,11 @@ function worksOn(world, unit, pile) {
     }
     return KIND === 'resource' ? pile.kind === 'wood' || pile.kind === 'stone' : pile.kind === 'grain';
 }
-function capacity(config, pile) {
+function capacity(config, pile, siteCapacity) {
     const WORK = config.farm.work;
     // A construction site has no cap: every builder adds their own hits, so the speed scales with the head count.
-    return pile.kind === 'site' ? Infinity : WORK.maxAttackers;
+    // Builders split evenly between the sites that are going up at the same time.
+    return pile.kind === 'site' ? siteCapacity : WORK.maxAttackers;
 }
 // Piles are solid: the radius shrinks a little as the pile is used up.
 export function pileRadius(pile) {
@@ -155,7 +161,19 @@ export function assignWorkers(world, config) {
         BY_ID = new Map(WORKERS.map((u) => [u.id, u])),
         PREVIOUS = world._workAssign,
         ASSIGN = new Map(),
-        TAKEN_IDS = new Set();
+        TAKEN_IDS = new Set(),
+        SITE_COUNT = world._piles.filter((pile) => pile.kind === 'site').length,
+        BUILDER_COUNT = WORKERS.filter((u) => effectiveKind(world, u) === 'build').length,
+        SITE_CAPACITIES = new Map();
+    // Builders are shared out as evenly as possible; the first sites in the list get the odd ones.
+    let siteIndex = 0;
+    for (const PILE of world._piles) {
+        if (PILE.kind === 'site') {
+            const BASE = Math.floor(BUILDER_COUNT / SITE_COUNT),
+                ODD = BUILDER_COUNT % SITE_COUNT;
+            SITE_CAPACITIES.set(PILE, BASE + (siteIndex++ < ODD ? 1 : 0));
+        }
+    }
     for (const PILE of world._piles) {
         const MEMBERS = [];
         for (const [ID, OLD] of PREVIOUS) {
@@ -164,7 +182,7 @@ export function assignWorkers(world, config) {
                 OLD.attacking &&
                 BY_ID.has(ID) &&
                 worksOn(world, BY_ID.get(ID), PILE) &&
-                MEMBERS.length < capacity(config, PILE)
+                MEMBERS.length < capacity(config, PILE, SITE_CAPACITIES.get(PILE))
             ) {
                 MEMBERS.push(ID);
                 TAKEN_IDS.add(ID);
@@ -174,7 +192,7 @@ export function assignWorkers(world, config) {
             (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y),
         );
         for (const UNIT of FREE) {
-            if (MEMBERS.length >= capacity(config, PILE)) {
+            if (MEMBERS.length >= capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
                 break;
             }
             MEMBERS.push(UNIT.id);

@@ -164,7 +164,7 @@ export function captureFarmProgress(world) {
     }
     const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row),
         STAGE = world.farmBossProgress;
-    const SITE = world.anyBuildSite;
+    const SITES = world.allBuildSites;
     return {
         seed: world.seed,
         rngState: world.rng.state,
@@ -178,7 +178,7 @@ export function captureFarmProgress(world) {
             produced: world.foodTaps.produced,
             materials: { wood: world.materials.wood, stone: world.materials.stone },
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
-            ...(SITE ? { site: copySite(SITE) } : {}),
+            sites: SITES.map(copySite),
         },
         totals: {
             births: world.metrics.births,
@@ -313,9 +313,10 @@ export function validateFarmProgress(data) {
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials', 'site']);
-    if (data.food.site !== undefined) {
-        const SITE = data.food.site;
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots', 'sites'], ['materials']);
+    ASSERT(Array.isArray(data.food.sites) && data.food.sites.length <= 64);
+    const SEEN_SITES = new Set();
+    for (const SITE of data.food.sites) {
         keys(SITE, ['facility', 'level', 'x', 'y', 'done', 'need', 'plotId']);
         ASSERT(
             (Object.hasOwn(CONFIG.farm.work.facilities, SITE.facility) ||
@@ -325,8 +326,10 @@ export function validateFarmProgress(data) {
                 INTEGER(SITE.done, 0, SITE.need - 1) &&
                 Number.isFinite(SITE.x) &&
                 Number.isFinite(SITE.y) &&
-                PLOT_CAPACITY.has(SITE.plotId),
+                PLOT_CAPACITY.has(SITE.plotId) &&
+                !SEEN_SITES.has(`${SITE.plotId}:${SITE.facility}`),
         );
+        SEEN_SITES.add(`${SITE.plotId}:${SITE.facility}`);
     }
     if (data.food.materials !== undefined) {
         keys(data.food.materials, ['wood', 'stone']);
@@ -626,8 +629,8 @@ export function restoreFarmProgress(data) {
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
     WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
-    if (data.food.site) {
-        WORLD.restoreBuildSite(data.food.site);
+    for (const SITE of data.food.sites) {
+        WORLD.restoreBuildSite(SITE);
     }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);

@@ -440,9 +440,8 @@ const DIORAMA = class Diorama {
     }
     // Facilities are scenery along the back edge of the field, drawn before the units so nothing hides behind them.
     drawFacilities(sim2) {
-        const UPGRADING = sim2.buildSite?.facility;
         for (const FACILITY of sim2.facilities || []) {
-            if (FACILITY.id !== UPGRADING) {
+            if (!sim2.siteOf(FACILITY.id)) {
                 this.drawFacility(FACILITY);
             }
         }

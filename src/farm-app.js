@@ -914,10 +914,11 @@ function offlineText(summary) {
     if (summary.wood || summary.stone) {
         PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
     }
-    if (summary.built) {
-        PARTS.push(`${summary.built} 완성`);
-    } else if (summary.site) {
-        PARTS.push(`${summary.site.name} ${summary.site.percent}%`);
+    if (summary.built.length) {
+        PARTS.push(`${summary.built.join(', ')} 완성`);
+    }
+    for (const SITE of summary.sites) {
+        PARTS.push(`${SITE.name} ${SITE.percent}%`);
     }
     return `${TIME} 동안 자리를 비웠어요${PARTS.length ? ' · ' + PARTS.join(' · ') : ''}`;
 }
@@ -1442,10 +1443,10 @@ function drawFarmPanel() {
     DOLLAR('farmExpand').innerHTML = EXPAND
         ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>`
         : '<b>농장 확장</b><small>최대 크기예요</small>';
-    DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.anyBuildSite || !CAN_PAY(EXPAND);
+    DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.siteOf('expand') || !CAN_PAY(EXPAND);
     DOLLAR('farmUnlock').innerHTML =
         `<b>새 농장 짓기</b><small>${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? '' : ' · 부족해요'}</small>`;
-    DOLLAR('farmUnlock').disabled = LOCKED || !!W.anyBuildSite || !CAN_PAY(PLOT);
+    DOLLAR('farmUnlock').disabled = LOCKED || !!W.siteOf('plot') || !CAN_PAY(PLOT);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
@@ -2400,8 +2401,7 @@ function sync(display, now, notices) {
         WORKERS = WORK_WORLD.workerCount,
         BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS),
         CUTS = workCuts(WORK_WORLD),
-        SITE = WORK_WORLD.buildSite,
-        ANY_SITE = WORK_WORLD.anyBuildSite;
+        SITES = WORK_WORLD.buildSites;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`,
         warn = false;
     if (WORKERS === 0) {
@@ -2411,8 +2411,8 @@ function sync(display, now, notices) {
         note = '농장에 먹이가 가득해요 · 일꾼이 쉬어요';
         warn = true;
     }
-    if (SITE && WORKERS > 0) {
-        note = `${WORK_WORLD.siteName(SITE)} 짓는 중 ${Math.floor((SITE.done / SITE.need) * 100)}%${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
+    if (SITES.length > 0 && WORKERS > 0) {
+        note = `${SITES.map((site) => `${WORK_WORLD.siteName(site)} ${Math.floor((site.done / site.need) * 100)}%`).join(' · ')} 짓는 중${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
     }
     for (const ID of WORK_CUT_IDS) {
         DOLLAR(ID).disabled = !!farmSortTransition;
@@ -2422,7 +2422,7 @@ function sync(display, now, notices) {
         DOLLAR('workCutB').value = String(CUTS.b);
         DOLLAR('workCutC').value = String(CUTS.c);
     }
-    DOLLAR('buildRush').hidden = !SITE;
+    DOLLAR('buildRush').hidden = SITES.length === 0;
     DOLLAR('buildRush').setAttribute('aria-pressed', String(WORK_WORLD.buildRush));
     syncText('buildRush', WORK_WORLD.buildRush ? '전원 건설 중 (끄기)' : '전원 건설');
     for (const BUTTON of DOLLAR('facilityList').children) {
@@ -2433,17 +2433,18 @@ function sync(display, now, notices) {
             INFO = WORK_WORLD.projectInfo(ID),
             COST = INFO?.cost || { wood: 0, stone: 0 };
         BUTTON.disabled =
-            MAXED || !!ANY_SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
+            MAXED ||
+            !!WORK_WORLD.siteOf(ID) ||
+            WORK_WORLD.materials.wood < COST.wood ||
+            WORK_WORLD.materials.stone < COST.stone;
         syncText2(BUTTON.querySelector('[data-name]'), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
         syncText2(
             BUTTON.querySelector('[data-cost]'),
             MAXED
                 ? '최대 레벨'
-                : SITE?.facility === ID
+                : WORK_WORLD.siteOf(ID)
                   ? '짓는 중'
-                  : ANY_SITE && !SITE
-                    ? '다른 농장에서 건설 중'
-                    : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ''}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ''}`,
+                  : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ''}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ''}`,
         );
     }
     syncText('workHudNote', note);
