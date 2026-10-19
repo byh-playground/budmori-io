@@ -1,0 +1,132 @@
+.boss-reward-open {
+    min-height: 42px;
+    padding: 0 20px;
+    border: 1px solid #fff;
+    border-radius: 999px;
+    background: #f9faefed;
+    box-shadow: 0 7px 20px #405a3520;
+    color: #405847;
+    font-weight: 850;
+}
+.boss-reward-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    background: #172c2a8a;
+}
+.boss-reward-dialog[hidden] {
+    display: none !important;
+}
+.boss-reward-dialog__card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(560px, 100%);
+    max-height: min(720px, 92dvh);
+    padding: 16px;
+    border: 1px solid #fff;
+    border-radius: 20px;
+    background: #f8faef;
+    box-shadow: 0 16px 50px #172c2a45;
+    color: #33483b;
+}
+.boss-reward-dialog__card header,
+.boss-reward-dialog__card footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.boss-reward-dialog__card header h2 {
+    margin: 2px 0 0;
+    font-size: 20px;
+}
+.boss-reward-dialog__card header small,
+#bossRewardRevealCount {
+    color: #71806b;
+    font-size: 11px;
+}
+#bossRewardClose {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 50%;
+    background: #e6ecdf;
+    color: #405847;
+    font-size: 24px;
+}
+#bossRewardSummary,
+#bossRewardTotals {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+#bossRewardTotals {
+    color: #526e50;
+    font-weight: 800;
+}
+.boss-reward-boxes {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 7px;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px;
+}
+.boss-reward-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 62px;
+    border: 1px solid #dfe7d9;
+    border-radius: 12px;
+    background: #eef2e8;
+    color: #71806b;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+}
+.boss-reward-box[data-state='hit'] {
+    border-color: #a6c48e;
+    background: #e6f0dc;
+    color: #3e6142;
+}
+.boss-reward-box[data-state='miss'] {
+    background: #f0eee8;
+    color: #85877e;
+}
+.boss-reward-box img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+#bossRewardOpenAll {
+    min-height: 42px;
+    padding: 0 18px;
+    border-radius: 999px;
+    background: #526e50;
+    color: #fffbee;
+    font-weight: 850;
+}
+@media (max-width: 500px) {
+    .boss-reward-dialog__card {
+        padding: 12px;
+    }
+    .boss-reward-boxes {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 5px;
+    }
+    .boss-reward-box {
+        min-height: 54px;
+        font-size: 10px;
+    }
+    .boss-reward-box img {
+        width: 24px;
+        height: 24px;
+    }
+}

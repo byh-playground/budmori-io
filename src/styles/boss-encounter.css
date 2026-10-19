@@ -1,0 +1,236 @@
+#bossEncounterScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+        max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    background: linear-gradient(180deg, #eff3e9ed, #e6eadcf7 56%, #e8eddfed);
+    color: #33483b;
+    touch-action: none;
+    overscroll-behavior: contain;
+}
+#bossEncounterScreen[hidden] {
+    display: none !important;
+}
+.boss-encounter__top,
+.boss-encounter__bottom {
+    width: min(540px, 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.boss-encounter__top {
+    min-height: 48px;
+}
+.boss-encounter__back {
+    border: 1px solid #d0dac8;
+    border-radius: 999px;
+    background: #f9faef;
+    padding: 0 15px;
+    font-weight: 800;
+}
+.boss-encounter__eyebrow {
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    color: #75836b;
+}
+.boss-encounter__counter {
+    font-size: 12px;
+    color: #78836f;
+    font-weight: 750;
+}
+.boss-encounter__viewport {
+    flex: 1;
+    min-height: 0;
+    width: min(540px, 100%);
+    display: grid;
+    place-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.boss-encounter__card {
+    text-align: center;
+    width: 100%;
+    padding: 10px 14px 4px;
+    animation: bossCardIn 0.24s ease both;
+}
+.boss-encounter__stage {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    color: #748369;
+}
+.boss-encounter__preview {
+    display: block;
+    width: min(40vw, 185px);
+    height: min(27vh, 185px);
+    min-width: 110px;
+    min-height: 110px;
+    object-fit: contain;
+    margin: 16px auto 10px;
+    filter: drop-shadow(0 18px 16px #405a3524);
+    animation: bossBreath 2.5s ease-in-out infinite;
+    pointer-events: none;
+}
+.boss-encounter__card h2 {
+    font-size: clamp(27px, 6vw, 38px);
+    letter-spacing: -0.04em;
+    margin: 2px 0 5px;
+}
+.boss-encounter__subtitle {
+    margin: 0;
+    color: #75816c;
+    font-size: 13px;
+}
+.boss-encounter__stats {
+    display: flex;
+    justify-content: center;
+    gap: 9px;
+    margin: 16px 0 12px;
+}
+.boss-encounter__stats span {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
+    background: #f8faefc9;
+    border: 1px solid #ffffffa8;
+    border-radius: 999px;
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 800;
+}
+.boss-encounter__reward {
+    width: min(390px, 100%);
+    margin: 0 auto;
+    padding: 12px 14px;
+    border: 1px solid #ffffffb5;
+    border-radius: 18px;
+    background: #f8faefc8;
+    box-shadow: 0 8px 22px #405a3510;
+    text-align: left;
+}
+.boss-encounter__reward-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    font-weight: 900;
+    color: #7c876f;
+}
+.boss-encounter__xp {
+    display: block;
+    margin: 5px 0 4px;
+    font-size: 19px;
+}
+.boss-encounter__drop {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e1e7d8;
+    font-size: 12px;
+}
+.boss-encounter__drop img,
+.boss-encounter__drop svg {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    flex: 0 0 auto;
+}
+.boss-encounter__drop strong {
+    display: block;
+    font-size: 13px;
+}
+.boss-encounter__drop small,
+.boss-encounter__notice {
+    font-size: 11px;
+    color: #75816c;
+    line-height: 1.5;
+}
+.boss-encounter__hint {
+    font-size: 11px;
+    color: #71806b;
+    text-align: center;
+    line-height: 1.5;
+}
+.boss-encounter__challenge {
+    min-width: min(280px, 58vw);
+    border-radius: 999px;
+    background: #526e50;
+    color: #fffbee;
+    padding: 0 24px;
+    font-weight: 900;
+    box-shadow: 0 7px 18px #405a3530;
+}
+.boss-encounter__challenge small {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.8;
+    margin-top: -1px;
+}
+.boss-encounter__message {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 64px);
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 90vw;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: #384d3bea;
+    color: #fff;
+    text-align: center;
+    font-size: 12px;
+    pointer-events: none;
+}
+.boss-encounter__message[hidden] {
+    display: none;
+}
+@keyframes bossBreath {
+    0%,
+    100% {
+        transform: translateY(0) scale(0.98);
+    }
+    50% {
+        transform: translateY(-7px) scale(1.02);
+    }
+}
+@keyframes bossCardIn {
+    from {
+        opacity: 0.55;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@media (max-height: 600px) {
+    .boss-encounter__preview {
+        height: 20vh;
+        min-height: 80px;
+        margin: 6px auto;
+    }
+    .boss-encounter__stats {
+        margin: 8px 0;
+    }
+    .boss-encounter__card {
+        padding-top: 0;
+    }
+    .boss-encounter__hint {
+        display: none;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .boss-encounter__preview {
+        animation: none;
+    }
+    .boss-encounter__card {
+        animation: none;
+    }
+}
