@@ -7618,7 +7618,7 @@ async function victory() {
         BUDMORI.sim.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(SEED);
     });
     await P.waitForFunction(
-        () => BUDMORI.sim.scene === 'farm' && BUDMORI.sim.units.length === 2 && BUDMORI.runtime.tick > 5,
+        () => BUDMORI.sim.scene === 'farm' && BUDMORI.sim.units.length === 6 && BUDMORI.runtime.tick > 5,
         {},
         {
             timeout: 20000,
@@ -7635,7 +7635,7 @@ async function victory() {
         height: innerHeight,
         overflow: document.documentElement.scrollWidth > innerWidth,
     }));
-    assert.equal(START.units.length, 2);
+    assert.equal(START.units.length, 6);
     assert(START.units.every((u) => u.species === 0 && u.tier === 1 && u.mature && u.meals === 0));
     assert.equal(START.width, 390);
     assert.equal(START.height, 844);

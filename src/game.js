@@ -7761,7 +7761,8 @@
             minBreeders: 2,
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
-            starterFood: 6
+            starterFood: 10,
+            starterUnits: 6
           }),
           breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -8853,7 +8854,7 @@
             basicHits: 0,
             sweepHits: 0
           };
-          for (let i = 0; i < 2; i++) {
+          for (let i = 0; i < CONFIG.farm.work.starterUnits; i++) {
             const U = this.spawn(0, 1, (this.random() - 0.5) * 4, (this.random() - 0.5) * 3);
             U.meals = 0;
             U.growth = CONFIG.farm.breeding.matureMeals;
@@ -13694,7 +13695,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.14";
+      PRODUCT_VERSION = "0.10.15";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

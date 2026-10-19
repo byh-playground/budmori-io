@@ -112,7 +112,8 @@ const CONFIG = Object.freeze({
             minBreeders: 2,
             refreshTicks: 20,
             defaultBasisPoints: 4000,
-            starterFood: 6,
+            starterFood: 10,
+            starterUnits: 6,
         }),
         breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -1330,7 +1331,7 @@ const GARDEN = class Garden {
             basicHits: 0,
             sweepHits: 0,
         };
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < CONFIG.farm.work.starterUnits; i++) {
             const U = this.spawn(0, 1, (this.random() - 0.5) * 4, (this.random() - 0.5) * 3);
             U.meals = 0;
             U.growth = CONFIG.farm.breeding.matureMeals;
