@@ -1284,6 +1284,7 @@ const GARDEN = class Garden {
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this._workerIds = new Set();
         this._workSlots = new Map();
+        this._workerOrder = [];
         this._workRate = 0;
         this._workCount = 0;
         this._nextWorkerRefreshTick = 0;
@@ -2600,6 +2601,17 @@ const GARDEN = class Garden {
     isWorker(unit) {
         return this._workerIds.has(unit.id);
     }
+    // The worker who lands the next hit, and the one who landed the last, so the swing can be drawn around the tap.
+    workSwinger(offset) {
+        const COUNT = this._workerOrder.length;
+        return COUNT ? this._workerOrder[(((this.foodTaps.revision + offset) % COUNT) + COUNT) % COUNT] : null;
+    }
+    msUntilNextTap() {
+        if (this._workRate <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
+            return Infinity;
+        }
+        return Math.max(0, ((0.5 - this.foodTaps.autoClock) / (this._workRate * 2.5)) * 1000);
+    }
     workSlot(unit) {
         return this._workSlots.get(unit.id) || null;
     }
@@ -2669,8 +2681,9 @@ const GARDEN = class Garden {
         }
         this._workerIds = NEXT;
         this._workSlots = new Map();
+        this._workerOrder = [...NEXT].sort((a, b) => a - b);
         let slotIndex = 0;
-        for (const ID of [...NEXT].sort((a, b) => a - b)) {
+        for (const ID of this._workerOrder) {
             const RING = Math.floor(slotIndex / 6),
                 ANGLE = (slotIndex % 6) * (Math.PI / 3) + RING * 0.5,
                 RADIUS = 2.1 + RING * 0.75;

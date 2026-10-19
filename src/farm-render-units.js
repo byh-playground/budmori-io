@@ -16,6 +16,24 @@ function unitAttackPresentation(unit) {
     return ATTACK_PRESENTATIONS.get(ATTACK_TYPES[unit.species]?.kind) || DEFAULT_ATTACK;
 }
 
+// A worker at the grain stack reuses its attack clips: wind up, strike on the tap, then recover.
+function workSwing(u, sim, renderer) {
+    const SLOT = sim.workSlot?.(u);
+    if (!SLOT || u.hp <= 0 || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.35) {
+        return null;
+    }
+    const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
+    if (u.id === sim.workSwinger(-1) && SINCE >= 0 && SINCE < 760) {
+        return SINCE < 400
+            ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE }
+            : { name: 'recover', elapsed: SINCE - 400 };
+    }
+    const UNTIL = sim.msUntilNextTap();
+    if (u.id === sim.workSwinger(0) && UNTIL <= 280) {
+        return { name: 'windup', elapsed: 280 - UNTIL };
+    }
+    return null;
+}
 function unitMotion(u, sim, rest) {
     const DEAD = u.hp <= 0 || u.down > 0,
         AIRBORNE = !u.dropLanded || u.z > 0.1,
@@ -207,9 +225,12 @@ export class UnitPresentation {
             player = null;
         }
         const METADATA = RECORD.compiled.metadata,
-            MOTION_NAME = unitMotion(u, sim, rest),
+            SWING = rest ? null : workSwing(u, sim, this.renderer),
+            MOTION_NAME = SWING?.name || unitMotion(u, sim, rest),
             CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
-        const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - motionElapsedMs(u, MOTION_NAME, CLIP);
+        const CLIP_START_AT_MS = rest
+            ? 0
+            : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
         if (!player) {
             player = RECORD.asset.createPlayer({
                 clip: MOTION_NAME,
@@ -246,13 +267,7 @@ export class UnitPresentation {
     drawUnit(u, sim, rest) {
         const DEAD = u.hp <= 0,
             WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)),
-            SLOT = sim.workSlot?.(u),
-            WORKING = !DEAD && SLOT && Math.hypot(SLOT.x - u.x, SLOT.y - u.y) < 0.35,
-            BOB =
-                u.z === 0
-                    ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK +
-                      (WORKING ? Math.abs(Math.sin(sim.time * 8 + u.seed)) * 0.16 : 0)
-                    : 0,
+            BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0,
             P = this.renderer.project(
                 u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),
                 u.y,

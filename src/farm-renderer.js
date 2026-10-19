@@ -450,6 +450,14 @@ const DIORAMA = class Diorama {
         for (let index = -2; index <= 2; index++) {
             this.ellipse(X + index * 0.15 * S, BASE.y - 0.24 * S * LIFT, 0.025 * S, 0.1 * S, '#b98e45', index * 0.25);
         }
+        // Five slots in front of the stack: one fills per hit, all five fill when a grain flies out.
+        const FILLED = sim2.foodTaps?.remainder || 0;
+        for (let index = 0; index < 5; index++) {
+            const SLOT_X = BASE.x + (index - 2) * 0.27 * S,
+                SLOT_Y = BASE.y + 0.14 * S;
+            this.ellipse(SLOT_X, SLOT_Y, 0.115 * S, 0.1 * S, '#6b522a99');
+            this.ellipse(SLOT_X, SLOT_Y, 0.085 * S, 0.072 * S, index < FILLED ? '#f6d36b' : '#efe3bf');
+        }
     }
     addActor(presentation, source, depth, id, vector = false) {
         const INDEX = this.actors.length,
