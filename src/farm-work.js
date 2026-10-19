@@ -49,13 +49,14 @@ function spawnPile(world, config, kind) {
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
 // Starts the construction site for a facility: a solid frame that builders ram until the work is done.
-export function startSite(world, config, facilityId, level, hits, existing) {
+export function startSite(world, config, facilityId, level, hits, existing, plotId) {
     const POSITION = existing ? { x: existing.x, y: existing.y } : pilePosition(world, config);
     world._piles.push({
         id: ++world._pileId,
         kind: 'site',
         facility: facilityId,
         level,
+        plotId,
         x: POSITION.x,
         y: POSITION.y,
         food: 1,
@@ -68,6 +69,25 @@ export function startSite(world, config, facilityId, level, hits, existing) {
     });
     world.emit('drop-dust', POSITION.x, POSITION.y);
     assignWorkers(world, config);
+}
+// Rebuilds the construction site that was saved mid-work.
+export function restoreSite(world, data) {
+    world._piles.push({
+        id: ++world._pileId,
+        kind: 'site',
+        facility: data.facility,
+        level: data.level,
+        plotId: data.plotId,
+        x: data.x,
+        y: data.y,
+        food: 1,
+        maxFood: 1,
+        done: data.done,
+        need: data.need,
+        stack: 0,
+        hitRev: 0,
+        big: false,
+    });
 }
 export function activeSite(world) {
     return world._piles.find((pile) => pile.kind === 'site') || null;
@@ -170,6 +190,9 @@ export function assignWorkers(world, config) {
 function impactSite(world, config, pile) {
     pile.done++;
     pile.hitRev++;
+    if (pile.done % 10 === 0) {
+        world.markProgressChanged();
+    }
     const COMPLETE = pile.done >= pile.need;
     world.emit('thresh', pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
     if (COMPLETE) {
