@@ -927,3 +927,17 @@ details summary {
 .switch button {
     padding: 0 var(--ui-s3);
 }
+
+.offline-notice {
+    display: block;
+    padding: var(--ui-s2) var(--ui-s3);
+    border-radius: var(--ui-r-m);
+    background: #fffaf0;
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
+    text-align: center;
+}
+.offline-notice[hidden] {
+    display: none;
+}
