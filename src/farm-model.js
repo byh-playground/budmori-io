@@ -1,4 +1,4 @@
-import { assignWorkers, resetWork, stepWork } from './farm-work.js';
+import { assignWorkers, resetWork, stepWork, workOrder } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
 import { RaidDeploymentCards } from './raid-deployment-cards.js';
@@ -2584,10 +2584,8 @@ const GARDEN = class Garden {
     workSwingOf(id) {
         return this._swings.get(id) || null;
     }
-    // Where a worker should stand: its attack spot, or a waiting spot near the closest pile.
-    workSlot(unit) {
-        const ASSIGN = this._workAssign.get(unit.id);
-        return ASSIGN ? { x: ASSIGN.x, y: ASSIGN.y, fx: ASSIGN.pile.x, fy: ASSIGN.pile.y } : null;
+    workOrder(unit) {
+        return workOrder(this, unit);
     }
     canBreedNow(unit) {
         return unit.breedingEligible !== false && !this._workerIds.has(unit.id);

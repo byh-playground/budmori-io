@@ -2,8 +2,11 @@
 // a pile holds a fixed amount of food and vanishes when it is used up, and the field keeps a few piles around.
 // Piles and swings are transient presentation-adjacent state; they are rebuilt after a load.
 export const SWING_WINDUP = 0.28,
-    SWING_FIRE = 0.4,
     SWING_RECOVER = 0.36;
+const CHARGE_SPEED = 18,
+    CHARGE_TIMEOUT = 1.6,
+    RECOIL_SPEED = 5.5,
+    RING_RADIUS = 2.8;
 const STACKS_PER_FOOD = 5;
 
 function pilePosition(world, config) {
@@ -43,6 +46,10 @@ function spawnPile(world, config) {
     });
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
+// Piles are solid: the radius shrinks a little as the pile is used up.
+export function pileRadius(pile) {
+    return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
+}
 export function resetWork(world) {
     world._piles = [];
     world._pileId = 0;
@@ -62,8 +69,8 @@ export function assignWorkers(world, config) {
             ASSIGN.set(unit.id, {
                 pile: PILE,
                 attacking: true,
-                x: PILE.x + Math.cos(ANGLE) * 1.9,
-                y: PILE.y + Math.sin(ANGLE) * 1.9 * 0.75,
+                x: PILE.x + Math.cos(ANGLE) * RING_RADIUS,
+                y: PILE.y + Math.sin(ANGLE) * RING_RADIUS * 0.75,
             });
         });
     }
@@ -120,8 +127,56 @@ function impact(world, config, pile) {
         assignWorkers(world, config);
     }
 }
+// What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
+export function workOrder(world, unit) {
+    const ASSIGN = world._workAssign.get(unit.id);
+    if (!ASSIGN) {
+        return null;
+    }
+    const PILE = ASSIGN.pile,
+        SWING = world._swings.get(unit.id),
+        ORDER = { x: ASSIGN.x, y: ASSIGN.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    if (!ASSIGN.attacking || !SWING) {
+        return ORDER;
+    }
+    if (SWING.phase === 'fire') {
+        ORDER.x = PILE.x;
+        ORDER.y = PILE.y;
+        ORDER.speed = CHARGE_SPEED;
+    } else if (SWING.phase === 'windup') {
+        ORDER.hold = true;
+        ORDER.face = true;
+    } else if (SWING.phase === 'recover') {
+        ORDER.hold = true;
+    }
+    return ORDER;
+}
+function pushOutOfPiles(world) {
+    for (const PILE of world._piles) {
+        const R = pileRadius(PILE);
+        for (const UNIT of world.units) {
+            const DX = UNIT.x - PILE.x,
+                DY = UNIT.y - PILE.y,
+                MIN = R + UNIT.radius * 0.6,
+                D = Math.hypot(DX, DY);
+            if (D >= MIN) {
+                continue;
+            }
+            const NX = D > 1e-6 ? DX / D : 1,
+                NY = D > 1e-6 ? DY / D : 0;
+            UNIT.x = PILE.x + NX * MIN;
+            UNIT.y = PILE.y + NY * MIN;
+            const INWARD = UNIT.vx * NX + UNIT.vy * NY;
+            if (INWARD < 0) {
+                UNIT.vx -= NX * INWARD;
+                UNIT.vy -= NY * INWARD;
+            }
+        }
+    }
+}
 export function stepWork(world, config, dt) {
     const WORK = config.farm.work;
+    pushOutOfPiles(world);
     while (world._piles.length < WORK.pileCount) {
         if (world._piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
             spawnPile(world, config);
@@ -138,16 +193,21 @@ export function stepWork(world, config, dt) {
             continue;
         }
         const UNIT = world._unitById.get(ID);
-        if (!UNIT || UNIT.hp <= 0 || Math.hypot(ASSIGN.x - UNIT.x, ASSIGN.y - UNIT.y) > 0.35) {
+        if (!UNIT || UNIT.hp <= 0) {
             world._swings.delete(ID);
             continue;
         }
+        const PILE = ASSIGN.pile;
         let swing = world._swings.get(ID);
         if (!swing) {
             swing = { phase: 'idle', elapsed: 0, wait: (UNIT.seed * 7) % 0.8 };
             world._swings.set(ID, swing);
         }
+        const AT_RING = Math.hypot(ASSIGN.x - UNIT.x, ASSIGN.y - UNIT.y) < 0.9;
         if (swing.phase === 'idle') {
+            if (!AT_RING) {
+                continue;
+            }
             swing.wait -= dt;
             if (swing.wait <= 0 && !FULL) {
                 swing.phase = 'windup';
@@ -157,18 +217,31 @@ export function stepWork(world, config, dt) {
         }
         swing.elapsed += dt;
         if (swing.phase === 'windup' && swing.elapsed >= SWING_WINDUP) {
-            impact(world, config, ASSIGN.pile);
             swing.phase = 'fire';
             swing.elapsed = 0;
-        } else if (swing.phase === 'fire' && swing.elapsed >= SWING_FIRE) {
-            swing.phase = 'recover';
-            swing.elapsed = 0;
+        } else if (swing.phase === 'fire') {
+            const DX = UNIT.x - PILE.x,
+                DY = UNIT.y - PILE.y,
+                D = Math.hypot(DX, DY);
+            if (D <= pileRadius(PILE) + UNIT.radius * 0.6 + 0.12) {
+                // Body slam: the pile takes the hit and the worker bounces back off it.
+                impact(world, config, PILE);
+                const NX = D > 1e-6 ? DX / D : 1,
+                    NY = D > 1e-6 ? DY / D : 0;
+                UNIT.vx = NX * RECOIL_SPEED;
+                UNIT.vy = NY * RECOIL_SPEED;
+                swing.phase = 'recover';
+                swing.elapsed = 0;
+            } else if (swing.elapsed >= CHARGE_TIMEOUT) {
+                swing.phase = 'recover';
+                swing.elapsed = 0;
+            }
         } else if (swing.phase === 'recover' && swing.elapsed >= SWING_RECOVER) {
             const RATE = world._workerRates.get(ID) || 0.1,
                 INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
             swing.phase = 'idle';
             swing.elapsed = 0;
-            swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_FIRE - SWING_RECOVER);
+            swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_RECOVER - 0.5);
         }
     }
 }
