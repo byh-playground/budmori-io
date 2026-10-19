@@ -4,10 +4,10 @@
 export const SWING_WINDUP = 0.28,
     SWING_RECOVER = 0.36;
 const NEAR_PILE = 4.4,
+    WAIT_DISTANCE = 6.5,
     CHARGE_SPEED = 18,
     CHARGE_TIMEOUT = 1.6,
-    RECOIL_SPEED = 5.5,
-    RING_RADIUS = 2.8;
+    RECOIL_SPEED = 5.5;
 const STACKS_PER_FOOD = 5;
 
 function pilePosition(world, config) {
@@ -58,8 +58,8 @@ export function resetWork(world) {
     world._workAssign = new Map();
     world._swings = new Map();
 }
-// Assignments are sticky: a worker keeps its pile and its spot until the pile is gone or the worker stops working,
-// so re-running this never shuffles spots around and makes workers jitter back and forth.
+// Assignments are sticky: a worker keeps its pile until the pile is gone or the worker stops working,
+// so re-running this never reshuffles who attacks what.
 export function assignWorkers(world, config) {
     const WORK = config.farm.work,
         WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
@@ -68,12 +68,10 @@ export function assignWorkers(world, config) {
         ASSIGN = new Map(),
         TAKEN_IDS = new Set();
     for (const PILE of world._piles) {
-        const MEMBERS = [],
-            USED_SLOTS = new Set();
+        const MEMBERS = [];
         for (const [ID, OLD] of PREVIOUS) {
             if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < WORK.maxAttackers) {
-                MEMBERS.push({ id: ID, slot: OLD.slot });
-                USED_SLOTS.add(OLD.slot);
+                MEMBERS.push(ID);
                 TAKEN_IDS.add(ID);
             }
         }
@@ -84,23 +82,11 @@ export function assignWorkers(world, config) {
             if (MEMBERS.length >= WORK.maxAttackers) {
                 break;
             }
-            let slot = 0;
-            while (USED_SLOTS.has(slot)) {
-                slot++;
-            }
-            USED_SLOTS.add(slot);
-            MEMBERS.push({ id: UNIT.id, slot });
+            MEMBERS.push(UNIT.id);
             TAKEN_IDS.add(UNIT.id);
         }
-        for (const MEMBER of MEMBERS) {
-            const ANGLE = (MEMBER.slot / WORK.maxAttackers) * Math.PI * 2 + 0.9;
-            ASSIGN.set(MEMBER.id, {
-                pile: PILE,
-                attacking: true,
-                slot: MEMBER.slot,
-                x: PILE.x + Math.cos(ANGLE) * RING_RADIUS,
-                y: PILE.y + Math.sin(ANGLE) * RING_RADIUS * 0.75,
-            });
+        for (const ID of MEMBERS) {
+            ASSIGN.set(ID, { pile: PILE, attacking: true });
         }
     }
     // Workers beyond the attacker limit wait near the closest pile until a slot opens.
@@ -118,14 +104,7 @@ export function assignWorkers(world, config) {
             }
         }
         if (nearest) {
-            const ANGLE = UNIT.seed * 3.1;
-            ASSIGN.set(UNIT.id, {
-                pile: nearest,
-                attacking: false,
-                slot: -1,
-                x: nearest.x + Math.cos(ANGLE) * 4.6,
-                y: nearest.y + Math.sin(ANGLE) * 4.6 * 0.75,
-            });
+            ASSIGN.set(UNIT.id, { pile: nearest, attacking: false });
         }
     }
     world._workAssign = ASSIGN;
@@ -168,22 +147,23 @@ export function workOrder(world, unit) {
     }
     const PILE = ASSIGN.pile,
         SWING = world._swings.get(unit.id),
-        ORDER = { x: ASSIGN.x, y: ASSIGN.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!ASSIGN.attacking || !SWING) {
+        DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y),
+        ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    if (!ASSIGN.attacking) {
+        // Over the attacker limit: wait a little way off until a spot opens up.
+        ORDER.hold = DISTANCE <= WAIT_DISTANCE;
         return ORDER;
     }
-    if (SWING.phase === 'idle' && Math.hypot(unit.x - PILE.x, unit.y - PILE.y) <= NEAR_PILE) {
-        ORDER.hold = true;
-        ORDER.face = true;
-    }
-    if (SWING.phase === 'fire') {
-        ORDER.x = PILE.x;
-        ORDER.y = PILE.y;
+    if (!SWING || SWING.phase === 'idle') {
+        // Anywhere near its own pile a worker just turns to it; only a far one walks over.
+        ORDER.hold = DISTANCE <= NEAR_PILE;
+        ORDER.face = ORDER.hold;
+    } else if (SWING.phase === 'fire') {
         ORDER.speed = CHARGE_SPEED;
     } else if (SWING.phase === 'windup') {
         ORDER.hold = true;
         ORDER.face = true;
-    } else if (SWING.phase === 'recover') {
+    } else {
         ORDER.hold = true;
     }
     return ORDER;
