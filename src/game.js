@@ -14409,7 +14409,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.41";
+      PRODUCT_VERSION = "0.10.42";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18378,7 +18378,7 @@
       this.pendingPulsePresentationMode = null;
       this.presentationRuntime = new PRESENTATION_RUNTIME({
         stepMs: PRESENTATION_STEP_MS,
-        delayMs: 0,
+        delayMs: PRESENTATION_STEP_MS,
         snapDistance: 12
       });
       this.presentationAdapters = /* @__PURE__ */ new WeakMap();

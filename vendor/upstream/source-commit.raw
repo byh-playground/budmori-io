@@ -1,26 +1,26 @@
-tree 0013f5d15e715348309cdf3baa79d6f3c7edd2ea
-parent 15be3ce7678a18922b68a362756213e73de27ea2
-parent 9e9a943a3ef41bfcf1dc341ac7eab772c529d4ad
-author byh020907 <byh020907@naver.com> 1792329465 +0900
-committer GitHub <noreply@github.com> 1792329465 +0900
+tree ac78ca5469ccd85dffff635764692ab372326b8c
+parent 2624cb83ae7cf2d1ed9725fe61e6eb79263c14cb
+parent 78e1b8c0b5033db4b80a6b8c4fae5b51c4bc26a8
+author byh020907 <byh020907@naver.com> 1792420182 +0900
+committer GitHub <noreply@github.com> 1792420182 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq1Mb5CRC1aQ7uu5UhlAAAnsQQAI1Msq4d9zQWX59H0rHAipyK
- WBPYkm1INooV+B/bvi44w4n9f3Qs4CI4s9PHpfUNoGwxko4TF9Pk/YJMDR++6WnY
- VO18jUZCk2ECRFf2kZ1jcv4jVybwHRjc3Kj/xGdS4LoGF4Py2gQI5wYnturyEdyS
- 3soY3MpD0QC7ZMAH2vkJVci+XGb7VQZCYnnxWOdbxGnYByYRFVGHc6JL6jn/eg8L
- QLdLMn/dKEeF4QMu/05Yj37KUklh31kNtKdfo2jEoSIxuZoaLjfcFAPiedDc1Zb2
- XVQrfdLkICNdM6/uOSTJJWuJD4MOWPPDkvBkv0IJYpPMek/eU59u5nK2bw2fqMrZ
- QdY3dpFou7W4T/W/GR6YvoC9hcOVqkSM0DgVQ8N92nVR2pln47Mww+mYJ61YJ2QW
- hOpnGxHxMTvH2afmMGsIH2NQ6iSjPx6f24oWfLOP5hVwPN31S+zf5KDE0HCydy7g
- uDZp3ZGObVBkJF0I/wR8lg7BpeL+GdFFXMRMKMJ5EjL9x0xujpKtLVYQiMvQ82LK
- zYhP0FfO6gcHoNxtRGmEw9F5MMZrl88AsANtPWJ89qdyeYWrk7UJ7yfYmYBoBb9D
- tkJjYzwWV/XiKp6dSHtU2gnf6XcUnoujAuAWp2fYpP17H+IefOwjQ56MgetUzMpO
- 6B2osmadfyznOkZvyyL5
- =3max
+ wsFcBAABCAAQBQJq1ilWCRC1aQ7uu5UhlAAA5+IQAJYXwbzlydaVW92r5AB0hhlN
+ oa78xj7CahawXzP0rmKjBlMR+D9zdHrdwoRwlDGTPfW4N9OJN9/OYW9mkB55IOtz
+ +hz/hbktG3j8FNog0+yR/myBRwHiCCfVVBtD5eBCB5quc+t8rW/KE9p/yuEAhlWd
+ Ih5X2/g94bI5OE5q+QrxKGIizkfyJy9gAynFgbpk6ROavbix9MKMXFypcCRLZSkj
+ BpUDIBji5zgiyRxbgZdCkCnBmc80XphG0CqO4+mv+E7ZoMVvOHG7NGZBN1WghsN+
+ KE/tLtYFDjoeEvAzf6B4P/9JqdjYBgtxo4hstNXAIgrLjKAWe5GN+aZgzQUkDR6X
+ b2fIGIRCMnERkXl2llpxBMDgHlEcN7G1far7IgVA2H5zZWXlPB9Kj/+/ZaotvqaM
+ U1zLFGvOiGsSAKTAw/gJOxrL9xv+wyywngEdzOyGYrd5faSIyG5U3AQ0Papj+ZNI
+ zg6jL47xE8j042X0nTNuUADtnE8pKv4Ekpk/ZrqO2migar78o/SOPIH+k0jvBOjw
+ RXvPEzM4mwGNaw7Qlq6sv/k5LfZqkeyD9EHhwOpA0x9X9fVvHXRINbLbC5eIyZe2
+ CGue0xPMI29bwfqTm47LmX59dpyovS/Q2DfPOB2/YJdsYKGCObju+wrS98ydBF2B
+ mdmLI3vA4Fo/PUpi0fMH
+ =r200
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #99 from byh-playground/codex/room-session-leave-ack
+Merge pull request #107 from byh-playground/codex/interpolation-history-reuse
 
-[bug-fix] 퇴장 커밋 뒤 join deadline 진입 방지
+perf(interpolation): 버퍼 이력을 복사하지 않고 재사용

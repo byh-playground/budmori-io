@@ -3,11 +3,11 @@
   "modules": [
     {
       "file": "interpolation.js",
-      "sha256": "061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"
+      "sha256": "acad7ad93615633609a62e484bff918980fc84282840db9b5cd108e8f5bb133a"
     },
     {
       "file": "rendering.js",
-      "sha256": "021b11f83b49be3e94cfe0a67769dcd248b9463325b6dcc55ea4943a0ea6c18b"
+      "sha256": "1a3790c3281de93ff361a8720eccfb03b60018b09937a84a8d4da02b3f73c9ba"
     },
     {
       "file": "vector-assets.js",
@@ -43,7 +43,7 @@
     },
     {
       "file": "rollback.js",
-      "sha256": "071fb0f82521d212d00f112abd90fc149616d80b79d4628db0008637ce102596"
+      "sha256": "4d3bd59d4fdbcba87a33d92517a265693b260f989e11d0614b52e09b3c20d0a4"
     },
     {
       "file": "camera.js",
@@ -79,7 +79,7 @@
     },
     {
       "file": "pixel-physics.js",
-      "sha256": "fdf0d5e8002863512a0cb74d9b9501e3f3bded0883fe03307c7c77e2e3bedc3b"
+      "sha256": "ba864a187f95fe7a6df4edbac7ce9d4b8b9a553e35973479672de874cc194834"
     }
   ],
   "assets": [
