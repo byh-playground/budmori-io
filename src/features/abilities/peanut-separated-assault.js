@@ -3,7 +3,7 @@
 // Initial balance draft values remain adjustable, not final user-approved numbers.
 class PeanutSeparatedAssaultPresentation {
     label(definition, value) {
-        return `한 공격 주기 ${value}타 · 타격당 ATK ×${definition.strikeAttackMultiplier} · 넓은 협공 궤적`;
+        return `한 공격 주기 ${value}타 · 타격당 공격력 ×${definition.strikeAttackMultiplier} · 넓은 협공 궤적`;
     }
     title(value) {
         return `협공 ${value}타`;

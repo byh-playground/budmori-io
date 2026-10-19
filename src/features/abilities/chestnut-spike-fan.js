@@ -2,7 +2,7 @@
 // Formatting receives domain values; it imports no DOM or renderer adapters.
 class ChestnutSpikeFanPresentation {
     label(definition, value) {
-        return `목표 방향 부채꼴 ${Math.round((definition.fanSpreadRadians * 180) / Math.PI)}° ${value}발 · 발당 ATK ×${definition.projectileAttackMultiplier} · 기본 공격 ${definition.intervalBasicCycles}주기마다`;
+        return `목표 방향 부채꼴 ${Math.round((definition.fanSpreadRadians * 180) / Math.PI)}° ${value}발 · 발당 공격력 ×${definition.projectileAttackMultiplier} · 기본 공격 ${definition.intervalBasicCycles}주기마다`;
     }
     title(value) {
         return `가시 ${value}발`;

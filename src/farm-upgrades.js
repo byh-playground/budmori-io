@@ -8,10 +8,10 @@ export const FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
 export const FARM_UPGRADE_NODES = Object.freeze([
     {
         id: 'food',
-        name: '자동 탭',
+        name: '창고 생산',
         icon: '◒',
-        description: '자동 먹이 생성 간격을 단계마다 10% 줄여요.',
-        value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 탭`,
+        description: '창고에 먹이가 쌓이는 간격을 단계마다 10% 줄여요.',
+        value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 회`,
     },
     {
         id: 'growth',
@@ -29,9 +29,9 @@ export const FARM_UPGRADE_NODES = Object.freeze([
     },
     {
         id: 'merge',
-        name: '합체 회복',
+        name: '합성 회복',
         icon: '◇',
-        description: '합체 후 대기시간을 단계마다 10% 줄여요.',
+        description: '합성 후 대기시간을 단계마다 10% 줄여요.',
         value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`,
     },
 ]);

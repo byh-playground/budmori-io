@@ -3,10 +3,10 @@
 class CornPopcornChainPresentation {
     label(definition, value, level) {
         const RADIUS_MULTIPLIER = definition.radiusMultipliers[level] || definition.radiusMultipliers[0];
-        return `착탄 ${definition.fuseSeconds}초 후 · 팝콘 접촉 즉시 연쇄 · 피해 ATK ×${value} · 반경 기본 사거리 ×${definition.baseRangeFraction} ×${RADIUS_MULTIPLIER}`;
+        return `착탄 ${definition.fuseSeconds}초 후 · 팝콘 접촉 즉시 연쇄 · 피해 공격력 ×${value} · 반경 기본 사거리 ×${definition.baseRangeFraction} ×${RADIUS_MULTIPLIER}`;
     }
     title(value) {
-        return `ATK ×${value} 폭발`;
+        return `공격력 ×${value} 폭발`;
     }
 }
 
