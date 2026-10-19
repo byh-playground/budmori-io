@@ -114,6 +114,7 @@ const CONFIG = Object.freeze({
             defaultBasisPoints: 4000,
             starterFood: 0,
             maxFood: 50,
+            swingWindupSeconds: 0.28,
             starterUnits: 6,
             node: { x: -5.5, y: -2.5 },
         }),
@@ -1285,6 +1286,9 @@ const GARDEN = class Garden {
         this._workerIds = new Set();
         this._workSlots = new Map();
         this._workerOrder = [];
+        this._swing = null;
+        this._lastSwingerId = null;
+        this._swingCursor = 0;
         this._workRate = 0;
         this._workCount = 0;
         this._nextWorkerRefreshTick = 0;
@@ -2601,16 +2605,12 @@ const GARDEN = class Garden {
     isWorker(unit) {
         return this._workerIds.has(unit.id);
     }
-    // The worker who lands the next hit, and the one who landed the last, so the swing can be drawn around the tap.
-    workSwinger(offset) {
-        const COUNT = this._workerOrder.length;
-        return COUNT ? this._workerOrder[(((this.foodTaps.revision + offset) % COUNT) + COUNT) % COUNT] : null;
+    // A swing in progress ({ id, remaining }) and the worker whose hit landed last; both are transient render hints.
+    get workSwing() {
+        return this._swing;
     }
-    msUntilNextTap() {
-        if (this._workRate <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
-            return Infinity;
-        }
-        return Math.max(0, ((0.5 - this.foodTaps.autoClock) / (this._workRate * 2.5)) * 1000);
+    get lastSwingerId() {
+        return this._lastSwingerId;
     }
     workSlot(unit) {
         return this._workSlots.get(unit.id) || null;
@@ -2719,10 +2719,24 @@ const GARDEN = class Garden {
             return;
         }
         // One food is five taps and the clock holds half a second per tap, so saved progress stays valid.
-        this.foodTaps.autoClock += Math.min(elapsed, 0.1) * this._workRate * 2.5;
-        while (this.foodTaps.autoClock + 1e-9 >= 0.5) {
-            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
-            this.tapFood('auto');
+        // The tap lands when a worker's swing connects, so the animation drives the hit instead of the other way round.
+        const STEP = Math.min(elapsed, 0.1);
+        this.foodTaps.autoClock = Math.min(0.5, this.foodTaps.autoClock + STEP * this._workRate * 2.5);
+        if (!this._swing && this.foodTaps.autoClock + 1e-9 >= 0.5) {
+            const COUNT = this._workerOrder.length;
+            this._swing = {
+                id: COUNT ? this._workerOrder[this._swingCursor++ % COUNT] : null,
+                remaining: CONFIG.farm.work.swingWindupSeconds,
+            };
+        }
+        if (this._swing) {
+            this._swing.remaining -= STEP;
+            if (this._swing.remaining <= 0) {
+                this._lastSwingerId = this._swing.id;
+                this._swing = null;
+                this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
+                this.tapFood('auto');
+            }
         }
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
