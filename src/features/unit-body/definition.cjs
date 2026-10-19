@@ -10,7 +10,7 @@ const AUTHORED_BODIES = [
         species: 0,
         asset: 'assets/troops/pea.svg',
         shapeId: 'body-outline',
-        sourceSha256: 'ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40',
+        sourceSha256: '4d4d6311b69aafb79bf271deea9c0898a2de81c46137503df23041ea843b0365',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 57.00453577435779,
@@ -31,7 +31,7 @@ const AUTHORED_BODIES = [
         species: 1,
         asset: 'assets/troops/corn-kernel.svg',
         shapeId: 'corn-body-outline',
-        sourceSha256: 'ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f',
+        sourceSha256: 'ffa82f15e14bef8e9d450a5f105bb66d66cbe18022c948c8a27740eaaf065790',
         viewBox: [0.0, 0.0, 285.0, 295.0],
         bounds: {
             left: 23.038415422304524,
@@ -52,7 +52,7 @@ const AUTHORED_BODIES = [
         species: 2,
         asset: 'assets/troops/kidney-bean.svg',
         shapeId: 'bean-body-outline',
-        sourceSha256: '2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684',
+        sourceSha256: '201e77f6097da10d06b5aea94437b146a213e59a50cf3b81ddc57fe3157f713e',
         viewBox: [0.0, 0.0, 260.0, 320.0],
         bounds: {
             left: 35.860000000000014,
@@ -73,7 +73,7 @@ const AUTHORED_BODIES = [
         species: 3,
         asset: 'assets/troops/chestnut.svg',
         shapeId: 'chestnut-shell',
-        sourceSha256: 'b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a',
+        sourceSha256: 'a35483cf970c33886b311346d2032df16275cb7382d80f91581b35bb36248ee1',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 38.666666666666664,
@@ -94,7 +94,7 @@ const AUTHORED_BODIES = [
         species: 4,
         asset: 'assets/troops/peanut.svg',
         shapeId: 'peanut-pod-outline',
-        sourceSha256: '8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15',
+        sourceSha256: '79c2dc3bdb2f576662fd620b8b1be8795a33399fdfe42e527e8e8eeaae782c84',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 101.3125,
@@ -115,7 +115,7 @@ const AUTHORED_BODIES = [
         species: 5,
         asset: 'assets/troops/walnut.svg',
         shapeId: 'walnut-body-outline',
-        sourceSha256: '01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df',
+        sourceSha256: '6f3f16d7548daa981439764dd2646817349dfd644f6d8e8f4beb1defe9342c57',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 83.5,
@@ -136,7 +136,7 @@ const AUTHORED_BODIES = [
         species: 6,
         asset: 'assets/troops/rice.svg',
         shapeId: 'rice-body-outline',
-        sourceSha256: '7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71',
+        sourceSha256: '5aef9bd138b053edc1f87908dffb623139d981c401aa21e6b59e401edd484de2',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 70.60885389809643,
@@ -157,7 +157,7 @@ const AUTHORED_BODIES = [
         species: 7,
         asset: 'assets/troops/wheat.svg',
         shapeId: 'wheat-grain-outline',
-        sourceSha256: '758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49',
+        sourceSha256: '4bcb07c0d461f030e9fb54d0709cc162d3ef33514f21b5c691574fecf6628697',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 85.19999999999996,
@@ -178,7 +178,7 @@ const AUTHORED_BODIES = [
         species: 8,
         asset: 'assets/troops/barley.svg',
         shapeId: 'barley-seed-outline',
-        sourceSha256: 'bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e',
+        sourceSha256: 'b91f433fd962b33dca843436712f12658565a0818161442f9674ffdc8ea3fb8d',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 69.30899999999998,
