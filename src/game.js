@@ -14150,7 +14150,8 @@
     WORLD.facilities = (data.food.facilities ?? []).map((facility) => ({
       id: facility.id,
       x: facility.x,
-      y: facility.y
+      y: facility.y,
+      level: facility.level ?? 1
     }));
     if (data.food.site) {
       WORLD.restoreBuildSite(data.food.site);
@@ -14287,7 +14288,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.33";
+      PRODUCT_VERSION = "0.10.34";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20303,6 +20304,9 @@
     SNAPSHOT.materials ??= { wood: 0, stone: 0 };
     SNAPSHOT.facilities ??= [];
     SNAPSHOT.savedSite ??= null;
+    for (const FACILITY of SNAPSHOT.facilities) {
+      FACILITY.level ??= 1;
+    }
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }

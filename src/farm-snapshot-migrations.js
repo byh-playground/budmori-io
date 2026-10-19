@@ -8,6 +8,9 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     SNAPSHOT.materials ??= { wood: 0, stone: 0 };
     SNAPSHOT.facilities ??= [];
     SNAPSHOT.savedSite ??= null;
+    for (const FACILITY of SNAPSHOT.facilities) {
+        FACILITY.level ??= 1;
+    }
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
 }
