@@ -10,13 +10,8 @@ export class BreedFarmMode extends FarmMode {
     updateReady(world, u, dt) {
         let target = null;
         if (!u.fed) {
-            target = world.requestGroundFoodTarget(u);
-            if (
-                target &&
-                world.canFarmPopulationAdvance(u.species) &&
-                Math.hypot(target.x - u.x, target.y - u.y) < 0.42 &&
-                world.consumeGroundFood(target)
-            ) {
+            target = world.requestGroundFoodTarget(u, dt);
+            if (target && world.canFarmPopulationAdvance(u.species) && world.consumeForageAttempt(u, target)) {
                 world.clearFoodTargetSearch(u);
                 u.meals = 1;
                 world.markProgressChanged();

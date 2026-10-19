@@ -48,15 +48,17 @@ function finiteTree(v, depth = 0, key = '') {
         );
     } else if (Array.isArray(v)) {
         const MAX =
-            key === 'units'
-                ? CONFIG.raid.capacity.battleUnits
-                : key === 'projectiles'
-                  ? CONFIG.raid.capacity.projectiles
-                  : key === 'bossRewardReceipts' || key === 'processedBossKillReceipts'
-                    ? 100000
-                    : key === 'raidSettlementReceipts'
-                      ? 128
-                      : 1024;
+            key === 'plots' || key === 'farmPlots'
+                ? Number.MAX_SAFE_INTEGER
+                : key === 'units'
+                  ? CONFIG.raid.capacity.battleUnits
+                  : key === 'projectiles'
+                    ? CONFIG.raid.capacity.projectiles
+                    : key === 'bossRewardReceipts' || key === 'processedBossKillReceipts'
+                      ? 100000
+                      : key === 'raidSettlementReceipts'
+                        ? 128
+                        : 1024;
         ASSERT(v.length <= MAX);
         v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === 'object') {
