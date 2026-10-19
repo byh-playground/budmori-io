@@ -1,5 +1,14 @@
 import { applyOffline } from './farm-offline.js';
-import { activeSite, assignWorkers, resetWork, restoreSite, startSite, stepWork, workOrder } from './farm-work.js';
+import {
+    activeSite,
+    assignWorkers,
+    pilesOf,
+    resetWork,
+    restoreSite,
+    startSite,
+    stepWork,
+    workOrder,
+} from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
 import { RaidDeploymentCards } from './raid-deployment-cards.js';
@@ -17,7 +26,7 @@ import { seedProjectileDimensions } from './features/projectiles/seed/definition
 import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
-import { FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
+import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
@@ -119,7 +128,7 @@ const CONFIG = Object.freeze({
             maxAttackers: 3,
             defaultResourceBasisPoints: 3000,
             defaultBuildBasisPoints: 1500,
-            facilityMaxLevel: 5,
+            facilityMaxLevel: FACILITY_MAX_LEVEL,
             levelCostStep: 0.75,
             levelHitsStep: 0.6,
             projects: Object.freeze({
@@ -152,6 +161,9 @@ const CONFIG = Object.freeze({
                 wood: Object.freeze({ count: 1, amount: 8 }),
                 stone: Object.freeze({ count: 1, amount: 8 }),
             }),
+            facilitySpacing: 7,
+            facilityRowX: 2,
+            facilityRowY: 7.6,
             pileGap: 6,
             pileRadiusX: 8,
             pileRadiusY: 6,
@@ -231,6 +243,9 @@ const CONFIG = Object.freeze({
         softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
+if (Object.keys(CONFIG.farm.work.facilities).join() !== FACILITY_IDS.join()) {
+    throw new Error('The farm facility catalog and the plot facility ids must list the same facilities.');
+}
 function bossAttackArea(boss, unitRadius = 0, scene = 'raid', area = {}) {
     const ACTION = boss.patternRuntime?.active,
         CONFIG_LOCAL = BOSS_PATTERN_CONFIG[ACTION?.id];
@@ -1331,7 +1346,6 @@ const GARDEN = class Garden {
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
         this.materials = { wood: 0, stone: 0 };
-        this.facilities = [];
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.buildRush = false;
         this._workerKinds = new Map();
@@ -1632,6 +1646,7 @@ const GARDEN = class Garden {
             this.clearFoodTargetSearch(UNIT_LOCAL);
         }
         this.activePlotId = plotId;
+        this._nextWorkerRefreshTick = 0;
         for (const UNIT_LOCAL of this.unitCollection.unitsInPlot(plotId)) {
             this.clearInactiveForageAttempt(UNIT_LOCAL);
         }
@@ -1658,7 +1673,7 @@ const GARDEN = class Garden {
     _addFarmPlot() {
         const STATE = this.playerProgression.farmPlots,
             ID = `plot-${STATE.nextPlotNumber}`,
-            PLOT_STATE = { id: ID, capacityLevel: 0 };
+            PLOT_STATE = { id: ID, capacityLevel: 0, facilities: [] };
         STATE.plots.push(PLOT_STATE);
         STATE.nextPlotNumber++;
         this.farmPlots.set(ID, new FarmPlot(PLOT_STATE));
@@ -2630,11 +2645,19 @@ const GARDEN = class Garden {
     get piles() {
         return this._piles;
     }
+    // Piles, and the construction site among them, belong to the farm plot they stand in.
+    get _piles() {
+        return pilesOf(this, this.activePlotId);
+    }
+    // The facilities of the farm plot that is on screen.
+    get facilities() {
+        return this.activeFarmPlot?.state.facilities ?? [];
+    }
     workSwingOf(id) {
         return this._swings.get(id) || null;
     }
     facilityLevel(id) {
-        return this.facilities.find((facility) => facility.id === id)?.level ?? 0;
+        return this.activeFarmPlot?.facilityLevel(id) ?? 0;
     }
     facilityBuilt(id) {
         return this.facilityLevel(id) > 0;
@@ -2649,8 +2672,19 @@ const GARDEN = class Garden {
             LEVEL = kind === 'grain' ? this.facilityLevel('granary') : 0;
         return LEVEL > 0 ? { count: BASE.count + Math.ceil(LEVEL / 2), amount: BASE.amount + 4 * LEVEL } : BASE;
     }
+    // The site being built in the farm plot on screen.
     get buildSite() {
         return activeSite(this);
+    }
+    // Only one construction runs at a time, in whichever farm plot it was started.
+    get anyBuildSite() {
+        for (const PILES of this._pilesByPlot.values()) {
+            const SITE = PILES.find((pile) => pile.kind === 'site');
+            if (SITE) {
+                return SITE;
+            }
+        }
+        return null;
     }
     // What the next construction of a kind is: facilities level up, a farm grows, or a new farm opens.
     projectInfo(kind) {
@@ -2700,7 +2734,7 @@ const GARDEN = class Garden {
         if (
             this.scene !== 'farm' ||
             !INFO ||
-            activeSite(this) ||
+            this.anyBuildSite ||
             this.running ||
             this.farmBossEvent?.phase !== 'idle' ||
             this.materials.wood < INFO.cost.wood ||
@@ -2710,16 +2744,7 @@ const GARDEN = class Garden {
         }
         this.materials.wood -= INFO.cost.wood;
         this.materials.stone -= INFO.cost.stone;
-        const EXISTING = this.facilities.find((facility) => facility.id === kind);
-        startSite(
-            this,
-            CONFIG,
-            kind,
-            INFO.level,
-            INFO.hits,
-            EXISTING,
-            kind === 'expand' ? this.activePlotId : undefined,
-        );
+        startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId);
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         this.markProgressChanged();
@@ -2732,12 +2757,7 @@ const GARDEN = class Garden {
         } else if (site.facility === 'plot') {
             this._addFarmPlot();
         } else {
-            const EXISTING = this.facilities.find((facility) => facility.id === site.facility);
-            if (EXISTING) {
-                EXISTING.level = site.level;
-            } else {
-                this.facilities.push({ id: site.facility, x: site.x, y: site.y, level: site.level });
-            }
+            this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
         }
         this.buildRush = false;
         this._nextWorkerRefreshTick = 0;

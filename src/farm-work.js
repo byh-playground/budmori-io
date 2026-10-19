@@ -1,3 +1,4 @@
+import { FACILITY_IDS } from './farm-plot.js';
 // Grain piles that workers fight like enemies: each hit stacks up, five stacks shake one food loose,
 // a pile holds a fixed amount of food and vanishes when it is used up, and the field keeps a few piles around.
 // Piles and swings are transient presentation-adjacent state; they are rebuilt after a load.
@@ -9,7 +10,23 @@ const NEAR_PILE = 4.4,
     CHARGE_TIMEOUT = 1.6,
     RECOIL_SPEED = 5.5;
 const STACKS_PER_FOOD = 5;
-
+// Piles and the construction site are kept per farm plot, so each plot shows only its own.
+export function pilesOf(world, plotId) {
+    let list = world._pilesByPlot.get(plotId);
+    if (!list) {
+        list = [];
+        world._pilesByPlot.set(plotId, list);
+    }
+    return list;
+}
+// Facilities stand in fixed slots in a row at the back of the field, drawn behind the units so they never hide one.
+export function facilityPosition(config, id) {
+    const WORK = config.farm.work;
+    return {
+        x: WORK.facilityRowX + (FACILITY_IDS.indexOf(id) - (FACILITY_IDS.length - 1) / 2) * WORK.facilitySpacing,
+        y: WORK.facilityRowY,
+    };
+}
 function pilePosition(world, config) {
     const WORK = config.farm.work;
     let best = null,
@@ -22,6 +39,11 @@ function pilePosition(world, config) {
         let gap = Infinity;
         for (const PILE of world._piles) {
             gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
+        }
+        // Keep the facility slots free, built or not.
+        for (const ID of FACILITY_IDS) {
+            const SLOT = facilityPosition(config, ID);
+            gap = Math.min(gap, Math.hypot(SLOT.x - X, SLOT.y - Y) * (WORK.pileGap / 3.5));
         }
         if (gap >= WORK.pileGap) {
             return { x: X, y: Y };
@@ -49,9 +71,11 @@ function spawnPile(world, config, kind) {
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
 // Starts the construction site for a facility: a solid frame that builders ram until the work is done.
-export function startSite(world, config, facilityId, level, hits, existing, plotId) {
-    const POSITION = existing ? { x: existing.x, y: existing.y } : pilePosition(world, config);
-    world._piles.push({
+export function startSite(world, config, facilityId, level, hits, plotId) {
+    const POSITION = FACILITY_IDS.includes(facilityId)
+        ? facilityPosition(config, facilityId)
+        : pilePosition(world, config);
+    pilesOf(world, plotId).push({
         id: ++world._pileId,
         kind: 'site',
         facility: facilityId,
@@ -72,7 +96,7 @@ export function startSite(world, config, facilityId, level, hits, existing, plot
 }
 // Rebuilds the construction site that was saved mid-work.
 export function restoreSite(world, data) {
-    world._piles.push({
+    pilesOf(world, data.plotId).push({
         id: ++world._pileId,
         kind: 'site',
         facility: data.facility,
@@ -118,7 +142,7 @@ export function pileRadius(pile) {
     return (pile.kind === 'wood' ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
 export function resetWork(world) {
-    world._piles = [];
+    world._pilesByPlot = new Map();
     world._pileId = 0;
     world._pileRespawn = 0;
     world._workAssign = new Map();

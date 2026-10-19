@@ -24,10 +24,8 @@ function copySite(site) {
         y: site.y,
         done: site.done,
         need: site.need,
+        plotId: site.plotId,
     };
-    if (site.plotId !== undefined) {
-        COPY.plotId = site.plotId;
-    }
     return COPY;
 }
 function keys(value, required, optional = []) {
@@ -166,7 +164,7 @@ export function captureFarmProgress(world) {
     }
     const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row),
         STAGE = world.farmBossProgress;
-    const SITE = world.buildSite;
+    const SITE = world.anyBuildSite;
     return {
         seed: world.seed,
         rngState: world.rng.state,
@@ -179,12 +177,6 @@ export function captureFarmProgress(world) {
             remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
             materials: { wood: world.materials.wood, stone: world.materials.stone },
-            facilities: world.facilities.map((facility) => ({
-                id: facility.id,
-                x: facility.x,
-                y: facility.y,
-                level: facility.level,
-            })),
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
             ...(SITE ? { site: copySite(SITE) } : {}),
         },
@@ -321,10 +313,10 @@ export function validateFarmProgress(data) {
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials', 'facilities', 'site']);
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials', 'site']);
     if (data.food.site !== undefined) {
         const SITE = data.food.site;
-        keys(SITE, ['facility', 'level', 'x', 'y', 'done', 'need'], ['plotId']);
+        keys(SITE, ['facility', 'level', 'x', 'y', 'done', 'need', 'plotId']);
         ASSERT(
             (Object.hasOwn(CONFIG.farm.work.facilities, SITE.facility) ||
                 Object.hasOwn(CONFIG.farm.work.projects, SITE.facility)) &&
@@ -333,23 +325,8 @@ export function validateFarmProgress(data) {
                 INTEGER(SITE.done, 0, SITE.need - 1) &&
                 Number.isFinite(SITE.x) &&
                 Number.isFinite(SITE.y) &&
-                (SITE.plotId === undefined || typeof SITE.plotId === 'string'),
+                PLOT_CAPACITY.has(SITE.plotId),
         );
-    }
-    if (data.food.facilities !== undefined) {
-        ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
-        const SEEN = new Set();
-        for (const FACILITY of data.food.facilities) {
-            keys(FACILITY, ['id', 'x', 'y'], ['level']);
-            ASSERT(FACILITY.level === undefined || INTEGER(FACILITY.level, 1, CONFIG.farm.work.facilityMaxLevel));
-            ASSERT(
-                Object.hasOwn(CONFIG.farm.work.facilities, FACILITY.id) &&
-                    !SEEN.has(FACILITY.id) &&
-                    Number.isFinite(FACILITY.x) &&
-                    Number.isFinite(FACILITY.y),
-            );
-            SEEN.add(FACILITY.id);
-        }
     }
     if (data.food.materials !== undefined) {
         keys(data.food.materials, ['wood', 'stone']);
@@ -649,12 +626,6 @@ export function restoreFarmProgress(data) {
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
     WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
-    WORLD.facilities = (data.food.facilities ?? []).map((facility) => ({
-        id: facility.id,
-        x: facility.x,
-        y: facility.y,
-        level: facility.level ?? 1,
-    }));
     if (data.food.site) {
         WORLD.restoreBuildSite(data.food.site);
     }

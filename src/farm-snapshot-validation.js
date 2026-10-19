@@ -136,16 +136,7 @@ export function validateSnapshot(raw) {
     finiteTree(raw);
     shape(raw, GARDEN_SHAPE);
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
-    ASSERT(
-        INTEGER(raw.materials.wood, 0, 1e12) &&
-            INTEGER(raw.materials.stone, 0, 1e12) &&
-            raw.facilities.length <= 8 &&
-            raw.facilities.every(
-                (facility) =>
-                    Object.hasOwn(CONFIG.farm.work.facilities, facility.id) &&
-                    INTEGER(facility.level, 1, CONFIG.farm.work.facilityMaxLevel),
-            ),
-    );
+    ASSERT(INTEGER(raw.materials.wood, 0, 1e12) && INTEGER(raw.materials.stone, 0, 1e12));
     ASSERT(
         INTEGER(raw.seed, 0, 0xffffffff) &&
             INTEGER(raw.rng.state, 0, 0xffffffff) &&

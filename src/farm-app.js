@@ -1442,10 +1442,10 @@ function drawFarmPanel() {
     DOLLAR('farmExpand').innerHTML = EXPAND
         ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>`
         : '<b>농장 확장</b><small>최대 크기예요</small>';
-    DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.buildSite || !CAN_PAY(EXPAND);
+    DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.anyBuildSite || !CAN_PAY(EXPAND);
     DOLLAR('farmUnlock').innerHTML =
         `<b>새 농장 짓기</b><small>${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? '' : ' · 부족해요'}</small>`;
-    DOLLAR('farmUnlock').disabled = LOCKED || !!W.buildSite || !CAN_PAY(PLOT);
+    DOLLAR('farmUnlock').disabled = LOCKED || !!W.anyBuildSite || !CAN_PAY(PLOT);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
@@ -2400,7 +2400,8 @@ function sync(display, now, notices) {
         WORKERS = WORK_WORLD.workerCount,
         BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS),
         CUTS = workCuts(WORK_WORLD),
-        SITE = WORK_WORLD.buildSite;
+        SITE = WORK_WORLD.buildSite,
+        ANY_SITE = WORK_WORLD.anyBuildSite;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`,
         warn = false;
     if (WORKERS === 0) {
@@ -2432,7 +2433,7 @@ function sync(display, now, notices) {
             INFO = WORK_WORLD.projectInfo(ID),
             COST = INFO?.cost || { wood: 0, stone: 0 };
         BUTTON.disabled =
-            MAXED || !!SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
+            MAXED || !!ANY_SITE || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
         syncText2(BUTTON.querySelector('[data-name]'), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
         syncText2(
             BUTTON.querySelector('[data-cost]'),
@@ -2440,7 +2441,9 @@ function sync(display, now, notices) {
                 ? '최대 레벨'
                 : SITE?.facility === ID
                   ? '짓는 중'
-                  : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ''}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ''}`,
+                  : ANY_SITE && !SITE
+                    ? '다른 농장에서 건설 중'
+                    : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ''}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ''}`,
         );
     }
     syncText('workHudNote', note);
