@@ -14409,7 +14409,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.43";
+      PRODUCT_VERSION = "0.10.44";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16671,7 +16671,11 @@
     drawUnitRingLayer(u, effects, side) {
       for (const EFFECT of effects) {
         const SWEEP = Math.PI * 2 * Math.max(0, Math.min(1, Number(EFFECT.progress) || 0));
-        if (side === "rear" && SWEEP > 0) {
+        if (SWEEP >= Math.PI * 2) {
+          if (side === "rear") {
+            this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width);
+          }
+        } else if (side === "rear" && SWEEP > 0) {
           this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, 0, Math.min(Math.PI, SWEEP));
         } else if (side === "front" && SWEEP > Math.PI) {
           this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, Math.PI, SWEEP);

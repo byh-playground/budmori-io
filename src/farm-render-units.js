@@ -160,7 +160,13 @@ export class UnitPresentation {
     drawUnitRingLayer(u, effects, side) {
         for (const EFFECT of effects) {
             const SWEEP = Math.PI * 2 * Math.max(0, Math.min(1, Number(EFFECT.progress) || 0));
-            if (side === 'rear' && SWEEP > 0) {
+            if (SWEEP >= Math.PI * 2) {
+                // A complete ring is one full-ellipse stroke, which the renderer draws analytically. Two half arcs
+                // would tessellate a polyline stroke twice per unit per frame.
+                if (side === 'rear') {
+                    this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width);
+                }
+            } else if (side === 'rear' && SWEEP > 0) {
                 this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, 0, Math.min(Math.PI, SWEEP));
             } else if (side === 'front' && SWEEP > Math.PI) {
                 this.renderer.ring(u.x, u.y, EFFECT.radius, EFFECT.color, EFFECT.width, Math.PI, SWEEP);
