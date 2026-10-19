@@ -20,6 +20,7 @@ import {
 import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
+import { facilityPosition } from './farm-work.js';
 import { bossDangerContour } from './attack-telegraph.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -418,6 +419,7 @@ const DIORAMA = class Diorama {
         PRESENTATION.drawBoundary(this);
         if (sim2.scene === 'farm') {
             this.drawWorkShadows(sim2);
+            this.drawFacilities(sim2);
         }
         const AREA = PRESENTATION.dangerVisible(sim2)
             ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea)
@@ -432,7 +434,17 @@ const DIORAMA = class Diorama {
             this.groundEllipse(PILE.x, PILE.y, 1.5, 1.0, '#54452433');
         }
         for (const FACILITY of sim2.facilities || []) {
-            this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, '#54452433');
+            const AT = facilityPosition(CONFIG, FACILITY.id);
+            this.groundEllipse(AT.x, AT.y, 1.6, 1.1, '#54452433');
+        }
+    }
+    // Facilities are scenery along the back edge of the field, drawn before the units so nothing hides behind them.
+    drawFacilities(sim2) {
+        const UPGRADING = sim2.buildSite?.facility;
+        for (const FACILITY of sim2.facilities || []) {
+            if (FACILITY.id !== UPGRADING) {
+                this.drawFacility(FACILITY);
+            }
         }
     }
     // Piles, construction sites and facilities stand among the units, so they are sorted with them by depth.
@@ -440,13 +452,6 @@ const DIORAMA = class Diorama {
         const OBJECTS = this.workObjects || (this.workObjects = { draw: (source) => this.drawWorkObject(source) });
         for (const PILE of sim2.piles || []) {
             this.addActor(OBJECTS, { pile: PILE, sim: sim2 }, 0.785 * PILE.y, -2000000 - PILE.id);
-        }
-        const UPGRADING = sim2.buildSite?.facility;
-        let index = 0;
-        for (const FACILITY of sim2.facilities || []) {
-            if (FACILITY.id !== UPGRADING) {
-                this.addActor(OBJECTS, { facility: FACILITY, sim: sim2 }, 0.785 * FACILITY.y, -3000000 - index++);
-            }
         }
         const SEEN = this.pileHits;
         if (SEEN && SEEN.size > 12) {
@@ -459,11 +464,7 @@ const DIORAMA = class Diorama {
         }
     }
     drawWorkObject(source) {
-        if (source.facility) {
-            this.drawFacility(source.facility);
-        } else {
-            this.drawPile(source.pile, this.displayTimeMs);
-        }
+        this.drawPile(source.pile, this.displayTimeMs);
     }
     drawPile(pile, now) {
         const PILE = pile;
@@ -548,7 +549,8 @@ const DIORAMA = class Diorama {
     drawFacility(facility) {
         const FACILITY = facility;
         {
-            const BASE = this.project(FACILITY.x, FACILITY.y, 0),
+            const AT = facilityPosition(CONFIG, FACILITY.id),
+                BASE = this.project(AT.x, AT.y, 0),
                 S = this.scale * (1.9 + 0.12 * FACILITY.level),
                 X = BASE.x;
             if (FACILITY.id === 'windmill') {
