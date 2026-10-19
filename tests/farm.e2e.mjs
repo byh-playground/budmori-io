@@ -3258,16 +3258,39 @@ async function cadenceDiagnosticsFlow() {
     REPORT.performanceReproduction = PERFORMANCE_REPRO;
     await P.waitForTimeout(220);
     await P.evaluate(() => {
-        const WORLD = BUDMORI.sim;
+        const WORLD = BUDMORI.sim,
+            FOOD = WORLD.food.slice(0, 135);
+        WORLD.activeFarmPlot.food = FOOD;
+        WORLD.food = FOOD;
+        WORLD.warehouseFood = 5;
+        WORLD._rebuildFoodSpatialIndex();
+        window.__cadenceOriginalFarmBossEvent = WORLD.tryStartFarmBossEvent;
+        WORLD.tryStartFarmBossEvent = () => false;
         for (const UNIT of WORLD.units) {
             WORLD.clearFoodTargetSearch(UNIT);
             WORLD.requestGroundFoodTarget(UNIT);
         }
+        BUDMORI.runtime.capturePresentation('reset');
     });
+    await P.waitForFunction(() => !document.querySelector('#feed').disabled);
+    const FEEDABLE_SETUP = await P.evaluate(() => ({
+        floor: BUDMORI.sim.food.length,
+        stock: BUDMORI.sim.warehouseFood,
+        disabled: document.querySelector('#feed').disabled,
+    }));
+    assert.equal(FEEDABLE_SETUP.floor, 135);
+    assert(FEEDABLE_SETUP.stock >= 5 && !FEEDABLE_SETUP.disabled, JSON.stringify(FEEDABLE_SETUP));
+    const MANUAL_FEED_BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual);
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
     for (let index = 0; index < 5; index++) {
         await P.locator('#feed').click();
     }
+    await P.waitForFunction((count) => BUDMORI.foodFeel.counts.manual === count + 5, MANUAL_FEED_BEFORE);
+    await P.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        WORLD.tryStartFarmBossEvent = window.__cadenceOriginalFarmBossEvent;
+        delete window.__cadenceOriginalFarmBossEvent;
+    });
     await P.waitForFunction((tick) => BUDMORI.sim.metrics.logicTicks >= tick + 30, BEFORE.ticks);
     await P.evaluate(() => {
         const END = performance.now() + 260;
@@ -6979,6 +7002,17 @@ async function bossRewards() {
     await P.waitForFunction(() => document.querySelector('#bossEncounterScreen')?.hidden === false);
     await P.locator('#bossEncounterChallenge').click();
     await P.waitForFunction(() => BUDMORI.sim?.scene === 'raid' && !!BUDMORI.sim.raidRoster('solo'));
+    await P.waitForFunction(() => !document.querySelector('#bossbar')?.hidden);
+    const RAID_HUD_LAYOUT = await P.evaluate(() => {
+        const HEADER = document.querySelector('body > header').getBoundingClientRect(),
+            BOSSBAR = document.querySelector('#bossbar').getBoundingClientRect();
+        return { headerBottom: HEADER.bottom, bossbarTop: BOSSBAR.top, noOverlap: HEADER.bottom <= BOSSBAR.top };
+    });
+    assert.equal(
+        RAID_HUD_LAYOUT.noOverlap,
+        true,
+        'mobile nav/status clears the visible raid boss bar: ' + JSON.stringify(RAID_HUD_LAYOUT),
+    );
     const RAID_RUN = await P.evaluate(() => {
         const WORLD = BUDMORI.sim,
             ROSTER = WORLD.raidRoster('solo'),
@@ -7056,6 +7090,34 @@ async function bossRewards() {
     assert.equal(await P.locator('#bossRewardOpen').isVisible(), false, 'completed boxes cannot be reopened later');
     await P.locator('#return').click();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'farm');
+    const RAID_NAV_LAYOUT = await P.evaluate(() => {
+        const RAID = document.querySelector('#raid'),
+            RECT = RAID.getBoundingClientRect(),
+            VIEWPORT_WIDTH = visualViewport?.width ?? document.documentElement.clientWidth,
+            HIT = document.elementFromPoint(RECT.left + RECT.width / 2, RECT.top + RECT.height / 2);
+        return {
+            scene: BUDMORI.sim.scene,
+            rewardDialogHidden: document.querySelector('#bossRewardDialog').hidden,
+            viewportWidth: VIEWPORT_WIDTH,
+            clientWidth: document.documentElement.clientWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+            raid: { left: RECT.left, right: RECT.right, width: RECT.width },
+            insideViewport: RECT.left >= 0 && RECT.right <= VIEWPORT_WIDTH,
+            centerHitTarget: HIT?.id || '',
+        };
+    });
+    assert.equal(RAID_NAV_LAYOUT.scene, 'farm');
+    assert.equal(RAID_NAV_LAYOUT.rewardDialogHidden, true);
+    assert.equal(
+        RAID_NAV_LAYOUT.scrollWidth <= RAID_NAV_LAYOUT.clientWidth,
+        true,
+        'mobile header stays within the actual viewport: ' + JSON.stringify(RAID_NAV_LAYOUT),
+    );
+    assert.equal(
+        RAID_NAV_LAYOUT.insideViewport && RAID_NAV_LAYOUT.centerHitTarget === 'raid',
+        true,
+        'the visible #raid center is its real hit target: ' + JSON.stringify(RAID_NAV_LAYOUT),
+    );
     await P.locator('#raid').click();
     await P.waitForFunction(() => document.querySelector('#bossEncounterScreen')?.hidden === false);
     assert.equal(
@@ -7539,7 +7601,7 @@ async function bossRewards() {
     assert.equal(FARM_RESTORED.acquired, 17, 'the actual payout survives a reload without rerolling');
     assert.equal(FARM_RESTORED.boxes, 0, 'the restored result does not persist a chest list');
     assert.equal(FARM_RESTORED.status, 'ready');
-    assert(FARM_RESTORED.screenTotal.includes('17 acquired'));
+    assert(FARM_RESTORED.screenTotal.includes('17'), 'the restored localized summary includes the acquired total');
     assert.equal(Object.hasOwn(FARM_RESTORED.stored, 'revealedCount'), false);
     await clean(FARM_PAGE);
     await FARM_CONTEXT.close();
@@ -7631,8 +7693,8 @@ async function victory() {
                 .filter((u) => u.hp <= 0)
                 .every(
                     (u) =>
-                        BUDMORI.renderer.vectorPlayers.get(u.id)?.currentClip === 'death' &&
-                        BUDMORI.renderer.vectorPlayers.get(u.id)?.currentExpression === 'dead',
+                        BUDMORI.renderer.vectorPlayers.get(u.id)?.currentClip === 'sleep' &&
+                        BUDMORI.renderer.vectorPlayers.get(u.id)?.currentExpression === 'sleep',
                 ),
         {},
         {
@@ -7653,7 +7715,11 @@ async function victory() {
     assert.equal(VICTORY.units.filter((u) => u.hp > 0).length, 2);
     assert.deepEqual(
         VICTORY.units.filter((u) => u.hp <= 0).map((u) => u.clip),
-        ['death'],
+        ['sleep'],
+    );
+    assert.deepEqual(
+        VICTORY.units.filter((u) => u.hp <= 0).map((u) => u.expression),
+        ['sleep'],
     );
     assert(!VICTORY.remainingText.includes('NaN'));
     assert.equal(VICTORY.errorVisible, false);
@@ -7683,7 +7749,7 @@ async function victory() {
         returned: RETURNED,
     };
     CHECK(
-        'Mobile farm starts with two peas; victory/death animations render; battle return restores the two-unit farm',
+        'Mobile farm starts with two peas; victory/downed-sleep animations render; battle return restores the two-unit farm',
     );
 }
 async function save() {
