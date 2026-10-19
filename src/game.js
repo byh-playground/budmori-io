@@ -5711,7 +5711,12 @@
             return;
           }
           if (world.isWorker(unit)) {
-            this.wander(world, unit, dt);
+            const SLOT = world.workSlot(unit);
+            if (SLOT) {
+              world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(1.2, unit));
+            } else {
+              this.wander(world, unit, dt);
+            }
             return;
           }
           if (!unit.mature || unit.cooldown > 0) {
@@ -7762,7 +7767,8 @@
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
             starterFood: 10,
-            starterUnits: 6
+            starterUnits: 6,
+            station: { x: -5.5, y: -2.5 }
           }),
           breeding: Object.freeze({
             cooldownSeconds: BREED_COOLDOWN_SECONDS,
@@ -8804,6 +8810,7 @@
           this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this._workerIds = /* @__PURE__ */ new Set();
+          this._workSlots = /* @__PURE__ */ new Map();
           this._workRate = 0;
           this._workCount = 0;
           this._nextWorkerRefreshTick = 0;
@@ -9897,6 +9904,9 @@
         isWorker(unit) {
           return this._workerIds.has(unit.id);
         }
+        workSlot(unit) {
+          return this._workSlots.get(unit.id) || null;
+        }
         canBreedNow(unit) {
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
         }
@@ -9953,6 +9963,16 @@
             }
           }
           this._workerIds = NEXT;
+          this._workSlots = /* @__PURE__ */ new Map();
+          let slotIndex = 0;
+          for (const ID of [...NEXT].sort((a, b) => a - b)) {
+            const RING = Math.floor(slotIndex / 6), ANGLE = slotIndex % 6 * (Math.PI / 3) + RING * 0.5, RADIUS = 1.5 + RING * 0.65;
+            this._workSlots.set(ID, {
+              x: WORK.station.x + Math.cos(ANGLE) * RADIUS,
+              y: WORK.station.y + Math.sin(ANGLE) * RADIUS * 0.75
+            });
+            slotIndex++;
+          }
           this._workCount = NEXT.size;
           this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
         }
@@ -13695,7 +13715,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.16";
+      PRODUCT_VERSION = "0.10.17";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15983,7 +16003,7 @@
       return true;
     }
     drawUnit(u, sim, rest) {
-      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0, P = this.renderer.project(
+      const DEAD = u.hp <= 0, WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)), SLOT = sim.workSlot?.(u), WORKING = !DEAD && SLOT && Math.hypot(SLOT.x - u.x, SLOT.y - u.y) < 0.35, BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK + (WORKING ? Math.abs(Math.sin(sim.time * 5 + u.seed)) * 0.14 : 0) : 0, P = this.renderer.project(
         u.x + (u.isFormationClone ? Math.min(1, (sim.time - u.cloneBornAt) / 0.5) * 0.35 : 0),
         u.y,
         u.z + BOB
@@ -16922,10 +16942,30 @@
         this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", P.angle + 0.7);
       }
       PRESENTATION.drawBoundary(this);
+      if (sim2.scene === "farm") {
+        this.drawWorkStation(sim2);
+      }
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
       this.bossTelegraph = AREA;
       if (AREA) {
         this.drawBossTelegraph(AREA);
+      }
+    }
+    drawWorkStation(sim2) {
+      const STATION = CONFIG.farm.work.station, S = this.scale, TOP = this.project(STATION.x, STATION.y, 0.45), BASE = this.project(STATION.x, STATION.y, 0);
+      this.groundEllipse(STATION.x, STATION.y, 1, 0.7, "#54452433");
+      this.ellipse(BASE.x, BASE.y - 0.05 * S, 0.62 * S, 0.3 * S, "#a07a45");
+      this.ellipse(TOP.x, TOP.y, 0.7 * S, 0.34 * S, "#c79a5a");
+      this.ellipse(TOP.x, TOP.y - 0.03 * S, 0.58 * S, 0.26 * S, "#d9b274");
+      const COUNT = sim2.foodTaps?.remainder || 0;
+      for (let i = 0; i < 5; i++) {
+        this.ellipse(
+          TOP.x + (i - 2) * 0.2 * S,
+          TOP.y - 0.05 * S,
+          0.065 * S,
+          0.085 * S,
+          i < COUNT ? "#c2913e" : "#b8955f66"
+        );
       }
     }
     addActor(presentation, source, depth, id, vector = false) {
@@ -21697,6 +21737,11 @@
   }
   DOLLAR2("farmWorkRatio").addEventListener("change", (e) => {
     applyWorkPercent(Number(e.target.value));
+  });
+  DOLLAR2("workHudToggle").addEventListener("click", () => {
+    const OPEN = DOLLAR2("workHud").dataset.open !== "true";
+    DOLLAR2("workHud").dataset.open = String(OPEN);
+    DOLLAR2("workHudToggle").setAttribute("aria-expanded", String(OPEN));
   });
   DOLLAR2("workHud").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-work-preset]");

@@ -299,13 +299,46 @@ body > header {
     gap: var(--ui-s2);
     font-size: var(--ui-fs-2);
 }
+.work-hud__row {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+    align-items: center;
+}
 .work-hud__row small {
+    margin-left: auto;
     font-size: var(--ui-fs-1);
     color: var(--ui-ink-2);
 }
 .work-hud[data-warn='true'] .work-hud__row small {
     color: var(--ui-danger-ink);
     font-weight: var(--ui-fw-b);
+}
+.work-hud__chev {
+    transition: transform 0.15s;
+}
+.work-hud[data-open='true'] .work-hud__chev {
+    transform: rotate(180deg);
+}
+.work-hud__body {
+    display: grid;
+    gap: var(--ui-s2);
+}
+.work-hud[data-open='false'] .work-hud__body {
+    display: none;
+}
+.work-hud[data-open='false'] {
+    padding: var(--ui-s2) var(--ui-s3);
+    gap: var(--ui-s1);
+}
+.work-hud[data-open='false'] .work-hud__bar {
+    height: 10px;
+    font-size: 0;
 }
 .work-hud__bar {
     display: flex;

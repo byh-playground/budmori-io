@@ -19,8 +19,13 @@ export class FarmMode {
             return;
         }
         if (world.isWorker(unit)) {
-            // Workers keep to their job: no eating, no breeding.
-            this.wander(world, unit, dt);
+            // Workers keep to their job at the work station: no eating, no breeding.
+            const SLOT = world.workSlot(unit);
+            if (SLOT) {
+                world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(1.2, unit));
+            } else {
+                this.wander(world, unit, dt);
+            }
             return;
         }
         if (!unit.mature || unit.cooldown > 0) {
