@@ -7772,6 +7772,7 @@
             defaultBasisPoints: 4e3,
             starterFood: 0,
             maxFood: 50,
+            swingWindupSeconds: 0.28,
             starterUnits: 6,
             node: { x: -5.5, y: -2.5 }
           }),
@@ -8817,6 +8818,9 @@
           this._workerIds = /* @__PURE__ */ new Set();
           this._workSlots = /* @__PURE__ */ new Map();
           this._workerOrder = [];
+          this._swing = null;
+          this._lastSwingerId = null;
+          this._swingCursor = 0;
           this._workRate = 0;
           this._workCount = 0;
           this._nextWorkerRefreshTick = 0;
@@ -9924,16 +9928,12 @@
         isWorker(unit) {
           return this._workerIds.has(unit.id);
         }
-        // The worker who lands the next hit, and the one who landed the last, so the swing can be drawn around the tap.
-        workSwinger(offset) {
-          const COUNT = this._workerOrder.length;
-          return COUNT ? this._workerOrder[((this.foodTaps.revision + offset) % COUNT + COUNT) % COUNT] : null;
+        // A swing in progress ({ id, remaining }) and the worker whose hit landed last; both are transient render hints.
+        get workSwing() {
+          return this._swing;
         }
-        msUntilNextTap() {
-          if (this._workRate <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
-            return Infinity;
-          }
-          return Math.max(0, (0.5 - this.foodTaps.autoClock) / (this._workRate * 2.5) * 1e3);
+        get lastSwingerId() {
+          return this._lastSwingerId;
         }
         workSlot(unit) {
           return this._workSlots.get(unit.id) || null;
@@ -10029,10 +10029,23 @@
           if (this.food.length >= CONFIG.farm.work.maxFood) {
             return;
           }
-          this.foodTaps.autoClock += Math.min(elapsed, 0.1) * this._workRate * 2.5;
-          while (this.foodTaps.autoClock + 1e-9 >= 0.5) {
-            this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
-            this.tapFood("auto");
+          const STEP = Math.min(elapsed, 0.1);
+          this.foodTaps.autoClock = Math.min(0.5, this.foodTaps.autoClock + STEP * this._workRate * 2.5);
+          if (!this._swing && this.foodTaps.autoClock + 1e-9 >= 0.5) {
+            const COUNT = this._workerOrder.length;
+            this._swing = {
+              id: COUNT ? this._workerOrder[this._swingCursor++ % COUNT] : null,
+              remaining: CONFIG.farm.work.swingWindupSeconds
+            };
+          }
+          if (this._swing) {
+            this._swing.remaining -= STEP;
+            if (this._swing.remaining <= 0) {
+              this._lastSwingerId = this._swing.id;
+              this._swing = null;
+              this.foodTaps.autoClock = Math.max(0, this.foodTaps.autoClock - 0.5);
+              this.tapFood("auto");
+            }
           }
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
@@ -13747,7 +13760,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.21";
+      PRODUCT_VERSION = "0.10.22";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15881,13 +15894,17 @@
     if (!SLOT || u.hp <= 0 || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.35) {
       return null;
     }
-    const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
-    if (u.id === sim.workSwinger(-1) && SINCE >= 0 && SINCE < 760) {
-      return SINCE < 400 ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE } : { name: "recover", elapsed: SINCE - 400 };
+    const SWING = sim.workSwing;
+    if (SWING?.id === u.id) {
+      if (renderer.swingSeen !== SWING) {
+        renderer.swingSeen = SWING;
+        renderer.swingSeenAt = renderer.displayTimeMs;
+      }
+      return { name: "windup", elapsed: Math.min(279, renderer.displayTimeMs - renderer.swingSeenAt) };
     }
-    const UNTIL = sim.msUntilNextTap();
-    if (u.id === sim.workSwinger(0) && UNTIL <= 280) {
-      return { name: "windup", elapsed: 280 - UNTIL };
+    const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
+    if (u.id === sim.lastSwingerId && SINCE >= 0 && SINCE < 760) {
+      return SINCE < 400 ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE } : { name: "recover", elapsed: SINCE - 400 };
     }
     return null;
   }

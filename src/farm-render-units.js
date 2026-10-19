@@ -22,15 +22,19 @@ function workSwing(u, sim, renderer) {
     if (!SLOT || u.hp <= 0 || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.35) {
         return null;
     }
+    const SWING = sim.workSwing;
+    if (SWING?.id === u.id) {
+        if (renderer.swingSeen !== SWING) {
+            renderer.swingSeen = SWING;
+            renderer.swingSeenAt = renderer.displayTimeMs;
+        }
+        return { name: 'windup', elapsed: Math.min(279, renderer.displayTimeMs - renderer.swingSeenAt) };
+    }
     const SINCE = renderer.displayTimeMs - (renderer.nodeHitAt ?? -1e9);
-    if (u.id === sim.workSwinger(-1) && SINCE >= 0 && SINCE < 760) {
+    if (u.id === sim.lastSwingerId && SINCE >= 0 && SINCE < 760) {
         return SINCE < 400
             ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: SINCE }
             : { name: 'recover', elapsed: SINCE - 400 };
-    }
-    const UNTIL = sim.msUntilNextTap();
-    if (u.id === sim.workSwinger(0) && UNTIL <= 280) {
-        return { name: 'windup', elapsed: 280 - UNTIL };
     }
     return null;
 }
