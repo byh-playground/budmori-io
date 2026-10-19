@@ -1,25 +1,26 @@
-tree 8dbf9a1bebe377175e218a5da03d73752b367906
-parent a9f57cb4ae4454afe4547608316f989754a11cd8
-author byh020907 <byh020907@naver.com> 1792290388 +0900
-committer GitHub <noreply@github.com> 1792290388 +0900
+tree 0013f5d15e715348309cdf3baa79d6f3c7edd2ea
+parent 15be3ce7678a18922b68a362756213e73de27ea2
+parent 9e9a943a3ef41bfcf1dc341ac7eab772c529d4ad
+author byh020907 <byh020907@naver.com> 1792329465 +0900
+committer GitHub <noreply@github.com> 1792329465 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq1C5UCRC1aQ7uu5UhlAAAUTsQAIcOUKJFWJ1m+ahWtt/cKQy6
- 38fkvKZ5lS6L1d+uQI578zjHk7n8DQib0WdlAtL/xKL4IeUqVY/gXBlbU8yEvMm/
- 3zWsiNMxMX5VNYEF3rdWMv6fJkl8LDVdBalHm10eC7uHHpbSE653+jZog9mrbTE5
- iwMQjHOHh+UXGiNUR3HWqxggVXhPtbJhMGxaGx+HDPAB3B8Aapu2MHKFidpMOaQF
- b3oUS8OqrtH0ns0ODq5NHY3LI98XZlWOhizemrYYvgVp/248rznJg7bo5vQX0jLG
- 7taXqrMgukdwVh73pHmbt+0kApVvUMi5OYmJoOGL8wIhRK3g35nb9xy28P6iuDEU
- u3oaQH5uCFNa69SW2RvnbldQ2/d3tXYqaE/CuXwyDsJQLlIF77VWZZWZesBXTaD9
- U9rVQ34q+vECXhVsynuyxf+oyFTYQ+r9LuiOD8mOvWooQoRariQ1I7w/uNhk43be
- NuI4D8p3HRsU2N1PKHnqfwWs9DWRr2KwpZqG1dQPEvRqmn/aNjyUe1A8RZIHZtGt
- /8uOOk0vx6JLoq4Yv5T+D7rGWurtRVHCBZQBvhgUBsq6fnLgijbCl2d3xT+uoEQo
- F4PmogDOMk4kKpe/8pdcj4YnL+oB6TCmLZnRK82XEFQ44guE0RzyQcrN39vUUsdo
- JNAiEjNhtPif+C18cMUd
- =9AeM
+ wsFcBAABCAAQBQJq1Mb5CRC1aQ7uu5UhlAAAnsQQAI1Msq4d9zQWX59H0rHAipyK
+ WBPYkm1INooV+B/bvi44w4n9f3Qs4CI4s9PHpfUNoGwxko4TF9Pk/YJMDR++6WnY
+ VO18jUZCk2ECRFf2kZ1jcv4jVybwHRjc3Kj/xGdS4LoGF4Py2gQI5wYnturyEdyS
+ 3soY3MpD0QC7ZMAH2vkJVci+XGb7VQZCYnnxWOdbxGnYByYRFVGHc6JL6jn/eg8L
+ QLdLMn/dKEeF4QMu/05Yj37KUklh31kNtKdfo2jEoSIxuZoaLjfcFAPiedDc1Zb2
+ XVQrfdLkICNdM6/uOSTJJWuJD4MOWPPDkvBkv0IJYpPMek/eU59u5nK2bw2fqMrZ
+ QdY3dpFou7W4T/W/GR6YvoC9hcOVqkSM0DgVQ8N92nVR2pln47Mww+mYJ61YJ2QW
+ hOpnGxHxMTvH2afmMGsIH2NQ6iSjPx6f24oWfLOP5hVwPN31S+zf5KDE0HCydy7g
+ uDZp3ZGObVBkJF0I/wR8lg7BpeL+GdFFXMRMKMJ5EjL9x0xujpKtLVYQiMvQ82LK
+ zYhP0FfO6gcHoNxtRGmEw9F5MMZrl88AsANtPWJ89qdyeYWrk7UJ7yfYmYBoBb9D
+ tkJjYzwWV/XiKp6dSHtU2gnf6XcUnoujAuAWp2fYpP17H+IefOwjQ56MgetUzMpO
+ 6B2osmadfyznOkZvyyL5
+ =3max
  -----END PGP SIGNATURE-----
  
 
-feat: PRD 대량 추첨 재개 API 추가
+Merge pull request #99 from byh-playground/codex/room-session-leave-ack
 
-성공 간격 예산으로 대량 PRD 배치를 나누고 PRD·SeededPRNG·trial cursor·누적 성공 수를 함께 저장하고 복원합니다. 기존 rollMany 경로와 분포를 유지하고 고정 예산 재개 시나리오와 전체 PR CI를 통과했습니다.
+[bug-fix] 퇴장 커밋 뒤 join deadline 진입 방지
