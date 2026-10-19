@@ -13695,7 +13695,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.15";
+      PRODUCT_VERSION = "0.10.16";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20868,7 +20868,6 @@
     });
     world.setWorkBasisPoints(loadWorkBasisPoints(world.workBasisPoints));
     DOLLAR2("farmWorkRatio").value = String(Math.round(world.workBasisPoints / 100));
-    DOLLAR2("farmWorkOutput").textContent = `${Math.round(world.workBasisPoints / 100)}%`;
     return active;
   }
   install(new GARDEN());
@@ -21480,7 +21479,6 @@
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
-    DOLLAR2("farmWorkRatio").disabled = LOCKED;
     const COUNTS = W.roster.countsBySpecies(), TOTAL = [...COUNTS.values()].reduce((sum, count) => sum + count, 0);
     DOLLAR2("farmRatioList").innerHTML = W.farmTargets.map((value, speciesId) => {
       const SPECIES = speciesById(speciesId), COUNT = COUNTS.get(speciesId) || 0, CURRENT = TOTAL ? (COUNT / TOTAL * 100).toFixed(0) : "0";
@@ -21690,14 +21688,21 @@
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
-  DOLLAR2("farmWorkRatio").addEventListener("input", (e) => {
-    DOLLAR2("farmWorkOutput").textContent = `${Number(e.target.value)}%`;
-  });
-  DOLLAR2("farmWorkRatio").addEventListener("change", (e) => {
-    const BASIS_POINTS = Number(e.target.value) * 100;
+  function applyWorkPercent(percent) {
+    const BASIS_POINTS = percent * 100;
+    DOLLAR2("farmWorkRatio").value = String(percent);
     saveWorkBasisPoints(BASIS_POINTS);
     (personalGarden || active.world).setWorkBasisPoints(BASIS_POINTS);
     active.queue("farm-work", { basisPoints: BASIS_POINTS });
+  }
+  DOLLAR2("farmWorkRatio").addEventListener("change", (e) => {
+    applyWorkPercent(Number(e.target.value));
+  });
+  DOLLAR2("workHud").addEventListener("click", (e) => {
+    const BUTTON = e.target.closest("[data-work-preset]");
+    if (BUTTON && !BUTTON.disabled) {
+      applyWorkPercent(Number(BUTTON.dataset.workPreset));
+    }
   });
   DOLLAR2("farmRatioList").addEventListener("input", (e) => {
     const INPUT = e.target.closest("[data-farm-target]");
@@ -22203,6 +22208,7 @@
     }
     syncFlag("bossEncounterScreen", "hidden", home || !bossEncounterOpen);
     syncFlag("farmControls", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("workHud", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag("raidControls", "hidden", !RAID || home);
     syncFlag("bossbar", "hidden", !BATTLE_HUD || home);
     syncText(
@@ -22262,10 +22268,29 @@
     );
     syncText("warehouseStock", String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
-    syncText(
-      "farmWorkNote",
-      WORK_WORLD.warehouseFull ? `${WORK_WORLD.workerCount}마리 일하는 중 · 창고가 가득 찼어요` : `${WORK_WORLD.workerCount}마리 일하는 중 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`
-    );
+    const WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), PERCENT = Math.round(WORK_WORLD.workBasisPoints / 100);
+    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;
+    if (WORK_WORLD.warehouseFull) {
+      note = "창고가 가득 찼어요 · 일꾼이 쉬어요";
+      warn = true;
+    } else if (WORKERS === 0) {
+      note = "일꾼이 없어서 먹이가 안 만들어져요";
+      warn = true;
+    }
+    DOLLAR2("farmWorkRatio").disabled = !!farmSortTransition;
+    if (document.activeElement !== DOLLAR2("farmWorkRatio")) {
+      DOLLAR2("farmWorkRatio").value = String(PERCENT);
+    }
+    syncText("workHudNote", note);
+    syncText("workHudBreed", `번식 ${BREEDERS}`);
+    syncText("workHudWork", `일꾼 ${WORKERS}`);
+    syncData("workHud", "warn", warn);
+    DOLLAR2("workHudBreed").style.flex = `${Math.max(1, 100 - PERCENT)} 1 0`;
+    DOLLAR2("workHudWork").style.flex = `${Math.max(1, PERCENT)} 1 0`;
+    for (const BUTTON of DOLLAR2("workHud").querySelectorAll("[data-work-preset]")) {
+      BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.workPreset) === PERCENT));
+      BUTTON.disabled = !!farmSortTransition;
+    }
     syncText("warehouseProgressLabel", `창고 생산 ${W.foodTaps.remainder}/5`);
     syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
     syncAttribute("warehouseProgress", "aria-valuetext", `창고 생산 ${W.foodTaps.remainder}/5`);
