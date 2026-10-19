@@ -511,11 +511,10 @@
   function assignWorkers(world, config) {
     const WORK = config.farm.work, WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set();
     for (const PILE of world._piles) {
-      const MEMBERS = [], USED_SLOTS = /* @__PURE__ */ new Set();
+      const MEMBERS = [];
       for (const [ID, OLD] of PREVIOUS) {
         if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < WORK.maxAttackers) {
-          MEMBERS.push({ id: ID, slot: OLD.slot });
-          USED_SLOTS.add(OLD.slot);
+          MEMBERS.push(ID);
           TAKEN_IDS.add(ID);
         }
       }
@@ -526,23 +525,11 @@
         if (MEMBERS.length >= WORK.maxAttackers) {
           break;
         }
-        let slot = 0;
-        while (USED_SLOTS.has(slot)) {
-          slot++;
-        }
-        USED_SLOTS.add(slot);
-        MEMBERS.push({ id: UNIT3.id, slot });
+        MEMBERS.push(UNIT3.id);
         TAKEN_IDS.add(UNIT3.id);
       }
-      for (const MEMBER of MEMBERS) {
-        const ANGLE = MEMBER.slot / WORK.maxAttackers * Math.PI * 2 + 0.9;
-        ASSIGN.set(MEMBER.id, {
-          pile: PILE,
-          attacking: true,
-          slot: MEMBER.slot,
-          x: PILE.x + Math.cos(ANGLE) * RING_RADIUS,
-          y: PILE.y + Math.sin(ANGLE) * RING_RADIUS * 0.75
-        });
+      for (const ID of MEMBERS) {
+        ASSIGN.set(ID, { pile: PILE, attacking: true });
       }
     }
     for (const UNIT3 of WORKERS) {
@@ -558,14 +545,7 @@
         }
       }
       if (nearest) {
-        const ANGLE = UNIT3.seed * 3.1;
-        ASSIGN.set(UNIT3.id, {
-          pile: nearest,
-          attacking: false,
-          slot: -1,
-          x: nearest.x + Math.cos(ANGLE) * 4.6,
-          y: nearest.y + Math.sin(ANGLE) * 4.6 * 0.75
-        });
+        ASSIGN.set(UNIT3.id, { pile: nearest, attacking: false });
       }
     }
     world._workAssign = ASSIGN;
@@ -605,22 +585,20 @@
     if (!ASSIGN) {
       return null;
     }
-    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), ORDER = { x: ASSIGN.x, y: ASSIGN.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!ASSIGN.attacking || !SWING) {
+    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    if (!ASSIGN.attacking) {
+      ORDER.hold = DISTANCE <= WAIT_DISTANCE;
       return ORDER;
     }
-    if (SWING.phase === "idle" && Math.hypot(unit.x - PILE.x, unit.y - PILE.y) <= NEAR_PILE) {
-      ORDER.hold = true;
-      ORDER.face = true;
-    }
-    if (SWING.phase === "fire") {
-      ORDER.x = PILE.x;
-      ORDER.y = PILE.y;
+    if (!SWING || SWING.phase === "idle") {
+      ORDER.hold = DISTANCE <= NEAR_PILE;
+      ORDER.face = ORDER.hold;
+    } else if (SWING.phase === "fire") {
       ORDER.speed = CHARGE_SPEED;
     } else if (SWING.phase === "windup") {
       ORDER.hold = true;
       ORDER.face = true;
-    } else if (SWING.phase === "recover") {
+    } else {
       ORDER.hold = true;
     }
     return ORDER;
@@ -710,16 +688,16 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, RING_RADIUS, STACKS_PER_FOOD;
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       SWING_WINDUP = 0.28;
       SWING_RECOVER = 0.36;
       NEAR_PILE = 4.4;
+      WAIT_DISTANCE = 6.5;
       CHARGE_SPEED = 18;
       CHARGE_TIMEOUT = 1.6;
       RECOIL_SPEED = 5.5;
-      RING_RADIUS = 2.8;
       STACKS_PER_FOOD = 5;
     }
   });
@@ -13974,7 +13952,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.25";
+      PRODUCT_VERSION = "0.10.26";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
