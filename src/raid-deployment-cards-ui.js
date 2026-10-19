@@ -174,11 +174,8 @@ export class RaidDeploymentCardsUI {
             const SPECIES_ID = Number(BUTTON.dataset.deploySpecies),
                 REMAINING = roster.troops.filter((troop) => troop.species === SPECIES_ID && !troop.deployed).length;
             BUTTON.disabled = REMAINING === 0;
-            BUTTON.querySelector('small').textContent = `${REMAINING} \uB0A8\uC74C`;
-            BUTTON.setAttribute(
-                'aria-label',
-                `${speciesById(SPECIES_ID).name} \uBCD1\uB825 \uBC30\uCE58, \uB0A8\uC740 ${REMAINING}\uB9C8\uB9AC`,
-            );
+            BUTTON.querySelector('small').textContent = `${REMAINING} 남음`;
+            BUTTON.setAttribute('aria-label', `${speciesById(SPECIES_ID).name} 병력 배치, 남은 ${REMAINING}마리`);
         }
     }
     drawEditor(state, points, locked, owned) {

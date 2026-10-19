@@ -6,9 +6,8 @@ export const PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
         species: 0,
         availableByDefault: true,
         minimumTier: 1,
-        name: '\uD68C\uBCF5 \uAE30\uB3D9',
-        description:
-            '\uC801 \uACF5\uACA9\uC73C\uB85C \uAC15\uC81C \uC774\uB3D9\uC774 \uB05D\uB098\uBA74 2\uCD08 \uB3D9\uC548 \uC774\uB3D9 \uC18D\uB3C4\uAC00 \uC99D\uAC00\uD569\uB2C8\uB2E4.',
+        name: '회복 기동',
+        description: '적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.',
         powerValues: Object.freeze([0.25, 0.35, 0.55]),
     }),
     model: Object.freeze({

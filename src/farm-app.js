@@ -1394,18 +1394,18 @@ function renderProgressionResetActions() {
         ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: 'all' }, CONTEXT),
         LABEL =
             menuTab === 'growth'
-                ? '\uc131\uc7a5 \ud56d\ubaa9 \ucd08\uae30\ud654'
+                ? '성장 항목 초기화'
                 : menuTab === 'formation'
-                  ? '\ud615\uc131 \ub2a5\ub825 \ucd08\uae30\ud654'
+                  ? '형성 능력 초기화'
                   : menuTab === 'deployment'
-                    ? '\ubcd1\ub825 \ud3b8\uc131 \ucd08\uae30\ud654'
-                    : '\uc774 \uc885 \ud2b9\uc131 \ucd08\uae30\ud654';
+                    ? '병력 편성 초기화'
+                    : '이 종 특성 초기화';
     HOST.hidden = false;
     CURRENT.hidden = menuTab === 'abilities';
     CURRENT.disabled = !CURRENT_CHECK.allowed;
     CURRENT.textContent = `${LABEL} · ${CURRENT_CHECK.refunded}P`;
     ALL.disabled = !ALL_CHECK.allowed;
-    ALL.textContent = `\uc804\uccb4 \ucd08\uae30\ud654 · ${ALL_CHECK.refunded}P`;
+    ALL.textContent = `전체 초기화 · ${ALL_CHECK.refunded}P`;
 }
 const MENU_ROUTES = {
     play: '#/menu',

@@ -3786,14 +3786,14 @@ const GARDEN = class Garden {
             return {
                 available: false,
                 code: 'wrong-scene',
-                reason: '\ub18d\uc7a5 \ud654\uba74\uc5d0\uc11c\ub9cc \ud569\uc131\ud560 \uc218 \uc788\uc5b4\uc694.',
+                reason: '농장 화면에서만 합성할 수 있어요.',
             };
         }
         if (this.farmBossEvent?.phase !== 'idle') {
             return {
                 available: false,
                 code: 'boss-event',
-                reason: '\ubcf4\uc2a4 \uc774\ubca4\ud2b8 \uc911\uc5d0\ub294 \ud569\uc131\ud560 \uc218 \uc5c6\uc5b4\uc694.',
+                reason: '보스 이벤트 중에는 합성할 수 없어요.',
             };
         }
         const MATERIALS = this.selectMergeMaterials();
@@ -3801,7 +3801,7 @@ const GARDEN = class Garden {
             return {
                 available: false,
                 code: 'no-eligible-materials',
-                reason: '\ud569\uc131 \uac00\ub2a5\ud55c \ub3d9\uc885 \uac1c\uccb4\uac00 \ubd80\uc871\ud574\uc694.',
+                reason: '합성 가능한 동종 개체가 부족해요.',
             };
         }
         return {
@@ -3810,7 +3810,7 @@ const GARDEN = class Garden {
             tier: MATERIALS[0].tier + 1,
             materialCount: MATERIALS.length,
             materials: MATERIALS,
-            reason: 'T' + (MATERIALS[0].tier + 1) + ' \ud569\uc131 ' + MATERIALS.length + '\uac1c',
+            reason: 'T' + (MATERIALS[0].tier + 1) + ' 합성 ' + MATERIALS.length + '개',
         };
     }
     mergeAvailability() {

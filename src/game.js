@@ -3261,7 +3261,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "회복 기동",
-          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가합니다.",
+          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
           powerValues: Object.freeze([0.25, 0.35, 0.55])
         }),
         model: Object.freeze({
@@ -14211,10 +14211,7 @@
         const SPECIES_ID = Number(BUTTON.dataset.deploySpecies), REMAINING = roster.troops.filter((troop) => troop.species === SPECIES_ID && !troop.deployed).length;
         BUTTON.disabled = REMAINING === 0;
         BUTTON.querySelector("small").textContent = `${REMAINING} 남음`;
-        BUTTON.setAttribute(
-          "aria-label",
-          `${speciesById(SPECIES_ID).name} 병력 배치, 남은 ${REMAINING}마리`
-        );
+        BUTTON.setAttribute("aria-label", `${speciesById(SPECIES_ID).name} 병력 배치, 남은 ${REMAINING}마리`);
       }
     }
     drawEditor(state, points, locked, owned) {
@@ -19650,7 +19647,7 @@
     );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
     const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const LEVEL_MARKUP = renderPlayerProgressMarkup(state), DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용됩니다. 공용 포인트로 능력 효과를 강화할 수 있어요.";
+    const LEVEL_MARKUP = renderPlayerProgressMarkup(state), DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 공용 포인트로 능력 효과를 강화할 수 있어요.";
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
