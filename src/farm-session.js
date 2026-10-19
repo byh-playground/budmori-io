@@ -624,7 +624,13 @@ class FarmSession {
             case 'farm-target':
                 return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
             case 'farm-work':
-                return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints);
+                return (
+                    W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints)
+                );
+            case 'farm-build':
+                return W.scene === 'farm' && typeof c.facilityId === 'string' && W.startBuild(c.facilityId);
+            case 'farm-rush':
+                return W.scene === 'farm' && W.setBuildRush(c.on === true);
             case 'farm-sort':
                 return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':

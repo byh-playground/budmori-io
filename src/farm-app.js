@@ -657,7 +657,11 @@ function requestFeed() {
     }
     return false;
 }
-const WORK_STORAGE_KEYS = { work: 'budmori.work.basisPoints', resource: 'budmori.work.resourceBasisPoints' };
+const WORK_STORAGE_KEYS = {
+    work: 'budmori.work.basisPoints',
+    resource: 'budmori.work.resourceBasisPoints',
+    build: 'budmori.work.buildBasisPoints',
+};
 // The worker ratio is a play setting, not part of the farm save, so old saves stay valid.
 function loadWorkSetting(key, fallback) {
     try {
@@ -675,16 +679,22 @@ function saveWorkSetting(key, value) {
         /* The ratio still applies for this run. */
     }
 }
-// The HUD bar is [breed | food workers | resource workers]; both cuts are percentages of the whole farm.
+// The HUD bar is [breed | food | resource | build]; the three cuts are percentages of the whole farm.
 function workCuts(world) {
     const WORK = world.workBasisPoints / 100,
         CUT_A = 100 - WORK,
-        CUT_B = 100 - (WORK * world.resourceBasisPoints) / 10000;
-    return { a: Math.round(CUT_A / 5) * 5, b: Math.round(CUT_B / 5) * 5 };
+        CUT_C = 100 - (WORK * world.buildBasisPoints) / 10000,
+        CUT_B = CUT_C - (WORK * world.resourceBasisPoints) / 10000,
+        ROUND = (value) => Math.round(value / 5) * 5;
+    return { a: ROUND(CUT_A), b: ROUND(CUT_B), c: ROUND(CUT_C) };
 }
-function cutsToBasisPoints(a, b) {
+function cutsToBasisPoints(a, b, c) {
     const WORK = 100 - a;
-    return { work: WORK * 100, resource: WORK > 0 ? Math.round(((100 - b) / WORK) * 10000) : 0 };
+    return {
+        work: WORK * 100,
+        resource: WORK > 0 ? Math.round(((c - b) / WORK) * 10000) : 0,
+        build: WORK > 0 ? Math.round(((100 - c) / WORK) * 10000) : 0,
+    };
 }
 function install(world) {
     if (active) {
@@ -700,6 +710,7 @@ function install(world) {
     world.setWorkBasisPoints(
         loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
         loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
+        loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
     );
     return active;
 }
@@ -1606,20 +1617,26 @@ DOLLAR('farmPlotActions').addEventListener('click', (e) => {
         beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
 });
-function applyWorkCuts(a, b) {
-    const CUT_A = Math.min(a, b),
-        CUT_B = Math.max(a, b),
-        POINTS = cutsToBasisPoints(CUT_A, CUT_B);
+function applyWorkCuts(a, b, c) {
+    const [CUT_A, CUT_B, CUT_C] = [a, b, c].sort((x, y) => x - y),
+        POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C);
     DOLLAR('workCutA').value = String(CUT_A);
     DOLLAR('workCutB').value = String(CUT_B);
+    DOLLAR('workCutC').value = String(CUT_C);
     saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
     saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
-    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource);
-    active.queue('farm-work', { basisPoints: POINTS.work, resourceBasisPoints: POINTS.resource });
+    saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build);
+    active.queue('farm-work', {
+        basisPoints: POINTS.work,
+        resourceBasisPoints: POINTS.resource,
+        buildBasisPoints: POINTS.build,
+    });
 }
-for (const ID of ['workCutA', 'workCutB']) {
+const WORK_CUT_IDS = ['workCutA', 'workCutB', 'workCutC'];
+for (const ID of WORK_CUT_IDS) {
     DOLLAR(ID).addEventListener('input', () => {
-        applyWorkCuts(Number(DOLLAR('workCutA').value), Number(DOLLAR('workCutB').value));
+        applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR(id).value)));
     });
 }
 DOLLAR('workHudToggle').addEventListener('click', () => {
@@ -1630,9 +1647,28 @@ DOLLAR('workHudToggle').addEventListener('click', () => {
 DOLLAR('workHud').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-work-preset]');
     if (BUTTON && !BUTTON.disabled) {
-        const [CUT_A, CUT_B] = BUTTON.dataset.workPreset.split(',').map(Number);
-        applyWorkCuts(CUT_A, CUT_B);
+        applyWorkCuts(...BUTTON.dataset.workPreset.split(',').map(Number));
     }
+});
+function facilityLabel(id) {
+    const SPEC = CONFIG.farm.work.facilities[id];
+    return `<span>${SPEC.name}<br /><small>${SPEC.effect}</small></span><small data-cost>목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ''}</small>`;
+}
+for (const ID of Object.keys(CONFIG.farm.work.facilities)) {
+    const BUTTON = document.createElement('button');
+    BUTTON.type = 'button';
+    BUTTON.dataset.facility = ID;
+    BUTTON.innerHTML = facilityLabel(ID);
+    DOLLAR('facilityList').append(BUTTON);
+}
+DOLLAR('facilityList').addEventListener('click', (e) => {
+    const BUTTON = e.target.closest('[data-facility]');
+    if (BUTTON && !BUTTON.disabled) {
+        active.queue('farm-build', { facilityId: BUTTON.dataset.facility });
+    }
+});
+DOLLAR('buildRush').addEventListener('click', () => {
+    active.queue('farm-rush', { on: DOLLAR('buildRush').getAttribute('aria-pressed') !== 'true' });
 });
 DOLLAR('farmRatioList').addEventListener('input', (e) => {
     const INPUT = e.target.closest('[data-farm-target]');
@@ -2296,7 +2332,8 @@ function sync(display, now, notices) {
     const KINDS = WORK_WORLD.workerKindCounts,
         WORKERS = WORK_WORLD.workerCount,
         BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS),
-        CUTS = workCuts(WORK_WORLD);
+        CUTS = workCuts(WORK_WORLD),
+        SITE = WORK_WORLD.buildSite;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`,
         warn = false;
     if (WORKERS === 0) {
@@ -2306,25 +2343,50 @@ function sync(display, now, notices) {
         note = '농장에 먹이가 가득해요 · 일꾼이 쉬어요';
         warn = true;
     }
-    for (const ID of ['workCutA', 'workCutB']) {
+    if (SITE && WORKERS > 0) {
+        const SPEC = CONFIG.farm.work.facilities[SITE.facility];
+        note = `${SPEC.name} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
+    }
+    for (const ID of WORK_CUT_IDS) {
         DOLLAR(ID).disabled = !!farmSortTransition;
     }
-    if (document.activeElement !== DOLLAR('workCutA') && document.activeElement !== DOLLAR('workCutB')) {
+    if (!WORK_CUT_IDS.some((id) => document.activeElement === DOLLAR(id))) {
         DOLLAR('workCutA').value = String(CUTS.a);
         DOLLAR('workCutB').value = String(CUTS.b);
+        DOLLAR('workCutC').value = String(CUTS.c);
+    }
+    DOLLAR('buildRush').hidden = !SITE;
+    DOLLAR('buildRush').setAttribute('aria-pressed', String(WORK_WORLD.buildRush));
+    syncText('buildRush', WORK_WORLD.buildRush ? '전원 건설 중 (끄기)' : '전원 건설');
+    for (const BUTTON of DOLLAR('facilityList').children) {
+        const ID = BUTTON.dataset.facility,
+            SPEC = CONFIG.farm.work.facilities[ID],
+            BUILT = WORK_WORLD.facilityBuilt(ID);
+        BUTTON.disabled =
+            BUILT ||
+            !!SITE ||
+            WORK_WORLD.materials.wood < SPEC.cost.wood ||
+            WORK_WORLD.materials.stone < SPEC.cost.stone;
+        BUTTON.querySelector('[data-cost]').textContent = BUILT
+            ? '완성'
+            : SITE?.facility === ID
+              ? '짓는 중'
+              : `목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ''}`;
     }
     syncText('workHudNote', note);
     syncText('workHudBreed', `번식 ${BREEDERS}`);
     syncText('workHudFood', `먹이 ${KINDS.food}`);
     syncText('workHudRes', `자원 ${KINDS.resource}`);
+    syncText('workHudBuild', `건설 ${KINDS.build}`);
     syncText('materialWood', String(W.materials.wood));
     syncText('materialStone', String(W.materials.stone));
     syncData('workHud', 'warn', warn);
     DOLLAR('workHudBreed').style.flex = `${Math.max(1, CUTS.a)} 1 0`;
     DOLLAR('workHudFood').style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
-    DOLLAR('workHudRes').style.flex = `${Math.max(1, 100 - CUTS.b)} 1 0`;
+    DOLLAR('workHudRes').style.flex = `${Math.max(1, CUTS.c - CUTS.b)} 1 0`;
+    DOLLAR('workHudBuild').style.flex = `${Math.max(1, 100 - CUTS.c)} 1 0`;
     for (const BUTTON of DOLLAR('workHud').querySelectorAll('[data-work-preset]')) {
-        BUTTON.setAttribute('aria-pressed', String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b}`));
+        BUTTON.setAttribute('aria-pressed', String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUTS.c}`));
         BUTTON.disabled = !!farmSortTransition;
     }
     syncText('warehouseProgressLabel', `타작 ${W.foodTaps.remainder}/5`);
