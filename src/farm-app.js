@@ -393,7 +393,12 @@ function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } 
     ) {
         showBossRewardDialog(RECEIPT);
     }
-    if (RECEIPT.status === 'ready' && !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)) {
+    // A reward that was already fully opened (every box revealed, e.g. after a reload) is not shown again.
+    if (
+        RECEIPT.status === 'ready' &&
+        RECEIPT.revealedCount < RECEIPT.boxCount &&
+        !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)
+    ) {
         showBossRewardDialog(RECEIPT, { auto: true });
     } else if (!DIALOG.hidden && bossRewardDialogReceiptKey === RECEIPT.receiptKey) {
         renderBossRewardBoxes(RECEIPT);

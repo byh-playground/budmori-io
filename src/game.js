@@ -14409,7 +14409,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.35";
+      PRODUCT_VERSION = "0.10.36";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -21566,7 +21566,7 @@
     if (raidVictory && RECEIPT.status === "calculating" && (DIALOG.hidden || bossRewardDialogReceiptKey !== RECEIPT.receiptKey)) {
       showBossRewardDialog(RECEIPT);
     }
-    if (RECEIPT.status === "ready" && !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)) {
+    if (RECEIPT.status === "ready" && RECEIPT.revealedCount < RECEIPT.boxCount && !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)) {
       showBossRewardDialog(RECEIPT, { auto: true });
     } else if (!DIALOG.hidden && bossRewardDialogReceiptKey === RECEIPT.receiptKey) {
       renderBossRewardBoxes(RECEIPT);
