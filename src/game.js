@@ -538,7 +538,7 @@
   }
   function pileRadius(pile) {
     if (pile.kind === "site") {
-      return 1.05;
+      return 1.8;
     }
     return (pile.kind === "wood" ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
   }
@@ -14157,7 +14157,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.29";
+      PRODUCT_VERSION = "0.10.30";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17463,7 +17463,7 @@
         const HIT = CLAMP2(1 - (now - seen.at) / 220, 0, 1), BASE = this.project(PILE.x, PILE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
         this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
         if (PILE.kind === "site") {
-          this.drawSite(PILE, BASE, X, S, SQUASH, LIFT);
+          this.drawSite(PILE, BASE, X, S * 1.7, SQUASH, LIFT);
           continue;
         }
         if (PILE.kind === "wood") {
@@ -17529,7 +17529,7 @@
     }
     drawFacilities(sim2) {
       for (const FACILITY of sim2.facilities || []) {
-        const BASE = this.project(FACILITY.x, FACILITY.y, 0), S = this.scale * 1.15, X = BASE.x;
+        const BASE = this.project(FACILITY.x, FACILITY.y, 0), S = this.scale * 2.1, X = BASE.x;
         this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, "#54452433");
         if (FACILITY.id === "windmill") {
           const SPIN = (this.displayTimeMs || 0) * 2e-3;

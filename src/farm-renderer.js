@@ -449,7 +449,7 @@ const DIORAMA = class Diorama {
                 LIFT = 1 - HIT * 0.16;
             this.groundEllipse(PILE.x, PILE.y, 1.5, 1.0, '#54452433');
             if (PILE.kind === 'site') {
-                this.drawSite(PILE, BASE, X, S, SQUASH, LIFT);
+                this.drawSite(PILE, BASE, X, S * 1.7, SQUASH, LIFT);
                 continue;
             }
             if (PILE.kind === 'wood') {
@@ -519,7 +519,7 @@ const DIORAMA = class Diorama {
     drawFacilities(sim2) {
         for (const FACILITY of sim2.facilities || []) {
             const BASE = this.project(FACILITY.x, FACILITY.y, 0),
-                S = this.scale * 1.15,
+                S = this.scale * 2.1,
                 X = BASE.x;
             this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, '#54452433');
             if (FACILITY.id === 'windmill') {

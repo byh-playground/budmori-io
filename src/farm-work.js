@@ -92,7 +92,7 @@ function capacity(world, config, pile) {
 // Piles are solid: the radius shrinks a little as the pile is used up.
 export function pileRadius(pile) {
     if (pile.kind === 'site') {
-        return 1.05;
+        return 1.8;
     }
     return (pile.kind === 'wood' ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
