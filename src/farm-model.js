@@ -116,8 +116,12 @@ const CONFIG = Object.freeze({
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            pileCount: 3,
-            pileFood: 12,
+            defaultResourceBasisPoints: 3000,
+            pileKinds: Object.freeze({
+                grain: Object.freeze({ count: 2, amount: 12 }),
+                wood: Object.freeze({ count: 1, amount: 8 }),
+                stone: Object.freeze({ count: 1, amount: 8 }),
+            }),
             pileGap: 6,
             pileRadiusX: 8,
             pileRadiusY: 6,
@@ -1289,6 +1293,9 @@ const GARDEN = class Garden {
         this.food = this.activeFarmPlot.food;
         this.warehouseFood = CONFIG.farm.work.starterFood;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
+        this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
+        this.materials = { wood: 0, stone: 0 };
+        this._workerKinds = new Map();
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
@@ -2584,20 +2591,26 @@ const GARDEN = class Garden {
     workSwingOf(id) {
         return this._swings.get(id) || null;
     }
+    workKind(unit) {
+        return this._workerKinds.get(unit.id) || 'food';
+    }
     workOrder(unit) {
         return workOrder(this, unit);
     }
     canBreedNow(unit) {
         return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
     }
-    setWorkBasisPoints(basisPoints) {
-        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
+    // workers share of the farm, and the share of those workers that gather materials instead of grain.
+    setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints) {
+        const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 10000;
+        if (!VALID(basisPoints) || !VALID(resourceBasisPoints)) {
             return false;
         }
-        if (basisPoints === this.workBasisPoints) {
+        if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints) {
             return true;
         }
         this.workBasisPoints = basisPoints;
+        this.resourceBasisPoints = resourceBasisPoints;
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         return true;
@@ -2657,6 +2670,15 @@ const GARDEN = class Garden {
         }
         this._workerIds = NEXT;
         this._workerRates = RATES;
+        // The highest ids gather materials; the rest work the grain piles. Stable while the roster is stable.
+        const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b),
+            RESOURCE_WORKERS = Math.round((SORTED_WORKERS.length * this.resourceBasisPoints) / 10000);
+        this._workerKinds = new Map(
+            SORTED_WORKERS.map((id, index) => [
+                id,
+                index >= SORTED_WORKERS.length - RESOURCE_WORKERS ? 'resource' : 'food',
+            ]),
+        );
         this._workCount = NEXT.size;
         this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
         assignWorkers(this, CONFIG);
@@ -2664,16 +2686,31 @@ const GARDEN = class Garden {
     get warehouseFull() {
         return this.food.length >= CONFIG.farm.work.maxFood;
     }
+    get workerKindCounts() {
+        let resource = 0;
+        for (const KIND of this._workerKinds.values()) {
+            resource += KIND === 'resource' ? 1 : 0;
+        }
+        return { food: this._workerKinds.size - resource, resource };
+    }
     get workerCount() {
         return this._workCount;
     }
     // Food per minute produced by workers right now.
     get workFoodPerMinute() {
+        return this._attackRate('food') * 60;
+    }
+    get workResourcePerMinute() {
+        return this._attackRate('resource') * 60;
+    }
+    _attackRate(kind) {
         let rate = 0;
         for (const [ID, ASSIGN] of this._workAssign) {
-            rate += ASSIGN.attacking ? this._workerRates.get(ID) || 0 : 0;
+            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
+                rate += this._workerRates.get(ID) || 0;
+            }
         }
-        return rate * 60;
+        return rate;
     }
     advanceAutoTaps(elapsed) {
         // Real elapsed time, independent of demo speed. Do not replay hidden/stalled frames.

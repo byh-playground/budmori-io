@@ -33,23 +33,28 @@ function pilePosition(world, config) {
     }
     return best || { x: 0, y: 0 };
 }
-function spawnPile(world, config) {
+function spawnPile(world, config, kind) {
     const POSITION = pilePosition(world, config);
     world._piles.push({
         id: ++world._pileId,
+        kind,
         x: POSITION.x,
         y: POSITION.y,
-        food: config.farm.work.pileFood,
-        maxFood: config.farm.work.pileFood,
+        food: config.farm.work.pileKinds[kind].amount,
+        maxFood: config.farm.work.pileKinds[kind].amount,
         stack: 0,
         hitRev: 0,
         big: false,
     });
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
+// Food workers fight grain piles; resource workers fight trees and rocks.
+function worksOn(world, unit, pile) {
+    return (world._workerKinds.get(unit.id) === 'resource') === (pile.kind !== 'grain');
+}
 // Piles are solid: the radius shrinks a little as the pile is used up.
 export function pileRadius(pile) {
-    return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
+    return (pile.kind === 'wood' ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
 export function resetWork(world) {
     world._piles = [];
@@ -70,12 +75,18 @@ export function assignWorkers(world, config) {
     for (const PILE of world._piles) {
         const MEMBERS = [];
         for (const [ID, OLD] of PREVIOUS) {
-            if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < WORK.maxAttackers) {
+            if (
+                OLD.pile === PILE &&
+                OLD.attacking &&
+                BY_ID.has(ID) &&
+                worksOn(world, BY_ID.get(ID), PILE) &&
+                MEMBERS.length < WORK.maxAttackers
+            ) {
                 MEMBERS.push(ID);
                 TAKEN_IDS.add(ID);
             }
         }
-        const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
+        const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id) && worksOn(world, u, PILE)).sort(
             (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y),
         );
         for (const UNIT of FREE) {
@@ -97,6 +108,9 @@ export function assignWorkers(world, config) {
         let nearest = null,
             nearestDistance = Infinity;
         for (const PILE of world._piles) {
+            if (!worksOn(world, UNIT, PILE)) {
+                continue;
+            }
             const D = Math.hypot(UNIT.x - PILE.x, UNIT.y - PILE.y);
             if (D < nearestDistance) {
                 nearestDistance = D;
@@ -124,15 +138,20 @@ function impact(world, config, pile) {
     }
     pile.stack = 0;
     pile.food--;
-    world.foodTaps.produced++;
     world.foodTaps.revision++;
+    if (pile.kind === 'grain') {
+        world.foodTaps.produced++;
+        world.spawnFood(
+            (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
+            (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
+            1,
+            { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } },
+        );
+    } else {
+        world.materials[pile.kind]++;
+        world.emit('food-land', pile.x, pile.y);
+    }
     world.markProgressChanged();
-    world.spawnFood(
-        (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
-        (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
-        1,
-        { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } },
-    );
     if (pile.food <= 0) {
         world._piles.splice(world._piles.indexOf(pile), 1);
         world.emit('landing-shockwave', pile.x, pile.y);
@@ -194,17 +213,24 @@ function pushOutOfPiles(world) {
 export function stepWork(world, config, dt) {
     const WORK = config.farm.work;
     pushOutOfPiles(world);
-    while (world._piles.length < WORK.pileCount) {
-        if (world._piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
-            spawnPile(world, config);
-            world._pileRespawn = 0;
-            assignWorkers(world, config);
-        } else {
-            world._pileRespawn += dt;
+    // Keep the configured number of piles of every kind; refill one at a time after a short wait.
+    let missing = null;
+    for (const [KIND, SPEC] of Object.entries(WORK.pileKinds)) {
+        if (world._piles.filter((pile) => pile.kind === KIND).length < SPEC.count) {
+            missing = KIND;
             break;
         }
     }
-    const FULL = world.food.length >= WORK.maxFood;
+    if (missing) {
+        const EMPTY = world._piles.length === 0;
+        world._pileRespawn += dt;
+        if (EMPTY || world._pileRespawn >= WORK.pileRespawnSeconds) {
+            spawnPile(world, config, missing);
+            world._pileRespawn = 0;
+            assignWorkers(world, config);
+        }
+    }
+    const FOOD_FULL = world.food.length >= WORK.maxFood;
     for (const [ID, ASSIGN] of world._workAssign) {
         if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
             continue;
@@ -226,7 +252,7 @@ export function stepWork(world, config, dt) {
                 continue;
             }
             swing.wait -= dt;
-            if (swing.wait <= 0 && !FULL) {
+            if (swing.wait <= 0 && !(FOOD_FULL && ASSIGN.pile.kind === 'grain')) {
                 swing.phase = 'windup';
                 swing.elapsed = 0;
             }

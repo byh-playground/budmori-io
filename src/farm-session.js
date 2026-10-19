@@ -624,7 +624,7 @@ class FarmSession {
             case 'farm-target':
                 return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
             case 'farm-work':
-                return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
+                return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints);
             case 'farm-sort':
                 return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':

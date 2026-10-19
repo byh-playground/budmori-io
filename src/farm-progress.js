@@ -163,6 +163,7 @@ export function captureFarmProgress(world) {
             autoClock: world.foodTaps.autoClock,
             remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
+            materials: { wood: world.materials.wood, stone: world.materials.stone },
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
         },
         totals: {
@@ -298,7 +299,11 @@ export function validateFarmProgress(data) {
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots']);
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials']);
+    if (data.food.materials !== undefined) {
+        keys(data.food.materials, ['wood', 'stone']);
+        ASSERT(SAFE_INTEGER(data.food.materials.wood) && SAFE_INTEGER(data.food.materials.stone));
+    }
     ASSERT(
         SAFE_INTEGER(data.food.warehouse) &&
             NUMBER(data.food.autoClock, 0, 0.51) &&
@@ -592,6 +597,7 @@ export function restoreFarmProgress(data) {
     WORLD.activePlotId = WORLD.playerProgression.farmPlots.currentPlotId;
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
+    WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = new Map();

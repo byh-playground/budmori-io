@@ -447,20 +447,35 @@ const DIORAMA = class Diorama {
                 SQUASH = 1 + HIT * 0.14,
                 LIFT = 1 - HIT * 0.16;
             this.groundEllipse(PILE.x, PILE.y, 1.5, 1.0, '#54452433');
-            this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
-            this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, '#dcb85f');
-            this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, '#e6c773');
-            this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, '#f1dc9a');
-            this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, '#a9793b');
-            for (let index = -2; index <= 2; index++) {
-                this.ellipse(
-                    X + index * 0.15 * S,
-                    BASE.y - 0.24 * S * LIFT,
-                    0.025 * S,
-                    0.1 * S,
-                    '#b98e45',
-                    index * 0.25,
-                );
+            if (PILE.kind === 'wood') {
+                // Tree: a trunk that sways with each hit under a flat round crown.
+                this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, '#7a5a34');
+                this.ellipse(X, BASE.y - 0.5 * S * LIFT, 0.2 * S * SQUASH, 0.5 * S * LIFT, '#9a7442');
+                this.ellipse(X + 0.06 * S, BASE.y - 0.5 * S * LIFT, 0.07 * S, 0.42 * S * LIFT, '#b48a52');
+                this.ellipse(X, BASE.y - 1.05 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, '#6f9b6f');
+                this.ellipse(X - 0.3 * S, BASE.y - 0.92 * S * LIFT, 0.42 * S, 0.3 * S, '#7fab76');
+                this.ellipse(X + 0.22 * S, BASE.y - 1.2 * S * LIFT, 0.4 * S, 0.28 * S, '#8fb98a');
+            } else if (PILE.kind === 'stone') {
+                this.ellipse(X, BASE.y - 0.28 * S * LIFT, 0.8 * S * SQUASH, 0.54 * S * LIFT, '#8f8d80');
+                this.ellipse(X - 0.05 * S, BASE.y - 0.42 * S * LIFT, 0.64 * S * SQUASH, 0.42 * S * LIFT, '#a9a79a');
+                this.ellipse(X - 0.2 * S, BASE.y - 0.54 * S * LIFT, 0.26 * S, 0.14 * S, '#c8c6b9');
+                this.ellipse(X + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, '#7c7a6e');
+            } else {
+                this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
+                this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, '#dcb85f');
+                this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, '#e6c773');
+                this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, '#f1dc9a');
+                this.ellipse(X, BASE.y - 0.4 * S * LIFT, 0.74 * S * SQUASH, 0.08 * S, '#a9793b');
+                for (let index = -2; index <= 2; index++) {
+                    this.ellipse(
+                        X + index * 0.15 * S,
+                        BASE.y - 0.24 * S * LIFT,
+                        0.025 * S,
+                        0.1 * S,
+                        '#b98e45',
+                        index * 0.25,
+                    );
+                }
             }
             // Five slots in front of the pile: one fills per hit, all five fill when a grain flies out.
             for (let index = 0; index < 5; index++) {
