@@ -17,13 +17,17 @@ async function verifyStartupPresentation() {
     ]) {
         globalThis[NAME] = await LOAD(`vendor/upstream/${FILE}.js`);
     }
-    const { Garden: GARDEN } = await LOAD('src/farm-model.js'),
+    const { Garden: GARDEN, CONFIG: FARM_CONFIG } = await LOAD('src/farm-model.js'),
         { FarmSession: FARM_SESSION } = await LOAD('src/farm-session.js');
     const { SPECIES_CATALOG } = await LOAD('src/species-catalog.js');
     const STARTER = new FARM_SESSION();
     try {
         const VIEW = STARTER.presentation(performance.now());
-        ASSERT.equal(VIEW.units.length, 2, 'default FarmSession captures both starter peas');
+        ASSERT.equal(
+            VIEW.units.length,
+            FARM_CONFIG.farm.work.starterUnits,
+            'default FarmSession captures every starter pea',
+        );
         ASSERT(VIEW.units.every((unit) => unit.species === 0 && unit.walnutGuarding === false));
     } finally {
         STARTER.dispose();
@@ -32,7 +36,7 @@ async function verifyStartupPresentation() {
         SAVE_WORLD = new GARDEN();
     const RESUMED = new FARM_SESSION(PARSE_SAVE(ENCODE_SAVE(SAVE_WORLD).text));
     try {
-        ASSERT.equal(RESUMED.presentation(performance.now()).units.length, 2);
+        ASSERT.equal(RESUMED.presentation(performance.now()).units.length, FARM_CONFIG.farm.work.starterUnits);
     } finally {
         RESUMED.dispose();
     }
