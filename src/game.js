@@ -8525,11 +8525,11 @@
           NEXT_FOODS.length = 0;
           let grounded = 0;
           for (let index = 0; index < this.food.length; index++) {
-            const FOOD = this.food[index];
-            this._foodOrder.set(FOOD, index);
-            if (FOOD.phase === "grounded") {
-              this.foodSpatial.insert(FOOD);
-              NEXT_FOODS.push(FOOD);
+            const FOOD2 = this.food[index];
+            this._foodOrder.set(FOOD2, index);
+            if (FOOD2.phase === "grounded") {
+              this.foodSpatial.insert(FOOD2);
+              NEXT_FOODS.push(FOOD2);
               grounded++;
             }
           }
@@ -8957,13 +8957,13 @@
             return false;
           }
           let nearest = null, nearestDistance = Infinity;
-          for (const FOOD of PLOT.food) {
-            if (this._inactiveFoodClaims.has(FOOD) || FOOD.phase !== "grounded") {
+          for (const FOOD2 of PLOT.food) {
+            if (this._inactiveFoodClaims.has(FOOD2) || FOOD2.phase !== "grounded") {
               continue;
             }
-            const DISTANCE = Math.hypot(FOOD.x - unit.x, FOOD.y - unit.y);
+            const DISTANCE = Math.hypot(FOOD2.x - unit.x, FOOD2.y - unit.y);
             if (DISTANCE < nearestDistance) {
-              nearest = FOOD;
+              nearest = FOOD2;
               nearestDistance = DISTANCE;
             }
           }
@@ -9905,7 +9905,7 @@
             }
             const ANGLE = this.random() * Math.PI * 2, SX = Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7), SY = Math.sin(ANGLE) * (CONFIG.farm.arena.radiusY + 0.2);
             const DURATION3 = 0.85 + this.random() * 0.25, Z = 0.3;
-            const FOOD = {
+            const FOOD2 = {
               x: SX,
               y: SY,
               z: Z,
@@ -9917,8 +9917,8 @@
               tx,
               ty
             };
-            this.food.push(FOOD);
-            this._trackFoodAdded(FOOD);
+            this.food.push(FOOD2);
+            this._trackFoodAdded(FOOD2);
             this.emit("feed", tx, ty);
             this.markProgressChanged();
             spawned++;
@@ -11715,18 +11715,18 @@
           this._foodCandidates.sort(
             (a, b) => (this._foodOrder.get(a) ?? Infinity) - (this._foodOrder.get(b) ?? Infinity)
           );
-          for (const FOOD of this._foodCandidates) {
-            if (FOOD.phase !== "grounded") {
+          for (const FOOD2 of this._foodCandidates) {
+            if (FOOD2.phase !== "grounded") {
               continue;
             }
-            const DX = u.x - FOOD.x, DY = u.y - FOOD.y, DISTANCE = Math.hypot(DX, DY);
+            const DX = u.x - FOOD2.x, DY = u.y - FOOD2.y, DISTANCE = Math.hypot(DX, DY);
             if (DISTANCE >= RADIUS) {
               continue;
             }
             const STRENGTH = 1 - DISTANCE / RADIUS, WEIGHT = STRENGTH * STRENGTH;
             if (DISTANCE < nearestDistance) {
               nearestDistance = DISTANCE;
-              nearest = FOOD;
+              nearest = FOOD2;
             }
             strongest = Math.max(strongest, STRENGTH);
             if (DISTANCE > 1e-6) {
@@ -11789,13 +11789,13 @@
           const MAX_RING = Math.max(CX, CY, GRID.cellCount - 1 - CX, GRID.cellCount - 1 - CY);
           for (let ring = 0; ring <= MAX_RING; ring++) {
             GRID.queryCellRing(CX, CY, ring, this._foodCandidates);
-            for (const FOOD of this._foodCandidates) {
-              if (!this._isCurrentGroundedFood(FOOD)) {
+            for (const FOOD2 of this._foodCandidates) {
+              if (!this._isCurrentGroundedFood(FOOD2)) {
                 continue;
               }
-              const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y), ORDER = this._foodOrder.get(FOOD) ?? Infinity;
+              const DISTANCE = Math.hypot(FOOD2.x - x, FOOD2.y - y), ORDER = this._foodOrder.get(FOOD2) ?? Infinity;
               if (DISTANCE < nearestDistance || DISTANCE === nearestDistance && ORDER < nearestOrder) {
-                nearest = FOOD;
+                nearest = FOOD2;
                 nearestDistance = DISTANCE;
                 nearestOrder = ORDER;
               }
@@ -11807,13 +11807,13 @@
               nearest = null;
               nearestDistance = Infinity;
               nearestOrder = Infinity;
-              for (const FOOD of this._groundedFoods) {
-                if (!this._isCurrentGroundedFood(FOOD)) {
+              for (const FOOD2 of this._groundedFoods) {
+                if (!this._isCurrentGroundedFood(FOOD2)) {
                   continue;
                 }
-                const DISTANCE = Math.hypot(FOOD.x - x, FOOD.y - y), ORDER = this._foodOrder.get(FOOD) ?? Infinity;
+                const DISTANCE = Math.hypot(FOOD2.x - x, FOOD2.y - y), ORDER = this._foodOrder.get(FOOD2) ?? Infinity;
                 if (DISTANCE < nearestDistance || DISTANCE === nearestDistance && ORDER < nearestOrder) {
-                  nearest = FOOD;
+                  nearest = FOOD2;
                   nearestDistance = DISTANCE;
                   nearestOrder = ORDER;
                 }
@@ -11912,18 +11912,18 @@
               return { done: false, unitsUsed };
             }
             if (state.phase === "fallback") {
-              const FOOD = SNAPSHOT.foods[state.fallbackIndex++];
-              if (this._isCurrentGroundedFood(FOOD)) {
-                this._considerFoodTarget(state, FOOD);
+              const FOOD2 = SNAPSHOT.foods[state.fallbackIndex++];
+              if (this._isCurrentGroundedFood(FOOD2)) {
+                this._considerFoodTarget(state, FOOD2);
               }
               this._foodSearchWork.candidateChecks++;
               unitsUsed++;
               continue;
             }
             if (state.bucketIndex < state.bucket.length) {
-              const FOOD = state.bucket[state.bucketIndex++];
-              if (this._isCurrentGroundedFood(FOOD)) {
-                this._considerFoodTarget(state, FOOD);
+              const FOOD2 = state.bucket[state.bucketIndex++];
+              if (this._isCurrentGroundedFood(FOOD2)) {
+                this._considerFoodTarget(state, FOOD2);
               }
               this._foodSearchWork.candidateChecks++;
               unitsUsed++;
@@ -13285,9 +13285,9 @@
       SAFE_INTEGER(data.food.warehouse) && NUMBER3(data.food.autoClock, 0, 0.51) && data.food.autoClock < 0.51 && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced) && Array.isArray(data.food.plots) && data.food.plots.length === PLAYER.farmPlots.plots.length
     );
     for (let index = 0; index < data.food.plots.length; index++) {
-      const FOOD = data.food.plots[index];
-      keys(FOOD, ["id", "count"]);
-      ASSERT(FOOD.id === PLAYER.farmPlots.plots[index].id && INTEGER(FOOD.count, 0, 140));
+      const FOOD2 = data.food.plots[index];
+      keys(FOOD2, ["id", "count"]);
+      ASSERT(FOOD2.id === PLAYER.farmPlots.plots[index].id && INTEGER(FOOD2.count, 0, 140));
     }
     keys(data.totals, ["births", "merges"]);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
@@ -13598,7 +13598,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.8";
+      PRODUCT_VERSION = "0.10.9";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15145,74 +15145,187 @@
 
   // src/farm-render-effects.js
   init_presentation4();
-  init_farm_model();
+
+  // src/features/farm-modes/basic-presentation.js
+  var GOLD = "#e1be67";
+  var GOLD_LIGHT = "#fae19e";
+  var FOOD = "#c2913e";
+  var DUST = "#b3a989";
+  var DUST_DARK = "#7e7e63";
+  var CREAM2 = "#fff4cf";
+  function groundTicks(renderer, x, y, inner, outer, count, color, width, offset = 0) {
+    const C = renderer.ctx;
+    C.strokeStyle = color;
+    C.lineWidth = Math.max(0.5, width);
+    C.lineCap = "round";
+    for (let index = 0; index < count; index++) {
+      const ANGLE = offset + index * TAU2 / count, FROM = renderer.project(x + Math.cos(ANGLE) * inner, y + Math.sin(ANGLE) * inner, 0.02), TO = renderer.project(x + Math.cos(ANGLE) * outer, y + Math.sin(ANGLE) * outer, 0.02);
+      C.beginPath();
+      C.moveTo(FROM.x, FROM.y);
+      C.lineTo(TO.x, TO.y);
+      C.stroke();
+    }
+  }
+  function puff(renderer, x, y, z, radius, color, alpha) {
+    const POINT2 = renderer.project(x, y, z);
+    renderer.ellipse(POINT2.x, POINT2.y, renderer.scale * radius, renderer.scale * radius * 0.78, rgba(color, alpha));
+  }
   var FeedEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      renderer.ring(E.x, E.y, 0.15 + Q * 0.35, `rgba(166,121,59,${(1 - Q) * 0.6})`, 0.035);
+      const P = clamp01(progress);
+      renderer.ring(effect.x, effect.y, 0.2 + easeOut(P) * 0.6, rgba(FOOD, 0.9 * (1 - P)), 0.06 * (1 - P) + 0.012);
+      for (let index = 0; index < 3; index++) {
+        const T = clamp01((P - index * 0.08) / 0.7);
+        if (T <= 0 || T >= 1) {
+          continue;
+        }
+        const ANGLE = index * TAU2 / 3 + 0.5, POINT2 = renderer.project(
+          effect.x + Math.cos(ANGLE) * 0.18 * T,
+          effect.y + Math.sin(ANGLE) * 0.14 * T,
+          0.15 + easeOut(T) * 0.7
+        );
+        drawSparkle(
+          renderer,
+          POINT2,
+          renderer.scale * 0.07 * pop(T * 2) * (1 - T * 0.5),
+          rgba(GOLD_LIGHT, 1 - T),
+          T * 2
+        );
+      }
     }
   };
   var FoodLandingEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      const T = Math.min(1, Q / 0.35);
-      renderer.ring(E.x, E.y, 0.1 + T * 0.42, `rgba(194,145,62,${(1 - T) * 0.85})`, 0.055);
-      for (let i = 0; i < 3 && T < 1; i++) {
-        const A = i * Math.PI * 2 / 3, P = renderer.project(
-          E.x + Math.cos(A) * T * 0.4,
-          E.y + Math.sin(A) * T * 0.4,
-          0.08 + Math.sin(T * Math.PI) * 0.2
+      const T = clamp01(progress / 0.45);
+      if (T >= 1) {
+        return;
+      }
+      renderer.groundEllipse(
+        effect.x,
+        effect.y,
+        0.1 + easeOut(T) * 0.4,
+        0.1 + easeOut(T) * 0.4,
+        rgba(GOLD, 0.35 * (1 - T))
+      );
+      renderer.ring(effect.x, effect.y, 0.1 + easeOut(T) * 0.5, rgba(FOOD, 0.85 * (1 - T)), 0.055 * (1 - T) + 0.01);
+      for (let index = 0; index < 5; index++) {
+        const ANGLE = index * TAU2 / 5 + 0.3, REACH = easeOut(T) * (0.34 + index % 2 * 0.14), POINT2 = renderer.project(
+          effect.x + Math.cos(ANGLE) * REACH,
+          effect.y + Math.sin(ANGLE) * REACH * 0.8,
+          0.06 + Math.sin(T * Math.PI) * (0.22 + index % 2 * 0.1)
         );
-        renderer.ellipse(P.x, P.y, renderer.scale * 0.045, renderer.scale * 0.035, `rgba(245,213,133,${1 - T})`);
+        renderer.ellipse(
+          POINT2.x,
+          POINT2.y,
+          renderer.scale * 0.065,
+          renderer.scale * 0.05,
+          rgba(index % 2 ? GOLD_LIGHT : GOLD, 1 - T * T)
+        );
       }
     }
   };
   var ImpactEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      renderer.ring(E.x, E.y, 0.1 + Q * 0.8, `rgba(146,131,78,${(1 - Q) * 0.65})`);
+      const P = clamp01(progress);
+      renderer.groundEllipse(
+        effect.x,
+        effect.y,
+        0.2 + easeOut(P) * 0.7,
+        0.2 + easeOut(P) * 0.7,
+        rgba(DUST, 0.3 * (1 - P))
+      );
+      renderer.ring(
+        effect.x,
+        effect.y,
+        0.1 + easeOut(P) * 0.85,
+        rgba(DUST_DARK, 0.85 * (1 - P)),
+        0.06 * (1 - P) + 0.01
+      );
+      groundTicks(
+        renderer,
+        effect.x,
+        effect.y,
+        0.2 + easeOut(P) * 0.6,
+        0.32 + easeOut(P) * 0.85,
+        6,
+        rgba(DUST_DARK, 0.5 * (1 - P)),
+        3
+      );
     }
   };
   var ShockwaveEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      const PROGRESS = CLAMP2(Q / (E.duration || 0.55), 0, 1), RADIUS = Math.max(0.08, E.radius) * (0.2 + 0.8 * PROGRESS);
-      renderer.groundEllipse(E.x, E.y, RADIUS, RADIUS, `rgba(225,190,103,${0.12 * (1 - PROGRESS)})`);
-      renderer.ring(E.x, E.y, RADIUS, `rgba(234,194,104,${0.82 * (1 - PROGRESS)})`, 0.12 * (1 - PROGRESS) + 0.025);
-      renderer.ring(E.x, E.y, Math.max(0.05, RADIUS - 0.12), `rgba(250,225,158,${0.55 * (1 - PROGRESS)})`, 0.045);
+      const P = clamp01(progress / (effect.duration || 0.55)), RADIUS = Math.max(0.08, effect.radius) * (0.2 + 0.8 * easeOut(P)), FADE = 1 - P;
+      renderer.groundEllipse(effect.x, effect.y, RADIUS, RADIUS, rgba(GOLD, 0.16 * FADE));
+      renderer.ring(effect.x, effect.y, RADIUS, rgba(GOLD, 0.9 * FADE), 0.12 * FADE + 0.025);
+      renderer.ring(
+        effect.x,
+        effect.y,
+        Math.max(0.05, RADIUS - 0.14),
+        rgba(GOLD_LIGHT, 0.6 * FADE),
+        0.045 * FADE + 0.01
+      );
+      groundTicks(renderer, effect.x, effect.y, RADIUS * 0.72, RADIUS * 0.94, 12, rgba(CREAM2, 0.7 * FADE), 3, P);
     }
   };
   var DropDustEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      const T = Math.min(1, Q / 0.28);
-      renderer.ring(E.x, E.y, 0.12 + T * 0.4, `rgba(126,126,99,${(1 - T) * 0.42})`, 0.045);
-      for (let i = 0; i < 4; i++) {
-        const A = i * Math.PI / 2 + T * 0.35, P = renderer.project(
-          E.x + Math.cos(A) * T * 0.33,
-          E.y + Math.sin(A) * T * 0.22,
-          0.025 + Math.sin(T * Math.PI) * 0.1
+      const P = clamp01(progress / 0.5);
+      if (P >= 1) {
+        return;
+      }
+      renderer.ring(
+        effect.x,
+        effect.y,
+        0.12 + easeOut(P) * 0.5,
+        rgba(DUST_DARK, 0.45 * (1 - P)),
+        0.045 * (1 - P) + 0.01
+      );
+      for (let index = 0; index < 6; index++) {
+        const ANGLE = index * TAU2 / 6 + 0.4, REACH = easeOut(P) * 0.42;
+        puff(
+          renderer,
+          effect.x + Math.cos(ANGLE) * REACH,
+          effect.y + Math.sin(ANGLE) * REACH * 0.7,
+          0.05 + P * 0.22,
+          0.08 + P * 0.09,
+          index % 2 ? "#c9bf9c" : DUST,
+          0.95 * (1 - P)
         );
-        renderer.ellipse(P.x, P.y, renderer.scale * 0.045, renderer.scale * 0.03, `rgba(179,169,137,${1 - T})`);
       }
     }
   };
   var EatingEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      for (let i = 0; i < 3; i++) {
-        const A = i * Math.PI * 2 / 3, T = Math.min(1, Q / 0.45), P = renderer.project(E.x + Math.cos(A) * T * 0.35, E.y + Math.sin(A) * T * 0.35, E.z + T * 0.6);
-        renderer.ellipse(
-          P.x,
-          P.y,
-          renderer.scale * 0.05,
-          renderer.scale * 0.075,
-          `rgba(255,235,160,${Math.max(0, 1 - Q / 0.45)})`,
-          A
+      const P = clamp01(progress), Z = effect.z || 0.5;
+      renderer.ring(
+        effect.x,
+        effect.y,
+        0.15 + easeOut(P) * 0.5,
+        rgba(GOLD_LIGHT, 0.6 * (1 - P)),
+        0.035 * (1 - P) + 0.01
+      );
+      for (let index = 0; index < 4; index++) {
+        const T = clamp01(P / 0.7), ANGLE = index * TAU2 / 4 + 0.6, POINT2 = renderer.project(
+          effect.x + Math.cos(ANGLE) * easeOut(T) * 0.38,
+          effect.y + Math.sin(ANGLE) * easeOut(T) * 0.3,
+          Z + easeOut(T) * 0.65 - T * T * 0.2
         );
+        if (T < 1) {
+          drawSparkle(
+            renderer,
+            POINT2,
+            renderer.scale * 0.12 * pop(T * 2) * (1 - T * 0.6),
+            rgba(index % 2 ? CREAM2 : GOLD, 1 - T),
+            T * 3
+          );
+        }
       }
     }
   };
+
+  // src/farm-render-effects.js
+  init_farm_model();
   var IMPACT = new ImpactEffect();
   var SHOCKWAVE = new ShockwaveEffect();
   var PEANUT_SPLIT = new PeanutDeathSplitPresentation();
@@ -15316,8 +15429,8 @@
       }
     }
     collectFood(renderer, world) {
-      for (const FOOD of world.food) {
-        renderer.addActor(renderer.foodPresentation, FOOD, 0.785 * FOOD.y - 0.62 * FOOD.z, -1);
+      for (const FOOD2 of world.food) {
+        renderer.addActor(renderer.foodPresentation, FOOD2, 0.785 * FOOD2.y - 0.62 * FOOD2.z, -1);
       }
     }
     drawBoundary() {
@@ -17664,11 +17777,11 @@
       VIEW.formationEffects.length = 0;
       VIEW.formationSlots = WORLD.formationRuntime.slots;
       FRAME.forEach(this.collectPresentationModel);
-      for (const FOOD of WORLD.food) {
-        if (FOOD.phase === "grounded") {
-          const ID = this.presentationIdentity("food", FOOD);
+      for (const FOOD2 of WORLD.food) {
+        if (FOOD2.phase === "grounded") {
+          const ID = this.presentationIdentity("food", FOOD2);
           if (!VIEW.presentationFoodIds.has(ID)) {
-            VIEW.food.push(FOOD);
+            VIEW.food.push(FOOD2);
           }
         }
       }
