@@ -5748,8 +5748,8 @@
         updateReady(world, u, dt) {
           let target = null;
           if (!u.fed) {
-            target = world.requestGroundFoodTarget(u);
-            if (target && world.canFarmPopulationAdvance(u.species) && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target)) {
+            target = world.requestGroundFoodTarget(u, dt);
+            if (target && world.canFarmPopulationAdvance(u.species) && world.consumeForageAttempt(u, target)) {
               world.clearFoodTargetSearch(u);
               u.meals = 1;
               world.markProgressChanged();
@@ -8314,7 +8314,7 @@
           this._groundedFoodCount = 0;
           this._groundedFoodRevision = 0;
           this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: /* @__PURE__ */ new Map() };
-          this._inactiveFoodClaims = /* @__PURE__ */ new Map();
+          this._forageFoodClaims = /* @__PURE__ */ new Map();
           this._foodSearchStates = /* @__PURE__ */ new WeakMap();
           this._foodSearchJobSequence = 0;
           this._foodSearchScheduler = null;
@@ -8356,6 +8356,7 @@
             "_groundedFoodCount",
             "_groundedFoodRevision",
             "_foodSearchSnapshot",
+            "_forageFoodClaims",
             "_foodSearchStates",
             "_foodSearchJobSequence",
             "_foodSearchScheduler",
@@ -8400,6 +8401,10 @@
               }
             },
             progressRevision: {
+              value: 0,
+              writable: true
+            },
+            farmTargetRevision: {
               value: 0,
               writable: true
             },
@@ -8577,6 +8582,7 @@
         }
         _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
           this._cancelFoodTargetSearch(unit);
+          this.clearForageAttempt(unit);
           this.clearPeaRecoveryBoost(unit);
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
@@ -8732,7 +8738,9 @@
           this.formationSkills?.end();
           this.formationRuntime = createFormationRuntime();
           this.progressRevision = 0;
+          this.farmTargetRevision = 0;
           this._progressTimerCheckpoint = 0;
+          this._forageFoodClaims.clear();
           this.cancelMergeTasks();
           this.cancelBreedPlans();
           this._breedPlans = /* @__PURE__ */ new Map();
@@ -8918,68 +8926,104 @@
             excludeReservation: options?.excludeReservation ?? null
           });
         }
-        clearInactiveForageAttempt(unit) {
-          const ATTEMPT = unit?.inactiveForageAttempt;
+        clearForageAttempt(unit) {
+          const ATTEMPT = unit?.forageAttempt;
           if (!ATTEMPT) {
             return false;
           }
-          if (this._inactiveFoodClaims.get(ATTEMPT.food) === unit.id) {
-            this._inactiveFoodClaims.delete(ATTEMPT.food);
+          if (this._forageFoodClaims.get(ATTEMPT.food) === unit.id) {
+            this._forageFoodClaims.delete(ATTEMPT.food);
           }
-          unit.inactiveForageAttempt = null;
+          unit.forageAttempt = null;
           return true;
         }
-        startInactiveForageAttempt(unit, dt) {
+        startForageAttempt(unit, dt, food = null) {
           const PLOT = this.farmPlots.get(unit.plotId);
-          if (!PLOT || PLOT.food.length === 0 || !this.canFarmPopulationAdvance(unit.species)) {
+          if (!PLOT || unit.plotId === RESERVE_PLOT_ID || PLOT.food.length === 0 || !this.canFarmPopulationAdvance(unit.species)) {
             return false;
           }
-          let nearest = null, nearestDistance = Infinity;
-          for (const FOOD of PLOT.food) {
-            if (this._inactiveFoodClaims.has(FOOD) || FOOD.phase !== "grounded") {
-              continue;
-            }
-            const DISTANCE = Math.hypot(FOOD.x - unit.x, FOOD.y - unit.y);
-            if (DISTANCE < nearestDistance) {
-              nearest = FOOD;
-              nearestDistance = DISTANCE;
-            }
+          let nearest = food, nearestDistance = food ? Math.hypot(food.x - unit.x, food.y - unit.y) : Infinity;
+          if (nearest && (!PLOT.food.includes(nearest) || nearest.phase !== "grounded")) {
+            return false;
           }
           if (!nearest) {
+            for (const FOOD of PLOT.food) {
+              if (this._forageFoodClaims.has(FOOD) || FOOD.phase !== "grounded") {
+                continue;
+              }
+              const DISTANCE = Math.hypot(FOOD.x - unit.x, FOOD.y - unit.y);
+              if (DISTANCE < nearestDistance) {
+                nearest = FOOD;
+                nearestDistance = DISTANCE;
+              }
+            }
+          }
+          if (!nearest || this._forageFoodClaims.has(nearest) && this._forageFoodClaims.get(nearest) !== unit.id) {
             return false;
+          }
+          if (unit.forageAttempt && unit.forageAttempt.food !== nearest) {
+            this.clearForageAttempt(unit);
           }
           const SPEED = Math.max(
             0.01,
             scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, "growth"), unit)
           ), TICKS = Math.max(1, Math.ceil(nearestDistance / SPEED / Math.max(dt, 1e-9)));
-          unit.inactiveForageAttempt = {
+          unit.forageAttempt = {
             plotId: PLOT.id,
             food: nearest,
-            dueTick: this.simulationTick + TICKS
+            dueTick: unit.forageAttempt?.food === nearest ? unit.forageAttempt.dueTick : this.simulationTick + TICKS
           };
-          this._inactiveFoodClaims.set(nearest, unit.id);
+          this._forageFoodClaims.set(nearest, unit.id);
+          return true;
+        }
+        forageAttemptReady(unit, food, requireContact = false) {
+          const ATTEMPT = unit?.forageAttempt, PLOT = this.farmPlots.get(unit?.plotId);
+          if (!ATTEMPT || !PLOT || ATTEMPT.plotId !== unit.plotId || ATTEMPT.food !== food || !PLOT.food.includes(food) || food.phase !== "grounded" || this._forageFoodClaims.get(food) !== unit.id || unit.hp <= 0 || unit.fed || !this.canFarmPopulationAdvance(unit.species)) {
+            this.clearForageAttempt(unit);
+            return false;
+          }
+          if (this.simulationTick < ATTEMPT.dueTick) {
+            return false;
+          }
+          return !requireContact || Math.hypot(food.x - unit.x, food.y - unit.y) < 0.42;
+        }
+        consumeForageAttempt(unit, food) {
+          if (!this.forageAttemptReady(unit, food, true)) {
+            return false;
+          }
+          const PLOT = this.farmPlots.get(unit.plotId), INDEX = PLOT.food.indexOf(food);
+          if (INDEX < 0 || PLOT.id === this.activePlotId && !this.consumeGroundFood(food)) {
+            this.clearForageAttempt(unit);
+            return false;
+          }
+          if (PLOT.id !== this.activePlotId) {
+            PLOT.food.splice(INDEX, 1);
+          }
+          this.clearForageAttempt(unit);
           return true;
         }
         advanceInactiveForage(unit, dt) {
           if (unit.hp <= 0 || unit.fed || unit.plotId === RESERVE_PLOT_ID || unit.plotId === this.activePlotId || !this.canFarmPopulationAdvance(unit.species)) {
-            this.clearInactiveForageAttempt(unit);
+            if (unit.hp <= 0 || unit.fed || unit.plotId === RESERVE_PLOT_ID || !this.canFarmPopulationAdvance(unit.species)) {
+              this.clearForageAttempt(unit);
+            }
             return false;
           }
-          let attempt = unit.inactiveForageAttempt;
+          let attempt = unit.forageAttempt;
           if (!attempt) {
-            this.startInactiveForageAttempt(unit, dt);
-            attempt = unit.inactiveForageAttempt;
+            this.startForageAttempt(unit, dt);
+            attempt = unit.forageAttempt;
           }
           if (!attempt || this.simulationTick < attempt.dueTick) {
             return false;
           }
           const PLOT = this.farmPlots.get(attempt.plotId), FOOD_INDEX = PLOT?.food.indexOf(attempt.food) ?? -1;
-          if (!PLOT || unit.plotId !== PLOT.id || FOOD_INDEX < 0 || this._inactiveFoodClaims.get(attempt.food) !== unit.id || !this.canFarmPopulationAdvance(unit.species)) {
-            this.clearInactiveForageAttempt(unit);
+          if (!PLOT || unit.plotId !== PLOT.id || FOOD_INDEX < 0 || this._forageFoodClaims.get(attempt.food) !== unit.id || !this.canFarmPopulationAdvance(unit.species)) {
+            this.clearForageAttempt(unit);
             return false;
           }
           PLOT.food.splice(FOOD_INDEX, 1);
-          this.clearInactiveForageAttempt(unit);
+          this.clearForageAttempt(unit);
           unit.meals = 1;
           this.markProgressChanged();
           return true;
@@ -9015,9 +9059,6 @@
             this.clearFoodTargetSearch(UNIT_LOCAL);
           }
           this.activePlotId = plotId;
-          for (const UNIT_LOCAL of this.unitCollection.unitsInPlot(plotId)) {
-            this.clearInactiveForageAttempt(UNIT_LOCAL);
-          }
           this.playerProgression.farmPlots.currentPlotId = plotId;
           this.food = this.activeFarmPlot.food;
           this._unitSpatialDirty = true;
@@ -9093,10 +9134,17 @@
           if (!NEXT) {
             return false;
           }
-          this.playerProgression.farmPlots.targetBasisPoints = Array.from(
-            { length: CONFIG.unit.speciesCount },
-            (_, id) => NEXT.get(id) || 0
-          );
+          const NEXT_TARGETS = Array.from({ length: CONFIG.unit.speciesCount }, (_, id) => NEXT.get(id) || 0);
+          if (NEXT_TARGETS.some((value, index) => value !== this.farmTargets[index])) {
+            this.farmTargetRevision++;
+            this.playerProgression.farmPlots.targetBasisPoints = NEXT_TARGETS;
+            for (const PLAN of [...this._breedPlans.values()]) {
+              this.cancelBreedPlan(PLAN);
+            }
+            for (const OWNER of [...this._activeBreedReservations.keys()]) {
+              this.releaseActiveBreedReservation(OWNER);
+            }
+          }
           this.markProgressChanged();
           return true;
         }
@@ -9199,7 +9247,7 @@
               this.warehouseFood = Math.min(Number.MAX_SAFE_INTEGER, this.warehouseFood + RETURNED_FOOD);
               this.cancelMergeTasks();
               for (const UNIT_LOCAL of this.unitCollection.items) {
-                this.clearInactiveForageAttempt(UNIT_LOCAL);
+                this.clearForageAttempt(UNIT_LOCAL);
                 if (UNIT_LOCAL.mateId) {
                   this.releaseMate(UNIT_LOCAL);
                 }
@@ -9388,7 +9436,7 @@
           if (!this.unitCollection.has(unit)) {
             return false;
           }
-          this.clearInactiveForageAttempt(unit);
+          this.clearForageAttempt(unit);
           const SPLIT_BEFORE = unit.splitUsedThisBattle, DIED = unit.die();
           return DIED && !SPLIT_BEFORE && unit.splitUsedThisBattle;
         }
@@ -9733,7 +9781,7 @@
           return this.unitCollection.add(unit, options);
         }
         removeUnit(unit, options) {
-          this.clearInactiveForageAttempt(unit);
+          this.clearForageAttempt(unit);
           return this.unitCollection.remove(unit, options);
         }
         replaceUnitGroup(materials, result, complete, preserveMergeTask = null) {
@@ -10049,7 +10097,7 @@
           }
           try {
             const OWNER = this.breedingReservationOwner(a, b), BIRTH_RESERVATION = this._activeBreedReservations?.get(OWNER) || null, RESERVATIONS_AVAILABLE = this.unitCollection.reservationOwner(a) === null || this.unitCollection.reservationOwner(a) === OWNER;
-            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && a.breedingEligible !== false && b.breedingEligible !== false && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.canFarmPopulationAdvance(a.species, {
+            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && a.breedingEligible !== false && b.breedingEligible !== false && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && (!BIRTH_RESERVATION || BIRTH_RESERVATION.targetRevision === this.farmTargetRevision) && this.canFarmPopulationAdvance(a.species, {
               excludeReservation: BIRTH_RESERVATION?.reservation || null
             }) && this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.totalFarmCapacity && (BIRTH_RESERVATION ? this.roster.placedPopulation(BIRTH_RESERVATION.plotId) + (this._breedPlotReservations.get(BIRTH_RESERVATION.plotId) || 0) <= this.farmPlots.get(BIRTH_RESERVATION.plotId)?.capacity : !!this.availableFarmPlotFor(a.species)) && this._unitIsActive(a) && this._unitIsActive(b) && RESERVATIONS_AVAILABLE && (this.unitCollection.reservationOwner(b) === null || this.unitCollection.reservationOwner(b) === OWNER) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
           } finally {
@@ -10165,6 +10213,7 @@
             dueTick: this.simulationTick + durationTicks,
             expiresTick: this.simulationTick + 100,
             targetSnapshot: [...this.farmTargets],
+            targetRevision: this.farmTargetRevision,
             reservation: RESERVATION,
             plotReservationDeltas: Object.fromEntries(DESTINATION.plotReservationDeltas)
           });
@@ -10225,7 +10274,8 @@
             owner: OWNER,
             parentIds: [a.id, b.id],
             plotId: a.plotId,
-            reservation: RESERVATION
+            reservation: RESERVATION,
+            targetRevision: this.farmTargetRevision
           });
           this._breedPlotReservations.set(a.plotId, (this._breedPlotReservations.get(a.plotId) || 0) + 1);
           a.mateId = b.id;
@@ -10262,7 +10312,7 @@
               continue;
             }
             const [A, B] = PLAN.parentIds.map((id) => this.unitCollection.unitById(id));
-            if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !A || !B || A.mateId !== B.id || B.mateId !== A.id || A.hp <= 0 || B.hp <= 0 || A.down > 0 || B.down > 0 || !A.mature || !B.mature || !A.fed || !B.fed || A.cooldown > 0 || B.cooldown > 0 || A.breedingEligible === false || B.breedingEligible === false || A.species !== B.species || this.senseEnemy(A) || this.senseEnemy(B) || PLAN.targetSnapshot.some((value, index) => value !== this.farmTargets[index]) || !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })) {
+            if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !A || !B || A.mateId !== B.id || B.mateId !== A.id || A.hp <= 0 || B.hp <= 0 || A.down > 0 || B.down > 0 || !A.mature || !B.mature || !A.fed || !B.fed || A.cooldown > 0 || B.cooldown > 0 || A.breedingEligible === false || B.breedingEligible === false || A.species !== B.species || this.senseEnemy(A) || this.senseEnemy(B) || PLAN.targetRevision !== this.farmTargetRevision || PLAN.targetSnapshot.some((value, index) => value !== this.farmTargets[index]) || !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })) {
               this.cancelBreedPlan(PLAN);
               continue;
             }
@@ -10292,7 +10342,7 @@
             A.mateId = 0;
             B.mateId = 0;
             for (const UNIT_ID of PLAN.exchangeUnitIds) {
-              this.clearInactiveForageAttempt(this.unitCollection.unitById(UNIT_ID));
+              this.clearForageAttempt(this.unitCollection.unitById(UNIT_ID));
             }
             if (!this.unitCollection.moveUnitsToPlots(PLAN.assignments)) {
               this.cancelBreedPlan(PLAN);
@@ -11793,6 +11843,10 @@
           }
         }
         _considerFoodTarget(state, food) {
+          const CLAIMED_BY = this._forageFoodClaims.get(food);
+          if (CLAIMED_BY !== void 0 && CLAIMED_BY !== state.unit.id) {
+            return;
+          }
           const DISTANCE = Math.hypot(food.x - state.x, food.y - state.y), ORDER = this._foodOrder.get(food) ?? Infinity;
           if (DISTANCE < state.nearestDistance || DISTANCE === state.nearestDistance && ORDER < state.nearestOrder) {
             state.nearest = food;
@@ -11800,17 +11854,29 @@
             state.nearestOrder = ORDER;
           }
         }
-        requestGroundFoodTarget(unit) {
+        requestGroundFoodTarget(unit, dt = 1 / 20) {
           if (!this._spatialStepActive) {
             this._rebuildFoodSpatialIndex();
           }
           if (!unit || this.scene !== "farm" || unit.hp <= 0 || unit.fed || !this.canFarmPopulationAdvance(unit.species) || !this._groundedFoodCount) {
             this._cancelFoodTargetSearch(unit);
+            this.clearForageAttempt(unit);
             return null;
+          }
+          const ATTEMPT = unit.forageAttempt, PLOT = this.farmPlots.get(unit.plotId);
+          if (ATTEMPT) {
+            if (ATTEMPT.plotId === unit.plotId && PLOT?.food.includes(ATTEMPT.food) && ATTEMPT.food.phase === "grounded" && this._forageFoodClaims.get(ATTEMPT.food) === unit.id) {
+              return ATTEMPT.food;
+            }
+            this.clearForageAttempt(unit);
           }
           const STATE = this._foodSearchStates.get(unit);
           if (STATE?.status === "ready" && this._isCurrentGroundedFood(STATE.target)) {
-            return STATE.target;
+            if (this.startForageAttempt(unit, dt, STATE.target)) {
+              return STATE.target;
+            }
+            this._cancelFoodTargetSearch(unit);
+            return null;
           }
           if (STATE?.status === "searching") {
             return null;
@@ -18390,7 +18456,7 @@
         SAFE_COUNTERS.has(key) ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER : Number.isFinite(v) && Math.abs(v) < 1e13
       );
     } else if (Array.isArray(v)) {
-      const MAX = key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
+      const MAX = key === "plots" || key === "farmPlots" ? Number.MAX_SAFE_INTEGER : key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
       ASSERT2(v.length <= MAX);
       v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === "object") {

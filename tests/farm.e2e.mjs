@@ -3259,10 +3259,14 @@ async function cadenceDiagnosticsFlow() {
     await P.waitForTimeout(220);
     await P.evaluate(() => {
         const WORLD = BUDMORI.sim;
+        WORLD.food.splice(-5);
+        WORLD._rebuildFoodSpatialIndex();
+        WORLD.warehouseFood = 5;
         for (const UNIT of WORLD.units) {
             WORLD.clearFoodTargetSearch(UNIT);
             WORLD.requestGroundFoodTarget(UNIT);
         }
+        BUDMORI.runtime.capturePresentation('reset');
     });
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
     for (let index = 0; index < 5; index++) {
@@ -4091,7 +4095,14 @@ async function core() {
         }
         const ACTIVE_RESERVED = RATIO_WORLD.reserveActiveBreedPair(RATIO_UNITS[0], RATIO_UNITS[1]),
             RESERVED_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
-        RATIO_WORLD.releaseActiveBreedReservation(RATIO_WORLD.breedingReservationOwner(RATIO_UNITS[0], RATIO_UNITS[1]));
+        const TARGET_REVISION_BEFORE = RATIO_WORLD.farmTargetRevision;
+        RATIO_WORLD.setSpeciesTarget(0, 5100);
+        RATIO_WORLD.setSpeciesTarget(0, 5000);
+        const RESERVATION_INVALIDATED =
+            RATIO_WORLD.farmTargetRevision === TARGET_REVISION_BEFORE + 2 &&
+            RATIO_WORLD._activeBreedReservations.size === 0 &&
+            RATIO_WORLD.unitCollection.reservationOwner(RATIO_UNITS[0]) === null &&
+            RATIO_UNITS.slice(0, 2).every((unit) => unit.meals === 1);
         const EXTRA_A = RATIO_WORLD.spawn(0, 1, 2, 0);
         const THIRTY_TWO_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
         RATIO_WORLD.removeUnit(EXTRA_A);
@@ -4099,6 +4110,63 @@ async function core() {
         const FIFTY_ONE_ALLOWED = [RATIO_WORLD.canFarmPopulationAdvance(0), RATIO_WORLD.canFarmPopulationAdvance(1)];
         RATIO_WORLD.playerProgression.farmPlots.targetBasisPoints[1] = 0;
         const ZERO_ALLOWED = RATIO_WORLD.canFarmPopulationAdvance(1);
+
+        const FORAGE_WORLD = new GARDEN(9273);
+        FORAGE_WORLD.resetUnits();
+        FORAGE_WORLD.playerProgression.level = 4;
+        FORAGE_WORLD.playerProgression.availablePoints = 2;
+        if (!FORAGE_WORLD.unlockFarmPlot().ok) {
+            throw Error('failed to create the forage plot-switch fixture');
+        }
+        FORAGE_WORLD.playerProgression.farmPlots.targetBasisPoints = [10000, 0, 0, 0, 0, 0, 0, 0, 0];
+        const INACTIVE_FORAGER = FORAGE_WORLD.spawn(0, 1, 0, 0),
+            INACTIVE_FOOD = (FORAGE_WORLD.spawnFood(2, 0, 1, { allowBossEvent: false }), FORAGE_WORLD.food.at(-1));
+        INACTIVE_FOOD.x = 2;
+        INACTIVE_FOOD.y = 0;
+        INACTIVE_FOOD.phase = 'grounded';
+        INACTIVE_FOOD.z = INACTIVE_FOOD.vx = INACTIVE_FOOD.vy = INACTIVE_FOOD.vz = 0;
+        FORAGE_WORLD._rebuildFoodSpatialIndex();
+        FORAGE_WORLD.startForageAttempt(INACTIVE_FORAGER, 1 / 20, INACTIVE_FOOD);
+        const FORAGE_DUE_TICK = INACTIVE_FORAGER.forageAttempt.dueTick;
+        FORAGE_WORLD.switchFarmPlot('plot-2');
+        const INACTIVE_ATTEMPT_RETAINED = INACTIVE_FORAGER.forageAttempt?.dueTick === FORAGE_DUE_TICK;
+        FORAGE_WORLD.simulationTick = FORAGE_DUE_TICK;
+        const INACTIVE_CONSUMED = FORAGE_WORLD.advanceInactiveForage(INACTIVE_FORAGER, 1 / 20);
+        FORAGE_WORLD.switchFarmPlot('plot-1');
+        const ACTIVE_FORAGER = FORAGE_WORLD.spawn(0, 1, 0, 0),
+            ACTIVE_FOOD = (FORAGE_WORLD.spawnFood(3, 0, 1, { allowBossEvent: false }), FORAGE_WORLD.food.at(-1));
+        ACTIVE_FORAGER.growth = BUDMORI.CONFIG.farm.breeding.matureMeals;
+        ACTIVE_FORAGER.growthElapsed = ACTIVE_FORAGER.growthDuration;
+        ACTIVE_FOOD.x = 3;
+        ACTIVE_FOOD.y = 0;
+        ACTIVE_FOOD.phase = 'grounded';
+        ACTIVE_FOOD.z = ACTIVE_FOOD.vx = ACTIVE_FOOD.vy = ACTIVE_FOOD.vz = 0;
+        FORAGE_WORLD._rebuildFoodSpatialIndex();
+        FORAGE_WORLD.startForageAttempt(ACTIVE_FORAGER, 1 / 20, ACTIVE_FOOD);
+        const ACTIVE_DUE_TICK = ACTIVE_FORAGER.forageAttempt.dueTick;
+        ACTIVE_FORAGER.x = ACTIVE_FOOD.x;
+        FORAGE_WORLD.simulationTick = ACTIVE_DUE_TICK - 1;
+        FORAGE_WORLD.farmUnit(ACTIVE_FORAGER, 1 / 20);
+        const ACTIVE_BLOCKED_BEFORE_DUE = ACTIVE_FORAGER.meals === 0 && FORAGE_WORLD.food.includes(ACTIVE_FOOD);
+        FORAGE_WORLD.simulationTick = ACTIVE_DUE_TICK;
+        ACTIVE_FORAGER.x = ACTIVE_FOOD.x + 1;
+        FORAGE_WORLD.farmUnit(ACTIVE_FORAGER, 1 / 20);
+        const ACTIVE_BLOCKED_WITHOUT_CONTACT = ACTIVE_FORAGER.meals === 0 && FORAGE_WORLD.food.includes(ACTIVE_FOOD);
+        ACTIVE_FORAGER.x = ACTIVE_FOOD.x;
+        FORAGE_WORLD.farmUnit(ACTIVE_FORAGER, 1 / 20);
+        const ACTIVE_CONSUMED_AFTER_CONTACT = ACTIVE_FORAGER.meals === 1 && !FORAGE_WORLD.food.includes(ACTIVE_FOOD);
+
+        const MANY_FARM_WORLD = new GARDEN(9274);
+        MANY_FARM_WORLD.resetUnits();
+        MANY_FARM_WORLD.playerProgression.level = 2049;
+        MANY_FARM_WORLD.playerProgression.availablePoints = 2048;
+        for (let index = 0; index < 1024; index++) {
+            if (!MANY_FARM_WORLD.unlockFarmPlot().ok) {
+                throw Error(`failed to unlock plot ${index + 2} in the no-cap snapshot fixture`);
+            }
+        }
+        const MORE_THAN_1024_PLOTS_VALID =
+            MANY_FARM_WORLD.farmPlots.size === 1025 && VALIDATE_SNAPSHOT(MAKE_SNAPSHOT(MANY_FARM_WORLD));
         return {
             exchangeReserved: RESERVED,
             exchangeCount: PLAN?.exchangeUnitIds.length || 0,
@@ -4120,6 +4188,13 @@ async function core() {
             threeToTwoAllowed: THIRTY_TWO_ALLOWED,
             fiftyOneFortyNineAllowed: FIFTY_ONE_ALLOWED,
             zeroTargetAllowed: ZERO_ALLOWED,
+            reservationInvalidatedByChangeAndRevert: RESERVATION_INVALIDATED,
+            inactiveForageAttemptRetained: INACTIVE_ATTEMPT_RETAINED,
+            inactiveForageConsumedAfterDue: INACTIVE_CONSUMED && INACTIVE_FORAGER.meals === 1,
+            activeForageBlockedBeforeDue: ACTIVE_BLOCKED_BEFORE_DUE,
+            activeForageBlockedWithoutContact: ACTIVE_BLOCKED_WITHOUT_CONTACT,
+            activeForageConsumedAfterContact: ACTIVE_CONSUMED_AFTER_CONTACT,
+            moreThan1024PlotsValid: MORE_THAN_1024_PLOTS_VALID,
         };
     });
     assert.deepEqual(MULTIFARM_POLICY, {
@@ -4138,6 +4213,13 @@ async function core() {
         threeToTwoAllowed: [false, true],
         fiftyOneFortyNineAllowed: [true, false],
         zeroTargetAllowed: false,
+        reservationInvalidatedByChangeAndRevert: true,
+        inactiveForageAttemptRetained: true,
+        inactiveForageConsumedAfterDue: true,
+        activeForageBlockedBeforeDue: true,
+        activeForageBlockedWithoutContact: true,
+        activeForageConsumedAfterContact: true,
+        moreThan1024PlotsValid: true,
     });
     const FARM_PERFORMANCE = await P.evaluate(async () => {
         const RUNTIME = BUDMORI.runtime,
@@ -4256,7 +4338,8 @@ async function core() {
                     activeRenderers: BUDMORI.renderer.vectorPlayers.size,
                     subscriptionsBefore: SUBSCRIPTIONS_BEFORE,
                     subscriptionsAfter: SUBSCRIPTIONS_AFTER,
-                    forageAttempts: WORLD.unitCollection.items.filter((unit) => unit.inactiveForageAttempt).length,
+                    forageAttempts: WORLD.unitCollection.items.filter((unit) => unit.forageAttempt).length,
+                    forageFoodClaims: WORLD._forageFoodClaims.size,
                     breedPlans: WORLD._breedPlans.size,
                     breedReservations: WORLD._activeBreedReservations.size,
                     mergeTasks: WORLD.mergeTasks.length,
