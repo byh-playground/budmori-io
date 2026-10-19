@@ -657,6 +657,28 @@ function requestFeed() {
     }
     return false;
 }
+const WORK_STORAGE_KEY = 'budmori.work.basisPoints';
+// The worker ratio is a play setting, not part of the farm save, so old saves stay valid.
+function loadWorkBasisPoints(fallback) {
+    try {
+        const VALUE = Number(localStorage.getItem(WORK_STORAGE_KEY));
+        return localStorage.getItem(WORK_STORAGE_KEY) !== null &&
+            Number.isSafeInteger(VALUE) &&
+            VALUE >= 0 &&
+            VALUE <= 10000
+            ? VALUE
+            : fallback;
+    } catch {
+        return fallback;
+    }
+}
+function saveWorkBasisPoints(value) {
+    try {
+        localStorage.setItem(WORK_STORAGE_KEY, String(value));
+    } catch {
+        /* The ratio still applies for this run. */
+    }
+}
 function install(world) {
     if (active) {
         stopWorldInput();
@@ -668,6 +690,9 @@ function install(world) {
         onError: FAIL,
         onWorldStep,
     });
+    world.setWorkBasisPoints(loadWorkBasisPoints(world.workBasisPoints));
+    DOLLAR('farmWorkRatio').value = String(Math.round(world.workBasisPoints / 100));
+    DOLLAR('farmWorkOutput').textContent = `${Math.round(world.workBasisPoints / 100)}%`;
     return active;
 }
 install(new Garden());
@@ -1336,6 +1361,7 @@ function drawFarmPanel() {
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
+    DOLLAR('farmWorkRatio').disabled = LOCKED;
     const COUNTS = W.roster.countsBySpecies(),
         TOTAL = [...COUNTS.values()].reduce((sum, count) => sum + count, 0);
     DOLLAR('farmRatioList').innerHTML = W.farmTargets
@@ -1572,6 +1598,15 @@ DOLLAR('farmPlotActions').addEventListener('click', (e) => {
     if (BUTTON) {
         beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
+});
+DOLLAR('farmWorkRatio').addEventListener('input', (e) => {
+    DOLLAR('farmWorkOutput').textContent = `${Number(e.target.value)}%`;
+});
+DOLLAR('farmWorkRatio').addEventListener('change', (e) => {
+    const BASIS_POINTS = Number(e.target.value) * 100;
+    saveWorkBasisPoints(BASIS_POINTS);
+    (personalGarden || active.world).setWorkBasisPoints(BASIS_POINTS);
+    active.queue('farm-work', { basisPoints: BASIS_POINTS });
 });
 DOLLAR('farmRatioList').addEventListener('input', (e) => {
     const INPUT = e.target.closest('[data-farm-target]');
@@ -2222,6 +2257,13 @@ function sync(display, now, notices) {
         home || active.paused || W.scene !== 'farm' || W.warehouseFood <= 0 || W.food.length >= 140,
     );
     syncText('warehouseStock', String(W.warehouseFood));
+    const WORK_WORLD = personalGarden || W;
+    syncText(
+        'farmWorkNote',
+        WORK_WORLD.warehouseFull
+            ? `${WORK_WORLD.workerCount}마리 일하는 중 · 창고가 가득 찼어요`
+            : `${WORK_WORLD.workerCount}마리 일하는 중 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`,
+    );
     syncText('warehouseProgressLabel', `창고 생산 ${W.foodTaps.remainder}/5`);
     syncAttribute('warehouseProgress', 'aria-valuenow', String(W.foodTaps.remainder));
     syncAttribute('warehouseProgress', 'aria-valuetext', `창고 생산 ${W.foodTaps.remainder}/5`);

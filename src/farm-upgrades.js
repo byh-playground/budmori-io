@@ -8,10 +8,10 @@ export const FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
 export const FARM_UPGRADE_NODES = Object.freeze([
     {
         id: 'food',
-        name: '창고 생산',
+        name: '일꾼 속도',
         icon: '◒',
-        description: '창고에 먹이가 쌓이는 간격을 단계마다 10% 줄여요.',
-        value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 회`,
+        description: '일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.',
+        value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`,
     },
     {
         id: 'growth',
@@ -68,9 +68,6 @@ export function farmUpgradeRate(state, id) {
 }
 export function getFarmCapacity(capacityLevel = 0) {
     return FARM_CAPACITY_STEPS[Number.isSafeInteger(capacityLevel) ? capacityLevel : 0] ?? FARM_CAPACITY_STEPS[0];
-}
-export function getAutoTapSeconds(state) {
-    return 0.5 / farmUpgradeRate(state, 'food');
 }
 export function getBreedCooldownSeconds(state, baseSeconds = 10) {
     return baseSeconds / farmUpgradeRate(state, 'breed');

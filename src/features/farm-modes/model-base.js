@@ -18,6 +18,11 @@ export class FarmMode {
         if (unit.stun > 0 || unit.z > 0.1) {
             return;
         }
+        if (world.isWorker(unit)) {
+            // Workers keep to their job: no eating, no breeding.
+            this.wander(world, unit, dt);
+            return;
+        }
         if (!unit.mature || unit.cooldown > 0) {
             if (!world.avoidNearbyFood(unit, dt)) {
                 this.wander(world, unit, dt);

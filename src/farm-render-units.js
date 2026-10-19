@@ -106,7 +106,7 @@ export class UnitPresentation {
     constructor(renderer) {
         this.renderer = renderer;
         this.unitRings = [];
-        this.unitRingPool = [{}, {}, {}];
+        this.unitRingPool = [{}, {}, {}, {}];
         this.breedingIndicator = {};
         this.restIndicator = {};
     }
@@ -125,6 +125,9 @@ export class UnitPresentation {
         EFFECTS.length = 0;
         if (u.buffed && u.hp > 0) {
             this.addUnitRing(u.radius + 0.16, '#eacb72', 0.055, 1);
+        }
+        if (world.isWorker?.(u)) {
+            this.addUnitRing(u.radius + 0.08, '#c2913e', 0.04, 1);
         }
         if (A.phase === 'windup' && S_LOCAL) {
             this.addUnitRing(
