@@ -32,8 +32,9 @@ function equalBytes(a, b) {
 }
 function hashBytes(value, seed = 2166136261) {
   let h = seed >>> 0;
-  for (const B of bytes(value)) {
-    h = Math.imul(h ^ B, 16777619) >>> 0;
+  const DATA = bytes(value);
+  for (let i = 0; i < DATA.length; i++) {
+    h = Math.imul(h ^ DATA[i], 16777619) >>> 0;
   }
   return h;
 }
@@ -62,7 +63,7 @@ var FIXED_POINT = Object.freeze({
 });
 
 // modules/_rollback-shared/version.js
-var VERSION = "0.12.2";
+var VERSION = "0.14.3";
 
 // modules/_rollback-shared/protocol.js
 var REPLAY_FORMAT_VERSION = "0.2.0-dev";
@@ -4008,15 +4009,39 @@ var Availability = class {
 };
 
 // modules/deterministic/value-codec.js
+var TYPED_KINDS = [
+  [Int8Array, "getInt8", "setInt8", 1],
+  [Int16Array, "getInt16", "setInt16", 2],
+  [Uint16Array, "getUint16", "setUint16", 2],
+  [Int32Array, "getInt32", "setInt32", 4],
+  [Uint32Array, "getUint32", "setUint32", 4],
+  [Float32Array, "getFloat32", "setFloat32", 4],
+  [Float64Array, "getFloat64", "setFloat64", 8]
+];
+var FLOAT_KIND_START = 5;
+var SCRATCH_LIMIT = 8 * 1024 * 1024;
+function typedKindOf(value) {
+  for (let i = 0; i < TYPED_KINDS.length; i++) {
+    if (value instanceof TYPED_KINDS[i][0]) {
+      return i;
+    }
+  }
+  return -1;
+}
 function createValueCodec({
   format = "binary",
   maxBytes = 16 * 1024 * 1024,
   maxDepth = 128,
-  maxEntries = 1e6
+  maxEntries = 1e6,
+  omitUndefined = false
 } = {}) {
   if (!["binary", "json"].includes(format)) {
     throw new TypeError("Unknown codec format");
   }
+  if (typeof omitUndefined !== "boolean") {
+    throw new TypeError("omitUndefined must be boolean");
+  }
+  const KEYS_OF = (value) => Object.keys(value).filter((key) => !omitUndefined || value[key] !== void 0).sort();
   for (const LIMIT of [maxBytes, maxDepth, maxEntries]) {
     if (!Number.isSafeInteger(LIMIT) || LIMIT < 1) {
       throw new RangeError("Invalid codec limit");
@@ -4052,7 +4077,7 @@ function createValueCodec({
     }
     seen.add(value);
     let result;
-    if (value instanceof Uint8Array) {
+    if (value instanceof Uint8Array || typedKindOf(value) >= 0) {
       if (format === "json") {
         throw new TypeError("JSON codec does not support byte values");
       }
@@ -4064,7 +4089,7 @@ function createValueCodec({
         throw new TypeError("Plain records required");
       }
       result = {};
-      for (const KEY of Object.keys(value).sort()) {
+      for (const KEY of KEYS_OF(value)) {
         normalize(KEY, depth + 1, seen, budget);
         Object.defineProperty(result, KEY, {
           value: normalize(value[KEY], depth + 1, seen, budget),
@@ -4077,6 +4102,7 @@ function createValueCodec({
     seen.delete(value);
     return result;
   }
+  let scratch = null, encoding = false;
   const STRING_CACHE = /* @__PURE__ */ new Map();
   let cachedStringBytes = 0;
   function stringBytes(value) {
@@ -4110,7 +4136,9 @@ function createValueCodec({
       }
       return BYTES;
     }
-    let bytes2 = new Uint8Array(Math.min(1024, maxBytes));
+    const NESTED = encoding;
+    encoding = true;
+    let bytes2 = !NESTED && scratch ? scratch : new Uint8Array(Math.min(1024, maxBytes));
     let offset = 0;
     let view = new DataView(bytes2.buffer);
     let entries = 0;
@@ -4190,6 +4218,28 @@ function createValueCodec({
           raw(v);
           return;
         }
+        const KIND = typedKindOf(v);
+        if (KIND >= 0) {
+          const [, , SET, SIZE] = TYPED_KINDS[KIND];
+          byte(10);
+          byte(KIND);
+          length(v.length);
+          reserve(v.length * SIZE);
+          for (let i = 0; i < v.length; i++) {
+            let element = v[i];
+            if (KIND >= FLOAT_KIND_START) {
+              if (!Number.isFinite(element)) {
+                throw new TypeError("Finite numbers required");
+              }
+              if (element === 0) {
+                element = 0;
+              }
+            }
+            view[SET](offset, element, true);
+            offset += SIZE;
+          }
+          return;
+        }
         SEEN.add(v);
         if (Array.isArray(v)) {
           byte(5);
@@ -4203,7 +4253,7 @@ function createValueCodec({
             throw new TypeError("Plain records required");
           }
           byte(6);
-          const KEYS = Object.keys(v).sort();
+          const KEYS = KEYS_OF(v);
           length(KEYS.length);
           for (const KEY of KEYS) {
             write(KEY, depth + 1);
@@ -4213,11 +4263,18 @@ function createValueCodec({
         SEEN.delete(v);
       }
     }
-    byte(82);
-    byte(86);
-    byte(1);
-    write(value);
-    return bytes2.slice(0, offset);
+    try {
+      byte(82);
+      byte(86);
+      byte(1);
+      write(value);
+      return bytes2.slice(0, offset);
+    } finally {
+      if (!NESTED) {
+        scratch = bytes2.length <= SCRATCH_LIMIT ? bytes2 : null;
+        encoding = false;
+      }
+    }
   }
   function decode(input) {
     const BYTES = input instanceof Uint8Array ? input : input instanceof ArrayBuffer ? new Uint8Array(input) : ArrayBuffer.isView(input) ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength) : null;
@@ -4306,6 +4363,25 @@ function createValueCodec({
         }
         if (TAG === 7) {
           return raw().slice();
+        }
+        if (TAG === 10) {
+          const KIND = byte();
+          if (KIND >= TYPED_KINDS.length) {
+            throw new TypeError("Invalid typed array kind");
+          }
+          const [TYPE2, GET, , SIZE] = TYPED_KINDS[KIND];
+          const COUNT = length();
+          need(COUNT * SIZE);
+          const ARRAY = new TYPE2(COUNT);
+          for (let i = 0; i < COUNT; i++) {
+            const ELEMENT = VIEW[GET](offset, true);
+            if (KIND >= FLOAT_KIND_START && (!Number.isFinite(ELEMENT) || Object.is(ELEMENT, -0))) {
+              throw new TypeError("Noncanonical typed array number");
+            }
+            ARRAY[i] = ELEMENT;
+            offset += SIZE;
+          }
+          return ARRAY;
         }
         if (TAG !== 5 && TAG !== 6) {
           throw new TypeError("Invalid codec tag");
@@ -5881,6 +5957,10 @@ var RoomSession = class {
         const MESSAGE = this._incoming.shift();
         this._incomingBytes -= MESSAGE.size ?? 0;
         this._handle(MESSAGE.from, MESSAGE.value);
+      }
+      if (this._departing) {
+        this._flush();
+        return;
       }
       if (this._core && !this._transition && !this._availability?.round && this.coordinatorId === this.localPlayerId && this.activePlayers.length === this.players.length) {
         for (const [ID, REQUESTED_AT] of this._admissionQueue) {

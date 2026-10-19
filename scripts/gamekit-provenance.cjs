@@ -45,6 +45,7 @@ const DIST_MODULES = Object.freeze([
     'navigation',
     'scenario',
     'object-pool',
+    'pixel-physics',
 ]);
 const DIST_ASSETS = Object.freeze([
     Object.freeze({
