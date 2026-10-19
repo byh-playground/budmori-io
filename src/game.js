@@ -8960,6 +8960,18 @@
           this._inactiveFoodClaims.set(nearest, unit.id);
           return true;
         }
+        farmPlotStatus(plotId) {
+          const PLOT = this.farmPlots.get(plotId);
+          let hungry = 0;
+          if (PLOT) {
+            for (const UNIT3 of this.unitCollection.unitsInPlot(plotId)) {
+              if (UNIT3.hp > 0 && UNIT3.mature && !UNIT3.fed && this.canFarmPopulationAdvance(UNIT3.species)) {
+                hungry++;
+              }
+            }
+          }
+          return { food: PLOT?.food.length ?? 0, hungry };
+        }
         advanceInactiveForage(unit, dt) {
           if (unit.hp <= 0 || unit.fed || unit.plotId === RESERVE_PLOT_ID || unit.plotId === this.activePlotId || !this.canFarmPopulationAdvance(unit.species)) {
             this.clearInactiveForageAttempt(unit);
@@ -13441,7 +13453,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.3";
+      PRODUCT_VERSION = "0.10.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20886,6 +20898,17 @@
     });
     renderProgressionResetActions();
   }
+  var plotStatusCache = { at: -Infinity, value: /* @__PURE__ */ new Map() };
+  function farmPlotStatuses(world) {
+    const NOW = performance.now();
+    if (NOW - plotStatusCache.at > 400) {
+      plotStatusCache = {
+        at: NOW,
+        value: new Map([...world.farmPlots.keys()].map((id) => [id, world.farmPlotStatus(id)]))
+      };
+    }
+    return plotStatusCache.value;
+  }
   function farmPlotDisplayName(plotId) {
     return `농장 ${String(plotId).match(/^plot-(\d+)$/)?.[1] || plotId}`;
   }
@@ -20896,23 +20919,28 @@
     }
     farmPanelRevision = W.progressRevision;
     const LOCKED = !!farmSortTransition || active?.world?.scene !== "farm" || W.running || W.farmBossEvent?.phase !== "idle";
-    DOLLAR2("farmPopulationSummary").textContent = `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함해요)`;
-    DOLLAR2("farmWarehouseSummary").textContent = `먹이 창고: ${W.warehouseFood}개`;
+    DOLLAR2("farmStatPlaced").textContent = String(W.placedPopulation);
+    DOLLAR2("farmStatCapacity").textContent = `/ ${W.totalFarmCapacity}`;
+    DOLLAR2("farmStatReserved").textContent = String(W.reservedPopulation);
+    DOLLAR2("farmStatPending").textContent = String(W.pendingRewardPopulation);
+    DOLLAR2("farmStatFood").textContent = String(W.warehouseFood);
+    syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
     DOLLAR2("farmPlotList").innerHTML = [...W.farmPlots.values()].map((plot) => {
-      const COUNT = W.roster.placedPopulation(plot.id);
-      return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}>${farmPlotDisplayName(plot.id)} · ${COUNT}/${plot.capacity}</button>`;
+      const COUNT = W.roster.placedPopulation(plot.id), STATUS = W.farmPlotStatus(plot.id);
+      return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}명 / ${plot.capacity}명" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
     }).join("");
-    const ACTIVE = W.activeFarmPlot, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    DOLLAR2("farmExpand").textContent = `현재 농장 확장 · ${ACTIVE.capacity} → ${NEXT_CAPACITY}명 · 공용 포인트 1개`;
-    DOLLAR2("farmExpand").disabled = LOCKED || !ACTIVE.canExpand() || W.playerProgression.availablePoints < 1;
-    DOLLAR2("farmUnlock").textContent = `새 농장 열기 · 공용 포인트 ${W.playerProgression.availablePoints}개 (2개 필요)`;
-    DOLLAR2("farmUnlock").disabled = LOCKED || W.playerProgression.availablePoints < 2;
+    const ACTIVE = W.activeFarmPlot, POINTS = W.playerProgression.availablePoints, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
+    DOLLAR2("farmExpand").innerHTML = ACTIVE.canExpand() ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}명 · 포인트 1개</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
+    DOLLAR2("farmExpand").disabled = LOCKED || !ACTIVE.canExpand() || POINTS < 1;
+    DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 열기</b><small>포인트 ${POINTS} / 2개${POINTS < 2 ? " · 부족해요" : ""}</small>`;
+    DOLLAR2("farmUnlock").disabled = LOCKED || POINTS < 2;
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
+    const COUNTS = W.roster.countsBySpecies(), TOTAL = [...COUNTS.values()].reduce((sum, count) => sum + count, 0);
     DOLLAR2("farmRatioList").innerHTML = W.farmTargets.map((value, speciesId) => {
-      const NAME = speciesById(speciesId).name;
-      return `<label class="farm-ratio"><span>${NAME}</span><output>${(value / 100).toFixed(2)}%</output><input type="range" min="0" max="10000" step="1" value="${value}" aria-label="${NAME} 목표 비율" data-farm-target="${speciesId}"${LOCKED ? " disabled" : ""}></label>`;
+      const SPECIES = speciesById(speciesId), COUNT = COUNTS.get(speciesId) || 0, CURRENT = TOTAL ? (COUNT / TOTAL * 100).toFixed(0) : "0";
+      return `<label class="farm-ratio"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><span class="farm-ratio__name"><b>${SPECIES.name}</b><small>${COUNT}마리 · 현재 ${CURRENT}%</small></span><output>목표 ${+(value / 100).toFixed(1)}%</output><input type="range" min="0" max="10000" step="50" value="${value}" aria-label="${SPECIES.name} 목표 비율" data-farm-target="${SPECIES.id}"${LOCKED ? " disabled" : ""}></label>`;
     }).join("");
   }
   function drawAbilityTree() {
@@ -21100,6 +21128,14 @@
       active.queue("farm-plot-switch", { plotId: BUTTON.dataset.farmPlot });
     }
   };
+  function switchAdjacentFarmPlot(step) {
+    const WORLD = personalGarden || active.world, IDS = [...WORLD.farmPlots.keys()], INDEX = IDS.indexOf(WORLD.activePlotId);
+    if (IDS.length > 1 && INDEX >= 0) {
+      active.queue("farm-plot-switch", { plotId: IDS[(INDEX + step + IDS.length) % IDS.length] });
+    }
+  }
+  DOLLAR2("plotPrev").onclick = () => switchAdjacentFarmPlot(-1);
+  DOLLAR2("plotNext").onclick = () => switchAdjacentFarmPlot(1);
   DOLLAR2("farmExpand").onclick = () => {
     active.queue("farm-plot-expand", { plotId: (personalGarden || active.world).activePlotId });
   };
@@ -21113,7 +21149,7 @@
   DOLLAR2("farmRatioList").addEventListener("input", (e) => {
     const INPUT = e.target.closest("[data-farm-target]");
     if (INPUT) {
-      INPUT.parentElement.querySelector("output").textContent = `${(Number(INPUT.value) / 100).toFixed(2)}%`;
+      INPUT.parentElement.querySelector("output").textContent = `목표 ${+(Number(INPUT.value) / 100).toFixed(1)}%`;
     }
   });
   DOLLAR2("farmRatioList").addEventListener("change", (e) => {
@@ -21569,6 +21605,23 @@
     syncFlag("merge", "disabled", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
     syncData("merge", "availability", MERGE_STATUS.code || "unavailable");
     syncFlag("mergeNotice", "hidden", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
+    const PLOT_WORLD = personalGarden || W, PLOT_IDS = PLOT_WORLD.farmPlots ? [...PLOT_WORLD.farmPlots.keys()] : [];
+    syncFlag("plotBar", "hidden", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
+    if (PLOT_IDS.length > 1) {
+      const STATUSES = farmPlotStatuses(PLOT_WORLD), CURRENT = STATUSES.get(PLOT_WORLD.activePlotId) ?? { food: 0, hungry: 0 }, NEEDS_VISIT = [...STATUSES].some(
+        ([id, status]) => id !== PLOT_WORLD.activePlotId && status.food === 0 && status.hungry > 0
+      );
+      syncText("plotBarName", farmPlotDisplayName(PLOT_WORLD.activePlotId));
+      syncText(
+        "plotBarCount",
+        `${PLOT_WORLD.roster.placedPopulation(PLOT_WORLD.activePlotId)} / ${PLOT_WORLD.activeFarmPlot.capacity}`
+      );
+      syncText("plotBarFood", `먹이 ${CURRENT.food} · 배고픔 ${CURRENT.hungry}`);
+      syncFlag("plotPrev", "disabled", !!farmSortTransition || W.running);
+      syncFlag("plotNext", "disabled", !!farmSortTransition || W.running);
+      syncData("plotPrev", "alert", String(NEEDS_VISIT));
+      syncData("plotNext", "alert", String(NEEDS_VISIT));
+    }
     syncAttribute("merge", "aria-label", `합성${MERGE_STATUS.available ? "" : " 불가"} · ${MERGE_STATUS.reason}`);
     syncText("mergeNotice", MERGE_STATUS.reason);
     let displayedCount = 0;

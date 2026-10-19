@@ -1443,6 +1443,18 @@ const GARDEN = class Garden {
         this._inactiveFoodClaims.set(nearest, unit.id);
         return true;
     }
+    farmPlotStatus(plotId) {
+        const PLOT = this.farmPlots.get(plotId);
+        let hungry = 0;
+        if (PLOT) {
+            for (const UNIT of this.unitCollection.unitsInPlot(plotId)) {
+                if (UNIT.hp > 0 && UNIT.mature && !UNIT.fed && this.canFarmPopulationAdvance(UNIT.species)) {
+                    hungry++;
+                }
+            }
+        }
+        return { food: PLOT?.food.length ?? 0, hungry };
+    }
     advanceInactiveForage(unit, dt) {
         if (
             unit.hp <= 0 ||

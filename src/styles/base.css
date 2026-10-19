@@ -647,3 +647,80 @@ details summary {
     align-items: center;
     font-weight: var(--ui-fw-b);
 }
+
+/* 농장 전환 바: 농장이 2개 이상일 때만 보입니다. */
+.plot-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ui-s1);
+    pointer-events: auto;
+    padding: var(--ui-s1);
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-panel);
+    border-bottom: 3px solid var(--ui-line);
+}
+.plot-bar[hidden] {
+    display: none;
+}
+.plot-bar button {
+    display: grid;
+    place-items: center;
+    width: var(--ui-tap);
+    height: var(--ui-tap);
+    padding: 0;
+    border-radius: 50%;
+    background: var(--ui-primary);
+    border-bottom: 3px solid var(--ui-primary-edge);
+    color: var(--ui-primary-ink);
+}
+.plot-bar button:active:not(:disabled) {
+    transform: translateY(2px);
+    border-bottom-width: 1px;
+}
+.plot-bar button:disabled {
+    background: var(--ui-disabled);
+    border-bottom-color: var(--ui-disabled);
+    color: var(--ui-disabled-ink);
+}
+.plot-bar svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.plot-bar__label {
+    display: grid;
+    min-width: 84px;
+    padding: 0 var(--ui-s2);
+    text-align: center;
+    line-height: 1.2;
+}
+.plot-bar__label b {
+    font-size: var(--ui-fs-2);
+}
+.plot-bar__label small {
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
+    font-weight: var(--ui-fw-m);
+}
+.plot-bar button {
+    position: relative;
+}
+.plot-bar button[data-alert='true']::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ui-danger);
+    border: 2px solid var(--ui-panel);
+}
+.plot-bar__label small + small {
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
+}

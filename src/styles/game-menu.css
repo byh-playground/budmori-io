@@ -452,3 +452,131 @@
         min-height: 52px;
     }
 }
+
+/* 농장 탭 상단 요약과 농장 카드 */
+.farm-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--ui-s2);
+    margin: var(--ui-s3) 0;
+}
+.farm-stat {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: var(--ui-s2) var(--ui-s1);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-card);
+    text-align: center;
+}
+.farm-stat small {
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
+    font-weight: var(--ui-fw-m);
+}
+.farm-stat b {
+    font-size: var(--ui-fs-4);
+    line-height: 1.1;
+}
+.farm-stat span {
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
+}
+.farm-lock {
+    margin: 0 0 var(--ui-s3);
+    padding: var(--ui-s2) var(--ui-s3);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-danger);
+    color: var(--ui-danger-ink);
+    font-weight: var(--ui-fw-b);
+}
+.farm-lock[hidden] {
+    display: none;
+}
+.farm-admin h3 {
+    margin: var(--ui-s4) 0 var(--ui-s2);
+    font-size: var(--ui-fs-3);
+}
+.farm-hint {
+    margin: 0 0 var(--ui-s2);
+}
+#farmPlotList {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    margin: 0;
+}
+#farmPlotList button {
+    display: grid;
+    gap: 2px;
+    justify-items: center;
+    min-height: 56px;
+}
+#farmPlotList small {
+    font-size: var(--ui-fs-1);
+}
+#farmPlotActions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: var(--ui-s2) 0 0;
+}
+#farmPlotActions h3 {
+    grid-column: 1 / -1;
+}
+#farmPlotActions .farm-action {
+    grid-column: span 3;
+    display: grid;
+    gap: 2px;
+    justify-items: center;
+    min-height: 56px;
+}
+#farmPlotActions .farm-action small {
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+}
+#farmPlotActions .farm-sort {
+    padding: var(--ui-s2) var(--ui-s1);
+    font-size: var(--ui-fs-2);
+}
+.farm-ratio {
+    grid-template-columns: 40px 1fr auto;
+    column-gap: var(--ui-s3);
+}
+.farm-ratio img {
+    grid-row: span 2;
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+.farm-ratio__name {
+    display: grid;
+    line-height: 1.2;
+}
+.farm-ratio__name small {
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
+}
+.farm-ratio output {
+    font-weight: var(--ui-fw-b);
+    font-size: var(--ui-fs-2);
+}
+.farm-ratio input {
+    grid-column: 1 / -1;
+    accent-color: var(--ui-secondary);
+}
+@media (min-width: 560px) {
+    #farmPlotActions .farm-action {
+        grid-column: span 1;
+    }
+    #farmPlotActions .farm-sort {
+        grid-column: span 1;
+    }
+}
+#farmPlotActions .farm-action {
+    background: var(--ui-secondary);
+    border-bottom: 3px solid var(--ui-secondary-edge);
+    color: var(--ui-secondary-ink);
+}
+#farmPlotActions .farm-action:disabled {
+    background: var(--ui-disabled);
+    border-bottom-color: var(--ui-disabled);
+    color: var(--ui-disabled-ink);
+}
