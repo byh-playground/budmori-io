@@ -498,6 +498,9 @@
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
   }
+  function pileRadius(pile) {
+    return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
+  }
   function resetWork(world) {
     world._piles = [];
     world._pileId = 0;
@@ -515,8 +518,8 @@
         ASSIGN.set(unit.id, {
           pile: PILE,
           attacking: true,
-          x: PILE.x + Math.cos(ANGLE) * 1.9,
-          y: PILE.y + Math.sin(ANGLE) * 1.9 * 0.75
+          x: PILE.x + Math.cos(ANGLE) * RING_RADIUS,
+          y: PILE.y + Math.sin(ANGLE) * RING_RADIUS * 0.75
         });
       });
     }
@@ -571,8 +574,49 @@
       assignWorkers(world, config);
     }
   }
+  function workOrder(world, unit) {
+    const ASSIGN = world._workAssign.get(unit.id);
+    if (!ASSIGN) {
+      return null;
+    }
+    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), ORDER = { x: ASSIGN.x, y: ASSIGN.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    if (!ASSIGN.attacking || !SWING) {
+      return ORDER;
+    }
+    if (SWING.phase === "fire") {
+      ORDER.x = PILE.x;
+      ORDER.y = PILE.y;
+      ORDER.speed = CHARGE_SPEED;
+    } else if (SWING.phase === "windup") {
+      ORDER.hold = true;
+      ORDER.face = true;
+    } else if (SWING.phase === "recover") {
+      ORDER.hold = true;
+    }
+    return ORDER;
+  }
+  function pushOutOfPiles(world) {
+    for (const PILE of world._piles) {
+      const R2 = pileRadius(PILE);
+      for (const UNIT3 of world.units) {
+        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, MIN = R2 + UNIT3.radius * 0.6, D = Math.hypot(DX, DY);
+        if (D >= MIN) {
+          continue;
+        }
+        const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
+        UNIT3.x = PILE.x + NX * MIN;
+        UNIT3.y = PILE.y + NY * MIN;
+        const INWARD = UNIT3.vx * NX + UNIT3.vy * NY;
+        if (INWARD < 0) {
+          UNIT3.vx -= NX * INWARD;
+          UNIT3.vy -= NY * INWARD;
+        }
+      }
+    }
+  }
   function stepWork(world, config, dt) {
     const WORK = config.farm.work;
+    pushOutOfPiles(world);
     while (world._piles.length < WORK.pileCount) {
       if (world._piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
         spawnPile(world, config);
@@ -589,16 +633,21 @@
         continue;
       }
       const UNIT3 = world._unitById.get(ID);
-      if (!UNIT3 || UNIT3.hp <= 0 || Math.hypot(ASSIGN.x - UNIT3.x, ASSIGN.y - UNIT3.y) > 0.35) {
+      if (!UNIT3 || UNIT3.hp <= 0) {
         world._swings.delete(ID);
         continue;
       }
+      const PILE = ASSIGN.pile;
       let swing = world._swings.get(ID);
       if (!swing) {
         swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
         world._swings.set(ID, swing);
       }
+      const AT_RING = Math.hypot(ASSIGN.x - UNIT3.x, ASSIGN.y - UNIT3.y) < 0.9;
       if (swing.phase === "idle") {
+        if (!AT_RING) {
+          continue;
+        }
         swing.wait -= dt;
         if (swing.wait <= 0 && !FULL) {
           swing.phase = "windup";
@@ -608,26 +657,38 @@
       }
       swing.elapsed += dt;
       if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
-        impact(world, config, ASSIGN.pile);
         swing.phase = "fire";
         swing.elapsed = 0;
-      } else if (swing.phase === "fire" && swing.elapsed >= SWING_FIRE) {
-        swing.phase = "recover";
-        swing.elapsed = 0;
+      } else if (swing.phase === "fire") {
+        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, D = Math.hypot(DX, DY);
+        if (D <= pileRadius(PILE) + UNIT3.radius * 0.6 + 0.12) {
+          impact(world, config, PILE);
+          const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
+          UNIT3.vx = NX * RECOIL_SPEED;
+          UNIT3.vy = NY * RECOIL_SPEED;
+          swing.phase = "recover";
+          swing.elapsed = 0;
+        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
+          swing.phase = "recover";
+          swing.elapsed = 0;
+        }
       } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
         const RATE = world._workerRates.get(ID) || 0.1, INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
         swing.phase = "idle";
         swing.elapsed = 0;
-        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_FIRE - SWING_RECOVER);
+        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_RECOVER - 0.5);
       }
     }
   }
-  var SWING_WINDUP, SWING_FIRE, SWING_RECOVER, STACKS_PER_FOOD;
+  var SWING_WINDUP, SWING_RECOVER, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, RING_RADIUS, STACKS_PER_FOOD;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       SWING_WINDUP = 0.28;
-      SWING_FIRE = 0.4;
       SWING_RECOVER = 0.36;
+      CHARGE_SPEED = 18;
+      CHARGE_TIMEOUT = 1.6;
+      RECOIL_SPEED = 5.5;
+      RING_RADIUS = 2.8;
       STACKS_PER_FOOD = 5;
     }
   });
@@ -5879,14 +5940,18 @@
             return;
           }
           if (world.isWorker(unit)) {
-            const SLOT = world.workSlot(unit);
-            if (SLOT) {
-              world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
-              if (Math.hypot(SLOT.x - unit.x, SLOT.y - unit.y) < 0.3) {
-                unit.angle = Math.atan2(SLOT.fy - unit.y, SLOT.fx - unit.x);
+            const ORDER = world.workOrder(unit);
+            if (!ORDER) {
+              this.wander(world, unit, dt);
+            } else if (ORDER.hold) {
+              if (ORDER.face) {
+                unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
               }
             } else {
-              this.wander(world, unit, dt);
+              world.steer(unit, ORDER.x, ORDER.y, dt, scaleMoveSpeed(ORDER.speed, unit));
+              if (Math.hypot(ORDER.x - unit.x, ORDER.y - unit.y) < 0.4) {
+                unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
+              }
             }
             return;
           }
@@ -10074,10 +10139,8 @@
         workSwingOf(id) {
           return this._swings.get(id) || null;
         }
-        // Where a worker should stand: its attack spot, or a waiting spot near the closest pile.
-        workSlot(unit) {
-          const ASSIGN = this._workAssign.get(unit.id);
-          return ASSIGN ? { x: ASSIGN.x, y: ASSIGN.y, fx: ASSIGN.pile.x, fy: ASSIGN.pile.y } : null;
+        workOrder(unit) {
+          return workOrder(this, unit);
         }
         canBreedNow(unit) {
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
@@ -13880,7 +13943,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.23";
+      PRODUCT_VERSION = "0.10.24";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16018,7 +16081,7 @@
     if (SWING.phase === "windup") {
       return { name: "windup", elapsed: Math.min(279, ELAPSED) };
     }
-    return SWING.phase === "fire" ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: ELAPSED } : { name: "recover", elapsed: ELAPSED };
+    return SWING.phase === "fire" ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: Math.min(ELAPSED, 399) } : { name: "recover", elapsed: ELAPSED };
   }
   function unitMotion(u, sim, rest) {
     const DEAD = u.hp <= 0 || u.down > 0, AIRBORNE = !u.dropLanded || u.z > 0.1, PHASE = u.ability?.phase || "idle";

@@ -27,7 +27,7 @@ function workSwing(u, sim) {
         return { name: 'windup', elapsed: Math.min(279, ELAPSED) };
     }
     return SWING.phase === 'fire'
-        ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: ELAPSED }
+        ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: Math.min(ELAPSED, 399) }
         : { name: 'recover', elapsed: ELAPSED };
 }
 function unitMotion(u, sim, rest) {

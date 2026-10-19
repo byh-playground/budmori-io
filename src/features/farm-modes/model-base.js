@@ -20,14 +20,18 @@ export class FarmMode {
         }
         if (world.isWorker(unit)) {
             // Workers keep to their job at the work station: no eating, no breeding.
-            const SLOT = world.workSlot(unit);
-            if (SLOT) {
-                world.steer(unit, SLOT.x, SLOT.y, dt, scaleMoveSpeed(2.6, unit));
-                if (Math.hypot(SLOT.x - unit.x, SLOT.y - unit.y) < 0.3) {
-                    unit.angle = Math.atan2(SLOT.fy - unit.y, SLOT.fx - unit.x);
+            const ORDER = world.workOrder(unit);
+            if (!ORDER) {
+                this.wander(world, unit, dt);
+            } else if (ORDER.hold) {
+                if (ORDER.face) {
+                    unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
                 }
             } else {
-                this.wander(world, unit, dt);
+                world.steer(unit, ORDER.x, ORDER.y, dt, scaleMoveSpeed(ORDER.speed, unit));
+                if (Math.hypot(ORDER.x - unit.x, ORDER.y - unit.y) < 0.4) {
+                    unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
+                }
             }
             return;
         }
