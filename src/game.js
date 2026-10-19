@@ -14409,7 +14409,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.39";
+      PRODUCT_VERSION = "0.10.40";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -21377,7 +21377,15 @@
     }
     return true;
   }
+  var BOSS_REWARD_CHEST_TIERS = ["wood", "iron", "gold", "magic", "jade"];
+  function bossRewardChestTier(receipt) {
+    if (receipt.source !== "raid" || !receipt.stage) {
+      return "wood";
+    }
+    return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
+  }
   function renderBossRewardBoxes(receipt) {
+    DOLLAR2("bossRewardChest").dataset.tier = bossRewardChestTier(receipt);
     const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? (receipt.source === "farm" ? 0.1 : FIRST_CLEAR ? 0.15 : 0.05), CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
     DOLLAR2("bossRewardStage").textContent = receipt.stage ? (receipt.source === "raid" ? "승리 · " : "농장 레이드 · ") + receipt.stage + "단계" : receipt.source === "farm" ? "농장 레이드 승리" : "레이드 보스 승리";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;

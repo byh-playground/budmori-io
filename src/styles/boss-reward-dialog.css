@@ -43,6 +43,75 @@
     height: clamp(140px, 28dvh, 230px);
     overflow: visible;
 }
+.boss-reward-chest {
+    --cr-wood: #c58a52;
+    --cr-wood-dk: #a86e3e;
+    --cr-metal: #8e99a6;
+    --cr-lock: #f1c453;
+    --cr-line: #4a2f1f;
+}
+.boss-reward-chest[data-tier='iron'] {
+    --cr-wood: #7f93a8;
+    --cr-wood-dk: #657a90;
+    --cr-metal: #d9dee4;
+    --cr-lock: #f1c453;
+    --cr-line: #2c3a4a;
+}
+.boss-reward-chest[data-tier='gold'] {
+    --cr-wood: #f2c34c;
+    --cr-wood-dk: #dc9c2c;
+    --cr-metal: #b8743a;
+    --cr-lock: #fff0a8;
+    --cr-line: #6b3f10;
+}
+.boss-reward-chest[data-tier='magic'] {
+    --cr-wood: #946fd9;
+    --cr-wood-dk: #7450bd;
+    --cr-metal: #f0c04a;
+    --cr-lock: #ff8fb8;
+    --cr-line: #2f1f5c;
+}
+.boss-reward-chest[data-tier='jade'] {
+    --cr-wood: #92b88c;
+    --cr-wood-dk: #6f9a6c;
+    --cr-metal: #f6efd9;
+    --cr-lock: #e3b94f;
+    --cr-line: #2f4a35;
+}
+.cr-wood {
+    fill: var(--cr-wood);
+}
+.cr-wood-dk {
+    fill: var(--cr-wood-dk);
+}
+.cr-metal {
+    fill: var(--cr-metal);
+}
+.cr-lock {
+    fill: var(--cr-lock);
+}
+.cr-key {
+    fill: var(--cr-line);
+}
+.cr-hi {
+    fill: #fff;
+    fill-opacity: 0.32;
+}
+.cr-seam {
+    fill: none;
+    stroke: var(--cr-line);
+    stroke-opacity: 0.35;
+    stroke-width: 4;
+    stroke-linecap: round;
+}
+.cr-line {
+    stroke: var(--cr-line);
+    stroke-width: 8;
+    stroke-linejoin: round;
+}
+path.cr-line {
+    fill: none;
+}
 .boss-reward-chest__body,
 .boss-reward-chest__lid-pivot {
     transform-box: view-box;
@@ -50,10 +119,6 @@
 .boss-reward-chest__lid-pivot {
     transform-origin: 84px 150px;
     transition: transform 120ms cubic-bezier(0.2, 0.8, 0.25, 1);
-}
-.boss-reward-chest__glow {
-    opacity: 0;
-    transition: opacity 120ms ease-out;
 }
 .boss-reward-chest__lock {
     transform-box: view-box;
@@ -72,10 +137,7 @@
     opacity: 0.15;
     transform: translateY(5px) scale(0.92);
 }
-.boss-reward-chest-scene.is-reward .boss-reward-chest__glow {
-    opacity: 1;
-}
-.boss-reward-chest-scene.is-empty .boss-reward-chest__body {
+.boss-reward-chest-scene.is-reward .boss-reward-chest-scene.is-empty .boss-reward-chest__body {
     animation: boss-reward-empty 160ms ease-out both;
 }
 .boss-reward-prize {
