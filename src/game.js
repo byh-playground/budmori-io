@@ -7760,6 +7760,7 @@
           }),
           merge: Object.freeze({
             animationSeconds: 0.85,
+            celebrationSeconds: 1,
             centerHeight: 1.8,
             resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
@@ -11002,6 +11003,7 @@
                   z: 0.2,
                   targetX: X,
                   targetY: Y,
+                  targetZ: Z,
                   life: 0,
                   delay: index * STEP,
                   span: STEP,
@@ -11018,7 +11020,8 @@
           }
           this.emit("merge", X, Y, 1, {
             delay: SEQUENCE_WINDOW,
-            span: CONFIG.farm.merge.animationSeconds - SEQUENCE_WINDOW
+            span: CONFIG.farm.merge.celebrationSeconds,
+            tier: RESULT.tier
           });
           return true;
         }
@@ -13595,7 +13598,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.6";
+      PRODUCT_VERSION = "0.10.8";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14803,95 +14806,247 @@
   // src/features/scenes/farm/presentation.js
   init_definition11();
 
-  // src/features/farm-modes/presentation-base.js
-  var CelebrationEffect = class {
-    draw(renderer, effect, progress) {
-      const COLOR = this.color;
-      renderer.ring(effect.x, effect.y, this.radius(progress), COLOR, 0.07);
-      for (let i = 0; i < 6; i++) {
-        const A = i * Math.PI / 3 + progress * this.rotationSpeed, SPREAD = this.spread(progress), P = renderer.project(
-          effect.x + Math.cos(A) * SPREAD,
-          effect.y + Math.sin(A) * SPREAD,
-          effect.z + progress * 0.9
-        ), R2 = renderer.scale * 0.14;
-        renderer.ctx.fillStyle = COLOR;
-        this.drawParticle(renderer, P, R2);
+  // src/features/farm-modes/vfx-kit.js
+  init_unit_grades();
+  var TAU2 = Math.PI * 2;
+  function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+  }
+  function easeOut(t) {
+    return 1 - (1 - clamp01(t)) ** 3;
+  }
+  function pop(t) {
+    const T = clamp01(t);
+    return T < 0.6 ? Math.sin(T / 0.6 * Math.PI * 0.5) * 1.18 : 1.18 - 0.18 * ((T - 0.6) / 0.4);
+  }
+  function rgba(hex, alpha) {
+    const MATCH = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!MATCH) {
+      return hex;
+    }
+    return `rgba(${parseInt(MATCH[1], 16)},${parseInt(MATCH[2], 16)},${parseInt(MATCH[3], 16)},${clamp01(alpha).toFixed(3)})`;
+  }
+  function gradeColor(tier, fallback = "#58b9bb") {
+    return UNIT_GRADES[tier - 1]?.outlineColor || fallback;
+  }
+  function strokeArc(renderer, point2, rx, ry, start2, end, color, width) {
+    const C = renderer.ctx;
+    C.strokeStyle = color;
+    C.lineWidth = Math.max(0.5, width);
+    C.lineCap = "round";
+    C.beginPath();
+    C.ellipse(point2.x, point2.y, Math.max(0.01, rx), Math.max(0.01, ry), 0, start2, end);
+    C.stroke();
+  }
+  function drawSparkle(renderer, point2, radius, color, rotation = 0) {
+    const C = renderer.ctx, INNER = radius * 0.28, COS = Math.cos(rotation), SIN = Math.sin(rotation);
+    C.fillStyle = color;
+    C.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const R2 = i % 2 === 0 ? radius : INNER, A = i * Math.PI / 4, X = Math.cos(A) * R2, Y = Math.sin(A) * R2;
+      const PX = point2.x + X * COS - Y * SIN, PY = point2.y + X * SIN + Y * COS;
+      if (i === 0) {
+        C.moveTo(PX, PY);
+      } else {
+        C.lineTo(PX, PY);
       }
     }
-  };
+    C.closePath();
+    C.fill();
+  }
+  function drawRay(renderer, from, to, halfWidth, color) {
+    const C = renderer.ctx, DX = to.x - from.x, DY = to.y - from.y, LENGTH = Math.hypot(DX, DY) || 1, NX = -DY / LENGTH * halfWidth, NY = DX / LENGTH * halfWidth;
+    C.fillStyle = color;
+    C.beginPath();
+    C.moveTo(from.x + NX, from.y + NY);
+    C.lineTo(to.x, to.y);
+    C.lineTo(from.x - NX, from.y - NY);
+    C.closePath();
+    C.fill();
+  }
 
   // src/features/farm-modes/breed/presentation.js
-  var BirthEffect = class extends CelebrationEffect {
-    constructor() {
-      super();
-      this.color = "#df87a4";
-      this.rotationSpeed = 0.3;
-    }
-    radius(progress) {
-      return 0.35 + progress * 1.5;
-    }
-    spread(progress) {
-      return 0.4 + progress * 1.3;
-    }
-    drawParticle(renderer, point2, radius) {
-      const C = renderer.ctx, COLOR = this.color;
-      renderer.ellipse(point2.x - radius * 0.44, point2.y - radius * 0.25, radius * 0.6, radius * 0.6, COLOR);
-      renderer.ellipse(point2.x + radius * 0.44, point2.y - radius * 0.25, radius * 0.6, radius * 0.6, COLOR);
-      C.beginPath();
-      C.moveTo(point2.x - radius, point2.y);
-      C.lineTo(point2.x, point2.y + radius);
-      C.lineTo(point2.x + radius, point2.y);
-      C.closePath();
-      C.fill();
+  var HEART = "#e5809f";
+  var HEART_LIGHT = "#fbd3df";
+  var HEART_COUNT = 5;
+  var BURST_COUNT = 6;
+  function drawHeart(renderer, point2, radius, color) {
+    const C = renderer.ctx;
+    renderer.ellipse(point2.x - radius * 0.44, point2.y - radius * 0.25, radius * 0.6, radius * 0.6, color);
+    renderer.ellipse(point2.x + radius * 0.44, point2.y - radius * 0.25, radius * 0.6, radius * 0.6, color);
+    C.fillStyle = color;
+    C.beginPath();
+    C.moveTo(point2.x - radius, point2.y);
+    C.lineTo(point2.x, point2.y + radius);
+    C.lineTo(point2.x + radius, point2.y);
+    C.closePath();
+    C.fill();
+  }
+  var BirthEffect = class {
+    draw(renderer, effect, progress) {
+      const P = clamp01(progress), X = effect.x, Y = effect.y, Z = effect.z || 0.7;
+      renderer.ring(X, Y, 0.25 + easeOut(P) * 1.3, rgba(HEART, 0.75 * (1 - P)), 0.05 * (1 - P) + 0.012);
+      if (P > 0.16) {
+        const Q = clamp01((P - 0.16) / 0.84);
+        renderer.ring(X, Y, 0.15 + easeOut(Q) * 0.9, rgba(HEART_LIGHT, 0.8 * (1 - Q)), 0.035 * (1 - Q) + 0.01);
+      }
+      if (P < 0.4) {
+        const T = P / 0.4;
+        for (let index = 0; index < BURST_COUNT; index++) {
+          const ANGLE = index * TAU2 / BURST_COUNT + 0.4, POINT2 = renderer.project(
+            X + Math.cos(ANGLE) * easeOut(T) * 0.85,
+            Y + Math.sin(ANGLE) * easeOut(T) * 0.7,
+            Z * 0.5 + easeOut(T) * 0.35
+          );
+          drawSparkle(
+            renderer,
+            POINT2,
+            renderer.scale * 0.085 * (1 - T),
+            rgba(index % 2 ? HEART_LIGHT : HEART, 1 - T),
+            T * 2
+          );
+        }
+      }
+      for (let index = 0; index < HEART_COUNT; index++) {
+        const T = clamp01((P - index * 0.05) / 0.82);
+        if (T <= 0 || T >= 1) {
+          continue;
+        }
+        const ANGLE = index * TAU2 / HEART_COUNT + 0.4, SWAY = Math.sin(T * TAU2 * 1.2 + index * 1.3) * 0.09, POINT2 = renderer.project(
+          X + Math.cos(ANGLE) * 0.42 * easeOut(T) + SWAY,
+          Y + Math.sin(ANGLE) * 0.3 * easeOut(T),
+          Z + easeOut(T) * 1.25
+        ), SIZE = renderer.scale * 0.15 * pop(T * 1.8), ALPHA = T < 0.6 ? 1 : 1 - (T - 0.6) / 0.4;
+        drawHeart(renderer, POINT2, SIZE, rgba(HEART, ALPHA));
+        renderer.ellipse(
+          POINT2.x - SIZE * 0.5,
+          POINT2.y - SIZE * 0.42,
+          SIZE * 0.16,
+          SIZE * 0.12,
+          rgba(HEART_LIGHT, ALPHA * 0.9)
+        );
+      }
     }
   };
 
   // src/features/farm-modes/merge/presentation.js
   init_farm_model();
-  function mergeHolePulse(renderer, task) {
-    const PROGRESS = task.phase === "approach" ? CLAMP2(task.elapsed / task.duration, 0, 1) : 1, PULSE = 0.5 + 0.5 * Math.sin(renderer.displayTimeMs * 6e-3 + task.materialIds[0] * 0.17);
-    return { progress: PROGRESS, pulse: PULSE, radius: renderer.scale * (0.2 + PULSE * 0.035 + PROGRESS * 0.055) };
+  var HOLE_PURPLE = "#7b58bd";
+  var HOLE_LIGHT = "#d9c4ff";
+  var HOLE_RIM = "#e9dcff";
+  var CREAM = "#fffbee";
+  var ORBIT_COUNT = 6;
+  var TRAIL_STEPS = 3;
+  function mergeHoleState(renderer, task) {
+    const APPROACH = task.phase === "approach", PROGRESS = APPROACH ? CLAMP2(task.elapsed / task.duration, 0, 1) : 1, PULSE = 0.5 + 0.5 * Math.sin(renderer.displayTimeMs * 6e-3 + (task.materialIds?.[0] || 0) * 0.17), OPEN = APPROACH ? easeOut(PROGRESS / 0.25) : 1;
+    let bump = 0;
+    if (!APPROACH && task.materialIds?.length) {
+      const STEP = task.duration * 0.72 / task.materialIds.length;
+      for (let index = 0; index < task.materialIds.length; index++) {
+        const AGE = task.elapsed - (index + 1) * STEP;
+        if (AGE >= 0) {
+          bump = Math.max(bump, Math.exp(-AGE * 16));
+        }
+      }
+    }
+    const RADIUS = renderer.scale * (0.26 + PROGRESS * 0.07 + PULSE * 0.025 + bump * 0.07) * OPEN;
+    return { progress: PROGRESS, pulse: PULSE, bump, open: OPEN, radius: RADIUS };
+  }
+  function drawOrbit(renderer, task, state, front) {
+    const TIME = renderer.displayTimeMs * 42e-4, Z = task.centerZ + (front ? 0.32 : -0.16);
+    for (let index = 0; index < ORBIT_COUNT; index++) {
+      const DIRECTION = index % 2 ? -1 : 1, BASE = TIME * DIRECTION + index * TAU2 / ORBIT_COUNT, SPREAD = 0.46 + 0.1 * Math.sin(index * 1.7) + state.bump * 0.12;
+      for (let trail = TRAIL_STEPS; trail >= 0; trail--) {
+        const ANGLE = BASE - trail * 0.2 * DIRECTION, IS_FRONT = Math.sin(ANGLE) >= 0;
+        if (IS_FRONT !== front) {
+          continue;
+        }
+        const POINT2 = renderer.project(
+          task.centerX + Math.cos(ANGLE) * SPREAD,
+          task.centerY + Math.sin(ANGLE) * SPREAD * 0.74,
+          Z
+        ), SIZE = renderer.scale * (0.04 - trail * 7e-3) * state.open * (1 + state.bump * 0.4);
+        renderer.ellipse(
+          POINT2.x,
+          POINT2.y,
+          SIZE,
+          SIZE * 0.78,
+          rgba(trail ? HOLE_LIGHT : CREAM, (1 - trail / (TRAIL_STEPS + 1)) * 0.95)
+        );
+      }
+    }
   }
   function drawMergeBlackHoleBack(renderer, task) {
-    const { pulse: PULSE, radius: RADIUS } = mergeHolePulse(renderer, task), CENTER = renderer.project(task.centerX, task.centerY, task.centerZ - 0.16);
-    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 3.1, RADIUS * 1.8, "#9274d944");
-    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 2.25, RADIUS * 1.35, "#7b58bd88");
-    for (let index = 0; index < 2; index++) {
-      const ANGLE = renderer.displayTimeMs * 4e-3 * (index ? -1 : 1) + index * Math.PI, POINT2 = renderer.project(
-        task.centerX + Math.cos(ANGLE) * 0.43,
-        task.centerY + Math.sin(ANGLE) * 0.32,
-        task.centerZ - 0.12
-      ), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
-      renderer.ellipse(POINT2.x, POINT2.y, PARTICLE_RADIUS, PARTICLE_RADIUS * 0.72, "#e0c4ff99");
-    }
+    const STATE = mergeHoleState(renderer, task), CENTER = renderer.project(task.centerX, task.centerY, task.centerZ - 0.16), R2 = STATE.radius;
+    renderer.ellipse(CENTER.x, CENTER.y, R2 * 3.3, R2 * 1.95, rgba(HOLE_PURPLE, 0.18 * STATE.open));
+    renderer.ellipse(CENTER.x, CENTER.y, R2 * 2.3, R2 * 1.38, rgba(HOLE_PURPLE, 0.5 * STATE.open));
+    drawOrbit(renderer, task, STATE, false);
   }
   function drawMergeBlackHoleFront(renderer, task) {
-    const { pulse: PULSE, radius: RADIUS } = mergeHolePulse(renderer, task), Z = task.centerZ + 0.32, CENTER = renderer.project(task.centerX, task.centerY, Z);
-    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 1.55, RADIUS * 0.95, "#21182e");
-    renderer.ellipse(CENTER.x, CENTER.y, RADIUS * 1.18, RADIUS * 0.7, "#100d18");
-    for (let index = 0; index < 2; index++) {
-      const ANGLE = renderer.displayTimeMs * 4e-3 * (index ? 1 : -1) + (index + 2) * Math.PI / 2, POINT2 = renderer.project(
-        task.centerX + Math.cos(ANGLE) * 0.43,
-        task.centerY + Math.sin(ANGLE) * 0.32,
-        Z + 0.04
-      ), PARTICLE_RADIUS = renderer.scale * (0.035 + PULSE * 0.012);
-      renderer.ellipse(POINT2.x, POINT2.y, PARTICLE_RADIUS, PARTICLE_RADIUS * 0.72, "#e0c4ff");
+    const STATE = mergeHoleState(renderer, task), CENTER = renderer.project(task.centerX, task.centerY, task.centerZ + 0.32), R2 = STATE.radius;
+    renderer.ellipse(CENTER.x, CENTER.y, R2 * 1.6, R2 * 0.98, "#21182e");
+    renderer.ellipse(CENTER.x, CENTER.y, R2 * 1.2, R2 * 0.72, "#0f0b17");
+    strokeArc(
+      renderer,
+      CENTER,
+      R2 * 1.62,
+      R2 * 0.99,
+      0,
+      TAU2,
+      rgba(HOLE_RIM, 0.55 + 0.35 * STATE.bump),
+      renderer.scale * 0.028
+    );
+    if (STATE.bump > 0.05) {
+      strokeArc(
+        renderer,
+        CENTER,
+        R2 * (1.7 + (1 - STATE.bump) * 1.1),
+        R2 * (1.04 + (1 - STATE.bump) * 0.7),
+        0,
+        TAU2,
+        rgba(CREAM, STATE.bump * 0.7),
+        renderer.scale * 0.02
+      );
     }
+    drawOrbit(renderer, task, STATE, true);
   }
   function drawMergeBlackHoles(renderer, world) {
     for (const TASK of world.mergeTasks) {
       if (!Number.isFinite(TASK.centerX) || !Number.isFinite(TASK.centerY) || !Number.isFinite(TASK.centerZ)) {
         continue;
       }
-      const { pulse: PULSE } = mergeHolePulse(renderer, TASK), ID = Number.isFinite(TASK.materialIds?.[0]) ? TASK.materialIds[0] : 0, DEPTH = 0.785 * TASK.centerY - 0.62 * TASK.centerZ;
+      const STATE = mergeHoleState(renderer, TASK), ID = Number.isFinite(TASK.materialIds?.[0]) ? TASK.materialIds[0] : 0, DEPTH = 0.785 * TASK.centerY - 0.62 * TASK.centerZ, TIME = renderer.displayTimeMs * 16e-4;
+      renderer.groundEllipse(
+        TASK.centerX,
+        TASK.centerY,
+        0.62 * STATE.open,
+        0.62 * STATE.open,
+        rgba(HOLE_PURPLE, 0.16)
+      );
       renderer.strokeGroundEllipse(
         TASK.centerX,
         TASK.centerY,
-        0.52 + PULSE * 0.08,
-        0.4 + PULSE * 0.06,
-        "#7650a888",
+        (0.56 + STATE.pulse * 0.05) * STATE.open,
+        (0.56 + STATE.pulse * 0.05) * STATE.open,
+        rgba("#8a63c9", 0.7),
         0.04
       );
+      renderer.strokeGroundEllipse(
+        TASK.centerX,
+        TASK.centerY,
+        0.38 * STATE.open,
+        0.38 * STATE.open,
+        rgba(HOLE_LIGHT, 0.5),
+        0.025
+      );
+      for (let index = 0; index < 8; index++) {
+        const ANGLE = TIME + index * TAU2 / 8, POINT2 = renderer.project(
+          TASK.centerX + Math.cos(ANGLE) * 0.56 * STATE.open,
+          TASK.centerY + Math.sin(ANGLE) * 0.56 * STATE.open,
+          0
+        );
+        renderer.ellipse(POINT2.x, POINT2.y, renderer.scale * 0.032, renderer.scale * 0.02, rgba(HOLE_LIGHT, 0.9));
+      }
       renderer.addActor(renderer.mergeHoleBackPresentation, TASK, DEPTH + 0.62 * 0.16, -2e9 + ID);
       renderer.addActor(renderer.mergeHoleFrontPresentation, TASK, DEPTH - 0.62 * 0.32, 2e9 + ID);
     }
@@ -14911,42 +15066,80 @@
       z: (effect.z || 0) + ((effect.targetZ ?? effect.z ?? 0) - (effect.z || 0)) * T
     };
   }
-  var MergeEffect = class extends CelebrationEffect {
-    constructor() {
-      super();
-      this.color = "#58b9bb";
-      this.rotationSpeed = 2;
-    }
-    radius(progress) {
-      return 1.8 * (1 - progress) + 0.15;
-    }
-    spread(progress) {
-      return 1.8 * (1 - progress);
-    }
-    drawParticle(renderer, point2, radius) {
-      const C = renderer.ctx;
-      C.beginPath();
-      C.moveTo(point2.x, point2.y - radius * 1.5);
-      C.lineTo(point2.x + radius, point2.y);
-      C.lineTo(point2.x, point2.y + radius * 1.5);
-      C.lineTo(point2.x - radius, point2.y);
-      C.closePath();
-      C.fill();
+  var MergeEffect = class {
+    draw(renderer, effect, progress) {
+      const P = clamp01(progress), COLOR = gradeColor(effect.tier), X = effect.x, Y = effect.y, Z = effect.z || 1, CENTER = renderer.project(X, Y, Z);
+      if (P < 0.32) {
+        const T = P / 0.32, R2 = renderer.scale * (0.18 + easeOut(T) * 1.05);
+        renderer.ellipse(CENTER.x, CENTER.y, R2, R2 * 0.8, rgba(CREAM, 0.9 * (1 - T) ** 2));
+      }
+      const RING_A = easeOut(P);
+      renderer.ring(X, Y, 0.3 + RING_A * 1.9, rgba(COLOR, 0.95 * (1 - P)), 0.12 * (1 - P) + 0.02);
+      if (P > 0.12) {
+        const Q = clamp01((P - 0.12) / 0.88);
+        renderer.ring(X, Y, 0.2 + easeOut(Q) * 1.35, rgba(CREAM, 0.8 * (1 - Q)), 0.05 * (1 - Q) + 0.012);
+      }
+      const BEAM = clamp01(1 - P / 0.6);
+      if (BEAM > 0) {
+        const BOTTOM = renderer.project(X, Y, 0), TOP = renderer.project(X, Y, 2.4), WIDTH = renderer.scale * 0.34 * (0.4 + 0.6 * BEAM), C = renderer.ctx;
+        C.fillStyle = rgba(COLOR, 0.3 * BEAM);
+        C.beginPath();
+        C.moveTo(BOTTOM.x - WIDTH, BOTTOM.y);
+        C.lineTo(TOP.x - WIDTH * 0.35, TOP.y);
+        C.lineTo(TOP.x + WIDTH * 0.35, TOP.y);
+        C.lineTo(BOTTOM.x + WIDTH, BOTTOM.y);
+        C.closePath();
+        C.fill();
+      }
+      const RAYS = 8, REACH = easeOut(P) * 1.5;
+      for (let index = 0; index < RAYS; index++) {
+        const ANGLE = index * TAU2 / RAYS + P * 0.5, FROM = renderer.project(X + Math.cos(ANGLE) * REACH * 0.4, Y + Math.sin(ANGLE) * REACH * 0.4, Z - 0.5), TO = renderer.project(X + Math.cos(ANGLE) * REACH, Y + Math.sin(ANGLE) * REACH, Z - 0.5);
+        drawRay(
+          renderer,
+          FROM,
+          TO,
+          renderer.scale * 0.05 * (1 - P),
+          rgba(index % 2 ? CREAM : COLOR, (1 - P) ** 1.4)
+        );
+      }
+      const SPARKLES = 6 + (effect.tier || 2) * 2;
+      for (let index = 0; index < SPARKLES; index++) {
+        const SEED = Math.sin(index * 12.9898 + 4.1) * 43758.5453, JITTER = SEED - Math.floor(SEED), ANGLE = index * TAU2 / SPARKLES + JITTER * 0.8, DISTANCE = (0.35 + JITTER * 0.9) * easeOut(P), RISE = easeOut(P) * (0.5 + JITTER * 0.8) - P * P * 0.4, POINT2 = renderer.project(
+          X + Math.cos(ANGLE) * DISTANCE,
+          Y + Math.sin(ANGLE) * DISTANCE * 0.8,
+          Z - 0.3 + RISE
+        ), SIZE = renderer.scale * (0.07 + JITTER * 0.07) * pop(P * 2.2) * (1 - P * 0.6);
+        drawSparkle(renderer, POINT2, SIZE, rgba(index % 2 ? CREAM : COLOR, clamp01(1.4 - P * 1.3)), P * 3 + index);
+      }
     }
   };
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
-      const E = effect, Q = progress;
-      const T = CLAMP2(Q, 0, 1), POINT_POSITION = mergeMaterialPosition(E, T), START = renderer.project(E.x, E.y, E.z || 0), POINT2 = renderer.project(POINT_POSITION.x, POINT_POSITION.y, POINT_POSITION.z);
-      renderer.line(START, POINT2, 0.045, `rgba(88,185,187,${0.2 + 0.65 * (1 - T)})`);
-      renderer.ellipse(
-        POINT2.x,
-        POINT2.y,
-        renderer.scale * 0.12 * (1 - 0.4 * T),
-        renderer.scale * 0.09 * (1 - 0.4 * T),
-        `rgba(88,185,187,${1 - 0.35 * T})`,
-        T * Math.PI
-      );
+      const T = CLAMP2(progress, 0, 1), SIDE = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
+        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE * Math.min(1, LENGTH / 1.2);
+        return renderer.project(
+          POSITION.x + NORMAL_X * ARC,
+          POSITION.y + NORMAL_Y * ARC,
+          POSITION.z + Math.sin(V * Math.PI) * 0.25
+        );
+      };
+      for (let step = 5; step >= 1; step--) {
+        const U = T - step * 0.07;
+        if (U < 0) {
+          continue;
+        }
+        const POINT2 = AT(U), FADE = 1 - step / 6;
+        renderer.ellipse(
+          POINT2.x,
+          POINT2.y,
+          renderer.scale * 0.08 * FADE * (1 - 0.4 * T),
+          renderer.scale * 0.06 * FADE * (1 - 0.4 * T),
+          rgba("#58b9bb", 0.55 * FADE)
+        );
+      }
+      const HEAD = AT(T), SIZE = renderer.scale * 0.13 * (1 - 0.45 * T);
+      renderer.ellipse(HEAD.x, HEAD.y, SIZE, SIZE * 0.78, rgba("#58b9bb", 0.95));
+      renderer.ellipse(HEAD.x, HEAD.y, SIZE * 0.5, SIZE * 0.4, rgba(CREAM, 0.95));
     }
   };
 
@@ -15744,7 +15937,7 @@
   // src/features/boss-patterns/sweep-360/presentation.js
   init_definition22();
   init_farm_model();
-  var TAU2 = Math.PI * 2;
+  var TAU3 = Math.PI * 2;
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE8, "sweep", 0.14, 0.14);
@@ -15755,7 +15948,7 @@
       pose.arm("arm-right", 0.72);
     }
     active(_boss, pose) {
-      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWEEP = TAU2 * Q, ARM_SWAY = Math.sin(SWEEP) * 0.48;
+      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWEEP = TAU3 * Q, ARM_SWAY = Math.sin(SWEEP) * 0.48;
       pose.body.rotation = 0.06 * Math.sin(SWEEP);
       pose.arm("arm-left", -0.72 - ARM_SWAY);
       pose.arm("arm-right", 0.72 + ARM_SWAY);
@@ -15782,7 +15975,7 @@
       if (boss.patternPhase !== "active") {
         return;
       }
-      const Q = CLAMP2((boss.patternPhaseElapsed || 0) / Math.max(this.config.active, 1e-3), 0, 1), ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + TAU2 * Q, TANGENT_X = -Math.sin(ANGLE) * this.config.width * 0.7, TANGENT_Y = Math.cos(ANGLE) * this.config.width * 0.7, RADIUS_X = Math.cos(ANGLE) * this.config.reach, RADIUS_Y = Math.sin(ANGLE) * this.config.reach, FROM = renderer.project(boss.x + RADIUS_X - TANGENT_X, boss.y + RADIUS_Y - TANGENT_Y, (boss.z || 0) + 0.2), TO = renderer.project(boss.x + RADIUS_X + TANGENT_X, boss.y + RADIUS_Y + TANGENT_Y, (boss.z || 0) + 0.2);
+      const Q = CLAMP2((boss.patternPhaseElapsed || 0) / Math.max(this.config.active, 1e-3), 0, 1), ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + TAU3 * Q, TANGENT_X = -Math.sin(ANGLE) * this.config.width * 0.7, TANGENT_Y = Math.cos(ANGLE) * this.config.width * 0.7, RADIUS_X = Math.cos(ANGLE) * this.config.reach, RADIUS_Y = Math.sin(ANGLE) * this.config.reach, FROM = renderer.project(boss.x + RADIUS_X - TANGENT_X, boss.y + RADIUS_Y - TANGENT_Y, (boss.z || 0) + 0.2), TO = renderer.project(boss.x + RADIUS_X + TANGENT_X, boss.y + RADIUS_Y + TANGENT_Y, (boss.z || 0) + 0.2);
       renderer.ctx.flush();
       renderer.line(FROM, TO, 0.2, "#68463299");
       renderer.line(FROM, TO, 0.085, "#f0c77c");
@@ -16092,7 +16285,7 @@
   init_farm_model();
 
   // src/attack-telegraph.js
-  var TAU3 = Math.PI * 2;
+  var TAU4 = Math.PI * 2;
   var ARC_STEP = Math.PI / 36;
   function point(out, count, x, y) {
     out[count * 2] = x;
@@ -16110,7 +16303,7 @@
   function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
     const DX = endX - x, DY = endY - y, D = Math.hypot(DX, DY), ANGLE = Math.atan2(DY, DX), R2 = Math.max(r, landingRadius);
     if (D <= R2 - r + 1e-9) {
-      return arc(out, 0, endX, endY, R2, 0, TAU3);
+      return arc(out, 0, endX, endY, R2, 0, TAU4);
     }
     const JOIN = Math.sqrt(Math.max(0, R2 * R2 - r * r));
     let n = 0;
@@ -16121,7 +16314,7 @@
     } else {
       const CROSS = (r * r - R2 * R2 + D * D) / (2 * D), HEIGHT = Math.sqrt(Math.max(0, r * r - CROSS * CROSS));
       const SMALL = Math.atan2(HEIGHT, CROSS), LARGE = Math.atan2(HEIGHT, CROSS - D);
-      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU3);
+      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU4);
       n = arc(out, n, endX, endY, R2, ANGLE + LARGE, ANGLE - LARGE);
     }
     return n;
@@ -16130,8 +16323,8 @@
     let n = 0;
     if (area.kind === "sweep") {
       const OUTER = area.reach + area.width, INNER = Math.max(0, area.reach - area.width);
-      n = arc(out, 0, area.x, area.y, OUTER, 0, TAU3);
-      return arc(out, n, area.x, area.y, INNER, TAU3, 0);
+      n = arc(out, 0, area.x, area.y, OUTER, 0, TAU4);
+      return arc(out, n, area.x, area.y, INNER, TAU4, 0);
     }
     if (area.kind === "sector") {
       n = point(out, n, area.x, area.y);
@@ -16155,7 +16348,7 @@
         area.y + Math.sin(START) * R_LOCAL,
         W,
         START + Math.PI,
-        START + TAU3
+        START + TAU4
       );
     }
     return 0;

@@ -113,6 +113,7 @@ const CONFIG = Object.freeze({
         }),
         merge: Object.freeze({
             animationSeconds: 0.85,
+            celebrationSeconds: 1,
             centerHeight: 1.8,
             resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
@@ -4107,6 +4108,7 @@ const GARDEN = class Garden {
                             z: 0.2,
                             targetX: X,
                             targetY: Y,
+                            targetZ: Z,
                             life: 0,
                             delay: index * STEP,
                             span: STEP,
@@ -4124,7 +4126,8 @@ const GARDEN = class Garden {
         }
         this.emit('merge', X, Y, 1, {
             delay: SEQUENCE_WINDOW,
-            span: CONFIG.farm.merge.animationSeconds - SEQUENCE_WINDOW,
+            span: CONFIG.farm.merge.celebrationSeconds,
+            tier: RESULT.tier,
         });
         return true;
     }
