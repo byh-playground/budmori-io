@@ -14409,7 +14409,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.44";
+      PRODUCT_VERSION = "0.10.45";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20485,8 +20485,8 @@
   // src/food-feel.js
   var DOLLAR = (id) => document.getElementById(id);
   var FoodFeel = class {
-    constructor(requestFeed2) {
-      this.button = DOLLAR("feed");
+    constructor() {
+      this.button = DOLLAR("warehouseCount") ?? DOLLAR("warehouseProgress");
       this.progress = DOLLAR("warehouseProgress");
       this.pips = [...this.progress.querySelectorAll(".tap-pip")];
       this.completeUntil = 0;
@@ -20521,83 +20521,15 @@
         }
         this.updateSoundButton();
       };
-      const POINTERS = /* @__PURE__ */ new Map();
-      const STOP_POINTER = (id, activate = false) => {
-        const POINTER = POINTERS.get(id);
-        if (!POINTER) {
-          return;
-        }
-        clearTimeout(POINTER.timeout);
-        clearInterval(POINTER.interval);
-        POINTERS.delete(id);
-        if (activate && !POINTER.started) {
-          requestFeed2();
-        }
-        if (this.button.hasPointerCapture(id)) {
-          this.button.releasePointerCapture(id);
-        }
-      };
-      this.button.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0 || !e.isPrimary || this.button.disabled) {
-          return;
-        }
-        e.preventDefault();
-        this.unlock();
-        const POINTER = { started: false, timeout: 0, interval: 0 };
-        POINTERS.set(e.pointerId, POINTER);
-        this.button.setPointerCapture(e.pointerId);
-        this.animate(
-          this.button,
-          [{ transform: "scale(1)" }, { transform: this.reduced ? "scale(1)" : "scale(1.035,.94)" }],
-          75
-        );
-        POINTER.timeout = setTimeout(() => {
-          if (!POINTERS.has(e.pointerId)) {
-            return;
-          }
-          POINTER.started = true;
-          if (!requestFeed2()) {
-            return;
-          }
-          POINTER.interval = setInterval(() => {
-            if (!requestFeed2()) {
-              clearInterval(POINTER.interval);
-              POINTER.interval = 0;
-            }
-          }, 100);
-        }, 100);
-      });
-      this.button.addEventListener("pointerup", (e) => {
-        if (!POINTERS.has(e.pointerId)) {
-          return;
-        }
-        e.preventDefault();
-        const R2 = this.button.getBoundingClientRect();
-        STOP_POINTER(
-          e.pointerId,
-          e.clientX >= R2.left && e.clientX <= R2.right && e.clientY >= R2.top && e.clientY <= R2.bottom
-        );
-      });
-      const CANCEL = (e) => STOP_POINTER(e.pointerId);
-      this.button.addEventListener("pointercancel", CANCEL);
-      this.button.addEventListener("lostpointercapture", CANCEL);
-      const CANCEL_ALL = () => {
-        for (const ID of [...POINTERS.keys()]) {
-          STOP_POINTER(ID);
-        }
-      };
       window.addEventListener("blur", () => {
-        CANCEL_ALL();
         this.silence();
       });
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-          CANCEL_ALL();
           this.silence();
         }
       });
       window.addEventListener("pagehide", () => {
-        CANCEL_ALL();
         this.silence();
         for (const A of this.animations.values()) {
           A.cancel();
@@ -21807,16 +21739,8 @@
     }
     return AUTOSAVE.flush();
   }
-  var FOOD_FEEL = new FoodFeel(requestFeed);
+  var FOOD_FEEL = new FoodFeel();
   var COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
-  function requestFeed() {
-    if (!home && active && !active.paused && active.world.scene === "farm" && active.world.warehouseFood > 0 && active.world.food.length < CONFIG.farm.work.maxFood) {
-      FOOD_FEEL.unlock();
-      active.queue("feed");
-      return true;
-    }
-    return false;
-  }
   var WORK_STORAGE_KEYS = {
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
@@ -21879,6 +21803,24 @@
       }, 1800);
     }
   }
+  function raidStartBlockReason(stageLocked) {
+    if (!personalGarden) {
+      return "내 정원에서만 레이드를 시작할 수 있어요.";
+    }
+    if (personalGarden.farmBossEvent?.phase !== "idle") {
+      return "농장 이벤트가 끝난 뒤에 시작할 수 있어요.";
+    }
+    if (personalGarden.activeRaidRunSequence !== null) {
+      return "진행 중인 레이드를 먼저 마쳐 주세요.";
+    }
+    if (stageLocked) {
+      return "이전 단계를 먼저 클리어해 주세요.";
+    }
+    if (!hasRaidRosterEntries(personalGarden.roster.residents())) {
+      return "투입할 수 있는 병력이 없어요. 유닛을 먼저 키워 주세요.";
+    }
+    return "";
+  }
   function renderBossEncounterStage(stage) {
     if (!personalGarden || active?.world?.scene === "raid") {
       return null;
@@ -21908,12 +21850,11 @@
       LABEL.append(TITLE, DETAILS);
       DOLLAR2("bossStageDrop").append(ICON, LABEL);
       renderNeutralBossPreview(ICON, SPECIES, CATALOG_ENTRY.asset);
-      DOLLAR2("bossStageNotice").textContent = "";
-    } else {
-      DOLLAR2("bossStageNotice").textContent = "";
     }
-    DOLLAR2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.roster.residents()) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null || STAGE_LOCKED;
-    DOLLAR2("bossEncounterChallenge").title = DOLLAR2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 농장 상태가 필요해요." : "";
+    const REASON = raidStartBlockReason(STAGE_LOCKED);
+    DOLLAR2("bossStageNotice").textContent = REASON;
+    DOLLAR2("bossEncounterChallenge").disabled = REASON !== "";
+    DOLLAR2("bossEncounterChallenge").title = REASON;
     return SELECTION;
   }
   function openBossEncounter(push = true) {
@@ -22470,16 +22411,6 @@
       e.preventDefault();
     }
   });
-  DOLLAR2("feed").addEventListener("keydown", (e) => {
-    if (e.repeat && ["Enter", " "].includes(e.key)) {
-      e.preventDefault();
-    }
-  });
-  DOLLAR2("feed").onclick = (e) => {
-    if (e.detail === 0 && !e.pointerType) {
-      requestFeed();
-    }
-  };
   DOLLAR2("pause").onclick = () => {
     menuPauseChanged = true;
     active.paused = !active.paused;
@@ -23353,11 +23284,13 @@
       "hidden",
       home || !BATTLE_HUD || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
     );
-    syncFlag(
-      "bossEncounterChallenge",
-      "disabled",
-      !personalGarden || !HAS_READY_TROOPS || FARM_EVENT_ACTIVE || personalGarden?.activeRaidRunSequence !== null || personalGarden.farmBossProgress.currentStage > personalGarden.farmBossProgress.highestClearedRaidStage + 1
-    );
+    {
+      const REASON = raidStartBlockReason(
+        personalGarden ? personalGarden.farmBossProgress.currentStage > personalGarden.farmBossProgress.highestClearedRaidStage + 1 : false
+      );
+      syncFlag("bossEncounterChallenge", "disabled", REASON !== "");
+      syncText("bossStageNotice", REASON);
+    }
     syncFlag("menuTabFarms", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabGrowth", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabAbilities", "disabled", RAID || !personalGarden);
@@ -23365,18 +23298,6 @@
     syncText("pause", active.paused ? "▶" : "Ⅱ");
     syncAttribute("pause", "aria-label", active.paused ? "계속하기" : "일시정지");
     syncAttribute("pause", "title", active.paused ? "계속하기" : "일시정지");
-    syncAttribute("feed", "aria-label", "현재 농장에 먹이 1개 살포");
-    syncAttribute("feed", "title", "현재 농장에 먹이 1개 살포");
-    syncData(
-      "feed",
-      "state",
-      W.warehouseFood <= 0 || W.food.length >= CONFIG.farm.work.maxFood ? "unavailable" : "ready"
-    );
-    syncFlag(
-      "feed",
-      "disabled",
-      home || active.paused || W.scene !== "farm" || W.warehouseFood <= 0 || W.food.length >= CONFIG.farm.work.maxFood
-    );
     syncText("warehouseStock", String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
     const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD), SITE = WORK_WORLD.buildSite;

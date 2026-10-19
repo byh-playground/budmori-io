@@ -1171,24 +1171,19 @@ async function upgradeMenuFlow() {
     assert.equal(await P.evaluate(() => location.hash), '#/farms');
     const FARM_COPY = await P.evaluate(() => {
         const PANEL = document.querySelector('#farmPanel'),
-            PLOT = document.querySelector('#farmPlotList button'),
-            FEED = document.querySelector('#feed');
+            PLOT = document.querySelector('#farmPlotList button');
         return {
             text: PANEL.innerText,
             plotText: PLOT.textContent,
             plotLabel: PLOT.getAttribute('aria-label'),
             rawIdVisible: PANEL.innerText.includes('plot-1'),
-            feedText: FEED.innerText,
-            feedLabel: FEED.getAttribute('aria-label'),
-            feedPips: FEED.querySelectorAll('.tap-pip').length,
+            feedButton: !!document.querySelector('#feed'),
             warehousePips: document.querySelectorAll('#warehouseProgress .tap-pip').length,
         };
     });
     assert(FARM_COPY.plotText.includes('\uB18D\uC7A5 1') && FARM_COPY.plotLabel.includes('\uB18D\uC7A5 1'));
     assert.equal(FARM_COPY.rawIdVisible, false, 'stable plot IDs stay out of visible labels');
-    assert(FARM_COPY.feedText.includes('\uBA39\uC774 \uC8FC\uAE30'));
-    assert(FARM_COPY.feedLabel.includes('\uD604\uC7AC \uB18D\uC7A5'));
-    assert.equal(FARM_COPY.feedPips, 0, 'scatter button has no warehouse count or auto progress meter');
+    assert.equal(FARM_COPY.feedButton, false, 'manual feed button was retired');
     assert.equal(FARM_COPY.warehousePips, 5, 'auto progress meter is shown in the warehouse');
     assert(!/Farm plots|Warehouse food|Expand current|Unlock farm|Sort by species|target share/i.test(FARM_COPY.text));
     for (const VIEWPORT of [
@@ -1326,59 +1321,15 @@ async function upgradeMenuFlow() {
         W.food.length = 0;
         W._foodSpatialDirty = true;
     });
-    await P.waitForFunction(() => !document.querySelector('#feed').disabled);
     const QUEUED_BEFORE = await P.evaluate(() => window.__farmFeedProbe.commands.length);
-    await P.locator('#feed').click();
-    await P.waitForFunction((count) => window.__farmFeedProbe.commands.length === count + 1, QUEUED_BEFORE);
-    const QUEUED_BEFORE_HOLD = await P.evaluate(() => window.__farmFeedProbe.commands.length),
-        FEED_BOX = await P.locator('#feed').boundingBox();
-    await P.mouse.move(FEED_BOX.x + FEED_BOX.width / 2, FEED_BOX.y + FEED_BOX.height / 2);
-    await P.mouse.down();
-    await P.waitForTimeout(260);
-    await P.mouse.up();
-    await P.waitForFunction((count) => window.__farmFeedProbe.commands.length === count + 2, QUEUED_BEFORE_HOLD);
-    const QUEUED_AFTER_HOLD = await P.evaluate(() => window.__farmFeedProbe.commands.length);
-    await P.waitForTimeout(140);
-    assert.equal(
-        await P.evaluate(() => window.__farmFeedProbe.commands.length),
-        QUEUED_AFTER_HOLD,
-        'release stops repeat feeding',
-    );
-    const QUEUED_BEFORE_CANCEL = await P.evaluate(() => window.__farmFeedProbe.commands.length);
-    await P.evaluate(() => {
-        document.querySelector('#feed').addEventListener(
-            'pointerdown',
-            (event) => {
-                window.__farmFeedPointerId = event.pointerId;
-            },
-            { once: true, capture: true },
-        );
-    });
-    await P.mouse.down();
-    await P.waitForTimeout(30);
-    await P.evaluate(() =>
-        document
-            .querySelector('#feed')
-            .dispatchEvent(new PointerEvent('pointercancel', { pointerId: window.__farmFeedPointerId, bubbles: true })),
-    );
-    await P.mouse.up();
-    await P.waitForTimeout(50);
-    await P.mouse.down();
-    await P.waitForTimeout(30);
-    await P.evaluate(() => window.dispatchEvent(new Event('blur')));
-    await P.mouse.up();
-    await P.waitForTimeout(150);
-    assert.equal(
-        await P.evaluate(() => window.__farmFeedProbe.commands.length),
-        QUEUED_BEFORE_CANCEL,
-        'pointercancel and blur cancel pending input',
-    );
+    await P.evaluate(() => BUDMORI.runtime.queue('feed'));
+    assert.equal(await P.evaluate(() => window.__farmFeedProbe.commands.length), QUEUED_BEFORE + 1);
     await P.evaluate(() => {
         const { original: ORIGINAL, commands: COMMANDS } = window.__farmFeedProbe;
         BUDMORI.runtime.queue = ORIGINAL;
         delete window.__farmFeedProbe;
         if (!COMMANDS.length) {
-            throw Error('feed button did not enqueue its manual requests');
+            throw Error('feed command did not enqueue its manual request');
         }
     });
     await P.setViewportSize({ width: 1280, height: 800 });
@@ -3272,18 +3223,17 @@ async function cadenceDiagnosticsFlow() {
         }
         BUDMORI.runtime.capturePresentation('reset');
     });
-    await P.waitForFunction(() => !document.querySelector('#feed').disabled);
     const FEEDABLE_SETUP = await P.evaluate(() => ({
         floor: BUDMORI.sim.food.length,
         stock: BUDMORI.sim.warehouseFood,
-        disabled: document.querySelector('#feed').disabled,
+        disabled: false,
     }));
     assert.equal(FEEDABLE_SETUP.floor, 135);
     assert(FEEDABLE_SETUP.stock >= 5 && !FEEDABLE_SETUP.disabled, JSON.stringify(FEEDABLE_SETUP));
     const MANUAL_FEED_BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual);
     const BEFORE = await P.evaluate(() => ({ time: BUDMORI.sim.time, ticks: BUDMORI.sim.metrics.logicTicks }));
     for (let index = 0; index < 5; index++) {
-        await P.locator('#feed').click();
+        await P.evaluate(() => BUDMORI.runtime.queue('feed'));
     }
     await P.waitForFunction((count) => BUDMORI.foodFeel.counts.manual === count + 5, MANUAL_FEED_BEFORE);
     await P.evaluate(() => {
@@ -3688,15 +3638,9 @@ async function core() {
         label: document.querySelector('#gameMenu')?.getAttribute('aria-label'),
         tabs: [...document.querySelectorAll('#gameMenuTabs [role="tab"]')].map((button) => button.id),
         roles: !!document.querySelector('#roles'),
-        essentials: [
-            'feed',
-            'raidControls',
-            'deploymentCards',
-            'raidRemaining',
-            'bossbar',
-            'allyHealth',
-            'bossHealth',
-        ].every((id) => !!document.getElementById(id)),
+        essentials: ['raidControls', 'deploymentCards', 'raidRemaining', 'bossbar', 'allyHealth', 'bossHealth'].every(
+            (id) => !!document.getElementById(id),
+        ),
     }));
     assert.deepEqual(
         MENU_CONTRACT.utility,
@@ -3763,16 +3707,10 @@ async function core() {
         W.food.length = 0;
         W._foodSpatialDirty = true;
     });
-    await P.waitForFunction(() => !document.querySelector('#feed').disabled);
     const BEFORE = await P.evaluate(() => BUDMORI.foodFeel.counts.manual),
-        FEED_CAMERA = await cameraSnapshot(P),
-        FEED_BOX = await P.locator('#feed').boundingBox();
-    await P.mouse.move(FEED_BOX.x + FEED_BOX.width / 2, FEED_BOX.y + FEED_BOX.height / 2);
-    await P.mouse.down();
-    await P.mouse.move(FEED_BOX.x + FEED_BOX.width / 2 + 6, FEED_BOX.y + FEED_BOX.height / 2 + 4);
-    await P.mouse.up();
-    for (let i = 1; i < 15; i++) {
-        await P.locator('#feed').click();
+        FEED_CAMERA = await cameraSnapshot(P);
+    for (let i = 0; i < 15; i++) {
+        await P.evaluate(() => BUDMORI.runtime.queue('feed'));
     }
     await P.waitForFunction((n) => BUDMORI.foodFeel.counts.manual === n + 15, BEFORE);
     await P.evaluate(() => {
@@ -4722,7 +4660,6 @@ async function core() {
         M = await open(MOBILE);
     await M.locator('#newGame').tap();
     const MOBILE_FEED_CAMERA = await cameraSnapshot(M);
-    await M.locator('#feed').tap();
     assert.deepEqual(await cameraSnapshot(M), MOBILE_FEED_CAMERA, 'touch feeding never pans the world');
     await panInput(M, 'touch');
     await M.evaluate(() => {

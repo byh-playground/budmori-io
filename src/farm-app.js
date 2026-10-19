@@ -655,23 +655,8 @@ function persist() {
     }
     return AUTOSAVE.flush();
 }
-const FOOD_FEEL = new FoodFeel(requestFeed);
+const FOOD_FEEL = new FoodFeel();
 const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
-function requestFeed() {
-    if (
-        !home &&
-        active &&
-        !active.paused &&
-        active.world.scene === 'farm' &&
-        active.world.warehouseFood > 0 &&
-        active.world.food.length < CONFIG.farm.work.maxFood
-    ) {
-        FOOD_FEEL.unlock();
-        active.queue('feed');
-        return true;
-    }
-    return false;
-}
 const WORK_STORAGE_KEYS = {
     work: 'budmori.work.basisPoints',
     resource: 'budmori.work.resourceBasisPoints',
@@ -742,6 +727,24 @@ function showBossEncounterMessage(text) {
         }, 1800);
     }
 }
+function raidStartBlockReason(stageLocked) {
+    if (!personalGarden) {
+        return '내 정원에서만 레이드를 시작할 수 있어요.';
+    }
+    if (personalGarden.farmBossEvent?.phase !== 'idle') {
+        return '농장 이벤트가 끝난 뒤에 시작할 수 있어요.';
+    }
+    if (personalGarden.activeRaidRunSequence !== null) {
+        return '진행 중인 레이드를 먼저 마쳐 주세요.';
+    }
+    if (stageLocked) {
+        return '이전 단계를 먼저 클리어해 주세요.';
+    }
+    if (!hasRaidRosterEntries(personalGarden.roster.residents())) {
+        return '투입할 수 있는 병력이 없어요. 유닛을 먼저 키워 주세요.';
+    }
+    return '';
+}
 function renderBossEncounterStage(stage) {
     if (!personalGarden || active?.world?.scene === 'raid') {
         return null;
@@ -782,18 +785,11 @@ function renderBossEncounterStage(stage) {
         LABEL.append(TITLE, DETAILS);
         DOLLAR('bossStageDrop').append(ICON, LABEL);
         renderNeutralBossPreview(ICON, SPECIES, CATALOG_ENTRY.asset);
-        DOLLAR('bossStageNotice').textContent = '';
-    } else {
-        DOLLAR('bossStageNotice').textContent = '';
     }
-    DOLLAR('bossEncounterChallenge').disabled =
-        !hasRaidRosterEntries(personalGarden.roster.residents()) ||
-        personalGarden.farmBossEvent?.phase !== 'idle' ||
-        personalGarden.activeRaidRunSequence !== null ||
-        STAGE_LOCKED;
-    DOLLAR('bossEncounterChallenge').title = DOLLAR('bossEncounterChallenge').disabled
-        ? '전투를 시작하려면 투입 가능한 병력과 농장 상태가 필요해요.'
-        : '';
+    const REASON = raidStartBlockReason(STAGE_LOCKED);
+    DOLLAR('bossStageNotice').textContent = REASON;
+    DOLLAR('bossEncounterChallenge').disabled = REASON !== '';
+    DOLLAR('bossEncounterChallenge').title = REASON;
     return SELECTION;
 }
 function openBossEncounter(push = true) {
@@ -1384,16 +1380,6 @@ DOLLAR('merge').addEventListener('keydown', (e) => {
         e.preventDefault();
     }
 });
-DOLLAR('feed').addEventListener('keydown', (e) => {
-    if (e.repeat && ['Enter', ' '].includes(e.key)) {
-        e.preventDefault();
-    }
-});
-DOLLAR('feed').onclick = (e) => {
-    if (e.detail === 0 && !e.pointerType) {
-        requestFeed();
-    }
-};
 DOLLAR('pause').onclick = () => {
     menuPauseChanged = true;
     active.paused = !active.paused;
@@ -2391,15 +2377,16 @@ function sync(display, now, notices) {
         'hidden',
         home || !BATTLE_HUD || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
     );
-    syncFlag(
-        'bossEncounterChallenge',
-        'disabled',
-        !personalGarden ||
-            !HAS_READY_TROOPS ||
-            FARM_EVENT_ACTIVE ||
-            personalGarden?.activeRaidRunSequence !== null ||
-            personalGarden.farmBossProgress.currentStage > personalGarden.farmBossProgress.highestClearedRaidStage + 1,
-    );
+    {
+        const REASON = raidStartBlockReason(
+            personalGarden
+                ? personalGarden.farmBossProgress.currentStage >
+                      personalGarden.farmBossProgress.highestClearedRaidStage + 1
+                : false,
+        );
+        syncFlag('bossEncounterChallenge', 'disabled', REASON !== '');
+        syncText('bossStageNotice', REASON);
+    }
     syncFlag('menuTabFarms', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabGrowth', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
@@ -2407,22 +2394,6 @@ function sync(display, now, notices) {
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
     syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
     syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');
-    syncAttribute('feed', 'aria-label', '현재 농장에 먹이 1개 살포');
-    syncAttribute('feed', 'title', '현재 농장에 먹이 1개 살포');
-    syncData(
-        'feed',
-        'state',
-        W.warehouseFood <= 0 || W.food.length >= CONFIG.farm.work.maxFood ? 'unavailable' : 'ready',
-    );
-    syncFlag(
-        'feed',
-        'disabled',
-        home ||
-            active.paused ||
-            W.scene !== 'farm' ||
-            W.warehouseFood <= 0 ||
-            W.food.length >= CONFIG.farm.work.maxFood,
-    );
     syncText('warehouseStock', String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
     const KINDS = WORK_WORLD.workerKindCounts,
