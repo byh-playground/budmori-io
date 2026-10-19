@@ -491,18 +491,55 @@
       kind,
       x: POSITION.x,
       y: POSITION.y,
-      food: config.farm.work.pileKinds[kind].amount,
-      maxFood: config.farm.work.pileKinds[kind].amount,
+      food: world.pileSpec(kind).amount,
+      maxFood: world.pileSpec(kind).amount,
       stack: 0,
       hitRev: 0,
       big: false
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
   }
+  function startSite(world, config, facilityId) {
+    const SPEC = config.farm.work.facilities[facilityId], POSITION = pilePosition(world, config);
+    world._piles.push({
+      id: ++world._pileId,
+      kind: "site",
+      facility: facilityId,
+      x: POSITION.x,
+      y: POSITION.y,
+      food: 1,
+      maxFood: 1,
+      done: 0,
+      need: SPEC.hits,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
+    world.emit("drop-dust", POSITION.x, POSITION.y);
+    assignWorkers(world, config);
+  }
+  function activeSite(world) {
+    return world._piles.find((pile) => pile.kind === "site") || null;
+  }
+  function effectiveKind(world, unit) {
+    const KIND = world._workerKinds.get(unit.id) || "food";
+    return KIND === "build" && !activeSite(world) ? "resource" : KIND;
+  }
   function worksOn(world, unit, pile) {
-    return world._workerKinds.get(unit.id) === "resource" === (pile.kind !== "grain");
+    const KIND = effectiveKind(world, unit);
+    if (KIND === "build") {
+      return pile.kind === "site";
+    }
+    return KIND === "resource" ? pile.kind === "wood" || pile.kind === "stone" : pile.kind === "grain";
+  }
+  function capacity(world, config, pile) {
+    const WORK = config.farm.work;
+    return pile.kind === "site" && world.buildRush ? WORK.rushAttackers : WORK.maxAttackers;
   }
   function pileRadius(pile) {
+    if (pile.kind === "site") {
+      return 1.05;
+    }
     return (pile.kind === "wood" ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
   }
   function resetWork(world) {
@@ -513,11 +550,11 @@
     world._swings = /* @__PURE__ */ new Map();
   }
   function assignWorkers(world, config) {
-    const WORK = config.farm.work, WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set();
+    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set();
     for (const PILE of world._piles) {
       const MEMBERS = [];
       for (const [ID, OLD] of PREVIOUS) {
-        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < WORK.maxAttackers) {
+        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < capacity(world, config, PILE)) {
           MEMBERS.push(ID);
           TAKEN_IDS.add(ID);
         }
@@ -526,7 +563,7 @@
         (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
       );
       for (const UNIT3 of FREE) {
-        if (MEMBERS.length >= WORK.maxAttackers) {
+        if (MEMBERS.length >= capacity(world, config, PILE)) {
           break;
         }
         MEMBERS.push(UNIT3.id);
@@ -562,7 +599,23 @@
       }
     }
   }
+  function impactSite(world, config, pile) {
+    pile.done++;
+    pile.hitRev++;
+    const COMPLETE = pile.done >= pile.need;
+    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
+    if (COMPLETE) {
+      world._piles.splice(world._piles.indexOf(pile), 1);
+      world.completeFacility(pile);
+      world.emit("landing-shockwave", pile.x, pile.y);
+      assignWorkers(world, config);
+    }
+  }
   function impact(world, config, pile) {
+    if (pile.kind === "site") {
+      impactSite(world, config, pile);
+      return;
+    }
     pile.stack++;
     pile.hitRev++;
     const COMPLETE = pile.stack >= STACKS_PER_FOOD;
@@ -638,8 +691,8 @@
     const WORK = config.farm.work;
     pushOutOfPiles(world);
     let missing = null;
-    for (const [KIND, SPEC] of Object.entries(WORK.pileKinds)) {
-      if (world._piles.filter((pile) => pile.kind === KIND).length < SPEC.count) {
+    for (const KIND of Object.keys(WORK.pileKinds)) {
+      if (world._piles.filter((pile) => pile.kind === KIND).length < world.pileSpec(KIND).count) {
         missing = KIND;
         break;
       }
@@ -6926,15 +6979,15 @@
       return [];
     }
     const GRANTED = [];
-    let capacity = Math.max(
+    let capacity2 = Math.max(
       0,
       (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
     );
     for (const GROUP of world.bossRewardInventory) {
-      if (capacity <= 0) {
+      if (capacity2 <= 0) {
         break;
       }
-      const COUNT = Math.min(capacity, GROUP.count);
+      const COUNT = Math.min(capacity2, GROUP.count);
       let placed = 0;
       while (placed < COUNT) {
         const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
@@ -6946,7 +6999,7 @@
       }
       if (placed > 0) {
         GROUP.count -= placed;
-        capacity -= placed;
+        capacity2 -= placed;
         allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
       }
     }
@@ -8034,6 +8087,28 @@
             maxFood: 50,
             maxAttackers: 3,
             defaultResourceBasisPoints: 3e3,
+            defaultBuildBasisPoints: 1500,
+            rushAttackers: 12,
+            facilities: Object.freeze({
+              windmill: Object.freeze({
+                name: "풍차",
+                hits: 24,
+                cost: Object.freeze({ wood: 12, stone: 6 }),
+                effect: "먹이 일꾼이 25% 빨라져요"
+              }),
+              granary: Object.freeze({
+                name: "곡식 광",
+                hits: 18,
+                cost: Object.freeze({ wood: 16, stone: 0 }),
+                effect: "곡식 더미가 1개 늘고 더미마다 먹이가 4개 늘어요"
+              }),
+              rack: Object.freeze({
+                name: "연장 걸이",
+                hits: 18,
+                cost: Object.freeze({ wood: 8, stone: 8 }),
+                effect: "자원 일꾼이 25% 빨라져요"
+              })
+            }),
             pileKinds: Object.freeze({
               grain: Object.freeze({ count: 2, amount: 12 }),
               wood: Object.freeze({ count: 1, amount: 8 }),
@@ -9086,6 +9161,9 @@
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
           this.materials = { wood: 0, stone: 0 };
+          this.facilities = [];
+          this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
+          this.buildRush = false;
           this._workerKinds = /* @__PURE__ */ new Map();
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
@@ -9203,11 +9281,11 @@
           return (this._breedPlans?.size || 0) + (this._activeBreedReservations?.size || 0);
         }
         get totalFarmCapacity() {
-          let capacity = 0;
+          let capacity2 = 0;
           for (const PLOT of this.farmPlots.values()) {
-            capacity += PLOT.capacity;
+            capacity2 += PLOT.capacity;
           }
-          return capacity;
+          return capacity2;
         }
         get placedPopulation() {
           return this.roster.placedPopulation(this.activePlotId);
@@ -10173,6 +10251,49 @@
         workSwingOf(id) {
           return this._swings.get(id) || null;
         }
+        facilityBuilt(id) {
+          return this.facilities.some((facility) => facility.id === id);
+        }
+        // Base spec of a pile kind, with the granary's bonus applied.
+        pileSpec(kind) {
+          const BASE = CONFIG.farm.work.pileKinds[kind];
+          return kind === "grain" && this.facilityBuilt("granary") ? { count: BASE.count + 1, amount: BASE.amount + 4 } : BASE;
+        }
+        get buildSite() {
+          return activeSite(this);
+        }
+        // The cost is paid when the work is done; it can only be started while the materials are on hand.
+        startBuild(id) {
+          const SPEC = CONFIG.farm.work.facilities[id];
+          if (this.scene !== "farm" || !SPEC || this.facilityBuilt(id) || activeSite(this) || this.materials.wood < SPEC.cost.wood || this.materials.stone < SPEC.cost.stone) {
+            return false;
+          }
+          startSite(this, CONFIG, id);
+          this._nextWorkerRefreshTick = 0;
+          this.refreshWorkers();
+          return true;
+        }
+        completeFacility(site) {
+          const SPEC = CONFIG.farm.work.facilities[site.facility];
+          this.materials.wood = Math.max(0, this.materials.wood - SPEC.cost.wood);
+          this.materials.stone = Math.max(0, this.materials.stone - SPEC.cost.stone);
+          this.facilities.push({ id: site.facility, x: site.x, y: site.y });
+          this.buildRush = false;
+          this._nextWorkerRefreshTick = 0;
+          this.refreshWorkers();
+          this.markProgressChanged();
+        }
+        // Everyone drops what they are doing and rushes the construction site.
+        setBuildRush(on) {
+          const WANT = !!on && !!activeSite(this);
+          if (WANT === this.buildRush) {
+            return WANT === !!on;
+          }
+          this.buildRush = WANT;
+          this._nextWorkerRefreshTick = 0;
+          this.refreshWorkers();
+          return true;
+        }
         workKind(unit) {
           return this._workerKinds.get(unit.id) || "food";
         }
@@ -10183,16 +10304,17 @@
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
         }
         // workers share of the farm, and the share of those workers that gather materials instead of grain.
-        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints) {
+        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints, buildBasisPoints = this.buildBasisPoints) {
           const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4;
-          if (!VALID(basisPoints) || !VALID(resourceBasisPoints)) {
+          if (!VALID(basisPoints) || !VALID(resourceBasisPoints) || !VALID(buildBasisPoints) || resourceBasisPoints + buildBasisPoints > 1e4) {
             return false;
           }
-          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints) {
+          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints && buildBasisPoints === this.buildBasisPoints) {
             return true;
           }
           this.workBasisPoints = basisPoints;
           this.resourceBasisPoints = resourceBasisPoints;
+          this.buildBasisPoints = buildBasisPoints;
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           return true;
@@ -10201,7 +10323,6 @@
         // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
         refreshWorkers() {
           const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map(), UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
-          let rate = 0;
           if (this.scene === "farm") {
             for (const PLOT_ID of this.farmPlots.keys()) {
               const BY_SPECIES = /* @__PURE__ */ new Map();
@@ -10216,15 +10337,11 @@
               }
               for (const LIST of BY_SPECIES.values()) {
                 LIST.sort((a, b) => a.id - b.id);
-                const COUNT = Math.min(
-                  Math.floor(RATIO * LIST.length + 1e-9),
-                  Math.max(0, LIST.length - WORK.minBreeders)
-                );
+                const COUNT = this.buildRush ? LIST.length : Math.min(Math.floor(RATIO * LIST.length + 1e-9), Math.max(0, LIST.length - WORK.minBreeders));
                 for (let index = 0; index < COUNT; index++) {
                   const WORKER = LIST[index];
                   NEXT.add(WORKER.id);
                   const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
-                  rate += UNIT_RATE;
                   RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
                 }
               }
@@ -10241,26 +10358,37 @@
           }
           this._workerIds = NEXT;
           this._workerRates = RATES;
-          const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b), RESOURCE_WORKERS = Math.round(SORTED_WORKERS.length * this.resourceBasisPoints / 1e4);
+          const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b), TOTAL = SORTED_WORKERS.length, BUILDERS = this.buildRush ? TOTAL : Math.round(TOTAL * this.buildBasisPoints / 1e4), GATHERERS = this.buildRush ? 0 : Math.min(TOTAL - BUILDERS, Math.round(TOTAL * this.resourceBasisPoints / 1e4));
           this._workerKinds = new Map(
             SORTED_WORKERS.map((id, index) => [
               id,
-              index >= SORTED_WORKERS.length - RESOURCE_WORKERS ? "resource" : "food"
+              index >= TOTAL - BUILDERS ? "build" : index >= TOTAL - BUILDERS - GATHERERS ? "resource" : "food"
             ])
           );
+          const MULTIPLIER = {
+            food: this.facilityBuilt("windmill") ? 1.25 : 1,
+            resource: this.facilityBuilt("rack") ? 1.25 : 1
+          };
+          let total = 0;
+          for (const [ID, KIND] of this._workerKinds) {
+            const BOOSTED = this._workerRates.get(ID) * (MULTIPLIER[KIND] || 1);
+            this._workerRates.set(ID, BOOSTED);
+            total += BOOSTED;
+          }
           this._workCount = NEXT.size;
-          this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
+          this._workRate = total;
           assignWorkers(this, CONFIG);
         }
         get warehouseFull() {
           return this.food.length >= CONFIG.farm.work.maxFood;
         }
         get workerKindCounts() {
-          let resource = 0;
+          let resource = 0, build = 0;
           for (const KIND of this._workerKinds.values()) {
             resource += KIND === "resource" ? 1 : 0;
+            build += KIND === "build" ? 1 : 0;
           }
-          return { food: this._workerKinds.size - resource, resource };
+          return { food: this._workerKinds.size - resource - build, resource, build };
         }
         get workerCount() {
           return this._workCount;
@@ -10275,7 +10403,8 @@
         _attackRate(kind) {
           let rate = 0;
           for (const [ID, ASSIGN] of this._workAssign) {
-            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
+            const WORKER_KIND = this._workerKinds.get(ID);
+            if (ASSIGN.attacking && (WORKER_KIND === kind || kind === "resource" && WORKER_KIND === "build")) {
               rate += this._workerRates.get(ID) || 0;
             }
           }
@@ -13580,6 +13709,7 @@
         remainder: world.foodTaps.remainder,
         produced: world.foodTaps.produced,
         materials: { wood: world.materials.wood, stone: world.materials.stone },
+        facilities: world.facilities.map((facility) => ({ id: facility.id, x: facility.x, y: facility.y })),
         plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length }))
       },
       totals: {
@@ -13688,7 +13818,18 @@
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"], ["materials"]);
+    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"], ["materials", "facilities"]);
+    if (data.food.facilities !== void 0) {
+      ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
+      const SEEN = /* @__PURE__ */ new Set();
+      for (const FACILITY of data.food.facilities) {
+        keys(FACILITY, ["id", "x", "y"]);
+        ASSERT(
+          Object.hasOwn(CONFIG.farm.work.facilities, FACILITY.id) && !SEEN.has(FACILITY.id) && Number.isFinite(FACILITY.x) && Number.isFinite(FACILITY.y)
+        );
+        SEEN.add(FACILITY.id);
+      }
+    }
     if (data.food.materials !== void 0) {
       keys(data.food.materials, ["wood", "stone"]);
       ASSERT(SAFE_INTEGER(data.food.materials.wood) && SAFE_INTEGER(data.food.materials.stone));
@@ -13879,6 +14020,11 @@
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
     WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
+    WORLD.facilities = (data.food.facilities ?? []).map((facility) => ({
+      id: facility.id,
+      x: facility.x,
+      y: facility.y
+    }));
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
@@ -14011,7 +14157,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.27";
+      PRODUCT_VERSION = "0.10.28";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17292,6 +17438,7 @@
       }
       PRESENTATION.drawBoundary(this);
       if (sim2.scene === "farm") {
+        this.drawFacilities(sim2);
         this.drawGrainPiles(sim2, this.displayTimeMs);
       }
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
@@ -17315,6 +17462,10 @@
         }
         const HIT = CLAMP2(1 - (now - seen.at) / 220, 0, 1), BASE = this.project(PILE.x, PILE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
         this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
+        if (PILE.kind === "site") {
+          this.drawSite(PILE, BASE, X, S, SQUASH, LIFT);
+          continue;
+        }
         if (PILE.kind === "wood") {
           this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, "#7a5a34");
           this.ellipse(X, BASE.y - 0.5 * S * LIFT, 0.2 * S * SQUASH, 0.5 * S * LIFT, "#9a7442");
@@ -17356,6 +17507,55 @@
           if (!LIVE.has(ID)) {
             SEEN.delete(ID);
           }
+        }
+      }
+    }
+    // A construction site: a timber frame that fills in with each hit, and a progress bar above it.
+    drawSite(site, base, x, s, squash, lift) {
+      const RATIO = CLAMP2(site.done / site.need, 0, 1);
+      this.ellipse(x, base.y - 0.1 * s, 0.9 * s * squash, 0.3 * s, "#a58a5a");
+      this.ellipse(x - 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, "#7a5a34");
+      this.ellipse(x + 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, "#7a5a34");
+      this.ellipse(x, base.y - 0.98 * s * lift, 0.66 * s, 0.07 * s, "#7a5a34");
+      if (RATIO > 0.34) {
+        this.ellipse(x, base.y - 0.45 * s * lift, 0.5 * s * squash, 0.3 * s * lift, "#c9a96a");
+      }
+      if (RATIO > 0.67) {
+        this.ellipse(x, base.y - 0.92 * s * lift, 0.7 * s * squash, 0.3 * s * lift, "#b9774a");
+      }
+      const BAR_Y = base.y - 1.4 * s;
+      this.ellipse(x, BAR_Y, 0.8 * s, 0.1 * s, "#4a463699");
+      this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, "#f6d36b");
+    }
+    drawFacilities(sim2) {
+      for (const FACILITY of sim2.facilities || []) {
+        const BASE = this.project(FACILITY.x, FACILITY.y, 0), S = this.scale * 1.15, X = BASE.x;
+        this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, "#54452433");
+        if (FACILITY.id === "windmill") {
+          const SPIN = (this.displayTimeMs || 0) * 2e-3;
+          this.ellipse(X, BASE.y - 0.4 * S, 0.5 * S, 0.5 * S, "#e8dcc0");
+          this.ellipse(X, BASE.y - 0.95 * S, 0.5 * S, 0.22 * S, "#b9774a");
+          for (let blade = 0; blade < 4; blade++) {
+            const ANGLE = SPIN + blade * Math.PI / 2;
+            this.ellipse(
+              X + Math.cos(ANGLE) * 0.5 * S,
+              BASE.y - 0.75 * S + Math.sin(ANGLE) * 0.5 * S,
+              0.4 * S,
+              0.07 * S,
+              "#f6f0e0",
+              ANGLE
+            );
+          }
+        } else if (FACILITY.id === "granary") {
+          this.ellipse(X, BASE.y - 0.35 * S, 0.8 * S, 0.45 * S, "#c9a96a");
+          this.ellipse(X, BASE.y - 0.85 * S, 0.9 * S, 0.3 * S, "#b9774a");
+          this.ellipse(X, BASE.y - 0.3 * S, 0.2 * S, 0.28 * S, "#7a5a34");
+        } else {
+          this.ellipse(X - 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, "#7a5a34");
+          this.ellipse(X + 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, "#7a5a34");
+          this.ellipse(X, BASE.y - 0.8 * S, 0.62 * S, 0.07 * S, "#9a7442");
+          this.ellipse(X - 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, "#8f8d80", 0.4);
+          this.ellipse(X + 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, "#7fa77a", -0.4);
         }
       }
     }
@@ -18096,7 +18296,11 @@
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
-          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints);
+          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints);
+        case "farm-build":
+          return W.scene === "farm" && typeof c.facilityId === "string" && W.startBuild(c.facilityId);
+        case "farm-rush":
+          return W.scene === "farm" && W.setBuildRush(c.on === true);
         case "farm-sort":
           return W.scene === "farm" && W.sortActiveFarm(c.order);
         case "merge":
@@ -21271,7 +21475,11 @@
     }
     return false;
   }
-  var WORK_STORAGE_KEYS = { work: "budmori.work.basisPoints", resource: "budmori.work.resourceBasisPoints" };
+  var WORK_STORAGE_KEYS = {
+    work: "budmori.work.basisPoints",
+    resource: "budmori.work.resourceBasisPoints",
+    build: "budmori.work.buildBasisPoints"
+  };
   function loadWorkSetting(key, fallback) {
     try {
       const RAW = localStorage.getItem(key), VALUE = Number(RAW);
@@ -21287,12 +21495,16 @@
     }
   }
   function workCuts(world) {
-    const WORK = world.workBasisPoints / 100, CUT_A = 100 - WORK, CUT_B = 100 - WORK * world.resourceBasisPoints / 1e4;
-    return { a: Math.round(CUT_A / 5) * 5, b: Math.round(CUT_B / 5) * 5 };
+    const WORK = world.workBasisPoints / 100, CUT_A = 100 - WORK, CUT_C = 100 - WORK * world.buildBasisPoints / 1e4, CUT_B = CUT_C - WORK * world.resourceBasisPoints / 1e4, ROUND = (value) => Math.round(value / 5) * 5;
+    return { a: ROUND(CUT_A), b: ROUND(CUT_B), c: ROUND(CUT_C) };
   }
-  function cutsToBasisPoints(a, b) {
+  function cutsToBasisPoints(a, b, c) {
     const WORK = 100 - a;
-    return { work: WORK * 100, resource: WORK > 0 ? Math.round((100 - b) / WORK * 1e4) : 0 };
+    return {
+      work: WORK * 100,
+      resource: WORK > 0 ? Math.round((c - b) / WORK * 1e4) : 0,
+      build: WORK > 0 ? Math.round((100 - c) / WORK * 1e4) : 0
+    };
   }
   function install(world) {
     if (active) {
@@ -21307,7 +21519,8 @@
     });
     world.setWorkBasisPoints(
       loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
-      loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints)
+      loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
+      loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints)
     );
     return active;
   }
@@ -22129,18 +22342,25 @@
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
-  function applyWorkCuts(a, b) {
-    const CUT_A = Math.min(a, b), CUT_B = Math.max(a, b), POINTS = cutsToBasisPoints(CUT_A, CUT_B);
+  function applyWorkCuts(a, b, c) {
+    const [CUT_A, CUT_B, CUT_C] = [a, b, c].sort((x, y) => x - y), POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C);
     DOLLAR2("workCutA").value = String(CUT_A);
     DOLLAR2("workCutB").value = String(CUT_B);
+    DOLLAR2("workCutC").value = String(CUT_C);
     saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
     saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
-    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource);
-    active.queue("farm-work", { basisPoints: POINTS.work, resourceBasisPoints: POINTS.resource });
+    saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build);
+    active.queue("farm-work", {
+      basisPoints: POINTS.work,
+      resourceBasisPoints: POINTS.resource,
+      buildBasisPoints: POINTS.build
+    });
   }
-  for (const ID of ["workCutA", "workCutB"]) {
+  var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC"];
+  for (const ID of WORK_CUT_IDS) {
     DOLLAR2(ID).addEventListener("input", () => {
-      applyWorkCuts(Number(DOLLAR2("workCutA").value), Number(DOLLAR2("workCutB").value));
+      applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR2(id).value)));
     });
   }
   DOLLAR2("workHudToggle").addEventListener("click", () => {
@@ -22151,9 +22371,28 @@
   DOLLAR2("workHud").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-work-preset]");
     if (BUTTON && !BUTTON.disabled) {
-      const [CUT_A, CUT_B] = BUTTON.dataset.workPreset.split(",").map(Number);
-      applyWorkCuts(CUT_A, CUT_B);
+      applyWorkCuts(...BUTTON.dataset.workPreset.split(",").map(Number));
     }
+  });
+  function facilityLabel(id) {
+    const SPEC = CONFIG.farm.work.facilities[id];
+    return `<span>${SPEC.name}<br /><small>${SPEC.effect}</small></span><small data-cost>목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ""}</small>`;
+  }
+  for (const ID of Object.keys(CONFIG.farm.work.facilities)) {
+    const BUTTON = document.createElement("button");
+    BUTTON.type = "button";
+    BUTTON.dataset.facility = ID;
+    BUTTON.innerHTML = facilityLabel(ID);
+    DOLLAR2("facilityList").append(BUTTON);
+  }
+  DOLLAR2("facilityList").addEventListener("click", (e) => {
+    const BUTTON = e.target.closest("[data-facility]");
+    if (BUTTON && !BUTTON.disabled) {
+      active.queue("farm-build", { facilityId: BUTTON.dataset.facility });
+    }
+  });
+  DOLLAR2("buildRush").addEventListener("click", () => {
+    active.queue("farm-rush", { on: DOLLAR2("buildRush").getAttribute("aria-pressed") !== "true" });
   });
   DOLLAR2("farmRatioList").addEventListener("input", (e) => {
     const INPUT = e.target.closest("[data-farm-target]");
@@ -22723,7 +22962,7 @@
     );
     syncText("warehouseStock", String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
-    const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD);
+    const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD), SITE = WORK_WORLD.buildSite;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`, warn = false;
     if (WORKERS === 0) {
       note = "일꾼이 없어서 먹이와 자원이 안 만들어져요";
@@ -22732,25 +22971,40 @@
       note = "농장에 먹이가 가득해요 · 일꾼이 쉬어요";
       warn = true;
     }
-    for (const ID of ["workCutA", "workCutB"]) {
+    if (SITE && WORKERS > 0) {
+      const SPEC = CONFIG.farm.work.facilities[SITE.facility];
+      note = `${SPEC.name} 짓는 중 ${SITE.done}/${SITE.need}${WORK_WORLD.buildRush ? " · 전원 건설" : ""}`;
+    }
+    for (const ID of WORK_CUT_IDS) {
       DOLLAR2(ID).disabled = !!farmSortTransition;
     }
-    if (document.activeElement !== DOLLAR2("workCutA") && document.activeElement !== DOLLAR2("workCutB")) {
+    if (!WORK_CUT_IDS.some((id) => document.activeElement === DOLLAR2(id))) {
       DOLLAR2("workCutA").value = String(CUTS.a);
       DOLLAR2("workCutB").value = String(CUTS.b);
+      DOLLAR2("workCutC").value = String(CUTS.c);
+    }
+    DOLLAR2("buildRush").hidden = !SITE;
+    DOLLAR2("buildRush").setAttribute("aria-pressed", String(WORK_WORLD.buildRush));
+    syncText("buildRush", WORK_WORLD.buildRush ? "전원 건설 중 (끄기)" : "전원 건설");
+    for (const BUTTON of DOLLAR2("facilityList").children) {
+      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], BUILT = WORK_WORLD.facilityBuilt(ID);
+      BUTTON.disabled = BUILT || !!SITE || WORK_WORLD.materials.wood < SPEC.cost.wood || WORK_WORLD.materials.stone < SPEC.cost.stone;
+      BUTTON.querySelector("[data-cost]").textContent = BUILT ? "완성" : SITE?.facility === ID ? "짓는 중" : `목재 ${SPEC.cost.wood}${SPEC.cost.stone ? ` · 돌 ${SPEC.cost.stone}` : ""}`;
     }
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
     syncText("workHudFood", `먹이 ${KINDS.food}`);
     syncText("workHudRes", `자원 ${KINDS.resource}`);
+    syncText("workHudBuild", `건설 ${KINDS.build}`);
     syncText("materialWood", String(W.materials.wood));
     syncText("materialStone", String(W.materials.stone));
     syncData("workHud", "warn", warn);
     DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUTS.a)} 1 0`;
     DOLLAR2("workHudFood").style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
-    DOLLAR2("workHudRes").style.flex = `${Math.max(1, 100 - CUTS.b)} 1 0`;
+    DOLLAR2("workHudRes").style.flex = `${Math.max(1, CUTS.c - CUTS.b)} 1 0`;
+    DOLLAR2("workHudBuild").style.flex = `${Math.max(1, 100 - CUTS.c)} 1 0`;
     for (const BUTTON of DOLLAR2("workHud").querySelectorAll("[data-work-preset]")) {
-      BUTTON.setAttribute("aria-pressed", String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b}`));
+      BUTTON.setAttribute("aria-pressed", String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUTS.c}`));
       BUTTON.disabled = !!farmSortTransition;
     }
     syncText("warehouseProgressLabel", `타작 ${W.foodTaps.remainder}/5`);

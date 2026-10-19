@@ -40,20 +40,60 @@ function spawnPile(world, config, kind) {
         kind,
         x: POSITION.x,
         y: POSITION.y,
-        food: config.farm.work.pileKinds[kind].amount,
-        maxFood: config.farm.work.pileKinds[kind].amount,
+        food: world.pileSpec(kind).amount,
+        maxFood: world.pileSpec(kind).amount,
         stack: 0,
         hitRev: 0,
         big: false,
     });
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
-// Food workers fight grain piles; resource workers fight trees and rocks.
+// Starts the construction site for a facility: a solid frame that builders ram until the work is done.
+export function startSite(world, config, facilityId) {
+    const SPEC = config.farm.work.facilities[facilityId],
+        POSITION = pilePosition(world, config);
+    world._piles.push({
+        id: ++world._pileId,
+        kind: 'site',
+        facility: facilityId,
+        x: POSITION.x,
+        y: POSITION.y,
+        food: 1,
+        maxFood: 1,
+        done: 0,
+        need: SPEC.hits,
+        stack: 0,
+        hitRev: 0,
+        big: false,
+    });
+    world.emit('drop-dust', POSITION.x, POSITION.y);
+    assignWorkers(world, config);
+}
+export function activeSite(world) {
+    return world._piles.find((pile) => pile.kind === 'site') || null;
+}
+// Food workers fight grain piles, resource workers fight trees and rocks, builders work the construction site.
+// Builders with nothing to build gather materials instead.
+function effectiveKind(world, unit) {
+    const KIND = world._workerKinds.get(unit.id) || 'food';
+    return KIND === 'build' && !activeSite(world) ? 'resource' : KIND;
+}
 function worksOn(world, unit, pile) {
-    return (world._workerKinds.get(unit.id) === 'resource') === (pile.kind !== 'grain');
+    const KIND = effectiveKind(world, unit);
+    if (KIND === 'build') {
+        return pile.kind === 'site';
+    }
+    return KIND === 'resource' ? pile.kind === 'wood' || pile.kind === 'stone' : pile.kind === 'grain';
+}
+function capacity(world, config, pile) {
+    const WORK = config.farm.work;
+    return pile.kind === 'site' && world.buildRush ? WORK.rushAttackers : WORK.maxAttackers;
 }
 // Piles are solid: the radius shrinks a little as the pile is used up.
 export function pileRadius(pile) {
+    if (pile.kind === 'site') {
+        return 1.05;
+    }
     return (pile.kind === 'wood' ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
 export function resetWork(world) {
@@ -66,8 +106,7 @@ export function resetWork(world) {
 // Assignments are sticky: a worker keeps its pile until the pile is gone or the worker stops working,
 // so re-running this never reshuffles who attacks what.
 export function assignWorkers(world, config) {
-    const WORK = config.farm.work,
-        WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
+    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
         BY_ID = new Map(WORKERS.map((u) => [u.id, u])),
         PREVIOUS = world._workAssign,
         ASSIGN = new Map(),
@@ -80,7 +119,7 @@ export function assignWorkers(world, config) {
                 OLD.attacking &&
                 BY_ID.has(ID) &&
                 worksOn(world, BY_ID.get(ID), PILE) &&
-                MEMBERS.length < WORK.maxAttackers
+                MEMBERS.length < capacity(world, config, PILE)
             ) {
                 MEMBERS.push(ID);
                 TAKEN_IDS.add(ID);
@@ -90,7 +129,7 @@ export function assignWorkers(world, config) {
             (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y),
         );
         for (const UNIT of FREE) {
-            if (MEMBERS.length >= WORK.maxAttackers) {
+            if (MEMBERS.length >= capacity(world, config, PILE)) {
                 break;
             }
             MEMBERS.push(UNIT.id);
@@ -128,7 +167,23 @@ export function assignWorkers(world, config) {
         }
     }
 }
+function impactSite(world, config, pile) {
+    pile.done++;
+    pile.hitRev++;
+    const COMPLETE = pile.done >= pile.need;
+    world.emit('thresh', pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
+    if (COMPLETE) {
+        world._piles.splice(world._piles.indexOf(pile), 1);
+        world.completeFacility(pile);
+        world.emit('landing-shockwave', pile.x, pile.y);
+        assignWorkers(world, config);
+    }
+}
 function impact(world, config, pile) {
+    if (pile.kind === 'site') {
+        impactSite(world, config, pile);
+        return;
+    }
     pile.stack++;
     pile.hitRev++;
     const COMPLETE = pile.stack >= STACKS_PER_FOOD;
@@ -215,8 +270,8 @@ export function stepWork(world, config, dt) {
     pushOutOfPiles(world);
     // Keep the configured number of piles of every kind; refill one at a time after a short wait.
     let missing = null;
-    for (const [KIND, SPEC] of Object.entries(WORK.pileKinds)) {
-        if (world._piles.filter((pile) => pile.kind === KIND).length < SPEC.count) {
+    for (const KIND of Object.keys(WORK.pileKinds)) {
+        if (world._piles.filter((pile) => pile.kind === KIND).length < world.pileSpec(KIND).count) {
             missing = KIND;
             break;
         }

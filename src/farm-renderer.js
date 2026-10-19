@@ -417,6 +417,7 @@ const DIORAMA = class Diorama {
         }
         PRESENTATION.drawBoundary(this);
         if (sim2.scene === 'farm') {
+            this.drawFacilities(sim2);
             this.drawGrainPiles(sim2, this.displayTimeMs);
         }
         const AREA = PRESENTATION.dangerVisible(sim2)
@@ -447,6 +448,10 @@ const DIORAMA = class Diorama {
                 SQUASH = 1 + HIT * 0.14,
                 LIFT = 1 - HIT * 0.16;
             this.groundEllipse(PILE.x, PILE.y, 1.5, 1.0, '#54452433');
+            if (PILE.kind === 'site') {
+                this.drawSite(PILE, BASE, X, S, SQUASH, LIFT);
+                continue;
+            }
             if (PILE.kind === 'wood') {
                 // Tree: a trunk that sways with each hit under a flat round crown.
                 this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, '#7a5a34');
@@ -491,6 +496,57 @@ const DIORAMA = class Diorama {
                 if (!LIVE.has(ID)) {
                     SEEN.delete(ID);
                 }
+            }
+        }
+    }
+    // A construction site: a timber frame that fills in with each hit, and a progress bar above it.
+    drawSite(site, base, x, s, squash, lift) {
+        const RATIO = clamp(site.done / site.need, 0, 1);
+        this.ellipse(x, base.y - 0.1 * s, 0.9 * s * squash, 0.3 * s, '#a58a5a');
+        this.ellipse(x - 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, '#7a5a34');
+        this.ellipse(x + 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, '#7a5a34');
+        this.ellipse(x, base.y - 0.98 * s * lift, 0.66 * s, 0.07 * s, '#7a5a34');
+        if (RATIO > 0.34) {
+            this.ellipse(x, base.y - 0.45 * s * lift, 0.5 * s * squash, 0.3 * s * lift, '#c9a96a');
+        }
+        if (RATIO > 0.67) {
+            this.ellipse(x, base.y - 0.92 * s * lift, 0.7 * s * squash, 0.3 * s * lift, '#b9774a');
+        }
+        const BAR_Y = base.y - 1.4 * s;
+        this.ellipse(x, BAR_Y, 0.8 * s, 0.1 * s, '#4a463699');
+        this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, '#f6d36b');
+    }
+    drawFacilities(sim2) {
+        for (const FACILITY of sim2.facilities || []) {
+            const BASE = this.project(FACILITY.x, FACILITY.y, 0),
+                S = this.scale * 1.15,
+                X = BASE.x;
+            this.groundEllipse(FACILITY.x, FACILITY.y, 1.6, 1.1, '#54452433');
+            if (FACILITY.id === 'windmill') {
+                const SPIN = (this.displayTimeMs || 0) * 0.002;
+                this.ellipse(X, BASE.y - 0.4 * S, 0.5 * S, 0.5 * S, '#e8dcc0');
+                this.ellipse(X, BASE.y - 0.95 * S, 0.5 * S, 0.22 * S, '#b9774a');
+                for (let blade = 0; blade < 4; blade++) {
+                    const ANGLE = SPIN + (blade * Math.PI) / 2;
+                    this.ellipse(
+                        X + Math.cos(ANGLE) * 0.5 * S,
+                        BASE.y - 0.75 * S + Math.sin(ANGLE) * 0.5 * S,
+                        0.4 * S,
+                        0.07 * S,
+                        '#f6f0e0',
+                        ANGLE,
+                    );
+                }
+            } else if (FACILITY.id === 'granary') {
+                this.ellipse(X, BASE.y - 0.35 * S, 0.8 * S, 0.45 * S, '#c9a96a');
+                this.ellipse(X, BASE.y - 0.85 * S, 0.9 * S, 0.3 * S, '#b9774a');
+                this.ellipse(X, BASE.y - 0.3 * S, 0.2 * S, 0.28 * S, '#7a5a34');
+            } else {
+                this.ellipse(X - 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, '#7a5a34');
+                this.ellipse(X + 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, '#7a5a34');
+                this.ellipse(X, BASE.y - 0.8 * S, 0.62 * S, 0.07 * S, '#9a7442');
+                this.ellipse(X - 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, '#8f8d80', 0.4);
+                this.ellipse(X + 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, '#7fa77a', -0.4);
             }
         }
     }

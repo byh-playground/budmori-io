@@ -365,6 +365,9 @@ body > header {
 }
 #workHudRes {
     background: #8b8a7c;
+}
+#workHudBuild {
+    background: #b9774a;
     justify-content: flex-end;
 }
 .work-hud__track {
@@ -411,8 +414,56 @@ body > header {
 }
 .work-hud__presets {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: var(--ui-s1);
+}
+.work-hud__build {
+    margin-top: var(--ui-s2);
+}
+.work-hud__build-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--ui-fs-1);
+    margin-bottom: var(--ui-s1);
+}
+.work-hud__build-head button {
+    min-height: 32px;
+    padding: 0 var(--ui-s2);
+    border: 0;
+    border-radius: var(--ui-r-m);
+    font-weight: var(--ui-fw-b);
+    background: #b9774a;
+    color: #fff;
+}
+.work-hud__build-head button[aria-pressed='true'] {
+    background: var(--ui-ink);
+}
+.work-hud__facilities {
+    display: grid;
+    gap: var(--ui-s1);
+}
+.work-hud__facilities button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--ui-s2);
+    min-height: 40px;
+    padding: 0 var(--ui-s2);
+    border: 0;
+    border-radius: var(--ui-r-m);
+    background: #ece3cc;
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
+    text-align: left;
+}
+.work-hud__facilities button small {
+    font-weight: normal;
+    opacity: 0.8;
+}
+.work-hud__facilities button:disabled {
+    opacity: 0.55;
 }
 .work-hud__presets button {
     min-height: 36px;

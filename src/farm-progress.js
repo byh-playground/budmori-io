@@ -164,6 +164,7 @@ export function captureFarmProgress(world) {
             remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
             materials: { wood: world.materials.wood, stone: world.materials.stone },
+            facilities: world.facilities.map((facility) => ({ id: facility.id, x: facility.x, y: facility.y })),
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
         },
         totals: {
@@ -299,7 +300,21 @@ export function validateFarmProgress(data) {
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials']);
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots'], ['materials', 'facilities']);
+    if (data.food.facilities !== undefined) {
+        ASSERT(Array.isArray(data.food.facilities) && data.food.facilities.length <= 8);
+        const SEEN = new Set();
+        for (const FACILITY of data.food.facilities) {
+            keys(FACILITY, ['id', 'x', 'y']);
+            ASSERT(
+                Object.hasOwn(CONFIG.farm.work.facilities, FACILITY.id) &&
+                    !SEEN.has(FACILITY.id) &&
+                    Number.isFinite(FACILITY.x) &&
+                    Number.isFinite(FACILITY.y),
+            );
+            SEEN.add(FACILITY.id);
+        }
+    }
     if (data.food.materials !== undefined) {
         keys(data.food.materials, ['wood', 'stone']);
         ASSERT(SAFE_INTEGER(data.food.materials.wood) && SAFE_INTEGER(data.food.materials.stone));
@@ -598,6 +613,11 @@ export function restoreFarmProgress(data) {
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
     WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
+    WORLD.facilities = (data.food.facilities ?? []).map((facility) => ({
+        id: facility.id,
+        x: facility.x,
+        y: facility.y,
+    }));
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = new Map();

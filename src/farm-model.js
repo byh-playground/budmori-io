@@ -1,4 +1,4 @@
-import { assignWorkers, resetWork, stepWork, workOrder } from './farm-work.js';
+import { activeSite, assignWorkers, resetWork, startSite, stepWork, workOrder } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
 import { RaidDeploymentCards } from './raid-deployment-cards.js';
@@ -117,6 +117,28 @@ const CONFIG = Object.freeze({
             maxFood: 50,
             maxAttackers: 3,
             defaultResourceBasisPoints: 3000,
+            defaultBuildBasisPoints: 1500,
+            rushAttackers: 12,
+            facilities: Object.freeze({
+                windmill: Object.freeze({
+                    name: '풍차',
+                    hits: 24,
+                    cost: Object.freeze({ wood: 12, stone: 6 }),
+                    effect: '먹이 일꾼이 25% 빨라져요',
+                }),
+                granary: Object.freeze({
+                    name: '곡식 광',
+                    hits: 18,
+                    cost: Object.freeze({ wood: 16, stone: 0 }),
+                    effect: '곡식 더미가 1개 늘고 더미마다 먹이가 4개 늘어요',
+                }),
+                rack: Object.freeze({
+                    name: '연장 걸이',
+                    hits: 18,
+                    cost: Object.freeze({ wood: 8, stone: 8 }),
+                    effect: '자원 일꾼이 25% 빨라져요',
+                }),
+            }),
             pileKinds: Object.freeze({
                 grain: Object.freeze({ count: 2, amount: 12 }),
                 wood: Object.freeze({ count: 1, amount: 8 }),
@@ -1295,6 +1317,9 @@ const GARDEN = class Garden {
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
         this.materials = { wood: 0, stone: 0 };
+        this.facilities = [];
+        this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
+        this.buildRush = false;
         this._workerKinds = new Map();
         this._workerIds = new Set();
         resetWork(this);
@@ -2591,6 +2616,58 @@ const GARDEN = class Garden {
     workSwingOf(id) {
         return this._swings.get(id) || null;
     }
+    facilityBuilt(id) {
+        return this.facilities.some((facility) => facility.id === id);
+    }
+    // Base spec of a pile kind, with the granary's bonus applied.
+    pileSpec(kind) {
+        const BASE = CONFIG.farm.work.pileKinds[kind];
+        return kind === 'grain' && this.facilityBuilt('granary')
+            ? { count: BASE.count + 1, amount: BASE.amount + 4 }
+            : BASE;
+    }
+    get buildSite() {
+        return activeSite(this);
+    }
+    // The cost is paid when the work is done; it can only be started while the materials are on hand.
+    startBuild(id) {
+        const SPEC = CONFIG.farm.work.facilities[id];
+        if (
+            this.scene !== 'farm' ||
+            !SPEC ||
+            this.facilityBuilt(id) ||
+            activeSite(this) ||
+            this.materials.wood < SPEC.cost.wood ||
+            this.materials.stone < SPEC.cost.stone
+        ) {
+            return false;
+        }
+        startSite(this, CONFIG, id);
+        this._nextWorkerRefreshTick = 0;
+        this.refreshWorkers();
+        return true;
+    }
+    completeFacility(site) {
+        const SPEC = CONFIG.farm.work.facilities[site.facility];
+        this.materials.wood = Math.max(0, this.materials.wood - SPEC.cost.wood);
+        this.materials.stone = Math.max(0, this.materials.stone - SPEC.cost.stone);
+        this.facilities.push({ id: site.facility, x: site.x, y: site.y });
+        this.buildRush = false;
+        this._nextWorkerRefreshTick = 0;
+        this.refreshWorkers();
+        this.markProgressChanged();
+    }
+    // Everyone drops what they are doing and rushes the construction site.
+    setBuildRush(on) {
+        const WANT = !!on && !!activeSite(this);
+        if (WANT === this.buildRush) {
+            return WANT === !!on;
+        }
+        this.buildRush = WANT;
+        this._nextWorkerRefreshTick = 0;
+        this.refreshWorkers();
+        return true;
+    }
     workKind(unit) {
         return this._workerKinds.get(unit.id) || 'food';
     }
@@ -2601,16 +2678,30 @@ const GARDEN = class Garden {
         return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
     }
     // workers share of the farm, and the share of those workers that gather materials instead of grain.
-    setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints) {
+    setWorkBasisPoints(
+        basisPoints,
+        resourceBasisPoints = this.resourceBasisPoints,
+        buildBasisPoints = this.buildBasisPoints,
+    ) {
         const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 10000;
-        if (!VALID(basisPoints) || !VALID(resourceBasisPoints)) {
+        if (
+            !VALID(basisPoints) ||
+            !VALID(resourceBasisPoints) ||
+            !VALID(buildBasisPoints) ||
+            resourceBasisPoints + buildBasisPoints > 10000
+        ) {
             return false;
         }
-        if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints) {
+        if (
+            basisPoints === this.workBasisPoints &&
+            resourceBasisPoints === this.resourceBasisPoints &&
+            buildBasisPoints === this.buildBasisPoints
+        ) {
             return true;
         }
         this.workBasisPoints = basisPoints;
         this.resourceBasisPoints = resourceBasisPoints;
+        this.buildBasisPoints = buildBasisPoints;
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         return true;
@@ -2623,7 +2714,6 @@ const GARDEN = class Garden {
             NEXT = new Set(),
             RATES = new Map(),
             UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
-        let rate = 0;
         if (this.scene === 'farm') {
             for (const PLOT_ID of this.farmPlots.keys()) {
                 const BY_SPECIES = new Map();
@@ -2645,15 +2735,13 @@ const GARDEN = class Garden {
                 }
                 for (const LIST of BY_SPECIES.values()) {
                     LIST.sort((a, b) => a.id - b.id);
-                    const COUNT = Math.min(
-                        Math.floor(RATIO * LIST.length + 1e-9),
-                        Math.max(0, LIST.length - WORK.minBreeders),
-                    );
+                    const COUNT = this.buildRush
+                        ? LIST.length
+                        : Math.min(Math.floor(RATIO * LIST.length + 1e-9), Math.max(0, LIST.length - WORK.minBreeders));
                     for (let index = 0; index < COUNT; index++) {
                         const WORKER = LIST[index];
                         NEXT.add(WORKER.id);
                         const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
-                        rate += UNIT_RATE;
                         RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
                     }
                 }
@@ -2670,28 +2758,45 @@ const GARDEN = class Garden {
         }
         this._workerIds = NEXT;
         this._workerRates = RATES;
-        // The highest ids gather materials; the rest work the grain piles. Stable while the roster is stable.
+        // Lowest ids work the grain piles, then the material gatherers, then the builders. Stable while the roster is.
         const SORTED_WORKERS = [...NEXT].sort((a, b) => a - b),
-            RESOURCE_WORKERS = Math.round((SORTED_WORKERS.length * this.resourceBasisPoints) / 10000);
+            TOTAL = SORTED_WORKERS.length,
+            BUILDERS = this.buildRush ? TOTAL : Math.round((TOTAL * this.buildBasisPoints) / 10000),
+            GATHERERS = this.buildRush
+                ? 0
+                : Math.min(TOTAL - BUILDERS, Math.round((TOTAL * this.resourceBasisPoints) / 10000));
         this._workerKinds = new Map(
             SORTED_WORKERS.map((id, index) => [
                 id,
-                index >= SORTED_WORKERS.length - RESOURCE_WORKERS ? 'resource' : 'food',
+                index >= TOTAL - BUILDERS ? 'build' : index >= TOTAL - BUILDERS - GATHERERS ? 'resource' : 'food',
             ]),
         );
+        // Facilities speed up their own kind of worker.
+        const MULTIPLIER = {
+            food: this.facilityBuilt('windmill') ? 1.25 : 1,
+            resource: this.facilityBuilt('rack') ? 1.25 : 1,
+        };
+        let total = 0;
+        for (const [ID, KIND] of this._workerKinds) {
+            const BOOSTED = this._workerRates.get(ID) * (MULTIPLIER[KIND] || 1);
+            this._workerRates.set(ID, BOOSTED);
+            total += BOOSTED;
+        }
         this._workCount = NEXT.size;
-        this._workRate = rate * farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
+        this._workRate = total;
         assignWorkers(this, CONFIG);
     }
     get warehouseFull() {
         return this.food.length >= CONFIG.farm.work.maxFood;
     }
     get workerKindCounts() {
-        let resource = 0;
+        let resource = 0,
+            build = 0;
         for (const KIND of this._workerKinds.values()) {
             resource += KIND === 'resource' ? 1 : 0;
+            build += KIND === 'build' ? 1 : 0;
         }
-        return { food: this._workerKinds.size - resource, resource };
+        return { food: this._workerKinds.size - resource - build, resource, build };
     }
     get workerCount() {
         return this._workCount;
@@ -2706,7 +2811,8 @@ const GARDEN = class Garden {
     _attackRate(kind) {
         let rate = 0;
         for (const [ID, ASSIGN] of this._workAssign) {
-            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
+            const WORKER_KIND = this._workerKinds.get(ID);
+            if (ASSIGN.attacking && (WORKER_KIND === kind || (kind === 'resource' && WORKER_KIND === 'build'))) {
                 rate += this._workerRates.get(ID) || 0;
             }
         }
