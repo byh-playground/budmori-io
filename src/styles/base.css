@@ -310,8 +310,15 @@ body > header {
     text-align: left;
     align-items: center;
 }
+.work-hud__row > :first-child {
+    white-space: nowrap;
+}
 .work-hud__row small {
     margin-left: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: var(--ui-fs-1);
     color: var(--ui-ink-2);
 }
@@ -328,6 +335,9 @@ body > header {
 .work-hud__body {
     display: grid;
     gap: var(--ui-s2);
+    max-height: min(46vh, 360px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .work-hud[data-open='false'] .work-hud__body {
     display: none;
@@ -352,8 +362,9 @@ body > header {
 .work-hud__bar span {
     display: flex;
     align-items: center;
-    padding: 0 var(--ui-s2);
+    padding: 0 var(--ui-s3) 0 var(--ui-s2);
     min-width: 0;
+    text-overflow: ellipsis;
     white-space: nowrap;
     overflow: hidden;
 }
@@ -393,18 +404,18 @@ body > header {
 .work-hud__cut::-webkit-slider-thumb {
     -webkit-appearance: none;
     pointer-events: auto;
-    width: 10px;
-    height: 36px;
-    border-radius: 5px;
+    width: 6px;
+    height: 34px;
+    border-radius: 3px;
     background: #fff;
     border: 2px solid var(--ui-ink);
     cursor: ew-resize;
 }
 .work-hud__cut::-moz-range-thumb {
     pointer-events: auto;
-    width: 6px;
-    height: 32px;
-    border-radius: 5px;
+    width: 4px;
+    height: 30px;
+    border-radius: 3px;
     background: #fff;
     border: 2px solid var(--ui-ink);
     cursor: ew-resize;
@@ -491,36 +502,6 @@ body > header {
 }
 #merge {
     flex: 1 1 0;
-}
-#feed {
-    position: relative;
-    flex: 2 1 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--ui-s2);
-    touch-action: none;
-    user-select: none;
-    -webkit-user-select: none;
-    transform-origin: center;
-}
-#feed span {
-    pointer-events: none;
-}
-.feed-icon {
-    width: 24px;
-    height: 24px;
-}
-#feed[data-state='unavailable'] .feed-icon {
-    opacity: 0.45;
-}
-#feed[data-impact='manual'] {
-    outline: 3px solid var(--ui-primary);
-    outline-offset: -3px;
-}
-#feed[data-impact='complete'] {
-    outline: 4px solid var(--ui-primary-ink);
-    outline-offset: -4px;
 }
 #mergeNotice {
     max-width: 300px;

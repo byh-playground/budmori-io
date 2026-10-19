@@ -43,6 +43,7 @@
     width: min(540px, 100%);
     display: grid;
     place-items: center;
+    overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
 }
@@ -166,6 +167,12 @@
 .boss-encounter__message[hidden] {
     display: none;
 }
+.boss-encounter__notice:not(:empty) {
+    display: block;
+    margin-top: var(--ui-s2);
+    color: var(--ui-danger-ink);
+    font-weight: var(--ui-fw-b);
+}
 @keyframes bossBreath {
     0%,
     100% {
@@ -202,6 +209,42 @@
     }
     .boss-encounter__challenge {
         min-height: var(--ui-tap);
+    }
+}
+/* 가로로 누운 낮은 화면: 보스와 정보를 좌우로 나눠 시작 버튼이 가려지지 않게 합니다. */
+@media (max-height: 480px) and (min-width: 560px) {
+    #bossEncounterScreen {
+        padding-top: var(--ui-s2);
+        padding-bottom: var(--ui-s2);
+    }
+    .boss-encounter__top {
+        min-height: 0;
+    }
+    .boss-encounter__card {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+        column-gap: var(--ui-s4);
+        align-items: center;
+        text-align: left;
+    }
+    .boss-encounter__card > * {
+        grid-column: 2;
+    }
+    .boss-encounter__preview {
+        grid-column: 1;
+        grid-row: 1 / span 5;
+        height: min(34vh, 150px);
+        margin: 0 auto;
+    }
+    .boss-encounter__stage {
+        justify-self: start;
+    }
+    .boss-encounter__stats {
+        justify-content: flex-start;
+    }
+    .boss-encounter__reward-title,
+    .boss-encounter__drop small {
+        display: none;
     }
 }
 @media (prefers-reduced-motion: reduce) {

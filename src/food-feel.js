@@ -1,7 +1,7 @@
 const DOLLAR = (id) => document.getElementById(id);
 class FoodFeel {
-    constructor(requestFeed) {
-        this.button = DOLLAR('feed');
+    constructor() {
+        this.button = DOLLAR('warehouseCount') ?? DOLLAR('warehouseProgress');
         this.progress = DOLLAR('warehouseProgress');
         this.pips = [...this.progress.querySelectorAll('.tap-pip')];
         this.completeUntil = 0;
@@ -38,83 +38,15 @@ class FoodFeel {
             }
             this.updateSoundButton();
         };
-        const POINTERS = new Map();
-        const STOP_POINTER = (id, activate = false) => {
-            const POINTER = POINTERS.get(id);
-            if (!POINTER) {
-                return;
-            }
-            clearTimeout(POINTER.timeout);
-            clearInterval(POINTER.interval);
-            POINTERS.delete(id);
-            if (activate && !POINTER.started) {
-                requestFeed();
-            }
-            if (this.button.hasPointerCapture(id)) {
-                this.button.releasePointerCapture(id);
-            }
-        };
-        this.button.addEventListener('pointerdown', (e) => {
-            if (e.button !== 0 || !e.isPrimary || this.button.disabled) {
-                return;
-            }
-            e.preventDefault();
-            this.unlock();
-            const POINTER = { started: false, timeout: 0, interval: 0 };
-            POINTERS.set(e.pointerId, POINTER);
-            this.button.setPointerCapture(e.pointerId);
-            this.animate(
-                this.button,
-                [{ transform: 'scale(1)' }, { transform: this.reduced ? 'scale(1)' : 'scale(1.035,.94)' }],
-                75,
-            );
-            POINTER.timeout = setTimeout(() => {
-                if (!POINTERS.has(e.pointerId)) {
-                    return;
-                }
-                POINTER.started = true;
-                if (!requestFeed()) {
-                    return;
-                }
-                POINTER.interval = setInterval(() => {
-                    if (!requestFeed()) {
-                        clearInterval(POINTER.interval);
-                        POINTER.interval = 0;
-                    }
-                }, 100);
-            }, 100);
-        });
-        this.button.addEventListener('pointerup', (e) => {
-            if (!POINTERS.has(e.pointerId)) {
-                return;
-            }
-            e.preventDefault();
-            const R = this.button.getBoundingClientRect();
-            STOP_POINTER(
-                e.pointerId,
-                e.clientX >= R.left && e.clientX <= R.right && e.clientY >= R.top && e.clientY <= R.bottom,
-            );
-        });
-        const CANCEL = (e) => STOP_POINTER(e.pointerId);
-        this.button.addEventListener('pointercancel', CANCEL);
-        this.button.addEventListener('lostpointercapture', CANCEL);
-        const CANCEL_ALL = () => {
-            for (const ID of [...POINTERS.keys()]) {
-                STOP_POINTER(ID);
-            }
-        };
         window.addEventListener('blur', () => {
-            CANCEL_ALL();
             this.silence();
         });
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                CANCEL_ALL();
                 this.silence();
             }
         });
         window.addEventListener('pagehide', () => {
-            CANCEL_ALL();
             this.silence();
             for (const A of this.animations.values()) {
                 A.cancel();
