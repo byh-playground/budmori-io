@@ -2435,7 +2435,12 @@ function frame(now) {
         PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();
         sync(DISPLAY, now, NOTICES);
-        FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
+        FORMATION_UI.update(
+            active.world,
+            DISPLAY,
+            !home && (active.world.scene === 'raid' || active.world.farmBossEvent?.phase !== 'idle'),
+            active.localPlayerId,
+        );
         RAID_DEPLOYMENT_UI.update(
             active.world,
             personalGarden || active.world,

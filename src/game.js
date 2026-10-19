@@ -14157,7 +14157,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.28";
+      PRODUCT_VERSION = "0.10.29";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23051,7 +23051,12 @@
       PERFORMANCE_DIAGNOSTICS.end("render", RENDER_START);
       const UI_START = PERFORMANCE_DIAGNOSTICS.start();
       sync(DISPLAY, now, NOTICES);
-      FORMATION_UI.update(active.world, DISPLAY, !home, active.localPlayerId);
+      FORMATION_UI.update(
+        active.world,
+        DISPLAY,
+        !home && (active.world.scene === "raid" || active.world.farmBossEvent?.phase !== "idle"),
+        active.localPlayerId
+      );
       RAID_DEPLOYMENT_UI.update(
         active.world,
         personalGarden || active.world,
