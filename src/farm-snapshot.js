@@ -422,7 +422,7 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
 });
 function copyJsonPayload(value, depth = 0) {
     if (depth >= 18) {
-        throw new TypeError('올바른 농장 저장 데이터가 아닙니다.');
+        throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
     }
     if (value === null || typeof value === 'string' || typeof value === 'boolean') {
         return value;
@@ -434,7 +434,7 @@ function copyJsonPayload(value, depth = 0) {
         return Array.from(value, (item) => (item === undefined ? null : copyJsonPayload(item, depth + 1)));
     }
     if (!value || typeof value !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
-        throw new TypeError('올바른 농장 저장 데이터가 아닙니다.');
+        throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
     }
     return Object.fromEntries(
         Object.entries(value)
@@ -456,16 +456,16 @@ function copyFields(value, recipe) {
         if (typeof value === 'string' || typeof value === 'boolean') {
             return value;
         }
-        throw new TypeError('올바른 농장 저장 데이터가 아닙니다.');
+        throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
     }
     if (Array.isArray(recipe)) {
         if (!Array.isArray(value) && !(value instanceof Set)) {
-            throw new TypeError('올바른 농장 저장 데이터가 아닙니다.');
+            throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
         }
         return Array.from(value, (item) => copyFields(item, recipe[0]));
     }
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new TypeError('올바른 농장 저장 데이터가 아닙니다.');
+        throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
     }
     const RESULT = {};
     for (const [KEY, CHILD] of Object.entries(recipe)) {

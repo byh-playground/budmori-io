@@ -14,7 +14,7 @@ export const CORN_BURST_FIRE_FEATURE = Object.freeze({
         id: 'corn-burst-fire',
         species: 1,
         name: '옥수수 알갱이 연사',
-        description: '한 기본 곡사 공격 주기 안에 알갱이를 시간차로 발사합니다.',
+        description: '한 기본 곡사 공격 주기 안에 알갱이를 시간차로 발사해요.',
         rootTier: 3,
         powerValues: Object.freeze([2, 3, 4]),
         projectileAttackShare: 0.5,

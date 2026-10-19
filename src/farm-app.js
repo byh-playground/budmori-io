@@ -142,7 +142,7 @@ function bossRewardSummary(reward) {
 }
 function persistBossRewardSettlement(world) {
     if (!saveImmediate(world)) {
-        DOLLAR('bossRewardSummary').textContent = '보상 진행 상황을 저장하지 못했습니다: ' + STORAGE.error;
+        DOLLAR('bossRewardSummary').textContent = '보상 진행 상황을 저장하지 못했어요: ' + STORAGE.error;
         return false;
     }
     return true;
@@ -160,7 +160,7 @@ function renderBossRewardBoxes(receipt) {
         CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0),
         PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
     DOLLAR('bossRewardStage').textContent = receipt.stage
-        ? (receipt.source === 'raid' ? '승리 · ' : '농장 보스 · ') + 'STAGE ' + receipt.stage
+        ? (receipt.source === 'raid' ? '승리 · ' : '농장 보스 · ') + receipt.stage + '단계'
         : receipt.source === 'farm'
           ? '농장 보스 승리'
           : '레이드 보스 승리';
@@ -467,11 +467,11 @@ DOLLAR('exportDiagnostics').onclick = () => {
     TEXT.hidden = false;
     TEXT.focus();
     TEXT.select();
-    DOLLAR('diagnosticStatus').textContent = '명시적으로 요청한 상세 JSON입니다. 저장 데이터는 포함하지 않습니다.';
+    DOLLAR('diagnosticStatus').textContent = '명시적으로 요청한 상세 JSON이에요. 저장 데이터는 포함하지 않아요.';
 };
 const FAIL = (error) => {
     DOLLAR('error').hidden = false;
-    DOLLAR('error').textContent = '정원을 진행하지 못했어요. ' + error.message;
+    DOLLAR('error').textContent = '농장을 진행하지 못했어요. ' + error.message;
     console.error(error);
     if (active) {
         active.paused = true;
@@ -703,7 +703,7 @@ function renderBossEncounterStage(stage) {
         ENCOUNTER_NAME = giantSpeciesName(SPECIES),
         ROLLS = SELECTION.rolls;
     DOLLAR('bossStageCounter').textContent = `${SELECTION.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
-    DOLLAR('bossStageLabel').textContent = `STAGE ${SELECTION.stage}`;
+    DOLLAR('bossStageLabel').textContent = `${SELECTION.stage}단계`;
     renderNeutralBossPreview(DOLLAR('bossPreview'), SPECIES, CATALOG_ENTRY.asset, `${ENCOUNTER_NAME} 미리보기`);
     DOLLAR('bossStageName').textContent = ENCOUNTER_NAME;
     DOLLAR('bossStageHp').textContent = `HP ${Math.round(SELECTION.hp).toLocaleString('ko-KR')}`;
@@ -733,7 +733,7 @@ function renderBossEncounterStage(stage) {
         personalGarden.activeRaidRunSequence !== null ||
         STAGE_LOCKED;
     DOLLAR('bossEncounterChallenge').title = DOLLAR('bossEncounterChallenge').disabled
-        ? '전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요.'
+        ? '전투를 시작하려면 투입 가능한 병력과 농장 상태가 필요해요.'
         : '';
     return SELECTION;
 }
@@ -849,7 +849,7 @@ function reservePersonalRaidRun(sessionId = null) {
     }
     const CANDIDATE = restore(reserved.farm);
     if (!saveImmediate(CANDIDATE)) {
-        FAIL(Error(STORAGE.error || '농장 원정 예약을 저장하지 못했어요.'));
+        FAIL(Error(STORAGE.error || '농장 도전 예약을 저장하지 못했어요.'));
         return null;
     }
     replacePersonalGarden(STORAGE.world);
@@ -1156,7 +1156,7 @@ DOLLAR('abortRaidRun').onclick = () => {
         }
         replacePersonalGarden(STORAGE.world);
         refreshStart();
-        DOLLAR('saveNotice').textContent = '이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.';
+        DOLLAR('saveNotice').textContent = '이전 도전을 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.';
     } catch (error) {
         FAIL(error);
     }
@@ -1167,7 +1167,7 @@ DOLLAR('newGame').onclick = () => {
         return;
     }
     if (STORAGE.raw) {
-        DOLLAR('newConfirmText').textContent = '현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.';
+        DOLLAR('newConfirmText').textContent = '현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.';
         DOLLAR('newConfirm').hidden = false;
         return;
     }
@@ -1216,7 +1216,7 @@ DOLLAR('saveFile').onchange = async () => {
     }
     try {
         if (FILE.size > 2 * 1024 * 1024) {
-            throw Error('저장 파일이 너무 큽니다.');
+            throw Error('저장 파일이 너무 커요.');
         }
         const TEXT = await FILE.text();
         const { validateSave: VALIDATE_SAVE } = await import('./farm-storage.js');
@@ -1300,7 +1300,7 @@ function drawFarmPanel() {
     const LOCKED =
         !!farmSortTransition || active?.world?.scene !== 'farm' || W.running || W.farmBossEvent?.phase !== 'idle';
     DOLLAR('farmPopulationSummary').textContent =
-        `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함합니다)`;
+        `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함해요)`;
     DOLLAR('farmWarehouseSummary').textContent = `먹이 창고: ${W.warehouseFood}개`;
     DOLLAR('farmPlotList').innerHTML = [...W.farmPlots.values()]
         .map((plot) => {
@@ -2088,13 +2088,13 @@ function sync(display, now, notices) {
     syncText(
         'starter',
         RAID
-            ? `${W.units.length} deployed in raid`
+            ? `${W.units.length}마리 출전 중`
             : PENDING_REWARD
               ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요`
               : !HAS_READY_TROOPS
-                ? '모두 휴식 중 · 회복까지 기다려 주세요'
+                ? '모두 휴식 중 · 회복을 기다려요'
                 : worldCount >= W.capacity
-                  ? '정원이 가득 찼어요'
+                  ? '농장이 가득 찼어요'
                   : '번식으로 식구를 늘려요',
     );
     syncWidth('allyHealth', (armyMax ? (armyCurrent / armyMax) * 100 : 0) + '%');
@@ -2109,10 +2109,10 @@ function sync(display, now, notices) {
                       (reward) => reward.source === 'farm' && reward.encounterId === FARM_EVENT.encounterId,
                   )
                 : null,
-        STAGE_NAME = RAID && BOSS.stage ? `STAGE ${BOSS.stage}` : '',
+        STAGE_NAME = RAID && BOSS.stage ? `${BOSS.stage}단계` : '',
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · EVENT STAGE ${BOSS.stage}` : ENCOUNTER_NAME);
+    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 이벤트 ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
     syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '전사자 포함 최대 HP');
@@ -2125,18 +2125,18 @@ function sync(display, now, notices) {
         'battleOutcome',
         RAID
             ? BATTLE_OUTCOME === 'victory'
-                ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 승리 · ${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : '정원 복귀 후 보상 정산'} · 모두 정원으로 돌아갈 수 있어요`
+                ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : '농장으로 돌아가면 보상을 받아요'}`
                 : BATTLE_OUTCOME === 'defeat'
-                  ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요`
+                  ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배 · 농장에서 다시 준비해요`
                   : ''
             : BATTLE_OUTCOME === 'victory'
               ? FARM_EVENT.rewardStatus === 'granted'
-                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 정원에 합류했어요`
+                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요`
                   : FARM_EVENT.rewardStatus === 'pending'
                     ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                     : `${ENCOUNTER_NAME} 격파`
               : BATTLE_OUTCOME === 'defeat'
-                ? `${ENCOUNTER_NAME} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요`
+                ? `${ENCOUNTER_NAME} 도전 종료 · 병력이 회복될 때까지 기다려요`
                 : '',
     );
     syncFlag(
@@ -2158,8 +2158,8 @@ function sync(display, now, notices) {
     syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
     syncFlag('raid', 'disabled', RAID || FARM_EVENT_ACTIVE || !personalGarden);
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
-    syncAttribute('pause', 'aria-label', active.paused ? '게임 계속' : '게임 일시 정지');
-    syncAttribute('pause', 'title', active.paused ? '게임 계속' : '일시 정지');
+    syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
+    syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');
     syncAttribute('feed', 'aria-label', '현재 농장에 먹이 1개 살포');
     syncAttribute('feed', 'title', '현재 농장에 먹이 1개 살포');
     syncData('feed', 'state', W.warehouseFood <= 0 || W.food.length >= 140 ? 'unavailable' : 'ready');
@@ -2235,7 +2235,7 @@ function frame(now) {
     }
 }
 DOLLAR('productVersion').textContent = PRODUCT_VERSION;
-DOLLAR('startVersion').textContent = PRODUCT_VERSION + ' · 자동 편성 스킬 9종';
+DOLLAR('startVersion').textContent = PRODUCT_VERSION;
 setHome(true, false);
 if (location.hash && location.hash !== '#/') {
     route();

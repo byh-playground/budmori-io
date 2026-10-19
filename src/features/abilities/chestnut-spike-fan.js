@@ -14,7 +14,7 @@ export const CHESTNUT_SPIKE_FAN_FEATURE = Object.freeze({
         id: 'chestnut-spike-fan',
         species: 3,
         name: '밤톨 가시 부채',
-        description: '목표를 향해 부채꼴 가시를 발사합니다.',
+        description: '목표를 향해 부채꼴 가시를 발사해요.',
         rootTier: 3,
         powerValues: Object.freeze([3, 5, 7]),
         projectileAttackMultiplier: 0.5,

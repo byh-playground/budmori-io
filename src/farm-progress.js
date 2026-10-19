@@ -4,7 +4,7 @@ import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 import { FarmPlot, RESERVE_PLOT_ID } from './farm-plot.js';
 import { FARM_CAPACITY_STEPS } from './farm-upgrades.js';
 const FAIL = () => {
-    throw new TypeError('올바른 농장 진행 저장 데이터가 아닙니다.');
+    throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
 };
 const ASSERT = (value) => {
     if (!value) {

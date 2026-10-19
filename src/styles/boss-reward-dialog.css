@@ -1,6 +1,5 @@
 .boss-reward-dialog {
-    background: #12271de3;
-    backdrop-filter: blur(3px);
+    background: var(--ui-dim);
 }
 .boss-reward-dialog__card {
     display: grid;
@@ -9,8 +8,8 @@
     width: min(560px, 100%);
     max-height: min(720px, 92dvh);
     overflow: hidden;
-    border-color: #dce8c9;
-    background: linear-gradient(150deg, #fbf8e9, #e8eedc);
+    border-color: var(--ui-line);
+    background: var(--ui-panel);
 }
 .boss-reward-dialog__card header {
     justify-content: flex-start;
@@ -23,9 +22,9 @@
 .boss-reward-ribbon {
     padding: 7px 10px;
     border-radius: 999px;
-    background: #e0ad48;
-    color: #583d1c;
-    font-size: 11px;
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    font-size: var(--ui-fs-1);
     white-space: nowrap;
 }
 .boss-reward-chest-scene {
@@ -35,7 +34,7 @@
     place-items: center;
     overflow: hidden;
     border-radius: 18px;
-    background: radial-gradient(ellipse at center, #f5e9c766 0, #f3f0e000 70%);
+    background: var(--ui-card);
 }
 .boss-reward-chest {
     display: block;
@@ -43,7 +42,6 @@
     min-width: 136px;
     height: auto;
     overflow: visible;
-    filter: drop-shadow(0 10px 8px #263d2920);
 }
 .boss-reward-chest__body,
 .boss-reward-chest__lid-pivot {
@@ -102,7 +100,6 @@
     border: 3px solid #fff4cf;
     border-radius: 16px;
     background: #dce9c8;
-    box-shadow: 0 4px 14px #263d2935;
     object-fit: contain;
 }
 .boss-reward-prize strong {

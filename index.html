@@ -4,61 +4,55 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
         <title>BUDMORI · 농장과 커다란 이웃</title>
-        <link rel="stylesheet" href="./src/ability-tree.css" />
-        <link rel="stylesheet" href="./src/formation-skills.css" />
+        <link rel="stylesheet" href="./src/styles/tokens.css" />
         <link rel="stylesheet" href="./src/styles/base.css" />
         <link rel="stylesheet" href="./src/styles/game-menu.css" />
-        <link rel="stylesheet" href="./src/styles/boss-reward.css" />
-        <link rel="stylesheet" href="./src/styles/boss-encounter.css" />
+        <link rel="stylesheet" href="./src/ability-tree.css" />
+        <link rel="stylesheet" href="./src/formation-skills.css" />
         <link rel="stylesheet" href="./src/styles/deployment.css" />
+        <link rel="stylesheet" href="./src/styles/boss-encounter.css" />
+        <link rel="stylesheet" href="./src/styles/boss-reward.css" />
         <link rel="stylesheet" href="./src/styles/boss-reward-dialog.css" />
     </head>
     <body>
-        <canvas id="world" aria-label="드래그해 정원 시야 이동"></canvas>
+        <canvas id="world" aria-label="드래그해서 농장 둘러보기"></canvas>
         <header>
-            <div class="brand">
-                <div class="eyebrow">BLOOM · LIVING GARDEN</div>
-                <h1>budmori <small id="productVersion">0.7.3</small></h1>
-                <div class="subtitle">작은 정원, 커다란 모험.</div>
-            </div>
-            <div class="topright">
-                <nav class="switch" aria-label="장면">
-                    <button id="farm" aria-pressed="true">정원</button
-                    ><button id="raid" aria-pressed="false">도전</button>
-                </nav>
-                <div class="population">
-                    <span
-                        ><i class="dot"></i>식구 <b id="count">36</b
-                        ><small> / <span id="capacity">72</span></small></span
-                    ><small id="starter">새싹까지 60초</small
-                    ><small id="warehouseCount" aria-live="polite">
-                        <span>창고 먹이 <b id="warehouseStock">0</b>개</span>
-                        <span id="warehouseProgressLabel">자동 생산 0/5</span>
-                        <span
-                            id="warehouseProgress"
-                            role="progressbar"
-                            aria-label="자동 먹이 생산 진행"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="0"
-                        >
-                            <i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i
-                            ><i class="tap-pip"></i>
-                        </span>
-                    </small>
+            <div class="hud__stats">
+                <div class="chip">
+                    <i class="dot"></i><span class="chip__label">병력</span><b id="count">36</b
+                    ><small>/ <span id="capacity">72</span></small>
                 </div>
+                <div class="chip" id="warehouseCount" aria-live="polite">
+                    <span class="chip__label">먹이</span><b id="warehouseStock">0</b>
+                    <span id="warehouseProgressLabel" class="sr-only">자동 생산 0/5</span>
+                    <span
+                        id="warehouseProgress"
+                        role="progressbar"
+                        aria-label="자동 먹이 생산 진행"
+                        aria-valuemin="0"
+                        aria-valuemax="5"
+                        aria-valuenow="0"
+                    >
+                        <i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i
+                        ><i class="tap-pip"></i>
+                    </span>
+                </div>
+                <small id="starter" class="hud__note"></small>
+                <small id="productVersion" class="hud__version">0.10.2</small>
             </div>
+            <nav class="switch" aria-label="장면">
+                <button id="farm" aria-pressed="true">농장</button><button id="raid" aria-pressed="false">도전</button>
+            </nav>
         </header>
 
         <section id="bossEncounterScreen" aria-label="도전 단계 선택" hidden>
             <div class="boss-encounter__top">
-                <button id="bossEncounterBack" class="boss-encounter__back" type="button">정원으로</button
-                ><span class="boss-encounter__eyebrow">BOSS CHALLENGE</span
+                <button id="bossEncounterBack" class="boss-encounter__back btn" type="button">농장으로</button
                 ><span id="bossStageCounter" class="boss-encounter__counter">1 / 61</span>
             </div>
             <div id="bossEncounterViewport" class="boss-encounter__viewport" aria-live="polite">
                 <article id="bossEncounterCard" class="boss-encounter__card">
-                    <div id="bossStageLabel" class="boss-encounter__stage">STAGE 1</div>
+                    <div id="bossStageLabel" class="boss-encounter__stage">1단계</div>
                     <img
                         id="bossPreview"
                         class="boss-encounter__preview"
@@ -66,8 +60,7 @@
                         aria-busy="true"
                         draggable="false"
                     />
-                    <h2 id="bossStageName">커다란 이웃</h2>
-                    <p class="boss-encounter__subtitle">차분히 준비한 뒤 도전해요</p>
+                    <h2 id="bossStageName">거대 콩</h2>
                     <div class="boss-encounter__stats">
                         <span id="bossStageHp">HP 200</span><span id="bossStageAttack">공격력 4</span>
                     </div>
@@ -80,18 +73,16 @@
                 </article>
             </div>
             <div class="boss-encounter__bottom">
-                <div id="bossEncounterHint" class="boss-encounter__hint">
-                    위로 스와이프 · 다음 스테이지<br />아래로 스와이프 · 이전 스테이지
-                </div>
-                <button id="bossEncounterChallenge" class="boss-encounter__challenge" type="button">
-                    도전하기<small>병력을 전장에 투입하면 전투 시작</small></button
-                ><span aria-hidden="true" style="width: 72px"></span>
+                <div id="bossEncounterHint" class="boss-encounter__hint">위아래로 밀어 단계 이동</div>
+                <button id="bossEncounterChallenge" class="boss-encounter__challenge btn btn--primary" type="button">
+                    도전하기
+                </button>
             </div>
             <p id="bossEncounterMessage" class="boss-encounter__message" role="status" hidden></p>
         </section>
 
         <section class="bossbar" id="bossbar" hidden>
-            <strong>아군 군단</strong><small id="allyHealthText"></small>
+            <div class="bossbar__row"><strong>아군</strong><small id="allyHealthText"></small></div>
             <div class="track">
                 <div
                     class="fill ally"
@@ -101,11 +92,11 @@
                     aria-valuemin="0"
                 ></div>
             </div>
-            <strong id="bossName">커다란 이웃</strong><small id="bossHealthText"></small>
+            <div class="bossbar__row"><strong id="bossName">거대 콩</strong><small id="bossHealthText"></small></div>
             <div class="track">
                 <div class="fill" id="bossHealth" role="progressbar" aria-label="상대 체력" aria-valuemin="0"></div>
             </div>
-            <small id="bossHealthNote">전사자 포함 최대 HP · 증원 시 함께 증가</small>
+            <small id="bossHealthNote">전사자 포함 최대 HP</small>
         </section>
         <p id="battleOutcome" role="status" hidden></p>
         <section
@@ -248,18 +239,19 @@
             <div class="bottom">
                 <button id="bossRewardOpen" class="boss-reward-open" type="button" hidden>보상 상자 열기</button>
                 <div class="controls" id="farmControls">
-                    <button id="merge" type="button" aria-describedby="mergeNotice">합성</button
-                    ><span class="divider"></span
-                    ><button
-                        class="primary"
+                    <button id="merge" class="btn btn--secondary" type="button" aria-describedby="mergeNotice">
+                        합성
+                    </button>
+                    <button
+                        class="btn btn--primary"
                         id="feed"
                         type="button"
-                        aria-label="현재 농장에 먹이 1개 살포"
-                        title="현재 농장에 먹이 1개 살포"
+                        aria-label="현재 농장에 먹이 1개 뿌리기"
+                        title="현재 농장에 먹이 1개 뿌리기"
                     >
                         <svg class="feed-icon" viewBox="0 0 24 24" aria-hidden="true">
                             <path d="M5 18c0-8 5-12 14-12 0 9-4 14-11 14z" fill="currentColor" />
-                            <path d="m7 18 9-9" stroke="#526e50" stroke-width="2" />
+                            <path d="m7 18 9-9" stroke="var(--ui-primary)" stroke-width="2" />
                         </svg>
                         <span>먹이 주기</span>
                     </button>
@@ -267,17 +259,12 @@
                 <small id="mergeNotice" role="status" aria-live="polite"></small>
                 <div class="raid-panel" id="raidControls" hidden>
                     <div class="deploy-status">
-                        <div
-                            id="deploymentCards"
-                            class="raid-deployment-cards"
-                            aria-label="Raid deployment cards"
-                            hidden
-                        >
+                        <div id="deploymentCards" class="raid-deployment-cards" aria-label="출전 카드" hidden>
                             <div class="deployment-card-row"></div>
                         </div>
-                        <span id="raidRemaining" role="status">약한 병력부터 맵 가장자리 전방위에 투입해요</span
+                        <span id="raidRemaining" role="status">약한 병력부터 맵 가장자리에서 출전해요</span
                         ><small id="raidRewardChance" aria-live="polite"></small
-                        ><button id="return" type="button">농장으로 돌아가기</button>
+                        ><button id="return" class="btn btn--secondary" type="button">농장으로 돌아가기</button>
                     </div>
                 </div>
             </div>
@@ -288,7 +275,7 @@
                     aria-haspopup="dialog"
                     aria-controls="gameMenuOverlay"
                     aria-expanded="false"
-                    title="게임 설정"
+                    title="설정"
                 >
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <path
@@ -323,10 +310,10 @@
                         <path d="M9.5 9a2.5 2.5 0 0 1 5 .2c0 2-2.5 2-2.5 4M12 16.5h.01" />
                     </svg>
                 </button>
-                <button id="pause" type="button" aria-label="게임 일시 정지" aria-pressed="false" title="일시 정지">
+                <button id="pause" type="button" aria-label="게임 일시 정지" aria-pressed="false" title="일시정지">
                     Ⅱ
                 </button>
-                <button id="menuHome" type="button" aria-label="시작 화면으로" title="시작 화면으로">
+                <button id="menuHome" type="button" aria-label="시작 화면으로" title="처음">
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <path d="m3 11 9-8 9 8M5 10v11h14V10M9 21v-7h6v7" />
                     </svg>
@@ -386,7 +373,7 @@
                         aria-selected="false"
                         tabindex="-1"
                     >
-                        병력 편성</button
+                        출전 카드</button
                     ><button
                         id="menuTabFormation"
                         type="button"
@@ -396,7 +383,7 @@
                         aria-selected="false"
                         tabindex="-1"
                     >
-                        편성 스킬
+                        스킬
                     </button>
                 </nav>
                 <div class="progression-reset-actions" id="progressionResetActions" hidden>
@@ -420,13 +407,13 @@
                             <label for="diagnosticDetail">상세 성능 측정</label
                             ><input id="diagnosticDetail" type="checkbox" />
                         </div>
-                        <button class="game-menu__home" id="copyDiagnostics" type="button">진단 복사</button>
+                        <button class="game-menu__home btn btn--secondary" id="copyDiagnostics" type="button">
+                            진단 복사
+                        </button>
                         <details>
                             <summary>상세 진단 옵션</summary>
-                            <button id="exportDiagnostics" type="button">상세 JSON 보기</button>
-                            <p>
-                                상세 측정을 켠 뒤 같은 장면을 잠시 실행하고 진단을 복사해 주세요. 외부 전송은 없습니다.
-                            </p>
+                            <button id="exportDiagnostics" class="btn" type="button">상세 JSON 보기</button>
+                            <p>상세 측정을 켜고 같은 장면을 잠시 실행한 뒤 진단을 복사해요. 외부로 전송하지 않아요.</p>
                         </details>
                         <p id="diagnosticStatus" role="status"></p>
                         <textarea id="settingsDiagnosticText" aria-label="진단 복사 결과" readonly hidden></textarea>
@@ -442,8 +429,8 @@
                         <p id="farmPopulationSummary" aria-live="polite"></p>
                         <p id="farmWarehouseSummary" aria-live="polite"></p>
                         <p id="farmFeedingNote">
-                            자동 생산 먹이는 창고에 쌓입니다. 먹이 주기를 누르면 현재 농장에 1개를 뿌리고, 농장 바닥을
-                            누르고 있으면 먹이를 계속 뿌립니다.
+                            자동 생산 먹이는 창고에 쌓여요. 먹이 주기는 1개를 뿌리고, 농장 바닥을 누르고 있으면 계속
+                            뿌려요.
                         </p>
                         <div id="farmPlotList" role="group" aria-label="농장 목록"></div>
                         <div id="farmPlotActions">
@@ -455,8 +442,8 @@
                         </div>
                         <h3>병종별 목표 비율</h3>
                         <p>
-                            보관 중인 병력도 포함한 전체 병력 기준이에요. 목표가 0%인 병종은 새 먹이 탐색과 번식이
-                            멈추며, 목표를 넘은 병종도 비율이 회복될 때까지 새로 먹거나 번식하지 않아요.
+                            보관 중인 병력까지 합친 비율이에요. 목표가 0%이거나 목표를 넘은 병종은 비율이 돌아올 때까지
+                            먹지도 번식하지도 않아요.
                         </p>
                         <div id="farmRatioList"></div>
                     </section>
@@ -468,10 +455,8 @@
                         hidden
                     >
                         <div class="tree-heading"><h2 id="treeTitle">공통 스탯</h2></div>
-                        <p class="tree-note">
-                            전투 승리로 얻은 공용 XP 포인트를 사용해요. 투자는 이 브라우저에 저장됩니다.
-                        </p>
-                        <p id="treeStorage" hidden>저장 공간을 사용할 수 없어 이번 실행에만 적용됩니다.</p>
+                        <p class="tree-note">전투 승리로 얻은 공용 포인트를 써요. 투자는 이 브라우저에 저장돼요.</p>
+                        <p id="treeStorage" hidden>저장 공간을 쓸 수 없어 이번 실행에만 적용돼요.</p>
                         <div id="treeNodes"></div>
                     </section>
                     <section
@@ -509,7 +494,7 @@
                         aria-labelledby="menuTabFormation"
                         hidden
                     >
-                        <h2>편성 스킬</h2>
+                        <h2>스킬</h2>
                         <div id="formationContent" class="formation-content"></div>
                     </section>
                     <section
@@ -519,7 +504,7 @@
                         aria-labelledby="menuTabDeployment"
                         hidden
                     >
-                        <h2>병력 편성</h2>
+                        <h2>출전 카드</h2>
                         <div id="deploymentCardContent" class="deployment-card-content"></div>
                     </section>
                     <aside
@@ -529,48 +514,53 @@
                         aria-labelledby="gameMenuTitle"
                         hidden
                     >
-                        <h3>정원 가꾸기</h3>
-                        <button class="game-menu__home" id="menuBossEncounter" type="button">도전 단계</button>
-                        <p>
-                            병력은 전방위에서 자동으로 접근하고 공격합니다. 농장과 레이드의 지면 크기는 같아요. 한
-                            손가락이나 마우스 왼쪽 버튼으로 지면을 드래그하면 화면 밖 정원까지 둘러볼 수 있어요. 먹이는
-                            ‘먹이’ 버튼으로 주고 레이드 병력은 별도 ‘병력 투입’ 버튼으로 투입해요. 커다란 상대는 병력을
-                            추격하며, 지면의 짧은 방향 예고는 에어본 평타, 전체 원 예고는 한 바퀴 휩쓸기입니다. 실제
-                            무기가 닿은 병력이 날아오르고 착지한 뒤 다시 합류해요.
-                        </p>
-                        <p>
-                            처음에는 성체 완두콩 2마리로 시작해요. 부모마다 먹이 1개를 먹고 두 부모가 준비되면 즉시
-                            번식해요. 준비 먹이는 번식 때 소비되고 부모는 10초 동안 먹이를 피해 움직여요. 새끼는 먹이
-                            없이 시뮬레이션 시간 5초(번식 쿨타임의 절반) 동안 자라고, 크기도 티어 기본 크기의 50%에서
-                            100%까지 커져요. 기존 먹이·성체·쿨타임 조건을 만족하면 번식은 자동으로 시도돼요. 전투 중에는
-                            전투를 우선해요. 먹이는 재고에 자동으로 쌓이고, 먹이 주기 버튼이나 농장 바닥을 눌러 직접
-                            뿌릴 수 있어요.
-                        </p>
-                        <p>
-                            등급은 T1 Common부터 T6 Mythic까지예요. 체력과 공격력은 각 합성의 재료 수에 비례해 성장해요.
-                            굶어도 사라지지 않아요.
-                        </p>
-                        <p>
-                            합성 버튼을 한 번 누르면 한 번만 시작해요. 가장 낮은 합성 가능 티어에서 가까운 같은 종
-                            성체를 골라요. 재료는 T2 2마리, T3 2마리, T4 3마리, T5 4마리, T6 5마리이며 합성 뒤에도 같은
-                            종을 최소 2마리 남겨야 해요. 진행 중에는 버튼이 잠기고 전투 중인 개체는 재료에서 빠져요.
-                            기본 정원은 50마리이며 전투 승리로 얻는 XP 포인트로 다섯 단계까지 100마리로 늘릴 수 있어요.
-                            전투 후 모든 출전 병력이 돌아옵니다.
-                        </p>
-                        <p>
-                            상대의 평타·360도 휩쓸기는 실제로 닿은 몸만 날려요. 충돌이 옆 식구에게 약해지며 전달되고,
-                            착지 후 다시 모입니다.
-                        </p>
-                        <small
-                            >게임은 항상 기본 속도로 진행돼요. 자동 먹이 탭은 실제 시간 기준입니다. 혼자 가꾸는 정원은
-                            자동 저장됩니다.</small
-                        >
-                        <p>
-                            레이드에서는 ‘병력 투입’ 버튼을 누르면 약한 병력부터 맵 최외곽 전방위의 무작위 위치에
-                            떨어져요. 누르는 동안 0.1초마다 한 마리씩 투입하고, 손을 떼면 멈춰요. 지면을 드래그하면
-                            화면을 이동해요. 병력은 착지한 뒤 자동으로 싸우며, 전투에서 쓰러져도 농장 병력은 줄지
-                            않아요.
-                        </p>
+                        <button class="game-menu__home btn btn--secondary" id="menuBossEncounter" type="button">
+                            도전 단계
+                        </button>
+                        <section class="help-card">
+                            <h3>농장</h3>
+                            <ul>
+                                <li>먹이는 창고에 자동으로 쌓여요. 먹이 주기나 농장 바닥을 눌러 직접 뿌려요.</li>
+                                <li>
+                                    처음에는 성체 완두콩 2마리로 시작해요. 두 부모가 먹이를 1개씩 먹으면 바로 번식해요.
+                                </li>
+                                <li>새끼는 5초 동안 자라고 크기가 50%에서 100%까지 커져요. 먹이는 먹지 않아요.</li>
+                                <li>기본 병력 상한은 50마리예요. 공용 포인트로 5단계까지 100마리로 늘려요.</li>
+                            </ul>
+                        </section>
+                        <section class="help-card">
+                            <h3>합성</h3>
+                            <ul>
+                                <li>
+                                    합성은 버튼을 누를 때마다 한 번 진행해요. 가장 낮은 등급부터 같은 병종 성체를
+                                    골라요.
+                                </li>
+                                <li>
+                                    재료는 T2 2마리, T3 2마리, T4 3마리, T5 4마리, T6 5마리예요. 합성 뒤에도 같은 병종이
+                                    2마리 남아야 해요.
+                                </li>
+                                <li>등급은 T1 Common부터 T6 Mythic까지예요. 합성할수록 체력과 공격력이 커져요.</li>
+                            </ul>
+                        </section>
+                        <section class="help-card">
+                            <h3>도전</h3>
+                            <ul>
+                                <li>
+                                    출전 카드를 누르면 그 병종이 1마리, 길게 누르면 0.1초마다 1마리씩 맵 가장자리에서
+                                    떨어져요.
+                                </li>
+                                <li>
+                                    병력은 자동으로 접근해 싸워요. 상대 공격에 맞으면 날아갔다가 착지한 뒤 다시
+                                    합류해요.
+                                </li>
+                                <li>
+                                    전투에서 쓰러져도 농장 병력은 줄지 않아요. 전투가 끝나면 출전한 병력이 모두
+                                    돌아와요.
+                                </li>
+                                <li>땅을 드래그하면 화면 밖까지 둘러볼 수 있어요.</li>
+                            </ul>
+                        </section>
+                        <small>게임은 언제나 기본 속도로 진행되고, 농장은 자동 저장돼요.</small>
                     </aside>
                 </div>
             </section>
@@ -578,34 +568,38 @@
         <div class="error" id="error" hidden></div>
         <section id="startScreen" class="product-sheet" aria-labelledby="startTitle">
             <h1 id="startTitle">budmori</h1>
-            <p>작은 정원을 키워 커다란 이웃에게 도전해요.</p>
-            <small id="startVersion">0.7.3 · XP 포인트 성장</small>
+            <p>작은 농장을 키워 커다란 이웃에게 도전해요.</p>
             <p id="saveNotice" role="status"></p>
             <div id="staleRaidNotice" hidden>
                 <p>
-                    이전 원정 기록이 남아 있어요. 이전 원정은 보상과 전사자 정산 없이 종료됩니다. 다른 탭에서 진행 중인
-                    원정도 함께 종료될 수 있어요.
+                    이전 도전 기록이 남아 있어요. 이전 도전은 보상과 전사자 정산 없이 끝나요. 다른 탭의 도전도 함께 끝날
+                    수 있어요.
                 </p>
-                <button id="abortRaidRun" type="button">이전 원정 종료하고 돌아가기</button>
+                <button id="abortRaidRun" class="btn btn--danger" type="button">이전 도전 끝내고 돌아가기</button>
             </div>
-            <button id="continueGame">정원 이어가기</button><button id="startBossEncounter">도전 단계</button
-            ><button id="newGame">새 정원 시작</button>
+            <button id="continueGame" class="btn btn--primary">농장 이어가기</button
+            ><button id="startBossEncounter" class="btn btn--secondary">도전 단계</button
+            ><button id="newGame" class="btn">새 농장 시작</button>
             <div class="save-actions">
-                <button id="exportSave">저장 내보내기</button><button id="importSave">저장 불러오기</button>
+                <button id="exportSave" class="btn">저장 내보내기</button
+                ><button id="importSave" class="btn">저장 불러오기</button>
             </div>
             <input id="saveFile" type="file" accept="application/json,.json" hidden />
             <div id="newConfirm" hidden>
-                <p id="newConfirmText">기존 저장을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.</p>
-                <button id="confirmNew">기존 저장을 바꾸고 시작</button><button id="cancelNew">취소</button>
+                <p id="newConfirmText">현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내요.</p>
+                <button id="confirmNew" class="btn btn--danger">기존 저장을 바꾸고 시작</button
+                ><button id="cancelNew" class="btn">취소</button>
             </div>
             <div id="importConfirm" hidden>
-                <p id="importConfirmText">선택한 파일로 개인 저장을 바꿀까요?</p>
-                <button id="confirmImport">이 저장 불러오기</button><button id="cancelImport">취소</button>
+                <p id="importConfirmText">선택한 파일로 현재 저장을 바꿀까요?</p>
+                <button id="confirmImport" class="btn btn--danger">이 저장 불러오기</button
+                ><button id="cancelImport" class="btn">취소</button>
             </div>
+            <small id="startVersion">v0.10.2</small>
         </section>
         <!-- Generated runtime manifest. -->
         <!-- prettier-ignore -->
-        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":14562,"sha256":"b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"},{"kind":"boss","id":"chestnut","file":"assets/bosses/chestnut.svg","qualityPreset":"standard","bytes":10366,"sha256":"9bf80e68fa243097d688f06e2af0b93c2cee218b6646be538eeca6d7e537094d"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"}],"schemaVersion":1,"sourceCommit":"dd59a57fcf66409cef16632ffb433c0b760324fa","distCommit":"418e17c455db56d6ed073d82d115191d9dd8bf04","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/interpolation.js","bytes":55529,"sha256":"061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/camera.js","bytes":9410,"sha256":"c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/debug-tools.js","bytes":23600,"sha256":"b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/rendering.js","bytes":304888,"sha256":"021b11f83b49be3e94cfe0a67769dcd248b9463325b6dcc55ea4943a0ea6c18b"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets.js","bytes":143709,"sha256":"288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets-loader.js","bytes":1046299,"sha256":"56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/deterministic.js","bytes":47252,"sha256":"1917d9766f1a1a2bbd4eab3bf214205979e7881c8cfb34cd1183f462a47ba62f"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"}],"game":{"file":"src/game.js","bytes":888301,"sha256":"b9502a139cd6718036e278ea2af8c7370a027c754ba633c3e4de590dcf494be4"},"bootstrap":{"file":"src/bootstrap.js","bytes":22880,"sha256":"36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072"},"productVersion":"0.10.2"}</script>
+        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":14562,"sha256":"b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"},{"kind":"boss","id":"chestnut","file":"assets/bosses/chestnut.svg","qualityPreset":"standard","bytes":10366,"sha256":"9bf80e68fa243097d688f06e2af0b93c2cee218b6646be538eeca6d7e537094d"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"}],"schemaVersion":1,"sourceCommit":"dd59a57fcf66409cef16632ffb433c0b760324fa","distCommit":"418e17c455db56d6ed073d82d115191d9dd8bf04","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/interpolation.js","bytes":55529,"sha256":"061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/camera.js","bytes":9410,"sha256":"c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/debug-tools.js","bytes":23600,"sha256":"b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/rendering.js","bytes":304888,"sha256":"021b11f83b49be3e94cfe0a67769dcd248b9463325b6dcc55ea4943a0ea6c18b"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets.js","bytes":143709,"sha256":"288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets-loader.js","bytes":1046299,"sha256":"56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/deterministic.js","bytes":47252,"sha256":"1917d9766f1a1a2bbd4eab3bf214205979e7881c8cfb34cd1183f462a47ba62f"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"}],"game":{"file":"src/game.js","bytes":888021,"sha256":"56538a5036b5e586e0a4dde94e97692087908fabbb4bc49ff00d699db21baf06"},"bootstrap":{"file":"src/bootstrap.js","bytes":22880,"sha256":"36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072"},"productVersion":"0.10.3"}</script>
         <!-- Generated bootstrap integrity. -->
         <!-- prettier-ignore -->
         <script type="module" src="./src/bootstrap.js?version=36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072" integrity="sha256-NtRmZ0RU4Txw57LIfTX4VMgp0+JbtdxosMZJtIDt4HI=" crossorigin="anonymous" data-bloom-bootstrap></script>

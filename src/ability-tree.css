@@ -296,10 +296,9 @@
     }
 }
 .ability-panel {
-    background: #f2f6ec;
-    border: 1px solid #fff;
-    border-radius: 24px;
-    box-shadow: 0 20px 100px #1b342b66;
+    background: var(--ui-panel);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-l);
     inset: 12px;
     margin: auto;
     max-height: calc(100dvh - 24px);

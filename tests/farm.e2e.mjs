@@ -7908,7 +7908,7 @@ async function event() {
             timeout: 8000,
         },
     );
-    assert((await P.locator('#bossName').textContent()).includes('EVENT STAGE 1'));
+    assert((await P.locator('#bossName').textContent()).includes('이벤트 1단계'));
     assert.equal(await P.locator('#bossbar').isVisible(), true);
     assert.equal(await P.locator('#farmControls').isVisible(), false);
     assert.equal(await P.locator('#bossHealthNote').textContent(), '상대 능력치 고정');
@@ -7939,7 +7939,7 @@ async function event() {
     assert.equal(CELEBRATION.outcome, 'defeat');
     assert.equal(CELEBRATION.clip, 'idle');
     assert.equal(CELEBRATION.expression, 'happy');
-    assert(CELEBRATION.message.includes('다시 일어날'));
+    assert(CELEBRATION.message.includes('회복될'));
     assert.equal(CELEBRATION.scene, 'farm');
     assert.equal(CELEBRATION.running, false);
     assert.equal(await P.evaluate(() => BUDMORI.sim.playerProgression.farmBossEventStage), 1);

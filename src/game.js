@@ -2700,28 +2700,28 @@
           id: "food",
           name: "자동 탭",
           icon: "◒",
-          description: "자동 먹이 생성 간격을 단계마다 10% 줄입니다.",
+          description: "자동 먹이 생성 간격을 단계마다 10% 줄여요.",
           value: (level) => `${(0.5 / (1 + 0.1 * level)).toFixed(3)}초 / 탭`
         },
         {
           id: "growth",
           name: "먹이 찾기",
           icon: "❧",
-          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높입니다.",
+          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높여요.",
           value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
         },
         {
           id: "breed",
           name: "번식 회복",
           icon: "♡",
-          description: "부모의 번식 대기시간을 단계마다 10% 줄입니다.",
+          description: "부모의 번식 대기시간을 단계마다 10% 줄여요.",
           value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
         },
         {
           id: "merge",
           name: "합체 회복",
           icon: "◇",
-          description: "합체 후 대기시간을 단계마다 10% 줄입니다.",
+          description: "합체 후 대기시간을 단계마다 10% 줄여요.",
           value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
         }
       ]);
@@ -3285,7 +3285,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "연속 도약",
-          description: "가까운 적에게도 준비되면 도약합니다. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화합니다.",
+          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
           powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
         }),
         model: Object.freeze({
@@ -3314,7 +3314,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "대상 가시 연사",
-          description: "현재 공격 대상을 향해 3초마다 가시를 발사합니다. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줍니다.",
+          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
           powerValues: Object.freeze([1, 2, 3]),
           cooldownTicks: 60,
           spacingTicks: 2,
@@ -3342,7 +3342,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "사망 분열",
-          description: "전투 중 사망하면 T1 분열체 2마리를 남깁니다. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 됩니다.",
+          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
           powerValues: Object.freeze([1, 1.5, 2.25]),
           childCount: 2
         })
@@ -3361,7 +3361,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "방어와 반격",
-          description: "5초마다 2초간 방어력 50을 얻습니다. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용합니다.",
+          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
           powerValues: Object.freeze([1, 1.5, 2.25]),
           cooldownTicks: 100,
           durationTicks: 40,
@@ -3383,7 +3383,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "부착 알갱이 연쇄 폭발",
-          description: "기본 공격 뒤 알갱이가 대상에 붙습니다. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줍니다.",
+          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
           powerValues: Object.freeze([0.5, 0.75, 1]),
           attachDelayTicks: 20,
           explosionSpacingTicks: 2,
@@ -3404,7 +3404,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "수확 낫",
-          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아집니다. 치명타 피해 배율은 공통 2배입니다.",
+          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
           rootTier: 1,
           powerValues: Object.freeze([0.35, 0.55, 0.75])
         })
@@ -3423,7 +3423,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "밀의 전투 지휘",
-          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줍니다. 효과는 밀이나 오라 범위를 벗어나도 유지됩니다.",
+          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
           powerValues: Object.freeze([0.5, 0.75, 1.125]),
           durationTicks: 60,
           triggerChance: 0.35,
@@ -3449,7 +3449,7 @@
           availableByDefault: true,
           minimumTier: 1,
           name: "도리깨 갑주 파쇄",
-          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춥니다. 각 적중의 감소가 따로 만료됩니다.",
+          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
           rootTier: 1,
           powerValues: Object.freeze([1, 2, 3]),
           durationTicks: 60
@@ -13398,7 +13398,7 @@
       init_farm_plot();
       init_farm_upgrades();
       FAIL = () => {
-        throw new TypeError("올바른 농장 진행 저장 데이터가 아닙니다.");
+        throw new TypeError("올바른 농장 진행 저장 데이터가 아니에요.");
       };
       ASSERT = (value) => {
         if (!value) {
@@ -13441,7 +13441,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.10.2";
+      PRODUCT_VERSION = "0.10.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13627,7 +13627,7 @@
               return true;
             }
             if (!TEXT) {
-              throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 정원을 시작했을 수 있어요.");
+              throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 농장을 시작했을 수 있어요.");
             }
             const DATA = decodeFarmSave(TEXT);
             this.raw = TEXT;
@@ -14032,7 +14032,7 @@
                 <button type="button" data-formation-equip="${definition.id}" data-slot="${EMPTY ?? 0}"
                 ${EQUIP_DISABLED ? "disabled" : ""}>${EQUIPPED ? "장착 중" : "장착"}</button></div></article>`;
       }).join("");
-      this.content.innerHTML = `<p class="formation-intro">종별 패시브와 별도로, 조건과 재사용 시간이 준비되면 자동 발동합니다.</p>
+      this.content.innerHTML = `<p class="formation-intro">종별 패시브와 별도로, 조건과 재사용 시간이 준비되면 자동 발동해요.</p>
             <p class="formation-wallet"><strong>${points}</strong> 공용 포인트
             <span>${locked ? "전투 중 편성 고정" : "농장에서 무료 장착·해제"}</span></p>
             <div class="formation-equipment">${SLOT_CARDS}</div>
@@ -14227,7 +14227,7 @@
             ${locked || points < RAID_DEPLOYMENT_CARD_SLOT_COST ? "disabled" : ""}>
             슬롯 ${slot + 1} 잠김 · ${RAID_DEPLOYMENT_CARD_SLOT_COST} 포인트로 해금</button>`
       ).join("");
-      this.content.innerHTML = `<p class="deployment-card-intro">보유한 병종을 최대 4개 편성하고, 카드를 누르거나 길게 눌러 한 마리씩 배치합니다. 편성은 농장에서만 바꿀 수 있습니다.</p>
+      this.content.innerHTML = `<p class="deployment-card-intro">보유한 병종을 최대 4개 편성하고, 카드를 누르거나 길게 눌러 한 마리씩 배치해요. 편성은 농장에서만 바꿀 수 있어요.</p>
             <p class="deployment-card-wallet"><strong>${points}</strong> 공용 포인트</p>
             <div class="deployment-editor-slots">${UNLOCKED}${LOCKED}</div>`;
     }
@@ -18297,7 +18297,7 @@
   });
   function copyJsonPayload(value, depth = 0) {
     if (depth >= 18) {
-      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      throw new TypeError("올바른 농장 저장 데이터가 아니에요.");
     }
     if (value === null || typeof value === "string" || typeof value === "boolean") {
       return value;
@@ -18309,7 +18309,7 @@
       return Array.from(value, (item) => item === void 0 ? null : copyJsonPayload(item, depth + 1));
     }
     if (!value || typeof value !== "object" || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
-      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      throw new TypeError("올바른 농장 저장 데이터가 아니에요.");
     }
     return Object.fromEntries(
       Object.entries(value).filter(([, item]) => item !== void 0).map(([key, item]) => [key, copyJsonPayload(item, depth + 1)])
@@ -18329,16 +18329,16 @@
       if (typeof value === "string" || typeof value === "boolean") {
         return value;
       }
-      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      throw new TypeError("올바른 농장 저장 데이터가 아니에요.");
     }
     if (Array.isArray(recipe)) {
       if (!Array.isArray(value) && !(value instanceof Set)) {
-        throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+        throw new TypeError("올바른 농장 저장 데이터가 아니에요.");
       }
       return Array.from(value, (item) => copyFields(item, recipe[0]));
     }
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      throw new TypeError("올바른 농장 저장 데이터가 아니에요.");
     }
     const RESULT = {};
     for (const [KEY2, CHILD] of Object.entries(recipe)) {
@@ -18363,7 +18363,7 @@
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
   function assertSnapshot(ok) {
     if (!ok) {
-      throw new TypeError("올바른 농장 저장 데이터가 아닙니다.");
+      throw new TypeError("올바른 농장 저장 데이터가 아니에요.");
     }
   }
   var ASSERT2 = assertSnapshot;
@@ -19580,19 +19580,19 @@
     }
   };
   var INVESTMENT_REASON_LABELS = /* @__PURE__ */ new Map([
-    ["already-invested", "이미 투자한 노드입니다."],
+    ["already-invested", "이미 투자한 노드예요."],
     ["prerequisite-required", "이전 단계에 먼저 투자하세요."],
-    ["insufficient-points", "공용 포인트가 필요합니다."],
-    ["combat-lock", "전투 중에는 투자할 수 없습니다."],
-    ["farm-only", "농장에서만 투자할 수 있습니다."],
-    ["max-level", "최대 강화 단계입니다."],
-    ["invalid-state", "성장 데이터가 유효하지 않습니다."]
+    ["insufficient-points", "공용 포인트가 필요해요."],
+    ["combat-lock", "전투 중에는 투자할 수 없어요."],
+    ["farm-only", "농장에서만 투자할 수 있어요."],
+    ["max-level", "최대 강화 단계예요."],
+    ["invalid-state", "성장 데이터가 유효하지 않아요."]
   ]);
   var NODE_REASON_LABELS = new Map([...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text])]);
   var RESET_REASON_LABELS = /* @__PURE__ */ new Map([
-    ["nothing-invested", "투자한 포인트가 없습니다."],
-    ["combat-lock", "전투 중에는 초기화할 수 없습니다."],
-    ["farm-only", "농장에서만 초기화할 수 있습니다."],
+    ["nothing-invested", "투자한 포인트가 없어요."],
+    ["combat-lock", "전투 중에는 초기화할 수 없어요."],
+    ["farm-only", "농장에서만 초기화할 수 있어요."],
     ["invalid-state", INVESTMENT_REASON_LABELS.get("invalid-state")]
   ]);
   var FARM_UPGRADE_REASON_LABELS = new Map([
@@ -19600,7 +19600,7 @@
       reason,
       INVESTMENT_REASON_LABELS.get(reason)
     ]),
-    ["insufficient-points", "공용 XP 포인트가 필요합니다."]
+    ["insufficient-points", "공용 포인트가 필요해요."]
   ]);
   function renderFarmUpgradeTreeMarkup(state, { location: location2 = "farm", inCombat = false } = {}) {
     if (!isValidPlayerProgressionState(state)) {
@@ -19614,7 +19614,7 @@
       });
       return `<article class="tree-node" data-ready="${CHECK.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${LEVEL}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(LEVEL)}${LEVEL < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(LEVEL + 1)}</span>` : ""}</div><small>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? "완료" : CHECK.reason ? farmUpgradeReasonLabel(CHECK.reason) : "공용 포인트 1개"}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!CHECK.allowed}" ${CHECK.allowed ? "" : "disabled"}>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? "✓" : "+"}<span class="sr-only">${node.name} 투자</span></button></article>`;
     }).join("");
-    return `<section class="farm-upgrade-tree" aria-label="일반 정원 강화"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 XP 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
+    return `<section class="farm-upgrade-tree" aria-label="공통 스탯"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
   }
   function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
     return SPECIES_CATALOG.map(
@@ -19641,13 +19641,13 @@
     const LEVEL_MARKUP = renderPlayerProgressMarkup(state), DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용됩니다. 공용 포인트로 능력 효과를 강화할 수 있어요.";
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
-      <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
+      <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
-      <p class="ability-tree__lock-note" role="status">${inCombat ? "전투 중에는 투자와 초기화가 잠깁니다." : location2 !== "farm" ? "농장에서 투자하거나 초기화할 수 있습니다." : "농장에서 무료로 초기화할 수 있습니다."}</p>
+      <p class="ability-tree__lock-note" role="status">${inCombat ? "전투 중에는 투자와 초기화가 잠겨요." : location2 !== "farm" ? "농장에서 투자하거나 초기화할 수 있어요." : "농장에서 무료로 초기화할 수 있어요."}</p>
       <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!RESET_CHECK.allowed}">무료 초기화</button>
       <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(RESET_CHECK.reason, INVESTED)}</span>
     </div>
@@ -19760,13 +19760,13 @@
     ) ?? `${definition.branches[branchId].name} ${value}`;
   }
   function nodeReasonLabel(reason, definition, context) {
-    return NODE_REASON_LABELS.get(reason)?.(definition) ?? (context.location === "farm" ? "사용할 수 없는 노드입니다." : "농장에서 사용할 수 있습니다.");
+    return NODE_REASON_LABELS.get(reason)?.(definition) ?? (context.location === "farm" ? "사용할 수 없는 노드예요." : "농장에서 사용할 수 있어요.");
   }
   function resetReasonLabel(reason, invested) {
-    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받습니다.`;
+    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받아요.`;
   }
   function farmUpgradeReasonLabel(reason) {
-    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? "사용할 수 없는 노드입니다.";
+    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? "사용할 수 없는 노드예요.";
   }
 
   // src/farm-app.js
@@ -19870,14 +19870,14 @@
   }
   function persistBossRewardSettlement(world) {
     if (!saveImmediate(world)) {
-      DOLLAR2("bossRewardSummary").textContent = "보상 진행 상황을 저장하지 못했습니다: " + STORAGE.error;
+      DOLLAR2("bossRewardSummary").textContent = "보상 진행 상황을 저장하지 못했어요: " + STORAGE.error;
       return false;
     }
     return true;
   }
   function renderBossRewardBoxes(receipt) {
     const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? (receipt.source === "farm" ? 0.1 : FIRST_CLEAR ? 0.15 : 0.05), CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR2("bossRewardStage").textContent = receipt.stage ? (receipt.source === "raid" ? "승리 · " : "농장 보스 · ") + "STAGE " + receipt.stage : receipt.source === "farm" ? "농장 보스 승리" : "레이드 보스 승리";
+    DOLLAR2("bossRewardStage").textContent = receipt.stage ? (receipt.source === "raid" ? "승리 · " : "농장 보스 · ") + receipt.stage + "단계" : receipt.source === "farm" ? "농장 보스 승리" : "레이드 보스 승리";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
     DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · " + (FIRST_CLEAR ? "첫 클리어 " : "재도전 ") + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
@@ -20132,11 +20132,11 @@
     TEXT.hidden = false;
     TEXT.focus();
     TEXT.select();
-    DOLLAR2("diagnosticStatus").textContent = "명시적으로 요청한 상세 JSON입니다. 저장 데이터는 포함하지 않습니다.";
+    DOLLAR2("diagnosticStatus").textContent = "명시적으로 요청한 상세 JSON이에요. 저장 데이터는 포함하지 않아요.";
   };
   var FAIL3 = (error) => {
     DOLLAR2("error").hidden = false;
-    DOLLAR2("error").textContent = "정원을 진행하지 못했어요. " + error.message;
+    DOLLAR2("error").textContent = "농장을 진행하지 못했어요. " + error.message;
     console.error(error);
     if (active) {
       active.paused = true;
@@ -20341,7 +20341,7 @@
     }
     const SPECIES = SELECTION.species, CATALOG_ENTRY = speciesById(SPECIES), REWARD_NAME = speciesRewardName(SPECIES), ENCOUNTER_NAME = giantSpeciesName(SPECIES), ROLLS = SELECTION.rolls;
     DOLLAR2("bossStageCounter").textContent = `${SELECTION.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
-    DOLLAR2("bossStageLabel").textContent = `STAGE ${SELECTION.stage}`;
+    DOLLAR2("bossStageLabel").textContent = `${SELECTION.stage}단계`;
     renderNeutralBossPreview(DOLLAR2("bossPreview"), SPECIES, CATALOG_ENTRY.asset, `${ENCOUNTER_NAME} 미리보기`);
     DOLLAR2("bossStageName").textContent = ENCOUNTER_NAME;
     DOLLAR2("bossStageHp").textContent = `HP ${Math.round(SELECTION.hp).toLocaleString("ko-KR")}`;
@@ -20363,7 +20363,7 @@
       DOLLAR2("bossStageNotice").textContent = "";
     }
     DOLLAR2("bossEncounterChallenge").disabled = !hasRaidRosterEntries(personalGarden.roster.residents()) || personalGarden.farmBossEvent?.phase !== "idle" || personalGarden.activeRaidRunSequence !== null || STAGE_LOCKED;
-    DOLLAR2("bossEncounterChallenge").title = DOLLAR2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 정원 상태가 필요해요." : "";
+    DOLLAR2("bossEncounterChallenge").title = DOLLAR2("bossEncounterChallenge").disabled ? "전투를 시작하려면 투입 가능한 병력과 농장 상태가 필요해요." : "";
     return SELECTION;
   }
   function openBossEncounter(push = true) {
@@ -20476,7 +20476,7 @@
     }
     const CANDIDATE = restore(reserved.farm);
     if (!saveImmediate(CANDIDATE)) {
-      FAIL3(Error(STORAGE.error || "농장 원정 예약을 저장하지 못했어요."));
+      FAIL3(Error(STORAGE.error || "농장 도전 예약을 저장하지 못했어요."));
       return null;
     }
     replacePersonalGarden(STORAGE.world);
@@ -20757,7 +20757,7 @@
       }
       replacePersonalGarden(STORAGE.world);
       refreshStart();
-      DOLLAR2("saveNotice").textContent = "이전 원정을 보상 없이 종료했어요. 병력과 성장 포인트는 그대로예요.";
+      DOLLAR2("saveNotice").textContent = "이전 도전을 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.";
     } catch (error) {
       FAIL3(error);
     }
@@ -20767,7 +20767,7 @@
       return;
     }
     if (STORAGE.raw) {
-      DOLLAR2("newConfirmText").textContent = "현재 정원을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.";
+      DOLLAR2("newConfirmText").textContent = "현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.";
       DOLLAR2("newConfirm").hidden = false;
       return;
     }
@@ -20815,7 +20815,7 @@
     }
     try {
       if (FILE.size > 2 * 1024 * 1024) {
-        throw Error("저장 파일이 너무 큽니다.");
+        throw Error("저장 파일이 너무 커요.");
       }
       const TEXT = await FILE.text();
       const { validateSave: VALIDATE_SAVE } = await Promise.resolve().then(() => (init_farm_storage(), farm_storage_exports));
@@ -20896,7 +20896,7 @@
     }
     farmPanelRevision = W.progressRevision;
     const LOCKED = !!farmSortTransition || active?.world?.scene !== "farm" || W.running || W.farmBossEvent?.phase !== "idle";
-    DOLLAR2("farmPopulationSummary").textContent = `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함합니다)`;
+    DOLLAR2("farmPopulationSummary").textContent = `배치 ${W.placedPopulation}/${W.totalFarmCapacity} · 보관 ${W.reservedPopulation} · 보상 대기 ${W.pendingRewardPopulation} · 보유 ${W.ownedPopulation} (비율은 보관 병력을 포함해요)`;
     DOLLAR2("farmWarehouseSummary").textContent = `먹이 창고: ${W.warehouseFood}개`;
     DOLLAR2("farmPlotList").innerHTML = [...W.farmPlots.values()].map((plot) => {
       const COUNT = W.roster.placedPopulation(plot.id);
@@ -21606,7 +21606,7 @@
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText(
       "starter",
-      RAID ? `${W.units.length} deployed in raid` : PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 휴식 중 · 회복까지 기다려 주세요" : worldCount >= W.capacity ? "정원이 가득 찼어요" : "번식으로 식구를 늘려요"
+      RAID ? `${W.units.length}마리 출전 중` : PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 휴식 중 · 회복을 기다려요" : worldCount >= W.capacity ? "농장이 가득 찼어요" : "번식으로 식구를 늘려요"
     );
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText(
@@ -21615,8 +21615,8 @@
     );
     const BOSS2 = display.boss, FARM_REWARD = !RAID && FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
-    ) : null, STAGE_NAME = RAID && BOSS2.stage ? `STAGE ${BOSS2.stage}` : "", REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
-    syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · EVENT STAGE ${BOSS2.stage}` : ENCOUNTER_NAME);
+    ) : null, STAGE_NAME = RAID && BOSS2.stage ? `${BOSS2.stage}단계` : "", REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
+    syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · 이벤트 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
     syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "전사자 포함 최대 HP");
@@ -21627,7 +21627,7 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 승리 · ${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "정원 복귀 후 보상 정산"} · 모두 정원으로 돌아갈 수 있어요` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} · 패배 · 휴식이 필요해요 · 정원에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 정원에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 도전 종료 · 동료들이 다시 일어날 때까지 기다려요` : ""
+      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "농장으로 돌아가면 보상을 받아요"}` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배 · 농장에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 도전 종료 · 병력이 회복될 때까지 기다려요` : ""
     );
     syncFlag(
       "battleOutcome",
@@ -21644,8 +21644,8 @@
     syncFlag("menuTabAbilities", "disabled", RAID || !personalGarden);
     syncFlag("raid", "disabled", RAID || FARM_EVENT_ACTIVE || !personalGarden);
     syncText("pause", active.paused ? "▶" : "Ⅱ");
-    syncAttribute("pause", "aria-label", active.paused ? "게임 계속" : "게임 일시 정지");
-    syncAttribute("pause", "title", active.paused ? "게임 계속" : "일시 정지");
+    syncAttribute("pause", "aria-label", active.paused ? "계속하기" : "일시정지");
+    syncAttribute("pause", "title", active.paused ? "계속하기" : "일시정지");
     syncAttribute("feed", "aria-label", "현재 농장에 먹이 1개 살포");
     syncAttribute("feed", "title", "현재 농장에 먹이 1개 살포");
     syncData("feed", "state", W.warehouseFood <= 0 || W.food.length >= 140 ? "unavailable" : "ready");
@@ -21719,7 +21719,7 @@
     }
   }
   DOLLAR2("productVersion").textContent = PRODUCT_VERSION;
-  DOLLAR2("startVersion").textContent = PRODUCT_VERSION + " · 자동 편성 스킬 9종";
+  DOLLAR2("startVersion").textContent = PRODUCT_VERSION;
   setHome(true, false);
   if (location.hash && location.hash !== "#/") {
     route();

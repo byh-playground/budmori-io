@@ -1,15 +1,16 @@
+/* 도전 단계 선택: 불투명 전체 화면. 위아래로 밀어 단계를 옮기고 아래 노란 버튼으로 시작합니다. */
 #bossEncounterScreen {
     position: fixed;
     inset: 0;
-    z-index: 45;
+    z-index: var(--ui-z-screen);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
-        max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-    background: linear-gradient(180deg, #eff3e9ed, #e6eadcf7 56%, #e8eddfed);
-    color: #33483b;
+    padding: max(var(--ui-s3), var(--ui-safe-top)) max(var(--ui-s4), env(safe-area-inset-right))
+        max(var(--ui-s4), var(--ui-safe-bottom)) max(var(--ui-s4), env(safe-area-inset-left));
+    background: var(--ui-bg);
+    color: var(--ui-ink);
     touch-action: none;
     overscroll-behavior: contain;
 }
@@ -22,28 +23,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--ui-s3);
+}
+.boss-encounter__bottom {
+    flex-direction: column;
+    align-items: stretch;
 }
 .boss-encounter__top {
-    min-height: 48px;
-}
-.boss-encounter__back {
-    border: 1px solid #d0dac8;
-    border-radius: 999px;
-    background: #f9faef;
-    padding: 0 15px;
-    font-weight: 800;
-}
-.boss-encounter__eyebrow {
-    font-size: 11px;
-    font-weight: 900;
-    letter-spacing: 0.16em;
-    color: #75836b;
+    min-height: var(--ui-tap);
 }
 .boss-encounter__counter {
-    font-size: 12px;
-    color: #78836f;
-    font-weight: 750;
+    font-size: var(--ui-fs-2);
+    color: var(--ui-ink-2);
+    font-weight: var(--ui-fw-b);
 }
 .boss-encounter__viewport {
     flex: 1;
@@ -57,14 +49,17 @@
 .boss-encounter__card {
     text-align: center;
     width: 100%;
-    padding: 10px 14px 4px;
-    animation: bossCardIn 0.24s ease both;
+    padding: var(--ui-s2) var(--ui-s3) var(--ui-s1);
+    animation: bossCardIn 0.2s ease both;
 }
 .boss-encounter__stage {
-    font-size: 13px;
-    font-weight: 900;
-    letter-spacing: 0.18em;
-    color: #748369;
+    display: inline-block;
+    padding: var(--ui-s1) var(--ui-s4);
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-base);
+    color: var(--ui-ink-on-base);
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-b);
 }
 .boss-encounter__preview {
     display: block;
@@ -73,119 +68,101 @@
     min-width: 110px;
     min-height: 110px;
     object-fit: contain;
-    margin: 16px auto 10px;
-    filter: drop-shadow(0 18px 16px #405a3524);
+    margin: var(--ui-s4) auto var(--ui-s2);
     animation: bossBreath 2.5s ease-in-out infinite;
     pointer-events: none;
 }
 .boss-encounter__card h2 {
-    font-size: clamp(27px, 6vw, 38px);
-    letter-spacing: -0.04em;
-    margin: 2px 0 5px;
-}
-.boss-encounter__subtitle {
-    margin: 0;
-    color: #75816c;
-    font-size: 13px;
+    margin: var(--ui-s1) 0;
+    font-size: var(--ui-fs-5);
 }
 .boss-encounter__stats {
     display: flex;
     justify-content: center;
-    gap: 9px;
-    margin: 16px 0 12px;
+    gap: var(--ui-s2);
+    margin: var(--ui-s3) 0;
 }
 .boss-encounter__stats span {
     display: inline-flex;
-    gap: 5px;
     align-items: center;
-    background: #f8faefc9;
-    border: 1px solid #ffffffa8;
-    border-radius: 999px;
-    padding: 6px 11px;
-    font-size: 12px;
-    font-weight: 800;
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-panel);
+    border-bottom: 3px solid var(--ui-line);
+    padding: var(--ui-s1) var(--ui-s3);
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-b);
 }
 .boss-encounter__reward {
     width: min(390px, 100%);
     margin: 0 auto;
-    padding: 12px 14px;
-    border: 1px solid #ffffffb5;
-    border-radius: 18px;
-    background: #f8faefc8;
-    box-shadow: 0 8px 22px #405a3510;
+    padding: var(--ui-s3) var(--ui-s4);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-bottom-width: var(--ui-edge);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
     text-align: left;
 }
 .boss-encounter__reward-title {
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    font-weight: 900;
-    color: #7c876f;
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
+    color: var(--ui-ink-2);
 }
 .boss-encounter__xp {
     display: block;
-    margin: 5px 0 4px;
-    font-size: 19px;
+    margin: var(--ui-s1) 0;
+    font-size: var(--ui-fs-4);
+    color: var(--ui-ink);
 }
 .boss-encounter__drop {
     display: flex;
     align-items: center;
-    gap: 9px;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid #e1e7d8;
-    font-size: 12px;
+    gap: var(--ui-s2);
+    margin-top: var(--ui-s2);
+    padding-top: var(--ui-s2);
+    border-top: var(--ui-bw) solid var(--ui-line);
+    font-size: var(--ui-fs-1);
 }
 .boss-encounter__drop img,
 .boss-encounter__drop svg {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     object-fit: contain;
     flex: 0 0 auto;
 }
 .boss-encounter__drop strong {
     display: block;
-    font-size: 13px;
+    font-size: var(--ui-fs-2);
 }
 .boss-encounter__drop small,
 .boss-encounter__notice {
-    font-size: 11px;
-    color: #75816c;
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
     line-height: 1.5;
 }
 .boss-encounter__hint {
-    font-size: 11px;
-    color: #71806b;
+    font-size: var(--ui-fs-1);
+    color: var(--ui-ink-2);
     text-align: center;
-    line-height: 1.5;
+    font-weight: var(--ui-fw-m);
 }
 .boss-encounter__challenge {
-    min-width: min(280px, 58vw);
-    border-radius: 999px;
-    background: #526e50;
-    color: #fffbee;
-    padding: 0 24px;
-    font-weight: 900;
-    box-shadow: 0 7px 18px #405a3530;
-}
-.boss-encounter__challenge small {
-    display: block;
-    font-size: 10px;
-    font-weight: 600;
-    opacity: 0.8;
-    margin-top: -1px;
+    width: 100%;
+    min-height: 56px;
+    font-size: var(--ui-fs-3);
 }
 .boss-encounter__message {
     position: absolute;
-    top: calc(env(safe-area-inset-top) + 64px);
+    top: calc(var(--ui-safe-top) + 64px);
     left: 50%;
     transform: translateX(-50%);
     max-width: 90vw;
-    padding: 8px 14px;
-    border-radius: 999px;
-    background: #384d3bea;
-    color: #fff;
+    padding: var(--ui-s2) var(--ui-s4);
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-base);
+    color: var(--ui-ink-on-base);
     text-align: center;
-    font-size: 12px;
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-m);
     pointer-events: none;
 }
 .boss-encounter__message[hidden] {
@@ -197,7 +174,7 @@
         transform: translateY(0) scale(0.98);
     }
     50% {
-        transform: translateY(-7px) scale(1.02);
+        transform: translateY(-6px) scale(1.02);
     }
 }
 @keyframes bossCardIn {
@@ -214,10 +191,10 @@
     .boss-encounter__preview {
         height: 20vh;
         min-height: 80px;
-        margin: 6px auto;
+        margin: var(--ui-s1) auto;
     }
     .boss-encounter__stats {
-        margin: 8px 0;
+        margin: var(--ui-s2) 0;
     }
     .boss-encounter__card {
         padding-top: 0;
@@ -225,11 +202,12 @@
     .boss-encounter__hint {
         display: none;
     }
+    .boss-encounter__challenge {
+        min-height: var(--ui-tap);
+    }
 }
 @media (prefers-reduced-motion: reduce) {
-    .boss-encounter__preview {
-        animation: none;
-    }
+    .boss-encounter__preview,
     .boss-encounter__card {
         animation: none;
     }
