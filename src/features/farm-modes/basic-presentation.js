@@ -196,3 +196,55 @@ export class EatingEffect {
         }
     }
 }
+
+// Straw chaff and kernels bursting out of the grain stack when a worker thrashes it.
+export class ThreshEffect {
+    draw(renderer, effect, progress) {
+        const BIG = effect.big === true,
+            DURATION = BIG ? 0.9 : 0.55,
+            P = clamp01(progress / DURATION);
+        if (P >= 1) {
+            return;
+        }
+        const C = renderer.ctx,
+            COUNT = BIG ? 14 : 7;
+        if (BIG) {
+            renderer.ring(
+                effect.x,
+                effect.y,
+                0.4 + easeOut(P) * 1.3,
+                rgba(GOLD, 0.8 * (1 - P)),
+                0.08 * (1 - P) + 0.012,
+            );
+        }
+        C.lineCap = 'round';
+        for (let index = 0; index < COUNT; index++) {
+            const ANGLE = (index * TAU) / COUNT + (index % 2) * 0.35,
+                REACH = (BIG ? 2.1 : 1.3) * (0.55 + (index % 3) * 0.22) * easeOut(P),
+                LIFT = Math.sin(P * Math.PI) * (BIG ? 1.8 : 1.2) * (0.6 + (index % 4) * 0.15),
+                FROM = renderer.project(
+                    effect.x + Math.cos(ANGLE) * REACH,
+                    effect.y + Math.sin(ANGLE) * REACH * 0.7,
+                    0.5 + LIFT,
+                ),
+                SPIN = ANGLE + P * 7;
+            C.strokeStyle = rgba(index % 2 ? '#e9cf84' : '#c99f4a', 1 - P * P);
+            C.lineWidth = Math.max(1, renderer.scale * 0.06);
+            C.beginPath();
+            C.moveTo(FROM.x - Math.cos(SPIN) * renderer.scale * 0.1, FROM.y - Math.sin(SPIN) * renderer.scale * 0.05);
+            C.lineTo(FROM.x + Math.cos(SPIN) * renderer.scale * 0.1, FROM.y + Math.sin(SPIN) * renderer.scale * 0.05);
+            C.stroke();
+        }
+        for (let index = 0; index < (BIG ? 6 : 3); index++) {
+            const ANGLE = index * 2.1 + 0.7,
+                REACH = (0.4 + easeOut(P) * 0.9) * (BIG ? 1.2 : 0.8),
+                POINT = renderer.project(
+                    effect.x + Math.cos(ANGLE) * REACH,
+                    effect.y + Math.sin(ANGLE) * REACH * 0.7,
+                    0.45 + Math.sin(P * Math.PI) * 1.0,
+                );
+            renderer.ellipse(POINT.x, POINT.y, renderer.scale * 0.05, renderer.scale * 0.07, rgba(FOOD, 1 - P));
+        }
+        puff(renderer, effect.x, effect.y + 0.05, 0.3 + P * 0.4, 0.3 + P * 0.35, DUST, 0.5 * (1 - P));
+    }
+}
