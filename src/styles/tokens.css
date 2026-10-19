@@ -1,0 +1,90 @@
+/*
+ * 디자인 토큰 — 화면 스타일의 단일 원본.
+ * 방향: 클래시 로얄의 정보 구조(하단 조작, 역할별 색)에 단색 면과 굵은 윤곽만 쓰는 플랫 스타일.
+ * 그라디언트·블러·번지는 그림자를 쓰지 않고, 눌림 깊이는 border-bottom 한 단으로만 표현합니다.
+ * 색은 역할로만 고릅니다: primary 주요 행동, secondary 확정·진행, danger 위험·알림, base 바탕과 내비게이션.
+ */
+:root {
+    /* 바탕과 면 */
+    --ui-bg: #e3ead6;
+    --ui-panel: #fbfaf0;
+    --ui-card: #eef2e2;
+    --ui-line: #cfdac0;
+    --ui-dim: #1b2b21b8;
+
+    /* 글자: 모두 --ui-panel 위에서 4.5:1 이상 */
+    --ui-ink: #28392d;
+    --ui-ink-2: #4c5e49;
+    --ui-ink-3: #5f7059;
+    --ui-ink-on-base: #f6f4e4;
+
+    /* 역할 색: 면, 눌림 깊이(edge), 그 위의 글자 */
+    --ui-primary: #f5b935;
+    --ui-primary-edge: #c58a12;
+    --ui-primary-ink: #3a2800;
+    --ui-secondary: #2f7d3b;
+    --ui-secondary-edge: #1f5a29;
+    --ui-secondary-ink: #ffffff;
+    --ui-danger: #c9453d;
+    --ui-danger-edge: #9a312b;
+    --ui-danger-ink: #ffffff;
+    --ui-base: #34513f;
+    --ui-base-edge: #243a2c;
+    --ui-neutral: #e3e9d6;
+    --ui-neutral-edge: #c2cdb0;
+    --ui-disabled: #d9dfcd;
+    --ui-disabled-ink: #7d8a76;
+
+    /* 게이지 */
+    --ui-gauge-track: #d4dcc4;
+    --ui-gauge-ally: #3f9a4a;
+    --ui-gauge-enemy: #d9534a;
+    --ui-gauge-xp: #4f8fd6;
+
+    /* 포커스 */
+    --ui-focus: #ab633c;
+
+    /* 모서리와 윤곽 */
+    --ui-r-s: 10px;
+    --ui-r-m: 14px;
+    --ui-r-l: 20px;
+    --ui-r-pill: 999px;
+    --ui-bw: 2px;
+    --ui-edge: 4px;
+
+    /* 간격 */
+    --ui-s1: 4px;
+    --ui-s2: 8px;
+    --ui-s3: 12px;
+    --ui-s4: 16px;
+    --ui-s5: 24px;
+
+    /* 글자: 최소 12px */
+    --ui-fs-1: 12px;
+    --ui-fs-2: 14px;
+    --ui-fs-3: 16px;
+    --ui-fs-4: 20px;
+    --ui-fs-5: 28px;
+    --ui-fs-6: 40px;
+    --ui-fw-m: 700;
+    --ui-fw-b: 800;
+
+    /* 터치 영역과 내비게이션 */
+    --ui-tap: 48px;
+    --ui-nav-h: 64px;
+    --ui-safe-top: env(safe-area-inset-top, 0px);
+    --ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* 층 */
+    --ui-z-hud: 10;
+    --ui-z-dock: 20;
+    --ui-z-modal: 30;
+    --ui-z-screen: 45;
+}
+
+@media (max-height: 550px) {
+    :root {
+        --ui-nav-h: 52px;
+        --ui-tap: 44px;
+    }
+}

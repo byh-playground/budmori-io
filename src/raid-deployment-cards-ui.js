@@ -206,7 +206,7 @@ export class RaidDeploymentCardsUI {
             슬롯 ${slot + 1} 잠김 · ${RAID_DEPLOYMENT_CARD_SLOT_COST} 포인트로 해금</button>`,
             )
             .join('');
-        this.content.innerHTML = `<p class="deployment-card-intro">보유한 병종을 최대 4개 편성하고, 카드를 누르거나 길게 눌러 한 마리씩 배치합니다. 편성은 농장에서만 바꿀 수 있습니다.</p>
+        this.content.innerHTML = `<p class="deployment-card-intro">보유한 병종을 최대 4개 편성하고, 카드를 누르거나 길게 눌러 한 마리씩 배치해요. 편성은 농장에서만 바꿀 수 있어요.</p>
             <p class="deployment-card-wallet"><strong>${points}</strong> 공용 포인트</p>
             <div class="deployment-editor-slots">${UNLOCKED}${LOCKED}</div>`;
     }

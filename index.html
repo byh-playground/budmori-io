@@ -4,2163 +4,55 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
         <title>BUDMORI · 농장과 커다란 이웃</title>
+        <link rel="stylesheet" href="./src/styles/tokens.css" />
+        <link rel="stylesheet" href="./src/styles/base.css" />
+        <link rel="stylesheet" href="./src/styles/game-menu.css" />
         <link rel="stylesheet" href="./src/ability-tree.css" />
         <link rel="stylesheet" href="./src/formation-skills.css" />
-        <style>
-            * {
-                box-sizing: border-box;
-            }
-            html,
-            body {
-                margin: 0;
-                height: 100%;
-                overflow: hidden;
-            }
-            body {
-                font-family:
-                    ui-rounded,
-                    'Arial Rounded MT Bold',
-                    system-ui,
-                    -apple-system,
-                    sans-serif;
-                background: #e6eadd;
-                color: #33483b;
-            }
-            button {
-                font: inherit;
-                cursor: pointer;
-                touch-action: manipulation;
-                -webkit-tap-highlight-color: transparent;
-                border: 0;
-                color: inherit;
-                min-height: 44px;
-            }
-            button:focus-visible {
-                outline: 3px solid #ab633c;
-                outline-offset: 4px;
-            }
-            button:disabled {
-                opacity: 0.55;
-                cursor: default;
-            }
-            canvas {
-                position: absolute;
-                inset: 0;
-                width: 100%;
-                height: 100%;
-                touch-action: none;
-                transform-origin: center;
-            }
-            body > header {
-                position: absolute;
-                top: max(24px, env(safe-area-inset-top));
-                left: 32px;
-                right: 32px;
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-                gap: 16px;
-                pointer-events: none;
-            }
-            .brand {
-                pointer-events: auto;
-            }
-            .eyebrow {
-                font-size: 11px;
-                font-weight: 800;
-                letter-spacing: 3px;
-                color: #76846e;
-            }
-            .brand h1 {
-                font-size: 34px;
-                letter-spacing: -1.7px;
-                margin: 3px 0 3px;
-                font-weight: 850;
-            }
-            .subtitle {
-                font-size: 13px;
-                color: #6c7a68;
-                letter-spacing: 0.1px;
-            }
-            .switch {
-                display: flex;
-                padding: 5px;
-                border-radius: 30px;
-                background: #f5f6edc9;
-                border: 1px solid #ffffffa6;
-                box-shadow: 0 6px 20px #405a3510;
-                pointer-events: auto;
-                backdrop-filter: blur(14px);
-            }
-            .switch button {
-                border-radius: 24px;
-                padding: 0 25px;
-                font-size: 14px;
-                font-weight: 750;
-                background: transparent;
-            }
-            .switch button[aria-pressed='true'] {
-                background: #405847;
-                color: #fffbea;
-                box-shadow: 0 3px 8px #324f2520;
-            }
-            .topright {
-                display: flex;
-                flex-direction: column;
-                align-items: flex-end;
-                gap: 12px;
-            }
-            .population {
-                font-size: 13px;
-                display: flex;
-                gap: 14px;
-                align-items: center;
-                background: #f8faedb0;
-                border: 1px solid #ffffff80;
-                border-radius: 18px;
-                padding: 10px 16px;
-                backdrop-filter: blur(12px);
-            }
-            .population b {
-                font-size: 17px;
-            }
-            .population small {
-                color: #78816d;
-                font-size: 11px;
-            }
-            .dot {
-                display: inline-block;
-                border-radius: 50%;
-                width: 7px;
-                height: 7px;
-                background: #6d9274;
-                margin-right: 7px;
-            }
-            .bossbar {
-                position: absolute;
-                top: 108px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: 220px;
-                text-align: center;
-                pointer-events: none;
-            }
-            .bossbar strong {
-                font-size: 12px;
-                letter-spacing: 0.2px;
-            }
-            .track {
-                height: 5px;
-                border-radius: 6px;
-                background: #52614620;
-                margin: 8px 0;
-            }
-            .fill {
-                height: 100%;
-                border-radius: 6px;
-                background: #a86c63;
-                transition: width 0.15s linear;
-            }
-            .bossbar small {
-                font-size: 10px;
-                color: #7b7463;
-            }
-            .bottom {
-                position: absolute;
-                z-index: 15;
-                bottom: max(26px, env(safe-area-inset-bottom));
-                left: 50%;
-                transform: translateX(-50%);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 12px;
-                width: max-content;
-                max-width: calc(100% - 24px);
-            }
-            .controls {
-                display: flex;
-                gap: 8px;
-                padding: 7px;
-                background: #fafbf2e8;
-                border: 1px solid #fff;
-                border-radius: 26px;
-                box-shadow: 0 10px 30px #45503816;
-                backdrop-filter: blur(16px);
-            }
-            .controls button {
-                padding: 0 20px;
-                border-radius: 20px;
-                background: transparent;
-                font-size: 13px;
-                font-weight: 750;
-                white-space: nowrap;
-            }
-            .controls button[aria-pressed='true'] {
-                background: #dfebd3;
-                color: #3e6142;
-            }
-            .controls .primary {
-                color: #fffbee;
-                background: #526e50;
-                min-width: 144px;
-            }
-            .controls .divider {
-                width: 1px;
-                background: #dce3d3;
-                margin: 8px 0;
-            }
-            #mergeNotice {
-                max-width: 240px;
-                color: #7b7463;
-                font-size: 10px;
-                line-height: 1.35;
-                text-align: center;
-            }
-            .utility {
-                position: absolute;
-                bottom: 30px;
-                right: 30px;
-                display: flex;
-                gap: 5px;
-            }
-            .utility button {
-                border-radius: 50%;
-                min-width: 44px;
-                background: #f9faeeb0;
-                font-size: 12px;
-            }
-            .help {
-                position: absolute;
-                right: 30px;
-                bottom: 90px;
-                width: 310px;
-                padding: 22px;
-                background: #f9faefef;
-                border: 1px solid white;
-                border-radius: 24px;
-                box-shadow: 0 12px 40px #25351b24;
-                backdrop-filter: blur(16px);
-                font-size: 12px;
-                line-height: 1.8;
-            }
-            .help h3 {
-                margin: 0 0 8px;
-                font-size: 15px;
-            }
-            .help p {
-                margin: 8px 0;
-            }
-            .help small {
-                color: #7c816f;
-            }
-            [hidden] {
-                display: none !important;
-            }
-            #gameplayDock {
-                z-index: 20;
-                pointer-events: none;
-            }
-            #gameplayDock .bottom,
-            #gameplayDock .utility {
-                pointer-events: auto;
-            }
-            .error {
-                position: absolute;
-                inset: 25% 10%;
-                border-radius: 24px;
-                padding: 30px;
-                background: #f9faed;
-                line-height: 1.8;
-            }
-            @media (max-width: 700px) {
-                body > header {
-                    top: max(18px, env(safe-area-inset-top));
-                    left: 20px;
-                    right: 20px;
-                    flex-wrap: wrap;
-                    gap: 12px;
-                }
-                .brand h1 {
-                    font-size: 28px;
-                }
-                .eyebrow {
-                    font-size: 9px;
-                }
-                .subtitle {
-                    font-size: 11px;
-                }
-                .topright {
-                    gap: 8px;
-                }
-                .switch {
-                    padding: 4px;
-                }
-                .switch button {
-                    padding: 0 14px;
-                    font-size: 12px;
-                    min-height: 40px;
-                }
-                .population {
-                    font-size: 11px;
-                    padding: 7px 11px;
-                    gap: 10px;
-                }
-                .population b {
-                    font-size: 14px;
-                }
-                .population small {
-                    font-size: 9px;
-                }
-                .bossbar {
-                    top: calc(50% + 80px);
-                    width: 180px;
-                }
-                .controls {
-                    gap: 3px;
-                    padding: 6px;
-                    border-radius: 22px;
-                }
-                .controls button {
-                    padding: 0 13px;
-                    font-size: 12px;
-                }
-                .controls .primary {
-                    min-width: 100px;
-                }
-                .bottom {
-                    bottom: 84px;
-                    gap: 10px;
-                }
-                .utility {
-                    bottom: 22px;
-                    right: 20px;
-                }
-                .help {
-                    bottom: 80px;
-                    right: 16px;
-                    width: min(330px, calc(100vw - 32px));
-                }
-                .bossbar strong {
-                    font-size: 11px;
-                }
-            }
-            @media (max-height: 550px) {
-                .brand h1 {
-                    font-size: 24px;
-                }
-                .subtitle {
-                    display: none;
-                }
-                .bottom {
-                    bottom: 12px;
-                }
-                .utility {
-                    right: 15px;
-                    bottom: 16px;
-                }
-                .bossbar {
-                    top: 85px;
-                }
-                .help {
-                    bottom: 70px;
-                    max-height: 70vh;
-                    overflow: auto;
-                }
-            }
-
-            /* Compact edge HUD. Gameplay actions never create text overlays. */
-            body > header {
-                align-items: center;
-                top: max(16px, env(safe-area-inset-top));
-            }
-            .brand h1 {
-                font-size: 24px;
-            }
-            .eyebrow,
-            .subtitle {
-                display: none;
-            }
-            .brand {
-                pointer-events: none;
-            }
-            .topright {
-                flex-direction: row;
-                align-items: center;
-            }
-            .population {
-                white-space: nowrap;
-            }
-            .bossbar {
-                top: 92px;
-                width: 180px;
-            }
-            .bossbar strong {
-                font-size: 11px;
-            }
-            .bottom {
-                bottom: max(22px, env(safe-area-inset-bottom));
-            }
-            .utility {
-                bottom: 24px;
-            }
-            .help {
-                top: 86px;
-                bottom: auto;
-                max-height: 220px;
-                overflow: auto;
-            }
-            .help .close {
-                min-width: 44px;
-                min-height: 44px;
-            }
-            #feed {
-                position: relative;
-                overflow: hidden;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 7px;
-                min-width: 100px;
-                padding-bottom: 5px;
-            }
-            #feed {
-                min-height: 52px;
-                padding-bottom: 0;
-                touch-action: none;
-                user-select: none;
-                -webkit-user-select: none;
-                transform-origin: center;
-                will-change: transform;
-            }
-            #feed span {
-                pointer-events: none;
-            }
-            #warehouseCount {
-                display: flex;
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 2px;
-                white-space: nowrap;
-                font-size: clamp(7px, 2vw, 9px);
-                color: #69775f;
-            }
-            #warehouseProgressLabel {
-                font-size: 8px;
-            }
-            #warehouseProgress {
-                display: flex;
-                gap: 2px;
-                min-width: 42px;
-            }
-            #warehouseProgress .tap-pip {
-                width: 6px;
-                height: 4px;
-                flex: 1 1 0;
-                border: 1px solid #75856d80;
-                border-radius: 2px;
-                background: transparent;
-                transition:
-                    background-color 70ms ease,
-                    transform 70ms ease;
-            }
-            #warehouseProgress .tap-pip.filled,
-            #warehouseProgress[data-produced='true'] .tap-pip {
-                background: #788f62;
-            }
-            #warehouseProgress[data-produced='true'] .tap-pip:last-child {
-                transform: scaleY(1.6);
-            }
-            .feed-icon {
-                width: 21px;
-                height: 21px;
-            }
-            .error {
-                inset: auto 16px 140px;
-                padding: 12px;
-                font-size: 12px;
-                max-width: 380px;
-                margin: auto;
-            }
-            @media (max-width: 700px) {
-                body > header {
-                    left: 16px;
-                    right: 16px;
-                    gap: 8px;
-                    flex-wrap: nowrap;
-                    align-items: flex-start;
-                }
-                .brand h1 {
-                    font-size: 20px;
-                    margin-top: 10px;
-                }
-                .topright {
-                    flex-direction: column;
-                    align-items: flex-end;
-                    gap: 7px;
-                    min-width: 0;
-                    max-width: calc(100vw - 112px);
-                }
-                .switch button {
-                    min-height: 44px;
-                    padding: 0 12px;
-                }
-                .population {
-                    padding: 5px 9px;
-                    min-width: 0;
-                    max-width: 100%;
-                    flex-wrap: wrap;
-                    justify-content: flex-end;
-                    gap: 4px 8px;
-                }
-                .population > span,
-                .population small {
-                    white-space: nowrap;
-                }
-                .population small#starter {
-                    font-size: 9px;
-                }
-                .bossbar {
-                    top: 132px;
-                    width: 170px;
-                }
-                .bottom {
-                    bottom: 82px;
-                }
-                .utility {
-                    bottom: 20px;
-                    right: 16px;
-                }
-                .controls button {
-                    min-height: 48px;
-                    padding: 0 12px;
-                }
-                .help {
-                    top: 116px;
-                    right: 16px;
-                    max-height: 190px;
-                }
-                .help p {
-                    margin: 5px 0;
-                }
-                .help small {
-                    display: none;
-                }
-            }
-            @media (max-height: 550px) {
-                body > header {
-                    top: 8px;
-                }
-                .bossbar {
-                    top: 65px;
-                }
-                .bottom {
-                    bottom: 10px;
-                    left: 16px;
-                    transform: none;
-                }
-                .utility {
-                    bottom: 14px;
-                    right: 12px;
-                }
-                .help {
-                    top: 65px;
-                    max-height: 160px;
-                }
-            }
-            .farm-admin h2,
-            .farm-admin h3 {
-                margin: 0 0 10px;
-            }
-            .farm-admin p {
-                font-size: 12px;
-                color: #69775f;
-                line-height: 1.6;
-            }
-            #farmPlotList button,
-            #farmPlotActions button {
-                min-height: 44px;
-            }
-            #farmPlotList,
-            #farmPlotActions,
-            #farmRatioList {
-                display: grid;
-                gap: 8px;
-                margin: 12px 0;
-            }
-            #farmPlotList {
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            }
-            #farmRatioList {
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            }
-            #farmPlotList button,
-            #farmPlotActions button {
-                min-height: 44px;
-                border-radius: 12px;
-                background: #e2ead9;
-                padding: 8px 12px;
-            }
-            #farmPlotList button[aria-pressed='true'] {
-                background: #526e50;
-                color: #fffbee;
-            }
-            .farm-ratio {
-                display: grid;
-                grid-template-columns: 1fr auto;
-                gap: 6px 10px;
-                align-items: center;
-                border: 1px solid #cad6be;
-                border-radius: 12px;
-                padding: 10px;
-                background: #e9f0df;
-            }
-            .farm-ratio input {
-                grid-column: 1 / -1;
-                width: 100%;
-            }
-            .farm-admin[hidden] {
-                display: none;
-            }
-            #treePanel {
-                position: fixed;
-                z-index: 30;
-                inset: 16px;
-                margin: auto;
-                width: min(700px, calc(100% - 32px));
-                max-height: 700px;
-                overflow: auto;
-                background: #f3f6e9;
-                border: 1px solid #fff;
-                border-radius: 24px;
-                padding: 22px;
-                box-shadow: 0 20px 100px #1b342b66;
-            }
-            #treePanel[hidden] {
-                display: none;
-            }
-            .tree-heading {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .tree-heading h2 {
-                margin: 0;
-                font-size: 24px;
-            }
-            .tree-note,
-            #treeStorage {
-                font-size: 12px;
-                color: #69775f;
-                line-height: 1.6;
-            }
-            #treeStorage {
-                color: #9b493c;
-            }
-            #treeNodes {
-                display: block;
-            }
-            .farm-upgrade-tree {
-                display: grid;
-                gap: 12px;
-            }
-            .farm-upgrade-tree__nodes {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 14px;
-            }
-            .tree-node {
-                position: relative;
-                border: 1px solid #cad6be;
-                border-radius: 16px;
-                padding: 14px 14px 64px;
-                background: #e9f0df;
-            }
-            .tree-node[data-ready='true'] {
-                border: 2px solid #69865e;
-            }
-            .node-heading {
-                display: flex;
-                gap: 8px;
-                align-items: center;
-            }
-            .node-heading h3 {
-                font-size: 14px;
-                margin: 0;
-                flex: 1;
-            }
-            .node-heading > span:last-child {
-                font-size: 12px;
-            }
-            .node-icon {
-                font-size: 23px;
-            }
-            .tree-node p {
-                font-size: 11px;
-                line-height: 1.6;
-                min-height: 36px;
-                color: #66755d;
-            }
-            .node-values {
-                font-weight: 700;
-                font-size: 13px;
-            }
-            .node-values span {
-                color: #637f52;
-            }
-            .tree-node progress {
-                display: block;
-                width: 100%;
-                height: 8px;
-                margin: 12px 0;
-                accent-color: #6f8d58;
-            }
-            .tree-node small {
-                font-size: 11px;
-            }
-            .tree-node button {
-                position: absolute;
-                bottom: 10px;
-                right: 12px;
-                width: 44px;
-                border-radius: 50%;
-                background: #526e50;
-                color: #fff;
-                font-size: 23px;
-            }
-            .tree-node button:disabled {
-                background: #bbc9b2;
-            }
-            .sr-only {
-                position: absolute;
-                width: 1px;
-                height: 1px;
-                overflow: hidden;
-                clip-path: inset(50%);
-            }
-            .utility {
-                gap: 6px;
-            }
-            @media (max-width: 700px) {
-                #treePanel {
-                    inset: 8px;
-                    width: calc(100% - 16px);
-                    max-height: calc(100dvh - 16px);
-                    padding: 16px;
-                }
-                .farm-upgrade-tree__nodes {
-                    gap: 8px;
-                }
-                .tree-node {
-                    padding: 12px 10px 62px;
-                }
-                .node-heading {
-                    gap: 5px;
-                }
-                .node-heading h3 {
-                    font-size: 12px;
-                }
-                .node-values {
-                    font-size: 11px;
-                }
-                .node-icon {
-                    font-size: 19px;
-                }
-                .tree-note {
-                    margin: 10px 0 16px;
-                }
-                .utility {
-                    right: 16px;
-                    gap: 5px;
-                }
-                .utility button {
-                    min-width: 44px;
-                }
-            }
-            @media (max-height: 550px) {
-                .utility button {
-                    min-width: 44px;
-                }
-                .bottom {
-                    left: 12px;
-                }
-                .controls button {
-                    padding: 0 9px;
-                }
-                .utility {
-                    gap: 3px;
-                }
-            }
-            #feed[data-state='unavailable'] .feed-icon {
-                opacity: 0.45;
-            }
-            #feed[data-impact='manual'] {
-                box-shadow:
-                    0 0 0 2px #fff2b955,
-                    inset 0 2px 7px #fff0b955;
-            }
-            #feed[data-impact='complete'] {
-                box-shadow:
-                    0 0 0 3px #f4d66e80,
-                    inset 0 2px 10px #fff7d499;
-            }
-            #sound[aria-pressed='false'] {
-                opacity: 0.55;
-            }
-            @media (prefers-reduced-motion: reduce) {
-                #feed {
-                    will-change: auto;
-                }
-            }
-            #productVersion {
-                font-size: 10px;
-                color: #76846e;
-                letter-spacing: 0;
-            }
-            .product-sheet {
-                position: fixed;
-                inset: 0;
-                z-index: 20;
-                background: #e6eadcf5;
-                overflow: auto;
-                display: flex;
-                flex-direction: column;
-                align-items: stretch;
-                justify-content: center;
-                gap: 12px;
-                padding: 28px max(24px, calc((100vw - 460px) / 2));
-                touch-action: pan-y;
-            }
-            .product-sheet h1 {
-                font-size: 42px;
-                letter-spacing: -2px;
-                margin: 0;
-            }
-            .product-sheet p {
-                font-size: 13px;
-                line-height: 1.7;
-                margin: 0;
-            }
-            .product-sheet button {
-                min-height: 48px;
-                border-radius: 18px;
-                background: #526e50;
-                color: #fffbee;
-                padding: 12px;
-            }
-            .product-sheet small {
-                color: #6b7d62;
-            }
-            .save-actions {
-                display: flex;
-                gap: 8px;
-            }
-            .save-actions button {
-                flex: 1;
-                background: #d5e0cb;
-                color: #33483b;
-            }
-            #saveNotice:empty,
-            #sessionNotice:empty {
-                display: none;
-            }
-            #saveNotice {
-                padding: 12px;
-                background: #efe4c8;
-                border-radius: 12px;
-            }
-            body[data-home='true'] > header,
-            body[data-home='true'] > .bottom,
-            body[data-home='true'] > .utility {
-                visibility: hidden;
-            }
-            .product-sheet > div[hidden] {
-                display: none;
-            }
-            #newConfirm,
-            #importConfirm {
-                padding: 16px;
-                background: #efe4c8;
-                border-radius: 16px;
-            }
-            #newConfirm button,
-            #importConfirm button {
-                margin-top: 8px;
-                width: 100%;
-            }
-            @media (max-height: 650px) {
-                .product-sheet {
-                    justify-content: flex-start;
-                    padding-top: 24px;
-                    padding-bottom: 24px;
-                }
-            }
-            body[data-home='true'] #bossbar {
-                display: none;
-            }
-            #battleOutcome {
-                position: fixed;
-                bottom: 100px;
-                left: 50%;
-                transform: translateX(-50%);
-                padding: 10px 16px;
-                border-radius: 16px;
-                background: #f8faedee;
-                font-size: 12px;
-                max-width: 90vw;
-                text-align: center;
-                pointer-events: none;
-            }
-            @media (max-width: 700px) {
-                #battleOutcome {
-                    bottom: 160px;
-                    width: max-content;
-                    max-width: 90vw;
-                }
-            }
-            @media (prefers-reduced-motion: reduce) {
-                .fill {
-                    transition: none;
-                }
-            }
-            .bossbar {
-                width: 240px;
-            }
-            .bossbar small {
-                display: block;
-            }
-            .bossbar .track {
-                height: 7px;
-                margin: 4px 0 7px;
-            }
-            .fill.ally {
-                background: #6b9471;
-            }
-            @media (max-width: 700px) {
-                .bossbar {
-                    top: 177px;
-                    width: 220px;
-                }
-                .bossbar small {
-                    font-size: 9px;
-                }
-                .bossbar .track {
-                    margin: 3px 0 5px;
-                }
-            }
-            @media (max-width: 360px) {
-                body > header {
-                    align-items: flex-start;
-                }
-                .topright {
-                    min-width: 0;
-                    max-width: calc(100vw - 112px);
-                }
-                .population {
-                    min-width: 0;
-                    max-width: 100%;
-                    flex-wrap: wrap;
-                    justify-content: flex-end;
-                    gap: 4px 8px;
-                }
-                .population > span,
-                .population small {
-                    white-space: nowrap;
-                }
-                .population small#warehouseCount {
-                    font-size: 8px;
-                }
-                .bossbar {
-                    top: 168px;
-                }
-            }
-            .raid-panel {
-                display: flex;
-                flex-direction: column;
-                gap: 7px;
-                width: min(620px, calc(100vw - 24px));
-                padding: 8px 10px;
-                background: #f8faefe8;
-                border: 1px solid #fff;
-                border-radius: 20px;
-                box-shadow: 0 10px 30px #45503822;
-                backdrop-filter: blur(14px);
-            }
-            .deploy-status {
-                display: flex;
-                flex-wrap: wrap;
-                align-items: center;
-                justify-content: center;
-                gap: 6px;
-            }
-            .deploy-status span {
-                flex: 1;
-                text-align: center;
-                font-size: 11px;
-                color: #58694f;
-            }
-            .deploy-status button {
-                min-height: 42px;
-                padding: 0 12px;
-                border-radius: 16px;
-                background: #e3e9d9;
-                font-size: 11px;
-                font-weight: 700;
-            }
-            .deploy-status #return {
-                background: #526e50;
-                color: #fffbee;
-            }
-            .raid-deployment-cards {
-                order: 0;
-                flex: 1 0 100%;
-                width: 100%;
-            }
-            .deployment-card-row {
-                display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                gap: 6px;
-                width: min(420px, 100%);
-                margin-inline: auto;
-            }
-            .deployment-card {
-                position: relative;
-                display: grid;
-                min-width: 0;
-                min-height: 48px;
-                grid-template-rows: auto auto;
-                justify-items: center;
-                align-content: center;
-                gap: 2px;
-                padding: 4px 2px;
-                border: 1px solid #a9c4b4;
-                border-radius: 11px;
-                background: #326870;
-                color: #f2ffff;
-                touch-action: none;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .deployment-card strong {
-                max-width: 100%;
-                overflow: hidden;
-                font-size: 12px;
-                line-height: 1.1;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-            .deployment-card small {
-                font-size: 9px;
-                font-weight: 500;
-            }
-            .deployment-card__number {
-                position: absolute;
-                top: 3px;
-                left: 5px;
-                font-size: 8px;
-                opacity: 0.75;
-            }
-            .deployment-card[aria-pressed='true'] {
-                background: #1d4850;
-                box-shadow: inset 0 0 0 2px #8be6e9;
-            }
-            .deployment-card:disabled {
-                opacity: 0.45;
-            }
-            #raidRemaining {
-                order: 1;
-            }
-            #raidRewardChance {
-                order: 2;
-            }
-            #return {
-                order: 3;
-            }
-            @media (max-width: 700px) {
-                .raid-panel {
-                    width: min(460px, calc(100vw - 20px));
-                    padding: 7px;
-                }
-                .deploy-status span {
-                    font-size: 10px;
-                }
-                .deploy-status button {
-                    padding: 0 9px;
-                    min-height: 44px;
-                }
-            }
-            @media (max-height: 650px) {
-                .raid-panel {
-                    gap: 4px;
-                    padding: 5px;
-                }
-            }
-        </style>
-        <style>
-            @media (max-height: 550px) and (orientation: landscape) {
-                .bossbar {
-                    top: 90px;
-                    left: auto;
-                    right: 14px;
-                    transform: none;
-                    width: 142px;
-                }
-            }
-        </style>
-        <style>
-            .game-menu-overlay {
-                position: fixed;
-                inset: 0;
-                z-index: 30;
-                display: grid;
-                place-items: center;
-                background: #182c2a66;
-                padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
-                touch-action: manipulation;
-            }
-            .game-menu-overlay[hidden] {
-                display: none !important;
-            }
-            .game-menu {
-                width: min(960px, 100%);
-                height: min(900px, 100%);
-                min-height: 0;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-                background: #f3f6e9;
-                border: 1px solid #fff;
-                border-radius: 24px;
-                box-shadow: 0 20px 100px #14251f80;
-                color: #33483b;
-            }
-            .game-menu__header {
-                position: static;
-                pointer-events: auto;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 16px;
-                padding: 14px 18px 10px;
-                flex: 0 0 auto;
-            }
-            .game-menu__header h2 {
-                margin: 0;
-                font-size: 20px;
-                letter-spacing: -0.3px;
-            }
-            #gameMenuClose {
-                width: 44px;
-                height: 44px;
-                min-height: 44px;
-                border-radius: 50%;
-                padding: 0;
-                background: #dee8d4;
-                font-size: 24px;
-                line-height: 1;
-            }
-            .game-menu__tabs[hidden] {
-                display: none;
-            }
-            .game-menu__tabs {
-                display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 6px;
-                padding: 0 14px 10px;
-                flex: 0 0 auto;
-            }
-            .game-menu__tabs button {
-                min-width: 0;
-                min-height: 44px;
-                border: 1px solid #d5dfd0;
-                border-radius: 13px;
-                background: #e5ebdf;
-                font-size: 14px;
-                font-weight: 750;
-                padding: 0 8px;
-                white-space: nowrap;
-            }
-            .game-menu__tabs button[aria-selected='true'] {
-                background: #405847;
-                border-color: #405847;
-                color: #fffbea;
-            }
-            .progression-reset-actions[hidden] {
-                display: none;
-            }
-            .progression-reset-actions {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 8px;
-                padding: 0 14px 10px;
-                flex: 0 0 auto;
-            }
-            .progression-reset-actions button {
-                min-width: 0;
-                min-height: 40px;
-                border: 1px solid #d5dfd0;
-                border-radius: 12px;
-                background: #e5ebdf;
-                color: #26382b;
-                font-size: 12px;
-                font-weight: 750;
-                padding: 0 8px;
-            }
-            .progression-reset-actions button[data-progression-reset='all'] {
-                background: #405847;
-                border-color: #405847;
-                color: #fffbea;
-            }
-            .progression-reset-actions button:disabled {
-                opacity: 0.5;
-            }
-            .progression-reset-actions button:focus-visible {
-                outline: 3px solid #ab633c;
-                outline-offset: 2px;
-            }
-            .game-menu__tabs button:focus-visible,
-            #gameMenuClose:focus-visible,
-            .game-menu__setting button:focus-visible,
-            .game-menu__home:focus-visible {
-                outline: 3px solid #ab633c;
-                outline-offset: 2px;
-            }
-            .game-menu__content {
-                flex: 1 1 auto;
-                min-height: 0;
-                overflow: hidden;
-                border-top: 1px solid #d5dfd0;
-            }
-            .game-menu__pane[hidden] {
-                display: none !important;
-            }
-            .game-menu__pane {
-                height: 100%;
-                min-height: 0;
-                overflow: auto;
-                overscroll-behavior: contain;
-                touch-action: pan-y;
-                padding: 20px;
-            }
-            .game-menu__play {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-                max-width: 560px;
-                margin: 0 auto;
-            }
-            .game-menu__home {
-                min-height: 48px;
-                border-radius: 14px;
-                background: #405847;
-                color: #fffbea;
-                font-weight: 750;
-            }
-            #settingsDiagnosticText {
-                width: 100%;
-                min-height: 160px;
-                font-size: 12px;
-            }
-            .game-menu__setting {
-                min-height: 62px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 14px;
-                border: 1px solid #d5dfd0;
-                border-radius: 15px;
-                padding: 8px 12px 8px 16px;
-                background: #f8fbf5;
-                font-weight: 700;
-            }
-            .game-menu__setting button {
-                min-width: 112px;
-                min-height: 46px;
-                padding: 0 14px;
-                border-radius: 12px;
-                background: #e0ead8;
-                font-weight: 750;
-            }
-            .game-menu__setting button[aria-pressed='true'] {
-                background: #d6e6ce;
-                color: #36553b;
-            }
-            .game-menu__setting button:disabled {
-                background: #e5e8df;
-            }
-            #treePanel {
-                position: static;
-                inset: auto;
-                margin: 0;
-                width: auto;
-                height: 100%;
-                max-height: none;
-                overflow: auto;
-                border: 0;
-                border-radius: 0;
-                box-shadow: none;
-                background: transparent;
-                padding: 20px;
-            }
-            #treePanel[hidden] {
-                display: none !important;
-            }
-            #treeTitle {
-                font-size: 20px;
-            }
-            #treePanel .tree-note {
-                margin: 8px 0 16px;
-            }
-            #abilityPanel {
-                position: static;
-                inset: auto;
-                margin: 0;
-                width: 100%;
-                height: 100%;
-                max-height: none;
-                z-index: auto;
-                border: 0;
-                border-radius: 0;
-                box-shadow: none;
-                overflow: hidden;
-                background: transparent;
-            }
-            #abilityPanel[hidden] {
-                display: none !important;
-            }
-            #abilityPanel .ability-panel__heading {
-                grid-template-columns: minmax(0, 1fr);
-                padding: 12px 16px;
-            }
-            #abilityPanel .ability-panel__heading-main {
-                grid-column: 1;
-                grid-row: 1;
-            }
-            #abilityPanel .ability-panel__heading h2 {
-                font-size: 20px;
-            }
-            #abilityPanel .ability-panel__species {
-                display: flex;
-                overflow-x: auto;
-                min-width: 0;
-                grid-column: 1;
-                grid-row: 2;
-            }
-            #abilityPanel .ability-panel__species button {
-                flex: 0 0 auto;
-                min-width: 64px;
-            }
-            #abilityPanel .ability-panel__heading > button {
-                display: none;
-            }
-            #abilityNodes {
-                flex: 1 1 auto;
-                min-height: 0;
-                overflow-x: hidden;
-                overflow-y: auto;
-                overscroll-behavior: contain;
-                scrollbar-gutter: stable;
-            }
-            #helpPanel {
-                position: static;
-                inset: auto;
-                width: auto;
-                height: 100%;
-                max-height: none;
-                overflow: auto;
-                border: 0;
-                border-radius: 0;
-                box-shadow: none;
-                background: transparent;
-                padding: 20px;
-                font-size: 13px;
-                line-height: 1.75;
-            }
-            #helpPanel h3 {
-                margin: 0 0 12px;
-                font-size: 18px;
-            }
-            #helpPanel p {
-                margin: 10px 0;
-            }
-            #helpPanel small {
-                display: block;
-                color: #6b7d62;
-                margin-top: 12px;
-            }
-
-            .utility {
-                z-index: 21;
-                right: 24px;
-                bottom: 24px;
-                gap: 6px;
-            }
-            .utility > button {
-                display: grid;
-                place-items: center;
-                width: 48px;
-                height: 48px;
-                min-width: 48px;
-                min-height: 48px;
-                padding: 0;
-                border: 1px solid #fff;
-                border-radius: 50%;
-                background: #f9faeebd;
-                box-shadow: 0 5px 18px #405a351d;
-                color: #405847;
-                backdrop-filter: blur(12px);
-            }
-            .utility > button svg {
-                width: 23px;
-                height: 23px;
-                fill: none;
-                stroke: currentColor;
-                stroke-width: 1.8;
-                stroke-linecap: round;
-                stroke-linejoin: round;
-            }
-            .utility > button[aria-expanded='true'] {
-                background: #405847;
-                color: #fffbea;
-            }
-            @media (max-width: 700px) {
-                .game-menu-overlay {
-                    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
-                }
-                .game-menu {
-                    width: 100%;
-                    height: 100%;
-                    border-radius: 19px;
-                }
-                .game-menu__header {
-                    padding: 10px 12px 8px;
-                }
-                .game-menu__header h2 {
-                    font-size: 18px;
-                }
-                .game-menu__tabs {
-                    gap: 4px;
-                    padding: 0 8px 8px;
-                }
-                .game-menu__tabs button {
-                    font-size: 12px;
-                    padding: 0 4px;
-                    border-radius: 11px;
-                }
-                .game-menu__pane,
-                #treePanel,
-                #helpPanel {
-                    padding: 14px;
-                }
-                #abilityPanel .ability-panel__heading {
-                    padding: 10px 12px;
-                }
-                .utility {
-                    right: 16px;
-                    bottom: 20px;
-                }
-                .utility > button {
-                    width: 48px;
-                    height: 48px;
-                }
-            }
-            @media (max-height: 600px) {
-                .game-menu__header {
-                    padding-top: 7px;
-                    padding-bottom: 6px;
-                }
-                .game-menu__header h2 {
-                    font-size: 17px;
-                }
-                .game-menu__tabs {
-                    padding-bottom: 6px;
-                }
-                .game-menu__pane,
-                #treePanel,
-                #helpPanel {
-                    padding: 12px;
-                }
-                .game-menu__setting {
-                    min-height: 54px;
-                }
-            }
-        </style>
-        <style id="boss-reward-styles">
-            .boss-reward-open {
-                min-height: 42px;
-                padding: 0 20px;
-                border: 1px solid #fff;
-                border-radius: 999px;
-                background: #f9faefed;
-                box-shadow: 0 7px 20px #405a3520;
-                color: #405847;
-                font-weight: 850;
-            }
-            .boss-reward-dialog {
-                position: fixed;
-                inset: 0;
-                z-index: 60;
-                display: grid;
-                place-items: center;
-                padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
-                background: #172c2a8a;
-            }
-            .boss-reward-dialog[hidden] {
-                display: none !important;
-            }
-            .boss-reward-dialog__card {
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                width: min(560px, 100%);
-                max-height: min(720px, 92dvh);
-                padding: 16px;
-                border: 1px solid #fff;
-                border-radius: 20px;
-                background: #f8faef;
-                box-shadow: 0 16px 50px #172c2a45;
-                color: #33483b;
-            }
-            .boss-reward-dialog__card header,
-            .boss-reward-dialog__card footer {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
-            }
-            .boss-reward-dialog__card header h2 {
-                margin: 2px 0 0;
-                font-size: 20px;
-            }
-            .boss-reward-dialog__card header small,
-            #bossRewardRevealCount {
-                color: #71806b;
-                font-size: 11px;
-            }
-            #bossRewardClose {
-                min-width: 40px;
-                min-height: 40px;
-                border-radius: 50%;
-                background: #e6ecdf;
-                color: #405847;
-                font-size: 24px;
-            }
-            #bossRewardSummary,
-            #bossRewardTotals {
-                margin: 0;
-                font-size: 13px;
-                line-height: 1.5;
-            }
-            #bossRewardTotals {
-                color: #526e50;
-                font-weight: 800;
-            }
-            .boss-reward-boxes {
-                display: grid;
-                grid-template-columns: repeat(5, minmax(0, 1fr));
-                gap: 7px;
-                min-height: 0;
-                overflow: auto;
-                padding: 2px;
-            }
-            .boss-reward-box {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 3px;
-                min-width: 0;
-                min-height: 62px;
-                border: 1px solid #dfe7d9;
-                border-radius: 12px;
-                background: #eef2e8;
-                color: #71806b;
-                font-size: 11px;
-                font-weight: 800;
-                text-align: center;
-            }
-            .boss-reward-box[data-state='hit'] {
-                border-color: #a6c48e;
-                background: #e6f0dc;
-                color: #3e6142;
-            }
-            .boss-reward-box[data-state='miss'] {
-                background: #f0eee8;
-                color: #85877e;
-            }
-            .boss-reward-box img {
-                width: 28px;
-                height: 28px;
-                object-fit: contain;
-            }
-            #bossRewardOpenAll {
-                min-height: 42px;
-                padding: 0 18px;
-                border-radius: 999px;
-                background: #526e50;
-                color: #fffbee;
-                font-weight: 850;
-            }
-            @media (max-width: 500px) {
-                .boss-reward-dialog__card {
-                    padding: 12px;
-                }
-                .boss-reward-boxes {
-                    grid-template-columns: repeat(5, minmax(0, 1fr));
-                    gap: 5px;
-                }
-                .boss-reward-box {
-                    min-height: 54px;
-                    font-size: 10px;
-                }
-                .boss-reward-box img {
-                    width: 24px;
-                    height: 24px;
-                }
-            }
-        </style>
-        <style id="boss-encounter-styles">
-            #bossEncounterScreen {
-                position: fixed;
-                inset: 0;
-                z-index: 45;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: space-between;
-                padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
-                    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-                background: linear-gradient(180deg, #eff3e9ed, #e6eadcf7 56%, #e8eddfed);
-                color: #33483b;
-                touch-action: none;
-                overscroll-behavior: contain;
-            }
-            #bossEncounterScreen[hidden] {
-                display: none !important;
-            }
-            .boss-encounter__top,
-            .boss-encounter__bottom {
-                width: min(540px, 100%);
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
-            }
-            .boss-encounter__top {
-                min-height: 48px;
-            }
-            .boss-encounter__back {
-                border: 1px solid #d0dac8;
-                border-radius: 999px;
-                background: #f9faef;
-                padding: 0 15px;
-                font-weight: 800;
-            }
-            .boss-encounter__eyebrow {
-                font-size: 11px;
-                font-weight: 900;
-                letter-spacing: 0.16em;
-                color: #75836b;
-            }
-            .boss-encounter__counter {
-                font-size: 12px;
-                color: #78836f;
-                font-weight: 750;
-            }
-            .boss-encounter__viewport {
-                flex: 1;
-                min-height: 0;
-                width: min(540px, 100%);
-                display: grid;
-                place-items: center;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            .boss-encounter__card {
-                text-align: center;
-                width: 100%;
-                padding: 10px 14px 4px;
-                animation: bossCardIn 0.24s ease both;
-            }
-            .boss-encounter__stage {
-                font-size: 13px;
-                font-weight: 900;
-                letter-spacing: 0.18em;
-                color: #748369;
-            }
-            .boss-encounter__preview {
-                display: block;
-                width: min(40vw, 185px);
-                height: min(27vh, 185px);
-                min-width: 110px;
-                min-height: 110px;
-                object-fit: contain;
-                margin: 16px auto 10px;
-                filter: drop-shadow(0 18px 16px #405a3524);
-                animation: bossBreath 2.5s ease-in-out infinite;
-                pointer-events: none;
-            }
-            .boss-encounter__card h2 {
-                font-size: clamp(27px, 6vw, 38px);
-                letter-spacing: -0.04em;
-                margin: 2px 0 5px;
-            }
-            .boss-encounter__subtitle {
-                margin: 0;
-                color: #75816c;
-                font-size: 13px;
-            }
-            .boss-encounter__stats {
-                display: flex;
-                justify-content: center;
-                gap: 9px;
-                margin: 16px 0 12px;
-            }
-            .boss-encounter__stats span {
-                display: inline-flex;
-                gap: 5px;
-                align-items: center;
-                background: #f8faefc9;
-                border: 1px solid #ffffffa8;
-                border-radius: 999px;
-                padding: 6px 11px;
-                font-size: 12px;
-                font-weight: 800;
-            }
-            .boss-encounter__reward {
-                width: min(390px, 100%);
-                margin: 0 auto;
-                padding: 12px 14px;
-                border: 1px solid #ffffffb5;
-                border-radius: 18px;
-                background: #f8faefc8;
-                box-shadow: 0 8px 22px #405a3510;
-                text-align: left;
-            }
-            .boss-encounter__reward-title {
-                font-size: 11px;
-                letter-spacing: 0.1em;
-                font-weight: 900;
-                color: #7c876f;
-            }
-            .boss-encounter__xp {
-                display: block;
-                margin: 5px 0 4px;
-                font-size: 19px;
-            }
-            .boss-encounter__drop {
-                display: flex;
-                align-items: center;
-                gap: 9px;
-                margin-top: 8px;
-                padding-top: 8px;
-                border-top: 1px solid #e1e7d8;
-                font-size: 12px;
-            }
-            .boss-encounter__drop img,
-            .boss-encounter__drop svg {
-                width: 30px;
-                height: 30px;
-                object-fit: contain;
-                flex: 0 0 auto;
-            }
-            .boss-encounter__drop strong {
-                display: block;
-                font-size: 13px;
-            }
-            .boss-encounter__drop small,
-            .boss-encounter__notice {
-                font-size: 11px;
-                color: #75816c;
-                line-height: 1.5;
-            }
-            .boss-encounter__hint {
-                font-size: 11px;
-                color: #71806b;
-                text-align: center;
-                line-height: 1.5;
-            }
-            .boss-encounter__challenge {
-                min-width: min(280px, 58vw);
-                border-radius: 999px;
-                background: #526e50;
-                color: #fffbee;
-                padding: 0 24px;
-                font-weight: 900;
-                box-shadow: 0 7px 18px #405a3530;
-            }
-            .boss-encounter__challenge small {
-                display: block;
-                font-size: 10px;
-                font-weight: 600;
-                opacity: 0.8;
-                margin-top: -1px;
-            }
-            .boss-encounter__message {
-                position: absolute;
-                top: calc(env(safe-area-inset-top) + 64px);
-                left: 50%;
-                transform: translateX(-50%);
-                max-width: 90vw;
-                padding: 8px 14px;
-                border-radius: 999px;
-                background: #384d3bea;
-                color: #fff;
-                text-align: center;
-                font-size: 12px;
-                pointer-events: none;
-            }
-            .boss-encounter__message[hidden] {
-                display: none;
-            }
-            @keyframes bossBreath {
-                0%,
-                100% {
-                    transform: translateY(0) scale(0.98);
-                }
-                50% {
-                    transform: translateY(-7px) scale(1.02);
-                }
-            }
-            @keyframes bossCardIn {
-                from {
-                    opacity: 0.55;
-                    transform: translateY(10px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            }
-            @media (max-height: 600px) {
-                .boss-encounter__preview {
-                    height: 20vh;
-                    min-height: 80px;
-                    margin: 6px auto;
-                }
-                .boss-encounter__stats {
-                    margin: 8px 0;
-                }
-                .boss-encounter__card {
-                    padding-top: 0;
-                }
-                .boss-encounter__hint {
-                    display: none;
-                }
-            }
-            @media (prefers-reduced-motion: reduce) {
-                .boss-encounter__preview {
-                    animation: none;
-                }
-                .boss-encounter__card {
-                    animation: none;
-                }
-            }
-        </style>
-        <style id="deployment-styles">
-            .raid-panel .deploy-status {
-                flex-wrap: wrap;
-            }
-            .raid-panel #raidRemaining {
-                flex: 1 1 150px;
-            }
-            .raid-panel #raidRewardChance {
-                font-size: 10px;
-            }
-            @media (max-width: 700px) {
-                .raid-panel #raidRemaining {
-                    flex-basis: 120px;
-                }
-                .raid-panel #return {
-                    min-height: 44px;
-                }
-            }
-        </style>
-        <style>
-            .boss-reward-dialog {
-                background: #12271de3;
-                backdrop-filter: blur(3px);
-            }
-            .boss-reward-dialog__card {
-                display: grid;
-                grid-template-rows: auto auto auto minmax(145px, 1fr) auto auto;
-                gap: 8px;
-                width: min(560px, 100%);
-                max-height: min(720px, 92dvh);
-                overflow: hidden;
-                border-color: #dce8c9;
-                background: linear-gradient(150deg, #fbf8e9, #e8eedc);
-            }
-            .boss-reward-dialog__card header {
-                justify-content: flex-start;
-                min-height: 44px;
-            }
-            .boss-reward-dialog__card header > div {
-                min-width: 0;
-                margin-right: auto;
-            }
-            .boss-reward-ribbon {
-                padding: 7px 10px;
-                border-radius: 999px;
-                background: #e0ad48;
-                color: #583d1c;
-                font-size: 11px;
-                white-space: nowrap;
-            }
-            .boss-reward-chest-scene {
-                position: relative;
-                display: grid;
-                min-height: 145px;
-                place-items: center;
-                overflow: hidden;
-                border-radius: 18px;
-                background: radial-gradient(ellipse at center, #f5e9c766 0, #f3f0e000 70%);
-            }
-            .boss-reward-chest {
-                display: block;
-                width: min(42vw, 460px);
-                min-width: 136px;
-                height: auto;
-                overflow: visible;
-                filter: drop-shadow(0 10px 8px #263d2920);
-            }
-            .boss-reward-chest__body,
-            .boss-reward-chest__lid-pivot {
-                transform-box: view-box;
-            }
-            .boss-reward-chest__lid-pivot {
-                transform-origin: 250px 128px;
-                transition: transform 120ms cubic-bezier(0.2, 0.8, 0.25, 1);
-            }
-            .boss-reward-chest__glow {
-                opacity: 0;
-                transition: opacity 120ms ease-out;
-            }
-            .boss-reward-chest__lock {
-                transform-box: view-box;
-                transform-origin: 250px 180px;
-                transition:
-                    opacity 80ms ease-out,
-                    transform 80ms ease-out;
-            }
-            .boss-reward-chest-scene.is-compressing .boss-reward-chest__body {
-                animation: boss-reward-compress 100ms ease-out both;
-            }
-            .boss-reward-chest-scene.is-lid-open .boss-reward-chest__lid-pivot {
-                transform: rotate(-62deg) translateY(-8px);
-            }
-            .boss-reward-chest-scene.is-lid-open .boss-reward-chest__lock {
-                opacity: 0.15;
-                transform: translateY(5px) scale(0.92);
-            }
-            .boss-reward-chest-scene.is-reward .boss-reward-chest__glow {
-                opacity: 1;
-            }
-            .boss-reward-chest-scene.is-empty .boss-reward-chest__body {
-                animation: boss-reward-empty 160ms ease-out both;
-            }
-            .boss-reward-prize {
-                position: absolute;
-                z-index: 2;
-                top: 4px;
-                left: 50%;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                transform: translate(-50%, 8px) scale(0.72);
-                opacity: 0;
-                pointer-events: none;
-            }
-            .boss-reward-prize:not([hidden]) {
-                animation: boss-reward-prize 180ms cubic-bezier(0.18, 0.85, 0.22, 1) both;
-            }
-            .boss-reward-portrait {
-                display: block;
-                width: 54px;
-                height: 54px;
-                border: 3px solid #fff4cf;
-                border-radius: 16px;
-                background: #dce9c8;
-                box-shadow: 0 4px 14px #263d2935;
-                object-fit: contain;
-            }
-            .boss-reward-prize strong {
-                padding: 6px 9px;
-                border-radius: 999px;
-                background: #fff8d7;
-                color: #4c743f;
-                font-size: clamp(18px, 5vw, 27px);
-                font-weight: 950;
-                text-shadow: 0 1px #fff;
-            }
-            .boss-reward-empty,
-            .boss-reward-outcome {
-                position: absolute;
-                z-index: 3;
-                bottom: 4px;
-                left: 50%;
-                margin: 0;
-                padding: 4px 10px;
-                border-radius: 999px;
-                background: #f4f1e4e8;
-                color: #73816d;
-                font-size: 11px;
-                font-weight: 750;
-                transform: translateX(-50%);
-            }
-            .boss-reward-outcome:empty {
-                display: none;
-            }
-            .boss-reward-boxes {
-                display: none !important;
-            }
-            #bossRewardTotals {
-                color: #526e50;
-                font-size: 14px;
-                font-weight: 850;
-                font-variant-numeric: tabular-nums;
-            }
-            #bossRewardRevealCount {
-                color: #71806b;
-                font-size: 12px;
-                font-variant-numeric: tabular-nums;
-            }
-            #bossRewardOpenAll {
-                min-width: 132px;
-                min-height: 46px;
-                padding-inline: 18px;
-                border-radius: 999px;
-                background: #526e50;
-                color: #fffbee;
-                font-size: 14px;
-                font-weight: 850;
-            }
-            #bossRewardClose {
-                min-width: 44px;
-                min-height: 44px;
-                margin-left: 0;
-            }
-            @keyframes boss-reward-compress {
-                0% {
-                    transform: scale(1) rotate(0);
-                }
-                58% {
-                    transform: scale(1.035, 0.94) rotate(-1deg);
-                }
-                100% {
-                    transform: scale(1) rotate(0);
-                }
-            }
-            @keyframes boss-reward-empty {
-                0%,
-                100% {
-                    transform: translateX(0);
-                }
-                30% {
-                    transform: translateX(-5px) rotate(-1deg);
-                }
-                70% {
-                    transform: translateX(4px) rotate(1deg);
-                }
-            }
-            @keyframes boss-reward-prize {
-                0% {
-                    opacity: 0;
-                    transform: translate(-50%, 12px) scale(0.66);
-                }
-                72% {
-                    opacity: 1;
-                    transform: translate(-50%, -5px) scale(1.08);
-                }
-                100% {
-                    opacity: 1;
-                    transform: translate(-50%, 0) scale(1);
-                }
-            }
-            @media (max-width: 500px) {
-                .boss-reward-dialog__card {
-                    padding: 12px;
-                }
-            }
-            @media (max-width: 700px) and (orientation: portrait) {
-                .bossbar {
-                    top: max(128px, calc(env(safe-area-inset-top) + 118px));
-                }
-            }
-            @media (max-height: 500px) {
-                .boss-reward-dialog__card {
-                    grid-template-rows: auto auto auto minmax(112px, 1fr) auto auto;
-                    gap: 5px;
-                    max-height: 94dvh;
-                    padding-block: 8px;
-                }
-                .boss-reward-chest-scene {
-                    min-height: 112px;
-                }
-                .boss-reward-chest {
-                    width: min(32vw, 220px);
-                    min-width: 126px;
-                }
-                .boss-reward-portrait {
-                    width: 44px;
-                    height: 44px;
-                }
-            }
-            @media (prefers-reduced-motion: reduce) {
-                .boss-reward-chest-scene *,
-                .boss-reward-prize:not([hidden]) {
-                    animation-duration: 1ms !important;
-                    transition-duration: 1ms !important;
-                }
-            }
-        </style>
+        <link rel="stylesheet" href="./src/styles/deployment.css" />
+        <link rel="stylesheet" href="./src/styles/boss-encounter.css" />
+        <link rel="stylesheet" href="./src/styles/boss-reward.css" />
+        <link rel="stylesheet" href="./src/styles/boss-reward-dialog.css" />
     </head>
     <body>
-        <canvas id="world" aria-label="드래그해 정원 시야 이동"></canvas>
+        <canvas id="world" aria-label="드래그해서 농장 둘러보기"></canvas>
         <header>
-            <div class="brand">
-                <div class="eyebrow">BLOOM · LIVING GARDEN</div>
-                <h1>budmori <small id="productVersion">0.7.3</small></h1>
-                <div class="subtitle">작은 정원, 커다란 모험.</div>
-            </div>
-            <div class="topright">
-                <nav class="switch" aria-label="장면">
-                    <button id="farm" aria-pressed="true">정원</button
-                    ><button id="raid" aria-pressed="false">도전</button>
-                </nav>
-                <div class="population">
-                    <span
-                        ><i class="dot"></i>식구 <b id="count">36</b
-                        ><small> / <span id="capacity">72</span></small></span
-                    ><small id="starter">새싹까지 60초</small
-                    ><small id="warehouseCount" aria-live="polite">
-                        <span>창고 먹이 <b id="warehouseStock">0</b>개</span>
-                        <span id="warehouseProgressLabel">자동 생산 0/5</span>
-                        <span
-                            id="warehouseProgress"
-                            role="progressbar"
-                            aria-label="자동 먹이 생산 진행"
-                            aria-valuemin="0"
-                            aria-valuemax="5"
-                            aria-valuenow="0"
-                        >
-                            <i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i
-                            ><i class="tap-pip"></i>
-                        </span>
-                    </small>
+            <div class="hud__stats">
+                <div class="chip">
+                    <i class="dot"></i><span class="chip__label">병력</span><b id="count">36</b
+                    ><small>/ <span id="capacity">72</span></small>
                 </div>
+                <div class="chip" id="warehouseCount" aria-live="polite">
+                    <span class="chip__label">먹이</span><b id="warehouseStock">0</b>
+                    <span id="warehouseProgressLabel" class="sr-only">자동 생산 0/5</span>
+                    <span
+                        id="warehouseProgress"
+                        role="progressbar"
+                        aria-label="자동 먹이 생산 진행"
+                        aria-valuemin="0"
+                        aria-valuemax="5"
+                        aria-valuenow="0"
+                    >
+                        <i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i><i class="tap-pip"></i
+                        ><i class="tap-pip"></i>
+                    </span>
+                </div>
+                <small id="starter" class="hud__note"></small>
+                <small id="productVersion" class="hud__version">0.10.2</small>
             </div>
+            <nav class="switch" aria-label="장면">
+                <button id="farm" aria-pressed="true">농장</button><button id="raid" aria-pressed="false">도전</button>
+            </nav>
         </header>
 
         <section id="bossEncounterScreen" aria-label="도전 단계 선택" hidden>
             <div class="boss-encounter__top">
-                <button id="bossEncounterBack" class="boss-encounter__back" type="button">정원으로</button
-                ><span class="boss-encounter__eyebrow">BOSS CHALLENGE</span
+                <button id="bossEncounterBack" class="boss-encounter__back btn" type="button">농장으로</button
                 ><span id="bossStageCounter" class="boss-encounter__counter">1 / 61</span>
             </div>
             <div id="bossEncounterViewport" class="boss-encounter__viewport" aria-live="polite">
                 <article id="bossEncounterCard" class="boss-encounter__card">
-                    <div id="bossStageLabel" class="boss-encounter__stage">STAGE 1</div>
+                    <div id="bossStageLabel" class="boss-encounter__stage">1단계</div>
                     <img
                         id="bossPreview"
                         class="boss-encounter__preview"
@@ -2168,8 +60,7 @@
                         aria-busy="true"
                         draggable="false"
                     />
-                    <h2 id="bossStageName">커다란 이웃</h2>
-                    <p class="boss-encounter__subtitle">차분히 준비한 뒤 도전해요</p>
+                    <h2 id="bossStageName">거대 콩</h2>
                     <div class="boss-encounter__stats">
                         <span id="bossStageHp">HP 200</span><span id="bossStageAttack">공격력 4</span>
                     </div>
@@ -2182,18 +73,16 @@
                 </article>
             </div>
             <div class="boss-encounter__bottom">
-                <div id="bossEncounterHint" class="boss-encounter__hint">
-                    위로 스와이프 · 다음 스테이지<br />아래로 스와이프 · 이전 스테이지
-                </div>
-                <button id="bossEncounterChallenge" class="boss-encounter__challenge" type="button">
-                    도전하기<small>병력을 전장에 투입하면 전투 시작</small></button
-                ><span aria-hidden="true" style="width: 72px"></span>
+                <div id="bossEncounterHint" class="boss-encounter__hint">위아래로 밀어 단계 이동</div>
+                <button id="bossEncounterChallenge" class="boss-encounter__challenge btn btn--primary" type="button">
+                    도전하기
+                </button>
             </div>
             <p id="bossEncounterMessage" class="boss-encounter__message" role="status" hidden></p>
         </section>
 
         <section class="bossbar" id="bossbar" hidden>
-            <strong>아군 군단</strong><small id="allyHealthText"></small>
+            <div class="bossbar__row"><strong>아군</strong><small id="allyHealthText"></small></div>
             <div class="track">
                 <div
                     class="fill ally"
@@ -2203,11 +92,11 @@
                     aria-valuemin="0"
                 ></div>
             </div>
-            <strong id="bossName">커다란 이웃</strong><small id="bossHealthText"></small>
+            <div class="bossbar__row"><strong id="bossName">거대 콩</strong><small id="bossHealthText"></small></div>
             <div class="track">
                 <div class="fill" id="bossHealth" role="progressbar" aria-label="상대 체력" aria-valuemin="0"></div>
             </div>
-            <small id="bossHealthNote">전사자 포함 최대 HP · 증원 시 함께 증가</small>
+            <small id="bossHealthNote">전사자 포함 최대 HP</small>
         </section>
         <p id="battleOutcome" role="status" hidden></p>
         <section
@@ -2350,18 +239,19 @@
             <div class="bottom">
                 <button id="bossRewardOpen" class="boss-reward-open" type="button" hidden>보상 상자 열기</button>
                 <div class="controls" id="farmControls">
-                    <button id="merge" type="button" aria-describedby="mergeNotice">합성</button
-                    ><span class="divider"></span
-                    ><button
-                        class="primary"
+                    <button id="merge" class="btn btn--secondary" type="button" aria-describedby="mergeNotice">
+                        합성
+                    </button>
+                    <button
+                        class="btn btn--primary"
                         id="feed"
                         type="button"
-                        aria-label="현재 농장에 먹이 1개 살포"
-                        title="현재 농장에 먹이 1개 살포"
+                        aria-label="현재 농장에 먹이 1개 뿌리기"
+                        title="현재 농장에 먹이 1개 뿌리기"
                     >
                         <svg class="feed-icon" viewBox="0 0 24 24" aria-hidden="true">
                             <path d="M5 18c0-8 5-12 14-12 0 9-4 14-11 14z" fill="currentColor" />
-                            <path d="m7 18 9-9" stroke="#526e50" stroke-width="2" />
+                            <path d="m7 18 9-9" stroke="var(--ui-primary)" stroke-width="2" />
                         </svg>
                         <span>먹이 주기</span>
                     </button>
@@ -2369,17 +259,12 @@
                 <small id="mergeNotice" role="status" aria-live="polite"></small>
                 <div class="raid-panel" id="raidControls" hidden>
                     <div class="deploy-status">
-                        <div
-                            id="deploymentCards"
-                            class="raid-deployment-cards"
-                            aria-label="Raid deployment cards"
-                            hidden
-                        >
+                        <div id="deploymentCards" class="raid-deployment-cards" aria-label="출전 카드" hidden>
                             <div class="deployment-card-row"></div>
                         </div>
-                        <span id="raidRemaining" role="status">약한 병력부터 맵 가장자리 전방위에 투입해요</span
+                        <span id="raidRemaining" role="status">약한 병력부터 맵 가장자리에서 출전해요</span
                         ><small id="raidRewardChance" aria-live="polite"></small
-                        ><button id="return" type="button">농장으로 돌아가기</button>
+                        ><button id="return" class="btn btn--secondary" type="button">농장으로 돌아가기</button>
                     </div>
                 </div>
             </div>
@@ -2390,7 +275,7 @@
                     aria-haspopup="dialog"
                     aria-controls="gameMenuOverlay"
                     aria-expanded="false"
-                    title="게임 설정"
+                    title="설정"
                 >
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <path
@@ -2425,10 +310,10 @@
                         <path d="M9.5 9a2.5 2.5 0 0 1 5 .2c0 2-2.5 2-2.5 4M12 16.5h.01" />
                     </svg>
                 </button>
-                <button id="pause" type="button" aria-label="게임 일시 정지" aria-pressed="false" title="일시 정지">
+                <button id="pause" type="button" aria-label="게임 일시 정지" aria-pressed="false" title="일시정지">
                     Ⅱ
                 </button>
-                <button id="menuHome" type="button" aria-label="시작 화면으로" title="시작 화면으로">
+                <button id="menuHome" type="button" aria-label="시작 화면으로" title="처음">
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <path d="m3 11 9-8 9 8M5 10v11h14V10M9 21v-7h6v7" />
                     </svg>
@@ -2488,7 +373,7 @@
                         aria-selected="false"
                         tabindex="-1"
                     >
-                        병력 편성</button
+                        출전 카드</button
                     ><button
                         id="menuTabFormation"
                         type="button"
@@ -2498,7 +383,7 @@
                         aria-selected="false"
                         tabindex="-1"
                     >
-                        편성 스킬
+                        스킬
                     </button>
                 </nav>
                 <div class="progression-reset-actions" id="progressionResetActions" hidden>
@@ -2522,13 +407,13 @@
                             <label for="diagnosticDetail">상세 성능 측정</label
                             ><input id="diagnosticDetail" type="checkbox" />
                         </div>
-                        <button class="game-menu__home" id="copyDiagnostics" type="button">진단 복사</button>
+                        <button class="game-menu__home btn btn--secondary" id="copyDiagnostics" type="button">
+                            진단 복사
+                        </button>
                         <details>
                             <summary>상세 진단 옵션</summary>
-                            <button id="exportDiagnostics" type="button">상세 JSON 보기</button>
-                            <p>
-                                상세 측정을 켠 뒤 같은 장면을 잠시 실행하고 진단을 복사해 주세요. 외부 전송은 없습니다.
-                            </p>
+                            <button id="exportDiagnostics" class="btn" type="button">상세 JSON 보기</button>
+                            <p>상세 측정을 켜고 같은 장면을 잠시 실행한 뒤 진단을 복사해요. 외부로 전송하지 않아요.</p>
                         </details>
                         <p id="diagnosticStatus" role="status"></p>
                         <textarea id="settingsDiagnosticText" aria-label="진단 복사 결과" readonly hidden></textarea>
@@ -2544,8 +429,8 @@
                         <p id="farmPopulationSummary" aria-live="polite"></p>
                         <p id="farmWarehouseSummary" aria-live="polite"></p>
                         <p id="farmFeedingNote">
-                            자동 생산 먹이는 창고에 쌓입니다. 먹이 주기를 누르면 현재 농장에 1개를 뿌리고, 농장 바닥을
-                            누르고 있으면 먹이를 계속 뿌립니다.
+                            자동 생산 먹이는 창고에 쌓여요. 먹이 주기는 1개를 뿌리고, 농장 바닥을 누르고 있으면 계속
+                            뿌려요.
                         </p>
                         <div id="farmPlotList" role="group" aria-label="농장 목록"></div>
                         <div id="farmPlotActions">
@@ -2557,8 +442,8 @@
                         </div>
                         <h3>병종별 목표 비율</h3>
                         <p>
-                            보관 중인 병력도 포함한 전체 병력 기준이에요. 목표가 0%인 병종은 새 먹이 탐색과 번식이
-                            멈추며, 목표를 넘은 병종도 비율이 회복될 때까지 새로 먹거나 번식하지 않아요.
+                            보관 중인 병력까지 합친 비율이에요. 목표가 0%이거나 목표를 넘은 병종은 비율이 돌아올 때까지
+                            먹지도 번식하지도 않아요.
                         </p>
                         <div id="farmRatioList"></div>
                     </section>
@@ -2570,10 +455,8 @@
                         hidden
                     >
                         <div class="tree-heading"><h2 id="treeTitle">공통 스탯</h2></div>
-                        <p class="tree-note">
-                            전투 승리로 얻은 공용 XP 포인트를 사용해요. 투자는 이 브라우저에 저장됩니다.
-                        </p>
-                        <p id="treeStorage" hidden>저장 공간을 사용할 수 없어 이번 실행에만 적용됩니다.</p>
+                        <p class="tree-note">전투 승리로 얻은 공용 포인트를 써요. 투자는 이 브라우저에 저장돼요.</p>
+                        <p id="treeStorage" hidden>저장 공간을 쓸 수 없어 이번 실행에만 적용돼요.</p>
                         <div id="treeNodes"></div>
                     </section>
                     <section
@@ -2611,7 +494,7 @@
                         aria-labelledby="menuTabFormation"
                         hidden
                     >
-                        <h2>편성 스킬</h2>
+                        <h2>스킬</h2>
                         <div id="formationContent" class="formation-content"></div>
                     </section>
                     <section
@@ -2621,7 +504,7 @@
                         aria-labelledby="menuTabDeployment"
                         hidden
                     >
-                        <h2>병력 편성</h2>
+                        <h2>출전 카드</h2>
                         <div id="deploymentCardContent" class="deployment-card-content"></div>
                     </section>
                     <aside
@@ -2631,48 +514,53 @@
                         aria-labelledby="gameMenuTitle"
                         hidden
                     >
-                        <h3>정원 가꾸기</h3>
-                        <button class="game-menu__home" id="menuBossEncounter" type="button">도전 단계</button>
-                        <p>
-                            병력은 전방위에서 자동으로 접근하고 공격합니다. 농장과 레이드의 지면 크기는 같아요. 한
-                            손가락이나 마우스 왼쪽 버튼으로 지면을 드래그하면 화면 밖 정원까지 둘러볼 수 있어요. 먹이는
-                            ‘먹이’ 버튼으로 주고 레이드 병력은 별도 ‘병력 투입’ 버튼으로 투입해요. 커다란 상대는 병력을
-                            추격하며, 지면의 짧은 방향 예고는 에어본 평타, 전체 원 예고는 한 바퀴 휩쓸기입니다. 실제
-                            무기가 닿은 병력이 날아오르고 착지한 뒤 다시 합류해요.
-                        </p>
-                        <p>
-                            처음에는 성체 완두콩 2마리로 시작해요. 부모마다 먹이 1개를 먹고 두 부모가 준비되면 즉시
-                            번식해요. 준비 먹이는 번식 때 소비되고 부모는 10초 동안 먹이를 피해 움직여요. 새끼는 먹이
-                            없이 시뮬레이션 시간 5초(번식 쿨타임의 절반) 동안 자라고, 크기도 티어 기본 크기의 50%에서
-                            100%까지 커져요. 기존 먹이·성체·쿨타임 조건을 만족하면 번식은 자동으로 시도돼요. 전투 중에는
-                            전투를 우선해요. 먹이는 재고에 자동으로 쌓이고, 먹이 주기 버튼이나 농장 바닥을 눌러 직접
-                            뿌릴 수 있어요.
-                        </p>
-                        <p>
-                            등급은 T1 Common부터 T6 Mythic까지예요. 체력과 공격력은 각 합성의 재료 수에 비례해 성장해요.
-                            굶어도 사라지지 않아요.
-                        </p>
-                        <p>
-                            합성 버튼을 한 번 누르면 한 번만 시작해요. 가장 낮은 합성 가능 티어에서 가까운 같은 종
-                            성체를 골라요. 재료는 T2 2마리, T3 2마리, T4 3마리, T5 4마리, T6 5마리이며 합성 뒤에도 같은
-                            종을 최소 2마리 남겨야 해요. 진행 중에는 버튼이 잠기고 전투 중인 개체는 재료에서 빠져요.
-                            기본 정원은 50마리이며 전투 승리로 얻는 XP 포인트로 다섯 단계까지 100마리로 늘릴 수 있어요.
-                            전투 후 모든 출전 병력이 돌아옵니다.
-                        </p>
-                        <p>
-                            상대의 평타·360도 휩쓸기는 실제로 닿은 몸만 날려요. 충돌이 옆 식구에게 약해지며 전달되고,
-                            착지 후 다시 모입니다.
-                        </p>
-                        <small
-                            >게임은 항상 기본 속도로 진행돼요. 자동 먹이 탭은 실제 시간 기준입니다. 혼자 가꾸는 정원은
-                            자동 저장됩니다.</small
-                        >
-                        <p>
-                            레이드에서는 ‘병력 투입’ 버튼을 누르면 약한 병력부터 맵 최외곽 전방위의 무작위 위치에
-                            떨어져요. 누르는 동안 0.1초마다 한 마리씩 투입하고, 손을 떼면 멈춰요. 지면을 드래그하면
-                            화면을 이동해요. 병력은 착지한 뒤 자동으로 싸우며, 전투에서 쓰러져도 농장 병력은 줄지
-                            않아요.
-                        </p>
+                        <button class="game-menu__home btn btn--secondary" id="menuBossEncounter" type="button">
+                            도전 단계
+                        </button>
+                        <section class="help-card">
+                            <h3>농장</h3>
+                            <ul>
+                                <li>먹이는 창고에 자동으로 쌓여요. 먹이 주기나 농장 바닥을 눌러 직접 뿌려요.</li>
+                                <li>
+                                    처음에는 성체 완두콩 2마리로 시작해요. 두 부모가 먹이를 1개씩 먹으면 바로 번식해요.
+                                </li>
+                                <li>새끼는 5초 동안 자라고 크기가 50%에서 100%까지 커져요. 먹이는 먹지 않아요.</li>
+                                <li>기본 병력 상한은 50마리예요. 공용 포인트로 5단계까지 100마리로 늘려요.</li>
+                            </ul>
+                        </section>
+                        <section class="help-card">
+                            <h3>합성</h3>
+                            <ul>
+                                <li>
+                                    합성은 버튼을 누를 때마다 한 번 진행해요. 가장 낮은 등급부터 같은 병종 성체를
+                                    골라요.
+                                </li>
+                                <li>
+                                    재료는 T2 2마리, T3 2마리, T4 3마리, T5 4마리, T6 5마리예요. 합성 뒤에도 같은 병종이
+                                    2마리 남아야 해요.
+                                </li>
+                                <li>등급은 T1 Common부터 T6 Mythic까지예요. 합성할수록 체력과 공격력이 커져요.</li>
+                            </ul>
+                        </section>
+                        <section class="help-card">
+                            <h3>도전</h3>
+                            <ul>
+                                <li>
+                                    출전 카드를 누르면 그 병종이 1마리, 길게 누르면 0.1초마다 1마리씩 맵 가장자리에서
+                                    떨어져요.
+                                </li>
+                                <li>
+                                    병력은 자동으로 접근해 싸워요. 상대 공격에 맞으면 날아갔다가 착지한 뒤 다시
+                                    합류해요.
+                                </li>
+                                <li>
+                                    전투에서 쓰러져도 농장 병력은 줄지 않아요. 전투가 끝나면 출전한 병력이 모두
+                                    돌아와요.
+                                </li>
+                                <li>땅을 드래그하면 화면 밖까지 둘러볼 수 있어요.</li>
+                            </ul>
+                        </section>
+                        <small>게임은 언제나 기본 속도로 진행되고, 농장은 자동 저장돼요.</small>
                     </aside>
                 </div>
             </section>
@@ -2680,34 +568,38 @@
         <div class="error" id="error" hidden></div>
         <section id="startScreen" class="product-sheet" aria-labelledby="startTitle">
             <h1 id="startTitle">budmori</h1>
-            <p>작은 정원을 키워 커다란 이웃에게 도전해요.</p>
-            <small id="startVersion">0.7.3 · XP 포인트 성장</small>
+            <p>작은 농장을 키워 커다란 이웃에게 도전해요.</p>
             <p id="saveNotice" role="status"></p>
             <div id="staleRaidNotice" hidden>
                 <p>
-                    이전 원정 기록이 남아 있어요. 이전 원정은 보상과 전사자 정산 없이 종료됩니다. 다른 탭에서 진행 중인
-                    원정도 함께 종료될 수 있어요.
+                    이전 도전 기록이 남아 있어요. 이전 도전은 보상과 전사자 정산 없이 끝나요. 다른 탭의 도전도 함께 끝날
+                    수 있어요.
                 </p>
-                <button id="abortRaidRun" type="button">이전 원정 종료하고 돌아가기</button>
+                <button id="abortRaidRun" class="btn btn--danger" type="button">이전 도전 끝내고 돌아가기</button>
             </div>
-            <button id="continueGame">정원 이어가기</button><button id="startBossEncounter">도전 단계</button
-            ><button id="newGame">새 정원 시작</button>
+            <button id="continueGame" class="btn btn--primary">농장 이어가기</button
+            ><button id="startBossEncounter" class="btn btn--secondary">도전 단계</button
+            ><button id="newGame" class="btn">새 농장 시작</button>
             <div class="save-actions">
-                <button id="exportSave">저장 내보내기</button><button id="importSave">저장 불러오기</button>
+                <button id="exportSave" class="btn">저장 내보내기</button
+                ><button id="importSave" class="btn">저장 불러오기</button>
             </div>
             <input id="saveFile" type="file" accept="application/json,.json" hidden />
             <div id="newConfirm" hidden>
-                <p id="newConfirmText">기존 저장을 새 정원으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.</p>
-                <button id="confirmNew">기존 저장을 바꾸고 시작</button><button id="cancelNew">취소</button>
+                <p id="newConfirmText">현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내요.</p>
+                <button id="confirmNew" class="btn btn--danger">기존 저장을 바꾸고 시작</button
+                ><button id="cancelNew" class="btn">취소</button>
             </div>
             <div id="importConfirm" hidden>
-                <p id="importConfirmText">선택한 파일로 개인 저장을 바꿀까요?</p>
-                <button id="confirmImport">이 저장 불러오기</button><button id="cancelImport">취소</button>
+                <p id="importConfirmText">선택한 파일로 현재 저장을 바꿀까요?</p>
+                <button id="confirmImport" class="btn btn--danger">이 저장 불러오기</button
+                ><button id="cancelImport" class="btn">취소</button>
             </div>
+            <small id="startVersion">v0.10.2</small>
         </section>
         <!-- Generated runtime manifest. -->
         <!-- prettier-ignore -->
-        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":14562,"sha256":"b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"},{"kind":"boss","id":"chestnut","file":"assets/bosses/chestnut.svg","qualityPreset":"standard","bytes":10366,"sha256":"9bf80e68fa243097d688f06e2af0b93c2cee218b6646be538eeca6d7e537094d"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"}],"schemaVersion":1,"sourceCommit":"dd59a57fcf66409cef16632ffb433c0b760324fa","distCommit":"418e17c455db56d6ed073d82d115191d9dd8bf04","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/interpolation.js","bytes":55529,"sha256":"061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/camera.js","bytes":9410,"sha256":"c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/debug-tools.js","bytes":23600,"sha256":"b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/rendering.js","bytes":304888,"sha256":"021b11f83b49be3e94cfe0a67769dcd248b9463325b6dcc55ea4943a0ea6c18b"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets.js","bytes":143709,"sha256":"288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets-loader.js","bytes":1046299,"sha256":"56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/deterministic.js","bytes":47252,"sha256":"1917d9766f1a1a2bbd4eab3bf214205979e7881c8cfb34cd1183f462a47ba62f"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"}],"game":{"file":"src/game.js","bytes":888301,"sha256":"b9502a139cd6718036e278ea2af8c7370a027c754ba633c3e4de590dcf494be4"},"bootstrap":{"file":"src/bootstrap.js","bytes":22880,"sha256":"36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072"},"productVersion":"0.10.2"}</script>
+        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":14562,"sha256":"b427702d13ab21faf9d974c5acf54a308cb54f97918385290b7a18abc29e4f1a"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"},{"kind":"boss","id":"chestnut","file":"assets/bosses/chestnut.svg","qualityPreset":"standard","bytes":10366,"sha256":"9bf80e68fa243097d688f06e2af0b93c2cee218b6646be538eeca6d7e537094d"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":17322,"sha256":"ff9dbc01524d084635102cd5935928f54ba8507364e393552bf4e131caedab40"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":15059,"sha256":"ff9a4a17a517e4626b76fa9ffea9b9736a46f8206608e404feba5376f79da98f"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":15066,"sha256":"2be6109c4f7bde4a956665dba42b81eeff5b548533e155bebdcccde37ac18684"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":42611,"sha256":"8ae8527f9bd3c642b6b062fdb8b02669dc9043c9e7010a1a5957024ea41f1c15"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":26151,"sha256":"01dff507e05f1c18dc83632520d0e478ad106be8c1783e4f7a11965209e5f5df"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":17389,"sha256":"7a15bbc24b562a1274e832f3c04d46201717292c391e636d5ac51b4318056a71"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":26635,"sha256":"758990ed670561d7e3a889d28f7304574617f198cd2eedce4a61a72aec8daa49"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":22058,"sha256":"bbe22d2af91c1236d7e6cb05a9ed9a442bfe0771663f646b07f97f717612d23e"}],"schemaVersion":1,"sourceCommit":"dd59a57fcf66409cef16632ffb433c0b760324fa","distCommit":"418e17c455db56d6ed073d82d115191d9dd8bf04","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/interpolation.js","bytes":55529,"sha256":"061960f311ad57894914186baa01f6b257269637353056ac93f86d34265a4ef8"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/camera.js","bytes":9410,"sha256":"c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/debug-tools.js","bytes":23600,"sha256":"b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/rendering.js","bytes":304888,"sha256":"021b11f83b49be3e94cfe0a67769dcd248b9463325b6dcc55ea4943a0ea6c18b"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets.js","bytes":143709,"sha256":"288eadf3830df2836f0b103dc513a906b5b9dbd58660885c18b2a0941d0e877a"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/vector-assets-loader.js","bytes":1046299,"sha256":"56042179b1b669d69d4791c5a1ad7bbd1927d8686fa4e9192504fb248c2170e2"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/deterministic.js","bytes":47252,"sha256":"1917d9766f1a1a2bbd4eab3bf214205979e7881c8cfb34cd1183f462a47ba62f"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@418e17c455db56d6ed073d82d115191d9dd8bf04/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"}],"game":{"file":"src/game.js","bytes":888021,"sha256":"56538a5036b5e586e0a4dde94e97692087908fabbb4bc49ff00d699db21baf06"},"bootstrap":{"file":"src/bootstrap.js","bytes":22880,"sha256":"36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072"},"productVersion":"0.10.3"}</script>
         <!-- Generated bootstrap integrity. -->
         <!-- prettier-ignore -->
         <script type="module" src="./src/bootstrap.js?version=36d466674454e13c70e7b2c87d35f854c829d3e25bb5dc68b0c649b480ede072" integrity="sha256-NtRmZ0RU4Txw57LIfTX4VMgp0+JbtdxosMZJtIDt4HI=" crossorigin="anonymous" data-bloom-bootstrap></script>

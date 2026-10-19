@@ -149,7 +149,7 @@ export class FormationSkillsUI {
                 <button type="button" data-formation-equip="${definition.id}" data-slot="${EMPTY ?? 0}"
                 ${EQUIP_DISABLED ? 'disabled' : ''}>${EQUIPPED ? '장착 중' : '장착'}</button></div></article>`;
         }).join('');
-        this.content.innerHTML = `<p class="formation-intro">종별 패시브와 별도로, 조건과 재사용 시간이 준비되면 자동 발동합니다.</p>
+        this.content.innerHTML = `<p class="formation-intro">종별 패시브와 별도로, 조건과 재사용 시간이 준비되면 자동 발동해요.</p>
             <p class="formation-wallet"><strong>${points}</strong> 공용 포인트
             <span>${locked ? '전투 중 편성 고정' : '농장에서 무료 장착·해제'}</span></p>
             <div class="formation-equipment">${SLOT_CARDS}</div>

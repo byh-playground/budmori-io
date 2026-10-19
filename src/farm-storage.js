@@ -119,7 +119,7 @@ class FarmStorage {
                 return true;
             }
             if (!TEXT) {
-                throw Error('농장 저장을 찾지 못했어요. 다른 탭에서 새 정원을 시작했을 수 있어요.');
+                throw Error('농장 저장을 찾지 못했어요. 다른 탭에서 새 농장을 시작했을 수 있어요.');
             }
             const DATA = decodeFarmSave(TEXT);
             this.raw = TEXT;

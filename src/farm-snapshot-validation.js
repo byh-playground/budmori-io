@@ -17,7 +17,7 @@ const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
 export { VALID_BATTLE_UNIT_ID as validBattleUnitId };
 function assertSnapshot(ok) {
     if (!ok) {
-        throw new TypeError('올바른 농장 저장 데이터가 아닙니다.');
+        throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
     }
 }
 const ASSERT = assertSnapshot;

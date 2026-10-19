@@ -14,7 +14,7 @@ export const KIDNEY_LANDING_SHOCKWAVE_FEATURE = Object.freeze({
         id: 'kidney-landing-shockwave',
         species: 2,
         name: '착지 충격파',
-        description: '도약 착지 지점에서 기본 공격력과 사거리 기준의 충격파를 냅니다.',
+        description: '도약 착지 지점에서 기본 공격력과 사거리 기준의 충격파를 내요.',
         rootTier: 3,
         powerValues: Object.freeze([1, 1.5, 2]),
         gradeThresholds: Object.freeze([3, 2, 1]),

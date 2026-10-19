@@ -28,7 +28,6 @@
     border-radius: 12px;
     align-items: center;
     min-width: 124px;
-    box-shadow: 0 2px 8px #2139250c;
 }
 .formation-icon {
     width: 42px;
@@ -84,8 +83,8 @@
     background: #7c9b58;
 }
 .formation-slot[data-ready='true'] {
-    border-color: #6cbca7;
-    box-shadow: 0 0 10px #65dfbe66;
+    border-color: var(--ui-primary-edge);
+    border-width: var(--ui-bw);
 }
 .formation-content {
     padding: 0 24px 24px;

@@ -16,7 +16,7 @@ export const PEANUT_SEPARATED_ASSAULT_FEATURE = Object.freeze({
         species: 4,
         name: '분리 협공',
         description:
-            '하나의 본체와 체력을 공유하는 두 알이 정해진 시점에 번갈아 타격합니다. 기절·사망·전투 종료 시 공격을 중단합니다.',
+            '하나의 본체와 체력을 공유하는 두 알이 정해진 시점에 번갈아 타격해요. 기절·사망·전투 종료 시 공격을 중단해요.',
         rootTier: 3,
         powerValues: Object.freeze([3, 4, 5]),
         strikeAttackMultiplier: 0.5,

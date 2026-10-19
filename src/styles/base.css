@@ -1,0 +1,649 @@
+/* 기본 요소, 상단 HUD, 하단 조작, 시작 화면 */
+* {
+    box-sizing: border-box;
+}
+html,
+body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+}
+body {
+    font-family:
+        ui-rounded,
+        'Arial Rounded MT Bold',
+        system-ui,
+        -apple-system,
+        sans-serif;
+    font-size: var(--ui-fs-2);
+    background: var(--ui-bg);
+    color: var(--ui-ink);
+}
+[hidden] {
+    display: none !important;
+}
+button {
+    font: inherit;
+    font-weight: var(--ui-fw-b);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    border: 0;
+    color: inherit;
+    min-height: var(--ui-tap);
+}
+button:focus-visible {
+    outline: 3px solid var(--ui-focus);
+    outline-offset: 3px;
+}
+button:disabled {
+    cursor: default;
+}
+canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    transform-origin: center;
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+/* 버튼 문법: 면 + 한 단 깊이. 역할은 색으로만 구분합니다. */
+.btn {
+    border: 0;
+    border-bottom: var(--ui-edge) solid var(--ui-neutral-edge);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-neutral);
+    color: var(--ui-ink);
+    padding: 0 var(--ui-s4);
+}
+.btn:active:not(:disabled) {
+    border-bottom-width: 1px;
+    transform: translateY(3px);
+}
+.btn--primary {
+    background: var(--ui-primary);
+    border-bottom-color: var(--ui-primary-edge);
+    color: var(--ui-primary-ink);
+}
+.btn--secondary {
+    background: var(--ui-secondary);
+    border-bottom-color: var(--ui-secondary-edge);
+    color: var(--ui-secondary-ink);
+}
+.btn--danger {
+    background: var(--ui-danger);
+    border-bottom-color: var(--ui-danger-edge);
+    color: var(--ui-danger-ink);
+}
+.btn:disabled {
+    background: var(--ui-disabled);
+    border-bottom-color: var(--ui-disabled);
+    color: var(--ui-disabled-ink);
+}
+
+/* 상단 HUD: 왼쪽 상태 칩, 오른쪽 장면 전환 */
+body > header {
+    position: absolute;
+    z-index: var(--ui-z-hud);
+    top: calc(var(--ui-safe-top) + var(--ui-s3));
+    left: var(--ui-s3);
+    right: var(--ui-s3);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ui-s3);
+    pointer-events: none;
+}
+.hud__stats {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ui-s2);
+    min-width: 0;
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ui-s2);
+    min-height: 36px;
+    padding: 0 var(--ui-s3);
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-base);
+    border-bottom: 3px solid var(--ui-base-edge);
+    color: var(--ui-ink-on-base);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
+    white-space: nowrap;
+}
+.chip b {
+    font-size: var(--ui-fs-3);
+}
+.chip small {
+    font-size: var(--ui-fs-1);
+    opacity: 0.8;
+}
+.chip__label {
+    opacity: 0.85;
+}
+.dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--ui-primary);
+}
+.hud__note {
+    max-width: min(260px, 60vw);
+    padding: var(--ui-s1) var(--ui-s2);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-panel);
+    color: var(--ui-ink-2);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+    line-height: 1.4;
+}
+.hud__note:empty {
+    display: none;
+}
+#warehouseProgress {
+    display: flex;
+    gap: 3px;
+    min-width: 50px;
+}
+#warehouseProgress .tap-pip {
+    flex: 1 1 0;
+    height: 8px;
+    border-radius: 3px;
+    background: #ffffff33;
+    transition: background-color 70ms ease;
+}
+#warehouseProgress .tap-pip.filled,
+#warehouseProgress[data-produced='true'] .tap-pip {
+    background: var(--ui-primary);
+}
+.switch {
+    display: flex;
+    padding: 4px;
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-panel);
+    border-bottom: 3px solid var(--ui-line);
+    pointer-events: auto;
+}
+.switch button {
+    min-height: 40px;
+    padding: 0 var(--ui-s4);
+    border-radius: var(--ui-r-pill);
+    background: transparent;
+    font-size: var(--ui-fs-2);
+    color: var(--ui-ink-2);
+}
+.switch button[aria-pressed='true'] {
+    background: var(--ui-base);
+    color: var(--ui-ink-on-base);
+}
+.switch button:disabled:not([aria-pressed='true']) {
+    color: var(--ui-disabled-ink);
+}
+
+/* 전투 체력 */
+.bossbar {
+    position: absolute;
+    z-index: var(--ui-z-hud);
+    top: calc(var(--ui-safe-top) + 124px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(320px, calc(100% - var(--ui-s5)));
+    display: grid;
+    gap: var(--ui-s1);
+    padding: var(--ui-s2) var(--ui-s3);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    border-bottom: 3px solid var(--ui-line);
+    pointer-events: none;
+}
+.bossbar__row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--ui-s2);
+    font-size: var(--ui-fs-1);
+    line-height: 1.3;
+}
+.bossbar strong {
+    font-weight: var(--ui-fw-b);
+}
+.bossbar small {
+    color: var(--ui-ink-2);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+    text-align: right;
+}
+.track {
+    height: 10px;
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-gauge-track);
+    overflow: hidden;
+}
+.fill {
+    height: 100%;
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-gauge-enemy);
+    transition: width 0.15s linear;
+}
+.fill.ally {
+    background: var(--ui-gauge-ally);
+}
+#bossHealthNote {
+    color: var(--ui-ink-3);
+    text-align: center;
+}
+#battleOutcome {
+    position: fixed;
+    z-index: var(--ui-z-dock);
+    left: 50%;
+    bottom: calc(var(--ui-nav-h) + var(--ui-safe-bottom) + 96px);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(420px, calc(100% - var(--ui-s5)));
+    margin: 0;
+    padding: var(--ui-s3) var(--ui-s4);
+    border-radius: var(--ui-r-m);
+    border-bottom: 3px solid var(--ui-base-edge);
+    background: var(--ui-base);
+    color: var(--ui-ink-on-base);
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-m);
+    line-height: 1.5;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* 하단 조작: 내비게이션 바 위에 주요 행동 */
+#gameplayDock {
+    z-index: var(--ui-z-dock);
+    pointer-events: none;
+}
+.bottom {
+    position: absolute;
+    z-index: var(--ui-z-dock);
+    left: 50%;
+    bottom: calc(var(--ui-nav-h) + var(--ui-safe-bottom) + var(--ui-s3));
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--ui-s2);
+    width: min(520px, 100%);
+    padding: 0 var(--ui-s3);
+    pointer-events: auto;
+}
+.controls {
+    display: flex;
+    gap: var(--ui-s2);
+    width: 100%;
+}
+.controls button {
+    min-height: 56px;
+    font-size: var(--ui-fs-3);
+    white-space: nowrap;
+}
+#merge {
+    flex: 1 1 0;
+}
+#feed {
+    position: relative;
+    flex: 2 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ui-s2);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transform-origin: center;
+}
+#feed span {
+    pointer-events: none;
+}
+.feed-icon {
+    width: 24px;
+    height: 24px;
+}
+#feed[data-state='unavailable'] .feed-icon {
+    opacity: 0.45;
+}
+#feed[data-impact='manual'] {
+    outline: 3px solid var(--ui-primary-edge);
+    outline-offset: -3px;
+}
+#feed[data-impact='complete'] {
+    outline: 4px solid var(--ui-primary-ink);
+    outline-offset: -4px;
+}
+#mergeNotice {
+    max-width: 300px;
+    color: var(--ui-ink-2);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+    line-height: 1.4;
+    text-align: center;
+}
+#mergeNotice:empty {
+    display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .fill {
+        transition: none;
+    }
+    .btn:active:not(:disabled) {
+        transform: none;
+    }
+}
+
+/* 하단 내비게이션 바. 라벨은 title 속성을 그대로 씁니다. */
+.utility {
+    position: fixed;
+    z-index: calc(var(--ui-z-dock) + 1);
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(560px, 100%);
+    height: calc(var(--ui-nav-h) + var(--ui-safe-bottom));
+    padding-bottom: var(--ui-safe-bottom);
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    background: var(--ui-base);
+    border-top: 3px solid var(--ui-base-edge);
+    border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
+    pointer-events: auto;
+}
+.utility > button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    min-height: var(--ui-nav-h);
+    padding: 0;
+    background: transparent;
+    color: var(--ui-ink-on-base);
+    font-size: 20px;
+    line-height: 1;
+}
+.utility > button::after {
+    content: attr(title);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.utility > button svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.utility > button[aria-expanded='true'],
+.utility > button[aria-pressed='true'] {
+    color: var(--ui-primary);
+}
+.utility > button:focus-visible {
+    outline-offset: -6px;
+}
+#sound[aria-pressed='false'] {
+    opacity: 0.55;
+}
+
+/* 도전 전투 하단 패널: 출전 카드 트레이 */
+.raid-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-s2);
+    width: 100%;
+    padding: var(--ui-s2);
+    border-radius: var(--ui-r-l);
+    background: var(--ui-panel);
+    border-bottom: 3px solid var(--ui-line);
+}
+.deploy-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ui-s2);
+}
+.raid-deployment-cards {
+    order: 0;
+    flex: 1 0 100%;
+    width: 100%;
+}
+.deployment-card-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--ui-s2);
+    width: 100%;
+}
+.deployment-card {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 64px;
+    justify-items: center;
+    align-content: center;
+    gap: 2px;
+    padding: var(--ui-s2) var(--ui-s1);
+    border-radius: var(--ui-r-m);
+    border-bottom: var(--ui-edge) solid var(--ui-base-edge);
+    background: var(--ui-base);
+    color: var(--ui-ink-on-base);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.deployment-card strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: var(--ui-fs-2);
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.deployment-card small {
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+}
+.deployment-card__number {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    font-size: var(--ui-fs-1);
+    opacity: 0.8;
+}
+.deployment-card[aria-pressed='true'] {
+    background: var(--ui-primary);
+    border-bottom-color: var(--ui-primary-edge);
+    color: var(--ui-primary-ink);
+}
+.deployment-card:disabled {
+    background: var(--ui-disabled);
+    border-bottom-color: var(--ui-disabled);
+    color: var(--ui-disabled-ink);
+}
+.deploy-status span {
+    flex: 1;
+    text-align: center;
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+    color: var(--ui-ink-2);
+}
+#raidRemaining {
+    order: 1;
+}
+#raidRewardChance {
+    order: 2;
+    color: var(--ui-ink-3);
+    font-size: var(--ui-fs-1);
+}
+#return {
+    order: 3;
+}
+
+/* 오류 */
+.error {
+    position: absolute;
+    z-index: var(--ui-z-modal);
+    inset: auto var(--ui-s4) 160px;
+    max-width: 380px;
+    margin: auto;
+    padding: var(--ui-s3);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-danger);
+    color: var(--ui-danger-ink);
+    font-size: var(--ui-fs-1);
+    line-height: 1.6;
+}
+
+/* 시작 화면 */
+.product-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: var(--ui-z-dock);
+    background: var(--ui-bg);
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--ui-s3);
+    padding: var(--ui-s5) max(var(--ui-s5), calc((100vw - 440px) / 2));
+    touch-action: pan-y;
+}
+.product-sheet h1 {
+    margin: 0;
+    font-size: var(--ui-fs-6);
+    letter-spacing: -0.04em;
+    color: var(--ui-base);
+}
+.product-sheet p {
+    margin: 0;
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-m);
+    line-height: 1.6;
+    color: var(--ui-ink-2);
+}
+.product-sheet button {
+    min-height: 56px;
+    font-size: var(--ui-fs-3);
+}
+.product-sheet small {
+    color: var(--ui-ink-3);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+}
+#startVersion {
+    order: 99;
+    margin-top: var(--ui-s4);
+    text-align: center;
+}
+.save-actions {
+    display: flex;
+    gap: var(--ui-s2);
+}
+.save-actions button {
+    flex: 1;
+    min-height: var(--ui-tap);
+    font-size: var(--ui-fs-2);
+}
+#saveNotice:empty,
+#sessionNotice:empty {
+    display: none;
+}
+#saveNotice,
+#newConfirm,
+#importConfirm,
+#staleRaidNotice {
+    padding: var(--ui-s3);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    border-bottom: 3px solid var(--ui-line);
+}
+#newConfirm button,
+#importConfirm button,
+#staleRaidNotice button {
+    margin-top: var(--ui-s2);
+    width: 100%;
+}
+.product-sheet > div[hidden] {
+    display: none;
+}
+body[data-home='true'] #bossbar {
+    display: none;
+}
+@media (max-height: 650px) {
+    .product-sheet {
+        justify-content: flex-start;
+        padding-top: var(--ui-s5);
+        padding-bottom: var(--ui-s5);
+    }
+}
+
+/* 낮은 화면(가로 모드) */
+@media (max-height: 550px) {
+    body > header {
+        top: var(--ui-s2);
+    }
+    .bottom {
+        left: var(--ui-s3);
+        transform: none;
+        width: min(360px, 60%);
+        bottom: calc(var(--ui-nav-h) + var(--ui-safe-bottom) + var(--ui-s2));
+    }
+    .bossbar {
+        top: 70px;
+        left: auto;
+        right: var(--ui-s3);
+        transform: none;
+        width: 200px;
+    }
+    #battleOutcome {
+        bottom: calc(var(--ui-nav-h) + var(--ui-safe-bottom) + var(--ui-s2));
+    }
+}
+
+.hud__version {
+    color: var(--ui-ink-2);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+}
+.hud__version::before {
+    content: 'v';
+}
+
+body[data-home='true'] > header,
+body[data-home='true'] #gameplayDock,
+body[data-home='true'] > .bottom,
+body[data-home='true'] > .utility {
+    visibility: hidden;
+}
+#diagnosticDetail {
+    width: 28px;
+    height: 28px;
+    accent-color: var(--ui-secondary);
+}
+details summary {
+    min-height: var(--ui-tap);
+    display: flex;
+    align-items: center;
+    font-weight: var(--ui-fw-b);
+}

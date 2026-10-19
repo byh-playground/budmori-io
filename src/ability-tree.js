@@ -22,19 +22,19 @@ const DEFAULT_ABILITY_PRESENTATION = {
     },
 };
 const INVESTMENT_REASON_LABELS = new Map([
-    ['already-invested', '이미 투자한 노드입니다.'],
+    ['already-invested', '이미 투자한 노드예요.'],
     ['prerequisite-required', '이전 단계에 먼저 투자하세요.'],
-    ['insufficient-points', '공용 포인트가 필요합니다.'],
-    ['combat-lock', '전투 중에는 투자할 수 없습니다.'],
-    ['farm-only', '농장에서만 투자할 수 있습니다.'],
-    ['max-level', '최대 강화 단계입니다.'],
-    ['invalid-state', '성장 데이터가 유효하지 않습니다.'],
+    ['insufficient-points', '공용 포인트가 필요해요.'],
+    ['combat-lock', '전투 중에는 투자할 수 없어요.'],
+    ['farm-only', '농장에서만 투자할 수 있어요.'],
+    ['max-level', '최대 강화 단계예요.'],
+    ['invalid-state', '성장 데이터가 유효하지 않아요.'],
 ]);
 const NODE_REASON_LABELS = new Map([...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text])]);
 const RESET_REASON_LABELS = new Map([
-    ['nothing-invested', '투자한 포인트가 없습니다.'],
-    ['combat-lock', '전투 중에는 초기화할 수 없습니다.'],
-    ['farm-only', '농장에서만 초기화할 수 있습니다.'],
+    ['nothing-invested', '투자한 포인트가 없어요.'],
+    ['combat-lock', '전투 중에는 초기화할 수 없어요.'],
+    ['farm-only', '농장에서만 초기화할 수 있어요.'],
     ['invalid-state', INVESTMENT_REASON_LABELS.get('invalid-state')],
 ]);
 const FARM_UPGRADE_REASON_LABELS = new Map([
@@ -42,7 +42,7 @@ const FARM_UPGRADE_REASON_LABELS = new Map([
         reason,
         INVESTMENT_REASON_LABELS.get(reason),
     ]),
-    ['insufficient-points', '공용 XP 포인트가 필요합니다.'],
+    ['insufficient-points', '공용 포인트가 필요해요.'],
 ]);
 export function renderFarmUpgradeTreeMarkup(state, { location = 'farm', inCombat = false } = {}) {
     if (!isValidPlayerProgressionState(state)) {
@@ -56,7 +56,7 @@ export function renderFarmUpgradeTreeMarkup(state, { location = 'farm', inCombat
         });
         return `<article class="tree-node" data-ready="${CHECK.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${LEVEL}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(LEVEL)}${LEVEL < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(LEVEL + 1)}</span>` : ''}</div><small>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? '완료' : CHECK.reason ? farmUpgradeReasonLabel(CHECK.reason) : '공용 포인트 1개'}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!CHECK.allowed}" ${CHECK.allowed ? '' : 'disabled'}>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? '✓' : '+'}<span class="sr-only">${node.name} 투자</span></button></article>`;
     }).join('');
-    return `<section class="farm-upgrade-tree" aria-label="일반 정원 강화"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 XP 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
+    return `<section class="farm-upgrade-tree" aria-label="공통 스탯"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
 }
 export function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
     return SPECIES_CATALOG.map(
@@ -93,13 +93,13 @@ export function renderAbilityTreeMarkup(
             '\uBAA8\uB4E0 \uC77C\uBC18 \uBCD1\uC885\uC758 \uB300\uD45C \uB2A5\uB825\uC740 Common(T1)\uBD80\uD130 \uBB34\uB8CC\uB85C \uC801\uC6A9\uB429\uB2C8\uB2E4. \uACF5\uC6A9 \uD3EC\uC778\uD2B8\uB85C \uB2A5\uB825 \uD6A8\uACFC\uB97C \uAC15\uD654\uD560 \uC218 \uC788\uC5B4\uC694.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
-      <div><p class="ability-tree__eyebrow">정원 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
+      <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
       <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
     </header>
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
-      <p class="ability-tree__lock-note" role="status">${inCombat ? '전투 중에는 투자와 초기화가 잠깁니다.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있습니다.' : '농장에서 무료로 초기화할 수 있습니다.'}</p>
+      <p class="ability-tree__lock-note" role="status">${inCombat ? '전투 중에는 투자와 초기화가 잠겨요.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있어요.' : '농장에서 무료로 초기화할 수 있어요.'}</p>
       <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!RESET_CHECK.allowed}">무료 초기화</button>
       <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(RESET_CHECK.reason, INVESTED)}</span>
     </div>
@@ -276,12 +276,12 @@ function branchTitle(definition, branchId, value, level) {
 function nodeReasonLabel(reason, definition, context) {
     return (
         NODE_REASON_LABELS.get(reason)?.(definition) ??
-        (context.location === 'farm' ? '사용할 수 없는 노드입니다.' : '농장에서 사용할 수 있습니다.')
+        (context.location === 'farm' ? '사용할 수 없는 노드예요.' : '농장에서 사용할 수 있어요.')
     );
 }
 function resetReasonLabel(reason, invested) {
-    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받습니다.`;
+    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받아요.`;
 }
 function farmUpgradeReasonLabel(reason) {
-    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? '사용할 수 없는 노드입니다.';
+    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? '사용할 수 없는 노드예요.';
 }
