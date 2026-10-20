@@ -711,8 +711,8 @@
     });
     world.emit("drop-dust", POSITION.x, POSITION.y);
   }
-  function startSite(world, config, facilityId, level, hits, plotId) {
-    const POSITION = FACILITY_IDS.includes(facilityId) ? facilityPosition(config, facilityId) : pilePosition(world, config);
+  function startSite(world, config, facilityId, level, hits, plotId, at = null) {
+    const POSITION = at ?? (FACILITY_IDS.includes(facilityId) ? facilityPosition(config, facilityId) : pilePosition(world, config));
     pilesOf(world, plotId).push({
       id: ++world._pileId,
       kind: "site",
@@ -906,7 +906,11 @@
     if (!ASSIGN) {
       return world._workerKinds.get(unit.id) === "explore" ? exploreOrder(world, unit) : null;
     }
-    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id);
+    if (world.outsideFarm(PILE.x, PILE.y)) {
+      unit.workOut = true;
+    }
+    const DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
     if (!ASSIGN.attacking) {
       ORDER.hold = DISTANCE <= WAIT_DISTANCE;
       return ORDER;
@@ -10935,7 +10939,15 @@
           if (kind === "plot") {
             beginFarmBuild(this.worldMap, tile);
           }
-          startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId);
+          let at = null;
+          if (kind === "plot") {
+            const HERE = this.worldMap.farms.find((farm) => farm.plotId === this.activePlotId);
+            at = {
+              x: (tileX(tile) - tileX(HERE.tile)) * FARM_CELL.width,
+              y: -(tileY(tile) - tileY(HERE.tile)) * FARM_CELL.height
+            };
+          }
+          startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId, at);
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           this.markProgressChanged();
@@ -13360,8 +13372,18 @@
         combat(kind, detail) {
           this.notice(kind, { time: this.time, ...detail });
         }
+        outsideFarm(x, y) {
+          return !ARENA_GEOMETRY.inside({ x, y }, "farm");
+        }
         boundBody(body, scene, margin) {
           const ARENA = CONFIG[scene].arena, RX = ARENA.radiusX - margin, RY = ARENA.radiusY - margin;
+          if (body.workOut) {
+            if (Math.abs(body.x) <= RX && Math.abs(body.y) <= RY) {
+              body.workOut = false;
+            } else {
+              return;
+            }
+          }
           if (ARENA.shape === "rect") {
             const X = CLAMP2(body.x, -RX, RX), Y = CLAMP2(body.y, -RY, RY);
             if (X !== body.x && (body.vx || 0) * body.x > 0) {
@@ -15029,7 +15051,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.9";
+      PRODUCT_VERSION = "0.13.10";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
