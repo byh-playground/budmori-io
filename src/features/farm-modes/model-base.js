@@ -2,7 +2,7 @@ import { scaleMoveSpeed } from '../../unit-stats.js';
 
 const WANDER_SECONDS_MIN = 16,
     WANDER_SECONDS_SPREAD = 16,
-    WANDER_EXTENT = 0.82,
+    WANDER_EXTENT = 0.86,
     WANDER_ARRIVE = 0.5;
 // A stable number in [0, 1) for a unit seed and a salt.
 function wanderUnit(seed, salt) {
@@ -18,9 +18,9 @@ function wanderUnit(seed, salt) {
 export function restingSpot(unit, time, arena) {
     const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7),
         EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)),
-        ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2,
-        RADIUS = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT;
-    return { x: Math.cos(ANGLE) * RADIUS * arena.radiusX, y: Math.sin(ANGLE) * RADIUS * arena.radiusY };
+        X = wanderUnit(unit.seed, EPOCH * 2 + 11) * 2 - 1,
+        Y = wanderUnit(unit.seed, EPOCH * 2 + 12) * 2 - 1;
+    return { x: X * WANDER_EXTENT * arena.radiusX, y: Y * WANDER_EXTENT * arena.radiusY };
 }
 
 export class FarmMode {

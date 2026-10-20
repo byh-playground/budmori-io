@@ -488,6 +488,15 @@ const DIORAMA = class Diorama {
         const FARM = world.worldMap.farms.find((farm) => farm.tile === TILE);
         return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
     }
+    // One farm's square of ground, from corner to corner, a hair larger than its cell so neighbours never show a seam.
+    groundCell(x, y, color2, inset = 0) {
+        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
+            A = this.project(x - RX + inset, y + RY - inset),
+            B = this.project(x + RX - inset, y - RY + inset),
+            C = this.ctx;
+        C.fillStyle = color2;
+        C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    }
     drawBackdrop(world) {
         const MAP = world.worldMap,
             HERE = this.farmTileOf(world, world.activePlotId);
@@ -508,14 +517,14 @@ const DIORAMA = class Diorama {
         };
         const PAINT = {
             plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
-            forest: ['#b7c9a4', '#c4d5b1'],
-            rock: ['#cbc6b3', '#d9d4c3'],
-            swamp: ['#b5c9be', '#c5d7cc'],
+            forest: ['#c3d3b0', '#cddbbc'],
+            rock: ['#d3cfbd', '#dcd8c8'],
+            swamp: ['#c0d3c7', '#cbdcd1'],
         };
         for (let ty = MIN_TILE(MAP, 'y') - 1; ty <= MAX_TILE(MAP, 'y') + 1; ty++) {
             for (let tx = MIN_TILE(MAP, 'x') - 1; tx <= MAX_TILE(MAP, 'x') + 1; tx++) {
                 const INDEX = tileIndex(tx, ty);
-                if (INDEX === HERE || Math.abs(tx) > 12 || Math.abs(ty) > 12) {
+                if (Math.abs(tx) > 12 || Math.abs(ty) > 12) {
                     continue;
                 }
                 const OX = (tx - FX) * FARM_CELL.width,
@@ -534,21 +543,21 @@ const DIORAMA = class Diorama {
                         [-1, 0, 1].some((dx) => (dx || dy) && LIT.has(tileIndex(tx + dx, ty + dy))),
                     );
                     if (NEXT_TO_LIT) {
-                        this.groundEllipse(OX, OY, RX + 1.2, RY + 1.0, '#e6e1cc');
+                        this.groundCell(OX, OY, '#e9e5d2');
+                        this.groundCell(OX, OY, '#efecdc', 0.6);
                     }
                     continue;
                 }
                 const TERRAIN = tileTerrain(MAP, INDEX),
                     [GROUND, SURFACE] = PAINT[TERRAIN];
-                this.groundEllipse(OX, OY - 0.2, RX + 1.3, RY + 1.1, '#bcc7a6');
-                this.groundEllipse(OX, OY, RX + 1.2, RY + 1.1, GROUND);
-                this.groundEllipse(OX, OY + 0.15, RX + 0.3, RY + 0.3, SURFACE);
+                this.groundCell(OX, OY, GROUND);
+                this.groundCell(OX, OY, SURFACE, 0.7);
                 const S = this.scale;
                 if (TERRAIN === 'forest') {
                     for (let tree = 0; tree < 9; tree++) {
                         const P = this.project(
                             OX + (LOOK(INDEX, 40 + tree) - 0.5) * RX * 1.7,
-                            OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.6,
+                            OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.7,
                             0,
                         );
                         this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, '#9db58a');
@@ -558,7 +567,7 @@ const DIORAMA = class Diorama {
                     for (let rock = 0; rock < 7; rock++) {
                         const P = this.project(
                             OX + (LOOK(INDEX, 80 + rock) - 0.5) * RX * 1.7,
-                            OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.6,
+                            OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.7,
                             0,
                         );
                         this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, '#a79f8d');
@@ -568,7 +577,7 @@ const DIORAMA = class Diorama {
                     for (let pool = 0; pool < 5; pool++) {
                         this.groundEllipse(
                             OX + (LOOK(INDEX, 120 + pool) - 0.5) * RX * 1.6,
-                            OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.5,
+                            OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.6,
                             2.2 + 1.6 * LOOK(INDEX, 160 + pool),
                             1.4,
                             '#9fbfc4',
@@ -576,15 +585,30 @@ const DIORAMA = class Diorama {
                     }
                 }
                 const PLOT_ID = PLOT_AT.get(INDEX);
-                if (PLOT_ID) {
-                    // Another farm: its units, where they last stood, and a roof.
+                if (PLOT_ID && PLOT_ID !== world.activePlotId) {
+                    // Another farm: its units, where they last stood.
                     for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
-                        const SWAY = Math.sin(this.displayTimeMs * 0.0006 + U.seed) * 0.5,
-                            P = this.project(OX + U.x + SWAY, OY + U.y, 0);
+                        const P = this.project(OX + U.x, OY + U.y, 0);
                         this.ellipse(P.x, P.y, U.size * 0.5 * S, U.size * 0.31 * S, 'rgba(42,61,35,0.2)');
                         this.ellipse(P.x, P.y - U.size * 0.45 * S, U.size * 0.4 * S, U.size * 0.4 * S, '#ddd3a8');
                     }
                 }
+            }
+        }
+        // A faint line on every border, so the farms read as the cells of one grid.
+        const C = this.ctx;
+        C.strokeStyle = 'rgba(110,130,90,0.28)';
+        C.lineWidth = Math.max(1, this.scale * 0.05);
+        for (let ty = MIN_TILE(MAP, 'y'); ty <= MAX_TILE(MAP, 'y'); ty++) {
+            for (let tx = MIN_TILE(MAP, 'x'); tx <= MAX_TILE(MAP, 'x'); tx++) {
+                if (!LIT.has(tileIndex(tx, ty))) {
+                    continue;
+                }
+                const OX = (tx - FX) * FARM_CELL.width,
+                    OY = -(ty - FY) * FARM_CELL.height,
+                    A = this.project(OX - RX, OY + RY),
+                    B = this.project(OX + RX, OY - RY);
+                C.strokeRect(A.x, A.y, B.x - A.x, B.y - A.y);
             }
         }
     }
@@ -592,15 +616,23 @@ const DIORAMA = class Diorama {
         const S = this.scale,
             PRESENTATION = this.scenePresentation,
             { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
-        this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, '#bcc7a6');
-        this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
-        this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, PRESENTATION.surfaceColor);
-        for (const P of this.terrainDots) {
-            this.ellipse(P.x, P.y, S * 0.026, S * 0.02, '#a7b58b80');
-        }
-        for (const P of this.terrainLeaves) {
-            this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, '#94a577', P.angle);
-            this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, '#a8b78a', P.angle + 0.7);
+        if (sim2.scene === 'farm') {
+            // The farm is a square cell of the grid; the land around it is drawn by drawBackdrop.
+            if (!this.backdrop) {
+                this.groundCell(0, 0, PRESENTATION.groundColor);
+                this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
+            }
+        } else {
+            this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, '#bcc7a6');
+            this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
+            this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, PRESENTATION.surfaceColor);
+            for (const P of this.terrainDots) {
+                this.ellipse(P.x, P.y, S * 0.026, S * 0.02, '#a7b58b80');
+            }
+            for (const P of this.terrainLeaves) {
+                this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, '#94a577', P.angle);
+                this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, '#a8b78a', P.angle + 0.7);
+            }
         }
         PRESENTATION.drawBoundary(this);
         if (sim2.scene === 'farm') {
