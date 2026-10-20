@@ -29,6 +29,7 @@ import {
     fogPieceCenter,
     fogPieceCost,
     isRevealed,
+    tileFill,
     tileTerrain,
     tileX,
     tileY,
@@ -607,8 +608,10 @@ const DIORAMA = class Diorama {
             this.groundCell(ox, oy, SURFACE, 0.7);
         }
         const S = this.scale;
+        // What is left to gather shows: a tile that has been worked bare has fewer trees and rocks standing.
+        const FILL = tileFill(map, index);
         if (TERRAIN === 'forest') {
-            for (let tree = 0; tree < 9; tree++) {
+            for (let tree = 0; tree < Math.ceil(9 * FILL); tree++) {
                 const TX = ox + (look(index, 40 + tree) - 0.5) * RX * 1.7,
                     TY = oy + (look(index, 60 + tree) - 0.5) * RY * 1.7;
                 if (!SEEN(TX, TY)) {
@@ -619,7 +622,7 @@ const DIORAMA = class Diorama {
                 this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, '#8a7a5a');
             }
         } else if (TERRAIN === 'rock') {
-            for (let rock = 0; rock < 7; rock++) {
+            for (let rock = 0; rock < Math.ceil(7 * FILL); rock++) {
                 const TX = ox + (look(index, 80 + rock) - 0.5) * RX * 1.7,
                     TY = oy + (look(index, 100 + rock) - 0.5) * RY * 1.7;
                 if (!SEEN(TX, TY)) {

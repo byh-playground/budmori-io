@@ -42,6 +42,8 @@ import {
     farmBuildBlock,
     inReach,
     TERRAIN_NAMES,
+    tileRemaining,
+    tileResource,
     tileTerrain,
     hasBoss,
     isRevealed,
@@ -897,7 +899,10 @@ function renderWorldMap() {
             info = `체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
         } else {
             title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
-            info = '아무것도 없는 칸이에요.';
+            const RESOURCE = tileResource(MAP, TILE);
+            info = RESOURCE
+                ? `${RESOURCE === 'wood' ? '목재' : '돌'} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.`
+                : '아무것도 없는 칸이에요.';
         }
     }
     if (TILE >= 0 && isRevealed(MAP, TILE)) {

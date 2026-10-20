@@ -37,6 +37,11 @@ import {
     fogPieceCost,
     liftFogPiece,
     nearestFogPiece,
+    nearestResourceTile,
+    takeFromTile,
+    tileRemaining,
+    tileResource,
+    WORLD_MAP_SETTINGS,
     beginFarmBuild,
     canBuildFarm,
     createWorldMap,
@@ -65,6 +70,8 @@ const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomG
 const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
 // Measured: the distance a unit covers per second for each point of the walking speed an order asks for.
 const EXPLORE_WALK_RATIO = 0.12;
+// A mine gives workers this share of what a fresh tile would, but never runs dry.
+const MINE_EFFICIENCY = 0.5;
 const EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
 import {
     baseUnitStatsFor,
@@ -203,8 +210,6 @@ const CONFIG = Object.freeze({
             }),
             pileKinds: Object.freeze({
                 grain: Object.freeze({ count: 2, amount: 12 }),
-                wood: Object.freeze({ count: 1, amount: 8 }),
-                stone: Object.freeze({ count: 1, amount: 8 }),
             }),
             // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
             // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
@@ -1424,8 +1429,9 @@ const GARDEN = class Garden {
         this._exploreGoals = new Map();
         this._idleLead = new Map();
         this._pieceWork = new Map();
+        this._haul = new Map();
         this._fogClaims = new Map();
-        this._idleCarry = { materials: 0, food: 0 };
+        this._idleCarry = { food: 0 };
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
@@ -3091,8 +3097,112 @@ const GARDEN = class Garden {
         }
         return share;
     }
+    // Gathering: a worker walks to a forest or rock tile in its farm's sight, gathers there until it holds a small
+    // load, and carries it home to its own farm, where it counts. The tile loses what is taken (a mine never does).
+    isHauler(unit) {
+        const KIND = this._workerKinds.get(unit.id);
+        return KIND === 'resource' || (KIND === 'build' && !plotHasSite(this, unit.plotId));
+    }
+    // The tile's centre in the farm's own coordinates.
+    tileOffset(plotId, tile) {
+        const HERE = this.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile;
+        return HERE === undefined
+            ? { x: 0, y: 0 }
+            : { x: (tileX(tile) - tileX(HERE)) * FARM_CELL.width, y: -(tileY(tile) - tileY(HERE)) * FARM_CELL.height };
+    }
+    haulState(unit) {
+        let state = this._haul.get(unit.id);
+        if (!state) {
+            state = { phase: 'out', tile: -1, kind: null, load: 0 };
+            this._haul.set(unit.id, state);
+        }
+        return state;
+    }
+    // Where a worker is headed right now, or null when there is nothing within sight to gather.
+    haulSpot(unit) {
+        const STATE = this.haulState(unit);
+        if (STATE.phase !== 'back' && (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0))) {
+            const WANTED = this.materials.wood <= this.materials.stone ? 'wood' : 'stone',
+                TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
+            STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
+            STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
+        }
+        const JITTER_X = ((unit.id * 37) % 100) / 100 - 0.5,
+            JITTER_Y = ((unit.id * 53) % 100) / 100 - 0.5;
+        if (STATE.phase === 'back') {
+            return { x: JITTER_X * 6, y: JITTER_Y * 4, speed: 9 };
+        }
+        if (STATE.tile < 0) {
+            return null;
+        }
+        const AT = this.tileOffset(unit.plotId, STATE.tile);
+        return { x: AT.x + JITTER_X * 30, y: AT.y + JITTER_Y * 22, speed: 9 };
+    }
+    // One step of a worker's trip. A worker on screen is steered by workOrder and only its progress is settled
+    // here; one that is not walks the same line by arithmetic.
+    _haulStep(unit, seconds, walk) {
+        const SPOT = this.haulSpot(unit);
+        if (!SPOT) {
+            return;
+        }
+        const STATE = this.haulState(unit),
+            DISTANCE = Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y);
+        unit.workOut = true;
+        if (walk && DISTANCE > 0.4) {
+            const STEP = Math.min(DISTANCE, SPOT.speed * EXPLORE_WALK_RATIO * seconds);
+            unit.x += ((SPOT.x - unit.x) / DISTANCE) * STEP;
+            unit.y += ((SPOT.y - unit.y) / DISTANCE) * STEP;
+            unit.angle = Math.atan2(SPOT.y - unit.y, SPOT.x - unit.x);
+        }
+        if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) > 1.5) {
+            return;
+        }
+        if (STATE.phase === 'out') {
+            STATE.phase = 'work';
+        }
+        if (STATE.phase === 'work') {
+            const MINE = this.worldMap.mines.includes(STATE.tile),
+                WANT = (this._workerRates.get(unit.id) || 0) * (MINE ? MINE_EFFICIENCY : 1) * seconds,
+                TAKEN = takeFromTile(this.worldMap, STATE.tile, WANT);
+            STATE.load += TAKEN;
+            if (STATE.load >= WORLD_MAP_SETTINGS.carryLoad || TAKEN < WANT - 1e-9) {
+                STATE.phase = 'back';
+            }
+        } else if (STATE.phase === 'back') {
+            const WHOLE = Math.floor(STATE.load);
+            if (WHOLE > 0 && STATE.kind) {
+                this.materials[STATE.kind] += WHOLE;
+                this.markProgressChanged();
+            }
+            STATE.load -= WHOLE;
+            STATE.phase = 'out';
+            STATE.tile = -1;
+        }
+    }
+    tickHauling(seconds, walking = true) {
+        if (this.scene !== 'farm') {
+            return;
+        }
+        for (const ID of [...this._haul.keys()]) {
+            const UNIT = this._unitById.get(ID);
+            if (!UNIT || !this.isHauler(UNIT)) {
+                this._haul.delete(ID);
+            }
+        }
+        for (const PLOT_ID of this.farmPlots.keys()) {
+            if (PLOT_ID === RESERVE_PLOT_ID) {
+                continue;
+            }
+            const REAL = walking && PLOT_ID === this.activePlotId;
+            for (const UNIT of this.unitCollection.unitsInPlot(PLOT_ID)) {
+                if (this.isWorker(UNIT) && UNIT.hp > 0 && this.isHauler(UNIT)) {
+                    this._haulStep(UNIT, seconds, !REAL);
+                }
+            }
+        }
+    }
     // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
-    // rate (builders hit the site, gatherers bring materials, food workers feed the warehouse).
+    // rate (builders hit the site, food workers feed the warehouse). Gatherers are settled by tickHauling.
     tickIdleWork(seconds) {
         if (this.scene !== 'farm') {
             return;
@@ -3115,38 +3225,24 @@ const GARDEN = class Garden {
                 continue;
             }
             let food = 0,
-                gather = 0,
                 build = 0;
             for (const UNIT of this.unitCollection.unitsInPlot(PLOT_ID)) {
                 const RATE = this._workerRates.get(UNIT.id) || 0,
                     KIND = this._workerKinds.get(UNIT.id);
                 if (KIND === 'food') {
                     food += RATE;
-                } else if (KIND === 'resource') {
-                    gather += RATE;
                 } else if (KIND === 'build') {
                     build += RATE;
                 }
             }
-            if (build > 0) {
-                if (plotHasSite(this, PLOT_ID)) {
-                    const RESULT = spreadBuildHits(this, PLOT_ID, build * HITS_PER_WORK * WORK);
-                    gather += RESULT.left / (HITS_PER_WORK * WORK);
-                } else {
-                    gather += build;
-                }
+            if (build > 0 && plotHasSite(this, PLOT_ID)) {
+                spreadBuildHits(this, PLOT_ID, build * HITS_PER_WORK * WORK);
             }
-            CARRY.materials += gather * WORK;
             CARRY.food += food * WORK;
         }
-        const MATERIALS = Math.floor(CARRY.materials),
-            FOOD = Math.floor(CARRY.food);
-        if (MATERIALS > 0 || FOOD > 0) {
-            CARRY.materials -= MATERIALS;
+        const FOOD = Math.floor(CARRY.food);
+        if (FOOD > 0) {
             CARRY.food -= FOOD;
-            const WOOD = Math.ceil(MATERIALS / 2);
-            this.materials.wood += WOOD;
-            this.materials.stone += MATERIALS - WOOD;
             this.warehouseFood = Math.min(CONFIG.farm.work.warehouseLimit, this.warehouseFood + FOOD);
             this.markProgressChanged();
         }
@@ -3295,9 +3391,15 @@ const GARDEN = class Garden {
     }
     _attackRate(kind) {
         let rate = 0;
+        if (kind === 'resource') {
+            // Gatherers are not tied to a pile; this is what they would bring in without the walking.
+            for (const UNIT of this.units) {
+                rate += this.isWorker(UNIT) && this.isHauler(UNIT) ? this._workerRates.get(UNIT.id) || 0 : 0;
+            }
+            return rate;
+        }
         for (const [ID, ASSIGN] of this._workAssign) {
-            const WORKER_KIND = this._workerKinds.get(ID);
-            if (ASSIGN.attacking && (WORKER_KIND === kind || (kind === 'resource' && WORKER_KIND === 'build'))) {
+            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
                 rate += this._workerRates.get(ID) || 0;
             }
         }
@@ -3463,6 +3565,7 @@ const GARDEN = class Garden {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
             this.tickIdleWork(Math.min(elapsed, 0.1));
+            this.tickHauling(Math.min(elapsed, 0.1));
             if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
                 this.markProgressChanged();
             }

@@ -18,6 +18,10 @@ export const WORLD_MAP_SETTINGS = {
     dangerPerTile: 4,
     // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
     baseReach: 2,
+    // What a forest or a rock tile holds before anyone has gathered from it (each tile varies by a quarter either way),
+    // and how much a worker carries home in one trip.
+    resourceStock: { forest: 60, rock: 60 },
+    carryLoad: 3,
 };
 // How far apart the centres of neighbouring farm cells sit in farm units: exactly one farm's width and height,
 // so the grounds meet edge to edge.
@@ -63,11 +67,12 @@ export function farmReachOf(map, plotId) {
     return WORLD_MAP_SETTINGS.baseReach + Math.max(0, EXTRA);
 }
 // Whether a tile lies inside the square that some farm can see.
-export function inReach(map, index) {
+export function inReach(map, index, plotId = null) {
     const X = tileX(index),
         Y = tileY(index);
     return map.farms.some(
         (farm) =>
+            (plotId === null || farm.plotId === plotId) &&
             Math.max(Math.abs(X - tileX(farm.tile)), Math.abs(Y - tileY(farm.tile))) <= farmReachOf(map, farm.plotId),
     );
 }
@@ -95,6 +100,8 @@ export function createWorldMap(seed, firstPlotId) {
         bosses: [],
         spawnClock: 0,
         spawnCount: 0,
+        mined: {},
+        mines: [],
         farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }],
     };
     for (let y = -WORLD_MAP_SETTINGS.safeRadius; y <= WORLD_MAP_SETTINGS.safeRadius; y++) {
@@ -206,6 +213,69 @@ export function tileTerrain(map, index) {
 export function exploreCost(map) {
     const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
     return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
+}
+// Forests give wood and rock gives stone; other ground gives nothing.
+export function tileResource(map, index) {
+    const TERRAIN = tileTerrain(map, index);
+    return TERRAIN === 'forest' ? 'wood' : TERRAIN === 'rock' ? 'stone' : null;
+}
+// What a tile held to begin with, and what is left of it. A mine never runs dry.
+export function tileStockTotal(map, index) {
+    const TERRAIN = tileTerrain(map, index),
+        BASE = WORLD_MAP_SETTINGS.resourceStock[TERRAIN] ?? 0;
+    return Math.round(BASE * (0.75 + 0.5 * tileUnit(map.seed, index, 21)));
+}
+export function tileRemaining(map, index) {
+    if (tileResource(map, index) === null) {
+        return 0;
+    }
+    return map.mines.includes(index) ? Infinity : Math.max(0, tileStockTotal(map, index) - (map.mined[index] ?? 0));
+}
+// How full a tile still is, from 0 to 1, for drawing.
+export function tileFill(map, index) {
+    const TOTAL = tileStockTotal(map, index);
+    return TOTAL > 0 ? Math.min(1, tileRemaining(map, index) / TOTAL) : 0;
+}
+// Takes up to `amount` out of a tile and returns what came out.
+export function takeFromTile(map, index, amount) {
+    const REMAINING = tileRemaining(map, index),
+        TAKEN = Math.min(amount, REMAINING);
+    if (!(TAKEN > 0)) {
+        return 0;
+    }
+    if (REMAINING !== Infinity) {
+        map.mined[index] = (map.mined[index] ?? 0) + TAKEN;
+    }
+    return TAKEN;
+}
+// The nearest lit tile in a farm's sight that still has the wanted material (any material when none is named),
+// -1 if there is none. Ties go to the tile the seed likes better, so farms do not all pick the same one.
+export function nearestResourceTile(map, plotId, wanted = null) {
+    const FARM = map.farms.find((farm) => farm.plotId === plotId);
+    if (!FARM) {
+        return -1;
+    }
+    let best = -1,
+        bestScore = Infinity;
+    for (const TILE of map.revealed) {
+        const KIND = tileResource(map, TILE);
+        if (
+            KIND === null ||
+            (wanted !== null && KIND !== wanted) ||
+            !(tileRemaining(map, TILE) > 0) ||
+            !inReach(map, TILE, plotId)
+        ) {
+            continue;
+        }
+        const SCORE =
+            Math.hypot(tileX(TILE) - tileX(FARM.tile), tileY(TILE) - tileY(FARM.tile)) +
+            tileUnit(map.seed, TILE, 22) * 0.4;
+        if (SCORE < bestScore) {
+            best = TILE;
+            bestScore = SCORE;
+        }
+    }
+    return best;
 }
 // What it takes to lift the fog from one particular tile: the base cost times its ground.
 export function tileCost(map, index) {
@@ -461,6 +531,15 @@ const VALID_PROGRESS = (progress) =>
             value > 0 &&
             value < 1 << FOG_PIECES,
     );
+// What has been gathered per tile: only tiles with something taken out of them.
+const VALID_MINED = (mined) =>
+    !!mined &&
+    typeof mined === 'object' &&
+    !Array.isArray(mined) &&
+    Object.entries(mined).every(
+        ([key, value]) =>
+            /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value > 0,
+    );
 export function isValidWorldMap(map) {
     if (!map || typeof map !== 'object' || Array.isArray(map)) {
         return false;
@@ -469,7 +548,7 @@ export function isValidWorldMap(map) {
         .filter((key) => key !== 'challengeTile' && key !== 'buildTile')
         .sort()
         .join(',');
-    if (KEYS !== 'bosses,exploreTarget,farms,progress,revealed,seed,spawnClock,spawnCount') {
+    if (KEYS !== 'bosses,exploreTarget,farms,mined,mines,progress,revealed,seed,spawnClock,spawnCount') {
         return false;
     }
     if (
@@ -492,6 +571,8 @@ export function isValidWorldMap(map) {
         ) ||
         !SORTED_INDEXES(map.revealed) ||
         !SORTED_INDEXES(map.bosses) ||
+        !SORTED_INDEXES(map.mines) ||
+        !VALID_MINED(map.mined) ||
         !Number.isFinite(map.spawnClock) ||
         map.spawnClock < 0 ||
         !Number.isSafeInteger(map.spawnCount) ||
@@ -504,6 +585,7 @@ export function isValidWorldMap(map) {
     const LIT = new Set(map.revealed);
     return (
         map.bosses.every((index) => LIT.has(index)) &&
+        map.mines.every((index) => LIT.has(index)) &&
         new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length &&
         map.farms.every(
             (farm) =>
