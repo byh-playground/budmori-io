@@ -43,6 +43,7 @@ import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
 import { createFarmModeBehaviors } from './farm-mode-behaviors.js';
+import { restingSpot } from './features/farm-modes/model-base.js';
 import { createBossPatternBehaviors } from './boss-pattern-behaviors.js';
 import { bossMouthWorldPoint } from './boss-vector-sockets.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
@@ -191,6 +192,8 @@ const CONFIG = Object.freeze({
             }),
             // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
             // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
+            // Units on the tiles next to the farm on screen walk about without collisions or contacts, up to this many.
+            neighbourWalkers: 300,
             migration: Object.freeze({ intervalSeconds: 20, emptierBy: 0.15, neighbourMaxFill: 0.9 }),
             facilitySpacing: 7,
             facilityRowX: 2,
@@ -1379,6 +1382,8 @@ const GARDEN = class Garden {
         this.materials = { wood: 0, stone: 0 };
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
+        // A play setting like the worker ratio: how many units on neighbouring tiles walk about.
+        this.neighbourWalkers = CONFIG.farm.work.neighbourWalkers;
         // Every map this world holds learns how far each farm sees: the base reach plus the farm's tower levels.
         // An own enumerable property, so the world still copies and saves like a plain object.
         let worldMap = null;
@@ -3040,6 +3045,35 @@ const GARDEN = class Garden {
             angle: Math.atan2(-(tileY(farm.tile) - tileY(HERE.tile)), tileX(farm.tile) - tileX(HERE.tile)),
         }));
     }
+    // Resting units of the farms next to this one stroll to their own spots; only their positions change.
+    _stepNeighbours(seconds) {
+        let budget = this.neighbourWalkers;
+        if (!(budget > 0)) {
+            return;
+        }
+        const ARENA = CONFIG.farm.arena;
+        for (const PLOT of this._neighbourPlots()) {
+            for (const UNIT of this.unitCollection.unitsInPlot(PLOT.plotId)) {
+                if (budget <= 0) {
+                    return;
+                }
+                if (UNIT.hp <= 0 || this.isWorker(UNIT)) {
+                    continue;
+                }
+                budget--;
+                const SPOT = restingSpot(UNIT, this.time, ARENA),
+                    DX = SPOT.x - UNIT.x,
+                    DY = SPOT.y - UNIT.y,
+                    DISTANCE = Math.hypot(DX, DY);
+                if (DISTANCE > 0.5) {
+                    const STEP = Math.min(DISTANCE, scaleMoveSpeed(1.3, UNIT) * seconds);
+                    UNIT.x += (DX / DISTANCE) * STEP;
+                    UNIT.y += (DY / DISTANCE) * STEP;
+                    UNIT.angle = Math.atan2(DY, DX);
+                }
+            }
+        }
+    }
     _fillOf(plotId) {
         const PLOT = this.farmPlots.get(plotId);
         return PLOT
@@ -3134,6 +3168,7 @@ const GARDEN = class Garden {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
             this._stepMigration(Math.min(elapsed, 0.1));
+            this._stepNeighbours(Math.min(elapsed, 0.1));
         }
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
