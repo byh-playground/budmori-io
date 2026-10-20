@@ -925,3 +925,93 @@ details summary {
 .offline-notice[hidden] {
     display: none;
 }
+
+/* 화면을 덜 가리는 간결한 HUD: 상태 칩은 한 줄, 안내 문구와 버전은 숨기고, 농장 전환 바는 한 줄로 줄입니다. */
+.hud__stats {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ui-s1);
+}
+.chip {
+    min-height: 30px;
+    gap: 4px;
+    padding: 0 var(--ui-s2);
+    font-size: 12px;
+}
+.chip b {
+    font-size: var(--ui-fs-2);
+}
+.hud__note,
+.hud__version,
+.plot-bar__label small {
+    display: none;
+}
+.plot-bar {
+    flex: 0 0 auto;
+    padding: 2px;
+}
+.plot-bar button {
+    width: 34px;
+    height: 34px;
+}
+.plot-bar svg {
+    width: 18px;
+    height: 18px;
+}
+.plot-bar__label {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+}
+.plot-bar__label small#plotBarCount {
+    display: inline;
+}
+#mergeNotice {
+    display: none;
+}
+.controls button {
+    min-height: 48px;
+}
+.work-hud {
+    padding: var(--ui-s2) var(--ui-s3);
+}
+
+/* 확대·축소 */
+.zoom-bar {
+    position: fixed;
+    z-index: var(--ui-z-hud);
+    right: max(var(--ui-s3), env(safe-area-inset-right));
+    top: calc(max(var(--ui-s3), var(--ui-safe-top)) + 178px);
+    display: grid;
+    gap: var(--ui-s1);
+    width: 92px;
+}
+.zoom-bar[hidden] {
+    display: none;
+}
+.zoom-bar button {
+    min-height: 36px;
+    padding: 0;
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    border: var(--ui-bw) solid var(--ui-line);
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-b);
+}
+.zoom-bar button[hidden] {
+    display: none;
+}
+.zoom-bar button:active {
+    filter: brightness(0.94);
+}
+@media (min-width: 900px) {
+    .zoom-bar {
+        right: var(--ui-s4, 20px);
+    }
+    .zoom-bar button {
+        min-height: 40px;
+    }
+}
