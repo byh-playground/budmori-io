@@ -4579,22 +4579,30 @@
     return true;
   }
   function advanceSpawns(map, seconds) {
-    const SPAWNED = [];
+    const SPAWNED = [], PLACE = () => {
+      const CANDIDATES = map.revealed.filter(
+        (tile) => farmDistance(map, tile) > 0 && !hasBoss(map, tile) && inReach(map, tile)
+      );
+      if (CANDIDATES.length === 0) {
+        return false;
+      }
+      const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
+      map.spawnCount++;
+      map.bosses.push(TILE);
+      map.bosses.sort((x, y) => x - y);
+      SPAWNED.push(TILE);
+      return true;
+    };
+    if (map.bosses.length === 0) {
+      PLACE();
+    }
     map.spawnClock += seconds;
     while (map.spawnClock >= WORLD_MAP_SETTINGS.spawnSeconds) {
-      const CANDIDATES = map.revealed.filter(
-        (tile) => farmDistance(map, tile) > WORLD_MAP_SETTINGS.safeRadius && !hasBoss(map, tile) && inReach(map, tile)
-      );
-      if (map.bosses.length >= WORLD_MAP_SETTINGS.maxBosses || CANDIDATES.length === 0) {
+      if (map.bosses.length >= WORLD_MAP_SETTINGS.maxBosses || !PLACE()) {
         map.spawnClock = WORLD_MAP_SETTINGS.spawnSeconds;
         break;
       }
       map.spawnClock -= WORLD_MAP_SETTINGS.spawnSeconds;
-      const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
-      map.spawnCount++;
-      map.bosses.push(TILE);
-      map.bosses.sort((a, b) => a - b);
-      SPAWNED.push(TILE);
     }
     return SPAWNED;
   }
@@ -4810,7 +4818,7 @@
       init_boss_rewards();
       WORLD_MAP_SETTINGS = {
         radius: 12,
-        // Tiles within this many steps of a farm start lit and never hold a boss.
+        // Tiles within this many steps of a farm start lit.
         safeRadius: 1,
         // A boss turns up this often (game seconds) while fewer than maxBosses are out.
         spawnSeconds: 150,
@@ -15379,7 +15387,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.18.0";
+      PRODUCT_VERSION = "0.18.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
