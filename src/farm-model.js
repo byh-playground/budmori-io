@@ -1423,6 +1423,7 @@ const GARDEN = class Garden {
         this._exploreGoals = new Map();
         this._idleLead = new Map();
         this._pieceWork = new Map();
+        this._fogClaims = new Map();
         this._idleCarry = { materials: 0, food: 0 };
         this._workerIds = new Set();
         resetWork(this);
@@ -3012,6 +3013,11 @@ const GARDEN = class Garden {
         }
         // Each explorer works on the nearest piece of fog; explorers on the same piece add up, and whatever a piece
         // does not need is wasted, so a crowd helps less and less.
+        for (const ID of [...this._fogClaims.keys()]) {
+            if (this._workerKinds.get(ID) !== 'explore') {
+                this._fogClaims.delete(ID);
+            }
+        }
         const WORK = new Map();
         for (const PLOT_ID of this.farmPlots.keys()) {
             const GOAL = this.exploreGoal(PLOT_ID);
@@ -3029,7 +3035,7 @@ const GARDEN = class Garden {
                 if (!this.exploreOnSite(UNIT)) {
                     continue;
                 }
-                const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, UNIT.x - GOAL.x, UNIT.y - GOAL.y);
+                const PIECE = this.fogPieceFor(UNIT);
                 if (PIECE >= 0) {
                     const KEY = GOAL.tile * FOG_PIECES + PIECE;
                     WORK.set(KEY, (WORK.get(KEY) ?? 0) + (this._workerRates.get(UNIT.id) || 0) * seconds);
@@ -3049,6 +3055,31 @@ const GARDEN = class Garden {
             liftFogPiece(this.worldMap, TILE, PIECE);
             this.markProgressChanged();
         }
+    }
+    // The piece an explorer has taken: it keeps it until it is lifted, and picks a piece no one else has otherwise,
+    // so explorers spread over the tile instead of crowding one piece.
+    fogPieceFor(unit) {
+        const GOAL = this.exploreGoal(unit.plotId);
+        if (!GOAL) {
+            return -1;
+        }
+        const HELD = this._fogClaims.get(unit.id);
+        if (HELD && HELD.tile === GOAL.tile && !(this.worldMap.progress[GOAL.tile] ?? []).includes(HELD.piece)) {
+            return HELD.piece;
+        }
+        const TAKEN = new Set();
+        for (const [ID, CLAIM] of this._fogClaims) {
+            if (ID !== unit.id && CLAIM.tile === GOAL.tile) {
+                TAKEN.add(CLAIM.piece);
+            }
+        }
+        const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y, TAKEN);
+        if (PIECE >= 0) {
+            this._fogClaims.set(unit.id, { tile: GOAL.tile, piece: PIECE });
+        } else {
+            this._fogClaims.delete(unit.id);
+        }
+        return PIECE;
     }
     // The share of a tile's pieces being worked on but not yet lifted, for a smooth bar.
     pieceWorkShare(tile) {
@@ -3153,7 +3184,7 @@ const GARDEN = class Garden {
         if (!GOAL) {
             return null;
         }
-        const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+        const PIECE = this.fogPieceFor(unit);
         if (PIECE < 0) {
             return null;
         }
@@ -3188,7 +3219,7 @@ const GARDEN = class Garden {
         if (!GOAL) {
             return false;
         }
-        const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+        const PIECE = this.fogPieceFor(unit);
         if (PIECE < 0) {
             return false;
         }

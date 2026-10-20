@@ -254,8 +254,22 @@ export function fogPieceAt(x, y) {
         ROW = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((y + FARM_CELL.height / 2) / PIECE_H)));
     return ROW * FOG_GRID + COL;
 }
-// The piece an explorer standing at (x, y) in the tile works on: the nearest one still under fog, -1 if none.
-export function nearestFogPiece(map, tile, x, y) {
+// A piece away from the ones other explorers hold is worth walking a little further for (up to a few pieces).
+function spreadBonus(piece, taken) {
+    if (!taken || taken.size === 0) {
+        return 0;
+    }
+    const C = fogPieceCenter(piece);
+    let nearest = Infinity;
+    for (const OTHER of taken) {
+        const O = fogPieceCenter(OTHER);
+        nearest = Math.min(nearest, Math.hypot(C.x - O.x, C.y - O.y));
+    }
+    return Math.min(nearest, 18) * 0.7;
+}
+// The piece an explorer standing at (x, y) in the tile works on: the nearest one still under fog that no other
+// explorer has taken (the nearest taken one when every piece is taken), -1 if none is left.
+export function nearestFogPiece(map, tile, x, y, taken = null) {
     const LIFTED = new Set(map.progress[tile] ?? []);
     let best = -1,
         bestDistance = Infinity;
@@ -264,7 +278,7 @@ export function nearestFogPiece(map, tile, x, y) {
             continue;
         }
         const C = fogPieceCenter(piece),
-            D = Math.hypot(C.x - x, C.y - y);
+            D = Math.hypot(C.x - x, C.y - y) + (taken?.has(piece) ? 1000 : 0) - spreadBonus(piece, taken);
         if (D < bestDistance) {
             best = piece;
             bestDistance = D;

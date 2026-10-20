@@ -4637,14 +4637,26 @@
     const COL = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((x + FARM_CELL.width / 2) / PIECE_W))), ROW = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((y + FARM_CELL.height / 2) / PIECE_H)));
     return ROW * FOG_GRID + COL;
   }
-  function nearestFogPiece(map, tile, x, y) {
+  function spreadBonus(piece, taken) {
+    if (!taken || taken.size === 0) {
+      return 0;
+    }
+    const C = fogPieceCenter(piece);
+    let nearest = Infinity;
+    for (const OTHER of taken) {
+      const O = fogPieceCenter(OTHER);
+      nearest = Math.min(nearest, Math.hypot(C.x - O.x, C.y - O.y));
+    }
+    return Math.min(nearest, 18) * 0.7;
+  }
+  function nearestFogPiece(map, tile, x, y, taken = null) {
     const LIFTED = new Set(map.progress[tile] ?? []);
     let best = -1, bestDistance = Infinity;
     for (let piece = 0; piece < FOG_PIECES; piece++) {
       if (LIFTED.has(piece)) {
         continue;
       }
-      const C = fogPieceCenter(piece), D = Math.hypot(C.x - x, C.y - y);
+      const C = fogPieceCenter(piece), D = Math.hypot(C.x - x, C.y - y) + (taken?.has(piece) ? 1e3 : 0) - spreadBonus(piece, taken);
       if (D < bestDistance) {
         best = piece;
         bestDistance = D;
@@ -9855,6 +9867,7 @@
           this._exploreGoals = /* @__PURE__ */ new Map();
           this._idleLead = /* @__PURE__ */ new Map();
           this._pieceWork = /* @__PURE__ */ new Map();
+          this._fogClaims = /* @__PURE__ */ new Map();
           this._idleCarry = { materials: 0, food: 0 };
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
@@ -11175,6 +11188,11 @@
           if (this.scene !== "farm") {
             return;
           }
+          for (const ID of [...this._fogClaims.keys()]) {
+            if (this._workerKinds.get(ID) !== "explore") {
+              this._fogClaims.delete(ID);
+            }
+          }
           const WORK = /* @__PURE__ */ new Map();
           for (const PLOT_ID of this.farmPlots.keys()) {
             const GOAL = this.exploreGoal(PLOT_ID);
@@ -11192,7 +11210,7 @@
               if (!this.exploreOnSite(UNIT3)) {
                 continue;
               }
-              const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, UNIT3.x - GOAL.x, UNIT3.y - GOAL.y);
+              const PIECE = this.fogPieceFor(UNIT3);
               if (PIECE >= 0) {
                 const KEY2 = GOAL.tile * FOG_PIECES + PIECE;
                 WORK.set(KEY2, (WORK.get(KEY2) ?? 0) + (this._workerRates.get(UNIT3.id) || 0) * seconds);
@@ -11209,6 +11227,31 @@
             liftFogPiece(this.worldMap, TILE, PIECE);
             this.markProgressChanged();
           }
+        }
+        // The piece an explorer has taken: it keeps it until it is lifted, and picks a piece no one else has otherwise,
+        // so explorers spread over the tile instead of crowding one piece.
+        fogPieceFor(unit) {
+          const GOAL = this.exploreGoal(unit.plotId);
+          if (!GOAL) {
+            return -1;
+          }
+          const HELD = this._fogClaims.get(unit.id);
+          if (HELD && HELD.tile === GOAL.tile && !(this.worldMap.progress[GOAL.tile] ?? []).includes(HELD.piece)) {
+            return HELD.piece;
+          }
+          const TAKEN = /* @__PURE__ */ new Set();
+          for (const [ID, CLAIM] of this._fogClaims) {
+            if (ID !== unit.id && CLAIM.tile === GOAL.tile) {
+              TAKEN.add(CLAIM.piece);
+            }
+          }
+          const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y, TAKEN);
+          if (PIECE >= 0) {
+            this._fogClaims.set(unit.id, { tile: GOAL.tile, piece: PIECE });
+          } else {
+            this._fogClaims.delete(unit.id);
+          }
+          return PIECE;
         }
         // The share of a tile's pieces being worked on but not yet lifted, for a smooth bar.
         pieceWorkShare(tile) {
@@ -11303,7 +11346,7 @@
           if (!GOAL) {
             return null;
           }
-          const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+          const PIECE = this.fogPieceFor(unit);
           if (PIECE < 0) {
             return null;
           }
@@ -11334,7 +11377,7 @@
           if (!GOAL) {
             return false;
           }
-          const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+          const PIECE = this.fogPieceFor(unit);
           if (PIECE < 0) {
             return false;
           }
@@ -15325,7 +15368,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.16.0";
+      PRODUCT_VERSION = "0.16.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
