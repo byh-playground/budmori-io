@@ -185,6 +185,8 @@ export const FARM_SNAPSHOT_SHAPE = {
         bosses: [],
         spawnClock: 0,
         spawnCount: 0,
+        mined: {},
+        mines: [],
         farms: [],
     },
     foodTaps: {

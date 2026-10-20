@@ -166,7 +166,7 @@ function worksOn(world, unit, pile) {
     if (KIND === 'explore') {
         return false;
     }
-    return KIND === 'resource' ? pile.kind === 'wood' || pile.kind === 'stone' : pile.kind === 'grain';
+    return KIND === 'resource' ? false : pile.kind === 'grain';
 }
 function capacity(config, pile, siteCapacity) {
     const WORK = config.farm.work;
@@ -334,11 +334,24 @@ function exploreOrder(world, unit) {
         face: DISTANCE <= 0.6,
     };
 }
+// Gatherers walk to the tile they gather from, work there, and carry the load home; the model keeps the trip.
+function haulOrder(world, unit) {
+    const SPOT = world.haulSpot(unit);
+    if (!SPOT) {
+        return null;
+    }
+    unit.workOut = true;
+    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
+    return { x: SPOT.x, y: SPOT.y, fx: SPOT.x + 1, fy: SPOT.y, speed: SPOT.speed, hold: DISTANCE <= 0.6, face: false };
+}
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {
     const ASSIGN = world._workAssign.get(unit.id);
     if (!ASSIGN) {
-        return world._workerKinds.get(unit.id) === 'explore' ? exploreOrder(world, unit) : null;
+        if (world._workerKinds.get(unit.id) === 'explore') {
+            return exploreOrder(world, unit);
+        }
+        return world.isHauler(unit) ? haulOrder(world, unit) : null;
     }
     const PILE = ASSIGN.pile,
         SWING = world._swings.get(unit.id);
