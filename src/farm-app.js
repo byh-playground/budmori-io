@@ -1002,7 +1002,7 @@ function setBossView(mapMode) {
         renderWorldMap();
         startWorldMapView();
         bossMapTicker = setInterval(() => {
-            personalGarden?.tickExploration(0.25);
+            personalGarden?.tickExploration(0.25, true);
             renderWorldMap();
         }, 250);
     } else {

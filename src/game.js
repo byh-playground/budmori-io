@@ -11114,10 +11114,13 @@
           return this._workCount;
         }
         // Explorers keep working while the map screen is open and the farm itself is paused, so this is its own step.
-        // Exploring is done on foot: only explorers of the farm on screen who have reached the tile add to the gauge,
-        // so the walk out is part of the time it takes. Nothing is calculated for farms off screen or while away.
-        tickExploration(seconds) {
-          if (this.scene === "farm" && advanceExploration(this.worldMap, this.exploreWorkRate * seconds).length > 0) {
+        // While the game is running, only explorers who have reached the tile add to the gauge, so the walk out is part
+        // of the time it takes. Farms that are not on screen are not walked, so their explorers count at once. With the
+        // farm paused behind the map screen nobody can walk, so every explorer counts then. Nothing is explored while
+        // the game is closed.
+        tickExploration(seconds, everyoneCounts = false) {
+          const RATE = everyoneCounts ? this.exploreRate : this.exploreWorkRate;
+          if (this.scene === "farm" && advanceExploration(this.worldMap, RATE * seconds).length > 0) {
             this.markProgressChanged();
           }
         }
@@ -11170,11 +11173,11 @@
         // Is this explorer standing where the exploring is done?
         exploreOnSite(id) {
           if (this._workerPlots.get(id) !== this.activePlotId) {
-            return false;
+            return true;
           }
           const UNIT3 = this._unitById.get(id), GOAL = this._exploreGoal;
           if (!UNIT3 || !GOAL) {
-            return false;
+            return true;
           }
           const ARENA = CONFIG.farm.arena;
           if (GOAL.near) {
@@ -11199,6 +11202,16 @@
             count += KIND === "explore" && this.exploreOnSite(ID) ? 1 : 0;
           }
           return count;
+        }
+        // Exploration points per second from the explorers of every farm, wherever they stand.
+        get exploreRate() {
+          let rate = 0;
+          for (const [ID, KIND] of this._workerKinds) {
+            if (KIND === "explore") {
+              rate += this._workerRates.get(ID) || 0;
+            }
+          }
+          return rate;
         }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
@@ -15120,7 +15133,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.15";
+      PRODUCT_VERSION = "0.13.16";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23574,7 +23587,7 @@
       renderWorldMap();
       startWorldMapView();
       bossMapTicker = setInterval(() => {
-        personalGarden?.tickExploration(0.25);
+        personalGarden?.tickExploration(0.25, true);
         renderWorldMap();
       }, 250);
     } else {
