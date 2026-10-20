@@ -1,5 +1,6 @@
 import { FACILITY_IDS } from './farm-plot.js';
-// Grain piles that workers fight like enemies: each hit stacks up, five stacks shake one food loose,
+import { nearestResourceTile, takeFromTile } from './world-map.js';
+// Piles of grain, trees and rocks that workers fight like enemies: each hit stacks up, five stacks shake one food loose,
 // a pile holds a fixed amount of food and vanishes when it is used up, and the field keeps a few piles around.
 // Piles and swings are transient presentation-adjacent state; they are rebuilt after a load.
 export const SWING_WINDUP = 0.28,
@@ -152,10 +153,21 @@ export function spreadBuildHits(world, plotId, hits) {
     return { built: BUILT, open: OPEN, left };
 }
 export const HITS_PER_WORK = STACKS_PER_FOOD;
-// The most a tile's ground holds before its hitters wait for the haulers.
+// The most pieces lying on a farm's ground before its hitters wait for the haulers.
 export const GROUND_LIMIT = 12;
-// Food workers fight grain piles, resource workers fight trees and rocks, builders work the construction site.
-// Haulers carry what the resource workers knock loose; neither is tied to a pile.
+// How long one haul takes a carrier that is out of sight, from picking a piece up to putting it down.
+const HAUL_TRIP_SECONDS = 4;
+// A piece the resource workers knocked loose: it lies on the farm's ground until a hauler carries it to the store.
+export function itemsOf(world, plotId) {
+    let list = world._itemsByPlot.get(plotId);
+    if (!list) {
+        list = [];
+        world._itemsByPlot.set(plotId, list);
+    }
+    return list;
+}
+// Food workers fight grain piles, resource workers fight trees and rocks (the kind they were given), builders work
+// the construction site. Haulers carry what the resource workers knock loose; they are not tied to a pile.
 function effectiveKind(world, unit) {
     return world._workerKinds.get(unit.id) || 'food';
 }
@@ -163,6 +175,9 @@ function worksOn(world, unit, pile) {
     const KIND = effectiveKind(world, unit);
     if (KIND === 'build') {
         return pile.kind === 'site';
+    }
+    if (KIND === 'resource') {
+        return pile.kind === (world._workerResource.get(unit.id) ?? 'wood');
     }
     return KIND === 'food' && pile.kind === 'grain';
 }
@@ -185,6 +200,8 @@ export function resetWork(world) {
     world._pileRespawn = 0;
     world._workAssign = new Map();
     world._swings = new Map();
+    world._itemsByPlot = new Map();
+    world._carry = new Map();
 }
 // Assignments are sticky: a worker keeps its pile until the pile is gone or the worker stops working,
 // so re-running this never reshuffles who attacks what.
@@ -257,7 +274,7 @@ export function assignWorkers(world, config) {
     }
     world._workAssign = ASSIGN;
     for (const ID of [...world._swings.keys()]) {
-        if (!ASSIGN.get(ID)?.attacking && world._haul.get(ID)?.phase !== 'work') {
+        if (!ASSIGN.get(ID)?.attacking) {
             world._swings.delete(ID);
         }
     }
@@ -301,8 +318,19 @@ function impact(world, config, pile) {
             { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } },
         );
     } else {
-        world.materials[pile.kind]++;
-        world.emit('food-land', pile.x, pile.y);
+        // The piece comes out of the stock of the nearest forest or rock tile; with none left the pile is spent.
+        const TILE = nearestResourceTile(world.worldMap, world.activePlotId, pile.kind);
+        if (TILE >= 0 && takeFromTile(world.worldMap, TILE, 1) >= 1) {
+            itemsOf(world, world.activePlotId).push({
+                id: ++world._pileId,
+                kind: pile.kind,
+                x: pile.x + (world.random() - 0.5) * 4,
+                y: pile.y + (world.random() - 0.5) * 3,
+            });
+            world.emit('food-land', pile.x, pile.y);
+        } else {
+            pile.food = 0;
+        }
     }
     world.markProgressChanged();
     if (pile.food <= 0) {
@@ -332,42 +360,126 @@ function exploreOrder(world, unit) {
         face: DISTANCE <= 0.6,
     };
 }
-// Gatherers walk to the tile they gather from, work there, and carry the load home; the model keeps the trip.
-function haulOrder(world, unit) {
-    const SPOT = world.haulSpot(unit);
-    if (!SPOT) {
-        return null;
-    }
-    unit.workOut = true;
-    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y),
-        WORKING = world._haul.get(unit.id)?.phase === 'work' && SPOT.cx !== undefined;
-    // At the forest or rock it works on, a gatherer fights it like a pile: it faces the tree, winds up, charges into it
-    // and bounces back, then walks to its standing place again.
-    const SWING = world._swings.get(unit.id);
-    if (!WORKING || DISTANCE > NEAR_PILE + 4) {
+// Haulers walk to the nearest piece lying on the ground that no other hauler is going for, pick it up, and carry it
+// to the store in the middle of the farm. The model keeps the trip; this only says where to go.
+const STORE_SPOT = { x: 0, y: 0 };
+function carryOrder(world, unit) {
+    const STATE = world._carry.get(unit.id);
+    if (STATE?.kind) {
+        unit.workOut = false;
         return {
-            x: SPOT.x,
-            y: SPOT.y,
-            fx: WORKING ? SPOT.cx : SPOT.x + 1,
-            fy: WORKING ? SPOT.cy : SPOT.y,
-            speed: SPOT.speed,
-            hold: DISTANCE <= 0.6,
-            face: WORKING && DISTANCE <= 0.6,
+            x: STORE_SPOT.x,
+            y: STORE_SPOT.y,
+            fx: STORE_SPOT.x,
+            fy: STORE_SPOT.y,
+            speed: 9,
+            hold: false,
+            face: false,
         };
     }
-    const ORDER = { x: SPOT.x, y: SPOT.y, fx: SPOT.cx, fy: SPOT.cy, speed: SPOT.speed, hold: false, face: false };
-    if (!SWING || SWING.phase === 'idle') {
-        ORDER.hold = DISTANCE <= 0.6;
-        ORDER.face = ORDER.hold;
-    } else if (SWING.phase === 'fire') {
-        ORDER.x = SPOT.cx;
-        ORDER.y = SPOT.cy;
-        ORDER.speed = CHARGE_SPEED;
-    } else {
-        ORDER.hold = true;
-        ORDER.face = SWING.phase === 'windup';
+    if (STATE?.target) {
+        return {
+            x: STATE.target.x,
+            y: STATE.target.y,
+            fx: STATE.target.x,
+            fy: STATE.target.y,
+            speed: 9,
+            hold: false,
+            face: false,
+        };
     }
-    return ORDER;
+    return null;
+}
+// One step for the haulers of the farm on screen: choose a piece, pick it up, bring it to the store.
+export function stepCarriers(world) {
+    const ITEMS = itemsOf(world, world.activePlotId),
+        ALIVE = new Set();
+    for (const UNIT of world.unitCollection.unitsInPlot(world.activePlotId)) {
+        if (!world.isWorker(UNIT) || UNIT.hp <= 0 || world._workerKinds.get(UNIT.id) !== 'haul') {
+            continue;
+        }
+        ALIVE.add(UNIT.id);
+        let state = world._carry.get(UNIT.id);
+        if (!state) {
+            state = { kind: null, target: null };
+            world._carry.set(UNIT.id, state);
+        }
+        if (state.kind) {
+            if (Math.hypot(UNIT.x - STORE_SPOT.x, UNIT.y - STORE_SPOT.y) <= 1.6) {
+                world.materials[state.kind]++;
+                world.markProgressChanged();
+                state.kind = null;
+            }
+            continue;
+        }
+        if (state.target && !ITEMS.includes(state.target)) {
+            state.target = null;
+        }
+        if (!state.target) {
+            let best = null,
+                bestDistance = Infinity;
+            for (const ITEM of ITEMS) {
+                if ([...world._carry.values()].some((other) => other !== state && other.target === ITEM)) {
+                    continue;
+                }
+                const D = Math.hypot(UNIT.x - ITEM.x, UNIT.y - ITEM.y);
+                if (D < bestDistance) {
+                    best = ITEM;
+                    bestDistance = D;
+                }
+            }
+            state.target = best;
+        }
+        if (state.target && Math.hypot(UNIT.x - state.target.x, UNIT.y - state.target.y) <= 1.4) {
+            ITEMS.splice(ITEMS.indexOf(state.target), 1);
+            state.kind = state.target.kind;
+            state.target = null;
+        }
+    }
+    for (const ID of [...world._carry.keys()]) {
+        if (!ALIVE.has(ID)) {
+            world._carry.delete(ID);
+        }
+    }
+}
+// A farm out of sight keeps the same pace without the walking: its resource workers knock pieces loose at their
+// rate, its haulers carry one piece per trip, and what is carried comes out of the nearest tile's stock.
+// Returns what reached the store, and keeps the fractions for the next call.
+export function settleResourcesAway(world, plotId, seconds) {
+    const MAKE = { wood: 0, stone: 0 };
+    let haulers = 0;
+    for (const [ID, KIND] of world._workerKinds) {
+        if (world._workerPlots.get(ID) !== plotId) {
+            continue;
+        }
+        if (KIND === 'resource') {
+            MAKE[world._workerResource.get(ID) ?? 'wood'] += world._workerRates.get(ID) || 0;
+        } else if (KIND === 'haul') {
+            haulers++;
+        }
+    }
+    const TOTAL = MAKE.wood + MAKE.stone,
+        GOT = { wood: 0, stone: 0 };
+    if (!(TOTAL > 0) || haulers === 0) {
+        return GOT;
+    }
+    for (const KIND of ['wood', 'stone']) {
+        const TILE = MAKE[KIND] > 0 ? nearestResourceTile(world.worldMap, plotId, KIND) : -1;
+        if (TILE < 0) {
+            continue;
+        }
+        const RATE = Math.min(MAKE[KIND], ((haulers / HAUL_TRIP_SECONDS) * MAKE[KIND]) / TOTAL);
+        world._idleCarry[KIND] = (world._idleCarry[KIND] ?? 0) + RATE * seconds;
+        const WHOLE = Math.floor(world._idleCarry[KIND]),
+            TAKEN = Math.floor(takeFromTile(world.worldMap, TILE, WHOLE));
+        world._idleCarry[KIND] -= WHOLE;
+        world.materials[KIND] += TAKEN;
+        GOT[KIND] = TAKEN;
+    }
+    if (GOT.wood + GOT.stone > 0) {
+        world.markProgressChanged();
+    }
+    return GOT;
 }
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {
@@ -376,7 +488,7 @@ export function workOrder(world, unit) {
         if (world._workerKinds.get(unit.id) === 'explore') {
             return exploreOrder(world, unit);
         }
-        return world.isHauler(unit) ? haulOrder(world, unit) : null;
+        return world._workerKinds.get(unit.id) === 'haul' ? carryOrder(world, unit) : null;
     }
     const PILE = ASSIGN.pile,
         SWING = world._swings.get(unit.id);
@@ -428,70 +540,16 @@ function pushOutOfPiles(world) {
         }
     }
 }
-// A gatherer at its forest or rock swings in place with the same clips as a worker at a pile: wind up, strike,
-// recover, and wait a moment. The load itself is settled by the hauling trip; this is the picture of the work.
-const GATHER_REACH = 1.1;
-export function stepHaulSwing(world, unit, haul, dt) {
-    if (haul?.phase !== 'work') {
-        world._swings.delete(unit.id);
-        return;
-    }
-    let swing = world._swings.get(unit.id);
-    if (!swing) {
-        swing = { phase: 'idle', elapsed: 0, wait: (unit.seed * 7) % 0.8 };
-        world._swings.set(unit.id, swing);
-    }
-    if (swing.phase === 'idle') {
-        swing.wait -= dt;
-        const SPOT = world.haulSpot(unit);
-        // Only a worker standing at its place winds up.
-        if (
-            swing.wait <= 0 &&
-            SPOT &&
-            world.dropsOn(world.haulState(unit).tile) < GROUND_LIMIT &&
-            Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5
-        ) {
-            swing.phase = 'windup';
-            swing.elapsed = 0;
-        }
-        return;
-    }
-    swing.elapsed += dt;
-    if (swing.phase === 'windup' && swing.elapsed >= SWING_WINDUP) {
-        swing.phase = 'fire';
-        swing.elapsed = 0;
-    } else if (swing.phase === 'fire') {
-        const SPOT = world.haulSpot(unit),
-            D = SPOT?.cx === undefined ? 0 : Math.hypot(unit.x - SPOT.cx, unit.y - SPOT.cy);
-        if (SPOT?.cx === undefined || D <= GATHER_REACH + unit.radius * 0.6 + 0.12) {
-            // Body slam: the tree takes the hit and the worker bounces back off it.
-            if (SPOT?.cx !== undefined) {
-                world.landHit(unit);
-                world.emit('thresh', SPOT.cx, SPOT.cy, 0, { big: false, duration: 0.55 });
-                unit.vx = ((unit.x - SPOT.cx) / Math.max(D, 1e-6)) * RECOIL_SPEED;
-                unit.vy = ((unit.y - SPOT.cy) / Math.max(D, 1e-6)) * RECOIL_SPEED;
-            }
-            swing.phase = 'recover';
-            swing.elapsed = 0;
-        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
-            swing.phase = 'recover';
-            swing.elapsed = 0;
-        }
-    } else if (swing.phase === 'recover' && swing.elapsed >= SWING_RECOVER) {
-        swing.phase = 'idle';
-        swing.elapsed = 0;
-        // The worker's own pace: five hits make one piece, as at a pile.
-        const MINE = world.worldMap.mines.includes(world.haulState(unit).tile) ? 0.5 : 1,
-            RATE = (world._workerRates.get(unit.id) || 0) * MINE;
-        swing.wait = RATE > 0 ? Math.max(0.1, 1 / (RATE * HITS_PER_WORK) - SWING_WINDUP - SWING_RECOVER - 0.5) : 1;
-    }
-}
 export function stepWork(world, config, dt) {
     const WORK = config.farm.work;
     pushOutOfPiles(world);
     // Keep the configured number of piles of every kind; refill one at a time after a short wait.
     let missing = null;
     for (const KIND of Object.keys(WORK.pileKinds)) {
+        // Trees and rocks only stand where some forest or rock tile in sight still has stock.
+        if (KIND !== 'grain' && nearestResourceTile(world.worldMap, world.activePlotId, KIND) < 0) {
+            continue;
+        }
         if (world._piles.filter((pile) => pile.kind === KIND).length < world.pileSpec(KIND).count) {
             missing = KIND;
             break;
@@ -506,7 +564,8 @@ export function stepWork(world, config, dt) {
             assignWorkers(world, config);
         }
     }
-    const FOOD_FULL = world.food.length >= WORK.maxFood;
+    const FOOD_FULL = world.food.length >= WORK.maxFood,
+        GROUND_FULL = itemsOf(world, world.activePlotId).length >= GROUND_LIMIT;
     for (const [ID, ASSIGN] of world._workAssign) {
         if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
             continue;
@@ -528,7 +587,11 @@ export function stepWork(world, config, dt) {
                 continue;
             }
             swing.wait -= dt;
-            if (swing.wait <= 0 && !(FOOD_FULL && ASSIGN.pile.kind === 'grain')) {
+            if (
+                swing.wait <= 0 &&
+                !(FOOD_FULL && ASSIGN.pile.kind === 'grain') &&
+                !(GROUND_FULL && (ASSIGN.pile.kind === 'wood' || ASSIGN.pile.kind === 'stone'))
+            ) {
                 swing.phase = 'windup';
                 swing.elapsed = 0;
             }

@@ -604,499 +604,6 @@
     }
   });
 
-  // src/farm-work.js
-  function pilesOf(world, plotId) {
-    let list = world._pilesByPlot.get(plotId);
-    if (!list) {
-      list = [];
-      world._pilesByPlot.set(plotId, list);
-    }
-    return list;
-  }
-  function facilityPosition(config, id) {
-    const WORK = config.farm.work;
-    return {
-      x: WORK.facilityRowX + (FACILITY_IDS.indexOf(id) - (FACILITY_IDS.length - 1) / 2) * WORK.facilitySpacing,
-      y: WORK.facilityRowY
-    };
-  }
-  function pilePosition(world, config) {
-    const WORK = config.farm.work;
-    let best = null, bestGap = -1;
-    for (let attempt = 0; attempt < 14; attempt++) {
-      const ANGLE = world.random() * Math.PI * 2, REACH = Math.sqrt(world.random()), X = Math.cos(ANGLE) * REACH * WORK.pileRadiusX, Y = Math.sin(ANGLE) * REACH * WORK.pileRadiusY;
-      let gap = Infinity;
-      for (const PILE of world._piles) {
-        gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
-      }
-      for (const ID of FACILITY_IDS) {
-        const SLOT = facilityPosition(config, ID);
-        gap = Math.min(gap, Math.hypot(SLOT.x - X, SLOT.y - Y) * (WORK.pileGap / 3.5));
-      }
-      if (gap >= WORK.pileGap) {
-        return { x: X, y: Y };
-      }
-      if (gap > bestGap) {
-        bestGap = gap;
-        best = { x: X, y: Y };
-      }
-    }
-    return best || { x: 0, y: 0 };
-  }
-  function spawnPile(world, config, kind) {
-    const POSITION = pilePosition(world, config);
-    world._piles.push({
-      id: ++world._pileId,
-      kind,
-      x: POSITION.x,
-      y: POSITION.y,
-      food: world.pileSpec(kind).amount,
-      maxFood: world.pileSpec(kind).amount,
-      stack: 0,
-      hitRev: 0,
-      big: false
-    });
-    world.emit("drop-dust", POSITION.x, POSITION.y);
-  }
-  function startSite(world, config, facilityId, level, hits, plotId, at = null) {
-    const POSITION = at ?? (FACILITY_IDS.includes(facilityId) ? facilityPosition(config, facilityId) : pilePosition(world, config));
-    pilesOf(world, plotId).push({
-      id: ++world._pileId,
-      kind: "site",
-      facility: facilityId,
-      level,
-      plotId,
-      x: POSITION.x,
-      y: POSITION.y,
-      food: 1,
-      maxFood: 1,
-      done: 0,
-      need: hits,
-      stack: 0,
-      hitRev: 0,
-      big: false
-    });
-    world.emit("drop-dust", POSITION.x, POSITION.y);
-    assignWorkers(world, config);
-  }
-  function restoreSite(world, data) {
-    pilesOf(world, data.plotId).push({
-      id: ++world._pileId,
-      kind: "site",
-      facility: data.facility,
-      level: data.level,
-      plotId: data.plotId,
-      x: data.x,
-      y: data.y,
-      food: 1,
-      maxFood: 1,
-      done: data.done,
-      need: data.need,
-      stack: 0,
-      hitRev: 0,
-      big: false
-    });
-  }
-  function sitesOf(world, plotId = world.activePlotId) {
-    return pilesOf(world, plotId).filter((pile) => pile.kind === "site");
-  }
-  function plotHasSite(world, plotId = world.activePlotId) {
-    return pilesOf(world, plotId).some((pile) => pile.kind === "site");
-  }
-  function spreadBuildHits(world, plotId, hits) {
-    const BUILT = [], OPEN = [...sitesOf(world, plotId)];
-    let left = hits;
-    while (OPEN.length > 0 && left > 0) {
-      const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
-      if (DONE.length === 0) {
-        for (const SITE of OPEN) {
-          SITE.fraction = (SITE.fraction || 0) + SHARE % 1;
-          SITE.done += Math.floor(SHARE) + Math.floor(SITE.fraction);
-          SITE.fraction %= 1;
-        }
-        left = 0;
-        break;
-      }
-      for (const SITE of DONE) {
-        left -= SITE.need - SITE.done;
-        BUILT.push(world.siteName(SITE));
-        const LIST = pilesOf(world, plotId);
-        LIST.splice(LIST.indexOf(SITE), 1);
-        world.completeFacility(SITE);
-        OPEN.splice(OPEN.indexOf(SITE), 1);
-      }
-    }
-    return { built: BUILT, open: OPEN, left };
-  }
-  function effectiveKind(world, unit) {
-    return world._workerKinds.get(unit.id) || "food";
-  }
-  function worksOn(world, unit, pile) {
-    const KIND = effectiveKind(world, unit);
-    if (KIND === "build") {
-      return pile.kind === "site";
-    }
-    return KIND === "food" && pile.kind === "grain";
-  }
-  function capacity(config, pile, siteCapacity) {
-    const WORK = config.farm.work;
-    return pile.kind === "site" ? siteCapacity : WORK.maxAttackers;
-  }
-  function pileRadius(pile) {
-    if (pile.kind === "site") {
-      return 1.8;
-    }
-    return (pile.kind === "wood" ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
-  }
-  function resetWork(world) {
-    world._pilesByPlot = /* @__PURE__ */ new Map();
-    world._pileId = 0;
-    world._pileRespawn = 0;
-    world._workAssign = /* @__PURE__ */ new Map();
-    world._swings = /* @__PURE__ */ new Map();
-  }
-  function assignWorkers(world, config) {
-    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set(), SITE_COUNT = world._piles.filter((pile) => pile.kind === "site").length, BUILDER_COUNT = WORKERS.filter((u) => effectiveKind(world, u) === "build").length, SITE_CAPACITIES = /* @__PURE__ */ new Map();
-    let siteIndex = 0;
-    for (const PILE of world._piles) {
-      if (PILE.kind === "site") {
-        const BASE = Math.floor(BUILDER_COUNT / SITE_COUNT), ODD = BUILDER_COUNT % SITE_COUNT;
-        SITE_CAPACITIES.set(PILE, BASE + (siteIndex++ < ODD ? 1 : 0));
-      }
-    }
-    for (const PILE of world._piles) {
-      const MEMBERS = [];
-      for (const [ID, OLD] of PREVIOUS) {
-        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
-          MEMBERS.push(ID);
-          TAKEN_IDS.add(ID);
-        }
-      }
-      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id) && worksOn(world, u, PILE)).sort(
-        (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
-      );
-      for (const UNIT3 of FREE) {
-        if (MEMBERS.length >= capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
-          break;
-        }
-        MEMBERS.push(UNIT3.id);
-        TAKEN_IDS.add(UNIT3.id);
-      }
-      for (const ID of MEMBERS) {
-        ASSIGN.set(ID, { pile: PILE, attacking: true });
-      }
-    }
-    for (const UNIT3 of WORKERS) {
-      if (TAKEN_IDS.has(UNIT3.id)) {
-        continue;
-      }
-      let nearest = null, nearestDistance = Infinity;
-      for (const PILE of world._piles) {
-        if (!worksOn(world, UNIT3, PILE)) {
-          continue;
-        }
-        const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
-        if (D < nearestDistance) {
-          nearestDistance = D;
-          nearest = PILE;
-        }
-      }
-      if (nearest) {
-        ASSIGN.set(UNIT3.id, { pile: nearest, attacking: false });
-      }
-    }
-    world._workAssign = ASSIGN;
-    for (const ID of [...world._swings.keys()]) {
-      if (!ASSIGN.get(ID)?.attacking && world._haul.get(ID)?.phase !== "work") {
-        world._swings.delete(ID);
-      }
-    }
-  }
-  function impactSite(world, config, pile) {
-    pile.done++;
-    pile.hitRev++;
-    if (pile.done % 10 === 0) {
-      world.markProgressChanged();
-    }
-    const COMPLETE = pile.done >= pile.need;
-    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
-    if (COMPLETE) {
-      world._piles.splice(world._piles.indexOf(pile), 1);
-      world.completeFacility(pile);
-      world.emit("landing-shockwave", pile.x, pile.y);
-      assignWorkers(world, config);
-    }
-  }
-  function impact(world, config, pile) {
-    if (pile.kind === "site") {
-      impactSite(world, config, pile);
-      return;
-    }
-    pile.stack++;
-    pile.hitRev++;
-    const COMPLETE = pile.stack >= STACKS_PER_FOOD;
-    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
-    if (!COMPLETE) {
-      return;
-    }
-    pile.stack = 0;
-    pile.food--;
-    world.foodTaps.revision++;
-    if (pile.kind === "grain") {
-      world.foodTaps.produced++;
-      world.spawnFood(
-        (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
-        (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
-        1,
-        { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } }
-      );
-    } else {
-      world.materials[pile.kind]++;
-      world.emit("food-land", pile.x, pile.y);
-    }
-    world.markProgressChanged();
-    if (pile.food <= 0) {
-      world._piles.splice(world._piles.indexOf(pile), 1);
-      world.emit("landing-shockwave", pile.x, pile.y);
-      assignWorkers(world, config);
-    }
-  }
-  function exploreOrder(world, unit) {
-    const SPOT = world.exploreSpot(unit);
-    if (!SPOT) {
-      return unit.workOut ? { x: 0, y: 0, fx: 0, fy: 0, speed: 7, hold: false, face: false } : null;
-    }
-    if (SPOT.out) {
-      unit.workOut = true;
-    }
-    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
-    return {
-      x: SPOT.x,
-      y: SPOT.y,
-      fx: SPOT.fx,
-      fy: SPOT.fy,
-      speed: SPOT.speed,
-      hold: DISTANCE <= 0.6,
-      face: DISTANCE <= 0.6
-    };
-  }
-  function haulOrder(world, unit) {
-    const SPOT = world.haulSpot(unit);
-    if (!SPOT) {
-      return null;
-    }
-    unit.workOut = true;
-    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y), WORKING = world._haul.get(unit.id)?.phase === "work" && SPOT.cx !== void 0;
-    const SWING = world._swings.get(unit.id);
-    if (!WORKING || DISTANCE > NEAR_PILE + 4) {
-      return {
-        x: SPOT.x,
-        y: SPOT.y,
-        fx: WORKING ? SPOT.cx : SPOT.x + 1,
-        fy: WORKING ? SPOT.cy : SPOT.y,
-        speed: SPOT.speed,
-        hold: DISTANCE <= 0.6,
-        face: WORKING && DISTANCE <= 0.6
-      };
-    }
-    const ORDER = { x: SPOT.x, y: SPOT.y, fx: SPOT.cx, fy: SPOT.cy, speed: SPOT.speed, hold: false, face: false };
-    if (!SWING || SWING.phase === "idle") {
-      ORDER.hold = DISTANCE <= 0.6;
-      ORDER.face = ORDER.hold;
-    } else if (SWING.phase === "fire") {
-      ORDER.x = SPOT.cx;
-      ORDER.y = SPOT.cy;
-      ORDER.speed = CHARGE_SPEED;
-    } else {
-      ORDER.hold = true;
-      ORDER.face = SWING.phase === "windup";
-    }
-    return ORDER;
-  }
-  function workOrder(world, unit) {
-    const ASSIGN = world._workAssign.get(unit.id);
-    if (!ASSIGN) {
-      if (world._workerKinds.get(unit.id) === "explore") {
-        return exploreOrder(world, unit);
-      }
-      return world.isHauler(unit) ? haulOrder(world, unit) : null;
-    }
-    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id);
-    if (world.outsideFarm(PILE.x, PILE.y)) {
-      unit.workOut = true;
-    }
-    const DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!ASSIGN.attacking) {
-      ORDER.hold = DISTANCE <= WAIT_DISTANCE;
-      return ORDER;
-    }
-    if (!SWING || SWING.phase === "idle") {
-      ORDER.hold = DISTANCE <= NEAR_PILE;
-      ORDER.face = ORDER.hold;
-    } else if (SWING.phase === "fire") {
-      ORDER.speed = CHARGE_SPEED;
-    } else if (SWING.phase === "windup") {
-      ORDER.hold = true;
-      ORDER.face = true;
-    } else {
-      ORDER.hold = true;
-    }
-    return ORDER;
-  }
-  function pushOutOfPiles(world) {
-    for (const PILE of world._piles) {
-      const R2 = pileRadius(PILE);
-      for (const UNIT3 of world.units) {
-        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, MIN = R2 + UNIT3.radius * 0.6, D = Math.hypot(DX, DY);
-        if (D >= MIN) {
-          continue;
-        }
-        const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
-        UNIT3.x = PILE.x + NX * MIN;
-        UNIT3.y = PILE.y + NY * MIN;
-        const INWARD = UNIT3.vx * NX + UNIT3.vy * NY;
-        if (INWARD < 0) {
-          UNIT3.vx -= NX * INWARD;
-          UNIT3.vy -= NY * INWARD;
-        }
-      }
-    }
-  }
-  function stepHaulSwing(world, unit, haul, dt) {
-    if (haul?.phase !== "work") {
-      world._swings.delete(unit.id);
-      return;
-    }
-    let swing = world._swings.get(unit.id);
-    if (!swing) {
-      swing = { phase: "idle", elapsed: 0, wait: unit.seed * 7 % 0.8 };
-      world._swings.set(unit.id, swing);
-    }
-    if (swing.phase === "idle") {
-      swing.wait -= dt;
-      const SPOT = world.haulSpot(unit);
-      if (swing.wait <= 0 && SPOT && world.dropsOn(world.haulState(unit).tile) < GROUND_LIMIT && Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5) {
-        swing.phase = "windup";
-        swing.elapsed = 0;
-      }
-      return;
-    }
-    swing.elapsed += dt;
-    if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
-      swing.phase = "fire";
-      swing.elapsed = 0;
-    } else if (swing.phase === "fire") {
-      const SPOT = world.haulSpot(unit), D = SPOT?.cx === void 0 ? 0 : Math.hypot(unit.x - SPOT.cx, unit.y - SPOT.cy);
-      if (SPOT?.cx === void 0 || D <= GATHER_REACH + unit.radius * 0.6 + 0.12) {
-        if (SPOT?.cx !== void 0) {
-          world.landHit(unit);
-          world.emit("thresh", SPOT.cx, SPOT.cy, 0, { big: false, duration: 0.55 });
-          unit.vx = (unit.x - SPOT.cx) / Math.max(D, 1e-6) * RECOIL_SPEED;
-          unit.vy = (unit.y - SPOT.cy) / Math.max(D, 1e-6) * RECOIL_SPEED;
-        }
-        swing.phase = "recover";
-        swing.elapsed = 0;
-      } else if (swing.elapsed >= CHARGE_TIMEOUT) {
-        swing.phase = "recover";
-        swing.elapsed = 0;
-      }
-    } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
-      swing.phase = "idle";
-      swing.elapsed = 0;
-      const MINE = world.worldMap.mines.includes(world.haulState(unit).tile) ? 0.5 : 1, RATE = (world._workerRates.get(unit.id) || 0) * MINE;
-      swing.wait = RATE > 0 ? Math.max(0.1, 1 / (RATE * HITS_PER_WORK) - SWING_WINDUP - SWING_RECOVER - 0.5) : 1;
-    }
-  }
-  function stepWork(world, config, dt) {
-    const WORK = config.farm.work;
-    pushOutOfPiles(world);
-    let missing = null;
-    for (const KIND of Object.keys(WORK.pileKinds)) {
-      if (world._piles.filter((pile) => pile.kind === KIND).length < world.pileSpec(KIND).count) {
-        missing = KIND;
-        break;
-      }
-    }
-    if (missing) {
-      const EMPTY = world._piles.length === 0;
-      world._pileRespawn += dt;
-      if (EMPTY || world._pileRespawn >= WORK.pileRespawnSeconds) {
-        spawnPile(world, config, missing);
-        world._pileRespawn = 0;
-        assignWorkers(world, config);
-      }
-    }
-    const FOOD_FULL = world.food.length >= WORK.maxFood;
-    for (const [ID, ASSIGN] of world._workAssign) {
-      if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
-        continue;
-      }
-      const UNIT3 = world._unitById.get(ID);
-      if (!UNIT3 || UNIT3.hp <= 0) {
-        world._swings.delete(ID);
-        continue;
-      }
-      const PILE = ASSIGN.pile;
-      let swing = world._swings.get(ID);
-      if (!swing) {
-        swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
-        world._swings.set(ID, swing);
-      }
-      const NEAR = Math.hypot(PILE.x - UNIT3.x, PILE.y - UNIT3.y) <= NEAR_PILE;
-      if (swing.phase === "idle") {
-        if (!NEAR) {
-          continue;
-        }
-        swing.wait -= dt;
-        if (swing.wait <= 0 && !(FOOD_FULL && ASSIGN.pile.kind === "grain")) {
-          swing.phase = "windup";
-          swing.elapsed = 0;
-        }
-        continue;
-      }
-      swing.elapsed += dt;
-      if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
-        swing.phase = "fire";
-        swing.elapsed = 0;
-      } else if (swing.phase === "fire") {
-        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, D = Math.hypot(DX, DY);
-        if (D <= pileRadius(PILE) + UNIT3.radius * 0.6 + 0.12) {
-          impact(world, config, PILE);
-          const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
-          UNIT3.vx = NX * RECOIL_SPEED;
-          UNIT3.vy = NY * RECOIL_SPEED;
-          swing.phase = "recover";
-          swing.elapsed = 0;
-        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
-          swing.phase = "recover";
-          swing.elapsed = 0;
-        }
-      } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
-        const RATE = world._workerRates.get(ID) || 0.1, INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
-        swing.phase = "idle";
-        swing.elapsed = 0;
-        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_RECOVER - 0.5);
-      }
-    }
-  }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GROUND_LIMIT, GATHER_REACH;
-  var init_farm_work = __esm({
-    "src/farm-work.js"() {
-      init_farm_plot();
-      SWING_WINDUP = 0.28;
-      SWING_RECOVER = 0.36;
-      NEAR_PILE = 4.4;
-      WAIT_DISTANCE = 6.5;
-      CHARGE_SPEED = 18;
-      CHARGE_TIMEOUT = 1.6;
-      RECOIL_SPEED = 5.5;
-      STACKS_PER_FOOD = 5;
-      HITS_PER_WORK = STACKS_PER_FOOD;
-      GROUND_LIMIT = 12;
-      GATHER_REACH = 1.1;
-    }
-  });
-
   // src/features/abilities/pea-recovery-boost.js
   var PEA_RECOVERY_BOOST_FEATURE;
   var init_pea_recovery_boost = __esm({
@@ -2166,16 +1673,6 @@
     h = Math.imul(h ^ h >>> 15, 739982445);
     return ((h ^ h >>> 12) >>> 0) / 4294967296;
   }
-  function tileSpots(map, index) {
-    const TERRAIN = tileTerrain(map, index), COUNT = Math.ceil((TERRAIN === "forest" ? 9 : TERRAIN === "rock" ? 7 : 0) * tileFill(map, index)), SALT = TERRAIN === "forest" ? [40, 60] : [80, 100], SPOTS = [];
-    for (let at = 0; at < COUNT; at++) {
-      SPOTS.push({
-        x: (tileLook(index, SALT[0] + at) - 0.5) * FARM_CELL.width * 0.85,
-        y: (tileLook(index, SALT[1] + at) - 0.5) * FARM_CELL.height * 0.85
-      });
-    }
-    return SPOTS;
-  }
   function tileFill(map, index) {
     const TOTAL = tileStockTotal(map, index);
     return TOTAL > 0 ? Math.min(1, tileRemaining(map, index) / TOTAL) : 0;
@@ -2479,47 +1976,560 @@
     }
   });
 
-  // src/farm-offline.js
-  function settleHauling(world, plotId, rates, seconds) {
-    const GOT = { wood: 0, stone: 0 }, WALK = 9 * 0.12, HOME = world.worldMap.farms.find((farm) => farm.plotId === plotId);
-    if (!HOME) {
-      return GOT;
+  // src/farm-work.js
+  function pilesOf(world, plotId) {
+    let list = world._pilesByPlot.get(plotId);
+    if (!list) {
+      list = [];
+      world._pilesByPlot.set(plotId, list);
     }
-    const FLOW = [];
-    for (const KIND of ["wood", "stone"]) {
-      const RATE = rates.gather[KIND];
-      if (!(RATE > 0)) {
+    return list;
+  }
+  function facilityPosition(config, id) {
+    const WORK = config.farm.work;
+    return {
+      x: WORK.facilityRowX + (FACILITY_IDS.indexOf(id) - (FACILITY_IDS.length - 1) / 2) * WORK.facilitySpacing,
+      y: WORK.facilityRowY
+    };
+  }
+  function pilePosition(world, config) {
+    const WORK = config.farm.work;
+    let best = null, bestGap = -1;
+    for (let attempt = 0; attempt < 14; attempt++) {
+      const ANGLE = world.random() * Math.PI * 2, REACH = Math.sqrt(world.random()), X = Math.cos(ANGLE) * REACH * WORK.pileRadiusX, Y = Math.sin(ANGLE) * REACH * WORK.pileRadiusY;
+      let gap = Infinity;
+      for (const PILE of world._piles) {
+        gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
+      }
+      for (const ID of FACILITY_IDS) {
+        const SLOT = facilityPosition(config, ID);
+        gap = Math.min(gap, Math.hypot(SLOT.x - X, SLOT.y - Y) * (WORK.pileGap / 3.5));
+      }
+      if (gap >= WORK.pileGap) {
+        return { x: X, y: Y };
+      }
+      if (gap > bestGap) {
+        bestGap = gap;
+        best = { x: X, y: Y };
+      }
+    }
+    return best || { x: 0, y: 0 };
+  }
+  function spawnPile(world, config, kind) {
+    const POSITION = pilePosition(world, config);
+    world._piles.push({
+      id: ++world._pileId,
+      kind,
+      x: POSITION.x,
+      y: POSITION.y,
+      food: world.pileSpec(kind).amount,
+      maxFood: world.pileSpec(kind).amount,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
+    world.emit("drop-dust", POSITION.x, POSITION.y);
+  }
+  function startSite(world, config, facilityId, level, hits, plotId, at = null) {
+    const POSITION = at ?? (FACILITY_IDS.includes(facilityId) ? facilityPosition(config, facilityId) : pilePosition(world, config));
+    pilesOf(world, plotId).push({
+      id: ++world._pileId,
+      kind: "site",
+      facility: facilityId,
+      level,
+      plotId,
+      x: POSITION.x,
+      y: POSITION.y,
+      food: 1,
+      maxFood: 1,
+      done: 0,
+      need: hits,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
+    world.emit("drop-dust", POSITION.x, POSITION.y);
+    assignWorkers(world, config);
+  }
+  function restoreSite(world, data) {
+    pilesOf(world, data.plotId).push({
+      id: ++world._pileId,
+      kind: "site",
+      facility: data.facility,
+      level: data.level,
+      plotId: data.plotId,
+      x: data.x,
+      y: data.y,
+      food: 1,
+      maxFood: 1,
+      done: data.done,
+      need: data.need,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
+  }
+  function sitesOf(world, plotId = world.activePlotId) {
+    return pilesOf(world, plotId).filter((pile) => pile.kind === "site");
+  }
+  function plotHasSite(world, plotId = world.activePlotId) {
+    return pilesOf(world, plotId).some((pile) => pile.kind === "site");
+  }
+  function spreadBuildHits(world, plotId, hits) {
+    const BUILT = [], OPEN = [...sitesOf(world, plotId)];
+    let left = hits;
+    while (OPEN.length > 0 && left > 0) {
+      const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
+      if (DONE.length === 0) {
+        for (const SITE of OPEN) {
+          SITE.fraction = (SITE.fraction || 0) + SHARE % 1;
+          SITE.done += Math.floor(SHARE) + Math.floor(SITE.fraction);
+          SITE.fraction %= 1;
+        }
+        left = 0;
+        break;
+      }
+      for (const SITE of DONE) {
+        left -= SITE.need - SITE.done;
+        BUILT.push(world.siteName(SITE));
+        const LIST = pilesOf(world, plotId);
+        LIST.splice(LIST.indexOf(SITE), 1);
+        world.completeFacility(SITE);
+        OPEN.splice(OPEN.indexOf(SITE), 1);
+      }
+    }
+    return { built: BUILT, open: OPEN, left };
+  }
+  function itemsOf(world, plotId) {
+    let list = world._itemsByPlot.get(plotId);
+    if (!list) {
+      list = [];
+      world._itemsByPlot.set(plotId, list);
+    }
+    return list;
+  }
+  function effectiveKind(world, unit) {
+    return world._workerKinds.get(unit.id) || "food";
+  }
+  function worksOn(world, unit, pile) {
+    const KIND = effectiveKind(world, unit);
+    if (KIND === "build") {
+      return pile.kind === "site";
+    }
+    if (KIND === "resource") {
+      return pile.kind === (world._workerResource.get(unit.id) ?? "wood");
+    }
+    return KIND === "food" && pile.kind === "grain";
+  }
+  function capacity(config, pile, siteCapacity) {
+    const WORK = config.farm.work;
+    return pile.kind === "site" ? siteCapacity : WORK.maxAttackers;
+  }
+  function pileRadius(pile) {
+    if (pile.kind === "site") {
+      return 1.8;
+    }
+    return (pile.kind === "wood" ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
+  }
+  function resetWork(world) {
+    world._pilesByPlot = /* @__PURE__ */ new Map();
+    world._pileId = 0;
+    world._pileRespawn = 0;
+    world._workAssign = /* @__PURE__ */ new Map();
+    world._swings = /* @__PURE__ */ new Map();
+    world._itemsByPlot = /* @__PURE__ */ new Map();
+    world._carry = /* @__PURE__ */ new Map();
+  }
+  function assignWorkers(world, config) {
+    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set(), SITE_COUNT = world._piles.filter((pile) => pile.kind === "site").length, BUILDER_COUNT = WORKERS.filter((u) => effectiveKind(world, u) === "build").length, SITE_CAPACITIES = /* @__PURE__ */ new Map();
+    let siteIndex = 0;
+    for (const PILE of world._piles) {
+      if (PILE.kind === "site") {
+        const BASE = Math.floor(BUILDER_COUNT / SITE_COUNT), ODD = BUILDER_COUNT % SITE_COUNT;
+        SITE_CAPACITIES.set(PILE, BASE + (siteIndex++ < ODD ? 1 : 0));
+      }
+    }
+    for (const PILE of world._piles) {
+      const MEMBERS = [];
+      for (const [ID, OLD] of PREVIOUS) {
+        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
+          MEMBERS.push(ID);
+          TAKEN_IDS.add(ID);
+        }
+      }
+      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id) && worksOn(world, u, PILE)).sort(
+        (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
+      );
+      for (const UNIT3 of FREE) {
+        if (MEMBERS.length >= capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
+          break;
+        }
+        MEMBERS.push(UNIT3.id);
+        TAKEN_IDS.add(UNIT3.id);
+      }
+      for (const ID of MEMBERS) {
+        ASSIGN.set(ID, { pile: PILE, attacking: true });
+      }
+    }
+    for (const UNIT3 of WORKERS) {
+      if (TAKEN_IDS.has(UNIT3.id)) {
         continue;
       }
-      const TILE = nearestResourceTile(world.worldMap, plotId, KIND);
+      let nearest = null, nearestDistance = Infinity;
+      for (const PILE of world._piles) {
+        if (!worksOn(world, UNIT3, PILE)) {
+          continue;
+        }
+        const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
+        if (D < nearestDistance) {
+          nearestDistance = D;
+          nearest = PILE;
+        }
+      }
+      if (nearest) {
+        ASSIGN.set(UNIT3.id, { pile: nearest, attacking: false });
+      }
+    }
+    world._workAssign = ASSIGN;
+    for (const ID of [...world._swings.keys()]) {
+      if (!ASSIGN.get(ID)?.attacking) {
+        world._swings.delete(ID);
+      }
+    }
+  }
+  function impactSite(world, config, pile) {
+    pile.done++;
+    pile.hitRev++;
+    if (pile.done % 10 === 0) {
+      world.markProgressChanged();
+    }
+    const COMPLETE = pile.done >= pile.need;
+    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
+    if (COMPLETE) {
+      world._piles.splice(world._piles.indexOf(pile), 1);
+      world.completeFacility(pile);
+      world.emit("landing-shockwave", pile.x, pile.y);
+      assignWorkers(world, config);
+    }
+  }
+  function impact(world, config, pile) {
+    if (pile.kind === "site") {
+      impactSite(world, config, pile);
+      return;
+    }
+    pile.stack++;
+    pile.hitRev++;
+    const COMPLETE = pile.stack >= STACKS_PER_FOOD;
+    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
+    if (!COMPLETE) {
+      return;
+    }
+    pile.stack = 0;
+    pile.food--;
+    world.foodTaps.revision++;
+    if (pile.kind === "grain") {
+      world.foodTaps.produced++;
+      world.spawnFood(
+        (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
+        (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
+        1,
+        { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } }
+      );
+    } else {
+      const TILE = nearestResourceTile(world.worldMap, world.activePlotId, pile.kind);
+      if (TILE >= 0 && takeFromTile(world.worldMap, TILE, 1) >= 1) {
+        itemsOf(world, world.activePlotId).push({
+          id: ++world._pileId,
+          kind: pile.kind,
+          x: pile.x + (world.random() - 0.5) * 4,
+          y: pile.y + (world.random() - 0.5) * 3
+        });
+        world.emit("food-land", pile.x, pile.y);
+      } else {
+        pile.food = 0;
+      }
+    }
+    world.markProgressChanged();
+    if (pile.food <= 0) {
+      world._piles.splice(world._piles.indexOf(pile), 1);
+      world.emit("landing-shockwave", pile.x, pile.y);
+      assignWorkers(world, config);
+    }
+  }
+  function exploreOrder(world, unit) {
+    const SPOT = world.exploreSpot(unit);
+    if (!SPOT) {
+      return unit.workOut ? { x: 0, y: 0, fx: 0, fy: 0, speed: 7, hold: false, face: false } : null;
+    }
+    if (SPOT.out) {
+      unit.workOut = true;
+    }
+    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
+    return {
+      x: SPOT.x,
+      y: SPOT.y,
+      fx: SPOT.fx,
+      fy: SPOT.fy,
+      speed: SPOT.speed,
+      hold: DISTANCE <= 0.6,
+      face: DISTANCE <= 0.6
+    };
+  }
+  function carryOrder(world, unit) {
+    const STATE = world._carry.get(unit.id);
+    if (STATE?.kind) {
+      unit.workOut = false;
+      return {
+        x: STORE_SPOT.x,
+        y: STORE_SPOT.y,
+        fx: STORE_SPOT.x,
+        fy: STORE_SPOT.y,
+        speed: 9,
+        hold: false,
+        face: false
+      };
+    }
+    if (STATE?.target) {
+      return {
+        x: STATE.target.x,
+        y: STATE.target.y,
+        fx: STATE.target.x,
+        fy: STATE.target.y,
+        speed: 9,
+        hold: false,
+        face: false
+      };
+    }
+    return null;
+  }
+  function stepCarriers(world) {
+    const ITEMS = itemsOf(world, world.activePlotId), ALIVE = /* @__PURE__ */ new Set();
+    for (const UNIT3 of world.unitCollection.unitsInPlot(world.activePlotId)) {
+      if (!world.isWorker(UNIT3) || UNIT3.hp <= 0 || world._workerKinds.get(UNIT3.id) !== "haul") {
+        continue;
+      }
+      ALIVE.add(UNIT3.id);
+      let state = world._carry.get(UNIT3.id);
+      if (!state) {
+        state = { kind: null, target: null };
+        world._carry.set(UNIT3.id, state);
+      }
+      if (state.kind) {
+        if (Math.hypot(UNIT3.x - STORE_SPOT.x, UNIT3.y - STORE_SPOT.y) <= 1.6) {
+          world.materials[state.kind]++;
+          world.markProgressChanged();
+          state.kind = null;
+        }
+        continue;
+      }
+      if (state.target && !ITEMS.includes(state.target)) {
+        state.target = null;
+      }
+      if (!state.target) {
+        let best = null, bestDistance = Infinity;
+        for (const ITEM of ITEMS) {
+          if ([...world._carry.values()].some((other) => other !== state && other.target === ITEM)) {
+            continue;
+          }
+          const D = Math.hypot(UNIT3.x - ITEM.x, UNIT3.y - ITEM.y);
+          if (D < bestDistance) {
+            best = ITEM;
+            bestDistance = D;
+          }
+        }
+        state.target = best;
+      }
+      if (state.target && Math.hypot(UNIT3.x - state.target.x, UNIT3.y - state.target.y) <= 1.4) {
+        ITEMS.splice(ITEMS.indexOf(state.target), 1);
+        state.kind = state.target.kind;
+        state.target = null;
+      }
+    }
+    for (const ID of [...world._carry.keys()]) {
+      if (!ALIVE.has(ID)) {
+        world._carry.delete(ID);
+      }
+    }
+  }
+  function settleResourcesAway(world, plotId, seconds) {
+    const MAKE = { wood: 0, stone: 0 };
+    let haulers = 0;
+    for (const [ID, KIND] of world._workerKinds) {
+      if (world._workerPlots.get(ID) !== plotId) {
+        continue;
+      }
+      if (KIND === "resource") {
+        MAKE[world._workerResource.get(ID) ?? "wood"] += world._workerRates.get(ID) || 0;
+      } else if (KIND === "haul") {
+        haulers++;
+      }
+    }
+    const TOTAL = MAKE.wood + MAKE.stone, GOT = { wood: 0, stone: 0 };
+    if (!(TOTAL > 0) || haulers === 0) {
+      return GOT;
+    }
+    for (const KIND of ["wood", "stone"]) {
+      const TILE = MAKE[KIND] > 0 ? nearestResourceTile(world.worldMap, plotId, KIND) : -1;
       if (TILE < 0) {
         continue;
       }
-      const DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width, DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height;
-      FLOW.push({
-        kind: KIND,
-        tile: TILE,
-        make: RATE * (world.worldMap.mines.includes(TILE) ? 0.5 : 1),
-        trip: 2 * Math.hypot(DX, DY) / WALK + 1
-      });
+      const RATE = Math.min(MAKE[KIND], haulers / HAUL_TRIP_SECONDS * MAKE[KIND] / TOTAL);
+      world._idleCarry[KIND] = (world._idleCarry[KIND] ?? 0) + RATE * seconds;
+      const WHOLE = Math.floor(world._idleCarry[KIND]), TAKEN = Math.floor(takeFromTile(world.worldMap, TILE, WHOLE));
+      world._idleCarry[KIND] -= WHOLE;
+      world.materials[KIND] += TAKEN;
+      GOT[KIND] = TAKEN;
     }
-    const MAKE = FLOW.reduce((total, flow) => total + flow.make, 0);
-    if (!(MAKE > 0) || !(rates.haul > 0)) {
-      return GOT;
+    if (GOT.wood + GOT.stone > 0) {
+      world.markProgressChanged();
     }
-    for (const FLOW_ITEM of FLOW) {
-      const SHARE = FLOW_ITEM.make / MAKE, CARRY = rates.haul * SHARE * WORLD_MAP_SETTINGS.carryLoad / FLOW_ITEM.trip, TOTAL = Math.min(FLOW_ITEM.make, CARRY) * seconds, ON_GROUND = world._drops.get(FLOW_ITEM.tile) ?? 0, FROM_GROUND = Math.min(ON_GROUND, TOTAL), FROM_TILE = takeFromTile(world.worldMap, FLOW_ITEM.tile, TOTAL - FROM_GROUND);
-      if (ON_GROUND - FROM_GROUND > 1e-9) {
-        world._drops.set(FLOW_ITEM.tile, ON_GROUND - FROM_GROUND);
-      } else {
-        world._drops.delete(FLOW_ITEM.tile);
-      }
-      GOT[FLOW_ITEM.kind] += Math.floor(FROM_GROUND + FROM_TILE);
-    }
-    world.materials.wood += GOT.wood;
-    world.materials.stone += GOT.stone;
     return GOT;
   }
+  function workOrder(world, unit) {
+    const ASSIGN = world._workAssign.get(unit.id);
+    if (!ASSIGN) {
+      if (world._workerKinds.get(unit.id) === "explore") {
+        return exploreOrder(world, unit);
+      }
+      return world._workerKinds.get(unit.id) === "haul" ? carryOrder(world, unit) : null;
+    }
+    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id);
+    if (world.outsideFarm(PILE.x, PILE.y)) {
+      unit.workOut = true;
+    }
+    const DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    if (!ASSIGN.attacking) {
+      ORDER.hold = DISTANCE <= WAIT_DISTANCE;
+      return ORDER;
+    }
+    if (!SWING || SWING.phase === "idle") {
+      ORDER.hold = DISTANCE <= NEAR_PILE;
+      ORDER.face = ORDER.hold;
+    } else if (SWING.phase === "fire") {
+      ORDER.speed = CHARGE_SPEED;
+    } else if (SWING.phase === "windup") {
+      ORDER.hold = true;
+      ORDER.face = true;
+    } else {
+      ORDER.hold = true;
+    }
+    return ORDER;
+  }
+  function pushOutOfPiles(world) {
+    for (const PILE of world._piles) {
+      const R2 = pileRadius(PILE);
+      for (const UNIT3 of world.units) {
+        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, MIN = R2 + UNIT3.radius * 0.6, D = Math.hypot(DX, DY);
+        if (D >= MIN) {
+          continue;
+        }
+        const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
+        UNIT3.x = PILE.x + NX * MIN;
+        UNIT3.y = PILE.y + NY * MIN;
+        const INWARD = UNIT3.vx * NX + UNIT3.vy * NY;
+        if (INWARD < 0) {
+          UNIT3.vx -= NX * INWARD;
+          UNIT3.vy -= NY * INWARD;
+        }
+      }
+    }
+  }
+  function stepWork(world, config, dt) {
+    const WORK = config.farm.work;
+    pushOutOfPiles(world);
+    let missing = null;
+    for (const KIND of Object.keys(WORK.pileKinds)) {
+      if (KIND !== "grain" && nearestResourceTile(world.worldMap, world.activePlotId, KIND) < 0) {
+        continue;
+      }
+      if (world._piles.filter((pile) => pile.kind === KIND).length < world.pileSpec(KIND).count) {
+        missing = KIND;
+        break;
+      }
+    }
+    if (missing) {
+      const EMPTY = world._piles.length === 0;
+      world._pileRespawn += dt;
+      if (EMPTY || world._pileRespawn >= WORK.pileRespawnSeconds) {
+        spawnPile(world, config, missing);
+        world._pileRespawn = 0;
+        assignWorkers(world, config);
+      }
+    }
+    const FOOD_FULL = world.food.length >= WORK.maxFood, GROUND_FULL = itemsOf(world, world.activePlotId).length >= GROUND_LIMIT;
+    for (const [ID, ASSIGN] of world._workAssign) {
+      if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
+        continue;
+      }
+      const UNIT3 = world._unitById.get(ID);
+      if (!UNIT3 || UNIT3.hp <= 0) {
+        world._swings.delete(ID);
+        continue;
+      }
+      const PILE = ASSIGN.pile;
+      let swing = world._swings.get(ID);
+      if (!swing) {
+        swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
+        world._swings.set(ID, swing);
+      }
+      const NEAR = Math.hypot(PILE.x - UNIT3.x, PILE.y - UNIT3.y) <= NEAR_PILE;
+      if (swing.phase === "idle") {
+        if (!NEAR) {
+          continue;
+        }
+        swing.wait -= dt;
+        if (swing.wait <= 0 && !(FOOD_FULL && ASSIGN.pile.kind === "grain") && !(GROUND_FULL && (ASSIGN.pile.kind === "wood" || ASSIGN.pile.kind === "stone"))) {
+          swing.phase = "windup";
+          swing.elapsed = 0;
+        }
+        continue;
+      }
+      swing.elapsed += dt;
+      if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
+        swing.phase = "fire";
+        swing.elapsed = 0;
+      } else if (swing.phase === "fire") {
+        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, D = Math.hypot(DX, DY);
+        if (D <= pileRadius(PILE) + UNIT3.radius * 0.6 + 0.12) {
+          impact(world, config, PILE);
+          const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
+          UNIT3.vx = NX * RECOIL_SPEED;
+          UNIT3.vy = NY * RECOIL_SPEED;
+          swing.phase = "recover";
+          swing.elapsed = 0;
+        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
+          swing.phase = "recover";
+          swing.elapsed = 0;
+        }
+      } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
+        const RATE = world._workerRates.get(ID) || 0.1, INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
+        swing.phase = "idle";
+        swing.elapsed = 0;
+        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_RECOVER - 0.5);
+      }
+    }
+  }
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GROUND_LIMIT, HAUL_TRIP_SECONDS, STORE_SPOT;
+  var init_farm_work = __esm({
+    "src/farm-work.js"() {
+      init_farm_plot();
+      init_world_map();
+      SWING_WINDUP = 0.28;
+      SWING_RECOVER = 0.36;
+      NEAR_PILE = 4.4;
+      WAIT_DISTANCE = 6.5;
+      CHARGE_SPEED = 18;
+      CHARGE_TIMEOUT = 1.6;
+      RECOIL_SPEED = 5.5;
+      STACKS_PER_FOOD = 5;
+      HITS_PER_WORK = STACKS_PER_FOOD;
+      GROUND_LIMIT = 12;
+      HAUL_TRIP_SECONDS = 4;
+      STORE_SPOT = { x: 0, y: 0 };
+    }
+  });
+
+  // src/farm-offline.js
   function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
     if (world.scene !== "farm" || world.farmBossEvent?.phase !== "idle") {
@@ -2533,13 +2543,6 @@
     world.refreshWorkers();
     const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
     let foodRate = 0;
-    const GATHER_RATES = /* @__PURE__ */ new Map();
-    const GATHER_OF = (plotId) => {
-      if (!GATHER_RATES.has(plotId)) {
-        GATHER_RATES.set(plotId, { gather: { wood: 0, stone: 0 }, haul: 0 });
-      }
-      return GATHER_RATES.get(plotId);
-    };
     const BUILD_RATES = /* @__PURE__ */ new Map();
     for (const [ID, KIND] of world._workerKinds) {
       const RATE = world._workerRates.get(ID) || 0;
@@ -2547,10 +2550,8 @@
         foodRate += RATE;
       } else if (KIND === "explore") {
         continue;
-      } else if (KIND === "resource") {
-        GATHER_OF(world._workerPlots.get(ID)).gather[world._workerResource.get(ID) ?? "wood"] += RATE;
-      } else if (KIND === "haul") {
-        GATHER_OF(world._workerPlots.get(ID)).haul += 1;
+      } else if (KIND === "resource" || KIND === "haul") {
+        continue;
       } else {
         const PLOT_ID = world._workerPlots.get(ID);
         BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
@@ -2567,12 +2568,12 @@
         SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor(SITE.done / SITE.need * 100) });
       }
     }
-    SUMMARY.wood = 0;
-    SUMMARY.stone = 0;
-    for (const [PLOT_ID, RATE] of GATHER_RATES) {
-      const GOT = settleHauling(world, PLOT_ID, RATE, SECONDS);
-      SUMMARY.wood += GOT.wood;
-      SUMMARY.stone += GOT.stone;
+    for (const PLOT_ID of world.farmPlots.keys()) {
+      if (PLOT_ID !== RESERVE_PLOT_ID) {
+        const GOT = settleResourcesAway(world, PLOT_ID, SECONDS);
+        SUMMARY.wood += GOT.wood;
+        SUMMARY.stone += GOT.stone;
+      }
     }
     let pool = Math.floor(foodRate * SECONDS);
     SUMMARY.food = pool;
@@ -2635,7 +2636,6 @@
     "src/farm-offline.js"() {
       init_farm_work();
       init_farm_plot();
-      init_world_map();
     }
   });
 
@@ -8534,7 +8534,7 @@
     }
     return true;
   }
-  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, MINE_EFFICIENCY, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_work_aptitude();
@@ -8576,7 +8576,6 @@
       ({ createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler);
       EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
       EXPLORE_WALK_RATIO = 0.12;
-      MINE_EFFICIENCY = 0.5;
       EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
       PRESENTATION_CLOCKS = /* @__PURE__ */ new WeakMap();
       PRESENTATION_EVENT_TIMES = /* @__PURE__ */ new WeakMap();
@@ -8662,7 +8661,9 @@
               })
             }),
             pileKinds: Object.freeze({
-              grain: Object.freeze({ count: 2, amount: 12 })
+              grain: Object.freeze({ count: 2, amount: 12 }),
+              wood: Object.freeze({ count: 1, amount: 12 }),
+              stone: Object.freeze({ count: 1, amount: 12 })
             }),
             // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
             // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
@@ -9717,9 +9718,6 @@
           this._exploreGoals = /* @__PURE__ */ new Map();
           this._idleLead = /* @__PURE__ */ new Map();
           this._pieceWork = /* @__PURE__ */ new Map();
-          this._haul = /* @__PURE__ */ new Map();
-          this._drops = /* @__PURE__ */ new Map();
-          this._hitStacks = /* @__PURE__ */ new Map();
           this._fogClaims = /* @__PURE__ */ new Map();
           this._idleCarry = { food: 0 };
           this._workerIds = /* @__PURE__ */ new Set();
@@ -10999,18 +10997,11 @@
           }
           return share;
         }
-        // Gathering is two jobs. Resource workers hit the trees and rocks of a forest or rock tile in their farm's sight;
-        // every fifth hit knocks a piece onto that tile's ground (a tile holds only so much). Haulers pick pieces up, a small
-        // load at a time, and carry them home to their own farm, where they count.
-        isGatherer(unit) {
-          return this._workerKinds.get(unit.id) === "resource";
-        }
-        isHauler(unit) {
-          const KIND = this._workerKinds.get(unit.id);
-          return KIND === "resource" || KIND === "haul";
-        }
-        dropsOn(tile) {
-          return this._drops.get(tile) ?? 0;
+        // Gathering is two jobs, both done on the farm. Resource workers fight the tree or rock piles like workers fight
+        // grain piles; every fifth hit knocks a piece onto the ground (it comes out of the nearest forest or rock tile's
+        // stock). Haulers carry the pieces to the store, one at a time.
+        get fieldItems() {
+          return itemsOf(this, this.activePlotId);
         }
         // The bosses standing on their tiles of the map, in the farm's own coordinates, for drawing. The boss being
         // fought is the world's own boss, so its tile is left out.
@@ -11064,180 +11055,15 @@
           const HERE = this.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile;
           return HERE === void 0 ? { x: 0, y: 0 } : { x: (tileX(tile) - tileX(HERE)) * FARM_CELL.width, y: -(tileY(tile) - tileY(HERE)) * FARM_CELL.height };
         }
-        haulState(unit) {
-          let state = this._haul.get(unit.id);
-          if (!state) {
-            state = { phase: "out", tile: -1, kind: null, load: 0, progress: 0, claim: 0 };
-            this._haul.set(unit.id, state);
-          }
-          return state;
-        }
-        // The tile in this farm's sight with something lying on it that nobody else is already coming for, the one nearest
-        // to the worker; -1 when there is nothing left to pick up.
-        _nearestDropTile(unit) {
-          const CLAIMED = /* @__PURE__ */ new Map();
-          for (const [ID, STATE] of this._haul) {
-            if (ID !== unit.id && STATE.claim > 0 && STATE.phase === "out") {
-              CLAIMED.set(STATE.tile, (CLAIMED.get(STATE.tile) ?? 0) + STATE.claim);
-            }
-          }
-          let best = -1, bestDistance = Infinity;
-          for (const [TILE, AMOUNT] of this._drops) {
-            if (AMOUNT - (CLAIMED.get(TILE) ?? 0) < 1 || !inReach(this.worldMap, TILE, unit.plotId)) {
-              continue;
-            }
-            const AT = this.tileOffset(unit.plotId, TILE), DISTANCE = Math.hypot(AT.x - unit.x, AT.y - unit.y);
-            if (DISTANCE < bestDistance) {
-              best = TILE;
-              bestDistance = DISTANCE;
-            }
-          }
-          return best;
-        }
-        // The tree or rock a hitter works on: one of those really standing on its tile, picked by the worker's id.
-        gatherTarget(unit, tile) {
-          const SPOTS = tileSpots(this.worldMap, tile);
-          if (SPOTS.length === 0) {
-            return null;
-          }
-          const INDEX = unit.id % SPOTS.length, AT = this.tileOffset(unit.plotId, tile);
-          return { index: INDEX, x: AT.x + SPOTS[INDEX].x, y: AT.y + SPOTS[INDEX].y };
-        }
-        // Every hit adds a notch to the tree's gauge; the fifth knocks one piece onto the ground.
-        landHit(unit) {
-          const STATE = this.haulState(unit), TARGET = this.gatherTarget(unit, STATE.tile);
-          if (!TARGET) {
-            return;
-          }
-          const KEY2 = `${STATE.tile}:${TARGET.index}`, NOTCHES = (this._hitStacks.get(KEY2) ?? 0) + 1;
-          if (NOTCHES >= HITS_PER_WORK) {
-            this._hitStacks.set(KEY2, 0);
-            this.dropPiece(STATE.tile);
-          } else {
-            this._hitStacks.set(KEY2, NOTCHES);
-          }
-        }
-        dropPiece(tile) {
-          if (this.dropsOn(tile) >= GROUND_LIMIT) {
-            return;
-          }
-          const TAKEN = takeFromTile(this.worldMap, tile, 1);
-          if (TAKEN > 0) {
-            this._drops.set(tile, this.dropsOn(tile) + TAKEN);
-          }
-        }
-        // Where a worker is headed right now, or null when there is nothing within sight to do.
-        haulSpot(unit) {
-          const STATE = this.haulState(unit);
-          if (STATE.phase === "out") {
-            if (this.isGatherer(unit)) {
-              if (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0)) {
-                const WANTED = this._workerResource.get(unit.id) ?? (this.materials.wood <= this.materials.stone ? "wood" : "stone"), TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
-                STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
-                STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
-              }
-            } else if (!(this.dropsOn(STATE.tile) >= 1)) {
-              STATE.tile = this._nearestDropTile(unit);
-              STATE.claim = STATE.tile >= 0 ? Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(STATE.tile)) : 0;
-              STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
-            }
-          }
-          const JITTER_X = unit.id * 37 % 100 / 100 - 0.5, JITTER_Y = unit.id * 53 % 100 / 100 - 0.5;
-          if (STATE.phase === "back") {
-            return { x: JITTER_X * 6, y: JITTER_Y * 4, speed: 9 };
-          }
-          if (STATE.tile < 0) {
-            return null;
-          }
-          const AT = this.tileOffset(unit.plotId, STATE.tile), TARGET = this.isGatherer(unit) ? this.gatherTarget(unit, STATE.tile) : null;
-          if (TARGET) {
-            return { x: TARGET.x - 4.2, y: TARGET.y, speed: 9, cx: TARGET.x, cy: TARGET.y };
-          }
-          return { x: AT.x + JITTER_X * 30, y: AT.y + JITTER_Y * 22, speed: 9, cx: AT.x, cy: AT.y };
-        }
-        // One step of a worker's trip. A worker on screen is steered by workOrder and only its progress is settled
-        // here; one that is not walks the same line by arithmetic.
-        _haulStep(unit, seconds, walk) {
-          const SPOT = this.haulSpot(unit);
-          if (!SPOT) {
-            return;
-          }
-          const STATE = this.haulState(unit), DISTANCE = Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y);
-          unit.workOut = true;
-          if (walk && DISTANCE > 0.4) {
-            const STEP = Math.min(DISTANCE, SPOT.speed * EXPLORE_WALK_RATIO * seconds);
-            unit.x += (SPOT.x - unit.x) / DISTANCE * STEP;
-            unit.y += (SPOT.y - unit.y) / DISTANCE * STEP;
-            unit.angle = Math.atan2(SPOT.y - unit.y, SPOT.x - unit.x);
-          }
-          if (STATE.phase !== "work" && Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) > 1.5) {
-            return;
-          }
-          if (STATE.phase === "out") {
-            STATE.phase = "work";
-          }
-          if (STATE.phase === "work" && !this.isGatherer(unit)) {
-            const LIFT = Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(STATE.tile));
-            this._drops.set(STATE.tile, this.dropsOn(STATE.tile) - LIFT);
-            STATE.load += LIFT;
-            STATE.claim = 0;
-            STATE.phase = STATE.load > 0 ? "back" : "out";
-          } else if (STATE.phase === "work") {
-            if (walk) {
-              const MINE = this.worldMap.mines.includes(STATE.tile);
-              STATE.progress = (STATE.progress ?? 0) + (this._workerRates.get(unit.id) || 0) * (MINE ? MINE_EFFICIENCY : 1) * seconds;
-              while (STATE.progress >= 1) {
-                STATE.progress -= 1;
-                this.dropPiece(STATE.tile);
-              }
-            }
-            if (!(tileRemaining(this.worldMap, STATE.tile) > 0)) {
-              STATE.tile = -1;
-              STATE.phase = "out";
-            }
-          } else if (STATE.phase === "back") {
-            const WHOLE = Math.floor(STATE.load);
-            if (WHOLE > 0 && STATE.kind) {
-              this.materials[STATE.kind] += WHOLE;
-              this.markProgressChanged();
-            }
-            STATE.load -= WHOLE;
-            STATE.phase = "out";
-            STATE.tile = -1;
-          }
-        }
+        // The haulers of the farm on screen. Farms out of sight settle their resources in tickIdleWork.
         tickHauling(seconds, walking = true) {
-          if (this.scene !== "farm") {
+          if (this.scene !== "farm" || !walking) {
             return;
           }
-          for (const ID of [...this._haul.keys()]) {
-            const UNIT3 = this._unitById.get(ID);
-            if (!UNIT3 || !this.isHauler(UNIT3)) {
-              this._haul.delete(ID);
-            }
-          }
-          for (const [TILE, AMOUNT] of this._drops) {
-            if (!(AMOUNT > 1e-9)) {
-              this._drops.delete(TILE);
-            }
-          }
-          for (const PLOT_ID of this.farmPlots.keys()) {
-            if (PLOT_ID === RESERVE_PLOT_ID) {
-              continue;
-            }
-            const REAL = walking && PLOT_ID === this.activePlotId;
-            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT_ID)) {
-              if (this.isWorker(UNIT3) && UNIT3.hp > 0 && this.isHauler(UNIT3)) {
-                this._haulStep(UNIT3, seconds, !REAL);
-                if (REAL && this.isGatherer(UNIT3)) {
-                  stepHaulSwing(this, UNIT3, this._haul.get(UNIT3.id), seconds);
-                }
-              }
-            }
-          }
+          stepCarriers(this, seconds);
         }
         // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
-        // rate (builders hit the site, food workers feed the warehouse). Gatherers are settled by tickHauling.
+        // rate (builders hit the site, food workers feed the warehouse). Resource workers and haulers are settled by settleResourcesAway.
         tickIdleWork(seconds) {
           if (this.scene !== "farm") {
             return;
@@ -11270,6 +11096,7 @@
             if (build > 0 && plotHasSite(this, PLOT_ID)) {
               spreadBuildHits(this, PLOT_ID, build * HITS_PER_WORK * WORK);
             }
+            settleResourcesAway(this, PLOT_ID, WORK);
             CARRY.food += food * WORK;
           }
           const FOOD2 = Math.floor(CARRY.food);
@@ -11415,7 +11242,7 @@
           let rate = 0;
           if (kind === "resource") {
             for (const UNIT3 of this.units) {
-              rate += this.isWorker(UNIT3) && this.isGatherer(UNIT3) ? this._workerRates.get(UNIT3.id) || 0 : 0;
+              rate += this.isWorker(UNIT3) && this._workerKinds.get(UNIT3.id) === "resource" ? this._workerRates.get(UNIT3.id) || 0 : 0;
             }
             return rate;
           }
@@ -15223,7 +15050,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.15";
+      PRODUCT_VERSION = "0.21.16";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18551,44 +18378,18 @@
         this.drawFacilities(sim2);
       }
     }
-    // Material the gatherers knocked loose lies on its tile's ground until a hauler picks it up.
-    drawDrops(sim2) {
+    // Pieces the resource workers knocked loose lie on the ground until a hauler carries them to the store.
+    drawItems(sim2) {
       if (sim2.scene !== "farm") {
         return;
       }
-      for (const [TILE, AMOUNT] of sim2._drops) {
-        const KIND = tileResource(sim2.worldMap, TILE), COUNT = Math.min(12, Math.ceil(AMOUNT));
-        if (!KIND || COUNT <= 0) {
-          continue;
-        }
-        const AT = sim2.tileOffset(sim2.activePlotId, TILE);
-        for (let index = 0; index < COUNT; index++) {
-          const ANGLE = index * 2.399 + TILE, RADIUS2 = 3 + (index * 7 + TILE) % 5 * 1.6, X = AT.x + Math.cos(ANGLE) * RADIUS2 * 1.5, Y = AT.y + Math.sin(ANGLE) * RADIUS2;
-          if (KIND === "wood") {
-            this.groundEllipse(X, Y, 0.34, 0.14, "#8a5a2b");
-            this.groundEllipse(X + 0.2, Y, 0.1, 0.1, "#d8b27a");
-          } else {
-            this.groundEllipse(X, Y, 0.26, 0.2, "#8d8f93");
-            this.groundEllipse(X - 0.05, Y - 0.04, 0.12, 0.08, "#c7c9cc");
-          }
-        }
-      }
-    }
-    // The gauge of a tree or rock being hit: five slots, one fills per hit, like the one in front of a grain pile.
-    drawGauges(sim2) {
-      for (const [KEY2, NOTCHES] of sim2._hitStacks) {
-        if (NOTCHES <= 0) {
-          continue;
-        }
-        const [TILE, INDEX] = KEY2.split(":").map(Number), SPOT = tileSpots(sim2.worldMap, TILE)[INDEX];
-        if (!SPOT) {
-          continue;
-        }
-        const AT = sim2.tileOffset(sim2.activePlotId, TILE), BASE = this.project(AT.x + SPOT.x, AT.y + SPOT.y, 0), S = this.scale, FULL = tileResource(sim2.worldMap, TILE) === "wood" ? "#d9a566" : "#c9ccd2";
-        for (let slot = 0; slot < 5; slot++) {
-          const X = BASE.x + (slot - 2) * 0.27 * S, Y = BASE.y + 0.14 * S;
-          this.ellipse(X, Y, 0.115 * S, 0.1 * S, "#6b522a99");
-          this.ellipse(X, Y, 0.085 * S, 0.072 * S, slot < NOTCHES ? FULL : "#efe3bf");
+      for (const ITEM of sim2.fieldItems) {
+        if (ITEM.kind === "wood") {
+          this.groundEllipse(ITEM.x, ITEM.y, 0.34, 0.14, "#8a5a2b");
+          this.groundEllipse(ITEM.x + 0.2, ITEM.y, 0.1, 0.1, "#d8b27a");
+        } else {
+          this.groundEllipse(ITEM.x, ITEM.y, 0.26, 0.2, "#8d8f93");
+          this.groundEllipse(ITEM.x - 0.05, ITEM.y - 0.04, 0.12, 0.08, "#c7c9cc");
         }
       }
     }
@@ -18794,8 +18595,7 @@
       }
       this.drawDanger(sim2);
       if (!SHIFT) {
-        this.drawDrops(sim2);
-        this.drawGauges(sim2);
+        this.drawItems(sim2);
       }
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {

@@ -1,61 +1,8 @@
 // Idle progress: when the player was away, the farm is settled with a formula instead of replaying the simulation.
 // Workers keep producing, a construction site keeps getting built, and breeders keep breeding as long as food lasts.
-import { HITS_PER_WORK, sitesOf, spreadBuildHits } from './farm-work.js';
+import { HITS_PER_WORK, settleResourcesAway, sitesOf, spreadBuildHits } from './farm-work.js';
 import { RESERVE_PLOT_ID } from './farm-plot.js';
-import { FARM_CELL, WORLD_MAP_SETTINGS, nearestResourceTile, takeFromTile, tileX, tileY } from './world-map.js';
 
-// Gatherers and haulers away from the game: gatherers knock material loose at the tile, haulers carry it home in small
-// loads, so what arrives is the smaller of the two. The longer the way, the fewer trips the haulers make, and the
-// tiles lose what the gatherers took (a mine never does). Whatever lay on the ground is carried first.
-function settleHauling(world, plotId, rates, seconds) {
-    const GOT = { wood: 0, stone: 0 },
-        WALK = 9 * 0.12,
-        HOME = world.worldMap.farms.find((farm) => farm.plotId === plotId);
-    if (!HOME) {
-        return GOT;
-    }
-    const FLOW = [];
-    for (const KIND of ['wood', 'stone']) {
-        const RATE = rates.gather[KIND];
-        if (!(RATE > 0)) {
-            continue;
-        }
-        const TILE = nearestResourceTile(world.worldMap, plotId, KIND);
-        if (TILE < 0) {
-            continue;
-        }
-        const DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width,
-            DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height;
-        FLOW.push({
-            kind: KIND,
-            tile: TILE,
-            make: RATE * (world.worldMap.mines.includes(TILE) ? 0.5 : 1),
-            trip: (2 * Math.hypot(DX, DY)) / WALK + 1,
-        });
-    }
-    const MAKE = FLOW.reduce((total, flow) => total + flow.make, 0);
-    if (!(MAKE > 0) || !(rates.haul > 0)) {
-        return GOT;
-    }
-    for (const FLOW_ITEM of FLOW) {
-        // The haulers split their trips between the kinds in proportion to what is made.
-        const SHARE = FLOW_ITEM.make / MAKE,
-            CARRY = (rates.haul * SHARE * WORLD_MAP_SETTINGS.carryLoad) / FLOW_ITEM.trip,
-            TOTAL = Math.min(FLOW_ITEM.make, CARRY) * seconds,
-            ON_GROUND = world._drops.get(FLOW_ITEM.tile) ?? 0,
-            FROM_GROUND = Math.min(ON_GROUND, TOTAL),
-            FROM_TILE = takeFromTile(world.worldMap, FLOW_ITEM.tile, TOTAL - FROM_GROUND);
-        if (ON_GROUND - FROM_GROUND > 1e-9) {
-            world._drops.set(FLOW_ITEM.tile, ON_GROUND - FROM_GROUND);
-        } else {
-            world._drops.delete(FLOW_ITEM.tile);
-        }
-        GOT[FLOW_ITEM.kind] += Math.floor(FROM_GROUND + FROM_TILE);
-    }
-    world.materials.wood += GOT.wood;
-    world.materials.stone += GOT.stone;
-    return GOT;
-}
 export function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline,
         WORK = config.farm.work,
@@ -72,13 +19,6 @@ export function applyOffline(world, config, rawSeconds) {
     world.refreshWorkers();
     const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
     let foodRate = 0;
-    const GATHER_RATES = new Map();
-    const GATHER_OF = (plotId) => {
-        if (!GATHER_RATES.has(plotId)) {
-            GATHER_RATES.set(plotId, { gather: { wood: 0, stone: 0 }, haul: 0 });
-        }
-        return GATHER_RATES.get(plotId);
-    };
     const BUILD_RATES = new Map();
     for (const [ID, KIND] of world._workerKinds) {
         const RATE = world._workerRates.get(ID) || 0;
@@ -87,10 +27,9 @@ export function applyOffline(world, config, rawSeconds) {
         } else if (KIND === 'explore') {
             // Exploring is done on foot, in front of the player: nothing is explored while away.
             continue;
-        } else if (KIND === 'resource') {
-            GATHER_OF(world._workerPlots.get(ID)).gather[world._workerResource.get(ID) ?? 'wood'] += RATE;
-        } else if (KIND === 'haul') {
-            GATHER_OF(world._workerPlots.get(ID)).haul += 1;
+        } else if (KIND === 'resource' || KIND === 'haul') {
+            // Settled below, per farm, by settleResourcesAway.
+            continue;
         } else {
             const PLOT_ID = world._workerPlots.get(ID);
             BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
@@ -110,12 +49,12 @@ export function applyOffline(world, config, rawSeconds) {
             SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor((SITE.done / SITE.need) * 100) });
         }
     }
-    SUMMARY.wood = 0;
-    SUMMARY.stone = 0;
-    for (const [PLOT_ID, RATE] of GATHER_RATES) {
-        const GOT = settleHauling(world, PLOT_ID, RATE, SECONDS);
-        SUMMARY.wood += GOT.wood;
-        SUMMARY.stone += GOT.stone;
+    for (const PLOT_ID of world.farmPlots.keys()) {
+        if (PLOT_ID !== RESERVE_PLOT_ID) {
+            const GOT = settleResourcesAway(world, PLOT_ID, SECONDS);
+            SUMMARY.wood += GOT.wood;
+            SUMMARY.stone += GOT.stone;
+        }
     }
     let pool = Math.floor(foodRate * SECONDS);
     SUMMARY.food = pool;
