@@ -3,7 +3,6 @@ import { createPlayerProgressionState, isValidPlayerProgressionState } from './p
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 import { FarmPlot, RESERVE_PLOT_ID } from './farm-plot.js';
 import { FARM_CAPACITY_STEPS } from './farm-upgrades.js';
-import { isValidWorldMap } from './world-map.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
 };
@@ -17,18 +16,6 @@ const SAFE_INTEGER = (value, min = 0, max = Number.MAX_SAFE_INTEGER) =>
     Number.isSafeInteger(value) && value >= min && value <= max;
 const NUMBER = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
 const STRING = (value) => typeof value === 'string' && value.trim().length > 0 && value.length < 256;
-function copySite(site) {
-    const COPY = {
-        facility: site.facility,
-        level: site.level,
-        x: site.x,
-        y: site.y,
-        done: site.done,
-        need: site.need,
-        plotId: site.plotId,
-    };
-    return COPY;
-}
 function keys(value, required, optional = []) {
     ASSERT(value && typeof value === 'object' && !Array.isArray(value));
     ASSERT(required.every((key) => Object.hasOwn(value, key)));
@@ -163,9 +150,7 @@ export function captureFarmProgress(world) {
         GROUPS.set(KEY, ROW);
     }
     const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
-    const SITES = world.allBuildSites;
     return {
-        worldMap: structuredClone(world.worldMap),
         seed: world.seed,
         rngState: world.rng.state,
         nextId: world.nextId,
@@ -176,9 +161,7 @@ export function captureFarmProgress(world) {
             autoClock: world.foodTaps.autoClock,
             remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
-            materials: { wood: world.materials.wood, stone: world.materials.stone },
             plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
-            sites: SITES.map(copySite),
         },
         totals: {
             births: world.metrics.births,
@@ -207,7 +190,7 @@ export function captureFarmProgress(world) {
     };
 }
 export function validateFarmProgress(data) {
-    keys(data, ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'ledger'], ['mode', 'worldMap']);
+    keys(data, ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'ledger'], ['mode']);
     ASSERT(
         INTEGER(data.seed, 0, 0xffffffff) &&
             INTEGER(data.rngState, 0, 0xffffffff) &&
@@ -290,28 +273,7 @@ export function validateFarmProgress(data) {
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots', 'sites'], ['materials']);
-    ASSERT(Array.isArray(data.food.sites) && data.food.sites.length <= 64);
-    const SEEN_SITES = new Set();
-    for (const SITE of data.food.sites) {
-        keys(SITE, ['facility', 'level', 'x', 'y', 'done', 'need', 'plotId']);
-        ASSERT(
-            (Object.hasOwn(CONFIG.farm.work.facilities, SITE.facility) ||
-                Object.hasOwn(CONFIG.farm.work.projects, SITE.facility)) &&
-                INTEGER(SITE.level, 1, 99) &&
-                INTEGER(SITE.need, 1, 100000) &&
-                INTEGER(SITE.done, 0, SITE.need - 1) &&
-                Number.isFinite(SITE.x) &&
-                Number.isFinite(SITE.y) &&
-                PLOT_CAPACITY.has(SITE.plotId) &&
-                !SEEN_SITES.has(`${SITE.plotId}:${SITE.facility}`),
-        );
-        SEEN_SITES.add(`${SITE.plotId}:${SITE.facility}`);
-    }
-    if (data.food.materials !== undefined) {
-        keys(data.food.materials, ['wood', 'stone']);
-        ASSERT(SAFE_INTEGER(data.food.materials.wood) && SAFE_INTEGER(data.food.materials.stone));
-    }
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots']);
     ASSERT(
         SAFE_INTEGER(data.food.warehouse) &&
             NUMBER(data.food.autoClock, 0, 0.51) &&
@@ -328,11 +290,6 @@ export function validateFarmProgress(data) {
     }
     keys(data.totals, ['births', 'merges']);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
-    ASSERT(
-        data.worldMap === undefined ||
-            (isValidWorldMap(data.worldMap) &&
-                data.worldMap.farms.every((farm) => PLAYER.farmPlots.plots.some((plot) => plot.id === farm.plotId))),
-    );
     const LEDGER = data.ledger;
     keys(LEDGER, ['boss']);
     const BOSS = LEDGER.boss;
@@ -558,13 +515,6 @@ export function restoreFarmProgress(data) {
     WORLD.activePlotId = WORLD.playerProgression.farmPlots.currentPlotId;
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
-    WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
-    for (const SITE of data.food.sites) {
-        WORLD.restoreBuildSite(SITE);
-    }
-    if (data.worldMap !== undefined) {
-        WORLD.worldMap = { challengeTile: -1, buildTile: -1, ...structuredClone(data.worldMap) };
-    }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = new Map();
     for (const ROW of data.roster) {

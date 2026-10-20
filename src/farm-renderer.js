@@ -20,22 +20,6 @@ import {
 import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
-import { facilityPosition } from './farm-work.js';
-import {
-    FARM_CELL,
-    FOG_GRID,
-    FOG_PIECES,
-    fogPieceAt,
-    fogPieceCenter,
-    fogPieceCost,
-    isRevealed,
-    tileFill,
-    tileLook,
-    tileTerrain,
-    tileX,
-    tileY,
-    tileIndex,
-} from './world-map.js';
 import { bossDangerContour } from './attack-telegraph.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -79,8 +63,6 @@ const EMPTY_UNIT_IDS = new Set();
 const GRADE_RING_COLORS = UNIT_GRADES.map(({ outlineColor }) => outlineColor);
 const GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2));
 const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
-const MIN_TILE = (map, axis) => Math.min(...map.revealed.map((index) => (axis === 'x' ? tileX(index) : tileY(index))));
-const MAX_TILE = (map, axis) => Math.max(...map.revealed.map((index) => (axis === 'x' ? tileX(index) : tileY(index))));
 const ZOOM_MIN = 0.06,
     ZOOM_MAX = 1.8;
 const DIORAMA = class Diorama {
@@ -250,12 +232,6 @@ const DIORAMA = class Diorama {
             bottom: -(RY + 1.3) * WORLD_DEPTH_PROJECTION,
             top: (RY + 1.3) * WORLD_DEPTH_PROJECTION,
         };
-        if (this.extent && scene === 'farm') {
-            BOUNDS.left = Math.min(BOUNDS.left, this.extent.left - RX - 1.3);
-            BOUNDS.right = Math.max(BOUNDS.right, this.extent.right + RX + 1.3);
-            BOUNDS.bottom = Math.min(BOUNDS.bottom, (this.extent.bottom - RY - 1.3) * WORLD_DEPTH_PROJECTION);
-            BOUNDS.top = Math.max(BOUNDS.top, (this.extent.top + RY + 1.3) * WORLD_DEPTH_PROJECTION);
-        }
         const BOSS_SCALE = bossVectorScale(CONFIG.boss.radius),
             BOSS_X = RX - CONFIG.boss.radius,
             BOSS_Y = (RY - CONFIG.boss.radius) * WORLD_DEPTH_PROJECTION;
@@ -376,22 +352,6 @@ const DIORAMA = class Diorama {
         this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
         return true;
     }
-    // Every lit farm on screen at once.
-    fitAll() {
-        const E = this.extent;
-        if (this.scene !== 'farm' || !E) {
-            return false;
-        }
-        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
-            HALF_W = (E.right - E.left) / 2,
-            HALF_H = ((E.top - E.bottom) / 2) * WORLD_DEPTH_PROJECTION,
-            FIT = Math.min(this.baseView[0] / (HALF_W + RX), this.baseView[1] / (HALF_H + RY * WORLD_DEPTH_PROJECTION));
-        this.zoom = clamp(FIT, ZOOM_MIN, 1);
-        this.configure(this.scene, true);
-        const BASE_Y = this.offset[1] - this.pan.y;
-        this.setPan(-(E.left + E.right) / 2, -((E.top + E.bottom) / 2) * WORLD_DEPTH_PROJECTION - BASE_Y);
-        return true;
-    }
     resetZoom() {
         this.zoom = 1;
         this.configure(this.scene, true);
@@ -484,91 +444,6 @@ const DIORAMA = class Diorama {
         C.lineTo(b.x, b.y);
         C.stroke();
     }
-    // The land around the farm on screen: lit tiles of the shared map as meadows, with the units of the other
-    // farms standing on theirs, and one ring of fog beyond. Nothing here is simulated; it is only drawn.
-    farmTileOf(world, plotId) {
-        return world.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile ?? null;
-    }
-    backdropExtent(world) {
-        const MAP = world.worldMap,
-            HERE = this.farmTileOf(world, world.activePlotId);
-        if (HERE === null) {
-            return null;
-        }
-        let minX = Infinity,
-            maxX = -Infinity,
-            minY = Infinity,
-            maxY = -Infinity;
-        for (const INDEX of MAP.revealed) {
-            minX = Math.min(minX, tileX(INDEX));
-            maxX = Math.max(maxX, tileX(INDEX));
-            minY = Math.min(minY, tileY(INDEX));
-            maxY = Math.max(maxY, tileY(INDEX));
-        }
-        const FX = tileX(HERE),
-            FY = tileY(HERE);
-        // One tile of fog beyond the lit land can be looked at.
-        return {
-            key: `${minX},${maxX},${minY},${maxY},${FX},${FY}`,
-            left: (minX - 1 - FX) * FARM_CELL.width,
-            right: (maxX + 1 - FX) * FARM_CELL.width,
-            bottom: -(maxY + 1 - FY) * FARM_CELL.height,
-            top: -(minY - 1 - FY) * FARM_CELL.height,
-        };
-    }
-    // Keeps the camera limits, and the camera itself, in step with the land and with which farm is on screen.
-    syncBackdrop(world) {
-        const EXTENT = this.backdropExtent(world);
-        if (EXTENT && EXTENT.key !== this.extent?.key) {
-            this.extent = EXTENT;
-            this.configure(this.scene, true);
-        }
-        const PLOT = world.activePlotId;
-        if (this.shownPlot !== undefined && this.shownPlot !== PLOT) {
-            const FROM = this.farmTileOf(world, this.shownPlot),
-                TO = this.farmTileOf(world, PLOT);
-            if (this.cameraSwitch === PLOT && FROM !== null && TO !== null) {
-                // The camera walked into the next farm: keep looking at the same ground.
-                const OX = (tileX(TO) - tileX(FROM)) * FARM_CELL.width,
-                    OY = -(tileY(TO) - tileY(FROM)) * FARM_CELL.height;
-                this.pan.x += OX;
-                this.pan.y += OY * WORLD_DEPTH_PROJECTION;
-                this.extent = this.backdropExtent(world);
-                this.configure(this.scene, true);
-            } else {
-                this.resetPan();
-            }
-            this.cameraSwitch = null;
-        }
-        this.shownPlot = PLOT;
-    }
-    // The farm whose ground the middle of the screen is over, when it is not the one being simulated.
-    cameraPlot(world) {
-        const HERE = this.farmTileOf(world, world.activePlotId);
-        if (HERE === null || !this.scale) {
-            return null;
-        }
-        const CENTRE = {
-                x: this.canvas.width / 2 / this.scale - this.offset[0] - this.view[0],
-                y: (this.view[1] - this.canvas.height / 2 / this.scale - this.offset[1]) / WORLD_DEPTH_PROJECTION,
-            },
-            DX = Math.round(CENTRE.x / FARM_CELL.width),
-            DY = -Math.round(CENTRE.y / FARM_CELL.height);
-        if (DX === 0 && DY === 0) {
-            return null;
-        }
-        const TILE = tileIndex(tileX(HERE) + DX, tileY(HERE) + DY);
-        const FARM = world.worldMap.farms.find((farm) => farm.tile === TILE);
-        return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
-    }
-    // One farm's square of ground, from corner to corner, a hair larger than its cell so neighbours never show a seam.
-    // A rectangle of ground around a centre, half-width and half-height in world units.
-    groundBlock(x, y, halfX, halfY, color2) {
-        const A = this.project(x - halfX, y + halfY),
-            B = this.project(x + halfX, y - halfY);
-        this.ctx.fillStyle = color2;
-        this.ctx.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
-    }
     groundCell(x, y, color2, inset = 0) {
         const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
             A = this.project(x - RX + inset, y + RY - inset),
@@ -577,181 +452,13 @@ const DIORAMA = class Diorama {
         C.fillStyle = color2;
         C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
     }
-    // One tile's ground and what stands on it: meadow, forest, rock or swamp.
-    paintLand(map, index, ox, oy, paint, look, mask = null) {
-        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
-        const TERRAIN = tileTerrain(map, index),
-            [GROUND, SURFACE] = paint[TERRAIN];
-        // Under fog, only the pieces already lifted are painted (and what stands on them).
-        const SEEN = (x, y) => mask === null || mask.has(fogPieceAt(x - ox, y - oy));
-        if (mask !== null) {
-            for (let piece = 0; piece < FOG_PIECES; piece++) {
-                if (mask.has(piece)) {
-                    const C = fogPieceCenter(piece);
-                    this.groundBlock(
-                        ox + C.x,
-                        oy + C.y,
-                        FARM_CELL.width / FOG_GRID / 2,
-                        FARM_CELL.height / FOG_GRID / 2,
-                        GROUND,
-                    );
-                    this.groundBlock(
-                        ox + C.x,
-                        oy + C.y,
-                        FARM_CELL.width / FOG_GRID / 2 - 0.4,
-                        FARM_CELL.height / FOG_GRID / 2 - 0.4,
-                        SURFACE,
-                    );
-                }
-            }
-        } else {
-            this.groundCell(ox, oy, GROUND);
-            this.groundCell(ox, oy, SURFACE, 0.7);
-        }
-        const S = this.scale;
-        // What is left to gather shows: a tile that has been worked bare has fewer trees and rocks standing.
-        const FILL = tileFill(map, index);
-        if (TERRAIN === 'forest') {
-            for (let tree = 0; tree < Math.ceil(9 * FILL); tree++) {
-                const TX = ox + (look(index, 40 + tree) - 0.5) * RX * 1.7,
-                    TY = oy + (look(index, 60 + tree) - 0.5) * RY * 1.7;
-                if (!SEEN(TX, TY)) {
-                    continue;
-                }
-                const P = this.project(TX, TY, 0);
-                this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, '#9db58a');
-                this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, '#8a7a5a');
-            }
-        } else if (TERRAIN === 'rock') {
-            for (let rock = 0; rock < Math.ceil(7 * FILL); rock++) {
-                const TX = ox + (look(index, 80 + rock) - 0.5) * RX * 1.7,
-                    TY = oy + (look(index, 100 + rock) - 0.5) * RY * 1.7;
-                if (!SEEN(TX, TY)) {
-                    continue;
-                }
-                const P = this.project(TX, TY, 0);
-                this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, '#a79f8d');
-                this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, '#c5bfae');
-            }
-        } else if (TERRAIN === 'swamp') {
-            for (let pool = 0; pool < 5; pool++) {
-                const TX = ox + (look(index, 120 + pool) - 0.5) * RX * 1.6,
-                    TY = oy + (look(index, 140 + pool) - 0.5) * RY * 1.6;
-                if (SEEN(TX, TY)) {
-                    this.groundEllipse(TX, TY, 2.2 + 1.6 * look(index, 160 + pool), 1.4, '#9fbfc4');
-                }
-            }
-        }
-    }
-    // The tile being explored: the fog lifts piece by piece. A piece being worked on grows from its centre.
-    drawFog(world, map, index, ox, oy, paint, look) {
-        const MASK = new Set(map.progress[index] ?? []);
-        this.paintLand(map, index, ox, oy, paint, look, MASK);
-        const COST = fogPieceCost(map, index),
-            [GROUND, SURFACE] = paint[tileTerrain(map, index)];
-        for (let piece = 0; piece < FOG_PIECES; piece++) {
-            const SHARE = Math.min(1, (world._pieceWork.get(index * FOG_PIECES + piece) ?? 0) / COST);
-            if (MASK.has(piece) || SHARE <= 0) {
-                continue;
-            }
-            const C = fogPieceCenter(piece),
-                HX = (FARM_CELL.width / FOG_GRID / 2) * Math.sqrt(SHARE),
-                HY = (FARM_CELL.height / FOG_GRID / 2) * Math.sqrt(SHARE);
-            this.groundBlock(ox + C.x, oy + C.y, HX, HY, GROUND);
-            this.groundBlock(ox + C.x, oy + C.y, Math.max(0, HX - 0.4), Math.max(0, HY - 0.4), SURFACE);
-        }
-    }
-    drawBackdrop(world) {
-        const MAP = world.worldMap,
-            HERE = this.farmTileOf(world, world.activePlotId);
-        if (HERE === null) {
-            return;
-        }
-        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
-            PRESENTATION = this.scenePresentation,
-            FX = tileX(HERE),
-            FY = tileY(HERE),
-            LIT = new Set(MAP.revealed),
-            MARGIN = FARM_CELL.width * this.scale,
-            PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])),
-            EXPLORING = world.exploreGoal(world.activePlotId)?.tile ?? -1,
-            S = this.scale;
-        const LOOK = tileLook;
-        const PAINT = {
-            plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
-            forest: ['#c3d3b0', '#cddbbc'],
-            rock: ['#d3cfbd', '#dcd8c8'],
-            swamp: ['#c0d3c7', '#cbdcd1'],
-        };
-        for (let ty = MIN_TILE(MAP, 'y') - 1; ty <= MAX_TILE(MAP, 'y') + 1; ty++) {
-            for (let tx = MIN_TILE(MAP, 'x') - 1; tx <= MAX_TILE(MAP, 'x') + 1; tx++) {
-                const INDEX = tileIndex(tx, ty);
-                if (Math.abs(tx) > 12 || Math.abs(ty) > 12) {
-                    continue;
-                }
-                const OX = (tx - FX) * FARM_CELL.width,
-                    OY = -(ty - FY) * FARM_CELL.height,
-                    AT = this.project(OX, OY, 0);
-                if (
-                    AT.x < -MARGIN ||
-                    AT.x > this.canvas.width + MARGIN ||
-                    AT.y < -MARGIN ||
-                    AT.y > this.canvas.height + MARGIN
-                ) {
-                    continue;
-                }
-                if (!LIT.has(INDEX)) {
-                    const NEXT_TO_LIT = [-1, 0, 1].some((dy) =>
-                        [-1, 0, 1].some((dx) => (dx || dy) && LIT.has(tileIndex(tx + dx, ty + dy))),
-                    );
-                    if (NEXT_TO_LIT) {
-                        this.groundCell(OX, OY, '#e9e5d2');
-                        this.groundCell(OX, OY, '#efecdc', 0.6);
-                    }
-                    if (INDEX === EXPLORING || (MAP.progress[INDEX]?.length ?? 0) > 0) {
-                        this.drawFog(world, MAP, INDEX, OX, OY, PAINT, LOOK);
-                    }
-                    continue;
-                }
-                this.paintLand(MAP, INDEX, OX, OY, PAINT, LOOK);
-                const PLOT_ID = PLOT_AT.get(INDEX);
-                if (PLOT_ID && PLOT_ID !== world.activePlotId) {
-                    // Another farm: its units, where they last stood.
-                    for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
-                        const P = this.project(OX + U.x, OY + U.y, 0);
-                        this.ellipse(P.x, P.y, U.size * 0.5 * S, U.size * 0.31 * S, 'rgba(42,61,35,0.2)');
-                        this.ellipse(P.x, P.y - U.size * 0.45 * S, U.size * 0.4 * S, U.size * 0.4 * S, '#ddd3a8');
-                    }
-                }
-            }
-        }
-        // A faint line on every border, so the farms read as the cells of one grid.
-        const C = this.ctx;
-        C.strokeStyle = 'rgba(110,130,90,0.28)';
-        C.lineWidth = Math.max(1, this.scale * 0.05);
-        for (let ty = MIN_TILE(MAP, 'y'); ty <= MAX_TILE(MAP, 'y'); ty++) {
-            for (let tx = MIN_TILE(MAP, 'x'); tx <= MAX_TILE(MAP, 'x'); tx++) {
-                if (!LIT.has(tileIndex(tx, ty))) {
-                    continue;
-                }
-                const OX = (tx - FX) * FARM_CELL.width,
-                    OY = -(ty - FY) * FARM_CELL.height,
-                    A = this.project(OX - RX, OY + RY),
-                    B = this.project(OX + RX, OY - RY);
-                C.strokeRect(A.x, A.y, B.x - A.x, B.y - A.y);
-            }
-        }
-    }
     terrain(sim2) {
         const S = this.scale,
             PRESENTATION = this.scenePresentation,
             { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
         if (sim2.scene === 'farm') {
-            // The farm is a square cell of the grid; the land around it is drawn by drawBackdrop.
-            if (!this.backdrop) {
-                this.groundCell(0, 0, PRESENTATION.groundColor);
-                this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
-            }
+            this.groundCell(0, 0, PRESENTATION.groundColor);
+            this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
         } else {
             this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, '#bcc7a6');
             this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
@@ -767,22 +474,6 @@ const DIORAMA = class Diorama {
         PRESENTATION.drawBoundary(this);
         if (sim2.scene === 'farm') {
             this.drawWorkShadows(sim2);
-            this.drawFacilities(sim2);
-        }
-    }
-    // Pieces the resource workers knocked loose lie on the ground until a hauler carries them to the store.
-    drawItems(sim2) {
-        if (sim2.scene !== 'farm') {
-            return;
-        }
-        for (const ITEM of sim2.fieldItems) {
-            if (ITEM.kind === 'wood') {
-                this.groundEllipse(ITEM.x, ITEM.y, 0.34, 0.14, '#8a5a2b');
-                this.groundEllipse(ITEM.x + 0.2, ITEM.y, 0.1, 0.1, '#d8b27a');
-            } else {
-                this.groundEllipse(ITEM.x, ITEM.y, 0.26, 0.2, '#8d8f93');
-                this.groundEllipse(ITEM.x - 0.05, ITEM.y - 0.04, 0.12, 0.08, '#c7c9cc');
-            }
         }
     }
     drawDanger(sim2) {
@@ -799,18 +490,6 @@ const DIORAMA = class Diorama {
         for (const PILE of sim2.piles || []) {
             this.groundEllipse(PILE.x, PILE.y, 1.5, 1.0, '#54452433');
         }
-        for (const FACILITY of sim2.facilities || []) {
-            const AT = facilityPosition(CONFIG, FACILITY.id);
-            this.groundEllipse(AT.x, AT.y, 1.6, 1.1, '#54452433');
-        }
-    }
-    // Facilities are scenery along the back edge of the field, drawn before the units so nothing hides behind them.
-    drawFacilities(sim2) {
-        for (const FACILITY of sim2.facilities || []) {
-            if (!sim2.siteOf(FACILITY.id)) {
-                this.drawFacility(FACILITY);
-            }
-        }
     }
     // Piles, construction sites and facilities stand among the units, so they are sorted with them by depth.
     addWorkActors(sim2) {
@@ -818,9 +497,6 @@ const DIORAMA = class Diorama {
         for (const PILE of sim2.piles || []) {
             this.addActor(OBJECTS, { pile: PILE, sim: sim2 }, 0.785 * PILE.y, -2000000 - PILE.id);
         }
-        // The store in the middle of the field: where the haulers bring what the resource workers knocked loose.
-        const STORE = this.storeObjects || (this.storeObjects = { draw: (source) => this.drawStore(source) });
-        this.addActor(STORE, sim2, 0.785 * 1.2, -3000000);
         const SEEN = this.pileHits;
         if (SEEN && SEEN.size > 12) {
             const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
@@ -829,25 +505,6 @@ const DIORAMA = class Diorama {
                     SEEN.delete(ID);
                 }
             }
-        }
-    }
-    drawStore(sim2) {
-        const BASE = this.project(0, 0, 0),
-            S = this.scale * 2.1,
-            X = BASE.x;
-        this.groundEllipse(0, 0, 2.6, 1.3, '#38472c33');
-        this.ellipse(X, BASE.y - 0.42 * S, 0.95 * S, 0.5 * S, '#d9c9a3');
-        this.ellipse(X, BASE.y - 0.26 * S, 0.17 * S, 0.24 * S, '#7a5a34');
-        this.ellipse(X, BASE.y - 0.98 * S, 1.1 * S, 0.4 * S, '#b9774a');
-        this.ellipse(X - 0.25 * S, BASE.y - 1.08 * S, 0.5 * S, 0.14 * S, '#cf8f5e');
-        // What it holds shows at its sides.
-        if (sim2.materials.wood > 0) {
-            this.ellipse(X - 1.05 * S, BASE.y - 0.12 * S, 0.3 * S, 0.12 * S, '#8a5a2b');
-            this.ellipse(X - 0.98 * S, BASE.y - 0.22 * S, 0.3 * S, 0.12 * S, '#a06c38');
-        }
-        if (sim2.materials.stone > 0) {
-            this.ellipse(X + 1.05 * S, BASE.y - 0.14 * S, 0.3 * S, 0.2 * S, '#8d8f93');
-            this.ellipse(X + 1.0 * S, BASE.y - 0.22 * S, 0.14 * S, 0.08 * S, '#c7c9cc');
         }
     }
     drawWorkObject(source) {
@@ -873,24 +530,7 @@ const DIORAMA = class Diorama {
                 X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S,
                 SQUASH = 1 + HIT * 0.14,
                 LIFT = 1 - HIT * 0.16;
-            if (PILE.kind === 'site') {
-                this.drawSite(PILE, BASE, X, S * 1.7, SQUASH, LIFT);
-                return;
-            }
-            if (PILE.kind === 'wood') {
-                // Tree: a trunk that sways with each hit under a flat round crown.
-                this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, '#7a5a34');
-                this.ellipse(X, BASE.y - 0.5 * S * LIFT, 0.2 * S * SQUASH, 0.5 * S * LIFT, '#9a7442');
-                this.ellipse(X + 0.06 * S, BASE.y - 0.5 * S * LIFT, 0.07 * S, 0.42 * S * LIFT, '#b48a52');
-                this.ellipse(X, BASE.y - 1.05 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, '#6f9b6f');
-                this.ellipse(X - 0.3 * S, BASE.y - 0.92 * S * LIFT, 0.42 * S, 0.3 * S, '#7fab76');
-                this.ellipse(X + 0.22 * S, BASE.y - 1.2 * S * LIFT, 0.4 * S, 0.28 * S, '#8fb98a');
-            } else if (PILE.kind === 'stone') {
-                this.ellipse(X, BASE.y - 0.28 * S * LIFT, 0.8 * S * SQUASH, 0.54 * S * LIFT, '#8f8d80');
-                this.ellipse(X - 0.05 * S, BASE.y - 0.42 * S * LIFT, 0.64 * S * SQUASH, 0.42 * S * LIFT, '#a9a79a');
-                this.ellipse(X - 0.2 * S, BASE.y - 0.54 * S * LIFT, 0.26 * S, 0.14 * S, '#c8c6b9');
-                this.ellipse(X + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, '#7c7a6e');
-            } else {
+            {
                 this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
                 this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, '#dcb85f');
                 this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, '#e6c773');
@@ -916,73 +556,6 @@ const DIORAMA = class Diorama {
             }
         }
     }
-    // A construction site: a timber frame that fills in with each hit, and a progress bar above it.
-    drawSite(site, base, x, s, squash, lift) {
-        const RATIO = clamp(site.done / site.need, 0, 1);
-        this.ellipse(x, base.y - 0.1 * s, 0.9 * s * squash, 0.3 * s, '#a58a5a');
-        this.ellipse(x - 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, '#7a5a34');
-        this.ellipse(x + 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, '#7a5a34');
-        this.ellipse(x, base.y - 0.98 * s * lift, 0.66 * s, 0.07 * s, '#7a5a34');
-        if (RATIO > 0.34) {
-            this.ellipse(x, base.y - 0.45 * s * lift, 0.5 * s * squash, 0.3 * s * lift, '#c9a96a');
-        }
-        if (RATIO > 0.67) {
-            this.ellipse(x, base.y - 0.92 * s * lift, 0.7 * s * squash, 0.3 * s * lift, '#b9774a');
-        }
-        const BAR_Y = base.y - 1.4 * s;
-        this.ellipse(x, BAR_Y, 0.8 * s, 0.1 * s, '#4a463699');
-        this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, '#f6d36b');
-    }
-    drawFacility(facility) {
-        const FACILITY = facility;
-        {
-            const AT = facilityPosition(CONFIG, FACILITY.id),
-                BASE = this.project(AT.x, AT.y, 0),
-                S = this.scale * (1.9 + 0.12 * FACILITY.level),
-                X = BASE.x;
-            if (FACILITY.id === 'windmill') {
-                const SPIN = (this.displayTimeMs || 0) * 0.002;
-                this.ellipse(X, BASE.y - 0.4 * S, 0.5 * S, 0.5 * S, '#e8dcc0');
-                this.ellipse(X, BASE.y - 0.95 * S, 0.5 * S, 0.22 * S, '#b9774a');
-                for (let blade = 0; blade < 4; blade++) {
-                    const ANGLE = SPIN + (blade * Math.PI) / 2;
-                    this.ellipse(
-                        X + Math.cos(ANGLE) * 0.5 * S,
-                        BASE.y - 0.75 * S + Math.sin(ANGLE) * 0.5 * S,
-                        0.4 * S,
-                        0.07 * S,
-                        '#f6f0e0',
-                        ANGLE,
-                    );
-                }
-            } else if (FACILITY.id === 'granary') {
-                this.ellipse(X, BASE.y - 0.35 * S, 0.8 * S, 0.45 * S, '#c9a96a');
-                this.ellipse(X, BASE.y - 0.85 * S, 0.9 * S, 0.3 * S, '#b9774a');
-                this.ellipse(X, BASE.y - 0.3 * S, 0.2 * S, 0.28 * S, '#7a5a34');
-            } else if (FACILITY.id === 'tower') {
-                this.ellipse(X, BASE.y - 0.55 * S, 0.34 * S, 0.75 * S, '#cfc7b3');
-                this.ellipse(X, BASE.y - 1.25 * S, 0.5 * S, 0.2 * S, '#b9774a');
-                this.ellipse(X, BASE.y - 0.3 * S, 0.12 * S, 0.2 * S, '#7a5a34');
-                this.ellipse(X + 0.05 * S, BASE.y - 1.6 * S, 0.03 * S, 0.3 * S, '#7a5a34');
-                this.ellipse(X + 0.2 * S, BASE.y - 1.75 * S, 0.17 * S, 0.1 * S, '#7fa77a');
-            } else {
-                this.ellipse(X - 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, '#7a5a34');
-                this.ellipse(X + 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, '#7a5a34');
-                this.ellipse(X, BASE.y - 0.8 * S, 0.62 * S, 0.07 * S, '#9a7442');
-                this.ellipse(X - 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, '#8f8d80', 0.4);
-                this.ellipse(X + 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, '#7fa77a', -0.4);
-            }
-            for (let pip = 0; pip < FACILITY.level; pip++) {
-                this.ellipse(
-                    X + (pip - (FACILITY.level - 1) / 2) * 0.22 * S,
-                    BASE.y + 0.18 * S,
-                    0.07 * S,
-                    0.07 * S,
-                    '#f6d36b',
-                );
-            }
-        }
-    }
     addActor(presentation, source, depth, id, vector = false) {
         const INDEX = this.actors.length,
             ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
@@ -1005,18 +578,7 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
-        if (sim2.scene === 'farm' && this.backdrop) {
-            this.syncBackdrop(this.backdrop);
-            this.drawBackdrop(this.backdrop);
-        }
         this.terrain(sim2);
-        // A fight on a tile of the map: the camera goes with the units, and they are drawn on that tile.
-        const SHIFT = sim2.scene === 'farm' ? sim2.battleShift() : null,
-            UNSHIFTED_OFFSET = this.offset;
-        if (SHIFT) {
-            this.setPan(-SHIFT.x, -SHIFT.y * WORLD_DEPTH_PROJECTION);
-            this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * WORLD_DEPTH_PROJECTION];
-        }
         for (const U of sim2.units) {
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
@@ -1027,16 +589,9 @@ const DIORAMA = class Diorama {
             }
         }
         this.drawDanger(sim2);
-        if (!SHIFT) {
-            this.drawItems(sim2);
-        }
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
-        }
-        const RESTING = sim2.scene === 'farm' ? sim2.restingBosses(this.displayTimeMs / 1000) : [];
-        for (const R of RESTING) {
-            this.groundEllipse(R.x, R.y, R.radius * 1.05, R.radius * 0.75, '#38472c33');
         }
         const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
             ACTORS = this.actors;
@@ -1056,13 +611,8 @@ const DIORAMA = class Diorama {
         if (BOSS_VISIBLE) {
             this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
         }
-        for (const R of RESTING) {
-            this.addActor(this.bossPresentation, R, 0.785 * R.y, 0, true);
-        }
-        if (!SHIFT) {
-            PRESENTATION.collectFood(this, sim2);
-        }
-        if (sim2.scene === 'farm' && !SHIFT) {
+        PRESENTATION.collectFood(this, sim2);
+        if (sim2.scene === 'farm') {
             this.addWorkActors(sim2);
         }
         if (BOSS_VISIBLE) {
@@ -1129,7 +679,6 @@ const DIORAMA = class Diorama {
             }
         }
         drawFormationEffects(this, sim2);
-        this.offset = UNSHIFTED_OFFSET;
         this.stats = C.endFrame();
     }
     dispose() {

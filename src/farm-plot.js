@@ -4,37 +4,10 @@ import { SPECIES_COUNT } from './species-catalog.js';
 export const INITIAL_FARM_PLOT_ID = 'plot-1';
 export const RESERVE_PLOT_ID = 'reserve';
 export const MAX_FARM_FOOD = 140;
-// Facilities belong to a single farm plot. The ids are listed in the order their slots line up along the back edge.
-export const FACILITY_IDS = Object.freeze(['windmill', 'granary', 'rack', 'tower']);
-export const FACILITY_MAX_LEVEL = 5;
-
-export function isValidPlotFacilities(facilities) {
-    if (!Array.isArray(facilities) || facilities.length > FACILITY_IDS.length) {
-        return false;
-    }
-    const SEEN = new Set();
-    for (const FACILITY of facilities) {
-        if (
-            !FACILITY ||
-            typeof FACILITY !== 'object' ||
-            Array.isArray(FACILITY) ||
-            Object.keys(FACILITY).sort().join(',') !== 'id,level' ||
-            !FACILITY_IDS.includes(FACILITY.id) ||
-            SEEN.has(FACILITY.id) ||
-            !Number.isSafeInteger(FACILITY.level) ||
-            FACILITY.level < 1 ||
-            FACILITY.level > FACILITY_MAX_LEVEL
-        ) {
-            return false;
-        }
-        SEEN.add(FACILITY.id);
-    }
-    return true;
-}
 
 export function createFarmPlotsProgression() {
     return {
-        plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: 0, facilities: [] }],
+        plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: FARM_CAPACITY_STEPS.length - 1 }],
         currentPlotId: INITIAL_FARM_PLOT_ID,
         nextPlotNumber: 2,
         targetBasisPoints: Array.from({ length: SPECIES_COUNT }, (_, speciesId) => Number(speciesId === 0) * 10000),
@@ -75,8 +48,7 @@ export function isValidFarmPlotsProgression(state) {
             !PLOT ||
             typeof PLOT !== 'object' ||
             Array.isArray(PLOT) ||
-            Object.keys(PLOT).sort().join(',') !== 'capacityLevel,facilities,id' ||
-            !isValidPlotFacilities(PLOT.facilities) ||
+            Object.keys(PLOT).sort().join(',') !== 'capacityLevel,id' ||
             PLOT.id !== `plot-${index + 1}` ||
             !Number.isSafeInteger(PLOT.capacityLevel) ||
             PLOT.capacityLevel < 0 ||
@@ -106,9 +78,6 @@ export class FarmPlot {
         if (!Array.isArray(food) || food.length > MAX_FARM_FOOD) {
             throw new RangeError('A farm plot food list is invalid.');
         }
-        if (!isValidPlotFacilities(state.facilities)) {
-            throw new TypeError('A farm plot facility list is invalid.');
-        }
         this.id = ID;
         this.state = state;
         this.food = food;
@@ -126,37 +95,12 @@ export class FarmPlot {
         return this.food.length;
     }
 
-    canExpand() {
-        return this.capacityLevel < FARM_CAPACITY_STEPS.length - 1;
-    }
-
-    facilityLevel(id) {
-        return this.state.facilities.find((facility) => facility.id === id)?.level ?? 0;
-    }
-
-    setFacilityLevel(id, level) {
-        const EXISTING = this.state.facilities.find((facility) => facility.id === id);
-        if (EXISTING) {
-            EXISTING.level = level;
-        } else {
-            this.state.facilities.push({ id, level });
-        }
-    }
-
-    expand() {
-        if (!this.canExpand()) {
-            return false;
-        }
-        this.state.capacityLevel++;
-        return true;
-    }
-
     static fromSave(data, food = []) {
         if (!data || typeof data !== 'object' || Array.isArray(data)) {
             throw new TypeError('A farm plot save is invalid.');
         }
         const KEYS = Object.keys(data).sort().join(',');
-        if (KEYS !== 'capacityLevel,facilities,id') {
+        if (KEYS !== 'capacityLevel,id') {
             throw new TypeError('A farm plot save has an unexpected shape.');
         }
         return new FarmPlot(data, food);
@@ -164,5 +108,5 @@ export class FarmPlot {
 }
 
 export function createInitialFarmPlot() {
-    return new FarmPlot({ id: INITIAL_FARM_PLOT_ID, capacityLevel: 0, facilities: [] });
+    return new FarmPlot({ id: INITIAL_FARM_PLOT_ID, capacityLevel: FARM_CAPACITY_STEPS.length - 1 });
 }

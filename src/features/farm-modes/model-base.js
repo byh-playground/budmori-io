@@ -30,9 +30,6 @@ export class FarmMode {
     }
     // A resting unit walks to a spot of its own and stays there a while before picking the next one.
     wander(world, unit, dt) {
-        if (unit.migrate && world.stepMigrant(unit, dt)) {
-            return;
-        }
         const SPOT = restingSpot(unit, world.time, this.config.farm.arena);
         if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) < WANDER_ARRIVE) {
             return;
