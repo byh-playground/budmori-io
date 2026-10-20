@@ -464,6 +464,47 @@
     }
   });
 
+  // src/work-aptitude.js
+  function aptitudeOf(species, kind) {
+    return SPECIES_APTITUDE[species]?.[WORK_KINDS.indexOf(kind)] ?? 2;
+  }
+  function pickForRole(pool, role, count) {
+    const KIND = role === "wood" || role === "stone" || role === "food" || role === "build" ? role : "explore", RANKED = pool.map((unit) => ({ unit, level: aptitudeOf(unit.species, KIND) })).sort((a, b) => b.level - a.level || a.unit.id - b.unit.id);
+    return RANKED.slice(0, Math.max(0, count)).map((entry) => ({
+      unit: entry.unit,
+      level: entry.level > 0 ? entry.level : FALLBACK_LEVEL
+    }));
+  }
+  var WORK_KINDS, APTITUDE_ORDER, APTITUDE_SPEED, SPECIES_APTITUDE, FALLBACK_LEVEL;
+  var init_work_aptitude = __esm({
+    "src/work-aptitude.js"() {
+      WORK_KINDS = Object.freeze(["build", "food", "wood", "stone", "explore"]);
+      APTITUDE_ORDER = WORK_KINDS;
+      APTITUDE_SPEED = Object.freeze([0, 0.7, 1, 1.4]);
+      SPECIES_APTITUDE = Object.freeze([
+        Object.freeze([1, 2, 1, 0, 3]),
+        // 콩: light scout
+        Object.freeze([0, 3, 1, 1, 2]),
+        // 옥수수: food
+        Object.freeze([2, 0, 0, 3, 2]),
+        // 팥: shatters rock
+        Object.freeze([1, 0, 3, 2, 1]),
+        // 밤톨: lumberjack
+        Object.freeze([3, 0, 2, 0, 2]),
+        // 땅콩: charges at jobs
+        Object.freeze([3, 0, 1, 3, 0]),
+        // 호두: sturdy builder and quarryman
+        Object.freeze([1, 3, 1, 0, 2]),
+        // 쌀: food
+        Object.freeze([0, 3, 1, 1, 2]),
+        // 밀: food
+        Object.freeze([2, 1, 3, 1, 0])
+        // 보리: lumber generalist
+      ]);
+      FALLBACK_LEVEL = 1;
+    }
+  });
+
   // src/farm-upgrades.js
   function createFarmUpgradeState() {
     return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
@@ -2258,6 +2299,17 @@
     }
     return best;
   }
+  function canBuildMine(map, index, plotId) {
+    return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && isRevealed(map, index) && tileResource(map, index) !== null && !map.mines.includes(index) && inReach(map, index, plotId);
+  }
+  function buildMine(map, index) {
+    if (!isRevealed(map, index) || tileResource(map, index) === null || map.mines.includes(index)) {
+      return false;
+    }
+    map.mines.push(index);
+    map.mines.sort((a, b) => a - b);
+    return true;
+  }
   function tileCost(map, index) {
     return Math.round(exploreCost(map) * WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)]);
   }
@@ -2526,7 +2578,7 @@
       if (TILE < 0) {
         break;
       }
-      const KIND = tileResource(world.worldMap, TILE), DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width, DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height, TRIP_WALK = 2 * Math.hypot(DX, DY) / WALK, TRIP_WORK = WORLD_MAP_SETTINGS.carryLoad / rate, PER_SECOND = WORLD_MAP_SETTINGS.carryLoad / (TRIP_WALK + TRIP_WORK), REMAINING = tileRemaining(world.worldMap, TILE), TIME = Math.min(left, REMAINING / PER_SECOND), TAKEN = takeFromTile(world.worldMap, TILE, PER_SECOND * TIME);
+      const KIND = tileResource(world.worldMap, TILE), DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width, DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height, TRIP_WALK = 2 * Math.hypot(DX, DY) / WALK, TRIP_WORK = WORLD_MAP_SETTINGS.carryLoad / (rate * (world.worldMap.mines.includes(TILE) ? 0.5 : 1)), PER_SECOND = WORLD_MAP_SETTINGS.carryLoad / (TRIP_WALK + TRIP_WORK), REMAINING = tileRemaining(world.worldMap, TILE), TIME = Math.min(left, REMAINING / PER_SECOND), TAKEN = takeFromTile(world.worldMap, TILE, PER_SECOND * TIME);
       CARRY[KIND] += TAKEN;
       left -= TIME;
       const WHOLE = Math.floor(CARRY[KIND]);
@@ -8752,6 +8804,7 @@
   var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, MINE_EFFICIENCY, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
+      init_work_aptitude();
       init_farm_offline();
       init_farm_work();
       init_formation_skills();
@@ -8842,6 +8895,8 @@
             levelHitsStep: 0.6,
             projects: Object.freeze({
               expand: Object.freeze({ name: "농장 확장", hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
+              // A mine on a forest or rock tile: that tile never runs dry, at half the yield.
+              mine: Object.freeze({ name: "채굴장", hits: 80, cost: Object.freeze({ wood: 30, stone: 30 }) }),
               plot: Object.freeze({
                 name: "새 농장",
                 hits: 300,
@@ -9953,6 +10008,7 @@
           this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
+          this.woodBasisPoints = 5e3;
           this.materials = { wood: 0, stone: 0 };
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
           this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
@@ -9970,6 +10026,7 @@
           this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
           this.buildRush = false;
           this._workerKinds = /* @__PURE__ */ new Map();
+          this._workerResource = /* @__PURE__ */ new Map();
           this._exploreGoals = /* @__PURE__ */ new Map();
           this._idleLead = /* @__PURE__ */ new Map();
           this._pieceWork = /* @__PURE__ */ new Map();
@@ -11100,6 +11157,8 @@
             level = this.activeFarmPlot.capacityLevel + 1;
           } else if (kind === "plot") {
             level = this.playerProgression.farmPlots.plots.length;
+          } else if (kind === "mine") {
+            level = 1;
           } else {
             return null;
           }
@@ -11122,10 +11181,22 @@
           const SPEC = CONFIG.farm.work.facilities[site.facility] || CONFIG.farm.work.projects[site.facility];
           return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
         }
+        // Of the gatherers, the share that goes for wood (the rest go for stone), in basis points.
+        setWoodShare(basisPoints) {
+          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
+            return false;
+          }
+          if (basisPoints !== this.woodBasisPoints) {
+            this.woodBasisPoints = basisPoints;
+            this._nextWorkerRefreshTick = 0;
+            this.refreshWorkers();
+          }
+          return true;
+        }
         // Starts a construction. The materials are paid up front; the work itself is done by the units.
         startBuild(kind, { tile = -1 } = {}) {
           const INFO = this.projectInfo(kind);
-          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || kind === "plot" && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile)) || this.running || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
+          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || kind === "plot" && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile)) || kind === "mine" && !canBuildMine(this.worldMap, tile, this.activePlotId) || this.running || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
             return false;
           }
           this.materials.wood -= INFO.cost.wood;
@@ -11134,7 +11205,7 @@
             beginFarmBuild(this.worldMap, tile);
           }
           let at = null;
-          if (kind === "plot") {
+          if (kind === "plot" || kind === "mine") {
             const HERE = this.worldMap.farms.find((farm) => farm.plotId === this.activePlotId);
             at = {
               x: (tileX(tile) - tileX(HERE.tile)) * FARM_CELL.width,
@@ -11153,6 +11224,17 @@
             this.restoreReservePopulation();
           } else if (site.facility === "plot") {
             finishFarmBuild(this.worldMap, this._addFarmPlot());
+          } else if (site.facility === "mine") {
+            const HERE = this.worldMap.farms.find((farm) => farm.plotId === site.plotId);
+            if (HERE) {
+              buildMine(
+                this.worldMap,
+                tileIndex(
+                  tileX(HERE.tile) + Math.round(site.x / FARM_CELL.width),
+                  tileY(HERE.tile) - Math.round(site.y / FARM_CELL.height)
+                )
+              );
+            }
           } else {
             this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
           }
@@ -11244,6 +11326,7 @@
           this._workerRates = RATES;
           this._workerKinds = /* @__PURE__ */ new Map();
           this._workerPlots = /* @__PURE__ */ new Map();
+          this._workerResource = /* @__PURE__ */ new Map();
           let total = 0;
           for (const [PLOT_ID, IDS] of PLOT_WORKERS) {
             const SORTED_WORKERS = IDS.sort((a, b) => a - b), PLOT_TOTAL = SORTED_WORKERS.length, RUSHING = this.buildRush && plotHasSite(this, PLOT_ID), BUILDERS = RUSHING ? PLOT_TOTAL : Math.min(
@@ -11259,14 +11342,29 @@
               food: 1 + WORK.levelEffectStep * PLOT.facilityLevel("windmill"),
               resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel("rack")
             };
-            SORTED_WORKERS.forEach((id, index) => {
-              const KIND = index >= PLOT_TOTAL - EXPLORERS ? "explore" : index >= PLOT_TOTAL - EXPLORERS - BUILDERS ? "build" : index >= PLOT_TOTAL - EXPLORERS - BUILDERS - GATHERERS ? "resource" : "food";
-              this._workerKinds.set(id, KIND);
-              this._workerPlots.set(id, PLOT_ID);
-              const BOOSTED = this._workerRates.get(id) * (MULTIPLIER[KIND] || 1);
-              this._workerRates.set(id, BOOSTED);
-              total += BOOSTED;
-            });
+            const COUNTS = {
+              build: BUILDERS,
+              food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
+              wood: Math.round(GATHERERS * this.woodBasisPoints / 1e4),
+              explore: EXPLORERS
+            }, POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
+            COUNTS.stone = GATHERERS - COUNTS.wood;
+            for (const ROLE of APTITUDE_ORDER) {
+              const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
+              for (const PICK of PICKED) {
+                const UNIT3 = PICK.unit, LEVEL = PICK.level;
+                POOL.splice(POOL.indexOf(UNIT3), 1);
+                const KIND = ROLE === "wood" || ROLE === "stone" ? "resource" : ROLE;
+                this._workerKinds.set(UNIT3.id, KIND);
+                this._workerPlots.set(UNIT3.id, PLOT_ID);
+                if (KIND === "resource") {
+                  this._workerResource.set(UNIT3.id, ROLE);
+                }
+                const BOOSTED = this._workerRates.get(UNIT3.id) * (MULTIPLIER[KIND] || 1) * APTITUDE_SPEED[LEVEL];
+                this._workerRates.set(UNIT3.id, BOOSTED);
+                total += BOOSTED;
+              }
+            }
           }
           this._workCount = NEXT.size;
           this._workRate = total;
@@ -11392,7 +11490,7 @@
         haulSpot(unit) {
           const STATE = this.haulState(unit);
           if (STATE.phase !== "back" && (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0))) {
-            const WANTED = this.materials.wood <= this.materials.stone ? "wood" : "stone", TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
+            const WANTED = this._workerResource.get(unit.id) ?? (this.materials.wood <= this.materials.stone ? "wood" : "stone"), TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
             STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
             STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
           }
@@ -15569,7 +15667,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.19.0";
+      PRODUCT_VERSION = "0.19.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -22919,6 +23017,14 @@
       CONTEXT.fill();
       CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
     }
+    function drawMine(x, y, s) {
+      CONTEXT.fillStyle = "#5b4630";
+      CONTEXT.fillRect(x + s * 0.3, y + s * 0.5, s * 0.4, s * 0.36);
+      CONTEXT.fillStyle = "#1b130c";
+      CONTEXT.fillRect(x + s * 0.4, y + s * 0.6, s * 0.2, s * 0.26);
+      CONTEXT.fillStyle = "#c9a15a";
+      CONTEXT.fillRect(x + s * 0.28, y + s * 0.44, s * 0.44, s * 0.08);
+    }
     function drawNest(x, y, s, danger, open, now) {
       CONTEXT.fillStyle = COLORS.nest;
       CONTEXT.beginPath();
@@ -23068,6 +23174,9 @@
           const INDEX = tileIndex(x, y), PX = screenX(x - 0.5), PY = screenY(y - 0.5);
           if (!LIT.has(INDEX)) {
             continue;
+          }
+          if (map.mines.includes(INDEX)) {
+            drawMine(PX, PY, S);
           }
           if (FARMS.has(INDEX)) {
             drawFarm(PX, PY, S);
@@ -23745,6 +23854,7 @@
   var WORK_STORAGE_KEYS = {
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
+    wood: "budmori.work.woodBasisPoints",
     build: "budmori.work.buildBasisPoints",
     explore: "budmori.work.exploreBasisPoints",
     walkers: "budmori.neighbourWalkers"
@@ -23803,6 +23913,8 @@
       loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
       loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints)
     );
+    world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
+    showWoodShare(world.woodBasisPoints);
     return active;
   }
   install(new GARDEN());
@@ -23918,7 +24030,7 @@
     }
     const MAP = personalGarden.worldMap;
     const GAUGE = exploreLine(personalGarden.activePlotId), TILE = bossMapTile;
-    let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false, canBuild = false;
+    let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false, canBuild = false, canMine = false;
     if (TILE >= 0) {
       const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
       if (!isRevealed(MAP, TILE)) {
@@ -23931,8 +24043,9 @@
         info = `체력 ${Math.round(STATS2.hp).toLocaleString("ko-KR")} · 공격력 ${Number(STATS2.attackPower.toPrecision(3)).toLocaleString("ko-KR")} · 승리 +${STATS2.xp.toLocaleString("ko-KR")} XP`;
       } else {
         title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
-        const RESOURCE = tileResource(MAP, TILE);
-        info = RESOURCE ? `${RESOURCE === "wood" ? "목재" : "돌"} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.` : "아무것도 없는 칸이에요.";
+        const RESOURCE = tileResource(MAP, TILE), NAME = RESOURCE === "wood" ? "목재" : "돌";
+        canMine = canBuildMine(MAP, TILE, personalGarden.activePlotId);
+        info = !RESOURCE ? "아무것도 없는 칸이에요." : MAP.mines.includes(TILE) ? `채굴장이 있어요. ${NAME}이 줄지 않지만 일꾼이 캐는 속도는 절반이에요.` : `${NAME} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.`;
       }
     }
     if (TILE >= 0 && isRevealed(MAP, TILE)) {
@@ -23950,6 +24063,10 @@
     DOLLAR2("worldMapTitle").textContent = title;
     DOLLAR2("worldMapInfo").textContent = info;
     DOLLAR2("worldMapExplore").hidden = !canExplore;
+    const MINE_INFO = personalGarden.projectInfo("mine");
+    DOLLAR2("worldMapMine").hidden = !canMine || !MINE_INFO;
+    DOLLAR2("worldMapMine").textContent = MINE_INFO ? `채굴장 짓기 · 목재 ${MINE_INFO.cost.wood} · 돌 ${MINE_INFO.cost.stone}` : "채굴장 짓기";
+    DOLLAR2("worldMapMine").disabled = !!personalGarden.siteOf("mine") || !MINE_INFO || personalGarden.materials.wood < MINE_INFO.cost.wood || personalGarden.materials.stone < MINE_INFO.cost.stone;
     DOLLAR2("worldMapBuild").hidden = !canBuild;
     DOLLAR2("worldMapBuild").disabled = !canBuild || !personalGarden.projectInfo("plot") || personalGarden.materials.wood < personalGarden.projectInfo("plot").cost.wood || personalGarden.materials.stone < personalGarden.projectInfo("plot").cost.stone;
     DOLLAR2("bossEncounterHint").textContent = mapChallengeBlockReason();
@@ -24361,6 +24478,12 @@
   DOLLAR2("miniMap").onclick = () => openBossEncounter();
   DOLLAR2("worldMapBuild").onclick = () => {
     if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild("plot", { tile: bossMapTile })) {
+      saveImmediate(personalGarden);
+      renderWorldMap();
+    }
+  };
+  DOLLAR2("worldMapMine").onclick = () => {
+    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild("mine", { tile: bossMapTile })) {
       saveImmediate(personalGarden);
       renderWorldMap();
     }
@@ -24799,6 +24922,17 @@
       exploreBasisPoints: POINTS.explore
     });
   }
+  function showWoodShare(points) {
+    const PERCENT = Math.round(points / 100);
+    DOLLAR2("woodShare").value = String(PERCENT);
+    DOLLAR2("woodShareLabel").textContent = `자원 중 목재 ${PERCENT}% · 돌 ${100 - PERCENT}%`;
+  }
+  DOLLAR2("woodShare").addEventListener("input", () => {
+    const POINTS = Number(DOLLAR2("woodShare").value) * 100;
+    saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
+    showWoodShare(POINTS);
+    (personalGarden || active.world).setWoodShare(POINTS);
+  });
   var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC", "workCutD"];
   for (const ID of WORK_CUT_IDS) {
     DOLLAR2(ID).addEventListener("input", () => {

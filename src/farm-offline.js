@@ -37,7 +37,7 @@ function settleHauling(world, plotId, rate, seconds) {
             DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width,
             DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height,
             TRIP_WALK = (2 * Math.hypot(DX, DY)) / WALK,
-            TRIP_WORK = WORLD_MAP_SETTINGS.carryLoad / rate,
+            TRIP_WORK = WORLD_MAP_SETTINGS.carryLoad / (rate * (world.worldMap.mines.includes(TILE) ? 0.5 : 1)),
             PER_SECOND = WORLD_MAP_SETTINGS.carryLoad / (TRIP_WALK + TRIP_WORK),
             REMAINING = tileRemaining(world.worldMap, TILE),
             TIME = Math.min(left, REMAINING / PER_SECOND),

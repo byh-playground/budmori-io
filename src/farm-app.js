@@ -37,6 +37,7 @@ import { selectMapBossStage } from './farm-boss-stages.js';
 import { createWorldMapView } from './world-map-view.js';
 import {
     beginChallenge,
+    canBuildMine,
     canChallenge,
     canExploreTile,
     farmBuildBlock,
@@ -682,6 +683,7 @@ const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
 const WORK_STORAGE_KEYS = {
     work: 'budmori.work.basisPoints',
     resource: 'budmori.work.resourceBasisPoints',
+    wood: 'budmori.work.woodBasisPoints',
     build: 'budmori.work.buildBasisPoints',
     explore: 'budmori.work.exploreBasisPoints',
     walkers: 'budmori.neighbourWalkers',
@@ -750,6 +752,8 @@ function install(world) {
         loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
         loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints),
     );
+    world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
+    showWoodShare(world.woodBasisPoints);
     return active;
 }
 install(new Garden());
@@ -880,7 +884,8 @@ function renderWorldMap() {
     let title = '칸을 눌러 보세요',
         info = GAUGE,
         canExplore = false,
-        canBuild = false;
+        canBuild = false,
+        canMine = false;
     if (TILE >= 0) {
         const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
         if (!isRevealed(MAP, TILE)) {
@@ -899,10 +904,14 @@ function renderWorldMap() {
             info = `체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
         } else {
             title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
-            const RESOURCE = tileResource(MAP, TILE);
-            info = RESOURCE
-                ? `${RESOURCE === 'wood' ? '목재' : '돌'} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.`
-                : '아무것도 없는 칸이에요.';
+            const RESOURCE = tileResource(MAP, TILE),
+                NAME = RESOURCE === 'wood' ? '목재' : '돌';
+            canMine = canBuildMine(MAP, TILE, personalGarden.activePlotId);
+            info = !RESOURCE
+                ? '아무것도 없는 칸이에요.'
+                : MAP.mines.includes(TILE)
+                  ? `채굴장이 있어요. ${NAME}이 줄지 않지만 일꾼이 캐는 속도는 절반이에요.`
+                  : `${NAME} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.`;
         }
     }
     if (TILE >= 0 && isRevealed(MAP, TILE)) {
@@ -923,6 +932,16 @@ function renderWorldMap() {
     DOLLAR('worldMapTitle').textContent = title;
     DOLLAR('worldMapInfo').textContent = info;
     DOLLAR('worldMapExplore').hidden = !canExplore;
+    const MINE_INFO = personalGarden.projectInfo('mine');
+    DOLLAR('worldMapMine').hidden = !canMine || !MINE_INFO;
+    DOLLAR('worldMapMine').textContent = MINE_INFO
+        ? `채굴장 짓기 · 목재 ${MINE_INFO.cost.wood} · 돌 ${MINE_INFO.cost.stone}`
+        : '채굴장 짓기';
+    DOLLAR('worldMapMine').disabled =
+        !!personalGarden.siteOf('mine') ||
+        !MINE_INFO ||
+        personalGarden.materials.wood < MINE_INFO.cost.wood ||
+        personalGarden.materials.stone < MINE_INFO.cost.stone;
     DOLLAR('worldMapBuild').hidden = !canBuild;
     DOLLAR('worldMapBuild').disabled =
         !canBuild ||
@@ -1363,6 +1382,12 @@ DOLLAR('worldMapFit').onclick = () => {
 DOLLAR('miniMap').onclick = () => openBossEncounter();
 DOLLAR('worldMapBuild').onclick = () => {
     if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild('plot', { tile: bossMapTile })) {
+        saveImmediate(personalGarden);
+        renderWorldMap();
+    }
+};
+DOLLAR('worldMapMine').onclick = () => {
+    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild('mine', { tile: bossMapTile })) {
         saveImmediate(personalGarden);
         renderWorldMap();
     }
@@ -1845,6 +1870,17 @@ function applyWorkCuts(a, b, c, d) {
         exploreBasisPoints: POINTS.explore,
     });
 }
+function showWoodShare(points) {
+    const PERCENT = Math.round(points / 100);
+    DOLLAR('woodShare').value = String(PERCENT);
+    DOLLAR('woodShareLabel').textContent = `자원 중 목재 ${PERCENT}% · 돌 ${100 - PERCENT}%`;
+}
+DOLLAR('woodShare').addEventListener('input', () => {
+    const POINTS = Number(DOLLAR('woodShare').value) * 100;
+    saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
+    showWoodShare(POINTS);
+    (personalGarden || active.world).setWoodShare(POINTS);
+});
 const WORK_CUT_IDS = ['workCutA', 'workCutB', 'workCutC', 'workCutD'];
 for (const ID of WORK_CUT_IDS) {
     DOLLAR(ID).addEventListener('input', () => {
