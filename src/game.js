@@ -15689,7 +15689,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.19.5";
+      PRODUCT_VERSION = "0.19.6";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -21112,7 +21112,8 @@
       spawnCount: 0,
       mined: {},
       mines: [],
-      farms: []
+      farms: [],
+      bossAges: {}
     },
     foodTaps: {
       remainder: 0,
@@ -21500,7 +21501,11 @@
         }
         continue;
       }
-      if (typeof X === "object") {
+      if (typeof X === "object" && Object.keys(X).length === 0) {
+        if (v[K] === null || typeof v[K] !== "object" || Array.isArray(v[K])) {
+          throw new TypeError(`Invalid farm snapshot map: ${path}.${K}.`);
+        }
+      } else if (typeof X === "object") {
         shape(v[K], X, `${path}.${K}`);
       } else {
         if (typeof v[K] !== typeof X) {
@@ -22017,6 +22022,7 @@
     SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
     SNAPSHOT.worldMap.challengeTile ??= -1;
     SNAPSHOT.worldMap.buildTile ??= -1;
+    SNAPSHOT.worldMap.bossAges ??= {};
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }

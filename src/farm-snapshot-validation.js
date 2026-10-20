@@ -93,7 +93,12 @@ function shape(v, t, path = 'snapshot') {
             }
             continue;
         }
-        if (typeof X === 'object') {
+        if (typeof X === 'object' && Object.keys(X).length === 0) {
+            // An empty template object is a free-form map (tile keys and the like); the world map checks its contents.
+            if (v[K] === null || typeof v[K] !== 'object' || Array.isArray(v[K])) {
+                throw new TypeError(`Invalid farm snapshot map: ${path}.${K}.`);
+            }
+        } else if (typeof X === 'object') {
             shape(v[K], X, `${path}.${K}`);
         } else {
             if (typeof v[K] !== typeof X) {

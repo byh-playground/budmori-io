@@ -15,6 +15,8 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     SNAPSHOT.worldMap.challengeTile ??= -1;
     // The tile a new farm is being built on was added in 0.13.6.
     SNAPSHOT.worldMap.buildTile ??= -1;
+    // How long each boss has stood on the map (0.19.5); older checkpoints start the clock now.
+    SNAPSHOT.worldMap.bossAges ??= {};
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
 }
