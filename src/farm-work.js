@@ -41,6 +41,8 @@ function pilePosition(world, config) {
         for (const PILE of world._piles) {
             gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
         }
+        // Keep the store in the middle free.
+        gap = Math.min(gap, Math.hypot(X, Y) * (WORK.pileGap / 3.5));
         // Keep the facility slots free, built or not.
         for (const ID of FACILITY_IDS) {
             const SLOT = facilityPosition(config, ID);

@@ -2030,6 +2030,7 @@
       for (const PILE of world._piles) {
         gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
       }
+      gap = Math.min(gap, Math.hypot(X, Y) * (WORK.pileGap / 3.5));
       for (const ID of FACILITY_IDS) {
         const SLOT = facilityPosition(config, ID);
         gap = Math.min(gap, Math.hypot(SLOT.x - X, SLOT.y - Y) * (WORK.pileGap / 3.5));
@@ -15073,7 +15074,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.19";
+      PRODUCT_VERSION = "0.21.20";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18447,6 +18448,8 @@
       for (const PILE of sim2.piles || []) {
         this.addActor(OBJECTS, { pile: PILE, sim: sim2 }, 0.785 * PILE.y, -2e6 - PILE.id);
       }
+      const STORE = this.storeObjects || (this.storeObjects = { draw: (source) => this.drawStore(source) });
+      this.addActor(STORE, sim2, 0.785 * 1.2, -3e6);
       const SEEN = this.pileHits;
       if (SEEN && SEEN.size > 12) {
         const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
@@ -18455,6 +18458,22 @@
             SEEN.delete(ID);
           }
         }
+      }
+    }
+    drawStore(sim2) {
+      const BASE = this.project(0, 0, 0), S = this.scale * 2.1, X = BASE.x;
+      this.groundEllipse(0, 0, 2.6, 1.3, "#38472c33");
+      this.ellipse(X, BASE.y - 0.42 * S, 0.95 * S, 0.5 * S, "#d9c9a3");
+      this.ellipse(X, BASE.y - 0.26 * S, 0.17 * S, 0.24 * S, "#7a5a34");
+      this.ellipse(X, BASE.y - 0.98 * S, 1.1 * S, 0.4 * S, "#b9774a");
+      this.ellipse(X - 0.25 * S, BASE.y - 1.08 * S, 0.5 * S, 0.14 * S, "#cf8f5e");
+      if (sim2.materials.wood > 0) {
+        this.ellipse(X - 1.05 * S, BASE.y - 0.12 * S, 0.3 * S, 0.12 * S, "#8a5a2b");
+        this.ellipse(X - 0.98 * S, BASE.y - 0.22 * S, 0.3 * S, 0.12 * S, "#a06c38");
+      }
+      if (sim2.materials.stone > 0) {
+        this.ellipse(X + 1.05 * S, BASE.y - 0.14 * S, 0.3 * S, 0.2 * S, "#8d8f93");
+        this.ellipse(X + 1 * S, BASE.y - 0.22 * S, 0.14 * S, 0.08 * S, "#c7c9cc");
       }
     }
     drawWorkObject(source) {
