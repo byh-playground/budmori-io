@@ -9696,7 +9696,6 @@
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
           this.woodBasisPoints = 5e3;
-          this.haulBasisPoints = 3e3;
           this.materials = { wood: 0, stone: 0 };
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
           this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
@@ -10710,17 +10709,6 @@
           }
           return true;
         }
-        setHaulShare(basisPoints) {
-          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
-            return false;
-          }
-          if (basisPoints !== this.haulBasisPoints) {
-            this.haulBasisPoints = basisPoints;
-            this._nextWorkerRefreshTick = 0;
-            this.refreshWorkers();
-          }
-          return true;
-        }
         // Starts a construction. The materials are paid up front; the work itself is done by the units.
         startBuild(kind, { tile = -1 } = {}) {
           const INFO = this.projectInfo(kind);
@@ -10866,7 +10854,7 @@
             ), EXPLORERS = RUSHING ? 0 : Math.min(PLOT_TOTAL - BUILDERS, Math.round(PLOT_TOTAL * this.exploreBasisPoints / 1e4)), GATHERERS = RUSHING ? 0 : Math.min(
               PLOT_TOTAL - BUILDERS - EXPLORERS,
               Math.round(PLOT_TOTAL * this.resourceBasisPoints / 1e4)
-            ), HITTERS = GATHERERS - Math.round(GATHERERS * this.haulBasisPoints / 1e4), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
+            ), HITTERS = GATHERERS < 2 ? GATHERERS : GATHERERS - Math.max(1, Math.round(GATHERERS / 3)), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
               food: 1 + WORK.levelEffectStep * PLOT.facilityLevel("windmill"),
               resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel("rack")
             };
@@ -15050,7 +15038,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.16";
+      PRODUCT_VERSION = "0.21.17";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -22384,7 +22372,6 @@
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
     wood: "budmori.work.woodBasisPoints",
-    haul: "budmori.work.haulBasisPoints",
     build: "budmori.work.buildBasisPoints",
     explore: "budmori.work.exploreBasisPoints",
     walkers: "budmori.neighbourWalkers"
@@ -22448,7 +22435,6 @@
       loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints)
     );
     world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
-    world.setHaulShare(loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints));
     return active;
   }
   install(new GARDEN());
@@ -23252,11 +23238,6 @@
       exploreBasisPoints: POINTS.explore
     });
   }
-  DOLLAR2("haulCut").addEventListener("input", () => {
-    const POINTS = (100 - Number(DOLLAR2("haulCut").value)) * 100;
-    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS);
-    (personalGarden || active.world).setHaulShare(POINTS);
-  });
   DOLLAR2("woodCut").addEventListener("input", () => {
     const POINTS = Number(DOLLAR2("woodCut").value) * 100;
     saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
@@ -23267,7 +23248,7 @@
       applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR2(id).value)));
     });
   }
-  var WORK_LEVEL_NAMES = ["역할", "일꾼", "자원", "채집"];
+  var WORK_LEVEL_NAMES = ["역할", "일꾼", "자원"];
   function setWorkLevel(level) {
     DOLLAR2("workLevels").dataset.level = String(level);
     DOLLAR2("workCrumbs").replaceChildren(
@@ -23928,19 +23909,12 @@
     syncText("workHudFood", `먹이 ${KINDS.food}`);
     syncText("workHudRes", `자원 ${KINDS.resource + KINDS.haul}`);
     {
-      const HAUL = Math.round(WORK_WORLD.haulBasisPoints / 100), WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
-      if (document.activeElement !== DOLLAR2("haulCut")) {
-        DOLLAR2("haulCut").value = String(100 - HAUL);
-      }
+      const WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
       if (document.activeElement !== DOLLAR2("woodCut")) {
         DOLLAR2("woodCut").value = String(WOOD);
       }
-      syncText("workHudHit", `채집 ${KINDS.resource}`);
-      syncText("workHudCarry", `운반 ${KINDS.haul}`);
       syncText("workHudWood", `목재 ${WOOD}%`);
       syncText("workHudStone", `돌 ${100 - WOOD}%`);
-      DOLLAR2("workHudHit").style.flex = `${Math.max(1, 100 - HAUL)} 1 0`;
-      DOLLAR2("workHudCarry").style.flex = `${Math.max(1, HAUL)} 1 0`;
       DOLLAR2("workHudWood").style.flex = `${Math.max(1, WOOD)} 1 0`;
       DOLLAR2("workHudStone").style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
     }

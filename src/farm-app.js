@@ -587,7 +587,6 @@ const WORK_STORAGE_KEYS = {
     work: 'budmori.work.basisPoints',
     resource: 'budmori.work.resourceBasisPoints',
     wood: 'budmori.work.woodBasisPoints',
-    haul: 'budmori.work.haulBasisPoints',
     build: 'budmori.work.buildBasisPoints',
     explore: 'budmori.work.exploreBasisPoints',
     walkers: 'budmori.neighbourWalkers',
@@ -662,7 +661,6 @@ function install(world) {
         loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints),
     );
     world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
-    world.setHaulShare(loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints));
     return active;
 }
 install(new Garden());
@@ -1557,12 +1555,7 @@ function applyWorkCuts(...cuts) {
         exploreBasisPoints: POINTS.explore,
     });
 }
-// The lower bars of the tree: workers -> resource -> hitters and haulers -> wood and stone.
-DOLLAR('haulCut').addEventListener('input', () => {
-    const POINTS = (100 - Number(DOLLAR('haulCut').value)) * 100;
-    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS);
-    (personalGarden || active.world).setHaulShare(POINTS);
-});
+// The lower bars of the tree: workers -> resource -> wood and stone.
 DOLLAR('woodCut').addEventListener('input', () => {
     const POINTS = Number(DOLLAR('woodCut').value) * 100;
     saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
@@ -1574,7 +1567,7 @@ for (const ID of WORK_CUT_IDS) {
     });
 }
 // The role tree is shown one bar at a time: tapping a part with a branch (›) opens the bar that splits it.
-const WORK_LEVEL_NAMES = ['역할', '일꾼', '자원', '채집'];
+const WORK_LEVEL_NAMES = ['역할', '일꾼', '자원'];
 function setWorkLevel(level) {
     DOLLAR('workLevels').dataset.level = String(level);
     DOLLAR('workCrumbs').replaceChildren(
@@ -2304,20 +2297,12 @@ function sync(display, now, notices) {
     syncText('workHudFood', `먹이 ${KINDS.food}`);
     syncText('workHudRes', `자원 ${KINDS.resource + KINDS.haul}`);
     {
-        const HAUL = Math.round(WORK_WORLD.haulBasisPoints / 100),
-            WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
-        if (document.activeElement !== DOLLAR('haulCut')) {
-            DOLLAR('haulCut').value = String(100 - HAUL);
-        }
+        const WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
         if (document.activeElement !== DOLLAR('woodCut')) {
             DOLLAR('woodCut').value = String(WOOD);
         }
-        syncText('workHudHit', `채집 ${KINDS.resource}`);
-        syncText('workHudCarry', `운반 ${KINDS.haul}`);
         syncText('workHudWood', `목재 ${WOOD}%`);
         syncText('workHudStone', `돌 ${100 - WOOD}%`);
-        DOLLAR('workHudHit').style.flex = `${Math.max(1, 100 - HAUL)} 1 0`;
-        DOLLAR('workHudCarry').style.flex = `${Math.max(1, HAUL)} 1 0`;
         DOLLAR('workHudWood').style.flex = `${Math.max(1, WOOD)} 1 0`;
         DOLLAR('workHudStone').style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
     }

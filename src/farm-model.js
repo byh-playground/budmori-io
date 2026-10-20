@@ -1370,8 +1370,6 @@ const GARDEN = class Garden {
         this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
         // Of the gatherers, how many go for wood (the rest go for stone), out of 10000.
         this.woodBasisPoints = 5000;
-        // Of the resource workers, how many carry what the others knock loose (the rest hit trees and rocks).
-        this.haulBasisPoints = 3000;
         this.materials = { wood: 0, stone: 0 };
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
@@ -2504,17 +2502,6 @@ const GARDEN = class Garden {
         }
         return true;
     }
-    setHaulShare(basisPoints) {
-        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
-            return false;
-        }
-        if (basisPoints !== this.haulBasisPoints) {
-            this.haulBasisPoints = basisPoints;
-            this._nextWorkerRefreshTick = 0;
-            this.refreshWorkers();
-        }
-        return true;
-    }
     // Starts a construction. The materials are paid up front; the work itself is done by the units.
     startBuild(kind, { tile = -1 } = {}) {
         const INFO = this.projectInfo(kind);
@@ -2714,7 +2701,8 @@ const GARDEN = class Garden {
                           PLOT_TOTAL - BUILDERS - EXPLORERS,
                           Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000),
                       ),
-                HITTERS = GATHERERS - Math.round((GATHERERS * this.haulBasisPoints) / 10000),
+                // A third of the resource workers (at least one, once there are two) carry; the rest hit the piles.
+                HITTERS = GATHERERS < 2 ? GATHERERS : GATHERERS - Math.max(1, Math.round(GATHERERS / 3)),
                 PLOT = this.farmPlots.get(PLOT_ID),
                 MULTIPLIER = {
                     food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
