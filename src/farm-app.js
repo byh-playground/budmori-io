@@ -35,7 +35,7 @@ import {
     advanceBossRewardCalculations,
 } from './boss-rewards.js';
 import { selectFarmBossStage, selectMapBossStage } from './farm-boss-stages.js';
-import { createWorldMapScreen } from './world-map-screen.js';
+import { createWorldMapView } from './world-map-view.js';
 import {
     beginChallenge,
     canChallenge,
@@ -73,7 +73,9 @@ let bossEncounterOpen = false;
 // The raid screen opens on the world map; "단계 선택" switches to the old stage picker for rematches.
 let bossMapMode = true;
 let bossMapTile = -1;
-let worldMapScreen = null;
+let worldMapView = null;
+let miniMapView = null;
+let lastLit = null;
 let bossSwipe = null;
 let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
@@ -824,13 +826,83 @@ function mapChallengeBlockReason() {
     }
     return raidStartBlockReason(false);
 }
+// What the map views draw each frame: the map itself, how far the next tile is, and how many explorers are out.
+function worldMapFrame() {
+    if (!personalGarden) {
+        return null;
+    }
+    const MAP = personalGarden.worldMap;
+    return {
+        map: MAP,
+        selected: bossMapTile,
+        progress: Math.min(1, MAP.gauge / exploreCost(MAP)),
+        explorers: personalGarden.workerKindCounts.explore,
+    };
+}
+function startWorldMapView() {
+    worldMapView ??= createWorldMapView(DOLLAR('worldMapCanvas'), {
+        interactive: true,
+        onSelect: selectWorldMapTile,
+        fps: 30,
+    });
+    worldMapView.start(worldMapFrame);
+}
+function stopWorldMapView() {
+    worldMapView?.stop();
+}
+// The small map on the farm screen runs only while it is shown.
+function syncMiniMap(visible) {
+    const MINI = DOLLAR('miniMap');
+    if (MINI.hidden === visible) {
+        MINI.hidden = !visible;
+    }
+    if (visible && !miniMapView) {
+        miniMapView = createWorldMapView(DOLLAR('miniMapCanvas'), { fps: 12 });
+        miniMapView.start(worldMapFrame);
+    } else if (!visible && miniMapView) {
+        miniMapView.stop();
+        miniMapView = null;
+    }
+    if (visible && personalGarden) {
+        const MAP = personalGarden.worldMap,
+            PERCENT = Math.floor(Math.min(1, MAP.gauge / exploreCost(MAP)) * 100);
+        syncText('miniMapLabel', `탐사 ${PERCENT}% · ${MAP.revealed.length}칸`);
+    }
+}
+// A tile lifted from the fog is announced where the player is looking, whether the map is open or not.
+function announceExploration() {
+    const MAP = personalGarden?.worldMap;
+    if (!MAP) {
+        lastLit = null;
+        return;
+    }
+    if (!lastLit || lastLit.world !== personalGarden) {
+        lastLit = { world: personalGarden, set: new Set(MAP.revealed) };
+        return;
+    }
+    if (MAP.revealed.length === lastLit.set.size) {
+        return;
+    }
+    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)),
+        NESTS = FOUND.filter((index) => hasNest(MAP, index)).length,
+        NOTICE = DOLLAR('exploreNotice');
+    lastLit.set = new Set(MAP.revealed);
+    if (FOUND.length === 0) {
+        return;
+    }
+    NOTICE.textContent =
+        NESTS > 0 ? `새 칸 ${FOUND.length}개 발견 · 보스 둥지가 있어요!` : `새 칸 ${FOUND.length}개를 발견했어요`;
+    NOTICE.hidden = false;
+    clearTimeout(announceExploration.timer);
+    announceExploration.timer = setTimeout(() => {
+        NOTICE.hidden = true;
+    }, 4000);
+}
 function renderWorldMap() {
     if (!personalGarden) {
         return;
     }
     const MAP = personalGarden.worldMap;
-    worldMapScreen ??= createWorldMapScreen(DOLLAR('worldMapGrid'), selectWorldMapTile);
-    worldMapScreen.render(MAP, bossMapTile);
     const WORKERS = personalGarden.workerKindCounts.explore,
         GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${exploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`,
         TILE = bossMapTile;
@@ -869,8 +941,16 @@ function selectWorldMapTile(index) {
     bossMapTile = bossMapTile === index ? -1 : index;
     renderWorldMap();
 }
+// The farm is paused behind the map screen, but the explorers keep working so the fog keeps lifting while you look.
+let bossMapTicker = 0;
+function stopBossMapTicker() {
+    clearInterval(bossMapTicker);
+    bossMapTicker = 0;
+}
 function setBossView(mapMode) {
     bossMapMode = mapMode;
+    stopBossMapTicker();
+    stopWorldMapView();
     const SCREEN = DOLLAR('bossEncounterScreen');
     SCREEN.dataset.view = mapMode ? 'map' : 'stage';
     DOLLAR('worldMapView').hidden = !mapMode;
@@ -879,7 +959,11 @@ function setBossView(mapMode) {
     DOLLAR('bossEncounterChallenge').textContent = mapMode ? '둥지 도전' : '레이드 시작';
     if (mapMode) {
         renderWorldMap();
-        worldMapScreen.center();
+        startWorldMapView();
+        bossMapTicker = setInterval(() => {
+            personalGarden?.tickExploration(0.25);
+            renderWorldMap();
+        }, 250);
     } else {
         DOLLAR('bossEncounterHint').textContent = '위아래로 밀어 단계 이동';
         if (personalGarden) {
@@ -928,6 +1012,8 @@ function closeBossEncounter(push = true) {
         return;
     }
     bossEncounterOpen = false;
+    stopBossMapTicker();
+    stopWorldMapView();
     document.body.dataset.bossScreen = 'false';
     DOLLAR('bossEncounterScreen').hidden = true;
     bossSwipe = null;
@@ -1296,6 +1382,12 @@ DOLLAR('menuBossEncounter').onclick = () => {
 };
 DOLLAR('bossEncounterBack').onclick = () => closeBossEncounter();
 DOLLAR('bossViewToggle').onclick = () => setBossView(!bossMapMode);
+DOLLAR('worldMapFit').onclick = () => {
+    if (personalGarden) {
+        worldMapView?.recenter(personalGarden.worldMap);
+    }
+};
+DOLLAR('miniMap').onclick = () => openBossEncounter();
 DOLLAR('worldMapExplore').onclick = () => {
     if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
         personalGarden.markProgressChanged();
@@ -2434,6 +2526,8 @@ function sync(display, now, notices) {
         }
     }
     syncFlag('bossEncounterScreen', 'hidden', home || !bossEncounterOpen);
+    syncMiniMap(!home && !RAID && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
+    announceExploration();
     syncFlag('farmControls', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag('workHud', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag('raidControls', 'hidden', !RAID || home);
