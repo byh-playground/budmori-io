@@ -32,6 +32,7 @@ import {
     tileFill,
     tileLook,
     tileResource,
+    tileSpots,
     tileTerrain,
     tileX,
     tileY,
@@ -798,6 +799,29 @@ const DIORAMA = class Diorama {
             }
         }
     }
+    // The gauge of a tree or rock being hit: five slots, one fills per hit, like the one in front of a grain pile.
+    drawGauges(sim2) {
+        for (const [KEY, NOTCHES] of sim2._hitStacks) {
+            if (NOTCHES <= 0) {
+                continue;
+            }
+            const [TILE, INDEX] = KEY.split(':').map(Number),
+                SPOT = tileSpots(sim2.worldMap, TILE)[INDEX];
+            if (!SPOT) {
+                continue;
+            }
+            const AT = sim2.tileOffset(sim2.activePlotId, TILE),
+                BASE = this.project(AT.x + SPOT.x, AT.y + SPOT.y, 0),
+                S = this.scale,
+                FULL = tileResource(sim2.worldMap, TILE) === 'wood' ? '#d9a566' : '#c9ccd2';
+            for (let slot = 0; slot < 5; slot++) {
+                const X = BASE.x + (slot - 2) * 0.27 * S,
+                    Y = BASE.y + 0.14 * S;
+                this.ellipse(X, Y, 0.115 * S, 0.1 * S, '#6b522a99');
+                this.ellipse(X, Y, 0.085 * S, 0.072 * S, slot < NOTCHES ? FULL : '#efe3bf');
+            }
+        }
+    }
     drawDanger(sim2) {
         const PRESENTATION = this.scenePresentation;
         const AREA = PRESENTATION.dangerVisible(sim2)
@@ -1020,6 +1044,7 @@ const DIORAMA = class Diorama {
         this.drawDanger(sim2);
         if (!SHIFT) {
             this.drawDrops(sim2);
+            this.drawGauges(sim2);
         }
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
