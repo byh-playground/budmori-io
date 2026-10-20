@@ -90,7 +90,7 @@ export class FormationSkillsUI {
             this.dockKey = DOCK_KEY;
             this.slotHost.innerHTML = Array.from({ length: STATE.slots }, (_, slot) => {
                 const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === STATE.equipped[slot]);
-                return `<div class="formation-slot" data-formation-slot="${slot}">
+                return `<div class="formation-slot" data-formation-slot="${slot}" data-empty="${DEFINITION ? 'false' : 'true'}">
                     <div class="formation-icon" title="${ESCAPE(DEFINITION?.name || '빈 슬롯')}">
                     <span>${ICONS[DEFINITION?.id] || '+'}</span><i class="formation-clock"></i></div>
                     <div class="formation-readout"><strong>${ESCAPE(DEFINITION?.name || '빈 슬롯')}</strong>

@@ -15110,7 +15110,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.2";
+      PRODUCT_VERSION = "0.21.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15651,7 +15651,7 @@
         this.dockKey = DOCK_KEY;
         this.slotHost.innerHTML = Array.from({ length: STATE.slots }, (_, slot) => {
           const DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === STATE.equipped[slot]);
-          return `<div class="formation-slot" data-formation-slot="${slot}">
+          return `<div class="formation-slot" data-formation-slot="${slot}" data-empty="${DEFINITION13 ? "false" : "true"}">
                     <div class="formation-icon" title="${ESCAPE(DEFINITION13?.name || "빈 슬롯")}">
                     <span>${ICONS[DEFINITION13?.id] || "+"}</span><i class="formation-clock"></i></div>
                     <div class="formation-readout"><strong>${ESCAPE(DEFINITION13?.name || "빈 슬롯")}</strong>
@@ -23099,15 +23099,6 @@
       e.preventDefault();
     }
   });
-  DOLLAR2("pause").onclick = () => {
-    menuPauseChanged = true;
-    active.paused = !active.paused;
-    if (active.paused) {
-      persist();
-    } else if (menuOpen) {
-      closeMenu();
-    }
-  };
   function drawTree() {
     const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
     DOLLAR2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
@@ -23326,10 +23317,6 @@
   DOLLAR2("upgradeMenu").onclick = () => openMenu(personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "growth");
   DOLLAR2("helpMenu").onclick = () => openMenu("help");
   DOLLAR2("gameMenuClose").onclick = () => closeMenu();
-  DOLLAR2("menuHome").onclick = () => {
-    closeMenu(false);
-    setHome(true);
-  };
   DOLLAR2("gameMenuTabs").onclick = (e) => {
     const BUTTON = e.target.closest("[data-menu-tab]");
     if (BUTTON && !BUTTON.disabled) {
@@ -23705,13 +23692,6 @@
     },
     { passive: false }
   );
-  for (const [ID, ACT] of [
-    ["zoomIn", () => RENDERER.zoomAt(1.4)],
-    ["zoomOut", () => RENDERER.zoomAt(1 / 1.4)],
-    ["zoomFit", () => RENDERER.fitAll()]
-  ]) {
-    DOLLAR2(ID).onclick = ACT;
-  }
   CANVAS.addEventListener("pointerdown", (e) => {
     FOOD_FEEL.unlock();
     if (e.pointerType === "touch" && canUseWorldInput() && active?.world.scene === "farm") {
@@ -23954,8 +23934,6 @@
     syncMiniMap(!home && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
     announceExploration();
     syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag("zoomBar", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag("zoomFit", "hidden", PLOT_IDS.length < 2);
     syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
     syncText("count", displayedCount);
@@ -24002,9 +23980,6 @@
     syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabGrowth", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabAbilities", "disabled", !personalGarden);
-    syncText("pause", active.paused ? "▶" : "Ⅱ");
-    syncAttribute("pause", "aria-label", active.paused ? "계속하기" : "일시정지");
-    syncAttribute("pause", "title", active.paused ? "계속하기" : "일시정지");
     syncText("warehouseStock", String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
     const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD), SITES = WORK_WORLD.buildSites;

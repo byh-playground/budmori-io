@@ -1234,15 +1234,6 @@ DOLLAR('merge').addEventListener('keydown', (e) => {
         e.preventDefault();
     }
 });
-DOLLAR('pause').onclick = () => {
-    menuPauseChanged = true;
-    active.paused = !active.paused;
-    if (active.paused) {
-        persist();
-    } else if (menuOpen) {
-        closeMenu();
-    }
-};
 function drawTree() {
     const W = personalGarden || active.world,
         IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
@@ -1497,10 +1488,6 @@ DOLLAR('upgradeMenu').onclick = () =>
     openMenu(personalGarden?.farmBossEvent?.phase !== 'idle' ? 'formation' : 'growth');
 DOLLAR('helpMenu').onclick = () => openMenu('help');
 DOLLAR('gameMenuClose').onclick = () => closeMenu();
-DOLLAR('menuHome').onclick = () => {
-    closeMenu(false);
-    setHome(true);
-};
 DOLLAR('gameMenuTabs').onclick = (e) => {
     const BUTTON = e.target.closest('[data-menu-tab]');
     if (BUTTON && !BUTTON.disabled) {
@@ -1891,13 +1878,6 @@ CANVAS.addEventListener(
     },
     { passive: false },
 );
-for (const [ID, ACT] of [
-    ['zoomIn', () => RENDERER.zoomAt(1.4)],
-    ['zoomOut', () => RENDERER.zoomAt(1 / 1.4)],
-    ['zoomFit', () => RENDERER.fitAll()],
-]) {
-    DOLLAR(ID).onclick = ACT;
-}
 CANVAS.addEventListener('pointerdown', (e) => {
     FOOD_FEEL.unlock();
     if (e.pointerType === 'touch' && canUseWorldInput() && active?.world.scene === 'farm') {
@@ -2158,8 +2138,6 @@ function sync(display, now, notices) {
     syncMiniMap(!home && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
     announceExploration();
     syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag('zoomBar', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag('zoomFit', 'hidden', PLOT_IDS.length < 2);
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
     syncText('count', displayedCount);
@@ -2232,9 +2210,6 @@ function sync(display, now, notices) {
     syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabGrowth', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabAbilities', 'disabled', !personalGarden);
-    syncText('pause', active.paused ? '▶' : 'Ⅱ');
-    syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
-    syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');
     syncText('warehouseStock', String(W.warehouseFood));
     const WORK_WORLD = personalGarden || W;
     const KINDS = WORK_WORLD.workerKindCounts,
