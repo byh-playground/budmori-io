@@ -581,10 +581,10 @@ const DIORAMA = class Diorama {
         const TERRAIN = tileTerrain(map, index),
             [GROUND, SURFACE] = paint[TERRAIN];
         // Under fog, only the pieces already lifted are painted (and what stands on them).
-        const SEEN = (x, y) => mask === null || ((mask >> fogPieceAt(x - ox, y - oy)) & 1) === 1;
+        const SEEN = (x, y) => mask === null || mask.has(fogPieceAt(x - ox, y - oy));
         if (mask !== null) {
             for (let piece = 0; piece < FOG_PIECES; piece++) {
-                if ((mask >> piece) & 1) {
+                if (mask.has(piece)) {
                     const C = fogPieceCenter(piece);
                     this.groundBlock(
                         ox + C.x,
@@ -641,13 +641,13 @@ const DIORAMA = class Diorama {
     }
     // The tile being explored: the fog lifts piece by piece. A piece being worked on grows from its centre.
     drawFog(world, map, index, ox, oy, paint, look) {
-        const MASK = map.progress[index] ?? 0;
+        const MASK = new Set(map.progress[index] ?? []);
         this.paintLand(map, index, ox, oy, paint, look, MASK);
         const COST = fogPieceCost(map, index),
             [GROUND, SURFACE] = paint[tileTerrain(map, index)];
         for (let piece = 0; piece < FOG_PIECES; piece++) {
             const SHARE = Math.min(1, (world._pieceWork.get(index * FOG_PIECES + piece) ?? 0) / COST);
-            if ((MASK >> piece) & 1 || SHARE <= 0) {
+            if (MASK.has(piece) || SHARE <= 0) {
                 continue;
             }
             const C = fogPieceCenter(piece),
@@ -708,7 +708,7 @@ const DIORAMA = class Diorama {
                         this.groundCell(OX, OY, '#e9e5d2');
                         this.groundCell(OX, OY, '#efecdc', 0.6);
                     }
-                    if (INDEX === EXPLORING || (MAP.progress[INDEX] ?? 0) > 0) {
+                    if (INDEX === EXPLORING || (MAP.progress[INDEX]?.length ?? 0) > 0) {
                         this.drawFog(world, MAP, INDEX, OX, OY, PAINT, LOOK);
                     }
                     continue;

@@ -3160,7 +3160,7 @@ const GARDEN = class Garden {
         const C = fogPieceCenter(PIECE),
             X = GOAL.x + C.x,
             Y = GOAL.y + C.y;
-        return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
+        return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 1.8, travel: GOAL.speed * 1.8 };
     }
     // The same walk as a straight line, for explorers of a farm that is not being simulated.
     _walkExplorer(unit, seconds) {
@@ -3182,14 +3182,18 @@ const GARDEN = class Garden {
         unit.y += (DY / DISTANCE) * STEP;
         unit.angle = Math.atan2(DY, DX);
     }
-    // Is this explorer standing where the exploring is done?
+    // Is this explorer standing on its piece of fog? Only then does it work; on the way it is just walking.
     exploreOnSite(unit) {
         const GOAL = this.exploreGoal(unit.plotId);
         if (!GOAL) {
             return false;
         }
-        const ARENA = CONFIG.farm.arena;
-        return Math.abs(unit.x - GOAL.x) <= ARENA.radiusX && Math.abs(unit.y - GOAL.y) <= ARENA.radiusY;
+        const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+        if (PIECE < 0) {
+            return false;
+        }
+        const C = fogPieceCenter(PIECE);
+        return Math.hypot(unit.x - GOAL.x - C.x, unit.y - GOAL.y - C.y) <= 1.5;
     }
     // Explorers of every farm that are on their tile right now.
     get exploreOnSiteCount() {
@@ -3210,6 +3214,19 @@ const GARDEN = class Garden {
             }
         }
         return rate;
+    }
+    // What a farm's explorers are doing: none, all still on their way to the tile, or at work in it.
+    exploreStatus(plotId = this.activePlotId) {
+        let workers = 0,
+            onSite = 0;
+        for (const UNIT of this.unitCollection.unitsInPlot(plotId)) {
+            if (this._workerKinds.get(UNIT.id) === 'explore') {
+                workers++;
+                onSite += this.exploreOnSite(UNIT) ? 1 : 0;
+            }
+        }
+        const PHASE = workers === 0 ? 'none' : !this.exploreGoal(plotId) ? 'idle' : onSite === 0 ? 'moving' : 'working';
+        return { phase: PHASE, workers, onSite };
     }
     // The targets the farms are exploring now, with how far along each one is.
     get exploreTargets() {

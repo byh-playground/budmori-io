@@ -880,7 +880,7 @@ function syncMiniMap(visible) {
         miniMapView = null;
     }
     if (visible && personalGarden) {
-        syncText('miniMapLabel', `탐사 ${Math.floor(personalGarden.exploreProgress * 100)}%`);
+        syncText('miniMapLabel', exploreLine(personalGarden.activePlotId, true));
     }
 }
 // A tile lifted from the fog is announced where the player is looking, whether the map is open or not.
@@ -912,13 +912,31 @@ function announceExploration() {
         NOTICE.hidden = true;
     }, 4000);
 }
+// "Exploring 0%" reads like a bug, so say what the explorers are doing: walking there, or lifting fog.
+const EXPLORE_PHASE_TEXT = {
+    none: '탐사 일꾼 없음',
+    idle: '탐사할 칸 없음',
+    moving: '이동 중',
+    working: '탐사 중',
+};
+function exploreLine(plotId, short = false) {
+    const STATUS = personalGarden.exploreStatus(plotId),
+        PERCENT = Math.floor(personalGarden.exploreProgress * 100);
+    if (short) {
+        return STATUS.phase === 'working' ? `탐사 중 ${PERCENT}%` : EXPLORE_PHASE_TEXT[STATUS.phase];
+    }
+    return STATUS.phase === 'working'
+        ? `탐사 중 ${PERCENT}% · 현장 ${STATUS.onSite}/${STATUS.workers}마리`
+        : STATUS.phase === 'moving'
+          ? `이동 중 · 일꾼 ${STATUS.workers}마리가 걸어가는 중`
+          : EXPLORE_PHASE_TEXT[STATUS.phase];
+}
 function renderWorldMap() {
     if (!personalGarden) {
         return;
     }
     const MAP = personalGarden.worldMap;
-    const WORKERS = personalGarden.workerKindCounts.explore,
-        GAUGE = `탐사 ${Math.floor(personalGarden.exploreProgress * 100)}% · 탐사 일꾼 ${WORKERS}마리 · 현장 ${personalGarden.exploreOnSiteCount}마리`,
+    const GAUGE = exploreLine(personalGarden.activePlotId),
         TILE = bossMapTile;
     let title = '칸을 눌러 보세요',
         info = GAUGE,
