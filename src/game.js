@@ -4627,13 +4627,6 @@
     }
     return best;
   }
-  function countBits(mask) {
-    let count = 0;
-    for (let rest = mask; rest > 0; rest >>= 1) {
-      count += rest & 1;
-    }
-    return count;
-  }
   function fogPieceCenter(piece) {
     return {
       x: (piece % FOG_GRID + 0.5) * PIECE_W - FARM_CELL.width / 2,
@@ -4645,10 +4638,10 @@
     return ROW * FOG_GRID + COL;
   }
   function nearestFogPiece(map, tile, x, y) {
-    const MASK = map.progress[tile] ?? 0;
+    const LIFTED = new Set(map.progress[tile] ?? []);
     let best = -1, bestDistance = Infinity;
     for (let piece = 0; piece < FOG_PIECES; piece++) {
-      if (MASK >> piece & 1) {
+      if (LIFTED.has(piece)) {
         continue;
       }
       const C = fogPieceCenter(piece), D = Math.hypot(C.x - x, C.y - y);
@@ -4663,7 +4656,7 @@
     return tileCost(map, tile) / FOG_PIECES;
   }
   function exploreFraction(map, index, partial = 0) {
-    return Math.min(1, (countBits(map.progress[index] ?? 0) + partial) / FOG_PIECES);
+    return Math.min(1, ((map.progress[index]?.length ?? 0) + partial) / FOG_PIECES);
   }
   function canExploreTile(map, index) {
     return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && !isRevealed(map, index) && touchesLight(index, new Set(map.revealed)) && inReach(map, index);
@@ -4687,9 +4680,13 @@
     if (!Number.isSafeInteger(tile) || tile < 0 || tile >= WORLD_MAP_TILE_COUNT || isRevealed(map, tile) || !(piece >= 0 && piece < FOG_PIECES)) {
       return [];
     }
-    const MASK = (map.progress[tile] ?? 0) | 1 << piece;
-    if (countBits(MASK) < FOG_LIT_AT) {
-      map.progress[tile] = MASK;
+    const LIFTED = map.progress[tile] ?? [];
+    if (!LIFTED.includes(piece)) {
+      LIFTED.push(piece);
+      LIFTED.sort((a, b) => a - b);
+    }
+    if (LIFTED.length < FOG_LIT_AT) {
+      map.progress[tile] = LIFTED;
       return [];
     }
     delete map.progress[tile];
@@ -4823,7 +4820,7 @@
       ];
       REACH_PROVIDERS = /* @__PURE__ */ new WeakMap();
       TERRAIN_NAMES = { plain: "평지", forest: "숲", rock: "바위산", swamp: "늪" };
-      FOG_GRID = 4;
+      FOG_GRID = 8;
       FOG_PIECES = FOG_GRID * FOG_GRID;
       FOG_LIT_AT = FOG_PIECES - 2;
       PIECE_W = FARM_CELL.width / FOG_GRID;
@@ -11311,7 +11308,7 @@
             return null;
           }
           const C = fogPieceCenter(PIECE), X = GOAL.x + C.x, Y = GOAL.y + C.y;
-          return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
+          return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 1.8, travel: GOAL.speed * 1.8 };
         }
         // The same walk as a straight line, for explorers of a farm that is not being simulated.
         _walkExplorer(unit, seconds) {
@@ -11331,14 +11328,18 @@
           unit.y += DY / DISTANCE * STEP;
           unit.angle = Math.atan2(DY, DX);
         }
-        // Is this explorer standing where the exploring is done?
+        // Is this explorer standing on its piece of fog? Only then does it work; on the way it is just walking.
         exploreOnSite(unit) {
           const GOAL = this.exploreGoal(unit.plotId);
           if (!GOAL) {
             return false;
           }
-          const ARENA = CONFIG.farm.arena;
-          return Math.abs(unit.x - GOAL.x) <= ARENA.radiusX && Math.abs(unit.y - GOAL.y) <= ARENA.radiusY;
+          const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+          if (PIECE < 0) {
+            return false;
+          }
+          const C = fogPieceCenter(PIECE);
+          return Math.hypot(unit.x - GOAL.x - C.x, unit.y - GOAL.y - C.y) <= 1.5;
         }
         // Explorers of every farm that are on their tile right now.
         get exploreOnSiteCount() {
@@ -11359,6 +11360,18 @@
             }
           }
           return rate;
+        }
+        // What a farm's explorers are doing: none, all still on their way to the tile, or at work in it.
+        exploreStatus(plotId = this.activePlotId) {
+          let workers = 0, onSite = 0;
+          for (const UNIT3 of this.unitCollection.unitsInPlot(plotId)) {
+            if (this._workerKinds.get(UNIT3.id) === "explore") {
+              workers++;
+              onSite += this.exploreOnSite(UNIT3) ? 1 : 0;
+            }
+          }
+          const PHASE = workers === 0 ? "none" : !this.exploreGoal(plotId) ? "idle" : onSite === 0 ? "moving" : "working";
+          return { phase: PHASE, workers, onSite };
         }
         // The targets the farms are exploring now, with how far along each one is.
         get exploreTargets() {
@@ -15312,7 +15325,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.15.0";
+      PRODUCT_VERSION = "0.16.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18721,10 +18734,10 @@
     paintLand(map, index, ox, oy, paint, look2, mask = null) {
       const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
       const TERRAIN = tileTerrain(map, index), [GROUND, SURFACE] = paint[TERRAIN];
-      const SEEN = (x, y) => mask === null || (mask >> fogPieceAt(x - ox, y - oy) & 1) === 1;
+      const SEEN = (x, y) => mask === null || mask.has(fogPieceAt(x - ox, y - oy));
       if (mask !== null) {
         for (let piece = 0; piece < FOG_PIECES; piece++) {
-          if (mask >> piece & 1) {
+          if (mask.has(piece)) {
             const C = fogPieceCenter(piece);
             this.groundBlock(
               ox + C.x,
@@ -18778,12 +18791,12 @@
     }
     // The tile being explored: the fog lifts piece by piece. A piece being worked on grows from its centre.
     drawFog(world, map, index, ox, oy, paint, look2) {
-      const MASK = map.progress[index] ?? 0;
+      const MASK = new Set(map.progress[index] ?? []);
       this.paintLand(map, index, ox, oy, paint, look2, MASK);
       const COST = fogPieceCost(map, index), [GROUND, SURFACE] = paint[tileTerrain(map, index)];
       for (let piece = 0; piece < FOG_PIECES; piece++) {
         const SHARE = Math.min(1, (world._pieceWork.get(index * FOG_PIECES + piece) ?? 0) / COST);
-        if (MASK >> piece & 1 || SHARE <= 0) {
+        if (MASK.has(piece) || SHARE <= 0) {
           continue;
         }
         const C = fogPieceCenter(piece), HX = FARM_CELL.width / FOG_GRID / 2 * Math.sqrt(SHARE), HY = FARM_CELL.height / FOG_GRID / 2 * Math.sqrt(SHARE);
@@ -18826,7 +18839,7 @@
               this.groundCell(OX, OY, "#e9e5d2");
               this.groundCell(OX, OY, "#efecdc", 0.6);
             }
-            if (INDEX === EXPLORING || (MAP.progress[INDEX] ?? 0) > 0) {
+            if (INDEX === EXPLORING || (MAP.progress[INDEX]?.length ?? 0) > 0) {
               this.drawFog(world, MAP, INDEX, OX, OY, PAINT, LOOK);
             }
             continue;
@@ -23679,7 +23692,7 @@
       miniMapView = null;
     }
     if (visible && personalGarden) {
-      syncText("miniMapLabel", `탐사 ${Math.floor(personalGarden.exploreProgress * 100)}%`);
+      syncText("miniMapLabel", exploreLine(personalGarden.activePlotId, true));
     }
   }
   function announceExploration() {
@@ -23707,12 +23720,25 @@
       NOTICE.hidden = true;
     }, 4e3);
   }
+  var EXPLORE_PHASE_TEXT = {
+    none: "탐사 일꾼 없음",
+    idle: "탐사할 칸 없음",
+    moving: "이동 중",
+    working: "탐사 중"
+  };
+  function exploreLine(plotId, short = false) {
+    const STATUS = personalGarden.exploreStatus(plotId), PERCENT = Math.floor(personalGarden.exploreProgress * 100);
+    if (short) {
+      return STATUS.phase === "working" ? `탐사 중 ${PERCENT}%` : EXPLORE_PHASE_TEXT[STATUS.phase];
+    }
+    return STATUS.phase === "working" ? `탐사 중 ${PERCENT}% · 현장 ${STATUS.onSite}/${STATUS.workers}마리` : STATUS.phase === "moving" ? `이동 중 · 일꾼 ${STATUS.workers}마리가 걸어가는 중` : EXPLORE_PHASE_TEXT[STATUS.phase];
+  }
   function renderWorldMap() {
     if (!personalGarden) {
       return;
     }
     const MAP = personalGarden.worldMap;
-    const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(personalGarden.exploreProgress * 100)}% · 탐사 일꾼 ${WORKERS}마리 · 현장 ${personalGarden.exploreOnSiteCount}마리`, TILE = bossMapTile;
+    const GAUGE = exploreLine(personalGarden.activePlotId), TILE = bossMapTile;
     let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false, canBuild = false;
     if (TILE >= 0) {
       const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;

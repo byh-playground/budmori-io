@@ -236,19 +236,12 @@ export function exploreTargetFor(map, plotId) {
     return best;
 }
 // A tile's fog is a grid of pieces. The explorers' work lifts them one at a time, and the tile is lit once
-// nearly all of them are gone. map.progress keeps, per fogged tile, the lifted pieces as bits.
-export const FOG_GRID = 4;
+// nearly all of them are gone. map.progress keeps, per fogged tile, the sorted list of lifted pieces.
+export const FOG_GRID = 8;
 export const FOG_PIECES = FOG_GRID * FOG_GRID;
 export const FOG_LIT_AT = FOG_PIECES - 2;
 const PIECE_W = FARM_CELL.width / FOG_GRID,
     PIECE_H = FARM_CELL.height / FOG_GRID;
-export function countBits(mask) {
-    let count = 0;
-    for (let rest = mask; rest > 0; rest >>= 1) {
-        count += rest & 1;
-    }
-    return count;
-}
 // A piece's centre and the piece under a point, in the tile's own coordinates (centre 0,0; farm y runs up).
 export function fogPieceCenter(piece) {
     return {
@@ -263,11 +256,11 @@ export function fogPieceAt(x, y) {
 }
 // The piece an explorer standing at (x, y) in the tile works on: the nearest one still under fog, -1 if none.
 export function nearestFogPiece(map, tile, x, y) {
-    const MASK = map.progress[tile] ?? 0;
+    const LIFTED = new Set(map.progress[tile] ?? []);
     let best = -1,
         bestDistance = Infinity;
     for (let piece = 0; piece < FOG_PIECES; piece++) {
-        if ((MASK >> piece) & 1) {
+        if (LIFTED.has(piece)) {
             continue;
         }
         const C = fogPieceCenter(piece),
@@ -285,7 +278,7 @@ export function fogPieceCost(map, tile) {
 }
 // How much of the tile's fog is gone, from 0 to 1; `partial` is the worked-on share of pieces not yet lifted.
 export function exploreFraction(map, index, partial = 0) {
-    return Math.min(1, (countBits(map.progress[index] ?? 0) + partial) / FOG_PIECES);
+    return Math.min(1, ((map.progress[index]?.length ?? 0) + partial) / FOG_PIECES);
 }
 // A fogged tile can be picked as the next exploration target when it touches lit ground.
 export function canExploreTile(map, index) {
@@ -325,9 +318,13 @@ export function liftFogPiece(map, tile, piece) {
     ) {
         return [];
     }
-    const MASK = (map.progress[tile] ?? 0) | (1 << piece);
-    if (countBits(MASK) < FOG_LIT_AT) {
-        map.progress[tile] = MASK;
+    const LIFTED = map.progress[tile] ?? [];
+    if (!LIFTED.includes(piece)) {
+        LIFTED.push(piece);
+        LIFTED.sort((a, b) => a - b);
+    }
+    if (LIFTED.length < FOG_LIT_AT) {
+        map.progress[tile] = LIFTED;
         return [];
     }
     delete map.progress[tile];
@@ -425,7 +422,7 @@ const SORTED_INDEXES = (list) =>
             value < WORLD_MAP_TILE_COUNT &&
             (position === 0 || value > list[position - 1]),
     );
-// Progress is kept per tile: only tiles still in the fog, as the bits of the fog pieces already lifted.
+// Progress is kept per tile: only tiles still in the fog, as the sorted list of fog pieces already lifted.
 const VALID_PROGRESS = (progress) =>
     !!progress &&
     typeof progress === 'object' &&
