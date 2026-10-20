@@ -772,6 +772,9 @@ const DIORAMA = class Diorama {
             this.drawWorkShadows(sim2);
             this.drawFacilities(sim2);
         }
+    }
+    drawDanger(sim2) {
+        const PRESENTATION = this.scenePresentation;
         const AREA = PRESENTATION.dangerVisible(sim2)
             ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea)
             : null;
@@ -973,6 +976,13 @@ const DIORAMA = class Diorama {
             this.drawBackdrop(this.backdrop);
         }
         this.terrain(sim2);
+        // A fight on a tile of the map: the camera goes with the units, and they are drawn on that tile.
+        const SHIFT = sim2.scene === 'farm' ? sim2.battleShift() : null,
+            UNSHIFTED_OFFSET = this.offset;
+        if (SHIFT) {
+            this.setPan(-SHIFT.x, -SHIFT.y * WORLD_DEPTH_PROJECTION);
+            this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * WORLD_DEPTH_PROJECTION];
+        }
         for (const U of sim2.units) {
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
@@ -982,13 +992,7 @@ const DIORAMA = class Diorama {
                 this.ring(U.x, U.y, SHADOW * 1.12, GRADE_RING_COLORS[U.tier - 1], GRADE_RING_WIDTHS[U.tier - 1]);
             }
         }
-        // A fight on a tile of the map: the camera goes with the units, and they are drawn on that tile.
-        const SHIFT = sim2.scene === 'farm' ? sim2.battleShift() : null,
-            UNSHIFTED_OFFSET = this.offset;
-        if (SHIFT) {
-            this.setPan(-SHIFT.x, -SHIFT.y * WORLD_DEPTH_PROJECTION);
-            this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * WORLD_DEPTH_PROJECTION];
-        }
+        this.drawDanger(sim2);
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
