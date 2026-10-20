@@ -887,15 +887,31 @@
     }
     unit.workOut = true;
     const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y), WORKING = world._haul.get(unit.id)?.phase === "work" && SPOT.cx !== void 0;
-    return {
-      x: SPOT.x,
-      y: SPOT.y,
-      fx: WORKING ? SPOT.cx : SPOT.x + 1,
-      fy: WORKING ? SPOT.cy : SPOT.y,
-      speed: SPOT.speed,
-      hold: DISTANCE <= 0.6,
-      face: WORKING && DISTANCE <= 0.6
-    };
+    const SWING = world._swings.get(unit.id);
+    if (!WORKING || DISTANCE > NEAR_PILE + 4) {
+      return {
+        x: SPOT.x,
+        y: SPOT.y,
+        fx: WORKING ? SPOT.cx : SPOT.x + 1,
+        fy: WORKING ? SPOT.cy : SPOT.y,
+        speed: SPOT.speed,
+        hold: DISTANCE <= 0.6,
+        face: WORKING && DISTANCE <= 0.6
+      };
+    }
+    const ORDER = { x: SPOT.x, y: SPOT.y, fx: SPOT.cx, fy: SPOT.cy, speed: SPOT.speed, hold: false, face: false };
+    if (!SWING || SWING.phase === "idle") {
+      ORDER.hold = DISTANCE <= 0.6;
+      ORDER.face = ORDER.hold;
+    } else if (SWING.phase === "fire") {
+      ORDER.x = SPOT.cx;
+      ORDER.y = SPOT.cy;
+      ORDER.speed = CHARGE_SPEED;
+    } else {
+      ORDER.hold = true;
+      ORDER.face = SWING.phase === "windup";
+    }
+    return ORDER;
   }
   function workOrder(world, unit) {
     const ASSIGN = world._workAssign.get(unit.id);
@@ -958,7 +974,8 @@
     }
     if (swing.phase === "idle") {
       swing.wait -= dt;
-      if (swing.wait <= 0) {
+      const SPOT = world.haulSpot(unit);
+      if (swing.wait <= 0 && SPOT && Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5) {
         swing.phase = "windup";
         swing.elapsed = 0;
       }
@@ -968,9 +985,20 @@
     if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
       swing.phase = "fire";
       swing.elapsed = 0;
-    } else if (swing.phase === "fire" && swing.elapsed >= GATHER_STRIKE_SECONDS) {
-      swing.phase = "recover";
-      swing.elapsed = 0;
+    } else if (swing.phase === "fire") {
+      const SPOT = world.haulSpot(unit), D = SPOT?.cx === void 0 ? 0 : Math.hypot(unit.x - SPOT.cx, unit.y - SPOT.cy);
+      if (SPOT?.cx === void 0 || D <= GATHER_REACH + unit.radius * 0.6 + 0.12) {
+        if (SPOT?.cx !== void 0) {
+          world.emit("thresh", SPOT.cx, SPOT.cy, 0, { big: false, duration: 0.55 });
+          unit.vx = (unit.x - SPOT.cx) / Math.max(D, 1e-6) * RECOIL_SPEED;
+          unit.vy = (unit.y - SPOT.cy) / Math.max(D, 1e-6) * RECOIL_SPEED;
+        }
+        swing.phase = "recover";
+        swing.elapsed = 0;
+      } else if (swing.elapsed >= CHARGE_TIMEOUT) {
+        swing.phase = "recover";
+        swing.elapsed = 0;
+      }
     } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
       swing.phase = "idle";
       swing.elapsed = 0;
@@ -1049,7 +1077,7 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GATHER_STRIKE_SECONDS, GATHER_PAUSE_SECONDS;
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GATHER_REACH, GATHER_PAUSE_SECONDS;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       init_farm_plot();
@@ -1062,7 +1090,7 @@
       RECOIL_SPEED = 5.5;
       STACKS_PER_FOOD = 5;
       HITS_PER_WORK = STACKS_PER_FOOD;
-      GATHER_STRIKE_SECONDS = 0.3;
+      GATHER_REACH = 1.1;
       GATHER_PAUSE_SECONDS = 0.3;
     }
   });
@@ -11048,7 +11076,7 @@
           if (SPOTS.length > 0) {
             const TARGET = SPOTS[unit.id % SPOTS.length];
             return {
-              x: AT.x + TARGET.x - 2.2,
+              x: AT.x + TARGET.x - 4.2,
               y: AT.y + TARGET.y,
               speed: 9,
               cx: AT.x + TARGET.x,
@@ -11072,7 +11100,7 @@
             unit.y += (SPOT.y - unit.y) / DISTANCE * STEP;
             unit.angle = Math.atan2(SPOT.y - unit.y, SPOT.x - unit.x);
           }
-          if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) > 1.5) {
+          if (STATE.phase !== "work" && Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) > 1.5) {
             return;
           }
           if (STATE.phase === "out") {
@@ -15127,7 +15155,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.13";
+      PRODUCT_VERSION = "0.21.14";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

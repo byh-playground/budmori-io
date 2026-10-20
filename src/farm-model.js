@@ -2985,7 +2985,7 @@ const GARDEN = class Garden {
             // A hitter stands beside one of the trees or rocks that are really there and faces it.
             const TARGET = SPOTS[unit.id % SPOTS.length];
             return {
-                x: AT.x + TARGET.x - 2.2,
+                x: AT.x + TARGET.x - 4.2,
                 y: AT.y + TARGET.y,
                 speed: 9,
                 cx: AT.x + TARGET.x,
@@ -3010,7 +3010,8 @@ const GARDEN = class Garden {
             unit.y += ((SPOT.y - unit.y) / DISTANCE) * STEP;
             unit.angle = Math.atan2(SPOT.y - unit.y, SPOT.x - unit.x);
         }
-        if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) > 1.5) {
+        // A worker already at its tree stays at work while it charges and bounces back.
+        if (STATE.phase !== 'work' && Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) > 1.5) {
             return;
         }
         if (STATE.phase === 'out') {
