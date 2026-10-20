@@ -30,6 +30,7 @@ import {
     fogPieceCost,
     isRevealed,
     tileFill,
+    tileResource,
     tileTerrain,
     tileX,
     tileY,
@@ -773,6 +774,33 @@ const DIORAMA = class Diorama {
             this.drawFacilities(sim2);
         }
     }
+    // Material the gatherers knocked loose lies on its tile's ground until a hauler picks it up.
+    drawDrops(sim2) {
+        if (sim2.scene !== 'farm') {
+            return;
+        }
+        for (const [TILE, AMOUNT] of sim2._drops) {
+            const KIND = tileResource(sim2.worldMap, TILE),
+                COUNT = Math.min(12, Math.ceil(AMOUNT));
+            if (!KIND || COUNT <= 0) {
+                continue;
+            }
+            const AT = sim2.tileOffset(sim2.activePlotId, TILE);
+            for (let index = 0; index < COUNT; index++) {
+                const ANGLE = index * 2.399 + TILE,
+                    RADIUS = 3 + ((index * 7 + TILE) % 5) * 1.6,
+                    X = AT.x + Math.cos(ANGLE) * RADIUS * 1.5,
+                    Y = AT.y + Math.sin(ANGLE) * RADIUS;
+                if (KIND === 'wood') {
+                    this.groundEllipse(X, Y, 0.34, 0.14, '#8a5a2b');
+                    this.groundEllipse(X + 0.2, Y, 0.1, 0.1, '#d8b27a');
+                } else {
+                    this.groundEllipse(X, Y, 0.26, 0.2, '#8d8f93');
+                    this.groundEllipse(X - 0.05, Y - 0.04, 0.12, 0.08, '#c7c9cc');
+                }
+            }
+        }
+    }
     drawDanger(sim2) {
         const PRESENTATION = this.scenePresentation;
         const AREA = PRESENTATION.dangerVisible(sim2)
@@ -993,6 +1021,9 @@ const DIORAMA = class Diorama {
             }
         }
         this.drawDanger(sim2);
+        if (!SHIFT) {
+            this.drawDrops(sim2);
+        }
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');

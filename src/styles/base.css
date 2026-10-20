@@ -397,6 +397,9 @@ body > header {
 #workHudRes {
     background: #8b8a7c;
 }
+#workHudHaul {
+    background: #a58f5f;
+}
 #workHudBuild {
     background: #b9774a;
 }
