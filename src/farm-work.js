@@ -9,15 +9,6 @@ const NEAR_PILE = 4.4,
     CHARGE_TIMEOUT = 1.6,
     RECOIL_SPEED = 5.5;
 export const STACKS_PER_FOOD = 5;
-// Piles are kept per farm plot, so each plot shows only its own.
-export function pilesOf(world, plotId) {
-    let list = world._pilesByPlot.get(plotId);
-    if (!list) {
-        list = [];
-        world._pilesByPlot.set(plotId, list);
-    }
-    return list;
-}
 function pilePosition(world, config) {
     const WORK = config.farm.work;
     let best = null,
@@ -61,7 +52,7 @@ export function pileRadius(pile) {
     return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
 export function resetWork(world) {
-    world._pilesByPlot = new Map();
+    world._piles = [];
     world._pileId = 0;
     world._pileRespawn = 0;
     world._workAssign = new Map();

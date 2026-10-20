@@ -126,6 +126,23 @@ await check('food workers hit grain piles and food is produced', async () => {
     expect(GOT.produced > 0, `no food produced ${JSON.stringify(GOT)}`);
 });
 
+await check('units eat, breed and the farm stays under its capacity', async () => {
+    await WORLD(() => {
+        const W = BUDMORI.sim;
+        for (let round = 0; round < 40; round++) {
+            W.scatterFoodAtRandomLocation();
+        }
+    });
+    await PAGE.waitForFunction(() => BUDMORI.sim.metrics.births > 0, null, { timeout: 60000 }).catch(() => {});
+    const GOT = await WORLD(() => ({
+        births: BUDMORI.sim.metrics.births,
+        owned: BUDMORI.sim.ownedPopulation,
+        capacity: BUDMORI.sim.capacity,
+    }));
+    expect(GOT.births > 0, `no births ${JSON.stringify(GOT)}`);
+    expect(GOT.owned <= GOT.capacity, `over capacity ${JSON.stringify(GOT)}`);
+});
+
 await check('challenge button starts a boss fight and retreat ends it', async () => {
     await PAGE.locator('#bossChallenge').click();
     await PAGE.waitForTimeout(4000);

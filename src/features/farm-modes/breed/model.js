@@ -11,12 +11,7 @@ export class BreedFarmMode extends FarmMode {
         let target = null;
         if (!u.fed) {
             target = world.requestGroundFoodTarget(u);
-            if (
-                target &&
-                world.canFarmPopulationAdvance(u.species) &&
-                Math.hypot(target.x - u.x, target.y - u.y) < 0.42 &&
-                world.consumeGroundFood(target)
-            ) {
+            if (target && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target)) {
                 world.clearFoodTargetSearch(u);
                 u.meals = 1;
                 world.markProgressChanged();
@@ -84,7 +79,7 @@ export class BreedFarmMode extends FarmMode {
         const OWNER = world.breedingReservationOwner(a, b);
         if (
             !world.canBreedPair(a, b, true) ||
-            world.ownedPopulation >= world.totalFarmCapacity ||
+            world.ownedPopulation >= world.capacity ||
             (a.mateId && a.mateId !== b.id) ||
             (b.mateId && b.mateId !== a.id) ||
             (!priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair()) ||

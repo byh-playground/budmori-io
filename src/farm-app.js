@@ -831,25 +831,14 @@ function drawFarmPanel() {
     }
     farmPanelRevision = W.progressRevision;
     const LOCKED = !!farmSortTransition || active?.world?.scene !== 'farm' || W.farmBossEvent?.phase !== 'idle';
-    DOLLAR('farmStatPlaced').textContent = String(W.placedPopulation);
-    DOLLAR('farmStatCapacity').textContent = `/ ${W.totalFarmCapacity}`;
-    DOLLAR('farmStatReserved').textContent = String(W.reservedPopulation);
+    DOLLAR('farmStatPlaced').textContent = String(W.ownedPopulation);
+    DOLLAR('farmStatCapacity').textContent = `/ ${W.capacity}`;
     DOLLAR('farmStatPending').textContent = String(W.pendingRewardPopulation);
     DOLLAR('farmStatFood').textContent = String(W.warehouseFood);
     syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
-    const COUNTS = W.roster.countsBySpecies(),
-        TOTAL = [...COUNTS.values()].reduce((sum, count) => sum + count, 0);
-    DOLLAR('farmRatioList').innerHTML = W.farmTargets
-        .map((value, speciesId) => {
-            const SPECIES = speciesById(speciesId),
-                COUNT = COUNTS.get(speciesId) || 0,
-                CURRENT = TOTAL ? ((COUNT / TOTAL) * 100).toFixed(0) : '0';
-            return `<label class="farm-ratio"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><span class="farm-ratio__name"><b>${SPECIES.name}</b><small>${COUNT}마리 · 현재 ${CURRENT}%</small></span><output>목표 ${+(value / 100).toFixed(1)}%</output><input type="range" min="0" max="10000" step="50" value="${value}" aria-label="${SPECIES.name} 목표 비율" data-farm-target="${SPECIES.id}"${LOCKED ? ' disabled' : ''}></label>`;
-        })
-        .join('');
 }
 function drawAbilityTree() {
     const W = personalGarden || active.world,
@@ -1052,21 +1041,6 @@ DOLLAR('workCutA').addEventListener('input', () => {
     saveWorkSetting(POINTS);
     (personalGarden || active.world).setWorkBasisPoints(POINTS);
     active.queue('farm-work', { basisPoints: POINTS });
-});
-DOLLAR('farmRatioList').addEventListener('input', (e) => {
-    const INPUT = e.target.closest('[data-farm-target]');
-    if (INPUT) {
-        INPUT.parentElement.querySelector('output').textContent = `목표 ${+(Number(INPUT.value) / 100).toFixed(1)}%`;
-    }
-});
-DOLLAR('farmRatioList').addEventListener('change', (e) => {
-    const INPUT = e.target.closest('[data-farm-target]');
-    if (INPUT) {
-        active.queue('farm-target', {
-            speciesId: Number(INPUT.dataset.farmTarget),
-            basisPoints: Number(INPUT.value),
-        });
-    }
 });
 DOLLAR('progressionResetActions').onclick = (event) => {
     const BUTTON = event.target.closest('button[data-progression-reset]');

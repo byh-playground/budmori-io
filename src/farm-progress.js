@@ -1,8 +1,6 @@
 import { Garden, Unit, CONFIG } from './farm-model.js';
 import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
-import { FarmPlot, RESERVE_PLOT_ID } from './farm-plot.js';
-import { FARM_CAPACITY_STEPS } from './farm-upgrades.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
 };
@@ -32,7 +30,6 @@ function copyPlayer(player) {
         farmUpgrades: {
             ...player.farmUpgrades,
         },
-        farmPlots: structuredClone(player.farmPlots),
         abilities: Object.fromEntries(
             Object.entries(player.abilities).map(([id, build]) => [
                 id,
@@ -82,7 +79,6 @@ function pendingReward(reward) {
 }
 function cohortValues(unit) {
     return [
-        unit.plotId || RESERVE_PLOT_ID,
         unit.species,
         unit.tier,
         unit.meals >= 1,
@@ -106,9 +102,8 @@ export function captureFarmProgress(world) {
         if (UNIT.isBattleOnlySummon || UNIT.countsTowardPermanentRoster === false || UNIT.faction !== 'player') {
             continue;
         }
-        const [PLOT_ID, SPECIES, TIER, FED, GROWTH, DURATION, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT);
+        const [SPECIES, TIER, FED, GROWTH, DURATION, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT);
         const KEY = [
-            PLOT_ID,
             SPECIES,
             TIER,
             Number(FED),
@@ -124,7 +119,6 @@ export function captureFarmProgress(world) {
             continue;
         }
         const ROW = {
-            plotId: PLOT_ID,
             species: SPECIES,
             tier: TIER,
             residentIds: [UNIT.id],
@@ -161,7 +155,7 @@ export function captureFarmProgress(world) {
             autoClock: world.foodTaps.autoClock,
             remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
-            plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
+            count: world.food.length,
         },
         totals: {
             births: world.metrics.births,
@@ -219,17 +213,12 @@ export function validateFarmProgress(data) {
     );
     ASSERT(Array.isArray(data.roster));
     const COHORTS = new Set(),
-        RESIDENT_IDS = new Set(),
-        PLOT_CAPACITY = new Map(
-            PLAYER.farmPlots.plots.map((plot) => [plot.id, FARM_CAPACITY_STEPS[plot.capacityLevel]]),
-        ),
-        PLACED_COUNTS = new Map();
+        RESIDENT_IDS = new Set();
     let maxResidentId = 0;
     for (const ROW of data.roster) {
-        keys(ROW, ['plotId', 'species', 'tier', 'residentIds'], ['fed', 'growth', 'cooldown', 'rest']);
+        keys(ROW, ['species', 'tier', 'residentIds'], ['fed', 'growth', 'cooldown', 'rest']);
         ASSERT(
-            (ROW.plotId === RESERVE_PLOT_ID || PLOT_CAPACITY.has(ROW.plotId)) &&
-                INTEGER(ROW.species, 0, CONFIG.unit.speciesCount - 1) &&
+            INTEGER(ROW.species, 0, CONFIG.unit.speciesCount - 1) &&
                 INTEGER(ROW.tier, 1, CONFIG.unit.maxTier) &&
                 Array.isArray(ROW.residentIds) &&
                 ROW.residentIds.length > 0,
@@ -238,9 +227,6 @@ export function validateFarmProgress(data) {
             ASSERT(INTEGER(ID, 1, data.nextId - 1) && !RESIDENT_IDS.has(ID));
             RESIDENT_IDS.add(ID);
             maxResidentId = Math.max(maxResidentId, ID);
-        }
-        if (ROW.plotId !== RESERVE_PLOT_ID) {
-            PLACED_COUNTS.set(ROW.plotId, (PLACED_COUNTS.get(ROW.plotId) || 0) + ROW.residentIds.length);
         }
         if (Object.hasOwn(ROW, 'fed')) {
             ASSERT(ROW.fed === true);
@@ -258,7 +244,6 @@ export function validateFarmProgress(data) {
             ASSERT(NUMBER(ROW.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
         }
         const SIGNATURE = [
-            ROW.plotId,
             ROW.species,
             ROW.tier,
             Number(!!ROW.fed),
@@ -271,23 +256,17 @@ export function validateFarmProgress(data) {
         ASSERT(!COHORTS.has(SIGNATURE));
         COHORTS.add(SIGNATURE);
     }
-    ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
+    ASSERT(RESIDENT_IDS.size <= CONFIG.farm.capacity.max);
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'plots']);
+    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'count']);
     ASSERT(
         SAFE_INTEGER(data.food.warehouse) &&
             NUMBER(data.food.autoClock, 0, 0.51) &&
             data.food.autoClock < 0.51 &&
             INTEGER(data.food.remainder, 0, 4) &&
             INTEGER(data.food.produced) &&
-            Array.isArray(data.food.plots) &&
-            data.food.plots.length === PLAYER.farmPlots.plots.length,
+            INTEGER(data.food.count, 0, 140),
     );
-    for (let index = 0; index < data.food.plots.length; index++) {
-        const FOOD = data.food.plots[index];
-        keys(FOOD, ['id', 'count']);
-        ASSERT(FOOD.id === PLAYER.farmPlots.plots[index].id && INTEGER(FOOD.count, 0, 140));
-    }
     keys(data.totals, ['births', 'merges']);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
     const LEDGER = data.ledger;
@@ -512,30 +491,14 @@ export function restoreFarmProgress(data) {
     WORLD.food = [];
     WORLD.nextId = 1;
     WORLD.playerProgression = copyPlayer(data.player);
-    WORLD.activePlotId = WORLD.playerProgression.farmPlots.currentPlotId;
-    WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
     Object.assign(WORLD.metrics, data.totals);
-    const PLOT_COUNTS = new Map();
+    const RESIDENT_TOTAL = data.roster.reduce((total, row) => total + row.residentIds.length, 0);
+    let placed = 0;
     for (const ROW of data.roster) {
-        if (ROW.plotId !== RESERVE_PLOT_ID) {
-            PLOT_COUNTS.set(ROW.plotId, (PLOT_COUNTS.get(ROW.plotId) || 0) + ROW.residentIds.length);
-        }
-    }
-    const PLOT_OFFSETS = new Map();
-    for (const ROW of data.roster) {
-        const PLOT_INDEX =
-                ROW.plotId === RESERVE_PLOT_ID
-                    ? 0
-                    : WORLD.playerProgression.farmPlots.plots.findIndex((plot) => plot.id === ROW.plotId),
-            PLOT_SEED = data.seed + PLOT_INDEX * 7919,
-            PLOT_OFFSET = PLOT_OFFSETS.get(ROW.plotId) || 0;
-        for (let index = 0; index < ROW.residentIds.length; index++) {
-            const ID = ROW.residentIds[index];
-            const COUNT = PLOT_COUNTS.get(ROW.plotId) || ROW.residentIds.length,
-                POINT = position(PLOT_OFFSET + index, COUNT, PLOT_SEED, 0.7),
+        for (const ID of ROW.residentIds) {
+            const POINT = position(placed++, RESIDENT_TOTAL, data.seed, 0.7),
                 UNIT = new Unit(ID, ROW.species, ROW.tier, POINT.x, POINT.y);
-            UNIT.plotId = ROW.plotId;
             UNIT.meals = ROW.fed ? 1 : 0;
             UNIT.growthDuration = ROW.growth?.duration || WORLD.breedGrowthDuration();
             UNIT.growthElapsed = ROW.growth ? ROW.growth.duration - ROW.growth.remaining : UNIT.growthDuration;
@@ -551,27 +514,21 @@ export function restoreFarmProgress(data) {
             }
             WORLD.addUnit(UNIT, { markProgress: false });
         }
-        PLOT_OFFSETS.set(ROW.plotId, PLOT_OFFSET + ROW.residentIds.length);
     }
-    for (let plotIndex = 0; plotIndex < data.food.plots.length; plotIndex++) {
-        const SAVED_FOOD = data.food.plots[plotIndex],
-            PLOT = WORLD.farmPlots.get(SAVED_FOOD.id);
-        for (let i = 0; i < SAVED_FOOD.count; i++) {
-            const POINT = position(i, SAVED_FOOD.count, data.seed + 103 + plotIndex * 7919, 0.8);
-            PLOT.food.push({
-                ...POINT,
-                z: 0,
-                vx: 0,
-                vy: 0,
-                vz: 0,
-                seed: (i * 0.61803398875) % 1,
-                phase: 'grounded',
-                tx: POINT.x,
-                ty: POINT.y,
-            });
-        }
+    for (let i = 0; i < data.food.count; i++) {
+        const POINT = position(i, data.food.count, data.seed + 103, 0.8);
+        WORLD.food.push({
+            ...POINT,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            seed: (i * 0.61803398875) % 1,
+            phase: 'grounded',
+            tx: POINT.x,
+            ty: POINT.y,
+        });
     }
-    WORLD.food = WORLD.activeFarmPlot.food;
     Object.assign(WORLD.foodTaps, {
         remainder: data.food.remainder,
         produced: data.food.produced,

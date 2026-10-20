@@ -8,10 +8,8 @@ export class UnitCollection {
         this.unitType = unitType;
         this.items = [];
         this.byId = new Map();
-        this.unitIdsByPlot = new Map();
         this.residentCountsBySpecies = new Map();
         this.residentIdsBySpecies = new Map();
-        this.residentCountsByPlot = new Map();
         this.residentCount = 0;
         this.subscriptions = new Map();
         this.reservations = new Map();
@@ -19,7 +17,6 @@ export class UnitCollection {
         this.onAdded = new Signal(notifications);
         this.onRemoved = new Signal(notifications);
         this.onReplaced = new Signal(notifications);
-        this.onPlacementChanged = new Signal(notifications);
         this.onReset = new Signal(notifications);
         this.onHealthChanged = new Signal(notifications, true);
     }
@@ -29,38 +26,10 @@ export class UnitCollection {
     unitById(id) {
         return this.byId.get(id) || null;
     }
-    unitsInPlot(plotId, out = []) {
-        out.length = 0;
-        for (const ID of this.unitIdsByPlot.get(plotId) || []) {
-            const UNIT = this.byId.get(ID);
-            if (UNIT) {
-                out.push(UNIT);
-            }
-        }
-        return out;
-    }
-    residentsInPlot(plotId, out = []) {
-        this.unitsInPlot(plotId, out);
-        let write = 0;
-        for (const UNIT of out) {
-            if (
-                UNIT.faction === 'player' &&
-                UNIT.isBattleOnlySummon !== true &&
-                UNIT.isFormationClone !== true &&
-                UNIT.countsTowardPermanentRoster !== false
-            ) {
-                out[write++] = UNIT;
-            }
-        }
-        out.length = write;
-        return out;
-    }
     _rebuildIndexes() {
         this.byId.clear();
-        this.unitIdsByPlot.clear();
         this.residentCountsBySpecies.clear();
         this.residentIdsBySpecies.clear();
-        this.residentCountsByPlot.clear();
         this.residentCount = 0;
         for (const UNIT of this.items) {
             this._indexUnit(UNIT);
@@ -72,18 +41,9 @@ export class UnitCollection {
     }
     _indexUnit(unit) {
         this.byId.set(unit.id, unit);
-        if (typeof unit.plotId === 'string' && unit.plotId) {
-            let ids = this.unitIdsByPlot.get(unit.plotId);
-            if (!ids) {
-                ids = new Set();
-                this.unitIdsByPlot.set(unit.plotId, ids);
-            }
-            ids.add(unit.id);
-        }
         if (this.isResident(unit)) {
             this.residentCount++;
             this.residentCountsBySpecies.set(unit.species, (this.residentCountsBySpecies.get(unit.species) || 0) + 1);
-            this.residentCountsByPlot.set(unit.plotId, (this.residentCountsByPlot.get(unit.plotId) || 0) + 1);
             let ids = this.residentIdsBySpecies.get(unit.species);
             if (!ids) {
                 ids = new Set();
@@ -94,11 +54,6 @@ export class UnitCollection {
     }
     _unindexUnit(unit) {
         this.byId.delete(unit.id);
-        const IDS = this.unitIdsByPlot.get(unit.plotId);
-        IDS?.delete(unit.id);
-        if (IDS?.size === 0) {
-            this.unitIdsByPlot.delete(unit.plotId);
-        }
         if (this.isResident(unit)) {
             this.residentCount = Math.max(0, this.residentCount - 1);
             const COUNT = (this.residentCountsBySpecies.get(unit.species) || 0) - 1;
@@ -106,12 +61,6 @@ export class UnitCollection {
                 this.residentCountsBySpecies.set(unit.species, COUNT);
             } else {
                 this.residentCountsBySpecies.delete(unit.species);
-            }
-            const PLOT_COUNT = (this.residentCountsByPlot.get(unit.plotId) || 0) - 1;
-            if (PLOT_COUNT > 0) {
-                this.residentCountsByPlot.set(unit.plotId, PLOT_COUNT);
-            } else {
-                this.residentCountsByPlot.delete(unit.plotId);
             }
             const IDS = this.residentIdsBySpecies.get(unit.species);
             IDS?.delete(unit.id);
@@ -121,62 +70,22 @@ export class UnitCollection {
         }
         this.world._syncOwnedSpeciesCounts?.();
     }
-    moveUnitsToPlots(assignments) {
-        if (!Array.isArray(assignments) || !assignments.length) {
-            return false;
-        }
-        const SEEN = new Set();
-        const MOVES = assignments.map(({ unitId, plotId }) => {
-            const UNIT = this.byId.get(unitId);
-            if (
-                !UNIT ||
-                !this.isResident(UNIT) ||
-                typeof plotId !== 'string' ||
-                !plotId ||
-                SEEN.has(unitId) ||
-                this.reservationOwner(unitId)
-            ) {
-                return null;
-            }
-            SEEN.add(unitId);
-            return { unit: UNIT, plotId };
-        });
-        if (MOVES.some((move) => !move)) {
-            return false;
-        }
-        const CHANGED = MOVES.filter((move) => move.unit.plotId !== move.plotId);
-        if (!CHANGED.length) {
-            return true;
-        }
-        for (const MOVE of CHANGED) {
-            MOVE.unit.plotId = MOVE.plotId;
-        }
-        this._rebuildIndexes();
-        this.world._unitSpatialDirty = true;
-        this.publishChange(
-            this.onPlacementChanged,
-            { unitIds: CHANGED.map((move) => move.unit.id), plotIds: CHANGED.map((move) => move.plotId) },
-            true,
-        );
-        return true;
-    }
-    reorderWithinPlot(plotId, orderedIds) {
-        const CURRENT = this.unitIdsByPlot.get(plotId);
+    // Puts the farm's residents in the given order; everything else keeps its place.
+    reorder(orderedIds) {
+        const RESIDENTS = this.items.filter((unit) => this.isResident(unit));
         if (
-            !(CURRENT instanceof Set) ||
             !Array.isArray(orderedIds) ||
-            orderedIds.length !== CURRENT.size ||
+            orderedIds.length !== RESIDENTS.length ||
             new Set(orderedIds).size !== orderedIds.length ||
-            orderedIds.some((id) => !CURRENT.has(id))
+            orderedIds.some((id) => !this.isResident(this.byId.get(id)))
         ) {
             return false;
         }
         const ORDERED = orderedIds.map((id) => this.byId.get(id));
         let index = 0;
-        this.items = this.items.map((unit) => (unit.plotId === plotId ? ORDERED[index++] : unit));
+        this.items = this.items.map((unit) => (this.isResident(unit) ? ORDERED[index++] : unit));
         this._rebuildIndexes();
         this.world._unitSpatialDirty = true;
-        this.publishChange(this.onPlacementChanged, { plotId, unitIds: orderedIds }, true);
         return true;
     }
     isResident(unit) {

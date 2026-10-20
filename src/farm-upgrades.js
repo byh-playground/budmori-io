@@ -4,7 +4,6 @@ export const FARM_UPGRADE_MAX_LEVELS = Object.freeze({
     breed: 4,
     merge: 4,
 });
-export const FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
 export const FARM_UPGRADE_NODES = Object.freeze([
     {
         id: 'food',
@@ -65,9 +64,6 @@ export function getFarmUpgradeInvestedCount(state) {
 }
 export function farmUpgradeRate(state, id) {
     return 1 + 0.1 * getFarmUpgradeLevel(state, id);
-}
-export function getFarmCapacity(capacityLevel = 0) {
-    return FARM_CAPACITY_STEPS[Number.isSafeInteger(capacityLevel) ? capacityLevel : 0] ?? FARM_CAPACITY_STEPS[0];
 }
 export function getBreedCooldownSeconds(state, baseSeconds = 10) {
     return baseSeconds / farmUpgradeRate(state, 'breed');

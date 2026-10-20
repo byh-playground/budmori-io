@@ -1,7 +1,6 @@
 import { Garden, Unit, createUnitAttackCycle, CREATE_UNIT_SPECIAL_ABILITY } from './farm-model.js';
 import { normalizeSnapshot } from './farm-snapshot-migrations.js';
 import { validateSnapshot } from './farm-snapshot-validation.js';
-import { FarmPlot } from './farm-plot.js';
 export { snapshot } from './farm-snapshot.js';
 export { normalizeSnapshot, validateSnapshot };
 
@@ -11,18 +10,9 @@ export function restore(raw) {
     raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new Garden();
-    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, ...WORLD_DATA } = structuredClone(raw);
+    const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
-    G.farmPlots = new Map(
-        G.playerProgression.farmPlots.plots.map((plot) => [
-            plot.id,
-            new FarmPlot(plot, PLOT_FOODS.find((saved) => saved.id === plot.id)?.food || []),
-        ]),
-    );
-    G.activePlotId = G.playerProgression.farmPlots.currentPlotId;
-    G.food = G.activeFarmPlot?.food || [];
-    G.bindFarmPlotProgressionStates();
     G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
         ...reward,
         boxes: [],

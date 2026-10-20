@@ -559,10 +559,6 @@ class FarmSession {
                 return W.scene === 'farm' && W.scatterFoodAtRandomLocation();
             case 'scatter-food':
                 return W.scene === 'farm' && W.scatterFood(c.x, c.y);
-            case 'farm-plot-switch':
-                return W.scene === 'farm' && W.switchFarmPlot(c.plotId);
-            case 'farm-target':
-                return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
             case 'farm-work':
                 return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
             case 'boss-challenge':
