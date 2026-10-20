@@ -71,10 +71,10 @@ function spawnPile(world, config, kind) {
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
 // Starts the construction site for a facility: a solid frame that builders ram until the work is done.
-export function startSite(world, config, facilityId, level, hits, plotId) {
-    const POSITION = FACILITY_IDS.includes(facilityId)
-        ? facilityPosition(config, facilityId)
-        : pilePosition(world, config);
+export function startSite(world, config, facilityId, level, hits, plotId, at = null) {
+    // A new farm goes up on its own grid cell, which is where the builders walk to; the rest go up in this farm.
+    const POSITION =
+        at ?? (FACILITY_IDS.includes(facilityId) ? facilityPosition(config, facilityId) : pilePosition(world, config));
     pilesOf(world, plotId).push({
         id: ++world._pileId,
         kind: 'site',
@@ -298,8 +298,12 @@ export function workOrder(world, unit) {
         return world._workerKinds.get(unit.id) === 'explore' ? exploreOrder(world, unit) : null;
     }
     const PILE = ASSIGN.pile,
-        SWING = world._swings.get(unit.id),
-        DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y),
+        SWING = world._swings.get(unit.id);
+    if (world.outsideFarm(PILE.x, PILE.y)) {
+        // The job is on another cell of the grid: this builder may leave the farm until it is back inside.
+        unit.workOut = true;
+    }
+    const DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y),
         ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
     if (!ASSIGN.attacking) {
         // Over the attacker limit: wait a little way off until a spot opens up.

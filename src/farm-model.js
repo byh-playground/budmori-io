@@ -33,6 +33,7 @@ import {
     beginFarmBuild,
     canBuildFarm,
     createWorldMap,
+    FARM_CELL,
     finishFarmBuild,
     nextExploreTile,
     setReachProvider,
@@ -2777,7 +2778,15 @@ const GARDEN = class Garden {
         if (kind === 'plot') {
             beginFarmBuild(this.worldMap, tile);
         }
-        startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId);
+        let at = null;
+        if (kind === 'plot') {
+            const HERE = this.worldMap.farms.find((farm) => farm.plotId === this.activePlotId);
+            at = {
+                x: (tileX(tile) - tileX(HERE.tile)) * FARM_CELL.width,
+                y: -(tileY(tile) - tileY(HERE.tile)) * FARM_CELL.height,
+            };
+        }
+        startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId, at);
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         this.markProgressChanged();
@@ -5878,10 +5887,21 @@ const GARDEN = class Garden {
     combat(kind, detail) {
         this.notice(kind, { time: this.time, ...detail });
     }
+    outsideFarm(x, y) {
+        return !ARENA_GEOMETRY.inside({ x, y }, 'farm');
+    }
     boundBody(body, scene, margin) {
         const ARENA = CONFIG[scene].arena,
             RX = ARENA.radiusX - margin,
             RY = ARENA.radiusY - margin;
+        if (body.workOut) {
+            // A builder on its way to another cell of the grid walks out of the farm; it is held again once back.
+            if (Math.abs(body.x) <= RX && Math.abs(body.y) <= RY) {
+                body.workOut = false;
+            } else {
+                return;
+            }
+        }
         if (ARENA.shape === 'rect') {
             const X = CLAMP(body.x, -RX, RX),
                 Y = CLAMP(body.y, -RY, RY);
