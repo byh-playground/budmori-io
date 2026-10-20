@@ -5,7 +5,6 @@ import {
     formationInvestedPoints,
 } from './formation-skill-state.js';
 import { getFarmUpgradeInvestedCount } from './farm-upgrades.js';
-import { createFarmPlotsProgression, isValidFarmPlotsProgression } from './farm-plot.js';
 
 // Level thresholds and boss-kill rewards use separate confirmed base values.
 export const PLAYER_PROGRESS_BASE_XP = 100;
@@ -18,7 +17,6 @@ export function createPlayerProgressionState() {
     return {
         ...createAbilityProgressionState(),
         formationSkills: createFormationSkillState(),
-        farmPlots: createFarmPlotsProgression(),
         level: 1,
         experience: 0,
         farmBossEventStage: 1,
@@ -119,7 +117,6 @@ export function isValidPlayerProgressionState(state) {
     if (
         !isValidAbilityProgressionState(state) ||
         (state.formationSkills !== undefined && !isValidFormationSkillState(state.formationSkills)) ||
-        !isValidFarmPlotsProgression(state.farmPlots) ||
         !Number.isSafeInteger(state.level) ||
         state.level < 1 ||
         !Number.isSafeInteger(state.farmBossEventStage) ||

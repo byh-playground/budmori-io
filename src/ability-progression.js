@@ -419,11 +419,6 @@ function cloneState(state) {
         farmUpgrades: {
             ...state.farmUpgrades,
         },
-        farmPlots: {
-            ...state.farmPlots,
-            plots: state.farmPlots.plots.map((plot) => ({ ...plot })),
-            targetBasisPoints: [...state.farmPlots.targetBasisPoints],
-        },
         abilities: Object.fromEntries(
             Object.entries(state.abilities).map(([id, value]) => [
                 id,

@@ -221,8 +221,7 @@ function grantPendingBossAcquisitionsCommitted(world) {
     const GRANTED = [];
     let capacity = Math.max(
         0,
-        (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) -
-            (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length),
+        world.capacity - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length),
     );
     for (const GROUP of world.bossRewardInventory) {
         if (capacity <= 0) {

@@ -1,6 +1,5 @@
 // Idle progress: when the player was away, the farm is settled with a formula instead of replaying the simulation.
 // Workers keep making food and breeders keep breeding as long as food lasts.
-import { RESERVE_PLOT_ID } from './farm-plot.js';
 
 export function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline,
@@ -24,7 +23,7 @@ export function applyOffline(world, config, rawSeconds) {
     let pool = Math.floor(foodRate * SECONDS);
     SUMMARY.food = pool;
     // Units that were recovering or resting are ready again.
-    const RESIDENTS = world.roster.residents().filter((unit) => unit.plotId !== RESERVE_PLOT_ID);
+    const RESIDENTS = world.roster.residents();
     for (const UNIT of RESIDENTS) {
         UNIT.cooldown = 0;
         if (UNIT.down > 0) {
@@ -39,15 +38,13 @@ export function applyOffline(world, config, rawSeconds) {
     const COST = 2 + BREEDING.matureMeals,
         ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds,
         ROUNDS = Math.floor(AWAY / ROUND_SECONDS),
-        CAPACITY = world.totalFarmCapacity,
-        SPECIES_COUNT = world.farmTargets.length,
-        COUNTS = new Array(SPECIES_COUNT).fill(0),
+        CAPACITY = world.capacity,
+        SPECIES_COUNT = config.unit.speciesCount,
         ADULTS = new Array(SPECIES_COUNT).fill(0);
     for (const UNIT of world.roster.residents()) {
-        if (UNIT.plotId === RESERVE_PLOT_ID || UNIT.isBattleOnlySummon) {
+        if (UNIT.isBattleOnlySummon) {
             continue;
         }
-        COUNTS[UNIT.species]++;
         if (UNIT.mature && UNIT.hp > 0 && !world._workerIds.has(UNIT.id)) {
             ADULTS[UNIT.species]++;
         }
@@ -55,14 +52,8 @@ export function applyOffline(world, config, rawSeconds) {
     for (let round = 0; round < ROUNDS && pool >= COST; round++) {
         let progressed = false;
         for (let species = 0; species < SPECIES_COUNT; species++) {
-            const TARGET = Math.floor((world.farmTargets[species] / 10000) * CAPACITY),
-                ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
-            let births = Math.min(
-                Math.floor(ADULTS[species] / 2),
-                TARGET - COUNTS[species],
-                ROOM,
-                Math.floor(pool / COST),
-            );
+            const ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
+            let births = Math.min(Math.floor(ADULTS[species] / 2), ROOM, Math.floor(pool / COST));
             while (births-- > 0) {
                 const CHILD = world.spawn(species, 1, (world.random() - 0.5) * 10, (world.random() - 0.5) * 6);
                 if (!CHILD) {
@@ -70,7 +61,6 @@ export function applyOffline(world, config, rawSeconds) {
                 }
                 CHILD.growthElapsed = CHILD.growthDuration;
                 pool -= COST;
-                COUNTS[species]++;
                 ADULTS[species]++;
                 SUMMARY.births++;
                 progressed = true;

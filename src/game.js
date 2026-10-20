@@ -296,234 +296,6 @@
     }
   });
 
-  // src/farm-upgrades.js
-  function createFarmUpgradeState() {
-    return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
-  }
-  function isValidFarmUpgradeState(state) {
-    if (!state || typeof state !== "object" || Array.isArray(state)) {
-      return false;
-    }
-    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) {
-      return false;
-    }
-    return FARM_UPGRADE_IDS.every(
-      (id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]
-    );
-  }
-  function getFarmUpgradeLevel(state, id) {
-    return Number.isSafeInteger(state?.[id]) ? state[id] : 0;
-  }
-  function getFarmUpgradeInvestedCount(state) {
-    if (!isValidFarmUpgradeState(state)) {
-      return 0;
-    }
-    return FARM_UPGRADE_IDS.reduce((total, id) => total + state[id], 0);
-  }
-  function farmUpgradeRate(state, id) {
-    return 1 + 0.1 * getFarmUpgradeLevel(state, id);
-  }
-  function getBreedCooldownSeconds(state, baseSeconds = 10) {
-    return baseSeconds / farmUpgradeRate(state, "breed");
-  }
-  function getMergeCooldownSeconds(state, baseSeconds = 4) {
-    return baseSeconds / farmUpgradeRate(state, "merge");
-  }
-  var FARM_UPGRADE_MAX_LEVELS, FARM_CAPACITY_STEPS, FARM_UPGRADE_NODES, FARM_UPGRADE_IDS;
-  var init_farm_upgrades = __esm({
-    "src/farm-upgrades.js"() {
-      FARM_UPGRADE_MAX_LEVELS = Object.freeze({
-        food: 4,
-        growth: 4,
-        breed: 4,
-        merge: 4
-      });
-      FARM_CAPACITY_STEPS = Object.freeze([50, 75, 100, 150, 200]);
-      FARM_UPGRADE_NODES = Object.freeze([
-        {
-          id: "food",
-          name: "일꾼 속도",
-          icon: "◒",
-          description: "일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.",
-          value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`
-        },
-        {
-          id: "growth",
-          name: "먹이 찾기",
-          icon: "❧",
-          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높여요.",
-          value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
-        },
-        {
-          id: "breed",
-          name: "번식 회복",
-          icon: "♡",
-          description: "부모의 번식 대기시간을 단계마다 10% 줄여요.",
-          value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
-        },
-        {
-          id: "merge",
-          name: "합성 회복",
-          icon: "◇",
-          description: "합성 후 대기시간을 단계마다 10% 줄여요.",
-          value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
-        }
-      ]);
-      FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
-    }
-  });
-
-  // src/species-catalog.js
-  function speciesById(id) {
-    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
-  }
-  function giantSpeciesName(id) {
-    return `거대 ${speciesById(id).name}`;
-  }
-  function speciesRewardName(id) {
-    return `${speciesById(id).name} 종`;
-  }
-  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
-  var init_species_catalog = __esm({
-    "src/species-catalog.js"() {
-      SPECIES_CATALOG = Object.freeze([
-        Object.freeze({
-          id: 0,
-          name: "콩",
-          asset: "pea.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 1,
-          name: "옥수수",
-          asset: "corn-kernel.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 2,
-          name: "팥",
-          asset: "kidney-bean.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 3,
-          name: "밤톨",
-          asset: "chestnut.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 4,
-          name: "땅콩",
-          asset: "peanut.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 5,
-          name: "호두",
-          asset: "walnut.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 6,
-          name: "쌀",
-          asset: "rice.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 7,
-          name: "밀",
-          asset: "wheat.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 8,
-          name: "보리",
-          asset: "barley.svg",
-          bossWeight: 1
-        })
-      ]);
-      SPECIES_COUNT = SPECIES_CATALOG.length;
-      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
-    }
-  });
-
-  // src/farm-plot.js
-  function createFarmPlotsProgression() {
-    return {
-      plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: FARM_CAPACITY_STEPS.length - 1 }],
-      currentPlotId: INITIAL_FARM_PLOT_ID,
-      nextPlotNumber: 2,
-      targetBasisPoints: Array.from({ length: SPECIES_COUNT }, (_, speciesId) => Number(speciesId === 0) * 1e4)
-    };
-  }
-  function isValidFarmPlotsProgression(state) {
-    if (!state || typeof state !== "object" || Array.isArray(state)) {
-      return false;
-    }
-    const KEYS = Object.keys(state).sort();
-    if (KEYS.join(",") !== "currentPlotId,nextPlotNumber,plots,targetBasisPoints") {
-      return false;
-    }
-    if (!Array.isArray(state.plots) || state.plots.length === 0 || !Number.isSafeInteger(state.nextPlotNumber) || state.nextPlotNumber !== state.plots.length + 1 || !Array.isArray(state.targetBasisPoints) || state.targetBasisPoints.length !== SPECIES_COUNT || !state.targetBasisPoints.every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4) || state.targetBasisPoints.reduce((total, value) => total + value, 0) !== 1e4) {
-      return false;
-    }
-    const IDS = /* @__PURE__ */ new Set();
-    for (let index = 0; index < state.plots.length; index++) {
-      const PLOT = state.plots[index];
-      if (!PLOT || typeof PLOT !== "object" || Array.isArray(PLOT) || Object.keys(PLOT).sort().join(",") !== "capacityLevel,id" || PLOT.id !== `plot-${index + 1}` || !Number.isSafeInteger(PLOT.capacityLevel) || PLOT.capacityLevel < 0 || PLOT.capacityLevel >= FARM_CAPACITY_STEPS.length || IDS.has(PLOT.id)) {
-        return false;
-      }
-      IDS.add(PLOT.id);
-    }
-    return IDS.has(state.currentPlotId);
-  }
-  var INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID, MAX_FARM_FOOD, FarmPlot;
-  var init_farm_plot = __esm({
-    "src/farm-plot.js"() {
-      init_farm_upgrades();
-      init_species_catalog();
-      INITIAL_FARM_PLOT_ID = "plot-1";
-      RESERVE_PLOT_ID = "reserve";
-      MAX_FARM_FOOD = 140;
-      FarmPlot = class _FarmPlot {
-        constructor(state, food = []) {
-          const { id: ID, capacityLevel: CAPACITY_LEVEL } = state || {};
-          if (typeof ID !== "string" || !/^plot-[1-9]\d*$/.test(ID)) {
-            throw new TypeError("A farm plot requires a stable plot id.");
-          }
-          if (!Number.isSafeInteger(CAPACITY_LEVEL) || CAPACITY_LEVEL < 0 || CAPACITY_LEVEL >= FARM_CAPACITY_STEPS.length) {
-            throw new RangeError("A farm plot capacity level is invalid.");
-          }
-          if (!Array.isArray(food) || food.length > MAX_FARM_FOOD) {
-            throw new RangeError("A farm plot food list is invalid.");
-          }
-          this.id = ID;
-          this.state = state;
-          this.food = food;
-        }
-        get capacityLevel() {
-          return this.state.capacityLevel;
-        }
-        get capacity() {
-          return FARM_CAPACITY_STEPS[this.capacityLevel];
-        }
-        get foodCount() {
-          return this.food.length;
-        }
-        static fromSave(data, food = []) {
-          if (!data || typeof data !== "object" || Array.isArray(data)) {
-            throw new TypeError("A farm plot save is invalid.");
-          }
-          const KEYS = Object.keys(data).sort().join(",");
-          if (KEYS !== "capacityLevel,id") {
-            throw new TypeError("A farm plot save has an unexpected shape.");
-          }
-          return new _FarmPlot(data, food);
-        }
-      };
-    }
-  });
-
   // src/farm-offline.js
   function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
@@ -543,7 +315,7 @@
     }
     let pool = Math.floor(foodRate * SECONDS);
     SUMMARY.food = pool;
-    const RESIDENTS = world.roster.residents().filter((unit) => unit.plotId !== RESERVE_PLOT_ID);
+    const RESIDENTS = world.roster.residents();
     for (const UNIT3 of RESIDENTS) {
       UNIT3.cooldown = 0;
       if (UNIT3.down > 0) {
@@ -554,12 +326,11 @@
         UNIT3.growthElapsed = UNIT3.growthDuration;
       }
     }
-    const COST = 2 + BREEDING.matureMeals, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(AWAY / ROUND_SECONDS), CAPACITY = world.totalFarmCapacity, SPECIES_COUNT2 = world.farmTargets.length, COUNTS = new Array(SPECIES_COUNT2).fill(0), ADULTS = new Array(SPECIES_COUNT2).fill(0);
+    const COST = 2 + BREEDING.matureMeals, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(AWAY / ROUND_SECONDS), CAPACITY = world.capacity, SPECIES_COUNT2 = config.unit.speciesCount, ADULTS = new Array(SPECIES_COUNT2).fill(0);
     for (const UNIT3 of world.roster.residents()) {
-      if (UNIT3.plotId === RESERVE_PLOT_ID || UNIT3.isBattleOnlySummon) {
+      if (UNIT3.isBattleOnlySummon) {
         continue;
       }
-      COUNTS[UNIT3.species]++;
       if (UNIT3.mature && UNIT3.hp > 0 && !world._workerIds.has(UNIT3.id)) {
         ADULTS[UNIT3.species]++;
       }
@@ -567,13 +338,8 @@
     for (let round = 0; round < ROUNDS && pool >= COST; round++) {
       let progressed = false;
       for (let species = 0; species < SPECIES_COUNT2; species++) {
-        const TARGET = Math.floor(world.farmTargets[species] / 1e4 * CAPACITY), ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
-        let births = Math.min(
-          Math.floor(ADULTS[species] / 2),
-          TARGET - COUNTS[species],
-          ROOM,
-          Math.floor(pool / COST)
-        );
+        const ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
+        let births = Math.min(Math.floor(ADULTS[species] / 2), ROOM, Math.floor(pool / COST));
         while (births-- > 0) {
           const CHILD = world.spawn(species, 1, (world.random() - 0.5) * 10, (world.random() - 0.5) * 6);
           if (!CHILD) {
@@ -581,7 +347,6 @@
           }
           CHILD.growthElapsed = CHILD.growthDuration;
           pool -= COST;
-          COUNTS[species]++;
           ADULTS[species]++;
           SUMMARY.births++;
           progressed = true;
@@ -600,19 +365,10 @@
   }
   var init_farm_offline = __esm({
     "src/farm-offline.js"() {
-      init_farm_plot();
     }
   });
 
   // src/farm-work.js
-  function pilesOf(world, plotId) {
-    let list = world._pilesByPlot.get(plotId);
-    if (!list) {
-      list = [];
-      world._pilesByPlot.set(plotId, list);
-    }
-    return list;
-  }
   function pilePosition(world, config) {
     const WORK = config.farm.work;
     let best = null, bestGap = -1;
@@ -650,7 +406,7 @@
     return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
   }
   function resetWork(world) {
-    world._pilesByPlot = /* @__PURE__ */ new Map();
+    world._piles = [];
     world._pileId = 0;
     world._pileRespawn = 0;
     world._workAssign = /* @__PURE__ */ new Map();
@@ -898,6 +654,80 @@
       ]);
       MAX_UNIT_TIER = UNIT_GRADES.length;
       MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
+    }
+  });
+
+  // src/species-catalog.js
+  function speciesById(id) {
+    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
+  }
+  function giantSpeciesName(id) {
+    return `거대 ${speciesById(id).name}`;
+  }
+  function speciesRewardName(id) {
+    return `${speciesById(id).name} 종`;
+  }
+  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
+  var init_species_catalog = __esm({
+    "src/species-catalog.js"() {
+      SPECIES_CATALOG = Object.freeze([
+        Object.freeze({
+          id: 0,
+          name: "콩",
+          asset: "pea.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 1,
+          name: "옥수수",
+          asset: "corn-kernel.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 2,
+          name: "팥",
+          asset: "kidney-bean.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 3,
+          name: "밤톨",
+          asset: "chestnut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 4,
+          name: "땅콩",
+          asset: "peanut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 5,
+          name: "호두",
+          asset: "walnut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 6,
+          name: "쌀",
+          asset: "rice.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 7,
+          name: "밀",
+          asset: "wheat.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 8,
+          name: "보리",
+          asset: "barley.svg",
+          bossWeight: 1
+        })
+      ]);
+      SPECIES_COUNT = SPECIES_CATALOG.length;
+      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
     }
   });
 
@@ -2599,10 +2429,8 @@
           this.unitType = unitType;
           this.items = [];
           this.byId = /* @__PURE__ */ new Map();
-          this.unitIdsByPlot = /* @__PURE__ */ new Map();
           this.residentCountsBySpecies = /* @__PURE__ */ new Map();
           this.residentIdsBySpecies = /* @__PURE__ */ new Map();
-          this.residentCountsByPlot = /* @__PURE__ */ new Map();
           this.residentCount = 0;
           this.subscriptions = /* @__PURE__ */ new Map();
           this.reservations = /* @__PURE__ */ new Map();
@@ -2610,7 +2438,6 @@
           this.onAdded = new Signal(notifications);
           this.onRemoved = new Signal(notifications);
           this.onReplaced = new Signal(notifications);
-          this.onPlacementChanged = new Signal(notifications);
           this.onReset = new Signal(notifications);
           this.onHealthChanged = new Signal(notifications, true);
         }
@@ -2620,33 +2447,10 @@
         unitById(id) {
           return this.byId.get(id) || null;
         }
-        unitsInPlot(plotId, out = []) {
-          out.length = 0;
-          for (const ID of this.unitIdsByPlot.get(plotId) || []) {
-            const UNIT3 = this.byId.get(ID);
-            if (UNIT3) {
-              out.push(UNIT3);
-            }
-          }
-          return out;
-        }
-        residentsInPlot(plotId, out = []) {
-          this.unitsInPlot(plotId, out);
-          let write = 0;
-          for (const UNIT3 of out) {
-            if (UNIT3.faction === "player" && UNIT3.isBattleOnlySummon !== true && UNIT3.isFormationClone !== true && UNIT3.countsTowardPermanentRoster !== false) {
-              out[write++] = UNIT3;
-            }
-          }
-          out.length = write;
-          return out;
-        }
         _rebuildIndexes() {
           this.byId.clear();
-          this.unitIdsByPlot.clear();
           this.residentCountsBySpecies.clear();
           this.residentIdsBySpecies.clear();
-          this.residentCountsByPlot.clear();
           this.residentCount = 0;
           for (const UNIT3 of this.items) {
             this._indexUnit(UNIT3);
@@ -2658,18 +2462,9 @@
         }
         _indexUnit(unit) {
           this.byId.set(unit.id, unit);
-          if (typeof unit.plotId === "string" && unit.plotId) {
-            let ids = this.unitIdsByPlot.get(unit.plotId);
-            if (!ids) {
-              ids = /* @__PURE__ */ new Set();
-              this.unitIdsByPlot.set(unit.plotId, ids);
-            }
-            ids.add(unit.id);
-          }
           if (this.isResident(unit)) {
             this.residentCount++;
             this.residentCountsBySpecies.set(unit.species, (this.residentCountsBySpecies.get(unit.species) || 0) + 1);
-            this.residentCountsByPlot.set(unit.plotId, (this.residentCountsByPlot.get(unit.plotId) || 0) + 1);
             let ids = this.residentIdsBySpecies.get(unit.species);
             if (!ids) {
               ids = /* @__PURE__ */ new Set();
@@ -2680,11 +2475,6 @@
         }
         _unindexUnit(unit) {
           this.byId.delete(unit.id);
-          const IDS = this.unitIdsByPlot.get(unit.plotId);
-          IDS?.delete(unit.id);
-          if (IDS?.size === 0) {
-            this.unitIdsByPlot.delete(unit.plotId);
-          }
           if (this.isResident(unit)) {
             this.residentCount = Math.max(0, this.residentCount - 1);
             const COUNT = (this.residentCountsBySpecies.get(unit.species) || 0) - 1;
@@ -2693,63 +2483,25 @@
             } else {
               this.residentCountsBySpecies.delete(unit.species);
             }
-            const PLOT_COUNT = (this.residentCountsByPlot.get(unit.plotId) || 0) - 1;
-            if (PLOT_COUNT > 0) {
-              this.residentCountsByPlot.set(unit.plotId, PLOT_COUNT);
-            } else {
-              this.residentCountsByPlot.delete(unit.plotId);
-            }
-            const IDS2 = this.residentIdsBySpecies.get(unit.species);
-            IDS2?.delete(unit.id);
-            if (IDS2?.size === 0) {
+            const IDS = this.residentIdsBySpecies.get(unit.species);
+            IDS?.delete(unit.id);
+            if (IDS?.size === 0) {
               this.residentIdsBySpecies.delete(unit.species);
             }
           }
           this.world._syncOwnedSpeciesCounts?.();
         }
-        moveUnitsToPlots(assignments) {
-          if (!Array.isArray(assignments) || !assignments.length) {
-            return false;
-          }
-          const SEEN = /* @__PURE__ */ new Set();
-          const MOVES = assignments.map(({ unitId, plotId }) => {
-            const UNIT3 = this.byId.get(unitId);
-            if (!UNIT3 || !this.isResident(UNIT3) || typeof plotId !== "string" || !plotId || SEEN.has(unitId) || this.reservationOwner(unitId)) {
-              return null;
-            }
-            SEEN.add(unitId);
-            return { unit: UNIT3, plotId };
-          });
-          if (MOVES.some((move) => !move)) {
-            return false;
-          }
-          const CHANGED = MOVES.filter((move) => move.unit.plotId !== move.plotId);
-          if (!CHANGED.length) {
-            return true;
-          }
-          for (const MOVE of CHANGED) {
-            MOVE.unit.plotId = MOVE.plotId;
-          }
-          this._rebuildIndexes();
-          this.world._unitSpatialDirty = true;
-          this.publishChange(
-            this.onPlacementChanged,
-            { unitIds: CHANGED.map((move) => move.unit.id), plotIds: CHANGED.map((move) => move.plotId) },
-            true
-          );
-          return true;
-        }
-        reorderWithinPlot(plotId, orderedIds) {
-          const CURRENT = this.unitIdsByPlot.get(plotId);
-          if (!(CURRENT instanceof Set) || !Array.isArray(orderedIds) || orderedIds.length !== CURRENT.size || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !CURRENT.has(id))) {
+        // Puts the farm's residents in the given order; everything else keeps its place.
+        reorder(orderedIds) {
+          const RESIDENTS = this.items.filter((unit) => this.isResident(unit));
+          if (!Array.isArray(orderedIds) || orderedIds.length !== RESIDENTS.length || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !this.isResident(this.byId.get(id)))) {
             return false;
           }
           const ORDERED = orderedIds.map((id) => this.byId.get(id));
           let index = 0;
-          this.items = this.items.map((unit) => unit.plotId === plotId ? ORDERED[index++] : unit);
+          this.items = this.items.map((unit) => this.isResident(unit) ? ORDERED[index++] : unit);
           this._rebuildIndexes();
           this.world._unitSpatialDirty = true;
-          this.publishChange(this.onPlacementChanged, { plotId, unitIds: orderedIds }, true);
           return true;
         }
         isResident(unit) {
@@ -3031,38 +2783,9 @@
   function isResident(unit) {
     return !!unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false;
   }
-  function compareSpeciesId(a, b) {
-    return typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
-  }
-  function largestRemainder(weights, total) {
-    const ENTRIES = [...weights].map(([speciesId, weight]) => ({ speciesId, weight: BigInt(weight) }));
-    if (!ENTRIES.length || !Number.isSafeInteger(total) || total < 0) {
-      return /* @__PURE__ */ new Map();
-    }
-    const DENOMINATOR = ENTRIES.reduce((sum, entry) => sum + entry.weight, 0n);
-    if (DENOMINATOR <= 0n) {
-      return /* @__PURE__ */ new Map();
-    }
-    let assigned = 0;
-    for (const ENTRY of ENTRIES) {
-      const NUMERATOR = BigInt(total) * ENTRY.weight;
-      ENTRY.value = Number(NUMERATOR / DENOMINATOR);
-      ENTRY.remainder = NUMERATOR % DENOMINATOR;
-      assigned += ENTRY.value;
-    }
-    ENTRIES.sort(
-      (a, b) => a.remainder === b.remainder ? compareSpeciesId(a.speciesId, b.speciesId) : a.remainder > b.remainder ? -1 : 1
-    );
-    for (let i = 0; i < total - assigned; i++) {
-      ENTRIES[i % ENTRIES.length].value++;
-    }
-    return new Map(ENTRIES.map((entry) => [entry.speciesId, entry.value]));
-  }
-  var BASIS_POINT_TOTAL, FarmingRoster;
+  var FarmingRoster;
   var init_farm_roster = __esm({
     "src/farm-roster.js"() {
-      init_farm_plot();
-      BASIS_POINT_TOTAL = 1e4;
       FarmingRoster = class {
         constructor(unitCollection) {
           if (!unitCollection || !Array.isArray(unitCollection.items)) {
@@ -3081,63 +2804,6 @@
         }
         ownedPopulation() {
           return this.collection.residentCount;
-        }
-        placedPopulation(plotId) {
-          return this.collection.residentCountsByPlot.get(plotId) || 0;
-        }
-        residentIds(plotId = void 0) {
-          const UNITS = plotId === void 0 ? this.collection.items : this.collection.unitsInPlot(plotId);
-          return UNITS.filter(isResident).map((unit) => unit.id);
-        }
-        countsBySpecies({ includeReservations = [] } = {}) {
-          const COUNTS = new Map(this.collection.residentCountsBySpecies);
-          for (const RESERVATION of includeReservations) {
-            if (Number.isSafeInteger(RESERVATION?.species)) {
-              COUNTS.set(RESERVATION.species, (COUNTS.get(RESERVATION.species) || 0) + 1);
-            }
-          }
-          return COUNTS;
-        }
-        canSpeciesAdvance(speciesId, targetBasisPoints, { includeReservations = [], excludeReservation = null } = {}) {
-          if (!Number.isSafeInteger(targetBasisPoints) || targetBasisPoints <= 0 || targetBasisPoints > BASIS_POINT_TOTAL) {
-            return false;
-          }
-          const RESERVATIONS = excludeReservation === null ? includeReservations : includeReservations.filter((reservation) => reservation !== excludeReservation);
-          const COUNTS = this.countsBySpecies({ includeReservations: RESERVATIONS });
-          let total = 0;
-          for (const COUNT of COUNTS.values()) {
-            total += COUNT;
-          }
-          const OWN = COUNTS.get(speciesId) || 0;
-          return BigInt(targetBasisPoints) * BigInt(total) >= BigInt(OWN) * BigInt(BASIS_POINT_TOTAL);
-        }
-        static normalizeTargetBasisPoints(current, speciesIds, selectedSpeciesId, selectedValue) {
-          const ORDERED = [...new Set(speciesIds)].sort(compareSpeciesId);
-          if (!ORDERED.length || !ORDERED.includes(selectedSpeciesId) || !Number.isSafeInteger(selectedValue)) {
-            return null;
-          }
-          if (ORDERED.length === 1) {
-            return /* @__PURE__ */ new Map([[ORDERED[0], BASIS_POINT_TOTAL]]);
-          }
-          const FIXED = Math.max(0, Math.min(BASIS_POINT_TOTAL, selectedValue));
-          const OTHER_IDS = ORDERED.filter((id) => id !== selectedSpeciesId);
-          let weights = new Map(
-            OTHER_IDS.map((id) => [id, Math.max(0, Number.isSafeInteger(current?.get?.(id)) ? current.get(id) : 0)])
-          );
-          if ([...weights.values()].every((weight) => weight === 0)) {
-            weights = new Map(OTHER_IDS.map((id) => [id, 1]));
-          }
-          const RESULT = largestRemainder(weights, BASIS_POINT_TOTAL - FIXED);
-          RESULT.set(selectedSpeciesId, FIXED);
-          return new Map(ORDERED.map((id) => [id, RESULT.get(id) || 0]));
-        }
-        static allocateTargetCounts(targetBasisPoints, slotCount, speciesIds) {
-          const IDS = [...new Set(speciesIds)].sort(compareSpeciesId);
-          const WEIGHTS = IDS.map((id) => [
-            id,
-            Math.max(0, Number.isSafeInteger(targetBasisPoints?.get?.(id)) ? targetBasisPoints.get(id) : 0)
-          ]);
-          return largestRemainder(WEIGHTS, slotCount);
         }
       };
     }
@@ -3596,6 +3262,82 @@
     }
   });
 
+  // src/farm-upgrades.js
+  function createFarmUpgradeState() {
+    return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
+  }
+  function isValidFarmUpgradeState(state) {
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      return false;
+    }
+    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) {
+      return false;
+    }
+    return FARM_UPGRADE_IDS.every(
+      (id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]
+    );
+  }
+  function getFarmUpgradeLevel(state, id) {
+    return Number.isSafeInteger(state?.[id]) ? state[id] : 0;
+  }
+  function getFarmUpgradeInvestedCount(state) {
+    if (!isValidFarmUpgradeState(state)) {
+      return 0;
+    }
+    return FARM_UPGRADE_IDS.reduce((total, id) => total + state[id], 0);
+  }
+  function farmUpgradeRate(state, id) {
+    return 1 + 0.1 * getFarmUpgradeLevel(state, id);
+  }
+  function getBreedCooldownSeconds(state, baseSeconds = 10) {
+    return baseSeconds / farmUpgradeRate(state, "breed");
+  }
+  function getMergeCooldownSeconds(state, baseSeconds = 4) {
+    return baseSeconds / farmUpgradeRate(state, "merge");
+  }
+  var FARM_UPGRADE_MAX_LEVELS, FARM_UPGRADE_NODES, FARM_UPGRADE_IDS;
+  var init_farm_upgrades = __esm({
+    "src/farm-upgrades.js"() {
+      FARM_UPGRADE_MAX_LEVELS = Object.freeze({
+        food: 4,
+        growth: 4,
+        breed: 4,
+        merge: 4
+      });
+      FARM_UPGRADE_NODES = Object.freeze([
+        {
+          id: "food",
+          name: "일꾼 속도",
+          icon: "◒",
+          description: "일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.",
+          value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`
+        },
+        {
+          id: "growth",
+          name: "먹이 찾기",
+          icon: "❧",
+          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높여요.",
+          value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
+        },
+        {
+          id: "breed",
+          name: "번식 회복",
+          icon: "♡",
+          description: "부모의 번식 대기시간을 단계마다 10% 줄여요.",
+          value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
+        },
+        {
+          id: "merge",
+          name: "합성 회복",
+          icon: "◇",
+          description: "합성 후 대기시간을 단계마다 10% 줄여요.",
+          value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
+        }
+      ]);
+      FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
+    }
+  });
+
   // src/ability-state.js
   function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     if (!isNonNegativeInteger(availablePoints)) {
@@ -3670,7 +3412,6 @@
     return {
       ...createAbilityProgressionState(),
       formationSkills: createFormationSkillState(),
-      farmPlots: createFarmPlotsProgression(),
       level: 1,
       experience: 0,
       farmBossEventStage: 1,
@@ -3764,7 +3505,7 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
       return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
@@ -3779,7 +3520,6 @@
       init_ability_state();
       init_formation_skill_state();
       init_farm_upgrades();
-      init_farm_plot();
       PLAYER_PROGRESS_BASE_XP = 100;
       BOSS_KILL_XP = 20;
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
@@ -4140,11 +3880,6 @@
       ...state,
       farmUpgrades: {
         ...state.farmUpgrades
-      },
-      farmPlots: {
-        ...state.farmPlots,
-        plots: state.farmPlots.plots.map((plot) => ({ ...plot })),
-        targetBasisPoints: [...state.farmPlots.targetBasisPoints]
       },
       abilities: Object.fromEntries(
         Object.entries(state.abilities).map(([id, value]) => [
@@ -5618,7 +5353,7 @@
           let target = null;
           if (!u.fed) {
             target = world.requestGroundFoodTarget(u);
-            if (target && world.canFarmPopulationAdvance(u.species) && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target)) {
+            if (target && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target)) {
               world.clearFoodTargetSearch(u);
               u.meals = 1;
               world.markProgressChanged();
@@ -5663,7 +5398,7 @@
             return false;
           }
           const OWNER = world.breedingReservationOwner(a, b);
-          if (!world.canBreedPair(a, b, true) || world.ownedPopulation >= world.totalFarmCapacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair() || !world.reserveActiveBreedPair(a, b)) {
+          if (!world.canBreedPair(a, b, true) || world.ownedPopulation >= world.capacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair() || !world.reserveActiveBreedPair(a, b)) {
             return false;
           }
           {
@@ -6647,7 +6382,7 @@
     const GRANTED = [];
     let capacity = Math.max(
       0,
-      (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
+      world.capacity - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
     );
     for (const GROUP of world.bossRewardInventory) {
       if (capacity <= 0) {
@@ -7626,7 +7361,6 @@
       init_mutation_notifications();
       init_unit_collection();
       init_farm_roster();
-      init_farm_plot();
       init_simulation_scenes();
       init_projectile_behaviors();
       init_boss_event_phases();
@@ -8105,7 +7839,6 @@
             seed: id * 2.39996,
             ownerId: "",
             farmId: 0,
-            plotId: INITIAL_FARM_PLOT_ID,
             dropLanded: true,
             isBattleOnlySummon: false,
             battleSummonKind: "",
@@ -8259,7 +7992,6 @@
           this._groundedFoodCount = 0;
           this._groundedFoodRevision = 0;
           this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: /* @__PURE__ */ new Map() };
-          this._inactiveFoodClaims = /* @__PURE__ */ new Map();
           this._foodSearchStates = /* @__PURE__ */ new WeakMap();
           this._foodSearchJobSequence = 0;
           this._foodSearchScheduler = null;
@@ -8353,7 +8085,7 @@
             onCombatResolved: { value: new Signal(NOTIFICATIONS, true) },
             units: {
               enumerable: true,
-              get: () => this.scene === "farm" ? this.unitCollection.unitsInPlot(this.activePlotId) : this.unitCollection.items,
+              get: () => this.unitCollection.items,
               // Retain the public assignment API, with owner validation and
               // cleanup rather than replacing a borrowed array directly.
               set: (units) => {
@@ -8674,9 +8406,7 @@
           this._progressTimerCheckpoint = 0;
           this.cancelMergeTasks();
           this.cancelBreedPlans();
-          this._breedPlans = /* @__PURE__ */ new Map();
           this._activeBreedReservations = /* @__PURE__ */ new Map();
-          this._breedPlotReservations = /* @__PURE__ */ new Map();
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
           this.rng = new SEEDED_PRNG(this.seed);
@@ -8696,11 +8426,6 @@
             farm: 0
           };
           this.playerProgression = createPlayerProgressionState();
-          this.activePlotId = this.playerProgression.farmPlots.currentPlotId;
-          this.farmPlots = new Map(
-            this.playerProgression.farmPlots.plots.map((state) => [state.id, new FarmPlot(state)])
-          );
-          this.food = this.activeFarmPlot.food;
           this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this._workerIds = /* @__PURE__ */ new Set();
@@ -8797,37 +8522,13 @@
           return SIMULATION_SCENES[this.scene].battleCapacity;
         }
         get capacity() {
-          return this.activeFarmPlot?.capacity ?? CONFIG.farm.capacity.base;
-        }
-        get activeFarmPlot() {
-          return this.farmPlots?.get(this.activePlotId) || null;
+          return CONFIG.farm.capacity.max;
         }
         get ownedPopulation() {
           return this.roster.ownedPopulation();
         }
         get birthReservations() {
-          return (this._breedPlans?.size || 0) + (this._activeBreedReservations?.size || 0);
-        }
-        get totalFarmCapacity() {
-          let capacity = 0;
-          for (const PLOT of this.farmPlots.values()) {
-            capacity += PLOT.capacity;
-          }
-          return capacity;
-        }
-        get placedPopulation() {
-          return this.roster.placedPopulation(this.activePlotId);
-        }
-        bindFarmPlotProgressionStates() {
-          for (const PLOT of this.farmPlots.values()) {
-            const STATE = this.playerProgression.farmPlots.plots.find((plot) => plot.id === PLOT.id);
-            if (STATE) {
-              PLOT.state = STATE;
-            }
-          }
-        }
-        get reservedPopulation() {
-          return this.roster.placedPopulation(RESERVE_PLOT_ID);
+          return this._activeBreedReservations?.size || 0;
         }
         get pendingRewardPopulation() {
           return (this.bossRewardReceipts || []).reduce(
@@ -8835,204 +8536,11 @@
             0
           );
         }
-        get farmTargets() {
-          return this.playerProgression.farmPlots.targetBasisPoints;
-        }
-        canFarmPopulationAdvance(speciesId, options) {
-          const RESERVATIONS = [
-            ...[...this._breedPlans?.values() || []].map((plan) => plan.reservation),
-            ...[...this._activeBreedReservations?.values() || []].map((plan) => plan.reservation)
-          ];
-          return this.roster.canSpeciesAdvance(speciesId, this.farmTargets[speciesId] || 0, {
-            includeReservations: RESERVATIONS,
-            excludeReservation: options?.excludeReservation ?? null
-          });
-        }
-        clearInactiveForageAttempt(unit) {
-          const ATTEMPT = unit?.inactiveForageAttempt;
-          if (!ATTEMPT) {
-            return false;
-          }
-          if (this._inactiveFoodClaims.get(ATTEMPT.food) === unit.id) {
-            this._inactiveFoodClaims.delete(ATTEMPT.food);
-          }
-          unit.inactiveForageAttempt = null;
-          return true;
-        }
-        startInactiveForageAttempt(unit, dt) {
-          const PLOT = this.farmPlots.get(unit.plotId);
-          if (!PLOT || PLOT.food.length === 0 || !this.canFarmPopulationAdvance(unit.species)) {
-            return false;
-          }
-          let nearest = null, nearestDistance = Infinity;
-          for (const FOOD2 of PLOT.food) {
-            if (this._inactiveFoodClaims.has(FOOD2) || FOOD2.phase !== "grounded") {
-              continue;
-            }
-            const DISTANCE = Math.hypot(FOOD2.x - unit.x, FOOD2.y - unit.y);
-            if (DISTANCE < nearestDistance) {
-              nearest = FOOD2;
-              nearestDistance = DISTANCE;
-            }
-          }
-          if (!nearest) {
-            return false;
-          }
-          const SPEED = Math.max(
-            0.01,
-            scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, "growth"), unit)
-          ), TICKS = Math.max(1, Math.ceil(nearestDistance / SPEED / Math.max(dt, 1e-9)));
-          unit.inactiveForageAttempt = {
-            plotId: PLOT.id,
-            food: nearest,
-            dueTick: this.simulationTick + TICKS
-          };
-          this._inactiveFoodClaims.set(nearest, unit.id);
-          return true;
-        }
-        farmPlotStatus(plotId) {
-          const PLOT = this.farmPlots.get(plotId);
-          let hungry = 0;
-          if (PLOT) {
-            for (const UNIT3 of this.unitCollection.unitsInPlot(plotId)) {
-              if (UNIT3.hp > 0 && UNIT3.mature && !UNIT3.fed && this.canFarmPopulationAdvance(UNIT3.species)) {
-                hungry++;
-              }
-            }
-          }
-          return { food: PLOT?.food.length ?? 0, hungry };
-        }
-        advanceInactiveForage(unit, dt) {
-          if (unit.hp <= 0 || unit.fed || unit.plotId === RESERVE_PLOT_ID || unit.plotId === this.activePlotId || !this.canFarmPopulationAdvance(unit.species)) {
-            this.clearInactiveForageAttempt(unit);
-            return false;
-          }
-          let attempt = unit.inactiveForageAttempt;
-          if (!attempt) {
-            this.startInactiveForageAttempt(unit, dt);
-            attempt = unit.inactiveForageAttempt;
-          }
-          if (!attempt || this.simulationTick < attempt.dueTick) {
-            return false;
-          }
-          const PLOT = this.farmPlots.get(attempt.plotId), FOOD_INDEX = PLOT?.food.indexOf(attempt.food) ?? -1;
-          if (!PLOT || unit.plotId !== PLOT.id || FOOD_INDEX < 0 || this._inactiveFoodClaims.get(attempt.food) !== unit.id || !this.canFarmPopulationAdvance(unit.species)) {
-            this.clearInactiveForageAttempt(unit);
-            return false;
-          }
-          PLOT.food.splice(FOOD_INDEX, 1);
-          this.clearInactiveForageAttempt(unit);
-          unit.meals = 1;
-          this.markProgressChanged();
-          return true;
-        }
-        availableFarmPlot(plotId = this.activePlotId) {
-          const PLOT = this.farmPlots.get(plotId);
-          return !!PLOT && this.roster.placedPopulation(plotId) < PLOT.capacity;
-        }
-        availableFarmPlotFor(species, preferredPlotId = this.activePlotId) {
-          const RESIDENTS = this.roster.residents(), MATCHING_PLOTS = new Set(RESIDENTS.filter((unit) => unit.species === species).map((unit) => unit.plotId)), OCCUPANCY = new Map(
-            [...this.farmPlots.keys()].map((id) => [
-              id,
-              this.roster.placedPopulation(id) + (this._breedPlotReservations?.get(id) || 0)
-            ])
-          ), PLOTS = [...this.farmPlots.values()];
-          PLOTS.sort((a, b) => {
-            const A_COUNT = OCCUPANCY.get(a.id), B_COUNT = OCCUPANCY.get(b.id), A_MATCH = MATCHING_PLOTS.has(a.id), B_MATCH = MATCHING_PLOTS.has(b.id);
-            return Number(B_MATCH) - Number(A_MATCH) || Number(b.id === preferredPlotId) - Number(a.id === preferredPlotId) || A_COUNT - B_COUNT || a.id.localeCompare(b.id);
-          });
-          return PLOTS.find((plot) => OCCUPANCY.get(plot.id) < plot.capacity) || null;
-        }
-        switchFarmPlot(plotId) {
-          if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !this.farmPlots.has(plotId)) {
-            return false;
-          }
-          if (plotId === this.activePlotId) {
-            return true;
-          }
-          for (const UNIT_LOCAL of this.unitCollection.unitsInPlot(this.activePlotId)) {
-            if (UNIT_LOCAL.mateId && !this.breedPlanFor(UNIT_LOCAL)) {
-              this.releaseMate(UNIT_LOCAL);
-            }
-            this.clearFoodTargetSearch(UNIT_LOCAL);
-          }
-          this.activePlotId = plotId;
-          this._nextWorkerRefreshTick = 0;
-          for (const UNIT_LOCAL of this.unitCollection.unitsInPlot(plotId)) {
-            this.clearInactiveForageAttempt(UNIT_LOCAL);
-          }
-          this.playerProgression.farmPlots.currentPlotId = plotId;
-          this.food = this.activeFarmPlot.food;
-          this._unitSpatialDirty = true;
-          this._foodSpatialDirty = true;
-          this._rebuildUnitSpatialIndex(this.units);
-          this.markProgressChanged();
-          return true;
-        }
-        _addFarmPlot() {
-          const STATE = this.playerProgression.farmPlots, ID = `plot-${STATE.nextPlotNumber}`, PLOT_STATE = { id: ID, capacityLevel: 0, facilities: [] };
-          STATE.plots.push(PLOT_STATE);
-          STATE.nextPlotNumber++;
-          this.farmPlots.set(ID, new FarmPlot(PLOT_STATE));
-          this.restoreReservePopulation();
-          this.markProgressChanged();
-          return ID;
-        }
-        restoreReservePopulation() {
-          const RESERVE = this.roster.residents().filter((unit) => unit.plotId === RESERVE_PLOT_ID);
-          if (!RESERVE.length) {
-            return 0;
-          }
-          RESERVE.sort((a, b) => b.tier - a.tier || Number(b.mature) - Number(a.mature) || a.id - b.id);
-          const OCCUPANCY = new Map(
-            [...this.farmPlots.values()].map((plot) => [plot.id, this.roster.placedPopulation(plot.id)])
-          ), SPECIES_BY_PLOT = new Map(
-            [...this.farmPlots.keys()].map((plotId) => [
-              plotId,
-              new Set(
-                this.roster.residents().filter((unit) => unit.plotId === plotId).map((unit) => unit.species)
-              )
-            ])
-          ), ASSIGNMENTS = [];
-          for (const UNIT_LOCAL of RESERVE) {
-            const CANDIDATES = [...this.farmPlots.values()].filter((plot) => (OCCUPANCY.get(plot.id) || 0) < plot.capacity).sort(
-              (a, b) => Number(SPECIES_BY_PLOT.get(b.id).has(UNIT_LOCAL.species)) - Number(SPECIES_BY_PLOT.get(a.id).has(UNIT_LOCAL.species)) || (OCCUPANCY.get(a.id) || 0) - (OCCUPANCY.get(b.id) || 0) || a.id.localeCompare(b.id)
-            );
-            const PLOT = CANDIDATES[0];
-            if (!PLOT) {
-              break;
-            }
-            ASSIGNMENTS.push({ unitId: UNIT_LOCAL.id, plotId: PLOT.id });
-            OCCUPANCY.set(PLOT.id, OCCUPANCY.get(PLOT.id) + 1);
-            SPECIES_BY_PLOT.get(PLOT.id).add(UNIT_LOCAL.species);
-          }
-          return this.unitCollection.moveUnitsToPlots(ASSIGNMENTS) ? ASSIGNMENTS.length : 0;
-        }
-        setSpeciesTarget(speciesId, basisPoints) {
-          if (!Number.isSafeInteger(speciesId) || speciesId < 0 || speciesId >= CONFIG.unit.speciesCount || !Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
-            return false;
-          }
-          const CURRENT = new Map(this.farmTargets.map((value, index) => [index, value])), NEXT = FarmingRoster.normalizeTargetBasisPoints(
-            CURRENT,
-            Array.from({ length: CONFIG.unit.speciesCount }, (_, id) => id),
-            speciesId,
-            basisPoints
-          );
-          if (!NEXT) {
-            return false;
-          }
-          this.playerProgression.farmPlots.targetBasisPoints = Array.from(
-            { length: CONFIG.unit.speciesCount },
-            (_, id) => NEXT.get(id) || 0
-          );
-          this.markProgressChanged();
-          return true;
-        }
         sortActiveFarm(order = "mixed") {
-          if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || this._breedPlans.size > 0 || !["species", "tier-high", "tier-low"].includes(order)) {
+          if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !["species", "tier-high", "tier-low"].includes(order)) {
             return false;
           }
-          const UNITS = this.unitCollection.residentsInPlot(this.activePlotId);
+          const UNITS = this.roster.residents();
           for (const UNIT_LOCAL of UNITS) {
             if (this.unitCollection.reservationOwner(UNIT_LOCAL)?.startsWith("merge:")) {
               return false;
@@ -9053,10 +8561,7 @@
             }
             return a.id - b.id;
           });
-          if (!this.unitCollection.reorderWithinPlot(
-            this.activePlotId,
-            UNITS.map((unit) => unit.id)
-          )) {
+          if (!this.unitCollection.reorder(UNITS.map((unit) => unit.id))) {
             return false;
           }
           UNITS.forEach((unitLocal, index) => {
@@ -9096,7 +8601,6 @@
           });
           if (RESULT.ok) {
             this.playerProgression = RESULT.state;
-            this.bindFarmPlotProgressionStates();
             this.markProgressChanged();
           }
           return RESULT;
@@ -9109,7 +8613,6 @@
           });
           if (RESULT.ok) {
             this.playerProgression = RESULT.state;
-            this.bindFarmPlotProgressionStates();
             this.markProgressChanged();
           }
           return RESULT;
@@ -9123,37 +8626,14 @@
           if (RESULT.ok) {
             const RESET_FARMS = scope?.type === "farm" || scope?.type === "all" || scope === "farm" || scope === "all";
             if (RESET_FARMS) {
-              const FIRST_FOOD = this.farmPlots.get(INITIAL_FARM_PLOT_ID)?.food || [], RETURNED_FOOD = [...this.farmPlots.values()].filter((plot) => plot.id !== INITIAL_FARM_PLOT_ID).reduce((total, plot) => total + plot.food.length, 0);
-              this.warehouseFood = Math.min(Number.MAX_SAFE_INTEGER, this.warehouseFood + RETURNED_FOOD);
               this.cancelMergeTasks();
               for (const UNIT_LOCAL of this.unitCollection.items) {
-                this.clearInactiveForageAttempt(UNIT_LOCAL);
                 if (UNIT_LOCAL.mateId) {
                   this.releaseMate(UNIT_LOCAL);
                 }
               }
-              this.playerProgression = RESULT.state;
-              const FIRST_STATE = this.playerProgression.farmPlots.plots[0];
-              this.farmPlots = /* @__PURE__ */ new Map([[FIRST_STATE.id, new FarmPlot(FIRST_STATE, FIRST_FOOD)]]);
-              this.activePlotId = FIRST_STATE.id;
-              this.playerProgression.farmPlots.currentPlotId = FIRST_STATE.id;
-              this.food = FIRST_FOOD;
-              const OLD_PLOT_ORDER = new Map(
-                [...this.unitCollection.items].map((unit) => [unit.id, unit.plotId || RESERVE_PLOT_ID])
-              ), RESIDENTS = this.roster.residents().sort(
-                (a, b) => b.tier - a.tier || Number(b.mature) - Number(a.mature) || String(OLD_PLOT_ORDER.get(a.id)).localeCompare(String(OLD_PLOT_ORDER.get(b.id))) || a.id - b.id
-              ), FIRST_CAPACITY = this.farmPlots.get(FIRST_STATE.id).capacity, ASSIGNMENTS = RESIDENTS.map((unit, index) => ({
-                unitId: unit.id,
-                plotId: index < FIRST_CAPACITY ? FIRST_STATE.id : RESERVE_PLOT_ID
-              }));
-              this.unitCollection.moveUnitsToPlots(ASSIGNMENTS);
-              this._rebuildUnitSpatialIndex(this.units);
-              this._unitSpatialDirty = true;
-              this._foodSpatialDirty = true;
-            } else {
-              this.playerProgression = RESULT.state;
-              this.bindFarmPlotProgressionStates();
             }
+            this.playerProgression = RESULT.state;
             this.markProgressChanged();
           }
           return RESULT;
@@ -9315,7 +8795,6 @@
           if (!this.unitCollection.has(unit)) {
             return false;
           }
-          this.clearInactiveForageAttempt(unit);
           const SPLIT_BEFORE = unit.splitUsedThisBattle, DIED = unit.die();
           return DIED && !SPLIT_BEFORE && unit.splitUsedThisBattle;
         }
@@ -9472,30 +8951,19 @@
           return Math.min(CONFIG.unit.speciesCount - 1, Math.floor(this.random() * CONFIG.unit.speciesCount));
         }
         spawn(species, tier, x, y, { birthReservationOwner = null } = {}) {
-          const FARM_RESIDENT = this.scene === "farm";
-          let plot = null;
-          if (FARM_RESIDENT) {
-            const HAS_BIRTH_RESERVATION = birthReservationOwner && (this._activeBreedReservations?.has(birthReservationOwner) || this._breedPlans?.has(birthReservationOwner));
-            if (this.ownedPopulation + this.birthReservations - Number(!!HAS_BIRTH_RESERVATION) >= this.totalFarmCapacity) {
-              return null;
-            }
-            const BREED_RESERVATION = this._activeBreedReservations?.get(birthReservationOwner);
-            plot = BREED_RESERVATION ? this.farmPlots.get(BREED_RESERVATION.plotId) : this.availableFarmPlotFor(species);
-            if (!plot) {
+          if (this.scene === "farm") {
+            const HAS_BIRTH_RESERVATION = birthReservationOwner && this._activeBreedReservations?.has(birthReservationOwner);
+            if (this.ownedPopulation + this.birthReservations - Number(!!HAS_BIRTH_RESERVATION) >= this.capacity) {
               return null;
             }
           } else if (this.units.length >= SIMULATION_SCENES[this.scene].capacity(this)) {
             return null;
           }
           const U = new UNIT(this.nextId++, species, CLAMP2(tier, 1, CONFIG.unit.maxTier), x, y);
-          U.plotId = plot?.id || this.activePlotId || INITIAL_FARM_PLOT_ID;
           this.addUnit(U);
           return U;
         }
         addUnit(unit, options) {
-          if (this.scene === "farm" && this.unitCollection.isResident(unit) && !unit.plotId) {
-            unit.plotId = this.activePlotId;
-          }
           if (!Number.isSafeInteger(unit.generation) || unit.generation <= 0) {
             unit.generation = ++this.entityGenerationSerial;
           } else {
@@ -9504,7 +8972,6 @@
           return this.unitCollection.add(unit, options);
         }
         removeUnit(unit, options) {
-          this.clearInactiveForageAttempt(unit);
           return this.unitCollection.remove(unit, options);
         }
         replaceUnitGroup(materials, result, complete, preserveMergeTask = null) {
@@ -9601,7 +9068,7 @@
         }
         // The grain piles of the farm plot on screen.
         get piles() {
-          return pilesOf(this, this.activePlotId);
+          return this._piles;
         }
         workSwingOf(id) {
           return this._swings.get(id) || null;
@@ -9635,7 +9102,7 @@
           let total = 0;
           if (this.scene === "farm") {
             const BY_SPECIES = /* @__PURE__ */ new Map();
-            for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(this.activePlotId)) {
+            for (const UNIT_LOCAL of this.roster.residents()) {
               if (!UNIT_LOCAL.mature || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.isFormationClone || !this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL)) {
                 continue;
               }
@@ -9736,7 +9203,7 @@
         }
         // Challenge the next boss: every unit of the farm fights it, and its stage is where the farm's fights have got to.
         startBossFight() {
-          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0 && u.plotId !== RESERVE_PLOT_ID)) {
+          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0)) {
             return false;
           }
           for (const UNIT_LOCAL of this.units) {
@@ -9860,9 +9327,7 @@
           }
           try {
             const OWNER = this.breedingReservationOwner(a, b), BIRTH_RESERVATION = this._activeBreedReservations?.get(OWNER) || null, RESERVATIONS_AVAILABLE = this.unitCollection.reservationOwner(a) === null || this.unitCollection.reservationOwner(a) === OWNER;
-            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && this.canBreedNow(a) && this.canBreedNow(b) && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.canFarmPopulationAdvance(a.species, {
-              excludeReservation: BIRTH_RESERVATION?.reservation || null
-            }) && this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.totalFarmCapacity && (BIRTH_RESERVATION ? this.roster.placedPopulation(BIRTH_RESERVATION.plotId) + (this._breedPlotReservations.get(BIRTH_RESERVATION.plotId) || 0) <= this.farmPlots.get(BIRTH_RESERVATION.plotId)?.capacity : !!this.availableFarmPlotFor(a.species)) && this._unitIsActive(a) && this._unitIsActive(b) && RESERVATIONS_AVAILABLE && (this.unitCollection.reservationOwner(b) === null || this.unitCollection.reservationOwner(b) === OWNER) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
+            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && this.canBreedNow(a) && this.canBreedNow(b) && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.capacity && this._unitIsActive(a) && this._unitIsActive(b) && RESERVATIONS_AVAILABLE && (this.unitCollection.reservationOwner(b) === null || this.unitCollection.reservationOwner(b) === OWNER) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
           } finally {
             if (BATCH) {
               this._endSpatialQueryBatch();
@@ -9872,160 +9337,18 @@
         breedingReservationOwner(a, b) {
           return BREED_RESERVATION_OWNER(a.id, b.id);
         }
-        breedPlanFor(unit) {
-          return [...this._breedPlans?.values() || []].find((plan) => plan.parentIds.includes(unit?.id)) || null;
-        }
-        canStartCrossPlotBreed(a, b, { allowSamePlot = false } = {}) {
-          return !!(this.scene === "farm" && this.farmBossEvent?.phase === "idle" && a && b && a !== b && (allowSamePlot || a.plotId !== b.plotId) && a.plotId !== RESERVE_PLOT_ID && b.plotId !== RESERVE_PLOT_ID && a.species === b.species && a.hp > 0 && b.hp > 0 && a.down <= 0 && b.down <= 0 && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.canBreedNow(a) && this.canBreedNow(b) && !this.senseEnemy(a) && !this.senseEnemy(b) && this.canFarmPopulationAdvance(a.species) && this.ownedPopulation + this.birthReservations < this.totalFarmCapacity && !this.unitCollection.reservationOwner(a) && !this.unitCollection.reservationOwner(b));
-        }
-        reserveCrossPlotBreed(a, b, { allowSamePlot = false, durationTicks = 10 } = {}) {
-          if (!this.canStartCrossPlotBreed(a, b, { allowSamePlot }) || !Number.isSafeInteger(durationTicks) || durationTicks < 1) {
-            return false;
-          }
-          const PARENT_IDS = [a.id, b.id], PARENTS_BY_SOURCE = /* @__PURE__ */ new Map();
-          for (const PARENT of [a, b]) {
-            PARENTS_BY_SOURCE.set(PARENT.plotId, (PARENTS_BY_SOURCE.get(PARENT.plotId) || 0) + 1);
-          }
-          const IDLE_RESIDENTS = this.roster.residents().filter(
-            (unit) => unit.plotId !== RESERVE_PLOT_ID && unit.id !== a.id && unit.id !== b.id && !this.unitCollection.reservationOwner(unit) && !unit.mateId && unit.hp > 0 && unit.down <= 0 && unit.stun <= 0 && unit.ability?.phase === "idle" && (!unit.specialAbility || unit.specialAbility.phase === "idle") && !this.senseEnemy(unit)
-          ).sort((left, right) => left.plotId.localeCompare(right.plotId) || left.id - right.id), CANDIDATES = [...this.farmPlots.values()].map((plot) => {
-            const PARENTS_HERE = PARENT_IDS.filter(
-              (id) => this.unitCollection.unitById(id)?.plotId === plot.id
-            ).length, MOVED = 2 - PARENTS_HERE, ADDED = MOVED + 1, OCCUPANCY = this.roster.placedPopulation(plot.id) + (this._breedPlotReservations.get(plot.id) || 0), NEEDED_EXCHANGES = Math.max(0, OCCUPANCY + ADDED - plot.capacity), EXCHANGES = [];
-            if (NEEDED_EXCHANGES > 2 || NEEDED_EXCHANGES > MOVED) {
-              return null;
-            }
-            for (const [SOURCE_PLOT_ID, PARENT_COUNT] of PARENTS_BY_SOURCE) {
-              if (SOURCE_PLOT_ID === plot.id) {
-                continue;
-              }
-              for (const RESIDENT of IDLE_RESIDENTS) {
-                if (EXCHANGES.length >= NEEDED_EXCHANGES || EXCHANGES.some((exchange) => exchange.unitId === RESIDENT.id) || RESIDENT.plotId !== plot.id) {
-                  continue;
-                }
-                const USED_AT_SOURCE = EXCHANGES.filter(
-                  (exchange) => exchange.plotId === SOURCE_PLOT_ID
-                ).length;
-                if (USED_AT_SOURCE < PARENT_COUNT) {
-                  EXCHANGES.push({ unitId: RESIDENT.id, plotId: SOURCE_PLOT_ID });
-                  break;
-                }
-              }
-            }
-            if (EXCHANGES.length !== NEEDED_EXCHANGES) {
-              return null;
-            }
-            const OCCUPANCY_DELTA = /* @__PURE__ */ new Map([[plot.id, ADDED - EXCHANGES.length]]);
-            for (const [SOURCE_PLOT_ID, PARENT_COUNT] of PARENTS_BY_SOURCE) {
-              if (SOURCE_PLOT_ID !== plot.id) {
-                OCCUPANCY_DELTA.set(
-                  SOURCE_PLOT_ID,
-                  (OCCUPANCY_DELTA.get(SOURCE_PLOT_ID) || 0) - PARENT_COUNT + EXCHANGES.filter((exchange) => exchange.plotId === SOURCE_PLOT_ID).length
-                );
-              }
-            }
-            const FINAL_OCCUPANCY_FITS = [...this.farmPlots.values()].every(
-              (candidatePlot) => this.roster.placedPopulation(candidatePlot.id) + (this._breedPlotReservations.get(candidatePlot.id) || 0) + Math.max(0, OCCUPANCY_DELTA.get(candidatePlot.id) || 0) <= candidatePlot.capacity
-            );
-            const PLOT_RESERVATION_DELTAS = new Map([...OCCUPANCY_DELTA].filter(([, delta]) => delta > 0));
-            return FINAL_OCCUPANCY_FITS ? {
-              plot,
-              parentsHere: PARENTS_HERE,
-              moved: MOVED,
-              added: ADDED,
-              occupancy: OCCUPANCY,
-              exchanges: EXCHANGES,
-              occupancyDelta: OCCUPANCY_DELTA,
-              plotReservationDeltas: PLOT_RESERVATION_DELTAS
-            } : null;
-          }).filter(Boolean).sort(
-            (left, right) => right.parentsHere - left.parentsHere || left.moved - right.moved || left.occupancy - right.occupancy || left.plot.id.localeCompare(right.plot.id)
-          ), DESTINATION = CANDIDATES[0];
-          if (!DESTINATION) {
-            return false;
-          }
-          const OWNER = this.breedingReservationOwner(a, b), RESERVATION = { species: a.species, owner: OWNER }, ASSIGNMENTS = [
-            { unitId: a.id, plotId: DESTINATION.plot.id },
-            { unitId: b.id, plotId: DESTINATION.plot.id },
-            ...DESTINATION.exchanges
-          ], ORIGINAL_ASSIGNMENTS = ASSIGNMENTS.map(({ unitId }) => ({
-            unitId,
-            plotId: this.unitCollection.unitById(unitId).plotId
-          }));
-          if (!this.unitCollection.reserve(OWNER, [
-            a,
-            b,
-            ...DESTINATION.exchanges.map(({ unitId }) => this.unitCollection.unitById(unitId))
-          ])) {
-            return false;
-          }
-          a.mateId = b.id;
-          b.mateId = a.id;
-          this._breedPlans.set(OWNER, {
-            owner: OWNER,
-            parentIds: PARENT_IDS,
-            originalPlotIds: [a.plotId, b.plotId],
-            originalPositions: [
-              { x: a.x, y: a.y, vx: a.vx, vy: a.vy },
-              { x: b.x, y: b.y, vx: b.vx, vy: b.vy }
-            ],
-            assignments: ASSIGNMENTS,
-            originalAssignments: ORIGINAL_ASSIGNMENTS,
-            exchangeUnitIds: DESTINATION.exchanges.map(({ unitId }) => unitId),
-            destinationPlotId: DESTINATION.plot.id,
-            dueTick: this.simulationTick + durationTicks,
-            expiresTick: this.simulationTick + 100,
-            targetSnapshot: [...this.farmTargets],
-            reservation: RESERVATION,
-            plotReservationDeltas: Object.fromEntries(DESTINATION.plotReservationDeltas)
-          });
-          for (const [PLOT_ID, DELTA] of DESTINATION.plotReservationDeltas) {
-            this._breedPlotReservations.set(PLOT_ID, (this._breedPlotReservations.get(PLOT_ID) || 0) + DELTA);
-          }
-          return true;
-        }
-        cancelBreedPlan(plan) {
-          if (!plan || this._breedPlans?.get(plan.owner) !== plan) {
-            return false;
-          }
-          this._breedPlans.delete(plan.owner);
-          this.releaseBreedPlotReservations(plan);
-          this.unitCollection.releaseReservations(plan.owner);
-          for (const ID of plan.parentIds) {
-            const UNIT_LOCAL = this.unitCollection.unitById(ID);
-            if (UNIT_LOCAL?.mateId === plan.parentIds.find((otherId) => otherId !== ID)) {
-              UNIT_LOCAL.mateId = 0;
-            }
-          }
-          return true;
-        }
-        releaseBreedPlotReservations(plan) {
-          for (const [PLOT_ID, DELTA] of Object.entries(plan?.plotReservationDeltas || {})) {
-            const RESERVED = (this._breedPlotReservations.get(PLOT_ID) || 0) - DELTA;
-            if (RESERVED) {
-              this._breedPlotReservations.set(PLOT_ID, RESERVED);
-            } else {
-              this._breedPlotReservations.delete(PLOT_ID);
-            }
-          }
-        }
         cancelBreedPlans() {
-          for (const PLAN of [...this._breedPlans?.values() || []]) {
-            this.cancelBreedPlan(PLAN);
-          }
           for (const OWNER of [...this._activeBreedReservations?.keys() || []]) {
             this.releaseActiveBreedReservation(OWNER);
           }
-          this._breedPlans?.clear();
           this._activeBreedReservations?.clear();
-          this._breedPlotReservations?.clear();
         }
         reserveActiveBreedPair(a, b) {
           const OWNER = this.breedingReservationOwner(a, b), EXISTING = this._activeBreedReservations.get(OWNER);
           if (EXISTING) {
             return EXISTING.parentIds.includes(a.id) && EXISTING.parentIds.includes(b.id);
           }
-          if (!a || !b || a.plotId !== b.plotId || a.plotId === RESERVE_PLOT_ID || !this.canBreedPair(a, b) || a.down > 0 || b.down > 0 || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || this.roster.placedPopulation(a.plotId) + (this._breedPlotReservations.get(a.plotId) || 0) >= this.farmPlots.get(a.plotId)?.capacity) {
+          if (!a || !b || !this.canBreedPair(a, b) || a.down > 0 || b.down > 0 || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id) {
             return false;
           }
           const RESERVATION = { species: a.species, owner: OWNER };
@@ -10035,10 +9358,8 @@
           this._activeBreedReservations.set(OWNER, {
             owner: OWNER,
             parentIds: [a.id, b.id],
-            plotId: a.plotId,
             reservation: RESERVATION
           });
-          this._breedPlotReservations.set(a.plotId, (this._breedPlotReservations.get(a.plotId) || 0) + 1);
           a.mateId = b.id;
           b.mateId = a.id;
           return true;
@@ -10049,12 +9370,6 @@
             return false;
           }
           this._activeBreedReservations.delete(owner);
-          const RESERVED = Math.max(0, (this._breedPlotReservations.get(RESERVATION.plotId) || 0) - 1);
-          if (RESERVED) {
-            this._breedPlotReservations.set(RESERVATION.plotId, RESERVED);
-          } else {
-            this._breedPlotReservations.delete(RESERVATION.plotId);
-          }
           this.unitCollection.releaseReservations(owner);
           for (const ID of RESERVATION.parentIds) {
             const UNIT_LOCAL = this.unitCollection.unitById(ID);
@@ -10063,120 +9378,6 @@
             }
           }
           return true;
-        }
-        advanceBreedPlans() {
-          for (const PLAN of [...this._breedPlans.values()].sort(
-            (a, b) => a.dueTick - b.dueTick || a.owner.localeCompare(b.owner)
-          )) {
-            if (this.simulationTick > PLAN.expiresTick) {
-              this.cancelBreedPlan(PLAN);
-              continue;
-            }
-            const [A, B] = PLAN.parentIds.map((id) => this.unitCollection.unitById(id));
-            if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !A || !B || A.mateId !== B.id || B.mateId !== A.id || A.hp <= 0 || B.hp <= 0 || A.down > 0 || B.down > 0 || !A.mature || !B.mature || !A.fed || !B.fed || A.cooldown > 0 || B.cooldown > 0 || !this.canBreedNow(A) || !this.canBreedNow(B) || A.species !== B.species || this.senseEnemy(A) || this.senseEnemy(B) || PLAN.targetSnapshot.some((value, index) => value !== this.farmTargets[index]) || !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })) {
-              this.cancelBreedPlan(PLAN);
-              continue;
-            }
-            if (this.simulationTick < PLAN.dueTick) {
-              continue;
-            }
-            const DESTINATION = this.farmPlots.get(PLAN.destinationPlotId), ASSIGNMENTS_VALID = PLAN.assignments.every(({ unitId }) => {
-              const UNIT_ID = unitId;
-              const RESIDENT = this.unitCollection.unitById(UNIT_ID);
-              return RESIDENT && RESIDENT.plotId === PLAN.originalAssignments.find((row) => row.unitId === UNIT_ID)?.plotId;
-            });
-            const FINAL_OCCUPANCY_FITS = [...this.farmPlots.values()].every((plot) => {
-              return this.roster.placedPopulation(plot.id) + (this._breedPlotReservations.get(plot.id) || 0) <= plot.capacity;
-            });
-            if (!DESTINATION || !ASSIGNMENTS_VALID || !FINAL_OCCUPANCY_FITS || PLAN.assignments.some(({ unitId }) => {
-              const UNIT_ID = unitId;
-              const RESIDENT = this.unitCollection.unitById(UNIT_ID);
-              if (!RESIDENT || this.unitCollection.reservationOwner(RESIDENT) !== PLAN.owner) {
-                return true;
-              }
-              return PLAN.exchangeUnitIds.includes(UNIT_ID) && (RESIDENT.hp <= 0 || RESIDENT.down > 0 || RESIDENT.ability?.phase !== "idle" || RESIDENT.specialAbility && RESIDENT.specialAbility.phase !== "idle" || this.senseEnemy(RESIDENT));
-            }) || this.ownedPopulation + this.birthReservations > this.totalFarmCapacity || !this.canFarmPopulationAdvance(A.species, { excludeReservation: PLAN.reservation })) {
-              this.cancelBreedPlan(PLAN);
-              continue;
-            }
-            this.unitCollection.releaseReservations(PLAN.owner);
-            A.mateId = 0;
-            B.mateId = 0;
-            for (const UNIT_ID of PLAN.exchangeUnitIds) {
-              this.clearInactiveForageAttempt(this.unitCollection.unitById(UNIT_ID));
-            }
-            if (!this.unitCollection.moveUnitsToPlots(PLAN.assignments)) {
-              this.cancelBreedPlan(PLAN);
-              continue;
-            }
-            this._breedPlans.delete(PLAN.owner);
-            this.releaseBreedPlotReservations(PLAN);
-            A.x = -0.22;
-            A.y = 0;
-            A.vx = A.vy = 0;
-            B.x = 0.22;
-            B.y = 0;
-            B.vx = B.vy = 0;
-            this._rebuildUnitSpatialIndex(this.units);
-            const COMMITTED = DESTINATION.id === this.activePlotId ? FARM_MODES.breed.pair(this, A, B, true) : this.commitInactiveBreedBirth(A, B, DESTINATION.id);
-            if (!COMMITTED) {
-              this.unitCollection.moveUnitsToPlots(PLAN.originalAssignments);
-              [A, B].forEach((unit, index) => Object.assign(unit, PLAN.originalPositions[index]));
-              for (const UNIT_ID of PLAN.exchangeUnitIds) {
-                const RESIDENT = this.unitCollection.unitById(UNIT_ID);
-                RESIDENT && (RESIDENT.mateId = 0);
-              }
-              this._rebuildUnitSpatialIndex(this.units);
-            }
-          }
-        }
-        commitInactiveBreedBirth(a, b, plotId) {
-          if (this.scene !== "farm" || !a || !b || a === b || a.plotId !== plotId || b.plotId !== plotId || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || !a.mature || !b.mature || !a.fed || !b.fed || a.cooldown > 0 || b.cooldown > 0 || a.species !== b.species || !this.canFarmPopulationAdvance(a.species) || this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity || !this.availableFarmPlot(plotId)) {
-            return false;
-          }
-          const OWNER = this.breedingReservationOwner(a, b);
-          if (!this.unitCollection.reserve(OWNER, [a, b])) {
-            return false;
-          }
-          a.mateId = b.id;
-          b.mateId = a.id;
-          const CHILD = new UNIT(this.nextId++, a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2);
-          CHILD.plotId = plotId;
-          CHILD.growthDuration = this.breedGrowthDuration();
-          if (!this.unitCollection.add(CHILD)) {
-            this.releaseMate(a);
-            return false;
-          }
-          a.meals = b.meals = 0;
-          a.cooldown = b.cooldown = this.breedCooldownDuration();
-          a.cooldownDuration = b.cooldownDuration = a.cooldown;
-          a.cooldownSetAtTick = b.cooldownSetAtTick = this.simulationTick;
-          this.releaseMate(a);
-          this.metrics.births++;
-          this.markProgressChanged();
-          return true;
-        }
-        planInactiveBreed(unit, dt) {
-          if (this.scene !== "farm" || unit.plotId === this.activePlotId || unit.plotId === RESERVE_PLOT_ID || this.simulationTick < (unit.nextMateSearchTick || 0) || unit.mateId || this.unitCollection.reservationOwner(unit) || !unit.mature || !unit.fed || unit.cooldown > 0 || unit.hp <= 0 || !this.canFarmPopulationAdvance(unit.species) || this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity) {
-            return false;
-          }
-          const CANDIDATES = this.roster.residentsOfSpecies(unit.species).filter(
-            (candidate) => candidate !== unit && candidate.plotId !== this.activePlotId && candidate.plotId !== RESERVE_PLOT_ID && !candidate.mateId && !this.unitCollection.reservationOwner(candidate) && candidate.hp > 0 && candidate.down <= 0 && candidate.mature && candidate.fed && candidate.cooldown <= 0 && this.canBreedNow(candidate)
-          ).sort(
-            (a, b) => Number(a.plotId !== unit.plotId) - Number(b.plotId !== unit.plotId) || Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) || Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
-          );
-          for (const MATE of CANDIDATES) {
-            const DISTANCE = Math.hypot(MATE.x - unit.x, MATE.y - unit.y), SPEED = Math.max(
-              0.01,
-              scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, "growth"), unit)
-            ), TICKS = Math.min(100, Math.max(1, Math.ceil(DISTANCE / SPEED / Math.max(dt, 1e-9))));
-            if (this.reserveCrossPlotBreed(unit, MATE, { allowSamePlot: true, durationTicks: TICKS })) {
-              unit.nextMateSearchTick = MATE.nextMateSearchTick = this.simulationTick + 10;
-              return true;
-            }
-          }
-          unit.nextMateSearchTick = this.simulationTick + 10;
-          return false;
         }
         _isValidBreedReservation(unit, owner) {
           if (!owner?.startsWith("breed:")) {
@@ -10190,10 +9391,6 @@
             this._rebuildUnitSpatialIndex(this.units);
           }
           const MATE = this._unitById.get(unit.mateId);
-          const PLAN = this.breedPlanFor(unit);
-          if (PLAN) {
-            return this.cancelBreedPlan(PLAN);
-          }
           if (unit.mateId && this.releaseActiveBreedReservation(
             this.breedingReservationOwner(unit, this.unitCollection.unitById(unit.mateId))
           )) {
@@ -10230,9 +9427,6 @@
               }
             }
             for (const UNIT_LOCAL of this.units) {
-              if (this.breedPlanFor(UNIT_LOCAL)) {
-                continue;
-              }
               if (!UNIT_LOCAL.mateId) {
                 const OWNER = this.unitCollection.reservationOwner(UNIT_LOCAL);
                 if (OWNER?.startsWith("breed:")) {
@@ -10257,15 +9451,11 @@
             this._beginSpatialQueryBatch();
           }
           try {
-            const ACTIVE_PLAN = this.breedPlanFor(unit);
-            if (ACTIVE_PLAN) {
-              return this.unitCollection.unitById(ACTIVE_PLAN.parentIds.find((id) => id !== unit.id)) || null;
-            }
             if (this.scene !== "farm" || !unit.mature || !unit.fed || unit.cooldown > 0 || unit.hp <= 0 || this.senseEnemy(unit)) {
               this.releaseMate(unit);
               return null;
             }
-            if (!this.canFarmPopulationAdvance(unit.species) || this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity) {
+            if (this.ownedPopulation + this.birthReservations >= this.capacity) {
               this.releaseMate(unit);
               return null;
             }
@@ -10281,26 +9471,15 @@
             }
             const CANDIDATES = [];
             for (const CANDIDATE of this.roster.residentsOfSpecies(unit.species)) {
-              if (CANDIDATE === unit || CANDIDATE.mateId || CANDIDATE.plotId === RESERVE_PLOT_ID || CANDIDATE.hp <= 0 || CANDIDATE.down > 0 || !CANDIDATE.mature || !CANDIDATE.fed || CANDIDATE.cooldown > 0 || !this.canBreedNow(CANDIDATE) || this.unitCollection.reservationOwner(CANDIDATE) || (CANDIDATE.plotId === unit.plotId ? !this.canBreedPair(unit, CANDIDATE) : !this.canStartCrossPlotBreed(unit, CANDIDATE))) {
+              if (CANDIDATE === unit || CANDIDATE.mateId || CANDIDATE.hp <= 0 || CANDIDATE.down > 0 || !CANDIDATE.mature || !CANDIDATE.fed || CANDIDATE.cooldown > 0 || !this.canBreedNow(CANDIDATE) || this.unitCollection.reservationOwner(CANDIDATE) || !this.canBreedPair(unit, CANDIDATE)) {
                 continue;
               }
               CANDIDATES.push(CANDIDATE);
             }
             CANDIDATES.sort(
-              (a, b) => Number(a.plotId !== unit.plotId) - Number(b.plotId !== unit.plotId) || Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) || Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
+              (a, b) => Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) || Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
             );
             for (const MATE of CANDIDATES) {
-              if (MATE.plotId !== unit.plotId) {
-                const DISTANCE = Math.hypot(MATE.x - unit.x, MATE.y - unit.y), SPEED = Math.max(
-                  0.01,
-                  scaleMoveSpeed(2.2 * farmUpgradeRate(this.playerProgression.farmUpgrades, "growth"), unit)
-                ), TICKS = Math.min(100, Math.max(1, Math.ceil(DISTANCE / SPEED / 0.05)));
-                if (this.reserveCrossPlotBreed(unit, MATE, { durationTicks: TICKS })) {
-                  unit.nextMateSearchTick = this.simulationTick + 10;
-                  return MATE;
-                }
-                continue;
-              }
               if (!this.reserveActiveBreedPair(unit, MATE)) {
                 continue;
               }
@@ -10319,7 +9498,7 @@
           }
         }
         hasEligibleSameTierBreedPair() {
-          if (this.scene !== "farm" || this.ownedPopulation + this.birthReservations >= this.totalFarmCapacity) {
+          if (this.scene !== "farm" || this.ownedPopulation + this.birthReservations >= this.capacity) {
             return false;
           }
           const BATCH = !this._spatialStepActive;
@@ -10330,7 +9509,7 @@
             for (const GROUP of this._speciesTierGroups) {
               let unreserved = 0;
               for (const UNIT_LOCAL of GROUP) {
-                if (UNIT_LOCAL.isBattleOnlySummon || !this.canBreedNow(UNIT_LOCAL) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.mature || !UNIT_LOCAL.fed || UNIT_LOCAL.cooldown > 0 || !this.canFarmPopulationAdvance(UNIT_LOCAL.species) || !this._unitIsActive(UNIT_LOCAL)) {
+                if (UNIT_LOCAL.isBattleOnlySummon || !this.canBreedNow(UNIT_LOCAL) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.mature || !UNIT_LOCAL.fed || UNIT_LOCAL.cooldown > 0 || !this._unitIsActive(UNIT_LOCAL)) {
                   continue;
                 }
                 if (!UNIT_LOCAL.mateId && !this.unitCollection.reservationOwner(UNIT_LOCAL)) {
@@ -10828,7 +10007,6 @@
           let progressTimersAdvanced = false;
           advanceBossRewardCalculations(this);
           grantPendingBossAcquisitions(this);
-          this.advanceBreedPlans();
           const UNITS = this._stepUnits;
           UNITS.length = 0;
           for (const UNIT_LOCAL of this.units) {
@@ -10879,7 +10057,6 @@
           }
           this.profiler?.end("workScheduler", WORK_START);
           this.reconcileMateReservations();
-          const ACTIVE_UNIT_SET = new Set(UNITS);
           for (const U of UNITS) {
             U.moveControlActive = false;
             U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
@@ -10934,60 +10111,6 @@
             const ENEMY_LOCAL = this.senseEnemy(U) || SCENE.fallbackEnemy(this, U);
             this.updateUnitIntent(U, dt, ENEMY_LOCAL, SCENE);
             this.profiler?.end("ai", AI_START);
-          }
-          if (this.scene === "farm") {
-            for (const U of this.unitCollection.items) {
-              if (!this.unitCollection.isResident(U) || ACTIVE_UNIT_SET.has(U) || U.plotId === this.activePlotId || U.spawnedAtSimulationTick === this.simulationTick) {
-                continue;
-              }
-              U.landingRecovery = Math.max(0, (U.landingRecovery || 0) - dt);
-              if (U.hp <= 0) {
-                if (!U.deathSplitHandled) {
-                  this.handleUnitDeath(U);
-                }
-                if (U.down <= 0) {
-                  U.down = CONFIG.unit.corpseRecoverySeconds;
-                  U.ability.interrupt();
-                  U.specialAbility?.interrupt();
-                }
-                this.clearPeaRecoveryBoost(U);
-                progressTimersAdvanced = SCENE.advanceDownedUnit(this, U, dt) || progressTimersAdvanced;
-                continue;
-              }
-              U.age += dt;
-              const UNIT_STATS = STATS(U.tier, U.species);
-              if (UNIT_STATS.regen > 0) {
-                applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
-              }
-              if (!U.mature) {
-                progressTimersAdvanced = true;
-                U.growthElapsed = Math.min(U.growthDuration, U.growthElapsed + dt);
-                U.growth = Math.min(
-                  CONFIG.farm.breeding.matureMeals,
-                  Math.floor(CONFIG.farm.breeding.matureMeals * U.growthElapsed / U.growthDuration + 1e-9)
-                );
-              }
-              if (U.cooldown > 0) {
-                progressTimersAdvanced = true;
-              }
-              if (U.cooldown > 0 && U.cooldownSetAtTick !== this.simulationTick) {
-                if (U.cooldown <= dt + 1e-9) {
-                  this._markMergeAvailabilityChanged();
-                }
-                U.cooldown = Math.max(0, U.cooldown - dt);
-                if (U.cooldown < 1e-9) {
-                  U.cooldown = 0;
-                  U.cooldownDuration = 0;
-                }
-              }
-              if (this.isWorker(U)) {
-                continue;
-              }
-              if (this.advanceInactiveForage(U, dt)) {
-                progressTimersAdvanced = true;
-              }
-              this.planInactiveBreed(U, dt);
-            }
           }
           SCENE.checkpointProgress(this, dt, progressTimersAdvanced);
           SCENE.updateBattle(this, dt);
@@ -11741,7 +10864,7 @@
           if (!this._spatialStepActive) {
             this._rebuildFoodSpatialIndex();
           }
-          if (!unit || this.scene !== "farm" || unit.hp <= 0 || unit.fed || !this.canFarmPopulationAdvance(unit.species) || !this._groundedFoodCount) {
+          if (!unit || this.scene !== "farm" || unit.hp <= 0 || unit.fed || !this._groundedFoodCount) {
             this._cancelFoodTargetSearch(unit);
             return null;
           }
@@ -12837,7 +11960,6 @@
       farmUpgrades: {
         ...player.farmUpgrades
       },
-      farmPlots: structuredClone(player.farmPlots),
       abilities: Object.fromEntries(
         Object.entries(player.abilities).map(([id, build]) => [
           id,
@@ -12862,7 +11984,6 @@
   }
   function cohortValues(unit) {
     return [
-      unit.plotId || RESERVE_PLOT_ID,
       unit.species,
       unit.tier,
       unit.meals >= 1,
@@ -12882,9 +12003,8 @@
       if (UNIT3.isBattleOnlySummon || UNIT3.countsTowardPermanentRoster === false || UNIT3.faction !== "player") {
         continue;
       }
-      const [PLOT_ID, SPECIES, TIER, FED, GROWTH, DURATION3, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT3);
+      const [SPECIES, TIER, FED, GROWTH, DURATION3, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT3);
       const KEY2 = [
-        PLOT_ID,
         SPECIES,
         TIER,
         Number(FED),
@@ -12900,7 +12020,6 @@
         continue;
       }
       const ROW = {
-        plotId: PLOT_ID,
         species: SPECIES,
         tier: TIER,
         residentIds: [UNIT3.id]
@@ -12937,7 +12056,7 @@
         autoClock: world.foodTaps.autoClock,
         remainder: world.foodTaps.remainder,
         produced: world.foodTaps.produced,
-        plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length }))
+        count: world.food.length
       },
       totals: {
         births: world.metrics.births,
@@ -12978,22 +12097,17 @@
       isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER3(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
     );
     ASSERT(Array.isArray(data.roster));
-    const COHORTS = /* @__PURE__ */ new Set(), RESIDENT_IDS = /* @__PURE__ */ new Set(), PLOT_CAPACITY = new Map(
-      PLAYER.farmPlots.plots.map((plot) => [plot.id, FARM_CAPACITY_STEPS[plot.capacityLevel]])
-    ), PLACED_COUNTS = /* @__PURE__ */ new Map();
+    const COHORTS = /* @__PURE__ */ new Set(), RESIDENT_IDS = /* @__PURE__ */ new Set();
     let maxResidentId = 0;
     for (const ROW of data.roster) {
-      keys(ROW, ["plotId", "species", "tier", "residentIds"], ["fed", "growth", "cooldown", "rest"]);
+      keys(ROW, ["species", "tier", "residentIds"], ["fed", "growth", "cooldown", "rest"]);
       ASSERT(
-        (ROW.plotId === RESERVE_PLOT_ID || PLOT_CAPACITY.has(ROW.plotId)) && INTEGER(ROW.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ROW.tier, 1, CONFIG.unit.maxTier) && Array.isArray(ROW.residentIds) && ROW.residentIds.length > 0
+        INTEGER(ROW.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ROW.tier, 1, CONFIG.unit.maxTier) && Array.isArray(ROW.residentIds) && ROW.residentIds.length > 0
       );
       for (const ID of ROW.residentIds) {
         ASSERT(INTEGER(ID, 1, data.nextId - 1) && !RESIDENT_IDS.has(ID));
         RESIDENT_IDS.add(ID);
         maxResidentId = Math.max(maxResidentId, ID);
-      }
-      if (ROW.plotId !== RESERVE_PLOT_ID) {
-        PLACED_COUNTS.set(ROW.plotId, (PLACED_COUNTS.get(ROW.plotId) || 0) + ROW.residentIds.length);
       }
       if (Object.hasOwn(ROW, "fed")) {
         ASSERT(ROW.fed === true);
@@ -13010,7 +12124,6 @@
         ASSERT(NUMBER3(ROW.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
       }
       const SIGNATURE = [
-        ROW.plotId,
         ROW.species,
         ROW.tier,
         Number(!!ROW.fed),
@@ -13023,17 +12136,12 @@
       ASSERT(!COHORTS.has(SIGNATURE));
       COHORTS.add(SIGNATURE);
     }
-    ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
+    ASSERT(RESIDENT_IDS.size <= CONFIG.farm.capacity.max);
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"]);
+    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "count"]);
     ASSERT(
-      SAFE_INTEGER(data.food.warehouse) && NUMBER3(data.food.autoClock, 0, 0.51) && data.food.autoClock < 0.51 && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced) && Array.isArray(data.food.plots) && data.food.plots.length === PLAYER.farmPlots.plots.length
+      SAFE_INTEGER(data.food.warehouse) && NUMBER3(data.food.autoClock, 0, 0.51) && data.food.autoClock < 0.51 && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced) && INTEGER(data.food.count, 0, 140)
     );
-    for (let index = 0; index < data.food.plots.length; index++) {
-      const FOOD2 = data.food.plots[index];
-      keys(FOOD2, ["id", "count"]);
-      ASSERT(FOOD2.id === PLAYER.farmPlots.plots[index].id && INTEGER(FOOD2.count, 0, 140));
-    }
     keys(data.totals, ["births", "merges"]);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
     const LEDGER = data.ledger;
@@ -13176,23 +12284,13 @@
     WORLD.food = [];
     WORLD.nextId = 1;
     WORLD.playerProgression = copyPlayer(data.player);
-    WORLD.activePlotId = WORLD.playerProgression.farmPlots.currentPlotId;
-    WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
     Object.assign(WORLD.metrics, data.totals);
-    const PLOT_COUNTS = /* @__PURE__ */ new Map();
+    const RESIDENT_TOTAL = data.roster.reduce((total, row) => total + row.residentIds.length, 0);
+    let placed = 0;
     for (const ROW of data.roster) {
-      if (ROW.plotId !== RESERVE_PLOT_ID) {
-        PLOT_COUNTS.set(ROW.plotId, (PLOT_COUNTS.get(ROW.plotId) || 0) + ROW.residentIds.length);
-      }
-    }
-    const PLOT_OFFSETS = /* @__PURE__ */ new Map();
-    for (const ROW of data.roster) {
-      const PLOT_INDEX = ROW.plotId === RESERVE_PLOT_ID ? 0 : WORLD.playerProgression.farmPlots.plots.findIndex((plot) => plot.id === ROW.plotId), PLOT_SEED = data.seed + PLOT_INDEX * 7919, PLOT_OFFSET = PLOT_OFFSETS.get(ROW.plotId) || 0;
-      for (let index = 0; index < ROW.residentIds.length; index++) {
-        const ID = ROW.residentIds[index];
-        const COUNT = PLOT_COUNTS.get(ROW.plotId) || ROW.residentIds.length, POINT2 = position(PLOT_OFFSET + index, COUNT, PLOT_SEED, 0.7), UNIT3 = new UNIT(ID, ROW.species, ROW.tier, POINT2.x, POINT2.y);
-        UNIT3.plotId = ROW.plotId;
+      for (const ID of ROW.residentIds) {
+        const POINT2 = position(placed++, RESIDENT_TOTAL, data.seed, 0.7), UNIT3 = new UNIT(ID, ROW.species, ROW.tier, POINT2.x, POINT2.y);
         UNIT3.meals = ROW.fed ? 1 : 0;
         UNIT3.growthDuration = ROW.growth?.duration || WORLD.breedGrowthDuration();
         UNIT3.growthElapsed = ROW.growth ? ROW.growth.duration - ROW.growth.remaining : UNIT3.growthDuration;
@@ -13208,26 +12306,21 @@
         }
         WORLD.addUnit(UNIT3, { markProgress: false });
       }
-      PLOT_OFFSETS.set(ROW.plotId, PLOT_OFFSET + ROW.residentIds.length);
     }
-    for (let plotIndex = 0; plotIndex < data.food.plots.length; plotIndex++) {
-      const SAVED_FOOD = data.food.plots[plotIndex], PLOT = WORLD.farmPlots.get(SAVED_FOOD.id);
-      for (let i = 0; i < SAVED_FOOD.count; i++) {
-        const POINT2 = position(i, SAVED_FOOD.count, data.seed + 103 + plotIndex * 7919, 0.8);
-        PLOT.food.push({
-          ...POINT2,
-          z: 0,
-          vx: 0,
-          vy: 0,
-          vz: 0,
-          seed: i * 0.61803398875 % 1,
-          phase: "grounded",
-          tx: POINT2.x,
-          ty: POINT2.y
-        });
-      }
+    for (let i = 0; i < data.food.count; i++) {
+      const POINT2 = position(i, data.food.count, data.seed + 103, 0.8);
+      WORLD.food.push({
+        ...POINT2,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        seed: i * 0.61803398875 % 1,
+        phase: "grounded",
+        tx: POINT2.x,
+        ty: POINT2.y
+      });
     }
-    WORLD.food = WORLD.activeFarmPlot.food;
     Object.assign(WORLD.foodTaps, {
       remainder: data.food.remainder,
       produced: data.food.produced,
@@ -13260,8 +12353,6 @@
       init_farm_model();
       init_player_progression();
       init_boss_rewards();
-      init_farm_plot();
-      init_farm_upgrades();
       FAIL = () => {
         throw new TypeError("올바른 농장 진행 저장 데이터가 아니에요.");
       };
@@ -13306,7 +12397,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.22.0";
+      PRODUCT_VERSION = "0.22.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17159,10 +16250,6 @@
           return W.scene === "farm" && W.scatterFoodAtRandomLocation();
         case "scatter-food":
           return W.scene === "farm" && W.scatterFood(c.x, c.y);
-        case "farm-plot-switch":
-          return W.scene === "farm" && W.switchFarmPlot(c.plotId);
-        case "farm-target":
-          return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
         case "boss-challenge":
@@ -17528,7 +16615,6 @@
   // src/farm-snapshot.js
   init_formation_skill_state();
   init_ability_state();
-  init_farm_plot();
   var UNIT_SNAPSHOT_SHAPE = {
     x: 0,
     y: 0,
@@ -17575,7 +16661,6 @@
     seed: 2.39996,
     ownerId: "",
     farmId: 0,
-    plotId: INITIAL_FARM_PLOT_ID,
     dropLanded: true,
     isBattleOnlySummon: false,
     battleSummonKind: "",
@@ -17650,7 +16735,6 @@
       STARTER_UNIT(2, -1.5288560669869184, -0.5486694728024304)
     ],
     food: [],
-    farmPlots: [{ id: INITIAL_FARM_PLOT_ID, food: [] }],
     effects: [],
     events: [],
     time: 0,
@@ -17678,7 +16762,6 @@
         breed: 0,
         merge: 0
       },
-      farmPlots: createFarmPlotsProgression(),
       abilities: ABILITY_INVESTMENTS(),
       level: 1,
       experience: 0,
@@ -17833,14 +16916,7 @@
       calculation: JSON_PAYLOAD
     }
   );
-  var PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
-    farmPlots: {
-      plots: [FIELDS("id capacityLevel")],
-      currentPlotId: true,
-      nextPlotNumber: true,
-      targetBasisPoints: [true]
-    }
-  });
+  var PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {});
   var PROJECTILE = FIELDS(
     "isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex",
     {
@@ -17859,7 +16935,7 @@
     { attachments: [CORN_ATTACHMENT] }
   );
   var SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
-    farmPlots: [FIELDS("id", { food: [FIELDS("x y z vx vy vz seed phase tx ty")] })],
+    food: [FIELDS("x y z vx vy vz seed phase tx ty")],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT2],
     boss: BOSS,
@@ -17869,7 +16945,6 @@
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS("species tier count")],
-    food: [FIELDS("x y z vx vy vz seed phase tx ty")],
     events: [JSON_PAYLOAD],
     effects: [JSON_PAYLOAD],
     notices: [JSON_PAYLOAD],
@@ -17935,11 +17010,7 @@
     return RESULT;
   }
   function snapshot(world) {
-    const SOURCE = world?.farmPlots instanceof Map ? {
-      ...world,
-      farmPlots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, food: plot.food })),
-      ...world.scene === "farm" && world.unitCollection ? { units: world.unitCollection.items } : {}
-    } : world;
+    const SOURCE = world?.unitCollection && world.scene === "farm" ? { ...world, units: world.unitCollection.items } : world;
     return copyFields(SOURCE, SNAPSHOT_FIELDS);
   }
 
@@ -18081,16 +17152,7 @@
     );
     ASSERT2(INTEGER2(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
     ASSERT2(isValidPlayerProgressionState(raw.playerProgression));
-    const PLOT_STATES = raw.playerProgression.farmPlots.plots;
-    ASSERT2(
-      Array.isArray(raw.farmPlots) && raw.farmPlots.length === PLOT_STATES.length && raw.farmPlots.every(
-        (plot, index) => plot && typeof plot === "object" && !Array.isArray(plot) && Object.keys(plot).length === 2 && plot.id === PLOT_STATES[index].id && Array.isArray(plot.food) && plot.food.length <= 140
-      )
-    );
-    const ACTIVE_PLOT_FOOD = raw.farmPlots.find(
-      (plot) => plot.id === raw.playerProgression.farmPlots.currentPlotId
-    )?.food;
-    ASSERT2(ACTIVE_PLOT_FOOD && JSON.stringify(ACTIVE_PLOT_FOOD) === JSON.stringify(raw.food));
+    ASSERT2(Array.isArray(raw.food) && raw.food.length <= 140);
     const FARM_EVENT = raw.farmBossEvent;
     if (FARM_EVENT.phase === "idle") {
       ASSERT2(
@@ -18433,23 +17495,13 @@
   }
 
   // src/farm-state.js
-  init_farm_plot();
   function restore(raw) {
     raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new GARDEN();
-    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, ...WORLD_DATA } = structuredClone(raw);
+    const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
-    G.farmPlots = new Map(
-      G.playerProgression.farmPlots.plots.map((plot) => [
-        plot.id,
-        new FarmPlot(plot, PLOT_FOODS.find((saved) => saved.id === plot.id)?.food || [])
-      ])
-    );
-    G.activePlotId = G.playerProgression.farmPlots.currentPlotId;
-    G.food = G.activeFarmPlot?.food || [];
-    G.bindFarmPlotProgressionStates();
     G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
       ...reward,
       boxes: [],
@@ -19832,20 +18884,14 @@
     }
     farmPanelRevision = W.progressRevision;
     const LOCKED = !!farmSortTransition || active?.world?.scene !== "farm" || W.farmBossEvent?.phase !== "idle";
-    DOLLAR2("farmStatPlaced").textContent = String(W.placedPopulation);
-    DOLLAR2("farmStatCapacity").textContent = `/ ${W.totalFarmCapacity}`;
-    DOLLAR2("farmStatReserved").textContent = String(W.reservedPopulation);
+    DOLLAR2("farmStatPlaced").textContent = String(W.ownedPopulation);
+    DOLLAR2("farmStatCapacity").textContent = `/ ${W.capacity}`;
     DOLLAR2("farmStatPending").textContent = String(W.pendingRewardPopulation);
     DOLLAR2("farmStatFood").textContent = String(W.warehouseFood);
     syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
-    const COUNTS = W.roster.countsBySpecies(), TOTAL = [...COUNTS.values()].reduce((sum, count) => sum + count, 0);
-    DOLLAR2("farmRatioList").innerHTML = W.farmTargets.map((value, speciesId) => {
-      const SPECIES = speciesById(speciesId), COUNT = COUNTS.get(speciesId) || 0, CURRENT = TOTAL ? (COUNT / TOTAL * 100).toFixed(0) : "0";
-      return `<label class="farm-ratio"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><span class="farm-ratio__name"><b>${SPECIES.name}</b><small>${COUNT}마리 · 현재 ${CURRENT}%</small></span><output>목표 ${+(value / 100).toFixed(1)}%</output><input type="range" min="0" max="10000" step="50" value="${value}" aria-label="${SPECIES.name} 목표 비율" data-farm-target="${SPECIES.id}"${LOCKED ? " disabled" : ""}></label>`;
-    }).join("");
   }
   function drawAbilityTree() {
     const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
@@ -20028,21 +19074,6 @@
     saveWorkSetting(POINTS);
     (personalGarden || active.world).setWorkBasisPoints(POINTS);
     active.queue("farm-work", { basisPoints: POINTS });
-  });
-  DOLLAR2("farmRatioList").addEventListener("input", (e) => {
-    const INPUT = e.target.closest("[data-farm-target]");
-    if (INPUT) {
-      INPUT.parentElement.querySelector("output").textContent = `목표 ${+(Number(INPUT.value) / 100).toFixed(1)}%`;
-    }
-  });
-  DOLLAR2("farmRatioList").addEventListener("change", (e) => {
-    const INPUT = e.target.closest("[data-farm-target]");
-    if (INPUT) {
-      active.queue("farm-target", {
-        speciesId: Number(INPUT.dataset.farmTarget),
-        basisPoints: Number(INPUT.value)
-      });
-    }
   });
   DOLLAR2("progressionResetActions").onclick = (event) => {
     const BUTTON = event.target.closest("button[data-progression-reset]");

@@ -1,6 +1,5 @@
 import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
 import { createAbilityProgressionState } from './ability-state.js';
-import { createFarmPlotsProgression, INITIAL_FARM_PLOT_ID } from './farm-plot.js';
 // Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
 // runtime values are not exported as user saves.
 export const UNIT_SNAPSHOT_SHAPE = {
@@ -49,7 +48,6 @@ export const UNIT_SNAPSHOT_SHAPE = {
     seed: 2.39996,
     ownerId: '',
     farmId: 0,
-    plotId: INITIAL_FARM_PLOT_ID,
     dropLanded: true,
     isBattleOnlySummon: false,
     battleSummonKind: '',
@@ -125,7 +123,6 @@ export const FARM_SNAPSHOT_SHAPE = {
         STARTER_UNIT(2, -1.5288560669869184, -0.5486694728024304),
     ],
     food: [],
-    farmPlots: [{ id: INITIAL_FARM_PLOT_ID, food: [] }],
     effects: [],
     events: [],
     time: 0,
@@ -153,7 +150,6 @@ export const FARM_SNAPSHOT_SHAPE = {
             breed: 0,
             merge: 0,
         },
-        farmPlots: createFarmPlotsProgression(),
         abilities: ABILITY_INVESTMENTS(),
         level: 1,
         experience: 0,
@@ -320,14 +316,7 @@ const REWARD = FIELDS(
 // Their APIs and settlement summaries accept extensible JSON records. Keep
 // that explicit open contract, including old keys, without opening entity,
 // ability or projectile field selection to future runtime caches.
-const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
-    farmPlots: {
-        plots: [FIELDS('id capacityLevel')],
-        currentPlotId: true,
-        nextPlotNumber: true,
-        targetBasisPoints: [true],
-    },
-});
+const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {});
 const PROJECTILE = FIELDS(
     'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex',
     {
@@ -346,7 +335,7 @@ const CORN_GROUP = FIELDS(
     { attachments: [CORN_ATTACHMENT] },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
-    farmPlots: [FIELDS('id', { food: [FIELDS('x y z vx vy vz seed phase tx ty')] })],
+    food: [FIELDS('x y z vx vy vz seed phase tx ty')],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
     boss: BOSS,
@@ -356,7 +345,6 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS('species tier count')],
-    food: [FIELDS('x y z vx vy vz seed phase tx ty')],
     events: [JSON_PAYLOAD],
     effects: [JSON_PAYLOAD],
     notices: [JSON_PAYLOAD],
@@ -424,16 +412,8 @@ function copyFields(value, recipe) {
     return RESULT;
 }
 export function snapshot(world) {
-    // The live farm view exposes only the selected plot. Raid settlement and
-    // save checkpoints need the complete resident set, including residents in
-    // other plots and reserve, so copy from the collection's single owner.
+    // Raid settlement and save checkpoints copy the resident set from the collection's single owner.
     const SOURCE =
-        world?.farmPlots instanceof Map
-            ? {
-                  ...world,
-                  farmPlots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, food: plot.food })),
-                  ...(world.scene === 'farm' && world.unitCollection ? { units: world.unitCollection.items } : {}),
-              }
-            : world;
+        world?.unitCollection && world.scene === 'farm' ? { ...world, units: world.unitCollection.items } : world;
     return copyFields(SOURCE, SNAPSHOT_FIELDS);
 }
