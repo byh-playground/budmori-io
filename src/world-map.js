@@ -153,7 +153,8 @@ function claimed(map, index) {
 }
 // Nests can only be challenged from the edge of the claimed land, so the map is taken one step at a time.
 export function canChallenge(map, index) {
-    if (!isRevealed(map, index) || !hasNest(map, index) || isCleared(map, index)) {
+    // A cleared nest can be challenged again, for the repeat rewards.
+    if (!isRevealed(map, index) || !hasNest(map, index)) {
         return false;
     }
     const X = tileX(index),
