@@ -2294,7 +2294,8 @@ CANVAS.addEventListener('pointerdown', (e) => {
     const POINT = RENDERER.screenToWorld(e.clientX, e.clientY);
     panPointer = {
         id: e.pointerId,
-        mode: active.world.scene === 'farm' ? 'pending' : 'pan',
+        // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
+        mode: active.world.scene === 'farm' && ArenaGeometry.inside(POINT, 'farm') ? 'pending' : 'pan',
         startX: e.clientX,
         startY: e.clientY,
         x: e.clientX,
@@ -2771,6 +2772,14 @@ function frame(now) {
         COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
         PERFORMANCE_DIAGNOSTICS.end('presentation', PRESENTATION_START);
         const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
+        RENDERER.backdrop = active.world.scene === 'farm' ? active.world : null;
+        if (RENDERER.backdrop && panPointer?.mode === 'pan') {
+            const NEXT_PLOT = RENDERER.cameraPlot(active.world);
+            if (NEXT_PLOT) {
+                RENDERER.cameraSwitch = NEXT_PLOT;
+                active.queue('farm-plot-switch', { plotId: NEXT_PLOT });
+            }
+        }
         RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
         PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();

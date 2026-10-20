@@ -22,6 +22,9 @@ export class FarmMode {
     // around the middle and piled up there. Spots are spread evenly over the ground (square root of the radius),
     // and the same unit and time always pick the same spot.
     wander(world, unit, dt) {
+        if (unit.migrate && world.stepMigrant(unit, dt)) {
+            return;
+        }
         const ARENA = this.config.farm.arena,
             PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7),
             EPOCH = Math.floor(world.time / PERIOD + wanderUnit(unit.seed, 3)),
