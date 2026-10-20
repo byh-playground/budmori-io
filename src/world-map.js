@@ -2,6 +2,7 @@
 // Explorers fill an exploration gauge; every full gauge lifts the fog from one more tile. Which tiles hold a
 // boss nest, and how dangerous they are, is a pure function of the map seed and the distance to the nearest
 // farm, so the map needs no stored layout and can be settled offline with plain arithmetic.
+import { chooseBossSpecies } from './boss-rewards.js';
 export const WORLD_MAP_SETTINGS = {
     radius: 12,
     // Tiles within this many steps of a farm start lit and never hold a nest.
@@ -10,7 +11,8 @@ export const WORLD_MAP_SETTINGS = {
     firstTileCost: 60,
     tileCostStep: 4,
     maxDanger: 61,
-    dangerPerRing: 6,
+    // Stages added per tile of straight-line distance beyond the first ring of nests.
+    dangerPerTile: 4,
 };
 const SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
 export const WORLD_MAP_TILE_COUNT = SIDE * SIDE;
@@ -61,6 +63,7 @@ export function createWorldMap(seed, firstPlotId) {
         seed: Number.isSafeInteger(seed) ? seed >>> 0 : 0,
         gauge: 0,
         exploreTarget: -1,
+        challengeTile: -1,
         revealed: [],
         cleared: [],
         farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }],
@@ -79,10 +82,20 @@ export function isRevealed(map, index) {
 export function isCleared(map, index) {
     return map.cleared.includes(index);
 }
-// Danger is the stage the existing raid curve already knows: ring 2 around a farm is stage 1.
+// Straight-line distance from a tile to the nearest farm tile.
+function farmReach(map, index) {
+    const X = tileX(index),
+        Y = tileY(index);
+    let best = Infinity;
+    for (const FARM of farmTiles(map)) {
+        best = Math.min(best, Math.hypot(X - tileX(FARM), Y - tileY(FARM)));
+    }
+    return best;
+}
+// Danger is the stage the existing raid curve already knows: the first ring of nests is stage 1.
 export function tileDanger(map, index) {
-    const RING = farmDistance(map, index);
-    return Math.max(1, Math.min(WORLD_MAP_SETTINGS.maxDanger, 1 + (RING - 2) * WORLD_MAP_SETTINGS.dangerPerRing));
+    const STAGE = Math.round(1 + (farmReach(map, index) - 2) * WORLD_MAP_SETTINGS.dangerPerTile);
+    return Math.max(1, Math.min(WORLD_MAP_SETTINGS.maxDanger, STAGE));
 }
 export function hasNest(map, index) {
     return (
@@ -102,6 +115,36 @@ export function tileInfo(map, index) {
         cleared: isCleared(map, index),
         danger: tileDanger(map, index),
     };
+}
+// The boss species that holds a nest never changes, so a nest looks the same every time the map is opened.
+export function tileSpecies(map, index) {
+    return chooseBossSpecies(() => tileUnit(map.seed, index, 3));
+}
+// A tile belongs to the player when it lies next to a farm or has been cleared.
+function claimed(map, index) {
+    return isCleared(map, index) || farmDistance(map, index) <= WORLD_MAP_SETTINGS.safeRadius;
+}
+// Nests can only be challenged from the edge of the claimed land, so the map is taken one step at a time.
+export function canChallenge(map, index) {
+    if (!isRevealed(map, index) || !hasNest(map, index) || isCleared(map, index)) {
+        return false;
+    }
+    const X = tileX(index),
+        Y = tileY(index);
+    return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && claimed(map, tileIndex(X + dx, Y + dy)));
+}
+export function beginChallenge(map, index) {
+    if (!canChallenge(map, index)) {
+        return false;
+    }
+    map.challengeTile = index;
+    return true;
+}
+// A won raid clears the tile for good; a lost or dropped one only ends the challenge.
+export function finishChallenge(map, victory) {
+    const TILE = map.challengeTile ?? -1;
+    map.challengeTile = -1;
+    return victory && TILE >= 0 ? markCleared(map, TILE) : false;
 }
 // Gauge points one more tile costs; later tiles cost more.
 export function exploreCost(map) {
@@ -132,6 +175,16 @@ export function nextExploreTile(map) {
         }
     }
     return best;
+}
+// A fogged tile can be picked as the next exploration target when it touches lit ground.
+export function canExploreTile(map, index) {
+    return (
+        Number.isSafeInteger(index) &&
+        index >= 0 &&
+        index < WORLD_MAP_TILE_COUNT &&
+        !isRevealed(map, index) &&
+        touchesLight(index, new Set(map.revealed))
+    );
 }
 // Chooses where the explorers go next; -1 lets them pick on their own. Returns false for an unreachable tile.
 export function setExploreTarget(map, index) {
@@ -197,7 +250,11 @@ export function isValidWorldMap(map) {
     if (!map || typeof map !== 'object' || Array.isArray(map)) {
         return false;
     }
-    if (Object.keys(map).sort().join(',') !== 'cleared,exploreTarget,farms,gauge,revealed,seed') {
+    const KEYS = Object.keys(map)
+        .filter((key) => key !== 'challengeTile')
+        .sort()
+        .join(',');
+    if (KEYS !== 'cleared,exploreTarget,farms,gauge,revealed,seed') {
         return false;
     }
     if (
@@ -209,6 +266,12 @@ export function isValidWorldMap(map) {
         !Number.isSafeInteger(map.exploreTarget) ||
         map.exploreTarget < -1 ||
         map.exploreTarget >= WORLD_MAP_TILE_COUNT ||
+        !(
+            map.challengeTile === undefined ||
+            (Number.isSafeInteger(map.challengeTile) &&
+                map.challengeTile >= -1 &&
+                map.challengeTile < WORLD_MAP_TILE_COUNT)
+        ) ||
         !SORTED_INDEXES(map.revealed) ||
         !SORTED_INDEXES(map.cleared) ||
         !Array.isArray(map.farms) ||

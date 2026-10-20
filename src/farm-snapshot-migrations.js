@@ -11,6 +11,8 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     SNAPSHOT.savedSites ??= [];
     // World map added in 0.14.0: checkpoints written before it start with a fresh map around the first farm.
     SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
+    // The challenge in progress was added in 0.13.2; a map saved before it has none.
+    SNAPSHOT.worldMap.challengeTile ??= -1;
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
 }

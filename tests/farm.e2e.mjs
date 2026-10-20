@@ -260,6 +260,15 @@ async function cameraSnapshot(p) {
         };
     });
 }
+// The Raid screen opens on the world map. Stage-based checks use the stage picker, so switch to it first.
+async function openStageView(p) {
+    await p.evaluate(() => {
+        const SCREEN = document.querySelector('#bossEncounterScreen');
+        if (SCREEN && !SCREEN.hidden && SCREEN.dataset.view === 'map') {
+            document.querySelector('#bossViewToggle').click();
+        }
+    });
+}
 async function holdDeployButton(p, { hold = 0, touch = false, cancel = false } = {}) {
     const BUTTON = p.locator('#deploymentCards .deployment-card').first();
     await BUTTON.waitFor({
@@ -1517,6 +1526,7 @@ async function formationHudFlow() {
     await P.mouse.up();
     assert.notDeepEqual((await cameraSnapshot(P)).pan, BEFORE.pan, 'HUD does not intercept native map drag');
     await P.locator('#raid').tap();
+    await openStageView(P);
     await P.locator('#bossEncounterChallenge').tap();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'raid');
     await P.evaluate(() => {
@@ -1554,6 +1564,7 @@ async function raidHudGeometryOnly() {
     }
     await closeMenu(P);
     await P.locator('#raid').tap();
+    await openStageView(P);
     await P.locator('#bossEncounterChallenge').tap();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'raid');
     await P.evaluate(() => {
@@ -1798,6 +1809,7 @@ async function raidDeploymentCardsFlow() {
     });
     await P.locator('#gameMenuClose').click();
     await P.locator('#raid').click();
+    await openStageView(P);
     const FARM_PROGRESS_BEFORE_RAID = await P.evaluate(() => structuredClone(BUDMORI.storage.savedProgress));
     await P.locator('#bossEncounterChallenge').click();
     await P.waitForFunction(() => BUDMORI.sim.scene === 'raid' && BUDMORI.sim.raidRosters.length === 1);
@@ -4276,6 +4288,7 @@ async function core() {
     await seedScenarios(P, 'pc');
     await panInput(P, 'mouse');
     await P.locator('#raid').click();
+    await openStageView(P);
     assert(await P.locator('#bossEncounterScreen').isVisible(), 'Raid opens the vertical stage selector');
     assert.equal(await P.locator('#bossStageCounter').textContent(), '1 / 61');
     assert.equal(await P.locator('#bossStageHp').textContent(), 'HP 200');
@@ -4498,6 +4511,7 @@ async function core() {
     await P.locator('#bossEncounterBack').click();
     assert.equal(await P.evaluate(() => BUDMORI.sim.farmBossProgress.currentStage), 1);
     await P.locator('#raid').click();
+    await openStageView(P);
     assert.equal(
         await P.locator('#bossStageCounter').textContent(),
         '1 / 61',
@@ -4671,6 +4685,7 @@ async function core() {
         }
     });
     await M.locator('#raid').tap();
+    await openStageView(M);
     await M.locator('#bossEncounterChallenge').tap();
     await M.waitForFunction(() => BUDMORI.sim.scene === 'raid' && BUDMORI.sim.raidRosters.length === 1);
     const MENU_BEFORE = await M.evaluate(() => ({
@@ -6916,6 +6931,7 @@ async function bossRewards() {
     await P.locator('#newGame').click();
     await P.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.runtime.tick > 5);
     await P.locator('#raid').click();
+    await openStageView(P);
     await P.waitForFunction(() => document.querySelector('#bossEncounterScreen')?.hidden === false);
     await P.locator('#bossEncounterChallenge').click();
     await P.waitForFunction(() => BUDMORI.sim?.scene === 'raid' && !!BUDMORI.sim.raidRoster('solo'));
@@ -7036,6 +7052,7 @@ async function bossRewards() {
         'the visible #raid center is its real hit target: ' + JSON.stringify(RAID_NAV_LAYOUT),
     );
     await P.locator('#raid').click();
+    await openStageView(P);
     await P.waitForFunction(() => document.querySelector('#bossEncounterScreen')?.hidden === false);
     assert.equal(
         await P.locator('#bossStageCounter').textContent(),
@@ -7110,6 +7127,7 @@ async function bossRewards() {
     const AFTER_DEFEAT = await P.evaluate(() => BUDMORI.storage.savedProgress.bossStages.highestClearedRaidStage);
     assert.equal(AFTER_DEFEAT, 1, 'defeat preserves the highest cleared stage');
     await P.locator('#raid').click();
+    await openStageView(P);
     await P.locator('#bossEncounterBack').click();
     const CREATED = await P.evaluate(async () => {
         const {

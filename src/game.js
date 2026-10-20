@@ -1022,6 +1022,992 @@
     }
   });
 
+  // src/features/abilities/pea-recovery-boost.js
+  var PEA_RECOVERY_BOOST_FEATURE;
+  var init_pea_recovery_boost = __esm({
+    "src/features/abilities/pea-recovery-boost.js"() {
+      PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "pea-recovery-boost",
+          species: 0,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "회복 기동",
+          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
+          powerValues: Object.freeze([0.25, 0.35, 0.55])
+        }),
+        model: Object.freeze({
+          durationTicks: 40,
+          multiplierForBonus(bonus) {
+            return 1 + bonus;
+          }
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/kidney-continuous-leap.js
+  var KIDNEY_CONTINUOUS_LEAP_FEATURE;
+  var init_kidney_continuous_leap = __esm({
+    "src/features/abilities/kidney-continuous-leap.js"() {
+      KIDNEY_CONTINUOUS_LEAP_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "kidney-continuous-leap",
+          species: 2,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "연속 도약",
+          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
+          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
+        }),
+        model: Object.freeze({
+          specialAttackProfile: Object.freeze({
+            kind: "leap",
+            timing: Object.freeze({ windup: 0.32, recovery: 0.9 }),
+            range: 2.5,
+            skillMultiplier: 1.3,
+            projectileCount: 0,
+            bounces: 0
+          }),
+          cooldownTicks: 60
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/chestnut-thorns/definition.js
+  var CHESTNUT_THORNS_FEATURE;
+  var init_definition10 = __esm({
+    "src/features/abilities/chestnut-thorns/definition.js"() {
+      CHESTNUT_THORNS_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "chestnut-target-thorns",
+          species: 3,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "대상 가시 연사",
+          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
+          powerValues: Object.freeze([1, 2, 3]),
+          cooldownTicks: 60,
+          spacingTicks: 2,
+          attackProfile: Object.freeze({
+            kind: "chestnut-thorns",
+            timing: Object.freeze({ windup: 0, recovery: 0.2 }),
+            range: 1.45,
+            skillMultiplier: 1,
+            projectileCount: 0,
+            bounces: 0
+          })
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/peanut-death-split/definition.js
+  var PEANUT_DEATH_SPLIT_FEATURE;
+  var init_definition11 = __esm({
+    "src/features/abilities/peanut-death-split/definition.js"() {
+      PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "peanut-death-split",
+          species: 4,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "사망 분열",
+          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
+          powerValues: Object.freeze([1, 1.5, 2.25]),
+          childCount: 2
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/walnut-raw-guard/definition.js
+  var WALNUT_RAW_GUARD_FEATURE;
+  var init_definition12 = __esm({
+    "src/features/abilities/walnut-raw-guard/definition.js"() {
+      WALNUT_RAW_GUARD_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "walnut-raw-guard",
+          species: 5,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "방어와 반격",
+          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
+          powerValues: Object.freeze([1, 1.5, 2.25]),
+          cooldownTicks: 100,
+          durationTicks: 40,
+          armorBonus: 50,
+          maxBonusAttackMultiples: 3
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/corn-attachment/definition.js
+  var CORN_ATTACHMENT_FEATURE;
+  var init_definition13 = __esm({
+    "src/features/abilities/corn-attachment/definition.js"() {
+      CORN_ATTACHMENT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "corn-kernel-chain",
+          species: 1,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "부착 알갱이 연쇄 폭발",
+          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
+          powerValues: Object.freeze([0.5, 0.75, 1]),
+          attachDelayTicks: 20,
+          explosionSpacingTicks: 2,
+          fadeTicks: 6
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/rice-low-health-harvest.js
+  var RICE_LOW_HEALTH_HARVEST_FEATURE;
+  var init_rice_low_health_harvest = __esm({
+    "src/features/abilities/rice-low-health-harvest.js"() {
+      RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "rice-low-health-harvest",
+          species: 6,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "수확 낫",
+          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
+          rootTier: 1,
+          powerValues: Object.freeze([0.35, 0.55, 0.75])
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/wheat-command-crit.js
+  var WHEAT_COMMAND_CRIT_FEATURE;
+  var init_wheat_command_crit = __esm({
+    "src/features/abilities/wheat-command-crit.js"() {
+      WHEAT_COMMAND_CRIT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "wheat-command-crit",
+          species: 7,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "밀의 전투 지휘",
+          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
+          powerValues: Object.freeze([0.5, 0.75, 1.125]),
+          durationTicks: 60,
+          triggerChance: 0.35,
+          branches: Object.freeze({
+            range: Object.freeze({
+              name: "명령 반경",
+              values: Object.freeze([2, 3, 4.5])
+            })
+          })
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/barley-armor-break.js
+  var BARLEY_ARMOR_BREAK_FEATURE;
+  var init_barley_armor_break = __esm({
+    "src/features/abilities/barley-armor-break.js"() {
+      BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "barley-armor-break",
+          species: 8,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "도리깨 갑주 파쇄",
+          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
+          rootTier: 1,
+          powerValues: Object.freeze([1, 2, 3]),
+          durationTicks: 60
+        })
+      });
+    }
+  });
+
+  // src/ability-definitions.js
+  var SPECIES_ABILITY_DEFINITIONS;
+  var init_ability_definitions = __esm({
+    "src/ability-definitions.js"() {
+      init_pea_recovery_boost();
+      init_kidney_continuous_leap();
+      init_definition10();
+      init_definition11();
+      init_definition12();
+      init_definition13();
+      init_rice_low_health_harvest();
+      init_wheat_command_crit();
+      init_barley_armor_break();
+      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
+        PEA_RECOVERY_BOOST_FEATURE.definition,
+        KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
+        CHESTNUT_THORNS_FEATURE.definition,
+        PEANUT_DEATH_SPLIT_FEATURE.definition,
+        WALNUT_RAW_GUARD_FEATURE.definition,
+        CORN_ATTACHMENT_FEATURE.definition,
+        RICE_LOW_HEALTH_HARVEST_FEATURE.definition,
+        WHEAT_COMMAND_CRIT_FEATURE.definition,
+        BARLEY_ARMOR_BREAK_FEATURE.definition
+      ]);
+    }
+  });
+
+  // src/ability-state.js
+  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
+    if (!isNonNegativeInteger(availablePoints)) {
+      throw new TypeError("availablePoints must be a non-negative integer");
+    }
+    return {
+      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
+      availablePoints,
+      farmUpgrades: createFarmUpgradeState(),
+      abilities: Object.fromEntries(
+        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
+          definition.id,
+          {
+            powerLevel: 0,
+            ...definition.branches ? {
+              branchLevels: Object.fromEntries(
+                Object.keys(definition.branches).map((branchId) => [branchId, 0])
+              )
+            } : {}
+          }
+        ])
+      )
+    };
+  }
+  function isValidAbilityProgressionState(state) {
+    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
+      return false;
+    }
+    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") {
+      return false;
+    }
+    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
+      return false;
+    }
+    for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
+      const INVESTMENT = state.abilities[DEFINITION13.id];
+      if (!INVESTMENT || !isNonNegativeInteger(INVESTMENT.powerLevel)) {
+        return false;
+      }
+      if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
+        return false;
+      }
+      const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
+      if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
+        return false;
+      }
+      for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
+        const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
+        if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
+          return false;
+        }
+      }
+    }
+    return Object.keys(state.abilities).every(
+      (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
+    );
+  }
+  function createAbilityRuntimeSnapshot(state) {
+    if (!isValidPlayerLikeAbilityState(state)) {
+      throw new TypeError("Cannot snapshot invalid ability progression state");
+    }
+    return {
+      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
+      level: state.level,
+      formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
+      raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
+      availablePoints: state.availablePoints,
+      farmUpgrades: {
+        ...state.farmUpgrades
+      },
+      abilities: Object.fromEntries(
+        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
+          definition.id,
+          {
+            ...state.abilities[definition.id],
+            ...definition.branches ? {
+              branchLevels: Object.fromEntries(
+                Object.keys(definition.branches).map((branchId) => [
+                  branchId,
+                  state.abilities[definition.id].branchLevels?.[branchId] || 0
+                ])
+              )
+            } : {}
+          }
+        ])
+      )
+    };
+  }
+  function isValidAbilityRuntimeSnapshot(snapshot2) {
+    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1) {
+      return false;
+    }
+    const STATE = {
+      schemaVersion: snapshot2.schemaVersion,
+      formationSkills: snapshot2.formationSkills,
+      raidDeploymentCards: snapshot2.raidDeploymentCards || createRaidDeploymentCardsState(),
+      level: snapshot2.level,
+      experience: 0,
+      availablePoints: snapshot2.availablePoints,
+      farmUpgrades: snapshot2.farmUpgrades,
+      abilities: snapshot2.abilities,
+      processedBossKillReceipts: []
+    };
+    if (!isValidAbilityProgressionState(STATE) || STATE.formationSkills !== void 0 && !isValidFormationSkillState(STATE.formationSkills) || !isValidRaidDeploymentCardsState(STATE.raidDeploymentCards)) {
+      return false;
+    }
+    const INVESTED = Object.entries(STATE.abilities).reduce(
+      (total, [abilityId, investment]) => total + investedAbilityPoints(
+        investment,
+        SPECIES_ABILITY_DEFINITIONS.find((item) => item.id === abilityId)
+      ),
+      0
+    );
+    return INVESTED + formationInvestedPoints(STATE.formationSkills) + raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
+  }
+  function isValidPlayerLikeAbilityState(state) {
+    const ABILITY_STATE = {
+      schemaVersion: state?.schemaVersion,
+      availablePoints: state?.availablePoints,
+      farmUpgrades: state?.farmUpgrades,
+      abilities: state?.abilities
+    };
+    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1 || !isValidRaidDeploymentCardsState(state?.raidDeploymentCards)) {
+      return false;
+    }
+    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
+      (total, [abilityId, investment]) => total + investedAbilityPoints(
+        investment,
+        SPECIES_ABILITY_DEFINITIONS.find((item) => item.id === abilityId)
+      ),
+      0
+    );
+    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
+  }
+  function isNonNegativeInteger(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  function investedAbilityPoints(investment) {
+    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
+  }
+  var ABILITY_TREE_SCHEMA_VERSION;
+  var init_ability_state = __esm({
+    "src/ability-state.js"() {
+      init_formation_skill_state();
+      init_ability_definitions();
+      init_farm_upgrades();
+      init_raid_deployment_cards();
+      ABILITY_TREE_SCHEMA_VERSION = 2;
+    }
+  });
+
+  // src/player-progression.js
+  function createPlayerProgressionState() {
+    return {
+      ...createAbilityProgressionState(),
+      formationSkills: createFormationSkillState(),
+      raidDeploymentCards: createRaidDeploymentCardsState(),
+      farmPlots: createFarmPlotsProgression(),
+      level: 1,
+      experience: 0,
+      farmBossEventStage: 1,
+      processedBossKillReceipts: []
+    };
+  }
+  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
+    if (!isValidPlayerProgressionState(state)) {
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-state",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-receipt",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-xp",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    if (state.processedBossKillReceipts.includes(receiptKey)) {
+      return {
+        state,
+        awarded: false,
+        reason: "duplicate-receipt",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    let level = state.level;
+    let experience = state.experience + xpAmount;
+    let levelsGained = 0;
+    while (experience >= experienceForNextLevel(level)) {
+      experience -= experienceForNextLevel(level);
+      level += 1;
+      levelsGained += 1;
+    }
+    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
+    const NEXT_STATE = {
+      ...state,
+      level,
+      experience,
+      availablePoints: state.availablePoints + POINTS_AWARDED,
+      abilities: Object.fromEntries(
+        Object.entries(state.abilities).map(([id, value]) => [
+          id,
+          {
+            ...value
+          }
+        ])
+      ),
+      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
+    };
+    return {
+      state: NEXT_STATE,
+      awarded: true,
+      reason: null,
+      xpAwarded: xpAmount,
+      levelsGained,
+      pointsAwarded: POINTS_AWARDED
+    };
+  }
+  function experienceForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("level must be a positive integer");
+    }
+    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  function formatXpForDisplay(experience) {
+    const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
+    return new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: 1
+    }).format(VALUE);
+  }
+  function isValidPlayerProgressionState(state) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidRaidDeploymentCardsState(state.raidDeploymentCards) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+      return false;
+    }
+    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
+      (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
+      0
+    );
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + state.availablePoints === state.level - 1;
+  }
+  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
+  var init_player_progression = __esm({
+    "src/player-progression.js"() {
+      init_ability_state();
+      init_formation_skill_state();
+      init_farm_upgrades();
+      init_farm_plot();
+      init_raid_deployment_cards();
+      PLAYER_PROGRESS_BASE_XP = 100;
+      BOSS_KILL_XP = 20;
+      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
+      LEVEL_XP_MULTIPLIER = 1.2;
+      SHARED_POINTS_PER_LEVEL = 1;
+      FARM_BOSS_EVENT_MAX_STAGE = 61;
+    }
+  });
+
+  // src/boss-rewards.js
+  function requireSdk() {
+    const SDK = globalThis.BloomGamekitDeterministic;
+    if (!SDK?.SeededPRNG || !SDK?.PseudoRandomDistribution) {
+      throw new Error("GameKit 0.12.2 deterministic PRD API is required");
+    }
+    return SDK;
+  }
+  function mixedSeed(seed, domain) {
+    let value = (seed ^ domain) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 2146121005);
+    value = Math.imul(value ^ value >>> 15, 2221713035);
+    return (value ^ value >>> 16) >>> 0;
+  }
+  function streamFor(source, firstClear = false) {
+    return source === "raid" && firstClear ? "firstClear" : STREAM_SOURCE[source];
+  }
+  function streamSeed(seed, kind, field) {
+    const DOMAIN = STREAM_DOMAINS[kind]?.[field];
+    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 4294967295 || DOMAIN === void 0) {
+      throw new RangeError("Invalid boss reward stream seed");
+    }
+    return mixedSeed(seed, DOMAIN);
+  }
+  function createStream(seed, kind) {
+    return {
+      rngState: streamSeed(seed, kind, "prd"),
+      distributionState: null,
+      payoutRngState: streamSeed(seed, kind, "boxes")
+    };
+  }
+  function createBossRewardStreams(seed) {
+    return {
+      normal: createStream(seed, "normal"),
+      event: createStream(seed, "event"),
+      firstClear: createStream(seed, "firstClear")
+    };
+  }
+  function bossRewardBoxPayouts(total) {
+    if (!Number.isSafeInteger(total) || total < 1) {
+      throw new RangeError("Boss reward quantity must be a positive safe integer");
+    }
+    const BOX_COUNT = Math.min(total, BOSS_REWARD_SETTINGS.maxBoxCount), BASE = Math.floor(total / BOX_COUNT), EXTRA = total % BOX_COUNT;
+    const PAYOUTS = Array.from({ length: BOX_COUNT }, (_, index) => BASE + (index < EXTRA ? 1 : 0));
+    if (PAYOUTS.some((amount) => !Number.isSafeInteger(amount) || amount < 1)) {
+      throw new RangeError("Boss reward box payout is outside the safe integer range");
+    }
+    return PAYOUTS;
+  }
+  function bossStageStats(stage) {
+    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
+      throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
+    }
+    const EXPONENT = stage - 1, TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT), PAYOUTS = bossRewardBoxPayouts(TOTAL);
+    return {
+      stage,
+      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
+      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
+      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
+      rollBudget: TOTAL,
+      rolls: PAYOUTS.length,
+      boxCount: PAYOUTS.length,
+      boxPayouts: PAYOUTS,
+      bonusRollChance: 0
+    };
+  }
+  function bossRewardRollDescription(stage, { farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
+    const STATS2 = bossStageStats(stage), NOMINAL_CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier: 1 }) * 100, CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier }) * 100, PAYOUTS = STATS2.boxPayouts, MIN = Math.min(...PAYOUTS), MAX = Math.max(...PAYOUTS), RANGE = MIN === MAX ? FORMAT_COUNT.format(MIN) : `${FORMAT_COUNT.format(MIN)}–${FORMAT_COUNT.format(MAX)}`;
+    return `${FORMAT_COUNT.format(STATS2.boxCount)}회 추첨 · 상자당 ${RANGE}마리 · ${firstClear ? "첫 클리어" : "재도전"} 기본 확률 ${FORMAT_PERCENT.format(NOMINAL_CHANCE)}% · 편성 반영 ${FORMAT_PERCENT.format(CHANCE)}%`;
+  }
+  function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
+    if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) {
+      throw new TypeError("Boss species weights and random source are required");
+    }
+    const TOTAL = weights.reduce((sum, weight) => sum + weight, 0);
+    let remaining = random() * TOTAL;
+    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= TOTAL) {
+      throw new RangeError("Boss species roll must be in [0, 1)");
+    }
+    for (let index = 0; index < weights.length; index += 1) {
+      remaining -= weights[index];
+      if (remaining < 0) {
+        return index;
+      }
+    }
+    return weights.length - 1;
+  }
+  function bossAcquisitionChance({ farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
+    if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
+      throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
+    }
+    if (farmEvent) {
+      return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
+    }
+    const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
+    return Math.min(1, BASE * acquisitionMultiplier);
+  }
+  function ensureWorldRewardState(world) {
+    world.bossRewardReceipts ||= [];
+    world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
+    world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
+    world.bossRewardInventory ||= [];
+    return world;
+  }
+  function shufflePayouts(payouts, seed) {
+    const { SeededPRNG: SEEDED_PRNG2 } = requireSdk();
+    const RNG = new SEEDED_PRNG2(seed);
+    for (let index = payouts.length - 1; index > 0; index -= 1) {
+      const OTHER = RNG.nextInt(index + 1);
+      [payouts[index], payouts[OTHER]] = [payouts[OTHER], payouts[index]];
+    }
+    return { payouts, rngState: RNG.state };
+  }
+  function allocatePlacedRewards(world, species, tier, quantity) {
+    let remaining = quantity;
+    for (const RECEIPT of world.bossRewardReceipts) {
+      if (remaining === 0 || RECEIPT.species !== species || RECEIPT.tier !== tier || !Number.isSafeInteger(RECEIPT.queuedCount) || RECEIPT.queuedCount <= 0) {
+        continue;
+      }
+      const PLACED = Math.min(remaining, RECEIPT.queuedCount);
+      RECEIPT.queuedCount -= PLACED;
+      RECEIPT.placedCount += PLACED;
+      RECEIPT.grantedCount = RECEIPT.placedCount;
+      remaining -= PLACED;
+    }
+    if (remaining !== 0) {
+      throw new Error("Boss reward queue and receipt counts diverged");
+    }
+  }
+  function grantPendingBossAcquisitions(world) {
+    return typeof world.mutateUnits === "function" ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world) : grantPendingBossAcquisitionsCommitted(world);
+  }
+  function grantPendingBossAcquisitionsCommitted(world) {
+    ensureWorldRewardState(world);
+    if (world.scene !== "farm" || !Array.isArray(world.units) || !world.bossRewardInventory.length) {
+      return [];
+    }
+    const GRANTED = [];
+    let capacity2 = Math.max(
+      0,
+      (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
+    );
+    for (const GROUP of world.bossRewardInventory) {
+      if (capacity2 <= 0) {
+        break;
+      }
+      const COUNT = Math.min(capacity2, GROUP.count);
+      let placed = 0;
+      while (placed < COUNT) {
+        const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
+        if (!UNIT3) {
+          break;
+        }
+        GRANTED.push(UNIT3);
+        placed += 1;
+      }
+      if (placed > 0) {
+        GROUP.count -= placed;
+        capacity2 -= placed;
+        allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
+      }
+    }
+    world.bossRewardInventory = world.bossRewardInventory.filter((entry) => entry.count > 0);
+    if (GRANTED.length) {
+      world.markProgressChanged?.();
+    }
+    return GRANTED;
+  }
+  function findExistingReceipt(world, receiptKey, encounterId, source) {
+    return world.bossRewardReceipts.find(
+      (receipt) => receiptKey && receipt.receiptKey === receiptKey || receipt.encounterId === encounterId && receipt.source === source
+    );
+  }
+  function shuffleForNewReceipt(world, source, total, firstClear = false) {
+    const KIND = streamFor(source, firstClear), STREAM = world.bossRewardStreams[KIND], PAYOUTS = bossRewardBoxPayouts(total), SHUFFLED = shufflePayouts(PAYOUTS, STREAM.payoutRngState);
+    return {
+      payouts: SHUFFLED.payouts,
+      payoutRngStateAfter: SHUFFLED.rngState
+    };
+  }
+  function resolveBossAcquisitionCommitted(world, options = {}) {
+    ensureWorldRewardState(world);
+    const ENCOUNTER_ID = options.encounterId, SOURCE = options.source || "raid", REQUESTED_KEY = options.receiptKey;
+    if (!["farm", "raid"].includes(SOURCE) || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID < 1 || REQUESTED_KEY !== void 0 && (typeof REQUESTED_KEY !== "string" || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255)) {
+      throw new TypeError("A boss encounter ID, source, and valid receipt key are required");
+    }
+    const RECEIPT_KEY = REQUESTED_KEY || `${SOURCE}:${ENCOUNTER_ID}`, PREVIOUS = findExistingReceipt(world, REQUESTED_KEY, ENCOUNTER_ID, SOURCE);
+    if (PREVIOUS) {
+      return PREVIOUS;
+    }
+    if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
+      throw new RangeError("A settled or stale boss encounter cannot be rolled again");
+    }
+    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
+    if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
+      throw new RangeError("Boss reward quantity is outside the safe integer range");
+    }
+    const SPECIES = options.species ?? 3;
+    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
+      throw new RangeError("Boss reward species is invalid");
+    }
+    const FIRST_CLEAR = SOURCE === "raid" && options.firstClear === true, STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
+      farmEvent: SOURCE === "farm",
+      firstClear: FIRST_CLEAR,
+      acquisitionMultiplier: options.acquisitionMultiplier ?? 1
+    }), SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL, FIRST_CLEAR), BOX_COUNT = SHUFFLED.payouts.length, RECEIPT = {
+      encounterId: ENCOUNTER_ID,
+      source: SOURCE,
+      receiptKey: RECEIPT_KEY,
+      acquisitionMultiplier: SOURCE === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options.acquisitionMultiplier ?? 1,
+      stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
+      species: SPECIES,
+      tier: 1,
+      x: Number.isFinite(options.x) ? options.x : 0,
+      y: Number.isFinite(options.y) ? options.y : 0,
+      firstClear: FIRST_CLEAR,
+      chance: CHANCE,
+      baselineChance: FIRST_CLEAR ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance,
+      rollBudget: TOTAL,
+      rollCount: BOX_COUNT,
+      boxCount: BOX_COUNT,
+      successCount: 0,
+      acquiredCount: 0,
+      grantedCount: 0,
+      placedCount: 0,
+      queuedCount: 0,
+      unitId: 0,
+      revealedCount: 0,
+      boxes: [],
+      calculation: {
+        version: 1,
+        payouts: SHUFFLED.payouts,
+        hits: [],
+        payoutRngStateAfter: SHUFFLED.payoutRngStateAfter,
+        jobState: null
+      },
+      status: "calculating"
+    };
+    if (streamFor(SOURCE, FIRST_CLEAR) !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
+      throw new TypeError("Boss reward streams are not initialized");
+    }
+    world.bossRewardReceipts.push(RECEIPT);
+    world.bossRewardWatermarks[SOURCE] = ENCOUNTER_ID;
+    trimRewardReceipts(world);
+    if (SOURCE === "farm" && world.farmBossEvent?.encounterId === ENCOUNTER_ID) {
+      world.farmBossEvent.rewardStatus = "calculating";
+      world.farmBossEvent.rewardChance = CHANCE;
+      world.farmBossEvent.rewardRoll = 0;
+      world.farmBossEvent.rewardUnitId = 0;
+    }
+    world.markProgressChanged?.();
+    return RECEIPT;
+  }
+  function copyInventory(world) {
+    return (world.bossRewardInventory || []).map((entry) => ({ ...entry }));
+  }
+  function completeRewardCalculation(world, receipt, jobState) {
+    const CALC = receipt.calculation, HIT_SET = new Set(CALC.hits), BOXES = CALC.payouts.map((payout, index) => ({ payout, hit: HIT_SET.has(index) }));
+    let acquired = 0;
+    for (const BOX of BOXES) {
+      if (BOX.hit) {
+        acquired += BOX.payout;
+        if (!Number.isSafeInteger(acquired)) {
+          throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
+        }
+      }
+    }
+    const KIND = streamFor(receipt.source, receipt.firstClear === true), NEXT_INVENTORY = copyInventory(world), GROUP = NEXT_INVENTORY.find((entry) => entry.species === receipt.species && entry.tier === receipt.tier);
+    if (acquired > 0) {
+      const CURRENT = GROUP?.count || 0, NEXT = CURRENT + acquired;
+      if (!Number.isSafeInteger(NEXT)) {
+        throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
+      }
+      if (GROUP) {
+        GROUP.count = NEXT;
+      } else {
+        NEXT_INVENTORY.push({ species: receipt.species, tier: receipt.tier, count: acquired });
+      }
+    }
+    const NEXT_STREAM = {
+      rngState: jobState.rngState,
+      distributionState: jobState.distributionState,
+      payoutRngState: CALC.payoutRngStateAfter
+    };
+    world.bossRewardStreams[KIND] = NEXT_STREAM;
+    world.bossRewardInventory = NEXT_INVENTORY;
+    receipt.boxes = BOXES;
+    receipt.successCount = CALC.hits.length;
+    receipt.acquiredCount = acquired;
+    receipt.placedCount = 0;
+    receipt.queuedCount = acquired;
+    receipt.grantedCount = 0;
+    receipt.revealedCount = 0;
+    receipt.calculation = null;
+    receipt.status = "ready";
+    if (receipt.source === "farm" && world.farmBossEvent?.encounterId === receipt.encounterId) {
+      world.farmBossEvent.rewardStatus = "ready";
+    }
+  }
+  function trimRewardReceipts(world) {
+    const KEEP = /* @__PURE__ */ new Set();
+    let completed = 0;
+    for (let index = world.bossRewardReceipts.length - 1; index >= 0; index -= 1) {
+      const RECEIPT = world.bossRewardReceipts[index], NEEDS_PRESENTATION = RECEIPT.status === "calculating" || Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0;
+      if (NEEDS_PRESENTATION || RECEIPT.status === "ready" && completed < 8) {
+        KEEP.add(RECEIPT);
+        if (RECEIPT.status === "ready") {
+          completed += 1;
+        }
+      }
+    }
+    world.bossRewardReceipts = world.bossRewardReceipts.filter((receipt) => KEEP.has(receipt));
+  }
+  function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_UNITS_PER_TICK } = {}) {
+    if (!Number.isSafeInteger(maxUnitsPerReward) || maxUnitsPerReward < 1 || maxUnitsPerReward > PRD_UNITS_PER_TICK) {
+      throw new RangeError("Boss reward work must be from 1 to 10 units per logical tick");
+    }
+    ensureWorldRewardState(world);
+    if (world.scene !== "farm") {
+      return false;
+    }
+    let changed = false;
+    for (const SOURCE of ["raid", "farm"]) {
+      const RECEIPT = world.bossRewardReceipts.find(
+        (entry) => entry.source === SOURCE && entry.status === "calculating"
+      ), CALC = RECEIPT?.calculation;
+      if (!RECEIPT || !CALC) {
+        continue;
+      }
+      const STREAM_KIND = streamFor(SOURCE, RECEIPT.firstClear === true), STREAM = world.bossRewardStreams[STREAM_KIND], { SeededPRNG: SEEDED_PRNG2, PseudoRandomDistribution: PSEUDO_RANDOM_DISTRIBUTION } = requireSdk(), RNG = new SEEDED_PRNG2(STREAM.rngState), PRD = new PSEUDO_RANDOM_DISTRIBUTION({ probability: RECEIPT.chance, rng: RNG });
+      let job = null;
+      try {
+        if (CALC.jobState) {
+          job = PRD.restoreRollJob(CALC.jobState);
+        } else {
+          if (STREAM.distributionState) {
+            PRD.restore(STREAM.distributionState);
+          }
+          if (PRD.probability !== RECEIPT.chance) {
+            PRD.setProbability(RECEIPT.chance);
+          }
+          job = PRD.createRollJob(RECEIPT.boxCount);
+        }
+        if (RECEIPT.chance === 1 && CALC.hits.length === 0) {
+          CALC.hits = Array.from({ length: RECEIPT.boxCount }, (_, index) => index);
+        }
+        let units = 0;
+        while (!job.done && units < maxUnitsPerReward) {
+          const PRIOR_SUCCESSES = job.successes, STEP = job.step(1);
+          units += STEP.unitsUsed;
+          if (RECEIPT.chance !== 1 && STEP.successes > PRIOR_SUCCESSES) {
+            if (STEP.successes !== PRIOR_SUCCESSES + 1) {
+              throw new Error("A single PRD interval returned multiple reward successes");
+            }
+            CALC.hits.push(STEP.processedTrials - 1);
+          }
+          if (STEP.unitsUsed === 0 && !STEP.done) {
+            throw new Error("The resumable boss reward job did not advance");
+          }
+        }
+        CALC.jobState = job.capture();
+        changed = true;
+        if (job.done) {
+          completeRewardCalculation(world, RECEIPT, CALC.jobState);
+          trimRewardReceipts(world);
+        }
+      } finally {
+        job?.dispose();
+        PRD.dispose();
+      }
+    }
+    if (changed) {
+      world.markProgressChanged?.();
+    }
+    return changed;
+  }
+  function advanceBossRewardReveal(world, receiptKey, maxBoxes = 10) {
+    if (!Number.isSafeInteger(maxBoxes) || maxBoxes < 1 || maxBoxes > 10) {
+      throw new RangeError("Boss reward reveal must be from 1 to 10 boxes");
+    }
+    ensureWorldRewardState(world);
+    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
+    if (!RECEIPT || RECEIPT.status !== "ready") {
+      return null;
+    }
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
+      return RECEIPT;
+    }
+    RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
+    return RECEIPT;
+  }
+  function openAllBossRewardBoxes(world, receiptKey) {
+    ensureWorldRewardState(world);
+    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
+    if (!RECEIPT || RECEIPT.status !== "ready") {
+      return null;
+    }
+    RECEIPT.revealedCount = RECEIPT.boxCount;
+    return RECEIPT;
+  }
+  function settleBossKill(world, options) {
+    return typeof world.mutateUnits === "function" ? world.mutateUnits(settleBossKillCommitted, world, options) : settleBossKillCommitted(world, options);
+  }
+  function settleBossKillCommitted(world, options = {}) {
+    const RECEIPT = resolveBossAcquisitionCommitted(world, options), PROGRESSION_OWNER = options.progressionOwner || world, WALLET = options.playerProgression || PROGRESSION_OWNER.playerProgression, RECEIPT_KEY = RECEIPT.xpReceiptKey || options.receiptKey || RECEIPT.receiptKey;
+    if (RECEIPT.xpReceiptKey && ["awarded", "already-awarded"].includes(RECEIPT.xpStatus)) {
+      return {
+        receipt: RECEIPT,
+        progression: WALLET,
+        awarded: false,
+        reason: "duplicate-receipt",
+        xpAwarded: RECEIPT.xpAmount ?? 0,
+        levelsGained: RECEIPT.levelsGained ?? 0,
+        pointsAwarded: RECEIPT.pointsAwarded ?? 0
+      };
+    }
+    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === void 0 ? void 0 : options.xpAmount);
+    if (RESULT.awarded) {
+      PROGRESSION_OWNER.playerProgression = RESULT.state;
+    }
+    if (RESULT.awarded || RESULT.reason === "duplicate-receipt") {
+      RECEIPT.xpReceiptKey = RECEIPT_KEY;
+      RECEIPT.xpStatus = RESULT.awarded ? "awarded" : "already-awarded";
+      RECEIPT.xpAmount = RESULT.awarded ? RESULT.xpAwarded : 0;
+      RECEIPT.levelsGained = RESULT.levelsGained;
+      RECEIPT.pointsAwarded = RESULT.pointsAwarded;
+    } else {
+      RECEIPT.xpStatus = "unsettled";
+    }
+    world.markProgressChanged?.();
+    return {
+      receipt: RECEIPT,
+      progression: RESULT.state,
+      awarded: RESULT.awarded,
+      reason: RESULT.reason,
+      xpAwarded: RESULT.xpAwarded,
+      levelsGained: RESULT.levelsGained,
+      pointsAwarded: RESULT.pointsAwarded
+    };
+  }
+  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, BOSS_REWARD_SETTINGS;
+  var init_boss_rewards = __esm({
+    "src/boss-rewards.js"() {
+      init_player_progression();
+      init_species_catalog();
+      FORMAT_PERCENT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
+      FORMAT_COUNT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
+      PRD_UNITS_PER_TICK = 10;
+      STREAM_DOMAINS = Object.freeze({
+        normal: Object.freeze({ prd: 795749149, boxes: 1547342359 }),
+        event: Object.freeze({ prd: 1939685861, boxes: 462181795 }),
+        firstClear: Object.freeze({ prd: 1247922131, boxes: 767049617 })
+      });
+      STREAM_SOURCE = Object.freeze({ raid: "normal", farm: "event" });
+      BOSS_REWARD_SETTINGS = Object.freeze({
+        acquisitionChance: 0.05,
+        firstClearAcquisitionChance: 0.15,
+        farmEventAcquisitionMultiplier: 2,
+        stageHpBase: 200,
+        stageHpMultiplier: 1.5,
+        stageAttackBase: 4,
+        stageAttackMultiplier: 1.2,
+        stageXpBase: 20,
+        stageXpMultiplier: 1.5,
+        stageRollMultiplier: 1.5,
+        maxStage: FARM_BOSS_EVENT_MAX_STAGE,
+        maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
+        maxBoxCount: 100,
+        prdUnitsPerTick: PRD_UNITS_PER_TICK,
+        speciesWeights: BOSS_SPECIES_WEIGHTS
+      });
+    }
+  });
+
   // src/world-map.js
   function tileIndex(x, y) {
     return (y + WORLD_MAP_SETTINGS.radius) * SIDE + (x + WORLD_MAP_SETTINGS.radius);
@@ -1057,6 +2043,7 @@
       seed: Number.isSafeInteger(seed) ? seed >>> 0 : 0,
       gauge: 0,
       exploreTarget: -1,
+      challengeTile: -1,
       revealed: [],
       cleared: [],
       farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }]
@@ -1068,6 +2055,52 @@
     }
     MAP.revealed.sort((a, b) => a - b);
     return MAP;
+  }
+  function isRevealed(map, index) {
+    return map.revealed.includes(index);
+  }
+  function isCleared(map, index) {
+    return map.cleared.includes(index);
+  }
+  function farmReach(map, index) {
+    const X = tileX(index), Y = tileY(index);
+    let best = Infinity;
+    for (const FARM of farmTiles(map)) {
+      best = Math.min(best, Math.hypot(X - tileX(FARM), Y - tileY(FARM)));
+    }
+    return best;
+  }
+  function tileDanger(map, index) {
+    const STAGE = Math.round(1 + (farmReach(map, index) - 2) * WORLD_MAP_SETTINGS.dangerPerTile);
+    return Math.max(1, Math.min(WORLD_MAP_SETTINGS.maxDanger, STAGE));
+  }
+  function hasNest(map, index) {
+    return farmDistance(map, index) > WORLD_MAP_SETTINGS.safeRadius && tileUnit(map.seed, index, 1) < WORLD_MAP_SETTINGS.nestChance;
+  }
+  function tileSpecies(map, index) {
+    return chooseBossSpecies(() => tileUnit(map.seed, index, 3));
+  }
+  function claimed(map, index) {
+    return isCleared(map, index) || farmDistance(map, index) <= WORLD_MAP_SETTINGS.safeRadius;
+  }
+  function canChallenge(map, index) {
+    if (!isRevealed(map, index) || !hasNest(map, index) || isCleared(map, index)) {
+      return false;
+    }
+    const X = tileX(index), Y = tileY(index);
+    return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && claimed(map, tileIndex(X + dx, Y + dy)));
+  }
+  function beginChallenge(map, index) {
+    if (!canChallenge(map, index)) {
+      return false;
+    }
+    map.challengeTile = index;
+    return true;
+  }
+  function finishChallenge(map, victory) {
+    const TILE = map.challengeTile ?? -1;
+    map.challengeTile = -1;
+    return victory && TILE >= 0 ? markCleared(map, TILE) : false;
   }
   function exploreCost(map) {
     const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
@@ -1095,6 +2128,24 @@
     }
     return best;
   }
+  function canExploreTile(map, index) {
+    return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && !isRevealed(map, index) && touchesLight(index, new Set(map.revealed));
+  }
+  function setExploreTarget(map, index) {
+    if (index === -1) {
+      map.exploreTarget = -1;
+      return true;
+    }
+    const LIT = new Set(map.revealed);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || LIT.has(index)) {
+      return false;
+    }
+    if (!touchesLight(index, LIT)) {
+      return false;
+    }
+    map.exploreTarget = index;
+    return true;
+  }
   function advanceExploration(map, points) {
     const FOUND = [];
     if (!(points > 0)) {
@@ -1120,14 +2171,23 @@
     }
     return FOUND;
   }
+  function markCleared(map, index) {
+    if (!isRevealed(map, index) || isCleared(map, index)) {
+      return false;
+    }
+    map.cleared.push(index);
+    map.cleared.sort((a, b) => a - b);
+    return true;
+  }
   function isValidWorldMap(map) {
     if (!map || typeof map !== "object" || Array.isArray(map)) {
       return false;
     }
-    if (Object.keys(map).sort().join(",") !== "cleared,exploreTarget,farms,gauge,revealed,seed") {
+    const KEYS = Object.keys(map).filter((key) => key !== "challengeTile").sort().join(",");
+    if (KEYS !== "cleared,exploreTarget,farms,gauge,revealed,seed") {
       return false;
     }
-    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !Number.isFinite(map.gauge) || map.gauge < 0 || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.cleared) || !Array.isArray(map.farms) || map.farms.length === 0) {
+    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !Number.isFinite(map.gauge) || map.gauge < 0 || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.cleared) || !Array.isArray(map.farms) || map.farms.length === 0) {
       return false;
     }
     const LIT = new Set(map.revealed);
@@ -1138,6 +2198,7 @@
   var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, SORTED_INDEXES;
   var init_world_map = __esm({
     "src/world-map.js"() {
+      init_boss_rewards();
       WORLD_MAP_SETTINGS = {
         radius: 12,
         // Tiles within this many steps of a farm start lit and never hold a nest.
@@ -1146,7 +2207,8 @@
         firstTileCost: 60,
         tileCostStep: 4,
         maxDanger: 61,
-        dangerPerRing: 6
+        // Stages added per tile of straight-line distance beyond the first ring of nests.
+        dangerPerTile: 4
       };
       SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
       WORLD_MAP_TILE_COUNT = SIDE * SIDE;
@@ -2137,11 +3199,11 @@
     const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
     return BODY2.topZ + MARGIN;
   }
-  var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
+  var import_definition14, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
   var init_model_base = __esm({
     "src/features/formation-skills/model-base.js"() {
-      import_definition10 = __toESM(require_definition(), 1);
-      T1_DIAMETER = (0, import_definition10.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+      import_definition14 = __toESM(require_definition(), 1);
+      T1_DIAMETER = (0, import_definition14.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
       FormationSkill = class {
         constructor(definition) {
           this.definition = definition;
@@ -2956,7 +4018,7 @@
     return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
   }
   var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
-  var init_definition10 = __esm({
+  var init_definition14 = __esm({
     "src/features/projectiles/seed/definition.js"() {
       import_vector_sockets = __toESM(require_vector_sockets(), 1);
       FEATURE = Object.freeze({
@@ -3664,7 +4726,7 @@
 
   // src/features/scenes/farm/definition.js
   var FEATURE2;
-  var init_definition11 = __esm({
+  var init_definition15 = __esm({
     "src/features/scenes/farm/definition.js"() {
       FEATURE2 = Object.freeze({ id: "farm" });
     }
@@ -3675,7 +4737,7 @@
   var init_model10 = __esm({
     "src/features/scenes/farm/model.js"() {
       init_model_base2();
-      init_definition11();
+      init_definition15();
       FarmSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
           const { CONFIG: CONFIG2 } = dependencies;
@@ -3769,7 +4831,7 @@
 
   // src/features/scenes/raid/definition.js
   var FEATURE3;
-  var init_definition12 = __esm({
+  var init_definition16 = __esm({
     "src/features/scenes/raid/definition.js"() {
       FEATURE3 = Object.freeze({ id: "raid" });
     }
@@ -3915,392 +4977,6 @@
     }
   });
 
-  // src/features/abilities/pea-recovery-boost.js
-  var PEA_RECOVERY_BOOST_FEATURE;
-  var init_pea_recovery_boost = __esm({
-    "src/features/abilities/pea-recovery-boost.js"() {
-      PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "pea-recovery-boost",
-          species: 0,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "회복 기동",
-          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
-          powerValues: Object.freeze([0.25, 0.35, 0.55])
-        }),
-        model: Object.freeze({
-          durationTicks: 40,
-          multiplierForBonus(bonus) {
-            return 1 + bonus;
-          }
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/kidney-continuous-leap.js
-  var KIDNEY_CONTINUOUS_LEAP_FEATURE;
-  var init_kidney_continuous_leap = __esm({
-    "src/features/abilities/kidney-continuous-leap.js"() {
-      KIDNEY_CONTINUOUS_LEAP_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "kidney-continuous-leap",
-          species: 2,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "연속 도약",
-          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
-          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
-        }),
-        model: Object.freeze({
-          specialAttackProfile: Object.freeze({
-            kind: "leap",
-            timing: Object.freeze({ windup: 0.32, recovery: 0.9 }),
-            range: 2.5,
-            skillMultiplier: 1.3,
-            projectileCount: 0,
-            bounces: 0
-          }),
-          cooldownTicks: 60
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/chestnut-thorns/definition.js
-  var CHESTNUT_THORNS_FEATURE;
-  var init_definition13 = __esm({
-    "src/features/abilities/chestnut-thorns/definition.js"() {
-      CHESTNUT_THORNS_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "chestnut-target-thorns",
-          species: 3,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "대상 가시 연사",
-          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
-          powerValues: Object.freeze([1, 2, 3]),
-          cooldownTicks: 60,
-          spacingTicks: 2,
-          attackProfile: Object.freeze({
-            kind: "chestnut-thorns",
-            timing: Object.freeze({ windup: 0, recovery: 0.2 }),
-            range: 1.45,
-            skillMultiplier: 1,
-            projectileCount: 0,
-            bounces: 0
-          })
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/peanut-death-split/definition.js
-  var PEANUT_DEATH_SPLIT_FEATURE;
-  var init_definition14 = __esm({
-    "src/features/abilities/peanut-death-split/definition.js"() {
-      PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "peanut-death-split",
-          species: 4,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "사망 분열",
-          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
-          powerValues: Object.freeze([1, 1.5, 2.25]),
-          childCount: 2
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/walnut-raw-guard/definition.js
-  var WALNUT_RAW_GUARD_FEATURE;
-  var init_definition15 = __esm({
-    "src/features/abilities/walnut-raw-guard/definition.js"() {
-      WALNUT_RAW_GUARD_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "walnut-raw-guard",
-          species: 5,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "방어와 반격",
-          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
-          powerValues: Object.freeze([1, 1.5, 2.25]),
-          cooldownTicks: 100,
-          durationTicks: 40,
-          armorBonus: 50,
-          maxBonusAttackMultiples: 3
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/corn-attachment/definition.js
-  var CORN_ATTACHMENT_FEATURE;
-  var init_definition16 = __esm({
-    "src/features/abilities/corn-attachment/definition.js"() {
-      CORN_ATTACHMENT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "corn-kernel-chain",
-          species: 1,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "부착 알갱이 연쇄 폭발",
-          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
-          powerValues: Object.freeze([0.5, 0.75, 1]),
-          attachDelayTicks: 20,
-          explosionSpacingTicks: 2,
-          fadeTicks: 6
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/rice-low-health-harvest.js
-  var RICE_LOW_HEALTH_HARVEST_FEATURE;
-  var init_rice_low_health_harvest = __esm({
-    "src/features/abilities/rice-low-health-harvest.js"() {
-      RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "rice-low-health-harvest",
-          species: 6,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "수확 낫",
-          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
-          rootTier: 1,
-          powerValues: Object.freeze([0.35, 0.55, 0.75])
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/wheat-command-crit.js
-  var WHEAT_COMMAND_CRIT_FEATURE;
-  var init_wheat_command_crit = __esm({
-    "src/features/abilities/wheat-command-crit.js"() {
-      WHEAT_COMMAND_CRIT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "wheat-command-crit",
-          species: 7,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "밀의 전투 지휘",
-          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
-          powerValues: Object.freeze([0.5, 0.75, 1.125]),
-          durationTicks: 60,
-          triggerChance: 0.35,
-          branches: Object.freeze({
-            range: Object.freeze({
-              name: "명령 반경",
-              values: Object.freeze([2, 3, 4.5])
-            })
-          })
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/barley-armor-break.js
-  var BARLEY_ARMOR_BREAK_FEATURE;
-  var init_barley_armor_break = __esm({
-    "src/features/abilities/barley-armor-break.js"() {
-      BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "barley-armor-break",
-          species: 8,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "도리깨 갑주 파쇄",
-          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
-          rootTier: 1,
-          powerValues: Object.freeze([1, 2, 3]),
-          durationTicks: 60
-        })
-      });
-    }
-  });
-
-  // src/ability-definitions.js
-  var SPECIES_ABILITY_DEFINITIONS;
-  var init_ability_definitions = __esm({
-    "src/ability-definitions.js"() {
-      init_pea_recovery_boost();
-      init_kidney_continuous_leap();
-      init_definition13();
-      init_definition14();
-      init_definition15();
-      init_definition16();
-      init_rice_low_health_harvest();
-      init_wheat_command_crit();
-      init_barley_armor_break();
-      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
-        PEA_RECOVERY_BOOST_FEATURE.definition,
-        KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
-        CHESTNUT_THORNS_FEATURE.definition,
-        PEANUT_DEATH_SPLIT_FEATURE.definition,
-        WALNUT_RAW_GUARD_FEATURE.definition,
-        CORN_ATTACHMENT_FEATURE.definition,
-        RICE_LOW_HEALTH_HARVEST_FEATURE.definition,
-        WHEAT_COMMAND_CRIT_FEATURE.definition,
-        BARLEY_ARMOR_BREAK_FEATURE.definition
-      ]);
-    }
-  });
-
-  // src/ability-state.js
-  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
-    if (!isNonNegativeInteger(availablePoints)) {
-      throw new TypeError("availablePoints must be a non-negative integer");
-    }
-    return {
-      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-      availablePoints,
-      farmUpgrades: createFarmUpgradeState(),
-      abilities: Object.fromEntries(
-        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
-          definition.id,
-          {
-            powerLevel: 0,
-            ...definition.branches ? {
-              branchLevels: Object.fromEntries(
-                Object.keys(definition.branches).map((branchId) => [branchId, 0])
-              )
-            } : {}
-          }
-        ])
-      )
-    };
-  }
-  function isValidAbilityProgressionState(state) {
-    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
-      return false;
-    }
-    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") {
-      return false;
-    }
-    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
-      return false;
-    }
-    for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
-      const INVESTMENT = state.abilities[DEFINITION13.id];
-      if (!INVESTMENT || !isNonNegativeInteger(INVESTMENT.powerLevel)) {
-        return false;
-      }
-      if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
-        return false;
-      }
-      const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
-      if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
-        return false;
-      }
-      for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
-        const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
-        if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
-          return false;
-        }
-      }
-    }
-    return Object.keys(state.abilities).every(
-      (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
-    );
-  }
-  function createAbilityRuntimeSnapshot(state) {
-    if (!isValidPlayerLikeAbilityState(state)) {
-      throw new TypeError("Cannot snapshot invalid ability progression state");
-    }
-    return {
-      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-      level: state.level,
-      formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
-      raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
-      availablePoints: state.availablePoints,
-      farmUpgrades: {
-        ...state.farmUpgrades
-      },
-      abilities: Object.fromEntries(
-        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
-          definition.id,
-          {
-            ...state.abilities[definition.id],
-            ...definition.branches ? {
-              branchLevels: Object.fromEntries(
-                Object.keys(definition.branches).map((branchId) => [
-                  branchId,
-                  state.abilities[definition.id].branchLevels?.[branchId] || 0
-                ])
-              )
-            } : {}
-          }
-        ])
-      )
-    };
-  }
-  function isValidAbilityRuntimeSnapshot(snapshot2) {
-    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1) {
-      return false;
-    }
-    const STATE = {
-      schemaVersion: snapshot2.schemaVersion,
-      formationSkills: snapshot2.formationSkills,
-      raidDeploymentCards: snapshot2.raidDeploymentCards || createRaidDeploymentCardsState(),
-      level: snapshot2.level,
-      experience: 0,
-      availablePoints: snapshot2.availablePoints,
-      farmUpgrades: snapshot2.farmUpgrades,
-      abilities: snapshot2.abilities,
-      processedBossKillReceipts: []
-    };
-    if (!isValidAbilityProgressionState(STATE) || STATE.formationSkills !== void 0 && !isValidFormationSkillState(STATE.formationSkills) || !isValidRaidDeploymentCardsState(STATE.raidDeploymentCards)) {
-      return false;
-    }
-    const INVESTED = Object.entries(STATE.abilities).reduce(
-      (total, [abilityId, investment]) => total + investedAbilityPoints(
-        investment,
-        SPECIES_ABILITY_DEFINITIONS.find((item) => item.id === abilityId)
-      ),
-      0
-    );
-    return INVESTED + formationInvestedPoints(STATE.formationSkills) + raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
-  }
-  function isValidPlayerLikeAbilityState(state) {
-    const ABILITY_STATE = {
-      schemaVersion: state?.schemaVersion,
-      availablePoints: state?.availablePoints,
-      farmUpgrades: state?.farmUpgrades,
-      abilities: state?.abilities
-    };
-    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1 || !isValidRaidDeploymentCardsState(state?.raidDeploymentCards)) {
-      return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-      (total, [abilityId, investment]) => total + investedAbilityPoints(
-        investment,
-        SPECIES_ABILITY_DEFINITIONS.find((item) => item.id === abilityId)
-      ),
-      0
-    );
-    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
-  }
-  function isNonNegativeInteger(value) {
-    return Number.isSafeInteger(value) && value >= 0;
-  }
-  function investedAbilityPoints(investment) {
-    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
-  }
-  var ABILITY_TREE_SCHEMA_VERSION;
-  var init_ability_state = __esm({
-    "src/ability-state.js"() {
-      init_formation_skill_state();
-      init_ability_definitions();
-      init_farm_upgrades();
-      init_raid_deployment_cards();
-      ABILITY_TREE_SCHEMA_VERSION = 2;
-    }
-  });
-
   // src/factions.js
   function hasFaction(actor, faction) {
     return actor?.faction === faction;
@@ -4323,7 +4999,7 @@
   var init_model11 = __esm({
     "src/features/scenes/raid/model.js"() {
       init_model_base2();
-      init_definition12();
+      init_definition16();
       init_boss_patterns();
       init_ability_state();
       init_raid_deployment_cards();
@@ -4490,132 +5166,6 @@
         updateChain(_world, _projectile) {
         }
       };
-    }
-  });
-
-  // src/player-progression.js
-  function createPlayerProgressionState() {
-    return {
-      ...createAbilityProgressionState(),
-      formationSkills: createFormationSkillState(),
-      raidDeploymentCards: createRaidDeploymentCardsState(),
-      farmPlots: createFarmPlotsProgression(),
-      level: 1,
-      experience: 0,
-      farmBossEventStage: 1,
-      processedBossKillReceipts: []
-    };
-  }
-  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
-    if (!isValidPlayerProgressionState(state)) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-state",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-xp",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    if (state.processedBossKillReceipts.includes(receiptKey)) {
-      return {
-        state,
-        awarded: false,
-        reason: "duplicate-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    let level = state.level;
-    let experience = state.experience + xpAmount;
-    let levelsGained = 0;
-    while (experience >= experienceForNextLevel(level)) {
-      experience -= experienceForNextLevel(level);
-      level += 1;
-      levelsGained += 1;
-    }
-    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
-    const NEXT_STATE = {
-      ...state,
-      level,
-      experience,
-      availablePoints: state.availablePoints + POINTS_AWARDED,
-      abilities: Object.fromEntries(
-        Object.entries(state.abilities).map(([id, value]) => [
-          id,
-          {
-            ...value
-          }
-        ])
-      ),
-      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
-    };
-    return {
-      state: NEXT_STATE,
-      awarded: true,
-      reason: null,
-      xpAwarded: xpAmount,
-      levelsGained,
-      pointsAwarded: POINTS_AWARDED
-    };
-  }
-  function experienceForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-      throw new RangeError("level must be a positive integer");
-    }
-    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
-  }
-  function formatXpForDisplay(experience) {
-    const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
-    return new Intl.NumberFormat("ko-KR", {
-      maximumFractionDigits: 1
-    }).format(VALUE);
-  }
-  function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidRaidDeploymentCardsState(state.raidDeploymentCards) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
-      return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-      (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
-      0
-    );
-    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + state.availablePoints === state.level - 1;
-  }
-  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
-  var init_player_progression = __esm({
-    "src/player-progression.js"() {
-      init_ability_state();
-      init_formation_skill_state();
-      init_farm_upgrades();
-      init_farm_plot();
-      init_raid_deployment_cards();
-      PLAYER_PROGRESS_BASE_XP = 100;
-      BOSS_KILL_XP = 20;
-      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
-      LEVEL_XP_MULTIPLIER = 1.2;
-      SHARED_POINTS_PER_LEVEL = 1;
-      FARM_BOSS_EVENT_MAX_STAGE = 61;
     }
   });
 
@@ -5092,7 +5642,7 @@
   var init_model14 = __esm({
     "src/features/abilities/chestnut-thorns/model.js"() {
       init_ability_progression();
-      init_definition13();
+      init_definition10();
       ABILITY_ID3 = CHESTNUT_THORNS_FEATURE.definition.id;
       ChestnutThornsModel = class {
         static config(progression, tier) {
@@ -5123,7 +5673,7 @@
   var init_model15 = __esm({
     "src/features/abilities/peanut-death-split/model.js"() {
       init_ability_progression();
-      init_definition14();
+      init_definition11();
       ABILITY_ID4 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
       PeanutDeathSplitModel = class {
         static config(progression, tier) {
@@ -5174,7 +5724,7 @@
   var init_model16 = __esm({
     "src/features/abilities/walnut-raw-guard/model.js"() {
       init_ability_progression();
-      init_definition15();
+      init_definition12();
       DEFINITION10 = WALNUT_RAW_GUARD_FEATURE.definition;
       WalnutRawGuardModel = class {
         static config(progression, tier) {
@@ -5243,7 +5793,7 @@
   var init_model17 = __esm({
     "src/features/abilities/corn-attachment/model.js"() {
       init_ability_progression();
-      init_definition16();
+      init_definition13();
       DEFINITION11 = CORN_ATTACHMENT_FEATURE.definition;
       CornAttachmentModel = class {
         static projectileEffect(progression, tier) {
@@ -5494,7 +6044,7 @@
       init_definition17();
       init_definition18();
       init_kidney_continuous_leap();
-      init_definition13();
+      init_definition10();
       ATTACK_DEFAULTS = Object.freeze({
         timing: Object.freeze({
           windup: 0.28,
@@ -6093,13 +6643,13 @@
       init_model12();
       init_kidney_continuous_leap();
       init_model13();
-      init_definition13();
+      init_definition10();
       init_model14();
-      init_definition14();
+      init_definition11();
       init_model15();
-      init_definition15();
+      init_definition12();
       init_model16();
-      init_definition16();
+      init_definition13();
       init_model17();
       init_rice_low_health_harvest();
       init_model18();
@@ -6198,7 +6748,7 @@
   var init_model21 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
-      init_definition10();
+      init_definition14();
       SeedProjectile = class extends DamageProjectile {
         constructor(dependencies) {
           super(FEATURE, dependencies);
@@ -6238,7 +6788,7 @@
   }
   var init_definition20 = __esm({
     "src/features/projectiles/definition.js"() {
-      init_definition10();
+      init_definition14();
       init_definition19();
     }
   });
@@ -7196,480 +7746,6 @@
     }
   });
 
-  // src/boss-rewards.js
-  function requireSdk() {
-    const SDK = globalThis.BloomGamekitDeterministic;
-    if (!SDK?.SeededPRNG || !SDK?.PseudoRandomDistribution) {
-      throw new Error("GameKit 0.12.2 deterministic PRD API is required");
-    }
-    return SDK;
-  }
-  function mixedSeed(seed, domain) {
-    let value = (seed ^ domain) >>> 0;
-    value = Math.imul(value ^ value >>> 16, 2146121005);
-    value = Math.imul(value ^ value >>> 15, 2221713035);
-    return (value ^ value >>> 16) >>> 0;
-  }
-  function streamFor(source, firstClear = false) {
-    return source === "raid" && firstClear ? "firstClear" : STREAM_SOURCE[source];
-  }
-  function streamSeed(seed, kind, field) {
-    const DOMAIN = STREAM_DOMAINS[kind]?.[field];
-    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 4294967295 || DOMAIN === void 0) {
-      throw new RangeError("Invalid boss reward stream seed");
-    }
-    return mixedSeed(seed, DOMAIN);
-  }
-  function createStream(seed, kind) {
-    return {
-      rngState: streamSeed(seed, kind, "prd"),
-      distributionState: null,
-      payoutRngState: streamSeed(seed, kind, "boxes")
-    };
-  }
-  function createBossRewardStreams(seed) {
-    return {
-      normal: createStream(seed, "normal"),
-      event: createStream(seed, "event"),
-      firstClear: createStream(seed, "firstClear")
-    };
-  }
-  function bossRewardBoxPayouts(total) {
-    if (!Number.isSafeInteger(total) || total < 1) {
-      throw new RangeError("Boss reward quantity must be a positive safe integer");
-    }
-    const BOX_COUNT = Math.min(total, BOSS_REWARD_SETTINGS.maxBoxCount), BASE = Math.floor(total / BOX_COUNT), EXTRA = total % BOX_COUNT;
-    const PAYOUTS = Array.from({ length: BOX_COUNT }, (_, index) => BASE + (index < EXTRA ? 1 : 0));
-    if (PAYOUTS.some((amount) => !Number.isSafeInteger(amount) || amount < 1)) {
-      throw new RangeError("Boss reward box payout is outside the safe integer range");
-    }
-    return PAYOUTS;
-  }
-  function bossStageStats(stage) {
-    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
-      throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
-    }
-    const EXPONENT = stage - 1, TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT), PAYOUTS = bossRewardBoxPayouts(TOTAL);
-    return {
-      stage,
-      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
-      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
-      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
-      rollBudget: TOTAL,
-      rolls: PAYOUTS.length,
-      boxCount: PAYOUTS.length,
-      boxPayouts: PAYOUTS,
-      bonusRollChance: 0
-    };
-  }
-  function bossRewardRollDescription(stage, { farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
-    const STATS2 = bossStageStats(stage), NOMINAL_CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier: 1 }) * 100, CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier }) * 100, PAYOUTS = STATS2.boxPayouts, MIN = Math.min(...PAYOUTS), MAX = Math.max(...PAYOUTS), RANGE = MIN === MAX ? FORMAT_COUNT.format(MIN) : `${FORMAT_COUNT.format(MIN)}–${FORMAT_COUNT.format(MAX)}`;
-    return `${FORMAT_COUNT.format(STATS2.boxCount)}회 추첨 · 상자당 ${RANGE}마리 · ${firstClear ? "첫 클리어" : "재도전"} 기본 확률 ${FORMAT_PERCENT.format(NOMINAL_CHANCE)}% · 편성 반영 ${FORMAT_PERCENT.format(CHANCE)}%`;
-  }
-  function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
-    if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) {
-      throw new TypeError("Boss species weights and random source are required");
-    }
-    const TOTAL = weights.reduce((sum, weight) => sum + weight, 0);
-    let remaining = random() * TOTAL;
-    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= TOTAL) {
-      throw new RangeError("Boss species roll must be in [0, 1)");
-    }
-    for (let index = 0; index < weights.length; index += 1) {
-      remaining -= weights[index];
-      if (remaining < 0) {
-        return index;
-      }
-    }
-    return weights.length - 1;
-  }
-  function bossAcquisitionChance({ farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
-    if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
-      throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
-    }
-    if (farmEvent) {
-      return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
-    }
-    const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
-    return Math.min(1, BASE * acquisitionMultiplier);
-  }
-  function ensureWorldRewardState(world) {
-    world.bossRewardReceipts ||= [];
-    world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
-    world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
-    world.bossRewardInventory ||= [];
-    return world;
-  }
-  function shufflePayouts(payouts, seed) {
-    const { SeededPRNG: SEEDED_PRNG2 } = requireSdk();
-    const RNG = new SEEDED_PRNG2(seed);
-    for (let index = payouts.length - 1; index > 0; index -= 1) {
-      const OTHER = RNG.nextInt(index + 1);
-      [payouts[index], payouts[OTHER]] = [payouts[OTHER], payouts[index]];
-    }
-    return { payouts, rngState: RNG.state };
-  }
-  function allocatePlacedRewards(world, species, tier, quantity) {
-    let remaining = quantity;
-    for (const RECEIPT of world.bossRewardReceipts) {
-      if (remaining === 0 || RECEIPT.species !== species || RECEIPT.tier !== tier || !Number.isSafeInteger(RECEIPT.queuedCount) || RECEIPT.queuedCount <= 0) {
-        continue;
-      }
-      const PLACED = Math.min(remaining, RECEIPT.queuedCount);
-      RECEIPT.queuedCount -= PLACED;
-      RECEIPT.placedCount += PLACED;
-      RECEIPT.grantedCount = RECEIPT.placedCount;
-      remaining -= PLACED;
-    }
-    if (remaining !== 0) {
-      throw new Error("Boss reward queue and receipt counts diverged");
-    }
-  }
-  function grantPendingBossAcquisitions(world) {
-    return typeof world.mutateUnits === "function" ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world) : grantPendingBossAcquisitionsCommitted(world);
-  }
-  function grantPendingBossAcquisitionsCommitted(world) {
-    ensureWorldRewardState(world);
-    if (world.scene !== "farm" || !Array.isArray(world.units) || !world.bossRewardInventory.length) {
-      return [];
-    }
-    const GRANTED = [];
-    let capacity2 = Math.max(
-      0,
-      (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
-    );
-    for (const GROUP of world.bossRewardInventory) {
-      if (capacity2 <= 0) {
-        break;
-      }
-      const COUNT = Math.min(capacity2, GROUP.count);
-      let placed = 0;
-      while (placed < COUNT) {
-        const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
-        if (!UNIT3) {
-          break;
-        }
-        GRANTED.push(UNIT3);
-        placed += 1;
-      }
-      if (placed > 0) {
-        GROUP.count -= placed;
-        capacity2 -= placed;
-        allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
-      }
-    }
-    world.bossRewardInventory = world.bossRewardInventory.filter((entry) => entry.count > 0);
-    if (GRANTED.length) {
-      world.markProgressChanged?.();
-    }
-    return GRANTED;
-  }
-  function findExistingReceipt(world, receiptKey, encounterId, source) {
-    return world.bossRewardReceipts.find(
-      (receipt) => receiptKey && receipt.receiptKey === receiptKey || receipt.encounterId === encounterId && receipt.source === source
-    );
-  }
-  function shuffleForNewReceipt(world, source, total, firstClear = false) {
-    const KIND = streamFor(source, firstClear), STREAM = world.bossRewardStreams[KIND], PAYOUTS = bossRewardBoxPayouts(total), SHUFFLED = shufflePayouts(PAYOUTS, STREAM.payoutRngState);
-    return {
-      payouts: SHUFFLED.payouts,
-      payoutRngStateAfter: SHUFFLED.rngState
-    };
-  }
-  function resolveBossAcquisitionCommitted(world, options = {}) {
-    ensureWorldRewardState(world);
-    const ENCOUNTER_ID = options.encounterId, SOURCE = options.source || "raid", REQUESTED_KEY = options.receiptKey;
-    if (!["farm", "raid"].includes(SOURCE) || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID < 1 || REQUESTED_KEY !== void 0 && (typeof REQUESTED_KEY !== "string" || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255)) {
-      throw new TypeError("A boss encounter ID, source, and valid receipt key are required");
-    }
-    const RECEIPT_KEY = REQUESTED_KEY || `${SOURCE}:${ENCOUNTER_ID}`, PREVIOUS = findExistingReceipt(world, REQUESTED_KEY, ENCOUNTER_ID, SOURCE);
-    if (PREVIOUS) {
-      return PREVIOUS;
-    }
-    if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
-      throw new RangeError("A settled or stale boss encounter cannot be rolled again");
-    }
-    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
-    if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
-      throw new RangeError("Boss reward quantity is outside the safe integer range");
-    }
-    const SPECIES = options.species ?? 3;
-    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
-      throw new RangeError("Boss reward species is invalid");
-    }
-    const FIRST_CLEAR = SOURCE === "raid" && options.firstClear === true, STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
-      farmEvent: SOURCE === "farm",
-      firstClear: FIRST_CLEAR,
-      acquisitionMultiplier: options.acquisitionMultiplier ?? 1
-    }), SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL, FIRST_CLEAR), BOX_COUNT = SHUFFLED.payouts.length, RECEIPT = {
-      encounterId: ENCOUNTER_ID,
-      source: SOURCE,
-      receiptKey: RECEIPT_KEY,
-      acquisitionMultiplier: SOURCE === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options.acquisitionMultiplier ?? 1,
-      stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
-      species: SPECIES,
-      tier: 1,
-      x: Number.isFinite(options.x) ? options.x : 0,
-      y: Number.isFinite(options.y) ? options.y : 0,
-      firstClear: FIRST_CLEAR,
-      chance: CHANCE,
-      baselineChance: FIRST_CLEAR ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance,
-      rollBudget: TOTAL,
-      rollCount: BOX_COUNT,
-      boxCount: BOX_COUNT,
-      successCount: 0,
-      acquiredCount: 0,
-      grantedCount: 0,
-      placedCount: 0,
-      queuedCount: 0,
-      unitId: 0,
-      revealedCount: 0,
-      boxes: [],
-      calculation: {
-        version: 1,
-        payouts: SHUFFLED.payouts,
-        hits: [],
-        payoutRngStateAfter: SHUFFLED.payoutRngStateAfter,
-        jobState: null
-      },
-      status: "calculating"
-    };
-    if (streamFor(SOURCE, FIRST_CLEAR) !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
-      throw new TypeError("Boss reward streams are not initialized");
-    }
-    world.bossRewardReceipts.push(RECEIPT);
-    world.bossRewardWatermarks[SOURCE] = ENCOUNTER_ID;
-    trimRewardReceipts(world);
-    if (SOURCE === "farm" && world.farmBossEvent?.encounterId === ENCOUNTER_ID) {
-      world.farmBossEvent.rewardStatus = "calculating";
-      world.farmBossEvent.rewardChance = CHANCE;
-      world.farmBossEvent.rewardRoll = 0;
-      world.farmBossEvent.rewardUnitId = 0;
-    }
-    world.markProgressChanged?.();
-    return RECEIPT;
-  }
-  function copyInventory(world) {
-    return (world.bossRewardInventory || []).map((entry) => ({ ...entry }));
-  }
-  function completeRewardCalculation(world, receipt, jobState) {
-    const CALC = receipt.calculation, HIT_SET = new Set(CALC.hits), BOXES = CALC.payouts.map((payout, index) => ({ payout, hit: HIT_SET.has(index) }));
-    let acquired = 0;
-    for (const BOX of BOXES) {
-      if (BOX.hit) {
-        acquired += BOX.payout;
-        if (!Number.isSafeInteger(acquired)) {
-          throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
-        }
-      }
-    }
-    const KIND = streamFor(receipt.source, receipt.firstClear === true), NEXT_INVENTORY = copyInventory(world), GROUP = NEXT_INVENTORY.find((entry) => entry.species === receipt.species && entry.tier === receipt.tier);
-    if (acquired > 0) {
-      const CURRENT = GROUP?.count || 0, NEXT = CURRENT + acquired;
-      if (!Number.isSafeInteger(NEXT)) {
-        throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
-      }
-      if (GROUP) {
-        GROUP.count = NEXT;
-      } else {
-        NEXT_INVENTORY.push({ species: receipt.species, tier: receipt.tier, count: acquired });
-      }
-    }
-    const NEXT_STREAM = {
-      rngState: jobState.rngState,
-      distributionState: jobState.distributionState,
-      payoutRngState: CALC.payoutRngStateAfter
-    };
-    world.bossRewardStreams[KIND] = NEXT_STREAM;
-    world.bossRewardInventory = NEXT_INVENTORY;
-    receipt.boxes = BOXES;
-    receipt.successCount = CALC.hits.length;
-    receipt.acquiredCount = acquired;
-    receipt.placedCount = 0;
-    receipt.queuedCount = acquired;
-    receipt.grantedCount = 0;
-    receipt.revealedCount = 0;
-    receipt.calculation = null;
-    receipt.status = "ready";
-    if (receipt.source === "farm" && world.farmBossEvent?.encounterId === receipt.encounterId) {
-      world.farmBossEvent.rewardStatus = "ready";
-    }
-  }
-  function trimRewardReceipts(world) {
-    const KEEP = /* @__PURE__ */ new Set();
-    let completed = 0;
-    for (let index = world.bossRewardReceipts.length - 1; index >= 0; index -= 1) {
-      const RECEIPT = world.bossRewardReceipts[index], NEEDS_PRESENTATION = RECEIPT.status === "calculating" || Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0;
-      if (NEEDS_PRESENTATION || RECEIPT.status === "ready" && completed < 8) {
-        KEEP.add(RECEIPT);
-        if (RECEIPT.status === "ready") {
-          completed += 1;
-        }
-      }
-    }
-    world.bossRewardReceipts = world.bossRewardReceipts.filter((receipt) => KEEP.has(receipt));
-  }
-  function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_UNITS_PER_TICK } = {}) {
-    if (!Number.isSafeInteger(maxUnitsPerReward) || maxUnitsPerReward < 1 || maxUnitsPerReward > PRD_UNITS_PER_TICK) {
-      throw new RangeError("Boss reward work must be from 1 to 10 units per logical tick");
-    }
-    ensureWorldRewardState(world);
-    if (world.scene !== "farm") {
-      return false;
-    }
-    let changed = false;
-    for (const SOURCE of ["raid", "farm"]) {
-      const RECEIPT = world.bossRewardReceipts.find(
-        (entry) => entry.source === SOURCE && entry.status === "calculating"
-      ), CALC = RECEIPT?.calculation;
-      if (!RECEIPT || !CALC) {
-        continue;
-      }
-      const STREAM_KIND = streamFor(SOURCE, RECEIPT.firstClear === true), STREAM = world.bossRewardStreams[STREAM_KIND], { SeededPRNG: SEEDED_PRNG2, PseudoRandomDistribution: PSEUDO_RANDOM_DISTRIBUTION } = requireSdk(), RNG = new SEEDED_PRNG2(STREAM.rngState), PRD = new PSEUDO_RANDOM_DISTRIBUTION({ probability: RECEIPT.chance, rng: RNG });
-      let job = null;
-      try {
-        if (CALC.jobState) {
-          job = PRD.restoreRollJob(CALC.jobState);
-        } else {
-          if (STREAM.distributionState) {
-            PRD.restore(STREAM.distributionState);
-          }
-          if (PRD.probability !== RECEIPT.chance) {
-            PRD.setProbability(RECEIPT.chance);
-          }
-          job = PRD.createRollJob(RECEIPT.boxCount);
-        }
-        if (RECEIPT.chance === 1 && CALC.hits.length === 0) {
-          CALC.hits = Array.from({ length: RECEIPT.boxCount }, (_, index) => index);
-        }
-        let units = 0;
-        while (!job.done && units < maxUnitsPerReward) {
-          const PRIOR_SUCCESSES = job.successes, STEP = job.step(1);
-          units += STEP.unitsUsed;
-          if (RECEIPT.chance !== 1 && STEP.successes > PRIOR_SUCCESSES) {
-            if (STEP.successes !== PRIOR_SUCCESSES + 1) {
-              throw new Error("A single PRD interval returned multiple reward successes");
-            }
-            CALC.hits.push(STEP.processedTrials - 1);
-          }
-          if (STEP.unitsUsed === 0 && !STEP.done) {
-            throw new Error("The resumable boss reward job did not advance");
-          }
-        }
-        CALC.jobState = job.capture();
-        changed = true;
-        if (job.done) {
-          completeRewardCalculation(world, RECEIPT, CALC.jobState);
-          trimRewardReceipts(world);
-        }
-      } finally {
-        job?.dispose();
-        PRD.dispose();
-      }
-    }
-    if (changed) {
-      world.markProgressChanged?.();
-    }
-    return changed;
-  }
-  function advanceBossRewardReveal(world, receiptKey, maxBoxes = 10) {
-    if (!Number.isSafeInteger(maxBoxes) || maxBoxes < 1 || maxBoxes > 10) {
-      throw new RangeError("Boss reward reveal must be from 1 to 10 boxes");
-    }
-    ensureWorldRewardState(world);
-    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || RECEIPT.status !== "ready") {
-      return null;
-    }
-    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
-      return RECEIPT;
-    }
-    RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
-    return RECEIPT;
-  }
-  function openAllBossRewardBoxes(world, receiptKey) {
-    ensureWorldRewardState(world);
-    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || RECEIPT.status !== "ready") {
-      return null;
-    }
-    RECEIPT.revealedCount = RECEIPT.boxCount;
-    return RECEIPT;
-  }
-  function settleBossKill(world, options) {
-    return typeof world.mutateUnits === "function" ? world.mutateUnits(settleBossKillCommitted, world, options) : settleBossKillCommitted(world, options);
-  }
-  function settleBossKillCommitted(world, options = {}) {
-    const RECEIPT = resolveBossAcquisitionCommitted(world, options), PROGRESSION_OWNER = options.progressionOwner || world, WALLET = options.playerProgression || PROGRESSION_OWNER.playerProgression, RECEIPT_KEY = RECEIPT.xpReceiptKey || options.receiptKey || RECEIPT.receiptKey;
-    if (RECEIPT.xpReceiptKey && ["awarded", "already-awarded"].includes(RECEIPT.xpStatus)) {
-      return {
-        receipt: RECEIPT,
-        progression: WALLET,
-        awarded: false,
-        reason: "duplicate-receipt",
-        xpAwarded: RECEIPT.xpAmount ?? 0,
-        levelsGained: RECEIPT.levelsGained ?? 0,
-        pointsAwarded: RECEIPT.pointsAwarded ?? 0
-      };
-    }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === void 0 ? void 0 : options.xpAmount);
-    if (RESULT.awarded) {
-      PROGRESSION_OWNER.playerProgression = RESULT.state;
-    }
-    if (RESULT.awarded || RESULT.reason === "duplicate-receipt") {
-      RECEIPT.xpReceiptKey = RECEIPT_KEY;
-      RECEIPT.xpStatus = RESULT.awarded ? "awarded" : "already-awarded";
-      RECEIPT.xpAmount = RESULT.awarded ? RESULT.xpAwarded : 0;
-      RECEIPT.levelsGained = RESULT.levelsGained;
-      RECEIPT.pointsAwarded = RESULT.pointsAwarded;
-    } else {
-      RECEIPT.xpStatus = "unsettled";
-    }
-    world.markProgressChanged?.();
-    return {
-      receipt: RECEIPT,
-      progression: RESULT.state,
-      awarded: RESULT.awarded,
-      reason: RESULT.reason,
-      xpAwarded: RESULT.xpAwarded,
-      levelsGained: RESULT.levelsGained,
-      pointsAwarded: RESULT.pointsAwarded
-    };
-  }
-  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, BOSS_REWARD_SETTINGS;
-  var init_boss_rewards = __esm({
-    "src/boss-rewards.js"() {
-      init_player_progression();
-      init_species_catalog();
-      FORMAT_PERCENT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
-      FORMAT_COUNT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
-      PRD_UNITS_PER_TICK = 10;
-      STREAM_DOMAINS = Object.freeze({
-        normal: Object.freeze({ prd: 795749149, boxes: 1547342359 }),
-        event: Object.freeze({ prd: 1939685861, boxes: 462181795 }),
-        firstClear: Object.freeze({ prd: 1247922131, boxes: 767049617 })
-      });
-      STREAM_SOURCE = Object.freeze({ raid: "normal", farm: "event" });
-      BOSS_REWARD_SETTINGS = Object.freeze({
-        acquisitionChance: 0.05,
-        firstClearAcquisitionChance: 0.15,
-        farmEventAcquisitionMultiplier: 2,
-        stageHpBase: 200,
-        stageHpMultiplier: 1.5,
-        stageAttackBase: 4,
-        stageAttackMultiplier: 1.2,
-        stageXpBase: 20,
-        stageXpMultiplier: 1.5,
-        stageRollMultiplier: 1.5,
-        maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-        maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
-        maxBoxCount: 100,
-        prdUnitsPerTick: PRD_UNITS_PER_TICK,
-        speciesWeights: BOSS_SPECIES_WEIGHTS
-      });
-    }
-  });
-
   // src/farm-boss-stages.js
   function createFarmBossProgress(seed = 731) {
     return {
@@ -7700,8 +7776,8 @@
     progress.selections = [];
     return progress.encounterEpoch;
   }
-  function selectFarmBossStage(progress, stage) {
-    if (!progress || !Number.isSafeInteger(progress.highestClearedRaidStage) || progress.highestClearedRaidStage < 0 || progress.highestClearedRaidStage > BOSS_REWARD_SETTINGS.maxStage || !Number.isSafeInteger(stage) || stage < 1 || stage > Math.min(BOSS_REWARD_SETTINGS.maxStage, progress.highestClearedRaidStage + 2)) {
+  function selectFarmBossStage(progress, stage, { unlocked = false } = {}) {
+    if (!progress || !Number.isSafeInteger(progress.highestClearedRaidStage) || progress.highestClearedRaidStage < 0 || progress.highestClearedRaidStage > BOSS_REWARD_SETTINGS.maxStage || !Number.isSafeInteger(stage) || stage < 1 || stage > (unlocked ? BOSS_REWARD_SETTINGS.maxStage : Math.min(BOSS_REWARD_SETTINGS.maxStage, progress.highestClearedRaidStage + 2))) {
       throw new RangeError("Boss stage is outside the supported range");
     }
     let selection = progress.selections.find((entry) => entry.stage === stage);
@@ -7723,10 +7799,16 @@
       ...STATS2
     };
   }
+  function selectMapBossStage(progress, map, tile) {
+    const PREVIOUS = progress.currentStage, SELECTION = selectFarmBossStage(progress, tileDanger(map, tile), { unlocked: true });
+    progress.currentStage = PREVIOUS;
+    return { ...SELECTION, species: tileSpecies(map, tile) };
+  }
   var CLAMP_UINT32;
   var init_farm_boss_stages = __esm({
     "src/farm-boss-stages.js"() {
       init_boss_rewards();
+      init_world_map();
       CLAMP_UINT32 = (value) => Number.isSafeInteger(value) ? value >>> 0 : 0;
     }
   });
@@ -7746,12 +7828,12 @@
         length: strikeCount
       },
       (_, strikeIndex) => {
-        const SIDE2 = strikeIndex % 2 === 0 ? -1 : 1;
+        const SIDE3 = strikeIndex % 2 === 0 ? -1 : 1;
         return Object.freeze({
           strikeIndex,
           kernelIndex: strikeIndex % 2,
-          side: SIDE2,
-          angleOffsetRadians: SIDE2 * spreadRadians,
+          side: SIDE3,
+          angleOffsetRadians: SIDE3 * spreadRadians,
           dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
           attackMultiplier
         });
@@ -7839,10 +7921,10 @@
           if (TARGET && TARGET.hp > 0) {
             const DISTANCE = Math.hypot(TARGET.x - U.x, TARGET.y - U.y), REACH = TARGET.radius + U.radius + this.spec.range;
             if (DISTANCE <= REACH) {
-              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE2 = SLOT.angleOffsetRadians;
+              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE3 = SLOT.angleOffsetRadians;
               const FROM = {
-                x: U.x + Math.cos(AIM + SIDE2) * U.radius * 0.45,
-                y: U.y + Math.sin(AIM + SIDE2) * U.radius * 0.45,
+                x: U.x + Math.cos(AIM + SIDE3) * U.radius * 0.45,
+                y: U.y + Math.sin(AIM + SIDE3) * U.radius * 0.45,
                 z: 0
               };
               const TO = {
@@ -8374,7 +8456,7 @@
       init_raid_deployment_cards();
       init_signal();
       import_definition51 = __toESM(require_definition(), 1);
-      init_definition10();
+      init_definition14();
       init_mutation_notifications();
       init_unit_collection();
       init_farm_roster();
@@ -14507,7 +14589,7 @@
     }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     if (data.worldMap !== void 0) {
-      WORLD.worldMap = structuredClone(data.worldMap);
+      WORLD.worldMap = { challengeTile: -1, ...structuredClone(data.worldMap) };
     }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
@@ -14641,7 +14723,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.1";
+      PRODUCT_VERSION = "0.13.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15803,9 +15885,9 @@
         for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
           const POINTS = ARCS[arcIndex];
           for (let index = 0; index < POINTS.length; index++) {
-            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE2 = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
-            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE2;
-            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE2 * 0.42;
+            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE3 = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
+            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE3;
+            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE3 * 0.42;
             POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
           }
           const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
@@ -15847,7 +15929,7 @@
   }
 
   // src/features/scenes/farm/presentation.js
-  init_definition11();
+  init_definition15();
 
   // src/features/farm-modes/vfx-kit.js
   init_unit_grades();
@@ -16158,8 +16240,8 @@
   };
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
-      const T = CLAMP2(progress, 0, 1), SIDE2 = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
-        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE2 * Math.min(1, LENGTH / 1.2);
+      const T = CLAMP2(progress, 0, 1), SIDE3 = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
+        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE3 * Math.min(1, LENGTH / 1.2);
         return renderer.project(
           POSITION.x + NORMAL_X * ARC,
           POSITION.y + NORMAL_Y * ARC,
@@ -16523,7 +16605,7 @@
   };
 
   // src/features/scenes/raid/presentation.js
-  init_definition12();
+  init_definition16();
   init_farm_model();
   var RaidScenePresentation = class {
     constructor() {
@@ -16580,7 +16662,7 @@
   }
 
   // src/features/projectiles/seed/presentation.js
-  init_definition10();
+  init_definition14();
   var import_definition56 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
@@ -19203,6 +19285,7 @@
   init_species_catalog();
   init_farm_boss_stages();
   init_boss_rewards();
+  init_world_map();
   var RAID_SLEEP_SECONDS = 60;
   var RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
   var FAIL2 = (message) => {
@@ -19474,8 +19557,8 @@
     if (runSequence !== LEDGER.watermark + 1 || LEDGER.activeSequence !== runSequence || LEDGER.activeSessionId !== sessionId) {
       FAIL2("Raid settlement does not match the active Farm-local run");
     }
-    const RAID_STAGE = raidWorld?.boss?.stage, HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage;
-    if (!Number.isSafeInteger(HIGHEST_CLEARED_STAGE) || HIGHEST_CLEARED_STAGE < 0 || HIGHEST_CLEARED_STAGE > BOSS_REWARD_SETTINGS.maxStage || (outcome !== "aborted" || RAID_STAGE !== void 0) && (!Number.isSafeInteger(RAID_STAGE) || RAID_STAGE < 1 || RAID_STAGE > BOSS_REWARD_SETTINGS.maxStage) || Number.isSafeInteger(RAID_STAGE) && RAID_STAGE > HIGHEST_CLEARED_STAGE + 1) {
+    const RAID_STAGE = raidWorld?.boss?.stage, HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage, MAP_STAGE = farm.worldMap && (farm.worldMap.challengeTile ?? -1) >= 0 ? tileDanger(farm.worldMap, farm.worldMap.challengeTile) : -1;
+    if (!Number.isSafeInteger(HIGHEST_CLEARED_STAGE) || HIGHEST_CLEARED_STAGE < 0 || HIGHEST_CLEARED_STAGE > BOSS_REWARD_SETTINGS.maxStage || (outcome !== "aborted" || RAID_STAGE !== void 0) && (!Number.isSafeInteger(RAID_STAGE) || RAID_STAGE < 1 || RAID_STAGE > BOSS_REWARD_SETTINGS.maxStage) || Number.isSafeInteger(RAID_STAGE) && RAID_STAGE > HIGHEST_CLEARED_STAGE + 1 && RAID_STAGE !== MAP_STAGE) {
       FAIL2("Raid stage is locked or the private stage progress is invalid");
     }
     const FIRST_CLEAR = outcome === "victory" && RAID_STAGE > HIGHEST_CLEARED_STAGE;
@@ -19550,6 +19633,9 @@
     }
     if (outcome === "victory" || outcome === "defeat") {
       advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
+      if (privateFarm.worldMap) {
+        finishChallenge(privateFarm.worldMap, outcome === "victory" && RAID_STAGE === MAP_STAGE);
+      }
     }
     const RECEIPT = {
       key: KEY2,
@@ -19763,6 +19849,7 @@
       seed: 0,
       gauge: 0,
       exploreTarget: -1,
+      challengeTile: -1,
       revealed: [],
       cleared: [],
       farms: []
@@ -20086,7 +20173,7 @@
 
   // src/farm-snapshot-validation.js
   init_world_map();
-  init_definition16();
+  init_definition13();
   var INTEGER2 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
   function assertSnapshot(ok) {
@@ -20668,6 +20755,7 @@
     SNAPSHOT.materials ??= { wood: 0, stone: 0 };
     SNAPSHOT.savedSites ??= [];
     SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
+    SNAPSHOT.worldMap.challengeTile ??= -1;
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }
@@ -21447,6 +21535,81 @@
   init_ability_progression();
   init_boss_rewards();
   init_farm_boss_stages();
+
+  // src/world-map-screen.js
+  init_world_map();
+  var SIDE2 = WORLD_MAP_SETTINGS.radius * 2 + 1;
+  function createWorldMapScreen(grid, onSelect) {
+    const CELLS = [];
+    grid.style.setProperty("--world-map-side", String(SIDE2));
+    for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
+      const CELL = document.createElement("button");
+      CELL.type = "button";
+      CELL.className = "world-map__tile";
+      CELL.dataset.tile = String(index);
+      CELLS.push(CELL);
+      grid.append(CELL);
+    }
+    grid.addEventListener("click", (event) => {
+      const CELL = event.target.closest("[data-tile]");
+      if (CELL) {
+        onSelect(Number(CELL.dataset.tile));
+      }
+    });
+    return {
+      // Colour and label of one tile from the map state; the same text is the tile's accessible name.
+      render(map, selected) {
+        const NEXT = nextExploreTile(map), FARMS = new Set(map.farms.map((farm) => farm.tile));
+        CELLS.forEach((cell, index) => {
+          const LIT = isRevealed(map, index), NEST = LIT && hasNest(map, index), DONE = isCleared(map, index);
+          let state = "fog", label = "", name = "아직 안개에 덮여 있어요";
+          if (FARMS.has(index)) {
+            state = "farm";
+            label = "농";
+            name = "농장";
+          } else if (DONE) {
+            state = "cleared";
+            label = "✓";
+            name = "정리한 칸";
+          } else if (NEST) {
+            state = "nest";
+            label = String(tileDanger(map, index));
+            name = `보스 둥지, 위험도 ${label}단계`;
+          } else if (LIT) {
+            state = "lit";
+            name = farmDistance(map, index) <= WORLD_MAP_SETTINGS.safeRadius ? "농장 주변" : "빈 칸";
+          }
+          const CLASSES = ["world-map__tile", `world-map__tile--${state}`];
+          if (state === "nest" && canChallenge(map, index)) {
+            CLASSES.push("world-map__tile--open");
+          }
+          if (!LIT && index === NEXT) {
+            CLASSES.push("world-map__tile--next");
+          }
+          if (index === map.exploreTarget) {
+            CLASSES.push("world-map__tile--target");
+          }
+          if (index === selected) {
+            CLASSES.push("world-map__tile--selected");
+          }
+          const CLASS_NAME = CLASSES.join(" ");
+          if (cell.className !== CLASS_NAME) {
+            cell.className = CLASS_NAME;
+          }
+          if (cell.textContent !== label) {
+            cell.textContent = label;
+          }
+          cell.setAttribute("aria-label", `${tileX(index)}, ${tileY(index)} ${name}`);
+        });
+      },
+      center() {
+        CELLS[tileIndex(0, 0)]?.scrollIntoView({ block: "center", inline: "center" });
+      }
+    };
+  }
+
+  // src/farm-app.js
+  init_world_map();
   init_species_catalog();
   var DOLLAR2 = (id) => document.getElementById(id);
   var STORAGE = new FarmStorage();
@@ -21467,6 +21630,9 @@
   var farmSortTransition = null;
   var farmPanelRevision = -1;
   var bossEncounterOpen = false;
+  var bossMapMode = true;
+  var bossMapTile = -1;
+  var worldMapScreen = null;
   var bossSwipe = null;
   var bossPauseBeforeOpen = null;
   var lastAutoSettledRunKey = null;
@@ -22096,6 +22262,70 @@
     DOLLAR2("bossEncounterChallenge").title = REASON;
     return SELECTION;
   }
+  function mapChallengeBlockReason() {
+    if (!personalGarden) {
+      return raidStartBlockReason(false);
+    }
+    if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
+      return "도전할 둥지를 골라 주세요. 농장이나 정리한 칸과 맞닿은 둥지만 도전할 수 있어요.";
+    }
+    return raidStartBlockReason(false);
+  }
+  function renderWorldMap() {
+    if (!personalGarden) {
+      return;
+    }
+    const MAP = personalGarden.worldMap;
+    worldMapScreen ??= createWorldMapScreen(DOLLAR2("worldMapGrid"), selectWorldMapTile);
+    worldMapScreen.render(MAP, bossMapTile);
+    const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${exploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`, TILE = bossMapTile;
+    let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false;
+    if (TILE >= 0) {
+      const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
+      if (!isRevealed(MAP, TILE)) {
+        title = `안개 ${POSITION}`;
+        canExplore = canExploreTile(MAP, TILE);
+        info = canExplore ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}` : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
+      } else if (isCleared(MAP, TILE)) {
+        title = `정리한 칸 ${POSITION}`;
+        info = "다시 위협받지 않는 안전한 칸이에요.";
+      } else if (hasNest(MAP, TILE)) {
+        const STAGE = tileDanger(MAP, TILE), SPECIES = tileSpecies(MAP, TILE), STATS2 = bossStageStats(STAGE);
+        title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계`;
+        info = `체력 ${Math.round(STATS2.hp).toLocaleString("ko-KR")} · 공격력 ${Number(STATS2.attackPower.toPrecision(3)).toLocaleString("ko-KR")} · 승리 +${STATS2.xp.toLocaleString("ko-KR")} XP`;
+      } else {
+        title = `빈 칸 ${POSITION}`;
+        info = "아무것도 없는 칸이에요.";
+      }
+    }
+    DOLLAR2("worldMapTitle").textContent = title;
+    DOLLAR2("worldMapInfo").textContent = info;
+    DOLLAR2("worldMapExplore").hidden = !canExplore;
+    DOLLAR2("bossEncounterHint").textContent = mapChallengeBlockReason();
+    DOLLAR2("bossStageCounter").textContent = `정리 ${MAP.cleared.length}칸`;
+  }
+  function selectWorldMapTile(index) {
+    bossMapTile = bossMapTile === index ? -1 : index;
+    renderWorldMap();
+  }
+  function setBossView(mapMode) {
+    bossMapMode = mapMode;
+    const SCREEN = DOLLAR2("bossEncounterScreen");
+    SCREEN.dataset.view = mapMode ? "map" : "stage";
+    DOLLAR2("worldMapView").hidden = !mapMode;
+    DOLLAR2("bossEncounterViewport").hidden = mapMode;
+    DOLLAR2("bossViewToggle").textContent = mapMode ? "단계 선택" : "월드 지도";
+    DOLLAR2("bossEncounterChallenge").textContent = mapMode ? "둥지 도전" : "레이드 시작";
+    if (mapMode) {
+      renderWorldMap();
+      worldMapScreen.center();
+    } else {
+      DOLLAR2("bossEncounterHint").textContent = "위아래로 밀어 단계 이동";
+      if (personalGarden) {
+        renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
+      }
+    }
+  }
   function openBossEncounter(push = true) {
     stopWorldInput();
     if (active?.world?.scene === "raid") {
@@ -22125,7 +22355,7 @@
     bossEncounterOpen = true;
     document.body.dataset.bossScreen = "true";
     DOLLAR2("bossEncounterScreen").hidden = false;
-    renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
+    setBossView(bossMapMode);
     if (push) {
       history.pushState(null, "", "#/boss");
     }
@@ -22389,10 +22619,27 @@
     if (!persist()) {
       return;
     }
-    const CURRENT_STAGE = personalGarden.farmBossProgress.currentStage, HIGHEST_CLEARED_STAGE = personalGarden.farmBossProgress.highestClearedRaidStage, BOSS_STAGE = renderBossEncounterStage(CURRENT_STAGE);
-    if (!BOSS_STAGE || CURRENT_STAGE > HIGHEST_CLEARED_STAGE + 1 || !persist()) {
-      return;
+    const MAP_TILE = bossMapMode ? bossMapTile : -1;
+    let bossStage;
+    if (MAP_TILE >= 0) {
+      if (!beginChallenge(personalGarden.worldMap, MAP_TILE)) {
+        return;
+      }
+      bossStage = selectMapBossStage(personalGarden.farmBossProgress, personalGarden.worldMap, MAP_TILE);
+      personalGarden.markProgressChanged();
+      if (!persist()) {
+        personalGarden.worldMap.challengeTile = -1;
+        return;
+      }
+    } else {
+      personalGarden.worldMap.challengeTile = -1;
+      const CURRENT_STAGE = personalGarden.farmBossProgress.currentStage, HIGHEST_CLEARED_STAGE = personalGarden.farmBossProgress.highestClearedRaidStage;
+      bossStage = renderBossEncounterStage(CURRENT_STAGE);
+      if (!bossStage || CURRENT_STAGE > HIGHEST_CLEARED_STAGE + 1 || !persist()) {
+        return;
+      }
     }
+    const BOSS_STAGE = bossStage;
     const RESERVED = reservePersonalRaidRun();
     if (!RESERVED) {
       return;
@@ -22462,6 +22709,14 @@
     openBossEncounter();
   };
   DOLLAR2("bossEncounterBack").onclick = () => closeBossEncounter();
+  DOLLAR2("bossViewToggle").onclick = () => setBossView(!bossMapMode);
+  DOLLAR2("worldMapExplore").onclick = () => {
+    if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
+      personalGarden.markProgressChanged();
+      saveImmediate(personalGarden);
+      renderWorldMap();
+    }
+  };
   DOLLAR2("bossEncounterChallenge").onclick = () => {
     if (DOLLAR2("bossEncounterChallenge").disabled) {
       return;
@@ -22470,7 +22725,7 @@
     beginRaid(true);
   };
   DOLLAR2("bossEncounterScreen").addEventListener("pointerdown", (e) => {
-    if (!bossEncounterOpen || e.button > 0 || e.target.closest("button")) {
+    if (!bossEncounterOpen || bossMapMode || e.button > 0 || e.target.closest("button")) {
       return;
     }
     const VIEWPORT = DOLLAR2("bossEncounterViewport"), CARD = DOLLAR2("bossEncounterCard");
@@ -23333,7 +23588,7 @@
     } else if (e.key === "Escape" && menuOpen) {
       e.preventDefault();
       closeMenu();
-    } else if (bossEncounterOpen && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    } else if (bossEncounterOpen && !bossMapMode && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
       const CURRENT = personalGarden?.farmBossProgress?.currentStage || 1, HIGHEST_CLEARED = personalGarden?.farmBossProgress?.highestClearedRaidStage || 0, NEXT = e.key === "ArrowUp" ? Math.min(BOSS_REWARD_SETTINGS.maxStage, HIGHEST_CLEARED + 2, CURRENT + 1) : Math.max(1, CURRENT - 1);
       renderBossEncounterStage(NEXT);
@@ -23531,7 +23786,7 @@
       home || !BATTLE_HUD || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
     );
     {
-      const REASON = raidStartBlockReason(
+      const REASON = bossMapMode ? mapChallengeBlockReason() : raidStartBlockReason(
         personalGarden ? personalGarden.farmBossProgress.currentStage > personalGarden.farmBossProgress.highestClearedRaidStage + 1 : false
       );
       syncFlag("bossEncounterChallenge", "disabled", REASON !== "");

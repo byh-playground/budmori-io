@@ -179,6 +179,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         seed: 0,
         gauge: 0,
         exploreTarget: -1,
+        challengeTile: -1,
         revealed: [],
         cleared: [],
         farms: [],
