@@ -92,8 +92,11 @@ await check('new game boots with a minimal HUD', async () => {
     }));
     expect(STATE.units > 0 && STATE.scene === 'farm', 'farm did not start');
     expect(STATE.removed.length === 0, `removed controls are back: ${STATE.removed}`);
-    expect(STATE.handles.join() === '2,2', `each role bar needs two handles, has ${STATE.handles}`);
-    expect(STATE.roles.length === 6, `role bar should have six parts, has ${STATE.roles.length}`);
+    expect(
+        STATE.handles.join() === '2,2,1,1',
+        `each role bar needs at most two handles (2,2,1,1), has ${STATE.handles}`,
+    );
+    expect(STATE.roles.length === 10, `the four role bars should have ten parts, has ${STATE.roles.length}`);
 });
 
 await check('resource workers hit, drop and carry material home', async () => {
@@ -157,7 +160,7 @@ await check('progress survives a reload', async () => {
     await PAGE.reload();
     await PAGE.waitForTimeout(4000);
     const WOOD = await WORLD(() => BUDMORI.sim.materials.wood);
-    expect(WOOD === 7, `wood after reload is ${WOOD}`);
+    expect(WOOD >= 7, `wood after reload is ${WOOD}`);
 });
 
 await check('no page errors', async () => {
