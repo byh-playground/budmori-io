@@ -2967,7 +2967,6 @@ const GARDEN = class Garden {
         }
         this._workCount = NEXT.size;
         this._workRate = total;
-        this._exploreAngle = this._exploreDirection();
         assignWorkers(this, CONFIG);
     }
     get warehouseFull() {
@@ -2991,25 +2990,43 @@ const GARDEN = class Garden {
     tickExploration(seconds) {
         if (this.scene === 'farm' && advanceExploration(this.worldMap, this.exploreRate * seconds).length > 0) {
             this.markProgressChanged();
-            this._exploreAngle = this._exploreDirection();
         }
     }
-    // Which way the explorers face: from the first farm toward the tile being explored, in farm coordinates
-    // (the map's y runs down the screen, the farm's y runs up).
-    _exploreDirection() {
-        const TARGET = nextExploreTile(this.worldMap),
-            FARM = this.worldMap.farms[0]?.tile;
-        if (TARGET < 0 || FARM === undefined) {
-            return null;
-        }
-        return Math.atan2(-(tileY(TARGET) - tileY(FARM)), tileX(TARGET) - tileX(FARM));
-    }
-    // Explorers wait at the rim of the farm on the side of the tile they are exploring, spread out along it.
+    // Where an explorer goes. A tile within two cells of this farm is walked into: explorers spread out inside it
+    // and the fog lifts around them. A farther one is looked at from the rim of the farm on its side.
     exploreSpot(unit) {
-        if (this._exploreAngle === null || this._exploreAngle === undefined) {
+        const MAP = this.worldMap,
+            KEY = `${MAP.revealed.length}|${MAP.exploreTarget}|${this.activePlotId}|${MAP.farms.length}`;
+        if (this._exploreGoalKey !== KEY) {
+            this._exploreGoalKey = KEY;
+            const TARGET = nextExploreTile(MAP),
+                HERE = MAP.farms.find((farm) => farm.plotId === this.activePlotId)?.tile;
+            this._exploreGoal = null;
+            if (TARGET >= 0 && HERE !== undefined) {
+                const DX = tileX(TARGET) - tileX(HERE),
+                    DY = tileY(TARGET) - tileY(HERE);
+                this._exploreGoal = {
+                    dx: DX,
+                    dy: DY,
+                    near: Math.max(Math.abs(DX), Math.abs(DY)) <= 2,
+                    x: DX * FARM_CELL.width,
+                    y: -DY * FARM_CELL.height,
+                };
+            }
+        }
+        const GOAL = this._exploreGoal;
+        if (!GOAL) {
             return null;
         }
-        const ANGLE = this._exploreAngle + ((unit.id % 5) - 2) * 0.22,
+        if (GOAL.near) {
+            // Scattered over the tile the way seeds fall, so no two explorers stand on the same spot.
+            const ANGLE = unit.id * 2.39996,
+                RADIUS = 3 + ((unit.id * 7) % 11) * 1.5,
+                X = GOAL.x + Math.cos(ANGLE) * RADIUS,
+                Y = GOAL.y + Math.sin(ANGLE) * RADIUS * 0.75;
+            return { x: X, y: Y, fx: X + Math.cos(ANGLE), fy: Y + Math.sin(ANGLE), out: true };
+        }
+        const ANGLE = Math.atan2(GOAL.y, GOAL.x) + ((unit.id % 5) - 2) * 0.22,
             ARENA = CONFIG.farm.arena,
             // Out along the ray to the edge of the square farm.
             REACH = Math.min(
@@ -3018,7 +3035,7 @@ const GARDEN = class Garden {
             ),
             X = Math.cos(ANGLE) * REACH,
             Y = Math.sin(ANGLE) * REACH;
-        return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3 };
+        return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3, out: false };
     }
     // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
     get exploreRate() {
