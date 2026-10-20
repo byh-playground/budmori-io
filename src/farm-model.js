@@ -167,9 +167,8 @@ const CONFIG = Object.freeze({
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            defaultResourceBasisPoints: 2500,
-            defaultHaulBasisPoints: 1500,
-            defaultBuildBasisPoints: 1000,
+            defaultResourceBasisPoints: 4000,
+            defaultBuildBasisPoints: 1500,
             defaultExploreBasisPoints: 1000,
             facilityMaxLevel: FACILITY_MAX_LEVEL,
             levelCostStep: 0.75,
@@ -1377,7 +1376,6 @@ const GARDEN = class Garden {
         // Of the gatherers, how many go for wood (the rest go for stone), out of 10000.
         this.woodBasisPoints = 5000;
         this.materials = { wood: 0, stone: 0 };
-        this.haulBasisPoints = CONFIG.farm.work.defaultHaulBasisPoints;
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
         // A play setting like the worker ratio: how many units on neighbouring tiles walk about.
@@ -2598,7 +2596,6 @@ const GARDEN = class Garden {
     setWorkBasisPoints(
         basisPoints,
         resourceBasisPoints = this.resourceBasisPoints,
-        haulBasisPoints = this.haulBasisPoints,
         buildBasisPoints = this.buildBasisPoints,
         exploreBasisPoints = this.exploreBasisPoints,
     ) {
@@ -2606,17 +2603,15 @@ const GARDEN = class Garden {
         if (
             !VALID(basisPoints) ||
             !VALID(resourceBasisPoints) ||
-            !VALID(haulBasisPoints) ||
             !VALID(buildBasisPoints) ||
             !VALID(exploreBasisPoints) ||
-            resourceBasisPoints + haulBasisPoints + buildBasisPoints + exploreBasisPoints > 10000
+            resourceBasisPoints + buildBasisPoints + exploreBasisPoints > 10000
         ) {
             return false;
         }
         if (
             basisPoints === this.workBasisPoints &&
             resourceBasisPoints === this.resourceBasisPoints &&
-            haulBasisPoints === this.haulBasisPoints &&
             buildBasisPoints === this.buildBasisPoints &&
             exploreBasisPoints === this.exploreBasisPoints
         ) {
@@ -2624,7 +2619,6 @@ const GARDEN = class Garden {
         }
         this.workBasisPoints = basisPoints;
         this.resourceBasisPoints = resourceBasisPoints;
-        this.haulBasisPoints = haulBasisPoints;
         this.buildBasisPoints = buildBasisPoints;
         this.exploreBasisPoints = exploreBasisPoints;
         this._nextWorkerRefreshTick = 0;
@@ -2715,12 +2709,6 @@ const GARDEN = class Garden {
                           PLOT_TOTAL - BUILDERS - EXPLORERS,
                           Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000),
                       ),
-                HAULERS = RUSHING
-                    ? 0
-                    : Math.min(
-                          PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
-                          Math.round((PLOT_TOTAL * this.haulBasisPoints) / 10000),
-                      ),
                 PLOT = this.farmPlots.get(PLOT_ID),
                 MULTIPLIER = {
                     food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
@@ -2729,8 +2717,7 @@ const GARDEN = class Garden {
             // Roles are filled one after another, each taking the workers best suited to it.
             const COUNTS = {
                     build: BUILDERS,
-                    food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS - HAULERS,
-                    haul: HAULERS,
+                    food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
                     wood: Math.round((GATHERERS * this.woodBasisPoints) / 10000),
                     explore: EXPLORERS,
                 },
@@ -2763,16 +2750,14 @@ const GARDEN = class Garden {
     }
     get workerKindCounts() {
         let resource = 0,
-            haul = 0,
             build = 0,
             explore = 0;
         for (const KIND of this._workerKinds.values()) {
             resource += KIND === 'resource' ? 1 : 0;
-            haul += KIND === 'haul' ? 1 : 0;
             build += KIND === 'build' ? 1 : 0;
             explore += KIND === 'explore' ? 1 : 0;
         }
-        return { food: this._workerKinds.size - resource - haul - build - explore, resource, haul, build, explore };
+        return { food: this._workerKinds.size - resource - build - explore, resource, build, explore };
     }
     get workerCount() {
         return this._workCount;
@@ -2864,15 +2849,11 @@ const GARDEN = class Garden {
         }
         return share;
     }
-    // Gathering is two jobs. Gatherers walk to a forest or rock tile in their farm's sight and keep hitting it; every
-    // hit knocks material loose onto that tile's ground (a tile holds only so much). Haulers walk to the tile with the
-    // most lying around, pick up a small load and bring it home to their own farm, where it counts.
-    isGatherer(unit) {
-        return this._workerKinds.get(unit.id) === 'resource';
-    }
+    // Resource workers do both halves of gathering. They hit a forest or rock tile in their farm's sight, and every hit
+    // knocks material onto that tile's ground (a tile holds only so much). Once a load lies on the ground they pick it
+    // up and carry it home to their own farm, where it counts; otherwise they keep hitting.
     isHauler(unit) {
-        const KIND = this._workerKinds.get(unit.id);
-        return KIND === 'resource' || KIND === 'haul';
+        return this._workerKinds.get(unit.id) === 'resource';
     }
     dropsOn(tile) {
         return this._drops.get(tile) ?? 0;
@@ -2940,45 +2921,54 @@ const GARDEN = class Garden {
     haulState(unit) {
         let state = this._haul.get(unit.id);
         if (!state) {
-            state = { phase: 'out', tile: -1, kind: null, load: 0 };
+            state = { phase: 'out', job: 'hit', tile: -1, kind: null, load: 0, claim: 0 };
             this._haul.set(unit.id, state);
         }
         return state;
     }
-    // The tile with the most material on the ground within this farm's sight (nearer wins a tie), or -1.
-    _richestDropTile(plotId) {
-        let best = -1,
-            bestScore = -Infinity;
-        for (const [TILE, AMOUNT] of this._drops) {
-            if (AMOUNT < 1 || !inReach(this.worldMap, TILE, plotId)) {
-                continue;
+    // The tile in this farm's sight with a load lying on it that nobody is already coming for (a tile that has run out
+    // gives up what is left), the biggest pile first; -1 when there is none.
+    _loadTile(plotId) {
+        const CLAIMED = new Map();
+        for (const STATE of this._haul.values()) {
+            if (STATE.job === 'carry' && STATE.phase === 'out') {
+                CLAIMED.set(STATE.tile, (CLAIMED.get(STATE.tile) ?? 0) + STATE.claim);
             }
-            const AT = this.tileOffset(plotId, TILE),
-                SCORE = AMOUNT - Math.hypot(AT.x, AT.y) * 0.01;
-            if (SCORE > bestScore) {
+        }
+        let best = -1,
+            bestAmount = 0;
+        for (const [TILE, AMOUNT] of this._drops) {
+            const FREE = AMOUNT - (CLAIMED.get(TILE) ?? 0),
+                READY =
+                    FREE >= WORLD_MAP_SETTINGS.carryLoad || (FREE >= 1 && !(tileRemaining(this.worldMap, TILE) > 0));
+            if (READY && FREE > bestAmount && inReach(this.worldMap, TILE, plotId)) {
                 best = TILE;
-                bestScore = SCORE;
+                bestAmount = FREE;
             }
         }
         return best;
     }
     // Where a worker is headed right now, or null when there is nothing within sight to do.
     haulSpot(unit) {
-        const STATE = this.haulState(unit),
-            GATHER = this.isGatherer(unit);
-        if (GATHER && STATE.phase !== 'work' && STATE.phase !== 'out') {
-            STATE.phase = 'out';
-        }
-        if (GATHER && (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0))) {
-            const WANTED =
-                    this._workerResource.get(unit.id) ??
-                    (this.materials.wood <= this.materials.stone ? 'wood' : 'stone'),
-                TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
-            STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
-            STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
-        } else if (!GATHER && STATE.phase === 'out') {
-            STATE.tile = this._richestDropTile(unit.plotId);
-            STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
+        const STATE = this.haulState(unit);
+        if (STATE.phase === 'out') {
+            const LOAD_TILE = this._loadTile(unit.plotId);
+            if (LOAD_TILE >= 0) {
+                STATE.job = 'carry';
+                STATE.tile = LOAD_TILE;
+                STATE.claim = Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(LOAD_TILE));
+                STATE.kind = tileResource(this.worldMap, LOAD_TILE);
+            } else {
+                STATE.job = 'hit';
+                if (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0)) {
+                    const WANTED =
+                            this._workerResource.get(unit.id) ??
+                            (this.materials.wood <= this.materials.stone ? 'wood' : 'stone'),
+                        TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
+                    STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
+                    STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
+                }
+            }
         }
         const JITTER_X = ((unit.id * 37) % 100) / 100 - 0.5,
             JITTER_Y = ((unit.id * 53) % 100) / 100 - 0.5;
@@ -3013,7 +3003,13 @@ const GARDEN = class Garden {
         if (STATE.phase === 'out') {
             STATE.phase = 'work';
         }
-        if (STATE.phase === 'work' && this.isGatherer(unit)) {
+        if (STATE.phase === 'work' && STATE.job === 'carry') {
+            const LIFT = Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(STATE.tile));
+            this._drops.set(STATE.tile, this.dropsOn(STATE.tile) - LIFT);
+            STATE.load += LIFT;
+            STATE.claim = 0;
+            STATE.phase = STATE.load > 0 ? 'back' : 'out';
+        } else if (STATE.phase === 'work') {
             const MINE = this.worldMap.mines.includes(STATE.tile),
                 HERE = this.dropsOn(STATE.tile),
                 WANT = Math.min(
@@ -3027,14 +3023,10 @@ const GARDEN = class Garden {
                     STATE.tile = -1;
                 }
             }
-        } else if (STATE.phase === 'work') {
-            const ROOM = WORLD_MAP_SETTINGS.carryLoad - STATE.load,
-                LIFT = Math.min(ROOM, this.dropsOn(STATE.tile));
-            if (LIFT > 0) {
-                this._drops.set(STATE.tile, this.dropsOn(STATE.tile) - LIFT);
-                STATE.load += LIFT;
+            // A full load lies there now: stop hitting and carry it.
+            if (this._loadTile(unit.plotId) >= 0) {
+                STATE.phase = 'out';
             }
-            STATE.phase = STATE.load > 0 ? 'back' : 'out';
         } else if (STATE.phase === 'back') {
             const WHOLE = Math.floor(STATE.load);
             if (WHOLE > 0 && STATE.kind) {
@@ -3069,7 +3061,7 @@ const GARDEN = class Garden {
             for (const UNIT of this.unitCollection.unitsInPlot(PLOT_ID)) {
                 if (this.isWorker(UNIT) && UNIT.hp > 0 && this.isHauler(UNIT)) {
                     this._haulStep(UNIT, seconds, !REAL);
-                    if (REAL && this.isGatherer(UNIT)) {
+                    if (REAL && this._haul.get(UNIT.id)?.job !== 'carry') {
                         stepHaulSwing(this, UNIT, this._haul.get(UNIT.id), seconds);
                     }
                 }
@@ -3269,7 +3261,7 @@ const GARDEN = class Garden {
         if (kind === 'resource') {
             // Gatherers are not tied to a pile; this is what they would bring in without the walking.
             for (const UNIT of this.units) {
-                rate += this.isWorker(UNIT) && this.isGatherer(UNIT) ? this._workerRates.get(UNIT.id) || 0 : 0;
+                rate += this.isWorker(UNIT) && this.isHauler(UNIT) ? this._workerRates.get(UNIT.id) || 0 : 0;
             }
             return rate;
         }
