@@ -982,9 +982,20 @@ const DIORAMA = class Diorama {
                 this.ring(U.x, U.y, SHADOW * 1.12, GRADE_RING_COLORS[U.tier - 1], GRADE_RING_WIDTHS[U.tier - 1]);
             }
         }
+        // A fight on a tile of the map: the camera goes with the units, and they are drawn on that tile.
+        const SHIFT = sim2.scene === 'farm' ? sim2.battleShift() : null,
+            UNSHIFTED_OFFSET = this.offset;
+        if (SHIFT) {
+            this.setPan(-SHIFT.x, -SHIFT.y * WORLD_DEPTH_PROJECTION);
+            this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * WORLD_DEPTH_PROJECTION];
+        }
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
+        }
+        const RESTING = sim2.scene === 'farm' ? sim2.restingBosses(this.displayTimeMs / 1000) : [];
+        for (const R of RESTING) {
+            this.groundEllipse(R.x, R.y, R.radius * 1.05, R.radius * 0.75, '#38472c33');
         }
         const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
             ACTORS = this.actors;
@@ -1004,8 +1015,13 @@ const DIORAMA = class Diorama {
         if (BOSS_VISIBLE) {
             this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
         }
-        PRESENTATION.collectFood(this, sim2);
-        if (sim2.scene === 'farm') {
+        for (const R of RESTING) {
+            this.addActor(this.bossPresentation, R, 0.785 * R.y, 0, true);
+        }
+        if (!SHIFT) {
+            PRESENTATION.collectFood(this, sim2);
+        }
+        if (sim2.scene === 'farm' && !SHIFT) {
             this.addWorkActors(sim2);
         }
         if (BOSS_VISIBLE) {
@@ -1072,6 +1088,7 @@ const DIORAMA = class Diorama {
             }
         }
         drawFormationEffects(this, sim2);
+        this.offset = UNSHIFTED_OFFSET;
         this.stats = C.endFrame();
     }
     dispose() {

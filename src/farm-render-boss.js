@@ -30,8 +30,8 @@ export class BossPresentation {
         this.renderer = renderer;
         this.bossAttackPose = new BossAttackPose();
     }
-    bossPose(world) {
-        const B = world.boss,
+    bossPose(world, boss = world.boss) {
+        const B = boss,
             K = bossAttackPresentation(B).summoning
                 ? {
                       x: 0,
@@ -55,7 +55,7 @@ export class BossPresentation {
         };
     }
     bossMotion(b, world) {
-        const EVENT = world.farmBossEvent;
+        const EVENT = b === world.boss ? world.farmBossEvent : null;
         if (EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat') {
             return 'idle';
         }
@@ -77,9 +77,11 @@ export class BossPresentation {
         }
         return b.phase === 'chase' ? 'walk' : 'idle';
     }
-    draw(_source, world) {
-        const { b: B, p: P, k: K } = this.bossPose(world),
-            EVENT = world.farmBossEvent,
+    draw(source, world) {
+        // A boss standing on its tile of the map is drawn from its own record; the fighting one is the world's.
+        const BOSS = source && source.radius ? source : world.boss,
+            { b: B, p: P, k: K } = this.bossPose(world, BOSS),
+            EVENT = BOSS === world.boss ? world.farmBossEvent : null,
             SPECIES = B.species,
             PRESENTATION = bossAttackPresentation(B);
         const RECORD = this.renderer.bossSpeciesAssets.get(SPECIES);

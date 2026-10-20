@@ -215,6 +215,15 @@ body > header {
 .bossbar strong {
     font-weight: var(--ui-fw-b);
 }
+.bossbar #fightRetreat {
+    pointer-events: auto;
+    justify-self: end;
+    min-height: 32px;
+    padding: 4px 14px;
+}
+.bossbar #fightRetreat[hidden] {
+    display: none;
+}
 .bossbar small {
     color: var(--ui-ink-2);
     font-size: var(--ui-fs-1);

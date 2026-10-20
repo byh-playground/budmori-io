@@ -11,6 +11,14 @@ export function createFarmBossEventPhases(config) {
     class DroppingFarmBossEventPhase extends FarmBossEventPhase {
         update(world, dt) {
             world.farmBossEvent.elapsed += dt;
+            if (world.worldMap.challengeTile >= 0) {
+                // A boss of the map: the units march out to its tile first, then the fight begins.
+                if (world.farmBossEvent.elapsed >= config.farm.bossEvent.marchSeconds) {
+                    world.farmBossEvent.phase = 'fighting';
+                    world.farmBossEvent.elapsed = 0;
+                }
+                return true;
+            }
             world.boss.z = Math.max(
                 0,
                 config.raid.dropHeight -
@@ -39,6 +47,10 @@ export function createFarmBossEventPhases(config) {
                 world.finishFarmBossEvent('defeat');
                 return true;
             }
+            if (world.farmBossEvent.elapsed >= world.raidTimeLimit()) {
+                world.finishFarmBossEvent('defeat');
+                return true;
+            }
 
             return false;
         }
@@ -61,6 +73,7 @@ export function createFarmBossEventPhases(config) {
         update(world, dt) {
             world.farmBossEvent.elapsed += dt;
             if (world.farmBossEvent.elapsed >= config.farm.bossEvent.fadeSeconds) {
+                const VICTORY = world.farmBossEvent.outcome === 'victory';
                 world.farmBossEvent = {
                     phase: 'idle',
                     elapsed: 0,
@@ -72,6 +85,7 @@ export function createFarmBossEventPhases(config) {
                     rewardUnitId: 0,
                 };
                 world.boss = world.createBoss();
+                world.endMapFight(VICTORY);
             }
             return true;
         }
