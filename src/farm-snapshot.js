@@ -177,7 +177,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     savedSites: [],
     worldMap: {
         seed: 0,
-        gauge: 0,
+        progress: {},
         exploreTarget: -1,
         challengeTile: -1,
         buildTile: -1,

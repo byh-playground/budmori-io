@@ -40,7 +40,6 @@ import {
     beginChallenge,
     canChallenge,
     canExploreTile,
-    currentExploreCost,
     farmBuildBlock,
     inReach,
     TERRAIN_NAMES,
@@ -851,9 +850,9 @@ function worldMapFrame() {
     return {
         map: MAP,
         selected: bossMapTile,
-        progress: Math.min(1, MAP.gauge / currentExploreCost(MAP)),
+        targets: personalGarden.exploreTargets,
         explorers: personalGarden.workerKindCounts.explore,
-        rate: personalGarden.exploreWorkRate,
+        rate: personalGarden.exploreRate,
     };
 }
 function startWorldMapView() {
@@ -881,9 +880,7 @@ function syncMiniMap(visible) {
         miniMapView = null;
     }
     if (visible && personalGarden) {
-        const MAP = personalGarden.worldMap,
-            PERCENT = Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100);
-        syncText('miniMapLabel', `탐사 ${PERCENT}%`);
+        syncText('miniMapLabel', `탐사 ${Math.floor(personalGarden.exploreProgress * 100)}%`);
     }
 }
 // A tile lifted from the fog is announced where the player is looking, whether the map is open or not.
@@ -921,7 +918,7 @@ function renderWorldMap() {
     }
     const MAP = personalGarden.worldMap;
     const WORKERS = personalGarden.workerKindCounts.explore,
-        GAUGE = `탐사 ${Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100)}% · 탐사 일꾼 ${WORKERS}마리 · 현장 ${personalGarden.exploreOnSiteCount}마리`,
+        GAUGE = `탐사 ${Math.floor(personalGarden.exploreProgress * 100)}% · 탐사 일꾼 ${WORKERS}마리 · 현장 ${personalGarden.exploreOnSiteCount}마리`,
         TILE = bossMapTile;
     let title = '칸을 눌러 보세요',
         info = GAUGE,
@@ -1002,7 +999,7 @@ function setBossView(mapMode) {
         renderWorldMap();
         startWorldMapView();
         bossMapTicker = setInterval(() => {
-            personalGarden?.tickExploration(0.25, true);
+            personalGarden?.tickExploration(0.25, false);
             renderWorldMap();
         }, 250);
     } else {

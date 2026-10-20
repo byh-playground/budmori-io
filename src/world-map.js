@@ -1,5 +1,5 @@
 // The shared world map: one grid of tiles that every farm sits on.
-// Explorers fill an exploration gauge; every full gauge lifts the fog from one more tile. Which tiles hold a
+// Explorers pay for one tile at a time; once a tile is paid for its fog lifts. Which tiles hold a
 // boss nest, and how dangerous they are, is a pure function of the map seed and the distance to the nearest
 // farm, so the map needs no stored layout and can be settled offline with plain arithmetic.
 import { chooseBossSpecies } from './boss-rewards.js';
@@ -87,7 +87,7 @@ export function farmDistance(map, index) {
 export function createWorldMap(seed, firstPlotId) {
     const MAP = {
         seed: Number.isSafeInteger(seed) ? seed >>> 0 : 0,
-        gauge: 0,
+        progress: {},
         exploreTarget: -1,
         challengeTile: -1,
         buildTile: -1,
@@ -191,18 +191,14 @@ export function tileCost(map, index) {
         (hasNest(map, index) ? WORLD_MAP_SETTINGS.nestCost : 1);
     return Math.round(exploreCost(map) * MULTIPLIER);
 }
-// The cost of the tile the explorers are on right now.
-export function currentExploreCost(map) {
-    const NEXT = nextExploreTile(map);
-    return NEXT < 0 ? exploreCost(map) : tileCost(map, NEXT);
-}
 function touchesLight(index, lit) {
     const X = tileX(index),
         Y = tileY(index);
     return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && lit.has(tileIndex(X + dx, Y + dy)));
 }
-// The tile the explorers lift the fog from next: the chosen one when it is reachable, else the closest to a farm.
-export function nextExploreTile(map) {
+// The tile a farm's explorers go to: the one the player chose when it can be explored, otherwise the fog tile
+// closest to that farm among those it can see.
+export function exploreTargetFor(map, plotId) {
     const LIT = new Set(map.revealed);
     if (
         map.exploreTarget >= 0 &&
@@ -212,19 +208,36 @@ export function nextExploreTile(map) {
     ) {
         return map.exploreTarget;
     }
+    const FARM = map.farms.find((farm) => farm.plotId === plotId);
+    if (!FARM) {
+        return -1;
+    }
+    const REACH = farmReachOf(map, plotId),
+        FX = tileX(FARM.tile),
+        FY = tileY(FARM.tile);
     let best = -1,
         bestScore = Infinity;
-    for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
-        if (LIT.has(index) || !touchesLight(index, LIT) || !inReach(map, index)) {
-            continue;
-        }
-        const SCORE = farmDistance(map, index) + tileUnit(map.seed, index, 2) * 0.5;
-        if (SCORE < bestScore) {
-            best = index;
-            bestScore = SCORE;
+    for (let y = FY - REACH; y <= FY + REACH; y++) {
+        for (let x = FX - REACH; x <= FX + REACH; x++) {
+            if (!inside(x, y)) {
+                continue;
+            }
+            const INDEX = tileIndex(x, y);
+            if (LIT.has(INDEX) || !touchesLight(INDEX, LIT)) {
+                continue;
+            }
+            const SCORE = Math.max(Math.abs(x - FX), Math.abs(y - FY)) + tileUnit(map.seed, INDEX, 2) * 0.5;
+            if (SCORE < bestScore) {
+                best = INDEX;
+                bestScore = SCORE;
+            }
         }
     }
     return best;
+}
+// How much of a tile's cost the explorers have already paid, from 0 to 1.
+export function exploreFraction(map, index) {
+    return Math.min(1, (map.progress[index] ?? 0) / tileCost(map, index));
 }
 // A fogged tile can be picked as the next exploration target when it touches lit ground.
 export function canExploreTile(map, index) {
@@ -253,32 +266,29 @@ export function setExploreTarget(map, index) {
     map.exploreTarget = index;
     return true;
 }
-// Adds explorer work to the gauge and lifts the fog for every full gauge. Returns the tiles revealed.
-export function advanceExploration(map, points) {
-    const FOUND = [];
-    if (!(points > 0)) {
-        return FOUND;
+// Adds explorer work to one tile and lifts its fog once it is paid for. Returns the tiles revealed.
+export function advanceExploration(map, tile, points) {
+    if (
+        !(points > 0) ||
+        !Number.isSafeInteger(tile) ||
+        tile < 0 ||
+        tile >= WORLD_MAP_TILE_COUNT ||
+        isRevealed(map, tile)
+    ) {
+        return [];
     }
-    map.gauge += points;
-    while (FOUND.length < WORLD_MAP_TILE_COUNT) {
-        const NEXT = nextExploreTile(map);
-        if (NEXT < 0) {
-            map.gauge = 0;
-            break;
-        }
-        const COST = tileCost(map, NEXT);
-        if (map.gauge < COST) {
-            break;
-        }
-        map.gauge -= COST;
-        map.revealed.push(NEXT);
-        map.revealed.sort((a, b) => a - b);
-        if (map.exploreTarget === NEXT) {
-            map.exploreTarget = -1;
-        }
-        FOUND.push(NEXT);
+    const TOTAL = (map.progress[tile] ?? 0) + points;
+    if (TOTAL < tileCost(map, tile)) {
+        map.progress[tile] = TOTAL;
+        return [];
     }
-    return FOUND;
+    delete map.progress[tile];
+    map.revealed.push(tile);
+    map.revealed.sort((a, b) => a - b);
+    if (map.exploreTarget === tile) {
+        map.exploreTarget = -1;
+    }
+    return [tile];
 }
 // A new farm goes on lit ground that no farm holds yet, once every nest in the tile and the ring around it is cleared.
 export function farmBuildBlock(map, index) {
@@ -367,6 +377,15 @@ const SORTED_INDEXES = (list) =>
             value < WORLD_MAP_TILE_COUNT &&
             (position === 0 || value > list[position - 1]),
     );
+// Progress is kept per tile: only tiles still in the fog, with a positive amount.
+const VALID_PROGRESS = (progress) =>
+    !!progress &&
+    typeof progress === 'object' &&
+    !Array.isArray(progress) &&
+    Object.entries(progress).every(
+        ([key, value]) =>
+            /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value > 0,
+    );
 export function isValidWorldMap(map) {
     if (!map || typeof map !== 'object' || Array.isArray(map)) {
         return false;
@@ -375,15 +394,14 @@ export function isValidWorldMap(map) {
         .filter((key) => key !== 'challengeTile' && key !== 'buildTile')
         .sort()
         .join(',');
-    if (KEYS !== 'cleared,exploreTarget,farms,gauge,revealed,seed') {
+    if (KEYS !== 'cleared,exploreTarget,farms,progress,revealed,seed') {
         return false;
     }
     if (
         !Number.isSafeInteger(map.seed) ||
         map.seed < 0 ||
         map.seed > 0xffffffff ||
-        !Number.isFinite(map.gauge) ||
-        map.gauge < 0 ||
+        !VALID_PROGRESS(map.progress) ||
         !Number.isSafeInteger(map.exploreTarget) ||
         map.exploreTarget < -1 ||
         map.exploreTarget >= WORLD_MAP_TILE_COUNT ||

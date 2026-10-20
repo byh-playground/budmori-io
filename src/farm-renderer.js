@@ -21,7 +21,7 @@ import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-socket
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
 import { facilityPosition } from './farm-work.js';
-import { FARM_CELL, isRevealed, nextExploreTile, tileCost, tileTerrain, tileX, tileY, tileIndex } from './world-map.js';
+import { FARM_CELL, exploreFraction, isRevealed, tileTerrain, tileX, tileY, tileIndex } from './world-map.js';
 import { bossDangerContour } from './attack-telegraph.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -607,7 +607,7 @@ const DIORAMA = class Diorama {
     // grow with the exploration gauge until the whole tile is bright.
     drawLantern(world, map, index, ox, oy, paint, look) {
         const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
-            PROGRESS = Math.min(1, map.gauge / tileCost(map, index)),
+            PROGRESS = exploreFraction(map, index),
             REACH = 5 + 24 * PROGRESS,
             LIGHTS = [{ x: ox, y: oy, r: REACH * 0.7 * PROGRESS + 0.1 }];
         for (const UNIT of world.units) {
@@ -647,7 +647,7 @@ const DIORAMA = class Diorama {
             LIT = new Set(MAP.revealed),
             MARGIN = FARM_CELL.width * this.scale,
             PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])),
-            EXPLORING = nextExploreTile(MAP),
+            EXPLORING = world.exploreGoal(world.activePlotId)?.tile ?? -1,
             S = this.scale;
         const LOOK = (index, salt) => {
             let h = Math.imul(index + 1, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b);
@@ -685,7 +685,7 @@ const DIORAMA = class Diorama {
                         this.groundCell(OX, OY, '#e9e5d2');
                         this.groundCell(OX, OY, '#efecdc', 0.6);
                     }
-                    if (INDEX === EXPLORING) {
+                    if (INDEX === EXPLORING || (MAP.progress[INDEX] ?? 0) > 0) {
                         this.drawLantern(world, MAP, INDEX, OX, OY, PAINT, LOOK);
                     }
                     continue;
