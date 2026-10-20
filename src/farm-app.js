@@ -1,7 +1,6 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
 import { FormationSkillsUI } from './formation-skills-ui.js';
 import { RaidDeploymentCardsUI } from './raid-deployment-cards-ui.js';
-import { raidDeploymentCardSpecies } from './raid-deployment-cards.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession } from './farm-session.js';
@@ -19,12 +18,7 @@ import {
     renderFarmUpgradeTreeMarkup,
 } from './ability-tree.js';
 import { canResetPlayerProgression } from './ability-progression.js';
-import {
-    abortReservedRaidRun,
-    reserveRaidRun,
-    settleRaidOwnerFarm,
-    raidDeploymentRewardMultiplier,
-} from './raid-settlement.js';
+import { abortReservedRaidRun, settleRaidOwnerFarm, raidDeploymentRewardMultiplier } from './raid-settlement.js';
 import {
     advanceBossRewardReveal,
     bossRewardRollDescription,
@@ -33,10 +27,8 @@ import {
     settleBossKill,
     advanceBossRewardCalculations,
 } from './boss-rewards.js';
-import { selectMapBossStage } from './farm-boss-stages.js';
 import { createWorldMapView } from './world-map-view.js';
 import {
-    beginChallenge,
     canBuildMine,
     canChallenge,
     canExploreTile,
@@ -76,9 +68,6 @@ let farmPanelRevision = -1;
 let bossEncounterOpen = false;
 // A raid is a boss met on the world map; the screen is the map.
 let bossMapTile = -1;
-// While the party walks out to a boss on the map: where from, where to, and when it set off.
-let raidApproach = null;
-const RAID_APPROACH_MS = 1800;
 let worldMapView = null;
 let miniMapView = null;
 let lastLit = null;
@@ -763,16 +752,13 @@ install(new Garden());
 active.paused = true;
 function raidStartBlockReason() {
     if (!personalGarden) {
-        return '내 정원에서만 레이드를 시작할 수 있어요.';
+        return '내 정원에서만 보스에 도전할 수 있어요.';
     }
     if (personalGarden.farmBossEvent?.phase !== 'idle') {
-        return '농장 이벤트가 끝난 뒤에 시작할 수 있어요.';
+        return '이미 전투 중이에요.';
     }
-    if (personalGarden.activeRaidRunSequence !== null) {
-        return '진행 중인 레이드를 먼저 마쳐 주세요.';
-    }
-    if (!hasRaidRosterEntries(personalGarden.roster.residents())) {
-        return '투입할 수 있는 병력이 없어요. 유닛을 먼저 키워 주세요.';
+    if (!personalGarden.units.some((unit) => !unit.isBattleOnlySummon && unit.hp > 0)) {
+        return '싸울 유닛이 없어요. 유닛을 먼저 키워 주세요.';
     }
     return '';
 }
@@ -782,6 +768,9 @@ function mapChallengeBlockReason() {
     }
     if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
         return '도전할 보스를 골라 주세요. 농장 시야 안의 밝은 칸에 있는 보스만 도전할 수 있어요.';
+    }
+    if (!inReach(personalGarden.worldMap, bossMapTile, personalGarden.activePlotId)) {
+        return '지금 보고 있는 농장의 시야 밖이에요. 그 보스가 보이는 농장으로 옮겨 주세요.';
     }
     return raidStartBlockReason();
 }
@@ -795,7 +784,6 @@ function worldMapFrame() {
         map: MAP,
         selected: bossMapTile,
         targets: personalGarden.exploreTargets,
-        approach: raidApproach,
         explorers: personalGarden.workerKindCounts.explore,
         rate: personalGarden.exploreRate,
     };
@@ -1172,24 +1160,6 @@ function start(world, push = true, settle = false) {
         markSeen();
     }
 }
-function reservePersonalRaidRun(sessionId = null) {
-    let reserved;
-    try {
-        reserved = reserveRaidRun(snapshot(personalGarden), {
-            sessionId,
-        });
-    } catch (error) {
-        FAIL(error);
-        return null;
-    }
-    const CANDIDATE = restore(reserved.farm);
-    if (!saveImmediate(CANDIDATE)) {
-        FAIL(Error(STORAGE.error || '농장 레이드 예약을 저장하지 못했어요.'));
-        return null;
-    }
-    replacePersonalGarden(STORAGE.world);
-    return reserved;
-}
 function localSettlementRoster(world, ownerId, run) {
     const CURRENT = world.raidRosters?.find((roster) => roster.ownerId === ownerId);
     if (CURRENT) {
@@ -1305,72 +1275,18 @@ function persistRaidSettlement(raidWorld, ownerId) {
     replacePersonalGarden(STORAGE.world);
     return settled;
 }
-function beginRaid(push = true) {
-    if (
-        raidApproach ||
-        !personalGarden ||
-        active.world.scene === 'raid' ||
-        personalGarden.activeRaidRunSequence !== null ||
-        personalGarden.farmBossEvent?.phase !== 'idle' ||
-        !raidRosterEntries(personalGarden.roster.residents(), 1).length
-    ) {
+// The boss on the chosen tile of the map: the farm's units march out to it and fight there, on the farm screen.
+function beginRaid() {
+    if (!personalGarden || bossMapTile < 0 || mapChallengeBlockReason() !== '') {
         return;
     }
-    if (!persist()) {
+    if (!personalGarden.startMapBossFight(bossMapTile)) {
         return;
     }
-    // A boss on the world map: its stage and species come from the tile, and it is gone once beaten.
-    if (bossMapTile < 0 || !beginChallenge(personalGarden.worldMap, bossMapTile)) {
-        return;
-    }
-    const BOSS_STAGE = selectMapBossStage(personalGarden.farmBossProgress, personalGarden.worldMap, bossMapTile);
-    personalGarden.markProgressChanged();
-    if (!persist()) {
-        personalGarden.worldMap.challengeTile = -1;
-        return;
-    }
-    const RESERVED = reservePersonalRaidRun();
-    if (!RESERVED) {
-        return;
-    }
-    // The party walks out to the boss while the camera closes in on it, then the fight starts.
-    const FARM_TILE = personalGarden.worldMap.farms.find((farm) => farm.plotId === personalGarden.activePlotId)?.tile,
-        BOSS_TILE = bossMapTile;
-    raidApproach = {
-        from: FARM_TILE ?? personalGarden.worldMap.farms[0]?.tile,
-        tile: BOSS_TILE,
-        count: Math.min(
-            40,
-            raidRosterEntries(personalGarden.roster.residents(), CONFIG.raid.capacity.playerUnits).length,
-        ),
-        start: performance.now(),
-        ms: RAID_APPROACH_MS,
-    };
-    worldMapView?.focus(BOSS_TILE, 80, RAID_APPROACH_MS);
-    setTimeout(() => {
-        raidApproach = null;
-        startRaidBattle(BOSS_STAGE, RESERVED, push);
-    }, RAID_APPROACH_MS);
-}
-function startRaidBattle(bossStage, reserved, push) {
-    closeBossEncounter(false);
-    const BATTLE = Garden.createRaidBattle(
-        (personalGarden.seed + Math.floor(performance.now())) >>> 0,
-        ['solo'],
-        bossStage,
-    );
-    install(BATTLE);
-    active.queue('register-roster', {
-        entries: raidRosterEntries(personalGarden.roster.residents(), CONFIG.raid.capacity.playerUnits),
-        abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
-        deploymentCardSpecies: raidDeploymentCardSpecies(personalGarden.playerProgression.raidDeploymentCards),
-        settlement: {
-            sessionId: reserved.sessionId,
-            runSequence: reserved.runSequence,
-            encounterId: reserved.runSequence,
-        },
-    });
-    setHome(false, push);
+    bossPauseBeforeOpen = false;
+    closeBossEncounter(true);
+    active.paused = false;
+    active.loop.resetTiming();
 }
 async function returnToFarm(push = true) {
     stopWorldInput();
@@ -1422,6 +1338,9 @@ DOLLAR('menuBossEncounter').onclick = () => {
     closeMenu(false);
     openBossEncounter();
 };
+DOLLAR('fightRetreat').onclick = () => {
+    personalGarden?.retreatFromFight();
+};
 DOLLAR('bossEncounterBack').onclick = () => closeBossEncounter();
 DOLLAR('worldMapFit').onclick = () => {
     if (personalGarden) {
@@ -1455,7 +1374,7 @@ DOLLAR('bossEncounterChallenge').onclick = () => {
         say(REASON);
         return;
     }
-    beginRaid(true);
+    beginRaid();
 };
 DOLLAR('abortRaidRun').onclick = () => {
     if (active?.world?.scene === 'raid') {
@@ -2622,17 +2541,20 @@ function sync(display, now, notices) {
         STAGE_NAME = RAID && BOSS.stage ? `${BOSS.stage}단계` : '',
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 레이드 ${BOSS.stage}단계` : ENCOUNTER_NAME);
+    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
     syncText(
         'bossHealthNote',
-        RAID && W.running
-            ? `남은 시간 ${Math.max(0, Math.ceil(W.raidTimeLimit() - W.encounter.elapsed))}초`
-            : FARM_EVENT_ACTIVE
-              ? '상대 능력치 고정'
-              : '쓰러진 병력 포함 최대 체력',
+        FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'
+            ? '보스가 있는 칸으로 가는 중이에요'
+            : FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'fighting'
+              ? `남은 시간 ${Math.max(0, Math.ceil(W.raidTimeLimit() - FARM_EVENT.elapsed))}초`
+              : FARM_EVENT_ACTIVE
+                ? ''
+                : '쓰러진 병력 포함 최대 체력',
     );
+    syncFlag('fightRetreat', 'hidden', !(FARM_EVENT_ACTIVE && ['dropping', 'fighting'].includes(FARM_EVENT.phase)));
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
     syncAttribute('allyHealth', 'aria-valuemax', armyMax);
     syncAttribute('bossHealth', 'aria-valuenow', BOSS.hp);
@@ -2653,7 +2575,7 @@ function sync(display, now, notices) {
                     ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                     : `${ENCOUNTER_NAME} 격파`
               : BATTLE_OUTCOME === 'defeat'
-                ? `${ENCOUNTER_NAME} 레이드 종료 · 병력이 회복하는 동안 잠자요`
+                ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요`
                 : '',
     );
     syncFlag(
@@ -2669,7 +2591,6 @@ function sync(display, now, notices) {
     syncFlag('menuTabFarms', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabGrowth', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
-    syncText('return', RAID && W.running ? '후퇴' : '농장으로 돌아가기');
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
     syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
     syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');

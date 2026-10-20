@@ -49,6 +49,11 @@ import {
     canBuildFarm,
     createWorldMap,
     FARM_CELL,
+    beginChallenge,
+    finishChallenge,
+    inReach,
+    tileDanger,
+    tileSpecies,
     tileTerrain,
     finishFarmBuild,
     exploreFraction,
@@ -250,7 +255,8 @@ const CONFIG = Object.freeze({
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
         bossEvent: Object.freeze({
-            spawnChance: 0.01,
+            // The march out to the boss's tile before a fight begins.
+            marchSeconds: 2.5,
             fadeSeconds: 0.5,
             celebrationSeconds: 1,
         }),
@@ -2695,10 +2701,7 @@ const GARDEN = class Garden {
             return false;
         }
         this.warehouseFood--;
-        const EVENT = this.tryStartFarmBossEvent(x, y);
-        if (!EVENT) {
-            this.spawnFood(x, y, 1, { allowBossEvent: false });
-        }
+        this.spawnFood(x, y, 1);
         this.markProgressChanged();
         return true;
     }
@@ -3150,6 +3153,59 @@ const GARDEN = class Garden {
     isHauler(unit) {
         const KIND = this._workerKinds.get(unit.id);
         return KIND === 'resource' || (KIND === 'build' && !plotHasSite(this, unit.plotId));
+    }
+    // The bosses standing on their tiles of the map, in the farm's own coordinates, for drawing. The boss being
+    // fought is the world's own boss, so its tile is left out.
+    restingBosses(seconds = 0) {
+        this._resting ??= new Map();
+        const SHIFT = this.battleShift() ?? { x: 0, y: 0 },
+            OUT = [],
+            LIVE = new Set();
+        for (const TILE of this.worldMap.bosses) {
+            if (
+                this.farmBossEvent.phase !== 'idle' &&
+                this.farmBossEvent.phase !== 'dropping' &&
+                TILE === this.worldMap.challengeTile
+            ) {
+                continue;
+            }
+            LIVE.add(TILE);
+            const SPECIES = tileSpecies(this.worldMap, TILE);
+            let boss = this._resting.get(TILE);
+            if (!boss || boss.species !== SPECIES) {
+                boss = {
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                    radius: CONFIG.boss.radius,
+                    height: CONFIG.boss.height,
+                    hp: 1,
+                    maxHp: 1,
+                    species: SPECIES,
+                    stage: tileDanger(this.worldMap, TILE),
+                    flash: 0,
+                    travel: 0,
+                    clock: 0,
+                    angle: 0,
+                    facing: 0,
+                    patternPhase: 'idle',
+                    phase: 'idle',
+                    barleyArmorShredTotal: 0,
+                };
+                this._resting.set(TILE, boss);
+            }
+            const AT = this.tileOffset(this.activePlotId, TILE);
+            boss.x = AT.x - SHIFT.x;
+            boss.y = AT.y - SHIFT.y;
+            boss.clock = seconds + TILE * 0.37;
+            OUT.push(boss);
+        }
+        for (const TILE of [...this._resting.keys()]) {
+            if (!LIVE.has(TILE)) {
+                this._resting.delete(TILE);
+            }
+        }
+        return OUT;
     }
     // The tile's centre in the farm's own coordinates.
     tileOffset(plotId, tile) {
@@ -3623,7 +3679,7 @@ const GARDEN = class Garden {
             this._stepNeighbours(Math.min(elapsed, 0.1));
         }
     }
-    spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
+    spawnFood(x, y, count = 1, { from = null } = {}) {
         let spawned = 0;
         for (let i = 0; i < count && this.food.length < CONFIG.farm.work.maxFood; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5,
@@ -3634,9 +3690,6 @@ const GARDEN = class Garden {
             if (BOUNDARY > 1) {
                 tx /= BOUNDARY;
                 ty /= BOUNDARY;
-            }
-            if (allowBossEvent && this.tryStartFarmBossEvent(tx, ty)) {
-                continue;
             }
             const ANGLE = this.random() * Math.PI * 2,
                 SX = from ? from.x : Math.cos(ANGLE) * (CONFIG.farm.arena.radiusX + 0.7),
@@ -3663,12 +3716,15 @@ const GARDEN = class Garden {
         }
         return spawned;
     }
-    tryStartFarmBossEvent(x, y) {
+    // Challenge the boss on a tile of the map: the farm's units march out to its tile and fight there, all of them.
+    startMapBossFight(tile) {
         if (
             this.scene !== 'farm' ||
             this.boss.active ||
             this.farmBossEvent.phase !== 'idle' ||
-            this.random() >= CONFIG.farm.bossEvent.spawnChance
+            !inReach(this.worldMap, tile, this.activePlotId) ||
+            !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0 && u.plotId !== RESERVE_PLOT_ID) ||
+            !beginChallenge(this.worldMap, tile)
         ) {
             return false;
         }
@@ -3679,16 +3735,10 @@ const GARDEN = class Garden {
                 UNIT_LOCAL.chestnutNextThornTick = 0;
             }
         }
-        const SPECIES = this.randomBossSpecies(),
-            EVENT_STAGE = this.playerProgression.farmBossEventStage;
+        const SPECIES = tileSpecies(this.worldMap, tile);
         this.boss = this.createBoss(SPECIES);
-        this.configureBossStage(EVENT_STAGE, SPECIES);
-        Object.assign(this.boss, {
-            x,
-            y,
-            z: CONFIG.raid.dropHeight,
-            active: true,
-        });
+        this.configureBossStage(tileDanger(this.worldMap, tile), SPECIES);
+        Object.assign(this.boss, { x: 0, y: 0, z: 0, active: true });
         this.farmBossEvent = {
             phase: 'dropping',
             elapsed: 0,
@@ -3701,13 +3751,39 @@ const GARDEN = class Garden {
         };
         this.boss.encounterId = this.farmBossEvent.encounterId;
         this.boss.patternRuntime = createBossPatternRuntime();
-        this.combat('farm-boss-drop', {
-            x,
-            y,
-            z: this.boss.z,
-        });
         this.markProgressChanged();
         return true;
+    }
+    // Leaving a fight that is going on is a defeat.
+    retreatFromFight() {
+        if (this.farmBossEvent.phase === 'dropping') {
+            this.farmBossEvent.phase = 'fighting';
+            this.farmBossEvent.elapsed = 0;
+        }
+        return this.finishFarmBossEvent('defeat');
+    }
+    // Where the farm's units are drawn while they march out to the boss's tile and fight on it: the fight itself
+    // is simulated on the farm's own ground, and the picture of it is moved onto the tile.
+    battleShift() {
+        const TILE = this.worldMap.challengeTile ?? -1,
+            EVENT = this.farmBossEvent;
+        if (TILE < 0 || EVENT.phase === 'idle') {
+            return null;
+        }
+        const AT = this.tileOffset(this.activePlotId, TILE),
+            K =
+                EVENT.phase === 'dropping'
+                    ? Math.min(1, EVENT.elapsed / CONFIG.farm.bossEvent.marchSeconds)
+                    : EVENT.phase === 'fading'
+                      ? 1 - Math.min(1, EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds)
+                      : 1,
+            EASE = K * K * (3 - 2 * K);
+        return { x: AT.x * EASE, y: AT.y * EASE };
+    }
+    // The fight is over and the units are home: the boss is gone if it lost, and stays if it won.
+    endMapFight(victory) {
+        finishChallenge(this.worldMap, victory);
+        this.markProgressChanged();
     }
     getBossAcquisitionChance({ farmEvent = false } = {}) {
         return bossAcquisitionChance({
