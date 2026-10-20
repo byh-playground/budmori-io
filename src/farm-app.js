@@ -687,6 +687,7 @@ const WORK_STORAGE_KEYS = {
     resource: 'budmori.work.resourceBasisPoints',
     build: 'budmori.work.buildBasisPoints',
     explore: 'budmori.work.exploreBasisPoints',
+    walkers: 'budmori.neighbourWalkers',
 };
 // The worker ratio is a play setting, not part of the farm save, so old saves stay valid.
 function loadWorkSetting(key, fallback) {
@@ -694,6 +695,15 @@ function loadWorkSetting(key, fallback) {
         const RAW = localStorage.getItem(key),
             VALUE = Number(RAW);
         return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 10000 ? VALUE : fallback;
+    } catch {
+        return fallback;
+    }
+}
+function loadWalkerSetting(fallback) {
+    try {
+        const RAW = localStorage.getItem(WORK_STORAGE_KEYS.walkers),
+            VALUE = Number(RAW);
+        return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1000 ? VALUE : fallback;
     } catch {
         return fallback;
     }
@@ -735,6 +745,8 @@ function install(world) {
         onError: FAIL,
         onWorldStep,
     });
+    world.neighbourWalkers = loadWalkerSetting(world.neighbourWalkers);
+    DOLLAR('neighbourWalkers').value = String(world.neighbourWalkers);
     world.setWorkBasisPoints(
         loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
         loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
@@ -1929,6 +1941,14 @@ DOLLAR('plotPrev').onclick = () => switchAdjacentFarmPlot(-1);
 DOLLAR('plotNext').onclick = () => switchAdjacentFarmPlot(1);
 DOLLAR('farmExpand').onclick = () => {
     active.queue('farm-build', { facilityId: 'expand' });
+};
+DOLLAR('neighbourWalkers').onchange = (e) => {
+    const VALUE = Math.round(Number(e.target.value));
+    if (personalGarden && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1000) {
+        personalGarden.neighbourWalkers = VALUE;
+        saveWorkSetting(WORK_STORAGE_KEYS.walkers, VALUE);
+    }
+    e.target.value = String(personalGarden?.neighbourWalkers ?? VALUE);
 };
 DOLLAR('farmUnlock').onclick = () => {
     openBossEncounter();

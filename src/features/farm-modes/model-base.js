@@ -12,30 +12,32 @@ function wanderUnit(seed, salt) {
     return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 }
 
+// The old target orbited the farm faster than a unit could walk, so everyone chased it in small circles around the
+// middle and piled up there. Spots are spread evenly over the ground (square root of the radius), and the same unit
+// and time always give the same spot, so a unit that is only drawn can walk to it with plain arithmetic.
+export function restingSpot(unit, time, arena) {
+    const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7),
+        EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)),
+        ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2,
+        RADIUS = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT;
+    return { x: Math.cos(ANGLE) * RADIUS * arena.radiusX, y: Math.sin(ANGLE) * RADIUS * arena.radiusY };
+}
+
 export class FarmMode {
     constructor(feature, config) {
         this.feature = feature;
         this.config = config;
     }
     // A resting unit walks to a spot of its own and stays there a while before picking the next one.
-    // The old target orbited the farm faster than the unit could walk, so everyone chased it in small circles
-    // around the middle and piled up there. Spots are spread evenly over the ground (square root of the radius),
-    // and the same unit and time always pick the same spot.
     wander(world, unit, dt) {
         if (unit.migrate && world.stepMigrant(unit, dt)) {
             return;
         }
-        const ARENA = this.config.farm.arena,
-            PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7),
-            EPOCH = Math.floor(world.time / PERIOD + wanderUnit(unit.seed, 3)),
-            ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2,
-            RADIUS = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT,
-            X = Math.cos(ANGLE) * RADIUS * ARENA.radiusX,
-            Y = Math.sin(ANGLE) * RADIUS * ARENA.radiusY;
-        if (Math.hypot(X - unit.x, Y - unit.y) < WANDER_ARRIVE) {
+        const SPOT = restingSpot(unit, world.time, this.config.farm.arena);
+        if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) < WANDER_ARRIVE) {
             return;
         }
-        world.steer(unit, X, Y, dt, scaleMoveSpeed(1.3, unit));
+        world.steer(unit, SPOT.x, SPOT.y, dt, scaleMoveSpeed(1.3, unit));
     }
     update(world, unit, dt) {
         if (unit.stun > 0 || unit.z > 0.1) {

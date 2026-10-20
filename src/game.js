@@ -7005,6 +7005,10 @@
     h = Math.imul(h ^ h >>> 12, 695872825);
     return ((h ^ h >>> 15) >>> 0) / 4294967296;
   }
+  function restingSpot(unit, time, arena) {
+    const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7), EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)), ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2, RADIUS2 = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT;
+    return { x: Math.cos(ANGLE) * RADIUS2 * arena.radiusX, y: Math.sin(ANGLE) * RADIUS2 * arena.radiusY };
+  }
   var WANDER_SECONDS_MIN, WANDER_SECONDS_SPREAD, WANDER_EXTENT, WANDER_ARRIVE, FarmMode;
   var init_model_base4 = __esm({
     "src/features/farm-modes/model-base.js"() {
@@ -7019,18 +7023,15 @@
           this.config = config;
         }
         // A resting unit walks to a spot of its own and stays there a while before picking the next one.
-        // The old target orbited the farm faster than the unit could walk, so everyone chased it in small circles
-        // around the middle and piled up there. Spots are spread evenly over the ground (square root of the radius),
-        // and the same unit and time always pick the same spot.
         wander(world, unit, dt) {
           if (unit.migrate && world.stepMigrant(unit, dt)) {
             return;
           }
-          const ARENA = this.config.farm.arena, PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7), EPOCH = Math.floor(world.time / PERIOD + wanderUnit(unit.seed, 3)), ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2, RADIUS2 = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT, X = Math.cos(ANGLE) * RADIUS2 * ARENA.radiusX, Y = Math.sin(ANGLE) * RADIUS2 * ARENA.radiusY;
-          if (Math.hypot(X - unit.x, Y - unit.y) < WANDER_ARRIVE) {
+          const SPOT = restingSpot(unit, world.time, this.config.farm.arena);
+          if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) < WANDER_ARRIVE) {
             return;
           }
-          world.steer(unit, X, Y, dt, scaleMoveSpeed(1.3, unit));
+          world.steer(unit, SPOT.x, SPOT.y, dt, scaleMoveSpeed(1.3, unit));
         }
         update(world, unit, dt) {
           if (unit.stun > 0 || unit.z > 0.1) {
@@ -8578,6 +8579,7 @@
       init_projectile_behaviors();
       init_boss_event_phases();
       init_farm_mode_behaviors();
+      init_model_base4();
       init_boss_pattern_behaviors();
       init_boss_vector_sockets();
       init_model19();
@@ -8690,6 +8692,8 @@
             }),
             // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
             // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
+            // Units on the tiles next to the farm on screen walk about without collisions or contacts, up to this many.
+            neighbourWalkers: 300,
             migration: Object.freeze({ intervalSeconds: 20, emptierBy: 0.15, neighbourMaxFill: 0.9 }),
             facilitySpacing: 7,
             facilityRowX: 2,
@@ -9752,6 +9756,7 @@
           this.materials = { wood: 0, stone: 0 };
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
           this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
+          this.neighbourWalkers = CONFIG.farm.work.neighbourWalkers;
           let worldMap = null;
           Object.defineProperty(this, "worldMap", {
             enumerable: true,
@@ -11137,6 +11142,32 @@
             angle: Math.atan2(-(tileY(farm.tile) - tileY(HERE.tile)), tileX(farm.tile) - tileX(HERE.tile))
           }));
         }
+        // Resting units of the farms next to this one stroll to their own spots; only their positions change.
+        _stepNeighbours(seconds) {
+          let budget = this.neighbourWalkers;
+          if (!(budget > 0)) {
+            return;
+          }
+          const ARENA = CONFIG.farm.arena;
+          for (const PLOT of this._neighbourPlots()) {
+            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT.plotId)) {
+              if (budget <= 0) {
+                return;
+              }
+              if (UNIT3.hp <= 0 || this.isWorker(UNIT3)) {
+                continue;
+              }
+              budget--;
+              const SPOT = restingSpot(UNIT3, this.time, ARENA), DX = SPOT.x - UNIT3.x, DY = SPOT.y - UNIT3.y, DISTANCE = Math.hypot(DX, DY);
+              if (DISTANCE > 0.5) {
+                const STEP = Math.min(DISTANCE, scaleMoveSpeed(1.3, UNIT3) * seconds);
+                UNIT3.x += DX / DISTANCE * STEP;
+                UNIT3.y += DY / DISTANCE * STEP;
+                UNIT3.angle = Math.atan2(DY, DX);
+              }
+            }
+          }
+        }
         _fillOf(plotId) {
           const PLOT = this.farmPlots.get(plotId);
           return PLOT ? (this.roster.placedPopulation(plotId) + (this._breedPlotReservations.get(plotId) || 0)) / PLOT.capacity : 1;
@@ -11209,6 +11240,7 @@
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
             this._stepMigration(Math.min(elapsed, 0.1));
+            this._stepNeighbours(Math.min(elapsed, 0.1));
           }
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
@@ -14967,7 +14999,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.7";
+      PRODUCT_VERSION = "0.13.8";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23042,12 +23074,21 @@
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
     build: "budmori.work.buildBasisPoints",
-    explore: "budmori.work.exploreBasisPoints"
+    explore: "budmori.work.exploreBasisPoints",
+    walkers: "budmori.neighbourWalkers"
   };
   function loadWorkSetting(key, fallback) {
     try {
       const RAW = localStorage.getItem(key), VALUE = Number(RAW);
       return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e4 ? VALUE : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  function loadWalkerSetting(fallback) {
+    try {
+      const RAW = localStorage.getItem(WORK_STORAGE_KEYS.walkers), VALUE = Number(RAW);
+      return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e3 ? VALUE : fallback;
     } catch {
       return fallback;
     }
@@ -23082,6 +23123,8 @@
       onError: FAIL3,
       onWorldStep
     });
+    world.neighbourWalkers = loadWalkerSetting(world.neighbourWalkers);
+    DOLLAR2("neighbourWalkers").value = String(world.neighbourWalkers);
     world.setWorkBasisPoints(
       loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
       loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
@@ -24165,6 +24208,14 @@
   DOLLAR2("plotNext").onclick = () => switchAdjacentFarmPlot(1);
   DOLLAR2("farmExpand").onclick = () => {
     active.queue("farm-build", { facilityId: "expand" });
+  };
+  DOLLAR2("neighbourWalkers").onchange = (e) => {
+    const VALUE = Math.round(Number(e.target.value));
+    if (personalGarden && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e3) {
+      personalGarden.neighbourWalkers = VALUE;
+      saveWorkSetting(WORK_STORAGE_KEYS.walkers, VALUE);
+    }
+    e.target.value = String(personalGarden?.neighbourWalkers ?? VALUE);
   };
   DOLLAR2("farmUnlock").onclick = () => {
     openBossEncounter();
