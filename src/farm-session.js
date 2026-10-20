@@ -625,7 +625,11 @@ class FarmSession {
                     W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints, c.exploreBasisPoints)
                 );
             case 'farm-build':
-                return W.scene === 'farm' && typeof c.facilityId === 'string' && W.startBuild(c.facilityId);
+                return (
+                    W.scene === 'farm' &&
+                    typeof c.facilityId === 'string' &&
+                    W.startBuild(c.facilityId, { tile: Number.isSafeInteger(c.tile) ? c.tile : -1 })
+                );
             case 'farm-rush':
                 return W.scene === 'farm' && W.setBuildRush(c.on === true);
             case 'farm-sort':

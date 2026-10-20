@@ -8,6 +8,7 @@ import {
     canChallenge,
     hasNest,
     isCleared,
+    inReach,
     nextExploreTile,
     tileDanger,
     tileTerrain,
@@ -20,6 +21,7 @@ const RADIUS = WORLD_MAP_SETTINGS.radius;
 const COLORS = {
     background: '#efeadb',
     fog: '#e2dcc6',
+    fogFar: '#eeeadb',
     fogPuff: '#ece7d4',
     fogEdge: '#cfc8ae',
     land: ['#d3dfc6', '#cbd9be', '#d9e4cd'],
@@ -267,12 +269,15 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         }
         CONTEXT.stroke();
     }
-    function drawFog(index, x, y, s) {
+    function drawFog(index, x, y, s, reachable) {
         const INSET = Math.max(1, s * 0.05);
-        CONTEXT.fillStyle = COLORS.fog;
+        CONTEXT.fillStyle = reachable ? COLORS.fog : COLORS.fogFar;
         CONTEXT.beginPath();
         CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
         CONTEXT.fill();
+        if (!reachable) {
+            return;
+        }
         CONTEXT.fillStyle = COLORS.fogPuff;
         for (let puff = 0; puff < 3; puff++) {
             CONTEXT.beginPath();
@@ -475,7 +480,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
                 } else if (
                     NEIGHBOURS.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))
                 ) {
-                    drawFog(INDEX, PX, PY, S);
+                    drawFog(INDEX, PX, PY, S, inReach(map, INDEX));
                 }
             }
         }

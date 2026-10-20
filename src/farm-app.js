@@ -41,6 +41,8 @@ import {
     canChallenge,
     canExploreTile,
     currentExploreCost,
+    farmBuildBlock,
+    inReach,
     TERRAIN_NAMES,
     tileTerrain,
     hasNest,
@@ -911,7 +913,8 @@ function renderWorldMap() {
         TILE = bossMapTile;
     let title = '칸을 눌러 보세요',
         info = GAUGE,
-        canExplore = false;
+        canExplore = false,
+        canBuild = false;
     if (TILE >= 0) {
         const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
         if (!isRevealed(MAP, TILE)) {
@@ -919,7 +922,9 @@ function renderWorldMap() {
             canExplore = canExploreTile(MAP, TILE);
             info = canExplore
                 ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}`
-                : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
+                : !inReach(MAP, TILE)
+                  ? '농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요.'
+                  : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
         } else if (isCleared(MAP, TILE)) {
             title = `정리한 칸 ${POSITION}`;
             info = '다시 위협받지 않는 안전한 칸이에요.';
@@ -934,9 +939,30 @@ function renderWorldMap() {
             info = '아무것도 없는 칸이에요.';
         }
     }
+    if (TILE >= 0 && isRevealed(MAP, TILE)) {
+        const BLOCK = farmBuildBlock(MAP, TILE),
+            PLOT = personalGarden.projectInfo('plot'),
+            COST = PLOT ? `목재 ${PLOT.cost.wood} · 돌 ${PLOT.cost.stone}` : '',
+            BUILDING = !!personalGarden.siteOf('plot') || MAP.buildTile >= 0;
+        if (MAP.farms.some((farm) => farm.tile === TILE)) {
+            title = `농장 ${tileX(TILE)}, ${tileY(TILE)}`;
+            info = '여기서 탐사 반경이 뻗어요. 농장 안에 망루를 지으면 더 멀리 닿아요.';
+        } else if (BLOCK === 'nest') {
+            info = `${info} 새 농장은 이 칸과 둘레 1칸의 둥지를 모두 정리해야 지을 수 있어요.`;
+        } else if (BLOCK === null) {
+            canBuild = !BUILDING && !!PLOT;
+            info = `${info} ${BUILDING ? '다른 새 농장을 짓는 중이에요.' : `새 농장을 지을 수 있어요 · ${COST}`}`;
+        }
+    }
     DOLLAR('worldMapTitle').textContent = title;
     DOLLAR('worldMapInfo').textContent = info;
     DOLLAR('worldMapExplore').hidden = !canExplore;
+    DOLLAR('worldMapBuild').hidden = !canBuild;
+    DOLLAR('worldMapBuild').disabled =
+        !canBuild ||
+        !personalGarden.projectInfo('plot') ||
+        personalGarden.materials.wood < personalGarden.projectInfo('plot').cost.wood ||
+        personalGarden.materials.stone < personalGarden.projectInfo('plot').cost.stone;
     DOLLAR('bossEncounterHint').textContent = mapChallengeBlockReason();
     DOLLAR('bossStageCounter').textContent = `정리 ${MAP.cleared.length}칸`;
 }
@@ -1391,6 +1417,12 @@ DOLLAR('worldMapFit').onclick = () => {
     }
 };
 DOLLAR('miniMap').onclick = () => openBossEncounter();
+DOLLAR('worldMapBuild').onclick = () => {
+    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild('plot', { tile: bossMapTile })) {
+        saveImmediate(personalGarden);
+        renderWorldMap();
+    }
+};
 DOLLAR('worldMapExplore').onclick = () => {
     if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
         personalGarden.markProgressChanged();
@@ -1663,8 +1695,8 @@ function drawFarmPanel() {
         : '<b>농장 확장</b><small>최대 크기예요</small>';
     DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.siteOf('expand') || !CAN_PAY(EXPAND);
     DOLLAR('farmUnlock').innerHTML =
-        `<b>새 농장 짓기</b><small>${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? '' : ' · 부족해요'}</small>`;
-    DOLLAR('farmUnlock').disabled = LOCKED || !!W.siteOf('plot') || !CAN_PAY(PLOT);
+        `<b>새 농장 짓기</b><small>지도에서 칸을 골라요 · ${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? '' : ' · 부족해요'}</small>`;
+    DOLLAR('farmUnlock').disabled = LOCKED || !!W.siteOf('plot');
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
@@ -1898,7 +1930,10 @@ DOLLAR('plotNext').onclick = () => switchAdjacentFarmPlot(1);
 DOLLAR('farmExpand').onclick = () => {
     active.queue('farm-build', { facilityId: 'expand' });
 };
-DOLLAR('farmUnlock').onclick = () => active.queue('farm-build', { facilityId: 'plot' });
+DOLLAR('farmUnlock').onclick = () => {
+    openBossEncounter();
+    setBossView(true);
+};
 DOLLAR('farmPlotActions').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-farm-sort]');
     if (BUTTON) {
@@ -2655,7 +2690,7 @@ function sync(display, now, notices) {
         const ID = BUTTON.dataset.facility,
             SPEC = CONFIG.farm.work.facilities[ID],
             LEVEL = WORK_WORLD.facilityLevel(ID),
-            MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel,
+            MAXED = LEVEL >= (SPEC.maxLevel ?? CONFIG.farm.work.facilityMaxLevel),
             INFO = WORK_WORLD.projectInfo(ID),
             COST = INFO?.cost || { wood: 0, stone: 0 };
         BUTTON.disabled =

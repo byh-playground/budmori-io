@@ -592,7 +592,7 @@
       INITIAL_FARM_PLOT_ID = "plot-1";
       RESERVE_PLOT_ID = "reserve";
       MAX_FARM_FOOD = 140;
-      FACILITY_IDS = Object.freeze(["windmill", "granary", "rack"]);
+      FACILITY_IDS = Object.freeze(["windmill", "granary", "rack", "tower"]);
       FACILITY_MAX_LEVEL = 5;
       FarmPlot = class _FarmPlot {
         constructor(state, food = []) {
@@ -2035,6 +2035,19 @@
     value ^= value + Math.imul(value ^ value >>> 7, value | 61);
     return ((value ^ value >>> 14) >>> 0) / 4294967296;
   }
+  function setReachProvider(map, provider) {
+    REACH_PROVIDERS.set(map, provider);
+  }
+  function farmReachOf(map, plotId) {
+    const EXTRA = REACH_PROVIDERS.get(map)?.(plotId) ?? 0;
+    return WORLD_MAP_SETTINGS.baseReach + Math.max(0, EXTRA);
+  }
+  function inReach(map, index) {
+    const X = tileX(index), Y = tileY(index);
+    return map.farms.some(
+      (farm) => Math.max(Math.abs(X - tileX(farm.tile)), Math.abs(Y - tileY(farm.tile))) <= farmReachOf(map, farm.plotId)
+    );
+  }
   function farmTiles(map) {
     return map.farms.map((farm) => farm.tile);
   }
@@ -2052,6 +2065,7 @@
       gauge: 0,
       exploreTarget: -1,
       challengeTile: -1,
+      buildTile: -1,
       revealed: [],
       cleared: [],
       farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }]
@@ -2132,12 +2146,12 @@
   }
   function nextExploreTile(map) {
     const LIT = new Set(map.revealed);
-    if (map.exploreTarget >= 0 && !LIT.has(map.exploreTarget) && touchesLight(map.exploreTarget, LIT)) {
+    if (map.exploreTarget >= 0 && !LIT.has(map.exploreTarget) && touchesLight(map.exploreTarget, LIT) && inReach(map, map.exploreTarget)) {
       return map.exploreTarget;
     }
     let best = -1, bestScore = Infinity;
     for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
-      if (LIT.has(index) || !touchesLight(index, LIT)) {
+      if (LIT.has(index) || !touchesLight(index, LIT) || !inReach(map, index)) {
         continue;
       }
       const SCORE = farmDistance(map, index) + tileUnit(map.seed, index, 2) * 0.5;
@@ -2149,7 +2163,7 @@
     return best;
   }
   function canExploreTile(map, index) {
-    return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && !isRevealed(map, index) && touchesLight(index, new Set(map.revealed));
+    return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && !isRevealed(map, index) && touchesLight(index, new Set(map.revealed)) && inReach(map, index);
   }
   function setExploreTarget(map, index) {
     if (index === -1) {
@@ -2160,7 +2174,7 @@
     if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || LIT.has(index)) {
       return false;
     }
-    if (!touchesLight(index, LIT)) {
+    if (!touchesLight(index, LIT) || !inReach(map, index)) {
       return false;
     }
     map.exploreTarget = index;
@@ -2192,6 +2206,60 @@
     }
     return FOUND;
   }
+  function farmBuildBlock(map, index) {
+    if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || !isRevealed(map, index)) {
+      return "unexplored";
+    }
+    if (map.farms.some((farm) => farm.tile === index)) {
+      return "occupied";
+    }
+    const X = tileX(index), Y = tileY(index);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!inside(X + dx, Y + dy)) {
+          continue;
+        }
+        const AROUND = tileIndex(X + dx, Y + dy);
+        if (hasNest(map, AROUND) && !isCleared(map, AROUND)) {
+          return "nest";
+        }
+      }
+    }
+    return null;
+  }
+  function canBuildFarm(map, index) {
+    return farmBuildBlock(map, index) === null;
+  }
+  function beginFarmBuild(map, index) {
+    if (!canBuildFarm(map, index)) {
+      return false;
+    }
+    map.buildTile = index;
+    return true;
+  }
+  function finishFarmBuild(map, plotId) {
+    let tile = map.buildTile ?? -1;
+    if (!(tile >= 0 && canBuildFarm(map, tile))) {
+      tile = -1;
+      let bestDistance = Infinity;
+      for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
+        if (!canBuildFarm(map, index)) {
+          continue;
+        }
+        const DISTANCE = farmDistance(map, index);
+        if (DISTANCE < bestDistance) {
+          tile = index;
+          bestDistance = DISTANCE;
+        }
+      }
+    }
+    map.buildTile = -1;
+    if (tile < 0) {
+      return -1;
+    }
+    map.farms.push({ plotId, tile });
+    return tile;
+  }
   function markCleared(map, index) {
     if (!isRevealed(map, index) || isCleared(map, index)) {
       return false;
@@ -2204,19 +2272,19 @@
     if (!map || typeof map !== "object" || Array.isArray(map)) {
       return false;
     }
-    const KEYS = Object.keys(map).filter((key) => key !== "challengeTile").sort().join(",");
+    const KEYS = Object.keys(map).filter((key) => key !== "challengeTile" && key !== "buildTile").sort().join(",");
     if (KEYS !== "cleared,exploreTarget,farms,gauge,revealed,seed") {
       return false;
     }
-    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !Number.isFinite(map.gauge) || map.gauge < 0 || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.cleared) || !Array.isArray(map.farms) || map.farms.length === 0) {
+    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !Number.isFinite(map.gauge) || map.gauge < 0 || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !(map.buildTile === void 0 || Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.cleared) || !Array.isArray(map.farms) || map.farms.length === 0) {
       return false;
     }
     const LIT = new Set(map.revealed);
-    return map.cleared.every((index) => LIT.has(index)) && map.farms.every(
+    return map.cleared.every((index) => LIT.has(index)) && new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length && map.farms.every(
       (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
     );
   }
-  var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, TERRAIN_NAMES, SORTED_INDEXES;
+  var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, SORTED_INDEXES;
   var init_world_map = __esm({
     "src/world-map.js"() {
       init_boss_rewards();
@@ -2232,7 +2300,9 @@
         terrainCost: { plain: 1, forest: 1.5, rock: 2, swamp: 2.5 },
         nestCost: 1.5,
         // Stages added per tile of straight-line distance beyond the first ring of nests.
-        dangerPerTile: 4
+        dangerPerTile: 4,
+        // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
+        baseReach: 2
       };
       SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
       WORLD_MAP_TILE_COUNT = SIDE * SIDE;
@@ -2246,6 +2316,7 @@
         [0, 1],
         [1, 1]
       ];
+      REACH_PROVIDERS = /* @__PURE__ */ new WeakMap();
       TERRAIN_NAMES = { plain: "평지", forest: "숲", rock: "바위산", swamp: "늪" };
       SORTED_INDEXES = (list) => Array.isArray(list) && list.every(
         (value, position2) => Number.isSafeInteger(value) && value >= 0 && value < WORLD_MAP_TILE_COUNT && (position2 === 0 || value > list[position2 - 1])
@@ -8570,7 +8641,13 @@
             levelHitsStep: 0.6,
             projects: Object.freeze({
               expand: Object.freeze({ name: "농장 확장", hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
-              plot: Object.freeze({ name: "새 농장", hits: 300, cost: Object.freeze({ wood: 40, stone: 40 }) })
+              plot: Object.freeze({
+                name: "새 농장",
+                hits: 300,
+                cost: Object.freeze({ wood: 40, stone: 40 }),
+                // Each farm already built makes the next one this many times dearer.
+                costGrowth: 1.5
+              })
             }),
             levelEffectStep: 0.25,
             facilities: Object.freeze({
@@ -8591,6 +8668,15 @@
                 hits: 100,
                 cost: Object.freeze({ wood: 8, stone: 8 }),
                 effect: "레벨마다 자원 일꾼이 25% 빨라져요"
+              }),
+              tower: Object.freeze({
+                name: "망루",
+                hits: 150,
+                cost: Object.freeze({ wood: 40, stone: 40 }),
+                // Every level costs twice the one before, and the tower stops after three.
+                costGrowth: 2,
+                maxLevel: 3,
+                effect: "레벨마다 이 농장의 탐사 반경이 1칸 넓어져요"
               })
             }),
             pileKinds: Object.freeze({
@@ -9659,6 +9745,16 @@
           this.materials = { wood: 0, stone: 0 };
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
           this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
+          let worldMap = null;
+          Object.defineProperty(this, "worldMap", {
+            enumerable: true,
+            configurable: true,
+            get: () => worldMap,
+            set: (map) => {
+              worldMap = map;
+              setReachProvider(map, (plotId) => this.farmPlots?.get(plotId)?.facilityLevel("tower") ?? 0);
+            }
+          });
           this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
           this.buildRush = false;
           this._workerKinds = /* @__PURE__ */ new Map();
@@ -10776,7 +10872,7 @@
           let level;
           if (FACILITY) {
             level = this.facilityLevel(kind) + 1;
-            if (level > WORK.facilityMaxLevel) {
+            if (level > (FACILITY.maxLevel ?? WORK.facilityMaxLevel)) {
               return null;
             }
           } else if (kind === "expand") {
@@ -10789,11 +10885,11 @@
           } else {
             return null;
           }
-          const SPEC = FACILITY || PROJECT, COST_FACTOR = 1 + WORK.levelCostStep * (level - 1), HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1);
+          const SPEC = FACILITY || PROJECT, COST_FACTOR = SPEC.costGrowth ? SPEC.costGrowth ** (level - 1) : 1 + WORK.levelCostStep * (level - 1), HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1), ROUND = SPEC.costGrowth ? Math.round : Math.ceil;
           return {
             name: SPEC.name,
             level,
-            cost: { wood: Math.ceil(SPEC.cost.wood * COST_FACTOR), stone: Math.ceil(SPEC.cost.stone * COST_FACTOR) },
+            cost: { wood: ROUND(SPEC.cost.wood * COST_FACTOR), stone: ROUND(SPEC.cost.stone * COST_FACTOR) },
             hits: Math.ceil(SPEC.hits * HITS_FACTOR)
           };
         }
@@ -10809,13 +10905,16 @@
           return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
         }
         // Starts a construction. The materials are paid up front; the work itself is done by the units.
-        startBuild(kind) {
+        startBuild(kind, { tile = -1 } = {}) {
           const INFO = this.projectInfo(kind);
-          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || this.running || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
+          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || kind === "plot" && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile)) || this.running || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
             return false;
           }
           this.materials.wood -= INFO.cost.wood;
           this.materials.stone -= INFO.cost.stone;
+          if (kind === "plot") {
+            beginFarmBuild(this.worldMap, tile);
+          }
           startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId);
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
@@ -10827,7 +10926,7 @@
             this.farmPlots.get(site.plotId)?.expand();
             this.restoreReservePopulation();
           } else if (site.facility === "plot") {
-            this._addFarmPlot();
+            finishFarmBuild(this.worldMap, this._addFarmPlot());
           } else {
             this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
           }
@@ -14649,7 +14748,7 @@
     }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     if (data.worldMap !== void 0) {
-      WORLD.worldMap = { challengeTile: -1, ...structuredClone(data.worldMap) };
+      WORLD.worldMap = { challengeTile: -1, buildTile: -1, ...structuredClone(data.worldMap) };
     }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
@@ -14783,7 +14882,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.5";
+      PRODUCT_VERSION = "0.13.6";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18209,6 +18308,12 @@
           this.ellipse(X, BASE.y - 0.35 * S, 0.8 * S, 0.45 * S, "#c9a96a");
           this.ellipse(X, BASE.y - 0.85 * S, 0.9 * S, 0.3 * S, "#b9774a");
           this.ellipse(X, BASE.y - 0.3 * S, 0.2 * S, 0.28 * S, "#7a5a34");
+        } else if (FACILITY.id === "tower") {
+          this.ellipse(X, BASE.y - 0.55 * S, 0.34 * S, 0.75 * S, "#cfc7b3");
+          this.ellipse(X, BASE.y - 1.25 * S, 0.5 * S, 0.2 * S, "#b9774a");
+          this.ellipse(X, BASE.y - 0.3 * S, 0.12 * S, 0.2 * S, "#7a5a34");
+          this.ellipse(X + 0.05 * S, BASE.y - 1.6 * S, 0.03 * S, 0.3 * S, "#7a5a34");
+          this.ellipse(X + 0.2 * S, BASE.y - 1.75 * S, 0.17 * S, 0.1 * S, "#7fa77a");
         } else {
           this.ellipse(X - 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, "#7a5a34");
           this.ellipse(X + 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, "#7a5a34");
@@ -18965,7 +19070,7 @@
         case "farm-work":
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints, c.exploreBasisPoints);
         case "farm-build":
-          return W.scene === "farm" && typeof c.facilityId === "string" && W.startBuild(c.facilityId);
+          return W.scene === "farm" && typeof c.facilityId === "string" && W.startBuild(c.facilityId, { tile: Number.isSafeInteger(c.tile) ? c.tile : -1 });
         case "farm-rush":
           return W.scene === "farm" && W.setBuildRush(c.on === true);
         case "farm-sort":
@@ -19910,6 +20015,7 @@
       gauge: 0,
       exploreTarget: -1,
       challengeTile: -1,
+      buildTile: -1,
       revealed: [],
       cleared: [],
       farms: []
@@ -20816,6 +20922,7 @@
     SNAPSHOT.savedSites ??= [];
     SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
     SNAPSHOT.worldMap.challengeTile ??= -1;
+    SNAPSHOT.worldMap.buildTile ??= -1;
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }
@@ -21602,6 +21709,7 @@
   var COLORS = {
     background: "#efeadb",
     fog: "#e2dcc6",
+    fogFar: "#eeeadb",
     fogPuff: "#ece7d4",
     fogEdge: "#cfc8ae",
     land: ["#d3dfc6", "#cbd9be", "#d9e4cd"],
@@ -21813,12 +21921,15 @@
       }
       CONTEXT.stroke();
     }
-    function drawFog(index, x, y, s) {
+    function drawFog(index, x, y, s, reachable) {
       const INSET = Math.max(1, s * 0.05);
-      CONTEXT.fillStyle = COLORS.fog;
+      CONTEXT.fillStyle = reachable ? COLORS.fog : COLORS.fogFar;
       CONTEXT.beginPath();
       CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
       CONTEXT.fill();
+      if (!reachable) {
+        return;
+      }
       CONTEXT.fillStyle = COLORS.fogPuff;
       for (let puff2 = 0; puff2 < 3; puff2++) {
         CONTEXT.beginPath();
@@ -22002,7 +22113,7 @@
           if (LIT.has(INDEX)) {
             drawLand(INDEX, PX, PY, S, LIT, now, tileTerrain(map, INDEX));
           } else if (NEIGHBOURS2.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))) {
-            drawFog(INDEX, PX, PY, S);
+            drawFog(INDEX, PX, PY, S, inReach(map, INDEX));
           }
         }
       }
@@ -22880,13 +22991,13 @@
     }
     const MAP = personalGarden.worldMap;
     const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${currentExploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`, TILE = bossMapTile;
-    let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false;
+    let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false, canBuild = false;
     if (TILE >= 0) {
       const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
       if (!isRevealed(MAP, TILE)) {
         title = `안개 ${POSITION}`;
         canExplore = canExploreTile(MAP, TILE);
-        info = canExplore ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}` : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
+        info = canExplore ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}` : !inReach(MAP, TILE) ? "농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요." : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
       } else if (isCleared(MAP, TILE)) {
         title = `정리한 칸 ${POSITION}`;
         info = "다시 위협받지 않는 안전한 칸이에요.";
@@ -22899,9 +23010,23 @@
         info = "아무것도 없는 칸이에요.";
       }
     }
+    if (TILE >= 0 && isRevealed(MAP, TILE)) {
+      const BLOCK = farmBuildBlock(MAP, TILE), PLOT = personalGarden.projectInfo("plot"), COST = PLOT ? `목재 ${PLOT.cost.wood} · 돌 ${PLOT.cost.stone}` : "", BUILDING = !!personalGarden.siteOf("plot") || MAP.buildTile >= 0;
+      if (MAP.farms.some((farm) => farm.tile === TILE)) {
+        title = `농장 ${tileX(TILE)}, ${tileY(TILE)}`;
+        info = "여기서 탐사 반경이 뻗어요. 농장 안에 망루를 지으면 더 멀리 닿아요.";
+      } else if (BLOCK === "nest") {
+        info = `${info} 새 농장은 이 칸과 둘레 1칸의 둥지를 모두 정리해야 지을 수 있어요.`;
+      } else if (BLOCK === null) {
+        canBuild = !BUILDING && !!PLOT;
+        info = `${info} ${BUILDING ? "다른 새 농장을 짓는 중이에요." : `새 농장을 지을 수 있어요 · ${COST}`}`;
+      }
+    }
     DOLLAR2("worldMapTitle").textContent = title;
     DOLLAR2("worldMapInfo").textContent = info;
     DOLLAR2("worldMapExplore").hidden = !canExplore;
+    DOLLAR2("worldMapBuild").hidden = !canBuild;
+    DOLLAR2("worldMapBuild").disabled = !canBuild || !personalGarden.projectInfo("plot") || personalGarden.materials.wood < personalGarden.projectInfo("plot").cost.wood || personalGarden.materials.stone < personalGarden.projectInfo("plot").cost.stone;
     DOLLAR2("bossEncounterHint").textContent = mapChallengeBlockReason();
     DOLLAR2("bossStageCounter").textContent = `정리 ${MAP.cleared.length}칸`;
   }
@@ -23330,6 +23455,12 @@
     }
   };
   DOLLAR2("miniMap").onclick = () => openBossEncounter();
+  DOLLAR2("worldMapBuild").onclick = () => {
+    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild("plot", { tile: bossMapTile })) {
+      saveImmediate(personalGarden);
+      renderWorldMap();
+    }
+  };
   DOLLAR2("worldMapExplore").onclick = () => {
     if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
       personalGarden.markProgressChanged();
@@ -23581,8 +23712,8 @@
     const EXPAND = W.projectInfo("expand"), PLOT = W.projectInfo("plot"), CAN_PAY = (info) => W.materials.wood >= info.cost.wood && W.materials.stone >= info.cost.stone, COST_TEXT = (info) => `목재 ${info.cost.wood} · 돌 ${info.cost.stone}`;
     DOLLAR2("farmExpand").innerHTML = EXPAND ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
     DOLLAR2("farmExpand").disabled = LOCKED || !EXPAND || !!W.siteOf("expand") || !CAN_PAY(EXPAND);
-    DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 짓기</b><small>${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? "" : " · 부족해요"}</small>`;
-    DOLLAR2("farmUnlock").disabled = LOCKED || !!W.siteOf("plot") || !CAN_PAY(PLOT);
+    DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 짓기</b><small>지도에서 칸을 골라요 · ${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? "" : " · 부족해요"}</small>`;
+    DOLLAR2("farmUnlock").disabled = LOCKED || !!W.siteOf("plot");
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
@@ -23788,7 +23919,10 @@
   DOLLAR2("farmExpand").onclick = () => {
     active.queue("farm-build", { facilityId: "expand" });
   };
-  DOLLAR2("farmUnlock").onclick = () => active.queue("farm-build", { facilityId: "plot" });
+  DOLLAR2("farmUnlock").onclick = () => {
+    openBossEncounter();
+    setBossView(true);
+  };
   DOLLAR2("farmPlotActions").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-farm-sort]");
     if (BUTTON) {
@@ -24448,7 +24582,7 @@
     DOLLAR2("buildRush").setAttribute("aria-pressed", String(WORK_WORLD.buildRush));
     syncText("buildRush", WORK_WORLD.buildRush ? "전원 건설 중 (끄기)" : "전원 건설");
     for (const BUTTON of DOLLAR2("facilityList").children) {
-      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], LEVEL = WORK_WORLD.facilityLevel(ID), MAXED = LEVEL >= CONFIG.farm.work.facilityMaxLevel, INFO = WORK_WORLD.projectInfo(ID), COST = INFO?.cost || { wood: 0, stone: 0 };
+      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], LEVEL = WORK_WORLD.facilityLevel(ID), MAXED = LEVEL >= (SPEC.maxLevel ?? CONFIG.farm.work.facilityMaxLevel), INFO = WORK_WORLD.projectInfo(ID), COST = INFO?.cost || { wood: 0, stone: 0 };
       BUTTON.disabled = MAXED || !!WORK_WORLD.siteOf(ID) || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
       syncText2(BUTTON.querySelector("[data-name]"), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
       syncText2(

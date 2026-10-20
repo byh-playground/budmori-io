@@ -5,7 +5,7 @@ export const INITIAL_FARM_PLOT_ID = 'plot-1';
 export const RESERVE_PLOT_ID = 'reserve';
 export const MAX_FARM_FOOD = 140;
 // Facilities belong to a single farm plot. The ids are listed in the order their slots line up along the back edge.
-export const FACILITY_IDS = Object.freeze(['windmill', 'granary', 'rack']);
+export const FACILITY_IDS = Object.freeze(['windmill', 'granary', 'rack', 'tower']);
 export const FACILITY_MAX_LEVEL = 5;
 
 export function isValidPlotFacilities(facilities) {

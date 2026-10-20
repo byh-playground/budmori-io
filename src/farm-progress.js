@@ -645,7 +645,7 @@ export function restoreFarmProgress(data) {
     }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
     if (data.worldMap !== undefined) {
-        WORLD.worldMap = { challengeTile: -1, ...structuredClone(data.worldMap) };
+        WORLD.worldMap = { challengeTile: -1, buildTile: -1, ...structuredClone(data.worldMap) };
     }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = new Map();

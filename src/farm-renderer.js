@@ -571,6 +571,12 @@ const DIORAMA = class Diorama {
                 this.ellipse(X, BASE.y - 0.35 * S, 0.8 * S, 0.45 * S, '#c9a96a');
                 this.ellipse(X, BASE.y - 0.85 * S, 0.9 * S, 0.3 * S, '#b9774a');
                 this.ellipse(X, BASE.y - 0.3 * S, 0.2 * S, 0.28 * S, '#7a5a34');
+            } else if (FACILITY.id === 'tower') {
+                this.ellipse(X, BASE.y - 0.55 * S, 0.34 * S, 0.75 * S, '#cfc7b3');
+                this.ellipse(X, BASE.y - 1.25 * S, 0.5 * S, 0.2 * S, '#b9774a');
+                this.ellipse(X, BASE.y - 0.3 * S, 0.12 * S, 0.2 * S, '#7a5a34');
+                this.ellipse(X + 0.05 * S, BASE.y - 1.6 * S, 0.03 * S, 0.3 * S, '#7a5a34');
+                this.ellipse(X + 0.2 * S, BASE.y - 1.75 * S, 0.17 * S, 0.1 * S, '#7fa77a');
             } else {
                 this.ellipse(X - 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, '#7a5a34');
                 this.ellipse(X + 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, '#7a5a34');

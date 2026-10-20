@@ -13,6 +13,8 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
     // The challenge in progress was added in 0.13.2; a map saved before it has none.
     SNAPSHOT.worldMap.challengeTile ??= -1;
+    // The tile a new farm is being built on was added in 0.13.6.
+    SNAPSHOT.worldMap.buildTile ??= -1;
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
 }

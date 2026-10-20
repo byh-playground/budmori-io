@@ -28,7 +28,17 @@ import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
 import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
-import { advanceExploration, createWorldMap, nextExploreTile, tileX, tileY } from './world-map.js';
+import {
+    advanceExploration,
+    beginFarmBuild,
+    canBuildFarm,
+    createWorldMap,
+    finishFarmBuild,
+    nextExploreTile,
+    setReachProvider,
+    tileX,
+    tileY,
+} from './world-map.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
@@ -136,7 +146,13 @@ const CONFIG = Object.freeze({
             levelHitsStep: 0.6,
             projects: Object.freeze({
                 expand: Object.freeze({ name: '농장 확장', hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
-                plot: Object.freeze({ name: '새 농장', hits: 300, cost: Object.freeze({ wood: 40, stone: 40 }) }),
+                plot: Object.freeze({
+                    name: '새 농장',
+                    hits: 300,
+                    cost: Object.freeze({ wood: 40, stone: 40 }),
+                    // Each farm already built makes the next one this many times dearer.
+                    costGrowth: 1.5,
+                }),
             }),
             levelEffectStep: 0.25,
             facilities: Object.freeze({
@@ -157,6 +173,15 @@ const CONFIG = Object.freeze({
                     hits: 100,
                     cost: Object.freeze({ wood: 8, stone: 8 }),
                     effect: '레벨마다 자원 일꾼이 25% 빨라져요',
+                }),
+                tower: Object.freeze({
+                    name: '망루',
+                    hits: 150,
+                    cost: Object.freeze({ wood: 40, stone: 40 }),
+                    // Every level costs twice the one before, and the tower stops after three.
+                    costGrowth: 2,
+                    maxLevel: 3,
+                    effect: '레벨마다 이 농장의 탐사 반경이 1칸 넓어져요',
                 }),
             }),
             pileKinds: Object.freeze({
@@ -1351,6 +1376,18 @@ const GARDEN = class Garden {
         this.materials = { wood: 0, stone: 0 };
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
+        // Every map this world holds learns how far each farm sees: the base reach plus the farm's tower levels.
+        // An own enumerable property, so the world still copies and saves like a plain object.
+        let worldMap = null;
+        Object.defineProperty(this, 'worldMap', {
+            enumerable: true,
+            configurable: true,
+            get: () => worldMap,
+            set: (map) => {
+                worldMap = map;
+                setReachProvider(map, (plotId) => this.farmPlots?.get(plotId)?.facilityLevel('tower') ?? 0);
+            },
+        });
         this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
         this.buildRush = false;
         this._workerKinds = new Map();
@@ -2668,7 +2705,7 @@ const GARDEN = class Garden {
         let level;
         if (FACILITY) {
             level = this.facilityLevel(kind) + 1;
-            if (level > WORK.facilityMaxLevel) {
+            if (level > (FACILITY.maxLevel ?? WORK.facilityMaxLevel)) {
                 return null;
             }
         } else if (kind === 'expand') {
@@ -2682,12 +2719,14 @@ const GARDEN = class Garden {
             return null;
         }
         const SPEC = FACILITY || PROJECT,
-            COST_FACTOR = 1 + WORK.levelCostStep * (level - 1),
-            HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1);
+            // A tower doubles per level and a new farm gets dearer per farm; the rest grow by a fixed step.
+            COST_FACTOR = SPEC.costGrowth ? SPEC.costGrowth ** (level - 1) : 1 + WORK.levelCostStep * (level - 1),
+            HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1),
+            ROUND = SPEC.costGrowth ? Math.round : Math.ceil;
         return {
             name: SPEC.name,
             level,
-            cost: { wood: Math.ceil(SPEC.cost.wood * COST_FACTOR), stone: Math.ceil(SPEC.cost.stone * COST_FACTOR) },
+            cost: { wood: ROUND(SPEC.cost.wood * COST_FACTOR), stone: ROUND(SPEC.cost.stone * COST_FACTOR) },
             hits: Math.ceil(SPEC.hits * HITS_FACTOR),
         };
     }
@@ -2703,12 +2742,13 @@ const GARDEN = class Garden {
         return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
     }
     // Starts a construction. The materials are paid up front; the work itself is done by the units.
-    startBuild(kind) {
+    startBuild(kind, { tile = -1 } = {}) {
         const INFO = this.projectInfo(kind);
         if (
             this.scene !== 'farm' ||
             !INFO ||
             this.siteOf(kind) ||
+            (kind === 'plot' && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile))) ||
             this.running ||
             this.farmBossEvent?.phase !== 'idle' ||
             this.materials.wood < INFO.cost.wood ||
@@ -2718,6 +2758,9 @@ const GARDEN = class Garden {
         }
         this.materials.wood -= INFO.cost.wood;
         this.materials.stone -= INFO.cost.stone;
+        if (kind === 'plot') {
+            beginFarmBuild(this.worldMap, tile);
+        }
         startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId);
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
@@ -2729,7 +2772,7 @@ const GARDEN = class Garden {
             this.farmPlots.get(site.plotId)?.expand();
             this.restoreReservePopulation();
         } else if (site.facility === 'plot') {
-            this._addFarmPlot();
+            finishFarmBuild(this.worldMap, this._addFarmPlot());
         } else {
             this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
         }

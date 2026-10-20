@@ -16,6 +16,8 @@ export const WORLD_MAP_SETTINGS = {
     nestCost: 1.5,
     // Stages added per tile of straight-line distance beyond the first ring of nests.
     dangerPerTile: 4,
+    // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
+    baseReach: 2,
 };
 const SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
 export const WORLD_MAP_TILE_COUNT = SIDE * SIDE;
@@ -48,6 +50,24 @@ function tileUnit(seed, index, salt) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
 }
+// The reach of a farm is not saved; the game says how far each one sees, and a bare map sees the base reach.
+const REACH_PROVIDERS = new WeakMap();
+export function setReachProvider(map, provider) {
+    REACH_PROVIDERS.set(map, provider);
+}
+export function farmReachOf(map, plotId) {
+    const EXTRA = REACH_PROVIDERS.get(map)?.(plotId) ?? 0;
+    return WORLD_MAP_SETTINGS.baseReach + Math.max(0, EXTRA);
+}
+// Whether a tile lies inside the square that some farm can see.
+export function inReach(map, index) {
+    const X = tileX(index),
+        Y = tileY(index);
+    return map.farms.some(
+        (farm) =>
+            Math.max(Math.abs(X - tileX(farm.tile)), Math.abs(Y - tileY(farm.tile))) <= farmReachOf(map, farm.plotId),
+    );
+}
 function farmTiles(map) {
     return map.farms.map((farm) => farm.tile);
 }
@@ -67,6 +87,7 @@ export function createWorldMap(seed, firstPlotId) {
         gauge: 0,
         exploreTarget: -1,
         challengeTile: -1,
+        buildTile: -1,
         revealed: [],
         cleared: [],
         farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }],
@@ -180,13 +201,18 @@ function touchesLight(index, lit) {
 // The tile the explorers lift the fog from next: the chosen one when it is reachable, else the closest to a farm.
 export function nextExploreTile(map) {
     const LIT = new Set(map.revealed);
-    if (map.exploreTarget >= 0 && !LIT.has(map.exploreTarget) && touchesLight(map.exploreTarget, LIT)) {
+    if (
+        map.exploreTarget >= 0 &&
+        !LIT.has(map.exploreTarget) &&
+        touchesLight(map.exploreTarget, LIT) &&
+        inReach(map, map.exploreTarget)
+    ) {
         return map.exploreTarget;
     }
     let best = -1,
         bestScore = Infinity;
     for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
-        if (LIT.has(index) || !touchesLight(index, LIT)) {
+        if (LIT.has(index) || !touchesLight(index, LIT) || !inReach(map, index)) {
             continue;
         }
         const SCORE = farmDistance(map, index) + tileUnit(map.seed, index, 2) * 0.5;
@@ -204,7 +230,8 @@ export function canExploreTile(map, index) {
         index >= 0 &&
         index < WORLD_MAP_TILE_COUNT &&
         !isRevealed(map, index) &&
-        touchesLight(index, new Set(map.revealed))
+        touchesLight(index, new Set(map.revealed)) &&
+        inReach(map, index)
     );
 }
 // Chooses where the explorers go next; -1 lets them pick on their own. Returns false for an unreachable tile.
@@ -217,7 +244,7 @@ export function setExploreTarget(map, index) {
     if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || LIT.has(index)) {
         return false;
     }
-    if (!touchesLight(index, LIT)) {
+    if (!touchesLight(index, LIT) || !inReach(map, index)) {
         return false;
     }
     map.exploreTarget = index;
@@ -250,6 +277,64 @@ export function advanceExploration(map, points) {
     }
     return FOUND;
 }
+// A new farm goes on lit ground that no farm holds yet, once every nest in the tile and the ring around it is cleared.
+export function farmBuildBlock(map, index) {
+    if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || !isRevealed(map, index)) {
+        return 'unexplored';
+    }
+    if (map.farms.some((farm) => farm.tile === index)) {
+        return 'occupied';
+    }
+    const X = tileX(index),
+        Y = tileY(index);
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (!inside(X + dx, Y + dy)) {
+                continue;
+            }
+            const AROUND = tileIndex(X + dx, Y + dy);
+            if (hasNest(map, AROUND) && !isCleared(map, AROUND)) {
+                return 'nest';
+            }
+        }
+    }
+    return null;
+}
+export function canBuildFarm(map, index) {
+    return farmBuildBlock(map, index) === null;
+}
+export function beginFarmBuild(map, index) {
+    if (!canBuildFarm(map, index)) {
+        return false;
+    }
+    map.buildTile = index;
+    return true;
+}
+// The farm is finished: it takes the planned tile (or, for a build that was planned before tiles were chosen,
+// the lit free tile closest to the first farm).
+export function finishFarmBuild(map, plotId) {
+    let tile = map.buildTile ?? -1;
+    if (!(tile >= 0 && canBuildFarm(map, tile))) {
+        tile = -1;
+        let bestDistance = Infinity;
+        for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
+            if (!canBuildFarm(map, index)) {
+                continue;
+            }
+            const DISTANCE = farmDistance(map, index);
+            if (DISTANCE < bestDistance) {
+                tile = index;
+                bestDistance = DISTANCE;
+            }
+        }
+    }
+    map.buildTile = -1;
+    if (tile < 0) {
+        return -1;
+    }
+    map.farms.push({ plotId, tile });
+    return tile;
+}
 export function markCleared(map, index) {
     if (!isRevealed(map, index) || isCleared(map, index)) {
         return false;
@@ -272,7 +357,7 @@ export function isValidWorldMap(map) {
         return false;
     }
     const KEYS = Object.keys(map)
-        .filter((key) => key !== 'challengeTile')
+        .filter((key) => key !== 'challengeTile' && key !== 'buildTile')
         .sort()
         .join(',');
     if (KEYS !== 'cleared,exploreTarget,farms,gauge,revealed,seed') {
@@ -293,6 +378,10 @@ export function isValidWorldMap(map) {
                 map.challengeTile >= -1 &&
                 map.challengeTile < WORLD_MAP_TILE_COUNT)
         ) ||
+        !(
+            map.buildTile === undefined ||
+            (Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT)
+        ) ||
         !SORTED_INDEXES(map.revealed) ||
         !SORTED_INDEXES(map.cleared) ||
         !Array.isArray(map.farms) ||
@@ -303,6 +392,7 @@ export function isValidWorldMap(map) {
     const LIT = new Set(map.revealed);
     return (
         map.cleared.every((index) => LIT.has(index)) &&
+        new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length &&
         map.farms.every(
             (farm) =>
                 farm &&
