@@ -7,12 +7,7 @@ export function seedDisplayMultiplier(renderer, projectile) {
         OWNER_VECTOR_SCALE =
             (projectile.height * WORLD_HEIGHT_PROJECTION) /
             (FEATURE.bodyHeightFraction * (BODY.bounds.bottom - BODY.bounds.top)),
-        DISPLAY_SCALE = unitDisplayScale(
-            BODY,
-            OWNER_VECTOR_SCALE,
-            renderer.scale,
-            renderer.scenePresentation.minimumUnitPixels * renderer.pixelRatio,
-        );
+        DISPLAY_SCALE = unitDisplayScale(BODY, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
     // The same minimum-pixel rule is presentation-only, including after the
     // owner disappears. No viewport value is ever copied into the projectile.
     return DISPLAY_SCALE / OWNER_VECTOR_SCALE;

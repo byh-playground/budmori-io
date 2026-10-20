@@ -203,6 +203,11 @@ const DIORAMA = class Diorama {
             y: (this.view[1] - PY / this.scale - this.offset[1]) / WORLD_DEPTH_PROJECTION,
         };
     }
+    // The smallest a unit is drawn, in pixels. Zoomed out it shrinks with the view instead of staying full size.
+    minimumUnitPixels() {
+        const BASE = this.scenePresentation.minimumUnitPixels * this.pixelRatio;
+        return this.scene === 'farm' && this.zoom < 1 ? Math.max(3 * this.pixelRatio, BASE * this.zoom) : BASE;
+    }
     configure(scene, force = false) {
         if (this.scene === scene && !force) {
             return;

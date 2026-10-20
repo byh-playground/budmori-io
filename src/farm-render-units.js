@@ -281,7 +281,7 @@ export class UnitPresentation {
                 BODY,
                 u.bodyScale,
                 this.renderer.scale,
-                this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio * GIANT_SCALE,
+                this.renderer.minimumUnitPixels() * GIANT_SCALE,
             ),
             R =
                 SCALE *
