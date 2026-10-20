@@ -11417,8 +11417,28 @@
           };
           this.boss.encounterId = this.farmBossEvent.encounterId;
           this.boss.patternRuntime = createBossPatternRuntime();
+          this.gatherOnApproachSide();
           this.markProgressChanged();
           return true;
+        }
+        // The units close in on the boss from all around the edge of the field, not from where they stood.
+        gatherOnApproachSide() {
+          const ARENA = CONFIG.farm.arena, FIGHTERS = this.units.filter((u) => !u.isBattleOnlySummon && u.hp > 0);
+          FIGHTERS.forEach((unit, index) => {
+            const ANGLE = index / FIGHTERS.length * Math.PI * 2 + (this.random() - 0.5) * 0.2, INSET = 1.2 + this.random() * 1.5, AT = ARENA_GEOMETRY.clamp(
+              {
+                x: Math.cos(ANGLE) * (ARENA.radiusX - INSET) * 1.1,
+                y: Math.sin(ANGLE) * (ARENA.radiusY - INSET) * 1.1
+              },
+              "farm",
+              1
+            );
+            unit.x = AT.x;
+            unit.y = AT.y;
+            unit.z = 0;
+            unit.vx = 0;
+            unit.vy = 0;
+          });
         }
         // Leaving a fight that is going on is a defeat.
         retreatFromFight() {
@@ -15090,7 +15110,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.0";
+      PRODUCT_VERSION = "0.21.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18421,6 +18441,9 @@
         this.drawWorkShadows(sim2);
         this.drawFacilities(sim2);
       }
+    }
+    drawDanger(sim2) {
+      const PRESENTATION = this.scenePresentation;
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
       this.bossTelegraph = AREA;
       if (AREA) {
@@ -18607,6 +18630,11 @@
         this.drawBackdrop(this.backdrop);
       }
       this.terrain(sim2);
+      const SHIFT = sim2.scene === "farm" ? sim2.battleShift() : null, UNSHIFTED_OFFSET = this.offset;
+      if (SHIFT) {
+        this.setPan(-SHIFT.x, -SHIFT.y * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
+        this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * import_vector_sockets5.WORLD_DEPTH_PROJECTION];
+      }
       for (const U of sim2.units) {
         const A = CLAMP2(0.22 / (1 + U.z * 0.3), 0.045, 0.22), SHADOW = U.size * 0.66 / (1 + U.z * 0.65);
         this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
@@ -18614,11 +18642,7 @@
           this.ring(U.x, U.y, SHADOW * 1.12, GRADE_RING_COLORS[U.tier - 1], GRADE_RING_WIDTHS[U.tier - 1]);
         }
       }
-      const SHIFT = sim2.scene === "farm" ? sim2.battleShift() : null, UNSHIFTED_OFFSET = this.offset;
-      if (SHIFT) {
-        this.setPan(-SHIFT.x, -SHIFT.y * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
-        this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * import_vector_sockets5.WORLD_DEPTH_PROJECTION];
-      }
+      this.drawDanger(sim2);
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");

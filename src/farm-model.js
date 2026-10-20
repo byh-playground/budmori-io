@@ -3463,8 +3463,31 @@ const GARDEN = class Garden {
         };
         this.boss.encounterId = this.farmBossEvent.encounterId;
         this.boss.patternRuntime = createBossPatternRuntime();
+        this.gatherOnApproachSide();
         this.markProgressChanged();
         return true;
+    }
+    // The units close in on the boss from all around the edge of the field, not from where they stood.
+    gatherOnApproachSide() {
+        const ARENA = CONFIG.farm.arena,
+            FIGHTERS = this.units.filter((u) => !u.isBattleOnlySummon && u.hp > 0);
+        FIGHTERS.forEach((unit, index) => {
+            const ANGLE = (index / FIGHTERS.length) * Math.PI * 2 + (this.random() - 0.5) * 0.2,
+                INSET = 1.2 + this.random() * 1.5,
+                AT = ARENA_GEOMETRY.clamp(
+                    {
+                        x: Math.cos(ANGLE) * (ARENA.radiusX - INSET) * 1.1,
+                        y: Math.sin(ANGLE) * (ARENA.radiusY - INSET) * 1.1,
+                    },
+                    'farm',
+                    1,
+                );
+            unit.x = AT.x;
+            unit.y = AT.y;
+            unit.z = 0;
+            unit.vx = 0;
+            unit.vy = 0;
+        });
     }
     // Leaving a fight that is going on is a defeat.
     retreatFromFight() {
