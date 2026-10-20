@@ -566,13 +566,7 @@ class FarmSession {
             case 'farm-work':
                 return (
                     W.scene === 'farm' &&
-                    W.setWorkBasisPoints(
-                        c.basisPoints,
-                        c.resourceBasisPoints,
-                        c.haulBasisPoints,
-                        c.buildBasisPoints,
-                        c.exploreBasisPoints,
-                    )
+                    W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints, c.exploreBasisPoints)
                 );
             case 'farm-build':
                 return (

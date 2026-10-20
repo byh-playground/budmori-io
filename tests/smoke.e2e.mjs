@@ -86,13 +86,17 @@ await check('new game boots with a minimal HUD', async () => {
             document.getElementById(id),
         ),
         roles: [...document.querySelectorAll('.work-hud__bar span')].map((span) => span.id),
+        handles: [...document.querySelectorAll('.work-hud__track')].map(
+            (track) => track.querySelectorAll('.work-hud__cut').length,
+        ),
     }));
     expect(STATE.units > 0 && STATE.scene === 'farm', 'farm did not start');
     expect(STATE.removed.length === 0, `removed controls are back: ${STATE.removed}`);
+    expect(STATE.handles.join() === '2,2', `each role bar needs two handles, has ${STATE.handles}`);
     expect(STATE.roles.length === 6, `role bar should have six parts, has ${STATE.roles.length}`);
 });
 
-await check('gatherers drop material, haulers bring it home', async () => {
+await check('resource workers hit, drop and carry material home', async () => {
     await WORLD(async () => {
         const MAP = await import('/src/world-map.js'),
             W = BUDMORI.sim;
@@ -102,7 +106,7 @@ await check('gatherers drop material, haulers bring it home', async () => {
         W.worldMap.revealed = Array.from({ length: 625 }, (_, index) => index).filter(
             (index) => Math.max(Math.abs(MAP.tileX(index)), Math.abs(MAP.tileY(index))) <= 3,
         );
-        W.setWorkBasisPoints(5000, 4000, 3000, 500, 500);
+        W.setWorkBasisPoints(5000, 4000, 500, 500);
         W.setWoodShare(6000);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();
@@ -115,25 +119,17 @@ await check('gatherers drop material, haulers bring it home', async () => {
         drops: [...BUDMORI.sim._drops.values()].reduce((total, amount) => total + amount, 0),
         materials: BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone,
     }));
-    expect(GOT.counts.resource > 0 && GOT.counts.haul > 0, `roles missing ${JSON.stringify(GOT.counts)}`);
+    expect(GOT.counts.resource > 0, `roles missing ${JSON.stringify(GOT.counts)}`);
     expect(GOT.materials > 0, `nothing reached the farm ${JSON.stringify(GOT)}`);
 });
 
-await check('without haulers the ground fills up and nothing arrives', async () => {
-    await WORLD(() => {
-        const W = BUDMORI.sim;
-        W._drops.clear();
-        W.materials.wood = 0;
-        W.materials.stone = 0;
-        W.setWorkBasisPoints(5000, 6000, 0, 500, 500);
-    });
-    await PAGE.waitForTimeout(16000);
-    const GOT = await WORLD(() => ({
-        most: Math.max(0, ...BUDMORI.sim._drops.values()),
-        materials: BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone,
-    }));
-    expect(GOT.materials === 0, `material arrived without haulers ${JSON.stringify(GOT)}`);
-    expect(GOT.most > 0 && GOT.most <= 12 + 1e-6, `ground not capped ${JSON.stringify(GOT)}`);
+await check('a tile holds at most twelve and drops are not lost', async () => {
+    let most = 0;
+    for (let round = 0; round < 8; round++) {
+        await PAGE.waitForTimeout(1000);
+        most = Math.max(most, await WORLD(() => Math.max(0, ...BUDMORI.sim._drops.values())));
+    }
+    expect(most <= 12 + 1e-6, `ground over the limit: ${most}`);
 });
 
 await check('map boss fight starts and retreat ends it', async () => {

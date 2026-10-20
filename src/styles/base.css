@@ -397,8 +397,9 @@ body > header {
 #workHudRes {
     background: #8b8a7c;
 }
-#workHudHaul {
-    background: #a58f5f;
+#workHudJobs {
+    background: #8b8a7c;
+    justify-content: flex-end;
 }
 #workHudBuild {
     background: #b9774a;
