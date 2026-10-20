@@ -2,51 +2,55 @@
 // Workers keep producing, a construction site keeps getting built, and breeders keep breeding as long as food lasts.
 import { HITS_PER_WORK, sitesOf, spreadBuildHits } from './farm-work.js';
 import { RESERVE_PLOT_ID } from './farm-plot.js';
-import {
-    FARM_CELL,
-    WORLD_MAP_SETTINGS,
-    nearestResourceTile,
-    takeFromTile,
-    tileRemaining,
-    tileResource,
-    tileX,
-    tileY,
-} from './world-map.js';
+import { FARM_CELL, WORLD_MAP_SETTINGS, nearestResourceTile, takeFromTile, tileX, tileY } from './world-map.js';
 
-// Gatherers away from the game: they make trips like they do on screen (walk, gather a small load, walk home), so the
-// longer the way to the tile the less they bring, and the tiles they take from lose what they gave.
-function settleHauling(world, plotId, rate, seconds) {
+// Gatherers and haulers away from the game: gatherers knock material loose at the tile, haulers carry it home in small
+// loads, so what arrives is the smaller of the two. The longer the way, the fewer trips the haulers make, and the
+// tiles lose what the gatherers took (a mine never does). Whatever lay on the ground is carried first.
+function settleHauling(world, plotId, rates, seconds) {
     const GOT = { wood: 0, stone: 0 },
         WALK = 9 * 0.12,
         HOME = world.worldMap.farms.find((farm) => farm.plotId === plotId);
-    if (!HOME || !(rate > 0)) {
+    if (!HOME) {
         return GOT;
     }
-    const CARRY = { wood: 0, stone: 0 };
-    let left = seconds;
-    for (let round = 0; round < 40 && left > 1e-6; round++) {
-        const WANTED = world.materials.wood + GOT.wood <= world.materials.stone + GOT.stone ? 'wood' : 'stone',
-            TILE =
-                nearestResourceTile(world.worldMap, plotId, WANTED) >= 0
-                    ? nearestResourceTile(world.worldMap, plotId, WANTED)
-                    : nearestResourceTile(world.worldMap, plotId);
-        if (TILE < 0) {
-            break;
+    const FLOW = [];
+    for (const KIND of ['wood', 'stone']) {
+        const RATE = rates.gather[KIND];
+        if (!(RATE > 0)) {
+            continue;
         }
-        const KIND = tileResource(world.worldMap, TILE),
-            DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width,
-            DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height,
-            TRIP_WALK = (2 * Math.hypot(DX, DY)) / WALK,
-            TRIP_WORK = WORLD_MAP_SETTINGS.carryLoad / (rate * (world.worldMap.mines.includes(TILE) ? 0.5 : 1)),
-            PER_SECOND = WORLD_MAP_SETTINGS.carryLoad / (TRIP_WALK + TRIP_WORK),
-            REMAINING = tileRemaining(world.worldMap, TILE),
-            TIME = Math.min(left, REMAINING / PER_SECOND),
-            TAKEN = takeFromTile(world.worldMap, TILE, PER_SECOND * TIME);
-        CARRY[KIND] += TAKEN;
-        left -= TIME;
-        const WHOLE = Math.floor(CARRY[KIND]);
-        GOT[KIND] += WHOLE;
-        CARRY[KIND] -= WHOLE;
+        const TILE = nearestResourceTile(world.worldMap, plotId, KIND);
+        if (TILE < 0) {
+            continue;
+        }
+        const DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width,
+            DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height;
+        FLOW.push({
+            kind: KIND,
+            tile: TILE,
+            make: RATE * (world.worldMap.mines.includes(TILE) ? 0.5 : 1),
+            trip: (2 * Math.hypot(DX, DY)) / WALK + 1,
+        });
+    }
+    const MAKE = FLOW.reduce((total, flow) => total + flow.make, 0);
+    if (!(MAKE > 0) || !(rates.haul > 0)) {
+        return GOT;
+    }
+    for (const FLOW_ITEM of FLOW) {
+        // The haulers split their trips between the kinds in proportion to what is made.
+        const SHARE = FLOW_ITEM.make / MAKE,
+            CARRY = (rates.haul * SHARE * WORLD_MAP_SETTINGS.carryLoad) / FLOW_ITEM.trip,
+            TOTAL = Math.min(FLOW_ITEM.make, CARRY) * seconds,
+            ON_GROUND = world._drops.get(FLOW_ITEM.tile) ?? 0,
+            FROM_GROUND = Math.min(ON_GROUND, TOTAL),
+            FROM_TILE = takeFromTile(world.worldMap, FLOW_ITEM.tile, TOTAL - FROM_GROUND);
+        if (ON_GROUND - FROM_GROUND > 1e-9) {
+            world._drops.set(FLOW_ITEM.tile, ON_GROUND - FROM_GROUND);
+        } else {
+            world._drops.delete(FLOW_ITEM.tile);
+        }
+        GOT[FLOW_ITEM.kind] += Math.floor(FROM_GROUND + FROM_TILE);
     }
     world.materials.wood += GOT.wood;
     world.materials.stone += GOT.stone;
@@ -69,6 +73,12 @@ export function applyOffline(world, config, rawSeconds) {
     const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
     let foodRate = 0;
     const GATHER_RATES = new Map();
+    const GATHER_OF = (plotId) => {
+        if (!GATHER_RATES.has(plotId)) {
+            GATHER_RATES.set(plotId, { gather: { wood: 0, stone: 0 }, haul: 0 });
+        }
+        return GATHER_RATES.get(plotId);
+    };
     const BUILD_RATES = new Map();
     for (const [ID, KIND] of world._workerKinds) {
         const RATE = world._workerRates.get(ID) || 0;
@@ -78,7 +88,9 @@ export function applyOffline(world, config, rawSeconds) {
             // Exploring is done on foot, in front of the player: nothing is explored while away.
             continue;
         } else if (KIND === 'resource') {
-            GATHER_RATES.set(world._workerPlots.get(ID), (GATHER_RATES.get(world._workerPlots.get(ID)) || 0) + RATE);
+            GATHER_OF(world._workerPlots.get(ID)).gather[world._workerResource.get(ID) ?? 'wood'] += RATE;
+        } else if (KIND === 'haul') {
+            GATHER_OF(world._workerPlots.get(ID)).haul += 1;
         } else {
             const PLOT_ID = world._workerPlots.get(ID);
             BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);

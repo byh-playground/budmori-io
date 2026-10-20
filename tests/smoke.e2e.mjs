@@ -121,7 +121,7 @@ await check('resource workers hit, drop and carry material home', async () => {
         drops: [...BUDMORI.sim._drops.values()].reduce((total, amount) => total + amount, 0),
         materials: BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone,
     }));
-    expect(GOT.counts.resource > 0, `roles missing ${JSON.stringify(GOT.counts)}`);
+    expect(GOT.counts.resource > 0 && GOT.counts.haul > 0, `roles missing ${JSON.stringify(GOT.counts)}`);
     expect(GOT.materials > 0, `nothing reached the farm ${JSON.stringify(GOT)}`);
 });
 

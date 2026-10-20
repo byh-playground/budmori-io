@@ -310,27 +310,27 @@
   var WORK_KINDS, APTITUDE_ORDER, APTITUDE_SPEED, SPECIES_APTITUDE, FALLBACK_LEVEL;
   var init_work_aptitude = __esm({
     "src/work-aptitude.js"() {
-      WORK_KINDS = Object.freeze(["build", "food", "wood", "stone", "explore"]);
+      WORK_KINDS = Object.freeze(["build", "food", "wood", "stone", "explore", "haul"]);
       APTITUDE_ORDER = WORK_KINDS;
       APTITUDE_SPEED = Object.freeze([0, 0.7, 1, 1.4]);
       SPECIES_APTITUDE = Object.freeze([
-        Object.freeze([1, 2, 1, 0, 3]),
+        Object.freeze([1, 2, 1, 0, 3, 3]),
         // 콩: light scout
-        Object.freeze([0, 3, 1, 1, 2]),
+        Object.freeze([0, 3, 1, 1, 2, 1]),
         // 옥수수: food
-        Object.freeze([2, 0, 0, 3, 2]),
+        Object.freeze([2, 0, 0, 3, 2, 2]),
         // 팥: shatters rock
-        Object.freeze([1, 0, 3, 2, 1]),
+        Object.freeze([1, 0, 3, 2, 1, 2]),
         // 밤톨: lumberjack
-        Object.freeze([3, 0, 2, 0, 2]),
+        Object.freeze([3, 0, 2, 0, 2, 2]),
         // 땅콩: charges at jobs
-        Object.freeze([3, 0, 1, 3, 0]),
+        Object.freeze([3, 0, 1, 3, 0, 1]),
         // 호두: sturdy builder and quarryman
-        Object.freeze([1, 3, 1, 0, 2]),
+        Object.freeze([1, 3, 1, 0, 2, 1]),
         // 쌀: food
-        Object.freeze([0, 3, 1, 1, 2]),
+        Object.freeze([0, 3, 1, 1, 2, 2]),
         // 밀: food
-        Object.freeze([2, 1, 3, 1, 0])
+        Object.freeze([2, 1, 3, 1, 0, 2])
         // 보리: lumber generalist
       ]);
       FALLBACK_LEVEL = 1;
@@ -975,7 +975,7 @@
     if (swing.phase === "idle") {
       swing.wait -= dt;
       const SPOT = world.haulSpot(unit);
-      if (swing.wait <= 0 && SPOT && Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5) {
+      if (swing.wait <= 0 && SPOT && world.dropsOn(world.haulState(unit).tile) < GROUND_LIMIT && Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5) {
         swing.phase = "windup";
         swing.elapsed = 0;
       }
@@ -989,6 +989,7 @@
       const SPOT = world.haulSpot(unit), D = SPOT?.cx === void 0 ? 0 : Math.hypot(unit.x - SPOT.cx, unit.y - SPOT.cy);
       if (SPOT?.cx === void 0 || D <= GATHER_REACH + unit.radius * 0.6 + 0.12) {
         if (SPOT?.cx !== void 0) {
+          world.landHit(unit);
           world.emit("thresh", SPOT.cx, SPOT.cy, 0, { big: false, duration: 0.55 });
           unit.vx = (unit.x - SPOT.cx) / Math.max(D, 1e-6) * RECOIL_SPEED;
           unit.vy = (unit.y - SPOT.cy) / Math.max(D, 1e-6) * RECOIL_SPEED;
@@ -1002,7 +1003,8 @@
     } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
       swing.phase = "idle";
       swing.elapsed = 0;
-      swing.wait = GATHER_PAUSE_SECONDS;
+      const MINE = world.worldMap.mines.includes(world.haulState(unit).tile) ? 0.5 : 1, RATE = (world._workerRates.get(unit.id) || 0) * MINE;
+      swing.wait = RATE > 0 ? Math.max(0.1, 1 / (RATE * HITS_PER_WORK) - SWING_WINDUP - SWING_RECOVER - 0.5) : 1;
     }
   }
   function stepWork(world, config, dt) {
@@ -1077,7 +1079,7 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GATHER_REACH, GATHER_PAUSE_SECONDS;
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GROUND_LIMIT, GATHER_REACH;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       init_farm_plot();
@@ -1090,8 +1092,8 @@
       RECOIL_SPEED = 5.5;
       STACKS_PER_FOOD = 5;
       HITS_PER_WORK = STACKS_PER_FOOD;
+      GROUND_LIMIT = 12;
       GATHER_REACH = 1.1;
-      GATHER_PAUSE_SECONDS = 0.3;
     }
   });
 
@@ -2478,24 +2480,41 @@
   });
 
   // src/farm-offline.js
-  function settleHauling(world, plotId, rate, seconds) {
+  function settleHauling(world, plotId, rates, seconds) {
     const GOT = { wood: 0, stone: 0 }, WALK = 9 * 0.12, HOME = world.worldMap.farms.find((farm) => farm.plotId === plotId);
-    if (!HOME || !(rate > 0)) {
+    if (!HOME) {
       return GOT;
     }
-    const CARRY = { wood: 0, stone: 0 };
-    let left = seconds;
-    for (let round = 0; round < 40 && left > 1e-6; round++) {
-      const WANTED = world.materials.wood + GOT.wood <= world.materials.stone + GOT.stone ? "wood" : "stone", TILE = nearestResourceTile(world.worldMap, plotId, WANTED) >= 0 ? nearestResourceTile(world.worldMap, plotId, WANTED) : nearestResourceTile(world.worldMap, plotId);
-      if (TILE < 0) {
-        break;
+    const FLOW = [];
+    for (const KIND of ["wood", "stone"]) {
+      const RATE = rates.gather[KIND];
+      if (!(RATE > 0)) {
+        continue;
       }
-      const KIND = tileResource(world.worldMap, TILE), DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width, DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height, TRIP_WALK = 2 * Math.hypot(DX, DY) / WALK, TRIP_WORK = WORLD_MAP_SETTINGS.carryLoad / (rate * (world.worldMap.mines.includes(TILE) ? 0.5 : 1)), PER_SECOND = WORLD_MAP_SETTINGS.carryLoad / (TRIP_WALK + TRIP_WORK), REMAINING = tileRemaining(world.worldMap, TILE), TIME = Math.min(left, REMAINING / PER_SECOND), TAKEN = takeFromTile(world.worldMap, TILE, PER_SECOND * TIME);
-      CARRY[KIND] += TAKEN;
-      left -= TIME;
-      const WHOLE = Math.floor(CARRY[KIND]);
-      GOT[KIND] += WHOLE;
-      CARRY[KIND] -= WHOLE;
+      const TILE = nearestResourceTile(world.worldMap, plotId, KIND);
+      if (TILE < 0) {
+        continue;
+      }
+      const DX = (tileX(TILE) - tileX(HOME.tile)) * FARM_CELL.width, DY = (tileY(TILE) - tileY(HOME.tile)) * FARM_CELL.height;
+      FLOW.push({
+        kind: KIND,
+        tile: TILE,
+        make: RATE * (world.worldMap.mines.includes(TILE) ? 0.5 : 1),
+        trip: 2 * Math.hypot(DX, DY) / WALK + 1
+      });
+    }
+    const MAKE = FLOW.reduce((total, flow) => total + flow.make, 0);
+    if (!(MAKE > 0) || !(rates.haul > 0)) {
+      return GOT;
+    }
+    for (const FLOW_ITEM of FLOW) {
+      const SHARE = FLOW_ITEM.make / MAKE, CARRY = rates.haul * SHARE * WORLD_MAP_SETTINGS.carryLoad / FLOW_ITEM.trip, TOTAL = Math.min(FLOW_ITEM.make, CARRY) * seconds, ON_GROUND = world._drops.get(FLOW_ITEM.tile) ?? 0, FROM_GROUND = Math.min(ON_GROUND, TOTAL), FROM_TILE = takeFromTile(world.worldMap, FLOW_ITEM.tile, TOTAL - FROM_GROUND);
+      if (ON_GROUND - FROM_GROUND > 1e-9) {
+        world._drops.set(FLOW_ITEM.tile, ON_GROUND - FROM_GROUND);
+      } else {
+        world._drops.delete(FLOW_ITEM.tile);
+      }
+      GOT[FLOW_ITEM.kind] += Math.floor(FROM_GROUND + FROM_TILE);
     }
     world.materials.wood += GOT.wood;
     world.materials.stone += GOT.stone;
@@ -2515,6 +2534,12 @@
     const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
     let foodRate = 0;
     const GATHER_RATES = /* @__PURE__ */ new Map();
+    const GATHER_OF = (plotId) => {
+      if (!GATHER_RATES.has(plotId)) {
+        GATHER_RATES.set(plotId, { gather: { wood: 0, stone: 0 }, haul: 0 });
+      }
+      return GATHER_RATES.get(plotId);
+    };
     const BUILD_RATES = /* @__PURE__ */ new Map();
     for (const [ID, KIND] of world._workerKinds) {
       const RATE = world._workerRates.get(ID) || 0;
@@ -2523,7 +2548,9 @@
       } else if (KIND === "explore") {
         continue;
       } else if (KIND === "resource") {
-        GATHER_RATES.set(world._workerPlots.get(ID), (GATHER_RATES.get(world._workerPlots.get(ID)) || 0) + RATE);
+        GATHER_OF(world._workerPlots.get(ID)).gather[world._workerResource.get(ID) ?? "wood"] += RATE;
+      } else if (KIND === "haul") {
+        GATHER_OF(world._workerPlots.get(ID)).haul += 1;
       } else {
         const PLOT_ID = world._workerPlots.get(ID);
         BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
@@ -8507,7 +8534,7 @@
     }
     return true;
   }
-  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, GROUND_LIMIT, MINE_EFFICIENCY, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, MINE_EFFICIENCY, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_work_aptitude();
@@ -8549,7 +8576,6 @@
       ({ createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler);
       EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
       EXPLORE_WALK_RATIO = 0.12;
-      GROUND_LIMIT = 12;
       MINE_EFFICIENCY = 0.5;
       EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
       PRESENTATION_CLOCKS = /* @__PURE__ */ new WeakMap();
@@ -9669,6 +9695,7 @@
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
           this.woodBasisPoints = 5e3;
+          this.haulBasisPoints = 3e3;
           this.materials = { wood: 0, stone: 0 };
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
           this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
@@ -9692,6 +9719,7 @@
           this._pieceWork = /* @__PURE__ */ new Map();
           this._haul = /* @__PURE__ */ new Map();
           this._drops = /* @__PURE__ */ new Map();
+          this._hitStacks = /* @__PURE__ */ new Map();
           this._fogClaims = /* @__PURE__ */ new Map();
           this._idleCarry = { food: 0 };
           this._workerIds = /* @__PURE__ */ new Set();
@@ -10684,6 +10712,17 @@
           }
           return true;
         }
+        setHaulShare(basisPoints) {
+          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
+            return false;
+          }
+          if (basisPoints !== this.haulBasisPoints) {
+            this.haulBasisPoints = basisPoints;
+            this._nextWorkerRefreshTick = 0;
+            this.refreshWorkers();
+          }
+          return true;
+        }
         // Starts a construction. The materials are paid up front; the work itself is done by the units.
         startBuild(kind, { tile = -1 } = {}) {
           const INFO = this.projectInfo(kind);
@@ -10829,17 +10868,18 @@
             ), EXPLORERS = RUSHING ? 0 : Math.min(PLOT_TOTAL - BUILDERS, Math.round(PLOT_TOTAL * this.exploreBasisPoints / 1e4)), GATHERERS = RUSHING ? 0 : Math.min(
               PLOT_TOTAL - BUILDERS - EXPLORERS,
               Math.round(PLOT_TOTAL * this.resourceBasisPoints / 1e4)
-            ), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
+            ), HITTERS = GATHERERS - Math.round(GATHERERS * this.haulBasisPoints / 1e4), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
               food: 1 + WORK.levelEffectStep * PLOT.facilityLevel("windmill"),
               resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel("rack")
             };
             const COUNTS = {
               build: BUILDERS,
               food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
-              wood: Math.round(GATHERERS * this.woodBasisPoints / 1e4),
+              wood: Math.round(HITTERS * this.woodBasisPoints / 1e4),
+              haul: GATHERERS - HITTERS,
               explore: EXPLORERS
             }, POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
-            COUNTS.stone = GATHERERS - COUNTS.wood;
+            COUNTS.stone = HITTERS - COUNTS.wood;
             for (const ROLE of APTITUDE_ORDER) {
               const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
               for (const PICK of PICKED) {
@@ -10865,13 +10905,14 @@
           return this.food.length >= CONFIG.farm.work.maxFood;
         }
         get workerKindCounts() {
-          let resource = 0, build = 0, explore = 0;
+          let resource = 0, haul = 0, build = 0, explore = 0;
           for (const KIND of this._workerKinds.values()) {
             resource += KIND === "resource" ? 1 : 0;
+            haul += KIND === "haul" ? 1 : 0;
             build += KIND === "build" ? 1 : 0;
             explore += KIND === "explore" ? 1 : 0;
           }
-          return { food: this._workerKinds.size - resource - build - explore, resource, build, explore };
+          return { food: this._workerKinds.size - resource - haul - build - explore, resource, haul, build, explore };
         }
         get workerCount() {
           return this._workCount;
@@ -10958,11 +10999,15 @@
           }
           return share;
         }
-        // Resource workers do both halves of gathering. They hit a forest or rock tile in their farm's sight, and every hit
-        // knocks material onto that tile's ground (a tile holds only so much). Once a load lies on the ground they pick it
-        // up and carry it home to their own farm, where it counts; otherwise they keep hitting.
-        isHauler(unit) {
+        // Gathering is two jobs. Resource workers hit the trees and rocks of a forest or rock tile in their farm's sight;
+        // every fifth hit knocks a piece onto that tile's ground (a tile holds only so much). Haulers pick pieces up, a small
+        // load at a time, and carry them home to their own farm, where they count.
+        isGatherer(unit) {
           return this._workerKinds.get(unit.id) === "resource";
+        }
+        isHauler(unit) {
+          const KIND = this._workerKinds.get(unit.id);
+          return KIND === "resource" || KIND === "haul";
         }
         dropsOn(tile) {
           return this._drops.get(tile) ?? 0;
@@ -11022,47 +11067,79 @@
         haulState(unit) {
           let state = this._haul.get(unit.id);
           if (!state) {
-            state = { phase: "out", job: "hit", tile: -1, kind: null, load: 0, claim: 0 };
+            state = { phase: "out", tile: -1, kind: null, load: 0, progress: 0, claim: 0 };
             this._haul.set(unit.id, state);
           }
           return state;
         }
-        // The tile in this farm's sight with a load lying on it that nobody is already coming for (a tile that has run out
-        // gives up what is left), the biggest pile first; -1 when there is none.
-        _loadTile(plotId) {
+        // The tile in this farm's sight with something lying on it that nobody else is already coming for, the one nearest
+        // to the worker; -1 when there is nothing left to pick up.
+        _nearestDropTile(unit) {
           const CLAIMED = /* @__PURE__ */ new Map();
-          for (const STATE of this._haul.values()) {
-            if (STATE.job === "carry" && STATE.phase === "out") {
+          for (const [ID, STATE] of this._haul) {
+            if (ID !== unit.id && STATE.claim > 0 && STATE.phase === "out") {
               CLAIMED.set(STATE.tile, (CLAIMED.get(STATE.tile) ?? 0) + STATE.claim);
             }
           }
-          let best = -1, bestAmount = 0;
+          let best = -1, bestDistance = Infinity;
           for (const [TILE, AMOUNT] of this._drops) {
-            const FREE = AMOUNT - (CLAIMED.get(TILE) ?? 0), READY = FREE >= WORLD_MAP_SETTINGS.carryLoad || FREE >= 1 && !(tileRemaining(this.worldMap, TILE) > 0);
-            if (READY && FREE > bestAmount && inReach(this.worldMap, TILE, plotId)) {
+            if (AMOUNT - (CLAIMED.get(TILE) ?? 0) < 1 || !inReach(this.worldMap, TILE, unit.plotId)) {
+              continue;
+            }
+            const AT = this.tileOffset(unit.plotId, TILE), DISTANCE = Math.hypot(AT.x - unit.x, AT.y - unit.y);
+            if (DISTANCE < bestDistance) {
               best = TILE;
-              bestAmount = FREE;
+              bestDistance = DISTANCE;
             }
           }
           return best;
+        }
+        // The tree or rock a hitter works on: one of those really standing on its tile, picked by the worker's id.
+        gatherTarget(unit, tile) {
+          const SPOTS = tileSpots(this.worldMap, tile);
+          if (SPOTS.length === 0) {
+            return null;
+          }
+          const INDEX = unit.id % SPOTS.length, AT = this.tileOffset(unit.plotId, tile);
+          return { index: INDEX, x: AT.x + SPOTS[INDEX].x, y: AT.y + SPOTS[INDEX].y };
+        }
+        // Every hit adds a notch to the tree's gauge; the fifth knocks one piece onto the ground.
+        landHit(unit) {
+          const STATE = this.haulState(unit), TARGET = this.gatherTarget(unit, STATE.tile);
+          if (!TARGET) {
+            return;
+          }
+          const KEY2 = `${STATE.tile}:${TARGET.index}`, NOTCHES = (this._hitStacks.get(KEY2) ?? 0) + 1;
+          if (NOTCHES >= HITS_PER_WORK) {
+            this._hitStacks.set(KEY2, 0);
+            this.dropPiece(STATE.tile);
+          } else {
+            this._hitStacks.set(KEY2, NOTCHES);
+          }
+        }
+        dropPiece(tile) {
+          if (this.dropsOn(tile) >= GROUND_LIMIT) {
+            return;
+          }
+          const TAKEN = takeFromTile(this.worldMap, tile, 1);
+          if (TAKEN > 0) {
+            this._drops.set(tile, this.dropsOn(tile) + TAKEN);
+          }
         }
         // Where a worker is headed right now, or null when there is nothing within sight to do.
         haulSpot(unit) {
           const STATE = this.haulState(unit);
           if (STATE.phase === "out") {
-            const LOAD_TILE = this._loadTile(unit.plotId);
-            if (LOAD_TILE >= 0) {
-              STATE.job = "carry";
-              STATE.tile = LOAD_TILE;
-              STATE.claim = Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(LOAD_TILE));
-              STATE.kind = tileResource(this.worldMap, LOAD_TILE);
-            } else {
-              STATE.job = "hit";
+            if (this.isGatherer(unit)) {
               if (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0)) {
                 const WANTED = this._workerResource.get(unit.id) ?? (this.materials.wood <= this.materials.stone ? "wood" : "stone"), TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
                 STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
                 STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
               }
+            } else if (!(this.dropsOn(STATE.tile) >= 1)) {
+              STATE.tile = this._nearestDropTile(unit);
+              STATE.claim = STATE.tile >= 0 ? Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(STATE.tile)) : 0;
+              STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;
             }
           }
           const JITTER_X = unit.id * 37 % 100 / 100 - 0.5, JITTER_Y = unit.id * 53 % 100 / 100 - 0.5;
@@ -11072,16 +11149,9 @@
           if (STATE.tile < 0) {
             return null;
           }
-          const AT = this.tileOffset(unit.plotId, STATE.tile), SPOTS = STATE.job === "hit" ? tileSpots(this.worldMap, STATE.tile) : [];
-          if (SPOTS.length > 0) {
-            const TARGET = SPOTS[unit.id % SPOTS.length];
-            return {
-              x: AT.x + TARGET.x - 4.2,
-              y: AT.y + TARGET.y,
-              speed: 9,
-              cx: AT.x + TARGET.x,
-              cy: AT.y + TARGET.y
-            };
+          const AT = this.tileOffset(unit.plotId, STATE.tile), TARGET = this.isGatherer(unit) ? this.gatherTarget(unit, STATE.tile) : null;
+          if (TARGET) {
+            return { x: TARGET.x - 4.2, y: TARGET.y, speed: 9, cx: TARGET.x, cy: TARGET.y };
           }
           return { x: AT.x + JITTER_X * 30, y: AT.y + JITTER_Y * 22, speed: 9, cx: AT.x, cy: AT.y };
         }
@@ -11106,25 +11176,23 @@
           if (STATE.phase === "out") {
             STATE.phase = "work";
           }
-          if (STATE.phase === "work" && STATE.job === "carry") {
+          if (STATE.phase === "work" && !this.isGatherer(unit)) {
             const LIFT = Math.min(WORLD_MAP_SETTINGS.carryLoad, this.dropsOn(STATE.tile));
             this._drops.set(STATE.tile, this.dropsOn(STATE.tile) - LIFT);
             STATE.load += LIFT;
             STATE.claim = 0;
             STATE.phase = STATE.load > 0 ? "back" : "out";
           } else if (STATE.phase === "work") {
-            const MINE = this.worldMap.mines.includes(STATE.tile), HERE = this.dropsOn(STATE.tile), WANT = Math.min(
-              (this._workerRates.get(unit.id) || 0) * (MINE ? MINE_EFFICIENCY : 1) * seconds,
-              GROUND_LIMIT - HERE
-            );
-            if (WANT > 0) {
-              const TAKEN = takeFromTile(this.worldMap, STATE.tile, WANT);
-              this._drops.set(STATE.tile, HERE + TAKEN);
-              if (TAKEN < WANT - 1e-9) {
-                STATE.tile = -1;
+            if (walk) {
+              const MINE = this.worldMap.mines.includes(STATE.tile);
+              STATE.progress = (STATE.progress ?? 0) + (this._workerRates.get(unit.id) || 0) * (MINE ? MINE_EFFICIENCY : 1) * seconds;
+              while (STATE.progress >= 1) {
+                STATE.progress -= 1;
+                this.dropPiece(STATE.tile);
               }
             }
-            if (this._loadTile(unit.plotId) >= 0) {
+            if (!(tileRemaining(this.worldMap, STATE.tile) > 0)) {
+              STATE.tile = -1;
               STATE.phase = "out";
             }
           } else if (STATE.phase === "back") {
@@ -11161,7 +11229,7 @@
             for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT_ID)) {
               if (this.isWorker(UNIT3) && UNIT3.hp > 0 && this.isHauler(UNIT3)) {
                 this._haulStep(UNIT3, seconds, !REAL);
-                if (REAL && this._haul.get(UNIT3.id)?.job !== "carry") {
+                if (REAL && this.isGatherer(UNIT3)) {
                   stepHaulSwing(this, UNIT3, this._haul.get(UNIT3.id), seconds);
                 }
               }
@@ -11347,7 +11415,7 @@
           let rate = 0;
           if (kind === "resource") {
             for (const UNIT3 of this.units) {
-              rate += this.isWorker(UNIT3) && this.isHauler(UNIT3) ? this._workerRates.get(UNIT3.id) || 0 : 0;
+              rate += this.isWorker(UNIT3) && this.isGatherer(UNIT3) ? this._workerRates.get(UNIT3.id) || 0 : 0;
             }
             return rate;
           }
@@ -15155,7 +15223,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.14";
+      PRODUCT_VERSION = "0.21.15";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18506,6 +18574,24 @@
         }
       }
     }
+    // The gauge of a tree or rock being hit: five slots, one fills per hit, like the one in front of a grain pile.
+    drawGauges(sim2) {
+      for (const [KEY2, NOTCHES] of sim2._hitStacks) {
+        if (NOTCHES <= 0) {
+          continue;
+        }
+        const [TILE, INDEX] = KEY2.split(":").map(Number), SPOT = tileSpots(sim2.worldMap, TILE)[INDEX];
+        if (!SPOT) {
+          continue;
+        }
+        const AT = sim2.tileOffset(sim2.activePlotId, TILE), BASE = this.project(AT.x + SPOT.x, AT.y + SPOT.y, 0), S = this.scale, FULL = tileResource(sim2.worldMap, TILE) === "wood" ? "#d9a566" : "#c9ccd2";
+        for (let slot = 0; slot < 5; slot++) {
+          const X = BASE.x + (slot - 2) * 0.27 * S, Y = BASE.y + 0.14 * S;
+          this.ellipse(X, Y, 0.115 * S, 0.1 * S, "#6b522a99");
+          this.ellipse(X, Y, 0.085 * S, 0.072 * S, slot < NOTCHES ? FULL : "#efe3bf");
+        }
+      }
+    }
     drawDanger(sim2) {
       const PRESENTATION = this.scenePresentation;
       const AREA = PRESENTATION.dangerVisible(sim2) ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea) : null;
@@ -18709,6 +18795,7 @@
       this.drawDanger(sim2);
       if (!SHIFT) {
         this.drawDrops(sim2);
+        this.drawGauges(sim2);
       }
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
@@ -22497,6 +22584,7 @@
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
     wood: "budmori.work.woodBasisPoints",
+    haul: "budmori.work.haulBasisPoints",
     build: "budmori.work.buildBasisPoints",
     explore: "budmori.work.exploreBasisPoints",
     walkers: "budmori.neighbourWalkers"
@@ -22560,7 +22648,7 @@
       loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints)
     );
     world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
-    showWoodShare(world.woodBasisPoints);
+    world.setHaulShare(loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints));
     return active;
   }
   install(new GARDEN());
@@ -23364,15 +23452,14 @@
       exploreBasisPoints: POINTS.explore
     });
   }
-  function showWoodShare(points) {
-    const PERCENT = Math.round(points / 100);
-    DOLLAR2("woodShare").value = String(PERCENT);
-    DOLLAR2("woodShareLabel").textContent = `자원 중 목재 ${PERCENT}% · 돌 ${100 - PERCENT}%`;
-  }
-  DOLLAR2("woodShare").addEventListener("input", () => {
-    const POINTS = Number(DOLLAR2("woodShare").value) * 100;
+  DOLLAR2("haulCut").addEventListener("input", () => {
+    const POINTS = (100 - Number(DOLLAR2("haulCut").value)) * 100;
+    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS);
+    (personalGarden || active.world).setHaulShare(POINTS);
+  });
+  DOLLAR2("woodCut").addEventListener("input", () => {
+    const POINTS = Number(DOLLAR2("woodCut").value) * 100;
     saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
-    showWoodShare(POINTS);
     (personalGarden || active.world).setWoodShare(POINTS);
   });
   for (const ID of WORK_CUT_IDS) {
@@ -23380,11 +23467,45 @@
       applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR2(id).value)));
     });
   }
-  DOLLAR2("workHudToggle").addEventListener("click", () => {
-    const OPEN = DOLLAR2("workHud").dataset.open !== "true";
-    DOLLAR2("workHud").dataset.open = String(OPEN);
-    DOLLAR2("workHudToggle").setAttribute("aria-expanded", String(OPEN));
+  var WORK_LEVEL_NAMES = ["역할", "일꾼", "자원", "채집"];
+  function setWorkLevel(level) {
+    DOLLAR2("workLevels").dataset.level = String(level);
+    DOLLAR2("workCrumbs").replaceChildren(
+      ...WORK_LEVEL_NAMES.slice(0, level + 1).map((name, index) => {
+        const BUTTON = document.createElement("button");
+        BUTTON.type = "button";
+        BUTTON.textContent = name;
+        BUTTON.dataset.levelTo = String(index);
+        BUTTON.setAttribute("aria-current", String(index === level));
+        return BUTTON;
+      })
+    );
+    DOLLAR2("workHud").dataset.level = String(level);
+  }
+  function setWorkHudOpen(open) {
+    DOLLAR2("workHud").dataset.open = String(open);
+    DOLLAR2("workHudToggle").setAttribute("aria-expanded", String(open));
+    if (!open) {
+      setWorkLevel(0);
+    }
+  }
+  DOLLAR2("workLevels").addEventListener("click", (e) => {
+    const BRANCH = e.target.closest("[data-level-to]");
+    if (BRANCH) {
+      setWorkHudOpen(true);
+      setWorkLevel(Number(BRANCH.dataset.levelTo));
+    }
   });
+  DOLLAR2("workCrumbs").addEventListener("click", (e) => {
+    const CRUMB = e.target.closest("[data-level-to]");
+    if (CRUMB) {
+      setWorkLevel(Number(CRUMB.dataset.levelTo));
+    }
+  });
+  DOLLAR2("workHudToggle").addEventListener("click", () => {
+    setWorkHudOpen(DOLLAR2("workHud").dataset.open !== "true");
+  });
+  setWorkLevel(0);
   DOLLAR2("workHud").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-work-preset]");
     if (BUTTON && !BUTTON.disabled) {
@@ -24005,8 +24126,25 @@
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
     syncText("workHudFood", `먹이 ${KINDS.food}`);
-    syncText("workHudRes", `자원 ${KINDS.resource}`);
-    syncText("workHudJobs", `일꾼 ${KINDS.resource + KINDS.build + KINDS.explore}`);
+    syncText("workHudRes", `자원 ${KINDS.resource + KINDS.haul}`);
+    {
+      const HAUL = Math.round(WORK_WORLD.haulBasisPoints / 100), WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
+      if (document.activeElement !== DOLLAR2("haulCut")) {
+        DOLLAR2("haulCut").value = String(100 - HAUL);
+      }
+      if (document.activeElement !== DOLLAR2("woodCut")) {
+        DOLLAR2("woodCut").value = String(WOOD);
+      }
+      syncText("workHudHit", `채집 ${KINDS.resource}`);
+      syncText("workHudCarry", `운반 ${KINDS.haul}`);
+      syncText("workHudWood", `목재 ${WOOD}%`);
+      syncText("workHudStone", `돌 ${100 - WOOD}%`);
+      DOLLAR2("workHudHit").style.flex = `${Math.max(1, 100 - HAUL)} 1 0`;
+      DOLLAR2("workHudCarry").style.flex = `${Math.max(1, HAUL)} 1 0`;
+      DOLLAR2("workHudWood").style.flex = `${Math.max(1, WOOD)} 1 0`;
+      DOLLAR2("workHudStone").style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
+    }
+    syncText("workHudJobs", `일꾼 ${KINDS.resource + KINDS.haul + KINDS.build + KINDS.explore}`);
     syncText("workHudBuild", `건설 ${KINDS.build}`);
     syncText("workHudExplore", `탐사 ${KINDS.explore}`);
     syncText("materialWood", String(W.materials.wood));

@@ -397,6 +397,59 @@ body > header {
 #workHudRes {
     background: #8b8a7c;
 }
+#workHudHit {
+    background: #8b8a7c;
+}
+#workHudCarry {
+    background: #a58f5f;
+    justify-content: flex-end;
+}
+#workHudWood {
+    background: #8a7a4a;
+}
+#workHudStone {
+    background: #8d8f93;
+    justify-content: flex-end;
+}
+.work-hud__levels > .work-hud__track {
+    display: none;
+}
+.work-hud__levels[data-level='0'] > [data-track='0'],
+.work-hud__levels[data-level='1'] > [data-track='1'],
+.work-hud__levels[data-level='2'] > [data-track='2'],
+.work-hud__levels[data-level='3'] > [data-track='3'] {
+    display: block;
+}
+.work-hud__branch {
+    cursor: pointer;
+}
+.work-hud__branch::after {
+    content: ' ›';
+}
+.work-hud__crumbs {
+    display: flex;
+    gap: var(--ui-s2);
+    font-size: var(--ui-fs-1);
+}
+.work-hud__crumbs:empty {
+    display: none;
+}
+.work-hud__crumbs button {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.work-hud__crumbs button[aria-current='true'] {
+    font-weight: var(--ui-fw-b);
+    cursor: default;
+}
+.work-hud__crumbs button + button::before {
+    content: '› ';
+}
 #workHudJobs {
     background: #8b8a7c;
     justify-content: flex-end;
@@ -1041,5 +1094,9 @@ details summary {
 }
 #mergeNotice,
 .mini-map__label {
+    display: none;
+}
+.work-hud[data-level='2'] .work-hud__presets,
+.work-hud[data-level='3'] .work-hud__presets {
     display: none;
 }

@@ -587,6 +587,7 @@ const WORK_STORAGE_KEYS = {
     work: 'budmori.work.basisPoints',
     resource: 'budmori.work.resourceBasisPoints',
     wood: 'budmori.work.woodBasisPoints',
+    haul: 'budmori.work.haulBasisPoints',
     build: 'budmori.work.buildBasisPoints',
     explore: 'budmori.work.exploreBasisPoints',
     walkers: 'budmori.neighbourWalkers',
@@ -661,7 +662,7 @@ function install(world) {
         loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints),
     );
     world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
-    showWoodShare(world.woodBasisPoints);
+    world.setHaulShare(loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints));
     return active;
 }
 install(new Garden());
@@ -1556,15 +1557,15 @@ function applyWorkCuts(...cuts) {
         exploreBasisPoints: POINTS.explore,
     });
 }
-function showWoodShare(points) {
-    const PERCENT = Math.round(points / 100);
-    DOLLAR('woodShare').value = String(PERCENT);
-    DOLLAR('woodShareLabel').textContent = `자원 중 목재 ${PERCENT}% · 돌 ${100 - PERCENT}%`;
-}
-DOLLAR('woodShare').addEventListener('input', () => {
-    const POINTS = Number(DOLLAR('woodShare').value) * 100;
+// The lower bars of the tree: workers -> resource -> hitters and haulers -> wood and stone.
+DOLLAR('haulCut').addEventListener('input', () => {
+    const POINTS = (100 - Number(DOLLAR('haulCut').value)) * 100;
+    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS);
+    (personalGarden || active.world).setHaulShare(POINTS);
+});
+DOLLAR('woodCut').addEventListener('input', () => {
+    const POINTS = Number(DOLLAR('woodCut').value) * 100;
     saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
-    showWoodShare(POINTS);
     (personalGarden || active.world).setWoodShare(POINTS);
 });
 for (const ID of WORK_CUT_IDS) {
@@ -1572,11 +1573,46 @@ for (const ID of WORK_CUT_IDS) {
         applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR(id).value)));
     });
 }
-DOLLAR('workHudToggle').addEventListener('click', () => {
-    const OPEN = DOLLAR('workHud').dataset.open !== 'true';
-    DOLLAR('workHud').dataset.open = String(OPEN);
-    DOLLAR('workHudToggle').setAttribute('aria-expanded', String(OPEN));
+// The role tree is shown one bar at a time: tapping a part with a branch (›) opens the bar that splits it.
+const WORK_LEVEL_NAMES = ['역할', '일꾼', '자원', '채집'];
+function setWorkLevel(level) {
+    DOLLAR('workLevels').dataset.level = String(level);
+    DOLLAR('workCrumbs').replaceChildren(
+        ...WORK_LEVEL_NAMES.slice(0, level + 1).map((name, index) => {
+            const BUTTON = document.createElement('button');
+            BUTTON.type = 'button';
+            BUTTON.textContent = name;
+            BUTTON.dataset.levelTo = String(index);
+            BUTTON.setAttribute('aria-current', String(index === level));
+            return BUTTON;
+        }),
+    );
+    DOLLAR('workHud').dataset.level = String(level);
+}
+function setWorkHudOpen(open) {
+    DOLLAR('workHud').dataset.open = String(open);
+    DOLLAR('workHudToggle').setAttribute('aria-expanded', String(open));
+    if (!open) {
+        setWorkLevel(0);
+    }
+}
+DOLLAR('workLevels').addEventListener('click', (e) => {
+    const BRANCH = e.target.closest('[data-level-to]');
+    if (BRANCH) {
+        setWorkHudOpen(true);
+        setWorkLevel(Number(BRANCH.dataset.levelTo));
+    }
 });
+DOLLAR('workCrumbs').addEventListener('click', (e) => {
+    const CRUMB = e.target.closest('[data-level-to]');
+    if (CRUMB) {
+        setWorkLevel(Number(CRUMB.dataset.levelTo));
+    }
+});
+DOLLAR('workHudToggle').addEventListener('click', () => {
+    setWorkHudOpen(DOLLAR('workHud').dataset.open !== 'true');
+});
+setWorkLevel(0);
 DOLLAR('workHud').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-work-preset]');
     if (BUTTON && !BUTTON.disabled) {
@@ -2266,8 +2302,26 @@ function sync(display, now, notices) {
     syncText('workHudNote', note);
     syncText('workHudBreed', `번식 ${BREEDERS}`);
     syncText('workHudFood', `먹이 ${KINDS.food}`);
-    syncText('workHudRes', `자원 ${KINDS.resource}`);
-    syncText('workHudJobs', `일꾼 ${KINDS.resource + KINDS.build + KINDS.explore}`);
+    syncText('workHudRes', `자원 ${KINDS.resource + KINDS.haul}`);
+    {
+        const HAUL = Math.round(WORK_WORLD.haulBasisPoints / 100),
+            WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
+        if (document.activeElement !== DOLLAR('haulCut')) {
+            DOLLAR('haulCut').value = String(100 - HAUL);
+        }
+        if (document.activeElement !== DOLLAR('woodCut')) {
+            DOLLAR('woodCut').value = String(WOOD);
+        }
+        syncText('workHudHit', `채집 ${KINDS.resource}`);
+        syncText('workHudCarry', `운반 ${KINDS.haul}`);
+        syncText('workHudWood', `목재 ${WOOD}%`);
+        syncText('workHudStone', `돌 ${100 - WOOD}%`);
+        DOLLAR('workHudHit').style.flex = `${Math.max(1, 100 - HAUL)} 1 0`;
+        DOLLAR('workHudCarry').style.flex = `${Math.max(1, HAUL)} 1 0`;
+        DOLLAR('workHudWood').style.flex = `${Math.max(1, WOOD)} 1 0`;
+        DOLLAR('workHudStone').style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
+    }
+    syncText('workHudJobs', `일꾼 ${KINDS.resource + KINDS.haul + KINDS.build + KINDS.explore}`);
     syncText('workHudBuild', `건설 ${KINDS.build}`);
     syncText('workHudExplore', `탐사 ${KINDS.explore}`);
     syncText('materialWood', String(W.materials.wood));

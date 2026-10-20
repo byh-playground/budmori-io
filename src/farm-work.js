@@ -152,6 +152,8 @@ export function spreadBuildHits(world, plotId, hits) {
     return { built: BUILT, open: OPEN, left };
 }
 export const HITS_PER_WORK = STACKS_PER_FOOD;
+// The most a tile's ground holds before its hitters wait for the haulers.
+export const GROUND_LIMIT = 12;
 // Food workers fight grain piles, resource workers fight trees and rocks, builders work the construction site.
 // Haulers carry what the resource workers knock loose; neither is tied to a pile.
 function effectiveKind(world, unit) {
@@ -428,8 +430,7 @@ function pushOutOfPiles(world) {
 }
 // A gatherer at its forest or rock swings in place with the same clips as a worker at a pile: wind up, strike,
 // recover, and wait a moment. The load itself is settled by the hauling trip; this is the picture of the work.
-const GATHER_REACH = 1.1,
-    GATHER_PAUSE_SECONDS = 0.3;
+const GATHER_REACH = 1.1;
 export function stepHaulSwing(world, unit, haul, dt) {
     if (haul?.phase !== 'work') {
         world._swings.delete(unit.id);
@@ -444,7 +445,12 @@ export function stepHaulSwing(world, unit, haul, dt) {
         swing.wait -= dt;
         const SPOT = world.haulSpot(unit);
         // Only a worker standing at its place winds up.
-        if (swing.wait <= 0 && SPOT && Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5) {
+        if (
+            swing.wait <= 0 &&
+            SPOT &&
+            world.dropsOn(world.haulState(unit).tile) < GROUND_LIMIT &&
+            Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5
+        ) {
             swing.phase = 'windup';
             swing.elapsed = 0;
         }
@@ -460,6 +466,7 @@ export function stepHaulSwing(world, unit, haul, dt) {
         if (SPOT?.cx === undefined || D <= GATHER_REACH + unit.radius * 0.6 + 0.12) {
             // Body slam: the tree takes the hit and the worker bounces back off it.
             if (SPOT?.cx !== undefined) {
+                world.landHit(unit);
                 world.emit('thresh', SPOT.cx, SPOT.cy, 0, { big: false, duration: 0.55 });
                 unit.vx = ((unit.x - SPOT.cx) / Math.max(D, 1e-6)) * RECOIL_SPEED;
                 unit.vy = ((unit.y - SPOT.cy) / Math.max(D, 1e-6)) * RECOIL_SPEED;
@@ -473,7 +480,10 @@ export function stepHaulSwing(world, unit, haul, dt) {
     } else if (swing.phase === 'recover' && swing.elapsed >= SWING_RECOVER) {
         swing.phase = 'idle';
         swing.elapsed = 0;
-        swing.wait = GATHER_PAUSE_SECONDS;
+        // The worker's own pace: five hits make one piece, as at a pile.
+        const MINE = world.worldMap.mines.includes(world.haulState(unit).tile) ? 0.5 : 1,
+            RATE = (world._workerRates.get(unit.id) || 0) * MINE;
+        swing.wait = RATE > 0 ? Math.max(0.1, 1 / (RATE * HITS_PER_WORK) - SWING_WINDUP - SWING_RECOVER - 0.5) : 1;
     }
 }
 export function stepWork(world, config, dt) {
