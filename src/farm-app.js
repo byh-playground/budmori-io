@@ -661,6 +661,7 @@ const WORK_STORAGE_KEYS = {
     work: 'budmori.work.basisPoints',
     resource: 'budmori.work.resourceBasisPoints',
     build: 'budmori.work.buildBasisPoints',
+    explore: 'budmori.work.exploreBasisPoints',
 };
 // The worker ratio is a play setting, not part of the farm save, so old saves stay valid.
 function loadWorkSetting(key, fallback) {
@@ -679,21 +680,23 @@ function saveWorkSetting(key, value) {
         /* The ratio still applies for this run. */
     }
 }
-// The HUD bar is [breed | food | resource | build]; the three cuts are percentages of the whole farm.
+// The HUD bar is [breed | food | resource | build | explore]; the four cuts are percentages of the whole farm.
 function workCuts(world) {
     const WORK = world.workBasisPoints / 100,
         CUT_A = 100 - WORK,
-        CUT_C = 100 - (WORK * world.buildBasisPoints) / 10000,
+        CUT_D = 100 - (WORK * world.exploreBasisPoints) / 10000,
+        CUT_C = CUT_D - (WORK * world.buildBasisPoints) / 10000,
         CUT_B = CUT_C - (WORK * world.resourceBasisPoints) / 10000,
         ROUND = (value) => Math.round(value / 5) * 5;
-    return { a: ROUND(CUT_A), b: ROUND(CUT_B), c: ROUND(CUT_C) };
+    return { a: ROUND(CUT_A), b: ROUND(CUT_B), c: ROUND(CUT_C), d: ROUND(CUT_D) };
 }
-function cutsToBasisPoints(a, b, c) {
+function cutsToBasisPoints(a, b, c, d) {
     const WORK = 100 - a;
     return {
         work: WORK * 100,
         resource: WORK > 0 ? Math.round(((c - b) / WORK) * 10000) : 0,
-        build: WORK > 0 ? Math.round(((100 - c) / WORK) * 10000) : 0,
+        build: WORK > 0 ? Math.round(((d - c) / WORK) * 10000) : 0,
+        explore: WORK > 0 ? Math.round(((100 - d) / WORK) * 10000) : 0,
     };
 }
 function install(world) {
@@ -711,6 +714,7 @@ function install(world) {
         loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
         loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
         loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
+        loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints),
     );
     return active;
 }
@@ -913,6 +917,9 @@ function offlineText(summary) {
     }
     if (summary.wood || summary.stone) {
         PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
+    }
+    if (summary.explored) {
+        PARTS.push(`지도 ${summary.explored}칸 탐사`);
     }
     if (summary.built.length) {
         PARTS.push(`${summary.built.join(', ')} 완성`);
@@ -1687,23 +1694,26 @@ DOLLAR('farmPlotActions').addEventListener('click', (e) => {
         beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
 });
-function applyWorkCuts(a, b, c) {
-    const [CUT_A, CUT_B, CUT_C] = [a, b, c].sort((x, y) => x - y),
-        POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C);
+function applyWorkCuts(a, b, c, d) {
+    const [CUT_A, CUT_B, CUT_C, CUT_D] = [a, b, c, d].sort((x, y) => x - y),
+        POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C, CUT_D);
     DOLLAR('workCutA').value = String(CUT_A);
     DOLLAR('workCutB').value = String(CUT_B);
     DOLLAR('workCutC').value = String(CUT_C);
+    DOLLAR('workCutD').value = String(CUT_D);
     saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
     saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
     saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
-    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build);
+    saveWorkSetting(WORK_STORAGE_KEYS.explore, POINTS.explore);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build, POINTS.explore);
     active.queue('farm-work', {
         basisPoints: POINTS.work,
         resourceBasisPoints: POINTS.resource,
         buildBasisPoints: POINTS.build,
+        exploreBasisPoints: POINTS.explore,
     });
 }
-const WORK_CUT_IDS = ['workCutA', 'workCutB', 'workCutC'];
+const WORK_CUT_IDS = ['workCutA', 'workCutB', 'workCutC', 'workCutD'];
 for (const ID of WORK_CUT_IDS) {
     DOLLAR(ID).addEventListener('input', () => {
         applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR(id).value)));
@@ -2421,6 +2431,7 @@ function sync(display, now, notices) {
         DOLLAR('workCutA').value = String(CUTS.a);
         DOLLAR('workCutB').value = String(CUTS.b);
         DOLLAR('workCutC').value = String(CUTS.c);
+        DOLLAR('workCutD').value = String(CUTS.d);
     }
     DOLLAR('buildRush').hidden = SITES.length === 0;
     DOLLAR('buildRush').setAttribute('aria-pressed', String(WORK_WORLD.buildRush));
@@ -2452,15 +2463,20 @@ function sync(display, now, notices) {
     syncText('workHudFood', `먹이 ${KINDS.food}`);
     syncText('workHudRes', `자원 ${KINDS.resource}`);
     syncText('workHudBuild', `건설 ${KINDS.build}`);
+    syncText('workHudExplore', `탐사 ${KINDS.explore}`);
     syncText('materialWood', String(W.materials.wood));
     syncText('materialStone', String(W.materials.stone));
     syncData('workHud', 'warn', warn);
     DOLLAR('workHudBreed').style.flex = `${Math.max(1, CUTS.a)} 1 0`;
     DOLLAR('workHudFood').style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
     DOLLAR('workHudRes').style.flex = `${Math.max(1, CUTS.c - CUTS.b)} 1 0`;
-    DOLLAR('workHudBuild').style.flex = `${Math.max(1, 100 - CUTS.c)} 1 0`;
+    DOLLAR('workHudBuild').style.flex = `${Math.max(1, CUTS.d - CUTS.c)} 1 0`;
+    DOLLAR('workHudExplore').style.flex = `${Math.max(1, 100 - CUTS.d)} 1 0`;
     for (const BUTTON of DOLLAR('workHud').querySelectorAll('[data-work-preset]')) {
-        BUTTON.setAttribute('aria-pressed', String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUTS.c}`));
+        BUTTON.setAttribute(
+            'aria-pressed',
+            String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUTS.c},${CUTS.d}`),
+        );
         BUTTON.disabled = !!farmSortTransition;
     }
     syncText('warehouseProgressLabel', `타작 ${W.foodTaps.remainder}/5`);

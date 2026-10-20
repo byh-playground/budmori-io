@@ -175,6 +175,14 @@ export const FARM_SNAPSHOT_SHAPE = {
         stone: 0,
     },
     savedSites: [],
+    worldMap: {
+        seed: 0,
+        gauge: 0,
+        exploreTarget: -1,
+        revealed: [],
+        cleared: [],
+        farms: [],
+    },
     foodTaps: {
         remainder: 0,
         autoClock: 0,
@@ -399,6 +407,7 @@ const CORN_GROUP = FIELDS(
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     savedSites: JSON_PAYLOAD,
+    worldMap: JSON_PAYLOAD,
     farmPlots: [FIELDS('id', { food: [FIELDS('x y z vx vy vz seed phase tx ty')] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],

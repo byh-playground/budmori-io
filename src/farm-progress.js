@@ -3,6 +3,7 @@ import { createPlayerProgressionState, isValidPlayerProgressionState } from './p
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 import { FarmPlot, RESERVE_PLOT_ID } from './farm-plot.js';
 import { FARM_CAPACITY_STEPS } from './farm-upgrades.js';
+import { isValidWorldMap } from './world-map.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
 };
@@ -166,6 +167,7 @@ export function captureFarmProgress(world) {
         STAGE = world.farmBossProgress;
     const SITES = world.allBuildSites;
     return {
+        worldMap: structuredClone(world.worldMap),
         seed: world.seed,
         rngState: world.rng.state,
         nextId: world.nextId,
@@ -230,7 +232,11 @@ export function captureFarmProgress(world) {
     };
 }
 export function validateFarmProgress(data) {
-    keys(data, ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'bossStages', 'ledger'], ['mode']);
+    keys(
+        data,
+        ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'bossStages', 'ledger'],
+        ['mode', 'worldMap'],
+    );
     ASSERT(
         INTEGER(data.seed, 0, 0xffffffff) &&
             INTEGER(data.rngState, 0, 0xffffffff) &&
@@ -351,6 +357,11 @@ export function validateFarmProgress(data) {
     }
     keys(data.totals, ['births', 'merges']);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
+    ASSERT(
+        data.worldMap === undefined ||
+            (isValidWorldMap(data.worldMap) &&
+                data.worldMap.farms.every((farm) => PLAYER.farmPlots.plots.some((plot) => plot.id === farm.plotId))),
+    );
     const STAGE = data.bossStages;
     keys(STAGE, [
         'currentStage',
@@ -633,6 +644,9 @@ export function restoreFarmProgress(data) {
         WORLD.restoreBuildSite(SITE);
     }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
+    if (data.worldMap !== undefined) {
+        WORLD.worldMap = structuredClone(data.worldMap);
+    }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = new Map();
     for (const ROW of data.roster) {

@@ -765,6 +765,9 @@
     if (KIND === "build") {
       return pile.kind === "site";
     }
+    if (KIND === "explore") {
+      return false;
+    }
     return KIND === "resource" ? pile.kind === "wood" || pile.kind === "stone" : pile.kind === "grain";
   }
   function capacity(config, pile, siteCapacity) {
@@ -1019,6 +1022,150 @@
     }
   });
 
+  // src/world-map.js
+  function tileIndex(x, y) {
+    return (y + WORLD_MAP_SETTINGS.radius) * SIDE + (x + WORLD_MAP_SETTINGS.radius);
+  }
+  function tileX(index) {
+    return index % SIDE - WORLD_MAP_SETTINGS.radius;
+  }
+  function tileY(index) {
+    return Math.floor(index / SIDE) - WORLD_MAP_SETTINGS.radius;
+  }
+  function inside(x, y) {
+    return Math.abs(x) <= WORLD_MAP_SETTINGS.radius && Math.abs(y) <= WORLD_MAP_SETTINGS.radius;
+  }
+  function tileUnit(seed, index, salt) {
+    let value = (seed ^ Math.imul(index + 1, 2654435769) ^ Math.imul(salt, 2246822507)) >>> 0;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  }
+  function farmTiles(map) {
+    return map.farms.map((farm) => farm.tile);
+  }
+  function farmDistance(map, index) {
+    const X = tileX(index), Y = tileY(index);
+    let best = Infinity;
+    for (const FARM of farmTiles(map)) {
+      best = Math.min(best, Math.max(Math.abs(X - tileX(FARM)), Math.abs(Y - tileY(FARM))));
+    }
+    return best;
+  }
+  function createWorldMap(seed, firstPlotId) {
+    const MAP = {
+      seed: Number.isSafeInteger(seed) ? seed >>> 0 : 0,
+      gauge: 0,
+      exploreTarget: -1,
+      revealed: [],
+      cleared: [],
+      farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }]
+    };
+    for (let y = -WORLD_MAP_SETTINGS.safeRadius; y <= WORLD_MAP_SETTINGS.safeRadius; y++) {
+      for (let x = -WORLD_MAP_SETTINGS.safeRadius; x <= WORLD_MAP_SETTINGS.safeRadius; x++) {
+        MAP.revealed.push(tileIndex(x, y));
+      }
+    }
+    MAP.revealed.sort((a, b) => a - b);
+    return MAP;
+  }
+  function exploreCost(map) {
+    const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
+    return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
+  }
+  function touchesLight(index, lit) {
+    const X = tileX(index), Y = tileY(index);
+    return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && lit.has(tileIndex(X + dx, Y + dy)));
+  }
+  function nextExploreTile(map) {
+    const LIT = new Set(map.revealed);
+    if (map.exploreTarget >= 0 && !LIT.has(map.exploreTarget) && touchesLight(map.exploreTarget, LIT)) {
+      return map.exploreTarget;
+    }
+    let best = -1, bestScore = Infinity;
+    for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
+      if (LIT.has(index) || !touchesLight(index, LIT)) {
+        continue;
+      }
+      const SCORE = farmDistance(map, index) + tileUnit(map.seed, index, 2) * 0.5;
+      if (SCORE < bestScore) {
+        best = index;
+        bestScore = SCORE;
+      }
+    }
+    return best;
+  }
+  function advanceExploration(map, points) {
+    const FOUND = [];
+    if (!(points > 0)) {
+      return FOUND;
+    }
+    map.gauge += points;
+    while (FOUND.length < WORLD_MAP_TILE_COUNT) {
+      const COST = exploreCost(map), NEXT = nextExploreTile(map);
+      if (NEXT < 0) {
+        map.gauge = 0;
+        break;
+      }
+      if (map.gauge < COST) {
+        break;
+      }
+      map.gauge -= COST;
+      map.revealed.push(NEXT);
+      map.revealed.sort((a, b) => a - b);
+      if (map.exploreTarget === NEXT) {
+        map.exploreTarget = -1;
+      }
+      FOUND.push(NEXT);
+    }
+    return FOUND;
+  }
+  function isValidWorldMap(map) {
+    if (!map || typeof map !== "object" || Array.isArray(map)) {
+      return false;
+    }
+    if (Object.keys(map).sort().join(",") !== "cleared,exploreTarget,farms,gauge,revealed,seed") {
+      return false;
+    }
+    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !Number.isFinite(map.gauge) || map.gauge < 0 || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.cleared) || !Array.isArray(map.farms) || map.farms.length === 0) {
+      return false;
+    }
+    const LIT = new Set(map.revealed);
+    return map.cleared.every((index) => LIT.has(index)) && map.farms.every(
+      (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
+    );
+  }
+  var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, SORTED_INDEXES;
+  var init_world_map = __esm({
+    "src/world-map.js"() {
+      WORLD_MAP_SETTINGS = {
+        radius: 12,
+        // Tiles within this many steps of a farm start lit and never hold a nest.
+        safeRadius: 1,
+        nestChance: 0.34,
+        firstTileCost: 60,
+        tileCostStep: 4,
+        maxDanger: 61,
+        dangerPerRing: 6
+      };
+      SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
+      WORLD_MAP_TILE_COUNT = SIDE * SIDE;
+      NEIGHBOURS = [
+        [-1, -1],
+        [0, -1],
+        [1, -1],
+        [-1, 0],
+        [1, 0],
+        [-1, 1],
+        [0, 1],
+        [1, 1]
+      ];
+      SORTED_INDEXES = (list) => Array.isArray(list) && list.every(
+        (value, position2) => Number.isSafeInteger(value) && value >= 0 && value < WORLD_MAP_TILE_COUNT && (position2 === 0 || value > list[position2 - 1])
+      );
+    }
+  });
+
   // src/farm-offline.js
   function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
@@ -1031,13 +1178,15 @@
     }
     const SECONDS = AWAY * OFFLINE.efficiency;
     world.refreshWorkers();
-    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
-    let foodRate = 0, gatherRate = 0;
+    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [], explored: 0 };
+    let foodRate = 0, gatherRate = 0, exploreRate = 0;
     const BUILD_RATES = /* @__PURE__ */ new Map();
     for (const [ID, KIND] of world._workerKinds) {
       const RATE = world._workerRates.get(ID) || 0;
       if (KIND === "food") {
         foodRate += RATE;
+      } else if (KIND === "explore") {
+        exploreRate += RATE;
       } else if (KIND === "resource") {
         gatherRate += RATE;
       } else {
@@ -1080,6 +1229,7 @@
       }
       gatherRate += left / (STACKS_PER_FOOD2 * SECONDS);
     }
+    SUMMARY.explored = advanceExploration(world.worldMap, exploreRate * SECONDS).length;
     const MATERIALS = Math.floor(gatherRate * SECONDS), WOOD = Math.ceil(MATERIALS / 2);
     world.materials.wood += WOOD;
     world.materials.stone += MATERIALS - WOOD;
@@ -1147,6 +1297,7 @@
     "src/farm-offline.js"() {
       init_farm_work();
       init_farm_plot();
+      init_world_map();
       STACKS_PER_FOOD2 = 5;
     }
   });
@@ -7595,12 +7746,12 @@
         length: strikeCount
       },
       (_, strikeIndex) => {
-        const SIDE = strikeIndex % 2 === 0 ? -1 : 1;
+        const SIDE2 = strikeIndex % 2 === 0 ? -1 : 1;
         return Object.freeze({
           strikeIndex,
           kernelIndex: strikeIndex % 2,
-          side: SIDE,
-          angleOffsetRadians: SIDE * spreadRadians,
+          side: SIDE2,
+          angleOffsetRadians: SIDE2 * spreadRadians,
           dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
           attackMultiplier
         });
@@ -7688,10 +7839,10 @@
           if (TARGET && TARGET.hp > 0) {
             const DISTANCE = Math.hypot(TARGET.x - U.x, TARGET.y - U.y), REACH = TARGET.radius + U.radius + this.spec.range;
             if (DISTANCE <= REACH) {
-              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE = SLOT.angleOffsetRadians;
+              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE2 = SLOT.angleOffsetRadians;
               const FROM = {
-                x: U.x + Math.cos(AIM + SIDE) * U.radius * 0.45,
-                y: U.y + Math.sin(AIM + SIDE) * U.radius * 0.45,
+                x: U.x + Math.cos(AIM + SIDE2) * U.radius * 0.45,
+                y: U.y + Math.sin(AIM + SIDE2) * U.radius * 0.45,
                 z: 0
               };
               const TO = {
@@ -8228,6 +8379,7 @@
       init_unit_collection();
       init_farm_roster();
       init_farm_plot();
+      init_world_map();
       init_simulation_scenes();
       init_projectile_behaviors();
       init_boss_event_phases();
@@ -8293,6 +8445,7 @@
             maxAttackers: 3,
             defaultResourceBasisPoints: 3e3,
             defaultBuildBasisPoints: 1500,
+            defaultExploreBasisPoints: 1e3,
             facilityMaxLevel: FACILITY_MAX_LEVEL,
             levelCostStep: 0.75,
             levelHitsStep: 0.6,
@@ -9386,6 +9539,8 @@
           this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
           this.materials = { wood: 0, stone: 0 };
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
+          this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
+          this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
           this.buildRush = false;
           this._workerKinds = /* @__PURE__ */ new Map();
           this._workerIds = /* @__PURE__ */ new Set();
@@ -10585,17 +10740,18 @@
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
         }
         // workers share of the farm, and the share of those workers that gather materials instead of grain.
-        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints, buildBasisPoints = this.buildBasisPoints) {
+        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints, buildBasisPoints = this.buildBasisPoints, exploreBasisPoints = this.exploreBasisPoints) {
           const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4;
-          if (!VALID(basisPoints) || !VALID(resourceBasisPoints) || !VALID(buildBasisPoints) || resourceBasisPoints + buildBasisPoints > 1e4) {
+          if (!VALID(basisPoints) || !VALID(resourceBasisPoints) || !VALID(buildBasisPoints) || !VALID(exploreBasisPoints) || resourceBasisPoints + buildBasisPoints + exploreBasisPoints > 1e4) {
             return false;
           }
-          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints && buildBasisPoints === this.buildBasisPoints) {
+          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints && buildBasisPoints === this.buildBasisPoints && exploreBasisPoints === this.exploreBasisPoints) {
             return true;
           }
           this.workBasisPoints = basisPoints;
           this.resourceBasisPoints = resourceBasisPoints;
           this.buildBasisPoints = buildBasisPoints;
+          this.exploreBasisPoints = exploreBasisPoints;
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           return true;
@@ -10652,12 +10808,15 @@
                 plotHasSite(this, PLOT_ID) ? 1 : 0,
                 Math.round(PLOT_TOTAL * this.buildBasisPoints / 1e4)
               )
-            ), GATHERERS = RUSHING ? 0 : Math.min(PLOT_TOTAL - BUILDERS, Math.round(PLOT_TOTAL * this.resourceBasisPoints / 1e4)), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
+            ), EXPLORERS = RUSHING ? 0 : Math.min(PLOT_TOTAL - BUILDERS, Math.round(PLOT_TOTAL * this.exploreBasisPoints / 1e4)), GATHERERS = RUSHING ? 0 : Math.min(
+              PLOT_TOTAL - BUILDERS - EXPLORERS,
+              Math.round(PLOT_TOTAL * this.resourceBasisPoints / 1e4)
+            ), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
               food: 1 + WORK.levelEffectStep * PLOT.facilityLevel("windmill"),
               resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel("rack")
             };
             SORTED_WORKERS.forEach((id, index) => {
-              const KIND = index >= PLOT_TOTAL - BUILDERS ? "build" : index >= PLOT_TOTAL - BUILDERS - GATHERERS ? "resource" : "food";
+              const KIND = index >= PLOT_TOTAL - EXPLORERS ? "explore" : index >= PLOT_TOTAL - EXPLORERS - BUILDERS ? "build" : index >= PLOT_TOTAL - EXPLORERS - BUILDERS - GATHERERS ? "resource" : "food";
               this._workerKinds.set(id, KIND);
               this._workerPlots.set(id, PLOT_ID);
               const BOOSTED = this._workerRates.get(id) * (MULTIPLIER[KIND] || 1);
@@ -10673,15 +10832,26 @@
           return this.food.length >= CONFIG.farm.work.maxFood;
         }
         get workerKindCounts() {
-          let resource = 0, build = 0;
+          let resource = 0, build = 0, explore = 0;
           for (const KIND of this._workerKinds.values()) {
             resource += KIND === "resource" ? 1 : 0;
             build += KIND === "build" ? 1 : 0;
+            explore += KIND === "explore" ? 1 : 0;
           }
-          return { food: this._workerKinds.size - resource - build, resource, build };
+          return { food: this._workerKinds.size - resource - build - explore, resource, build, explore };
         }
         get workerCount() {
           return this._workCount;
+        }
+        // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
+        get exploreRate() {
+          let rate = 0;
+          for (const [ID, KIND] of this._workerKinds) {
+            if (KIND === "explore") {
+              rate += this._workerRates.get(ID) || 0;
+            }
+          }
+          return rate;
         }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
@@ -10710,6 +10880,9 @@
           }
           if (this.scene === "farm") {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
+            if (advanceExploration(this.worldMap, this.exploreRate * Math.min(elapsed, 0.1)).length > 0) {
+              this.markProgressChanged();
+            }
           }
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
@@ -14001,6 +14174,7 @@
     const ROSTER2 = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row), STAGE = world.farmBossProgress;
     const SITES = world.allBuildSites;
     return {
+      worldMap: structuredClone(world.worldMap),
       seed: world.seed,
       rngState: world.rng.state,
       nextId: world.nextId,
@@ -14055,7 +14229,11 @@
     };
   }
   function validateFarmProgress(data) {
-    keys(data, ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "bossStages", "ledger"], ["mode"]);
+    keys(
+      data,
+      ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "bossStages", "ledger"],
+      ["mode", "worldMap"]
+    );
     ASSERT(
       INTEGER(data.seed, 0, 4294967295) && INTEGER(data.rngState, 0, 4294967295) && INTEGER(data.nextId, 1, CONFIG.farm.maxUnitId + 1) && (data.mode === void 0 || ["breed", "merge"].includes(data.mode))
     );
@@ -14145,6 +14323,9 @@
     }
     keys(data.totals, ["births", "merges"]);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
+    ASSERT(
+      data.worldMap === void 0 || isValidWorldMap(data.worldMap) && data.worldMap.farms.every((farm) => PLAYER.farmPlots.plots.some((plot) => plot.id === farm.plotId))
+    );
     const STAGE = data.bossStages;
     keys(STAGE, [
       "currentStage",
@@ -14325,6 +14506,9 @@
       WORLD.restoreBuildSite(SITE);
     }
     WORLD.farmBossProgress = structuredClone(data.bossStages);
+    if (data.worldMap !== void 0) {
+      WORLD.worldMap = structuredClone(data.worldMap);
+    }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
     for (const ROW of data.roster) {
@@ -14412,6 +14596,7 @@
       init_boss_rewards();
       init_farm_plot();
       init_farm_upgrades();
+      init_world_map();
       FAIL = () => {
         throw new TypeError("올바른 농장 진행 저장 데이터가 아니에요.");
       };
@@ -14456,7 +14641,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.0";
+      PRODUCT_VERSION = "0.13.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15618,9 +15803,9 @@
         for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
           const POINTS = ARCS[arcIndex];
           for (let index = 0; index < POINTS.length; index++) {
-            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
-            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
-            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
+            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE2 = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
+            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE2;
+            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE2 * 0.42;
             POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
           }
           const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
@@ -15973,8 +16158,8 @@
   };
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
-      const T = CLAMP2(progress, 0, 1), SIDE = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
-        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE * Math.min(1, LENGTH / 1.2);
+      const T = CLAMP2(progress, 0, 1), SIDE2 = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
+        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE2 * Math.min(1, LENGTH / 1.2);
         return renderer.project(
           POSITION.x + NORMAL_X * ARC,
           POSITION.y + NORMAL_Y * ARC,
@@ -18636,7 +18821,7 @@
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
-          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints);
+          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints, c.exploreBasisPoints);
         case "farm-build":
           return W.scene === "farm" && typeof c.facilityId === "string" && W.startBuild(c.facilityId);
         case "farm-rush":
@@ -19574,6 +19759,14 @@
       stone: 0
     },
     savedSites: [],
+    worldMap: {
+      seed: 0,
+      gauge: 0,
+      exploreTarget: -1,
+      revealed: [],
+      cleared: [],
+      farms: []
+    },
     foodTaps: {
       remainder: 0,
       autoClock: 0,
@@ -19786,6 +19979,7 @@
   );
   var SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     savedSites: JSON_PAYLOAD,
+    worldMap: JSON_PAYLOAD,
     farmPlots: [FIELDS("id", { food: [FIELDS("x y z vx vy vz seed phase tx ty")] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT2],
@@ -19891,6 +20085,7 @@
   }
 
   // src/farm-snapshot-validation.js
+  init_world_map();
   init_definition16();
   var INTEGER2 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
@@ -19982,6 +20177,11 @@
     shape(raw, FARM_SNAPSHOT_SHAPE);
     ASSERT2(isValidFormationRuntime(raw.formationRuntime));
     ASSERT2(INTEGER2(raw.materials.wood, 0, 1e12) && INTEGER2(raw.materials.stone, 0, 1e12));
+    ASSERT2(
+      isValidWorldMap(raw.worldMap) && raw.worldMap.farms.every(
+        (farm) => raw.playerProgression.farmPlots.plots.some((plot) => plot.id === farm.plotId)
+      )
+    );
     ASSERT2(
       INTEGER2(raw.seed, 0, 4294967295) && INTEGER2(raw.rng.state, 0, 4294967295) && INTEGER2(raw.simulationTick, 0, 1e12)
     );
@@ -20461,10 +20661,13 @@
   }
 
   // src/farm-snapshot-migrations.js
+  init_farm_plot();
+  init_world_map();
   function normalizeSnapshot(raw, { clone: clone2 = true } = {}) {
     const SNAPSHOT = clone2 ? structuredClone(raw) : raw;
     SNAPSHOT.materials ??= { wood: 0, stone: 0 };
     SNAPSHOT.savedSites ??= [];
+    SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }
@@ -21777,7 +21980,8 @@
   var WORK_STORAGE_KEYS = {
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
-    build: "budmori.work.buildBasisPoints"
+    build: "budmori.work.buildBasisPoints",
+    explore: "budmori.work.exploreBasisPoints"
   };
   function loadWorkSetting(key, fallback) {
     try {
@@ -21794,15 +21998,16 @@
     }
   }
   function workCuts(world) {
-    const WORK = world.workBasisPoints / 100, CUT_A = 100 - WORK, CUT_C = 100 - WORK * world.buildBasisPoints / 1e4, CUT_B = CUT_C - WORK * world.resourceBasisPoints / 1e4, ROUND = (value) => Math.round(value / 5) * 5;
-    return { a: ROUND(CUT_A), b: ROUND(CUT_B), c: ROUND(CUT_C) };
+    const WORK = world.workBasisPoints / 100, CUT_A = 100 - WORK, CUT_D = 100 - WORK * world.exploreBasisPoints / 1e4, CUT_C = CUT_D - WORK * world.buildBasisPoints / 1e4, CUT_B = CUT_C - WORK * world.resourceBasisPoints / 1e4, ROUND = (value) => Math.round(value / 5) * 5;
+    return { a: ROUND(CUT_A), b: ROUND(CUT_B), c: ROUND(CUT_C), d: ROUND(CUT_D) };
   }
-  function cutsToBasisPoints(a, b, c) {
+  function cutsToBasisPoints(a, b, c, d) {
     const WORK = 100 - a;
     return {
       work: WORK * 100,
       resource: WORK > 0 ? Math.round((c - b) / WORK * 1e4) : 0,
-      build: WORK > 0 ? Math.round((100 - c) / WORK * 1e4) : 0
+      build: WORK > 0 ? Math.round((d - c) / WORK * 1e4) : 0,
+      explore: WORK > 0 ? Math.round((100 - d) / WORK * 1e4) : 0
     };
   }
   function install(world) {
@@ -21819,7 +22024,8 @@
     world.setWorkBasisPoints(
       loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
       loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
-      loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints)
+      loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
+      loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints)
     );
     return active;
   }
@@ -22006,6 +22212,9 @@
     }
     if (summary.wood || summary.stone) {
       PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
+    }
+    if (summary.explored) {
+      PARTS.push(`지도 ${summary.explored}칸 탐사`);
     }
     if (summary.built.length) {
       PARTS.push(`${summary.built.join(", ")} 완성`);
@@ -22711,22 +22920,25 @@
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
-  function applyWorkCuts(a, b, c) {
-    const [CUT_A, CUT_B, CUT_C] = [a, b, c].sort((x, y) => x - y), POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C);
+  function applyWorkCuts(a, b, c, d) {
+    const [CUT_A, CUT_B, CUT_C, CUT_D] = [a, b, c, d].sort((x, y) => x - y), POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C, CUT_D);
     DOLLAR2("workCutA").value = String(CUT_A);
     DOLLAR2("workCutB").value = String(CUT_B);
     DOLLAR2("workCutC").value = String(CUT_C);
+    DOLLAR2("workCutD").value = String(CUT_D);
     saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
     saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
     saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
-    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build);
+    saveWorkSetting(WORK_STORAGE_KEYS.explore, POINTS.explore);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build, POINTS.explore);
     active.queue("farm-work", {
       basisPoints: POINTS.work,
       resourceBasisPoints: POINTS.resource,
-      buildBasisPoints: POINTS.build
+      buildBasisPoints: POINTS.build,
+      exploreBasisPoints: POINTS.explore
     });
   }
-  var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC"];
+  var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC", "workCutD"];
   for (const ID of WORK_CUT_IDS) {
     DOLLAR2(ID).addEventListener("input", () => {
       applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR2(id).value)));
@@ -23353,6 +23565,7 @@
       DOLLAR2("workCutA").value = String(CUTS.a);
       DOLLAR2("workCutB").value = String(CUTS.b);
       DOLLAR2("workCutC").value = String(CUTS.c);
+      DOLLAR2("workCutD").value = String(CUTS.d);
     }
     DOLLAR2("buildRush").hidden = SITES.length === 0;
     DOLLAR2("buildRush").setAttribute("aria-pressed", String(WORK_WORLD.buildRush));
@@ -23371,15 +23584,20 @@
     syncText("workHudFood", `먹이 ${KINDS.food}`);
     syncText("workHudRes", `자원 ${KINDS.resource}`);
     syncText("workHudBuild", `건설 ${KINDS.build}`);
+    syncText("workHudExplore", `탐사 ${KINDS.explore}`);
     syncText("materialWood", String(W.materials.wood));
     syncText("materialStone", String(W.materials.stone));
     syncData("workHud", "warn", warn);
     DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUTS.a)} 1 0`;
     DOLLAR2("workHudFood").style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
     DOLLAR2("workHudRes").style.flex = `${Math.max(1, CUTS.c - CUTS.b)} 1 0`;
-    DOLLAR2("workHudBuild").style.flex = `${Math.max(1, 100 - CUTS.c)} 1 0`;
+    DOLLAR2("workHudBuild").style.flex = `${Math.max(1, CUTS.d - CUTS.c)} 1 0`;
+    DOLLAR2("workHudExplore").style.flex = `${Math.max(1, 100 - CUTS.d)} 1 0`;
     for (const BUTTON of DOLLAR2("workHud").querySelectorAll("[data-work-preset]")) {
-      BUTTON.setAttribute("aria-pressed", String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUTS.c}`));
+      BUTTON.setAttribute(
+        "aria-pressed",
+        String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUTS.c},${CUTS.d}`)
+      );
       BUTTON.disabled = !!farmSortTransition;
     }
     syncText("warehouseProgressLabel", `타작 ${W.foodTaps.remainder}/5`);
