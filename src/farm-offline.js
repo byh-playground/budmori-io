@@ -1,6 +1,5 @@
 // Idle progress: when the player was away, the farm is settled with a formula instead of replaying the simulation.
-// Workers keep producing, a construction site keeps getting built, and breeders keep breeding as long as food lasts.
-import { HITS_PER_WORK, settleResourcesAway, sitesOf, spreadBuildHits } from './farm-work.js';
+// Workers keep making food and breeders keep breeding as long as food lasts.
 import { RESERVE_PLOT_ID } from './farm-plot.js';
 
 export function applyOffline(world, config, rawSeconds) {
@@ -17,44 +16,10 @@ export function applyOffline(world, config, rawSeconds) {
     // Away time is what is shown; production runs for the efficiency share of it.
     const SECONDS = AWAY * OFFLINE.efficiency;
     world.refreshWorkers();
-    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
+    const SUMMARY = { seconds: AWAY, food: 0, births: 0 };
     let foodRate = 0;
-    const BUILD_RATES = new Map();
-    for (const [ID, KIND] of world._workerKinds) {
-        const RATE = world._workerRates.get(ID) || 0;
-        if (KIND === 'food') {
-            foodRate += RATE;
-        } else if (KIND === 'explore') {
-            // Exploring is done on foot, in front of the player: nothing is explored while away.
-            continue;
-        } else if (KIND === 'resource' || KIND === 'haul') {
-            // Settled below, per farm, by settleResourcesAway.
-            continue;
-        } else {
-            const PLOT_ID = world._workerPlots.get(ID);
-            BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
-        }
-    }
-    // Builders of every farm plot: their hits are shared evenly between the sites of the plot, a finished site
-    // hands its share to the others, and whatever is left over goes to gathering.
-    for (const PLOT_ID of [...world._pilesByPlot.keys()]) {
-        const RATE = BUILD_RATES.get(PLOT_ID) || 0,
-            SITES = sitesOf(world, PLOT_ID);
-        if (SITES.length === 0 || !(RATE > 0)) {
-            continue;
-        }
-        const RESULT = spreadBuildHits(world, PLOT_ID, RATE * HITS_PER_WORK * SECONDS);
-        SUMMARY.built.push(...RESULT.built);
-        for (const SITE of RESULT.open) {
-            SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor((SITE.done / SITE.need) * 100) });
-        }
-    }
-    for (const PLOT_ID of world.farmPlots.keys()) {
-        if (PLOT_ID !== RESERVE_PLOT_ID) {
-            const GOT = settleResourcesAway(world, PLOT_ID, SECONDS);
-            SUMMARY.wood += GOT.wood;
-            SUMMARY.stone += GOT.stone;
-        }
+    for (const ID of world._workerIds) {
+        foodRate += world._workerRates.get(ID) || 0;
     }
     let pool = Math.floor(foodRate * SECONDS);
     SUMMARY.food = pool;

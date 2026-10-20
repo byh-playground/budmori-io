@@ -161,26 +161,6 @@ export const FARM_SNAPSHOT_SHAPE = {
         processedBossKillReceipts: [],
     },
     starter: 0,
-    materials: {
-        wood: 0,
-        stone: 0,
-    },
-    savedSites: [],
-    worldMap: {
-        seed: 0,
-        progress: {},
-        exploreTarget: -1,
-        challengeTile: -1,
-        buildTile: -1,
-        revealed: [],
-        bosses: [],
-        spawnClock: 0,
-        spawnCount: 0,
-        mined: {},
-        mines: [],
-        farms: [],
-        bossAges: {},
-    },
     foodTaps: {
         remainder: 0,
         autoClock: 0,
@@ -342,7 +322,7 @@ const REWARD = FIELDS(
 // ability or projectile field selection to future runtime caches.
 const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
     farmPlots: {
-        plots: [FIELDS('id capacityLevel', { facilities: [FIELDS('id level')] })],
+        plots: [FIELDS('id capacityLevel')],
         currentPlotId: true,
         nextPlotNumber: true,
         targetBasisPoints: [true],
@@ -366,8 +346,6 @@ const CORN_GROUP = FIELDS(
     { attachments: [CORN_ATTACHMENT] },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
-    savedSites: JSON_PAYLOAD,
-    worldMap: JSON_PAYLOAD,
     farmPlots: [FIELDS('id', { food: [FIELDS('x y z vx vy vz seed phase tx ty')] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
@@ -457,20 +435,5 @@ export function snapshot(world) {
                   ...(world.scene === 'farm' && world.unitCollection ? { units: world.unitCollection.items } : {}),
               }
             : world;
-    const SITES = world?.allBuildSites ?? [];
-    return copyFields(
-        {
-            ...SOURCE,
-            savedSites: SITES.map((site) => ({
-                facility: site.facility,
-                level: site.level,
-                x: site.x,
-                y: site.y,
-                done: site.done,
-                need: site.need,
-                plotId: site.plotId,
-            })),
-        },
-        SNAPSHOT_FIELDS,
-    );
+    return copyFields(SOURCE, SNAPSHOT_FIELDS);
 }

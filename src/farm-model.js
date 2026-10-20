@@ -1,21 +1,5 @@
-import { APTITUDE_ORDER, APTITUDE_SPEED, pickForRole } from './work-aptitude.js';
 import { applyOffline } from './farm-offline.js';
-import {
-    HITS_PER_WORK,
-    assignWorkers,
-    pilesOf,
-    itemsOf,
-    plotHasSite,
-    settleResourcesAway,
-    sitesOf,
-    spreadBuildHits,
-    resetWork,
-    restoreSite,
-    startSite,
-    stepWork,
-    stepCarriers,
-    workOrder,
-} from './farm-work.js';
+import { assignWorkers, pilesOf, resetWork, stepWork, workOrder } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime } from './formation-skill-state.js';
 import { Signal } from './signal.js';
@@ -31,40 +15,11 @@ import { seedProjectileDimensions } from './features/projectiles/seed/definition
 import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
-import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
-import {
-    FOG_PIECES,
-    advanceSpawns,
-    fogPieceCenter,
-    fogPieceCost,
-    liftFogPiece,
-    nearestFogPiece,
-    buildMine,
-    canBuildMine,
-    beginFarmBuild,
-    canBuildFarm,
-    createWorldMap,
-    FARM_CELL,
-    beginChallenge,
-    finishChallenge,
-    inReach,
-    tileDanger,
-    tileSpecies,
-    tileTerrain,
-    finishFarmBuild,
-    exploreFraction,
-    exploreTargetFor,
-    farmReachOf,
-    setReachProvider,
-    tileIndex,
-    tileX,
-    tileY,
-} from './world-map.js';
+import { FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
 import { createFarmModeBehaviors } from './farm-mode-behaviors.js';
-import { restingSpot } from './features/farm-modes/model-base.js';
 import { createBossPatternBehaviors } from './boss-pattern-behaviors.js';
 import { bossMouthWorldPoint } from './boss-vector-sockets.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
@@ -73,9 +28,6 @@ import { CornAttachmentModel } from './features/abilities/corn-attachment/model.
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
 const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
 const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
-// Measured: the distance a unit covers per second for each point of the walking speed an order asks for.
-const EXPLORE_WALK_RATIO = 0.12;
-const EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
 import {
     baseUnitStatsFor,
     resolveUnitStats,
@@ -135,7 +87,6 @@ const WORLD_ARENA = Object.freeze({
     radiusX: 23,
     radiusY: 17,
 });
-// A farm is a square cell of the map's grid, so its ground is a rectangle that meets the next farm's edge to edge.
 const FARM_ARENA = Object.freeze({ radiusX: 23, radiusY: 17, shape: 'rect' });
 // Runtime configuration is separate from saved world fields and their import
 // migration. Only already-established capacity/growth relations are derived.
@@ -160,68 +111,7 @@ const CONFIG = Object.freeze({
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            defaultResourceBasisPoints: 2500,
-            defaultHaulBasisPoints: 1500,
-            defaultBuildBasisPoints: 1000,
-            defaultExploreBasisPoints: 1000,
-            facilityMaxLevel: FACILITY_MAX_LEVEL,
-            levelCostStep: 0.75,
-            levelHitsStep: 0.6,
-            projects: Object.freeze({
-                expand: Object.freeze({ name: '농장 확장', hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
-                // A mine on a forest or rock tile: that tile never runs dry, at half the yield.
-                mine: Object.freeze({ name: '채굴장', hits: 80, cost: Object.freeze({ wood: 30, stone: 30 }) }),
-                plot: Object.freeze({
-                    name: '새 농장',
-                    hits: 300,
-                    cost: Object.freeze({ wood: 40, stone: 40 }),
-                    // Each farm already built makes the next one this many times dearer.
-                    costGrowth: 1.5,
-                }),
-            }),
-            levelEffectStep: 0.25,
-            facilities: Object.freeze({
-                windmill: Object.freeze({
-                    name: '풍차',
-                    hits: 120,
-                    cost: Object.freeze({ wood: 12, stone: 6 }),
-                    effect: '레벨마다 먹이 일꾼이 25% 빨라져요',
-                }),
-                granary: Object.freeze({
-                    name: '곡식 광',
-                    hits: 100,
-                    cost: Object.freeze({ wood: 16, stone: 0 }),
-                    effect: '레벨마다 더미 먹이 +4, 홀수 레벨마다 더미 +1',
-                }),
-                rack: Object.freeze({
-                    name: '연장 걸이',
-                    hits: 100,
-                    cost: Object.freeze({ wood: 8, stone: 8 }),
-                    effect: '레벨마다 자원 일꾼이 25% 빨라져요',
-                }),
-                tower: Object.freeze({
-                    name: '망루',
-                    hits: 150,
-                    cost: Object.freeze({ wood: 40, stone: 40 }),
-                    // Every level costs twice the one before, and the tower stops after three.
-                    costGrowth: 2,
-                    maxLevel: 3,
-                    effect: '레벨마다 이 농장의 탐사 반경이 1칸 넓어져요',
-                }),
-            }),
-            pileKinds: Object.freeze({
-                grain: Object.freeze({ count: 2, amount: 12 }),
-                wood: Object.freeze({ count: 1, amount: 12 }),
-                stone: Object.freeze({ count: 1, amount: 12 }),
-            }),
-            // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
-            // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
-            // Units on the tiles next to the farm on screen walk about without collisions or contacts, up to this many.
-            neighbourWalkers: 300,
-            migration: Object.freeze({ intervalSeconds: 20, emptierBy: 0.15, neighbourMaxFill: 0.9 }),
-            facilitySpacing: 7,
-            facilityRowX: 2,
-            facilityRowY: 7.6,
+            pileKind: Object.freeze({ count: 2, amount: 12 }),
             pileGap: 6,
             pileRadiusX: 8,
             pileRadiusY: 6,
@@ -247,8 +137,6 @@ const CONFIG = Object.freeze({
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
         bossEvent: Object.freeze({
-            // The march out to the boss's tile before a fight begins.
-            marchSeconds: 2.5,
             fadeSeconds: 0.5,
             celebrationSeconds: 1,
         }),
@@ -290,9 +178,6 @@ const CONFIG = Object.freeze({
         softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
-if (Object.keys(CONFIG.farm.work.facilities).join() !== FACILITY_IDS.join()) {
-    throw new Error('The farm facility catalog and the plot facility ids must list the same facilities.');
-}
 function bossAttackArea(boss, unitRadius = 0, scene = 'battle', area = {}) {
     const ACTION = boss.patternRuntime?.active,
         CONFIG_LOCAL = BOSS_PATTERN_CONFIG[ACTION?.id];
@@ -1368,40 +1253,9 @@ const GARDEN = class Garden {
         this.food = this.activeFarmPlot.food;
         this.warehouseFood = CONFIG.farm.work.starterFood;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
-        this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
-        // Of the gatherers, how many go for wood (the rest go for stone), out of 10000.
-        this.woodBasisPoints = 5000;
-        this.materials = { wood: 0, stone: 0 };
-        this.haulBasisPoints = CONFIG.farm.work.defaultHaulBasisPoints;
-        this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
-        this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
-        // A play setting like the worker ratio: how many units on neighbouring tiles walk about.
-        this.neighbourWalkers = CONFIG.farm.work.neighbourWalkers;
-        // Every map this world holds learns how far each farm sees: the base reach plus the farm's tower levels.
-        // An own enumerable property, so the world still copies and saves like a plain object.
-        let worldMap = null;
-        Object.defineProperty(this, 'worldMap', {
-            enumerable: true,
-            configurable: true,
-            get: () => worldMap,
-            set: (map) => {
-                worldMap = map;
-                setReachProvider(map, (plotId) => this.farmPlots?.get(plotId)?.facilityLevel('tower') ?? 0);
-            },
-        });
-        this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
-        this.buildRush = false;
-        this._workerKinds = new Map();
-        this._workerResource = new Map();
-        this._exploreGoals = new Map();
-        this._idleLead = new Map();
-        this._pieceWork = new Map();
-        this._fogClaims = new Map();
-        this._idleCarry = { food: 0 };
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
-        this._workerPlots = new Map();
         this._workRate = 0;
         this._workCount = 0;
         this._nextWorkerRefreshTick = 0;
@@ -2404,181 +2258,16 @@ const GARDEN = class Garden {
     isWorker(unit) {
         return this._workerIds.has(unit.id);
     }
+    // The grain piles of the farm plot on screen.
     get piles() {
-        return this._piles;
-    }
-    // Piles, and the construction site among them, belong to the farm plot they stand in.
-    get _piles() {
         return pilesOf(this, this.activePlotId);
-    }
-    // The facilities of the farm plot that is on screen.
-    get facilities() {
-        return this.activeFarmPlot?.state.facilities ?? [];
     }
     workSwingOf(id) {
         return this._swings.get(id) || null;
     }
-    facilityLevel(id) {
-        return this.activeFarmPlot?.facilityLevel(id) ?? 0;
-    }
-    facilityBuilt(id) {
-        return this.facilityLevel(id) > 0;
-    }
-    // Base spec of a pile kind, with the granary's bonus applied.
-    pileSpec(kind) {
-        const BASE = CONFIG.farm.work.pileKinds[kind],
-            LEVEL = kind === 'grain' ? this.facilityLevel('granary') : 0;
-        return LEVEL > 0 ? { count: BASE.count + Math.ceil(LEVEL / 2), amount: BASE.amount + 4 * LEVEL } : BASE;
-    }
-    // The constructions going up in the farm plot on screen.
-    get buildSites() {
-        return sitesOf(this);
-    }
-    // Every construction in every farm plot.
-    get allBuildSites() {
-        const SITES = [];
-        for (const PLOT_ID of this._pilesByPlot.keys()) {
-            SITES.push(...sitesOf(this, PLOT_ID));
-        }
-        return SITES;
-    }
-    // The construction of a kind that is going up in a farm plot, if any.
-    siteOf(kind, plotId = this.activePlotId) {
-        return sitesOf(this, plotId).find((site) => site.facility === kind) || null;
-    }
-    // What the next construction of a kind is: facilities level up, a farm grows, or a new farm opens.
-    projectInfo(kind) {
-        const WORK = CONFIG.farm.work,
-            FACILITY = WORK.facilities[kind],
-            PROJECT = WORK.projects[kind];
-        let level;
-        if (FACILITY) {
-            level = this.facilityLevel(kind) + 1;
-            if (level > (FACILITY.maxLevel ?? WORK.facilityMaxLevel)) {
-                return null;
-            }
-        } else if (kind === 'expand') {
-            if (!this.activeFarmPlot?.canExpand()) {
-                return null;
-            }
-            level = this.activeFarmPlot.capacityLevel + 1;
-        } else if (kind === 'plot') {
-            level = this.playerProgression.farmPlots.plots.length;
-        } else if (kind === 'mine') {
-            level = 1;
-        } else {
-            return null;
-        }
-        const SPEC = FACILITY || PROJECT,
-            // A tower doubles per level and a new farm gets dearer per farm; the rest grow by a fixed step.
-            COST_FACTOR = SPEC.costGrowth ? SPEC.costGrowth ** (level - 1) : 1 + WORK.levelCostStep * (level - 1),
-            HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1),
-            ROUND = SPEC.costGrowth ? Math.round : Math.ceil;
-        return {
-            name: SPEC.name,
-            level,
-            cost: { wood: ROUND(SPEC.cost.wood * COST_FACTOR), stone: ROUND(SPEC.cost.stone * COST_FACTOR) },
-            hits: Math.ceil(SPEC.hits * HITS_FACTOR),
-        };
-    }
     // Settles the time the player was away; returns a summary, or null when nothing applies.
     settleOffline(seconds) {
         return applyOffline(this, CONFIG, seconds);
-    }
-    restoreBuildSite(data) {
-        restoreSite(this, data);
-    }
-    siteName(site) {
-        const SPEC = CONFIG.farm.work.facilities[site.facility] || CONFIG.farm.work.projects[site.facility];
-        return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
-    }
-    // Of the gatherers, the share that goes for wood (the rest go for stone), in basis points.
-    setWoodShare(basisPoints) {
-        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
-            return false;
-        }
-        if (basisPoints !== this.woodBasisPoints) {
-            this.woodBasisPoints = basisPoints;
-            this._nextWorkerRefreshTick = 0;
-            this.refreshWorkers();
-        }
-        return true;
-    }
-    // Starts a construction. The materials are paid up front; the work itself is done by the units.
-    startBuild(kind, { tile = -1 } = {}) {
-        const INFO = this.projectInfo(kind);
-        if (
-            this.scene !== 'farm' ||
-            !INFO ||
-            this.siteOf(kind) ||
-            (kind === 'plot' && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile))) ||
-            (kind === 'mine' && !canBuildMine(this.worldMap, tile, this.activePlotId)) ||
-            this.farmBossEvent?.phase !== 'idle' ||
-            this.materials.wood < INFO.cost.wood ||
-            this.materials.stone < INFO.cost.stone
-        ) {
-            return false;
-        }
-        this.materials.wood -= INFO.cost.wood;
-        this.materials.stone -= INFO.cost.stone;
-        if (kind === 'plot') {
-            beginFarmBuild(this.worldMap, tile);
-        }
-        let at = null;
-        if (kind === 'plot' || kind === 'mine') {
-            const HERE = this.worldMap.farms.find((farm) => farm.plotId === this.activePlotId);
-            at = {
-                x: (tileX(tile) - tileX(HERE.tile)) * FARM_CELL.width,
-                y: -(tileY(tile) - tileY(HERE.tile)) * FARM_CELL.height,
-            };
-        }
-        startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId, at);
-        this._nextWorkerRefreshTick = 0;
-        this.refreshWorkers();
-        this.markProgressChanged();
-        return true;
-    }
-    completeFacility(site) {
-        if (site.facility === 'expand') {
-            this.farmPlots.get(site.plotId)?.expand();
-            this.restoreReservePopulation();
-        } else if (site.facility === 'plot') {
-            finishFarmBuild(this.worldMap, this._addFarmPlot());
-        } else if (site.facility === 'mine') {
-            // The site stands on the tile it was built for; its offset from the farm says which one.
-            const HERE = this.worldMap.farms.find((farm) => farm.plotId === site.plotId);
-            if (HERE) {
-                buildMine(
-                    this.worldMap,
-                    tileIndex(
-                        tileX(HERE.tile) + Math.round(site.x / FARM_CELL.width),
-                        tileY(HERE.tile) - Math.round(site.y / FARM_CELL.height),
-                    ),
-                );
-            }
-        } else {
-            this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
-        }
-        if (this.allBuildSites.length === 0) {
-            this.buildRush = false;
-        }
-        this._nextWorkerRefreshTick = 0;
-        this.refreshWorkers();
-        this.markProgressChanged();
-    }
-    // Everyone drops what they are doing and rushes the construction site.
-    setBuildRush(on) {
-        const WANT = !!on && this.allBuildSites.length > 0;
-        if (WANT === this.buildRush) {
-            return WANT === !!on;
-        }
-        this.buildRush = WANT;
-        this._nextWorkerRefreshTick = 0;
-        this.refreshWorkers();
-        return true;
-    }
-    workKind(unit) {
-        return this._workerKinds.get(unit.id) || 'food';
     }
     workOrder(unit) {
         return workOrder(this, unit);
@@ -2586,44 +2275,19 @@ const GARDEN = class Garden {
     canBreedNow(unit) {
         return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
     }
-    // workers share of the farm, and the share of those workers that gather materials instead of grain.
-    setWorkBasisPoints(
-        basisPoints,
-        resourceBasisPoints = this.resourceBasisPoints,
-        haulBasisPoints = this.haulBasisPoints,
-        buildBasisPoints = this.buildBasisPoints,
-        exploreBasisPoints = this.exploreBasisPoints,
-    ) {
-        const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 10000;
-        if (
-            !VALID(basisPoints) ||
-            !VALID(resourceBasisPoints) ||
-            !VALID(haulBasisPoints) ||
-            !VALID(buildBasisPoints) ||
-            !VALID(exploreBasisPoints) ||
-            resourceBasisPoints + haulBasisPoints + buildBasisPoints + exploreBasisPoints > 10000
-        ) {
+    // The share of the farm that makes food instead of breeding, in basis points.
+    setWorkBasisPoints(basisPoints) {
+        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
             return false;
         }
-        if (
-            basisPoints === this.workBasisPoints &&
-            resourceBasisPoints === this.resourceBasisPoints &&
-            haulBasisPoints === this.haulBasisPoints &&
-            buildBasisPoints === this.buildBasisPoints &&
-            exploreBasisPoints === this.exploreBasisPoints
-        ) {
-            return true;
+        if (basisPoints !== this.workBasisPoints) {
+            this.workBasisPoints = basisPoints;
+            this._nextWorkerRefreshTick = 0;
+            this.refreshWorkers();
         }
-        this.workBasisPoints = basisPoints;
-        this.resourceBasisPoints = resourceBasisPoints;
-        this.haulBasisPoints = haulBasisPoints;
-        this.buildBasisPoints = buildBasisPoints;
-        this.exploreBasisPoints = exploreBasisPoints;
-        this._nextWorkerRefreshTick = 0;
-        this.refreshWorkers();
         return true;
     }
-    // Workers are chosen per farm and per species so every species keeps a breeding pair.
+    // Workers are chosen per species so every species keeps a breeding pair.
     // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
     refreshWorkers() {
         const WORK = CONFIG.farm.work,
@@ -2631,40 +2295,37 @@ const GARDEN = class Garden {
             NEXT = new Set(),
             RATES = new Map(),
             UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
-        const PLOT_WORKERS = new Map();
+        let total = 0;
         if (this.scene === 'farm') {
-            for (const PLOT_ID of this.farmPlots.keys()) {
-                const BY_SPECIES = new Map(),
-                    RUSHING = this.buildRush && plotHasSite(this, PLOT_ID);
-                PLOT_WORKERS.set(PLOT_ID, []);
-                for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(PLOT_ID)) {
-                    if (
-                        !UNIT_LOCAL.mature ||
-                        UNIT_LOCAL.hp <= 0 ||
-                        UNIT_LOCAL.down > 0 ||
-                        UNIT_LOCAL.isBattleOnlySummon ||
-                        UNIT_LOCAL.isFormationClone ||
-                        (!this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL))
-                    ) {
-                        continue;
-                    }
-                    if (!BY_SPECIES.has(UNIT_LOCAL.species)) {
-                        BY_SPECIES.set(UNIT_LOCAL.species, []);
-                    }
-                    BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
+            const BY_SPECIES = new Map();
+            for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(this.activePlotId)) {
+                if (
+                    !UNIT_LOCAL.mature ||
+                    UNIT_LOCAL.hp <= 0 ||
+                    UNIT_LOCAL.down > 0 ||
+                    UNIT_LOCAL.isBattleOnlySummon ||
+                    UNIT_LOCAL.isFormationClone ||
+                    (!this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL))
+                ) {
+                    continue;
                 }
-                for (const LIST of BY_SPECIES.values()) {
-                    LIST.sort((a, b) => a.id - b.id);
-                    const COUNT = RUSHING
-                        ? LIST.length
-                        : Math.min(Math.floor(RATIO * LIST.length + 1e-9), Math.max(0, LIST.length - WORK.minBreeders));
-                    for (let index = 0; index < COUNT; index++) {
-                        const WORKER = LIST[index];
-                        NEXT.add(WORKER.id);
-                        PLOT_WORKERS.get(PLOT_ID).push(WORKER.id);
-                        const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
-                        RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
-                    }
+                if (!BY_SPECIES.has(UNIT_LOCAL.species)) {
+                    BY_SPECIES.set(UNIT_LOCAL.species, []);
+                }
+                BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
+            }
+            for (const LIST of BY_SPECIES.values()) {
+                LIST.sort((a, b) => a.id - b.id);
+                const COUNT = Math.min(
+                    Math.floor(RATIO * LIST.length + 1e-9),
+                    Math.max(0, LIST.length - WORK.minBreeders),
+                );
+                for (let index = 0; index < COUNT; index++) {
+                    const WORKER = LIST[index],
+                        RATE = ((1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood) * UPGRADE_RATE;
+                    NEXT.add(WORKER.id);
+                    RATES.set(WORKER.id, RATE);
+                    total += RATE;
                 }
             }
         }
@@ -2679,73 +2340,6 @@ const GARDEN = class Garden {
         }
         this._workerIds = NEXT;
         this._workerRates = RATES;
-        // Every farm plot picks its own roles: lowest ids work the grain piles, then the material gatherers,
-        // then the builders. Stable while the roster is. A plot's facilities speed up its own workers.
-        this._workerKinds = new Map();
-        this._workerPlots = new Map();
-        this._workerResource = new Map();
-        let total = 0;
-        for (const [PLOT_ID, IDS] of PLOT_WORKERS) {
-            const SORTED_WORKERS = IDS.sort((a, b) => a - b),
-                PLOT_TOTAL = SORTED_WORKERS.length,
-                RUSHING = this.buildRush && plotHasSite(this, PLOT_ID),
-                BUILDERS = RUSHING
-                    ? PLOT_TOTAL
-                    : Math.min(
-                          PLOT_TOTAL,
-                          Math.max(
-                              plotHasSite(this, PLOT_ID) ? 1 : 0,
-                              Math.round((PLOT_TOTAL * this.buildBasisPoints) / 10000),
-                          ),
-                      ),
-                EXPLORERS = RUSHING
-                    ? 0
-                    : Math.min(PLOT_TOTAL - BUILDERS, Math.round((PLOT_TOTAL * this.exploreBasisPoints) / 10000)),
-                GATHERERS = RUSHING
-                    ? 0
-                    : Math.min(
-                          PLOT_TOTAL - BUILDERS - EXPLORERS,
-                          Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000),
-                      ),
-                HAULERS = RUSHING
-                    ? 0
-                    : Math.min(
-                          PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
-                          Math.round((PLOT_TOTAL * this.haulBasisPoints) / 10000),
-                      ),
-                PLOT = this.farmPlots.get(PLOT_ID),
-                MULTIPLIER = {
-                    food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
-                    resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel('rack'),
-                };
-            // Roles are filled one after another, each taking the workers best suited to it.
-            const COUNTS = {
-                    build: BUILDERS,
-                    food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS - HAULERS,
-                    wood: Math.round((GATHERERS * this.woodBasisPoints) / 10000),
-                    haul: HAULERS,
-                    explore: EXPLORERS,
-                },
-                POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
-            COUNTS.stone = GATHERERS - COUNTS.wood;
-            for (const ROLE of APTITUDE_ORDER) {
-                const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
-                for (const PICK of PICKED) {
-                    const UNIT = PICK.unit,
-                        LEVEL = PICK.level;
-                    POOL.splice(POOL.indexOf(UNIT), 1);
-                    const KIND = ROLE === 'wood' || ROLE === 'stone' ? 'resource' : ROLE;
-                    this._workerKinds.set(UNIT.id, KIND);
-                    this._workerPlots.set(UNIT.id, PLOT_ID);
-                    if (KIND === 'resource') {
-                        this._workerResource.set(UNIT.id, ROLE);
-                    }
-                    const BOOSTED = this._workerRates.get(UNIT.id) * (MULTIPLIER[KIND] || 1) * APTITUDE_SPEED[LEVEL];
-                    this._workerRates.set(UNIT.id, BOOSTED);
-                    total += BOOSTED;
-                }
-            }
-        }
         this._workCount = NEXT.size;
         this._workRate = total;
         assignWorkers(this, CONFIG);
@@ -2753,538 +2347,20 @@ const GARDEN = class Garden {
     get warehouseFull() {
         return this.food.length >= CONFIG.farm.work.maxFood;
     }
-    get workerKindCounts() {
-        let resource = 0,
-            haul = 0,
-            build = 0,
-            explore = 0;
-        for (const KIND of this._workerKinds.values()) {
-            resource += KIND === 'resource' ? 1 : 0;
-            haul += KIND === 'haul' ? 1 : 0;
-            build += KIND === 'build' ? 1 : 0;
-            explore += KIND === 'explore' ? 1 : 0;
-        }
-        return { food: this._workerKinds.size - resource - haul - build - explore, resource, haul, build, explore };
-    }
     get workerCount() {
         return this._workCount;
     }
-    // Exploring is paid for tile by tile. Every farm's explorers walk to their own tile and add to it once they have
-    // arrived. The farm on screen walks for real; any other farm, or this one while the farm is paused behind the map
-    // screen, walks by arithmetic at the same pace, so coming back to a farm finds its explorers where they would be.
-    // Nothing is explored while the game is closed.
-    tickExploration(seconds, walking = true) {
-        if (this.scene !== 'farm') {
-            return;
-        }
-        // Each explorer works on the nearest piece of fog; explorers on the same piece add up, and whatever a piece
-        // does not need is wasted, so a crowd helps less and less.
-        for (const ID of [...this._fogClaims.keys()]) {
-            if (this._workerKinds.get(ID) !== 'explore') {
-                this._fogClaims.delete(ID);
-            }
-        }
-        const WORK = new Map();
-        for (const PLOT_ID of this.farmPlots.keys()) {
-            const GOAL = this.exploreGoal(PLOT_ID);
-            if (!GOAL) {
-                continue;
-            }
-            const REAL = walking && PLOT_ID === this.activePlotId;
-            for (const UNIT of this.unitCollection.unitsInPlot(PLOT_ID)) {
-                if (this._workerKinds.get(UNIT.id) !== 'explore') {
-                    continue;
-                }
-                if (!REAL) {
-                    this._walkExplorer(UNIT, seconds);
-                }
-                if (!this.exploreOnSite(UNIT)) {
-                    continue;
-                }
-                const PIECE = this.fogPieceFor(UNIT);
-                if (PIECE >= 0) {
-                    const KEY = GOAL.tile * FOG_PIECES + PIECE;
-                    WORK.set(KEY, (WORK.get(KEY) ?? 0) + (this._workerRates.get(UNIT.id) || 0) * seconds);
-                }
-            }
-        }
-        for (const [KEY, GAIN] of WORK) {
-            const TILE = Math.floor(KEY / FOG_PIECES),
-                PIECE = KEY % FOG_PIECES,
-                COST = fogPieceCost(this.worldMap, TILE),
-                TOTAL = (this._pieceWork.get(KEY) ?? 0) + GAIN;
-            if (TOTAL < COST) {
-                this._pieceWork.set(KEY, TOTAL);
-                continue;
-            }
-            this._pieceWork.delete(KEY);
-            liftFogPiece(this.worldMap, TILE, PIECE);
-            this.markProgressChanged();
-        }
-    }
-    // The piece an explorer has taken: it keeps it until it is lifted, and picks a piece no one else has otherwise,
-    // so explorers spread over the tile instead of crowding one piece.
-    fogPieceFor(unit) {
-        const GOAL = this.exploreGoal(unit.plotId);
-        if (!GOAL) {
-            return -1;
-        }
-        const HELD = this._fogClaims.get(unit.id);
-        if (HELD && HELD.tile === GOAL.tile && !(this.worldMap.progress[GOAL.tile] ?? []).includes(HELD.piece)) {
-            return HELD.piece;
-        }
-        const TAKEN = new Set();
-        for (const [ID, CLAIM] of this._fogClaims) {
-            if (ID !== unit.id && CLAIM.tile === GOAL.tile) {
-                TAKEN.add(CLAIM.piece);
-            }
-        }
-        const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y, TAKEN);
-        if (PIECE >= 0) {
-            this._fogClaims.set(unit.id, { tile: GOAL.tile, piece: PIECE });
-        } else {
-            this._fogClaims.delete(unit.id);
-        }
-        return PIECE;
-    }
-    // The share of a tile's pieces being worked on but not yet lifted, for a smooth bar.
-    pieceWorkShare(tile) {
-        let share = 0;
-        const COST = fogPieceCost(this.worldMap, tile);
-        for (let piece = 0; piece < FOG_PIECES; piece++) {
-            share += Math.min(1, (this._pieceWork.get(tile * FOG_PIECES + piece) ?? 0) / COST);
-        }
-        return share;
-    }
-    // Gathering is two jobs, both done on the farm. Resource workers fight the tree or rock piles like workers fight
-    // grain piles; every fifth hit knocks a piece onto the ground (it comes out of the nearest forest or rock tile's
-    // stock). Haulers carry the pieces to the store, one at a time.
-    get fieldItems() {
-        return itemsOf(this, this.activePlotId);
-    }
-    // The bosses standing on their tiles of the map, in the farm's own coordinates, for drawing. The boss being
-    // fought is the world's own boss, so its tile is left out.
-    restingBosses(seconds = 0) {
-        this._resting ??= new Map();
-        const SHIFT = this.battleShift() ?? { x: 0, y: 0 },
-            OUT = [],
-            LIVE = new Set();
-        for (const TILE of this.worldMap.bosses) {
-            if (
-                this.farmBossEvent.phase !== 'idle' &&
-                this.farmBossEvent.phase !== 'dropping' &&
-                TILE === this.worldMap.challengeTile
-            ) {
-                continue;
-            }
-            LIVE.add(TILE);
-            const SPECIES = tileSpecies(this.worldMap, TILE);
-            let boss = this._resting.get(TILE);
-            if (!boss || boss.species !== SPECIES) {
-                boss = {
-                    x: 0,
-                    y: 0,
-                    z: 0,
-                    radius: CONFIG.boss.radius,
-                    height: CONFIG.boss.height,
-                    hp: 1,
-                    maxHp: 1,
-                    species: SPECIES,
-                    stage: tileDanger(this.worldMap, TILE),
-                    flash: 0,
-                    travel: 0,
-                    clock: 0,
-                    angle: 0,
-                    facing: 0,
-                    patternPhase: 'idle',
-                    phase: 'idle',
-                    barleyArmorShredTotal: 0,
-                };
-                this._resting.set(TILE, boss);
-            }
-            const AT = this.tileOffset(this.activePlotId, TILE);
-            boss.x = AT.x - SHIFT.x;
-            boss.y = AT.y - SHIFT.y;
-            boss.clock = seconds + TILE * 0.37;
-            OUT.push(boss);
-        }
-        for (const TILE of [...this._resting.keys()]) {
-            if (!LIVE.has(TILE)) {
-                this._resting.delete(TILE);
-            }
-        }
-        return OUT;
-    }
-    // The tile's centre in the farm's own coordinates.
-    tileOffset(plotId, tile) {
-        const HERE = this.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile;
-        return HERE === undefined
-            ? { x: 0, y: 0 }
-            : { x: (tileX(tile) - tileX(HERE)) * FARM_CELL.width, y: -(tileY(tile) - tileY(HERE)) * FARM_CELL.height };
-    }
-    // The haulers of the farm on screen. Farms out of sight settle their resources in tickIdleWork.
-    tickHauling(seconds, walking = true) {
-        if (this.scene !== 'farm' || !walking) {
-            return;
-        }
-        stepCarriers(this, seconds);
-    }
-    // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
-    // rate (builders hit the site, food workers feed the warehouse). Resource workers and haulers are settled by settleResourcesAway.
-    tickIdleWork(seconds) {
-        if (this.scene !== 'farm') {
-            return;
-        }
-        const CARRY = this._idleCarry;
-        for (const PLOT_ID of this.farmPlots.keys()) {
-            if (PLOT_ID === this.activePlotId || PLOT_ID === RESERVE_PLOT_ID) {
-                this._idleLead.delete(PLOT_ID);
-                continue;
-            }
-            let lead = this._idleLead.get(PLOT_ID);
-            if (lead === undefined) {
-                const SITE = sitesOf(this, PLOT_ID)[0];
-                lead = SITE ? Math.hypot(SITE.x || 0, SITE.y || 0) / (7 * EXPLORE_WALK_RATIO) : 4;
-            }
-            const WALK = Math.min(lead, seconds),
-                WORK = seconds - WALK;
-            this._idleLead.set(PLOT_ID, lead - WALK);
-            if (!(WORK > 0)) {
-                continue;
-            }
-            let food = 0,
-                build = 0;
-            for (const UNIT of this.unitCollection.unitsInPlot(PLOT_ID)) {
-                const RATE = this._workerRates.get(UNIT.id) || 0,
-                    KIND = this._workerKinds.get(UNIT.id);
-                if (KIND === 'food') {
-                    food += RATE;
-                } else if (KIND === 'build') {
-                    build += RATE;
-                }
-            }
-            if (build > 0 && plotHasSite(this, PLOT_ID)) {
-                spreadBuildHits(this, PLOT_ID, build * HITS_PER_WORK * WORK);
-            }
-            settleResourcesAway(this, PLOT_ID, WORK);
-            CARRY.food += food * WORK;
-        }
-        const FOOD = Math.floor(CARRY.food);
-        if (FOOD > 0) {
-            CARRY.food -= FOOD;
-            this.warehouseFood = Math.min(CONFIG.farm.work.warehouseLimit, this.warehouseFood + FOOD);
-            this.markProgressChanged();
-        }
-    }
-    // Where a farm's explorers are headed: its own tile to explore, how far that is, and how fast the ground lets
-    // them go. Positions are in that farm's own coordinates.
-    exploreGoal(plotId) {
-        const MAP = this.worldMap,
-            REACH = farmReachOf(MAP, plotId),
-            KEY = `${MAP.revealed.length}|${MAP.exploreTarget}|${MAP.farms.length}|${REACH}`,
-            CACHED = this._exploreGoals.get(plotId);
-        if (CACHED?.key === KEY) {
-            return CACHED.goal;
-        }
-        const TARGET = exploreTargetFor(MAP, plotId),
-            HERE = MAP.farms.find((farm) => farm.plotId === plotId)?.tile;
-        let goal = null;
-        if (TARGET >= 0 && HERE !== undefined) {
-            const DX = tileX(TARGET) - tileX(HERE),
-                DY = tileY(TARGET) - tileY(HERE);
-            goal = {
-                tile: TARGET,
-                x: DX * FARM_CELL.width,
-                y: -DY * FARM_CELL.height,
-                // The ground sets the pace: through swamp and over rock explorers go slower.
-                speed: 7 * EXPLORE_PACE[tileTerrain(MAP, TARGET)],
-            };
-        }
-        this._exploreGoals.set(plotId, { key: KEY, goal });
-        return goal;
-    }
-    // Where an explorer goes: to the nearest piece of fog in its tile, wherever that tile is inside the farm's
-    // sight. Without a piece left to lift it stays where it is.
-    exploreSpot(unit) {
-        const GOAL = this.exploreGoal(unit.plotId);
-        if (!GOAL) {
-            return null;
-        }
-        const PIECE = this.fogPieceFor(unit);
-        if (PIECE < 0) {
-            return null;
-        }
-        const C = fogPieceCenter(PIECE),
-            X = GOAL.x + C.x,
-            Y = GOAL.y + C.y;
-        return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 1.8, travel: GOAL.speed * 1.8 };
-    }
-    // The same walk as a straight line, for explorers of a farm that is not being simulated.
-    _walkExplorer(unit, seconds) {
-        const SPOT = this.exploreSpot(unit);
-        if (!SPOT) {
-            return;
-        }
-        const DX = SPOT.x - unit.x,
-            DY = SPOT.y - unit.y,
-            DISTANCE = Math.hypot(DX, DY);
-        if (SPOT.out) {
-            unit.workOut = true;
-        }
-        if (DISTANCE <= 0.4) {
-            return;
-        }
-        const STEP = Math.min(DISTANCE, (DISTANCE > 10 ? SPOT.travel : SPOT.speed) * EXPLORE_WALK_RATIO * seconds);
-        unit.x += (DX / DISTANCE) * STEP;
-        unit.y += (DY / DISTANCE) * STEP;
-        unit.angle = Math.atan2(DY, DX);
-    }
-    // Is this explorer standing on its piece of fog? Only then does it work; on the way it is just walking.
-    exploreOnSite(unit) {
-        const GOAL = this.exploreGoal(unit.plotId);
-        if (!GOAL) {
-            return false;
-        }
-        const PIECE = this.fogPieceFor(unit);
-        if (PIECE < 0) {
-            return false;
-        }
-        const C = fogPieceCenter(PIECE);
-        return Math.hypot(unit.x - GOAL.x - C.x, unit.y - GOAL.y - C.y) <= 1.5;
-    }
-    // Explorers of every farm that are on their tile right now.
-    get exploreOnSiteCount() {
-        let count = 0;
-        for (const PLOT_ID of this.farmPlots.keys()) {
-            for (const UNIT of this.unitCollection.unitsInPlot(PLOT_ID)) {
-                count += this._workerKinds.get(UNIT.id) === 'explore' && this.exploreOnSite(UNIT) ? 1 : 0;
-            }
-        }
-        return count;
-    }
-    // Exploration points per second from the explorers of every farm, wherever they are standing.
-    get exploreRate() {
-        let rate = 0;
-        for (const [ID, KIND] of this._workerKinds) {
-            if (KIND === 'explore') {
-                rate += this._workerRates.get(ID) || 0;
-            }
-        }
-        return rate;
-    }
-    // What a farm's explorers are doing: none, all still on their way to the tile, or at work in it.
-    exploreStatus(plotId = this.activePlotId) {
-        let workers = 0,
-            onSite = 0;
-        for (const UNIT of this.unitCollection.unitsInPlot(plotId)) {
-            if (this._workerKinds.get(UNIT.id) === 'explore') {
-                workers++;
-                onSite += this.exploreOnSite(UNIT) ? 1 : 0;
-            }
-        }
-        const PHASE = workers === 0 ? 'none' : !this.exploreGoal(plotId) ? 'idle' : onSite === 0 ? 'moving' : 'working';
-        return { phase: PHASE, workers, onSite };
-    }
-    // The targets the farms are exploring now, with how far along each one is.
-    get exploreTargets() {
-        const GROUPS = [];
-        for (const FARM of this.worldMap.farms) {
-            const GOAL = this.exploreGoal(FARM.plotId);
-            if (!GOAL) {
-                continue;
-            }
-            let count = 0;
-            for (const UNIT of this.unitCollection.unitsInPlot(FARM.plotId)) {
-                count += this._workerKinds.get(UNIT.id) === 'explore' ? 1 : 0;
-            }
-            GROUPS.push({
-                tile: GOAL.tile,
-                from: FARM.tile,
-                count,
-                progress: exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile)),
-            });
-        }
-        return GROUPS;
-    }
-    // How far along the tile the farm on screen is exploring.
-    get exploreProgress() {
-        const GOAL = this.exploreGoal(this.activePlotId);
-        return GOAL ? exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile)) : 0;
-    }
     // Food per minute produced by workers right now.
     get workFoodPerMinute() {
-        return this._attackRate('food') * 60;
-    }
-    get workResourcePerMinute() {
-        return this._attackRate('resource') * 60;
-    }
-    _attackRate(kind) {
         let rate = 0;
-        if (kind === 'resource') {
-            // Gatherers are not tied to a pile; this is what they would bring in without the walking.
-            for (const UNIT of this.units) {
-                rate +=
-                    this.isWorker(UNIT) && this._workerKinds.get(UNIT.id) === 'resource'
-                        ? this._workerRates.get(UNIT.id) || 0
-                        : 0;
-            }
-            return rate;
-        }
         for (const [ID, ASSIGN] of this._workAssign) {
-            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
+            if (ASSIGN.attacking) {
                 rate += this._workerRates.get(ID) || 0;
             }
         }
-        return rate;
+        return rate * 60;
     }
-    // Farms on neighbouring tiles of the shared map; a resting unit may walk across the border to one that has room.
-    _neighbourPlots() {
-        const FARMS = this.worldMap.farms,
-            HERE = FARMS.find((farm) => farm.plotId === this.activePlotId);
-        if (!HERE) {
-            return [];
-        }
-        return FARMS.filter(
-            (farm) =>
-                farm !== HERE &&
-                Math.max(
-                    Math.abs(tileX(farm.tile) - tileX(HERE.tile)),
-                    Math.abs(tileY(farm.tile) - tileY(HERE.tile)),
-                ) === 1,
-        ).map((farm) => ({
-            plotId: farm.plotId,
-            // The way out, in this farm's coordinates (the map's y runs down the screen, the farm's up).
-            dx: tileX(farm.tile) - tileX(HERE.tile),
-            dy: -(tileY(farm.tile) - tileY(HERE.tile)),
-        }));
-    }
-    // Resting units of the farms next to this one stroll to their own spots; only their positions change.
-    _stepNeighbours(seconds) {
-        let budget = this.neighbourWalkers;
-        if (!(budget > 0)) {
-            return;
-        }
-        const ARENA = CONFIG.farm.arena;
-        for (const PLOT of this._neighbourPlots()) {
-            for (const UNIT of this.unitCollection.unitsInPlot(PLOT.plotId)) {
-                if (budget <= 0) {
-                    return;
-                }
-                if (UNIT.hp <= 0 || this.isWorker(UNIT)) {
-                    continue;
-                }
-                budget--;
-                const SPOT = restingSpot(UNIT, this.time, ARENA),
-                    DX = SPOT.x - UNIT.x,
-                    DY = SPOT.y - UNIT.y,
-                    DISTANCE = Math.hypot(DX, DY);
-                if (DISTANCE > 0.5) {
-                    const STEP = Math.min(DISTANCE, scaleMoveSpeed(1.3, UNIT) * seconds);
-                    UNIT.x += (DX / DISTANCE) * STEP;
-                    UNIT.y += (DY / DISTANCE) * STEP;
-                    UNIT.angle = Math.atan2(DY, DX);
-                }
-            }
-        }
-    }
-    _fillOf(plotId) {
-        const PLOT = this.farmPlots.get(plotId);
-        return PLOT
-            ? (this.roster.placedPopulation(plotId) + (this._breedPlotReservations.get(plotId) || 0)) / PLOT.capacity
-            : 1;
-    }
-    _stepMigration(seconds) {
-        const SETTINGS = CONFIG.farm.work.migration;
-        this._migrationClock = (this._migrationClock || 0) + seconds;
-        if (this._migrationClock < SETTINGS.intervalSeconds || this.farmBossEvent?.phase !== 'idle') {
-            return;
-        }
-        this._migrationClock = 0;
-        if (this.units.some((unit) => unit.migrate)) {
-            return;
-        }
-        // Rule: a crowded farm sends a resident to the emptiest neighbour. Exceptions: the neighbour must not be
-        // nearly full itself, and workers, mated or breeding units and the last two of a species stay.
-        const TARGET = this._migrationTarget();
-        if (!TARGET) {
-            return;
-        }
-        const RESIDENTS = this.unitCollection.residentsInPlot(this.activePlotId),
-            COUNTS = new Map();
-        for (const UNIT of RESIDENTS) {
-            COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
-        }
-        const CANDIDATES = RESIDENTS.filter((unit) => this._mayMigrate(unit, COUNTS));
-        if (CANDIDATES.length) {
-            CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
-                plotId: TARGET.plotId,
-                dx: TARGET.dx,
-                dy: TARGET.dy,
-            };
-        }
-    }
-    _migrationTarget() {
-        const SETTINGS = CONFIG.farm.work.migration,
-            HERE = this._fillOf(this.activePlotId);
-        let target = null;
-        for (const NEIGHBOUR of this._neighbourPlots()) {
-            const FILL = this._fillOf(NEIGHBOUR.plotId);
-            if (
-                HERE - FILL >= SETTINGS.emptierBy &&
-                FILL < SETTINGS.neighbourMaxFill &&
-                (!target || FILL < target.fill)
-            ) {
-                target = { ...NEIGHBOUR, fill: FILL };
-            }
-        }
-        return target;
-    }
-    _mayMigrate(unit, counts) {
-        return (
-            !this.isWorker(unit) &&
-            !unit.mateId &&
-            !this.breedPlanFor(unit) &&
-            unit.hp > 0 &&
-            (counts.get(unit.species) || 0) > 2
-        );
-    }
-    // One step of a unit on its way to the border; it crosses when it gets there. False when it no longer goes.
-    stepMigrant(unit, dt) {
-        const MIGRATE = unit.migrate,
-            TARGET = MIGRATE && this._neighbourPlots().find((plot) => plot.plotId === MIGRATE.plotId);
-        if (
-            !TARGET ||
-            unit.plotId !== this.activePlotId ||
-            this.isWorker(unit) ||
-            this._fillOf(TARGET.plotId) >= CONFIG.farm.work.migration.neighbourMaxFill
-        ) {
-            delete unit.migrate;
-            return false;
-        }
-        // It walks straight to the edge it shares with the next farm (the corner, for a diagonal one).
-        const ARENA = CONFIG.farm.arena,
-            X = TARGET.dx === 0 ? unit.x : TARGET.dx * (ARENA.radiusX - 0.9),
-            Y = TARGET.dy === 0 ? unit.y : TARGET.dy * (ARENA.radiusY - 0.9);
-        if (Math.hypot(X - unit.x, Y - unit.y) > 1.2) {
-            this.steer(unit, X, Y, dt, scaleMoveSpeed(1.7, unit));
-            return true;
-        }
-        delete unit.migrate;
-        if (this.unitCollection.moveUnitsToPlots([{ unitId: unit.id, plotId: TARGET.plotId }])) {
-            // It arrives on the far side of the neighbour, as if it had walked in from here.
-            // It steps over the shared edge and stands just inside the next farm, at the same place along it.
-            if (TARGET.dx !== 0) {
-                unit.x = -TARGET.dx * (ARENA.radiusX - 1.1);
-            }
-            if (TARGET.dy !== 0) {
-                unit.y = -TARGET.dy * (ARENA.radiusY - 1.1);
-            }
-            unit.moveControlVx = unit.moveControlVy = unit.vx = unit.vy = 0;
-            this.markProgressChanged();
-        }
-        return true;
-    }
-    advanceAutoTaps(elapsed) {
+    advanceWork(elapsed) {
         // Real elapsed time, independent of demo speed. Do not replay hidden/stalled frames.
         if (!Number.isFinite(elapsed) || elapsed <= 0) {
             return;
@@ -3295,18 +2371,6 @@ const GARDEN = class Garden {
         }
         if (this.scene === 'farm') {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
-            this.tickExploration(Math.min(elapsed, 0.1));
-            this.tickIdleWork(Math.min(elapsed, 0.1));
-            this.tickHauling(Math.min(elapsed, 0.1));
-            // A challenge only lives as long as its fight does (a reload in the middle of one leaves nothing to resume).
-            if (this.farmBossEvent.phase === 'idle' && this.worldMap.challengeTile >= 0) {
-                this.worldMap.challengeTile = -1;
-            }
-            if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
-                this.markProgressChanged();
-            }
-            this._stepMigration(Math.min(elapsed, 0.1));
-            this._stepNeighbours(Math.min(elapsed, 0.1));
         }
     }
     spawnFood(x, y, count = 1, { from = null } = {}) {
@@ -3346,15 +2410,13 @@ const GARDEN = class Garden {
         }
         return spawned;
     }
-    // Challenge the boss on a tile of the map: the farm's units march out to its tile and fight there, all of them.
-    startMapBossFight(tile) {
+    // Challenge the next boss: every unit of the farm fights it, and its stage is where the farm's fights have got to.
+    startBossFight() {
         if (
             this.scene !== 'farm' ||
             this.boss.active ||
             this.farmBossEvent.phase !== 'idle' ||
-            !inReach(this.worldMap, tile, this.activePlotId) ||
-            !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0 && u.plotId !== RESERVE_PLOT_ID) ||
-            !beginChallenge(this.worldMap, tile)
+            !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0 && u.plotId !== RESERVE_PLOT_ID)
         ) {
             return false;
         }
@@ -3365,10 +2427,10 @@ const GARDEN = class Garden {
                 UNIT_LOCAL.chestnutNextThornTick = 0;
             }
         }
-        const SPECIES = tileSpecies(this.worldMap, tile);
+        const SPECIES = this.randomBossSpecies();
         this.boss = this.createBoss(SPECIES);
-        this.configureBossStage(tileDanger(this.worldMap, tile), SPECIES);
-        Object.assign(this.boss, { x: 0, y: 0, z: 0, active: true });
+        this.configureBossStage(this.playerProgression.farmBossEventStage, SPECIES);
+        Object.assign(this.boss, { x: 0, y: 0, z: CONFIG.battle.dropHeight, active: true });
         this.farmBossEvent = {
             phase: 'dropping',
             elapsed: 0,
@@ -3414,29 +2476,6 @@ const GARDEN = class Garden {
             this.farmBossEvent.elapsed = 0;
         }
         return this.finishFarmBossEvent('defeat');
-    }
-    // Where the farm's units are drawn while they march out to the boss's tile and fight on it: the fight itself
-    // is simulated on the farm's own ground, and the picture of it is moved onto the tile.
-    battleShift() {
-        const TILE = this.worldMap.challengeTile ?? -1,
-            EVENT = this.farmBossEvent;
-        if (TILE < 0 || EVENT.phase === 'idle') {
-            return null;
-        }
-        const AT = this.tileOffset(this.activePlotId, TILE),
-            K =
-                EVENT.phase === 'dropping'
-                    ? Math.min(1, EVENT.elapsed / CONFIG.farm.bossEvent.marchSeconds)
-                    : EVENT.phase === 'fading'
-                      ? 1 - Math.min(1, EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds)
-                      : 1,
-            EASE = K * K * (3 - 2 * K);
-        return { x: AT.x * EASE, y: AT.y * EASE };
-    }
-    // The fight is over and the units are home: the boss is gone if it lost, and stays if it won.
-    endMapFight(victory) {
-        finishChallenge(this.worldMap, victory);
-        this.markProgressChanged();
     }
     getBossAcquisitionChance({ farmEvent = false } = {}) {
         return bossAcquisitionChance({

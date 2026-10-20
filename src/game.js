@@ -296,47 +296,6 @@
     }
   });
 
-  // src/work-aptitude.js
-  function aptitudeOf(species, kind) {
-    return SPECIES_APTITUDE[species]?.[WORK_KINDS.indexOf(kind)] ?? 2;
-  }
-  function pickForRole(pool, role, count) {
-    const KIND = role, RANKED = pool.map((unit) => ({ unit, level: aptitudeOf(unit.species, KIND) })).sort((a, b) => b.level - a.level || a.unit.id - b.unit.id);
-    return RANKED.slice(0, Math.max(0, count)).map((entry) => ({
-      unit: entry.unit,
-      level: entry.level > 0 ? entry.level : FALLBACK_LEVEL
-    }));
-  }
-  var WORK_KINDS, APTITUDE_ORDER, APTITUDE_SPEED, SPECIES_APTITUDE, FALLBACK_LEVEL;
-  var init_work_aptitude = __esm({
-    "src/work-aptitude.js"() {
-      WORK_KINDS = Object.freeze(["build", "food", "wood", "stone", "explore", "haul"]);
-      APTITUDE_ORDER = WORK_KINDS;
-      APTITUDE_SPEED = Object.freeze([0, 0.7, 1, 1.4]);
-      SPECIES_APTITUDE = Object.freeze([
-        Object.freeze([1, 2, 1, 0, 3, 3]),
-        // 콩: light scout
-        Object.freeze([0, 3, 1, 1, 2, 1]),
-        // 옥수수: food
-        Object.freeze([2, 0, 0, 3, 2, 2]),
-        // 팥: shatters rock
-        Object.freeze([1, 0, 3, 2, 1, 2]),
-        // 밤톨: lumberjack
-        Object.freeze([3, 0, 2, 0, 2, 2]),
-        // 땅콩: charges at jobs
-        Object.freeze([3, 0, 1, 3, 0, 1]),
-        // 호두: sturdy builder and quarryman
-        Object.freeze([1, 3, 1, 0, 2, 1]),
-        // 쌀: food
-        Object.freeze([0, 3, 1, 1, 2, 2]),
-        // 밀: food
-        Object.freeze([2, 1, 3, 1, 0, 2])
-        // 보리: lumber generalist
-      ]);
-      FALLBACK_LEVEL = 1;
-    }
-  });
-
   // src/farm-upgrades.js
   function createFarmUpgradeState() {
     return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
@@ -489,22 +448,9 @@
   });
 
   // src/farm-plot.js
-  function isValidPlotFacilities(facilities) {
-    if (!Array.isArray(facilities) || facilities.length > FACILITY_IDS.length) {
-      return false;
-    }
-    const SEEN = /* @__PURE__ */ new Set();
-    for (const FACILITY of facilities) {
-      if (!FACILITY || typeof FACILITY !== "object" || Array.isArray(FACILITY) || Object.keys(FACILITY).sort().join(",") !== "id,level" || !FACILITY_IDS.includes(FACILITY.id) || SEEN.has(FACILITY.id) || !Number.isSafeInteger(FACILITY.level) || FACILITY.level < 1 || FACILITY.level > FACILITY_MAX_LEVEL) {
-        return false;
-      }
-      SEEN.add(FACILITY.id);
-    }
-    return true;
-  }
   function createFarmPlotsProgression() {
     return {
-      plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: 0, facilities: [] }],
+      plots: [{ id: INITIAL_FARM_PLOT_ID, capacityLevel: FARM_CAPACITY_STEPS.length - 1 }],
       currentPlotId: INITIAL_FARM_PLOT_ID,
       nextPlotNumber: 2,
       targetBasisPoints: Array.from({ length: SPECIES_COUNT }, (_, speciesId) => Number(speciesId === 0) * 1e4)
@@ -524,14 +470,14 @@
     const IDS = /* @__PURE__ */ new Set();
     for (let index = 0; index < state.plots.length; index++) {
       const PLOT = state.plots[index];
-      if (!PLOT || typeof PLOT !== "object" || Array.isArray(PLOT) || Object.keys(PLOT).sort().join(",") !== "capacityLevel,facilities,id" || !isValidPlotFacilities(PLOT.facilities) || PLOT.id !== `plot-${index + 1}` || !Number.isSafeInteger(PLOT.capacityLevel) || PLOT.capacityLevel < 0 || PLOT.capacityLevel >= FARM_CAPACITY_STEPS.length || IDS.has(PLOT.id)) {
+      if (!PLOT || typeof PLOT !== "object" || Array.isArray(PLOT) || Object.keys(PLOT).sort().join(",") !== "capacityLevel,id" || PLOT.id !== `plot-${index + 1}` || !Number.isSafeInteger(PLOT.capacityLevel) || PLOT.capacityLevel < 0 || PLOT.capacityLevel >= FARM_CAPACITY_STEPS.length || IDS.has(PLOT.id)) {
         return false;
       }
       IDS.add(PLOT.id);
     }
     return IDS.has(state.currentPlotId);
   }
-  var INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID, MAX_FARM_FOOD, FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot;
+  var INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID, MAX_FARM_FOOD, FarmPlot;
   var init_farm_plot = __esm({
     "src/farm-plot.js"() {
       init_farm_upgrades();
@@ -539,8 +485,6 @@
       INITIAL_FARM_PLOT_ID = "plot-1";
       RESERVE_PLOT_ID = "reserve";
       MAX_FARM_FOOD = 140;
-      FACILITY_IDS = Object.freeze(["windmill", "granary", "rack", "tower"]);
-      FACILITY_MAX_LEVEL = 5;
       FarmPlot = class _FarmPlot {
         constructor(state, food = []) {
           const { id: ID, capacityLevel: CAPACITY_LEVEL } = state || {};
@@ -552,9 +496,6 @@
           }
           if (!Array.isArray(food) || food.length > MAX_FARM_FOOD) {
             throw new RangeError("A farm plot food list is invalid.");
-          }
-          if (!isValidPlotFacilities(state.facilities)) {
-            throw new TypeError("A farm plot facility list is invalid.");
           }
           this.id = ID;
           this.state = state;
@@ -569,1993 +510,17 @@
         get foodCount() {
           return this.food.length;
         }
-        canExpand() {
-          return this.capacityLevel < FARM_CAPACITY_STEPS.length - 1;
-        }
-        facilityLevel(id) {
-          return this.state.facilities.find((facility) => facility.id === id)?.level ?? 0;
-        }
-        setFacilityLevel(id, level) {
-          const EXISTING = this.state.facilities.find((facility) => facility.id === id);
-          if (EXISTING) {
-            EXISTING.level = level;
-          } else {
-            this.state.facilities.push({ id, level });
-          }
-        }
-        expand() {
-          if (!this.canExpand()) {
-            return false;
-          }
-          this.state.capacityLevel++;
-          return true;
-        }
         static fromSave(data, food = []) {
           if (!data || typeof data !== "object" || Array.isArray(data)) {
             throw new TypeError("A farm plot save is invalid.");
           }
           const KEYS = Object.keys(data).sort().join(",");
-          if (KEYS !== "capacityLevel,facilities,id") {
+          if (KEYS !== "capacityLevel,id") {
             throw new TypeError("A farm plot save has an unexpected shape.");
           }
           return new _FarmPlot(data, food);
         }
       };
-    }
-  });
-
-  // src/features/abilities/pea-recovery-boost.js
-  var PEA_RECOVERY_BOOST_FEATURE;
-  var init_pea_recovery_boost = __esm({
-    "src/features/abilities/pea-recovery-boost.js"() {
-      PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "pea-recovery-boost",
-          species: 0,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "회복 기동",
-          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
-          powerValues: Object.freeze([0.25, 0.35, 0.55])
-        }),
-        model: Object.freeze({
-          durationTicks: 40,
-          multiplierForBonus(bonus) {
-            return 1 + bonus;
-          }
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/kidney-continuous-leap.js
-  var KIDNEY_CONTINUOUS_LEAP_FEATURE;
-  var init_kidney_continuous_leap = __esm({
-    "src/features/abilities/kidney-continuous-leap.js"() {
-      KIDNEY_CONTINUOUS_LEAP_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "kidney-continuous-leap",
-          species: 2,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "연속 도약",
-          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
-          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
-        }),
-        model: Object.freeze({
-          specialAttackProfile: Object.freeze({
-            kind: "leap",
-            timing: Object.freeze({ windup: 0.32, recovery: 0.9 }),
-            range: 2.5,
-            skillMultiplier: 1.3,
-            projectileCount: 0,
-            bounces: 0
-          }),
-          cooldownTicks: 60
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/chestnut-thorns/definition.js
-  var CHESTNUT_THORNS_FEATURE;
-  var init_definition10 = __esm({
-    "src/features/abilities/chestnut-thorns/definition.js"() {
-      CHESTNUT_THORNS_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "chestnut-target-thorns",
-          species: 3,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "대상 가시 연사",
-          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
-          powerValues: Object.freeze([1, 2, 3]),
-          cooldownTicks: 60,
-          spacingTicks: 2,
-          attackProfile: Object.freeze({
-            kind: "chestnut-thorns",
-            timing: Object.freeze({ windup: 0, recovery: 0.2 }),
-            range: 1.45,
-            skillMultiplier: 1,
-            projectileCount: 0,
-            bounces: 0
-          })
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/peanut-death-split/definition.js
-  var PEANUT_DEATH_SPLIT_FEATURE;
-  var init_definition11 = __esm({
-    "src/features/abilities/peanut-death-split/definition.js"() {
-      PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "peanut-death-split",
-          species: 4,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "사망 분열",
-          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
-          powerValues: Object.freeze([1, 1.5, 2.25]),
-          childCount: 2
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/walnut-raw-guard/definition.js
-  var WALNUT_RAW_GUARD_FEATURE;
-  var init_definition12 = __esm({
-    "src/features/abilities/walnut-raw-guard/definition.js"() {
-      WALNUT_RAW_GUARD_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "walnut-raw-guard",
-          species: 5,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "방어와 반격",
-          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
-          powerValues: Object.freeze([1, 1.5, 2.25]),
-          cooldownTicks: 100,
-          durationTicks: 40,
-          armorBonus: 50,
-          maxBonusAttackMultiples: 3
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/corn-attachment/definition.js
-  var CORN_ATTACHMENT_FEATURE;
-  var init_definition13 = __esm({
-    "src/features/abilities/corn-attachment/definition.js"() {
-      CORN_ATTACHMENT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "corn-kernel-chain",
-          species: 1,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "부착 알갱이 연쇄 폭발",
-          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
-          powerValues: Object.freeze([0.5, 0.75, 1]),
-          attachDelayTicks: 20,
-          explosionSpacingTicks: 2,
-          fadeTicks: 6
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/rice-low-health-harvest.js
-  var RICE_LOW_HEALTH_HARVEST_FEATURE;
-  var init_rice_low_health_harvest = __esm({
-    "src/features/abilities/rice-low-health-harvest.js"() {
-      RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "rice-low-health-harvest",
-          species: 6,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "수확 낫",
-          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
-          rootTier: 1,
-          powerValues: Object.freeze([0.35, 0.55, 0.75])
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/wheat-command-crit.js
-  var WHEAT_COMMAND_CRIT_FEATURE;
-  var init_wheat_command_crit = __esm({
-    "src/features/abilities/wheat-command-crit.js"() {
-      WHEAT_COMMAND_CRIT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "wheat-command-crit",
-          species: 7,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "밀의 전투 지휘",
-          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
-          powerValues: Object.freeze([0.5, 0.75, 1.125]),
-          durationTicks: 60,
-          triggerChance: 0.35,
-          branches: Object.freeze({
-            range: Object.freeze({
-              name: "명령 반경",
-              values: Object.freeze([2, 3, 4.5])
-            })
-          })
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/barley-armor-break.js
-  var BARLEY_ARMOR_BREAK_FEATURE;
-  var init_barley_armor_break = __esm({
-    "src/features/abilities/barley-armor-break.js"() {
-      BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "barley-armor-break",
-          species: 8,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "도리깨 갑주 파쇄",
-          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
-          rootTier: 1,
-          powerValues: Object.freeze([1, 2, 3]),
-          durationTicks: 60
-        })
-      });
-    }
-  });
-
-  // src/ability-definitions.js
-  var SPECIES_ABILITY_DEFINITIONS;
-  var init_ability_definitions = __esm({
-    "src/ability-definitions.js"() {
-      init_pea_recovery_boost();
-      init_kidney_continuous_leap();
-      init_definition10();
-      init_definition11();
-      init_definition12();
-      init_definition13();
-      init_rice_low_health_harvest();
-      init_wheat_command_crit();
-      init_barley_armor_break();
-      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
-        PEA_RECOVERY_BOOST_FEATURE.definition,
-        KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
-        CHESTNUT_THORNS_FEATURE.definition,
-        PEANUT_DEATH_SPLIT_FEATURE.definition,
-        WALNUT_RAW_GUARD_FEATURE.definition,
-        CORN_ATTACHMENT_FEATURE.definition,
-        RICE_LOW_HEALTH_HARVEST_FEATURE.definition,
-        WHEAT_COMMAND_CRIT_FEATURE.definition,
-        BARLEY_ARMOR_BREAK_FEATURE.definition
-      ]);
-    }
-  });
-
-  // src/ability-state.js
-  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
-    if (!isNonNegativeInteger(availablePoints)) {
-      throw new TypeError("availablePoints must be a non-negative integer");
-    }
-    return {
-      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-      availablePoints,
-      farmUpgrades: createFarmUpgradeState(),
-      abilities: Object.fromEntries(
-        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
-          definition.id,
-          {
-            powerLevel: 0,
-            ...definition.branches ? {
-              branchLevels: Object.fromEntries(
-                Object.keys(definition.branches).map((branchId) => [branchId, 0])
-              )
-            } : {}
-          }
-        ])
-      )
-    };
-  }
-  function isValidAbilityProgressionState(state) {
-    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
-      return false;
-    }
-    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") {
-      return false;
-    }
-    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
-      return false;
-    }
-    for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
-      const INVESTMENT = state.abilities[DEFINITION13.id];
-      if (!INVESTMENT || !isNonNegativeInteger(INVESTMENT.powerLevel)) {
-        return false;
-      }
-      if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
-        return false;
-      }
-      const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
-      if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
-        return false;
-      }
-      for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
-        const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
-        if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
-          return false;
-        }
-      }
-    }
-    return Object.keys(state.abilities).every(
-      (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
-    );
-  }
-  function isNonNegativeInteger(value) {
-    return Number.isSafeInteger(value) && value >= 0;
-  }
-  var ABILITY_TREE_SCHEMA_VERSION;
-  var init_ability_state = __esm({
-    "src/ability-state.js"() {
-      init_ability_definitions();
-      init_farm_upgrades();
-      ABILITY_TREE_SCHEMA_VERSION = 2;
-    }
-  });
-
-  // src/player-progression.js
-  function createPlayerProgressionState() {
-    return {
-      ...createAbilityProgressionState(),
-      formationSkills: createFormationSkillState(),
-      farmPlots: createFarmPlotsProgression(),
-      level: 1,
-      experience: 0,
-      farmBossEventStage: 1,
-      processedBossKillReceipts: []
-    };
-  }
-  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
-    if (!isValidPlayerProgressionState(state)) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-state",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-xp",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    if (state.processedBossKillReceipts.includes(receiptKey)) {
-      return {
-        state,
-        awarded: false,
-        reason: "duplicate-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
-    }
-    let level = state.level;
-    let experience = state.experience + xpAmount;
-    let levelsGained = 0;
-    while (experience >= experienceForNextLevel(level)) {
-      experience -= experienceForNextLevel(level);
-      level += 1;
-      levelsGained += 1;
-    }
-    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
-    const NEXT_STATE = {
-      ...state,
-      level,
-      experience,
-      availablePoints: state.availablePoints + POINTS_AWARDED,
-      abilities: Object.fromEntries(
-        Object.entries(state.abilities).map(([id, value]) => [
-          id,
-          {
-            ...value
-          }
-        ])
-      ),
-      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
-    };
-    return {
-      state: NEXT_STATE,
-      awarded: true,
-      reason: null,
-      xpAwarded: xpAmount,
-      levelsGained,
-      pointsAwarded: POINTS_AWARDED
-    };
-  }
-  function experienceForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-      throw new RangeError("level must be a positive integer");
-    }
-    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
-  }
-  function formatXpForDisplay(experience) {
-    const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
-    return new Intl.NumberFormat("ko-KR", {
-      maximumFractionDigits: 1
-    }).format(VALUE);
-  }
-  function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
-      return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-      (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
-      0
-    );
-    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
-  }
-  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
-  var init_player_progression = __esm({
-    "src/player-progression.js"() {
-      init_ability_state();
-      init_formation_skill_state();
-      init_farm_upgrades();
-      init_farm_plot();
-      PLAYER_PROGRESS_BASE_XP = 100;
-      BOSS_KILL_XP = 20;
-      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
-      LEVEL_XP_MULTIPLIER = 1.2;
-      SHARED_POINTS_PER_LEVEL = 1;
-      FARM_BOSS_EVENT_MAX_STAGE = 61;
-    }
-  });
-
-  // src/boss-rewards.js
-  function requireSdk() {
-    const SDK = globalThis.BloomGamekitDeterministic;
-    if (!SDK?.SeededPRNG || !SDK?.PseudoRandomDistribution) {
-      throw new Error("GameKit 0.12.2 deterministic PRD API is required");
-    }
-    return SDK;
-  }
-  function mixedSeed(seed, domain) {
-    let value = (seed ^ domain) >>> 0;
-    value = Math.imul(value ^ value >>> 16, 2146121005);
-    value = Math.imul(value ^ value >>> 15, 2221713035);
-    return (value ^ value >>> 16) >>> 0;
-  }
-  function streamFor(source) {
-    return STREAM_SOURCE[source];
-  }
-  function streamSeed(seed, kind, field) {
-    const DOMAIN = STREAM_DOMAINS[kind]?.[field];
-    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 4294967295 || DOMAIN === void 0) {
-      throw new RangeError("Invalid boss reward stream seed");
-    }
-    return mixedSeed(seed, DOMAIN);
-  }
-  function createStream(seed, kind) {
-    return {
-      rngState: streamSeed(seed, kind, "prd"),
-      distributionState: null,
-      payoutRngState: streamSeed(seed, kind, "boxes")
-    };
-  }
-  function createBossRewardStreams(seed) {
-    return {
-      normal: createStream(seed, "normal"),
-      event: createStream(seed, "event"),
-      firstClear: createStream(seed, "firstClear")
-    };
-  }
-  function bossRewardBoxPayouts(total) {
-    if (!Number.isSafeInteger(total) || total < 1) {
-      throw new RangeError("Boss reward quantity must be a positive safe integer");
-    }
-    const BOX_COUNT = Math.min(total, BOSS_REWARD_SETTINGS.maxBoxCount), BASE = Math.floor(total / BOX_COUNT), EXTRA = total % BOX_COUNT;
-    const PAYOUTS = Array.from({ length: BOX_COUNT }, (_, index) => BASE + (index < EXTRA ? 1 : 0));
-    if (PAYOUTS.some((amount) => !Number.isSafeInteger(amount) || amount < 1)) {
-      throw new RangeError("Boss reward box payout is outside the safe integer range");
-    }
-    return PAYOUTS;
-  }
-  function bossStageStats(stage) {
-    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
-      throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
-    }
-    const EXPONENT = stage - 1, TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT), PAYOUTS = bossRewardBoxPayouts(TOTAL);
-    return {
-      stage,
-      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
-      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
-      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
-      rollBudget: TOTAL,
-      rolls: PAYOUTS.length,
-      boxCount: PAYOUTS.length,
-      boxPayouts: PAYOUTS,
-      bonusRollChance: 0
-    };
-  }
-  function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
-    if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) {
-      throw new TypeError("Boss species weights and random source are required");
-    }
-    const TOTAL = weights.reduce((sum, weight) => sum + weight, 0);
-    let remaining = random() * TOTAL;
-    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= TOTAL) {
-      throw new RangeError("Boss species roll must be in [0, 1)");
-    }
-    for (let index = 0; index < weights.length; index += 1) {
-      remaining -= weights[index];
-      if (remaining < 0) {
-        return index;
-      }
-    }
-    return weights.length - 1;
-  }
-  function bossAcquisitionChance({ farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
-    if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
-      throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
-    }
-    if (farmEvent) {
-      return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
-    }
-    const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
-    return Math.min(1, BASE * acquisitionMultiplier);
-  }
-  function ensureWorldRewardState(world) {
-    world.bossRewardReceipts ||= [];
-    world.bossRewardWatermarks ||= { farm: 0 };
-    world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
-    world.bossRewardInventory ||= [];
-    return world;
-  }
-  function shufflePayouts(payouts, seed) {
-    const { SeededPRNG: SEEDED_PRNG2 } = requireSdk();
-    const RNG = new SEEDED_PRNG2(seed);
-    for (let index = payouts.length - 1; index > 0; index -= 1) {
-      const OTHER = RNG.nextInt(index + 1);
-      [payouts[index], payouts[OTHER]] = [payouts[OTHER], payouts[index]];
-    }
-    return { payouts, rngState: RNG.state };
-  }
-  function allocatePlacedRewards(world, species, tier, quantity) {
-    let remaining = quantity;
-    for (const RECEIPT of world.bossRewardReceipts) {
-      if (remaining === 0 || RECEIPT.species !== species || RECEIPT.tier !== tier || !Number.isSafeInteger(RECEIPT.queuedCount) || RECEIPT.queuedCount <= 0) {
-        continue;
-      }
-      const PLACED = Math.min(remaining, RECEIPT.queuedCount);
-      RECEIPT.queuedCount -= PLACED;
-      RECEIPT.placedCount += PLACED;
-      RECEIPT.grantedCount = RECEIPT.placedCount;
-      remaining -= PLACED;
-    }
-    if (remaining !== 0) {
-      throw new Error("Boss reward queue and receipt counts diverged");
-    }
-  }
-  function grantPendingBossAcquisitions(world) {
-    return typeof world.mutateUnits === "function" ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world) : grantPendingBossAcquisitionsCommitted(world);
-  }
-  function grantPendingBossAcquisitionsCommitted(world) {
-    ensureWorldRewardState(world);
-    if (world.scene !== "farm" || !Array.isArray(world.units) || !world.bossRewardInventory.length) {
-      return [];
-    }
-    const GRANTED = [];
-    let capacity2 = Math.max(
-      0,
-      (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
-    );
-    for (const GROUP of world.bossRewardInventory) {
-      if (capacity2 <= 0) {
-        break;
-      }
-      const COUNT = Math.min(capacity2, GROUP.count);
-      let placed = 0;
-      while (placed < COUNT) {
-        const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS2 = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS2, Math.sin(ANGLE) * RADIUS2);
-        if (!UNIT3) {
-          break;
-        }
-        GRANTED.push(UNIT3);
-        placed += 1;
-      }
-      if (placed > 0) {
-        GROUP.count -= placed;
-        capacity2 -= placed;
-        allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
-      }
-    }
-    world.bossRewardInventory = world.bossRewardInventory.filter((entry) => entry.count > 0);
-    if (GRANTED.length) {
-      world.markProgressChanged?.();
-    }
-    return GRANTED;
-  }
-  function findExistingReceipt(world, receiptKey, encounterId, source) {
-    return world.bossRewardReceipts.find(
-      (receipt) => receiptKey && receipt.receiptKey === receiptKey || receipt.encounterId === encounterId && receipt.source === source
-    );
-  }
-  function shuffleForNewReceipt(world, source, total, firstClear = false) {
-    const KIND = streamFor(source, firstClear), STREAM = world.bossRewardStreams[KIND], PAYOUTS = bossRewardBoxPayouts(total), SHUFFLED = shufflePayouts(PAYOUTS, STREAM.payoutRngState);
-    return {
-      payouts: SHUFFLED.payouts,
-      payoutRngStateAfter: SHUFFLED.rngState
-    };
-  }
-  function resolveBossAcquisitionCommitted(world, options = {}) {
-    ensureWorldRewardState(world);
-    const ENCOUNTER_ID = options.encounterId, SOURCE = options.source || "farm", REQUESTED_KEY = options.receiptKey;
-    if (SOURCE !== "farm" || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID < 1 || REQUESTED_KEY !== void 0 && (typeof REQUESTED_KEY !== "string" || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255)) {
-      throw new TypeError("A boss encounter ID, source, and valid receipt key are required");
-    }
-    const RECEIPT_KEY = REQUESTED_KEY || `${SOURCE}:${ENCOUNTER_ID}`, PREVIOUS = findExistingReceipt(world, REQUESTED_KEY, ENCOUNTER_ID, SOURCE);
-    if (PREVIOUS) {
-      return PREVIOUS;
-    }
-    if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
-      throw new RangeError("A settled or stale boss encounter cannot be rolled again");
-    }
-    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
-    if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
-      throw new RangeError("Boss reward quantity is outside the safe integer range");
-    }
-    const SPECIES = options.species ?? 3;
-    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
-      throw new RangeError("Boss reward species is invalid");
-    }
-    const FIRST_CLEAR = false, STREAM_KIND = streamFor(SOURCE), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
-      farmEvent: SOURCE === "farm",
-      firstClear: FIRST_CLEAR,
-      acquisitionMultiplier: options.acquisitionMultiplier ?? 1
-    }), SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL, FIRST_CLEAR), BOX_COUNT = SHUFFLED.payouts.length, RECEIPT = {
-      encounterId: ENCOUNTER_ID,
-      source: SOURCE,
-      receiptKey: RECEIPT_KEY,
-      acquisitionMultiplier: SOURCE === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options.acquisitionMultiplier ?? 1,
-      stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
-      species: SPECIES,
-      tier: 1,
-      x: Number.isFinite(options.x) ? options.x : 0,
-      y: Number.isFinite(options.y) ? options.y : 0,
-      firstClear: FIRST_CLEAR,
-      chance: CHANCE,
-      baselineChance: FIRST_CLEAR ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance,
-      rollBudget: TOTAL,
-      rollCount: BOX_COUNT,
-      boxCount: BOX_COUNT,
-      successCount: 0,
-      acquiredCount: 0,
-      grantedCount: 0,
-      placedCount: 0,
-      queuedCount: 0,
-      unitId: 0,
-      revealedCount: 0,
-      boxes: [],
-      calculation: {
-        version: 1,
-        payouts: SHUFFLED.payouts,
-        hits: [],
-        payoutRngStateAfter: SHUFFLED.payoutRngStateAfter,
-        jobState: null
-      },
-      status: "calculating"
-    };
-    if (streamFor(SOURCE, FIRST_CLEAR) !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
-      throw new TypeError("Boss reward streams are not initialized");
-    }
-    world.bossRewardReceipts.push(RECEIPT);
-    world.bossRewardWatermarks[SOURCE] = ENCOUNTER_ID;
-    trimRewardReceipts(world);
-    if (SOURCE === "farm" && world.farmBossEvent?.encounterId === ENCOUNTER_ID) {
-      world.farmBossEvent.rewardStatus = "calculating";
-      world.farmBossEvent.rewardChance = CHANCE;
-      world.farmBossEvent.rewardRoll = 0;
-      world.farmBossEvent.rewardUnitId = 0;
-    }
-    world.markProgressChanged?.();
-    return RECEIPT;
-  }
-  function copyInventory(world) {
-    return (world.bossRewardInventory || []).map((entry) => ({ ...entry }));
-  }
-  function completeRewardCalculation(world, receipt, jobState) {
-    const CALC = receipt.calculation, HIT_SET = new Set(CALC.hits), BOXES = CALC.payouts.map((payout, index) => ({ payout, hit: HIT_SET.has(index) }));
-    let acquired = 0;
-    for (const BOX of BOXES) {
-      if (BOX.hit) {
-        acquired += BOX.payout;
-        if (!Number.isSafeInteger(acquired)) {
-          throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
-        }
-      }
-    }
-    const KIND = streamFor(receipt.source, receipt.firstClear === true), NEXT_INVENTORY = copyInventory(world), GROUP = NEXT_INVENTORY.find((entry) => entry.species === receipt.species && entry.tier === receipt.tier);
-    if (acquired > 0) {
-      const CURRENT = GROUP?.count || 0, NEXT = CURRENT + acquired;
-      if (!Number.isSafeInteger(NEXT)) {
-        throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
-      }
-      if (GROUP) {
-        GROUP.count = NEXT;
-      } else {
-        NEXT_INVENTORY.push({ species: receipt.species, tier: receipt.tier, count: acquired });
-      }
-    }
-    const NEXT_STREAM = {
-      rngState: jobState.rngState,
-      distributionState: jobState.distributionState,
-      payoutRngState: CALC.payoutRngStateAfter
-    };
-    world.bossRewardStreams[KIND] = NEXT_STREAM;
-    world.bossRewardInventory = NEXT_INVENTORY;
-    receipt.boxes = BOXES;
-    receipt.successCount = CALC.hits.length;
-    receipt.acquiredCount = acquired;
-    receipt.placedCount = 0;
-    receipt.queuedCount = acquired;
-    receipt.grantedCount = 0;
-    receipt.revealedCount = 0;
-    receipt.calculation = null;
-    receipt.status = "ready";
-    if (receipt.source === "farm" && world.farmBossEvent?.encounterId === receipt.encounterId) {
-      world.farmBossEvent.rewardStatus = "ready";
-    }
-  }
-  function trimRewardReceipts(world) {
-    const KEEP = /* @__PURE__ */ new Set();
-    let completed = 0;
-    for (let index = world.bossRewardReceipts.length - 1; index >= 0; index -= 1) {
-      const RECEIPT = world.bossRewardReceipts[index], NEEDS_PRESENTATION = RECEIPT.status === "calculating" || Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0;
-      if (NEEDS_PRESENTATION || RECEIPT.status === "ready" && completed < 8) {
-        KEEP.add(RECEIPT);
-        if (RECEIPT.status === "ready") {
-          completed += 1;
-        }
-      }
-    }
-    world.bossRewardReceipts = world.bossRewardReceipts.filter((receipt) => KEEP.has(receipt));
-  }
-  function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_UNITS_PER_TICK } = {}) {
-    if (!Number.isSafeInteger(maxUnitsPerReward) || maxUnitsPerReward < 1 || maxUnitsPerReward > PRD_UNITS_PER_TICK) {
-      throw new RangeError("Boss reward work must be from 1 to 10 units per logical tick");
-    }
-    ensureWorldRewardState(world);
-    if (world.scene !== "farm") {
-      return false;
-    }
-    let changed = false;
-    for (const SOURCE of ["farm"]) {
-      const RECEIPT = world.bossRewardReceipts.find(
-        (entry) => entry.source === SOURCE && entry.status === "calculating"
-      ), CALC = RECEIPT?.calculation;
-      if (!RECEIPT || !CALC) {
-        continue;
-      }
-      const STREAM_KIND = streamFor(SOURCE, RECEIPT.firstClear === true), STREAM = world.bossRewardStreams[STREAM_KIND], { SeededPRNG: SEEDED_PRNG2, PseudoRandomDistribution: PSEUDO_RANDOM_DISTRIBUTION } = requireSdk(), RNG = new SEEDED_PRNG2(STREAM.rngState), PRD = new PSEUDO_RANDOM_DISTRIBUTION({ probability: RECEIPT.chance, rng: RNG });
-      let job = null;
-      try {
-        if (CALC.jobState) {
-          job = PRD.restoreRollJob(CALC.jobState);
-        } else {
-          if (STREAM.distributionState) {
-            PRD.restore(STREAM.distributionState);
-          }
-          if (PRD.probability !== RECEIPT.chance) {
-            PRD.setProbability(RECEIPT.chance);
-          }
-          job = PRD.createRollJob(RECEIPT.boxCount);
-        }
-        if (RECEIPT.chance === 1 && CALC.hits.length === 0) {
-          CALC.hits = Array.from({ length: RECEIPT.boxCount }, (_, index) => index);
-        }
-        let units = 0;
-        while (!job.done && units < maxUnitsPerReward) {
-          const PRIOR_SUCCESSES = job.successes, STEP = job.step(1);
-          units += STEP.unitsUsed;
-          if (RECEIPT.chance !== 1 && STEP.successes > PRIOR_SUCCESSES) {
-            if (STEP.successes !== PRIOR_SUCCESSES + 1) {
-              throw new Error("A single PRD interval returned multiple reward successes");
-            }
-            CALC.hits.push(STEP.processedTrials - 1);
-          }
-          if (STEP.unitsUsed === 0 && !STEP.done) {
-            throw new Error("The resumable boss reward job did not advance");
-          }
-        }
-        CALC.jobState = job.capture();
-        changed = true;
-        if (job.done) {
-          completeRewardCalculation(world, RECEIPT, CALC.jobState);
-          trimRewardReceipts(world);
-        }
-      } finally {
-        job?.dispose();
-        PRD.dispose();
-      }
-    }
-    if (changed) {
-      world.markProgressChanged?.();
-    }
-    return changed;
-  }
-  function advanceBossRewardReveal(world, receiptKey, maxBoxes = 10) {
-    if (!Number.isSafeInteger(maxBoxes) || maxBoxes < 1 || maxBoxes > 10) {
-      throw new RangeError("Boss reward reveal must be from 1 to 10 boxes");
-    }
-    ensureWorldRewardState(world);
-    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || RECEIPT.status !== "ready") {
-      return null;
-    }
-    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
-      return RECEIPT;
-    }
-    RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
-    return RECEIPT;
-  }
-  function openAllBossRewardBoxes(world, receiptKey) {
-    ensureWorldRewardState(world);
-    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
-    if (!RECEIPT || RECEIPT.status !== "ready") {
-      return null;
-    }
-    RECEIPT.revealedCount = RECEIPT.boxCount;
-    return RECEIPT;
-  }
-  function settleBossKill(world, options) {
-    return typeof world.mutateUnits === "function" ? world.mutateUnits(settleBossKillCommitted, world, options) : settleBossKillCommitted(world, options);
-  }
-  function settleBossKillCommitted(world, options = {}) {
-    const RECEIPT = resolveBossAcquisitionCommitted(world, options), PROGRESSION_OWNER = options.progressionOwner || world, WALLET = options.playerProgression || PROGRESSION_OWNER.playerProgression, RECEIPT_KEY = RECEIPT.xpReceiptKey || options.receiptKey || RECEIPT.receiptKey;
-    if (RECEIPT.xpReceiptKey && ["awarded", "already-awarded"].includes(RECEIPT.xpStatus)) {
-      return {
-        receipt: RECEIPT,
-        progression: WALLET,
-        awarded: false,
-        reason: "duplicate-receipt",
-        xpAwarded: RECEIPT.xpAmount ?? 0,
-        levelsGained: RECEIPT.levelsGained ?? 0,
-        pointsAwarded: RECEIPT.pointsAwarded ?? 0
-      };
-    }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === void 0 ? void 0 : options.xpAmount);
-    if (RESULT.awarded) {
-      PROGRESSION_OWNER.playerProgression = RESULT.state;
-    }
-    if (RESULT.awarded || RESULT.reason === "duplicate-receipt") {
-      RECEIPT.xpReceiptKey = RECEIPT_KEY;
-      RECEIPT.xpStatus = RESULT.awarded ? "awarded" : "already-awarded";
-      RECEIPT.xpAmount = RESULT.awarded ? RESULT.xpAwarded : 0;
-      RECEIPT.levelsGained = RESULT.levelsGained;
-      RECEIPT.pointsAwarded = RESULT.pointsAwarded;
-    } else {
-      RECEIPT.xpStatus = "unsettled";
-    }
-    world.markProgressChanged?.();
-    return {
-      receipt: RECEIPT,
-      progression: RESULT.state,
-      awarded: RESULT.awarded,
-      reason: RESULT.reason,
-      xpAwarded: RESULT.xpAwarded,
-      levelsGained: RESULT.levelsGained,
-      pointsAwarded: RESULT.pointsAwarded
-    };
-  }
-  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, BOSS_REWARD_SETTINGS;
-  var init_boss_rewards = __esm({
-    "src/boss-rewards.js"() {
-      init_player_progression();
-      init_species_catalog();
-      FORMAT_PERCENT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
-      FORMAT_COUNT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
-      PRD_UNITS_PER_TICK = 10;
-      STREAM_DOMAINS = Object.freeze({
-        normal: Object.freeze({ prd: 795749149, boxes: 1547342359 }),
-        event: Object.freeze({ prd: 1939685861, boxes: 462181795 }),
-        firstClear: Object.freeze({ prd: 1247922131, boxes: 767049617 })
-      });
-      STREAM_SOURCE = Object.freeze({ farm: "event" });
-      BOSS_REWARD_SETTINGS = Object.freeze({
-        acquisitionChance: 0.05,
-        firstClearAcquisitionChance: 0.15,
-        farmEventAcquisitionMultiplier: 2,
-        stageHpBase: 200,
-        stageHpMultiplier: 1.5,
-        stageAttackBase: 4,
-        stageAttackMultiplier: 1.2,
-        stageXpBase: 20,
-        stageXpMultiplier: 1.5,
-        stageRollMultiplier: 1.5,
-        maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-        maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
-        maxBoxCount: 100,
-        prdUnitsPerTick: PRD_UNITS_PER_TICK,
-        speciesWeights: BOSS_SPECIES_WEIGHTS
-      });
-    }
-  });
-
-  // src/world-map.js
-  function tileIndex(x, y) {
-    return (y + WORLD_MAP_SETTINGS.radius) * SIDE + (x + WORLD_MAP_SETTINGS.radius);
-  }
-  function tileX(index) {
-    return index % SIDE - WORLD_MAP_SETTINGS.radius;
-  }
-  function tileY(index) {
-    return Math.floor(index / SIDE) - WORLD_MAP_SETTINGS.radius;
-  }
-  function inside(x, y) {
-    return Math.abs(x) <= WORLD_MAP_SETTINGS.radius && Math.abs(y) <= WORLD_MAP_SETTINGS.radius;
-  }
-  function tileUnit(seed, index, salt) {
-    let value = (seed ^ Math.imul(index + 1, 2654435769) ^ Math.imul(salt, 2246822507)) >>> 0;
-    value = Math.imul(value ^ value >>> 15, value | 1);
-    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
-    return ((value ^ value >>> 14) >>> 0) / 4294967296;
-  }
-  function setReachProvider(map, provider) {
-    REACH_PROVIDERS.set(map, provider);
-  }
-  function farmReachOf(map, plotId) {
-    const EXTRA = REACH_PROVIDERS.get(map)?.(plotId) ?? 0;
-    return WORLD_MAP_SETTINGS.baseReach + Math.max(0, EXTRA);
-  }
-  function inReach(map, index, plotId = null) {
-    const X = tileX(index), Y = tileY(index);
-    return map.farms.some(
-      (farm) => (plotId === null || farm.plotId === plotId) && Math.max(Math.abs(X - tileX(farm.tile)), Math.abs(Y - tileY(farm.tile))) <= farmReachOf(map, farm.plotId)
-    );
-  }
-  function farmTiles(map) {
-    return map.farms.map((farm) => farm.tile);
-  }
-  function farmDistance(map, index) {
-    const X = tileX(index), Y = tileY(index);
-    let best = Infinity;
-    for (const FARM of farmTiles(map)) {
-      best = Math.min(best, Math.max(Math.abs(X - tileX(FARM)), Math.abs(Y - tileY(FARM))));
-    }
-    return best;
-  }
-  function createWorldMap(seed, firstPlotId) {
-    const MAP = {
-      seed: Number.isSafeInteger(seed) ? seed >>> 0 : 0,
-      progress: {},
-      exploreTarget: -1,
-      challengeTile: -1,
-      buildTile: -1,
-      revealed: [],
-      bosses: [],
-      spawnClock: 0,
-      spawnCount: 0,
-      mined: {},
-      mines: [],
-      farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }]
-    };
-    for (let y = -WORLD_MAP_SETTINGS.safeRadius; y <= WORLD_MAP_SETTINGS.safeRadius; y++) {
-      for (let x = -WORLD_MAP_SETTINGS.safeRadius; x <= WORLD_MAP_SETTINGS.safeRadius; x++) {
-        MAP.revealed.push(tileIndex(x, y));
-      }
-    }
-    MAP.revealed.sort((a, b) => a - b);
-    return MAP;
-  }
-  function isRevealed(map, index) {
-    return map.revealed.includes(index);
-  }
-  function farmReach(map, index) {
-    const X = tileX(index), Y = tileY(index);
-    let best = Infinity;
-    for (const FARM of farmTiles(map)) {
-      best = Math.min(best, Math.hypot(X - tileX(FARM), Y - tileY(FARM)));
-    }
-    return best;
-  }
-  function tileDanger(map, index) {
-    const STAGE = Math.round(1 + (farmReach(map, index) - 2) * WORLD_MAP_SETTINGS.dangerPerTile);
-    return Math.max(1, Math.min(WORLD_MAP_SETTINGS.maxDanger, STAGE));
-  }
-  function hasBoss(map, index) {
-    return map.bosses.includes(index);
-  }
-  function tileSpecies(map, index) {
-    return chooseBossSpecies(() => tileUnit(map.seed, index, 3));
-  }
-  function canChallenge(map, index) {
-    return isRevealed(map, index) && hasBoss(map, index) && inReach(map, index);
-  }
-  function beginChallenge(map, index) {
-    if (!canChallenge(map, index)) {
-      return false;
-    }
-    map.challengeTile = index;
-    return true;
-  }
-  function finishChallenge(map, victory) {
-    const TILE = map.challengeTile ?? -1;
-    map.challengeTile = -1;
-    if (!victory || TILE < 0 || !hasBoss(map, TILE)) {
-      return false;
-    }
-    map.bosses = map.bosses.filter((boss) => boss !== TILE);
-    return true;
-  }
-  function advanceSpawns(map, seconds) {
-    const SPAWNED = [];
-    map.bossAges ??= {};
-    for (const TILE of [...map.bosses]) {
-      map.bossAges[TILE] = (map.bossAges[TILE] ?? 0) + seconds;
-      if (map.bossAges[TILE] >= WORLD_MAP_SETTINGS.bossLifetimeSeconds && TILE !== map.challengeTile) {
-        map.bosses = map.bosses.filter((boss) => boss !== TILE);
-        delete map.bossAges[TILE];
-      }
-    }
-    const PLACE = () => {
-      const CANDIDATES = map.revealed.filter(
-        (tile) => farmDistance(map, tile) > 0 && !hasBoss(map, tile) && inReach(map, tile)
-      );
-      if (CANDIDATES.length === 0) {
-        return false;
-      }
-      const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
-      map.spawnCount++;
-      map.bosses.push(TILE);
-      map.bosses.sort((x, y) => x - y);
-      map.bossAges[TILE] = 0;
-      SPAWNED.push(TILE);
-      return true;
-    };
-    if (map.bosses.length === 0) {
-      PLACE();
-    }
-    map.spawnClock += seconds;
-    while (map.spawnClock >= WORLD_MAP_SETTINGS.spawnSeconds) {
-      if (map.bosses.length >= WORLD_MAP_SETTINGS.maxBosses || !PLACE()) {
-        map.spawnClock = WORLD_MAP_SETTINGS.spawnSeconds;
-        break;
-      }
-      map.spawnClock -= WORLD_MAP_SETTINGS.spawnSeconds;
-    }
-    return SPAWNED;
-  }
-  function naturalTerrain(seed, index) {
-    const ROLL = tileUnit(seed, index, 4);
-    return ROLL < 0.55 ? "plain" : ROLL < 0.75 ? "forest" : ROLL < 0.9 ? "rock" : "swamp";
-  }
-  function startResources(seed) {
-    let found = START_RESOURCES.get(seed);
-    if (!found) {
-      const FARM = tileIndex(0, 0), NEIGHBOURS3 = [];
-      for (let y = -1; y <= 1; y++) {
-        for (let x = -1; x <= 1; x++) {
-          if (x !== 0 || y !== 0) {
-            NEIGHBOURS3.push(tileIndex(x, y));
-          }
-        }
-      }
-      NEIGHBOURS3.sort((a, b) => tileUnit(seed, a, 5) - tileUnit(seed, b, 5));
-      const HAS = (kind) => NEIGHBOURS3.some((tile) => tile !== FARM && naturalTerrain(seed, tile) === kind), FOREST = HAS("forest") ? -1 : NEIGHBOURS3.find((tile) => naturalTerrain(seed, tile) !== "rock"), ROCK = HAS("rock") ? -1 : NEIGHBOURS3.find((tile) => tile !== FOREST && naturalTerrain(seed, tile) !== "forest");
-      found = { forest: FOREST ?? -1, rock: ROCK ?? -1 };
-      START_RESOURCES.set(seed, found);
-    }
-    return found;
-  }
-  function tileTerrain(map, index) {
-    const FIXED = startResources(map.seed);
-    if (index === FIXED.forest) {
-      return "forest";
-    }
-    if (index === FIXED.rock) {
-      return "rock";
-    }
-    return naturalTerrain(map.seed, index);
-  }
-  function exploreCost(map) {
-    const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
-    return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
-  }
-  function tileResource(map, index) {
-    const TERRAIN = tileTerrain(map, index);
-    return TERRAIN === "forest" ? "wood" : TERRAIN === "rock" ? "stone" : null;
-  }
-  function tileStockTotal(map, index) {
-    const TERRAIN = tileTerrain(map, index), BASE = WORLD_MAP_SETTINGS.resourceStock[TERRAIN] ?? 0;
-    return Math.round(BASE * (0.75 + 0.5 * tileUnit(map.seed, index, 21)));
-  }
-  function tileRemaining(map, index) {
-    if (tileResource(map, index) === null) {
-      return 0;
-    }
-    return map.mines.includes(index) ? Infinity : Math.max(0, tileStockTotal(map, index) - (map.mined[index] ?? 0));
-  }
-  function tileLook(index, salt) {
-    let h = Math.imul(index + 1, 2654435761) ^ Math.imul(salt, 2246822507);
-    h = Math.imul(h ^ h >>> 15, 739982445);
-    return ((h ^ h >>> 12) >>> 0) / 4294967296;
-  }
-  function tileFill(map, index) {
-    const TOTAL = tileStockTotal(map, index);
-    return TOTAL > 0 ? Math.min(1, tileRemaining(map, index) / TOTAL) : 0;
-  }
-  function takeFromTile(map, index, amount) {
-    const REMAINING = tileRemaining(map, index), TAKEN = Math.min(amount, REMAINING);
-    if (!(TAKEN > 0)) {
-      return 0;
-    }
-    if (REMAINING !== Infinity) {
-      map.mined[index] = (map.mined[index] ?? 0) + TAKEN;
-    }
-    return TAKEN;
-  }
-  function nearestResourceTile(map, plotId, wanted = null) {
-    const FARM = map.farms.find((farm) => farm.plotId === plotId);
-    if (!FARM) {
-      return -1;
-    }
-    let best = -1, bestScore = Infinity;
-    for (const TILE of map.revealed) {
-      const KIND = tileResource(map, TILE);
-      if (KIND === null || wanted !== null && KIND !== wanted || !(tileRemaining(map, TILE) > 0) || !inReach(map, TILE, plotId)) {
-        continue;
-      }
-      const SCORE = Math.hypot(tileX(TILE) - tileX(FARM.tile), tileY(TILE) - tileY(FARM.tile)) + tileUnit(map.seed, TILE, 22) * 0.4;
-      if (SCORE < bestScore) {
-        best = TILE;
-        bestScore = SCORE;
-      }
-    }
-    return best;
-  }
-  function canBuildMine(map, index, plotId) {
-    return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && isRevealed(map, index) && tileResource(map, index) !== null && !map.mines.includes(index) && inReach(map, index, plotId);
-  }
-  function buildMine(map, index) {
-    if (!isRevealed(map, index) || tileResource(map, index) === null || map.mines.includes(index)) {
-      return false;
-    }
-    map.mines.push(index);
-    map.mines.sort((a, b) => a - b);
-    return true;
-  }
-  function tileCost(map, index) {
-    return Math.round(exploreCost(map) * WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)]);
-  }
-  function touchesLight(index, lit) {
-    const X = tileX(index), Y = tileY(index);
-    return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && lit.has(tileIndex(X + dx, Y + dy)));
-  }
-  function exploreTargetFor(map, plotId) {
-    const LIT = new Set(map.revealed);
-    if (map.exploreTarget >= 0 && !LIT.has(map.exploreTarget) && touchesLight(map.exploreTarget, LIT) && inReach(map, map.exploreTarget)) {
-      return map.exploreTarget;
-    }
-    const FARM = map.farms.find((farm) => farm.plotId === plotId);
-    if (!FARM) {
-      return -1;
-    }
-    const REACH = farmReachOf(map, plotId), FX = tileX(FARM.tile), FY = tileY(FARM.tile);
-    let best = -1, bestScore = Infinity;
-    for (let y = FY - REACH; y <= FY + REACH; y++) {
-      for (let x = FX - REACH; x <= FX + REACH; x++) {
-        if (!inside(x, y)) {
-          continue;
-        }
-        const INDEX = tileIndex(x, y);
-        if (LIT.has(INDEX) || !touchesLight(INDEX, LIT)) {
-          continue;
-        }
-        const SCORE = Math.max(Math.abs(x - FX), Math.abs(y - FY)) + tileUnit(map.seed, INDEX, 2) * 0.5;
-        if (SCORE < bestScore) {
-          best = INDEX;
-          bestScore = SCORE;
-        }
-      }
-    }
-    return best;
-  }
-  function fogPieceCenter(piece) {
-    return {
-      x: (piece % FOG_GRID + 0.5) * PIECE_W - FARM_CELL.width / 2,
-      y: (Math.floor(piece / FOG_GRID) + 0.5) * PIECE_H - FARM_CELL.height / 2
-    };
-  }
-  function fogPieceAt(x, y) {
-    const COL = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((x + FARM_CELL.width / 2) / PIECE_W))), ROW = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((y + FARM_CELL.height / 2) / PIECE_H)));
-    return ROW * FOG_GRID + COL;
-  }
-  function spreadBonus(piece, taken) {
-    if (!taken || taken.size === 0) {
-      return 0;
-    }
-    const C = fogPieceCenter(piece);
-    let nearest = Infinity;
-    for (const OTHER of taken) {
-      const O = fogPieceCenter(OTHER);
-      nearest = Math.min(nearest, Math.hypot(C.x - O.x, C.y - O.y));
-    }
-    return Math.min(nearest, 18) * 0.7;
-  }
-  function nearestFogPiece(map, tile, x, y, taken = null) {
-    const LIFTED = new Set(map.progress[tile] ?? []);
-    let best = -1, bestDistance = Infinity;
-    for (let piece = 0; piece < FOG_PIECES; piece++) {
-      if (LIFTED.has(piece)) {
-        continue;
-      }
-      const C = fogPieceCenter(piece), D = Math.hypot(C.x - x, C.y - y) + (taken?.has(piece) ? 1e3 : 0) - spreadBonus(piece, taken);
-      if (D < bestDistance) {
-        best = piece;
-        bestDistance = D;
-      }
-    }
-    return best;
-  }
-  function fogPieceCost(map, tile) {
-    return tileCost(map, tile) / FOG_PIECES;
-  }
-  function exploreFraction(map, index, partial = 0) {
-    return Math.min(1, ((map.progress[index]?.length ?? 0) + partial) / FOG_PIECES);
-  }
-  function canExploreTile(map, index) {
-    return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && !isRevealed(map, index) && touchesLight(index, new Set(map.revealed)) && inReach(map, index);
-  }
-  function setExploreTarget(map, index) {
-    if (index === -1) {
-      map.exploreTarget = -1;
-      return true;
-    }
-    const LIT = new Set(map.revealed);
-    if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || LIT.has(index)) {
-      return false;
-    }
-    if (!touchesLight(index, LIT) || !inReach(map, index)) {
-      return false;
-    }
-    map.exploreTarget = index;
-    return true;
-  }
-  function liftFogPiece(map, tile, piece) {
-    if (!Number.isSafeInteger(tile) || tile < 0 || tile >= WORLD_MAP_TILE_COUNT || isRevealed(map, tile) || !(piece >= 0 && piece < FOG_PIECES)) {
-      return [];
-    }
-    const LIFTED = map.progress[tile] ?? [];
-    if (!LIFTED.includes(piece)) {
-      LIFTED.push(piece);
-      LIFTED.sort((a, b) => a - b);
-    }
-    if (LIFTED.length < FOG_LIT_AT) {
-      map.progress[tile] = LIFTED;
-      return [];
-    }
-    delete map.progress[tile];
-    map.revealed.push(tile);
-    map.revealed.sort((a, b) => a - b);
-    if (map.exploreTarget === tile) {
-      map.exploreTarget = -1;
-    }
-    return [tile];
-  }
-  function farmBuildBlock(map, index) {
-    if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || !isRevealed(map, index)) {
-      return "unexplored";
-    }
-    if (map.farms.some((farm) => farm.tile === index)) {
-      return "occupied";
-    }
-    const X = tileX(index), Y = tileY(index);
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        if (!inside(X + dx, Y + dy)) {
-          continue;
-        }
-        const AROUND = tileIndex(X + dx, Y + dy);
-        if (hasBoss(map, AROUND)) {
-          return "boss";
-        }
-      }
-    }
-    return null;
-  }
-  function canBuildFarm(map, index) {
-    return farmBuildBlock(map, index) === null;
-  }
-  function beginFarmBuild(map, index) {
-    if (!canBuildFarm(map, index)) {
-      return false;
-    }
-    map.buildTile = index;
-    return true;
-  }
-  function finishFarmBuild(map, plotId) {
-    let tile = map.buildTile ?? -1;
-    if (!(tile >= 0 && canBuildFarm(map, tile))) {
-      tile = -1;
-      let bestDistance = Infinity;
-      for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
-        if (!canBuildFarm(map, index)) {
-          continue;
-        }
-        const DISTANCE = farmDistance(map, index);
-        if (DISTANCE < bestDistance) {
-          tile = index;
-          bestDistance = DISTANCE;
-        }
-      }
-    }
-    map.buildTile = -1;
-    if (tile < 0) {
-      return -1;
-    }
-    map.farms.push({ plotId, tile });
-    const X = tileX(tile), Y = tileY(tile);
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const NEXT = tileIndex(X + dx, Y + dy);
-        if (inside(X + dx, Y + dy) && !map.revealed.includes(NEXT)) {
-          map.revealed.push(NEXT);
-        }
-      }
-    }
-    map.revealed.sort((a, b) => a - b);
-    return tile;
-  }
-  function isValidWorldMap(map) {
-    if (!map || typeof map !== "object" || Array.isArray(map)) {
-      return false;
-    }
-    const KEYS = Object.keys(map).filter((key) => key !== "challengeTile" && key !== "buildTile" && key !== "bossAges").sort().join(",");
-    if (KEYS !== "bosses,exploreTarget,farms,mined,mines,progress,revealed,seed,spawnClock,spawnCount") {
-      return false;
-    }
-    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !VALID_PROGRESS(map.progress) || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !(map.buildTile === void 0 || Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || map.bossAges !== void 0 && !(map.bossAges && typeof map.bossAges === "object" && Object.entries(map.bossAges).every(
-      ([key, value]) => /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value >= 0
-    )) || !SORTED_INDEXES(map.bosses) || !SORTED_INDEXES(map.mines) || !VALID_MINED(map.mined) || !Number.isFinite(map.spawnClock) || map.spawnClock < 0 || !Number.isSafeInteger(map.spawnCount) || map.spawnCount < 0 || !Array.isArray(map.farms) || map.farms.length === 0) {
-      return false;
-    }
-    const LIT = new Set(map.revealed);
-    return map.bosses.every((index) => LIT.has(index)) && map.mines.every((index) => LIT.has(index)) && new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length && map.farms.every(
-      (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
-    );
-  }
-  var WORLD_MAP_SETTINGS, FARM_CELL, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, START_RESOURCES, FOG_GRID, FOG_PIECES, FOG_LIT_AT, PIECE_W, PIECE_H, SORTED_INDEXES, VALID_PROGRESS, VALID_MINED;
-  var init_world_map = __esm({
-    "src/world-map.js"() {
-      init_boss_rewards();
-      WORLD_MAP_SETTINGS = {
-        radius: 12,
-        // Tiles within this many steps of a farm start lit.
-        safeRadius: 1,
-        // A boss turns up this often (game seconds) while fewer than maxBosses are out.
-        spawnSeconds: 150,
-        // A boss stays this long, then moves on whether or not anyone fought it.
-        bossLifetimeSeconds: 480,
-        maxBosses: 3,
-        firstTileCost: 60,
-        tileCostStep: 4,
-        maxDanger: 61,
-        // How much harder a tile is to explore than the base cost: the ground it lies on.
-        terrainCost: { plain: 1, forest: 1.5, rock: 2, swamp: 2.5 },
-        // Stages added per tile of straight-line distance beyond the first ring of bosses.
-        dangerPerTile: 4,
-        // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
-        baseReach: 2,
-        // What a forest or a rock tile holds before anyone has gathered from it (each tile varies by a quarter either way),
-        // and how much a worker carries home in one trip.
-        resourceStock: { forest: 60, rock: 60 },
-        carryLoad: 3
-      };
-      FARM_CELL = { width: 46, height: 34 };
-      SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
-      WORLD_MAP_TILE_COUNT = SIDE * SIDE;
-      NEIGHBOURS = [
-        [-1, -1],
-        [0, -1],
-        [1, -1],
-        [-1, 0],
-        [1, 0],
-        [-1, 1],
-        [0, 1],
-        [1, 1]
-      ];
-      REACH_PROVIDERS = /* @__PURE__ */ new WeakMap();
-      TERRAIN_NAMES = { plain: "평지", forest: "숲", rock: "바위산", swamp: "늪" };
-      START_RESOURCES = /* @__PURE__ */ new Map();
-      FOG_GRID = 8;
-      FOG_PIECES = FOG_GRID * FOG_GRID;
-      FOG_LIT_AT = FOG_PIECES - 2;
-      PIECE_W = FARM_CELL.width / FOG_GRID;
-      PIECE_H = FARM_CELL.height / FOG_GRID;
-      SORTED_INDEXES = (list) => Array.isArray(list) && list.every(
-        (value, position2) => Number.isSafeInteger(value) && value >= 0 && value < WORLD_MAP_TILE_COUNT && (position2 === 0 || value > list[position2 - 1])
-      );
-      VALID_PROGRESS = (progress) => !!progress && typeof progress === "object" && !Array.isArray(progress) && Object.entries(progress).every(
-        ([key, value]) => /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isSafeInteger(value) && value > 0 && value < 1 << FOG_PIECES
-      );
-      VALID_MINED = (mined) => !!mined && typeof mined === "object" && !Array.isArray(mined) && Object.entries(mined).every(
-        ([key, value]) => /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value > 0
-      );
-    }
-  });
-
-  // src/farm-work.js
-  function pilesOf(world, plotId) {
-    let list = world._pilesByPlot.get(plotId);
-    if (!list) {
-      list = [];
-      world._pilesByPlot.set(plotId, list);
-    }
-    return list;
-  }
-  function facilityPosition(config, id) {
-    const WORK = config.farm.work;
-    return {
-      x: WORK.facilityRowX + (FACILITY_IDS.indexOf(id) - (FACILITY_IDS.length - 1) / 2) * WORK.facilitySpacing,
-      y: WORK.facilityRowY
-    };
-  }
-  function pilePosition(world, config) {
-    const WORK = config.farm.work;
-    let best = null, bestGap = -1;
-    for (let attempt = 0; attempt < 14; attempt++) {
-      const ANGLE = world.random() * Math.PI * 2, REACH = Math.sqrt(world.random()), X = Math.cos(ANGLE) * REACH * WORK.pileRadiusX, Y = Math.sin(ANGLE) * REACH * WORK.pileRadiusY;
-      let gap = Infinity;
-      for (const PILE of world._piles) {
-        gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
-      }
-      gap = Math.min(gap, Math.hypot(X, Y) * (WORK.pileGap / 3.5));
-      for (const ID of FACILITY_IDS) {
-        const SLOT = facilityPosition(config, ID);
-        gap = Math.min(gap, Math.hypot(SLOT.x - X, SLOT.y - Y) * (WORK.pileGap / 3.5));
-      }
-      if (gap >= WORK.pileGap) {
-        return { x: X, y: Y };
-      }
-      if (gap > bestGap) {
-        bestGap = gap;
-        best = { x: X, y: Y };
-      }
-    }
-    return best || { x: 0, y: 0 };
-  }
-  function spawnPile(world, config, kind) {
-    const POSITION = pilePosition(world, config);
-    world._piles.push({
-      id: ++world._pileId,
-      kind,
-      x: POSITION.x,
-      y: POSITION.y,
-      food: world.pileSpec(kind).amount,
-      maxFood: world.pileSpec(kind).amount,
-      stack: 0,
-      hitRev: 0,
-      big: false
-    });
-    world.emit("drop-dust", POSITION.x, POSITION.y);
-  }
-  function startSite(world, config, facilityId, level, hits, plotId, at = null) {
-    const POSITION = at ?? (FACILITY_IDS.includes(facilityId) ? facilityPosition(config, facilityId) : pilePosition(world, config));
-    pilesOf(world, plotId).push({
-      id: ++world._pileId,
-      kind: "site",
-      facility: facilityId,
-      level,
-      plotId,
-      x: POSITION.x,
-      y: POSITION.y,
-      food: 1,
-      maxFood: 1,
-      done: 0,
-      need: hits,
-      stack: 0,
-      hitRev: 0,
-      big: false
-    });
-    world.emit("drop-dust", POSITION.x, POSITION.y);
-    assignWorkers(world, config);
-  }
-  function restoreSite(world, data) {
-    pilesOf(world, data.plotId).push({
-      id: ++world._pileId,
-      kind: "site",
-      facility: data.facility,
-      level: data.level,
-      plotId: data.plotId,
-      x: data.x,
-      y: data.y,
-      food: 1,
-      maxFood: 1,
-      done: data.done,
-      need: data.need,
-      stack: 0,
-      hitRev: 0,
-      big: false
-    });
-  }
-  function sitesOf(world, plotId = world.activePlotId) {
-    return pilesOf(world, plotId).filter((pile) => pile.kind === "site");
-  }
-  function plotHasSite(world, plotId = world.activePlotId) {
-    return pilesOf(world, plotId).some((pile) => pile.kind === "site");
-  }
-  function spreadBuildHits(world, plotId, hits) {
-    const BUILT = [], OPEN = [...sitesOf(world, plotId)];
-    let left = hits;
-    while (OPEN.length > 0 && left > 0) {
-      const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
-      if (DONE.length === 0) {
-        for (const SITE of OPEN) {
-          SITE.fraction = (SITE.fraction || 0) + SHARE % 1;
-          SITE.done += Math.floor(SHARE) + Math.floor(SITE.fraction);
-          SITE.fraction %= 1;
-        }
-        left = 0;
-        break;
-      }
-      for (const SITE of DONE) {
-        left -= SITE.need - SITE.done;
-        BUILT.push(world.siteName(SITE));
-        const LIST = pilesOf(world, plotId);
-        LIST.splice(LIST.indexOf(SITE), 1);
-        world.completeFacility(SITE);
-        OPEN.splice(OPEN.indexOf(SITE), 1);
-      }
-    }
-    return { built: BUILT, open: OPEN, left };
-  }
-  function itemsOf(world, plotId) {
-    let list = world._itemsByPlot.get(plotId);
-    if (!list) {
-      list = [];
-      world._itemsByPlot.set(plotId, list);
-    }
-    return list;
-  }
-  function effectiveKind(world, unit) {
-    return world._workerKinds.get(unit.id) || "food";
-  }
-  function worksOn(world, unit, pile) {
-    const KIND = effectiveKind(world, unit);
-    if (KIND === "build") {
-      return pile.kind === "site";
-    }
-    if (KIND === "resource") {
-      return pile.kind === (world._workerResource.get(unit.id) ?? "wood");
-    }
-    return KIND === "food" && pile.kind === "grain";
-  }
-  function capacity(config, pile, siteCapacity) {
-    const WORK = config.farm.work;
-    return pile.kind === "site" ? siteCapacity : WORK.maxAttackers;
-  }
-  function pileRadius(pile) {
-    if (pile.kind === "site") {
-      return 1.8;
-    }
-    return (pile.kind === "wood" ? 0.4 : 0.85) * (0.95 + 0.5 * (pile.food / pile.maxFood));
-  }
-  function resetWork(world) {
-    world._pilesByPlot = /* @__PURE__ */ new Map();
-    world._pileId = 0;
-    world._pileRespawn = 0;
-    world._workAssign = /* @__PURE__ */ new Map();
-    world._swings = /* @__PURE__ */ new Map();
-    world._itemsByPlot = /* @__PURE__ */ new Map();
-    world._carry = /* @__PURE__ */ new Map();
-  }
-  function assignWorkers(world, config) {
-    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set(), SITE_COUNT = world._piles.filter((pile) => pile.kind === "site").length, BUILDER_COUNT = WORKERS.filter((u) => effectiveKind(world, u) === "build").length, SITE_CAPACITIES = /* @__PURE__ */ new Map();
-    let siteIndex = 0;
-    for (const PILE of world._piles) {
-      if (PILE.kind === "site") {
-        const BASE = Math.floor(BUILDER_COUNT / SITE_COUNT), ODD = BUILDER_COUNT % SITE_COUNT;
-        SITE_CAPACITIES.set(PILE, BASE + (siteIndex++ < ODD ? 1 : 0));
-      }
-    }
-    for (const PILE of world._piles) {
-      const MEMBERS = [];
-      for (const [ID, OLD] of PREVIOUS) {
-        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && worksOn(world, BY_ID.get(ID), PILE) && MEMBERS.length < capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
-          MEMBERS.push(ID);
-          TAKEN_IDS.add(ID);
-        }
-      }
-      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id) && worksOn(world, u, PILE)).sort(
-        (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
-      );
-      for (const UNIT3 of FREE) {
-        if (MEMBERS.length >= capacity(config, PILE, SITE_CAPACITIES.get(PILE))) {
-          break;
-        }
-        MEMBERS.push(UNIT3.id);
-        TAKEN_IDS.add(UNIT3.id);
-      }
-      for (const ID of MEMBERS) {
-        ASSIGN.set(ID, { pile: PILE, attacking: true });
-      }
-    }
-    for (const UNIT3 of WORKERS) {
-      if (TAKEN_IDS.has(UNIT3.id)) {
-        continue;
-      }
-      let nearest = null, nearestDistance = Infinity;
-      for (const PILE of world._piles) {
-        if (!worksOn(world, UNIT3, PILE)) {
-          continue;
-        }
-        const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
-        if (D < nearestDistance) {
-          nearestDistance = D;
-          nearest = PILE;
-        }
-      }
-      if (nearest) {
-        ASSIGN.set(UNIT3.id, { pile: nearest, attacking: false });
-      }
-    }
-    world._workAssign = ASSIGN;
-    for (const ID of [...world._swings.keys()]) {
-      if (!ASSIGN.get(ID)?.attacking) {
-        world._swings.delete(ID);
-      }
-    }
-  }
-  function impactSite(world, config, pile) {
-    pile.done++;
-    pile.hitRev++;
-    if (pile.done % 10 === 0) {
-      world.markProgressChanged();
-    }
-    const COMPLETE = pile.done >= pile.need;
-    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
-    if (COMPLETE) {
-      world._piles.splice(world._piles.indexOf(pile), 1);
-      world.completeFacility(pile);
-      world.emit("landing-shockwave", pile.x, pile.y);
-      assignWorkers(world, config);
-    }
-  }
-  function impact(world, config, pile) {
-    if (pile.kind === "site") {
-      impactSite(world, config, pile);
-      return;
-    }
-    pile.stack++;
-    pile.hitRev++;
-    const COMPLETE = pile.stack >= STACKS_PER_FOOD;
-    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
-    if (!COMPLETE) {
-      return;
-    }
-    pile.stack = 0;
-    pile.food--;
-    world.foodTaps.revision++;
-    if (pile.kind === "grain") {
-      world.foodTaps.produced++;
-      world.spawnFood(
-        (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
-        (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
-        1,
-        { allowBossEvent: false, from: { x: pile.x, y: pile.y, z: 0.9 } }
-      );
-    } else {
-      const TILE = nearestResourceTile(world.worldMap, world.activePlotId, pile.kind);
-      if (TILE >= 0 && takeFromTile(world.worldMap, TILE, 1) >= 1) {
-        itemsOf(world, world.activePlotId).push({
-          id: ++world._pileId,
-          kind: pile.kind,
-          x: pile.x + (world.random() - 0.5) * 4,
-          y: pile.y + (world.random() - 0.5) * 3
-        });
-        world.emit("food-land", pile.x, pile.y);
-      } else {
-        pile.food = 0;
-      }
-    }
-    world.markProgressChanged();
-    if (pile.food <= 0) {
-      world._piles.splice(world._piles.indexOf(pile), 1);
-      world.emit("landing-shockwave", pile.x, pile.y);
-      assignWorkers(world, config);
-    }
-  }
-  function exploreOrder(world, unit) {
-    const SPOT = world.exploreSpot(unit);
-    if (!SPOT) {
-      return unit.workOut ? { x: 0, y: 0, fx: 0, fy: 0, speed: 7, hold: false, face: false } : null;
-    }
-    if (SPOT.out) {
-      unit.workOut = true;
-    }
-    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
-    return {
-      x: SPOT.x,
-      y: SPOT.y,
-      fx: SPOT.fx,
-      fy: SPOT.fy,
-      speed: SPOT.speed,
-      hold: DISTANCE <= 0.6,
-      face: DISTANCE <= 0.6
-    };
-  }
-  function carryOrder(world, unit) {
-    const STATE = world._carry.get(unit.id);
-    if (STATE?.kind) {
-      unit.workOut = false;
-      return {
-        x: STORE_SPOT.x,
-        y: STORE_SPOT.y,
-        fx: STORE_SPOT.x,
-        fy: STORE_SPOT.y,
-        speed: 9,
-        hold: false,
-        face: false
-      };
-    }
-    if (STATE?.target) {
-      return {
-        x: STATE.target.x,
-        y: STATE.target.y,
-        fx: STATE.target.x,
-        fy: STATE.target.y,
-        speed: 9,
-        hold: false,
-        face: false
-      };
-    }
-    return null;
-  }
-  function stepCarriers(world) {
-    const ITEMS = itemsOf(world, world.activePlotId), ALIVE = /* @__PURE__ */ new Set();
-    for (const UNIT3 of world.unitCollection.unitsInPlot(world.activePlotId)) {
-      if (!world.isWorker(UNIT3) || UNIT3.hp <= 0 || world._workerKinds.get(UNIT3.id) !== "haul") {
-        continue;
-      }
-      ALIVE.add(UNIT3.id);
-      let state = world._carry.get(UNIT3.id);
-      if (!state) {
-        state = { kind: null, target: null };
-        world._carry.set(UNIT3.id, state);
-      }
-      if (state.kind) {
-        if (Math.hypot(UNIT3.x - STORE_SPOT.x, UNIT3.y - STORE_SPOT.y) <= 1.6) {
-          world.materials[state.kind]++;
-          world.markProgressChanged();
-          state.kind = null;
-        }
-        continue;
-      }
-      if (state.target && !ITEMS.includes(state.target)) {
-        state.target = null;
-      }
-      if (!state.target) {
-        let best = null, bestDistance = Infinity;
-        for (const ITEM of ITEMS) {
-          if ([...world._carry.values()].some((other) => other !== state && other.target === ITEM)) {
-            continue;
-          }
-          const D = Math.hypot(UNIT3.x - ITEM.x, UNIT3.y - ITEM.y);
-          if (D < bestDistance) {
-            best = ITEM;
-            bestDistance = D;
-          }
-        }
-        state.target = best;
-      }
-      if (state.target && Math.hypot(UNIT3.x - state.target.x, UNIT3.y - state.target.y) <= 1.4) {
-        ITEMS.splice(ITEMS.indexOf(state.target), 1);
-        state.kind = state.target.kind;
-        state.target = null;
-      }
-    }
-    for (const ID of [...world._carry.keys()]) {
-      if (!ALIVE.has(ID)) {
-        world._carry.delete(ID);
-      }
-    }
-  }
-  function settleResourcesAway(world, plotId, seconds) {
-    const MAKE = { wood: 0, stone: 0 };
-    let haulers = 0;
-    for (const [ID, KIND] of world._workerKinds) {
-      if (world._workerPlots.get(ID) !== plotId) {
-        continue;
-      }
-      if (KIND === "resource") {
-        MAKE[world._workerResource.get(ID) ?? "wood"] += world._workerRates.get(ID) || 0;
-      } else if (KIND === "haul") {
-        haulers++;
-      }
-    }
-    const TOTAL = MAKE.wood + MAKE.stone, GOT = { wood: 0, stone: 0 };
-    if (!(TOTAL > 0) || haulers === 0) {
-      return GOT;
-    }
-    for (const KIND of ["wood", "stone"]) {
-      const TILE = MAKE[KIND] > 0 ? nearestResourceTile(world.worldMap, plotId, KIND) : -1;
-      if (TILE < 0) {
-        continue;
-      }
-      const RATE = Math.min(MAKE[KIND], haulers / HAUL_TRIP_SECONDS * MAKE[KIND] / TOTAL);
-      world._idleCarry[KIND] = (world._idleCarry[KIND] ?? 0) + RATE * seconds;
-      const WHOLE = Math.floor(world._idleCarry[KIND]), TAKEN = Math.floor(takeFromTile(world.worldMap, TILE, WHOLE));
-      world._idleCarry[KIND] -= WHOLE;
-      world.materials[KIND] += TAKEN;
-      GOT[KIND] = TAKEN;
-    }
-    if (GOT.wood + GOT.stone > 0) {
-      world.markProgressChanged();
-    }
-    return GOT;
-  }
-  function workOrder(world, unit) {
-    const ASSIGN = world._workAssign.get(unit.id);
-    if (!ASSIGN) {
-      if (world._workerKinds.get(unit.id) === "explore") {
-        return exploreOrder(world, unit);
-      }
-      return world._workerKinds.get(unit.id) === "haul" ? carryOrder(world, unit) : null;
-    }
-    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id);
-    if (world.outsideFarm(PILE.x, PILE.y)) {
-      unit.workOut = true;
-    }
-    const DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!ASSIGN.attacking) {
-      ORDER.hold = DISTANCE <= WAIT_DISTANCE;
-      return ORDER;
-    }
-    if (!SWING || SWING.phase === "idle") {
-      ORDER.hold = DISTANCE <= NEAR_PILE;
-      ORDER.face = ORDER.hold;
-    } else if (SWING.phase === "fire") {
-      ORDER.speed = CHARGE_SPEED;
-    } else if (SWING.phase === "windup") {
-      ORDER.hold = true;
-      ORDER.face = true;
-    } else {
-      ORDER.hold = true;
-    }
-    return ORDER;
-  }
-  function pushOutOfPiles(world) {
-    for (const PILE of world._piles) {
-      const R2 = pileRadius(PILE);
-      for (const UNIT3 of world.units) {
-        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, MIN = R2 + UNIT3.radius * 0.6, D = Math.hypot(DX, DY);
-        if (D >= MIN) {
-          continue;
-        }
-        const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
-        UNIT3.x = PILE.x + NX * MIN;
-        UNIT3.y = PILE.y + NY * MIN;
-        const INWARD = UNIT3.vx * NX + UNIT3.vy * NY;
-        if (INWARD < 0) {
-          UNIT3.vx -= NX * INWARD;
-          UNIT3.vy -= NY * INWARD;
-        }
-      }
-    }
-  }
-  function stepWork(world, config, dt) {
-    const WORK = config.farm.work;
-    pushOutOfPiles(world);
-    let missing = null;
-    for (const KIND of Object.keys(WORK.pileKinds)) {
-      if (KIND !== "grain" && nearestResourceTile(world.worldMap, world.activePlotId, KIND) < 0) {
-        continue;
-      }
-      if (world._piles.filter((pile) => pile.kind === KIND).length < world.pileSpec(KIND).count) {
-        missing = KIND;
-        break;
-      }
-    }
-    if (missing) {
-      const EMPTY = world._piles.length === 0;
-      world._pileRespawn += dt;
-      if (EMPTY || world._pileRespawn >= WORK.pileRespawnSeconds) {
-        spawnPile(world, config, missing);
-        world._pileRespawn = 0;
-        assignWorkers(world, config);
-      }
-    }
-    const FOOD_FULL = world.food.length >= WORK.maxFood, GROUND_FULL = itemsOf(world, world.activePlotId).length >= GROUND_LIMIT;
-    for (const [ID, ASSIGN] of world._workAssign) {
-      if (!ASSIGN.attacking || !world._piles.includes(ASSIGN.pile)) {
-        continue;
-      }
-      const UNIT3 = world._unitById.get(ID);
-      if (!UNIT3 || UNIT3.hp <= 0) {
-        world._swings.delete(ID);
-        continue;
-      }
-      const PILE = ASSIGN.pile;
-      let swing = world._swings.get(ID);
-      if (!swing) {
-        swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
-        world._swings.set(ID, swing);
-      }
-      const NEAR = Math.hypot(PILE.x - UNIT3.x, PILE.y - UNIT3.y) <= NEAR_PILE;
-      if (swing.phase === "idle") {
-        if (!NEAR) {
-          continue;
-        }
-        swing.wait -= dt;
-        if (swing.wait <= 0 && !(FOOD_FULL && ASSIGN.pile.kind === "grain") && !(GROUND_FULL && (ASSIGN.pile.kind === "wood" || ASSIGN.pile.kind === "stone"))) {
-          swing.phase = "windup";
-          swing.elapsed = 0;
-        }
-        continue;
-      }
-      swing.elapsed += dt;
-      if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
-        swing.phase = "fire";
-        swing.elapsed = 0;
-      } else if (swing.phase === "fire") {
-        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, D = Math.hypot(DX, DY);
-        if (D <= pileRadius(PILE) + UNIT3.radius * 0.6 + 0.12) {
-          impact(world, config, PILE);
-          const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
-          UNIT3.vx = NX * RECOIL_SPEED;
-          UNIT3.vy = NY * RECOIL_SPEED;
-          swing.phase = "recover";
-          swing.elapsed = 0;
-        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
-          swing.phase = "recover";
-          swing.elapsed = 0;
-        }
-      } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
-        const RATE = world._workerRates.get(ID) || 0.1, INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
-        swing.phase = "idle";
-        swing.elapsed = 0;
-        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_RECOVER - 0.5);
-      }
-    }
-  }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK, GROUND_LIMIT, HAUL_TRIP_SECONDS, STORE_SPOT;
-  var init_farm_work = __esm({
-    "src/farm-work.js"() {
-      init_farm_plot();
-      init_world_map();
-      SWING_WINDUP = 0.28;
-      SWING_RECOVER = 0.36;
-      NEAR_PILE = 4.4;
-      WAIT_DISTANCE = 6.5;
-      CHARGE_SPEED = 18;
-      CHARGE_TIMEOUT = 1.6;
-      RECOIL_SPEED = 5.5;
-      STACKS_PER_FOOD = 5;
-      HITS_PER_WORK = STACKS_PER_FOOD;
-      GROUND_LIMIT = 12;
-      HAUL_TRIP_SECONDS = 4;
-      STORE_SPOT = { x: 0, y: 0 };
     }
   });
 
@@ -2571,39 +536,10 @@
     }
     const SECONDS = AWAY * OFFLINE.efficiency;
     world.refreshWorkers();
-    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
+    const SUMMARY = { seconds: AWAY, food: 0, births: 0 };
     let foodRate = 0;
-    const BUILD_RATES = /* @__PURE__ */ new Map();
-    for (const [ID, KIND] of world._workerKinds) {
-      const RATE = world._workerRates.get(ID) || 0;
-      if (KIND === "food") {
-        foodRate += RATE;
-      } else if (KIND === "explore") {
-        continue;
-      } else if (KIND === "resource" || KIND === "haul") {
-        continue;
-      } else {
-        const PLOT_ID = world._workerPlots.get(ID);
-        BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
-      }
-    }
-    for (const PLOT_ID of [...world._pilesByPlot.keys()]) {
-      const RATE = BUILD_RATES.get(PLOT_ID) || 0, SITES = sitesOf(world, PLOT_ID);
-      if (SITES.length === 0 || !(RATE > 0)) {
-        continue;
-      }
-      const RESULT = spreadBuildHits(world, PLOT_ID, RATE * HITS_PER_WORK * SECONDS);
-      SUMMARY.built.push(...RESULT.built);
-      for (const SITE of RESULT.open) {
-        SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor(SITE.done / SITE.need * 100) });
-      }
-    }
-    for (const PLOT_ID of world.farmPlots.keys()) {
-      if (PLOT_ID !== RESERVE_PLOT_ID) {
-        const GOT = settleResourcesAway(world, PLOT_ID, SECONDS);
-        SUMMARY.wood += GOT.wood;
-        SUMMARY.stone += GOT.stone;
-      }
+    for (const ID of world._workerIds) {
+      foodRate += world._workerRates.get(ID) || 0;
     }
     let pool = Math.floor(foodRate * SECONDS);
     SUMMARY.food = pool;
@@ -2664,8 +600,251 @@
   }
   var init_farm_offline = __esm({
     "src/farm-offline.js"() {
-      init_farm_work();
       init_farm_plot();
+    }
+  });
+
+  // src/farm-work.js
+  function pilesOf(world, plotId) {
+    let list = world._pilesByPlot.get(plotId);
+    if (!list) {
+      list = [];
+      world._pilesByPlot.set(plotId, list);
+    }
+    return list;
+  }
+  function pilePosition(world, config) {
+    const WORK = config.farm.work;
+    let best = null, bestGap = -1;
+    for (let attempt = 0; attempt < 14; attempt++) {
+      const ANGLE = world.random() * Math.PI * 2, REACH = Math.sqrt(world.random()), X = Math.cos(ANGLE) * REACH * WORK.pileRadiusX, Y = Math.sin(ANGLE) * REACH * WORK.pileRadiusY;
+      let gap = Infinity;
+      for (const PILE of world.piles) {
+        gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
+      }
+      if (gap >= WORK.pileGap) {
+        return { x: X, y: Y };
+      }
+      if (gap > bestGap) {
+        bestGap = gap;
+        best = { x: X, y: Y };
+      }
+    }
+    return best || { x: 0, y: 0 };
+  }
+  function spawnPile(world, config) {
+    const POSITION = pilePosition(world, config), AMOUNT = config.farm.work.pileKind.amount;
+    world.piles.push({
+      id: ++world._pileId,
+      x: POSITION.x,
+      y: POSITION.y,
+      food: AMOUNT,
+      maxFood: AMOUNT,
+      stack: 0,
+      hitRev: 0,
+      big: false
+    });
+    world.emit("drop-dust", POSITION.x, POSITION.y);
+  }
+  function pileRadius(pile) {
+    return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
+  }
+  function resetWork(world) {
+    world._pilesByPlot = /* @__PURE__ */ new Map();
+    world._pileId = 0;
+    world._pileRespawn = 0;
+    world._workAssign = /* @__PURE__ */ new Map();
+    world._swings = /* @__PURE__ */ new Map();
+  }
+  function assignWorkers(world, config) {
+    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set(), LIMIT = config.farm.work.maxAttackers;
+    for (const PILE of world.piles) {
+      const MEMBERS = [];
+      for (const [ID, OLD] of PREVIOUS) {
+        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < LIMIT) {
+          MEMBERS.push(ID);
+          TAKEN_IDS.add(ID);
+        }
+      }
+      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
+        (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
+      );
+      for (const UNIT3 of FREE) {
+        if (MEMBERS.length >= LIMIT) {
+          break;
+        }
+        MEMBERS.push(UNIT3.id);
+        TAKEN_IDS.add(UNIT3.id);
+      }
+      for (const ID of MEMBERS) {
+        ASSIGN.set(ID, { pile: PILE, attacking: true });
+      }
+    }
+    for (const UNIT3 of WORKERS) {
+      if (TAKEN_IDS.has(UNIT3.id)) {
+        continue;
+      }
+      let nearest = null, nearestDistance = Infinity;
+      for (const PILE of world.piles) {
+        const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
+        if (D < nearestDistance) {
+          nearestDistance = D;
+          nearest = PILE;
+        }
+      }
+      if (nearest) {
+        ASSIGN.set(UNIT3.id, { pile: nearest, attacking: false });
+      }
+    }
+    world._workAssign = ASSIGN;
+    for (const ID of [...world._swings.keys()]) {
+      if (!ASSIGN.get(ID)?.attacking) {
+        world._swings.delete(ID);
+      }
+    }
+  }
+  function impact(world, config, pile) {
+    pile.stack++;
+    pile.hitRev++;
+    const COMPLETE = pile.stack >= STACKS_PER_FOOD;
+    world.emit("thresh", pile.x, pile.y, 0, { big: COMPLETE, duration: COMPLETE ? 0.9 : 0.55 });
+    if (!COMPLETE) {
+      return;
+    }
+    pile.stack = 0;
+    pile.food--;
+    world.foodTaps.revision++;
+    world.foodTaps.produced++;
+    world.spawnFood(
+      (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
+      (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
+      1,
+      { from: { x: pile.x, y: pile.y, z: 0.9 } }
+    );
+    world.markProgressChanged();
+    if (pile.food <= 0) {
+      world.piles.splice(world.piles.indexOf(pile), 1);
+      world.emit("landing-shockwave", pile.x, pile.y);
+      assignWorkers(world, config);
+    }
+  }
+  function workOrder(world, unit) {
+    const ASSIGN = world._workAssign.get(unit.id);
+    if (!ASSIGN) {
+      return null;
+    }
+    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    if (!ASSIGN.attacking) {
+      ORDER.hold = DISTANCE <= WAIT_DISTANCE;
+      return ORDER;
+    }
+    if (!SWING || SWING.phase === "idle") {
+      ORDER.hold = DISTANCE <= NEAR_PILE;
+      ORDER.face = ORDER.hold;
+    } else if (SWING.phase === "fire") {
+      ORDER.speed = CHARGE_SPEED;
+    } else if (SWING.phase === "windup") {
+      ORDER.hold = true;
+      ORDER.face = true;
+    } else {
+      ORDER.hold = true;
+    }
+    return ORDER;
+  }
+  function pushOutOfPiles(world) {
+    for (const PILE of world.piles) {
+      const R2 = pileRadius(PILE);
+      for (const UNIT3 of world.units) {
+        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, MIN = R2 + UNIT3.radius * 0.6, D = Math.hypot(DX, DY);
+        if (D >= MIN) {
+          continue;
+        }
+        const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
+        UNIT3.x = PILE.x + NX * MIN;
+        UNIT3.y = PILE.y + NY * MIN;
+        const INWARD = UNIT3.vx * NX + UNIT3.vy * NY;
+        if (INWARD < 0) {
+          UNIT3.vx -= NX * INWARD;
+          UNIT3.vy -= NY * INWARD;
+        }
+      }
+    }
+  }
+  function stepWork(world, config, dt) {
+    const WORK = config.farm.work;
+    pushOutOfPiles(world);
+    if (world.piles.length < WORK.pileKind.count) {
+      world._pileRespawn += dt;
+      if (world.piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
+        spawnPile(world, config);
+        world._pileRespawn = 0;
+        assignWorkers(world, config);
+      }
+    }
+    const FOOD_FULL = world.food.length >= WORK.maxFood;
+    for (const [ID, ASSIGN] of world._workAssign) {
+      if (!ASSIGN.attacking || !world.piles.includes(ASSIGN.pile)) {
+        continue;
+      }
+      const UNIT3 = world._unitById.get(ID);
+      if (!UNIT3 || UNIT3.hp <= 0) {
+        world._swings.delete(ID);
+        continue;
+      }
+      const PILE = ASSIGN.pile;
+      let swing = world._swings.get(ID);
+      if (!swing) {
+        swing = { phase: "idle", elapsed: 0, wait: UNIT3.seed * 7 % 0.8 };
+        world._swings.set(ID, swing);
+      }
+      const NEAR = Math.hypot(PILE.x - UNIT3.x, PILE.y - UNIT3.y) <= NEAR_PILE;
+      if (swing.phase === "idle") {
+        if (!NEAR) {
+          continue;
+        }
+        swing.wait -= dt;
+        if (swing.wait <= 0 && !FOOD_FULL) {
+          swing.phase = "windup";
+          swing.elapsed = 0;
+        }
+        continue;
+      }
+      swing.elapsed += dt;
+      if (swing.phase === "windup" && swing.elapsed >= SWING_WINDUP) {
+        swing.phase = "fire";
+        swing.elapsed = 0;
+      } else if (swing.phase === "fire") {
+        const DX = UNIT3.x - PILE.x, DY = UNIT3.y - PILE.y, D = Math.hypot(DX, DY);
+        if (D <= pileRadius(PILE) + UNIT3.radius * 0.6 + 0.12) {
+          impact(world, config, PILE);
+          const NX = D > 1e-6 ? DX / D : 1, NY = D > 1e-6 ? DY / D : 0;
+          UNIT3.vx = NX * RECOIL_SPEED;
+          UNIT3.vy = NY * RECOIL_SPEED;
+          swing.phase = "recover";
+          swing.elapsed = 0;
+        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
+          swing.phase = "recover";
+          swing.elapsed = 0;
+        }
+      } else if (swing.phase === "recover" && swing.elapsed >= SWING_RECOVER) {
+        const RATE = world._workerRates.get(ID) || 0.1, INTERVAL = 1 / (RATE * STACKS_PER_FOOD);
+        swing.phase = "idle";
+        swing.elapsed = 0;
+        swing.wait = Math.max(0, INTERVAL - SWING_WINDUP - SWING_RECOVER - 0.5);
+      }
+    }
+  }
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
+  var init_farm_work = __esm({
+    "src/farm-work.js"() {
+      SWING_WINDUP = 0.28;
+      SWING_RECOVER = 0.36;
+      NEAR_PILE = 4.4;
+      WAIT_DISTANCE = 6.5;
+      CHARGE_SPEED = 18;
+      CHARGE_TIMEOUT = 1.6;
+      RECOIL_SPEED = 5.5;
+      STACKS_PER_FOOD = 5;
     }
   });
 
@@ -3501,11 +1680,11 @@
     const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
     return BODY2.topZ + MARGIN;
   }
-  var import_definition14, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
+  var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
   var init_model_base = __esm({
     "src/features/formation-skills/model-base.js"() {
-      import_definition14 = __toESM(require_definition(), 1);
-      T1_DIAMETER = (0, import_definition14.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+      import_definition10 = __toESM(require_definition(), 1);
+      T1_DIAMETER = (0, import_definition10.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
       FormationSkill = class {
         constructor(definition) {
           this.definition = definition;
@@ -3757,12 +1936,12 @@
           super(DEFINITION5);
         }
         cast(owner, slot) {
-          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS2 = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
+          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
           let center = null;
           let targets = [];
           for (const UNIT3 of ORIGINALS) {
-            const NEAR = owner.nearby(UNIT3.x, UNIT3.y, RADIUS2).filter(
-              (candidate) => candidate.faction === "player" && !candidate.isBattleOnlySummon && candidate.hp > 0 && Math.hypot(candidate.x - UNIT3.x, candidate.y - UNIT3.y) <= RADIUS2
+            const NEAR = owner.nearby(UNIT3.x, UNIT3.y, RADIUS).filter(
+              (candidate) => candidate.faction === "player" && !candidate.isBattleOnlySummon && candidate.hp > 0 && Math.hypot(candidate.x - UNIT3.x, candidate.y - UNIT3.y) <= RADIUS
             );
             if (NEAR.length > targets.length) {
               center = UNIT3;
@@ -3772,7 +1951,7 @@
           if (!center || !targets.length || !owner.canClone(targets.length)) {
             return false;
           }
-          owner.addEffect(DEFINITION5.id, { x: center.x, y: center.y, radius: RADIUS2, duration: 0.7 });
+          owner.addEffect(DEFINITION5.id, { x: center.x, y: center.y, radius: RADIUS, duration: 0.7 });
           for (const UNIT3 of targets) {
             owner.world.createFormationClone(UNIT3);
           }
@@ -4317,7 +2496,7 @@
     return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
   }
   var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
-  var init_definition14 = __esm({
+  var init_definition10 = __esm({
     "src/features/projectiles/seed/definition.js"() {
       import_vector_sockets = __toESM(require_vector_sockets(), 1);
       FEATURE = Object.freeze({
@@ -5025,7 +3204,7 @@
 
   // src/features/scenes/farm/definition.js
   var FEATURE2;
-  var init_definition15 = __esm({
+  var init_definition11 = __esm({
     "src/features/scenes/farm/definition.js"() {
       FEATURE2 = Object.freeze({ id: "farm" });
     }
@@ -5036,7 +3215,7 @@
   var init_model10 = __esm({
     "src/features/scenes/farm/model.js"() {
       init_model_base2();
-      init_definition15();
+      init_definition11();
       FarmSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
           const { CONFIG: CONFIG2 } = dependencies;
@@ -5179,6 +3358,434 @@
         updateChain(_world, _projectile) {
         }
       };
+    }
+  });
+
+  // src/features/abilities/pea-recovery-boost.js
+  var PEA_RECOVERY_BOOST_FEATURE;
+  var init_pea_recovery_boost = __esm({
+    "src/features/abilities/pea-recovery-boost.js"() {
+      PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "pea-recovery-boost",
+          species: 0,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "회복 기동",
+          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
+          powerValues: Object.freeze([0.25, 0.35, 0.55])
+        }),
+        model: Object.freeze({
+          durationTicks: 40,
+          multiplierForBonus(bonus) {
+            return 1 + bonus;
+          }
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/kidney-continuous-leap.js
+  var KIDNEY_CONTINUOUS_LEAP_FEATURE;
+  var init_kidney_continuous_leap = __esm({
+    "src/features/abilities/kidney-continuous-leap.js"() {
+      KIDNEY_CONTINUOUS_LEAP_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "kidney-continuous-leap",
+          species: 2,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "연속 도약",
+          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
+          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
+        }),
+        model: Object.freeze({
+          specialAttackProfile: Object.freeze({
+            kind: "leap",
+            timing: Object.freeze({ windup: 0.32, recovery: 0.9 }),
+            range: 2.5,
+            skillMultiplier: 1.3,
+            projectileCount: 0,
+            bounces: 0
+          }),
+          cooldownTicks: 60
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/chestnut-thorns/definition.js
+  var CHESTNUT_THORNS_FEATURE;
+  var init_definition12 = __esm({
+    "src/features/abilities/chestnut-thorns/definition.js"() {
+      CHESTNUT_THORNS_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "chestnut-target-thorns",
+          species: 3,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "대상 가시 연사",
+          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
+          powerValues: Object.freeze([1, 2, 3]),
+          cooldownTicks: 60,
+          spacingTicks: 2,
+          attackProfile: Object.freeze({
+            kind: "chestnut-thorns",
+            timing: Object.freeze({ windup: 0, recovery: 0.2 }),
+            range: 1.45,
+            skillMultiplier: 1,
+            projectileCount: 0,
+            bounces: 0
+          })
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/peanut-death-split/definition.js
+  var PEANUT_DEATH_SPLIT_FEATURE;
+  var init_definition13 = __esm({
+    "src/features/abilities/peanut-death-split/definition.js"() {
+      PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "peanut-death-split",
+          species: 4,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "사망 분열",
+          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
+          powerValues: Object.freeze([1, 1.5, 2.25]),
+          childCount: 2
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/walnut-raw-guard/definition.js
+  var WALNUT_RAW_GUARD_FEATURE;
+  var init_definition14 = __esm({
+    "src/features/abilities/walnut-raw-guard/definition.js"() {
+      WALNUT_RAW_GUARD_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "walnut-raw-guard",
+          species: 5,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "방어와 반격",
+          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
+          powerValues: Object.freeze([1, 1.5, 2.25]),
+          cooldownTicks: 100,
+          durationTicks: 40,
+          armorBonus: 50,
+          maxBonusAttackMultiples: 3
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/corn-attachment/definition.js
+  var CORN_ATTACHMENT_FEATURE;
+  var init_definition15 = __esm({
+    "src/features/abilities/corn-attachment/definition.js"() {
+      CORN_ATTACHMENT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "corn-kernel-chain",
+          species: 1,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "부착 알갱이 연쇄 폭발",
+          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
+          powerValues: Object.freeze([0.5, 0.75, 1]),
+          attachDelayTicks: 20,
+          explosionSpacingTicks: 2,
+          fadeTicks: 6
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/rice-low-health-harvest.js
+  var RICE_LOW_HEALTH_HARVEST_FEATURE;
+  var init_rice_low_health_harvest = __esm({
+    "src/features/abilities/rice-low-health-harvest.js"() {
+      RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "rice-low-health-harvest",
+          species: 6,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "수확 낫",
+          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
+          rootTier: 1,
+          powerValues: Object.freeze([0.35, 0.55, 0.75])
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/wheat-command-crit.js
+  var WHEAT_COMMAND_CRIT_FEATURE;
+  var init_wheat_command_crit = __esm({
+    "src/features/abilities/wheat-command-crit.js"() {
+      WHEAT_COMMAND_CRIT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "wheat-command-crit",
+          species: 7,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "밀의 전투 지휘",
+          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
+          powerValues: Object.freeze([0.5, 0.75, 1.125]),
+          durationTicks: 60,
+          triggerChance: 0.35,
+          branches: Object.freeze({
+            range: Object.freeze({
+              name: "명령 반경",
+              values: Object.freeze([2, 3, 4.5])
+            })
+          })
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/barley-armor-break.js
+  var BARLEY_ARMOR_BREAK_FEATURE;
+  var init_barley_armor_break = __esm({
+    "src/features/abilities/barley-armor-break.js"() {
+      BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "barley-armor-break",
+          species: 8,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "도리깨 갑주 파쇄",
+          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
+          rootTier: 1,
+          powerValues: Object.freeze([1, 2, 3]),
+          durationTicks: 60
+        })
+      });
+    }
+  });
+
+  // src/ability-definitions.js
+  var SPECIES_ABILITY_DEFINITIONS;
+  var init_ability_definitions = __esm({
+    "src/ability-definitions.js"() {
+      init_pea_recovery_boost();
+      init_kidney_continuous_leap();
+      init_definition12();
+      init_definition13();
+      init_definition14();
+      init_definition15();
+      init_rice_low_health_harvest();
+      init_wheat_command_crit();
+      init_barley_armor_break();
+      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
+        PEA_RECOVERY_BOOST_FEATURE.definition,
+        KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
+        CHESTNUT_THORNS_FEATURE.definition,
+        PEANUT_DEATH_SPLIT_FEATURE.definition,
+        WALNUT_RAW_GUARD_FEATURE.definition,
+        CORN_ATTACHMENT_FEATURE.definition,
+        RICE_LOW_HEALTH_HARVEST_FEATURE.definition,
+        WHEAT_COMMAND_CRIT_FEATURE.definition,
+        BARLEY_ARMOR_BREAK_FEATURE.definition
+      ]);
+    }
+  });
+
+  // src/ability-state.js
+  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
+    if (!isNonNegativeInteger(availablePoints)) {
+      throw new TypeError("availablePoints must be a non-negative integer");
+    }
+    return {
+      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
+      availablePoints,
+      farmUpgrades: createFarmUpgradeState(),
+      abilities: Object.fromEntries(
+        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
+          definition.id,
+          {
+            powerLevel: 0,
+            ...definition.branches ? {
+              branchLevels: Object.fromEntries(
+                Object.keys(definition.branches).map((branchId) => [branchId, 0])
+              )
+            } : {}
+          }
+        ])
+      )
+    };
+  }
+  function isValidAbilityProgressionState(state) {
+    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
+      return false;
+    }
+    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") {
+      return false;
+    }
+    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
+      return false;
+    }
+    for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
+      const INVESTMENT = state.abilities[DEFINITION13.id];
+      if (!INVESTMENT || !isNonNegativeInteger(INVESTMENT.powerLevel)) {
+        return false;
+      }
+      if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
+        return false;
+      }
+      const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
+      if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
+        return false;
+      }
+      for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
+        const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
+        if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
+          return false;
+        }
+      }
+    }
+    return Object.keys(state.abilities).every(
+      (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
+    );
+  }
+  function isNonNegativeInteger(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  var ABILITY_TREE_SCHEMA_VERSION;
+  var init_ability_state = __esm({
+    "src/ability-state.js"() {
+      init_ability_definitions();
+      init_farm_upgrades();
+      ABILITY_TREE_SCHEMA_VERSION = 2;
+    }
+  });
+
+  // src/player-progression.js
+  function createPlayerProgressionState() {
+    return {
+      ...createAbilityProgressionState(),
+      formationSkills: createFormationSkillState(),
+      farmPlots: createFarmPlotsProgression(),
+      level: 1,
+      experience: 0,
+      farmBossEventStage: 1,
+      processedBossKillReceipts: []
+    };
+  }
+  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
+    if (!isValidPlayerProgressionState(state)) {
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-state",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-receipt",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
+      return {
+        state,
+        awarded: false,
+        reason: "invalid-xp",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    if (state.processedBossKillReceipts.includes(receiptKey)) {
+      return {
+        state,
+        awarded: false,
+        reason: "duplicate-receipt",
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0
+      };
+    }
+    let level = state.level;
+    let experience = state.experience + xpAmount;
+    let levelsGained = 0;
+    while (experience >= experienceForNextLevel(level)) {
+      experience -= experienceForNextLevel(level);
+      level += 1;
+      levelsGained += 1;
+    }
+    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
+    const NEXT_STATE = {
+      ...state,
+      level,
+      experience,
+      availablePoints: state.availablePoints + POINTS_AWARDED,
+      abilities: Object.fromEntries(
+        Object.entries(state.abilities).map(([id, value]) => [
+          id,
+          {
+            ...value
+          }
+        ])
+      ),
+      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
+    };
+    return {
+      state: NEXT_STATE,
+      awarded: true,
+      reason: null,
+      xpAwarded: xpAmount,
+      levelsGained,
+      pointsAwarded: POINTS_AWARDED
+    };
+  }
+  function experienceForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("level must be a positive integer");
+    }
+    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  function formatXpForDisplay(experience) {
+    const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
+    return new Intl.NumberFormat("ko-KR", {
+      maximumFractionDigits: 1
+    }).format(VALUE);
+  }
+  function isValidPlayerProgressionState(state) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+      return false;
+    }
+    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
+      (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
+      0
+    );
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
+  }
+  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
+  var init_player_progression = __esm({
+    "src/player-progression.js"() {
+      init_ability_state();
+      init_formation_skill_state();
+      init_farm_upgrades();
+      init_farm_plot();
+      PLAYER_PROGRESS_BASE_XP = 100;
+      BOSS_KILL_XP = 20;
+      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
+      LEVEL_XP_MULTIPLIER = 1.2;
+      SHARED_POINTS_PER_LEVEL = 1;
+      FARM_BOSS_EVENT_MAX_STAGE = 61;
     }
   });
 
@@ -5643,7 +4250,7 @@
   var init_model13 = __esm({
     "src/features/abilities/chestnut-thorns/model.js"() {
       init_ability_progression();
-      init_definition10();
+      init_definition12();
       ABILITY_ID3 = CHESTNUT_THORNS_FEATURE.definition.id;
       ChestnutThornsModel = class {
         static config(progression, tier) {
@@ -5674,7 +4281,7 @@
   var init_model14 = __esm({
     "src/features/abilities/peanut-death-split/model.js"() {
       init_ability_progression();
-      init_definition11();
+      init_definition13();
       ABILITY_ID4 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
       PeanutDeathSplitModel = class {
         static config(progression, tier) {
@@ -5724,7 +4331,7 @@
   var init_model15 = __esm({
     "src/features/abilities/walnut-raw-guard/model.js"() {
       init_ability_progression();
-      init_definition12();
+      init_definition14();
       DEFINITION10 = WALNUT_RAW_GUARD_FEATURE.definition;
       WalnutRawGuardModel = class {
         static config(progression, tier) {
@@ -5793,7 +4400,7 @@
   var init_model16 = __esm({
     "src/features/abilities/corn-attachment/model.js"() {
       init_ability_progression();
-      init_definition13();
+      init_definition15();
       DEFINITION11 = CORN_ATTACHMENT_FEATURE.definition;
       CornAttachmentModel = class {
         static projectileEffect(progression, tier) {
@@ -6044,7 +4651,7 @@
       init_definition16();
       init_definition17();
       init_kidney_continuous_leap();
-      init_definition10();
+      init_definition12();
       ATTACK_DEFAULTS = Object.freeze({
         timing: Object.freeze({
           windup: 0.28,
@@ -6431,7 +5038,7 @@
             player = RECORD.asset.createPlayer({ clip: "fire", startedAtMs: 0 });
             players.set(effect.eventId, player);
           }
-          const CLIP = RECORD.compiled.metadata.clips.fire, ELAPSED_MS = Math.max(0, Math.min(CLIP.durationMs, progress * 1e3)), [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = RECORD.anchors.ground, POSITION = renderer.project(effect.x, effect.y, effect.z || 0), RADIUS2 = renderer.scale * 0.72, SCALE = 2 * RADIUS2 / Math.max(WIDTH, HEIGHT), CENTER_Y = POSITION.y + (HEIGHT * 0.5 - GROUND.y) * SCALE, MATRIX = [SCALE, 0, 0, SCALE, POSITION.x - GROUND.x * SCALE, CENTER_Y - GROUND.y * SCALE];
+          const CLIP = RECORD.compiled.metadata.clips.fire, ELAPSED_MS = Math.max(0, Math.min(CLIP.durationMs, progress * 1e3)), [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = RECORD.anchors.ground, POSITION = renderer.project(effect.x, effect.y, effect.z || 0), RADIUS = renderer.scale * 0.72, SCALE = 2 * RADIUS / Math.max(WIDTH, HEIGHT), CENTER_Y = POSITION.y + (HEIGHT * 0.5 - GROUND.y) * SCALE, MATRIX = [SCALE, 0, 0, SCALE, POSITION.x - GROUND.x * SCALE, CENTER_Y - GROUND.y * SCALE];
           player.play("fire", 0);
           player.setExpression("surprised");
           player.seek(ELAPSED_MS);
@@ -6462,12 +5069,12 @@
           return `추가 피해 ${Math.round(value * 100)}%`;
         }
         drawGuard(renderer, effect, progress) {
-          const T = Math.min(1, progress / 0.3), ALPHA = 1 - progress, RADIUS2 = 0.42 + T * 0.18;
+          const T = Math.min(1, progress / 0.3), ALPHA = 1 - progress, RADIUS = 0.42 + T * 0.18;
           if (ALPHA <= 0) {
             return;
           }
-          renderer.ring(effect.x, effect.y, RADIUS2, `rgba(180,194,150,${ALPHA * 0.9})`, 0.08);
-          renderer.groundEllipse(effect.x, effect.y, RADIUS2 * 0.72, RADIUS2 * 0.72, `rgba(199,213,162,${ALPHA * 0.18})`);
+          renderer.ring(effect.x, effect.y, RADIUS, `rgba(180,194,150,${ALPHA * 0.9})`, 0.08);
+          renderer.groundEllipse(effect.x, effect.y, RADIUS * 0.72, RADIUS * 0.72, `rgba(199,213,162,${ALPHA * 0.18})`);
         }
       };
     }
@@ -6643,13 +5250,13 @@
       init_model11();
       init_kidney_continuous_leap();
       init_model12();
-      init_definition10();
-      init_model13();
-      init_definition11();
-      init_model14();
       init_definition12();
-      init_model15();
+      init_model13();
       init_definition13();
+      init_model14();
+      init_definition14();
+      init_model15();
+      init_definition15();
       init_model16();
       init_rice_low_health_harvest();
       init_model17();
@@ -6748,7 +5355,7 @@
   var init_model20 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
-      init_definition14();
+      init_definition10();
       SeedProjectile = class extends DamageProjectile {
         constructor(dependencies) {
           super(FEATURE, dependencies);
@@ -6788,7 +5395,7 @@
   }
   var init_definition19 = __esm({
     "src/features/projectiles/definition.js"() {
-      init_definition14();
+      init_definition10();
       init_definition18();
     }
   });
@@ -6844,13 +5451,6 @@
     class DroppingFarmBossEventPhase extends FarmBossEventPhase {
       update(world, dt) {
         world.farmBossEvent.elapsed += dt;
-        if (world.worldMap.challengeTile >= 0) {
-          if (world.farmBossEvent.elapsed >= config.farm.bossEvent.marchSeconds) {
-            world.farmBossEvent.phase = "fighting";
-            world.farmBossEvent.elapsed = 0;
-          }
-          return true;
-        }
         world.boss.z = Math.max(
           0,
           config.battle.dropHeight - 0.5 * config.physics.gravity * world.farmBossEvent.elapsed * world.farmBossEvent.elapsed
@@ -6900,7 +5500,6 @@
       update(world, dt) {
         world.farmBossEvent.elapsed += dt;
         if (world.farmBossEvent.elapsed >= config.farm.bossEvent.fadeSeconds) {
-          const VICTORY = world.farmBossEvent.outcome === "victory";
           world.farmBossEvent = {
             phase: "idle",
             elapsed: 0,
@@ -6912,7 +5511,7 @@
             rewardUnitId: 0
           };
           world.boss = world.createBoss();
-          world.endMapFight(VICTORY);
+          world.markProgressChanged();
         }
         return true;
       }
@@ -6957,9 +5556,6 @@
         }
         // A resting unit walks to a spot of its own and stays there a while before picking the next one.
         wander(world, unit, dt) {
-          if (unit.migrate && world.stepMigrant(unit, dt)) {
-            return;
-          }
           const SPOT = restingSpot(unit, world.time, this.config.farm.arena);
           if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) < WANDER_ARRIVE) {
             return;
@@ -7141,8 +5737,8 @@
           return null;
         }
         weaponPoint(boss, q) {
-          const { CONFIG: CONFIG2, CLAMP: CLAMP4 } = this.dependencies;
-          const REACH = boss.radius - 0.25 + (CONFIG2.boss.sweepReach - boss.radius + 0.25) * Math.sin(Math.PI * CLAMP4(q, 0, 1));
+          const { CONFIG: CONFIG2, CLAMP: CLAMP3 } = this.dependencies;
+          const REACH = boss.radius - 0.25 + (CONFIG2.boss.sweepReach - boss.radius + 0.25) * Math.sin(Math.PI * CLAMP3(q, 0, 1));
           return { x: boss.x + Math.cos(boss.angle) * REACH, y: boss.y + Math.sin(boss.angle) * REACH, z: boss.z + 0.2 };
         }
       };
@@ -7327,7 +5923,7 @@
           }
         }
         weaponPoint(boss, q) {
-          const { CLAMP: CLAMP4 } = this.dependencies, ACTION = boss.patternRuntime?.active, AIM = ACTION?.aim ?? boss.patternAim ?? boss.angle, START_ANGLE = ACTION?.startAngle ?? AIM - Math.PI / 2, ANGLE = START_ANGLE + TAU * CLAMP4(q, 0, 1);
+          const { CLAMP: CLAMP3 } = this.dependencies, ACTION = boss.patternRuntime?.active, AIM = ACTION?.aim ?? boss.patternAim ?? boss.angle, START_ANGLE = ACTION?.startAngle ?? AIM - Math.PI / 2, ANGLE = START_ANGLE + TAU * CLAMP3(q, 0, 1);
           return {
             x: boss.x + Math.cos(ANGLE) * this.config.reach,
             y: boss.y + Math.sin(ANGLE) * this.config.reach,
@@ -7481,7 +6077,7 @@
           this.physicalActive = true;
         }
         writeArea(boss, action, scene, pad, area) {
-          const { CONFIG: CONFIG2, CLAMP: CLAMP4 } = this.dependencies;
+          const { CONFIG: CONFIG2, CLAMP: CLAMP3 } = this.dependencies;
           area.kind = "leap";
           area.width = boss.radius + pad;
           area.reach = this.config.landingRadius + pad;
@@ -7503,7 +6099,7 @@
           area.x = SX;
           area.y = SY;
           if (action.phase === "active" && action.path) {
-            area.progress = CLAMP4(Math.max(0, action.phaseElapsed || 0) / action.path.duration, 0, 1);
+            area.progress = CLAMP3(Math.max(0, action.phaseElapsed || 0) / action.path.duration, 0, 1);
           }
         }
         activate(world, action) {
@@ -7645,9 +6241,9 @@
           return "sweepHits";
         }
         weaponPoint(boss, q) {
-          const { CLAMP: CLAMP4 } = this.dependencies;
+          const { CLAMP: CLAMP3 } = this.dependencies;
           const ACTION = boss.patternRuntime.active;
-          const ANGLE = ACTION.aim - this.config.sector / 2 + this.config.sector * CLAMP4(q, 0, 1);
+          const ANGLE = ACTION.aim - this.config.sector / 2 + this.config.sector * CLAMP3(q, 0, 1);
           return {
             x: boss.x + Math.cos(ANGLE) * this.config.reach,
             y: boss.y + Math.sin(ANGLE) * this.config.reach,
@@ -7718,8 +6314,8 @@
 
   // src/boss-pattern-behaviors.js
   function createBossPatternBehaviors(dependencies) {
-    const { CONFIG: CONFIG2, ArenaGeometry: ARENA_GEOMETRY2, Ballistics: BALLISTICS2, clamp: CLAMP4 } = dependencies;
-    const DEPENDENCIES = Object.freeze({ CONFIG: CONFIG2, ARENA_GEOMETRY: ARENA_GEOMETRY2, BALLISTICS: BALLISTICS2, CLAMP: CLAMP4 });
+    const { CONFIG: CONFIG2, ArenaGeometry: ARENA_GEOMETRY2, Ballistics: BALLISTICS2, clamp: CLAMP3 } = dependencies;
+    const DEPENDENCIES = Object.freeze({ CONFIG: CONFIG2, ARENA_GEOMETRY: ARENA_GEOMETRY2, BALLISTICS: BALLISTICS2, CLAMP: CLAMP3 });
     const PATTERNS = Object.freeze(
       Object.fromEntries(
         [
@@ -7750,7 +6346,7 @@
               z: TARGET.z || 0
             };
             const DESIRED = Math.atan2(TARGET.y - world.boss.y, TARGET.x - world.boss.x), DELTA = Math.atan2(Math.sin(DESIRED - action.aim), Math.cos(DESIRED - action.aim));
-            action.aim += CLAMP4(DELTA, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
+            action.aim += CLAMP3(DELTA, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
             world.boss.angle = world.boss.facing = action.aim;
           }
           if (REMAINING <= 0.25 + 1e-9) {
@@ -7932,6 +6528,459 @@
     }
   });
 
+  // src/boss-rewards.js
+  function requireSdk() {
+    const SDK = globalThis.BloomGamekitDeterministic;
+    if (!SDK?.SeededPRNG || !SDK?.PseudoRandomDistribution) {
+      throw new Error("GameKit 0.12.2 deterministic PRD API is required");
+    }
+    return SDK;
+  }
+  function mixedSeed(seed, domain) {
+    let value = (seed ^ domain) >>> 0;
+    value = Math.imul(value ^ value >>> 16, 2146121005);
+    value = Math.imul(value ^ value >>> 15, 2221713035);
+    return (value ^ value >>> 16) >>> 0;
+  }
+  function streamFor(source) {
+    return STREAM_SOURCE[source];
+  }
+  function streamSeed(seed, kind, field) {
+    const DOMAIN = STREAM_DOMAINS[kind]?.[field];
+    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 4294967295 || DOMAIN === void 0) {
+      throw new RangeError("Invalid boss reward stream seed");
+    }
+    return mixedSeed(seed, DOMAIN);
+  }
+  function createStream(seed, kind) {
+    return {
+      rngState: streamSeed(seed, kind, "prd"),
+      distributionState: null,
+      payoutRngState: streamSeed(seed, kind, "boxes")
+    };
+  }
+  function createBossRewardStreams(seed) {
+    return {
+      normal: createStream(seed, "normal"),
+      event: createStream(seed, "event"),
+      firstClear: createStream(seed, "firstClear")
+    };
+  }
+  function bossRewardBoxPayouts(total) {
+    if (!Number.isSafeInteger(total) || total < 1) {
+      throw new RangeError("Boss reward quantity must be a positive safe integer");
+    }
+    const BOX_COUNT = Math.min(total, BOSS_REWARD_SETTINGS.maxBoxCount), BASE = Math.floor(total / BOX_COUNT), EXTRA = total % BOX_COUNT;
+    const PAYOUTS = Array.from({ length: BOX_COUNT }, (_, index) => BASE + (index < EXTRA ? 1 : 0));
+    if (PAYOUTS.some((amount) => !Number.isSafeInteger(amount) || amount < 1)) {
+      throw new RangeError("Boss reward box payout is outside the safe integer range");
+    }
+    return PAYOUTS;
+  }
+  function bossStageStats(stage) {
+    if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
+      throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
+    }
+    const EXPONENT = stage - 1, TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT), PAYOUTS = bossRewardBoxPayouts(TOTAL);
+    return {
+      stage,
+      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
+      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
+      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
+      rollBudget: TOTAL,
+      rolls: PAYOUTS.length,
+      boxCount: PAYOUTS.length,
+      boxPayouts: PAYOUTS,
+      bonusRollChance: 0
+    };
+  }
+  function bossAcquisitionChance({ farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
+    if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
+      throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
+    }
+    if (farmEvent) {
+      return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
+    }
+    const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
+    return Math.min(1, BASE * acquisitionMultiplier);
+  }
+  function ensureWorldRewardState(world) {
+    world.bossRewardReceipts ||= [];
+    world.bossRewardWatermarks ||= { farm: 0 };
+    world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
+    world.bossRewardInventory ||= [];
+    return world;
+  }
+  function shufflePayouts(payouts, seed) {
+    const { SeededPRNG: SEEDED_PRNG2 } = requireSdk();
+    const RNG = new SEEDED_PRNG2(seed);
+    for (let index = payouts.length - 1; index > 0; index -= 1) {
+      const OTHER = RNG.nextInt(index + 1);
+      [payouts[index], payouts[OTHER]] = [payouts[OTHER], payouts[index]];
+    }
+    return { payouts, rngState: RNG.state };
+  }
+  function allocatePlacedRewards(world, species, tier, quantity) {
+    let remaining = quantity;
+    for (const RECEIPT of world.bossRewardReceipts) {
+      if (remaining === 0 || RECEIPT.species !== species || RECEIPT.tier !== tier || !Number.isSafeInteger(RECEIPT.queuedCount) || RECEIPT.queuedCount <= 0) {
+        continue;
+      }
+      const PLACED = Math.min(remaining, RECEIPT.queuedCount);
+      RECEIPT.queuedCount -= PLACED;
+      RECEIPT.placedCount += PLACED;
+      RECEIPT.grantedCount = RECEIPT.placedCount;
+      remaining -= PLACED;
+    }
+    if (remaining !== 0) {
+      throw new Error("Boss reward queue and receipt counts diverged");
+    }
+  }
+  function grantPendingBossAcquisitions(world) {
+    return typeof world.mutateUnits === "function" ? world.mutateUnits(grantPendingBossAcquisitionsCommitted, world) : grantPendingBossAcquisitionsCommitted(world);
+  }
+  function grantPendingBossAcquisitionsCommitted(world) {
+    ensureWorldRewardState(world);
+    if (world.scene !== "farm" || !Array.isArray(world.units) || !world.bossRewardInventory.length) {
+      return [];
+    }
+    const GRANTED = [];
+    let capacity = Math.max(
+      0,
+      (Number.isSafeInteger(world.totalFarmCapacity) ? world.totalFarmCapacity : world.capacity) - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
+    );
+    for (const GROUP of world.bossRewardInventory) {
+      if (capacity <= 0) {
+        break;
+      }
+      const COUNT = Math.min(capacity, GROUP.count);
+      let placed = 0;
+      while (placed < COUNT) {
+        const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
+        if (!UNIT3) {
+          break;
+        }
+        GRANTED.push(UNIT3);
+        placed += 1;
+      }
+      if (placed > 0) {
+        GROUP.count -= placed;
+        capacity -= placed;
+        allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
+      }
+    }
+    world.bossRewardInventory = world.bossRewardInventory.filter((entry) => entry.count > 0);
+    if (GRANTED.length) {
+      world.markProgressChanged?.();
+    }
+    return GRANTED;
+  }
+  function findExistingReceipt(world, receiptKey, encounterId, source) {
+    return world.bossRewardReceipts.find(
+      (receipt) => receiptKey && receipt.receiptKey === receiptKey || receipt.encounterId === encounterId && receipt.source === source
+    );
+  }
+  function shuffleForNewReceipt(world, source, total, firstClear = false) {
+    const KIND = streamFor(source, firstClear), STREAM = world.bossRewardStreams[KIND], PAYOUTS = bossRewardBoxPayouts(total), SHUFFLED = shufflePayouts(PAYOUTS, STREAM.payoutRngState);
+    return {
+      payouts: SHUFFLED.payouts,
+      payoutRngStateAfter: SHUFFLED.rngState
+    };
+  }
+  function resolveBossAcquisitionCommitted(world, options = {}) {
+    ensureWorldRewardState(world);
+    const ENCOUNTER_ID = options.encounterId, SOURCE = options.source || "farm", REQUESTED_KEY = options.receiptKey;
+    if (SOURCE !== "farm" || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID < 1 || REQUESTED_KEY !== void 0 && (typeof REQUESTED_KEY !== "string" || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255)) {
+      throw new TypeError("A boss encounter ID, source, and valid receipt key are required");
+    }
+    const RECEIPT_KEY = REQUESTED_KEY || `${SOURCE}:${ENCOUNTER_ID}`, PREVIOUS = findExistingReceipt(world, REQUESTED_KEY, ENCOUNTER_ID, SOURCE);
+    if (PREVIOUS) {
+      return PREVIOUS;
+    }
+    if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
+      throw new RangeError("A settled or stale boss encounter cannot be rolled again");
+    }
+    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
+    if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
+      throw new RangeError("Boss reward quantity is outside the safe integer range");
+    }
+    const SPECIES = options.species ?? 3;
+    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
+      throw new RangeError("Boss reward species is invalid");
+    }
+    const FIRST_CLEAR = false, STREAM_KIND = streamFor(SOURCE), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
+      farmEvent: SOURCE === "farm",
+      firstClear: FIRST_CLEAR,
+      acquisitionMultiplier: options.acquisitionMultiplier ?? 1
+    }), SHUFFLED = shuffleForNewReceipt(world, SOURCE, TOTAL, FIRST_CLEAR), BOX_COUNT = SHUFFLED.payouts.length, RECEIPT = {
+      encounterId: ENCOUNTER_ID,
+      source: SOURCE,
+      receiptKey: RECEIPT_KEY,
+      acquisitionMultiplier: SOURCE === "farm" ? BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier : options.acquisitionMultiplier ?? 1,
+      stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
+      species: SPECIES,
+      tier: 1,
+      x: Number.isFinite(options.x) ? options.x : 0,
+      y: Number.isFinite(options.y) ? options.y : 0,
+      firstClear: FIRST_CLEAR,
+      chance: CHANCE,
+      baselineChance: FIRST_CLEAR ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance,
+      rollBudget: TOTAL,
+      rollCount: BOX_COUNT,
+      boxCount: BOX_COUNT,
+      successCount: 0,
+      acquiredCount: 0,
+      grantedCount: 0,
+      placedCount: 0,
+      queuedCount: 0,
+      unitId: 0,
+      revealedCount: 0,
+      boxes: [],
+      calculation: {
+        version: 1,
+        payouts: SHUFFLED.payouts,
+        hits: [],
+        payoutRngStateAfter: SHUFFLED.payoutRngStateAfter,
+        jobState: null
+      },
+      status: "calculating"
+    };
+    if (streamFor(SOURCE, FIRST_CLEAR) !== STREAM_KIND || !Number.isSafeInteger(STREAM.rngState)) {
+      throw new TypeError("Boss reward streams are not initialized");
+    }
+    world.bossRewardReceipts.push(RECEIPT);
+    world.bossRewardWatermarks[SOURCE] = ENCOUNTER_ID;
+    trimRewardReceipts(world);
+    if (SOURCE === "farm" && world.farmBossEvent?.encounterId === ENCOUNTER_ID) {
+      world.farmBossEvent.rewardStatus = "calculating";
+      world.farmBossEvent.rewardChance = CHANCE;
+      world.farmBossEvent.rewardRoll = 0;
+      world.farmBossEvent.rewardUnitId = 0;
+    }
+    world.markProgressChanged?.();
+    return RECEIPT;
+  }
+  function copyInventory(world) {
+    return (world.bossRewardInventory || []).map((entry) => ({ ...entry }));
+  }
+  function completeRewardCalculation(world, receipt, jobState) {
+    const CALC = receipt.calculation, HIT_SET = new Set(CALC.hits), BOXES = CALC.payouts.map((payout, index) => ({ payout, hit: HIT_SET.has(index) }));
+    let acquired = 0;
+    for (const BOX of BOXES) {
+      if (BOX.hit) {
+        acquired += BOX.payout;
+        if (!Number.isSafeInteger(acquired)) {
+          throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
+        }
+      }
+    }
+    const KIND = streamFor(receipt.source, receipt.firstClear === true), NEXT_INVENTORY = copyInventory(world), GROUP = NEXT_INVENTORY.find((entry) => entry.species === receipt.species && entry.tier === receipt.tier);
+    if (acquired > 0) {
+      const CURRENT = GROUP?.count || 0, NEXT = CURRENT + acquired;
+      if (!Number.isSafeInteger(NEXT)) {
+        throw new RangeError("Owned boss reward quantity exceeds the safe integer range");
+      }
+      if (GROUP) {
+        GROUP.count = NEXT;
+      } else {
+        NEXT_INVENTORY.push({ species: receipt.species, tier: receipt.tier, count: acquired });
+      }
+    }
+    const NEXT_STREAM = {
+      rngState: jobState.rngState,
+      distributionState: jobState.distributionState,
+      payoutRngState: CALC.payoutRngStateAfter
+    };
+    world.bossRewardStreams[KIND] = NEXT_STREAM;
+    world.bossRewardInventory = NEXT_INVENTORY;
+    receipt.boxes = BOXES;
+    receipt.successCount = CALC.hits.length;
+    receipt.acquiredCount = acquired;
+    receipt.placedCount = 0;
+    receipt.queuedCount = acquired;
+    receipt.grantedCount = 0;
+    receipt.revealedCount = 0;
+    receipt.calculation = null;
+    receipt.status = "ready";
+    if (receipt.source === "farm" && world.farmBossEvent?.encounterId === receipt.encounterId) {
+      world.farmBossEvent.rewardStatus = "ready";
+    }
+  }
+  function trimRewardReceipts(world) {
+    const KEEP = /* @__PURE__ */ new Set();
+    let completed = 0;
+    for (let index = world.bossRewardReceipts.length - 1; index >= 0; index -= 1) {
+      const RECEIPT = world.bossRewardReceipts[index], NEEDS_PRESENTATION = RECEIPT.status === "calculating" || Number.isSafeInteger(RECEIPT.queuedCount) && RECEIPT.queuedCount > 0;
+      if (NEEDS_PRESENTATION || RECEIPT.status === "ready" && completed < 8) {
+        KEEP.add(RECEIPT);
+        if (RECEIPT.status === "ready") {
+          completed += 1;
+        }
+      }
+    }
+    world.bossRewardReceipts = world.bossRewardReceipts.filter((receipt) => KEEP.has(receipt));
+  }
+  function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_UNITS_PER_TICK } = {}) {
+    if (!Number.isSafeInteger(maxUnitsPerReward) || maxUnitsPerReward < 1 || maxUnitsPerReward > PRD_UNITS_PER_TICK) {
+      throw new RangeError("Boss reward work must be from 1 to 10 units per logical tick");
+    }
+    ensureWorldRewardState(world);
+    if (world.scene !== "farm") {
+      return false;
+    }
+    let changed = false;
+    for (const SOURCE of ["farm"]) {
+      const RECEIPT = world.bossRewardReceipts.find(
+        (entry) => entry.source === SOURCE && entry.status === "calculating"
+      ), CALC = RECEIPT?.calculation;
+      if (!RECEIPT || !CALC) {
+        continue;
+      }
+      const STREAM_KIND = streamFor(SOURCE, RECEIPT.firstClear === true), STREAM = world.bossRewardStreams[STREAM_KIND], { SeededPRNG: SEEDED_PRNG2, PseudoRandomDistribution: PSEUDO_RANDOM_DISTRIBUTION } = requireSdk(), RNG = new SEEDED_PRNG2(STREAM.rngState), PRD = new PSEUDO_RANDOM_DISTRIBUTION({ probability: RECEIPT.chance, rng: RNG });
+      let job = null;
+      try {
+        if (CALC.jobState) {
+          job = PRD.restoreRollJob(CALC.jobState);
+        } else {
+          if (STREAM.distributionState) {
+            PRD.restore(STREAM.distributionState);
+          }
+          if (PRD.probability !== RECEIPT.chance) {
+            PRD.setProbability(RECEIPT.chance);
+          }
+          job = PRD.createRollJob(RECEIPT.boxCount);
+        }
+        if (RECEIPT.chance === 1 && CALC.hits.length === 0) {
+          CALC.hits = Array.from({ length: RECEIPT.boxCount }, (_, index) => index);
+        }
+        let units = 0;
+        while (!job.done && units < maxUnitsPerReward) {
+          const PRIOR_SUCCESSES = job.successes, STEP = job.step(1);
+          units += STEP.unitsUsed;
+          if (RECEIPT.chance !== 1 && STEP.successes > PRIOR_SUCCESSES) {
+            if (STEP.successes !== PRIOR_SUCCESSES + 1) {
+              throw new Error("A single PRD interval returned multiple reward successes");
+            }
+            CALC.hits.push(STEP.processedTrials - 1);
+          }
+          if (STEP.unitsUsed === 0 && !STEP.done) {
+            throw new Error("The resumable boss reward job did not advance");
+          }
+        }
+        CALC.jobState = job.capture();
+        changed = true;
+        if (job.done) {
+          completeRewardCalculation(world, RECEIPT, CALC.jobState);
+          trimRewardReceipts(world);
+        }
+      } finally {
+        job?.dispose();
+        PRD.dispose();
+      }
+    }
+    if (changed) {
+      world.markProgressChanged?.();
+    }
+    return changed;
+  }
+  function advanceBossRewardReveal(world, receiptKey, maxBoxes = 10) {
+    if (!Number.isSafeInteger(maxBoxes) || maxBoxes < 1 || maxBoxes > 10) {
+      throw new RangeError("Boss reward reveal must be from 1 to 10 boxes");
+    }
+    ensureWorldRewardState(world);
+    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
+    if (!RECEIPT || RECEIPT.status !== "ready") {
+      return null;
+    }
+    if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
+      return RECEIPT;
+    }
+    RECEIPT.revealedCount = Math.min(RECEIPT.boxCount, RECEIPT.revealedCount + maxBoxes);
+    return RECEIPT;
+  }
+  function openAllBossRewardBoxes(world, receiptKey) {
+    ensureWorldRewardState(world);
+    const RECEIPT = world.bossRewardReceipts.find((entry) => entry.receiptKey === receiptKey);
+    if (!RECEIPT || RECEIPT.status !== "ready") {
+      return null;
+    }
+    RECEIPT.revealedCount = RECEIPT.boxCount;
+    return RECEIPT;
+  }
+  function settleBossKill(world, options) {
+    return typeof world.mutateUnits === "function" ? world.mutateUnits(settleBossKillCommitted, world, options) : settleBossKillCommitted(world, options);
+  }
+  function settleBossKillCommitted(world, options = {}) {
+    const RECEIPT = resolveBossAcquisitionCommitted(world, options), PROGRESSION_OWNER = options.progressionOwner || world, WALLET = options.playerProgression || PROGRESSION_OWNER.playerProgression, RECEIPT_KEY = RECEIPT.xpReceiptKey || options.receiptKey || RECEIPT.receiptKey;
+    if (RECEIPT.xpReceiptKey && ["awarded", "already-awarded"].includes(RECEIPT.xpStatus)) {
+      return {
+        receipt: RECEIPT,
+        progression: WALLET,
+        awarded: false,
+        reason: "duplicate-receipt",
+        xpAwarded: RECEIPT.xpAmount ?? 0,
+        levelsGained: RECEIPT.levelsGained ?? 0,
+        pointsAwarded: RECEIPT.pointsAwarded ?? 0
+      };
+    }
+    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === void 0 ? void 0 : options.xpAmount);
+    if (RESULT.awarded) {
+      PROGRESSION_OWNER.playerProgression = RESULT.state;
+    }
+    if (RESULT.awarded || RESULT.reason === "duplicate-receipt") {
+      RECEIPT.xpReceiptKey = RECEIPT_KEY;
+      RECEIPT.xpStatus = RESULT.awarded ? "awarded" : "already-awarded";
+      RECEIPT.xpAmount = RESULT.awarded ? RESULT.xpAwarded : 0;
+      RECEIPT.levelsGained = RESULT.levelsGained;
+      RECEIPT.pointsAwarded = RESULT.pointsAwarded;
+    } else {
+      RECEIPT.xpStatus = "unsettled";
+    }
+    world.markProgressChanged?.();
+    return {
+      receipt: RECEIPT,
+      progression: RESULT.state,
+      awarded: RESULT.awarded,
+      reason: RESULT.reason,
+      xpAwarded: RESULT.xpAwarded,
+      levelsGained: RESULT.levelsGained,
+      pointsAwarded: RESULT.pointsAwarded
+    };
+  }
+  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, BOSS_REWARD_SETTINGS;
+  var init_boss_rewards = __esm({
+    "src/boss-rewards.js"() {
+      init_player_progression();
+      init_species_catalog();
+      FORMAT_PERCENT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
+      FORMAT_COUNT = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
+      PRD_UNITS_PER_TICK = 10;
+      STREAM_DOMAINS = Object.freeze({
+        normal: Object.freeze({ prd: 795749149, boxes: 1547342359 }),
+        event: Object.freeze({ prd: 1939685861, boxes: 462181795 }),
+        firstClear: Object.freeze({ prd: 1247922131, boxes: 767049617 })
+      });
+      STREAM_SOURCE = Object.freeze({ farm: "event" });
+      BOSS_REWARD_SETTINGS = Object.freeze({
+        acquisitionChance: 0.05,
+        firstClearAcquisitionChance: 0.15,
+        farmEventAcquisitionMultiplier: 2,
+        stageHpBase: 200,
+        stageHpMultiplier: 1.5,
+        stageAttackBase: 4,
+        stageAttackMultiplier: 1.2,
+        stageXpBase: 20,
+        stageXpMultiplier: 1.5,
+        stageRollMultiplier: 1.5,
+        maxStage: FARM_BOSS_EVENT_MAX_STAGE,
+        maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
+        maxBoxCount: 100,
+        prdUnitsPerTick: PRD_UNITS_PER_TICK,
+        speciesWeights: BOSS_SPECIES_WEIGHTS
+      });
+    }
+  });
+
   // src/unit-combat-patterns.js
   function createPeanutStrikeSchedule({
     strikeCount = PEANUT_BASE_STRIKE.count,
@@ -7947,12 +6996,12 @@
         length: strikeCount
       },
       (_, strikeIndex) => {
-        const SIDE2 = strikeIndex % 2 === 0 ? -1 : 1;
+        const SIDE = strikeIndex % 2 === 0 ? -1 : 1;
         return Object.freeze({
           strikeIndex,
           kernelIndex: strikeIndex % 2,
-          side: SIDE2,
-          angleOffsetRadians: SIDE2 * spreadRadians,
+          side: SIDE,
+          angleOffsetRadians: SIDE * spreadRadians,
           dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
           attackMultiplier
         });
@@ -8040,10 +7089,10 @@
           if (TARGET && TARGET.hp > 0) {
             const DISTANCE = Math.hypot(TARGET.x - U.x, TARGET.y - U.y), REACH = TARGET.radius + U.radius + this.spec.range;
             if (DISTANCE <= REACH) {
-              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE2 = SLOT.angleOffsetRadians;
+              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE = SLOT.angleOffsetRadians;
               const FROM = {
-                x: U.x + Math.cos(AIM + SIDE2) * U.radius * 0.45,
-                y: U.y + Math.sin(AIM + SIDE2) * U.radius * 0.45,
+                x: U.x + Math.cos(AIM + SIDE) * U.radius * 0.45,
+                y: U.y + Math.sin(AIM + SIDE) * U.radius * 0.45,
                 z: 0
               };
               const TO = {
@@ -8564,27 +7613,24 @@
     }
     return true;
   }
-  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
-      init_work_aptitude();
       init_farm_offline();
       init_farm_work();
       init_formation_skills();
       init_formation_skill_state();
       init_signal();
       import_definition50 = __toESM(require_definition(), 1);
-      init_definition14();
+      init_definition10();
       init_mutation_notifications();
       init_unit_collection();
       init_farm_roster();
       init_farm_plot();
-      init_world_map();
       init_simulation_scenes();
       init_projectile_behaviors();
       init_boss_event_phases();
       init_farm_mode_behaviors();
-      init_model_base4();
       init_boss_pattern_behaviors();
       init_boss_vector_sockets();
       init_model18();
@@ -8605,8 +7651,6 @@
       ({ SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic);
       ({ createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler);
       EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
-      EXPLORE_WALK_RATIO = 0.12;
-      EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
       PRESENTATION_CLOCKS = /* @__PURE__ */ new WeakMap();
       PRESENTATION_EVENT_TIMES = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
@@ -8642,68 +7686,7 @@
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            defaultResourceBasisPoints: 2500,
-            defaultHaulBasisPoints: 1500,
-            defaultBuildBasisPoints: 1e3,
-            defaultExploreBasisPoints: 1e3,
-            facilityMaxLevel: FACILITY_MAX_LEVEL,
-            levelCostStep: 0.75,
-            levelHitsStep: 0.6,
-            projects: Object.freeze({
-              expand: Object.freeze({ name: "농장 확장", hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
-              // A mine on a forest or rock tile: that tile never runs dry, at half the yield.
-              mine: Object.freeze({ name: "채굴장", hits: 80, cost: Object.freeze({ wood: 30, stone: 30 }) }),
-              plot: Object.freeze({
-                name: "새 농장",
-                hits: 300,
-                cost: Object.freeze({ wood: 40, stone: 40 }),
-                // Each farm already built makes the next one this many times dearer.
-                costGrowth: 1.5
-              })
-            }),
-            levelEffectStep: 0.25,
-            facilities: Object.freeze({
-              windmill: Object.freeze({
-                name: "풍차",
-                hits: 120,
-                cost: Object.freeze({ wood: 12, stone: 6 }),
-                effect: "레벨마다 먹이 일꾼이 25% 빨라져요"
-              }),
-              granary: Object.freeze({
-                name: "곡식 광",
-                hits: 100,
-                cost: Object.freeze({ wood: 16, stone: 0 }),
-                effect: "레벨마다 더미 먹이 +4, 홀수 레벨마다 더미 +1"
-              }),
-              rack: Object.freeze({
-                name: "연장 걸이",
-                hits: 100,
-                cost: Object.freeze({ wood: 8, stone: 8 }),
-                effect: "레벨마다 자원 일꾼이 25% 빨라져요"
-              }),
-              tower: Object.freeze({
-                name: "망루",
-                hits: 150,
-                cost: Object.freeze({ wood: 40, stone: 40 }),
-                // Every level costs twice the one before, and the tower stops after three.
-                costGrowth: 2,
-                maxLevel: 3,
-                effect: "레벨마다 이 농장의 탐사 반경이 1칸 넓어져요"
-              })
-            }),
-            pileKinds: Object.freeze({
-              grain: Object.freeze({ count: 2, amount: 12 }),
-              wood: Object.freeze({ count: 1, amount: 12 }),
-              stone: Object.freeze({ count: 1, amount: 12 })
-            }),
-            // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
-            // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
-            // Units on the tiles next to the farm on screen walk about without collisions or contacts, up to this many.
-            neighbourWalkers: 300,
-            migration: Object.freeze({ intervalSeconds: 20, emptierBy: 0.15, neighbourMaxFill: 0.9 }),
-            facilitySpacing: 7,
-            facilityRowX: 2,
-            facilityRowY: 7.6,
+            pileKind: Object.freeze({ count: 2, amount: 12 }),
             pileGap: 6,
             pileRadiusX: 8,
             pileRadiusY: 6,
@@ -8729,8 +7712,6 @@
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
           }),
           bossEvent: Object.freeze({
-            // The march out to the boss's tile before a fight begins.
-            marchSeconds: 2.5,
             fadeSeconds: 0.5,
             celebrationSeconds: 1
           })
@@ -8772,9 +7753,6 @@
           softSeparationRate: -Math.log(1 - 0.035) * 120
         })
       });
-      if (Object.keys(CONFIG.farm.work.facilities).join() !== FACILITY_IDS.join()) {
-        throw new Error("The farm facility catalog and the plot facility ids must list the same facilities.");
-      }
       CLAMP2 = (x, a, b) => Math.max(a, Math.min(b, x));
       STATS = baseUnitStatsFor;
       BODY = class Body {
@@ -9641,12 +8619,12 @@
           this._spatialQueryDepth = Math.max(0, this._spatialQueryDepth - 1);
         }
         _collectContactOrders(unit, minimumOrder, maximumOrder, out) {
-          const RADIUS2 = unit.radius + CONFIG.unit.maxRadius + 0.22;
+          const RADIUS = unit.radius + CONFIG.unit.maxRadius + 0.22;
           this.unitSpatial.queryAABB(
-            unit.x - RADIUS2,
-            unit.y - RADIUS2,
-            unit.x + RADIUS2,
-            unit.y + RADIUS2,
+            unit.x - RADIUS,
+            unit.y - RADIUS,
+            unit.x + RADIUS,
+            unit.y + RADIUS,
             this._contactQuery
           );
           out.length = 0;
@@ -9725,36 +8703,9 @@
           this.food = this.activeFarmPlot.food;
           this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
-          this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
-          this.woodBasisPoints = 5e3;
-          this.materials = { wood: 0, stone: 0 };
-          this.haulBasisPoints = CONFIG.farm.work.defaultHaulBasisPoints;
-          this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
-          this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
-          this.neighbourWalkers = CONFIG.farm.work.neighbourWalkers;
-          let worldMap = null;
-          Object.defineProperty(this, "worldMap", {
-            enumerable: true,
-            configurable: true,
-            get: () => worldMap,
-            set: (map) => {
-              worldMap = map;
-              setReachProvider(map, (plotId) => this.farmPlots?.get(plotId)?.facilityLevel("tower") ?? 0);
-            }
-          });
-          this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
-          this.buildRush = false;
-          this._workerKinds = /* @__PURE__ */ new Map();
-          this._workerResource = /* @__PURE__ */ new Map();
-          this._exploreGoals = /* @__PURE__ */ new Map();
-          this._idleLead = /* @__PURE__ */ new Map();
-          this._pieceWork = /* @__PURE__ */ new Map();
-          this._fogClaims = /* @__PURE__ */ new Map();
-          this._idleCarry = { food: 0 };
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
           this._workerRates = /* @__PURE__ */ new Map();
-          this._workerPlots = /* @__PURE__ */ new Map();
           this._workRate = 0;
           this._workCount = 0;
           this._nextWorkerRefreshTick = 0;
@@ -9858,11 +8809,11 @@
           return (this._breedPlans?.size || 0) + (this._activeBreedReservations?.size || 0);
         }
         get totalFarmCapacity() {
-          let capacity2 = 0;
+          let capacity = 0;
           for (const PLOT of this.farmPlots.values()) {
-            capacity2 += PLOT.capacity;
+            capacity += PLOT.capacity;
           }
-          return capacity2;
+          return capacity;
         }
         get placedPopulation() {
           return this.roster.placedPopulation(this.activePlotId);
@@ -10109,9 +9060,9 @@
             return false;
           }
           UNITS.forEach((unitLocal, index) => {
-            const ANGLE = index * 2.399963229728653 + (this.seed >>> 0) % 6283 / 1e3, RADIUS2 = Math.sqrt((index + 0.5) / Math.max(1, UNITS.length)) * 0.7;
-            unitLocal.x = Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS2;
-            unitLocal.y = Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS2;
+            const ANGLE = index * 2.399963229728653 + (this.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt((index + 0.5) / Math.max(1, UNITS.length)) * 0.7;
+            unitLocal.x = Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS;
+            unitLocal.y = Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS;
             unitLocal.vx = unitLocal.vy = 0;
           });
           this._rebuildUnitSpatialIndex(this.units);
@@ -10648,164 +9599,16 @@
         isWorker(unit) {
           return this._workerIds.has(unit.id);
         }
+        // The grain piles of the farm plot on screen.
         get piles() {
-          return this._piles;
-        }
-        // Piles, and the construction site among them, belong to the farm plot they stand in.
-        get _piles() {
           return pilesOf(this, this.activePlotId);
-        }
-        // The facilities of the farm plot that is on screen.
-        get facilities() {
-          return this.activeFarmPlot?.state.facilities ?? [];
         }
         workSwingOf(id) {
           return this._swings.get(id) || null;
         }
-        facilityLevel(id) {
-          return this.activeFarmPlot?.facilityLevel(id) ?? 0;
-        }
-        facilityBuilt(id) {
-          return this.facilityLevel(id) > 0;
-        }
-        // Base spec of a pile kind, with the granary's bonus applied.
-        pileSpec(kind) {
-          const BASE = CONFIG.farm.work.pileKinds[kind], LEVEL = kind === "grain" ? this.facilityLevel("granary") : 0;
-          return LEVEL > 0 ? { count: BASE.count + Math.ceil(LEVEL / 2), amount: BASE.amount + 4 * LEVEL } : BASE;
-        }
-        // The constructions going up in the farm plot on screen.
-        get buildSites() {
-          return sitesOf(this);
-        }
-        // Every construction in every farm plot.
-        get allBuildSites() {
-          const SITES = [];
-          for (const PLOT_ID of this._pilesByPlot.keys()) {
-            SITES.push(...sitesOf(this, PLOT_ID));
-          }
-          return SITES;
-        }
-        // The construction of a kind that is going up in a farm plot, if any.
-        siteOf(kind, plotId = this.activePlotId) {
-          return sitesOf(this, plotId).find((site) => site.facility === kind) || null;
-        }
-        // What the next construction of a kind is: facilities level up, a farm grows, or a new farm opens.
-        projectInfo(kind) {
-          const WORK = CONFIG.farm.work, FACILITY = WORK.facilities[kind], PROJECT = WORK.projects[kind];
-          let level;
-          if (FACILITY) {
-            level = this.facilityLevel(kind) + 1;
-            if (level > (FACILITY.maxLevel ?? WORK.facilityMaxLevel)) {
-              return null;
-            }
-          } else if (kind === "expand") {
-            if (!this.activeFarmPlot?.canExpand()) {
-              return null;
-            }
-            level = this.activeFarmPlot.capacityLevel + 1;
-          } else if (kind === "plot") {
-            level = this.playerProgression.farmPlots.plots.length;
-          } else if (kind === "mine") {
-            level = 1;
-          } else {
-            return null;
-          }
-          const SPEC = FACILITY || PROJECT, COST_FACTOR = SPEC.costGrowth ? SPEC.costGrowth ** (level - 1) : 1 + WORK.levelCostStep * (level - 1), HITS_FACTOR = 1 + WORK.levelHitsStep * (level - 1), ROUND = SPEC.costGrowth ? Math.round : Math.ceil;
-          return {
-            name: SPEC.name,
-            level,
-            cost: { wood: ROUND(SPEC.cost.wood * COST_FACTOR), stone: ROUND(SPEC.cost.stone * COST_FACTOR) },
-            hits: Math.ceil(SPEC.hits * HITS_FACTOR)
-          };
-        }
         // Settles the time the player was away; returns a summary, or null when nothing applies.
         settleOffline(seconds) {
           return applyOffline(this, CONFIG, seconds);
-        }
-        restoreBuildSite(data) {
-          restoreSite(this, data);
-        }
-        siteName(site) {
-          const SPEC = CONFIG.farm.work.facilities[site.facility] || CONFIG.farm.work.projects[site.facility];
-          return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
-        }
-        // Of the gatherers, the share that goes for wood (the rest go for stone), in basis points.
-        setWoodShare(basisPoints) {
-          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
-            return false;
-          }
-          if (basisPoints !== this.woodBasisPoints) {
-            this.woodBasisPoints = basisPoints;
-            this._nextWorkerRefreshTick = 0;
-            this.refreshWorkers();
-          }
-          return true;
-        }
-        // Starts a construction. The materials are paid up front; the work itself is done by the units.
-        startBuild(kind, { tile = -1 } = {}) {
-          const INFO = this.projectInfo(kind);
-          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || kind === "plot" && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile)) || kind === "mine" && !canBuildMine(this.worldMap, tile, this.activePlotId) || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
-            return false;
-          }
-          this.materials.wood -= INFO.cost.wood;
-          this.materials.stone -= INFO.cost.stone;
-          if (kind === "plot") {
-            beginFarmBuild(this.worldMap, tile);
-          }
-          let at = null;
-          if (kind === "plot" || kind === "mine") {
-            const HERE = this.worldMap.farms.find((farm) => farm.plotId === this.activePlotId);
-            at = {
-              x: (tileX(tile) - tileX(HERE.tile)) * FARM_CELL.width,
-              y: -(tileY(tile) - tileY(HERE.tile)) * FARM_CELL.height
-            };
-          }
-          startSite(this, CONFIG, kind, INFO.level, INFO.hits, this.activePlotId, at);
-          this._nextWorkerRefreshTick = 0;
-          this.refreshWorkers();
-          this.markProgressChanged();
-          return true;
-        }
-        completeFacility(site) {
-          if (site.facility === "expand") {
-            this.farmPlots.get(site.plotId)?.expand();
-            this.restoreReservePopulation();
-          } else if (site.facility === "plot") {
-            finishFarmBuild(this.worldMap, this._addFarmPlot());
-          } else if (site.facility === "mine") {
-            const HERE = this.worldMap.farms.find((farm) => farm.plotId === site.plotId);
-            if (HERE) {
-              buildMine(
-                this.worldMap,
-                tileIndex(
-                  tileX(HERE.tile) + Math.round(site.x / FARM_CELL.width),
-                  tileY(HERE.tile) - Math.round(site.y / FARM_CELL.height)
-                )
-              );
-            }
-          } else {
-            this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
-          }
-          if (this.allBuildSites.length === 0) {
-            this.buildRush = false;
-          }
-          this._nextWorkerRefreshTick = 0;
-          this.refreshWorkers();
-          this.markProgressChanged();
-        }
-        // Everyone drops what they are doing and rushes the construction site.
-        setBuildRush(on) {
-          const WANT = !!on && this.allBuildSites.length > 0;
-          if (WANT === this.buildRush) {
-            return WANT === !!on;
-          }
-          this.buildRush = WANT;
-          this._nextWorkerRefreshTick = 0;
-          this.refreshWorkers();
-          return true;
-        }
-        workKind(unit) {
-          return this._workerKinds.get(unit.id) || "food";
         }
         workOrder(unit) {
           return workOrder(this, unit);
@@ -10813,52 +9616,45 @@
         canBreedNow(unit) {
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
         }
-        // workers share of the farm, and the share of those workers that gather materials instead of grain.
-        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints, haulBasisPoints = this.haulBasisPoints, buildBasisPoints = this.buildBasisPoints, exploreBasisPoints = this.exploreBasisPoints) {
-          const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4;
-          if (!VALID(basisPoints) || !VALID(resourceBasisPoints) || !VALID(haulBasisPoints) || !VALID(buildBasisPoints) || !VALID(exploreBasisPoints) || resourceBasisPoints + haulBasisPoints + buildBasisPoints + exploreBasisPoints > 1e4) {
+        // The share of the farm that makes food instead of breeding, in basis points.
+        setWorkBasisPoints(basisPoints) {
+          if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
             return false;
           }
-          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints && haulBasisPoints === this.haulBasisPoints && buildBasisPoints === this.buildBasisPoints && exploreBasisPoints === this.exploreBasisPoints) {
-            return true;
+          if (basisPoints !== this.workBasisPoints) {
+            this.workBasisPoints = basisPoints;
+            this._nextWorkerRefreshTick = 0;
+            this.refreshWorkers();
           }
-          this.workBasisPoints = basisPoints;
-          this.resourceBasisPoints = resourceBasisPoints;
-          this.haulBasisPoints = haulBasisPoints;
-          this.buildBasisPoints = buildBasisPoints;
-          this.exploreBasisPoints = exploreBasisPoints;
-          this._nextWorkerRefreshTick = 0;
-          this.refreshWorkers();
           return true;
         }
-        // Workers are chosen per farm and per species so every species keeps a breeding pair.
+        // Workers are chosen per species so every species keeps a breeding pair.
         // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
         refreshWorkers() {
           const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map(), UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
-          const PLOT_WORKERS = /* @__PURE__ */ new Map();
+          let total = 0;
           if (this.scene === "farm") {
-            for (const PLOT_ID of this.farmPlots.keys()) {
-              const BY_SPECIES = /* @__PURE__ */ new Map(), RUSHING = this.buildRush && plotHasSite(this, PLOT_ID);
-              PLOT_WORKERS.set(PLOT_ID, []);
-              for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(PLOT_ID)) {
-                if (!UNIT_LOCAL.mature || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.isFormationClone || !this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL)) {
-                  continue;
-                }
-                if (!BY_SPECIES.has(UNIT_LOCAL.species)) {
-                  BY_SPECIES.set(UNIT_LOCAL.species, []);
-                }
-                BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
+            const BY_SPECIES = /* @__PURE__ */ new Map();
+            for (const UNIT_LOCAL of this.unitCollection.residentsInPlot(this.activePlotId)) {
+              if (!UNIT_LOCAL.mature || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.isFormationClone || !this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL)) {
+                continue;
               }
-              for (const LIST of BY_SPECIES.values()) {
-                LIST.sort((a, b) => a.id - b.id);
-                const COUNT = RUSHING ? LIST.length : Math.min(Math.floor(RATIO * LIST.length + 1e-9), Math.max(0, LIST.length - WORK.minBreeders));
-                for (let index = 0; index < COUNT; index++) {
-                  const WORKER = LIST[index];
-                  NEXT.add(WORKER.id);
-                  PLOT_WORKERS.get(PLOT_ID).push(WORKER.id);
-                  const UNIT_RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
-                  RATES.set(WORKER.id, UNIT_RATE * UPGRADE_RATE);
-                }
+              if (!BY_SPECIES.has(UNIT_LOCAL.species)) {
+                BY_SPECIES.set(UNIT_LOCAL.species, []);
+              }
+              BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
+            }
+            for (const LIST of BY_SPECIES.values()) {
+              LIST.sort((a, b) => a.id - b.id);
+              const COUNT = Math.min(
+                Math.floor(RATIO * LIST.length + 1e-9),
+                Math.max(0, LIST.length - WORK.minBreeders)
+              );
+              for (let index = 0; index < COUNT; index++) {
+                const WORKER = LIST[index], RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood * UPGRADE_RATE;
+                NEXT.add(WORKER.id);
+                RATES.set(WORKER.id, RATE);
+                total += RATE;
               }
             }
           }
@@ -10873,52 +9669,6 @@
           }
           this._workerIds = NEXT;
           this._workerRates = RATES;
-          this._workerKinds = /* @__PURE__ */ new Map();
-          this._workerPlots = /* @__PURE__ */ new Map();
-          this._workerResource = /* @__PURE__ */ new Map();
-          let total = 0;
-          for (const [PLOT_ID, IDS] of PLOT_WORKERS) {
-            const SORTED_WORKERS = IDS.sort((a, b) => a - b), PLOT_TOTAL = SORTED_WORKERS.length, RUSHING = this.buildRush && plotHasSite(this, PLOT_ID), BUILDERS = RUSHING ? PLOT_TOTAL : Math.min(
-              PLOT_TOTAL,
-              Math.max(
-                plotHasSite(this, PLOT_ID) ? 1 : 0,
-                Math.round(PLOT_TOTAL * this.buildBasisPoints / 1e4)
-              )
-            ), EXPLORERS = RUSHING ? 0 : Math.min(PLOT_TOTAL - BUILDERS, Math.round(PLOT_TOTAL * this.exploreBasisPoints / 1e4)), GATHERERS = RUSHING ? 0 : Math.min(
-              PLOT_TOTAL - BUILDERS - EXPLORERS,
-              Math.round(PLOT_TOTAL * this.resourceBasisPoints / 1e4)
-            ), HAULERS = RUSHING ? 0 : Math.min(
-              PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
-              Math.round(PLOT_TOTAL * this.haulBasisPoints / 1e4)
-            ), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
-              food: 1 + WORK.levelEffectStep * PLOT.facilityLevel("windmill"),
-              resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel("rack")
-            };
-            const COUNTS = {
-              build: BUILDERS,
-              food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS - HAULERS,
-              wood: Math.round(GATHERERS * this.woodBasisPoints / 1e4),
-              haul: HAULERS,
-              explore: EXPLORERS
-            }, POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
-            COUNTS.stone = GATHERERS - COUNTS.wood;
-            for (const ROLE of APTITUDE_ORDER) {
-              const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
-              for (const PICK of PICKED) {
-                const UNIT3 = PICK.unit, LEVEL = PICK.level;
-                POOL.splice(POOL.indexOf(UNIT3), 1);
-                const KIND = ROLE === "wood" || ROLE === "stone" ? "resource" : ROLE;
-                this._workerKinds.set(UNIT3.id, KIND);
-                this._workerPlots.set(UNIT3.id, PLOT_ID);
-                if (KIND === "resource") {
-                  this._workerResource.set(UNIT3.id, ROLE);
-                }
-                const BOOSTED = this._workerRates.get(UNIT3.id) * (MULTIPLIER[KIND] || 1) * APTITUDE_SPEED[LEVEL];
-                this._workerRates.set(UNIT3.id, BOOSTED);
-                total += BOOSTED;
-              }
-            }
-          }
           this._workCount = NEXT.size;
           this._workRate = total;
           assignWorkers(this, CONFIG);
@@ -10926,472 +9676,20 @@
         get warehouseFull() {
           return this.food.length >= CONFIG.farm.work.maxFood;
         }
-        get workerKindCounts() {
-          let resource = 0, haul = 0, build = 0, explore = 0;
-          for (const KIND of this._workerKinds.values()) {
-            resource += KIND === "resource" ? 1 : 0;
-            haul += KIND === "haul" ? 1 : 0;
-            build += KIND === "build" ? 1 : 0;
-            explore += KIND === "explore" ? 1 : 0;
-          }
-          return { food: this._workerKinds.size - resource - haul - build - explore, resource, haul, build, explore };
-        }
         get workerCount() {
           return this._workCount;
         }
-        // Exploring is paid for tile by tile. Every farm's explorers walk to their own tile and add to it once they have
-        // arrived. The farm on screen walks for real; any other farm, or this one while the farm is paused behind the map
-        // screen, walks by arithmetic at the same pace, so coming back to a farm finds its explorers where they would be.
-        // Nothing is explored while the game is closed.
-        tickExploration(seconds, walking = true) {
-          if (this.scene !== "farm") {
-            return;
-          }
-          for (const ID of [...this._fogClaims.keys()]) {
-            if (this._workerKinds.get(ID) !== "explore") {
-              this._fogClaims.delete(ID);
-            }
-          }
-          const WORK = /* @__PURE__ */ new Map();
-          for (const PLOT_ID of this.farmPlots.keys()) {
-            const GOAL = this.exploreGoal(PLOT_ID);
-            if (!GOAL) {
-              continue;
-            }
-            const REAL = walking && PLOT_ID === this.activePlotId;
-            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT_ID)) {
-              if (this._workerKinds.get(UNIT3.id) !== "explore") {
-                continue;
-              }
-              if (!REAL) {
-                this._walkExplorer(UNIT3, seconds);
-              }
-              if (!this.exploreOnSite(UNIT3)) {
-                continue;
-              }
-              const PIECE = this.fogPieceFor(UNIT3);
-              if (PIECE >= 0) {
-                const KEY2 = GOAL.tile * FOG_PIECES + PIECE;
-                WORK.set(KEY2, (WORK.get(KEY2) ?? 0) + (this._workerRates.get(UNIT3.id) || 0) * seconds);
-              }
-            }
-          }
-          for (const [KEY2, GAIN] of WORK) {
-            const TILE = Math.floor(KEY2 / FOG_PIECES), PIECE = KEY2 % FOG_PIECES, COST = fogPieceCost(this.worldMap, TILE), TOTAL = (this._pieceWork.get(KEY2) ?? 0) + GAIN;
-            if (TOTAL < COST) {
-              this._pieceWork.set(KEY2, TOTAL);
-              continue;
-            }
-            this._pieceWork.delete(KEY2);
-            liftFogPiece(this.worldMap, TILE, PIECE);
-            this.markProgressChanged();
-          }
-        }
-        // The piece an explorer has taken: it keeps it until it is lifted, and picks a piece no one else has otherwise,
-        // so explorers spread over the tile instead of crowding one piece.
-        fogPieceFor(unit) {
-          const GOAL = this.exploreGoal(unit.plotId);
-          if (!GOAL) {
-            return -1;
-          }
-          const HELD = this._fogClaims.get(unit.id);
-          if (HELD && HELD.tile === GOAL.tile && !(this.worldMap.progress[GOAL.tile] ?? []).includes(HELD.piece)) {
-            return HELD.piece;
-          }
-          const TAKEN = /* @__PURE__ */ new Set();
-          for (const [ID, CLAIM] of this._fogClaims) {
-            if (ID !== unit.id && CLAIM.tile === GOAL.tile) {
-              TAKEN.add(CLAIM.piece);
-            }
-          }
-          const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y, TAKEN);
-          if (PIECE >= 0) {
-            this._fogClaims.set(unit.id, { tile: GOAL.tile, piece: PIECE });
-          } else {
-            this._fogClaims.delete(unit.id);
-          }
-          return PIECE;
-        }
-        // The share of a tile's pieces being worked on but not yet lifted, for a smooth bar.
-        pieceWorkShare(tile) {
-          let share = 0;
-          const COST = fogPieceCost(this.worldMap, tile);
-          for (let piece = 0; piece < FOG_PIECES; piece++) {
-            share += Math.min(1, (this._pieceWork.get(tile * FOG_PIECES + piece) ?? 0) / COST);
-          }
-          return share;
-        }
-        // Gathering is two jobs, both done on the farm. Resource workers fight the tree or rock piles like workers fight
-        // grain piles; every fifth hit knocks a piece onto the ground (it comes out of the nearest forest or rock tile's
-        // stock). Haulers carry the pieces to the store, one at a time.
-        get fieldItems() {
-          return itemsOf(this, this.activePlotId);
-        }
-        // The bosses standing on their tiles of the map, in the farm's own coordinates, for drawing. The boss being
-        // fought is the world's own boss, so its tile is left out.
-        restingBosses(seconds = 0) {
-          this._resting ??= /* @__PURE__ */ new Map();
-          const SHIFT = this.battleShift() ?? { x: 0, y: 0 }, OUT = [], LIVE = /* @__PURE__ */ new Set();
-          for (const TILE of this.worldMap.bosses) {
-            if (this.farmBossEvent.phase !== "idle" && this.farmBossEvent.phase !== "dropping" && TILE === this.worldMap.challengeTile) {
-              continue;
-            }
-            LIVE.add(TILE);
-            const SPECIES = tileSpecies(this.worldMap, TILE);
-            let boss = this._resting.get(TILE);
-            if (!boss || boss.species !== SPECIES) {
-              boss = {
-                x: 0,
-                y: 0,
-                z: 0,
-                radius: CONFIG.boss.radius,
-                height: CONFIG.boss.height,
-                hp: 1,
-                maxHp: 1,
-                species: SPECIES,
-                stage: tileDanger(this.worldMap, TILE),
-                flash: 0,
-                travel: 0,
-                clock: 0,
-                angle: 0,
-                facing: 0,
-                patternPhase: "idle",
-                phase: "idle",
-                barleyArmorShredTotal: 0
-              };
-              this._resting.set(TILE, boss);
-            }
-            const AT = this.tileOffset(this.activePlotId, TILE);
-            boss.x = AT.x - SHIFT.x;
-            boss.y = AT.y - SHIFT.y;
-            boss.clock = seconds + TILE * 0.37;
-            OUT.push(boss);
-          }
-          for (const TILE of [...this._resting.keys()]) {
-            if (!LIVE.has(TILE)) {
-              this._resting.delete(TILE);
-            }
-          }
-          return OUT;
-        }
-        // The tile's centre in the farm's own coordinates.
-        tileOffset(plotId, tile) {
-          const HERE = this.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile;
-          return HERE === void 0 ? { x: 0, y: 0 } : { x: (tileX(tile) - tileX(HERE)) * FARM_CELL.width, y: -(tileY(tile) - tileY(HERE)) * FARM_CELL.height };
-        }
-        // The haulers of the farm on screen. Farms out of sight settle their resources in tickIdleWork.
-        tickHauling(seconds, walking = true) {
-          if (this.scene !== "farm" || !walking) {
-            return;
-          }
-          stepCarriers(this, seconds);
-        }
-        // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
-        // rate (builders hit the site, food workers feed the warehouse). Resource workers and haulers are settled by settleResourcesAway.
-        tickIdleWork(seconds) {
-          if (this.scene !== "farm") {
-            return;
-          }
-          const CARRY = this._idleCarry;
-          for (const PLOT_ID of this.farmPlots.keys()) {
-            if (PLOT_ID === this.activePlotId || PLOT_ID === RESERVE_PLOT_ID) {
-              this._idleLead.delete(PLOT_ID);
-              continue;
-            }
-            let lead = this._idleLead.get(PLOT_ID);
-            if (lead === void 0) {
-              const SITE = sitesOf(this, PLOT_ID)[0];
-              lead = SITE ? Math.hypot(SITE.x || 0, SITE.y || 0) / (7 * EXPLORE_WALK_RATIO) : 4;
-            }
-            const WALK = Math.min(lead, seconds), WORK = seconds - WALK;
-            this._idleLead.set(PLOT_ID, lead - WALK);
-            if (!(WORK > 0)) {
-              continue;
-            }
-            let food = 0, build = 0;
-            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT_ID)) {
-              const RATE = this._workerRates.get(UNIT3.id) || 0, KIND = this._workerKinds.get(UNIT3.id);
-              if (KIND === "food") {
-                food += RATE;
-              } else if (KIND === "build") {
-                build += RATE;
-              }
-            }
-            if (build > 0 && plotHasSite(this, PLOT_ID)) {
-              spreadBuildHits(this, PLOT_ID, build * HITS_PER_WORK * WORK);
-            }
-            settleResourcesAway(this, PLOT_ID, WORK);
-            CARRY.food += food * WORK;
-          }
-          const FOOD2 = Math.floor(CARRY.food);
-          if (FOOD2 > 0) {
-            CARRY.food -= FOOD2;
-            this.warehouseFood = Math.min(CONFIG.farm.work.warehouseLimit, this.warehouseFood + FOOD2);
-            this.markProgressChanged();
-          }
-        }
-        // Where a farm's explorers are headed: its own tile to explore, how far that is, and how fast the ground lets
-        // them go. Positions are in that farm's own coordinates.
-        exploreGoal(plotId) {
-          const MAP = this.worldMap, REACH = farmReachOf(MAP, plotId), KEY2 = `${MAP.revealed.length}|${MAP.exploreTarget}|${MAP.farms.length}|${REACH}`, CACHED = this._exploreGoals.get(plotId);
-          if (CACHED?.key === KEY2) {
-            return CACHED.goal;
-          }
-          const TARGET = exploreTargetFor(MAP, plotId), HERE = MAP.farms.find((farm) => farm.plotId === plotId)?.tile;
-          let goal = null;
-          if (TARGET >= 0 && HERE !== void 0) {
-            const DX = tileX(TARGET) - tileX(HERE), DY = tileY(TARGET) - tileY(HERE);
-            goal = {
-              tile: TARGET,
-              x: DX * FARM_CELL.width,
-              y: -DY * FARM_CELL.height,
-              // The ground sets the pace: through swamp and over rock explorers go slower.
-              speed: 7 * EXPLORE_PACE[tileTerrain(MAP, TARGET)]
-            };
-          }
-          this._exploreGoals.set(plotId, { key: KEY2, goal });
-          return goal;
-        }
-        // Where an explorer goes: to the nearest piece of fog in its tile, wherever that tile is inside the farm's
-        // sight. Without a piece left to lift it stays where it is.
-        exploreSpot(unit) {
-          const GOAL = this.exploreGoal(unit.plotId);
-          if (!GOAL) {
-            return null;
-          }
-          const PIECE = this.fogPieceFor(unit);
-          if (PIECE < 0) {
-            return null;
-          }
-          const C = fogPieceCenter(PIECE), X = GOAL.x + C.x, Y = GOAL.y + C.y;
-          return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 1.8, travel: GOAL.speed * 1.8 };
-        }
-        // The same walk as a straight line, for explorers of a farm that is not being simulated.
-        _walkExplorer(unit, seconds) {
-          const SPOT = this.exploreSpot(unit);
-          if (!SPOT) {
-            return;
-          }
-          const DX = SPOT.x - unit.x, DY = SPOT.y - unit.y, DISTANCE = Math.hypot(DX, DY);
-          if (SPOT.out) {
-            unit.workOut = true;
-          }
-          if (DISTANCE <= 0.4) {
-            return;
-          }
-          const STEP = Math.min(DISTANCE, (DISTANCE > 10 ? SPOT.travel : SPOT.speed) * EXPLORE_WALK_RATIO * seconds);
-          unit.x += DX / DISTANCE * STEP;
-          unit.y += DY / DISTANCE * STEP;
-          unit.angle = Math.atan2(DY, DX);
-        }
-        // Is this explorer standing on its piece of fog? Only then does it work; on the way it is just walking.
-        exploreOnSite(unit) {
-          const GOAL = this.exploreGoal(unit.plotId);
-          if (!GOAL) {
-            return false;
-          }
-          const PIECE = this.fogPieceFor(unit);
-          if (PIECE < 0) {
-            return false;
-          }
-          const C = fogPieceCenter(PIECE);
-          return Math.hypot(unit.x - GOAL.x - C.x, unit.y - GOAL.y - C.y) <= 1.5;
-        }
-        // Explorers of every farm that are on their tile right now.
-        get exploreOnSiteCount() {
-          let count = 0;
-          for (const PLOT_ID of this.farmPlots.keys()) {
-            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT_ID)) {
-              count += this._workerKinds.get(UNIT3.id) === "explore" && this.exploreOnSite(UNIT3) ? 1 : 0;
-            }
-          }
-          return count;
-        }
-        // Exploration points per second from the explorers of every farm, wherever they are standing.
-        get exploreRate() {
-          let rate = 0;
-          for (const [ID, KIND] of this._workerKinds) {
-            if (KIND === "explore") {
-              rate += this._workerRates.get(ID) || 0;
-            }
-          }
-          return rate;
-        }
-        // What a farm's explorers are doing: none, all still on their way to the tile, or at work in it.
-        exploreStatus(plotId = this.activePlotId) {
-          let workers = 0, onSite = 0;
-          for (const UNIT3 of this.unitCollection.unitsInPlot(plotId)) {
-            if (this._workerKinds.get(UNIT3.id) === "explore") {
-              workers++;
-              onSite += this.exploreOnSite(UNIT3) ? 1 : 0;
-            }
-          }
-          const PHASE = workers === 0 ? "none" : !this.exploreGoal(plotId) ? "idle" : onSite === 0 ? "moving" : "working";
-          return { phase: PHASE, workers, onSite };
-        }
-        // The targets the farms are exploring now, with how far along each one is.
-        get exploreTargets() {
-          const GROUPS = [];
-          for (const FARM of this.worldMap.farms) {
-            const GOAL = this.exploreGoal(FARM.plotId);
-            if (!GOAL) {
-              continue;
-            }
-            let count = 0;
-            for (const UNIT3 of this.unitCollection.unitsInPlot(FARM.plotId)) {
-              count += this._workerKinds.get(UNIT3.id) === "explore" ? 1 : 0;
-            }
-            GROUPS.push({
-              tile: GOAL.tile,
-              from: FARM.tile,
-              count,
-              progress: exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile))
-            });
-          }
-          return GROUPS;
-        }
-        // How far along the tile the farm on screen is exploring.
-        get exploreProgress() {
-          const GOAL = this.exploreGoal(this.activePlotId);
-          return GOAL ? exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile)) : 0;
-        }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
-          return this._attackRate("food") * 60;
-        }
-        get workResourcePerMinute() {
-          return this._attackRate("resource") * 60;
-        }
-        _attackRate(kind) {
           let rate = 0;
-          if (kind === "resource") {
-            for (const UNIT3 of this.units) {
-              rate += this.isWorker(UNIT3) && this._workerKinds.get(UNIT3.id) === "resource" ? this._workerRates.get(UNIT3.id) || 0 : 0;
-            }
-            return rate;
-          }
           for (const [ID, ASSIGN] of this._workAssign) {
-            if (ASSIGN.attacking && this._workerKinds.get(ID) === kind) {
+            if (ASSIGN.attacking) {
               rate += this._workerRates.get(ID) || 0;
             }
           }
-          return rate;
+          return rate * 60;
         }
-        // Farms on neighbouring tiles of the shared map; a resting unit may walk across the border to one that has room.
-        _neighbourPlots() {
-          const FARMS = this.worldMap.farms, HERE = FARMS.find((farm) => farm.plotId === this.activePlotId);
-          if (!HERE) {
-            return [];
-          }
-          return FARMS.filter(
-            (farm) => farm !== HERE && Math.max(
-              Math.abs(tileX(farm.tile) - tileX(HERE.tile)),
-              Math.abs(tileY(farm.tile) - tileY(HERE.tile))
-            ) === 1
-          ).map((farm) => ({
-            plotId: farm.plotId,
-            // The way out, in this farm's coordinates (the map's y runs down the screen, the farm's up).
-            dx: tileX(farm.tile) - tileX(HERE.tile),
-            dy: -(tileY(farm.tile) - tileY(HERE.tile))
-          }));
-        }
-        // Resting units of the farms next to this one stroll to their own spots; only their positions change.
-        _stepNeighbours(seconds) {
-          let budget = this.neighbourWalkers;
-          if (!(budget > 0)) {
-            return;
-          }
-          const ARENA = CONFIG.farm.arena;
-          for (const PLOT of this._neighbourPlots()) {
-            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT.plotId)) {
-              if (budget <= 0) {
-                return;
-              }
-              if (UNIT3.hp <= 0 || this.isWorker(UNIT3)) {
-                continue;
-              }
-              budget--;
-              const SPOT = restingSpot(UNIT3, this.time, ARENA), DX = SPOT.x - UNIT3.x, DY = SPOT.y - UNIT3.y, DISTANCE = Math.hypot(DX, DY);
-              if (DISTANCE > 0.5) {
-                const STEP = Math.min(DISTANCE, scaleMoveSpeed(1.3, UNIT3) * seconds);
-                UNIT3.x += DX / DISTANCE * STEP;
-                UNIT3.y += DY / DISTANCE * STEP;
-                UNIT3.angle = Math.atan2(DY, DX);
-              }
-            }
-          }
-        }
-        _fillOf(plotId) {
-          const PLOT = this.farmPlots.get(plotId);
-          return PLOT ? (this.roster.placedPopulation(plotId) + (this._breedPlotReservations.get(plotId) || 0)) / PLOT.capacity : 1;
-        }
-        _stepMigration(seconds) {
-          const SETTINGS = CONFIG.farm.work.migration;
-          this._migrationClock = (this._migrationClock || 0) + seconds;
-          if (this._migrationClock < SETTINGS.intervalSeconds || this.farmBossEvent?.phase !== "idle") {
-            return;
-          }
-          this._migrationClock = 0;
-          if (this.units.some((unit) => unit.migrate)) {
-            return;
-          }
-          const TARGET = this._migrationTarget();
-          if (!TARGET) {
-            return;
-          }
-          const RESIDENTS = this.unitCollection.residentsInPlot(this.activePlotId), COUNTS = /* @__PURE__ */ new Map();
-          for (const UNIT3 of RESIDENTS) {
-            COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
-          }
-          const CANDIDATES = RESIDENTS.filter((unit) => this._mayMigrate(unit, COUNTS));
-          if (CANDIDATES.length) {
-            CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
-              plotId: TARGET.plotId,
-              dx: TARGET.dx,
-              dy: TARGET.dy
-            };
-          }
-        }
-        _migrationTarget() {
-          const SETTINGS = CONFIG.farm.work.migration, HERE = this._fillOf(this.activePlotId);
-          let target = null;
-          for (const NEIGHBOUR of this._neighbourPlots()) {
-            const FILL = this._fillOf(NEIGHBOUR.plotId);
-            if (HERE - FILL >= SETTINGS.emptierBy && FILL < SETTINGS.neighbourMaxFill && (!target || FILL < target.fill)) {
-              target = { ...NEIGHBOUR, fill: FILL };
-            }
-          }
-          return target;
-        }
-        _mayMigrate(unit, counts) {
-          return !this.isWorker(unit) && !unit.mateId && !this.breedPlanFor(unit) && unit.hp > 0 && (counts.get(unit.species) || 0) > 2;
-        }
-        // One step of a unit on its way to the border; it crosses when it gets there. False when it no longer goes.
-        stepMigrant(unit, dt) {
-          const MIGRATE = unit.migrate, TARGET = MIGRATE && this._neighbourPlots().find((plot) => plot.plotId === MIGRATE.plotId);
-          if (!TARGET || unit.plotId !== this.activePlotId || this.isWorker(unit) || this._fillOf(TARGET.plotId) >= CONFIG.farm.work.migration.neighbourMaxFill) {
-            delete unit.migrate;
-            return false;
-          }
-          const ARENA = CONFIG.farm.arena, X = TARGET.dx === 0 ? unit.x : TARGET.dx * (ARENA.radiusX - 0.9), Y = TARGET.dy === 0 ? unit.y : TARGET.dy * (ARENA.radiusY - 0.9);
-          if (Math.hypot(X - unit.x, Y - unit.y) > 1.2) {
-            this.steer(unit, X, Y, dt, scaleMoveSpeed(1.7, unit));
-            return true;
-          }
-          delete unit.migrate;
-          if (this.unitCollection.moveUnitsToPlots([{ unitId: unit.id, plotId: TARGET.plotId }])) {
-            if (TARGET.dx !== 0) {
-              unit.x = -TARGET.dx * (ARENA.radiusX - 1.1);
-            }
-            if (TARGET.dy !== 0) {
-              unit.y = -TARGET.dy * (ARENA.radiusY - 1.1);
-            }
-            unit.moveControlVx = unit.moveControlVy = unit.vx = unit.vy = 0;
-            this.markProgressChanged();
-          }
-          return true;
-        }
-        advanceAutoTaps(elapsed) {
+        advanceWork(elapsed) {
           if (!Number.isFinite(elapsed) || elapsed <= 0) {
             return;
           }
@@ -11401,17 +9699,6 @@
           }
           if (this.scene === "farm") {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
-            this.tickExploration(Math.min(elapsed, 0.1));
-            this.tickIdleWork(Math.min(elapsed, 0.1));
-            this.tickHauling(Math.min(elapsed, 0.1));
-            if (this.farmBossEvent.phase === "idle" && this.worldMap.challengeTile >= 0) {
-              this.worldMap.challengeTile = -1;
-            }
-            if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
-              this.markProgressChanged();
-            }
-            this._stepMigration(Math.min(elapsed, 0.1));
-            this._stepNeighbours(Math.min(elapsed, 0.1));
           }
         }
         spawnFood(x, y, count = 1, { from = null } = {}) {
@@ -11447,9 +9734,9 @@
           }
           return spawned;
         }
-        // Challenge the boss on a tile of the map: the farm's units march out to its tile and fight there, all of them.
-        startMapBossFight(tile) {
-          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || !inReach(this.worldMap, tile, this.activePlotId) || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0 && u.plotId !== RESERVE_PLOT_ID) || !beginChallenge(this.worldMap, tile)) {
+        // Challenge the next boss: every unit of the farm fights it, and its stage is where the farm's fights have got to.
+        startBossFight() {
+          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0 && u.plotId !== RESERVE_PLOT_ID)) {
             return false;
           }
           for (const UNIT_LOCAL of this.units) {
@@ -11459,10 +9746,10 @@
               UNIT_LOCAL.chestnutNextThornTick = 0;
             }
           }
-          const SPECIES = tileSpecies(this.worldMap, tile);
+          const SPECIES = this.randomBossSpecies();
           this.boss = this.createBoss(SPECIES);
-          this.configureBossStage(tileDanger(this.worldMap, tile), SPECIES);
-          Object.assign(this.boss, { x: 0, y: 0, z: 0, active: true });
+          this.configureBossStage(this.playerProgression.farmBossEventStage, SPECIES);
+          Object.assign(this.boss, { x: 0, y: 0, z: CONFIG.battle.dropHeight, active: true });
           this.farmBossEvent = {
             phase: "dropping",
             elapsed: 0,
@@ -11505,21 +9792,6 @@
             this.farmBossEvent.elapsed = 0;
           }
           return this.finishFarmBossEvent("defeat");
-        }
-        // Where the farm's units are drawn while they march out to the boss's tile and fight on it: the fight itself
-        // is simulated on the farm's own ground, and the picture of it is moved onto the tile.
-        battleShift() {
-          const TILE = this.worldMap.challengeTile ?? -1, EVENT = this.farmBossEvent;
-          if (TILE < 0 || EVENT.phase === "idle") {
-            return null;
-          }
-          const AT = this.tileOffset(this.activePlotId, TILE), K = EVENT.phase === "dropping" ? Math.min(1, EVENT.elapsed / CONFIG.farm.bossEvent.marchSeconds) : EVENT.phase === "fading" ? 1 - Math.min(1, EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds) : 1, EASE = K * K * (3 - 2 * K);
-          return { x: AT.x * EASE, y: AT.y * EASE };
-        }
-        // The fight is over and the units are home: the boss is gone if it lost, and stays if it won.
-        endMapFight(victory) {
-          finishChallenge(this.worldMap, victory);
-          this.markProgressChanged();
         }
         getBossAcquisitionChance({ farmEvent = false } = {}) {
           return bossAcquisitionChance({
@@ -12932,11 +11204,11 @@
                 if (UNIT_LOCAL.z > OTHER.z + OTHER.height || OTHER.z > UNIT_LOCAL.z + UNIT_LOCAL.height) {
                   continue;
                 }
-                const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), RADIUS2 = UNIT_LOCAL.radius + OTHER.radius, INVERSE_MASS_B = inverseBodyMass(OTHER), INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
+                const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), RADIUS = UNIT_LOCAL.radius + OTHER.radius, INVERSE_MASS_B = inverseBodyMass(OTHER), INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
                 if (INVERSE_MASS_SUM <= 0) {
                   continue;
                 }
-                const SOFT = DISTANCE >= RADIUS2 && DISTANCE < RADIUS2 + 0.22 && UNIT_LOCAL.z < 0.1 && OTHER.z < 0.1 && UNIT_LOCAL.ability.phase === "idle" && OTHER.ability.phase === "idle", TARGET_DISTANCE = SOFT ? RADIUS2 + 0.22 : RADIUS2;
+                const SOFT = DISTANCE >= RADIUS && DISTANCE < RADIUS + 0.22 && UNIT_LOCAL.z < 0.1 && OTHER.z < 0.1 && UNIT_LOCAL.ability.phase === "idle" && OTHER.ability.phase === "idle", TARGET_DISTANCE = SOFT ? RADIUS + 0.22 : RADIUS;
                 if (DISTANCE >= TARGET_DISTANCE) {
                   continue;
                 }
@@ -12994,11 +11266,11 @@
             if (!areOpposingFactions(UNIT_LOCAL, BOSS2) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || UNIT_LOCAL.z > BOSS2.height || inverseBodyMass(UNIT_LOCAL) <= 0) {
               continue;
             }
-            const DX = UNIT_LOCAL.x - BOSS2.x, DY = UNIT_LOCAL.y - BOSS2.y, DISTANCE = Math.hypot(DX, DY), RADIUS2 = BOSS2.radius + UNIT_LOCAL.radius;
-            if (DISTANCE >= RADIUS2) {
+            const DX = UNIT_LOCAL.x - BOSS2.x, DY = UNIT_LOCAL.y - BOSS2.y, DISTANCE = Math.hypot(DX, DY), RADIUS = BOSS2.radius + UNIT_LOCAL.radius;
+            if (DISTANCE >= RADIUS) {
               continue;
             }
-            const ANGLE = DISTANCE > 1e-6 ? 0 : UNIT_LOCAL.seed, NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE), NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE), INDEX = this._unitStepOrder.get(UNIT_LOCAL), OVERLAP = RADIUS2 - DISTANCE, INWARD = UNIT_LOCAL.vx * NORMAL_X + UNIT_LOCAL.vy * NORMAL_Y;
+            const ANGLE = DISTANCE > 1e-6 ? 0 : UNIT_LOCAL.seed, NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE), NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE), INDEX = this._unitStepOrder.get(UNIT_LOCAL), OVERLAP = RADIUS - DISTANCE, INWARD = UNIT_LOCAL.vx * NORMAL_X + UNIT_LOCAL.vy * NORMAL_Y;
             CORRECTION_X[INDEX] += NORMAL_X * OVERLAP;
             CORRECTION_Y[INDEX] += NORMAL_Y * OVERLAP;
             CORRECTION_COUNT[INDEX]++;
@@ -13064,14 +11336,14 @@
         _collectBattlePairs(units) {
           this._battlePairCount = 0;
           this._cacheBattleBodies(units);
-          const RADIUS2 = this._battleRadius, HEIGHT = this._battleHeight;
+          const RADIUS = this._battleRadius, HEIGHT = this._battleHeight;
           const MARGIN = CONFIG.physics.battleNeighborMargin, RESERVED = this.unitCollection.reservations.size > 0;
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
             if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || RESERVED && this.isMergeTaskMaterial(UNIT_LOCAL)) {
               continue;
             }
-            const QUERY_RADIUS = RADIUS2[i] + CONFIG.unit.maxRadius + MARGIN, PENDING = this._contactPending;
+            const QUERY_RADIUS = RADIUS[i] + CONFIG.unit.maxRadius + MARGIN, PENDING = this._contactPending;
             this.unitSpatial.queryAABB(
               UNIT_LOCAL.x - QUERY_RADIUS,
               UNIT_LOCAL.y - QUERY_RADIUS,
@@ -13088,7 +11360,7 @@
               if (UNIT_LOCAL.z > OTHER.z + HEIGHT[J] || OTHER.z > UNIT_LOCAL.z + HEIGHT[i]) {
                 continue;
               }
-              const REACH = RADIUS2[i] + RADIUS2[J] + MARGIN, DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y;
+              const REACH = RADIUS[i] + RADIUS[J] + MARGIN, DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y;
               if (DX * DX + DY * DY < REACH * REACH) {
                 PENDING.push(J);
               }
@@ -13117,7 +11389,7 @@
           if (this._battleMoved.length < units.length) {
             this._battleMoved = new Uint8Array(this._contactCorrectionX.length);
           }
-          const CORRECTION_X = this._contactCorrectionX, CORRECTION_Y = this._contactCorrectionY, CORRECTION_COUNT = this._contactCorrectionCount, MOVED = this._battleMoved, PAIR_A = this._battlePairA, PAIR_B = this._battlePairB, PAIR_OPPOSING = this._battlePairOpposing, RADIUS2 = this._battleRadius, INVERSE_MASS = this._battleInverseMass, ITERATIONS = CONFIG.physics.battleSeparationIterations, RELAXATION = CONFIG.physics.separationRelaxation, ALLY_SCALE = 1 - CONFIG.physics.battleAllyOverlap;
+          const CORRECTION_X = this._contactCorrectionX, CORRECTION_Y = this._contactCorrectionY, CORRECTION_COUNT = this._contactCorrectionCount, MOVED = this._battleMoved, PAIR_A = this._battlePairA, PAIR_B = this._battlePairB, PAIR_OPPOSING = this._battlePairOpposing, RADIUS = this._battleRadius, INVERSE_MASS = this._battleInverseMass, ITERATIONS = CONFIG.physics.battleSeparationIterations, RELAXATION = CONFIG.physics.separationRelaxation, ALLY_SCALE = 1 - CONFIG.physics.battleAllyOverlap;
           MOVED.fill(0, 0, units.length);
           for (let iteration = 0; iteration < ITERATIONS; iteration++) {
             CORRECTION_X.fill(0, 0, units.length);
@@ -13129,7 +11401,7 @@
               if (INVERSE_MASS_SUM <= 0) {
                 continue;
               }
-              const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), TARGET_DISTANCE = (RADIUS2[I] + RADIUS2[J]) * (PAIR_OPPOSING[p] ? 1 : ALLY_SCALE);
+              const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), TARGET_DISTANCE = (RADIUS[I] + RADIUS[J]) * (PAIR_OPPOSING[p] ? 1 : ALLY_SCALE);
               if (DISTANCE >= TARGET_DISTANCE) {
                 continue;
               }
@@ -13151,7 +11423,7 @@
                 continue;
               }
               let deltaX = CORRECTION_X[i] / COUNT_LOCAL, deltaY = CORRECTION_Y[i] / COUNT_LOCAL;
-              const LENGTH = Math.hypot(deltaX, deltaY), MAX_CORRECTION = Math.max(0.05, RADIUS2[i] * 1.25);
+              const LENGTH = Math.hypot(deltaX, deltaY), MAX_CORRECTION = Math.max(0.05, RADIUS[i] * 1.25);
               if (LENGTH > MAX_CORRECTION) {
                 const SCALE = MAX_CORRECTION / LENGTH;
                 deltaX *= SCALE;
@@ -13159,7 +11431,7 @@
               }
               UNIT_LOCAL.x += deltaX;
               UNIT_LOCAL.y += deltaY;
-              this.boundBody(UNIT_LOCAL, this.scene, RADIUS2[i]);
+              this.boundBody(UNIT_LOCAL, this.scene, RADIUS[i]);
               MOVED[i] = 1;
             }
             this.metrics.physicsSolverIterations++;
@@ -13210,7 +11482,7 @@
           }
         }
         avoidNearbyFood(u, dt) {
-          const RADIUS2 = 1.25;
+          const RADIUS = 1.25;
           let pushX = 0;
           let pushY = 0;
           let strongest = 0;
@@ -13219,7 +11491,7 @@
           if (!this._spatialStepActive) {
             this._rebuildFoodSpatialIndex();
           }
-          this.foodSpatial.queryAABB(u.x - RADIUS2, u.y - RADIUS2, u.x + RADIUS2, u.y + RADIUS2, this._foodCandidates);
+          this.foodSpatial.queryAABB(u.x - RADIUS, u.y - RADIUS, u.x + RADIUS, u.y + RADIUS, this._foodCandidates);
           this._foodCandidates.sort(
             (a, b) => (this._foodOrder.get(a) ?? Infinity) - (this._foodOrder.get(b) ?? Infinity)
           );
@@ -13228,10 +11500,10 @@
               continue;
             }
             const DX = u.x - FOOD2.x, DY = u.y - FOOD2.y, DISTANCE = Math.hypot(DX, DY);
-            if (DISTANCE >= RADIUS2) {
+            if (DISTANCE >= RADIUS) {
               continue;
             }
-            const STRENGTH = 1 - DISTANCE / RADIUS2, WEIGHT = STRENGTH * STRENGTH;
+            const STRENGTH = 1 - DISTANCE / RADIUS, WEIGHT = STRENGTH * STRENGTH;
             if (DISTANCE < nearestDistance) {
               nearestDistance = DISTANCE;
               nearest = FOOD2;
@@ -14334,19 +12606,19 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS2 = (0, import_definition50.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition50.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
           for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
               x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
               y: B_LOCAL.y + Math.sin(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius
             };
-            if (!ARENA_GEOMETRY.inside(CANDIDATE, SCENE, RADIUS2)) {
+            if (!ARENA_GEOMETRY.inside(CANDIDATE, SCENE, RADIUS)) {
               continue;
             }
             const BLOCKED = this.units.some(
-              (unit) => unit.hp > 0 && Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS2 + unit.radius + 0.08
+              (unit) => unit.hp > 0 && Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS + unit.radius + 0.08
             ) || (action?.landingPoints || []).some(
-              (point2) => Math.hypot(point2.x - CANDIDATE.x, point2.y - CANDIDATE.y) < RADIUS2 * 2 + 0.08
+              (point2) => Math.hypot(point2.x - CANDIDATE.x, point2.y - CANDIDATE.y) < RADIUS * 2 + 0.08
             );
             if (!BLOCKED) {
               return CANDIDATE;
@@ -14549,18 +12821,6 @@
   });
 
   // src/farm-progress.js
-  function copySite(site) {
-    const COPY = {
-      facility: site.facility,
-      level: site.level,
-      x: site.x,
-      y: site.y,
-      done: site.done,
-      need: site.need,
-      plotId: site.plotId
-    };
-    return COPY;
-  }
   function keys(value, required, optional = []) {
     ASSERT(value && typeof value === "object" && !Array.isArray(value));
     ASSERT(required.every((key) => Object.hasOwn(value, key)));
@@ -14666,9 +12926,7 @@
       GROUPS.set(KEY2, ROW);
     }
     const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
-    const SITES = world.allBuildSites;
     return {
-      worldMap: structuredClone(world.worldMap),
       seed: world.seed,
       rngState: world.rng.state,
       nextId: world.nextId,
@@ -14679,9 +12937,7 @@
         autoClock: world.foodTaps.autoClock,
         remainder: world.foodTaps.remainder,
         produced: world.foodTaps.produced,
-        materials: { wood: world.materials.wood, stone: world.materials.stone },
-        plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length })),
-        sites: SITES.map(copySite)
+        plots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, count: plot.food.length }))
       },
       totals: {
         births: world.metrics.births,
@@ -14703,7 +12959,7 @@
     };
   }
   function validateFarmProgress(data) {
-    keys(data, ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "ledger"], ["mode", "worldMap"]);
+    keys(data, ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "ledger"], ["mode"]);
     ASSERT(
       INTEGER(data.seed, 0, 4294967295) && INTEGER(data.rngState, 0, 4294967295) && INTEGER(data.nextId, 1, CONFIG.farm.maxUnitId + 1) && (data.mode === void 0 || ["breed", "merge"].includes(data.mode))
     );
@@ -14769,20 +13025,7 @@
     }
     ASSERT([...PLACED_COUNTS].every(([plotId, count]) => count <= PLOT_CAPACITY.get(plotId)));
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots", "sites"], ["materials"]);
-    ASSERT(Array.isArray(data.food.sites) && data.food.sites.length <= 64);
-    const SEEN_SITES = /* @__PURE__ */ new Set();
-    for (const SITE of data.food.sites) {
-      keys(SITE, ["facility", "level", "x", "y", "done", "need", "plotId"]);
-      ASSERT(
-        (Object.hasOwn(CONFIG.farm.work.facilities, SITE.facility) || Object.hasOwn(CONFIG.farm.work.projects, SITE.facility)) && INTEGER(SITE.level, 1, 99) && INTEGER(SITE.need, 1, 1e5) && INTEGER(SITE.done, 0, SITE.need - 1) && Number.isFinite(SITE.x) && Number.isFinite(SITE.y) && PLOT_CAPACITY.has(SITE.plotId) && !SEEN_SITES.has(`${SITE.plotId}:${SITE.facility}`)
-      );
-      SEEN_SITES.add(`${SITE.plotId}:${SITE.facility}`);
-    }
-    if (data.food.materials !== void 0) {
-      keys(data.food.materials, ["wood", "stone"]);
-      ASSERT(SAFE_INTEGER(data.food.materials.wood) && SAFE_INTEGER(data.food.materials.stone));
-    }
+    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "plots"]);
     ASSERT(
       SAFE_INTEGER(data.food.warehouse) && NUMBER3(data.food.autoClock, 0, 0.51) && data.food.autoClock < 0.51 && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced) && Array.isArray(data.food.plots) && data.food.plots.length === PLAYER.farmPlots.plots.length
     );
@@ -14793,9 +13036,6 @@
     }
     keys(data.totals, ["births", "merges"]);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
-    ASSERT(
-      data.worldMap === void 0 || isValidWorldMap(data.worldMap) && data.worldMap.farms.every((farm) => PLAYER.farmPlots.plots.some((plot) => plot.id === farm.plotId))
-    );
     const LEDGER = data.ledger;
     keys(LEDGER, ["boss"]);
     const BOSS2 = LEDGER.boss;
@@ -14923,10 +13163,10 @@
     return KEYS_A.length === KEYS_B.length && KEYS_A.every((key) => Object.hasOwn(b, key) && sameFarmProgress(a[key], b[key]));
   }
   function position(index, count, seed, scale) {
-    const ANGLE = index * 2.399963229728653 + seed % 6283 / 1e3, RADIUS2 = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
+    const ANGLE = index * 2.399963229728653 + seed % 6283 / 1e3, RADIUS = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
     return {
-      x: Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS2,
-      y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS2
+      x: Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS,
+      y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS
     };
   }
   function restoreFarmProgress(data) {
@@ -14939,13 +13179,6 @@
     WORLD.activePlotId = WORLD.playerProgression.farmPlots.currentPlotId;
     WORLD.farmPlots = new Map(WORLD.playerProgression.farmPlots.plots.map((plot) => [plot.id, new FarmPlot(plot)]));
     WORLD.warehouseFood = data.food.warehouse;
-    WORLD.materials = { wood: data.food.materials?.wood ?? 0, stone: data.food.materials?.stone ?? 0 };
-    for (const SITE of data.food.sites) {
-      WORLD.restoreBuildSite(SITE);
-    }
-    if (data.worldMap !== void 0) {
-      WORLD.worldMap = { challengeTile: -1, buildTile: -1, ...structuredClone(data.worldMap) };
-    }
     Object.assign(WORLD.metrics, data.totals);
     const PLOT_COUNTS = /* @__PURE__ */ new Map();
     for (const ROW of data.roster) {
@@ -15029,7 +13262,6 @@
       init_boss_rewards();
       init_farm_plot();
       init_farm_upgrades();
-      init_world_map();
       FAIL = () => {
         throw new TypeError("올바른 농장 진행 저장 데이터가 아니에요.");
       };
@@ -15074,7 +13306,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.20";
+      PRODUCT_VERSION = "0.22.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15748,13 +13980,13 @@
   // src/features/formation-skills/giant/presentation.js
   var GiantPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS2 = Math.max(0.3, effect.radius || 0.3);
-      renderer.ring(effect.x, effect.y, RADIUS2 * 1.15 * PULSE, "#b3d875aa", 0.07);
-      renderer.ring(effect.x, effect.y, RADIUS2 * 1.42 * PULSE, "#e6f3b344", 0.04);
+      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS = Math.max(0.3, effect.radius || 0.3);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875aa", 0.07);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b344", 0.04);
       for (let i = 0; i < 5; i++) {
         const A = i * Math.PI * 2 / 5 + effect.age, P = renderer.project(
-          effect.x + Math.cos(A) * RADIUS2 * 1.25,
-          effect.y + Math.sin(A) * RADIUS2 * 1.25,
+          effect.x + Math.cos(A) * RADIUS * 1.25,
+          effect.y + Math.sin(A) * RADIUS * 1.25,
           (effect.age * 1.3 + i * 0.4) % 2
         );
         renderer.ellipse(P.x, P.y, renderer.scale * 0.025, renderer.scale * 0.055, "#e2f7a9aa");
@@ -16044,9 +14276,9 @@
         for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
           const POINTS = ARCS[arcIndex];
           for (let index = 0; index < POINTS.length; index++) {
-            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE2 = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
-            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE2;
-            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE2 * 0.42;
+            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
+            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
+            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
             POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
           }
           const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
@@ -16088,7 +14320,7 @@
   }
 
   // src/features/scenes/farm/presentation.js
-  init_definition15();
+  init_definition11();
 
   // src/features/farm-modes/vfx-kit.js
   init_unit_grades();
@@ -16233,8 +14465,8 @@
         }
       }
     }
-    const RADIUS2 = renderer.scale * (0.26 + PROGRESS * 0.07 + PULSE * 0.025 + bump * 0.07) * OPEN;
-    return { progress: PROGRESS, pulse: PULSE, bump, open: OPEN, radius: RADIUS2 };
+    const RADIUS = renderer.scale * (0.26 + PROGRESS * 0.07 + PULSE * 0.025 + bump * 0.07) * OPEN;
+    return { progress: PROGRESS, pulse: PULSE, bump, open: OPEN, radius: RADIUS };
   }
   function drawOrbit(renderer, task, state, front) {
     const TIME = renderer.displayTimeMs * 42e-4, Z = task.centerZ + (front ? 0.32 : -0.16);
@@ -16399,8 +14631,8 @@
   };
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
-      const T = CLAMP2(progress, 0, 1), SIDE2 = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
-        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE2 * Math.min(1, LENGTH / 1.2);
+      const T = CLAMP2(progress, 0, 1), SIDE = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
+        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE * Math.min(1, LENGTH / 1.2);
         return renderer.project(
           POSITION.x + NORMAL_X * ARC,
           POSITION.y + NORMAL_Y * ARC,
@@ -16539,17 +14771,17 @@
   };
   var ShockwaveEffect = class {
     draw(renderer, effect, progress) {
-      const P = clamp01(progress / (effect.duration || 0.55)), RADIUS2 = Math.max(0.08, effect.radius) * (0.2 + 0.8 * easeOut(P)), FADE = 1 - P;
-      renderer.groundEllipse(effect.x, effect.y, RADIUS2, RADIUS2, rgba(GOLD, 0.16 * FADE));
-      renderer.ring(effect.x, effect.y, RADIUS2, rgba(GOLD, 0.9 * FADE), 0.12 * FADE + 0.025);
+      const P = clamp01(progress / (effect.duration || 0.55)), RADIUS = Math.max(0.08, effect.radius) * (0.2 + 0.8 * easeOut(P)), FADE = 1 - P;
+      renderer.groundEllipse(effect.x, effect.y, RADIUS, RADIUS, rgba(GOLD, 0.16 * FADE));
+      renderer.ring(effect.x, effect.y, RADIUS, rgba(GOLD, 0.9 * FADE), 0.12 * FADE + 0.025);
       renderer.ring(
         effect.x,
         effect.y,
-        Math.max(0.05, RADIUS2 - 0.14),
+        Math.max(0.05, RADIUS - 0.14),
         rgba(GOLD_LIGHT, 0.6 * FADE),
         0.045 * FADE + 0.01
       );
-      groundTicks(renderer, effect.x, effect.y, RADIUS2 * 0.72, RADIUS2 * 0.94, 12, rgba(CREAM2, 0.7 * FADE), 3, P);
+      groundTicks(renderer, effect.x, effect.y, RADIUS * 0.72, RADIUS * 0.94, 12, rgba(CREAM2, 0.7 * FADE), 3, P);
     }
   };
   var DropDustEffect = class {
@@ -16705,7 +14937,7 @@
       return aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
     }
     bossVisible(world) {
-      return world.farmBossEvent?.phase !== "idle" && !(world.farmBossEvent?.phase === "dropping" && world.worldMap.challengeTile >= 0);
+      return world.farmBossEvent?.phase !== "idle";
     }
     dangerVisible(world) {
       return world.farmBossEvent?.phase === "fighting";
@@ -16776,7 +15008,7 @@
   }
 
   // src/features/projectiles/seed/presentation.js
-  init_definition14();
+  init_definition10();
   var import_definition54 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
@@ -16788,8 +15020,8 @@
       this.id = FEATURE.id;
     }
     drawShadow(renderer, projectile) {
-      const RADIUS2 = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
-      renderer.groundEllipse(projectile.x, projectile.y, RADIUS2, RADIUS2 * 5 / 7, "#55452433");
+      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
     }
     draw(renderer, projectile, point2, tail) {
       const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
@@ -17690,8 +15922,6 @@
 
   // src/farm-renderer.js
   init_farm_model();
-  init_farm_work();
-  init_world_map();
 
   // src/attack-telegraph.js
   var TAU4 = Math.PI * 2;
@@ -17800,8 +16030,6 @@
   var GRADE_RING_COLORS = UNIT_GRADES.map(({ outlineColor }) => outlineColor);
   var GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2));
   var CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
-  var MIN_TILE = (map, axis) => Math.min(...map.revealed.map((index) => axis === "x" ? tileX(index) : tileY(index)));
-  var MAX_TILE = (map, axis) => Math.max(...map.revealed.map((index) => axis === "x" ? tileX(index) : tileY(index)));
   var ZOOM_MIN = 0.06;
   var ZOOM_MAX = 1.8;
   var DIORAMA = class Diorama {
@@ -17960,12 +16188,6 @@
         bottom: -(RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION,
         top: (RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION
       };
-      if (this.extent && scene === "farm") {
-        BOUNDS.left = Math.min(BOUNDS.left, this.extent.left - RX - 1.3);
-        BOUNDS.right = Math.max(BOUNDS.right, this.extent.right + RX + 1.3);
-        BOUNDS.bottom = Math.min(BOUNDS.bottom, (this.extent.bottom - RY - 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
-        BOUNDS.top = Math.max(BOUNDS.top, (this.extent.top + RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
-      }
       const BOSS_SCALE = (0, import_vector_sockets5.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX - CONFIG.boss.radius, BOSS_Y = (RY - CONFIG.boss.radius) * import_vector_sockets5.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
@@ -18069,19 +16291,6 @@
       this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
       return true;
     }
-    // Every lit farm on screen at once.
-    fitAll() {
-      const E = this.extent;
-      if (this.scene !== "farm" || !E) {
-        return false;
-      }
-      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, HALF_W = (E.right - E.left) / 2, HALF_H = (E.top - E.bottom) / 2 * import_vector_sockets5.WORLD_DEPTH_PROJECTION, FIT = Math.min(this.baseView[0] / (HALF_W + RX), this.baseView[1] / (HALF_H + RY * import_vector_sockets5.WORLD_DEPTH_PROJECTION));
-      this.zoom = CLAMP2(FIT, ZOOM_MIN, 1);
-      this.configure(this.scene, true);
-      const BASE_Y = this.offset[1] - this.pan.y;
-      this.setPan(-(E.left + E.right) / 2, -((E.top + E.bottom) / 2) * import_vector_sockets5.WORLD_DEPTH_PROJECTION - BASE_Y);
-      return true;
-    }
     resetZoom() {
       this.zoom = 1;
       this.configure(this.scene, true);
@@ -18164,226 +16373,16 @@
       C.lineTo(b.x, b.y);
       C.stroke();
     }
-    // The land around the farm on screen: lit tiles of the shared map as meadows, with the units of the other
-    // farms standing on theirs, and one ring of fog beyond. Nothing here is simulated; it is only drawn.
-    farmTileOf(world, plotId) {
-      return world.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile ?? null;
-    }
-    backdropExtent(world) {
-      const MAP = world.worldMap, HERE = this.farmTileOf(world, world.activePlotId);
-      if (HERE === null) {
-        return null;
-      }
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const INDEX of MAP.revealed) {
-        minX = Math.min(minX, tileX(INDEX));
-        maxX = Math.max(maxX, tileX(INDEX));
-        minY = Math.min(minY, tileY(INDEX));
-        maxY = Math.max(maxY, tileY(INDEX));
-      }
-      const FX = tileX(HERE), FY = tileY(HERE);
-      return {
-        key: `${minX},${maxX},${minY},${maxY},${FX},${FY}`,
-        left: (minX - 1 - FX) * FARM_CELL.width,
-        right: (maxX + 1 - FX) * FARM_CELL.width,
-        bottom: -(maxY + 1 - FY) * FARM_CELL.height,
-        top: -(minY - 1 - FY) * FARM_CELL.height
-      };
-    }
-    // Keeps the camera limits, and the camera itself, in step with the land and with which farm is on screen.
-    syncBackdrop(world) {
-      const EXTENT = this.backdropExtent(world);
-      if (EXTENT && EXTENT.key !== this.extent?.key) {
-        this.extent = EXTENT;
-        this.configure(this.scene, true);
-      }
-      const PLOT = world.activePlotId;
-      if (this.shownPlot !== void 0 && this.shownPlot !== PLOT) {
-        const FROM = this.farmTileOf(world, this.shownPlot), TO = this.farmTileOf(world, PLOT);
-        if (this.cameraSwitch === PLOT && FROM !== null && TO !== null) {
-          const OX = (tileX(TO) - tileX(FROM)) * FARM_CELL.width, OY = -(tileY(TO) - tileY(FROM)) * FARM_CELL.height;
-          this.pan.x += OX;
-          this.pan.y += OY * import_vector_sockets5.WORLD_DEPTH_PROJECTION;
-          this.extent = this.backdropExtent(world);
-          this.configure(this.scene, true);
-        } else {
-          this.resetPan();
-        }
-        this.cameraSwitch = null;
-      }
-      this.shownPlot = PLOT;
-    }
-    // The farm whose ground the middle of the screen is over, when it is not the one being simulated.
-    cameraPlot(world) {
-      const HERE = this.farmTileOf(world, world.activePlotId);
-      if (HERE === null || !this.scale) {
-        return null;
-      }
-      const CENTRE = {
-        x: this.canvas.width / 2 / this.scale - this.offset[0] - this.view[0],
-        y: (this.view[1] - this.canvas.height / 2 / this.scale - this.offset[1]) / import_vector_sockets5.WORLD_DEPTH_PROJECTION
-      }, DX = Math.round(CENTRE.x / FARM_CELL.width), DY = -Math.round(CENTRE.y / FARM_CELL.height);
-      if (DX === 0 && DY === 0) {
-        return null;
-      }
-      const TILE = tileIndex(tileX(HERE) + DX, tileY(HERE) + DY);
-      const FARM = world.worldMap.farms.find((farm) => farm.tile === TILE);
-      return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
-    }
-    // One farm's square of ground, from corner to corner, a hair larger than its cell so neighbours never show a seam.
-    // A rectangle of ground around a centre, half-width and half-height in world units.
-    groundBlock(x, y, halfX, halfY, color2) {
-      const A = this.project(x - halfX, y + halfY), B = this.project(x + halfX, y - halfY);
-      this.ctx.fillStyle = color2;
-      this.ctx.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
-    }
     groundCell(x, y, color2, inset = 0) {
       const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, A = this.project(x - RX + inset, y + RY - inset), B = this.project(x + RX - inset, y - RY + inset), C = this.ctx;
       C.fillStyle = color2;
       C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
     }
-    // One tile's ground and what stands on it: meadow, forest, rock or swamp.
-    paintLand(map, index, ox, oy, paint, look2, mask = null) {
-      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
-      const TERRAIN = tileTerrain(map, index), [GROUND, SURFACE] = paint[TERRAIN];
-      const SEEN = (x, y) => mask === null || mask.has(fogPieceAt(x - ox, y - oy));
-      if (mask !== null) {
-        for (let piece = 0; piece < FOG_PIECES; piece++) {
-          if (mask.has(piece)) {
-            const C = fogPieceCenter(piece);
-            this.groundBlock(
-              ox + C.x,
-              oy + C.y,
-              FARM_CELL.width / FOG_GRID / 2,
-              FARM_CELL.height / FOG_GRID / 2,
-              GROUND
-            );
-            this.groundBlock(
-              ox + C.x,
-              oy + C.y,
-              FARM_CELL.width / FOG_GRID / 2 - 0.4,
-              FARM_CELL.height / FOG_GRID / 2 - 0.4,
-              SURFACE
-            );
-          }
-        }
-      } else {
-        this.groundCell(ox, oy, GROUND);
-        this.groundCell(ox, oy, SURFACE, 0.7);
-      }
-      const S = this.scale;
-      const FILL = tileFill(map, index);
-      if (TERRAIN === "forest") {
-        for (let tree = 0; tree < Math.ceil(9 * FILL); tree++) {
-          const TX = ox + (look2(index, 40 + tree) - 0.5) * RX * 1.7, TY = oy + (look2(index, 60 + tree) - 0.5) * RY * 1.7;
-          if (!SEEN(TX, TY)) {
-            continue;
-          }
-          const P = this.project(TX, TY, 0);
-          this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, "#9db58a");
-          this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, "#8a7a5a");
-        }
-      } else if (TERRAIN === "rock") {
-        for (let rock = 0; rock < Math.ceil(7 * FILL); rock++) {
-          const TX = ox + (look2(index, 80 + rock) - 0.5) * RX * 1.7, TY = oy + (look2(index, 100 + rock) - 0.5) * RY * 1.7;
-          if (!SEEN(TX, TY)) {
-            continue;
-          }
-          const P = this.project(TX, TY, 0);
-          this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, "#a79f8d");
-          this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, "#c5bfae");
-        }
-      } else if (TERRAIN === "swamp") {
-        for (let pool = 0; pool < 5; pool++) {
-          const TX = ox + (look2(index, 120 + pool) - 0.5) * RX * 1.6, TY = oy + (look2(index, 140 + pool) - 0.5) * RY * 1.6;
-          if (SEEN(TX, TY)) {
-            this.groundEllipse(TX, TY, 2.2 + 1.6 * look2(index, 160 + pool), 1.4, "#9fbfc4");
-          }
-        }
-      }
-    }
-    // The tile being explored: the fog lifts piece by piece. A piece being worked on grows from its centre.
-    drawFog(world, map, index, ox, oy, paint, look2) {
-      const MASK = new Set(map.progress[index] ?? []);
-      this.paintLand(map, index, ox, oy, paint, look2, MASK);
-      const COST = fogPieceCost(map, index), [GROUND, SURFACE] = paint[tileTerrain(map, index)];
-      for (let piece = 0; piece < FOG_PIECES; piece++) {
-        const SHARE = Math.min(1, (world._pieceWork.get(index * FOG_PIECES + piece) ?? 0) / COST);
-        if (MASK.has(piece) || SHARE <= 0) {
-          continue;
-        }
-        const C = fogPieceCenter(piece), HX = FARM_CELL.width / FOG_GRID / 2 * Math.sqrt(SHARE), HY = FARM_CELL.height / FOG_GRID / 2 * Math.sqrt(SHARE);
-        this.groundBlock(ox + C.x, oy + C.y, HX, HY, GROUND);
-        this.groundBlock(ox + C.x, oy + C.y, Math.max(0, HX - 0.4), Math.max(0, HY - 0.4), SURFACE);
-      }
-    }
-    drawBackdrop(world) {
-      const MAP = world.worldMap, HERE = this.farmTileOf(world, world.activePlotId);
-      if (HERE === null) {
-        return;
-      }
-      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PRESENTATION = this.scenePresentation, FX = tileX(HERE), FY = tileY(HERE), LIT = new Set(MAP.revealed), MARGIN = FARM_CELL.width * this.scale, PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])), EXPLORING = world.exploreGoal(world.activePlotId)?.tile ?? -1, S = this.scale;
-      const LOOK = tileLook;
-      const PAINT = {
-        plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
-        forest: ["#c3d3b0", "#cddbbc"],
-        rock: ["#d3cfbd", "#dcd8c8"],
-        swamp: ["#c0d3c7", "#cbdcd1"]
-      };
-      for (let ty = MIN_TILE(MAP, "y") - 1; ty <= MAX_TILE(MAP, "y") + 1; ty++) {
-        for (let tx = MIN_TILE(MAP, "x") - 1; tx <= MAX_TILE(MAP, "x") + 1; tx++) {
-          const INDEX = tileIndex(tx, ty);
-          if (Math.abs(tx) > 12 || Math.abs(ty) > 12) {
-            continue;
-          }
-          const OX = (tx - FX) * FARM_CELL.width, OY = -(ty - FY) * FARM_CELL.height, AT = this.project(OX, OY, 0);
-          if (AT.x < -MARGIN || AT.x > this.canvas.width + MARGIN || AT.y < -MARGIN || AT.y > this.canvas.height + MARGIN) {
-            continue;
-          }
-          if (!LIT.has(INDEX)) {
-            const NEXT_TO_LIT = [-1, 0, 1].some(
-              (dy) => [-1, 0, 1].some((dx) => (dx || dy) && LIT.has(tileIndex(tx + dx, ty + dy)))
-            );
-            if (NEXT_TO_LIT) {
-              this.groundCell(OX, OY, "#e9e5d2");
-              this.groundCell(OX, OY, "#efecdc", 0.6);
-            }
-            if (INDEX === EXPLORING || (MAP.progress[INDEX]?.length ?? 0) > 0) {
-              this.drawFog(world, MAP, INDEX, OX, OY, PAINT, LOOK);
-            }
-            continue;
-          }
-          this.paintLand(MAP, INDEX, OX, OY, PAINT, LOOK);
-          const PLOT_ID = PLOT_AT.get(INDEX);
-          if (PLOT_ID && PLOT_ID !== world.activePlotId) {
-            for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
-              const P = this.project(OX + U.x, OY + U.y, 0);
-              this.ellipse(P.x, P.y, U.size * 0.5 * S, U.size * 0.31 * S, "rgba(42,61,35,0.2)");
-              this.ellipse(P.x, P.y - U.size * 0.45 * S, U.size * 0.4 * S, U.size * 0.4 * S, "#ddd3a8");
-            }
-          }
-        }
-      }
-      const C = this.ctx;
-      C.strokeStyle = "rgba(110,130,90,0.28)";
-      C.lineWidth = Math.max(1, this.scale * 0.05);
-      for (let ty = MIN_TILE(MAP, "y"); ty <= MAX_TILE(MAP, "y"); ty++) {
-        for (let tx = MIN_TILE(MAP, "x"); tx <= MAX_TILE(MAP, "x"); tx++) {
-          if (!LIT.has(tileIndex(tx, ty))) {
-            continue;
-          }
-          const OX = (tx - FX) * FARM_CELL.width, OY = -(ty - FY) * FARM_CELL.height, A = this.project(OX - RX, OY + RY), B = this.project(OX + RX, OY - RY);
-          C.strokeRect(A.x, A.y, B.x - A.x, B.y - A.y);
-        }
-      }
-    }
     terrain(sim2) {
       const S = this.scale, PRESENTATION = this.scenePresentation, { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
       if (sim2.scene === "farm") {
-        if (!this.backdrop) {
-          this.groundCell(0, 0, PRESENTATION.groundColor);
-          this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
-        }
+        this.groundCell(0, 0, PRESENTATION.groundColor);
+        this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
       } else {
         this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
         this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
@@ -18399,22 +16398,6 @@
       PRESENTATION.drawBoundary(this);
       if (sim2.scene === "farm") {
         this.drawWorkShadows(sim2);
-        this.drawFacilities(sim2);
-      }
-    }
-    // Pieces the resource workers knocked loose lie on the ground until a hauler carries them to the store.
-    drawItems(sim2) {
-      if (sim2.scene !== "farm") {
-        return;
-      }
-      for (const ITEM of sim2.fieldItems) {
-        if (ITEM.kind === "wood") {
-          this.groundEllipse(ITEM.x, ITEM.y, 0.34, 0.14, "#8a5a2b");
-          this.groundEllipse(ITEM.x + 0.2, ITEM.y, 0.1, 0.1, "#d8b27a");
-        } else {
-          this.groundEllipse(ITEM.x, ITEM.y, 0.26, 0.2, "#8d8f93");
-          this.groundEllipse(ITEM.x - 0.05, ITEM.y - 0.04, 0.12, 0.08, "#c7c9cc");
-        }
       }
     }
     drawDanger(sim2) {
@@ -18429,18 +16412,6 @@
       for (const PILE of sim2.piles || []) {
         this.groundEllipse(PILE.x, PILE.y, 1.5, 1, "#54452433");
       }
-      for (const FACILITY of sim2.facilities || []) {
-        const AT = facilityPosition(CONFIG, FACILITY.id);
-        this.groundEllipse(AT.x, AT.y, 1.6, 1.1, "#54452433");
-      }
-    }
-    // Facilities are scenery along the back edge of the field, drawn before the units so nothing hides behind them.
-    drawFacilities(sim2) {
-      for (const FACILITY of sim2.facilities || []) {
-        if (!sim2.siteOf(FACILITY.id)) {
-          this.drawFacility(FACILITY);
-        }
-      }
     }
     // Piles, construction sites and facilities stand among the units, so they are sorted with them by depth.
     addWorkActors(sim2) {
@@ -18448,8 +16419,6 @@
       for (const PILE of sim2.piles || []) {
         this.addActor(OBJECTS, { pile: PILE, sim: sim2 }, 0.785 * PILE.y, -2e6 - PILE.id);
       }
-      const STORE = this.storeObjects || (this.storeObjects = { draw: (source) => this.drawStore(source) });
-      this.addActor(STORE, sim2, 0.785 * 1.2, -3e6);
       const SEEN = this.pileHits;
       if (SEEN && SEEN.size > 12) {
         const LIVE = new Set((sim2.piles || []).map((pile) => pile.id));
@@ -18458,22 +16427,6 @@
             SEEN.delete(ID);
           }
         }
-      }
-    }
-    drawStore(sim2) {
-      const BASE = this.project(0, 0, 0), S = this.scale * 2.1, X = BASE.x;
-      this.groundEllipse(0, 0, 2.6, 1.3, "#38472c33");
-      this.ellipse(X, BASE.y - 0.42 * S, 0.95 * S, 0.5 * S, "#d9c9a3");
-      this.ellipse(X, BASE.y - 0.26 * S, 0.17 * S, 0.24 * S, "#7a5a34");
-      this.ellipse(X, BASE.y - 0.98 * S, 1.1 * S, 0.4 * S, "#b9774a");
-      this.ellipse(X - 0.25 * S, BASE.y - 1.08 * S, 0.5 * S, 0.14 * S, "#cf8f5e");
-      if (sim2.materials.wood > 0) {
-        this.ellipse(X - 1.05 * S, BASE.y - 0.12 * S, 0.3 * S, 0.12 * S, "#8a5a2b");
-        this.ellipse(X - 0.98 * S, BASE.y - 0.22 * S, 0.3 * S, 0.12 * S, "#a06c38");
-      }
-      if (sim2.materials.stone > 0) {
-        this.ellipse(X + 1.05 * S, BASE.y - 0.14 * S, 0.3 * S, 0.2 * S, "#8d8f93");
-        this.ellipse(X + 1 * S, BASE.y - 0.22 * S, 0.14 * S, 0.08 * S, "#c7c9cc");
       }
     }
     drawWorkObject(source) {
@@ -18494,23 +16447,7 @@
           seen.at = now;
         }
         const HIT = CLAMP2(1 - (now - seen.at) / 220, 0, 1), BASE = this.project(PILE.x, PILE.y, 0), X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S, SQUASH = 1 + HIT * 0.14, LIFT = 1 - HIT * 0.16;
-        if (PILE.kind === "site") {
-          this.drawSite(PILE, BASE, X, S * 1.7, SQUASH, LIFT);
-          return;
-        }
-        if (PILE.kind === "wood") {
-          this.ellipse(X, BASE.y - 0.1 * S, 0.34 * S, 0.16 * S, "#7a5a34");
-          this.ellipse(X, BASE.y - 0.5 * S * LIFT, 0.2 * S * SQUASH, 0.5 * S * LIFT, "#9a7442");
-          this.ellipse(X + 0.06 * S, BASE.y - 0.5 * S * LIFT, 0.07 * S, 0.42 * S * LIFT, "#b48a52");
-          this.ellipse(X, BASE.y - 1.05 * S * LIFT, 0.78 * S * SQUASH, 0.52 * S * LIFT, "#6f9b6f");
-          this.ellipse(X - 0.3 * S, BASE.y - 0.92 * S * LIFT, 0.42 * S, 0.3 * S, "#7fab76");
-          this.ellipse(X + 0.22 * S, BASE.y - 1.2 * S * LIFT, 0.4 * S, 0.28 * S, "#8fb98a");
-        } else if (PILE.kind === "stone") {
-          this.ellipse(X, BASE.y - 0.28 * S * LIFT, 0.8 * S * SQUASH, 0.54 * S * LIFT, "#8f8d80");
-          this.ellipse(X - 0.05 * S, BASE.y - 0.42 * S * LIFT, 0.64 * S * SQUASH, 0.42 * S * LIFT, "#a9a79a");
-          this.ellipse(X - 0.2 * S, BASE.y - 0.54 * S * LIFT, 0.26 * S, 0.14 * S, "#c8c6b9");
-          this.ellipse(X + 0.34 * S, BASE.y - 0.16 * S * LIFT, 0.2 * S, 0.1 * S, "#7c7a6e");
-        } else {
+        {
           this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, "#c99f4a");
           this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, "#dcb85f");
           this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, "#e6c773");
@@ -18534,70 +16471,6 @@
         }
       }
     }
-    // A construction site: a timber frame that fills in with each hit, and a progress bar above it.
-    drawSite(site, base, x, s, squash, lift) {
-      const RATIO = CLAMP2(site.done / site.need, 0, 1);
-      this.ellipse(x, base.y - 0.1 * s, 0.9 * s * squash, 0.3 * s, "#a58a5a");
-      this.ellipse(x - 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, "#7a5a34");
-      this.ellipse(x + 0.55 * s, base.y - 0.5 * s * lift, 0.07 * s, 0.5 * s * lift, "#7a5a34");
-      this.ellipse(x, base.y - 0.98 * s * lift, 0.66 * s, 0.07 * s, "#7a5a34");
-      if (RATIO > 0.34) {
-        this.ellipse(x, base.y - 0.45 * s * lift, 0.5 * s * squash, 0.3 * s * lift, "#c9a96a");
-      }
-      if (RATIO > 0.67) {
-        this.ellipse(x, base.y - 0.92 * s * lift, 0.7 * s * squash, 0.3 * s * lift, "#b9774a");
-      }
-      const BAR_Y = base.y - 1.4 * s;
-      this.ellipse(x, BAR_Y, 0.8 * s, 0.1 * s, "#4a463699");
-      this.ellipse(x - 0.78 * s * (1 - RATIO), BAR_Y, Math.max(0.01, 0.76 * s * RATIO), 0.075 * s, "#f6d36b");
-    }
-    drawFacility(facility) {
-      const FACILITY = facility;
-      {
-        const AT = facilityPosition(CONFIG, FACILITY.id), BASE = this.project(AT.x, AT.y, 0), S = this.scale * (1.9 + 0.12 * FACILITY.level), X = BASE.x;
-        if (FACILITY.id === "windmill") {
-          const SPIN = (this.displayTimeMs || 0) * 2e-3;
-          this.ellipse(X, BASE.y - 0.4 * S, 0.5 * S, 0.5 * S, "#e8dcc0");
-          this.ellipse(X, BASE.y - 0.95 * S, 0.5 * S, 0.22 * S, "#b9774a");
-          for (let blade = 0; blade < 4; blade++) {
-            const ANGLE = SPIN + blade * Math.PI / 2;
-            this.ellipse(
-              X + Math.cos(ANGLE) * 0.5 * S,
-              BASE.y - 0.75 * S + Math.sin(ANGLE) * 0.5 * S,
-              0.4 * S,
-              0.07 * S,
-              "#f6f0e0",
-              ANGLE
-            );
-          }
-        } else if (FACILITY.id === "granary") {
-          this.ellipse(X, BASE.y - 0.35 * S, 0.8 * S, 0.45 * S, "#c9a96a");
-          this.ellipse(X, BASE.y - 0.85 * S, 0.9 * S, 0.3 * S, "#b9774a");
-          this.ellipse(X, BASE.y - 0.3 * S, 0.2 * S, 0.28 * S, "#7a5a34");
-        } else if (FACILITY.id === "tower") {
-          this.ellipse(X, BASE.y - 0.55 * S, 0.34 * S, 0.75 * S, "#cfc7b3");
-          this.ellipse(X, BASE.y - 1.25 * S, 0.5 * S, 0.2 * S, "#b9774a");
-          this.ellipse(X, BASE.y - 0.3 * S, 0.12 * S, 0.2 * S, "#7a5a34");
-          this.ellipse(X + 0.05 * S, BASE.y - 1.6 * S, 0.03 * S, 0.3 * S, "#7a5a34");
-          this.ellipse(X + 0.2 * S, BASE.y - 1.75 * S, 0.17 * S, 0.1 * S, "#7fa77a");
-        } else {
-          this.ellipse(X - 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, "#7a5a34");
-          this.ellipse(X + 0.5 * S, BASE.y - 0.5 * S, 0.07 * S, 0.5 * S, "#7a5a34");
-          this.ellipse(X, BASE.y - 0.8 * S, 0.62 * S, 0.07 * S, "#9a7442");
-          this.ellipse(X - 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, "#8f8d80", 0.4);
-          this.ellipse(X + 0.2 * S, BASE.y - 0.6 * S, 0.06 * S, 0.22 * S, "#7fa77a", -0.4);
-        }
-        for (let pip = 0; pip < FACILITY.level; pip++) {
-          this.ellipse(
-            X + (pip - (FACILITY.level - 1) / 2) * 0.22 * S,
-            BASE.y + 0.18 * S,
-            0.07 * S,
-            0.07 * S,
-            "#f6d36b"
-          );
-        }
-      }
-    }
     addActor(presentation, source, depth, id, vector = false) {
       const INDEX = this.actors.length, ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
       ACTOR.presentation = presentation;
@@ -18618,16 +16491,7 @@
         height: this.canvas.height,
         clearColor: [0.9, 0.92, 0.87, 1]
       });
-      if (sim2.scene === "farm" && this.backdrop) {
-        this.syncBackdrop(this.backdrop);
-        this.drawBackdrop(this.backdrop);
-      }
       this.terrain(sim2);
-      const SHIFT = sim2.scene === "farm" ? sim2.battleShift() : null, UNSHIFTED_OFFSET = this.offset;
-      if (SHIFT) {
-        this.setPan(-SHIFT.x, -SHIFT.y * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
-        this.offset = [this.offset[0] + SHIFT.x, this.offset[1] + SHIFT.y * import_vector_sockets5.WORLD_DEPTH_PROJECTION];
-      }
       for (const U of sim2.units) {
         const A = CLAMP2(0.22 / (1 + U.z * 0.3), 0.045, 0.22), SHADOW = U.size * 0.66 / (1 + U.z * 0.65);
         this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
@@ -18636,16 +16500,9 @@
         }
       }
       this.drawDanger(sim2);
-      if (!SHIFT) {
-        this.drawItems(sim2);
-      }
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
-      }
-      const RESTING = sim2.scene === "farm" ? sim2.restingBosses(this.displayTimeMs / 1e3) : [];
-      for (const R2 of RESTING) {
-        this.groundEllipse(R2.x, R2.y, R2.radius * 1.05, R2.radius * 0.75, "#38472c33");
       }
       const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS, ACTORS = this.actors;
       ACTORS.length = 0;
@@ -18664,13 +16521,8 @@
       if (BOSS_VISIBLE) {
         this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
       }
-      for (const R2 of RESTING) {
-        this.addActor(this.bossPresentation, R2, 0.785 * R2.y, 0, true);
-      }
-      if (!SHIFT) {
-        PRESENTATION.collectFood(this, sim2);
-      }
-      if (sim2.scene === "farm" && !SHIFT) {
+      PRESENTATION.collectFood(this, sim2);
+      if (sim2.scene === "farm") {
         this.addWorkActors(sim2);
       }
       if (BOSS_VISIBLE) {
@@ -18736,7 +16588,6 @@
         }
       }
       drawFormationEffects(this, sim2);
-      this.offset = UNSHIFTED_OFFSET;
       this.stats = C.endFrame();
     }
     dispose() {
@@ -19272,7 +17123,7 @@
       if (W.scene === "farm") {
         const AUTO_TAPS_START = this.profiler?.start();
         try {
-          W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
+          W.advanceWork(1 / LOCAL_PROFILE.tickRate);
         } finally {
           this.profiler?.end("autoTaps", AUTO_TAPS_START);
         }
@@ -19313,17 +17164,9 @@
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
-          return W.scene === "farm" && W.setWorkBasisPoints(
-            c.basisPoints,
-            c.resourceBasisPoints,
-            c.haulBasisPoints,
-            c.buildBasisPoints,
-            c.exploreBasisPoints
-          );
-        case "farm-build":
-          return W.scene === "farm" && typeof c.facilityId === "string" && W.startBuild(c.facilityId, { tile: Number.isSafeInteger(c.tile) ? c.tile : -1 });
-        case "farm-rush":
-          return W.scene === "farm" && W.setBuildRush(c.on === true);
+          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
+        case "boss-challenge":
+          return W.scene === "farm" && W.startBossFight();
         case "farm-sort":
           return W.scene === "farm" && W.sortActiveFarm(c.order);
         case "merge":
@@ -19843,26 +17686,6 @@
       processedBossKillReceipts: []
     },
     starter: 0,
-    materials: {
-      wood: 0,
-      stone: 0
-    },
-    savedSites: [],
-    worldMap: {
-      seed: 0,
-      progress: {},
-      exploreTarget: -1,
-      challengeTile: -1,
-      buildTile: -1,
-      revealed: [],
-      bosses: [],
-      spawnClock: 0,
-      spawnCount: 0,
-      mined: {},
-      mines: [],
-      farms: [],
-      bossAges: {}
-    },
     foodTaps: {
       remainder: 0,
       autoClock: 0,
@@ -20012,7 +17835,7 @@
   );
   var PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
     farmPlots: {
-      plots: [FIELDS("id capacityLevel", { facilities: [FIELDS("id level")] })],
+      plots: [FIELDS("id capacityLevel")],
       currentPlotId: true,
       nextPlotNumber: true,
       targetBasisPoints: [true]
@@ -20036,8 +17859,6 @@
     { attachments: [CORN_ATTACHMENT] }
   );
   var SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
-    savedSites: JSON_PAYLOAD,
-    worldMap: JSON_PAYLOAD,
     farmPlots: [FIELDS("id", { food: [FIELDS("x y z vx vy vz seed phase tx ty")] })],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT2],
@@ -20119,27 +17940,11 @@
       farmPlots: [...world.farmPlots.values()].map((plot) => ({ id: plot.id, food: plot.food })),
       ...world.scene === "farm" && world.unitCollection ? { units: world.unitCollection.items } : {}
     } : world;
-    const SITES = world?.allBuildSites ?? [];
-    return copyFields(
-      {
-        ...SOURCE,
-        savedSites: SITES.map((site) => ({
-          facility: site.facility,
-          level: site.level,
-          x: site.x,
-          y: site.y,
-          done: site.done,
-          need: site.need,
-          plotId: site.plotId
-        }))
-      },
-      SNAPSHOT_FIELDS
-    );
+    return copyFields(SOURCE, SNAPSHOT_FIELDS);
   }
 
   // src/farm-snapshot-validation.js
-  init_world_map();
-  init_definition13();
+  init_definition15();
   var INTEGER2 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
   function assertSnapshot(ok) {
@@ -20233,12 +18038,6 @@
     finiteTree(raw);
     shape(raw, FARM_SNAPSHOT_SHAPE);
     ASSERT2(isValidFormationRuntime(raw.formationRuntime));
-    ASSERT2(INTEGER2(raw.materials.wood, 0, 1e12) && INTEGER2(raw.materials.stone, 0, 1e12));
-    ASSERT2(
-      isValidWorldMap(raw.worldMap) && raw.worldMap.farms.every(
-        (farm) => raw.playerProgression.farmPlots.plots.some((plot) => plot.id === farm.plotId)
-      )
-    );
     ASSERT2(
       INTEGER2(raw.seed, 0, 4294967295) && INTEGER2(raw.rng.state, 0, 4294967295) && INTEGER2(raw.simulationTick, 0, 1e12)
     );
@@ -20627,16 +18426,8 @@
   }
 
   // src/farm-snapshot-migrations.js
-  init_farm_plot();
-  init_world_map();
   function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw;
-    SNAPSHOT.materials ??= { wood: 0, stone: 0 };
-    SNAPSHOT.savedSites ??= [];
-    SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
-    SNAPSHOT.worldMap.challengeTile ??= -1;
-    SNAPSHOT.worldMap.buildTile ??= -1;
-    SNAPSHOT.worldMap.bossAges ??= {};
     validateSnapshot(SNAPSHOT);
     return SNAPSHOT;
   }
@@ -20647,7 +18438,7 @@
     raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new GARDEN();
-    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, savedSites: SAVED_SITES, ...WORLD_DATA } = structuredClone(raw);
+    const { units: UNIT_DATA, farmPlots: PLOT_FOODS, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
     G.farmPlots = new Map(
@@ -20677,9 +18468,6 @@
         return U;
       })
     );
-    for (const SITE of SAVED_SITES) {
-      G.restoreBuildSite(SITE);
-    }
     G.reconcileMateReservations();
     return G;
   }
@@ -21319,645 +19107,6 @@
   // src/farm-app.js
   init_ability_progression();
   init_boss_rewards();
-
-  // src/world-map-view.js
-  init_world_map();
-  var RADIUS = WORLD_MAP_SETTINGS.radius;
-  var COLORS = {
-    background: "#efeadb",
-    fog: "#e2dcc6",
-    fogFar: "#eeeadb",
-    fogPuff: "#ece7d4",
-    fogEdge: "#cfc8ae",
-    land: ["#d3dfc6", "#cbd9be", "#d9e4cd"],
-    forestLand: ["#c3d5b3", "#bcd0ac"],
-    rockLand: ["#dbd6c6", "#d2cdbd"],
-    swampLand: ["#c5d6cb", "#bdd0c8"],
-    rock: "#a79f8d",
-    rockLight: "#c5bfae",
-    water: "#9fbfc4",
-    shore: "#a9bc99",
-    farm: "#c2913e",
-    nest: "#b9774a",
-    cave: "#6b5240",
-    scout: "#7c9bb0",
-    ink: "#4a4438",
-    paper: "#fffaf0",
-    tree: "#8fae86",
-    trunk: "#a08358"
-  };
-  var TERRAIN_LAND = {
-    plain: COLORS.land,
-    forest: COLORS.forestLand,
-    rock: COLORS.rockLand,
-    swamp: COLORS.swampLand
-  };
-  var NEIGHBOURS2 = [
-    [-1, -1],
-    [0, -1],
-    [1, -1],
-    [-1, 0],
-    [1, 0],
-    [-1, 1],
-    [0, 1],
-    [1, 1]
-  ];
-  var SIDES = [
-    [0, -1],
-    [1, 0],
-    [0, 1],
-    [-1, 0]
-  ];
-  var POP_MS = 650;
-  var PARTY_TRIP_SECONDS = 2;
-  var MIN_SCALE = 10;
-  var MAX_SCALE = 72;
-  function look(index, salt) {
-    let value = (Math.imul(index + 1, 2654435769) ^ Math.imul(salt + 7, 2246822507)) >>> 0;
-    value = Math.imul(value ^ value >>> 15, value | 1);
-    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
-    return ((value ^ value >>> 14) >>> 0) / 4294967296;
-  }
-  var INSIDE = (x, y) => Math.abs(x) <= RADIUS && Math.abs(y) <= RADIUS;
-  var CLAMP3 = (value, min, max) => Math.min(max, Math.max(min, value));
-  var EASE_OUT_BACK = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
-  function createWorldMapView(canvas, { interactive = false, onSelect = () => {
-  }, fps = 30, bossSprite = () => null } = {}) {
-    const CONTEXT = canvas.getContext("2d");
-    const CAMERA = { x: 0, y: 0, scale: 28 };
-    const POINTERS = /* @__PURE__ */ new Map();
-    const POP_AT = /* @__PURE__ */ new Map();
-    let width = 0, height = 0, ratio = 1, manual = false, previousLit = null, frame2 = 0, lastDraw = 0, gesture = null, provider = null, partyPhase = 0, focusMove = null, lastRender = 0;
-    function resize() {
-      ratio = Math.min(2, globalThis.devicePixelRatio || 1);
-      width = Math.max(1, canvas.clientWidth);
-      height = Math.max(1, canvas.clientHeight);
-      const PIXEL_WIDTH = Math.round(width * ratio), PIXEL_HEIGHT = Math.round(height * ratio);
-      if (canvas.width !== PIXEL_WIDTH || canvas.height !== PIXEL_HEIGHT) {
-        canvas.width = PIXEL_WIDTH;
-        canvas.height = PIXEL_HEIGHT;
-      }
-    }
-    function fit(map) {
-      resize();
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const INDEX of map.revealed) {
-        minX = Math.min(minX, tileX(INDEX));
-        maxX = Math.max(maxX, tileX(INDEX));
-        minY = Math.min(minY, tileY(INDEX));
-        maxY = Math.max(maxY, tileY(INDEX));
-      }
-      const MARGIN = interactive ? 1.6 : 1.2;
-      CAMERA.x = (minX + maxX) / 2;
-      CAMERA.y = (minY + maxY) / 2;
-      CAMERA.scale = CLAMP3(
-        Math.min(width / (maxX - minX + 1 + MARGIN * 2), height / (maxY - minY + 1 + MARGIN * 2)),
-        MIN_SCALE,
-        interactive ? 56 : 40
-      );
-      manual = false;
-    }
-    function screenX(x) {
-      return (x - CAMERA.x) * CAMERA.scale + width / 2;
-    }
-    function screenY(y) {
-      return (y - CAMERA.y) * CAMERA.scale + height / 2;
-    }
-    function pick(clientX, clientY) {
-      const BOX = canvas.getBoundingClientRect(), X = Math.round((clientX - BOX.left - width / 2) / CAMERA.scale + CAMERA.x), Y = Math.round((clientY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y);
-      return INSIDE(X, Y) ? tileIndex(X, Y) : -1;
-    }
-    function drawTree2(cx, cy, r) {
-      CONTEXT.fillStyle = COLORS.trunk;
-      CONTEXT.fillRect(cx - r * 0.18, cy + r * 0.5, r * 0.36, r * 0.8);
-      CONTEXT.fillStyle = COLORS.tree;
-      CONTEXT.beginPath();
-      CONTEXT.arc(cx, cy, r, 0, Math.PI * 2);
-      CONTEXT.fill();
-    }
-    function drawGround(index, x, y, s, terrain) {
-      if (terrain === "forest") {
-        for (let tree = 0; tree < 3; tree++) {
-          drawTree2(
-            x + s * (0.22 + 0.56 * look(index, 40 + tree)),
-            y + s * (0.3 + 0.3 * look(index, 50 + tree)),
-            s * (0.12 + 0.05 * look(index, 60 + tree))
-          );
-        }
-      } else if (terrain === "rock") {
-        for (let rock = 0; rock < 2; rock++) {
-          const RX = x + s * (0.28 + 0.44 * look(index, 70 + rock)), RY = y + s * (0.55 + 0.25 * look(index, 80 + rock)), RR = s * (0.12 + 0.07 * look(index, 90 + rock));
-          CONTEXT.fillStyle = COLORS.rock;
-          CONTEXT.beginPath();
-          CONTEXT.moveTo(RX - RR * 1.3, RY + RR * 0.7);
-          CONTEXT.lineTo(RX - RR * 0.4, RY - RR);
-          CONTEXT.lineTo(RX + RR * 0.7, RY - RR * 0.5);
-          CONTEXT.lineTo(RX + RR * 1.3, RY + RR * 0.7);
-          CONTEXT.closePath();
-          CONTEXT.fill();
-          CONTEXT.fillStyle = COLORS.rockLight;
-          CONTEXT.beginPath();
-          CONTEXT.moveTo(RX - RR * 0.4, RY - RR);
-          CONTEXT.lineTo(RX + RR * 0.7, RY - RR * 0.5);
-          CONTEXT.lineTo(RX, RY);
-          CONTEXT.closePath();
-          CONTEXT.fill();
-        }
-      } else if (terrain === "swamp") {
-        CONTEXT.fillStyle = COLORS.water;
-        for (let pool = 0; pool < 2; pool++) {
-          CONTEXT.beginPath();
-          CONTEXT.ellipse(
-            x + s * (0.3 + 0.4 * look(index, 100 + pool)),
-            y + s * (0.35 + 0.35 * look(index, 110 + pool)),
-            s * 0.18,
-            s * 0.09,
-            0,
-            0,
-            Math.PI * 2
-          );
-          CONTEXT.fill();
-        }
-      } else if (look(index, 2) < 0.16) {
-        drawTree2(x + s * 0.5, y + s * 0.5, s * 0.17);
-      } else if (look(index, 2) < 0.4) {
-        CONTEXT.strokeStyle = COLORS.tree;
-        CONTEXT.lineWidth = Math.max(1, s * 0.04);
-        CONTEXT.beginPath();
-        const TX = x + s * (0.3 + 0.4 * look(index, 3)), TY = y + s * (0.5 + 0.3 * look(index, 4));
-        CONTEXT.moveTo(TX - s * 0.06, TY);
-        CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
-        CONTEXT.moveTo(TX, TY);
-        CONTEXT.lineTo(TX, TY - s * 0.16);
-        CONTEXT.moveTo(TX + s * 0.06, TY);
-        CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
-        CONTEXT.stroke();
-      }
-    }
-    function drawLand(index, x, y, s, lit, now, terrain) {
-      const VARIANT = TERRAIN_LAND[terrain][Math.floor(look(index, 1) * TERRAIN_LAND[terrain].length)], POP = POP_AT.get(index), AGE = POP === void 0 ? POP_MS : now - POP;
-      let size = s;
-      if (AGE < POP_MS) {
-        size = s * CLAMP3(EASE_OUT_BACK(AGE / POP_MS), 0.2, 1.08);
-      }
-      const OFFSET = (s - size) / 2;
-      CONTEXT.fillStyle = VARIANT;
-      CONTEXT.fillRect(x + OFFSET - 0.3, y + OFFSET - 0.3, size + 0.6, size + 0.6);
-      if (AGE < POP_MS) {
-        CONTEXT.strokeStyle = COLORS.scout;
-        CONTEXT.globalAlpha = 1 - AGE / POP_MS;
-        CONTEXT.lineWidth = 2;
-        CONTEXT.beginPath();
-        CONTEXT.arc(x + s / 2, y + s / 2, s * (0.3 + AGE / POP_MS * 0.9), 0, Math.PI * 2);
-        CONTEXT.stroke();
-        CONTEXT.globalAlpha = 1;
-      }
-      if (s >= 16) {
-        drawGround(index, x, y, s, terrain);
-      }
-      CONTEXT.strokeStyle = COLORS.shore;
-      CONTEXT.lineWidth = 2;
-      CONTEXT.beginPath();
-      for (const [DX, DY] of SIDES) {
-        const NX = tileX(index) + DX, NY = tileY(index) + DY;
-        if (INSIDE(NX, NY) && !lit.has(tileIndex(NX, NY))) {
-          const FROM_X = DX === 0 ? x : x + (DX > 0 ? s : 0), FROM_Y = DY === 0 ? y : y + (DY > 0 ? s : 0), TO_X = DX === 0 ? x + s : FROM_X, TO_Y = DY === 0 ? y + s : FROM_Y;
-          CONTEXT.moveTo(FROM_X, FROM_Y);
-          CONTEXT.lineTo(TO_X, TO_Y);
-        }
-      }
-      CONTEXT.stroke();
-    }
-    function drawFog(index, x, y, s, reachable) {
-      const INSET = Math.max(1, s * 0.05);
-      CONTEXT.fillStyle = reachable ? COLORS.fog : COLORS.fogFar;
-      CONTEXT.beginPath();
-      CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
-      CONTEXT.fill();
-      if (!reachable) {
-        return;
-      }
-      CONTEXT.fillStyle = COLORS.fogPuff;
-      for (let puff2 = 0; puff2 < 3; puff2++) {
-        CONTEXT.beginPath();
-        CONTEXT.arc(
-          x + s * (0.25 + 0.5 * look(index, 10 + puff2)),
-          y + s * (0.3 + 0.4 * look(index, 20 + puff2)),
-          s * (0.1 + 0.08 * look(index, 30 + puff2)),
-          0,
-          Math.PI * 2
-        );
-        CONTEXT.fill();
-      }
-    }
-    function drawFarm(x, y, s) {
-      CONTEXT.fillStyle = COLORS.paper;
-      CONTEXT.fillRect(x + s * 0.24, y + s * 0.44, s * 0.52, s * 0.34);
-      CONTEXT.fillStyle = COLORS.farm;
-      CONTEXT.beginPath();
-      CONTEXT.moveTo(x + s * 0.16, y + s * 0.46);
-      CONTEXT.lineTo(x + s * 0.5, y + s * 0.18);
-      CONTEXT.lineTo(x + s * 0.84, y + s * 0.46);
-      CONTEXT.closePath();
-      CONTEXT.fill();
-      CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
-    }
-    function drawMine(x, y, s) {
-      CONTEXT.fillStyle = "#5b4630";
-      CONTEXT.fillRect(x + s * 0.3, y + s * 0.5, s * 0.4, s * 0.36);
-      CONTEXT.fillStyle = "#1b130c";
-      CONTEXT.fillRect(x + s * 0.4, y + s * 0.6, s * 0.2, s * 0.26);
-      CONTEXT.fillStyle = "#c9a15a";
-      CONTEXT.fillRect(x + s * 0.28, y + s * 0.44, s * 0.44, s * 0.08);
-    }
-    function drawBoss(x, y, s, index, danger, open, now, species) {
-      const SPRITE = bossSprite(species);
-      if (!SPRITE || !SPRITE.complete || !SPRITE.naturalWidth) {
-        drawNest(x, y, s, danger, open, now);
-        return;
-      }
-      const BOB = Math.sin(now / 380 + index) * s * 0.025, SIZE = s * (0.7 + Math.min(0.2, danger * 0.02));
-      CONTEXT.fillStyle = "rgba(0,0,0,0.16)";
-      CONTEXT.beginPath();
-      CONTEXT.ellipse(x + s * 0.5, y + s * 0.84, SIZE * 0.36, SIZE * 0.1, 0, 0, Math.PI * 2);
-      CONTEXT.fill();
-      CONTEXT.drawImage(SPRITE, x + (s - SIZE) / 2, y + s * 0.86 - SIZE + BOB, SIZE, SIZE);
-      if (s >= 16) {
-        const FONT = Math.max(9, s * 0.3), LABEL = String(danger);
-        CONTEXT.font = `700 ${FONT}px system-ui, sans-serif`;
-        const BADGE_WIDTH = CONTEXT.measureText(LABEL).width + FONT * 0.7;
-        CONTEXT.fillStyle = COLORS.paper;
-        CONTEXT.beginPath();
-        CONTEXT.roundRect(x + s - BADGE_WIDTH - s * 0.04, y + s * 0.04, BADGE_WIDTH, FONT * 1.2, FONT * 0.5);
-        CONTEXT.fill();
-        CONTEXT.fillStyle = COLORS.ink;
-        CONTEXT.textAlign = "center";
-        CONTEXT.textBaseline = "middle";
-        CONTEXT.fillText(LABEL, x + s - BADGE_WIDTH / 2 - s * 0.04, y + s * 0.04 + FONT * 0.62);
-      }
-      if (open) {
-        CONTEXT.strokeStyle = COLORS.nest;
-        CONTEXT.globalAlpha = 0.55 + 0.45 * Math.sin(now / 260);
-        CONTEXT.lineWidth = 2.5;
-        CONTEXT.beginPath();
-        CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
-        CONTEXT.stroke();
-        CONTEXT.globalAlpha = 1;
-      }
-    }
-    function drawFighting(x, y, s, now) {
-      CONTEXT.strokeStyle = "#b5483a";
-      CONTEXT.globalAlpha = 0.6 + 0.4 * Math.sin(now / 150);
-      CONTEXT.lineWidth = 3;
-      CONTEXT.beginPath();
-      CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
-      CONTEXT.stroke();
-      CONTEXT.globalAlpha = 1;
-      if (s >= 22) {
-        CONTEXT.fillStyle = "#b5483a";
-        CONTEXT.font = `700 ${Math.max(9, s * 0.2)}px system-ui, sans-serif`;
-        CONTEXT.textAlign = "center";
-        CONTEXT.textBaseline = "alphabetic";
-        CONTEXT.fillText("전투 중", x + s / 2, y + s * 0.97);
-      }
-    }
-    function drawNest(x, y, s, danger, open, now) {
-      CONTEXT.fillStyle = COLORS.nest;
-      CONTEXT.beginPath();
-      CONTEXT.ellipse(x + s * 0.5, y + s * 0.62, s * 0.34, s * 0.26, 0, Math.PI, 0);
-      CONTEXT.lineTo(x + s * 0.84, y + s * 0.72);
-      CONTEXT.lineTo(x + s * 0.16, y + s * 0.72);
-      CONTEXT.closePath();
-      CONTEXT.fill();
-      CONTEXT.fillStyle = COLORS.cave;
-      CONTEXT.beginPath();
-      CONTEXT.ellipse(x + s * 0.5, y + s * 0.72, s * 0.15, s * 0.15, 0, Math.PI, 0);
-      CONTEXT.fill();
-      CONTEXT.fillStyle = COLORS.paper;
-      for (const EYE of [-0.05, 0.05]) {
-        CONTEXT.beginPath();
-        CONTEXT.arc(x + s * (0.5 + EYE), y + s * 0.65, Math.max(1, s * 0.022), 0, Math.PI * 2);
-        CONTEXT.fill();
-      }
-      if (s >= 16) {
-        const FONT = Math.max(9, s * 0.3), LABEL = String(danger);
-        CONTEXT.font = `700 ${FONT}px system-ui, sans-serif`;
-        const BADGE_WIDTH = CONTEXT.measureText(LABEL).width + FONT * 0.7;
-        CONTEXT.fillStyle = COLORS.paper;
-        CONTEXT.beginPath();
-        CONTEXT.roundRect(x + s - BADGE_WIDTH - s * 0.04, y + s * 0.04, BADGE_WIDTH, FONT * 1.2, FONT * 0.5);
-        CONTEXT.fill();
-        CONTEXT.fillStyle = COLORS.ink;
-        CONTEXT.textAlign = "center";
-        CONTEXT.textBaseline = "middle";
-        CONTEXT.fillText(LABEL, x + s - BADGE_WIDTH / 2 - s * 0.04, y + s * 0.04 + FONT * 0.62);
-      }
-      if (open) {
-        CONTEXT.strokeStyle = COLORS.nest;
-        CONTEXT.globalAlpha = 0.55 + 0.45 * Math.sin(now / 260);
-        CONTEXT.lineWidth = 2.5;
-        CONTEXT.beginPath();
-        CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
-        CONTEXT.stroke();
-        CONTEXT.globalAlpha = 1;
-      }
-    }
-    function drawExploreTarget(x, y, s, progress, now) {
-      const INSET = Math.max(1, s * 0.05);
-      CONTEXT.save();
-      CONTEXT.beginPath();
-      CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
-      CONTEXT.clip();
-      CONTEXT.fillStyle = COLORS.scout;
-      CONTEXT.globalAlpha = 0.42;
-      CONTEXT.fillRect(x, y + s * (1 - progress), s, s * progress);
-      CONTEXT.restore();
-      CONTEXT.strokeStyle = COLORS.scout;
-      CONTEXT.lineWidth = 2;
-      CONTEXT.setLineDash([s * 0.14, s * 0.1]);
-      CONTEXT.lineDashOffset = -now / 70;
-      CONTEXT.beginPath();
-      CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
-      CONTEXT.stroke();
-      CONTEXT.setLineDash([]);
-      if (s >= 18) {
-        CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
-        CONTEXT.beginPath();
-        CONTEXT.arc(x + s * 0.46, y + s * 0.44, s * 0.14, 0, Math.PI * 2);
-        CONTEXT.moveTo(x + s * 0.56, y + s * 0.54);
-        CONTEXT.lineTo(x + s * 0.68, y + s * 0.66);
-        CONTEXT.stroke();
-        if (s >= 26) {
-          CONTEXT.fillStyle = COLORS.ink;
-          CONTEXT.font = `700 ${Math.max(9, s * 0.2)}px system-ui, sans-serif`;
-          CONTEXT.textAlign = "center";
-          CONTEXT.textBaseline = "alphabetic";
-          CONTEXT.fillText(`${Math.floor(progress * 100)}%`, x + s / 2, y + s * 0.92);
-        }
-      }
-    }
-    function drawParty(from, target, count, now, once = -1) {
-      const FARM = from;
-      if (FARM === void 0 || target < 0 || !(count > 0)) {
-        return;
-      }
-      const FROM_X = screenX(tileX(FARM)), FROM_Y = screenY(tileY(FARM)), TO_X = screenX(tileX(target)), TO_Y = screenY(tileY(target));
-      CONTEXT.strokeStyle = COLORS.scout;
-      CONTEXT.globalAlpha = 0.55;
-      CONTEXT.lineWidth = 2;
-      CONTEXT.setLineDash([3, 6]);
-      CONTEXT.beginPath();
-      CONTEXT.moveTo(FROM_X, FROM_Y);
-      CONTEXT.lineTo(TO_X, TO_Y);
-      CONTEXT.stroke();
-      CONTEXT.setLineDash([]);
-      CONTEXT.globalAlpha = 1;
-      const COUNT = Math.min(60, count);
-      for (let member = 0; member < COUNT; member++) {
-        const T = once >= 0 ? CLAMP3(once * 1.4 - member / COUNT * 0.4, 0, 1) : (partyPhase + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
-        CONTEXT.fillStyle = COLORS.scout;
-        CONTEXT.strokeStyle = COLORS.paper;
-        CONTEXT.lineWidth = 1.5;
-        CONTEXT.beginPath();
-        CONTEXT.arc(
-          FROM_X + (TO_X - FROM_X) * T + SWAY,
-          FROM_Y + (TO_Y - FROM_Y) * T - SWAY,
-          Math.max(3, CAMERA.scale * 0.09),
-          0,
-          Math.PI * 2
-        );
-        CONTEXT.fill();
-        CONTEXT.stroke();
-      }
-    }
-    function render(map, state = {}, now = performance.now()) {
-      resize();
-      if (focusMove) {
-        const K = CLAMP3((now - focusMove.start) / focusMove.ms, 0, 1), EASE = K * K * (3 - 2 * K);
-        CAMERA.x = focusMove.x + (focusMove.toX - focusMove.x) * EASE;
-        CAMERA.y = focusMove.y + (focusMove.toY - focusMove.y) * EASE;
-        CAMERA.scale = focusMove.scale + (focusMove.toScale - focusMove.scale) * EASE;
-        manual = true;
-        if (K >= 1) {
-          focusMove = null;
-        }
-      }
-      const LIT = new Set(map.revealed);
-      if (previousLit) {
-        for (const INDEX of LIT) {
-          if (!previousLit.has(INDEX)) {
-            POP_AT.set(INDEX, now);
-          }
-        }
-        if (!manual && LIT.size !== previousLit.size) {
-          fit(map);
-        }
-      } else {
-        fit(map);
-      }
-      previousLit = LIT;
-      const S = CAMERA.scale, MIN_X = Math.max(-RADIUS, Math.floor(CAMERA.x - width / 2 / S) - 1), MAX_X = Math.min(RADIUS, Math.ceil(CAMERA.x + width / 2 / S) + 1), MIN_Y = Math.max(-RADIUS, Math.floor(CAMERA.y - height / 2 / S) - 1), MAX_Y = Math.min(RADIUS, Math.ceil(CAMERA.y + height / 2 / S) + 1), FARMS = new Set(map.farms.map((farm) => farm.tile));
-      CONTEXT.setTransform(ratio, 0, 0, ratio, 0, 0);
-      CONTEXT.fillStyle = COLORS.background;
-      CONTEXT.fillRect(0, 0, width, height);
-      CONTEXT.strokeStyle = COLORS.fogEdge;
-      CONTEXT.lineWidth = 1.5;
-      CONTEXT.setLineDash([6, 6]);
-      CONTEXT.strokeRect(screenX(-RADIUS - 0.5), screenY(-RADIUS - 0.5), S * (RADIUS * 2 + 1), S * (RADIUS * 2 + 1));
-      CONTEXT.setLineDash([]);
-      for (let y = MIN_Y; y <= MAX_Y; y++) {
-        for (let x = MIN_X; x <= MAX_X; x++) {
-          const INDEX = tileIndex(x, y), PX = screenX(x - 0.5), PY = screenY(y - 0.5);
-          if (LIT.has(INDEX)) {
-            drawLand(INDEX, PX, PY, S, LIT, now, tileTerrain(map, INDEX));
-          } else if (NEIGHBOURS2.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))) {
-            drawFog(INDEX, PX, PY, S, inReach(map, INDEX));
-          }
-        }
-      }
-      for (let y = MIN_Y; y <= MAX_Y; y++) {
-        for (let x = MIN_X; x <= MAX_X; x++) {
-          const INDEX = tileIndex(x, y), PX = screenX(x - 0.5), PY = screenY(y - 0.5);
-          if (!LIT.has(INDEX)) {
-            continue;
-          }
-          if (map.mines.includes(INDEX)) {
-            drawMine(PX, PY, S);
-          }
-          if (FARMS.has(INDEX)) {
-            drawFarm(PX, PY, S);
-          } else if (hasBoss(map, INDEX)) {
-            drawBoss(
-              PX,
-              PY,
-              S,
-              INDEX,
-              tileDanger(map, INDEX),
-              canChallenge(map, INDEX),
-              now,
-              tileSpecies(map, INDEX)
-            );
-            if (map.challengeTile === INDEX) {
-              drawFighting(PX, PY, S, now);
-            }
-          }
-        }
-      }
-      if (state.approach) {
-        drawParty(
-          state.approach.from,
-          state.approach.tile,
-          state.approach.count,
-          now,
-          CLAMP3((now - state.approach.start) / state.approach.ms, 0, 1)
-        );
-      }
-      const TARGETS = state.targets ?? [];
-      if (TARGETS.length > 0) {
-        partyPhase = (partyPhase + Math.min(100, now - lastRender) / 1e3 / PARTY_TRIP_SECONDS) % 1;
-      }
-      for (const TARGET of TARGETS) {
-        drawExploreTarget(
-          screenX(tileX(TARGET.tile) - 0.5),
-          screenY(tileY(TARGET.tile) - 0.5),
-          S,
-          TARGET.progress,
-          now
-        );
-        drawParty(TARGET.from, TARGET.tile, TARGET.count, now);
-      }
-      if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
-        CONTEXT.strokeStyle = COLORS.ink;
-        CONTEXT.lineWidth = 3;
-        CONTEXT.beginPath();
-        CONTEXT.roundRect(
-          screenX(tileX(state.selected) - 0.5) + 1,
-          screenY(tileY(state.selected) - 0.5) + 1,
-          S - 2,
-          S - 2,
-          S * 0.18
-        );
-        CONTEXT.stroke();
-      }
-      lastRender = now;
-    }
-    function loop(now) {
-      frame2 = requestAnimationFrame(loop);
-      if (now - lastDraw < 1e3 / fps) {
-        return;
-      }
-      lastDraw = now;
-      const SNAPSHOT = provider?.();
-      if (SNAPSHOT) {
-        render(SNAPSHOT.map, SNAPSHOT, now);
-      }
-    }
-    if (interactive) {
-      const ZOOM = (factor, atX, atY) => {
-        const BOX = canvas.getBoundingClientRect(), BEFORE_X = (atX - BOX.left - width / 2) / CAMERA.scale + CAMERA.x, BEFORE_Y = (atY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y;
-        CAMERA.scale = CLAMP3(CAMERA.scale * factor, MIN_SCALE, MAX_SCALE);
-        CAMERA.x = BEFORE_X - (atX - BOX.left - width / 2) / CAMERA.scale;
-        CAMERA.y = BEFORE_Y - (atY - BOX.top - height / 2) / CAMERA.scale;
-        manual = true;
-      };
-      const SPREAD = () => {
-        const [A, B] = [...POINTERS.values()];
-        return Math.hypot(A.x - B.x, A.y - B.y);
-      };
-      canvas.style.touchAction = "none";
-      canvas.addEventListener("pointerdown", (event) => {
-        canvas.setPointerCapture?.(event.pointerId);
-        POINTERS.set(event.pointerId, { x: event.clientX, y: event.clientY });
-        gesture = { moved: POINTERS.size > 1, spread: POINTERS.size > 1 ? SPREAD() : 0 };
-      });
-      canvas.addEventListener("pointermove", (event) => {
-        const POINTER = POINTERS.get(event.pointerId);
-        if (!POINTER || !gesture) {
-          return;
-        }
-        const DX = event.clientX - POINTER.x, DY = event.clientY - POINTER.y;
-        if (POINTERS.size === 1) {
-          if (!gesture.moved && Math.hypot(DX, DY) < 6) {
-            return;
-          }
-          gesture.moved = true;
-          CAMERA.x -= DX / CAMERA.scale;
-          CAMERA.y -= DY / CAMERA.scale;
-          manual = true;
-        }
-        POINTER.x = event.clientX;
-        POINTER.y = event.clientY;
-        if (POINTERS.size === 2) {
-          const NEXT = SPREAD(), [A, B] = [...POINTERS.values()];
-          if (gesture.spread > 0) {
-            ZOOM(NEXT / gesture.spread, (A.x + B.x) / 2, (A.y + B.y) / 2);
-          }
-          gesture.spread = NEXT;
-          gesture.moved = true;
-        }
-      });
-      const RELEASE = (event) => {
-        const WAS_TAP = gesture && !gesture.moved && POINTERS.size === 1 && event.type === "pointerup";
-        POINTERS.delete(event.pointerId);
-        if (WAS_TAP) {
-          const INDEX = pick(event.clientX, event.clientY);
-          if (INDEX >= 0) {
-            onSelect(INDEX);
-          }
-        }
-        if (POINTERS.size === 0) {
-          gesture = null;
-        }
-      };
-      canvas.addEventListener("pointerup", RELEASE);
-      canvas.addEventListener("pointercancel", RELEASE);
-      canvas.addEventListener(
-        "wheel",
-        (event) => {
-          event.preventDefault();
-          ZOOM(event.deltaY < 0 ? 1.15 : 1 / 1.15, event.clientX, event.clientY);
-        },
-        { passive: false }
-      );
-    }
-    return {
-      render,
-      fit,
-      resize,
-      // Starts drawing frames from whatever the provider returns until stop() is called.
-      start(nextProvider) {
-        provider = nextProvider;
-        previousLit = null;
-        cancelAnimationFrame(frame2);
-        frame2 = requestAnimationFrame(loop);
-      },
-      stop() {
-        cancelAnimationFrame(frame2);
-        frame2 = 0;
-        provider = null;
-      },
-      // Glide the camera onto a tile (used when a party walks out to fight a boss).
-      focus(tile, scale, ms) {
-        focusMove = {
-          start: performance.now(),
-          ms,
-          x: CAMERA.x,
-          y: CAMERA.y,
-          scale: CAMERA.scale,
-          toX: tileX(tile),
-          toY: tileY(tile),
-          toScale: CLAMP3(scale, MIN_SCALE, MAX_SCALE)
-        };
-      },
-      // Show the whole lit land again after the player moved the camera.
-      recenter(map) {
-        fit(map);
-      }
-    };
-  }
-
-  // src/farm-app.js
-  init_world_map();
   init_species_catalog();
   var DOLLAR2 = (id) => document.getElementById(id);
   var STORAGE = new FarmStorage();
@@ -21977,12 +19126,6 @@
   var foodHold = null;
   var farmSortTransition = null;
   var farmPanelRevision = -1;
-  var bossEncounterOpen = false;
-  var bossMapTile = -1;
-  var worldMapView = null;
-  var miniMapView = null;
-  var lastLit = null;
-  var bossPauseBeforeOpen = null;
   var bossRewardRevealTimer = null;
   var bossRewardCalculationTimer = null;
   var bossRewardDialogReceiptKey = null;
@@ -22405,13 +19548,6 @@
     return OK;
   }
   var AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
-  function saveImmediate(world = personalGarden) {
-    const OK = writeCheckpoint(world);
-    if (OK) {
-      AUTOSAVE.reset();
-    }
-    return OK;
-  }
   function replacePersonalGarden(world) {
     unsubscribeProgress?.();
     personalGarden = world;
@@ -22428,56 +19564,23 @@
   }
   var FOOD_FEEL = new FoodFeel();
   var COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
-  var WORK_STORAGE_KEYS = {
-    work: "budmori.work.basisPoints",
-    resource: "budmori.work.resourceBasisPoints",
-    wood: "budmori.work.woodBasisPoints",
-    haul: "budmori.work.haulBasisPoints",
-    build: "budmori.work.buildBasisPoints",
-    explore: "budmori.work.exploreBasisPoints",
-    walkers: "budmori.neighbourWalkers"
-  };
-  function loadWorkSetting(key, fallback) {
+  var WORK_STORAGE_KEY = "budmori.work.basisPoints";
+  function loadWorkSetting(fallback) {
     try {
-      const RAW = localStorage.getItem(key), VALUE = Number(RAW);
+      const RAW = localStorage.getItem(WORK_STORAGE_KEY), VALUE = Number(RAW);
       return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e4 ? VALUE : fallback;
     } catch {
       return fallback;
     }
   }
-  function loadWalkerSetting(fallback) {
+  function saveWorkSetting(value) {
     try {
-      const RAW = localStorage.getItem(WORK_STORAGE_KEYS.walkers), VALUE = Number(RAW);
-      return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e3 ? VALUE : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  function saveWorkSetting(key, value) {
-    try {
-      localStorage.setItem(key, String(value));
+      localStorage.setItem(WORK_STORAGE_KEY, String(value));
     } catch {
     }
   }
-  function workCuts(world) {
-    const WORK = world.workBasisPoints / 100, JOBS = world.resourceBasisPoints + world.haulBasisPoints + world.buildBasisPoints + world.exploreBasisPoints, ROUND = (value) => Math.round(value / 5) * 5, SHARE = (points) => JOBS > 0 ? ROUND(points / JOBS * 100) : null;
-    return {
-      a: ROUND(100 - WORK),
-      b: ROUND(100 - WORK * JOBS / 1e4),
-      c: SHARE(world.resourceBasisPoints),
-      d: SHARE(world.resourceBasisPoints + world.haulBasisPoints),
-      e: SHARE(world.resourceBasisPoints + world.haulBasisPoints + world.buildBasisPoints)
-    };
-  }
-  function cutsToBasisPoints(a, b, c, d, e) {
-    const WORK = 100 - a, JOBS = WORK > 0 ? Math.round((100 - b) / WORK * 1e4) : 0, PART = (from, to) => Math.round(JOBS * (to - from) / 100), RESOURCE = PART(0, c), HAUL = PART(c, d), BUILD = PART(d, e);
-    return {
-      work: WORK * 100,
-      resource: RESOURCE,
-      haul: HAUL,
-      build: BUILD,
-      explore: Math.max(0, Math.min(PART(e, 100), 1e4 - RESOURCE - HAUL - BUILD))
-    };
+  function workCut(world) {
+    return Math.round((100 - world.workBasisPoints / 100) / 5) * 5;
   }
   function install(world) {
     if (active) {
@@ -22489,16 +19592,7 @@
     active = new FarmSession(world, {
       onError: FAIL2
     });
-    world.neighbourWalkers = loadWalkerSetting(world.neighbourWalkers);
-    DOLLAR2("neighbourWalkers").value = String(world.neighbourWalkers);
-    world.setWorkBasisPoints(
-      loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
-      loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
-      loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints),
-      loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
-      loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints)
-    );
-    world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
+    world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
     return active;
   }
   install(new GARDEN());
@@ -22515,249 +19609,17 @@
     }
     return "";
   }
-  function mapChallengeBlockReason() {
-    if (!personalGarden) {
-      return raidStartBlockReason();
-    }
-    if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
-      return "도전할 보스를 골라 주세요. 농장 시야 안의 밝은 칸에 있는 보스만 도전할 수 있어요.";
-    }
-    if (!inReach(personalGarden.worldMap, bossMapTile, personalGarden.activePlotId)) {
-      return "지금 보고 있는 농장의 시야 밖이에요. 그 보스가 보이는 농장으로 옮겨 주세요.";
-    }
-    return raidStartBlockReason();
-  }
-  function worldMapFrame() {
-    if (!personalGarden) {
-      return null;
-    }
-    const MAP = personalGarden.worldMap;
-    return {
-      map: MAP,
-      selected: bossMapTile,
-      targets: personalGarden.exploreTargets,
-      explorers: personalGarden.workerKindCounts.explore,
-      rate: personalGarden.exploreRate
-    };
-  }
-  var MAP_BOSS_SPRITES = /* @__PURE__ */ new Map();
-  function mapBossSprite(species) {
-    if (MAP_BOSS_SPRITES.has(species)) {
-      return MAP_BOSS_SPRITES.get(species);
-    }
-    MAP_BOSS_SPRITES.set(species, null);
-    const ENTRY = speciesById(species);
-    if (ENTRY) {
-      createNeutralBossPreview(species, ENTRY.asset).then((svg) => {
-        const IMAGE = new Image();
-        IMAGE.onload = () => MAP_BOSS_SPRITES.set(species, IMAGE);
-        IMAGE.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`;
-      }).catch((error) => console.error("Unable to load map boss sprite", error));
-    }
-    return null;
-  }
-  function startWorldMapView() {
-    worldMapView ??= createWorldMapView(DOLLAR2("worldMapCanvas"), {
-      interactive: true,
-      onSelect: selectWorldMapTile,
-      fps: 30,
-      bossSprite: mapBossSprite
-    });
-    worldMapView.start(worldMapFrame);
-  }
-  function stopWorldMapView() {
-    worldMapView?.stop();
-  }
-  function syncMiniMap(visible) {
-    const MINI = DOLLAR2("miniMap");
-    if (MINI.hidden === visible) {
-      MINI.hidden = !visible;
-    }
-    if (visible && !miniMapView) {
-      miniMapView = createWorldMapView(DOLLAR2("miniMapCanvas"), { fps: 12, bossSprite: mapBossSprite });
-      miniMapView.start(worldMapFrame);
-    } else if (!visible && miniMapView) {
-      miniMapView.stop();
-      miniMapView = null;
-    }
-    if (visible && personalGarden) {
-      syncText("miniMapLabel", exploreLine(personalGarden.activePlotId, true));
-    }
-  }
   function say(text) {
-    const NOTICE = DOLLAR2("exploreNotice");
+    const NOTICE = DOLLAR2("farmNotice");
     NOTICE.textContent = text;
     NOTICE.hidden = false;
-    clearTimeout(announceExploration.timer);
-    announceExploration.timer = setTimeout(() => {
+    clearTimeout(say.timer);
+    say.timer = setTimeout(() => {
       NOTICE.hidden = true;
     }, 4e3);
   }
-  function announceExploration() {
-    const MAP = personalGarden?.worldMap;
-    if (!MAP) {
-      lastLit = null;
-      return;
-    }
-    if (!lastLit || lastLit.world !== personalGarden) {
-      lastLit = { world: personalGarden, set: new Set(MAP.revealed), bosses: new Set(MAP.bosses) };
-      return;
-    }
-    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)).length, APPEARED = MAP.bosses.filter((index) => !lastLit.bosses.has(index)).length;
-    lastLit.set = new Set(MAP.revealed);
-    lastLit.bosses = new Set(MAP.bosses);
-    if (APPEARED > 0) {
-      say("보스가 나타났어요! 지도에서 확인해 보세요.");
-    } else if (FOUND > 0) {
-      say(`새 칸 ${FOUND}개를 발견했어요`);
-    }
-  }
-  var EXPLORE_PHASE_TEXT = {
-    none: "탐사 일꾼 없음",
-    idle: "탐사할 칸 없음",
-    moving: "이동 중",
-    working: "탐사 중"
-  };
-  function exploreLine(plotId, short = false) {
-    const STATUS = personalGarden.exploreStatus(plotId), PERCENT = Math.floor(personalGarden.exploreProgress * 100);
-    if (short) {
-      return STATUS.phase === "working" ? `탐사 중 ${PERCENT}%` : EXPLORE_PHASE_TEXT[STATUS.phase];
-    }
-    return STATUS.phase === "working" ? `탐사 중 ${PERCENT}% · 현장 ${STATUS.onSite}/${STATUS.workers}마리` : STATUS.phase === "moving" ? `이동 중 · 일꾼 ${STATUS.workers}마리가 걸어가는 중` : EXPLORE_PHASE_TEXT[STATUS.phase];
-  }
-  function renderWorldMap() {
-    if (!personalGarden) {
-      return;
-    }
-    const MAP = personalGarden.worldMap;
-    const GAUGE = exploreLine(personalGarden.activePlotId), TILE = bossMapTile;
-    let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false, canBuild = false, canMine = false;
-    if (TILE >= 0) {
-      const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
-      if (!isRevealed(MAP, TILE)) {
-        title = `안개 ${POSITION}`;
-        canExplore = canExploreTile(MAP, TILE);
-        info = canExplore ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}` : !inReach(MAP, TILE) ? "농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요." : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
-      } else if (hasBoss(MAP, TILE)) {
-        const STAGE = tileDanger(MAP, TILE), SPECIES = tileSpecies(MAP, TILE), STATS2 = bossStageStats(STAGE);
-        title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
-        info = `체력 ${Math.round(STATS2.hp).toLocaleString("ko-KR")} · 공격력 ${Number(STATS2.attackPower.toPrecision(3)).toLocaleString("ko-KR")} · 승리 +${STATS2.xp.toLocaleString("ko-KR")} XP`;
-      } else {
-        title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
-        const RESOURCE = tileResource(MAP, TILE), NAME = RESOURCE === "wood" ? "목재" : "돌";
-        canMine = canBuildMine(MAP, TILE, personalGarden.activePlotId);
-        info = !RESOURCE ? "아무것도 없는 칸이에요." : MAP.mines.includes(TILE) ? `채굴장이 있어요. ${NAME}이 줄지 않지만 일꾼이 캐는 속도는 절반이에요.` : `${NAME} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.`;
-      }
-    }
-    if (TILE >= 0 && isRevealed(MAP, TILE)) {
-      const BLOCK = farmBuildBlock(MAP, TILE), PLOT = personalGarden.projectInfo("plot"), COST = PLOT ? `목재 ${PLOT.cost.wood} · 돌 ${PLOT.cost.stone}` : "", BUILDING = !!personalGarden.siteOf("plot") || MAP.buildTile >= 0;
-      if (MAP.farms.some((farm) => farm.tile === TILE)) {
-        title = `농장 ${tileX(TILE)}, ${tileY(TILE)}`;
-        info = "여기서 탐사 반경이 뻗어요. 농장 안에 망루를 지으면 더 멀리 닿아요.";
-      } else if (BLOCK === "boss") {
-        info = `${info} 새 농장은 이 칸과 둘레 1칸에 보스가 없어야 지을 수 있어요.`;
-      } else if (BLOCK === null) {
-        canBuild = !BUILDING && !!PLOT;
-        info = `${info} ${BUILDING ? "다른 새 농장을 짓는 중이에요." : `새 농장을 지을 수 있어요 · ${COST}`}`;
-      }
-    }
-    DOLLAR2("worldMapTitle").textContent = title;
-    DOLLAR2("worldMapInfo").textContent = info;
-    DOLLAR2("worldMapExplore").hidden = !canExplore;
-    const MINE_INFO = personalGarden.projectInfo("mine");
-    DOLLAR2("worldMapMine").hidden = !canMine || !MINE_INFO;
-    DOLLAR2("worldMapMine").textContent = MINE_INFO ? `채굴장 짓기 · 목재 ${MINE_INFO.cost.wood} · 돌 ${MINE_INFO.cost.stone}` : "채굴장 짓기";
-    DOLLAR2("worldMapMine").disabled = !!personalGarden.siteOf("mine") || !MINE_INFO || personalGarden.materials.wood < MINE_INFO.cost.wood || personalGarden.materials.stone < MINE_INFO.cost.stone;
-    DOLLAR2("worldMapBuild").hidden = !canBuild;
-    DOLLAR2("worldMapBuild").disabled = !canBuild || !personalGarden.projectInfo("plot") || personalGarden.materials.wood < personalGarden.projectInfo("plot").cost.wood || personalGarden.materials.stone < personalGarden.projectInfo("plot").cost.stone;
-    DOLLAR2("bossEncounterHint").textContent = mapChallengeBlockReason();
-    DOLLAR2("bossStageCounter").textContent = `보스 ${MAP.bosses.length}마리`;
-  }
-  function selectWorldMapTile(index) {
-    bossMapTile = bossMapTile === index ? -1 : index;
-    renderWorldMap();
-  }
-  var bossMapTicker = 0;
-  function stopBossMapTicker() {
-    clearInterval(bossMapTicker);
-    bossMapTicker = 0;
-  }
-  function setBossView() {
-    stopBossMapTicker();
-    stopWorldMapView();
-    DOLLAR2("bossEncounterScreen").dataset.view = "map";
-    DOLLAR2("worldMapView").hidden = false;
-    renderWorldMap();
-    startWorldMapView();
-    bossMapTicker = setInterval(() => {
-      personalGarden?.tickExploration(0.25, false);
-      renderWorldMap();
-    }, 250);
-  }
-  function openBossEncounter(push = true) {
-    stopWorldInput();
-    if (!personalGarden) {
-      if (STORAGE.world) {
-        start(restore(snapshot(STORAGE.world)), false);
-      } else {
-        say("농장으로 돌아간 뒤에 지도를 열 수 있어요.");
-        return false;
-      }
-    }
-    if (personalGarden.farmBossEvent?.phase !== "idle") {
-      say("전투가 끝난 뒤에 열 수 있어요.");
-      return false;
-    }
-    if (!persist()) {
-      say(`저장하지 못해서 지도를 열지 못했어요: ${STORAGE.error || "저장 오류"}`);
-      return false;
-    }
-    if (menuOpen) {
-      closeMenu(false);
-    }
-    bossPauseBeforeOpen = active?.paused ?? true;
-    if (active && !bossPauseBeforeOpen) {
-      active.paused = true;
-      active.loop.resetTiming();
-    }
-    bossEncounterOpen = true;
-    document.body.dataset.bossScreen = "true";
-    DOLLAR2("bossEncounterScreen").hidden = false;
-    setBossView();
-    if (push) {
-      history.pushState(null, "", "#/boss");
-    }
-    DOLLAR2("bossEncounterBack").focus();
-    return true;
-  }
-  function closeBossEncounter(push = true) {
-    if (!bossEncounterOpen) {
-      return;
-    }
-    bossEncounterOpen = false;
-    stopBossMapTicker();
-    stopWorldMapView();
-    document.body.dataset.bossScreen = "false";
-    DOLLAR2("bossEncounterScreen").hidden = true;
-    for (const ID of ["bossPreview"]) {
-      const PREVIEW = DOLLAR2(ID);
-      if (PREVIEW) {
-        BOSS_PREVIEW_VERSIONS.set(PREVIEW, (BOSS_PREVIEW_VERSIONS.get(PREVIEW) || 0) + 1);
-        PREVIEW.hidden = true;
-      }
-    }
-    if (active && bossPauseBeforeOpen !== null) {
-      active.paused = bossPauseBeforeOpen;
-      bossPauseBeforeOpen = null;
-      active.loop.resetTiming();
-    }
-    if (push) {
-      history.pushState(null, "", "#/farm");
-    }
-  }
   function refreshStart() {
     DOLLAR2("continueGame").disabled = !STORAGE.hasWorld;
-    DOLLAR2("startBossEncounter").disabled = !STORAGE.hasWorld;
     DOLLAR2("exportSave").disabled = !STORAGE.raw;
     DOLLAR2("saveNotice").textContent = STORAGE.error || STORAGE.notice;
   }
@@ -22767,9 +19629,6 @@
       persist();
       if (menuOpen) {
         closeMenu(false);
-      }
-      if (bossEncounterOpen) {
-        closeBossEncounter(false);
       }
     }
     home = value;
@@ -22806,15 +19665,6 @@
     }
     if (summary.food) {
       PARTS.push(`먹이 ${summary.food}`);
-    }
-    if (summary.wood || summary.stone) {
-      PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
-    }
-    if (summary.built.length) {
-      PARTS.push(`${summary.built.join(", ")} 완성`);
-    }
-    for (const SITE of summary.sites) {
-      PARTS.push(`${SITE.name} ${SITE.percent}%`);
     }
     return `${TIME} 동안 자리를 비웠어요${PARTS.length ? " · " + PARTS.join(" · ") : ""}`;
   }
@@ -22853,82 +19703,26 @@
       markSeen();
     }
   }
-  function beginRaid() {
-    if (!personalGarden || bossMapTile < 0 || mapChallengeBlockReason() !== "") {
+  function beginChallenge() {
+    const REASON = raidStartBlockReason();
+    if (REASON !== "") {
+      say(REASON);
       return;
     }
-    if (!personalGarden.startMapBossFight(bossMapTile)) {
-      return;
+    if (personalGarden.startBossFight()) {
+      active.paused = false;
+      active.loop.resetTiming();
     }
-    bossPauseBeforeOpen = false;
-    closeBossEncounter(true);
-    active.paused = false;
-    active.loop.resetTiming();
-  }
-  function returnToFarm(push = true) {
-    stopWorldInput();
-    if (bossEncounterOpen) {
-      closeBossEncounter(false);
-    }
-    if (!personalGarden) {
-      return false;
-    }
-    setHome(false, push);
-    return true;
   }
   DOLLAR2("continueGame").onclick = () => {
     if (STORAGE.world) {
       start(restore(snapshot(STORAGE.world)), true, true);
     }
   };
-  DOLLAR2("startBossEncounter").onclick = () => {
-    if (!STORAGE.world) {
-      return;
-    }
-    start(restore(snapshot(STORAGE.world)), false);
-    openBossEncounter();
-  };
-  DOLLAR2("menuBossEncounter").onclick = () => {
-    closeMenu(false);
-    openBossEncounter();
-  };
   DOLLAR2("fightRetreat").onclick = () => {
     personalGarden?.retreatFromFight();
   };
-  DOLLAR2("bossEncounterBack").onclick = () => closeBossEncounter();
-  DOLLAR2("worldMapFit").onclick = () => {
-    if (personalGarden) {
-      worldMapView?.recenter(personalGarden.worldMap);
-    }
-  };
-  DOLLAR2("miniMap").onclick = () => openBossEncounter();
-  DOLLAR2("worldMapBuild").onclick = () => {
-    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild("plot", { tile: bossMapTile })) {
-      saveImmediate(personalGarden);
-      renderWorldMap();
-    }
-  };
-  DOLLAR2("worldMapMine").onclick = () => {
-    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild("mine", { tile: bossMapTile })) {
-      saveImmediate(personalGarden);
-      renderWorldMap();
-    }
-  };
-  DOLLAR2("worldMapExplore").onclick = () => {
-    if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
-      personalGarden.markProgressChanged();
-      saveImmediate(personalGarden);
-      renderWorldMap();
-    }
-  };
-  DOLLAR2("bossEncounterChallenge").onclick = () => {
-    const REASON = DOLLAR2("bossStageNotice").textContent;
-    if (REASON !== "") {
-      say(REASON);
-      return;
-    }
-    beginRaid();
-  };
+  DOLLAR2("bossChallenge").onclick = beginChallenge;
   DOLLAR2("newGame").onclick = () => {
     if (STORAGE.raw && !DOLLAR2("newConfirm").hidden) {
       return;
@@ -23017,8 +19811,6 @@
       DOLLAR2("saveNotice").textContent = e.message;
     }
   };
-  DOLLAR2("farm").onclick = () => returnToFarm();
-  DOLLAR2("raid").onclick = () => openBossEncounter();
   DOLLAR2("merge").onclick = () => active?.queue("merge");
   DOLLAR2("merge").addEventListener("keydown", (e) => {
     if (e.repeat && ["Enter", " "].includes(e.key)) {
@@ -23033,20 +19825,6 @@
     });
     renderProgressionResetActions();
   }
-  var plotStatusCache = { at: -Infinity, value: /* @__PURE__ */ new Map() };
-  function farmPlotStatuses(world) {
-    const NOW = performance.now();
-    if (NOW - plotStatusCache.at > 400) {
-      plotStatusCache = {
-        at: NOW,
-        value: new Map([...world.farmPlots.keys()].map((id) => [id, world.farmPlotStatus(id)]))
-      };
-    }
-    return plotStatusCache.value;
-  }
-  function farmPlotDisplayName(plotId) {
-    return `농장 ${String(plotId).match(/^plot-(\d+)$/)?.[1] || plotId}`;
-  }
   function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -23060,16 +19838,6 @@
     DOLLAR2("farmStatPending").textContent = String(W.pendingRewardPopulation);
     DOLLAR2("farmStatFood").textContent = String(W.warehouseFood);
     syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
-    DOLLAR2("farmPlotList").innerHTML = [...W.farmPlots.values()].map((plot) => {
-      const COUNT = W.roster.placedPopulation(plot.id), STATUS = W.farmPlotStatus(plot.id);
-      return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}마리 / ${plot.capacity}마리" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? " disabled" : ""}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
-    }).join("");
-    const ACTIVE = W.activeFarmPlot, NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    const EXPAND = W.projectInfo("expand"), PLOT = W.projectInfo("plot"), CAN_PAY = (info) => W.materials.wood >= info.cost.wood && W.materials.stone >= info.cost.stone, COST_TEXT = (info) => `목재 ${info.cost.wood} · 돌 ${info.cost.stone}`;
-    DOLLAR2("farmExpand").innerHTML = EXPAND ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>` : "<b>농장 확장</b><small>최대 크기예요</small>";
-    DOLLAR2("farmExpand").disabled = LOCKED || !EXPAND || !!W.siteOf("expand") || !CAN_PAY(EXPAND);
-    DOLLAR2("farmUnlock").innerHTML = `<b>새 농장 짓기</b><small>지도에서 칸을 골라요 · ${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? "" : " · 부족해요"}</small>`;
-    DOLLAR2("farmUnlock").disabled = LOCKED || !!W.siteOf("plot");
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
@@ -23249,146 +20017,17 @@
       switchMenuTab(BUTTON.dataset.menuTab);
     }
   };
-  DOLLAR2("farmPlotList").onclick = (e) => {
-    const BUTTON = e.target.closest("[data-farm-plot]");
-    if (BUTTON && !BUTTON.disabled) {
-      active.queue("farm-plot-switch", { plotId: BUTTON.dataset.farmPlot });
-    }
-  };
-  function switchAdjacentFarmPlot(step) {
-    const WORLD = personalGarden || active.world, IDS = [...WORLD.farmPlots.keys()], INDEX = IDS.indexOf(WORLD.activePlotId);
-    if (IDS.length > 1 && INDEX >= 0) {
-      active.queue("farm-plot-switch", { plotId: IDS[(INDEX + step + IDS.length) % IDS.length] });
-    }
-  }
-  DOLLAR2("plotPrev").onclick = () => switchAdjacentFarmPlot(-1);
-  DOLLAR2("plotNext").onclick = () => switchAdjacentFarmPlot(1);
-  DOLLAR2("farmExpand").onclick = () => {
-    active.queue("farm-build", { facilityId: "expand" });
-  };
-  DOLLAR2("neighbourWalkers").onchange = (e) => {
-    const VALUE = Math.round(Number(e.target.value));
-    if (personalGarden && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1e3) {
-      personalGarden.neighbourWalkers = VALUE;
-      saveWorkSetting(WORK_STORAGE_KEYS.walkers, VALUE);
-    }
-    e.target.value = String(personalGarden?.neighbourWalkers ?? VALUE);
-  };
-  DOLLAR2("farmUnlock").onclick = () => {
-    openBossEncounter();
-    setBossView(true);
-  };
   DOLLAR2("farmPlotActions").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-farm-sort]");
     if (BUTTON) {
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
-  var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC", "workCutD", "workCutE"];
-  function applyWorkCuts(...cuts) {
-    const [CUT_A, CUT_B] = [cuts[0], cuts[1]].sort((x, y) => x - y), [CUT_C, CUT_D, CUT_E] = [cuts[2], cuts[3], cuts[4]].sort((x, y) => x - y), POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C, CUT_D, CUT_E);
-    [CUT_A, CUT_B, CUT_C, CUT_D, CUT_E].forEach((value, index) => {
-      DOLLAR2(WORK_CUT_IDS[index]).value = String(value);
-    });
-    saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
-    saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
-    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS.haul);
-    saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
-    saveWorkSetting(WORK_STORAGE_KEYS.explore, POINTS.explore);
-    (personalGarden || active.world).setWorkBasisPoints(
-      POINTS.work,
-      POINTS.resource,
-      POINTS.haul,
-      POINTS.build,
-      POINTS.explore
-    );
-    active.queue("farm-work", {
-      basisPoints: POINTS.work,
-      resourceBasisPoints: POINTS.resource,
-      haulBasisPoints: POINTS.haul,
-      buildBasisPoints: POINTS.build,
-      exploreBasisPoints: POINTS.explore
-    });
-  }
-  DOLLAR2("woodCut").addEventListener("input", () => {
-    const POINTS = Number(DOLLAR2("woodCut").value) * 100;
-    saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
-    (personalGarden || active.world).setWoodShare(POINTS);
-  });
-  for (const ID of WORK_CUT_IDS) {
-    DOLLAR2(ID).addEventListener("input", () => {
-      applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR2(id).value)));
-    });
-  }
-  var WORK_LEVEL_NAMES = ["역할", "일꾼", "자원"];
-  function setWorkLevel(level) {
-    DOLLAR2("workLevels").dataset.level = String(level);
-    DOLLAR2("workCrumbs").replaceChildren(
-      ...WORK_LEVEL_NAMES.slice(0, level + 1).map((name, index) => {
-        const BUTTON = document.createElement("button");
-        BUTTON.type = "button";
-        BUTTON.textContent = name;
-        BUTTON.dataset.levelTo = String(index);
-        BUTTON.setAttribute("aria-current", String(index === level));
-        return BUTTON;
-      })
-    );
-    DOLLAR2("workHud").dataset.level = String(level);
-  }
-  function setWorkHudOpen(open) {
-    DOLLAR2("workHud").dataset.open = String(open);
-    DOLLAR2("workHudToggle").setAttribute("aria-expanded", String(open));
-    if (!open) {
-      setWorkLevel(0);
-    }
-  }
-  DOLLAR2("workLevels").addEventListener("click", (e) => {
-    const BRANCH = e.target.closest("[data-level-to]");
-    if (BRANCH) {
-      setWorkHudOpen(true);
-      setWorkLevel(Number(BRANCH.dataset.levelTo));
-    }
-  });
-  DOLLAR2("workCrumbs").addEventListener("click", (e) => {
-    const CRUMB = e.target.closest("[data-level-to]");
-    if (CRUMB) {
-      setWorkLevel(Number(CRUMB.dataset.levelTo));
-    }
-  });
-  DOLLAR2("workHudToggle").addEventListener("click", () => {
-    setWorkHudOpen(DOLLAR2("workHud").dataset.open !== "true");
-  });
-  setWorkLevel(0);
-  DOLLAR2("workHud").addEventListener("click", (e) => {
-    const BUTTON = e.target.closest("[data-work-preset]");
-    if (BUTTON && !BUTTON.disabled) {
-      applyWorkCuts(...BUTTON.dataset.workPreset.split(",").map(Number));
-    }
-  });
-  function syncText2(element, text) {
-    if (element.textContent !== text) {
-      element.textContent = text;
-    }
-  }
-  function facilityLabel(id) {
-    const SPEC = CONFIG.farm.work.facilities[id];
-    return `<span><b data-name>${SPEC.name}</b><br /><small>${SPEC.effect}</small></span><small data-cost></small>`;
-  }
-  for (const ID of Object.keys(CONFIG.farm.work.facilities)) {
-    const BUTTON = document.createElement("button");
-    BUTTON.type = "button";
-    BUTTON.dataset.facility = ID;
-    BUTTON.innerHTML = facilityLabel(ID);
-    DOLLAR2("facilityList").append(BUTTON);
-  }
-  DOLLAR2("facilityList").addEventListener("click", (e) => {
-    const BUTTON = e.target.closest("[data-facility]");
-    if (BUTTON && !BUTTON.disabled) {
-      active.queue("farm-build", { facilityId: BUTTON.dataset.facility });
-    }
-  });
-  DOLLAR2("buildRush").addEventListener("click", () => {
-    active.queue("farm-rush", { on: DOLLAR2("buildRush").getAttribute("aria-pressed") !== "true" });
+  DOLLAR2("workCutA").addEventListener("input", () => {
+    const CUT = Number(DOLLAR2("workCutA").value), POINTS = (100 - CUT) * 100;
+    saveWorkSetting(POINTS);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS);
+    active.queue("farm-work", { basisPoints: POINTS });
   });
   DOLLAR2("farmRatioList").addEventListener("input", (e) => {
     const INPUT = e.target.closest("[data-farm-target]");
@@ -23561,7 +20200,7 @@
     }
   }
   function canUseWorldInput() {
-    return !home && !menuOpen && !bossEncounterOpen && !active.paused && !farmSortTransition;
+    return !home && !menuOpen && !active.paused && !farmSortTransition;
   }
   function cancelFarmSortTransition() {
     if (!farmSortTransition) {
@@ -23756,10 +20395,7 @@
     }
   });
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && bossEncounterOpen) {
-      e.preventDefault();
-      closeBossEncounter();
-    } else if (e.key === "Escape" && menuOpen) {
+    if (e.key === "Escape" && menuOpen) {
       e.preventDefault();
       closeMenu();
     }
@@ -23812,12 +20448,6 @@
         start(new GARDEN(), false);
       }
     }
-    if (R2 === "#/boss") {
-      if (!openBossEncounter(false)) {
-        history.replaceState(null, "", "#/farm");
-      }
-      return;
-    }
     if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
       const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== "idle";
       const RESTRICTED = (R2 === "#/farms" || R2 === "#/growth") && FARM_EVENT_ACTIVE || R2 === "#/abilities" && !personalGarden;
@@ -23832,9 +20462,6 @@
     if (menuOpen) {
       closeMenu(false);
     }
-    if (bossEncounterOpen && R2 !== "#/boss") {
-      closeBossEncounter(false);
-    }
   }
   window.addEventListener("popstate", route);
   function sync(display, now, notices) {
@@ -23842,31 +20469,12 @@
       (reward) => ["calculating", "ready"].includes(reward.status) || reward.queuedCount > 0
     ), MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD);
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && panPointer) {
+    if ((home || menuOpen || active.paused) && panPointer) {
       stopWorldInput();
     }
-    syncAttribute("farm", "aria-pressed", !bossEncounterOpen);
-    syncAttribute("raid", "aria-pressed", bossEncounterOpen);
-    syncFlag("merge", "disabled", home || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncFlag("merge", "disabled", home || FARM_EVENT_ACTIVE || !MERGE_STATUS.available);
     syncData("merge", "availability", MERGE_STATUS.code || "unavailable");
-    syncFlag("mergeNotice", "hidden", home || FARM_EVENT_ACTIVE || bossEncounterOpen);
-    const PLOT_WORLD = personalGarden || W, PLOT_IDS = PLOT_WORLD.farmPlots ? [...PLOT_WORLD.farmPlots.keys()] : [];
-    syncFlag("plotBar", "hidden", home || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
-    if (PLOT_IDS.length > 1) {
-      const STATUSES = farmPlotStatuses(PLOT_WORLD), CURRENT = STATUSES.get(PLOT_WORLD.activePlotId) ?? { food: 0, hungry: 0 }, NEEDS_VISIT = [...STATUSES].some(
-        ([id, status]) => id !== PLOT_WORLD.activePlotId && status.food === 0 && status.hungry > 0
-      );
-      syncText("plotBarName", farmPlotDisplayName(PLOT_WORLD.activePlotId));
-      syncText(
-        "plotBarCount",
-        `${PLOT_WORLD.roster.placedPopulation(PLOT_WORLD.activePlotId)} / ${PLOT_WORLD.activeFarmPlot.capacity}`
-      );
-      syncText("plotBarFood", `먹이 ${CURRENT.food} · 배고픔 ${CURRENT.hungry}`);
-      syncFlag("plotPrev", "disabled", !!farmSortTransition);
-      syncFlag("plotNext", "disabled", !!farmSortTransition);
-      syncData("plotPrev", "alert", String(NEEDS_VISIT));
-      syncData("plotNext", "alert", String(NEEDS_VISIT));
-    }
+    syncFlag("mergeNotice", "hidden", home || FARM_EVENT_ACTIVE);
     syncAttribute("merge", "aria-label", `합성${MERGE_STATUS.available ? "" : " 불가"} · ${MERGE_STATUS.reason}`);
     syncText("mergeNotice", MERGE_STATUS.reason);
     let displayedCount = 0;
@@ -23891,11 +20499,8 @@
         worldCount++;
       }
     }
-    syncFlag("bossEncounterScreen", "hidden", home || !bossEncounterOpen);
-    syncMiniMap(!home && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
-    announceExploration();
-    syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home);
+    syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home);
     syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
     syncText("count", displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
@@ -23926,92 +20531,38 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? "(시간 초과)" : ""} · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요` : ""
+      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? "(시간 초과)" : ""} · 병력이 회복하는 동안 잠자요` : ""
     );
     syncFlag(
       "battleOutcome",
       "hidden",
       home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
     );
-    {
-      const REASON = mapChallengeBlockReason();
-      syncAttribute("bossEncounterChallenge", "aria-disabled", String(REASON !== ""));
-      syncText("bossStageNotice", REASON);
-    }
-    syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
-    syncFlag("menuTabGrowth", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncText("bossChallenge", `도전 ${(personalGarden || W).playerProgression.farmBossEventStage}단계`);
+    syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
+    syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
+    syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE);
+    syncFlag("menuTabGrowth", "disabled", FARM_EVENT_ACTIVE);
     syncFlag("menuTabAbilities", "disabled", !personalGarden);
-    const WORK_WORLD = personalGarden || W;
-    const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD), SITES = WORK_WORLD.buildSites;
-    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`, warn = false;
+    const WORK_WORLD = personalGarden || W, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUT = workCut(WORK_WORLD);
+    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;
     if (WORKERS === 0) {
-      note = "일꾼이 없어서 먹이와 자원이 안 만들어져요";
+      note = "일꾼이 없어서 먹이가 안 만들어져요";
       warn = true;
-    } else if (WORK_WORLD.warehouseFull && KINDS.resource === 0) {
+    } else if (WORK_WORLD.warehouseFull) {
       note = "농장에 먹이가 가득해요 · 일꾼이 쉬어요";
       warn = true;
     }
-    if (SITES.length > 0 && WORKERS > 0) {
-      note = `${SITES.map((site) => `${WORK_WORLD.siteName(site)} ${Math.floor(site.done / site.need * 100)}%`).join(" · ")} 짓는 중${WORK_WORLD.buildRush ? " · 전원 건설" : ""}`;
-    }
-    for (const ID of WORK_CUT_IDS) {
-      DOLLAR2(ID).disabled = !!farmSortTransition;
-    }
-    if (!WORK_CUT_IDS.some((id) => document.activeElement === DOLLAR2(id))) {
-      [CUTS.a, CUTS.b, CUTS.c, CUTS.d, CUTS.e].forEach((value, index) => {
-        if (value !== null) {
-          DOLLAR2(WORK_CUT_IDS[index]).value = String(value);
-        }
-      });
-    }
-    DOLLAR2("buildRush").hidden = SITES.length === 0;
-    DOLLAR2("buildRush").setAttribute("aria-pressed", String(WORK_WORLD.buildRush));
-    syncText("buildRush", WORK_WORLD.buildRush ? "전원 건설 중 (끄기)" : "전원 건설");
-    for (const BUTTON of DOLLAR2("facilityList").children) {
-      const ID = BUTTON.dataset.facility, SPEC = CONFIG.farm.work.facilities[ID], LEVEL = WORK_WORLD.facilityLevel(ID), MAXED = LEVEL >= (SPEC.maxLevel ?? CONFIG.farm.work.facilityMaxLevel), INFO = WORK_WORLD.projectInfo(ID), COST = INFO?.cost || { wood: 0, stone: 0 };
-      BUTTON.disabled = MAXED || !!WORK_WORLD.siteOf(ID) || WORK_WORLD.materials.wood < COST.wood || WORK_WORLD.materials.stone < COST.stone;
-      syncText2(BUTTON.querySelector("[data-name]"), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
-      syncText2(
-        BUTTON.querySelector("[data-cost]"),
-        MAXED ? "최대 레벨" : WORK_WORLD.siteOf(ID) ? "짓는 중" : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ""}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ""}`
-      );
+    DOLLAR2("workCutA").disabled = !!farmSortTransition;
+    if (document.activeElement !== DOLLAR2("workCutA")) {
+      DOLLAR2("workCutA").value = String(CUT);
     }
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
-    syncText("workHudFood", `먹이 ${KINDS.food}`);
-    syncText("workHudRes", `자원 ${KINDS.resource}`);
-    {
-      const WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
-      if (document.activeElement !== DOLLAR2("woodCut")) {
-        DOLLAR2("woodCut").value = String(WOOD);
-      }
-      syncText("workHudWood", `목재 ${WOOD}%`);
-      syncText("workHudStone", `돌 ${100 - WOOD}%`);
-      DOLLAR2("workHudWood").style.flex = `${Math.max(1, WOOD)} 1 0`;
-      DOLLAR2("workHudStone").style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
-    }
-    syncText("workHudJobs", `일꾼 ${KINDS.resource + KINDS.haul + KINDS.build + KINDS.explore}`);
-    syncText("workHudHaul", `운반 ${KINDS.haul}`);
-    syncText("workHudBuild", `건설 ${KINDS.build}`);
-    syncText("workHudExplore", `탐사 ${KINDS.explore}`);
-    syncText("materialWood", String(W.materials.wood));
-    syncText("materialStone", String(W.materials.stone));
+    syncText("workHudFood", `먹이 ${WORKERS}`);
     syncData("workHud", "warn", warn);
-    const CUT_C = CUTS.c ?? Number(DOLLAR2("workCutC").value), CUT_D = CUTS.d ?? Number(DOLLAR2("workCutD").value), CUT_E = CUTS.e ?? Number(DOLLAR2("workCutE").value);
-    DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUTS.a)} 1 0`;
-    DOLLAR2("workHudFood").style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
-    DOLLAR2("workHudJobs").style.flex = `${Math.max(1, 100 - CUTS.b)} 1 0`;
-    DOLLAR2("workHudRes").style.flex = `${Math.max(1, CUT_C)} 1 0`;
-    DOLLAR2("workHudHaul").style.flex = `${Math.max(1, CUT_D - CUT_C)} 1 0`;
-    DOLLAR2("workHudBuild").style.flex = `${Math.max(1, CUT_E - CUT_D)} 1 0`;
-    DOLLAR2("workHudExplore").style.flex = `${Math.max(1, 100 - CUT_E)} 1 0`;
-    for (const BUTTON of DOLLAR2("workHud").querySelectorAll("[data-work-preset]")) {
-      BUTTON.setAttribute(
-        "aria-pressed",
-        String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUT_C},${CUT_D},${CUT_E}`)
-      );
-      BUTTON.disabled = !!farmSortTransition;
-    }
+    DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUT)} 1 0`;
+    DOLLAR2("workHudFood").style.flex = `${Math.max(1, 100 - CUT)} 1 0`;
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
     }
@@ -24041,14 +20592,6 @@
       COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
       PERFORMANCE_DIAGNOSTICS.end("presentation", PRESENTATION_START);
       const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
-      RENDERER.backdrop = active.world.scene === "farm" ? active.world : null;
-      if (RENDERER.backdrop && panPointer?.mode === "pan") {
-        const NEXT_PLOT = RENDERER.cameraPlot(active.world);
-        if (NEXT_PLOT) {
-          RENDERER.cameraSwitch = NEXT_PLOT;
-          active.queue("farm-plot-switch", { plotId: NEXT_PLOT });
-        }
-      }
       RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
       PERFORMANCE_DIAGNOSTICS.end("render", RENDER_START);
       const UI_START = PERFORMANCE_DIAGNOSTICS.start();

@@ -522,7 +522,7 @@ class FarmSession {
         if (W.scene === 'farm') {
             const AUTO_TAPS_START = this.profiler?.start();
             try {
-                W.advanceAutoTaps(1 / LOCAL_PROFILE.tickRate);
+                W.advanceWork(1 / LOCAL_PROFILE.tickRate);
             } finally {
                 this.profiler?.end('autoTaps', AUTO_TAPS_START);
             }
@@ -564,24 +564,9 @@ class FarmSession {
             case 'farm-target':
                 return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
             case 'farm-work':
-                return (
-                    W.scene === 'farm' &&
-                    W.setWorkBasisPoints(
-                        c.basisPoints,
-                        c.resourceBasisPoints,
-                        c.haulBasisPoints,
-                        c.buildBasisPoints,
-                        c.exploreBasisPoints,
-                    )
-                );
-            case 'farm-build':
-                return (
-                    W.scene === 'farm' &&
-                    typeof c.facilityId === 'string' &&
-                    W.startBuild(c.facilityId, { tile: Number.isSafeInteger(c.tile) ? c.tile : -1 })
-                );
-            case 'farm-rush':
-                return W.scene === 'farm' && W.setBuildRush(c.on === true);
+                return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
+            case 'boss-challenge':
+                return W.scene === 'farm' && W.startBossFight();
             case 'farm-sort':
                 return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':

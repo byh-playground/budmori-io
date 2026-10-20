@@ -82,61 +82,52 @@ await check('new game boots with a minimal HUD', async () => {
     const STATE = await WORLD(() => ({
         units: BUDMORI.sim.units.length,
         scene: BUDMORI.sim.scene,
-        removed: ['zoomIn', 'zoomOut', 'zoomFit', 'pauseToggle', 'menuHome', 'warehouseCount'].filter((id) =>
-            document.getElementById(id),
-        ),
+        removed: [
+            'zoomIn',
+            'zoomOut',
+            'zoomFit',
+            'pauseToggle',
+            'menuHome',
+            'warehouseCount',
+            'raid',
+            'miniMap',
+            'materialCount',
+            'plotBar',
+            'bossEncounterScreen',
+        ].filter((id) => document.getElementById(id)),
         roles: [...document.querySelectorAll('.work-hud__bar span')].map((span) => span.id),
-        handles: [...document.querySelectorAll('.work-hud__track')].map(
-            (track) => track.querySelectorAll('.work-hud__cut').length,
-        ),
+        handles: document.querySelectorAll('.work-hud__cut').length,
+        challenge: document.getElementById('bossChallenge')?.textContent.trim(),
     }));
     expect(STATE.units > 0 && STATE.scene === 'farm', 'farm did not start');
     expect(STATE.removed.length === 0, `removed controls are back: ${STATE.removed}`);
-    expect(STATE.handles.join() === '2,3,1', `each role bar needs at most two handles (2,3,1), has ${STATE.handles}`);
-    expect(STATE.roles.length === 9, `the three role bars should have nine parts, has ${STATE.roles.length}`);
+    expect(STATE.handles === 1, `the role bar needs exactly one handle, has ${STATE.handles}`);
+    expect(STATE.roles.length === 2, `the role bar should have two parts, has ${STATE.roles.length}`);
+    expect(STATE.challenge === '도전 1단계', `challenge button reads "${STATE.challenge}"`);
 });
 
-await check('resource workers hit piles, haulers carry the pieces to the store', async () => {
-    await WORLD(async () => {
-        const MAP = await import('/src/world-map.js'),
-            W = BUDMORI.sim;
-        for (let index = 0; index < 30; index++) {
+await check('food workers hit grain piles and food is produced', async () => {
+    await WORLD(() => {
+        const W = BUDMORI.sim;
+        for (let index = 0; index < 20; index++) {
             W.spawn(index % 9, 1, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 12);
         }
-        W.worldMap.revealed = Array.from({ length: 625 }, (_, index) => index).filter(
-            (index) => Math.max(Math.abs(MAP.tileX(index)), Math.abs(MAP.tileY(index))) <= 3,
-        );
-        W.setWorkBasisPoints(5000, 4000, 1500, 500, 500);
-        W.setWoodShare(6000);
+        W.setWorkBasisPoints(6000);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();
     });
-    await PAGE.waitForFunction(() => BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone > 0, null, {
-        timeout: 45000,
-    }).catch(() => {});
+    await PAGE.waitForFunction(() => BUDMORI.sim.foodTaps.produced > 0, null, { timeout: 45000 }).catch(() => {});
     const GOT = await WORLD(() => ({
-        counts: BUDMORI.sim.workerKindCounts,
-        items: BUDMORI.sim.fieldItems.length,
-        materials: BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone,
+        workers: BUDMORI.sim.workerCount,
+        piles: BUDMORI.sim.piles.length,
+        produced: BUDMORI.sim.foodTaps.produced,
     }));
-    expect(GOT.counts.resource > 0 && GOT.counts.haul > 0, `roles missing ${JSON.stringify(GOT.counts)}`);
-    expect(GOT.materials > 0, `nothing reached the farm ${JSON.stringify(GOT)}`);
+    expect(GOT.workers > 0 && GOT.piles > 0, `no workers or piles ${JSON.stringify(GOT)}`);
+    expect(GOT.produced > 0, `no food produced ${JSON.stringify(GOT)}`);
 });
 
-await check('at most twelve pieces lie on the ground', async () => {
-    let most = 0;
-    for (let round = 0; round < 8; round++) {
-        await PAGE.waitForTimeout(1000);
-        most = Math.max(most, await WORLD(() => BUDMORI.sim.fieldItems.length));
-    }
-    expect(most <= 12 + 1e-6, `ground over the limit: ${most}`);
-});
-
-await check('map boss fight starts and retreat ends it', async () => {
-    await WORLD(() => {
-        const W = BUDMORI.sim;
-        W.startMapBossFight(W.worldMap.bosses[0]);
-    });
+await check('challenge button starts a boss fight and retreat ends it', async () => {
+    await PAGE.locator('#bossChallenge').click();
     await PAGE.waitForTimeout(4000);
     const FIGHTING = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(FIGHTING !== 'idle', `fight did not start (${FIGHTING})`);
@@ -148,14 +139,14 @@ await check('map boss fight starts and retreat ends it', async () => {
 
 await check('progress survives a reload', async () => {
     await WORLD(() => {
-        BUDMORI.sim.materials.wood = 7;
+        BUDMORI.sim.playerProgression.farmBossEventStage = 3;
         BUDMORI.sim.markProgressChanged();
     });
     await PAGE.waitForTimeout(3000);
     await PAGE.reload();
     await PAGE.waitForTimeout(4000);
-    const WOOD = await WORLD(() => BUDMORI.sim.materials.wood);
-    expect(WOOD >= 7, `wood after reload is ${WOOD}`);
+    const STAGE = await WORLD(() => BUDMORI.sim.playerProgression.farmBossEventStage);
+    expect(STAGE >= 3, `stage after reload is ${STAGE}`);
 });
 
 await check('no page errors', async () => {

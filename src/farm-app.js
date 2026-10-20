@@ -15,26 +15,7 @@ import {
     renderFarmUpgradeTreeMarkup,
 } from './ability-tree.js';
 import { canResetPlayerProgression } from './ability-progression.js';
-import { advanceBossRewardReveal, bossStageStats, openAllBossRewardBoxes } from './boss-rewards.js';
-import { createWorldMapView } from './world-map-view.js';
-import {
-    canBuildMine,
-    canChallenge,
-    canExploreTile,
-    farmBuildBlock,
-    inReach,
-    TERRAIN_NAMES,
-    tileRemaining,
-    tileResource,
-    tileTerrain,
-    hasBoss,
-    isRevealed,
-    setExploreTarget,
-    tileDanger,
-    tileSpecies,
-    tileX,
-    tileY,
-} from './world-map.js';
+import { advanceBossRewardReveal, openAllBossRewardBoxes } from './boss-rewards.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
@@ -54,13 +35,6 @@ let panPointer = null;
 let foodHold = null;
 let farmSortTransition = null;
 let farmPanelRevision = -1;
-let bossEncounterOpen = false;
-// A raid is a boss met on the world map; the screen is the map.
-let bossMapTile = -1;
-let worldMapView = null;
-let miniMapView = null;
-let lastLit = null;
-let bossPauseBeforeOpen = null;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
 let bossRewardDialogReceiptKey = null;
@@ -559,13 +533,6 @@ function writeCheckpoint(world = personalGarden) {
     return OK;
 }
 const AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
-function saveImmediate(world = personalGarden) {
-    const OK = writeCheckpoint(world);
-    if (OK) {
-        AUTOSAVE.reset();
-    }
-    return OK;
-}
 function replacePersonalGarden(world) {
     unsubscribeProgress?.();
     personalGarden = world;
@@ -583,70 +550,27 @@ function persist() {
 }
 const FOOD_FEEL = new FoodFeel();
 const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
-const WORK_STORAGE_KEYS = {
-    work: 'budmori.work.basisPoints',
-    resource: 'budmori.work.resourceBasisPoints',
-    wood: 'budmori.work.woodBasisPoints',
-    haul: 'budmori.work.haulBasisPoints',
-    build: 'budmori.work.buildBasisPoints',
-    explore: 'budmori.work.exploreBasisPoints',
-    walkers: 'budmori.neighbourWalkers',
-};
-// The worker ratio is a play setting, not part of the farm save, so old saves stay valid.
-function loadWorkSetting(key, fallback) {
+const WORK_STORAGE_KEY = 'budmori.work.basisPoints';
+// The worker ratio is a play setting, not part of the farm save.
+function loadWorkSetting(fallback) {
     try {
-        const RAW = localStorage.getItem(key),
+        const RAW = localStorage.getItem(WORK_STORAGE_KEY),
             VALUE = Number(RAW);
         return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 10000 ? VALUE : fallback;
     } catch {
         return fallback;
     }
 }
-function loadWalkerSetting(fallback) {
+function saveWorkSetting(value) {
     try {
-        const RAW = localStorage.getItem(WORK_STORAGE_KEYS.walkers),
-            VALUE = Number(RAW);
-        return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1000 ? VALUE : fallback;
-    } catch {
-        return fallback;
-    }
-}
-function saveWorkSetting(key, value) {
-    try {
-        localStorage.setItem(key, String(value));
+        localStorage.setItem(WORK_STORAGE_KEY, String(value));
     } catch {
         /* The ratio still applies for this run. */
     }
 }
-// The farm bar is [breed | food | workers] with two cuts (a, b). Opening the workers splits the ones that do not
-// make food into [resource | haul | build | explore] with three more (c, d, e). Cuts are percentages of their own bar.
-function workCuts(world) {
-    const WORK = world.workBasisPoints / 100,
-        JOBS = world.resourceBasisPoints + world.haulBasisPoints + world.buildBasisPoints + world.exploreBasisPoints,
-        ROUND = (value) => Math.round(value / 5) * 5,
-        SHARE = (points) => (JOBS > 0 ? ROUND((points / JOBS) * 100) : null);
-    return {
-        a: ROUND(100 - WORK),
-        b: ROUND(100 - (WORK * JOBS) / 10000),
-        c: SHARE(world.resourceBasisPoints),
-        d: SHARE(world.resourceBasisPoints + world.haulBasisPoints),
-        e: SHARE(world.resourceBasisPoints + world.haulBasisPoints + world.buildBasisPoints),
-    };
-}
-function cutsToBasisPoints(a, b, c, d, e) {
-    const WORK = 100 - a,
-        JOBS = WORK > 0 ? Math.round(((100 - b) / WORK) * 10000) : 0,
-        PART = (from, to) => Math.round((JOBS * (to - from)) / 100),
-        RESOURCE = PART(0, c),
-        HAUL = PART(c, d),
-        BUILD = PART(d, e);
-    return {
-        work: WORK * 100,
-        resource: RESOURCE,
-        haul: HAUL,
-        build: BUILD,
-        explore: Math.max(0, Math.min(PART(e, 100), 10000 - RESOURCE - HAUL - BUILD)),
-    };
+// The farm bar is [breed | food] with one cut: the share of the farm that breeds.
+function workCut(world) {
+    return Math.round((100 - world.workBasisPoints / 100) / 5) * 5;
 }
 function install(world) {
     if (active) {
@@ -658,16 +582,7 @@ function install(world) {
     active = new FarmSession(world, {
         onError: FAIL,
     });
-    world.neighbourWalkers = loadWalkerSetting(world.neighbourWalkers);
-    DOLLAR('neighbourWalkers').value = String(world.neighbourWalkers);
-    world.setWorkBasisPoints(
-        loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
-        loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
-        loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints),
-        loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
-        loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints),
-    );
-    world.setWoodShare(loadWorkSetting(WORK_STORAGE_KEYS.wood, world.woodBasisPoints));
+    world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
     return active;
 }
 install(new Garden());
@@ -684,293 +599,18 @@ function raidStartBlockReason() {
     }
     return '';
 }
-function mapChallengeBlockReason() {
-    if (!personalGarden) {
-        return raidStartBlockReason();
-    }
-    if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
-        return '도전할 보스를 골라 주세요. 농장 시야 안의 밝은 칸에 있는 보스만 도전할 수 있어요.';
-    }
-    if (!inReach(personalGarden.worldMap, bossMapTile, personalGarden.activePlotId)) {
-        return '지금 보고 있는 농장의 시야 밖이에요. 그 보스가 보이는 농장으로 옮겨 주세요.';
-    }
-    return raidStartBlockReason();
-}
-// What the map views draw each frame: the map itself, how far the next tile is, and how many explorers are out.
-function worldMapFrame() {
-    if (!personalGarden) {
-        return null;
-    }
-    const MAP = personalGarden.worldMap;
-    return {
-        map: MAP,
-        selected: bossMapTile,
-        targets: personalGarden.exploreTargets,
-        explorers: personalGarden.workerKindCounts.explore,
-        rate: personalGarden.exploreRate,
-    };
-}
-// Boss sprites for the map: the neutral SVG of each species, turned into an image once and reused.
-const MAP_BOSS_SPRITES = new Map();
-function mapBossSprite(species) {
-    if (MAP_BOSS_SPRITES.has(species)) {
-        return MAP_BOSS_SPRITES.get(species);
-    }
-    MAP_BOSS_SPRITES.set(species, null);
-    const ENTRY = speciesById(species);
-    if (ENTRY) {
-        createNeutralBossPreview(species, ENTRY.asset)
-            .then((svg) => {
-                const IMAGE = new Image();
-                IMAGE.onload = () => MAP_BOSS_SPRITES.set(species, IMAGE);
-                IMAGE.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`;
-            })
-            .catch((error) => console.error('Unable to load map boss sprite', error));
-    }
-    return null;
-}
-function startWorldMapView() {
-    worldMapView ??= createWorldMapView(DOLLAR('worldMapCanvas'), {
-        interactive: true,
-        onSelect: selectWorldMapTile,
-        fps: 30,
-        bossSprite: mapBossSprite,
-    });
-    worldMapView.start(worldMapFrame);
-}
-function stopWorldMapView() {
-    worldMapView?.stop();
-}
-// The small map on the farm screen runs only while it is shown.
-function syncMiniMap(visible) {
-    const MINI = DOLLAR('miniMap');
-    if (MINI.hidden === visible) {
-        MINI.hidden = !visible;
-    }
-    if (visible && !miniMapView) {
-        miniMapView = createWorldMapView(DOLLAR('miniMapCanvas'), { fps: 12, bossSprite: mapBossSprite });
-        miniMapView.start(worldMapFrame);
-    } else if (!visible && miniMapView) {
-        miniMapView.stop();
-        miniMapView = null;
-    }
-    if (visible && personalGarden) {
-        syncText('miniMapLabel', exploreLine(personalGarden.activePlotId, true));
-    }
-}
-// A short line on screen, for a press that cannot do what it says: a button never just does nothing.
+// A line on screen, for a press that cannot do what it says: a button never just does nothing.
 function say(text) {
-    const NOTICE = DOLLAR('exploreNotice');
+    const NOTICE = DOLLAR('farmNotice');
     NOTICE.textContent = text;
     NOTICE.hidden = false;
-    clearTimeout(announceExploration.timer);
-    announceExploration.timer = setTimeout(() => {
+    clearTimeout(say.timer);
+    say.timer = setTimeout(() => {
         NOTICE.hidden = true;
     }, 4000);
 }
-// A tile lifted from the fog is announced where the player is looking, whether the map is open or not.
-function announceExploration() {
-    const MAP = personalGarden?.worldMap;
-    if (!MAP) {
-        lastLit = null;
-        return;
-    }
-    if (!lastLit || lastLit.world !== personalGarden) {
-        lastLit = { world: personalGarden, set: new Set(MAP.revealed), bosses: new Set(MAP.bosses) };
-        return;
-    }
-    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)).length,
-        APPEARED = MAP.bosses.filter((index) => !lastLit.bosses.has(index)).length;
-    lastLit.set = new Set(MAP.revealed);
-    lastLit.bosses = new Set(MAP.bosses);
-    if (APPEARED > 0) {
-        say('보스가 나타났어요! 지도에서 확인해 보세요.');
-    } else if (FOUND > 0) {
-        say(`새 칸 ${FOUND}개를 발견했어요`);
-    }
-}
-// "Exploring 0%" reads like a bug, so say what the explorers are doing: walking there, or lifting fog.
-const EXPLORE_PHASE_TEXT = {
-    none: '탐사 일꾼 없음',
-    idle: '탐사할 칸 없음',
-    moving: '이동 중',
-    working: '탐사 중',
-};
-function exploreLine(plotId, short = false) {
-    const STATUS = personalGarden.exploreStatus(plotId),
-        PERCENT = Math.floor(personalGarden.exploreProgress * 100);
-    if (short) {
-        return STATUS.phase === 'working' ? `탐사 중 ${PERCENT}%` : EXPLORE_PHASE_TEXT[STATUS.phase];
-    }
-    return STATUS.phase === 'working'
-        ? `탐사 중 ${PERCENT}% · 현장 ${STATUS.onSite}/${STATUS.workers}마리`
-        : STATUS.phase === 'moving'
-          ? `이동 중 · 일꾼 ${STATUS.workers}마리가 걸어가는 중`
-          : EXPLORE_PHASE_TEXT[STATUS.phase];
-}
-function renderWorldMap() {
-    if (!personalGarden) {
-        return;
-    }
-    const MAP = personalGarden.worldMap;
-    const GAUGE = exploreLine(personalGarden.activePlotId),
-        TILE = bossMapTile;
-    let title = '칸을 눌러 보세요',
-        info = GAUGE,
-        canExplore = false,
-        canBuild = false,
-        canMine = false;
-    if (TILE >= 0) {
-        const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
-        if (!isRevealed(MAP, TILE)) {
-            title = `안개 ${POSITION}`;
-            canExplore = canExploreTile(MAP, TILE);
-            info = canExplore
-                ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}`
-                : !inReach(MAP, TILE)
-                  ? '농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요.'
-                  : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
-        } else if (hasBoss(MAP, TILE)) {
-            const STAGE = tileDanger(MAP, TILE),
-                SPECIES = tileSpecies(MAP, TILE),
-                STATS = bossStageStats(STAGE);
-            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
-            info = `체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
-        } else {
-            title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
-            const RESOURCE = tileResource(MAP, TILE),
-                NAME = RESOURCE === 'wood' ? '목재' : '돌';
-            canMine = canBuildMine(MAP, TILE, personalGarden.activePlotId);
-            info = !RESOURCE
-                ? '아무것도 없는 칸이에요.'
-                : MAP.mines.includes(TILE)
-                  ? `채굴장이 있어요. ${NAME}이 줄지 않지만 일꾼이 캐는 속도는 절반이에요.`
-                  : `${NAME} ${tileRemaining(MAP, TILE)}개가 남아 있어요. 일꾼이 캐서 농장으로 날라요.`;
-        }
-    }
-    if (TILE >= 0 && isRevealed(MAP, TILE)) {
-        const BLOCK = farmBuildBlock(MAP, TILE),
-            PLOT = personalGarden.projectInfo('plot'),
-            COST = PLOT ? `목재 ${PLOT.cost.wood} · 돌 ${PLOT.cost.stone}` : '',
-            BUILDING = !!personalGarden.siteOf('plot') || MAP.buildTile >= 0;
-        if (MAP.farms.some((farm) => farm.tile === TILE)) {
-            title = `농장 ${tileX(TILE)}, ${tileY(TILE)}`;
-            info = '여기서 탐사 반경이 뻗어요. 농장 안에 망루를 지으면 더 멀리 닿아요.';
-        } else if (BLOCK === 'boss') {
-            info = `${info} 새 농장은 이 칸과 둘레 1칸에 보스가 없어야 지을 수 있어요.`;
-        } else if (BLOCK === null) {
-            canBuild = !BUILDING && !!PLOT;
-            info = `${info} ${BUILDING ? '다른 새 농장을 짓는 중이에요.' : `새 농장을 지을 수 있어요 · ${COST}`}`;
-        }
-    }
-    DOLLAR('worldMapTitle').textContent = title;
-    DOLLAR('worldMapInfo').textContent = info;
-    DOLLAR('worldMapExplore').hidden = !canExplore;
-    const MINE_INFO = personalGarden.projectInfo('mine');
-    DOLLAR('worldMapMine').hidden = !canMine || !MINE_INFO;
-    DOLLAR('worldMapMine').textContent = MINE_INFO
-        ? `채굴장 짓기 · 목재 ${MINE_INFO.cost.wood} · 돌 ${MINE_INFO.cost.stone}`
-        : '채굴장 짓기';
-    DOLLAR('worldMapMine').disabled =
-        !!personalGarden.siteOf('mine') ||
-        !MINE_INFO ||
-        personalGarden.materials.wood < MINE_INFO.cost.wood ||
-        personalGarden.materials.stone < MINE_INFO.cost.stone;
-    DOLLAR('worldMapBuild').hidden = !canBuild;
-    DOLLAR('worldMapBuild').disabled =
-        !canBuild ||
-        !personalGarden.projectInfo('plot') ||
-        personalGarden.materials.wood < personalGarden.projectInfo('plot').cost.wood ||
-        personalGarden.materials.stone < personalGarden.projectInfo('plot').cost.stone;
-    DOLLAR('bossEncounterHint').textContent = mapChallengeBlockReason();
-    DOLLAR('bossStageCounter').textContent = `보스 ${MAP.bosses.length}마리`;
-}
-function selectWorldMapTile(index) {
-    bossMapTile = bossMapTile === index ? -1 : index;
-    renderWorldMap();
-}
-// The farm is paused behind the map screen, but the explorers keep working so the fog keeps lifting while you look.
-let bossMapTicker = 0;
-function stopBossMapTicker() {
-    clearInterval(bossMapTicker);
-    bossMapTicker = 0;
-}
-function setBossView() {
-    stopBossMapTicker();
-    stopWorldMapView();
-    DOLLAR('bossEncounterScreen').dataset.view = 'map';
-    DOLLAR('worldMapView').hidden = false;
-    renderWorldMap();
-    startWorldMapView();
-    bossMapTicker = setInterval(() => {
-        personalGarden?.tickExploration(0.25, false);
-        renderWorldMap();
-    }, 250);
-}
-function openBossEncounter(push = true) {
-    stopWorldInput();
-    if (!personalGarden) {
-        if (STORAGE.world) {
-            start(restore(snapshot(STORAGE.world)), false);
-        } else {
-            say('농장으로 돌아간 뒤에 지도를 열 수 있어요.');
-            return false;
-        }
-    }
-    if (personalGarden.farmBossEvent?.phase !== 'idle') {
-        say('전투가 끝난 뒤에 열 수 있어요.');
-        return false;
-    }
-    if (!persist()) {
-        say(`저장하지 못해서 지도를 열지 못했어요: ${STORAGE.error || '저장 오류'}`);
-        return false;
-    }
-    if (menuOpen) {
-        closeMenu(false);
-    }
-    bossPauseBeforeOpen = active?.paused ?? true;
-    if (active && !bossPauseBeforeOpen) {
-        active.paused = true;
-        active.loop.resetTiming();
-    }
-    bossEncounterOpen = true;
-    document.body.dataset.bossScreen = 'true';
-    DOLLAR('bossEncounterScreen').hidden = false;
-    setBossView();
-    if (push) {
-        history.pushState(null, '', '#/boss');
-    }
-    DOLLAR('bossEncounterBack').focus();
-    return true;
-}
-function closeBossEncounter(push = true) {
-    if (!bossEncounterOpen) {
-        return;
-    }
-    bossEncounterOpen = false;
-    stopBossMapTicker();
-    stopWorldMapView();
-    document.body.dataset.bossScreen = 'false';
-    DOLLAR('bossEncounterScreen').hidden = true;
-    for (const ID of ['bossPreview']) {
-        const PREVIEW = DOLLAR(ID);
-        if (PREVIEW) {
-            BOSS_PREVIEW_VERSIONS.set(PREVIEW, (BOSS_PREVIEW_VERSIONS.get(PREVIEW) || 0) + 1);
-            PREVIEW.hidden = true;
-        }
-    }
-    if (active && bossPauseBeforeOpen !== null) {
-        active.paused = bossPauseBeforeOpen;
-        bossPauseBeforeOpen = null;
-        active.loop.resetTiming();
-    }
-    if (push) {
-        history.pushState(null, '', '#/farm');
-    }
-}
 function refreshStart() {
     DOLLAR('continueGame').disabled = !STORAGE.hasWorld;
-    DOLLAR('startBossEncounter').disabled = !STORAGE.hasWorld;
     DOLLAR('exportSave').disabled = !STORAGE.raw;
     DOLLAR('saveNotice').textContent = STORAGE.error || STORAGE.notice;
 }
@@ -980,9 +620,6 @@ function setHome(value, push = true) {
         persist();
         if (menuOpen) {
             closeMenu(false);
-        }
-        if (bossEncounterOpen) {
-            closeBossEncounter(false);
         }
     }
     home = value;
@@ -1023,15 +660,6 @@ function offlineText(summary) {
     if (summary.food) {
         PARTS.push(`먹이 ${summary.food}`);
     }
-    if (summary.wood || summary.stone) {
-        PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
-    }
-    if (summary.built.length) {
-        PARTS.push(`${summary.built.join(', ')} 완성`);
-    }
-    for (const SITE of summary.sites) {
-        PARTS.push(`${SITE.name} ${SITE.percent}%`);
-    }
     return `${TIME} 동안 자리를 비웠어요${PARTS.length ? ' · ' + PARTS.join(' · ') : ''}`;
 }
 // The time spent away is settled by a formula when the farm comes back (see farm-offline.js).
@@ -1070,84 +698,27 @@ function start(world, push = true, settle = false) {
         markSeen();
     }
 }
-// The boss on the chosen tile of the map: the farm's units march out to it and fight there, on the farm screen.
-function beginRaid() {
-    if (!personalGarden || bossMapTile < 0 || mapChallengeBlockReason() !== '') {
+// The boss drops onto the farm and the farm's units fight it where they stand.
+function beginChallenge() {
+    const REASON = raidStartBlockReason();
+    if (REASON !== '') {
+        say(REASON);
         return;
     }
-    if (!personalGarden.startMapBossFight(bossMapTile)) {
-        return;
+    if (personalGarden.startBossFight()) {
+        active.paused = false;
+        active.loop.resetTiming();
     }
-    bossPauseBeforeOpen = false;
-    closeBossEncounter(true);
-    active.paused = false;
-    active.loop.resetTiming();
-}
-function returnToFarm(push = true) {
-    stopWorldInput();
-    if (bossEncounterOpen) {
-        closeBossEncounter(false);
-    }
-    if (!personalGarden) {
-        return false;
-    }
-    setHome(false, push);
-    return true;
 }
 DOLLAR('continueGame').onclick = () => {
     if (STORAGE.world) {
         start(restore(snapshot(STORAGE.world)), true, true);
     }
 };
-DOLLAR('startBossEncounter').onclick = () => {
-    if (!STORAGE.world) {
-        return;
-    }
-    start(restore(snapshot(STORAGE.world)), false);
-    openBossEncounter();
-};
-DOLLAR('menuBossEncounter').onclick = () => {
-    closeMenu(false);
-    openBossEncounter();
-};
 DOLLAR('fightRetreat').onclick = () => {
     personalGarden?.retreatFromFight();
 };
-DOLLAR('bossEncounterBack').onclick = () => closeBossEncounter();
-DOLLAR('worldMapFit').onclick = () => {
-    if (personalGarden) {
-        worldMapView?.recenter(personalGarden.worldMap);
-    }
-};
-DOLLAR('miniMap').onclick = () => openBossEncounter();
-DOLLAR('worldMapBuild').onclick = () => {
-    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild('plot', { tile: bossMapTile })) {
-        saveImmediate(personalGarden);
-        renderWorldMap();
-    }
-};
-DOLLAR('worldMapMine').onclick = () => {
-    if (personalGarden && bossMapTile >= 0 && personalGarden.startBuild('mine', { tile: bossMapTile })) {
-        saveImmediate(personalGarden);
-        renderWorldMap();
-    }
-};
-DOLLAR('worldMapExplore').onclick = () => {
-    if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
-        personalGarden.markProgressChanged();
-        saveImmediate(personalGarden);
-        renderWorldMap();
-    }
-};
-DOLLAR('bossEncounterChallenge').onclick = () => {
-    // Never a dead button: when the fight cannot start, the reason is said right here.
-    const REASON = DOLLAR('bossStageNotice').textContent;
-    if (REASON !== '') {
-        say(REASON);
-        return;
-    }
-    beginRaid();
-};
+DOLLAR('bossChallenge').onclick = beginChallenge;
 DOLLAR('newGame').onclick = () => {
     // Overwriting an existing save is a separate, explicit user action.
     if (STORAGE.raw && !DOLLAR('newConfirm').hidden) {
@@ -1238,8 +809,6 @@ DOLLAR('confirmImport').onclick = () => {
         DOLLAR('saveNotice').textContent = e.message;
     }
 };
-DOLLAR('farm').onclick = () => returnToFarm();
-DOLLAR('raid').onclick = () => openBossEncounter();
 DOLLAR('merge').onclick = () => active?.queue('merge');
 DOLLAR('merge').addEventListener('keydown', (e) => {
     if (e.repeat && ['Enter', ' '].includes(e.key)) {
@@ -1255,20 +824,6 @@ function drawTree() {
     });
     renderProgressionResetActions();
 }
-let plotStatusCache = { at: -Infinity, value: new Map() };
-function farmPlotStatuses(world) {
-    const NOW = performance.now();
-    if (NOW - plotStatusCache.at > 400) {
-        plotStatusCache = {
-            at: NOW,
-            value: new Map([...world.farmPlots.keys()].map((id) => [id, world.farmPlotStatus(id)])),
-        };
-    }
-    return plotStatusCache.value;
-}
-function farmPlotDisplayName(plotId) {
-    return `농장 ${String(plotId).match(/^plot-(\d+)$/)?.[1] || plotId}`;
-}
 function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -1282,26 +837,6 @@ function drawFarmPanel() {
     DOLLAR('farmStatPending').textContent = String(W.pendingRewardPopulation);
     DOLLAR('farmStatFood').textContent = String(W.warehouseFood);
     syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
-    DOLLAR('farmPlotList').innerHTML = [...W.farmPlots.values()]
-        .map((plot) => {
-            const COUNT = W.roster.placedPopulation(plot.id),
-                STATUS = W.farmPlotStatus(plot.id);
-            return `<button type="button" data-farm-plot="${plot.id}" aria-label="${farmPlotDisplayName(plot.id)} · ${COUNT}마리 / ${plot.capacity}마리" aria-pressed="${plot.id === W.activePlotId}"${LOCKED ? ' disabled' : ''}><b>${farmPlotDisplayName(plot.id)}</b><small>${COUNT} / ${plot.capacity}</small><small>먹이 ${STATUS.food} · 배고픔 ${STATUS.hungry}</small></button>`;
-        })
-        .join('');
-    const ACTIVE = W.activeFarmPlot,
-        NEXT_CAPACITY = ACTIVE.canExpand() ? [50, 75, 100, 150, 200][ACTIVE.capacityLevel + 1] : ACTIVE.capacity;
-    const EXPAND = W.projectInfo('expand'),
-        PLOT = W.projectInfo('plot'),
-        CAN_PAY = (info) => W.materials.wood >= info.cost.wood && W.materials.stone >= info.cost.stone,
-        COST_TEXT = (info) => `목재 ${info.cost.wood} · 돌 ${info.cost.stone}`;
-    DOLLAR('farmExpand').innerHTML = EXPAND
-        ? `<b>농장 확장</b><small>${ACTIVE.capacity} → ${NEXT_CAPACITY}마리 · ${COST_TEXT(EXPAND)}</small>`
-        : '<b>농장 확장</b><small>최대 크기예요</small>';
-    DOLLAR('farmExpand').disabled = LOCKED || !EXPAND || !!W.siteOf('expand') || !CAN_PAY(EXPAND);
-    DOLLAR('farmUnlock').innerHTML =
-        `<b>새 농장 짓기</b><small>지도에서 칸을 골라요 · ${COST_TEXT(PLOT)}${CAN_PAY(PLOT) ? '' : ' · 부족해요'}</small>`;
-    DOLLAR('farmUnlock').disabled = LOCKED || !!W.siteOf('plot');
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
@@ -1505,152 +1040,18 @@ DOLLAR('gameMenuTabs').onclick = (e) => {
         switchMenuTab(BUTTON.dataset.menuTab);
     }
 };
-DOLLAR('farmPlotList').onclick = (e) => {
-    const BUTTON = e.target.closest('[data-farm-plot]');
-    if (BUTTON && !BUTTON.disabled) {
-        active.queue('farm-plot-switch', { plotId: BUTTON.dataset.farmPlot });
-    }
-};
-function switchAdjacentFarmPlot(step) {
-    const WORLD = personalGarden || active.world,
-        IDS = [...WORLD.farmPlots.keys()],
-        INDEX = IDS.indexOf(WORLD.activePlotId);
-    if (IDS.length > 1 && INDEX >= 0) {
-        active.queue('farm-plot-switch', { plotId: IDS[(INDEX + step + IDS.length) % IDS.length] });
-    }
-}
-DOLLAR('plotPrev').onclick = () => switchAdjacentFarmPlot(-1);
-DOLLAR('plotNext').onclick = () => switchAdjacentFarmPlot(1);
-DOLLAR('farmExpand').onclick = () => {
-    active.queue('farm-build', { facilityId: 'expand' });
-};
-DOLLAR('neighbourWalkers').onchange = (e) => {
-    const VALUE = Math.round(Number(e.target.value));
-    if (personalGarden && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 1000) {
-        personalGarden.neighbourWalkers = VALUE;
-        saveWorkSetting(WORK_STORAGE_KEYS.walkers, VALUE);
-    }
-    e.target.value = String(personalGarden?.neighbourWalkers ?? VALUE);
-};
-DOLLAR('farmUnlock').onclick = () => {
-    openBossEncounter();
-    setBossView(true);
-};
 DOLLAR('farmPlotActions').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-farm-sort]');
     if (BUTTON) {
         beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
 });
-const WORK_CUT_IDS = ['workCutA', 'workCutB', 'workCutC', 'workCutD', 'workCutE'];
-function applyWorkCuts(...cuts) {
-    const [CUT_A, CUT_B] = [cuts[0], cuts[1]].sort((x, y) => x - y),
-        [CUT_C, CUT_D, CUT_E] = [cuts[2], cuts[3], cuts[4]].sort((x, y) => x - y),
-        POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C, CUT_D, CUT_E);
-    [CUT_A, CUT_B, CUT_C, CUT_D, CUT_E].forEach((value, index) => {
-        DOLLAR(WORK_CUT_IDS[index]).value = String(value);
-    });
-    saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
-    saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
-    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS.haul);
-    saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
-    saveWorkSetting(WORK_STORAGE_KEYS.explore, POINTS.explore);
-    (personalGarden || active.world).setWorkBasisPoints(
-        POINTS.work,
-        POINTS.resource,
-        POINTS.haul,
-        POINTS.build,
-        POINTS.explore,
-    );
-    active.queue('farm-work', {
-        basisPoints: POINTS.work,
-        resourceBasisPoints: POINTS.resource,
-        haulBasisPoints: POINTS.haul,
-        buildBasisPoints: POINTS.build,
-        exploreBasisPoints: POINTS.explore,
-    });
-}
-// The lower bars of the tree: workers -> resource, haul, build, explore; resource -> wood and stone.
-DOLLAR('woodCut').addEventListener('input', () => {
-    const POINTS = Number(DOLLAR('woodCut').value) * 100;
-    saveWorkSetting(WORK_STORAGE_KEYS.wood, POINTS);
-    (personalGarden || active.world).setWoodShare(POINTS);
-});
-for (const ID of WORK_CUT_IDS) {
-    DOLLAR(ID).addEventListener('input', () => {
-        applyWorkCuts(...WORK_CUT_IDS.map((id) => Number(DOLLAR(id).value)));
-    });
-}
-// The role tree is shown one bar at a time: tapping a part with a branch (›) opens the bar that splits it.
-const WORK_LEVEL_NAMES = ['역할', '일꾼', '자원'];
-function setWorkLevel(level) {
-    DOLLAR('workLevels').dataset.level = String(level);
-    DOLLAR('workCrumbs').replaceChildren(
-        ...WORK_LEVEL_NAMES.slice(0, level + 1).map((name, index) => {
-            const BUTTON = document.createElement('button');
-            BUTTON.type = 'button';
-            BUTTON.textContent = name;
-            BUTTON.dataset.levelTo = String(index);
-            BUTTON.setAttribute('aria-current', String(index === level));
-            return BUTTON;
-        }),
-    );
-    DOLLAR('workHud').dataset.level = String(level);
-}
-function setWorkHudOpen(open) {
-    DOLLAR('workHud').dataset.open = String(open);
-    DOLLAR('workHudToggle').setAttribute('aria-expanded', String(open));
-    if (!open) {
-        setWorkLevel(0);
-    }
-}
-DOLLAR('workLevels').addEventListener('click', (e) => {
-    const BRANCH = e.target.closest('[data-level-to]');
-    if (BRANCH) {
-        setWorkHudOpen(true);
-        setWorkLevel(Number(BRANCH.dataset.levelTo));
-    }
-});
-DOLLAR('workCrumbs').addEventListener('click', (e) => {
-    const CRUMB = e.target.closest('[data-level-to]');
-    if (CRUMB) {
-        setWorkLevel(Number(CRUMB.dataset.levelTo));
-    }
-});
-DOLLAR('workHudToggle').addEventListener('click', () => {
-    setWorkHudOpen(DOLLAR('workHud').dataset.open !== 'true');
-});
-setWorkLevel(0);
-DOLLAR('workHud').addEventListener('click', (e) => {
-    const BUTTON = e.target.closest('[data-work-preset]');
-    if (BUTTON && !BUTTON.disabled) {
-        applyWorkCuts(...BUTTON.dataset.workPreset.split(',').map(Number));
-    }
-});
-function syncText2(element, text) {
-    if (element.textContent !== text) {
-        element.textContent = text;
-    }
-}
-function facilityLabel(id) {
-    const SPEC = CONFIG.farm.work.facilities[id];
-    return `<span><b data-name>${SPEC.name}</b><br /><small>${SPEC.effect}</small></span><small data-cost></small>`;
-}
-for (const ID of Object.keys(CONFIG.farm.work.facilities)) {
-    const BUTTON = document.createElement('button');
-    BUTTON.type = 'button';
-    BUTTON.dataset.facility = ID;
-    BUTTON.innerHTML = facilityLabel(ID);
-    DOLLAR('facilityList').append(BUTTON);
-}
-DOLLAR('facilityList').addEventListener('click', (e) => {
-    const BUTTON = e.target.closest('[data-facility]');
-    if (BUTTON && !BUTTON.disabled) {
-        active.queue('farm-build', { facilityId: BUTTON.dataset.facility });
-    }
-});
-DOLLAR('buildRush').addEventListener('click', () => {
-    active.queue('farm-rush', { on: DOLLAR('buildRush').getAttribute('aria-pressed') !== 'true' });
+DOLLAR('workCutA').addEventListener('input', () => {
+    const CUT = Number(DOLLAR('workCutA').value),
+        POINTS = (100 - CUT) * 100;
+    saveWorkSetting(POINTS);
+    (personalGarden || active.world).setWorkBasisPoints(POINTS);
+    active.queue('farm-work', { basisPoints: POINTS });
 });
 DOLLAR('farmRatioList').addEventListener('input', (e) => {
     const INPUT = e.target.closest('[data-farm-target]');
@@ -1830,7 +1231,7 @@ function syncData(id, key, value) {
     }
 }
 function canUseWorldInput() {
-    return !home && !menuOpen && !bossEncounterOpen && !active.paused && !farmSortTransition;
+    return !home && !menuOpen && !active.paused && !farmSortTransition;
 }
 function cancelFarmSortTransition() {
     if (!farmSortTransition) {
@@ -2025,10 +1426,7 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && bossEncounterOpen) {
-        e.preventDefault();
-        closeBossEncounter();
-    } else if (e.key === 'Escape' && menuOpen) {
+    if (e.key === 'Escape' && menuOpen) {
         e.preventDefault();
         closeMenu();
     }
@@ -2081,12 +1479,6 @@ function route() {
             start(new Garden(), false);
         }
     }
-    if (R === '#/boss') {
-        if (!openBossEncounter(false)) {
-            history.replaceState(null, '', '#/farm');
-        }
-        return;
-    }
     if (
         R === '#/help' ||
         R === '#/farms' ||
@@ -2109,9 +1501,6 @@ function route() {
     if (menuOpen) {
         closeMenu(false);
     }
-    if (bossEncounterOpen && R !== '#/boss') {
-        closeBossEncounter(false);
-    }
 }
 window.addEventListener('popstate', route);
 function sync(display, now, notices) {
@@ -2126,34 +1515,12 @@ function sync(display, now, notices) {
         ),
         MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD);
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && panPointer) {
+    if ((home || menuOpen || active.paused) && panPointer) {
         stopWorldInput();
     }
-    syncAttribute('farm', 'aria-pressed', !bossEncounterOpen);
-    syncAttribute('raid', 'aria-pressed', bossEncounterOpen);
-    syncFlag('merge', 'disabled', home || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncFlag('merge', 'disabled', home || FARM_EVENT_ACTIVE || !MERGE_STATUS.available);
     syncData('merge', 'availability', MERGE_STATUS.code || 'unavailable');
-    syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE || bossEncounterOpen);
-    const PLOT_WORLD = personalGarden || W,
-        PLOT_IDS = PLOT_WORLD.farmPlots ? [...PLOT_WORLD.farmPlots.keys()] : [];
-    syncFlag('plotBar', 'hidden', home || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
-    if (PLOT_IDS.length > 1) {
-        const STATUSES = farmPlotStatuses(PLOT_WORLD),
-            CURRENT = STATUSES.get(PLOT_WORLD.activePlotId) ?? { food: 0, hungry: 0 },
-            NEEDS_VISIT = [...STATUSES].some(
-                ([id, status]) => id !== PLOT_WORLD.activePlotId && status.food === 0 && status.hungry > 0,
-            );
-        syncText('plotBarName', farmPlotDisplayName(PLOT_WORLD.activePlotId));
-        syncText(
-            'plotBarCount',
-            `${PLOT_WORLD.roster.placedPopulation(PLOT_WORLD.activePlotId)} / ${PLOT_WORLD.activeFarmPlot.capacity}`,
-        );
-        syncText('plotBarFood', `먹이 ${CURRENT.food} · 배고픔 ${CURRENT.hungry}`);
-        syncFlag('plotPrev', 'disabled', !!farmSortTransition);
-        syncFlag('plotNext', 'disabled', !!farmSortTransition);
-        syncData('plotPrev', 'alert', String(NEEDS_VISIT));
-        syncData('plotNext', 'alert', String(NEEDS_VISIT));
-    }
+    syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE);
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
     let displayedCount = 0;
@@ -2178,11 +1545,8 @@ function sync(display, now, notices) {
             worldCount++;
         }
     }
-    syncFlag('bossEncounterScreen', 'hidden', home || !bossEncounterOpen);
-    syncMiniMap(!home && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
-    announceExploration();
-    syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home);
+    syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home);
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
     syncText('count', displayedCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.base);
@@ -2238,7 +1602,7 @@ function sync(display, now, notices) {
                   ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                   : `${ENCOUNTER_NAME} 격파`
             : BATTLE_OUTCOME === 'defeat'
-              ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? '(시간 초과)' : ''} · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요`
+              ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? '(시간 초과)' : ''} · 병력이 회복하는 동안 잠자요`
               : '',
     );
     syncFlag(
@@ -2246,105 +1610,35 @@ function sync(display, now, notices) {
         'hidden',
         home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
     );
-    {
-        const REASON = mapChallengeBlockReason();
-        syncAttribute('bossEncounterChallenge', 'aria-disabled', String(REASON !== ''));
-        syncText('bossStageNotice', REASON);
-    }
-    syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
-    syncFlag('menuTabGrowth', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncText('bossChallenge', `도전 ${(personalGarden || W).playerProgression.farmBossEventStage}단계`);
+    syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
+    syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
+    syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE);
+    syncFlag('menuTabGrowth', 'disabled', FARM_EVENT_ACTIVE);
     syncFlag('menuTabAbilities', 'disabled', !personalGarden);
-    const WORK_WORLD = personalGarden || W;
-    const KINDS = WORK_WORLD.workerKindCounts,
+    const WORK_WORLD = personalGarden || W,
         WORKERS = WORK_WORLD.workerCount,
         BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS),
-        CUTS = workCuts(WORK_WORLD),
-        SITES = WORK_WORLD.buildSites;
-    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`,
+        CUT = workCut(WORK_WORLD);
+    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`,
         warn = false;
     if (WORKERS === 0) {
-        note = '일꾼이 없어서 먹이와 자원이 안 만들어져요';
+        note = '일꾼이 없어서 먹이가 안 만들어져요';
         warn = true;
-    } else if (WORK_WORLD.warehouseFull && KINDS.resource === 0) {
+    } else if (WORK_WORLD.warehouseFull) {
         note = '농장에 먹이가 가득해요 · 일꾼이 쉬어요';
         warn = true;
     }
-    if (SITES.length > 0 && WORKERS > 0) {
-        note = `${SITES.map((site) => `${WORK_WORLD.siteName(site)} ${Math.floor((site.done / site.need) * 100)}%`).join(' · ')} 짓는 중${WORK_WORLD.buildRush ? ' · 전원 건설' : ''}`;
-    }
-    for (const ID of WORK_CUT_IDS) {
-        DOLLAR(ID).disabled = !!farmSortTransition;
-    }
-    if (!WORK_CUT_IDS.some((id) => document.activeElement === DOLLAR(id))) {
-        [CUTS.a, CUTS.b, CUTS.c, CUTS.d, CUTS.e].forEach((value, index) => {
-            if (value !== null) {
-                DOLLAR(WORK_CUT_IDS[index]).value = String(value);
-            }
-        });
-    }
-    DOLLAR('buildRush').hidden = SITES.length === 0;
-    DOLLAR('buildRush').setAttribute('aria-pressed', String(WORK_WORLD.buildRush));
-    syncText('buildRush', WORK_WORLD.buildRush ? '전원 건설 중 (끄기)' : '전원 건설');
-    for (const BUTTON of DOLLAR('facilityList').children) {
-        const ID = BUTTON.dataset.facility,
-            SPEC = CONFIG.farm.work.facilities[ID],
-            LEVEL = WORK_WORLD.facilityLevel(ID),
-            MAXED = LEVEL >= (SPEC.maxLevel ?? CONFIG.farm.work.facilityMaxLevel),
-            INFO = WORK_WORLD.projectInfo(ID),
-            COST = INFO?.cost || { wood: 0, stone: 0 };
-        BUTTON.disabled =
-            MAXED ||
-            !!WORK_WORLD.siteOf(ID) ||
-            WORK_WORLD.materials.wood < COST.wood ||
-            WORK_WORLD.materials.stone < COST.stone;
-        syncText2(BUTTON.querySelector('[data-name]'), LEVEL ? `${SPEC.name} Lv.${LEVEL}` : SPEC.name);
-        syncText2(
-            BUTTON.querySelector('[data-cost]'),
-            MAXED
-                ? '최대 레벨'
-                : WORK_WORLD.siteOf(ID)
-                  ? '짓는 중'
-                  : `${LEVEL ? `Lv.${LEVEL + 1} · ` : ''}목재 ${COST.wood}${COST.stone ? ` · 돌 ${COST.stone}` : ''}`,
-        );
+    DOLLAR('workCutA').disabled = !!farmSortTransition;
+    if (document.activeElement !== DOLLAR('workCutA')) {
+        DOLLAR('workCutA').value = String(CUT);
     }
     syncText('workHudNote', note);
     syncText('workHudBreed', `번식 ${BREEDERS}`);
-    syncText('workHudFood', `먹이 ${KINDS.food}`);
-    syncText('workHudRes', `자원 ${KINDS.resource}`);
-    {
-        const WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
-        if (document.activeElement !== DOLLAR('woodCut')) {
-            DOLLAR('woodCut').value = String(WOOD);
-        }
-        syncText('workHudWood', `목재 ${WOOD}%`);
-        syncText('workHudStone', `돌 ${100 - WOOD}%`);
-        DOLLAR('workHudWood').style.flex = `${Math.max(1, WOOD)} 1 0`;
-        DOLLAR('workHudStone').style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
-    }
-    syncText('workHudJobs', `일꾼 ${KINDS.resource + KINDS.haul + KINDS.build + KINDS.explore}`);
-    syncText('workHudHaul', `운반 ${KINDS.haul}`);
-    syncText('workHudBuild', `건설 ${KINDS.build}`);
-    syncText('workHudExplore', `탐사 ${KINDS.explore}`);
-    syncText('materialWood', String(W.materials.wood));
-    syncText('materialStone', String(W.materials.stone));
+    syncText('workHudFood', `먹이 ${WORKERS}`);
     syncData('workHud', 'warn', warn);
-    const CUT_C = CUTS.c ?? Number(DOLLAR('workCutC').value),
-        CUT_D = CUTS.d ?? Number(DOLLAR('workCutD').value),
-        CUT_E = CUTS.e ?? Number(DOLLAR('workCutE').value);
-    DOLLAR('workHudBreed').style.flex = `${Math.max(1, CUTS.a)} 1 0`;
-    DOLLAR('workHudFood').style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
-    DOLLAR('workHudJobs').style.flex = `${Math.max(1, 100 - CUTS.b)} 1 0`;
-    DOLLAR('workHudRes').style.flex = `${Math.max(1, CUT_C)} 1 0`;
-    DOLLAR('workHudHaul').style.flex = `${Math.max(1, CUT_D - CUT_C)} 1 0`;
-    DOLLAR('workHudBuild').style.flex = `${Math.max(1, CUT_E - CUT_D)} 1 0`;
-    DOLLAR('workHudExplore').style.flex = `${Math.max(1, 100 - CUT_E)} 1 0`;
-    for (const BUTTON of DOLLAR('workHud').querySelectorAll('[data-work-preset]')) {
-        BUTTON.setAttribute(
-            'aria-pressed',
-            String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUT_C},${CUT_D},${CUT_E}`),
-        );
-        BUTTON.disabled = !!farmSortTransition;
-    }
+    DOLLAR('workHudBreed').style.flex = `${Math.max(1, CUT)} 1 0`;
+    DOLLAR('workHudFood').style.flex = `${Math.max(1, 100 - CUT)} 1 0`;
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
     }
@@ -2375,14 +1669,6 @@ function frame(now) {
         COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
         PERFORMANCE_DIAGNOSTICS.end('presentation', PRESENTATION_START);
         const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
-        RENDERER.backdrop = active.world.scene === 'farm' ? active.world : null;
-        if (RENDERER.backdrop && panPointer?.mode === 'pan') {
-            const NEXT_PLOT = RENDERER.cameraPlot(active.world);
-            if (NEXT_PLOT) {
-                RENDERER.cameraSwitch = NEXT_PLOT;
-                active.queue('farm-plot-switch', { plotId: NEXT_PLOT });
-            }
-        }
         RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
         PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();

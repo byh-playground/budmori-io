@@ -54,7 +54,6 @@ canvas {
     overflow: hidden;
     clip-path: inset(50%);
 }
-
 /* 버튼 문법: 면 + 한 단 깊이. 역할은 색으로만 구분합니다. */
 .btn {
     border: 0;
@@ -86,7 +85,6 @@ canvas {
     background: var(--ui-disabled);
     color: var(--ui-disabled-ink);
 }
-
 /* 상단 HUD: 왼쪽 상태 칩, 오른쪽 장면 전환 */
 body > header {
     position: absolute;
@@ -151,29 +149,6 @@ body > header {
 .hud__note:empty {
     display: none;
 }
-.switch {
-    display: flex;
-    padding: 4px;
-    border-radius: var(--ui-r-pill);
-    background: var(--ui-panel);
-    pointer-events: auto;
-}
-.switch button {
-    min-height: 40px;
-    padding: 0 var(--ui-s4);
-    border-radius: var(--ui-r-pill);
-    background: transparent;
-    font-size: var(--ui-fs-2);
-    color: var(--ui-ink-2);
-}
-.switch button[aria-pressed='true'] {
-    background: var(--ui-primary);
-    color: var(--ui-primary-ink);
-}
-.switch button:disabled:not([aria-pressed='true']) {
-    color: var(--ui-disabled-ink);
-}
-
 /* 전투 체력: 보스가 가려지지 않게 얇은 세 줄로 둔다 */
 .bossbar {
     position: absolute;
@@ -279,7 +254,6 @@ body > header {
     text-align: center;
     pointer-events: none;
 }
-
 /* 하단 조작: 내비게이션 바 위에 주요 행동 */
 #gameplayDock {
     z-index: var(--ui-z-dock);
@@ -346,29 +320,12 @@ body > header {
     color: var(--ui-danger-ink);
     font-weight: var(--ui-fw-b);
 }
-.work-hud__chev {
-    transition: transform 0.15s;
-}
-.work-hud[data-open='true'] .work-hud__chev {
-    transform: rotate(180deg);
-}
 .work-hud__body {
     display: grid;
     gap: var(--ui-s2);
     max-height: min(46vh, 360px);
     overflow-y: auto;
     overscroll-behavior: contain;
-}
-.work-hud[data-open='false'] .work-hud__body {
-    display: none;
-}
-.work-hud[data-open='false'] {
-    padding: var(--ui-s2) var(--ui-s3);
-    gap: var(--ui-s1);
-}
-.work-hud[data-open='false'] .work-hud__bar {
-    height: 10px;
-    font-size: 0;
 }
 .work-hud__bar {
     display: flex;
@@ -403,44 +360,6 @@ body > header {
 #workHudStone {
     background: #8d8f93;
     justify-content: flex-end;
-}
-.work-hud__levels > .work-hud__track {
-    display: none;
-}
-.work-hud__levels[data-level='0'] > [data-track='0'],
-.work-hud__levels[data-level='1'] > [data-track='1'],
-.work-hud__levels[data-level='2'] > [data-track='2'] {
-    display: block;
-}
-.work-hud__branch {
-    cursor: pointer;
-}
-.work-hud__branch::after {
-    content: ' ›';
-}
-.work-hud__crumbs {
-    display: flex;
-    gap: var(--ui-s2);
-    font-size: var(--ui-fs-1);
-}
-.work-hud__crumbs:empty {
-    display: none;
-}
-.work-hud__crumbs button {
-    appearance: none;
-    border: 0;
-    background: none;
-    padding: 0;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-}
-.work-hud__crumbs button[aria-current='true'] {
-    font-weight: var(--ui-fw-b);
-    cursor: default;
-}
-.work-hud__crumbs button + button::before {
-    content: '› ';
 }
 #workHudJobs {
     background: #8b8a7c;
@@ -495,76 +414,6 @@ body > header {
     border: 2px solid var(--ui-ink);
     cursor: ew-resize;
 }
-.work-hud[data-open='false'] .work-hud__cut {
-    display: none;
-}
-.work-hud__presets {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--ui-s1);
-}
-.work-hud__build {
-    margin-top: var(--ui-s2);
-}
-.work-hud__build-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: var(--ui-fs-1);
-    margin-bottom: var(--ui-s1);
-}
-.work-hud__build-head button {
-    min-height: 32px;
-    padding: 0 var(--ui-s2);
-    border: 0;
-    border-radius: var(--ui-r-m);
-    font-weight: var(--ui-fw-b);
-    background: #b9774a;
-    color: #fff;
-}
-.work-hud__build-head button[aria-pressed='true'] {
-    background: var(--ui-ink);
-}
-.work-hud__facilities {
-    display: grid;
-    gap: var(--ui-s1);
-}
-.work-hud__facilities button {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--ui-s2);
-    min-height: 40px;
-    padding: 0 var(--ui-s2);
-    border: 0;
-    border-radius: var(--ui-r-m);
-    background: #ece3cc;
-    color: var(--ui-ink);
-    font-size: var(--ui-fs-1);
-    font-weight: var(--ui-fw-b);
-    text-align: left;
-}
-.work-hud__facilities button small {
-    font-weight: normal;
-    opacity: 0.8;
-}
-.work-hud__facilities button:disabled {
-    opacity: 0.55;
-}
-.work-hud__presets button {
-    min-height: 36px;
-    padding: 0 var(--ui-s1);
-    font-size: var(--ui-fs-1);
-    font-weight: var(--ui-fw-b);
-    border-radius: var(--ui-r-m);
-    border: 0;
-    background: #ece3cc;
-    color: var(--ui-ink);
-}
-.work-hud__presets button[aria-pressed='true'] {
-    background: var(--ui-primary);
-    color: var(--ui-primary-ink);
-}
 .controls {
     display: flex;
     gap: var(--ui-s2);
@@ -594,7 +443,6 @@ body > header {
         transition: none;
     }
 }
-
 /* 하단 내비게이션 바. 라벨은 title 속성을 그대로 씁니다. */
 .utility {
     position: fixed;
@@ -651,7 +499,6 @@ body > header {
 #sound[aria-pressed='false'] {
     opacity: 0.55;
 }
-
 .deploy-status {
     display: flex;
     flex-wrap: wrap;
@@ -732,7 +579,6 @@ body > header {
 #return {
     order: 3;
 }
-
 /* 오류 */
 .error {
     position: absolute;
@@ -748,7 +594,6 @@ body > header {
     font-size: var(--ui-fs-1);
     line-height: 1.6;
 }
-
 /* 시작 화면 */
 .product-sheet {
     position: fixed;
@@ -831,7 +676,6 @@ body[data-home='true'] #bossbar {
         padding-bottom: var(--ui-s5);
     }
 }
-
 /* 낮은 화면(가로 모드) */
 @media (max-height: 550px) {
     body > header {
@@ -854,7 +698,6 @@ body[data-home='true'] #bossbar {
         bottom: calc(var(--ui-nav-h) + var(--ui-safe-bottom) + var(--ui-s2));
     }
 }
-
 .hud__version {
     color: var(--ui-ink-2);
     font-size: var(--ui-fs-1);
@@ -863,7 +706,6 @@ body[data-home='true'] #bossbar {
 .hud__version::before {
     content: 'v';
 }
-
 body[data-home='true'] > header,
 body[data-home='true'] #gameplayDock,
 body[data-home='true'] > .bottom,
@@ -881,47 +723,6 @@ details summary {
     align-items: center;
     font-weight: var(--ui-fw-b);
 }
-
-/* 농장 전환 바: 농장이 2개 이상일 때만 보입니다. */
-.plot-bar {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--ui-s1);
-    pointer-events: auto;
-    padding: var(--ui-s1);
-    border-radius: var(--ui-r-pill);
-    background: var(--ui-panel);
-}
-.plot-bar[hidden] {
-    display: none;
-}
-.plot-bar button {
-    display: grid;
-    place-items: center;
-    width: var(--ui-tap);
-    height: var(--ui-tap);
-    padding: 0;
-    border-radius: 50%;
-    background: var(--ui-primary);
-    border: var(--ui-bw) solid transparent;
-    color: var(--ui-primary-ink);
-}
-.plot-bar button:active:not(:disabled) {
-    filter: brightness(0.92);
-}
-.plot-bar button:disabled {
-    background: var(--ui-disabled);
-    color: var(--ui-disabled-ink);
-}
-.plot-bar svg {
-    width: 22px;
-    height: 22px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
 .plot-bar__label {
     display: grid;
     min-width: 84px;
@@ -937,43 +738,19 @@ details summary {
     color: var(--ui-ink-2);
     font-weight: var(--ui-fw-m);
 }
-.plot-bar button {
-    position: relative;
-}
-.plot-bar button[data-alert='true']::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--ui-danger);
-    border: var(--ui-bw) solid transparent;
-    border: 2px solid var(--ui-panel);
-}
 .plot-bar__label small + small {
     font-size: var(--ui-fs-1);
     color: var(--ui-ink-2);
 }
-
 .chip,
-.plot-bar,
-.switch,
 .hud__note {
     border: var(--ui-bw) solid var(--ui-line);
 }
-
-.switch button,
 .plot-bar__label b,
 .plot-bar__label small,
 .chip {
     white-space: nowrap;
 }
-.switch button {
-    padding: 0 var(--ui-s3);
-}
-
 .offline-notice {
     display: block;
     padding: var(--ui-s2) var(--ui-s3);
@@ -987,7 +764,6 @@ details summary {
 .offline-notice[hidden] {
     display: none;
 }
-
 /* 화면을 덜 가리는 간결한 HUD: 상태 칩은 한 줄, 안내 문구와 버전은 숨기고, 농장 전환 바는 한 줄로 줄입니다. */
 .hud__stats {
     flex-direction: row;
@@ -1009,26 +785,11 @@ details summary {
 .plot-bar__label small {
     display: none;
 }
-.plot-bar {
-    flex: 0 0 auto;
-    padding: 2px;
-}
-.plot-bar button {
-    width: 34px;
-    height: 34px;
-}
-.plot-bar svg {
-    width: 18px;
-    height: 18px;
-}
 .plot-bar__label {
     display: flex;
     align-items: baseline;
     gap: 6px;
     min-width: 0;
-}
-.plot-bar__label small#plotBarCount {
-    display: inline;
 }
 #mergeNotice {
     display: none;
@@ -1039,7 +800,6 @@ details summary {
 .work-hud {
     padding: var(--ui-s2) var(--ui-s3);
 }
-
 /* 좁은 화면: 아래쪽 패널과 오른쪽 도구를 줄여 농장이 더 보이게 한다 */
 @media (max-width: 700px) {
     .bossbar {
@@ -1051,7 +811,6 @@ details summary {
         font-size: var(--ui-fs-2);
     }
 }
-
 /* 최소 UI: 게임 화면 위 표시는 배경 판 없이 글자 테두리로만 읽히게 하고, 설명 문구는 두지 않는다.
    누르는 버튼(합성, 후퇴, 역할 프리셋 등)만 자기 바탕을 가진다. */
 .chip,
@@ -1059,9 +818,7 @@ details summary {
 .offline-notice,
 .bossbar,
 .work-hud,
-.plot-bar,
-.utility,
-.mini-map {
+.utility {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
@@ -1089,8 +846,5 @@ details summary {
 }
 #mergeNotice,
 .mini-map__label {
-    display: none;
-}
-.work-hud[data-level='2'] .work-hud__presets {
     display: none;
 }
