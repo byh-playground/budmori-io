@@ -153,20 +153,16 @@ export function spreadBuildHits(world, plotId, hits) {
 }
 export const HITS_PER_WORK = STACKS_PER_FOOD;
 // Food workers fight grain piles, resource workers fight trees and rocks, builders work the construction site.
-// Builders with nothing to build gather materials instead.
+// Haulers carry what the resource workers knock loose; neither is tied to a pile.
 function effectiveKind(world, unit) {
-    const KIND = world._workerKinds.get(unit.id) || 'food';
-    return KIND === 'build' && !plotHasSite(world) ? 'resource' : KIND;
+    return world._workerKinds.get(unit.id) || 'food';
 }
 function worksOn(world, unit, pile) {
     const KIND = effectiveKind(world, unit);
     if (KIND === 'build') {
         return pile.kind === 'site';
     }
-    if (KIND === 'explore') {
-        return false;
-    }
-    return KIND === 'resource' ? false : pile.kind === 'grain';
+    return KIND === 'food' && pile.kind === 'grain';
 }
 function capacity(config, pile, siteCapacity) {
     const WORK = config.farm.work;
@@ -259,7 +255,7 @@ export function assignWorkers(world, config) {
     }
     world._workAssign = ASSIGN;
     for (const ID of [...world._swings.keys()]) {
-        if (!ASSIGN.get(ID)?.attacking) {
+        if (!ASSIGN.get(ID)?.attacking && world._haul.get(ID)?.phase !== 'work') {
             world._swings.delete(ID);
         }
     }
@@ -341,8 +337,18 @@ function haulOrder(world, unit) {
         return null;
     }
     unit.workOut = true;
-    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
-    return { x: SPOT.x, y: SPOT.y, fx: SPOT.x + 1, fy: SPOT.y, speed: SPOT.speed, hold: DISTANCE <= 0.6, face: false };
+    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y),
+        WORKING = world._haul.get(unit.id)?.phase === 'work' && SPOT.cx !== undefined;
+    // At the forest or rock it works on, a gatherer holds still and faces the tile's centre while it swings.
+    return {
+        x: SPOT.x,
+        y: SPOT.y,
+        fx: WORKING ? SPOT.cx : SPOT.x + 1,
+        fy: WORKING ? SPOT.cy : SPOT.y,
+        speed: SPOT.speed,
+        hold: DISTANCE <= 0.6,
+        face: WORKING && DISTANCE <= 0.6,
+    };
 }
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {
@@ -401,6 +407,41 @@ function pushOutOfPiles(world) {
                 UNIT.vy -= NY * INWARD;
             }
         }
+    }
+}
+// A gatherer at its forest or rock swings in place with the same clips as a worker at a pile: wind up, strike,
+// recover, and wait a moment. The load itself is settled by the hauling trip; this is the picture of the work.
+const GATHER_STRIKE_SECONDS = 0.3,
+    GATHER_PAUSE_SECONDS = 0.3;
+export function stepHaulSwing(world, unit, haul, dt) {
+    if (haul?.phase !== 'work') {
+        world._swings.delete(unit.id);
+        return;
+    }
+    let swing = world._swings.get(unit.id);
+    if (!swing) {
+        swing = { phase: 'idle', elapsed: 0, wait: (unit.seed * 7) % 0.8 };
+        world._swings.set(unit.id, swing);
+    }
+    if (swing.phase === 'idle') {
+        swing.wait -= dt;
+        if (swing.wait <= 0) {
+            swing.phase = 'windup';
+            swing.elapsed = 0;
+        }
+        return;
+    }
+    swing.elapsed += dt;
+    if (swing.phase === 'windup' && swing.elapsed >= SWING_WINDUP) {
+        swing.phase = 'fire';
+        swing.elapsed = 0;
+    } else if (swing.phase === 'fire' && swing.elapsed >= GATHER_STRIKE_SECONDS) {
+        swing.phase = 'recover';
+        swing.elapsed = 0;
+    } else if (swing.phase === 'recover' && swing.elapsed >= SWING_RECOVER) {
+        swing.phase = 'idle';
+        swing.elapsed = 0;
+        swing.wait = GATHER_PAUSE_SECONDS;
     }
 }
 export function stepWork(world, config, dt) {
