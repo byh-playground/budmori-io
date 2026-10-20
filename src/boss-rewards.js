@@ -9,7 +9,7 @@ const STREAM_DOMAINS = Object.freeze({
     event: Object.freeze({ prd: 0x739d41e5, boxes: 0x1b8c55a3 }),
     firstClear: Object.freeze({ prd: 0x4a61c7d3, boxes: 0x2db83f91 }),
 });
-const STREAM_SOURCE = Object.freeze({ raid: 'normal', farm: 'event' });
+const STREAM_SOURCE = Object.freeze({ farm: 'event' });
 
 function requireSdk() {
     const SDK = globalThis.BloomGamekitDeterministic;
@@ -26,8 +26,8 @@ function mixedSeed(seed, domain) {
     return (value ^ (value >>> 16)) >>> 0;
 }
 
-function streamFor(source, firstClear = false) {
-    return source === 'raid' && firstClear ? 'firstClear' : STREAM_SOURCE[source];
+function streamFor(source) {
+    return STREAM_SOURCE[source];
 }
 
 function streamSeed(seed, kind, field) {
@@ -156,7 +156,7 @@ export function bossAcquisitionChance({ farmEvent = false, firstClear = false, a
 
 function ensureWorldRewardState(world) {
     world.bossRewardReceipts ||= [];
-    world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
+    world.bossRewardWatermarks ||= { farm: 0 };
     world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
     world.bossRewardInventory ||= [];
     return world;
@@ -282,10 +282,10 @@ export function resolveBossAcquisition(world, options = {}) {
 function resolveBossAcquisitionCommitted(world, options = {}) {
     ensureWorldRewardState(world);
     const ENCOUNTER_ID = options.encounterId,
-        SOURCE = options.source || 'raid',
+        SOURCE = options.source || 'farm',
         REQUESTED_KEY = options.receiptKey;
     if (
-        !['farm', 'raid'].includes(SOURCE) ||
+        SOURCE !== 'farm' ||
         !Number.isSafeInteger(ENCOUNTER_ID) ||
         ENCOUNTER_ID < 1 ||
         (REQUESTED_KEY !== undefined &&
@@ -309,8 +309,8 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
     if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
         throw new RangeError('Boss reward species is invalid');
     }
-    const FIRST_CLEAR = SOURCE === 'raid' && options.firstClear === true,
-        STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR),
+    const FIRST_CLEAR = false,
+        STREAM_KIND = streamFor(SOURCE),
         STREAM = world.bossRewardStreams[STREAM_KIND],
         CHANCE = bossAcquisitionChance({
             farmEvent: SOURCE === 'farm',
@@ -456,7 +456,7 @@ export function advanceBossRewardCalculations(world, { maxUnitsPerReward = PRD_U
         return false;
     }
     let changed = false;
-    for (const SOURCE of ['raid', 'farm']) {
+    for (const SOURCE of ['farm']) {
         const RECEIPT = world.bossRewardReceipts.find(
                 (entry) => entry.source === SOURCE && entry.status === 'calculating',
             ),

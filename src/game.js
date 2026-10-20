@@ -296,174 +296,6 @@
     }
   });
 
-  // src/species-catalog.js
-  function speciesById(id) {
-    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
-  }
-  function giantSpeciesName(id) {
-    return `거대 ${speciesById(id).name}`;
-  }
-  function speciesRewardName(id) {
-    return `${speciesById(id).name} 종`;
-  }
-  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
-  var init_species_catalog = __esm({
-    "src/species-catalog.js"() {
-      SPECIES_CATALOG = Object.freeze([
-        Object.freeze({
-          id: 0,
-          name: "콩",
-          asset: "pea.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 1,
-          name: "옥수수",
-          asset: "corn-kernel.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 2,
-          name: "팥",
-          asset: "kidney-bean.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 3,
-          name: "밤톨",
-          asset: "chestnut.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 4,
-          name: "땅콩",
-          asset: "peanut.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 5,
-          name: "호두",
-          asset: "walnut.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 6,
-          name: "쌀",
-          asset: "rice.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 7,
-          name: "밀",
-          asset: "wheat.svg",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 8,
-          name: "보리",
-          asset: "barley.svg",
-          bossWeight: 1
-        })
-      ]);
-      SPECIES_COUNT = SPECIES_CATALOG.length;
-      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
-    }
-  });
-
-  // src/raid-deployment-cards.js
-  function createRaidDeploymentCardsState({ firstSpecies = 0 } = {}) {
-    if (firstSpecies !== null && !isSpeciesId(firstSpecies)) {
-      throw new TypeError("firstSpecies must be an owned catalog species or null");
-    }
-    return {
-      schemaVersion: RAID_DEPLOYMENT_CARD_SCHEMA_VERSION,
-      unlockedSlots: 1,
-      speciesBySlot: [firstSpecies, null, null, null]
-    };
-  }
-  function isValidRaidDeploymentCardsState(state) {
-    if (!state || typeof state !== "object" || state.schemaVersion !== RAID_DEPLOYMENT_CARD_SCHEMA_VERSION || !Number.isSafeInteger(state.unlockedSlots) || state.unlockedSlots < 1 || state.unlockedSlots > RAID_DEPLOYMENT_CARD_LIMIT || !Array.isArray(state.speciesBySlot) || state.speciesBySlot.length !== RAID_DEPLOYMENT_CARD_LIMIT || state.speciesBySlot.some(
-      (speciesId, index) => index >= state.unlockedSlots ? speciesId !== null : speciesId !== null && !isSpeciesId(speciesId)
-    )) {
-      return false;
-    }
-    const SELECTED = state.speciesBySlot.filter((speciesId) => speciesId !== null);
-    return new Set(SELECTED).size === SELECTED.length;
-  }
-  function raidDeploymentCardsInvestedPoints(state) {
-    return isValidRaidDeploymentCardsState(state) ? state.unlockedSlots - 1 : 0;
-  }
-  function resetRaidDeploymentCardsState(state) {
-    if (!isValidRaidDeploymentCardsState(state)) {
-      return null;
-    }
-    return {
-      schemaVersion: RAID_DEPLOYMENT_CARD_SCHEMA_VERSION,
-      unlockedSlots: 1,
-      speciesBySlot: [state.speciesBySlot[0], null, null, null]
-    };
-  }
-  function raidDeploymentCardSpecies(state) {
-    return isValidRaidDeploymentCardsState(state) ? state.speciesBySlot.slice(0, state.unlockedSlots).filter((speciesId) => speciesId !== null) : [];
-  }
-  function isSpeciesId(value) {
-    return Number.isSafeInteger(value) && SPECIES_CATALOG.some((species) => species.id === value);
-  }
-  var RAID_DEPLOYMENT_CARD_LIMIT, RAID_DEPLOYMENT_CARD_SLOT_COST, RAID_DEPLOYMENT_CARD_SCHEMA_VERSION, RaidDeploymentCards;
-  var init_raid_deployment_cards = __esm({
-    "src/raid-deployment-cards.js"() {
-      init_species_catalog();
-      RAID_DEPLOYMENT_CARD_LIMIT = 4;
-      RAID_DEPLOYMENT_CARD_SLOT_COST = 1;
-      RAID_DEPLOYMENT_CARD_SCHEMA_VERSION = 1;
-      RaidDeploymentCards = class {
-        constructor(world) {
-          this.world = world;
-        }
-        editable() {
-          return this.world.scene === "farm" && !this.world.running && this.world.farmBossEvent?.phase === "idle";
-        }
-        buySlot() {
-          return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression, STATE = PLAYER.raidDeploymentCards;
-            if (!this.editable() || !isValidRaidDeploymentCardsState(STATE) || STATE.unlockedSlots >= RAID_DEPLOYMENT_CARD_LIMIT || PLAYER.availablePoints < RAID_DEPLOYMENT_CARD_SLOT_COST) {
-              return false;
-            }
-            STATE.unlockedSlots++;
-            PLAYER.availablePoints -= RAID_DEPLOYMENT_CARD_SLOT_COST;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        select(slot, speciesId) {
-          return this.world.mutationNotifications.run(() => {
-            const STATE = this.world.playerProgression.raidDeploymentCards, OWNED = new Set(
-              this.world.units.filter((unit) => unit.countsTowardPermanentRoster !== false).map((unit) => unit.species)
-            );
-            if (!this.editable() || !isValidRaidDeploymentCardsState(STATE) || !Number.isSafeInteger(slot) || slot < 0 || slot >= STATE.unlockedSlots || speciesId !== null && (!isSpeciesId(speciesId) || !OWNED.has(speciesId) || STATE.speciesBySlot.includes(speciesId))) {
-              return false;
-            }
-            STATE.speciesBySlot[slot] = speciesId;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        reset() {
-          return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression, STATE = PLAYER.raidDeploymentCards, REFUNDED = raidDeploymentCardsInvestedPoints(STATE), NEXT = resetRaidDeploymentCardsState(STATE);
-            if (!this.editable() || !NEXT || REFUNDED === 0) {
-              return false;
-            }
-            PLAYER.availablePoints += REFUNDED;
-            PLAYER.raidDeploymentCards = NEXT;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-      };
-    }
-  });
-
   // src/work-aptitude.js
   function aptitudeOf(species, kind) {
     return SPECIES_APTITUDE[species]?.[WORK_KINDS.indexOf(kind)] ?? 2;
@@ -579,6 +411,80 @@
         }
       ]);
       FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
+    }
+  });
+
+  // src/species-catalog.js
+  function speciesById(id) {
+    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
+  }
+  function giantSpeciesName(id) {
+    return `거대 ${speciesById(id).name}`;
+  }
+  function speciesRewardName(id) {
+    return `${speciesById(id).name} 종`;
+  }
+  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
+  var init_species_catalog = __esm({
+    "src/species-catalog.js"() {
+      SPECIES_CATALOG = Object.freeze([
+        Object.freeze({
+          id: 0,
+          name: "콩",
+          asset: "pea.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 1,
+          name: "옥수수",
+          asset: "corn-kernel.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 2,
+          name: "팥",
+          asset: "kidney-bean.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 3,
+          name: "밤톨",
+          asset: "chestnut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 4,
+          name: "땅콩",
+          asset: "peanut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 5,
+          name: "호두",
+          asset: "walnut.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 6,
+          name: "쌀",
+          asset: "rice.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 7,
+          name: "밀",
+          asset: "wheat.svg",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 8,
+          name: "보리",
+          asset: "barley.svg",
+          bossWeight: 1
+        })
+      ]);
+      SPECIES_COUNT = SPECIES_CATALOG.length;
+      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
     }
   });
 
@@ -1416,96 +1322,14 @@
       (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
     );
   }
-  function createAbilityRuntimeSnapshot(state) {
-    if (!isValidPlayerLikeAbilityState(state)) {
-      throw new TypeError("Cannot snapshot invalid ability progression state");
-    }
-    return {
-      schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-      level: state.level,
-      formationSkills: structuredClone(state.formationSkills || createFormationSkillState()),
-      raidDeploymentCards: structuredClone(state.raidDeploymentCards || createRaidDeploymentCardsState()),
-      availablePoints: state.availablePoints,
-      farmUpgrades: {
-        ...state.farmUpgrades
-      },
-      abilities: Object.fromEntries(
-        SPECIES_ABILITY_DEFINITIONS.map((definition) => [
-          definition.id,
-          {
-            ...state.abilities[definition.id],
-            ...definition.branches ? {
-              branchLevels: Object.fromEntries(
-                Object.keys(definition.branches).map((branchId) => [
-                  branchId,
-                  state.abilities[definition.id].branchLevels?.[branchId] || 0
-                ])
-              )
-            } : {}
-          }
-        ])
-      )
-    };
-  }
-  function isValidAbilityRuntimeSnapshot(snapshot2) {
-    if (!snapshot2 || typeof snapshot2 !== "object" || snapshot2.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION || !Number.isSafeInteger(snapshot2.level) || snapshot2.level < 1) {
-      return false;
-    }
-    const STATE = {
-      schemaVersion: snapshot2.schemaVersion,
-      formationSkills: snapshot2.formationSkills,
-      raidDeploymentCards: snapshot2.raidDeploymentCards || createRaidDeploymentCardsState(),
-      level: snapshot2.level,
-      experience: 0,
-      availablePoints: snapshot2.availablePoints,
-      farmUpgrades: snapshot2.farmUpgrades,
-      abilities: snapshot2.abilities,
-      processedBossKillReceipts: []
-    };
-    if (!isValidAbilityProgressionState(STATE) || STATE.formationSkills !== void 0 && !isValidFormationSkillState(STATE.formationSkills) || !isValidRaidDeploymentCardsState(STATE.raidDeploymentCards)) {
-      return false;
-    }
-    const INVESTED = Object.entries(STATE.abilities).reduce(
-      (total, [abilityId, investment]) => total + investedAbilityPoints(
-        investment,
-        SPECIES_ABILITY_DEFINITIONS.find((item) => item.id === abilityId)
-      ),
-      0
-    );
-    return INVESTED + formationInvestedPoints(STATE.formationSkills) + raidDeploymentCardsInvestedPoints(STATE.raidDeploymentCards) + getFarmUpgradeInvestedCount(STATE.farmUpgrades) + STATE.availablePoints === STATE.level - 1;
-  }
-  function isValidPlayerLikeAbilityState(state) {
-    const ABILITY_STATE = {
-      schemaVersion: state?.schemaVersion,
-      availablePoints: state?.availablePoints,
-      farmUpgrades: state?.farmUpgrades,
-      abilities: state?.abilities
-    };
-    if (!isValidAbilityProgressionState(ABILITY_STATE) || !Number.isSafeInteger(state?.level) || state.level < 1 || !isValidRaidDeploymentCardsState(state?.raidDeploymentCards)) {
-      return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-      (total, [abilityId, investment]) => total + investedAbilityPoints(
-        investment,
-        SPECIES_ABILITY_DEFINITIONS.find((item) => item.id === abilityId)
-      ),
-      0
-    );
-    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + getFarmUpgradeInvestedCount(state.farmUpgrades) + state.availablePoints === state.level - 1;
-  }
   function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
-  }
-  function investedAbilityPoints(investment) {
-    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
   }
   var ABILITY_TREE_SCHEMA_VERSION;
   var init_ability_state = __esm({
     "src/ability-state.js"() {
-      init_formation_skill_state();
       init_ability_definitions();
       init_farm_upgrades();
-      init_raid_deployment_cards();
       ABILITY_TREE_SCHEMA_VERSION = 2;
     }
   });
@@ -1515,7 +1339,6 @@
     return {
       ...createAbilityProgressionState(),
       formationSkills: createFormationSkillState(),
-      raidDeploymentCards: createRaidDeploymentCardsState(),
       farmPlots: createFarmPlotsProgression(),
       level: 1,
       experience: 0,
@@ -1610,14 +1433,14 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidRaidDeploymentCardsState(state.raidDeploymentCards) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !isValidFarmPlotsProgression(state.farmPlots) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
       return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
       (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
       0
     );
-    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
   }
   var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
   var init_player_progression = __esm({
@@ -1626,7 +1449,6 @@
       init_formation_skill_state();
       init_farm_upgrades();
       init_farm_plot();
-      init_raid_deployment_cards();
       PLAYER_PROGRESS_BASE_XP = 100;
       BOSS_KILL_XP = 20;
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
@@ -1650,8 +1472,8 @@
     value = Math.imul(value ^ value >>> 15, 2221713035);
     return (value ^ value >>> 16) >>> 0;
   }
-  function streamFor(source, firstClear = false) {
-    return source === "raid" && firstClear ? "firstClear" : STREAM_SOURCE[source];
+  function streamFor(source) {
+    return STREAM_SOURCE[source];
   }
   function streamSeed(seed, kind, field) {
     const DOMAIN = STREAM_DOMAINS[kind]?.[field];
@@ -1702,10 +1524,6 @@
       bonusRollChance: 0
     };
   }
-  function bossRewardRollDescription(stage, { farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
-    const STATS2 = bossStageStats(stage), NOMINAL_CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier: 1 }) * 100, CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier }) * 100, PAYOUTS = STATS2.boxPayouts, MIN = Math.min(...PAYOUTS), MAX = Math.max(...PAYOUTS), RANGE = MIN === MAX ? FORMAT_COUNT.format(MIN) : `${FORMAT_COUNT.format(MIN)}–${FORMAT_COUNT.format(MAX)}`;
-    return `${FORMAT_COUNT.format(STATS2.boxCount)}회 추첨 · 상자당 ${RANGE}마리 · ${firstClear ? "첫 클리어" : "재도전"} 기본 확률 ${FORMAT_PERCENT.format(NOMINAL_CHANCE)}% · 편성 반영 ${FORMAT_PERCENT.format(CHANCE)}%`;
-  }
   function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
     if (typeof random !== "function" || !Array.isArray(weights) || weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length || weights.some((weight) => !Number.isFinite(weight) || weight <= 0)) {
       throw new TypeError("Boss species weights and random source are required");
@@ -1735,7 +1553,7 @@
   }
   function ensureWorldRewardState(world) {
     world.bossRewardReceipts ||= [];
-    world.bossRewardWatermarks ||= { farm: 0, raid: 0 };
+    world.bossRewardWatermarks ||= { farm: 0 };
     world.bossRewardStreams ||= createBossRewardStreams(world.seed >>> 0);
     world.bossRewardInventory ||= [];
     return world;
@@ -1818,8 +1636,8 @@
   }
   function resolveBossAcquisitionCommitted(world, options = {}) {
     ensureWorldRewardState(world);
-    const ENCOUNTER_ID = options.encounterId, SOURCE = options.source || "raid", REQUESTED_KEY = options.receiptKey;
-    if (!["farm", "raid"].includes(SOURCE) || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID < 1 || REQUESTED_KEY !== void 0 && (typeof REQUESTED_KEY !== "string" || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255)) {
+    const ENCOUNTER_ID = options.encounterId, SOURCE = options.source || "farm", REQUESTED_KEY = options.receiptKey;
+    if (SOURCE !== "farm" || !Number.isSafeInteger(ENCOUNTER_ID) || ENCOUNTER_ID < 1 || REQUESTED_KEY !== void 0 && (typeof REQUESTED_KEY !== "string" || !REQUESTED_KEY.trim() || REQUESTED_KEY.length > 255)) {
       throw new TypeError("A boss encounter ID, source, and valid receipt key are required");
     }
     const RECEIPT_KEY = REQUESTED_KEY || `${SOURCE}:${ENCOUNTER_ID}`, PREVIOUS = findExistingReceipt(world, REQUESTED_KEY, ENCOUNTER_ID, SOURCE);
@@ -1837,7 +1655,7 @@
     if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
       throw new RangeError("Boss reward species is invalid");
     }
-    const FIRST_CLEAR = SOURCE === "raid" && options.firstClear === true, STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
+    const FIRST_CLEAR = false, STREAM_KIND = streamFor(SOURCE), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
       farmEvent: SOURCE === "farm",
       firstClear: FIRST_CLEAR,
       acquisitionMultiplier: options.acquisitionMultiplier ?? 1
@@ -1958,7 +1776,7 @@
       return false;
     }
     let changed = false;
-    for (const SOURCE of ["raid", "farm"]) {
+    for (const SOURCE of ["farm"]) {
       const RECEIPT = world.bossRewardReceipts.find(
         (entry) => entry.source === SOURCE && entry.status === "calculating"
       ), CALC = RECEIPT?.calculation;
@@ -2089,7 +1907,7 @@
         event: Object.freeze({ prd: 1939685861, boxes: 462181795 }),
         firstClear: Object.freeze({ prd: 1247922131, boxes: 767049617 })
       });
-      STREAM_SOURCE = Object.freeze({ raid: "normal", farm: "event" });
+      STREAM_SOURCE = Object.freeze({ farm: "event" });
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.05,
         firstClearAcquisitionChance: 0.15,
@@ -2725,9 +2543,6 @@
     }
     return UNIT_GRADES[resultTier - 1].materialCost;
   }
-  function isValidUnitTier(tier) {
-    return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
-  }
   var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
   var init_unit_grades = __esm({
     "src/unit-grades.js"() {
@@ -3198,25 +3013,25 @@
     "src/vector-sockets.cjs"(exports, module) {
       "use strict";
       function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
-        const FAIL4 = (message) => {
+        const FAIL3 = (message) => {
           throw new Error(`Vector socket contract (${label}): ${message}`);
         };
         if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
-          FAIL4("a finite SVG viewBox is required");
+          FAIL3("a finite SVG viewBox is required");
         }
         const PARTS = new Map((metadata?.parts || []).map((part) => [part.id, part]));
         const ANCHORS = {};
         for (const NAME of ["mouth", "ground"]) {
           const SOCKET = metadata?.sockets?.[NAME];
           if (!SOCKET || !PARTS.has(SOCKET.part)) {
-            FAIL4(`${NAME} must name an authored part`);
+            FAIL3(`${NAME} must name an authored part`);
           }
           if (!Array.isArray(SOCKET.point) || SOCKET.point.length !== 2 || !SOCKET.point.every(Number.isFinite)) {
-            FAIL4(`${NAME} must contain two finite canvas coordinates`);
+            FAIL3(`${NAME} must contain two finite canvas coordinates`);
           }
           const [X, Y] = SOCKET.point;
           if (X < viewBox[0] || X > viewBox[0] + viewBox[2] || Y < viewBox[1] || Y > viewBox[1] + viewBox[3]) {
-            FAIL4(`${NAME} lies outside the SVG canvas`);
+            FAIL3(`${NAME} lies outside the SVG canvas`);
           }
           ANCHORS[NAME] = Object.freeze({
             part: SOCKET.part,
@@ -3225,10 +3040,10 @@
           });
         }
         if (ANCHORS.ground.part !== "body") {
-          FAIL4("ground must belong to body");
+          FAIL3("ground must belong to body");
         }
         if (ANCHORS.mouth.y >= ANCHORS.ground.y) {
-          FAIL4("mouth must be above the authored ground baseline");
+          FAIL3("mouth must be above the authored ground baseline");
         }
         return Object.freeze(ANCHORS);
       }
@@ -4078,7 +3893,7 @@
           return this.runtime.effects;
         }
         get active() {
-          return this.world.scene === "raid" ? this.world.running : this.world.farmBossEvent?.phase === "fighting";
+          return this.world.farmBossEvent?.phase === "fighting";
         }
         editable() {
           return this.world.scene === "farm" && !this.world.running && this.world.farmBossEvent?.phase === "idle";
@@ -4128,10 +3943,7 @@
             this.runtime.serial = SERIAL;
             this.rebuildInjured();
             this.runtime.active = true;
-            const BUILDS = this.world.scene === "raid" && this.world.raidRosters.length ? this.world.raidRosters.map((roster) => ({
-              ownerId: roster.ownerId,
-              state: roster.abilitySnapshot.formationSkills || createFormationSkillState()
-            })) : [{ ownerId: "", state: this.world.playerProgression.formationSkills }];
+            const BUILDS = [{ ownerId: "", state: this.world.playerProgression.formationSkills }];
             for (const BUILD of BUILDS) {
               for (const ID of BUILD.state.equipped) {
                 if (ID) {
@@ -5125,10 +4937,7 @@
           unit.dropLanded = true;
           Object.assign(unit, unit.home);
         }
-        setupRoster(world) {
-          world.raidExpectedPlayers = ["solo"];
-          world.raidRosters = [];
-          world.raidDeploymentStarted = false;
+        setupRoster(_world) {
         }
         advanceRest(_world, unit, dt) {
           unit.down = Math.max(0, unit.down - dt);
@@ -5183,285 +4992,6 @@
     }
   });
 
-  // src/features/scenes/raid/definition.js
-  var FEATURE3;
-  var init_definition16 = __esm({
-    "src/features/scenes/raid/definition.js"() {
-      FEATURE3 = Object.freeze({ id: "raid" });
-    }
-  });
-
-  // src/boss-patterns.js
-  function createBossPatternRuntime() {
-    return {
-      weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
-      cooldowns: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, 0])),
-      active: null,
-      encounterElapsed: 0
-    };
-  }
-  function chooseBossPattern(runtime, eligibleIds, random) {
-    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") {
-      throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
-    }
-    const ELIGIBLE = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
-    if (!ELIGIBLE.length) {
-      return null;
-    }
-    const TOTAL = ELIGIBLE.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
-    if (!(TOTAL > 0)) {
-      return null;
-    }
-    let roll = random() * TOTAL;
-    let chosen = ELIGIBLE.at(-1);
-    for (const ID of ELIGIBLE) {
-      roll -= Math.max(0, runtime.weights[ID] || 0);
-      if (roll < 0) {
-        chosen = ID;
-        break;
-      }
-    }
-    for (const ID of ELIGIBLE) {
-      runtime.weights[ID] = ID === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(
-        BOSS_PATTERN_WEIGHT_DEFAULTS.cap,
-        Math.max(0, runtime.weights[ID] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus
-      );
-    }
-    return chosen;
-  }
-  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
-  var init_boss_patterns = __esm({
-    "src/boss-patterns.js"() {
-      BOSS_PATTERN_IDS = Object.freeze([
-        "attack.sweep-360",
-        "attack.front-slam",
-        "attack.charge",
-        "attack.leap-slam",
-        "attack.fan-sweep",
-        "summon.mouth-t1"
-      ]);
-      BOSS_PATTERN_CONFIG = Object.freeze({
-        "attack.sweep-360": Object.freeze({
-          kind: "sweep-360",
-          windup: 1.05,
-          active: 1.05,
-          recover: 1.05,
-          cooldown: 10,
-          reach: 6.5,
-          width: 0.85,
-          damageMultiplier: 2.5,
-          knockback: 13,
-          lift: 10.2,
-          groundOnly: true
-        }),
-        "attack.front-slam": Object.freeze({
-          kind: "front-slam",
-          windup: 0.75,
-          active: 0,
-          recover: 0.75,
-          cooldown: 5,
-          reach: 5.5,
-          sector: Math.PI / 2,
-          damageMultiplier: 2.5,
-          knockback: 13,
-          lift: 10.2,
-          groundOnly: true
-        }),
-        "attack.charge": Object.freeze({
-          kind: "charge",
-          windup: 0.5,
-          active: 6.6 / 5.3,
-          recover: 0.75,
-          cooldown: 5,
-          reach: 6.6,
-          speed: 5.3,
-          damageMultiplier: 2,
-          knockback: 13,
-          lift: 10.2,
-          groundOnly: false
-        }),
-        "attack.leap-slam": Object.freeze({
-          kind: "leap-slam",
-          windup: 0.5,
-          active: 1.013,
-          recover: 0.75,
-          cooldown: 5,
-          reach: 6.6,
-          landingRadius: 5.5,
-          damageMultiplier: 2,
-          knockback: 10,
-          lift: 7.2,
-          groundOnly: false
-        }),
-        "attack.fan-sweep": Object.freeze({
-          kind: "fan-sweep",
-          windup: 1,
-          active: 0.8,
-          recover: 1,
-          cooldown: 5,
-          reach: 6.5,
-          width: 0.85,
-          sector: Math.PI * 2 / 3,
-          damageMultiplier: 2,
-          knockback: 13,
-          lift: 10.2,
-          groundOnly: true
-        }),
-        "summon.mouth-t1": Object.freeze({
-          kind: "mouth-t1",
-          windup: 0.5,
-          active: 0.75,
-          recover: 0.5,
-          cooldown: 10,
-          firstEligible: 10,
-          volleyCount: 4,
-          releaseInterval: 0.25,
-          maxAlive: 10,
-          dropHeight: 3,
-          landingSeconds: 0.56,
-          landingRadius: 4.8
-        })
-      });
-      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
-        base: 1,
-        eligibleBonus: 0.5,
-        cap: 3
-      });
-      BOSS_AIM_TURN_RATE = 5.5;
-    }
-  });
-
-  // src/factions.js
-  function hasFaction(actor, faction) {
-    return actor?.faction === faction;
-  }
-  function areOpposingFactions(a, b) {
-    return !!a && !!b && typeof a.faction === "string" && typeof b.faction === "string" && a.faction !== b.faction;
-  }
-  var FACTION_CONFIG;
-  var init_factions = __esm({
-    "src/factions.js"() {
-      FACTION_CONFIG = Object.freeze({
-        PLAYER: "player",
-        ENEMY: "enemy"
-      });
-    }
-  });
-
-  // src/features/scenes/raid/model.js
-  var RaidSimulationScene;
-  var init_model11 = __esm({
-    "src/features/scenes/raid/model.js"() {
-      init_model_base2();
-      init_definition16();
-      init_boss_patterns();
-      init_ability_state();
-      init_raid_deployment_cards();
-      init_factions();
-      RaidSimulationScene = class extends SimulationScene {
-        constructor(dependencies) {
-          const { CONFIG: CONFIG2 } = dependencies;
-          super(dependencies);
-          this.feature = FEATURE3;
-          this.dropLandingEvent = "drop-land";
-          this.battleCapacity = CONFIG2.raid.capacity.battleUnits;
-        }
-        progressionFor(world, unit) {
-          return world.raidRoster(unit?.ownerId)?.abilitySnapshot || null;
-        }
-        inBattle(world) {
-          return world.running;
-        }
-        canSenseBoss(world) {
-          return world.running && world.raidDeploymentStarted;
-        }
-        summonId(world) {
-          const { CONFIG: CONFIG2 } = this.dependencies;
-          return CONFIG2.raid.ids.summonBase + ++world.raidSummonSerial;
-        }
-        capacity(_world) {
-          const { CONFIG: CONFIG2 } = this.dependencies;
-          return CONFIG2.raid.capacity.units;
-        }
-        unitId(_unit, index) {
-          return 1e6 + index + 1;
-        }
-        enterUnit(_world, unit, index) {
-          unit.home = {
-            x: unit.x,
-            y: unit.y
-          };
-          unit.farmId = unit.farmId || unit.id;
-          unit.ownerId = "solo";
-          unit.id = 1e6 + index + 1;
-          unit.dropLanded = true;
-          const ANGLE = index * 2.3999632297, RAD = 10.5 + index % 3 * 0.9;
-          Object.assign(unit, {
-            x: Math.cos(ANGLE) * RAD,
-            y: Math.sin(ANGLE) * RAD * 0.84
-          });
-        }
-        setupRoster(world) {
-          world.boss.active = true;
-          world.boss.encounterId = world.activeRaidRunSequence || world.nextRaidRunSequence || 1;
-          world.boss.patternRuntime = createBossPatternRuntime();
-          world.raidExpectedPlayers = ["solo"];
-          world.raidRosters = [
-            {
-              ownerId: "solo",
-              deploymentCardSpecies: raidDeploymentCardSpecies(world.playerProgression.raidDeploymentCards),
-              troops: world.units.filter((u) => !u.isBattleOnlySummon).map((u) => ({
-                farmId: u.farmId,
-                species: u.species,
-                tier: u.tier,
-                deployed: true
-              })),
-              abilitySnapshot: createAbilityRuntimeSnapshot(world.playerProgression),
-              buffUntil: 0,
-              buffReadyAt: 0
-            }
-          ];
-          world.raidDeploymentStarted = true;
-        }
-        advanceClock(world, dt) {
-          if (world.running) {
-            world.encounter.elapsed += dt;
-          }
-        }
-        afterDownedIntegration(world, unit) {
-          if (world.running && unit.z === 0 && unit.vz === 0) {
-            unit.vx = unit.vy = 0;
-          }
-        }
-        afterLivingIntegration(_world, unit) {
-          if (unit.hp <= 0 && unit.z === 0 && unit.vz === 0) {
-            unit.vx = unit.vy = 0;
-          }
-        }
-        fallbackEnemy(world, unit) {
-          return world.running && hasFaction(unit, FACTION_CONFIG.PLAYER) && world.boss.hp > 0 ? world.boss : null;
-        }
-        updateUnoccupied(world, unit, dt) {
-          if (world.running) {
-            world.raidUnit(unit, dt, null);
-          }
-        }
-        landUnit(world, unit) {
-          world.combat("unit-land", {
-            unit: unit.id,
-            x: unit.x,
-            y: unit.y,
-            z: 0,
-            strength: Math.min(1, Math.hypot(unit.vx, unit.vy) / 8)
-          });
-        }
-        resolveContacts(world, units, dt) {
-          world.raidContacts(units, dt);
-        }
-      };
-    }
-  });
-
   // src/simulation-scenes.js
   function createSimulationScenes(dependencies) {
     const {
@@ -5474,17 +5004,13 @@
     const DEPENDENCIES = Object.freeze({ CONFIG: CONFIG2, STATS: STATS2, CREATE_UNIT_ATTACK_CYCLE: CREATE_UNIT_ATTACK_CYCLE2, FARM_MODES: FARM_MODES2, BOSS_EVENT_PHASES });
     return Object.freeze(
       Object.fromEntries(
-        [new FarmSimulationScene(DEPENDENCIES), new RaidSimulationScene(DEPENDENCIES)].map((scene) => [
-          scene.feature.id,
-          Object.freeze(scene)
-        ])
+        [new FarmSimulationScene(DEPENDENCIES)].map((scene) => [scene.feature.id, Object.freeze(scene)])
       )
     );
   }
   var init_simulation_scenes = __esm({
     "src/simulation-scenes.js"() {
       init_model10();
-      init_model11();
     }
   });
 
@@ -5739,23 +5265,18 @@
     if (TYPE === "all" || TYPE === "formation") {
       NEXT.formationSkills = createFormationSkillState();
     }
-    if (TYPE === "all" || TYPE === "deployment-cards") {
-      NEXT.raidDeploymentCards = resetRaidDeploymentCardsState(NEXT.raidDeploymentCards);
-    }
     return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
   }
   function progressionResetInvestment(state, scope) {
     switch (scope.type) {
       case "all":
-        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
+        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills);
       case "farm":
         return getFarmUpgradeInvestedCount(state.farmUpgrades);
       case "abilities":
         return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
       case "formation":
         return formationInvestedPoints(state.formationSkills);
-      case "deployment-cards":
-        return raidDeploymentCardsInvestedPoints(state.raidDeploymentCards);
       default:
         return 0;
     }
@@ -5765,7 +5286,7 @@
     if (!NORMALIZED || typeof NORMALIZED !== "object" || Array.isArray(NORMALIZED)) {
       return null;
     }
-    if (NORMALIZED.type === "all" || NORMALIZED.type === "farm" || NORMALIZED.type === "formation" || NORMALIZED.type === "deployment-cards") {
+    if (NORMALIZED.type === "all" || NORMALIZED.type === "farm" || NORMALIZED.type === "formation") {
       return NORMALIZED;
     }
     if (NORMALIZED.type === "abilities") {
@@ -5907,12 +5428,6 @@
           levels: { ...state.formationSkills.levels },
           equipped: [...state.formationSkills.equipped]
         }
-      } : {},
-      ...state.raidDeploymentCards ? {
-        raidDeploymentCards: {
-          ...state.raidDeploymentCards,
-          speciesBySlot: [...state.raidDeploymentCards.speciesBySlot]
-        }
       } : {}
     };
   }
@@ -5937,7 +5452,6 @@
       init_ability_state();
       init_player_progression();
       init_formation_skill_state();
-      init_raid_deployment_cards();
       init_farm_upgrades();
       SHARED_ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
@@ -5946,7 +5460,7 @@
 
   // src/features/abilities/pea-recovery-boost/model.js
   var ABILITY_ID, PeaRecoveryBoostModel;
-  var init_model12 = __esm({
+  var init_model11 = __esm({
     "src/features/abilities/pea-recovery-boost/model.js"() {
       init_ability_progression();
       init_pea_recovery_boost();
@@ -5968,7 +5482,7 @@
 
   // src/features/abilities/kidney-leap/model.js
   var ABILITY_ID2, KidneyLeapModel;
-  var init_model13 = __esm({
+  var init_model12 = __esm({
     "src/features/abilities/kidney-leap/model.js"() {
       init_ability_progression();
       init_kidney_continuous_leap();
@@ -5993,7 +5507,7 @@
 
   // src/features/abilities/chestnut-thorns/model.js
   var ABILITY_ID3, ChestnutThornsModel;
-  var init_model14 = __esm({
+  var init_model13 = __esm({
     "src/features/abilities/chestnut-thorns/model.js"() {
       init_ability_progression();
       init_definition10();
@@ -6024,7 +5538,7 @@
 
   // src/features/abilities/peanut-death-split/model.js
   var ABILITY_ID4, PeanutDeathSplitModel;
-  var init_model15 = __esm({
+  var init_model14 = __esm({
     "src/features/abilities/peanut-death-split/model.js"() {
       init_ability_progression();
       init_definition11();
@@ -6059,7 +5573,6 @@
             farmId: unit.farmId || 0,
             faction: unit.faction,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,
@@ -6075,7 +5588,7 @@
 
   // src/features/abilities/walnut-raw-guard/model.js
   var DEFINITION10, WalnutRawGuardModel;
-  var init_model16 = __esm({
+  var init_model15 = __esm({
     "src/features/abilities/walnut-raw-guard/model.js"() {
       init_ability_progression();
       init_definition12();
@@ -6144,7 +5657,7 @@
 
   // src/features/abilities/corn-attachment/model.js
   var DEFINITION11, CornAttachmentModel;
-  var init_model17 = __esm({
+  var init_model16 = __esm({
     "src/features/abilities/corn-attachment/model.js"() {
       init_ability_progression();
       init_definition13();
@@ -6330,7 +5843,7 @@
 
   // src/features/abilities/rice-critical/model.js
   var ABILITY_ID5, RiceCriticalModel;
-  var init_model18 = __esm({
+  var init_model17 = __esm({
     "src/features/abilities/rice-critical/model.js"() {
       init_ability_progression();
       ABILITY_ID5 = "rice-low-health-harvest";
@@ -6351,18 +5864,18 @@
   });
 
   // src/features/unit-attacks/lob/definition.js
-  var FEATURE4;
-  var init_definition17 = __esm({
+  var FEATURE3;
+  var init_definition16 = __esm({
     "src/features/unit-attacks/lob/definition.js"() {
-      FEATURE4 = Object.freeze({ id: "lob", modelKey: "projectile" });
+      FEATURE3 = Object.freeze({ id: "lob", modelKey: "projectile" });
     }
   });
 
   // src/features/unit-attacks/dual-strike/definition.js
-  var FEATURE5;
-  var init_definition18 = __esm({
+  var FEATURE4;
+  var init_definition17 = __esm({
     "src/features/unit-attacks/dual-strike/definition.js"() {
-      FEATURE5 = Object.freeze({ id: "peanut-dual-strike", modelKey: "repeatedStrike" });
+      FEATURE4 = Object.freeze({ id: "peanut-dual-strike", modelKey: "repeatedStrike" });
     }
   });
 
@@ -6395,8 +5908,8 @@
   var ATTACK_DEFAULTS, UNIT_ABILITY_PROFILES, COMPOSITION, UNIT_CAPABILITY_COMPOSITIONS, UNIT_SPECIAL_ABILITY_COMPOSITIONS, CAPABILITY_SPECIES, NO_SPECIES;
   var init_unit_abilities = __esm({
     "src/unit-abilities.js"() {
+      init_definition16();
       init_definition17();
-      init_definition18();
       init_kidney_continuous_leap();
       init_definition10();
       ATTACK_DEFAULTS = Object.freeze({
@@ -6411,7 +5924,7 @@
       });
       UNIT_ABILITY_PROFILES = Object.freeze({
         0: attackProfile("ram"),
-        1: attackProfile(FEATURE4.id, {
+        1: attackProfile(FEATURE3.id, {
           timing: {
             windup: 0.38,
             recovery: 1.25
@@ -6424,7 +5937,7 @@
         3: attackProfile("punch"),
         // One Peanut remains one world unit; its two kernels are presentation-only
         // and the two deterministic strike slots share the same active window.
-        4: attackProfile(FEATURE5.id, {
+        4: attackProfile(FEATURE4.id, {
           timing: {
             windup: 0.25,
             active: 0.5,
@@ -6459,7 +5972,7 @@
         0: COMPOSITION("contact", ["recoveryHaste"], {
           contactRecoil: true
         }),
-        1: COMPOSITION(FEATURE4.modelKey, ["cornAttachment"], {
+        1: COMPOSITION(FEATURE3.modelKey, ["cornAttachment"], {
           retreatWithinRange: true,
           aimAtCenter: true
         }),
@@ -6468,7 +5981,7 @@
           contactRecoil: true,
           specialAbility: "chestnutThorns"
         }),
-        4: COMPOSITION(FEATURE5.modelKey, ["deathSplit"], {
+        4: COMPOSITION(FEATURE4.modelKey, ["deathSplit"], {
           useActiveDuration: true,
           outerRangeSlack: 0
         }),
@@ -6543,7 +6056,7 @@
 
   // src/features/abilities/wheat-command/model.js
   var DEFINITION12, ABILITY_ID6, WheatCommandModel;
-  var init_model19 = __esm({
+  var init_model18 = __esm({
     "src/features/abilities/wheat-command/model.js"() {
       init_ability_progression();
       init_unit_abilities();
@@ -6633,7 +6146,7 @@
     return Array.from({ length: BARLEY_ARMOR_SHRED_BUCKETS }, () => ({ expiresAtTick: 0, amount: 0 }));
   }
   var BARLEY_ARMOR_SHRED_BUCKETS, ABILITY_ID7, BarleyArmorShredModel;
-  var init_model20 = __esm({
+  var init_model19 = __esm({
     "src/features/abilities/barley-shred/model.js"() {
       init_ability_progression();
       BARLEY_ARMOR_SHRED_BUCKETS = 60;
@@ -6994,23 +6507,23 @@
     "src/ability-catalog.js"() {
       init_ability_definitions();
       init_pea_recovery_boost();
-      init_model12();
+      init_model11();
       init_kidney_continuous_leap();
-      init_model13();
+      init_model12();
       init_definition10();
-      init_model14();
+      init_model13();
       init_definition11();
-      init_model15();
+      init_model14();
       init_definition12();
-      init_model16();
+      init_model15();
       init_definition13();
-      init_model17();
+      init_model16();
       init_rice_low_health_harvest();
-      init_model18();
+      init_model17();
       init_wheat_command_crit();
-      init_model19();
+      init_model18();
       init_barley_armor_break();
-      init_model20();
+      init_model19();
       init_ability_presentations();
       ABILITY_MODELS = Object.freeze([
         [PEA_RECOVERY_BOOST_FEATURE, PeaRecoveryBoostModel],
@@ -7099,7 +6612,7 @@
 
   // src/features/projectiles/seed/model.js
   var SeedProjectile;
-  var init_model21 = __esm({
+  var init_model20 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
       init_definition14();
@@ -7112,22 +6625,22 @@
   });
 
   // src/features/projectiles/spike/definition.js
-  var FEATURE6;
-  var init_definition19 = __esm({
+  var FEATURE5;
+  var init_definition18 = __esm({
     "src/features/projectiles/spike/definition.js"() {
-      FEATURE6 = Object.freeze({ id: "spike", landingEffect: "spike-land" });
+      FEATURE5 = Object.freeze({ id: "spike", landingEffect: "spike-land" });
     }
   });
 
   // src/features/projectiles/spike/model.js
   var SpikeProjectile;
-  var init_model22 = __esm({
+  var init_model21 = __esm({
     "src/features/projectiles/spike/model.js"() {
       init_damage_model();
-      init_definition19();
+      init_definition18();
       SpikeProjectile = class extends DamageProjectile {
         constructor(dependencies) {
-          super(FEATURE6, dependencies);
+          super(FEATURE5, dependencies);
         }
       };
     }
@@ -7138,12 +6651,12 @@
     return projectileFlightFeature(projectile);
   }
   function projectileFlightFeature(projectile) {
-    return projectile.projectileKind === "chestnut-spike" ? FEATURE6 : FEATURE;
+    return projectile.projectileKind === "chestnut-spike" ? FEATURE5 : FEATURE;
   }
-  var init_definition20 = __esm({
+  var init_definition19 = __esm({
     "src/features/projectiles/definition.js"() {
       init_definition14();
-      init_definition19();
+      init_definition18();
     }
   });
 
@@ -7165,9 +6678,26 @@
   }
   var init_projectile_behaviors = __esm({
     "src/projectile-behaviors.js"() {
+      init_model20();
       init_model21();
-      init_model22();
-      init_definition20();
+      init_definition19();
+    }
+  });
+
+  // src/factions.js
+  function hasFaction(actor, faction) {
+    return actor?.faction === faction;
+  }
+  function areOpposingFactions(a, b) {
+    return !!a && !!b && typeof a.faction === "string" && typeof b.faction === "string" && a.faction !== b.faction;
+  }
+  var FACTION_CONFIG;
+  var init_factions = __esm({
+    "src/factions.js"() {
+      FACTION_CONFIG = Object.freeze({
+        PLAYER: "player",
+        ENEMY: "enemy"
+      });
     }
   });
 
@@ -7190,7 +6720,7 @@
         }
         world.boss.z = Math.max(
           0,
-          config.raid.dropHeight - 0.5 * config.physics.gravity * world.farmBossEvent.elapsed * world.farmBossEvent.elapsed
+          config.battle.dropHeight - 0.5 * config.physics.gravity * world.farmBossEvent.elapsed * world.farmBossEvent.elapsed
         );
         if (world.boss.z === 0) {
           world.farmBossEvent.phase = "fighting";
@@ -7215,7 +6745,7 @@
           world.finishFarmBossEvent("defeat");
           return true;
         }
-        if (world.farmBossEvent.elapsed >= world.raidTimeLimit()) {
+        if (world.farmBossEvent.elapsed >= world.battleTimeLimit()) {
           world.finishFarmBossEvent("defeat");
           return true;
         }
@@ -7336,24 +6866,24 @@
   });
 
   // src/features/farm-modes/breed/definition.js
-  var FEATURE7;
-  var init_definition21 = __esm({
+  var FEATURE6;
+  var init_definition20 = __esm({
     "src/features/farm-modes/breed/definition.js"() {
-      FEATURE7 = Object.freeze({ id: "breed" });
+      FEATURE6 = Object.freeze({ id: "breed" });
     }
   });
 
   // src/features/farm-modes/breed/model.js
   var BreedFarmMode;
-  var init_model23 = __esm({
+  var init_model22 = __esm({
     "src/features/farm-modes/breed/model.js"() {
       init_model_base4();
-      init_definition21();
+      init_definition20();
       init_unit_stats();
       init_farm_upgrades();
       BreedFarmMode = class extends FarmMode {
         constructor(config) {
-          super(FEATURE7, config);
+          super(FEATURE6, config);
         }
         updateReady(world, u, dt) {
           let target = null;
@@ -7439,7 +6969,7 @@
   }
   var init_farm_mode_behaviors = __esm({
     "src/farm-mode-behaviors.js"() {
-      init_model23();
+      init_model22();
     }
   });
 
@@ -7486,25 +7016,165 @@
     }
   });
 
+  // src/boss-patterns.js
+  function createBossPatternRuntime() {
+    return {
+      weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
+      cooldowns: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, 0])),
+      active: null,
+      encounterElapsed: 0
+    };
+  }
+  function chooseBossPattern(runtime, eligibleIds, random) {
+    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== "function") {
+      throw new TypeError("Boss pattern selection requires runtime, eligible patterns, and a seeded random source");
+    }
+    const ELIGIBLE = [...new Set(eligibleIds)].filter((id) => BOSS_PATTERN_IDS.includes(id)).sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
+    if (!ELIGIBLE.length) {
+      return null;
+    }
+    const TOTAL = ELIGIBLE.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
+    if (!(TOTAL > 0)) {
+      return null;
+    }
+    let roll = random() * TOTAL;
+    let chosen = ELIGIBLE.at(-1);
+    for (const ID of ELIGIBLE) {
+      roll -= Math.max(0, runtime.weights[ID] || 0);
+      if (roll < 0) {
+        chosen = ID;
+        break;
+      }
+    }
+    for (const ID of ELIGIBLE) {
+      runtime.weights[ID] = ID === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(
+        BOSS_PATTERN_WEIGHT_DEFAULTS.cap,
+        Math.max(0, runtime.weights[ID] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus
+      );
+    }
+    return chosen;
+  }
+  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
+  var init_boss_patterns = __esm({
+    "src/boss-patterns.js"() {
+      BOSS_PATTERN_IDS = Object.freeze([
+        "attack.sweep-360",
+        "attack.front-slam",
+        "attack.charge",
+        "attack.leap-slam",
+        "attack.fan-sweep",
+        "summon.mouth-t1"
+      ]);
+      BOSS_PATTERN_CONFIG = Object.freeze({
+        "attack.sweep-360": Object.freeze({
+          kind: "sweep-360",
+          windup: 1.05,
+          active: 1.05,
+          recover: 1.05,
+          cooldown: 10,
+          reach: 6.5,
+          width: 0.85,
+          damageMultiplier: 2.5,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: true
+        }),
+        "attack.front-slam": Object.freeze({
+          kind: "front-slam",
+          windup: 0.75,
+          active: 0,
+          recover: 0.75,
+          cooldown: 5,
+          reach: 5.5,
+          sector: Math.PI / 2,
+          damageMultiplier: 2.5,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: true
+        }),
+        "attack.charge": Object.freeze({
+          kind: "charge",
+          windup: 0.5,
+          active: 6.6 / 5.3,
+          recover: 0.75,
+          cooldown: 5,
+          reach: 6.6,
+          speed: 5.3,
+          damageMultiplier: 2,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: false
+        }),
+        "attack.leap-slam": Object.freeze({
+          kind: "leap-slam",
+          windup: 0.5,
+          active: 1.013,
+          recover: 0.75,
+          cooldown: 5,
+          reach: 6.6,
+          landingRadius: 5.5,
+          damageMultiplier: 2,
+          knockback: 10,
+          lift: 7.2,
+          groundOnly: false
+        }),
+        "attack.fan-sweep": Object.freeze({
+          kind: "fan-sweep",
+          windup: 1,
+          active: 0.8,
+          recover: 1,
+          cooldown: 5,
+          reach: 6.5,
+          width: 0.85,
+          sector: Math.PI * 2 / 3,
+          damageMultiplier: 2,
+          knockback: 13,
+          lift: 10.2,
+          groundOnly: true
+        }),
+        "summon.mouth-t1": Object.freeze({
+          kind: "mouth-t1",
+          windup: 0.5,
+          active: 0.75,
+          recover: 0.5,
+          cooldown: 10,
+          firstEligible: 10,
+          volleyCount: 4,
+          releaseInterval: 0.25,
+          maxAlive: 10,
+          dropHeight: 3,
+          landingSeconds: 0.56,
+          landingRadius: 4.8
+        })
+      });
+      BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
+        base: 1,
+        eligibleBonus: 0.5,
+        cap: 3
+      });
+      BOSS_AIM_TURN_RATE = 5.5;
+    }
+  });
+
   // src/features/boss-patterns/sweep-360/definition.js
-  var FEATURE8;
-  var init_definition22 = __esm({
+  var FEATURE7;
+  var init_definition21 = __esm({
     "src/features/boss-patterns/sweep-360/definition.js"() {
       init_boss_patterns();
-      FEATURE8 = Object.freeze({ id: "attack.sweep-360", config: BOSS_PATTERN_CONFIG["attack.sweep-360"] });
+      FEATURE7 = Object.freeze({ id: "attack.sweep-360", config: BOSS_PATTERN_CONFIG["attack.sweep-360"] });
     }
   });
 
   // src/features/boss-patterns/sweep-360/model.js
   var TAU, SweepBossPattern;
-  var init_model24 = __esm({
+  var init_model23 = __esm({
     "src/features/boss-patterns/sweep-360/model.js"() {
       init_model_base5();
-      init_definition22();
+      init_definition21();
       TAU = Math.PI * 2;
       SweepBossPattern = class extends BossPattern {
         constructor(dependencies) {
-          super(FEATURE8, dependencies);
+          super(FEATURE7, dependencies);
           this.physicalActive = true;
         }
         writeArea(_boss, action, _scene, pad, area) {
@@ -7539,23 +7209,23 @@
   });
 
   // src/features/boss-patterns/front-slam/definition.js
-  var FEATURE9;
-  var init_definition23 = __esm({
+  var FEATURE8;
+  var init_definition22 = __esm({
     "src/features/boss-patterns/front-slam/definition.js"() {
       init_boss_patterns();
-      FEATURE9 = Object.freeze({ id: "attack.front-slam", config: BOSS_PATTERN_CONFIG["attack.front-slam"] });
+      FEATURE8 = Object.freeze({ id: "attack.front-slam", config: BOSS_PATTERN_CONFIG["attack.front-slam"] });
     }
   });
 
   // src/features/boss-patterns/front-slam/model.js
   var SlamBossPattern;
-  var init_model25 = __esm({
+  var init_model24 = __esm({
     "src/features/boss-patterns/front-slam/model.js"() {
       init_model_base5();
-      init_definition23();
+      init_definition22();
       SlamBossPattern = class extends BossPattern {
         constructor(dependencies) {
-          super(FEATURE9, dependencies);
+          super(FEATURE8, dependencies);
         }
         writeArea(_boss, _action, _scene, pad, area) {
           area.kind = "sector";
@@ -7572,23 +7242,23 @@
   });
 
   // src/features/boss-patterns/charge/definition.js
-  var FEATURE10;
-  var init_definition24 = __esm({
+  var FEATURE9;
+  var init_definition23 = __esm({
     "src/features/boss-patterns/charge/definition.js"() {
       init_boss_patterns();
-      FEATURE10 = Object.freeze({ id: "attack.charge", config: BOSS_PATTERN_CONFIG["attack.charge"] });
+      FEATURE9 = Object.freeze({ id: "attack.charge", config: BOSS_PATTERN_CONFIG["attack.charge"] });
     }
   });
 
   // src/features/boss-patterns/charge/model.js
   var ChargeBossPattern;
-  var init_model26 = __esm({
+  var init_model25 = __esm({
     "src/features/boss-patterns/charge/model.js"() {
       init_model_base5();
-      init_definition24();
+      init_definition23();
       ChargeBossPattern = class extends BossPattern {
         constructor(dependencies) {
-          super(FEATURE10, dependencies);
+          super(FEATURE9, dependencies);
           this.physicalActive = true;
         }
         writeArea(boss, action, scene, pad, area) {
@@ -7658,23 +7328,23 @@
   });
 
   // src/features/boss-patterns/leap-slam/definition.js
-  var FEATURE11;
-  var init_definition25 = __esm({
+  var FEATURE10;
+  var init_definition24 = __esm({
     "src/features/boss-patterns/leap-slam/definition.js"() {
       init_boss_patterns();
-      FEATURE11 = Object.freeze({ id: "attack.leap-slam", config: BOSS_PATTERN_CONFIG["attack.leap-slam"] });
+      FEATURE10 = Object.freeze({ id: "attack.leap-slam", config: BOSS_PATTERN_CONFIG["attack.leap-slam"] });
     }
   });
 
   // src/features/boss-patterns/leap-slam/model.js
   var LeapBossPattern;
-  var init_model27 = __esm({
+  var init_model26 = __esm({
     "src/features/boss-patterns/leap-slam/model.js"() {
       init_model_base5();
-      init_definition25();
+      init_definition24();
       LeapBossPattern = class extends BossPattern {
         constructor(dependencies) {
-          super(FEATURE11, dependencies);
+          super(FEATURE10, dependencies);
           this.physicalActive = true;
         }
         writeArea(boss, action, scene, pad, area) {
@@ -7806,23 +7476,23 @@
   });
 
   // src/features/boss-patterns/fan-sweep/definition.js
-  var FEATURE12;
-  var init_definition26 = __esm({
+  var FEATURE11;
+  var init_definition25 = __esm({
     "src/features/boss-patterns/fan-sweep/definition.js"() {
       init_boss_patterns();
-      FEATURE12 = Object.freeze({ id: "attack.fan-sweep", config: BOSS_PATTERN_CONFIG["attack.fan-sweep"] });
+      FEATURE11 = Object.freeze({ id: "attack.fan-sweep", config: BOSS_PATTERN_CONFIG["attack.fan-sweep"] });
     }
   });
 
   // src/features/boss-patterns/fan-sweep/model.js
   var FanBossPattern;
-  var init_model28 = __esm({
+  var init_model27 = __esm({
     "src/features/boss-patterns/fan-sweep/model.js"() {
       init_model_base5();
-      init_definition26();
+      init_definition25();
       FanBossPattern = class extends BossPattern {
         constructor(dependencies) {
-          super(FEATURE12, dependencies);
+          super(FEATURE11, dependencies);
           this.physicalActive = true;
         }
         writeArea(_boss, _action, _scene, pad, area) {
@@ -7856,24 +7526,24 @@
   });
 
   // src/features/boss-patterns/mouth-summon/definition.js
-  var FEATURE13;
-  var init_definition27 = __esm({
+  var FEATURE12;
+  var init_definition26 = __esm({
     "src/features/boss-patterns/mouth-summon/definition.js"() {
       init_boss_patterns();
-      FEATURE13 = Object.freeze({ id: "summon.mouth-t1", config: BOSS_PATTERN_CONFIG["summon.mouth-t1"] });
+      FEATURE12 = Object.freeze({ id: "summon.mouth-t1", config: BOSS_PATTERN_CONFIG["summon.mouth-t1"] });
     }
   });
 
   // src/features/boss-patterns/mouth-summon/model.js
   var MouthSummonBossPattern;
-  var init_model29 = __esm({
+  var init_model28 = __esm({
     "src/features/boss-patterns/mouth-summon/model.js"() {
       init_model_base5();
-      init_definition27();
+      init_definition26();
       init_factions();
       MouthSummonBossPattern = class extends BossPattern {
         constructor(dependencies) {
-          super(FEATURE13, dependencies);
+          super(FEATURE12, dependencies);
         }
         writeArea(_boss, _action, _scene, _pad, area) {
           area.kind = "summon";
@@ -8002,12 +7672,12 @@
   var init_boss_pattern_behaviors = __esm({
     "src/boss-pattern-behaviors.js"() {
       init_model_base5();
+      init_model23();
       init_model24();
       init_model25();
       init_model26();
       init_model27();
       init_model28();
-      init_model29();
       init_boss_patterns();
     }
   });
@@ -8126,34 +7796,6 @@
       import_vector_sockets2 = __toESM(require_vector_sockets(), 1);
       CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
       BOSS_ASSETS = /* @__PURE__ */ new Map();
-    }
-  });
-
-  // src/farm-boss-stages.js
-  function createFarmBossProgress(seed = 731) {
-    return {
-      currentStage: 1,
-      highestClearedRaidStage: 0,
-      encounterSeed: (CLAMP_UINT32(seed) ^ 2738958700) >>> 0,
-      encounterEpoch: 0,
-      nextSelectionId: 1,
-      selections: []
-    };
-  }
-  function advanceFarmBossEncounterEpoch(progress) {
-    if (!progress || typeof progress !== "object" || Array.isArray(progress) || !Number.isSafeInteger(progress.encounterEpoch ?? 0) || (progress.encounterEpoch ?? 0) < 0 || (progress.encounterEpoch ?? 0) >= 1e12 || !Array.isArray(progress.selections)) {
-      throw new TypeError("Farm boss encounter progress is invalid");
-    }
-    progress.encounterEpoch = (progress.encounterEpoch ?? 0) + 1;
-    progress.selections = [];
-    return progress.encounterEpoch;
-  }
-  var CLAMP_UINT32;
-  var init_farm_boss_stages = __esm({
-    "src/farm-boss-stages.js"() {
-      init_boss_rewards();
-      init_world_map();
-      CLAMP_UINT32 = (value) => Number.isSafeInteger(value) ? value >>> 0 : 0;
     }
   });
 
@@ -8303,7 +7945,7 @@
     };
     return REPEATED_STRIKE;
   }
-  var init_model30 = __esm({
+  var init_model29 = __esm({
     "src/features/unit-attacks/dual-strike/model.js"() {
       init_unit_combat_patterns();
     }
@@ -8348,7 +7990,7 @@
     };
     return PROJECTILE_ATTACK;
   }
-  var init_model31 = __esm({
+  var init_model30 = __esm({
     "src/features/unit-attacks/lob/model.js"() {
     }
   });
@@ -8658,8 +8300,8 @@
     };
     const ATTACKS = {
       contact: CONTACT_ATTACK,
-      [FEATURE4.modelKey]: PROJECTILE_ATTACK,
-      [FEATURE5.modelKey]: REPEATED_STRIKE
+      [FEATURE3.modelKey]: PROJECTILE_ATTACK,
+      [FEATURE4.modelKey]: REPEATED_STRIKE
     };
     const TRAITS = {
       landing: LANDING,
@@ -8704,21 +8346,21 @@
   }
   var init_unit_attack_capabilities = __esm({
     "src/unit-attack-capabilities.js"() {
-      init_model30();
-      init_definition18();
-      init_model31();
+      init_model29();
       init_definition17();
+      init_model30();
+      init_definition16();
       init_unit_abilities();
       init_unit_stats();
+      init_model17();
       init_model18();
       init_model19();
-      init_model20();
+      init_model11();
       init_model12();
       init_model13();
       init_model14();
       init_model15();
       init_model16();
-      init_model17();
     }
   });
 
@@ -8733,7 +8375,7 @@
       PRESENTATION_CLOCKS.delete(world);
     }
   }
-  function bossAttackArea(boss, unitRadius = 0, scene = "raid", area = {}) {
+  function bossAttackArea(boss, unitRadius = 0, scene = "battle", area = {}) {
     const ACTION = boss.patternRuntime?.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[ACTION?.id];
     if (!CONFIG_LOCAL) {
       return null;
@@ -8789,7 +8431,7 @@
     }
     return true;
   }
-  var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, MINE_EFFICIENCY, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_WALK_RATIO, MINE_EFFICIENCY, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_work_aptitude();
@@ -8797,10 +8439,8 @@
       init_farm_work();
       init_formation_skills();
       init_formation_skill_state();
-      init_raid_deployment_cards();
-      init_raid_deployment_cards();
       init_signal();
-      import_definition51 = __toESM(require_definition(), 1);
+      import_definition50 = __toESM(require_definition(), 1);
       init_definition14();
       init_mutation_notifications();
       init_unit_collection();
@@ -8814,17 +8454,15 @@
       init_model_base4();
       init_boss_pattern_behaviors();
       init_boss_vector_sockets();
+      init_model18();
       init_model19();
-      init_model20();
-      init_model17();
+      init_model16();
       init_unit_stats();
       init_unit_abilities();
       init_boss_rewards();
-      init_farm_boss_stages();
       init_species_catalog();
       init_player_progression();
       init_ability_progression();
-      init_ability_state();
       init_farm_upgrades();
       init_unit_attack_capabilities();
       init_unit_grades();
@@ -8843,12 +8481,9 @@
       BREED_RESERVATION_OWNER = (aId, bId) => `breed:${Math.min(aId, bId)}:${Math.max(aId, bId)}`;
       MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) => a - b).join(":")}`;
       FARM_MAX_UNITS = 200;
-      RAID_PLAYER_UNITS = 100;
-      RAID_MAX_PLAYERS = 4;
-      RAID_PLAYER_ID_STRIDE = 1e6;
+      BATTLE_MAX_UNITS = 400;
       MAX_PEANUT_SPLIT_CHILDREN = 2;
       MAX_BOSS_SUMMONS = 10;
-      RAID_MAX_UNITS = RAID_PLAYER_UNITS * RAID_MAX_PLAYERS;
       WORLD_ARENA = Object.freeze({
         radiusX: 23,
         radiusY: 17
@@ -8965,30 +8600,18 @@
             celebrationSeconds: 1
           })
         }),
-        raid: Object.freeze({
+        battle: Object.freeze({
           capacity: Object.freeze({
-            playerUnits: RAID_PLAYER_UNITS,
-            players: RAID_MAX_PLAYERS,
-            units: RAID_MAX_UNITS,
-            battleUnits: RAID_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2e3,
-            projectiles: RAID_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40
-          }),
-          ids: Object.freeze({
-            playerStride: RAID_PLAYER_ID_STRIDE,
-            summonBase: RAID_MAX_PLAYERS * RAID_PLAYER_ID_STRIDE + RAID_PLAYER_UNITS + 1
+            battleUnits: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2e3,
+            projectiles: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40
           }),
           arena: WORLD_ARENA,
-          dropHeight: 3,
-          buff: Object.freeze({
-            duration: 3,
-            cooldown: 12,
-            damage: 1.25
-          })
+          dropHeight: 3
         }),
         unit: Object.freeze({
           speciesCount: SPECIES_COUNT,
           maxTier: MAX_UNIT_TIER,
-          maxRadius: (0, import_definition51.maximumUnitRadius)(MAX_UNIT_TIER),
+          maxRadius: (0, import_definition50.maximumUnitRadius)(MAX_UNIT_TIER),
           perceptionRange: 18,
           corpseRecoverySeconds: 60
         }),
@@ -9008,9 +8631,9 @@
           separationRelaxation: 0.8,
           // Raid battles only: allies may overlap by this fraction of their summed radii, solved on a
           // neighbor list built once per tick. Opposing sides still separate at full radius.
-          raidSeparationIterations: 3,
-          raidAllyOverlap: 0.2,
-          raidNeighborMargin: 0.4,
+          battleSeparationIterations: 3,
+          battleAllyOverlap: 0.2,
+          battleNeighborMargin: 0.4,
           softSeparationRate: -Math.log(1 - 0.035) * 120
         })
       });
@@ -9069,21 +8692,21 @@
         }
       };
       ARENA_GEOMETRY = {
-        bounds(scene = "raid", margin = 0) {
+        bounds(scene = "battle", margin = 0) {
           const ARENA = CONFIG[scene].arena;
           return {
             x: ARENA.radiusX - margin,
             y: ARENA.radiusY - margin
           };
         },
-        inside(p, scene = "raid", margin = 0) {
+        inside(p, scene = "battle", margin = 0) {
           const R_LOCAL = this.bounds(scene, margin);
           if (CONFIG[scene].arena.shape === "rect") {
             return Math.abs(p.x) <= R_LOCAL.x && Math.abs(p.y) <= R_LOCAL.y;
           }
           return p.x * p.x / (R_LOCAL.x * R_LOCAL.x) + p.y * p.y / (R_LOCAL.y * R_LOCAL.y) <= 1;
         },
-        clamp(p, scene = "raid", margin = 0) {
+        clamp(p, scene = "battle", margin = 0) {
           const R_LOCAL = this.bounds(scene, margin);
           if (CONFIG[scene].arena.shape === "rect") {
             return { x: CLAMP2(p.x, -R_LOCAL.x, R_LOCAL.x), y: CLAMP2(p.y, -R_LOCAL.y, R_LOCAL.y) };
@@ -9377,7 +9000,6 @@
             battleSummonParentGeneration: 0,
             battleSummonEncounterId: 0,
             countsTowardPermanentRoster: true,
-            eligibleForRaidDeployment: true,
             breedingEligible: true,
             mergeEligible: true,
             canSplit: true,
@@ -9463,7 +9085,7 @@
           return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
         }
         get radius() {
-          return (0, import_definition51.unitBodyRadius)(this) * this.giantScale;
+          return (0, import_definition50.unitBodyRadius)(this) * this.giantScale;
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -9472,16 +9094,16 @@
           return this.meals >= 1;
         }
         get size() {
-          return (0, import_definition51.unitVisualSize)(this) * this.giantScale;
+          return (0, import_definition50.unitVisualSize)(this) * this.giantScale;
         }
         get bodyScale() {
-          return (0, import_definition51.unitVectorScale)(this) * this.giantScale;
+          return (0, import_definition50.unitVectorScale)(this) * this.giantScale;
         }
         get height() {
-          return (0, import_definition51.unitBodyHeight)(this) * this.giantScale;
+          return (0, import_definition50.unitBodyHeight)(this) * this.giantScale;
         }
         get bodyHeight() {
-          return (0, import_definition51.unitTorsoHeight)(this) * this.giantScale;
+          return (0, import_definition50.unitTorsoHeight)(this) * this.giantScale;
         }
       };
       GARDEN = class Garden {
@@ -9535,14 +9157,14 @@
           this._contactCorrectionX = new Float64Array(0);
           this._contactCorrectionY = new Float64Array(0);
           this._contactCorrectionCount = new Uint32Array(0);
-          this._raidPairA = new Int32Array(0);
-          this._raidPairB = new Int32Array(0);
-          this._raidPairOpposing = new Uint8Array(0);
-          this._raidPairCount = 0;
-          this._raidMoved = new Uint8Array(0);
-          this._raidRadius = new Float64Array(0);
-          this._raidHeight = new Float64Array(0);
-          this._raidInverseMass = new Float64Array(0);
+          this._battlePairA = new Int32Array(0);
+          this._battlePairB = new Int32Array(0);
+          this._battlePairOpposing = new Uint8Array(0);
+          this._battlePairCount = 0;
+          this._battleMoved = new Uint8Array(0);
+          this._battleRadius = new Float64Array(0);
+          this._battleHeight = new Float64Array(0);
+          this._battleInverseMass = new Float64Array(0);
           this._bossGridUnits = [];
           this._bossGroundUnits = [];
           this._bossQueryCandidates = [];
@@ -9584,14 +9206,14 @@
             "_contactCorrectionX",
             "_contactCorrectionY",
             "_contactCorrectionCount",
-            "_raidPairA",
-            "_raidPairB",
-            "_raidPairOpposing",
-            "_raidPairCount",
-            "_raidMoved",
-            "_raidRadius",
-            "_raidHeight",
-            "_raidInverseMass",
+            "_battlePairA",
+            "_battlePairB",
+            "_battlePairOpposing",
+            "_battlePairCount",
+            "_battleMoved",
+            "_battleRadius",
+            "_battleHeight",
+            "_battleInverseMass",
             "_bossGridUnits",
             "_bossGroundUnits",
             "_bossQueryCandidates",
@@ -9645,7 +9267,6 @@
           this.roster = new FarmingRoster(this.unitCollection);
           this.reset();
           Object.defineProperty(this, "formationSkills", { value: new FormationSkills(this) });
-          Object.defineProperty(this, "raidDeploymentCards", { value: new RaidDeploymentCards(this) });
         }
         get mergeTask() {
           return this.mergeTasks[0] || null;
@@ -9919,27 +9540,6 @@
           out.sort((a, b) => a.id - b.id);
           return out;
         }
-        static createRaidBattle(seed = 731, expectedPlayers = ["solo"], bossStage = null) {
-          const W = new GARDEN(seed);
-          W.resetUnits();
-          W.food = [];
-          W.scene = "raid";
-          W.running = false;
-          W.boss = W.createBoss(bossStage?.species ?? W.randomBossSpecies());
-          if (bossStage?.stage !== void 0) {
-            W.configureBossStage(bossStage.stage, bossStage.species);
-          }
-          W.encounter = {
-            outcome: "idle",
-            elapsed: 0
-          };
-          W.raidExpectedPlayers = [...expectedPlayers];
-          W.raidRosters = [];
-          W.raidDeploymentStarted = false;
-          W.nextId = 1;
-          W.starter = 0;
-          return W;
-        }
         reset() {
           return this.mutateUnits(this._reset);
         }
@@ -9980,14 +9580,8 @@
           this.bossRewardStreams = createBossRewardStreams(this.seed >>> 0);
           this.bossRewardInventory = [];
           this.bossRewardWatermarks = {
-            farm: 0,
-            raid: 0
+            farm: 0
           };
-          this.nextRaidRunSequence = 0;
-          this.activeRaidRunSequence = null;
-          this.activeRaidSessionId = null;
-          this.raidSettlementWatermark = 0;
-          this.raidSettlementReceipts = [];
           this.playerProgression = createPlayerProgressionState();
           this.activePlotId = this.playerProgression.farmPlots.currentPlotId;
           this.farmPlots = new Map(
@@ -10042,10 +9636,8 @@
           this.cornAttachments = CornAttachmentModel.createManager();
           this.attackSerial = 0;
           this.projectileSerial = 0;
-          this.raidSummonSerial = 0;
           this.bossSummonSerial = 0;
           this.combatLog = [];
-          this.farmBossProgress = createFarmBossProgress(this.seed);
           this.scene = "farm";
           this.running = false;
           this.encounter = {
@@ -10063,9 +9655,6 @@
             rewardUnitId: 0
           };
           this.boss = this.createBoss();
-          this.raidExpectedPlayers = ["solo"];
-          this.raidRosters = [];
-          this.raidDeploymentStarted = false;
           this.metrics = {
             births: 0,
             merges: 0,
@@ -10492,7 +10081,7 @@
           return this.resetProgression({ type: "abilities" });
         }
         spawnLobProjectile(unit, action, shot, projectileEffect = null) {
-          if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
+          if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
             return null;
           }
           const ID = ++this.projectileSerial, ATTACK_CONTEXT = this.createAttackContext(unit, {
@@ -10552,7 +10141,7 @@
           return abilityProfile(unit.species).skillMultiplier;
         }
         spawnChestnutThorn(unit, action, config, shotIndex) {
-          if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
+          if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
             return false;
           }
           const TARGET = action.thornTargetId === "boss" ? this.boss : this._unitForId(action.thornTargetId);
@@ -10610,7 +10199,7 @@
           return true;
         }
         createFormationClone(original) {
-          const ID = this.scene === "raid" ? CONFIG.raid.ids.summonBase + ++this.raidSummonSerial : this.nextId++, CLONE = new UNIT(ID, original.species, original.tier, original.x + 0.3, original.y + 0.1);
+          const ID = this.nextId++, CLONE = new UNIT(ID, original.species, original.tier, original.x + 0.3, original.y + 0.1);
           Object.assign(CLONE, {
             growthElapsed: original.growthElapsed,
             growthDuration: original.growthDuration,
@@ -10626,7 +10215,6 @@
             battleSummonParentId: original.id,
             battleSummonParentGeneration: original.generation,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,
@@ -10795,162 +10383,6 @@
             }
           }
           return nearest;
-        }
-        raidRoster(ownerId) {
-          return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
-        }
-        setRaidPlayers(players) {
-          if (this.scene !== "raid" || !Array.isArray(players) || players.length < 1 || players.length > CONFIG.raid.capacity.players || players.some((p) => typeof p !== "string" || !p) || new Set(players).size !== players.length) {
-            return false;
-          }
-          const LIVE = [...players], ORDERED = this.raidDeploymentStarted ? [...this.raidExpectedPlayers, ...LIVE.filter((id) => !this.raidExpectedPlayers.includes(id))] : LIVE;
-          if (ORDERED.length > CONFIG.raid.capacity.players) {
-            return false;
-          }
-          this.raidExpectedPlayers = ORDERED;
-          if (!this.raidDeploymentStarted) {
-            this.raidRosters = this.raidRosters.filter((r) => LIVE.includes(r.ownerId));
-          }
-          this.raidRosters.sort(
-            (a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId)
-          );
-          return true;
-        }
-        raidTotal() {
-          return this.raidRosters.reduce((n, r) => n + r.troops.length, 0);
-        }
-        raidRemaining(ownerId, speciesId = null) {
-          const R_LOCAL = this.raidRoster(ownerId);
-          return R_LOCAL ? R_LOCAL.troops.reduce(
-            (n, troop) => n + (!troop.deployed && (speciesId === null || troop.species === speciesId) ? 1 : 0),
-            0
-          ) : 0;
-        }
-        registerRaidRoster(ownerId, entries, abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()), settlement = null, deploymentCardSpecies = null) {
-          if (this.scene !== "raid" || !this.raidExpectedPlayers.includes(ownerId) || this.raidRoster(ownerId) || !Array.isArray(entries) || entries.length > CONFIG.raid.capacity.playerUnits || this.raidTotal() + entries.length > CONFIG.raid.capacity.units) {
-            return false;
-          }
-          if (!isValidAbilityRuntimeSnapshot(abilitySnapshot)) {
-            return false;
-          }
-          const HAS_SETTLEMENT = settlement !== null;
-          if (HAS_SETTLEMENT && (!settlement || typeof settlement !== "object" || typeof settlement.sessionId !== "string" || !settlement.sessionId.trim() || settlement.sessionId.length > 128 || !Number.isSafeInteger(settlement.runSequence) || settlement.runSequence < 1 || settlement.runSequence > 1e12 || settlement.encounterId !== settlement.runSequence)) {
-            return false;
-          }
-          const IDS = /* @__PURE__ */ new Set(), TROOPS = [];
-          for (const E of entries) {
-            if (!Array.isArray(E) || E.length !== 3 || !Number.isSafeInteger(E[0]) || E[0] < 1 || E[0] > CONFIG.farm.maxUnitId || !Number.isInteger(E[1]) || E[1] < 0 || E[1] >= CONFIG.unit.speciesCount || !Number.isInteger(E[2]) || E[2] < 1 || E[2] > CONFIG.unit.maxTier || IDS.has(E[0])) {
-              return false;
-            }
-            IDS.add(E[0]);
-            TROOPS.push({
-              farmId: E[0],
-              species: E[1],
-              tier: E[2],
-              deployed: false
-            });
-          }
-          const CARD_SPECIES = deploymentCardSpecies === null ? [...new Set(TROOPS.map((troop) => troop.species))].slice(0, 4) : deploymentCardSpecies;
-          if (!Array.isArray(CARD_SPECIES) || CARD_SPECIES.length > 4 || CARD_SPECIES.some((speciesId) => !isSpeciesId(speciesId)) || new Set(CARD_SPECIES).size !== CARD_SPECIES.length) {
-            return false;
-          }
-          const ORDER_KEY = (farmId) => {
-            let h = (this.seed ^ Math.imul(farmId, 2654435769)) >>> 0;
-            for (let i = 0; i < ownerId.length; i++) {
-              h ^= ownerId.charCodeAt(i);
-              h = Math.imul(h, 16777619);
-            }
-            h ^= h >>> 16;
-            h = Math.imul(h, 2146121005);
-            h ^= h >>> 15;
-            h = Math.imul(h, 2221713035);
-            h ^= h >>> 16;
-            return h >>> 0;
-          };
-          TROOPS.sort((a, b) => a.tier - b.tier || ORDER_KEY(a.farmId) - ORDER_KEY(b.farmId) || a.farmId - b.farmId);
-          this.formationSkills.includeBuild(ownerId, abilitySnapshot.formationSkills || createFormationSkillState());
-          this.raidRosters.push({
-            ownerId,
-            troops: TROOPS,
-            deploymentCardSpecies: [...CARD_SPECIES],
-            abilitySnapshot: structuredClone(abilitySnapshot),
-            settlementSessionId: HAS_SETTLEMENT ? settlement.sessionId : "",
-            settlementRunSequence: HAS_SETTLEMENT ? settlement.runSequence : 0,
-            settlementEncounterId: HAS_SETTLEMENT ? settlement.encounterId : 0,
-            lastDeploySequence: 0,
-            buffUntil: 0,
-            buffReadyAt: 0
-          });
-          this.raidRosters.sort(
-            (a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId)
-          );
-          return true;
-        }
-        deployNextRaidUnit(ownerId, sequence, speciesId) {
-          return this.mutateUnits(this._deployNextRaidUnit, ownerId, sequence, speciesId);
-        }
-        _deployNextRaidUnit(ownerId, sequence, speciesId) {
-          if (this.scene !== "raid" || ["victory", "defeat"].includes(this.encounter.outcome) || !this.raidExpectedPlayers.every((id) => this.raidRoster(id)) || this.units.length >= CONFIG.raid.capacity.battleUnits || !Number.isSafeInteger(sequence)) {
-            return false;
-          }
-          const ROSTER2 = this.raidRoster(ownerId), TROOP = ROSTER2?.troops.find(
-            (troop) => !troop.deployed && (speciesId === void 0 || troop.species === speciesId)
-          );
-          if (!ROSTER2 || sequence !== ROSTER2.lastDeploySequence + 1 || !TROOP || speciesId !== void 0 && (!isSpeciesId(speciesId) || !ROSTER2.deploymentCardSpecies.includes(speciesId))) {
-            return false;
-          }
-          const FARM_ID = TROOP.farmId, SLOT = this.raidExpectedPlayers.indexOf(ownerId), TROOP_INDEX = ROSTER2.troops.indexOf(TROOP), ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1;
-          if (this.units.some((u) => u.id === ID)) {
-            return false;
-          }
-          const ANGLE = this.random() * Math.PI * 2, MARGIN = (0, import_definition51.unitBodyRadius)({ species: TROOP.species, tier: TROOP.tier, growthElapsed: 1, growthDuration: 1 }) + 0.05, BOUNDS = ARENA_GEOMETRY.bounds("raid", MARGIN), X = Math.cos(ANGLE) * BOUNDS.x, Y = Math.sin(ANGLE) * BOUNDS.y;
-          const U = new UNIT(ID, TROOP.species, TROOP.tier, X, Y), GROWTH_DURATION = this.breedGrowthDuration();
-          Object.assign(U, {
-            ownerId,
-            farmId: FARM_ID,
-            z: CONFIG.raid.dropHeight,
-            vz: 0,
-            dropLanded: false,
-            meals: 1,
-            growth: CONFIG.farm.breeding.matureMeals,
-            growthDuration: GROWTH_DURATION,
-            growthElapsed: GROWTH_DURATION
-          });
-          TROOP.deployed = true;
-          ROSTER2.lastDeploySequence = sequence;
-          this.addUnit(U, { markProgress: false });
-          if (!this.raidDeploymentStarted) {
-            this.raidDeploymentStarted = true;
-            this.running = true;
-            this.encounter = {
-              outcome: "fighting",
-              elapsed: 0
-            };
-            this.boss.active = true;
-            this.boss.encounterId = this.raidRosters[0]?.settlementRunSequence || this.nextRaidRunSequence || 1;
-            this.boss.patternRuntime = createBossPatternRuntime();
-          }
-          this.combat("unit-drop", {
-            unit: ID,
-            ownerId,
-            x: X,
-            y: Y,
-            z: U.z
-          });
-          return true;
-        }
-        useRaidBuff(ownerId) {
-          const R_LOCAL = this.raidRoster(ownerId);
-          if (!this.running || !R_LOCAL || this.time < R_LOCAL.buffReadyAt) {
-            return false;
-          }
-          R_LOCAL.buffUntil = this.time + CONFIG.raid.buff.duration;
-          R_LOCAL.buffReadyAt = this.time + CONFIG.raid.buff.cooldown;
-          this.combat("buff", {
-            ownerId,
-            until: R_LOCAL.buffUntil
-          });
-          return true;
         }
         random() {
           return this.rng.nextUint32() / 4294967296;
@@ -12059,7 +11491,7 @@
           };
         }
         // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
-        raidTimeLimit() {
+        battleTimeLimit() {
           return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
         }
         configureBossStage(stage, species = this.boss.species) {
@@ -12087,7 +11519,7 @@
           }
           this.projectiles = [];
           this.scene = scene;
-          this.running = scene === "raid";
+          this.running = false;
           this.encounter = {
             outcome: this.running ? "fighting" : "idle",
             elapsed: 0
@@ -13393,7 +12825,7 @@
             return;
           }
           if (enemy) {
-            this.raidUnit(unit, dt, enemy);
+            this.battleUnit(unit, dt, enemy);
             return;
           }
           if (unit.hp > 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon) {
@@ -13573,44 +13005,44 @@
           this.metrics.physicsSolverIterations++;
           this.profiler?.count("physicsSolverIterations");
         }
-        _pushRaidPair(first, second, opposing) {
-          const COUNT = this._raidPairCount;
-          if (COUNT >= this._raidPairA.length) {
-            const CAPACITY = Math.max(256, this._raidPairA.length * 2), A = new Int32Array(CAPACITY), B = new Int32Array(CAPACITY), O = new Uint8Array(CAPACITY);
-            A.set(this._raidPairA);
-            B.set(this._raidPairB);
-            O.set(this._raidPairOpposing);
-            this._raidPairA = A;
-            this._raidPairB = B;
-            this._raidPairOpposing = O;
+        _pushBattlePair(first, second, opposing) {
+          const COUNT = this._battlePairCount;
+          if (COUNT >= this._battlePairA.length) {
+            const CAPACITY = Math.max(256, this._battlePairA.length * 2), A = new Int32Array(CAPACITY), B = new Int32Array(CAPACITY), O = new Uint8Array(CAPACITY);
+            A.set(this._battlePairA);
+            B.set(this._battlePairB);
+            O.set(this._battlePairOpposing);
+            this._battlePairA = A;
+            this._battlePairB = B;
+            this._battlePairOpposing = O;
           }
-          this._raidPairA[COUNT] = first;
-          this._raidPairB[COUNT] = second;
-          this._raidPairOpposing[COUNT] = opposing ? 1 : 0;
-          this._raidPairCount = COUNT + 1;
+          this._battlePairA[COUNT] = first;
+          this._battlePairB[COUNT] = second;
+          this._battlePairOpposing[COUNT] = opposing ? 1 : 0;
+          this._battlePairCount = COUNT + 1;
         }
         // One spatial pass per tick. The pair list is ordered by (first, second) step order, so the
         // accumulation order below is deterministic and identical on every peer.
         // Radius, height and mass are derived getters; read them once per tick instead of per pair.
-        _cacheRaidBodies(units) {
-          if (this._raidRadius.length < units.length) {
-            const CAPACITY = Math.max(units.length, this._raidRadius.length * 2, 16);
-            this._raidRadius = new Float64Array(CAPACITY);
-            this._raidHeight = new Float64Array(CAPACITY);
-            this._raidInverseMass = new Float64Array(CAPACITY);
+        _cacheBattleBodies(units) {
+          if (this._battleRadius.length < units.length) {
+            const CAPACITY = Math.max(units.length, this._battleRadius.length * 2, 16);
+            this._battleRadius = new Float64Array(CAPACITY);
+            this._battleHeight = new Float64Array(CAPACITY);
+            this._battleInverseMass = new Float64Array(CAPACITY);
           }
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
-            this._raidRadius[i] = UNIT_LOCAL.radius;
-            this._raidHeight[i] = UNIT_LOCAL.height;
-            this._raidInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
+            this._battleRadius[i] = UNIT_LOCAL.radius;
+            this._battleHeight[i] = UNIT_LOCAL.height;
+            this._battleInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
           }
         }
-        _collectRaidPairs(units) {
-          this._raidPairCount = 0;
-          this._cacheRaidBodies(units);
-          const RADIUS2 = this._raidRadius, HEIGHT = this._raidHeight;
-          const MARGIN = CONFIG.physics.raidNeighborMargin, RESERVED = this.unitCollection.reservations.size > 0;
+        _collectBattlePairs(units) {
+          this._battlePairCount = 0;
+          this._cacheBattleBodies(units);
+          const RADIUS2 = this._battleRadius, HEIGHT = this._battleHeight;
+          const MARGIN = CONFIG.physics.battleNeighborMargin, RESERVED = this.unitCollection.reservations.size > 0;
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
             if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || RESERVED && this.isMergeTaskMaterial(UNIT_LOCAL)) {
@@ -13640,29 +13072,29 @@
             }
             PENDING.sort((a, b) => a - b);
             for (const J of PENDING) {
-              this._pushRaidPair(i, J, areOpposingFactions(UNIT_LOCAL, units[J]));
+              this._pushBattlePair(i, J, areOpposingFactions(UNIT_LOCAL, units[J]));
             }
           }
         }
-        raidContacts(units) {
-          this._collectRaidPairs(units);
-          for (let p = 0; p < this._raidPairCount; p++) {
-            if (this._raidPairOpposing[p] && contact(units[this._raidPairA[p]], units[this._raidPairB[p]])) {
+        battleContacts(units) {
+          this._collectBattlePairs(units);
+          for (let p = 0; p < this._battlePairCount; p++) {
+            if (this._battlePairOpposing[p] && contact(units[this._battlePairA[p]], units[this._battlePairB[p]])) {
               this.metrics.contacts++;
             }
           }
-          this.solveRaidSeparations(units);
+          this.solveBattleSeparations(units);
         }
-        solveRaidSeparations(units) {
-          const COUNT = this._raidPairCount;
+        solveBattleSeparations(units) {
+          const COUNT = this._battlePairCount;
           if (!COUNT) {
             return;
           }
           this._ensureContactSolverBuffers(units.length);
-          if (this._raidMoved.length < units.length) {
-            this._raidMoved = new Uint8Array(this._contactCorrectionX.length);
+          if (this._battleMoved.length < units.length) {
+            this._battleMoved = new Uint8Array(this._contactCorrectionX.length);
           }
-          const CORRECTION_X = this._contactCorrectionX, CORRECTION_Y = this._contactCorrectionY, CORRECTION_COUNT = this._contactCorrectionCount, MOVED = this._raidMoved, PAIR_A = this._raidPairA, PAIR_B = this._raidPairB, PAIR_OPPOSING = this._raidPairOpposing, RADIUS2 = this._raidRadius, INVERSE_MASS = this._raidInverseMass, ITERATIONS = CONFIG.physics.raidSeparationIterations, RELAXATION = CONFIG.physics.separationRelaxation, ALLY_SCALE = 1 - CONFIG.physics.raidAllyOverlap;
+          const CORRECTION_X = this._contactCorrectionX, CORRECTION_Y = this._contactCorrectionY, CORRECTION_COUNT = this._contactCorrectionCount, MOVED = this._battleMoved, PAIR_A = this._battlePairA, PAIR_B = this._battlePairB, PAIR_OPPOSING = this._battlePairOpposing, RADIUS2 = this._battleRadius, INVERSE_MASS = this._battleInverseMass, ITERATIONS = CONFIG.physics.battleSeparationIterations, RELAXATION = CONFIG.physics.separationRelaxation, ALLY_SCALE = 1 - CONFIG.physics.battleAllyOverlap;
           MOVED.fill(0, 0, units.length);
           for (let iteration = 0; iteration < ITERATIONS; iteration++) {
             CORRECTION_X.fill(0, 0, units.length);
@@ -14118,14 +13550,14 @@
           return TARGET?.generation === action.targetGeneration && TARGET.hp > 0 && areOpposingFactions(unit, TARGET) ? TARGET : null;
         }
         createAttackContext(u, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {}) {
-          const SPEC = abilityProfile(u.species), ROSTER2 = this.raidRoster(u.ownerId), ATTACKER_STATS = resolveUnitStats(u);
+          const SPEC = abilityProfile(u.species), ATTACKER_STATS = resolveUnitStats(u);
           return {
             source: u,
             sourceKind: hasFaction(u, FACTION_CONFIG.PLAYER) ? "direct" : "enemy",
             attackerStats: ATTACKER_STATS,
             damageMultiplier: Number.isFinite(attackMultiplier) ? attackMultiplier : SPEC.skillMultiplier,
             kind: attackKind || SPEC.kind,
-            buffed: !!ROSTER2 && this.time < ROSTER2.buffUntil,
+            buffed: false,
             attackPowerMultiplier: u.giantUntil > this.time ? 3 : 1,
             strikeIndex,
             area,
@@ -14171,15 +13603,14 @@
             source: SOURCE,
             attackerStats: ATTACKER_STATS,
             damageMultiplier: DAMAGE_MULTIPLIER,
-            kind: KIND,
-            buffed: BUFFED
+            kind: KIND
           } = CONTEXT;
           CONTEXT.hitTargets?.add(target);
           const DEFENSE = this.combatTargetDefense(target), CRITICAL_BONUS = KIND === abilityProfile(SOURCE.species).kind ? this.riceCriticalChanceBonus(SOURCE, target.hp, DEFENSE.maxHp) : 0, SOURCE_STAT_OVERRIDES = {
             ...CONTEXT.sourceStatOverrides,
             critChance: CLAMP2(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1)
           };
-          const RAW_BASE_DAMAGE = ATTACKER_STATS.attackPower * (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) * DAMAGE_MULTIPLIER * (BUFFED ? CONFIG.raid.buff.damage : 1), RAW_DAMAGE = RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0);
+          const RAW_BASE_DAMAGE = ATTACKER_STATS.attackPower * (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) * DAMAGE_MULTIPLIER, RAW_DAMAGE = RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0);
           const DAMAGE = applyDamageToTargets(SOURCE, [target], {
             rawDamage: RAW_DAMAGE,
             area: CONTEXT.area,
@@ -14197,14 +13628,14 @@
           }
           this.onCombatResolved.emit({
             excluded: SOURCE.isFormationClone,
-            damageDealt: SOURCE.faction === "player" ? DAMAGE.totalActualLoss / ((SOURCE.giantUntil > this.time ? 3 : 1) * (BUFFED ? CONFIG.raid.buff.damage : 1)) : 0,
+            damageDealt: SOURCE.faction === "player" ? DAMAGE.totalActualLoss / (SOURCE.giantUntil > this.time ? 3 : 1) : 0,
             damageTaken: target.faction === "player" && !target.isFormationClone ? DAMAGE.totalActualLoss : 0,
             hits: SOURCE.faction === "player" ? 1 : 0,
             critHits: SOURCE.faction === "player" && DAMAGE.critical ? 1 : 0
           });
           this.applyGrainOnBasicHit(SOURCE, target, KIND);
           SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
-          const STRENGTH = DAMAGE_MULTIPLIER * (BUFFED ? CONFIG.raid.buff.damage : 1) * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
+          const STRENGTH = DAMAGE_MULTIPLIER * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
           if (IS_BOSS) {
             this.finishBossHit(SOURCE, action, point2, CONTEXT, DAMAGE, STRENGTH);
           } else {
@@ -14283,7 +13714,7 @@
             }
           }
         }
-        raidUnit(u, dt, enemy = this.boss) {
+        battleUnit(u, dt, enemy = this.boss) {
           if (!u.dropLanded || !areOpposingFactions(u, enemy)) {
             return;
           }
@@ -14401,7 +13832,7 @@
           }
           if (outcome === "victory") {
             const EVENT_STAGE = this.boss.stage, STAGE_STATS = bossStageStats(EVENT_STAGE);
-            const SETTLEMENT2 = settleBossKill(this, {
+            const SETTLEMENT = settleBossKill(this, {
               encounterId: ENCOUNTER_ID,
               source: "farm",
               stage: EVENT_STAGE,
@@ -14413,12 +13844,12 @@
               xpAmount: STAGE_STATS.xp
             });
             this.playerProgression.farmBossEventStage = Math.min(EVENT_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
-            const REWARD2 = SETTLEMENT2.receipt;
+            const REWARD2 = SETTLEMENT.receipt;
             this.combat("farm-boss-xp", {
               encounterId: ENCOUNTER_ID,
-              xp: SETTLEMENT2.xpAwarded,
-              levelsGained: SETTLEMENT2.levelsGained,
-              pointsAwarded: SETTLEMENT2.pointsAwarded
+              xp: SETTLEMENT.xpAwarded,
+              levelsGained: SETTLEMENT.levelsGained,
+              pointsAwarded: SETTLEMENT.pointsAwarded
             });
             this.combat("farm-boss-reward", {
               acquired: REWARD2.grantedCount > 0,
@@ -14907,7 +14338,7 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS2 = (0, import_definition51.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS2 = (0, import_definition50.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
           for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
               x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
@@ -14956,7 +14387,6 @@
             battleSummonParentGeneration: 0,
             battleSummonEncounterId: B_LOCAL.encounterId || 1,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,
@@ -15060,7 +14490,7 @@
           }
           BOSS2.x += BOSS2.knockVx * dt;
           BOSS2.y += BOSS2.knockVy * dt;
-          const RX = CONFIG.raid.arena.radiusX - BOSS2.radius, RY = CONFIG.raid.arena.radiusY - BOSS2.radius, EDGE = Math.hypot(BOSS2.x / RX, BOSS2.y / RY);
+          const RX = CONFIG.battle.arena.radiusX - BOSS2.radius, RY = CONFIG.battle.arena.radiusY - BOSS2.radius, EDGE = Math.hypot(BOSS2.x / RX, BOSS2.y / RY);
           if (EDGE > 1) {
             BOSS2.x /= EDGE;
             BOSS2.y /= EDGE;
@@ -15114,8 +14544,8 @@
           }
           if (this.running && this.raidRosters.length) {
             const ALIVE = this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0);
-            this._raidFielded ||= ALIVE;
-            if (this._raidFielded && !ALIVE || this.encounter.elapsed >= this.raidTimeLimit()) {
+            this._battleFielded ||= ALIVE;
+            if (this._battleFielded && !ALIVE || this.encounter.elapsed >= this.battleTimeLimit()) {
               this.finish("defeat");
               return;
             }
@@ -15156,7 +14586,6 @@
     return {
       schemaVersion: player.schemaVersion,
       formationSkills: structuredClone(player.formationSkills),
-      raidDeploymentCards: structuredClone(player.raidDeploymentCards),
       level: player.level,
       experience: player.experience,
       farmBossEventStage: player.farmBossEventStage,
@@ -15252,7 +14681,7 @@
       }
       GROUPS.set(KEY2, ROW);
     }
-    const ROSTER2 = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row), STAGE = world.farmBossProgress;
+    const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
     const SITES = world.allBuildSites;
     return {
       worldMap: structuredClone(world.worldMap),
@@ -15260,7 +14689,7 @@
       rngState: world.rng.state,
       nextId: world.nextId,
       player: copyPlayer(world.playerProgression),
-      roster: ROSTER2,
+      roster: ROSTER,
       food: {
         warehouse: world.warehouseFood,
         autoClock: world.foodTaps.autoClock,
@@ -15274,18 +14703,6 @@
         births: world.metrics.births,
         merges: world.metrics.merges
       },
-      bossStages: {
-        currentStage: STAGE.currentStage,
-        highestClearedRaidStage: STAGE.highestClearedRaidStage,
-        encounterSeed: STAGE.encounterSeed,
-        encounterEpoch: STAGE.encounterEpoch,
-        nextSelectionId: STAGE.nextSelectionId,
-        selections: STAGE.selections.map(({ stage, species, selectionId }) => ({
-          stage,
-          species,
-          selectionId
-        }))
-      },
       ledger: {
         boss: {
           nextEncounterId: world.nextBossEncounterId,
@@ -15297,24 +14714,12 @@
           ).map(pendingReward),
           rewardStreams: structuredClone(world.bossRewardStreams),
           queuedRewards: world.bossRewardInventory.filter((entry) => entry.count > 0).map(({ species, tier, count }) => ({ species, tier, count }))
-        },
-        raid: {
-          nextRunSequence: world.nextRaidRunSequence,
-          activeRun: world.activeRaidRunSequence === null ? null : {
-            sequence: world.activeRaidRunSequence,
-            sessionId: world.activeRaidSessionId
-          },
-          settledThrough: world.raidSettlementWatermark
         }
       }
     };
   }
   function validateFarmProgress(data) {
-    keys(
-      data,
-      ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "bossStages", "ledger"],
-      ["mode", "worldMap"]
-    );
+    keys(data, ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "ledger"], ["mode", "worldMap"]);
     ASSERT(
       INTEGER(data.seed, 0, 4294967295) && INTEGER(data.rngState, 0, 4294967295) && INTEGER(data.nextId, 1, CONFIG.farm.maxUnitId + 1) && (data.mode === void 0 || ["breed", "merge"].includes(data.mode))
     );
@@ -15407,44 +14812,12 @@
     ASSERT(
       data.worldMap === void 0 || isValidWorldMap(data.worldMap) && data.worldMap.farms.every((farm) => PLAYER.farmPlots.plots.some((plot) => plot.id === farm.plotId))
     );
-    const STAGE = data.bossStages;
-    keys(STAGE, [
-      "currentStage",
-      "highestClearedRaidStage",
-      "encounterSeed",
-      "encounterEpoch",
-      "nextSelectionId",
-      "selections"
-    ]);
-    ASSERT(
-      INTEGER(STAGE.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(STAGE.highestClearedRaidStage, 0, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(STAGE.encounterSeed, 0, 4294967295) && INTEGER(STAGE.encounterEpoch) && INTEGER(STAGE.nextSelectionId, 1) && Array.isArray(STAGE.selections) && STAGE.selections.length <= BOSS_REWARD_SETTINGS.maxStage
-    );
-    const STAGES2 = /* @__PURE__ */ new Set(), SELECTIONS = /* @__PURE__ */ new Set();
-    for (const ENTRY of STAGE.selections) {
-      keys(ENTRY, ["stage", "species", "selectionId"]);
-      ASSERT(
-        INTEGER(ENTRY.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER(ENTRY.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(ENTRY.selectionId, 1, STAGE.nextSelectionId - 1) && !STAGES2.has(ENTRY.stage) && !SELECTIONS.has(ENTRY.selectionId)
-      );
-      STAGES2.add(ENTRY.stage);
-      SELECTIONS.add(ENTRY.selectionId);
-    }
     const LEDGER = data.ledger;
-    keys(LEDGER, ["boss", "raid"]);
-    const BOSS2 = LEDGER.boss, RAID = LEDGER.raid;
+    keys(LEDGER, ["boss"]);
+    const BOSS2 = LEDGER.boss;
     keys(BOSS2, ["nextEncounterId", "settledThrough", "pendingRewards", "rewardStreams", "queuedRewards"]);
-    keys(BOSS2.settledThrough, ["farm", "raid"]);
-    keys(RAID, ["nextRunSequence", "activeRun", "settledThrough"]);
-    ASSERT(
-      INTEGER(BOSS2.settledThrough.farm) && INTEGER(BOSS2.settledThrough.raid) && INTEGER(BOSS2.nextEncounterId, BOSS2.settledThrough.farm + 1) && INTEGER(RAID.nextRunSequence) && INTEGER(RAID.settledThrough, BOSS2.settledThrough.raid, RAID.nextRunSequence)
-    );
-    if (RAID.activeRun === null) {
-      ASSERT(RAID.nextRunSequence === RAID.settledThrough);
-    } else {
-      keys(RAID.activeRun, ["sequence", "sessionId"]);
-      ASSERT(
-        INTEGER(RAID.activeRun.sequence, 1) && RAID.activeRun.sequence === RAID.nextRunSequence && RAID.activeRun.sequence === RAID.settledThrough + 1 && STRING(RAID.activeRun.sessionId) && RAID.activeRun.sessionId.length <= 128
-      );
-    }
+    keys(BOSS2.settledThrough, ["farm"]);
+    ASSERT(INTEGER(BOSS2.settledThrough.farm) && INTEGER(BOSS2.nextEncounterId, BOSS2.settledThrough.farm + 1));
     const STREAMS = BOSS2.rewardStreams;
     keys(STREAMS, ["normal", "event", "firstClear"]);
     for (const STREAM of Object.values(STREAMS)) {
@@ -15492,7 +14865,7 @@
       const BASE_KEYS = ["encounterId", "source", "receiptKey", "species", "tier", "chance", "firstClear"];
       keys(REWARD2, BASE_KEYS, [...REWARD_EXTRAS, "rolls"]);
       ASSERT(
-        ["farm", "raid"].includes(REWARD2.source) && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1) && typeof REWARD2.firstClear === "boolean" && (REWARD2.source === "raid" || !REWARD2.firstClear)
+        REWARD2.source === "farm" && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1) && typeof REWARD2.firstClear === "boolean" && !REWARD2.firstClear
       );
       RECEIPTS.add(REWARD2.receiptKey);
       const ENCOUNTER = `${REWARD2.source}:${REWARD2.encounterId}`;
@@ -15586,7 +14959,6 @@
     for (const SITE of data.food.sites) {
       WORLD.restoreBuildSite(SITE);
     }
-    WORLD.farmBossProgress = structuredClone(data.bossStages);
     if (data.worldMap !== void 0) {
       WORLD.worldMap = { challengeTile: -1, buildTile: -1, ...structuredClone(data.worldMap) };
     }
@@ -15645,18 +15017,14 @@
       autoClock: data.food.autoClock
     });
     WORLD.nextId = data.nextId;
-    const { boss: BOSS2, raid: RAID } = data.ledger;
+    const { boss: BOSS2 } = data.ledger;
     Object.assign(WORLD, {
       nextBossEncounterId: BOSS2.nextEncounterId,
       bossRewardWatermarks: {
         ...BOSS2.settledThrough
       },
       bossRewardStreams: structuredClone(BOSS2.rewardStreams),
-      bossRewardInventory: BOSS2.queuedRewards.map(({ species, tier, count }) => ({ species, tier, count })),
-      nextRaidRunSequence: RAID.nextRunSequence,
-      activeRaidRunSequence: RAID.activeRun?.sequence ?? null,
-      activeRaidSessionId: RAID.activeRun?.sessionId ?? null,
-      raidSettlementWatermark: RAID.settledThrough
+      bossRewardInventory: BOSS2.queuedRewards.map(({ species, tier, count }) => ({ species, tier, count }))
     });
     WORLD.bossRewardReceipts = BOSS2.pendingRewards.map((reward) => ({
       ...reward,
@@ -15722,7 +15090,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.20.1";
+      PRODUCT_VERSION = "0.21.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15878,10 +15246,6 @@
             this.writable = false;
             return false;
           }
-        }
-        get hasReservedRaid() {
-          const RUN = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
-          return RUN !== null && RUN !== void 0;
         }
         set world(value) {
           this._world = value;
@@ -16253,7 +15617,7 @@
     }
     update(world, display, visible, ownerId = "") {
       this.root.hidden = !visible;
-      const PLAYER = world.scene === "raid" ? world.raidRoster(ownerId)?.abilitySnapshot : world.playerProgression, STATE = PLAYER?.formationSkills;
+      const PLAYER = world.playerProgression, STATE = PLAYER?.formationSkills;
       if (!STATE) {
         return;
       }
@@ -16321,193 +15685,6 @@
             ${locked || state.slots >= 3 || points < 1 ? "disabled" : ""}>
             ${state.slots >= 3 ? "슬롯 3칸 개방 완료" : "슬롯 추가 · 1 포인트"}</button>
             <div class="formation-catalog">${CARDS}</div>`;
-    }
-  };
-
-  // src/raid-deployment-cards-ui.js
-  init_species_catalog();
-  init_raid_deployment_cards();
-  var ESCAPE2 = (value) => String(value).replace(
-    /[&<>"']/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]
-  );
-  var RaidDeploymentCardsUI = class {
-    constructor({ command, deploy, canDeploy }) {
-      this.command = command;
-      this.deploy = deploy;
-      this.canDeploy = canDeploy;
-      this.editorFingerprint = "";
-      this.raidFingerprint = "";
-      this.hold = null;
-      this.timer = null;
-      this.root = document.querySelector("#deploymentCards");
-      this.row = this.root.querySelector(".deployment-card-row");
-      this.content = document.querySelector("#deploymentCardContent");
-      this.content.addEventListener("change", (event) => this.change(event));
-      this.content.addEventListener("click", (event) => this.click(event));
-      this.row.addEventListener("pointerdown", (event) => this.pointerDown(event));
-      this.row.addEventListener("pointerup", (event) => this.stopHold(event));
-      this.row.addEventListener("pointercancel", (event) => this.stopHold(event));
-      this.row.addEventListener("lostpointercapture", (event) => this.stopHold(event));
-      this.row.addEventListener("click", (event) => event.preventDefault());
-      this.row.addEventListener("keydown", (event) => this.keyDown(event));
-      this.row.addEventListener("keyup", (event) => this.keyUp(event));
-      this.row.addEventListener("blur", () => this.stopHold(), true);
-      window.addEventListener("blur", () => this.stopHold());
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-          this.stopHold();
-        }
-      });
-    }
-    change(event) {
-      const SELECT = event.target.closest("select[data-deployment-slot]");
-      if (!SELECT || SELECT.disabled) {
-        return;
-      }
-      const VALUE = SELECT.value === "" ? null : Number(SELECT.value);
-      this.command("deployment-card-select", { slot: Number(SELECT.dataset.deploymentSlot), speciesId: VALUE });
-    }
-    click(event) {
-      const BUTTON = event.target.closest("button[data-deployment-buy-slot]");
-      if (BUTTON && !BUTTON.disabled) {
-        this.command("deployment-card-buy-slot", {});
-      }
-    }
-    pointerDown(event) {
-      const BUTTON = event.target.closest("button[data-deploy-species]");
-      if (!BUTTON || event.button !== 0 || BUTTON.disabled || !this.canDeploy() || this.hold) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      if (!this.beginHold(BUTTON.dataset.deploySpecies, event.pointerId)) {
-        return;
-      }
-      BUTTON.setPointerCapture?.(event.pointerId);
-    }
-    keyDown(event) {
-      const BUTTON = event.target.closest("button[data-deploy-species]");
-      if (!BUTTON || !["Enter", " "].includes(event.key)) {
-        return;
-      }
-      event.preventDefault();
-      if (!event.repeat && !this.hold && !BUTTON.disabled && this.canDeploy()) {
-        this.beginHold(BUTTON.dataset.deploySpecies, "keyboard");
-      }
-    }
-    keyUp(event) {
-      if (["Enter", " "].includes(event.key)) {
-        event.preventDefault();
-        this.stopHold();
-      }
-    }
-    beginHold(speciesId, pointerId) {
-      if (!this.deploy(Number(speciesId))) {
-        return false;
-      }
-      this.hold = { speciesId, pointerId };
-      this.row.querySelector(`[data-deploy-species="${speciesId}"]`)?.setAttribute("aria-pressed", "true");
-      this.timer = setInterval(() => {
-        if (!this.hold || !this.canDeploy() || !this.deploy(Number(this.hold.speciesId))) {
-          this.stopHold();
-        }
-      }, 100);
-      return true;
-    }
-    stopHold(event) {
-      if (event && this.hold?.pointerId !== event.pointerId) {
-        return;
-      }
-      const HOLD = this.hold;
-      this.hold = null;
-      if (this.timer !== null) {
-        clearInterval(this.timer);
-        this.timer = null;
-      }
-      this.row.querySelector(`[data-deploy-species="${HOLD?.speciesId}"]`)?.setAttribute("aria-pressed", "false");
-      if (typeof HOLD?.pointerId === "number") {
-        const BUTTON = [...this.row.querySelectorAll("[data-deploy-species]")].find(
-          (button) => button.dataset.deploySpecies === HOLD.speciesId
-        );
-        if (BUTTON?.hasPointerCapture?.(HOLD.pointerId)) {
-          BUTTON.releasePointerCapture(HOLD.pointerId);
-        }
-      }
-    }
-    update(world, sourceWorld, visible, ownerId = "", canEditLoadout = world.scene === "farm") {
-      const ROSTER2 = world.scene === "raid" && world.raidRoster(ownerId), SHOW_RAID = !!visible && !!ROSTER2;
-      this.root.hidden = !SHOW_RAID;
-      if (!SHOW_RAID) {
-        this.stopHold();
-        this.raidFingerprint = "";
-      } else {
-        if (!this.canDeploy() || ["victory", "defeat"].includes(world.encounter.outcome)) {
-          this.stopHold();
-        }
-        const KEY3 = JSON.stringify(ROSTER2.deploymentCardSpecies);
-        if (KEY3 !== this.raidFingerprint) {
-          this.raidFingerprint = KEY3;
-          this.drawRaidCards(ROSTER2);
-        }
-        this.updateRaidCounts(ROSTER2);
-      }
-      const PLAYER = sourceWorld?.playerProgression, STATE = PLAYER?.raidDeploymentCards;
-      if (!STATE || !isValidRaidDeploymentCardsState(STATE)) {
-        this.content.replaceChildren();
-        this.editorFingerprint = "";
-        return;
-      }
-      const LOCKED = !canEditLoadout || world.scene !== "farm" || sourceWorld.running || sourceWorld.farmBossEvent?.phase !== "idle", OWNED = sourceWorld.units.filter((unit) => unit.countsTowardPermanentRoster !== false).reduce((map, unit) => map.set(unit.species, (map.get(unit.species) || 0) + 1), /* @__PURE__ */ new Map()), KEY2 = JSON.stringify([STATE, PLAYER.availablePoints, LOCKED, [...OWNED]]);
-      if (KEY2 !== this.editorFingerprint) {
-        this.editorFingerprint = KEY2;
-        this.drawEditor(STATE, PLAYER.availablePoints, LOCKED, OWNED);
-      }
-    }
-    drawRaidCards(roster) {
-      const SPECIES = roster.deploymentCardSpecies || [], AVAILABLE = (speciesId) => roster.troops.filter((troop) => troop.species === speciesId && !troop.deployed).length, ACTIVE = (speciesId) => SPECIES.some((candidate) => candidate === speciesId);
-      this.row.innerHTML = SPECIES.map((speciesId, index) => {
-        const SPECIES_INFO = speciesById(speciesId), REMAINING = AVAILABLE(speciesId);
-        return `<button class="deployment-card" type="button" data-deploy-species="${speciesId}"
-                aria-label="${ESCAPE2(SPECIES_INFO.name)} 병력 배치, 남은 ${REMAINING}마리"
-                aria-pressed="false" ${REMAINING === 0 || !ACTIVE(speciesId) ? "disabled" : ""}>
-                <span class="deployment-card__number">${index + 1}</span>
-                <strong>${ESCAPE2(SPECIES_INFO.name)}</strong><small>${REMAINING} 남음</small></button>`;
-      }).join("");
-    }
-    updateRaidCounts(roster) {
-      for (const BUTTON of this.row.querySelectorAll("button[data-deploy-species]")) {
-        const SPECIES_ID = Number(BUTTON.dataset.deploySpecies), REMAINING = roster.troops.filter((troop) => troop.species === SPECIES_ID && !troop.deployed).length;
-        BUTTON.disabled = REMAINING === 0;
-        BUTTON.querySelector("small").textContent = `${REMAINING} 남음`;
-        BUTTON.setAttribute("aria-label", `${speciesById(SPECIES_ID).name} 병력 배치, 남은 ${REMAINING}마리`);
-      }
-    }
-    drawEditor(state, points, locked, owned) {
-      const UNLOCKED = Array.from({ length: state.unlockedSlots }, (_, slot) => {
-        const CURRENT = state.speciesBySlot[slot], OPTIONS = SPECIES_CATALOG.filter(({ id }) => owned.has(id));
-        return `<article class="deployment-editor-slot">
-                <label for="deploymentSpecies${slot}">슬롯 ${slot + 1}${slot === 0 ? " · 무료" : ""}</label>
-                <select id="deploymentSpecies${slot}" data-deployment-slot="${slot}" ${locked ? "disabled" : ""}>
-                    <option value="">선택 안 함</option>
-                    ${OPTIONS.map(
-          ({ id, name }) => `<option value="${id}" ${CURRENT === id ? "selected" : ""}
-                        ${state.speciesBySlot.some((selected, index) => index !== slot && selected === id) ? "disabled" : ""}>
-                        ${ESCAPE2(name)} (${owned.get(id)})</option>`
-        ).join("")}
-                </select></article>`;
-      }).join("");
-      const LOCKED = Array.from(
-        { length: RAID_DEPLOYMENT_CARD_LIMIT - state.unlockedSlots },
-        (_, index) => state.unlockedSlots + index
-      ).map(
-        (slot) => `<button class="deployment-card-buy" type="button" data-deployment-buy-slot
-            ${locked || points < RAID_DEPLOYMENT_CARD_SLOT_COST ? "disabled" : ""}>
-            슬롯 ${slot + 1} 잠김 · ${RAID_DEPLOYMENT_CARD_SLOT_COST} 포인트로 해금</button>`
-      ).join("");
-      this.content.innerHTML = `<p class="deployment-card-intro">보유한 병종을 최대 4개 편성하고, 카드를 누르거나 길게 눌러 한 마리씩 배치해요. 편성은 농장에서만 바꿀 수 있어요.</p>
-            <p class="deployment-card-wallet"><strong>${points}</strong> 공용 포인트</p>
-            <div class="deployment-editor-slots">${UNLOCKED}${LOCKED}</div>`;
     }
   };
 
@@ -17602,54 +16779,9 @@
     }
   };
 
-  // src/features/scenes/raid/presentation.js
-  init_definition16();
-  init_farm_model();
-  var RaidScenePresentation = class {
-    constructor() {
-      this.id = FEATURE3.id;
-      this.groundColor = "#cecfb3";
-      this.surfaceColor = "#d7d8bf";
-      this.minimumUnitPixels = 4.5;
-    }
-    cameraView(aspect) {
-      return aspect > 1.2 ? [Math.max(26.5, 17 * aspect), 17] : [26.5, 26.5 / aspect];
-    }
-    bossVisible() {
-      return true;
-    }
-    dangerVisible() {
-      return true;
-    }
-    hiddenUnitId() {
-      return 0;
-    }
-    victorious(world) {
-      return world.encounter?.outcome === "victory";
-    }
-    unitMood() {
-      return "neutral";
-    }
-    collectJoy(_world, joyEffects) {
-      joyEffects.length = 0;
-    }
-    collectFood() {
-    }
-    drawBoundary(renderer) {
-      renderer.strokeGroundEllipse(
-        0,
-        0,
-        CONFIG.raid.arena.radiusX - 0.5,
-        CONFIG.raid.arena.radiusY - 0.5,
-        "#728e61a8",
-        0.075
-      );
-    }
-  };
-
   // src/farm-render-scenes.js
   var SCENE_PRESENTATIONS = new Map(
-    [new FarmScenePresentation(), new RaidScenePresentation()].map((presentation) => [presentation.id, presentation])
+    [new FarmScenePresentation()].map((presentation) => [presentation.id, presentation])
   );
   function scenePresentation(scene) {
     const PRESENTATION = SCENE_PRESENTATIONS.get(scene);
@@ -17661,10 +16793,10 @@
 
   // src/features/projectiles/seed/presentation.js
   init_definition14();
-  var import_definition56 = __toESM(require_definition(), 1);
+  var import_definition54 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition56.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition56.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
+    const BODY2 = (0, import_definition54.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition54.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
     return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
   }
   var SeedProjectilePresentation = class {
@@ -17685,10 +16817,10 @@
   };
 
   // src/features/projectiles/spike/presentation.js
-  init_definition19();
+  init_definition18();
   var SpikeProjectilePresentation = class {
     constructor() {
-      this.id = FEATURE6.id;
+      this.id = FEATURE5.id;
     }
     drawShadow(renderer, projectile) {
       renderer.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, "#55452433");
@@ -17706,7 +16838,7 @@
   };
 
   // src/farm-render-items.js
-  init_definition20();
+  init_definition19();
   init_farm_model();
   var FoodPresentation = class {
     constructor(renderer) {
@@ -17755,7 +16887,7 @@
   };
 
   // src/farm-render-units.js
-  var import_definition61 = __toESM(require_definition(), 1);
+  var import_definition59 = __toESM(require_definition(), 1);
   init_presentation9();
 
   // src/features/unit-attacks/presentation-base.js
@@ -17769,11 +16901,11 @@
   };
 
   // src/features/unit-attacks/lob/presentation.js
-  init_definition17();
+  init_definition16();
   var LobPresentation = class extends UnitAttackPresentation {
     constructor() {
       super();
-      this.id = FEATURE4.id;
+      this.id = FEATURE3.id;
     }
     recoverMotion(unit) {
       return unit.ability?.action?.path && unit.ability.elapsed < 0.12 ? "fire" : "recover";
@@ -17781,11 +16913,11 @@
   };
 
   // src/features/unit-attacks/dual-strike/presentation.js
-  init_definition18();
+  init_definition17();
   var DualStrikePresentation = class extends UnitAttackPresentation {
     constructor() {
       super();
-      this.id = FEATURE5.id;
+      this.id = FEATURE4.id;
     }
     activeMotion(unit) {
       return unit.ability.peanutStrikeCount > 2 ? `fire-${unit.ability.peanutStrikeCount}` : "fire";
@@ -18049,7 +17181,7 @@
         player.setExpression(EXPRESSION);
       }
       player.seek(rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs);
-      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition61.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
+      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition59.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
       const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
       this.renderer.ctx.vector.flush();
       player.draw({
@@ -18066,7 +17198,7 @@
         u.y,
         u.z + BOB
       );
-      const BODY2 = (0, import_definition61.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition61.unitDisplayScale)(
+      const BODY2 = (0, import_definition59.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition59.unitDisplayScale)(
         BODY2,
         u.bodyScale,
         this.renderer.scale,
@@ -18211,10 +17343,10 @@
   };
 
   // src/features/boss-patterns/front-slam/presentation.js
-  init_definition23();
+  init_definition22();
   var FrontSlamPresentation = class extends BossAttackPresentation {
     constructor() {
-      super(FEATURE9, "strike", 0.18, 0.14);
+      super(FEATURE8, "strike", 0.18, 0.14);
     }
     recover(boss, pose) {
       if (pose.recoverImpact) {
@@ -18226,12 +17358,12 @@
   };
 
   // src/features/boss-patterns/sweep-360/presentation.js
-  init_definition22();
+  init_definition21();
   init_farm_model();
   var TAU3 = Math.PI * 2;
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
-      super(FEATURE8, "sweep", 0.14, 0.14);
+      super(FEATURE7, "sweep", 0.14, 0.14);
     }
     windup(boss, pose) {
       super.windup(boss, pose);
@@ -18274,10 +17406,10 @@
   };
 
   // src/features/boss-patterns/charge/presentation.js
-  init_definition24();
+  init_definition23();
   var ChargePresentation = class extends BossAttackPresentation {
     constructor() {
-      super(FEATURE10, "walk");
+      super(FEATURE9, "walk");
     }
     active(boss, pose) {
       const STRIDE = Math.sin((boss.patternTraveled || 0) * 3.1), LIFT = Math.max(0, STRIDE);
@@ -18308,11 +17440,11 @@
   };
 
   // src/features/boss-patterns/leap-slam/presentation.js
-  init_definition25();
+  init_definition24();
   init_farm_model();
   var LeapSlamPresentation = class extends BossAttackPresentation {
     constructor() {
-      super(FEATURE11, "strike", 0.18, 0.18);
+      super(FEATURE10, "strike", 0.18, 0.18);
     }
     activeMotion(boss) {
       return boss.z > 0.1 ? "airborne" : "strike";
@@ -18355,11 +17487,11 @@
   };
 
   // src/features/boss-patterns/fan-sweep/presentation.js
-  init_definition26();
+  init_definition25();
   init_farm_model();
   var FanSweepPresentation = class extends BossAttackPresentation {
     constructor() {
-      super(FEATURE12, "sweep", 0.12);
+      super(FEATURE11, "sweep", 0.12);
     }
     active(_boss, pose) {
       const Q = CLAMP2(pose.elapsed / this.config.active, 0, 1), ARC = pose.aim - this.config.sector / 2 + this.config.sector * Q, PROJECTED = Math.atan2(-0.62 * Math.sin(ARC), Math.cos(ARC));
@@ -18385,11 +17517,11 @@
   };
 
   // src/features/boss-patterns/mouth-summon/presentation.js
-  init_definition27();
+  init_definition26();
   init_boss_vector_sockets();
   var MouthSummonPresentation = class extends BossAttackPresentation {
     constructor() {
-      super(FEATURE13, "fire");
+      super(FEATURE12, "fire");
       this.summoning = true;
     }
     pose(boss, parts, scratch) {
@@ -18858,7 +17990,7 @@
         BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
         BOUNDS.top = Math.max(
           BOUNDS.top,
-          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.raid.dropHeight * import_vector_sockets5.WORLD_HEIGHT_PROJECTION
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets5.WORLD_HEIGHT_PROJECTION
         );
       };
       for (const RECORD of this.bossAssets.values()) {
@@ -19622,7 +18754,7 @@
   // src/farm-session.js
   init_farm_model();
   init_unit_stats();
-  init_model20();
+  init_model19();
   var { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
   var R = RENDER_OBJECT;
   var PRESENTATION_STEP_MS = 50;
@@ -19719,7 +18851,7 @@
       this.faction = u.faction;
       this.farmId = u.farmId;
       this.dropLanded = u.dropLanded;
-      this.buffed = world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0);
+      this.buffed = false;
       this.isBattleOnlySummon = u.isBattleOnlySummon;
       this.isFormationClone = u.isFormationClone;
       this.giantUntil = u.giantUntil;
@@ -19767,14 +18899,14 @@
       barleyArmorShredTotal: R.STEP
     });
     update(b, world) {
-      const ACTION = b.patternRuntime.active, EVENT = world.farmBossEvent, TARGET = ACTION?.target || null, START = ACTION?.start || null, MOUTH = b.summonMouth || {}, ENDED = world.scene === "raid" && !b.active ? world.notices.findLast((e) => e.kind === "victory" || e.kind === "defeat") : null;
+      const ACTION = b.patternRuntime.active, EVENT = world.farmBossEvent, TARGET = ACTION?.target || null, START = ACTION?.start || null, MOUTH = b.summonMouth || {};
       this.x = b.x;
       this.y = b.y;
       this.z = b.z;
       this.angle = b.angle;
       this.startAngle = b.startAngle;
       this.phase = ACTION?.phase || (!b.active || EVENT?.phase === "dropping" ? "resting" : "chase");
-      this.clock = ACTION?.phaseElapsed ?? (EVENT.phase === "celebrating" || EVENT.phase === "fading" ? EVENT.elapsed : ENDED?.bossPatternElapsed || 0);
+      this.clock = ACTION?.phaseElapsed ?? (EVENT.phase === "celebrating" || EVENT.phase === "fading" ? EVENT.elapsed : 0);
       this.travel = b.travel || 0;
       this.hp = b.hp;
       this.maxHp = b.maxHp;
@@ -19973,10 +19105,8 @@
     }
   };
   var FarmSession = class {
-    constructor(world = new GARDEN(), { onError = console.error, onWorldStep: onWorldStep2 = () => {
-    } } = {}) {
+    constructor(world = new GARDEN(), { onError = console.error } = {}) {
       this.world = world;
-      this.onWorldStep = onWorldStep2;
       this.tick = 0;
       this.presentationTick = 0;
       this.profile = LOCAL_PROFILE;
@@ -19991,7 +19121,6 @@
       this.unsubscribeNotices = null;
       this.noticeWorld = null;
       this.localPlayerId = "solo";
-      this.localDeploySequence = world.raidRoster(this.localPlayerId)?.lastDeploySequence || 0;
       this.presentationRevision = 0;
       this.presentationSequence = 0;
       this.pendingPresentationMode = null;
@@ -20105,46 +19234,15 @@
       );
       return true;
     }
-    deployNext(speciesId) {
-      const W = this.world, ROSTER2 = W.scene === "raid" && W.raidRoster(this.localPlayerId);
-      if (!ROSTER2 || this.closed || this.paused || ["victory", "defeat"].includes(W.encounter.outcome)) {
-        return false;
-      }
-      if (speciesId !== void 0 && (!ROSTER2.deploymentCardSpecies.includes(speciesId) || W.raidRemaining(this.localPlayerId, speciesId) <= 0)) {
-        return false;
-      }
-      this.localDeploySequence = Math.max(this.localDeploySequence, ROSTER2.lastDeploySequence);
-      if (this.localDeploySequence - ROSTER2.lastDeploySequence >= W.raidRemaining(this.localPlayerId)) {
-        return false;
-      }
-      const QUEUED_FOR_SPECIES = this.pending.filter(
-        (command) => command.type === "deploy" && command.speciesId === speciesId
-      ).length;
-      if (speciesId !== void 0 && QUEUED_FOR_SPECIES >= W.raidRemaining(this.localPlayerId, speciesId)) {
-        return false;
-      }
-      const SEQUENCE = this.localDeploySequence + 1;
-      if (!this.queue("deploy", {
-        sequence: SEQUENCE,
-        ...speciesId === void 0 ? {} : { speciesId }
-      })) {
-        return false;
-      }
-      this.localDeploySequence = SEQUENCE;
-      return true;
-    }
     advance() {
       if (this.closed) {
         return CLOSED;
       }
       const COMMAND_START = this.profiler?.start();
-      const COMMAND_CHANGED_WORLD = this.applyPendingCommands(32);
+      this.applyPendingCommands(32);
       this.profiler?.end("commandQueue", COMMAND_START);
       if (this.paused) {
         this.tick++;
-        if (COMMAND_CHANGED_WORLD) {
-          this.onWorldStep(this.world);
-        }
         return ADVANCED;
       }
       const W = this.world, START_TIME = W.time, LOOP_START = this.loop?.simulationTimeMs, START_CLOCK = this.adjustedWallTime(
@@ -20162,12 +19260,6 @@
       W.step(1 / LOCAL_PROFILE.tickRate);
       this.tick++;
       this.presentationTick++;
-      const WORLD_STEP_FOLLOWUP_START = this.profiler?.start();
-      try {
-        this.onWorldStep(W);
-      } finally {
-        this.profiler?.end("worldStepFollowup", WORLD_STEP_FOLLOWUP_START);
-      }
       return ADVANCED;
     }
     applyPendingCommands(limit) {
@@ -20187,13 +19279,9 @@
       if (this.closed || this.world.scene !== "farm") {
         return false;
       }
-      const CHANGED = this.applyPendingCommands(this.pending.length);
-      if (CHANGED) {
-        this.onWorldStep(this.world);
-      }
-      return CHANGED;
+      return this.applyPendingCommands(this.pending.length);
     }
-    command(c, ownerId = this.localPlayerId) {
+    command(c) {
       const W = this.world;
       switch (c.type) {
         case "feed":
@@ -20230,26 +19318,10 @@
           return W.formationSkills.buySlot();
         case "formation-equip":
           return W.formationSkills.equip(c.slot, c.id);
-        case "deployment-card-buy-slot":
-          return W.raidDeploymentCards.buySlot();
-        case "deployment-card-select":
-          return W.raidDeploymentCards.select(c.slot, c.speciesId);
         case "progression-reset":
           return W.scene === "farm" && W.resetProgression(c.scope).ok;
         case "ability-reset":
           return W.scene === "farm" && W.resetAbilityTree().ok;
-        case "register-roster":
-          return Array.isArray(c.entries) && W.registerRaidRoster(
-            ownerId,
-            c.entries,
-            c.abilitySnapshot,
-            c.settlement || null,
-            Array.isArray(c.deploymentCardSpecies) ? c.deploymentCardSpecies : null
-          );
-        case "deploy":
-          return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence, c.speciesId);
-        case "buff":
-          return W.useRaidBuff(ownerId);
       }
       return false;
     }
@@ -20578,361 +19650,7 @@
   init_formation_skill_state();
   init_farm_model();
   init_player_progression();
-  init_ability_state();
   init_unit_abilities();
-
-  // src/raid-settlement.js
-  init_unit_grades();
-  init_factions();
-  init_species_catalog();
-  init_farm_boss_stages();
-  init_boss_rewards();
-  init_world_map();
-  var RAID_SLEEP_SECONDS = 60;
-  var RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
-  var FAIL2 = (message) => {
-    throw new TypeError(message);
-  };
-  var IS_NON_EMPTY_STRING = (value) => typeof value === "string" && value.trim().length > 0;
-  var IS_COUNT = (value) => Number.isSafeInteger(value) && value >= 0;
-  function ledgerState(farm) {
-    const NEXT_SEQUENCE = farm.nextRaidRunSequence ?? 0;
-    const WATERMARK = farm.raidSettlementWatermark ?? 0;
-    const ACTIVE_SEQUENCE = farm.activeRaidRunSequence ?? null;
-    const ACTIVE_SESSION_ID = farm.activeRaidSessionId ?? null;
-    const RECEIPTS = farm.raidSettlementReceipts ?? [];
-    if (!IS_COUNT(NEXT_SEQUENCE) || !IS_COUNT(WATERMARK) || WATERMARK > NEXT_SEQUENCE || ACTIVE_SEQUENCE !== null && (!Number.isSafeInteger(ACTIVE_SEQUENCE) || ACTIVE_SEQUENCE < 1) || ACTIVE_SESSION_ID !== null && !IS_NON_EMPTY_STRING(ACTIVE_SESSION_ID) || !Array.isArray(RECEIPTS) || ACTIVE_SEQUENCE === null !== (ACTIVE_SESSION_ID === null)) {
-      FAIL2("Private Farm Raid settlement ledger is invalid");
-    }
-    if (ACTIVE_SEQUENCE === null && NEXT_SEQUENCE !== WATERMARK || ACTIVE_SEQUENCE !== null && (ACTIVE_SEQUENCE !== NEXT_SEQUENCE || ACTIVE_SEQUENCE !== WATERMARK + 1)) {
-      FAIL2("Private Farm Raid run sequence is inconsistent");
-    }
-    return {
-      nextSequence: NEXT_SEQUENCE,
-      watermark: WATERMARK,
-      activeSequence: ACTIVE_SEQUENCE,
-      activeSessionId: ACTIVE_SESSION_ID,
-      receipts: RECEIPTS
-    };
-  }
-  function ownerRoster(raidWorld, ownerId) {
-    if (!raidWorld || typeof raidWorld !== "object" || !Array.isArray(raidWorld.raidRosters) || !Array.isArray(raidWorld.units) || !IS_NON_EMPTY_STRING(ownerId)) {
-      FAIL2("A Raid world, roster array, unit array, and owner ID are required");
-    }
-    const OWNER_ROSTERS = raidWorld.raidRosters.filter((roster) => roster?.ownerId === ownerId);
-    if (OWNER_ROSTERS.length !== 1 || !Array.isArray(OWNER_ROSTERS[0].troops)) {
-      FAIL2("The Raid must contain exactly one roster for this owner");
-    }
-    return OWNER_ROSTERS[0];
-  }
-  function raidSettlementKey({ ownerId, sessionId, encounterId } = {}) {
-    if (!IS_NON_EMPTY_STRING(ownerId) || !IS_NON_EMPTY_STRING(sessionId) || !(IS_NON_EMPTY_STRING(encounterId) || Number.isSafeInteger(encounterId) && encounterId > 0)) {
-      FAIL2("A Raid owner, stable session ID, and encounter ID are required");
-    }
-    return `raid:${JSON.stringify([ownerId, sessionId, encounterId])}`;
-  }
-  function isBattleOnlySummon(unit) {
-    return unit?.isBattleOnlySummon === true || unit?.battleSummonKind !== void 0 && unit.battleSummonKind !== "" || unit?.battleSummonParentId !== void 0 && unit.battleSummonParentId !== 0;
-  }
-  function raidOwnerManifest(raidWorld, ownerId) {
-    const ROSTER2 = ownerRoster(raidWorld, ownerId);
-    const MANIFEST = /* @__PURE__ */ new Map();
-    for (const TROOP of ROSTER2.troops) {
-      if (!TROOP || !Number.isSafeInteger(TROOP.farmId) || TROOP.farmId < 1 || !Number.isInteger(TROOP.species) || TROOP.species < 0 || TROOP.species >= SPECIES_COUNT || !isValidUnitTier(TROOP.tier) || typeof TROOP.deployed !== "boolean" || MANIFEST.has(TROOP.farmId)) {
-        FAIL2("The owner Raid roster must have unique Farm IDs and valid deployed entries");
-      }
-      MANIFEST.set(TROOP.farmId, TROOP);
-    }
-    const OWNER_UNITS = raidWorld.units.filter((unit) => unit?.ownerId === ownerId);
-    if (OWNER_UNITS.some((unit) => !hasFaction(unit, FACTION_CONFIG.PLAYER))) {
-      FAIL2("An enemy-faction actor cannot enter an owner’s Farm settlement");
-    }
-    const OWNER_UNITS_BY_ID = /* @__PURE__ */ new Map();
-    for (const UNIT3 of OWNER_UNITS) {
-      if (!Number.isSafeInteger(UNIT3.id) || UNIT3.id < 1 || OWNER_UNITS_BY_ID.has(UNIT3.id) || !Number.isFinite(UNIT3.hp) || UNIT3.hp < 0) {
-        FAIL2("The owner Raid units must have unique IDs and valid health");
-      }
-      OWNER_UNITS_BY_ID.set(UNIT3.id, UNIT3);
-    }
-    const ORIGINAL_UNITS_BY_FARM_ID = /* @__PURE__ */ new Map();
-    const DEAD_FARM_UNIT_IDS = [];
-    for (const UNIT3 of OWNER_UNITS) {
-      if (isBattleOnlySummon(UNIT3)) {
-        const PARENT = OWNER_UNITS_BY_ID.get(UNIT3.battleSummonParentId);
-        const PARENT_TROOP = PARENT && MANIFEST.get(PARENT.farmId);
-        const VALID_SPLIT = hasFaction(UNIT3, FACTION_CONFIG.PLAYER) && UNIT3.isBattleOnlySummon === true && UNIT3.battleSummonKind === "peanut-death-split" && Number.isSafeInteger(UNIT3.battleSummonParentId) && UNIT3.battleSummonParentId > 0 && Number.isSafeInteger(UNIT3.battleSummonParentGeneration) && UNIT3.battleSummonParentGeneration > 0 && PARENT && PARENT.ownerId === ownerId && !isBattleOnlySummon(PARENT) && PARENT.hp <= 0 && PARENT_TROOP?.deployed === true && PARENT.farmId === UNIT3.farmId && PARENT.generation === UNIT3.battleSummonParentGeneration && PARENT.species === 4 && UNIT3.species === 4 && UNIT3.tier === 1 && UNIT3.canSplit === false && UNIT3.countsTowardPermanentRoster === false && UNIT3.eligibleForRaidDeployment === false && UNIT3.breedingEligible === false && UNIT3.mergeEligible === false && UNIT3.usesPersistentSleep === false;
-        if (!VALID_SPLIT) {
-          FAIL2("A battle-only Raid split is missing its validated origin marker");
-        }
-        continue;
-      }
-      const TROOP = MANIFEST.get(UNIT3.farmId);
-      if (!TROOP || !TROOP.deployed || TROOP.species !== UNIT3.species || TROOP.tier !== UNIT3.tier || ORIGINAL_UNITS_BY_FARM_ID.has(UNIT3.farmId)) {
-        FAIL2("A Raid unit does not match this owner’s deployed roster");
-      }
-      ORIGINAL_UNITS_BY_FARM_ID.set(UNIT3.farmId, UNIT3);
-      if (UNIT3.hp <= 0) {
-        DEAD_FARM_UNIT_IDS.push(UNIT3.farmId);
-      }
-    }
-    for (const [FARM_ID, TROOP] of MANIFEST) {
-      if (TROOP.deployed && !ORIGINAL_UNITS_BY_FARM_ID.has(FARM_ID)) {
-        FAIL2("A deployed original Farm unit is missing from this owner’s Raid world");
-      }
-    }
-    return {
-      roster: ROSTER2,
-      manifest: MANIFEST,
-      deadFarmUnitIds: DEAD_FARM_UNIT_IDS.sort((a, b) => a - b),
-      availableAtStart: ROSTER2.troops.length,
-      originalUnitsDeployed: ROSTER2.troops.filter((troop) => troop.deployed).length
-    };
-  }
-  function raidDeploymentRewardMultiplier({ availableAtStart, originalUnitsDeployed } = {}) {
-    if (!IS_COUNT(availableAtStart) || !IS_COUNT(originalUnitsDeployed) || originalUnitsDeployed > availableAtStart) {
-      FAIL2(
-        "Raid deployment counts must be non-negative integers and original deployed cannot exceed the starting roster"
-      );
-    }
-    if (availableAtStart === 0 || originalUnitsDeployed === 0) {
-      return 0;
-    }
-    return Math.min(2, Math.max(1, 1 + (availableAtStart - originalUnitsDeployed) / availableAtStart));
-  }
-  function clone(value) {
-    if (typeof structuredClone === "function") {
-      return structuredClone(value);
-    }
-    return JSON.parse(JSON.stringify(value));
-  }
-  function validateReturnedPrivateFarm(sourceFarm, resultFarm, sleptFarmUnitIds) {
-    if (sourceFarm.ownerId !== void 0 && resultFarm.ownerId !== sourceFarm.ownerId) {
-      FAIL2("The Raid victory resolver returned a different owner Farm");
-    }
-    const ORIGINAL_UNITS = new Map(sourceFarm.units.map((unit) => [unit.id, unit]));
-    const RESULT_UNITS = /* @__PURE__ */ new Map();
-    for (const UNIT3 of resultFarm.units) {
-      if (!UNIT3 || !Number.isSafeInteger(UNIT3.id) || UNIT3.id < 1 || RESULT_UNITS.has(UNIT3.id)) {
-        FAIL2("The Raid victory resolver returned invalid or duplicate private Farm units");
-      }
-      RESULT_UNITS.set(UNIT3.id, UNIT3);
-    }
-    for (const [UNIT_ID, ORIGINAL] of ORIGINAL_UNITS) {
-      const RESULT = RESULT_UNITS.get(UNIT_ID);
-      if (!RESULT || RESULT.species !== ORIGINAL.species || RESULT.tier !== ORIGINAL.tier) {
-        FAIL2("The Raid victory resolver did not preserve the owner’s Farm roster");
-      }
-    }
-    for (const UNIT_ID of sleptFarmUnitIds) {
-      const UNIT3 = RESULT_UNITS.get(UNIT_ID);
-      if (!UNIT3 || UNIT3.hp !== 0 || UNIT3.down !== RAID_SLEEP_SECONDS) {
-        FAIL2("The Raid victory resolver must preserve the owner Farm’s casualty sleep");
-      }
-    }
-  }
-  function abortReservedRaidRun(farm, { completedAtMs = null } = {}) {
-    if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      FAIL2("A private Farm snapshot with a units array is required");
-    }
-    if (completedAtMs !== null && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-      FAIL2("Settlement timestamp must be a non-negative finite number");
-    }
-    const LEDGER = ledgerState(farm);
-    if (LEDGER.activeSequence === null) {
-      return {
-        farm,
-        receipt: null,
-        applied: false
-      };
-    }
-    const OWNER_ID = "recovery-abort";
-    const { activeSequence: RUN_SEQUENCE, activeSessionId: SESSION_ID } = LEDGER;
-    const RECEIPT = {
-      key: raidSettlementKey({
-        ownerId: OWNER_ID,
-        sessionId: SESSION_ID,
-        encounterId: RUN_SEQUENCE
-      }),
-      ownerId: OWNER_ID,
-      sessionId: SESSION_ID,
-      encounterId: RUN_SEQUENCE,
-      runSequence: RUN_SEQUENCE,
-      outcome: "aborted",
-      status: "settled",
-      completedAtMs,
-      sleptFarmUnitIds: [],
-      availableAtStart: 0,
-      originalUnitsDeployed: 0,
-      deploymentMultiplier: 0,
-      reward: null
-    };
-    const NEXT_FARM = clone(farm);
-    NEXT_FARM.activeRaidRunSequence = null;
-    NEXT_FARM.activeRaidSessionId = null;
-    NEXT_FARM.raidSettlementWatermark = RUN_SEQUENCE;
-    NEXT_FARM.raidSettlementReceipts = [...LEDGER.receipts, RECEIPT].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
-    return {
-      farm: NEXT_FARM,
-      receipt: clone(RECEIPT),
-      applied: true
-    };
-  }
-  function settleRaidOwnerFarm(farm, { ownerId, sessionId, encounterId, runSequence, outcome, raidWorld, completedAtMs, settleVictory = null } = {}) {
-    if (!farm || typeof farm !== "object" || Array.isArray(farm) || !Array.isArray(farm.units)) {
-      FAIL2("A private Farm snapshot with a units array is required");
-    }
-    const KEY2 = raidSettlementKey({
-      ownerId,
-      sessionId,
-      encounterId
-    });
-    if (!["victory", "defeat", "aborted"].includes(outcome)) {
-      FAIL2("Raid outcome must be victory, defeat, or aborted");
-    }
-    if (!Number.isSafeInteger(runSequence) || runSequence < 1) {
-      FAIL2("A positive Farm-local Raid run sequence is required");
-    }
-    if (settleVictory !== null && typeof settleVictory !== "function") {
-      FAIL2("settleVictory must be a function");
-    }
-    if (completedAtMs !== void 0 && (!Number.isFinite(completedAtMs) || completedAtMs < 0)) {
-      FAIL2("Settlement timestamp must be a non-negative finite number");
-    }
-    const LEDGER = ledgerState(farm);
-    if (runSequence <= LEDGER.watermark) {
-      const PREVIOUS = LEDGER.receipts.find((receipt) => receipt?.key === KEY2);
-      return {
-        farm,
-        receipt: clone(
-          PREVIOUS || {
-            key: KEY2,
-            ownerId,
-            sessionId,
-            encounterId,
-            runSequence,
-            outcome: "already-settled",
-            status: "compacted",
-            sleptFarmUnitIds: [],
-            availableAtStart: 0,
-            originalUnitsDeployed: 0,
-            deploymentMultiplier: 0,
-            reward: null
-          }
-        ),
-        applied: false
-      };
-    }
-    if (runSequence !== LEDGER.watermark + 1 || LEDGER.activeSequence !== runSequence || LEDGER.activeSessionId !== sessionId) {
-      FAIL2("Raid settlement does not match the active Farm-local run");
-    }
-    const RAID_STAGE = raidWorld?.boss?.stage, HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage, MAP_STAGE = farm.worldMap && (farm.worldMap.challengeTile ?? -1) >= 0 ? tileDanger(farm.worldMap, farm.worldMap.challengeTile) : -1;
-    if (!Number.isSafeInteger(HIGHEST_CLEARED_STAGE) || HIGHEST_CLEARED_STAGE < 0 || HIGHEST_CLEARED_STAGE > BOSS_REWARD_SETTINGS.maxStage || (outcome !== "aborted" || RAID_STAGE !== void 0) && (!Number.isSafeInteger(RAID_STAGE) || RAID_STAGE < 1 || RAID_STAGE > BOSS_REWARD_SETTINGS.maxStage) || Number.isSafeInteger(RAID_STAGE) && RAID_STAGE > HIGHEST_CLEARED_STAGE + 1 && RAID_STAGE !== MAP_STAGE) {
-      FAIL2("Raid stage is locked or the private stage progress is invalid");
-    }
-    const FIRST_CLEAR = outcome === "victory" && RAID_STAGE > HIGHEST_CLEARED_STAGE;
-    const RAID_OWNER = raidOwnerManifest(raidWorld, ownerId);
-    const {
-      manifest: MANIFEST,
-      deadFarmUnitIds: DEAD_FARM_UNIT_IDS,
-      availableAtStart: AVAILABLE_AT_START,
-      originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED
-    } = RAID_OWNER;
-    const UNITS_BY_FARM_ID = /* @__PURE__ */ new Map();
-    for (const UNIT3 of farm.units) {
-      if (!UNIT3 || !Number.isSafeInteger(UNIT3.id) || UNIT3.id < 1 || UNITS_BY_FARM_ID.has(UNIT3.id)) {
-        FAIL2("Private Farm units must have unique positive IDs");
-      }
-      UNITS_BY_FARM_ID.set(UNIT3.id, UNIT3);
-    }
-    for (const [FARM_UNIT_ID, TROOP] of MANIFEST) {
-      const FARM_UNIT = UNITS_BY_FARM_ID.get(FARM_UNIT_ID);
-      if (!FARM_UNIT || FARM_UNIT.species !== TROOP.species || FARM_UNIT.tier !== TROOP.tier) {
-        FAIL2("The Raid roster no longer matches this owner’s private Farm units");
-      }
-    }
-    for (const FARM_UNIT_ID of DEAD_FARM_UNIT_IDS) {
-      if (!UNITS_BY_FARM_ID.has(FARM_UNIT_ID)) {
-        FAIL2("A dead Raid unit does not belong to this owner Farm");
-      }
-    }
-    let privateFarm = clone(farm);
-    privateFarm.raidSettlementReceipts = Array.isArray(privateFarm.raidSettlementReceipts) ? privateFarm.raidSettlementReceipts : [];
-    const DEAD_SET = new Set(DEAD_FARM_UNIT_IDS);
-    for (const UNIT3 of privateFarm.units) {
-      if (!DEAD_SET.has(UNIT3.id)) {
-        continue;
-      }
-      UNIT3.hp = 0;
-      UNIT3.down = RAID_SLEEP_SECONDS;
-    }
-    let rewardSummary = null;
-    let deploymentMultiplier = 0;
-    if (outcome === "victory") {
-      deploymentMultiplier = raidDeploymentRewardMultiplier({
-        availableAtStart: AVAILABLE_AT_START,
-        originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED
-      });
-      if (deploymentMultiplier > 0) {
-        if (settleVictory === null) {
-          FAIL2("A reward-capable Raid victory needs the common reward/progression resolver");
-        }
-        const RESOLUTION = settleVictory({
-          farm: privateFarm,
-          ownerId,
-          sessionId,
-          encounterId,
-          receiptKey: KEY2,
-          source: "raid",
-          stage: RAID_STAGE,
-          firstClear: FIRST_CLEAR,
-          deploymentMultiplier
-        });
-        if (!RESOLUTION || !RESOLUTION.farm || typeof RESOLUTION.farm !== "object" || Array.isArray(RESOLUTION.farm) || !Array.isArray(RESOLUTION.farm.units)) {
-          FAIL2("The Raid victory resolver must return a private Farm snapshot and summary");
-        }
-        validateReturnedPrivateFarm(farm, RESOLUTION.farm, DEAD_FARM_UNIT_IDS);
-        privateFarm = clone(RESOLUTION.farm);
-        rewardSummary = RESOLUTION.summary ?? null;
-      }
-      if (RAID_STAGE > privateFarm.farmBossProgress.highestClearedRaidStage) {
-        privateFarm.farmBossProgress.highestClearedRaidStage = RAID_STAGE;
-        privateFarm.farmBossProgress.currentStage = Math.min(RAID_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
-      }
-    }
-    if (outcome === "victory" || outcome === "defeat") {
-      advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
-      if (privateFarm.worldMap) {
-        finishChallenge(privateFarm.worldMap, outcome === "victory" && RAID_STAGE === MAP_STAGE);
-      }
-    }
-    const RECEIPT = {
-      key: KEY2,
-      ownerId,
-      sessionId,
-      encounterId,
-      runSequence,
-      outcome,
-      status: "settled",
-      completedAtMs: completedAtMs ?? null,
-      sleptFarmUnitIds: [...DEAD_FARM_UNIT_IDS].sort((a, b) => a - b),
-      availableAtStart: AVAILABLE_AT_START,
-      originalUnitsDeployed: ORIGINAL_UNITS_DEPLOYED,
-      deploymentMultiplier,
-      reward: rewardSummary === null ? null : clone(rewardSummary)
-    };
-    privateFarm.nextRaidRunSequence = LEDGER.nextSequence;
-    privateFarm.activeRaidRunSequence = null;
-    privateFarm.activeRaidSessionId = null;
-    privateFarm.raidSettlementWatermark = runSequence;
-    privateFarm.raidSettlementReceipts = [...LEDGER.receipts, RECEIPT].slice(-RAID_SETTLEMENT_RECEIPT_LIMIT);
-    return {
-      farm: privateFarm,
-      receipt: clone(RECEIPT),
-      applied: true
-    };
-  }
-
-  // src/farm-snapshot-validation.js
   init_unit_grades();
   init_boss_patterns();
   init_boss_rewards();
@@ -20941,7 +19659,6 @@
   // src/farm-snapshot.js
   init_formation_skill_state();
   init_ability_state();
-  init_raid_deployment_cards();
   init_farm_plot();
   var UNIT_SNAPSHOT_SHAPE = {
     x: 0,
@@ -20997,7 +19714,6 @@
     battleSummonParentGeneration: 0,
     battleSummonEncounterId: 0,
     countsTowardPermanentRoster: true,
-    eligibleForRaidDeployment: true,
     breedingEligible: true,
     mergeEligible: true,
     canSplit: true,
@@ -21080,18 +19796,11 @@
     },
     bossRewardInventory: [],
     bossRewardWatermarks: {
-      farm: 0,
-      raid: 0
+      farm: 0
     },
-    nextRaidRunSequence: 0,
-    activeRaidRunSequence: null,
-    activeRaidSessionId: null,
-    raidSettlementWatermark: 0,
-    raidSettlementReceipts: [],
     formationRuntime: createFormationRuntime(),
     playerProgression: {
       formationSkills: createFormationSkillState(),
-      raidDeploymentCards: createRaidDeploymentCardsState({ firstSpecies: null }),
       schemaVersion: 2,
       availablePoints: 0,
       farmUpgrades: {
@@ -21143,17 +19852,8 @@
     },
     attackSerial: 0,
     projectileSerial: 0,
-    raidSummonSerial: 0,
     bossSummonSerial: 0,
     combatLog: [],
-    farmBossProgress: {
-      currentStage: 1,
-      highestClearedRaidStage: 0,
-      encounterSeed: 2738959287,
-      encounterEpoch: 0,
-      nextSelectionId: 1,
-      selections: []
-    },
     scene: "farm",
     running: false,
     encounter: {
@@ -21214,9 +19914,6 @@
         z: 0
       }
     },
-    raidExpectedPlayers: ["solo"],
-    raidRosters: [],
-    raidDeploymentStarted: false,
     metrics: {
       births: 0,
       merges: 0,
@@ -21292,13 +19989,6 @@
       calculation: JSON_PAYLOAD
     }
   );
-  var SETTLEMENT = FIELDS(
-    "key ownerId sessionId encounterId runSequence outcome status completedAtMs availableAtStart originalUnitsDeployed deploymentMultiplier",
-    {
-      sleptFarmUnitIds: [true],
-      reward: JSON_PAYLOAD
-    }
-  );
   var PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
     farmPlots: {
       plots: [FIELDS("id capacityLevel", { facilities: [FIELDS("id level")] })],
@@ -21307,20 +19997,6 @@
       targetBasisPoints: [true]
     }
   });
-  var RUNTIME_PROGRESSION = FIELDS("schemaVersion level availablePoints", {
-    farmUpgrades: PROGRESSION.farmUpgrades,
-    abilities: PROGRESSION.abilities,
-    formationSkills: PROGRESSION.formationSkills,
-    raidDeploymentCards: PROGRESSION.raidDeploymentCards
-  });
-  var ROSTER = FIELDS(
-    "ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt",
-    {
-      troops: [FIELDS("farmId species tier deployed")],
-      deploymentCardSpecies: [true],
-      abilitySnapshot: RUNTIME_PROGRESSION
-    }
-  );
   var PROJECTILE = FIELDS(
     "isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex",
     {
@@ -21346,21 +20022,16 @@
     units: [UNIT2],
     boss: BOSS,
     playerProgression: PROGRESSION,
-    raidRosters: [ROSTER],
     projectiles: [PROJECTILE],
     cornAttachments: FIELDS("nextGroupId nextAttachmentId", { groups: [CORN_GROUP] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS("species tier count")],
-    raidSettlementReceipts: [SETTLEMENT],
     food: [FIELDS("x y z vx vy vz seed phase tx ty")],
     events: [JSON_PAYLOAD],
     effects: [JSON_PAYLOAD],
     notices: [JSON_PAYLOAD],
     combatLog: [JSON_PAYLOAD],
-    farmBossProgress: shapeFields(FARM_SNAPSHOT_SHAPE.farmBossProgress, {
-      selections: [FIELDS("stage species selectionId")]
-    }),
     mergeTasks: [
       FIELDS("phase aId bId elapsed duration resultId sourceSpecies sourceTier centerX centerY centerZ", {
         materialIds: [true],
@@ -21479,7 +20150,7 @@
         SAFE_COUNTERS.has(key) ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER : Number.isFinite(v) && Math.abs(v) < 1e13
       );
     } else if (Array.isArray(v)) {
-      const MAX = key === "units" ? CONFIG.raid.capacity.battleUnits : key === "projectiles" ? CONFIG.raid.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : key === "raidSettlementReceipts" ? 128 : 1024;
+      const MAX = key === "units" ? CONFIG.battle.capacity.battleUnits : key === "projectiles" ? CONFIG.battle.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : 1024;
       ASSERT2(v.length <= MAX);
       v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === "object") {
@@ -21550,7 +20221,7 @@
     ASSERT2(
       INTEGER2(raw.seed, 0, 4294967295) && INTEGER2(raw.rng.state, 0, 4294967295) && INTEGER2(raw.simulationTick, 0, 1e12)
     );
-    ASSERT2(["farm", "raid"].includes(raw.scene));
+    ASSERT2(raw.scene === "farm");
     ASSERT2(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
     const MERGE_TASK_UNIT_IDS = /* @__PURE__ */ new Set(), PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
     for (const T of raw.mergeTasks) {
@@ -21583,7 +20254,7 @@
       }
     }
     ASSERT2(
-      raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : CONFIG.raid.capacity.battleUnits) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.raid.capacity.projectiles
+      raw.units.length <= (raw.scene === "farm" ? raw.farmBossEvent?.phase === "idle" ? CONFIG.farm.capacity.max : CONFIG.farm.capacity.battleUnits : 0) && raw.food.length <= 140 && raw.projectiles.length <= CONFIG.battle.capacity.projectiles
     );
     ASSERT2(
       raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0
@@ -21622,7 +20293,7 @@
       );
     }
     ASSERT2(
-      raw.bossRewardWatermarks && INTEGER2(raw.bossRewardWatermarks.farm, 0, 1e12) && INTEGER2(raw.bossRewardWatermarks.raid, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm
+      raw.bossRewardWatermarks && INTEGER2(raw.bossRewardWatermarks.farm, 0, 1e12) && raw.nextBossEncounterId > raw.bossRewardWatermarks.farm
     );
     ASSERT2(
       raw.bossRewardStreams && typeof raw.bossRewardStreams === "object" && Object.keys(raw.bossRewardStreams).length === 3 && ["normal", "event", "firstClear"].every((key) => Object.hasOwn(raw.bossRewardStreams, key))
@@ -21644,7 +20315,7 @@
     const REWARD_IDS = /* @__PURE__ */ new Set(), QUEUED_BY_GROUP = /* @__PURE__ */ new Map();
     for (const REWARD2 of raw.bossRewardReceipts) {
       ASSERT2(
-        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && ["farm", "raid"].includes(REWARD2.source) && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && typeof REWARD2.firstClear === "boolean" && (REWARD2.source === "raid" || !REWARD2.firstClear)
+        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && REWARD2.source === "farm" && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && typeof REWARD2.firstClear === "boolean" && !REWARD2.firstClear
       );
       const KEY2 = REWARD2.receiptKey || REWARD2.source + ":" + REWARD2.encounterId;
       ASSERT2(!REWARD_IDS.has(KEY2));
@@ -21696,44 +20367,6 @@
     ASSERT2(
       INVENTORY.size === QUEUED_BY_GROUP.size && [...INVENTORY].every(([key, quantity]) => QUEUED_BY_GROUP.get(key) === quantity)
     );
-    const STAGE_PROGRESS = raw.farmBossProgress;
-    ASSERT2(
-      STAGE_PROGRESS && INTEGER2(STAGE_PROGRESS.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER2(STAGE_PROGRESS.highestClearedRaidStage, 0, BOSS_REWARD_SETTINGS.maxStage) && INTEGER2(STAGE_PROGRESS.encounterSeed, 0, 4294967295) && INTEGER2(STAGE_PROGRESS.encounterEpoch, 0, 1e12) && INTEGER2(STAGE_PROGRESS.nextSelectionId, 1, 1e12) && Array.isArray(STAGE_PROGRESS.selections) && STAGE_PROGRESS.selections.length <= BOSS_REWARD_SETTINGS.maxStage
-    );
-    const STAGE_IDS = /* @__PURE__ */ new Set(), SELECTION_IDS = /* @__PURE__ */ new Set();
-    for (const SELECTION of STAGE_PROGRESS.selections) {
-      ASSERT2(
-        SELECTION && INTEGER2(SELECTION.stage, 1, BOSS_REWARD_SETTINGS.maxStage) && INTEGER2(SELECTION.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(SELECTION.selectionId, 1, STAGE_PROGRESS.nextSelectionId - 1) && !STAGE_IDS.has(SELECTION.stage) && !SELECTION_IDS.has(SELECTION.selectionId)
-      );
-      STAGE_IDS.add(SELECTION.stage);
-      SELECTION_IDS.add(SELECTION.selectionId);
-    }
-    ASSERT2(
-      INTEGER2(raw.nextRaidRunSequence, 0, 1e12) && INTEGER2(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) && raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid && raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid && Array.isArray(raw.raidSettlementReceipts)
-    );
-    const ACTIVE_RAID = raw.activeRaidRunSequence, ACTIVE_SESSION = raw.activeRaidSessionId;
-    ASSERT2(ACTIVE_RAID === null === (ACTIVE_SESSION === null));
-    if (ACTIVE_RAID === null) {
-      ASSERT2(raw.nextRaidRunSequence === raw.raidSettlementWatermark);
-    } else {
-      ASSERT2(
-        INTEGER2(ACTIVE_RAID, 1, 1e12) && ACTIVE_RAID === raw.nextRaidRunSequence && ACTIVE_RAID === raw.raidSettlementWatermark + 1 && typeof ACTIVE_SESSION === "string" && ACTIVE_SESSION.trim().length > 0 && ACTIVE_SESSION.length <= 128
-      );
-    }
-    const RAID_RECEIPT_KEYS = /* @__PURE__ */ new Set();
-    for (const RECEIPT of raw.raidSettlementReceipts) {
-      ASSERT2(
-        RECEIPT && typeof RECEIPT.ownerId === "string" && RECEIPT.ownerId.length > 0 && typeof RECEIPT.sessionId === "string" && RECEIPT.sessionId.length > 0 && INTEGER2(RECEIPT.encounterId, 1, 1e12) && INTEGER2(RECEIPT.runSequence, 1, raw.raidSettlementWatermark) && ["victory", "defeat", "aborted"].includes(RECEIPT.outcome)
-      );
-      ASSERT2(
-        RECEIPT.status === "settled" && RECEIPT.key === raidSettlementKey({
-          ownerId: RECEIPT.ownerId,
-          sessionId: RECEIPT.sessionId,
-          encounterId: RECEIPT.encounterId
-        }) && !RAID_RECEIPT_KEYS.has(RECEIPT.key) && RECEIPT.runSequence <= raw.raidSettlementWatermark && Array.isArray(RECEIPT.sleptFarmUnitIds) && RECEIPT.sleptFarmUnitIds.every((id) => INTEGER2(id, 1, CONFIG.farm.maxUnitId)) && new Set(RECEIPT.sleptFarmUnitIds).size === RECEIPT.sleptFarmUnitIds.length && INTEGER2(RECEIPT.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) && INTEGER2(RECEIPT.originalUnitsDeployed, 0, RECEIPT.availableAtStart) && Number.isFinite(RECEIPT.deploymentMultiplier) && RECEIPT.deploymentMultiplier >= 0 && RECEIPT.deploymentMultiplier <= 2 && (RECEIPT.completedAtMs === null || Number.isFinite(RECEIPT.completedAtMs) && RECEIPT.completedAtMs >= 0) && (RECEIPT.reward === null || RECEIPT.reward && typeof RECEIPT.reward === "object" && !Array.isArray(RECEIPT.reward))
-      );
-      RAID_RECEIPT_KEYS.add(RECEIPT.key);
-    }
     if (FARM_EVENT.outcome === "victory" && FARM_EVENT.phase !== "idle") {
       const RECEIPT = raw.bossRewardReceipts.find(
         (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
@@ -21745,35 +20378,7 @@
     ASSERT2(
       raw.corpseRecoveryVersion === 1 && INTEGER2(raw.nextId, 1, 1e9) && INTEGER2(raw.bossSummonSerial, 0, 1e12) && INTEGER2(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51
     );
-    ASSERT2(
-      Array.isArray(raw.raidExpectedPlayers) && raw.raidExpectedPlayers.length >= 1 && raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players && raw.raidExpectedPlayers.every((p) => typeof p === "string" && p.length > 0) && new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length && Array.isArray(raw.raidRosters)
-    );
-    const ROSTER_OWNERS = /* @__PURE__ */ new Set(), MANIFEST = /* @__PURE__ */ new Set();
-    for (const R2 of raw.raidRosters) {
-      ASSERT2(
-        raw.raidExpectedPlayers.includes(R2.ownerId) && !ROSTER_OWNERS.has(R2.ownerId) && Array.isArray(R2.troops) && R2.troops.length <= CONFIG.raid.capacity.playerUnits && Array.isArray(R2.deploymentCardSpecies) && R2.deploymentCardSpecies.length <= 4 && R2.deploymentCardSpecies.every((speciesId) => INTEGER2(speciesId, 0, CONFIG.unit.speciesCount - 1)) && new Set(R2.deploymentCardSpecies).size === R2.deploymentCardSpecies.length && isValidAbilityRuntimeSnapshot(R2.abilitySnapshot)
-      );
-      ASSERT2(
-        typeof R2.settlementSessionId === "string" && R2.settlementSessionId.length <= 128 && INTEGER2(R2.settlementRunSequence, 0, 1e12) && INTEGER2(R2.settlementEncounterId, 0, 1e12)
-      );
-      ASSERT2(
-        R2.settlementRunSequence === 0 ? R2.settlementSessionId === "" && R2.settlementEncounterId === 0 : R2.settlementSessionId.trim().length > 0 && R2.settlementEncounterId === R2.settlementRunSequence
-      );
-      ROSTER_OWNERS.add(R2.ownerId);
-      const IDS2 = /* @__PURE__ */ new Set();
-      for (const T of R2.troops) {
-        ASSERT2(
-          INTEGER2(T.farmId, 1, CONFIG.farm.maxUnitId) && INTEGER2(T.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(T.tier, 1, CONFIG.unit.maxTier) && typeof T.deployed === "boolean" && !IDS2.has(T.farmId)
-        );
-        IDS2.add(T.farmId);
-        MANIFEST.add(R2.ownerId + ":" + T.farmId);
-      }
-      ASSERT2(
-        INTEGER2(R2.lastDeploySequence, 0, R2.troops.length) && R2.lastDeploySequence === R2.troops.filter((t) => t.deployed).length && Number.isFinite(R2.buffUntil) && Number.isFinite(R2.buffReadyAt) && R2.buffUntil >= 0 && R2.buffReadyAt >= 0
-      );
-    }
-    ASSERT2(MANIFEST.size <= CONFIG.raid.capacity.units);
-    const IDS = /* @__PURE__ */ new Set(), DEPLOYED = /* @__PURE__ */ new Set(), MATE_ID_LIMIT = raw.scene === "raid" ? CONFIG.raid.capacity.players * CONFIG.raid.ids.playerStride + CONFIG.raid.capacity.playerUnits : CONFIG.farm.maxUnitId;
+    const IDS = /* @__PURE__ */ new Set(), MATE_ID_LIMIT = CONFIG.farm.maxUnitId;
     const UNITS_BY_ID = /* @__PURE__ */ new Map(), SUMMONS_BY_PARENT = /* @__PURE__ */ new Map();
     for (const U of raw.units) {
       shape(U, UNIT_SNAPSHOT_SHAPE);
@@ -21827,12 +20432,12 @@
       if (U.isBattleOnlySummon) {
         if (U.isFormationClone) {
           ASSERT2(
-            U.battleSummonKind === "formation-copy" && U.faction === "player" && U.hp > 0 && U.hp <= 1 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.eligibleForRaidDeployment === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && INTEGER2(U.battleSummonParentId, 1, 1e12)
+            U.battleSummonKind === "formation-copy" && U.faction === "player" && U.hp > 0 && U.hp <= 1 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && INTEGER2(U.battleSummonParentId, 1, 1e12)
           );
-          ASSERT2(raw.scene === "raid" ? raw.running : raw.farmBossEvent.phase === "fighting");
+          ASSERT2(raw.farmBossEvent.phase === "fighting");
         } else if (U.battleSummonKind === "peanut-death-split") {
           ASSERT2(
-            ["farm", "raid"].includes(raw.scene) && INTEGER2(U.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && INTEGER2(U.battleSummonParentGeneration, 1, 1e12) && U.battleSummonEncounterId === 0 && U.species === 4 && hasUnitCapability(U.species, "deathSplit") && U.tier === 1 && U.permanentStatMultiplier <= 2.25 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.eligibleForRaidDeployment === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && U.deathSplitHandled === false && U.splitUsedThisBattle === true && U.hp > 0
+            raw.scene === "farm" && INTEGER2(U.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) && INTEGER2(U.battleSummonParentGeneration, 1, 1e12) && U.battleSummonEncounterId === 0 && U.species === 4 && hasUnitCapability(U.species, "deathSplit") && U.tier === 1 && U.permanentStatMultiplier <= 2.25 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && U.deathSplitHandled === false && U.splitUsedThisBattle === true && U.hp > 0
           );
           const PARENT = UNITS_BY_ID.get(U.battleSummonParentId);
           ASSERT2(
@@ -21841,32 +20446,18 @@
           const LIST = SUMMONS_BY_PARENT.get(PARENT.id) || [];
           LIST.push(U);
           SUMMONS_BY_PARENT.set(PARENT.id, LIST);
-          if (raw.scene === "raid") {
-            ASSERT2(
-              U.id >= CONFIG.raid.ids.summonBase && U.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits && raw.raidExpectedPlayers.includes(U.ownerId) && INTEGER2(U.farmId, 1, CONFIG.farm.maxUnitId)
-            );
-          } else {
-            ASSERT2(INTEGER2(U.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
-          }
+          ASSERT2(INTEGER2(U.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== "idle");
         } else {
           ASSERT2(
-            U.battleSummonKind === "boss-mouth-t1" && U.battleSummonParentId === 0 && INTEGER2(U.battleSummonEncounterId, 1, 1e12) && U.battleSummonEncounterId === raw.boss.encounterId && U.species === raw.boss.species && U.tier === 1 && U.ownerId === "boss" && U.farmId === 0 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.eligibleForRaidDeployment === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && U.deathSplitHandled === false && U.splitUsedThisBattle === true && U.hp > 0 && U.battleSummonEncounterId > 0 && U.id >= CONFIG.boss.summonIdBase && U.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial
+            U.battleSummonKind === "boss-mouth-t1" && U.battleSummonParentId === 0 && INTEGER2(U.battleSummonEncounterId, 1, 1e12) && U.battleSummonEncounterId === raw.boss.encounterId && U.species === raw.boss.species && U.tier === 1 && U.ownerId === "boss" && U.farmId === 0 && U.canSplit === false && U.countsTowardPermanentRoster === false && U.breedingEligible === false && U.mergeEligible === false && U.usesPersistentSleep === false && U.lifetime === "until-death-or-battle-end" && U.deathSplitHandled === false && U.splitUsedThisBattle === true && U.hp > 0 && U.battleSummonEncounterId > 0 && U.id >= CONFIG.boss.summonIdBase && U.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial
           );
-          ASSERT2(raw.scene === "raid" ? raw.running && raw.boss.active : raw.farmBossEvent.phase === "fighting");
+          ASSERT2(raw.farmBossEvent.phase === "fighting");
         }
       } else {
         ASSERT2(
-          U.battleSummonKind === "" && U.battleSummonParentId === 0 && U.battleSummonEncounterId === 0 && U.countsTowardPermanentRoster === true && U.eligibleForRaidDeployment === true && U.breedingEligible === true && U.mergeEligible === true && U.canSplit === true && U.usesPersistentSleep === true && U.lifetime === ""
+          U.battleSummonKind === "" && U.battleSummonParentId === 0 && U.battleSummonEncounterId === 0 && U.countsTowardPermanentRoster === true && U.breedingEligible === true && U.mergeEligible === true && U.canSplit === true && U.usesPersistentSleep === true && U.lifetime === ""
         );
-        if (raw.scene === "raid") {
-          const ROSTER2 = raw.raidRosters.find((r) => r.ownerId === U.ownerId), TROOP_INDEX = ROSTER2?.troops.findIndex((t) => t.farmId === U.farmId) ?? -1, SLOT = raw.raidExpectedPlayers.indexOf(U.ownerId), CURRENT_ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1, LEGACY_ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + U.farmId;
-          ASSERT2(
-            raw.raidExpectedPlayers.includes(U.ownerId) && INTEGER2(U.farmId, 1, CONFIG.farm.maxUnitId) && MANIFEST.has(U.ownerId + ":" + U.farmId) && !DEPLOYED.has(U.ownerId + ":" + U.farmId) && (U.id === CURRENT_ID || U.farmId <= CONFIG.farm.capacity.max && U.id === LEGACY_ID)
-          );
-          DEPLOYED.add(U.ownerId + ":" + U.farmId);
-        } else {
-          ASSERT2(INTEGER2(U.id, 1, raw.nextId - 1));
-        }
+        ASSERT2(INTEGER2(U.id, 1, raw.nextId - 1));
       }
       if (U.ability.action) {
         const A = U.ability.action;
@@ -21938,11 +20529,7 @@
       ASSERT2(INTEGER2(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
       PROJECTILE_IDS.add(P.id);
       ASSERT2(
-        INTEGER2(
-          P.owner,
-          1,
-          raw.scene === "raid" ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1 : raw.nextId - 1
-        ) || INTEGER2(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial)
+        INTEGER2(P.owner, 1, raw.nextId - 1) || INTEGER2(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial)
       );
       ASSERT2(
         P.targetId === void 0 || P.targetId === "boss" || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial)
@@ -21961,11 +20548,11 @@
     }
     const ATTACHMENTS = /* @__PURE__ */ new Set(), CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
     ASSERT2(
-      INTEGER2(raw.cornAttachments.nextGroupId, 1, 1e12) && INTEGER2(raw.cornAttachments.nextAttachmentId, 1, 1e12) && Array.isArray(raw.cornAttachments.groups) && raw.cornAttachments.groups.length <= CONFIG.raid.capacity.projectiles
+      INTEGER2(raw.cornAttachments.nextGroupId, 1, 1e12) && INTEGER2(raw.cornAttachments.nextAttachmentId, 1, 1e12) && Array.isArray(raw.cornAttachments.groups) && raw.cornAttachments.groups.length <= CONFIG.battle.capacity.projectiles
     );
     for (const GROUP of raw.cornAttachments.groups) {
       ASSERT2(
-        INTEGER2(GROUP.id, 1, raw.cornAttachments.nextGroupId - 1) && INTEGER2(GROUP.targetGeneration, 1, 1e12) && (GROUP.targetId === "boss" || VALID_BATTLE_UNIT_ID(GROUP.targetId, raw.bossSummonSerial)) && ["collecting", "exploding", "complete", "cancelled"].includes(GROUP.status) && Number.isFinite(GROUP.targetX) && Number.isFinite(GROUP.targetY) && Number.isFinite(GROUP.targetZ) && INTEGER2(GROUP.firstAttachTick, 0, raw.simulationTick) && GROUP.closeAtTick === GROUP.firstAttachTick + CORN_DEFINITION.attachDelayTicks && (GROUP.nextExplosionTick === null || INTEGER2(GROUP.nextExplosionTick, 0, 1e12)) && Array.isArray(GROUP.attachments) && GROUP.attachments.length > 0 && GROUP.attachments.length <= CONFIG.raid.capacity.projectiles
+        INTEGER2(GROUP.id, 1, raw.cornAttachments.nextGroupId - 1) && INTEGER2(GROUP.targetGeneration, 1, 1e12) && (GROUP.targetId === "boss" || VALID_BATTLE_UNIT_ID(GROUP.targetId, raw.bossSummonSerial)) && ["collecting", "exploding", "complete", "cancelled"].includes(GROUP.status) && Number.isFinite(GROUP.targetX) && Number.isFinite(GROUP.targetY) && Number.isFinite(GROUP.targetZ) && INTEGER2(GROUP.firstAttachTick, 0, raw.simulationTick) && GROUP.closeAtTick === GROUP.firstAttachTick + CORN_DEFINITION.attachDelayTicks && (GROUP.nextExplosionTick === null || INTEGER2(GROUP.nextExplosionTick, 0, 1e12)) && Array.isArray(GROUP.attachments) && GROUP.attachments.length > 0 && GROUP.attachments.length <= CONFIG.battle.capacity.projectiles
       );
       for (const ATTACHMENT of GROUP.attachments) {
         ASSERT2(
@@ -21974,9 +20561,7 @@
         ATTACHMENTS.add(ATTACHMENT.id);
       }
     }
-    ASSERT2(
-      INTEGER2(raw.projectileSerial, 0, 1e12) && INTEGER2(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) && INTEGER2(raw.bossSummonSerial, 0, 1e12)
-    );
+    ASSERT2(INTEGER2(raw.projectileSerial, 0, 1e12) && INTEGER2(raw.bossSummonSerial, 0, 1e12));
     ASSERT2(
       hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && INTEGER2(raw.boss.generation, 1, 1e12) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && INTEGER2(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && INTEGER2(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && INTEGER2(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75 && validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets)
     );
@@ -22001,7 +20586,7 @@
     if (RUNTIME.active) {
       const A = RUNTIME.active;
       ASSERT2(
-        BOSS_PATTERN_IDS.includes(A.id) && ["windup", "active", "recover"].includes(A.phase) && Number.isFinite(A.phaseElapsed) && A.phaseElapsed >= 0 && Number.isFinite(A.aim) && (A.targetId === 0 || VALID_BATTLE_UNIT_ID(A.targetId, raw.bossSummonSerial)) && typeof A.locked === "boolean" && Array.isArray(A.hitIds) && A.hitIds.length <= CONFIG.raid.capacity.battleUnits && A.hitIds.every((id) => VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial)) && new Set(A.hitIds).size === A.hitIds.length && INTEGER2(A.released, 0, 4) && INTEGER2(A.volleyCount, 0, 4)
+        BOSS_PATTERN_IDS.includes(A.id) && ["windup", "active", "recover"].includes(A.phase) && Number.isFinite(A.phaseElapsed) && A.phaseElapsed >= 0 && Number.isFinite(A.aim) && (A.targetId === 0 || VALID_BATTLE_UNIT_ID(A.targetId, raw.bossSummonSerial)) && typeof A.locked === "boolean" && Array.isArray(A.hitIds) && A.hitIds.length <= CONFIG.battle.capacity.battleUnits && A.hitIds.every((id) => VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial)) && new Set(A.hitIds).size === A.hitIds.length && INTEGER2(A.released, 0, 4) && INTEGER2(A.volleyCount, 0, 4)
       );
       if (A.target) {
         ASSERT2(Number.isFinite(A.target.x) && Number.isFinite(A.target.y) && Number.isFinite(A.target.z));
@@ -22012,9 +20597,6 @@
     }
     ASSERT2(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
     ASSERT2(raw.running === (raw.encounter.outcome === "fighting"));
-    ASSERT2(
-      typeof raw.raidDeploymentStarted === "boolean" && (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length)
-    );
     return true;
   }
   function validatePath(p) {
@@ -22028,8 +20610,8 @@
   // src/farm-snapshot-migrations.js
   init_farm_plot();
   init_world_map();
-  function normalizeSnapshot(raw, { clone: clone2 = true } = {}) {
-    const SNAPSHOT = clone2 ? structuredClone(raw) : raw;
+  function normalizeSnapshot(raw, { clone = true } = {}) {
+    const SNAPSHOT = clone ? structuredClone(raw) : raw;
     SNAPSHOT.materials ??= { wood: 0, stone: 0 };
     SNAPSHOT.savedSites ??= [];
     SNAPSHOT.worldMap ??= createWorldMap(SNAPSHOT.seed, INITIAL_FARM_PLOT_ID);
@@ -22585,25 +21167,6 @@
       }
     }
   };
-
-  // src/raid-roster.js
-  init_factions();
-  function raidRosterEntries(units, limit = 100) {
-    if (!Array.isArray(units) || !Number.isSafeInteger(limit) || limit < 0) {
-      return [];
-    }
-    return units.filter(
-      (unit) => unit?.hp > 0 && unit.down <= 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false
-    ).slice(0, limit).map((unit) => [unit.id, unit.species, unit.tier]);
-  }
-  function hasRaidRosterEntries(units) {
-    return Array.isArray(units) && units.some(
-      (unit) => unit?.hp > 0 && unit.down <= 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon && unit.countsTowardPermanentRoster !== false && unit.eligibleForRaidDeployment !== false
-    );
-  }
-
-  // src/farm-app.js
-  init_ability_state();
 
   // src/ability-tree.js
   init_ability_catalog();
@@ -23478,7 +22041,6 @@
   var miniMapView = null;
   var lastLit = null;
   var bossPauseBeforeOpen = null;
-  var lastAutoSettledRunKey = null;
   var bossRewardRevealTimer = null;
   var bossRewardCalculationTimer = null;
   var bossRewardDialogReceiptKey = null;
@@ -23497,15 +22059,6 @@
     const QUEUED = active?.queue(kind, payload) ?? false;
     setTimeout(renderProgressionResetActions, 180);
     return QUEUED;
-  });
-  var RAID_DEPLOYMENT_UI = new RaidDeploymentCardsUI({
-    command: (kind, payload) => {
-      const QUEUED = active?.queue(kind, payload) ?? false;
-      setTimeout(renderProgressionResetActions, 180);
-      return QUEUED;
-    },
-    deploy: (speciesId) => active?.deployNext(speciesId) ?? false,
-    canDeploy: () => canUseWorldInput() && active?.world.scene === "raid" && !panPointer
   });
   var PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
   STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
@@ -23551,24 +22104,17 @@
     const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0, PLACED = reward.placedCount ?? reward.grantedCount ?? 0, QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
     return ACQUIRED + "개 획득 · " + PLACED + "개 배치" + (QUEUED ? " · 공간 대기 " + QUEUED + "개" : "");
   }
-  function persistBossRewardSettlement(world) {
-    if (!saveImmediate(world)) {
-      DOLLAR2("bossRewardSummary").textContent = "보상 진행 상황을 저장하지 못했어요: " + STORAGE.error;
-      return false;
-    }
-    return true;
-  }
   var BOSS_REWARD_CHEST_TIERS = ["wood", "iron", "gold", "magic", "jade"];
   function bossRewardChestTier(receipt) {
-    if (receipt.source !== "raid" || !receipt.stage) {
+    if (!receipt.stage) {
       return "wood";
     }
     return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
   }
   function renderBossRewardBoxes(receipt) {
     DOLLAR2("bossRewardChest").dataset.tier = bossRewardChestTier(receipt);
-    const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? (receipt.source === "farm" ? 0.1 : FIRST_CLEAR ? 0.15 : 0.05), CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR2("bossRewardStage").textContent = receipt.stage ? (receipt.source === "raid" ? "승리 · " : "농장 레이드 · ") + receipt.stage + "단계" : receipt.source === "farm" ? "농장 레이드 승리" : "레이드 보스 승리";
+    const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? 0.1, CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
+    DOLLAR2("bossRewardStage").textContent = receipt.stage ? `보스 격파 · ${receipt.stage}단계` : "보스 격파";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
     DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · " + (FIRST_CLEAR ? "첫 클리어 " : "재도전 ") + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
@@ -23697,21 +22243,6 @@
     clearInterval(bossRewardCalculationTimer);
     bossRewardCalculationTimer = null;
   }
-  function advanceRaidRewardCalculation() {
-    const WORLD = personalGarden, RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-    if (!WORLD || !RECEIPT || RECEIPT.source !== "raid" || RECEIPT.status !== "calculating") {
-      stopBossRewardCalculation();
-      return;
-    }
-    advanceBossRewardCalculations(WORLD);
-    if (RECEIPT.status !== "calculating") {
-      stopBossRewardCalculation();
-      persistBossRewardSettlement(WORLD);
-    }
-    if (!DOLLAR2("bossRewardDialog").hidden) {
-      renderBossRewardBoxes(RECEIPT);
-    }
-  }
   function showBossRewardDialog(receipt, { auto = false } = {}) {
     if (!receipt || !["calculating", "ready"].includes(receipt.status)) {
       return;
@@ -23734,7 +22265,7 @@
       bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
     }
   }
-  function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } = {}) {
+  function syncBossRewardDialog(world, { receiptKey = null } = {}) {
     const RECEIPT = receiptKey ? world?.bossRewardReceipts.find((reward) => reward.receiptKey === receiptKey) : latestBossReward(world), BUTTON = DOLLAR2("bossRewardOpen"), DIALOG = DOLLAR2("bossRewardDialog");
     if (home) {
       DIALOG.hidden = true;
@@ -23752,21 +22283,12 @@
       return;
     }
     BUTTON.textContent = RECEIPT.status === "calculating" ? "보상 계산 중…" : "보상 상자 열기";
-    if (raidVictory && RECEIPT.status === "calculating" && (DIALOG.hidden || bossRewardDialogReceiptKey !== RECEIPT.receiptKey)) {
-      showBossRewardDialog(RECEIPT);
-    }
     if (RECEIPT.status === "ready" && RECEIPT.revealedCount < RECEIPT.boxCount && !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)) {
       showBossRewardDialog(RECEIPT, { auto: true });
     } else if (!DIALOG.hidden && bossRewardDialogReceiptKey === RECEIPT.receiptKey) {
       renderBossRewardBoxes(RECEIPT);
     }
-    if (raidVictory && RECEIPT.status === "calculating") {
-      if (!bossRewardCalculationTimer) {
-        bossRewardCalculationTimer = setInterval(advanceRaidRewardCalculation, 50);
-      }
-    } else {
-      stopBossRewardCalculation();
-    }
+    stopBossRewardCalculation();
   }
   function closeBossRewardDialog() {
     const WORLD = personalGarden || active?.world, RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
@@ -23825,7 +22347,7 @@
     TEXT.select();
     DOLLAR2("diagnosticStatus").textContent = "명시적으로 요청한 상세 JSON이에요. 저장 데이터는 포함하지 않아요.";
   };
-  var FAIL3 = (error) => {
+  var FAIL2 = (error) => {
     DOLLAR2("error").hidden = false;
     DOLLAR2("error").textContent = "농장을 진행하지 못했어요. " + error.message;
     console.error(error);
@@ -23953,28 +22475,6 @@
     personalGarden = world;
     unsubscribeProgress = world?.onProgressChanged.on(() => AUTOSAVE.markDirty()) ?? null;
   }
-  function onWorldStep(world) {
-    if (world?.scene !== "raid" || !["victory", "defeat"].includes(world.encounter?.outcome) || !personalGarden || personalGarden.activeRaidRunSequence === null) {
-      return;
-    }
-    const OWNER_ID = active?.localPlayerId, RUN = {
-      sessionId: personalGarden.activeRaidSessionId,
-      runSequence: personalGarden.activeRaidRunSequence
-    };
-    if (!OWNER_ID || !RUN.sessionId || !RUN.runSequence) {
-      return;
-    }
-    const RUN_KEY = `${RUN.sessionId}:${RUN.runSequence}`;
-    if (lastAutoSettledRunKey === RUN_KEY) {
-      return;
-    }
-    try {
-      persistRaidSettlement(localSettlementRoster(world, OWNER_ID, RUN), OWNER_ID);
-      lastAutoSettledRunKey = RUN_KEY;
-    } catch (error) {
-      FAIL3(error);
-    }
-  }
   function persist() {
     if (active?.world === personalGarden) {
       active.flushQueuedCommands();
@@ -24037,8 +22537,7 @@
     active?.dispose();
     RENDERER.resetPan();
     active = new FarmSession(world, {
-      onError: FAIL3,
-      onWorldStep
+      onError: FAIL2
     });
     world.neighbourWalkers = loadWalkerSetting(world.neighbourWalkers);
     DOLLAR2("neighbourWalkers").value = String(world.neighbourWalkers);
@@ -24247,28 +22746,20 @@
   }
   function openBossEncounter(push = true) {
     stopWorldInput();
-    if (active?.world?.scene === "raid") {
-      say("이미 레이드 중이에요.");
-      return false;
-    }
     if (!personalGarden) {
-      if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
+      if (STORAGE.world) {
         start(restore(snapshot(STORAGE.world)), false);
       } else {
-        say("내 정원으로 돌아간 뒤에 레이드를 열 수 있어요.");
+        say("농장으로 돌아간 뒤에 지도를 열 수 있어요.");
         return false;
       }
     }
     if (personalGarden.farmBossEvent?.phase !== "idle") {
-      say("농장 이벤트가 끝난 뒤에 열 수 있어요.");
-      return false;
-    }
-    if (personalGarden.activeRaidRunSequence !== null) {
-      say("진행 중인 레이드를 먼저 마쳐 주세요.");
+      say("전투가 끝난 뒤에 열 수 있어요.");
       return false;
     }
     if (!persist()) {
-      say(`저장하지 못해서 레이드를 열지 못했어요: ${STORAGE.error || "저장 오류"}`);
+      say(`저장하지 못해서 지도를 열지 못했어요: ${STORAGE.error || "저장 오류"}`);
       return false;
     }
     if (menuOpen) {
@@ -24315,10 +22806,8 @@
     }
   }
   function refreshStart() {
-    const HAS_RESERVED_RAID = STORAGE.hasReservedRaid, LIVE_RAID = active?.world?.scene === "raid", STALE_RAID = HAS_RESERVED_RAID && !LIVE_RAID;
-    DOLLAR2("continueGame").disabled = !STORAGE.hasWorld || STALE_RAID;
-    DOLLAR2("startBossEncounter").disabled = !STORAGE.hasWorld || STALE_RAID;
-    DOLLAR2("staleRaidNotice").hidden = !STALE_RAID;
+    DOLLAR2("continueGame").disabled = !STORAGE.hasWorld;
+    DOLLAR2("startBossEncounter").disabled = !STORAGE.hasWorld;
     DOLLAR2("exportSave").disabled = !STORAGE.raw;
     DOLLAR2("saveNotice").textContent = STORAGE.error || STORAGE.notice;
   }
@@ -24338,7 +22827,7 @@
     DOLLAR2("startScreen").hidden = !value;
     active.paused = value;
     if (push) {
-      history.pushState(null, "", value ? "#/" : active.world.scene === "raid" ? "#/raid" : "#/farm");
+      history.pushState(null, "", value ? "#/" : "#/farm");
     }
     refreshStart();
     if (value) {
@@ -24414,111 +22903,6 @@
       markSeen();
     }
   }
-  function localSettlementRoster(world, ownerId, run) {
-    const CURRENT = world.raidRosters?.find((roster) => roster.ownerId === ownerId);
-    if (CURRENT) {
-      if (CURRENT.settlementRunSequence !== run.runSequence || CURRENT.settlementSessionId !== run.sessionId || CURRENT.settlementEncounterId !== run.runSequence) {
-        throw Error("레이드 명단의 정산 예약이 개인 농장 저장과 일치하지 않아요.");
-      }
-      return world;
-    }
-    const ENTRIES = raidRosterEntries(personalGarden.roster.residents(), CONFIG.raid.capacity.playerUnits).map(
-      ([farmId, species, tier]) => ({
-        farmId,
-        species,
-        tier,
-        deployed: false
-      })
-    );
-    const VIEW = snapshot(world);
-    VIEW.raidExpectedPlayers = [.../* @__PURE__ */ new Set([...VIEW.raidExpectedPlayers, ownerId])];
-    VIEW.raidRosters.push({
-      ownerId,
-      troops: ENTRIES,
-      abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
-      settlementSessionId: run.sessionId,
-      settlementRunSequence: run.runSequence,
-      settlementEncounterId: run.runSequence,
-      lastDeploySequence: 0,
-      buffUntil: 0,
-      buffReadyAt: 0
-    });
-    return VIEW;
-  }
-  function persistRaidSettlement(raidWorld, ownerId) {
-    const FARM_RUN = {
-      sessionId: personalGarden.activeRaidSessionId,
-      runSequence: personalGarden.activeRaidRunSequence
-    };
-    if (!FARM_RUN.sessionId || !FARM_RUN.runSequence) {
-      return false;
-    }
-    const OUTCOME = ["victory", "defeat"].includes(raidWorld.encounter?.outcome) ? raidWorld.encounter.outcome : "aborted";
-    const PREPARE = (base) => settleRaidOwnerFarm(snapshot(base), {
-      ownerId,
-      sessionId: FARM_RUN.sessionId,
-      encounterId: FARM_RUN.runSequence,
-      runSequence: FARM_RUN.runSequence,
-      outcome: OUTCOME,
-      raidWorld,
-      completedAtMs: Date.now(),
-      settleVictory: ({ farm, receiptKey, deploymentMultiplier, firstClear }) => {
-        const GARDEN2 = restore(farm), STAGE = raidWorld.boss.stage || 0, STAGE_REWARD = STAGE ? bossStageStats(STAGE) : null, RESOLVED = settleBossKill(GARDEN2, {
-          encounterId: FARM_RUN.runSequence,
-          source: "raid",
-          stage: STAGE,
-          firstClear,
-          receiptKey,
-          acquisitionMultiplier: deploymentMultiplier,
-          rollBudget: STAGE_REWARD?.rollBudget ?? 1,
-          xpAmount: STAGE_REWARD?.xp,
-          species: raidWorld.boss.species ?? 3,
-          tier: 1,
-          x: raidWorld.boss.x,
-          y: raidWorld.boss.y
-        });
-        const REWARD2 = RESOLVED.receipt;
-        return {
-          farm: snapshot(GARDEN2),
-          summary: {
-            stage: STAGE,
-            acquisition: {
-              status: REWARD2.status,
-              chance: REWARD2.chance,
-              rollCount: REWARD2.rollCount,
-              rollBudget: REWARD2.rollBudget,
-              successCount: REWARD2.successCount,
-              grantedCount: REWARD2.grantedCount,
-              rolls: REWARD2.drops || [],
-              unitId: REWARD2.unitId,
-              receiptKey: REWARD2.receiptKey
-            },
-            xp: {
-              status: REWARD2.xpStatus,
-              amount: REWARD2.xpAmount,
-              levelsGained: REWARD2.levelsGained,
-              pointsAwarded: REWARD2.pointsAwarded,
-              receiptKey: REWARD2.xpReceiptKey
-            }
-          }
-        };
-      }
-    });
-    let settled = PREPARE(personalGarden);
-    let candidate = restore(settled.farm);
-    if (!saveImmediate(candidate)) {
-      if (!STORAGE.refresh()) {
-        throw Error(STORAGE.error || "최신 농장 저장을 다시 읽지 못했어요.");
-      }
-      settled = PREPARE(STORAGE.world);
-      candidate = restore(settled.farm);
-      if (!saveImmediate(candidate)) {
-        throw Error(STORAGE.error || "전투 결과 저장에 실패했어요.");
-      }
-    }
-    replacePersonalGarden(STORAGE.world);
-    return settled;
-  }
   function beginRaid() {
     if (!personalGarden || bossMapTile < 0 || mapChallengeBlockReason() !== "") {
       return;
@@ -24531,45 +22915,24 @@
     active.paused = false;
     active.loop.resetTiming();
   }
-  async function returnToFarm(push = true) {
+  function returnToFarm(push = true) {
     stopWorldInput();
     if (bossEncounterOpen) {
       closeBossEncounter(false);
     }
     if (!personalGarden) {
-      return;
+      return false;
     }
-    if (active?.world?.scene === "raid" && active.world.running) {
-      active.world.finish("defeat");
-    }
-    const RAID_WORLD = active?.world?.scene === "raid" ? snapshot(active.world) : null;
-    if (RAID_WORLD && personalGarden.activeRaidRunSequence !== null) {
-      const OWNER_ID = active.localPlayerId, RUN = {
-        sessionId: personalGarden.activeRaidSessionId,
-        runSequence: personalGarden.activeRaidRunSequence
-      };
-      try {
-        persistRaidSettlement(localSettlementRoster(RAID_WORLD, OWNER_ID, RUN), OWNER_ID);
-      } catch (error) {
-        FAIL3(error);
-        return false;
-      }
-    }
-    install(personalGarden);
     setHome(false, push);
     return true;
   }
   DOLLAR2("continueGame").onclick = () => {
-    if (active?.world?.scene === "raid") {
-      setHome(false);
-      return;
-    }
-    if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
+    if (STORAGE.world) {
       start(restore(snapshot(STORAGE.world)), true, true);
     }
   };
   DOLLAR2("startBossEncounter").onclick = () => {
-    if (!STORAGE.world || STORAGE.world.activeRaidRunSequence !== null) {
+    if (!STORAGE.world) {
       return;
     }
     start(restore(snapshot(STORAGE.world)), false);
@@ -24615,32 +22978,6 @@
       return;
     }
     beginRaid();
-  };
-  DOLLAR2("abortRaidRun").onclick = () => {
-    if (active?.world?.scene === "raid") {
-      return;
-    }
-    const WORLD = STORAGE.world;
-    if (!WORLD || WORLD.activeRaidRunSequence === null) {
-      return refreshStart();
-    }
-    try {
-      const RESULT = abortReservedRaidRun(snapshot(WORLD), {
-        completedAtMs: Date.now()
-      });
-      if (!RESULT.applied) {
-        return refreshStart();
-      }
-      if (!saveImmediate(restore(RESULT.farm))) {
-        DOLLAR2("saveNotice").textContent = STORAGE.error;
-        return;
-      }
-      replacePersonalGarden(STORAGE.world);
-      refreshStart();
-      DOLLAR2("saveNotice").textContent = "이전 레이드를 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.";
-    } catch (error) {
-      FAIL3(error);
-    }
   };
   DOLLAR2("newGame").onclick = () => {
     if (STORAGE.raw && !DOLLAR2("newConfirm").hidden) {
@@ -24732,7 +23069,6 @@
   };
   DOLLAR2("farm").onclick = () => returnToFarm();
   DOLLAR2("raid").onclick = () => openBossEncounter();
-  DOLLAR2("return").onclick = () => returnToFarm();
   DOLLAR2("merge").onclick = () => active?.queue("merge");
   DOLLAR2("merge").addEventListener("keydown", (e) => {
     if (e.repeat && ["Enter", " "].includes(e.key)) {
@@ -24749,7 +23085,7 @@
     }
   };
   function drawTree() {
-    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle";
+    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
     DOLLAR2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
       location: active.world.scene,
       inCombat: IN_COMBAT
@@ -24803,7 +23139,7 @@
     }).join("");
   }
   function drawAbilityTree() {
-    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle";
+    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
     DOLLAR2("abilityPoints").textContent = String(W.playerProgression.availablePoints);
     for (const BUTTON of DOLLAR2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) {
@@ -24827,18 +23163,15 @@
     if (menuTab === "formation") {
       return { type: "formation" };
     }
-    if (menuTab === "deployment") {
-      return { type: "deployment-cards" };
-    }
     return null;
   }
   function renderProgressionResetActions() {
     const HOST = DOLLAR2("progressionResetActions"), CURRENT = DOLLAR2("progressionResetCurrent"), ALL = DOLLAR2("progressionResetAll");
-    if (!active || !menuOpen || !["growth", "abilities", "formation", "deployment"].includes(menuTab)) {
+    if (!active || !menuOpen || !["growth", "abilities", "formation"].includes(menuTab)) {
       HOST.hidden = true;
       return;
     }
-    const W = personalGarden || active.world, IN_COMBAT = active.world.scene === "raid" || W.running || W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : menuTab === "deployment" ? "병력 편성 초기화" : "이 종 특성 초기화";
+    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
     HOST.hidden = false;
     CURRENT.hidden = menuTab === "abilities";
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -24852,13 +23185,12 @@
     growth: "#/growth",
     abilities: "#/abilities",
     help: "#/help",
-    formation: "#/formation",
-    deployment: "#/deployment"
+    formation: "#/formation"
   };
   var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ["farms", "growth", "abilities", "formation", "deployment"].includes(tab);
+    const UPGRADES = ["farms", "growth", "abilities", "formation"].includes(tab);
     DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
     DOLLAR2("gameMenuTitle").textContent = UPGRADES ? "업그레이드" : tab === "help" ? "도움말" : "설정";
     DOLLAR2("gameMenuClose").setAttribute("aria-label", `${DOLLAR2("gameMenuTitle").textContent} 닫기`);
@@ -24880,8 +23212,7 @@
       ["growth", "treePanel"],
       ["abilities", "abilityPanel"],
       ["help", "helpPanel"],
-      ["formation", "formationPanel"],
-      ["deployment", "deploymentCardPanel"]
+      ["formation", "formationPanel"]
     ]) {
       DOLLAR2(ID).hidden = NAME !== tab;
     }
@@ -24961,14 +23292,14 @@
     menuPauseChanged = false;
     menuAutoPaused = false;
     if (push) {
-      history.pushState(null, "", active.world.scene === "raid" ? "#/raid" : "#/farm");
+      history.pushState(null, "", "#/farm");
     }
     DOLLAR2(
-      ["farms", "growth", "abilities", "formation", "deployment"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
+      ["farms", "growth", "abilities", "formation"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
     ).focus();
   }
   DOLLAR2("gameMenu").onclick = () => menuOpen && menuTab === "play" ? closeMenu() : openMenu();
-  DOLLAR2("upgradeMenu").onclick = () => openMenu(active.world.scene === "raid" || personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "growth");
+  DOLLAR2("upgradeMenu").onclick = () => openMenu(personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "growth");
   DOLLAR2("helpMenu").onclick = () => openMenu("help");
   DOLLAR2("gameMenuClose").onclick = () => closeMenu();
   DOLLAR2("menuHome").onclick = () => {
@@ -25257,34 +23588,6 @@
       NODE.dataset[key] = TEXT;
     }
   }
-  function deploymentHud() {
-    const W = active.world, ROSTER2 = W.raidRoster(active.localPlayerId), REMAINING = ROSTER2 ? W.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0, QUEUED = ROSTER2 ? Math.max(0, active.localDeploySequence - ROSTER2.lastDeploySequence) : 0;
-    syncText(
-      "raidRemaining",
-      !ROSTER2 ? "출전 병력을 준비하고 있어요…" : `남은 병력 ${Math.max(0, REMAINING - QUEUED)} · 약한 병력부터 · 맵 가장자리 전방위 투입`
-    );
-    let deployed = 0;
-    if (ROSTER2) {
-      for (const TROOP of ROSTER2.troops) {
-        if (TROOP.deployed) {
-          deployed++;
-        }
-      }
-    }
-    const STAGE = W.boss.stage || 0;
-    if (STAGE) {
-      const MULTIPLIER = raidDeploymentRewardMultiplier({
-        availableAtStart: ROSTER2?.troops.length || 0,
-        originalUnitsDeployed: deployed
-      });
-      syncText(
-        "raidRewardChance",
-        `${speciesRewardName(W.boss.species)} · ${bossRewardRollDescription(STAGE, { acquisitionMultiplier: MULTIPLIER, firstClear: STAGE > (personalGarden?.farmBossProgress?.highestClearedRaidStage ?? 0) })}`
-      );
-    } else {
-      syncText("raidRewardChance", "");
-    }
-  }
   function canUseWorldInput() {
     return !home && !menuOpen && !bossEncounterOpen && !active.paused && !farmSortTransition;
   }
@@ -25358,7 +23661,6 @@
     }
     pinchDistance = 0;
     stopFoodHold(e);
-    RAID_DEPLOYMENT_UI.stopHold(e);
     stopPan(e);
   }
   var PINCH_POINTERS = /* @__PURE__ */ new Map();
@@ -25401,7 +23703,7 @@
         return;
       }
     }
-    if (e.button !== 0 || !canUseWorldInput() || panPointer || RAID_DEPLOYMENT_UI.hold) {
+    if (e.button !== 0 || !canUseWorldInput() || panPointer) {
       return;
     }
     const POINT2 = RENDERER.screenToWorld(e.clientX, e.clientY);
@@ -25521,7 +23823,7 @@
     e.preventDefault();
     stopWorldInput();
     persist();
-    FAIL3(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
+    FAIL2(Error("그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요."));
   });
   function route() {
     stopWorldInput();
@@ -25531,14 +23833,6 @@
         closeMenu(false);
       }
       setHome(true, false);
-      return;
-    }
-    if (STORAGE.hasReservedRaid && active.world.scene !== "raid") {
-      if (menuOpen) {
-        closeMenu(false);
-      }
-      setHome(true, false);
-      history.replaceState(null, "", "#/");
       return;
     }
     if (home) {
@@ -25560,11 +23854,11 @@
       return;
     }
     if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
-      const RAID = active.world.scene === "raid", FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== "idle";
-      const RESTRICTED = (R2 === "#/farms" || R2 === "#/growth") && (RAID || FARM_EVENT_ACTIVE) || R2 === "#/abilities" && (RAID || !personalGarden);
+      const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== "idle";
+      const RESTRICTED = (R2 === "#/farms" || R2 === "#/growth") && FARM_EVENT_ACTIVE || R2 === "#/abilities" && !personalGarden;
       if (RESTRICTED) {
         closeMenu(false);
-        history.replaceState(null, "", RAID ? "#/raid" : "#/farm");
+        history.replaceState(null, "", "#/farm");
         return;
       }
       openMenu(ROUTE_MENU_TAB(R2), false);
@@ -25576,37 +23870,23 @@
     if (bossEncounterOpen && R2 !== "#/boss") {
       closeBossEncounter(false);
     }
-    if (R2 === "#/raid") {
-      if (personalGarden?.farmBossEvent?.phase !== "idle") {
-        history.replaceState(null, "", "#/farm");
-      } else {
-        openBossEncounter(false);
-      }
-    } else if (R2 === "#/farm" && active.world.scene === "raid") {
-      returnToFarm(false);
-    }
   }
   window.addEventListener("popstate", route);
   function sync(display, now, notices) {
-    const W = active.world, RAID = display.scene === "raid", FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = !RAID && FARM_EVENT?.phase !== "idle", BATTLE_HUD = RAID || FARM_EVENT_ACTIVE, BATTLE_OUTCOME = RAID ? W.encounter.outcome : FARM_EVENT?.outcome, HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.roster.residents()) : false, REWARD_WORLD = personalGarden || W, SETTLED_RUN_SEQUENCE = RAID ? personalGarden?.activeRaidRunSequence ?? W.boss.encounterId : null, SETTLED_REWARD = RAID ? personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === SETTLED_RUN_SEQUENCE)?.reward : null, SETTLED_REWARD_RECEIPT = SETTLED_REWARD?.acquisition?.receiptKey ? REWARD_WORLD.bossRewardReceipts.find(
-      (reward) => reward.receiptKey === SETTLED_REWARD.acquisition.receiptKey
-    ) : null, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
+    const W = active.world, FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = FARM_EVENT?.phase !== "idle", BATTLE_OUTCOME = FARM_EVENT?.outcome, HAS_READY_TROOPS = personalGarden ? personalGarden.units.some((unit) => unit.hp > 0 && unit.down <= 0) : false, REWARD_WORLD = personalGarden || W, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
       (reward) => ["calculating", "ready"].includes(reward.status) || reward.queuedCount > 0
     ), MERGE_STATUS = mergeAvailability(W, now);
-    syncBossRewardDialog(REWARD_WORLD, {
-      receiptKey: BATTLE_OUTCOME === "victory" ? SETTLED_REWARD_RECEIPT?.receiptKey || null : null,
-      raidVictory: RAID && BATTLE_OUTCOME === "victory"
-    });
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && (RAID_DEPLOYMENT_UI.hold || panPointer)) {
+    syncBossRewardDialog(REWARD_WORLD);
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && panPointer) {
       stopWorldInput();
     }
-    syncAttribute("farm", "aria-pressed", !RAID && !bossEncounterOpen);
-    syncAttribute("raid", "aria-pressed", RAID || bossEncounterOpen);
-    syncFlag("merge", "disabled", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncAttribute("farm", "aria-pressed", !bossEncounterOpen);
+    syncAttribute("raid", "aria-pressed", bossEncounterOpen);
+    syncFlag("merge", "disabled", home || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
     syncData("merge", "availability", MERGE_STATUS.code || "unavailable");
-    syncFlag("mergeNotice", "hidden", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag("mergeNotice", "hidden", home || FARM_EVENT_ACTIVE || bossEncounterOpen);
     const PLOT_WORLD = personalGarden || W, PLOT_IDS = PLOT_WORLD.farmPlots ? [...PLOT_WORLD.farmPlots.keys()] : [];
-    syncFlag("plotBar", "hidden", home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
+    syncFlag("plotBar", "hidden", home || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
     if (PLOT_IDS.length > 1) {
       const STATUSES = farmPlotStatuses(PLOT_WORLD), CURRENT = STATUSES.get(PLOT_WORLD.activePlotId) ?? { food: 0, hungry: 0 }, NEEDS_VISIT = [...STATUSES].some(
         ([id, status]) => id !== PLOT_WORLD.activePlotId && status.food === 0 && status.hungry > 0
@@ -25641,45 +23921,39 @@
         armyTotal++;
       }
     }
-    if (!RAID) {
-      for (const UNIT3 of W.units) {
-        if (!UNIT3.isBattleOnlySummon) {
-          worldCount++;
-        }
+    for (const UNIT3 of W.units) {
+      if (!UNIT3.isBattleOnlySummon) {
+        worldCount++;
       }
     }
     syncFlag("bossEncounterScreen", "hidden", home || !bossEncounterOpen);
-    syncMiniMap(!home && !RAID && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
+    syncMiniMap(!home && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
     announceExploration();
-    syncFlag("farmControls", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag("zoomBar", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("zoomBar", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag("zoomFit", "hidden", PLOT_IDS.length < 2);
-    syncFlag("workHud", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag("raidControls", "hidden", !RAID || home);
-    syncFlag("bossbar", "hidden", !BATTLE_HUD || home);
-    syncText(
-      "count",
-      RAID ? W.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0 : displayedCount
-    );
+    syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
+    syncText("count", displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText(
       "starter",
-      RAID ? `${W.units.length}마리 출전 중` : PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 잠자는 중 · 회복을 기다려요" : worldCount >= W.capacity ? "농장이 가득 찼어요" : "번식으로 식구를 늘려요"
+      PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 잠자는 중 · 회복을 기다려요" : worldCount >= W.capacity ? "농장이 가득 찼어요" : "번식으로 식구를 늘려요"
     );
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText(
       "allyHealthText",
       Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " 체력 · " + armyLiving + "/" + armyTotal + " 생존"
     );
-    const BOSS2 = display.boss, FARM_REWARD = !RAID && FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
+    const BOSS2 = display.boss, FARM_REWARD = FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
-    ) : null, STAGE_NAME = RAID && BOSS2.stage ? `${BOSS2.stage}단계` : "", REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
-    syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
+    ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
+    syncText("bossName", BOSS2.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
     syncText(
       "bossHealthNote",
-      FARM_EVENT_ACTIVE && FARM_EVENT.phase === "dropping" ? "보스가 있는 칸으로 가는 중이에요" : FARM_EVENT_ACTIVE && FARM_EVENT.phase === "fighting" ? `남은 시간 ${Math.max(0, Math.ceil(W.raidTimeLimit() - FARM_EVENT.elapsed))}초` : FARM_EVENT_ACTIVE ? "" : "쓰러진 병력 포함 최대 체력"
+      FARM_EVENT_ACTIVE && FARM_EVENT.phase === "dropping" ? "보스가 있는 칸으로 가는 중이에요" : FARM_EVENT_ACTIVE && FARM_EVENT.phase === "fighting" ? `남은 시간 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초` : FARM_EVENT_ACTIVE ? "" : "쓰러진 병력 포함 최대 체력"
     );
     syncFlag("fightRetreat", "hidden", !(FARM_EVENT_ACTIVE && ["dropping", "fighting"].includes(FARM_EVENT.phase)));
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
@@ -25689,21 +23963,21 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "농장으로 돌아가면 보상을 받아요"}` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배${W.encounter.elapsed >= W.raidTimeLimit() ? "(시간 초과)" : ""} · 농장에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요` : ""
+      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? "(시간 초과)" : ""} · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요` : ""
     );
     syncFlag(
       "battleOutcome",
       "hidden",
-      home || !BATTLE_HUD || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
+      home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
     );
     {
       const REASON = mapChallengeBlockReason();
       syncAttribute("bossEncounterChallenge", "aria-disabled", String(REASON !== ""));
       syncText("bossStageNotice", REASON);
     }
-    syncFlag("menuTabFarms", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
-    syncFlag("menuTabGrowth", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
-    syncFlag("menuTabAbilities", "disabled", RAID || !personalGarden);
+    syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag("menuTabGrowth", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag("menuTabAbilities", "disabled", !personalGarden);
     syncText("pause", active.paused ? "▶" : "Ⅱ");
     syncAttribute("pause", "aria-label", active.paused ? "계속하기" : "일시정지");
     syncAttribute("pause", "title", active.paused ? "계속하기" : "일시정지");
@@ -25786,7 +24060,6 @@
       }
     }
     FOOD_FEEL.frame(now);
-    deploymentHud();
   }
   function frame(now) {
     try {
@@ -25818,15 +24091,8 @@
       FORMATION_UI.update(
         active.world,
         DISPLAY,
-        !home && (active.world.scene === "raid" || active.world.farmBossEvent?.phase !== "idle"),
+        !home && active.world.farmBossEvent?.phase !== "idle",
         active.localPlayerId
-      );
-      RAID_DEPLOYMENT_UI.update(
-        active.world,
-        personalGarden || active.world,
-        !home,
-        active.localPlayerId,
-        active.world.scene === "farm" && !active.world.running && active.world.farmBossEvent?.phase === "idle"
       );
       PERFORMANCE_DIAGNOSTICS.end("ui", UI_START);
       PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);

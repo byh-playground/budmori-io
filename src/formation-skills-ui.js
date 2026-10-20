@@ -73,7 +73,7 @@ export class FormationSkillsUI {
     }
     update(world, display, visible, ownerId = '') {
         this.root.hidden = !visible;
-        const PLAYER = world.scene === 'raid' ? world.raidRoster(ownerId)?.abilitySnapshot : world.playerProgression,
+        const PLAYER = world.playerProgression,
             STATE = PLAYER?.formationSkills;
         if (!STATE) {
             return;

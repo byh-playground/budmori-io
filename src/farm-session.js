@@ -100,7 +100,7 @@ class UnitRender extends RENDER_OBJECT {
         this.faction = u.faction;
         this.farmId = u.farmId;
         this.dropLanded = u.dropLanded;
-        this.buffed = world.time < (world.raidRoster(u.ownerId)?.buffUntil || 0);
+        this.buffed = false;
         this.isBattleOnlySummon = u.isBattleOnlySummon;
         this.isFormationClone = u.isFormationClone;
         this.giantUntil = u.giantUntil;
@@ -152,11 +152,7 @@ class BossRender extends RENDER_OBJECT {
             EVENT = world.farmBossEvent,
             TARGET = ACTION?.target || null,
             START = ACTION?.start || null,
-            MOUTH = b.summonMouth || {},
-            ENDED =
-                world.scene === 'raid' && !b.active
-                    ? world.notices.findLast((e) => e.kind === 'victory' || e.kind === 'defeat')
-                    : null;
+            MOUTH = b.summonMouth || {};
         this.x = b.x;
         this.y = b.y;
         this.z = b.z;
@@ -164,10 +160,7 @@ class BossRender extends RENDER_OBJECT {
         this.startAngle = b.startAngle;
         this.phase = ACTION?.phase || (!b.active || EVENT?.phase === 'dropping' ? 'resting' : 'chase');
         this.clock =
-            ACTION?.phaseElapsed ??
-            (EVENT.phase === 'celebrating' || EVENT.phase === 'fading'
-                ? EVENT.elapsed
-                : ENDED?.bossPatternElapsed || 0);
+            ACTION?.phaseElapsed ?? (EVENT.phase === 'celebrating' || EVENT.phase === 'fading' ? EVENT.elapsed : 0);
         this.travel = b.travel || 0;
         this.hp = b.hp;
         this.maxHp = b.maxHp;
@@ -366,9 +359,8 @@ class GameClockRender extends RENDER_OBJECT {
     }
 }
 class FarmSession {
-    constructor(world = new Garden(), { onError = console.error, onWorldStep = () => {} } = {}) {
+    constructor(world = new Garden(), { onError = console.error } = {}) {
         this.world = world;
-        this.onWorldStep = onWorldStep;
         this.tick = 0;
         this.presentationTick = 0;
         this.profile = LOCAL_PROFILE;
@@ -383,7 +375,6 @@ class FarmSession {
         this.unsubscribeNotices = null;
         this.noticeWorld = null;
         this.localPlayerId = 'solo';
-        this.localDeploySequence = world.raidRoster(this.localPlayerId)?.lastDeploySequence || 0;
         this.presentationRevision = 0;
         this.presentationSequence = 0;
         this.pendingPresentationMode = null;
@@ -509,52 +500,15 @@ class FarmSession {
         );
         return true;
     }
-    deployNext(speciesId) {
-        const W = this.world,
-            ROSTER = W.scene === 'raid' && W.raidRoster(this.localPlayerId);
-        if (!ROSTER || this.closed || this.paused || ['victory', 'defeat'].includes(W.encounter.outcome)) {
-            return false;
-        }
-        if (
-            speciesId !== undefined &&
-            (!ROSTER.deploymentCardSpecies.includes(speciesId) || W.raidRemaining(this.localPlayerId, speciesId) <= 0)
-        ) {
-            return false;
-        }
-        this.localDeploySequence = Math.max(this.localDeploySequence, ROSTER.lastDeploySequence);
-        if (this.localDeploySequence - ROSTER.lastDeploySequence >= W.raidRemaining(this.localPlayerId)) {
-            return false;
-        }
-        const QUEUED_FOR_SPECIES = this.pending.filter(
-            (command) => command.type === 'deploy' && command.speciesId === speciesId,
-        ).length;
-        if (speciesId !== undefined && QUEUED_FOR_SPECIES >= W.raidRemaining(this.localPlayerId, speciesId)) {
-            return false;
-        }
-        const SEQUENCE = this.localDeploySequence + 1;
-        if (
-            !this.queue('deploy', {
-                sequence: SEQUENCE,
-                ...(speciesId === undefined ? {} : { speciesId }),
-            })
-        ) {
-            return false;
-        }
-        this.localDeploySequence = SEQUENCE;
-        return true;
-    }
     advance() {
         if (this.closed) {
             return CLOSED;
         }
         const COMMAND_START = this.profiler?.start();
-        const COMMAND_CHANGED_WORLD = this.applyPendingCommands(32);
+        this.applyPendingCommands(32);
         this.profiler?.end('commandQueue', COMMAND_START);
         if (this.paused) {
             this.tick++;
-            if (COMMAND_CHANGED_WORLD) {
-                this.onWorldStep(this.world);
-            }
             return ADVANCED;
         }
         const W = this.world,
@@ -576,12 +530,6 @@ class FarmSession {
         W.step(1 / LOCAL_PROFILE.tickRate);
         this.tick++;
         this.presentationTick++;
-        const WORLD_STEP_FOLLOWUP_START = this.profiler?.start();
-        try {
-            this.onWorldStep(W);
-        } finally {
-            this.profiler?.end('worldStepFollowup', WORLD_STEP_FOLLOWUP_START);
-        }
         return ADVANCED;
     }
     applyPendingCommands(limit) {
@@ -602,13 +550,9 @@ class FarmSession {
         if (this.closed || this.world.scene !== 'farm') {
             return false;
         }
-        const CHANGED = this.applyPendingCommands(this.pending.length);
-        if (CHANGED) {
-            this.onWorldStep(this.world);
-        }
-        return CHANGED;
+        return this.applyPendingCommands(this.pending.length);
     }
-    command(c, ownerId = this.localPlayerId) {
+    command(c) {
         const W = this.world;
         switch (c.type) {
             case 'feed':
@@ -652,29 +596,10 @@ class FarmSession {
                 return W.formationSkills.buySlot();
             case 'formation-equip':
                 return W.formationSkills.equip(c.slot, c.id);
-            case 'deployment-card-buy-slot':
-                return W.raidDeploymentCards.buySlot();
-            case 'deployment-card-select':
-                return W.raidDeploymentCards.select(c.slot, c.speciesId);
             case 'progression-reset':
                 return W.scene === 'farm' && W.resetProgression(c.scope).ok;
             case 'ability-reset':
                 return W.scene === 'farm' && W.resetAbilityTree().ok;
-            case 'register-roster':
-                return (
-                    Array.isArray(c.entries) &&
-                    W.registerRaidRoster(
-                        ownerId,
-                        c.entries,
-                        c.abilitySnapshot,
-                        c.settlement || null,
-                        Array.isArray(c.deploymentCardSpecies) ? c.deploymentCardSpecies : null,
-                    )
-                );
-            case 'deploy':
-                return Number.isSafeInteger(c.sequence) && W.deployNextRaidUnit(ownerId, c.sequence, c.speciesId);
-            case 'buff':
-                return W.useRaidBuff(ownerId);
         }
         return false;
     }

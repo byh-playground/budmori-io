@@ -14,9 +14,7 @@ import {
     workOrder,
 } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
-import { createFormationRuntime, createFormationSkillState } from './formation-skill-state.js';
-import { RaidDeploymentCards } from './raid-deployment-cards.js';
-import { isSpeciesId } from './raid-deployment-cards.js';
+import { createFormationRuntime } from './formation-skill-state.js';
 import { Signal } from './signal.js';
 import {
     unitVisualSize,
@@ -103,11 +101,9 @@ import {
     advanceBossRewardCalculations,
     createBossRewardStreams,
 } from './boss-rewards.js';
-import { createFarmBossProgress } from './farm-boss-stages.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { createPlayerProgressionState } from './player-progression.js';
 import { purchaseAbilityNode, purchaseFarmUpgrade, resetPlayerProgression } from './ability-progression.js';
-import { createAbilityRuntimeSnapshot, isValidAbilityRuntimeSnapshot } from './ability-state.js';
 import {
     FARM_UPGRADE_NODES,
     farmUpgradeRate,
@@ -136,12 +132,9 @@ const BREED_COOLDOWN_SECONDS = 10;
 const BREED_RESERVATION_OWNER = (aId, bId) => `breed:${Math.min(aId, bId)}:${Math.max(aId, bId)}`;
 const MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) => a - b).join(':')}`;
 const FARM_MAX_UNITS = 200,
-    RAID_PLAYER_UNITS = 100,
-    RAID_MAX_PLAYERS = 4,
-    RAID_PLAYER_ID_STRIDE = 1000000,
+    BATTLE_MAX_UNITS = 400,
     MAX_PEANUT_SPLIT_CHILDREN = 2,
     MAX_BOSS_SUMMONS = 10;
-const RAID_MAX_UNITS = RAID_PLAYER_UNITS * RAID_MAX_PLAYERS;
 const WORLD_ARENA = Object.freeze({
     radiusX: 23,
     radiusY: 17,
@@ -261,25 +254,13 @@ const CONFIG = Object.freeze({
             celebrationSeconds: 1,
         }),
     }),
-    raid: Object.freeze({
+    battle: Object.freeze({
         capacity: Object.freeze({
-            playerUnits: RAID_PLAYER_UNITS,
-            players: RAID_MAX_PLAYERS,
-            units: RAID_MAX_UNITS,
-            battleUnits: RAID_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
-            projectiles: RAID_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40,
-        }),
-        ids: Object.freeze({
-            playerStride: RAID_PLAYER_ID_STRIDE,
-            summonBase: RAID_MAX_PLAYERS * RAID_PLAYER_ID_STRIDE + RAID_PLAYER_UNITS + 1,
+            battleUnits: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
+            projectiles: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40,
         }),
         arena: WORLD_ARENA,
         dropHeight: 3,
-        buff: Object.freeze({
-            duration: 3,
-            cooldown: 12,
-            damage: 1.25,
-        }),
     }),
     unit: Object.freeze({
         speciesCount: SPECIES_COUNT,
@@ -304,16 +285,16 @@ const CONFIG = Object.freeze({
         separationRelaxation: 0.8,
         // Raid battles only: allies may overlap by this fraction of their summed radii, solved on a
         // neighbor list built once per tick. Opposing sides still separate at full radius.
-        raidSeparationIterations: 3,
-        raidAllyOverlap: 0.2,
-        raidNeighborMargin: 0.4,
+        battleSeparationIterations: 3,
+        battleAllyOverlap: 0.2,
+        battleNeighborMargin: 0.4,
         softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
 if (Object.keys(CONFIG.farm.work.facilities).join() !== FACILITY_IDS.join()) {
     throw new Error('The farm facility catalog and the plot facility ids must list the same facilities.');
 }
-function bossAttackArea(boss, unitRadius = 0, scene = 'raid', area = {}) {
+function bossAttackArea(boss, unitRadius = 0, scene = 'battle', area = {}) {
     const ACTION = boss.patternRuntime?.active,
         CONFIG_LOCAL = BOSS_PATTERN_CONFIG[ACTION?.id];
     if (!CONFIG_LOCAL) {
@@ -395,21 +376,21 @@ const KNOCKABLE = (baseLocal) =>
 
 // Simulation types are independent of the renderer skin mapping.
 const ARENA_GEOMETRY = {
-    bounds(scene = 'raid', margin = 0) {
+    bounds(scene = 'battle', margin = 0) {
         const ARENA = CONFIG[scene].arena;
         return {
             x: ARENA.radiusX - margin,
             y: ARENA.radiusY - margin,
         };
     },
-    inside(p, scene = 'raid', margin = 0) {
+    inside(p, scene = 'battle', margin = 0) {
         const R_LOCAL = this.bounds(scene, margin);
         if (CONFIG[scene].arena.shape === 'rect') {
             return Math.abs(p.x) <= R_LOCAL.x && Math.abs(p.y) <= R_LOCAL.y;
         }
         return (p.x * p.x) / (R_LOCAL.x * R_LOCAL.x) + (p.y * p.y) / (R_LOCAL.y * R_LOCAL.y) <= 1;
     },
-    clamp(p, scene = 'raid', margin = 0) {
+    clamp(p, scene = 'battle', margin = 0) {
         const R_LOCAL = this.bounds(scene, margin);
         if (CONFIG[scene].arena.shape === 'rect') {
             return { x: CLAMP(p.x, -R_LOCAL.x, R_LOCAL.x), y: CLAMP(p.y, -R_LOCAL.y, R_LOCAL.y) };
@@ -727,7 +708,6 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             battleSummonParentGeneration: 0,
             battleSummonEncounterId: 0,
             countsTowardPermanentRoster: true,
-            eligibleForRaidDeployment: true,
             breedingEligible: true,
             mergeEligible: true,
             canSplit: true,
@@ -939,14 +919,14 @@ const GARDEN = class Garden {
         this._contactCorrectionX = new Float64Array(0);
         this._contactCorrectionY = new Float64Array(0);
         this._contactCorrectionCount = new Uint32Array(0);
-        this._raidPairA = new Int32Array(0);
-        this._raidPairB = new Int32Array(0);
-        this._raidPairOpposing = new Uint8Array(0);
-        this._raidPairCount = 0;
-        this._raidMoved = new Uint8Array(0);
-        this._raidRadius = new Float64Array(0);
-        this._raidHeight = new Float64Array(0);
-        this._raidInverseMass = new Float64Array(0);
+        this._battlePairA = new Int32Array(0);
+        this._battlePairB = new Int32Array(0);
+        this._battlePairOpposing = new Uint8Array(0);
+        this._battlePairCount = 0;
+        this._battleMoved = new Uint8Array(0);
+        this._battleRadius = new Float64Array(0);
+        this._battleHeight = new Float64Array(0);
+        this._battleInverseMass = new Float64Array(0);
         this._bossGridUnits = [];
         this._bossGroundUnits = [];
         this._bossQueryCandidates = [];
@@ -988,14 +968,14 @@ const GARDEN = class Garden {
             '_contactCorrectionX',
             '_contactCorrectionY',
             '_contactCorrectionCount',
-            '_raidPairA',
-            '_raidPairB',
-            '_raidPairOpposing',
-            '_raidPairCount',
-            '_raidMoved',
-            '_raidRadius',
-            '_raidHeight',
-            '_raidInverseMass',
+            '_battlePairA',
+            '_battlePairB',
+            '_battlePairOpposing',
+            '_battlePairCount',
+            '_battleMoved',
+            '_battleRadius',
+            '_battleHeight',
+            '_battleInverseMass',
             '_bossGridUnits',
             '_bossGroundUnits',
             '_bossQueryCandidates',
@@ -1052,7 +1032,6 @@ const GARDEN = class Garden {
         this.roster = new FarmingRoster(this.unitCollection);
         this.reset();
         Object.defineProperty(this, 'formationSkills', { value: new FormationSkills(this) });
-        Object.defineProperty(this, 'raidDeploymentCards', { value: new RaidDeploymentCards(this) });
     }
     get mergeTask() {
         return this.mergeTasks[0] || null;
@@ -1340,27 +1319,6 @@ const GARDEN = class Garden {
         out.sort((a, b) => a.id - b.id);
         return out;
     }
-    static createRaidBattle(seed = 731, expectedPlayers = ['solo'], bossStage = null) {
-        const W = new GARDEN(seed);
-        W.resetUnits();
-        W.food = [];
-        W.scene = 'raid';
-        W.running = false;
-        W.boss = W.createBoss(bossStage?.species ?? W.randomBossSpecies());
-        if (bossStage?.stage !== undefined) {
-            W.configureBossStage(bossStage.stage, bossStage.species);
-        }
-        W.encounter = {
-            outcome: 'idle',
-            elapsed: 0,
-        };
-        W.raidExpectedPlayers = [...expectedPlayers];
-        W.raidRosters = [];
-        W.raidDeploymentStarted = false;
-        W.nextId = 1;
-        W.starter = 0;
-        return W;
-    }
     reset() {
         return this.mutateUnits(this._reset);
     }
@@ -1402,13 +1360,7 @@ const GARDEN = class Garden {
         this.bossRewardInventory = [];
         this.bossRewardWatermarks = {
             farm: 0,
-            raid: 0,
         };
-        this.nextRaidRunSequence = 0;
-        this.activeRaidRunSequence = null;
-        this.activeRaidSessionId = null;
-        this.raidSettlementWatermark = 0;
-        this.raidSettlementReceipts = [];
         this.playerProgression = createPlayerProgressionState();
         this.activePlotId = this.playerProgression.farmPlots.currentPlotId;
         this.farmPlots = new Map(
@@ -1467,10 +1419,8 @@ const GARDEN = class Garden {
         this.cornAttachments = CornAttachmentModel.createManager();
         this.attackSerial = 0;
         this.projectileSerial = 0;
-        this.raidSummonSerial = 0;
         this.bossSummonSerial = 0;
         this.combatLog = [];
-        this.farmBossProgress = createFarmBossProgress(this.seed);
         this.scene = 'farm';
         this.running = false;
         this.encounter = {
@@ -1488,9 +1438,6 @@ const GARDEN = class Garden {
             rewardUnitId: 0,
         };
         this.boss = this.createBoss();
-        this.raidExpectedPlayers = ['solo'];
-        this.raidRosters = [];
-        this.raidDeploymentStarted = false;
         this.metrics = {
             births: 0,
             merges: 0,
@@ -1992,7 +1939,7 @@ const GARDEN = class Garden {
         return this.resetProgression({ type: 'abilities' });
     }
     spawnLobProjectile(unit, action, shot, projectileEffect = null) {
-        if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
+        if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
             return null;
         }
         const ID = ++this.projectileSerial,
@@ -2055,7 +2002,7 @@ const GARDEN = class Garden {
         return abilityProfile(unit.species).skillMultiplier;
     }
     spawnChestnutThorn(unit, action, config, shotIndex) {
-        if (this.projectiles.length >= CONFIG.raid.capacity.projectiles) {
+        if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
             return false;
         }
         const TARGET = action.thornTargetId === 'boss' ? this.boss : this._unitForId(action.thornTargetId);
@@ -2114,7 +2061,7 @@ const GARDEN = class Garden {
         return true;
     }
     createFormationClone(original) {
-        const ID = this.scene === 'raid' ? CONFIG.raid.ids.summonBase + ++this.raidSummonSerial : this.nextId++,
+        const ID = this.nextId++,
             CLONE = new UNIT(ID, original.species, original.tier, original.x + 0.3, original.y + 0.1);
         Object.assign(CLONE, {
             growthElapsed: original.growthElapsed,
@@ -2131,7 +2078,6 @@ const GARDEN = class Garden {
             battleSummonParentId: original.id,
             battleSummonParentGeneration: original.generation,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,
@@ -2321,244 +2267,6 @@ const GARDEN = class Garden {
             }
         }
         return nearest;
-    }
-    raidRoster(ownerId) {
-        return this.raidRosters.find((r) => r.ownerId === ownerId) || null;
-    }
-    setRaidPlayers(players) {
-        if (
-            this.scene !== 'raid' ||
-            !Array.isArray(players) ||
-            players.length < 1 ||
-            players.length > CONFIG.raid.capacity.players ||
-            players.some((p) => typeof p !== 'string' || !p) ||
-            new Set(players).size !== players.length
-        ) {
-            return false;
-        }
-        const LIVE = [...players],
-            ORDERED = this.raidDeploymentStarted
-                ? [...this.raidExpectedPlayers, ...LIVE.filter((id) => !this.raidExpectedPlayers.includes(id))]
-                : LIVE;
-        if (ORDERED.length > CONFIG.raid.capacity.players) {
-            return false;
-        }
-        this.raidExpectedPlayers = ORDERED;
-        if (!this.raidDeploymentStarted) {
-            this.raidRosters = this.raidRosters.filter((r) => LIVE.includes(r.ownerId));
-        }
-        this.raidRosters.sort(
-            (a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId),
-        );
-        return true;
-    }
-    raidTotal() {
-        return this.raidRosters.reduce((n, r) => n + r.troops.length, 0);
-    }
-    raidRemaining(ownerId, speciesId = null) {
-        const R_LOCAL = this.raidRoster(ownerId);
-        return R_LOCAL
-            ? R_LOCAL.troops.reduce(
-                  (n, troop) => n + (!troop.deployed && (speciesId === null || troop.species === speciesId) ? 1 : 0),
-                  0,
-              )
-            : 0;
-    }
-    registerRaidRoster(
-        ownerId,
-        entries,
-        abilitySnapshot = createAbilityRuntimeSnapshot(createPlayerProgressionState()),
-        settlement = null,
-        deploymentCardSpecies = null,
-    ) {
-        if (
-            this.scene !== 'raid' ||
-            !this.raidExpectedPlayers.includes(ownerId) ||
-            this.raidRoster(ownerId) ||
-            !Array.isArray(entries) ||
-            entries.length > CONFIG.raid.capacity.playerUnits ||
-            this.raidTotal() + entries.length > CONFIG.raid.capacity.units
-        ) {
-            return false;
-        }
-        if (!isValidAbilityRuntimeSnapshot(abilitySnapshot)) {
-            return false;
-        }
-        const HAS_SETTLEMENT = settlement !== null;
-        if (
-            HAS_SETTLEMENT &&
-            (!settlement ||
-                typeof settlement !== 'object' ||
-                typeof settlement.sessionId !== 'string' ||
-                !settlement.sessionId.trim() ||
-                settlement.sessionId.length > 128 ||
-                !Number.isSafeInteger(settlement.runSequence) ||
-                settlement.runSequence < 1 ||
-                settlement.runSequence > 1e12 ||
-                settlement.encounterId !== settlement.runSequence)
-        ) {
-            return false;
-        }
-        const IDS = new Set(),
-            TROOPS = [];
-        for (const E of entries) {
-            if (
-                !Array.isArray(E) ||
-                E.length !== 3 ||
-                !Number.isSafeInteger(E[0]) ||
-                E[0] < 1 ||
-                E[0] > CONFIG.farm.maxUnitId ||
-                !Number.isInteger(E[1]) ||
-                E[1] < 0 ||
-                E[1] >= CONFIG.unit.speciesCount ||
-                !Number.isInteger(E[2]) ||
-                E[2] < 1 ||
-                E[2] > CONFIG.unit.maxTier ||
-                IDS.has(E[0])
-            ) {
-                return false;
-            }
-            IDS.add(E[0]);
-            TROOPS.push({
-                farmId: E[0],
-                species: E[1],
-                tier: E[2],
-                deployed: false,
-            });
-        }
-        const CARD_SPECIES =
-            deploymentCardSpecies === null
-                ? [...new Set(TROOPS.map((troop) => troop.species))].slice(0, 4)
-                : deploymentCardSpecies;
-        if (
-            !Array.isArray(CARD_SPECIES) ||
-            CARD_SPECIES.length > 4 ||
-            CARD_SPECIES.some((speciesId) => !isSpeciesId(speciesId)) ||
-            new Set(CARD_SPECIES).size !== CARD_SPECIES.length
-        ) {
-            return false;
-        }
-        const ORDER_KEY = (farmId) => {
-            let h = (this.seed ^ Math.imul(farmId, 0x9e3779b9)) >>> 0;
-            for (let i = 0; i < ownerId.length; i++) {
-                h ^= ownerId.charCodeAt(i);
-                h = Math.imul(h, 0x01000193);
-            }
-            h ^= h >>> 16;
-            h = Math.imul(h, 0x7feb352d);
-            h ^= h >>> 15;
-            h = Math.imul(h, 0x846ca68b);
-            h ^= h >>> 16;
-            return h >>> 0;
-        };
-        TROOPS.sort((a, b) => a.tier - b.tier || ORDER_KEY(a.farmId) - ORDER_KEY(b.farmId) || a.farmId - b.farmId);
-        this.formationSkills.includeBuild(ownerId, abilitySnapshot.formationSkills || createFormationSkillState());
-        this.raidRosters.push({
-            ownerId,
-            troops: TROOPS,
-            deploymentCardSpecies: [...CARD_SPECIES],
-            abilitySnapshot: structuredClone(abilitySnapshot),
-            settlementSessionId: HAS_SETTLEMENT ? settlement.sessionId : '',
-            settlementRunSequence: HAS_SETTLEMENT ? settlement.runSequence : 0,
-            settlementEncounterId: HAS_SETTLEMENT ? settlement.encounterId : 0,
-            lastDeploySequence: 0,
-            buffUntil: 0,
-            buffReadyAt: 0,
-        });
-        this.raidRosters.sort(
-            (a, b) => this.raidExpectedPlayers.indexOf(a.ownerId) - this.raidExpectedPlayers.indexOf(b.ownerId),
-        );
-        return true;
-    }
-    deployNextRaidUnit(ownerId, sequence, speciesId) {
-        return this.mutateUnits(this._deployNextRaidUnit, ownerId, sequence, speciesId);
-    }
-    _deployNextRaidUnit(ownerId, sequence, speciesId) {
-        if (
-            this.scene !== 'raid' ||
-            ['victory', 'defeat'].includes(this.encounter.outcome) ||
-            !this.raidExpectedPlayers.every((id) => this.raidRoster(id)) ||
-            this.units.length >= CONFIG.raid.capacity.battleUnits ||
-            !Number.isSafeInteger(sequence)
-        ) {
-            return false;
-        }
-        const ROSTER = this.raidRoster(ownerId),
-            TROOP = ROSTER?.troops.find(
-                (troop) => !troop.deployed && (speciesId === undefined || troop.species === speciesId),
-            );
-        if (
-            !ROSTER ||
-            sequence !== ROSTER.lastDeploySequence + 1 ||
-            !TROOP ||
-            (speciesId !== undefined && (!isSpeciesId(speciesId) || !ROSTER.deploymentCardSpecies.includes(speciesId)))
-        ) {
-            return false;
-        }
-        const FARM_ID = TROOP.farmId,
-            SLOT = this.raidExpectedPlayers.indexOf(ownerId),
-            TROOP_INDEX = ROSTER.troops.indexOf(TROOP),
-            ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1;
-        if (this.units.some((u) => u.id === ID)) {
-            return false;
-        }
-        // Uniform random bearing covers the entire outside ellipse. Inset by the
-        // deployed body's radius, so every original falling animation lands on ground.
-        const ANGLE = this.random() * Math.PI * 2,
-            MARGIN =
-                unitBodyRadius({ species: TROOP.species, tier: TROOP.tier, growthElapsed: 1, growthDuration: 1 }) +
-                0.05,
-            BOUNDS = ARENA_GEOMETRY.bounds('raid', MARGIN),
-            X = Math.cos(ANGLE) * BOUNDS.x,
-            Y = Math.sin(ANGLE) * BOUNDS.y;
-        const U = new UNIT(ID, TROOP.species, TROOP.tier, X, Y),
-            GROWTH_DURATION = this.breedGrowthDuration();
-        Object.assign(U, {
-            ownerId,
-            farmId: FARM_ID,
-            z: CONFIG.raid.dropHeight,
-            vz: 0,
-            dropLanded: false,
-            meals: 1,
-            growth: CONFIG.farm.breeding.matureMeals,
-            growthDuration: GROWTH_DURATION,
-            growthElapsed: GROWTH_DURATION,
-        });
-        TROOP.deployed = true;
-        ROSTER.lastDeploySequence = sequence;
-        this.addUnit(U, { markProgress: false });
-        if (!this.raidDeploymentStarted) {
-            this.raidDeploymentStarted = true;
-            this.running = true;
-            this.encounter = {
-                outcome: 'fighting',
-                elapsed: 0,
-            };
-            this.boss.active = true;
-            this.boss.encounterId = this.raidRosters[0]?.settlementRunSequence || this.nextRaidRunSequence || 1;
-            this.boss.patternRuntime = createBossPatternRuntime();
-        }
-        this.combat('unit-drop', {
-            unit: ID,
-            ownerId,
-            x: X,
-            y: Y,
-            z: U.z,
-        });
-        return true;
-    }
-    useRaidBuff(ownerId) {
-        const R_LOCAL = this.raidRoster(ownerId);
-        if (!this.running || !R_LOCAL || this.time < R_LOCAL.buffReadyAt) {
-            return false;
-        }
-        R_LOCAL.buffUntil = this.time + CONFIG.raid.buff.duration;
-        R_LOCAL.buffReadyAt = this.time + CONFIG.raid.buff.cooldown;
-        this.combat('buff', {
-            ownerId,
-            until: R_LOCAL.buffUntil,
-        });
-        return true;
     }
     random() {
         return this.rng.nextUint32() / 4294967296;
@@ -3837,7 +3545,7 @@ const GARDEN = class Garden {
         };
     }
     // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
-    raidTimeLimit() {
+    battleTimeLimit() {
         return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
     }
     configureBossStage(stage, species = this.boss.species) {
@@ -3865,7 +3573,7 @@ const GARDEN = class Garden {
         }
         this.projectiles = [];
         this.scene = scene;
-        this.running = scene === 'raid';
+        this.running = false;
         this.encounter = {
             outcome: this.running ? 'fighting' : 'idle',
             elapsed: 0,
@@ -5596,7 +5304,7 @@ const GARDEN = class Garden {
             return;
         }
         if (enemy) {
-            this.raidUnit(unit, dt, enemy);
+            this.battleUnit(unit, dt, enemy);
             return;
         }
         if (unit.hp > 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon) {
@@ -5839,48 +5547,48 @@ const GARDEN = class Garden {
         this.metrics.physicsSolverIterations++;
         this.profiler?.count('physicsSolverIterations');
     }
-    _pushRaidPair(first, second, opposing) {
-        const COUNT = this._raidPairCount;
-        if (COUNT >= this._raidPairA.length) {
-            const CAPACITY = Math.max(256, this._raidPairA.length * 2),
+    _pushBattlePair(first, second, opposing) {
+        const COUNT = this._battlePairCount;
+        if (COUNT >= this._battlePairA.length) {
+            const CAPACITY = Math.max(256, this._battlePairA.length * 2),
                 A = new Int32Array(CAPACITY),
                 B = new Int32Array(CAPACITY),
                 O = new Uint8Array(CAPACITY);
-            A.set(this._raidPairA);
-            B.set(this._raidPairB);
-            O.set(this._raidPairOpposing);
-            this._raidPairA = A;
-            this._raidPairB = B;
-            this._raidPairOpposing = O;
+            A.set(this._battlePairA);
+            B.set(this._battlePairB);
+            O.set(this._battlePairOpposing);
+            this._battlePairA = A;
+            this._battlePairB = B;
+            this._battlePairOpposing = O;
         }
-        this._raidPairA[COUNT] = first;
-        this._raidPairB[COUNT] = second;
-        this._raidPairOpposing[COUNT] = opposing ? 1 : 0;
-        this._raidPairCount = COUNT + 1;
+        this._battlePairA[COUNT] = first;
+        this._battlePairB[COUNT] = second;
+        this._battlePairOpposing[COUNT] = opposing ? 1 : 0;
+        this._battlePairCount = COUNT + 1;
     }
     // One spatial pass per tick. The pair list is ordered by (first, second) step order, so the
     // accumulation order below is deterministic and identical on every peer.
     // Radius, height and mass are derived getters; read them once per tick instead of per pair.
-    _cacheRaidBodies(units) {
-        if (this._raidRadius.length < units.length) {
-            const CAPACITY = Math.max(units.length, this._raidRadius.length * 2, 16);
-            this._raidRadius = new Float64Array(CAPACITY);
-            this._raidHeight = new Float64Array(CAPACITY);
-            this._raidInverseMass = new Float64Array(CAPACITY);
+    _cacheBattleBodies(units) {
+        if (this._battleRadius.length < units.length) {
+            const CAPACITY = Math.max(units.length, this._battleRadius.length * 2, 16);
+            this._battleRadius = new Float64Array(CAPACITY);
+            this._battleHeight = new Float64Array(CAPACITY);
+            this._battleInverseMass = new Float64Array(CAPACITY);
         }
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
-            this._raidRadius[i] = UNIT_LOCAL.radius;
-            this._raidHeight[i] = UNIT_LOCAL.height;
-            this._raidInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
+            this._battleRadius[i] = UNIT_LOCAL.radius;
+            this._battleHeight[i] = UNIT_LOCAL.height;
+            this._battleInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
         }
     }
-    _collectRaidPairs(units) {
-        this._raidPairCount = 0;
-        this._cacheRaidBodies(units);
-        const RADIUS = this._raidRadius,
-            HEIGHT = this._raidHeight;
-        const MARGIN = CONFIG.physics.raidNeighborMargin,
+    _collectBattlePairs(units) {
+        this._battlePairCount = 0;
+        this._cacheBattleBodies(units);
+        const RADIUS = this._battleRadius,
+            HEIGHT = this._battleHeight;
+        const MARGIN = CONFIG.physics.battleNeighborMargin,
             RESERVED = this.unitCollection.reservations.size > 0;
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
@@ -5921,41 +5629,41 @@ const GARDEN = class Garden {
             }
             PENDING.sort((a, b) => a - b);
             for (const J of PENDING) {
-                this._pushRaidPair(i, J, areOpposingFactions(UNIT_LOCAL, units[J]));
+                this._pushBattlePair(i, J, areOpposingFactions(UNIT_LOCAL, units[J]));
             }
         }
     }
-    raidContacts(units) {
-        this._collectRaidPairs(units);
+    battleContacts(units) {
+        this._collectBattlePairs(units);
         // Bump impulses and stuns only apply between opposing sides. Allies just separate.
-        for (let p = 0; p < this._raidPairCount; p++) {
-            if (this._raidPairOpposing[p] && contact(units[this._raidPairA[p]], units[this._raidPairB[p]])) {
+        for (let p = 0; p < this._battlePairCount; p++) {
+            if (this._battlePairOpposing[p] && contact(units[this._battlePairA[p]], units[this._battlePairB[p]])) {
                 this.metrics.contacts++;
             }
         }
-        this.solveRaidSeparations(units);
+        this.solveBattleSeparations(units);
     }
-    solveRaidSeparations(units) {
-        const COUNT = this._raidPairCount;
+    solveBattleSeparations(units) {
+        const COUNT = this._battlePairCount;
         if (!COUNT) {
             return;
         }
         this._ensureContactSolverBuffers(units.length);
-        if (this._raidMoved.length < units.length) {
-            this._raidMoved = new Uint8Array(this._contactCorrectionX.length);
+        if (this._battleMoved.length < units.length) {
+            this._battleMoved = new Uint8Array(this._contactCorrectionX.length);
         }
         const CORRECTION_X = this._contactCorrectionX,
             CORRECTION_Y = this._contactCorrectionY,
             CORRECTION_COUNT = this._contactCorrectionCount,
-            MOVED = this._raidMoved,
-            PAIR_A = this._raidPairA,
-            PAIR_B = this._raidPairB,
-            PAIR_OPPOSING = this._raidPairOpposing,
-            RADIUS = this._raidRadius,
-            INVERSE_MASS = this._raidInverseMass,
-            ITERATIONS = CONFIG.physics.raidSeparationIterations,
+            MOVED = this._battleMoved,
+            PAIR_A = this._battlePairA,
+            PAIR_B = this._battlePairB,
+            PAIR_OPPOSING = this._battlePairOpposing,
+            RADIUS = this._battleRadius,
+            INVERSE_MASS = this._battleInverseMass,
+            ITERATIONS = CONFIG.physics.battleSeparationIterations,
             RELAXATION = CONFIG.physics.separationRelaxation,
-            ALLY_SCALE = 1 - CONFIG.physics.raidAllyOverlap;
+            ALLY_SCALE = 1 - CONFIG.physics.battleAllyOverlap;
         MOVED.fill(0, 0, units.length);
         for (let iteration = 0; iteration < ITERATIONS; iteration++) {
             CORRECTION_X.fill(0, 0, units.length);
@@ -6487,7 +6195,6 @@ const GARDEN = class Garden {
         { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {},
     ) {
         const SPEC = abilityProfile(u.species),
-            ROSTER = this.raidRoster(u.ownerId),
             ATTACKER_STATS = resolveUnitStats(u);
         return {
             source: u,
@@ -6495,7 +6202,7 @@ const GARDEN = class Garden {
             attackerStats: ATTACKER_STATS,
             damageMultiplier: Number.isFinite(attackMultiplier) ? attackMultiplier : SPEC.skillMultiplier,
             kind: attackKind || SPEC.kind,
-            buffed: !!ROSTER && this.time < ROSTER.buffUntil,
+            buffed: false,
             attackPowerMultiplier: u.giantUntil > this.time ? 3 : 1,
             strikeIndex,
             area,
@@ -6554,7 +6261,6 @@ const GARDEN = class Garden {
                 attackerStats: ATTACKER_STATS,
                 damageMultiplier: DAMAGE_MULTIPLIER,
                 kind: KIND,
-                buffed: BUFFED,
             } = CONTEXT;
         CONTEXT.hitTargets?.add(target);
         const DEFENSE = this.combatTargetDefense(target),
@@ -6569,8 +6275,7 @@ const GARDEN = class Garden {
         const RAW_BASE_DAMAGE =
                 ATTACKER_STATS.attackPower *
                 (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
-                DAMAGE_MULTIPLIER *
-                (BUFFED ? CONFIG.raid.buff.damage : 1),
+                DAMAGE_MULTIPLIER,
             RAW_DAMAGE = RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0);
         // The context belongs to one attack, so a mixed boss/unit area hit shares
         // one lazy roll while each target retains its own armor and actual HP loss.
@@ -6594,20 +6299,14 @@ const GARDEN = class Garden {
         this.onCombatResolved.emit({
             excluded: SOURCE.isFormationClone,
             damageDealt:
-                SOURCE.faction === 'player'
-                    ? DAMAGE.totalActualLoss /
-                      ((SOURCE.giantUntil > this.time ? 3 : 1) * (BUFFED ? CONFIG.raid.buff.damage : 1))
-                    : 0,
+                SOURCE.faction === 'player' ? DAMAGE.totalActualLoss / (SOURCE.giantUntil > this.time ? 3 : 1) : 0,
             damageTaken: target.faction === 'player' && !target.isFormationClone ? DAMAGE.totalActualLoss : 0,
             hits: SOURCE.faction === 'player' ? 1 : 0,
             critHits: SOURCE.faction === 'player' && DAMAGE.critical ? 1 : 0,
         });
         this.applyGrainOnBasicHit(SOURCE, target, KIND);
         SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
-        const STRENGTH =
-            DAMAGE_MULTIPLIER *
-            (BUFFED ? CONFIG.raid.buff.damage : 1) *
-            (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
+        const STRENGTH = DAMAGE_MULTIPLIER * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
         if (IS_BOSS) {
             this.finishBossHit(SOURCE, action, point, CONTEXT, DAMAGE, STRENGTH);
         } else {
@@ -6692,7 +6391,7 @@ const GARDEN = class Garden {
             }
         }
     }
-    raidUnit(u, dt, enemy = this.boss) {
+    battleUnit(u, dt, enemy = this.boss) {
         if (!u.dropLanded || !areOpposingFactions(u, enemy)) {
             return;
         }
@@ -7515,7 +7214,6 @@ const GARDEN = class Garden {
             battleSummonParentGeneration: 0,
             battleSummonEncounterId: B_LOCAL.encounterId || 1,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,
@@ -7628,8 +7326,8 @@ const GARDEN = class Garden {
         }
         BOSS.x += BOSS.knockVx * dt;
         BOSS.y += BOSS.knockVy * dt;
-        const RX = CONFIG.raid.arena.radiusX - BOSS.radius,
-            RY = CONFIG.raid.arena.radiusY - BOSS.radius,
+        const RX = CONFIG.battle.arena.radiusX - BOSS.radius,
+            RY = CONFIG.battle.arena.radiusY - BOSS.radius,
             EDGE = Math.hypot(BOSS.x / RX, BOSS.y / RY);
         if (EDGE > 1) {
             BOSS.x /= EDGE;
@@ -7686,8 +7384,8 @@ const GARDEN = class Garden {
         // Lost when everyone sent in has fallen, or when the time runs out.
         if (this.running && this.raidRosters.length) {
             const ALIVE = this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0);
-            this._raidFielded ||= ALIVE;
-            if ((this._raidFielded && !ALIVE) || this.encounter.elapsed >= this.raidTimeLimit()) {
+            this._battleFielded ||= ALIVE;
+            if ((this._battleFielded && !ALIVE) || this.encounter.elapsed >= this.battleTimeLimit()) {
                 this.finish('defeat');
                 return;
             }

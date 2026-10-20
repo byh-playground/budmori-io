@@ -209,7 +209,6 @@ export function createBeanSplitDescriptors({ unit, progression, inBattle = false
             ownerId: unit.ownerId || '',
             farmId: unit.farmId || 0,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,

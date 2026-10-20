@@ -40,7 +40,6 @@ export class PeanutDeathSplitModel {
             farmId: unit.farmId || 0,
             faction: unit.faction,
             countsTowardPermanentRoster: false,
-            eligibleForRaidDeployment: false,
             breedingEligible: false,
             mergeEligible: false,
             canSplit: false,
