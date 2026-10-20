@@ -27,7 +27,7 @@ npm test
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 확인합니다. 빠른 피드백을 목표로 하며 1분 내외는 아직 측정하지 않은 목표입니다. 단일 브라우저 E2E는 필요할 때 `npm test`로 실행하고, 특정 사용자 흐름은 `npm test -- save`처럼 인수로 고릅니다. 지원 시나리오는 `upgrades`, `formation`, `save`, `migration`, `event`, `victory`이며 기본은 `core`이고, 각 실행은 180초 상한을 둡니다. 결과 JSON과 이미지는 무시된 `tests/output/`에 생성됩니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
+PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 확인합니다. 빠른 피드백을 목표로 하며 1분 내외는 아직 측정하지 않은 목표입니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
 
 ## 농장
 
