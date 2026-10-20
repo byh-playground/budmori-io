@@ -1646,9 +1646,37 @@
     }
     return SPAWNED;
   }
-  function tileTerrain(map, index) {
-    const ROLL = tileUnit(map.seed, index, 4);
+  function naturalTerrain(seed, index) {
+    const ROLL = tileUnit(seed, index, 4);
     return ROLL < 0.55 ? "plain" : ROLL < 0.75 ? "forest" : ROLL < 0.9 ? "rock" : "swamp";
+  }
+  function startResources(seed) {
+    let found = START_RESOURCES.get(seed);
+    if (!found) {
+      const FARM = tileIndex(0, 0), NEIGHBOURS3 = [];
+      for (let y = -1; y <= 1; y++) {
+        for (let x = -1; x <= 1; x++) {
+          if (x !== 0 || y !== 0) {
+            NEIGHBOURS3.push(tileIndex(x, y));
+          }
+        }
+      }
+      NEIGHBOURS3.sort((a, b) => tileUnit(seed, a, 5) - tileUnit(seed, b, 5));
+      const HAS = (kind) => NEIGHBOURS3.some((tile) => tile !== FARM && naturalTerrain(seed, tile) === kind), FOREST = HAS("forest") ? -1 : NEIGHBOURS3.find((tile) => naturalTerrain(seed, tile) !== "rock"), ROCK = HAS("rock") ? -1 : NEIGHBOURS3.find((tile) => tile !== FOREST && naturalTerrain(seed, tile) !== "forest");
+      found = { forest: FOREST ?? -1, rock: ROCK ?? -1 };
+      START_RESOURCES.set(seed, found);
+    }
+    return found;
+  }
+  function tileTerrain(map, index) {
+    const FIXED = startResources(map.seed);
+    if (index === FIXED.forest) {
+      return "forest";
+    }
+    if (index === FIXED.rock) {
+      return "rock";
+    }
+    return naturalTerrain(map.seed, index);
   }
   function exploreCost(map) {
     const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
@@ -1917,7 +1945,7 @@
       (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
     );
   }
-  var WORLD_MAP_SETTINGS, FARM_CELL, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, FOG_GRID, FOG_PIECES, FOG_LIT_AT, PIECE_W, PIECE_H, SORTED_INDEXES, VALID_PROGRESS, VALID_MINED;
+  var WORLD_MAP_SETTINGS, FARM_CELL, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, START_RESOURCES, FOG_GRID, FOG_PIECES, FOG_LIT_AT, PIECE_W, PIECE_H, SORTED_INDEXES, VALID_PROGRESS, VALID_MINED;
   var init_world_map = __esm({
     "src/world-map.js"() {
       init_boss_rewards();
@@ -1959,6 +1987,7 @@
       ];
       REACH_PROVIDERS = /* @__PURE__ */ new WeakMap();
       TERRAIN_NAMES = { plain: "평지", forest: "숲", rock: "바위산", swamp: "늪" };
+      START_RESOURCES = /* @__PURE__ */ new Map();
       FOG_GRID = 8;
       FOG_PIECES = FOG_GRID * FOG_GRID;
       FOG_LIT_AT = FOG_PIECES - 2;
@@ -15044,7 +15073,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.18";
+      PRODUCT_VERSION = "0.21.19";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
