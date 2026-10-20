@@ -11,6 +11,7 @@ export class UnitCollection {
         this.residentCountsBySpecies = new Map();
         this.residentIdsBySpecies = new Map();
         this.residentCount = 0;
+        this.revision = 0;
         this.subscriptions = new Map();
         this.reservations = new Map();
         this.retiredDuringStep = [];
@@ -27,6 +28,7 @@ export class UnitCollection {
         return this.byId.get(id) || null;
     }
     _rebuildIndexes() {
+        this.revision++;
         this.byId.clear();
         this.residentCountsBySpecies.clear();
         this.residentIdsBySpecies.clear();
@@ -40,6 +42,7 @@ export class UnitCollection {
         this._rebuildIndexes();
     }
     _indexUnit(unit) {
+        this.revision++;
         this.byId.set(unit.id, unit);
         if (this.isResident(unit)) {
             this.residentCount++;
@@ -53,6 +56,7 @@ export class UnitCollection {
         }
     }
     _unindexUnit(unit) {
+        this.revision++;
         this.byId.delete(unit.id);
         if (this.isResident(unit)) {
             this.residentCount = Math.max(0, this.residentCount - 1);

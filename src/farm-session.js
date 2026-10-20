@@ -561,6 +561,8 @@ class FarmSession {
                 return W.scene === 'farm' && W.scatterFood(c.x, c.y);
             case 'farm-work':
                 return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
+            case 'deploy':
+                return W.scene === 'farm' && W.deployUnit(c.species, c.x, c.y);
             case 'boss-challenge':
                 return W.scene === 'farm' && W.startBossFight();
             case 'farm-sort':
