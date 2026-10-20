@@ -2283,19 +2283,8 @@ function sync(display, now, notices) {
         );
         BUTTON.disabled = !!farmSortTransition;
     }
-    syncText('warehouseProgressLabel', `타작 ${W.foodTaps.remainder}/5`);
-    syncAttribute('warehouseProgress', 'aria-valuenow', String(W.foodTaps.remainder));
-    syncAttribute('warehouseProgress', 'aria-valuetext', `타작 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
-    }
-    syncData('warehouseProgress', 'produced', now < FOOD_FEEL.completeUntil);
-    for (let i = 0; i < 5; i++) {
-        const PIP = FOOD_FEEL.pips[i],
-            FILLED = now < FOOD_FEEL.completeUntil || i < W.foodTaps.remainder;
-        if (PIP.classList.contains('filled') !== FILLED) {
-            PIP.classList.toggle('filled', FILLED);
-        }
     }
     for (const E of notices) {
         if (E.kind === 'food-tap') {
@@ -2306,7 +2295,7 @@ function sync(display, now, notices) {
             FOOD_FEEL.event(E.kind);
         }
     }
-    FOOD_FEEL.frame(now);
+    FOOD_FEEL.frame();
 }
 function frame(now) {
     try {
