@@ -110,6 +110,8 @@ await check('resource workers hit, drop and carry material home', async () => {
         W.setWoodShare(6000);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();
+        // A load already lying on the nearest tile, so the carrying half does not depend on how fast trees fall.
+        W._drops.set(MAP.nearestResourceTile(W.worldMap, W.activePlotId), 9);
     });
     await PAGE.waitForFunction(() => BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone > 0, null, {
         timeout: 45000,
