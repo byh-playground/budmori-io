@@ -397,13 +397,6 @@ body > header {
 #workHudRes {
     background: #8b8a7c;
 }
-#workHudHit {
-    background: #8b8a7c;
-}
-#workHudCarry {
-    background: #a58f5f;
-    justify-content: flex-end;
-}
 #workHudWood {
     background: #8a7a4a;
 }
@@ -416,8 +409,7 @@ body > header {
 }
 .work-hud__levels[data-level='0'] > [data-track='0'],
 .work-hud__levels[data-level='1'] > [data-track='1'],
-.work-hud__levels[data-level='2'] > [data-track='2'],
-.work-hud__levels[data-level='3'] > [data-track='3'] {
+.work-hud__levels[data-level='2'] > [data-track='2'] {
     display: block;
 }
 .work-hud__branch {
@@ -1096,7 +1088,6 @@ details summary {
 .mini-map__label {
     display: none;
 }
-.work-hud[data-level='2'] .work-hud__presets,
-.work-hud[data-level='3'] .work-hud__presets {
+.work-hud[data-level='2'] .work-hud__presets {
     display: none;
 }
