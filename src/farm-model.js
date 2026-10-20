@@ -160,8 +160,9 @@ const CONFIG = Object.freeze({
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            defaultResourceBasisPoints: 4000,
-            defaultBuildBasisPoints: 1500,
+            defaultResourceBasisPoints: 2500,
+            defaultHaulBasisPoints: 1500,
+            defaultBuildBasisPoints: 1000,
             defaultExploreBasisPoints: 1000,
             facilityMaxLevel: FACILITY_MAX_LEVEL,
             levelCostStep: 0.75,
@@ -1371,6 +1372,7 @@ const GARDEN = class Garden {
         // Of the gatherers, how many go for wood (the rest go for stone), out of 10000.
         this.woodBasisPoints = 5000;
         this.materials = { wood: 0, stone: 0 };
+        this.haulBasisPoints = CONFIG.farm.work.defaultHaulBasisPoints;
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
         // A play setting like the worker ratio: how many units on neighbouring tiles walk about.
@@ -2588,6 +2590,7 @@ const GARDEN = class Garden {
     setWorkBasisPoints(
         basisPoints,
         resourceBasisPoints = this.resourceBasisPoints,
+        haulBasisPoints = this.haulBasisPoints,
         buildBasisPoints = this.buildBasisPoints,
         exploreBasisPoints = this.exploreBasisPoints,
     ) {
@@ -2595,15 +2598,17 @@ const GARDEN = class Garden {
         if (
             !VALID(basisPoints) ||
             !VALID(resourceBasisPoints) ||
+            !VALID(haulBasisPoints) ||
             !VALID(buildBasisPoints) ||
             !VALID(exploreBasisPoints) ||
-            resourceBasisPoints + buildBasisPoints + exploreBasisPoints > 10000
+            resourceBasisPoints + haulBasisPoints + buildBasisPoints + exploreBasisPoints > 10000
         ) {
             return false;
         }
         if (
             basisPoints === this.workBasisPoints &&
             resourceBasisPoints === this.resourceBasisPoints &&
+            haulBasisPoints === this.haulBasisPoints &&
             buildBasisPoints === this.buildBasisPoints &&
             exploreBasisPoints === this.exploreBasisPoints
         ) {
@@ -2611,6 +2616,7 @@ const GARDEN = class Garden {
         }
         this.workBasisPoints = basisPoints;
         this.resourceBasisPoints = resourceBasisPoints;
+        this.haulBasisPoints = haulBasisPoints;
         this.buildBasisPoints = buildBasisPoints;
         this.exploreBasisPoints = exploreBasisPoints;
         this._nextWorkerRefreshTick = 0;
@@ -2701,8 +2707,12 @@ const GARDEN = class Garden {
                           PLOT_TOTAL - BUILDERS - EXPLORERS,
                           Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000),
                       ),
-                // A third of the resource workers (at least one, once there are two) carry; the rest hit the piles.
-                HITTERS = GATHERERS < 2 ? GATHERERS : GATHERERS - Math.max(1, Math.round(GATHERERS / 3)),
+                HAULERS = RUSHING
+                    ? 0
+                    : Math.min(
+                          PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
+                          Math.round((PLOT_TOTAL * this.haulBasisPoints) / 10000),
+                      ),
                 PLOT = this.farmPlots.get(PLOT_ID),
                 MULTIPLIER = {
                     food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
@@ -2711,13 +2721,13 @@ const GARDEN = class Garden {
             // Roles are filled one after another, each taking the workers best suited to it.
             const COUNTS = {
                     build: BUILDERS,
-                    food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
-                    wood: Math.round((HITTERS * this.woodBasisPoints) / 10000),
-                    haul: GATHERERS - HITTERS,
+                    food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS - HAULERS,
+                    wood: Math.round((GATHERERS * this.woodBasisPoints) / 10000),
+                    haul: HAULERS,
                     explore: EXPLORERS,
                 },
                 POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
-            COUNTS.stone = HITTERS - COUNTS.wood;
+            COUNTS.stone = GATHERERS - COUNTS.wood;
             for (const ROLE of APTITUDE_ORDER) {
                 const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
                 for (const PICK of PICKED) {
