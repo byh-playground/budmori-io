@@ -1,0 +1,554 @@
+// Draws the shared world map on a canvas: lit land with a shoreline against the fog, boss nests with their danger,
+// cleared flags, the farm, and the exploration itself — the tile being explored fills up like a gauge while a
+// party of explorers walks out to it. The same view serves the full map screen (pan, zoom, pick a tile) and the
+// small map on the farm screen.
+import {
+    WORLD_MAP_SETTINGS,
+    WORLD_MAP_TILE_COUNT,
+    canChallenge,
+    hasNest,
+    isCleared,
+    nextExploreTile,
+    tileDanger,
+    tileIndex,
+    tileX,
+    tileY,
+} from './world-map.js';
+
+const RADIUS = WORLD_MAP_SETTINGS.radius;
+const COLORS = {
+    background: '#efeadb',
+    fog: '#e2dcc6',
+    fogPuff: '#ece7d4',
+    fogEdge: '#cfc8ae',
+    land: ['#d3dfc6', '#cbd9be', '#d9e4cd'],
+    shore: '#a9bc99',
+    cleared: '#9fbf98',
+    farm: '#c2913e',
+    nest: '#b9774a',
+    cave: '#6b5240',
+    scout: '#7c9bb0',
+    ink: '#4a4438',
+    paper: '#fffaf0',
+    tree: '#8fae86',
+    trunk: '#a08358',
+};
+const NEIGHBOURS = [
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
+];
+const SIDES = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0],
+];
+const POP_MS = 650;
+const MIN_SCALE = 10;
+const MAX_SCALE = 72;
+
+// A stable number in [0, 1) for a tile, used only to vary the look of the land.
+function look(index, salt) {
+    let value = (Math.imul(index + 1, 0x9e3779b9) ^ Math.imul(salt + 7, 0x85ebca6b)) >>> 0;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+}
+const INSIDE = (x, y) => Math.abs(x) <= RADIUS && Math.abs(y) <= RADIUS;
+const CLAMP = (value, min, max) => Math.min(max, Math.max(min, value));
+const EASE_OUT_BACK = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
+
+export function createWorldMapView(canvas, { interactive = false, onSelect = () => {}, fps = 30 } = {}) {
+    const CONTEXT = canvas.getContext('2d');
+    const CAMERA = { x: 0, y: 0, scale: 28 };
+    const POINTERS = new Map();
+    const POP_AT = new Map();
+    let width = 0,
+        height = 0,
+        ratio = 1,
+        manual = false,
+        previousLit = null,
+        frame = 0,
+        lastDraw = 0,
+        gesture = null,
+        provider = null,
+        targetKey = '',
+        targetTile = -1;
+
+    function resize() {
+        ratio = Math.min(2, globalThis.devicePixelRatio || 1);
+        width = Math.max(1, canvas.clientWidth);
+        height = Math.max(1, canvas.clientHeight);
+        const PIXEL_WIDTH = Math.round(width * ratio),
+            PIXEL_HEIGHT = Math.round(height * ratio);
+        if (canvas.width !== PIXEL_WIDTH || canvas.height !== PIXEL_HEIGHT) {
+            canvas.width = PIXEL_WIDTH;
+            canvas.height = PIXEL_HEIGHT;
+        }
+    }
+    // Frames the whole lit land with a margin of fog, so the player always sees where the edge of the map is.
+    function fit(map) {
+        resize();
+        let minX = Infinity,
+            maxX = -Infinity,
+            minY = Infinity,
+            maxY = -Infinity;
+        for (const INDEX of map.revealed) {
+            minX = Math.min(minX, tileX(INDEX));
+            maxX = Math.max(maxX, tileX(INDEX));
+            minY = Math.min(minY, tileY(INDEX));
+            maxY = Math.max(maxY, tileY(INDEX));
+        }
+        const MARGIN = interactive ? 1.6 : 1.2;
+        CAMERA.x = (minX + maxX) / 2;
+        CAMERA.y = (minY + maxY) / 2;
+        CAMERA.scale = CLAMP(
+            Math.min(width / (maxX - minX + 1 + MARGIN * 2), height / (maxY - minY + 1 + MARGIN * 2)),
+            MIN_SCALE,
+            interactive ? 56 : 40,
+        );
+        manual = false;
+    }
+    function screenX(x) {
+        return (x - CAMERA.x) * CAMERA.scale + width / 2;
+    }
+    function screenY(y) {
+        return (y - CAMERA.y) * CAMERA.scale + height / 2;
+    }
+    // The tile under a point of the canvas, or -1 outside the map.
+    function pick(clientX, clientY) {
+        const BOX = canvas.getBoundingClientRect(),
+            X = Math.round((clientX - BOX.left - width / 2) / CAMERA.scale + CAMERA.x),
+            Y = Math.round((clientY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y);
+        return INSIDE(X, Y) ? tileIndex(X, Y) : -1;
+    }
+    function exploreTarget(map) {
+        const KEY = `${map.revealed.length}:${map.exploreTarget}`;
+        if (KEY !== targetKey) {
+            targetKey = KEY;
+            targetTile = nextExploreTile(map);
+        }
+        return targetTile;
+    }
+
+    function drawLand(index, x, y, s, lit, now) {
+        const VARIANT = COLORS.land[Math.floor(look(index, 1) * COLORS.land.length)],
+            POP = POP_AT.get(index),
+            AGE = POP === undefined ? POP_MS : now - POP;
+        let size = s;
+        if (AGE < POP_MS) {
+            size = s * CLAMP(EASE_OUT_BACK(AGE / POP_MS), 0.2, 1.08);
+        }
+        const OFFSET = (s - size) / 2;
+        CONTEXT.fillStyle = VARIANT;
+        CONTEXT.fillRect(x + OFFSET - 0.3, y + OFFSET - 0.3, size + 0.6, size + 0.6);
+        if (AGE < POP_MS) {
+            CONTEXT.strokeStyle = COLORS.scout;
+            CONTEXT.globalAlpha = 1 - AGE / POP_MS;
+            CONTEXT.lineWidth = 2;
+            CONTEXT.beginPath();
+            CONTEXT.arc(x + s / 2, y + s / 2, s * (0.3 + (AGE / POP_MS) * 0.9), 0, Math.PI * 2);
+            CONTEXT.stroke();
+            CONTEXT.globalAlpha = 1;
+        }
+        // Tufts and trees are only decoration, picked from the tile so the land does not look stamped.
+        const SEED = look(index, 2);
+        if (s >= 16) {
+            if (SEED < 0.16) {
+                CONTEXT.fillStyle = COLORS.trunk;
+                CONTEXT.fillRect(x + s * 0.47, y + s * 0.6, s * 0.06, s * 0.2);
+                CONTEXT.fillStyle = COLORS.tree;
+                CONTEXT.beginPath();
+                CONTEXT.arc(x + s * 0.5, y + s * 0.5, s * 0.17, 0, Math.PI * 2);
+                CONTEXT.fill();
+            } else if (SEED < 0.4) {
+                CONTEXT.strokeStyle = COLORS.tree;
+                CONTEXT.lineWidth = Math.max(1, s * 0.04);
+                CONTEXT.beginPath();
+                const TX = x + s * (0.3 + 0.4 * look(index, 3)),
+                    TY = y + s * (0.5 + 0.3 * look(index, 4));
+                CONTEXT.moveTo(TX - s * 0.06, TY);
+                CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
+                CONTEXT.moveTo(TX, TY);
+                CONTEXT.lineTo(TX, TY - s * 0.16);
+                CONTEXT.moveTo(TX + s * 0.06, TY);
+                CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
+                CONTEXT.stroke();
+            }
+        }
+        // Shoreline: the edge of the lit land where the fog begins.
+        CONTEXT.strokeStyle = COLORS.shore;
+        CONTEXT.lineWidth = 2;
+        CONTEXT.beginPath();
+        for (const [DX, DY] of SIDES) {
+            const NX = tileX(index) + DX,
+                NY = tileY(index) + DY;
+            if (INSIDE(NX, NY) && !lit.has(tileIndex(NX, NY))) {
+                const FROM_X = DX === 0 ? x : x + (DX > 0 ? s : 0),
+                    FROM_Y = DY === 0 ? y : y + (DY > 0 ? s : 0),
+                    TO_X = DX === 0 ? x + s : FROM_X,
+                    TO_Y = DY === 0 ? y + s : FROM_Y;
+                CONTEXT.moveTo(FROM_X, FROM_Y);
+                CONTEXT.lineTo(TO_X, TO_Y);
+            }
+        }
+        CONTEXT.stroke();
+    }
+    function drawFog(index, x, y, s) {
+        const INSET = Math.max(1, s * 0.05);
+        CONTEXT.fillStyle = COLORS.fog;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
+        CONTEXT.fill();
+        CONTEXT.fillStyle = COLORS.fogPuff;
+        for (let puff = 0; puff < 3; puff++) {
+            CONTEXT.beginPath();
+            CONTEXT.arc(
+                x + s * (0.25 + 0.5 * look(index, 10 + puff)),
+                y + s * (0.3 + 0.4 * look(index, 20 + puff)),
+                s * (0.1 + 0.08 * look(index, 30 + puff)),
+                0,
+                Math.PI * 2,
+            );
+            CONTEXT.fill();
+        }
+    }
+    function drawFarm(x, y, s) {
+        CONTEXT.fillStyle = COLORS.paper;
+        CONTEXT.fillRect(x + s * 0.24, y + s * 0.44, s * 0.52, s * 0.34);
+        CONTEXT.fillStyle = COLORS.farm;
+        CONTEXT.beginPath();
+        CONTEXT.moveTo(x + s * 0.16, y + s * 0.46);
+        CONTEXT.lineTo(x + s * 0.5, y + s * 0.18);
+        CONTEXT.lineTo(x + s * 0.84, y + s * 0.46);
+        CONTEXT.closePath();
+        CONTEXT.fill();
+        CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
+    }
+    function drawFlag(x, y, s) {
+        CONTEXT.strokeStyle = COLORS.ink;
+        CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
+        CONTEXT.beginPath();
+        CONTEXT.moveTo(x + s * 0.4, y + s * 0.8);
+        CONTEXT.lineTo(x + s * 0.4, y + s * 0.2);
+        CONTEXT.stroke();
+        CONTEXT.fillStyle = COLORS.cleared;
+        CONTEXT.beginPath();
+        CONTEXT.moveTo(x + s * 0.4, y + s * 0.2);
+        CONTEXT.lineTo(x + s * 0.78, y + s * 0.34);
+        CONTEXT.lineTo(x + s * 0.4, y + s * 0.48);
+        CONTEXT.closePath();
+        CONTEXT.fill();
+        CONTEXT.strokeStyle = COLORS.ink;
+        CONTEXT.lineWidth = 1;
+        CONTEXT.stroke();
+    }
+    function drawNest(x, y, s, danger, open, now) {
+        CONTEXT.fillStyle = COLORS.nest;
+        CONTEXT.beginPath();
+        CONTEXT.ellipse(x + s * 0.5, y + s * 0.62, s * 0.34, s * 0.26, 0, Math.PI, 0);
+        CONTEXT.lineTo(x + s * 0.84, y + s * 0.72);
+        CONTEXT.lineTo(x + s * 0.16, y + s * 0.72);
+        CONTEXT.closePath();
+        CONTEXT.fill();
+        CONTEXT.fillStyle = COLORS.cave;
+        CONTEXT.beginPath();
+        CONTEXT.ellipse(x + s * 0.5, y + s * 0.72, s * 0.15, s * 0.15, 0, Math.PI, 0);
+        CONTEXT.fill();
+        CONTEXT.fillStyle = COLORS.paper;
+        for (const EYE of [-0.05, 0.05]) {
+            CONTEXT.beginPath();
+            CONTEXT.arc(x + s * (0.5 + EYE), y + s * 0.65, Math.max(1, s * 0.022), 0, Math.PI * 2);
+            CONTEXT.fill();
+        }
+        if (s >= 16) {
+            const FONT = Math.max(9, s * 0.3),
+                LABEL = String(danger);
+            CONTEXT.font = `700 ${FONT}px system-ui, sans-serif`;
+            const BADGE_WIDTH = CONTEXT.measureText(LABEL).width + FONT * 0.7;
+            CONTEXT.fillStyle = COLORS.paper;
+            CONTEXT.beginPath();
+            CONTEXT.roundRect(x + s - BADGE_WIDTH - s * 0.04, y + s * 0.04, BADGE_WIDTH, FONT * 1.2, FONT * 0.5);
+            CONTEXT.fill();
+            CONTEXT.fillStyle = COLORS.ink;
+            CONTEXT.textAlign = 'center';
+            CONTEXT.textBaseline = 'middle';
+            CONTEXT.fillText(LABEL, x + s - BADGE_WIDTH / 2 - s * 0.04, y + s * 0.04 + FONT * 0.62);
+        }
+        if (open) {
+            CONTEXT.strokeStyle = COLORS.nest;
+            CONTEXT.globalAlpha = 0.55 + 0.45 * Math.sin(now / 260);
+            CONTEXT.lineWidth = 2.5;
+            CONTEXT.beginPath();
+            CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
+            CONTEXT.stroke();
+            CONTEXT.globalAlpha = 1;
+        }
+    }
+    function drawExploreTarget(x, y, s, progress, now) {
+        const INSET = Math.max(1, s * 0.05);
+        CONTEXT.save();
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
+        CONTEXT.clip();
+        CONTEXT.fillStyle = COLORS.scout;
+        CONTEXT.globalAlpha = 0.42;
+        CONTEXT.fillRect(x, y + s * (1 - progress), s, s * progress);
+        CONTEXT.restore();
+        CONTEXT.strokeStyle = COLORS.scout;
+        CONTEXT.lineWidth = 2;
+        CONTEXT.setLineDash([s * 0.14, s * 0.1]);
+        CONTEXT.lineDashOffset = -now / 70;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
+        CONTEXT.stroke();
+        CONTEXT.setLineDash([]);
+        if (s >= 18) {
+            CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
+            CONTEXT.beginPath();
+            CONTEXT.arc(x + s * 0.46, y + s * 0.44, s * 0.14, 0, Math.PI * 2);
+            CONTEXT.moveTo(x + s * 0.56, y + s * 0.54);
+            CONTEXT.lineTo(x + s * 0.68, y + s * 0.66);
+            CONTEXT.stroke();
+            if (s >= 26) {
+                CONTEXT.fillStyle = COLORS.ink;
+                CONTEXT.font = `700 ${Math.max(9, s * 0.2)}px system-ui, sans-serif`;
+                CONTEXT.textAlign = 'center';
+                CONTEXT.textBaseline = 'alphabetic';
+                CONTEXT.fillText(`${Math.floor(progress * 100)}%`, x + s / 2, y + s * 0.92);
+            }
+        }
+    }
+    // The party walks from the farm out to the tile being explored and starts over, so exploring is always in motion.
+    function drawParty(map, target, explorers, now) {
+        const FARM = map.farms[0]?.tile;
+        if (FARM === undefined || target < 0 || !(explorers > 0)) {
+            return;
+        }
+        const FROM_X = screenX(tileX(FARM)),
+            FROM_Y = screenY(tileY(FARM)),
+            TO_X = screenX(tileX(target)),
+            TO_Y = screenY(tileY(target));
+        CONTEXT.strokeStyle = COLORS.scout;
+        CONTEXT.globalAlpha = 0.55;
+        CONTEXT.lineWidth = 2;
+        CONTEXT.setLineDash([3, 6]);
+        CONTEXT.beginPath();
+        CONTEXT.moveTo(FROM_X, FROM_Y);
+        CONTEXT.lineTo(TO_X, TO_Y);
+        CONTEXT.stroke();
+        CONTEXT.setLineDash([]);
+        CONTEXT.globalAlpha = 1;
+        const COUNT = Math.min(5, Math.ceil(explorers / 2));
+        for (let member = 0; member < COUNT; member++) {
+            const T = (now / 2600 + member / COUNT) % 1,
+                SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
+            CONTEXT.fillStyle = COLORS.scout;
+            CONTEXT.strokeStyle = COLORS.paper;
+            CONTEXT.lineWidth = 1.5;
+            CONTEXT.beginPath();
+            CONTEXT.arc(
+                FROM_X + (TO_X - FROM_X) * T + SWAY,
+                FROM_Y + (TO_Y - FROM_Y) * T - SWAY,
+                Math.max(3, CAMERA.scale * 0.09),
+                0,
+                Math.PI * 2,
+            );
+            CONTEXT.fill();
+            CONTEXT.stroke();
+        }
+    }
+
+    function render(map, state = {}, now = performance.now()) {
+        resize();
+        const LIT = new Set(map.revealed);
+        if (previousLit) {
+            for (const INDEX of LIT) {
+                if (!previousLit.has(INDEX)) {
+                    POP_AT.set(INDEX, now);
+                }
+            }
+            if (!manual && LIT.size !== previousLit.size) {
+                fit(map);
+            }
+        } else {
+            fit(map);
+        }
+        previousLit = LIT;
+        const S = CAMERA.scale,
+            MIN_X = Math.max(-RADIUS, Math.floor(CAMERA.x - width / 2 / S) - 1),
+            MAX_X = Math.min(RADIUS, Math.ceil(CAMERA.x + width / 2 / S) + 1),
+            MIN_Y = Math.max(-RADIUS, Math.floor(CAMERA.y - height / 2 / S) - 1),
+            MAX_Y = Math.min(RADIUS, Math.ceil(CAMERA.y + height / 2 / S) + 1),
+            TARGET = exploreTarget(map),
+            FARMS = new Set(map.farms.map((farm) => farm.tile));
+        CONTEXT.setTransform(ratio, 0, 0, ratio, 0, 0);
+        CONTEXT.fillStyle = COLORS.background;
+        CONTEXT.fillRect(0, 0, width, height);
+        // The whole map is a fixed size; its outline tells the player how much there is still to find.
+        CONTEXT.strokeStyle = COLORS.fogEdge;
+        CONTEXT.lineWidth = 1.5;
+        CONTEXT.setLineDash([6, 6]);
+        CONTEXT.strokeRect(screenX(-RADIUS - 0.5), screenY(-RADIUS - 0.5), S * (RADIUS * 2 + 1), S * (RADIUS * 2 + 1));
+        CONTEXT.setLineDash([]);
+        for (let y = MIN_Y; y <= MAX_Y; y++) {
+            for (let x = MIN_X; x <= MAX_X; x++) {
+                const INDEX = tileIndex(x, y),
+                    PX = screenX(x - 0.5),
+                    PY = screenY(y - 0.5);
+                if (LIT.has(INDEX)) {
+                    drawLand(INDEX, PX, PY, S, LIT, now);
+                } else if (
+                    NEIGHBOURS.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))
+                ) {
+                    drawFog(INDEX, PX, PY, S);
+                }
+            }
+        }
+        for (let y = MIN_Y; y <= MAX_Y; y++) {
+            for (let x = MIN_X; x <= MAX_X; x++) {
+                const INDEX = tileIndex(x, y),
+                    PX = screenX(x - 0.5),
+                    PY = screenY(y - 0.5);
+                if (!LIT.has(INDEX)) {
+                    continue;
+                }
+                if (FARMS.has(INDEX)) {
+                    drawFarm(PX, PY, S);
+                } else if (isCleared(map, INDEX)) {
+                    drawFlag(PX, PY, S);
+                } else if (hasNest(map, INDEX)) {
+                    drawNest(PX, PY, S, tileDanger(map, INDEX), canChallenge(map, INDEX), now);
+                }
+            }
+        }
+        if (TARGET >= 0) {
+            drawExploreTarget(screenX(tileX(TARGET) - 0.5), screenY(tileY(TARGET) - 0.5), S, state.progress ?? 0, now);
+            drawParty(map, TARGET, state.explorers ?? 0, now);
+        }
+        if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
+            CONTEXT.strokeStyle = COLORS.ink;
+            CONTEXT.lineWidth = 3;
+            CONTEXT.beginPath();
+            CONTEXT.roundRect(
+                screenX(tileX(state.selected) - 0.5) + 1,
+                screenY(tileY(state.selected) - 0.5) + 1,
+                S - 2,
+                S - 2,
+                S * 0.18,
+            );
+            CONTEXT.stroke();
+        }
+    }
+    function loop(now) {
+        frame = requestAnimationFrame(loop);
+        if (now - lastDraw < 1000 / fps) {
+            return;
+        }
+        lastDraw = now;
+        const SNAPSHOT = provider?.();
+        if (SNAPSHOT) {
+            render(SNAPSHOT.map, SNAPSHOT, now);
+        }
+    }
+
+    if (interactive) {
+        const ZOOM = (factor, atX, atY) => {
+            const BOX = canvas.getBoundingClientRect(),
+                BEFORE_X = (atX - BOX.left - width / 2) / CAMERA.scale + CAMERA.x,
+                BEFORE_Y = (atY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y;
+            CAMERA.scale = CLAMP(CAMERA.scale * factor, MIN_SCALE, MAX_SCALE);
+            CAMERA.x = BEFORE_X - (atX - BOX.left - width / 2) / CAMERA.scale;
+            CAMERA.y = BEFORE_Y - (atY - BOX.top - height / 2) / CAMERA.scale;
+            manual = true;
+        };
+        const SPREAD = () => {
+            const [A, B] = [...POINTERS.values()];
+            return Math.hypot(A.x - B.x, A.y - B.y);
+        };
+        canvas.style.touchAction = 'none';
+        canvas.addEventListener('pointerdown', (event) => {
+            canvas.setPointerCapture?.(event.pointerId);
+            POINTERS.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            gesture = { moved: POINTERS.size > 1, spread: POINTERS.size > 1 ? SPREAD() : 0 };
+        });
+        canvas.addEventListener('pointermove', (event) => {
+            const POINTER = POINTERS.get(event.pointerId);
+            if (!POINTER || !gesture) {
+                return;
+            }
+            const DX = event.clientX - POINTER.x,
+                DY = event.clientY - POINTER.y;
+            if (POINTERS.size === 1) {
+                if (!gesture.moved && Math.hypot(DX, DY) < 6) {
+                    return;
+                }
+                gesture.moved = true;
+                CAMERA.x -= DX / CAMERA.scale;
+                CAMERA.y -= DY / CAMERA.scale;
+                manual = true;
+            }
+            POINTER.x = event.clientX;
+            POINTER.y = event.clientY;
+            if (POINTERS.size === 2) {
+                const NEXT = SPREAD(),
+                    [A, B] = [...POINTERS.values()];
+                if (gesture.spread > 0) {
+                    ZOOM(NEXT / gesture.spread, (A.x + B.x) / 2, (A.y + B.y) / 2);
+                }
+                gesture.spread = NEXT;
+                gesture.moved = true;
+            }
+        });
+        const RELEASE = (event) => {
+            const WAS_TAP = gesture && !gesture.moved && POINTERS.size === 1 && event.type === 'pointerup';
+            POINTERS.delete(event.pointerId);
+            if (WAS_TAP) {
+                const INDEX = pick(event.clientX, event.clientY);
+                if (INDEX >= 0) {
+                    onSelect(INDEX);
+                }
+            }
+            if (POINTERS.size === 0) {
+                gesture = null;
+            }
+        };
+        canvas.addEventListener('pointerup', RELEASE);
+        canvas.addEventListener('pointercancel', RELEASE);
+        canvas.addEventListener(
+            'wheel',
+            (event) => {
+                event.preventDefault();
+                ZOOM(event.deltaY < 0 ? 1.15 : 1 / 1.15, event.clientX, event.clientY);
+            },
+            { passive: false },
+        );
+    }
+    return {
+        render,
+        fit,
+        resize,
+        // Starts drawing frames from whatever the provider returns until stop() is called.
+        start(nextProvider) {
+            provider = nextProvider;
+            previousLit = null;
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(loop);
+        },
+        stop() {
+            cancelAnimationFrame(frame);
+            frame = 0;
+            provider = null;
+        },
+        // Show the whole lit land again after the player moved the camera.
+        recenter(map) {
+            fit(map);
+        },
+    };
+}

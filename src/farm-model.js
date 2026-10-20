@@ -28,7 +28,7 @@ import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
 import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
-import { advanceExploration, createWorldMap } from './world-map.js';
+import { advanceExploration, createWorldMap, nextExploreTile, tileX, tileY } from './world-map.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
@@ -2899,6 +2899,7 @@ const GARDEN = class Garden {
         }
         this._workCount = NEXT.size;
         this._workRate = total;
+        this._exploreAngle = this._exploreDirection();
         assignWorkers(this, CONFIG);
     }
     get warehouseFull() {
@@ -2917,6 +2918,34 @@ const GARDEN = class Garden {
     }
     get workerCount() {
         return this._workCount;
+    }
+    // Explorers keep working while the map screen is open and the farm itself is paused, so this is its own step.
+    tickExploration(seconds) {
+        if (this.scene === 'farm' && advanceExploration(this.worldMap, this.exploreRate * seconds).length > 0) {
+            this.markProgressChanged();
+            this._exploreAngle = this._exploreDirection();
+        }
+    }
+    // Which way the explorers face: from the first farm toward the tile being explored, in farm coordinates
+    // (the map's y runs down the screen, the farm's y runs up).
+    _exploreDirection() {
+        const TARGET = nextExploreTile(this.worldMap),
+            FARM = this.worldMap.farms[0]?.tile;
+        if (TARGET < 0 || FARM === undefined) {
+            return null;
+        }
+        return Math.atan2(-(tileY(TARGET) - tileY(FARM)), tileX(TARGET) - tileX(FARM));
+    }
+    // Explorers wait at the rim of the farm on the side of the tile they are exploring, spread out along it.
+    exploreSpot(unit) {
+        if (this._exploreAngle === null || this._exploreAngle === undefined) {
+            return null;
+        }
+        const ANGLE = this._exploreAngle + ((unit.id % 5) - 2) * 0.22,
+            ARENA = CONFIG.farm.arena,
+            X = Math.cos(ANGLE) * (ARENA.radiusX - 1.8),
+            Y = Math.sin(ANGLE) * (ARENA.radiusY - 1.4);
+        return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3 };
     }
     // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
     get exploreRate() {
@@ -2956,9 +2985,7 @@ const GARDEN = class Garden {
         }
         if (this.scene === 'farm') {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
-            if (advanceExploration(this.worldMap, this.exploreRate * Math.min(elapsed, 0.1)).length > 0) {
-                this.markProgressChanged();
-            }
+            this.tickExploration(Math.min(elapsed, 0.1));
         }
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {

@@ -893,10 +893,18 @@
       assignWorkers(world, config);
     }
   }
+  function exploreOrder(world, unit) {
+    const SPOT = world.exploreSpot(unit);
+    if (!SPOT) {
+      return null;
+    }
+    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
+    return { x: SPOT.x, y: SPOT.y, fx: SPOT.fx, fy: SPOT.fy, speed: 7, hold: DISTANCE <= 0.6, face: DISTANCE <= 0.6 };
+  }
   function workOrder(world, unit) {
     const ASSIGN = world._workAssign.get(unit.id);
     if (!ASSIGN) {
-      return null;
+      return world._workerKinds.get(unit.id) === "explore" ? exploreOrder(world, unit) : null;
     }
     const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
     if (!ASSIGN.attacking) {
@@ -1683,7 +1691,7 @@
       const COUNT = Math.min(capacity2, GROUP.count);
       let placed = 0;
       while (placed < COUNT) {
-        const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
+        const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS2 = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS2, Math.sin(ANGLE) * RADIUS2);
         if (!UNIT3) {
           break;
         }
@@ -3455,12 +3463,12 @@
           super(DEFINITION5);
         }
         cast(owner, slot) {
-          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
+          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS2 = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
           let center = null;
           let targets = [];
           for (const UNIT3 of ORIGINALS) {
-            const NEAR = owner.nearby(UNIT3.x, UNIT3.y, RADIUS).filter(
-              (candidate) => candidate.faction === "player" && !candidate.isBattleOnlySummon && candidate.hp > 0 && Math.hypot(candidate.x - UNIT3.x, candidate.y - UNIT3.y) <= RADIUS
+            const NEAR = owner.nearby(UNIT3.x, UNIT3.y, RADIUS2).filter(
+              (candidate) => candidate.faction === "player" && !candidate.isBattleOnlySummon && candidate.hp > 0 && Math.hypot(candidate.x - UNIT3.x, candidate.y - UNIT3.y) <= RADIUS2
             );
             if (NEAR.length > targets.length) {
               center = UNIT3;
@@ -3470,7 +3478,7 @@
           if (!center || !targets.length || !owner.canClone(targets.length)) {
             return false;
           }
-          owner.addEffect(DEFINITION5.id, { x: center.x, y: center.y, radius: RADIUS, duration: 0.7 });
+          owner.addEffect(DEFINITION5.id, { x: center.x, y: center.y, radius: RADIUS2, duration: 0.7 });
           for (const UNIT3 of targets) {
             owner.world.createFormationClone(UNIT3);
           }
@@ -6431,7 +6439,7 @@
             player = RECORD.asset.createPlayer({ clip: "fire", startedAtMs: 0 });
             players.set(effect.eventId, player);
           }
-          const CLIP = RECORD.compiled.metadata.clips.fire, ELAPSED_MS = Math.max(0, Math.min(CLIP.durationMs, progress * 1e3)), [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = RECORD.anchors.ground, POSITION = renderer.project(effect.x, effect.y, effect.z || 0), RADIUS = renderer.scale * 0.72, SCALE = 2 * RADIUS / Math.max(WIDTH, HEIGHT), CENTER_Y = POSITION.y + (HEIGHT * 0.5 - GROUND.y) * SCALE, MATRIX = [SCALE, 0, 0, SCALE, POSITION.x - GROUND.x * SCALE, CENTER_Y - GROUND.y * SCALE];
+          const CLIP = RECORD.compiled.metadata.clips.fire, ELAPSED_MS = Math.max(0, Math.min(CLIP.durationMs, progress * 1e3)), [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = RECORD.anchors.ground, POSITION = renderer.project(effect.x, effect.y, effect.z || 0), RADIUS2 = renderer.scale * 0.72, SCALE = 2 * RADIUS2 / Math.max(WIDTH, HEIGHT), CENTER_Y = POSITION.y + (HEIGHT * 0.5 - GROUND.y) * SCALE, MATRIX = [SCALE, 0, 0, SCALE, POSITION.x - GROUND.x * SCALE, CENTER_Y - GROUND.y * SCALE];
           player.play("fire", 0);
           player.setExpression("surprised");
           player.seek(ELAPSED_MS);
@@ -6462,12 +6470,12 @@
           return `추가 피해 ${Math.round(value * 100)}%`;
         }
         drawGuard(renderer, effect, progress) {
-          const T = Math.min(1, progress / 0.3), ALPHA = 1 - progress, RADIUS = 0.42 + T * 0.18;
+          const T = Math.min(1, progress / 0.3), ALPHA = 1 - progress, RADIUS2 = 0.42 + T * 0.18;
           if (ALPHA <= 0) {
             return;
           }
-          renderer.ring(effect.x, effect.y, RADIUS, `rgba(180,194,150,${ALPHA * 0.9})`, 0.08);
-          renderer.groundEllipse(effect.x, effect.y, RADIUS * 0.72, RADIUS * 0.72, `rgba(199,213,162,${ALPHA * 0.18})`);
+          renderer.ring(effect.x, effect.y, RADIUS2, `rgba(180,194,150,${ALPHA * 0.9})`, 0.08);
+          renderer.groundEllipse(effect.x, effect.y, RADIUS2 * 0.72, RADIUS2 * 0.72, `rgba(199,213,162,${ALPHA * 0.18})`);
         }
       };
     }
@@ -7095,8 +7103,8 @@
           return null;
         }
         weaponPoint(boss, q) {
-          const { CONFIG: CONFIG2, CLAMP: CLAMP3 } = this.dependencies;
-          const REACH = boss.radius - 0.25 + (CONFIG2.boss.sweepReach - boss.radius + 0.25) * Math.sin(Math.PI * CLAMP3(q, 0, 1));
+          const { CONFIG: CONFIG2, CLAMP: CLAMP4 } = this.dependencies;
+          const REACH = boss.radius - 0.25 + (CONFIG2.boss.sweepReach - boss.radius + 0.25) * Math.sin(Math.PI * CLAMP4(q, 0, 1));
           return { x: boss.x + Math.cos(boss.angle) * REACH, y: boss.y + Math.sin(boss.angle) * REACH, z: boss.z + 0.2 };
         }
       };
@@ -7141,7 +7149,7 @@
           }
         }
         weaponPoint(boss, q) {
-          const { CLAMP: CLAMP3 } = this.dependencies, ACTION = boss.patternRuntime?.active, AIM = ACTION?.aim ?? boss.patternAim ?? boss.angle, START_ANGLE = ACTION?.startAngle ?? AIM - Math.PI / 2, ANGLE = START_ANGLE + TAU * CLAMP3(q, 0, 1);
+          const { CLAMP: CLAMP4 } = this.dependencies, ACTION = boss.patternRuntime?.active, AIM = ACTION?.aim ?? boss.patternAim ?? boss.angle, START_ANGLE = ACTION?.startAngle ?? AIM - Math.PI / 2, ANGLE = START_ANGLE + TAU * CLAMP4(q, 0, 1);
           return {
             x: boss.x + Math.cos(ANGLE) * this.config.reach,
             y: boss.y + Math.sin(ANGLE) * this.config.reach,
@@ -7295,7 +7303,7 @@
           this.physicalActive = true;
         }
         writeArea(boss, action, scene, pad, area) {
-          const { CONFIG: CONFIG2, CLAMP: CLAMP3 } = this.dependencies;
+          const { CONFIG: CONFIG2, CLAMP: CLAMP4 } = this.dependencies;
           area.kind = "leap";
           area.width = boss.radius + pad;
           area.reach = this.config.landingRadius + pad;
@@ -7317,7 +7325,7 @@
           area.x = SX;
           area.y = SY;
           if (action.phase === "active" && action.path) {
-            area.progress = CLAMP3(Math.max(0, action.phaseElapsed || 0) / action.path.duration, 0, 1);
+            area.progress = CLAMP4(Math.max(0, action.phaseElapsed || 0) / action.path.duration, 0, 1);
           }
         }
         activate(world, action) {
@@ -7459,9 +7467,9 @@
           return "sweepHits";
         }
         weaponPoint(boss, q) {
-          const { CLAMP: CLAMP3 } = this.dependencies;
+          const { CLAMP: CLAMP4 } = this.dependencies;
           const ACTION = boss.patternRuntime.active;
-          const ANGLE = ACTION.aim - this.config.sector / 2 + this.config.sector * CLAMP3(q, 0, 1);
+          const ANGLE = ACTION.aim - this.config.sector / 2 + this.config.sector * CLAMP4(q, 0, 1);
           return {
             x: boss.x + Math.cos(ANGLE) * this.config.reach,
             y: boss.y + Math.sin(ANGLE) * this.config.reach,
@@ -7532,8 +7540,8 @@
 
   // src/boss-pattern-behaviors.js
   function createBossPatternBehaviors(dependencies) {
-    const { CONFIG: CONFIG2, ArenaGeometry: ARENA_GEOMETRY2, Ballistics: BALLISTICS2, clamp: CLAMP3 } = dependencies;
-    const DEPENDENCIES = Object.freeze({ CONFIG: CONFIG2, ARENA_GEOMETRY: ARENA_GEOMETRY2, BALLISTICS: BALLISTICS2, CLAMP: CLAMP3 });
+    const { CONFIG: CONFIG2, ArenaGeometry: ARENA_GEOMETRY2, Ballistics: BALLISTICS2, clamp: CLAMP4 } = dependencies;
+    const DEPENDENCIES = Object.freeze({ CONFIG: CONFIG2, ARENA_GEOMETRY: ARENA_GEOMETRY2, BALLISTICS: BALLISTICS2, CLAMP: CLAMP4 });
     const PATTERNS = Object.freeze(
       Object.fromEntries(
         [
@@ -7564,7 +7572,7 @@
               z: TARGET.z || 0
             };
             const DESIRED = Math.atan2(TARGET.y - world.boss.y, TARGET.x - world.boss.x), DELTA = Math.atan2(Math.sin(DESIRED - action.aim), Math.cos(DESIRED - action.aim));
-            action.aim += CLAMP3(DELTA, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
+            action.aim += CLAMP4(DELTA, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
             world.boss.angle = world.boss.facing = action.aim;
           }
           if (REMAINING <= 0.25 + 1e-9) {
@@ -7828,12 +7836,12 @@
         length: strikeCount
       },
       (_, strikeIndex) => {
-        const SIDE3 = strikeIndex % 2 === 0 ? -1 : 1;
+        const SIDE2 = strikeIndex % 2 === 0 ? -1 : 1;
         return Object.freeze({
           strikeIndex,
           kernelIndex: strikeIndex % 2,
-          side: SIDE3,
-          angleOffsetRadians: SIDE3 * spreadRadians,
+          side: SIDE2,
+          angleOffsetRadians: SIDE2 * spreadRadians,
           dueSeconds: (strikeIndex + 0.5) / strikeCount * activeSeconds,
           attackMultiplier
         });
@@ -7921,10 +7929,10 @@
           if (TARGET && TARGET.hp > 0) {
             const DISTANCE = Math.hypot(TARGET.x - U.x, TARGET.y - U.y), REACH = TARGET.radius + U.radius + this.spec.range;
             if (DISTANCE <= REACH) {
-              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE3 = SLOT.angleOffsetRadians;
+              const AIM = Math.atan2(TARGET.y - U.y, TARGET.x - U.x), SIDE2 = SLOT.angleOffsetRadians;
               const FROM = {
-                x: U.x + Math.cos(AIM + SIDE3) * U.radius * 0.45,
-                y: U.y + Math.sin(AIM + SIDE3) * U.radius * 0.45,
+                x: U.x + Math.cos(AIM + SIDE2) * U.radius * 0.45,
+                y: U.y + Math.sin(AIM + SIDE2) * U.radius * 0.45,
                 z: 0
               };
               const TO = {
@@ -9507,12 +9515,12 @@
           this._spatialQueryDepth = Math.max(0, this._spatialQueryDepth - 1);
         }
         _collectContactOrders(unit, minimumOrder, maximumOrder, out) {
-          const RADIUS = unit.radius + CONFIG.unit.maxRadius + 0.22;
+          const RADIUS2 = unit.radius + CONFIG.unit.maxRadius + 0.22;
           this.unitSpatial.queryAABB(
-            unit.x - RADIUS,
-            unit.y - RADIUS,
-            unit.x + RADIUS,
-            unit.y + RADIUS,
+            unit.x - RADIUS2,
+            unit.y - RADIUS2,
+            unit.x + RADIUS2,
+            unit.y + RADIUS2,
             this._contactQuery
           );
           out.length = 0;
@@ -9993,9 +10001,9 @@
             return false;
           }
           UNITS.forEach((unitLocal, index) => {
-            const ANGLE = index * 2.399963229728653 + (this.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt((index + 0.5) / Math.max(1, UNITS.length)) * 0.7;
-            unitLocal.x = Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS;
-            unitLocal.y = Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS;
+            const ANGLE = index * 2.399963229728653 + (this.seed >>> 0) % 6283 / 1e3, RADIUS2 = Math.sqrt((index + 0.5) / Math.max(1, UNITS.length)) * 0.7;
+            unitLocal.x = Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS2;
+            unitLocal.y = Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS2;
             unitLocal.vx = unitLocal.vy = 0;
           });
           this._rebuildUnitSpatialIndex(this.units);
@@ -10908,6 +10916,7 @@
           }
           this._workCount = NEXT.size;
           this._workRate = total;
+          this._exploreAngle = this._exploreDirection();
           assignWorkers(this, CONFIG);
         }
         get warehouseFull() {
@@ -10924,6 +10933,30 @@
         }
         get workerCount() {
           return this._workCount;
+        }
+        // Explorers keep working while the map screen is open and the farm itself is paused, so this is its own step.
+        tickExploration(seconds) {
+          if (this.scene === "farm" && advanceExploration(this.worldMap, this.exploreRate * seconds).length > 0) {
+            this.markProgressChanged();
+            this._exploreAngle = this._exploreDirection();
+          }
+        }
+        // Which way the explorers face: from the first farm toward the tile being explored, in farm coordinates
+        // (the map's y runs down the screen, the farm's y runs up).
+        _exploreDirection() {
+          const TARGET = nextExploreTile(this.worldMap), FARM = this.worldMap.farms[0]?.tile;
+          if (TARGET < 0 || FARM === void 0) {
+            return null;
+          }
+          return Math.atan2(-(tileY(TARGET) - tileY(FARM)), tileX(TARGET) - tileX(FARM));
+        }
+        // Explorers wait at the rim of the farm on the side of the tile they are exploring, spread out along it.
+        exploreSpot(unit) {
+          if (this._exploreAngle === null || this._exploreAngle === void 0) {
+            return null;
+          }
+          const ANGLE = this._exploreAngle + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, X = Math.cos(ANGLE) * (ARENA.radiusX - 1.8), Y = Math.sin(ANGLE) * (ARENA.radiusY - 1.4);
+          return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3 };
         }
         // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
         get exploreRate() {
@@ -10962,9 +10995,7 @@
           }
           if (this.scene === "farm") {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
-            if (advanceExploration(this.worldMap, this.exploreRate * Math.min(elapsed, 0.1)).length > 0) {
-              this.markProgressChanged();
-            }
+            this.tickExploration(Math.min(elapsed, 0.1));
           }
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
@@ -12505,11 +12536,11 @@
                 if (UNIT_LOCAL.z > OTHER.z + OTHER.height || OTHER.z > UNIT_LOCAL.z + UNIT_LOCAL.height) {
                   continue;
                 }
-                const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), RADIUS = UNIT_LOCAL.radius + OTHER.radius, INVERSE_MASS_B = inverseBodyMass(OTHER), INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
+                const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), RADIUS2 = UNIT_LOCAL.radius + OTHER.radius, INVERSE_MASS_B = inverseBodyMass(OTHER), INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
                 if (INVERSE_MASS_SUM <= 0) {
                   continue;
                 }
-                const SOFT = DISTANCE >= RADIUS && DISTANCE < RADIUS + 0.22 && UNIT_LOCAL.z < 0.1 && OTHER.z < 0.1 && UNIT_LOCAL.ability.phase === "idle" && OTHER.ability.phase === "idle", TARGET_DISTANCE = SOFT ? RADIUS + 0.22 : RADIUS;
+                const SOFT = DISTANCE >= RADIUS2 && DISTANCE < RADIUS2 + 0.22 && UNIT_LOCAL.z < 0.1 && OTHER.z < 0.1 && UNIT_LOCAL.ability.phase === "idle" && OTHER.ability.phase === "idle", TARGET_DISTANCE = SOFT ? RADIUS2 + 0.22 : RADIUS2;
                 if (DISTANCE >= TARGET_DISTANCE) {
                   continue;
                 }
@@ -12567,11 +12598,11 @@
             if (!areOpposingFactions(UNIT_LOCAL, BOSS2) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || UNIT_LOCAL.z > BOSS2.height || inverseBodyMass(UNIT_LOCAL) <= 0) {
               continue;
             }
-            const DX = UNIT_LOCAL.x - BOSS2.x, DY = UNIT_LOCAL.y - BOSS2.y, DISTANCE = Math.hypot(DX, DY), RADIUS = BOSS2.radius + UNIT_LOCAL.radius;
-            if (DISTANCE >= RADIUS) {
+            const DX = UNIT_LOCAL.x - BOSS2.x, DY = UNIT_LOCAL.y - BOSS2.y, DISTANCE = Math.hypot(DX, DY), RADIUS2 = BOSS2.radius + UNIT_LOCAL.radius;
+            if (DISTANCE >= RADIUS2) {
               continue;
             }
-            const ANGLE = DISTANCE > 1e-6 ? 0 : UNIT_LOCAL.seed, NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE), NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE), INDEX = this._unitStepOrder.get(UNIT_LOCAL), OVERLAP = RADIUS - DISTANCE, INWARD = UNIT_LOCAL.vx * NORMAL_X + UNIT_LOCAL.vy * NORMAL_Y;
+            const ANGLE = DISTANCE > 1e-6 ? 0 : UNIT_LOCAL.seed, NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE), NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE), INDEX = this._unitStepOrder.get(UNIT_LOCAL), OVERLAP = RADIUS2 - DISTANCE, INWARD = UNIT_LOCAL.vx * NORMAL_X + UNIT_LOCAL.vy * NORMAL_Y;
             CORRECTION_X[INDEX] += NORMAL_X * OVERLAP;
             CORRECTION_Y[INDEX] += NORMAL_Y * OVERLAP;
             CORRECTION_COUNT[INDEX]++;
@@ -12637,14 +12668,14 @@
         _collectRaidPairs(units) {
           this._raidPairCount = 0;
           this._cacheRaidBodies(units);
-          const RADIUS = this._raidRadius, HEIGHT = this._raidHeight;
+          const RADIUS2 = this._raidRadius, HEIGHT = this._raidHeight;
           const MARGIN = CONFIG.physics.raidNeighborMargin, RESERVED = this.unitCollection.reservations.size > 0;
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i];
             if (UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.dropLanded || RESERVED && this.isMergeTaskMaterial(UNIT_LOCAL)) {
               continue;
             }
-            const QUERY_RADIUS = RADIUS[i] + CONFIG.unit.maxRadius + MARGIN, PENDING = this._contactPending;
+            const QUERY_RADIUS = RADIUS2[i] + CONFIG.unit.maxRadius + MARGIN, PENDING = this._contactPending;
             this.unitSpatial.queryAABB(
               UNIT_LOCAL.x - QUERY_RADIUS,
               UNIT_LOCAL.y - QUERY_RADIUS,
@@ -12661,7 +12692,7 @@
               if (UNIT_LOCAL.z > OTHER.z + HEIGHT[J] || OTHER.z > UNIT_LOCAL.z + HEIGHT[i]) {
                 continue;
               }
-              const REACH = RADIUS[i] + RADIUS[J] + MARGIN, DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y;
+              const REACH = RADIUS2[i] + RADIUS2[J] + MARGIN, DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y;
               if (DX * DX + DY * DY < REACH * REACH) {
                 PENDING.push(J);
               }
@@ -12690,7 +12721,7 @@
           if (this._raidMoved.length < units.length) {
             this._raidMoved = new Uint8Array(this._contactCorrectionX.length);
           }
-          const CORRECTION_X = this._contactCorrectionX, CORRECTION_Y = this._contactCorrectionY, CORRECTION_COUNT = this._contactCorrectionCount, MOVED = this._raidMoved, PAIR_A = this._raidPairA, PAIR_B = this._raidPairB, PAIR_OPPOSING = this._raidPairOpposing, RADIUS = this._raidRadius, INVERSE_MASS = this._raidInverseMass, ITERATIONS = CONFIG.physics.raidSeparationIterations, RELAXATION = CONFIG.physics.separationRelaxation, ALLY_SCALE = 1 - CONFIG.physics.raidAllyOverlap;
+          const CORRECTION_X = this._contactCorrectionX, CORRECTION_Y = this._contactCorrectionY, CORRECTION_COUNT = this._contactCorrectionCount, MOVED = this._raidMoved, PAIR_A = this._raidPairA, PAIR_B = this._raidPairB, PAIR_OPPOSING = this._raidPairOpposing, RADIUS2 = this._raidRadius, INVERSE_MASS = this._raidInverseMass, ITERATIONS = CONFIG.physics.raidSeparationIterations, RELAXATION = CONFIG.physics.separationRelaxation, ALLY_SCALE = 1 - CONFIG.physics.raidAllyOverlap;
           MOVED.fill(0, 0, units.length);
           for (let iteration = 0; iteration < ITERATIONS; iteration++) {
             CORRECTION_X.fill(0, 0, units.length);
@@ -12702,7 +12733,7 @@
               if (INVERSE_MASS_SUM <= 0) {
                 continue;
               }
-              const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), TARGET_DISTANCE = (RADIUS[I] + RADIUS[J]) * (PAIR_OPPOSING[p] ? 1 : ALLY_SCALE);
+              const DX = OTHER.x - UNIT_LOCAL.x, DY = OTHER.y - UNIT_LOCAL.y, DISTANCE = Math.hypot(DX, DY), TARGET_DISTANCE = (RADIUS2[I] + RADIUS2[J]) * (PAIR_OPPOSING[p] ? 1 : ALLY_SCALE);
               if (DISTANCE >= TARGET_DISTANCE) {
                 continue;
               }
@@ -12724,7 +12755,7 @@
                 continue;
               }
               let deltaX = CORRECTION_X[i] / COUNT_LOCAL, deltaY = CORRECTION_Y[i] / COUNT_LOCAL;
-              const LENGTH = Math.hypot(deltaX, deltaY), MAX_CORRECTION = Math.max(0.05, RADIUS[i] * 1.25);
+              const LENGTH = Math.hypot(deltaX, deltaY), MAX_CORRECTION = Math.max(0.05, RADIUS2[i] * 1.25);
               if (LENGTH > MAX_CORRECTION) {
                 const SCALE = MAX_CORRECTION / LENGTH;
                 deltaX *= SCALE;
@@ -12732,7 +12763,7 @@
               }
               UNIT_LOCAL.x += deltaX;
               UNIT_LOCAL.y += deltaY;
-              this.boundBody(UNIT_LOCAL, this.scene, RADIUS[i]);
+              this.boundBody(UNIT_LOCAL, this.scene, RADIUS2[i]);
               MOVED[i] = 1;
             }
             this.metrics.physicsSolverIterations++;
@@ -12783,7 +12814,7 @@
           }
         }
         avoidNearbyFood(u, dt) {
-          const RADIUS = 1.25;
+          const RADIUS2 = 1.25;
           let pushX = 0;
           let pushY = 0;
           let strongest = 0;
@@ -12792,7 +12823,7 @@
           if (!this._spatialStepActive) {
             this._rebuildFoodSpatialIndex();
           }
-          this.foodSpatial.queryAABB(u.x - RADIUS, u.y - RADIUS, u.x + RADIUS, u.y + RADIUS, this._foodCandidates);
+          this.foodSpatial.queryAABB(u.x - RADIUS2, u.y - RADIUS2, u.x + RADIUS2, u.y + RADIUS2, this._foodCandidates);
           this._foodCandidates.sort(
             (a, b) => (this._foodOrder.get(a) ?? Infinity) - (this._foodOrder.get(b) ?? Infinity)
           );
@@ -12801,10 +12832,10 @@
               continue;
             }
             const DX = u.x - FOOD2.x, DY = u.y - FOOD2.y, DISTANCE = Math.hypot(DX, DY);
-            if (DISTANCE >= RADIUS) {
+            if (DISTANCE >= RADIUS2) {
               continue;
             }
-            const STRENGTH = 1 - DISTANCE / RADIUS, WEIGHT = STRENGTH * STRENGTH;
+            const STRENGTH = 1 - DISTANCE / RADIUS2, WEIGHT = STRENGTH * STRENGTH;
             if (DISTANCE < nearestDistance) {
               nearestDistance = DISTANCE;
               nearest = FOOD2;
@@ -13912,19 +13943,19 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition51.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS2 = (0, import_definition51.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
           for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
               x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
               y: B_LOCAL.y + Math.sin(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius
             };
-            if (!ARENA_GEOMETRY.inside(CANDIDATE, SCENE, RADIUS)) {
+            if (!ARENA_GEOMETRY.inside(CANDIDATE, SCENE, RADIUS2)) {
               continue;
             }
             const BLOCKED = this.units.some(
-              (unit) => unit.hp > 0 && Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS + unit.radius + 0.08
+              (unit) => unit.hp > 0 && Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS2 + unit.radius + 0.08
             ) || (action?.landingPoints || []).some(
-              (point2) => Math.hypot(point2.x - CANDIDATE.x, point2.y - CANDIDATE.y) < RADIUS * 2 + 0.08
+              (point2) => Math.hypot(point2.x - CANDIDATE.x, point2.y - CANDIDATE.y) < RADIUS2 * 2 + 0.08
             );
             if (!BLOCKED) {
               return CANDIDATE;
@@ -14567,10 +14598,10 @@
     return KEYS_A.length === KEYS_B.length && KEYS_A.every((key) => Object.hasOwn(b, key) && sameFarmProgress(a[key], b[key]));
   }
   function position(index, count, seed, scale) {
-    const ANGLE = index * 2.399963229728653 + seed % 6283 / 1e3, RADIUS = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
+    const ANGLE = index * 2.399963229728653 + seed % 6283 / 1e3, RADIUS2 = Math.sqrt((index + 0.5) / Math.max(1, count)) * scale;
     return {
-      x: Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS,
-      y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS
+      x: Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS2,
+      y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS2
     };
   }
   function restoreFarmProgress(data) {
@@ -14723,7 +14754,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.2";
+      PRODUCT_VERSION = "0.13.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15589,13 +15620,13 @@
   // src/features/formation-skills/giant/presentation.js
   var GiantPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS = Math.max(0.3, effect.radius || 0.3);
-      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875aa", 0.07);
-      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b344", 0.04);
+      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS2 = Math.max(0.3, effect.radius || 0.3);
+      renderer.ring(effect.x, effect.y, RADIUS2 * 1.15 * PULSE, "#b3d875aa", 0.07);
+      renderer.ring(effect.x, effect.y, RADIUS2 * 1.42 * PULSE, "#e6f3b344", 0.04);
       for (let i = 0; i < 5; i++) {
         const A = i * Math.PI * 2 / 5 + effect.age, P = renderer.project(
-          effect.x + Math.cos(A) * RADIUS * 1.25,
-          effect.y + Math.sin(A) * RADIUS * 1.25,
+          effect.x + Math.cos(A) * RADIUS2 * 1.25,
+          effect.y + Math.sin(A) * RADIUS2 * 1.25,
           (effect.age * 1.3 + i * 0.4) % 2
         );
         renderer.ellipse(P.x, P.y, renderer.scale * 0.025, renderer.scale * 0.055, "#e2f7a9aa");
@@ -15885,9 +15916,9 @@
         for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
           const POINTS = ARCS[arcIndex];
           for (let index = 0; index < POINTS.length; index++) {
-            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE3 = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
-            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE3;
-            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE3 * 0.42;
+            const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE2 = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
+            POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE2;
+            POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE2 * 0.42;
             POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
           }
           const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
@@ -16074,8 +16105,8 @@
         }
       }
     }
-    const RADIUS = renderer.scale * (0.26 + PROGRESS * 0.07 + PULSE * 0.025 + bump * 0.07) * OPEN;
-    return { progress: PROGRESS, pulse: PULSE, bump, open: OPEN, radius: RADIUS };
+    const RADIUS2 = renderer.scale * (0.26 + PROGRESS * 0.07 + PULSE * 0.025 + bump * 0.07) * OPEN;
+    return { progress: PROGRESS, pulse: PULSE, bump, open: OPEN, radius: RADIUS2 };
   }
   function drawOrbit(renderer, task, state, front) {
     const TIME = renderer.displayTimeMs * 42e-4, Z = task.centerZ + (front ? 0.32 : -0.16);
@@ -16240,8 +16271,8 @@
   };
   var MergeMaterialEffect = class {
     draw(renderer, effect, progress) {
-      const T = CLAMP2(progress, 0, 1), SIDE3 = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
-        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE3 * Math.min(1, LENGTH / 1.2);
+      const T = CLAMP2(progress, 0, 1), SIDE2 = (effect.sequenceIndex || 0) % 2 ? 1 : -1, DX = effect.targetX - effect.x, DY = effect.targetY - effect.y, LENGTH = Math.hypot(DX, DY) || 1, NORMAL_X = -DY / LENGTH, NORMAL_Y = DX / LENGTH, AT = (u) => {
+        const V = CLAMP2(u, 0, 1), POSITION = mergeMaterialPosition(effect, V), ARC = Math.sin(V * Math.PI) * 0.45 * SIDE2 * Math.min(1, LENGTH / 1.2);
         return renderer.project(
           POSITION.x + NORMAL_X * ARC,
           POSITION.y + NORMAL_Y * ARC,
@@ -16380,17 +16411,17 @@
   };
   var ShockwaveEffect = class {
     draw(renderer, effect, progress) {
-      const P = clamp01(progress / (effect.duration || 0.55)), RADIUS = Math.max(0.08, effect.radius) * (0.2 + 0.8 * easeOut(P)), FADE = 1 - P;
-      renderer.groundEllipse(effect.x, effect.y, RADIUS, RADIUS, rgba(GOLD, 0.16 * FADE));
-      renderer.ring(effect.x, effect.y, RADIUS, rgba(GOLD, 0.9 * FADE), 0.12 * FADE + 0.025);
+      const P = clamp01(progress / (effect.duration || 0.55)), RADIUS2 = Math.max(0.08, effect.radius) * (0.2 + 0.8 * easeOut(P)), FADE = 1 - P;
+      renderer.groundEllipse(effect.x, effect.y, RADIUS2, RADIUS2, rgba(GOLD, 0.16 * FADE));
+      renderer.ring(effect.x, effect.y, RADIUS2, rgba(GOLD, 0.9 * FADE), 0.12 * FADE + 0.025);
       renderer.ring(
         effect.x,
         effect.y,
-        Math.max(0.05, RADIUS - 0.14),
+        Math.max(0.05, RADIUS2 - 0.14),
         rgba(GOLD_LIGHT, 0.6 * FADE),
         0.045 * FADE + 0.01
       );
-      groundTicks(renderer, effect.x, effect.y, RADIUS * 0.72, RADIUS * 0.94, 12, rgba(CREAM2, 0.7 * FADE), 3, P);
+      groundTicks(renderer, effect.x, effect.y, RADIUS2 * 0.72, RADIUS2 * 0.94, 12, rgba(CREAM2, 0.7 * FADE), 3, P);
     }
   };
   var DropDustEffect = class {
@@ -16679,8 +16710,8 @@
       this.id = FEATURE.id;
     }
     drawShadow(renderer, projectile) {
-      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
-      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
+      const RADIUS2 = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS2, RADIUS2 * 5 / 7, "#55452433");
     }
     draw(renderer, projectile, point2, tail) {
       const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
@@ -21536,74 +21567,486 @@
   init_boss_rewards();
   init_farm_boss_stages();
 
-  // src/world-map-screen.js
+  // src/world-map-view.js
   init_world_map();
-  var SIDE2 = WORLD_MAP_SETTINGS.radius * 2 + 1;
-  function createWorldMapScreen(grid, onSelect) {
-    const CELLS = [];
-    grid.style.setProperty("--world-map-side", String(SIDE2));
-    for (let index = 0; index < WORLD_MAP_TILE_COUNT; index++) {
-      const CELL = document.createElement("button");
-      CELL.type = "button";
-      CELL.className = "world-map__tile";
-      CELL.dataset.tile = String(index);
-      CELLS.push(CELL);
-      grid.append(CELL);
-    }
-    grid.addEventListener("click", (event) => {
-      const CELL = event.target.closest("[data-tile]");
-      if (CELL) {
-        onSelect(Number(CELL.dataset.tile));
+  var RADIUS = WORLD_MAP_SETTINGS.radius;
+  var COLORS = {
+    background: "#efeadb",
+    fog: "#e2dcc6",
+    fogPuff: "#ece7d4",
+    fogEdge: "#cfc8ae",
+    land: ["#d3dfc6", "#cbd9be", "#d9e4cd"],
+    shore: "#a9bc99",
+    cleared: "#9fbf98",
+    farm: "#c2913e",
+    nest: "#b9774a",
+    cave: "#6b5240",
+    scout: "#7c9bb0",
+    ink: "#4a4438",
+    paper: "#fffaf0",
+    tree: "#8fae86",
+    trunk: "#a08358"
+  };
+  var NEIGHBOURS2 = [
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1]
+  ];
+  var SIDES = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ];
+  var POP_MS = 650;
+  var MIN_SCALE = 10;
+  var MAX_SCALE = 72;
+  function look(index, salt) {
+    let value = (Math.imul(index + 1, 2654435769) ^ Math.imul(salt + 7, 2246822507)) >>> 0;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  }
+  var INSIDE = (x, y) => Math.abs(x) <= RADIUS && Math.abs(y) <= RADIUS;
+  var CLAMP3 = (value, min, max) => Math.min(max, Math.max(min, value));
+  var EASE_OUT_BACK = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
+  function createWorldMapView(canvas, { interactive = false, onSelect = () => {
+  }, fps = 30 } = {}) {
+    const CONTEXT = canvas.getContext("2d");
+    const CAMERA = { x: 0, y: 0, scale: 28 };
+    const POINTERS = /* @__PURE__ */ new Map();
+    const POP_AT = /* @__PURE__ */ new Map();
+    let width = 0, height = 0, ratio = 1, manual = false, previousLit = null, frame2 = 0, lastDraw = 0, gesture = null, provider = null, targetKey = "", targetTile = -1;
+    function resize() {
+      ratio = Math.min(2, globalThis.devicePixelRatio || 1);
+      width = Math.max(1, canvas.clientWidth);
+      height = Math.max(1, canvas.clientHeight);
+      const PIXEL_WIDTH = Math.round(width * ratio), PIXEL_HEIGHT = Math.round(height * ratio);
+      if (canvas.width !== PIXEL_WIDTH || canvas.height !== PIXEL_HEIGHT) {
+        canvas.width = PIXEL_WIDTH;
+        canvas.height = PIXEL_HEIGHT;
       }
-    });
+    }
+    function fit(map) {
+      resize();
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const INDEX of map.revealed) {
+        minX = Math.min(minX, tileX(INDEX));
+        maxX = Math.max(maxX, tileX(INDEX));
+        minY = Math.min(minY, tileY(INDEX));
+        maxY = Math.max(maxY, tileY(INDEX));
+      }
+      const MARGIN = interactive ? 1.6 : 1.2;
+      CAMERA.x = (minX + maxX) / 2;
+      CAMERA.y = (minY + maxY) / 2;
+      CAMERA.scale = CLAMP3(
+        Math.min(width / (maxX - minX + 1 + MARGIN * 2), height / (maxY - minY + 1 + MARGIN * 2)),
+        MIN_SCALE,
+        interactive ? 56 : 40
+      );
+      manual = false;
+    }
+    function screenX(x) {
+      return (x - CAMERA.x) * CAMERA.scale + width / 2;
+    }
+    function screenY(y) {
+      return (y - CAMERA.y) * CAMERA.scale + height / 2;
+    }
+    function pick(clientX, clientY) {
+      const BOX = canvas.getBoundingClientRect(), X = Math.round((clientX - BOX.left - width / 2) / CAMERA.scale + CAMERA.x), Y = Math.round((clientY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y);
+      return INSIDE(X, Y) ? tileIndex(X, Y) : -1;
+    }
+    function exploreTarget(map) {
+      const KEY2 = `${map.revealed.length}:${map.exploreTarget}`;
+      if (KEY2 !== targetKey) {
+        targetKey = KEY2;
+        targetTile = nextExploreTile(map);
+      }
+      return targetTile;
+    }
+    function drawLand(index, x, y, s, lit, now) {
+      const VARIANT = COLORS.land[Math.floor(look(index, 1) * COLORS.land.length)], POP = POP_AT.get(index), AGE = POP === void 0 ? POP_MS : now - POP;
+      let size = s;
+      if (AGE < POP_MS) {
+        size = s * CLAMP3(EASE_OUT_BACK(AGE / POP_MS), 0.2, 1.08);
+      }
+      const OFFSET = (s - size) / 2;
+      CONTEXT.fillStyle = VARIANT;
+      CONTEXT.fillRect(x + OFFSET - 0.3, y + OFFSET - 0.3, size + 0.6, size + 0.6);
+      if (AGE < POP_MS) {
+        CONTEXT.strokeStyle = COLORS.scout;
+        CONTEXT.globalAlpha = 1 - AGE / POP_MS;
+        CONTEXT.lineWidth = 2;
+        CONTEXT.beginPath();
+        CONTEXT.arc(x + s / 2, y + s / 2, s * (0.3 + AGE / POP_MS * 0.9), 0, Math.PI * 2);
+        CONTEXT.stroke();
+        CONTEXT.globalAlpha = 1;
+      }
+      const SEED = look(index, 2);
+      if (s >= 16) {
+        if (SEED < 0.16) {
+          CONTEXT.fillStyle = COLORS.trunk;
+          CONTEXT.fillRect(x + s * 0.47, y + s * 0.6, s * 0.06, s * 0.2);
+          CONTEXT.fillStyle = COLORS.tree;
+          CONTEXT.beginPath();
+          CONTEXT.arc(x + s * 0.5, y + s * 0.5, s * 0.17, 0, Math.PI * 2);
+          CONTEXT.fill();
+        } else if (SEED < 0.4) {
+          CONTEXT.strokeStyle = COLORS.tree;
+          CONTEXT.lineWidth = Math.max(1, s * 0.04);
+          CONTEXT.beginPath();
+          const TX = x + s * (0.3 + 0.4 * look(index, 3)), TY = y + s * (0.5 + 0.3 * look(index, 4));
+          CONTEXT.moveTo(TX - s * 0.06, TY);
+          CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
+          CONTEXT.moveTo(TX, TY);
+          CONTEXT.lineTo(TX, TY - s * 0.16);
+          CONTEXT.moveTo(TX + s * 0.06, TY);
+          CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
+          CONTEXT.stroke();
+        }
+      }
+      CONTEXT.strokeStyle = COLORS.shore;
+      CONTEXT.lineWidth = 2;
+      CONTEXT.beginPath();
+      for (const [DX, DY] of SIDES) {
+        const NX = tileX(index) + DX, NY = tileY(index) + DY;
+        if (INSIDE(NX, NY) && !lit.has(tileIndex(NX, NY))) {
+          const FROM_X = DX === 0 ? x : x + (DX > 0 ? s : 0), FROM_Y = DY === 0 ? y : y + (DY > 0 ? s : 0), TO_X = DX === 0 ? x + s : FROM_X, TO_Y = DY === 0 ? y + s : FROM_Y;
+          CONTEXT.moveTo(FROM_X, FROM_Y);
+          CONTEXT.lineTo(TO_X, TO_Y);
+        }
+      }
+      CONTEXT.stroke();
+    }
+    function drawFog(index, x, y, s) {
+      const INSET = Math.max(1, s * 0.05);
+      CONTEXT.fillStyle = COLORS.fog;
+      CONTEXT.beginPath();
+      CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
+      CONTEXT.fill();
+      CONTEXT.fillStyle = COLORS.fogPuff;
+      for (let puff2 = 0; puff2 < 3; puff2++) {
+        CONTEXT.beginPath();
+        CONTEXT.arc(
+          x + s * (0.25 + 0.5 * look(index, 10 + puff2)),
+          y + s * (0.3 + 0.4 * look(index, 20 + puff2)),
+          s * (0.1 + 0.08 * look(index, 30 + puff2)),
+          0,
+          Math.PI * 2
+        );
+        CONTEXT.fill();
+      }
+    }
+    function drawFarm(x, y, s) {
+      CONTEXT.fillStyle = COLORS.paper;
+      CONTEXT.fillRect(x + s * 0.24, y + s * 0.44, s * 0.52, s * 0.34);
+      CONTEXT.fillStyle = COLORS.farm;
+      CONTEXT.beginPath();
+      CONTEXT.moveTo(x + s * 0.16, y + s * 0.46);
+      CONTEXT.lineTo(x + s * 0.5, y + s * 0.18);
+      CONTEXT.lineTo(x + s * 0.84, y + s * 0.46);
+      CONTEXT.closePath();
+      CONTEXT.fill();
+      CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
+    }
+    function drawFlag(x, y, s) {
+      CONTEXT.strokeStyle = COLORS.ink;
+      CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
+      CONTEXT.beginPath();
+      CONTEXT.moveTo(x + s * 0.4, y + s * 0.8);
+      CONTEXT.lineTo(x + s * 0.4, y + s * 0.2);
+      CONTEXT.stroke();
+      CONTEXT.fillStyle = COLORS.cleared;
+      CONTEXT.beginPath();
+      CONTEXT.moveTo(x + s * 0.4, y + s * 0.2);
+      CONTEXT.lineTo(x + s * 0.78, y + s * 0.34);
+      CONTEXT.lineTo(x + s * 0.4, y + s * 0.48);
+      CONTEXT.closePath();
+      CONTEXT.fill();
+      CONTEXT.strokeStyle = COLORS.ink;
+      CONTEXT.lineWidth = 1;
+      CONTEXT.stroke();
+    }
+    function drawNest(x, y, s, danger, open, now) {
+      CONTEXT.fillStyle = COLORS.nest;
+      CONTEXT.beginPath();
+      CONTEXT.ellipse(x + s * 0.5, y + s * 0.62, s * 0.34, s * 0.26, 0, Math.PI, 0);
+      CONTEXT.lineTo(x + s * 0.84, y + s * 0.72);
+      CONTEXT.lineTo(x + s * 0.16, y + s * 0.72);
+      CONTEXT.closePath();
+      CONTEXT.fill();
+      CONTEXT.fillStyle = COLORS.cave;
+      CONTEXT.beginPath();
+      CONTEXT.ellipse(x + s * 0.5, y + s * 0.72, s * 0.15, s * 0.15, 0, Math.PI, 0);
+      CONTEXT.fill();
+      CONTEXT.fillStyle = COLORS.paper;
+      for (const EYE of [-0.05, 0.05]) {
+        CONTEXT.beginPath();
+        CONTEXT.arc(x + s * (0.5 + EYE), y + s * 0.65, Math.max(1, s * 0.022), 0, Math.PI * 2);
+        CONTEXT.fill();
+      }
+      if (s >= 16) {
+        const FONT = Math.max(9, s * 0.3), LABEL = String(danger);
+        CONTEXT.font = `700 ${FONT}px system-ui, sans-serif`;
+        const BADGE_WIDTH = CONTEXT.measureText(LABEL).width + FONT * 0.7;
+        CONTEXT.fillStyle = COLORS.paper;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + s - BADGE_WIDTH - s * 0.04, y + s * 0.04, BADGE_WIDTH, FONT * 1.2, FONT * 0.5);
+        CONTEXT.fill();
+        CONTEXT.fillStyle = COLORS.ink;
+        CONTEXT.textAlign = "center";
+        CONTEXT.textBaseline = "middle";
+        CONTEXT.fillText(LABEL, x + s - BADGE_WIDTH / 2 - s * 0.04, y + s * 0.04 + FONT * 0.62);
+      }
+      if (open) {
+        CONTEXT.strokeStyle = COLORS.nest;
+        CONTEXT.globalAlpha = 0.55 + 0.45 * Math.sin(now / 260);
+        CONTEXT.lineWidth = 2.5;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
+        CONTEXT.stroke();
+        CONTEXT.globalAlpha = 1;
+      }
+    }
+    function drawExploreTarget(x, y, s, progress, now) {
+      const INSET = Math.max(1, s * 0.05);
+      CONTEXT.save();
+      CONTEXT.beginPath();
+      CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
+      CONTEXT.clip();
+      CONTEXT.fillStyle = COLORS.scout;
+      CONTEXT.globalAlpha = 0.42;
+      CONTEXT.fillRect(x, y + s * (1 - progress), s, s * progress);
+      CONTEXT.restore();
+      CONTEXT.strokeStyle = COLORS.scout;
+      CONTEXT.lineWidth = 2;
+      CONTEXT.setLineDash([s * 0.14, s * 0.1]);
+      CONTEXT.lineDashOffset = -now / 70;
+      CONTEXT.beginPath();
+      CONTEXT.roundRect(x + INSET, y + INSET, s - INSET * 2, s - INSET * 2, s * 0.22);
+      CONTEXT.stroke();
+      CONTEXT.setLineDash([]);
+      if (s >= 18) {
+        CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
+        CONTEXT.beginPath();
+        CONTEXT.arc(x + s * 0.46, y + s * 0.44, s * 0.14, 0, Math.PI * 2);
+        CONTEXT.moveTo(x + s * 0.56, y + s * 0.54);
+        CONTEXT.lineTo(x + s * 0.68, y + s * 0.66);
+        CONTEXT.stroke();
+        if (s >= 26) {
+          CONTEXT.fillStyle = COLORS.ink;
+          CONTEXT.font = `700 ${Math.max(9, s * 0.2)}px system-ui, sans-serif`;
+          CONTEXT.textAlign = "center";
+          CONTEXT.textBaseline = "alphabetic";
+          CONTEXT.fillText(`${Math.floor(progress * 100)}%`, x + s / 2, y + s * 0.92);
+        }
+      }
+    }
+    function drawParty(map, target, explorers, now) {
+      const FARM = map.farms[0]?.tile;
+      if (FARM === void 0 || target < 0 || !(explorers > 0)) {
+        return;
+      }
+      const FROM_X = screenX(tileX(FARM)), FROM_Y = screenY(tileY(FARM)), TO_X = screenX(tileX(target)), TO_Y = screenY(tileY(target));
+      CONTEXT.strokeStyle = COLORS.scout;
+      CONTEXT.globalAlpha = 0.55;
+      CONTEXT.lineWidth = 2;
+      CONTEXT.setLineDash([3, 6]);
+      CONTEXT.beginPath();
+      CONTEXT.moveTo(FROM_X, FROM_Y);
+      CONTEXT.lineTo(TO_X, TO_Y);
+      CONTEXT.stroke();
+      CONTEXT.setLineDash([]);
+      CONTEXT.globalAlpha = 1;
+      const COUNT = Math.min(5, Math.ceil(explorers / 2));
+      for (let member = 0; member < COUNT; member++) {
+        const T = (now / 2600 + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
+        CONTEXT.fillStyle = COLORS.scout;
+        CONTEXT.strokeStyle = COLORS.paper;
+        CONTEXT.lineWidth = 1.5;
+        CONTEXT.beginPath();
+        CONTEXT.arc(
+          FROM_X + (TO_X - FROM_X) * T + SWAY,
+          FROM_Y + (TO_Y - FROM_Y) * T - SWAY,
+          Math.max(3, CAMERA.scale * 0.09),
+          0,
+          Math.PI * 2
+        );
+        CONTEXT.fill();
+        CONTEXT.stroke();
+      }
+    }
+    function render(map, state = {}, now = performance.now()) {
+      resize();
+      const LIT = new Set(map.revealed);
+      if (previousLit) {
+        for (const INDEX of LIT) {
+          if (!previousLit.has(INDEX)) {
+            POP_AT.set(INDEX, now);
+          }
+        }
+        if (!manual && LIT.size !== previousLit.size) {
+          fit(map);
+        }
+      } else {
+        fit(map);
+      }
+      previousLit = LIT;
+      const S = CAMERA.scale, MIN_X = Math.max(-RADIUS, Math.floor(CAMERA.x - width / 2 / S) - 1), MAX_X = Math.min(RADIUS, Math.ceil(CAMERA.x + width / 2 / S) + 1), MIN_Y = Math.max(-RADIUS, Math.floor(CAMERA.y - height / 2 / S) - 1), MAX_Y = Math.min(RADIUS, Math.ceil(CAMERA.y + height / 2 / S) + 1), TARGET = exploreTarget(map), FARMS = new Set(map.farms.map((farm) => farm.tile));
+      CONTEXT.setTransform(ratio, 0, 0, ratio, 0, 0);
+      CONTEXT.fillStyle = COLORS.background;
+      CONTEXT.fillRect(0, 0, width, height);
+      CONTEXT.strokeStyle = COLORS.fogEdge;
+      CONTEXT.lineWidth = 1.5;
+      CONTEXT.setLineDash([6, 6]);
+      CONTEXT.strokeRect(screenX(-RADIUS - 0.5), screenY(-RADIUS - 0.5), S * (RADIUS * 2 + 1), S * (RADIUS * 2 + 1));
+      CONTEXT.setLineDash([]);
+      for (let y = MIN_Y; y <= MAX_Y; y++) {
+        for (let x = MIN_X; x <= MAX_X; x++) {
+          const INDEX = tileIndex(x, y), PX = screenX(x - 0.5), PY = screenY(y - 0.5);
+          if (LIT.has(INDEX)) {
+            drawLand(INDEX, PX, PY, S, LIT, now);
+          } else if (NEIGHBOURS2.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))) {
+            drawFog(INDEX, PX, PY, S);
+          }
+        }
+      }
+      for (let y = MIN_Y; y <= MAX_Y; y++) {
+        for (let x = MIN_X; x <= MAX_X; x++) {
+          const INDEX = tileIndex(x, y), PX = screenX(x - 0.5), PY = screenY(y - 0.5);
+          if (!LIT.has(INDEX)) {
+            continue;
+          }
+          if (FARMS.has(INDEX)) {
+            drawFarm(PX, PY, S);
+          } else if (isCleared(map, INDEX)) {
+            drawFlag(PX, PY, S);
+          } else if (hasNest(map, INDEX)) {
+            drawNest(PX, PY, S, tileDanger(map, INDEX), canChallenge(map, INDEX), now);
+          }
+        }
+      }
+      if (TARGET >= 0) {
+        drawExploreTarget(screenX(tileX(TARGET) - 0.5), screenY(tileY(TARGET) - 0.5), S, state.progress ?? 0, now);
+        drawParty(map, TARGET, state.explorers ?? 0, now);
+      }
+      if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
+        CONTEXT.strokeStyle = COLORS.ink;
+        CONTEXT.lineWidth = 3;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(
+          screenX(tileX(state.selected) - 0.5) + 1,
+          screenY(tileY(state.selected) - 0.5) + 1,
+          S - 2,
+          S - 2,
+          S * 0.18
+        );
+        CONTEXT.stroke();
+      }
+    }
+    function loop(now) {
+      frame2 = requestAnimationFrame(loop);
+      if (now - lastDraw < 1e3 / fps) {
+        return;
+      }
+      lastDraw = now;
+      const SNAPSHOT = provider?.();
+      if (SNAPSHOT) {
+        render(SNAPSHOT.map, SNAPSHOT, now);
+      }
+    }
+    if (interactive) {
+      const ZOOM = (factor, atX, atY) => {
+        const BOX = canvas.getBoundingClientRect(), BEFORE_X = (atX - BOX.left - width / 2) / CAMERA.scale + CAMERA.x, BEFORE_Y = (atY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y;
+        CAMERA.scale = CLAMP3(CAMERA.scale * factor, MIN_SCALE, MAX_SCALE);
+        CAMERA.x = BEFORE_X - (atX - BOX.left - width / 2) / CAMERA.scale;
+        CAMERA.y = BEFORE_Y - (atY - BOX.top - height / 2) / CAMERA.scale;
+        manual = true;
+      };
+      const SPREAD = () => {
+        const [A, B] = [...POINTERS.values()];
+        return Math.hypot(A.x - B.x, A.y - B.y);
+      };
+      canvas.style.touchAction = "none";
+      canvas.addEventListener("pointerdown", (event) => {
+        canvas.setPointerCapture?.(event.pointerId);
+        POINTERS.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        gesture = { moved: POINTERS.size > 1, spread: POINTERS.size > 1 ? SPREAD() : 0 };
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        const POINTER = POINTERS.get(event.pointerId);
+        if (!POINTER || !gesture) {
+          return;
+        }
+        const DX = event.clientX - POINTER.x, DY = event.clientY - POINTER.y;
+        if (POINTERS.size === 1) {
+          if (!gesture.moved && Math.hypot(DX, DY) < 6) {
+            return;
+          }
+          gesture.moved = true;
+          CAMERA.x -= DX / CAMERA.scale;
+          CAMERA.y -= DY / CAMERA.scale;
+          manual = true;
+        }
+        POINTER.x = event.clientX;
+        POINTER.y = event.clientY;
+        if (POINTERS.size === 2) {
+          const NEXT = SPREAD(), [A, B] = [...POINTERS.values()];
+          if (gesture.spread > 0) {
+            ZOOM(NEXT / gesture.spread, (A.x + B.x) / 2, (A.y + B.y) / 2);
+          }
+          gesture.spread = NEXT;
+          gesture.moved = true;
+        }
+      });
+      const RELEASE = (event) => {
+        const WAS_TAP = gesture && !gesture.moved && POINTERS.size === 1 && event.type === "pointerup";
+        POINTERS.delete(event.pointerId);
+        if (WAS_TAP) {
+          const INDEX = pick(event.clientX, event.clientY);
+          if (INDEX >= 0) {
+            onSelect(INDEX);
+          }
+        }
+        if (POINTERS.size === 0) {
+          gesture = null;
+        }
+      };
+      canvas.addEventListener("pointerup", RELEASE);
+      canvas.addEventListener("pointercancel", RELEASE);
+      canvas.addEventListener(
+        "wheel",
+        (event) => {
+          event.preventDefault();
+          ZOOM(event.deltaY < 0 ? 1.15 : 1 / 1.15, event.clientX, event.clientY);
+        },
+        { passive: false }
+      );
+    }
     return {
-      // Colour and label of one tile from the map state; the same text is the tile's accessible name.
-      render(map, selected) {
-        const NEXT = nextExploreTile(map), FARMS = new Set(map.farms.map((farm) => farm.tile));
-        CELLS.forEach((cell, index) => {
-          const LIT = isRevealed(map, index), NEST = LIT && hasNest(map, index), DONE = isCleared(map, index);
-          let state = "fog", label = "", name = "아직 안개에 덮여 있어요";
-          if (FARMS.has(index)) {
-            state = "farm";
-            label = "농";
-            name = "농장";
-          } else if (DONE) {
-            state = "cleared";
-            label = "✓";
-            name = "정리한 칸";
-          } else if (NEST) {
-            state = "nest";
-            label = String(tileDanger(map, index));
-            name = `보스 둥지, 위험도 ${label}단계`;
-          } else if (LIT) {
-            state = "lit";
-            name = farmDistance(map, index) <= WORLD_MAP_SETTINGS.safeRadius ? "농장 주변" : "빈 칸";
-          }
-          const CLASSES = ["world-map__tile", `world-map__tile--${state}`];
-          if (state === "nest" && canChallenge(map, index)) {
-            CLASSES.push("world-map__tile--open");
-          }
-          if (!LIT && index === NEXT) {
-            CLASSES.push("world-map__tile--next");
-          }
-          if (index === map.exploreTarget) {
-            CLASSES.push("world-map__tile--target");
-          }
-          if (index === selected) {
-            CLASSES.push("world-map__tile--selected");
-          }
-          const CLASS_NAME = CLASSES.join(" ");
-          if (cell.className !== CLASS_NAME) {
-            cell.className = CLASS_NAME;
-          }
-          if (cell.textContent !== label) {
-            cell.textContent = label;
-          }
-          cell.setAttribute("aria-label", `${tileX(index)}, ${tileY(index)} ${name}`);
-        });
+      render,
+      fit,
+      resize,
+      // Starts drawing frames from whatever the provider returns until stop() is called.
+      start(nextProvider) {
+        provider = nextProvider;
+        previousLit = null;
+        cancelAnimationFrame(frame2);
+        frame2 = requestAnimationFrame(loop);
       },
-      center() {
-        CELLS[tileIndex(0, 0)]?.scrollIntoView({ block: "center", inline: "center" });
+      stop() {
+        cancelAnimationFrame(frame2);
+        frame2 = 0;
+        provider = null;
+      },
+      // Show the whole lit land again after the player moved the camera.
+      recenter(map) {
+        fit(map);
       }
     };
   }
@@ -21632,7 +22075,9 @@
   var bossEncounterOpen = false;
   var bossMapMode = true;
   var bossMapTile = -1;
-  var worldMapScreen = null;
+  var worldMapView = null;
+  var miniMapView = null;
+  var lastLit = null;
   var bossSwipe = null;
   var bossPauseBeforeOpen = null;
   var lastAutoSettledRunKey = null;
@@ -22271,13 +22716,76 @@
     }
     return raidStartBlockReason(false);
   }
+  function worldMapFrame() {
+    if (!personalGarden) {
+      return null;
+    }
+    const MAP = personalGarden.worldMap;
+    return {
+      map: MAP,
+      selected: bossMapTile,
+      progress: Math.min(1, MAP.gauge / exploreCost(MAP)),
+      explorers: personalGarden.workerKindCounts.explore
+    };
+  }
+  function startWorldMapView() {
+    worldMapView ??= createWorldMapView(DOLLAR2("worldMapCanvas"), {
+      interactive: true,
+      onSelect: selectWorldMapTile,
+      fps: 30
+    });
+    worldMapView.start(worldMapFrame);
+  }
+  function stopWorldMapView() {
+    worldMapView?.stop();
+  }
+  function syncMiniMap(visible) {
+    const MINI = DOLLAR2("miniMap");
+    if (MINI.hidden === visible) {
+      MINI.hidden = !visible;
+    }
+    if (visible && !miniMapView) {
+      miniMapView = createWorldMapView(DOLLAR2("miniMapCanvas"), { fps: 12 });
+      miniMapView.start(worldMapFrame);
+    } else if (!visible && miniMapView) {
+      miniMapView.stop();
+      miniMapView = null;
+    }
+    if (visible && personalGarden) {
+      const MAP = personalGarden.worldMap, PERCENT = Math.floor(Math.min(1, MAP.gauge / exploreCost(MAP)) * 100);
+      syncText("miniMapLabel", `탐사 ${PERCENT}% · ${MAP.revealed.length}칸`);
+    }
+  }
+  function announceExploration() {
+    const MAP = personalGarden?.worldMap;
+    if (!MAP) {
+      lastLit = null;
+      return;
+    }
+    if (!lastLit || lastLit.world !== personalGarden) {
+      lastLit = { world: personalGarden, set: new Set(MAP.revealed) };
+      return;
+    }
+    if (MAP.revealed.length === lastLit.set.size) {
+      return;
+    }
+    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)), NESTS = FOUND.filter((index) => hasNest(MAP, index)).length, NOTICE = DOLLAR2("exploreNotice");
+    lastLit.set = new Set(MAP.revealed);
+    if (FOUND.length === 0) {
+      return;
+    }
+    NOTICE.textContent = NESTS > 0 ? `새 칸 ${FOUND.length}개 발견 · 보스 둥지가 있어요!` : `새 칸 ${FOUND.length}개를 발견했어요`;
+    NOTICE.hidden = false;
+    clearTimeout(announceExploration.timer);
+    announceExploration.timer = setTimeout(() => {
+      NOTICE.hidden = true;
+    }, 4e3);
+  }
   function renderWorldMap() {
     if (!personalGarden) {
       return;
     }
     const MAP = personalGarden.worldMap;
-    worldMapScreen ??= createWorldMapScreen(DOLLAR2("worldMapGrid"), selectWorldMapTile);
-    worldMapScreen.render(MAP, bossMapTile);
     const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${exploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`, TILE = bossMapTile;
     let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false;
     if (TILE >= 0) {
@@ -22308,8 +22816,15 @@
     bossMapTile = bossMapTile === index ? -1 : index;
     renderWorldMap();
   }
+  var bossMapTicker = 0;
+  function stopBossMapTicker() {
+    clearInterval(bossMapTicker);
+    bossMapTicker = 0;
+  }
   function setBossView(mapMode) {
     bossMapMode = mapMode;
+    stopBossMapTicker();
+    stopWorldMapView();
     const SCREEN = DOLLAR2("bossEncounterScreen");
     SCREEN.dataset.view = mapMode ? "map" : "stage";
     DOLLAR2("worldMapView").hidden = !mapMode;
@@ -22318,7 +22833,11 @@
     DOLLAR2("bossEncounterChallenge").textContent = mapMode ? "둥지 도전" : "레이드 시작";
     if (mapMode) {
       renderWorldMap();
-      worldMapScreen.center();
+      startWorldMapView();
+      bossMapTicker = setInterval(() => {
+        personalGarden?.tickExploration(0.25);
+        renderWorldMap();
+      }, 250);
     } else {
       DOLLAR2("bossEncounterHint").textContent = "위아래로 밀어 단계 이동";
       if (personalGarden) {
@@ -22367,6 +22886,8 @@
       return;
     }
     bossEncounterOpen = false;
+    stopBossMapTicker();
+    stopWorldMapView();
     document.body.dataset.bossScreen = "false";
     DOLLAR2("bossEncounterScreen").hidden = true;
     bossSwipe = null;
@@ -22710,6 +23231,12 @@
   };
   DOLLAR2("bossEncounterBack").onclick = () => closeBossEncounter();
   DOLLAR2("bossViewToggle").onclick = () => setBossView(!bossMapMode);
+  DOLLAR2("worldMapFit").onclick = () => {
+    if (personalGarden) {
+      worldMapView?.recenter(personalGarden.worldMap);
+    }
+  };
+  DOLLAR2("miniMap").onclick = () => openBossEncounter();
   DOLLAR2("worldMapExplore").onclick = () => {
     if (personalGarden && bossMapTile >= 0 && setExploreTarget(personalGarden.worldMap, bossMapTile)) {
       personalGarden.markProgressChanged();
@@ -23746,6 +24273,8 @@
       }
     }
     syncFlag("bossEncounterScreen", "hidden", home || !bossEncounterOpen);
+    syncMiniMap(!home && !RAID && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
+    announceExploration();
     syncFlag("farmControls", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag("workHud", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag("raidControls", "hidden", !RAID || home);

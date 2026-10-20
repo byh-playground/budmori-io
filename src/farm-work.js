@@ -282,11 +282,20 @@ function impact(world, config, pile) {
         assignWorkers(world, config);
     }
 }
+// Explorers have no pile: they walk to the rim of the farm on the side of the tile they are exploring and look out.
+function exploreOrder(world, unit) {
+    const SPOT = world.exploreSpot(unit);
+    if (!SPOT) {
+        return null;
+    }
+    const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
+    return { x: SPOT.x, y: SPOT.y, fx: SPOT.fx, fy: SPOT.fy, speed: 7, hold: DISTANCE <= 0.6, face: DISTANCE <= 0.6 };
+}
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {
     const ASSIGN = world._workAssign.get(unit.id);
     if (!ASSIGN) {
-        return null;
+        return world._workerKinds.get(unit.id) === 'explore' ? exploreOrder(world, unit) : null;
     }
     const PILE = ASSIGN.pile,
         SWING = world._swings.get(unit.id),
