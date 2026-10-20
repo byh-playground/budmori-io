@@ -43,6 +43,7 @@ import {
     takeFromTile,
     tileRemaining,
     tileResource,
+    tileSpots,
     WORLD_MAP_SETTINGS,
     beginFarmBuild,
     canBuildFarm,
@@ -2978,7 +2979,19 @@ const GARDEN = class Garden {
         if (STATE.tile < 0) {
             return null;
         }
-        const AT = this.tileOffset(unit.plotId, STATE.tile);
+        const AT = this.tileOffset(unit.plotId, STATE.tile),
+            SPOTS = STATE.job === 'hit' ? tileSpots(this.worldMap, STATE.tile) : [];
+        if (SPOTS.length > 0) {
+            // A hitter stands beside one of the trees or rocks that are really there and faces it.
+            const TARGET = SPOTS[unit.id % SPOTS.length];
+            return {
+                x: AT.x + TARGET.x - 2.2,
+                y: AT.y + TARGET.y,
+                speed: 9,
+                cx: AT.x + TARGET.x,
+                cy: AT.y + TARGET.y,
+            };
+        }
         return { x: AT.x + JITTER_X * 30, y: AT.y + JITTER_Y * 22, speed: 9, cx: AT.x, cy: AT.y };
     }
     // One step of a worker's trip. A worker on screen is steered by workOrder and only its progress is settled
