@@ -2131,6 +2131,21 @@
     }
     return map.mines.includes(index) ? Infinity : Math.max(0, tileStockTotal(map, index) - (map.mined[index] ?? 0));
   }
+  function tileLook(index, salt) {
+    let h = Math.imul(index + 1, 2654435761) ^ Math.imul(salt, 2246822507);
+    h = Math.imul(h ^ h >>> 15, 739982445);
+    return ((h ^ h >>> 12) >>> 0) / 4294967296;
+  }
+  function tileSpots(map, index) {
+    const TERRAIN = tileTerrain(map, index), COUNT = Math.ceil((TERRAIN === "forest" ? 9 : TERRAIN === "rock" ? 7 : 0) * tileFill(map, index)), SALT = TERRAIN === "forest" ? [40, 60] : [80, 100], SPOTS = [];
+    for (let at = 0; at < COUNT; at++) {
+      SPOTS.push({
+        x: (tileLook(index, SALT[0] + at) - 0.5) * FARM_CELL.width * 0.85,
+        y: (tileLook(index, SALT[1] + at) - 0.5) * FARM_CELL.height * 0.85
+      });
+    }
+    return SPOTS;
+  }
   function tileFill(map, index) {
     const TOTAL = tileStockTotal(map, index);
     return TOTAL > 0 ? Math.min(1, tileRemaining(map, index) / TOTAL) : 0;
@@ -11029,7 +11044,17 @@
           if (STATE.tile < 0) {
             return null;
           }
-          const AT = this.tileOffset(unit.plotId, STATE.tile);
+          const AT = this.tileOffset(unit.plotId, STATE.tile), SPOTS = STATE.job === "hit" ? tileSpots(this.worldMap, STATE.tile) : [];
+          if (SPOTS.length > 0) {
+            const TARGET = SPOTS[unit.id % SPOTS.length];
+            return {
+              x: AT.x + TARGET.x - 2.2,
+              y: AT.y + TARGET.y,
+              speed: 9,
+              cx: AT.x + TARGET.x,
+              cy: AT.y + TARGET.y
+            };
+          }
           return { x: AT.x + JITTER_X * 30, y: AT.y + JITTER_Y * 22, speed: 9, cx: AT.x, cy: AT.y };
         }
         // One step of a worker's trip. A worker on screen is steered by workOrder and only its progress is settled
@@ -15102,7 +15127,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.11";
+      PRODUCT_VERSION = "0.21.12";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18351,11 +18376,7 @@
         return;
       }
       const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PRESENTATION = this.scenePresentation, FX = tileX(HERE), FY = tileY(HERE), LIT = new Set(MAP.revealed), MARGIN = FARM_CELL.width * this.scale, PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])), EXPLORING = world.exploreGoal(world.activePlotId)?.tile ?? -1, S = this.scale;
-      const LOOK = (index, salt) => {
-        let h = Math.imul(index + 1, 2654435761) ^ Math.imul(salt, 2246822507);
-        h = Math.imul(h ^ h >>> 15, 739982445);
-        return ((h ^ h >>> 12) >>> 0) / 4294967296;
-      };
+      const LOOK = tileLook;
       const PAINT = {
         plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
         forest: ["#c3d3b0", "#cddbbc"],

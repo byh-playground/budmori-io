@@ -30,6 +30,7 @@ import {
     fogPieceCost,
     isRevealed,
     tileFill,
+    tileLook,
     tileResource,
     tileTerrain,
     tileX,
@@ -676,11 +677,7 @@ const DIORAMA = class Diorama {
             PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])),
             EXPLORING = world.exploreGoal(world.activePlotId)?.tile ?? -1,
             S = this.scale;
-        const LOOK = (index, salt) => {
-            let h = Math.imul(index + 1, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b);
-            h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-            return ((h ^ (h >>> 12)) >>> 0) / 4294967296;
-        };
+        const LOOK = tileLook;
         const PAINT = {
             plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
             forest: ['#c3d3b0', '#cddbbc'],
