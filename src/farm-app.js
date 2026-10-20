@@ -1,6 +1,5 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
 import { FormationSkillsUI } from './formation-skills-ui.js';
-import { RaidDeploymentCardsUI } from './raid-deployment-cards-ui.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession } from './farm-session.js';
@@ -10,23 +9,13 @@ import { snapshot, restore } from './farm-state.js';
 import { PRODUCT_VERSION } from './version.js';
 import { FoodFeel } from './food-feel.js';
 import { CombatFeel } from './combat-feel.js';
-import { raidRosterEntries, hasRaidRosterEntries } from './raid-roster.js';
-import { createAbilityRuntimeSnapshot } from './ability-state.js';
 import {
     renderAbilityTreeMarkup,
     renderAbilitySpeciesTabsMarkup,
     renderFarmUpgradeTreeMarkup,
 } from './ability-tree.js';
 import { canResetPlayerProgression } from './ability-progression.js';
-import { abortReservedRaidRun, settleRaidOwnerFarm, raidDeploymentRewardMultiplier } from './raid-settlement.js';
-import {
-    advanceBossRewardReveal,
-    bossRewardRollDescription,
-    bossStageStats,
-    openAllBossRewardBoxes,
-    settleBossKill,
-    advanceBossRewardCalculations,
-} from './boss-rewards.js';
+import { advanceBossRewardReveal, bossStageStats, openAllBossRewardBoxes } from './boss-rewards.js';
 import { createWorldMapView } from './world-map-view.js';
 import {
     canBuildMine,
@@ -72,7 +61,6 @@ let worldMapView = null;
 let miniMapView = null;
 let lastLit = null;
 let bossPauseBeforeOpen = null;
-let lastAutoSettledRunKey = null;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
 let bossRewardDialogReceiptKey = null;
@@ -91,15 +79,6 @@ const FORMATION_UI = new FormationSkillsUI((kind, payload) => {
     const QUEUED = active?.queue(kind, payload) ?? false;
     setTimeout(renderProgressionResetActions, 180);
     return QUEUED;
-});
-const RAID_DEPLOYMENT_UI = new RaidDeploymentCardsUI({
-    command: (kind, payload) => {
-        const QUEUED = active?.queue(kind, payload) ?? false;
-        setTimeout(renderProgressionResetActions, 180);
-        return QUEUED;
-    },
-    deploy: (speciesId) => active?.deployNext(speciesId) ?? false,
-    canDeploy: () => canUseWorldInput() && active?.world.scene === 'raid' && !panPointer,
 });
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
 STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
@@ -155,17 +134,10 @@ function bossRewardSummary(reward) {
         QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
     return ACQUIRED + '개 획득 · ' + PLACED + '개 배치' + (QUEUED ? ' · 공간 대기 ' + QUEUED + '개' : '');
 }
-function persistBossRewardSettlement(world) {
-    if (!saveImmediate(world)) {
-        DOLLAR('bossRewardSummary').textContent = '보상 진행 상황을 저장하지 못했어요: ' + STORAGE.error;
-        return false;
-    }
-    return true;
-}
 const BOSS_REWARD_CHEST_TIERS = ['wood', 'iron', 'gold', 'magic', 'jade'];
 
 function bossRewardChestTier(receipt) {
-    if (receipt.source !== 'raid' || !receipt.stage) {
+    if (!receipt.stage) {
         return 'wood';
     }
     return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
@@ -181,14 +153,10 @@ function renderBossRewardBoxes(receipt) {
         MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0,
         MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0,
         FIRST_CLEAR = receipt.firstClear === true,
-        NOMINAL_CHANCE = receipt.baselineChance ?? (receipt.source === 'farm' ? 0.1 : FIRST_CLEAR ? 0.15 : 0.05),
+        NOMINAL_CHANCE = receipt.baselineChance ?? 0.1,
         CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0),
         PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR('bossRewardStage').textContent = receipt.stage
-        ? (receipt.source === 'raid' ? '승리 · ' : '농장 레이드 · ') + receipt.stage + '단계'
-        : receipt.source === 'farm'
-          ? '농장 레이드 승리'
-          : '레이드 보스 승리';
+    DOLLAR('bossRewardStage').textContent = receipt.stage ? `보스 격파 · ${receipt.stage}단계` : '보스 격파';
     DOLLAR('bossRewardRibbon').hidden = !FIRST_CLEAR;
     DOLLAR('bossRewardTitle').textContent = receipt.status === 'calculating' ? '보상 준비 중' : '승리 보상';
     DOLLAR('bossRewardSummary').textContent =
@@ -346,22 +314,6 @@ function stopBossRewardCalculation() {
     clearInterval(bossRewardCalculationTimer);
     bossRewardCalculationTimer = null;
 }
-function advanceRaidRewardCalculation() {
-    const WORLD = personalGarden,
-        RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-    if (!WORLD || !RECEIPT || RECEIPT.source !== 'raid' || RECEIPT.status !== 'calculating') {
-        stopBossRewardCalculation();
-        return;
-    }
-    advanceBossRewardCalculations(WORLD);
-    if (RECEIPT.status !== 'calculating') {
-        stopBossRewardCalculation();
-        persistBossRewardSettlement(WORLD);
-    }
-    if (!DOLLAR('bossRewardDialog').hidden) {
-        renderBossRewardBoxes(RECEIPT);
-    }
-}
 function showBossRewardDialog(receipt, { auto = false } = {}) {
     if (!receipt || !['calculating', 'ready'].includes(receipt.status)) {
         return;
@@ -388,7 +340,7 @@ function showBossRewardDialog(receipt, { auto = false } = {}) {
         bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
     }
 }
-function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } = {}) {
+function syncBossRewardDialog(world, { receiptKey = null } = {}) {
     const RECEIPT = receiptKey
             ? world?.bossRewardReceipts.find((reward) => reward.receiptKey === receiptKey)
             : latestBossReward(world),
@@ -411,13 +363,6 @@ function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } 
         return;
     }
     BUTTON.textContent = RECEIPT.status === 'calculating' ? '보상 계산 중…' : '보상 상자 열기';
-    if (
-        raidVictory &&
-        RECEIPT.status === 'calculating' &&
-        (DIALOG.hidden || bossRewardDialogReceiptKey !== RECEIPT.receiptKey)
-    ) {
-        showBossRewardDialog(RECEIPT);
-    }
     // A reward that was already fully opened (every box revealed, e.g. after a reload) is not shown again.
     if (
         RECEIPT.status === 'ready' &&
@@ -428,13 +373,7 @@ function syncBossRewardDialog(world, { receiptKey = null, raidVictory = false } 
     } else if (!DIALOG.hidden && bossRewardDialogReceiptKey === RECEIPT.receiptKey) {
         renderBossRewardBoxes(RECEIPT);
     }
-    if (raidVictory && RECEIPT.status === 'calculating') {
-        if (!bossRewardCalculationTimer) {
-            bossRewardCalculationTimer = setInterval(advanceRaidRewardCalculation, 50);
-        }
-    } else {
-        stopBossRewardCalculation();
-    }
+    stopBossRewardCalculation();
 }
 
 function closeBossRewardDialog() {
@@ -633,34 +572,6 @@ function replacePersonalGarden(world) {
     // The saved garden remains an owner while a separate raid session is active.
     unsubscribeProgress = world?.onProgressChanged.on(() => AUTOSAVE.markDirty()) ?? null;
 }
-function onWorldStep(world) {
-    if (
-        world?.scene !== 'raid' ||
-        !['victory', 'defeat'].includes(world.encounter?.outcome) ||
-        !personalGarden ||
-        personalGarden.activeRaidRunSequence === null
-    ) {
-        return;
-    }
-    const OWNER_ID = active?.localPlayerId,
-        RUN = {
-            sessionId: personalGarden.activeRaidSessionId,
-            runSequence: personalGarden.activeRaidRunSequence,
-        };
-    if (!OWNER_ID || !RUN.sessionId || !RUN.runSequence) {
-        return;
-    }
-    const RUN_KEY = `${RUN.sessionId}:${RUN.runSequence}`;
-    if (lastAutoSettledRunKey === RUN_KEY) {
-        return;
-    }
-    try {
-        persistRaidSettlement(localSettlementRoster(world, OWNER_ID, RUN), OWNER_ID);
-        lastAutoSettledRunKey = RUN_KEY;
-    } catch (error) {
-        FAIL(error);
-    }
-}
 function persist() {
     if (active?.world === personalGarden) {
         active.flushQueuedCommands();
@@ -734,7 +645,6 @@ function install(world) {
     RENDERER.resetPan();
     active = new FarmSession(world, {
         onError: FAIL,
-        onWorldStep,
     });
     world.neighbourWalkers = loadWalkerSetting(world.neighbourWalkers);
     DOLLAR('neighbourWalkers').value = String(world.neighbourWalkers);
@@ -987,28 +897,20 @@ function setBossView() {
 }
 function openBossEncounter(push = true) {
     stopWorldInput();
-    if (active?.world?.scene === 'raid') {
-        say('이미 레이드 중이에요.');
-        return false;
-    }
     if (!personalGarden) {
-        if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
+        if (STORAGE.world) {
             start(restore(snapshot(STORAGE.world)), false);
         } else {
-            say('내 정원으로 돌아간 뒤에 레이드를 열 수 있어요.');
+            say('농장으로 돌아간 뒤에 지도를 열 수 있어요.');
             return false;
         }
     }
     if (personalGarden.farmBossEvent?.phase !== 'idle') {
-        say('농장 이벤트가 끝난 뒤에 열 수 있어요.');
-        return false;
-    }
-    if (personalGarden.activeRaidRunSequence !== null) {
-        say('진행 중인 레이드를 먼저 마쳐 주세요.');
+        say('전투가 끝난 뒤에 열 수 있어요.');
         return false;
     }
     if (!persist()) {
-        say(`저장하지 못해서 레이드를 열지 못했어요: ${STORAGE.error || '저장 오류'}`);
+        say(`저장하지 못해서 지도를 열지 못했어요: ${STORAGE.error || '저장 오류'}`);
         return false;
     }
     if (menuOpen) {
@@ -1055,12 +957,8 @@ function closeBossEncounter(push = true) {
     }
 }
 function refreshStart() {
-    const HAS_RESERVED_RAID = STORAGE.hasReservedRaid,
-        LIVE_RAID = active?.world?.scene === 'raid',
-        STALE_RAID = HAS_RESERVED_RAID && !LIVE_RAID;
-    DOLLAR('continueGame').disabled = !STORAGE.hasWorld || STALE_RAID;
-    DOLLAR('startBossEncounter').disabled = !STORAGE.hasWorld || STALE_RAID;
-    DOLLAR('staleRaidNotice').hidden = !STALE_RAID;
+    DOLLAR('continueGame').disabled = !STORAGE.hasWorld;
+    DOLLAR('startBossEncounter').disabled = !STORAGE.hasWorld;
     DOLLAR('exportSave').disabled = !STORAGE.raw;
     DOLLAR('saveNotice').textContent = STORAGE.error || STORAGE.notice;
 }
@@ -1080,7 +978,7 @@ function setHome(value, push = true) {
     DOLLAR('startScreen').hidden = !value;
     active.paused = value;
     if (push) {
-        history.pushState(null, '', value ? '#/' : active.world.scene === 'raid' ? '#/raid' : '#/farm');
+        history.pushState(null, '', value ? '#/' : '#/farm');
     }
     refreshStart();
     if (value) {
@@ -1160,121 +1058,6 @@ function start(world, push = true, settle = false) {
         markSeen();
     }
 }
-function localSettlementRoster(world, ownerId, run) {
-    const CURRENT = world.raidRosters?.find((roster) => roster.ownerId === ownerId);
-    if (CURRENT) {
-        if (
-            CURRENT.settlementRunSequence !== run.runSequence ||
-            CURRENT.settlementSessionId !== run.sessionId ||
-            CURRENT.settlementEncounterId !== run.runSequence
-        ) {
-            throw Error('레이드 명단의 정산 예약이 개인 농장 저장과 일치하지 않아요.');
-        }
-        return world;
-    }
-    const ENTRIES = raidRosterEntries(personalGarden.roster.residents(), CONFIG.raid.capacity.playerUnits).map(
-        ([farmId, species, tier]) => ({
-            farmId,
-            species,
-            tier,
-            deployed: false,
-        }),
-    );
-    const VIEW = snapshot(world);
-    VIEW.raidExpectedPlayers = [...new Set([...VIEW.raidExpectedPlayers, ownerId])];
-    VIEW.raidRosters.push({
-        ownerId,
-        troops: ENTRIES,
-        abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
-        settlementSessionId: run.sessionId,
-        settlementRunSequence: run.runSequence,
-        settlementEncounterId: run.runSequence,
-        lastDeploySequence: 0,
-        buffUntil: 0,
-        buffReadyAt: 0,
-    });
-    return VIEW;
-}
-function persistRaidSettlement(raidWorld, ownerId) {
-    const FARM_RUN = {
-        sessionId: personalGarden.activeRaidSessionId,
-        runSequence: personalGarden.activeRaidRunSequence,
-    };
-    if (!FARM_RUN.sessionId || !FARM_RUN.runSequence) {
-        return false;
-    }
-    const OUTCOME = ['victory', 'defeat'].includes(raidWorld.encounter?.outcome)
-        ? raidWorld.encounter.outcome
-        : 'aborted';
-    const PREPARE = (base) =>
-        settleRaidOwnerFarm(snapshot(base), {
-            ownerId,
-            sessionId: FARM_RUN.sessionId,
-            encounterId: FARM_RUN.runSequence,
-            runSequence: FARM_RUN.runSequence,
-            outcome: OUTCOME,
-            raidWorld,
-            completedAtMs: Date.now(),
-            settleVictory: ({ farm, receiptKey, deploymentMultiplier, firstClear }) => {
-                const GARDEN = restore(farm),
-                    STAGE = raidWorld.boss.stage || 0,
-                    STAGE_REWARD = STAGE ? bossStageStats(STAGE) : null,
-                    RESOLVED = settleBossKill(GARDEN, {
-                        encounterId: FARM_RUN.runSequence,
-                        source: 'raid',
-                        stage: STAGE,
-                        firstClear,
-                        receiptKey,
-                        acquisitionMultiplier: deploymentMultiplier,
-                        rollBudget: STAGE_REWARD?.rollBudget ?? 1,
-                        xpAmount: STAGE_REWARD?.xp,
-                        species: raidWorld.boss.species ?? 3,
-                        tier: 1,
-                        x: raidWorld.boss.x,
-                        y: raidWorld.boss.y,
-                    });
-                const REWARD = RESOLVED.receipt;
-                return {
-                    farm: snapshot(GARDEN),
-                    summary: {
-                        stage: STAGE,
-                        acquisition: {
-                            status: REWARD.status,
-                            chance: REWARD.chance,
-                            rollCount: REWARD.rollCount,
-                            rollBudget: REWARD.rollBudget,
-                            successCount: REWARD.successCount,
-                            grantedCount: REWARD.grantedCount,
-                            rolls: REWARD.drops || [],
-                            unitId: REWARD.unitId,
-                            receiptKey: REWARD.receiptKey,
-                        },
-                        xp: {
-                            status: REWARD.xpStatus,
-                            amount: REWARD.xpAmount,
-                            levelsGained: REWARD.levelsGained,
-                            pointsAwarded: REWARD.pointsAwarded,
-                            receiptKey: REWARD.xpReceiptKey,
-                        },
-                    },
-                };
-            },
-        });
-    let settled = PREPARE(personalGarden);
-    let candidate = restore(settled.farm);
-    if (!saveImmediate(candidate)) {
-        if (!STORAGE.refresh()) {
-            throw Error(STORAGE.error || '최신 농장 저장을 다시 읽지 못했어요.');
-        }
-        settled = PREPARE(STORAGE.world);
-        candidate = restore(settled.farm);
-        if (!saveImmediate(candidate)) {
-            throw Error(STORAGE.error || '전투 결과 저장에 실패했어요.');
-        }
-    }
-    replacePersonalGarden(STORAGE.world);
-    return settled;
-}
 // The boss on the chosen tile of the map: the farm's units march out to it and fight there, on the farm screen.
 function beginRaid() {
     if (!personalGarden || bossMapTile < 0 || mapChallengeBlockReason() !== '') {
@@ -1288,47 +1071,24 @@ function beginRaid() {
     active.paused = false;
     active.loop.resetTiming();
 }
-async function returnToFarm(push = true) {
+function returnToFarm(push = true) {
     stopWorldInput();
     if (bossEncounterOpen) {
         closeBossEncounter(false);
     }
     if (!personalGarden) {
-        return;
+        return false;
     }
-    // Leaving a fight that is still going is a retreat, and counts as a defeat.
-    if (active?.world?.scene === 'raid' && active.world.running) {
-        active.world.finish('defeat');
-    }
-    const RAID_WORLD = active?.world?.scene === 'raid' ? snapshot(active.world) : null;
-    if (RAID_WORLD && personalGarden.activeRaidRunSequence !== null) {
-        const OWNER_ID = active.localPlayerId,
-            RUN = {
-                sessionId: personalGarden.activeRaidSessionId,
-                runSequence: personalGarden.activeRaidRunSequence,
-            };
-        try {
-            persistRaidSettlement(localSettlementRoster(RAID_WORLD, OWNER_ID, RUN), OWNER_ID);
-        } catch (error) {
-            FAIL(error);
-            return false;
-        }
-    }
-    install(personalGarden);
     setHome(false, push);
     return true;
 }
 DOLLAR('continueGame').onclick = () => {
-    if (active?.world?.scene === 'raid') {
-        setHome(false);
-        return;
-    }
-    if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
+    if (STORAGE.world) {
         start(restore(snapshot(STORAGE.world)), true, true);
     }
 };
 DOLLAR('startBossEncounter').onclick = () => {
-    if (!STORAGE.world || STORAGE.world.activeRaidRunSequence !== null) {
+    if (!STORAGE.world) {
         return;
     }
     start(restore(snapshot(STORAGE.world)), false);
@@ -1368,39 +1128,13 @@ DOLLAR('worldMapExplore').onclick = () => {
     }
 };
 DOLLAR('bossEncounterChallenge').onclick = () => {
-    // Never a dead button: when the raid cannot start, the reason is said right here.
+    // Never a dead button: when the fight cannot start, the reason is said right here.
     const REASON = DOLLAR('bossStageNotice').textContent;
     if (REASON !== '') {
         say(REASON);
         return;
     }
     beginRaid();
-};
-DOLLAR('abortRaidRun').onclick = () => {
-    if (active?.world?.scene === 'raid') {
-        return;
-    }
-    const WORLD = STORAGE.world;
-    if (!WORLD || WORLD.activeRaidRunSequence === null) {
-        return refreshStart();
-    }
-    try {
-        const RESULT = abortReservedRaidRun(snapshot(WORLD), {
-            completedAtMs: Date.now(),
-        });
-        if (!RESULT.applied) {
-            return refreshStart();
-        }
-        if (!saveImmediate(restore(RESULT.farm))) {
-            DOLLAR('saveNotice').textContent = STORAGE.error;
-            return;
-        }
-        replacePersonalGarden(STORAGE.world);
-        refreshStart();
-        DOLLAR('saveNotice').textContent = '이전 레이드를 보상 없이 끝냈어요. 병력과 포인트는 그대로예요.';
-    } catch (error) {
-        FAIL(error);
-    }
 };
 DOLLAR('newGame').onclick = () => {
     // Overwriting an existing save is a separate, explicit user action.
@@ -1494,7 +1228,6 @@ DOLLAR('confirmImport').onclick = () => {
 };
 DOLLAR('farm').onclick = () => returnToFarm();
 DOLLAR('raid').onclick = () => openBossEncounter();
-DOLLAR('return').onclick = () => returnToFarm();
 DOLLAR('merge').onclick = () => active?.queue('merge');
 DOLLAR('merge').addEventListener('keydown', (e) => {
     if (e.repeat && ['Enter', ' '].includes(e.key)) {
@@ -1512,7 +1245,7 @@ DOLLAR('pause').onclick = () => {
 };
 function drawTree() {
     const W = personalGarden || active.world,
-        IN_COMBAT = active.world.scene === 'raid' || W.running || W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
     DOLLAR('treeNodes').innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
         location: active.world.scene,
         inCombat: IN_COMBAT,
@@ -1583,7 +1316,7 @@ function drawFarmPanel() {
 }
 function drawAbilityTree() {
     const W = personalGarden || active.world,
-        IN_COMBAT = active.world.scene === 'raid' || W.running || W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
     const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
     DOLLAR('abilityPoints').textContent = String(W.playerProgression.availablePoints);
     for (const BUTTON of DOLLAR('abilitySpeciesTabs').querySelectorAll('[data-ability-species]')) {
@@ -1607,21 +1340,18 @@ function currentProgressionResetScope() {
     if (menuTab === 'formation') {
         return { type: 'formation' };
     }
-    if (menuTab === 'deployment') {
-        return { type: 'deployment-cards' };
-    }
     return null;
 }
 function renderProgressionResetActions() {
     const HOST = DOLLAR('progressionResetActions'),
         CURRENT = DOLLAR('progressionResetCurrent'),
         ALL = DOLLAR('progressionResetAll');
-    if (!active || !menuOpen || !['growth', 'abilities', 'formation', 'deployment'].includes(menuTab)) {
+    if (!active || !menuOpen || !['growth', 'abilities', 'formation'].includes(menuTab)) {
         HOST.hidden = true;
         return;
     }
     const W = personalGarden || active.world,
-        IN_COMBAT = active.world.scene === 'raid' || W.running || W.farmBossEvent?.phase !== 'idle',
+        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle',
         CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT },
         SCOPE = currentProgressionResetScope(),
         CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT),
@@ -1631,9 +1361,7 @@ function renderProgressionResetActions() {
                 ? '성장 항목 초기화'
                 : menuTab === 'formation'
                   ? '형성 능력 초기화'
-                  : menuTab === 'deployment'
-                    ? '병력 편성 초기화'
-                    : '이 종 특성 초기화';
+                  : '이 종 특성 초기화';
     HOST.hidden = false;
     CURRENT.hidden = menuTab === 'abilities';
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -1648,12 +1376,11 @@ const MENU_ROUTES = {
     abilities: '#/abilities',
     help: '#/help',
     formation: '#/formation',
-    deployment: '#/deployment',
 };
 const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route) || 'play';
 function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ['farms', 'growth', 'abilities', 'formation', 'deployment'].includes(tab);
+    const UPGRADES = ['farms', 'growth', 'abilities', 'formation'].includes(tab);
     DOLLAR('gameMenuTabs').hidden = !UPGRADES;
     DOLLAR('gameMenuTitle').textContent = UPGRADES ? '업그레이드' : tab === 'help' ? '도움말' : '설정';
     DOLLAR('gameMenuClose').setAttribute('aria-label', `${DOLLAR('gameMenuTitle').textContent} 닫기`);
@@ -1676,7 +1403,6 @@ function applyMenuTab(tab) {
         ['abilities', 'abilityPanel'],
         ['help', 'helpPanel'],
         ['formation', 'formationPanel'],
-        ['deployment', 'deploymentCardPanel'],
     ]) {
         DOLLAR(ID).hidden = NAME !== tab;
     }
@@ -1756,10 +1482,10 @@ function closeMenu(push = true) {
     menuPauseChanged = false;
     menuAutoPaused = false;
     if (push) {
-        history.pushState(null, '', active.world.scene === 'raid' ? '#/raid' : '#/farm');
+        history.pushState(null, '', '#/farm');
     }
     DOLLAR(
-        ['farms', 'growth', 'abilities', 'formation', 'deployment'].includes(menuTab)
+        ['farms', 'growth', 'abilities', 'formation'].includes(menuTab)
             ? 'upgradeMenu'
             : menuTab === 'help'
               ? 'helpMenu'
@@ -1768,7 +1494,7 @@ function closeMenu(push = true) {
 }
 DOLLAR('gameMenu').onclick = () => (menuOpen && menuTab === 'play' ? closeMenu() : openMenu());
 DOLLAR('upgradeMenu').onclick = () =>
-    openMenu(active.world.scene === 'raid' || personalGarden?.farmBossEvent?.phase !== 'idle' ? 'formation' : 'growth');
+    openMenu(personalGarden?.farmBossEvent?.phase !== 'idle' ? 'formation' : 'growth');
 DOLLAR('helpMenu').onclick = () => openMenu('help');
 DOLLAR('gameMenuClose').onclick = () => closeMenu();
 DOLLAR('menuHome').onclick = () => {
@@ -2067,39 +1793,6 @@ function syncData(id, key, value) {
         NODE.dataset[key] = TEXT;
     }
 }
-function deploymentHud() {
-    const W = active.world,
-        ROSTER = W.raidRoster(active.localPlayerId),
-        REMAINING = ROSTER ? W.raidRemaining(active.localPlayerId) : personalGarden?.units.length || 0,
-        QUEUED = ROSTER ? Math.max(0, active.localDeploySequence - ROSTER.lastDeploySequence) : 0;
-    syncText(
-        'raidRemaining',
-        !ROSTER
-            ? '출전 병력을 준비하고 있어요…'
-            : `남은 병력 ${Math.max(0, REMAINING - QUEUED)} · 약한 병력부터 · 맵 가장자리 전방위 투입`,
-    );
-    let deployed = 0;
-    if (ROSTER) {
-        for (const TROOP of ROSTER.troops) {
-            if (TROOP.deployed) {
-                deployed++;
-            }
-        }
-    }
-    const STAGE = W.boss.stage || 0;
-    if (STAGE) {
-        const MULTIPLIER = raidDeploymentRewardMultiplier({
-            availableAtStart: ROSTER?.troops.length || 0,
-            originalUnitsDeployed: deployed,
-        });
-        syncText(
-            'raidRewardChance',
-            `${speciesRewardName(W.boss.species)} · ${bossRewardRollDescription(STAGE, { acquisitionMultiplier: MULTIPLIER, firstClear: STAGE > (personalGarden?.farmBossProgress?.highestClearedRaidStage ?? 0) })}`,
-        );
-    } else {
-        syncText('raidRewardChance', '');
-    }
-}
 function canUseWorldInput() {
     return !home && !menuOpen && !bossEncounterOpen && !active.paused && !farmSortTransition;
 }
@@ -2178,7 +1871,6 @@ function stopWorldInput(e) {
     }
     pinchDistance = 0;
     stopFoodHold(e);
-    RAID_DEPLOYMENT_UI.stopHold(e);
     stopPan(e);
 }
 const PINCH_POINTERS = new Map();
@@ -2221,7 +1913,7 @@ CANVAS.addEventListener('pointerdown', (e) => {
             return;
         }
     }
-    if (e.button !== 0 || !canUseWorldInput() || panPointer || RAID_DEPLOYMENT_UI.hold) {
+    if (e.button !== 0 || !canUseWorldInput() || panPointer) {
         return;
     }
     const POINT = RENDERER.screenToWorld(e.clientX, e.clientY);
@@ -2353,14 +2045,6 @@ function route() {
         setHome(true, false);
         return;
     }
-    if (STORAGE.hasReservedRaid && active.world.scene !== 'raid') {
-        if (menuOpen) {
-            closeMenu(false);
-        }
-        setHome(true, false);
-        history.replaceState(null, '', '#/');
-        return;
-    }
     if (home) {
         if (STORAGE.error && !STORAGE.hasWorld) {
             setHome(true, false);
@@ -2387,14 +2071,12 @@ function route() {
         R === '#/formation' ||
         R === '#/menu'
     ) {
-        const RAID = active.world.scene === 'raid',
-            FARM_EVENT_ACTIVE = !RAID && personalGarden?.farmBossEvent?.phase !== 'idle';
+        const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== 'idle';
         const RESTRICTED =
-            ((R === '#/farms' || R === '#/growth') && (RAID || FARM_EVENT_ACTIVE)) ||
-            (R === '#/abilities' && (RAID || !personalGarden));
+            ((R === '#/farms' || R === '#/growth') && FARM_EVENT_ACTIVE) || (R === '#/abilities' && !personalGarden);
         if (RESTRICTED) {
             closeMenu(false);
-            history.replaceState(null, '', RAID ? '#/raid' : '#/farm');
+            history.replaceState(null, '', '#/farm');
             return;
         }
         openMenu(ROUTE_MENU_TAB(R), false);
@@ -2406,55 +2088,31 @@ function route() {
     if (bossEncounterOpen && R !== '#/boss') {
         closeBossEncounter(false);
     }
-    if (R === '#/raid') {
-        if (personalGarden?.farmBossEvent?.phase !== 'idle') {
-            history.replaceState(null, '', '#/farm');
-        } else {
-            openBossEncounter(false);
-        }
-    } else if (R === '#/farm' && active.world.scene === 'raid') {
-        returnToFarm(false);
-    }
 }
 window.addEventListener('popstate', route);
 function sync(display, now, notices) {
     const W = active.world,
-        RAID = display.scene === 'raid',
         FARM_EVENT = display.farmBossEvent,
-        FARM_EVENT_ACTIVE = !RAID && FARM_EVENT?.phase !== 'idle',
-        BATTLE_HUD = RAID || FARM_EVENT_ACTIVE,
-        BATTLE_OUTCOME = RAID ? W.encounter.outcome : FARM_EVENT?.outcome,
-        HAS_READY_TROOPS = personalGarden ? hasRaidRosterEntries(personalGarden.roster.residents()) : false,
+        FARM_EVENT_ACTIVE = FARM_EVENT?.phase !== 'idle',
+        BATTLE_OUTCOME = FARM_EVENT?.outcome,
+        HAS_READY_TROOPS = personalGarden ? personalGarden.units.some((unit) => unit.hp > 0 && unit.down <= 0) : false,
         REWARD_WORLD = personalGarden || W,
-        SETTLED_RUN_SEQUENCE = RAID ? (personalGarden?.activeRaidRunSequence ?? W.boss.encounterId) : null,
-        SETTLED_REWARD = RAID
-            ? personalGarden?.raidSettlementReceipts?.find((receipt) => receipt.runSequence === SETTLED_RUN_SEQUENCE)
-                  ?.reward
-            : null,
-        SETTLED_REWARD_RECEIPT = SETTLED_REWARD?.acquisition?.receiptKey
-            ? REWARD_WORLD.bossRewardReceipts.find(
-                  (reward) => reward.receiptKey === SETTLED_REWARD.acquisition.receiptKey,
-              )
-            : null,
         PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
             (reward) => ['calculating', 'ready'].includes(reward.status) || reward.queuedCount > 0,
         ),
         MERGE_STATUS = mergeAvailability(W, now);
-    syncBossRewardDialog(REWARD_WORLD, {
-        receiptKey: BATTLE_OUTCOME === 'victory' ? SETTLED_REWARD_RECEIPT?.receiptKey || null : null,
-        raidVictory: RAID && BATTLE_OUTCOME === 'victory',
-    });
-    if ((home || menuOpen || bossEncounterOpen || active.paused) && (RAID_DEPLOYMENT_UI.hold || panPointer)) {
+    syncBossRewardDialog(REWARD_WORLD);
+    if ((home || menuOpen || bossEncounterOpen || active.paused) && panPointer) {
         stopWorldInput();
     }
-    syncAttribute('farm', 'aria-pressed', !RAID && !bossEncounterOpen);
-    syncAttribute('raid', 'aria-pressed', RAID || bossEncounterOpen);
-    syncFlag('merge', 'disabled', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
+    syncAttribute('farm', 'aria-pressed', !bossEncounterOpen);
+    syncAttribute('raid', 'aria-pressed', bossEncounterOpen);
+    syncFlag('merge', 'disabled', home || FARM_EVENT_ACTIVE || bossEncounterOpen || !MERGE_STATUS.available);
     syncData('merge', 'availability', MERGE_STATUS.code || 'unavailable');
-    syncFlag('mergeNotice', 'hidden', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE || bossEncounterOpen);
     const PLOT_WORLD = personalGarden || W,
         PLOT_IDS = PLOT_WORLD.farmPlots ? [...PLOT_WORLD.farmPlots.keys()] : [];
-    syncFlag('plotBar', 'hidden', home || RAID || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
+    syncFlag('plotBar', 'hidden', home || FARM_EVENT_ACTIVE || bossEncounterOpen || PLOT_IDS.length < 2);
     if (PLOT_IDS.length > 1) {
         const STATUSES = farmPlotStatuses(PLOT_WORLD),
             CURRENT = STATUSES.get(PLOT_WORLD.activePlotId) ?? { food: 0, hungry: 0 },
@@ -2491,40 +2149,30 @@ function sync(display, now, notices) {
             armyTotal++;
         }
     }
-    if (!RAID) {
-        for (const UNIT of W.units) {
-            if (!UNIT.isBattleOnlySummon) {
-                worldCount++;
-            }
+    for (const UNIT of W.units) {
+        if (!UNIT.isBattleOnlySummon) {
+            worldCount++;
         }
     }
     syncFlag('bossEncounterScreen', 'hidden', home || !bossEncounterOpen);
-    syncMiniMap(!home && !RAID && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
+    syncMiniMap(!home && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
     announceExploration();
-    syncFlag('farmControls', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag('zoomBar', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag('zoomBar', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag('zoomFit', 'hidden', PLOT_IDS.length < 2);
-    syncFlag('workHud', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
-    syncFlag('raidControls', 'hidden', !RAID || home);
-    syncFlag('bossbar', 'hidden', !BATTLE_HUD || home);
-    syncText(
-        'count',
-        RAID
-            ? (W.raidRoster(active.localPlayerId)?.troops.length ?? personalGarden?.units.length ?? 0)
-            : displayedCount,
-    );
+    syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
+    syncText('count', displayedCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText(
         'starter',
-        RAID
-            ? `${W.units.length}마리 출전 중`
-            : PENDING_REWARD
-              ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요`
-              : !HAS_READY_TROOPS
-                ? '모두 잠자는 중 · 회복을 기다려요'
-                : worldCount >= W.capacity
-                  ? '농장이 가득 찼어요'
-                  : '번식으로 식구를 늘려요',
+        PENDING_REWARD
+            ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요`
+            : !HAS_READY_TROOPS
+              ? '모두 잠자는 중 · 회복을 기다려요'
+              : worldCount >= W.capacity
+                ? '농장이 가득 찼어요'
+                : '번식으로 식구를 늘려요',
     );
     syncWidth('allyHealth', (armyMax ? (armyCurrent / armyMax) * 100 : 0) + '%');
     syncText(
@@ -2533,15 +2181,14 @@ function sync(display, now, notices) {
     );
     const BOSS = display.boss,
         FARM_REWARD =
-            !RAID && FARM_EVENT?.outcome === 'victory'
+            FARM_EVENT?.outcome === 'victory'
                 ? W.bossRewardReceipts.find(
                       (reward) => reward.source === 'farm' && reward.encounterId === FARM_EVENT.encounterId,
                   )
                 : null,
-        STAGE_NAME = RAID && BOSS.stage ? `${BOSS.stage}단계` : '',
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS.stage}단계` : ENCOUNTER_NAME);
+    syncText('bossName', BOSS.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
     syncText(
@@ -2549,7 +2196,7 @@ function sync(display, now, notices) {
         FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'
             ? '보스가 있는 칸으로 가는 중이에요'
             : FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'fighting'
-              ? `남은 시간 ${Math.max(0, Math.ceil(W.raidTimeLimit() - FARM_EVENT.elapsed))}초`
+              ? `남은 시간 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초`
               : FARM_EVENT_ACTIVE
                 ? ''
                 : '쓰러진 병력 포함 최대 체력',
@@ -2562,35 +2209,29 @@ function sync(display, now, notices) {
     syncWidth('bossHealth', BOSS.maxHp ? (BOSS.hp / BOSS.maxHp) * 100 + '%' : '0%');
     syncText(
         'battleOutcome',
-        RAID
-            ? BATTLE_OUTCOME === 'victory'
-                ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : '농장으로 돌아가면 보상을 받아요'}`
-                : BATTLE_OUTCOME === 'defeat'
-                  ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배${W.encounter.elapsed >= W.raidTimeLimit() ? '(시간 초과)' : ''} · 농장에서 다시 준비해요`
-                  : ''
-            : BATTLE_OUTCOME === 'victory'
-              ? FARM_EVENT.rewardStatus === 'granted'
-                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요`
-                  : FARM_EVENT.rewardStatus === 'pending'
-                    ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
-                    : `${ENCOUNTER_NAME} 격파`
-              : BATTLE_OUTCOME === 'defeat'
-                ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요`
-                : '',
+        BATTLE_OUTCOME === 'victory'
+            ? FARM_EVENT.rewardStatus === 'granted'
+                ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요`
+                : FARM_EVENT.rewardStatus === 'pending'
+                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
+                  : `${ENCOUNTER_NAME} 격파`
+            : BATTLE_OUTCOME === 'defeat'
+              ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? '(시간 초과)' : ''} · 병력이 회복하는 동안 잠자요 · 보스는 그 칸에 남아 있어요`
+              : '',
     );
     syncFlag(
         'battleOutcome',
         'hidden',
-        home || !BATTLE_HUD || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
+        home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
     );
     {
         const REASON = mapChallengeBlockReason();
         syncAttribute('bossEncounterChallenge', 'aria-disabled', String(REASON !== ''));
         syncText('bossStageNotice', REASON);
     }
-    syncFlag('menuTabFarms', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
-    syncFlag('menuTabGrowth', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
-    syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
+    syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag('menuTabGrowth', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
+    syncFlag('menuTabAbilities', 'disabled', !personalGarden);
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
     syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
     syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');
@@ -2692,7 +2333,6 @@ function sync(display, now, notices) {
         }
     }
     FOOD_FEEL.frame(now);
-    deploymentHud();
 }
 function frame(now) {
     try {
@@ -2725,15 +2365,8 @@ function frame(now) {
         FORMATION_UI.update(
             active.world,
             DISPLAY,
-            !home && (active.world.scene === 'raid' || active.world.farmBossEvent?.phase !== 'idle'),
+            !home && active.world.farmBossEvent?.phase !== 'idle',
             active.localPlayerId,
-        );
-        RAID_DEPLOYMENT_UI.update(
-            active.world,
-            personalGarden || active.world,
-            !home,
-            active.localPlayerId,
-            active.world.scene === 'farm' && !active.world.running && active.world.farmBossEvent?.phase === 'idle',
         );
         PERFORMANCE_DIAGNOSTICS.end('ui', UI_START);
         PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);

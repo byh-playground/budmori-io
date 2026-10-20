@@ -266,7 +266,7 @@ const DIORAMA = class Diorama {
             BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
             BOUNDS.top = Math.max(
                 BOUNDS.top,
-                BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.raid.dropHeight * WORLD_HEIGHT_PROJECTION,
+                BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * WORLD_HEIGHT_PROJECTION,
             );
         };
         for (const RECORD of this.bossAssets.values()) {

@@ -1,6 +1,5 @@
 import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
 import { createAbilityProgressionState } from './ability-state.js';
-import { createRaidDeploymentCardsState } from './raid-deployment-cards.js';
 import { createFarmPlotsProgression, INITIAL_FARM_PLOT_ID } from './farm-plot.js';
 // Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
 // runtime values are not exported as user saves.
@@ -58,7 +57,6 @@ export const UNIT_SNAPSHOT_SHAPE = {
     battleSummonParentGeneration: 0,
     battleSummonEncounterId: 0,
     countsTowardPermanentRoster: true,
-    eligibleForRaidDeployment: true,
     breedingEligible: true,
     mergeEligible: true,
     canSplit: true,
@@ -143,17 +141,10 @@ export const FARM_SNAPSHOT_SHAPE = {
     bossRewardInventory: [],
     bossRewardWatermarks: {
         farm: 0,
-        raid: 0,
     },
-    nextRaidRunSequence: 0,
-    activeRaidRunSequence: null,
-    activeRaidSessionId: null,
-    raidSettlementWatermark: 0,
-    raidSettlementReceipts: [],
     formationRuntime: createFormationRuntime(),
     playerProgression: {
         formationSkills: createFormationSkillState(),
-        raidDeploymentCards: createRaidDeploymentCardsState({ firstSpecies: null }),
         schemaVersion: 2,
         availablePoints: 0,
         farmUpgrades: {
@@ -205,17 +196,8 @@ export const FARM_SNAPSHOT_SHAPE = {
     },
     attackSerial: 0,
     projectileSerial: 0,
-    raidSummonSerial: 0,
     bossSummonSerial: 0,
     combatLog: [],
-    farmBossProgress: {
-        currentStage: 1,
-        highestClearedRaidStage: 0,
-        encounterSeed: 2738959287,
-        encounterEpoch: 0,
-        nextSelectionId: 1,
-        selections: [],
-    },
     scene: 'farm',
     running: false,
     encounter: {
@@ -276,9 +258,6 @@ export const FARM_SNAPSHOT_SHAPE = {
             z: 0,
         },
     },
-    raidExpectedPlayers: ['solo'],
-    raidRosters: [],
-    raidDeploymentStarted: false,
     metrics: {
         births: 0,
         merges: 0,
@@ -366,13 +345,6 @@ const REWARD = FIELDS(
 // Their APIs and settlement summaries accept extensible JSON records. Keep
 // that explicit open contract, including old keys, without opening entity,
 // ability or projectile field selection to future runtime caches.
-const SETTLEMENT = FIELDS(
-    'key ownerId sessionId encounterId runSequence outcome status completedAtMs availableAtStart originalUnitsDeployed deploymentMultiplier',
-    {
-        sleptFarmUnitIds: [true],
-        reward: JSON_PAYLOAD,
-    },
-);
 const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
     farmPlots: {
         plots: [FIELDS('id capacityLevel', { facilities: [FIELDS('id level')] })],
@@ -381,20 +353,6 @@ const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {
         targetBasisPoints: [true],
     },
 });
-const RUNTIME_PROGRESSION = FIELDS('schemaVersion level availablePoints', {
-    farmUpgrades: PROGRESSION.farmUpgrades,
-    abilities: PROGRESSION.abilities,
-    formationSkills: PROGRESSION.formationSkills,
-    raidDeploymentCards: PROGRESSION.raidDeploymentCards,
-});
-const ROSTER = FIELDS(
-    'ownerId settlementSessionId settlementRunSequence settlementEncounterId lastDeploySequence buffUntil buffReadyAt',
-    {
-        troops: [FIELDS('farmId species tier deployed')],
-        deploymentCardSpecies: [true],
-        abilitySnapshot: RUNTIME_PROGRESSION,
-    },
-);
 const PROJECTILE = FIELDS(
     'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex',
     {
@@ -420,21 +378,16 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     units: [UNIT],
     boss: BOSS,
     playerProgression: PROGRESSION,
-    raidRosters: [ROSTER],
     projectiles: [PROJECTILE],
     cornAttachments: FIELDS('nextGroupId nextAttachmentId', { groups: [CORN_GROUP] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS('species tier count')],
-    raidSettlementReceipts: [SETTLEMENT],
     food: [FIELDS('x y z vx vy vz seed phase tx ty')],
     events: [JSON_PAYLOAD],
     effects: [JSON_PAYLOAD],
     notices: [JSON_PAYLOAD],
     combatLog: [JSON_PAYLOAD],
-    farmBossProgress: shapeFields(FARM_SNAPSHOT_SHAPE.farmBossProgress, {
-        selections: [FIELDS('stage species selectionId')],
-    }),
     mergeTasks: [
         FIELDS('phase aId bId elapsed duration resultId sourceSpecies sourceTier centerX centerY centerZ', {
             materialIds: [true],

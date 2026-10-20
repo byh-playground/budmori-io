@@ -34,11 +34,7 @@ export class FarmSimulationScene extends SimulationScene {
         unit.dropLanded = true;
         Object.assign(unit, unit.home);
     }
-    setupRoster(world) {
-        world.raidExpectedPlayers = ['solo'];
-        world.raidRosters = [];
-        world.raidDeploymentStarted = false;
-    }
+    setupRoster(_world) {}
     advanceRest(_world, unit, dt) {
         unit.down = Math.max(0, unit.down - dt);
         if (unit.down < 1e-9) {

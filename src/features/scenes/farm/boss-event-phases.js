@@ -21,7 +21,7 @@ export function createFarmBossEventPhases(config) {
             }
             world.boss.z = Math.max(
                 0,
-                config.raid.dropHeight -
+                config.battle.dropHeight -
                     0.5 * config.physics.gravity * world.farmBossEvent.elapsed * world.farmBossEvent.elapsed,
             );
             if (world.boss.z === 0) {
@@ -47,7 +47,7 @@ export function createFarmBossEventPhases(config) {
                 world.finishFarmBossEvent('defeat');
                 return true;
             }
-            if (world.farmBossEvent.elapsed >= world.raidTimeLimit()) {
+            if (world.farmBossEvent.elapsed >= world.battleTimeLimit()) {
                 world.finishFarmBossEvent('defeat');
                 return true;
             }

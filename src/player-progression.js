@@ -6,11 +6,6 @@ import {
 } from './formation-skill-state.js';
 import { getFarmUpgradeInvestedCount } from './farm-upgrades.js';
 import { createFarmPlotsProgression, isValidFarmPlotsProgression } from './farm-plot.js';
-import {
-    createRaidDeploymentCardsState,
-    isValidRaidDeploymentCardsState,
-    raidDeploymentCardsInvestedPoints,
-} from './raid-deployment-cards.js';
 
 // Level thresholds and boss-kill rewards use separate confirmed base values.
 export const PLAYER_PROGRESS_BASE_XP = 100;
@@ -23,7 +18,6 @@ export function createPlayerProgressionState() {
     return {
         ...createAbilityProgressionState(),
         formationSkills: createFormationSkillState(),
-        raidDeploymentCards: createRaidDeploymentCardsState(),
         farmPlots: createFarmPlotsProgression(),
         level: 1,
         experience: 0,
@@ -125,7 +119,6 @@ export function isValidPlayerProgressionState(state) {
     if (
         !isValidAbilityProgressionState(state) ||
         (state.formationSkills !== undefined && !isValidFormationSkillState(state.formationSkills)) ||
-        !isValidRaidDeploymentCardsState(state.raidDeploymentCards) ||
         !isValidFarmPlotsProgression(state.farmPlots) ||
         !Number.isSafeInteger(state.level) ||
         state.level < 1 ||
@@ -152,7 +145,6 @@ export function isValidPlayerProgressionState(state) {
         INVESTED_POINTS +
             getFarmUpgradeInvestedCount(state.farmUpgrades) +
             formationInvestedPoints(state.formationSkills) +
-            raidDeploymentCardsInvestedPoints(state.raidDeploymentCards) +
             state.availablePoints ===
         state.level - 1
     );

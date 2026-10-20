@@ -1,9 +1,7 @@
 import { isValidFormationRuntime } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
-import { isValidAbilityRuntimeSnapshot } from './ability-state.js';
 import { hasUnitCapability, specialAbilityCompositionFor } from './unit-abilities.js';
-import { raidSettlementKey } from './raid-settlement.js';
 import { mergeMaterialCostForTier } from './unit-grades.js';
 import { BOSS_PATTERN_IDS } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
@@ -50,14 +48,12 @@ function finiteTree(v, depth = 0, key = '') {
     } else if (Array.isArray(v)) {
         const MAX =
             key === 'units'
-                ? CONFIG.raid.capacity.battleUnits
+                ? CONFIG.battle.capacity.battleUnits
                 : key === 'projectiles'
-                  ? CONFIG.raid.capacity.projectiles
+                  ? CONFIG.battle.capacity.projectiles
                   : key === 'bossRewardReceipts' || key === 'processedBossKillReceipts'
                     ? 100000
-                    : key === 'raidSettlementReceipts'
-                      ? 128
-                      : 1024;
+                    : 1024;
         ASSERT(v.length <= MAX);
         v.forEach((x) => finiteTree(x, depth + 1));
     } else if (v && typeof v === 'object') {
@@ -154,7 +150,7 @@ export function validateSnapshot(raw) {
             INTEGER(raw.rng.state, 0, 0xffffffff) &&
             INTEGER(raw.simulationTick, 0, 1e12),
     );
-    ASSERT(['farm', 'raid'].includes(raw.scene));
+    ASSERT(raw.scene === 'farm');
     ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
     const MERGE_TASK_UNIT_IDS = new Set(),
         PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
@@ -239,9 +235,9 @@ export function validateSnapshot(raw) {
                 ? raw.farmBossEvent?.phase === 'idle'
                     ? CONFIG.farm.capacity.max
                     : CONFIG.farm.capacity.battleUnits
-                : CONFIG.raid.capacity.battleUnits) &&
+                : 0) &&
             raw.food.length <= 140 &&
-            raw.projectiles.length <= CONFIG.raid.capacity.projectiles,
+            raw.projectiles.length <= CONFIG.battle.capacity.projectiles,
     );
     ASSERT(
         raw.farmBossEvent &&
@@ -313,7 +309,6 @@ export function validateSnapshot(raw) {
     ASSERT(
         raw.bossRewardWatermarks &&
             INTEGER(raw.bossRewardWatermarks.farm, 0, 1e12) &&
-            INTEGER(raw.bossRewardWatermarks.raid, 0, 1e12) &&
             raw.nextBossEncounterId > raw.bossRewardWatermarks.farm,
     );
     ASSERT(
@@ -372,7 +367,7 @@ export function validateSnapshot(raw) {
         ASSERT(
             REWARD &&
                 INTEGER(REWARD.encounterId, 1, 1e12) &&
-                ['farm', 'raid'].includes(REWARD.source) &&
+                REWARD.source === 'farm' &&
                 REWARD.encounterId <= raw.bossRewardWatermarks[REWARD.source] &&
                 INTEGER(REWARD.species, 0, CONFIG.unit.speciesCount - 1) &&
                 INTEGER(REWARD.tier, 1, CONFIG.unit.maxTier) &&
@@ -382,7 +377,7 @@ export function validateSnapshot(raw) {
                 REWARD.chance >= 0 &&
                 REWARD.chance <= 1 &&
                 typeof REWARD.firstClear === 'boolean' &&
-                (REWARD.source === 'raid' || !REWARD.firstClear),
+                !REWARD.firstClear,
         );
         const KEY = REWARD.receiptKey || REWARD.source + ':' + REWARD.encounterId;
         ASSERT(!REWARD_IDS.has(KEY));
@@ -477,90 +472,6 @@ export function validateSnapshot(raw) {
             [...INVENTORY].every(([key, quantity]) => QUEUED_BY_GROUP.get(key) === quantity),
     );
 
-    const STAGE_PROGRESS = raw.farmBossProgress;
-    ASSERT(
-        STAGE_PROGRESS &&
-            INTEGER(STAGE_PROGRESS.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) &&
-            INTEGER(STAGE_PROGRESS.highestClearedRaidStage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
-            INTEGER(STAGE_PROGRESS.encounterSeed, 0, 0xffffffff) &&
-            INTEGER(STAGE_PROGRESS.encounterEpoch, 0, 1e12) &&
-            INTEGER(STAGE_PROGRESS.nextSelectionId, 1, 1e12) &&
-            Array.isArray(STAGE_PROGRESS.selections) &&
-            STAGE_PROGRESS.selections.length <= BOSS_REWARD_SETTINGS.maxStage,
-    );
-    const STAGE_IDS = new Set(),
-        SELECTION_IDS = new Set();
-    for (const SELECTION of STAGE_PROGRESS.selections) {
-        ASSERT(
-            SELECTION &&
-                INTEGER(SELECTION.stage, 1, BOSS_REWARD_SETTINGS.maxStage) &&
-                INTEGER(SELECTION.species, 0, CONFIG.unit.speciesCount - 1) &&
-                INTEGER(SELECTION.selectionId, 1, STAGE_PROGRESS.nextSelectionId - 1) &&
-                !STAGE_IDS.has(SELECTION.stage) &&
-                !SELECTION_IDS.has(SELECTION.selectionId),
-        );
-        STAGE_IDS.add(SELECTION.stage);
-        SELECTION_IDS.add(SELECTION.selectionId);
-    }
-    ASSERT(
-        INTEGER(raw.nextRaidRunSequence, 0, 1e12) &&
-            INTEGER(raw.raidSettlementWatermark, 0, raw.nextRaidRunSequence) &&
-            raw.nextRaidRunSequence >= raw.bossRewardWatermarks.raid &&
-            raw.raidSettlementWatermark >= raw.bossRewardWatermarks.raid &&
-            Array.isArray(raw.raidSettlementReceipts),
-    );
-    const ACTIVE_RAID = raw.activeRaidRunSequence,
-        ACTIVE_SESSION = raw.activeRaidSessionId;
-    ASSERT((ACTIVE_RAID === null) === (ACTIVE_SESSION === null));
-    if (ACTIVE_RAID === null) {
-        ASSERT(raw.nextRaidRunSequence === raw.raidSettlementWatermark);
-    } else {
-        ASSERT(
-            INTEGER(ACTIVE_RAID, 1, 1e12) &&
-                ACTIVE_RAID === raw.nextRaidRunSequence &&
-                ACTIVE_RAID === raw.raidSettlementWatermark + 1 &&
-                typeof ACTIVE_SESSION === 'string' &&
-                ACTIVE_SESSION.trim().length > 0 &&
-                ACTIVE_SESSION.length <= 128,
-        );
-    }
-    const RAID_RECEIPT_KEYS = new Set();
-    for (const RECEIPT of raw.raidSettlementReceipts) {
-        ASSERT(
-            RECEIPT &&
-                typeof RECEIPT.ownerId === 'string' &&
-                RECEIPT.ownerId.length > 0 &&
-                typeof RECEIPT.sessionId === 'string' &&
-                RECEIPT.sessionId.length > 0 &&
-                INTEGER(RECEIPT.encounterId, 1, 1e12) &&
-                INTEGER(RECEIPT.runSequence, 1, raw.raidSettlementWatermark) &&
-                ['victory', 'defeat', 'aborted'].includes(RECEIPT.outcome),
-        );
-        ASSERT(
-            RECEIPT.status === 'settled' &&
-                RECEIPT.key ===
-                    raidSettlementKey({
-                        ownerId: RECEIPT.ownerId,
-                        sessionId: RECEIPT.sessionId,
-                        encounterId: RECEIPT.encounterId,
-                    }) &&
-                !RAID_RECEIPT_KEYS.has(RECEIPT.key) &&
-                RECEIPT.runSequence <= raw.raidSettlementWatermark &&
-                Array.isArray(RECEIPT.sleptFarmUnitIds) &&
-                RECEIPT.sleptFarmUnitIds.every((id) => INTEGER(id, 1, CONFIG.farm.maxUnitId)) &&
-                new Set(RECEIPT.sleptFarmUnitIds).size === RECEIPT.sleptFarmUnitIds.length &&
-                INTEGER(RECEIPT.availableAtStart, 0, CONFIG.raid.capacity.playerUnits) &&
-                INTEGER(RECEIPT.originalUnitsDeployed, 0, RECEIPT.availableAtStart) &&
-                Number.isFinite(RECEIPT.deploymentMultiplier) &&
-                RECEIPT.deploymentMultiplier >= 0 &&
-                RECEIPT.deploymentMultiplier <= 2 &&
-                (RECEIPT.completedAtMs === null ||
-                    (Number.isFinite(RECEIPT.completedAtMs) && RECEIPT.completedAtMs >= 0)) &&
-                (RECEIPT.reward === null ||
-                    (RECEIPT.reward && typeof RECEIPT.reward === 'object' && !Array.isArray(RECEIPT.reward))),
-        );
-        RAID_RECEIPT_KEYS.add(RECEIPT.key);
-    }
     if (FARM_EVENT.outcome === 'victory' && FARM_EVENT.phase !== 'idle') {
         const RECEIPT = raw.bossRewardReceipts.find(
             (reward) => reward.source === 'farm' && reward.encounterId === FARM_EVENT.encounterId,
@@ -581,68 +492,8 @@ export function validateSnapshot(raw) {
             raw.foodTaps.autoClock >= 0 &&
             raw.foodTaps.autoClock < 0.51,
     );
-    ASSERT(
-        Array.isArray(raw.raidExpectedPlayers) &&
-            raw.raidExpectedPlayers.length >= 1 &&
-            raw.raidExpectedPlayers.length <= CONFIG.raid.capacity.players &&
-            raw.raidExpectedPlayers.every((p) => typeof p === 'string' && p.length > 0) &&
-            new Set(raw.raidExpectedPlayers).size === raw.raidExpectedPlayers.length &&
-            Array.isArray(raw.raidRosters),
-    );
-    const ROSTER_OWNERS = new Set(),
-        MANIFEST = new Set();
-    for (const R of raw.raidRosters) {
-        ASSERT(
-            raw.raidExpectedPlayers.includes(R.ownerId) &&
-                !ROSTER_OWNERS.has(R.ownerId) &&
-                Array.isArray(R.troops) &&
-                R.troops.length <= CONFIG.raid.capacity.playerUnits &&
-                Array.isArray(R.deploymentCardSpecies) &&
-                R.deploymentCardSpecies.length <= 4 &&
-                R.deploymentCardSpecies.every((speciesId) => INTEGER(speciesId, 0, CONFIG.unit.speciesCount - 1)) &&
-                new Set(R.deploymentCardSpecies).size === R.deploymentCardSpecies.length &&
-                isValidAbilityRuntimeSnapshot(R.abilitySnapshot),
-        );
-        ASSERT(
-            typeof R.settlementSessionId === 'string' &&
-                R.settlementSessionId.length <= 128 &&
-                INTEGER(R.settlementRunSequence, 0, 1e12) &&
-                INTEGER(R.settlementEncounterId, 0, 1e12),
-        );
-        ASSERT(
-            R.settlementRunSequence === 0
-                ? R.settlementSessionId === '' && R.settlementEncounterId === 0
-                : R.settlementSessionId.trim().length > 0 && R.settlementEncounterId === R.settlementRunSequence,
-        );
-        ROSTER_OWNERS.add(R.ownerId);
-        const IDS = new Set();
-        for (const T of R.troops) {
-            ASSERT(
-                INTEGER(T.farmId, 1, CONFIG.farm.maxUnitId) &&
-                    INTEGER(T.species, 0, CONFIG.unit.speciesCount - 1) &&
-                    INTEGER(T.tier, 1, CONFIG.unit.maxTier) &&
-                    typeof T.deployed === 'boolean' &&
-                    !IDS.has(T.farmId),
-            );
-            IDS.add(T.farmId);
-            MANIFEST.add(R.ownerId + ':' + T.farmId);
-        }
-        ASSERT(
-            INTEGER(R.lastDeploySequence, 0, R.troops.length) &&
-                R.lastDeploySequence === R.troops.filter((t) => t.deployed).length &&
-                Number.isFinite(R.buffUntil) &&
-                Number.isFinite(R.buffReadyAt) &&
-                R.buffUntil >= 0 &&
-                R.buffReadyAt >= 0,
-        );
-    }
-    ASSERT(MANIFEST.size <= CONFIG.raid.capacity.units);
     const IDS = new Set(),
-        DEPLOYED = new Set(),
-        MATE_ID_LIMIT =
-            raw.scene === 'raid'
-                ? CONFIG.raid.capacity.players * CONFIG.raid.ids.playerStride + CONFIG.raid.capacity.playerUnits
-                : CONFIG.farm.maxUnitId;
+        MATE_ID_LIMIT = CONFIG.farm.maxUnitId;
     const UNITS_BY_ID = new Map(),
         SUMMONS_BY_PARENT = new Map();
     for (const U of raw.units) {
@@ -772,17 +623,16 @@ export function validateSnapshot(raw) {
                         U.hp <= 1 &&
                         U.canSplit === false &&
                         U.countsTowardPermanentRoster === false &&
-                        U.eligibleForRaidDeployment === false &&
                         U.breedingEligible === false &&
                         U.mergeEligible === false &&
                         U.usesPersistentSleep === false &&
                         U.lifetime === 'until-death-or-battle-end' &&
                         INTEGER(U.battleSummonParentId, 1, 1e12),
                 );
-                ASSERT(raw.scene === 'raid' ? raw.running : raw.farmBossEvent.phase === 'fighting');
+                ASSERT(raw.farmBossEvent.phase === 'fighting');
             } else if (U.battleSummonKind === 'peanut-death-split') {
                 ASSERT(
-                    ['farm', 'raid'].includes(raw.scene) &&
+                    raw.scene === 'farm' &&
                         INTEGER(U.battleSummonParentId, 1, Number.MAX_SAFE_INTEGER) &&
                         INTEGER(U.battleSummonParentGeneration, 1, 1e12) &&
                         U.battleSummonEncounterId === 0 &&
@@ -792,7 +642,6 @@ export function validateSnapshot(raw) {
                         U.permanentStatMultiplier <= 2.25 &&
                         U.canSplit === false &&
                         U.countsTowardPermanentRoster === false &&
-                        U.eligibleForRaidDeployment === false &&
                         U.breedingEligible === false &&
                         U.mergeEligible === false &&
                         U.usesPersistentSleep === false &&
@@ -818,16 +667,7 @@ export function validateSnapshot(raw) {
                 const LIST = SUMMONS_BY_PARENT.get(PARENT.id) || [];
                 LIST.push(U);
                 SUMMONS_BY_PARENT.set(PARENT.id, LIST);
-                if (raw.scene === 'raid') {
-                    ASSERT(
-                        U.id >= CONFIG.raid.ids.summonBase &&
-                            U.id < CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits &&
-                            raw.raidExpectedPlayers.includes(U.ownerId) &&
-                            INTEGER(U.farmId, 1, CONFIG.farm.maxUnitId),
-                    );
-                } else {
-                    ASSERT(INTEGER(U.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== 'idle');
-                }
+                ASSERT(INTEGER(U.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== 'idle');
             } else {
                 ASSERT(
                     U.battleSummonKind === 'boss-mouth-t1' &&
@@ -840,7 +680,6 @@ export function validateSnapshot(raw) {
                         U.farmId === 0 &&
                         U.canSplit === false &&
                         U.countsTowardPermanentRoster === false &&
-                        U.eligibleForRaidDeployment === false &&
                         U.breedingEligible === false &&
                         U.mergeEligible === false &&
                         U.usesPersistentSleep === false &&
@@ -852,7 +691,7 @@ export function validateSnapshot(raw) {
                         U.id >= CONFIG.boss.summonIdBase &&
                         U.id <= CONFIG.boss.summonIdBase + raw.bossSummonSerial,
                 );
-                ASSERT(raw.scene === 'raid' ? raw.running && raw.boss.active : raw.farmBossEvent.phase === 'fighting');
+                ASSERT(raw.farmBossEvent.phase === 'fighting');
             }
         } else {
             ASSERT(
@@ -860,30 +699,13 @@ export function validateSnapshot(raw) {
                     U.battleSummonParentId === 0 &&
                     U.battleSummonEncounterId === 0 &&
                     U.countsTowardPermanentRoster === true &&
-                    U.eligibleForRaidDeployment === true &&
                     U.breedingEligible === true &&
                     U.mergeEligible === true &&
                     U.canSplit === true &&
                     U.usesPersistentSleep === true &&
                     U.lifetime === '',
             );
-            if (raw.scene === 'raid') {
-                const ROSTER = raw.raidRosters.find((r) => r.ownerId === U.ownerId),
-                    TROOP_INDEX = ROSTER?.troops.findIndex((t) => t.farmId === U.farmId) ?? -1,
-                    SLOT = raw.raidExpectedPlayers.indexOf(U.ownerId),
-                    CURRENT_ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + TROOP_INDEX + 1,
-                    LEGACY_ID = (SLOT + 1) * CONFIG.raid.ids.playerStride + U.farmId;
-                ASSERT(
-                    raw.raidExpectedPlayers.includes(U.ownerId) &&
-                        INTEGER(U.farmId, 1, CONFIG.farm.maxUnitId) &&
-                        MANIFEST.has(U.ownerId + ':' + U.farmId) &&
-                        !DEPLOYED.has(U.ownerId + ':' + U.farmId) &&
-                        (U.id === CURRENT_ID || (U.farmId <= CONFIG.farm.capacity.max && U.id === LEGACY_ID)),
-                );
-                DEPLOYED.add(U.ownerId + ':' + U.farmId);
-            } else {
-                ASSERT(INTEGER(U.id, 1, raw.nextId - 1));
-            }
+            ASSERT(INTEGER(U.id, 1, raw.nextId - 1));
         }
         if (U.ability.action) {
             const A = U.ability.action;
@@ -987,13 +809,8 @@ export function validateSnapshot(raw) {
         ASSERT(INTEGER(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
         PROJECTILE_IDS.add(P.id);
         ASSERT(
-            INTEGER(
-                P.owner,
-                1,
-                raw.scene === 'raid'
-                    ? CONFIG.raid.ids.summonBase + CONFIG.raid.capacity.battleUnits - 1
-                    : raw.nextId - 1,
-            ) || INTEGER(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial),
+            INTEGER(P.owner, 1, raw.nextId - 1) ||
+                INTEGER(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial),
         );
         ASSERT(
             P.targetId === undefined || P.targetId === 'boss' || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial),
@@ -1034,7 +851,7 @@ export function validateSnapshot(raw) {
         INTEGER(raw.cornAttachments.nextGroupId, 1, 1e12) &&
             INTEGER(raw.cornAttachments.nextAttachmentId, 1, 1e12) &&
             Array.isArray(raw.cornAttachments.groups) &&
-            raw.cornAttachments.groups.length <= CONFIG.raid.capacity.projectiles,
+            raw.cornAttachments.groups.length <= CONFIG.battle.capacity.projectiles,
     );
     for (const GROUP of raw.cornAttachments.groups) {
         ASSERT(
@@ -1050,7 +867,7 @@ export function validateSnapshot(raw) {
                 (GROUP.nextExplosionTick === null || INTEGER(GROUP.nextExplosionTick, 0, 1e12)) &&
                 Array.isArray(GROUP.attachments) &&
                 GROUP.attachments.length > 0 &&
-                GROUP.attachments.length <= CONFIG.raid.capacity.projectiles,
+                GROUP.attachments.length <= CONFIG.battle.capacity.projectiles,
         );
         for (const ATTACHMENT of GROUP.attachments) {
             ASSERT(
@@ -1078,11 +895,7 @@ export function validateSnapshot(raw) {
             ATTACHMENTS.add(ATTACHMENT.id);
         }
     }
-    ASSERT(
-        INTEGER(raw.projectileSerial, 0, 1e12) &&
-            INTEGER(raw.raidSummonSerial, 0, CONFIG.raid.capacity.battleUnits) &&
-            INTEGER(raw.bossSummonSerial, 0, 1e12),
-    );
+    ASSERT(INTEGER(raw.projectileSerial, 0, 1e12) && INTEGER(raw.bossSummonSerial, 0, 1e12));
     ASSERT(
         hasFaction(raw.boss, FACTION_CONFIG.ENEMY) &&
             INTEGER(raw.boss.generation, 1, 1e12) &&
@@ -1145,7 +958,7 @@ export function validateSnapshot(raw) {
                 (A.targetId === 0 || VALID_BATTLE_UNIT_ID(A.targetId, raw.bossSummonSerial)) &&
                 typeof A.locked === 'boolean' &&
                 Array.isArray(A.hitIds) &&
-                A.hitIds.length <= CONFIG.raid.capacity.battleUnits &&
+                A.hitIds.length <= CONFIG.battle.capacity.battleUnits &&
                 A.hitIds.every((id) => VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial)) &&
                 new Set(A.hitIds).size === A.hitIds.length &&
                 INTEGER(A.released, 0, 4) &&
@@ -1160,10 +973,6 @@ export function validateSnapshot(raw) {
     }
     ASSERT(['idle', 'fighting', 'victory', 'defeat'].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
     ASSERT(raw.running === (raw.encounter.outcome === 'fighting'));
-    ASSERT(
-        typeof raw.raidDeploymentStarted === 'boolean' &&
-            (!raw.raidDeploymentStarted || raw.raidRosters.length === raw.raidExpectedPlayers.length),
-    );
     return true;
 }
 function validatePath(p) {

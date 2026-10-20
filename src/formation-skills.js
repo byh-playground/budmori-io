@@ -1,5 +1,4 @@
 import {
-    createFormationSkillState,
     createFormationRuntime,
     isValidFormationSkillState,
     FORMATION_MAX_LEVEL,
@@ -112,7 +111,7 @@ export class FormationSkills {
         return this.runtime.effects;
     }
     get active() {
-        return this.world.scene === 'raid' ? this.world.running : this.world.farmBossEvent?.phase === 'fighting';
+        return this.world.farmBossEvent?.phase === 'fighting';
     }
     editable() {
         return this.world.scene === 'farm' && !this.world.running && this.world.farmBossEvent?.phase === 'idle';
@@ -180,13 +179,7 @@ export class FormationSkills {
             this.runtime.serial = SERIAL;
             this.rebuildInjured();
             this.runtime.active = true;
-            const BUILDS =
-                this.world.scene === 'raid' && this.world.raidRosters.length
-                    ? this.world.raidRosters.map((roster) => ({
-                          ownerId: roster.ownerId,
-                          state: roster.abilitySnapshot.formationSkills || createFormationSkillState(),
-                      }))
-                    : [{ ownerId: '', state: this.world.playerProgression.formationSkills }];
+            const BUILDS = [{ ownerId: '', state: this.world.playerProgression.formationSkills }];
             for (const BUILD of BUILDS) {
                 for (const ID of BUILD.state.equipped) {
                     if (ID) {

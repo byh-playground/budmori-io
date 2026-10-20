@@ -90,10 +90,6 @@ class FarmStorage {
             return false;
         }
     }
-    get hasReservedRaid() {
-        const RUN = this._world?.activeRaidRunSequence ?? this.savedProgress?.ledger.raid.activeRun?.sequence;
-        return RUN !== null && RUN !== undefined;
-    }
     set world(value) {
         this._world = value;
         this.savedProgress = null;

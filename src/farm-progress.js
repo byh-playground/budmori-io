@@ -38,7 +38,6 @@ function copyPlayer(player) {
     return {
         schemaVersion: player.schemaVersion,
         formationSkills: structuredClone(player.formationSkills),
-        raidDeploymentCards: structuredClone(player.raidDeploymentCards),
         level: player.level,
         experience: player.experience,
         farmBossEventStage: player.farmBossEventStage,
@@ -163,8 +162,7 @@ export function captureFarmProgress(world) {
         }
         GROUPS.set(KEY, ROW);
     }
-    const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row),
-        STAGE = world.farmBossProgress;
+    const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
     const SITES = world.allBuildSites;
     return {
         worldMap: structuredClone(world.worldMap),
@@ -186,18 +184,6 @@ export function captureFarmProgress(world) {
             births: world.metrics.births,
             merges: world.metrics.merges,
         },
-        bossStages: {
-            currentStage: STAGE.currentStage,
-            highestClearedRaidStage: STAGE.highestClearedRaidStage,
-            encounterSeed: STAGE.encounterSeed,
-            encounterEpoch: STAGE.encounterEpoch,
-            nextSelectionId: STAGE.nextSelectionId,
-            selections: STAGE.selections.map(({ stage, species, selectionId }) => ({
-                stage,
-                species,
-                selectionId,
-            })),
-        },
         ledger: {
             boss: {
                 nextEncounterId: world.nextBossEncounterId,
@@ -217,26 +203,11 @@ export function captureFarmProgress(world) {
                     .filter((entry) => entry.count > 0)
                     .map(({ species, tier, count }) => ({ species, tier, count })),
             },
-            raid: {
-                nextRunSequence: world.nextRaidRunSequence,
-                activeRun:
-                    world.activeRaidRunSequence === null
-                        ? null
-                        : {
-                              sequence: world.activeRaidRunSequence,
-                              sessionId: world.activeRaidSessionId,
-                          },
-                settledThrough: world.raidSettlementWatermark,
-            },
         },
     };
 }
 export function validateFarmProgress(data) {
-    keys(
-        data,
-        ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'bossStages', 'ledger'],
-        ['mode', 'worldMap'],
-    );
+    keys(data, ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'ledger'], ['mode', 'worldMap']);
     ASSERT(
         INTEGER(data.seed, 0, 0xffffffff) &&
             INTEGER(data.rngState, 0, 0xffffffff) &&
@@ -362,64 +333,12 @@ export function validateFarmProgress(data) {
             (isValidWorldMap(data.worldMap) &&
                 data.worldMap.farms.every((farm) => PLAYER.farmPlots.plots.some((plot) => plot.id === farm.plotId))),
     );
-    const STAGE = data.bossStages;
-    keys(STAGE, [
-        'currentStage',
-        'highestClearedRaidStage',
-        'encounterSeed',
-        'encounterEpoch',
-        'nextSelectionId',
-        'selections',
-    ]);
-    ASSERT(
-        INTEGER(STAGE.currentStage, 1, BOSS_REWARD_SETTINGS.maxStage) &&
-            INTEGER(STAGE.highestClearedRaidStage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
-            INTEGER(STAGE.encounterSeed, 0, 0xffffffff) &&
-            INTEGER(STAGE.encounterEpoch) &&
-            INTEGER(STAGE.nextSelectionId, 1) &&
-            Array.isArray(STAGE.selections) &&
-            STAGE.selections.length <= BOSS_REWARD_SETTINGS.maxStage,
-    );
-    const STAGES = new Set(),
-        SELECTIONS = new Set();
-    for (const ENTRY of STAGE.selections) {
-        keys(ENTRY, ['stage', 'species', 'selectionId']);
-        ASSERT(
-            INTEGER(ENTRY.stage, 1, BOSS_REWARD_SETTINGS.maxStage) &&
-                INTEGER(ENTRY.species, 0, CONFIG.unit.speciesCount - 1) &&
-                INTEGER(ENTRY.selectionId, 1, STAGE.nextSelectionId - 1) &&
-                !STAGES.has(ENTRY.stage) &&
-                !SELECTIONS.has(ENTRY.selectionId),
-        );
-        STAGES.add(ENTRY.stage);
-        SELECTIONS.add(ENTRY.selectionId);
-    }
     const LEDGER = data.ledger;
-    keys(LEDGER, ['boss', 'raid']);
-    const BOSS = LEDGER.boss,
-        RAID = LEDGER.raid;
+    keys(LEDGER, ['boss']);
+    const BOSS = LEDGER.boss;
     keys(BOSS, ['nextEncounterId', 'settledThrough', 'pendingRewards', 'rewardStreams', 'queuedRewards']);
-    keys(BOSS.settledThrough, ['farm', 'raid']);
-    keys(RAID, ['nextRunSequence', 'activeRun', 'settledThrough']);
-    ASSERT(
-        INTEGER(BOSS.settledThrough.farm) &&
-            INTEGER(BOSS.settledThrough.raid) &&
-            INTEGER(BOSS.nextEncounterId, BOSS.settledThrough.farm + 1) &&
-            INTEGER(RAID.nextRunSequence) &&
-            INTEGER(RAID.settledThrough, BOSS.settledThrough.raid, RAID.nextRunSequence),
-    );
-    if (RAID.activeRun === null) {
-        ASSERT(RAID.nextRunSequence === RAID.settledThrough);
-    } else {
-        keys(RAID.activeRun, ['sequence', 'sessionId']);
-        ASSERT(
-            INTEGER(RAID.activeRun.sequence, 1) &&
-                RAID.activeRun.sequence === RAID.nextRunSequence &&
-                RAID.activeRun.sequence === RAID.settledThrough + 1 &&
-                STRING(RAID.activeRun.sessionId) &&
-                RAID.activeRun.sessionId.length <= 128,
-        );
-    }
+    keys(BOSS.settledThrough, ['farm']);
+    ASSERT(INTEGER(BOSS.settledThrough.farm) && INTEGER(BOSS.nextEncounterId, BOSS.settledThrough.farm + 1));
     const STREAMS = BOSS.rewardStreams;
     keys(STREAMS, ['normal', 'event', 'firstClear']);
     for (const STREAM of Object.values(STREAMS)) {
@@ -500,7 +419,7 @@ export function validateFarmProgress(data) {
         const BASE_KEYS = ['encounterId', 'source', 'receiptKey', 'species', 'tier', 'chance', 'firstClear'];
         keys(REWARD, BASE_KEYS, [...REWARD_EXTRAS, 'rolls']);
         ASSERT(
-            ['farm', 'raid'].includes(REWARD.source) &&
+            REWARD.source === 'farm' &&
                 INTEGER(REWARD.encounterId, 1, BOSS.settledThrough[REWARD.source]) &&
                 STRING(REWARD.receiptKey) &&
                 !RECEIPTS.has(REWARD.receiptKey) &&
@@ -508,7 +427,7 @@ export function validateFarmProgress(data) {
                 INTEGER(REWARD.tier, 1, CONFIG.unit.maxTier) &&
                 NUMBER(REWARD.chance, 0, 1) &&
                 typeof REWARD.firstClear === 'boolean' &&
-                (REWARD.source === 'raid' || !REWARD.firstClear),
+                !REWARD.firstClear,
         );
         RECEIPTS.add(REWARD.receiptKey);
         const ENCOUNTER = `${REWARD.source}:${REWARD.encounterId}`;
@@ -643,7 +562,6 @@ export function restoreFarmProgress(data) {
     for (const SITE of data.food.sites) {
         WORLD.restoreBuildSite(SITE);
     }
-    WORLD.farmBossProgress = structuredClone(data.bossStages);
     if (data.worldMap !== undefined) {
         WORLD.worldMap = { challengeTile: -1, buildTile: -1, ...structuredClone(data.worldMap) };
     }
@@ -710,7 +628,7 @@ export function restoreFarmProgress(data) {
         autoClock: data.food.autoClock,
     });
     WORLD.nextId = data.nextId;
-    const { boss: BOSS, raid: RAID } = data.ledger;
+    const { boss: BOSS } = data.ledger;
     Object.assign(WORLD, {
         nextBossEncounterId: BOSS.nextEncounterId,
         bossRewardWatermarks: {
@@ -718,10 +636,6 @@ export function restoreFarmProgress(data) {
         },
         bossRewardStreams: structuredClone(BOSS.rewardStreams),
         bossRewardInventory: BOSS.queuedRewards.map(({ species, tier, count }) => ({ species, tier, count })),
-        nextRaidRunSequence: RAID.nextRunSequence,
-        activeRaidRunSequence: RAID.activeRun?.sequence ?? null,
-        activeRaidSessionId: RAID.activeRun?.sessionId ?? null,
-        raidSettlementWatermark: RAID.settledThrough,
     });
     WORLD.bossRewardReceipts = BOSS.pendingRewards.map((reward) => ({
         ...reward,
