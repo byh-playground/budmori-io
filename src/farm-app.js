@@ -26,7 +26,6 @@ import {
     raidDeploymentRewardMultiplier,
 } from './raid-settlement.js';
 import {
-    BOSS_REWARD_SETTINGS,
     advanceBossRewardReveal,
     bossRewardRollDescription,
     bossStageStats,
@@ -34,7 +33,7 @@ import {
     settleBossKill,
     advanceBossRewardCalculations,
 } from './boss-rewards.js';
-import { selectFarmBossStage, selectMapBossStage } from './farm-boss-stages.js';
+import { selectMapBossStage } from './farm-boss-stages.js';
 import { createWorldMapView } from './world-map-view.js';
 import {
     beginChallenge,
@@ -73,13 +72,11 @@ let foodHold = null;
 let farmSortTransition = null;
 let farmPanelRevision = -1;
 let bossEncounterOpen = false;
-// The raid screen opens on the world map; "단계 선택" switches to the old stage picker for rematches.
-let bossMapMode = true;
+// A raid is a nest met on the world map; the screen is the map.
 let bossMapTile = -1;
 let worldMapView = null;
 let miniMapView = null;
 let lastLit = null;
-let bossSwipe = null;
 let bossPauseBeforeOpen = null;
 let lastAutoSettledRunKey = null;
 let bossRewardRevealTimer = null;
@@ -756,18 +753,7 @@ function install(world) {
 }
 install(new Garden());
 active.paused = true;
-function showBossEncounterMessage(text) {
-    const MESSAGE = DOLLAR('bossEncounterMessage');
-    MESSAGE.textContent = text;
-    MESSAGE.hidden = !text;
-    if (text) {
-        clearTimeout(showBossEncounterMessage.timer);
-        showBossEncounterMessage.timer = setTimeout(() => {
-            MESSAGE.hidden = true;
-        }, 1800);
-    }
-}
-function raidStartBlockReason(stageLocked) {
+function raidStartBlockReason() {
     if (!personalGarden) {
         return '내 정원에서만 레이드를 시작할 수 있어요.';
     }
@@ -777,69 +763,19 @@ function raidStartBlockReason(stageLocked) {
     if (personalGarden.activeRaidRunSequence !== null) {
         return '진행 중인 레이드를 먼저 마쳐 주세요.';
     }
-    if (stageLocked) {
-        return '이전 단계를 먼저 클리어해 주세요.';
-    }
     if (!hasRaidRosterEntries(personalGarden.roster.residents())) {
         return '투입할 수 있는 병력이 없어요. 유닛을 먼저 키워 주세요.';
     }
     return '';
 }
-function renderBossEncounterStage(stage) {
-    if (!personalGarden || active?.world?.scene === 'raid') {
-        return null;
-    }
-    const PROGRESS = personalGarden.farmBossProgress,
-        WAS_SELECTED = PROGRESS.selections.some((entry) => entry.stage === stage),
-        PREVIOUS_STAGE = PROGRESS.currentStage,
-        FIRST_CLEAR = stage > PROGRESS.highestClearedRaidStage,
-        STAGE_LOCKED = stage > PROGRESS.highestClearedRaidStage + 1;
-    const SELECTION = selectFarmBossStage(PROGRESS, stage);
-    if (!WAS_SELECTED || PREVIOUS_STAGE !== stage) {
-        personalGarden.markProgressChanged();
-        saveImmediate(personalGarden);
-    }
-    const SPECIES = SELECTION.species,
-        CATALOG_ENTRY = speciesById(SPECIES),
-        REWARD_NAME = speciesRewardName(SPECIES),
-        ENCOUNTER_NAME = giantSpeciesName(SPECIES),
-        ROLLS = SELECTION.rolls;
-    DOLLAR('bossStageCounter').textContent = `${SELECTION.stage} / ${BOSS_REWARD_SETTINGS.maxStage}`;
-    DOLLAR('bossStageLabel').textContent = `${SELECTION.stage}단계`;
-    renderNeutralBossPreview(DOLLAR('bossPreview'), SPECIES, CATALOG_ENTRY.asset, `${ENCOUNTER_NAME} 미리보기`);
-    DOLLAR('bossStageName').textContent = ENCOUNTER_NAME;
-    DOLLAR('bossStageHp').textContent = `체력 ${Math.round(SELECTION.hp).toLocaleString('ko-KR')}`;
-    DOLLAR('bossStageAttack').textContent =
-        `공격력 ${Number(SELECTION.attackPower.toPrecision(3)).toLocaleString('ko-KR')}`;
-    DOLLAR('bossStageXp').textContent = `+${SELECTION.xp.toLocaleString('ko-KR')} XP`;
-    DOLLAR('bossStageDrop').hidden = ROLLS === 0;
-    DOLLAR('bossStageDrop').replaceChildren();
-    if (ROLLS > 0) {
-        const ICON = document.createElement('img');
-        ICON.draggable = false;
-        const LABEL = document.createElement('span'),
-            TITLE = document.createElement('strong'),
-            DETAILS = document.createElement('small');
-        TITLE.textContent = REWARD_NAME;
-        DETAILS.textContent = bossRewardRollDescription(SELECTION.stage, { firstClear: FIRST_CLEAR });
-        LABEL.append(TITLE, DETAILS);
-        DOLLAR('bossStageDrop').append(ICON, LABEL);
-        renderNeutralBossPreview(ICON, SPECIES, CATALOG_ENTRY.asset);
-    }
-    const REASON = raidStartBlockReason(STAGE_LOCKED);
-    DOLLAR('bossStageNotice').textContent = REASON;
-    DOLLAR('bossEncounterChallenge').setAttribute('aria-disabled', String(REASON !== ''));
-    DOLLAR('bossEncounterChallenge').title = REASON;
-    return SELECTION;
-}
 function mapChallengeBlockReason() {
     if (!personalGarden) {
-        return raidStartBlockReason(false);
+        return raidStartBlockReason();
     }
     if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
         return '도전할 둥지를 골라 주세요. 농장이나 정리한 칸과 맞닿은 둥지만 도전할 수 있어요.';
     }
-    return raidStartBlockReason(false);
+    return raidStartBlockReason();
 }
 // What the map views draw each frame: the map itself, how far the next tile is, and how many explorers are out.
 function worldMapFrame() {
@@ -962,15 +898,12 @@ function renderWorldMap() {
                 : !inReach(MAP, TILE)
                   ? '농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요.'
                   : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
-        } else if (isCleared(MAP, TILE)) {
-            title = `정리한 칸 ${POSITION}`;
-            info = '다시 위협받지 않는 안전한 칸이에요.';
         } else if (hasNest(MAP, TILE)) {
             const STAGE = tileDanger(MAP, TILE),
                 SPECIES = tileSpecies(MAP, TILE),
                 STATS = bossStageStats(STAGE);
-            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
-            info = `체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
+            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})${isCleared(MAP, TILE) ? ' · 정리함' : ''}`;
+            info = `${isCleared(MAP, TILE) ? '정리한 둥지예요. 다시 도전할 수 있어요. ' : ''}체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
         } else {
             title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
             info = '아무것도 없는 칸이에요.';
@@ -1002,6 +935,7 @@ function renderWorldMap() {
         personalGarden.materials.stone < personalGarden.projectInfo('plot').cost.stone;
     DOLLAR('bossEncounterHint').textContent = mapChallengeBlockReason();
     DOLLAR('bossStageCounter').textContent = `정리 ${MAP.cleared.length}칸`;
+    DOLLAR('bossEncounterChallenge').textContent = TILE >= 0 && isCleared(MAP, TILE) ? '다시 도전' : '둥지 도전';
 }
 function selectWorldMapTile(index) {
     bossMapTile = bossMapTile === index ? -1 : index;
@@ -1013,29 +947,17 @@ function stopBossMapTicker() {
     clearInterval(bossMapTicker);
     bossMapTicker = 0;
 }
-function setBossView(mapMode) {
-    bossMapMode = mapMode;
+function setBossView() {
     stopBossMapTicker();
     stopWorldMapView();
-    const SCREEN = DOLLAR('bossEncounterScreen');
-    SCREEN.dataset.view = mapMode ? 'map' : 'stage';
-    DOLLAR('worldMapView').hidden = !mapMode;
-    DOLLAR('bossEncounterViewport').hidden = mapMode;
-    DOLLAR('bossViewToggle').textContent = mapMode ? '단계 선택' : '월드 지도';
-    DOLLAR('bossEncounterChallenge').textContent = mapMode ? '둥지 도전' : '레이드 시작';
-    if (mapMode) {
+    DOLLAR('bossEncounterScreen').dataset.view = 'map';
+    DOLLAR('worldMapView').hidden = false;
+    renderWorldMap();
+    startWorldMapView();
+    bossMapTicker = setInterval(() => {
+        personalGarden?.tickExploration(0.25, false);
         renderWorldMap();
-        startWorldMapView();
-        bossMapTicker = setInterval(() => {
-            personalGarden?.tickExploration(0.25, false);
-            renderWorldMap();
-        }, 250);
-    } else {
-        DOLLAR('bossEncounterHint').textContent = '위아래로 밀어 단계 이동';
-        if (personalGarden) {
-            renderBossEncounterStage(personalGarden.farmBossProgress.currentStage);
-        }
-    }
+    }, 250);
 }
 function openBossEncounter(push = true) {
     stopWorldInput();
@@ -1074,7 +996,7 @@ function openBossEncounter(push = true) {
     bossEncounterOpen = true;
     document.body.dataset.bossScreen = 'true';
     DOLLAR('bossEncounterScreen').hidden = false;
-    setBossView(bossMapMode);
+    setBossView();
     if (push) {
         history.pushState(null, '', '#/boss');
     }
@@ -1090,7 +1012,6 @@ function closeBossEncounter(push = true) {
     stopWorldMapView();
     document.body.dataset.bossScreen = 'false';
     DOLLAR('bossEncounterScreen').hidden = true;
-    bossSwipe = null;
     for (const ID of ['bossPreview']) {
         const PREVIEW = DOLLAR(ID);
         if (PREVIEW) {
@@ -1359,29 +1280,16 @@ function beginRaid(push = true) {
     if (!persist()) {
         return;
     }
-    const MAP_TILE = bossMapMode ? bossMapTile : -1;
-    let bossStage;
-    if (MAP_TILE >= 0) {
-        // A nest on the world map: its stage and species come from the tile, and the tile is cleared on a win.
-        if (!beginChallenge(personalGarden.worldMap, MAP_TILE)) {
-            return;
-        }
-        bossStage = selectMapBossStage(personalGarden.farmBossProgress, personalGarden.worldMap, MAP_TILE);
-        personalGarden.markProgressChanged();
-        if (!persist()) {
-            personalGarden.worldMap.challengeTile = -1;
-            return;
-        }
-    } else {
-        personalGarden.worldMap.challengeTile = -1;
-        const CURRENT_STAGE = personalGarden.farmBossProgress.currentStage,
-            HIGHEST_CLEARED_STAGE = personalGarden.farmBossProgress.highestClearedRaidStage;
-        bossStage = renderBossEncounterStage(CURRENT_STAGE);
-        if (!bossStage || CURRENT_STAGE > HIGHEST_CLEARED_STAGE + 1 || !persist()) {
-            return;
-        }
+    // A nest on the world map: its stage and species come from the tile, and the tile is cleared on a win.
+    if (bossMapTile < 0 || !beginChallenge(personalGarden.worldMap, bossMapTile)) {
+        return;
     }
-    const BOSS_STAGE = bossStage;
+    const BOSS_STAGE = selectMapBossStage(personalGarden.farmBossProgress, personalGarden.worldMap, bossMapTile);
+    personalGarden.markProgressChanged();
+    if (!persist()) {
+        personalGarden.worldMap.challengeTile = -1;
+        return;
+    }
     const RESERVED = reservePersonalRaidRun();
     if (!RESERVED) {
         return;
@@ -1452,7 +1360,6 @@ DOLLAR('menuBossEncounter').onclick = () => {
     openBossEncounter();
 };
 DOLLAR('bossEncounterBack').onclick = () => closeBossEncounter();
-DOLLAR('bossViewToggle').onclick = () => setBossView(!bossMapMode);
 DOLLAR('worldMapFit').onclick = () => {
     if (personalGarden) {
         worldMapView?.recenter(personalGarden.worldMap);
@@ -1482,75 +1389,6 @@ DOLLAR('bossEncounterChallenge').onclick = () => {
     closeBossEncounter(false);
     beginRaid(true);
 };
-DOLLAR('bossEncounterScreen').addEventListener('pointerdown', (e) => {
-    if (!bossEncounterOpen || bossMapMode || e.button > 0 || e.target.closest('button')) {
-        return;
-    }
-    const VIEWPORT = DOLLAR('bossEncounterViewport'),
-        CARD = DOLLAR('bossEncounterCard');
-    bossSwipe = {
-        pointerId: e.pointerId,
-        y: e.clientY,
-    };
-    CARD.style.transition = 'none';
-    VIEWPORT.setPointerCapture?.(e.pointerId);
-    e.preventDefault();
-});
-DOLLAR('bossEncounterScreen').addEventListener('pointermove', (e) => {
-    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) {
-        return;
-    }
-    const DELTA = Math.max(-120, Math.min(120, e.clientY - bossSwipe.y));
-    DOLLAR('bossEncounterCard').style.transform = `translateY(${DELTA * 0.55}px)`;
-    e.preventDefault();
-});
-DOLLAR('bossEncounterScreen').addEventListener('pointerup', (e) => {
-    if (!bossSwipe || e.pointerId !== bossSwipe.pointerId) {
-        return;
-    }
-    const DELTA = e.clientY - bossSwipe.y,
-        CARD = DOLLAR('bossEncounterCard');
-    bossSwipe = null;
-    if (Math.abs(DELTA) < 42) {
-        CARD.style.transition = 'transform .18s ease-out';
-        CARD.style.transform = 'translateY(0)';
-        setTimeout(() => {
-            CARD.style.transition = '';
-            CARD.style.transform = '';
-        }, 200);
-        return;
-    }
-    const CURRENT = personalGarden?.farmBossProgress?.currentStage || 1,
-        HIGHEST_CLEARED = personalGarden?.farmBossProgress?.highestClearedRaidStage || 0,
-        NEXT =
-            DELTA < 0
-                ? Math.min(BOSS_REWARD_SETTINGS.maxStage, HIGHEST_CLEARED + 2, CURRENT + 1)
-                : Math.max(1, CURRENT - 1);
-    if (NEXT === CURRENT) {
-        showBossEncounterMessage(
-            DELTA < 0 ? `현재 스테이지 상한 ${BOSS_REWARD_SETTINGS.maxStage}예요` : '첫 스테이지예요',
-        );
-        return;
-    }
-    CARD.style.transform = '';
-    CARD.style.transition = '';
-    CARD.style.animation = 'none';
-    void CARD.offsetWidth;
-    CARD.style.animation = '';
-    renderBossEncounterStage(NEXT);
-});
-DOLLAR('bossEncounterScreen').addEventListener('pointercancel', (e) => {
-    if (bossSwipe?.pointerId === e.pointerId) {
-        bossSwipe = null;
-        const CARD = DOLLAR('bossEncounterCard');
-        CARD.style.transition = 'transform .18s ease-out';
-        CARD.style.transform = 'translateY(0)';
-        setTimeout(() => {
-            CARD.style.transition = '';
-            CARD.style.transform = '';
-        }, 200);
-    }
-});
 DOLLAR('abortRaidRun').onclick = () => {
     if (active?.world?.scene === 'raid') {
         return;
@@ -2479,15 +2317,6 @@ window.addEventListener('keydown', (e) => {
     } else if (e.key === 'Escape' && menuOpen) {
         e.preventDefault();
         closeMenu();
-    } else if (bossEncounterOpen && !bossMapMode && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        e.preventDefault();
-        const CURRENT = personalGarden?.farmBossProgress?.currentStage || 1,
-            HIGHEST_CLEARED = personalGarden?.farmBossProgress?.highestClearedRaidStage || 0,
-            NEXT =
-                e.key === 'ArrowUp'
-                    ? Math.min(BOSS_REWARD_SETTINGS.maxStage, HIGHEST_CLEARED + 2, CURRENT + 1)
-                    : Math.max(1, CURRENT - 1);
-        renderBossEncounterStage(NEXT);
     }
 });
 window.addEventListener('pageshow', (e) => {
@@ -2747,14 +2576,7 @@ function sync(display, now, notices) {
         home || !BATTLE_HUD || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
     );
     {
-        const REASON = bossMapMode
-            ? mapChallengeBlockReason()
-            : raidStartBlockReason(
-                  personalGarden
-                      ? personalGarden.farmBossProgress.currentStage >
-                            personalGarden.farmBossProgress.highestClearedRaidStage + 1
-                      : false,
-              );
+        const REASON = mapChallengeBlockReason();
         syncAttribute('bossEncounterChallenge', 'aria-disabled', String(REASON !== ''));
         syncText('bossStageNotice', REASON);
     }
