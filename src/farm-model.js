@@ -3672,6 +3672,10 @@ const GARDEN = class Garden {
             this.tickExploration(Math.min(elapsed, 0.1));
             this.tickIdleWork(Math.min(elapsed, 0.1));
             this.tickHauling(Math.min(elapsed, 0.1));
+            // A challenge only lives as long as its fight does (a reload in the middle of one leaves nothing to resume).
+            if (this.farmBossEvent.phase === 'idle' && this.worldMap.challengeTile >= 0) {
+                this.worldMap.challengeTile = -1;
+            }
             if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
                 this.markProgressChanged();
             }

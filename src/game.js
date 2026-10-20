@@ -11914,6 +11914,9 @@
             this.tickExploration(Math.min(elapsed, 0.1));
             this.tickIdleWork(Math.min(elapsed, 0.1));
             this.tickHauling(Math.min(elapsed, 0.1));
+            if (this.farmBossEvent.phase === "idle" && this.worldMap.challengeTile >= 0) {
+              this.worldMap.challengeTile = -1;
+            }
             if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
               this.markProgressChanged();
             }
@@ -15719,7 +15722,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.20.0";
+      PRODUCT_VERSION = "0.20.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
