@@ -15252,7 +15252,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.14.1";
+      PRODUCT_VERSION = "0.14.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17195,12 +17195,7 @@
   var import_definition56 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition56.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition56.unitDisplayScale)(
-      BODY2,
-      OWNER_VECTOR_SCALE,
-      renderer.scale,
-      renderer.scenePresentation.minimumUnitPixels * renderer.pixelRatio
-    );
+    const BODY2 = (0, import_definition56.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition56.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
     return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
   }
   var SeedProjectilePresentation = class {
@@ -17606,7 +17601,7 @@
         BODY2,
         u.bodyScale,
         this.renderer.scale,
-        this.renderer.scenePresentation.minimumUnitPixels * this.renderer.pixelRatio * GIANT_SCALE
+        this.renderer.minimumUnitPixels() * GIANT_SCALE
       ), R2 = SCALE * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]) * 0.5 * (1 + Math.sin((sim.time - u.giantEndedAt) * 30) * 0.12 * Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
       this.drawVectorUnit(u, sim, P, R2, rest);
       return {
@@ -18348,6 +18343,11 @@
         x: PX / this.scale - this.offset[0] - this.view[0],
         y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets5.WORLD_DEPTH_PROJECTION
       };
+    }
+    // The smallest a unit is drawn, in pixels. Zoomed out it shrinks with the view instead of staying full size.
+    minimumUnitPixels() {
+      const BASE = this.scenePresentation.minimumUnitPixels * this.pixelRatio;
+      return this.scene === "farm" && this.zoom < 1 ? Math.max(3 * this.pixelRatio, BASE * this.zoom) : BASE;
     }
     configure(scene, force = false) {
       if (this.scene === scene && !force) {
