@@ -67,6 +67,8 @@ const GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2
 const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
 const MIN_TILE = (map, axis) => Math.min(...map.revealed.map((index) => (axis === 'x' ? tileX(index) : tileY(index))));
 const MAX_TILE = (map, axis) => Math.max(...map.revealed.map((index) => (axis === 'x' ? tileX(index) : tileY(index))));
+const ZOOM_MIN = 0.06,
+    ZOOM_MAX = 1.8;
 const DIORAMA = class Diorama {
     constructor(canvas) {
         this.canvas = canvas;
@@ -210,11 +212,15 @@ const DIORAMA = class Diorama {
                 x: 0,
                 y: 0,
             };
+            this.zoom = 1;
         }
         this.scene = scene;
         this.scenePresentation = scenePresentation(scene);
         const A = this.aspect;
-        this.view = this.scenePresentation.cameraView(A);
+        this.zoom ??= 1;
+        this.baseView = this.scenePresentation.cameraView(A);
+        const ZOOM = scene === 'farm' ? this.zoom : 1;
+        this.view = [this.baseView[0] / ZOOM, this.baseView[1] / ZOOM];
         this.scale = this.canvas.width / (2 * this.view[0]);
         const { radiusX: RX, radiusY: RY } = CONFIG[scene].arena;
         // Keep the authored zoom. Pan only far enough to inspect the terrain and
@@ -257,6 +263,13 @@ const DIORAMA = class Diorama {
             minY: Math.min(0, TOP - BOUNDS.top),
             maxY: Math.max(0, BOTTOM - BOUNDS.bottom),
         };
+        if (scene === 'farm' && ZOOM !== 1) {
+            // Zoomed out or in: the middle of the screen may rest anywhere on the land, not only the edges of it.
+            this.panLimits.minX = Math.min(this.panLimits.minX, -BOUNDS.right);
+            this.panLimits.maxX = Math.max(this.panLimits.maxX, -BOUNDS.left);
+            this.panLimits.minY = Math.min(this.panLimits.minY, -BOUNDS.top - BASE_Y);
+            this.panLimits.maxY = Math.max(this.panLimits.maxY, -BOUNDS.bottom - BASE_Y);
+        }
         this.pan.x = clamp(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
         this.pan.y = clamp(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
         this.offset = [this.pan.x, BASE_Y + this.pan.y];
@@ -323,6 +336,47 @@ const DIORAMA = class Diorama {
     }
     resetPan() {
         return this.setPan(0, 0);
+    }
+    // Zoom keeps the ground under the pointer where it is. factor > 1 closes in.
+    zoomAt(factor, clientX = null, clientY = null) {
+        if (this.scene !== 'farm' || !(factor > 0)) {
+            return false;
+        }
+        const NEXT = clamp(this.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+        if (NEXT === this.zoom) {
+            return false;
+        }
+        const R = this.canvas.getBoundingClientRect(),
+            PX = (clientX === null ? R.width / 2 : clientX - R.left) * this.pixelRatio,
+            PY = (clientY === null ? R.height / 2 : clientY - R.top) * this.pixelRatio,
+            WX = PX / this.scale - this.offset[0] - this.view[0],
+            WY = this.view[1] - PY / this.scale - this.offset[1];
+        this.zoom = NEXT;
+        this.configure(this.scene, true);
+        const BASE_Y = this.offset[1] - this.pan.y;
+        this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
+        return true;
+    }
+    // Every lit farm on screen at once.
+    fitAll() {
+        const E = this.extent;
+        if (this.scene !== 'farm' || !E) {
+            return false;
+        }
+        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
+            HALF_W = (E.right - E.left) / 2,
+            HALF_H = ((E.top - E.bottom) / 2) * WORLD_DEPTH_PROJECTION,
+            FIT = Math.min(this.baseView[0] / (HALF_W + RX), this.baseView[1] / (HALF_H + RY * WORLD_DEPTH_PROJECTION));
+        this.zoom = clamp(FIT, ZOOM_MIN, 1);
+        this.configure(this.scene, true);
+        const BASE_Y = this.offset[1] - this.pan.y;
+        this.setPan(-(E.left + E.right) / 2, -((E.top + E.bottom) / 2) * WORLD_DEPTH_PROJECTION - BASE_Y);
+        return true;
+    }
+    resetZoom() {
+        this.zoom = 1;
+        this.configure(this.scene, true);
+        return this.resetPan();
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
         const C = this.ctx;

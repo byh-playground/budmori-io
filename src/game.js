@@ -15051,7 +15051,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.10";
+      PRODUCT_VERSION = "0.13.11";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18021,6 +18021,8 @@
   var CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
   var MIN_TILE = (map, axis) => Math.min(...map.revealed.map((index) => axis === "x" ? tileX(index) : tileY(index)));
   var MAX_TILE = (map, axis) => Math.max(...map.revealed.map((index) => axis === "x" ? tileX(index) : tileY(index)));
+  var ZOOM_MIN = 0.06;
+  var ZOOM_MAX = 1.8;
   var DIORAMA = class Diorama {
     constructor(canvas) {
       this.canvas = canvas;
@@ -18155,11 +18157,15 @@
           x: 0,
           y: 0
         };
+        this.zoom = 1;
       }
       this.scene = scene;
       this.scenePresentation = scenePresentation(scene);
       const A = this.aspect;
-      this.view = this.scenePresentation.cameraView(A);
+      this.zoom ??= 1;
+      this.baseView = this.scenePresentation.cameraView(A);
+      const ZOOM = scene === "farm" ? this.zoom : 1;
+      this.view = [this.baseView[0] / ZOOM, this.baseView[1] / ZOOM];
       this.scale = this.canvas.width / (2 * this.view[0]);
       const { radiusX: RX, radiusY: RY } = CONFIG[scene].arena;
       const BOUNDS = {
@@ -18195,6 +18201,12 @@
         minY: Math.min(0, TOP - BOUNDS.top),
         maxY: Math.max(0, BOTTOM - BOUNDS.bottom)
       };
+      if (scene === "farm" && ZOOM !== 1) {
+        this.panLimits.minX = Math.min(this.panLimits.minX, -BOUNDS.right);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, -BOUNDS.left);
+        this.panLimits.minY = Math.min(this.panLimits.minY, -BOUNDS.top - BASE_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, -BOUNDS.bottom - BASE_Y);
+      }
       this.pan.x = CLAMP2(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
       this.pan.y = CLAMP2(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
       this.offset = [this.pan.x, BASE_Y + this.pan.y];
@@ -18254,6 +18266,40 @@
     }
     resetPan() {
       return this.setPan(0, 0);
+    }
+    // Zoom keeps the ground under the pointer where it is. factor > 1 closes in.
+    zoomAt(factor, clientX = null, clientY = null) {
+      if (this.scene !== "farm" || !(factor > 0)) {
+        return false;
+      }
+      const NEXT = CLAMP2(this.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+      if (NEXT === this.zoom) {
+        return false;
+      }
+      const R2 = this.canvas.getBoundingClientRect(), PX = (clientX === null ? R2.width / 2 : clientX - R2.left) * this.pixelRatio, PY = (clientY === null ? R2.height / 2 : clientY - R2.top) * this.pixelRatio, WX = PX / this.scale - this.offset[0] - this.view[0], WY = this.view[1] - PY / this.scale - this.offset[1];
+      this.zoom = NEXT;
+      this.configure(this.scene, true);
+      const BASE_Y = this.offset[1] - this.pan.y;
+      this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
+      return true;
+    }
+    // Every lit farm on screen at once.
+    fitAll() {
+      const E = this.extent;
+      if (this.scene !== "farm" || !E) {
+        return false;
+      }
+      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, HALF_W = (E.right - E.left) / 2, HALF_H = (E.top - E.bottom) / 2 * import_vector_sockets5.WORLD_DEPTH_PROJECTION, FIT = Math.min(this.baseView[0] / (HALF_W + RX), this.baseView[1] / (HALF_H + RY * import_vector_sockets5.WORLD_DEPTH_PROJECTION));
+      this.zoom = CLAMP2(FIT, ZOOM_MIN, 1);
+      this.configure(this.scene, true);
+      const BASE_Y = this.offset[1] - this.pan.y;
+      this.setPan(-(E.left + E.right) / 2, -((E.top + E.bottom) / 2) * import_vector_sockets5.WORLD_DEPTH_PROJECTION - BASE_Y);
+      return true;
+    }
+    resetZoom() {
+      this.zoom = 1;
+      this.configure(this.scene, true);
+      return this.resetPan();
     }
     ellipse(x, y, rx, ry, color2, angle = 0) {
       const C = this.ctx;
@@ -23324,7 +23370,7 @@
     }
     if (visible && personalGarden) {
       const MAP = personalGarden.worldMap, PERCENT = Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100);
-      syncText("miniMapLabel", `탐사 ${PERCENT}% · ${MAP.revealed.length}칸`);
+      syncText("miniMapLabel", `탐사 ${PERCENT}%`);
     }
   }
   function announceExploration() {
@@ -24628,12 +24674,56 @@
     }
   }
   function stopWorldInput(e) {
+    if (e) {
+      PINCH_POINTERS.delete(e.pointerId);
+    } else {
+      PINCH_POINTERS.clear();
+    }
+    pinchDistance = 0;
     stopFoodHold(e);
     RAID_DEPLOYMENT_UI.stopHold(e);
     stopPan(e);
   }
+  var PINCH_POINTERS = /* @__PURE__ */ new Map();
+  var pinchDistance = 0;
+  function pinchSpan() {
+    const [A, B] = [...PINCH_POINTERS.values()];
+    return { distance: Math.hypot(A.x - B.x, A.y - B.y), x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+  }
+  CANVAS.addEventListener(
+    "wheel",
+    (e) => {
+      if (!canUseWorldInput() || active?.world.scene !== "farm") {
+        return;
+      }
+      const LINE = e.deltaMode === 1 ? 16 : 1;
+      RENDERER.zoomAt(Math.exp(-e.deltaY * LINE * 16e-4), e.clientX, e.clientY);
+      e.preventDefault();
+    },
+    { passive: false }
+  );
+  for (const [ID, ACT] of [
+    ["zoomIn", () => RENDERER.zoomAt(1.4)],
+    ["zoomOut", () => RENDERER.zoomAt(1 / 1.4)],
+    ["zoomFit", () => RENDERER.fitAll()]
+  ]) {
+    DOLLAR2(ID).onclick = ACT;
+  }
   CANVAS.addEventListener("pointerdown", (e) => {
     FOOD_FEEL.unlock();
+    if (e.pointerType === "touch" && canUseWorldInput() && active?.world.scene === "farm") {
+      PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (PINCH_POINTERS.size === 2) {
+        stopFoodHold();
+        if (panPointer) {
+          panPointer.mode = "pinch";
+        }
+        pinchDistance = pinchSpan().distance;
+        CANVAS.setPointerCapture?.(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
     if (e.button !== 0 || !canUseWorldInput() || panPointer || RAID_DEPLOYMENT_UI.hold) {
       return;
     }
@@ -24670,6 +24760,16 @@
     e.preventDefault();
   });
   CANVAS.addEventListener("pointermove", (e) => {
+    if (PINCH_POINTERS.has(e.pointerId)) {
+      PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (PINCH_POINTERS.size === 2 && pinchDistance > 0) {
+        const SPAN = pinchSpan();
+        RENDERER.zoomAt(SPAN.distance / pinchDistance, SPAN.x, SPAN.y);
+        pinchDistance = SPAN.distance;
+        e.preventDefault();
+        return;
+      }
+    }
     if (!panPointer || e.pointerId !== panPointer.id) {
       return;
     }
@@ -24879,6 +24979,8 @@
     syncMiniMap(!home && !RAID && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
     announceExploration();
     syncFlag("farmControls", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("zoomBar", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag("zoomFit", "hidden", PLOT_IDS.length < 2);
     syncFlag("workHud", "hidden", RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag("raidControls", "hidden", !RAID || home);
     syncFlag("bossbar", "hidden", !BATTLE_HUD || home);

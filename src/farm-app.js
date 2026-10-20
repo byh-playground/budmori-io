@@ -883,7 +883,7 @@ function syncMiniMap(visible) {
     if (visible && personalGarden) {
         const MAP = personalGarden.worldMap,
             PERCENT = Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100);
-        syncText('miniMapLabel', `탐사 ${PERCENT}% · ${MAP.revealed.length}칸`);
+        syncText('miniMapLabel', `탐사 ${PERCENT}%`);
     }
 }
 // A tile lifted from the fog is announced where the player is looking, whether the map is open or not.
@@ -2302,12 +2302,56 @@ function stopFoodHold(e) {
     }
 }
 function stopWorldInput(e) {
+    if (e) {
+        PINCH_POINTERS.delete(e.pointerId);
+    } else {
+        PINCH_POINTERS.clear();
+    }
+    pinchDistance = 0;
     stopFoodHold(e);
     RAID_DEPLOYMENT_UI.stopHold(e);
     stopPan(e);
 }
+const PINCH_POINTERS = new Map();
+let pinchDistance = 0;
+function pinchSpan() {
+    const [A, B] = [...PINCH_POINTERS.values()];
+    return { distance: Math.hypot(A.x - B.x, A.y - B.y), x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+}
+CANVAS.addEventListener(
+    'wheel',
+    (e) => {
+        if (!canUseWorldInput() || active?.world.scene !== 'farm') {
+            return;
+        }
+        const LINE = e.deltaMode === 1 ? 16 : 1;
+        RENDERER.zoomAt(Math.exp(-e.deltaY * LINE * 0.0016), e.clientX, e.clientY);
+        e.preventDefault();
+    },
+    { passive: false },
+);
+for (const [ID, ACT] of [
+    ['zoomIn', () => RENDERER.zoomAt(1.4)],
+    ['zoomOut', () => RENDERER.zoomAt(1 / 1.4)],
+    ['zoomFit', () => RENDERER.fitAll()],
+]) {
+    DOLLAR(ID).onclick = ACT;
+}
 CANVAS.addEventListener('pointerdown', (e) => {
     FOOD_FEEL.unlock();
+    if (e.pointerType === 'touch' && canUseWorldInput() && active?.world.scene === 'farm') {
+        PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (PINCH_POINTERS.size === 2) {
+            stopFoodHold();
+            if (panPointer) {
+                panPointer.mode = 'pinch';
+            }
+            pinchDistance = pinchSpan().distance;
+            CANVAS.setPointerCapture?.(e.pointerId);
+            e.preventDefault();
+            return;
+        }
+    }
     if (e.button !== 0 || !canUseWorldInput() || panPointer || RAID_DEPLOYMENT_UI.hold) {
         return;
     }
@@ -2344,6 +2388,16 @@ CANVAS.addEventListener('pointerdown', (e) => {
     e.preventDefault();
 });
 CANVAS.addEventListener('pointermove', (e) => {
+    if (PINCH_POINTERS.has(e.pointerId)) {
+        PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (PINCH_POINTERS.size === 2 && pinchDistance > 0) {
+            const SPAN = pinchSpan();
+            RENDERER.zoomAt(SPAN.distance / pinchDistance, SPAN.x, SPAN.y);
+            pinchDistance = SPAN.distance;
+            e.preventDefault();
+            return;
+        }
+    }
     if (!panPointer || e.pointerId !== panPointer.id) {
         return;
     }
@@ -2588,6 +2642,8 @@ function sync(display, now, notices) {
     syncMiniMap(!home && !RAID && !FARM_EVENT_ACTIVE && !bossEncounterOpen && !!personalGarden);
     announceExploration();
     syncFlag('farmControls', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag('zoomBar', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
+    syncFlag('zoomFit', 'hidden', PLOT_IDS.length < 2);
     syncFlag('workHud', 'hidden', RAID || FARM_EVENT_ACTIVE || home || bossEncounterOpen);
     syncFlag('raidControls', 'hidden', !RAID || home);
     syncFlag('bossbar', 'hidden', !BATTLE_HUD || home);
