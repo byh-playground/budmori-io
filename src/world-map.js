@@ -11,6 +11,9 @@ export const WORLD_MAP_SETTINGS = {
     firstTileCost: 60,
     tileCostStep: 4,
     maxDanger: 61,
+    // How much harder a tile is to explore than the base cost: the ground it lies on, and a nest on top of it.
+    terrainCost: { plain: 1, forest: 1.5, rock: 2, swamp: 2.5 },
+    nestCost: 1.5,
     // Stages added per tile of straight-line distance beyond the first ring of nests.
     dangerPerTile: 4,
 };
@@ -146,10 +149,28 @@ export function finishChallenge(map, victory) {
     map.challengeTile = -1;
     return victory && TILE >= 0 ? markCleared(map, TILE) : false;
 }
+export const TERRAIN_NAMES = { plain: '평지', forest: '숲', rock: '바위산', swamp: '늪' };
+// The ground of a tile never changes. It is only known once the tile is lit, but it decides how long the fog takes.
+export function tileTerrain(map, index) {
+    const ROLL = tileUnit(map.seed, index, 4);
+    return ROLL < 0.55 ? 'plain' : ROLL < 0.75 ? 'forest' : ROLL < 0.9 ? 'rock' : 'swamp';
+}
 // Gauge points one more tile costs; later tiles cost more.
 export function exploreCost(map) {
     const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
     return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
+}
+// What it takes to lift the fog from one particular tile: the base cost times its ground and any nest on it.
+export function tileCost(map, index) {
+    const MULTIPLIER =
+        WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)] *
+        (hasNest(map, index) ? WORLD_MAP_SETTINGS.nestCost : 1);
+    return Math.round(exploreCost(map) * MULTIPLIER);
+}
+// The cost of the tile the explorers are on right now.
+export function currentExploreCost(map) {
+    const NEXT = nextExploreTile(map);
+    return NEXT < 0 ? exploreCost(map) : tileCost(map, NEXT);
 }
 function touchesLight(index, lit) {
     const X = tileX(index),
@@ -210,12 +231,12 @@ export function advanceExploration(map, points) {
     }
     map.gauge += points;
     while (FOUND.length < WORLD_MAP_TILE_COUNT) {
-        const COST = exploreCost(map),
-            NEXT = nextExploreTile(map);
+        const NEXT = nextExploreTile(map);
         if (NEXT < 0) {
             map.gauge = 0;
             break;
         }
+        const COST = tileCost(map, NEXT);
         if (map.gauge < COST) {
             break;
         }

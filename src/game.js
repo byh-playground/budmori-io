@@ -2110,9 +2110,21 @@
     map.challengeTile = -1;
     return victory && TILE >= 0 ? markCleared(map, TILE) : false;
   }
+  function tileTerrain(map, index) {
+    const ROLL = tileUnit(map.seed, index, 4);
+    return ROLL < 0.55 ? "plain" : ROLL < 0.75 ? "forest" : ROLL < 0.9 ? "rock" : "swamp";
+  }
   function exploreCost(map) {
     const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
     return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
+  }
+  function tileCost(map, index) {
+    const MULTIPLIER = WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)] * (hasNest(map, index) ? WORLD_MAP_SETTINGS.nestCost : 1);
+    return Math.round(exploreCost(map) * MULTIPLIER);
+  }
+  function currentExploreCost(map) {
+    const NEXT = nextExploreTile(map);
+    return NEXT < 0 ? exploreCost(map) : tileCost(map, NEXT);
   }
   function touchesLight(index, lit) {
     const X = tileX(index), Y = tileY(index);
@@ -2161,11 +2173,12 @@
     }
     map.gauge += points;
     while (FOUND.length < WORLD_MAP_TILE_COUNT) {
-      const COST = exploreCost(map), NEXT = nextExploreTile(map);
+      const NEXT = nextExploreTile(map);
       if (NEXT < 0) {
         map.gauge = 0;
         break;
       }
+      const COST = tileCost(map, NEXT);
       if (map.gauge < COST) {
         break;
       }
@@ -2203,7 +2216,7 @@
       (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
     );
   }
-  var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, SORTED_INDEXES;
+  var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, TERRAIN_NAMES, SORTED_INDEXES;
   var init_world_map = __esm({
     "src/world-map.js"() {
       init_boss_rewards();
@@ -2215,6 +2228,9 @@
         firstTileCost: 60,
         tileCostStep: 4,
         maxDanger: 61,
+        // How much harder a tile is to explore than the base cost: the ground it lies on, and a nest on top of it.
+        terrainCost: { plain: 1, forest: 1.5, rock: 2, swamp: 2.5 },
+        nestCost: 1.5,
         // Stages added per tile of straight-line distance beyond the first ring of nests.
         dangerPerTile: 4
       };
@@ -2230,6 +2246,7 @@
         [0, 1],
         [1, 1]
       ];
+      TERRAIN_NAMES = { plain: "평지", forest: "숲", rock: "바위산", swamp: "늪" };
       SORTED_INDEXES = (list) => Array.isArray(list) && list.every(
         (value, position2) => Number.isSafeInteger(value) && value >= 0 && value < WORLD_MAP_TILE_COUNT && (position2 === 0 || value > list[position2 - 1])
       );
@@ -14754,7 +14771,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.3";
+      PRODUCT_VERSION = "0.13.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -21576,6 +21593,12 @@
     fogPuff: "#ece7d4",
     fogEdge: "#cfc8ae",
     land: ["#d3dfc6", "#cbd9be", "#d9e4cd"],
+    forestLand: ["#c3d5b3", "#bcd0ac"],
+    rockLand: ["#dbd6c6", "#d2cdbd"],
+    swampLand: ["#c5d6cb", "#bdd0c8"],
+    rock: "#a79f8d",
+    rockLight: "#c5bfae",
+    water: "#9fbfc4",
     shore: "#a9bc99",
     cleared: "#9fbf98",
     farm: "#c2913e",
@@ -21586,6 +21609,12 @@
     paper: "#fffaf0",
     tree: "#8fae86",
     trunk: "#a08358"
+  };
+  var TERRAIN_LAND = {
+    plain: COLORS.land,
+    forest: COLORS.forestLand,
+    rock: COLORS.rockLand,
+    swamp: COLORS.swampLand
   };
   var NEIGHBOURS2 = [
     [-1, -1],
@@ -21604,6 +21633,8 @@
     [-1, 0]
   ];
   var POP_MS = 650;
+  var BASE_EXPLORER_RATE = 0.125;
+  var PARTY_TRIP_SECONDS = 2;
   var MIN_SCALE = 10;
   var MAX_SCALE = 72;
   function look(index, salt) {
@@ -21621,7 +21652,7 @@
     const CAMERA = { x: 0, y: 0, scale: 28 };
     const POINTERS = /* @__PURE__ */ new Map();
     const POP_AT = /* @__PURE__ */ new Map();
-    let width = 0, height = 0, ratio = 1, manual = false, previousLit = null, frame2 = 0, lastDraw = 0, gesture = null, provider = null, targetKey = "", targetTile = -1;
+    let width = 0, height = 0, ratio = 1, manual = false, previousLit = null, frame2 = 0, lastDraw = 0, gesture = null, provider = null, partyPhase = 0, lastRender = 0, targetKey = "", targetTile = -1;
     function resize() {
       ratio = Math.min(2, globalThis.devicePixelRatio || 1);
       width = Math.max(1, canvas.clientWidth);
@@ -21669,8 +21700,75 @@
       }
       return targetTile;
     }
-    function drawLand(index, x, y, s, lit, now) {
-      const VARIANT = COLORS.land[Math.floor(look(index, 1) * COLORS.land.length)], POP = POP_AT.get(index), AGE = POP === void 0 ? POP_MS : now - POP;
+    function drawTree2(cx, cy, r) {
+      CONTEXT.fillStyle = COLORS.trunk;
+      CONTEXT.fillRect(cx - r * 0.18, cy + r * 0.5, r * 0.36, r * 0.8);
+      CONTEXT.fillStyle = COLORS.tree;
+      CONTEXT.beginPath();
+      CONTEXT.arc(cx, cy, r, 0, Math.PI * 2);
+      CONTEXT.fill();
+    }
+    function drawGround(index, x, y, s, terrain) {
+      if (terrain === "forest") {
+        for (let tree = 0; tree < 3; tree++) {
+          drawTree2(
+            x + s * (0.22 + 0.56 * look(index, 40 + tree)),
+            y + s * (0.3 + 0.3 * look(index, 50 + tree)),
+            s * (0.12 + 0.05 * look(index, 60 + tree))
+          );
+        }
+      } else if (terrain === "rock") {
+        for (let rock = 0; rock < 2; rock++) {
+          const RX = x + s * (0.28 + 0.44 * look(index, 70 + rock)), RY = y + s * (0.55 + 0.25 * look(index, 80 + rock)), RR = s * (0.12 + 0.07 * look(index, 90 + rock));
+          CONTEXT.fillStyle = COLORS.rock;
+          CONTEXT.beginPath();
+          CONTEXT.moveTo(RX - RR * 1.3, RY + RR * 0.7);
+          CONTEXT.lineTo(RX - RR * 0.4, RY - RR);
+          CONTEXT.lineTo(RX + RR * 0.7, RY - RR * 0.5);
+          CONTEXT.lineTo(RX + RR * 1.3, RY + RR * 0.7);
+          CONTEXT.closePath();
+          CONTEXT.fill();
+          CONTEXT.fillStyle = COLORS.rockLight;
+          CONTEXT.beginPath();
+          CONTEXT.moveTo(RX - RR * 0.4, RY - RR);
+          CONTEXT.lineTo(RX + RR * 0.7, RY - RR * 0.5);
+          CONTEXT.lineTo(RX, RY);
+          CONTEXT.closePath();
+          CONTEXT.fill();
+        }
+      } else if (terrain === "swamp") {
+        CONTEXT.fillStyle = COLORS.water;
+        for (let pool = 0; pool < 2; pool++) {
+          CONTEXT.beginPath();
+          CONTEXT.ellipse(
+            x + s * (0.3 + 0.4 * look(index, 100 + pool)),
+            y + s * (0.35 + 0.35 * look(index, 110 + pool)),
+            s * 0.18,
+            s * 0.09,
+            0,
+            0,
+            Math.PI * 2
+          );
+          CONTEXT.fill();
+        }
+      } else if (look(index, 2) < 0.16) {
+        drawTree2(x + s * 0.5, y + s * 0.5, s * 0.17);
+      } else if (look(index, 2) < 0.4) {
+        CONTEXT.strokeStyle = COLORS.tree;
+        CONTEXT.lineWidth = Math.max(1, s * 0.04);
+        CONTEXT.beginPath();
+        const TX = x + s * (0.3 + 0.4 * look(index, 3)), TY = y + s * (0.5 + 0.3 * look(index, 4));
+        CONTEXT.moveTo(TX - s * 0.06, TY);
+        CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
+        CONTEXT.moveTo(TX, TY);
+        CONTEXT.lineTo(TX, TY - s * 0.16);
+        CONTEXT.moveTo(TX + s * 0.06, TY);
+        CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
+        CONTEXT.stroke();
+      }
+    }
+    function drawLand(index, x, y, s, lit, now, terrain) {
+      const VARIANT = TERRAIN_LAND[terrain][Math.floor(look(index, 1) * TERRAIN_LAND[terrain].length)], POP = POP_AT.get(index), AGE = POP === void 0 ? POP_MS : now - POP;
       let size = s;
       if (AGE < POP_MS) {
         size = s * CLAMP3(EASE_OUT_BACK(AGE / POP_MS), 0.2, 1.08);
@@ -21687,28 +21785,8 @@
         CONTEXT.stroke();
         CONTEXT.globalAlpha = 1;
       }
-      const SEED = look(index, 2);
       if (s >= 16) {
-        if (SEED < 0.16) {
-          CONTEXT.fillStyle = COLORS.trunk;
-          CONTEXT.fillRect(x + s * 0.47, y + s * 0.6, s * 0.06, s * 0.2);
-          CONTEXT.fillStyle = COLORS.tree;
-          CONTEXT.beginPath();
-          CONTEXT.arc(x + s * 0.5, y + s * 0.5, s * 0.17, 0, Math.PI * 2);
-          CONTEXT.fill();
-        } else if (SEED < 0.4) {
-          CONTEXT.strokeStyle = COLORS.tree;
-          CONTEXT.lineWidth = Math.max(1, s * 0.04);
-          CONTEXT.beginPath();
-          const TX = x + s * (0.3 + 0.4 * look(index, 3)), TY = y + s * (0.5 + 0.3 * look(index, 4));
-          CONTEXT.moveTo(TX - s * 0.06, TY);
-          CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
-          CONTEXT.moveTo(TX, TY);
-          CONTEXT.lineTo(TX, TY - s * 0.16);
-          CONTEXT.moveTo(TX + s * 0.06, TY);
-          CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
-          CONTEXT.stroke();
-        }
+        drawGround(index, x, y, s, terrain);
       }
       CONTEXT.strokeStyle = COLORS.shore;
       CONTEXT.lineWidth = 2;
@@ -21847,9 +21925,9 @@
         }
       }
     }
-    function drawParty(map, target, explorers, now) {
+    function drawParty(map, target, rate, now) {
       const FARM = map.farms[0]?.tile;
-      if (FARM === void 0 || target < 0 || !(explorers > 0)) {
+      if (FARM === void 0 || target < 0 || !(rate > 0)) {
         return;
       }
       const FROM_X = screenX(tileX(FARM)), FROM_Y = screenY(tileY(FARM)), TO_X = screenX(tileX(target)), TO_Y = screenY(tileY(target));
@@ -21863,9 +21941,9 @@
       CONTEXT.stroke();
       CONTEXT.setLineDash([]);
       CONTEXT.globalAlpha = 1;
-      const COUNT = Math.min(5, Math.ceil(explorers / 2));
+      const COUNT = Math.min(60, Math.max(1, Math.round(rate / BASE_EXPLORER_RATE)));
       for (let member = 0; member < COUNT; member++) {
-        const T = (now / 2600 + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
+        const T = (partyPhase + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
         CONTEXT.fillStyle = COLORS.scout;
         CONTEXT.strokeStyle = COLORS.paper;
         CONTEXT.lineWidth = 1.5;
@@ -21910,7 +21988,7 @@
         for (let x = MIN_X; x <= MAX_X; x++) {
           const INDEX = tileIndex(x, y), PX = screenX(x - 0.5), PY = screenY(y - 0.5);
           if (LIT.has(INDEX)) {
-            drawLand(INDEX, PX, PY, S, LIT, now);
+            drawLand(INDEX, PX, PY, S, LIT, now, tileTerrain(map, INDEX));
           } else if (NEIGHBOURS2.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))) {
             drawFog(INDEX, PX, PY, S);
           }
@@ -21933,7 +22011,8 @@
       }
       if (TARGET >= 0) {
         drawExploreTarget(screenX(tileX(TARGET) - 0.5), screenY(tileY(TARGET) - 0.5), S, state.progress ?? 0, now);
-        drawParty(map, TARGET, state.explorers ?? 0, now);
+        partyPhase = (partyPhase + Math.min(100, now - lastRender) / 1e3 / PARTY_TRIP_SECONDS) % 1;
+        drawParty(map, TARGET, state.rate ?? 0, now);
       }
       if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
         CONTEXT.strokeStyle = COLORS.ink;
@@ -21948,6 +22027,7 @@
         );
         CONTEXT.stroke();
       }
+      lastRender = now;
     }
     function loop(now) {
       frame2 = requestAnimationFrame(loop);
@@ -22724,8 +22804,9 @@
     return {
       map: MAP,
       selected: bossMapTile,
-      progress: Math.min(1, MAP.gauge / exploreCost(MAP)),
-      explorers: personalGarden.workerKindCounts.explore
+      progress: Math.min(1, MAP.gauge / currentExploreCost(MAP)),
+      explorers: personalGarden.workerKindCounts.explore,
+      rate: personalGarden.exploreRate
     };
   }
   function startWorldMapView() {
@@ -22752,7 +22833,7 @@
       miniMapView = null;
     }
     if (visible && personalGarden) {
-      const MAP = personalGarden.worldMap, PERCENT = Math.floor(Math.min(1, MAP.gauge / exploreCost(MAP)) * 100);
+      const MAP = personalGarden.worldMap, PERCENT = Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100);
       syncText("miniMapLabel", `탐사 ${PERCENT}% · ${MAP.revealed.length}칸`);
     }
   }
@@ -22786,7 +22867,7 @@
       return;
     }
     const MAP = personalGarden.worldMap;
-    const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${exploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`, TILE = bossMapTile;
+    const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${currentExploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`, TILE = bossMapTile;
     let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false;
     if (TILE >= 0) {
       const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
@@ -22799,10 +22880,10 @@
         info = "다시 위협받지 않는 안전한 칸이에요.";
       } else if (hasNest(MAP, TILE)) {
         const STAGE = tileDanger(MAP, TILE), SPECIES = tileSpecies(MAP, TILE), STATS2 = bossStageStats(STAGE);
-        title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계`;
+        title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
         info = `체력 ${Math.round(STATS2.hp).toLocaleString("ko-KR")} · 공격력 ${Number(STATS2.attackPower.toPrecision(3)).toLocaleString("ko-KR")} · 승리 +${STATS2.xp.toLocaleString("ko-KR")} XP`;
       } else {
-        title = `빈 칸 ${POSITION}`;
+        title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
         info = "아무것도 없는 칸이에요.";
       }
     }
