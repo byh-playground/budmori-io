@@ -21,7 +21,19 @@ import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-socket
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
 import { facilityPosition } from './farm-work.js';
-import { FARM_CELL, exploreFraction, isRevealed, tileTerrain, tileX, tileY, tileIndex } from './world-map.js';
+import {
+    FARM_CELL,
+    FOG_GRID,
+    FOG_PIECES,
+    fogPieceAt,
+    fogPieceCenter,
+    fogPieceCost,
+    isRevealed,
+    tileTerrain,
+    tileX,
+    tileY,
+    tileIndex,
+} from './world-map.js';
 import { bossDangerContour } from './attack-telegraph.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -548,6 +560,13 @@ const DIORAMA = class Diorama {
         return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
     }
     // One farm's square of ground, from corner to corner, a hair larger than its cell so neighbours never show a seam.
+    // A rectangle of ground around a centre, half-width and half-height in world units.
+    groundBlock(x, y, halfX, halfY, color2) {
+        const A = this.project(x - halfX, y + halfY),
+            B = this.project(x + halfX, y - halfY);
+        this.ctx.fillStyle = color2;
+        this.ctx.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    }
     groundCell(x, y, color2, inset = 0) {
         const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
             A = this.project(x - RX + inset, y + RY - inset),
@@ -557,19 +576,31 @@ const DIORAMA = class Diorama {
         C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
     }
     // One tile's ground and what stands on it: meadow, forest, rock or swamp.
-    paintLand(map, index, ox, oy, paint, look, lights = null) {
+    paintLand(map, index, ox, oy, paint, look, mask = null) {
         const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
         const TERRAIN = tileTerrain(map, index),
             [GROUND, SURFACE] = paint[TERRAIN];
-        const { radiusX: HALF_X, radiusY: HALF_Y } = CONFIG.farm.arena;
-        // With lights, only the patches they reach are painted, kept inside the tile.
-        const SEEN = (x, y) => !lights || lights.some((light) => Math.hypot(x - light.x, y - light.y) <= light.r * 0.9);
-        if (lights) {
-            for (const LIGHT of lights) {
-                const RX_LIT = Math.min(LIGHT.r, HALF_X - Math.abs(LIGHT.x - ox)),
-                    RY_LIT = Math.min(LIGHT.r, HALF_Y - Math.abs(LIGHT.y - oy));
-                this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT, RY_LIT, GROUND);
-                this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT * 0.92, RY_LIT * 0.92, SURFACE);
+        // Under fog, only the pieces already lifted are painted (and what stands on them).
+        const SEEN = (x, y) => mask === null || ((mask >> fogPieceAt(x - ox, y - oy)) & 1) === 1;
+        if (mask !== null) {
+            for (let piece = 0; piece < FOG_PIECES; piece++) {
+                if ((mask >> piece) & 1) {
+                    const C = fogPieceCenter(piece);
+                    this.groundBlock(
+                        ox + C.x,
+                        oy + C.y,
+                        FARM_CELL.width / FOG_GRID / 2,
+                        FARM_CELL.height / FOG_GRID / 2,
+                        GROUND,
+                    );
+                    this.groundBlock(
+                        ox + C.x,
+                        oy + C.y,
+                        FARM_CELL.width / FOG_GRID / 2 - 0.4,
+                        FARM_CELL.height / FOG_GRID / 2 - 0.4,
+                        SURFACE,
+                    );
+                }
             }
         } else {
             this.groundCell(ox, oy, GROUND);
@@ -608,35 +639,22 @@ const DIORAMA = class Diorama {
             }
         }
     }
-    // The tile being explored: the land shows only where an explorer's light reaches, and the lit patches
-    // grow with the exploration gauge until the whole tile is bright.
-    drawLantern(world, map, index, ox, oy, paint, look) {
-        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
-            PROGRESS = exploreFraction(map, index),
-            REACH = 5 + 24 * PROGRESS,
-            LIGHTS = [{ x: ox, y: oy, r: REACH * 0.7 * PROGRESS + 0.1 }];
-        for (const UNIT of world.units) {
-            if (
-                world._workerKinds.get(UNIT.id) === 'explore' &&
-                Math.abs(UNIT.x - ox) <= RX &&
-                Math.abs(UNIT.y - oy) <= RY
-            ) {
-                LIGHTS.push({ x: UNIT.x, y: UNIT.y, r: REACH });
+    // The tile being explored: the fog lifts piece by piece. A piece being worked on grows from its centre.
+    drawFog(world, map, index, ox, oy, paint, look) {
+        const MASK = map.progress[index] ?? 0;
+        this.paintLand(map, index, ox, oy, paint, look, MASK);
+        const COST = fogPieceCost(map, index),
+            [GROUND, SURFACE] = paint[tileTerrain(map, index)];
+        for (let piece = 0; piece < FOG_PIECES; piece++) {
+            const SHARE = Math.min(1, (world._pieceWork.get(index * FOG_PIECES + piece) ?? 0) / COST);
+            if ((MASK >> piece) & 1 || SHARE <= 0) {
+                continue;
             }
-        }
-        if (LIGHTS.length === 1 && PROGRESS === 0) {
-            return;
-        }
-        this.paintLand(map, index, ox, oy, paint, look, LIGHTS);
-        for (const LIGHT of LIGHTS) {
-            this.strokeGroundEllipse(
-                LIGHT.x,
-                LIGHT.y,
-                Math.min(LIGHT.r, RX - Math.abs(LIGHT.x - ox)),
-                Math.min(LIGHT.r, RY - Math.abs(LIGHT.y - oy)),
-                'rgba(255,248,214,0.7)',
-                0.12,
-            );
+            const C = fogPieceCenter(piece),
+                HX = (FARM_CELL.width / FOG_GRID / 2) * Math.sqrt(SHARE),
+                HY = (FARM_CELL.height / FOG_GRID / 2) * Math.sqrt(SHARE);
+            this.groundBlock(ox + C.x, oy + C.y, HX, HY, GROUND);
+            this.groundBlock(ox + C.x, oy + C.y, Math.max(0, HX - 0.4), Math.max(0, HY - 0.4), SURFACE);
         }
     }
     drawBackdrop(world) {
@@ -691,7 +709,7 @@ const DIORAMA = class Diorama {
                         this.groundCell(OX, OY, '#efecdc', 0.6);
                     }
                     if (INDEX === EXPLORING || (MAP.progress[INDEX] ?? 0) > 0) {
-                        this.drawLantern(world, MAP, INDEX, OX, OY, PAINT, LOOK);
+                        this.drawFog(world, MAP, INDEX, OX, OY, PAINT, LOOK);
                     }
                     continue;
                 }
