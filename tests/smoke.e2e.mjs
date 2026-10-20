@@ -148,6 +148,26 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     await PAGE.waitForTimeout(4000);
     const FIGHTING = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(FIGHTING !== 'idle', `fight did not start (${FIGHTING})`);
+    const HAND = await WORLD(() => ({
+        cards: document.querySelectorAll('#hand [data-deploy]').length,
+        hidden: document.getElementById('hand').hidden,
+        waiting: BUDMORI.sim.handCounts.size,
+        onField: BUDMORI.sim.fieldFighterCount,
+    }));
+    expect(!HAND.hidden && HAND.cards > 0 && HAND.waiting === HAND.cards, `hand not shown (${JSON.stringify(HAND)})`);
+    expect(HAND.onField === 0, `units should start benched (${HAND.onField} on field)`);
+    const BOX = await PAGE.locator('#world').boundingBox();
+    await PAGE.mouse.click(BOX.x + BOX.width / 2, BOX.y + BOX.height * 0.55);
+    await PAGE.waitForTimeout(1500);
+    const DEPLOYED = await WORLD(() => BUDMORI.sim.fieldFighterCount);
+    expect(DEPLOYED >= 1, `tap did not deploy a unit (${DEPLOYED})`);
+    const CAP = await WORLD(() => {
+        for (let i = 0; i < 3; i++) {
+            BUDMORI.sim.deployUnit([...BUDMORI.sim.handCounts.keys()][0], 0, 0);
+        }
+        return BUDMORI.sim.fieldFighterCount;
+    });
+    expect(CAP <= DEPLOYED + 1, `cooldown ignored (${DEPLOYED} -> ${CAP})`);
     await WORLD(() => BUDMORI.sim.retreatFromFight());
     await PAGE.waitForTimeout(6000);
     const AFTER = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);

@@ -283,6 +283,45 @@ body > header {
     border: var(--ui-bw) solid var(--ui-line);
     pointer-events: auto;
 }
+.hand {
+    --cd: 0;
+    display: grid;
+    gap: var(--ui-s2);
+    width: min(520px, 100%);
+    padding: var(--ui-s3);
+    border-radius: var(--ui-r-l);
+    background: var(--ui-panel);
+    border: var(--ui-bw) solid var(--ui-line);
+    pointer-events: auto;
+}
+.hand[hidden] {
+    display: none;
+}
+.hand small {
+    text-align: center;
+}
+.hand__cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--ui-s2);
+    opacity: calc(1 - var(--cd) * 0.5);
+}
+.hand__card {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-width: 56px;
+    padding: var(--ui-s2);
+    border-radius: var(--ui-r-m, 10px);
+    border: var(--ui-bw) solid var(--ui-line);
+    background: transparent;
+    color: inherit;
+}
+.hand__card[aria-pressed='true'] {
+    border-color: currentColor;
+    background: rgba(255, 255, 255, 0.18);
+}
 .work-hud[hidden] {
     display: none;
 }

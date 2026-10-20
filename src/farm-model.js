@@ -135,6 +135,8 @@ const CONFIG = Object.freeze({
             resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
+        // Draft numbers: one unit every 0.6 s, at most 30 on the field at once.
+        deploy: Object.freeze({ cooldownSeconds: 0.6, fieldCap: 30 }),
         bossEvent: Object.freeze({
             fadeSeconds: 0.5,
             celebrationSeconds: 1,
@@ -883,7 +885,7 @@ const GARDEN = class Garden {
             onCombatResolved: { value: new Signal(NOTIFICATIONS, true) },
             units: {
                 enumerable: true,
-                get: () => this.unitCollection.items,
+                get: () => (this._benched?.size ? this._fieldUnits() : this.unitCollection.items),
                 // Retain the public assignment API, with owner validation and
                 // cleanup rather than replacing a borrowed array directly.
                 set: (units) => {
@@ -1219,6 +1221,10 @@ const GARDEN = class Garden {
         this.cancelMergeTasks();
         this.cancelBreedPlans();
         this._activeBreedReservations = new Map();
+        this._benched = new Set();
+        this._benchRevision = 0;
+        this._fieldCache = { revision: -1, bench: -1, list: [] };
+        this._deployReadyTime = 0;
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
@@ -2103,31 +2109,78 @@ const GARDEN = class Garden {
         };
         this.boss.encounterId = this.farmBossEvent.encounterId;
         this.boss.patternRuntime = createBossPatternRuntime();
-        this.gatherOnApproachSide();
+        // Nobody walks in by themselves: every living unit waits in the hand until the player deploys it.
+        this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0));
+        this._benchRevision++;
+        this._deployReadyTime = this.time;
+        this._unitSpatialDirty = true;
         this.markProgressChanged();
         return true;
     }
-    // The units close in on the boss from all around the edge of the field, not from where they stood.
-    gatherOnApproachSide() {
-        const ARENA = CONFIG.farm.arena,
-            FIGHTERS = this.units.filter((u) => !u.isBattleOnlySummon && u.hp > 0);
-        FIGHTERS.forEach((unit, index) => {
-            const ANGLE = (index / FIGHTERS.length) * Math.PI * 2 + (this.random() - 0.5) * 0.2,
-                INSET = 1.2 + this.random() * 1.5,
-                AT = ARENA_GEOMETRY.clamp(
-                    {
-                        x: Math.cos(ANGLE) * (ARENA.radiusX - INSET) * 1.1,
-                        y: Math.sin(ANGLE) * (ARENA.radiusY - INSET) * 1.1,
-                    },
-                    'farm',
-                    1,
-                );
-            unit.x = AT.x;
-            unit.y = AT.y;
-            unit.z = 0;
-            unit.vx = 0;
-            unit.vy = 0;
-        });
+    // The units that are on the field: everything but the ones still waiting in the hand.
+    _fieldUnits() {
+        const CACHE = this._fieldCache;
+        if (CACHE.revision !== this.unitCollection.revision || CACHE.bench !== this._benchRevision) {
+            CACHE.list = this.unitCollection.items.filter((unit) => !this._benched.has(unit));
+            CACHE.revision = this.unitCollection.revision;
+            CACHE.bench = this._benchRevision;
+        }
+        return CACHE.list;
+    }
+    get handCounts() {
+        const COUNTS = new Map();
+        for (const UNIT_LOCAL of this._benched) {
+            if (UNIT_LOCAL.hp > 0) {
+                COUNTS.set(UNIT_LOCAL.species, (COUNTS.get(UNIT_LOCAL.species) || 0) + 1);
+            }
+        }
+        return COUNTS;
+    }
+    get fieldFighterCount() {
+        let count = 0;
+        for (const UNIT_LOCAL of this.units) {
+            if (UNIT_LOCAL.faction === 'player' && !UNIT_LOCAL.isBattleOnlySummon && UNIT_LOCAL.hp > 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+    get deployCooldownLeft() {
+        return Math.max(0, this._deployReadyTime - this.time);
+    }
+    // Drops one waiting unit of the species (the strongest first) onto the spot the player tapped.
+    deployUnit(species, x, y) {
+        const DEPLOY = CONFIG.farm.deploy;
+        if (
+            this.scene !== 'farm' ||
+            !['dropping', 'fighting'].includes(this.farmBossEvent.phase) ||
+            this.deployCooldownLeft > 0 ||
+            this.fieldFighterCount >= DEPLOY.fieldCap ||
+            !Number.isFinite(x) ||
+            !Number.isFinite(y)
+        ) {
+            return false;
+        }
+        let pick = null;
+        for (const UNIT_LOCAL of this._benched) {
+            if (
+                UNIT_LOCAL.species === species &&
+                UNIT_LOCAL.hp > 0 &&
+                (!pick || UNIT_LOCAL.tier > pick.tier || (UNIT_LOCAL.tier === pick.tier && UNIT_LOCAL.id < pick.id))
+            ) {
+                pick = UNIT_LOCAL;
+            }
+        }
+        if (!pick) {
+            return false;
+        }
+        const AT = ARENA_GEOMETRY.clamp({ x, y }, 'farm', 1);
+        this._benched.delete(pick);
+        this._benchRevision++;
+        Object.assign(pick, { x: AT.x, y: AT.y, z: CONFIG.battle.dropHeight, vx: 0, vy: 0, vz: 0, dropLanded: false });
+        this._deployReadyTime = this.time + DEPLOY.cooldownSeconds;
+        this._unitSpatialDirty = true;
+        return true;
     }
     // Leaving a fight that is going on is a defeat.
     retreatFromFight() {
@@ -4497,6 +4550,10 @@ const GARDEN = class Garden {
         }
         this.formationSkills.end();
         this.cleanupBattleSummons();
+        // Whoever never got deployed is simply back on the farm.
+        this._benched.clear();
+        this._benchRevision++;
+        this._unitSpatialDirty = true;
         this.boss.active = false;
         if (this.boss.patternRuntime) {
             this.boss.patternRuntime.active = null;

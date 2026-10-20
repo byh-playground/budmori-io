@@ -33,6 +33,8 @@ let menuPauseChanged = false;
 let menuAutoPaused = false;
 let panPointer = null;
 let foodHold = null;
+let deploySpecies = -1;
+let handKey = '';
 let farmSortTransition = null;
 let farmPanelRevision = -1;
 let bossRewardRevealTimer = null;
@@ -1204,6 +1206,57 @@ function syncData(id, key, value) {
         NODE.dataset[key] = TEXT;
     }
 }
+function fightActive() {
+    return ['dropping', 'fighting'].includes(active?.world.farmBossEvent?.phase);
+}
+// The hand: one card per species still waiting. A tapped card stays chosen, so tapping the field keeps deploying it.
+function syncHand(garden, visible) {
+    syncFlag('hand', 'hidden', !visible);
+    if (!visible) {
+        deploySpecies = -1;
+        handKey = '';
+        return;
+    }
+    const COUNTS = garden.handCounts,
+        IDS = [...COUNTS.keys()].sort((a, b) => a - b),
+        KEY = IDS.join(',');
+    if (!COUNTS.has(deploySpecies)) {
+        deploySpecies = IDS[0] ?? -1;
+    }
+    if (KEY !== handKey) {
+        handKey = KEY;
+        DOLLAR('handCards').innerHTML = IDS.map((id) => {
+            const SPECIES = speciesById(id);
+            return `<button type="button" class="hand__card" data-deploy="${id}" aria-label="${SPECIES.name}"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b></b></button>`;
+        }).join('');
+    }
+    for (const BUTTON of DOLLAR('handCards').children) {
+        const ID = Number(BUTTON.dataset.deploy);
+        const LABEL = BUTTON.querySelector('b'),
+            TEXT = `×${COUNTS.get(ID) || 0}`;
+        if (LABEL.textContent !== TEXT) {
+            LABEL.textContent = TEXT;
+        }
+        BUTTON.setAttribute('aria-pressed', String(ID === deploySpecies));
+    }
+    const LEFT = garden.deployCooldownLeft;
+    DOLLAR('hand').style.setProperty(
+        '--cd',
+        String(LEFT > 0 ? Math.min(1, LEFT / CONFIG.farm.deploy.cooldownSeconds) : 0),
+    );
+    syncText(
+        'handNote',
+        IDS.length
+            ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}`
+            : '대기 중인 병력이 없어요',
+    );
+}
+DOLLAR('handCards').addEventListener('click', (e) => {
+    const BUTTON = e.target.closest('[data-deploy]');
+    if (BUTTON) {
+        deploySpecies = Number(BUTTON.dataset.deploy);
+    }
+});
 function canUseWorldInput() {
     return !home && !menuOpen && !active.paused && !farmSortTransition;
 }
@@ -1319,12 +1372,35 @@ CANVAS.addEventListener('pointerdown', (e) => {
     panPointer = {
         id: e.pointerId,
         // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
-        mode: active.world.scene === 'farm' && ArenaGeometry.inside(POINT, 'farm') ? 'pending' : 'pan',
+        mode: !(active.world.scene === 'farm' && ArenaGeometry.inside(POINT, 'farm'))
+            ? 'pan'
+            : fightActive()
+              ? 'deploy'
+              : 'pending',
         startX: e.clientX,
         startY: e.clientY,
         x: e.clientX,
         y: e.clientY,
     };
+    if (panPointer.mode === 'deploy') {
+        const SPOT = { x: POINT.x, y: POINT.y },
+            SEND = () => {
+                if (deploySpecies >= 0) {
+                    active.queue('deploy', { species: deploySpecies, x: SPOT.x, y: SPOT.y });
+                }
+            };
+        SEND();
+        foodHold = {
+            pointerId: e.pointerId,
+            point: SPOT,
+            initialTimer: null,
+            repeatTimer: setInterval(() => {
+                if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === 'deploy') {
+                    SEND();
+                }
+            }, 150),
+        };
+    }
     if (panPointer.mode === 'pending') {
         foodHold = {
             pointerId: e.pointerId,
@@ -1369,7 +1445,7 @@ CANVAS.addEventListener('pointermove', (e) => {
     if (panPointer.mode === 'pending' && DISTANCE >= 8) {
         stopFoodHold(e);
         panPointer.mode = 'pan';
-    } else if (panPointer.mode === 'feed' && DISTANCE >= 8) {
+    } else if ((panPointer.mode === 'feed' || panPointer.mode === 'deploy') && DISTANCE >= 8) {
         stopFoodHold(e);
         panPointer.mode = 'pan';
     }
@@ -1522,6 +1598,7 @@ function sync(display, now, notices) {
     syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home);
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home);
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
+    syncHand(W, !home && ['dropping', 'fighting'].includes(FARM_EVENT?.phase));
     syncText('count', displayedCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText(

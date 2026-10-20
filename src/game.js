@@ -2432,6 +2432,7 @@
           this.residentCountsBySpecies = /* @__PURE__ */ new Map();
           this.residentIdsBySpecies = /* @__PURE__ */ new Map();
           this.residentCount = 0;
+          this.revision = 0;
           this.subscriptions = /* @__PURE__ */ new Map();
           this.reservations = /* @__PURE__ */ new Map();
           this.retiredDuringStep = [];
@@ -2448,6 +2449,7 @@
           return this.byId.get(id) || null;
         }
         _rebuildIndexes() {
+          this.revision++;
           this.byId.clear();
           this.residentCountsBySpecies.clear();
           this.residentIdsBySpecies.clear();
@@ -2461,6 +2463,7 @@
           this._rebuildIndexes();
         }
         _indexUnit(unit) {
+          this.revision++;
           this.byId.set(unit.id, unit);
           if (this.isResident(unit)) {
             this.residentCount++;
@@ -2474,6 +2477,7 @@
           }
         }
         _unindexUnit(unit) {
+          this.revision++;
           this.byId.delete(unit.id);
           if (this.isResident(unit)) {
             this.residentCount = Math.max(0, this.residentCount - 1);
@@ -5209,7 +5213,7 @@
           world.finishFarmBossEvent("victory");
           return true;
         }
-        if (!world.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.dropLanded)) {
+        if (!world.handCounts.size && !world.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0)) {
           world.finishFarmBossEvent("defeat");
           return true;
         }
@@ -7445,6 +7449,8 @@
             resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
           }),
+          // Draft numbers: one unit every 0.6 s, at most 30 on the field at once.
+          deploy: Object.freeze({ cooldownSeconds: 0.6, fieldCap: 30 }),
           bossEvent: Object.freeze({
             fadeSeconds: 0.5,
             celebrationSeconds: 1
@@ -8085,7 +8091,7 @@
             onCombatResolved: { value: new Signal(NOTIFICATIONS, true) },
             units: {
               enumerable: true,
-              get: () => this.unitCollection.items,
+              get: () => this._benched?.size ? this._fieldUnits() : this.unitCollection.items,
               // Retain the public assignment API, with owner validation and
               // cleanup rather than replacing a borrowed array directly.
               set: (units) => {
@@ -8407,6 +8413,10 @@
           this.cancelMergeTasks();
           this.cancelBreedPlans();
           this._activeBreedReservations = /* @__PURE__ */ new Map();
+          this._benched = /* @__PURE__ */ new Set();
+          this._benchRevision = 0;
+          this._fieldCache = { revision: -1, bench: -1, list: [] };
+          this._deployReadyTime = 0;
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
           this.rng = new SEEDED_PRNG(this.seed);
@@ -9229,28 +9239,66 @@
           };
           this.boss.encounterId = this.farmBossEvent.encounterId;
           this.boss.patternRuntime = createBossPatternRuntime();
-          this.gatherOnApproachSide();
+          this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0));
+          this._benchRevision++;
+          this._deployReadyTime = this.time;
+          this._unitSpatialDirty = true;
           this.markProgressChanged();
           return true;
         }
-        // The units close in on the boss from all around the edge of the field, not from where they stood.
-        gatherOnApproachSide() {
-          const ARENA = CONFIG.farm.arena, FIGHTERS = this.units.filter((u) => !u.isBattleOnlySummon && u.hp > 0);
-          FIGHTERS.forEach((unit, index) => {
-            const ANGLE = index / FIGHTERS.length * Math.PI * 2 + (this.random() - 0.5) * 0.2, INSET = 1.2 + this.random() * 1.5, AT = ARENA_GEOMETRY.clamp(
-              {
-                x: Math.cos(ANGLE) * (ARENA.radiusX - INSET) * 1.1,
-                y: Math.sin(ANGLE) * (ARENA.radiusY - INSET) * 1.1
-              },
-              "farm",
-              1
-            );
-            unit.x = AT.x;
-            unit.y = AT.y;
-            unit.z = 0;
-            unit.vx = 0;
-            unit.vy = 0;
-          });
+        // The units that are on the field: everything but the ones still waiting in the hand.
+        _fieldUnits() {
+          const CACHE = this._fieldCache;
+          if (CACHE.revision !== this.unitCollection.revision || CACHE.bench !== this._benchRevision) {
+            CACHE.list = this.unitCollection.items.filter((unit) => !this._benched.has(unit));
+            CACHE.revision = this.unitCollection.revision;
+            CACHE.bench = this._benchRevision;
+          }
+          return CACHE.list;
+        }
+        get handCounts() {
+          const COUNTS = /* @__PURE__ */ new Map();
+          for (const UNIT_LOCAL of this._benched) {
+            if (UNIT_LOCAL.hp > 0) {
+              COUNTS.set(UNIT_LOCAL.species, (COUNTS.get(UNIT_LOCAL.species) || 0) + 1);
+            }
+          }
+          return COUNTS;
+        }
+        get fieldFighterCount() {
+          let count = 0;
+          for (const UNIT_LOCAL of this.units) {
+            if (UNIT_LOCAL.faction === "player" && !UNIT_LOCAL.isBattleOnlySummon && UNIT_LOCAL.hp > 0) {
+              count++;
+            }
+          }
+          return count;
+        }
+        get deployCooldownLeft() {
+          return Math.max(0, this._deployReadyTime - this.time);
+        }
+        // Drops one waiting unit of the species (the strongest first) onto the spot the player tapped.
+        deployUnit(species, x, y) {
+          const DEPLOY = CONFIG.farm.deploy;
+          if (this.scene !== "farm" || !["dropping", "fighting"].includes(this.farmBossEvent.phase) || this.deployCooldownLeft > 0 || this.fieldFighterCount >= DEPLOY.fieldCap || !Number.isFinite(x) || !Number.isFinite(y)) {
+            return false;
+          }
+          let pick = null;
+          for (const UNIT_LOCAL of this._benched) {
+            if (UNIT_LOCAL.species === species && UNIT_LOCAL.hp > 0 && (!pick || UNIT_LOCAL.tier > pick.tier || UNIT_LOCAL.tier === pick.tier && UNIT_LOCAL.id < pick.id)) {
+              pick = UNIT_LOCAL;
+            }
+          }
+          if (!pick) {
+            return false;
+          }
+          const AT = ARENA_GEOMETRY.clamp({ x, y }, "farm", 1);
+          this._benched.delete(pick);
+          this._benchRevision++;
+          Object.assign(pick, { x: AT.x, y: AT.y, z: CONFIG.battle.dropHeight, vx: 0, vy: 0, vz: 0, dropLanded: false });
+          this._deployReadyTime = this.time + DEPLOY.cooldownSeconds;
+          this._unitSpatialDirty = true;
+          return true;
         }
         // Leaving a fight that is going on is a defeat.
         retreatFromFight() {
@@ -11198,6 +11246,9 @@
           }
           this.formationSkills.end();
           this.cleanupBattleSummons();
+          this._benched.clear();
+          this._benchRevision++;
+          this._unitSpatialDirty = true;
           this.boss.active = false;
           if (this.boss.patternRuntime) {
             this.boss.patternRuntime.active = null;
@@ -12397,7 +12448,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.22.1";
+      PRODUCT_VERSION = "0.23.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16252,6 +16303,8 @@
           return W.scene === "farm" && W.scatterFood(c.x, c.y);
         case "farm-work":
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
+        case "deploy":
+          return W.scene === "farm" && W.deployUnit(c.species, c.x, c.y);
         case "boss-challenge":
           return W.scene === "farm" && W.startBossFight();
         case "farm-sort":
@@ -18176,6 +18229,8 @@
   var menuAutoPaused = false;
   var panPointer = null;
   var foodHold = null;
+  var deploySpecies = -1;
+  var handKey = "";
   var farmSortTransition = null;
   var farmPanelRevision = -1;
   var bossRewardRevealTimer = null;
@@ -19230,6 +19285,51 @@
       NODE.dataset[key] = TEXT;
     }
   }
+  function fightActive() {
+    return ["dropping", "fighting"].includes(active?.world.farmBossEvent?.phase);
+  }
+  function syncHand(garden, visible) {
+    syncFlag("hand", "hidden", !visible);
+    if (!visible) {
+      deploySpecies = -1;
+      handKey = "";
+      return;
+    }
+    const COUNTS = garden.handCounts, IDS = [...COUNTS.keys()].sort((a, b) => a - b), KEY2 = IDS.join(",");
+    if (!COUNTS.has(deploySpecies)) {
+      deploySpecies = IDS[0] ?? -1;
+    }
+    if (KEY2 !== handKey) {
+      handKey = KEY2;
+      DOLLAR2("handCards").innerHTML = IDS.map((id) => {
+        const SPECIES = speciesById(id);
+        return `<button type="button" class="hand__card" data-deploy="${id}" aria-label="${SPECIES.name}"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b></b></button>`;
+      }).join("");
+    }
+    for (const BUTTON of DOLLAR2("handCards").children) {
+      const ID = Number(BUTTON.dataset.deploy);
+      const LABEL = BUTTON.querySelector("b"), TEXT = `×${COUNTS.get(ID) || 0}`;
+      if (LABEL.textContent !== TEXT) {
+        LABEL.textContent = TEXT;
+      }
+      BUTTON.setAttribute("aria-pressed", String(ID === deploySpecies));
+    }
+    const LEFT = garden.deployCooldownLeft;
+    DOLLAR2("hand").style.setProperty(
+      "--cd",
+      String(LEFT > 0 ? Math.min(1, LEFT / CONFIG.farm.deploy.cooldownSeconds) : 0)
+    );
+    syncText(
+      "handNote",
+      IDS.length ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}` : "대기 중인 병력이 없어요"
+    );
+  }
+  DOLLAR2("handCards").addEventListener("click", (e) => {
+    const BUTTON = e.target.closest("[data-deploy]");
+    if (BUTTON) {
+      deploySpecies = Number(BUTTON.dataset.deploy);
+    }
+  });
   function canUseWorldInput() {
     return !home && !menuOpen && !active.paused && !farmSortTransition;
   }
@@ -19345,12 +19445,30 @@
     panPointer = {
       id: e.pointerId,
       // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
-      mode: active.world.scene === "farm" && ARENA_GEOMETRY.inside(POINT2, "farm") ? "pending" : "pan",
+      mode: !(active.world.scene === "farm" && ARENA_GEOMETRY.inside(POINT2, "farm")) ? "pan" : fightActive() ? "deploy" : "pending",
       startX: e.clientX,
       startY: e.clientY,
       x: e.clientX,
       y: e.clientY
     };
+    if (panPointer.mode === "deploy") {
+      const SPOT = { x: POINT2.x, y: POINT2.y }, SEND = () => {
+        if (deploySpecies >= 0) {
+          active.queue("deploy", { species: deploySpecies, x: SPOT.x, y: SPOT.y });
+        }
+      };
+      SEND();
+      foodHold = {
+        pointerId: e.pointerId,
+        point: SPOT,
+        initialTimer: null,
+        repeatTimer: setInterval(() => {
+          if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === "deploy") {
+            SEND();
+          }
+        }, 150)
+      };
+    }
     if (panPointer.mode === "pending") {
       foodHold = {
         pointerId: e.pointerId,
@@ -19395,7 +19513,7 @@
     if (panPointer.mode === "pending" && DISTANCE >= 8) {
       stopFoodHold(e);
       panPointer.mode = "pan";
-    } else if (panPointer.mode === "feed" && DISTANCE >= 8) {
+    } else if ((panPointer.mode === "feed" || panPointer.mode === "deploy") && DISTANCE >= 8) {
       stopFoodHold(e);
       panPointer.mode = "pan";
     }
@@ -19533,6 +19651,7 @@
     syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home);
     syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home);
     syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
+    syncHand(W, !home && ["dropping", "fighting"].includes(FARM_EVENT?.phase));
     syncText("count", displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
     syncText(
