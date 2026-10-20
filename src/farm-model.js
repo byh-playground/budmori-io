@@ -116,12 +116,14 @@ const WORLD_ARENA = Object.freeze({
     radiusX: 23,
     radiusY: 17,
 });
+// A farm is a square cell of the map's grid, so its ground is a rectangle that meets the next farm's edge to edge.
+const FARM_ARENA = Object.freeze({ radiusX: 23, radiusY: 17, shape: 'rect' });
 // Runtime configuration is separate from saved world fields and their import
 // migration. Only already-established capacity/growth relations are derived.
 const CONFIG = Object.freeze({
     factions: FACTION_CONFIG,
     farm: Object.freeze({
-        arena: WORLD_ARENA,
+        arena: FARM_ARENA,
         capacity: Object.freeze({
             base: 50,
             max: FARM_MAX_UNITS,
@@ -371,11 +373,17 @@ const ARENA_GEOMETRY = {
     },
     inside(p, scene = 'raid', margin = 0) {
         const R_LOCAL = this.bounds(scene, margin);
+        if (CONFIG[scene].arena.shape === 'rect') {
+            return Math.abs(p.x) <= R_LOCAL.x && Math.abs(p.y) <= R_LOCAL.y;
+        }
         return (p.x * p.x) / (R_LOCAL.x * R_LOCAL.x) + (p.y * p.y) / (R_LOCAL.y * R_LOCAL.y) <= 1;
     },
     clamp(p, scene = 'raid', margin = 0) {
-        const R_LOCAL = this.bounds(scene, margin),
-            K = Math.max(1, Math.hypot(p.x / R_LOCAL.x, p.y / R_LOCAL.y));
+        const R_LOCAL = this.bounds(scene, margin);
+        if (CONFIG[scene].arena.shape === 'rect') {
+            return { x: CLAMP(p.x, -R_LOCAL.x, R_LOCAL.x), y: CLAMP(p.y, -R_LOCAL.y, R_LOCAL.y) };
+        }
+        const K = Math.max(1, Math.hypot(p.x / R_LOCAL.x, p.y / R_LOCAL.y));
         return {
             x: p.x / K,
             y: p.y / K,
@@ -2994,8 +3002,13 @@ const GARDEN = class Garden {
         }
         const ANGLE = this._exploreAngle + ((unit.id % 5) - 2) * 0.22,
             ARENA = CONFIG.farm.arena,
-            X = Math.cos(ANGLE) * (ARENA.radiusX - 1.8),
-            Y = Math.sin(ANGLE) * (ARENA.radiusY - 1.4);
+            // Out along the ray to the edge of the square farm.
+            REACH = Math.min(
+                (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
+                (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6),
+            ),
+            X = Math.cos(ANGLE) * REACH,
+            Y = Math.sin(ANGLE) * REACH;
         return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3 };
     }
     // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
@@ -3042,7 +3055,8 @@ const GARDEN = class Garden {
         ).map((farm) => ({
             plotId: farm.plotId,
             // The way out, in this farm's coordinates (the map's y runs down the screen, the farm's up).
-            angle: Math.atan2(-(tileY(farm.tile) - tileY(HERE.tile)), tileX(farm.tile) - tileX(HERE.tile)),
+            dx: tileX(farm.tile) - tileX(HERE.tile),
+            dy: -(tileY(farm.tile) - tileY(HERE.tile)),
         }));
     }
     // Resting units of the farms next to this one stroll to their own spots; only their positions change.
@@ -3121,7 +3135,8 @@ const GARDEN = class Garden {
         if (CANDIDATES.length) {
             CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
                 plotId: target.plotId,
-                angle: target.angle,
+                dx: target.dx,
+                dy: target.dy,
             };
         }
     }
@@ -3138,18 +3153,24 @@ const GARDEN = class Garden {
             delete unit.migrate;
             return false;
         }
+        // It walks straight to the edge it shares with the next farm (the corner, for a diagonal one).
         const ARENA = CONFIG.farm.arena,
-            X = Math.cos(TARGET.angle) * (ARENA.radiusX - 1),
-            Y = Math.sin(TARGET.angle) * (ARENA.radiusY - 0.8);
-        if (Math.hypot(X - unit.x, Y - unit.y) > 1.4) {
+            X = TARGET.dx === 0 ? unit.x : TARGET.dx * (ARENA.radiusX - 0.9),
+            Y = TARGET.dy === 0 ? unit.y : TARGET.dy * (ARENA.radiusY - 0.9);
+        if (Math.hypot(X - unit.x, Y - unit.y) > 1.2) {
             this.steer(unit, X, Y, dt, scaleMoveSpeed(1.7, unit));
             return true;
         }
         delete unit.migrate;
         if (this.unitCollection.moveUnitsToPlots([{ unitId: unit.id, plotId: TARGET.plotId }])) {
             // It arrives on the far side of the neighbour, as if it had walked in from here.
-            unit.x = Math.cos(TARGET.angle + Math.PI) * (ARENA.radiusX - 1.5);
-            unit.y = Math.sin(TARGET.angle + Math.PI) * (ARENA.radiusY - 1.2);
+            // It steps over the shared edge and stands just inside the next farm, at the same place along it.
+            if (TARGET.dx !== 0) {
+                unit.x = -TARGET.dx * (ARENA.radiusX - 1.1);
+            }
+            if (TARGET.dy !== 0) {
+                unit.y = -TARGET.dy * (ARENA.radiusY - 1.1);
+            }
             unit.moveControlVx = unit.moveControlVy = unit.vx = unit.vy = 0;
             this.markProgressChanged();
         }
@@ -5860,8 +5881,21 @@ const GARDEN = class Garden {
     boundBody(body, scene, margin) {
         const ARENA = CONFIG[scene].arena,
             RX = ARENA.radiusX - margin,
-            RY = ARENA.radiusY - margin,
-            K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
+            RY = ARENA.radiusY - margin;
+        if (ARENA.shape === 'rect') {
+            const X = CLAMP(body.x, -RX, RX),
+                Y = CLAMP(body.y, -RY, RY);
+            if (X !== body.x && (body.vx || 0) * body.x > 0) {
+                body.vx = 0;
+            }
+            if (Y !== body.y && (body.vy || 0) * body.y > 0) {
+                body.vy = 0;
+            }
+            body.x = X;
+            body.y = Y;
+            return;
+        }
+        const K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
         if (K === 1) {
             return;
         }

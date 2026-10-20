@@ -2304,7 +2304,7 @@
         // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
         baseReach: 2
       };
-      FARM_CELL = { width: 50, height: 38 };
+      FARM_CELL = { width: 46, height: 34 };
       SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
       WORLD_MAP_TILE_COUNT = SIDE * SIDE;
       NEIGHBOURS = [
@@ -7006,8 +7006,8 @@
     return ((h ^ h >>> 15) >>> 0) / 4294967296;
   }
   function restingSpot(unit, time, arena) {
-    const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7), EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)), ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2, RADIUS2 = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT;
-    return { x: Math.cos(ANGLE) * RADIUS2 * arena.radiusX, y: Math.sin(ANGLE) * RADIUS2 * arena.radiusY };
+    const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7), EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)), X = wanderUnit(unit.seed, EPOCH * 2 + 11) * 2 - 1, Y = wanderUnit(unit.seed, EPOCH * 2 + 12) * 2 - 1;
+    return { x: X * WANDER_EXTENT * arena.radiusX, y: Y * WANDER_EXTENT * arena.radiusY };
   }
   var WANDER_SECONDS_MIN, WANDER_SECONDS_SPREAD, WANDER_EXTENT, WANDER_ARRIVE, FarmMode;
   var init_model_base4 = __esm({
@@ -7015,7 +7015,7 @@
       init_unit_stats();
       WANDER_SECONDS_MIN = 16;
       WANDER_SECONDS_SPREAD = 16;
-      WANDER_EXTENT = 0.82;
+      WANDER_EXTENT = 0.86;
       WANDER_ARRIVE = 0.5;
       FarmMode = class {
         constructor(feature, config) {
@@ -8558,7 +8558,7 @@
     }
     return true;
   }
-  var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_farm_offline();
@@ -8618,10 +8618,11 @@
         radiusX: 23,
         radiusY: 17
       });
+      FARM_ARENA = Object.freeze({ radiusX: 23, radiusY: 17, shape: "rect" });
       CONFIG = Object.freeze({
         factions: FACTION_CONFIG,
         farm: Object.freeze({
-          arena: WORLD_ARENA,
+          arena: FARM_ARENA,
           capacity: Object.freeze({
             base: 50,
             max: FARM_MAX_UNITS,
@@ -8841,10 +8842,17 @@
         },
         inside(p, scene = "raid", margin = 0) {
           const R_LOCAL = this.bounds(scene, margin);
+          if (CONFIG[scene].arena.shape === "rect") {
+            return Math.abs(p.x) <= R_LOCAL.x && Math.abs(p.y) <= R_LOCAL.y;
+          }
           return p.x * p.x / (R_LOCAL.x * R_LOCAL.x) + p.y * p.y / (R_LOCAL.y * R_LOCAL.y) <= 1;
         },
         clamp(p, scene = "raid", margin = 0) {
-          const R_LOCAL = this.bounds(scene, margin), K = Math.max(1, Math.hypot(p.x / R_LOCAL.x, p.y / R_LOCAL.y));
+          const R_LOCAL = this.bounds(scene, margin);
+          if (CONFIG[scene].arena.shape === "rect") {
+            return { x: CLAMP2(p.x, -R_LOCAL.x, R_LOCAL.x), y: CLAMP2(p.y, -R_LOCAL.y, R_LOCAL.y) };
+          }
+          const K = Math.max(1, Math.hypot(p.x / R_LOCAL.x, p.y / R_LOCAL.y));
           return {
             x: p.x / K,
             y: p.y / K
@@ -11095,7 +11103,10 @@
           if (this._exploreAngle === null || this._exploreAngle === void 0) {
             return null;
           }
-          const ANGLE = this._exploreAngle + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, X = Math.cos(ANGLE) * (ARENA.radiusX - 1.8), Y = Math.sin(ANGLE) * (ARENA.radiusY - 1.4);
+          const ANGLE = this._exploreAngle + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, REACH = Math.min(
+            (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
+            (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6)
+          ), X = Math.cos(ANGLE) * REACH, Y = Math.sin(ANGLE) * REACH;
           return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3 };
         }
         // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
@@ -11139,7 +11150,8 @@
           ).map((farm) => ({
             plotId: farm.plotId,
             // The way out, in this farm's coordinates (the map's y runs down the screen, the farm's up).
-            angle: Math.atan2(-(tileY(farm.tile) - tileY(HERE.tile)), tileX(farm.tile) - tileX(HERE.tile))
+            dx: tileX(farm.tile) - tileX(HERE.tile),
+            dy: -(tileY(farm.tile) - tileY(HERE.tile))
           }));
         }
         // Resting units of the farms next to this one stroll to their own spots; only their positions change.
@@ -11203,7 +11215,8 @@
           if (CANDIDATES.length) {
             CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
               plotId: target.plotId,
-              angle: target.angle
+              dx: target.dx,
+              dy: target.dy
             };
           }
         }
@@ -11214,15 +11227,19 @@
             delete unit.migrate;
             return false;
           }
-          const ARENA = CONFIG.farm.arena, X = Math.cos(TARGET.angle) * (ARENA.radiusX - 1), Y = Math.sin(TARGET.angle) * (ARENA.radiusY - 0.8);
-          if (Math.hypot(X - unit.x, Y - unit.y) > 1.4) {
+          const ARENA = CONFIG.farm.arena, X = TARGET.dx === 0 ? unit.x : TARGET.dx * (ARENA.radiusX - 0.9), Y = TARGET.dy === 0 ? unit.y : TARGET.dy * (ARENA.radiusY - 0.9);
+          if (Math.hypot(X - unit.x, Y - unit.y) > 1.2) {
             this.steer(unit, X, Y, dt, scaleMoveSpeed(1.7, unit));
             return true;
           }
           delete unit.migrate;
           if (this.unitCollection.moveUnitsToPlots([{ unitId: unit.id, plotId: TARGET.plotId }])) {
-            unit.x = Math.cos(TARGET.angle + Math.PI) * (ARENA.radiusX - 1.5);
-            unit.y = Math.sin(TARGET.angle + Math.PI) * (ARENA.radiusY - 1.2);
+            if (TARGET.dx !== 0) {
+              unit.x = -TARGET.dx * (ARENA.radiusX - 1.1);
+            }
+            if (TARGET.dy !== 0) {
+              unit.y = -TARGET.dy * (ARENA.radiusY - 1.1);
+            }
             unit.moveControlVx = unit.moveControlVy = unit.vx = unit.vy = 0;
             this.markProgressChanged();
           }
@@ -13344,7 +13361,20 @@
           this.notice(kind, { time: this.time, ...detail });
         }
         boundBody(body, scene, margin) {
-          const ARENA = CONFIG[scene].arena, RX = ARENA.radiusX - margin, RY = ARENA.radiusY - margin, K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
+          const ARENA = CONFIG[scene].arena, RX = ARENA.radiusX - margin, RY = ARENA.radiusY - margin;
+          if (ARENA.shape === "rect") {
+            const X = CLAMP2(body.x, -RX, RX), Y = CLAMP2(body.y, -RY, RY);
+            if (X !== body.x && (body.vx || 0) * body.x > 0) {
+              body.vx = 0;
+            }
+            if (Y !== body.y && (body.vy || 0) * body.y > 0) {
+              body.vy = 0;
+            }
+            body.x = X;
+            body.y = Y;
+            return;
+          }
+          const K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
           if (K === 1) {
             return;
           }
@@ -14999,7 +15029,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.8";
+      PRODUCT_VERSION = "0.13.9";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18346,6 +18376,12 @@
       const FARM = world.worldMap.farms.find((farm) => farm.tile === TILE);
       return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
     }
+    // One farm's square of ground, from corner to corner, a hair larger than its cell so neighbours never show a seam.
+    groundCell(x, y, color2, inset = 0) {
+      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, A = this.project(x - RX + inset, y + RY - inset), B = this.project(x + RX - inset, y - RY + inset), C = this.ctx;
+      C.fillStyle = color2;
+      C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    }
     drawBackdrop(world) {
       const MAP = world.worldMap, HERE = this.farmTileOf(world, world.activePlotId);
       if (HERE === null) {
@@ -18359,14 +18395,14 @@
       };
       const PAINT = {
         plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
-        forest: ["#b7c9a4", "#c4d5b1"],
-        rock: ["#cbc6b3", "#d9d4c3"],
-        swamp: ["#b5c9be", "#c5d7cc"]
+        forest: ["#c3d3b0", "#cddbbc"],
+        rock: ["#d3cfbd", "#dcd8c8"],
+        swamp: ["#c0d3c7", "#cbdcd1"]
       };
       for (let ty = MIN_TILE(MAP, "y") - 1; ty <= MAX_TILE(MAP, "y") + 1; ty++) {
         for (let tx = MIN_TILE(MAP, "x") - 1; tx <= MAX_TILE(MAP, "x") + 1; tx++) {
           const INDEX = tileIndex(tx, ty);
-          if (INDEX === HERE || Math.abs(tx) > 12 || Math.abs(ty) > 12) {
+          if (Math.abs(tx) > 12 || Math.abs(ty) > 12) {
             continue;
           }
           const OX = (tx - FX) * FARM_CELL.width, OY = -(ty - FY) * FARM_CELL.height, AT = this.project(OX, OY, 0);
@@ -18378,20 +18414,20 @@
               (dy) => [-1, 0, 1].some((dx) => (dx || dy) && LIT.has(tileIndex(tx + dx, ty + dy)))
             );
             if (NEXT_TO_LIT) {
-              this.groundEllipse(OX, OY, RX + 1.2, RY + 1, "#e6e1cc");
+              this.groundCell(OX, OY, "#e9e5d2");
+              this.groundCell(OX, OY, "#efecdc", 0.6);
             }
             continue;
           }
           const TERRAIN = tileTerrain(MAP, INDEX), [GROUND, SURFACE] = PAINT[TERRAIN];
-          this.groundEllipse(OX, OY - 0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
-          this.groundEllipse(OX, OY, RX + 1.2, RY + 1.1, GROUND);
-          this.groundEllipse(OX, OY + 0.15, RX + 0.3, RY + 0.3, SURFACE);
+          this.groundCell(OX, OY, GROUND);
+          this.groundCell(OX, OY, SURFACE, 0.7);
           const S = this.scale;
           if (TERRAIN === "forest") {
             for (let tree = 0; tree < 9; tree++) {
               const P = this.project(
                 OX + (LOOK(INDEX, 40 + tree) - 0.5) * RX * 1.7,
-                OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.6,
+                OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.7,
                 0
               );
               this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, "#9db58a");
@@ -18401,7 +18437,7 @@
             for (let rock = 0; rock < 7; rock++) {
               const P = this.project(
                 OX + (LOOK(INDEX, 80 + rock) - 0.5) * RX * 1.7,
-                OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.6,
+                OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.7,
                 0
               );
               this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, "#a79f8d");
@@ -18411,7 +18447,7 @@
             for (let pool = 0; pool < 5; pool++) {
               this.groundEllipse(
                 OX + (LOOK(INDEX, 120 + pool) - 0.5) * RX * 1.6,
-                OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.5,
+                OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.6,
                 2.2 + 1.6 * LOOK(INDEX, 160 + pool),
                 1.4,
                 "#9fbfc4"
@@ -18419,27 +18455,46 @@
             }
           }
           const PLOT_ID = PLOT_AT.get(INDEX);
-          if (PLOT_ID) {
+          if (PLOT_ID && PLOT_ID !== world.activePlotId) {
             for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
-              const SWAY = Math.sin(this.displayTimeMs * 6e-4 + U.seed) * 0.5, P = this.project(OX + U.x + SWAY, OY + U.y, 0);
+              const P = this.project(OX + U.x, OY + U.y, 0);
               this.ellipse(P.x, P.y, U.size * 0.5 * S, U.size * 0.31 * S, "rgba(42,61,35,0.2)");
               this.ellipse(P.x, P.y - U.size * 0.45 * S, U.size * 0.4 * S, U.size * 0.4 * S, "#ddd3a8");
             }
           }
         }
       }
+      const C = this.ctx;
+      C.strokeStyle = "rgba(110,130,90,0.28)";
+      C.lineWidth = Math.max(1, this.scale * 0.05);
+      for (let ty = MIN_TILE(MAP, "y"); ty <= MAX_TILE(MAP, "y"); ty++) {
+        for (let tx = MIN_TILE(MAP, "x"); tx <= MAX_TILE(MAP, "x"); tx++) {
+          if (!LIT.has(tileIndex(tx, ty))) {
+            continue;
+          }
+          const OX = (tx - FX) * FARM_CELL.width, OY = -(ty - FY) * FARM_CELL.height, A = this.project(OX - RX, OY + RY), B = this.project(OX + RX, OY - RY);
+          C.strokeRect(A.x, A.y, B.x - A.x, B.y - A.y);
+        }
+      }
     }
     terrain(sim2) {
       const S = this.scale, PRESENTATION = this.scenePresentation, { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
-      this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
-      this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
-      this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, PRESENTATION.surfaceColor);
-      for (const P of this.terrainDots) {
-        this.ellipse(P.x, P.y, S * 0.026, S * 0.02, "#a7b58b80");
-      }
-      for (const P of this.terrainLeaves) {
-        this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, "#94a577", P.angle);
-        this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", P.angle + 0.7);
+      if (sim2.scene === "farm") {
+        if (!this.backdrop) {
+          this.groundCell(0, 0, PRESENTATION.groundColor);
+          this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
+        }
+      } else {
+        this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
+        this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
+        this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, PRESENTATION.surfaceColor);
+        for (const P of this.terrainDots) {
+          this.ellipse(P.x, P.y, S * 0.026, S * 0.02, "#a7b58b80");
+        }
+        for (const P of this.terrainLeaves) {
+          this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, "#94a577", P.angle);
+          this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", P.angle + 0.7);
+        }
       }
       PRESENTATION.drawBoundary(this);
       if (sim2.scene === "farm") {
