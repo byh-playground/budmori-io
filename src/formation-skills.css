@@ -432,3 +432,12 @@
         white-space: nowrap;
     }
 }
+
+/* 최소 UI: 아직 장착하지 않은 빈 칸은 전투 화면에 두지 않고, 장착한 스킬도 판 없이 보여 준다. */
+.formation-slot[data-empty='true'] {
+    display: none;
+}
+.formation-slot {
+    background: transparent;
+    border-color: transparent;
+}

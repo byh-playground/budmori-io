@@ -566,11 +566,11 @@ body > header {
     left: 50%;
     bottom: 0;
     transform: translateX(-50%);
-    width: min(560px, 100%);
+    width: min(360px, 100%);
     height: calc(var(--ui-nav-h) + var(--ui-safe-bottom));
     padding-bottom: var(--ui-safe-bottom);
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     background: var(--ui-base);
     border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
     pointer-events: auto;
@@ -616,16 +616,6 @@ body > header {
     opacity: 0.55;
 }
 
-/* 도전 전투 하단 패널: 출전 카드 트레이 */
-.raid-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ui-s2);
-    width: 100%;
-    padding: var(--ui-s2);
-    border-radius: var(--ui-r-l);
-    background: var(--ui-panel);
-}
 .deploy-status {
     display: flex;
     flex-wrap: wrap;
@@ -1014,44 +1004,6 @@ details summary {
     padding: var(--ui-s2) var(--ui-s3);
 }
 
-/* 확대·축소 */
-.zoom-bar {
-    position: fixed;
-    z-index: var(--ui-z-hud);
-    right: max(var(--ui-s3), env(safe-area-inset-right));
-    top: calc(max(var(--ui-s3), var(--ui-safe-top)) + 178px);
-    display: grid;
-    gap: var(--ui-s1);
-    width: 92px;
-}
-.zoom-bar[hidden] {
-    display: none;
-}
-.zoom-bar button {
-    min-height: 36px;
-    padding: 0;
-    border-radius: var(--ui-r-m);
-    background: var(--ui-panel);
-    border: var(--ui-bw) solid var(--ui-line);
-    color: var(--ui-ink);
-    font-size: var(--ui-fs-2);
-    font-weight: var(--ui-fw-b);
-}
-.zoom-bar button[hidden] {
-    display: none;
-}
-.zoom-bar button:active {
-    filter: brightness(0.94);
-}
-@media (min-width: 900px) {
-    .zoom-bar {
-        right: var(--ui-s4, 20px);
-    }
-    .zoom-bar button {
-        min-height: 40px;
-    }
-}
-
 /* 좁은 화면: 아래쪽 패널과 오른쪽 도구를 줄여 농장이 더 보이게 한다 */
 @media (max-width: 700px) {
     .bossbar {
@@ -1062,11 +1014,44 @@ details summary {
         min-height: 40px;
         font-size: var(--ui-fs-2);
     }
-    .zoom-bar {
-        top: calc(max(var(--ui-s3), var(--ui-safe-top)) + 138px);
-        width: 44px;
-    }
-    .zoom-bar button {
-        min-height: 32px;
-    }
+}
+
+/* 최소 UI: 게임 화면 위 표시는 배경 판 없이 글자 테두리로만 읽히게 하고, 설명 문구는 두지 않는다.
+   누르는 버튼(합성, 후퇴, 역할 프리셋 등)만 자기 바탕을 가진다. */
+.chip,
+.hud__note,
+.offline-notice,
+.bossbar,
+.work-hud,
+.plot-bar,
+.utility,
+.mini-map {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--ui-ink);
+    text-shadow:
+        0 0 2px var(--ui-panel),
+        0 0 3px var(--ui-panel),
+        0 0 6px var(--ui-panel),
+        0 0 10px var(--ui-panel);
+}
+.chip b,
+.chip small,
+.chip__label,
+.bossbar strong,
+.bossbar small,
+.utility > button,
+.mini-map__label {
+    color: var(--ui-ink);
+}
+.utility {
+    border-radius: 0;
+}
+.mini-map__canvas {
+    box-shadow: 0 0 0 2px var(--ui-panel);
+}
+#mergeNotice,
+.mini-map__label {
+    display: none;
 }
