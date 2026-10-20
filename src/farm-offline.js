@@ -1,9 +1,9 @@
 // Idle progress: when the player was away, the farm is settled with a formula instead of replaying the simulation.
 // Workers keep producing, a construction site keeps getting built, and breeders keep breeding as long as food lasts.
-import { pilesOf, sitesOf } from './farm-work.js';
+import { HITS_PER_WORK, sitesOf, spreadBuildHits } from './farm-work.js';
 import { RESERVE_PLOT_ID } from './farm-plot.js';
 
-const STACKS_PER_FOOD = 5;
+const STACKS_PER_FOOD = HITS_PER_WORK;
 
 export function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline,
@@ -49,33 +49,13 @@ export function applyOffline(world, config, rawSeconds) {
         if (!(RATE > 0)) {
             continue;
         }
-        const HITS_PER_SECOND = RATE * STACKS_PER_FOOD,
-            HITS = HITS_PER_SECOND * SECONDS;
-        let left = HITS;
-        const OPEN = [...SITES];
-        while (OPEN.length > 0 && left > 0) {
-            const SHARE = left / OPEN.length,
-                DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
-            if (DONE.length === 0) {
-                for (const SITE of OPEN) {
-                    SITE.done += Math.floor(SHARE);
-                }
-                left = 0;
-                break;
-            }
-            for (const SITE of DONE) {
-                left -= SITE.need - SITE.done;
-                SUMMARY.built.push(world.siteName(SITE));
-                const LIST = pilesOf(world, PLOT_ID);
-                LIST.splice(LIST.indexOf(SITE), 1);
-                world.completeFacility(SITE);
-                OPEN.splice(OPEN.indexOf(SITE), 1);
-            }
-        }
-        for (const SITE of OPEN) {
+        const RESULT = spreadBuildHits(world, PLOT_ID, RATE * HITS_PER_WORK * SECONDS);
+        SUMMARY.built.push(...RESULT.built);
+        for (const SITE of RESULT.open) {
             SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor((SITE.done / SITE.need) * 100) });
         }
-        gatherRate += left / (STACKS_PER_FOOD * SECONDS);
+        const LEFT = RESULT.left;
+        gatherRate += LEFT / (STACKS_PER_FOOD * SECONDS);
     }
     const MATERIALS = Math.floor(gatherRate * SECONDS),
         WOOD = Math.ceil(MATERIALS / 2);

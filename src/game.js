@@ -756,6 +756,31 @@
   function plotHasSite(world, plotId = world.activePlotId) {
     return pilesOf(world, plotId).some((pile) => pile.kind === "site");
   }
+  function spreadBuildHits(world, plotId, hits) {
+    const BUILT = [], OPEN = [...sitesOf(world, plotId)];
+    let left = hits;
+    while (OPEN.length > 0 && left > 0) {
+      const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
+      if (DONE.length === 0) {
+        for (const SITE of OPEN) {
+          SITE.fraction = (SITE.fraction || 0) + SHARE % 1;
+          SITE.done += Math.floor(SHARE) + Math.floor(SITE.fraction);
+          SITE.fraction %= 1;
+        }
+        left = 0;
+        break;
+      }
+      for (const SITE of DONE) {
+        left -= SITE.need - SITE.done;
+        BUILT.push(world.siteName(SITE));
+        const LIST = pilesOf(world, plotId);
+        LIST.splice(LIST.indexOf(SITE), 1);
+        world.completeFacility(SITE);
+        OPEN.splice(OPEN.indexOf(SITE), 1);
+      }
+    }
+    return { built: BUILT, open: OPEN, left };
+  }
   function effectiveKind(world, unit) {
     const KIND = world._workerKinds.get(unit.id) || "food";
     return KIND === "build" && !plotHasSite(world) ? "resource" : KIND;
@@ -1030,7 +1055,7 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
+  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD, HITS_PER_WORK;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       init_farm_plot();
@@ -1042,6 +1067,7 @@
       CHARGE_TIMEOUT = 1.6;
       RECOIL_SPEED = 5.5;
       STACKS_PER_FOOD = 5;
+      HITS_PER_WORK = STACKS_PER_FOOD;
     }
   });
 
@@ -1082,31 +1108,13 @@
       if (!(RATE > 0)) {
         continue;
       }
-      const HITS_PER_SECOND = RATE * STACKS_PER_FOOD2, HITS = HITS_PER_SECOND * SECONDS;
-      let left = HITS;
-      const OPEN = [...SITES];
-      while (OPEN.length > 0 && left > 0) {
-        const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
-        if (DONE.length === 0) {
-          for (const SITE of OPEN) {
-            SITE.done += Math.floor(SHARE);
-          }
-          left = 0;
-          break;
-        }
-        for (const SITE of DONE) {
-          left -= SITE.need - SITE.done;
-          SUMMARY.built.push(world.siteName(SITE));
-          const LIST = pilesOf(world, PLOT_ID);
-          LIST.splice(LIST.indexOf(SITE), 1);
-          world.completeFacility(SITE);
-          OPEN.splice(OPEN.indexOf(SITE), 1);
-        }
-      }
-      for (const SITE of OPEN) {
+      const RESULT = spreadBuildHits(world, PLOT_ID, RATE * HITS_PER_WORK * SECONDS);
+      SUMMARY.built.push(...RESULT.built);
+      for (const SITE of RESULT.open) {
         SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor(SITE.done / SITE.need * 100) });
       }
-      gatherRate += left / (STACKS_PER_FOOD2 * SECONDS);
+      const LEFT = RESULT.left;
+      gatherRate += LEFT / (STACKS_PER_FOOD2 * SECONDS);
     }
     const MATERIALS = Math.floor(gatherRate * SECONDS), WOOD = Math.ceil(MATERIALS / 2);
     world.materials.wood += WOOD;
@@ -1175,7 +1183,7 @@
     "src/farm-offline.js"() {
       init_farm_work();
       init_farm_plot();
-      STACKS_PER_FOOD2 = 5;
+      STACKS_PER_FOOD2 = HITS_PER_WORK;
     }
   });
 
@@ -9808,6 +9816,8 @@
           this.buildRush = false;
           this._workerKinds = /* @__PURE__ */ new Map();
           this._exploreGoals = /* @__PURE__ */ new Map();
+          this._idleLead = /* @__PURE__ */ new Map();
+          this._idleCarry = { materials: 0, food: 0 };
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
           this._workerRates = /* @__PURE__ */ new Map();
@@ -11155,6 +11165,61 @@
             }
           }
         }
+        // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
+        // rate (builders hit the site, gatherers bring materials, food workers feed the warehouse).
+        tickIdleWork(seconds) {
+          if (this.scene !== "farm") {
+            return;
+          }
+          const CARRY = this._idleCarry;
+          for (const PLOT_ID of this.farmPlots.keys()) {
+            if (PLOT_ID === this.activePlotId || PLOT_ID === RESERVE_PLOT_ID) {
+              this._idleLead.delete(PLOT_ID);
+              continue;
+            }
+            let lead = this._idleLead.get(PLOT_ID);
+            if (lead === void 0) {
+              const SITE = sitesOf(this, PLOT_ID)[0];
+              lead = SITE ? Math.hypot(SITE.x || 0, SITE.y || 0) / (7 * EXPLORE_WALK_RATIO) : 4;
+            }
+            const WALK = Math.min(lead, seconds), WORK = seconds - WALK;
+            this._idleLead.set(PLOT_ID, lead - WALK);
+            if (!(WORK > 0)) {
+              continue;
+            }
+            let food = 0, gather = 0, build = 0;
+            for (const UNIT3 of this.unitCollection.unitsInPlot(PLOT_ID)) {
+              const RATE = this._workerRates.get(UNIT3.id) || 0, KIND = this._workerKinds.get(UNIT3.id);
+              if (KIND === "food") {
+                food += RATE;
+              } else if (KIND === "resource") {
+                gather += RATE;
+              } else if (KIND === "build") {
+                build += RATE;
+              }
+            }
+            if (build > 0) {
+              if (plotHasSite(this, PLOT_ID)) {
+                const RESULT = spreadBuildHits(this, PLOT_ID, build * HITS_PER_WORK * WORK);
+                gather += RESULT.left / (HITS_PER_WORK * WORK);
+              } else {
+                gather += build;
+              }
+            }
+            CARRY.materials += gather * WORK;
+            CARRY.food += food * WORK;
+          }
+          const MATERIALS = Math.floor(CARRY.materials), FOOD2 = Math.floor(CARRY.food);
+          if (MATERIALS > 0 || FOOD2 > 0) {
+            CARRY.materials -= MATERIALS;
+            CARRY.food -= FOOD2;
+            const WOOD = Math.ceil(MATERIALS / 2);
+            this.materials.wood += WOOD;
+            this.materials.stone += MATERIALS - WOOD;
+            this.warehouseFood = Math.min(CONFIG.farm.work.warehouseLimit, this.warehouseFood + FOOD2);
+            this.markProgressChanged();
+          }
+        }
         // Where a farm's explorers are headed: its own tile to explore, how far that is, and how fast the ground lets
         // them go. Positions are in that farm's own coordinates.
         exploreGoal(plotId) {
@@ -11168,7 +11233,6 @@
             const DX = tileX(TARGET) - tileX(HERE), DY = tileY(TARGET) - tileY(HERE);
             goal = {
               tile: TARGET,
-              near: Math.max(Math.abs(DX), Math.abs(DY)) <= 2,
               x: DX * FARM_CELL.width,
               y: -DY * FARM_CELL.height,
               // The ground sets the pace: through swamp and over rock explorers go slower.
@@ -11178,31 +11242,16 @@
           this._exploreGoals.set(plotId, { key: KEY2, goal });
           return goal;
         }
-        // Where an explorer goes. A tile within two cells of its farm is walked into: explorers sweep it, each walking
-        // to a spot, looking around, then picking the next, so the lit patch travels over the whole tile for as long as
-        // the exploring takes. A farther tile is looked at from the rim of the farm on its side.
+        // Where an explorer goes: into the tile, wherever it is inside the farm's sight. Explorers sweep it, each
+        // walking to a spot, looking around, then picking the next, so the lit patch travels over the whole tile for
+        // as long as the exploring takes.
         exploreSpot(unit) {
           const GOAL = this.exploreGoal(unit.plotId);
           if (!GOAL) {
             return null;
           }
-          if (GOAL.near) {
-            const SPOT = restingSpot(unit, this.time * 2, CONFIG.farm.arena), X2 = GOAL.x + SPOT.x, Y2 = GOAL.y + SPOT.y;
-            return { x: X2, y: Y2, fx: X2 + 1, fy: Y2, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
-          }
-          const ANGLE = Math.atan2(GOAL.y, GOAL.x) + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, REACH = Math.min(
-            (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
-            (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6)
-          ), X = Math.cos(ANGLE) * REACH, Y = Math.sin(ANGLE) * REACH;
-          return {
-            x: X,
-            y: Y,
-            fx: X + Math.cos(ANGLE) * 3,
-            fy: Y + Math.sin(ANGLE) * 3,
-            out: false,
-            speed: GOAL.speed,
-            travel: GOAL.speed * 1.8
-          };
+          const SPOT = restingSpot(unit, this.time * 2, CONFIG.farm.arena), X = GOAL.x + SPOT.x, Y = GOAL.y + SPOT.y;
+          return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
         }
         // The same walk as a straight line, for explorers of a farm that is not being simulated.
         _walkExplorer(unit, seconds) {
@@ -11228,12 +11277,8 @@
           if (!GOAL) {
             return false;
           }
-          if (GOAL.near) {
-            const ARENA = CONFIG.farm.arena;
-            return Math.abs(unit.x - GOAL.x) <= ARENA.radiusX && Math.abs(unit.y - GOAL.y) <= ARENA.radiusY;
-          }
-          const SPOT = this.exploreSpot(unit);
-          return !SPOT || Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 2;
+          const ARENA = CONFIG.farm.arena;
+          return Math.abs(unit.x - GOAL.x) <= ARENA.radiusX && Math.abs(unit.y - GOAL.y) <= ARENA.radiusY;
         }
         // Explorers of every farm that are on their tile right now.
         get exploreOnSiteCount() {
@@ -11257,14 +11302,24 @@
         }
         // The targets the farms are exploring now, with how far along each one is.
         get exploreTargets() {
-          const TILES = /* @__PURE__ */ new Set();
-          for (const PLOT_ID of this.farmPlots.keys()) {
-            const GOAL = this.exploreGoal(PLOT_ID);
-            if (GOAL) {
-              TILES.add(GOAL.tile);
+          const GROUPS = [];
+          for (const FARM of this.worldMap.farms) {
+            const GOAL = this.exploreGoal(FARM.plotId);
+            if (!GOAL) {
+              continue;
             }
+            let count = 0;
+            for (const UNIT3 of this.unitCollection.unitsInPlot(FARM.plotId)) {
+              count += this._workerKinds.get(UNIT3.id) === "explore" ? 1 : 0;
+            }
+            GROUPS.push({
+              tile: GOAL.tile,
+              from: FARM.tile,
+              count,
+              progress: exploreFraction(this.worldMap, GOAL.tile)
+            });
           }
-          return [...TILES].map((tile) => ({ tile, progress: exploreFraction(this.worldMap, tile) }));
+          return GROUPS;
         }
         // How far along the tile the farm on screen is exploring.
         get exploreProgress() {
@@ -11346,7 +11401,25 @@
           if (this.units.some((unit) => unit.migrate)) {
             return;
           }
-          const HERE = this._fillOf(this.activePlotId);
+          const TARGET = this._migrationTarget();
+          if (!TARGET) {
+            return;
+          }
+          const RESIDENTS = this.unitCollection.residentsInPlot(this.activePlotId), COUNTS = /* @__PURE__ */ new Map();
+          for (const UNIT3 of RESIDENTS) {
+            COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
+          }
+          const CANDIDATES = RESIDENTS.filter((unit) => this._mayMigrate(unit, COUNTS));
+          if (CANDIDATES.length) {
+            CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
+              plotId: TARGET.plotId,
+              dx: TARGET.dx,
+              dy: TARGET.dy
+            };
+          }
+        }
+        _migrationTarget() {
+          const SETTINGS = CONFIG.farm.work.migration, HERE = this._fillOf(this.activePlotId);
           let target = null;
           for (const NEIGHBOUR of this._neighbourPlots()) {
             const FILL = this._fillOf(NEIGHBOUR.plotId);
@@ -11354,23 +11427,10 @@
               target = { ...NEIGHBOUR, fill: FILL };
             }
           }
-          if (!target) {
-            return;
-          }
-          const RESIDENTS = this.unitCollection.residentsInPlot(this.activePlotId), COUNTS = /* @__PURE__ */ new Map();
-          for (const UNIT3 of RESIDENTS) {
-            COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
-          }
-          const CANDIDATES = RESIDENTS.filter(
-            (unit) => !this.isWorker(unit) && !unit.mateId && !this.breedPlanFor(unit) && unit.hp > 0 && (COUNTS.get(unit.species) || 0) > 2
-          );
-          if (CANDIDATES.length) {
-            CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
-              plotId: target.plotId,
-              dx: target.dx,
-              dy: target.dy
-            };
-          }
+          return target;
+        }
+        _mayMigrate(unit, counts) {
+          return !this.isWorker(unit) && !unit.mateId && !this.breedPlanFor(unit) && unit.hp > 0 && (counts.get(unit.species) || 0) > 2;
         }
         // One step of a unit on its way to the border; it crosses when it gets there. False when it no longer goes.
         stepMigrant(unit, dt) {
@@ -11408,6 +11468,7 @@
           if (this.scene === "farm") {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
+            this.tickIdleWork(Math.min(elapsed, 0.1));
             this._stepMigration(Math.min(elapsed, 0.1));
             this._stepNeighbours(Math.min(elapsed, 0.1));
           }
@@ -15191,7 +15252,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.14.0";
+      PRODUCT_VERSION = "0.14.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -22334,7 +22395,6 @@
     [-1, 0]
   ];
   var POP_MS = 650;
-  var BASE_EXPLORER_RATE = 0.125;
   var PARTY_TRIP_SECONDS = 2;
   var MIN_SCALE = 10;
   var MAX_SCALE = 72;
@@ -22621,9 +22681,9 @@
         }
       }
     }
-    function drawParty(map, target, rate, now) {
-      const FARM = map.farms[0]?.tile;
-      if (FARM === void 0 || target < 0 || !(rate > 0)) {
+    function drawParty(from, target, count, now) {
+      const FARM = from;
+      if (FARM === void 0 || target < 0 || !(count > 0)) {
         return;
       }
       const FROM_X = screenX(tileX(FARM)), FROM_Y = screenY(tileY(FARM)), TO_X = screenX(tileX(target)), TO_Y = screenY(tileY(target));
@@ -22637,7 +22697,7 @@
       CONTEXT.stroke();
       CONTEXT.setLineDash([]);
       CONTEXT.globalAlpha = 1;
-      const COUNT = Math.min(60, Math.max(1, Math.round(rate / BASE_EXPLORER_RATE)));
+      const COUNT = Math.min(60, count);
       for (let member = 0; member < COUNT; member++) {
         const T = (partyPhase + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
         CONTEXT.fillStyle = COLORS.scout;
@@ -22717,7 +22777,7 @@
           TARGET.progress,
           now
         );
-        drawParty(map, TARGET.tile, (state.rate ?? 0) / TARGETS.length, now);
+        drawParty(TARGET.from, TARGET.tile, TARGET.count, now);
       }
       if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
         CONTEXT.strokeStyle = COLORS.ink;

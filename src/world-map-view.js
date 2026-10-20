@@ -65,7 +65,6 @@ const SIDES = [
 ];
 const POP_MS = 650;
 // Exploration points per second of one untrained explorer, and how long a dot takes to walk out to the tile.
-const BASE_EXPLORER_RATE = 0.125;
 const PARTY_TRIP_SECONDS = 2;
 const MIN_SCALE = 10;
 const MAX_SCALE = 72;
@@ -385,11 +384,10 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
             }
         }
     }
-    // The party walks from the farm out to the tile being explored and starts over, so exploring is always in motion.
-    // One dot per base explorer's worth of work: the number of dots arriving per second is the exploration rate.
-    function drawParty(map, target, rate, now) {
-        const FARM = map.farms[0]?.tile;
-        if (FARM === undefined || target < 0 || !(rate > 0)) {
+    // Each farm's explorers walk from that farm out to the tile it is exploring, one dot per explorer.
+    function drawParty(from, target, count, now) {
+        const FARM = from;
+        if (FARM === undefined || target < 0 || !(count > 0)) {
             return;
         }
         const FROM_X = screenX(tileX(FARM)),
@@ -406,7 +404,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         CONTEXT.stroke();
         CONTEXT.setLineDash([]);
         CONTEXT.globalAlpha = 1;
-        const COUNT = Math.min(60, Math.max(1, Math.round(rate / BASE_EXPLORER_RATE)));
+        const COUNT = Math.min(60, count);
         for (let member = 0; member < COUNT; member++) {
             const T = (partyPhase + member / COUNT) % 1,
                 SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
@@ -500,7 +498,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
                 TARGET.progress,
                 now,
             );
-            drawParty(map, TARGET.tile, (state.rate ?? 0) / TARGETS.length, now);
+            drawParty(TARGET.from, TARGET.tile, TARGET.count, now);
         }
         if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
             CONTEXT.strokeStyle = COLORS.ink;
