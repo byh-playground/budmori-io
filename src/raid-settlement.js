@@ -423,7 +423,7 @@ export function settleRaidOwnerFarm(
     }
     const RAID_STAGE = raidWorld?.boss?.stage,
         HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage,
-        // A nest the world map has opened up may sit further out than the stage rule alone allows.
+        // A boss the world map has spawned may sit further out than the stage rule alone allows.
         MAP_STAGE =
             farm.worldMap && (farm.worldMap.challengeTile ?? -1) >= 0
                 ? tileDanger(farm.worldMap, farm.worldMap.challengeTile)

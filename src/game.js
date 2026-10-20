@@ -4525,7 +4525,9 @@
       challengeTile: -1,
       buildTile: -1,
       revealed: [],
-      cleared: [],
+      bosses: [],
+      spawnClock: 0,
+      spawnCount: 0,
       farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }]
     };
     for (let y = -WORLD_MAP_SETTINGS.safeRadius; y <= WORLD_MAP_SETTINGS.safeRadius; y++) {
@@ -4539,9 +4541,6 @@
   function isRevealed(map, index) {
     return map.revealed.includes(index);
   }
-  function isCleared(map, index) {
-    return map.cleared.includes(index);
-  }
   function farmReach(map, index) {
     const X = tileX(index), Y = tileY(index);
     let best = Infinity;
@@ -4554,21 +4553,14 @@
     const STAGE = Math.round(1 + (farmReach(map, index) - 2) * WORLD_MAP_SETTINGS.dangerPerTile);
     return Math.max(1, Math.min(WORLD_MAP_SETTINGS.maxDanger, STAGE));
   }
-  function hasNest(map, index) {
-    return farmDistance(map, index) > WORLD_MAP_SETTINGS.safeRadius && tileUnit(map.seed, index, 1) < WORLD_MAP_SETTINGS.nestChance;
+  function hasBoss(map, index) {
+    return map.bosses.includes(index);
   }
   function tileSpecies(map, index) {
     return chooseBossSpecies(() => tileUnit(map.seed, index, 3));
   }
-  function claimed(map, index) {
-    return isCleared(map, index) || farmDistance(map, index) <= WORLD_MAP_SETTINGS.safeRadius;
-  }
   function canChallenge(map, index) {
-    if (!isRevealed(map, index) || !hasNest(map, index)) {
-      return false;
-    }
-    const X = tileX(index), Y = tileY(index);
-    return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && claimed(map, tileIndex(X + dx, Y + dy)));
+    return isRevealed(map, index) && hasBoss(map, index) && inReach(map, index);
   }
   function beginChallenge(map, index) {
     if (!canChallenge(map, index)) {
@@ -4580,7 +4572,31 @@
   function finishChallenge(map, victory) {
     const TILE = map.challengeTile ?? -1;
     map.challengeTile = -1;
-    return victory && TILE >= 0 ? markCleared(map, TILE) : false;
+    if (!victory || TILE < 0 || !hasBoss(map, TILE)) {
+      return false;
+    }
+    map.bosses = map.bosses.filter((boss) => boss !== TILE);
+    return true;
+  }
+  function advanceSpawns(map, seconds) {
+    const SPAWNED = [];
+    map.spawnClock += seconds;
+    while (map.spawnClock >= WORLD_MAP_SETTINGS.spawnSeconds) {
+      const CANDIDATES = map.revealed.filter(
+        (tile) => farmDistance(map, tile) > WORLD_MAP_SETTINGS.safeRadius && !hasBoss(map, tile) && inReach(map, tile)
+      );
+      if (map.bosses.length >= WORLD_MAP_SETTINGS.maxBosses || CANDIDATES.length === 0) {
+        map.spawnClock = WORLD_MAP_SETTINGS.spawnSeconds;
+        break;
+      }
+      map.spawnClock -= WORLD_MAP_SETTINGS.spawnSeconds;
+      const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
+      map.spawnCount++;
+      map.bosses.push(TILE);
+      map.bosses.sort((a, b) => a - b);
+      SPAWNED.push(TILE);
+    }
+    return SPAWNED;
   }
   function tileTerrain(map, index) {
     const ROLL = tileUnit(map.seed, index, 4);
@@ -4591,8 +4607,7 @@
     return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
   }
   function tileCost(map, index) {
-    const MULTIPLIER = WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)] * (hasNest(map, index) ? WORLD_MAP_SETTINGS.nestCost : 1);
-    return Math.round(exploreCost(map) * MULTIPLIER);
+    return Math.round(exploreCost(map) * WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)]);
   }
   function touchesLight(index, lit) {
     const X = tileX(index), Y = tileY(index);
@@ -4723,8 +4738,8 @@
           continue;
         }
         const AROUND = tileIndex(X + dx, Y + dy);
-        if (hasNest(map, AROUND) && !isCleared(map, AROUND)) {
-          return "nest";
+        if (hasBoss(map, AROUND)) {
+          return "boss";
         }
       }
     }
@@ -4773,27 +4788,19 @@
     map.revealed.sort((a, b) => a - b);
     return tile;
   }
-  function markCleared(map, index) {
-    if (!isRevealed(map, index) || isCleared(map, index)) {
-      return false;
-    }
-    map.cleared.push(index);
-    map.cleared.sort((a, b) => a - b);
-    return true;
-  }
   function isValidWorldMap(map) {
     if (!map || typeof map !== "object" || Array.isArray(map)) {
       return false;
     }
     const KEYS = Object.keys(map).filter((key) => key !== "challengeTile" && key !== "buildTile").sort().join(",");
-    if (KEYS !== "cleared,exploreTarget,farms,progress,revealed,seed") {
+    if (KEYS !== "bosses,exploreTarget,farms,progress,revealed,seed,spawnClock,spawnCount") {
       return false;
     }
-    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !VALID_PROGRESS(map.progress) || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !(map.buildTile === void 0 || Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.cleared) || !Array.isArray(map.farms) || map.farms.length === 0) {
+    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !VALID_PROGRESS(map.progress) || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !(map.buildTile === void 0 || Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.bosses) || !Number.isFinite(map.spawnClock) || map.spawnClock < 0 || !Number.isSafeInteger(map.spawnCount) || map.spawnCount < 0 || !Array.isArray(map.farms) || map.farms.length === 0) {
       return false;
     }
     const LIT = new Set(map.revealed);
-    return map.cleared.every((index) => LIT.has(index)) && new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length && map.farms.every(
+    return map.bosses.every((index) => LIT.has(index)) && new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length && map.farms.every(
       (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
     );
   }
@@ -4803,16 +4810,17 @@
       init_boss_rewards();
       WORLD_MAP_SETTINGS = {
         radius: 12,
-        // Tiles within this many steps of a farm start lit and never hold a nest.
+        // Tiles within this many steps of a farm start lit and never hold a boss.
         safeRadius: 1,
-        nestChance: 0.34,
+        // A boss turns up this often (game seconds) while fewer than maxBosses are out.
+        spawnSeconds: 150,
+        maxBosses: 3,
         firstTileCost: 60,
         tileCostStep: 4,
         maxDanger: 61,
-        // How much harder a tile is to explore than the base cost: the ground it lies on, and a nest on top of it.
+        // How much harder a tile is to explore than the base cost: the ground it lies on.
         terrainCost: { plain: 1, forest: 1.5, rock: 2, swamp: 2.5 },
-        nestCost: 1.5,
-        // Stages added per tile of straight-line distance beyond the first ring of nests.
+        // Stages added per tile of straight-line distance beyond the first ring of bosses.
         dangerPerTile: 4,
         // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
         baseReach: 2
@@ -11585,6 +11593,9 @@
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
             this.tickIdleWork(Math.min(elapsed, 0.1));
+            if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
+              this.markProgressChanged();
+            }
             this._stepMigration(Math.min(elapsed, 0.1));
             this._stepNeighbours(Math.min(elapsed, 0.1));
           }
@@ -15368,7 +15379,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.17.0";
+      PRODUCT_VERSION = "0.18.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20785,7 +20796,9 @@
       challengeTile: -1,
       buildTile: -1,
       revealed: [],
-      cleared: [],
+      bosses: [],
+      spawnClock: 0,
+      spawnCount: 0,
       farms: []
     },
     foodTaps: {
@@ -22488,7 +22501,6 @@
     rockLight: "#c5bfae",
     water: "#9fbfc4",
     shore: "#a9bc99",
-    cleared: "#9fbf98",
     farm: "#c2913e",
     nest: "#b9774a",
     cave: "#6b5240",
@@ -22714,24 +22726,6 @@
       CONTEXT.fill();
       CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
     }
-    function drawFlag(x, y, s) {
-      CONTEXT.strokeStyle = COLORS.ink;
-      CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
-      CONTEXT.beginPath();
-      CONTEXT.moveTo(x + s * 0.4, y + s * 0.8);
-      CONTEXT.lineTo(x + s * 0.4, y + s * 0.2);
-      CONTEXT.stroke();
-      CONTEXT.fillStyle = COLORS.cleared;
-      CONTEXT.beginPath();
-      CONTEXT.moveTo(x + s * 0.4, y + s * 0.2);
-      CONTEXT.lineTo(x + s * 0.78, y + s * 0.34);
-      CONTEXT.lineTo(x + s * 0.4, y + s * 0.48);
-      CONTEXT.closePath();
-      CONTEXT.fill();
-      CONTEXT.strokeStyle = COLORS.ink;
-      CONTEXT.lineWidth = 1;
-      CONTEXT.stroke();
-    }
     function drawNest(x, y, s, danger, open, now) {
       CONTEXT.fillStyle = COLORS.nest;
       CONTEXT.beginPath();
@@ -22884,9 +22878,7 @@
           }
           if (FARMS.has(INDEX)) {
             drawFarm(PX, PY, S);
-          } else if (isCleared(map, INDEX)) {
-            drawFlag(PX, PY, S);
-          } else if (hasNest(map, INDEX)) {
+          } else if (hasBoss(map, INDEX)) {
             drawNest(PX, PY, S, tileDanger(map, INDEX), canChallenge(map, INDEX), now);
           }
         }
@@ -23642,7 +23634,7 @@
       return raidStartBlockReason();
     }
     if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
-      return "도전할 둥지를 골라 주세요. 농장이나 정리한 칸과 맞닿은 둥지만 도전할 수 있어요.";
+      return "도전할 보스를 골라 주세요. 농장 시야 안의 밝은 칸에 있는 보스만 도전할 수 있어요.";
     }
     return raidStartBlockReason();
   }
@@ -23702,23 +23694,17 @@
       return;
     }
     if (!lastLit || lastLit.world !== personalGarden) {
-      lastLit = { world: personalGarden, set: new Set(MAP.revealed) };
+      lastLit = { world: personalGarden, set: new Set(MAP.revealed), bosses: new Set(MAP.bosses) };
       return;
     }
-    if (MAP.revealed.length === lastLit.set.size) {
-      return;
-    }
-    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)), NESTS = FOUND.filter((index) => hasNest(MAP, index)).length, NOTICE = DOLLAR2("exploreNotice");
+    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)).length, APPEARED = MAP.bosses.filter((index) => !lastLit.bosses.has(index)).length;
     lastLit.set = new Set(MAP.revealed);
-    if (FOUND.length === 0) {
-      return;
+    lastLit.bosses = new Set(MAP.bosses);
+    if (APPEARED > 0) {
+      say("보스가 나타났어요! 지도에서 확인해 보세요.");
+    } else if (FOUND > 0) {
+      say(`새 칸 ${FOUND}개를 발견했어요`);
     }
-    NOTICE.textContent = NESTS > 0 ? `새 칸 ${FOUND.length}개 발견 · 보스 둥지가 있어요!` : `새 칸 ${FOUND.length}개를 발견했어요`;
-    NOTICE.hidden = false;
-    clearTimeout(announceExploration.timer);
-    announceExploration.timer = setTimeout(() => {
-      NOTICE.hidden = true;
-    }, 4e3);
   }
   var EXPLORE_PHASE_TEXT = {
     none: "탐사 일꾼 없음",
@@ -23746,10 +23732,10 @@
         title = `안개 ${POSITION}`;
         canExplore = canExploreTile(MAP, TILE);
         info = canExplore ? `탐사 일꾼이 이 칸부터 안개를 걷게 할 수 있어요. ${GAUGE}` : !inReach(MAP, TILE) ? "농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요." : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
-      } else if (hasNest(MAP, TILE)) {
+      } else if (hasBoss(MAP, TILE)) {
         const STAGE = tileDanger(MAP, TILE), SPECIES = tileSpecies(MAP, TILE), STATS2 = bossStageStats(STAGE);
-        title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})${isCleared(MAP, TILE) ? " · 정리함" : ""}`;
-        info = `${isCleared(MAP, TILE) ? "정리한 둥지예요. 다시 도전할 수 있어요. " : ""}체력 ${Math.round(STATS2.hp).toLocaleString("ko-KR")} · 공격력 ${Number(STATS2.attackPower.toPrecision(3)).toLocaleString("ko-KR")} · 승리 +${STATS2.xp.toLocaleString("ko-KR")} XP`;
+        title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
+        info = `체력 ${Math.round(STATS2.hp).toLocaleString("ko-KR")} · 공격력 ${Number(STATS2.attackPower.toPrecision(3)).toLocaleString("ko-KR")} · 승리 +${STATS2.xp.toLocaleString("ko-KR")} XP`;
       } else {
         title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
         info = "아무것도 없는 칸이에요.";
@@ -23760,8 +23746,8 @@
       if (MAP.farms.some((farm) => farm.tile === TILE)) {
         title = `농장 ${tileX(TILE)}, ${tileY(TILE)}`;
         info = "여기서 탐사 반경이 뻗어요. 농장 안에 망루를 지으면 더 멀리 닿아요.";
-      } else if (BLOCK === "nest") {
-        info = `${info} 새 농장은 이 칸과 둘레 1칸의 둥지를 모두 정리해야 지을 수 있어요.`;
+      } else if (BLOCK === "boss") {
+        info = `${info} 새 농장은 이 칸과 둘레 1칸에 보스가 없어야 지을 수 있어요.`;
       } else if (BLOCK === null) {
         canBuild = !BUILDING && !!PLOT;
         info = `${info} ${BUILDING ? "다른 새 농장을 짓는 중이에요." : `새 농장을 지을 수 있어요 · ${COST}`}`;
@@ -23773,8 +23759,7 @@
     DOLLAR2("worldMapBuild").hidden = !canBuild;
     DOLLAR2("worldMapBuild").disabled = !canBuild || !personalGarden.projectInfo("plot") || personalGarden.materials.wood < personalGarden.projectInfo("plot").cost.wood || personalGarden.materials.stone < personalGarden.projectInfo("plot").cost.stone;
     DOLLAR2("bossEncounterHint").textContent = mapChallengeBlockReason();
-    DOLLAR2("bossStageCounter").textContent = `정리 ${MAP.cleared.length}칸`;
-    DOLLAR2("bossEncounterChallenge").textContent = TILE >= 0 && isCleared(MAP, TILE) ? "다시 도전" : "둥지 도전";
+    DOLLAR2("bossStageCounter").textContent = `보스 ${MAP.bosses.length}마리`;
   }
   function selectWorldMapTile(index) {
     bossMapTile = bossMapTile === index ? -1 : index;

@@ -1,4 +1,4 @@
-// Draws the shared world map on a canvas: lit land with a shoreline against the fog, boss nests with their danger,
+// Draws the shared world map on a canvas: lit land with a shoreline against the fog, bosses with their danger,
 // cleared flags, the farm, and the exploration itself — the tile being explored fills up like a gauge while a
 // party of explorers walks out to it. The same view serves the full map screen (pan, zoom, pick a tile) and the
 // small map on the farm screen.
@@ -6,8 +6,7 @@ import {
     WORLD_MAP_SETTINGS,
     WORLD_MAP_TILE_COUNT,
     canChallenge,
-    hasNest,
-    isCleared,
+    hasBoss,
     inReach,
     tileDanger,
     tileTerrain,
@@ -31,7 +30,6 @@ const COLORS = {
     rockLight: '#c5bfae',
     water: '#9fbfc4',
     shore: '#a9bc99',
-    cleared: '#9fbf98',
     farm: '#c2913e',
     nest: '#b9774a',
     cave: '#6b5240',
@@ -290,24 +288,6 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         CONTEXT.fill();
         CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
     }
-    function drawFlag(x, y, s) {
-        CONTEXT.strokeStyle = COLORS.ink;
-        CONTEXT.lineWidth = Math.max(1.5, s * 0.05);
-        CONTEXT.beginPath();
-        CONTEXT.moveTo(x + s * 0.4, y + s * 0.8);
-        CONTEXT.lineTo(x + s * 0.4, y + s * 0.2);
-        CONTEXT.stroke();
-        CONTEXT.fillStyle = COLORS.cleared;
-        CONTEXT.beginPath();
-        CONTEXT.moveTo(x + s * 0.4, y + s * 0.2);
-        CONTEXT.lineTo(x + s * 0.78, y + s * 0.34);
-        CONTEXT.lineTo(x + s * 0.4, y + s * 0.48);
-        CONTEXT.closePath();
-        CONTEXT.fill();
-        CONTEXT.strokeStyle = COLORS.ink;
-        CONTEXT.lineWidth = 1;
-        CONTEXT.stroke();
-    }
     function drawNest(x, y, s, danger, open, now) {
         CONTEXT.fillStyle = COLORS.nest;
         CONTEXT.beginPath();
@@ -479,9 +459,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
                 }
                 if (FARMS.has(INDEX)) {
                     drawFarm(PX, PY, S);
-                } else if (isCleared(map, INDEX)) {
-                    drawFlag(PX, PY, S);
-                } else if (hasNest(map, INDEX)) {
+                } else if (hasBoss(map, INDEX)) {
                     drawNest(PX, PY, S, tileDanger(map, INDEX), canChallenge(map, INDEX), now);
                 }
             }

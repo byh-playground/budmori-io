@@ -73,7 +73,7 @@ export function selectFarmBossStage(progress, stage, { unlocked = false } = {}) 
         ...STATS,
     };
 }
-// The boss of a nest on the world map: the stage comes from the distance to the farms, the species from the tile.
+// The boss on a tile of the world map: the stage comes from the distance to the farms, the species from the tile.
 export function selectMapBossStage(progress, map, tile) {
     const PREVIOUS = progress.currentStage,
         SELECTION = selectFarmBossStage(progress, tileDanger(map, tile), { unlocked: true });
