@@ -151,22 +151,6 @@ body > header {
 .hud__note:empty {
     display: none;
 }
-#warehouseProgress {
-    display: flex;
-    gap: 3px;
-    min-width: 50px;
-}
-#warehouseProgress .tap-pip {
-    flex: 1 1 0;
-    height: 8px;
-    border-radius: 3px;
-    background: var(--ui-gauge-track);
-    transition: background-color 70ms ease;
-}
-#warehouseProgress .tap-pip.filled,
-#warehouseProgress[data-produced='true'] .tap-pip {
-    background: var(--ui-primary);
-}
 .switch {
     display: flex;
     padding: 4px;

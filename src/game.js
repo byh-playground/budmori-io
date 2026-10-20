@@ -15110,7 +15110,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.5";
+      PRODUCT_VERSION = "0.21.6";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20696,12 +20696,6 @@
   var DOLLAR = (id) => document.getElementById(id);
   var FoodFeel = class {
     constructor() {
-      this.button = DOLLAR("warehouseCount") ?? DOLLAR("warehouseProgress");
-      this.progress = DOLLAR("warehouseProgress");
-      this.pips = [...this.progress.querySelectorAll(".tap-pip")];
-      this.completeUntil = 0;
-      this.pulseUntil = 0;
-      this.animations = /* @__PURE__ */ new Map();
       this.voices = /* @__PURE__ */ new Set();
       this.lastSound = {};
       this.frameId = 0;
@@ -20715,7 +20709,6 @@
         land: 0,
         eat: 0
       };
-      this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
       try {
         this.muted = localStorage.getItem("budmori.food.muted") === "true";
       } catch {
@@ -20741,10 +20734,6 @@
       });
       window.addEventListener("pagehide", () => {
         this.silence();
-        for (const A of this.animations.values()) {
-          A.cancel();
-        }
-        this.animations.clear();
         this.audio?.close().catch(() => {
         });
       });
@@ -20822,80 +20811,18 @@
       O.start(NOW);
       O.stop(NOW + DURATION3 + 0.01);
     }
-    animate(el, frames, duration) {
-      this.animations.get(el)?.cancel();
-      const A = el.animate(frames, {
-        duration,
-        easing: "ease-out"
-      });
-      this.animations.set(el, A);
-      A.onfinish = () => {
-        if (this.animations.get(el) === A) {
-          this.animations.delete(el);
-        }
-      };
-    }
+    // The field shows the food itself; a tap only makes its sound.
     tap(source, complete, remainder) {
       this.counts[source]++;
-      const NOW = performance.now(), MANUAL = source === "manual", TARGET = MANUAL ? this.button : this.progress;
-      this.impactTarget = TARGET;
       if (complete) {
         this.counts.complete++;
-        this.completeUntil = NOW + (MANUAL ? 190 : 100);
       }
-      if (MANUAL || NOW > this.pulseUntil) {
-        this.pulseUntil = NOW + (MANUAL ? 150 : 55);
-        TARGET.dataset.impact = complete && MANUAL ? "complete" : MANUAL ? "manual" : "auto";
-        this.animate(
-          TARGET,
-          [
-            {
-              transform: this.reduced || !MANUAL ? "scale(1)" : complete ? "translateY(3px) scale(1.06,.90)" : "scale(1.025,.95)",
-              filter: MANUAL ? "brightness(1.16)" : "brightness(1.035)"
-            },
-            {
-              transform: "translateY(0) scale(1)",
-              filter: "brightness(1)"
-            }
-          ],
-          MANUAL ? complete ? 210 : 125 : 70
-        );
-      }
-      const PIP = this.pips[complete ? 4 : remainder - 1];
-      this.animate(
-        PIP,
-        [
-          {
-            transform: this.reduced ? "scale(1)" : "scaleY(1.8)",
-            background: "#fffbea"
-          },
-          {
-            transform: "scaleY(1)",
-            background: complete ? "#fff1b9" : "#fff1b9"
-          }
-        ],
-        MANUAL ? 160 : 70
-      );
-      for (let i = 0; i < 5; i++) {
-        this.pips[i].classList.toggle("filled", complete || i < remainder);
-      }
-      if (MANUAL) {
+      if (source === "manual") {
         this.sound(complete ? "complete" : "tap", remainder);
       }
     }
     manualScatter() {
       this.counts.manual++;
-      this.pulseUntil = performance.now() + 150;
-      this.impactTarget = this.button;
-      this.button.dataset.impact = "manual";
-      this.animate(
-        this.button,
-        [
-          { transform: this.reduced ? "scale(1)" : "scale(1.025,.95)", filter: "brightness(1.16)" },
-          { transform: "translateY(0) scale(1)", filter: "brightness(1)" }
-        ],
-        125
-      );
       this.sound("tap", 0);
     }
     event(kind) {
@@ -20905,12 +20832,8 @@
         this.sound(KEY2);
       }
     }
-    frame(now) {
+    frame() {
       this.frameId++;
-      if (now > this.pulseUntil && this.impactTarget) {
-        this.impactTarget.dataset.impact = "";
-        this.impactTarget = null;
-      }
     }
   };
 
@@ -24035,18 +23958,8 @@
       );
       BUTTON.disabled = !!farmSortTransition;
     }
-    syncText("warehouseProgressLabel", `타작 ${W.foodTaps.remainder}/5`);
-    syncAttribute("warehouseProgress", "aria-valuenow", String(W.foodTaps.remainder));
-    syncAttribute("warehouseProgress", "aria-valuetext", `타작 ${W.foodTaps.remainder}/5`);
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
-    }
-    syncData("warehouseProgress", "produced", now < FOOD_FEEL.completeUntil);
-    for (let i = 0; i < 5; i++) {
-      const PIP = FOOD_FEEL.pips[i], FILLED = now < FOOD_FEEL.completeUntil || i < W.foodTaps.remainder;
-      if (PIP.classList.contains("filled") !== FILLED) {
-        PIP.classList.toggle("filled", FILLED);
-      }
     }
     for (const E of notices) {
       if (E.kind === "food-tap") {
@@ -24057,7 +23970,7 @@
         FOOD_FEEL.event(E.kind);
       }
     }
-    FOOD_FEEL.frame(now);
+    FOOD_FEEL.frame();
   }
   function frame(now) {
     try {
